@@ -31,6 +31,9 @@
 #endif
 
 namespace browser::net {
+
+bool is_http2_upgrade_response(int status_code, const std::string& upgrade_header);
+
 namespace {
 
 constexpr std::size_t kReadBufferSize = 8192;
@@ -1431,10 +1434,10 @@ Response fetch_once(const Url& url,
     return response;
   }
 
-  if (response.status_code == 101) {
+  if (response.status_code == 101 || response.status_code == 426) {
     const auto upgrade_it = response.headers.find("upgrade");
     if (upgrade_it != response.headers.end() &&
-        contains_http2_upgrade_token(upgrade_it->second)) {
+        is_http2_upgrade_response(response.status_code, upgrade_it->second)) {
       response.error =
           "HTTP/2 upgrade response received; HTTP/2 transport is not implemented yet";
       return response;
@@ -1566,6 +1569,13 @@ bool is_http2_alpn_protocol(const std::string& protocol) {
 
 bool is_http2_upgrade_protocol(const std::string& protocol_header) {
     return contains_http2_upgrade_token(protocol_header);
+}
+
+bool is_http2_upgrade_response(int status_code, const std::string& upgrade_header) {
+    if (status_code != 101 && status_code != 426) {
+        return false;
+    }
+    return contains_http2_upgrade_token(upgrade_header);
 }
 
 const char* request_method_name(RequestMethod method) {

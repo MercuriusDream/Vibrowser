@@ -76,6 +76,7 @@ bool parse_http_status_line(const std::string& status_line,
                             std::string& err);
 bool is_http2_alpn_protocol(const std::string& protocol);
 bool is_http2_upgrade_protocol(const std::string& protocol_header);
+bool is_http2_upgrade_response(int status_code, const std::string& upgrade_header);
 
 enum class CachePolicy {
     NoCache,

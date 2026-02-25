@@ -331,6 +331,25 @@ int main() {
         }
     }
 
+    // Test 14: HTTP/2 upgrade response helper recognizes 101 and 426 upgrade-required responses
+    {
+        if (!browser::net::is_http2_upgrade_response(101, "h2")) {
+            std::cerr << "FAIL: expected 101 + h2 upgrade token to be treated as HTTP/2 upgrade response\n";
+            ++failures;
+        } else if (!browser::net::is_http2_upgrade_response(426, "websocket, h2c")) {
+            std::cerr << "FAIL: expected 426 + h2c token to be treated as HTTP/2 upgrade-required response\n";
+            ++failures;
+        } else if (browser::net::is_http2_upgrade_response(426, "websocket")) {
+            std::cerr << "FAIL: expected 426 without h2/h2c token to not be treated as HTTP/2 upgrade response\n";
+            ++failures;
+        } else if (browser::net::is_http2_upgrade_response(200, "h2")) {
+            std::cerr << "FAIL: expected non-upgrade HTTP status to not be treated as HTTP/2 upgrade response\n";
+            ++failures;
+        } else {
+            std::cerr << "PASS: HTTP/2 upgrade response detection works as expected\n";
+        }
+    }
+
     if (failures > 0) {
         std::cerr << "\n" << failures << " test(s) FAILED\n";
         return 1;
