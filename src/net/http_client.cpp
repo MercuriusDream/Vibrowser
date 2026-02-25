@@ -906,6 +906,11 @@ bool read_line_crlf(Connection& connection, std::string& buffer, std::string& li
 }
 
 bool parse_status_line(const std::string& status_line, Response& response, std::string& err) {
+  if (status_line == "PRI * HTTP/2.0") {
+    err = "HTTP/2 response preface received; HTTP/2 transport is not implemented yet";
+    return false;
+  }
+
   const std::size_t first_space = status_line.find(' ');
   if (first_space == std::string::npos) {
     err = "Malformed HTTP status line";

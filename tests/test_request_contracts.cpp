@@ -269,6 +269,17 @@ int main() {
         } else {
             std::cerr << "PASS: malformed status line is rejected\n";
         }
+
+        if (browser::net::parse_http_status_line(
+                "PRI * HTTP/2.0", http_version, status_code, reason, err)) {
+            std::cerr << "FAIL: HTTP/2 preface line should be rejected until h2 transport is implemented\n";
+            ++failures;
+        } else if (err.find("HTTP/2 response preface received") == std::string::npos) {
+            std::cerr << "FAIL: expected explicit HTTP/2 preface rejection message\n";
+            ++failures;
+        } else {
+            std::cerr << "PASS: HTTP/2 preface line is rejected with explicit not-implemented message\n";
+        }
     }
 
     if (failures > 0) {
