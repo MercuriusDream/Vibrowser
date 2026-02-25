@@ -964,6 +964,11 @@ bool parse_status_line(const std::string& status_line, Response& response, std::
     err = "HTTP/2 status line received; HTTP/2 transport is not implemented yet";
     return false;
   }
+  if (version != "HTTP/1.0" && version != "HTTP/1.1") {
+    err = "Unsupported HTTP status line version '" + version +
+          "'; only HTTP/1.0 and HTTP/1.1 are supported";
+    return false;
+  }
   response.http_version = version;
 
   const std::size_t second_space = status_line.find(' ', first_space + 1);

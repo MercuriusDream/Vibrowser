@@ -245,7 +245,7 @@ int main() {
         }
     }
 
-    // Test 11: status-line parser captures HTTP/1.x protocol version and rejects HTTP/2 until implemented
+    // Test 11: status-line parser captures HTTP/1.x protocol versions and rejects unsupported transports
     {
         std::string http_version;
         int status_code = 0;
@@ -260,6 +260,17 @@ int main() {
             ++failures;
         } else {
             std::cerr << "PASS: status-line parser captures HTTP/1.x version/status/reason\n";
+        }
+
+        if (!browser::net::parse_http_status_line(
+                "HTTP/1.0 204 No Content", http_version, status_code, reason, err)) {
+            std::cerr << "FAIL: expected valid HTTP/1.0 status line to parse\n";
+            ++failures;
+        } else if (http_version != "HTTP/1.0" || status_code != 204 || reason != "No Content") {
+            std::cerr << "FAIL: HTTP/1.0 status-line parse produced unexpected fields\n";
+            ++failures;
+        } else {
+            std::cerr << "PASS: HTTP/1.0 status line parses as supported HTTP/1.x transport\n";
         }
 
         if (browser::net::parse_http_status_line(
@@ -279,6 +290,17 @@ int main() {
             ++failures;
         } else {
             std::cerr << "PASS: malformed status line is rejected\n";
+        }
+
+        if (browser::net::parse_http_status_line(
+                "HTTP/3 200 OK", http_version, status_code, reason, err)) {
+            std::cerr << "FAIL: HTTP/3 status line should be rejected as unsupported transport\n";
+            ++failures;
+        } else if (err.find("Unsupported HTTP status line version 'HTTP/3'") == std::string::npos) {
+            std::cerr << "FAIL: expected explicit unsupported HTTP version rejection message\n";
+            ++failures;
+        } else {
+            std::cerr << "PASS: unsupported HTTP/3 status line is rejected with explicit message\n";
         }
 
         if (browser::net::parse_http_status_line(
