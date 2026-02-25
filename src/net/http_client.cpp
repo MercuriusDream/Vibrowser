@@ -1110,8 +1110,10 @@ bool contains_http2_upgrade_token(const std::string& upgrade_header) {
     if (!at_end) {
       if (escape_next) {
         escape_next = false;
-      } else if ((in_double_quotes || in_single_quotes) && ch == '\\') {
+        continue;
+      } else if (ch == '\\') {
         escape_next = true;
+        continue;
       } else if (!in_single_quotes && ch == '"') {
         in_double_quotes = !in_double_quotes;
       } else if (!in_double_quotes && ch == '\'') {
@@ -1143,7 +1145,8 @@ bool contains_http2_upgrade_token(const std::string& upgrade_header) {
           }
           continue;
         }
-        if ((token_in_double_quotes || token_in_single_quotes) && token_ch == '\\') {
+        if ((token_in_double_quotes || token_in_single_quotes || token_comment_depth > 0) &&
+            token_ch == '\\') {
           token_escape_next = true;
           if (token_comment_depth == 0) {
             token_without_comments.push_back(token_ch);
