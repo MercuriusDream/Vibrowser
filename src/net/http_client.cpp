@@ -1120,6 +1120,17 @@ bool request_headers_include_http2_settings(
   return false;
 }
 
+bool request_headers_include_http2_pseudo_headers(
+    const std::map<std::string, std::string>& request_headers) {
+  for (const auto& [name, value] : request_headers) {
+    (void)value;
+    if (!name.empty() && name.front() == ':') {
+      return true;
+    }
+  }
+  return false;
+}
+
 bool read_response_headers(Connection& connection, std::string& buffer, Response& response, std::string& err) {
   while (true) {
     const std::size_t headers_end = buffer.find("\r\n\r\n");
@@ -1421,7 +1432,8 @@ Response fetch_once(const Url& url,
   Response response;
 
   if (request_headers_attempt_http2_upgrade(extra_headers) ||
-      request_headers_include_http2_settings(extra_headers)) {
+      request_headers_include_http2_settings(extra_headers) ||
+      request_headers_include_http2_pseudo_headers(extra_headers)) {
     response.error =
         "HTTP/2 transport request headers are not supported; HTTP/2 transport is not implemented yet";
     return response;
@@ -1620,6 +1632,10 @@ bool is_http2_upgrade_request(const std::map<std::string, std::string>& request_
 
 bool is_http2_settings_request(const std::map<std::string, std::string>& request_headers) {
     return request_headers_include_http2_settings(request_headers);
+}
+
+bool is_http2_pseudo_header_request(const std::map<std::string, std::string>& request_headers) {
+    return request_headers_include_http2_pseudo_headers(request_headers);
 }
 
 const char* request_method_name(RequestMethod method) {

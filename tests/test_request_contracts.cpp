@@ -424,6 +424,32 @@ int main() {
         }
     }
 
+    // Test 17: HTTP/2 pseudo-header request helper recognizes outbound h2-only pseudo-headers
+    {
+        std::map<std::string, std::string> headers;
+        headers[":authority"] = "example.com";
+        if (!browser::net::is_http2_pseudo_header_request(headers)) {
+            std::cerr << "FAIL: expected :authority pseudo-header to be treated as HTTP/2 transport signal\n";
+            ++failures;
+        } else {
+            headers.clear();
+            headers["X-Forwarded-For"] = "127.0.0.1";
+            if (browser::net::is_http2_pseudo_header_request(headers)) {
+                std::cerr << "FAIL: expected non-pseudo header to not be treated as HTTP/2 pseudo-header request\n";
+                ++failures;
+            } else {
+                headers.clear();
+                headers["authority"] = "example.com";
+                if (browser::net::is_http2_pseudo_header_request(headers)) {
+                    std::cerr << "FAIL: expected authority without leading colon to not be treated as pseudo-header\n";
+                    ++failures;
+                } else {
+                    std::cerr << "PASS: HTTP/2 pseudo-header request detection works as expected\n";
+                }
+            }
+        }
+    }
+
     if (failures > 0) {
         std::cerr << "\n" << failures << " test(s) FAILED\n";
         return 1;
