@@ -378,6 +378,9 @@ int main() {
         } else if (!browser::net::is_http2_upgrade_protocol("'h2'")) {
             std::cerr << "FAIL: expected single-quoted h2 upgrade token to be treated as HTTP/2 upgrade\n";
             ++failures;
+        } else if (!browser::net::is_http2_upgrade_protocol("h2(comment)")) {
+            std::cerr << "FAIL: expected h2 token with trailing comment to be treated as HTTP/2 upgrade\n";
+            ++failures;
         } else if (browser::net::is_http2_upgrade_protocol("\"websocket,h2c\"")) {
             std::cerr << "FAIL: expected quoted comma-containing token to not be split as multiple upgrade tokens\n";
             ++failures;
@@ -414,6 +417,9 @@ int main() {
             ++failures;
         } else if (!browser::net::is_http2_upgrade_response(426, "'h2c'")) {
             std::cerr << "FAIL: expected single-quoted h2c token to be treated as HTTP/2 upgrade response\n";
+            ++failures;
+        } else if (!browser::net::is_http2_upgrade_response(101, "h2(comment)")) {
+            std::cerr << "FAIL: expected h2 token with trailing comment to be treated as HTTP/2 upgrade response\n";
             ++failures;
         } else if (browser::net::is_http2_upgrade_response(101, "\"websocket,h2\"")) {
             std::cerr << "FAIL: expected quoted comma-containing upgrade token to not be split in response detection\n";
@@ -453,6 +459,12 @@ int main() {
                     ++failures;
                 } else {
                     headers.clear();
+                    headers["Upgrade"] = "h2(comment)";
+                    if (!browser::net::is_http2_upgrade_request(headers)) {
+                        std::cerr << "FAIL: expected Upgrade: h2(comment) request header to be treated as HTTP/2 upgrade request\n";
+                        ++failures;
+                    } else {
+                    headers.clear();
                     headers["Upgrade"] = "\"websocket,h2\"";
                     if (browser::net::is_http2_upgrade_request(headers)) {
                         std::cerr << "FAIL: expected quoted comma-containing Upgrade token to not be split in request detection\n";
@@ -479,6 +491,7 @@ int main() {
                             std::cerr << "PASS: HTTP/2 upgrade request detection works as expected\n";
                         }
                         }
+                    }
                     }
                     }
                 }

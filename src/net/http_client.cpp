@@ -1129,6 +1129,57 @@ bool contains_http2_upgrade_token(const std::string& upgrade_header) {
 
     std::string token = to_lower_ascii(trim_ascii(upgrade_header.substr(token_start, i - token_start)));
     if (!token.empty()) {
+      std::string token_without_comments;
+      token_without_comments.reserve(token.size());
+      bool token_in_double_quotes = false;
+      bool token_in_single_quotes = false;
+      int token_comment_depth = 0;
+      bool token_escape_next = false;
+      for (char token_ch : token) {
+        if (token_escape_next) {
+          token_escape_next = false;
+          if (token_comment_depth == 0) {
+            token_without_comments.push_back(token_ch);
+          }
+          continue;
+        }
+        if ((token_in_double_quotes || token_in_single_quotes) && token_ch == '\\') {
+          token_escape_next = true;
+          if (token_comment_depth == 0) {
+            token_without_comments.push_back(token_ch);
+          }
+          continue;
+        }
+        if (!token_in_single_quotes && token_ch == '"' && token_comment_depth == 0) {
+          token_in_double_quotes = !token_in_double_quotes;
+          token_without_comments.push_back(token_ch);
+          continue;
+        }
+        if (!token_in_double_quotes && token_ch == '\'' && token_comment_depth == 0) {
+          token_in_single_quotes = !token_in_single_quotes;
+          token_without_comments.push_back(token_ch);
+          continue;
+        }
+        if (!token_in_double_quotes && !token_in_single_quotes && token_ch == '(') {
+          ++token_comment_depth;
+          continue;
+        }
+        if (!token_in_double_quotes && !token_in_single_quotes && token_ch == ')' &&
+            token_comment_depth > 0) {
+          --token_comment_depth;
+          continue;
+        }
+        if (token_comment_depth == 0) {
+          token_without_comments.push_back(token_ch);
+        }
+      }
+
+      token = trim_ascii(token_without_comments);
+      if (token.empty()) {
+        token_start = i + 1;
+        continue;
+      }
+
       bool param_in_double_quotes = false;
       bool param_in_single_quotes = false;
       bool param_escape_next = false;
