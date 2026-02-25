@@ -398,6 +398,32 @@ int main() {
         }
     }
 
+    // Test 16: HTTP2-Settings request header helper recognizes outbound h2c settings signal
+    {
+        std::map<std::string, std::string> headers;
+        headers["HTTP2-Settings"] = "AAMAAABkAARAAAAAAAIAAAAA";
+        if (!browser::net::is_http2_settings_request(headers)) {
+            std::cerr << "FAIL: expected HTTP2-Settings header to be treated as HTTP/2 transport request signal\n";
+            ++failures;
+        } else {
+            headers.clear();
+            headers["http2-settings"] = "token";
+            if (!browser::net::is_http2_settings_request(headers)) {
+                std::cerr << "FAIL: expected case-insensitive HTTP2-Settings detection\n";
+                ++failures;
+            } else {
+                headers.clear();
+                headers["X-HTTP2-Settings"] = "token";
+                if (browser::net::is_http2_settings_request(headers)) {
+                    std::cerr << "FAIL: expected exact HTTP2-Settings header name matching\n";
+                    ++failures;
+                } else {
+                    std::cerr << "PASS: HTTP2-Settings request header detection works as expected\n";
+                }
+            }
+        }
+    }
+
     if (failures > 0) {
         std::cerr << "\n" << failures << " test(s) FAILED\n";
         return 1;

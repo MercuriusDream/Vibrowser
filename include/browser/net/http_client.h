@@ -78,6 +78,7 @@ bool is_http2_alpn_protocol(const std::string& protocol);
 bool is_http2_upgrade_protocol(const std::string& protocol_header);
 bool is_http2_upgrade_response(int status_code, const std::string& upgrade_header);
 bool is_http2_upgrade_request(const std::map<std::string, std::string>& request_headers);
+bool is_http2_settings_request(const std::map<std::string, std::string>& request_headers);
 
 enum class CachePolicy {
     NoCache,
