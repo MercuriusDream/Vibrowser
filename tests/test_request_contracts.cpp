@@ -378,6 +378,9 @@ int main() {
         } else if (!browser::net::is_http2_upgrade_protocol("'h2'")) {
             std::cerr << "FAIL: expected single-quoted h2 upgrade token to be treated as HTTP/2 upgrade\n";
             ++failures;
+        } else if (browser::net::is_http2_upgrade_protocol("\"websocket,h2c\"")) {
+            std::cerr << "FAIL: expected quoted comma-containing token to not be split as multiple upgrade tokens\n";
+            ++failures;
         } else if (!browser::net::is_http2_upgrade_protocol("H2")) {
             std::cerr << "FAIL: expected case-insensitive h2 token detection\n";
             ++failures;
@@ -408,6 +411,9 @@ int main() {
             ++failures;
         } else if (!browser::net::is_http2_upgrade_response(426, "'h2c'")) {
             std::cerr << "FAIL: expected single-quoted h2c token to be treated as HTTP/2 upgrade response\n";
+            ++failures;
+        } else if (browser::net::is_http2_upgrade_response(101, "\"websocket,h2\"")) {
+            std::cerr << "FAIL: expected quoted comma-containing upgrade token to not be split in response detection\n";
             ++failures;
         } else if (browser::net::is_http2_upgrade_response(426, "websocket")) {
             std::cerr << "FAIL: expected 426 without h2/h2c token to not be treated as HTTP/2 upgrade response\n";
@@ -441,6 +447,12 @@ int main() {
                     ++failures;
                 } else {
                     headers.clear();
+                    headers["Upgrade"] = "\"websocket,h2\"";
+                    if (browser::net::is_http2_upgrade_request(headers)) {
+                        std::cerr << "FAIL: expected quoted comma-containing Upgrade token to not be split in request detection\n";
+                        ++failures;
+                    } else {
+                        headers.clear();
                     headers["upgrade"] = "websocket";
                     if (browser::net::is_http2_upgrade_request(headers)) {
                         std::cerr << "FAIL: expected non-h2 Upgrade header to not be treated as HTTP/2 upgrade request\n";
@@ -454,6 +466,7 @@ int main() {
                         } else {
                             std::cerr << "PASS: HTTP/2 upgrade request detection works as expected\n";
                         }
+                    }
                     }
                 }
             }

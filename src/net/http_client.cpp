@@ -1097,31 +1097,77 @@ bool contains_chunked_encoding(const std::string& transfer_encoding_header) {
 }
 
 bool contains_http2_upgrade_token(const std::string& upgrade_header) {
-  std::size_t offset = 0;
-  while (offset < upgrade_header.size()) {
-    const std::size_t next_comma = upgrade_header.find(',', offset);
-    std::string token = (next_comma == std::string::npos)
-                            ? upgrade_header.substr(offset)
-                            : upgrade_header.substr(offset, next_comma - offset);
-    token = to_lower_ascii(trim_ascii(token));
-    const std::size_t semicolon = token.find(';');
-    if (semicolon != std::string::npos) {
-      token = trim_ascii(token.substr(0, semicolon));
+  bool in_double_quotes = false;
+  bool in_single_quotes = false;
+  bool escape_next = false;
+  std::size_t token_start = 0;
+
+  for (std::size_t i = 0; i <= upgrade_header.size(); ++i) {
+    const bool at_end = i == upgrade_header.size();
+    const char ch = at_end ? '\0' : upgrade_header[i];
+
+    if (!at_end) {
+      if (escape_next) {
+        escape_next = false;
+      } else if ((in_double_quotes || in_single_quotes) && ch == '\\') {
+        escape_next = true;
+      } else if (!in_single_quotes && ch == '"') {
+        in_double_quotes = !in_double_quotes;
+      } else if (!in_double_quotes && ch == '\'') {
+        in_single_quotes = !in_single_quotes;
+      }
     }
-    if (token.size() >= 2 && token.front() == '"' && token.back() == '"') {
-      token = trim_ascii(token.substr(1, token.size() - 2));
+
+    if (!at_end && (ch != ',' || in_double_quotes || in_single_quotes)) {
+      continue;
     }
-    if (token.size() >= 2 && token.front() == '\'' && token.back() == '\'') {
-      token = trim_ascii(token.substr(1, token.size() - 2));
+
+    std::string token = to_lower_ascii(trim_ascii(upgrade_header.substr(token_start, i - token_start)));
+    if (!token.empty()) {
+      bool param_in_double_quotes = false;
+      bool param_in_single_quotes = false;
+      bool param_escape_next = false;
+      std::size_t semicolon = std::string::npos;
+      for (std::size_t j = 0; j < token.size(); ++j) {
+        const char param_ch = token[j];
+        if (param_escape_next) {
+          param_escape_next = false;
+          continue;
+        }
+        if ((param_in_double_quotes || param_in_single_quotes) && param_ch == '\\') {
+          param_escape_next = true;
+          continue;
+        }
+        if (!param_in_single_quotes && param_ch == '"') {
+          param_in_double_quotes = !param_in_double_quotes;
+          continue;
+        }
+        if (!param_in_double_quotes && param_ch == '\'') {
+          param_in_single_quotes = !param_in_single_quotes;
+          continue;
+        }
+        if (param_ch == ';' && !param_in_double_quotes && !param_in_single_quotes) {
+          semicolon = j;
+          break;
+        }
+      }
+      if (semicolon != std::string::npos) {
+        token = trim_ascii(token.substr(0, semicolon));
+      }
+      if (token.size() >= 2 && token.front() == '"' && token.back() == '"') {
+        token = trim_ascii(token.substr(1, token.size() - 2));
+      }
+      if (token.size() >= 2 && token.front() == '\'' && token.back() == '\'') {
+        token = trim_ascii(token.substr(1, token.size() - 2));
+      }
+      if (token == "h2" || token == "h2c") {
+        return true;
+      }
     }
-    if (token == "h2" || token == "h2c") {
-      return true;
-    }
-    if (next_comma == std::string::npos) {
-      break;
-    }
-    offset = next_comma + 1;
+
+    token_start = i + 1;
   }
+
   return false;
 }
 
