@@ -1,7 +1,7 @@
 #!/usr/bin/env sh
 set -e
 
-ROOT_DIR="/Users/seong-useog/codex_browser/clever"
+ROOT_DIR="/Users/seong-useog/vibrowser/clever"
 BUILD_DIR="$ROOT_DIR/build"
 APP="$BUILD_DIR/src/shell/clever_browser.app"
 BIN="$APP/Contents/MacOS/clever_browser"

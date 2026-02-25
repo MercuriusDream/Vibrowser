@@ -6,7 +6,7 @@ stepsCompleted:
   - step-04-ux-alignment
   - step-05-epic-quality-review
   - step-06-final-assessment
-projectName: codex_browser
+projectName: vibrowser
 assessedAt: 2026-02-23
 assessor: bmad_auto
 mode: Validate
@@ -26,7 +26,7 @@ issues:
 # Implementation Readiness Assessment Report
 
 **Date:** 2026-02-23  
-**Project:** codex_browser
+**Project:** vibrowser
 
 ## Step 1: Document Discovery
 

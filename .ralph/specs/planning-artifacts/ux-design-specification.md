@@ -16,21 +16,21 @@ stepsCompleted:
   - 14
 lastStep: 14
 inputDocuments:
-  - _bmad-output/planning-artifacts/product-brief-codex_browser-2026-02-23.md
+  - _bmad-output/planning-artifacts/product-brief-vibrowser-2026-02-23.md
   - _bmad-output/planning-artifacts/prd.md
-  - _bmad-output/planning-artifacts/research/market-codex_browser-research-2026-02-23.md
+  - _bmad-output/planning-artifacts/research/market-vibrowser-research-2026-02-23.md
   - _bmad-output/planning-artifacts/research/domain-web-browser-engine-research-2026-02-22.md
-  - _bmad-output/planning-artifacts/research/technical-codex_browser-research-2026-02-22.md
+  - _bmad-output/planning-artifacts/research/technical-vibrowser-research-2026-02-22.md
   - README.md
   - docs/browser_engine_mvp_backlog.md
   - docs/browser_engine_mvp_roadmap.md
 date: 2026-02-23
 author: BMad
-project_name: codex_browser
+project_name: vibrowser
 date_completed: 2026-02-23
 ---
 
-# UX Design Specification codex_browser
+# UX Design Specification vibrowser
 
 **Author:** BMad
 **Date:** 2026-02-23
@@ -39,7 +39,7 @@ date_completed: 2026-02-23
 
 ### Project Vision
 
-`codex_browser` should feel like a trustworthy engineering tool for people who want a browser engine they can understand, debug, and extend. The UX should reinforce deterministic behavior across navigation, parsing, styling, layout, and rendering, while keeping the interaction model explicit and predictable.
+`vibrowser` should feel like a trustworthy engineering tool for people who want a browser engine they can understand, debug, and extend. The UX should reinforce deterministic behavior across navigation, parsing, styling, layout, and rendering, while keeping the interaction model explicit and predictable.
 
 The interface should support two modes naturally: a fast **CLI-first flow** for automated fixtures and contribution workflows, and a **GUI-first flow** for interactive inspection and manual validation. The most important principle is observability: every meaningful state transition should be understandable from the UI and logs.
 
@@ -221,6 +221,7 @@ Users bring a browser mental model from standard web workflows, but this tool’
 ### 2.4 Novel UX Patterns
 
 Most core interactions use established control patterns; novelty is mainly in **diagnostic density** and **pipeline-first presentation**.
+
 - Novelty element: a unified lifecycle timeline that merges CLI and GUI mental model.
 - Existing user model: familiar URL/path input and button controls.
 
@@ -293,6 +294,7 @@ Contrast goals prioritize readability over aesthetics: text/background ratios sh
 ### Chosen Direction
 
 **Hybrid “Developer Workspace” direction** combining 1, 3, and 5:
+
 - Keep **Pipeline + Diagnostics** as always-visible primary context.
 - Keep **Render Viewport** visually central.
 - Hide advanced tabs behind an inspection toggle.
@@ -423,6 +425,7 @@ flowchart TD
 ### Custom Components
 
 #### PipelineStageCard
+
 - **Purpose:** show current and previous engine stages with status.
 - **Usage:** always visible in GUI mode, compact in standard mode.
 - **Anatomy:** title, icon, stage name, progress, elapsed, status color.
@@ -431,6 +434,7 @@ flowchart TD
 - **Accessibility:** role=region, aria-label include stage name and state.
 
 #### TraceEntry
+
 - **Purpose:** expose detailed structured diagnostics.
 - **Usage:** within diagnostics pane.
 - **Anatomy:** timestamp, source module, severity, message, correlation id.
@@ -439,6 +443,7 @@ flowchart TD
 - **Accessibility:** keyboard navigation and row text semantics.
 
 #### RenderViewportFrame
+
 - **Purpose:** present rendered output with status overlays.
 - **Usage:** center workflow pane.
 - **Anatomy:** output surface, coordinate legend, status overlay.
@@ -447,6 +452,7 @@ flowchart TD
 - **Accessibility:** meaningful alt labels for saved diagnostics snapshots.
 
 #### RecoveryActionBar
+
 - **Purpose:** provide retry/cancel/clear actions for current run.
 - **Usage:** shown during active sessions and failure states.
 - **States:** active, disabled, processing.

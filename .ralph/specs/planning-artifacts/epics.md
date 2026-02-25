@@ -8,12 +8,12 @@ inputDocuments:
   - _bmad-output/planning-artifacts/prd.md
   - _bmad-output/planning-artifacts/architecture.md
   - _bmad-output/planning-artifacts/ux-design-specification.md
-  - _bmad-output/planning-artifacts/research/technical-codex_browser-research-2026-02-22.md
+  - _bmad-output/planning-artifacts/research/technical-vibrowser-research-2026-02-22.md
   - _bmad-output/planning-artifacts/research/domain-web-browser-engine-research-2026-02-22.md
-  - _bmad-output/planning-artifacts/research/market-codex_browser-research-2026-02-23.md
+  - _bmad-output/planning-artifacts/research/market-vibrowser-research-2026-02-23.md
 ---
 
-# codex_browser - Story Library
+# vibrowser - Story Library
 
 ## Overview
 

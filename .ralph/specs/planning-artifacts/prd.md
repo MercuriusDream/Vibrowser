@@ -15,10 +15,10 @@ stepsCompleted:
   - step-11-polish
   - step-12-complete
 inputDocuments:
-  - _bmad-output/planning-artifacts/product-brief-codex_browser-2026-02-23.md
-  - _bmad-output/planning-artifacts/research/market-codex_browser-research-2026-02-23.md
+  - _bmad-output/planning-artifacts/product-brief-vibrowser-2026-02-23.md
+  - _bmad-output/planning-artifacts/research/market-vibrowser-research-2026-02-23.md
   - _bmad-output/planning-artifacts/research/domain-web-browser-engine-research-2026-02-22.md
-  - _bmad-output/planning-artifacts/research/technical-codex_browser-research-2026-02-22.md
+  - _bmad-output/planning-artifacts/research/technical-vibrowser-research-2026-02-22.md
   - README.md
   - docs/browser_engine_mvp_backlog.md
 classification:
@@ -36,11 +36,11 @@ date: 2026-02-23
 author: BMad
 ---
 
-# Product Requirements Document - codex_browser
+# Product Requirements Document - vibrowser
 
 ## Executive Summary
 
-`codex_browser` is a C++ learning-oriented browser-engine project that should prioritize a stable, inspectable foundation before broad platform parity. The product will deliver a deterministic pipeline (`fetch -> parse -> CSS -> layout -> render`) with clear lifecycle stages, explicit diagnostics, and conservative defaults around security and privacy.
+`vibrowser` is a C++ learning-oriented browser-engine project that should prioritize a stable, inspectable foundation before broad platform parity. The product will deliver a deterministic pipeline (`fetch -> parse -> CSS -> layout -> render`) with clear lifecycle stages, explicit diagnostics, and conservative defaults around security and privacy.
 
 The initial objective is to produce a reliable narrow engine that can prove correctness on a constrained web subset while remaining extensible. Product value is strongest in these three areas:
 
@@ -59,7 +59,7 @@ The initial objective is to produce a reliable narrow engine that can prove corr
 
 Most browser-engine implementations fail to move from prototype to trustworthy product because feature breadth appears before lifecycle stability. They often lack explicit observability, deterministic stage transitions, and clear privacy defaults, which makes failures hard to diagnose and risky to ship.
 
-`codex_browser` must avoid this trap by constraining scope to a reliable core engine while making privacy, diagnostics, and performance behavior explicit and controllable from day one.
+`vibrowser` must avoid this trap by constraining scope to a reliable core engine while making privacy, diagnostics, and performance behavior explicit and controllable from day one.
 
 ## Target Users
 
@@ -238,7 +238,7 @@ Browser-engine work is not directly a regulated vertical like healthcare or fint
 
 ### Market Context and Competitive Landscape
 
-The browser market is highly concentrated and difficult to displace on compatibility metrics. `codex_browser` gains differentiation by targeting learning, inspection, and controlled innovation instead of full feature race.
+The browser market is highly concentrated and difficult to displace on compatibility metrics. `vibrowser` gains differentiation by targeting learning, inspection, and controlled innovation instead of full feature race.
 
 ### Validation Approach
 
@@ -256,7 +256,7 @@ The browser market is highly concentrated and difficult to displace on compatibi
 
 ### Project-Type Overview
 
-`codex_browser` is built as a modular desktop-native codebase with CLI entry points and an optional GUI shell, allowing both interactive and automated execution.
+`vibrowser` is built as a modular desktop-native codebase with CLI entry points and an optional GUI shell, allowing both interactive and automated execution.
 
 ### Platform Support Requirements
 

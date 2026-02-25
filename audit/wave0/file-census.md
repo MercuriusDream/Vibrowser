@@ -112,10 +112,10 @@ Excluded files (hidden-path / .git filtering): 234
 | `.ralph/specs/planning-artifacts/implementation-readiness-report-2026-02-23.md` | `docs` | `classified:R07` |
 | `.ralph/specs/planning-artifacts/prd-validation-report.md` | `docs` | `classified:R07` |
 | `.ralph/specs/planning-artifacts/prd.md` | `docs` | `classified:R07` |
-| `.ralph/specs/planning-artifacts/product-brief-codex_browser-2026-02-23.md` | `docs` | `classified:R07` |
+| `.ralph/specs/planning-artifacts/product-brief-vibrowser-2026-02-23.md` | `docs` | `classified:R07` |
 | `.ralph/specs/planning-artifacts/research/domain-web-browser-engine-research-2026-02-22.md` | `docs` | `classified:R07` |
-| `.ralph/specs/planning-artifacts/research/market-codex_browser-research-2026-02-23.md` | `docs` | `classified:R07` |
-| `.ralph/specs/planning-artifacts/research/technical-codex_browser-research-2026-02-22.md` | `docs` | `classified:R07` |
+| `.ralph/specs/planning-artifacts/research/market-vibrowser-research-2026-02-23.md` | `docs` | `classified:R07` |
+| `.ralph/specs/planning-artifacts/research/technical-vibrowser-research-2026-02-22.md` | `docs` | `classified:R07` |
 | `.ralph/specs/planning-artifacts/stories.md` | `docs` | `classified:R07` |
 | `.ralph/specs/planning-artifacts/ux-design-specification.md` | `docs` | `classified:R07` |
 | `.ralph/specs/planning-artifacts/ux-design-validation-report.md` | `docs` | `classified:R07` |
@@ -130,10 +130,10 @@ Excluded files (hidden-path / .git filtering): 234
 | `_bmad-output/planning-artifacts/implementation-readiness-report-2026-02-23.md` | `docs` | `classified:R07` |
 | `_bmad-output/planning-artifacts/prd-validation-report.md` | `docs` | `classified:R07` |
 | `_bmad-output/planning-artifacts/prd.md` | `docs` | `classified:R07` |
-| `_bmad-output/planning-artifacts/product-brief-codex_browser-2026-02-23.md` | `docs` | `classified:R07` |
+| `_bmad-output/planning-artifacts/product-brief-vibrowser-2026-02-23.md` | `docs` | `classified:R07` |
 | `_bmad-output/planning-artifacts/research/domain-web-browser-engine-research-2026-02-22.md` | `docs` | `classified:R07` |
-| `_bmad-output/planning-artifacts/research/market-codex_browser-research-2026-02-23.md` | `docs` | `classified:R07` |
-| `_bmad-output/planning-artifacts/research/technical-codex_browser-research-2026-02-22.md` | `docs` | `classified:R07` |
+| `_bmad-output/planning-artifacts/research/market-vibrowser-research-2026-02-23.md` | `docs` | `classified:R07` |
+| `_bmad-output/planning-artifacts/research/technical-vibrowser-research-2026-02-22.md` | `docs` | `classified:R07` |
 | `_bmad-output/planning-artifacts/stories.md` | `docs` | `classified:R07` |
 | `_bmad-output/planning-artifacts/ux-color-themes.html` | `other` | `classified:R13` |
 | `_bmad-output/planning-artifacts/ux-design-directions.html` | `other` | `classified:R13` |

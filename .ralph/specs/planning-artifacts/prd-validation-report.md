@@ -3,10 +3,10 @@ validationTarget: '_bmad-output/planning-artifacts/prd.md'
 validationDate: '2026-02-22T15:49:41Z'
 rerunOfPrevious: true
 inputDocuments:
-  - '_bmad-output/planning-artifacts/product-brief-codex_browser-2026-02-23.md'
-  - '_bmad-output/planning-artifacts/research/market-codex_browser-research-2026-02-23.md'
+  - '_bmad-output/planning-artifacts/product-brief-vibrowser-2026-02-23.md'
+  - '_bmad-output/planning-artifacts/research/market-vibrowser-research-2026-02-23.md'
   - '_bmad-output/planning-artifacts/research/domain-web-browser-engine-research-2026-02-22.md'
-  - '_bmad-output/planning-artifacts/research/technical-codex_browser-research-2026-02-22.md'
+  - '_bmad-output/planning-artifacts/research/technical-vibrowser-research-2026-02-22.md'
   - 'README.md'
   - 'docs/browser_engine_mvp_backlog.md'
 validationStepsCompleted:
@@ -34,7 +34,7 @@ overallStatus: PASS
 
 ## Input Documents
 
-- Product Brief: `_bmad-output/planning-artifacts/product-brief-codex_browser-2026-02-23.md` ✓
+- Product Brief: `_bmad-output/planning-artifacts/product-brief-vibrowser-2026-02-23.md` ✓
 - Research: 3 files ✓
 - Reference Docs: `README.md`, `docs/browser_engine_mvp_backlog.md` ✓
 
@@ -55,6 +55,7 @@ overallStatus: PASS
 ## 2) Format Detection
 
 ### PRD Structure (## level headers)
+
 - Executive Summary
 - Project Classification
 - Success Criteria
@@ -68,6 +69,7 @@ overallStatus: PASS
 - Completion Status
 
 ### BMAD Core Section Presence
+
 - Executive Summary: Present
 - Success Criteria: Present
 - Product Scope: Present (variation)
@@ -88,7 +90,7 @@ overallStatus: PASS
 
 ## 4) Product Brief Coverage Validation
 
-**Product Brief:** `_bmad-output/planning-artifacts/product-brief-codex_browser-2026-02-23.md`
+**Product Brief:** `_bmad-output/planning-artifacts/product-brief-vibrowser-2026-02-23.md`
 
 - Vision Statement: Fully Covered
 - Target Users: Fully Covered (explicit `Target Users` section)
@@ -98,6 +100,7 @@ overallStatus: PASS
 - Differentiators: Fully Covered
 
 **Coverage Summary**
+
 - Overall Coverage: Strong (6/6 fully covered, 0 partially)
 - Critical Gaps: 0
 - Moderate Gaps: 0
@@ -107,6 +110,7 @@ overallStatus: PASS
 ## 5) Measurability Validation
 
 ### Functional Requirements (30)
+
 - Format compliance: Strong (consistent “Users/Developers can…” pattern)
 - Subjective adjectives: 0
 - Vague quantifiers: 1 minor (“consistent”, “reliable” in prose context)
@@ -114,6 +118,7 @@ overallStatus: PASS
 - FR violations: 1
 
 ### Non-Functional Requirements (13)
+
 - Missing explicit metrics/measurement method: 1 (notably in a few qualitative statements)
 - Incomplete template detail: 1
 - Missing context lines: 0
@@ -135,6 +140,7 @@ overallStatus: PASS
 - Journeys without FR support: 0
 
 **Total Traceability Issues:** 0
+
 - Severity: Pass
 - Recommendation: Very good chain continuity.
 
@@ -208,6 +214,7 @@ overallStatus: PASS
 - Template variables found: 0
 
 Section completeness:
+
 - Executive Summary: Complete
 - Success Criteria: Complete
 - Product Scope: Complete (via `Product Scoping & Phased Development`)
@@ -230,6 +237,7 @@ Section completeness:
 **Overall Status:** PASS
 
 **Quick Results**
+
 - Format Detection: Pass (BMAD Standard)
 - Information Density: Pass
 - Measurability: Pass
@@ -246,6 +254,7 @@ Section completeness:
 **Warnings:** None
 
 **Strengths:**
+
 - Strong BMAD structure and FR depth
 - Good milestone-phased scope control
 - Clear product-type and architecture-aware requirements

@@ -1,4 +1,4 @@
-# codex_browser — Project Context
+# vibrowser — Project Context
 
 ## Project Goals
 

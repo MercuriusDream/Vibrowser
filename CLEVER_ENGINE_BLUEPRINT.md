@@ -115,6 +115,7 @@ Each module below contains: purpose, spec scope, key types, public API surface, 
 **Purpose:** Abstract OS-specific APIs behind stable interfaces. Threading, file I/O, timers, memory-mapped files, windowing hooks.
 
 **Key types:**
+
 ```cpp
 namespace clever::platform {
 
@@ -135,6 +136,7 @@ enum class ThreadType {
 ```
 
 **Architecture:**
+
 - Main thread runs the browser-process event loop
 - IO thread handles all network and disk I/O
 - Renderer threads (one per tab/renderer process) run the HTML→paint pipeline
@@ -161,6 +163,7 @@ enum class ThreadType {
 **Purpose:** Inter-process communication between browser process, renderer processes, and GPU process. Serialized message-passing only — no shared mutable state.
 
 **Key types:**
+
 ```cpp
 namespace clever::ipc {
 
@@ -183,6 +186,7 @@ class SharedBuffer;
 ```
 
 **Architecture:**
+
 - Browser↔Renderer: request/response for navigation, resource loading
 - Renderer→GPU: display list submission
 - All messages are serialized. No raw pointers cross process boundaries.
@@ -207,6 +211,7 @@ class SharedBuffer;
 **Purpose:** WHATWG URL Standard compliant parser. Every URL in the engine flows through this.
 
 **Spec scope:** `[URL]` — full WHATWG URL Standard including:
+
 - URL parsing algorithm (scheme, authority, path, query, fragment)
 - Percent-encoding
 - IDNA (internationalized domain names) via ICU
@@ -216,6 +221,7 @@ class SharedBuffer;
 - `blob:` and `data:` URL schemes
 
 **Key types:**
+
 ```cpp
 namespace clever::url {
 
@@ -259,6 +265,7 @@ bool urls_same_origin(const URL& a, const URL& b);
 **Purpose:** HTTP/1.1, HTTP/2, TLS, cookie management, CORS, CSP, Fetch algorithm.
 
 **Spec scope:**
+
 - `[FETCH]` — WHATWG Fetch Standard (request/response lifecycle, CORS, redirect handling)
 - HTTP/1.1 (RFC 7230-7235), HTTP/2 (RFC 7540)
 - TLS 1.2/1.3 via BoringSSL
@@ -267,6 +274,7 @@ bool urls_same_origin(const URL& a, const URL& b);
 - HSTS, certificate validation
 
 **Key types:**
+
 ```cpp
 namespace clever::net {
 
@@ -311,6 +319,7 @@ class CSPChecker;     // CSP directive evaluation
 ```
 
 **Architecture:**
+
 - `NetworkService` lives in the browser process
 - Renderer sends fetch requests via IPC
 - Connection pooling per origin (6 connections HTTP/1.1, 1 connection HTTP/2 multiplexed)
@@ -340,6 +349,7 @@ class CSPChecker;     // CSP directive evaluation
 **Purpose:** WHATWG HTML tokenizer and tree builder. Produces a DOM tree.
 
 **Spec scope:** `[HTML]` Section 13 — Parsing HTML documents:
+
 - Tokenizer state machine (all 80 states)
 - Tree construction (all insertion modes)
 - Error recovery per spec (not ad-hoc)
@@ -349,6 +359,7 @@ class CSPChecker;     // CSP directive evaluation
 - Character encoding detection (BOM, meta charset, HTTP header)
 
 **Key types:**
+
 ```cpp
 namespace clever::html {
 
@@ -383,6 +394,7 @@ dom::DocumentFragment parse_fragment(std::string_view html, dom::Element& contex
 ```
 
 **Architecture:**
+
 - Tokenizer is a state machine, yields one token at a time
 - Tree builder consumes tokens, builds DOM nodes, manages the stack of open elements
 - Tree builder can switch tokenizer state (e.g., for `<script>`, `<style>`, `<textarea>`)
@@ -410,6 +422,7 @@ dom::DocumentFragment parse_fragment(std::string_view html, dom::Element& contex
 **Purpose:** Document Object Model — the in-memory tree that represents the page.
 
 **Spec scope:**
+
 - `[DOM]` — WHATWG DOM Standard (Node, Element, Document, Text, Comment, DocumentFragment, Attr)
 - `[HTML]` — HTMLElement subclasses (~30 elements for "90% web")
 - Event dispatch (capture, target, bubble phases)
@@ -420,6 +433,7 @@ dom::DocumentFragment parse_fragment(std::string_view html, dom::Element& contex
 - innerHTML/outerHTML (via fragment parser)
 
 **"90% web" HTML elements (30):**
+
 ```
 html, head, body, div, span, p, a, img, ul, ol, li,
 h1-h6, table, tr, td, th, thead, tbody,
@@ -428,6 +442,7 @@ script, style, link, meta, title, br, hr
 ```
 
 **Key types:**
+
 ```cpp
 namespace clever::dom {
 
@@ -486,6 +501,7 @@ class EventTarget;
 ```
 
 **Architecture:**
+
 - Nodes own their children via `unique_ptr` (no reference counting for tree edges)
 - Parent pointers are raw (non-owning)
 - Each node carries `DirtyFlags` for incremental style/layout invalidation
@@ -494,6 +510,7 @@ class EventTarget;
 - `innerHTML` setter calls fragment parser and replaces children
 
 **Mutation invalidation protocol:**
+
 - Attribute change → mark style dirty on element
 - Child add/remove → mark layout dirty on parent
 - Text content change → mark layout dirty on parent
@@ -526,6 +543,7 @@ class EventTarget;
 **Purpose:** CSS tokenizer and parser per CSS Syntax Level 3.
 
 **Spec scope:** `[CSS3-syntax]` CSS Syntax Module Level 3:
+
 - Tokenization (all token types)
 - Component value parsing
 - Rule parsing (style rules, at-rules: @media, @import, @font-face, @keyframes)
@@ -533,6 +551,7 @@ class EventTarget;
 - Property value parsing for supported properties
 
 **Supported selector subset (covers ~95% of real-world usage):**
+
 ```
 Type selectors:          div, p, span
 Class selectors:         .foo
@@ -549,6 +568,7 @@ Selector lists:          a, b, c
 ```
 
 **Key types:**
+
 ```cpp
 namespace clever::css {
 
@@ -613,11 +633,13 @@ Selector parse_selector(std::string_view selector);
 **Purpose:** Selector matching, cascade, specificity, computed values. Produces a `ComputedStyle` for every element.
 
 **Spec scope:**
+
 - `[CSS3-cascade]` CSS Cascading and Inheritance Level 4 (cascade order, specificity, inheritance)
 - `[CSS3-values]` CSS Values and Units Level 4 (lengths, percentages, calc(), colors)
 - Supported properties (~80 properties covering "90% web"):
 
 **Supported CSS properties (80):**
+
 ```
 /* Box model */
 display, position, float, clear, box-sizing,
@@ -660,6 +682,7 @@ transform, vertical-align
 ```
 
 **Key types:**
+
 ```cpp
 namespace clever::css {
 
@@ -702,6 +725,7 @@ public:
 ```
 
 **Architecture:**
+
 - **Bloom filter** on ancestor classes/ids/tags for fast selector rejection (Servo technique)
 - **Rule hash map** indexed by rightmost simple selector type (id, class, tag) for O(1) candidate lookup
 - **Parallel style resolution:** traverse DOM tree, process independent subtrees on worker threads. Each element's ComputedStyle depends only on parent's ComputedStyle and matched rules.
@@ -734,6 +758,7 @@ public:
 **Purpose:** Compute geometry (position and size) for every box. Consumes ComputedStyle, produces LayoutTree with coordinates.
 
 **Spec scope:**
+
 - `[CSS2]` Visual formatting model (block formatting context, inline formatting context, positioning)
 - `[CSS3-flexbox]` CSS Flexible Box Layout Level 1
 - `[CSS3-box]` CSS Box Model Level 3
@@ -741,6 +766,7 @@ public:
 - Table layout (basic — fixed and auto)
 
 **Layout modes:**
+
 ```
 1. Block flow layout (BFC)
 2. Inline flow layout (IFC) with line breaking
@@ -752,6 +778,7 @@ public:
 ```
 
 **Key types:**
+
 ```cpp
 namespace clever::layout {
 
@@ -805,6 +832,7 @@ public:
 ```
 
 **Architecture:**
+
 - **Layout tree construction:** Walk DOM, skip `display: none`, generate anonymous boxes for inline-in-block and block-in-inline, generate boxes for `::before`/`::after`.
 - **Two-pass layout:**
   1. **Constraint pass (top-down):** propagate available width/height from parent to children
@@ -841,6 +869,7 @@ public:
 **Purpose:** Shape text runs into positioned glyphs. Handle fonts, fallback, BiDi.
 
 **Spec scope:**
+
 - Unicode BiDi Algorithm (UAX #9) — basic LTR/RTL
 - Unicode line breaking (UAX #14)
 - Font matching (CSS Fonts Level 4 subset)
@@ -848,6 +877,7 @@ public:
 - Font rasterization via FreeType
 
 **Key types:**
+
 ```cpp
 namespace clever::text {
 
@@ -914,6 +944,7 @@ public:
 **Purpose:** Decode image formats into pixel buffers.
 
 **Supported formats:**
+
 - PNG (via libpng)
 - JPEG (via libjpeg-turbo)
 - GIF (via giflib — first frame only, animation later)
@@ -922,6 +953,7 @@ public:
 - ICO/BMP (via custom decoder, trivial)
 
 **Key types:**
+
 ```cpp
 namespace clever::image {
 
@@ -960,6 +992,7 @@ void decode_async(std::span<const uint8_t> data,
 **Purpose:** Walk the layout tree and produce a display list of paint commands.
 
 **Key types:**
+
 ```cpp
 namespace clever::paint {
 
@@ -993,6 +1026,7 @@ class StackingContext;
 ```
 
 **Architecture:**
+
 - Paint order follows CSS painting order (backgrounds → borders → block children → floats → inline children → outlines → positioned children), respecting stacking contexts
 - Display list is an intermediate representation — compositor consumes it
 - Display list items carry bounding rects for culling (skip off-screen items)
@@ -1021,6 +1055,7 @@ class StackingContext;
 **Purpose:** Turn display lists into pixels on screen. Tile-based GPU rendering via Skia.
 
 **Key types:**
+
 ```cpp
 namespace clever::compositor {
 
@@ -1062,6 +1097,7 @@ public:
 ```
 
 **Architecture:**
+
 - **Tiled rendering:** content divided into 256x256 tiles. Only dirty tiles are re-rasterized.
 - **Skia:** All actual pixel rendering goes through Skia (GPU-accelerated via Metal on macOS, Vulkan on Linux)
 - **Compositor runs on GPU thread** — receives display lists from renderer, rasterizes on worker threads, composites on GPU thread
@@ -1091,6 +1127,7 @@ public:
 **Purpose:** Embed V8, provide bridge between JS execution and the DOM.
 
 **Spec scope:**
+
 - `[ECMA]` ES2020+ (provided by V8)
 - Script loading and execution (`<script>`, `<script defer>`, `<script async>`)
 - Module scripts (`<script type="module">`)
@@ -1098,6 +1135,7 @@ public:
 - `setTimeout`, `setInterval`, `queueMicrotask`
 
 **Key types:**
+
 ```cpp
 namespace clever::js {
 
@@ -1132,6 +1170,7 @@ public:
 ```
 
 **Architecture:**
+
 - One V8 Isolate per renderer process
 - One V8 Context per Document (iframe gets its own Context)
 - Script execution is synchronous within the renderer's main thread
@@ -1140,6 +1179,7 @@ public:
 - Script loading: parser-blocking `<script>` pauses tree construction, `defer` runs after parse, `async` runs when loaded
 
 **Pipeline integration:**
+
 ```
 Parse HTML → encounter <script> → pause parser
   → fetch script (if src) → execute script
@@ -1170,6 +1210,7 @@ Parse HTML → encounter <script> → pause parser
 **Purpose:** Expose DOM and Web APIs to JavaScript. Generated from WebIDL.
 
 **Spec scope — "90% web" APIs:**
+
 ```
 DOM:              Node, Element, Document, Text, Event, EventTarget,
                   HTMLElement subclasses, classList, dataset, style
@@ -1194,6 +1235,7 @@ MutationObserver: MutationObserver (basic)
 ```
 
 **Architecture:**
+
 - **WebIDL code generator** (tool written in Python or C++) reads `.webidl` files and generates C++ V8 binding code
 - Generated code handles: type conversion (JS ↔ C++), exception handling, overload resolution, optional/default parameters, callback wrapping
 - Each Web API interface gets: a V8 wrapper class, a C++ implementation class, a template installation function
@@ -1221,12 +1263,14 @@ MutationObserver: MutationObserver (basic)
 **Purpose:** localStorage, sessionStorage, cookies-on-disk, cache storage.
 
 **Spec scope:**
+
 - Web Storage API (localStorage, sessionStorage)
 - IndexedDB — **defer to Phase 5**
 - Cache API — **defer to Phase 5**
 - Cookie persistence (cookies already modeled in net module, this adds disk persistence)
 
 **Key types:**
+
 ```cpp
 namespace clever::storage {
 
@@ -1280,6 +1324,7 @@ public:
 **Purpose:** Browser chrome — address bar, tabs, back/forward, bookmarks.
 
 **Architecture:**
+
 - Minimal native UI using platform windowing (Cocoa on macOS, GTK on Linux)
 - Renders the browser chrome natively (not using the engine itself — avoids chicken-and-egg)
 - Manages renderer process lifecycle (spawn, kill, navigate)
@@ -1308,6 +1353,7 @@ public:
 **Build:** CMake 3.20+ with vcpkg for dependencies.
 
 **Dependencies managed via vcpkg:**
+
 ```
 icu, harfbuzz, freetype, libpng, libjpeg-turbo, libwebp, giflib,
 skia, openssl (or boringssl), nghttp2, c-ares, sqlite3
@@ -1316,6 +1362,7 @@ skia, openssl (or boringssl), nghttp2, c-ares, sqlite3
 V8 is special — either build from source (via depot_tools) or use prebuilt binaries.
 
 **Directory structure:**
+
 ```
 clever/
 ├── CMakeLists.txt
@@ -1355,6 +1402,7 @@ clever/
 ```
 
 **Test infrastructure:**
+
 - Unit tests: GoogleTest
 - Integration tests: Load HTML fixtures, verify layout geometry / rendered output
 - WPT: Web Platform Tests — the standard conformance suite. Run subset relevant to implemented features.
@@ -1378,7 +1426,9 @@ clever/
 ## 4. Implementation Phases
 
 ### Phase 1: Foundation (build system + platform + IPC + URL + networking)
+
 Everything needed before you can load a page. At the end of Phase 1, you can:
+
 - Fetch an HTTP(S) URL and receive the response body
 - Parse URLs
 - Spawn processes and communicate via IPC
@@ -1386,7 +1436,9 @@ Everything needed before you can load a page. At the end of Phase 1, you can:
 **Modules:** 3.1, 3.2, 3.3, 3.4, 3.19
 
 ### Phase 2: Parsing and Style (HTML parser + DOM + CSS parser + style engine + text + images)
+
 At the end of Phase 2, you can:
+
 - Parse HTML into a DOM tree
 - Parse CSS into style rules
 - Resolve computed styles for every element
@@ -1396,7 +1448,9 @@ At the end of Phase 2, you can:
 **Modules:** 3.5, 3.6, 3.7, 3.8, 3.10, 3.11
 
 ### Phase 3: Rendering Pipeline (layout + paint + compositor + JS + bindings)
+
 At the end of Phase 3, you can:
+
 - Lay out the page
 - Paint to a display list
 - Composite to the screen via Skia
@@ -1406,13 +1460,16 @@ At the end of Phase 3, you can:
 **Modules:** 3.9, 3.12, 3.13, 3.14, 3.15
 
 ### Phase 4: Shell and Storage (browser chrome + persistence)
+
 At the end of Phase 4, you have a usable browser:
+
 - Tab management, address bar, navigation
 - localStorage, cookies on disk
 
 **Modules:** 3.16, 3.18
 
 ### Phase 5: Polish (DevTools, Canvas 2D, SVG, IndexedDB, accessibility)
+
 Not needed for "90% web" but improves developer experience and site compatibility.
 
 **Modules:** 3.17, plus extensions to existing modules
@@ -1492,7 +1549,7 @@ Not needed for "90% web" but improves developer experience and site compatibilit
 | Level | What | How |
 |-------|------|-----|
 | Unit | Individual functions and classes | GoogleTest, one test file per source file |
-| Module | Module API contracts | Contract tests (like codex_browser's ContractValidator) |
+| Module | Module API contracts | Contract tests (like vibrowser's ContractValidator) |
 | Integration | Multi-module pipelines | Load HTML fixture → verify DOM/style/layout/paint output |
 | WPT | Spec conformance | Run Web Platform Tests subset, track pass rate |
 | Fuzz | Parser/decoder robustness | libFuzzer for HTML/CSS/URL/image parsers |
@@ -1541,6 +1598,7 @@ For modules that depend on others not yet built, stub the dependency interfaces 
 ## 11. Definition of Done
 
 A module is done when:
+
 - [ ] All types from the spec section are implemented
 - [ ] Unit tests cover public API surface
 - [ ] Integration tests verify cross-module behavior
@@ -1550,11 +1608,13 @@ A module is done when:
 - [ ] Public API is documented with brief comments (what, not how)
 
 The engine is "v0.1" when:
+
 - [ ] Can load and render `https://example.com` correctly
 - [ ] Can load and render a basic page with CSS, images, and JavaScript
 - [ ] Passes >20% of WPT tests for implemented features
 
 The engine is "v1.0" when:
+
 - [ ] Can render top-100 websites recognizably
 - [ ] Passes >70% WPT for implemented features
 - [ ] Multi-process architecture operational

@@ -2,23 +2,24 @@
 stepsCompleted: [1, 2, 3, 4, 5, 6]
 inputDocuments:
   - "_bmad-output/planning-artifacts/research/domain-web-browser-engine-research-2026-02-22.md"
-  - "_bmad-output/planning-artifacts/research/market-codex_browser-research-2026-02-23.md"
-  - "_bmad-output/planning-artifacts/research/technical-codex_browser-research-2026-02-22.md"
+  - "_bmad-output/planning-artifacts/research/market-vibrowser-research-2026-02-23.md"
+  - "_bmad-output/planning-artifacts/research/technical-vibrowser-research-2026-02-22.md"
   - "README.md"
   - "docs/browser_engine_mvp_backlog.md"
 date: 2026-02-23
 author: BMad
 ---
 
-# Product Brief: codex_browser
+# Product Brief: vibrowser
 
 ## Executive Summary
 
-codex_browser is a C++ learning-oriented browser implementation with a practical roadmap toward production-grade capabilities.
+vibrowser is a C++ learning-oriented browser implementation with a practical roadmap toward production-grade capabilities.
 
 The immediate opportunity is to build a **privacy-aware, performant, standards-incremental browser engine** that focuses on a strong core: networking, document parsing, style/layout/paint, and a constrained JavaScript bridge. It should become both a working tool and an educational platform where behavior is inspectable and predictable.
 
-Success in phase 1 is to establish: 
+Success in phase 1 is to establish:
+
 1. a clear problem definition,
 2. a target user set,
 3. measurable success criteria,

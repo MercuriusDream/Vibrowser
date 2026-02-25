@@ -1717,6 +1717,12 @@ PolicyCheckResult check_cors_response_policy(const std::string& url,
                     PolicyViolation::CorsResponseBlocked,
                     "Cross-origin response blocked: ACAO must be a serialized origin"};
         }
+        const std::size_t userinfo_delim = acao_value.find('@', scheme_end + 3);
+        if (userinfo_delim != std::string::npos) {
+            return {false,
+                    PolicyViolation::CorsResponseBlocked,
+                    "Cross-origin response blocked: ACAO must be a serialized origin"};
+        }
         Url acao_origin;
         std::string acao_err;
         if (!parse_url(acao_value, acao_origin, acao_err)) {

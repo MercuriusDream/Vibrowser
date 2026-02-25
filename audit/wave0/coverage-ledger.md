@@ -1,6 +1,6 @@
 # Wave0-D Coverage Ledger
 
-- Root: /Users/seong-useog/codex_browser
+- Root: /Users/seong-useog/vibrowser
 - Scope Tag Baseline: `scope:wave0-d`
 - Stable ID: `sha256(relative_path)`
 - Ordering: lexicographic by relative path (`LC_ALL=C sort`)
@@ -110,10 +110,10 @@
 | `.ralph/specs/planning-artifacts/implementation-readiness-report-2026-02-23.md` | `d5175ee31a64d1556807cdfc828fb4198da22f3389db80098fd2d58da6fbe353` | `scope:wave0-d,scope:.ralph` | `generated` |
 | `.ralph/specs/planning-artifacts/prd-validation-report.md` | `7c982cc59772ed8414ca4e09f4236233f98b29f1a77fdabe679286e8cb5e1295` | `scope:wave0-d,scope:.ralph` | `generated` |
 | `.ralph/specs/planning-artifacts/prd.md` | `2ba590379624a94d62427761758d3fd50c48a1e098986ecad56bd3d2810bbdd3` | `scope:wave0-d,scope:.ralph` | `generated` |
-| `.ralph/specs/planning-artifacts/product-brief-codex_browser-2026-02-23.md` | `3adf565d34eb4fd2c244985f2ff304e19a8f50104054b4ec34211b4b08785d3d` | `scope:wave0-d,scope:.ralph` | `generated` |
+| `.ralph/specs/planning-artifacts/product-brief-vibrowser-2026-02-23.md` | `3adf565d34eb4fd2c244985f2ff304e19a8f50104054b4ec34211b4b08785d3d` | `scope:wave0-d,scope:.ralph` | `generated` |
 | `.ralph/specs/planning-artifacts/research/domain-web-browser-engine-research-2026-02-22.md` | `09471d9cc9b4381f268efede08ccf8e1fe51d45137ed5bb4b259c1d986d7bff9` | `scope:wave0-d,scope:.ralph` | `generated` |
-| `.ralph/specs/planning-artifacts/research/market-codex_browser-research-2026-02-23.md` | `979b242600b5118de6d0769a2af20d83d93a3536d9564331d1dfe62e5b1024fd` | `scope:wave0-d,scope:.ralph` | `generated` |
-| `.ralph/specs/planning-artifacts/research/technical-codex_browser-research-2026-02-22.md` | `66f018c1723599e92c4b1e4e9182fbf4cf3d378e608ff6d2ac8a03cfea7b060f` | `scope:wave0-d,scope:.ralph` | `generated` |
+| `.ralph/specs/planning-artifacts/research/market-vibrowser-research-2026-02-23.md` | `979b242600b5118de6d0769a2af20d83d93a3536d9564331d1dfe62e5b1024fd` | `scope:wave0-d,scope:.ralph` | `generated` |
+| `.ralph/specs/planning-artifacts/research/technical-vibrowser-research-2026-02-22.md` | `66f018c1723599e92c4b1e4e9182fbf4cf3d378e608ff6d2ac8a03cfea7b060f` | `scope:wave0-d,scope:.ralph` | `generated` |
 | `.ralph/specs/planning-artifacts/stories.md` | `9543fe149ed0e833e0d3ce8f2103a6bb2b447f880cb291b20f8e6ffb6469f397` | `scope:wave0-d,scope:.ralph` | `generated` |
 | `.ralph/specs/planning-artifacts/ux-color-themes.html` | `8e173eca23d8fc8660c77ac3611b5a217477071529f87d82bc1fd4a69018f69b` | `scope:wave0-d,scope:.ralph` | `generated` |
 | `.ralph/specs/planning-artifacts/ux-design-directions.html` | `e5a53fdd46383eba5978a7ff7454e954340faed9096578e74f3db5142d1f582c` | `scope:wave0-d,scope:.ralph` | `generated` |
@@ -132,10 +132,10 @@
 | `_bmad-output/planning-artifacts/implementation-readiness-report-2026-02-23.md` | `c3dbf10bda44559abaa583906c9695a136d9b93ed237b5ce35cd7d68803fe035` | `scope:wave0-d,scope:_bmad-output` | `doc` |
 | `_bmad-output/planning-artifacts/prd-validation-report.md` | `eedf029076178ecb7d04c83bed9fa1eef16695441597fdce71a6a5dc0db989bd` | `scope:wave0-d,scope:_bmad-output` | `doc` |
 | `_bmad-output/planning-artifacts/prd.md` | `68115fa20d8415209363d627b392ef088ed16f28287c847a3e52b301e16a3aa4` | `scope:wave0-d,scope:_bmad-output` | `doc` |
-| `_bmad-output/planning-artifacts/product-brief-codex_browser-2026-02-23.md` | `e1e9628a307a0194ea1b63ca030d6877141cbf4bb70f263c0fd523940a8b417e` | `scope:wave0-d,scope:_bmad-output` | `doc` |
+| `_bmad-output/planning-artifacts/product-brief-vibrowser-2026-02-23.md` | `e1e9628a307a0194ea1b63ca030d6877141cbf4bb70f263c0fd523940a8b417e` | `scope:wave0-d,scope:_bmad-output` | `doc` |
 | `_bmad-output/planning-artifacts/research/domain-web-browser-engine-research-2026-02-22.md` | `0cf4bf553967135367f623d4db5eb729166be53c3a71d69e624814850a4dd513` | `scope:wave0-d,scope:_bmad-output` | `doc` |
-| `_bmad-output/planning-artifacts/research/market-codex_browser-research-2026-02-23.md` | `7bde3118fe3f09a5f0693ba141b498ec5989b191063f1b7a96289f6bf2f5882e` | `scope:wave0-d,scope:_bmad-output` | `doc` |
-| `_bmad-output/planning-artifacts/research/technical-codex_browser-research-2026-02-22.md` | `372ef4f16d1b4affc1ccef867c0a2a7dedc823c74e5128bee56ae490c17907e0` | `scope:wave0-d,scope:_bmad-output` | `doc` |
+| `_bmad-output/planning-artifacts/research/market-vibrowser-research-2026-02-23.md` | `7bde3118fe3f09a5f0693ba141b498ec5989b191063f1b7a96289f6bf2f5882e` | `scope:wave0-d,scope:_bmad-output` | `doc` |
+| `_bmad-output/planning-artifacts/research/technical-vibrowser-research-2026-02-22.md` | `372ef4f16d1b4affc1ccef867c0a2a7dedc823c74e5128bee56ae490c17907e0` | `scope:wave0-d,scope:_bmad-output` | `doc` |
 | `_bmad-output/planning-artifacts/stories.md` | `dd4c76694fddc8708288b3eb130d3e63c2795534dd310d0b7cf3df77edec4cf9` | `scope:wave0-d,scope:_bmad-output` | `doc` |
 | `_bmad-output/planning-artifacts/ux-color-themes.html` | `07f31eb81496b759af1a28fe6ce6b7a68b707011f14fb1ceb12b4eaf1a44ef22` | `scope:wave0-d,scope:_bmad-output` | `source` |
 | `_bmad-output/planning-artifacts/ux-design-directions.html` | `12f32a2b435ec79744c765d1bd33c846fc05446a04e0d704ab2441aa77fda058` | `scope:wave0-d,scope:_bmad-output` | `source` |

@@ -22,7 +22,7 @@ source_verification: true
 
 ## Research Overview
 
-This technical research focuses on practical execution for `codex_browser` in a C++17 codebase with existing module boundaries for browser orchestration, parsing, CSS/layout/paint, networking, and JS bridges. The goal is to identify architecture decisions that reduce risk while enabling high-value standards growth.
+This technical research focuses on practical execution for `vibrowser` in a C++17 codebase with existing module boundaries for browser orchestration, parsing, CSS/layout/paint, networking, and JS bridges. The goal is to identify architecture decisions that reduce risk while enabling high-value standards growth.
 
 ---
 
@@ -31,11 +31,13 @@ This technical research focuses on practical execution for `codex_browser` in a 
 The current repository already has a narrow-but-solid execution loop (`fetch -> parse -> CSS -> layout -> render`) and a modular `src/` layout. This is appropriate for a phase-gated strategy but requires explicit architectural contracts before large feature expansion.
 
 Current strengths:
+
 - Cohesive modular code layout (browser, core, html, css, js, layout, render, net, utils).
 - Buildable baseline and sample fixtures.
 - Opportunity to define clear acceptance per module.
 
 Primary risks:
+
 - Standards explosion without strict staging.
 - Parser/rendering correctness regressions.
 - Security and network boundaries becoming ad hoc as features expand.

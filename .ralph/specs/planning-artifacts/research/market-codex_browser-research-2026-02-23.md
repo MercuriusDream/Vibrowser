@@ -22,9 +22,10 @@ source_verification: true
 
 ## Research Overview
 
-This market study focuses on the feasibility and opportunity shape for a focused browser-engine implementation project (`codex_browser`) and the practical path to differentiate from incumbent browsers without overpromising parity.
+This market study focuses on the feasibility and opportunity shape for a focused browser-engine implementation project (`vibrowser`) and the practical path to differentiate from incumbent browsers without overpromising parity.
 
 The analysis prioritizes:
+
 - User demand signals in developer and standards-driven tooling segments,
 - competitive concentration and switching realities,
 - and practical entry points driven by constrained, high-confidence MVP execution.
@@ -36,6 +37,7 @@ The analysis prioritizes:
 ### Concentrated Landscape
 
 Public usage and adoption references show high concentration in the browser market (dominance by Chrome/Chromium family at the top, with Safari, Edge, and Firefox serving large secondary shares). This concentration creates two practical effects:
+
 1. **Distribution pressure is high** for newcomers.
 2. **Compatibility expectations are high**, especially for web-platform behaviors.
 
@@ -45,7 +47,8 @@ Browser demand remains steady in consumer and enterprise contexts due to continu
 
 ### Core Need from the Market
 
-For a project like `codex_browser`, the immediate demand is not “replace incumbent browsers” but to provide a **specialized, high-clarity engine path** for:
+For a project like `vibrowser`, the immediate demand is not “replace incumbent browsers” but to provide a **specialized, high-clarity engine path** for:
+
 - educational systems,
 - research/investigation,
 - and constrained, inspectable browser experiences.
@@ -97,7 +100,7 @@ Competitors include entrenched browser engines and forks, with strongest pressur
 
 ## Strategic Implications
 
-### What This Means for `codex_browser`
+### What This Means for `vibrowser`
 
 1. Pursue a **focused niche** instead of broad displacement.
 2. Turn backlog items into high-signal milestones with measurable gates.
@@ -131,7 +134,7 @@ Competitors include entrenched browser engines and forks, with strongest pressur
 
 ## Recommended Positioning
 
-`codex_browser` should be positioned as:
+`vibrowser` should be positioned as:
 
 - a **disciplined C++ browser-engine foundation**,
 - for teams needing transparency and modular control,

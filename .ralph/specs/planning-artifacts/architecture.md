@@ -1,17 +1,17 @@
 ---
 stepsCompleted: [1, 2, 3, 4, 5, 6, 7, 8]
 inputDocuments:
-  - _bmad-output/planning-artifacts/product-brief-codex_browser-2026-02-23.md
+  - _bmad-output/planning-artifacts/product-brief-vibrowser-2026-02-23.md
   - _bmad-output/planning-artifacts/prd.md
   - _bmad-output/planning-artifacts/ux-design-specification.md
-  - _bmad-output/planning-artifacts/research/technical-codex_browser-research-2026-02-22.md
+  - _bmad-output/planning-artifacts/research/technical-vibrowser-research-2026-02-22.md
   - _bmad-output/planning-artifacts/research/domain-web-browser-engine-research-2026-02-22.md
-  - _bmad-output/planning-artifacts/research/market-codex_browser-research-2026-02-23.md
+  - _bmad-output/planning-artifacts/research/market-vibrowser-research-2026-02-23.md
   - README.md
   - docs/browser_engine_mvp_backlog.md
   - docs/browser_engine_mvp_roadmap.md
 workflowType: 'architecture'
-project_name: 'codex_browser'
+project_name: 'vibrowser'
 user_name: 'BMad'
 date: '2026-02-23'
 lastStep: 8
@@ -26,6 +26,7 @@ completedAt: '2026-02-23'
 ### Requirements Overview
 
 **Functional Requirements:**
+
 - Navigation and lifecycle control (`run`, URL/path input, retry, cancel, history, stage visibility).
 - Deterministic fetch → parse → CSS → layout → render pipeline.
 - Mutation-safe DOM parsing/modeling and selector handling.
@@ -36,6 +37,7 @@ completedAt: '2026-02-23'
 - Diagnostics-rich operations, structured lifecycle traces, milestone-based quality evidence.
 
 **Non-Functional Requirements:**
+
 - P95 baseline render under 2.5 seconds.
 - Measurable reliability gates: high fixture pass rate and controlled regression windows.
 - Security and privacy controls: explicit consent for telemetry, strict URL/network handling boundaries.
@@ -67,17 +69,21 @@ completedAt: '2026-02-23'
 ## Starter Template Evaluation
 
 ### Primary Technology Domain
+
 Desktop-native C++ application with CLI-first compatibility and optional GUI shell.
 
 ### Starter Options Considered
+
 - Keep existing C++ + CMake repository scaffold.
 - Migrate to another desktop framework starter (`Qt`, `wxWidgets`, `Electron`, etc.).
 - Introduce custom starter for shell-first browser tooling.
 
 ### Selected Starter Foundation
+
 **Chosen:** existing C++/CMake module-first foundation already in repo.
 
 **Rationale:**
+
 - Aligns with current source layout and existing developer investment.
 - avoids adding unrelated app framework opinion and keeps deterministic build behavior.
 - preserves ability to introduce shell or GUI adapters behind stable module boundaries.
@@ -104,18 +110,21 @@ cmake --build build
 ### Decision Priority Analysis
 
 **Critical Decisions (Block Implementation):**
+
 1. Preserve and formalize a single-process, modular engine core around deterministic stage state machine.
 2. Standardize pipeline interfaces between browser orchestration, parser, style, layout, render, and diagnostics.
 3. Normalize lifecycle + request states before adding feature breadth.
 4. Build explicit security/privacy boundaries for network and script behavior from milestone one.
 
 **Important Decisions (Shape Architecture):**
+
 1. Introduce an explicit engine facade (`BrowserEngine`) and page/session state model.
 2. Add diagnostic bus for stage-level events and failure categories.
 3. Isolate rendering outputs through a render output contract for GUI and file/image sinks.
 4. Create feature-gated architecture paths for QuickJS and external adapters.
 
 **Deferred Decisions (Post-MVP):**
+
 1. Full multi-process isolation.
 2. Full media/WebRTC/WebGPU stack.
 3. Deep extension ecosystem and multi-language bindings.
@@ -160,6 +169,7 @@ cmake --build build
 ### Decision Impact Analysis
 
 **Implementation Sequence:**
+
 1. Formalize engine + state model.
 2. Add request/response + diagnostics contracts.
 3. Add module boundaries with compile-safe interfaces.
@@ -168,6 +178,7 @@ cmake --build build
 6. Extend CLI and GUI surfaces against the same contracts.
 
 **Cross-Component Dependencies:**
+
 - Network module depends on URL/input normalization and diagnostics.
 - DOM/CSS/Layout/Render depend on deterministic lifecycle transitions.
 - JS bridge depends on DOM/mutation and event models.
@@ -183,11 +194,13 @@ cmake --build build
 ### Naming Patterns
 
 **Database/State Naming:**
+
 - Use `snake_case` for serialized keys, `PascalCase` for enums and class names.
 - Use singular nouns for domain objects (`PageState`, `NavigationRecord`, `RenderFrame`), collection names plural when represented as arrays.
 - Error codes must use `CamelCase` enum values only where protocol parity exists.
 
 **API Naming:**
+
 - Keep stable, public-ish function names in `verbNoun` style:
   - `open_url`, `schedule_fetch`, `build_style_tree`, `render_frame`.
 - Keep file names aligned with module and type names.
@@ -223,21 +236,25 @@ cmake --build build
 ### Enforcement
 
 **All implementation contributors MUST:**
+
 - follow module interfaces defined in headers first;
 - preserve stage order and event semantics;
 - keep module boundaries stable for public headers;
 - include deterministic diagnostics for lifecycle transitions.
 
 **Pattern Verification:**
+
 - CI review checks should include API drift and naming consistency for changed headers.
 - Stage trace snapshots should be part of regression tests for core paths.
 
 ### Pattern Examples
 
 **Good Example:**
+
 - `src/net/fetch_scheduler` owns request queue state and emits `FetchStarted`, `FetchProgress`, `FetchFinished` events consumed by browser engine.
 
 **Anti-Pattern:**
+
 - direct module-to-module calls from `js` to `render` without stage mediation or diagnostics context.
 
 ## Project Structure & Boundaries
@@ -346,26 +363,31 @@ from_scratch_browser/
 ### Architectural Boundaries
 
 **API Boundaries:**
+
 - `core` owns configuration and diagnostic model.
 - `engine` owns lifecycle orchestration and state transitions.
 - `net` owns requests, responses, scheduler, redirects.
 - `html/css/layout/render` owns dataflow and transforms of document representation.
 
 **Component Boundaries:**
+
 - Browser modules should not read each other’s internals directly.
 - Each module only consumes contracts from peers through explicit headers and structs.
 
 **Service Boundaries:**
+
 - UI is a consumer of engine output and diagnostic events.
 - JS module consumes DOM/document contracts and emits mutations via engine-safe interfaces.
 
 **Data Boundaries:**
+
 - DOM/Style/Layout/Render state flows one direction per cycle (`parse -> style -> layout -> render`).
 - Mutations in DOM trigger layout/style recomputation via invalidation rules.
 
 ### Requirements to Structure Mapping
 
 **Feature Category Mapping:**
+
 - Navigation/Lifecycle FR1-6 → `src/browser`, `src/core`, `src/net`.
 - DOM/Parser FR7-12 → `src/html`.
 - Styling FR9-12 → `src/css`.
@@ -377,23 +399,29 @@ from_scratch_browser/
 ### Cross-Cutting Concerns Mapping
 
 **Observability:**
+
 - Diagnostics bus at `core` and `engine` boundaries, emitted into CLI/UI.
 
 **Security:**
+
 - URL/request/input and policy checks in `net` and `security`.
 
 **Compatibility Growth:**
+
 - Optional adapter layer in `js` and `render` to support external engine replacements.
 
 ### Integration Points
 
 **Internal Communication:**
+
 - Event queue + lifecycle event stream consumed by CLI/UI and logs.
 
 **External Integrations:**
+
 - OpenSSL (optional), optional GUI backend (SDL2/GLFW), optional QuickJS in later phase.
 
 **Data Flow:**
+
 - URL/request → fetch → parse → css/style → layout → render → diagnostics event → optional GUI/ppm output.
 
 ### File Organization Patterns
@@ -442,24 +470,28 @@ from_scratch_browser/
 ### Architecture Readiness Checklist
 
 **✅ Requirements Analysis**
+
 - [x] Project context analyzed
 - [x] Scale and complexity assessed
 - [x] Technical constraints identified
 - [x] Cross-cutting concerns mapped
 
 **✅ Architectural Decisions**
+
 - [x] Critical decisions documented
 - [x] Technology stack specified
 - [x] Integration patterns defined
 - [x] Performance and reliability considerations captured
 
 **✅ Implementation Patterns**
+
 - [x] Naming conventions established
 - [x] Structure patterns defined
 - [x] Communication patterns specified
 - [x] Process patterns documented
 
 **✅ Project Structure**
+
 - [x] Directory structure defined
 - [x] Component boundaries established
 - [x] Integration points mapped
@@ -471,11 +503,13 @@ from_scratch_browser/
 - **Confidence Level:** High for MVP (staging and boundaries), Medium for full standards coverage expansion.
 
 **Key Strengths:**
+
 - Strong fit with existing module layout and pipeline behavior.
 - Deterministic architecture directly aligned to PRD and UX requirement of transparent lifecycle.
 - Explicit boundaries reduce ambiguity for AI-generated or multi-contributor implementation.
 
 **Areas for Future Enhancement:**
+
 - Add runtime metrics + budgets in C++ core.
 - Add persistent history/session cache formats.
 - Add renderer adapters and optional advanced backend swaps.
@@ -489,6 +523,7 @@ from_scratch_browser/
 ## Completion Summary
 
 The architecture workflow is complete. We now have:
+
 - Full project context analysis.
 - Starter evaluation aligned to the existing C++/CMake foundation.
 - Documented implementation decisions and critical boundaries.
