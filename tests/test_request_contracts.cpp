@@ -293,6 +293,22 @@ int main() {
         }
     }
 
+    // Test 12: ALPN helper recognizes negotiated HTTP/2 transport protocol
+    {
+        if (!browser::net::is_http2_alpn_protocol("h2")) {
+            std::cerr << "FAIL: expected h2 ALPN protocol to be treated as HTTP/2\n";
+            ++failures;
+        } else if (browser::net::is_http2_alpn_protocol("http/1.1")) {
+            std::cerr << "FAIL: expected HTTP/1.1 ALPN protocol to not be treated as HTTP/2\n";
+            ++failures;
+        } else if (browser::net::is_http2_alpn_protocol("h2c")) {
+            std::cerr << "FAIL: expected non-ALPN h2c token to not be treated as HTTP/2 ALPN\n";
+            ++failures;
+        } else {
+            std::cerr << "PASS: ALPN HTTP/2 protocol detection works as expected\n";
+        }
+    }
+
     if (failures > 0) {
         std::cerr << "\n" << failures << " test(s) FAILED\n";
         return 1;

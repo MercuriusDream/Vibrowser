@@ -17,6 +17,7 @@
 #include <cerrno>
 #include <cstddef>
 #include <cstring>
+#include <initializer_list>
 #include <limits>
 #include <sstream>
 #include <string>
@@ -44,6 +45,19 @@ std::string to_lower_ascii(std::string value) {
 
 bool starts_with(const std::string& value, const std::string& prefix) {
   return value.size() >= prefix.size() && value.compare(0, prefix.size(), prefix) == 0;
+}
+
+std::vector<unsigned char> encode_alpn_protocols(
+    std::initializer_list<std::string> protocols) {
+  std::vector<unsigned char> encoded;
+  for (const std::string& protocol : protocols) {
+    if (protocol.empty() || protocol.size() > 255) {
+      continue;
+    }
+    encoded.push_back(static_cast<unsigned char>(protocol.size()));
+    encoded.insert(encoded.end(), protocol.begin(), protocol.end());
+  }
+  return encoded;
 }
 
 int hex_digit_value(char ch) {
@@ -702,6 +716,15 @@ class Connection {
         return false;
       }
 
+      const std::vector<unsigned char> alpn_protocols =
+          encode_alpn_protocols({"h2", "http/1.1"});
+      if (!alpn_protocols.empty() &&
+          SSL_set_alpn_protos(ssl_, alpn_protocols.data(),
+                              static_cast<unsigned int>(alpn_protocols.size())) != 0) {
+        err = "SSL_set_alpn_protos() failed";
+        return false;
+      }
+
       SSL_set_tlsext_host_name(ssl_, url.host.c_str());
       SSL_set_fd(ssl_, fd_);
 
@@ -740,6 +763,19 @@ class Connection {
       if (hostname_ok != 1) {
         err = "TLS certificate verification failed: hostname mismatch for " + url.host;
         return false;
+      }
+
+      const unsigned char* selected_alpn = nullptr;
+      unsigned int selected_alpn_len = 0;
+      SSL_get0_alpn_selected(ssl_, &selected_alpn, &selected_alpn_len);
+      if (selected_alpn && selected_alpn_len > 0) {
+        const std::string selected_protocol(
+            reinterpret_cast<const char*>(selected_alpn),
+            static_cast<std::size_t>(selected_alpn_len));
+        if (is_http2_alpn_protocol(selected_protocol)) {
+          err = "TLS negotiated ALPN protocol 'h2'; HTTP/2 transport is not implemented yet";
+          return false;
+        }
       }
 #else
       err = "HTTPS requested but OpenSSL support is not enabled (compile with BROWSER_USE_OPENSSL)";
@@ -1489,6 +1525,10 @@ bool parse_http_status_line(const std::string& status_line,
     reason = response.reason;
     err.clear();
     return true;
+}
+
+bool is_http2_alpn_protocol(const std::string& protocol) {
+    return protocol == "h2";
 }
 
 const char* request_method_name(RequestMethod method) {
