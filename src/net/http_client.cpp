@@ -963,6 +963,15 @@ bool parse_status_line(const std::string& status_line, Response& response, std::
     err = "HTTP/2 response preface received; HTTP/2 transport is not implemented yet";
     return false;
   }
+  const std::size_t version_separator = trimmed_status_line.find_first_of(" \t\r\n\f\v");
+  const std::string version_token =
+      (version_separator == std::string::npos)
+          ? trimmed_status_line
+          : trimmed_status_line.substr(0, version_separator);
+  if (version_token == "HTTP/2" || version_token == "HTTP/2.0") {
+    err = "HTTP/2 status line received; HTTP/2 transport is not implemented yet";
+    return false;
+  }
 
   const std::size_t first_space = status_line.find(' ');
   if (first_space == std::string::npos) {

@@ -285,6 +285,17 @@ int main() {
         }
 
         if (browser::net::parse_http_status_line(
+                "HTTP/2\t200 OK", http_version, status_code, reason, err)) {
+            std::cerr << "FAIL: tab-separated HTTP/2 status line should be rejected explicitly\n";
+            ++failures;
+        } else if (err.find("HTTP/2 status line received") == std::string::npos) {
+            std::cerr << "FAIL: expected explicit HTTP/2 status-line rejection for tab-separated variant\n";
+            ++failures;
+        } else {
+            std::cerr << "PASS: tab-separated HTTP/2 status line is rejected explicitly\n";
+        }
+
+        if (browser::net::parse_http_status_line(
                 "200 OK", http_version, status_code, reason, err)) {
             std::cerr << "FAIL: malformed status line should be rejected\n";
             ++failures;
