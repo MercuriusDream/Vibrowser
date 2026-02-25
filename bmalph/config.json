@@ -1,0 +1,9 @@
+{
+  "name": "codex_browser",
+  "description": "full-on web browser which out-runs current web browsers in both performance and security",
+  "createdAt": "2026-02-22T15:28:16.179Z",
+  "platform": "codex",
+  "upstreamVersions": {
+    "bmadCommit": "aa573bdb"
+  }
+}

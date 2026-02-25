@@ -1,0 +1,264 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Sample Layout Playground</title>
+    <base href="./" />
+    <style>
+      @import url("./sample.css?import_fixture=1");
+    </style>
+    <style media="screen">
+      #inline-media-style-fixture {
+        background: #fef3c7;
+        border: 1px solid #f59e0b;
+        color: #78350f;
+        padding: 6px 8px;
+      }
+    </style>
+    <link rel="stylesheet" href="data:text/css,%23data-url-note%20%7B%20color%3A%20%2308416b%3B%20background%3A%20%23e0f2fe%3B%20border%3A%201px%20solid%20%237ba6c2%3B%20padding%3A%206px%208px%3B%20display%3A%20inline-block%3B%20%7D" />
+    <link rel="stylesheet" href="data:text/css,%23media-filter-fixture%20%7B%20background%3A%20%23fce7f3%3B%20border%3A%201px%20solid%20%23db2777%3B%20color%3A%20%23831337%3B%20%7D" media="print" />
+    <link rel="stylesheet" href="sample.css" />
+  </head>
+  <body id="page-shell" class="page" data-body-removeattr-fixture="armed">
+    <div
+      id="transparent-fixture"
+      class="fixture token-target token-beta"
+      title="transparent fixture"
+    ></div>
+    <div
+      id="currentcolor-fixture"
+      class="fixture current-color-fixture"
+      title="currentColor fixture"
+    ></div>
+    <p id="media-filter-fixture" class="media-filter-fixture">
+      Media fixture baseline: print-media stylesheet should be ignored for screen rendering.
+    </p>
+    <div id="not-fixture-target" class="fixture not-fixture-item" title=":not fixture"></div>
+    <div
+      id="entity&amp;fixture"
+      class="fixture entity-text-fixture"
+      title="entity decode fixture"
+    ></div>
+    <div
+      id="numeric&#45;entity&#x2d;fixture"
+      class="fixture numeric-entity-fixture"
+      title="numeric entity decode fixture"
+    ></div>
+    <div
+      id="copy&copy;reg&reg;trade&trade;fixture"
+      class="fixture copy-reg-trade-entity-fixture"
+      title="named entity copy/reg/trade decode fixture"
+    >
+      Entity decode text fixture: &copy; &reg; &trade;
+    </div>
+    <div
+      id="dash&mdash;between&ndash;fixture"
+      class="fixture dash-entity-fixture"
+      title="named entity mdash/ndash decode fixture"
+    ></div>
+    <div
+      id="currency&cent;and&pound;and&euro;fixture"
+      class="fixture currency-entity-fixture"
+      title="named entity cent/pound/euro decode fixture"
+    >
+      Currency entity text fixture: &cent; &pound; &euro;
+    </div>
+    <div
+      id="yen&yen;sect&sect;deg&deg;fixture"
+      class="fixture yen-sect-deg-entity-fixture"
+      title="named entity yen/sect/deg decode fixture"
+    >
+      Entity decode text fixture: &yen; &sect; &deg;
+    </div>
+    <div
+      id="setattr-nonstyle-fixture"
+      class="fixture setattr-nonstyle-fixture nonstyle-idle"
+      title="setAttribute non-style fixture"
+    ></div>
+    <div
+      id="runtime-classname-fixture"
+      class="fixture runtime-classname-fixture classname-idle"
+      title="className non-style fixture"
+    ></div>
+    <div
+      id="runtime-id-fixture"
+      class="fixture runtime-id-fixture"
+      title="runtime id property fixture"
+    ></div>
+    <div
+      id="body-classname-signal-fixture"
+      class="fixture body-classname-signal-fixture"
+      title="runtime document.body.className fixture"
+    ></div>
+    <div
+      id="body-id-signal-fixture"
+      class="fixture body-id-signal-fixture"
+      title="runtime document.body.id fixture"
+    ></div>
+    <div
+      id="body-setattr-fixture"
+      class="fixture body-setattr-fixture"
+      title="runtime document.body.setAttribute fixture"
+    ></div>
+    <div
+      id="body-removeattr-fixture"
+      class="fixture body-removeattr-fixture"
+      title="runtime document.body.removeAttribute fixture"
+    ></div>
+    <div
+      id="setattr-id-fixture"
+      class="fixture setattr-id-fixture"
+      title="runtime setAttribute id fixture"
+    ></div>
+    <div
+      id="removeattr-style-fixture"
+      class="fixture removeattr-style-fixture"
+      style="background: #ffd166; border: 1px solid #ef476f; color: #3a0ca3;"
+      title="removeAttribute style fixture"
+    ></div>
+    <div
+      id="removeattr-class-fixture"
+      class="fixture removeattr-class-fixture removeattr-class-armed"
+      title="removeAttribute class fixture"
+    ></div>
+    <div
+      id="apos&apos;fixture"
+      class="fixture apos-entity-fixture"
+      title="named entity apos decode fixture"
+    ></div>
+    <div
+      id="attr-fixture"
+      class="fixture attr-fixture-top"
+      title="attribute selector fixture"
+    ></div>
+    <div
+      id="attr-exists-fixture"
+      class="fixture attr-exists-fixture"
+      data-exists-token="attr-exists-signal"
+      title="attribute existence selector fixture"
+    ></div>
+    <div
+      id="attr-prefix-fixture"
+      class="fixture attr-prefix-fixture"
+      data-prefix-token="wave-prefix-signal"
+      title="attribute prefix selector fixture"
+    ></div>
+    <div
+      id="attr-suffix-fixture"
+      class="fixture attr-suffix-fixture"
+      data-suffix-token="wave-signal-suffix"
+      title="attribute suffix selector fixture"
+    ></div>
+    <div
+      id="attr-contains-fixture"
+      class="fixture attr-contains-fixture"
+      data-contains-token="alpha-wave-middle-omega"
+      title="attribute contains selector fixture"
+    ></div>
+    <div id="empty-fixture" class="fixture empty-fixture" title=":empty fixture"></div>
+    <div id="type-selector-fixture" class="fixture type-selector-fixture" title=":first-of-type and :last-of-type fixture">
+      <span class="type-pill type-pill-first-fallback">first-of-type signal</span>
+      <span class="type-pill">middle signal</span>
+      <span class="type-pill type-pill-last-fallback">last-of-type signal</span>
+    </div>
+    <div id="nth-of-type-fixture" class="fixture nth-of-type-fixture" title=":nth-of-type fixture with fallback">
+      <div class="nth-pill">nth-of-type signal one</div>
+      <div class="nth-pill nth-pill-second-fallback">nth-of-type signal two</div>
+      <div class="nth-pill">nth-of-type signal three</div>
+    </div>
+    <div id="nth-last-child-fixture" class="fixture nth-last-child-fixture" title=":nth-last-child fixture with fallback">
+      <span class="last-child-pill">nth-last-child signal one</span>
+      <span class="last-child-pill last-child-pill-fallback">nth-last-child signal two</span>
+      <span class="last-child-pill">nth-last-child signal three</span>
+    </div>
+    <div id="nth-last-normalized-fixture" class="fixture nth-last-normalized-fixture" title="case-insensitive :nth-last-child with spaced argument">
+      <span class="normalized-last-pill">normalized nth-last signal one</span>
+      <span class="normalized-last-pill normalized-last-pill-fallback">normalized nth-last signal two</span>
+      <span class="normalized-last-pill">normalized nth-last signal three</span>
+    </div>
+    <header class="hero card">
+      <h1 id="hero-title">From Scratch Browser Sample Page</h1>
+      <p>
+        This static page is intentionally small but varied so layout, styling,
+        and nesting behavior are easy to inspect.
+      </p>
+      <p id="status-chip" class="status-chip">
+        Runtime chip: waiting for JS updates.
+      </p>
+      <p id="data-url-note" class="data-url-note">
+        Data URL stylesheet fixture: this line is styled via
+        <code>data:text/css,...</code>.
+      </p>
+      <p id="attr-fixture-copy" class="attr-fixture">
+        Attribute selector fixture: this line can be matched with
+        <code>[id=attr-fixture]</code>.
+      </p>
+      <div class="only-child-host">
+        <p id="only-child-fixture" class="only-child-fixture">
+          Pseudo selector fixture: this paragraph is an <code>:only-child</code>.
+        </p>
+      </div>
+      <p id="inline-media-style-fixture" class="inline-media-style-fixture">
+        Inline media fixture: this line is styled by
+        <code>&lt;style media="screen"&gt;</code>.
+      </p>
+      <p id="setattr-style-fixture" class="setattr-style-fixture">
+        Runtime setAttribute fixture: waiting for JS style assignment.
+      </p>
+      <p class="last-note" style="color: #5a2e0f; font-style: italic;">
+        Inline style example: this line uses direct style attributes.
+      </p>
+    </header>
+
+    <main class="content">
+      <section class="card">
+        <h2>Primary Section</h2>
+        <p id="js-message" class="runtime-message">
+          The section below mixes classes, IDs, and nested content blocks to
+          provide a compact rendering fixture.
+        </p>
+        <p class="runtime-note">
+          Adjacent sibling fixture: this line should match the <code>+</code>
+          selector from sample.css.
+        </p>
+      </section>
+
+      <section id="card-area" class="card-grid">
+        <article id="js-target-card" class="card highlight">
+          <h3>Outer Card A</h3>
+          <p>Cards can contain nested cards and supporting text.</p>
+          <div class="nested-group">
+            <article class="card nested-card">
+              <h4>Nested Card A1</h4>
+              <p>Nested paragraph for spacing and border checks.</p>
+            </article>
+            <article class="card nested-card">
+              <h4>Nested Card A2</h4>
+              <p class="last-note">Additional nested card to exercise repeated structures.</p>
+            </article>
+          </div>
+        </article>
+
+        <article class="card">
+          <h3>Outer Card B</h3>
+          <p>
+            A sibling card with its own nested area helps verify vertical flow.
+          </p>
+          <div class="nested-group">
+            <article class="card nested-card">
+              <h4>Nested Card B1</h4>
+              <p class="last-note">Small content block for text rendering checks.</p>
+            </article>
+          </div>
+        </article>
+      </section>
+    </main>
+
+    <script src="sample.js"></script>
+    <script>
+      document.title = "Sample Layout Playground (inline)";
+      console.log("inline script: title override applied");
+    </script>
+  </body>
+</html>

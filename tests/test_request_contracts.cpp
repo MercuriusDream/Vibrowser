@@ -1,0 +1,255 @@
+// Test: Request/response lifecycle contracts
+// Story 5.1 acceptance test
+
+#include "browser/net/http_client.h"
+
+#include <iostream>
+#include <string>
+#include <vector>
+
+int main() {
+    int failures = 0;
+
+    // Test 1: RequestMethod names
+    {
+        bool ok = true;
+        if (std::string(browser::net::request_method_name(browser::net::RequestMethod::Get)) != "GET") ok = false;
+        if (std::string(browser::net::request_method_name(browser::net::RequestMethod::Head)) != "HEAD") ok = false;
+
+        if (!ok) {
+            std::cerr << "FAIL: request_method_name incorrect\n";
+            ++failures;
+        } else {
+            std::cerr << "PASS: request_method_name returns correct values\n";
+        }
+    }
+
+    // Test 2: RequestStage names
+    {
+        bool ok = true;
+        if (std::string(browser::net::request_stage_name(browser::net::RequestStage::Created)) != "Created") ok = false;
+        if (std::string(browser::net::request_stage_name(browser::net::RequestStage::Dispatched)) != "Dispatched") ok = false;
+        if (std::string(browser::net::request_stage_name(browser::net::RequestStage::Received)) != "Received") ok = false;
+        if (std::string(browser::net::request_stage_name(browser::net::RequestStage::Complete)) != "Complete") ok = false;
+        if (std::string(browser::net::request_stage_name(browser::net::RequestStage::Error)) != "Error") ok = false;
+
+        if (!ok) {
+            std::cerr << "FAIL: request_stage_name incorrect\n";
+            ++failures;
+        } else {
+            std::cerr << "PASS: request_stage_name returns correct values\n";
+        }
+    }
+
+    // Test 3: RequestTransaction records events
+    {
+        browser::net::RequestTransaction txn;
+        txn.request.method = browser::net::RequestMethod::Get;
+        txn.request.url = "http://example.com/test";
+
+        txn.record(browser::net::RequestStage::Created);
+        txn.record(browser::net::RequestStage::Dispatched);
+        txn.record(browser::net::RequestStage::Received);
+        txn.record(browser::net::RequestStage::Complete, "status=200");
+
+        if (txn.events.size() != 4) {
+            std::cerr << "FAIL: expected 4 events, got " << txn.events.size() << "\n";
+            ++failures;
+        } else {
+            std::cerr << "PASS: transaction records 4 events\n";
+        }
+
+        if (txn.events[0].stage != browser::net::RequestStage::Created) {
+            std::cerr << "FAIL: first event not Created\n";
+            ++failures;
+        } else {
+            std::cerr << "PASS: first event is Created\n";
+        }
+
+        if (txn.events[3].stage != browser::net::RequestStage::Complete) {
+            std::cerr << "FAIL: last event not Complete\n";
+            ++failures;
+        } else if (txn.events[3].detail != "status=200") {
+            std::cerr << "FAIL: Complete event missing detail\n";
+            ++failures;
+        } else {
+            std::cerr << "PASS: last event is Complete with detail\n";
+        }
+    }
+
+    // Test 4: Event timestamps are ordered
+    {
+        browser::net::RequestTransaction txn;
+        txn.record(browser::net::RequestStage::Created);
+        txn.record(browser::net::RequestStage::Dispatched);
+        txn.record(browser::net::RequestStage::Received);
+        txn.record(browser::net::RequestStage::Complete);
+
+        bool ordered = true;
+        for (std::size_t i = 1; i < txn.events.size(); ++i) {
+            if (txn.events[i].timestamp < txn.events[i - 1].timestamp) {
+                ordered = false;
+                break;
+            }
+        }
+
+        if (!ordered) {
+            std::cerr << "FAIL: timestamps not ordered\n";
+            ++failures;
+        } else {
+            std::cerr << "PASS: timestamps are ordered\n";
+        }
+    }
+
+    // Test 5: Request struct has correct defaults
+    {
+        browser::net::Request req;
+        if (req.method != browser::net::RequestMethod::Get) {
+            std::cerr << "FAIL: default method should be Get\n";
+            ++failures;
+        } else if (!req.url.empty()) {
+            std::cerr << "FAIL: default url should be empty\n";
+            ++failures;
+        } else if (!req.headers.empty()) {
+            std::cerr << "FAIL: default headers should be empty\n";
+            ++failures;
+        } else {
+            std::cerr << "PASS: Request has correct defaults\n";
+        }
+    }
+
+    // Test 6: Error stage records error detail
+    {
+        browser::net::RequestTransaction txn;
+        txn.record(browser::net::RequestStage::Created);
+        txn.record(browser::net::RequestStage::Error, "Connection refused");
+
+        if (txn.events.size() != 2) {
+            std::cerr << "FAIL: expected 2 events\n";
+            ++failures;
+        } else if (txn.events[1].detail != "Connection refused") {
+            std::cerr << "FAIL: error detail not recorded\n";
+            ++failures;
+        } else {
+            std::cerr << "PASS: error stage records detail\n";
+        }
+    }
+
+    // Test 7: fetch_with_contract to invalid URL records error lifecycle
+    {
+        std::vector<browser::net::RequestStage> observed_stages;
+        browser::net::FetchOptions options;
+        options.timeout_seconds = 2;
+        options.observer = [&](const browser::net::RequestTransaction&, browser::net::RequestStage stage) {
+            observed_stages.push_back(stage);
+        };
+
+        auto txn = browser::net::fetch_with_contract("http://127.0.0.1:1/nonexistent", options);
+
+        // Should have Created, Dispatched, Received (or Error)
+        if (txn.events.size() < 3) {
+            std::cerr << "FAIL: expected at least 3 events, got " << txn.events.size() << "\n";
+            ++failures;
+        } else {
+            std::cerr << "PASS: fetch_with_contract records at least 3 lifecycle events\n";
+        }
+
+        if (txn.events[0].stage != browser::net::RequestStage::Created) {
+            std::cerr << "FAIL: first stage not Created\n";
+            ++failures;
+        } else {
+            std::cerr << "PASS: fetch_with_contract starts with Created\n";
+        }
+
+        if (txn.events[1].stage != browser::net::RequestStage::Dispatched) {
+            std::cerr << "FAIL: second stage not Dispatched\n";
+            ++failures;
+        } else {
+            std::cerr << "PASS: fetch_with_contract dispatches\n";
+        }
+
+        // Observer should have been called
+        if (observed_stages.size() < 3) {
+            std::cerr << "FAIL: observer not called enough times\n";
+            ++failures;
+        } else {
+            std::cerr << "PASS: observer called for each stage\n";
+        }
+
+        // Request metadata should be populated
+        if (txn.request.url != "http://127.0.0.1:1/nonexistent") {
+            std::cerr << "FAIL: request url not populated\n";
+            ++failures;
+        } else {
+            std::cerr << "PASS: request metadata populated\n";
+        }
+    }
+
+    // Test 8: FetchOptions defaults
+    {
+        browser::net::FetchOptions opts;
+        if (opts.max_redirects != 5) {
+            std::cerr << "FAIL: default max_redirects should be 5\n";
+            ++failures;
+        } else if (opts.timeout_seconds != 10) {
+            std::cerr << "FAIL: default timeout_seconds should be 10\n";
+            ++failures;
+        } else if (opts.observer) {
+            std::cerr << "FAIL: default observer should be null\n";
+            ++failures;
+        } else {
+            std::cerr << "PASS: FetchOptions has correct defaults\n";
+        }
+    }
+
+    // Test 9: fetch_with_policy_contract blocks disallowed cross-origin before dispatch
+    {
+        browser::net::RequestPolicy policy;
+        policy.allow_cross_origin = false;
+        policy.origin = "http://example.com";
+
+        browser::net::FetchOptions options;
+        options.timeout_seconds = 1;
+
+        auto txn = browser::net::fetch_with_policy_contract("http://other.com/data", policy, options);
+        if (txn.response.error.empty()) {
+            std::cerr << "FAIL: expected policy block error\n";
+            ++failures;
+        } else if (txn.events.empty() || txn.events.back().stage != browser::net::RequestStage::Error) {
+            std::cerr << "FAIL: expected transaction to end in Error stage\n";
+            ++failures;
+        } else {
+            std::cerr << "PASS: policy-aware fetch blocks disallowed cross-origin request\n";
+        }
+    }
+
+    // Test 10: fetch_with_policy_contract blocks request when CSP connect-src disallows URL
+    {
+        browser::net::RequestPolicy policy;
+        policy.enforce_connect_src = true;
+        policy.connect_src_sources = {"'self'"};
+        policy.origin = "https://app.example.com";
+
+        browser::net::FetchOptions options;
+        options.timeout_seconds = 1;
+
+        auto txn = browser::net::fetch_with_policy_contract("https://api.example.com/data", policy, options);
+        if (txn.response.error.find("CSP connect-src blocked") == std::string::npos) {
+            std::cerr << "FAIL: expected CSP connect-src policy block error\n";
+            ++failures;
+        } else if (txn.events.size() < 2 || txn.events[1].stage != browser::net::RequestStage::Error) {
+            std::cerr << "FAIL: expected immediate Error stage for blocked request\n";
+            ++failures;
+        } else {
+            std::cerr << "PASS: policy-aware fetch enforces connect-src before dispatch\n";
+        }
+    }
+
+    if (failures > 0) {
+        std::cerr << "\n" << failures << " test(s) FAILED\n";
+        return 1;
+    }
+
+    std::cerr << "\nAll request contract tests PASSED\n";
+    return 0;
+}

@@ -1,0 +1,202 @@
+#include <clever/platform/event_loop.h>
+
+#include <gtest/gtest.h>
+
+#include <atomic>
+#include <chrono>
+#include <thread>
+#include <vector>
+
+using namespace clever::platform;
+using namespace std::chrono_literals;
+
+// ---------------------------------------------------------------------------
+// 1. Post task and run_pending executes it
+// ---------------------------------------------------------------------------
+TEST(EventLoopTest, PostTaskAndRunPendingExecutesIt) {
+    EventLoop loop;
+    bool executed = false;
+
+    loop.post_task([&executed]() { executed = true; });
+    loop.run_pending();
+
+    EXPECT_TRUE(executed);
+}
+
+// ---------------------------------------------------------------------------
+// 2. Post multiple tasks — all execute in order
+// ---------------------------------------------------------------------------
+TEST(EventLoopTest, PostMultipleTasksAllExecuteInOrder) {
+    EventLoop loop;
+    std::vector<int> order;
+
+    for (int i = 0; i < 10; ++i) {
+        loop.post_task([i, &order]() { order.push_back(i); });
+    }
+
+    loop.run_pending();
+
+    ASSERT_EQ(order.size(), 10u);
+    for (int i = 0; i < 10; ++i) {
+        EXPECT_EQ(order[i], i);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 3. Post delayed task — executes after delay
+// ---------------------------------------------------------------------------
+TEST(EventLoopTest, PostDelayedTaskExecutesAfterDelay) {
+    EventLoop loop;
+    bool executed = false;
+
+    loop.post_delayed_task([&executed]() { executed = true; }, 50ms);
+
+    // Should not execute immediately
+    loop.run_pending();
+    EXPECT_FALSE(executed);
+
+    // Wait for the delay to elapse
+    std::this_thread::sleep_for(100ms);
+    loop.run_pending();
+    EXPECT_TRUE(executed);
+}
+
+// ---------------------------------------------------------------------------
+// 4. Delayed task does not execute before its time
+// ---------------------------------------------------------------------------
+TEST(EventLoopTest, DelayedTaskDoesNotExecuteBeforeItsTime) {
+    EventLoop loop;
+    bool executed = false;
+
+    loop.post_delayed_task([&executed]() { executed = true; }, 200ms);
+
+    // Run pending immediately — should not fire
+    loop.run_pending();
+    EXPECT_FALSE(executed);
+
+    // Wait only part of the delay
+    std::this_thread::sleep_for(50ms);
+    loop.run_pending();
+    EXPECT_FALSE(executed);
+}
+
+// ---------------------------------------------------------------------------
+// 5. quit() stops run()
+// ---------------------------------------------------------------------------
+TEST(EventLoopTest, QuitStopsRun) {
+    EventLoop loop;
+
+    // Post a task that calls quit after a short delay
+    loop.post_task([&loop]() {
+        loop.quit();
+    });
+
+    // run() should return once quit() is called
+    loop.run();
+
+    EXPECT_FALSE(loop.is_running());
+}
+
+// ---------------------------------------------------------------------------
+// 6. run_pending with no tasks returns immediately
+// ---------------------------------------------------------------------------
+TEST(EventLoopTest, RunPendingWithNoTasksReturnsImmediately) {
+    EventLoop loop;
+
+    auto start = std::chrono::steady_clock::now();
+    loop.run_pending();
+    auto elapsed = std::chrono::steady_clock::now() - start;
+
+    // Should return almost instantly (well under 100ms)
+    EXPECT_LT(elapsed, 100ms);
+}
+
+// ---------------------------------------------------------------------------
+// 7. pending_count reports correctly
+// ---------------------------------------------------------------------------
+TEST(EventLoopTest, PendingCountReportsCorrectly) {
+    EventLoop loop;
+    EXPECT_EQ(loop.pending_count(), 0u);
+
+    loop.post_task([]() {});
+    loop.post_task([]() {});
+    loop.post_task([]() {});
+    EXPECT_EQ(loop.pending_count(), 3u);
+
+    loop.run_pending();
+    EXPECT_EQ(loop.pending_count(), 0u);
+}
+
+// ---------------------------------------------------------------------------
+// 8. Post task from within a task
+// ---------------------------------------------------------------------------
+TEST(EventLoopTest, PostTaskFromWithinATask) {
+    EventLoop loop;
+    bool inner_executed = false;
+
+    loop.post_task([&loop, &inner_executed]() {
+        loop.post_task([&inner_executed]() {
+            inner_executed = true;
+        });
+    });
+
+    // First run_pending executes the outer task (which posts the inner task)
+    loop.run_pending();
+
+    // The inner task should now be pending
+    EXPECT_EQ(loop.pending_count(), 1u);
+
+    // Second run_pending executes the inner task
+    loop.run_pending();
+    EXPECT_TRUE(inner_executed);
+}
+
+// ---------------------------------------------------------------------------
+// 9. Multiple delayed tasks execute in correct order
+// ---------------------------------------------------------------------------
+TEST(EventLoopTest, MultipleDelayedTasksExecuteInCorrectOrder) {
+    EventLoop loop;
+    std::vector<int> order;
+
+    // Post delayed tasks in reverse delay order
+    loop.post_delayed_task([&order]() { order.push_back(3); }, 150ms);
+    loop.post_delayed_task([&order]() { order.push_back(1); }, 50ms);
+    loop.post_delayed_task([&order]() { order.push_back(2); }, 100ms);
+
+    // Wait for all delays to elapse
+    std::this_thread::sleep_for(250ms);
+    loop.run_pending();
+
+    ASSERT_EQ(order.size(), 3u);
+    EXPECT_EQ(order[0], 1);
+    EXPECT_EQ(order[1], 2);
+    EXPECT_EQ(order[2], 3);
+}
+
+// ---------------------------------------------------------------------------
+// 10. Post task wakes up run() from blocking
+// ---------------------------------------------------------------------------
+TEST(EventLoopTest, PostTaskWakesUpRunFromBlocking) {
+    EventLoop loop;
+    std::atomic<bool> task_executed{false};
+
+    // Start run() on a background thread
+    std::thread runner([&loop]() {
+        loop.run();
+    });
+
+    // Give run() time to start and block
+    std::this_thread::sleep_for(50ms);
+    EXPECT_TRUE(loop.is_running());
+
+    // Post a task that sets the flag and then quits
+    loop.post_task([&task_executed, &loop]() {
+        task_executed.store(true);
+        loop.quit();
+    });
+
+    runner.join();
+
+    EXPECT_TRUE(task_executed.load());
+    EXPECT_FALSE(loop.is_running());
+}

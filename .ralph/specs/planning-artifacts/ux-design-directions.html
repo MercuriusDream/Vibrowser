@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>codex_browser Design Directions</title>
+  <style>
+    body { margin: 24px; font-family: Inter, Arial, sans-serif; background: #0b1020; color: #eaf1ff; }
+    .container { display: grid; grid-template-columns: repeat(auto-fit,minmax(300px,1fr)); gap: 16px; }
+    .dir { background: #11192e; border: 1px solid #2d3a5a; border-radius: 14px; padding: 16px; }
+    h1 { margin: 0 0 6px; }
+    .subtitle { color: #b8c5e5; margin-bottom: 16px; }
+    .chip { display: inline-block; font-size: 11px; background: #18233e; border: 1px solid #2d3a5a; padding: 4px 8px; border-radius: 999px; margin: 0 6px 6px 0; }
+    .layout { margin-top: 10px; height: 120px; border-radius: 10px; border: 1px dashed #2d3a5a; padding: 12px; background: #0f1629; }
+  </style>
+</head>
+<body>
+  <h1>codex_browser — 6 Design Direction Concepts</h1>
+  <div class="subtitle">Choose one direction as base and combine panel behaviors as needed.</div>
+  <div class="container">
+    <section class="dir">
+      <h2>Direction 1: Terminal-First</h2>
+      <div><span class="chip">Best for</span><span class="chip">Contributor onboarding</span></div>
+      <p>Text-first workflow with compact cards and strong status line summaries.</p>
+      <div class="layout">[ URL/Path ][ Load ] [Progress bar] ... [Log lines + Stage chips]</div>
+    </section>
+    <section class="dir">
+      <h2>Direction 2: Workspace Split</h2>
+      <div><span class="chip">Selected</span><span class="chip">Default recommendation</span></div>
+      <p>Controls + diagnostics left, render viewport right, with adaptive advanced panel.</p>
+      <div class="layout">[Controls][Lifecycle][Viewport][Debug]</div>
+    </section>
+    <section class="dir">
+      <h2>Direction 3: Minimal Shell</h2>
+      <div><span class="chip">Low distraction</span></div>
+      <p>Clean canvas-first UI with optional overlays for diagnostics.</p>
+      <div class="layout">[Canvas with floating chips]
+      </div>
+    </section>
+    <section class="dir">
+      <h2>Direction 4: Card Dashboard</h2>
+      <div><span class="chip">Power users</span></div>
+      <p>Each subsystem has its own card card, plus module health indicators.</p>
+      <div class="layout">[Nav card][Parse card][CSS card][Layout card][Render card]</div>
+    </section>
+    <section class="dir">
+      <h2>Direction 5: Failure-first Debug</h2>
+      <div><span class="chip">Debug workflows</span></div>
+      <p>Error and warning surfaces are always prominent until cleared.</p>
+      <div class="layout">[Live diagnostics stream][Fix button][Stage details]</div>
+    </section>
+    <section class="dir">
+      <h2>Direction 6: Mixed CLI GUI</h2>
+      <div><span class="chip">Automation teams</span></div>
+      <p>CLI output remains primary; GUI used for stage inspection snapshots.</p>
+      <div class="layout">[CLI panel][Command palette][Snapshot panel]</div>
+    </section>
+  </div>
+</body>
+</html>

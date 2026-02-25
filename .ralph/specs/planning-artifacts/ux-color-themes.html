@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>codex_browser Color Themes</title>
+  <style>
+    :root {
+      font-family: Inter, Arial, system-ui, -apple-system, Segoe UI, sans-serif;
+      color: #eaf1ff;
+      background: #0b1020;
+    }
+    body { margin: 24px; }
+    h1 { font-size: 28px; margin: 0 0 6px; }
+    .subtitle { color: #b8c5e5; margin-bottom: 24px; }
+    .grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fill,minmax(220px,1fr)); }
+    .card { background: #11192e; border: 1px solid #2d3a5a; border-radius: 14px; padding: 16px; }
+    .name { font-size: 16px; font-weight: 700; margin-bottom: 10px; }
+    .swatch { height: 70px; border-radius: 10px; margin: 8px 0; border: 1px solid #2d3a5a; }
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 10px; font-size: 12px; }
+    .token { background: #18233e; border-radius: 8px; padding: 8px; }
+  </style>
+</head>
+<body>
+  <h1>codex_browser Color Theme Playground</h1>
+  <div class="subtitle">Prototype themes for the UX direction (editorial, debug-first, accessibility-minded).</div>
+  <div class="grid">
+    <section class="card">
+      <div class="name">Default Dark</div>
+      <div class="swatch" style="background: #0b1020"></div>
+      <div class="row">
+        <div class="token">Bg: #0B1020</div><div class="token">Panel: #11192E</div>
+        <div class="token">Primary: #4EA8FF</div><div class="token">Text: #EAF1FF</div>
+      </div>
+    </section>
+    <section class="card">
+      <div class="name">Focus Blue</div>
+      <div class="swatch" style="background: linear-gradient(135deg,#0f1d39,#1b355f)"></div>
+      <div class="row">
+        <div class="token">Bg: #0F1D39</div><div class="token">Panel: #1E2F55</div>
+        <div class="token">Success: #6EE7B7</div><div class="token">Action: #5DA9FF</div>
+      </div>
+    </section>
+    <section class="card">
+      <div class="name">Contrast Emphasis</div>
+      <div class="swatch" style="background: linear-gradient(135deg,#101521,#2a365a)"></div>
+      <div class="row">
+        <div class="token">Bg: #101521</div><div class="token">Text: #FFFFFF</div>
+        <div class="token">Warning: #F59E0B</div><div class="token">Error: #F87171</div>
+      </div>
+    </section>
+    <section class="card">
+      <div class="name">Terminal Hybrid</div>
+      <div class="swatch" style="background: linear-gradient(135deg,#10131f,#1a2235)"></div>
+      <div class="row">
+        <div class="token">Code BG: #10131F</div><div class="token">Mono: #82CFFF</div>
+        <div class="token">Muted: #9BA7C4</div><div class="token">Accent: #7C9BFF</div>
+      </div>
+    </section>
+  </div>
+</body>
+</html>

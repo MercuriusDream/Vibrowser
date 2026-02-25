@@ -1,0 +1,8 @@
+file(GLOB CSS_STYLE_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/*.cpp")
+if(CSS_STYLE_SOURCES)
+    add_library(clever_css_style STATIC ${CSS_STYLE_SOURCES})
+else()
+    add_library(clever_css_style STATIC empty.cpp)
+endif()
+target_include_directories(clever_css_style PUBLIC ${CMAKE_SOURCE_DIR}/include)
+target_link_libraries(clever_css_style PUBLIC clever_css_parser clever_dom)
