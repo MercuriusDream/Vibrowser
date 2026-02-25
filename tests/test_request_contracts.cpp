@@ -350,6 +350,32 @@ int main() {
         }
     }
 
+    // Test 15: HTTP/2 upgrade request helper recognizes outbound Upgrade: h2/h2c headers
+    {
+        std::map<std::string, std::string> headers;
+        headers["Upgrade"] = "h2c";
+        if (!browser::net::is_http2_upgrade_request(headers)) {
+            std::cerr << "FAIL: expected Upgrade: h2c request header to be treated as HTTP/2 upgrade request\n";
+            ++failures;
+        } else {
+            headers.clear();
+            headers["upgrade"] = "websocket";
+            if (browser::net::is_http2_upgrade_request(headers)) {
+                std::cerr << "FAIL: expected non-h2 Upgrade header to not be treated as HTTP/2 upgrade request\n";
+                ++failures;
+            } else {
+                headers.clear();
+                headers["X-Custom"] = "h2";
+                if (browser::net::is_http2_upgrade_request(headers)) {
+                    std::cerr << "FAIL: expected non-Upgrade header to not be treated as HTTP/2 upgrade request\n";
+                    ++failures;
+                } else {
+                    std::cerr << "PASS: HTTP/2 upgrade request detection works as expected\n";
+                }
+            }
+        }
+    }
+
     if (failures > 0) {
         std::cerr << "\n" << failures << " test(s) FAILED\n";
         return 1;
