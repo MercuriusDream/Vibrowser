@@ -1,16 +1,14 @@
-"Vibrowser is not your browser engine stack." nah.
-> "imagine if we can vibecode smth like chrome one day"
-> "bet"
-
-<img width="1023" height="802" alt="image" src="https://github.com/user-attachments/assets/d0b873b2-3c8f-4195-8890-be1014ebe8b9" />
-
 ![From Scratch](https://img.shields.io/badge/Mode-From--Scratch%20Browser-ff4f8b?style=flat-square)
 ![C++](https://img.shields.io/badge/C%2B%2B-17-00599C?style=flat-square&logo=c%2B%2B&logoColor=white)
 ![CMake](https://img.shields.io/badge/Build-CMake-064F8C?style=flat-square&logo=cmake&logoColor=white)
 
 # Vibrowser
 
-It is a small, opinionated, from-scratch C++17 engine that exists to prove each browser subsystem can be built, understood, and tuned by hand, one layer at a time.  
+> "imagine if we can vibecode smth like chrome one day"
+
+<img width="1023" height="802" alt="image" src="https://github.com/user-attachments/assets/d0b873b2-3c8f-4195-8890-be1014ebe8b9" />
+
+It is a small, opinionated, VIBECODED, from-scratch C++17 engine that exists to prove each browser subsystem can be built, understood, and tuned by hand, one layer at a time.  
 The project is intentionally pragmatic: no magic black boxes, no hand-wavey abstractions, no pretending you are production-ready when you are still in feature-hardening mode.
 
 The executable is still `from_scratch_browser`, but the spirit is vibey, curious, and unapologetically experimental.
