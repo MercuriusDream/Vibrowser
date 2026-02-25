@@ -1225,10 +1225,13 @@ bool contains_http2_upgrade_token(const std::string& upgrade_header) {
           param_in_single_quotes = !param_in_single_quotes;
           continue;
         }
-        if (param_ch == ';' && !param_in_double_quotes && !param_in_single_quotes) {
+        if (param_ch == ';' && !param_in_double_quotes && !param_in_single_quotes &&
+            semicolon == std::string::npos) {
           semicolon = j;
-          break;
         }
+      }
+      if (param_in_double_quotes || param_in_single_quotes || param_escape_next) {
+        return false;
       }
       if (semicolon != std::string::npos) {
         token = trim_ascii(token.substr(0, semicolon));
