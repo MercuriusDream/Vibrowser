@@ -1122,7 +1122,8 @@ bool contains_http2_upgrade_token(const std::string& upgrade_header) {
 bool request_headers_attempt_http2_upgrade(
     const std::map<std::string, std::string>& request_headers) {
   for (const auto& [name, value] : request_headers) {
-    if (to_lower_ascii(name) != "upgrade") {
+    const std::string normalized_name = to_lower_ascii(trim_ascii(name));
+    if (normalized_name != "upgrade") {
       continue;
     }
     if (contains_http2_upgrade_token(value)) {
@@ -1136,7 +1137,8 @@ bool request_headers_include_http2_settings(
     const std::map<std::string, std::string>& request_headers) {
   for (const auto& [name, value] : request_headers) {
     (void)value;
-    if (to_lower_ascii(name) == "http2-settings") {
+    const std::string normalized_name = to_lower_ascii(trim_ascii(name));
+    if (normalized_name == "http2-settings") {
       return true;
     }
   }
@@ -1147,7 +1149,8 @@ bool request_headers_include_http2_pseudo_headers(
     const std::map<std::string, std::string>& request_headers) {
   for (const auto& [name, value] : request_headers) {
     (void)value;
-    if (!name.empty() && name.front() == ':') {
+    const std::string normalized_name = trim_ascii(name);
+    if (!normalized_name.empty() && normalized_name.front() == ':') {
       return true;
     }
   }

@@ -375,6 +375,9 @@ int main() {
         } else if (!browser::net::is_http2_upgrade_protocol("H2")) {
             std::cerr << "FAIL: expected case-insensitive h2 token detection\n";
             ++failures;
+        } else if (!browser::net::is_http2_upgrade_request({{"\tUpgrade ", "h2"}})) {
+            std::cerr << "FAIL: expected whitespace-padded Upgrade header name to be normalized and detected\n";
+            ++failures;
         } else if (browser::net::is_http2_upgrade_protocol("websocket")) {
             std::cerr << "FAIL: expected non-h2 upgrade token to not be treated as HTTP/2\n";
             ++failures;
@@ -444,6 +447,9 @@ int main() {
             if (!browser::net::is_http2_settings_request(headers)) {
                 std::cerr << "FAIL: expected case-insensitive HTTP2-Settings detection\n";
                 ++failures;
+            } else if (!browser::net::is_http2_settings_request({{" HTTP2-Settings\t", "token"}})) {
+                std::cerr << "FAIL: expected whitespace-padded HTTP2-Settings name to be normalized and detected\n";
+                ++failures;
             } else {
                 headers.clear();
                 headers["X-HTTP2-Settings"] = "token";
@@ -469,6 +475,9 @@ int main() {
             headers["X-Forwarded-For"] = "127.0.0.1";
             if (browser::net::is_http2_pseudo_header_request(headers)) {
                 std::cerr << "FAIL: expected non-pseudo header to not be treated as HTTP/2 pseudo-header request\n";
+                ++failures;
+            } else if (!browser::net::is_http2_pseudo_header_request({{"\t:method ", "GET"}})) {
+                std::cerr << "FAIL: expected whitespace-padded pseudo-header name to be normalized and detected\n";
                 ++failures;
             } else {
                 headers.clear();
