@@ -309,6 +309,28 @@ int main() {
         }
     }
 
+    // Test 13: Upgrade helper recognizes HTTP/2 upgrade tokens
+    {
+        if (!browser::net::is_http2_upgrade_protocol("h2c")) {
+            std::cerr << "FAIL: expected h2c upgrade token to be treated as HTTP/2 upgrade\n";
+            ++failures;
+        } else if (!browser::net::is_http2_upgrade_protocol("websocket, h2c")) {
+            std::cerr << "FAIL: expected comma-separated upgrade token list to detect h2c\n";
+            ++failures;
+        } else if (!browser::net::is_http2_upgrade_protocol("H2")) {
+            std::cerr << "FAIL: expected case-insensitive h2 token detection\n";
+            ++failures;
+        } else if (browser::net::is_http2_upgrade_protocol("websocket")) {
+            std::cerr << "FAIL: expected non-h2 upgrade token to not be treated as HTTP/2\n";
+            ++failures;
+        } else if (browser::net::is_http2_upgrade_protocol("h2c-14")) {
+            std::cerr << "FAIL: expected exact token matching for h2/h2c only\n";
+            ++failures;
+        } else {
+            std::cerr << "PASS: HTTP/2 upgrade token detection works as expected\n";
+        }
+    }
+
     if (failures > 0) {
         std::cerr << "\n" << failures << " test(s) FAILED\n";
         return 1;

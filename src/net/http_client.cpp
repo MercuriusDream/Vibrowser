@@ -1065,6 +1065,29 @@ bool contains_chunked_encoding(const std::string& transfer_encoding_header) {
   return lower.find("chunked") != std::string::npos;
 }
 
+bool contains_http2_upgrade_token(const std::string& upgrade_header) {
+  std::size_t offset = 0;
+  while (offset < upgrade_header.size()) {
+    const std::size_t next_comma = upgrade_header.find(',', offset);
+    std::string token = (next_comma == std::string::npos)
+                            ? upgrade_header.substr(offset)
+                            : upgrade_header.substr(offset, next_comma - offset);
+    token = to_lower_ascii(trim_ascii(token));
+    const std::size_t semicolon = token.find(';');
+    if (semicolon != std::string::npos) {
+      token = trim_ascii(token.substr(0, semicolon));
+    }
+    if (token == "h2" || token == "h2c") {
+      return true;
+    }
+    if (next_comma == std::string::npos) {
+      break;
+    }
+    offset = next_comma + 1;
+  }
+  return false;
+}
+
 bool read_response_headers(Connection& connection, std::string& buffer, Response& response, std::string& err) {
   while (true) {
     const std::size_t headers_end = buffer.find("\r\n\r\n");
@@ -1408,6 +1431,16 @@ Response fetch_once(const Url& url,
     return response;
   }
 
+  if (response.status_code == 101) {
+    const auto upgrade_it = response.headers.find("upgrade");
+    if (upgrade_it != response.headers.end() &&
+        contains_http2_upgrade_token(upgrade_it->second)) {
+      response.error =
+          "HTTP/2 upgrade response received; HTTP/2 transport is not implemented yet";
+      return response;
+    }
+  }
+
   const auto transfer_it = response.headers.find("transfer-encoding");
   if (transfer_it != response.headers.end() && contains_chunked_encoding(transfer_it->second)) {
     if (!decode_chunked_body(connection, buffer, response.body, err)) {
@@ -1529,6 +1562,10 @@ bool parse_http_status_line(const std::string& status_line,
 
 bool is_http2_alpn_protocol(const std::string& protocol) {
     return protocol == "h2";
+}
+
+bool is_http2_upgrade_protocol(const std::string& protocol_header) {
+    return contains_http2_upgrade_token(protocol_header);
 }
 
 const char* request_method_name(RequestMethod method) {
