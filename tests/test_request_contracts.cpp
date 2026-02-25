@@ -375,6 +375,9 @@ int main() {
         } else if (!browser::net::is_http2_upgrade_protocol("\"h2\"")) {
             std::cerr << "FAIL: expected quoted h2 upgrade token to be treated as HTTP/2 upgrade\n";
             ++failures;
+        } else if (!browser::net::is_http2_upgrade_protocol("'h2'")) {
+            std::cerr << "FAIL: expected single-quoted h2 upgrade token to be treated as HTTP/2 upgrade\n";
+            ++failures;
         } else if (!browser::net::is_http2_upgrade_protocol("H2")) {
             std::cerr << "FAIL: expected case-insensitive h2 token detection\n";
             ++failures;
@@ -403,6 +406,9 @@ int main() {
         } else if (!browser::net::is_http2_upgrade_response(101, "\"h2\"")) {
             std::cerr << "FAIL: expected quoted h2 token to be treated as HTTP/2 upgrade response\n";
             ++failures;
+        } else if (!browser::net::is_http2_upgrade_response(426, "'h2c'")) {
+            std::cerr << "FAIL: expected single-quoted h2c token to be treated as HTTP/2 upgrade response\n";
+            ++failures;
         } else if (browser::net::is_http2_upgrade_response(426, "websocket")) {
             std::cerr << "FAIL: expected 426 without h2/h2c token to not be treated as HTTP/2 upgrade response\n";
             ++failures;
@@ -429,18 +435,25 @@ int main() {
                 ++failures;
             } else {
                 headers.clear();
-                headers["upgrade"] = "websocket";
-                if (browser::net::is_http2_upgrade_request(headers)) {
-                    std::cerr << "FAIL: expected non-h2 Upgrade header to not be treated as HTTP/2 upgrade request\n";
+                headers["Upgrade"] = "'h2c'";
+                if (!browser::net::is_http2_upgrade_request(headers)) {
+                    std::cerr << "FAIL: expected single-quoted Upgrade: h2c request header to be treated as HTTP/2 upgrade request\n";
                     ++failures;
                 } else {
                     headers.clear();
-                    headers["X-Custom"] = "h2";
+                    headers["upgrade"] = "websocket";
                     if (browser::net::is_http2_upgrade_request(headers)) {
-                        std::cerr << "FAIL: expected non-Upgrade header to not be treated as HTTP/2 upgrade request\n";
+                        std::cerr << "FAIL: expected non-h2 Upgrade header to not be treated as HTTP/2 upgrade request\n";
                         ++failures;
                     } else {
-                        std::cerr << "PASS: HTTP/2 upgrade request detection works as expected\n";
+                        headers.clear();
+                        headers["X-Custom"] = "h2";
+                        if (browser::net::is_http2_upgrade_request(headers)) {
+                            std::cerr << "FAIL: expected non-Upgrade header to not be treated as HTTP/2 upgrade request\n";
+                            ++failures;
+                        } else {
+                            std::cerr << "PASS: HTTP/2 upgrade request detection works as expected\n";
+                        }
                     }
                 }
             }

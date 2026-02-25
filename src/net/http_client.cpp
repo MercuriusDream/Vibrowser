@@ -1111,6 +1111,9 @@ bool contains_http2_upgrade_token(const std::string& upgrade_header) {
     if (token.size() >= 2 && token.front() == '"' && token.back() == '"') {
       token = trim_ascii(token.substr(1, token.size() - 2));
     }
+    if (token.size() >= 2 && token.front() == '\'' && token.back() == '\'') {
+      token = trim_ascii(token.substr(1, token.size() - 2));
+    }
     if (token == "h2" || token == "h2c") {
       return true;
     }
