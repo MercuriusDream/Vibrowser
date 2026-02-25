@@ -946,8 +946,11 @@ bool read_line_crlf(Connection& connection, std::string& buffer, std::string& li
 
 bool parse_status_line(const std::string& status_line, Response& response, std::string& err) {
   const std::string trimmed_status_line = trim_ascii(status_line);
-  if (trimmed_status_line == "PRI * HTTP/2.0" ||
-      starts_with(trimmed_status_line, "PRI * HTTP/2.0 ")) {
+  constexpr std::string_view kHttp2Preface = "PRI * HTTP/2.0";
+  if (trimmed_status_line == kHttp2Preface ||
+      (trimmed_status_line.size() > kHttp2Preface.size() &&
+       trimmed_status_line.compare(0, kHttp2Preface.size(), kHttp2Preface) == 0 &&
+       std::isspace(static_cast<unsigned char>(trimmed_status_line[kHttp2Preface.size()])) != 0)) {
     err = "HTTP/2 response preface received; HTTP/2 transport is not implemented yet";
     return false;
   }
