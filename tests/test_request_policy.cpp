@@ -713,7 +713,23 @@ int main() {
         }
     }
 
-    // Test 39: connect-src host-source with trailing-slash path uses prefix matching
+    // Test 39: CORS rejects ACAO origin values that contain userinfo
+    {
+        browser::net::RequestPolicy policy;
+        policy.origin = "https://app.example.com";
+        browser::net::Response response;
+        response.headers["access-control-allow-origin"] = "https://user@app.example.com";
+        auto result =
+            browser::net::check_cors_response_policy("https://api.example.com/data", response, policy);
+        if (result.allowed) {
+            std::cerr << "FAIL: ACAO serialized-origin check should reject userinfo values\n";
+            ++failures;
+        } else {
+            std::cerr << "PASS: ACAO rejects userinfo-containing origin values\n";
+        }
+    }
+
+    // Test 40: connect-src host-source with trailing-slash path uses prefix matching
     {
         browser::net::RequestPolicy policy;
         policy.enforce_connect_src = true;
@@ -733,7 +749,7 @@ int main() {
         }
     }
 
-    // Test 40: connect-src host-source path without trailing slash requires exact path match
+    // Test 41: connect-src host-source path without trailing slash requires exact path match
     {
         browser::net::RequestPolicy policy;
         policy.enforce_connect_src = true;
@@ -751,7 +767,7 @@ int main() {
         }
     }
 
-    // Test 41: connect-src path matching normalizes dot-segments to prevent traversal bypass
+    // Test 42: connect-src path matching normalizes dot-segments to prevent traversal bypass
     {
         browser::net::RequestPolicy policy;
         policy.enforce_connect_src = true;
@@ -771,7 +787,7 @@ int main() {
         }
     }
 
-    // Test 42: connect-src path matching decodes unreserved percent-encoding before normalization
+    // Test 43: connect-src path matching decodes unreserved percent-encoding before normalization
     {
         browser::net::RequestPolicy policy;
         policy.enforce_connect_src = true;

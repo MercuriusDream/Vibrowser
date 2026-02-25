@@ -245,6 +245,32 @@ int main() {
         }
     }
 
+    // Test 11: status-line parser captures protocol version (including HTTP/2 token)
+    {
+        std::string http_version;
+        int status_code = 0;
+        std::string reason;
+        std::string err;
+        if (!browser::net::parse_http_status_line(
+                "HTTP/2 200 OK", http_version, status_code, reason, err)) {
+            std::cerr << "FAIL: expected valid HTTP/2 status line to parse\n";
+            ++failures;
+        } else if (http_version != "HTTP/2" || status_code != 200 || reason != "OK") {
+            std::cerr << "FAIL: status-line parse produced unexpected fields\n";
+            ++failures;
+        } else {
+            std::cerr << "PASS: status-line parser captures HTTP version/status/reason\n";
+        }
+
+        if (browser::net::parse_http_status_line(
+                "200 OK", http_version, status_code, reason, err)) {
+            std::cerr << "FAIL: malformed status line should be rejected\n";
+            ++failures;
+        } else {
+            std::cerr << "PASS: malformed status line is rejected\n";
+        }
+    }
+
     if (failures > 0) {
         std::cerr << "\n" << failures << " test(s) FAILED\n";
         return 1;

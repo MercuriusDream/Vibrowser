@@ -1,56 +1,387 @@
-# from_scratch_browser
+"Vibrowser is not your browser engine stack." nah.
+> "imagine if we can vibecode smth like chrome one day"
+> "bet"
 
-`from_scratch_browser` is a C++17 learning project for building a browser engine in small, explicit modules.
+<img width="1023" height="802" alt="image" src="https://github.com/user-attachments/assets/d0b873b2-3c8f-4195-8890-be1014ebe8b9" />
 
-Current scope is intentionally narrow:
-- Static HTML parsing with document loading from plain local paths, `http://`, `https://`, and `file://`, plus `<base href="...">`-aware relative resource loading.
-- CSS from inline/external stylesheets (including `@import`, percent-encoded `data:text/css,...`, and `media="..."` links/styles), with tag/ID/class selectors, quoted/unquoted `[id=...]` / `[class=...]` / `[class~=...]`, descendant/child/adjacent/general-sibling combinators, and pseudo selectors including `:nth-child(...)`, `:empty`, and `:only-child`; color parsing includes hex, `rgb(%)`, `rgba(...)`, `hsl(...)`, `hsla(...)`, named colors, `transparent`, and `currentColor`.
-- JavaScript subset support for `document.getElementById(...)`, `document.querySelector("#...")`, and `document.body.style...` with `innerText`, `textContent`, `style.{color,background,backgroundColor,border,borderColor,borderWidth,borderStyle,fontSize}`, and `style = "..."`.
-- Layout and paint flow for a limited, non-web-platform-complete subset.
-- `examples/sample.html` includes fixtures for local `@import`, data-URL styles, media-qualified `<link>` and `<style>`, class/attribute selectors (including `:not(...)`, `:first-of-type`, `:last-of-type`, `:nth-of-type(...)`, `:nth-last-child(...)`, `[attr]`, and `[attr^=]` / `[attr$=]` / `[attr*=]` with fallback classes, plus entity-decoded ID values including named `&apos;`, `&copy;`, `&reg;`, `&trade;`, `&cent;`, `&pound;`, `&euro;`, `&yen;`, `&sect;`, `&deg;`, `&ndash;`, `&mdash;`, and numeric `&#...;`/`&#x...;` forms), `currentColor`/transparent/`rgb(%)`/`hsla(...)`, `:nth-child(...)` / `:empty` / `:only-child`, case-insensitive/spaced `:NTH-LAST-CHILD( 2 )` normalization coverage with fallback, runtime `style = "..."`, runtime `.setAttribute("style", "...")`, runtime non-style `.setAttribute("class", "...")`, runtime `.setAttribute("id", "...")`, runtime `.className = "..."`, runtime `.id = "..."`, runtime `document.body.className/id` mutation selectors, runtime `document.body.setAttribute/removeAttribute` transitions, and runtime `.removeAttribute("style"|"class")` fallback transitions with visible selector-driven styling impact.
-- `scripts/run_sample.sh` and `scripts/smoke_test.sh` exercise sample rendering over HTTP and direct local-path input (without `file://`).
+![From Scratch](https://img.shields.io/badge/Mode-From--Scratch%20Browser-ff4f8b?style=flat-square)
+![C++](https://img.shields.io/badge/C%2B%2B-17-00599C?style=flat-square&logo=c%2B%2B&logoColor=white)
+![CMake](https://img.shields.io/badge/Build-CMake-064F8C?style=flat-square&logo=cmake&logoColor=white)
+
+# Vibrowser
+
+It is a small, opinionated, from-scratch C++17 engine that exists to prove each browser subsystem can be built, understood, and tuned by hand, one layer at a time.  
+The project is intentionally pragmatic: no magic black boxes, no hand-wavey abstractions, no pretending you are production-ready when you are still in feature-hardening mode.
+
+The executable is still `from_scratch_browser`, but the spirit is vibey, curious, and unapologetically experimental.
+
+---
+
+## This Is Not (Just) a Toy
+
+Most browser projects start with a rendering toy and drift into mystery.  
+Vibrowser does the opposite.
+
+Every stage is explicit and testable:
+
+1. Input acquisition
+2. Document parsing
+3. CSS processing
+4. Style resolution
+5. Layout tree construction
+6. Paint and output generation
+
+If a stage fails, you can isolate it in code, logs, and generated fixture output.  
+That is the base contract of this repo.
+
+Current design intention:
+
+- Build confidence through deterministic artifacts (`.ppm` images, script-driven smoke checks).
+- Keep implementation boundaries narrow.
+- Expand coverage through concrete fixtures in `examples/` and `tests/`.
+- Keep the API surface honest, small, and easy to reason about.
+
+---
+
+## What Vibrowser Can Already Do
+
+This section is not a marketing list.
+It is the practical boundary of current behavior and what your current workspace expects.
+
+### Document Fetch and Inputs
+
+- Load documents from:
+  - plain local paths like `examples/sample.html`
+  - `http://` and `https://`
+  - `file://` URLs
+- Resolve relative resources using `<base href="...">`.
+- Handle direct HTTP rendering through local and networked fetch helpers.
+
+### HTML Parsing
+
+- Parse static HTML into a document structure suitable for downstream layout.
+- Support for a learning-oriented subset of markup sufficient for style and script exercise.
+- Keep parsing deterministic for fixture-driven regressions.
+
+### CSS Parsing and Styling
+
+- Parse inline and external stylesheets.
+- Resolve `@import`, with `media` support and data URLs (`data:text/css,...`) for experiments.
+- Handle:
+  - IDs, classes, and tag selectors
+  - `[id=...]`, `[class=...]`, `[class~=...]`
+  - `[attr]`, `[attr^=...]`, `[attr$=...]`, `[attr*=...]`
+  - Attribute value entities and numeric/named conversions used in fixtures
+  - Combinators:
+    - descendant
+    - child
+    - adjacent sibling
+    - general sibling
+  - pseudo selectors:
+    - `:nth-child(...)`
+    - `:nth-last-child(...)`
+    - `:empty`
+    - `:only-child`
+    - `:first-of-type`
+    - `:last-of-type`
+    - `:not(...)`
+- Color parsing coverage for:
+  - hex
+  - rgb / rgba
+  - hsl / hsla
+  - named colors
+  - `transparent`
+  - `currentColor`
+  - short-form hex alpha usage
+
+### JS Subset Runtime
+
+- `document.getElementById(...)`
+- `document.querySelector("#...")`
+- `document.body.style` style mutation
+- direct style assignment and fallback style mutations
+- `setAttribute` / `removeAttribute` transitions for class, id, and style
+- selected runtime style properties:
+  - `color`
+  - `background`
+  - `backgroundColor`
+  - `border`
+  - `borderColor`
+  - `borderWidth`
+  - `borderStyle`
+  - `fontSize`
+
+### Layout, Render, and Output
+
+- Box tree generation from parsed DOM + computed style context
+- Layout pass that feeds renderer pipeline
+- Rasterized frame output to `.ppm` for deterministic visual checks
+- Minimal but explicit paint model for current feature set
+
+### Feature Validation Assets
+
+- `examples/sample.html` is the primary fixture file for wide selector and runtime behavior checks.
+- `scripts/run_sample.sh` exercises render flow for:
+  - HTTP input
+  - local path input
+  - file URL input
+- `scripts/smoke_test.sh` validates core pipeline stability and fixture color assertions.
+
+---
+
+## Pipeline Snapshot
+
+The mental model for every render run:
+
+`fetch` → `parse` → `style` → `layout` → `paint` → `ppm output`
+
+That is the entire product.
+
+If an artifact fails:
+
+1. isolate the phase
+2. run the smallest fixture that reaches it
+3. compare generated output and logs
+4. fix only the violating stage
+
+---
+
+## Project Layout
+
+`include/` and `src/` are the main code map.
+
+- `src/browser`  
+  Browser orchestration and top-level flow
+
+- `src/core`  
+  Shared runtime state and helpers
+
+- `src/html`  
+  HTML tokenizer/parser and document handling
+
+- `src/css`  
+  CSS tokenizer/parser + selector and declaration processing
+
+- `src/js`  
+  JavaScript subset parsing and DOM-facing runtime helpers
+
+- `src/layout`  
+  Layout tree construction and measurement model
+
+- `src/render`  
+  Painting and image output conversion
+
+- `src/net`  
+  Networking helpers (including HTTP/TLS integrations)
+
+- `src/utils`  
+  Cross-module utility functions
+
+- `src/engine`, `src/app`  
+  Application and engine-level glue points
+
+`tests/` contains `test_*.cpp` executables configured via CMake.
+
+`examples/` contains render fixtures and local HTML/CSS/JS content used by sample flows.
+
+`scripts/` contains reproducible run flows and smoke checks.
+
+---
+
+## Requirements
+
+- C++17 compiler (Clang / GCC / MSVC)
+- `cmake >= 3.16`
+- `python3` for helper scripts that run local HTTP fixtures
+- `OpenSSL` is optional; engine still compiles when available and links when found
+
+---
 
 ## Build
 
-### Requirements
-- CMake 3.16 or newer
-- A C++17 compiler (Clang, GCC, or MSVC)
-- OpenSSL is optional (linked automatically when found)
-
-### Configure and compile
+### CMake path (preferred)
 
 ```bash
 cmake -S . -B build
 cmake --build build
 ```
 
-If `src/main.cpp` is not present yet, the build still succeeds using a generated bootstrap `main` file so the toolchain can be validated early.
+The target is:
+
+```text
+from_scratch_browser
+```
+
+If `src/main.cpp` is missing in your workspace snapshot, the CMake setup still supports bootstrap build behavior for early validation.
+
+### Direct build fallback (scripts only)
+
+`scripts/run_sample.sh` and `scripts/smoke_test.sh` can still run in environments without a healthy CMake install by directly compiling a fallback source set when needed.
+
+---
 
 ## Run
+
+### Basic run
 
 ```bash
 ./build/from_scratch_browser https://example.com output.ppm 1280 720
 ```
 
-On multi-config generators (for example Visual Studio), run the binary from the selected config directory such as `build/Debug/`.
+If you are on multi-config generators, the binary is usually under:
 
-Current run flow is:
-`fetch -> parse -> CSS -> layout -> render -> PPM`
+```text
+build/Debug/from_scratch_browser
+build/Release/from_scratch_browser
+```
 
-For an end-to-end example run, use the sample run script in `scripts/` (when present in your checkout).
+### Scripted runs
 
-## Project layout
+```bash
+./scripts/run_sample.sh
+```
 
-Headers are under `include/`, and implementation modules are grouped under `src/`:
+This generates:
 
-- `src/browser`: application orchestration pipeline
-- `src/core`: shared configuration and core runtime pieces
-- `src/html`: HTML tokenizer/parser for the supported static subset
-- `src/css`: CSS tokenizer/parser and style resolution
-- `src/js`: starter JavaScript subset parsing/runtime support
-- `src/layout`: box tree construction and layout calculations
-- `src/render`: painting and output surface integration
-- `src/net`: optional network/TLS fetch helpers and local file loading
-- `src/utils`: utility helpers used across modules
+- `out.ppm` (HTTP)
+- `out_local_path.ppm` (local path input)
+- `out_file.ppm` (file URL input)
 
-The executable target is named `from_scratch_browser`.
+```bash
+./scripts/smoke_test.sh
+```
+
+This executes smoke and feature validation and writes fixture artifacts:
+
+- `smoke_out.ppm`
+- `smoke_feature_out.ppm`
+- `smoke_feature_local_out.ppm`
+
+---
+
+## Inspecting Visual Output
+
+All outputs are `.ppm`, so you can inspect them in an image viewer that supports raw PPM, or convert:
+
+```bash
+python3 - <<'PY'
+from PIL import Image
+img = Image.open("out.ppm")
+img.save("out.png")
+PY
+```
+
+`Pillow` is optional but useful for quick visual confirmation.
+
+---
+
+## Development Rhythm
+
+The repo is designed for iterative, phase-by-phase growth.
+
+Recommended work loop:
+
+- Change a small subset of parser/layout/render behavior.
+- Run a focused sample:
+  - `./scripts/run_sample.sh`
+  - `./scripts/smoke_test.sh`
+- Inspect `.ppm` outputs.
+- Commit or continue only when the relevant assertion set remains stable.
+
+This project naturally rewards tight cycles and small diff footprints.
+
+---
+
+## What to Expect in Daily Engineering
+
+When extending Vibrowser, every addition should map to one of these questions:
+
+1. Which stage changes (fetch, parse, CSS, layout, render)?
+2. Can I validate the change with one fixture and one command?
+3. Is the behavior deterministic across runs?
+4. Did I keep the implementation in the current style boundary?
+
+If the answer is no for #3 or #4, the change usually gets queued as follow-up engineering debt until a reproducible strategy exists.
+
+---
+
+## Testing Strategy
+
+- Compile and link all tests with CMake
+- Use sample fixtures to exercise full pipeline behaviors
+- Use smoke tests as guardrails for style + rendering features
+- Keep regressions local and small; avoid broad refactors before evidence
+
+---
+
+## Limitations (By Design Right Now)
+
+- Not a full web platform.
+- Not a complete JS engine.
+- Not a security-hardened production browser.
+- Not optimized for modern web-scale features.
+
+The implementation intentionally focuses on a constrained subset so behavior stays tractable and educational.
+
+---
+
+## Philosophy
+
+Vibrowser is built for people who want to see the full stack without pretending complexity is gone.
+
+You can:
+
+- trace behavior from input to output
+- add features in small increments
+- learn from failures quickly
+- build confidence from artifacts instead of guessing
+
+That is the core rhythm of this repo.
+
+---
+
+## Helpful Root Utilities
+
+- `rebuild_and_launch_clever_browser.sh`
+- `run_clever_browser_build_and_run.sh`
+
+These are convenience scripts for local launch and rebuild cycles.
+
+---
+
+## Future Work Roadmap
+
+Likely next targets once current behaviors are stable:
+
+- richer selector coverage for production-like CSS edge cases
+- broader DOM and style property coverage
+- more robust networking edge-case handling
+- clearer diagnostics for parser recovery modes
+- better test organization for large fixture families
+- output viewer tooling for easier visual diffing
+
+This roadmap can change as feature debt becomes measurable.
+
+---
+
+## Contributing
+
+If you are adding parser/selector/render work:
+
+- keep changes tightly scoped to one behavior cluster
+- update fixtures in `examples/` to encode intent
+- wire verification into existing scripts whenever feasible
+
+No external workflow tooling required to get started; CMake + scripts are enough.
+
+---
+
+## License and Distribution
+
+Project metadata and legal metadata are handled in repository root docs.  
+Check the corresponding project files for licensing and usage details before packaging or redistributing.
+
+---
+
+Welcome to Vibrowser.  
+Build it loud, keep it explicit, and let output files tell you the truth.

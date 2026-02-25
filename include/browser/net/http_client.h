@@ -11,6 +11,7 @@ namespace browser::net {
 struct Response {
   int status_code = 0;
   std::string reason;
+  std::string http_version;
   std::map<std::string, std::string> headers;
   std::string body;
   std::string final_url;
@@ -67,6 +68,12 @@ struct FetchOptions {
 };
 
 RequestTransaction fetch_with_contract(const std::string& url, const FetchOptions& options = {});
+
+bool parse_http_status_line(const std::string& status_line,
+                            std::string& http_version,
+                            int& status_code,
+                            std::string& reason,
+                            std::string& err);
 
 enum class CachePolicy {
     NoCache,

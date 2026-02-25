@@ -911,6 +911,12 @@ bool parse_status_line(const std::string& status_line, Response& response, std::
     err = "Malformed HTTP status line";
     return false;
   }
+  const std::string version = trim_ascii(status_line.substr(0, first_space));
+  if (!starts_with(version, "HTTP/")) {
+    err = "Malformed HTTP status line";
+    return false;
+  }
+  response.http_version = version;
 
   const std::size_t second_space = status_line.find(' ', first_space + 1);
   const std::string status_code_str =
@@ -1455,6 +1461,25 @@ Response fetch_with_headers(const std::string& url,
 Response fetch(const std::string& url, int max_redirects, int timeout_seconds) {
   static const std::map<std::string, std::string> kNoHeaders;
   return fetch_with_headers(url, kNoHeaders, max_redirects, timeout_seconds);
+}
+
+bool parse_http_status_line(const std::string& status_line,
+                            std::string& http_version,
+                            int& status_code,
+                            std::string& reason,
+                            std::string& err) {
+    Response response;
+    if (!parse_status_line(status_line, response, err)) {
+        http_version.clear();
+        status_code = 0;
+        reason.clear();
+        return false;
+    }
+    http_version = response.http_version;
+    status_code = response.status_code;
+    reason = response.reason;
+    err.clear();
+    return true;
 }
 
 const char* request_method_name(RequestMethod method) {
