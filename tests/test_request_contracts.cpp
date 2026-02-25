@@ -313,6 +313,17 @@ int main() {
         } else {
             std::cerr << "PASS: HTTP/2 preface line is rejected with explicit not-implemented message\n";
         }
+
+        if (browser::net::parse_http_status_line(
+                "PRI * HTTP/2.0   ", http_version, status_code, reason, err)) {
+            std::cerr << "FAIL: HTTP/2 preface line with trailing whitespace should be rejected\n";
+            ++failures;
+        } else if (err.find("HTTP/2 response preface received") == std::string::npos) {
+            std::cerr << "FAIL: expected explicit HTTP/2 preface rejection for trailing-whitespace variant\n";
+            ++failures;
+        } else {
+            std::cerr << "PASS: HTTP/2 preface trailing-whitespace variant is rejected explicitly\n";
+        }
     }
 
     // Test 12: ALPN helper recognizes negotiated HTTP/2 transport protocol
