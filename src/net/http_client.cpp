@@ -1129,6 +1129,11 @@ bool contains_http2_upgrade_token(const std::string& upgrade_header) {
       continue;
     }
 
+    if (in_double_quotes || in_single_quotes || comment_depth > 0 || escape_next) {
+      token_start = i + 1;
+      continue;
+    }
+
     std::string token = to_lower_ascii(trim_ascii(upgrade_header.substr(token_start, i - token_start)));
     if (!token.empty()) {
       std::string token_without_comments;
@@ -1175,6 +1180,12 @@ bool contains_http2_upgrade_token(const std::string& upgrade_header) {
         if (token_comment_depth == 0) {
           token_without_comments.push_back(token_ch);
         }
+      }
+
+      if (token_in_double_quotes || token_in_single_quotes || token_comment_depth > 0 ||
+          token_escape_next) {
+        token_start = i + 1;
+        continue;
       }
 
       token = trim_ascii(token_without_comments);
