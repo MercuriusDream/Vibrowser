@@ -1108,6 +1108,10 @@ bool contains_http2_upgrade_token(const std::string& upgrade_header) {
     const char ch = at_end ? '\0' : upgrade_header[i];
 
     if (!at_end) {
+      const unsigned char uch = static_cast<unsigned char>(ch);
+      if ((uch < 0x20 && ch != '\t') || uch == 0x7f) {
+        return false;
+      }
       if (escape_next) {
         escape_next = false;
         continue;
