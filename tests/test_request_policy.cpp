@@ -882,6 +882,42 @@ int main() {
         }
     }
 
+    // Test 46: CORS rejects duplicate case-variant ACAO headers
+    {
+        browser::net::RequestPolicy policy;
+        policy.origin = "https://app.example.com";
+        browser::net::Response response;
+        response.headers["access-control-allow-origin"] = "https://app.example.com";
+        response.headers["Access-Control-Allow-Origin"] = "https://other.example.com";
+        auto result =
+            browser::net::check_cors_response_policy("https://api.example.com/data", response, policy);
+        if (result.allowed) {
+            std::cerr << "FAIL: duplicate ACAO headers should be rejected\n";
+            ++failures;
+        } else {
+            std::cerr << "PASS: duplicate ACAO headers are rejected\n";
+        }
+    }
+
+    // Test 47: credentialed CORS rejects duplicate case-variant ACAC headers
+    {
+        browser::net::RequestPolicy policy;
+        policy.origin = "https://app.example.com";
+        policy.credentials_mode_include = true;
+        browser::net::Response response;
+        response.headers["access-control-allow-origin"] = "https://app.example.com";
+        response.headers["access-control-allow-credentials"] = "true";
+        response.headers["Access-Control-Allow-Credentials"] = "true";
+        auto result =
+            browser::net::check_cors_response_policy("https://api.example.com/data", response, policy);
+        if (result.allowed) {
+            std::cerr << "FAIL: duplicate ACAC headers should be rejected for credentialed CORS\n";
+            ++failures;
+        } else {
+            std::cerr << "PASS: duplicate ACAC headers are rejected for credentialed CORS\n";
+        }
+    }
+
     if (failures > 0) {
         std::cerr << "\n" << failures << " test(s) FAILED\n";
         return 1;

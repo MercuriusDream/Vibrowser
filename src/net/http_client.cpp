@@ -115,19 +115,28 @@ std::string trim_ascii(const std::string& value) {
   return value.substr(first, last - first);
 }
 
-const std::string* find_header_value_case_insensitive(
+struct SingleHeaderLookupResult {
+  bool found = false;
+  bool duplicate = false;
+  std::string value;
+};
+
+SingleHeaderLookupResult find_single_header_value_case_insensitive(
     const std::map<std::string, std::string>& headers,
     const std::string& header_name_lower) {
-  auto it = headers.find(header_name_lower);
-  if (it != headers.end()) {
-    return &it->second;
-  }
+  SingleHeaderLookupResult result;
   for (const auto& pair : headers) {
-    if (to_lower_ascii(pair.first) == header_name_lower) {
-      return &pair.second;
+    if (to_lower_ascii(pair.first) != header_name_lower) {
+      continue;
     }
+    if (result.found) {
+      result.duplicate = true;
+      return result;
+    }
+    result.found = true;
+    result.value = pair.second;
   }
-  return nullptr;
+  return result;
 }
 
 std::string strip_single_quotes(const std::string& token) {
@@ -1869,15 +1878,20 @@ PolicyCheckResult check_cors_response_policy(const std::string& url,
         return {true, PolicyViolation::None, ""};
     }
 
-    const std::string* acao_header =
-        find_header_value_case_insensitive(response.headers, "access-control-allow-origin");
-    if (!acao_header) {
+    const SingleHeaderLookupResult acao_header = find_single_header_value_case_insensitive(
+        response.headers, "access-control-allow-origin");
+    if (!acao_header.found) {
         return {false,
                 PolicyViolation::CorsResponseBlocked,
                 "Cross-origin response blocked: missing Access-Control-Allow-Origin"};
     }
+    if (acao_header.duplicate) {
+        return {false,
+                PolicyViolation::CorsResponseBlocked,
+                "Cross-origin response blocked: duplicate Access-Control-Allow-Origin"};
+    }
 
-    const std::string acao_value = trim_ascii(*acao_header);
+    const std::string acao_value = trim_ascii(acao_header.value);
     if (acao_value.empty() || acao_value.find(',') != std::string::npos) {
         return {false,
                 PolicyViolation::CorsResponseBlocked,
@@ -1936,9 +1950,10 @@ PolicyCheckResult check_cors_response_policy(const std::string& url,
                     "Cross-origin response blocked: ACAO '*' disallowed for credentialed CORS"};
         }
         if (policy.require_acac_for_credentialed_cors) {
-            const std::string* acac_header = find_header_value_case_insensitive(
+            const SingleHeaderLookupResult acac_header = find_single_header_value_case_insensitive(
                 response.headers, "access-control-allow-credentials");
-            if (!acac_header || trim_ascii(*acac_header) != "true") {
+            if (!acac_header.found || acac_header.duplicate ||
+                trim_ascii(acac_header.value) != "true") {
                 return {false,
                         PolicyViolation::CorsResponseBlocked,
                         "Cross-origin response blocked: missing Access-Control-Allow-Credentials=true"};
