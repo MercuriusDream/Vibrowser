@@ -1099,6 +1099,7 @@ bool contains_chunked_encoding(const std::string& transfer_encoding_header) {
 bool contains_http2_upgrade_token(const std::string& upgrade_header) {
   bool in_double_quotes = false;
   bool in_single_quotes = false;
+  int comment_depth = 0;
   bool escape_next = false;
   std::size_t token_start = 0;
 
@@ -1115,10 +1116,14 @@ bool contains_http2_upgrade_token(const std::string& upgrade_header) {
         in_double_quotes = !in_double_quotes;
       } else if (!in_double_quotes && ch == '\'') {
         in_single_quotes = !in_single_quotes;
+      } else if (!in_double_quotes && !in_single_quotes && ch == '(') {
+        ++comment_depth;
+      } else if (!in_double_quotes && !in_single_quotes && ch == ')' && comment_depth > 0) {
+        --comment_depth;
       }
     }
 
-    if (!at_end && (ch != ',' || in_double_quotes || in_single_quotes)) {
+    if (!at_end && (ch != ',' || in_double_quotes || in_single_quotes || comment_depth > 0)) {
       continue;
     }
 

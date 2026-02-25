@@ -387,6 +387,9 @@ int main() {
         } else if (!browser::net::is_http2_upgrade_request({{"\tUpgrade ", "h2"}})) {
             std::cerr << "FAIL: expected whitespace-padded Upgrade header name to be normalized and detected\n";
             ++failures;
+        } else if (browser::net::is_http2_upgrade_protocol("websocket(comment, h2, note)")) {
+            std::cerr << "FAIL: expected commas inside parenthesized comment text to not create synthetic h2 tokens\n";
+            ++failures;
         } else if (browser::net::is_http2_upgrade_protocol("websocket")) {
             std::cerr << "FAIL: expected non-h2 upgrade token to not be treated as HTTP/2\n";
             ++failures;
@@ -414,6 +417,9 @@ int main() {
             ++failures;
         } else if (browser::net::is_http2_upgrade_response(101, "\"websocket,h2\"")) {
             std::cerr << "FAIL: expected quoted comma-containing upgrade token to not be split in response detection\n";
+            ++failures;
+        } else if (browser::net::is_http2_upgrade_response(426, "websocket(comment, h2, note)")) {
+            std::cerr << "FAIL: expected commas inside parenthesized comment text to not create synthetic response h2 matches\n";
             ++failures;
         } else if (browser::net::is_http2_upgrade_response(426, "websocket")) {
             std::cerr << "FAIL: expected 426 without h2/h2c token to not be treated as HTTP/2 upgrade response\n";
@@ -452,19 +458,26 @@ int main() {
                         std::cerr << "FAIL: expected quoted comma-containing Upgrade token to not be split in request detection\n";
                         ++failures;
                     } else {
-                        headers.clear();
+                    headers.clear();
                     headers["upgrade"] = "websocket";
                     if (browser::net::is_http2_upgrade_request(headers)) {
                         std::cerr << "FAIL: expected non-h2 Upgrade header to not be treated as HTTP/2 upgrade request\n";
                         ++failures;
                     } else {
                         headers.clear();
+                        headers["upgrade"] = "websocket(comment, h2, note)";
+                        if (browser::net::is_http2_upgrade_request(headers)) {
+                            std::cerr << "FAIL: expected commas inside parenthesized comment text to not create synthetic request h2 matches\n";
+                            ++failures;
+                        } else {
+                            headers.clear();
                         headers["X-Custom"] = "h2";
                         if (browser::net::is_http2_upgrade_request(headers)) {
                             std::cerr << "FAIL: expected non-Upgrade header to not be treated as HTTP/2 upgrade request\n";
                             ++failures;
                         } else {
                             std::cerr << "PASS: HTTP/2 upgrade request detection works as expected\n";
+                        }
                         }
                     }
                     }
