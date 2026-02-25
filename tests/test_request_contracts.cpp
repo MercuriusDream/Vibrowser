@@ -245,21 +245,32 @@ int main() {
         }
     }
 
-    // Test 11: status-line parser captures protocol version (including HTTP/2 token)
+    // Test 11: status-line parser captures HTTP/1.x protocol version and rejects HTTP/2 until implemented
     {
         std::string http_version;
         int status_code = 0;
         std::string reason;
         std::string err;
         if (!browser::net::parse_http_status_line(
-                "HTTP/2 200 OK", http_version, status_code, reason, err)) {
-            std::cerr << "FAIL: expected valid HTTP/2 status line to parse\n";
+                "HTTP/1.1 200 OK", http_version, status_code, reason, err)) {
+            std::cerr << "FAIL: expected valid HTTP/1.1 status line to parse\n";
             ++failures;
-        } else if (http_version != "HTTP/2" || status_code != 200 || reason != "OK") {
+        } else if (http_version != "HTTP/1.1" || status_code != 200 || reason != "OK") {
             std::cerr << "FAIL: status-line parse produced unexpected fields\n";
             ++failures;
         } else {
-            std::cerr << "PASS: status-line parser captures HTTP version/status/reason\n";
+            std::cerr << "PASS: status-line parser captures HTTP/1.x version/status/reason\n";
+        }
+
+        if (browser::net::parse_http_status_line(
+                "HTTP/2 200 OK", http_version, status_code, reason, err)) {
+            std::cerr << "FAIL: HTTP/2 status line should be rejected until h2 transport is implemented\n";
+            ++failures;
+        } else if (err.find("HTTP/2 status line received") == std::string::npos) {
+            std::cerr << "FAIL: expected explicit HTTP/2 status-line rejection message\n";
+            ++failures;
+        } else {
+            std::cerr << "PASS: HTTP/2 status line is rejected with explicit not-implemented message\n";
         }
 
         if (browser::net::parse_http_status_line(

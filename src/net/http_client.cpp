@@ -921,6 +921,10 @@ bool parse_status_line(const std::string& status_line, Response& response, std::
     err = "Malformed HTTP status line";
     return false;
   }
+  if (version == "HTTP/2" || version == "HTTP/2.0") {
+    err = "HTTP/2 status line received; HTTP/2 transport is not implemented yet";
+    return false;
+  }
   response.http_version = version;
 
   const std::size_t second_space = status_line.find(' ', first_space + 1);
