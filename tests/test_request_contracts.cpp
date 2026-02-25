@@ -378,6 +378,9 @@ int main() {
         } else if (!browser::net::is_http2_upgrade_protocol("'h2'")) {
             std::cerr << "FAIL: expected single-quoted h2 upgrade token to be treated as HTTP/2 upgrade\n";
             ++failures;
+        } else if (!browser::net::is_http2_upgrade_protocol("\"\\\"h2\\\"\"")) {
+            std::cerr << "FAIL: expected escaped quoted-string h2 upgrade token to be normalized and detected\n";
+            ++failures;
         } else if (!browser::net::is_http2_upgrade_protocol("h2(comment)")) {
             std::cerr << "FAIL: expected h2 token with trailing comment to be treated as HTTP/2 upgrade\n";
             ++failures;
@@ -417,6 +420,9 @@ int main() {
             ++failures;
         } else if (!browser::net::is_http2_upgrade_response(426, "'h2c'")) {
             std::cerr << "FAIL: expected single-quoted h2c token to be treated as HTTP/2 upgrade response\n";
+            ++failures;
+        } else if (!browser::net::is_http2_upgrade_response(101, "\"\\\"h2\\\"\"")) {
+            std::cerr << "FAIL: expected escaped quoted-string h2 token to be normalized in response detection\n";
             ++failures;
         } else if (!browser::net::is_http2_upgrade_response(101, "h2(comment)")) {
             std::cerr << "FAIL: expected h2 token with trailing comment to be treated as HTTP/2 upgrade response\n";
@@ -459,6 +465,12 @@ int main() {
                     ++failures;
                 } else {
                     headers.clear();
+                    headers["Upgrade"] = "\"\\\"h2\\\"\"";
+                    if (!browser::net::is_http2_upgrade_request(headers)) {
+                        std::cerr << "FAIL: expected escaped quoted-string Upgrade: h2 request header to be normalized and detected\n";
+                        ++failures;
+                    } else {
+                    headers.clear();
                     headers["Upgrade"] = "h2(comment)";
                     if (!browser::net::is_http2_upgrade_request(headers)) {
                         std::cerr << "FAIL: expected Upgrade: h2(comment) request header to be treated as HTTP/2 upgrade request\n";
@@ -497,6 +509,7 @@ int main() {
                 }
             }
         }
+    }
     }
 
     // Test 16: HTTP2-Settings request header helper recognizes outbound h2c settings signal
