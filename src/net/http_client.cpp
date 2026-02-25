@@ -1233,11 +1233,19 @@ bool contains_http2_upgrade_token(const std::string& upgrade_header) {
       if (semicolon != std::string::npos) {
         token = trim_ascii(token.substr(0, semicolon));
       }
+      bool token_was_double_quoted = false;
+      bool token_was_single_quoted = false;
       if (token.size() >= 2 && token.front() == '"' && token.back() == '"') {
+        token_was_double_quoted = true;
         token = trim_ascii(token.substr(1, token.size() - 2));
       }
       if (token.size() >= 2 && token.front() == '\'' && token.back() == '\'') {
+        token_was_single_quoted = true;
         token = trim_ascii(token.substr(1, token.size() - 2));
+      }
+      if (token.find('\\') != std::string::npos &&
+          !token_was_double_quoted && !token_was_single_quoted) {
+        return false;
       }
       {
         std::string unescaped_token;
