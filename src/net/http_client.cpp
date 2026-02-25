@@ -1889,6 +1889,8 @@ PolicyCheckResult check_cors_response_policy(const std::string& url,
     if (acao_value == "*") {
         wildcard_origin = true;
         allows_origin = true;
+    } else if (acao_value == "null") {
+        allows_origin = (policy_origin == "null");
     } else {
         const std::size_t scheme_end = acao_value.find("://");
         if (scheme_end == std::string::npos || scheme_end + 3 >= acao_value.size()) {

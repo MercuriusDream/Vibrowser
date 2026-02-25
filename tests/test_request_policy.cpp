@@ -729,6 +729,38 @@ int main() {
         }
     }
 
+    // Test 39b: CORS allows ACAO null only when request Origin is null
+    {
+        browser::net::RequestPolicy policy;
+        policy.origin = "null";
+        browser::net::Response response;
+        response.headers["access-control-allow-origin"] = "null";
+        auto result =
+            browser::net::check_cors_response_policy("https://api.example.com/data", response, policy);
+        if (!result.allowed) {
+            std::cerr << "FAIL: ACAO null should be allowed when policy origin is null\n";
+            ++failures;
+        } else {
+            std::cerr << "PASS: ACAO null is allowed for null origin requests\n";
+        }
+    }
+
+    // Test 39c: CORS rejects ACAO null for non-null origin requests
+    {
+        browser::net::RequestPolicy policy;
+        policy.origin = "https://app.example.com";
+        browser::net::Response response;
+        response.headers["access-control-allow-origin"] = "null";
+        auto result =
+            browser::net::check_cors_response_policy("https://api.example.com/data", response, policy);
+        if (result.allowed) {
+            std::cerr << "FAIL: ACAO null should not allow non-null origins\n";
+            ++failures;
+        } else {
+            std::cerr << "PASS: ACAO null is rejected for non-null origin requests\n";
+        }
+    }
+
     // Test 40: connect-src host-source with trailing-slash path uses prefix matching
     {
         browser::net::RequestPolicy policy;
