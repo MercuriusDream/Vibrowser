@@ -1150,7 +1150,7 @@ bool contains_chunked_encoding(const std::string& transfer_encoding_header) {
     }
     for (char ch : token) {
       const unsigned char uch = static_cast<unsigned char>(ch);
-      if (uch <= 0x1f || uch == 0x7f) {
+      if (uch <= 0x1f || uch == 0x7f || uch >= 0x80) {
         return false;
       }
     }
@@ -1194,7 +1194,7 @@ bool contains_http2_upgrade_token(const std::string& upgrade_header) {
 
     if (!at_end) {
       const unsigned char uch = static_cast<unsigned char>(ch);
-      if ((uch < 0x20 && ch != '\t') || uch == 0x7f) {
+      if ((uch < 0x20 && ch != '\t') || uch == 0x7f || uch >= 0x80) {
         return false;
       }
       if (escape_next) {

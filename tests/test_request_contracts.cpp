@@ -408,6 +408,9 @@ int main() {
         } else if (browser::net::is_http2_upgrade_protocol(std::string("h2\x01", 3))) {
             std::cerr << "FAIL: expected control-character malformed token to be rejected\n";
             ++failures;
+        } else if (browser::net::is_http2_upgrade_protocol(std::string("h2\x80", 3))) {
+            std::cerr << "FAIL: expected non-ASCII malformed token to be rejected\n";
+            ++failures;
         } else if (browser::net::is_http2_upgrade_protocol("h\\2")) {
             std::cerr << "FAIL: expected malformed bare backslash escape token to be rejected\n";
             ++failures;
@@ -465,6 +468,9 @@ int main() {
             ++failures;
         } else if (browser::net::is_http2_upgrade_response(101, std::string("h2\x01", 3))) {
             std::cerr << "FAIL: expected control-character malformed response token to be rejected\n";
+            ++failures;
+        } else if (browser::net::is_http2_upgrade_response(101, std::string("h2\x80", 3))) {
+            std::cerr << "FAIL: expected non-ASCII malformed response token to be rejected\n";
             ++failures;
         } else if (browser::net::is_http2_upgrade_response(426, "h\\2c")) {
             std::cerr << "FAIL: expected malformed bare backslash escape response token to be rejected\n";
@@ -525,6 +531,9 @@ int main() {
             ++failures;
         } else if (browser::net::is_http2_upgrade_request({{"upgrade", std::string("h2\x01", 3)}})) {
             std::cerr << "FAIL: expected control-character malformed request token to be rejected\n";
+            ++failures;
+        } else if (browser::net::is_http2_upgrade_request({{"upgrade", std::string("h2\x80", 3)}})) {
+            std::cerr << "FAIL: expected non-ASCII malformed request token to be rejected\n";
             ++failures;
         } else if (browser::net::is_http2_upgrade_request({{"upgrade", "h\\2"}})) {
             std::cerr << "FAIL: expected malformed bare backslash escape request token to be rejected\n";
@@ -638,6 +647,9 @@ int main() {
             ++failures;
         } else if (browser::net::is_chunked_transfer_encoding(std::string("chunked\x01", 8))) {
             std::cerr << "FAIL: expected control-character transfer-encoding token to be rejected\n";
+            ++failures;
+        } else if (browser::net::is_chunked_transfer_encoding(std::string("chunked\x80", 8))) {
+            std::cerr << "FAIL: expected non-ASCII transfer-encoding token to be rejected\n";
             ++failures;
         } else if (browser::net::is_chunked_transfer_encoding("chu\tnked")) {
             std::cerr << "FAIL: expected tab-corrupted transfer-encoding token to be rejected\n";
