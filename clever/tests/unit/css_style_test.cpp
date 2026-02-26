@@ -8531,3 +8531,157 @@ TEST(PropertyCascadeTest, WebkitTextStrokeWidthAndColor) {
     EXPECT_EQ(style.text_stroke_color.g, 0);
     EXPECT_EQ(style.text_stroke_color.b, 0);
 }
+
+// ---------------------------------------------------------------------------
+// Cycle 463 — hyphens, text-justify, initial-letter, image-orientation,
+//             math-style/depth, print-color-adjust, -webkit-text-fill-color
+// ---------------------------------------------------------------------------
+
+TEST(PropertyCascadeTest, HyphensValues) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.hyphens, 1);  // default: manual
+
+    cascade.apply_declaration(style, make_decl("hyphens", "none"), parent);
+    EXPECT_EQ(style.hyphens, 0);
+
+    cascade.apply_declaration(style, make_decl("hyphens", "auto"), parent);
+    EXPECT_EQ(style.hyphens, 2);
+
+    cascade.apply_declaration(style, make_decl("hyphens", "manual"), parent);
+    EXPECT_EQ(style.hyphens, 1);
+}
+
+TEST(PropertyCascadeTest, TextJustifyValues) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.text_justify, 0);  // default: auto
+
+    cascade.apply_declaration(style, make_decl("text-justify", "inter-word"), parent);
+    EXPECT_EQ(style.text_justify, 1);
+
+    cascade.apply_declaration(style, make_decl("text-justify", "inter-character"), parent);
+    EXPECT_EQ(style.text_justify, 2);
+
+    cascade.apply_declaration(style, make_decl("text-justify", "none"), parent);
+    EXPECT_EQ(style.text_justify, 3);
+
+    cascade.apply_declaration(style, make_decl("text-justify", "auto"), parent);
+    EXPECT_EQ(style.text_justify, 0);
+}
+
+TEST(PropertyCascadeTest, InitialLetterNormalAndValue) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_FLOAT_EQ(style.initial_letter_size, 0.0f);
+    EXPECT_EQ(style.initial_letter_sink, 0);
+
+    // Two values: size and sink
+    cascade.apply_declaration(style, make_decl("initial-letter", "3 2"), parent);
+    EXPECT_FLOAT_EQ(style.initial_letter_size, 3.0f);
+    EXPECT_EQ(style.initial_letter_sink, 2);
+
+    // Single value: size, sink defaults to same as size
+    cascade.apply_declaration(style, make_decl("initial-letter", "2"), parent);
+    EXPECT_FLOAT_EQ(style.initial_letter_size, 2.0f);
+    EXPECT_EQ(style.initial_letter_sink, 2);
+
+    // "normal" resets both to 0
+    cascade.apply_declaration(style, make_decl("initial-letter", "normal"), parent);
+    EXPECT_FLOAT_EQ(style.initial_letter_size, 0.0f);
+    EXPECT_EQ(style.initial_letter_sink, 0);
+}
+
+TEST(PropertyCascadeTest, InitialLetterAlignValues) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.initial_letter_align, 0);  // default: auto
+
+    cascade.apply_declaration(style, make_decl("initial-letter-align", "border-box"), parent);
+    EXPECT_EQ(style.initial_letter_align, 1);
+
+    cascade.apply_declaration(style, make_decl("initial-letter-align", "alphabetic"), parent);
+    EXPECT_EQ(style.initial_letter_align, 2);
+
+    cascade.apply_declaration(style, make_decl("initial-letter-align", "auto"), parent);
+    EXPECT_EQ(style.initial_letter_align, 0);
+}
+
+TEST(PropertyCascadeTest, ImageOrientationValues) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.image_orientation, 0);  // default: from-image
+
+    cascade.apply_declaration(style, make_decl("image-orientation", "none"), parent);
+    EXPECT_EQ(style.image_orientation, 1);
+
+    cascade.apply_declaration(style, make_decl("image-orientation", "flip"), parent);
+    EXPECT_EQ(style.image_orientation, 2);
+
+    cascade.apply_declaration(style, make_decl("image-orientation", "from-image"), parent);
+    EXPECT_EQ(style.image_orientation, 0);
+}
+
+TEST(PropertyCascadeTest, MathStyleAndDepth) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.math_style, 0);  // default: normal
+    EXPECT_EQ(style.math_depth, 0);
+
+    cascade.apply_declaration(style, make_decl("math-style", "compact"), parent);
+    EXPECT_EQ(style.math_style, 1);
+
+    cascade.apply_declaration(style, make_decl("math-depth", "3"), parent);
+    EXPECT_EQ(style.math_depth, 3);
+
+    cascade.apply_declaration(style, make_decl("math-depth", "auto-add"), parent);
+    EXPECT_EQ(style.math_depth, -1);
+
+    cascade.apply_declaration(style, make_decl("math-style", "normal"), parent);
+    EXPECT_EQ(style.math_style, 0);
+}
+
+TEST(PropertyCascadeTest, PrintColorAdjustValues) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.print_color_adjust, 0);  // default: economy
+
+    cascade.apply_declaration(style, make_decl("print-color-adjust", "exact"), parent);
+    EXPECT_EQ(style.print_color_adjust, 1);
+
+    cascade.apply_declaration(style, make_decl("print-color-adjust", "economy"), parent);
+    EXPECT_EQ(style.print_color_adjust, 0);
+
+    // -webkit alias
+    cascade.apply_declaration(style, make_decl("-webkit-print-color-adjust", "exact"), parent);
+    EXPECT_EQ(style.print_color_adjust, 1);
+}
+
+TEST(PropertyCascadeTest, WebkitTextFillColor) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    // default: transparent (a=0 means use 'color')
+    EXPECT_EQ(style.text_fill_color.a, 0);
+
+    cascade.apply_declaration(style, make_decl("-webkit-text-fill-color", "green"), parent);
+    EXPECT_EQ(style.text_fill_color.r, 0);
+    EXPECT_EQ(style.text_fill_color.g, 128);
+    EXPECT_EQ(style.text_fill_color.b, 0);
+    EXPECT_EQ(style.text_fill_color.a, 255);
+}
