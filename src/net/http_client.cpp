@@ -425,6 +425,39 @@ std::string canonicalize_origin(const std::string& origin) {
   return to_lower_ascii(trimmed);
 }
 
+bool parse_serialized_origin(const std::string& value, std::string& canonical_origin) {
+  const std::string trimmed = trim_ascii(value);
+  if (trimmed.empty() || has_forbidden_header_value_char(trimmed)) {
+    return false;
+  }
+  if (trimmed == "null") {
+    canonical_origin = "null";
+    return true;
+  }
+
+  const std::size_t scheme_end = trimmed.find("://");
+  if (scheme_end == std::string::npos || scheme_end + 3 >= trimmed.size()) {
+    return false;
+  }
+  const std::size_t authority_end = trimmed.find_first_of("/?#", scheme_end + 3);
+  if (authority_end != std::string::npos) {
+    return false;
+  }
+  const std::size_t userinfo_delim = trimmed.find('@', scheme_end + 3);
+  if (userinfo_delim != std::string::npos) {
+    return false;
+  }
+
+  Url parsed;
+  std::string err;
+  if (!parse_url(trimmed, parsed, err)) {
+    return false;
+  }
+
+  canonical_origin = canonicalize_origin(trimmed);
+  return !canonical_origin.empty();
+}
+
 bool csp_connect_src_allows_url(const std::string& url, const RequestPolicy& policy) {
   if (!policy.enforce_connect_src) {
     return true;
@@ -2113,7 +2146,12 @@ PolicyCheckResult check_cors_response_policy(const std::string& url,
     }
 
     const std::string request_origin = canonicalize_origin(build_origin_for_url(parsed));
-    const std::string policy_origin = canonicalize_origin(policy.origin);
+    std::string policy_origin;
+    if (!parse_serialized_origin(policy.origin, policy_origin)) {
+        return {false,
+                PolicyViolation::CorsResponseBlocked,
+                "Cross-origin response blocked: invalid request Origin for CORS check"};
+    }
 
     if (request_origin == policy_origin) {
         return {true, PolicyViolation::None, ""};
@@ -2145,36 +2183,14 @@ PolicyCheckResult check_cors_response_policy(const std::string& url,
     if (acao_value == "*") {
         wildcard_origin = true;
         allows_origin = true;
-    } else if (acao_value == "null") {
-        allows_origin = (policy_origin == "null");
     } else {
-        const std::size_t scheme_end = acao_value.find("://");
-        if (scheme_end == std::string::npos || scheme_end + 3 >= acao_value.size()) {
+        std::string acao_origin;
+        if (!parse_serialized_origin(acao_value, acao_origin)) {
             return {false,
                     PolicyViolation::CorsResponseBlocked,
                     "Cross-origin response blocked: ACAO must be a serialized origin"};
         }
-        const std::size_t authority_end =
-            acao_value.find_first_of("/?#", scheme_end + 3);
-        if (authority_end != std::string::npos) {
-            return {false,
-                    PolicyViolation::CorsResponseBlocked,
-                    "Cross-origin response blocked: ACAO must be a serialized origin"};
-        }
-        const std::size_t userinfo_delim = acao_value.find('@', scheme_end + 3);
-        if (userinfo_delim != std::string::npos) {
-            return {false,
-                    PolicyViolation::CorsResponseBlocked,
-                    "Cross-origin response blocked: ACAO must be a serialized origin"};
-        }
-        Url acao_origin;
-        std::string acao_err;
-        if (!parse_url(acao_value, acao_origin, acao_err)) {
-            return {false,
-                    PolicyViolation::CorsResponseBlocked,
-                    "Cross-origin response blocked: ACAO must be a serialized origin"};
-        }
-        if (canonicalize_origin(acao_value) == policy_origin) {
+        if (acao_origin == policy_origin) {
             allows_origin = true;
         }
     }

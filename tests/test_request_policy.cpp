@@ -969,6 +969,38 @@ int main() {
         }
     }
 
+    // Test 51: CORS rejects malformed request Origin values with path components
+    {
+        browser::net::RequestPolicy policy;
+        policy.origin = "https://app.example.com/with-path";
+        browser::net::Response response;
+        response.headers["access-control-allow-origin"] = "https://app.example.com";
+        auto result =
+            browser::net::check_cors_response_policy("https://api.example.com/data", response, policy);
+        if (result.allowed) {
+            std::cerr << "FAIL: malformed request Origin should be rejected for CORS checks\n";
+            ++failures;
+        } else {
+            std::cerr << "PASS: malformed request Origin with path is rejected\n";
+        }
+    }
+
+    // Test 52: CORS rejects malformed request Origin values with userinfo
+    {
+        browser::net::RequestPolicy policy;
+        policy.origin = "https://user@app.example.com";
+        browser::net::Response response;
+        response.headers["access-control-allow-origin"] = "https://app.example.com";
+        auto result =
+            browser::net::check_cors_response_policy("https://api.example.com/data", response, policy);
+        if (result.allowed) {
+            std::cerr << "FAIL: request Origin with userinfo should be rejected\n";
+            ++failures;
+        } else {
+            std::cerr << "PASS: malformed request Origin with userinfo is rejected\n";
+        }
+    }
+
     if (failures > 0) {
         std::cerr << "\n" << failures << " test(s) FAILED\n";
         return 1;
