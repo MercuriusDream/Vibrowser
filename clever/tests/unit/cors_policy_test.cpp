@@ -49,6 +49,8 @@ TEST(CORSPolicyTest, RequestUrlEligibility) {
     EXPECT_FALSE(is_cors_eligible_request_url("https://-api.example/data"));
     EXPECT_FALSE(is_cors_eligible_request_url("https://api-.example/data"));
     EXPECT_FALSE(is_cors_eligible_request_url("https://2130706433/data"));
+    EXPECT_FALSE(is_cors_eligible_request_url("https://0x7f000001/data"));
+    EXPECT_FALSE(is_cors_eligible_request_url("https://0x7f.0x0.0x0.0x1/data"));
     EXPECT_FALSE(is_cors_eligible_request_url("https://api.example/%0a"));
     EXPECT_FALSE(is_cors_eligible_request_url("https://api.example/%20"));
     EXPECT_FALSE(is_cors_eligible_request_url("https://api.example/%5Cdata"));
@@ -162,6 +164,10 @@ TEST(CORSPolicyTest, CrossOriginRejectsMalformedOrUnsupportedRequestUrl) {
                                       false));
     EXPECT_FALSE(cors_allows_response("https://app.example", "https://256.1.1.1/data", headers,
                                       false));
+    EXPECT_FALSE(cors_allows_response("https://app.example", "https://0x7f000001/data", headers,
+                                      false));
+    EXPECT_FALSE(cors_allows_response("https://app.example", "https://0x7f.0x0.0x0.0x1/data",
+                                      headers, false));
     EXPECT_FALSE(
         cors_allows_response("https://app.example", "https://api.example/%00", headers, false));
     EXPECT_FALSE(
@@ -261,6 +267,16 @@ TEST(CORSPolicyTest, CrossOriginRejectsMalformedACAOValue) {
     legacy_integer_ipv4.set("Access-Control-Allow-Origin", "https://2130706433");
     EXPECT_FALSE(cors_allows_response("https://app.example", "https://api.example/data",
                                       legacy_integer_ipv4, false));
+
+    clever::net::HeaderMap legacy_hex_integer_ipv4;
+    legacy_hex_integer_ipv4.set("Access-Control-Allow-Origin", "https://0x7f000001");
+    EXPECT_FALSE(cors_allows_response("https://app.example", "https://api.example/data",
+                                      legacy_hex_integer_ipv4, false));
+
+    clever::net::HeaderMap legacy_hex_dotted_ipv4;
+    legacy_hex_dotted_ipv4.set("Access-Control-Allow-Origin", "https://0x7f.0x0.0x0.0x1");
+    EXPECT_FALSE(cors_allows_response("https://app.example", "https://api.example/data",
+                                      legacy_hex_dotted_ipv4, false));
 
     clever::net::HeaderMap surrounding_whitespace_acao;
     surrounding_whitespace_acao.set("Access-Control-Allow-Origin", " https://app.example");

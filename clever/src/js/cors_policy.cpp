@@ -83,6 +83,32 @@ bool has_valid_serialized_origin_host(std::string_view host) {
     if (all_digits) {
         return false;
     }
+    {
+        std::size_t label_start = 0;
+        while (label_start <= host.size()) {
+            const std::size_t dot_pos = host.find('.', label_start);
+            const std::size_t label_end =
+                (dot_pos == std::string_view::npos) ? host.size() : dot_pos;
+            const std::size_t label_len = label_end - label_start;
+            if (label_len >= 3 && host[label_start] == '0' && host[label_start + 1] == 'x') {
+                bool all_hex_digits = true;
+                for (std::size_t i = label_start + 2; i < label_end; ++i) {
+                    const unsigned char ch = static_cast<unsigned char>(host[i]);
+                    if (std::isxdigit(ch) == 0) {
+                        all_hex_digits = false;
+                        break;
+                    }
+                }
+                if (all_hex_digits) {
+                    return false;
+                }
+            }
+            if (dot_pos == std::string_view::npos) {
+                break;
+            }
+            label_start = dot_pos + 1;
+        }
+    }
     if (dotted_decimal_candidate && dot_count == 3) {
         std::size_t octet_start = 0;
         while (octet_start <= host.size()) {
