@@ -97,6 +97,9 @@ std::optional<clever::url::URL> parse_httpish_url(std::string_view input) {
         has_invalid_request_url_octet(input)) {
         return std::nullopt;
     }
+    if (input.find('\\') != std::string_view::npos) {
+        return std::nullopt;
+    }
     for (unsigned char ch : input) {
         if (std::isspace(ch) != 0) {
             return std::nullopt;

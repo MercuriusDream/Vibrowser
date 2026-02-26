@@ -39,6 +39,7 @@ TEST(CORSPolicyTest, RequestUrlEligibility) {
     EXPECT_FALSE(is_cors_eligible_request_url("https://@api.example/data"));
     EXPECT_FALSE(is_cors_eligible_request_url("https://api.example:"));
     EXPECT_FALSE(is_cors_eligible_request_url("https://[::1]:"));
+    EXPECT_FALSE(is_cors_eligible_request_url("https://api.example\\data"));
     EXPECT_FALSE(is_cors_eligible_request_url(std::string("https://api.\x01example/data")));
     EXPECT_FALSE(is_cors_eligible_request_url(std::string("https://api.ex\xc3\xa4mple/data")));
     EXPECT_TRUE(is_cors_eligible_request_url("http://api.example/data"));
@@ -62,6 +63,8 @@ TEST(CORSPolicyTest, OriginHeaderAttachmentRule) {
         should_attach_origin_header("https://app.example", "https://@api.example/data"));
     EXPECT_FALSE(should_attach_origin_header("https://app.example", "https://api.example:"));
     EXPECT_FALSE(should_attach_origin_header("https://app.example", "https://[::1]:"));
+    EXPECT_FALSE(
+        should_attach_origin_header("https://app.example", "https://api.example\\data"));
     EXPECT_FALSE(
         should_attach_origin_header("https://app.example",
                                     std::string("https://api.\x01example/data")));
@@ -114,6 +117,8 @@ TEST(CORSPolicyTest, CrossOriginRejectsMalformedOrUnsupportedRequestUrl) {
                                       false));
     EXPECT_FALSE(
         cors_allows_response("https://app.example", "https://[::1]:", headers, false));
+    EXPECT_FALSE(
+        cors_allows_response("https://app.example", "https://api.example\\data", headers, false));
     EXPECT_FALSE(cors_allows_response("https://app.example",
                                       std::string("https://api.\x01example/data"), headers,
                                       false));
