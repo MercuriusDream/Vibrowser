@@ -1158,3 +1158,90 @@ TEST(TreeBuilder, DialogElement) {
     EXPECT_EQ(buttons[0]->text_content(), "OK");
     EXPECT_EQ(buttons[1]->text_content(), "Cancel");
 }
+
+// ============================================================================
+// Cycle 506: HTML parser regression tests
+// ============================================================================
+
+TEST(TreeBuilder, ArticleElement) {
+    auto doc = parse("<body><article><p>Content</p></article></body>");
+    ASSERT_NE(doc, nullptr);
+    auto* article = doc->find_element("article");
+    ASSERT_NE(article, nullptr);
+    auto* p = doc->find_element("p");
+    ASSERT_NE(p, nullptr);
+    EXPECT_EQ(p->text_content(), "Content");
+}
+
+TEST(TreeBuilder, HeaderAndFooterElements) {
+    auto doc = parse("<body><header>Top</header><footer>Bottom</footer></body>");
+    ASSERT_NE(doc, nullptr);
+    auto* header = doc->find_element("header");
+    ASSERT_NE(header, nullptr);
+    EXPECT_EQ(header->text_content(), "Top");
+    auto* footer = doc->find_element("footer");
+    ASSERT_NE(footer, nullptr);
+    EXPECT_EQ(footer->text_content(), "Bottom");
+}
+
+TEST(TreeBuilder, H1ThroughH6AllParsed) {
+    auto doc = parse("<body><h1>A</h1><h2>B</h2><h3>C</h3><h4>D</h4><h5>E</h5><h6>F</h6></body>");
+    ASSERT_NE(doc, nullptr);
+    EXPECT_NE(doc->find_element("h1"), nullptr);
+    EXPECT_NE(doc->find_element("h2"), nullptr);
+    EXPECT_NE(doc->find_element("h3"), nullptr);
+    EXPECT_NE(doc->find_element("h4"), nullptr);
+    EXPECT_NE(doc->find_element("h5"), nullptr);
+    EXPECT_NE(doc->find_element("h6"), nullptr);
+    EXPECT_EQ(doc->find_element("h1")->text_content(), "A");
+    EXPECT_EQ(doc->find_element("h6")->text_content(), "F");
+}
+
+TEST(TreeBuilder, StyleElementInHead) {
+    auto doc = parse("<head><style>body { color: red; }</style></head><body></body>");
+    ASSERT_NE(doc, nullptr);
+    auto* style = doc->find_element("style");
+    ASSERT_NE(style, nullptr);
+    EXPECT_NE(style->text_content().find("color"), std::string::npos);
+}
+
+TEST(TreeBuilder, SpanInsideParagraph) {
+    auto doc = parse("<p>Hello <span>World</span></p>");
+    ASSERT_NE(doc, nullptr);
+    auto* span = doc->find_element("span");
+    ASSERT_NE(span, nullptr);
+    EXPECT_EQ(span->text_content(), "World");
+}
+
+TEST(TreeBuilder, StrongAndEmElements) {
+    auto doc = parse("<p><strong>Bold</strong> and <em>Italic</em></p>");
+    ASSERT_NE(doc, nullptr);
+    EXPECT_NE(doc->find_element("strong"), nullptr);
+    EXPECT_EQ(doc->find_element("strong")->text_content(), "Bold");
+    EXPECT_NE(doc->find_element("em"), nullptr);
+    EXPECT_EQ(doc->find_element("em")->text_content(), "Italic");
+}
+
+TEST(TreeBuilder, AnchorWithHrefAndTitle) {
+    auto doc = parse(R"(<a href="https://example.com" title="Example">Click</a>)");
+    ASSERT_NE(doc, nullptr);
+    auto* a = doc->find_element("a");
+    ASSERT_NE(a, nullptr);
+    EXPECT_EQ(a->text_content(), "Click");
+    // Check attributes
+    bool found_href = false, found_title = false;
+    for (auto& attr : a->attributes) {
+        if (attr.name == "href") found_href = true;
+        if (attr.name == "title") found_title = true;
+    }
+    EXPECT_TRUE(found_href);
+    EXPECT_TRUE(found_title);
+}
+
+TEST(TreeBuilder, AsideElement) {
+    auto doc = parse("<body><main><p>Main</p></main><aside>Sidebar</aside></body>");
+    ASSERT_NE(doc, nullptr);
+    auto* aside = doc->find_element("aside");
+    ASSERT_NE(aside, nullptr);
+    EXPECT_EQ(aside->text_content(), "Sidebar");
+}
