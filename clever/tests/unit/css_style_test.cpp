@@ -6058,3 +6058,152 @@ TEST(PropertyCascadeTest, ColumnSpanNoneAndAll) {
     cascade.apply_declaration(style, make_decl("column-span", "none"), parent);
     EXPECT_EQ(style.column_span, 0);
 }
+
+// ---------------------------------------------------------------------------
+// Cycle 441 — CSS fragmentation: orphans, widows, break-before/after/inside,
+//             page-break-before/after/inside
+// ---------------------------------------------------------------------------
+
+TEST(PropertyCascadeTest, OrphansAndWidows) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.orphans, 2);  // default: 2
+    EXPECT_EQ(style.widows, 2);   // default: 2
+
+    cascade.apply_declaration(style, make_decl("orphans", "3"), parent);
+    EXPECT_EQ(style.orphans, 3);
+
+    cascade.apply_declaration(style, make_decl("widows", "4"), parent);
+    EXPECT_EQ(style.widows, 4);
+}
+
+TEST(PropertyCascadeTest, BreakBeforeValues) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.break_before, 0);  // default: auto
+
+    cascade.apply_declaration(style, make_decl("break-before", "avoid"), parent);
+    EXPECT_EQ(style.break_before, 1);
+
+    cascade.apply_declaration(style, make_decl("break-before", "always"), parent);
+    EXPECT_EQ(style.break_before, 2);
+
+    cascade.apply_declaration(style, make_decl("break-before", "page"), parent);
+    EXPECT_EQ(style.break_before, 3);
+
+    cascade.apply_declaration(style, make_decl("break-before", "column"), parent);
+    EXPECT_EQ(style.break_before, 4);
+
+    cascade.apply_declaration(style, make_decl("break-before", "auto"), parent);
+    EXPECT_EQ(style.break_before, 0);
+}
+
+TEST(PropertyCascadeTest, BreakAfterValues) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.break_after, 0);  // default: auto
+
+    cascade.apply_declaration(style, make_decl("break-after", "column"), parent);
+    EXPECT_EQ(style.break_after, 4);
+
+    cascade.apply_declaration(style, make_decl("break-after", "page"), parent);
+    EXPECT_EQ(style.break_after, 3);
+
+    cascade.apply_declaration(style, make_decl("break-after", "auto"), parent);
+    EXPECT_EQ(style.break_after, 0);
+}
+
+TEST(PropertyCascadeTest, BreakInsideValues) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.break_inside, 0);  // default: auto
+
+    cascade.apply_declaration(style, make_decl("break-inside", "avoid"), parent);
+    EXPECT_EQ(style.break_inside, 1);
+
+    cascade.apply_declaration(style, make_decl("break-inside", "avoid-page"), parent);
+    EXPECT_EQ(style.break_inside, 2);
+
+    cascade.apply_declaration(style, make_decl("break-inside", "avoid-column"), parent);
+    EXPECT_EQ(style.break_inside, 3);
+
+    cascade.apply_declaration(style, make_decl("break-inside", "auto"), parent);
+    EXPECT_EQ(style.break_inside, 0);
+}
+
+TEST(PropertyCascadeTest, PageBreakBeforeValues) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.page_break_before, 0);  // default: auto
+
+    cascade.apply_declaration(style, make_decl("page-break-before", "always"), parent);
+    EXPECT_EQ(style.page_break_before, 1);
+
+    cascade.apply_declaration(style, make_decl("page-break-before", "avoid"), parent);
+    EXPECT_EQ(style.page_break_before, 2);
+
+    cascade.apply_declaration(style, make_decl("page-break-before", "left"), parent);
+    EXPECT_EQ(style.page_break_before, 3);
+
+    cascade.apply_declaration(style, make_decl("page-break-before", "right"), parent);
+    EXPECT_EQ(style.page_break_before, 4);
+
+    cascade.apply_declaration(style, make_decl("page-break-before", "auto"), parent);
+    EXPECT_EQ(style.page_break_before, 0);
+}
+
+TEST(PropertyCascadeTest, PageBreakAfterValues) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.page_break_after, 0);  // default: auto
+
+    cascade.apply_declaration(style, make_decl("page-break-after", "always"), parent);
+    EXPECT_EQ(style.page_break_after, 1);
+
+    cascade.apply_declaration(style, make_decl("page-break-after", "avoid"), parent);
+    EXPECT_EQ(style.page_break_after, 2);
+
+    cascade.apply_declaration(style, make_decl("page-break-after", "auto"), parent);
+    EXPECT_EQ(style.page_break_after, 0);
+}
+
+TEST(PropertyCascadeTest, PageBreakInsideValues) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.page_break_inside, 0);  // default: auto
+
+    cascade.apply_declaration(style, make_decl("page-break-inside", "avoid"), parent);
+    EXPECT_EQ(style.page_break_inside, 1);
+
+    cascade.apply_declaration(style, make_decl("page-break-inside", "auto"), parent);
+    EXPECT_EQ(style.page_break_inside, 0);
+}
+
+TEST(PropertyCascadeTest, BreakRegionValue) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("break-before", "region"), parent);
+    EXPECT_EQ(style.break_before, 5);
+
+    cascade.apply_declaration(style, make_decl("break-after", "region"), parent);
+    EXPECT_EQ(style.break_after, 5);
+
+    cascade.apply_declaration(style, make_decl("break-inside", "avoid-region"), parent);
+    EXPECT_EQ(style.break_inside, 4);
+}
