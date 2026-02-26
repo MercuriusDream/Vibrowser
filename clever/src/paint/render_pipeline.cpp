@@ -132,6 +132,9 @@ std::string extract_preferred_font_url(const std::string& src) {
         "truetype-variations",
         "opentype-variations"
     };
+    static const std::unordered_set<std::string> k_supported_techs = {
+        "variations"
+    };
 
     auto parse_function_arg = [&](const std::string& entry,
                                   const std::string& function_name) -> std::string {
@@ -266,6 +269,26 @@ std::string extract_preferred_font_url(const std::string& src) {
                 }
             }
             if (!has_supported_format) continue;
+        }
+
+        const std::string tech_value = parse_function_arg(entry, "tech");
+        if (!tech_value.empty()) {
+            bool has_supported_tech = false;
+            for (auto tech_token : split_csv_tokens(tech_value)) {
+                tech_token = trim(tech_token);
+                if (tech_token.size() >= 2 &&
+                    ((tech_token.front() == '"' && tech_token.back() == '"') ||
+                     (tech_token.front() == '\'' && tech_token.back() == '\''))) {
+                    tech_token = tech_token.substr(1, tech_token.size() - 2);
+                }
+                tech_token = to_lower(trim(tech_token));
+                if (!tech_token.empty() &&
+                    k_supported_techs.find(tech_token) != k_supported_techs.end()) {
+                    has_supported_tech = true;
+                    break;
+                }
+            }
+            if (!has_supported_tech) continue;
         }
         return url;
     }
