@@ -9489,3 +9489,165 @@ TEST(PropertyCascadeTest, ClipPathNoneAndCircle) {
     EXPECT_EQ(style.clip_path_type, 0);
     EXPECT_TRUE(style.clip_path_values.empty());
 }
+
+// ---------------------------------------------------------------------------
+// Cycle 469 — shape-outside, shape-margin/threshold, content, hanging-punctuation,
+//             clip-path inset/ellipse
+// ---------------------------------------------------------------------------
+
+TEST(PropertyCascadeTest, ShapeOutsideBoxValues) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.shape_outside_type, 0);  // default: none
+
+    cascade.apply_declaration(style, make_decl("shape-outside", "margin-box"), parent);
+    EXPECT_EQ(style.shape_outside_type, 5);
+
+    cascade.apply_declaration(style, make_decl("shape-outside", "border-box"), parent);
+    EXPECT_EQ(style.shape_outside_type, 6);
+
+    cascade.apply_declaration(style, make_decl("shape-outside", "padding-box"), parent);
+    EXPECT_EQ(style.shape_outside_type, 7);
+
+    cascade.apply_declaration(style, make_decl("shape-outside", "content-box"), parent);
+    EXPECT_EQ(style.shape_outside_type, 8);
+
+    cascade.apply_declaration(style, make_decl("shape-outside", "none"), parent);
+    EXPECT_EQ(style.shape_outside_type, 0);
+    EXPECT_TRUE(style.shape_outside_str.empty());
+}
+
+TEST(PropertyCascadeTest, ShapeOutsideCircleAndEllipse) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    // circle(40%) -> type=1, values={40.0}
+    cascade.apply_declaration(style, make_decl("shape-outside", "circle(40%)"), parent);
+    EXPECT_EQ(style.shape_outside_type, 1);
+    ASSERT_EQ(style.shape_outside_values.size(), 1u);
+    EXPECT_FLOAT_EQ(style.shape_outside_values[0], 40.0f);
+
+    // ellipse(30% 40%) -> type=2, values={30.0, 40.0}
+    cascade.apply_declaration(style, make_decl("shape-outside", "ellipse(30% 40%)"), parent);
+    EXPECT_EQ(style.shape_outside_type, 2);
+    ASSERT_EQ(style.shape_outside_values.size(), 2u);
+    EXPECT_FLOAT_EQ(style.shape_outside_values[0], 30.0f);
+    EXPECT_FLOAT_EQ(style.shape_outside_values[1], 40.0f);
+}
+
+TEST(PropertyCascadeTest, ShapeOutsideInset) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    // inset(10px) -> type=3, all four values = 10.0
+    cascade.apply_declaration(style, make_decl("shape-outside", "inset(10px)"), parent);
+    EXPECT_EQ(style.shape_outside_type, 3);
+    ASSERT_EQ(style.shape_outside_values.size(), 4u);
+    EXPECT_FLOAT_EQ(style.shape_outside_values[0], 10.0f);  // top
+    EXPECT_FLOAT_EQ(style.shape_outside_values[1], 10.0f);  // right
+    EXPECT_FLOAT_EQ(style.shape_outside_values[2], 10.0f);  // bottom
+    EXPECT_FLOAT_EQ(style.shape_outside_values[3], 10.0f);  // left
+
+    // inset(5px 15px) -> top=bottom=5, right=left=15
+    cascade.apply_declaration(style, make_decl("shape-outside", "inset(5px 15px)"), parent);
+    EXPECT_EQ(style.shape_outside_type, 3);
+    ASSERT_EQ(style.shape_outside_values.size(), 4u);
+    EXPECT_FLOAT_EQ(style.shape_outside_values[0], 5.0f);
+    EXPECT_FLOAT_EQ(style.shape_outside_values[1], 15.0f);
+    EXPECT_FLOAT_EQ(style.shape_outside_values[2], 5.0f);
+    EXPECT_FLOAT_EQ(style.shape_outside_values[3], 15.0f);
+}
+
+TEST(PropertyCascadeTest, ShapeMarginAndThreshold) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_FLOAT_EQ(style.shape_margin, 0.0f);           // default
+    EXPECT_FLOAT_EQ(style.shape_image_threshold, 0.0f);  // default
+
+    cascade.apply_declaration(style, make_decl("shape-margin", "20px"), parent);
+    EXPECT_FLOAT_EQ(style.shape_margin, 20.0f);
+
+    cascade.apply_declaration(style, make_decl("shape-image-threshold", "0.5"), parent);
+    EXPECT_FLOAT_EQ(style.shape_image_threshold, 0.5f);
+
+    cascade.apply_declaration(style, make_decl("shape-image-threshold", "0.8"), parent);
+    EXPECT_FLOAT_EQ(style.shape_image_threshold, 0.8f);
+}
+
+TEST(PropertyCascadeTest, ContentNoneAndStringLiteral) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_TRUE(style.content.empty());  // default: empty
+
+    cascade.apply_declaration(style, make_decl("content", "none"), parent);
+    EXPECT_EQ(style.content, "none");
+
+    cascade.apply_declaration(style, make_decl("content", "normal"), parent);
+    EXPECT_EQ(style.content, "none");
+}
+
+TEST(PropertyCascadeTest, ContentOpenCloseQuoteAndAttr) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    // open-quote -> left double quote U+201C (UTF-8: E2 80 9C)
+    cascade.apply_declaration(style, make_decl("content", "open-quote"), parent);
+    EXPECT_EQ(style.content, "\xe2\x80\x9c");
+
+    // close-quote -> right double quote U+201D (UTF-8: E2 80 9D)
+    cascade.apply_declaration(style, make_decl("content", "close-quote"), parent);
+    EXPECT_EQ(style.content, "\xe2\x80\x9d");
+
+    // attr(data-label) -> stores attr name + sentinel
+    cascade.apply_declaration(style, make_decl("content", "attr(data-label)"), parent);
+    EXPECT_EQ(style.content_attr_name, "data-label");
+    EXPECT_FALSE(style.content.empty());
+}
+
+TEST(PropertyCascadeTest, HangingPunctuationValues) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.hanging_punctuation, 0);  // default: none
+
+    cascade.apply_declaration(style, make_decl("hanging-punctuation", "first"), parent);
+    EXPECT_EQ(style.hanging_punctuation, 1);
+
+    cascade.apply_declaration(style, make_decl("hanging-punctuation", "last"), parent);
+    EXPECT_EQ(style.hanging_punctuation, 2);
+
+    cascade.apply_declaration(style, make_decl("hanging-punctuation", "force-end"), parent);
+    EXPECT_EQ(style.hanging_punctuation, 3);
+
+    cascade.apply_declaration(style, make_decl("hanging-punctuation", "allow-end"), parent);
+    EXPECT_EQ(style.hanging_punctuation, 4);
+}
+
+TEST(PropertyCascadeTest, ClipPathInsetAndEllipse) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    // inset(5px) -> type=3, values={5,5,5,5}
+    cascade.apply_declaration(style, make_decl("clip-path", "inset(5px)"), parent);
+    EXPECT_EQ(style.clip_path_type, 3);
+    ASSERT_EQ(style.clip_path_values.size(), 4u);
+    EXPECT_FLOAT_EQ(style.clip_path_values[0], 5.0f);
+
+    // ellipse(50% 30%) -> type=2, values={50,30}
+    cascade.apply_declaration(style, make_decl("clip-path", "ellipse(50% 30%)"), parent);
+    EXPECT_EQ(style.clip_path_type, 2);
+    ASSERT_GE(style.clip_path_values.size(), 2u);
+    EXPECT_FLOAT_EQ(style.clip_path_values[0], 50.0f);
+    EXPECT_FLOAT_EQ(style.clip_path_values[1], 30.0f);
+}
