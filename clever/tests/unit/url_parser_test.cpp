@@ -1545,3 +1545,70 @@ TEST(URLParser, RootURLPathIsSlash) {
     ASSERT_TRUE(result.has_value());
     EXPECT_EQ(result->path, "/");
 }
+
+// ============================================================================
+// Cycle 656: More URL parser tests
+// ============================================================================
+
+// URL: origin() includes scheme and host
+TEST(URLParser, OriginIncludesSchemeAndHost) {
+    auto result = parse("https://example.com/path?q=1");
+    ASSERT_TRUE(result.has_value());
+    auto o = result->origin();
+    EXPECT_NE(o.find("https"), std::string::npos);
+    EXPECT_NE(o.find("example.com"), std::string::npos);
+}
+
+// URL: HTTP scheme parsed correctly
+TEST(URLParser, HttpSchemeParsed) {
+    auto result = parse("http://example.com/");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+}
+
+// URL: path with query and fragment both present
+TEST(URLParser, PathQueryAndFragment) {
+    auto result = parse("https://example.com/page?search=hi#section");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_NE(result->query.find("search"), std::string::npos);
+    EXPECT_NE(result->fragment.find("section"), std::string::npos);
+}
+
+// URL: non-default port 8443 preserved
+TEST(URLParser, Port8443Preserved) {
+    auto result = parse("https://example.com:8443/api");
+    ASSERT_TRUE(result.has_value());
+    ASSERT_TRUE(result->port.has_value());
+    EXPECT_EQ(result->port.value(), 8443u);
+}
+
+// URL: apple.com and orange.com are different origins
+TEST(URLParser, AppleVsOrangeNotSameOrigin) {
+    auto a = parse("https://apple.com/");
+    auto b = parse("https://orange.com/");
+    ASSERT_TRUE(a.has_value());
+    ASSERT_TRUE(b.has_value());
+    EXPECT_FALSE(urls_same_origin(*a, *b));
+}
+
+// URL: query is empty string when ? present but no value
+TEST(URLParser, QueryEmptyWhenJustQuestionMark) {
+    auto result = parse("https://example.com/?");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_TRUE(result->query.empty());
+}
+
+// URL: fragment is empty string when # present but no value
+TEST(URLParser, FragmentEmptyWhenJustHash) {
+    auto result = parse("https://example.com/#");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_TRUE(result->fragment.empty());
+}
+
+// URL: serialize includes query string
+TEST(URLParser, SerializeIncludesQuery) {
+    auto result = parse("https://example.com/search?q=test");
+    ASSERT_TRUE(result.has_value());
+    auto s = result->serialize();
+    EXPECT_NE(s.find("test"), std::string::npos);
+}
