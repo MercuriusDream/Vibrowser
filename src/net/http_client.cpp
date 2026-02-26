@@ -1580,6 +1580,7 @@ bool request_headers_include_http2_settings(
     bool seen_data = false;
     bool seen_padding = false;
     int padding_count = 0;
+    std::size_t data_length = 0;
     for (char ch : normalized_value) {
       const unsigned char uch = static_cast<unsigned char>(ch);
       if (uch <= 0x1f || uch == 0x7f || uch >= 0x80) {
@@ -1593,6 +1594,7 @@ bool request_headers_include_http2_settings(
           return false;
         }
         seen_data = true;
+        ++data_length;
         continue;
       }
 
@@ -1613,6 +1615,15 @@ bool request_headers_include_http2_settings(
 
     if (!seen_data) {
       return false;
+    }
+    const std::size_t remainder = data_length % 4;
+    if (remainder == 1) {
+      return false;
+    }
+    if (padding_count > 0) {
+      if ((remainder == 0) || static_cast<std::size_t>(padding_count) != (4 - remainder)) {
+        return false;
+      }
     }
 
     found_http2_settings = true;

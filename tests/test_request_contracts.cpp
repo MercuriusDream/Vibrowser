@@ -561,7 +561,7 @@ int main() {
             ++failures;
         } else {
             headers.clear();
-            headers["http2-settings"] = "AAMAAABkAARAAAAAAAIAAAAA==";
+            headers["http2-settings"] = "AAMAAABkAARAAAAAAAIAAAAA";
             if (!browser::net::is_http2_settings_request(headers)) {
                 std::cerr << "FAIL: expected case-insensitive HTTP2-Settings detection\n";
                 ++failures;
@@ -582,6 +582,21 @@ int main() {
                 ++failures;
             } else if (browser::net::is_http2_settings_request({{"HTTP2-Settings", "AAMAAABk==="}})) {
                 std::cerr << "FAIL: expected over-padded HTTP2-Settings token68 value to be rejected\n";
+                ++failures;
+            } else if (browser::net::is_http2_settings_request({{"HTTP2-Settings", "A"}})) {
+                std::cerr << "FAIL: expected token68 length modulo 4 == 1 to be rejected\n";
+                ++failures;
+            } else if (browser::net::is_http2_settings_request({{"HTTP2-Settings", "AA="}})) {
+                std::cerr << "FAIL: expected invalid single-padding token68 shape to be rejected\n";
+                ++failures;
+            } else if (browser::net::is_http2_settings_request({{"HTTP2-Settings", "AAA=="}})) {
+                std::cerr << "FAIL: expected invalid double-padding token68 shape to be rejected\n";
+                ++failures;
+            } else if (!browser::net::is_http2_settings_request({{"HTTP2-Settings", "AAA="}})) {
+                std::cerr << "FAIL: expected valid modulo-3 token68 with single trailing '=' to be accepted\n";
+                ++failures;
+            } else if (!browser::net::is_http2_settings_request({{"HTTP2-Settings", "AA=="}})) {
+                std::cerr << "FAIL: expected valid modulo-2 token68 with double trailing '=' to be accepted\n";
                 ++failures;
             } else if (browser::net::is_http2_settings_request({{"HTTP2-Settings", "AAMAA+Bk"}})) {
                 std::cerr << "FAIL: expected non-base64url '+' in HTTP2-Settings value to be rejected\n";
