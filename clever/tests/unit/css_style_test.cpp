@@ -11097,3 +11097,192 @@ TEST(PropertyCascadeTest, ScrollMarginAndPaddingLonghands) {
     cascade.apply_declaration(style, make_decl("scroll-padding-left", "3px"), parent);
     EXPECT_FLOAT_EQ(style.scroll_padding_left, 3.0f);
 }
+
+// ---------------------------------------------------------------------------
+// Cycle 479 — border-block/inline logical shorthands, remaining longhands,
+//             padding shorthand, all, -webkit-box-orient, -webkit-text-stroke,
+//             border-image shorthand, scroll-padding logical
+// ---------------------------------------------------------------------------
+
+TEST(PropertyCascadeTest, BorderBlockColorAndInlineColor) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    // border-block-color sets top and bottom
+    cascade.apply_declaration(style, make_decl("border-block-color", "red"), parent);
+    EXPECT_EQ(style.border_top.color.r, 255);
+    EXPECT_EQ(style.border_bottom.color.r, 255);
+    EXPECT_EQ(style.border_left.color.r, 0);  // unchanged
+
+    // border-inline-color sets left and right
+    cascade.apply_declaration(style, make_decl("border-inline-color", "blue"), parent);
+    EXPECT_EQ(style.border_left.color.b, 255);
+    EXPECT_EQ(style.border_right.color.b, 255);
+}
+
+TEST(PropertyCascadeTest, BorderBlockStyleAndInlineStyle) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    // border-block-style sets top and bottom
+    cascade.apply_declaration(style, make_decl("border-block-style", "dashed"), parent);
+    EXPECT_EQ(style.border_top.style, BorderStyle::Dashed);
+    EXPECT_EQ(style.border_bottom.style, BorderStyle::Dashed);
+    EXPECT_EQ(style.border_left.style, BorderStyle::None);  // unchanged
+
+    // border-inline-style sets left and right
+    cascade.apply_declaration(style, make_decl("border-inline-style", "dotted"), parent);
+    EXPECT_EQ(style.border_left.style, BorderStyle::Dotted);
+    EXPECT_EQ(style.border_right.style, BorderStyle::Dotted);
+}
+
+TEST(PropertyCascadeTest, BorderBlockWidthAndInlineWidth) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    // border-block-width: single value → top and bottom
+    cascade.apply_declaration(style, make_decl("border-block-width", "3px"), parent);
+    EXPECT_FLOAT_EQ(style.border_top.width.to_px(), 3.0f);
+    EXPECT_FLOAT_EQ(style.border_bottom.width.to_px(), 3.0f);
+
+    // border-inline-width: two values → left=2px, right=4px
+    cascade.apply_declaration(style, make_decl("border-inline-width", "2px 4px"), parent);
+    EXPECT_FLOAT_EQ(style.border_left.width.to_px(), 2.0f);
+    EXPECT_FLOAT_EQ(style.border_right.width.to_px(), 4.0f);
+}
+
+TEST(PropertyCascadeTest, BorderBlockShorthandLogical) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    // border-block sets both top and bottom
+    cascade.apply_declaration(style, make_decl("border-block", "2px solid green"), parent);
+    EXPECT_FLOAT_EQ(style.border_top.width.to_px(), 2.0f);
+    EXPECT_EQ(style.border_top.style, BorderStyle::Solid);
+    EXPECT_EQ(style.border_top.color.g, 128);  // green = {0,128,0,255}
+    EXPECT_FLOAT_EQ(style.border_bottom.width.to_px(), 2.0f);
+
+    // border-block-start sets top only
+    cascade.apply_declaration(style, make_decl("border-block-start", "1px dashed red"), parent);
+    EXPECT_FLOAT_EQ(style.border_top.width.to_px(), 1.0f);
+    EXPECT_EQ(style.border_top.style, BorderStyle::Dashed);
+    EXPECT_EQ(style.border_top.color.r, 255);
+    EXPECT_FLOAT_EQ(style.border_bottom.width.to_px(), 2.0f);  // unchanged
+}
+
+TEST(PropertyCascadeTest, BorderInlineStartEndShorthand) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    // border-inline-start → left side
+    cascade.apply_declaration(style, make_decl("border-inline-start", "3px solid blue"), parent);
+    EXPECT_FLOAT_EQ(style.border_left.width.to_px(), 3.0f);
+    EXPECT_EQ(style.border_left.style, BorderStyle::Solid);
+    EXPECT_EQ(style.border_left.color.b, 255);
+    EXPECT_FLOAT_EQ(style.border_right.width.to_px(), 0.0f);  // unchanged
+
+    // border-inline-end → right side
+    cascade.apply_declaration(style, make_decl("border-inline-end", "5px dashed red"), parent);
+    EXPECT_FLOAT_EQ(style.border_right.width.to_px(), 5.0f);
+    EXPECT_EQ(style.border_right.style, BorderStyle::Dashed);
+    EXPECT_EQ(style.border_right.color.r, 255);
+}
+
+TEST(PropertyCascadeTest, BorderLogicalRemainingLonghands) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("border-block-start-color", "red"), parent);
+    EXPECT_EQ(style.border_top.color.r, 255);
+
+    cascade.apply_declaration(style, make_decl("border-block-start-style", "dashed"), parent);
+    EXPECT_EQ(style.border_top.style, BorderStyle::Dashed);
+
+    cascade.apply_declaration(style, make_decl("border-block-end-style", "dotted"), parent);
+    EXPECT_EQ(style.border_bottom.style, BorderStyle::Dotted);
+
+    cascade.apply_declaration(style, make_decl("border-block-end-width", "6px"), parent);
+    EXPECT_FLOAT_EQ(style.border_bottom.width.to_px(), 6.0f);
+
+    cascade.apply_declaration(style, make_decl("border-inline-start-color", "blue"), parent);
+    EXPECT_EQ(style.border_left.color.b, 255);
+
+    cascade.apply_declaration(style, make_decl("border-inline-start-width", "4px"), parent);
+    EXPECT_FLOAT_EQ(style.border_left.width.to_px(), 4.0f);
+
+    cascade.apply_declaration(style, make_decl("border-inline-end-color", "green"), parent);
+    EXPECT_EQ(style.border_right.color.g, 128);
+
+    cascade.apply_declaration(style, make_decl("border-inline-end-style", "solid"), parent);
+    EXPECT_EQ(style.border_right.style, BorderStyle::Solid);
+}
+
+TEST(PropertyCascadeTest, PaddingShorthand) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    // 1 value: all sides
+    cascade.apply_declaration(style, make_decl("padding", "10px"), parent);
+    EXPECT_FLOAT_EQ(style.padding.top.to_px(), 10.0f);
+    EXPECT_FLOAT_EQ(style.padding.right.to_px(), 10.0f);
+    EXPECT_FLOAT_EQ(style.padding.bottom.to_px(), 10.0f);
+    EXPECT_FLOAT_EQ(style.padding.left.to_px(), 10.0f);
+
+    // 2 values: top+bottom, left+right
+    cascade.apply_declaration(style, make_decl("padding", "5px 15px"), parent);
+    EXPECT_FLOAT_EQ(style.padding.top.to_px(), 5.0f);
+    EXPECT_FLOAT_EQ(style.padding.right.to_px(), 15.0f);
+    EXPECT_FLOAT_EQ(style.padding.bottom.to_px(), 5.0f);
+    EXPECT_FLOAT_EQ(style.padding.left.to_px(), 15.0f);
+
+    // 4 values: top, right, bottom, left
+    cascade.apply_declaration(style, make_decl("padding", "1px 2px 3px 4px"), parent);
+    EXPECT_FLOAT_EQ(style.padding.top.to_px(), 1.0f);
+    EXPECT_FLOAT_EQ(style.padding.right.to_px(), 2.0f);
+    EXPECT_FLOAT_EQ(style.padding.bottom.to_px(), 3.0f);
+    EXPECT_FLOAT_EQ(style.padding.left.to_px(), 4.0f);
+}
+
+TEST(PropertyCascadeTest, AllPropertyAndScrollPaddingLogical) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    // all: initial sets css_all field
+    EXPECT_TRUE(style.css_all.empty());
+    cascade.apply_declaration(style, make_decl("all", "initial"), parent);
+    EXPECT_EQ(style.css_all, "initial");
+
+    // all: unset also sets the field
+    cascade.apply_declaration(style, make_decl("all", "unset"), parent);
+    EXPECT_EQ(style.css_all, "unset");
+
+    // -webkit-box-orient: vertical → flex_direction = Column
+    cascade.apply_declaration(style, make_decl("-webkit-box-orient", "vertical"), parent);
+    EXPECT_EQ(style.flex_direction, FlexDirection::Column);
+
+    cascade.apply_declaration(style, make_decl("-webkit-box-orient", "horizontal"), parent);
+    EXPECT_EQ(style.flex_direction, FlexDirection::Row);
+
+    // -webkit-text-stroke shorthand: width + color
+    cascade.apply_declaration(style, make_decl("-webkit-text-stroke", "2px red"), parent);
+    EXPECT_FLOAT_EQ(style.text_stroke_width, 2.0f);
+    EXPECT_EQ(style.text_stroke_color.r, 255);
+
+    // scroll-padding-block sets top+bottom
+    cascade.apply_declaration(style, make_decl("scroll-padding-block", "8px"), parent);
+    EXPECT_FLOAT_EQ(style.scroll_padding_top, 8.0f);
+    EXPECT_FLOAT_EQ(style.scroll_padding_bottom, 8.0f);
+
+    // scroll-padding-inline sets left+right
+    cascade.apply_declaration(style, make_decl("scroll-padding-inline", "4px"), parent);
+    EXPECT_FLOAT_EQ(style.scroll_padding_left, 4.0f);
+    EXPECT_FLOAT_EQ(style.scroll_padding_right, 4.0f);
+}
