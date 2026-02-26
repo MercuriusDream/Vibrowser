@@ -337,6 +337,28 @@ int main() {
         }
 
         if (browser::net::parse_http_status_line(
+                std::string("HTTP/1.1 200 OK\x01", 16), http_version, status_code, reason, err)) {
+            std::cerr << "FAIL: expected status line with control octet to be rejected\n";
+            ++failures;
+        } else if (err.find("Malformed HTTP status line") == std::string::npos) {
+            std::cerr << "FAIL: expected malformed status-line error for control-octet variant\n";
+            ++failures;
+        } else {
+            std::cerr << "PASS: status line with control octet is rejected\n";
+        }
+
+        if (browser::net::parse_http_status_line(
+                std::string("HTTP/1.1 200 OK\x80", 16), http_version, status_code, reason, err)) {
+            std::cerr << "FAIL: expected status line with non-ASCII octet to be rejected\n";
+            ++failures;
+        } else if (err.find("Malformed HTTP status line") == std::string::npos) {
+            std::cerr << "FAIL: expected malformed status-line error for non-ASCII variant\n";
+            ++failures;
+        } else {
+            std::cerr << "PASS: status line with non-ASCII octet is rejected\n";
+        }
+
+        if (browser::net::parse_http_status_line(
                 "HTTP/3 200 OK", http_version, status_code, reason, err)) {
             std::cerr << "FAIL: HTTP/3 status line should be rejected as unsupported transport\n";
             ++failures;

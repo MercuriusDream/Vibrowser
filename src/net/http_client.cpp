@@ -1175,6 +1175,12 @@ bool parse_status_line(const std::string& status_line, Response& response, std::
     err = "HTTP/2 status line received; HTTP/2 transport is not implemented yet";
     return false;
   }
+  for (unsigned char ch : status_line) {
+    if (ch <= 0x1f || ch == 0x7f || ch >= 0x80) {
+      err = "Malformed HTTP status line";
+      return false;
+    }
+  }
 
   const std::size_t first_space = status_line.find(' ');
   if (first_space == std::string::npos) {
