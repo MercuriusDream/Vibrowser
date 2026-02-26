@@ -4240,3 +4240,183 @@ TEST(LayoutEngineTest, ZeroFontSizeNoUB) {
     EXPECT_TRUE(std::isfinite(root->geometry.height));
     EXPECT_TRUE(std::isfinite(root->geometry.width));
 }
+
+// ============================================================================
+// Cycle 432: flex-direction column-reverse, flex-wrap wrap-reverse,
+//            visibility-hidden, BoxGeometry helpers, column-direction gap,
+//            max-height on child, and column_gap_val standalone
+// ============================================================================
+
+TEST(LayoutEngineTest, FlexDirectionColumnReverse) {
+    // flex_direction=3 (column-reverse): items stack from bottom to top
+    auto root = make_flex("div");
+    root->flex_direction = 3; // column-reverse
+    root->specified_height = 200.0f;
+
+    auto child1 = make_block("div");
+    child1->specified_width = 50.0f;
+    child1->specified_height = 40.0f;
+
+    auto child2 = make_block("div");
+    child2->specified_width = 50.0f;
+    child2->specified_height = 60.0f;
+
+    root->append_child(std::move(child1));
+    root->append_child(std::move(child2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 400.0f, 400.0f);
+
+    // In column-reverse, last DOM child (child2) should be above (lower y) first DOM child (child1)
+    ASSERT_GE(root->children.size(), 2u);
+    EXPECT_GT(root->children[0]->geometry.y, root->children[1]->geometry.y)
+        << "column-reverse: first DOM child should be lower than second";
+}
+
+TEST(LayoutEngineTest, FlexWrapReverse) {
+    // flex_wrap=2 (wrap-reverse): the engine wraps items, line reversal not yet implemented.
+    // This test documents current behavior: overflow item placed on a second line (y=30).
+    auto root = make_flex("div");
+    root->flex_direction = 0; // row
+    root->flex_wrap = 2; // wrap-reverse
+
+    // 4 items of 150px in 500px container: 3 fit on line 1, 1 wraps
+    for (int i = 0; i < 4; i++) {
+        auto child = make_block("div");
+        child->specified_width = 150.0f;
+        child->specified_height = 30.0f;
+        root->append_child(std::move(child));
+    }
+
+    LayoutEngine engine;
+    engine.compute(*root, 500.0f, 400.0f);
+
+    // First 3 items on line 1 (y=0), 4th item wraps to next line (y=30)
+    ASSERT_GE(root->children.size(), 4u);
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.y, 0.0f);
+    EXPECT_FLOAT_EQ(root->children[3]->geometry.y, 30.0f)
+        << "wrap-reverse: engine currently wraps same as flex-wrap:wrap";
+}
+
+TEST(LayoutEngineTest, VisibilityHiddenTakesSpace) {
+    // visibility_hidden=true: element is invisible but occupies layout space
+    auto root = make_block("div");
+
+    auto visible = make_block("div");
+    visible->specified_height = 50.0f;
+
+    auto hidden = make_block("div");
+    hidden->specified_height = 80.0f;
+    hidden->visibility_hidden = true;
+
+    root->append_child(std::move(visible));
+    root->append_child(std::move(hidden));
+
+    LayoutEngine engine;
+    engine.compute(*root, 400.0f, 400.0f);
+
+    // Hidden element still contributes to parent height
+    EXPECT_GT(root->geometry.height, 50.0f)
+        << "visibility:hidden element should still occupy vertical space";
+    // Hidden element itself has geometry
+    ASSERT_GE(root->children.size(), 2u);
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.height, 80.0f);
+}
+
+TEST(LayoutEngineTest, BoxGeometryMarginBoxWidthCalc) {
+    BoxGeometry geo;
+    geo.width = 200.0f;
+    geo.margin = {5, 10, 5, 8};   // top, right, bottom, left
+    geo.border = {2, 3, 2, 3};
+    geo.padding = {4, 6, 4, 6};
+
+    // margin_box_width = margin.left + border.left + padding.left + width + padding.right + border.right + margin.right
+    // = 8 + 3 + 6 + 200 + 6 + 3 + 10 = 236
+    EXPECT_FLOAT_EQ(geo.margin_box_width(), 236.0f);
+}
+
+TEST(LayoutEngineTest, BoxGeometryBorderBoxWidthCalc) {
+    BoxGeometry geo;
+    geo.width = 150.0f;
+    geo.border = {0, 5, 0, 5};    // 5px left and right border
+    geo.padding = {0, 10, 0, 10}; // 10px left and right padding
+
+    // border_box_width = border.left + padding.left + width + padding.right + border.right
+    // = 5 + 10 + 150 + 10 + 5 = 180
+    EXPECT_FLOAT_EQ(geo.border_box_width(), 180.0f);
+}
+
+TEST(LayoutEngineTest, FlexColumnDirectionWithGap) {
+    // gap = row-gap in column-direction flex; items should be 20px apart on y-axis
+    auto root = make_flex("div");
+    root->flex_direction = 2; // column
+    root->gap = 20.0f;         // row-gap is main-axis gap in column direction
+
+    auto child1 = make_block("div");
+    child1->specified_width = 100.0f;
+    child1->specified_height = 40.0f;
+
+    auto child2 = make_block("div");
+    child2->specified_width = 100.0f;
+    child2->specified_height = 40.0f;
+
+    root->append_child(std::move(child1));
+    root->append_child(std::move(child2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 400.0f, 400.0f);
+
+    ASSERT_GE(root->children.size(), 2u);
+    // child2.y should be child1.y + child1.height + gap = 0 + 40 + 20 = 60
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.y, 0.0f);
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.y, 60.0f);
+}
+
+TEST(LayoutEngineTest, MaxHeightOnChildBlock) {
+    // max_height constrains a child block, not just the root
+    auto root = make_block("div");
+
+    auto child = make_block("div");
+    child->specified_height = 300.0f;
+    child->max_height = 100.0f;
+
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 400.0f, 400.0f);
+
+    ASSERT_GE(root->children.size(), 1u);
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.height, 100.0f)
+        << "max_height should cap child block to 100px even though specified_height=300";
+}
+
+TEST(LayoutEngineTest, FlexRowDirectionColumnGapValAddsHorizontalSpacing) {
+    // column_gap_val alone (without gap shorthand) still spaces row-direction flex items
+    auto root = make_flex("div");
+    root->flex_direction = 0; // row
+    root->column_gap_val = 30.0f; // CSS column-gap (main-axis gap for row direction)
+
+    auto child1 = make_block("div");
+    child1->specified_width = 80.0f;
+    child1->specified_height = 40.0f;
+    child1->flex_grow = 0;
+    child1->flex_shrink = 0;
+
+    auto child2 = make_block("div");
+    child2->specified_width = 80.0f;
+    child2->specified_height = 40.0f;
+    child2->flex_grow = 0;
+    child2->flex_shrink = 0;
+
+    root->append_child(std::move(child1));
+    root->append_child(std::move(child2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 400.0f, 200.0f);
+
+    ASSERT_GE(root->children.size(), 2u);
+    // child2 should be at child1.x + child1.width + gap = 0 + 80 + 30 = 110
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.x, 0.0f);
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.x, 110.0f)
+        << "column_gap_val=30 should offset second child by 80+30=110";
+}
