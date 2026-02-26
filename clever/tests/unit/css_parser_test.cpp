@@ -2727,3 +2727,98 @@ TEST_F(CSSStylesheetTest, ZIndexDeclaration) {
     }
     EXPECT_TRUE(found);
 }
+
+// ============================================================================
+// Cycle 672: More CSS parser tests
+// ============================================================================
+
+// Tokenizer: left paren token
+TEST_F(CSSTokenizerTest, LeftParenToken) {
+    auto tokens = CSSTokenizer::tokenize_all("(");
+    ASSERT_FALSE(tokens.empty());
+    EXPECT_EQ(tokens[0].type, CSSToken::LeftParen);
+}
+
+// Tokenizer: right paren token
+TEST_F(CSSTokenizerTest, RightParenToken) {
+    auto tokens = CSSTokenizer::tokenize_all(")");
+    ASSERT_FALSE(tokens.empty());
+    EXPECT_EQ(tokens[0].type, CSSToken::RightParen);
+}
+
+// Stylesheet: opacity declaration
+TEST_F(CSSStylesheetTest, OpacityDeclaration) {
+    auto sheet = parse_stylesheet(".fade { opacity: 0.5; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations) {
+        if (d.property == "opacity") { found = true; break; }
+    }
+    EXPECT_TRUE(found);
+}
+
+// Stylesheet: overflow property on box class
+TEST_F(CSSStylesheetTest, OverflowPropertyOnBoxClass) {
+    auto sheet = parse_stylesheet(".box { overflow: scroll; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations) {
+        if (d.property == "overflow") { found = true; break; }
+    }
+    EXPECT_TRUE(found);
+}
+
+// Stylesheet: text-transform declaration
+TEST_F(CSSStylesheetTest, TextTransformDeclaration) {
+    auto sheet = parse_stylesheet("h1 { text-transform: uppercase; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations) {
+        if (d.property == "text-transform") { found = true; break; }
+    }
+    EXPECT_TRUE(found);
+}
+
+// Stylesheet: visibility declaration
+TEST_F(CSSStylesheetTest, VisibilityDeclaration) {
+    auto sheet = parse_stylesheet(".hidden { visibility: hidden; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations) {
+        if (d.property == "visibility") { found = true; break; }
+    }
+    EXPECT_TRUE(found);
+}
+
+// Stylesheet: cursor auto declaration on div
+TEST_F(CSSStylesheetTest, CursorAutoOnDiv) {
+    auto sheet = parse_stylesheet("div { cursor: auto; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations) {
+        if (d.property == "cursor") { found = true; break; }
+    }
+    EXPECT_TRUE(found);
+}
+
+// Stylesheet: transition on input element
+TEST_F(CSSStylesheetTest, TransitionOnInputElement) {
+    auto sheet = parse_stylesheet("input { transition: border-color 0.2s; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations) {
+        if (d.property == "transition") { found = true; break; }
+    }
+    EXPECT_TRUE(found);
+}
+
+// Stylesheet: flex declaration shorthand
+TEST_F(CSSStylesheetTest, FlexShorthandDeclaration) {
+    auto sheet = parse_stylesheet(".item { flex: 1 1 auto; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations) {
+        if (d.property == "flex") { found = true; break; }
+    }
+    EXPECT_TRUE(found);
+}
