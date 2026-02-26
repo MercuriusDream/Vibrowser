@@ -425,6 +425,17 @@ int main() {
         }
 
         if (browser::net::parse_http_status_line(
+                "HTTP/1.1 200", http_version, status_code, reason, err)) {
+            std::cerr << "FAIL: expected status line missing reason separator to be rejected\n";
+            ++failures;
+        } else if (err.find("Malformed HTTP status line") == std::string::npos) {
+            std::cerr << "FAIL: expected malformed status-line error for missing reason separator\n";
+            ++failures;
+        } else {
+            std::cerr << "PASS: status line missing reason separator is rejected\n";
+        }
+
+        if (browser::net::parse_http_status_line(
                 "HTTP/3 200 OK", http_version, status_code, reason, err)) {
             std::cerr << "FAIL: HTTP/3 status line should be rejected as unsupported transport\n";
             ++failures;

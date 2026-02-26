@@ -1221,6 +1221,10 @@ bool parse_status_line(const std::string& status_line, Response& response, std::
     err = "Malformed HTTP status line";
     return false;
   }
+  if (second_separator == std::string::npos) {
+    err = "Malformed HTTP status line";
+    return false;
+  }
   const std::size_t second_space = second_separator;
   const std::string status_code_str =
       (second_space == std::string::npos)
