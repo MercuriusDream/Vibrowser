@@ -250,6 +250,32 @@ TEST(URLParser, IPv6HostNoPort) {
     EXPECT_EQ(result->path, "/path");
 }
 
+TEST(URLParser, IPv6FullAddress) {
+    auto result = parse("http://[2001:db8::1]/");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->host, "[2001:db8::1]");
+    EXPECT_EQ(result->port, std::nullopt);
+}
+
+TEST(URLParser, IPv4MappedIPv6) {
+    auto result = parse("http://[::ffff:192.0.2.1]/");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->host, "[::ffff:192.0.2.1]");
+}
+
+TEST(URLParser, IPv6UnclosedBracketInvalid) {
+    auto result = parse("http://[::1/path");
+    EXPECT_FALSE(result.has_value());
+}
+
+TEST(URLParser, IPv6WithPort) {
+    auto result = parse("http://[2001:db8::1]:8080/");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->host, "[2001:db8::1]");
+    ASSERT_TRUE(result->port.has_value());
+    EXPECT_EQ(result->port.value(), 8080);
+}
+
 // =============================================================================
 // Test 17: Trailing slash normalization
 // =============================================================================
