@@ -224,6 +224,7 @@ std::string extract_preferred_font_url(const std::string& src) {
     auto split_csv_tokens = [&](const std::string& value) -> std::vector<std::string> {
         std::vector<std::string> tokens;
         std::string current;
+        bool saw_separator = false;
         bool in_single_quote = false;
         bool in_double_quote = false;
         int paren_depth = 0;
@@ -245,15 +246,40 @@ std::string extract_preferred_font_url(const std::string& src) {
                 if (ch == ',' && paren_depth == 0) {
                     tokens.push_back(trim(current));
                     current.clear();
+                    saw_separator = true;
                     continue;
                 }
             }
             current.push_back(ch);
         }
-        if (!current.empty()) {
+        if (!current.empty() || saw_separator) {
             tokens.push_back(trim(current));
         }
         return tokens;
+    };
+    auto descriptor_list_has_supported_token = [&](const std::string& descriptor_value,
+                                                   const std::unordered_set<std::string>& supported_tokens) -> bool {
+        const auto tokens = split_csv_tokens(descriptor_value);
+        if (tokens.empty()) return false;
+
+        bool has_supported_token = false;
+        for (auto token : tokens) {
+            token = trim(token);
+            if (token.empty()) return false;
+
+            if (token.size() >= 2 &&
+                ((token.front() == '"' && token.back() == '"') ||
+                 (token.front() == '\'' && token.back() == '\''))) {
+                token = token.substr(1, token.size() - 2);
+            }
+            token = to_lower(trim(token));
+            if (token.empty()) return false;
+
+            if (supported_tokens.find(token) != supported_tokens.end()) {
+                has_supported_token = true;
+            }
+        }
+        return has_supported_token;
     };
 
     std::vector<std::string> entries;
@@ -300,44 +326,14 @@ std::string extract_preferred_font_url(const std::string& src) {
         const std::string format_value = parse_function_arg(entry, "format");
         if (has_format_descriptor && format_value.empty()) continue;
         if (!format_value.empty()) {
-            bool has_supported_format = false;
-            for (auto format_token : split_csv_tokens(format_value)) {
-                format_token = trim(format_token);
-                if (format_token.size() >= 2 &&
-                    ((format_token.front() == '"' && format_token.back() == '"') ||
-                     (format_token.front() == '\'' && format_token.back() == '\''))) {
-                    format_token = format_token.substr(1, format_token.size() - 2);
-                }
-                format_token = to_lower(trim(format_token));
-                if (!format_token.empty() &&
-                    k_supported_formats.find(format_token) != k_supported_formats.end()) {
-                    has_supported_format = true;
-                    break;
-                }
-            }
-            if (!has_supported_format) continue;
+            if (!descriptor_list_has_supported_token(format_value, k_supported_formats)) continue;
         }
 
         const bool has_tech_descriptor = has_function_call(entry, "tech");
         const std::string tech_value = parse_function_arg(entry, "tech");
         if (has_tech_descriptor && tech_value.empty()) continue;
         if (!tech_value.empty()) {
-            bool has_supported_tech = false;
-            for (auto tech_token : split_csv_tokens(tech_value)) {
-                tech_token = trim(tech_token);
-                if (tech_token.size() >= 2 &&
-                    ((tech_token.front() == '"' && tech_token.back() == '"') ||
-                     (tech_token.front() == '\'' && tech_token.back() == '\''))) {
-                    tech_token = tech_token.substr(1, tech_token.size() - 2);
-                }
-                tech_token = to_lower(trim(tech_token));
-                if (!tech_token.empty() &&
-                    k_supported_techs.find(tech_token) != k_supported_techs.end()) {
-                    has_supported_tech = true;
-                    break;
-                }
-            }
-            if (!has_supported_tech) continue;
+            if (!descriptor_list_has_supported_token(tech_value, k_supported_techs)) continue;
         }
         return url;
     }
