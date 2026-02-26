@@ -632,3 +632,79 @@ TEST(ThreadPoolTest, SubmitReturnsFloat) {
     auto future = pool.submit([]() -> float { return 2.5f; });
     EXPECT_FLOAT_EQ(future.get(), 2.5f);
 }
+
+// ============================================================================
+// Cycle 569: More ThreadPool tests
+// ============================================================================
+
+// Submit 100 tasks, all complete
+TEST(ThreadPoolTest, Submit100TasksAllComplete) {
+    ThreadPool pool(4);
+    std::atomic<int> count{0};
+    for (int i = 0; i < 100; ++i) {
+        pool.post([&count]() { count.fetch_add(1); });
+    }
+    pool.shutdown();
+    EXPECT_EQ(count.load(), 100);
+}
+
+// Pool size 1: single thread still works
+TEST(ThreadPoolTest, SingleThreadPoolWorks) {
+    ThreadPool pool(1);
+    auto fut = pool.submit([]() { return 42; });
+    EXPECT_EQ(fut.get(), 42);
+}
+
+// Pool size 3: reports 3 threads
+TEST(ThreadPoolTest, ThreeThreadPoolReportsThree) {
+    ThreadPool pool(3);
+    EXPECT_EQ(pool.size(), 3u);
+}
+
+// Submit string result from lambda
+TEST(ThreadPoolTest, SubmitReturnsString) {
+    ThreadPool pool(2);
+    auto fut = pool.submit([]() -> std::string { return "hello"; });
+    EXPECT_EQ(fut.get(), "hello");
+}
+
+// Post multiple tasks accumulate correctly
+TEST(ThreadPoolTest, PostFiveTasksAccumulate) {
+    ThreadPool pool(2);
+    std::atomic<int> total{0};
+    for (int i = 1; i <= 5; ++i) {
+        int val = i;
+        pool.post([&total, val]() { total.fetch_add(val); });
+    }
+    pool.shutdown();
+    EXPECT_EQ(total.load(), 15);
+}
+
+// Submit: future value is available after get()
+TEST(ThreadPoolTest, FutureValueAvailableAfterGet) {
+    ThreadPool pool(2);
+    auto fut = pool.submit([]() { return 99; });
+    int result = fut.get();
+    EXPECT_EQ(result, 99);
+}
+
+// Submit bool-returning task (false value)
+TEST(ThreadPoolTest, SubmitReturningBoolFalse) {
+    ThreadPool pool(2);
+    auto fut = pool.submit([]() -> bool { return false; });
+    EXPECT_FALSE(fut.get());
+}
+
+// Post task that captures vector
+TEST(ThreadPoolTest, PostTaskCapturesVector) {
+    ThreadPool pool(2);
+    std::vector<int> data = {10, 20, 30};
+    std::atomic<int> sum{0};
+    pool.post([data, &sum]() {
+        int s = 0;
+        for (int x : data) s += x;
+        sum.store(s);
+    });
+    pool.shutdown();
+    EXPECT_EQ(sum.load(), 60);
+}
