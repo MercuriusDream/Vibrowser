@@ -17,6 +17,7 @@
 #include <clever/js/js_fetch_bindings.h>
 #include <clever/js/js_timers.h>
 #include <clever/js/js_window.h>
+#include <clever/url/percent_encoding.h>
 #include <stb_image.h>
 #ifdef __APPLE__
 #include <CoreFoundation/CoreFoundation.h>
@@ -149,6 +150,58 @@ std::string extract_preferred_font_url(const std::string& src) {
         pos = url_end + 1;
     }
     return "";
+}
+
+std::optional<std::vector<uint8_t>> decode_font_data_url(const std::string& url) {
+    if (url.size() < 5 || to_lower(url.substr(0, 5)) != "data:") return std::nullopt;
+
+    const auto comma = url.find(',');
+    if (comma == std::string::npos || comma + 1 >= url.size()) return std::nullopt;
+
+    const std::string metadata = to_lower(url.substr(5, comma - 5));
+    const std::string payload = url.substr(comma + 1);
+    if (payload.empty()) return std::nullopt;
+
+    const bool is_base64 = metadata.find(";base64") != std::string::npos;
+    if (!is_base64) {
+        const auto decoded = clever::url::percent_decode(payload);
+        if (decoded.empty()) return std::nullopt;
+        return std::vector<uint8_t>(decoded.begin(), decoded.end());
+    }
+
+    std::string compact_payload;
+    compact_payload.reserve(payload.size());
+    for (unsigned char ch : payload) {
+        if (!std::isspace(ch)) compact_payload.push_back(static_cast<char>(ch));
+    }
+
+    auto decode_char = [](char c) -> int {
+        if (c >= 'A' && c <= 'Z') return c - 'A';
+        if (c >= 'a' && c <= 'z') return c - 'a' + 26;
+        if (c >= '0' && c <= '9') return c - '0' + 52;
+        if (c == '+') return 62;
+        if (c == '/') return 63;
+        return -1;
+    };
+
+    std::vector<uint8_t> decoded;
+    decoded.reserve((compact_payload.size() * 3) / 4);
+    int val = 0;
+    int bits = -8;
+    for (char c : compact_payload) {
+        if (c == '=') break;
+        const int d = decode_char(c);
+        if (d < 0) return std::nullopt;
+        val = (val << 6) + d;
+        bits += 6;
+        if (bits >= 0) {
+            decoded.push_back(static_cast<uint8_t>((val >> bits) & 0xFF));
+            bits -= 8;
+        }
+    }
+
+    if (decoded.empty()) return std::nullopt;
+    return decoded;
 }
 
 // =========================================================================
@@ -11006,6 +11059,28 @@ RenderResult render_html(const std::string& html, const std::string& base_url,
 
                 std::string font_url = extract_preferred_font_url(ff.src);
                 if (font_url.empty()) continue;
+
+                const std::string lower_font_url = to_lower(font_url);
+                if (lower_font_url.rfind("data:", 0) == 0) {
+                    auto cache_it = font_cache.find(font_url);
+                    if (cache_it != font_cache.end()) {
+                        int weight = parse_font_weight(ff.font_weight);
+                        bool italic = (ff.font_style == "italic" || ff.font_style == "oblique");
+                        clever::paint::TextRenderer::register_font(
+                            ff.font_family, cache_it->second, weight, italic);
+                        continue;
+                    }
+
+                    auto decoded_font_data = decode_font_data_url(font_url);
+                    if (!decoded_font_data || decoded_font_data->empty()) continue;
+
+                    font_cache[font_url] = *decoded_font_data;
+                    int weight = parse_font_weight(ff.font_weight);
+                    bool italic = (ff.font_style == "italic" || ff.font_style == "oblique");
+                    clever::paint::TextRenderer::register_font(
+                        ff.font_family, *decoded_font_data, weight, italic);
+                    continue;
+                }
 
                 // Resolve relative URL
                 font_url = resolve_url(font_url, effective_base_url);

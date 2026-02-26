@@ -7,6 +7,7 @@
 #include <clever/js/js_dom_bindings.h>
 #include <clever/html/tree_builder.h>
 #include <memory>
+#include <optional>
 #include <set>
 #include <string>
 #include <unordered_map>
@@ -119,6 +120,9 @@ void flatten_supports_rules(clever::css::StyleSheet& sheet);
 
 // Extract preferred @font-face URL from a src descriptor list (exposed for testing)
 std::string extract_preferred_font_url(const std::string& src);
+
+// Decode a data: URL payload for @font-face font sources (exposed for testing)
+std::optional<std::vector<uint8_t>> decode_font_data_url(const std::string& url);
 
 // CSS Transition easing functions (exposed for testing)
 float ease_linear(float t);
