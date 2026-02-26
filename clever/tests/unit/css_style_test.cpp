@@ -10935,3 +10935,165 @@ TEST(PropertyCascadeTest, BorderShorthand) {
     EXPECT_FLOAT_EQ(style.border_left.width.to_px(), 2.0f);
     EXPECT_EQ(style.border_left.color.b, 255);
 }
+
+// ---------------------------------------------------------------------------
+// Cycle 478 — corner radii, logical margin/padding shorthands, logical
+//             min/max sizes, scroll-margin/padding longhands
+// ---------------------------------------------------------------------------
+
+TEST(PropertyCascadeTest, BorderCornerRadii) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_FLOAT_EQ(style.border_radius_tl, 0.0f);
+
+    cascade.apply_declaration(style, make_decl("border-top-left-radius", "8px"), parent);
+    EXPECT_FLOAT_EQ(style.border_radius_tl, 8.0f);
+
+    cascade.apply_declaration(style, make_decl("border-top-right-radius", "12px"), parent);
+    EXPECT_FLOAT_EQ(style.border_radius_tr, 12.0f);
+
+    cascade.apply_declaration(style, make_decl("border-bottom-left-radius", "4px"), parent);
+    EXPECT_FLOAT_EQ(style.border_radius_bl, 4.0f);
+
+    cascade.apply_declaration(style, make_decl("border-bottom-right-radius", "16px"), parent);
+    EXPECT_FLOAT_EQ(style.border_radius_br, 16.0f);
+}
+
+TEST(PropertyCascadeTest, BorderLogicalRadii) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("border-start-start-radius", "6px"), parent);
+    EXPECT_FLOAT_EQ(style.border_start_start_radius, 6.0f);
+
+    cascade.apply_declaration(style, make_decl("border-start-end-radius", "9px"), parent);
+    EXPECT_FLOAT_EQ(style.border_start_end_radius, 9.0f);
+
+    cascade.apply_declaration(style, make_decl("border-end-start-radius", "3px"), parent);
+    EXPECT_FLOAT_EQ(style.border_end_start_radius, 3.0f);
+
+    cascade.apply_declaration(style, make_decl("border-end-end-radius", "15px"), parent);
+    EXPECT_FLOAT_EQ(style.border_end_end_radius, 15.0f);
+}
+
+TEST(PropertyCascadeTest, MarginBlockShorthand) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    // single value: sets both top and bottom
+    cascade.apply_declaration(style, make_decl("margin-block", "20px"), parent);
+    EXPECT_FLOAT_EQ(style.margin.top.to_px(), 20.0f);
+    EXPECT_FLOAT_EQ(style.margin.bottom.to_px(), 20.0f);
+
+    // two values: top and bottom separately
+    cascade.apply_declaration(style, make_decl("margin-block", "10px 30px"), parent);
+    EXPECT_FLOAT_EQ(style.margin.top.to_px(), 10.0f);
+    EXPECT_FLOAT_EQ(style.margin.bottom.to_px(), 30.0f);
+}
+
+TEST(PropertyCascadeTest, MarginInlineShorthand) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    // single value: sets both left and right
+    cascade.apply_declaration(style, make_decl("margin-inline", "15px"), parent);
+    EXPECT_FLOAT_EQ(style.margin.left.to_px(), 15.0f);
+    EXPECT_FLOAT_EQ(style.margin.right.to_px(), 15.0f);
+
+    // two values: left and right separately
+    cascade.apply_declaration(style, make_decl("margin-inline", "5px 25px"), parent);
+    EXPECT_FLOAT_EQ(style.margin.left.to_px(), 5.0f);
+    EXPECT_FLOAT_EQ(style.margin.right.to_px(), 25.0f);
+}
+
+TEST(PropertyCascadeTest, PaddingBlockShorthand) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    // single value: sets both top and bottom
+    cascade.apply_declaration(style, make_decl("padding-block", "12px"), parent);
+    EXPECT_FLOAT_EQ(style.padding.top.to_px(), 12.0f);
+    EXPECT_FLOAT_EQ(style.padding.bottom.to_px(), 12.0f);
+
+    // two values
+    cascade.apply_declaration(style, make_decl("padding-block", "4px 8px"), parent);
+    EXPECT_FLOAT_EQ(style.padding.top.to_px(), 4.0f);
+    EXPECT_FLOAT_EQ(style.padding.bottom.to_px(), 8.0f);
+}
+
+TEST(PropertyCascadeTest, PaddingInlineShorthand) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    // single value: sets both left and right
+    cascade.apply_declaration(style, make_decl("padding-inline", "16px"), parent);
+    EXPECT_FLOAT_EQ(style.padding.left.to_px(), 16.0f);
+    EXPECT_FLOAT_EQ(style.padding.right.to_px(), 16.0f);
+
+    // two values
+    cascade.apply_declaration(style, make_decl("padding-inline", "2px 10px"), parent);
+    EXPECT_FLOAT_EQ(style.padding.left.to_px(), 2.0f);
+    EXPECT_FLOAT_EQ(style.padding.right.to_px(), 10.0f);
+}
+
+TEST(PropertyCascadeTest, MinMaxLogicalSizes) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    // min-inline-size → min_width
+    cascade.apply_declaration(style, make_decl("min-inline-size", "50px"), parent);
+    EXPECT_FLOAT_EQ(style.min_width.to_px(), 50.0f);
+
+    // max-inline-size → max_width
+    cascade.apply_declaration(style, make_decl("max-inline-size", "400px"), parent);
+    EXPECT_FLOAT_EQ(style.max_width.to_px(), 400.0f);
+
+    // min-block-size → min_height
+    cascade.apply_declaration(style, make_decl("min-block-size", "30px"), parent);
+    EXPECT_FLOAT_EQ(style.min_height.to_px(), 30.0f);
+
+    // max-block-size → max_height
+    cascade.apply_declaration(style, make_decl("max-block-size", "200px"), parent);
+    EXPECT_FLOAT_EQ(style.max_height.to_px(), 200.0f);
+}
+
+TEST(PropertyCascadeTest, ScrollMarginAndPaddingLonghands) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_FLOAT_EQ(style.scroll_margin_top, 0.0f);
+    EXPECT_FLOAT_EQ(style.scroll_padding_top, 0.0f);
+
+    cascade.apply_declaration(style, make_decl("scroll-margin-top", "8px"), parent);
+    EXPECT_FLOAT_EQ(style.scroll_margin_top, 8.0f);
+
+    cascade.apply_declaration(style, make_decl("scroll-margin-right", "4px"), parent);
+    EXPECT_FLOAT_EQ(style.scroll_margin_right, 4.0f);
+
+    cascade.apply_declaration(style, make_decl("scroll-margin-bottom", "12px"), parent);
+    EXPECT_FLOAT_EQ(style.scroll_margin_bottom, 12.0f);
+
+    cascade.apply_declaration(style, make_decl("scroll-margin-left", "6px"), parent);
+    EXPECT_FLOAT_EQ(style.scroll_margin_left, 6.0f);
+
+    cascade.apply_declaration(style, make_decl("scroll-padding-top", "10px"), parent);
+    EXPECT_FLOAT_EQ(style.scroll_padding_top, 10.0f);
+
+    cascade.apply_declaration(style, make_decl("scroll-padding-right", "5px"), parent);
+    EXPECT_FLOAT_EQ(style.scroll_padding_right, 5.0f);
+
+    cascade.apply_declaration(style, make_decl("scroll-padding-bottom", "15px"), parent);
+    EXPECT_FLOAT_EQ(style.scroll_padding_bottom, 15.0f);
+
+    cascade.apply_declaration(style, make_decl("scroll-padding-left", "3px"), parent);
+    EXPECT_FLOAT_EQ(style.scroll_padding_left, 3.0f);
+}
