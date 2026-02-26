@@ -587,3 +587,73 @@ TEST(URLParser, EmptyPortEquivalentToNoPort) {
     EXPECT_EQ(result->host, "example.com");
     EXPECT_EQ(result->port, std::nullopt);
 }
+
+// ---------------------------------------------------------------------------
+// Cycle 490 — additional URL parser regression tests
+// ---------------------------------------------------------------------------
+
+// Multiple path segments are preserved
+TEST(URLParser, URLWithMultiplePathSegments) {
+    auto result = parse("https://example.com/a/b/c/d.html");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/a/b/c/d.html");
+}
+
+// Host is normalized to lowercase regardless of input case
+TEST(URLParser, HostNormalizedToLowercase) {
+    auto result = parse("https://EXAMPLE.COM/path");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->host, "example.com");
+}
+
+// URL with empty fragment: '#' at end produces empty fragment string
+TEST(URLParser, URLWithEmptyFragment) {
+    auto result = parse("https://example.com/path#");
+    ASSERT_TRUE(result.has_value());
+    // Fragment is empty string (not nullopt) when '#' is present
+    EXPECT_EQ(result->fragment, "");
+}
+
+// URL with empty query: '?' at end produces empty query string
+TEST(URLParser, URLWithEmptyQuery) {
+    auto result = parse("https://example.com/path?");
+    ASSERT_TRUE(result.has_value());
+    // Query is empty string when '?' is present with no content
+    EXPECT_EQ(result->query, "");
+}
+
+// HTTP URL with no path component gets "/" path
+TEST(URLParser, URLNoPathGetsSlash) {
+    auto result = parse("http://example.com");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/");
+}
+
+// Relative URL with parent directory navigation resolves correctly
+TEST(URLParser, RelativeURLWithParentDotDot) {
+    auto base = parse("https://example.com/dir/sub/page.html");
+    ASSERT_TRUE(base.has_value());
+
+    auto result = parse("../other.html", &base.value());
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->path, "/dir/other.html");
+}
+
+// IPv4 address as host is parsed correctly
+TEST(URLParser, IPv4AddressAsHost) {
+    auto result = parse("http://192.168.1.1/path");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "192.168.1.1");
+    EXPECT_EQ(result->path, "/path");
+}
+
+// Scheme is lowercased even when mixed case
+TEST(URLParser, SchemeMixedCaseLowered) {
+    auto result = parse("HTTPS://example.com/");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+}
