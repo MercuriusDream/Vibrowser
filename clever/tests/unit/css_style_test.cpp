@@ -5934,3 +5934,127 @@ TEST(PropertyCascadeTest, WebkitUserSelectAlias) {
     cascade.apply_declaration(style, make_decl("-webkit-user-select", "all"), parent);
     EXPECT_EQ(style.user_select, UserSelect::All);
 }
+
+// ---------------------------------------------------------------------------
+// Cycle 440 — CSS multi-column: column-count, column-fill, column-width,
+//             column-gap, column-rule-style, column-rule-color,
+//             column-rule-width, columns shorthand, column-span
+// ---------------------------------------------------------------------------
+
+TEST(PropertyCascadeTest, ColumnCountAutoAndExplicit) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.column_count, -1);  // default: auto
+
+    cascade.apply_declaration(style, make_decl("column-count", "3"), parent);
+    EXPECT_EQ(style.column_count, 3);
+
+    cascade.apply_declaration(style, make_decl("column-count", "1"), parent);
+    EXPECT_EQ(style.column_count, 1);
+
+    cascade.apply_declaration(style, make_decl("column-count", "auto"), parent);
+    EXPECT_EQ(style.column_count, -1);
+}
+
+TEST(PropertyCascadeTest, ColumnFillValues) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.column_fill, 0);  // default: balance
+
+    cascade.apply_declaration(style, make_decl("column-fill", "auto"), parent);
+    EXPECT_EQ(style.column_fill, 1);
+
+    cascade.apply_declaration(style, make_decl("column-fill", "balance-all"), parent);
+    EXPECT_EQ(style.column_fill, 2);
+
+    cascade.apply_declaration(style, make_decl("column-fill", "balance"), parent);
+    EXPECT_EQ(style.column_fill, 0);
+}
+
+TEST(PropertyCascadeTest, ColumnWidthAutoAndPx) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_TRUE(style.column_width.is_auto());  // default: auto
+
+    cascade.apply_declaration(style, make_decl("column-width", "200px"), parent);
+    EXPECT_FALSE(style.column_width.is_auto());
+    EXPECT_FLOAT_EQ(style.column_width.to_px(0), 200.0f);
+
+    cascade.apply_declaration(style, make_decl("column-width", "auto"), parent);
+    EXPECT_TRUE(style.column_width.is_auto());
+}
+
+TEST(PropertyCascadeTest, ColumnGapPx) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("column-gap", "16px"), parent);
+    EXPECT_FLOAT_EQ(style.column_gap_val.to_px(0), 16.0f);
+
+    cascade.apply_declaration(style, make_decl("column-gap", "0px"), parent);
+    EXPECT_FLOAT_EQ(style.column_gap_val.to_px(0), 0.0f);
+}
+
+TEST(PropertyCascadeTest, ColumnRuleStyleValues) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.column_rule_style, 0);  // default: none
+
+    cascade.apply_declaration(style, make_decl("column-rule-style", "solid"), parent);
+    EXPECT_EQ(style.column_rule_style, 1);
+
+    cascade.apply_declaration(style, make_decl("column-rule-style", "dashed"), parent);
+    EXPECT_EQ(style.column_rule_style, 2);
+
+    cascade.apply_declaration(style, make_decl("column-rule-style", "dotted"), parent);
+    EXPECT_EQ(style.column_rule_style, 3);
+
+    cascade.apply_declaration(style, make_decl("column-rule-style", "none"), parent);
+    EXPECT_EQ(style.column_rule_style, 0);
+}
+
+TEST(PropertyCascadeTest, ColumnRuleColorAndWidth) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("column-rule-color", "red"), parent);
+    EXPECT_EQ(style.column_rule_color, (Color{255, 0, 0, 255}));
+
+    cascade.apply_declaration(style, make_decl("column-rule-width", "2px"), parent);
+    EXPECT_FLOAT_EQ(style.column_rule_width, 2.0f);
+}
+
+TEST(PropertyCascadeTest, ColumnsShorthandCountAndWidth) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    // "3 200px" — column-count=3, column-width=200px
+    cascade.apply_declaration(style, make_decl("columns", "3 200px"), parent);
+    EXPECT_EQ(style.column_count, 3);
+    EXPECT_FLOAT_EQ(style.column_width.to_px(0), 200.0f);
+}
+
+TEST(PropertyCascadeTest, ColumnSpanNoneAndAll) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.column_span, 0);  // default: none
+
+    cascade.apply_declaration(style, make_decl("column-span", "all"), parent);
+    EXPECT_EQ(style.column_span, 1);
+
+    cascade.apply_declaration(style, make_decl("column-span", "none"), parent);
+    EXPECT_EQ(style.column_span, 0);
+}
