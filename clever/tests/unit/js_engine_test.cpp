@@ -13574,3 +13574,88 @@ TEST(JSEngine, GlobalThisIsObject) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "object");
 }
+
+// ============================================================================
+// Cycle 628: More JS engine tests
+// ============================================================================
+
+// JSON.parse basic
+TEST(JSEngine, JSONParseBasic) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var obj = JSON.parse('{"x": 42}');
+        obj.x
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "42");
+}
+
+// JSON.stringify array
+TEST(JSEngine, JSONStringifyArray) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        JSON.stringify([1, 2, 3])
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "[1,2,3]");
+}
+
+// Date.now returns a number
+TEST(JSEngine, DateNowIsNumber) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        typeof Date.now()
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "number");
+}
+
+// parseInt with radix 16
+TEST(JSEngine, ParseIntHex) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        parseInt("ff", 16)
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "255");
+}
+
+// isNaN global function
+TEST(JSEngine, IsNaNGlobal) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        isNaN(NaN) + "," + isNaN(42)
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true,false");
+}
+
+// isFinite global function
+TEST(JSEngine, IsFiniteGlobal) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        isFinite(42) + "," + isFinite(Infinity)
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true,false");
+}
+
+// encodeURIComponent
+TEST(JSEngine, EncodeURIComponent) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        encodeURIComponent("hello world")
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "hello%20world");
+}
+
+// decodeURIComponent
+TEST(JSEngine, DecodeURIComponent) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        decodeURIComponent("hello%20world")
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "hello world");
+}
