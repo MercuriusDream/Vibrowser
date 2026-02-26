@@ -10872,3 +10872,154 @@ TEST(JSEngine, StringPadStartAndPadEnd) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "true");
 }
+
+// ============================================================================
+// Cycle 434 — Map, Set, WeakMap, Symbol, generators, for...of, Promise.race/any
+// ============================================================================
+
+TEST(JSEngine, MapBuiltIn) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var m = new Map();
+        m.set('a', 1);
+        m.set('b', 2);
+        m.set('b', 99);  // overwrite
+        var checks = [];
+        checks.push(m.size === 2);
+        checks.push(m.get('a') === 1);
+        checks.push(m.get('b') === 99);
+        checks.push(m.has('a') === true);
+        checks.push(m.has('c') === false);
+        m.delete('a');
+        checks.push(m.size === 1);
+        checks.push(m.has('a') === false);
+        String(checks.every(function(c){return c;}))
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, SetBuiltIn) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var s = new Set([1, 2, 3, 2, 1]);  // duplicates removed
+        var checks = [];
+        checks.push(s.size === 3);
+        checks.push(s.has(1) === true);
+        checks.push(s.has(4) === false);
+        s.add(4);
+        checks.push(s.size === 4);
+        s.delete(1);
+        checks.push(s.size === 3);
+        checks.push(s.has(1) === false);
+        String(checks.every(function(c){return c;}))
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, WeakMapBuiltIn) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var wm = new WeakMap();
+        var key = {};
+        wm.set(key, 42);
+        var checks = [];
+        checks.push(wm.has(key) === true);
+        checks.push(wm.get(key) === 42);
+        wm.delete(key);
+        checks.push(wm.has(key) === false);
+        String(checks.every(function(c){return c;}))
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, SymbolBuiltIn) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var s1 = Symbol('foo');
+        var s2 = Symbol('foo');
+        var s3 = Symbol.for('bar');
+        var s4 = Symbol.for('bar');
+        var checks = [];
+        checks.push(typeof s1 === 'symbol');
+        checks.push(s1 !== s2);          // unique symbols
+        checks.push(s3 === s4);          // Symbol.for returns same symbol
+        checks.push(s1.toString() === 'Symbol(foo)');
+        var obj = {};
+        obj[s1] = 'value';
+        checks.push(obj[s1] === 'value');
+        String(checks.every(function(c){return c;}))
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, GeneratorFunction) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        function* counter(start) {
+            yield start;
+            yield start + 1;
+            yield start + 2;
+        }
+        var gen = counter(10);
+        var a = gen.next();
+        var b = gen.next();
+        var c = gen.next();
+        var d = gen.next();
+        String(a.value === 10 && a.done === false &&
+               b.value === 11 && b.done === false &&
+               c.value === 12 && c.done === false &&
+               d.done === true)
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, ForOfLoop) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var arr = [10, 20, 30];
+        var sum = 0;
+        for (var val of arr) { sum += val; }
+        var str = '';
+        for (var ch of 'abc') { str += ch; }
+        var m = new Map([['x', 1], ['y', 2]]);
+        var mkeys = [];
+        for (var [k, v] of m) { mkeys.push(k); }
+        String(sum === 60 && str === 'abc' && mkeys.length === 2)
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, PromiseRace) {
+    // Verify Promise.race exists, is callable, and returns a thenable
+    // (callback resolution requires microtask drain, not tested here)
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var checks = [];
+        checks.push(typeof Promise.race === 'function');
+        var p = Promise.race([Promise.resolve(1), Promise.resolve(2)]);
+        checks.push(typeof p === 'object' && typeof p.then === 'function');
+        String(checks.every(function(c){return c;}))
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, PromiseAny) {
+    // Verify Promise.any exists, is callable, and returns a thenable
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var checks = [];
+        checks.push(typeof Promise.any === 'function');
+        var p = Promise.any([Promise.resolve('ok')]);
+        checks.push(typeof p === 'object' && typeof p.then === 'function');
+        String(checks.every(function(c){return c;}))
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true");
+}
