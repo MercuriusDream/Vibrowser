@@ -1784,3 +1784,86 @@ TEST(TreeBuilder, UlWithThreeItems) {
     }
     EXPECT_EQ(li_count, 3);
 }
+
+// ============================================================================
+// Cycle 575: More HTML parser tests
+// ============================================================================
+
+TEST(TreeBuilder, StrongElement) {
+    auto doc = parse(R"(<body><p>This is <strong>important</strong> text</p></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* strong = doc->find_element("strong");
+    ASSERT_NE(strong, nullptr);
+    EXPECT_EQ(strong->text_content(), "important");
+}
+
+TEST(TreeBuilder, EmElement) {
+    auto doc = parse(R"(<body><p>This is <em>emphasized</em> text</p></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* em = doc->find_element("em");
+    ASSERT_NE(em, nullptr);
+    EXPECT_EQ(em->text_content(), "emphasized");
+}
+
+TEST(TreeBuilder, AnchorWithHref) {
+    auto doc = parse(R"(<body><a href="https://example.com">Click here</a></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* a = doc->find_element("a");
+    ASSERT_NE(a, nullptr);
+    EXPECT_EQ(a->text_content(), "Click here");
+    bool found = false;
+    for (auto& attr : a->attributes) {
+        if (attr.name == "href") found = true;
+    }
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, ImgWithSrcAndAlt) {
+    auto doc = parse(R"(<body><img src="photo.jpg" alt="A photo"></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* img = doc->find_element("img");
+    ASSERT_NE(img, nullptr);
+    bool has_src = false, has_alt = false;
+    for (auto& attr : img->attributes) {
+        if (attr.name == "src" && attr.value == "photo.jpg") has_src = true;
+        if (attr.name == "alt") has_alt = true;
+    }
+    EXPECT_TRUE(has_src);
+    EXPECT_TRUE(has_alt);
+}
+
+TEST(TreeBuilder, InputWithPlaceholder) {
+    auto doc = parse(R"(<body><input type="text" placeholder="Enter name"></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* input = doc->find_element("input");
+    ASSERT_NE(input, nullptr);
+    bool found_ph = false;
+    for (auto& attr : input->attributes) {
+        if (attr.name == "placeholder") found_ph = true;
+    }
+    EXPECT_TRUE(found_ph);
+}
+
+TEST(TreeBuilder, H3InArticle) {
+    auto doc = parse(R"(<body><article><h3>Subheading</h3><p>Content</p></article></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* h3 = doc->find_element("h3");
+    ASSERT_NE(h3, nullptr);
+    EXPECT_EQ(h3->text_content(), "Subheading");
+}
+
+TEST(TreeBuilder, CodeInsidePre) {
+    auto doc = parse(R"(<body><pre><code>int main() {}</code></pre></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* code = doc->find_element("code");
+    ASSERT_NE(code, nullptr);
+    EXPECT_EQ(code->text_content(), "int main() {}");
+}
+
+TEST(TreeBuilder, SmallElementPrice) {
+    auto doc = parse(R"(<body><p>Price: <small>$9.99</small></p></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* small = doc->find_element("small");
+    ASSERT_NE(small, nullptr);
+    EXPECT_EQ(small->text_content(), "$9.99");
+}
