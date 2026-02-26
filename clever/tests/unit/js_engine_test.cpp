@@ -13399,3 +13399,89 @@ TEST(JSEngine, ArrayFindIndexNotFound) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "-1");
 }
+
+// ============================================================================
+// Cycle 619: More JS engine tests
+// ============================================================================
+
+// Array.prototype.find
+TEST(JSEngine, ArrayFind) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        [5, 12, 8, 130, 44].find(function(x) { return x > 10; })
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "12");
+}
+
+// Object.fromEntries
+TEST(JSEngine, ObjectFromEntries) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var obj = Object.fromEntries([["a", 1], ["b", 2]]);
+        obj.a + "," + obj.b
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1,2");
+}
+
+// Array.prototype.includes with NaN
+TEST(JSEngine, ArrayIncludesNaN) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        [1, NaN, 3].includes(NaN)
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true");
+}
+
+// String.prototype.replaceAll all occurrences
+TEST(JSEngine, StringReplaceAllAllOccurrences) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        "hello world hello".replaceAll("hello", "hi")
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "hi world hi");
+}
+
+// BigInt basic operations
+TEST(JSEngine, BigIntBasic) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        (9007199254740993n + 1n).toString()
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "9007199254740994");
+}
+
+// Logical AND chain
+TEST(JSEngine, LogicalAndChain) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        true && true && false
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "false");
+}
+
+// Logical OR three false reaches default
+TEST(JSEngine, LogicalOrThreeFalseDefault) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        null || undefined || "fallback"
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "fallback");
+}
+
+// Conditional/ternary nested
+TEST(JSEngine, NestedTernary) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var x = 5;
+        x > 10 ? "big" : x > 3 ? "medium" : "small"
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "medium");
+}
