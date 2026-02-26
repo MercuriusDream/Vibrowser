@@ -2268,3 +2268,66 @@ TEST(TreeBuilder, TemplateElement) {
     auto* tmpl = doc->find_element("template");
     ASSERT_NE(tmpl, nullptr);
 }
+
+// ============================================================================
+// Cycle 635: More HTML parser tests
+// ============================================================================
+
+TEST(TreeBuilder, HeadElementExists) {
+    auto doc = parse(R"(<html><head></head><body></body></html>)");
+    ASSERT_NE(doc, nullptr);
+    auto* head = doc->find_element("head");
+    ASSERT_NE(head, nullptr);
+}
+
+TEST(TreeBuilder, BodyElementExists) {
+    auto doc = parse(R"(<html><head></head><body></body></html>)");
+    ASSERT_NE(doc, nullptr);
+    auto* body = doc->find_element("body");
+    ASSERT_NE(body, nullptr);
+}
+
+TEST(TreeBuilder, SpanInsideDiv) {
+    auto doc = parse(R"(<body><div><span>text</span></div></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* span = doc->find_element("span");
+    ASSERT_NE(span, nullptr);
+}
+
+TEST(TreeBuilder, UlWithThreeLi) {
+    auto doc = parse(R"(<body><ul><li>a</li><li>b</li><li>c</li></ul></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* ul = doc->find_element("ul");
+    ASSERT_NE(ul, nullptr);
+    EXPECT_GE(ul->children.size(), 3u);
+}
+
+TEST(TreeBuilder, OrderedListOl) {
+    auto doc = parse(R"(<body><ol><li>first</li><li>second</li></ol></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* ol = doc->find_element("ol");
+    ASSERT_NE(ol, nullptr);
+}
+
+TEST(TreeBuilder, DefinitionListDl) {
+    auto doc = parse(R"(<body><dl><dt>term</dt><dd>definition</dd></dl></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* dl = doc->find_element("dl");
+    ASSERT_NE(dl, nullptr);
+}
+
+TEST(TreeBuilder, EmphasisElement) {
+    auto doc = parse(R"(<body><p><em>emphasized</em></p></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* em = doc->find_element("em");
+    ASSERT_NE(em, nullptr);
+    EXPECT_EQ(em->text_content(), "emphasized");
+}
+
+TEST(TreeBuilder, StrongElementWithBoldText) {
+    auto doc = parse(R"(<body><p><strong>bold text</strong></p></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* strong = doc->find_element("strong");
+    ASSERT_NE(strong, nullptr);
+    EXPECT_EQ(strong->text_content(), "bold text");
+}
