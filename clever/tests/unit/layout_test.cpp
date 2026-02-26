@@ -5754,3 +5754,62 @@ TEST(LayoutNodeProps, MaxWidthCanBeSet) {
     node->max_width = 800.0f;
     EXPECT_FLOAT_EQ(node->max_width, 800.0f);
 }
+
+// ============================================================================
+// Cycle 641: More LayoutNode property tests
+// ============================================================================
+
+// Block: specified_width can be set
+TEST(LayoutNodeProps, SpecifiedWidthCanBeSet) {
+    auto node = make_block("div");
+    node->specified_width = 400.0f;
+    EXPECT_FLOAT_EQ(node->specified_width, 400.0f);
+}
+
+// Block: specified_height can be set
+TEST(LayoutNodeProps, SpecifiedHeightCanBeSet) {
+    auto node = make_block("div");
+    node->specified_height = 200.0f;
+    EXPECT_FLOAT_EQ(node->specified_height, 200.0f);
+}
+
+// Flex: align_self can be set to int value 2
+TEST(FlexboxAudit, AlignSelfIntValueTwo) {
+    auto node = make_flex("div");
+    node->align_self = 2;
+    EXPECT_EQ(node->align_self, 2);
+}
+
+// Layout: gap can be set to 16
+TEST(LayoutNodeProps, GapSixteenValue) {
+    auto node = make_flex("div");
+    node->gap = 16.0f;
+    EXPECT_FLOAT_EQ(node->gap, 16.0f);
+}
+
+// Layout: row_gap can be set to 8
+TEST(LayoutNodeProps, RowGapEightValue) {
+    auto node = make_flex("div");
+    node->row_gap = 8.0f;
+    EXPECT_FLOAT_EQ(node->row_gap, 8.0f);
+}
+
+// Layout: column_gap can be set to 12
+TEST(LayoutNodeProps, ColumnGapTwelveValue) {
+    auto node = make_flex("div");
+    node->column_gap = 12.0f;
+    EXPECT_FLOAT_EQ(node->column_gap, 12.0f);
+}
+
+// Flex: flex_wrap 1 means wrap
+TEST(FlexboxAudit, FlexWrapIntValueOne) {
+    auto node = make_flex("div");
+    node->flex_wrap = 1;
+    EXPECT_EQ(node->flex_wrap, 1);
+}
+
+// Layout: mode can be Flex
+TEST(LayoutNodeProps, ModeCanBeFlex) {
+    auto node = make_flex("div");
+    EXPECT_EQ(node->mode, LayoutMode::Flex);
+}
