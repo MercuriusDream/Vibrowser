@@ -5765,3 +5765,172 @@ TEST(PropertyCascadeTest, CounterSetStoresString) {
     cascade.apply_declaration(style, make_decl("counter-set", "page 5"), parent);
     EXPECT_EQ(style.counter_set, "page 5");
 }
+
+// ---------------------------------------------------------------------------
+// Cycle 439 — object-fit, object-position, mix-blend-mode, aspect-ratio,
+//             contain, image-rendering, clip-path none, webkit-user-select
+// ---------------------------------------------------------------------------
+
+TEST(PropertyCascadeTest, ObjectFitValues) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.object_fit, 0);  // default: fill
+
+    cascade.apply_declaration(style, make_decl("object-fit", "contain"), parent);
+    EXPECT_EQ(style.object_fit, 1);
+
+    cascade.apply_declaration(style, make_decl("object-fit", "cover"), parent);
+    EXPECT_EQ(style.object_fit, 2);
+
+    cascade.apply_declaration(style, make_decl("object-fit", "none"), parent);
+    EXPECT_EQ(style.object_fit, 3);
+
+    cascade.apply_declaration(style, make_decl("object-fit", "scale-down"), parent);
+    EXPECT_EQ(style.object_fit, 4);
+
+    cascade.apply_declaration(style, make_decl("object-fit", "fill"), parent);
+    EXPECT_EQ(style.object_fit, 0);
+}
+
+TEST(PropertyCascadeTest, ObjectPositionCenterDefault) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    // Default: 50% 50%
+    EXPECT_FLOAT_EQ(style.object_position_x, 50.0f);
+    EXPECT_FLOAT_EQ(style.object_position_y, 50.0f);
+
+    cascade.apply_declaration(style, make_decl("object-position", "left top"), parent);
+    EXPECT_FLOAT_EQ(style.object_position_x, 0.0f);
+    EXPECT_FLOAT_EQ(style.object_position_y, 0.0f);
+
+    cascade.apply_declaration(style, make_decl("object-position", "right bottom"), parent);
+    EXPECT_FLOAT_EQ(style.object_position_x, 100.0f);
+    EXPECT_FLOAT_EQ(style.object_position_y, 100.0f);
+
+    cascade.apply_declaration(style, make_decl("object-position", "center"), parent);
+    EXPECT_FLOAT_EQ(style.object_position_x, 50.0f);
+    EXPECT_FLOAT_EQ(style.object_position_y, 50.0f);
+}
+
+TEST(PropertyCascadeTest, MixBlendModeValues) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.mix_blend_mode, 0);  // default: normal
+
+    cascade.apply_declaration(style, make_decl("mix-blend-mode", "multiply"), parent);
+    EXPECT_EQ(style.mix_blend_mode, 1);
+
+    cascade.apply_declaration(style, make_decl("mix-blend-mode", "screen"), parent);
+    EXPECT_EQ(style.mix_blend_mode, 2);
+
+    cascade.apply_declaration(style, make_decl("mix-blend-mode", "overlay"), parent);
+    EXPECT_EQ(style.mix_blend_mode, 3);
+
+    cascade.apply_declaration(style, make_decl("mix-blend-mode", "difference"), parent);
+    EXPECT_EQ(style.mix_blend_mode, 10);
+
+    cascade.apply_declaration(style, make_decl("mix-blend-mode", "normal"), parent);
+    EXPECT_EQ(style.mix_blend_mode, 0);
+}
+
+TEST(PropertyCascadeTest, AspectRatioAutoAndRatio) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_FLOAT_EQ(style.aspect_ratio, 0.0f);  // default: auto
+
+    cascade.apply_declaration(style, make_decl("aspect-ratio", "16/9"), parent);
+    EXPECT_NEAR(style.aspect_ratio, 16.0f / 9.0f, 0.001f);
+
+    cascade.apply_declaration(style, make_decl("aspect-ratio", "4/3"), parent);
+    EXPECT_NEAR(style.aspect_ratio, 4.0f / 3.0f, 0.001f);
+
+    cascade.apply_declaration(style, make_decl("aspect-ratio", "1/1"), parent);
+    EXPECT_FLOAT_EQ(style.aspect_ratio, 1.0f);
+
+    cascade.apply_declaration(style, make_decl("aspect-ratio", "auto"), parent);
+    EXPECT_FLOAT_EQ(style.aspect_ratio, 0.0f);
+}
+
+TEST(PropertyCascadeTest, ContainValues) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.contain, 0);  // default: none
+
+    cascade.apply_declaration(style, make_decl("contain", "strict"), parent);
+    EXPECT_EQ(style.contain, 1);
+
+    cascade.apply_declaration(style, make_decl("contain", "content"), parent);
+    EXPECT_EQ(style.contain, 2);
+
+    cascade.apply_declaration(style, make_decl("contain", "size"), parent);
+    EXPECT_EQ(style.contain, 3);
+
+    cascade.apply_declaration(style, make_decl("contain", "layout"), parent);
+    EXPECT_EQ(style.contain, 4);
+
+    cascade.apply_declaration(style, make_decl("contain", "paint"), parent);
+    EXPECT_EQ(style.contain, 6);
+
+    cascade.apply_declaration(style, make_decl("contain", "none"), parent);
+    EXPECT_EQ(style.contain, 0);
+}
+
+TEST(PropertyCascadeTest, ImageRenderingValues) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.image_rendering, 0);  // default: auto
+
+    cascade.apply_declaration(style, make_decl("image-rendering", "smooth"), parent);
+    EXPECT_EQ(style.image_rendering, 1);
+
+    cascade.apply_declaration(style, make_decl("image-rendering", "crisp-edges"), parent);
+    EXPECT_EQ(style.image_rendering, 3);
+
+    cascade.apply_declaration(style, make_decl("image-rendering", "pixelated"), parent);
+    EXPECT_EQ(style.image_rendering, 4);
+
+    cascade.apply_declaration(style, make_decl("image-rendering", "auto"), parent);
+    EXPECT_EQ(style.image_rendering, 0);
+}
+
+TEST(PropertyCascadeTest, ClipPathNoneClearsValues) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    // Manually set a non-zero clip_path_type then reset with "none"
+    style.clip_path_type = 1;
+    style.clip_path_values.push_back(50.0f);
+
+    cascade.apply_declaration(style, make_decl("clip-path", "none"), parent);
+    EXPECT_EQ(style.clip_path_type, 0);
+    EXPECT_TRUE(style.clip_path_values.empty());
+}
+
+TEST(PropertyCascadeTest, WebkitUserSelectAlias) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    // -webkit-user-select should map to same user_select field
+    cascade.apply_declaration(style, make_decl("-webkit-user-select", "none"), parent);
+    EXPECT_EQ(style.user_select, UserSelect::None);
+
+    cascade.apply_declaration(style, make_decl("-webkit-user-select", "text"), parent);
+    EXPECT_EQ(style.user_select, UserSelect::Text);
+
+    cascade.apply_declaration(style, make_decl("-webkit-user-select", "all"), parent);
+    EXPECT_EQ(style.user_select, UserSelect::All);
+}
