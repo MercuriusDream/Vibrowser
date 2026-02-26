@@ -9983,3 +9983,181 @@ TEST(PropertyCascadeTest, TransitionTimingFunctionAllValues) {
     cascade.apply_declaration(style, make_decl("transition-timing-function", "ease-in-out"), parent);
     EXPECT_EQ(style.transition_timing, 4);
 }
+
+// ---------------------------------------------------------------------------
+// Cycle 472 — isolation, mix-blend-mode, will-change, overscroll-behavior,
+//             content-visibility, contain, break-before/after/inside, page-break
+// ---------------------------------------------------------------------------
+
+TEST(PropertyCascadeTest, IsolationValues) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.isolation, 0);  // default: auto
+
+    cascade.apply_declaration(style, make_decl("isolation", "isolate"), parent);
+    EXPECT_EQ(style.isolation, 1);
+
+    cascade.apply_declaration(style, make_decl("isolation", "auto"), parent);
+    EXPECT_EQ(style.isolation, 0);
+}
+
+TEST(PropertyCascadeTest, MixBlendModeAllValues) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.mix_blend_mode, 0);  // default: normal
+
+    cascade.apply_declaration(style, make_decl("mix-blend-mode", "multiply"), parent);
+    EXPECT_EQ(style.mix_blend_mode, 1);
+
+    cascade.apply_declaration(style, make_decl("mix-blend-mode", "screen"), parent);
+    EXPECT_EQ(style.mix_blend_mode, 2);
+
+    cascade.apply_declaration(style, make_decl("mix-blend-mode", "overlay"), parent);
+    EXPECT_EQ(style.mix_blend_mode, 3);
+
+    cascade.apply_declaration(style, make_decl("mix-blend-mode", "darken"), parent);
+    EXPECT_EQ(style.mix_blend_mode, 4);
+
+    cascade.apply_declaration(style, make_decl("mix-blend-mode", "lighten"), parent);
+    EXPECT_EQ(style.mix_blend_mode, 5);
+
+    cascade.apply_declaration(style, make_decl("mix-blend-mode", "difference"), parent);
+    EXPECT_EQ(style.mix_blend_mode, 10);
+
+    cascade.apply_declaration(style, make_decl("mix-blend-mode", "exclusion"), parent);
+    EXPECT_EQ(style.mix_blend_mode, 11);
+}
+
+TEST(PropertyCascadeTest, WillChangeValues) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_TRUE(style.will_change.empty());  // default: empty (auto)
+
+    cascade.apply_declaration(style, make_decl("will-change", "opacity"), parent);
+    EXPECT_EQ(style.will_change, "opacity");
+
+    cascade.apply_declaration(style, make_decl("will-change", "transform"), parent);
+    EXPECT_EQ(style.will_change, "transform");
+
+    // auto clears it
+    cascade.apply_declaration(style, make_decl("will-change", "auto"), parent);
+    EXPECT_TRUE(style.will_change.empty());
+}
+
+TEST(PropertyCascadeTest, OverscrollBehaviorShorthandAndLonghands) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.overscroll_behavior_x, 0);
+    EXPECT_EQ(style.overscroll_behavior_y, 0);
+
+    // Shorthand sets both
+    cascade.apply_declaration(style, make_decl("overscroll-behavior", "contain"), parent);
+    EXPECT_EQ(style.overscroll_behavior_x, 1);
+    EXPECT_EQ(style.overscroll_behavior_y, 1);
+
+    // Two-value: x=contain, y=none
+    cascade.apply_declaration(style, make_decl("overscroll-behavior", "contain none"), parent);
+    EXPECT_EQ(style.overscroll_behavior_x, 1);
+    EXPECT_EQ(style.overscroll_behavior_y, 2);
+
+    // Longhands
+    cascade.apply_declaration(style, make_decl("overscroll-behavior-x", "none"), parent);
+    EXPECT_EQ(style.overscroll_behavior_x, 2);
+
+    cascade.apply_declaration(style, make_decl("overscroll-behavior-y", "auto"), parent);
+    EXPECT_EQ(style.overscroll_behavior_y, 0);
+}
+
+TEST(PropertyCascadeTest, ContentVisibilityAllValues) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.content_visibility, 0);  // default: visible
+
+    cascade.apply_declaration(style, make_decl("content-visibility", "hidden"), parent);
+    EXPECT_EQ(style.content_visibility, 1);
+
+    cascade.apply_declaration(style, make_decl("content-visibility", "auto"), parent);
+    EXPECT_EQ(style.content_visibility, 2);
+
+    cascade.apply_declaration(style, make_decl("content-visibility", "visible"), parent);
+    EXPECT_EQ(style.content_visibility, 0);
+}
+
+TEST(PropertyCascadeTest, ContainAllValues) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.contain, 0);  // default: none
+
+    cascade.apply_declaration(style, make_decl("contain", "strict"), parent);
+    EXPECT_EQ(style.contain, 1);
+
+    cascade.apply_declaration(style, make_decl("contain", "content"), parent);
+    EXPECT_EQ(style.contain, 2);
+
+    cascade.apply_declaration(style, make_decl("contain", "size"), parent);
+    EXPECT_EQ(style.contain, 3);
+
+    cascade.apply_declaration(style, make_decl("contain", "layout"), parent);
+    EXPECT_EQ(style.contain, 4);
+
+    cascade.apply_declaration(style, make_decl("contain", "paint"), parent);
+    EXPECT_EQ(style.contain, 6);
+}
+
+TEST(PropertyCascadeTest, BreakBeforeAfterInside) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.break_before, 0);
+    EXPECT_EQ(style.break_after, 0);
+    EXPECT_EQ(style.break_inside, 0);
+
+    cascade.apply_declaration(style, make_decl("break-before", "avoid"), parent);
+    EXPECT_EQ(style.break_before, 1);
+
+    cascade.apply_declaration(style, make_decl("break-before", "column"), parent);
+    EXPECT_EQ(style.break_before, 4);
+
+    cascade.apply_declaration(style, make_decl("break-after", "page"), parent);
+    EXPECT_EQ(style.break_after, 3);
+
+    cascade.apply_declaration(style, make_decl("break-inside", "avoid"), parent);
+    EXPECT_EQ(style.break_inside, 1);
+
+    cascade.apply_declaration(style, make_decl("break-inside", "avoid-column"), parent);
+    EXPECT_EQ(style.break_inside, 3);
+}
+
+TEST(PropertyCascadeTest, PageBreakLegacyProperties) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.page_break_before, 0);
+    EXPECT_EQ(style.page_break_after, 0);
+
+    cascade.apply_declaration(style, make_decl("page-break-before", "always"), parent);
+    EXPECT_EQ(style.page_break_before, 1);
+
+    cascade.apply_declaration(style, make_decl("page-break-before", "avoid"), parent);
+    EXPECT_EQ(style.page_break_before, 2);
+
+    cascade.apply_declaration(style, make_decl("page-break-after", "right"), parent);
+    EXPECT_EQ(style.page_break_after, 4);
+
+    cascade.apply_declaration(style, make_decl("page-break-inside", "avoid"), parent);
+    EXPECT_EQ(style.page_break_inside, 1);
+}
