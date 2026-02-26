@@ -2648,3 +2648,82 @@ TEST_F(CSSStylesheetTest, PropertyNamePreserved) {
     ASSERT_FALSE(sheet.rules[0].declarations.empty());
     EXPECT_EQ(sheet.rules[0].declarations[0].property, "letter-spacing");
 }
+
+// ============================================================================
+// Cycle 659: More CSS parser tests
+// ============================================================================
+
+// Tokenizer: semicolon delimiter token
+TEST_F(CSSTokenizerTest, SemicolonDelimToken) {
+    auto tokens = CSSTokenizer::tokenize_all(";");
+    ASSERT_FALSE(tokens.empty());
+    EXPECT_EQ(tokens[0].type, CSSToken::Semicolon);
+}
+
+// Tokenizer: opening brace for a rule block
+TEST_F(CSSTokenizerTest, OpeningBraceForRuleBlock) {
+    auto tokens = CSSTokenizer::tokenize_all("div {");
+    ASSERT_GE(tokens.size(), 2u);
+    bool found = false;
+    for (auto& t : tokens) {
+        if (t.type == CSSToken::LeftBrace) { found = true; break; }
+    }
+    EXPECT_TRUE(found);
+}
+
+// Tokenizer: closing brace ends a block
+TEST_F(CSSTokenizerTest, ClosingBraceEndsBlock) {
+    auto tokens = CSSTokenizer::tokenize_all("color: red; }");
+    ASSERT_FALSE(tokens.empty());
+    bool found = false;
+    for (auto& t : tokens) {
+        if (t.type == CSSToken::RightBrace) { found = true; break; }
+    }
+    EXPECT_TRUE(found);
+}
+
+// Selector: class selector on div
+TEST_F(CSSSelectorTest, ClassSelectorOnDiv) {
+    auto list = parse_selector_list("div.container");
+    ASSERT_EQ(list.selectors.size(), 1u);
+    EXPECT_FALSE(list.selectors[0].parts.empty());
+}
+
+// Stylesheet: two selectors comma-separated
+TEST_F(CSSStylesheetTest, TwoSelectorsCommaSeparated) {
+    auto sheet = parse_stylesheet("h1, h2 { color: blue; }");
+    ASSERT_FALSE(sheet.rules.empty());
+}
+
+// Stylesheet: border-radius on paragraph element
+TEST_F(CSSStylesheetTest, BorderRadiusParagraphElement) {
+    auto sheet = parse_stylesheet("p { border-radius: 8px; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations) {
+        if (d.property == "border-radius") { found = true; break; }
+    }
+    EXPECT_TRUE(found);
+}
+
+// Stylesheet: font-size property value
+TEST_F(CSSStylesheetTest, FontSizePropertyValue) {
+    auto sheet = parse_stylesheet("p { font-size: 14px; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations) {
+        if (d.property == "font-size") { found = true; break; }
+    }
+    EXPECT_TRUE(found);
+}
+
+// Stylesheet: z-index declaration
+TEST_F(CSSStylesheetTest, ZIndexDeclaration) {
+    auto sheet = parse_stylesheet(".overlay { z-index: 100; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations) {
+        if (d.property == "z-index") { found = true; break; }
+    }
+    EXPECT_TRUE(found);
+}
