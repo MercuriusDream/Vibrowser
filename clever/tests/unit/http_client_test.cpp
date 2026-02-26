@@ -2119,3 +2119,88 @@ TEST(ResponseTest, ParseResponseThreeWordStatusText) {
     EXPECT_EQ(resp->status, 503);
     EXPECT_EQ(resp->status_text, "Service Unavailable");
 }
+
+// ============================================================================
+// Cycle 517: HTTP net regression tests
+// ============================================================================
+
+// HeaderMap: case-insensitive lookup (set lowercase, get uppercase)
+TEST(HeaderMapTest, CaseInsensitiveLookup) {
+    HeaderMap map;
+    map.set("content-type", "application/json");
+    EXPECT_EQ(map.get("Content-Type"), "application/json");
+    EXPECT_EQ(map.get("CONTENT-TYPE"), "application/json");
+}
+
+// HeaderMap: has() returns true only for stored keys
+TEST(HeaderMapTest, HasReturnsTrueForStoredKey) {
+    HeaderMap map;
+    map.set("x-request-id", "abc123");
+    EXPECT_TRUE(map.has("x-request-id"));
+    EXPECT_FALSE(map.has("x-missing-header"));
+}
+
+// HeaderMap: remove() deletes the key
+TEST(HeaderMapTest, RemoveDeletesKey) {
+    HeaderMap map;
+    map.set("authorization", "Bearer token");
+    EXPECT_TRUE(map.has("authorization"));
+    map.remove("authorization");
+    EXPECT_FALSE(map.has("authorization"));
+}
+
+// Response: parse 200 OK with body
+TEST(ResponseTest, ParseOkWithBody) {
+    std::string raw =
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Length: 5\r\n"
+        "\r\n"
+        "hello";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 200);
+    EXPECT_EQ(resp->status_text, "OK");
+    EXPECT_EQ(resp->body.size(), 5u);
+}
+
+// Response: parse 404 Not Found
+TEST(ResponseTest, ParseNotFound) {
+    std::string raw = "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 404);
+    EXPECT_EQ(resp->status_text, "Not Found");
+}
+
+// CookieJar: expired cookie is not sent
+TEST(CookieJarTest, ExpiredCookieNotSent) {
+    CookieJar jar;
+    // Set a cookie that expired in the past
+    jar.set_from_header("oldcookie=gone; Max-Age=0", "example.com");
+    // Expired cookies should not be sent
+    std::string header = jar.get_cookie_header("example.com", "/", false);
+    EXPECT_EQ(header.find("oldcookie=gone"), std::string::npos);
+}
+
+// CookieJar: size() counts stored cookies
+TEST(CookieJarTest, SizeCountsStoredCookies) {
+    CookieJar jar;
+    jar.set_from_header("a=1", "example.com");
+    jar.set_from_header("b=2", "example.com");
+    EXPECT_EQ(jar.size(), 2u);
+}
+
+// Request: GET serialize includes method and path
+TEST(RequestTest, SerializeGetIncludesMethodAndPath) {
+    Request req;
+    req.method = Method::GET;
+    req.host = "example.com";
+    req.port = 443;
+    req.path = "/api/v1";
+    auto raw = req.serialize();
+    std::string serialized(raw.begin(), raw.end());
+    EXPECT_NE(serialized.find("GET"), std::string::npos);
+    EXPECT_NE(serialized.find("/api/v1"), std::string::npos);
+}
