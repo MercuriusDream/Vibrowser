@@ -5460,3 +5460,63 @@ TEST(FlexboxAudit, FlexDirectionRowReverseValue) {
     node->flex_direction = 1;
     EXPECT_EQ(node->flex_direction, 1);
 }
+
+// ============================================================================
+// Cycle 596: More layout tests
+// ============================================================================
+
+// Block: geometry.width can be set
+TEST(LayoutNodeProps, GeometryWidthCanBeSet) {
+    auto node = make_block("div");
+    node->geometry.width = 200.0f;
+    EXPECT_FLOAT_EQ(node->geometry.width, 200.0f);
+}
+
+// Block: geometry.height can be set
+TEST(LayoutNodeProps, GeometryHeightCanBeSet) {
+    auto node = make_block("div");
+    node->geometry.height = 100.0f;
+    EXPECT_FLOAT_EQ(node->geometry.height, 100.0f);
+}
+
+// Block: geometry.x can be set
+TEST(LayoutNodeProps, GeometryXCanBeSet) {
+    auto node = make_block("div");
+    node->geometry.x = 50.0f;
+    EXPECT_FLOAT_EQ(node->geometry.x, 50.0f);
+}
+
+// Block: geometry.y can be set
+TEST(LayoutNodeProps, GeometryYCanBeSet) {
+    auto node = make_block("div");
+    node->geometry.y = 75.0f;
+    EXPECT_FLOAT_EQ(node->geometry.y, 75.0f);
+}
+
+// Flex: flex_direction column (2)
+TEST(FlexboxAudit, FlexDirectionColumnValue) {
+    auto node = make_flex("div");
+    node->flex_direction = 2;
+    EXPECT_EQ(node->flex_direction, 2);
+}
+
+// Flex: flex_direction column-reverse (3)
+TEST(FlexboxAudit, FlexDirectionColumnReverseValue) {
+    auto node = make_flex("div");
+    node->flex_direction = 3;
+    EXPECT_EQ(node->flex_direction, 3);
+}
+
+// Block: overflow can be set to 1
+TEST(LayoutNodeProps, OverflowSetToOne) {
+    auto node = make_block("div");
+    node->overflow = 1;
+    EXPECT_EQ(node->overflow, 1);
+}
+
+// Block: position_type can be set to 1 (absolute)
+TEST(LayoutNodeProps, PositionTypeAbsolute) {
+    auto node = make_block("div");
+    node->position_type = 1;
+    EXPECT_EQ(node->position_type, 1);
+}
