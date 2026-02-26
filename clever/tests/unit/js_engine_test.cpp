@@ -11163,7 +11163,7 @@ TEST(JSEngine, TypeofChecks) {
     EXPECT_EQ(result, "true");
 }
 
-TEST(JSEngine, ArrayIsArray) {
+TEST(JSEngine, ArrayIsArrayDistinguishesTypes) {
     clever::js::JSEngine engine;
     auto result = engine.evaluate(R"(
         var checks = [];
@@ -11312,7 +11312,7 @@ TEST(JSEngine, DestructuringDefaults) {
     EXPECT_EQ(result, "true");
 }
 
-TEST(JSEngine, RestParameters) {
+TEST(JSEngine, RestParametersSumAll) {
     clever::js::JSEngine engine;
     auto result = engine.evaluate(R"(
         var checks = [];
@@ -11924,4 +11924,96 @@ TEST(JSEngine, DefaultFunctionParameters) {
     )");
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "Hello, World! Hello, Alice!");
+}
+
+// ============================================================================
+// Cycle 527: JS engine regression tests
+// ============================================================================
+
+// Array.from with mapping function
+TEST(JSEngine, ArrayFromWithMapper) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        Array.from({length: 4}, function(_, i) { return i * 3; }).join(",")
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "0,3,6,9");
+}
+
+// Object.entries to iterate key-value pairs
+TEST(JSEngine, ObjectEntries) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var obj = {x: 1, y: 2};
+        Object.entries(obj).map(function(e) { return e[0] + "=" + e[1]; }).join(",")
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "x=1,y=2");
+}
+
+// Array.isArray type checking
+TEST(JSEngine, ArrayIsArrayOnNonArray) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        String(Array.isArray([1,2,3])) + "," + String(Array.isArray("not an array"))
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true,false");
+}
+
+// Regex test method
+TEST(JSEngine, RegexTestMethod) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var re = /^\d+$/;
+        String(re.test("123")) + "," + String(re.test("abc"))
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true,false");
+}
+
+// Object destructuring assignment
+TEST(JSEngine, DestructuringAssignment) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var obj = {a: 10, b: 20};
+        var {a, b} = obj;
+        a + b
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "30");
+}
+
+// Array flat method
+TEST(JSEngine, ArrayFlatMethod) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        [1, [2, 3], [4, [5]]].flat().join(",")
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1,2,3,4,5");
+}
+
+// Rest parameters in function
+TEST(JSEngine, RestParamsSumFiveValues) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        function sum(...args) {
+            return args.reduce(function(a, b) { return a + b; }, 0);
+        }
+        sum(1, 2, 3, 4, 5)
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "15");
+}
+
+// Object.values returns array of values
+TEST(JSEngine, ObjectValues) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var obj = {p: 7, q: 8, r: 9};
+        Object.values(obj).reduce(function(a, b) { return a + b; }, 0)
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "24");
 }
