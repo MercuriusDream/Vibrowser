@@ -105,6 +105,29 @@ std::optional<clever::url::URL> parse_httpish_url(std::string_view input) {
             return std::nullopt;
         }
     }
+    for (std::size_t i = 0; i < input.size(); ++i) {
+        if (input[i] != '%') {
+            continue;
+        }
+        if (i + 2 >= input.size()) {
+            return std::nullopt;
+        }
+        const unsigned char high = static_cast<unsigned char>(input[i + 1]);
+        const unsigned char low = static_cast<unsigned char>(input[i + 2]);
+        if (!std::isxdigit(high) || !std::isxdigit(low)) {
+            return std::nullopt;
+        }
+        const unsigned int high_nibble =
+            std::isdigit(high) ? (high - '0')
+                               : static_cast<unsigned int>(std::tolower(high) - 'a' + 10);
+        const unsigned int low_nibble =
+            std::isdigit(low) ? (low - '0')
+                              : static_cast<unsigned int>(std::tolower(low) - 'a' + 10);
+        const unsigned int decoded = (high_nibble << 4U) | low_nibble;
+        if (decoded <= 0x1f || decoded == 0x7f || decoded == '\\') {
+            return std::nullopt;
+        }
+    }
 
     const std::size_t scheme_end = input.find("://");
     if (scheme_end == std::string::npos || scheme_end + 3 >= input.size()) {
