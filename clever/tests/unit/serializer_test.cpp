@@ -1900,3 +1900,95 @@ TEST(SerializerTest, TwoI32ValuesOrdered) {
     EXPECT_EQ(d.read_i32(), -100);
     EXPECT_EQ(d.read_i32(), 200);
 }
+
+// ============================================================================
+// Cycle 670: More serializer tests
+// ============================================================================
+
+TEST(SerializerTest, FourBoolSequence) {
+    Serializer s;
+    s.write_bool(true);
+    s.write_bool(false);
+    s.write_bool(false);
+    s.write_bool(true);
+    Deserializer d(s.data());
+    EXPECT_TRUE(d.read_bool());
+    EXPECT_FALSE(d.read_bool());
+    EXPECT_FALSE(d.read_bool());
+    EXPECT_TRUE(d.read_bool());
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, U8AllFourValuesMixed) {
+    Serializer s;
+    s.write_u8(0u);
+    s.write_u8(64u);
+    s.write_u8(128u);
+    s.write_u8(255u);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u8(), 0u);
+    EXPECT_EQ(d.read_u8(), 64u);
+    EXPECT_EQ(d.read_u8(), 128u);
+    EXPECT_EQ(d.read_u8(), 255u);
+}
+
+TEST(SerializerTest, I32PosNegZeroSequence) {
+    Serializer s;
+    s.write_i32(100);
+    s.write_i32(-200);
+    s.write_i32(0);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i32(), 100);
+    EXPECT_EQ(d.read_i32(), -200);
+    EXPECT_EQ(d.read_i32(), 0);
+}
+
+TEST(SerializerTest, StringLengthMatchesOriginal) {
+    std::string input = "Hello, Vibrowser!";
+    Serializer s;
+    s.write_string(input);
+    Deserializer d(s.data());
+    auto out = d.read_string();
+    EXPECT_EQ(out.size(), input.size());
+    EXPECT_EQ(out, input);
+}
+
+TEST(SerializerTest, U32OneMillionRoundTrip) {
+    Serializer s;
+    s.write_u32(1000000u);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u32(), 1000000u);
+}
+
+TEST(SerializerTest, I64MaxPositiveRoundTrip) {
+    Serializer s;
+    s.write_i64(std::numeric_limits<int64_t>::max());
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i64(), std::numeric_limits<int64_t>::max());
+}
+
+TEST(SerializerTest, MultipleTypesInterleavedRead) {
+    Serializer s;
+    s.write_u8(42u);
+    s.write_i32(-5);
+    s.write_string("hi");
+    s.write_bool(false);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u8(), 42u);
+    EXPECT_EQ(d.read_i32(), -5);
+    EXPECT_EQ(d.read_string(), "hi");
+    EXPECT_FALSE(d.read_bool());
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, RemainingDecreasesAsWeRead) {
+    Serializer s;
+    s.write_u8(1u);
+    s.write_u8(2u);
+    s.write_u8(3u);
+    Deserializer d(s.data());
+    size_t before = d.remaining();
+    d.read_u8();
+    size_t after = d.remaining();
+    EXPECT_LT(after, before);
+}
