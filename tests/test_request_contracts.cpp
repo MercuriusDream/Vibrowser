@@ -447,6 +447,28 @@ int main() {
         }
 
         if (browser::net::parse_http_status_line(
+                "HTTP/1.1\v200 OK", http_version, status_code, reason, err)) {
+            std::cerr << "FAIL: expected status line with vertical-tab status-code separator to be rejected\n";
+            ++failures;
+        } else if (err.find("Malformed HTTP status line") == std::string::npos) {
+            std::cerr << "FAIL: expected malformed status-line error for vertical-tab status-code separator\n";
+            ++failures;
+        } else {
+            std::cerr << "PASS: status line with vertical-tab status-code separator is rejected\n";
+        }
+
+        if (browser::net::parse_http_status_line(
+                "HTTP/1.1 200\vOK", http_version, status_code, reason, err)) {
+            std::cerr << "FAIL: expected status line with vertical-tab reason separator to be rejected\n";
+            ++failures;
+        } else if (err.find("Malformed HTTP status line") == std::string::npos) {
+            std::cerr << "FAIL: expected malformed status-line error for vertical-tab reason separator\n";
+            ++failures;
+        } else {
+            std::cerr << "PASS: status line with vertical-tab reason separator is rejected\n";
+        }
+
+        if (browser::net::parse_http_status_line(
                 "HTTP/1.1 200", http_version, status_code, reason, err)) {
             std::cerr << "FAIL: expected status line missing reason separator to be rejected\n";
             ++failures;
