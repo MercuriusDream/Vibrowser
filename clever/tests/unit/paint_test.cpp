@@ -39164,6 +39164,18 @@ TEST(WebFontRegistration, PreferredFontSourceRejectsDuplicateTechDescriptorsInSi
     EXPECT_EQ(extract_preferred_font_url(src), "fallback.woff");
 }
 
+TEST(WebFontRegistration, PreferredFontSourceRejectsMixedLocalAndUrlDescriptorsInSingleEntry) {
+    const std::string src =
+        "local('Arial') url(\"broken.woff2\") format('woff2'), "
+        "url(\"fallback.woff\") format('woff')";
+    EXPECT_EQ(extract_preferred_font_url(src), "fallback.woff");
+}
+
+TEST(WebFontRegistration, PreferredFontSourceRejectsOnlyMixedLocalAndUrlDescriptors) {
+    const std::string src = "local('Arial') url(\"broken.woff2\") format('woff2')";
+    EXPECT_TRUE(extract_preferred_font_url(src).empty());
+}
+
 TEST(WebFontRegistration, PreferredFontSourceEmptyWhenNoUrlExists) {
     EXPECT_TRUE(extract_preferred_font_url("local('Arial'), local('Helvetica')").empty());
 }

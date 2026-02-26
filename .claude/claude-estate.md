@@ -5,13 +5,29 @@
 
 ## Current Status
 
-**Phase**: Active Development — Cycle 346 COMPLETE
-**Last Active**: 2026-02-26T13:49:02+09:00
-**Current Focus**: web font pipeline completion after duplicate descriptor fail-closed hardening in `@font-face` source parsing
-**Momentum**: 3477 tests, ZERO failures, 2479+ features! v0.7.0! CYCLE 346 DONE! 173 BUGS FIXED!
-**Cycle**: 347
+**Phase**: Active Development — Cycle 347 COMPLETE
+**Last Active**: 2026-02-26T13:55:21+09:00
+**Current Focus**: web font pipeline completion after malformed mixed `local(...)` + `url(...)` source-entry fail-closed hardening in `@font-face` source parsing
+**Momentum**: 3479 tests, ZERO failures, 2480+ features! v0.7.0! CYCLE 347 DONE! 173 BUGS FIXED!
+**Cycle**: 348
 
 ## Session Log
+
+### Cycle 347 — 2026-02-26 — Web font mixed `local(...)` + `url(...)` single-entry fail-closed hardening
+- **WEB FONT PIPELINE (Priority 5)**: Hardened `@font-face` source parsing to reject malformed single source entries that mix `local(...)` and `url(...)` descriptors in the same entry.
+- Updated rendering behavior:
+  - `extract_preferred_font_url(...)` now skips malformed entries containing both top-level `local(...)` and `url(...)` descriptors in one source item
+  - malformed mixed-source entries now fail closed and correctly fall through to the next valid source (or return empty when no valid fallback exists)
+- Added regression tests:
+  - `clever/tests/unit/paint_test.cpp`: `PreferredFontSourceRejectsMixedLocalAndUrlDescriptorsInSingleEntry`
+  - `clever/tests/unit/paint_test.cpp`: `PreferredFontSourceRejectsOnlyMixedLocalAndUrlDescriptors`
+- Validation:
+  - `cmake --build clever/build --target clever_paint_tests`
+  - `./clever/build/tests/unit/clever_paint_tests --gtest_filter='WebFontRegistration.PreferredFontSourceRejectsMixedLocalAndUrlDescriptorsInSingleEntry:WebFontRegistration.PreferredFontSourceRejectsOnlyMixedLocalAndUrlDescriptors'`
+  - `ctest --test-dir clever/build -R paint_tests --output-on-failure`
+- Files: `clever/src/paint/render_pipeline.cpp`, `clever/tests/unit/paint_test.cpp`
+- **2 new tests (3477→3479), paint suite green.**
+- **Ledger divergence note**: `.codex/codex-estate.md` is non-writable in this runtime (`Operation not permitted`), so `.claude/claude-estate.md` is source of truth for Cycle 347; replay sync when permissions allow.
 
 ### Cycle 346 — 2026-02-26 — Web font duplicate descriptor fail-closed hardening
 - **WEB FONT PIPELINE (Priority 5)**: Hardened `@font-face` source parsing to reject malformed single-entry duplicates of `url(...)`, `format(...)`, or `tech(...)` descriptors.
@@ -3438,6 +3454,7 @@
 
 | # | What | Files | Notes |
 |---|------|-------|-------|
+| 722 | Web font mixed `local(...)` + `url(...)` single-entry fail-closed hardening | clever/src/paint/render_pipeline.cpp, clever/tests/unit/paint_test.cpp | Rejects malformed single-source entries that combine `local(...)` and `url(...)` descriptors and adds 2 focused regressions for fallback and empty-result behavior |
 | 721 | Web font duplicate descriptor fail-closed hardening | clever/src/paint/render_pipeline.cpp, clever/tests/unit/paint_test.cpp | Rejects malformed single-entry duplicate `url(...)`, `format(...)`, and `tech(...)` descriptors in `@font-face src` parsing; adds 3 focused regressions |
 | 720 | Web font malformed unbalanced quote/parenthesis `src` parser fail-closed hardening | clever/src/paint/render_pipeline.cpp, clever/tests/unit/paint_test.cpp | Rejects malformed `@font-face src` inputs with unbalanced quote/parenthesis state at both top-level source splitting and descriptor-list tokenization; adds 2 focused regressions |
 || 719 | Web font malformed top-level `src` delimiter fail-closed hardening | clever/src/paint/render_pipeline.cpp, clever/tests/unit/paint_test.cpp | Rejects malformed top-level `@font-face src` list delimiters (leading/trailing/double commas) and adds 2 focused source-selection regressions |
@@ -3957,7 +3974,7 @@
 | 2 | ~~TLS certificate verification policy hardening (FJNS-06)~~ DONE (Cycle 276) | ~~Medium~~ |
 | 3 | ~~Fetch/XHR origin header + ACAO response gate~~ DONE (Cycle 274) | ~~Medium~~ |
 | 4 | HTTP/2 transport (MC-12) — PARTIAL: protocol-version capture + explicit rejection guardrails for HTTP/2 preface/status-line/TLS ALPN/outbound `Upgrade` request/outbound `HTTP2-Settings` request-header/outbound pseudo-header requests/`101` upgrade/`426` upgrade-required responses + unsupported status-version rejection allowlisting HTTP/1.0/HTTP/1.1 + preface trailing/tab-whitespace variants + tab-separated status-line variant + whitespace-padded request-header name variant hardening + quoted/single-quoted upgrade-token variant hardening + quoted comma-contained upgrade-token split hardening + escaped quoted-string upgrade-token normalization hardening + escaped-comma delimiter hardening + malformed unterminated-token explicit rejection hardening + control-character malformed token explicit rejection hardening + malformed bare backslash-escape token explicit rejection hardening + malformed unterminated quoted-parameter token explicit rejection hardening + malformed upgrade token-character fail-closed hardening + strict non-ASCII upgrade-token rejection hardening + strict HTTP2-Settings token68 validation and duplicate-header fail-closed hardening + strict Transfer-Encoding `chunked` exact-token parsing hardening + strict malformed Transfer-Encoding delimiter/quoted-token rejection hardening + strict Transfer-Encoding `chunked` final-position/no-parameter enforcement hardening + strict Transfer-Encoding control-character token rejection hardening + strict non-ASCII Transfer-Encoding token rejection hardening + strict unsupported/malformed Transfer-Encoding fail-closed rejection hardening DONE (Cycles 294-305, 308-319, 321-325, 330-332) | Large |
-| 5 | Web font loading (actual font data) — PARTIAL: WOFF2 source selection + `data:` URL base64/percent-decoded payload registration + format-aware source fallback/case-insensitive URL/FORMAT parsing + list-aware multi-format source acceptance + `woff2-variations` token support + strict `data:` base64 padding/trailing validation with unpadded compatibility + strict malformed empty `format()`/`tech()` descriptor fail-closed rejection + descriptor parser false-positive hardening for quoted URL payload substrings + strict malformed non-base64 `data:` percent-escape rejection + strict malformed top-level `src` source-list delimiter fail-closed rejection + strict unmatched-closing-paren `src`/descriptor fail-closed rejection + strict duplicate single-entry `url`/`format`/`tech` descriptor fail-closed rejection DONE (Cycles 277, 333-346) | Large |
+| 5 | Web font loading (actual font data) — PARTIAL: WOFF2 source selection + `data:` URL base64/percent-decoded payload registration + format-aware source fallback/case-insensitive URL/FORMAT parsing + list-aware multi-format source acceptance + `woff2-variations` token support + strict `data:` base64 padding/trailing validation with unpadded compatibility + strict malformed empty `format()`/`tech()` descriptor fail-closed rejection + descriptor parser false-positive hardening for quoted URL payload substrings + strict malformed non-base64 `data:` percent-escape rejection + strict malformed top-level `src` source-list delimiter fail-closed rejection + strict unmatched-closing-paren `src`/descriptor fail-closed rejection + strict duplicate single-entry `url`/`format`/`tech` descriptor fail-closed rejection + strict malformed mixed single-entry `local(...)` + `url(...)` source rejection DONE (Cycles 277, 333-347) | Large |
 | 6 | ~~WOFF2 support (TODO in code)~~ DONE (Cycle 277) | ~~Medium~~ |
 | 7 | ~~CSS @layer cascade priority (layer ordering + !important reversal)~~ DONE (Cycle 279) | ~~Medium~~ |
 | 8 | ~~CSS @layer comma-list ordering + nested layers~~ DONE (Cycle 279) | ~~Medium~~ |
@@ -3974,13 +3991,13 @@
 | Metric | Value |
 |--------|-------|
 | Total Sessions | 143 |
-| Total Cycles | 346 |
+| Total Cycles | 347 |
 | Files Created | ~135 |
 | Files Modified | 100+ |
-| Lines Added (est.) | 171470+ |
-| Tests Added | 3477 |
+| Lines Added (est.) | 171520+ |
+| Tests Added | 3479 |
 | Bugs Fixed | 173 |
-| Features Added | 2479 |
+| Features Added | 2480 |
 
 ## Tell The Next Claude
 
@@ -3988,12 +4005,19 @@
 
 Build: `cd clever && cmake -S . -B build && cmake --build build && ctest --test-dir build`
 
-**3477 tests, 12 libraries (QuickJS!), 1 macOS app, ZERO warnings. v0.7.0. CYCLE 346! 2479+ FEATURES! 173 BUGS FIXED! ANTHROPIC.COM LOADS!**
+**3479 tests, 12 libraries (QuickJS!), 1 macOS app, ZERO warnings. v0.7.0. CYCLE 347! 2480+ FEATURES! 173 BUGS FIXED! ANTHROPIC.COM LOADS!**
 
 **Current implementation vs full browser comparison**:
 - Current implementation: robust single-process browser shell with full JS engine integration, broad DOM/CSS/Fetch coverage, and hardened HTTP/1.x/CORS/CSP policy enforcement.
 - Full browser target: still missing major subsystems like full multi-process isolation, full HTTP/2+/QUIC transport stack, and complete production-grade web font pipeline coverage.
-- Progress snapshot: from early scaffolding to 346 completed cycles, 3477 tests, and 2479+ implemented features.
+- Progress snapshot: from early scaffolding to 347 completed cycles, 3479 tests, and 2480+ implemented features.
+
+**Cycle 347 — Web font mixed `local(...)` + `url(...)` single-entry fail-closed hardening in clever paint pipeline**:
+- Hardened `extract_preferred_font_url(...)` to reject malformed single source entries that combine `local(...)` and `url(...)` descriptors.
+- Prevented malformed mixed-source entries from being partially accepted; valid fallback entries now resolve deterministically or fail closed when no valid fallback exists.
+- Added focused regression coverage in `clever/tests/unit/paint_test.cpp` for mixed-source fallback and mixed-source-only empty-result behavior.
+- Rebuilt `clever_paint_tests`, ran focused web-font regressions, and executed `ctest --test-dir clever/build -R paint_tests --output-on-failure`, all green.
+- **Ledger divergence note**: `.codex/codex-estate.md` is non-writable in this runtime (`Operation not permitted`), so `.claude/claude-estate.md` is source of truth for Cycle 347; replay sync when permissions allow.
 
 **Cycle 346 — Web font duplicate descriptor fail-closed hardening in clever paint pipeline**:
 - Hardened `extract_preferred_font_url(...)` to reject malformed single source entries containing duplicate `url(...)`, duplicate `format(...)`, or duplicate `tech(...)` descriptors.

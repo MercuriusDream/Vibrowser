@@ -377,6 +377,7 @@ std::string extract_preferred_font_url(const std::string& src) {
     }
 
     for (const auto& entry : entries) {
+        if (count_function_calls(entry, "local") > 0 && count_function_calls(entry, "url") > 0) continue;
         if (count_function_calls(entry, "url") > 1) continue;
         if (count_function_calls(entry, "format") > 1) continue;
         if (count_function_calls(entry, "tech") > 1) continue;
