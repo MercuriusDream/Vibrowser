@@ -10649,3 +10649,145 @@ TEST(PropertyCascadeTest, LineBreakValues) {
     cascade.apply_declaration(style, make_decl("line-break", "auto"), parent);
     EXPECT_EQ(style.line_break, 0);
 }
+
+// ---------------------------------------------------------------------------
+// Cycle 476 — font-style, height/min/max, top/right/bottom/left, margin longhands,
+//             padding longhands, text-shadow (apply_declaration), text-indent, list-style-image
+// ---------------------------------------------------------------------------
+
+TEST(PropertyCascadeTest, FontStyleAllValues) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.font_style, FontStyle::Normal);  // default
+
+    cascade.apply_declaration(style, make_decl("font-style", "italic"), parent);
+    EXPECT_EQ(style.font_style, FontStyle::Italic);
+
+    cascade.apply_declaration(style, make_decl("font-style", "oblique"), parent);
+    EXPECT_EQ(style.font_style, FontStyle::Oblique);
+
+    cascade.apply_declaration(style, make_decl("font-style", "normal"), parent);
+    EXPECT_EQ(style.font_style, FontStyle::Normal);
+}
+
+TEST(PropertyCascadeTest, HeightMinMaxHeight) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_TRUE(style.height.is_auto());  // default
+
+    cascade.apply_declaration(style, make_decl("height", "100px"), parent);
+    EXPECT_FLOAT_EQ(style.height.to_px(), 100.0f);
+
+    cascade.apply_declaration(style, make_decl("min-height", "50px"), parent);
+    EXPECT_FLOAT_EQ(style.min_height.to_px(), 50.0f);
+
+    cascade.apply_declaration(style, make_decl("max-height", "200px"), parent);
+    EXPECT_FLOAT_EQ(style.max_height.to_px(), 200.0f);
+
+    cascade.apply_declaration(style, make_decl("max-width", "300px"), parent);
+    EXPECT_FLOAT_EQ(style.max_width.to_px(), 300.0f);
+
+    cascade.apply_declaration(style, make_decl("min-width", "10px"), parent);
+    EXPECT_FLOAT_EQ(style.min_width.to_px(), 10.0f);
+}
+
+TEST(PropertyCascadeTest, PositionLonghands) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("top", "20px"), parent);
+    EXPECT_FLOAT_EQ(style.top.to_px(), 20.0f);
+
+    cascade.apply_declaration(style, make_decl("bottom", "10px"), parent);
+    EXPECT_FLOAT_EQ(style.bottom.to_px(), 10.0f);
+
+    cascade.apply_declaration(style, make_decl("left", "30px"), parent);
+    EXPECT_FLOAT_EQ(style.left_pos.to_px(), 30.0f);
+
+    cascade.apply_declaration(style, make_decl("right", "5px"), parent);
+    EXPECT_FLOAT_EQ(style.right_pos.to_px(), 5.0f);
+}
+
+TEST(PropertyCascadeTest, MarginLonghands) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("margin-bottom", "15px"), parent);
+    EXPECT_FLOAT_EQ(style.margin.bottom.to_px(), 15.0f);
+
+    cascade.apply_declaration(style, make_decl("margin-left", "25px"), parent);
+    EXPECT_FLOAT_EQ(style.margin.left.to_px(), 25.0f);
+
+    cascade.apply_declaration(style, make_decl("margin-right", "35px"), parent);
+    EXPECT_FLOAT_EQ(style.margin.right.to_px(), 35.0f);
+}
+
+TEST(PropertyCascadeTest, PaddingLonghands) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("padding-top", "8px"), parent);
+    EXPECT_FLOAT_EQ(style.padding.top.to_px(), 8.0f);
+
+    cascade.apply_declaration(style, make_decl("padding-bottom", "12px"), parent);
+    EXPECT_FLOAT_EQ(style.padding.bottom.to_px(), 12.0f);
+
+    cascade.apply_declaration(style, make_decl("padding-left", "4px"), parent);
+    EXPECT_FLOAT_EQ(style.padding.left.to_px(), 4.0f);
+
+    cascade.apply_declaration(style, make_decl("padding-right", "6px"), parent);
+    EXPECT_FLOAT_EQ(style.padding.right.to_px(), 6.0f);
+}
+
+TEST(PropertyCascadeTest, TextShadowViaApplyDeclaration) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    // 3px 3px 5px blue
+    cascade.apply_declaration(style, make_decl("text-shadow", "3px 3px 5px blue"), parent);
+    EXPECT_FLOAT_EQ(style.text_shadow_offset_x, 3.0f);
+    EXPECT_FLOAT_EQ(style.text_shadow_offset_y, 3.0f);
+    EXPECT_FLOAT_EQ(style.text_shadow_blur, 5.0f);
+    EXPECT_EQ(style.text_shadow_color.b, 255);
+
+    // none resets to transparent
+    cascade.apply_declaration(style, make_decl("text-shadow", "none"), parent);
+    EXPECT_EQ(style.text_shadow_color.a, 0);
+    EXPECT_FLOAT_EQ(style.text_shadow_offset_x, 0.0f);
+}
+
+TEST(PropertyCascadeTest, TextIndentViaApplyDeclaration) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_FLOAT_EQ(style.text_indent.to_px(), 0.0f);  // default
+
+    cascade.apply_declaration(style, make_decl("text-indent", "32px"), parent);
+    EXPECT_FLOAT_EQ(style.text_indent.to_px(), 32.0f);
+
+    cascade.apply_declaration(style, make_decl("text-indent", "0"), parent);
+    EXPECT_FLOAT_EQ(style.text_indent.to_px(), 0.0f);
+}
+
+TEST(PropertyCascadeTest, ListStyleImageUrlAndNone) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_TRUE(style.list_style_image.empty());  // default: none
+
+    cascade.apply_declaration(style, make_decl("list-style-image", "url(bullet.png)"), parent);
+    EXPECT_EQ(style.list_style_image, "bullet.png");
+
+    cascade.apply_declaration(style, make_decl("list-style-image", "none"), parent);
+    EXPECT_TRUE(style.list_style_image.empty());
+}
