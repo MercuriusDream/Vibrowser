@@ -1621,3 +1621,88 @@ TEST(TreeBuilder, ObjectWithParam) {
     auto* param = doc->find_element("param");
     ASSERT_NE(param, nullptr);
 }
+
+// ============================================================================
+// Cycle 558: HTML parser regression tests
+// ============================================================================
+
+TEST(TreeBuilder, AudioElement) {
+    auto doc = parse(R"(<body><audio src="sound.mp3" controls></audio></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* audio = doc->find_element("audio");
+    ASSERT_NE(audio, nullptr);
+    bool has_src = false;
+    for (auto& attr : audio->attributes) {
+        if (attr.name == "src") has_src = true;
+    }
+    EXPECT_TRUE(has_src);
+}
+
+TEST(TreeBuilder, VideoElement) {
+    auto doc = parse(R"(<body><video src="clip.mp4" width="640" height="480"></video></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* video = doc->find_element("video");
+    ASSERT_NE(video, nullptr);
+    bool has_width = false;
+    for (auto& attr : video->attributes) {
+        if (attr.name == "width") has_width = true;
+    }
+    EXPECT_TRUE(has_width);
+}
+
+TEST(TreeBuilder, CanvasElement) {
+    auto doc = parse(R"(<body><canvas id="myCanvas" width="300" height="150"></canvas></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* canvas = doc->find_element("canvas");
+    ASSERT_NE(canvas, nullptr);
+    bool has_id = false;
+    for (auto& attr : canvas->attributes) {
+        if (attr.name == "id") has_id = true;
+    }
+    EXPECT_TRUE(has_id);
+}
+
+TEST(TreeBuilder, InputTypeEmail) {
+    auto doc = parse(R"(<body><input type="email" name="email" required></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* input = doc->find_element("input");
+    ASSERT_NE(input, nullptr);
+    bool has_required = false;
+    for (auto& attr : input->attributes) {
+        if (attr.name == "required") has_required = true;
+    }
+    EXPECT_TRUE(has_required);
+}
+
+TEST(TreeBuilder, TextareaElement) {
+    auto doc = parse(R"(<body><textarea rows="5" cols="40">Default text</textarea></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* ta = doc->find_element("textarea");
+    ASSERT_NE(ta, nullptr);
+    EXPECT_EQ(ta->text_content(), "Default text");
+}
+
+TEST(TreeBuilder, ButtonTypeSubmit) {
+    auto doc = parse(R"(<body><button type="submit">Submit</button></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* button = doc->find_element("button");
+    ASSERT_NE(button, nullptr);
+    EXPECT_EQ(button->text_content(), "Submit");
+}
+
+TEST(TreeBuilder, LabelWithForAttr) {
+    auto doc = parse(R"(<body><label for="email">Email:</label><input id="email" type="email"></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* label = doc->find_element("label");
+    ASSERT_NE(label, nullptr);
+    EXPECT_EQ(label->text_content(), "Email:");
+}
+
+TEST(TreeBuilder, DatalistElement) {
+    auto doc = parse("<body><datalist id=\"colors\"><option value=\"red\"><option value=\"blue\"></datalist></body>");
+    ASSERT_NE(doc, nullptr);
+    auto* datalist = doc->find_element("datalist");
+    ASSERT_NE(datalist, nullptr);
+    auto* option = doc->find_element("option");
+    ASSERT_NE(option, nullptr);
+}
