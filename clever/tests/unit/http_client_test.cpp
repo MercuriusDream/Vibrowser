@@ -2204,3 +2204,79 @@ TEST(RequestTest, SerializeGetIncludesMethodAndPath) {
     EXPECT_NE(serialized.find("GET"), std::string::npos);
     EXPECT_NE(serialized.find("/api/v1"), std::string::npos);
 }
+
+// ============================================================================
+// Cycle 534: HTTP/net regression tests
+// ============================================================================
+
+// HeaderMap: multiple headers can be stored
+TEST(HeaderMapTest, MultipleHeadersStored) {
+    HeaderMap map;
+    map.set("Content-Type", "text/html");
+    map.set("Accept", "application/json");
+    map.set("Authorization", "Bearer token123");
+    EXPECT_TRUE(map.has("content-type"));
+    EXPECT_TRUE(map.has("accept"));
+    EXPECT_TRUE(map.has("authorization"));
+}
+
+// HeaderMap: overwriting existing header
+TEST(HeaderMapTest, OverwriteExistingHeader) {
+    HeaderMap map;
+    map.set("Cache-Control", "no-cache");
+    map.set("Cache-Control", "max-age=3600");
+    auto val = map.get("cache-control");
+    EXPECT_TRUE(val.has_value());
+    EXPECT_EQ(*val, "max-age=3600");
+}
+
+// Response: parse 201 Created
+TEST(ResponseTest, Parse201Created) {
+    std::string raw = "HTTP/1.1 201 Created\r\nContent-Length: 0\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 201);
+}
+
+// Response: parse 204 No Content (no body)
+TEST(ResponseTest, Parse204NoContent) {
+    std::string raw = "HTTP/1.1 204 No Content\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 204);
+}
+
+// Request: POST method in serialized output
+TEST(RequestTest, SerializePostIncludesMethod) {
+    Request req;
+    req.method = Method::POST;
+    req.host = "api.example.com";
+    req.path = "/submit";
+    auto raw = req.serialize();
+    std::string s(raw.begin(), raw.end());
+    EXPECT_NE(s.find("POST"), std::string::npos);
+    EXPECT_NE(s.find("/submit"), std::string::npos);
+}
+
+// CookieJar: get_cookie_header returns empty string when jar is empty
+TEST(CookieJarTest, EmptyJarReturnsEmptyHeader) {
+    CookieJar jar;
+    std::string header = jar.get_cookie_header("example.com", "/", false);
+    EXPECT_TRUE(header.empty());
+}
+
+// CookieJar: cookie is included for matching domain
+TEST(CookieJarTest, CookieIncludedForMatchingDomain) {
+    CookieJar jar;
+    jar.set_from_header("session=abc123", "example.com");
+    std::string header = jar.get_cookie_header("example.com", "/", false);
+    EXPECT_NE(header.find("session=abc123"), std::string::npos);
+}
+
+// CookieJar: size is 0 for fresh jar
+TEST(CookieJarTest, FreshJarSizeIsZero) {
+    CookieJar jar;
+    EXPECT_EQ(jar.size(), 0u);
+}
