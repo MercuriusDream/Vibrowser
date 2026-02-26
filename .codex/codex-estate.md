@@ -5,13 +5,45 @@
 
 ## Current Status
 
-**Phase**: Active Development — Cycle 406 COMPLETE
-**Last Active**: 2026-02-27T00:01:26+0900
-**Current Focus**: HTTP/2 transport hardening with strict HTTP/1.x status-line SOH separator fail-closed regression coverage
-**Momentum**: 3574 tests, ZERO failures, 2500+ features! v0.7.0! CYCLE 406 DONE! 228 BUGS FIXED!
-**Cycle**: 406
+**Phase**: Active Development — Cycle 408 COMPLETE
+**Last Active**: 2026-02-27T00:21:39+0900
+**Current Focus**: HTTP/2 transport hardening with strict HTTP/1.x status-line STX separator fail-closed regression coverage
+**Momentum**: 3580 tests, ZERO failures, 2500+ features! v0.7.0! CYCLE 408 DONE! 230 BUGS FIXED!
+**Cycle**: 408
 
 ## Session Log
+
+### Cycle 408 — 2026-02-27 — HTTP/1.x status-line STX separator fail-closed regression hardening
+- **HTTP/2 TRANSPORT (Priority 4)**: Hardened HTTP/1.x status-line guardrail coverage so STX-byte (`\x02`) separator variants fail closed before response classification and body processing.
+- Updated regression contract coverage (`tests/test_request_contracts.cpp`):
+  - rejects status-line STX status-code separator variant (`HTTP/1.1\x02200 OK`)
+  - rejects status-line STX reason separator variant (`HTTP/1.1 200\x02OK`)
+- Validation:
+  - `cmake --build build_vibrowser --target test_request_contracts test_request_policy -j8 && ./build_vibrowser/test_request_contracts && ./build_vibrowser/test_request_policy`
+- Files: `tests/test_request_contracts.cpp`
+- **Targeted native request contract + policy suites green, no regressions.**
+- **Ledger divergence resolution**: cycle start ledger states differed (`.claude` at Cycle 407 vs `.codex` at Cycle 406); selected `.claude` as source of truth by newer mtime and re-synced `.codex/codex-estate.md` in this cycle.
+
+### Cycle 407 — 2026-02-27 — CORS outbound `Origin` header normalization hardening
+- **CORS/CSP ENFORCEMENT (Priority 1)**: Hardened JS fetch/XHR request construction so script-supplied `Origin` headers are always stripped and only browser-controlled serialized origins are emitted when cross-origin policy requires them.
+- Updated shared CORS policy contract (`clever/include/clever/js/cors_policy.h`, `clever/src/js/cors_policy.cpp`):
+  - added `normalize_outgoing_origin_header(...)` to remove any preexisting `Origin` header and conditionally set the canonical browser origin for eligible cross-origin requests
+  - enforces fail-closed `Origin` suppression for same-origin requests, malformed document origins, and malformed/unsupported request URLs
+- Wired normalized header contract into both JS request paths (`clever/src/js/js_fetch_bindings.cpp`):
+  - `XMLHttpRequest.send()` now applies shared outbound `Origin` normalization
+  - `fetch()` now applies shared outbound `Origin` normalization
+- Added regression coverage (`clever/tests/unit/cors_policy_test.cpp`):
+  - strips spoofed `Origin` on same-origin requests
+  - overwrites spoofed `Origin` on cross-origin requests with document origin
+  - enforces `null` origin semantics for null-document cross-origin requests
+  - drops `Origin` for malformed document origin and unsupported request URL inputs
+- Validation:
+  - `cmake --build build --target clever_js_cors_tests clever_js_tests -j4`
+  - `./tests/unit/clever_js_cors_tests`
+  - `./tests/unit/clever_js_tests '--gtest_filter=JSFetch.*:XMLHttpRequest.*'`
+- Files: `clever/include/clever/js/cors_policy.h`, `clever/src/js/cors_policy.cpp`, `clever/src/js/js_fetch_bindings.cpp`, `clever/tests/unit/cors_policy_test.cpp`
+- **Targeted JS CORS policy + fetch/XHR suites green, no regressions.**
+
 
 ### Cycle 406 — 2026-02-27 — HTTP/1.x status-line SOH separator fail-closed regression hardening
 - **HTTP/2 TRANSPORT (Priority 4)**: Hardened HTTP/1.x status-line guardrail coverage so SOH-byte (`\x01`) separator variants fail closed before response classification and body processing.
@@ -4377,6 +4409,7 @@
 
 | # | What | Files | Notes |
 |---|------|-------|-------|
+| 771 | HTTP/1.x status-line STX separator fail-closed regression hardening | tests/test_request_contracts.cpp | Adds explicit fail-closed regression coverage for STX-byte (`\x02`) separators between version/status-code and status-code/reason components so malformed status lines are continuously blocked before response classification |
 | 770 | HTTP/1.x status-line SOH separator fail-closed regression hardening | tests/test_request_contracts.cpp | Adds explicit fail-closed regression coverage for SOH-byte (`\x01`) separators between version/status-code and status-code/reason components so malformed status lines are continuously blocked before response classification |
 | 769 | HTTP/1.x status-line DEL separator fail-closed regression hardening | tests/test_request_contracts.cpp | Adds explicit fail-closed regression coverage for DEL-byte (`\x7F`) separators between version/status-code and status-code/reason components so malformed status lines are continuously blocked before response classification |
 | 768 | HTTP/2 status-line surrounding-whitespace fail-closed hardening | src/net/http_client.cpp, tests/test_request_contracts.cpp | Reorders HTTP/2 status-line classification behind strict surrounding-whitespace rejection so whitespace-padded HTTP/2 status lines fail closed as malformed while preserving explicit HTTP/2 preface rejection semantics |
@@ -4682,6 +4715,7 @@
 | 409 | CSS border-width 1-4 values | Multiple | Per-side widths, 3 tests |
 | 408 | CSS border-color 1-4 values | Multiple | Per-side colors, 3 tests |
 | 407 | CSS inline-size/block-size | Multiple | Logical → width/height, 3 tests |
+| 407 | CORS fetch/XHR outbound Origin normalization | clever/include/clever/js/cors_policy.h, clever/src/js/cors_policy.cpp, clever/src/js/js_fetch_bindings.cpp, clever/tests/unit/cors_policy_test.cpp | Strip spoofed Origin, browser-controlled emission, 4 tests |
 | 406 | CSS min/max-block-size | Multiple | Logical → min/max-height, 3 tests |
 | 405.5 | CSS border-radius corners | Multiple | 4 individual corners, 3 tests |
 | 405 | Welcome page 1202+ | main.mm | 1202+ tests, 405+ features — 400 MILESTONE! |
@@ -4941,10 +4975,10 @@
 
 | Priority | What | Effort |
 |----------|------|--------|
-| 1 | CORS/CSP enforcement in fetch/XHR path (MC-08, FJNS-11) — PARTIAL: connect-src pre-dispatch + host-source (incl. bracketed IPv6 normalization, scheme-less source scheme/port inference, invalid-port rejection) + wildcard-port + default-src fallback + canonical origin normalization + credentialed CORS ACAO/ACAC gate + strict ACAO single-value/case-insensitive CORS header handling + duplicate case-variant ACAO/ACAC rejection + serialized-origin ACAO enforcement + null-origin ACAO handling + dot-segment/encoded-traversal-safe path matching + websocket (`ws`/`wss`) default-port enforcement + effective-URL parse fail-closed CORS gate + strict ACAO/ACAC control-character rejection + strict request-Origin serialized-origin validation for both CORS evaluation and outgoing header emission + policy-origin serialized-origin fail-closed enforcement for request/CSP checks + strict non-HTTP(S) serialized-origin scheme rejection for request-policy/CORS + strict native serialized-origin percent-escaped authority fail-closed rejection + strict native serialized-origin authority backslash fail-closed rejection + strict native serialized-origin empty explicit-port fail-closed rejection + strict native serialized-origin non-IPv6 host-length fail-closed rejection + strict native serialized-origin dotted-decimal IPv4 fail-closed rejection + strict native/shared non-canonical dotted-decimal IPv4 (leading-zero octet) fail-closed rejection + strict native/shared legacy shorthand dotted numeric-host fail-closed rejection + strict native/shared legacy hexadecimal numeric-host fail-closed rejection + shared JS CORS helper malformed ACAO/ACAC fail-closed rejection + strict shared JS malformed document-origin fail-closed validation + strict shared JS malformed/unsupported request-URL fail-closed validation + strict shared JS request-URL surrounding-whitespace fail-closed validation + strict shared JS request-URL control/non-ASCII octet fail-closed validation + strict shared JS request-URL embedded-whitespace/userinfo/fragment fail-closed validation + strict shared JS request-URL empty-port authority fail-closed validation + strict shared JS request-URL authority percent-escape fail-closed validation + strict shared JS request-URL dotted-decimal IPv4 fail-closed validation + strict shared JS null/empty document-origin fail-closed enforcement + strict shared JS malformed ACAO authority/port fail-closed validation + strict shared JS non-ASCII ACAO/ACAC/header-origin octet fail-closed validation + strict shared JS serialized-origin/header surrounding-whitespace fail-closed validation + strict fetch/XHR unsupported-scheme pre-dispatch fail-closed request gate + strict unsupported-scheme cookie-attach suppression + strict native serialized-origin embedded/surrounding-whitespace and strict native ACAO/ACAC surrounding-whitespace fail-closed rejection + strict native optional ACAC non-literal/non-ASCII/comma-separated fail-closed rejection + strict connect-src host-source query/fragment fail-closed rejection DONE (Cycles 275-276, 278, 280-293, 306-307, 320, 326-329, 348-352, 355-382, 395) | Large |
+| 1 | CORS/CSP enforcement in fetch/XHR path (MC-08, FJNS-11) — PARTIAL: connect-src pre-dispatch + host-source (incl. bracketed IPv6 normalization, scheme-less source scheme/port inference, invalid-port rejection) + wildcard-port + default-src fallback + canonical origin normalization + credentialed CORS ACAO/ACAC gate + strict ACAO single-value/case-insensitive CORS header handling + duplicate case-variant ACAO/ACAC rejection + serialized-origin ACAO enforcement + null-origin ACAO handling + dot-segment/encoded-traversal-safe path matching + websocket (`ws`/`wss`) default-port enforcement + effective-URL parse fail-closed CORS gate + strict ACAO/ACAC control-character rejection + strict request-Origin serialized-origin validation for both CORS evaluation and outgoing header emission + policy-origin serialized-origin fail-closed enforcement for request/CSP checks + strict non-HTTP(S) serialized-origin scheme rejection for request-policy/CORS + strict native serialized-origin percent-escaped authority fail-closed rejection + strict native serialized-origin authority backslash fail-closed rejection + strict native serialized-origin empty explicit-port fail-closed rejection + strict native serialized-origin non-IPv6 host-length fail-closed rejection + strict native serialized-origin dotted-decimal IPv4 fail-closed rejection + strict native/shared non-canonical dotted-decimal IPv4 (leading-zero octet) fail-closed rejection + strict native/shared legacy shorthand dotted numeric-host fail-closed rejection + strict native/shared legacy hexadecimal numeric-host fail-closed rejection + shared JS CORS helper malformed ACAO/ACAC fail-closed rejection + strict shared JS malformed document-origin fail-closed validation + strict shared JS malformed/unsupported request-URL fail-closed validation + strict shared JS request-URL surrounding-whitespace fail-closed validation + strict shared JS request-URL control/non-ASCII octet fail-closed validation + strict shared JS request-URL embedded-whitespace/userinfo/fragment fail-closed validation + strict shared JS request-URL empty-port authority fail-closed validation + strict shared JS request-URL authority percent-escape fail-closed validation + strict shared JS request-URL dotted-decimal IPv4 fail-closed validation + strict shared JS null/empty document-origin fail-closed enforcement + strict shared JS malformed ACAO authority/port fail-closed validation + strict shared JS non-ASCII ACAO/ACAC/header-origin octet fail-closed validation + strict shared JS serialized-origin/header surrounding-whitespace fail-closed validation + strict fetch/XHR unsupported-scheme pre-dispatch fail-closed request gate + strict unsupported-scheme cookie-attach suppression + strict native serialized-origin embedded/surrounding-whitespace and strict native ACAO/ACAC surrounding-whitespace fail-closed rejection + strict native optional ACAC non-literal/non-ASCII/comma-separated fail-closed rejection + strict connect-src host-source query/fragment fail-closed rejection + strict outbound fetch/XHR Origin header normalization (strip spoofed script header, browser-controlled cross-origin emission) DONE (Cycles 275-276, 278, 280-293, 306-307, 320, 326-329, 348-352, 355-382, 395, 407) | Large |
 | 2 | ~~TLS certificate verification policy hardening (FJNS-06)~~ DONE (Cycle 276) | ~~Medium~~ |
 | 3 | ~~Fetch/XHR origin header + ACAO response gate~~ DONE (Cycle 274) | ~~Medium~~ |
-| 4 | HTTP/2 transport (MC-12) — PARTIAL: protocol-version capture + explicit rejection guardrails for HTTP/2 preface/status-line/TLS ALPN/outbound `Upgrade` request/outbound `HTTP2-Settings` request-header/outbound pseudo-header requests/`101` upgrade/`426` upgrade-required responses + unsupported status-version rejection allowlisting HTTP/1.0/HTTP/1.1 + preface trailing/tab-whitespace variants + tab-separated status-line variant + whitespace-padded request-header name variant hardening + quoted/single-quoted upgrade-token variant hardening + quoted comma-contained upgrade-token split hardening + escaped quoted-string upgrade-token normalization hardening + escaped-comma delimiter hardening + malformed unterminated-token explicit rejection hardening + control-character malformed token explicit rejection hardening + malformed bare backslash-escape token explicit rejection hardening + malformed unterminated quoted-parameter token explicit rejection hardening + malformed upgrade token-character fail-closed hardening + strict non-ASCII upgrade-token rejection hardening + strict HTTP2-Settings token68 validation and duplicate-header fail-closed hardening + strict HTTP2-Settings token68 over-padding fail-closed hardening + strict HTTP2-Settings non-base64url token-character fail-closed hardening + strict HTTP2-Settings base64url shape (padding/modulo) fail-closed hardening + strict HTTP2-Settings decoded SETTINGS-frame-length (multiple-of-6 bytes) fail-closed hardening + strict Transfer-Encoding `chunked` exact-token parsing hardening + strict malformed Transfer-Encoding delimiter/quoted-token rejection hardening + strict Transfer-Encoding `chunked` final-position/no-parameter enforcement hardening + strict Transfer-Encoding control-character token rejection hardening + strict non-ASCII Transfer-Encoding token rejection hardening + strict unsupported/malformed Transfer-Encoding fail-closed rejection hardening + strict conflicting `Transfer-Encoding` + `Content-Length` response framing fail-closed rejection + strict ambiguous multi-value `Content-Length` response framing fail-closed rejection + strict HTTP/1.x status-line status-code width/range fail-closed rejection + strict HTTP/1.x status-line control/non-ASCII octet fail-closed rejection + strict HTTP/1.x status-line surrounding-whitespace fail-closed rejection + strict HTTP/1.x status-line extra reason-separator whitespace fail-closed rejection + strict HTTP/1.x status-line extra status-code separator whitespace fail-closed rejection + strict HTTP/1.x status-line tab separator fail-closed rejection + strict HTTP/1.x status-line form-feed separator fail-closed rejection + strict HTTP/1.x status-line vertical-tab separator fail-closed rejection + strict HTTP/1.x status-line carriage-return separator fail-closed rejection + strict HTTP/1.x status-line line-feed separator fail-closed rejection + strict HTTP/1.x status-line missing reason-separator fail-closed rejection + strict HTTP/1.x status-line missing status-code separator fail-closed rejection + strict HTTP/1.x status-line empty reason-phrase fail-closed rejection + strict HTTP2-Settings surrounding-whitespace value fail-closed rejection + strict HTTP/2 status-line surrounding-whitespace malformed rejection + strict HTTP/1.x status-line SOH separator fail-closed rejection DONE (Cycles 294-305, 308-319, 321-325, 330-332, 383-394, 396-406) | Large |
+| 4 | HTTP/2 transport (MC-12) — PARTIAL: protocol-version capture + explicit rejection guardrails for HTTP/2 preface/status-line/TLS ALPN/outbound `Upgrade` request/outbound `HTTP2-Settings` request-header/outbound pseudo-header requests/`101` upgrade/`426` upgrade-required responses + unsupported status-version rejection allowlisting HTTP/1.0/HTTP/1.1 + preface trailing/tab-whitespace variants + tab-separated status-line variant + whitespace-padded request-header name variant hardening + quoted/single-quoted upgrade-token variant hardening + quoted comma-contained upgrade-token split hardening + escaped quoted-string upgrade-token normalization hardening + escaped-comma delimiter hardening + malformed unterminated-token explicit rejection hardening + control-character malformed token explicit rejection hardening + malformed bare backslash-escape token explicit rejection hardening + malformed unterminated quoted-parameter token explicit rejection hardening + malformed upgrade token-character fail-closed hardening + strict non-ASCII upgrade-token rejection hardening + strict HTTP2-Settings token68 validation and duplicate-header fail-closed hardening + strict HTTP2-Settings token68 over-padding fail-closed hardening + strict HTTP2-Settings non-base64url token-character fail-closed hardening + strict HTTP2-Settings base64url shape (padding/modulo) fail-closed hardening + strict HTTP2-Settings decoded SETTINGS-frame-length (multiple-of-6 bytes) fail-closed hardening + strict Transfer-Encoding `chunked` exact-token parsing hardening + strict malformed Transfer-Encoding delimiter/quoted-token rejection hardening + strict Transfer-Encoding `chunked` final-position/no-parameter enforcement hardening + strict Transfer-Encoding control-character token rejection hardening + strict non-ASCII Transfer-Encoding token rejection hardening + strict unsupported/malformed Transfer-Encoding fail-closed rejection hardening + strict conflicting `Transfer-Encoding` + `Content-Length` response framing fail-closed rejection + strict ambiguous multi-value `Content-Length` response framing fail-closed rejection + strict HTTP/1.x status-line status-code width/range fail-closed rejection + strict HTTP/1.x status-line control/non-ASCII octet fail-closed rejection + strict HTTP/1.x status-line surrounding-whitespace fail-closed rejection + strict HTTP/1.x status-line extra reason-separator whitespace fail-closed rejection + strict HTTP/1.x status-line extra status-code separator whitespace fail-closed rejection + strict HTTP/1.x status-line tab separator fail-closed rejection + strict HTTP/1.x status-line form-feed separator fail-closed rejection + strict HTTP/1.x status-line vertical-tab separator fail-closed rejection + strict HTTP/1.x status-line carriage-return separator fail-closed rejection + strict HTTP/1.x status-line line-feed separator fail-closed rejection + strict HTTP/1.x status-line missing reason-separator fail-closed rejection + strict HTTP/1.x status-line missing status-code separator fail-closed rejection + strict HTTP/1.x status-line empty reason-phrase fail-closed rejection + strict HTTP2-Settings surrounding-whitespace value fail-closed rejection + strict HTTP/2 status-line surrounding-whitespace malformed rejection + strict HTTP/1.x status-line SOH separator fail-closed rejection + strict HTTP/1.x status-line STX separator fail-closed rejection DONE (Cycles 294-305, 308-319, 321-325, 330-332, 383-394, 396-406, 408) | Large |
 | 5 | Web font loading (actual font data) — PARTIAL: WOFF2 source selection + `data:` URL base64/percent-decoded payload registration + format-aware source fallback/case-insensitive URL/FORMAT parsing + list-aware multi-format source acceptance + `woff2-variations` token support + strict `data:` base64 padding/trailing validation with unpadded compatibility + strict malformed empty `format()`/`tech()` descriptor fail-closed rejection + descriptor parser false-positive hardening for quoted URL payload substrings + strict malformed non-base64 `data:` percent-escape rejection + strict malformed top-level `src` source-list delimiter fail-closed rejection + strict unmatched-closing-paren `src`/descriptor fail-closed rejection + strict duplicate single-entry `url`/`format`/`tech` descriptor fail-closed rejection + strict malformed mixed single-entry `local(...)` + `url(...)` source rejection DONE (Cycles 277, 333-347) | Large |
 | 6 | ~~WOFF2 support (TODO in code)~~ DONE (Cycle 277) | ~~Medium~~ |
 | 7 | ~~CSS @layer cascade priority (layer ordering + !important reversal)~~ DONE (Cycle 279) | ~~Medium~~ |
@@ -4961,14 +4995,14 @@
 
 | Metric | Value |
 |--------|-------|
-| Total Sessions | 158 |
-| Total Cycles | 406 |
+| Total Sessions | 160 |
+| Total Cycles | 408 |
 | Files Created | ~135 |
 | Files Modified | 100+ |
 | Lines Added (est.) | 174180+ |
-| Tests Added | 3574 |
-| Bugs Fixed | 228 |
-| Features Added | 2513 |
+| Tests Added | 3580 |
+| Bugs Fixed | 230 |
+| Features Added | 2515 |
 
 ## Tell The Next Claude
 
@@ -4976,12 +5010,24 @@
 
 Build: `cd clever && cmake -S . -B build && cmake --build build && ctest --test-dir build`
 
-**3574 tests, 12 libraries (QuickJS!), 1 macOS app, ZERO warnings. v0.7.0. CYCLE 406! 2500+ FEATURES! 228 BUGS FIXED! ANTHROPIC.COM LOADS!**
+**3580 tests, 12 libraries (QuickJS!), 1 macOS app, ZERO warnings. v0.7.0. CYCLE 408! 2500+ FEATURES! 230 BUGS FIXED! ANTHROPIC.COM LOADS!**
 
 **Current implementation vs full browser comparison**:
 - Current implementation: robust single-process browser shell with full JS engine integration, broad DOM/CSS/Fetch coverage, and hardened HTTP/1.x/CORS/CSP policy enforcement.
 - Full browser target: still missing major subsystems like full multi-process isolation, full HTTP/2+/QUIC transport stack, and complete production-grade web font pipeline coverage.
-- Progress snapshot: from early scaffolding to 406 completed cycles, 3574 tests, and 2500+ implemented features.
+- Progress snapshot: from early scaffolding to 408 completed cycles, 3580 tests, and 2500+ implemented features.
+
+**Cycle 408 — HTTP/1.x status-line STX separator fail-closed regression hardening**:
+- Added focused regression coverage in `tests/test_request_contracts.cpp` for STX-byte status-line separator variants that must fail closed (`HTTP/1.1\x02200 OK`, `HTTP/1.1 200\x02OK`).
+- Rebuilt and re-ran `test_request_contracts` and `test_request_policy` from `build_vibrowser`, all green.
+- **Ledger divergence resolution**: cycle start ledger states differed (`.claude` at Cycle 407 vs `.codex` at Cycle 406); `.claude` selected as source of truth by newer mtime and `.codex/codex-estate.md` re-synced in this cycle.
+
+**Cycle 407 — CORS outbound `Origin` header normalization hardening**:
+- Added shared CORS helper `normalize_outgoing_origin_header(...)` in `clever/src/js/cors_policy.cpp` with API in `clever/include/clever/js/cors_policy.h`.
+- Wired both `fetch()` and `XMLHttpRequest.send()` in `clever/src/js/js_fetch_bindings.cpp` to always strip script-supplied `Origin` and emit only browser-controlled origins for eligible cross-origin requests.
+- Added focused regression coverage in `clever/tests/unit/cors_policy_test.cpp` for same-origin stripping, cross-origin overwrite, `null` origin handling, and malformed input suppression.
+- Rebuilt and re-ran `clever_js_cors_tests` and filtered `clever_js_tests` (`JSFetch.*:XMLHttpRequest.*`), all green.
+- **Ledger divergence note**: `.codex/codex-estate.md` is non-writable in this runtime (`Operation not permitted` on temp file creation); `.claude/claude-estate.md` is source of truth for Cycle 407 and sync should be replayed when permissions allow.
 
 **Cycle 406 — HTTP/1.x status-line SOH separator fail-closed regression hardening**:
 - Added focused regression coverage in `tests/test_request_contracts.cpp` for SOH-byte status-line separator variants that must fail closed (`HTTP/1.1\x01200 OK`, `HTTP/1.1 200\x01OK`).

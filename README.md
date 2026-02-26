@@ -14,7 +14,7 @@
 <h1 align="center">Vibrowser</h1>
 <p align="center"><strong>Open-source, from-scratch browser engineering in public.</strong></p>
 
-**Website:** [https://mercuriusdream.com/Vibrowser/](https://mercuriusdream.com/Vibrowser/)
+<p align="center"><strong>Website:</strong> <a href="https://mercuriusdream.com/Vibrowser/" target="_blank" rel="noreferrer">https://mercuriusdream.com/Vibrowser/</a></p>
 
 <img width="1023" height="802" alt="image" src="https://github.com/user-attachments/assets/d0b873b2-3c8f-4195-8890-be1014ebe8b9" />
 
