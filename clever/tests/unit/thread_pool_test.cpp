@@ -843,3 +843,76 @@ TEST(ThreadPoolTest, SubmitVectorSum) {
     });
     EXPECT_EQ(fut.get(), 15);
 }
+
+// ============================================================================
+// Cycle 630: More ThreadPool tests
+// ============================================================================
+
+// Submit: pair/tuple return
+TEST(ThreadPoolTest, SubmitReturnsPairThreeFour) {
+    ThreadPool pool(2);
+    auto fut = pool.submit([]() -> std::pair<int,int> { return {3, 4}; });
+    auto result = fut.get();
+    EXPECT_EQ(result.first, 3);
+    EXPECT_EQ(result.second, 4);
+}
+
+// Submit: string with content
+TEST(ThreadPoolTest, SubmitReturnsNonEmptyString) {
+    ThreadPool pool(2);
+    auto fut = pool.submit([]() -> std::string { return "hello"; });
+    EXPECT_EQ(fut.get(), "hello");
+}
+
+// Post: 50 tasks all complete
+TEST(ThreadPoolTest, Post50TasksAllComplete) {
+    ThreadPool pool(4);
+    std::atomic<int> count{0};
+    for (int i = 0; i < 50; ++i) {
+        pool.post([&count]() { count++; });
+    }
+    pool.shutdown();
+    EXPECT_EQ(count.load(), 50);
+}
+
+// Submit: float return value
+TEST(ThreadPoolTest, SubmitReturnsFloatTwoPointFive) {
+    ThreadPool pool(2);
+    auto fut = pool.submit([]() -> float { return 2.5f; });
+    EXPECT_FLOAT_EQ(fut.get(), 2.5f);
+}
+
+// Pool: size after construction
+TEST(ThreadPoolTest, PoolSizeAfterConstruction) {
+    ThreadPool pool(6);
+    EXPECT_EQ(pool.size(), 6u);
+}
+
+// Submit: recursive Fibonacci
+TEST(ThreadPoolTest, SubmitFibonacci) {
+    ThreadPool pool(2);
+    auto fut = pool.submit([]() {
+        int a = 0, b = 1;
+        for (int i = 0; i < 9; ++i) { int c = a + b; a = b; b = c; }
+        return b;
+    });
+    EXPECT_EQ(fut.get(), 55);
+}
+
+// Submit: vector accumulate
+TEST(ThreadPoolTest, SubmitVectorAccumulate) {
+    ThreadPool pool(2);
+    auto fut = pool.submit([]() {
+        std::vector<int> v = {2, 4, 6, 8, 10};
+        int sum = 0;
+        for (int x : v) sum += x;
+        return sum;
+    });
+    EXPECT_EQ(fut.get(), 30);
+}
+
+// Pool: is_running after construction
+TEST(ThreadPoolTest, IsRunningAfterConstruct2) {
+    ThreadPool pool(3);
+    EXPECT_TRUE(pool.is_running());
+}
