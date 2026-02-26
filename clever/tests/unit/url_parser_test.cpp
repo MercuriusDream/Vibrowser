@@ -368,6 +368,25 @@ TEST(URLParser, SerializeFileURL) {
     EXPECT_EQ(result->serialize(), "file:///Users/test/file.txt");
 }
 
+TEST(URLParser, SerializeDefaultPortOmitted) {
+    // Parsed with explicit default port; port should be stripped and not serialized
+    auto result = parse("http://example.com:80/path");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->serialize(), "http://example.com/path");
+}
+
+TEST(URLParser, SerializeIPv6URL) {
+    auto result = parse("http://[::1]:8080/path");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->serialize(), "http://[::1]:8080/path");
+}
+
+TEST(URLParser, SerializeWithQueryAndFragment) {
+    auto result = parse("https://example.com/path?a=1&b=2#section");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->serialize(), "https://example.com/path?a=1&b=2#section");
+}
+
 // =============================================================================
 // origin tests
 // =============================================================================
