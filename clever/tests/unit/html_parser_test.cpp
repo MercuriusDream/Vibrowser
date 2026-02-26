@@ -2018,3 +2018,67 @@ TEST(TreeBuilder, VarElement) {
     ASSERT_NE(var, nullptr);
     EXPECT_EQ(var->text_content(), "x");
 }
+
+// ============================================================================
+// Cycle 598: More HTML parser tests
+// ============================================================================
+
+TEST(TreeBuilder, WbrInsideParagraph) {
+    auto doc = parse(R"(<body><p>word<wbr>break</p></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* wbr = doc->find_element("wbr");
+    ASSERT_NE(wbr, nullptr);
+}
+
+TEST(TreeBuilder, BrElement) {
+    auto doc = parse(R"(<body><p>line one<br>line two</p></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* br = doc->find_element("br");
+    ASSERT_NE(br, nullptr);
+}
+
+TEST(TreeBuilder, HrElement) {
+    auto doc = parse(R"(<body><p>Above</p><hr><p>Below</p></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* hr = doc->find_element("hr");
+    ASSERT_NE(hr, nullptr);
+}
+
+TEST(TreeBuilder, TableWithCaption) {
+    auto doc = parse(R"(<body><table><caption>My Table</caption><tr><td>A</td></tr></table></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* caption = doc->find_element("caption");
+    ASSERT_NE(caption, nullptr);
+    EXPECT_EQ(caption->text_content(), "My Table");
+}
+
+TEST(TreeBuilder, TableRowElement) {
+    auto doc = parse(R"(<body><table><tr><td>cell</td></tr></table></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* tr = doc->find_element("tr");
+    ASSERT_NE(tr, nullptr);
+}
+
+TEST(TreeBuilder, TableDataElement) {
+    auto doc = parse(R"(<body><table><tr><td>data</td></tr></table></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* td = doc->find_element("td");
+    ASSERT_NE(td, nullptr);
+    EXPECT_EQ(td->text_content(), "data");
+}
+
+TEST(TreeBuilder, TableHeaderElement) {
+    auto doc = parse(R"(<body><table><tr><th>Header</th></tr></table></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* th = doc->find_element("th");
+    ASSERT_NE(th, nullptr);
+    EXPECT_EQ(th->text_content(), "Header");
+}
+
+TEST(TreeBuilder, FieldsetLegendIsSettings) {
+    auto doc = parse(R"(<body><fieldset><legend>Settings</legend><input type="checkbox"></fieldset></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* legend = doc->find_element("legend");
+    ASSERT_NE(legend, nullptr);
+    EXPECT_EQ(legend->text_content(), "Settings");
+}
