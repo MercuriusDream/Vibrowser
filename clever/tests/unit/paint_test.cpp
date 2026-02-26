@@ -39115,6 +39115,20 @@ TEST(WebFontRegistration, PreferredFontSourceRejectsMalformedSourceListWithTrail
     EXPECT_TRUE(extract_preferred_font_url(src).empty());
 }
 
+TEST(WebFontRegistration, PreferredFontSourceRejectsMalformedSourceListWithUnbalancedQuotes) {
+    const std::string src =
+        "url(\"broken.woff2) format('woff2'), "
+        "url(\"fallback.woff\") format('woff')";
+    EXPECT_TRUE(extract_preferred_font_url(src).empty());
+}
+
+TEST(WebFontRegistration, PreferredFontSourceRejectsMalformedFormatDescriptorWithUnbalancedParen) {
+    const std::string src =
+        "url(\"broken.woff2\") format('woff2', "
+        "url(\"fallback.woff\") format('woff')";
+    EXPECT_TRUE(extract_preferred_font_url(src).empty());
+}
+
 TEST(WebFontRegistration, PreferredFontSourceEmptyWhenNoUrlExists) {
     EXPECT_TRUE(extract_preferred_font_url("local('Arial'), local('Helvetica')").empty());
 }
