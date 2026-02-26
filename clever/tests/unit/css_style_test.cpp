@@ -6610,3 +6610,141 @@ TEST(PropertyCascadeTest, AnimationPlayStateValues) {
     cascade.apply_declaration(style, make_decl("animation-play-state", "running"), parent);
     EXPECT_EQ(style.animation_play_state, 0);
 }
+
+// ---------------------------------------------------------------------------
+// Cycle 447 — CSS transition: transition-property, transition-duration,
+//             transition-timing-function, transition-delay, transition
+//             shorthand (single and multiple)
+// ---------------------------------------------------------------------------
+
+TEST(PropertyCascadeTest, TransitionPropertyStoresString) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.transition_property, "all");  // default
+
+    cascade.apply_declaration(style, make_decl("transition-property", "opacity"), parent);
+    EXPECT_EQ(style.transition_property, "opacity");
+    EXPECT_EQ(style.transitions.size(), 1u);
+    EXPECT_EQ(style.transitions[0].property, "opacity");
+
+    cascade.apply_declaration(style, make_decl("transition-property", "none"), parent);
+    EXPECT_EQ(style.transition_property, "none");
+}
+
+TEST(PropertyCascadeTest, TransitionDurationSecondsAndMs) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_FLOAT_EQ(style.transition_duration, 0.0f);  // default
+
+    cascade.apply_declaration(style, make_decl("transition-duration", "0.3s"), parent);
+    EXPECT_NEAR(style.transition_duration, 0.3f, 0.001f);
+
+    cascade.apply_declaration(style, make_decl("transition-duration", "400ms"), parent);
+    EXPECT_NEAR(style.transition_duration, 0.4f, 0.001f);
+
+    cascade.apply_declaration(style, make_decl("transition-duration", "1s"), parent);
+    EXPECT_FLOAT_EQ(style.transition_duration, 1.0f);
+}
+
+TEST(PropertyCascadeTest, TransitionTimingFunctionValues) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.transition_timing, 0);  // default: ease
+
+    cascade.apply_declaration(style, make_decl("transition-timing-function", "linear"), parent);
+    EXPECT_EQ(style.transition_timing, 1);
+
+    cascade.apply_declaration(style, make_decl("transition-timing-function", "ease-in"), parent);
+    EXPECT_EQ(style.transition_timing, 2);
+
+    cascade.apply_declaration(style, make_decl("transition-timing-function", "ease-out"), parent);
+    EXPECT_EQ(style.transition_timing, 3);
+
+    cascade.apply_declaration(style, make_decl("transition-timing-function", "ease-in-out"), parent);
+    EXPECT_EQ(style.transition_timing, 4);
+
+    cascade.apply_declaration(style, make_decl("transition-timing-function", "ease"), parent);
+    EXPECT_EQ(style.transition_timing, 0);
+}
+
+TEST(PropertyCascadeTest, TransitionDelay) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_FLOAT_EQ(style.transition_delay, 0.0f);  // default
+
+    cascade.apply_declaration(style, make_decl("transition-delay", "0.5s"), parent);
+    EXPECT_NEAR(style.transition_delay, 0.5f, 0.001f);
+
+    cascade.apply_declaration(style, make_decl("transition-delay", "200ms"), parent);
+    EXPECT_NEAR(style.transition_delay, 0.2f, 0.001f);
+}
+
+TEST(PropertyCascadeTest, TransitionShorthandSingleValue) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    // "opacity 0.3s ease"
+    cascade.apply_declaration(style, make_decl("transition", "opacity 0.3s ease"), parent);
+
+    ASSERT_EQ(style.transitions.size(), 1u);
+    EXPECT_EQ(style.transitions[0].property, "opacity");
+    EXPECT_NEAR(style.transitions[0].duration_ms, 300.0f, 1.0f);
+    EXPECT_EQ(style.transitions[0].timing_function, 0);  // ease
+    // Legacy scalar fields should also be set
+    EXPECT_EQ(style.transition_property, "opacity");
+    EXPECT_NEAR(style.transition_duration, 0.3f, 0.001f);
+}
+
+TEST(PropertyCascadeTest, TransitionShorthandWithDelay) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    // "transform 1s linear 0.2s"
+    cascade.apply_declaration(style, make_decl("transition", "transform 1s linear 0.2s"), parent);
+
+    ASSERT_EQ(style.transitions.size(), 1u);
+    EXPECT_EQ(style.transitions[0].property, "transform");
+    EXPECT_NEAR(style.transitions[0].duration_ms, 1000.0f, 1.0f);
+    EXPECT_EQ(style.transitions[0].timing_function, 1);   // linear
+    EXPECT_NEAR(style.transitions[0].delay_ms, 200.0f, 1.0f);
+}
+
+TEST(PropertyCascadeTest, TransitionShorthandMultipleValues) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    // "opacity 0.3s ease, transform 0.5s ease-in"
+    cascade.apply_declaration(style, make_decl("transition", "opacity 0.3s ease, transform 0.5s ease-in"), parent);
+
+    ASSERT_EQ(style.transitions.size(), 2u);
+    EXPECT_EQ(style.transitions[0].property, "opacity");
+    EXPECT_NEAR(style.transitions[0].duration_ms, 300.0f, 1.0f);
+    EXPECT_EQ(style.transitions[1].property, "transform");
+    EXPECT_NEAR(style.transitions[1].duration_ms, 500.0f, 1.0f);
+    EXPECT_EQ(style.transitions[1].timing_function, 2);  // ease-in
+}
+
+TEST(PropertyCascadeTest, TransitionCubicBezierTimingFunction) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    // cubic-bezier() sets timing to 5 and stores control points
+    cascade.apply_declaration(style, make_decl("transition-timing-function", "cubic-bezier(0.42, 0, 1.0, 1.0)"), parent);
+    EXPECT_EQ(style.transition_timing, 5);
+    EXPECT_NEAR(style.transition_bezier_x1, 0.42f, 0.01f);
+    EXPECT_NEAR(style.transition_bezier_y1, 0.0f, 0.01f);
+    EXPECT_NEAR(style.transition_bezier_x2, 1.0f, 0.01f);
+    EXPECT_NEAR(style.transition_bezier_y2, 1.0f, 0.01f);
+}
