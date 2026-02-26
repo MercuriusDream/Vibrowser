@@ -803,3 +803,63 @@ TEST(CORSPolicyTest, CrossOriginRequestSetsOriginHeader) {
         "https://api.different.com/resource");
     EXPECT_TRUE(req_headers.has("Origin"));
 }
+
+// ============================================================================
+// Cycle 603: More CORS policy tests
+// ============================================================================
+
+// cors_allows_response: matching origin allows non-credentialed
+TEST(CORSPolicyTest, ExactOriginMatchAllowsNonCredentialed) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "https://app.example");
+    EXPECT_TRUE(cors_allows_response("https://app.example",
+                                     "https://api.example/data",
+                                     headers, false));
+}
+
+// cors_allows_response: mismatched origin blocks non-credentialed
+TEST(CORSPolicyTest, MismatchedOriginBlocksNonCredentialed) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "https://other.example");
+    EXPECT_FALSE(cors_allows_response("https://app.example",
+                                      "https://api.example/data",
+                                      headers, false));
+}
+
+// cors_allows_response: wildcard allows non-credentialed
+TEST(CORSPolicyTest, WildcardAllowsNonCredentialed) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "*");
+    EXPECT_TRUE(cors_allows_response("https://app.example",
+                                     "https://cdn.example/resource",
+                                     headers, false));
+}
+
+// is_cors_eligible: https URL is eligible
+TEST(CORSPolicyTest, HttpsURLIsCORSEligible) {
+    EXPECT_TRUE(is_cors_eligible_request_url("https://api.example.com/data"));
+}
+
+// is_cors_eligible: http URL with path is eligible
+TEST(CORSPolicyTest, HttpURLWithPathIsCORSEligible) {
+    EXPECT_TRUE(is_cors_eligible_request_url("http://api.example.com/v2/data"));
+}
+
+// normalize_outgoing: same-origin does not set Origin header
+TEST(CORSPolicyTest, SameOriginDoesNotAttachOrigin) {
+    clever::net::HeaderMap req_headers;
+    normalize_outgoing_origin_header(req_headers,
+        "https://example.com",
+        "https://example.com/api");
+    EXPECT_FALSE(req_headers.has("Origin"));
+}
+
+// has_enforceable_document_origin: https origin enforceable
+TEST(CORSPolicyTest, HttpsOriginIsEnforceable) {
+    EXPECT_TRUE(has_enforceable_document_origin("https://trusted.example"));
+}
+
+// has_enforceable_document_origin: http with subdomain is enforceable
+TEST(CORSPolicyTest, HttpSubdomainOriginIsEnforceable) {
+    EXPECT_TRUE(has_enforceable_document_origin("http://app.insecure.example"));
+}
