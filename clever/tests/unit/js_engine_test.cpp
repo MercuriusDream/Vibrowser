@@ -12108,3 +12108,90 @@ TEST(JSEngine, LogicalAndShortCircuit) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "false");
 }
+
+// ============================================================================
+// Cycle 542: JS engine regression tests
+// ============================================================================
+
+// Logical OR short-circuit
+TEST(JSEngine, LogicalOrShortCircuit) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var called = false;
+        true || (function() { called = true; })();
+        String(called)
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "false");
+}
+
+// String.charAt() method
+TEST(JSEngine, StringCharAt) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        "hello".charAt(1)
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "e");
+}
+
+// String.charCodeAt() method
+TEST(JSEngine, StringCharCodeAt) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        "A".charCodeAt(0)
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "65");
+}
+
+// Array.findIndex method
+TEST(JSEngine, ArrayFindIndex) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        [10, 20, 30, 40].findIndex(function(x) { return x > 25; })
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "2");
+}
+
+// Array.find method
+TEST(JSEngine, ArrayFindMethod) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        [5, 12, 8, 130, 44].find(function(x) { return x > 10; })
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "12");
+}
+
+// Array.includes method
+TEST(JSEngine, ArrayIncludes) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var a = [1, 2, 3, 4];
+        String(a.includes(3)) + "," + String(a.includes(9))
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true,false");
+}
+
+// String.split method
+TEST(JSEngine, StringSplitMethod) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        "a,b,c,d".split(",").length
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "4");
+}
+
+// Math.abs returns absolute value
+TEST(JSEngine, MathAbsReturnsAbsValue) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        Math.abs(-42) + "," + Math.abs(7)
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "42,7");
+}
