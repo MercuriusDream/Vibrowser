@@ -1020,3 +1020,141 @@ TEST(TreeBuilder, BooleanAttributes) {
     EXPECT_TRUE(btn_disabled);
     EXPECT_EQ(button->text_content(), "Go");
 }
+
+// ---------------------------------------------------------------------------
+// Cycle 493 — HTML parser: figure/figcaption, iframe, definition lists,
+//             single-quote attrs, nav+links, section+heading, class attr,
+//             tokenizer single-quoted value
+// ---------------------------------------------------------------------------
+
+TEST(TreeBuilder, FigureAndFigcaption) {
+    auto doc = parse("<figure><img src=\"photo.jpg\" alt=\"A photo\">"
+                     "<figcaption>A scenic view</figcaption></figure>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* figure = doc->find_element("figure");
+    ASSERT_NE(figure, nullptr);
+
+    auto* img = doc->find_element("img");
+    ASSERT_NE(img, nullptr);
+    std::string src;
+    for (const auto& attr : img->attributes) {
+        if (attr.name == "src") src = attr.value;
+    }
+    EXPECT_EQ(src, "photo.jpg");
+
+    auto* figcaption = doc->find_element("figcaption");
+    ASSERT_NE(figcaption, nullptr);
+    EXPECT_EQ(figcaption->text_content(), "A scenic view");
+}
+
+TEST(TreeBuilder, IframeWithSrcAttribute) {
+    auto doc = parse("<iframe src=\"https://example.com\" width=\"640\" height=\"480\"></iframe>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* iframe = doc->find_element("iframe");
+    ASSERT_NE(iframe, nullptr);
+
+    std::string src, width;
+    for (const auto& attr : iframe->attributes) {
+        if (attr.name == "src")   src   = attr.value;
+        if (attr.name == "width") width = attr.value;
+    }
+    EXPECT_EQ(src, "https://example.com");
+    EXPECT_EQ(width, "640");
+}
+
+TEST(TreeBuilder, DefinitionList) {
+    auto doc = parse("<dl><dt>Term1</dt><dd>Definition1</dd>"
+                     "<dt>Term2</dt><dd>Definition2</dd></dl>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* dl = doc->find_element("dl");
+    ASSERT_NE(dl, nullptr);
+
+    auto dts = doc->find_all_elements("dt");
+    auto dds = doc->find_all_elements("dd");
+    ASSERT_EQ(dts.size(), 2u);
+    ASSERT_EQ(dds.size(), 2u);
+    EXPECT_EQ(dts[0]->text_content(), "Term1");
+    EXPECT_EQ(dds[0]->text_content(), "Definition1");
+}
+
+TEST(Tokenizer, SingleQuotedAttributeValue) {
+    auto tokens = tokenize_all("<a href='https://example.com'>link</a>");
+    std::string href;
+    for (auto& t : tokens) {
+        if (t.type == Token::StartTag && t.name == "a") {
+            for (auto& attr : t.attributes) {
+                if (attr.name == "href") href = attr.value;
+            }
+        }
+    }
+    EXPECT_EQ(href, "https://example.com");
+}
+
+TEST(TreeBuilder, NavWithLinks) {
+    auto doc = parse("<nav><a href=\"/home\">Home</a><a href=\"/about\">About</a></nav>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* nav = doc->find_element("nav");
+    ASSERT_NE(nav, nullptr);
+
+    auto links = doc->find_all_elements("a");
+    ASSERT_EQ(links.size(), 2u);
+    EXPECT_EQ(links[0]->text_content(), "Home");
+    EXPECT_EQ(links[1]->text_content(), "About");
+}
+
+TEST(TreeBuilder, SectionWithHeading) {
+    auto doc = parse("<section><h2>Section Title</h2><p>Section body.</p></section>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* section = doc->find_element("section");
+    ASSERT_NE(section, nullptr);
+
+    auto* h2 = doc->find_element("h2");
+    ASSERT_NE(h2, nullptr);
+    EXPECT_EQ(h2->text_content(), "Section Title");
+
+    auto* p = doc->find_element("p");
+    ASSERT_NE(p, nullptr);
+    EXPECT_EQ(p->text_content(), "Section body.");
+}
+
+TEST(TreeBuilder, MultipleClassesInAttribute) {
+    auto doc = parse("<div class=\"container main hero\">content</div>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* div = doc->find_element("div");
+    ASSERT_NE(div, nullptr);
+
+    std::string class_val;
+    for (const auto& attr : div->attributes) {
+        if (attr.name == "class") class_val = attr.value;
+    }
+    // The class attribute value should contain all three classes
+    EXPECT_NE(class_val.find("container"), std::string::npos);
+    EXPECT_NE(class_val.find("main"), std::string::npos);
+    EXPECT_NE(class_val.find("hero"), std::string::npos);
+}
+
+TEST(TreeBuilder, DialogElement) {
+    auto doc = parse("<dialog open><p>Are you sure?</p>"
+                     "<button>OK</button><button>Cancel</button></dialog>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* dialog = doc->find_element("dialog");
+    ASSERT_NE(dialog, nullptr);
+
+    bool has_open = false;
+    for (const auto& attr : dialog->attributes) {
+        if (attr.name == "open") has_open = true;
+    }
+    EXPECT_TRUE(has_open);
+
+    auto buttons = doc->find_all_elements("button");
+    ASSERT_EQ(buttons.size(), 2u);
+    EXPECT_EQ(buttons[0]->text_content(), "OK");
+    EXPECT_EQ(buttons[1]->text_content(), "Cancel");
+}
