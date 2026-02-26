@@ -1706,3 +1706,81 @@ TEST(TreeBuilder, DatalistElement) {
     auto* option = doc->find_element("option");
     ASSERT_NE(option, nullptr);
 }
+
+// ============================================================================
+// Cycle 564: More HTML parser tree builder tests
+// ============================================================================
+
+TEST(TreeBuilder, NavElement) {
+    auto doc = parse(R"(<body><nav><a href="/home">Home</a></nav></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* nav = doc->find_element("nav");
+    ASSERT_NE(nav, nullptr);
+    auto* a = doc->find_element("a");
+    ASSERT_NE(a, nullptr);
+    EXPECT_EQ(a->text_content(), "Home");
+}
+
+TEST(TreeBuilder, AsideWithParagraph) {
+    auto doc = parse(R"(<body><aside><p>Sidebar content</p></aside></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* aside = doc->find_element("aside");
+    ASSERT_NE(aside, nullptr);
+}
+
+TEST(TreeBuilder, FooterElement) {
+    auto doc = parse(R"(<body><footer><p>Copyright 2025</p></footer></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* footer = doc->find_element("footer");
+    ASSERT_NE(footer, nullptr);
+    EXPECT_EQ(footer->find_element("p")->text_content(), "Copyright 2025");
+}
+
+TEST(TreeBuilder, HeaderElement) {
+    auto doc = parse(R"(<body><header><h1>Site Title</h1></header></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* header = doc->find_element("header");
+    ASSERT_NE(header, nullptr);
+    ASSERT_NE(header->find_element("h1"), nullptr);
+}
+
+TEST(TreeBuilder, BlockquoteContainsParagraph) {
+    auto doc = parse(R"(<body><blockquote><p>Quote text</p></blockquote></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* bq = doc->find_element("blockquote");
+    ASSERT_NE(bq, nullptr);
+}
+
+TEST(TreeBuilder, DivWithIdAndClass) {
+    auto doc = parse(R"(<body><div id="main" class="container">content</div></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* div = doc->find_element("div");
+    ASSERT_NE(div, nullptr);
+    bool has_id = false, has_class = false;
+    for (auto& attr : div->attributes) {
+        if (attr.name == "id" && attr.value == "main") has_id = true;
+        if (attr.name == "class" && attr.value == "container") has_class = true;
+    }
+    EXPECT_TRUE(has_id);
+    EXPECT_TRUE(has_class);
+}
+
+TEST(TreeBuilder, SpanTextContentIsWorld) {
+    auto doc = parse(R"(<body><p>Hello <span>world</span>!</p></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* span = doc->find_element("span");
+    ASSERT_NE(span, nullptr);
+    EXPECT_EQ(span->text_content(), "world");
+}
+
+TEST(TreeBuilder, UlWithThreeItems) {
+    auto doc = parse(R"(<body><ul><li>A</li><li>B</li><li>C</li></ul></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* ul = doc->find_element("ul");
+    ASSERT_NE(ul, nullptr);
+    int li_count = 0;
+    for (auto& child : ul->children) {
+        if (child->tag_name == "li") li_count++;
+    }
+    EXPECT_EQ(li_count, 3);
+}
