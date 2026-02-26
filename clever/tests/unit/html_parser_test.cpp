@@ -2145,3 +2145,65 @@ TEST(TreeBuilder, CanvasWidthHeight) {
     auto* canvas = doc->find_element("canvas");
     ASSERT_NE(canvas, nullptr);
 }
+
+// ============================================================================
+// Cycle 618: More HTML parser tests
+// ============================================================================
+
+TEST(TreeBuilder, VideoWithControls) {
+    auto doc = parse(R"(<body><video src="movie.mp4" controls></video></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* video = doc->find_element("video");
+    ASSERT_NE(video, nullptr);
+}
+
+TEST(TreeBuilder, AudioWithControls) {
+    auto doc = parse(R"(<body><audio src="sound.mp3" controls></audio></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* audio = doc->find_element("audio");
+    ASSERT_NE(audio, nullptr);
+}
+
+TEST(TreeBuilder, PictureWithSource) {
+    auto doc = parse(R"(<body><picture><source srcset="img.webp" type="image/webp"><img src="img.jpg" alt="img"></picture></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* picture = doc->find_element("picture");
+    ASSERT_NE(picture, nullptr);
+}
+
+TEST(TreeBuilder, FigcaptionTextIsPhoto) {
+    auto doc = parse(R"(<body><figure><img src="photo.jpg"><figcaption>A photo</figcaption></figure></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* figcaption = doc->find_element("figcaption");
+    ASSERT_NE(figcaption, nullptr);
+    EXPECT_EQ(figcaption->text_content(), "A photo");
+}
+
+TEST(TreeBuilder, DetailsSummaryClickMe) {
+    auto doc = parse(R"(<body><details><summary>Click me</summary><p>Details here</p></details></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* summary = doc->find_element("summary");
+    ASSERT_NE(summary, nullptr);
+    EXPECT_EQ(summary->text_content(), "Click me");
+}
+
+TEST(TreeBuilder, DialogOpenAttribute) {
+    auto doc = parse(R"(<body><dialog open><p>Dialog content</p></dialog></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* dialog = doc->find_element("dialog");
+    ASSERT_NE(dialog, nullptr);
+}
+
+TEST(TreeBuilder, AddressWithLink) {
+    auto doc = parse(R"(<body><address>Contact: <a href="mailto:info@example.com">info@example.com</a></address></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* address = doc->find_element("address");
+    ASSERT_NE(address, nullptr);
+}
+
+TEST(TreeBuilder, MainWithH1) {
+    auto doc = parse(R"(<body><main><h1>Main content</h1></main></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* main_el = doc->find_element("main");
+    ASSERT_NE(main_el, nullptr);
+}
