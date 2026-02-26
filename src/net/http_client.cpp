@@ -1191,6 +1191,10 @@ bool parse_status_line(const std::string& status_line, Response& response, std::
     err = "Malformed HTTP status line";
     return false;
   }
+  if (first_space + 1 < status_line.size() && status_line[first_space + 1] == ' ') {
+    err = "Malformed HTTP status line";
+    return false;
+  }
   const std::string version = trim_ascii(status_line.substr(0, first_space));
   if (!starts_with(version, "HTTP/")) {
     err = "Malformed HTTP status line";
