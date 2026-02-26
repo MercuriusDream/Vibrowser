@@ -187,6 +187,36 @@ int main() {
         }
     }
 
+    // Test 12b: build_request_headers_for_policy fails closed for malformed policy Origin
+    {
+        browser::net::RequestPolicy policy;
+        policy.origin = "https://app.example.com/path";
+        auto headers = browser::net::build_request_headers_for_policy("https://api.example.com/data", policy);
+        if (!headers.empty()) {
+            std::cerr << "FAIL: malformed policy Origin should not be attached to request headers\n";
+            ++failures;
+        } else {
+            std::cerr << "PASS: malformed policy Origin is rejected for Origin header emission\n";
+        }
+    }
+
+    // Test 12c: build_request_headers_for_policy canonicalizes valid policy Origin
+    {
+        browser::net::RequestPolicy policy;
+        policy.origin = "HTTPS://APP.EXAMPLE.COM:443";
+        auto headers = browser::net::build_request_headers_for_policy("https://api.example.com/data", policy);
+        auto it = headers.find("Origin");
+        if (it == headers.end()) {
+            std::cerr << "FAIL: expected Origin header for canonicalized cross-origin policy\n";
+            ++failures;
+        } else if (it->second != "https://app.example.com") {
+            std::cerr << "FAIL: expected canonicalized Origin header value for valid policy origin\n";
+            ++failures;
+        } else {
+            std::cerr << "PASS: Origin header uses canonical serialized origin value\n";
+        }
+    }
+
     // Test 13: check_cors_response_policy rejects cross-origin response without ACAO
     {
         browser::net::RequestPolicy policy;

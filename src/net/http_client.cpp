@@ -2123,9 +2123,12 @@ std::map<std::string, std::string> build_request_headers_for_policy(
     }
 
     const std::string request_origin = canonicalize_origin(build_origin_for_url(parsed));
-    const std::string policy_origin = canonicalize_origin(policy.origin);
+    std::string policy_origin;
+    if (!parse_serialized_origin(policy.origin, policy_origin)) {
+        return headers;
+    }
     if (request_origin != policy_origin) {
-        headers["Origin"] = policy_origin.empty() ? policy.origin : policy_origin;
+        headers["Origin"] = policy_origin;
     }
     return headers;
 }
