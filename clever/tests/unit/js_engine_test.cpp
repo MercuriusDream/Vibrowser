@@ -12487,3 +12487,86 @@ TEST(JSEngine, PromiseResolveThen) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "ok");
 }
+
+// ============================================================================
+// Cycle 565: More modern JS features
+// ============================================================================
+
+// Object.freeze: frozen object still reads correctly
+TEST(JSEngine, ObjectFreezeReadAfterFreeze) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var obj = Object.freeze({a: 10, b: 20});
+        obj.a + obj.b
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "30");
+}
+
+// Array.of creates array from arguments
+TEST(JSEngine, ArrayOfCreatesArray) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        Array.of(1, 2, 3).join(",")
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1,2,3");
+}
+
+// String.prototype.padStart with longer pad
+TEST(JSEngine, StringPadStartLonger) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        "42".padStart(5, "0")
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "00042");
+}
+
+// String.prototype.padEnd with spaces
+TEST(JSEngine, StringPadEndWithSpaces) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        "abc".padEnd(6).length
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "6");
+}
+
+// Array.prototype.every: all match
+TEST(JSEngine, ArrayEveryAllMatch) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        [2, 4, 6].every(function(x) { return x % 2 === 0; })
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true");
+}
+
+// Array.prototype.some: one matches
+TEST(JSEngine, ArraySomeOneMatches) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        [1, 3, 4].some(function(x) { return x % 2 === 0; })
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true");
+}
+
+// typeof null is "object"
+TEST(JSEngine, TypeofNullIsObject) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(typeof null)");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "object");
+}
+
+// instanceof Array on object returns false
+TEST(JSEngine, InstanceofArrayFalseForObject) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        ({}) instanceof Array
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "false");
+}
