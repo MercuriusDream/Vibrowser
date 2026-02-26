@@ -1937,3 +1937,81 @@ TEST_F(CSSStylesheetTest, FontSizePxDeclaration) {
     EXPECT_DOUBLE_EQ(val.numeric_value, 14.0);
     EXPECT_EQ(val.unit, "px");
 }
+
+// ============================================================================
+// Cycle 572: More CSS parser tests
+// ============================================================================
+
+// Tokenizer: percent sign token value
+TEST_F(CSSTokenizerTest, PercentSignTokenValue) {
+    auto tokens = CSSTokenizer::tokenize_all("50%");
+    ASSERT_GE(tokens.size(), 1u);
+    EXPECT_EQ(tokens[0].type, CSSToken::Percentage);
+    EXPECT_DOUBLE_EQ(tokens[0].numeric_value, 50.0);
+}
+
+// Tokenizer: float number (non-integer)
+TEST_F(CSSTokenizerTest, FloatNumberToken) {
+    auto tokens = CSSTokenizer::tokenize_all("3.14");
+    ASSERT_GE(tokens.size(), 1u);
+    EXPECT_EQ(tokens[0].type, CSSToken::Number);
+    EXPECT_DOUBLE_EQ(tokens[0].numeric_value, 3.14);
+    EXPECT_FALSE(tokens[0].is_integer);
+}
+
+// Tokenizer: vh dimension unit
+TEST_F(CSSTokenizerTest, VhDimensionToken) {
+    auto tokens = CSSTokenizer::tokenize_all("50vh");
+    ASSERT_GE(tokens.size(), 1u);
+    EXPECT_EQ(tokens[0].type, CSSToken::Dimension);
+    EXPECT_DOUBLE_EQ(tokens[0].numeric_value, 50.0);
+    EXPECT_EQ(tokens[0].unit, "vh");
+}
+
+// Selector: adjacent sibling h1 + p target is paragraph
+TEST_F(CSSSelectorTest, AdjacentSiblingTargetIsParagraph) {
+    auto list = parse_selector_list("h1 + p");
+    ASSERT_EQ(list.selectors.size(), 1u);
+    auto& sel = list.selectors[0];
+    ASSERT_EQ(sel.parts.size(), 2u);
+    // Second part is the target: "p" type selector
+    EXPECT_EQ(sel.parts[1].compound.simple_selectors[0].value, "p");
+}
+
+// Selector: universal selector (*)
+TEST_F(CSSSelectorTest, UniversalSelectorParsedType) {
+    auto list = parse_selector_list("*");
+    ASSERT_EQ(list.selectors.size(), 1u);
+    auto& compound = list.selectors[0].parts[0].compound;
+    EXPECT_EQ(compound.simple_selectors[0].type, SimpleSelectorType::Universal);
+}
+
+// Stylesheet: display:flex declaration
+TEST_F(CSSStylesheetTest, DisplayFlexDeclaration) {
+    auto sheet = parse_stylesheet(".flex { display: flex; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    ASSERT_EQ(sheet.rules[0].declarations.size(), 1u);
+    EXPECT_EQ(sheet.rules[0].declarations[0].property, "display");
+    EXPECT_EQ(sheet.rules[0].declarations[0].values[0].value, "flex");
+}
+
+// Stylesheet: margin shorthand declaration
+TEST_F(CSSStylesheetTest, MarginShorthandDeclaration) {
+    auto sheet = parse_stylesheet("div { margin: 10px 20px; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    auto& decls = sheet.rules[0].declarations;
+    bool found = false;
+    for (auto& d : decls) {
+        if (d.property == "margin") found = true;
+    }
+    EXPECT_TRUE(found);
+}
+
+// Stylesheet: three-rule chain (h1, h2, h3)
+TEST_F(CSSStylesheetTest, ThreeRulesHierarchy) {
+    auto sheet = parse_stylesheet("h1 { font-size: 32px; } h2 { font-size: 24px; } h3 { font-size: 18px; }");
+    EXPECT_EQ(sheet.rules.size(), 3u);
+    EXPECT_EQ(sheet.rules[0].selector_text, "h1");
+    EXPECT_EQ(sheet.rules[1].selector_text, "h2");
+    EXPECT_EQ(sheet.rules[2].selector_text, "h3");
+}
