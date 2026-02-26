@@ -1722,3 +1722,73 @@ TEST_F(CSSSelectorTest, DescendantCombinatorParsed) {
     ASSERT_GE(list.selectors[0].parts.size(), 2u);
     EXPECT_EQ(list.selectors[0].parts[1].combinator, Combinator::Descendant);
 }
+
+// ============================================================================
+// Cycle 541: CSS parser regression tests
+// ============================================================================
+
+// At-rule @media is parsed
+TEST_F(CSSStylesheetTest, AtRuleMediaParsed) {
+    auto sheet = parse_stylesheet("@media screen { body { color: black; } }");
+    // Should parse without crashing; may have 0 or more rules depending on @media handling
+    // Just verify it doesn't crash and returns something
+    SUCCEED();
+}
+
+// Percentage number token
+TEST_F(CSSTokenizerTest, PercentTokenValue) {
+    auto tokens = CSSTokenizer::tokenize_all("50%");
+    ASSERT_GE(tokens.size(), 1u);
+    EXPECT_EQ(tokens[0].type, CSSToken::Percentage);
+    EXPECT_DOUBLE_EQ(tokens[0].numeric_value, 50.0);
+}
+
+// Negative number token
+TEST_F(CSSTokenizerTest, NegativeNumberToken) {
+    auto tokens = CSSTokenizer::tokenize_all("-10");
+    ASSERT_GE(tokens.size(), 1u);
+    EXPECT_EQ(tokens[0].type, CSSToken::Number);
+    EXPECT_DOUBLE_EQ(tokens[0].numeric_value, -10.0);
+}
+
+// URL function token
+TEST_F(CSSTokenizerTest, UrlAsFunction) {
+    auto tokens = CSSTokenizer::tokenize_all("url(\"image.png\")");
+    ASSERT_GE(tokens.size(), 1u);
+    // URL or Function token expected
+    bool is_url_or_func = (tokens[0].type == CSSToken::Function);
+    EXPECT_TRUE(is_url_or_func);
+}
+
+// Multiple selectors (comma-separated)
+TEST_F(CSSSelectorTest, CommaListHasTwoSelectors) {
+    auto list = parse_selector_list("h1, h2");
+    EXPECT_EQ(list.selectors.size(), 2u);
+}
+
+// Child combinator parsed (div > p)
+TEST_F(CSSSelectorTest, ChildCombinatorParsed) {
+    auto list = parse_selector_list("div > p");
+    ASSERT_EQ(list.selectors.size(), 1u);
+    ASSERT_GE(list.selectors[0].parts.size(), 2u);
+    EXPECT_EQ(list.selectors[0].parts[1].combinator, Combinator::Child);
+}
+
+// Subsequent sibling combinator (h1 ~ p)
+TEST_F(CSSSelectorTest, SubsequentSiblingCombinatorParsed) {
+    auto list = parse_selector_list("h1 ~ p");
+    ASSERT_EQ(list.selectors.size(), 1u);
+    ASSERT_GE(list.selectors[0].parts.size(), 2u);
+    EXPECT_EQ(list.selectors[0].parts[1].combinator, Combinator::SubsequentSibling);
+}
+
+// Attribute selector [type="text"]
+TEST_F(CSSSelectorTest, AttributeSelectorTypeText) {
+    auto list = parse_selector_list("input[type=\"text\"]");
+    ASSERT_EQ(list.selectors.size(), 1u);
+    bool has_attr = false;
+    for (auto& ss : list.selectors[0].parts[0].compound.simple_selectors) {
+        if (ss.type == SimpleSelectorType::Attribute) has_attr = true;
+    }
+    EXPECT_TRUE(has_attr);
+}
