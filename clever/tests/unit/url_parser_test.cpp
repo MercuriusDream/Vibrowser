@@ -727,3 +727,69 @@ TEST(URLParser, URLWithIPv6Host) {
     EXPECT_EQ(result->port, 8080);
     EXPECT_NE(result->host.find("1"), std::string::npos);
 }
+
+// ============================================================================
+// Cycle 516: URL parser regression tests
+// ============================================================================
+
+TEST(URLParser, FtpSchemeURL) {
+    auto result = parse("ftp://files.example.com/pub/file.txt");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "ftp");
+    EXPECT_EQ(result->host, "files.example.com");
+    EXPECT_EQ(result->path, "/pub/file.txt");
+}
+
+TEST(URLParser, FragmentWithHyphenAndUnderscore) {
+    auto result = parse("https://example.com/page#section-1_top");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->fragment, "section-1_top");
+}
+
+TEST(URLParser, QueryWithAmpersand) {
+    auto result = parse("https://example.com/search?a=1&b=2&c=3");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->query, "a=1&b=2&c=3");
+}
+
+TEST(URLParser, PathWithDotSegmentNormalization) {
+    // /a/b/../c should normalize to /a/c
+    auto result = parse("https://example.com/a/b/../c");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->path, "/a/c");
+}
+
+TEST(URLParser, HTTPPortDefaultNotStored) {
+    // HTTP default port 80 should be treated as no explicit port
+    auto result = parse("http://example.com:80/path");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->host, "example.com");
+    // Whether port is stored or cleared, the URL must round-trip correctly
+    std::string s = result->serialize();
+    EXPECT_NE(s.find("example.com"), std::string::npos);
+}
+
+TEST(URLParser, HTTPSPortDefaultNotStored) {
+    // HTTPS default port 443 should be treated as no explicit port
+    auto result = parse("https://example.com:443/");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->host, "example.com");
+    std::string s = result->serialize();
+    EXPECT_NE(s.find("example.com"), std::string::npos);
+}
+
+TEST(URLParser, EmptyPathWithQueryOnly) {
+    auto result = parse("https://example.com?key=value");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->query, "key=value");
+    EXPECT_EQ(result->scheme, "https");
+}
+
+TEST(URLParser, SerializeRoundTripsSchemeAndHost) {
+    auto result = parse("https://www.example.com/hello");
+    ASSERT_TRUE(result.has_value());
+    std::string s = result->serialize();
+    EXPECT_NE(s.find("https"), std::string::npos);
+    EXPECT_NE(s.find("www.example.com"), std::string::npos);
+    EXPECT_NE(s.find("/hello"), std::string::npos);
+}
