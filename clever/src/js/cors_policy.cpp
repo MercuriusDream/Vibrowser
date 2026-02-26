@@ -10,11 +10,12 @@
 namespace clever::js::cors {
 namespace {
 
-std::string trim_copy(std::string value) {
-    auto not_space = [](unsigned char c) { return !std::isspace(c); };
-    value.erase(value.begin(), std::find_if(value.begin(), value.end(), not_space));
-    value.erase(std::find_if(value.rbegin(), value.rend(), not_space).base(), value.end());
-    return value;
+bool has_surrounding_ascii_whitespace(std::string_view value) {
+    if (value.empty()) {
+        return false;
+    }
+    return std::isspace(static_cast<unsigned char>(value.front())) != 0 ||
+           std::isspace(static_cast<unsigned char>(value.back())) != 0;
 }
 
 std::string to_lower_ascii(std::string value) {
@@ -109,30 +110,33 @@ bool is_serialized_http_origin(std::string_view origin) {
 }
 
 std::optional<std::string> parse_canonical_serialized_origin(std::string_view input) {
-    std::string trimmed = trim_copy(std::string(input));
-    if (trimmed.empty() || has_invalid_header_octet(trimmed)) {
+    if (input.empty() || has_surrounding_ascii_whitespace(input)) {
+        return std::nullopt;
+    }
+    std::string canonical_input(input);
+    if (has_invalid_header_octet(canonical_input)) {
         return std::nullopt;
     }
 
-    if (trimmed == "null") {
+    if (canonical_input == "null") {
         return std::string("null");
     }
 
-    const std::size_t scheme_end = trimmed.find("://");
-    if (scheme_end == std::string::npos || scheme_end + 3 >= trimmed.size()) {
+    const std::size_t scheme_end = canonical_input.find("://");
+    if (scheme_end == std::string::npos || scheme_end + 3 >= canonical_input.size()) {
         return std::nullopt;
     }
-    if (trimmed.find_first_of("/?#", scheme_end + 3) != std::string::npos) {
+    if (canonical_input.find_first_of("/?#", scheme_end + 3) != std::string::npos) {
         return std::nullopt;
     }
-    if (trimmed.find('@', scheme_end + 3) != std::string::npos) {
+    if (canonical_input.find('@', scheme_end + 3) != std::string::npos) {
         return std::nullopt;
     }
-    if (!has_strict_authority_port_syntax(trimmed.substr(scheme_end + 3))) {
+    if (!has_strict_authority_port_syntax(canonical_input.substr(scheme_end + 3))) {
         return std::nullopt;
     }
 
-    auto parsed = parse_httpish_url(to_lower_ascii(trimmed));
+    auto parsed = parse_httpish_url(to_lower_ascii(canonical_input));
     if (!parsed.has_value() || parsed->host.empty()) {
         return std::nullopt;
     }
@@ -228,8 +232,8 @@ bool cors_allows_response(std::string_view document_origin,
         return false;
     }
 
-    std::string acao = trim_copy(acao_values.front());
-    if (acao.empty()) {
+    const std::string& acao = acao_values.front();
+    if (acao.empty() || has_surrounding_ascii_whitespace(acao)) {
         return false;
     }
     if (has_invalid_header_octet(acao)) {
@@ -255,8 +259,9 @@ bool cors_allows_response(std::string_view document_origin,
         return false;
     }
 
-    std::string acac = trim_copy(acac_values.front());
-    if (acac.empty() || has_invalid_header_octet(acac)) {
+    const std::string& acac = acac_values.front();
+    if (acac.empty() || has_surrounding_ascii_whitespace(acac) ||
+        has_invalid_header_octet(acac)) {
         return false;
     }
     return acac == "true";

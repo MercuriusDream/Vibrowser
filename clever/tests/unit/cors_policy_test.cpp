@@ -15,6 +15,8 @@ TEST(CORSPolicyTest, DocumentOriginEnforcement) {
     EXPECT_FALSE(has_enforceable_document_origin("null"));
     EXPECT_FALSE(has_enforceable_document_origin("https://app.example/path"));
     EXPECT_FALSE(has_enforceable_document_origin("ftp://app.example"));
+    EXPECT_FALSE(has_enforceable_document_origin(" https://app.example"));
+    EXPECT_FALSE(has_enforceable_document_origin("https://app.example "));
     EXPECT_TRUE(has_enforceable_document_origin("https://app.example"));
 }
 
@@ -128,6 +130,11 @@ TEST(CORSPolicyTest, CrossOriginRejectsMalformedACAOValue) {
     nondigit_port.set("Access-Control-Allow-Origin", "https://app.example:443abc");
     EXPECT_FALSE(cors_allows_response("https://app.example", "https://api.example/data",
                                       nondigit_port, false));
+
+    clever::net::HeaderMap surrounding_whitespace_acao;
+    surrounding_whitespace_acao.set("Access-Control-Allow-Origin", " https://app.example");
+    EXPECT_FALSE(cors_allows_response("https://app.example", "https://api.example/data",
+                                      surrounding_whitespace_acao, false));
 }
 
 TEST(CORSPolicyTest, CrossOriginCredentialedRequiresExactAndCredentialsTrue) {
@@ -178,6 +185,12 @@ TEST(CORSPolicyTest, CrossOriginCredentialedRequiresExactAndCredentialsTrue) {
     mixed_case_true.set("Access-Control-Allow-Credentials", "True");
     EXPECT_FALSE(cors_allows_response("https://app.example", "https://api.example/data",
                                       mixed_case_true, true));
+
+    clever::net::HeaderMap surrounding_whitespace_true;
+    surrounding_whitespace_true.set("Access-Control-Allow-Origin", "https://app.example");
+    surrounding_whitespace_true.set("Access-Control-Allow-Credentials", " true");
+    EXPECT_FALSE(cors_allows_response("https://app.example", "https://api.example/data",
+                                      surrounding_whitespace_true, true));
 
     clever::net::HeaderMap duplicate_acac;
     duplicate_acac.set("Access-Control-Allow-Origin", "https://app.example");

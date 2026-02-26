@@ -5,13 +5,30 @@
 
 ## Current Status
 
-**Phase**: Active Development — Cycle 359 COMPLETE
-**Last Active**: 2026-02-26T15:52:52+0900
-**Current Focus**: CORS/CSP enforcement completion with strict native serialized-origin non-ASCII/whitespace fail-closed hardening
-**Momentum**: 3504 tests, ZERO failures, 2492+ features! v0.7.0! CYCLE 359 DONE! 185 BUGS FIXED!
-**Cycle**: 359
+**Phase**: Active Development — Cycle 360 COMPLETE
+**Last Active**: 2026-02-26T16:02:00+0900
+**Current Focus**: CORS/CSP enforcement completion with strict shared JS serialized-origin/header surrounding-whitespace fail-closed hardening
+**Momentum**: 3507 tests, ZERO failures, 2492+ features! v0.7.0! CYCLE 360 DONE! 186 BUGS FIXED!
+**Cycle**: 360
 
 ## Session Log
+
+### Cycle 360 — 2026-02-26 — Shared JS CORS serialized-origin/header surrounding-whitespace fail-closed hardening
+- **CORS/CSP ENFORCEMENT (Priority 1)**: Hardened shared JS CORS helper to fail closed when serialized-origin and CORS header values contain surrounding ASCII whitespace, eliminating trim-based acceptance gaps.
+- Updated CORS helper behavior (`clever/src/js/cors_policy.cpp`):
+  - added strict surrounding-whitespace rejection for serialized-origin canonicalization inputs
+  - enforced exact-value handling for `Access-Control-Allow-Origin` (no leading/trailing whitespace)
+  - enforced exact literal handling for `Access-Control-Allow-Credentials` (no surrounding whitespace; still requires exact `true`)
+- Added regression tests (`clever/tests/unit/cors_policy_test.cpp`):
+  - `DocumentOriginEnforcement` now asserts leading/trailing whitespace origins are non-enforceable
+  - `CrossOriginRejectsMalformedACAOValue` now asserts surrounding-whitespace ACAO rejection
+  - `CrossOriginCredentialedRequiresExactAndCredentialsTrue` now asserts surrounding-whitespace ACAC rejection
+- Validation:
+  - `cmake --build clever/build --target clever_js_cors_tests -j8`
+  - `./clever/build/tests/unit/clever_js_cors_tests --gtest_filter='CORSPolicyTest.*'`
+- Files: `clever/src/js/cors_policy.cpp`, `clever/tests/unit/cors_policy_test.cpp`
+- **3 new tests (3504→3507), CORS unit suite green.**
+- **Ledger divergence note**: `.codex/codex-estate.md` remains non-writable in this runtime (`Operation not permitted`), so `.claude/claude-estate.md` is source of truth for Cycle 360; sync-forward required when `.codex` is writable.
 
 ### Cycle 359 — 2026-02-26 — Native request-policy serialized-origin non-ASCII/whitespace fail-closed hardening
 - **CORS/CSP ENFORCEMENT (Priority 1)**: Hardened native request-policy serialized-origin parsing to fail closed on non-ASCII bytes and surrounding ASCII whitespace so malformed Origin values cannot participate in CORS response gating or outgoing request header emission.
@@ -4178,7 +4195,7 @@
 
 | Priority | What | Effort |
 |----------|------|--------|
-| 1 | CORS/CSP enforcement in fetch/XHR path (MC-08, FJNS-11) — PARTIAL: connect-src pre-dispatch + host-source (incl. bracketed IPv6 normalization, scheme-less source scheme/port inference, invalid-port rejection) + wildcard-port + default-src fallback + canonical origin normalization + credentialed CORS ACAO/ACAC gate + strict ACAO single-value/case-insensitive CORS header handling + duplicate case-variant ACAO/ACAC rejection + serialized-origin ACAO enforcement + null-origin ACAO handling + dot-segment/encoded-traversal-safe path matching + websocket (`ws`/`wss`) default-port enforcement + effective-URL parse fail-closed CORS gate + strict ACAO/ACAC control-character rejection + strict request-Origin serialized-origin validation for both CORS evaluation and outgoing header emission + policy-origin serialized-origin fail-closed enforcement for request/CSP checks + strict non-HTTP(S) serialized-origin scheme rejection for request-policy/CORS + shared JS CORS helper malformed ACAO/ACAC fail-closed rejection + strict shared JS malformed document-origin fail-closed validation + strict shared JS malformed/unsupported request-URL fail-closed validation + strict shared JS null/empty document-origin fail-closed enforcement + strict shared JS malformed ACAO authority/port fail-closed validation + strict shared JS non-ASCII ACAO/ACAC/header-origin octet fail-closed validation + strict fetch/XHR unsupported-scheme pre-dispatch fail-closed request gate + strict unsupported-scheme cookie-attach suppression + strict native serialized-origin non-ASCII/whitespace fail-closed rejection DONE (Cycles 275-276, 278, 280-293, 306-307, 320, 326-329, 348-352, 355-359) | Large |
+| 1 | CORS/CSP enforcement in fetch/XHR path (MC-08, FJNS-11) — PARTIAL: connect-src pre-dispatch + host-source (incl. bracketed IPv6 normalization, scheme-less source scheme/port inference, invalid-port rejection) + wildcard-port + default-src fallback + canonical origin normalization + credentialed CORS ACAO/ACAC gate + strict ACAO single-value/case-insensitive CORS header handling + duplicate case-variant ACAO/ACAC rejection + serialized-origin ACAO enforcement + null-origin ACAO handling + dot-segment/encoded-traversal-safe path matching + websocket (`ws`/`wss`) default-port enforcement + effective-URL parse fail-closed CORS gate + strict ACAO/ACAC control-character rejection + strict request-Origin serialized-origin validation for both CORS evaluation and outgoing header emission + policy-origin serialized-origin fail-closed enforcement for request/CSP checks + strict non-HTTP(S) serialized-origin scheme rejection for request-policy/CORS + shared JS CORS helper malformed ACAO/ACAC fail-closed rejection + strict shared JS malformed document-origin fail-closed validation + strict shared JS malformed/unsupported request-URL fail-closed validation + strict shared JS null/empty document-origin fail-closed enforcement + strict shared JS malformed ACAO authority/port fail-closed validation + strict shared JS non-ASCII ACAO/ACAC/header-origin octet fail-closed validation + strict shared JS serialized-origin/header surrounding-whitespace fail-closed validation + strict fetch/XHR unsupported-scheme pre-dispatch fail-closed request gate + strict unsupported-scheme cookie-attach suppression + strict native serialized-origin non-ASCII/whitespace fail-closed rejection DONE (Cycles 275-276, 278, 280-293, 306-307, 320, 326-329, 348-352, 355-360) | Large |
 | 2 | ~~TLS certificate verification policy hardening (FJNS-06)~~ DONE (Cycle 276) | ~~Medium~~ |
 | 3 | ~~Fetch/XHR origin header + ACAO response gate~~ DONE (Cycle 274) | ~~Medium~~ |
 | 4 | HTTP/2 transport (MC-12) — PARTIAL: protocol-version capture + explicit rejection guardrails for HTTP/2 preface/status-line/TLS ALPN/outbound `Upgrade` request/outbound `HTTP2-Settings` request-header/outbound pseudo-header requests/`101` upgrade/`426` upgrade-required responses + unsupported status-version rejection allowlisting HTTP/1.0/HTTP/1.1 + preface trailing/tab-whitespace variants + tab-separated status-line variant + whitespace-padded request-header name variant hardening + quoted/single-quoted upgrade-token variant hardening + quoted comma-contained upgrade-token split hardening + escaped quoted-string upgrade-token normalization hardening + escaped-comma delimiter hardening + malformed unterminated-token explicit rejection hardening + control-character malformed token explicit rejection hardening + malformed bare backslash-escape token explicit rejection hardening + malformed unterminated quoted-parameter token explicit rejection hardening + malformed upgrade token-character fail-closed hardening + strict non-ASCII upgrade-token rejection hardening + strict HTTP2-Settings token68 validation and duplicate-header fail-closed hardening + strict Transfer-Encoding `chunked` exact-token parsing hardening + strict malformed Transfer-Encoding delimiter/quoted-token rejection hardening + strict Transfer-Encoding `chunked` final-position/no-parameter enforcement hardening + strict Transfer-Encoding control-character token rejection hardening + strict non-ASCII Transfer-Encoding token rejection hardening + strict unsupported/malformed Transfer-Encoding fail-closed rejection hardening DONE (Cycles 294-305, 308-319, 321-325, 330-332) | Large |
@@ -4199,12 +4216,12 @@
 | Metric | Value |
 |--------|-------|
 | Total Sessions | 143 |
-| Total Cycles | 359 |
+| Total Cycles | 360 |
 | Files Created | ~135 |
 | Files Modified | 100+ |
 | Lines Added (est.) | 172260+ |
-| Tests Added | 3504 |
-| Bugs Fixed | 185 |
+| Tests Added | 3507 |
+| Bugs Fixed | 186 |
 | Features Added | 2492 |
 
 ## Tell The Next Claude
@@ -4213,12 +4230,18 @@
 
 Build: `cd clever && cmake -S . -B build && cmake --build build && ctest --test-dir build`
 
-**3504 tests, 12 libraries (QuickJS!), 1 macOS app, ZERO warnings. v0.7.0. CYCLE 359! 2492+ FEATURES! 185 BUGS FIXED! ANTHROPIC.COM LOADS!**
+**3507 tests, 12 libraries (QuickJS!), 1 macOS app, ZERO warnings. v0.7.0. CYCLE 360! 2492+ FEATURES! 186 BUGS FIXED! ANTHROPIC.COM LOADS!**
 
 **Current implementation vs full browser comparison**:
 - Current implementation: robust single-process browser shell with full JS engine integration, broad DOM/CSS/Fetch coverage, and hardened HTTP/1.x/CORS/CSP policy enforcement.
 - Full browser target: still missing major subsystems like full multi-process isolation, full HTTP/2+/QUIC transport stack, and complete production-grade web font pipeline coverage.
-- Progress snapshot: from early scaffolding to 359 completed cycles, 3504 tests, and 2492+ implemented features.
+- Progress snapshot: from early scaffolding to 360 completed cycles, 3507 tests, and 2492+ implemented features.
+
+**Cycle 360 — Shared JS CORS serialized-origin/header surrounding-whitespace fail-closed hardening in clever JS runtime path**:
+- Hardened `clever::js::cors` serialized-origin and CORS header handling to reject surrounding ASCII whitespace instead of accepting trim-based variants.
+- Enforced strict exact-value semantics for ACAO and ACAC checks, preserving canonical-origin matching and literal `ACAC: true` requirements.
+- Added focused regression coverage in `clever/tests/unit/cors_policy_test.cpp` for malformed whitespace-bearing document-origin, ACAO, and ACAC variants.
+- Rebuilt and ran `clever_js_cors_tests` with `CORSPolicyTest.*`, all green.
 
 **Cycle 359 — Native request-policy serialized-origin non-ASCII/whitespace fail-closed hardening in from_scratch_browser path**:
 - Hardened `parse_serialized_origin(...)` in `src/net/http_client.cpp` to reject non-ASCII bytes (`>=0x80`) and surrounding ASCII whitespace so malformed serialized origins fail closed.
