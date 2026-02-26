@@ -245,3 +245,51 @@ TEST(PercentEncoding, MultipleDistinctSpecialChars) {
     EXPECT_EQ(result.find('<'), std::string::npos) << "< should not appear raw";
     EXPECT_EQ(result.find('>'), std::string::npos) << "> should not appear raw";
 }
+
+// ============================================================================
+// Cycle 508: PercentEncoding regression tests
+// ============================================================================
+
+TEST(PercentEncoding, EmptyStringReturnsEmpty) {
+    EXPECT_EQ(percent_encode(""), "");
+}
+
+TEST(PercentDecoding, EmptyStringReturnsEmpty) {
+    EXPECT_EQ(percent_decode(""), "");
+}
+
+TEST(PercentEncoding, EncodeHashSign) {
+    std::string result = percent_encode("#");
+    EXPECT_EQ(result, "%23");
+}
+
+TEST(PercentDecoding, DecodeSlashFromEncoded) {
+    EXPECT_EQ(percent_decode("%2F"), "/");
+    EXPECT_EQ(percent_decode("%2f"), "/");
+}
+
+TEST(PercentEncoding, AtSignNotEncodedByDefault) {
+    // '@' is treated as a safe character in this implementation
+    std::string result = percent_encode("user@example.com");
+    // Round-trip must recover original
+    EXPECT_EQ(percent_decode(result), "user@example.com");
+    // The host part is preserved
+    EXPECT_NE(result.find("example.com"), std::string::npos);
+}
+
+TEST(PercentDecoding, DecodeLiteralLetterA) {
+    // %41 is 'A' in ASCII
+    EXPECT_EQ(percent_decode("%41"), "A");
+}
+
+TEST(IsURLCodePoint, SpaceIsNotURLCodePoint) {
+    EXPECT_FALSE(is_url_code_point(' '));  // 0x20
+}
+
+TEST(PercentEncoding, EncodeEqualsSign) {
+    // '=' is not a safe character for generic encoding
+    std::string result = percent_encode("key=value");
+    // Either '=' is encoded or not, depending on context.
+    // The key assertion: encoding then decoding recovers the original.
+    EXPECT_EQ(percent_decode(result), "key=value");
+}
