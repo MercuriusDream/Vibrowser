@@ -475,3 +475,38 @@ TEST(URLParser, WSSDefaultPort) {
     ASSERT_TRUE(result.has_value());
     EXPECT_EQ(result->port, std::nullopt);
 }
+
+// =============================================================================
+// Port boundary: port 0, max valid (65535), out-of-range (65536), non-digit
+// =============================================================================
+TEST(URLParser, PortZeroIsValid) {
+    auto result = parse("http://example.com:0/");
+    ASSERT_TRUE(result.has_value());
+    ASSERT_TRUE(result->port.has_value());
+    EXPECT_EQ(result->port.value(), 0);
+}
+
+TEST(URLParser, Port65535IsValid) {
+    auto result = parse("http://example.com:65535/");
+    ASSERT_TRUE(result.has_value());
+    ASSERT_TRUE(result->port.has_value());
+    EXPECT_EQ(result->port.value(), 65535);
+}
+
+TEST(URLParser, Port65536IsInvalid) {
+    auto result = parse("http://example.com:65536/");
+    EXPECT_FALSE(result.has_value());
+}
+
+TEST(URLParser, PortWithNonDigitIsInvalid) {
+    auto result = parse("http://example.com:8080abc/");
+    EXPECT_FALSE(result.has_value());
+}
+
+TEST(URLParser, EmptyPortEquivalentToNoPort) {
+    // Per WHATWG URL spec, an empty explicit port ("example.com:") is treated as no port
+    auto result = parse("http://example.com:/");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->port, std::nullopt);
+}
