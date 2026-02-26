@@ -587,3 +587,93 @@ TEST(MessagePipeTest, CloseMakesIsOpenFalse) {
     a.close();
     EXPECT_FALSE(a.is_open());
 }
+
+// ============================================================================
+// Cycle 555: MessagePipe regression tests
+// ============================================================================
+
+// Send 10 messages with sequential values
+TEST(MessagePipeTest, TenSequentialMessagesWithValues) {
+    auto [a, b] = MessagePipe::create_pair();
+    for (int i = 0; i < 10; ++i) {
+        std::vector<uint8_t> msg = {static_cast<uint8_t>(i)};
+        ASSERT_TRUE(a.send(msg));
+    }
+    for (int i = 0; i < 10; ++i) {
+        auto recv = b.receive();
+        ASSERT_TRUE(recv.has_value());
+        EXPECT_EQ(recv->at(0), static_cast<uint8_t>(i));
+    }
+}
+
+// Payload with sequential byte values 0..7
+TEST(MessagePipeTest, SequentialBytePayload) {
+    auto [a, b] = MessagePipe::create_pair();
+    std::vector<uint8_t> msg = {0, 1, 2, 3, 4, 5, 6, 7};
+    ASSERT_TRUE(a.send(msg));
+    auto recv = b.receive();
+    ASSERT_TRUE(recv.has_value());
+    EXPECT_EQ(*recv, msg);
+}
+
+// Send empty payload
+TEST(MessagePipeTest, SendEmptyVectorPayload) {
+    auto [a, b] = MessagePipe::create_pair();
+    std::vector<uint8_t> empty;
+    ASSERT_TRUE(a.send(empty));
+    auto recv = b.receive();
+    ASSERT_TRUE(recv.has_value());
+    EXPECT_TRUE(recv->empty());
+}
+
+// fd() is non-negative after pair creation
+TEST(MessagePipeTest, FdIsNonnegativeAfterCreate) {
+    auto [a, b] = MessagePipe::create_pair();
+    EXPECT_GE(a.fd(), 0);
+    EXPECT_GE(b.fd(), 0);
+}
+
+// Send from b to a (reverse direction)
+TEST(MessagePipeTest, ReverseDirectionSendReceive) {
+    auto [a, b] = MessagePipe::create_pair();
+    std::vector<uint8_t> msg = {42};
+    ASSERT_TRUE(b.send(msg));
+    auto recv = a.receive();
+    ASSERT_TRUE(recv.has_value());
+    EXPECT_EQ(recv->at(0), 42u);
+}
+
+// Closed pipe: is_open returns false
+TEST(MessagePipeTest, IsOpenFalseAfterClose2) {
+    auto [a, b] = MessagePipe::create_pair();
+    b.close();
+    EXPECT_FALSE(b.is_open());
+    EXPECT_TRUE(a.is_open());
+}
+
+// 4-byte payload
+TEST(MessagePipeTest, FourBytePayloadRoundTrip) {
+    auto [a, b] = MessagePipe::create_pair();
+    std::vector<uint8_t> msg = {0xDE, 0xAD, 0xBE, 0xEF};
+    ASSERT_TRUE(a.send(msg));
+    auto recv = b.receive();
+    ASSERT_TRUE(recv.has_value());
+    EXPECT_EQ(recv->size(), 4u);
+    EXPECT_EQ(recv->at(0), 0xDEu);
+    EXPECT_EQ(recv->at(3), 0xEFu);
+}
+
+// Three pairs coexist without interference
+TEST(MessagePipeTest, ThreePairsCoexist) {
+    auto [a1, b1] = MessagePipe::create_pair();
+    auto [a2, b2] = MessagePipe::create_pair();
+    auto [a3, b3] = MessagePipe::create_pair();
+
+    ASSERT_TRUE(a1.send({1}));
+    ASSERT_TRUE(a2.send({2}));
+    ASSERT_TRUE(a3.send({3}));
+
+    EXPECT_EQ(b1.receive()->at(0), 1u);
+    EXPECT_EQ(b2.receive()->at(0), 2u);
+    EXPECT_EQ(b3.receive()->at(0), 3u);
+}
