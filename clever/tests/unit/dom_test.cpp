@@ -1323,3 +1323,74 @@ TEST(DomDocument, CreateElementHasCorrectTagName) {
     ASSERT_NE(el, nullptr);
     EXPECT_EQ(el->tag_name(), "article");
 }
+
+// ============================================================================
+// Cycle 526: DOM regression tests
+// ============================================================================
+
+TEST(DomDocument, CreateTextNodeHasCorrectData) {
+    Document doc;
+    auto text = doc.create_text_node("hello world");
+    ASSERT_NE(text, nullptr);
+    EXPECT_EQ(text->data(), "hello world");
+}
+
+TEST(DomElement, ClassListMultipleClassesContainsAll) {
+    Element e("div");
+    e.class_list().add("foo");
+    e.class_list().add("bar");
+    e.class_list().add("baz");
+    auto& cl = e.class_list();
+    EXPECT_TRUE(cl.contains("foo"));
+    EXPECT_TRUE(cl.contains("bar"));
+    EXPECT_TRUE(cl.contains("baz"));
+    EXPECT_EQ(cl.length(), 3u);
+}
+
+TEST(DomElement, RemoveNonexistentAttributeIsNoOp) {
+    Element e("div");
+    e.set_attribute("data-x", "1");
+    // Removing an attribute that doesn't exist should not crash
+    e.remove_attribute("nonexistent");
+    EXPECT_EQ(e.attributes().size(), 1u);
+}
+
+TEST(DomNode, SiblingPointersClearedOnRemove) {
+    auto parent = std::make_unique<Element>("ul");
+    Node* li1 = &parent->append_child(std::make_unique<Element>("li"));
+    Node* li2 = &parent->append_child(std::make_unique<Element>("li"));
+    Node* li3 = &parent->append_child(std::make_unique<Element>("li"));
+    parent->remove_child(*li2);  // remove middle
+    // li1 and li3 should now be adjacent
+    EXPECT_EQ(li1->next_sibling(), li3);
+    EXPECT_EQ(li3->previous_sibling(), li1);
+}
+
+TEST(DomNode, AppendChildReturnReference) {
+    auto parent = std::make_unique<Element>("div");
+    auto child = std::make_unique<Element>("span");
+    Element* child_ptr = static_cast<Element*>(child.get());
+    Node& ref = parent->append_child(std::move(child));
+    // The returned reference should be the same node
+    EXPECT_EQ(&ref, child_ptr);
+}
+
+TEST(DomText, SetDataUpdatesTextContent) {
+    Text t("original");
+    EXPECT_EQ(t.data(), "original");
+    t.set_data("updated");
+    EXPECT_EQ(t.data(), "updated");
+    EXPECT_EQ(t.text_content(), "updated");
+}
+
+TEST(DomEvent, EventTypeIsPreserved) {
+    Event e("keydown", true, true);
+    EXPECT_EQ(e.type(), "keydown");
+}
+
+TEST(DomNode, EmptyParentHasNullFirstLast) {
+    auto parent = std::make_unique<Element>("div");
+    EXPECT_EQ(parent->first_child(), nullptr);
+    EXPECT_EQ(parent->last_child(), nullptr);
+    EXPECT_EQ(parent->child_count(), 0u);
+}
