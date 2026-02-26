@@ -918,6 +918,23 @@ int main() {
         }
     }
 
+    // Test 48: CORS fails closed when effective URL cannot be parsed
+    {
+        browser::net::RequestPolicy policy;
+        policy.origin = "https://app.example.com";
+        browser::net::Response response;
+        response.headers["access-control-allow-origin"] = "https://app.example.com";
+        auto result = browser::net::check_cors_response_policy("https://api.example.com:bad/data",
+                                                               response,
+                                                               policy);
+        if (result.allowed) {
+            std::cerr << "FAIL: unparsable effective URL should fail closed for CORS\n";
+            ++failures;
+        } else {
+            std::cerr << "PASS: unparsable effective URL is blocked by CORS gate\n";
+        }
+    }
+
     if (failures > 0) {
         std::cerr << "\n" << failures << " test(s) FAILED\n";
         return 1;

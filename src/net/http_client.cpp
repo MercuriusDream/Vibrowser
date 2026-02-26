@@ -2049,7 +2049,9 @@ PolicyCheckResult check_cors_response_policy(const std::string& url,
     Url parsed;
     std::string err;
     if (!parse_url(url, parsed, err)) {
-        return {true, PolicyViolation::None, ""};
+        return {false,
+                PolicyViolation::CorsResponseBlocked,
+                "Cross-origin response blocked: unable to parse effective URL for CORS check"};
     }
 
     const std::string request_origin = canonicalize_origin(build_origin_for_url(parsed));
