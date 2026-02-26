@@ -112,6 +112,9 @@ std::optional<clever::url::URL> parse_httpish_url(std::string_view input) {
     const std::string_view authority = input.substr(
         authority_start,
         authority_end == std::string::npos ? std::string_view::npos : authority_end - authority_start);
+    if (authority.find('@') != std::string_view::npos) {
+        return std::nullopt;
+    }
     if (!has_strict_authority_port_syntax(authority)) {
         return std::nullopt;
     }
