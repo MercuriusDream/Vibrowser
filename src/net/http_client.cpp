@@ -1339,6 +1339,32 @@ bool contains_chunked_encoding(const std::string& transfer_encoding_header) {
   return found_chunked;
 }
 
+bool contains_ambiguous_content_length_values(const std::string& content_length_header) {
+  if (content_length_header.find(',') == std::string::npos) {
+    return false;
+  }
+  std::size_t token_start = 0;
+  while (token_start <= content_length_header.size()) {
+    const std::size_t comma = content_length_header.find(',', token_start);
+    const std::size_t token_end =
+        (comma == std::string::npos) ? content_length_header.size() : comma;
+    const std::string token = trim_ascii(content_length_header.substr(token_start, token_end - token_start));
+    if (token.empty()) {
+      return true;
+    }
+    for (char ch : token) {
+      if (!std::isdigit(static_cast<unsigned char>(ch))) {
+        return true;
+      }
+    }
+    if (comma == std::string::npos) {
+      break;
+    }
+    token_start = comma + 1;
+  }
+  return true;
+}
+
 bool contains_http2_upgrade_token(const std::string& upgrade_header) {
   bool in_double_quotes = false;
   bool in_single_quotes = false;
@@ -2025,6 +2051,10 @@ Response fetch_once(const Url& url,
   }
 
   if (content_length_it != response.headers.end()) {
+    if (contains_ambiguous_content_length_values(content_length_it->second)) {
+      response.error = "Ambiguous Content-Length header values are not supported";
+      return response;
+    }
     std::size_t content_length = 0;
     if (!parse_content_length(content_length_it->second, content_length)) {
       response.error = "Invalid Content-Length header";
@@ -2178,6 +2208,10 @@ bool has_conflicting_message_framing_headers(
         }
     }
     return saw_transfer_encoding && saw_content_length;
+}
+
+bool has_ambiguous_content_length_header(const std::string& content_length_header) {
+    return contains_ambiguous_content_length_values(content_length_header);
 }
 
 const char* request_method_name(RequestMethod method) {

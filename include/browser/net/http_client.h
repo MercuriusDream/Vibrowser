@@ -83,6 +83,7 @@ bool is_http2_pseudo_header_request(const std::map<std::string, std::string>& re
 bool is_chunked_transfer_encoding(const std::string& transfer_encoding_header);
 bool has_conflicting_message_framing_headers(
     const std::map<std::string, std::string>& response_headers);
+bool has_ambiguous_content_length_header(const std::string& content_length_header);
 
 enum class CachePolicy {
     NoCache,

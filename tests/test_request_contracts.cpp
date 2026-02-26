@@ -748,6 +748,31 @@ int main() {
         }
     }
 
+    // Test 20: Content-Length helper detects ambiguous multi-value framing
+    {
+        if (!browser::net::has_ambiguous_content_length_header("5,5")) {
+            std::cerr << "FAIL: expected repeated Content-Length values to be treated as ambiguous\n";
+            ++failures;
+        } else if (!browser::net::has_ambiguous_content_length_header("5, 7")) {
+            std::cerr << "FAIL: expected conflicting Content-Length values to be treated as ambiguous\n";
+            ++failures;
+        } else if (!browser::net::has_ambiguous_content_length_header("5,")) {
+            std::cerr << "FAIL: expected trailing-comma Content-Length values to be treated as ambiguous\n";
+            ++failures;
+        } else if (!browser::net::has_ambiguous_content_length_header(",5")) {
+            std::cerr << "FAIL: expected leading-comma Content-Length values to be treated as ambiguous\n";
+            ++failures;
+        } else if (!browser::net::has_ambiguous_content_length_header("5,abc")) {
+            std::cerr << "FAIL: expected non-numeric Content-Length list token to be treated as ambiguous\n";
+            ++failures;
+        } else if (browser::net::has_ambiguous_content_length_header("5")) {
+            std::cerr << "FAIL: expected single Content-Length value to not be treated as ambiguous\n";
+            ++failures;
+        } else {
+            std::cerr << "PASS: ambiguous Content-Length detection works as expected\n";
+        }
+    }
+
     if (failures > 0) {
         std::cerr << "\n" << failures << " test(s) FAILED\n";
         return 1;
