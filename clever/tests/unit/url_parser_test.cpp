@@ -383,6 +383,38 @@ TEST(URLParser, OriginWithNonDefaultPort) {
     EXPECT_EQ(result->origin(), "http://example.com:8080");
 }
 
+TEST(URLParser, OriginFileSchemeIsOpaque) {
+    auto result = parse("file:///tmp/test.html");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->origin(), "null");
+}
+
+TEST(URLParser, OriginDataSchemeIsOpaque) {
+    auto result = parse("data:text/html,<h1>test</h1>");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->origin(), "null");
+}
+
+TEST(URLParser, OriginHTTPDefaultPortOmitted) {
+    auto result = parse("http://example.com:80/path");
+    ASSERT_TRUE(result.has_value());
+    // Default port stripped, so origin should not include :80
+    EXPECT_EQ(result->origin(), "http://example.com");
+}
+
+TEST(URLParser, OriginHTTPSDefaultPortOmitted) {
+    auto result = parse("https://example.com:443/path");
+    ASSERT_TRUE(result.has_value());
+    // Default port stripped, so origin should not include :443
+    EXPECT_EQ(result->origin(), "https://example.com");
+}
+
+TEST(URLParser, OriginIPv6Host) {
+    auto result = parse("http://[::1]:8080/");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->origin(), "http://[::1]:8080");
+}
+
 // =============================================================================
 // is_special tests
 // =============================================================================
