@@ -921,3 +921,57 @@ TEST(CORSPolicyTest, SameOriginWithPathNoOriginHeader) {
         "https://example.com/page");
     EXPECT_FALSE(req_headers.has("Origin"));
 }
+
+// ============================================================================
+// Cycle 639: More CORS tests
+// ============================================================================
+
+// is_cors_eligible_request_url: https URL is eligible
+TEST(CORSPolicyTest, HttpsURLIsEligibleV2) {
+    EXPECT_TRUE(is_cors_eligible_request_url("https://api.example.com/data"));
+}
+
+// is_cors_eligible_request_url: ws:// is not eligible in this implementation
+TEST(CORSPolicyTest, WsURLNotEligible) {
+    EXPECT_FALSE(is_cors_eligible_request_url("ws://realtime.example.com/socket"));
+}
+
+// is_cors_eligible_request_url: ftp:// is not eligible
+TEST(CORSPolicyTest, FtpURLNotEligible) {
+    EXPECT_FALSE(is_cors_eligible_request_url("ftp://files.example.com/file.txt"));
+}
+
+// has_enforceable: https with path is not enforceable (path disqualifies)
+TEST(CORSPolicyTest, HttpsWithPathNotEnforceable) {
+    EXPECT_FALSE(has_enforceable_document_origin("https://app.example/path"));
+}
+
+// has_enforceable: empty string origin is not enforceable
+TEST(CORSPolicyTest, EmptyOriginNotEnforceableV2) {
+    EXPECT_FALSE(has_enforceable_document_origin(""));
+}
+
+// has_enforceable: literal "null" string is not enforceable
+TEST(CORSPolicyTest, NullLiteralNotEnforceableV2) {
+    EXPECT_FALSE(has_enforceable_document_origin("null"));
+}
+
+// normalize_outgoing: cross-origin sets Origin header
+TEST(CORSPolicyTest, CrossOriginSetsOriginHeader) {
+    clever::net::HeaderMap req_headers;
+    normalize_outgoing_origin_header(req_headers,
+        "https://app.example.com",
+        "https://api.other.com/data");
+    EXPECT_TRUE(req_headers.has("Origin"));
+}
+
+// cors_allows_response: missing ACAO header blocks credentialed
+TEST(CORSPolicyTest, MissingACAOBlocksCredentialed) {
+    clever::net::HeaderMap resp_headers;
+    // no Access-Control-Allow-Origin header
+    EXPECT_FALSE(cors_allows_response(
+        "https://app.example.com",
+        "https://api.other.com/data",
+        resp_headers,
+        true));
+}
