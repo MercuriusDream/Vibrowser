@@ -975,3 +975,47 @@ TEST(CORSPolicyTest, MissingACAOBlocksCredentialed) {
         resp_headers,
         true));
 }
+
+// ============================================================================
+// Cycle 664: More CORS policy tests
+// ============================================================================
+
+// CORS: http:// origin is enforceable (localhost or ip)
+TEST(CORSPolicyTest, HttpLocalhostIsEnforceable) {
+    EXPECT_TRUE(has_enforceable_document_origin("http://localhost"));
+}
+
+// CORS: https origin with port is enforceable
+TEST(CORSPolicyTest, HttpsOriginWithPortIsEnforceable) {
+    EXPECT_TRUE(has_enforceable_document_origin("https://example.com:8443"));
+}
+
+// CORS: http vs https different scheme is cross-origin (api vs app)
+TEST(CORSPolicyTest, HttpVsHttpsDifferentSchemeIsCrossOrigin) {
+    EXPECT_TRUE(is_cross_origin("http://app.example", "https://app.example/api"));
+}
+
+// CORS: https to same https host is not cross-origin
+TEST(CORSPolicyTest, HttpsToSameHttpsHostNotCrossOrigin) {
+    EXPECT_FALSE(is_cross_origin("https://store.example", "https://store.example/api"));
+}
+
+// CORS: file:// URL is not CORS eligible
+TEST(CORSPolicyTest, FileURLNotEligible) {
+    EXPECT_FALSE(is_cors_eligible_request_url("file:///index.html"));
+}
+
+// CORS: blob: URL is not CORS eligible
+TEST(CORSPolicyTest, BlobURLNotEligible) {
+    EXPECT_FALSE(is_cors_eligible_request_url("blob:https://example.com/abc"));
+}
+
+// CORS: should_attach_origin_header for cross-origin request
+TEST(CORSPolicyTest, AttachOriginHeaderForCrossOrigin) {
+    EXPECT_TRUE(should_attach_origin_header("https://app.example", "https://api.example/data"));
+}
+
+// CORS: no origin header for same-origin request
+TEST(CORSPolicyTest, NoOriginHeaderForSameOrigin) {
+    EXPECT_FALSE(should_attach_origin_header("https://example.com", "https://example.com/api"));
+}
