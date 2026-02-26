@@ -3,9 +3,11 @@ import Home from "./pages/Home";
 import Philosophy from "./pages/Philosophy";
 import Docs from "./pages/Docs";
 
+const basename = import.meta.env.BASE_URL.replace(/\/+$/, "");
+
 function App() {
   return (
-    <BrowserRouter>
+    <BrowserRouter basename={basename}>
       <nav className="nav">
         <div className="nav-links">
           <Link to="/">Home</Link>
