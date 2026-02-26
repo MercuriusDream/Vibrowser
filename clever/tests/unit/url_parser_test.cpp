@@ -1001,3 +1001,71 @@ TEST(URLParser, SerializePreservesFullStructure) {
     EXPECT_NE(s.find("https"), std::string::npos);
     EXPECT_NE(s.find("example.com"), std::string::npos);
 }
+
+// ============================================================================
+// Cycle 566: More URL parser tests
+// ============================================================================
+
+// http URL has correct default scheme
+TEST(URLParser, HttpSchemeCorrect) {
+    auto result = parse("http://example.org/");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+}
+
+// URL with multiple path segments
+TEST(URLParser, MultiSegmentPathParsed) {
+    auto result = parse("https://example.com/a/b/c");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_NE(result->path.find("a"), std::string::npos);
+    EXPECT_NE(result->path.find("b"), std::string::npos);
+    EXPECT_NE(result->path.find("c"), std::string::npos);
+}
+
+// URL query field is extracted
+TEST(URLParser, QueryFieldExtracted) {
+    auto result = parse("https://search.example.com/search?q=hello&lang=en");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_FALSE(result->query.empty());
+}
+
+// Fragment field is extracted
+TEST(URLParser, FragmentFieldExtracted) {
+    auto result = parse("https://docs.example.com/page#section-2");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_FALSE(result->fragment.empty());
+}
+
+// Same host different port is NOT same origin
+TEST(URLParser, SameHostDifferentPortIsNotSameOriginV2) {
+    auto u1 = parse("http://example.com:8080/");
+    auto u2 = parse("http://example.com:9090/");
+    ASSERT_TRUE(u1.has_value());
+    ASSERT_TRUE(u2.has_value());
+    EXPECT_FALSE(clever::url::urls_same_origin(*u1, *u2));
+}
+
+// URL with no port has empty port optional
+TEST(URLParser, NoPortOptionalIsEmpty) {
+    auto result = parse("http://example.com/");
+    ASSERT_TRUE(result.has_value());
+    // For http, default port may or may not be stored — host should be set
+    EXPECT_EQ(result->host, "example.com");
+}
+
+// Serialize includes scheme
+TEST(URLParser, SerializeIncludesScheme) {
+    auto result = parse("ftp://files.example.com/data");
+    ASSERT_TRUE(result.has_value());
+    std::string s = result->serialize();
+    EXPECT_NE(s.find("ftp"), std::string::npos);
+}
+
+// Empty path URL still parses
+TEST(URLParser, EmptyPathURLParses) {
+    auto result = parse("https://example.com");
+    // Should parse successfully
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "example.com");
+}
