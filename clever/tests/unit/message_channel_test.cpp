@@ -375,3 +375,137 @@ TEST(MessageChannelTest, FullRoundTripBoolFloatString) {
     EXPECT_EQ(d.read_string(), "roundtrip");
     EXPECT_FALSE(d.has_remaining());
 }
+
+// ============================================================================
+// Cycle 499: MessageChannel regression tests
+// ============================================================================
+
+// dispatch with type=0 fires the registered type-0 handler
+TEST(MessageChannelTest, MessageTypeZeroHandledByDispatch) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel ch(std::move(pa));
+
+    int count = 0;
+    ch.on(0, [&](const Message&) { count++; });
+
+    Message msg;
+    msg.type = 0;
+    ch.dispatch(msg);
+    EXPECT_EQ(count, 1);
+}
+
+// UINT32_MAX request_id is preserved end-to-end over the pipe
+TEST(MessageChannelTest, MaxRequestIdPreservedOverPipe) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel sender(std::move(pa));
+    MessageChannel receiver(std::move(pb));
+
+    Message msg;
+    msg.type = 5;
+    msg.request_id = UINT32_MAX;
+
+    ASSERT_TRUE(sender.send(msg));
+    auto recv = receiver.receive();
+    ASSERT_TRUE(recv.has_value());
+    EXPECT_EQ(recv->request_id, UINT32_MAX);
+}
+
+// handler lambda can inspect the request_id of the dispatched message
+TEST(MessageChannelTest, HandlerSeesCorrectRequestId) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel ch(std::move(pa));
+
+    uint32_t seen_id = 0;
+    ch.on(15, [&](const Message& m) { seen_id = m.request_id; });
+
+    Message msg;
+    msg.type = 15;
+    msg.request_id = 9999;
+    ch.dispatch(msg);
+
+    EXPECT_EQ(seen_id, 9999u);
+}
+
+// dispatch with empty payload still fires the registered handler
+TEST(MessageChannelTest, EmptyPayloadDispatchFiresHandler) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel ch(std::move(pa));
+
+    bool fired = false;
+    ch.on(22, [&](const Message& m) {
+        fired = true;
+        EXPECT_TRUE(m.payload.empty());
+    });
+
+    Message msg;
+    msg.type = 22;
+    // no payload assigned — empty by default
+    ch.dispatch(msg);
+    EXPECT_TRUE(fired);
+}
+
+// dispatch 200 messages of the same type — handler fires exactly 200 times
+TEST(MessageChannelTest, HighVolumeDispatch) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel ch(std::move(pa));
+
+    int count = 0;
+    ch.on(33, [&](const Message&) { count++; });
+
+    Message msg;
+    msg.type = 33;
+    for (int i = 0; i < 200; ++i) ch.dispatch(msg);
+    EXPECT_EQ(count, 200);
+}
+
+// i64 payload serialized and deserialized correctly over pipe
+TEST(MessageChannelTest, RoundTripI64Payload) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel sender(std::move(pa));
+    MessageChannel receiver(std::move(pb));
+
+    Serializer s;
+    s.write_i64(std::numeric_limits<int64_t>::min());
+
+    Message msg;
+    msg.type = 44;
+    msg.request_id = 88;
+    msg.payload = s.take_data();
+
+    ASSERT_TRUE(sender.send(msg));
+    auto recv = receiver.receive();
+    ASSERT_TRUE(recv.has_value());
+
+    Deserializer d(recv->payload);
+    EXPECT_EQ(d.read_i64(), std::numeric_limits<int64_t>::min());
+    EXPECT_FALSE(d.has_remaining());
+}
+
+// dispatch with type=UINT32_MAX triggers its registered handler
+TEST(MessageChannelTest, MaxTypeValueHandled) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel ch(std::move(pa));
+
+    bool fired = false;
+    ch.on(UINT32_MAX, [&](const Message&) { fired = true; });
+
+    Message msg;
+    msg.type = UINT32_MAX;
+    ch.dispatch(msg);
+    EXPECT_TRUE(fired);
+}
+
+// is_open() remains true after a successful send
+TEST(MessageChannelTest, IsOpenRemainsAfterSend) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel sender(std::move(pa));
+    MessageChannel receiver(std::move(pb));
+
+    EXPECT_TRUE(sender.is_open());
+
+    Message msg;
+    msg.type = 1;
+    ASSERT_TRUE(sender.send(msg));
+
+    EXPECT_TRUE(sender.is_open());
+}
