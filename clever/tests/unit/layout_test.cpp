@@ -5281,3 +5281,60 @@ TEST(LayoutNodeProps, GridAutoFlowDefaultIsRow) {
     auto node = make_block("div");
     EXPECT_EQ(node->grid_auto_flow, 0);
 }
+
+// ============================================================================
+// Cycle 573: More Layout tests
+// ============================================================================
+
+// column_gap can be set
+TEST(LayoutNodeProps, ColumnGapCanBeSet) {
+    auto node = make_flex("div");
+    node->column_gap = 16.0f;
+    EXPECT_FLOAT_EQ(node->column_gap, 16.0f);
+}
+
+// gap can be set
+TEST(LayoutNodeProps, GapCanBeSet) {
+    auto node = make_flex("div");
+    node->gap = 8.0f;
+    EXPECT_FLOAT_EQ(node->gap, 8.0f);
+}
+
+// align_self defaults to -1 (auto)
+TEST(FlexboxAudit, AlignSelfDefaultIsAuto) {
+    auto node = make_block("div");
+    EXPECT_EQ(node->align_self, -1);
+}
+
+// flex_wrap: wrap-reverse value (2)
+TEST(FlexboxAudit, FlexWrapReverseValue) {
+    auto node = make_flex("div");
+    node->flex_wrap = 2;
+    EXPECT_EQ(node->flex_wrap, 2);
+}
+
+// Text node: font_size stores correctly
+TEST(LayoutEngineTest, TextNodeFontSizeStored) {
+    auto node = make_text("hello", 24.0f);
+    EXPECT_FLOAT_EQ(node->font_size, 24.0f);
+}
+
+// Text node: text_content stored correctly
+TEST(LayoutEngineTest, TextNodeContentStored) {
+    auto node = make_text("world");
+    EXPECT_EQ(node->text_content, "world");
+}
+
+// Block: min_width can be stored
+TEST(LayoutEngineTest, MinWidthCanBeStored) {
+    auto node = make_block("div");
+    node->min_width = 100.0f;
+    EXPECT_FLOAT_EQ(node->min_width, 100.0f);
+}
+
+// Block: max_width can be stored
+TEST(LayoutEngineTest, MaxWidthCanBeStored) {
+    auto node = make_block("div");
+    node->max_width = 800.0f;
+    EXPECT_FLOAT_EQ(node->max_width, 800.0f);
+}
