@@ -12648,3 +12648,102 @@ TEST(JSEngine, StringTrim) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "hello world");
 }
+
+// ============================================================================
+// Cycle 577: More JS engine tests
+// ============================================================================
+
+// Nullish coalescing: null/undefined/zero all handled
+TEST(JSEngine, NullishCoalescingThreeValues) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var a = null ?? "default";
+        var b = undefined ?? "fallback";
+        var c = 0 ?? "zero_fallback";
+        a + "," + b + "," + c
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "default,fallback,0");
+}
+
+// Optional chaining: deep access with missing key
+TEST(JSEngine, OptionalChainingDeepMissingKey) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var obj = {a: {b: 42}};
+        var r1 = obj?.a?.b;
+        var r2 = obj?.x?.y;
+        r1 + "," + (r2 === undefined ? "undefined" : r2)
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "42,undefined");
+}
+
+// Logical assignment (&&=)
+TEST(JSEngine, LogicalAndAssignment) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var x = true;
+        x &&= 42;
+        x
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "42");
+}
+
+// Logical assignment (||=)
+TEST(JSEngine, LogicalOrAssignment) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var x = false;
+        x ||= "assigned";
+        x
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "assigned");
+}
+
+// Array destructuring with default values
+TEST(JSEngine, ArrayDestructuringWithDefaults) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var [a = 10, b = 20] = [1];
+        a + "," + b
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1,20");
+}
+
+// Object destructuring with rename
+TEST(JSEngine, ObjectDestructuringRename) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var { x: myX, y: myY } = { x: 10, y: 20 };
+        myX + myY
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "30");
+}
+
+// for...in loops over object keys
+TEST(JSEngine, ForInLoopOverObjectKeys) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var obj = {a: 1, b: 2, c: 3};
+        var keys = [];
+        for (var k in obj) { keys.push(k); }
+        keys.sort().join(",")
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "a,b,c");
+}
+
+// String repeat
+TEST(JSEngine, StringRepeat) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        "ab".repeat(3)
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "ababab");
+}
