@@ -721,6 +721,33 @@ int main() {
         }
     }
 
+    // Test 19: framing helper detects conflicting Transfer-Encoding and Content-Length headers
+    {
+        if (!browser::net::has_conflicting_message_framing_headers(
+                {{"Transfer-Encoding", "chunked"}, {"Content-Length", "5"}})) {
+            std::cerr << "FAIL: expected conflicting message framing headers to be detected\n";
+            ++failures;
+        } else if (!browser::net::has_conflicting_message_framing_headers(
+                       {{" transfer-encoding\t", "chunked"}, {"\tcontent-length", "5"}})) {
+            std::cerr << "FAIL: expected whitespace-padded framing header names to be normalized and detected\n";
+            ++failures;
+        } else if (browser::net::has_conflicting_message_framing_headers(
+                       {{"Transfer-Encoding", "chunked"}})) {
+            std::cerr << "FAIL: expected transfer-encoding-only framing to not be treated as conflicting\n";
+            ++failures;
+        } else if (browser::net::has_conflicting_message_framing_headers(
+                       {{"Content-Length", "5"}})) {
+            std::cerr << "FAIL: expected content-length-only framing to not be treated as conflicting\n";
+            ++failures;
+        } else if (browser::net::has_conflicting_message_framing_headers(
+                       {{"X-Transfer-Encoding", "chunked"}, {"X-Content-Length", "5"}})) {
+            std::cerr << "FAIL: expected non-exact framing header names to not be treated as conflicting\n";
+            ++failures;
+        } else {
+            std::cerr << "PASS: framing conflict detection works as expected\n";
+        }
+    }
+
     if (failures > 0) {
         std::cerr << "\n" << failures << " test(s) FAILED\n";
         return 1;

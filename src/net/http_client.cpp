@@ -2005,7 +2005,13 @@ Response fetch_once(const Url& url,
   }
 
   const auto transfer_it = response.headers.find("transfer-encoding");
+  const auto content_length_it = response.headers.find("content-length");
   if (transfer_it != response.headers.end()) {
+    if (has_conflicting_message_framing_headers(response.headers)) {
+      response.error =
+          "Conflicting Transfer-Encoding and Content-Length headers are not supported";
+      return response;
+    }
     if (!contains_chunked_encoding(transfer_it->second)) {
       response.error =
           "Unsupported or malformed Transfer-Encoding header; only single-token chunked is supported";
@@ -2018,7 +2024,6 @@ Response fetch_once(const Url& url,
     return response;
   }
 
-  const auto content_length_it = response.headers.find("content-length");
   if (content_length_it != response.headers.end()) {
     std::size_t content_length = 0;
     if (!parse_content_length(content_length_it->second, content_length)) {
@@ -2157,6 +2162,22 @@ bool is_http2_pseudo_header_request(const std::map<std::string, std::string>& re
 
 bool is_chunked_transfer_encoding(const std::string& transfer_encoding_header) {
     return contains_chunked_encoding(transfer_encoding_header);
+}
+
+bool has_conflicting_message_framing_headers(
+    const std::map<std::string, std::string>& response_headers) {
+    bool saw_transfer_encoding = false;
+    bool saw_content_length = false;
+    for (const auto& [name, value] : response_headers) {
+        (void)value;
+        const std::string normalized_name = to_lower_ascii(trim_ascii(name));
+        if (normalized_name == "transfer-encoding") {
+            saw_transfer_encoding = true;
+        } else if (normalized_name == "content-length") {
+            saw_content_length = true;
+        }
+    }
+    return saw_transfer_encoding && saw_content_length;
 }
 
 const char* request_method_name(RequestMethod method) {
