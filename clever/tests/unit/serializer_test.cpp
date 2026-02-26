@@ -1579,3 +1579,85 @@ TEST(SerializerTest, TakeDataLeavesEmpty) {
     auto data = s.take_data();
     EXPECT_EQ(data.size(), 1u);
 }
+
+// ============================================================================
+// Cycle 631: More Serializer tests
+// ============================================================================
+
+// Write and read a bool false value
+TEST(SerializerTest, BoolFalseRoundTrip) {
+    Serializer s;
+    s.write_bool(false);
+    Deserializer d(s.data());
+    EXPECT_FALSE(d.read_bool());
+    EXPECT_FALSE(d.has_remaining());
+}
+
+// Write u8 255 (max) then u8 0 (min)
+TEST(SerializerTest, U8MaxThenMinSequence) {
+    Serializer s;
+    s.write_u8(255);
+    s.write_u8(0);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u8(), 255u);
+    EXPECT_EQ(d.read_u8(), 0u);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+// Write i32 value -1000
+TEST(SerializerTest, I32NegativeThousandRoundTrip) {
+    Serializer s;
+    s.write_i32(-1000);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i32(), -1000);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+// Write and read u64 nine billion value
+TEST(SerializerTest, U64NineBillionRoundTrip) {
+    Serializer s;
+    s.write_u64(9999999999ull);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u64(), 9999999999ull);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+// Write string with digits
+TEST(SerializerTest, StringWithDigitsRoundTrip) {
+    Serializer s;
+    s.write_string("abc123xyz");
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "abc123xyz");
+    EXPECT_FALSE(d.has_remaining());
+}
+
+// Write two u32 values and verify order
+TEST(SerializerTest, TwoU32ValuesOrdered) {
+    Serializer s;
+    s.write_u32(100u);
+    s.write_u32(200u);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u32(), 100u);
+    EXPECT_EQ(d.read_u32(), 200u);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+// Write bool true then string
+TEST(SerializerTest, BoolTrueThenStringRoundTrip) {
+    Serializer s;
+    s.write_bool(true);
+    s.write_string("yes");
+    Deserializer d(s.data());
+    EXPECT_TRUE(d.read_bool());
+    EXPECT_EQ(d.read_string(), "yes");
+    EXPECT_FALSE(d.has_remaining());
+}
+
+// Write i64 negative large value
+TEST(SerializerTest, I64NegativeLargeValue) {
+    Serializer s;
+    s.write_i64(-123456789012ll);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i64(), -123456789012ll);
+    EXPECT_FALSE(d.has_remaining());
+}
