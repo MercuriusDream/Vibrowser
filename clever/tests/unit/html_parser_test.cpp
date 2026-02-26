@@ -1462,3 +1462,83 @@ TEST(TreeBuilder, HgroupElement) {
     ASSERT_NE(h1, nullptr);
     EXPECT_EQ(h1->text_content(), "Title");
 }
+
+// ============================================================================
+// Cycle 539: HTML parser regression tests
+// ============================================================================
+
+TEST(TreeBuilder, FormElement) {
+    auto doc = parse(R"(<body><form action="/submit" method="POST"><input type="text"></form></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* form = doc->find_element("form");
+    ASSERT_NE(form, nullptr);
+    bool has_action = false;
+    for (auto& attr : form->attributes) {
+        if (attr.name == "action") has_action = true;
+    }
+    EXPECT_TRUE(has_action);
+}
+
+TEST(TreeBuilder, TableElement) {
+    auto doc = parse("<body><table><tr><td>Cell</td></tr></table></body>");
+    ASSERT_NE(doc, nullptr);
+    auto* td = doc->find_element("td");
+    ASSERT_NE(td, nullptr);
+    EXPECT_EQ(td->text_content(), "Cell");
+}
+
+TEST(TreeBuilder, FieldsetLegendText) {
+    auto doc = parse("<body><fieldset><legend>Group</legend></fieldset></body>");
+    ASSERT_NE(doc, nullptr);
+    auto* legend = doc->find_element("legend");
+    ASSERT_NE(legend, nullptr);
+    EXPECT_EQ(legend->text_content(), "Group");
+}
+
+TEST(TreeBuilder, SelectOptionsContent) {
+    auto doc = parse(R"(<body><select><option value="1">One</option><option value="2">Two</option></select></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* select = doc->find_element("select");
+    ASSERT_NE(select, nullptr);
+    auto* option = doc->find_element("option");
+    ASSERT_NE(option, nullptr);
+    EXPECT_EQ(option->text_content(), "One");
+}
+
+TEST(TreeBuilder, IframeElement) {
+    auto doc = parse(R"(<body><iframe src="https://example.com" title="embed"></iframe></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* iframe = doc->find_element("iframe");
+    ASSERT_NE(iframe, nullptr);
+    bool has_src = false;
+    for (auto& attr : iframe->attributes) {
+        if (attr.name == "src") has_src = true;
+    }
+    EXPECT_TRUE(has_src);
+}
+
+TEST(TreeBuilder, TwoSectionsInMain) {
+    auto doc = parse("<body><main><section id=\"s1\">A</section><section id=\"s2\">B</section></main></body>");
+    ASSERT_NE(doc, nullptr);
+    auto* main_el = doc->find_element("main");
+    ASSERT_NE(main_el, nullptr);
+    auto* section = doc->find_element("section");
+    ASSERT_NE(section, nullptr);
+    EXPECT_EQ(section->text_content(), "A");
+}
+
+TEST(TreeBuilder, PreformattedText) {
+    auto doc = parse("<body><pre>  indented\n  text  </pre></body>");
+    ASSERT_NE(doc, nullptr);
+    auto* pre = doc->find_element("pre");
+    ASSERT_NE(pre, nullptr);
+    EXPECT_NE(pre->text_content().find("indented"), std::string::npos);
+}
+
+TEST(TreeBuilder, OlWithListItems) {
+    auto doc = parse("<body><ol><li>First</li><li>Second</li></ol></body>");
+    ASSERT_NE(doc, nullptr);
+    auto* li = doc->find_element("li");
+    ASSERT_NE(li, nullptr);
+    EXPECT_EQ(li->text_content(), "First");
+}
