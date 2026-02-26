@@ -1074,6 +1074,71 @@ TEST(RequestTest, HostHeaderStandardPortOmitted) {
         << "Port 80 should NOT appear in Host header";
 }
 
+// ============================================================================
+// Cycle 429: Request serialization for PUT / PATCH / DELETE / OPTIONS methods
+// ============================================================================
+
+TEST(RequestTest, SerializePutRequestWithBody) {
+    Request req;
+    req.method = Method::PUT;
+    req.host = "api.example.com";
+    req.port = 443;
+    req.path = "/resource/42";
+    req.use_tls = true;
+
+    std::string body_str = R"({"status":"active"})";
+    req.body.assign(body_str.begin(), body_str.end());
+    req.headers.set("Content-Type", "application/json");
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    EXPECT_NE(result.find("PUT /resource/42 HTTP/1.1\r\n"), std::string::npos);
+    EXPECT_NE(result.find("Content-Length:"), std::string::npos);
+}
+
+TEST(RequestTest, SerializePatchRequestWithBody) {
+    Request req;
+    req.method = Method::PATCH;
+    req.host = "api.example.com";
+    req.port = 80;
+    req.path = "/users/7";
+
+    std::string body_str = R"({"name":"Alice"})";
+    req.body.assign(body_str.begin(), body_str.end());
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    EXPECT_NE(result.find("PATCH /users/7 HTTP/1.1\r\n"), std::string::npos);
+}
+
+TEST(RequestTest, SerializeDeleteRequest) {
+    Request req;
+    req.method = Method::DELETE_METHOD;
+    req.host = "api.example.com";
+    req.port = 80;
+    req.path = "/items/99";
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    EXPECT_NE(result.find("DELETE /items/99 HTTP/1.1\r\n"), std::string::npos);
+}
+
+TEST(RequestTest, SerializeOptionsRequest) {
+    Request req;
+    req.method = Method::OPTIONS;
+    req.host = "api.example.com";
+    req.port = 80;
+    req.path = "/api";
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    EXPECT_NE(result.find("OPTIONS /api HTTP/1.1\r\n"), std::string::npos);
+}
+
 // ===========================================================================
 // HTTP Content Decompression Tests
 // ===========================================================================
