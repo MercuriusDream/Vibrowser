@@ -14283,3 +14283,55 @@ TEST(JSEngine, StringTrimEndRemovesTrailing) {
     auto result = engine.evaluate(R"("  hello  ".trimEnd())");
     EXPECT_EQ(result, "  hello");
 }
+
+// ============================================================================
+// Cycle 674: More JS engine tests
+// ============================================================================
+
+TEST(JSEngine, ArrayFillWithValue) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(new Array(3).fill(0).join(","))");
+    EXPECT_EQ(result, "0,0,0");
+}
+
+TEST(JSEngine, ArrayCopyWithinOverlap) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"([1,2,3,4,5].copyWithin(1, 3).join(","))");
+    EXPECT_EQ(result, "1,4,5,4,5");
+}
+
+TEST(JSEngine, StringSliceExtract) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"("hello world".slice(6, 11))");
+    EXPECT_EQ(result, "world");
+}
+
+TEST(JSEngine, StringSubstringExtract) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"("hello world".substring(0, 5))");
+    EXPECT_EQ(result, "hello");
+}
+
+TEST(JSEngine, RegexTestReturnsTrue) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(/^\d+$/.test("12345") ? "yes" : "no")");
+    EXPECT_EQ(result, "yes");
+}
+
+TEST(JSEngine, RegexTestReturnsFalse) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(/^\d+$/.test("abc") ? "yes" : "no")");
+    EXPECT_EQ(result, "no");
+}
+
+TEST(JSEngine, ArraySortAscending) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"([3, 1, 2].sort(function(a, b) { return a - b; }).join(","))");
+    EXPECT_EQ(result, "1,2,3");
+}
+
+TEST(JSEngine, ArraySortDescending) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"([3, 1, 2].sort(function(a, b) { return b - a; }).join(","))");
+    EXPECT_EQ(result, "3,2,1");
+}
