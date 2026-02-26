@@ -1209,3 +1209,85 @@ TEST(CSSNestingTest, MixedDeclarationsAndNestedRules) {
     EXPECT_TRUE(found_body);
     EXPECT_TRUE(found_hover);
 }
+
+// =============================================================================
+// Cycle 435 — @media, @import, @container, @scope, @property,
+//             @counter-style, !important, and parse_declaration_block
+// =============================================================================
+
+TEST(CSSParserTest, MediaQueryBasicParse) {
+    auto sheet = parse_stylesheet(
+        "@media (max-width: 768px) { .col { width: 100%; } }");
+    ASSERT_EQ(sheet.media_queries.size(), 1u);
+    EXPECT_NE(sheet.media_queries[0].condition.find("768px"), std::string::npos);
+    ASSERT_EQ(sheet.media_queries[0].rules.size(), 1u);
+    EXPECT_EQ(sheet.media_queries[0].rules[0].selector_text, ".col");
+}
+
+TEST(CSSParserTest, ImportRuleParse) {
+    auto sheet = parse_stylesheet("@import url(\"reset.css\");");
+    ASSERT_EQ(sheet.imports.size(), 1u);
+    EXPECT_NE(sheet.imports[0].url.find("reset.css"), std::string::npos);
+}
+
+TEST(CSSParserTest, ContainerQueryBasicParse) {
+    auto sheet = parse_stylesheet(
+        "@container sidebar (min-width: 400px) { .widget { display: flex; } }");
+    ASSERT_EQ(sheet.container_rules.size(), 1u);
+    EXPECT_EQ(sheet.container_rules[0].name, "sidebar");
+    EXPECT_NE(sheet.container_rules[0].condition.find("400px"), std::string::npos);
+    ASSERT_EQ(sheet.container_rules[0].rules.size(), 1u);
+    EXPECT_EQ(sheet.container_rules[0].rules[0].selector_text, ".widget");
+}
+
+TEST(CSSParserTest, ScopeRuleParse) {
+    auto sheet = parse_stylesheet(
+        "@scope (.card) to (.footer) { h2 { color: red; } }");
+    ASSERT_EQ(sheet.scope_rules.size(), 1u);
+    EXPECT_NE(sheet.scope_rules[0].scope_start.find(".card"), std::string::npos);
+    ASSERT_EQ(sheet.scope_rules[0].rules.size(), 1u);
+}
+
+TEST(CSSParserTest, PropertyRuleParse) {
+    auto sheet = parse_stylesheet(
+        "@property --my-color { syntax: '<color>'; inherits: false; initial-value: red; }");
+    ASSERT_EQ(sheet.property_rules.size(), 1u);
+    EXPECT_EQ(sheet.property_rules[0].name, "--my-color");
+    EXPECT_NE(sheet.property_rules[0].syntax.find("color"), std::string::npos);
+    EXPECT_EQ(sheet.property_rules[0].inherits, false);
+}
+
+TEST(CSSParserTest, CounterStyleRuleParse) {
+    auto sheet = parse_stylesheet(
+        "@counter-style thumbs { system: cyclic; symbols: '\\1F44D'; suffix: ' '; }");
+    ASSERT_EQ(sheet.counter_style_rules.size(), 1u);
+    EXPECT_EQ(sheet.counter_style_rules[0].name, "thumbs");
+    EXPECT_TRUE(sheet.counter_style_rules[0].descriptors.count("system") > 0);
+}
+
+TEST(CSSParserTest, ImportantFlagInDeclaration) {
+    auto sheet = parse_stylesheet("div { color: red !important; margin: 0; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    const auto& decls = sheet.rules[0].declarations;
+    bool found_important = false;
+    bool found_non_important = false;
+    for (const auto& d : decls) {
+        if (d.property == "color") found_important = d.important;
+        if (d.property == "margin") found_non_important = !d.important;
+    }
+    EXPECT_TRUE(found_important) << "color: red !important should have important=true";
+    EXPECT_TRUE(found_non_important) << "margin: 0 should have important=false";
+}
+
+TEST(CSSParserTest, ParseDeclarationBlock) {
+    auto decls = parse_declaration_block("color: blue; font-size: 16px; margin: 0 auto;");
+    ASSERT_GE(decls.size(), 3u);
+    bool found_color = false;
+    bool found_font_size = false;
+    for (const auto& d : decls) {
+        if (d.property == "color") found_color = true;
+        if (d.property == "font-size") found_font_size = true;
+    }
+    EXPECT_TRUE(found_color);
+    EXPECT_TRUE(found_font_size);
+}
