@@ -10328,3 +10328,158 @@ TEST(PropertyCascadeTest, OutlineOffsetValue) {
     cascade.apply_declaration(style, make_decl("outline-offset", "0"), parent);
     EXPECT_FLOAT_EQ(style.outline_offset.to_px(), 0.0f);
 }
+
+// ---------------------------------------------------------------------------
+// Cycle 474 — border-color/style/width shorthands, border side longhands,
+//             font-synthesis, text-decoration-skip
+// ---------------------------------------------------------------------------
+
+TEST(PropertyCascadeTest, BorderColorShorthand) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    // Single value: all four sides get same color
+    cascade.apply_declaration(style, make_decl("border-color", "red"), parent);
+    EXPECT_EQ(style.border_top.color.r, 255);
+    EXPECT_EQ(style.border_right.color.r, 255);
+    EXPECT_EQ(style.border_bottom.color.r, 255);
+    EXPECT_EQ(style.border_left.color.r, 255);
+
+    // Two values: top/bottom=red, right/left=blue
+    cascade.apply_declaration(style, make_decl("border-color", "red blue"), parent);
+    EXPECT_EQ(style.border_top.color.r, 255);
+    EXPECT_EQ(style.border_bottom.color.r, 255);
+    EXPECT_EQ(style.border_right.color.b, 255);
+    EXPECT_EQ(style.border_left.color.b, 255);
+}
+
+TEST(PropertyCascadeTest, BorderStyleShorthand) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    // Single value: all sides
+    cascade.apply_declaration(style, make_decl("border-style", "solid"), parent);
+    EXPECT_EQ(style.border_top.style, BorderStyle::Solid);
+    EXPECT_EQ(style.border_right.style, BorderStyle::Solid);
+    EXPECT_EQ(style.border_bottom.style, BorderStyle::Solid);
+    EXPECT_EQ(style.border_left.style, BorderStyle::Solid);
+
+    // Two values: top/bottom=dashed, right/left=dotted
+    cascade.apply_declaration(style, make_decl("border-style", "dashed dotted"), parent);
+    EXPECT_EQ(style.border_top.style, BorderStyle::Dashed);
+    EXPECT_EQ(style.border_bottom.style, BorderStyle::Dashed);
+    EXPECT_EQ(style.border_right.style, BorderStyle::Dotted);
+    EXPECT_EQ(style.border_left.style, BorderStyle::Dotted);
+}
+
+TEST(PropertyCascadeTest, BorderWidthShorthand) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    // Single value: all four sides
+    cascade.apply_declaration(style, make_decl("border-width", "2px"), parent);
+    EXPECT_FLOAT_EQ(style.border_top.width.to_px(), 2.0f);
+    EXPECT_FLOAT_EQ(style.border_right.width.to_px(), 2.0f);
+    EXPECT_FLOAT_EQ(style.border_bottom.width.to_px(), 2.0f);
+    EXPECT_FLOAT_EQ(style.border_left.width.to_px(), 2.0f);
+
+    // Four values: top=1, right=2, bottom=3, left=4
+    cascade.apply_declaration(style, make_decl("border-width", "1px 2px 3px 4px"), parent);
+    EXPECT_FLOAT_EQ(style.border_top.width.to_px(), 1.0f);
+    EXPECT_FLOAT_EQ(style.border_right.width.to_px(), 2.0f);
+    EXPECT_FLOAT_EQ(style.border_bottom.width.to_px(), 3.0f);
+    EXPECT_FLOAT_EQ(style.border_left.width.to_px(), 4.0f);
+}
+
+TEST(PropertyCascadeTest, BorderSideColorLonghands) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("border-left-color", "red"), parent);
+    EXPECT_EQ(style.border_left.color.r, 255);
+
+    cascade.apply_declaration(style, make_decl("border-right-color", "blue"), parent);
+    EXPECT_EQ(style.border_right.color.b, 255);
+
+    cascade.apply_declaration(style, make_decl("border-bottom-color", "green"), parent);
+    EXPECT_EQ(style.border_bottom.color.g, 128);  // CSS green = #008000
+}
+
+TEST(PropertyCascadeTest, BorderSideStyleLonghands) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("border-left-style", "solid"), parent);
+    EXPECT_EQ(style.border_left.style, BorderStyle::Solid);
+
+    cascade.apply_declaration(style, make_decl("border-right-style", "dashed"), parent);
+    EXPECT_EQ(style.border_right.style, BorderStyle::Dashed);
+
+    cascade.apply_declaration(style, make_decl("border-bottom-style", "dotted"), parent);
+    EXPECT_EQ(style.border_bottom.style, BorderStyle::Dotted);
+}
+
+TEST(PropertyCascadeTest, BorderSideWidthLonghands) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("border-left-width", "3px"), parent);
+    EXPECT_FLOAT_EQ(style.border_left.width.to_px(), 3.0f);
+
+    cascade.apply_declaration(style, make_decl("border-right-width", "5px"), parent);
+    EXPECT_FLOAT_EQ(style.border_right.width.to_px(), 5.0f);
+
+    cascade.apply_declaration(style, make_decl("border-bottom-width", "1px"), parent);
+    EXPECT_FLOAT_EQ(style.border_bottom.width.to_px(), 1.0f);
+}
+
+TEST(PropertyCascadeTest, FontSynthesisValues) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    // Default is weight|style (3) or normal; check initial state via resolver
+    cascade.apply_declaration(style, make_decl("font-synthesis", "none"), parent);
+    EXPECT_EQ(style.font_synthesis, 0);
+
+    cascade.apply_declaration(style, make_decl("font-synthesis", "weight"), parent);
+    EXPECT_EQ(style.font_synthesis, 1);
+
+    cascade.apply_declaration(style, make_decl("font-synthesis", "style"), parent);
+    EXPECT_EQ(style.font_synthesis, 2);
+
+    cascade.apply_declaration(style, make_decl("font-synthesis", "weight style"), parent);
+    EXPECT_EQ(style.font_synthesis, 3);  // weight=1 | style=2 = 3
+}
+
+TEST(PropertyCascadeTest, TextDecorationSkipValues) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.text_decoration_skip, 0);  // default: none
+
+    cascade.apply_declaration(style, make_decl("text-decoration-skip", "objects"), parent);
+    EXPECT_EQ(style.text_decoration_skip, 1);
+
+    cascade.apply_declaration(style, make_decl("text-decoration-skip", "spaces"), parent);
+    EXPECT_EQ(style.text_decoration_skip, 2);
+
+    cascade.apply_declaration(style, make_decl("text-decoration-skip", "ink"), parent);
+    EXPECT_EQ(style.text_decoration_skip, 3);
+
+    cascade.apply_declaration(style, make_decl("text-decoration-skip", "edges"), parent);
+    EXPECT_EQ(style.text_decoration_skip, 4);
+
+    cascade.apply_declaration(style, make_decl("text-decoration-skip", "box-decoration"), parent);
+    EXPECT_EQ(style.text_decoration_skip, 5);
+
+    cascade.apply_declaration(style, make_decl("text-decoration-skip", "none"), parent);
+    EXPECT_EQ(style.text_decoration_skip, 0);
+}
