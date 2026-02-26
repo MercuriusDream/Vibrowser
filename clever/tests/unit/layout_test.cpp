@@ -5642,3 +5642,61 @@ TEST(FlexboxAudit, AlignItemsFlexEndValue) {
     node->align_items = 2;
     EXPECT_EQ(node->align_items, 2);
 }
+
+// ============================================================================
+// Cycle 625: More layout tests
+// ============================================================================
+
+// Block: opacity defaults to 1
+TEST(LayoutNodeProps, OpacityDefaultsToOne) {
+    auto node = make_block("div");
+    EXPECT_FLOAT_EQ(node->opacity, 1.0f);
+}
+
+// Block: opacity can be set to 0
+TEST(LayoutNodeProps, OpacityCanBeSetToZero) {
+    auto node = make_block("div");
+    node->opacity = 0.0f;
+    EXPECT_FLOAT_EQ(node->opacity, 0.0f);
+}
+
+// Block: opacity can be set to 0.5
+TEST(LayoutNodeProps, OpacityHalfValue) {
+    auto node = make_block("div");
+    node->opacity = 0.5f;
+    EXPECT_FLOAT_EQ(node->opacity, 0.5f);
+}
+
+// Text: font_size accessible
+TEST(LayoutNodeProps, TextFontSizeAccessible) {
+    auto node = make_text("hello", 20.0f);
+    EXPECT_FLOAT_EQ(node->font_size, 20.0f);
+}
+
+// Text: text_content stored
+TEST(LayoutNodeProps, TextContentStored) {
+    auto node = make_text("world");
+    EXPECT_EQ(node->text_content, "world");
+}
+
+// Block: three children appended
+TEST(LayoutNodeTree, ThreeChildrenAppended) {
+    auto parent = make_block("div");
+    parent->append_child(make_block("h1"));
+    parent->append_child(make_block("p"));
+    parent->append_child(make_block("p"));
+    EXPECT_EQ(parent->children.size(), 3u);
+}
+
+// Flex: flex_grow can be 2.5
+TEST(FlexboxAudit, FlexGrowFractional) {
+    auto node = make_flex("div");
+    node->flex_grow = 2.5f;
+    EXPECT_FLOAT_EQ(node->flex_grow, 2.5f);
+}
+
+// Block: z_index defaults to 0
+TEST(LayoutNodeProps, ZIndexDefaultsToZero) {
+    auto node = make_block("div");
+    EXPECT_EQ(node->z_index, 0);
+}
