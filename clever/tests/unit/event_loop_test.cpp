@@ -200,3 +200,102 @@ TEST(EventLoopTest, PostTaskWakesUpRunFromBlocking) {
     EXPECT_TRUE(task_executed.load());
     EXPECT_FALSE(loop.is_running());
 }
+
+// ---------------------------------------------------------------------------
+// Cycle 436 — is_running initial, quit-before-run, pending_count with delayed,
+//             non-due skip, zero-delay, is_running inside task,
+//             combined pending count, concurrent multi-thread post
+// ---------------------------------------------------------------------------
+
+TEST(EventLoopTest, IsRunningFalseInitially) {
+    EventLoop loop;
+    EXPECT_FALSE(loop.is_running());
+}
+
+TEST(EventLoopTest, IsRunningFalseAfterRunCompletes) {
+    // is_running() should return false after run() returns via quit()
+    EventLoop loop;
+    loop.post_task([&loop]() { loop.quit(); });
+    loop.run();
+    EXPECT_FALSE(loop.is_running());
+}
+
+TEST(EventLoopTest, PendingCountIncludesDelayedTasks) {
+    EventLoop loop;
+    EXPECT_EQ(loop.pending_count(), 0u);
+
+    loop.post_delayed_task([]() {}, 1000ms);  // not due for 1 second
+    EXPECT_EQ(loop.pending_count(), 1u);
+
+    loop.post_task([]() {});
+    EXPECT_EQ(loop.pending_count(), 2u);
+}
+
+TEST(EventLoopTest, RunPendingSkipsNonDueDelayedTasks) {
+    EventLoop loop;
+    bool executed = false;
+
+    loop.post_delayed_task([&executed]() { executed = true; }, 500ms);
+    loop.run_pending();  // task not due, should not execute
+
+    EXPECT_FALSE(executed);
+    EXPECT_EQ(loop.pending_count(), 1u);  // still pending
+}
+
+TEST(EventLoopTest, ZeroDelayTaskFiresInRunPending) {
+    EventLoop loop;
+    bool executed = false;
+
+    loop.post_delayed_task([&executed]() { executed = true; }, 0ms);
+    loop.run_pending();  // 0ms delay: run_at <= now is satisfied
+
+    EXPECT_TRUE(executed) << "Zero-delay task should fire in the same run_pending call";
+}
+
+TEST(EventLoopTest, IsRunningTrueDuringRun) {
+    EventLoop loop;
+    bool was_running = false;
+
+    loop.post_task([&loop, &was_running]() {
+        was_running = loop.is_running();
+        loop.quit();
+    });
+
+    loop.run();
+    EXPECT_TRUE(was_running) << "is_running() should return true while run() is executing";
+}
+
+TEST(EventLoopTest, PendingCountCombinesImmediateAndDelayed) {
+    EventLoop loop;
+    loop.post_task([]() {});
+    loop.post_task([]() {});
+    loop.post_delayed_task([]() {}, 500ms);
+    loop.post_delayed_task([]() {}, 500ms);
+
+    EXPECT_EQ(loop.pending_count(), 4u)
+        << "pending_count() should sum immediate (2) and delayed (2) tasks";
+}
+
+TEST(EventLoopTest, ConcurrentPostFromMultipleThreads) {
+    EventLoop loop;
+    std::atomic<int> counter{0};
+
+    const int kThreads = 4;
+    const int kTasksPerThread = 10;
+
+    std::vector<std::thread> threads;
+    for (int t = 0; t < kThreads; ++t) {
+        threads.emplace_back([&loop, &counter]() {
+            for (int i = 0; i < kTasksPerThread; ++i) {
+                loop.post_task([&counter]() {
+                    counter.fetch_add(1, std::memory_order_relaxed);
+                });
+            }
+        });
+    }
+    for (auto& th : threads) th.join();
+
+    loop.run_pending();
+    EXPECT_EQ(counter.load(), kThreads * kTasksPerThread)
+        << "All " << kThreads * kTasksPerThread << " tasks from concurrent threads should execute";
+}
