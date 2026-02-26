@@ -1394,3 +1394,67 @@ TEST(DomNode, EmptyParentHasNullFirstLast) {
     EXPECT_EQ(parent->last_child(), nullptr);
     EXPECT_EQ(parent->child_count(), 0u);
 }
+
+// ============================================================================
+// Cycle 537: DOM regression tests
+// ============================================================================
+
+// Element has no children initially
+TEST(DomNode, NewElementHasNoChildren) {
+    Element e("div");
+    EXPECT_EQ(e.child_count(), 0u);
+    EXPECT_EQ(e.first_child(), nullptr);
+    EXPECT_EQ(e.last_child(), nullptr);
+}
+
+// Append two children, verify order
+TEST(DomNode, TwoChildrenPreserveOrder) {
+    auto parent = std::make_unique<Element>("ul");
+    auto& li1 = parent->append_child(std::make_unique<Element>("li"));
+    auto& li2 = parent->append_child(std::make_unique<Element>("li"));
+    EXPECT_EQ(parent->first_child(), &li1);
+    EXPECT_EQ(parent->last_child(), &li2);
+    EXPECT_EQ(parent->child_count(), 2u);
+}
+
+// Text node initial data
+TEST(DomText, InitialDataIsPreserved) {
+    Text t("hello world");
+    EXPECT_EQ(t.data(), "hello world");
+    EXPECT_EQ(t.node_type(), NodeType::Text);
+}
+
+// Element tag name returns lowercase
+TEST(DomElement, TagNamePreservedAsGiven) {
+    Element e("section");
+    EXPECT_EQ(e.tag_name(), "section");
+}
+
+// Element: has_attribute returns false if unset
+TEST(DomElement, HasAttributeReturnsFalseWhenNotSet) {
+    Element e("div");
+    EXPECT_FALSE(e.has_attribute("data-value"));
+}
+
+// Element: has_attribute returns true after set
+TEST(DomElement, HasAttributeReturnsTrueOnInput) {
+    Element e("input");
+    e.set_attribute("type", "text");
+    EXPECT_TRUE(e.has_attribute("type"));
+}
+
+// ClassList: remove class that isn't present — no crash
+TEST(DomClassList, RemoveNonexistentClassIsNoOp) {
+    Element e("p");
+    e.class_list().add("active");
+    e.class_list().remove("nonexistent");  // should not crash
+    EXPECT_EQ(e.class_list().length(), 1u);
+    EXPECT_TRUE(e.class_list().contains("active"));
+}
+
+// Comment node type
+TEST(DomComment, CommentNodeTypeIsComment) {
+    Comment c("a comment");
+    EXPECT_EQ(c.node_type(), NodeType::Comment);
+    EXPECT_EQ(c.data(), "a comment");
+}
