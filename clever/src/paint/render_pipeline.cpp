@@ -169,14 +169,42 @@ std::string extract_preferred_font_url(const std::string& src) {
         }
         if (close == std::string::npos || close <= open + 1) return "";
 
-        std::string value = trim(entry.substr(open + 1, close - open - 1));
-        if (value.size() >= 2) {
-            if ((value.front() == '"' && value.back() == '"') ||
-                (value.front() == '\'' && value.back() == '\'')) {
-                value = value.substr(1, value.size() - 2);
+        return trim(entry.substr(open + 1, close - open - 1));
+    };
+
+    auto split_csv_tokens = [&](const std::string& value) -> std::vector<std::string> {
+        std::vector<std::string> tokens;
+        std::string current;
+        bool in_single_quote = false;
+        bool in_double_quote = false;
+        int paren_depth = 0;
+
+        for (char ch : value) {
+            if (ch == '"' && !in_single_quote) {
+                in_double_quote = !in_double_quote;
+                current.push_back(ch);
+                continue;
             }
+            if (ch == '\'' && !in_double_quote) {
+                in_single_quote = !in_single_quote;
+                current.push_back(ch);
+                continue;
+            }
+            if (!in_single_quote && !in_double_quote) {
+                if (ch == '(') paren_depth++;
+                else if (ch == ')' && paren_depth > 0) paren_depth--;
+                if (ch == ',' && paren_depth == 0) {
+                    tokens.push_back(trim(current));
+                    current.clear();
+                    continue;
+                }
+            }
+            current.push_back(ch);
         }
-        return trim(value);
+        if (!current.empty()) {
+            tokens.push_back(trim(current));
+        }
+        return tokens;
     };
 
     std::vector<std::string> entries;
@@ -211,12 +239,32 @@ std::string extract_preferred_font_url(const std::string& src) {
     }
 
     for (const auto& entry : entries) {
-        std::string url = parse_function_arg(entry, "url");
+        std::string url = trim(parse_function_arg(entry, "url"));
+        if (url.size() >= 2 &&
+            ((url.front() == '"' && url.back() == '"') ||
+             (url.front() == '\'' && url.back() == '\''))) {
+            url = url.substr(1, url.size() - 2);
+        }
         if (url.empty()) continue;
 
-        const std::string format = to_lower(parse_function_arg(entry, "format"));
-        if (!format.empty() && k_supported_formats.find(format) == k_supported_formats.end()) {
-            continue;
+        const std::string format_value = parse_function_arg(entry, "format");
+        if (!format_value.empty()) {
+            bool has_supported_format = false;
+            for (auto format_token : split_csv_tokens(format_value)) {
+                format_token = trim(format_token);
+                if (format_token.size() >= 2 &&
+                    ((format_token.front() == '"' && format_token.back() == '"') ||
+                     (format_token.front() == '\'' && format_token.back() == '\''))) {
+                    format_token = format_token.substr(1, format_token.size() - 2);
+                }
+                format_token = to_lower(trim(format_token));
+                if (!format_token.empty() &&
+                    k_supported_formats.find(format_token) != k_supported_formats.end()) {
+                    has_supported_format = true;
+                    break;
+                }
+            }
+            if (!has_supported_format) continue;
         }
         return url;
     }

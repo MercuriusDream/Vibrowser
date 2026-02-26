@@ -39018,6 +39018,19 @@ TEST(WebFontRegistration, PreferredFontSourceSkipsUnsupportedFormat) {
     EXPECT_EQ(extract_preferred_font_url(src), "modern.woff2");
 }
 
+TEST(WebFontRegistration, PreferredFontSourceAcceptsSupportedFormatFromList) {
+    const std::string src =
+        "url(\"modern.woff2\") format('embedded-opentype', 'woff2')";
+    EXPECT_EQ(extract_preferred_font_url(src), "modern.woff2");
+}
+
+TEST(WebFontRegistration, PreferredFontSourceSkipsFormatListWhenAllUnsupported) {
+    const std::string src =
+        "url(\"legacy.eot\") format('embedded-opentype', 'svg'), "
+        "url(\"fallback.woff\") format('woff')";
+    EXPECT_EQ(extract_preferred_font_url(src), "fallback.woff");
+}
+
 TEST(WebFontRegistration, PreferredFontSourceFunctionNamesAreCaseInsensitive) {
     const std::string src = "URL(\"caps.woff\") FORMAT('WOFF')";
     EXPECT_EQ(extract_preferred_font_url(src), "caps.woff");
