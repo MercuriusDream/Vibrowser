@@ -2522,3 +2522,73 @@ TEST(ResponseTest, ParsedResponseHeadersAccessible) {
     ASSERT_TRUE(resp.has_value());
     EXPECT_TRUE(resp->headers.has("content-type"));
 }
+
+// ============================================================================
+// Cycle 590: More net/HTTP tests
+// ============================================================================
+
+// Request: path default is "/"
+TEST(RequestTest, PathDefaultIsSlash) {
+    Request req;
+    EXPECT_EQ(req.path, "/");
+}
+
+// Request: body is empty by default
+TEST(RequestTest, BodyEmptyByDefault) {
+    Request req;
+    EXPECT_TRUE(req.body.empty());
+}
+
+// Response: parse 403 Forbidden
+TEST(ResponseTest, Parse403Forbidden) {
+    std::string raw = "HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 403);
+    EXPECT_EQ(resp->status_text, "Forbidden");
+}
+
+// Response: parse 408 Request Timeout
+TEST(ResponseTest, Parse408RequestTimeout) {
+    std::string raw = "HTTP/1.1 408 Request Timeout\r\nContent-Length: 0\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 408);
+}
+
+// HeaderMap: set multiple, all accessible
+TEST(HeaderMapTest, SetMultipleAllAccessible) {
+    HeaderMap map;
+    map.set("X-Foo", "1");
+    map.set("X-Bar", "2");
+    map.set("X-Baz", "3");
+    EXPECT_TRUE(map.has("x-foo"));
+    EXPECT_TRUE(map.has("x-bar"));
+    EXPECT_TRUE(map.has("x-baz"));
+}
+
+// CookieJar: cookie stored correctly
+TEST(CookieJarTest, CookieStoredCorrectly) {
+    CookieJar jar;
+    jar.set_from_header("session=abc; Domain=example.com; Path=/", "example.com");
+    EXPECT_GT(jar.size(), 0u);
+}
+
+// Response: status_text is preserved
+TEST(ResponseTest, StatusTextPreserved) {
+    std::string raw = "HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status_text, "OK");
+}
+
+// HeaderMap: remove non-existent key is no-op
+TEST(HeaderMapTest, RemoveNonExistentIsNoOp) {
+    HeaderMap map;
+    map.set("A", "1");
+    EXPECT_NO_THROW(map.remove("nonexistent"));
+    EXPECT_TRUE(map.has("a"));
+}
