@@ -13226,3 +13226,92 @@ TEST(JSEngine, StringSplitWithLimit) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "a|b");
 }
+
+// ============================================================================
+// Cycle 610: More JS engine tests
+// ============================================================================
+
+// Computed property names dynamic key
+TEST(JSEngine, ComputedPropertyNamesDynamic) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var key = "answer";
+        var obj = { [key]: 42 };
+        obj.answer
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "42");
+}
+
+// for...of with string
+TEST(JSEngine, ForOfString) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var chars = [];
+        for (var c of "abc") chars.push(c);
+        chars.join(",")
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "a,b,c");
+}
+
+// Array.isArray
+TEST(JSEngine, ArrayIsArray) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        Array.isArray([]) + "," + Array.isArray({})
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true,false");
+}
+
+// Object.getPrototypeOf
+TEST(JSEngine, ObjectGetPrototypeOf) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        Object.getPrototypeOf([]) === Array.prototype
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true");
+}
+
+// String.prototype.trimStart and trimEnd
+TEST(JSEngine, StringTrimStartEnd) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        "  hello  ".trimStart() + "|" + "  world  ".trimEnd()
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "hello  |  world");
+}
+
+// Array.prototype.at
+TEST(JSEngine, ArrayAt) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var arr = [10, 20, 30];
+        arr.at(0) + "," + arr.at(-1)
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "10,30");
+}
+
+// String.prototype.at
+TEST(JSEngine, StringAt) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        "hello".at(0) + "," + "hello".at(-1)
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "h,o");
+}
+
+// Math.hypot
+TEST(JSEngine, MathHypot) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        Math.hypot(3, 4)
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "5");
+}
