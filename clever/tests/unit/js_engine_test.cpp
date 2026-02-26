@@ -12195,3 +12195,93 @@ TEST(JSEngine, MathAbsReturnsAbsValue) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "42,7");
 }
+
+// ============================================================================
+// Cycle 547: JS engine regression tests
+// ============================================================================
+
+// Number.parseInt converts string to integer
+TEST(JSEngine, NumberParseInt) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        Number.parseInt("42") + Number.parseInt("0xFF", 16)
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "297");
+}
+
+// Number.parseFloat parses decimal
+TEST(JSEngine, NumberParseFloat) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        Number.parseFloat("3.14").toFixed(2)
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "3.14");
+}
+
+// Array.concat merges two arrays
+TEST(JSEngine, ArrayConcat) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        [1, 2].concat([3, 4]).join(",")
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1,2,3,4");
+}
+
+// String.toLowerCase converts string
+TEST(JSEngine, StringToLowerCase) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        "HELLO WORLD".toLowerCase()
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "hello world");
+}
+
+// String.toUpperCase converts string
+TEST(JSEngine, StringToUpperCase) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        "hello world".toUpperCase()
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "HELLO WORLD");
+}
+
+// Ternary operator selects correct branch
+TEST(JSEngine, TernaryOperatorBranching) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var x = 10;
+        var label = (x > 5) ? "big" : "small";
+        label
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "big");
+}
+
+// Object.assign merges objects
+TEST(JSEngine, ObjectAssignMerge) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var target = {a: 1};
+        Object.assign(target, {b: 2, c: 3});
+        target.a + target.b + target.c
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "6");
+}
+
+// Array.splice removes elements
+TEST(JSEngine, ArraySpliceRemoves) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var a = [1, 2, 3, 4, 5];
+        a.splice(1, 2);  // remove 2 elements starting at index 1
+        a.join(",")
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1,4,5");
+}
