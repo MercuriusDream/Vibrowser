@@ -424,3 +424,55 @@ TEST(CORSPolicyTest, CrossOriginNullOriginRequiresStrictACAOAndCredentialsRule) 
     EXPECT_TRUE(
         cors_allows_response("null", "https://api.example/data", null_credentialed, true));
 }
+
+// ---------------------------------------------------------------------------
+// Cycle 491 — CORS policy additional edge-case regression tests
+// ---------------------------------------------------------------------------
+
+// Same host with different port is cross-origin
+TEST(CORSPolicyTest, SameHostDifferentPortIsCrossOrigin) {
+    EXPECT_TRUE(is_cross_origin("https://app.example:8080", "https://app.example/path"));
+}
+
+// Same host with different scheme is cross-origin
+TEST(CORSPolicyTest, SameHostDifferentSchemeIsCrossOrigin) {
+    EXPECT_TRUE(is_cross_origin("http://app.example", "https://app.example/path"));
+}
+
+// A valid subdomain is an enforceable document origin
+TEST(CORSPolicyTest, DocumentOriginWithSubdomainIsEnforceable) {
+    EXPECT_TRUE(has_enforceable_document_origin("https://sub.app.example"));
+}
+
+// CORS-eligible URL: query string does not disqualify it
+TEST(CORSPolicyTest, CORSEligibleURLWithQueryString) {
+    EXPECT_TRUE(is_cors_eligible_request_url("https://api.example/path?key=value"));
+}
+
+// CORS-eligible URL: non-standard port is still eligible
+TEST(CORSPolicyTest, CORSEligibleURLWithNonStandardPort) {
+    EXPECT_TRUE(is_cors_eligible_request_url("https://api.example:8443/data"));
+}
+
+// ACAO port 8080 does not match document origin on default port 443
+TEST(CORSPolicyTest, CrossOriginPortMismatchInACAOBlocks) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "https://app.example:8080");
+    EXPECT_FALSE(cors_allows_response("https://app.example", "https://api.example/data",
+                                      headers, false));
+}
+
+// ACAO with explicit standard port 443 canonically matches document origin
+TEST(CORSPolicyTest, ACAOWithExplicitStandardPortMatchesDocumentOrigin) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "https://app.example:443");
+    EXPECT_TRUE(cors_allows_response("https://app.example", "https://api.example/data",
+                                     headers, false));
+}
+
+// normalize_outgoing_origin_header is a no-op when no Origin header exists for same-origin
+TEST(CORSPolicyTest, NormalizeOriginHeaderNoOpForSameOriginNoExistingHeader) {
+    clever::net::HeaderMap headers; // no Origin header set
+    normalize_outgoing_origin_header(headers, "https://app.example", "https://app.example/data");
+    EXPECT_FALSE(headers.has("origin"));
+}
