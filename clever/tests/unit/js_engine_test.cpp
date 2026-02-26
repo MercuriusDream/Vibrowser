@@ -12285,3 +12285,95 @@ TEST(JSEngine, ArraySpliceRemoves) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "1,4,5");
 }
+
+// ============================================================================
+// Cycle 553: JS engine regression tests
+// ============================================================================
+
+// JSON.stringify converts object to JSON string
+TEST(JSEngine, JSONStringify) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        JSON.stringify({x: 1, y: 2})
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    // Should contain the key-value pairs
+    EXPECT_NE(result.find("\"x\""), std::string::npos);
+    EXPECT_NE(result.find("\"y\""), std::string::npos);
+}
+
+// JSON.parse converts JSON string to object
+TEST(JSEngine, JSONParse) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var obj = JSON.parse('{"a":10,"b":20}');
+        obj.a + obj.b
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "30");
+}
+
+// Array.flatMap method
+TEST(JSEngine, ArrayFlatMap) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        [1, 2, 3].flatMap(function(x) { return [x, x * 2]; }).join(",")
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1,2,2,4,3,6");
+}
+
+// String.matchAll pattern
+TEST(JSEngine, StringMatchAllCount) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var matches = [...'aababc'.matchAll(/ab/g)];
+        matches.length
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "2");
+}
+
+// Array.keys() iterator
+TEST(JSEngine, ArrayKeysIterator) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        [...['a','b','c'].keys()].join(",")
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "0,1,2");
+}
+
+// Array.values() iterator
+TEST(JSEngine, ArrayValuesIterator) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        [...['x','y','z'].values()].join(",")
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "x,y,z");
+}
+
+// String.replaceAll method
+TEST(JSEngine, StringReplaceAll) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        "foo bar foo baz foo".replaceAll("foo", "qux")
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "qux bar qux baz qux");
+}
+
+// Array.entries() iterator
+TEST(JSEngine, ArrayEntriesIterator) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var pairs = [];
+        for (var [i, v] of ['a','b'].entries()) {
+            pairs.push(i + ':' + v);
+        }
+        pairs.join(',')
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "0:a,1:b");
+}
