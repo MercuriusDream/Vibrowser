@@ -2117,3 +2117,71 @@ TEST(DomComment, ParentNullInitially) {
     Comment c("remark");
     EXPECT_EQ(c.parent(), nullptr);
 }
+
+// ============================================================================
+// Cycle 634: More DOM tests
+// ============================================================================
+
+// Element: namespace URI with SVG
+TEST(DomElement, SvgNamespaceURISet) {
+    Element el("circle", "http://www.w3.org/2000/svg");
+    EXPECT_EQ(el.namespace_uri(), "http://www.w3.org/2000/svg");
+}
+
+// Element: set attribute with empty string value for required
+TEST(DomElement, SetRequiredAttributeEmpty) {
+    Element el("input");
+    el.set_attribute("required", "");
+    auto val = el.get_attribute("required");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(val.value(), "");
+}
+
+// Element: has_attribute returns false for nonexistent key
+TEST(DomElement, HasAttributeNonexistentKey) {
+    Element el("div");
+    EXPECT_FALSE(el.has_attribute("data-x"));
+}
+
+// Element: remove attribute makes has_attribute false
+TEST(DomElement, RemoveAttributeMakesAbsent) {
+    Element el("button");
+    el.set_attribute("disabled", "true");
+    EXPECT_TRUE(el.has_attribute("disabled"));
+    el.remove_attribute("disabled");
+    EXPECT_FALSE(el.has_attribute("disabled"));
+}
+
+// Element: class_list add two different classes
+TEST(DomClassList, AddTwoDifferentClasses) {
+    Element el("div");
+    el.class_list().add("alpha");
+    el.class_list().add("beta");
+    EXPECT_TRUE(el.class_list().contains("alpha"));
+    EXPECT_TRUE(el.class_list().contains("beta"));
+}
+
+// Element: class_list toggle is idempotent on re-add
+TEST(DomClassList, ToggleAddRemoveToggle) {
+    Element el("p");
+    el.class_list().toggle("active");   // adds
+    EXPECT_TRUE(el.class_list().contains("active"));
+    el.class_list().toggle("active");   // removes
+    EXPECT_FALSE(el.class_list().contains("active"));
+}
+
+// Document: create_element returns correct tag
+TEST(DomDocument, CreateElementTagName) {
+    Document doc;
+    auto el = doc.create_element("nav");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name(), "nav");
+}
+
+// Document: create_text_node data accessible
+TEST(DomDocument, CreateTextNodeData) {
+    Document doc;
+    auto t = doc.create_text_node("hello world");
+    ASSERT_NE(t, nullptr);
+    EXPECT_EQ(t->data(), "hello world");
+}
