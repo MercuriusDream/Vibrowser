@@ -7032,3 +7032,124 @@ TEST(PropertyCascadeTest, FontVariantLigatures) {
     cascade.apply_declaration(style, make_decl("font-variant-ligatures", "normal"), parent);
     EXPECT_EQ(style.font_variant_ligatures, 0);
 }
+
+// ---------------------------------------------------------------------------
+// Cycle 453 — CSS filter: grayscale, sepia, brightness, contrast, invert,
+//             saturate, hue-rotate, blur, filter none, backdrop-filter
+// ---------------------------------------------------------------------------
+
+TEST(PropertyCascadeTest, FilterGrayscaleAndSepia) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_TRUE(style.filters.empty());
+
+    cascade.apply_declaration(style, make_decl("filter", "grayscale(0.5)"), parent);
+    ASSERT_EQ(style.filters.size(), 1u);
+    EXPECT_EQ(style.filters[0].first, 1);    // grayscale = type 1
+    EXPECT_NEAR(style.filters[0].second, 0.5f, 0.01f);
+
+    cascade.apply_declaration(style, make_decl("filter", "sepia(1)"), parent);
+    ASSERT_EQ(style.filters.size(), 1u);
+    EXPECT_EQ(style.filters[0].first, 2);    // sepia = type 2
+    EXPECT_FLOAT_EQ(style.filters[0].second, 1.0f);
+}
+
+TEST(PropertyCascadeTest, FilterBrightnessAndContrast) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("filter", "brightness(1.5)"), parent);
+    ASSERT_EQ(style.filters.size(), 1u);
+    EXPECT_EQ(style.filters[0].first, 3);    // brightness = type 3
+    EXPECT_NEAR(style.filters[0].second, 1.5f, 0.01f);
+
+    cascade.apply_declaration(style, make_decl("filter", "contrast(0.8)"), parent);
+    ASSERT_EQ(style.filters.size(), 1u);
+    EXPECT_EQ(style.filters[0].first, 4);    // contrast = type 4
+    EXPECT_NEAR(style.filters[0].second, 0.8f, 0.01f);
+}
+
+TEST(PropertyCascadeTest, FilterInvertAndSaturate) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("filter", "invert(1)"), parent);
+    ASSERT_EQ(style.filters.size(), 1u);
+    EXPECT_EQ(style.filters[0].first, 5);    // invert = type 5
+
+    cascade.apply_declaration(style, make_decl("filter", "saturate(2)"), parent);
+    ASSERT_EQ(style.filters.size(), 1u);
+    EXPECT_EQ(style.filters[0].first, 6);    // saturate = type 6
+    EXPECT_NEAR(style.filters[0].second, 2.0f, 0.01f);
+}
+
+TEST(PropertyCascadeTest, FilterOpacityAndHueRotate) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("filter", "opacity(0.5)"), parent);
+    ASSERT_EQ(style.filters.size(), 1u);
+    EXPECT_EQ(style.filters[0].first, 7);    // opacity = type 7
+
+    cascade.apply_declaration(style, make_decl("filter", "hue-rotate(90)"), parent);
+    ASSERT_EQ(style.filters.size(), 1u);
+    EXPECT_EQ(style.filters[0].first, 8);    // hue-rotate = type 8
+    EXPECT_NEAR(style.filters[0].second, 90.0f, 0.01f);
+}
+
+TEST(PropertyCascadeTest, FilterBlur) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("filter", "blur(4px)"), parent);
+    ASSERT_EQ(style.filters.size(), 1u);
+    EXPECT_EQ(style.filters[0].first, 9);    // blur = type 9
+    EXPECT_FLOAT_EQ(style.filters[0].second, 4.0f);
+}
+
+TEST(PropertyCascadeTest, FilterNoneClearsFilters) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("filter", "blur(4px)"), parent);
+    ASSERT_EQ(style.filters.size(), 1u);
+
+    cascade.apply_declaration(style, make_decl("filter", "none"), parent);
+    EXPECT_TRUE(style.filters.empty());
+}
+
+TEST(PropertyCascadeTest, FilterMultipleFunctions) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    // Multiple filters: grayscale(0.5) blur(2px)
+    cascade.apply_declaration(style, make_decl("filter", "grayscale(0.5) blur(2px)"), parent);
+    ASSERT_EQ(style.filters.size(), 2u);
+    EXPECT_EQ(style.filters[0].first, 1);   // grayscale
+    EXPECT_EQ(style.filters[1].first, 9);   // blur
+    EXPECT_FLOAT_EQ(style.filters[1].second, 2.0f);
+}
+
+TEST(PropertyCascadeTest, BackdropFilter) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_TRUE(style.backdrop_filters.empty());
+
+    cascade.apply_declaration(style, make_decl("backdrop-filter", "blur(10px)"), parent);
+    ASSERT_EQ(style.backdrop_filters.size(), 1u);
+    EXPECT_EQ(style.backdrop_filters[0].first, 9);  // blur = type 9
+    EXPECT_FLOAT_EQ(style.backdrop_filters[0].second, 10.0f);
+
+    cascade.apply_declaration(style, make_decl("backdrop-filter", "none"), parent);
+    EXPECT_TRUE(style.backdrop_filters.empty());
+}
