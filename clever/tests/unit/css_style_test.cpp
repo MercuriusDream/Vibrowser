@@ -4717,3 +4717,226 @@ TEST(SelectorMatcherTest, FocusVisiblePseudoClass) {
     elem.attributes.push_back({"data-clever-focus", ""});
     EXPECT_TRUE(matcher.matches(elem, complex));
 }
+
+// ============================================================================
+// Cycle 422: :first-child / :last-child / :only-child structural pseudo-classes
+// ============================================================================
+TEST(SelectorMatcherTest, FirstChildPseudoClass) {
+    SelectorMatcher matcher;
+
+    SimpleSelector ss;
+    ss.type = SimpleSelectorType::PseudoClass;
+    ss.value = "first-child";
+
+    CompoundSelector compound;
+    compound.simple_selectors.push_back(ss);
+    auto complex = make_simple_complex(compound);
+
+    ElementView first;
+    first.tag_name = "li";
+    first.child_index = 0;
+    first.sibling_count = 3;
+    EXPECT_TRUE(matcher.matches(first, complex));
+
+    ElementView second;
+    second.tag_name = "li";
+    second.child_index = 1;
+    second.sibling_count = 3;
+    EXPECT_FALSE(matcher.matches(second, complex));
+}
+
+TEST(SelectorMatcherTest, LastChildPseudoClass) {
+    SelectorMatcher matcher;
+
+    SimpleSelector ss;
+    ss.type = SimpleSelectorType::PseudoClass;
+    ss.value = "last-child";
+
+    CompoundSelector compound;
+    compound.simple_selectors.push_back(ss);
+    auto complex = make_simple_complex(compound);
+
+    ElementView last;
+    last.tag_name = "li";
+    last.child_index = 2;
+    last.sibling_count = 3;
+    EXPECT_TRUE(matcher.matches(last, complex));
+
+    ElementView first;
+    first.tag_name = "li";
+    first.child_index = 0;
+    first.sibling_count = 3;
+    EXPECT_FALSE(matcher.matches(first, complex));
+}
+
+TEST(SelectorMatcherTest, OnlyChildPseudoClass) {
+    SelectorMatcher matcher;
+
+    SimpleSelector ss;
+    ss.type = SimpleSelectorType::PseudoClass;
+    ss.value = "only-child";
+
+    CompoundSelector compound;
+    compound.simple_selectors.push_back(ss);
+    auto complex = make_simple_complex(compound);
+
+    ElementView only;
+    only.tag_name = "span";
+    only.child_index = 0;
+    only.sibling_count = 1;
+    EXPECT_TRUE(matcher.matches(only, complex));
+
+    ElementView one_of_two;
+    one_of_two.tag_name = "span";
+    one_of_two.child_index = 0;
+    one_of_two.sibling_count = 2;
+    EXPECT_FALSE(matcher.matches(one_of_two, complex));
+}
+
+// ============================================================================
+// Cycle 422: :disabled / :enabled / :checked form pseudo-classes
+// ============================================================================
+TEST(SelectorMatcherTest, DisabledPseudoClass) {
+    SelectorMatcher matcher;
+
+    SimpleSelector ss;
+    ss.type = SimpleSelectorType::PseudoClass;
+    ss.value = "disabled";
+
+    CompoundSelector compound;
+    compound.simple_selectors.push_back(ss);
+    auto complex = make_simple_complex(compound);
+
+    ElementView btn;
+    btn.tag_name = "button";
+    btn.attributes = {{"disabled", ""}};
+    EXPECT_TRUE(matcher.matches(btn, complex));
+
+    ElementView active_btn;
+    active_btn.tag_name = "button";
+    EXPECT_FALSE(matcher.matches(active_btn, complex));
+
+    // Non-form element must not match :disabled even with the attribute
+    ElementView div_elem;
+    div_elem.tag_name = "div";
+    div_elem.attributes = {{"disabled", ""}};
+    EXPECT_FALSE(matcher.matches(div_elem, complex));
+}
+
+TEST(SelectorMatcherTest, EnabledPseudoClass) {
+    SelectorMatcher matcher;
+
+    SimpleSelector ss;
+    ss.type = SimpleSelectorType::PseudoClass;
+    ss.value = "enabled";
+
+    CompoundSelector compound;
+    compound.simple_selectors.push_back(ss);
+    auto complex = make_simple_complex(compound);
+
+    ElementView inp;
+    inp.tag_name = "input";
+    EXPECT_TRUE(matcher.matches(inp, complex));
+
+    ElementView inp_disabled;
+    inp_disabled.tag_name = "input";
+    inp_disabled.attributes = {{"disabled", ""}};
+    EXPECT_FALSE(matcher.matches(inp_disabled, complex));
+}
+
+TEST(SelectorMatcherTest, CheckedPseudoClass) {
+    SelectorMatcher matcher;
+
+    SimpleSelector ss;
+    ss.type = SimpleSelectorType::PseudoClass;
+    ss.value = "checked";
+
+    CompoundSelector compound;
+    compound.simple_selectors.push_back(ss);
+    auto complex = make_simple_complex(compound);
+
+    ElementView checkbox;
+    checkbox.tag_name = "input";
+    checkbox.attributes = {{"type", "checkbox"}, {"checked", ""}};
+    EXPECT_TRUE(matcher.matches(checkbox, complex));
+
+    ElementView unchecked;
+    unchecked.tag_name = "input";
+    unchecked.attributes = {{"type", "checkbox"}};
+    EXPECT_FALSE(matcher.matches(unchecked, complex));
+}
+
+// ============================================================================
+// Cycle 422: Adjacent sibling (+) and general sibling (~) combinators
+// ============================================================================
+TEST(SelectorMatcherTest, AdjacentSiblingCombinator) {
+    SelectorMatcher matcher;
+
+    // Selector: div + p
+    CompoundSelector div_compound;
+    div_compound.simple_selectors.push_back(make_type_sel("div"));
+
+    CompoundSelector p_compound;
+    p_compound.simple_selectors.push_back(make_type_sel("p"));
+
+    auto complex = make_complex_chain({
+        {std::nullopt, div_compound},
+        {Combinator::NextSibling, p_compound}
+    });
+
+    ElementView div_elem;
+    div_elem.tag_name = "div";
+
+    ElementView p_elem;
+    p_elem.tag_name = "p";
+    p_elem.prev_sibling = &div_elem;
+
+    EXPECT_TRUE(matcher.matches(p_elem, complex));
+
+    // p with a span (not div) as immediately preceding sibling should not match
+    ElementView span_elem;
+    span_elem.tag_name = "span";
+
+    ElementView p_after_span;
+    p_after_span.tag_name = "p";
+    p_after_span.prev_sibling = &span_elem;
+
+    EXPECT_FALSE(matcher.matches(p_after_span, complex));
+}
+
+TEST(SelectorMatcherTest, GeneralSiblingCombinator) {
+    SelectorMatcher matcher;
+
+    // Selector: h1 ~ p
+    CompoundSelector h1_compound;
+    h1_compound.simple_selectors.push_back(make_type_sel("h1"));
+
+    CompoundSelector p_compound;
+    p_compound.simple_selectors.push_back(make_type_sel("p"));
+
+    auto complex = make_complex_chain({
+        {std::nullopt, h1_compound},
+        {Combinator::SubsequentSibling, p_compound}
+    });
+
+    ElementView h1_elem;
+    h1_elem.tag_name = "h1";
+
+    ElementView span_elem;
+    span_elem.tag_name = "span";
+    span_elem.prev_sibling = &h1_elem;
+
+    // p preceded by span which is preceded by h1 — h1 is a subsequent sibling, should match
+    ElementView p_elem;
+    p_elem.tag_name = "p";
+    p_elem.prev_sibling = &span_elem;
+
+    EXPECT_TRUE(matcher.matches(p_elem, complex));
+
+    // p with no preceding sibling should not match
+    ElementView p_alone;
+    p_alone.tag_name = "p";
+    p_alone.prev_sibling = nullptr;
+
+    EXPECT_FALSE(matcher.matches(p_alone, complex));
+}
