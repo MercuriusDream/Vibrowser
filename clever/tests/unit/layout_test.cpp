@@ -5580,3 +5580,65 @@ TEST(FlexboxAudit, FlexShrinkCanBeSet) {
     node->flex_shrink = 0.5f;
     EXPECT_FLOAT_EQ(node->flex_shrink, 0.5f);
 }
+
+// ============================================================================
+// Cycle 616: More layout tests
+// ============================================================================
+
+// Block: flex_basis can be set
+TEST(FlexboxAudit, FlexBasisCanBeSet) {
+    auto node = make_flex("div");
+    node->flex_basis = 100.0f;
+    EXPECT_FLOAT_EQ(node->flex_basis, 100.0f);
+}
+
+// Block: flex_basis defaults to -1 (auto sentinel)
+TEST(FlexboxAudit, FlexBasisDefaultsToAutoSentinel) {
+    auto node = make_flex("div");
+    EXPECT_FLOAT_EQ(node->flex_basis, -1.0f);
+}
+
+// Block: two children appended have count 2
+TEST(LayoutNodeTree, TwoChildrenCountIsTwo) {
+    auto parent = make_block("div");
+    auto c1 = make_block("span");
+    auto c2 = make_block("span");
+    parent->append_child(std::move(c1));
+    parent->append_child(std::move(c2));
+    EXPECT_EQ(parent->children.size(), 2u);
+}
+
+// Block: geometry.padding.right can be set
+TEST(LayoutNodeProps, GeometryPaddingRightCanBeSet) {
+    auto node = make_block("div");
+    node->geometry.padding.right = 20.0f;
+    EXPECT_FLOAT_EQ(node->geometry.padding.right, 20.0f);
+}
+
+// Block: geometry.margin.top can be set
+TEST(LayoutNodeProps, GeometryMarginTopCanBeSet) {
+    auto node = make_block("div");
+    node->geometry.margin.top = 8.0f;
+    EXPECT_FLOAT_EQ(node->geometry.margin.top, 8.0f);
+}
+
+// Block: geometry.border.left can be set
+TEST(LayoutNodeProps, GeometryBorderLeftCanBeSet) {
+    auto node = make_block("div");
+    node->geometry.border.left = 1.0f;
+    EXPECT_FLOAT_EQ(node->geometry.border.left, 1.0f);
+}
+
+// Flex: justify_content value 2 (space-around)
+TEST(FlexboxAudit, JustifyContentSpaceAroundValue) {
+    auto node = make_flex("div");
+    node->justify_content = 2;
+    EXPECT_EQ(node->justify_content, 2);
+}
+
+// Flex: align_items value 2 (flex-end)
+TEST(FlexboxAudit, AlignItemsFlexEndValue) {
+    auto node = make_flex("div");
+    node->align_items = 2;
+    EXPECT_EQ(node->align_items, 2);
+}
