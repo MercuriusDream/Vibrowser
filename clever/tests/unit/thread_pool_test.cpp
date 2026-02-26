@@ -491,3 +491,76 @@ TEST(ThreadPoolTest, TenTasksOnSingleThreadAllComplete) {
     for (auto& f : futures) f.get();
     EXPECT_EQ(results.size(), 10u);
 }
+
+// ============================================================================
+// Cycle 535: ThreadPool regression tests
+// ============================================================================
+
+// Two thread pool: submit returns std::pair
+TEST(ThreadPoolTest, SubmitReturnsPair) {
+    ThreadPool pool(2);
+    auto future = pool.submit([]() { return std::make_pair(3, 4); });
+    auto [a, b] = future.get();
+    EXPECT_EQ(a, 3);
+    EXPECT_EQ(b, 4);
+}
+
+// Thread pool with 2 threads: is_running initially true
+TEST(ThreadPoolTest, IsRunningTrueOnConstruct) {
+    ThreadPool pool(2);
+    EXPECT_TRUE(pool.is_running());
+}
+
+// Pool with 6 threads: size reports 6
+TEST(ThreadPoolTest, SixThreadPoolReportsSix) {
+    ThreadPool pool(6);
+    EXPECT_EQ(pool.size(), 6u);
+    EXPECT_TRUE(pool.is_running());
+}
+
+// Submit task that returns zero
+TEST(ThreadPoolTest, SubmitReturnsZero) {
+    ThreadPool pool(2);
+    auto future = pool.submit([]() { return 0; });
+    EXPECT_EQ(future.get(), 0);
+}
+
+// Submit returns long long value
+TEST(ThreadPoolTest, SubmitReturningLongLong) {
+    ThreadPool pool(2);
+    auto future = pool.submit([]() -> long long { return 9999999999LL; });
+    EXPECT_EQ(future.get(), 9999999999LL);
+}
+
+// Post 10 tasks then verify all run via shared counter
+TEST(ThreadPoolTest, PostTenTasksAllRun) {
+    ThreadPool pool(4);
+    std::atomic<int> counter{0};
+    for (int i = 0; i < 10; ++i) {
+        pool.post([&counter]() {
+            counter.fetch_add(1, std::memory_order_relaxed);
+        });
+    }
+    auto deadline = std::chrono::steady_clock::now() + 3s;
+    while (counter.load() < 10 && std::chrono::steady_clock::now() < deadline) {
+        std::this_thread::sleep_for(1ms);
+    }
+    EXPECT_EQ(counter.load(), 10);
+}
+
+// Submit with lambda that captures by value
+TEST(ThreadPoolTest, SubmitCaptureByValue) {
+    ThreadPool pool(2);
+    int x = 7;
+    auto future = pool.submit([x]() { return x * x; });
+    EXPECT_EQ(future.get(), 49);
+}
+
+// Submit 3 tasks: all complete and values are correct
+TEST(ThreadPoolTest, SubmitThreeTasksAllCorrect) {
+    ThreadPool pool(3);
+    auto f1 = pool.submit([]() { return 1; });
+    auto f2 = pool.submit([]() { return 2; });
+    auto f3 = pool.submit([]() { return 3; });
+    EXPECT_EQ(f1.get() + f2.get() + f3.get(), 6);
+}
