@@ -2185,3 +2185,60 @@ TEST(DomDocument, CreateTextNodeData) {
     ASSERT_NE(t, nullptr);
     EXPECT_EQ(t->data(), "hello world");
 }
+
+// ============================================================================
+// Cycle 642: More DOM tests
+// ============================================================================
+
+// Element: node_type is Element
+TEST(DomElement, NodeTypeIsElementV3) {
+    Element el("main");
+    EXPECT_EQ(el.node_type(), NodeType::Element);
+}
+
+// Text: node_type is Text
+TEST(DomText, NodeTypeIsTextV3) {
+    Text t("content");
+    EXPECT_EQ(t.node_type(), NodeType::Text);
+}
+
+// Comment: node_type is Comment
+TEST(DomComment, NodeTypeIsCommentV3) {
+    Comment c("note");
+    EXPECT_EQ(c.node_type(), NodeType::Comment);
+}
+
+// Element: append_child returns non-null child
+TEST(DomElement, AppendChildReturnsNonNull) {
+    Element parent("div");
+    auto child = std::make_unique<Element>("p");
+    Element* ptr = child.get();
+    parent.append_child(std::move(child));
+    EXPECT_NE(ptr, nullptr);
+    EXPECT_EQ(parent.child_count(), 1u);
+}
+
+// Element: first_child is nullptr when no children
+TEST(DomElement, FirstChildNullWhenEmpty) {
+    Element el("div");
+    EXPECT_EQ(el.first_child(), nullptr);
+}
+
+// Element: last_child is nullptr when no children
+TEST(DomElement, LastChildNullWhenEmpty) {
+    Element el("span");
+    EXPECT_EQ(el.last_child(), nullptr);
+}
+
+// Element: class_list is empty initially
+TEST(DomClassList, EmptyInitially) {
+    Element el("div");
+    EXPECT_TRUE(el.class_list().items().empty());
+}
+
+// Element: get_attribute returns nullopt for never-set key
+TEST(DomElement, GetAttributeNulloptForNeverSetKey) {
+    Element el("article");
+    auto val = el.get_attribute("data-missing");
+    EXPECT_FALSE(val.has_value());
+}
