@@ -11199,3 +11199,172 @@ TEST(JSEngine, ProxyGetTrap) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "true");
 }
+
+// ---------------------------------------------------------------------------
+// Cycle 449 — Reflect API, Object.assign, Object.create, structuredClone,
+//             template literals, tagged templates, destructuring defaults,
+//             rest parameters
+// ---------------------------------------------------------------------------
+
+TEST(JSEngine, ReflectAPI) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var checks = [];
+        var obj = {};
+        // Reflect.set / Reflect.get
+        Reflect.set(obj, 'x', 42);
+        checks.push(Reflect.get(obj, 'x') === 42);
+        // Reflect.has
+        checks.push(Reflect.has(obj, 'x') === true);
+        checks.push(Reflect.has(obj, 'y') === false);
+        // Reflect.deleteProperty
+        Reflect.deleteProperty(obj, 'x');
+        checks.push(Reflect.has(obj, 'x') === false);
+        // Reflect.ownKeys
+        var target = {a: 1, b: 2};
+        var keys = Reflect.ownKeys(target);
+        checks.push(keys.length === 2);
+        String(checks.every(function(c){return c;}))
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, ObjectAssign) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var checks = [];
+        var target = {a: 1};
+        var source = {b: 2, c: 3};
+        var result = Object.assign(target, source);
+        checks.push(result === target);  // returns target
+        checks.push(result.a === 1);
+        checks.push(result.b === 2);
+        checks.push(result.c === 3);
+        // Multiple sources
+        var combined = Object.assign({}, {x: 1}, {y: 2}, {z: 3});
+        checks.push(combined.x === 1 && combined.y === 2 && combined.z === 3);
+        String(checks.every(function(c){return c;}))
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, ObjectCreate) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var checks = [];
+        var proto = {greet: function() { return 'hello ' + this.name; }};
+        var obj = Object.create(proto);
+        obj.name = 'world';
+        checks.push(obj.greet() === 'hello world');
+        checks.push(Object.getPrototypeOf(obj) === proto);
+        // null prototype
+        var plain = Object.create(null);
+        checks.push(typeof plain === 'object');
+        String(checks.every(function(c){return c;}))
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, TemplateLiterals) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var checks = [];
+        var name = 'World';
+        var greeting = `Hello, ${name}!`;
+        checks.push(greeting === 'Hello, World!');
+        // Multi-line
+        var multi = `line1
+line2`;
+        checks.push(multi.indexOf('\n') !== -1);
+        // Expression interpolation
+        var a = 5, b = 3;
+        var expr = `${a} + ${b} = ${a + b}`;
+        checks.push(expr === '5 + 3 = 8');
+        // Nested template
+        var inner = 'inner';
+        var outer = `outer ${`nested ${inner}`} end`;
+        checks.push(outer === 'outer nested inner end');
+        String(checks.every(function(c){return c;}))
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, DestructuringDefaults) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var checks = [];
+        // Array destructuring with defaults
+        var [a = 1, b = 2, c = 3] = [10, 20];
+        checks.push(a === 10 && b === 20 && c === 3);  // c uses default
+        // Object destructuring with defaults
+        var {x = 100, y = 200} = {x: 5};
+        checks.push(x === 5 && y === 200);  // y uses default
+        // Renamed with defaults
+        var {p: pp = 99} = {};
+        checks.push(pp === 99);
+        String(checks.every(function(c){return c;}))
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, RestParameters) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var checks = [];
+        function sum(first, ...rest) {
+            return rest.reduce(function(acc, v) { return acc + v; }, first);
+        }
+        checks.push(sum(1, 2, 3, 4) === 10);
+        checks.push(sum(5) === 5);  // no rest args
+        // Rest must be an array
+        function f(...args) { return Array.isArray(args); }
+        checks.push(f(1, 2, 3) === true);
+        String(checks.every(function(c){return c;}))
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, JsonDeepClone) {
+    // structuredClone not available; use JSON parse/stringify for deep clone pattern
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var checks = [];
+        var original = {a: 1, b: {c: 2}, d: [3, 4]};
+        var clone = JSON.parse(JSON.stringify(original));
+        checks.push(clone !== original);  // different object
+        checks.push(clone.a === 1);
+        checks.push(clone.b.c === 2);
+        checks.push(clone.b !== original.b);  // deep copy
+        checks.push(clone.d[0] === 3);
+        checks.push(clone.d !== original.d);  // deep copy of array
+        String(checks.every(function(c){return c;}))
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, ObjectKeysValuesEntries) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var checks = [];
+        var obj = {a: 1, b: 2, c: 3};
+        var keys = Object.keys(obj);
+        checks.push(keys.length === 3);
+        checks.push(keys.indexOf('a') !== -1);
+        var values = Object.values(obj);
+        checks.push(values.length === 3);
+        checks.push(values.indexOf(2) !== -1);
+        var entries = Object.entries(obj);
+        checks.push(entries.length === 3);
+        checks.push(entries[0].length === 2);  // each entry is [key, value]
+        String(checks.every(function(c){return c;}))
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true");
+}
