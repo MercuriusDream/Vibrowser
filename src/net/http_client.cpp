@@ -498,6 +498,9 @@ bool parse_serialized_origin(const std::string& value, std::string& canonical_or
       return false;
     }
   } else {
+    if (parsed_host.size() > 253) {
+      return false;
+    }
     if (parsed_host.front() == '.' || parsed_host.back() == '.') {
       return false;
     }
@@ -507,6 +510,9 @@ bool parse_serialized_origin(const std::string& value, std::string& canonical_or
       const std::size_t label_end =
           (dot_pos == std::string::npos) ? parsed_host.size() : dot_pos;
       if (label_end == label_start) {
+        return false;
+      }
+      if (label_end - label_start > 63) {
         return false;
       }
       const unsigned char first = static_cast<unsigned char>(parsed_host[label_start]);
