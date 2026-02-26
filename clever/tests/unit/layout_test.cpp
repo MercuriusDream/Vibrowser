@@ -5700,3 +5700,57 @@ TEST(LayoutNodeProps, ZIndexDefaultsToZero) {
     auto node = make_block("div");
     EXPECT_EQ(node->z_index, 0);
 }
+
+// ============================================================================
+// Cycle 633: More LayoutNode property tests
+// ============================================================================
+
+// Block: display type is Block
+TEST(LayoutNodeProps, DisplayTypeIsBlock) {
+    auto node = make_block("div");
+    EXPECT_EQ(node->display, DisplayType::Block);
+}
+
+// Inline: display type is Inline
+TEST(LayoutNodeProps, DisplayTypeIsInline) {
+    auto node = make_inline("span");
+    EXPECT_EQ(node->display, DisplayType::Inline);
+}
+
+// Flex: display type is Flex
+TEST(LayoutNodeProps, DisplayTypeIsFlex) {
+    auto node = make_flex("div");
+    EXPECT_EQ(node->display, DisplayType::Flex);
+}
+
+// Block: tag_name is set
+TEST(LayoutNodeProps, TagNameIsSet) {
+    auto node = make_block("article");
+    EXPECT_EQ(node->tag_name, "article");
+}
+
+// Text: is_text flag set
+TEST(LayoutNodeProps, IsTextFlagSet) {
+    auto node = make_text("hello");
+    EXPECT_TRUE(node->is_text);
+}
+
+// Text: font size stored
+TEST(LayoutNodeProps, TextFontSizeStored) {
+    auto node = make_text("hello", 24.0f);
+    EXPECT_FLOAT_EQ(node->font_size, 24.0f);
+}
+
+// Block: min_width can be set
+TEST(LayoutNodeProps, MinWidthCanBeSet) {
+    auto node = make_block("div");
+    node->min_width = 50.0f;
+    EXPECT_FLOAT_EQ(node->min_width, 50.0f);
+}
+
+// Block: max_width can be set
+TEST(LayoutNodeProps, MaxWidthCanBeSet) {
+    auto node = make_block("div");
+    node->max_width = 800.0f;
+    EXPECT_FLOAT_EQ(node->max_width, 800.0f);
+}
