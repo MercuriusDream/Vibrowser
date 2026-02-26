@@ -97,6 +97,11 @@ std::optional<clever::url::URL> parse_httpish_url(std::string_view input) {
         has_invalid_request_url_octet(input)) {
         return std::nullopt;
     }
+    for (unsigned char ch : input) {
+        if (std::isspace(ch) != 0) {
+            return std::nullopt;
+        }
+    }
 
     auto parsed = clever::url::parse(input);
     if (!parsed.has_value()) {
@@ -104,6 +109,10 @@ std::optional<clever::url::URL> parse_httpish_url(std::string_view input) {
     }
 
     if (parsed->scheme != "http" && parsed->scheme != "https") {
+        return std::nullopt;
+    }
+    if (parsed->host.empty() || !parsed->username.empty() || !parsed->password.empty() ||
+        !parsed->fragment.empty()) {
         return std::nullopt;
     }
 
