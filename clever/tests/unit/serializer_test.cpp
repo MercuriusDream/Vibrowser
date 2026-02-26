@@ -1661,3 +1661,84 @@ TEST(SerializerTest, I64NegativeLargeValue) {
     EXPECT_EQ(d.read_i64(), -123456789012ll);
     EXPECT_FALSE(d.has_remaining());
 }
+
+// ============================================================================
+// Cycle 644: More Serializer tests
+// ============================================================================
+
+// Write 5 u8 values and verify each
+TEST(SerializerTest, FiveU8ValuesVerified) {
+    Serializer s;
+    for (uint8_t i = 0; i < 5; ++i) s.write_u8(i * 10);
+    Deserializer d(s.data());
+    for (uint8_t i = 0; i < 5; ++i) {
+        EXPECT_EQ(d.read_u8(), i * 10u);
+    }
+    EXPECT_FALSE(d.has_remaining());
+}
+
+// Write i32 zero
+TEST(SerializerTest, I32ZeroRoundTrip) {
+    Serializer s;
+    s.write_i32(0);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i32(), 0);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+// Write string with punctuation
+TEST(SerializerTest, StringWithPunctuation) {
+    Serializer s;
+    std::string str = "Hello, World!";
+    s.write_string(str);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), str);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+// Write u8 then string then bool sequence
+TEST(SerializerTest, U8StringBoolSequence) {
+    Serializer s;
+    s.write_u8(77);
+    s.write_string("test");
+    s.write_bool(true);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u8(), 77u);
+    EXPECT_EQ(d.read_string(), "test");
+    EXPECT_TRUE(d.read_bool());
+    EXPECT_FALSE(d.has_remaining());
+}
+
+// Write i64 zero
+TEST(SerializerTest, I64ZeroRoundTrip) {
+    Serializer s;
+    s.write_i64(0LL);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i64(), 0LL);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+// Deserializer: remaining is exact byte count for u32
+TEST(SerializerTest, RemainingIsExactForU32) {
+    Serializer s;
+    s.write_u32(42u);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.remaining(), 4u);
+}
+
+// Write u16 zero and max in sequence
+TEST(SerializerTest, U16ZeroAndMaxSequence) {
+    Serializer s;
+    s.write_u16(0);
+    s.write_u16(65535);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u16(), 0u);
+    EXPECT_EQ(d.read_u16(), 65535u);
+}
+
+// Data non-empty after writing string
+TEST(SerializerTest, DataNonEmptyAfterStringWrite) {
+    Serializer s;
+    s.write_string("data");
+    EXPECT_FALSE(s.data().empty());
+}
