@@ -5,13 +5,31 @@
 
 ## Current Status
 
-**Phase**: Active Development — Cycle 381 COMPLETE
-**Last Active**: 2026-02-26T19:42:15+0900
-**Current Focus**: CORS/CSP enforcement completion with strict legacy hexadecimal numeric-host serialized-origin fail-closed hardening
-**Momentum**: 3544 tests, ZERO failures, 2500+ features! v0.7.0! CYCLE 381 DONE! 203 BUGS FIXED!
-**Cycle**: 381
+**Phase**: Active Development — Cycle 382 COMPLETE
+**Last Active**: 2026-02-26T19:51:59+0900
+**Current Focus**: CORS/CSP enforcement completion with strict legacy shorthand dotted numeric-host serialized-origin fail-closed hardening
+**Momentum**: 3544 tests, ZERO failures, 2500+ features! v0.7.0! CYCLE 382 DONE! 204 BUGS FIXED!
+**Cycle**: 382
 
 ## Session Log
+
+### Cycle 382 — 2026-02-26 — Native+shared legacy shorthand dotted numeric-host serialized-origin fail-closed hardening
+- **CORS/CSP ENFORCEMENT (Priority 1)**: Hardened native and shared JS serialized-origin host validation to fail closed for legacy shorthand dotted numeric-host forms (for example `127.1`) so ambiguous numeric-host origins cannot pass CORS response checks, request eligibility, or outgoing Origin-header emission.
+- Updated native request policy behavior (`src/net/http_client.cpp`):
+  - tightened serialized-origin host validation in `parse_serialized_origin(...)`
+  - rejects all-digit dotted hosts unless they are strict canonical dotted-decimal IPv4 with exactly four octets
+- Updated shared JS CORS behavior (`clever/src/js/cors_policy.cpp`):
+  - tightened serialized-origin host validation in `has_valid_serialized_origin_host(...)`
+  - rejects all-digit dotted hosts with non-canonical shorthand part counts in request URL/document-origin/ACAO validation paths
+- Added regression coverage:
+  - `tests/test_request_policy.cpp`: rejects shorthand dotted numeric-host ACAO values and suppresses outgoing Origin header for shorthand dotted numeric-host policy origins
+  - `clever/tests/unit/cors_policy_test.cpp`: rejects shorthand dotted numeric-host request URLs and ACAO values in shared CORS checks
+- Validation:
+  - `cmake --build build_vibrowser --target test_request_policy test_request_contracts -j8 && ./build_vibrowser/test_request_policy && ./build_vibrowser/test_request_contracts`
+  - `cmake --build clever/build --target clever_js_cors_tests -j8 && ./clever/build/tests/unit/clever_js_cors_tests --gtest_filter='CORSPolicyTest.*'`
+- Files: `src/net/http_client.cpp`, `tests/test_request_policy.cpp`, `clever/src/js/cors_policy.cpp`, `clever/tests/unit/cors_policy_test.cpp`
+- **Targeted native + shared CORS suites green, no regressions.**
+- **Ledger divergence note**: `.claude/claude-estate.md` had newer mtime/content than `.codex/codex-estate.md` at cycle start (381 vs 379); `.claude` selected as source of truth for Cycle 382 and `.codex/codex-estate.md` replay sync remains blocked in this runtime (`Operation not permitted`).
 
 ### Cycle 381 — 2026-02-26 — Native+shared legacy hexadecimal numeric-host serialized-origin fail-closed hardening
 - **CORS/CSP ENFORCEMENT (Priority 1)**: Hardened native and shared JS serialized-origin host validation to fail closed for legacy hexadecimal numeric-host forms (for example `0x7f000001`, `0x7f.0x0.0x0.0x1`) so ambiguous numeric-host origins cannot pass CORS response checks, request eligibility, or outgoing Origin-header emission.
@@ -4024,6 +4042,8 @@
 
 | # | What | Files | Notes |
 |---|------|-------|-------|
+| 751 | Native+shared legacy shorthand dotted numeric-host serialized-origin fail-closed hardening | src/net/http_client.cpp, tests/test_request_policy.cpp, clever/src/js/cors_policy.cpp, clever/tests/unit/cors_policy_test.cpp | Rejects all-digit dotted shorthand numeric-host forms (for example `127.1`) unless host syntax is strict canonical four-octet dotted-decimal IPv4, so ambiguous numeric-host request/document/policy/ACAO origins fail closed across native/shared CORS response gating, request eligibility checks, and outgoing Origin-header emission |
+| 750 | Native+shared legacy hexadecimal numeric-host serialized-origin fail-closed hardening | src/net/http_client.cpp, tests/test_request_policy.cpp, clever/src/js/cors_policy.cpp, clever/tests/unit/cors_policy_test.cpp | Rejects legacy hexadecimal numeric-host forms (for example `0x7f000001`, `0x7f.0x0.0x0.0x1`) in native and shared JS serialized-origin parsing so ambiguous numeric-host request/document/policy/ACAO origins fail closed across CORS response gating, request eligibility checks, and outgoing Origin-header emission |
 | 749 | Native+shared legacy single-integer numeric-host serialized-origin fail-closed hardening | src/net/http_client.cpp, tests/test_request_policy.cpp, clever/src/js/cors_policy.cpp, clever/tests/unit/cors_policy_test.cpp | Rejects legacy single-token numeric hosts (for example `2130706433`) in native and shared JS serialized-origin parsing so ambiguous numeric-host request/document/policy/ACAO origins fail closed across CORS response gating, request eligibility checks, and outgoing Origin-header emission |
 | 748 | Native+shared canonical dotted-decimal IPv4 serialized-origin fail-closed hardening | src/net/http_client.cpp, tests/test_request_policy.cpp, clever/src/js/cors_policy.cpp, clever/tests/unit/cors_policy_test.cpp | Rejects non-canonical dotted-decimal IPv4 literal hosts with leading-zero octets (for example `001.2.3.4`) and invalid octet-width/range forms in native and shared JS serialized-origin parsing so malformed request/document/policy/ACAO origins fail closed across CORS response gating, eligibility checks, and outgoing Origin-header emission |
 | 747 | Native+shared dotted-decimal IPv4 serialized-origin fail-closed hardening | src/net/http_client.cpp, tests/test_request_policy.cpp, clever/src/js/cors_policy.cpp, clever/tests/unit/cors_policy_test.cpp | Rejects invalid dotted-decimal IPv4 literal hosts (for example `256.1.1.1`) in native and shared JS serialized-origin parsing so malformed request/document/policy/ACAO origins fail closed across CORS eligibility, response gating, and outgoing Origin-header emission |
@@ -4567,7 +4587,7 @@
 
 | Priority | What | Effort |
 |----------|------|--------|
-| 1 | CORS/CSP enforcement in fetch/XHR path (MC-08, FJNS-11) — PARTIAL: connect-src pre-dispatch + host-source (incl. bracketed IPv6 normalization, scheme-less source scheme/port inference, invalid-port rejection) + wildcard-port + default-src fallback + canonical origin normalization + credentialed CORS ACAO/ACAC gate + strict ACAO single-value/case-insensitive CORS header handling + duplicate case-variant ACAO/ACAC rejection + serialized-origin ACAO enforcement + null-origin ACAO handling + dot-segment/encoded-traversal-safe path matching + websocket (`ws`/`wss`) default-port enforcement + effective-URL parse fail-closed CORS gate + strict ACAO/ACAC control-character rejection + strict request-Origin serialized-origin validation for both CORS evaluation and outgoing header emission + policy-origin serialized-origin fail-closed enforcement for request/CSP checks + strict non-HTTP(S) serialized-origin scheme rejection for request-policy/CORS + strict native serialized-origin percent-escaped authority fail-closed rejection + strict native serialized-origin authority backslash fail-closed rejection + strict native serialized-origin empty explicit-port fail-closed rejection + strict native serialized-origin non-IPv6 host-length fail-closed rejection + strict native serialized-origin dotted-decimal IPv4 fail-closed rejection + strict native/shared non-canonical dotted-decimal IPv4 (leading-zero octet) fail-closed rejection + strict native/shared legacy hexadecimal numeric-host fail-closed rejection + shared JS CORS helper malformed ACAO/ACAC fail-closed rejection + strict shared JS malformed document-origin fail-closed validation + strict shared JS malformed/unsupported request-URL fail-closed validation + strict shared JS request-URL surrounding-whitespace fail-closed validation + strict shared JS request-URL control/non-ASCII octet fail-closed validation + strict shared JS request-URL embedded-whitespace/userinfo/fragment fail-closed validation + strict shared JS request-URL empty-port authority fail-closed validation + strict shared JS request-URL authority percent-escape fail-closed validation + strict shared JS request-URL dotted-decimal IPv4 fail-closed validation + strict shared JS null/empty document-origin fail-closed enforcement + strict shared JS malformed ACAO authority/port fail-closed validation + strict shared JS non-ASCII ACAO/ACAC/header-origin octet fail-closed validation + strict shared JS serialized-origin/header surrounding-whitespace fail-closed validation + strict fetch/XHR unsupported-scheme pre-dispatch fail-closed request gate + strict unsupported-scheme cookie-attach suppression + strict native serialized-origin embedded/surrounding-whitespace and strict native ACAO/ACAC surrounding-whitespace fail-closed rejection + strict native optional ACAC non-literal/non-ASCII/comma-separated fail-closed rejection DONE (Cycles 275-276, 278, 280-293, 306-307, 320, 326-329, 348-352, 355-381) | Large |
+| 1 | CORS/CSP enforcement in fetch/XHR path (MC-08, FJNS-11) — PARTIAL: connect-src pre-dispatch + host-source (incl. bracketed IPv6 normalization, scheme-less source scheme/port inference, invalid-port rejection) + wildcard-port + default-src fallback + canonical origin normalization + credentialed CORS ACAO/ACAC gate + strict ACAO single-value/case-insensitive CORS header handling + duplicate case-variant ACAO/ACAC rejection + serialized-origin ACAO enforcement + null-origin ACAO handling + dot-segment/encoded-traversal-safe path matching + websocket (`ws`/`wss`) default-port enforcement + effective-URL parse fail-closed CORS gate + strict ACAO/ACAC control-character rejection + strict request-Origin serialized-origin validation for both CORS evaluation and outgoing header emission + policy-origin serialized-origin fail-closed enforcement for request/CSP checks + strict non-HTTP(S) serialized-origin scheme rejection for request-policy/CORS + strict native serialized-origin percent-escaped authority fail-closed rejection + strict native serialized-origin authority backslash fail-closed rejection + strict native serialized-origin empty explicit-port fail-closed rejection + strict native serialized-origin non-IPv6 host-length fail-closed rejection + strict native serialized-origin dotted-decimal IPv4 fail-closed rejection + strict native/shared non-canonical dotted-decimal IPv4 (leading-zero octet) fail-closed rejection + strict native/shared legacy shorthand dotted numeric-host fail-closed rejection + strict native/shared legacy hexadecimal numeric-host fail-closed rejection + shared JS CORS helper malformed ACAO/ACAC fail-closed rejection + strict shared JS malformed document-origin fail-closed validation + strict shared JS malformed/unsupported request-URL fail-closed validation + strict shared JS request-URL surrounding-whitespace fail-closed validation + strict shared JS request-URL control/non-ASCII octet fail-closed validation + strict shared JS request-URL embedded-whitespace/userinfo/fragment fail-closed validation + strict shared JS request-URL empty-port authority fail-closed validation + strict shared JS request-URL authority percent-escape fail-closed validation + strict shared JS request-URL dotted-decimal IPv4 fail-closed validation + strict shared JS null/empty document-origin fail-closed enforcement + strict shared JS malformed ACAO authority/port fail-closed validation + strict shared JS non-ASCII ACAO/ACAC/header-origin octet fail-closed validation + strict shared JS serialized-origin/header surrounding-whitespace fail-closed validation + strict fetch/XHR unsupported-scheme pre-dispatch fail-closed request gate + strict unsupported-scheme cookie-attach suppression + strict native serialized-origin embedded/surrounding-whitespace and strict native ACAO/ACAC surrounding-whitespace fail-closed rejection + strict native optional ACAC non-literal/non-ASCII/comma-separated fail-closed rejection DONE (Cycles 275-276, 278, 280-293, 306-307, 320, 326-329, 348-352, 355-382) | Large |
 | 2 | ~~TLS certificate verification policy hardening (FJNS-06)~~ DONE (Cycle 276) | ~~Medium~~ |
 | 3 | ~~Fetch/XHR origin header + ACAO response gate~~ DONE (Cycle 274) | ~~Medium~~ |
 | 4 | HTTP/2 transport (MC-12) — PARTIAL: protocol-version capture + explicit rejection guardrails for HTTP/2 preface/status-line/TLS ALPN/outbound `Upgrade` request/outbound `HTTP2-Settings` request-header/outbound pseudo-header requests/`101` upgrade/`426` upgrade-required responses + unsupported status-version rejection allowlisting HTTP/1.0/HTTP/1.1 + preface trailing/tab-whitespace variants + tab-separated status-line variant + whitespace-padded request-header name variant hardening + quoted/single-quoted upgrade-token variant hardening + quoted comma-contained upgrade-token split hardening + escaped quoted-string upgrade-token normalization hardening + escaped-comma delimiter hardening + malformed unterminated-token explicit rejection hardening + control-character malformed token explicit rejection hardening + malformed bare backslash-escape token explicit rejection hardening + malformed unterminated quoted-parameter token explicit rejection hardening + malformed upgrade token-character fail-closed hardening + strict non-ASCII upgrade-token rejection hardening + strict HTTP2-Settings token68 validation and duplicate-header fail-closed hardening + strict Transfer-Encoding `chunked` exact-token parsing hardening + strict malformed Transfer-Encoding delimiter/quoted-token rejection hardening + strict Transfer-Encoding `chunked` final-position/no-parameter enforcement hardening + strict Transfer-Encoding control-character token rejection hardening + strict non-ASCII Transfer-Encoding token rejection hardening + strict unsupported/malformed Transfer-Encoding fail-closed rejection hardening DONE (Cycles 294-305, 308-319, 321-325, 330-332) | Large |
@@ -4588,12 +4608,12 @@
 | Metric | Value |
 |--------|-------|
 | Total Sessions | 147 |
-| Total Cycles | 381 |
+| Total Cycles | 382 |
 | Files Created | ~135 |
 | Files Modified | 100+ |
 | Lines Added (est.) | 173400+ |
 | Tests Added | 3544 |
-| Bugs Fixed | 203 |
+| Bugs Fixed | 204 |
 | Features Added | 2501 |
 
 ## Tell The Next Claude
@@ -4602,12 +4622,18 @@
 
 Build: `cd clever && cmake -S . -B build && cmake --build build && ctest --test-dir build`
 
-**3544 tests, 12 libraries (QuickJS!), 1 macOS app, ZERO warnings. v0.7.0. CYCLE 381! 2500+ FEATURES! 203 BUGS FIXED! ANTHROPIC.COM LOADS!**
+**3544 tests, 12 libraries (QuickJS!), 1 macOS app, ZERO warnings. v0.7.0. CYCLE 382! 2500+ FEATURES! 204 BUGS FIXED! ANTHROPIC.COM LOADS!**
 
 **Current implementation vs full browser comparison**:
 - Current implementation: robust single-process browser shell with full JS engine integration, broad DOM/CSS/Fetch coverage, and hardened HTTP/1.x/CORS/CSP policy enforcement.
 - Full browser target: still missing major subsystems like full multi-process isolation, full HTTP/2+/QUIC transport stack, and complete production-grade web font pipeline coverage.
-- Progress snapshot: from early scaffolding to 381 completed cycles, 3544 tests, and 2500+ implemented features.
+- Progress snapshot: from early scaffolding to 382 completed cycles, 3544 tests, and 2500+ implemented features.
+
+**Cycle 382 — Native+shared legacy shorthand dotted numeric-host serialized-origin fail-closed hardening**:
+- Hardened serialized-origin host validation in both `src/net/http_client.cpp` and `clever/src/js/cors_policy.cpp` so legacy shorthand dotted numeric-host forms (for example `127.1`) fail closed unless host syntax is strict canonical four-octet dotted-decimal IPv4.
+- Added focused regression coverage in `tests/test_request_policy.cpp` and `clever/tests/unit/cors_policy_test.cpp` for shorthand dotted numeric-host ACAO/policy-origin/request-url handling.
+- Rebuilt and re-ran `test_request_policy`, `test_request_contracts`, and `clever_js_cors_tests --gtest_filter='CORSPolicyTest.*'`, all green.
+- **Ledger divergence note**: `.claude/claude-estate.md` had newer mtime/content than `.codex/codex-estate.md` at cycle start (381 vs 379); `.claude` selected as source of truth for Cycle 382 and `.codex/codex-estate.md` replay sync remains blocked in this runtime (`Operation not permitted`).
 
 **Cycle 381 — Native+shared legacy hexadecimal numeric-host serialized-origin fail-closed hardening**:
 - Hardened serialized-origin host validation in both `src/net/http_client.cpp` and `clever/src/js/cors_policy.cpp` so legacy hexadecimal numeric-host forms (for example `0x7f000001`, `0x7f.0x0.0x0.0x1`) fail closed before CORS acceptance, request eligibility, or Origin-header emission.

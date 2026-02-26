@@ -549,7 +549,10 @@ bool parse_serialized_origin(const std::string& value, std::string& canonical_or
         label_start = dot_pos + 1;
       }
     }
-    if (dotted_decimal_candidate && dot_count == 3) {
+    if (dotted_decimal_candidate) {
+      if (dot_count != 3) {
+        return false;
+      }
       std::size_t octet_start = 0;
       while (octet_start <= parsed_host.size()) {
         const std::size_t dot_pos = parsed_host.find('.', octet_start);
