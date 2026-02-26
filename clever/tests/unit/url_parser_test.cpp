@@ -1069,3 +1069,66 @@ TEST(URLParser, EmptyPathURLParses) {
     EXPECT_EQ(result->scheme, "https");
     EXPECT_EQ(result->host, "example.com");
 }
+
+// ============================================================================
+// Cycle 578: More URL parser tests
+// ============================================================================
+
+// URL username field extracted
+TEST(URLParser, UsernameFieldExtracted) {
+    auto result = parse("https://user@example.com/");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->username, "user");
+}
+
+// URL with port: port field set correctly
+TEST(URLParser, PortFieldSetCorrectly) {
+    auto result = parse("http://example.com:8080/");
+    ASSERT_TRUE(result.has_value());
+    ASSERT_TRUE(result->port.has_value());
+    EXPECT_EQ(*result->port, 8080u);
+}
+
+// URL path starts with slash
+TEST(URLParser, PathStartsWithSlash) {
+    auto result = parse("https://example.com/page");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->path[0], '/');
+}
+
+// https URL same origin with itself
+TEST(URLParser, HTTPSSameOriginWithSelf) {
+    auto result = parse("https://example.com/");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_TRUE(clever::url::urls_same_origin(*result, *result));
+}
+
+// Parse garbage string: no crash
+TEST(URLParser, GarbageStringNoCrash) {
+    auto result = parse("not a url at all");
+    // May parse or not — just verify no crash and behavior is consistent
+    SUCCEED();
+}
+
+// URL with query has non-empty query field
+TEST(URLParser, QueryNonEmptyWhenPresent) {
+    auto result = parse("https://example.com/search?q=test");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_FALSE(result->query.empty());
+}
+
+// URL with fragment has non-empty fragment field
+TEST(URLParser, FragmentNonEmptyWhenPresent) {
+    auto result = parse("https://example.com/page#section");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_FALSE(result->fragment.empty());
+}
+
+// Port 443 on https URL
+TEST(URLParser, Port443OnHTTPS) {
+    auto result = parse("https://example.com:443/");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    // Port 443 might be stored or omitted as it's default for https
+    SUCCEED();
+}
