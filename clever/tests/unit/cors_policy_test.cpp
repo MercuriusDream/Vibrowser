@@ -687,3 +687,62 @@ TEST(CORSPolicyTest, ExactOriginMatchAllowsCredentialedRequest) {
     EXPECT_TRUE(cors_allows_response("https://app.example", "https://api.example/data",
                                      headers, true));
 }
+
+// ============================================================================
+// Cycle 568: More CORS policy tests
+// ============================================================================
+
+// has_enforceable_document_origin: http:// origin is enforceable
+TEST(CORSPolicyTest, HttpOriginIsEnforceable) {
+    EXPECT_TRUE(has_enforceable_document_origin("http://example.com"));
+}
+
+// has_enforceable_document_origin: subdomain is enforceable
+TEST(CORSPolicyTest, SubdomainOriginIsEnforceable) {
+    EXPECT_TRUE(has_enforceable_document_origin("https://api.example.com"));
+}
+
+// is_cors_eligible_request_url: file: is not eligible
+TEST(CORSPolicyTest, FileURLNotCORSEligible) {
+    EXPECT_FALSE(is_cors_eligible_request_url("file:///etc/passwd"));
+}
+
+// is_cross_origin: different subdomain is cross-origin
+TEST(CORSPolicyTest, DifferentSubdomainIsCrossOrigin) {
+    EXPECT_TRUE(is_cross_origin("https://app.example.com", "https://api.example.com/resource"));
+}
+
+// cors_allows_response: no ACAO header blocks request
+TEST(CORSPolicyTest, NoACAOHeaderBlocksResponse) {
+    clever::net::HeaderMap headers;
+    // No Access-Control-Allow-Origin set
+    EXPECT_FALSE(cors_allows_response("https://app.example.com",
+                                      "https://api.example.com/data",
+                                      headers, false));
+}
+
+// cors_allows_response: wildcard allows non-credentialed from any origin
+TEST(CORSPolicyTest, WildcardACAOAllowsAnyOrigin) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "*");
+    EXPECT_TRUE(cors_allows_response("https://any.origin.example",
+                                     "https://api.example.com/data",
+                                     headers, false));
+}
+
+// cors_allows_response: mismatched ACAO blocks response
+TEST(CORSPolicyTest, MismatchedACAOBlocksResponse) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "https://other.example.com");
+    EXPECT_FALSE(cors_allows_response("https://app.example.com",
+                                      "https://api.example.com/data",
+                                      headers, false));
+}
+
+// normalize_outgoing_origin_header: same-origin request sets no Origin header
+TEST(CORSPolicyTest, SameOriginRequestSetsNoOriginHeader) {
+    clever::net::HeaderMap req_headers;
+    normalize_outgoing_origin_header(req_headers,
+        "https://example.com", "https://example.com/api/data");
+    EXPECT_FALSE(req_headers.has("Origin"));
+}
