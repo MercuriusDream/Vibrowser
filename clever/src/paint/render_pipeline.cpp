@@ -175,6 +175,12 @@ std::string extract_preferred_font_url(const std::string& src) {
 
         return trim(entry.substr(open + 1, close - open - 1));
     };
+    auto has_function_call = [&](const std::string& entry,
+                                 const std::string& function_name) -> bool {
+        const std::string lower_entry = to_lower(entry);
+        const std::string lower_function_name = to_lower(function_name);
+        return lower_entry.find(lower_function_name + "(") != std::string::npos;
+    };
 
     auto split_csv_tokens = [&](const std::string& value) -> std::vector<std::string> {
         std::vector<std::string> tokens;
@@ -251,7 +257,9 @@ std::string extract_preferred_font_url(const std::string& src) {
         }
         if (url.empty()) continue;
 
+        const bool has_format_descriptor = has_function_call(entry, "format");
         const std::string format_value = parse_function_arg(entry, "format");
+        if (has_format_descriptor && format_value.empty()) continue;
         if (!format_value.empty()) {
             bool has_supported_format = false;
             for (auto format_token : split_csv_tokens(format_value)) {
@@ -271,7 +279,9 @@ std::string extract_preferred_font_url(const std::string& src) {
             if (!has_supported_format) continue;
         }
 
+        const bool has_tech_descriptor = has_function_call(entry, "tech");
         const std::string tech_value = parse_function_arg(entry, "tech");
+        if (has_tech_descriptor && tech_value.empty()) continue;
         if (!tech_value.empty()) {
             bool has_supported_tech = false;
             for (auto tech_token : split_csv_tokens(tech_value)) {
