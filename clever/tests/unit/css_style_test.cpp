@@ -7780,3 +7780,170 @@ TEST(PropertyCascadeTest, TransitionBehaviorAndAnimationRange) {
     cascade.apply_declaration(style, make_decl("animation-range", "entry 0% exit 100%"), parent);
     EXPECT_EQ(style.animation_range, "entry 0% exit 100%");
 }
+
+// ---------------------------------------------------------------------------
+// Cycle 458 — justify-items, align-content, inset, overflow-block/inline,
+//             box-decoration-break, margin-trim
+// ---------------------------------------------------------------------------
+
+TEST(PropertyCascadeTest, JustifyItemsValues) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.justify_items, 3);  // default: stretch
+
+    cascade.apply_declaration(style, make_decl("justify-items", "start"), parent);
+    EXPECT_EQ(style.justify_items, 0);
+
+    cascade.apply_declaration(style, make_decl("justify-items", "end"), parent);
+    EXPECT_EQ(style.justify_items, 1);
+
+    cascade.apply_declaration(style, make_decl("justify-items", "center"), parent);
+    EXPECT_EQ(style.justify_items, 2);
+
+    cascade.apply_declaration(style, make_decl("justify-items", "stretch"), parent);
+    EXPECT_EQ(style.justify_items, 3);
+}
+
+TEST(PropertyCascadeTest, AlignContentValues) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.align_content, 0);  // default: start
+
+    cascade.apply_declaration(style, make_decl("align-content", "end"), parent);
+    EXPECT_EQ(style.align_content, 1);
+
+    cascade.apply_declaration(style, make_decl("align-content", "center"), parent);
+    EXPECT_EQ(style.align_content, 2);
+
+    cascade.apply_declaration(style, make_decl("align-content", "stretch"), parent);
+    EXPECT_EQ(style.align_content, 3);
+
+    cascade.apply_declaration(style, make_decl("align-content", "space-between"), parent);
+    EXPECT_EQ(style.align_content, 4);
+
+    cascade.apply_declaration(style, make_decl("align-content", "space-around"), parent);
+    EXPECT_EQ(style.align_content, 5);
+}
+
+TEST(PropertyCascadeTest, InsetShorthandAllValues) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    // inset with 4 values sets top/right/bottom/left and upgrades position to relative
+    cascade.apply_declaration(style, make_decl("inset", "10px 20px 30px 40px"), parent);
+    EXPECT_FLOAT_EQ(style.top.to_px(0), 10.0f);
+    EXPECT_FLOAT_EQ(style.right_pos.to_px(0), 20.0f);
+    EXPECT_FLOAT_EQ(style.bottom.to_px(0), 30.0f);
+    EXPECT_FLOAT_EQ(style.left_pos.to_px(0), 40.0f);
+    EXPECT_EQ(style.position, Position::Relative);
+}
+
+TEST(PropertyCascadeTest, InsetBlockAndInline) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    // inset-block sets top+bottom
+    cascade.apply_declaration(style, make_decl("inset-block", "15px 25px"), parent);
+    EXPECT_FLOAT_EQ(style.top.to_px(0), 15.0f);
+    EXPECT_FLOAT_EQ(style.bottom.to_px(0), 25.0f);
+
+    // inset-inline sets left+right
+    cascade.apply_declaration(style, make_decl("inset-inline", "5px 8px"), parent);
+    EXPECT_FLOAT_EQ(style.left_pos.to_px(0), 5.0f);
+    EXPECT_FLOAT_EQ(style.right_pos.to_px(0), 8.0f);
+}
+
+TEST(PropertyCascadeTest, InsetLogicalLonghands) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("inset-block-start", "10px"), parent);
+    EXPECT_FLOAT_EQ(style.top.to_px(0), 10.0f);
+
+    cascade.apply_declaration(style, make_decl("inset-block-end", "20px"), parent);
+    EXPECT_FLOAT_EQ(style.bottom.to_px(0), 20.0f);
+
+    cascade.apply_declaration(style, make_decl("inset-inline-start", "30px"), parent);
+    EXPECT_FLOAT_EQ(style.left_pos.to_px(0), 30.0f);
+
+    cascade.apply_declaration(style, make_decl("inset-inline-end", "40px"), parent);
+    EXPECT_FLOAT_EQ(style.right_pos.to_px(0), 40.0f);
+}
+
+TEST(PropertyCascadeTest, OverflowBlockAndInlineValues) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.overflow_block, 0);   // default: visible
+    EXPECT_EQ(style.overflow_inline, 0);  // default: visible
+
+    cascade.apply_declaration(style, make_decl("overflow-block", "hidden"), parent);
+    EXPECT_EQ(style.overflow_block, 1);
+
+    cascade.apply_declaration(style, make_decl("overflow-block", "scroll"), parent);
+    EXPECT_EQ(style.overflow_block, 2);
+
+    cascade.apply_declaration(style, make_decl("overflow-block", "clip"), parent);
+    EXPECT_EQ(style.overflow_block, 4);
+
+    cascade.apply_declaration(style, make_decl("overflow-inline", "auto"), parent);
+    EXPECT_EQ(style.overflow_inline, 3);
+
+    cascade.apply_declaration(style, make_decl("overflow-inline", "hidden"), parent);
+    EXPECT_EQ(style.overflow_inline, 1);
+}
+
+TEST(PropertyCascadeTest, BoxDecorationBreak) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.box_decoration_break, 0);  // default: slice
+
+    cascade.apply_declaration(style, make_decl("box-decoration-break", "clone"), parent);
+    EXPECT_EQ(style.box_decoration_break, 1);
+
+    cascade.apply_declaration(style, make_decl("box-decoration-break", "slice"), parent);
+    EXPECT_EQ(style.box_decoration_break, 0);
+
+    // -webkit alias
+    cascade.apply_declaration(style, make_decl("-webkit-box-decoration-break", "clone"), parent);
+    EXPECT_EQ(style.box_decoration_break, 1);
+}
+
+TEST(PropertyCascadeTest, MarginTrimValues) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.margin_trim, 0);  // default: none
+
+    cascade.apply_declaration(style, make_decl("margin-trim", "block"), parent);
+    EXPECT_EQ(style.margin_trim, 1);
+
+    cascade.apply_declaration(style, make_decl("margin-trim", "inline"), parent);
+    EXPECT_EQ(style.margin_trim, 2);
+
+    cascade.apply_declaration(style, make_decl("margin-trim", "block-start"), parent);
+    EXPECT_EQ(style.margin_trim, 3);
+
+    cascade.apply_declaration(style, make_decl("margin-trim", "block-end"), parent);
+    EXPECT_EQ(style.margin_trim, 4);
+
+    cascade.apply_declaration(style, make_decl("margin-trim", "inline-start"), parent);
+    EXPECT_EQ(style.margin_trim, 5);
+
+    cascade.apply_declaration(style, make_decl("margin-trim", "inline-end"), parent);
+    EXPECT_EQ(style.margin_trim, 6);
+
+    cascade.apply_declaration(style, make_decl("margin-trim", "none"), parent);
+    EXPECT_EQ(style.margin_trim, 0);
+}
