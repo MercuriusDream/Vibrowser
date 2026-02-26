@@ -7633,3 +7633,150 @@ TEST(PropertyCascadeTest, SvgShapeRenderingAndVectorEffect) {
     cascade.apply_declaration(style, make_decl("vector-effect", "none"), parent);
     EXPECT_EQ(style.vector_effect, 0);
 }
+
+// ---------------------------------------------------------------------------
+// Cycle 457 — scroll-snap, scrollbar, CSS motion path, CSS Transforms L2
+// ---------------------------------------------------------------------------
+
+TEST(PropertyCascadeTest, ScrollSnapTypeAndAlign) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.scroll_snap_type, "");
+    EXPECT_EQ(style.scroll_snap_align, "");
+
+    cascade.apply_declaration(style, make_decl("scroll-snap-type", "y mandatory"), parent);
+    EXPECT_EQ(style.scroll_snap_type, "y mandatory");
+
+    cascade.apply_declaration(style, make_decl("scroll-snap-align", "start"), parent);
+    EXPECT_EQ(style.scroll_snap_align, "start");
+
+    cascade.apply_declaration(style, make_decl("scroll-snap-align", "center end"), parent);
+    EXPECT_EQ(style.scroll_snap_align, "center end");
+}
+
+TEST(PropertyCascadeTest, ScrollSnapStop) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.scroll_snap_stop, 0);  // default: normal
+
+    cascade.apply_declaration(style, make_decl("scroll-snap-stop", "always"), parent);
+    EXPECT_EQ(style.scroll_snap_stop, 1);
+
+    cascade.apply_declaration(style, make_decl("scroll-snap-stop", "normal"), parent);
+    EXPECT_EQ(style.scroll_snap_stop, 0);
+}
+
+TEST(PropertyCascadeTest, ScrollbarWidthValues) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.scrollbar_width, 0);  // default: auto
+
+    cascade.apply_declaration(style, make_decl("scrollbar-width", "thin"), parent);
+    EXPECT_EQ(style.scrollbar_width, 1);
+
+    cascade.apply_declaration(style, make_decl("scrollbar-width", "none"), parent);
+    EXPECT_EQ(style.scrollbar_width, 2);
+
+    cascade.apply_declaration(style, make_decl("scrollbar-width", "auto"), parent);
+    EXPECT_EQ(style.scrollbar_width, 0);
+}
+
+TEST(PropertyCascadeTest, ScrollbarGutterValues) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.scrollbar_gutter, 0);  // default: auto
+
+    cascade.apply_declaration(style, make_decl("scrollbar-gutter", "stable"), parent);
+    EXPECT_EQ(style.scrollbar_gutter, 1);
+
+    cascade.apply_declaration(style, make_decl("scrollbar-gutter", "stable both-edges"), parent);
+    EXPECT_EQ(style.scrollbar_gutter, 2);
+
+    cascade.apply_declaration(style, make_decl("scrollbar-gutter", "auto"), parent);
+    EXPECT_EQ(style.scrollbar_gutter, 0);
+}
+
+TEST(PropertyCascadeTest, ScrollbarColorAuto) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    // Default: both zero (unset)
+    EXPECT_EQ(style.scrollbar_thumb_color, 0u);
+    EXPECT_EQ(style.scrollbar_track_color, 0u);
+
+    // "auto" clears back to 0
+    cascade.apply_declaration(style, make_decl("scrollbar-color", "auto"), parent);
+    EXPECT_EQ(style.scrollbar_thumb_color, 0u);
+    EXPECT_EQ(style.scrollbar_track_color, 0u);
+}
+
+TEST(PropertyCascadeTest, CssMotionOffsetPath) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.offset_path, "none");
+    EXPECT_FLOAT_EQ(style.offset_distance, 0.0f);
+    EXPECT_EQ(style.offset_rotate, "auto");
+
+    cascade.apply_declaration(style, make_decl("offset-path", "path('M 0 0 L 100 100')"), parent);
+    EXPECT_EQ(style.offset_path, "path('M 0 0 L 100 100')");
+
+    cascade.apply_declaration(style, make_decl("offset-distance", "50px"), parent);
+    EXPECT_FLOAT_EQ(style.offset_distance, 50.0f);
+
+    cascade.apply_declaration(style, make_decl("offset-rotate", "45deg"), parent);
+    EXPECT_EQ(style.offset_rotate, "45deg");
+
+    cascade.apply_declaration(style, make_decl("offset-path", "none"), parent);
+    EXPECT_EQ(style.offset_path, "none");
+}
+
+TEST(PropertyCascadeTest, CssTransformsLevel2IndividualProperties) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.css_rotate, "none");
+    EXPECT_EQ(style.css_scale, "none");
+    EXPECT_EQ(style.css_translate, "none");
+
+    cascade.apply_declaration(style, make_decl("rotate", "45deg"), parent);
+    EXPECT_EQ(style.css_rotate, "45deg");
+
+    cascade.apply_declaration(style, make_decl("scale", "1.5"), parent);
+    EXPECT_EQ(style.css_scale, "1.5");
+
+    cascade.apply_declaration(style, make_decl("translate", "10px 20px"), parent);
+    EXPECT_EQ(style.css_translate, "10px 20px");
+
+    cascade.apply_declaration(style, make_decl("rotate", "none"), parent);
+    EXPECT_EQ(style.css_rotate, "none");
+}
+
+TEST(PropertyCascadeTest, TransitionBehaviorAndAnimationRange) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.transition_behavior, 0);  // default: normal
+    EXPECT_EQ(style.animation_range, "normal");
+
+    cascade.apply_declaration(style, make_decl("transition-behavior", "allow-discrete"), parent);
+    EXPECT_EQ(style.transition_behavior, 1);
+
+    cascade.apply_declaration(style, make_decl("transition-behavior", "normal"), parent);
+    EXPECT_EQ(style.transition_behavior, 0);
+
+    cascade.apply_declaration(style, make_decl("animation-range", "entry 0% exit 100%"), parent);
+    EXPECT_EQ(style.animation_range, "entry 0% exit 100%");
+}
