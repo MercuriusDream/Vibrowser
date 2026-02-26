@@ -1241,3 +1241,101 @@ TEST(SerializerTest, U64ZeroRoundTripV2) {
     EXPECT_EQ(d.read_u64(), 0ULL);
     EXPECT_FALSE(d.has_remaining());
 }
+
+// ============================================================================
+// Cycle 588: More serializer tests
+// ============================================================================
+
+// i32 round trip: zero
+TEST(SerializerTest, RoundTripI32Zero) {
+    Serializer s;
+    s.write_i32(0);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i32(), 0);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+// Alternating u8 and bool
+TEST(SerializerTest, AlternatingU8AndBool) {
+    Serializer s;
+    s.write_u8(77u);
+    s.write_bool(true);
+    s.write_u8(88u);
+    s.write_bool(false);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u8(), 77u);
+    EXPECT_TRUE(d.read_bool());
+    EXPECT_EQ(d.read_u8(), 88u);
+    EXPECT_FALSE(d.read_bool());
+    EXPECT_FALSE(d.has_remaining());
+}
+
+// Five u16 values round trip
+TEST(SerializerTest, FiveU16ValuesRoundTrip) {
+    Serializer s;
+    for (uint16_t i = 0; i < 5; ++i) {
+        s.write_u16(static_cast<uint16_t>(i * 1000));
+    }
+    Deserializer d(s.data());
+    for (uint16_t i = 0; i < 5; ++i) {
+        EXPECT_EQ(d.read_u16(), static_cast<uint16_t>(i * 1000));
+    }
+    EXPECT_FALSE(d.has_remaining());
+}
+
+// i64 round trip: zero
+TEST(SerializerTest, RoundTripI64Zero) {
+    Serializer s;
+    s.write_i64(0LL);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i64(), 0LL);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+// Bytes of size 8 round trip
+TEST(SerializerTest, EightBytesRoundTrip) {
+    Serializer s;
+    std::vector<uint8_t> payload = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08};
+    s.write_bytes(payload.data(), payload.size());
+    Deserializer d(s.data());
+    auto result = d.read_bytes();
+    EXPECT_EQ(result, payload);
+}
+
+// String then i64
+TEST(SerializerTest, StringThenI64RoundTrip) {
+    Serializer s;
+    s.write_string("test");
+    s.write_i64(-42LL);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "test");
+    EXPECT_EQ(d.read_i64(), -42LL);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+// u32 alternating with bool
+TEST(SerializerTest, U32AlternatingWithBool) {
+    Serializer s;
+    s.write_u32(100u);
+    s.write_bool(true);
+    s.write_u32(200u);
+    s.write_bool(false);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u32(), 100u);
+    EXPECT_TRUE(d.read_bool());
+    EXPECT_EQ(d.read_u32(), 200u);
+    EXPECT_FALSE(d.read_bool());
+}
+
+// Write 20 u8 values, all preserved
+TEST(SerializerTest, TwentyU8ValuesRoundTrip) {
+    Serializer s;
+    for (int i = 0; i < 20; ++i) {
+        s.write_u8(static_cast<uint8_t>(i * 10));
+    }
+    Deserializer d(s.data());
+    for (int i = 0; i < 20; ++i) {
+        EXPECT_EQ(d.read_u8(), static_cast<uint8_t>(i * 10));
+    }
+    EXPECT_FALSE(d.has_remaining());
+}
