@@ -1406,3 +1406,98 @@ TEST(CSSParserTest, StylesheetWithMixedAtRulesAndRules) {
     EXPECT_TRUE(found_body);
     EXPECT_TRUE(found_container);
 }
+
+// ---------------------------------------------------------------------------
+// Cycle 495 — CSS parser additional edge-case regression tests
+// ---------------------------------------------------------------------------
+
+// url() function tokenizes as a Function token with value "url"
+TEST_F(CSSTokenizerTest, UrlFunctionToken) {
+    auto tokens = CSSTokenizer::tokenize_all("url(\"image.png\")");
+    ASSERT_GE(tokens.size(), 1u);
+    EXPECT_EQ(tokens[0].type, CSSToken::Function);
+    EXPECT_EQ(tokens[0].value, "url");
+}
+
+// Viewport-relative dimension: 100vw
+TEST_F(CSSTokenizerTest, ViewportWidthDimension) {
+    auto tokens = CSSTokenizer::tokenize_all("100vw");
+    ASSERT_GE(tokens.size(), 1u);
+    EXPECT_EQ(tokens[0].type, CSSToken::Dimension);
+    EXPECT_DOUBLE_EQ(tokens[0].numeric_value, 100.0);
+    EXPECT_EQ(tokens[0].unit, "vw");
+}
+
+// :last-child pseudo-class selector
+TEST_F(CSSSelectorTest, LastChildPseudo) {
+    auto list = parse_selector_list(":last-child");
+    ASSERT_EQ(list.selectors.size(), 1u);
+    const auto& compound = list.selectors[0].parts[0].compound;
+    ASSERT_GE(compound.simple_selectors.size(), 1u);
+    EXPECT_EQ(compound.simple_selectors[0].type, SimpleSelectorType::PseudoClass);
+    EXPECT_EQ(compound.simple_selectors[0].value, "last-child");
+}
+
+// :only-child pseudo-class selector
+TEST_F(CSSSelectorTest, OnlyChildPseudo) {
+    auto list = parse_selector_list("p:only-child");
+    ASSERT_EQ(list.selectors.size(), 1u);
+    const auto& compound = list.selectors[0].parts[0].compound;
+    bool found = false;
+    for (const auto& ss : compound.simple_selectors) {
+        if (ss.type == SimpleSelectorType::PseudoClass && ss.value == "only-child") {
+            found = true;
+        }
+    }
+    EXPECT_TRUE(found) << "Should have :only-child pseudo-class";
+}
+
+// :first-of-type pseudo-class selector
+TEST_F(CSSSelectorTest, FirstOfTypePseudo) {
+    auto list = parse_selector_list(":first-of-type");
+    ASSERT_EQ(list.selectors.size(), 1u);
+    const auto& compound = list.selectors[0].parts[0].compound;
+    ASSERT_GE(compound.simple_selectors.size(), 1u);
+    EXPECT_EQ(compound.simple_selectors[0].type, SimpleSelectorType::PseudoClass);
+    EXPECT_EQ(compound.simple_selectors[0].value, "first-of-type");
+}
+
+// :nth-of-type() pseudo-class with argument
+TEST_F(CSSSelectorTest, NthOfTypeArgument) {
+    auto list = parse_selector_list("li:nth-of-type(2)");
+    ASSERT_EQ(list.selectors.size(), 1u);
+    const auto& compound = list.selectors[0].parts[0].compound;
+    bool found_nth = false;
+    for (const auto& ss : compound.simple_selectors) {
+        if (ss.type == SimpleSelectorType::PseudoClass && ss.value == "nth-of-type") {
+            EXPECT_FALSE(ss.argument.empty()) << "nth-of-type should have argument";
+            found_nth = true;
+        }
+    }
+    EXPECT_TRUE(found_nth) << "Should have :nth-of-type pseudo-class";
+}
+
+// Stylesheet with only whitespace produces no rules
+TEST_F(CSSStylesheetTest, StylesheetWithOnlyWhitespace) {
+    auto sheet = parse_stylesheet("   \t\n  ");
+    EXPECT_EQ(sheet.rules.size(), 0u);
+}
+
+// CSS nesting: &:hover flattens to "a:hover" rule
+TEST(CSSNestingTest, NestingWithHoverOnAmpersand) {
+    auto sheet = parse_stylesheet(R"(
+        a {
+            color: blue;
+            &:hover { color: red; }
+        }
+    )");
+    // Should flatten to two rules: "a" and "a:hover"
+    bool found_base = false;
+    bool found_hover = false;
+    for (const auto& rule : sheet.rules) {
+        if (rule.selector_text == "a") found_base = true;
+        if (rule.selector_text.find("hover") != std::string::npos) found_hover = true;
+    }
+    EXPECT_TRUE(found_base);
+    EXPECT_TRUE(found_hover);
+}
