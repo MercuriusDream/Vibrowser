@@ -11023,3 +11023,179 @@ TEST(JSEngine, PromiseAny) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "true");
 }
+
+// ---------------------------------------------------------------------------
+// Cycle 445 — JSON.stringify/parse, RegExp, class syntax, try/catch/finally,
+//             Proxy, Array.isArray, Error types, typeof checks
+// ---------------------------------------------------------------------------
+
+TEST(JSEngine, JsonStringifyAndParse) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var obj = {name: 'test', value: 42, arr: [1, 2, 3]};
+        var json = JSON.stringify(obj);
+        var parsed = JSON.parse(json);
+        var checks = [];
+        checks.push(parsed.name === 'test');
+        checks.push(parsed.value === 42);
+        checks.push(parsed.arr.length === 3);
+        checks.push(parsed.arr[1] === 2);
+        // Verify stringify produces valid JSON
+        checks.push(typeof json === 'string');
+        checks.push(json.indexOf('test') !== -1);
+        String(checks.every(function(c){return c;}))
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, RegularExpressions) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var checks = [];
+        var re = /hello/i;
+        checks.push(re.test('Hello World'));
+        checks.push(!re.test('goodbye'));
+
+        // Match
+        var m = 'foo123bar'.match(/(\d+)/);
+        checks.push(m !== null && m[1] === '123');
+
+        // Replace
+        var s = 'aabbcc'.replace(/b+/, 'X');
+        checks.push(s === 'aaXcc');
+
+        // Global flag
+        var count = 'abcabc'.match(/a/g).length;
+        checks.push(count === 2);
+
+        String(checks.every(function(c){return c;}))
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, ClassSyntax) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        class Animal {
+            constructor(name) {
+                this.name = name;
+            }
+            speak() {
+                return this.name + ' makes a sound';
+            }
+        }
+        class Dog extends Animal {
+            speak() {
+                return this.name + ' barks';
+            }
+        }
+        var d = new Dog('Rex');
+        var a = new Animal('Cat');
+        var checks = [];
+        checks.push(d.speak() === 'Rex barks');
+        checks.push(a.speak() === 'Cat makes a sound');
+        checks.push(d instanceof Dog);
+        checks.push(d instanceof Animal);
+        String(checks.every(function(c){return c;}))
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, TryCatchFinally) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var log = [];
+        try {
+            log.push('try');
+            throw new Error('oops');
+            log.push('after-throw');
+        } catch (e) {
+            log.push('catch:' + e.message);
+        } finally {
+            log.push('finally');
+        }
+        var checks = [];
+        checks.push(log[0] === 'try');
+        checks.push(log[1] === 'catch:oops');
+        checks.push(log[2] === 'finally');
+        checks.push(log.length === 3);
+        String(checks.every(function(c){return c;}))
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, ErrorTypes) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var checks = [];
+        try { null.x; } catch(e) { checks.push(e instanceof TypeError); }
+        try { undeclaredVar; } catch(e) { checks.push(e instanceof ReferenceError); }
+        try { eval('{'); } catch(e) { checks.push(e instanceof SyntaxError); }
+        var err = new RangeError('out of range');
+        checks.push(err.message === 'out of range');
+        checks.push(err instanceof Error);
+        String(checks.every(function(c){return c;}))
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, TypeofChecks) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var checks = [];
+        checks.push(typeof undefined === 'undefined');
+        checks.push(typeof null === 'object');
+        checks.push(typeof true === 'boolean');
+        checks.push(typeof 42 === 'number');
+        checks.push(typeof 'str' === 'string');
+        checks.push(typeof Symbol() === 'symbol');
+        checks.push(typeof function(){} === 'function');
+        checks.push(typeof {} === 'object');
+        checks.push(typeof [] === 'object');
+        String(checks.every(function(c){return c;}))
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, ArrayIsArray) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var checks = [];
+        checks.push(Array.isArray([]));
+        checks.push(Array.isArray([1, 2, 3]));
+        checks.push(!Array.isArray({}));
+        checks.push(!Array.isArray('string'));
+        checks.push(!Array.isArray(42));
+        checks.push(!Array.isArray(null));
+        checks.push(!Array.isArray(undefined));
+        String(checks.every(function(c){return c;}))
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, ProxyGetTrap) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var target = {x: 10, y: 20};
+        var handler = {
+            get: function(obj, prop) {
+                return prop in obj ? obj[prop] * 2 : 0;
+            }
+        };
+        var proxy = new Proxy(target, handler);
+        var checks = [];
+        checks.push(proxy.x === 20);
+        checks.push(proxy.y === 40);
+        checks.push(proxy.z === 0);  // not in target
+        String(checks.every(function(c){return c;}))
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true");
+}
