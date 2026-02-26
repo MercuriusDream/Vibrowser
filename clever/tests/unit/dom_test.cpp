@@ -1851,3 +1851,62 @@ TEST(DomDocument, NodeTypeIsDocument) {
     Document doc;
     EXPECT_EQ(doc.node_type(), NodeType::Document);
 }
+
+// ============================================================================
+// Cycle 597: More DOM tests
+// ============================================================================
+
+// Document: can create element via Document
+TEST(DomDocument, CreateElementReturnsElement) {
+    Document doc;
+    auto elem = doc.create_element("span");
+    ASSERT_NE(elem, nullptr);
+    EXPECT_EQ(elem->tag_name(), "span");
+}
+
+// Document: can create text node via Document
+TEST(DomDocument, CreateTextNodeReturnsText) {
+    Document doc;
+    auto text = doc.create_text_node("hello");
+    ASSERT_NE(text, nullptr);
+    EXPECT_EQ(text->data(), "hello");
+}
+
+// Element: tag_name returns correct value
+TEST(DomElement, TagNameLowerCase) {
+    Element e("section");
+    EXPECT_EQ(e.tag_name(), "section");
+}
+
+// Element: has_attribute returns false initially
+TEST(DomElement, HasAttributeFalseInitially) {
+    Element e("div");
+    EXPECT_FALSE(e.has_attribute("class"));
+}
+
+// Element: set multiple attributes
+TEST(DomElement, SetTwoAttributesAccessible) {
+    Element e("input");
+    e.set_attribute("type", "text");
+    e.set_attribute("name", "username");
+    EXPECT_TRUE(e.has_attribute("type"));
+    EXPECT_TRUE(e.has_attribute("name"));
+}
+
+// Text: node_type is Text (v2 — from text "world")
+TEST(DomText, NodeTypeIsTextV2) {
+    Text t("world");
+    EXPECT_EQ(t.node_type(), NodeType::Text);
+}
+
+// Comment: node_type is Comment (v2 — different content)
+TEST(DomComment, NodeTypeIsCommentV2) {
+    Comment c("another comment");
+    EXPECT_EQ(c.node_type(), NodeType::Comment);
+}
+
+// Element: child_count zero initially
+TEST(DomElement, ChildCountZeroInitiallyV2) {
+    Element e("article");
+    EXPECT_EQ(e.child_count(), 0u);
+}
