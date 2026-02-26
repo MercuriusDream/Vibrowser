@@ -474,16 +474,19 @@ bool csp_connect_src_allows_url(const std::string& url, const RequestPolicy& pol
   if (!parse_url(url, parsed, err)) {
     return true;
   }
+  std::string policy_origin;
   std::string policy_origin_scheme;
   if (!policy.origin.empty()) {
+    if (!parse_serialized_origin(policy.origin, policy_origin)) {
+      return false;
+    }
     Url policy_origin_parsed;
     std::string policy_origin_err;
-    if (parse_url(policy.origin, policy_origin_parsed, policy_origin_err)) {
+    if (parse_url(policy_origin, policy_origin_parsed, policy_origin_err)) {
       policy_origin_scheme = policy_origin_parsed.scheme;
     }
   }
   const std::string request_origin = to_lower_ascii(build_origin_for_url(parsed));
-  const std::string policy_origin = canonicalize_origin(policy.origin);
 
   for (const std::string& raw_source : effective_sources) {
     const std::string source = normalize_source_token(raw_source);
@@ -2091,8 +2094,13 @@ PolicyCheckResult check_request_policy(const std::string& url, const RequestPoli
 
     // Check cross-origin
     if (!policy.allow_cross_origin && !policy.origin.empty()) {
+        std::string policy_origin;
+        if (!parse_serialized_origin(policy.origin, policy_origin)) {
+            return {false,
+                    PolicyViolation::CrossOriginBlocked,
+                    "Cross-origin request blocked: invalid request policy origin"};
+        }
         const std::string request_origin = canonicalize_origin(build_origin_for_url(parsed));
-        const std::string policy_origin = canonicalize_origin(policy.origin);
         if (request_origin != policy_origin) {
             return {false, PolicyViolation::CrossOriginBlocked,
                     "Cross-origin request blocked: " + request_origin +

@@ -1070,6 +1070,60 @@ int main() {
         }
     }
 
+    // Test 55: cross-origin policy check rejects malformed policy Origin values
+    {
+        browser::net::RequestPolicy policy;
+        policy.allow_cross_origin = false;
+        policy.origin = "https://app.example.com/path";
+        auto result = browser::net::check_request_policy("https://app.example.com/data", policy);
+        if (result.allowed) {
+            std::cerr << "FAIL: malformed policy origin should be rejected by cross-origin gate\n";
+            ++failures;
+        } else if (result.violation != browser::net::PolicyViolation::CrossOriginBlocked) {
+            std::cerr << "FAIL: expected CrossOriginBlocked for malformed policy origin\n";
+            ++failures;
+        } else {
+            std::cerr << "PASS: cross-origin gate rejects malformed policy origin\n";
+        }
+    }
+
+    // Test 56: connect-src 'self' fails closed for malformed policy Origin values
+    {
+        browser::net::RequestPolicy policy;
+        policy.enforce_connect_src = true;
+        policy.origin = "https://app.example.com/path";
+        policy.connect_src_sources = {"'self'"};
+        auto result = browser::net::check_request_policy("https://app.example.com/api", policy);
+        if (result.allowed) {
+            std::cerr << "FAIL: connect-src 'self' should fail closed for malformed policy origin\n";
+            ++failures;
+        } else if (result.violation != browser::net::PolicyViolation::CspConnectSrcBlocked) {
+            std::cerr << "FAIL: expected CspConnectSrcBlocked for malformed policy origin\n";
+            ++failures;
+        } else {
+            std::cerr << "PASS: connect-src 'self' rejects malformed policy origin\n";
+        }
+    }
+
+    // Test 57: scheme-less connect-src host-source fails closed for malformed policy Origin values
+    {
+        browser::net::RequestPolicy policy;
+        policy.enforce_connect_src = true;
+        policy.allowed_schemes = {"http", "https", "file", "ws", "wss"};
+        policy.origin = "https://app.example.com/path";
+        policy.connect_src_sources = {"api.example.com"};
+        auto result = browser::net::check_request_policy("https://api.example.com/data", policy);
+        if (result.allowed) {
+            std::cerr << "FAIL: scheme-less host-source should fail closed for malformed policy origin\n";
+            ++failures;
+        } else if (result.violation != browser::net::PolicyViolation::CspConnectSrcBlocked) {
+            std::cerr << "FAIL: expected CspConnectSrcBlocked for malformed origin in scheme-less host-source\n";
+            ++failures;
+        } else {
+            std::cerr << "PASS: scheme-less host-source rejects malformed policy origin\n";
+        }
+    }
+
     if (failures > 0) {
         std::cerr << "\n" << failures << " test(s) FAILED\n";
         return 1;
