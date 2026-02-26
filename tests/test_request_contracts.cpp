@@ -513,6 +513,28 @@ int main() {
         }
 
         if (browser::net::parse_http_status_line(
+                std::string("HTTP/1.1\000200 OK", 15), http_version, status_code, reason, err)) {
+            std::cerr << "FAIL: expected status line with NUL status-code separator to be rejected\n";
+            ++failures;
+        } else if (err.find("Malformed HTTP status line") == std::string::npos) {
+            std::cerr << "FAIL: expected malformed status-line error for NUL status-code separator\n";
+            ++failures;
+        } else {
+            std::cerr << "PASS: status line with NUL status-code separator is rejected\n";
+        }
+
+        if (browser::net::parse_http_status_line(
+                std::string("HTTP/1.1 200\000OK", 15), http_version, status_code, reason, err)) {
+            std::cerr << "FAIL: expected status line with NUL reason separator to be rejected\n";
+            ++failures;
+        } else if (err.find("Malformed HTTP status line") == std::string::npos) {
+            std::cerr << "FAIL: expected malformed status-line error for NUL reason separator\n";
+            ++failures;
+        } else {
+            std::cerr << "PASS: status line with NUL reason separator is rejected\n";
+        }
+
+        if (browser::net::parse_http_status_line(
                 "HTTP/1.1 200", http_version, status_code, reason, err)) {
             std::cerr << "FAIL: expected status line missing reason separator to be rejected\n";
             ++failures;
