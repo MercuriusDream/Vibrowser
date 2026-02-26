@@ -2966,3 +2966,78 @@ TEST(RequestTest, UrlInitiallyEmpty) {
     Request req;
     EXPECT_TRUE(req.url.empty());
 }
+
+// ============================================================================
+// Cycle 657: More net/http tests
+// ============================================================================
+
+// Response: parse 400 with body content
+TEST(ResponseTest, Parse400WithBodyContent) {
+    std::string raw = "HTTP/1.1 400 Bad Request\r\nContent-Type: application/json\r\n\r\n{\"error\":\"invalid\"}";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 400);
+    EXPECT_NE(resp->body_as_string().find("error"), std::string::npos);
+}
+
+// Response: parse 401 with WWW-Authenticate header
+TEST(ResponseTest, Parse401WithWWWAuthenticate) {
+    std::string raw = "HTTP/1.1 401 Unauthorized\r\nWWW-Authenticate: Bearer\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 401);
+    EXPECT_TRUE(resp->headers.has("WWW-Authenticate"));
+}
+
+// Response: parse 403 with status text "Forbidden" confirmed
+TEST(ResponseTest, Parse403StatusTextForbidden) {
+    std::string raw = "HTTP/1.1 403 Forbidden\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status_text, "Forbidden");
+}
+
+// Response: parse 503 with Retry-After header value 60
+TEST(ResponseTest, Parse503WithRetryAfterSixty) {
+    std::string raw = "HTTP/1.1 503 Service Unavailable\r\nRetry-After: 60\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 503);
+    auto ra = resp->headers.get("Retry-After");
+    ASSERT_TRUE(ra.has_value());
+    EXPECT_EQ(ra.value(), "60");
+}
+
+// HeaderMap: case insensitive get for lowercase key set as uppercase
+TEST(HeaderMapTest, GetCaseInsensitiveLower) {
+    HeaderMap map;
+    map.set("Content-Type", "text/html");
+    auto val = map.get("content-type");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(val.value(), "text/html");
+}
+
+// HeaderMap: has returns true after set
+TEST(HeaderMapTest, HasReturnsTrueAfterSet) {
+    HeaderMap map;
+    map.set("X-Custom", "value");
+    EXPECT_TRUE(map.has("X-Custom"));
+}
+
+// Request: PUT method can be set
+TEST(RequestTest, PutMethodCanBeSet) {
+    Request req;
+    req.method = Method::PUT;
+    EXPECT_EQ(req.method, Method::PUT);
+}
+
+// Request: DELETE_METHOD enum value can be set
+TEST(RequestTest, DeleteMethodEnumCanBeSet) {
+    Request req;
+    req.method = Method::DELETE_METHOD;
+    EXPECT_EQ(req.method, Method::DELETE_METHOD);
+}
