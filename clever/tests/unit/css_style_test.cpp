@@ -8996,3 +8996,158 @@ TEST(PropertyCascadeTest, JustifySelfValues) {
     cascade.apply_declaration(style, make_decl("justify-self", "stretch"), parent);
     EXPECT_EQ(style.justify_self, 4);
 }
+
+// ---------------------------------------------------------------------------
+// Cycle 466 — place-self shorthand, flex-direction, flex-wrap, flex-flow,
+//             align-items, flex-grow/shrink, flex-basis
+// ---------------------------------------------------------------------------
+
+TEST(PropertyCascadeTest, PlaceSelfShorthandSingleValue) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    // Single value sets both align-self and justify-self
+    cascade.apply_declaration(style, make_decl("place-self", "center"), parent);
+    EXPECT_EQ(style.align_self, 2);
+    EXPECT_EQ(style.justify_self, 2);
+
+    cascade.apply_declaration(style, make_decl("place-self", "stretch"), parent);
+    EXPECT_EQ(style.align_self, 4);
+    EXPECT_EQ(style.justify_self, 4);
+
+    cascade.apply_declaration(style, make_decl("place-self", "auto"), parent);
+    EXPECT_EQ(style.align_self, -1);
+    EXPECT_EQ(style.justify_self, -1);
+}
+
+TEST(PropertyCascadeTest, PlaceSelfShorthandTwoValues) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    // Two values: first is align-self, second is justify-self
+    cascade.apply_declaration(style, make_decl("place-self", "start end"), parent);
+    EXPECT_EQ(style.align_self, 0);   // start -> flex-start
+    EXPECT_EQ(style.justify_self, 1); // end -> flex-end
+
+    cascade.apply_declaration(style, make_decl("place-self", "baseline center"), parent);
+    EXPECT_EQ(style.align_self, 3);   // baseline
+    EXPECT_EQ(style.justify_self, 2); // center
+}
+
+TEST(PropertyCascadeTest, FlexDirectionValues) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.flex_direction, FlexDirection::Row);  // default
+
+    cascade.apply_declaration(style, make_decl("flex-direction", "column"), parent);
+    EXPECT_EQ(style.flex_direction, FlexDirection::Column);
+
+    cascade.apply_declaration(style, make_decl("flex-direction", "row-reverse"), parent);
+    EXPECT_EQ(style.flex_direction, FlexDirection::RowReverse);
+
+    cascade.apply_declaration(style, make_decl("flex-direction", "column-reverse"), parent);
+    EXPECT_EQ(style.flex_direction, FlexDirection::ColumnReverse);
+
+    cascade.apply_declaration(style, make_decl("flex-direction", "row"), parent);
+    EXPECT_EQ(style.flex_direction, FlexDirection::Row);
+}
+
+TEST(PropertyCascadeTest, FlexWrapValues) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.flex_wrap, FlexWrap::NoWrap);  // default
+
+    cascade.apply_declaration(style, make_decl("flex-wrap", "wrap"), parent);
+    EXPECT_EQ(style.flex_wrap, FlexWrap::Wrap);
+
+    cascade.apply_declaration(style, make_decl("flex-wrap", "wrap-reverse"), parent);
+    EXPECT_EQ(style.flex_wrap, FlexWrap::WrapReverse);
+
+    cascade.apply_declaration(style, make_decl("flex-wrap", "nowrap"), parent);
+    EXPECT_EQ(style.flex_wrap, FlexWrap::NoWrap);
+}
+
+TEST(PropertyCascadeTest, FlexFlowShorthand) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    // flex-flow sets flex-direction and flex-wrap together
+    cascade.apply_declaration(style, make_decl("flex-flow", "column wrap"), parent);
+    EXPECT_EQ(style.flex_direction, FlexDirection::Column);
+    EXPECT_EQ(style.flex_wrap, FlexWrap::Wrap);
+
+    cascade.apply_declaration(style, make_decl("flex-flow", "row-reverse wrap-reverse"), parent);
+    EXPECT_EQ(style.flex_direction, FlexDirection::RowReverse);
+    EXPECT_EQ(style.flex_wrap, FlexWrap::WrapReverse);
+
+    cascade.apply_declaration(style, make_decl("flex-flow", "row nowrap"), parent);
+    EXPECT_EQ(style.flex_direction, FlexDirection::Row);
+    EXPECT_EQ(style.flex_wrap, FlexWrap::NoWrap);
+}
+
+TEST(PropertyCascadeTest, AlignItemsValues) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.align_items, AlignItems::Stretch);  // default
+
+    cascade.apply_declaration(style, make_decl("align-items", "flex-start"), parent);
+    EXPECT_EQ(style.align_items, AlignItems::FlexStart);
+
+    cascade.apply_declaration(style, make_decl("align-items", "flex-end"), parent);
+    EXPECT_EQ(style.align_items, AlignItems::FlexEnd);
+
+    cascade.apply_declaration(style, make_decl("align-items", "center"), parent);
+    EXPECT_EQ(style.align_items, AlignItems::Center);
+
+    cascade.apply_declaration(style, make_decl("align-items", "baseline"), parent);
+    EXPECT_EQ(style.align_items, AlignItems::Baseline);
+
+    cascade.apply_declaration(style, make_decl("align-items", "stretch"), parent);
+    EXPECT_EQ(style.align_items, AlignItems::Stretch);
+}
+
+TEST(PropertyCascadeTest, FlexGrowAndShrink) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_FLOAT_EQ(style.flex_grow, 0.0f);    // default
+    EXPECT_FLOAT_EQ(style.flex_shrink, 1.0f);  // default
+
+    cascade.apply_declaration(style, make_decl("flex-grow", "2"), parent);
+    EXPECT_FLOAT_EQ(style.flex_grow, 2.0f);
+
+    cascade.apply_declaration(style, make_decl("flex-grow", "0.5"), parent);
+    EXPECT_FLOAT_EQ(style.flex_grow, 0.5f);
+
+    cascade.apply_declaration(style, make_decl("flex-shrink", "0"), parent);
+    EXPECT_FLOAT_EQ(style.flex_shrink, 0.0f);
+
+    cascade.apply_declaration(style, make_decl("flex-shrink", "3"), parent);
+    EXPECT_FLOAT_EQ(style.flex_shrink, 3.0f);
+}
+
+TEST(PropertyCascadeTest, FlexBasisValues) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    // Default is auto
+    EXPECT_TRUE(style.flex_basis.is_auto());
+
+    cascade.apply_declaration(style, make_decl("flex-basis", "100px"), parent);
+    EXPECT_FALSE(style.flex_basis.is_auto());
+    EXPECT_FLOAT_EQ(style.flex_basis.to_px(), 100.0f);
+
+    cascade.apply_declaration(style, make_decl("flex-basis", "0"), parent);
+    EXPECT_FLOAT_EQ(style.flex_basis.to_px(), 0.0f);
+}
