@@ -1579,6 +1579,7 @@ bool request_headers_include_http2_settings(
 
     bool seen_data = false;
     bool seen_padding = false;
+    int padding_count = 0;
     for (char ch : normalized_value) {
       const unsigned char uch = static_cast<unsigned char>(ch);
       if (uch <= 0x1f || uch == 0x7f || uch >= 0x80) {
@@ -1601,6 +1602,10 @@ bool request_headers_include_http2_settings(
           return false;
         }
         seen_padding = true;
+        ++padding_count;
+        if (padding_count > 2) {
+          return false;
+        }
         continue;
       }
 
