@@ -557,6 +557,28 @@ int main() {
         }
 
         if (browser::net::parse_http_status_line(
+                std::string("HTTP/1.1\177200 OK", 15), http_version, status_code, reason, err)) {
+            std::cerr << "FAIL: expected status line with DEL status-code separator to be rejected\n";
+            ++failures;
+        } else if (err.find("Malformed HTTP status line") == std::string::npos) {
+            std::cerr << "FAIL: expected malformed status-line error for DEL status-code separator\n";
+            ++failures;
+        } else {
+            std::cerr << "PASS: status line with DEL status-code separator is rejected\n";
+        }
+
+        if (browser::net::parse_http_status_line(
+                std::string("HTTP/1.1 200\177OK", 15), http_version, status_code, reason, err)) {
+            std::cerr << "FAIL: expected status line with DEL reason separator to be rejected\n";
+            ++failures;
+        } else if (err.find("Malformed HTTP status line") == std::string::npos) {
+            std::cerr << "FAIL: expected malformed status-line error for DEL reason separator\n";
+            ++failures;
+        } else {
+            std::cerr << "PASS: status line with DEL reason separator is rejected\n";
+        }
+
+        if (browser::net::parse_http_status_line(
                 "HTTP/1.1 200", http_version, status_code, reason, err)) {
             std::cerr << "FAIL: expected status line missing reason separator to be rejected\n";
             ++failures;
