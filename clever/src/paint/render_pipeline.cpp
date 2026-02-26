@@ -350,7 +350,25 @@ std::optional<std::vector<uint8_t>> decode_font_data_url(const std::string& url)
     const std::string payload = url.substr(comma + 1);
     if (payload.empty()) return std::nullopt;
 
-    const bool is_base64 = metadata.find(";base64") != std::string::npos;
+    bool is_base64 = false;
+    {
+        size_t start = 0;
+        while (start <= metadata.size()) {
+            const size_t end = metadata.find(';', start);
+            const std::string param = trim(metadata.substr(start, end == std::string::npos
+                ? std::string::npos
+                : end - start));
+            if (!param.empty()) {
+                if (param == "base64") {
+                    is_base64 = true;
+                } else if (param.rfind("base64", 0) == 0) {
+                    return std::nullopt;
+                }
+            }
+            if (end == std::string::npos) break;
+            start = end + 1;
+        }
+    }
     if (!is_base64) {
         const auto decoded = clever::url::percent_decode(payload);
         if (decoded.empty()) return std::nullopt;

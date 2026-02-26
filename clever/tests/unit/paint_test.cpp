@@ -39146,6 +39146,20 @@ TEST(WebFontRegistration, DecodeFontDataUrlAcceptsUnpaddedBase64) {
     EXPECT_EQ((*decoded)[3], 0x03);
 }
 
+TEST(WebFontRegistration, DecodeFontDataUrlRejectsMalformedBase64ParameterToken) {
+    EXPECT_FALSE(decode_font_data_url("data:font/ttf;base64x,AAECAw==").has_value());
+}
+
+TEST(WebFontRegistration, DecodeFontDataUrlAcceptsBase64WithAdditionalParameters) {
+    auto decoded = decode_font_data_url("data:font/ttf;charset=utf-8;base64,AAECAw==");
+    ASSERT_TRUE(decoded.has_value());
+    ASSERT_EQ(decoded->size(), 4u);
+    EXPECT_EQ((*decoded)[0], 0x00);
+    EXPECT_EQ((*decoded)[1], 0x01);
+    EXPECT_EQ((*decoded)[2], 0x02);
+    EXPECT_EQ((*decoded)[3], 0x03);
+}
+
 TEST(WebFontRegistration, RegisterFontWithInvalidDataDoesNotCrash) {
     // Clear any previously registered fonts
     TextRenderer::clear_registered_fonts();
