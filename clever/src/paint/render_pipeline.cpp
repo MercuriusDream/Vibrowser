@@ -136,15 +136,56 @@ std::string extract_preferred_font_url(const std::string& src) {
         "variations"
     };
 
-    auto parse_function_arg = [&](const std::string& entry,
-                                  const std::string& function_name) -> std::string {
+    auto find_function_open = [&](const std::string& entry,
+                                  const std::string& function_name) -> std::optional<size_t> {
         const std::string lower_entry = to_lower(entry);
         const std::string lower_function_name = to_lower(function_name);
-        const std::string needle = lower_function_name + "(";
-        const auto fn_pos = lower_entry.find(needle);
-        if (fn_pos == std::string::npos) return "";
-        size_t open = fn_pos + needle.size() - 1;
-        if (open >= entry.size() || entry[open] != '(') return "";
+        bool in_single = false;
+        bool in_double = false;
+        int depth = 0;
+
+        for (size_t i = 0; i < lower_entry.size(); ++i) {
+            const char ch = lower_entry[i];
+            if (ch == '"' && !in_single) {
+                in_double = !in_double;
+                continue;
+            }
+            if (ch == '\'' && !in_double) {
+                in_single = !in_single;
+                continue;
+            }
+            if (in_single || in_double) continue;
+
+            if (ch == '(') {
+                depth++;
+                continue;
+            }
+            if (ch == ')') {
+                if (depth > 0) depth--;
+                continue;
+            }
+
+            if (depth != 0) continue;
+            if (i + lower_function_name.size() >= lower_entry.size()) continue;
+            if (lower_entry.compare(i, lower_function_name.size(), lower_function_name) != 0) continue;
+
+            const size_t after_name = i + lower_function_name.size();
+            if (after_name >= lower_entry.size() || lower_entry[after_name] != '(') continue;
+
+            if (i > 0) {
+                const unsigned char prev = static_cast<unsigned char>(lower_entry[i - 1]);
+                if (std::isalnum(prev) || lower_entry[i - 1] == '-' || lower_entry[i - 1] == '_') continue;
+            }
+            return after_name;
+        }
+        return std::nullopt;
+    };
+
+    auto parse_function_arg = [&](const std::string& entry,
+                                  const std::string& function_name) -> std::string {
+        const auto open_opt = find_function_open(entry, function_name);
+        if (!open_opt.has_value()) return "";
+        const size_t open = *open_opt;
 
         size_t close = std::string::npos;
         bool in_single = false;
@@ -177,9 +218,7 @@ std::string extract_preferred_font_url(const std::string& src) {
     };
     auto has_function_call = [&](const std::string& entry,
                                  const std::string& function_name) -> bool {
-        const std::string lower_entry = to_lower(entry);
-        const std::string lower_function_name = to_lower(function_name);
-        return lower_entry.find(lower_function_name + "(") != std::string::npos;
+        return find_function_open(entry, function_name).has_value();
     };
 
     auto split_csv_tokens = [&](const std::string& value) -> std::vector<std::string> {
