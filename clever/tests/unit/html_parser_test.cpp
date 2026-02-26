@@ -1390,3 +1390,75 @@ TEST(TreeBuilder, MeterElement) {
     ASSERT_NE(meter, nullptr);
     EXPECT_EQ(meter->text_content(), "75%");
 }
+
+// ============================================================================
+// Cycle 529: HTML parser regression tests
+// ============================================================================
+
+TEST(TreeBuilder, WbrElement) {
+    auto doc = parse("<body><p>long<wbr>word</p></body>");
+    ASSERT_NE(doc, nullptr);
+    auto* wbr = doc->find_element("wbr");
+    ASSERT_NE(wbr, nullptr);
+    EXPECT_EQ(wbr->tag_name, "wbr");
+}
+
+TEST(TreeBuilder, DialogElementSimpleContent) {
+    auto doc = parse(R"(<body><dialog open>Hello</dialog></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* dialog = doc->find_element("dialog");
+    ASSERT_NE(dialog, nullptr);
+    EXPECT_EQ(dialog->text_content(), "Hello");
+}
+
+TEST(TreeBuilder, SummaryInDetails) {
+    auto doc = parse("<body><details><summary>Info</summary><p>Details here</p></details></body>");
+    ASSERT_NE(doc, nullptr);
+    auto* summary = doc->find_element("summary");
+    ASSERT_NE(summary, nullptr);
+    EXPECT_EQ(summary->text_content(), "Info");
+}
+
+TEST(TreeBuilder, FigureWithFigcaption) {
+    auto doc = parse("<body><figure><img alt=\"photo\"><figcaption>Caption</figcaption></figure></body>");
+    ASSERT_NE(doc, nullptr);
+    auto* figcaption = doc->find_element("figcaption");
+    ASSERT_NE(figcaption, nullptr);
+    EXPECT_EQ(figcaption->text_content(), "Caption");
+}
+
+TEST(TreeBuilder, AddressElement) {
+    auto doc = parse("<body><address>123 Main St</address></body>");
+    ASSERT_NE(doc, nullptr);
+    auto* address = doc->find_element("address");
+    ASSERT_NE(address, nullptr);
+    EXPECT_EQ(address->text_content(), "123 Main St");
+}
+
+TEST(TreeBuilder, MainElement) {
+    auto doc = parse("<body><main><p>Main content</p></main></body>");
+    ASSERT_NE(doc, nullptr);
+    auto* main_el = doc->find_element("main");
+    ASSERT_NE(main_el, nullptr);
+    auto* p = doc->find_element("p");
+    ASSERT_NE(p, nullptr);
+    EXPECT_EQ(p->text_content(), "Main content");
+}
+
+TEST(TreeBuilder, SearchElement) {
+    auto doc = parse("<body><search><input type=\"search\"></search></body>");
+    ASSERT_NE(doc, nullptr);
+    auto* search = doc->find_element("search");
+    ASSERT_NE(search, nullptr);
+    EXPECT_EQ(search->tag_name, "search");
+}
+
+TEST(TreeBuilder, HgroupElement) {
+    auto doc = parse("<body><hgroup><h1>Title</h1><p>Subtitle</p></hgroup></body>");
+    ASSERT_NE(doc, nullptr);
+    auto* hgroup = doc->find_element("hgroup");
+    ASSERT_NE(hgroup, nullptr);
+    auto* h1 = doc->find_element("h1");
+    ASSERT_NE(h1, nullptr);
+    EXPECT_EQ(h1->text_content(), "Title");
+}
