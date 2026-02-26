@@ -10161,3 +10161,170 @@ TEST(PropertyCascadeTest, PageBreakLegacyProperties) {
     cascade.apply_declaration(style, make_decl("page-break-inside", "avoid"), parent);
     EXPECT_EQ(style.page_break_inside, 1);
 }
+
+// ---------------------------------------------------------------------------
+// Cycle 473 — list-style-type, list-style-position, list-style shorthand,
+//             cursor, vertical-align, outline shorthand/longhands, outline-offset
+// ---------------------------------------------------------------------------
+
+TEST(PropertyCascadeTest, ListStyleTypeAllValues) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.list_style_type, ListStyleType::Disc);  // default
+
+    cascade.apply_declaration(style, make_decl("list-style-type", "circle"), parent);
+    EXPECT_EQ(style.list_style_type, ListStyleType::Circle);
+
+    cascade.apply_declaration(style, make_decl("list-style-type", "square"), parent);
+    EXPECT_EQ(style.list_style_type, ListStyleType::Square);
+
+    cascade.apply_declaration(style, make_decl("list-style-type", "decimal"), parent);
+    EXPECT_EQ(style.list_style_type, ListStyleType::Decimal);
+
+    cascade.apply_declaration(style, make_decl("list-style-type", "lower-roman"), parent);
+    EXPECT_EQ(style.list_style_type, ListStyleType::LowerRoman);
+
+    cascade.apply_declaration(style, make_decl("list-style-type", "upper-roman"), parent);
+    EXPECT_EQ(style.list_style_type, ListStyleType::UpperRoman);
+
+    cascade.apply_declaration(style, make_decl("list-style-type", "lower-alpha"), parent);
+    EXPECT_EQ(style.list_style_type, ListStyleType::LowerAlpha);
+
+    cascade.apply_declaration(style, make_decl("list-style-type", "none"), parent);
+    EXPECT_EQ(style.list_style_type, ListStyleType::None);
+}
+
+TEST(PropertyCascadeTest, ListStylePositionValues) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.list_style_position, ListStylePosition::Outside);  // default
+
+    cascade.apply_declaration(style, make_decl("list-style-position", "inside"), parent);
+    EXPECT_EQ(style.list_style_position, ListStylePosition::Inside);
+
+    cascade.apply_declaration(style, make_decl("list-style-position", "outside"), parent);
+    EXPECT_EQ(style.list_style_position, ListStylePosition::Outside);
+}
+
+TEST(PropertyCascadeTest, ListStyleShorthand) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    // list-style: circle inside
+    cascade.apply_declaration(style, make_decl("list-style", "circle inside"), parent);
+    EXPECT_EQ(style.list_style_type, ListStyleType::Circle);
+    EXPECT_EQ(style.list_style_position, ListStylePosition::Inside);
+
+    // list-style: decimal outside
+    cascade.apply_declaration(style, make_decl("list-style", "decimal outside"), parent);
+    EXPECT_EQ(style.list_style_type, ListStyleType::Decimal);
+    EXPECT_EQ(style.list_style_position, ListStylePosition::Outside);
+}
+
+TEST(PropertyCascadeTest, CursorAllValues) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.cursor, Cursor::Auto);  // default
+
+    cascade.apply_declaration(style, make_decl("cursor", "default"), parent);
+    EXPECT_EQ(style.cursor, Cursor::Default);
+
+    cascade.apply_declaration(style, make_decl("cursor", "pointer"), parent);
+    EXPECT_EQ(style.cursor, Cursor::Pointer);
+
+    cascade.apply_declaration(style, make_decl("cursor", "text"), parent);
+    EXPECT_EQ(style.cursor, Cursor::Text);
+
+    cascade.apply_declaration(style, make_decl("cursor", "move"), parent);
+    EXPECT_EQ(style.cursor, Cursor::Move);
+
+    cascade.apply_declaration(style, make_decl("cursor", "not-allowed"), parent);
+    EXPECT_EQ(style.cursor, Cursor::NotAllowed);
+
+    cascade.apply_declaration(style, make_decl("cursor", "auto"), parent);
+    EXPECT_EQ(style.cursor, Cursor::Auto);
+}
+
+TEST(PropertyCascadeTest, VerticalAlignAllValues) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.vertical_align, VerticalAlign::Baseline);  // default
+
+    cascade.apply_declaration(style, make_decl("vertical-align", "top"), parent);
+    EXPECT_EQ(style.vertical_align, VerticalAlign::Top);
+
+    cascade.apply_declaration(style, make_decl("vertical-align", "middle"), parent);
+    EXPECT_EQ(style.vertical_align, VerticalAlign::Middle);
+
+    cascade.apply_declaration(style, make_decl("vertical-align", "bottom"), parent);
+    EXPECT_EQ(style.vertical_align, VerticalAlign::Bottom);
+
+    cascade.apply_declaration(style, make_decl("vertical-align", "text-top"), parent);
+    EXPECT_EQ(style.vertical_align, VerticalAlign::TextTop);
+
+    cascade.apply_declaration(style, make_decl("vertical-align", "text-bottom"), parent);
+    EXPECT_EQ(style.vertical_align, VerticalAlign::TextBottom);
+
+    cascade.apply_declaration(style, make_decl("vertical-align", "baseline"), parent);
+    EXPECT_EQ(style.vertical_align, VerticalAlign::Baseline);
+}
+
+TEST(PropertyCascadeTest, OutlineShorthand) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    // outline: 2px solid red
+    cascade.apply_declaration(style, make_decl("outline", "2px solid red"), parent);
+    EXPECT_FLOAT_EQ(style.outline_width.to_px(), 2.0f);
+    EXPECT_EQ(style.outline_style, BorderStyle::Solid);
+    EXPECT_EQ(style.outline_color.r, 255);
+    EXPECT_EQ(style.outline_color.a, 255);
+
+    // outline: 1px dashed blue
+    cascade.apply_declaration(style, make_decl("outline", "1px dashed blue"), parent);
+    EXPECT_FLOAT_EQ(style.outline_width.to_px(), 1.0f);
+    EXPECT_EQ(style.outline_style, BorderStyle::Dashed);
+    EXPECT_EQ(style.outline_color.b, 255);
+}
+
+TEST(PropertyCascadeTest, OutlineLonghands) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("outline-width", "3px"), parent);
+    EXPECT_FLOAT_EQ(style.outline_width.to_px(), 3.0f);
+
+    cascade.apply_declaration(style, make_decl("outline-style", "dotted"), parent);
+    EXPECT_EQ(style.outline_style, BorderStyle::Dotted);
+
+    cascade.apply_declaration(style, make_decl("outline-color", "green"), parent);
+    EXPECT_EQ(style.outline_color.g, 128);  // CSS green is #008000
+
+    cascade.apply_declaration(style, make_decl("outline-style", "none"), parent);
+    EXPECT_EQ(style.outline_style, BorderStyle::None);
+}
+
+TEST(PropertyCascadeTest, OutlineOffsetValue) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_FLOAT_EQ(style.outline_offset.to_px(), 0.0f);  // default
+
+    cascade.apply_declaration(style, make_decl("outline-offset", "5px"), parent);
+    EXPECT_FLOAT_EQ(style.outline_offset.to_px(), 5.0f);
+
+    cascade.apply_declaration(style, make_decl("outline-offset", "0"), parent);
+    EXPECT_FLOAT_EQ(style.outline_offset.to_px(), 0.0f);
+}
