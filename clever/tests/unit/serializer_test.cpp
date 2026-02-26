@@ -2,7 +2,9 @@
 #include <gtest/gtest.h>
 #include <cmath>
 #include <limits>
+#include <numeric>
 #include <string>
+#include <vector>
 
 using clever::ipc::Serializer;
 using clever::ipc::Deserializer;
@@ -387,5 +389,125 @@ TEST(SerializerTest, RoundTripStringWithEmbeddedNul) {
     std::string result = d.read_string();
     ASSERT_EQ(result.size(), 11u);
     EXPECT_EQ(result, nul_str);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+// ---------------------------------------------------------------------------
+// Cycle 486 — additional Serializer / Deserializer regression tests
+// ---------------------------------------------------------------------------
+
+// i64 boundary values: INT64_MIN, -1, 0, INT64_MAX
+TEST(SerializerTest, RoundTripI64BoundaryValues) {
+    Serializer s;
+    s.write_i64(std::numeric_limits<int64_t>::min());
+    s.write_i64(-1LL);
+    s.write_i64(0LL);
+    s.write_i64(std::numeric_limits<int64_t>::max());
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i64(), std::numeric_limits<int64_t>::min());
+    EXPECT_EQ(d.read_i64(), -1LL);
+    EXPECT_EQ(d.read_i64(), 0LL);
+    EXPECT_EQ(d.read_i64(), std::numeric_limits<int64_t>::max());
+    EXPECT_FALSE(d.has_remaining());
+}
+
+// u8 edge values: 0, 1, 127, 128, 255
+TEST(SerializerTest, RoundTripU8EdgeValues) {
+    Serializer s;
+    s.write_u8(0);
+    s.write_u8(1);
+    s.write_u8(127);
+    s.write_u8(128);
+    s.write_u8(255);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u8(), 0u);
+    EXPECT_EQ(d.read_u8(), 1u);
+    EXPECT_EQ(d.read_u8(), 127u);
+    EXPECT_EQ(d.read_u8(), 128u);
+    EXPECT_EQ(d.read_u8(), 255u);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+// large bytes buffer: 1024 entries, verify content
+TEST(SerializerTest, RoundTripLargeBytes) {
+    std::vector<uint8_t> big(1024);
+    std::iota(big.begin(), big.end(), static_cast<uint8_t>(0));
+
+    Serializer s;
+    s.write_bytes(big.data(), big.size());
+
+    Deserializer d(s.data());
+    auto result = d.read_bytes();
+    EXPECT_EQ(result, big);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+// data() size grows correctly with each write
+TEST(SerializerTest, SerializerDataSizeGrowsWithWrites) {
+    Serializer s;
+    EXPECT_EQ(s.data().size(), 0u);
+
+    s.write_u8(1);       // +1
+    EXPECT_EQ(s.data().size(), 1u);
+
+    s.write_u16(2);      // +2
+    EXPECT_EQ(s.data().size(), 3u);
+
+    s.write_u32(3);      // +4
+    EXPECT_EQ(s.data().size(), 7u);
+
+    s.write_u64(4);      // +8
+    EXPECT_EQ(s.data().size(), 15u);
+}
+
+// very long string (1000 chars) round-trips correctly
+TEST(SerializerTest, RoundTripStringVeryLong) {
+    std::string long_str(1000, 'x');
+    for (size_t i = 0; i < long_str.size(); ++i) {
+        long_str[i] = static_cast<char>('a' + (i % 26));
+    }
+
+    Serializer s;
+    s.write_string(long_str);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), long_str);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+// multiple bools: F,T,F,T,T pattern preserved
+TEST(SerializerTest, RoundTripMultipleBoolsPattern) {
+    std::vector<bool> pattern = {false, true, false, true, true};
+
+    Serializer s;
+    for (bool b : pattern) s.write_bool(b);
+
+    Deserializer d(s.data());
+    for (bool expected : pattern) {
+        EXPECT_EQ(d.read_bool(), expected);
+    }
+    EXPECT_FALSE(d.has_remaining());
+}
+
+// u16 underflow: only 1 byte present (verifies check when 1 byte remains)
+TEST(SerializerTest, DeserializerThrowsOnUnderflowU16SingleByte) {
+    Serializer s;
+    s.write_u8(0xFF);  // only 1 byte; read_u16 needs 2
+    Deserializer d(s.data());
+    EXPECT_THROW(d.read_u16(), std::runtime_error);
+}
+
+// Deserializer constructed from raw pointer and size
+TEST(SerializerTest, DeserializerFromRawPointerAndSize) {
+    Serializer s;
+    s.write_u32(0xDEADBEEFu);
+    s.write_u32(0xCAFEBABEu);
+    auto buf = s.take_data();
+
+    Deserializer d(buf.data(), buf.size());
+    EXPECT_EQ(d.read_u32(), 0xDEADBEEFu);
+    EXPECT_EQ(d.read_u32(), 0xCAFEBABEu);
     EXPECT_FALSE(d.has_remaining());
 }
