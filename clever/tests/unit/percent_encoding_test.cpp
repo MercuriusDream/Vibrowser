@@ -140,3 +140,51 @@ TEST(IsURLCodePoint, ControlCharsNotURLCodePoints) {
     EXPECT_FALSE(is_url_code_point('\n'));
     EXPECT_FALSE(is_url_code_point(' '));
 }
+
+TEST(IsURLCodePoint, ForbiddenPrintableCharsNotURLCodePoints) {
+    // These printable ASCII chars are NOT URL code points per WHATWG URL spec
+    EXPECT_FALSE(is_url_code_point('"'));
+    EXPECT_FALSE(is_url_code_point('<'));
+    EXPECT_FALSE(is_url_code_point('>'));
+    EXPECT_FALSE(is_url_code_point('\\'));
+    EXPECT_FALSE(is_url_code_point('^'));
+    EXPECT_FALSE(is_url_code_point('`'));
+    EXPECT_FALSE(is_url_code_point('{'));
+    EXPECT_FALSE(is_url_code_point('|'));
+    EXPECT_FALSE(is_url_code_point('}'));
+}
+
+TEST(IsURLCodePoint, PercentSignNotURLCodePoint) {
+    // '%' is not itself a URL code point (it's the escape introducer)
+    EXPECT_FALSE(is_url_code_point('%'));
+}
+
+TEST(IsURLCodePoint, QuestionMarkIsURLCodePoint) {
+    // '?' (U+003F) is listed as a URL code point in WHATWG URL spec
+    EXPECT_TRUE(is_url_code_point('?'));
+}
+
+TEST(IsURLCodePoint, HashIsNotURLCodePoint) {
+    // '#' (U+0023) is a URL syntax delimiter, not a URL code point
+    EXPECT_FALSE(is_url_code_point('#'));
+}
+
+TEST(PercentDecoding, DecodeNULByte) {
+    std::string result = percent_decode("%00");
+    ASSERT_EQ(result.size(), 1u);
+    EXPECT_EQ(static_cast<unsigned char>(result[0]), 0x00);
+}
+
+TEST(PercentDecoding, DecodeDELByte) {
+    std::string result = percent_decode("%7F");
+    ASSERT_EQ(result.size(), 1u);
+    EXPECT_EQ(static_cast<unsigned char>(result[0]), 0x7F);
+}
+
+TEST(PercentDecoding, DecodeUTF8MultiByteSequence) {
+    // %C3%A4 is UTF-8 encoding of ä (U+00E4)
+    std::string result = percent_decode("%C3%A4");
+    ASSERT_EQ(result.size(), 2u);
+    EXPECT_EQ(static_cast<unsigned char>(result[0]), 0xC3);
+    EXPECT_EQ(static_cast<unsigned char>(result[1]), 0xA4);
+}
