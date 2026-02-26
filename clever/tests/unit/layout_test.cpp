@@ -5398,3 +5398,65 @@ TEST(LayoutEngineTest, SpecifiedHeightStored) {
     node->specified_height = 200.0f;
     EXPECT_FLOAT_EQ(node->specified_height, 200.0f);
 }
+
+// ============================================================================
+// Cycle 593: More Layout tests
+// ============================================================================
+
+// Block: border can be stored
+TEST(LayoutNodeProps, BorderCanBeStored) {
+    auto node = make_block("div");
+    node->geometry.border.top = 2.0f;
+    node->geometry.border.left = 2.0f;
+    EXPECT_FLOAT_EQ(node->geometry.border.top, 2.0f);
+}
+
+// Block: margin can be stored
+TEST(LayoutNodeProps, MarginCanBeStored) {
+    auto node = make_block("div");
+    node->geometry.margin.top = 16.0f;
+    EXPECT_FLOAT_EQ(node->geometry.margin.top, 16.0f);
+}
+
+// Block: multiple children in order
+TEST(LayoutEngineTest, ChildrenInOrder) {
+    auto parent = make_block("div");
+    parent->append_child(make_block("p"));
+    parent->append_child(make_block("h2"));
+    parent->append_child(make_block("ul"));
+    ASSERT_EQ(parent->children.size(), 3u);
+    EXPECT_EQ(parent->children[0]->tag_name, "p");
+    EXPECT_EQ(parent->children[1]->tag_name, "h2");
+    EXPECT_EQ(parent->children[2]->tag_name, "ul");
+}
+
+// Inline node: mode is Inline
+TEST(LayoutEngineTest, InlineNodeModeIsInline) {
+    auto node = make_inline("a");
+    EXPECT_EQ(node->mode, LayoutMode::Inline);
+}
+
+// Flex: mode is Flex
+TEST(FlexboxAudit, FlexNodeModeIsFlex) {
+    auto node = make_flex("div");
+    EXPECT_EQ(node->mode, LayoutMode::Flex);
+}
+
+// Block: geometry.x defaults to 0
+TEST(LayoutNodeProps, GeometryXDefaultsToZero) {
+    auto node = make_block("div");
+    EXPECT_FLOAT_EQ(node->geometry.x, 0.0f);
+}
+
+// Block: geometry.y defaults to 0
+TEST(LayoutNodeProps, GeometryYDefaultsToZero) {
+    auto node = make_block("div");
+    EXPECT_FLOAT_EQ(node->geometry.y, 0.0f);
+}
+
+// Flex: flex_direction row-reverse (1)
+TEST(FlexboxAudit, FlexDirectionRowReverseValue) {
+    auto node = make_flex("div");
+    node->flex_direction = 1;
+    EXPECT_EQ(node->flex_direction, 1);
+}
