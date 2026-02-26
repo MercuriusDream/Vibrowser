@@ -103,6 +103,19 @@ std::optional<clever::url::URL> parse_httpish_url(std::string_view input) {
         }
     }
 
+    const std::size_t scheme_end = input.find("://");
+    if (scheme_end == std::string::npos || scheme_end + 3 >= input.size()) {
+        return std::nullopt;
+    }
+    const std::size_t authority_start = scheme_end + 3;
+    const std::size_t authority_end = input.find_first_of("/?#", authority_start);
+    const std::string_view authority = input.substr(
+        authority_start,
+        authority_end == std::string::npos ? std::string_view::npos : authority_end - authority_start);
+    if (!has_strict_authority_port_syntax(authority)) {
+        return std::nullopt;
+    }
+
     auto parsed = clever::url::parse(input);
     if (!parsed.has_value()) {
         return std::nullopt;
