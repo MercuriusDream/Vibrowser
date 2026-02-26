@@ -1235,6 +1235,12 @@ bool parse_status_line(const std::string& status_line, Response& response, std::
     return false;
   }
 
+  if (second_space != std::string::npos && second_space + 1 < status_line.size() &&
+      status_line[second_space + 1] == ' ') {
+    err = "Malformed HTTP status line";
+    return false;
+  }
+
   response.status_code = status_code;
   response.reason = (second_space == std::string::npos) ? "" : trim_ascii(status_line.substr(second_space + 1));
   return true;
