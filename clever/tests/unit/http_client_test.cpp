@@ -935,6 +935,84 @@ TEST(CookieJarTest, ExpiredExpiresFiltered) {
         << "Cookie with past Expires should not be returned";
 }
 
+// ============================================================================
+// Cycle 428: SameSite cross-site enforcement regression tests
+// ============================================================================
+
+TEST(CookieJarTest, SameSiteStrictNotSentCrossSite) {
+    CookieJar jar;
+    jar.set_from_header("token=secret; SameSite=Strict", "example.com");
+
+    // Cross-site request (is_same_site=false) — Strict must not be sent
+    std::string header = jar.get_cookie_header("example.com", "/", false, /*is_same_site=*/false);
+    EXPECT_TRUE(header.empty())
+        << "SameSite=Strict cookie should not be sent on cross-site requests";
+
+    // Same-site request — Strict should be sent
+    std::string header2 = jar.get_cookie_header("example.com", "/", false, /*is_same_site=*/true);
+    EXPECT_EQ(header2, "token=secret");
+}
+
+TEST(CookieJarTest, SameSiteLaxSentForTopLevelNavOnly) {
+    CookieJar jar;
+    jar.set_from_header("session=lax; SameSite=Lax", "example.com");
+
+    // Cross-site top-level navigation (GET for page) — Lax should be sent
+    std::string header_nav = jar.get_cookie_header("example.com", "/", false,
+                                                   /*is_same_site=*/false,
+                                                   /*is_top_level_nav=*/true);
+    EXPECT_EQ(header_nav, "session=lax")
+        << "SameSite=Lax should be sent on cross-site top-level navigation";
+
+    // Cross-site non-navigation (e.g. XHR/fetch) — Lax should NOT be sent
+    std::string header_xhr = jar.get_cookie_header("example.com", "/", false,
+                                                   /*is_same_site=*/false,
+                                                   /*is_top_level_nav=*/false);
+    EXPECT_TRUE(header_xhr.empty())
+        << "SameSite=Lax should not be sent on cross-site non-navigation requests";
+}
+
+TEST(CookieJarTest, SameSiteNoneRequiresSecure) {
+    CookieJar jar;
+    // SameSite=None without Secure — should be filtered on cross-site
+    jar.set_from_header("insecure=none; SameSite=None", "example.com");
+
+    // Attempting cross-site over HTTP — should not be sent (no Secure flag)
+    std::string header = jar.get_cookie_header("example.com", "/", /*is_secure=*/false,
+                                               /*is_same_site=*/false);
+    EXPECT_TRUE(header.empty())
+        << "SameSite=None without Secure should not be sent on cross-site requests";
+}
+
+TEST(CookieJarTest, SameSiteNoneWithSecureSentCrossSite) {
+    CookieJar jar;
+    // SameSite=None with Secure — should be sent on cross-site HTTPS
+    jar.set_from_header("cross=ok; SameSite=None; Secure", "example.com");
+
+    std::string header = jar.get_cookie_header("example.com", "/", /*is_secure=*/true,
+                                               /*is_same_site=*/false);
+    EXPECT_EQ(header, "cross=ok")
+        << "SameSite=None with Secure should be sent on cross-site HTTPS requests";
+}
+
+TEST(CookieJarTest, DefaultSameSiteLaxBehavior) {
+    CookieJar jar;
+    // Cookie without SameSite attribute — defaults to Lax behavior (same as SameSite=Lax)
+    jar.set_from_header("default=lax", "example.com");
+
+    // Cross-site non-navigation — default Lax should block
+    std::string header_xhr = jar.get_cookie_header("example.com", "/", false,
+                                                   /*is_same_site=*/false,
+                                                   /*is_top_level_nav=*/false);
+    EXPECT_TRUE(header_xhr.empty())
+        << "Cookie without SameSite defaults to Lax and should not be sent cross-site non-nav";
+
+    // Same-site request — should always be sent
+    std::string header_same = jar.get_cookie_header("example.com", "/", false,
+                                                    /*is_same_site=*/true);
+    EXPECT_EQ(header_same, "default=lax");
+}
+
 // ===========================================================================
 // Request Serialization — Connection header
 // ===========================================================================
