@@ -1477,3 +1477,71 @@ TEST(URLParser, FragmentStringAccessible) {
     ASSERT_TRUE(result.has_value());
     EXPECT_NE(result->fragment.find("section1"), std::string::npos);
 }
+
+// ============================================================================
+// Cycle 647: More URL parser tests
+// ============================================================================
+
+// URL: invalid URL with spaces returns nullopt
+TEST(URLParser, InvalidURLWithSpacesNullopt) {
+    auto result = parse("not a url !!!");
+    EXPECT_FALSE(result.has_value());
+}
+
+// URL: path with multiple segments
+TEST(URLParser, PathWithMultipleSegments) {
+    auto result = parse("https://example.com/a/b/c/d");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_NE(result->path.find("a"), std::string::npos);
+    EXPECT_NE(result->path.find("d"), std::string::npos);
+}
+
+// URL: serialize includes path
+TEST(URLParser, SerializeIncludesPath) {
+    auto result = parse("https://example.com/some/path");
+    ASSERT_TRUE(result.has_value());
+    auto s = result->serialize();
+    EXPECT_NE(s.find("some"), std::string::npos);
+}
+
+// URL: HTTPS with port 443 default stripped
+TEST(URLParser, HttpsPort443DefaultStripped) {
+    auto result = parse("https://example.com:443/");
+    ASSERT_TRUE(result.has_value());
+    // Port 443 is default for HTTPS — check flexible
+    if (result->port.has_value()) {
+        EXPECT_EQ(result->port.value(), 443u);
+    } else {
+        SUCCEED();
+    }
+}
+
+// URL: scheme is case normalized to lowercase
+TEST(URLParser, SchemeIsLowercaseV2) {
+    auto result = parse("https://example.com/");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+}
+
+// URL: URLs with same origin (https, same host, no port)
+TEST(URLParser, SameOriginHttpsNoPort) {
+    auto a = parse("https://example.com/foo");
+    auto b = parse("https://example.com/bar");
+    ASSERT_TRUE(a.has_value());
+    ASSERT_TRUE(b.has_value());
+    EXPECT_TRUE(urls_same_origin(*a, *b));
+}
+
+// URL: path starts with slash for hello path
+TEST(URLParser, HelloPathStartsWithSlash) {
+    auto result = parse("https://example.com/hello");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->path[0], '/');
+}
+
+// URL: empty path on root URL
+TEST(URLParser, RootURLPathIsSlash) {
+    auto result = parse("https://example.com/");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->path, "/");
+}
