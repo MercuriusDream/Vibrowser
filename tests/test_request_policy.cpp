@@ -1333,6 +1333,35 @@ int main() {
         }
     }
 
+    // Test 71: CORS rejects ACAO values with authority backslashes
+    {
+        browser::net::RequestPolicy policy;
+        policy.origin = "https://app.example.com";
+        browser::net::Response response;
+        response.headers["access-control-allow-origin"] = "https://app.example.com\\evil";
+        auto result =
+            browser::net::check_cors_response_policy("https://api.example.com/data", response, policy);
+        if (result.allowed) {
+            std::cerr << "FAIL: CORS should reject ACAO origins containing backslashes\n";
+            ++failures;
+        } else {
+            std::cerr << "PASS: CORS rejects ACAO origins containing backslashes\n";
+        }
+    }
+
+    // Test 72: request Origin header emission rejects policy Origin values with backslashes
+    {
+        browser::net::RequestPolicy policy;
+        policy.origin = "https://app.example.com\\evil";
+        auto headers = browser::net::build_request_headers_for_policy("https://api.example.com/data", policy);
+        if (!headers.empty()) {
+            std::cerr << "FAIL: policy Origin with backslash should not be attached as Origin header\n";
+            ++failures;
+        } else {
+            std::cerr << "PASS: request Origin header emission rejects backslash policy origins\n";
+        }
+    }
+
     if (failures > 0) {
         std::cerr << "\n" << failures << " test(s) FAILED\n";
         return 1;
