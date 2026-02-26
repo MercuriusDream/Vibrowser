@@ -1667,3 +1667,68 @@ TEST(DomDocument, CreateElementHasCorrectTag) {
     EXPECT_EQ(el->tag_name(), "section");
     EXPECT_EQ(el->node_type(), NodeType::Element);
 }
+
+// ============================================================================
+// Cycle 574: More DOM tests
+// ============================================================================
+
+// Element: set_attribute updates existing attribute
+TEST(DomElement, SetAttributeUpdatesExisting) {
+    Element e("input");
+    e.set_attribute("type", "text");
+    e.set_attribute("type", "email");
+    auto val = e.get_attribute("type");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(*val, "email");
+}
+
+// Element: attributes() method returns count
+TEST(DomElement, AttributesMethodCount) {
+    Element e("a");
+    e.set_attribute("href", "https://example.com");
+    e.set_attribute("target", "_blank");
+    EXPECT_EQ(e.attributes().size(), 2u);
+}
+
+// Element: id() convenience (via attribute)
+TEST(DomElement, IdAttributeAccessible) {
+    Element e("section");
+    e.set_attribute("id", "main");
+    auto val = e.get_attribute("id");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(*val, "main");
+}
+
+// Text: data() returns the text content
+TEST(DomText, DataReturnsContent) {
+    Text t("Hello, World!");
+    EXPECT_EQ(t.data(), "Hello, World!");
+}
+
+// Text: set_data updates content
+TEST(DomText, SetDataUpdatesContent) {
+    Text t("initial");
+    t.set_data("updated");
+    EXPECT_EQ(t.data(), "updated");
+}
+
+// Comment: data() returns comment content
+TEST(DomComment, DataReturnsCommentText) {
+    Comment c("This is a comment");
+    EXPECT_EQ(c.data(), "This is a comment");
+}
+
+// Node: remove_child removes the node
+TEST(DomNode, RemoveChildReducesCount) {
+    auto parent = std::make_unique<Element>("ul");
+    auto& child = parent->append_child(std::make_unique<Element>("li"));
+    EXPECT_EQ(parent->child_count(), 1u);
+    parent->remove_child(child);
+    EXPECT_EQ(parent->child_count(), 0u);
+}
+
+// Event: phase initially None
+TEST(DomEvent, PhaseInitiallyNone) {
+    Event e("keydown", true, true);
+    EXPECT_EQ(e.phase(), EventPhase::None);
+}
