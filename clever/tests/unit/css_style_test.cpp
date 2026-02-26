@@ -7463,3 +7463,173 @@ TEST(PropertyCascadeTest, BackgroundPositionKeywords) {
     EXPECT_EQ(style.background_position_x, 0);
     EXPECT_EQ(style.background_position_y, 0);
 }
+
+// ---------------------------------------------------------------------------
+// Cycle 456 — SVG CSS properties
+// ---------------------------------------------------------------------------
+
+TEST(PropertyCascadeTest, SvgFillColorAndNone) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    // defaults: black fill, not none
+    EXPECT_EQ(style.svg_fill_color, 0xFF000000u);
+    EXPECT_FALSE(style.svg_fill_none);
+
+    // fill: none
+    cascade.apply_declaration(style, make_decl("fill", "none"), parent);
+    EXPECT_TRUE(style.svg_fill_none);
+
+    // fill: red clears none flag, stores ARGB
+    cascade.apply_declaration(style, make_decl("fill", "red"), parent);
+    EXPECT_FALSE(style.svg_fill_none);
+    EXPECT_EQ(style.svg_fill_color, 0xFFFF0000u);
+}
+
+TEST(PropertyCascadeTest, SvgStrokeColorAndNone) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    // default: stroke none
+    EXPECT_TRUE(style.svg_stroke_none);
+
+    // stroke: blue
+    cascade.apply_declaration(style, make_decl("stroke", "blue"), parent);
+    EXPECT_FALSE(style.svg_stroke_none);
+    EXPECT_EQ(style.svg_stroke_color, 0xFF0000FFu);
+
+    // stroke: none
+    cascade.apply_declaration(style, make_decl("stroke", "none"), parent);
+    EXPECT_TRUE(style.svg_stroke_none);
+}
+
+TEST(PropertyCascadeTest, SvgFillAndStrokeOpacity) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_FLOAT_EQ(style.svg_fill_opacity, 1.0f);
+    EXPECT_FLOAT_EQ(style.svg_stroke_opacity, 1.0f);
+
+    cascade.apply_declaration(style, make_decl("fill-opacity", "0.5"), parent);
+    EXPECT_FLOAT_EQ(style.svg_fill_opacity, 0.5f);
+
+    cascade.apply_declaration(style, make_decl("stroke-opacity", "0.25"), parent);
+    EXPECT_FLOAT_EQ(style.svg_stroke_opacity, 0.25f);
+
+    // clamped to [0,1]
+    cascade.apply_declaration(style, make_decl("fill-opacity", "2.0"), parent);
+    EXPECT_FLOAT_EQ(style.svg_fill_opacity, 1.0f);
+
+    cascade.apply_declaration(style, make_decl("stroke-opacity", "-0.5"), parent);
+    EXPECT_FLOAT_EQ(style.svg_stroke_opacity, 0.0f);
+}
+
+TEST(PropertyCascadeTest, SvgStrokeWidthAndLinecap) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_FLOAT_EQ(style.svg_stroke_width, 0.0f);
+    EXPECT_EQ(style.svg_stroke_linecap, 0);  // default: butt
+
+    cascade.apply_declaration(style, make_decl("stroke-width", "3.5"), parent);
+    EXPECT_FLOAT_EQ(style.svg_stroke_width, 3.5f);
+
+    cascade.apply_declaration(style, make_decl("stroke-linecap", "round"), parent);
+    EXPECT_EQ(style.svg_stroke_linecap, 1);
+
+    cascade.apply_declaration(style, make_decl("stroke-linecap", "square"), parent);
+    EXPECT_EQ(style.svg_stroke_linecap, 2);
+
+    cascade.apply_declaration(style, make_decl("stroke-linecap", "butt"), parent);
+    EXPECT_EQ(style.svg_stroke_linecap, 0);
+}
+
+TEST(PropertyCascadeTest, SvgStrokeLinejoinAndDasharray) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.svg_stroke_linejoin, 0);  // default: miter
+    EXPECT_EQ(style.svg_stroke_dasharray_str, "");
+
+    cascade.apply_declaration(style, make_decl("stroke-linejoin", "round"), parent);
+    EXPECT_EQ(style.svg_stroke_linejoin, 1);
+
+    cascade.apply_declaration(style, make_decl("stroke-linejoin", "bevel"), parent);
+    EXPECT_EQ(style.svg_stroke_linejoin, 2);
+
+    cascade.apply_declaration(style, make_decl("stroke-linejoin", "miter"), parent);
+    EXPECT_EQ(style.svg_stroke_linejoin, 0);
+
+    cascade.apply_declaration(style, make_decl("stroke-dasharray", "4 2 1 2"), parent);
+    EXPECT_EQ(style.svg_stroke_dasharray_str, "4 2 1 2");
+}
+
+TEST(PropertyCascadeTest, SvgTextAnchorValues) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.svg_text_anchor, 0);  // default: start
+
+    cascade.apply_declaration(style, make_decl("text-anchor", "middle"), parent);
+    EXPECT_EQ(style.svg_text_anchor, 1);
+
+    cascade.apply_declaration(style, make_decl("text-anchor", "end"), parent);
+    EXPECT_EQ(style.svg_text_anchor, 2);
+
+    cascade.apply_declaration(style, make_decl("text-anchor", "start"), parent);
+    EXPECT_EQ(style.svg_text_anchor, 0);
+}
+
+TEST(PropertyCascadeTest, SvgFillRuleAndClipRule) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.fill_rule, 0);  // default: nonzero
+    EXPECT_EQ(style.clip_rule, 0);  // default: nonzero
+
+    cascade.apply_declaration(style, make_decl("fill-rule", "evenodd"), parent);
+    EXPECT_EQ(style.fill_rule, 1);
+
+    cascade.apply_declaration(style, make_decl("clip-rule", "evenodd"), parent);
+    EXPECT_EQ(style.clip_rule, 1);
+
+    cascade.apply_declaration(style, make_decl("fill-rule", "nonzero"), parent);
+    EXPECT_EQ(style.fill_rule, 0);
+
+    cascade.apply_declaration(style, make_decl("clip-rule", "nonzero"), parent);
+    EXPECT_EQ(style.clip_rule, 0);
+}
+
+TEST(PropertyCascadeTest, SvgShapeRenderingAndVectorEffect) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.shape_rendering, 0);  // default: auto
+    EXPECT_EQ(style.vector_effect, 0);    // default: none
+
+    cascade.apply_declaration(style, make_decl("shape-rendering", "optimizeSpeed"), parent);
+    EXPECT_EQ(style.shape_rendering, 1);
+
+    cascade.apply_declaration(style, make_decl("shape-rendering", "crispEdges"), parent);
+    EXPECT_EQ(style.shape_rendering, 2);
+
+    cascade.apply_declaration(style, make_decl("shape-rendering", "geometricPrecision"), parent);
+    EXPECT_EQ(style.shape_rendering, 3);
+
+    cascade.apply_declaration(style, make_decl("shape-rendering", "auto"), parent);
+    EXPECT_EQ(style.shape_rendering, 0);
+
+    cascade.apply_declaration(style, make_decl("vector-effect", "non-scaling-stroke"), parent);
+    EXPECT_EQ(style.vector_effect, 1);
+
+    cascade.apply_declaration(style, make_decl("vector-effect", "none"), parent);
+    EXPECT_EQ(style.vector_effect, 0);
+}
