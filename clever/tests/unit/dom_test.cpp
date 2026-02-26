@@ -1910,3 +1910,70 @@ TEST(DomElement, ChildCountZeroInitiallyV2) {
     Element e("article");
     EXPECT_EQ(e.child_count(), 0u);
 }
+
+// ============================================================================
+// Cycle 608: More DOM tests
+// ============================================================================
+
+// Element: class_list toggle adds "hidden" when absent
+TEST(DomClassList, ToggleAddsHiddenWhenAbsent) {
+    Element e("div");
+    e.class_list().toggle("hidden");
+    EXPECT_TRUE(e.class_list().contains("hidden"));
+}
+
+// Element: class_list toggle removes "visible" when present
+TEST(DomClassList, ToggleRemovesVisibleWhenPresent) {
+    Element e("div");
+    e.class_list().add("visible");
+    e.class_list().toggle("visible");
+    EXPECT_FALSE(e.class_list().contains("visible"));
+}
+
+// Element: class_list items() returns all classes
+TEST(DomClassList, ItemsReturnsAllClasses) {
+    Element e("div");
+    e.class_list().add("foo");
+    e.class_list().add("bar");
+    auto items = e.class_list().items();
+    EXPECT_EQ(items.size(), 2u);
+}
+
+// Element: remove_attribute then has_attribute false
+TEST(DomElement, RemoveAttributeThenHasFalseV2) {
+    Element e("div");
+    e.set_attribute("data-id", "42");
+    e.remove_attribute("data-id");
+    EXPECT_FALSE(e.has_attribute("data-id"));
+}
+
+// Element: get_attribute after set returns value
+TEST(DomElement, GetAttributeAfterSet) {
+    Element e("input");
+    e.set_attribute("maxlength", "100");
+    auto val = e.get_attribute("maxlength");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(*val, "100");
+}
+
+// Text: set_data changes content
+TEST(DomText, SetDataChangesContent) {
+    Text t("original");
+    t.set_data("changed");
+    EXPECT_EQ(t.data(), "changed");
+}
+
+// Element: append then child_count is one
+TEST(DomElement, AppendTextChildCount) {
+    Element e("p");
+    auto t = std::make_unique<Text>("hello");
+    e.append_child(std::move(t));
+    EXPECT_EQ(e.child_count(), 1u);
+}
+
+// Document: node_type is Document v2
+TEST(DomDocument, NodeTypeIsDocumentV2) {
+    Document doc;
+    EXPECT_NE(doc.node_type(), NodeType::Element);
+    EXPECT_EQ(doc.node_type(), NodeType::Document);
+}
