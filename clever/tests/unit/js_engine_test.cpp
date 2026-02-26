@@ -13315,3 +13315,87 @@ TEST(JSEngine, MathHypot) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "5");
 }
+
+// ============================================================================
+// Cycle 614: More JS engine tests
+// ============================================================================
+
+// Math.sign
+TEST(JSEngine, MathSign) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        Math.sign(-5) + "," + Math.sign(0) + "," + Math.sign(3)
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "-1,0,1");
+}
+
+// Math.trunc
+TEST(JSEngine, MathTrunc) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        Math.trunc(3.7) + "," + Math.trunc(-3.7)
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "3,-3");
+}
+
+// Math.log2
+TEST(JSEngine, MathLog2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        Math.log2(8)
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "3");
+}
+
+// Math.log10
+TEST(JSEngine, MathLog10) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        Math.log10(1000)
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "3");
+}
+
+// Number.isNaN
+TEST(JSEngine, NumberIsNaN) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        Number.isNaN(NaN) + "," + Number.isNaN(42)
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true,false");
+}
+
+// Number.MAX_SAFE_INTEGER
+TEST(JSEngine, NumberMaxSafeInteger) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        Number.MAX_SAFE_INTEGER === 9007199254740991
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true");
+}
+
+// Number.MIN_SAFE_INTEGER
+TEST(JSEngine, NumberMinSafeInteger) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        Number.MIN_SAFE_INTEGER === -9007199254740991
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true");
+}
+
+// Array.prototype.findIndex with negative result
+TEST(JSEngine, ArrayFindIndexNotFound) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        [1, 2, 3].findIndex(function(x) { return x > 100; })
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "-1");
+}
