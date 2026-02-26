@@ -12017,3 +12017,94 @@ TEST(JSEngine, ObjectValues) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "24");
 }
+
+// ============================================================================
+// Cycle 538: JS engine regression tests
+// ============================================================================
+
+// String includes() method
+TEST(JSEngine, StringIncludesMethod) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var s = "hello world";
+        String(s.includes("world")) + "," + String(s.includes("xyz"))
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true,false");
+}
+
+// String startsWith() method
+TEST(JSEngine, StringStartsWithMethod) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var s = "foobar";
+        String(s.startsWith("foo")) + "," + String(s.startsWith("bar"))
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true,false");
+}
+
+// String endsWith() method
+TEST(JSEngine, StringEndsWithMethod) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var s = "foobar";
+        String(s.endsWith("bar")) + "," + String(s.endsWith("foo"))
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true,false");
+}
+
+// Array.from with string argument
+TEST(JSEngine, ArrayFromString) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        Array.from("abc").join("-")
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "a-b-c");
+}
+
+// typeof operator
+TEST(JSEngine, TypeofOperator) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        typeof 42 + "," + typeof "hello" + "," + typeof true + "," + typeof undefined
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "number,string,boolean,undefined");
+}
+
+// Object.keys returns array of property names
+TEST(JSEngine, ObjectKeys) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var obj = {a: 1, b: 2, c: 3};
+        Object.keys(obj).sort().join(",")
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "a,b,c");
+}
+
+// Comma operator evaluates to last value
+TEST(JSEngine, CommaOperator) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var x = (1, 2, 3);
+        x
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "3");
+}
+
+// Logical AND short-circuit
+TEST(JSEngine, LogicalAndShortCircuit) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var called = false;
+        false && (function() { called = true; })();
+        String(called)
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "false");
+}
