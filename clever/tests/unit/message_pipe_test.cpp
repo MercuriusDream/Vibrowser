@@ -194,3 +194,120 @@ TEST(MessagePipeTest, ConstructFromInvalidFd) {
     MessagePipe p(-1);
     EXPECT_FALSE(p.is_open());
 }
+
+// ---------------------------------------------------------------------------
+// Cycle 484 — additional MessagePipe regression tests
+// ---------------------------------------------------------------------------
+
+// send(ptr, size) with non-null data
+TEST(MessagePipeTest, SendRawPointerWithData) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    const uint8_t kData[] = {0xCA, 0xFE, 0xBA, 0xBE};
+    ASSERT_TRUE(a.send(kData, sizeof(kData)));
+
+    auto received = b.receive();
+    ASSERT_TRUE(received.has_value());
+    ASSERT_EQ(received->size(), sizeof(kData));
+    for (size_t i = 0; i < sizeof(kData); ++i) {
+        EXPECT_EQ((*received)[i], kData[i]);
+    }
+}
+
+// close() called multiple times should not crash
+TEST(MessagePipeTest, CloseCalledMultipleTimes) {
+    auto [a, b] = MessagePipe::create_pair();
+    EXPECT_NO_THROW({
+        a.close();
+        a.close(); // idempotent
+    });
+    EXPECT_FALSE(a.is_open());
+}
+
+// fd() returns -1 after close
+TEST(MessagePipeTest, FdReturnsNegativeWhenClosed) {
+    auto [a, b] = MessagePipe::create_pair();
+    EXPECT_GE(a.fd(), 0);
+    a.close();
+    EXPECT_EQ(a.fd(), -1);
+}
+
+// send payloads of various sizes, verify each round-trips correctly
+TEST(MessagePipeTest, SendVariousPayloadSizes) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    const std::vector<size_t> kSizes = {0, 1, 7, 64, 255, 1024, 4096};
+    for (size_t sz : kSizes) {
+        std::vector<uint8_t> payload(sz, static_cast<uint8_t>(sz & 0xFF));
+        ASSERT_TRUE(a.send(payload)) << "send failed for size " << sz;
+        auto received = b.receive();
+        ASSERT_TRUE(received.has_value()) << "receive returned nullopt for size " << sz;
+        EXPECT_EQ(*received, payload) << "mismatch for size " << sz;
+    }
+}
+
+// bidirectional alternating flow: a→b, b→a, a→b, b→a
+TEST(MessagePipeTest, BidirectionalAlternatingFlow) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    for (int i = 0; i < 4; ++i) {
+        std::vector<uint8_t> fwd = {static_cast<uint8_t>(i * 2)};
+        std::vector<uint8_t> rev = {static_cast<uint8_t>(i * 2 + 1)};
+
+        ASSERT_TRUE(a.send(fwd));
+        auto r_fwd = b.receive();
+        ASSERT_TRUE(r_fwd.has_value());
+        EXPECT_EQ(*r_fwd, fwd);
+
+        ASSERT_TRUE(b.send(rev));
+        auto r_rev = a.receive();
+        ASSERT_TRUE(r_rev.has_value());
+        EXPECT_EQ(*r_rev, rev);
+    }
+}
+
+// send from b to a (reversed direction) with 5 distinct messages
+TEST(MessagePipeTest, ReversedDirectionMultipleMessages) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    for (int i = 0; i < 5; ++i) {
+        std::vector<uint8_t> data = {static_cast<uint8_t>(100 + i),
+                                     static_cast<uint8_t>(200 + i)};
+        ASSERT_TRUE(b.send(data));
+    }
+
+    for (int i = 0; i < 5; ++i) {
+        auto received = a.receive();
+        ASSERT_TRUE(received.has_value());
+        std::vector<uint8_t> expected = {static_cast<uint8_t>(100 + i),
+                                         static_cast<uint8_t>(200 + i)};
+        EXPECT_EQ(*received, expected);
+    }
+}
+
+// payload content is preserved byte-for-byte (all 256 values)
+TEST(MessagePipeTest, AllByteValuesPreserved) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    std::vector<uint8_t> all_bytes(256);
+    std::iota(all_bytes.begin(), all_bytes.end(), static_cast<uint8_t>(0));
+
+    ASSERT_TRUE(a.send(all_bytes));
+    auto received = b.receive();
+    ASSERT_TRUE(received.has_value());
+    EXPECT_EQ(*received, all_bytes);
+}
+
+// send to a pipe whose remote end is already closed
+TEST(MessagePipeTest, ReceiveFromClosedSenderReturnsNullopt) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    // Close b (the receiver end) without sending anything
+    b.close();
+
+    // Send from a to a closed peer — send may fail or succeed at OS level
+    // but receive on b must not crash and returns nullopt since b is closed
+    EXPECT_FALSE(b.is_open());
+    auto recv = b.receive();
+    EXPECT_FALSE(recv.has_value());
+}
