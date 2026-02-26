@@ -13047,3 +13047,90 @@ TEST(JSEngine, StringLastIndexOf) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "5");
 }
+
+// ============================================================================
+// Cycle 600: Milestone — More JS engine tests
+// ============================================================================
+
+// WeakRef basic usage
+TEST(JSEngine, WeakRefDeref) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var obj = { val: 99 };
+        var ref = new WeakRef(obj);
+        ref.deref().val
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "99");
+}
+
+// FinalizationRegistry basic
+TEST(JSEngine, FinalizationRegistryConstructs) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var fr = new FinalizationRegistry(function(val) {});
+        typeof fr
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "object");
+}
+
+// Array.prototype.flat (depth=1 default)
+TEST(JSEngine, ArrayFlat) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        [1, [2, [3]]].flat().join(",")
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1,2,3");
+}
+
+// Array.prototype.flatMap with doubled values
+TEST(JSEngine, ArrayFlatMapDoubled) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        [1, 2, 3].flatMap(function(x) { return [x, x * 2]; }).join(",")
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1,2,2,4,3,6");
+}
+
+// Object.entries sorted
+TEST(JSEngine, ObjectEntriesSorted) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        Object.entries({a: 1, b: 2}).sort().map(function(e) { return e[0] + "=" + e[1]; }).join(",")
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "a=1,b=2");
+}
+
+// Object.values with three keys
+TEST(JSEngine, ObjectValuesThreeKeys) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        Object.values({p: 5, q: 10, r: 15}).join(",")
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "5,10,15");
+}
+
+// String.prototype.includes
+TEST(JSEngine, StringIncludes) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        "hello world".includes("world") + "," + "hello world".includes("xyz")
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true,false");
+}
+
+// String.prototype.startsWith and endsWith
+TEST(JSEngine, StringStartsWithEndsWith) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        "hello".startsWith("hel") + "," + "hello".endsWith("llo")
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true,true");
+}
