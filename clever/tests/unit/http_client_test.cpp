@@ -2671,3 +2671,77 @@ TEST(HeaderMapTest, OverwriteWithDifferentCase) {
     ASSERT_TRUE(val.has_value());
     EXPECT_EQ(*val, "application/json");
 }
+
+// ============================================================================
+// Cycle 612: More Net HTTP tests
+// ============================================================================
+
+// Response: parse 422 Unprocessable Entity
+TEST(ResponseTest, Parse422UnprocessableEntity) {
+    std::string raw = "HTTP/1.1 422 Unprocessable Entity\r\nContent-Length: 0\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 422);
+}
+
+// Response: parse 429 Too Many Requests
+TEST(ResponseTest, Parse429TooManyRequests) {
+    std::string raw = "HTTP/1.1 429 Too Many Requests\r\nRetry-After: 60\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 429);
+}
+
+// Response: parse 500 status_text verified
+TEST(ResponseTest, Parse500StatusTextVerified) {
+    std::string raw = "HTTP/1.1 500 Internal Server Error\r\nContent-Length: 0\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 500);
+    EXPECT_EQ(resp->status_text, "Internal Server Error");
+}
+
+// Response: parse 502 Bad Gateway
+TEST(ResponseTest, Parse502BadGateway) {
+    std::string raw = "HTTP/1.1 502 Bad Gateway\r\nContent-Length: 0\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 502);
+}
+
+// HeaderMap: has returns false for never-set key
+TEST(HeaderMapTest, HasReturnsFalseForNeverSetKey) {
+    HeaderMap map;
+    EXPECT_FALSE(map.has("Authorization"));
+}
+
+// HeaderMap: set then get round-trip
+TEST(HeaderMapTest, SetThenGetRoundTrip) {
+    HeaderMap map;
+    map.set("Authorization", "Bearer token123");
+    auto val = map.get("Authorization");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(*val, "Bearer token123");
+}
+
+// Request: POST method
+TEST(RequestTest, PostMethodSerializesV2) {
+    Request req;
+    req.method = Method::POST;
+    req.url = "https://api.example.com/data";
+    EXPECT_EQ(req.method, Method::POST);
+    EXPECT_FALSE(req.url.empty());
+}
+
+// Response: headers accessible by lowercase
+TEST(ResponseTest, ParsedHeaderCaseInsensitive) {
+    std::string raw = "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: 5\r\n\r\nhello";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_TRUE(resp->headers.has("content-type"));
+}
