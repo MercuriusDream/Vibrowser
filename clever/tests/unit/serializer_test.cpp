@@ -605,3 +605,114 @@ TEST(SerializerTest, RoundTripStringWithSpecialChars) {
     EXPECT_FALSE(d.has_remaining());
 }
 
+
+// ============================================================================
+// Cycle 504: Serializer additional regression tests
+// ============================================================================
+
+// fresh Serializer has empty buffer
+TEST(SerializerTest, SerializerInitiallyEmpty) {
+    Serializer s;
+    EXPECT_TRUE(s.data().empty());
+    EXPECT_EQ(s.data().size(), 0u);
+}
+
+// take_data() moves the buffer out, leaving serializer empty
+TEST(SerializerTest, TakeDataEmptiesSerializer) {
+    Serializer s;
+    s.write_u32(42u);
+    EXPECT_FALSE(s.data().empty());
+
+    auto taken = s.take_data();
+    EXPECT_FALSE(taken.empty());
+    EXPECT_TRUE(s.data().empty()); // serializer is now empty
+}
+
+// empty string round-trips correctly
+TEST(SerializerTest, RoundTripEmptyString) {
+    Serializer s;
+    s.write_string("");
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "");
+    EXPECT_FALSE(d.has_remaining());
+}
+
+// remaining() decrements by the correct number of bytes on each read
+TEST(SerializerTest, RemainingDecrementsOnRead) {
+    Serializer s;
+    s.write_u8(1);
+    s.write_u8(2);
+    s.write_u8(3);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.remaining(), 3u);
+    d.read_u8();
+    EXPECT_EQ(d.remaining(), 2u);
+    d.read_u8();
+    EXPECT_EQ(d.remaining(), 1u);
+    d.read_u8();
+    EXPECT_EQ(d.remaining(), 0u);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+// interleaved types round-trip in correct order
+TEST(SerializerTest, RoundTripInterleavedTypes) {
+    Serializer s;
+    s.write_u8(99);
+    s.write_string("hello");
+    s.write_i64(-12345678901LL);
+    s.write_bool(true);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u8(), 99u);
+    EXPECT_EQ(d.read_string(), "hello");
+    EXPECT_EQ(d.read_i64(), -12345678901LL);
+    EXPECT_TRUE(d.read_bool());
+    EXPECT_FALSE(d.has_remaining());
+}
+
+// positive and negative infinity round-trip
+TEST(SerializerTest, RoundTripF64Infinity) {
+    Serializer s;
+    s.write_f64(std::numeric_limits<double>::infinity());
+    s.write_f64(-std::numeric_limits<double>::infinity());
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_f64(), std::numeric_limits<double>::infinity());
+    EXPECT_EQ(d.read_f64(), -std::numeric_limits<double>::infinity());
+    EXPECT_FALSE(d.has_remaining());
+}
+
+// NaN round-trips (result is still NaN)
+TEST(SerializerTest, RoundTripF64NaN) {
+    Serializer s;
+    s.write_f64(std::numeric_limits<double>::quiet_NaN());
+
+    Deserializer d(s.data());
+    double result = d.read_f64();
+    EXPECT_TRUE(std::isnan(result));
+    EXPECT_FALSE(d.has_remaining());
+}
+
+// two consecutive write_bytes calls — total buffer size is sum of both
+TEST(SerializerTest, TwoWriteBytesCallsRoundTrip) {
+    // write_bytes includes a length prefix; verify both round-trip via read_bytes
+    Serializer s;
+    const uint8_t a[] = {0x01, 0x02, 0x03};
+    const uint8_t b[] = {0x04, 0x05};
+    s.write_bytes(a, sizeof(a));
+    s.write_bytes(b, sizeof(b));
+
+    Deserializer d(s.data());
+    auto r1 = d.read_bytes();
+    ASSERT_EQ(r1.size(), 3u);
+    EXPECT_EQ(r1[0], 0x01);
+    EXPECT_EQ(r1[2], 0x03);
+
+    auto r2 = d.read_bytes();
+    ASSERT_EQ(r2.size(), 2u);
+    EXPECT_EQ(r2[0], 0x04);
+    EXPECT_EQ(r2[1], 0x05);
+
+    EXPECT_FALSE(d.has_remaining());
+}
