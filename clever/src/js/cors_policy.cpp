@@ -59,6 +59,10 @@ bool is_invalid_document_origin(std::string_view document_origin) {
     return !is_serialized_http_origin(document_origin);
 }
 
+bool is_null_document_origin(std::string_view document_origin) {
+    return document_origin == "null";
+}
+
 } // namespace
 
 bool has_enforceable_document_origin(std::string_view document_origin) {
@@ -66,12 +70,16 @@ bool has_enforceable_document_origin(std::string_view document_origin) {
 }
 
 bool is_cross_origin(std::string_view document_origin, std::string_view request_url) {
-    if (!has_enforceable_document_origin(document_origin)) {
+    auto request = parse_httpish_url(request_url);
+    if (!request.has_value()) {
         return false;
     }
 
-    auto request = parse_httpish_url(request_url);
-    if (!request.has_value()) {
+    if (is_null_document_origin(document_origin)) {
+        return true;
+    }
+
+    if (!has_enforceable_document_origin(document_origin)) {
         return false;
     }
 
@@ -79,7 +87,8 @@ bool is_cross_origin(std::string_view document_origin, std::string_view request_
 }
 
 bool should_attach_origin_header(std::string_view document_origin, std::string_view request_url) {
-    return has_enforceable_document_origin(document_origin) &&
+    return (has_enforceable_document_origin(document_origin) ||
+            is_null_document_origin(document_origin)) &&
            is_cross_origin(document_origin, request_url);
 }
 
@@ -87,11 +96,12 @@ bool cors_allows_response(std::string_view document_origin,
                           std::string_view request_url,
                           const clever::net::HeaderMap& response_headers,
                           bool credentials_requested) {
-    if (is_invalid_document_origin(document_origin)) {
+    if (document_origin.empty() || is_invalid_document_origin(document_origin)) {
         return false;
     }
 
-    if (has_enforceable_document_origin(document_origin) &&
+    if ((has_enforceable_document_origin(document_origin) ||
+         is_null_document_origin(document_origin)) &&
         !parse_httpish_url(request_url).has_value()) {
         return false;
     }
@@ -116,11 +126,14 @@ bool cors_allows_response(std::string_view document_origin,
         return false;
     }
 
+    const std::string expected_origin =
+        is_null_document_origin(document_origin) ? "null" : std::string(document_origin);
+
     if (!credentials_requested) {
-        return acao == "*" || acao == document_origin;
+        return acao == "*" || acao == expected_origin;
     }
 
-    if (acao != document_origin) {
+    if (acao != expected_origin) {
         return false;
     }
 

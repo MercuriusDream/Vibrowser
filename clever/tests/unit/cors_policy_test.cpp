@@ -19,7 +19,7 @@ TEST(CORSPolicyTest, DocumentOriginEnforcement) {
 
 TEST(CORSPolicyTest, CrossOriginDetection) {
     EXPECT_FALSE(is_cross_origin("", "https://api.example/data"));
-    EXPECT_FALSE(is_cross_origin("null", "https://api.example/data"));
+    EXPECT_TRUE(is_cross_origin("null", "https://api.example/data"));
     EXPECT_FALSE(is_cross_origin("https://app.example", "https://app.example/path"));
     EXPECT_TRUE(is_cross_origin("https://app.example", "https://api.example/path"));
 }
@@ -30,12 +30,19 @@ TEST(CORSPolicyTest, OriginHeaderAttachmentRule) {
     EXPECT_FALSE(
         should_attach_origin_header("https://app.example/path", "https://api.example/data"));
     EXPECT_TRUE(should_attach_origin_header("https://app.example", "https://api.example/data"));
+    EXPECT_TRUE(should_attach_origin_header("null", "https://api.example/data"));
 }
 
 TEST(CORSPolicyTest, SameOriginResponseAlwaysAllowed) {
     clever::net::HeaderMap headers;
     EXPECT_TRUE(cors_allows_response("https://app.example", "https://app.example/data", headers,
                                      false));
+}
+
+TEST(CORSPolicyTest, EmptyDocumentOriginFailsClosed) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "*");
+    EXPECT_FALSE(cors_allows_response("", "https://api.example/data", headers, false));
 }
 
 TEST(CORSPolicyTest, CrossOriginRequiresACAO) {
@@ -123,4 +130,30 @@ TEST(CORSPolicyTest, CrossOriginCredentialedRequiresExactAndCredentialsTrue) {
     mixed_case_true.set("Access-Control-Allow-Credentials", "True");
     EXPECT_FALSE(cors_allows_response("https://app.example", "https://api.example/data",
                                       mixed_case_true, true));
+}
+
+TEST(CORSPolicyTest, CrossOriginNullOriginRequiresStrictACAOAndCredentialsRule) {
+    clever::net::HeaderMap wildcard;
+    wildcard.set("Access-Control-Allow-Origin", "*");
+    EXPECT_TRUE(cors_allows_response("null", "https://api.example/data", wildcard, false));
+
+    clever::net::HeaderMap null_exact;
+    null_exact.set("Access-Control-Allow-Origin", "null");
+    EXPECT_TRUE(cors_allows_response("null", "https://api.example/data", null_exact, false));
+
+    clever::net::HeaderMap wrong;
+    wrong.set("Access-Control-Allow-Origin", "https://app.example");
+    EXPECT_FALSE(cors_allows_response("null", "https://api.example/data", wrong, false));
+
+    clever::net::HeaderMap wildcard_credentialed;
+    wildcard_credentialed.set("Access-Control-Allow-Origin", "*");
+    wildcard_credentialed.set("Access-Control-Allow-Credentials", "true");
+    EXPECT_FALSE(cors_allows_response("null", "https://api.example/data", wildcard_credentialed,
+                                      true));
+
+    clever::net::HeaderMap null_credentialed;
+    null_credentialed.set("Access-Control-Allow-Origin", "null");
+    null_credentialed.set("Access-Control-Allow-Credentials", "true");
+    EXPECT_TRUE(
+        cors_allows_response("null", "https://api.example/data", null_credentialed, true));
 }
