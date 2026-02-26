@@ -5927,3 +5927,63 @@ TEST(GeometryAudit, GeometryHeightCanBeSet) {
     node->geometry.height = 200.0f;
     EXPECT_FLOAT_EQ(node->geometry.height, 200.0f);
 }
+
+// ============================================================================
+// Cycle 667: More layout tests
+// ============================================================================
+
+// Layout: geometry x position can be set
+TEST(GeometryAudit, GeometryXCanBeSet) {
+    auto node = make_block("div");
+    node->geometry.x = 50.0f;
+    EXPECT_FLOAT_EQ(node->geometry.x, 50.0f);
+}
+
+// Layout: geometry y position can be set
+TEST(GeometryAudit, GeometryYCanBeSet) {
+    auto node = make_block("div");
+    node->geometry.y = 100.0f;
+    EXPECT_FLOAT_EQ(node->geometry.y, 100.0f);
+}
+
+// Layout: padding right can be set
+TEST(GeometryAudit, PaddingRightTenValue) {
+    auto node = make_block("div");
+    node->geometry.padding.right = 10.0f;
+    EXPECT_FLOAT_EQ(node->geometry.padding.right, 10.0f);
+}
+
+// Layout: padding bottom can be set
+TEST(GeometryAudit, PaddingBottomFiveValue) {
+    auto node = make_block("div");
+    node->geometry.padding.bottom = 5.0f;
+    EXPECT_FLOAT_EQ(node->geometry.padding.bottom, 5.0f);
+}
+
+// Layout: margin left can be set
+TEST(GeometryAudit, MarginLeftEightValue) {
+    auto node = make_block("div");
+    node->geometry.margin.left = 8.0f;
+    EXPECT_FLOAT_EQ(node->geometry.margin.left, 8.0f);
+}
+
+// Layout: margin top can be set
+TEST(GeometryAudit, MarginTopSixteenValue) {
+    auto node = make_block("div");
+    node->geometry.margin.top = 16.0f;
+    EXPECT_FLOAT_EQ(node->geometry.margin.top, 16.0f);
+}
+
+// Layout: border right can be set
+TEST(GeometryAudit, BorderRightOneValue) {
+    auto node = make_block("div");
+    node->geometry.border.right = 1.0f;
+    EXPECT_FLOAT_EQ(node->geometry.border.right, 1.0f);
+}
+
+// Layout: border bottom can be set
+TEST(GeometryAudit, BorderBottomThreeValue) {
+    auto node = make_block("div");
+    node->geometry.border.bottom = 3.0f;
+    EXPECT_FLOAT_EQ(node->geometry.border.bottom, 3.0f);
+}
