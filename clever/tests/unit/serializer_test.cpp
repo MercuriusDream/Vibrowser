@@ -1160,3 +1160,84 @@ TEST(SerializerTest, MixedI32AndU8RoundTrip) {
     EXPECT_EQ(d.read_u8(), 200u);
     EXPECT_FALSE(d.has_remaining());
 }
+
+// ============================================================================
+// Cycle 576: More serializer tests
+// ============================================================================
+
+// i32 round trip: INT32_MAX
+TEST(SerializerTest, RoundTripI32Max) {
+    Serializer s;
+    s.write_i32(std::numeric_limits<int32_t>::max());
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i32(), std::numeric_limits<int32_t>::max());
+    EXPECT_FALSE(d.has_remaining());
+}
+
+// i64 round trip: INT64_MIN
+TEST(SerializerTest, RoundTripI64Min) {
+    Serializer s;
+    s.write_i64(std::numeric_limits<int64_t>::min());
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i64(), std::numeric_limits<int64_t>::min());
+    EXPECT_FALSE(d.has_remaining());
+}
+
+// write_bytes empty vector
+TEST(SerializerTest, EmptyBytesRoundTrip) {
+    Serializer s;
+    s.write_bytes(nullptr, 0);
+    Deserializer d(s.data());
+    auto result = d.read_bytes();
+    EXPECT_TRUE(result.empty());
+}
+
+// Three strings serialize and deserialize in order
+TEST(SerializerTest, ThreeStringsInOrder) {
+    Serializer s;
+    s.write_string("alpha");
+    s.write_string("beta");
+    s.write_string("gamma");
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "alpha");
+    EXPECT_EQ(d.read_string(), "beta");
+    EXPECT_EQ(d.read_string(), "gamma");
+    EXPECT_FALSE(d.has_remaining());
+}
+
+// u8 max followed by i32 zero
+TEST(SerializerTest, U8MaxThenI32Zero) {
+    Serializer s;
+    s.write_u8(255u);
+    s.write_i32(0);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u8(), 255u);
+    EXPECT_EQ(d.read_i32(), 0);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+// data() returns non-empty vector after writes
+TEST(SerializerTest, DataNonEmptyAfterWrites) {
+    Serializer s;
+    s.write_u32(0xABCDEF01u);
+    EXPECT_FALSE(s.data().empty());
+}
+
+// take_data() moves data out
+TEST(SerializerTest, TakeDataMovesOut) {
+    Serializer s;
+    s.write_u16(12345u);
+    auto data = s.take_data();
+    EXPECT_FALSE(data.empty());
+    // After take_data, original should be empty
+    EXPECT_TRUE(s.data().empty());
+}
+
+// u64 zero is a valid value
+TEST(SerializerTest, U64ZeroRoundTripV2) {
+    Serializer s;
+    s.write_u64(0ULL);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u64(), 0ULL);
+    EXPECT_FALSE(d.has_remaining());
+}
