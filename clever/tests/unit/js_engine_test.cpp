@@ -12857,3 +12857,102 @@ TEST(JSEngine, MapBasicOperations) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "true,99");
 }
+
+// ============================================================================
+// Cycle 587: More JS engine tests
+// ============================================================================
+
+// Class static method
+TEST(JSEngine, ClassStaticMethod) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        class MathHelper {
+            static double(x) { return x * 2; }
+        }
+        MathHelper.double(21)
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "42");
+}
+
+// Getter/setter in object literal
+TEST(JSEngine, GetterSetterInObjectLiteral) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var obj = {
+            _x: 10,
+            get x() { return this._x; },
+            set x(v) { this._x = v; }
+        };
+        obj.x = 99;
+        obj.x
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "99");
+}
+
+// Symbol creates unique value
+TEST(JSEngine, SymbolCreatesUniqueValue) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var s1 = Symbol("tag");
+        var s2 = Symbol("tag");
+        s1 === s2
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "false");
+}
+
+// Set: size, add, has, delete
+TEST(JSEngine, SetOperations) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var s = new Set([1, 2, 3]);
+        s.add(4);
+        s.delete(2);
+        s.has(3) + "," + s.size
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true,3");
+}
+
+// Async function returns Promise
+TEST(JSEngine, AsyncFunctionReturnsPromise) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        async function greet() { return "hello"; }
+        greet() instanceof Promise
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true");
+}
+
+// Array.from with Set
+TEST(JSEngine, ArrayFromSet) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var s = new Set([3, 1, 2]);
+        Array.from(s).sort().join(",")
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1,2,3");
+}
+
+// typeof function is "function"
+TEST(JSEngine, TypeofFunctionIsFunction) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(typeof function(){})");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "function");
+}
+
+// Regex match
+TEST(JSEngine, RegexMatchMethod) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var m = "hello world".match(/\w+/g);
+        m.join(",")
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "hello,world");
+}
