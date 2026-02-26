@@ -708,3 +708,65 @@ TEST(ThreadPoolTest, PostTaskCapturesVector) {
     pool.shutdown();
     EXPECT_EQ(sum.load(), 60);
 }
+
+// ============================================================================
+// Cycle 581: More ThreadPool tests
+// ============================================================================
+
+// Post task and verify it ran via promise
+TEST(ThreadPoolTest, PostTaskViaPomise) {
+    ThreadPool pool(2);
+    std::promise<int> prom;
+    auto fut = prom.get_future();
+    pool.post([&prom]() { prom.set_value(123); });
+    EXPECT_EQ(fut.get(), 123);
+}
+
+// Submit two tasks in parallel
+TEST(ThreadPoolTest, TwoParallelSubmits) {
+    ThreadPool pool(4);
+    auto f1 = pool.submit([]() { return 10; });
+    auto f2 = pool.submit([]() { return 20; });
+    EXPECT_EQ(f1.get() + f2.get(), 30);
+}
+
+// Submit task that captures by value returns correct result
+TEST(ThreadPoolTest, SubmitCaptureMath) {
+    ThreadPool pool(2);
+    int a = 7, b = 5;
+    auto fut = pool.submit([a, b]() { return a * b; });
+    EXPECT_EQ(fut.get(), 35);
+}
+
+// Pool size: hardware_concurrency is positive
+TEST(ThreadPoolTest, DefaultSizeIsPositive) {
+    ThreadPool pool;
+    EXPECT_GT(pool.size(), 0u);
+}
+
+// Submit long: future<long long>
+TEST(ThreadPoolTest, SubmitLongLong) {
+    ThreadPool pool(2);
+    auto fut = pool.submit([]() -> long long { return 9999999999LL; });
+    EXPECT_EQ(fut.get(), 9999999999LL);
+}
+
+// Submit: zero value returned
+TEST(ThreadPoolTest, SubmitReturnsZeroValue) {
+    ThreadPool pool(2);
+    auto fut = pool.submit([]() { return 0; });
+    EXPECT_EQ(fut.get(), 0);
+}
+
+// Pool is running after construction
+TEST(ThreadPoolTest, PoolIsRunningAfterConstruct) {
+    ThreadPool pool(4);
+    EXPECT_TRUE(pool.is_running());
+    EXPECT_EQ(pool.size(), 4u);
+}
+
+// Shutdown does not throw
+TEST(ThreadPoolTest, ShutdownDoesNotThrow) {
+    ThreadPool pool(2);
+    EXPECT_NO_THROW(pool.shutdown());
+}
