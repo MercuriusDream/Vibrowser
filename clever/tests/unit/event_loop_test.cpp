@@ -299,3 +299,124 @@ TEST(EventLoopTest, ConcurrentPostFromMultipleThreads) {
     EXPECT_EQ(counter.load(), kThreads * kTasksPerThread)
         << "All " << kThreads * kTasksPerThread << " tasks from concurrent threads should execute";
 }
+
+// ---------------------------------------------------------------------------
+// Cycle 492 — event loop further edge-case regression tests
+// ---------------------------------------------------------------------------
+
+// After run() ends via quit(), run_pending() still drains newly posted tasks
+TEST(EventLoopTest, PostTaskAfterQuitDrainedByRunPending) {
+    EventLoop loop;
+    loop.post_task([&loop]() { loop.quit(); });
+    loop.run(); // quits immediately
+
+    bool executed = false;
+    loop.post_task([&executed]() { executed = true; });
+    loop.run_pending();
+    EXPECT_TRUE(executed);
+}
+
+// Multiple run_pending calls on the same loop each drain their own batch
+TEST(EventLoopTest, MultipleRunPendingCallsDrainSeparateBatches) {
+    EventLoop loop;
+    int count = 0;
+
+    loop.post_task([&count]() { count += 1; });
+    loop.post_task([&count]() { count += 1; });
+    loop.run_pending(); // drain first batch of 2
+    EXPECT_EQ(count, 2);
+
+    loop.post_task([&count]() { count += 10; });
+    loop.post_task([&count]() { count += 10; });
+    loop.run_pending(); // drain second batch of 2
+    EXPECT_EQ(count, 22);
+}
+
+// pending_count reaches 0 after a delayed task fires
+TEST(EventLoopTest, DelayedPendingCountZeroAfterFiring) {
+    EventLoop loop;
+    loop.post_delayed_task([]() {}, 50ms);
+    EXPECT_EQ(loop.pending_count(), 1u);
+
+    std::this_thread::sleep_for(100ms);
+    loop.run_pending();
+    EXPECT_EQ(loop.pending_count(), 0u);
+}
+
+// Immediate task runs; far-future delayed task stays pending in same run_pending
+TEST(EventLoopTest, ImmediateTaskRunsFarFutureDelayedStaysPending) {
+    EventLoop loop;
+    bool immediate_ran = false;
+    bool delayed_ran = false;
+
+    loop.post_task([&immediate_ran]() { immediate_ran = true; });
+    loop.post_delayed_task([&delayed_ran]() { delayed_ran = true; }, 5000ms);
+
+    loop.run_pending();
+
+    EXPECT_TRUE(immediate_ran);
+    EXPECT_FALSE(delayed_ran);
+    EXPECT_EQ(loop.pending_count(), 1u); // delayed task still pending
+}
+
+// post_task accepts a lambda that captures a local variable by value
+TEST(EventLoopTest, PostTaskCapturingValueByValue) {
+    EventLoop loop;
+    int captured_val = 99;
+    int result = 0;
+
+    loop.post_task([captured_val, &result]() { result = captured_val; });
+    captured_val = 0; // change after capture — result should still be 99
+    loop.run_pending();
+
+    EXPECT_EQ(result, 99);
+}
+
+// A large number of tasks all execute via run_pending
+TEST(EventLoopTest, LargeNumberOfTasksAllExecute) {
+    EventLoop loop;
+    std::atomic<int> counter{0};
+
+    const int kCount = 1000;
+    for (int i = 0; i < kCount; ++i) {
+        loop.post_task([&counter]() { counter.fetch_add(1, std::memory_order_relaxed); });
+    }
+
+    loop.run_pending();
+    EXPECT_EQ(counter.load(), kCount);
+}
+
+// A delayed task posted from within a running task fires on a later run_pending
+TEST(EventLoopTest, PostDelayedFromWithinTaskFiresLater) {
+    EventLoop loop;
+    bool inner_fired = false;
+
+    loop.post_task([&loop, &inner_fired]() {
+        loop.post_delayed_task([&inner_fired]() { inner_fired = true; }, 50ms);
+    });
+
+    loop.run_pending(); // runs outer task, enqueues delayed inner
+    EXPECT_FALSE(inner_fired);
+
+    std::this_thread::sleep_for(100ms);
+    loop.run_pending(); // inner task now due
+    EXPECT_TRUE(inner_fired);
+}
+
+// Tasks execute in FIFO order even when interspersed with delayed (non-due) tasks
+TEST(EventLoopTest, FIFOOrderPreservedWithDelayedInterspersed) {
+    EventLoop loop;
+    std::vector<int> order;
+
+    loop.post_task([&order]() { order.push_back(1); });
+    loop.post_delayed_task([&order]() { order.push_back(99); }, 5000ms); // will not fire
+    loop.post_task([&order]() { order.push_back(2); });
+    loop.post_task([&order]() { order.push_back(3); });
+
+    loop.run_pending();
+
+    ASSERT_EQ(order.size(), 3u); // delayed task not included
+    EXPECT_EQ(order[0], 1);
+    EXPECT_EQ(order[1], 2);
+    EXPECT_EQ(order[2], 3);
+}
