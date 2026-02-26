@@ -2082,3 +2082,66 @@ TEST(TreeBuilder, FieldsetLegendIsSettings) {
     ASSERT_NE(legend, nullptr);
     EXPECT_EQ(legend->text_content(), "Settings");
 }
+
+// ============================================================================
+// Cycle 609: More HTML parser tests
+// ============================================================================
+
+TEST(TreeBuilder, SelectWithOption) {
+    auto doc = parse(R"(<body><select><option value="1">One</option><option value="2">Two</option></select></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* select = doc->find_element("select");
+    ASSERT_NE(select, nullptr);
+}
+
+TEST(TreeBuilder, OptionTextContent) {
+    auto doc = parse(R"(<body><select><option value="a">Alpha</option></select></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* option = doc->find_element("option");
+    ASSERT_NE(option, nullptr);
+    EXPECT_EQ(option->text_content(), "Alpha");
+}
+
+TEST(TreeBuilder, TextareaWithRowsCols) {
+    auto doc = parse(R"(<body><textarea rows="4" cols="50">Enter text here</textarea></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* ta = doc->find_element("textarea");
+    ASSERT_NE(ta, nullptr);
+}
+
+TEST(TreeBuilder, ButtonWithText) {
+    auto doc = parse(R"(<body><button type="submit">Submit</button></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* btn = doc->find_element("button");
+    ASSERT_NE(btn, nullptr);
+    EXPECT_EQ(btn->text_content(), "Submit");
+}
+
+TEST(TreeBuilder, LabelForInput) {
+    auto doc = parse(R"(<body><label for="name">Name:</label><input id="name" type="text"></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* label = doc->find_element("label");
+    ASSERT_NE(label, nullptr);
+    EXPECT_EQ(label->text_content(), "Name:");
+}
+
+TEST(TreeBuilder, FormWithActionMethod) {
+    auto doc = parse(R"(<body><form action="/submit" method="post"><input type="text"></form></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* form = doc->find_element("form");
+    ASSERT_NE(form, nullptr);
+}
+
+TEST(TreeBuilder, IframeSrcTitle) {
+    auto doc = parse(R"(<body><iframe src="https://example.com" title="Example"></iframe></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* iframe = doc->find_element("iframe");
+    ASSERT_NE(iframe, nullptr);
+}
+
+TEST(TreeBuilder, CanvasWidthHeight) {
+    auto doc = parse(R"(<body><canvas id="myCanvas" width="300" height="150"></canvas></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* canvas = doc->find_element("canvas");
+    ASSERT_NE(canvas, nullptr);
+}
