@@ -1413,3 +1413,67 @@ TEST(URLParser, UsernameEmptyByDefault) {
     ASSERT_TRUE(result.has_value());
     EXPECT_TRUE(result->username.empty());
 }
+
+// ============================================================================
+// Cycle 637: More URL parser tests
+// ============================================================================
+
+// URL: password empty when not provided
+TEST(URLParser, PasswordEmptyByDefault) {
+    auto result = parse("https://example.com/");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_TRUE(result->password.empty());
+}
+
+// URL: HTTPS scheme recognized
+TEST(URLParser, HttpsSchemeRecognized) {
+    auto result = parse("https://secure.example.com/");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+}
+
+// URL: path with .html extension
+TEST(URLParser, PathWithHtmlExtension) {
+    auto result = parse("https://example.com/index.html");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_NE(result->path.find("index.html"), std::string::npos);
+}
+
+// URL: host is extracted from https URL
+TEST(URLParser, HostFromHttpsURL) {
+    auto result = parse("https://www.example.com/");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->host, "www.example.com");
+}
+
+// URL: same origin requires same scheme
+TEST(URLParser, DifferentSchemeNotSameOrigin) {
+    auto a = parse("http://example.com/");
+    auto b = parse("https://example.com/");
+    ASSERT_TRUE(a.has_value());
+    ASSERT_TRUE(b.has_value());
+    EXPECT_FALSE(urls_same_origin(*a, *b));
+}
+
+// URL: same host same port same scheme is same origin
+TEST(URLParser, SameHostPortSchemeSameOrigin) {
+    auto a = parse("https://example.com:8080/a");
+    auto b = parse("https://example.com:8080/b");
+    ASSERT_TRUE(a.has_value());
+    ASSERT_TRUE(b.has_value());
+    EXPECT_TRUE(urls_same_origin(*a, *b));
+}
+
+// URL: query string accessible
+TEST(URLParser, QueryStringAccessible) {
+    auto result = parse("https://example.com/search?q=hello");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_NE(result->query.find("hello"), std::string::npos);
+}
+
+// URL: fragment string accessible
+TEST(URLParser, FragmentStringAccessible) {
+    auto result = parse("https://example.com/page#section1");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_NE(result->fragment.find("section1"), std::string::npos);
+}
