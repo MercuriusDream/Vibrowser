@@ -13659,3 +13659,97 @@ TEST(JSEngine, DecodeURIComponent) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "hello world");
 }
+
+// ============================================================================
+// Cycle 636: More JS engine tests
+// ============================================================================
+
+// Map: set and get
+TEST(JSEngine, MapSetAndGet) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var m = new Map();
+        m.set('key', 42);
+        m.get('key')
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "42");
+}
+
+// Set: add and has
+TEST(JSEngine, SetAddAndHas) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var s = new Set([1, 2, 3]);
+        s.has(2) + ',' + s.has(9)
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true,false");
+}
+
+// Set: size property
+TEST(JSEngine, SetSize) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var s = new Set([1, 1, 2, 3]);
+        s.size
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "3");
+}
+
+// Map: size property
+TEST(JSEngine, MapSize) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var m = new Map([['a', 1], ['b', 2]]);
+        m.size
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "2");
+}
+
+// Array destructuring sum
+TEST(JSEngine, ArrayDestructuringSum) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var [x, y, z] = [10, 20, 30];
+        x + y + z
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "60");
+}
+
+// Object destructuring multiply
+TEST(JSEngine, ObjectDestructuringMultiply) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var {a, b} = {a: 5, b: 7};
+        a * b
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "35");
+}
+
+// Rest parameters sum four numbers
+TEST(JSEngine, RestParametersSumFour) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        function sum(...args) { return args.reduce((a, b) => a + b, 0); }
+        sum(1, 2, 3, 4)
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "10");
+}
+
+// Spread two arrays merged length
+TEST(JSEngine, SpreadTwoArraysMergedLength) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var a = [1, 2];
+        var b = [3, 4];
+        [...a, ...b].length
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "4");
+}
