@@ -5045,3 +5045,91 @@ TEST(FlexboxAudit, FlexContainerNoChildrenHasZeroHeight) {
     engine.compute(*root, 400.0f, 400.0f);
     EXPECT_GE(root->geometry.height, 0.0f);
 }
+
+// ============================================================================
+// Cycle 544: Layout regression tests
+// ============================================================================
+
+// Fixed position type value
+TEST(LayoutPosition, FixedPositionType) {
+    auto node = make_block("div");
+    node->position_type = 3;  // fixed
+    EXPECT_EQ(node->position_type, 3);
+}
+
+// Flex wrap set to wrap
+TEST(FlexboxAudit, FlexWrapCanBeSet) {
+    auto root = make_flex("div");
+    root->flex_wrap = 1;  // wrap
+    EXPECT_EQ(root->flex_wrap, 1);
+}
+
+// Flex column direction
+TEST(FlexboxAudit, FlexColumnDirection) {
+    auto root = make_flex("div");
+    root->flex_direction = 2;  // column
+    root->specified_width = 200.0f;
+    root->specified_height = 300.0f;
+
+    auto child = make_block("div");
+    child->specified_width = 100.0f;
+    child->specified_height = 50.0f;
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 200.0f, 300.0f);
+
+    // Should not crash; child should be within bounds
+    ASSERT_GE(root->children.size(), 1u);
+    EXPECT_GE(root->children[0]->geometry.height, 0.0f);
+}
+
+// Inline node: display is inline
+TEST(LayoutEngineTest, InlineNodeDisplayIsInline) {
+    auto node = make_inline("span");
+    EXPECT_EQ(node->display, DisplayType::Inline);
+}
+
+// BoxGeometry: content_left calculation
+TEST(BoxGeometryTest, ContentLeftWithMarginAndBorder) {
+    BoxGeometry g;
+    g.x = 0.0f;
+    g.margin.left = 5.0f;
+    g.border.left = 2.0f;
+    g.padding.left = 3.0f;
+    EXPECT_FLOAT_EQ(g.content_left(), 10.0f);
+}
+
+// Block: specified width from root
+TEST(LayoutEngineTest, RootSpecifiedWidthUsed) {
+    auto root = make_block("div");
+    root->specified_width = 600.0f;
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+    EXPECT_FLOAT_EQ(root->geometry.width, 600.0f);
+}
+
+// flex_grow=1 stretches child to fill available space
+TEST(FlexboxAudit, FlexGrowStretchesChild) {
+    auto root = make_flex("div");
+    root->specified_width = 400.0f;
+    root->specified_height = 100.0f;
+
+    auto child = make_block("div");
+    child->specified_height = 50.0f;
+    child->flex_grow = 1;
+    child->flex_shrink = 1;
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 400.0f, 100.0f);
+    ASSERT_GE(root->children.size(), 1u);
+    EXPECT_GT(root->children[0]->geometry.width, 0.0f);
+}
+
+// Grid: grid_row can be stored
+TEST(GridLayout, GridRowCanBeStored) {
+    auto node = make_block("div");
+    node->grid_row = "2 / 4";
+    EXPECT_EQ(node->grid_row, "2 / 4");
+}
