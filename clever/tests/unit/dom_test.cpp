@@ -1531,3 +1531,69 @@ TEST(DomText, DataUpdatedMultipleTimes) {
     t.set_data("third");
     EXPECT_EQ(t.data(), "third");
 }
+
+// ============================================================================
+// Cycle 556: DOM regression tests
+// ============================================================================
+
+// Element: attributes initially empty
+TEST(DomElement, AttributesInitiallyEmpty) {
+    Element e("div");
+    EXPECT_TRUE(e.attributes().empty());
+    EXPECT_EQ(e.attributes().size(), 0u);
+}
+
+// Element: set two attributes, count is 2
+TEST(DomElement, TwoAttributesCount) {
+    Element e("input");
+    e.set_attribute("type", "text");
+    e.set_attribute("placeholder", "Enter text");
+    EXPECT_EQ(e.attributes().size(), 2u);
+}
+
+// Node: parent_node is null initially
+TEST(DomNode, ParentNodeNullInitially) {
+    auto el = std::make_unique<Element>("div");
+    EXPECT_EQ(el->parent(), nullptr);
+}
+
+// Node: parent_node is set after append_child
+TEST(DomNode, ParentNodeSetAfterAppend) {
+    auto parent = std::make_unique<Element>("div");
+    Element* child_ptr = static_cast<Element*>(
+        &parent->append_child(std::make_unique<Element>("span")));
+    EXPECT_EQ(child_ptr->parent(), parent.get());
+}
+
+// ClassList: items() returns all classes
+TEST(DomClassList, ItemsVectorHasAllClasses) {
+    Element e("div");
+    e.class_list().add("first");
+    e.class_list().add("second");
+    const auto& items = e.class_list().items();
+    ASSERT_EQ(items.size(), 2u);
+    EXPECT_EQ(items[0], "first");
+    EXPECT_EQ(items[1], "second");
+}
+
+// ClassList: single class, items() has size 1
+TEST(DomClassList, SingleClassItemsSize) {
+    Element e("div");
+    e.class_list().add("only");
+    EXPECT_EQ(e.class_list().items().size(), 1u);
+    EXPECT_EQ(e.class_list().items()[0], "only");
+}
+
+// Element: text_content from single text child
+TEST(DomElement, TextContentFromSingleChild) {
+    auto el = std::make_unique<Element>("p");
+    el->append_child(std::make_unique<Text>("Hello!"));
+    EXPECT_EQ(el->text_content(), "Hello!");
+}
+
+// Event: bubbles and cancelable set correctly
+TEST(DomEvent, BubblesAndCancelableSetInConstructor) {
+    Event e("click", true, false);
+    EXPECT_TRUE(e.bubbles());
+    EXPECT_FALSE(e.cancelable());
+}
