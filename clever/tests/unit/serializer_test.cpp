@@ -1500,3 +1500,82 @@ TEST(SerializerTest, U16AlternatingMinMax) {
     EXPECT_EQ(d.read_u16(), 65535u);
     EXPECT_EQ(d.read_u16(), 0u);
 }
+
+// ============================================================================
+// Cycle 622: More serializer tests
+// ============================================================================
+
+// Write i32 max value (2147483647)
+TEST(SerializerTest, I32MaxValueRoundTrip) {
+    Serializer s;
+    s.write_i32(2147483647);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i32(), 2147483647);
+}
+
+// Write i32 -1 
+TEST(SerializerTest, I32MinusOneRoundTrip) {
+    Serializer s;
+    s.write_i32(-1);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i32(), -1);
+}
+
+// Write multiple different types interleaved
+TEST(SerializerTest, InterleavedTypesRoundTrip) {
+    Serializer s;
+    s.write_u8(7);
+    s.write_i32(-100);
+    s.write_string("x");
+    s.write_bool(true);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u8(), 7u);
+    EXPECT_EQ(d.read_i32(), -100);
+    EXPECT_EQ(d.read_string(), "x");
+    EXPECT_TRUE(d.read_bool());
+}
+
+// Write a single bool true
+TEST(SerializerTest, SingleBoolTrueRoundTrip) {
+    Serializer s;
+    s.write_bool(true);
+    Deserializer d(s.data());
+    EXPECT_TRUE(d.read_bool());
+    EXPECT_FALSE(d.has_remaining());
+}
+
+// Write u64 zero
+TEST(SerializerTest, U64ZeroV3) {
+    Serializer s;
+    s.write_u64(0ULL);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u64(), 0ULL);
+}
+
+// Write u32 1234567890
+TEST(SerializerTest, U32LargeValueRoundTrip) {
+    Serializer s;
+    s.write_u32(1234567890u);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u32(), 1234567890u);
+}
+
+// Write 10 strings consecutively
+TEST(SerializerTest, TenStringsConsecutive) {
+    Serializer s;
+    for (int i = 0; i < 10; ++i) {
+        s.write_string(std::to_string(i));
+    }
+    Deserializer d(s.data());
+    for (int i = 0; i < 10; ++i) {
+        EXPECT_EQ(d.read_string(), std::to_string(i));
+    }
+}
+
+// Take data empties serializer
+TEST(SerializerTest, TakeDataLeavesEmpty) {
+    Serializer s;
+    s.write_u8(42);
+    auto data = s.take_data();
+    EXPECT_EQ(data.size(), 1u);
+}
