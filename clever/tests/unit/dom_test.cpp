@@ -1049,3 +1049,113 @@ TEST(DomDocument, GetElementByIdViaRegisterWithAttribute) {
     EXPECT_EQ(doc.get_element_by_id("target"), div_ptr);
     EXPECT_EQ(doc.get_element_by_id("missing"), nullptr);
 }
+
+// ---------------------------------------------------------------------------
+// Cycle 494 — DOM additional regression tests
+// ---------------------------------------------------------------------------
+
+// Element::tag_name() returns the tag name passed at construction
+TEST(DomElement, TagNameAccessor) {
+    Element section("section");
+    EXPECT_EQ(section.tag_name(), "section");
+
+    Element btn("button", "http://www.w3.org/1999/xhtml");
+    EXPECT_EQ(btn.tag_name(), "button");
+}
+
+// ClassList::length() reflects the number of distinct classes
+TEST(DomClassList, LengthReflectsClassCount) {
+    Element elem("div");
+    EXPECT_EQ(elem.class_list().length(), 0u);
+
+    elem.class_list().add("a");
+    elem.class_list().add("b");
+    elem.class_list().add("c");
+    EXPECT_EQ(elem.class_list().length(), 3u);
+
+    elem.class_list().remove("b");
+    EXPECT_EQ(elem.class_list().length(), 2u);
+}
+
+// Event::bubbles() and Event::cancelable() accessors
+TEST(DomEvent, BubblesAndCancelableAccessors) {
+    Event bubbling("click", true, true);
+    EXPECT_TRUE(bubbling.bubbles());
+    EXPECT_TRUE(bubbling.cancelable());
+
+    Event non_bubbling("focus", false, false);
+    EXPECT_FALSE(non_bubbling.bubbles());
+    EXPECT_FALSE(non_bubbling.cancelable());
+}
+
+// Event::default_prevented() is false initially
+TEST(DomEvent, DefaultPreventedFalseInitially) {
+    Event evt("submit", true, true);
+    EXPECT_FALSE(evt.default_prevented());
+
+    evt.prevent_default();
+    EXPECT_TRUE(evt.default_prevented());
+}
+
+// Node::next_sibling() and Node::previous_sibling() explicit traversal
+TEST(DomNode, NextAndPreviousSiblingTraversal) {
+    auto parent = std::make_unique<Element>("ul");
+    auto li1 = std::make_unique<Element>("li"); // first
+    auto li2 = std::make_unique<Element>("li"); // second
+    auto li3 = std::make_unique<Element>("li"); // third
+
+    Node* li1_ptr = &parent->append_child(std::move(li1));
+    Node* li2_ptr = &parent->append_child(std::move(li2));
+    Node* li3_ptr = &parent->append_child(std::move(li3));
+
+    EXPECT_EQ(li1_ptr->next_sibling(), li2_ptr);
+    EXPECT_EQ(li2_ptr->next_sibling(), li3_ptr);
+    EXPECT_EQ(li3_ptr->next_sibling(), nullptr);
+
+    EXPECT_EQ(li3_ptr->previous_sibling(), li2_ptr);
+    EXPECT_EQ(li2_ptr->previous_sibling(), li1_ptr);
+    EXPECT_EQ(li1_ptr->previous_sibling(), nullptr);
+}
+
+// Element::namespace_uri() returns the namespace set at construction
+TEST(DomElement, NamespaceUriAccessor) {
+    Element svg("svg", "http://www.w3.org/2000/svg");
+    EXPECT_EQ(svg.namespace_uri(), "http://www.w3.org/2000/svg");
+
+    Element html("div"); // default empty namespace
+    EXPECT_TRUE(html.namespace_uri().empty());
+}
+
+// Event::propagation_stopped() is false initially, true after stop_propagation
+TEST(DomEvent, PropagationStoppedAccessor) {
+    Event evt("click");
+    EXPECT_FALSE(evt.propagation_stopped());
+    EXPECT_FALSE(evt.immediate_propagation_stopped());
+
+    evt.stop_propagation();
+    EXPECT_TRUE(evt.propagation_stopped());
+    EXPECT_FALSE(evt.immediate_propagation_stopped()); // only propagation stopped
+}
+
+// stop_immediate_propagation sets both flags
+TEST(DomEvent, StopImmediatePropagationSetsBothFlags) {
+    Event evt("click");
+    evt.stop_immediate_propagation();
+    EXPECT_TRUE(evt.propagation_stopped());
+    EXPECT_TRUE(evt.immediate_propagation_stopped());
+}
+
+// Child count is updated correctly after append and remove operations
+TEST(DomNode, ChildCountUpdatesOnAppendAndRemove) {
+    auto parent = std::make_unique<Element>("div");
+    EXPECT_EQ(parent->child_count(), 0u);
+
+    parent->append_child(std::make_unique<Element>("span"));
+    EXPECT_EQ(parent->child_count(), 1u);
+
+    Node& c2_ref = parent->append_child(std::make_unique<Text>("hello"));
+    EXPECT_EQ(parent->child_count(), 2u);
+
+    parent->remove_child(c2_ref);
+    EXPECT_EQ(parent->child_count(), 1u);
+}
