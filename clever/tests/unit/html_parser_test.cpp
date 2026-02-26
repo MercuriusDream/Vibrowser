@@ -834,3 +834,189 @@ TEST(TreeBuilder, SelectWithOptions) {
     EXPECT_EQ(opt_value, "red");
     EXPECT_EQ(opt->text_content(), "Red");
 }
+
+// ---------------------------------------------------------------------------
+// Cycle 482 — HTML parser: script async/defer, meta attributes, video/audio,
+//             details/summary, table thead/tbody/tfoot, fieldset/legend,
+//             pre/code, boolean attributes
+// ---------------------------------------------------------------------------
+
+TEST(TreeBuilder, ScriptWithAsyncDefer) {
+    auto doc = parse("<html><head><script src=\"app.js\" async defer></script></head></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* script = doc->find_element("script");
+    ASSERT_NE(script, nullptr);
+
+    std::string src_val;
+    bool has_async = false, has_defer = false;
+    for (const auto& attr : script->attributes) {
+        if (attr.name == "src")   src_val   = attr.value;
+        if (attr.name == "async") has_async = true;
+        if (attr.name == "defer") has_defer = true;
+    }
+    EXPECT_EQ(src_val, "app.js");
+    EXPECT_TRUE(has_async);
+    EXPECT_TRUE(has_defer);
+}
+
+TEST(TreeBuilder, MetaTagAttributes) {
+    auto doc = parse("<html><head>"
+                     "<meta charset=\"utf-8\">"
+                     "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
+                     "</head></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto metas = doc->find_all_elements("meta");
+    ASSERT_GE(metas.size(), 1u);
+
+    // First meta: charset
+    std::string charset_val;
+    for (const auto& attr : metas[0]->attributes) {
+        if (attr.name == "charset") charset_val = attr.value;
+    }
+    EXPECT_EQ(charset_val, "utf-8");
+
+    // Second meta: name + content
+    if (metas.size() >= 2u) {
+        std::string name_val, content_val;
+        for (const auto& attr : metas[1]->attributes) {
+            if (attr.name == "name")    name_val    = attr.value;
+            if (attr.name == "content") content_val = attr.value;
+        }
+        EXPECT_EQ(name_val, "viewport");
+        EXPECT_NE(content_val.find("device-width"), std::string::npos);
+    }
+}
+
+TEST(TreeBuilder, VideoAudioElements) {
+    auto doc = parse("<video controls><source src=\"movie.mp4\" type=\"video/mp4\"></video>"
+                     "<audio controls><source src=\"song.ogg\" type=\"audio/ogg\"></audio>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* video = doc->find_element("video");
+    ASSERT_NE(video, nullptr);
+    bool video_controls = false;
+    for (const auto& attr : video->attributes) {
+        if (attr.name == "controls") video_controls = true;
+    }
+    EXPECT_TRUE(video_controls);
+
+    auto* source = doc->find_element("source");
+    ASSERT_NE(source, nullptr);
+    std::string src_val;
+    for (const auto& attr : source->attributes) {
+        if (attr.name == "src") src_val = attr.value;
+    }
+    EXPECT_EQ(src_val, "movie.mp4");
+
+    auto* audio = doc->find_element("audio");
+    ASSERT_NE(audio, nullptr);
+}
+
+TEST(TreeBuilder, DetailsAndSummary) {
+    auto doc = parse("<details><summary>Click me</summary>Hidden content here.</details>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* details = doc->find_element("details");
+    ASSERT_NE(details, nullptr);
+
+    auto* summary = doc->find_element("summary");
+    ASSERT_NE(summary, nullptr);
+    EXPECT_EQ(summary->text_content(), "Click me");
+
+    // Full text of details includes both summary and hidden content
+    std::string full_text = details->text_content();
+    EXPECT_NE(full_text.find("Click me"), std::string::npos);
+    EXPECT_NE(full_text.find("Hidden"), std::string::npos);
+}
+
+TEST(TreeBuilder, TableWithTheadTbodyTfoot) {
+    auto doc = parse("<table>"
+                     "<thead><tr><th>Name</th><th>Age</th></tr></thead>"
+                     "<tbody><tr><td>Alice</td><td>30</td></tr></tbody>"
+                     "<tfoot><tr><td colspan=\"2\">Footer</td></tr></tfoot>"
+                     "</table>");
+    ASSERT_NE(doc, nullptr);
+
+    EXPECT_NE(doc->find_element("thead"), nullptr);
+    EXPECT_NE(doc->find_element("tbody"), nullptr);
+    EXPECT_NE(doc->find_element("tfoot"), nullptr);
+
+    auto* th = doc->find_element("th");
+    ASSERT_NE(th, nullptr);
+    EXPECT_EQ(th->text_content(), "Name");
+
+    // tbody's first td
+    auto* tbody = doc->find_element("tbody");
+    ASSERT_NE(tbody, nullptr);
+    auto* td = tbody->find_element("td");
+    ASSERT_NE(td, nullptr);
+    EXPECT_EQ(td->text_content(), "Alice");
+}
+
+TEST(TreeBuilder, FieldsetWithLegend) {
+    auto doc = parse("<fieldset><legend>Personal Info</legend>"
+                     "<input type=\"text\" name=\"username\">"
+                     "<input type=\"email\" name=\"email\">"
+                     "</fieldset>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* fieldset = doc->find_element("fieldset");
+    ASSERT_NE(fieldset, nullptr);
+
+    auto* legend = doc->find_element("legend");
+    ASSERT_NE(legend, nullptr);
+    EXPECT_EQ(legend->text_content(), "Personal Info");
+
+    auto inputs = doc->find_all_elements("input");
+    ASSERT_EQ(inputs.size(), 2u);
+    std::string type_val;
+    for (const auto& attr : inputs[0]->attributes) {
+        if (attr.name == "type") type_val = attr.value;
+    }
+    EXPECT_EQ(type_val, "text");
+}
+
+TEST(TreeBuilder, PreformattedContent) {
+    auto doc = parse("<pre><code>  line1\n  line2\n</code></pre>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* pre = doc->find_element("pre");
+    ASSERT_NE(pre, nullptr);
+
+    auto* code = doc->find_element("code");
+    ASSERT_NE(code, nullptr);
+
+    std::string text = code->text_content();
+    EXPECT_NE(text.find("line1"), std::string::npos);
+    EXPECT_NE(text.find("line2"), std::string::npos);
+}
+
+TEST(TreeBuilder, BooleanAttributes) {
+    auto doc = parse("<input type=\"checkbox\" checked disabled readonly>"
+                     "<button type=\"submit\" disabled>Go</button>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* input = doc->find_element("input");
+    ASSERT_NE(input, nullptr);
+
+    bool has_checked = false, has_disabled = false, has_readonly = false;
+    for (const auto& attr : input->attributes) {
+        if (attr.name == "checked")  has_checked  = true;
+        if (attr.name == "disabled") has_disabled = true;
+        if (attr.name == "readonly") has_readonly = true;
+    }
+    EXPECT_TRUE(has_checked);
+    EXPECT_TRUE(has_disabled);
+    EXPECT_TRUE(has_readonly);
+
+    auto* button = doc->find_element("button");
+    ASSERT_NE(button, nullptr);
+    bool btn_disabled = false;
+    for (const auto& attr : button->attributes) {
+        if (attr.name == "disabled") btn_disabled = true;
+    }
+    EXPECT_TRUE(btn_disabled);
+    EXPECT_EQ(button->text_content(), "Go");
+}
