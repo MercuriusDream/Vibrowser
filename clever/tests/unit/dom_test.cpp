@@ -945,3 +945,107 @@ TEST(DomDocument, CreateButtonElementViaDocument) {
     EXPECT_EQ(elem->tag_name(), "button");
     EXPECT_EQ(elem->node_type(), NodeType::Element);
 }
+
+// ---------------------------------------------------------------------------
+// Cycle 488 — DOM additional edge-case tests
+// ---------------------------------------------------------------------------
+
+// Remove middle child — siblings of remaining children updated correctly
+TEST(DomNode, RemoveMiddleChildUpdatesSiblings) {
+    auto parent = std::make_unique<Element>("div");
+    auto c1 = std::make_unique<Element>("a");
+    auto c2 = std::make_unique<Element>("b");
+    auto c3 = std::make_unique<Element>("c");
+    auto* p1 = c1.get();
+    auto* p2 = c2.get();
+    auto* p3 = c3.get();
+    parent->append_child(std::move(c1));
+    parent->append_child(std::move(c2));
+    parent->append_child(std::move(c3));
+
+    parent->remove_child(*p2);
+
+    EXPECT_EQ(parent->child_count(), 2u);
+    EXPECT_EQ(p1->next_sibling(), p3);
+    EXPECT_EQ(p3->previous_sibling(), p1);
+    EXPECT_EQ(p1->previous_sibling(), nullptr);
+    EXPECT_EQ(p3->next_sibling(), nullptr);
+}
+
+// ClassList::toggle adds when absent
+TEST(DomClassList, ToggleAddsWhenAbsent) {
+    Element elem("div");
+    elem.class_list().toggle("foo");
+    EXPECT_TRUE(elem.class_list().contains("foo"));
+    EXPECT_EQ(elem.class_list().length(), 1u);
+}
+
+// ClassList::toggle removes when present
+TEST(DomClassList, ToggleRemovesWhenPresent) {
+    Element elem("div");
+    elem.class_list().add("bar");
+    elem.class_list().toggle("bar");
+    EXPECT_FALSE(elem.class_list().contains("bar"));
+    EXPECT_EQ(elem.class_list().length(), 0u);
+}
+
+// Event::type() returns the type string passed at construction
+TEST(DomEvent, EventTypeProperty) {
+    Event e("mouseover");
+    EXPECT_EQ(e.type(), "mouseover");
+
+    Event e2("keydown", false, false);
+    EXPECT_EQ(e2.type(), "keydown");
+}
+
+// Listener for "click" not called when "keydown" event is dispatched
+TEST(DomEvent, DifferentEventTypeListenerNotCalled) {
+    EventTarget target;
+    bool click_called = false;
+    target.add_event_listener("click", [&](Event&) { click_called = true; }, false);
+
+    Event event("keydown");
+    auto node = std::make_unique<Element>("div");
+    event.target_ = node.get();
+    event.current_target_ = node.get();
+    event.phase_ = EventPhase::AtTarget;
+    target.dispatch_event(event, *node);
+
+    EXPECT_FALSE(click_called);
+}
+
+// set_attribute on same key multiple times: only 1 entry in attributes vector
+TEST(DomElement, AttributeCountAfterRepeatedSetSameKey) {
+    Element elem("input");
+    elem.set_attribute("class", "a");
+    elem.set_attribute("class", "b");
+    elem.set_attribute("class", "c");
+    EXPECT_EQ(elem.attributes().size(), 1u);
+    EXPECT_EQ(elem.get_attribute("class").value(), "c");
+}
+
+// Deeply nested element has correct text_content
+TEST(DomNode, DeepNestedTextContent) {
+    auto outer = std::make_unique<Element>("div");
+    auto mid = std::make_unique<Element>("p");
+    auto inner = std::make_unique<Element>("span");
+    inner->append_child(std::make_unique<Text>("deep text"));
+
+    mid->append_child(std::move(inner));
+    outer->append_child(std::move(mid));
+
+    EXPECT_EQ(outer->text_content(), "deep text");
+}
+
+// Document::get_element_by_id after calling register_id
+TEST(DomDocument, GetElementByIdViaRegisterWithAttribute) {
+    Document doc;
+    auto div = doc.create_element("div");
+    Element* div_ptr = div.get();
+    div->set_attribute("id", "target");
+    doc.register_id("target", div_ptr);
+    doc.append_child(std::move(div));
+
+    EXPECT_EQ(doc.get_element_by_id("target"), div_ptr);
+    EXPECT_EQ(doc.get_element_by_id("missing"), nullptr);
+}
