@@ -59,6 +59,15 @@ bool has_forbidden_header_value_char(const std::string& value) {
   return false;
 }
 
+bool has_ascii_whitespace(const std::string& value) {
+  for (unsigned char ch : value) {
+    if (std::isspace(ch) != 0) {
+      return true;
+    }
+  }
+  return false;
+}
+
 std::vector<unsigned char> encode_alpn_protocols(
     std::initializer_list<std::string> protocols) {
   std::vector<unsigned char> encoded;
@@ -428,6 +437,9 @@ std::string canonicalize_origin(const std::string& origin) {
 bool parse_serialized_origin(const std::string& value, std::string& canonical_origin) {
   const std::string trimmed = trim_ascii(value);
   if (trimmed.empty() || has_forbidden_header_value_char(trimmed)) {
+    return false;
+  }
+  if (has_ascii_whitespace(trimmed)) {
     return false;
   }
   for (unsigned char ch : trimmed) {
@@ -2251,9 +2263,9 @@ PolicyCheckResult check_cors_response_policy(const std::string& url,
                 "Cross-origin response blocked: duplicate Access-Control-Allow-Origin"};
     }
 
-    const std::string acao_value = trim_ascii(acao_header.value);
+    const std::string& acao_value = acao_header.value;
     if (acao_value.empty() || acao_value.find(',') != std::string::npos ||
-        has_forbidden_header_value_char(acao_value)) {
+        has_forbidden_header_value_char(acao_value) || acao_value != trim_ascii(acao_value)) {
         return {false,
                 PolicyViolation::CorsResponseBlocked,
                 "Cross-origin response blocked: invalid multi-valued Access-Control-Allow-Origin"};
@@ -2290,9 +2302,11 @@ PolicyCheckResult check_cors_response_policy(const std::string& url,
         }
         const SingleHeaderLookupResult acac_header = find_single_header_value_case_insensitive(
             response.headers, "access-control-allow-credentials");
-        const std::string acac_value = acac_header.found ? trim_ascii(acac_header.value) : "";
+        const std::string& acac_value = acac_header.value;
         if (acac_header.duplicate ||
-            (acac_header.found && has_forbidden_header_value_char(acac_value))) {
+            (acac_header.found &&
+             (has_forbidden_header_value_char(acac_value) ||
+              acac_value != trim_ascii(acac_value)))) {
             return {false,
                     PolicyViolation::CorsResponseBlocked,
                     "Cross-origin response blocked: invalid Access-Control-Allow-Credentials header"};

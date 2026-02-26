@@ -1182,6 +1182,53 @@ int main() {
         }
     }
 
+    // Test 62: request Origin header emission rejects embedded-whitespace policy Origin values
+    {
+        browser::net::RequestPolicy policy;
+        policy.origin = "https://app.\texample.com";
+        auto headers = browser::net::build_request_headers_for_policy("https://api.example.com/data", policy);
+        if (!headers.empty()) {
+            std::cerr << "FAIL: embedded-whitespace policy Origin should not be attached as request Origin header\n";
+            ++failures;
+        } else {
+            std::cerr << "PASS: request Origin header emission rejects embedded-whitespace policy origins\n";
+        }
+    }
+
+    // Test 63: credentialed CORS rejects surrounding-whitespace ACAC value
+    {
+        browser::net::RequestPolicy policy;
+        policy.origin = "https://app.example.com";
+        policy.credentials_mode_include = true;
+        browser::net::Response response;
+        response.headers["access-control-allow-origin"] = "https://app.example.com";
+        response.headers["access-control-allow-credentials"] = " true";
+        auto result =
+            browser::net::check_cors_response_policy("https://api.example.com/data", response, policy);
+        if (result.allowed) {
+            std::cerr << "FAIL: credentialed CORS should reject surrounding-whitespace ACAC values\n";
+            ++failures;
+        } else {
+            std::cerr << "PASS: credentialed CORS rejects surrounding-whitespace ACAC values\n";
+        }
+    }
+
+    // Test 64: CORS rejects surrounding-whitespace ACAO value
+    {
+        browser::net::RequestPolicy policy;
+        policy.origin = "https://app.example.com";
+        browser::net::Response response;
+        response.headers["access-control-allow-origin"] = " https://app.example.com";
+        auto result =
+            browser::net::check_cors_response_policy("https://api.example.com/data", response, policy);
+        if (result.allowed) {
+            std::cerr << "FAIL: CORS should reject surrounding-whitespace ACAO values\n";
+            ++failures;
+        } else {
+            std::cerr << "PASS: CORS rejects surrounding-whitespace ACAO values\n";
+        }
+    }
+
     if (failures > 0) {
         std::cerr << "\n" << failures << " test(s) FAILED\n";
         return 1;
