@@ -2444,3 +2444,64 @@ TEST(DomDocument, CreateTextNodeDataCorrect) {
     ASSERT_NE(node, nullptr);
     EXPECT_EQ(node->data(), "hello");
 }
+
+// ============================================================================
+// Cycle 676: More DOM tests
+// ============================================================================
+
+// Element: multiple attributes accessible
+TEST(DomElement, ThreeAttributesAllAccessible) {
+    Element elem("input");
+    elem.set_attribute("type", "text");
+    elem.set_attribute("name", "q");
+    elem.set_attribute("placeholder", "Search");
+    EXPECT_TRUE(elem.has_attribute("type"));
+    EXPECT_TRUE(elem.has_attribute("name"));
+    EXPECT_TRUE(elem.has_attribute("placeholder"));
+}
+
+// Element: namespace uri empty for regular element
+TEST(DomElement, NamespaceURIEmptyForRegularElement) {
+    Element elem("div");
+    EXPECT_TRUE(elem.namespace_uri().empty());
+}
+
+// Element: node_type is Element for any element
+TEST(DomElement, NodeTypeIsElementForSpan) {
+    Element elem("span");
+    EXPECT_EQ(elem.node_type(), NodeType::Element);
+}
+
+// Element: tag_name matches constructor
+TEST(DomElement, TagNameMatchesConstructorInput) {
+    Element elem("section");
+    EXPECT_EQ(elem.tag_name(), "section");
+}
+
+// ClassList: remove non-existent class is safe
+TEST(DomClassList, RemoveNonExistentClassIsSafe) {
+    Element elem("div");
+    // Should not throw or crash
+    elem.class_list().remove("nonexistent");
+    EXPECT_FALSE(elem.class_list().contains("nonexistent"));
+}
+
+// ClassList: add same class twice keeps count at 1
+TEST(DomClassList, AddSameClassTwiceKeepsCountOne) {
+    Element elem("p");
+    elem.class_list().add("visible");
+    elem.class_list().add("visible");
+    EXPECT_EQ(elem.class_list().items().size(), 1u);
+}
+
+// Comment: node_type is Comment for "note" comment
+TEST(DomComment, NodeTypeIsCommentForNoteComment) {
+    Comment c("note");
+    EXPECT_EQ(c.node_type(), NodeType::Comment);
+}
+
+// Document: node_type is Document for new document
+TEST(DomDocument, NodeTypeIsDocumentForNewDoc) {
+    Document doc;
+    EXPECT_EQ(doc.node_type(), NodeType::Document);
+}
