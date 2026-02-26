@@ -127,6 +127,7 @@ std::string extract_preferred_font_url(const std::string& src) {
         "woff",
         "truetype",
         "opentype",
+        "woff2-variations",
         "woff-variations",
         "truetype-variations",
         "opentype-variations"
