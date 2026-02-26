@@ -2395,3 +2395,71 @@ TEST(TreeBuilder, KbdCtrlC) {
     ASSERT_NE(kbd, nullptr);
     EXPECT_EQ(kbd->text_content(), "Ctrl+C");
 }
+
+// ============================================================================
+// Cycle 652: More HTML parser tests
+// ============================================================================
+
+TEST(TreeBuilder, SampElementOutputText) {
+    auto doc = parse(R"(<body><samp>output text</samp></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* samp = doc->find_element("samp");
+    ASSERT_NE(samp, nullptr);
+    EXPECT_EQ(samp->text_content(), "output text");
+}
+
+TEST(TreeBuilder, VarElementVarX) {
+    auto doc = parse(R"(<body><var>x</var></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* var = doc->find_element("var");
+    ASSERT_NE(var, nullptr);
+    EXPECT_EQ(var->text_content(), "x");
+}
+
+TEST(TreeBuilder, CiteBookTitle) {
+    auto doc = parse(R"(<body><cite>Some Book</cite></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* cite = doc->find_element("cite");
+    ASSERT_NE(cite, nullptr);
+    EXPECT_EQ(cite->text_content(), "Some Book");
+}
+
+TEST(TreeBuilder, QInlineQuote) {
+    auto doc = parse(R"(<body><q>inline quote</q></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* q = doc->find_element("q");
+    ASSERT_NE(q, nullptr);
+    EXPECT_EQ(q->text_content(), "inline quote");
+}
+
+TEST(TreeBuilder, ItalicElement) {
+    auto doc = parse(R"(<body><i>italic text</i></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* i = doc->find_element("i");
+    ASSERT_NE(i, nullptr);
+    EXPECT_EQ(i->text_content(), "italic text");
+}
+
+TEST(TreeBuilder, BoldElement) {
+    auto doc = parse(R"(<body><b>bold text</b></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* b = doc->find_element("b");
+    ASSERT_NE(b, nullptr);
+    EXPECT_EQ(b->text_content(), "bold text");
+}
+
+TEST(TreeBuilder, UnderlineElement) {
+    auto doc = parse(R"(<body><u>underlined</u></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* u = doc->find_element("u");
+    ASSERT_NE(u, nullptr);
+    EXPECT_EQ(u->text_content(), "underlined");
+}
+
+TEST(TreeBuilder, StrikethroughElement) {
+    auto doc = parse(R"(<body><s>strikethrough</s></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* s = doc->find_element("s");
+    ASSERT_NE(s, nullptr);
+    EXPECT_EQ(s->text_content(), "strikethrough");
+}
