@@ -33,6 +33,15 @@ bool has_invalid_header_octet(std::string_view value) {
     return false;
 }
 
+bool has_invalid_request_url_octet(std::string_view value) {
+    for (unsigned char ch : value) {
+        if (ch <= 0x1f || ch == 0x7f || ch > 0x7e) {
+            return true;
+        }
+    }
+    return false;
+}
+
 bool has_strict_authority_port_syntax(std::string_view authority) {
     if (authority.empty()) {
         return false;
@@ -84,7 +93,8 @@ bool has_strict_authority_port_syntax(std::string_view authority) {
 }
 
 std::optional<clever::url::URL> parse_httpish_url(std::string_view input) {
-    if (input.empty() || has_surrounding_ascii_whitespace(input)) {
+    if (input.empty() || has_surrounding_ascii_whitespace(input) ||
+        has_invalid_request_url_octet(input)) {
         return std::nullopt;
     }
 

@@ -33,6 +33,8 @@ TEST(CORSPolicyTest, RequestUrlEligibility) {
     EXPECT_FALSE(is_cors_eligible_request_url("file:///tmp/test.html"));
     EXPECT_FALSE(is_cors_eligible_request_url(" https://api.example/data"));
     EXPECT_FALSE(is_cors_eligible_request_url("https://api.example/data "));
+    EXPECT_FALSE(is_cors_eligible_request_url(std::string("https://api.\x01example/data")));
+    EXPECT_FALSE(is_cors_eligible_request_url(std::string("https://api.ex\xc3\xa4mple/data")));
     EXPECT_TRUE(is_cors_eligible_request_url("http://api.example/data"));
     EXPECT_TRUE(is_cors_eligible_request_url("https://api.example/data"));
 }
@@ -44,6 +46,9 @@ TEST(CORSPolicyTest, OriginHeaderAttachmentRule) {
         should_attach_origin_header("https://app.example/path", "https://api.example/data"));
     EXPECT_FALSE(
         should_attach_origin_header("https://app.example", " https://api.example/data"));
+    EXPECT_FALSE(
+        should_attach_origin_header("https://app.example",
+                                    std::string("https://api.\x01example/data")));
     EXPECT_TRUE(should_attach_origin_header("https://app.example", "https://api.example/data"));
     EXPECT_TRUE(should_attach_origin_header("null", "https://api.example/data"));
 }
@@ -80,6 +85,12 @@ TEST(CORSPolicyTest, CrossOriginRejectsMalformedOrUnsupportedRequestUrl) {
     EXPECT_FALSE(cors_allows_response("https://app.example", "ftp://api.example/data", headers,
                                       false));
     EXPECT_FALSE(cors_allows_response("https://app.example", " https://api.example/data", headers,
+                                      false));
+    EXPECT_FALSE(cors_allows_response("https://app.example",
+                                      std::string("https://api.\x01example/data"), headers,
+                                      false));
+    EXPECT_FALSE(cors_allows_response("https://app.example",
+                                      std::string("https://api.ex\xc3\xa4mple/data"), headers,
                                       false));
 }
 
