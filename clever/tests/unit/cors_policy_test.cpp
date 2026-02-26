@@ -532,3 +532,54 @@ TEST(CORSPolicyTest, ExactACAOMatchAllowsCredentialed) {
     EXPECT_TRUE(cors_allows_response("https://app.example", "https://api.example/data",
                                      headers, true));
 }
+
+// ============================================================================
+// Cycle 515: CORS policy regression tests
+// ============================================================================
+
+// cors_allows_response: no ACAO header blocks cross-origin
+TEST(CORSPolicyTest, MissingACAOBlocksCrossOrigin) {
+    clever::net::HeaderMap headers;  // no ACAO header
+    EXPECT_FALSE(cors_allows_response("https://app.example", "https://api.example/data",
+                                      headers, false));
+}
+
+// cors_allows_response: ACAO mismatch (different subdomain) blocks response
+TEST(CORSPolicyTest, ACAOMismatchBlocksResponse) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "https://other.example");
+    EXPECT_FALSE(cors_allows_response("https://app.example", "https://api.example/data",
+                                      headers, false));
+}
+
+// is_cors_eligible_request_url: data: URL is not eligible
+TEST(CORSPolicyTest, DataURLNotCORSEligible) {
+    EXPECT_FALSE(is_cors_eligible_request_url("data:text/plain,hello"));
+}
+
+// is_cors_eligible_request_url: about:blank is not eligible
+TEST(CORSPolicyTest, AboutBlankNotCORSEligible) {
+    EXPECT_FALSE(is_cors_eligible_request_url("about:blank"));
+}
+
+// has_enforceable_document_origin: null origin is not enforceable
+TEST(CORSPolicyTest, NullOriginStringNotEnforceable) {
+    EXPECT_FALSE(has_enforceable_document_origin("null"));
+}
+
+// has_enforceable_document_origin: a valid https origin is enforceable
+TEST(CORSPolicyTest, ValidHttpsOriginIsEnforceable) {
+    EXPECT_TRUE(has_enforceable_document_origin("https://example.com"));
+}
+
+// is_cors_eligible_request_url: https with path and query is eligible
+TEST(CORSPolicyTest, HttpsURLWithPathAndQueryIsEligible) {
+    EXPECT_TRUE(is_cors_eligible_request_url("https://api.example.com/v1/data?key=123"));
+}
+
+// cors_allows_response: same-origin request is always allowed regardless of ACAO
+TEST(CORSPolicyTest, SameOriginAlwaysAllowedNoACAO) {
+    clever::net::HeaderMap headers;  // no ACAO header
+    EXPECT_TRUE(cors_allows_response("https://example.com", "https://example.com/api",
+                                     headers, false));
+}
