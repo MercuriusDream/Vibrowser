@@ -99,6 +99,11 @@ TEST(CORSPolicyTest, CrossOriginRejectsMalformedACAOValue) {
     EXPECT_FALSE(
         cors_allows_response("https://app.example", "https://api.example/data", control_char, false));
 
+    clever::net::HeaderMap non_ascii;
+    non_ascii.set("Access-Control-Allow-Origin", std::string("https://app.ex\xc3\xa4mple"));
+    EXPECT_FALSE(
+        cors_allows_response("https://app.example", "https://api.example/data", non_ascii, false));
+
     clever::net::HeaderMap duplicate_acao;
     duplicate_acao.append("Access-Control-Allow-Origin", "https://app.example");
     duplicate_acao.append("Access-Control-Allow-Origin", "https://app.example");
@@ -145,6 +150,13 @@ TEST(CORSPolicyTest, CrossOriginCredentialedRequiresExactAndCredentialsTrue) {
     malformed_credentials.set("Access-Control-Allow-Credentials", std::string("tr\x01ue"));
     EXPECT_FALSE(cors_allows_response("https://app.example", "https://api.example/data",
                                       malformed_credentials, true));
+
+    clever::net::HeaderMap non_ascii_credentials;
+    non_ascii_credentials.set("Access-Control-Allow-Origin", "https://app.example");
+    non_ascii_credentials.set("Access-Control-Allow-Credentials",
+                              std::string("tr\xc3\xbc") + "e");
+    EXPECT_FALSE(cors_allows_response("https://app.example", "https://api.example/data",
+                                      non_ascii_credentials, true));
 
     clever::net::HeaderMap uppercase_true;
     uppercase_true.set("Access-Control-Allow-Origin", "https://app.example");

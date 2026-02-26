@@ -25,7 +25,7 @@ std::string to_lower_ascii(std::string value) {
 
 bool has_invalid_header_octet(std::string_view value) {
     for (unsigned char ch : value) {
-        if (ch <= 0x1f || ch == 0x7f) {
+        if (ch <= 0x1f || ch == 0x7f || ch > 0x7e) {
             return true;
         }
     }
