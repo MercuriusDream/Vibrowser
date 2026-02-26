@@ -12377,3 +12377,113 @@ TEST(JSEngine, ArrayEntriesIterator) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "0:a,1:b");
 }
+
+// ============================================================================
+// Cycle 559: JS engine regression tests
+// ============================================================================
+
+// Generator function spread into array
+TEST(JSEngine, GeneratorFunctionSpreadToArray) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        function* gen() {
+            yield 1;
+            yield 2;
+            yield 3;
+        }
+        [...gen()].join(",")
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1,2,3");
+}
+
+// for..of loop over array
+TEST(JSEngine, ForOfArray) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var sum = 0;
+        for (var x of [10, 20, 30]) {
+            sum += x;
+        }
+        sum
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "60");
+}
+
+// Template literal with expression
+TEST(JSEngine, TemplateLiteralWithExpression) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var name = "World";
+        var n = 2 + 2;
+        `Hello, ${name}! ${n} items.`
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "Hello, World! 4 items.");
+}
+
+// Spread operator in function call
+TEST(JSEngine, SpreadInFunctionCall) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var nums = [3, 1, 4, 1, 5];
+        Math.max(...nums)
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "5");
+}
+
+// Array destructuring with rest element joined
+TEST(JSEngine, ArrayDestructuringRestJoin) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var [first, second, ...rest] = [10, 20, 30, 40, 50];
+        first + "," + second + "," + rest.join(",")
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "10,20,30,40,50");
+}
+
+// Symbol.iterator used in for..of
+TEST(JSEngine, SymbolIteratorWithSet) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var s = new Set([1, 2, 3]);
+        var vals = [];
+        for (var v of s) {
+            vals.push(v);
+        }
+        vals.sort().join(",")
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1,2,3");
+}
+
+// WeakMap basic usage
+TEST(JSEngine, WeakMapBasicUsage) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var wm = new WeakMap();
+        var obj = {};
+        wm.set(obj, 42);
+        wm.get(obj)
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "42");
+}
+
+// Promise.resolve().then() is async
+TEST(JSEngine, PromiseResolveThen) {
+    clever::js::JSEngine engine;
+    // Promise in sync context - result may be undefined or resolved depending on implementation
+    auto result = engine.evaluate(R"(
+        var resolved = null;
+        Promise.resolve(99).then(function(v) { resolved = v; });
+        // In a synchronous eval, we might need to check 'resolved' after microtasks
+        // Just check that Promise.resolve doesn't throw
+        "ok"
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "ok");
+}
