@@ -1868,3 +1868,72 @@ TEST_F(CSSTokenizerTest, EmDimensionToken) {
     EXPECT_DOUBLE_EQ(tokens[0].numeric_value, 2.0);
     EXPECT_EQ(tokens[0].unit, "em");
 }
+
+// Dimension token with ch unit
+TEST_F(CSSTokenizerTest, ChDimensionToken) {
+    auto tokens = CSSTokenizer::tokenize_all("3ch");
+    ASSERT_GE(tokens.size(), 1u);
+    EXPECT_EQ(tokens[0].type, CSSToken::Dimension);
+    EXPECT_DOUBLE_EQ(tokens[0].numeric_value, 3.0);
+    EXPECT_EQ(tokens[0].unit, "ch");
+}
+
+// Dimension token with vw unit
+TEST_F(CSSTokenizerTest, VwDimensionToken) {
+    auto tokens = CSSTokenizer::tokenize_all("100vw");
+    ASSERT_GE(tokens.size(), 1u);
+    EXPECT_EQ(tokens[0].type, CSSToken::Dimension);
+    EXPECT_DOUBLE_EQ(tokens[0].numeric_value, 100.0);
+    EXPECT_EQ(tokens[0].unit, "vw");
+}
+
+// Dimension token with px unit
+TEST_F(CSSTokenizerTest, PxDimensionToken) {
+    auto tokens = CSSTokenizer::tokenize_all("16px");
+    ASSERT_GE(tokens.size(), 1u);
+    EXPECT_EQ(tokens[0].type, CSSToken::Dimension);
+    EXPECT_DOUBLE_EQ(tokens[0].numeric_value, 16.0);
+    EXPECT_EQ(tokens[0].unit, "px");
+}
+
+// Pseudo-class selector :hover
+TEST_F(CSSSelectorTest, PseudoClassHoverParsed) {
+    auto list = parse_selector_list("a:hover");
+    ASSERT_EQ(list.selectors.size(), 1u);
+    auto& compound = list.selectors[0].parts[0].compound;
+    ASSERT_EQ(compound.simple_selectors.size(), 2u);
+    EXPECT_EQ(compound.simple_selectors[0].type, SimpleSelectorType::Type);
+    EXPECT_EQ(compound.simple_selectors[0].value, "a");
+    EXPECT_EQ(compound.simple_selectors[1].type, SimpleSelectorType::PseudoClass);
+    EXPECT_EQ(compound.simple_selectors[1].value, "hover");
+}
+
+// Attribute selector [disabled] (exists match)
+TEST_F(CSSSelectorTest, AttributeSelectorExistsParsed) {
+    auto list = parse_selector_list("input[disabled]");
+    ASSERT_EQ(list.selectors.size(), 1u);
+    auto& compound = list.selectors[0].parts[0].compound;
+    ASSERT_EQ(compound.simple_selectors.size(), 2u);
+    EXPECT_EQ(compound.simple_selectors[1].type, SimpleSelectorType::Attribute);
+    EXPECT_EQ(compound.simple_selectors[1].attr_name, "disabled");
+    EXPECT_EQ(compound.simple_selectors[1].attr_match, AttributeMatch::Exists);
+}
+
+// Stylesheet: empty rule has zero declarations
+TEST_F(CSSStylesheetTest, EmptyRuleZeroDeclarations) {
+    auto sheet = parse_stylesheet("div {}");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    EXPECT_EQ(sheet.rules[0].selector_text, "div");
+    EXPECT_EQ(sheet.rules[0].declarations.size(), 0u);
+}
+
+// Stylesheet: font-size with px value
+TEST_F(CSSStylesheetTest, FontSizePxDeclaration) {
+    auto sheet = parse_stylesheet("body { font-size: 14px; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    ASSERT_EQ(sheet.rules[0].declarations.size(), 1u);
+    EXPECT_EQ(sheet.rules[0].declarations[0].property, "font-size");
+    auto& val = sheet.rules[0].declarations[0].values[0];
+    EXPECT_DOUBLE_EQ(val.numeric_value, 14.0);
+    EXPECT_EQ(val.unit, "px");
+}
