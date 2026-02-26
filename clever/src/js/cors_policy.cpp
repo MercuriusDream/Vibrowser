@@ -65,17 +65,23 @@ bool has_valid_serialized_origin_host(std::string_view host) {
         return false;
     }
 
+    bool all_digits = true;
     bool dotted_decimal_candidate = true;
     int dot_count = 0;
     for (unsigned char ch : host) {
         if (ch == '.') {
+            all_digits = false;
             ++dot_count;
             continue;
         }
         if (std::isdigit(ch) == 0) {
+            all_digits = false;
             dotted_decimal_candidate = false;
             break;
         }
+    }
+    if (all_digits) {
+        return false;
     }
     if (dotted_decimal_candidate && dot_count == 3) {
         std::size_t octet_start = 0;

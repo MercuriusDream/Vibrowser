@@ -48,6 +48,7 @@ TEST(CORSPolicyTest, RequestUrlEligibility) {
     EXPECT_FALSE(is_cors_eligible_request_url("https://api..example/data"));
     EXPECT_FALSE(is_cors_eligible_request_url("https://-api.example/data"));
     EXPECT_FALSE(is_cors_eligible_request_url("https://api-.example/data"));
+    EXPECT_FALSE(is_cors_eligible_request_url("https://2130706433/data"));
     EXPECT_FALSE(is_cors_eligible_request_url("https://api.example/%0a"));
     EXPECT_FALSE(is_cors_eligible_request_url("https://api.example/%20"));
     EXPECT_FALSE(is_cors_eligible_request_url("https://api.example/%5Cdata"));
@@ -255,6 +256,11 @@ TEST(CORSPolicyTest, CrossOriginRejectsMalformedACAOValue) {
     noncanonical_dotted_ipv4.set("Access-Control-Allow-Origin", "https://001.2.3.4");
     EXPECT_FALSE(cors_allows_response("https://app.example", "https://api.example/data",
                                       noncanonical_dotted_ipv4, false));
+
+    clever::net::HeaderMap legacy_integer_ipv4;
+    legacy_integer_ipv4.set("Access-Control-Allow-Origin", "https://2130706433");
+    EXPECT_FALSE(cors_allows_response("https://app.example", "https://api.example/data",
+                                      legacy_integer_ipv4, false));
 
     clever::net::HeaderMap surrounding_whitespace_acao;
     surrounding_whitespace_acao.set("Access-Control-Allow-Origin", " https://app.example");

@@ -504,17 +504,23 @@ bool parse_serialized_origin(const std::string& value, std::string& canonical_or
     if (parsed_host.front() == '.' || parsed_host.back() == '.') {
       return false;
     }
+    bool all_digits = true;
     bool dotted_decimal_candidate = true;
     int dot_count = 0;
     for (unsigned char ch : parsed_host) {
       if (ch == '.') {
+        all_digits = false;
         ++dot_count;
         continue;
       }
       if (!std::isdigit(ch)) {
+        all_digits = false;
         dotted_decimal_candidate = false;
         break;
       }
+    }
+    if (all_digits) {
+      return false;
     }
     if (dotted_decimal_candidate && dot_count == 3) {
       std::size_t octet_start = 0;

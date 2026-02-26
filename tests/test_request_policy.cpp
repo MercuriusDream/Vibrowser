@@ -1517,6 +1517,39 @@ int main() {
         }
     }
 
+    // Test 83: CORS rejects ACAO values with legacy single-integer numeric hosts
+    {
+        browser::net::RequestPolicy policy;
+        policy.origin = "https://app.example.com";
+        browser::net::Response response;
+        response.headers["access-control-allow-origin"] = "https://2130706433";
+        auto result =
+            browser::net::check_cors_response_policy("https://api.example.com/data", response, policy);
+        if (result.allowed) {
+            std::cerr
+                << "FAIL: CORS should reject ACAO origins with legacy single-integer numeric hosts\n";
+            ++failures;
+        } else {
+            std::cerr
+                << "PASS: CORS rejects ACAO origins with legacy single-integer numeric hosts\n";
+        }
+    }
+
+    // Test 84: request Origin header emission rejects legacy single-integer numeric hosts
+    {
+        browser::net::RequestPolicy policy;
+        policy.origin = "https://2130706433";
+        auto headers = browser::net::build_request_headers_for_policy("https://api.example.com/data", policy);
+        if (!headers.empty()) {
+            std::cerr
+                << "FAIL: policy Origin with single-integer numeric host should not be attached\n";
+            ++failures;
+        } else {
+            std::cerr
+                << "PASS: request Origin header emission rejects single-integer numeric hosts\n";
+        }
+    }
+
     if (failures > 0) {
         std::cerr << "\n" << failures << " test(s) FAILED\n";
         return 1;
