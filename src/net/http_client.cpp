@@ -1403,14 +1403,59 @@ bool request_headers_attempt_http2_upgrade(
 
 bool request_headers_include_http2_settings(
     const std::map<std::string, std::string>& request_headers) {
+  bool found_http2_settings = false;
   for (const auto& [name, value] : request_headers) {
-    (void)value;
     const std::string normalized_name = to_lower_ascii(trim_ascii(name));
-    if (normalized_name == "http2-settings") {
-      return true;
+    if (normalized_name != "http2-settings") {
+      continue;
     }
+
+    if (found_http2_settings) {
+      return false;
+    }
+
+    const std::string normalized_value = trim_ascii(value);
+    if (normalized_value.empty()) {
+      return false;
+    }
+
+    bool seen_data = false;
+    bool seen_padding = false;
+    for (char ch : normalized_value) {
+      const unsigned char uch = static_cast<unsigned char>(ch);
+      if (uch <= 0x1f || uch == 0x7f || uch >= 0x80) {
+        return false;
+      }
+
+      const bool is_token68_data =
+          std::isalnum(uch) != 0 || ch == '-' || ch == '.' || ch == '_' || ch == '~' ||
+          ch == '+' || ch == '/';
+      if (is_token68_data) {
+        if (seen_padding) {
+          return false;
+        }
+        seen_data = true;
+        continue;
+      }
+
+      if (ch == '=') {
+        if (!seen_data) {
+          return false;
+        }
+        seen_padding = true;
+        continue;
+      }
+
+      return false;
+    }
+
+    if (!seen_data) {
+      return false;
+    }
+
+    found_http2_settings = true;
   }
-  return false;
+  return found_http2_settings;
 }
 
 bool request_headers_include_http2_pseudo_headers(

@@ -561,12 +561,30 @@ int main() {
             ++failures;
         } else {
             headers.clear();
-            headers["http2-settings"] = "token";
+            headers["http2-settings"] = "AAMAAABkAARAAAAAAAIAAAAA==";
             if (!browser::net::is_http2_settings_request(headers)) {
                 std::cerr << "FAIL: expected case-insensitive HTTP2-Settings detection\n";
                 ++failures;
-            } else if (!browser::net::is_http2_settings_request({{" HTTP2-Settings\t", "token"}})) {
+            } else if (!browser::net::is_http2_settings_request({{" HTTP2-Settings\t", "AAMAAABkAARAAAAAAAIAAAAA"}})) {
                 std::cerr << "FAIL: expected whitespace-padded HTTP2-Settings name to be normalized and detected\n";
+                ++failures;
+            } else if (browser::net::is_http2_settings_request({{"HTTP2-Settings", ""}})) {
+                std::cerr << "FAIL: expected empty HTTP2-Settings value to be rejected\n";
+                ++failures;
+            } else if (browser::net::is_http2_settings_request({{"HTTP2-Settings", "AAMA AABk"}})) {
+                std::cerr << "FAIL: expected whitespace in HTTP2-Settings token68 value to be rejected\n";
+                ++failures;
+            } else if (browser::net::is_http2_settings_request({{"HTTP2-Settings", "AAMAAABk,token"}})) {
+                std::cerr << "FAIL: expected comma-separated HTTP2-Settings value to be rejected\n";
+                ++failures;
+            } else if (browser::net::is_http2_settings_request({{"HTTP2-Settings", "==AA"}})) {
+                std::cerr << "FAIL: expected leading padding in HTTP2-Settings value to be rejected\n";
+                ++failures;
+            } else if (browser::net::is_http2_settings_request({{"HTTP2-Settings", std::string("AA\x01", 3)}})) {
+                std::cerr << "FAIL: expected control-character malformed HTTP2-Settings value to be rejected\n";
+                ++failures;
+            } else if (browser::net::is_http2_settings_request({{"HTTP2-Settings", std::string("AA\x80", 3)}})) {
+                std::cerr << "FAIL: expected non-ASCII malformed HTTP2-Settings value to be rejected\n";
                 ++failures;
             } else {
                 headers.clear();
@@ -575,7 +593,15 @@ int main() {
                     std::cerr << "FAIL: expected exact HTTP2-Settings header name matching\n";
                     ++failures;
                 } else {
-                    std::cerr << "PASS: HTTP2-Settings request header detection works as expected\n";
+                    headers.clear();
+                    headers["HTTP2-Settings"] = "AAMAAABk";
+                    headers["http2-settings"] = "AAMAAABk";
+                    if (browser::net::is_http2_settings_request(headers)) {
+                        std::cerr << "FAIL: expected duplicate case-variant HTTP2-Settings headers to fail closed\n";
+                        ++failures;
+                    } else {
+                        std::cerr << "PASS: HTTP2-Settings request header detection works as expected\n";
+                    }
                 }
             }
         }
