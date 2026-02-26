@@ -11368,3 +11368,199 @@ TEST(JSEngine, ObjectKeysValuesEntries) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "true");
 }
+
+// ---------------------------------------------------------------------------
+// Cycle 450 — closures, higher-order functions, Array.from, Math methods,
+//             Date basics, getter/setter, computed property names,
+//             short-circuit evaluation
+// ---------------------------------------------------------------------------
+
+TEST(JSEngine, Closures) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var checks = [];
+        function makeCounter(start) {
+            var count = start;
+            return {
+                inc: function() { return ++count; },
+                dec: function() { return --count; },
+                get: function() { return count; }
+            };
+        }
+        var c = makeCounter(10);
+        checks.push(c.inc() === 11);
+        checks.push(c.inc() === 12);
+        checks.push(c.dec() === 11);
+        checks.push(c.get() === 11);
+        // Two independent closures don't share state
+        var c2 = makeCounter(0);
+        checks.push(c2.get() === 0);
+        checks.push(c.get() === 11);  // c unaffected
+        String(checks.every(function(c){return c;}))
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, HigherOrderFunctions) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var checks = [];
+        var nums = [1, 2, 3, 4, 5];
+        // map
+        var doubled = nums.map(function(x) { return x * 2; });
+        checks.push(doubled.join(',') === '2,4,6,8,10');
+        // filter
+        var evens = nums.filter(function(x) { return x % 2 === 0; });
+        checks.push(evens.join(',') === '2,4');
+        // reduce
+        var sum = nums.reduce(function(acc, x) { return acc + x; }, 0);
+        checks.push(sum === 15);
+        // chaining
+        var result = nums.filter(function(x){return x>2;}).map(function(x){return x*x;});
+        checks.push(result.join(',') === '9,16,25');
+        String(checks.every(function(c){return c;}))
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, ArrayFrom) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var checks = [];
+        // From array-like
+        var arr1 = Array.from('hello');
+        checks.push(arr1.length === 5 && arr1[0] === 'h');
+        // From Set
+        var s = new Set([1, 2, 3]);
+        var arr2 = Array.from(s);
+        checks.push(arr2.length === 3);
+        // With map function
+        var arr3 = Array.from([1, 2, 3], function(x) { return x * 2; });
+        checks.push(arr3.join(',') === '2,4,6');
+        // From length-based object
+        var arr4 = Array.from({length: 3}, function(_, i) { return i; });
+        checks.push(arr4.join(',') === '0,1,2');
+        String(checks.every(function(c){return c;}))
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, MathMethods) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var checks = [];
+        checks.push(Math.abs(-5) === 5);
+        checks.push(Math.max(1, 2, 3) === 3);
+        checks.push(Math.min(1, 2, 3) === 1);
+        checks.push(Math.floor(4.7) === 4);
+        checks.push(Math.ceil(4.2) === 5);
+        checks.push(Math.round(4.5) === 5);
+        checks.push(Math.pow(2, 10) === 1024);
+        checks.push(Math.sqrt(16) === 4);
+        var r = Math.random();
+        checks.push(r >= 0 && r < 1);
+        checks.push(Math.sign(-3) === -1 && Math.sign(0) === 0 && Math.sign(5) === 1);
+        String(checks.every(function(c){return c;}))
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, DateBasics) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var checks = [];
+        var now = new Date();
+        checks.push(typeof now === 'object');
+        checks.push(typeof now.getTime() === 'number');
+        // Date.now() returns a number
+        checks.push(typeof Date.now() === 'number');
+        checks.push(Date.now() > 0);
+        // Specific date
+        var d = new Date(2000, 0, 1);  // Jan 1, 2000
+        checks.push(d.getFullYear() === 2000);
+        checks.push(d.getMonth() === 0);  // 0-indexed
+        checks.push(d.getDate() === 1);
+        String(checks.every(function(c){return c;}))
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, GetterAndSetter) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var checks = [];
+        var obj = {
+            _val: 0,
+            get value() { return this._val; },
+            set value(v) { this._val = v * 2; }
+        };
+        obj.value = 5;
+        checks.push(obj._val === 10);
+        checks.push(obj.value === 10);
+        // Class getter/setter
+        class Rect {
+            constructor(w, h) { this._w = w; this._h = h; }
+            get area() { return this._w * this._h; }
+        }
+        var r = new Rect(3, 4);
+        checks.push(r.area === 12);
+        String(checks.every(function(c){return c;}))
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, ComputedPropertyNames) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var checks = [];
+        var key = 'dynamic';
+        var obj = {[key]: 42, ['x' + 'y']: 'val'};
+        checks.push(obj.dynamic === 42);
+        checks.push(obj.xy === 'val');
+        // Computed method names in class
+        var method = 'greet';
+        var greeter = {[method]: function(name) { return 'hi ' + name; }};
+        checks.push(greeter.greet('world') === 'hi world');
+        String(checks.every(function(c){return c;}))
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, ShortCircuitEvaluation) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var checks = [];
+        var count = 0;
+        function sideEffect() { count++; return true; }
+        // && short-circuits on false
+        false && sideEffect();
+        checks.push(count === 0);
+        // || short-circuits on true
+        true || sideEffect();
+        checks.push(count === 0);
+        // Logical assignment
+        var a = null;
+        a ??= 'default';
+        checks.push(a === 'default');
+        var b = 'existing';
+        b ??= 'fallback';
+        checks.push(b === 'existing');
+        // ||= and &&=
+        var x = 0;
+        x ||= 42;
+        checks.push(x === 42);
+        var y = 10;
+        y &&= 99;
+        checks.push(y === 99);
+        String(checks.every(function(c){return c;}))
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true");
+}
