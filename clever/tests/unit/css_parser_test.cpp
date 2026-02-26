@@ -2247,3 +2247,91 @@ TEST_F(CSSStylesheetTest, LineHeightDeclaration) {
     ASSERT_FALSE(sheet.rules[0].declarations.empty());
     EXPECT_EQ(sheet.rules[0].declarations[0].property, "line-height");
 }
+
+// ============================================================================
+// Cycle 615: More CSS parser tests
+// ============================================================================
+
+// Tokenizer: zero value number
+TEST_F(CSSTokenizerTest, ZeroNumberToken) {
+    auto tokens = CSSTokenizer::tokenize_all("0");
+    ASSERT_FALSE(tokens.empty());
+    EXPECT_EQ(tokens[0].type, CSSToken::Number);
+    EXPECT_DOUBLE_EQ(tokens[0].numeric_value, 0.0);
+}
+
+// Tokenizer: negative decimal number
+TEST_F(CSSTokenizerTest, NegativeDecimalToken) {
+    auto tokens = CSSTokenizer::tokenize_all("-0.5");
+    ASSERT_FALSE(tokens.empty());
+    EXPECT_EQ(tokens[0].type, CSSToken::Number);
+    EXPECT_DOUBLE_EQ(tokens[0].numeric_value, -0.5);
+}
+
+// Selector: pseudo-class focus
+TEST_F(CSSSelectorTest, PseudoClassFocusParsed) {
+    auto list = parse_selector_list("input:focus");
+    ASSERT_EQ(list.selectors.size(), 1u);
+    ASSERT_FALSE(list.selectors[0].parts.empty());
+    auto& compound = list.selectors[0].parts[0].compound;
+    bool found = false;
+    for (auto& s : compound.simple_selectors) {
+        if (s.type == SimpleSelectorType::PseudoClass && s.value == "focus") { found = true; break; }
+    }
+    EXPECT_TRUE(found);
+}
+
+// Selector: pseudo-class active
+TEST_F(CSSSelectorTest, PseudoClassActiveParsed) {
+    auto list = parse_selector_list("a:active");
+    ASSERT_EQ(list.selectors.size(), 1u);
+    ASSERT_FALSE(list.selectors[0].parts.empty());
+    auto& compound = list.selectors[0].parts[0].compound;
+    bool found = false;
+    for (auto& s : compound.simple_selectors) {
+        if (s.type == SimpleSelectorType::PseudoClass && s.value == "active") { found = true; break; }
+    }
+    EXPECT_TRUE(found);
+}
+
+// Selector: attribute selector with value
+TEST_F(CSSSelectorTest, AttributeSelectorWithValue) {
+    auto list = parse_selector_list("[type=\"text\"]");
+    ASSERT_EQ(list.selectors.size(), 1u);
+    ASSERT_FALSE(list.selectors[0].parts.empty());
+    auto& compound = list.selectors[0].parts[0].compound;
+    bool found = false;
+    for (auto& s : compound.simple_selectors) {
+        if (s.type == SimpleSelectorType::Attribute) { found = true; break; }
+    }
+    EXPECT_TRUE(found);
+}
+
+// Stylesheet: cursor pointer declaration
+TEST_F(CSSStylesheetTest, CursorPointerDeclaration) {
+    auto sheet = parse_stylesheet("button { cursor: pointer; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations) {
+        if (d.property == "cursor") { found = true; break; }
+    }
+    EXPECT_TRUE(found);
+}
+
+// Stylesheet: transition declaration
+TEST_F(CSSStylesheetTest, TransitionDeclaration) {
+    auto sheet = parse_stylesheet("a { transition: color 0.3s; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations) {
+        if (d.property == "transition") { found = true; break; }
+    }
+    EXPECT_TRUE(found);
+}
+
+// Stylesheet: two declarations in one rule
+TEST_F(CSSStylesheetTest, TwoDeclarationsInOneRule) {
+    auto sheet = parse_stylesheet("p { color: red; font-size: 16px; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    EXPECT_GE(sheet.rules[0].declarations.size(), 2u);
+}
