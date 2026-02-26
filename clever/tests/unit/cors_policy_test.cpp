@@ -863,3 +863,61 @@ TEST(CORSPolicyTest, HttpsOriginIsEnforceable) {
 TEST(CORSPolicyTest, HttpSubdomainOriginIsEnforceable) {
     EXPECT_TRUE(has_enforceable_document_origin("http://app.insecure.example"));
 }
+
+// ============================================================================
+// Cycle 629: More CORS policy tests
+// ============================================================================
+
+// cors_allows_response: matching prefixed origin with port
+TEST(CORSPolicyTest, OriginWithPortAllows) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "https://app.example:3000");
+    EXPECT_TRUE(cors_allows_response("https://app.example:3000",
+                                     "https://api.example/data",
+                                     headers, false));
+}
+
+// cors_allows_response: empty ACAO blocks request
+TEST(CORSPolicyTest, EmptyACAOBlocksRequest) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "");
+    EXPECT_FALSE(cors_allows_response("https://app.example",
+                                      "https://api.example/data",
+                                      headers, false));
+}
+
+// is_cors_eligible: data: URL not eligible
+TEST(CORSPolicyTest, DataURLNotEligible) {
+    EXPECT_FALSE(is_cors_eligible_request_url("data:text/html,hello"));
+}
+
+// is_cors_eligible: javascript: URL not eligible
+TEST(CORSPolicyTest, JavaScriptURLNotEligible) {
+    EXPECT_FALSE(is_cors_eligible_request_url("javascript:void(0)"));
+}
+
+// is_cross_origin: same origin with different paths returns false
+TEST(CORSPolicyTest, SameOriginDifferentPathsNotCrossOrigin) {
+    EXPECT_FALSE(is_cross_origin("https://api.example.com",
+                                  "https://api.example.com/v2"));
+}
+
+// is_cross_origin: different subdomain is cross-origin
+TEST(CORSPolicyTest, SubdomainIsCrossOriginV2) {
+    EXPECT_TRUE(is_cross_origin("https://app.example.com",
+                                 "https://cdn.example.com/asset"));
+}
+
+// has_enforceable_document_origin: ip address enforceable
+TEST(CORSPolicyTest, IpAddressOriginIsEnforceable) {
+    EXPECT_TRUE(has_enforceable_document_origin("https://192.168.1.1"));
+}
+
+// normalize_outgoing: same-origin+path does not set Origin
+TEST(CORSPolicyTest, SameOriginWithPathNoOriginHeader) {
+    clever::net::HeaderMap req_headers;
+    normalize_outgoing_origin_header(req_headers,
+        "https://example.com",
+        "https://example.com/page");
+    EXPECT_FALSE(req_headers.has("Origin"));
+}
