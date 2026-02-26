@@ -2366,3 +2366,80 @@ TEST(HeaderMapTest, RemoveReducesEntries) {
     EXPECT_FALSE(map.has("a"));
     EXPECT_TRUE(map.has("b"));
 }
+
+// ============================================================================
+// Cycle 567: More net/HTTP tests
+// ============================================================================
+
+// Request: default method is GET
+TEST(RequestTest, DefaultMethodIsGET) {
+    Request req;
+    EXPECT_EQ(req.method, Method::GET);
+}
+
+// Request: PUT method serializes correctly
+TEST(RequestTest, PutMethodSerializes) {
+    Request req;
+    req.method = Method::PUT;
+    req.host = "example.com";
+    req.path = "/resource";
+    auto raw = req.serialize();
+    std::string s(raw.begin(), raw.end());
+    EXPECT_NE(s.find("PUT"), std::string::npos);
+}
+
+// Request: DELETE method serializes correctly
+TEST(RequestTest, DeleteMethodSerializes) {
+    Request req;
+    req.method = Method::DELETE_METHOD;
+    req.host = "example.com";
+    req.path = "/item/1";
+    auto raw = req.serialize();
+    std::string s(raw.begin(), raw.end());
+    EXPECT_NE(s.find("DELETE"), std::string::npos);
+}
+
+// Request: PATCH method serializes correctly
+TEST(RequestTest, PatchMethodSerializes) {
+    Request req;
+    req.method = Method::PATCH;
+    req.host = "example.com";
+    req.path = "/update";
+    auto raw = req.serialize();
+    std::string s(raw.begin(), raw.end());
+    EXPECT_NE(s.find("PATCH"), std::string::npos);
+}
+
+// Response: parse 404 Not Found
+TEST(ResponseTest, Parse404NotFound) {
+    std::string raw = "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 404);
+    EXPECT_EQ(resp->status_text, "Not Found");
+}
+
+// Response: parse 400 Bad Request
+TEST(ResponseTest, Parse400BadRequest) {
+    std::string raw = "HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 400);
+}
+
+// Response: body_as_string works
+TEST(ResponseTest, BodyAsStringWorks) {
+    std::string raw = "HTTP/1.1 200 OK\r\nContent-Length: 4\r\n\r\ntest";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->body_as_string(), "test");
+}
+
+// HeaderMap: get() returns nullopt for missing key
+TEST(HeaderMapTest, GetMissingKeyReturnsNullopt) {
+    HeaderMap map;
+    EXPECT_FALSE(map.get("nonexistent").has_value());
+}
