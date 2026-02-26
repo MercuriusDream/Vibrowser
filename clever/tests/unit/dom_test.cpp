@@ -829,3 +829,119 @@ TEST(DomElement, FreshElementHasNoAttributes) {
     EXPECT_EQ(elem.id(), "");
     EXPECT_EQ(elem.class_list().length(), 0u);
 }
+
+// ---------------------------------------------------------------------------
+// Cycle 452 — DOM tree manipulation: append_child, insert_before, remove_child,
+//             first_child, last_child, next_sibling, prev_sibling,
+//             child_count, text content with children
+// ---------------------------------------------------------------------------
+
+TEST(DomNode, AppendChildAndFirstLastChild) {
+    Document doc;
+    auto parent = std::make_unique<Element>("div");
+
+    auto child1 = std::make_unique<Element>("span");
+    auto child2 = std::make_unique<Element>("p");
+
+    auto* c1 = child1.get();
+    auto* c2 = child2.get();
+
+    parent->append_child(std::move(child1));
+    parent->append_child(std::move(child2));
+
+    EXPECT_EQ(parent->child_count(), 2u);
+    EXPECT_EQ(parent->first_child(), c1);
+    EXPECT_EQ(parent->last_child(), c2);
+}
+
+TEST(DomNode, SiblingNavigation) {
+    Document doc;
+    auto parent = std::make_unique<Element>("ul");
+
+    auto li1 = std::make_unique<Element>("li");
+    auto li2 = std::make_unique<Element>("li");
+    auto li3 = std::make_unique<Element>("li");
+
+    auto* p1 = li1.get();
+    auto* p2 = li2.get();
+    auto* p3 = li3.get();
+
+    parent->append_child(std::move(li1));
+    parent->append_child(std::move(li2));
+    parent->append_child(std::move(li3));
+
+    EXPECT_EQ(p1->next_sibling(), p2);
+    EXPECT_EQ(p2->next_sibling(), p3);
+    EXPECT_EQ(p3->next_sibling(), nullptr);
+
+    EXPECT_EQ(p3->previous_sibling(), p2);
+    EXPECT_EQ(p2->previous_sibling(), p1);
+    EXPECT_EQ(p1->previous_sibling(), nullptr);
+}
+
+TEST(DomNode, InsertBeforeMiddleChild) {
+    Document doc;
+    auto parent = std::make_unique<Element>("div");
+
+    auto first = std::make_unique<Element>("a");
+    auto second = std::make_unique<Element>("b");
+    auto inserted = std::make_unique<Element>("ins");
+
+    auto* f = first.get();
+    auto* s = second.get();
+    auto* ins = inserted.get();
+
+    parent->append_child(std::move(first));
+    parent->append_child(std::move(second));
+
+    // Insert before second
+    parent->insert_before(std::move(inserted), s);
+
+    EXPECT_EQ(parent->child_count(), 3u);
+    EXPECT_EQ(parent->first_child(), f);
+    EXPECT_EQ(f->next_sibling(), ins);
+    EXPECT_EQ(ins->next_sibling(), s);
+}
+
+TEST(DomNode, RemoveChildFromParent) {
+    Document doc;
+    auto parent = std::make_unique<Element>("div");
+
+    auto child = std::make_unique<Element>("span");
+    auto* cp = child.get();
+
+    parent->append_child(std::move(child));
+    EXPECT_EQ(parent->child_count(), 1u);
+
+    auto removed = parent->remove_child(*cp);
+    EXPECT_EQ(parent->child_count(), 0u);
+    EXPECT_NE(removed, nullptr);
+}
+
+TEST(DomText, TextNodeContent) {
+    Text text_node("Hello World");
+    EXPECT_EQ(text_node.node_type(), NodeType::Text);
+    EXPECT_EQ(text_node.data(), "Hello World");
+}
+
+TEST(DomComment, CommentNodeContent) {
+    Comment comment("This is a comment");
+    EXPECT_EQ(comment.node_type(), NodeType::Comment);
+    EXPECT_EQ(comment.data(), "This is a comment");
+}
+
+TEST(DomElement, TextContentFromChildren) {
+    auto parent = std::make_unique<Element>("p");
+    parent->append_child(std::make_unique<Text>("Hello "));
+    parent->append_child(std::make_unique<Text>("World"));
+
+    EXPECT_EQ(parent->text_content(), "Hello World");
+}
+
+TEST(DomDocument, CreateButtonElementViaDocument) {
+    Document doc;
+    auto elem = doc.create_element("button");
+    ASSERT_NE(elem, nullptr);
+    EXPECT_EQ(elem->tag_name(), "button");
+    EXPECT_EQ(elem->node_type(), NodeType::Element);
+}
