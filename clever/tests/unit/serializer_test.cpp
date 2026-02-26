@@ -1421,3 +1421,82 @@ TEST(SerializerTest, StringThenI32V2) {
     EXPECT_EQ(d.read_string(), "goodbye");
     EXPECT_EQ(d.read_i32(), -999);
 }
+
+// ============================================================================
+// Cycle 613: More serializer tests
+// ============================================================================
+
+// Write u8 zero, then u8 non-zero
+TEST(SerializerTest, U8ZeroThenNonZero) {
+    Serializer s;
+    s.write_u8(0);
+    s.write_u8(42);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u8(), 0u);
+    EXPECT_EQ(d.read_u8(), 42u);
+}
+
+// Write three strings in order
+TEST(SerializerTest, ThreeStringsPreservedOrder) {
+    Serializer s;
+    s.write_string("alpha");
+    s.write_string("beta");
+    s.write_string("gamma");
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "alpha");
+    EXPECT_EQ(d.read_string(), "beta");
+    EXPECT_EQ(d.read_string(), "gamma");
+}
+
+// Write bool false four times
+TEST(SerializerTest, FourBoolFalseValues) {
+    Serializer s;
+    for (int i = 0; i < 4; ++i) s.write_bool(false);
+    Deserializer d(s.data());
+    for (int i = 0; i < 4; ++i) EXPECT_FALSE(d.read_bool());
+}
+
+// Write u32 incrementing values
+TEST(SerializerTest, FiveU32IncrementingValues) {
+    Serializer s;
+    for (uint32_t i = 0; i < 5; ++i) s.write_u32(i * 100);
+    Deserializer d(s.data());
+    for (uint32_t i = 0; i < 5; ++i) EXPECT_EQ(d.read_u32(), i * 100);
+}
+
+// Write i64 positive then negative
+TEST(SerializerTest, I64PositiveThenNegative) {
+    Serializer s;
+    s.write_i64(1000000LL);
+    s.write_i64(-1000000LL);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i64(), 1000000LL);
+    EXPECT_EQ(d.read_i64(), -1000000LL);
+}
+
+// Write string with special characters
+TEST(SerializerTest, StringWithSpacesRoundTrip) {
+    Serializer s;
+    s.write_string("hello world");
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "hello world");
+}
+
+// Serializer data is non-empty after writes
+TEST(SerializerTest, DataNonEmptyAfterBoolWrite) {
+    Serializer s;
+    s.write_bool(true);
+    EXPECT_FALSE(s.data().empty());
+}
+
+// Write u16 alternating min/max
+TEST(SerializerTest, U16AlternatingMinMax) {
+    Serializer s;
+    s.write_u16(0);
+    s.write_u16(65535);
+    s.write_u16(0);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u16(), 0u);
+    EXPECT_EQ(d.read_u16(), 65535u);
+    EXPECT_EQ(d.read_u16(), 0u);
+}
