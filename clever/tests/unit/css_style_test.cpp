@@ -8094,3 +8094,145 @@ TEST(PropertyCascadeTest, OverflowClipMarginPx) {
     cascade.apply_declaration(style, make_decl("overflow-clip-margin", "0px"), parent);
     EXPECT_FLOAT_EQ(style.overflow_clip_margin, 0.0f);
 }
+
+// ---------------------------------------------------------------------------
+// Cycle 460 — font-palette, font-variant-position, font-language-override,
+//             font-size-adjust, text-decoration-skip-ink,
+//             text-underline-position, scroll-margin, scroll-padding
+// ---------------------------------------------------------------------------
+
+TEST(PropertyCascadeTest, FontPaletteStoresString) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.font_palette, "normal");
+
+    cascade.apply_declaration(style, make_decl("font-palette", "dark"), parent);
+    EXPECT_EQ(style.font_palette, "dark");
+
+    cascade.apply_declaration(style, make_decl("font-palette", "--my-palette"), parent);
+    EXPECT_EQ(style.font_palette, "--my-palette");
+
+    cascade.apply_declaration(style, make_decl("font-palette", "normal"), parent);
+    EXPECT_EQ(style.font_palette, "normal");
+}
+
+TEST(PropertyCascadeTest, FontVariantPositionValues) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.font_variant_position, 0);  // default: normal
+
+    cascade.apply_declaration(style, make_decl("font-variant-position", "sub"), parent);
+    EXPECT_EQ(style.font_variant_position, 1);
+
+    cascade.apply_declaration(style, make_decl("font-variant-position", "super"), parent);
+    EXPECT_EQ(style.font_variant_position, 2);
+
+    cascade.apply_declaration(style, make_decl("font-variant-position", "normal"), parent);
+    EXPECT_EQ(style.font_variant_position, 0);
+}
+
+TEST(PropertyCascadeTest, FontLanguageOverrideValues) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.font_language_override, "");
+
+    cascade.apply_declaration(style, make_decl("font-language-override", "TRK"), parent);
+    EXPECT_EQ(style.font_language_override, "TRK");
+
+    // "normal" resets to empty string
+    cascade.apply_declaration(style, make_decl("font-language-override", "normal"), parent);
+    EXPECT_EQ(style.font_language_override, "");
+}
+
+TEST(PropertyCascadeTest, FontSizeAdjustValues) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_FLOAT_EQ(style.font_size_adjust, 0.0f);
+
+    cascade.apply_declaration(style, make_decl("font-size-adjust", "0.5"), parent);
+    EXPECT_FLOAT_EQ(style.font_size_adjust, 0.5f);
+
+    cascade.apply_declaration(style, make_decl("font-size-adjust", "none"), parent);
+    EXPECT_FLOAT_EQ(style.font_size_adjust, 0.0f);
+}
+
+TEST(PropertyCascadeTest, TextDecorationSkipInkValues) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.text_decoration_skip_ink, 0);  // default: auto
+
+    cascade.apply_declaration(style, make_decl("text-decoration-skip-ink", "none"), parent);
+    EXPECT_EQ(style.text_decoration_skip_ink, 1);
+
+    cascade.apply_declaration(style, make_decl("text-decoration-skip-ink", "all"), parent);
+    EXPECT_EQ(style.text_decoration_skip_ink, 2);
+
+    cascade.apply_declaration(style, make_decl("text-decoration-skip-ink", "auto"), parent);
+    EXPECT_EQ(style.text_decoration_skip_ink, 0);
+}
+
+TEST(PropertyCascadeTest, TextUnderlinePositionValues) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.text_underline_position, 0);  // default: auto
+
+    cascade.apply_declaration(style, make_decl("text-underline-position", "under"), parent);
+    EXPECT_EQ(style.text_underline_position, 1);
+
+    cascade.apply_declaration(style, make_decl("text-underline-position", "left"), parent);
+    EXPECT_EQ(style.text_underline_position, 2);
+
+    cascade.apply_declaration(style, make_decl("text-underline-position", "right"), parent);
+    EXPECT_EQ(style.text_underline_position, 3);
+
+    cascade.apply_declaration(style, make_decl("text-underline-position", "auto"), parent);
+    EXPECT_EQ(style.text_underline_position, 0);
+}
+
+TEST(PropertyCascadeTest, ScrollMarginShorthand) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_FLOAT_EQ(style.scroll_margin_top, 0.0f);
+    EXPECT_FLOAT_EQ(style.scroll_margin_right, 0.0f);
+    EXPECT_FLOAT_EQ(style.scroll_margin_bottom, 0.0f);
+    EXPECT_FLOAT_EQ(style.scroll_margin_left, 0.0f);
+
+    // 4-value shorthand: top right bottom left
+    cascade.apply_declaration(style, make_decl("scroll-margin", "10px 20px 30px 40px"), parent);
+    EXPECT_FLOAT_EQ(style.scroll_margin_top, 10.0f);
+    EXPECT_FLOAT_EQ(style.scroll_margin_right, 20.0f);
+    EXPECT_FLOAT_EQ(style.scroll_margin_bottom, 30.0f);
+    EXPECT_FLOAT_EQ(style.scroll_margin_left, 40.0f);
+}
+
+TEST(PropertyCascadeTest, ScrollPaddingShorthand) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_FLOAT_EQ(style.scroll_padding_top, 0.0f);
+    EXPECT_FLOAT_EQ(style.scroll_padding_right, 0.0f);
+    EXPECT_FLOAT_EQ(style.scroll_padding_bottom, 0.0f);
+    EXPECT_FLOAT_EQ(style.scroll_padding_left, 0.0f);
+
+    // 2-value shorthand: vertical horizontal
+    cascade.apply_declaration(style, make_decl("scroll-padding", "8px 16px"), parent);
+    EXPECT_FLOAT_EQ(style.scroll_padding_top, 8.0f);
+    EXPECT_FLOAT_EQ(style.scroll_padding_bottom, 8.0f);
+    EXPECT_FLOAT_EQ(style.scroll_padding_right, 16.0f);
+    EXPECT_FLOAT_EQ(style.scroll_padding_left, 16.0f);
+}
