@@ -2895,3 +2895,74 @@ TEST(RequestTest, BodyInitiallyEmpty) {
     Request req;
     EXPECT_TRUE(req.body.empty());
 }
+
+// ============================================================================
+// Cycle 648: More HTTP/Net tests
+// ============================================================================
+
+// Response: parse 201 Created status text
+TEST(ResponseTest, Parse201CreatedStatusText) {
+    std::string raw = "HTTP/1.1 201 Created\r\nContent-Length: 0\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 201);
+    EXPECT_EQ(resp->status_text, "Created");
+}
+
+// Response: parse 301 Moved Permanently status code
+TEST(ResponseTest, Parse301MovedPermanentlyStatusCode) {
+    std::string raw = "HTTP/1.1 301 Moved Permanently\r\nLocation: https://new.example.com\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 301);
+}
+
+// Response: Location header accessible from redirect
+TEST(ResponseTest, LocationHeaderFromRedirect) {
+    std::string raw = "HTTP/1.1 302 Found\r\nLocation: /new-path\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    auto loc = resp->headers.get("Location");
+    ASSERT_TRUE(loc.has_value());
+    EXPECT_EQ(loc.value(), "/new-path");
+}
+
+// Response: Content-Length header accessible
+TEST(ResponseTest, ContentLengthHeader) {
+    std::string raw = "HTTP/1.1 200 OK\r\nContent-Length: 13\r\n\r\nHello, World!";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    auto cl = resp->headers.get("Content-Length");
+    ASSERT_TRUE(cl.has_value());
+    EXPECT_EQ(cl.value(), "13");
+}
+
+// HeaderMap: get returns nullopt for missing key
+TEST(HeaderMapTest, GetNulloptForMissingKey) {
+    HeaderMap map;
+    auto val = map.get("X-Missing");
+    EXPECT_FALSE(val.has_value());
+}
+
+// HeaderMap: empty map has no keys
+TEST(HeaderMapTest, EmptyMapHasNoKeys) {
+    HeaderMap map;
+    EXPECT_FALSE(map.has("anything"));
+}
+
+// Request: method can be set to POST
+TEST(RequestTest, MethodCanBeSetToPost) {
+    Request req;
+    req.method = Method::POST;
+    EXPECT_EQ(req.method, Method::POST);
+}
+
+// Request: url is initially empty
+TEST(RequestTest, UrlInitiallyEmpty) {
+    Request req;
+    EXPECT_TRUE(req.url.empty());
+}
