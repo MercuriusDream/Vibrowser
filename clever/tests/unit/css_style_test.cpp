@@ -8685,3 +8685,146 @@ TEST(PropertyCascadeTest, WebkitTextFillColor) {
     EXPECT_EQ(style.text_fill_color.b, 0);
     EXPECT_EQ(style.text_fill_color.a, 255);
 }
+
+// ---------------------------------------------------------------------------
+// Cycle 464 — quotes, tab-size, letter-spacing, border-collapse/spacing,
+//             table-layout, caption-side, empty-cells, gap shorthand
+// ---------------------------------------------------------------------------
+
+TEST(PropertyCascadeTest, QuotesValues) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.quotes, "");
+
+    cascade.apply_declaration(style, make_decl("quotes", "none"), parent);
+    EXPECT_EQ(style.quotes, "none");
+
+    // "auto" clears to empty string
+    cascade.apply_declaration(style, make_decl("quotes", "auto"), parent);
+    EXPECT_EQ(style.quotes, "");
+
+    // explicit string preserved
+    cascade.apply_declaration(style, make_decl("quotes", "\"\\201C\" \"\\201D\" \"\\2018\" \"\\2019\""), parent);
+    EXPECT_NE(style.quotes, "");
+    EXPECT_NE(style.quotes, "none");
+}
+
+TEST(PropertyCascadeTest, TabSizeAndMozAlias) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.tab_size, 4);  // default
+
+    cascade.apply_declaration(style, make_decl("tab-size", "8"), parent);
+    EXPECT_EQ(style.tab_size, 8);
+
+    cascade.apply_declaration(style, make_decl("-moz-tab-size", "2"), parent);
+    EXPECT_EQ(style.tab_size, 2);
+}
+
+TEST(PropertyCascadeTest, LetterSpacingPxAndNormal) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    // default: zero
+    EXPECT_TRUE(style.letter_spacing.is_zero());
+
+    cascade.apply_declaration(style, make_decl("letter-spacing", "3px"), parent);
+    EXPECT_FLOAT_EQ(style.letter_spacing.to_px(0), 3.0f);
+
+    cascade.apply_declaration(style, make_decl("letter-spacing", "normal"), parent);
+    EXPECT_TRUE(style.letter_spacing.is_zero());
+}
+
+TEST(PropertyCascadeTest, BorderCollapseAndSpacing) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_FALSE(style.border_collapse);  // default: separate
+
+    cascade.apply_declaration(style, make_decl("border-collapse", "collapse"), parent);
+    EXPECT_TRUE(style.border_collapse);
+
+    cascade.apply_declaration(style, make_decl("border-collapse", "separate"), parent);
+    EXPECT_FALSE(style.border_collapse);
+
+    // border-spacing: two values (horizontal vertical)
+    cascade.apply_declaration(style, make_decl("border-spacing", "10px 5px"), parent);
+    EXPECT_FLOAT_EQ(style.border_spacing, 10.0f);
+    EXPECT_FLOAT_EQ(style.border_spacing_v, 5.0f);
+}
+
+TEST(PropertyCascadeTest, TableLayoutValues) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.table_layout, 0);  // default: auto
+
+    cascade.apply_declaration(style, make_decl("table-layout", "fixed"), parent);
+    EXPECT_EQ(style.table_layout, 1);
+
+    cascade.apply_declaration(style, make_decl("table-layout", "auto"), parent);
+    EXPECT_EQ(style.table_layout, 0);
+}
+
+TEST(PropertyCascadeTest, CaptionSideAndEmptyCells) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.caption_side, 0);  // default: top
+    EXPECT_EQ(style.empty_cells, 0);   // default: show
+
+    cascade.apply_declaration(style, make_decl("caption-side", "bottom"), parent);
+    EXPECT_EQ(style.caption_side, 1);
+
+    cascade.apply_declaration(style, make_decl("empty-cells", "hide"), parent);
+    EXPECT_EQ(style.empty_cells, 1);
+
+    cascade.apply_declaration(style, make_decl("caption-side", "top"), parent);
+    EXPECT_EQ(style.caption_side, 0);
+
+    cascade.apply_declaration(style, make_decl("empty-cells", "show"), parent);
+    EXPECT_EQ(style.empty_cells, 0);
+}
+
+TEST(PropertyCascadeTest, GapShorthandSingleAndTwoValue) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    // single value: sets both row-gap and column-gap
+    cascade.apply_declaration(style, make_decl("gap", "20px"), parent);
+    EXPECT_FLOAT_EQ(style.gap.to_px(0), 20.0f);
+    EXPECT_FLOAT_EQ(style.column_gap_val.to_px(0), 20.0f);
+
+    // two values: row-gap column-gap
+    cascade.apply_declaration(style, make_decl("gap", "10px 30px"), parent);
+    EXPECT_FLOAT_EQ(style.gap.to_px(0), 10.0f);
+    EXPECT_FLOAT_EQ(style.column_gap_val.to_px(0), 30.0f);
+}
+
+TEST(PropertyCascadeTest, RowGapAndColumnGapLonghands) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("row-gap", "15px"), parent);
+    EXPECT_FLOAT_EQ(style.gap.to_px(0), 15.0f);
+
+    cascade.apply_declaration(style, make_decl("column-gap", "25px"), parent);
+    EXPECT_FLOAT_EQ(style.column_gap_val.to_px(0), 25.0f);
+
+    // grid aliases
+    cascade.apply_declaration(style, make_decl("grid-row-gap", "5px"), parent);
+    EXPECT_FLOAT_EQ(style.gap.to_px(0), 5.0f);
+
+    cascade.apply_declaration(style, make_decl("grid-column-gap", "8px"), parent);
+    EXPECT_FLOAT_EQ(style.column_gap_val.to_px(0), 8.0f);
+}
