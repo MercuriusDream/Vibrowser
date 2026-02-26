@@ -1362,6 +1362,20 @@ bool contains_http2_upgrade_token(const std::string& upgrade_header) {
       if (token.size() >= 2 && token.front() == '\'' && token.back() == '\'') {
         token = trim_ascii(token.substr(1, token.size() - 2));
       }
+      if (token.empty()) {
+        return false;
+      }
+      for (char token_ch : token) {
+        const unsigned char uch = static_cast<unsigned char>(token_ch);
+        const bool is_token_char =
+            std::isalnum(uch) != 0 || token_ch == '!' || token_ch == '#' || token_ch == '$' ||
+            token_ch == '%' || token_ch == '&' || token_ch == '*' || token_ch == '+' ||
+            token_ch == '-' || token_ch == '.' || token_ch == '^' || token_ch == '_' ||
+            token_ch == '`' || token_ch == '|' || token_ch == '~' || token_ch == '\'';
+        if (!is_token_char) {
+          return false;
+        }
+      }
       if (token == "h2" || token == "h2c") {
         return true;
       }

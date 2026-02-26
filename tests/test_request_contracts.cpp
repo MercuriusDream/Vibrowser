@@ -414,6 +414,9 @@ int main() {
         } else if (browser::net::is_http2_upgrade_protocol("h2;foo=\"bar")) {
             std::cerr << "FAIL: expected unterminated quoted parameter token to be rejected\n";
             ++failures;
+        } else if (browser::net::is_http2_upgrade_protocol("websocket@, h2")) {
+            std::cerr << "FAIL: expected invalid token character in Upgrade list to fail closed before h2 detection\n";
+            ++failures;
         } else if (browser::net::is_http2_upgrade_protocol("websocket")) {
             std::cerr << "FAIL: expected non-h2 upgrade token to not be treated as HTTP/2\n";
             ++failures;
@@ -468,6 +471,9 @@ int main() {
             ++failures;
         } else if (browser::net::is_http2_upgrade_response(101, "h2;foo=\"bar")) {
             std::cerr << "FAIL: expected unterminated quoted parameter response token to be rejected\n";
+            ++failures;
+        } else if (browser::net::is_http2_upgrade_response(426, "websocket@, h2c")) {
+            std::cerr << "FAIL: expected invalid token character in response Upgrade list to fail closed before h2c detection\n";
             ++failures;
         } else if (browser::net::is_http2_upgrade_response(426, "websocket")) {
             std::cerr << "FAIL: expected 426 without h2/h2c token to not be treated as HTTP/2 upgrade response\n";
@@ -525,6 +531,9 @@ int main() {
             ++failures;
         } else if (browser::net::is_http2_upgrade_request({{"upgrade", "h2;foo=\"bar"}})) {
             std::cerr << "FAIL: expected unterminated quoted parameter request token to be rejected\n";
+            ++failures;
+        } else if (browser::net::is_http2_upgrade_request({{"upgrade", "websocket@, h2"}})) {
+            std::cerr << "FAIL: expected invalid token character in request Upgrade list to fail closed before h2 detection\n";
             ++failures;
         } else if (browser::net::is_http2_upgrade_request({{"X-Custom", "h2"}})) {
             std::cerr << "FAIL: expected non-Upgrade header to not be treated as HTTP/2 upgrade request\n";
