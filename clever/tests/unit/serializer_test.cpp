@@ -1833,3 +1833,70 @@ TEST(SerializerTest, StringThenU8RoundTrip) {
     EXPECT_EQ(d.read_u8(), 42u);
     EXPECT_FALSE(d.has_remaining());
 }
+
+// ============================================================================
+// Cycle 662: More serializer tests
+// ============================================================================
+
+TEST(SerializerTest, U16MinIsZeroRoundTrip) {
+    Serializer s;
+    s.write_u16(0u);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u16(), 0u);
+}
+
+TEST(SerializerTest, U16FiftyThousandRoundTrip) {
+    Serializer s;
+    s.write_u16(50000u);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u16(), 50000u);
+}
+
+TEST(SerializerTest, U64MaxVerified) {
+    Serializer s;
+    s.write_u64(std::numeric_limits<uint64_t>::max());
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u64(), std::numeric_limits<uint64_t>::max());
+}
+
+TEST(SerializerTest, I64MinVerified) {
+    Serializer s;
+    s.write_i64(std::numeric_limits<int64_t>::min());
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i64(), std::numeric_limits<int64_t>::min());
+}
+
+TEST(SerializerTest, EmptyStringExplicit) {
+    Serializer s;
+    s.write_string(std::string{});
+    Deserializer d(s.data());
+    std::string result = d.read_string();
+    EXPECT_TRUE(result.empty());
+}
+
+TEST(SerializerTest, FiveHundredCharStringRoundTrip) {
+    std::string long_str(500, 'z');
+    Serializer s;
+    s.write_string(long_str);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), long_str);
+}
+
+TEST(SerializerTest, U32ThenBoolSequence) {
+    Serializer s;
+    s.write_u32(12345u);
+    s.write_bool(true);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u32(), 12345u);
+    EXPECT_TRUE(d.read_bool());
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, TwoI32ValuesOrdered) {
+    Serializer s;
+    s.write_i32(-100);
+    s.write_i32(200);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i32(), -100);
+    EXPECT_EQ(d.read_i32(), 200);
+}
