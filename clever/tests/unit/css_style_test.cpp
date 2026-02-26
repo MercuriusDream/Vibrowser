@@ -10483,3 +10483,169 @@ TEST(PropertyCascadeTest, TextDecorationSkipValues) {
     cascade.apply_declaration(style, make_decl("text-decoration-skip", "none"), parent);
     EXPECT_EQ(style.text_decoration_skip, 0);
 }
+
+// ---------------------------------------------------------------------------
+// Cycle 475 — text-align, text-align-last, z-index, clear, visibility,
+//             box-sizing, white-space-collapse, line-break
+// ---------------------------------------------------------------------------
+
+TEST(PropertyCascadeTest, TextAlignAllValues) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.text_align, TextAlign::Left);  // default
+
+    cascade.apply_declaration(style, make_decl("text-align", "right"), parent);
+    EXPECT_EQ(style.text_align, TextAlign::Right);
+
+    cascade.apply_declaration(style, make_decl("text-align", "center"), parent);
+    EXPECT_EQ(style.text_align, TextAlign::Center);
+
+    cascade.apply_declaration(style, make_decl("text-align", "justify"), parent);
+    EXPECT_EQ(style.text_align, TextAlign::Justify);
+
+    // "start" is an alias for left, "end" for right
+    cascade.apply_declaration(style, make_decl("text-align", "start"), parent);
+    EXPECT_EQ(style.text_align, TextAlign::Left);
+
+    cascade.apply_declaration(style, make_decl("text-align", "end"), parent);
+    EXPECT_EQ(style.text_align, TextAlign::Right);
+}
+
+TEST(PropertyCascadeTest, TextAlignLastValues) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.text_align_last, 0);  // default: auto
+
+    cascade.apply_declaration(style, make_decl("text-align-last", "left"), parent);
+    EXPECT_EQ(style.text_align_last, 1);
+
+    cascade.apply_declaration(style, make_decl("text-align-last", "right"), parent);
+    EXPECT_EQ(style.text_align_last, 2);
+
+    cascade.apply_declaration(style, make_decl("text-align-last", "center"), parent);
+    EXPECT_EQ(style.text_align_last, 3);
+
+    cascade.apply_declaration(style, make_decl("text-align-last", "justify"), parent);
+    EXPECT_EQ(style.text_align_last, 4);
+
+    cascade.apply_declaration(style, make_decl("text-align-last", "auto"), parent);
+    EXPECT_EQ(style.text_align_last, 0);
+}
+
+TEST(PropertyCascadeTest, ZIndexValues) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.z_index, 0);  // default: 0
+
+    cascade.apply_declaration(style, make_decl("z-index", "10"), parent);
+    EXPECT_EQ(style.z_index, 10);
+
+    cascade.apply_declaration(style, make_decl("z-index", "-1"), parent);
+    EXPECT_EQ(style.z_index, -1);
+
+    cascade.apply_declaration(style, make_decl("z-index", "999"), parent);
+    EXPECT_EQ(style.z_index, 999);
+
+    cascade.apply_declaration(style, make_decl("z-index", "0"), parent);
+    EXPECT_EQ(style.z_index, 0);
+}
+
+TEST(PropertyCascadeTest, ClearAllValues) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.clear, Clear::None);  // default
+
+    cascade.apply_declaration(style, make_decl("clear", "left"), parent);
+    EXPECT_EQ(style.clear, Clear::Left);
+
+    cascade.apply_declaration(style, make_decl("clear", "right"), parent);
+    EXPECT_EQ(style.clear, Clear::Right);
+
+    cascade.apply_declaration(style, make_decl("clear", "both"), parent);
+    EXPECT_EQ(style.clear, Clear::Both);
+
+    cascade.apply_declaration(style, make_decl("clear", "none"), parent);
+    EXPECT_EQ(style.clear, Clear::None);
+}
+
+TEST(PropertyCascadeTest, VisibilityAllValues) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.visibility, Visibility::Visible);  // default
+
+    cascade.apply_declaration(style, make_decl("visibility", "hidden"), parent);
+    EXPECT_EQ(style.visibility, Visibility::Hidden);
+
+    cascade.apply_declaration(style, make_decl("visibility", "collapse"), parent);
+    EXPECT_EQ(style.visibility, Visibility::Collapse);
+
+    cascade.apply_declaration(style, make_decl("visibility", "visible"), parent);
+    EXPECT_EQ(style.visibility, Visibility::Visible);
+}
+
+TEST(PropertyCascadeTest, BoxSizingAllValues) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.box_sizing, BoxSizing::ContentBox);  // default
+
+    cascade.apply_declaration(style, make_decl("box-sizing", "border-box"), parent);
+    EXPECT_EQ(style.box_sizing, BoxSizing::BorderBox);
+
+    cascade.apply_declaration(style, make_decl("box-sizing", "content-box"), parent);
+    EXPECT_EQ(style.box_sizing, BoxSizing::ContentBox);
+}
+
+TEST(PropertyCascadeTest, WhiteSpaceCollapseValues) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.white_space_collapse, 0);  // default: collapse
+
+    cascade.apply_declaration(style, make_decl("white-space-collapse", "preserve"), parent);
+    EXPECT_EQ(style.white_space_collapse, 1);
+
+    cascade.apply_declaration(style, make_decl("white-space-collapse", "preserve-breaks"), parent);
+    EXPECT_EQ(style.white_space_collapse, 2);
+
+    cascade.apply_declaration(style, make_decl("white-space-collapse", "break-spaces"), parent);
+    EXPECT_EQ(style.white_space_collapse, 3);
+
+    cascade.apply_declaration(style, make_decl("white-space-collapse", "collapse"), parent);
+    EXPECT_EQ(style.white_space_collapse, 0);
+}
+
+TEST(PropertyCascadeTest, LineBreakValues) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.line_break, 0);  // default: auto
+
+    cascade.apply_declaration(style, make_decl("line-break", "loose"), parent);
+    EXPECT_EQ(style.line_break, 1);
+
+    cascade.apply_declaration(style, make_decl("line-break", "normal"), parent);
+    EXPECT_EQ(style.line_break, 2);
+
+    cascade.apply_declaration(style, make_decl("line-break", "strict"), parent);
+    EXPECT_EQ(style.line_break, 3);
+
+    cascade.apply_declaration(style, make_decl("line-break", "anywhere"), parent);
+    EXPECT_EQ(style.line_break, 4);
+
+    cascade.apply_declaration(style, make_decl("line-break", "auto"), parent);
+    EXPECT_EQ(style.line_break, 0);
+}
