@@ -215,3 +215,115 @@ TEST(ThreadPoolTest, SubmitTaskThatThrowsExceptionCapturedInFuture) {
 
     EXPECT_THROW(future.get(), std::logic_error);
 }
+
+// ---------------------------------------------------------------------------
+// Cycle 483 — additional ThreadPool regression tests
+// ---------------------------------------------------------------------------
+
+// 12. Submit void task — future<void> is usable
+TEST(ThreadPoolTest, SubmitVoidTask) {
+    ThreadPool pool(2);
+    auto future = pool.submit([]() { /* nothing */ });
+    EXPECT_NO_THROW(future.get());
+}
+
+// 13. Submit task returning std::string
+TEST(ThreadPoolTest, SubmitTaskReturningString) {
+    ThreadPool pool(2);
+    auto future = pool.submit([]() -> std::string { return "hello pool"; });
+    EXPECT_EQ(future.get(), "hello pool");
+}
+
+// 14. Multiple concurrent tasks atomically increment a counter
+TEST(ThreadPoolTest, ConcurrentAtomicCounterIncrement) {
+    constexpr int kTasks = 200;
+    ThreadPool pool(4);
+    std::atomic<int> counter{0};
+
+    std::vector<std::future<void>> futures;
+    futures.reserve(kTasks);
+    for (int i = 0; i < kTasks; ++i) {
+        futures.push_back(pool.submit([&counter]() {
+            counter.fetch_add(1, std::memory_order_relaxed);
+        }));
+    }
+    for (auto& f : futures) f.get();
+
+    EXPECT_EQ(counter.load(), kTasks);
+}
+
+// 15. Multiple shutdown() calls are safe (no crash / double-free)
+TEST(ThreadPoolTest, MultipleShutdownCallsAreSafe) {
+    ThreadPool pool(2);
+    EXPECT_NO_THROW({
+        pool.shutdown();
+        pool.shutdown(); // idempotent
+    });
+    EXPECT_FALSE(pool.is_running());
+}
+
+// 16. Interleave post() and submit() — all tasks execute
+TEST(ThreadPoolTest, PostAndSubmitInterleavedExecution) {
+    ThreadPool pool(3);
+    std::atomic<int> count{0};
+
+    std::vector<std::future<void>> futures;
+    for (int i = 0; i < 20; ++i) {
+        if (i % 2 == 0) {
+            pool.post([&count]() { count.fetch_add(1); });
+        } else {
+            futures.push_back(pool.submit([&count]() { count.fetch_add(1); }));
+        }
+    }
+    for (auto& f : futures) f.get();
+
+    // Wait for fire-and-forget posts to complete
+    auto deadline = std::chrono::steady_clock::now() + 3s;
+    while (count.load() < 20 && std::chrono::steady_clock::now() < deadline) {
+        std::this_thread::sleep_for(1ms);
+    }
+    EXPECT_EQ(count.load(), 20);
+}
+
+// 17. Large batch: 500 tasks, each returns its index; verify sum
+TEST(ThreadPoolTest, LargeBatchTasksVerifySum) {
+    constexpr int kTasks = 500;
+    ThreadPool pool(8);
+
+    std::vector<std::future<int>> futures;
+    futures.reserve(kTasks);
+    for (int i = 0; i < kTasks; ++i) {
+        futures.push_back(pool.submit([i]() { return i; }));
+    }
+
+    long long sum = 0;
+    for (auto& f : futures) sum += f.get();
+
+    long long expected = static_cast<long long>(kTasks - 1) * kTasks / 2;
+    EXPECT_EQ(sum, expected);
+}
+
+// 18. Single-thread pool: post 30 tasks, then shutdown — all executed
+TEST(ThreadPoolTest, SingleThreadPostThenShutdown) {
+    ThreadPool pool(1);
+    std::atomic<int> counter{0};
+
+    for (int i = 0; i < 30; ++i) {
+        pool.post([&counter]() {
+            std::this_thread::sleep_for(std::chrono::microseconds(100));
+            counter.fetch_add(1);
+        });
+    }
+
+    pool.shutdown();
+    EXPECT_EQ(counter.load(), 30);
+}
+
+// 19. Task captures a unique_ptr (move-only type)
+TEST(ThreadPoolTest, SubmitTaskWithMoveOnlyCapture) {
+    ThreadPool pool(2);
+    auto value = std::make_unique<int>(99);
+
+    auto future = pool.submit([v = std::move(value)]() -> int { return *v; });
+    EXPECT_EQ(future.get(), 99);
+}
