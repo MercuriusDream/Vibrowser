@@ -1597,3 +1597,73 @@ TEST(DomEvent, BubblesAndCancelableSetInConstructor) {
     EXPECT_TRUE(e.bubbles());
     EXPECT_FALSE(e.cancelable());
 }
+
+// ============================================================================
+// Cycle 562: DOM node traversal, event methods, document
+// ============================================================================
+
+// Node: first_child returns first appended child
+TEST(DomNode, FirstChildIsFirstAppended) {
+    auto parent = std::make_unique<Element>("ul");
+    parent->append_child(std::make_unique<Element>("li"));
+    parent->append_child(std::make_unique<Element>("li"));
+    ASSERT_NE(parent->first_child(), nullptr);
+    EXPECT_EQ(parent->first_child()->node_type(), NodeType::Element);
+}
+
+// Node: last_child returns last appended child
+TEST(DomNode, LastChildIsLastAppended) {
+    auto parent = std::make_unique<Element>("ul");
+    auto& first = parent->append_child(std::make_unique<Element>("li"));
+    auto& last  = parent->append_child(std::make_unique<Element>("li"));
+    EXPECT_EQ(parent->last_child(), &last);
+    EXPECT_NE(parent->last_child(), &first);
+}
+
+// Node: next_sibling traversal
+TEST(DomNode, NextSiblingTraversal) {
+    auto parent = std::make_unique<Element>("div");
+    auto& a = parent->append_child(std::make_unique<Element>("a"));
+    auto& b = parent->append_child(std::make_unique<Element>("b"));
+    EXPECT_EQ(a.next_sibling(), &b);
+    EXPECT_EQ(b.next_sibling(), nullptr);
+}
+
+// Node: previous_sibling traversal
+TEST(DomNode, PreviousSiblingTraversal) {
+    auto parent = std::make_unique<Element>("div");
+    auto& a = parent->append_child(std::make_unique<Element>("a"));
+    auto& b = parent->append_child(std::make_unique<Element>("b"));
+    EXPECT_EQ(b.previous_sibling(), &a);
+    EXPECT_EQ(a.previous_sibling(), nullptr);
+}
+
+// Event: type() returns the event type
+TEST(DomEvent, TypeReturnsEventType) {
+    Event e("mousedown", true, true);
+    EXPECT_EQ(e.type(), "mousedown");
+}
+
+// Event: prevent_default sets default_prevented
+TEST(DomEvent, PreventDefaultSetsFlag) {
+    Event e("submit", true, true);
+    EXPECT_FALSE(e.default_prevented());
+    e.prevent_default();
+    EXPECT_TRUE(e.default_prevented());
+}
+
+// Event: prevent_default is no-op when not cancelable
+TEST(DomEvent, PreventDefaultNoOpForNonCancelable) {
+    Event e("click", true, false);
+    e.prevent_default();
+    EXPECT_FALSE(e.default_prevented());
+}
+
+// Document: create_element returns element with correct tag
+TEST(DomDocument, CreateElementHasCorrectTag) {
+    Document doc;
+    auto el = doc.create_element("section");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name(), "section");
+    EXPECT_EQ(el->node_type(), NodeType::Element);
+}
