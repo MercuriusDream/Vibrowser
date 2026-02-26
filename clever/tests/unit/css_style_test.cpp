@@ -7305,3 +7305,161 @@ TEST(PropertyCascadeTest, OverflowWrapValues) {
     cascade.apply_declaration(style, make_decl("overflow-wrap", "normal"), parent);
     EXPECT_EQ(style.overflow_wrap, 0);
 }
+
+// ---------------------------------------------------------------------------
+// Cycle 455 — CSS background sub-properties
+// ---------------------------------------------------------------------------
+
+TEST(PropertyCascadeTest, BackgroundClipValues) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.background_clip, 0);  // default: border-box
+
+    cascade.apply_declaration(style, make_decl("background-clip", "padding-box"), parent);
+    EXPECT_EQ(style.background_clip, 1);
+
+    cascade.apply_declaration(style, make_decl("background-clip", "content-box"), parent);
+    EXPECT_EQ(style.background_clip, 2);
+
+    cascade.apply_declaration(style, make_decl("background-clip", "text"), parent);
+    EXPECT_EQ(style.background_clip, 3);
+
+    cascade.apply_declaration(style, make_decl("background-clip", "border-box"), parent);
+    EXPECT_EQ(style.background_clip, 0);
+}
+
+TEST(PropertyCascadeTest, WebkitBackgroundClipAlias) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("-webkit-background-clip", "text"), parent);
+    EXPECT_EQ(style.background_clip, 3);
+
+    cascade.apply_declaration(style, make_decl("-webkit-background-clip", "padding-box"), parent);
+    EXPECT_EQ(style.background_clip, 1);
+}
+
+TEST(PropertyCascadeTest, BackgroundOriginValues) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.background_origin, 0);  // default: padding-box
+
+    cascade.apply_declaration(style, make_decl("background-origin", "border-box"), parent);
+    EXPECT_EQ(style.background_origin, 1);
+
+    cascade.apply_declaration(style, make_decl("background-origin", "content-box"), parent);
+    EXPECT_EQ(style.background_origin, 2);
+
+    cascade.apply_declaration(style, make_decl("background-origin", "padding-box"), parent);
+    EXPECT_EQ(style.background_origin, 0);
+}
+
+TEST(PropertyCascadeTest, BackgroundBlendModeValues) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.background_blend_mode, 0);  // default: normal
+
+    cascade.apply_declaration(style, make_decl("background-blend-mode", "multiply"), parent);
+    EXPECT_EQ(style.background_blend_mode, 1);
+
+    cascade.apply_declaration(style, make_decl("background-blend-mode", "screen"), parent);
+    EXPECT_EQ(style.background_blend_mode, 2);
+
+    cascade.apply_declaration(style, make_decl("background-blend-mode", "overlay"), parent);
+    EXPECT_EQ(style.background_blend_mode, 3);
+
+    cascade.apply_declaration(style, make_decl("background-blend-mode", "darken"), parent);
+    EXPECT_EQ(style.background_blend_mode, 4);
+
+    cascade.apply_declaration(style, make_decl("background-blend-mode", "lighten"), parent);
+    EXPECT_EQ(style.background_blend_mode, 5);
+
+    cascade.apply_declaration(style, make_decl("background-blend-mode", "normal"), parent);
+    EXPECT_EQ(style.background_blend_mode, 0);
+}
+
+TEST(PropertyCascadeTest, BackgroundAttachmentValues) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.background_attachment, 0);  // default: scroll
+
+    cascade.apply_declaration(style, make_decl("background-attachment", "fixed"), parent);
+    EXPECT_EQ(style.background_attachment, 1);
+
+    cascade.apply_declaration(style, make_decl("background-attachment", "local"), parent);
+    EXPECT_EQ(style.background_attachment, 2);
+
+    cascade.apply_declaration(style, make_decl("background-attachment", "scroll"), parent);
+    EXPECT_EQ(style.background_attachment, 0);
+}
+
+TEST(PropertyCascadeTest, BackgroundSizeCoverContainAuto) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.background_size, 0);  // default: auto
+
+    cascade.apply_declaration(style, make_decl("background-size", "cover"), parent);
+    EXPECT_EQ(style.background_size, 1);
+
+    cascade.apply_declaration(style, make_decl("background-size", "contain"), parent);
+    EXPECT_EQ(style.background_size, 2);
+
+    cascade.apply_declaration(style, make_decl("background-size", "auto"), parent);
+    EXPECT_EQ(style.background_size, 0);
+}
+
+TEST(PropertyCascadeTest, BackgroundRepeatValues) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.background_repeat, 0);  // default: repeat
+
+    cascade.apply_declaration(style, make_decl("background-repeat", "repeat-x"), parent);
+    EXPECT_EQ(style.background_repeat, 1);
+
+    cascade.apply_declaration(style, make_decl("background-repeat", "repeat-y"), parent);
+    EXPECT_EQ(style.background_repeat, 2);
+
+    cascade.apply_declaration(style, make_decl("background-repeat", "no-repeat"), parent);
+    EXPECT_EQ(style.background_repeat, 3);
+
+    cascade.apply_declaration(style, make_decl("background-repeat", "repeat"), parent);
+    EXPECT_EQ(style.background_repeat, 0);
+}
+
+TEST(PropertyCascadeTest, BackgroundPositionKeywords) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    // defaults: left(0) top(0)
+    EXPECT_EQ(style.background_position_x, 0);
+    EXPECT_EQ(style.background_position_y, 0);
+
+    // "center center"
+    cascade.apply_declaration(style, make_decl("background-position", "center center"), parent);
+    EXPECT_EQ(style.background_position_x, 1);
+    EXPECT_EQ(style.background_position_y, 1);
+
+    // "right bottom"
+    cascade.apply_declaration(style, make_decl("background-position", "right bottom"), parent);
+    EXPECT_EQ(style.background_position_x, 2);
+    EXPECT_EQ(style.background_position_y, 2);
+
+    // "left top"
+    cascade.apply_declaration(style, make_decl("background-position", "left top"), parent);
+    EXPECT_EQ(style.background_position_x, 0);
+    EXPECT_EQ(style.background_position_y, 0);
+}
