@@ -188,3 +188,60 @@ TEST(PercentDecoding, DecodeUTF8MultiByteSequence) {
     EXPECT_EQ(static_cast<unsigned char>(result[0]), 0xC3);
     EXPECT_EQ(static_cast<unsigned char>(result[1]), 0xA4);
 }
+
+// ---------------------------------------------------------------------------
+// Cycle 487 — additional percent encoding regression tests
+// ---------------------------------------------------------------------------
+
+// Encode then decode round-trips to original
+TEST(PercentEncoding, EncodeDecodeRoundTrip) {
+    std::string original = "hello world & test";
+    EXPECT_EQ(percent_decode(percent_encode(original)), original);
+}
+
+// Decode upper-case hex letters: %41=%42=%43=ABC, %5A=Z
+TEST(PercentDecoding, DecodeUpperHexLetters) {
+    EXPECT_EQ(percent_decode("%41%42%43"), "ABC");
+    EXPECT_EQ(percent_decode("%5A"), "Z");
+}
+
+// Safe chars like '!' and '$' are NOT encoded (they're URL code points)
+TEST(PercentEncoding, SafeCharsNotEncoded) {
+    EXPECT_EQ(percent_encode("!$&'()*+,;="), "!$&'()*+,;=");
+}
+
+// Consecutive encoded spaces
+TEST(PercentDecoding, DecodeConsecutiveEncodedSpaces) {
+    EXPECT_EQ(percent_decode("%20%20%20"), "   ");
+}
+
+// Decode %2D='-' and %5F='_' (unreserved chars)
+TEST(PercentDecoding, DecodeMinusAndUnderscore) {
+    EXPECT_EQ(percent_decode("%2D"), "-");
+    EXPECT_EQ(percent_decode("%5F"), "_");
+}
+
+// Encode with path flag: '/' is encoded
+TEST(PercentEncoding, PathFlagEncodesSlash) {
+    EXPECT_NE(percent_encode("/a/b", true), "/a/b");
+    EXPECT_EQ(percent_encode("/a/b", true), "%2Fa%2Fb");
+}
+
+// Decode mixed case hex digits
+TEST(PercentDecoding, DecodeMixedCaseHex) {
+    // %2f and %2F should both decode to '/'
+    EXPECT_EQ(percent_decode("%2f"), "/");
+    EXPECT_EQ(percent_decode("%2F"), "/");
+}
+
+// Encode a string with multiple different special characters
+TEST(PercentEncoding, MultipleDistinctSpecialChars) {
+    // '<', '>', '"' should all get encoded
+    std::string input = "<html>\"test\"</html>";
+    std::string result = percent_encode(input);
+    EXPECT_NE(result.find("%3C"), std::string::npos) << "< should be encoded";
+    EXPECT_NE(result.find("%3E"), std::string::npos) << "> should be encoded";
+    // Must not contain unencoded < or >
+    EXPECT_EQ(result.find('<'), std::string::npos) << "< should not appear raw";
+    EXPECT_EQ(result.find('>'), std::string::npos) << "> should not appear raw";
+}
