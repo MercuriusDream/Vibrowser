@@ -1651,6 +1651,11 @@ bool request_headers_include_http2_settings(
         return false;
       }
     }
+    const std::size_t decoded_length =
+        (data_length / 4) * 3 + (remainder == 2 ? 1 : (remainder == 3 ? 2 : 0));
+    if (decoded_length == 0 || decoded_length % 6 != 0) {
+      return false;
+    }
 
     found_http2_settings = true;
   }

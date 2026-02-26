@@ -592,11 +592,17 @@ int main() {
             } else if (browser::net::is_http2_settings_request({{"HTTP2-Settings", "AAA=="}})) {
                 std::cerr << "FAIL: expected invalid double-padding token68 shape to be rejected\n";
                 ++failures;
-            } else if (!browser::net::is_http2_settings_request({{"HTTP2-Settings", "AAA="}})) {
-                std::cerr << "FAIL: expected valid modulo-3 token68 with single trailing '=' to be accepted\n";
+            } else if (browser::net::is_http2_settings_request({{"HTTP2-Settings", "AAA="}})) {
+                std::cerr << "FAIL: expected non-SETTINGS-frame-length HTTP2-Settings payload (2 bytes) to be rejected\n";
                 ++failures;
-            } else if (!browser::net::is_http2_settings_request({{"HTTP2-Settings", "AA=="}})) {
-                std::cerr << "FAIL: expected valid modulo-2 token68 with double trailing '=' to be accepted\n";
+            } else if (browser::net::is_http2_settings_request({{"HTTP2-Settings", "AA=="}})) {
+                std::cerr << "FAIL: expected non-SETTINGS-frame-length HTTP2-Settings payload (1 byte) to be rejected\n";
+                ++failures;
+            } else if (browser::net::is_http2_settings_request({{"HTTP2-Settings", "AAMAAABkAARAAAAAAAIAAA=="}})) {
+                std::cerr << "FAIL: expected padded HTTP2-Settings payload with non-multiple-of-6 decoded length to be rejected\n";
+                ++failures;
+            } else if (!browser::net::is_http2_settings_request({{"HTTP2-Settings", "AAMAAABk"}})) {
+                std::cerr << "FAIL: expected valid 6-byte SETTINGS payload token68 to be accepted\n";
                 ++failures;
             } else if (browser::net::is_http2_settings_request({{"HTTP2-Settings", "AAMAA+Bk"}})) {
                 std::cerr << "FAIL: expected non-base64url '+' in HTTP2-Settings value to be rejected\n";
