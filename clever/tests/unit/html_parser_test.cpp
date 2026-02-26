@@ -1542,3 +1542,82 @@ TEST(TreeBuilder, OlWithListItems) {
     ASSERT_NE(li, nullptr);
     EXPECT_EQ(li->text_content(), "First");
 }
+
+// ============================================================================
+// Cycle 550: HTML parser regression tests (milestone!)
+// ============================================================================
+
+TEST(TreeBuilder, HeadElementContainsTitle) {
+    auto doc = parse("<html><head><title>Page Title</title></head><body></body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* title = doc->find_element("title");
+    ASSERT_NE(title, nullptr);
+    EXPECT_EQ(title->text_content(), "Page Title");
+}
+
+TEST(TreeBuilder, MetaCharsetInHead) {
+    auto doc = parse("<html><head><meta charset=\"UTF-8\"></head><body></body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* meta = doc->find_element("meta");
+    ASSERT_NE(meta, nullptr);
+    bool has_charset = false;
+    for (auto& attr : meta->attributes) {
+        if (attr.name == "charset") has_charset = true;
+    }
+    EXPECT_TRUE(has_charset);
+}
+
+TEST(TreeBuilder, ScriptTagParsed) {
+    auto doc = parse("<html><head><script>var x = 1;</script></head><body></body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* script = doc->find_element("script");
+    ASSERT_NE(script, nullptr);
+}
+
+TEST(TreeBuilder, StyleTagParsed) {
+    auto doc = parse("<html><head><style>body { color: red; }</style></head><body></body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* style = doc->find_element("style");
+    ASSERT_NE(style, nullptr);
+}
+
+TEST(TreeBuilder, LinkTagParsed) {
+    auto doc = parse(R"(<html><head><link rel="stylesheet" href="style.css"></head><body></body></html>)");
+    ASSERT_NE(doc, nullptr);
+    auto* link = doc->find_element("link");
+    ASSERT_NE(link, nullptr);
+    bool has_href = false;
+    for (auto& attr : link->attributes) {
+        if (attr.name == "href") has_href = true;
+    }
+    EXPECT_TRUE(has_href);
+}
+
+TEST(TreeBuilder, H2InSection) {
+    auto doc = parse("<body><section><h2>Section Title</h2><p>Content</p></section></body>");
+    ASSERT_NE(doc, nullptr);
+    auto* h2 = doc->find_element("h2");
+    ASSERT_NE(h2, nullptr);
+    EXPECT_EQ(h2->text_content(), "Section Title");
+}
+
+TEST(TreeBuilder, EmbedElement) {
+    auto doc = parse(R"(<body><embed src="video.mp4" type="video/mp4"></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* embed = doc->find_element("embed");
+    ASSERT_NE(embed, nullptr);
+    bool has_src = false;
+    for (auto& attr : embed->attributes) {
+        if (attr.name == "src") has_src = true;
+    }
+    EXPECT_TRUE(has_src);
+}
+
+TEST(TreeBuilder, ObjectWithParam) {
+    auto doc = parse("<body><object data=\"file.swf\"><param name=\"autoplay\" value=\"true\"></object></body>");
+    ASSERT_NE(doc, nullptr);
+    auto* obj = doc->find_element("object");
+    ASSERT_NE(obj, nullptr);
+    auto* param = doc->find_element("param");
+    ASSERT_NE(param, nullptr);
+}
