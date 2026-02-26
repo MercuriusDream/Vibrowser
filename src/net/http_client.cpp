@@ -1630,6 +1630,9 @@ bool request_headers_include_http2_settings(
     if (normalized_value.empty()) {
       return false;
     }
+    if (normalized_value.size() != value.size()) {
+      return false;
+    }
 
     bool seen_data = false;
     bool seen_padding = false;

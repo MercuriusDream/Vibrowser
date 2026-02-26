@@ -673,6 +673,12 @@ int main() {
             } else if (browser::net::is_http2_settings_request({{"HTTP2-Settings", "AAMA AABk"}})) {
                 std::cerr << "FAIL: expected whitespace in HTTP2-Settings token68 value to be rejected\n";
                 ++failures;
+            } else if (browser::net::is_http2_settings_request({{"HTTP2-Settings", " AAMAAABk"}})) {
+                std::cerr << "FAIL: expected leading-whitespace HTTP2-Settings value to be rejected\n";
+                ++failures;
+            } else if (browser::net::is_http2_settings_request({{"HTTP2-Settings", "AAMAAABk "}})) {
+                std::cerr << "FAIL: expected trailing-whitespace HTTP2-Settings value to be rejected\n";
+                ++failures;
             } else if (browser::net::is_http2_settings_request({{"HTTP2-Settings", "AAMAAABk,token"}})) {
                 std::cerr << "FAIL: expected comma-separated HTTP2-Settings value to be rejected\n";
                 ++failures;
