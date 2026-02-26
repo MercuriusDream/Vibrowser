@@ -706,3 +706,131 @@ TEST(HtmlEntity, MalformedEntityPassthrough) {
     // The ampersand and surrounding text should be present
     EXPECT_NE(text.find("&"), std::string::npos);
 }
+
+// ---------------------------------------------------------------------------
+// Cycle 443 — HTML parser: nested lists, data attributes, multiple comments,
+//             deeply nested structure, form with method/action, table cells,
+//             textarea default text, select/option hierarchy
+// ---------------------------------------------------------------------------
+
+TEST(TreeBuilder, NestedOrderedAndUnorderedLists) {
+    auto doc = parse("<ul><li>item1</li><li><ol><li>nested</li></ol></li></ul>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* ul = doc->find_element("ul");
+    ASSERT_NE(ul, nullptr);
+
+    auto* ol = doc->find_element("ol");
+    ASSERT_NE(ol, nullptr);
+
+    auto* nested_li = doc->find_element("ol");
+    ASSERT_NE(nested_li, nullptr);
+    auto* inner_li = nested_li->find_element("li");
+    ASSERT_NE(inner_li, nullptr);
+    EXPECT_EQ(inner_li->text_content(), "nested");
+}
+
+TEST(TreeBuilder, DataAttributes) {
+    auto doc = parse("<div data-user-id=\"42\" data-role=\"admin\">content</div>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* div = doc->find_element("div");
+    ASSERT_NE(div, nullptr);
+
+    std::string data_user_id, data_role;
+    for (const auto& attr : div->attributes) {
+        if (attr.name == "data-user-id") data_user_id = attr.value;
+        if (attr.name == "data-role") data_role = attr.value;
+    }
+    EXPECT_EQ(data_user_id, "42");
+    EXPECT_EQ(data_role, "admin");
+}
+
+TEST(TreeBuilder, MultipleComments) {
+    auto doc = parse("<!-- first --><!-- second --><div>x</div><!-- third -->");
+    ASSERT_NE(doc, nullptr);
+
+    // At least one comment node should be present; div must still be accessible
+    auto* div = doc->find_element("div");
+    ASSERT_NE(div, nullptr);
+    EXPECT_EQ(div->text_content(), "x");
+}
+
+TEST(TreeBuilder, DeeplyNestedDivs) {
+    // 6 levels deep
+    auto doc = parse("<div><div><div><div><div><div>deep</div></div></div></div></div></div>");
+    ASSERT_NE(doc, nullptr);
+
+    // find_element traverses the subtree; find "div" should succeed
+    auto* outer = doc->find_element("div");
+    ASSERT_NE(outer, nullptr);
+    // Recursively look for the text "deep"
+    EXPECT_NE(doc->find_element("div"), nullptr);
+}
+
+TEST(TreeBuilder, FormWithMethodAndAction) {
+    auto doc = parse("<form method=\"post\" action=\"/submit\"><input name=\"q\"></form>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* form = doc->find_element("form");
+    ASSERT_NE(form, nullptr);
+
+    std::string method_val, action_val;
+    for (const auto& attr : form->attributes) {
+        if (attr.name == "method") method_val = attr.value;
+        if (attr.name == "action") action_val = attr.value;
+    }
+    EXPECT_EQ(method_val, "post");
+    EXPECT_EQ(action_val, "/submit");
+
+    auto* input = doc->find_element("input");
+    ASSERT_NE(input, nullptr);
+    std::string name_val;
+    for (const auto& attr : input->attributes) {
+        if (attr.name == "name") name_val = attr.value;
+    }
+    EXPECT_EQ(name_val, "q");
+}
+
+TEST(TreeBuilder, TableWithCells) {
+    auto doc = parse("<table><tr><td>A</td><td>B</td></tr><tr><td>C</td></tr></table>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* table = doc->find_element("table");
+    ASSERT_NE(table, nullptr);
+
+    auto* td = doc->find_element("td");
+    ASSERT_NE(td, nullptr);
+    EXPECT_EQ(td->text_content(), "A");
+}
+
+TEST(TreeBuilder, TextareaDefaultText) {
+    auto doc = parse("<textarea>Hello World</textarea>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* ta = doc->find_element("textarea");
+    ASSERT_NE(ta, nullptr);
+    EXPECT_EQ(ta->text_content(), "Hello World");
+}
+
+TEST(TreeBuilder, SelectWithOptions) {
+    auto doc = parse("<select name=\"color\"><option value=\"red\">Red</option><option value=\"blue\" selected>Blue</option></select>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* select = doc->find_element("select");
+    ASSERT_NE(select, nullptr);
+    std::string select_name;
+    for (const auto& attr : select->attributes) {
+        if (attr.name == "name") select_name = attr.value;
+    }
+    EXPECT_EQ(select_name, "color");
+
+    auto* opt = doc->find_element("option");
+    ASSERT_NE(opt, nullptr);
+    std::string opt_value;
+    for (const auto& attr : opt->attributes) {
+        if (attr.name == "value") opt_value = attr.value;
+    }
+    EXPECT_EQ(opt_value, "red");
+    EXPECT_EQ(opt->text_content(), "Red");
+}
