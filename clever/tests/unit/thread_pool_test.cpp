@@ -396,3 +396,98 @@ TEST(ThreadPoolTest, SubmitReturningPair) {
     EXPECT_EQ(a, 7);
     EXPECT_EQ(b, 13);
 }
+
+// ============================================================================
+// Cycle 524: ThreadPool regression tests
+// ============================================================================
+
+// ThreadPool with 4 threads runs 4 concurrent tasks
+TEST(ThreadPoolTest, FourThreadsRunFourConcurrentTasks) {
+    ThreadPool pool(4);
+    std::atomic<int> count{0};
+    std::vector<std::future<void>> futures;
+    for (int i = 0; i < 4; ++i) {
+        futures.push_back(pool.submit([&count]() {
+            count.fetch_add(1, std::memory_order_relaxed);
+        }));
+    }
+    for (auto& f : futures) f.get();
+    EXPECT_EQ(count.load(), 4);
+}
+
+// Submit returns future that can be waited on
+TEST(ThreadPoolTest, SubmitFutureBlocksUntilTaskDone) {
+    ThreadPool pool(2);
+    bool done = false;
+    auto future = pool.submit([&done]() {
+        done = true;
+    });
+    future.get();
+    EXPECT_TRUE(done);
+}
+
+// Tasks execute even when submitted rapidly
+TEST(ThreadPoolTest, RapidSubmissionAllExecute) {
+    ThreadPool pool(2);
+    std::atomic<int> counter{0};
+    const int N = 50;
+    std::vector<std::future<void>> futures;
+    for (int i = 0; i < N; ++i) {
+        futures.push_back(pool.submit([&counter]() {
+            counter.fetch_add(1, std::memory_order_relaxed);
+        }));
+    }
+    for (auto& f : futures) f.get();
+    EXPECT_EQ(counter.load(), N);
+}
+
+// submit with return value int
+TEST(ThreadPoolTest, SubmitReturningInt) {
+    ThreadPool pool(1);
+    auto future = pool.submit([]() -> int { return 100; });
+    EXPECT_EQ(future.get(), 100);
+}
+
+// post (fire-and-forget) runs all tasks
+TEST(ThreadPoolTest, PostFireAndForgetAllRun) {
+    ThreadPool pool(2);
+    std::atomic<int> counter{0};
+    const int N = 20;
+    for (int i = 0; i < N; ++i) {
+        pool.post([&counter]() {
+            counter.fetch_add(1, std::memory_order_relaxed);
+        });
+    }
+    // Give tasks time to run
+    std::this_thread::sleep_for(50ms);
+    EXPECT_EQ(counter.load(), N);
+}
+
+// Thread pool size() reports correct worker count
+TEST(ThreadPoolTest, SizeReportsWorkerCount) {
+    ThreadPool pool(3);
+    EXPECT_EQ(pool.size(), 3u);
+}
+
+// submit returning std::string
+TEST(ThreadPoolTest, SubmitReturningStringValue) {
+    ThreadPool pool(1);
+    auto future = pool.submit([]() { return std::string("hello"); });
+    EXPECT_EQ(future.get(), "hello");
+}
+
+// 10 tasks on 1-thread pool execute sequentially (all must complete)
+TEST(ThreadPoolTest, TenTasksOnSingleThreadAllComplete) {
+    ThreadPool pool(1);
+    std::vector<int> results;
+    std::mutex mu;
+    std::vector<std::future<void>> futures;
+    for (int i = 0; i < 10; ++i) {
+        futures.push_back(pool.submit([i, &results, &mu]() {
+            std::lock_guard<std::mutex> lock(mu);
+            results.push_back(i);
+        }));
+    }
+    for (auto& f : futures) f.get();
+    EXPECT_EQ(results.size(), 10u);
+}
