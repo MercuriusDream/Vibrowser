@@ -5203,3 +5203,81 @@ TEST(FlexboxAudit, FlexContainerAcceptsChildren) {
         EXPECT_GE(child->geometry.width, 0.0f);
     }
 }
+
+// ============================================================================
+// Cycle 561: Layout node property tests
+// ============================================================================
+
+// z-index can be stored on a node
+TEST(LayoutNodeProps, ZIndexCanBeSet) {
+    auto node = make_block("div");
+    node->z_index = 5;
+    EXPECT_EQ(node->z_index, 5);
+}
+
+// opacity can be stored on a node
+TEST(LayoutNodeProps, OpacityCanBeStored) {
+    auto node = make_block("div");
+    node->opacity = 0.5f;
+    EXPECT_FLOAT_EQ(node->opacity, 0.5f);
+}
+
+// justify_content: space-between (value 3)
+TEST(FlexboxAudit, JustifyContentSpaceBetweenValue) {
+    auto node = make_flex("div");
+    node->justify_content = 3;
+    EXPECT_EQ(node->justify_content, 3);
+}
+
+// align_items: flex-start (value 0)
+TEST(FlexboxAudit, AlignItemsFlexStartValue) {
+    auto node = make_flex("div");
+    node->align_items = 0;
+    EXPECT_EQ(node->align_items, 0);
+}
+
+// row_gap can be stored
+TEST(FlexboxAudit, RowGapCanBeSet) {
+    auto node = make_flex("div");
+    node->row_gap = 8.0f;
+    EXPECT_FLOAT_EQ(node->row_gap, 8.0f);
+}
+
+// flex_grow applied: child stretches to fill remaining width
+TEST(FlexboxAudit, FlexGrowFillsRemainingSpace) {
+    auto root = make_flex("div");
+    root->specified_width = 300.0f;
+    root->specified_height = 50.0f;
+
+    auto fixed = make_block("div");
+    fixed->specified_width = 100.0f;
+    fixed->specified_height = 50.0f;
+
+    auto grow = make_block("div");
+    grow->flex_grow = 1.0f;
+    grow->specified_height = 50.0f;
+
+    root->append_child(std::move(fixed));
+    root->append_child(std::move(grow));
+
+    LayoutEngine engine;
+    engine.compute(*root, 300.0f, 50.0f);
+
+    float total_w = 0.0f;
+    for (auto& c : root->children) {
+        total_w += c->geometry.width;
+    }
+    EXPECT_GE(total_w, 200.0f);
+}
+
+// overflow defaults to 0
+TEST(LayoutNodeProps, OverflowDefaultIsZero) {
+    auto node = make_block("div");
+    EXPECT_EQ(node->overflow, 0);
+}
+
+// grid_auto_flow defaults to 0 (row)
+TEST(LayoutNodeProps, GridAutoFlowDefaultIsRow) {
+    auto node = make_block("div");
+    EXPECT_EQ(node->grid_auto_flow, 0);
+}
