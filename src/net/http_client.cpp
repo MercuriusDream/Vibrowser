@@ -469,6 +469,10 @@ bool parse_serialized_origin(const std::string& value, std::string& canonical_or
   if (authority_end != std::string::npos) {
     return false;
   }
+  const std::string authority = trimmed.substr(scheme_end + 3);
+  if (!authority.empty() && authority.back() == ':') {
+    return false;
+  }
   const std::size_t userinfo_delim = trimmed.find('@', scheme_end + 3);
   if (userinfo_delim != std::string::npos) {
     return false;
