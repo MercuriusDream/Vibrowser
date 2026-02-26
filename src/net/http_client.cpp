@@ -1092,6 +1092,7 @@ bool parse_content_length(const std::string& raw, std::size_t& content_length) {
 }
 
 bool contains_chunked_encoding(const std::string& transfer_encoding_header) {
+  bool found_chunked = false;
   std::size_t token_start = 0;
   while (token_start <= transfer_encoding_header.size()) {
     const std::size_t comma = transfer_encoding_header.find(',', token_start);
@@ -1099,15 +1100,23 @@ bool contains_chunked_encoding(const std::string& transfer_encoding_header) {
         (comma == std::string::npos) ? transfer_encoding_header.size() : comma;
     const std::string token = to_lower_ascii(
         trim_ascii(transfer_encoding_header.substr(token_start, token_end - token_start)));
+    if (token.empty()) {
+      return false;
+    }
+    if (token.find('"') != std::string::npos ||
+        token.find('\'') != std::string::npos ||
+        token.find('\\') != std::string::npos) {
+      return false;
+    }
     if (token == "chunked") {
-      return true;
+      found_chunked = true;
     }
     if (comma == std::string::npos) {
       break;
     }
     token_start = comma + 1;
   }
-  return false;
+  return found_chunked;
 }
 
 bool contains_http2_upgrade_token(const std::string& upgrade_header) {

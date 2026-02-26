@@ -609,6 +609,21 @@ int main() {
         } else if (browser::net::is_chunked_transfer_encoding("xchunked, gzip")) {
             std::cerr << "FAIL: expected prefixed token to not be treated as chunked transfer-encoding\n";
             ++failures;
+        } else if (browser::net::is_chunked_transfer_encoding("chunked,")) {
+            std::cerr << "FAIL: expected trailing-comma malformed transfer-encoding to be rejected\n";
+            ++failures;
+        } else if (browser::net::is_chunked_transfer_encoding(",chunked")) {
+            std::cerr << "FAIL: expected leading-comma malformed transfer-encoding to be rejected\n";
+            ++failures;
+        } else if (browser::net::is_chunked_transfer_encoding("gzip,,chunked")) {
+            std::cerr << "FAIL: expected empty-token malformed transfer-encoding to be rejected\n";
+            ++failures;
+        } else if (browser::net::is_chunked_transfer_encoding("\"chunked\"")) {
+            std::cerr << "FAIL: expected quoted chunked token to be rejected\n";
+            ++failures;
+        } else if (browser::net::is_chunked_transfer_encoding("chunk\\ed")) {
+            std::cerr << "FAIL: expected escaped malformed transfer-encoding token to be rejected\n";
+            ++failures;
         } else {
             std::cerr << "PASS: chunked transfer-encoding token detection works as expected\n";
         }
