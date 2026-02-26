@@ -12747,3 +12747,113 @@ TEST(JSEngine, StringRepeat) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "ababab");
 }
+
+// ============================================================================
+// Cycle 583: More JS engine tests
+// ============================================================================
+
+// Array.prototype.reduceRight
+TEST(JSEngine, ArrayReduceRight) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        [1, 2, 3, 4].reduceRight(function(acc, x) { return acc + x; }, 0)
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "10");
+}
+
+// Object.create creates object with prototype
+TEST(JSEngine, ObjectCreateWithPrototype) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var proto = { greet: function() { return "hello"; } };
+        var obj = Object.create(proto);
+        obj.greet()
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "hello");
+}
+
+// Error constructor and message
+TEST(JSEngine, ErrorConstructorMessage) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var e = new Error("something failed");
+        e.message
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "something failed");
+}
+
+// try/catch/finally with throw string
+TEST(JSEngine, TryCatchFinallyThrowString) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var out = "";
+        try {
+            throw "fail";
+        } catch(e) {
+            out += "caught:" + e;
+        } finally {
+            out += "+done";
+        }
+        out
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "caught:fail+done");
+}
+
+// Class syntax: basic class with method
+TEST(JSEngine, BasicClassWithMethod) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        class Counter {
+            constructor(start) { this.count = start; }
+            increment() { this.count++; return this.count; }
+        }
+        var c = new Counter(10);
+        c.increment()
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "11");
+}
+
+// Class inheritance
+TEST(JSEngine, ClassInheritance) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        class Animal { speak() { return "..."; } }
+        class Dog extends Animal { speak() { return "woof"; } }
+        var d = new Dog();
+        d.speak()
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "woof");
+}
+
+// Arrow function this binding
+TEST(JSEngine, ArrowFunctionThisBinding) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        function Timer() {
+            this.val = 42;
+            this.get = () => this.val;
+        }
+        var t = new Timer();
+        t.get()
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "42");
+}
+
+// Map: basic get/set/has
+TEST(JSEngine, MapBasicOperations) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var m = new Map();
+        m.set("key", 99);
+        m.has("key") + "," + m.get("key")
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true,99");
+}
