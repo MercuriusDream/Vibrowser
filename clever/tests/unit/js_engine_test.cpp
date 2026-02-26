@@ -11658,3 +11658,77 @@ TEST(JSEngine, StringRepeatMethod) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "ababab");
 }
+
+// ============================================================================
+// Cycle 512: JSEngine regression tests
+// ============================================================================
+
+TEST(JSEngine, StringPadStart) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("'5'.padStart(3, '0')");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "005");
+}
+
+TEST(JSEngine, StringPadEnd) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("'hi'.padEnd(5, '.')");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "hi...");
+}
+
+TEST(JSEngine, NumberToFixed) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("(3.14159).toFixed(2)");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "3.14");
+}
+
+TEST(JSEngine, DeleteOperator) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var obj = { a: 1, b: 2 };
+        delete obj.a;
+        String('a' in obj)
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "false");
+}
+
+TEST(JSEngine, InOperator) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var obj = { x: 42 };
+        String('x' in obj) + ',' + String('y' in obj)
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true,false");
+}
+
+TEST(JSEngine, InstanceofOperator) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        String([] instanceof Array) + ',' + String({} instanceof Object)
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true,true");
+}
+
+TEST(JSEngine, ArrayFill) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("[1, 2, 3, 4].fill(0, 1, 3).join(',')");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1,0,0,4");
+}
+
+TEST(JSEngine, ObjectSpread) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var a = { x: 1, y: 2 };
+        var b = { y: 99, z: 3 };
+        var c = Object.assign({}, a, b);
+        c.x + ',' + c.y + ',' + c.z
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1,99,3");
+}
