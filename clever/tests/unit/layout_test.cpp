@@ -5520,3 +5520,63 @@ TEST(LayoutNodeProps, PositionTypeAbsolute) {
     node->position_type = 1;
     EXPECT_EQ(node->position_type, 1);
 }
+
+// ============================================================================
+// Cycle 607: More layout tests
+// ============================================================================
+
+// Block: z_index can be negative
+TEST(LayoutNodeProps, ZIndexCanBeNegative) {
+    auto node = make_block("div");
+    node->z_index = -1;
+    EXPECT_EQ(node->z_index, -1);
+}
+
+// Block: z_index can be large
+TEST(LayoutNodeProps, ZIndexCanBeLarge) {
+    auto node = make_block("div");
+    node->z_index = 9999;
+    EXPECT_EQ(node->z_index, 9999);
+}
+
+// Flex: align_content can be set
+TEST(FlexboxAudit, AlignContentCanBeSet) {
+    auto node = make_flex("div");
+    node->align_content = 3;
+    EXPECT_EQ(node->align_content, 3);
+}
+
+// Block: geometry padding top can be set
+TEST(LayoutNodeProps, GeometryPaddingTopCanBeSet) {
+    auto node = make_block("div");
+    node->geometry.padding.top = 10.0f;
+    EXPECT_FLOAT_EQ(node->geometry.padding.top, 10.0f);
+}
+
+// Block: geometry margin left can be set
+TEST(LayoutNodeProps, GeometryMarginLeftCanBeSet) {
+    auto node = make_block("div");
+    node->geometry.margin.left = 15.0f;
+    EXPECT_FLOAT_EQ(node->geometry.margin.left, 15.0f);
+}
+
+// Block: geometry border bottom can be set
+TEST(LayoutNodeProps, GeometryBorderBottomCanBeSet) {
+    auto node = make_block("div");
+    node->geometry.border.bottom = 3.0f;
+    EXPECT_FLOAT_EQ(node->geometry.border.bottom, 3.0f);
+}
+
+// Inline: specified_width can be set
+TEST(LayoutNodeProps, InlineSpecifiedWidthCanBeSet) {
+    auto node = make_inline("span");
+    node->specified_width = 100.0f;
+    EXPECT_FLOAT_EQ(node->specified_width, 100.0f);
+}
+
+// Flex: flex_shrink can be set
+TEST(FlexboxAudit, FlexShrinkCanBeSet) {
+    auto node = make_flex("div");
+    node->flex_shrink = 0.5f;
+    EXPECT_FLOAT_EQ(node->flex_shrink, 0.5f);
+}
