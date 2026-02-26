@@ -657,3 +657,73 @@ TEST(URLParser, SchemeMixedCaseLowered) {
     ASSERT_TRUE(result.has_value());
     EXPECT_EQ(result->scheme, "https");
 }
+
+// ============================================================================
+// Cycle 502: URL parser regression tests
+// ============================================================================
+
+TEST(URLParser, SameOriginReturnsTrueForIdenticalURLs) {
+    auto a = parse("https://example.com/foo");
+    auto b = parse("https://example.com/bar");
+    ASSERT_TRUE(a.has_value());
+    ASSERT_TRUE(b.has_value());
+    EXPECT_TRUE(urls_same_origin(*a, *b));
+}
+
+TEST(URLParser, SameOriginFalseForDifferentSchemes) {
+    auto a = parse("http://example.com/");
+    auto b = parse("https://example.com/");
+    ASSERT_TRUE(a.has_value());
+    ASSERT_TRUE(b.has_value());
+    EXPECT_FALSE(urls_same_origin(*a, *b));
+}
+
+TEST(URLParser, SameOriginFalseForDifferentPorts) {
+    auto a = parse("https://example.com:8080/");
+    auto b = parse("https://example.com:9090/");
+    ASSERT_TRUE(a.has_value());
+    ASSERT_TRUE(b.has_value());
+    EXPECT_FALSE(urls_same_origin(*a, *b));
+}
+
+TEST(URLParser, SameOriginTrueForSameSchemeHostPort) {
+    auto a = parse("https://example.com:443/path1?q=1");
+    auto b = parse("https://example.com:443/path2#frag");
+    ASSERT_TRUE(a.has_value());
+    ASSERT_TRUE(b.has_value());
+    EXPECT_TRUE(urls_same_origin(*a, *b));
+}
+
+TEST(URLParser, URLWithMultipleQueryParams) {
+    auto result = parse("https://example.com/search?a=1&b=2&c=three");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->query, "a=1&b=2&c=three");
+    EXPECT_EQ(result->path, "/search");
+}
+
+TEST(URLParser, URLWithEncodedSpaceInPath) {
+    auto result = parse("https://example.com/my%20file.html");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->host, "example.com");
+    // Path should contain the percent-encoded space
+    EXPECT_NE(result->path.find("20"), std::string::npos);
+}
+
+TEST(URLParser, SerializeIncludesUsernameAndPassword) {
+    auto result = parse("https://user:pass@example.com/resource");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->username, "user");
+    EXPECT_EQ(result->password, "pass");
+    std::string s = result->serialize();
+    EXPECT_NE(s.find("user"), std::string::npos);
+    EXPECT_NE(s.find("pass"), std::string::npos);
+    EXPECT_NE(s.find("example.com"), std::string::npos);
+}
+
+TEST(URLParser, URLWithIPv6Host) {
+    auto result = parse("http://[::1]:8080/path");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->port, 8080);
+    EXPECT_NE(result->host.find("1"), std::string::npos);
+}
