@@ -1245,3 +1245,76 @@ TEST(TreeBuilder, AsideElement) {
     ASSERT_NE(aside, nullptr);
     EXPECT_EQ(aside->text_content(), "Sidebar");
 }
+
+// ============================================================================
+// Cycle 514: HTML parser regression tests
+// ============================================================================
+
+TEST(TreeBuilder, MarkElement) {
+    auto doc = parse("<body><p>Search <mark>result</mark> here</p></body>");
+    ASSERT_NE(doc, nullptr);
+    auto* mark = doc->find_element("mark");
+    ASSERT_NE(mark, nullptr);
+    EXPECT_EQ(mark->text_content(), "result");
+}
+
+TEST(TreeBuilder, SmallElement) {
+    auto doc = parse("<body><p>Normal <small>fine print</small></p></body>");
+    ASSERT_NE(doc, nullptr);
+    auto* small = doc->find_element("small");
+    ASSERT_NE(small, nullptr);
+    EXPECT_EQ(small->text_content(), "fine print");
+}
+
+TEST(TreeBuilder, AbbrWithTitle) {
+    auto doc = parse(R"(<body><abbr title="HyperText Markup Language">HTML</abbr></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* abbr = doc->find_element("abbr");
+    ASSERT_NE(abbr, nullptr);
+    EXPECT_EQ(abbr->text_content(), "HTML");
+    bool has_title = false;
+    for (auto& attr : abbr->attributes) {
+        if (attr.name == "title") has_title = true;
+    }
+    EXPECT_TRUE(has_title);
+}
+
+TEST(TreeBuilder, BlockquoteElement) {
+    auto doc = parse("<body><blockquote>A famous quote.</blockquote></body>");
+    ASSERT_NE(doc, nullptr);
+    auto* bq = doc->find_element("blockquote");
+    ASSERT_NE(bq, nullptr);
+    EXPECT_EQ(bq->text_content(), "A famous quote.");
+}
+
+TEST(TreeBuilder, CiteElement) {
+    auto doc = parse("<body><p><cite>The Great Gatsby</cite></p></body>");
+    ASSERT_NE(doc, nullptr);
+    auto* cite = doc->find_element("cite");
+    ASSERT_NE(cite, nullptr);
+    EXPECT_EQ(cite->text_content(), "The Great Gatsby");
+}
+
+TEST(TreeBuilder, InlineCodeElement) {
+    auto doc = parse("<body><p>Use <code>printf()</code> to print.</p></body>");
+    ASSERT_NE(doc, nullptr);
+    auto* code = doc->find_element("code");
+    ASSERT_NE(code, nullptr);
+    EXPECT_EQ(code->text_content(), "printf()");
+}
+
+TEST(TreeBuilder, KbdElement) {
+    auto doc = parse("<body><p>Press <kbd>Ctrl+C</kbd> to copy.</p></body>");
+    ASSERT_NE(doc, nullptr);
+    auto* kbd = doc->find_element("kbd");
+    ASSERT_NE(kbd, nullptr);
+    EXPECT_EQ(kbd->text_content(), "Ctrl+C");
+}
+
+TEST(TreeBuilder, SampElement) {
+    auto doc = parse("<body><samp>Error: file not found</samp></body>");
+    ASSERT_NE(doc, nullptr);
+    auto* samp = doc->find_element("samp");
+    ASSERT_NE(samp, nullptr);
+    EXPECT_EQ(samp->text_content(), "Error: file not found");
+}
