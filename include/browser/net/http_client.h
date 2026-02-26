@@ -80,6 +80,7 @@ bool is_http2_upgrade_response(int status_code, const std::string& upgrade_heade
 bool is_http2_upgrade_request(const std::map<std::string, std::string>& request_headers);
 bool is_http2_settings_request(const std::map<std::string, std::string>& request_headers);
 bool is_http2_pseudo_header_request(const std::map<std::string, std::string>& request_headers);
+bool is_chunked_transfer_encoding(const std::string& transfer_encoding_header);
 
 enum class CachePolicy {
     NoCache,

@@ -592,6 +592,28 @@ int main() {
         }
     }
 
+    // Test 18: Transfer-Encoding helper matches chunked token exactly
+    {
+        if (!browser::net::is_chunked_transfer_encoding("chunked")) {
+            std::cerr << "FAIL: expected chunked transfer-encoding token to be detected\n";
+            ++failures;
+        } else if (!browser::net::is_chunked_transfer_encoding("gzip, chunked")) {
+            std::cerr << "FAIL: expected comma-delimited chunked transfer-encoding token to be detected\n";
+            ++failures;
+        } else if (!browser::net::is_chunked_transfer_encoding("GZIP,   CHUNKED  ")) {
+            std::cerr << "FAIL: expected case-insensitive chunked transfer-encoding detection\n";
+            ++failures;
+        } else if (browser::net::is_chunked_transfer_encoding("notchunked")) {
+            std::cerr << "FAIL: expected substring-only match to be rejected for chunked transfer-encoding\n";
+            ++failures;
+        } else if (browser::net::is_chunked_transfer_encoding("xchunked, gzip")) {
+            std::cerr << "FAIL: expected prefixed token to not be treated as chunked transfer-encoding\n";
+            ++failures;
+        } else {
+            std::cerr << "PASS: chunked transfer-encoding token detection works as expected\n";
+        }
+    }
+
     if (failures > 0) {
         std::cerr << "\n" << failures << " test(s) FAILED\n";
         return 1;

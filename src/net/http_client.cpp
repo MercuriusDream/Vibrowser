@@ -1092,8 +1092,22 @@ bool parse_content_length(const std::string& raw, std::size_t& content_length) {
 }
 
 bool contains_chunked_encoding(const std::string& transfer_encoding_header) {
-  const std::string lower = to_lower_ascii(transfer_encoding_header);
-  return lower.find("chunked") != std::string::npos;
+  std::size_t token_start = 0;
+  while (token_start <= transfer_encoding_header.size()) {
+    const std::size_t comma = transfer_encoding_header.find(',', token_start);
+    const std::size_t token_end =
+        (comma == std::string::npos) ? transfer_encoding_header.size() : comma;
+    const std::string token = to_lower_ascii(
+        trim_ascii(transfer_encoding_header.substr(token_start, token_end - token_start)));
+    if (token == "chunked") {
+      return true;
+    }
+    if (comma == std::string::npos) {
+      break;
+    }
+    token_start = comma + 1;
+  }
+  return false;
 }
 
 bool contains_http2_upgrade_token(const std::string& upgrade_header) {
@@ -1831,6 +1845,10 @@ bool is_http2_settings_request(const std::map<std::string, std::string>& request
 
 bool is_http2_pseudo_header_request(const std::map<std::string, std::string>& request_headers) {
     return request_headers_include_http2_pseudo_headers(request_headers);
+}
+
+bool is_chunked_transfer_encoding(const std::string& transfer_encoding_header) {
+    return contains_chunked_encoding(transfer_encoding_header);
 }
 
 const char* request_method_name(RequestMethod method) {
