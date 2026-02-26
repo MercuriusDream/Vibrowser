@@ -5608,3 +5608,160 @@ TEST(PropertyCascadeTest, WillChangeStoresValue) {
     cascade.apply_declaration(style, make_decl("will-change", "auto"), parent);
     EXPECT_TRUE(style.will_change.empty());
 }
+
+// ---------------------------------------------------------------------------
+// Cycle 438 — cursor, resize, appearance, list-style-type/position,
+//             counter-increment/reset, content-visibility
+// ---------------------------------------------------------------------------
+
+TEST(PropertyCascadeTest, CursorValues) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.cursor, Cursor::Auto);  // default
+
+    cascade.apply_declaration(style, make_decl("cursor", "default"), parent);
+    EXPECT_EQ(style.cursor, Cursor::Default);
+
+    cascade.apply_declaration(style, make_decl("cursor", "pointer"), parent);
+    EXPECT_EQ(style.cursor, Cursor::Pointer);
+
+    cascade.apply_declaration(style, make_decl("cursor", "text"), parent);
+    EXPECT_EQ(style.cursor, Cursor::Text);
+
+    cascade.apply_declaration(style, make_decl("cursor", "move"), parent);
+    EXPECT_EQ(style.cursor, Cursor::Move);
+
+    cascade.apply_declaration(style, make_decl("cursor", "not-allowed"), parent);
+    EXPECT_EQ(style.cursor, Cursor::NotAllowed);
+
+    cascade.apply_declaration(style, make_decl("cursor", "auto"), parent);
+    EXPECT_EQ(style.cursor, Cursor::Auto);
+}
+
+TEST(PropertyCascadeTest, ResizeValues) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.resize, 0);  // default: none
+
+    cascade.apply_declaration(style, make_decl("resize", "both"), parent);
+    EXPECT_EQ(style.resize, 1);
+
+    cascade.apply_declaration(style, make_decl("resize", "horizontal"), parent);
+    EXPECT_EQ(style.resize, 2);
+
+    cascade.apply_declaration(style, make_decl("resize", "vertical"), parent);
+    EXPECT_EQ(style.resize, 3);
+
+    cascade.apply_declaration(style, make_decl("resize", "none"), parent);
+    EXPECT_EQ(style.resize, 0);
+}
+
+TEST(PropertyCascadeTest, AppearanceValues) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.appearance, 0);  // default: auto
+
+    cascade.apply_declaration(style, make_decl("appearance", "none"), parent);
+    EXPECT_EQ(style.appearance, 1);
+
+    cascade.apply_declaration(style, make_decl("appearance", "menulist-button"), parent);
+    EXPECT_EQ(style.appearance, 2);
+
+    cascade.apply_declaration(style, make_decl("-webkit-appearance", "textfield"), parent);
+    EXPECT_EQ(style.appearance, 3);
+
+    cascade.apply_declaration(style, make_decl("appearance", "button"), parent);
+    EXPECT_EQ(style.appearance, 4);
+
+    cascade.apply_declaration(style, make_decl("appearance", "auto"), parent);
+    EXPECT_EQ(style.appearance, 0);
+}
+
+TEST(PropertyCascadeTest, ListStyleTypeValues) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.list_style_type, ListStyleType::Disc);  // default
+
+    cascade.apply_declaration(style, make_decl("list-style-type", "decimal"), parent);
+    EXPECT_EQ(style.list_style_type, ListStyleType::Decimal);
+
+    cascade.apply_declaration(style, make_decl("list-style-type", "upper-roman"), parent);
+    EXPECT_EQ(style.list_style_type, ListStyleType::UpperRoman);
+
+    cascade.apply_declaration(style, make_decl("list-style-type", "lower-alpha"), parent);
+    EXPECT_EQ(style.list_style_type, ListStyleType::LowerAlpha);
+
+    cascade.apply_declaration(style, make_decl("list-style-type", "none"), parent);
+    EXPECT_EQ(style.list_style_type, ListStyleType::None);
+
+    cascade.apply_declaration(style, make_decl("list-style-type", "disc"), parent);
+    EXPECT_EQ(style.list_style_type, ListStyleType::Disc);
+}
+
+TEST(PropertyCascadeTest, ListStylePositionInsideAndOutside) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.list_style_position, ListStylePosition::Outside);  // default
+
+    cascade.apply_declaration(style, make_decl("list-style-position", "inside"), parent);
+    EXPECT_EQ(style.list_style_position, ListStylePosition::Inside);
+
+    cascade.apply_declaration(style, make_decl("list-style-position", "outside"), parent);
+    EXPECT_EQ(style.list_style_position, ListStylePosition::Outside);
+}
+
+TEST(PropertyCascadeTest, CounterIncrementAndResetStoreStrings) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_TRUE(style.counter_increment.empty());  // default
+    EXPECT_TRUE(style.counter_reset.empty());
+
+    cascade.apply_declaration(style, make_decl("counter-increment", "section 1"), parent);
+    EXPECT_EQ(style.counter_increment, "section 1");
+
+    cascade.apply_declaration(style, make_decl("counter-reset", "chapter 0"), parent);
+    EXPECT_EQ(style.counter_reset, "chapter 0");
+
+    cascade.apply_declaration(style, make_decl("counter-increment", "none"), parent);
+    EXPECT_EQ(style.counter_increment, "none");
+}
+
+TEST(PropertyCascadeTest, ContentVisibilityValues) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.content_visibility, 0);  // default: visible
+
+    cascade.apply_declaration(style, make_decl("content-visibility", "hidden"), parent);
+    EXPECT_EQ(style.content_visibility, 1);
+
+    cascade.apply_declaration(style, make_decl("content-visibility", "auto"), parent);
+    EXPECT_EQ(style.content_visibility, 2);
+
+    cascade.apply_declaration(style, make_decl("content-visibility", "visible"), parent);
+    EXPECT_EQ(style.content_visibility, 0);
+}
+
+TEST(PropertyCascadeTest, CounterSetStoresString) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_TRUE(style.counter_set.empty());  // default
+
+    cascade.apply_declaration(style, make_decl("counter-set", "page 5"), parent);
+    EXPECT_EQ(style.counter_set, "page 5");
+}
