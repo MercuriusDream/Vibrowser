@@ -579,6 +579,28 @@ int main() {
         }
 
         if (browser::net::parse_http_status_line(
+                std::string("HTTP/1.1\001200 OK", 15), http_version, status_code, reason, err)) {
+            std::cerr << "FAIL: expected status line with SOH status-code separator to be rejected\n";
+            ++failures;
+        } else if (err.find("Malformed HTTP status line") == std::string::npos) {
+            std::cerr << "FAIL: expected malformed status-line error for SOH status-code separator\n";
+            ++failures;
+        } else {
+            std::cerr << "PASS: status line with SOH status-code separator is rejected\n";
+        }
+
+        if (browser::net::parse_http_status_line(
+                std::string("HTTP/1.1 200\001OK", 15), http_version, status_code, reason, err)) {
+            std::cerr << "FAIL: expected status line with SOH reason separator to be rejected\n";
+            ++failures;
+        } else if (err.find("Malformed HTTP status line") == std::string::npos) {
+            std::cerr << "FAIL: expected malformed status-line error for SOH reason separator\n";
+            ++failures;
+        } else {
+            std::cerr << "PASS: status line with SOH reason separator is rejected\n";
+        }
+
+        if (browser::net::parse_http_status_line(
                 "HTTP/1.1 200", http_version, status_code, reason, err)) {
             std::cerr << "FAIL: expected status line missing reason separator to be rejected\n";
             ++failures;
