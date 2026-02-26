@@ -2335,3 +2335,83 @@ TEST_F(CSSStylesheetTest, TwoDeclarationsInOneRule) {
     ASSERT_EQ(sheet.rules.size(), 1u);
     EXPECT_GE(sheet.rules[0].declarations.size(), 2u);
 }
+
+// ============================================================================
+// Cycle 624: More CSS parser tests
+// ============================================================================
+
+// Tokenizer: vmax dimension
+TEST_F(CSSTokenizerTest, VmaxDimensionToken) {
+    auto tokens = CSSTokenizer::tokenize_all("10vmax");
+    ASSERT_FALSE(tokens.empty());
+    EXPECT_EQ(tokens[0].type, CSSToken::Dimension);
+    EXPECT_EQ(tokens[0].unit, "vmax");
+}
+
+// Tokenizer: svh dimension (small viewport)
+TEST_F(CSSTokenizerTest, SvhDimensionToken) {
+    auto tokens = CSSTokenizer::tokenize_all("100svh");
+    ASSERT_FALSE(tokens.empty());
+    EXPECT_EQ(tokens[0].type, CSSToken::Dimension);
+}
+
+// Tokenizer: integer token is_integer
+TEST_F(CSSTokenizerTest, IntegerTokenIsInteger) {
+    auto tokens = CSSTokenizer::tokenize_all("42");
+    ASSERT_FALSE(tokens.empty());
+    EXPECT_EQ(tokens[0].type, CSSToken::Number);
+    EXPECT_TRUE(tokens[0].is_integer);
+    EXPECT_DOUBLE_EQ(tokens[0].numeric_value, 42.0);
+}
+
+// Tokenizer: float token is not integer
+TEST_F(CSSTokenizerTest, FloatTokenNotInteger) {
+    auto tokens = CSSTokenizer::tokenize_all("3.14");
+    ASSERT_FALSE(tokens.empty());
+    EXPECT_EQ(tokens[0].type, CSSToken::Number);
+    EXPECT_FALSE(tokens[0].is_integer);
+}
+
+// Selector: class name extracted
+TEST_F(CSSSelectorTest, ClassNameExtracted) {
+    auto list = parse_selector_list(".container");
+    ASSERT_EQ(list.selectors.size(), 1u);
+    ASSERT_FALSE(list.selectors[0].parts.empty());
+    auto& compound = list.selectors[0].parts[0].compound;
+    ASSERT_FALSE(compound.simple_selectors.empty());
+    EXPECT_EQ(compound.simple_selectors[0].type, SimpleSelectorType::Class);
+    EXPECT_EQ(compound.simple_selectors[0].value, "container");
+}
+
+// Selector: type name extracted
+TEST_F(CSSSelectorTest, TypeNameExtracted) {
+    auto list = parse_selector_list("section");
+    ASSERT_EQ(list.selectors.size(), 1u);
+    ASSERT_FALSE(list.selectors[0].parts.empty());
+    auto& compound = list.selectors[0].parts[0].compound;
+    ASSERT_FALSE(compound.simple_selectors.empty());
+    EXPECT_EQ(compound.simple_selectors[0].type, SimpleSelectorType::Type);
+    EXPECT_EQ(compound.simple_selectors[0].value, "section");
+}
+
+// Stylesheet: overflow property
+TEST_F(CSSStylesheetTest, OverflowHiddenDeclaration) {
+    auto sheet = parse_stylesheet("div { overflow: hidden; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations) {
+        if (d.property == "overflow") { found = true; break; }
+    }
+    EXPECT_TRUE(found);
+}
+
+// Stylesheet: position property
+TEST_F(CSSStylesheetTest, PositionAbsoluteDeclaration) {
+    auto sheet = parse_stylesheet(".popup { position: absolute; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations) {
+        if (d.property == "position") { found = true; break; }
+    }
+    EXPECT_TRUE(found);
+}
