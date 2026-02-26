@@ -14228,3 +14228,58 @@ TEST(JSEngine, ArrayReduceSum) {
     auto result = engine.evaluate(R"([1, 2, 3, 4, 5].reduce(function(acc, x) { return acc + x; }, 0))");
     EXPECT_EQ(result, "15");
 }
+
+// ============================================================================
+// Cycle 669: More JS engine tests
+// ============================================================================
+
+TEST(JSEngine, ObjectEntriesLength) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(Object.entries({a: 1, b: 2, c: 3}).length)");
+    EXPECT_EQ(result, "3");
+}
+
+TEST(JSEngine, ObjectValuesSum) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var vals = Object.values({x: 10, y: 20, z: 30});
+        vals.reduce(function(a, b) { return a + b; }, 0)
+    )");
+    EXPECT_EQ(result, "60");
+}
+
+TEST(JSEngine, ArrayFlatOneLevelDeep) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"([[1, 2], [3, 4]].flat().length)");
+    EXPECT_EQ(result, "4");
+}
+
+TEST(JSEngine, ArrayFlatMapDoubles) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"([1, 2, 3].flatMap(function(x) { return [x, x * 2]; }).length)");
+    EXPECT_EQ(result, "6");
+}
+
+TEST(JSEngine, NumberToFixedTwoDecimalsPi) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"((3.14159).toFixed(2))");
+    EXPECT_EQ(result, "3.14");
+}
+
+TEST(JSEngine, StringTrimRemovesWhitespace) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"("  hello  ".trim())");
+    EXPECT_EQ(result, "hello");
+}
+
+TEST(JSEngine, StringTrimStartRemovesLeading) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"("  hello  ".trimStart())");
+    EXPECT_EQ(result, "hello  ");
+}
+
+TEST(JSEngine, StringTrimEndRemovesTrailing) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"("  hello  ".trimEnd())");
+    EXPECT_EQ(result, "  hello");
+}
