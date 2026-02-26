@@ -511,3 +511,97 @@ TEST(SerializerTest, DeserializerFromRawPointerAndSize) {
     EXPECT_EQ(d.read_u32(), 0xCAFEBABEu);
     EXPECT_FALSE(d.has_remaining());
 }
+
+// ---------------------------------------------------------------------------
+// Cycle 496 — Serializer additional regression tests
+// ---------------------------------------------------------------------------
+
+// u16 boundary values: 0 and UINT16_MAX
+TEST(SerializerTest, RoundTripU16BoundaryValues) {
+    Serializer s;
+    s.write_u16(0u);
+    s.write_u16(std::numeric_limits<uint16_t>::max());
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u16(), 0u);
+    EXPECT_EQ(d.read_u16(), std::numeric_limits<uint16_t>::max());
+    EXPECT_FALSE(d.has_remaining());
+}
+
+// u64 max value round-trip
+TEST(SerializerTest, RoundTripU64MaxValue) {
+    Serializer s;
+    s.write_u64(std::numeric_limits<uint64_t>::max());
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u64(), std::numeric_limits<uint64_t>::max());
+    EXPECT_FALSE(d.has_remaining());
+}
+
+// A regular negative f64 value (not -0.0 or -inf)
+TEST(SerializerTest, RoundTripNegativeF64Regular) {
+    Serializer s;
+    s.write_f64(-3.141592653589793);
+
+    Deserializer d(s.data());
+    EXPECT_DOUBLE_EQ(d.read_f64(), -3.141592653589793);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+// Deserializer constructed from empty vector throws on first read
+TEST(SerializerTest, DeserializerEmptyVectorThrowsOnRead) {
+    std::vector<uint8_t> empty;
+    Deserializer d(empty);
+    EXPECT_THROW(d.read_u8(), std::runtime_error);
+}
+
+// Serializer data() first byte matches the u8 that was written
+TEST(SerializerTest, SerializerDataFirstByteMatchesU8) {
+    Serializer s;
+    s.write_u8(0xABu);
+    ASSERT_GE(s.data().size(), 1u);
+    EXPECT_EQ(s.data()[0], static_cast<uint8_t>(0xABu));
+}
+
+// All zero numeric values round-trip correctly
+TEST(SerializerTest, RoundTripAllZeroNumericValues) {
+    Serializer s;
+    s.write_u8(0);
+    s.write_u16(0);
+    s.write_u32(0);
+    s.write_u64(0);
+    s.write_i32(0);
+    s.write_i64(0);
+    s.write_f64(0.0);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u8(), 0u);
+    EXPECT_EQ(d.read_u16(), 0u);
+    EXPECT_EQ(d.read_u32(), 0u);
+    EXPECT_EQ(d.read_u64(), 0u);
+    EXPECT_EQ(d.read_i32(), 0);
+    EXPECT_EQ(d.read_i64(), 0);
+    EXPECT_DOUBLE_EQ(d.read_f64(), 0.0);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+// Serializer data size equals sum of individual type sizes
+TEST(SerializerTest, SerializerSizeMatchesTypeSizes) {
+    Serializer s;
+    s.write_u8(1);   // 1 byte
+    s.write_u32(2);  // 4 bytes
+    // Total = 5 bytes
+    EXPECT_EQ(s.data().size(), 5u);
+}
+
+// String with special/escape characters round-trips intact
+TEST(SerializerTest, RoundTripStringWithSpecialChars) {
+    std::string special = "hello\nworld\t!\r\nend";
+    Serializer s;
+    s.write_string(special);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), special);
+    EXPECT_FALSE(d.has_remaining());
+}
+
