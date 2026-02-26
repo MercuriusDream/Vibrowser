@@ -11286,3 +11286,177 @@ TEST(PropertyCascadeTest, AllPropertyAndScrollPaddingLogical) {
     EXPECT_FLOAT_EQ(style.scroll_padding_left, 4.0f);
     EXPECT_FLOAT_EQ(style.scroll_padding_right, 4.0f);
 }
+
+// ---------------------------------------------------------------------------
+// Cycle 480 — border-image shorthand, stroke-dashoffset (no-op), initial/
+//             inherit keyword cascade, custom properties, unset no-op
+// ---------------------------------------------------------------------------
+
+TEST(PropertyCascadeTest, BorderImageShorthand) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    // border-image: none clears the source
+    style.border_image_source = "url(prev.png)";
+    cascade.apply_declaration(style, make_decl("border-image", "none"), parent);
+    EXPECT_TRUE(style.border_image_source.empty());
+
+    // border-image: url() sets source and parses remainder
+    cascade.apply_declaration(style, make_decl("border-image", "url(border.png) 30 round"), parent);
+    EXPECT_EQ(style.border_image_source, "url(border.png)");
+    EXPECT_FLOAT_EQ(style.border_image_slice, 30.0f);
+    EXPECT_EQ(style.border_image_repeat, 2);  // round = 2
+}
+
+TEST(PropertyCascadeTest, StrokeDashoffsetNoOp) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    // stroke-dashoffset is a no-op in the cascade (parsed at render time)
+    // Just verify it doesn't crash and leaves all properties unchanged.
+    float orig_opacity = style.opacity;
+    cascade.apply_declaration(style, make_decl("stroke-dashoffset", "5px"), parent);
+    EXPECT_FLOAT_EQ(style.opacity, orig_opacity);  // nothing changed
+}
+
+TEST(PropertyCascadeTest, InitialKeywordResets) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    // Set some non-initial values first
+    style.background_color = Color{255, 0, 0, 255};
+    style.opacity = 0.5f;
+    style.z_index = 10;
+    style.flex_direction = FlexDirection::Column;
+
+    // initial resets to CSS initial values
+    cascade.apply_declaration(style, make_decl("background-color", "initial"), parent);
+    EXPECT_EQ(style.background_color.a, 0);  // transparent
+
+    cascade.apply_declaration(style, make_decl("opacity", "initial"), parent);
+    EXPECT_FLOAT_EQ(style.opacity, 1.0f);
+
+    cascade.apply_declaration(style, make_decl("z-index", "initial"), parent);
+    EXPECT_EQ(style.z_index, 0);
+
+    cascade.apply_declaration(style, make_decl("flex-direction", "initial"), parent);
+    EXPECT_EQ(style.flex_direction, FlexDirection::Row);
+}
+
+TEST(PropertyCascadeTest, InitialKeywordForBoxModel) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    // Set non-initial values
+    style.width = Length::px(200.0f);
+    style.margin.top = Length::px(20.0f);
+    style.padding.left = Length::px(10.0f);
+    style.box_sizing = BoxSizing::BorderBox;
+
+    cascade.apply_declaration(style, make_decl("width", "initial"), parent);
+    EXPECT_TRUE(style.width.is_auto());
+
+    cascade.apply_declaration(style, make_decl("margin-top", "initial"), parent);
+    EXPECT_FLOAT_EQ(style.margin.top.to_px(), 0.0f);
+
+    cascade.apply_declaration(style, make_decl("padding-left", "initial"), parent);
+    EXPECT_FLOAT_EQ(style.padding.left.to_px(), 0.0f);
+
+    cascade.apply_declaration(style, make_decl("box-sizing", "initial"), parent);
+    EXPECT_EQ(style.box_sizing, BoxSizing::ContentBox);
+}
+
+TEST(PropertyCascadeTest, InheritKeywordForInheritedProps) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    // Set parent values
+    parent.color = Color{0, 128, 255, 255};
+    parent.font_size = Length::px(24.0f);
+    parent.cursor = Cursor::Pointer;
+    parent.direction = Direction::Rtl;
+
+    cascade.apply_declaration(style, make_decl("color", "inherit"), parent);
+    EXPECT_EQ(style.color.g, 128);
+    EXPECT_EQ(style.color.b, 255);
+
+    cascade.apply_declaration(style, make_decl("font-size", "inherit"), parent);
+    EXPECT_FLOAT_EQ(style.font_size.to_px(), 24.0f);
+
+    cascade.apply_declaration(style, make_decl("cursor", "inherit"), parent);
+    EXPECT_EQ(style.cursor, Cursor::Pointer);
+
+    cascade.apply_declaration(style, make_decl("direction", "inherit"), parent);
+    EXPECT_EQ(style.direction, Direction::Rtl);
+}
+
+TEST(PropertyCascadeTest, InheritKeywordForNonInheritedProps) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    // Force non-inherited properties to inherit from parent
+    parent.background_color = Color{255, 0, 0, 255};
+    parent.overflow_x = Overflow::Hidden;
+    parent.z_index = 99;
+    parent.width = Length::px(300.0f);
+
+    cascade.apply_declaration(style, make_decl("background-color", "inherit"), parent);
+    EXPECT_EQ(style.background_color.r, 255);
+    EXPECT_EQ(style.background_color.a, 255);
+
+    cascade.apply_declaration(style, make_decl("overflow-x", "inherit"), parent);
+    EXPECT_EQ(style.overflow_x, Overflow::Hidden);
+
+    cascade.apply_declaration(style, make_decl("z-index", "inherit"), parent);
+    EXPECT_EQ(style.z_index, 99);
+
+    cascade.apply_declaration(style, make_decl("width", "inherit"), parent);
+    EXPECT_FLOAT_EQ(style.width.to_px(), 300.0f);
+}
+
+TEST(PropertyCascadeTest, CssCustomPropertyStorage) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_TRUE(style.custom_properties.empty());
+
+    cascade.apply_declaration(style, make_decl("--primary-color", "blue"), parent);
+    EXPECT_EQ(style.custom_properties["--primary-color"], "blue");
+
+    cascade.apply_declaration(style, make_decl("--font-size-base", "16px"), parent);
+    EXPECT_EQ(style.custom_properties["--font-size-base"], "16px");
+
+    // Overwrite an existing custom property
+    cascade.apply_declaration(style, make_decl("--primary-color", "red"), parent);
+    EXPECT_EQ(style.custom_properties["--primary-color"], "red");
+
+    EXPECT_EQ(style.custom_properties.size(), 2u);
+}
+
+TEST(PropertyCascadeTest, UnsetAndRevertAreNoOps) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    // Set some specific values
+    style.opacity = 0.7f;
+    style.z_index = 5;
+
+    // unset on non-all is a no-op for non-inherited props in this engine
+    cascade.apply_declaration(style, make_decl("opacity", "unset"), parent);
+    EXPECT_FLOAT_EQ(style.opacity, 0.7f);  // unchanged
+
+    cascade.apply_declaration(style, make_decl("z-index", "unset"), parent);
+    EXPECT_EQ(style.z_index, 5);  // unchanged
+
+    // revert is also treated as no-op
+    cascade.apply_declaration(style, make_decl("opacity", "revert"), parent);
+    EXPECT_FLOAT_EQ(style.opacity, 0.7f);  // unchanged
+}
