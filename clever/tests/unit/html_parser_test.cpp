@@ -2331,3 +2331,67 @@ TEST(TreeBuilder, StrongElementWithBoldText) {
     ASSERT_NE(strong, nullptr);
     EXPECT_EQ(strong->text_content(), "bold text");
 }
+
+// ============================================================================
+// Cycle 643: More HTML parser tests
+// ============================================================================
+
+TEST(TreeBuilder, CodeWithJsContent) {
+    auto doc = parse(R"(<body><code>var x = 1;</code></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* code = doc->find_element("code");
+    ASSERT_NE(code, nullptr);
+    EXPECT_EQ(code->text_content(), "var x = 1;");
+}
+
+TEST(TreeBuilder, PreformattedIndentedText) {
+    auto doc = parse(R"(<body><pre>  indented</pre></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* pre = doc->find_element("pre");
+    ASSERT_NE(pre, nullptr);
+}
+
+TEST(TreeBuilder, BlockquoteWithParagraph) {
+    auto doc = parse(R"(<body><blockquote><p>quote</p></blockquote></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* bq = doc->find_element("blockquote");
+    ASSERT_NE(bq, nullptr);
+}
+
+TEST(TreeBuilder, AbbrWithTitleAttribute) {
+    auto doc = parse(R"(<body><abbr title="HyperText Markup Language">HTML</abbr></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* abbr = doc->find_element("abbr");
+    ASSERT_NE(abbr, nullptr);
+    EXPECT_EQ(abbr->text_content(), "HTML");
+}
+
+TEST(TreeBuilder, SmallWithFinePrint) {
+    auto doc = parse(R"(<body><small>fine print</small></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* small = doc->find_element("small");
+    ASSERT_NE(small, nullptr);
+}
+
+TEST(TreeBuilder, MarkHighlightedText) {
+    auto doc = parse(R"(<body><mark>highlighted</mark></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* mark = doc->find_element("mark");
+    ASSERT_NE(mark, nullptr);
+    EXPECT_EQ(mark->text_content(), "highlighted");
+}
+
+TEST(TreeBuilder, TimeNewYearDatetime) {
+    auto doc = parse(R"(<body><time datetime="2024-01-01">New Year</time></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* time = doc->find_element("time");
+    ASSERT_NE(time, nullptr);
+}
+
+TEST(TreeBuilder, KbdCtrlC) {
+    auto doc = parse(R"(<body><kbd>Ctrl+C</kbd></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* kbd = doc->find_element("kbd");
+    ASSERT_NE(kbd, nullptr);
+    EXPECT_EQ(kbd->text_content(), "Ctrl+C");
+}
