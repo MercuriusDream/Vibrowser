@@ -39143,6 +39143,27 @@ TEST(WebFontRegistration, PreferredFontSourceRejectsMalformedFormatListWithExtra
     EXPECT_TRUE(extract_preferred_font_url(src).empty());
 }
 
+TEST(WebFontRegistration, PreferredFontSourceRejectsDuplicateUrlDescriptorsInSingleEntry) {
+    const std::string src =
+        "url(\"one.woff2\") url(\"two.woff\") format('woff2'), "
+        "url(\"fallback.woff\") format('woff')";
+    EXPECT_EQ(extract_preferred_font_url(src), "fallback.woff");
+}
+
+TEST(WebFontRegistration, PreferredFontSourceRejectsDuplicateFormatDescriptorsInSingleEntry) {
+    const std::string src =
+        "url(\"one.woff2\") format('woff2') format('woff'), "
+        "url(\"fallback.woff\") format('woff')";
+    EXPECT_EQ(extract_preferred_font_url(src), "fallback.woff");
+}
+
+TEST(WebFontRegistration, PreferredFontSourceRejectsDuplicateTechDescriptorsInSingleEntry) {
+    const std::string src =
+        "url(\"one.woff2\") format('woff2-variations') tech('variations') tech('color-colrv1'), "
+        "url(\"fallback.woff\") format('woff')";
+    EXPECT_EQ(extract_preferred_font_url(src), "fallback.woff");
+}
+
 TEST(WebFontRegistration, PreferredFontSourceEmptyWhenNoUrlExists) {
     EXPECT_TRUE(extract_preferred_font_url("local('Arial'), local('Helvetica')").empty());
 }

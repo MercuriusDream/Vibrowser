@@ -220,6 +220,50 @@ std::string extract_preferred_font_url(const std::string& src) {
                                  const std::string& function_name) -> bool {
         return find_function_open(entry, function_name).has_value();
     };
+    auto count_function_calls = [&](const std::string& entry,
+                                    const std::string& function_name) -> size_t {
+        const std::string lower_entry = to_lower(entry);
+        const std::string lower_function_name = to_lower(function_name);
+        size_t count = 0;
+        bool in_single = false;
+        bool in_double = false;
+        int depth = 0;
+
+        for (size_t i = 0; i < lower_entry.size(); ++i) {
+            const char ch = lower_entry[i];
+            if (ch == '"' && !in_single) {
+                in_double = !in_double;
+                continue;
+            }
+            if (ch == '\'' && !in_double) {
+                in_single = !in_single;
+                continue;
+            }
+            if (in_single || in_double) continue;
+
+            if (ch == '(') {
+                depth++;
+                continue;
+            }
+            if (ch == ')') {
+                if (depth > 0) depth--;
+                continue;
+            }
+
+            if (depth != 0) continue;
+            if (i + lower_function_name.size() >= lower_entry.size()) continue;
+            if (lower_entry.compare(i, lower_function_name.size(), lower_function_name) != 0) continue;
+
+            const size_t after_name = i + lower_function_name.size();
+            if (after_name >= lower_entry.size() || lower_entry[after_name] != '(') continue;
+            if (i > 0) {
+                const unsigned char prev = static_cast<unsigned char>(lower_entry[i - 1]);
+                if (std::isalnum(prev) || lower_entry[i - 1] == '-' || lower_entry[i - 1] == '_') continue;
+            }
+            count++;
+        }
+        return count;
+    };
 
     auto split_csv_tokens = [&](const std::string& value) -> std::vector<std::string> {
         std::vector<std::string> tokens;
@@ -333,6 +377,10 @@ std::string extract_preferred_font_url(const std::string& src) {
     }
 
     for (const auto& entry : entries) {
+        if (count_function_calls(entry, "url") > 1) continue;
+        if (count_function_calls(entry, "format") > 1) continue;
+        if (count_function_calls(entry, "tech") > 1) continue;
+
         std::string url = trim(parse_function_arg(entry, "url"));
         if (url.size() >= 2 &&
             ((url.front() == '"' && url.back() == '"') ||
