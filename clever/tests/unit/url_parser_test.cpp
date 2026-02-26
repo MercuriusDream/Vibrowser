@@ -1347,3 +1347,69 @@ TEST(URLParser, HostIsParsed) {
         SUCCEED();
     }
 }
+
+// ============================================================================
+// Cycle 620: More URL parser tests
+// ============================================================================
+
+// URL: scheme is lowercased
+TEST(URLParser, SchemeIsLowercase) {
+    auto result = parse("https://example.com/");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+}
+
+// URL: multi-query parameters
+TEST(URLParser, MultiQueryParams) {
+    auto result = parse("https://example.com/?a=1&b=2&c=3");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_NE(result->query.find("a"), std::string::npos);
+    EXPECT_NE(result->query.find("b"), std::string::npos);
+}
+
+// URL: empty query string
+TEST(URLParser, EmptyQueryString) {
+    auto result = parse("https://example.com/?");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_TRUE(result->query.empty());
+}
+
+// URL: path with encoded space
+TEST(URLParser, PathWithEncodedPercent) {
+    auto result = parse("https://example.com/hello%20world");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_FALSE(result->path.empty());
+}
+
+// URL: port 3000 extraction
+TEST(URLParser, Port3000Extracted) {
+    auto result = parse("http://dev.local:3000/");
+    ASSERT_TRUE(result.has_value());
+    ASSERT_TRUE(result->port.has_value());
+    EXPECT_EQ(*result->port, 3000u);
+}
+
+// URL: different ports not same origin
+TEST(URLParser, DifferentPortsNotSameOrigin) {
+    auto a = parse("http://example.com:3000/");
+    auto b = parse("http://example.com:4000/");
+    ASSERT_TRUE(a.has_value());
+    ASSERT_TRUE(b.has_value());
+    EXPECT_FALSE(urls_same_origin(*a, *b));
+}
+
+// URL: scheme not in serialization for relative path  
+TEST(URLParser, SerializeContainsSchemeAndHost) {
+    auto result = parse("https://example.org/path");
+    ASSERT_TRUE(result.has_value());
+    auto s = result->serialize();
+    EXPECT_NE(s.find("https"), std::string::npos);
+    EXPECT_NE(s.find("example.org"), std::string::npos);
+}
+
+// URL: username empty when not provided
+TEST(URLParser, UsernameEmptyByDefault) {
+    auto result = parse("https://example.com/");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_TRUE(result->username.empty());
+}
