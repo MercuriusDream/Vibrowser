@@ -1124,12 +1124,10 @@ bool contains_chunked_encoding(const std::string& transfer_encoding_header) {
     if (coding.empty()) {
       return false;
     }
-    if (coding == "chunked") {
-      if (semicolon != std::string::npos) {
-        return false;
-      }
-      found_chunked = true;
+    if (coding != "chunked" || semicolon != std::string::npos) {
+      return false;
     }
+    found_chunked = true;
     if (comma == std::string::npos) {
       break;
     }
@@ -1730,7 +1728,12 @@ Response fetch_once(const Url& url,
   }
 
   const auto transfer_it = response.headers.find("transfer-encoding");
-  if (transfer_it != response.headers.end() && contains_chunked_encoding(transfer_it->second)) {
+  if (transfer_it != response.headers.end()) {
+    if (!contains_chunked_encoding(transfer_it->second)) {
+      response.error =
+          "Unsupported or malformed Transfer-Encoding header; only single-token chunked is supported";
+      return response;
+    }
     if (!decode_chunked_body(connection, buffer, response.body, err)) {
       response.error = err;
       return response;

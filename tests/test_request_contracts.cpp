@@ -597,11 +597,14 @@ int main() {
         if (!browser::net::is_chunked_transfer_encoding("chunked")) {
             std::cerr << "FAIL: expected chunked transfer-encoding token to be detected\n";
             ++failures;
-        } else if (!browser::net::is_chunked_transfer_encoding("gzip, chunked")) {
-            std::cerr << "FAIL: expected comma-delimited chunked transfer-encoding token to be detected\n";
+        } else if (browser::net::is_chunked_transfer_encoding("gzip, chunked")) {
+            std::cerr << "FAIL: expected unsupported transfer-coding chain to be rejected\n";
             ++failures;
-        } else if (!browser::net::is_chunked_transfer_encoding("GZIP,   CHUNKED  ")) {
-            std::cerr << "FAIL: expected case-insensitive chunked transfer-encoding detection\n";
+        } else if (browser::net::is_chunked_transfer_encoding("GZIP,   CHUNKED  ")) {
+            std::cerr << "FAIL: expected case-insensitive unsupported transfer-coding chain to be rejected\n";
+            ++failures;
+        } else if (browser::net::is_chunked_transfer_encoding("gzip")) {
+            std::cerr << "FAIL: expected unsupported non-chunked transfer-coding to be rejected\n";
             ++failures;
         } else if (browser::net::is_chunked_transfer_encoding("notchunked")) {
             std::cerr << "FAIL: expected substring-only match to be rejected for chunked transfer-encoding\n";
