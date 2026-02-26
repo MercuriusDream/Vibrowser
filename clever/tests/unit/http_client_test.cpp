@@ -1996,3 +1996,126 @@ TEST(CacheControlTest, ParseNoStoreAndPrivate) {
     EXPECT_TRUE(cc.is_private);
     EXPECT_FALSE(cc.is_public);
 }
+
+// ============================================================================
+// Cycle 498: additional regression tests
+// ============================================================================
+
+// ---------------------------------------------------------------------------
+// HeaderMap: iteration exposes lowercase keys
+// ---------------------------------------------------------------------------
+TEST(HeaderMapTest, IterationKeysAreLowercase) {
+    HeaderMap map;
+    map.set("X-Custom-Header", "my-value");
+    bool found = false;
+    for (auto& [key, val] : map) {
+        if (val == "my-value") {
+            EXPECT_EQ(key, "x-custom-header");
+            found = true;
+        }
+    }
+    EXPECT_TRUE(found);
+}
+
+// ---------------------------------------------------------------------------
+// HeaderMap: empty() returns true after all entries removed
+// ---------------------------------------------------------------------------
+TEST(HeaderMapTest, EmptyAfterAllEntriesRemoved) {
+    HeaderMap map;
+    map.set("x-a", "1");
+    map.set("x-b", "2");
+    EXPECT_EQ(map.size(), 2u);
+    EXPECT_FALSE(map.empty());
+    map.remove("x-a");
+    map.remove("x-b");
+    EXPECT_TRUE(map.empty());
+    EXPECT_EQ(map.size(), 0u);
+}
+
+// ---------------------------------------------------------------------------
+// CookieJar: cookie with empty value is stored and sent
+// ---------------------------------------------------------------------------
+TEST(CookieJarTest, CookieWithEmptyValue) {
+    CookieJar jar;
+    jar.set_from_header("token=", "example.com");
+    EXPECT_EQ(jar.size(), 1u);
+    std::string header = jar.get_cookie_header("example.com", "/", false);
+    EXPECT_NE(header.find("token="), std::string::npos);
+}
+
+// ---------------------------------------------------------------------------
+// CookieJar: HttpOnly attribute does NOT prevent sending the cookie
+// ---------------------------------------------------------------------------
+TEST(CookieJarTest, HttpOnlyCookieIncludedInRequests) {
+    CookieJar jar;
+    // HttpOnly prevents JS access but the browser still sends it in HTTP requests
+    jar.set_from_header("session=secret; HttpOnly", "example.com");
+    EXPECT_EQ(jar.size(), 1u);
+    std::string header = jar.get_cookie_header("example.com", "/", false);
+    EXPECT_EQ(header, "session=secret");
+}
+
+// ---------------------------------------------------------------------------
+// Request: HEAD method serializes correctly
+// ---------------------------------------------------------------------------
+TEST(RequestTest, SerializeHeadRequest) {
+    Request req;
+    req.method = Method::HEAD;
+    req.host = "example.com";
+    req.port = 80;
+    req.path = "/index.html";
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    EXPECT_NE(result.find("HEAD /index.html HTTP/1.1\r\n"), std::string::npos);
+}
+
+// ---------------------------------------------------------------------------
+// CacheControl: "public" directive alone sets is_public
+// ---------------------------------------------------------------------------
+TEST(CacheControlTest, ParsePublicDirectiveAlone) {
+    auto cc = parse_cache_control("public");
+    EXPECT_TRUE(cc.is_public);
+    EXPECT_FALSE(cc.is_private);
+    EXPECT_FALSE(cc.no_cache);
+    EXPECT_FALSE(cc.no_store);
+    EXPECT_EQ(cc.max_age, -1);
+}
+
+// ---------------------------------------------------------------------------
+// HttpCache: entry_count updates after store and remove
+// ---------------------------------------------------------------------------
+TEST(HttpCacheTest, EntryCountAfterStoreAndRemove) {
+    auto& cache = HttpCache::instance();
+    cache.clear();
+    EXPECT_EQ(cache.entry_count(), 0u);
+
+    CacheEntry entry;
+    entry.url = "https://example.com/ec-test";
+    entry.body = "data";
+    entry.status = 200;
+    entry.stored_at = std::chrono::steady_clock::now();
+    cache.store(entry);
+    EXPECT_EQ(cache.entry_count(), 1u);
+
+    cache.remove("https://example.com/ec-test");
+    EXPECT_EQ(cache.entry_count(), 0u);
+}
+
+// ---------------------------------------------------------------------------
+// Response: multi-word status text is parsed correctly
+// ---------------------------------------------------------------------------
+TEST(ResponseTest, ParseResponseThreeWordStatusText) {
+    std::string raw =
+        "HTTP/1.1 503 Service Unavailable\r\n"
+        "Content-Length: 0\r\n"
+        "\r\n";
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 503);
+    EXPECT_EQ(resp->status_text, "Service Unavailable");
+}
