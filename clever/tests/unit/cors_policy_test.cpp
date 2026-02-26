@@ -251,6 +251,11 @@ TEST(CORSPolicyTest, CrossOriginRejectsMalformedACAOValue) {
     EXPECT_FALSE(cors_allows_response("https://app.example", "https://api.example/data",
                                       invalid_dotted_ipv4, false));
 
+    clever::net::HeaderMap noncanonical_dotted_ipv4;
+    noncanonical_dotted_ipv4.set("Access-Control-Allow-Origin", "https://001.2.3.4");
+    EXPECT_FALSE(cors_allows_response("https://app.example", "https://api.example/data",
+                                      noncanonical_dotted_ipv4, false));
+
     clever::net::HeaderMap surrounding_whitespace_acao;
     surrounding_whitespace_acao.set("Access-Control-Allow-Origin", " https://app.example");
     EXPECT_FALSE(cors_allows_response("https://app.example", "https://api.example/data",

@@ -517,6 +517,31 @@ bool parse_serialized_origin(const std::string& value, std::string& canonical_or
       }
     }
     if (dotted_decimal_candidate && dot_count == 3) {
+      std::size_t octet_start = 0;
+      while (octet_start <= parsed_host.size()) {
+        const std::size_t dot_pos = parsed_host.find('.', octet_start);
+        const std::size_t octet_end =
+            (dot_pos == std::string::npos) ? parsed_host.size() : dot_pos;
+        const std::size_t octet_len = octet_end - octet_start;
+        if (octet_len == 0 || octet_len > 3) {
+          return false;
+        }
+        if (octet_len > 1 && parsed_host[octet_start] == '0') {
+          return false;
+        }
+        int octet_value = 0;
+        for (std::size_t i = octet_start; i < octet_end; ++i) {
+          octet_value = (octet_value * 10) +
+                        (static_cast<int>(parsed_host[i]) - static_cast<int>('0'));
+        }
+        if (octet_value > 255) {
+          return false;
+        }
+        if (dot_pos == std::string::npos) {
+          break;
+        }
+        octet_start = dot_pos + 1;
+      }
       in_addr ipv4_addr {};
       if (inet_pton(AF_INET, parsed_host.c_str(), &ipv4_addr) != 1) {
         return false;
