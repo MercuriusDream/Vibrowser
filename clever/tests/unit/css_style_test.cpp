@@ -6876,3 +6876,159 @@ TEST(PropertyCascadeTest, TransformBoxValues) {
     cascade.apply_declaration(style, make_decl("transform-box", "border-box"), parent);
     EXPECT_EQ(style.transform_box, 1);
 }
+
+// ---------------------------------------------------------------------------
+// Cycle 451 — CSS font advanced: font-variant, font-variant-caps,
+//             font-variant-numeric, font-feature-settings, font-variation-settings,
+//             font-optical-sizing, font-kerning, font-stretch,
+//             font-variant-ligatures
+// ---------------------------------------------------------------------------
+
+TEST(PropertyCascadeTest, FontVariantSmallCaps) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.font_variant, 0);  // default: normal
+
+    cascade.apply_declaration(style, make_decl("font-variant", "small-caps"), parent);
+    EXPECT_EQ(style.font_variant, 1);
+
+    cascade.apply_declaration(style, make_decl("font-variant", "normal"), parent);
+    EXPECT_EQ(style.font_variant, 0);
+}
+
+TEST(PropertyCascadeTest, FontVariantCapsValues) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.font_variant_caps, 0);  // default: normal
+
+    cascade.apply_declaration(style, make_decl("font-variant-caps", "small-caps"), parent);
+    EXPECT_EQ(style.font_variant_caps, 1);
+
+    cascade.apply_declaration(style, make_decl("font-variant-caps", "all-small-caps"), parent);
+    EXPECT_EQ(style.font_variant_caps, 2);
+
+    cascade.apply_declaration(style, make_decl("font-variant-caps", "petite-caps"), parent);
+    EXPECT_EQ(style.font_variant_caps, 3);
+
+    cascade.apply_declaration(style, make_decl("font-variant-caps", "titling-caps"), parent);
+    EXPECT_EQ(style.font_variant_caps, 6);
+
+    cascade.apply_declaration(style, make_decl("font-variant-caps", "normal"), parent);
+    EXPECT_EQ(style.font_variant_caps, 0);
+}
+
+TEST(PropertyCascadeTest, FontVariantNumericValues) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.font_variant_numeric, 0);  // default: normal
+
+    cascade.apply_declaration(style, make_decl("font-variant-numeric", "ordinal"), parent);
+    EXPECT_EQ(style.font_variant_numeric, 1);
+
+    cascade.apply_declaration(style, make_decl("font-variant-numeric", "slashed-zero"), parent);
+    EXPECT_EQ(style.font_variant_numeric, 2);
+
+    cascade.apply_declaration(style, make_decl("font-variant-numeric", "lining-nums"), parent);
+    EXPECT_EQ(style.font_variant_numeric, 3);
+
+    cascade.apply_declaration(style, make_decl("font-variant-numeric", "tabular-nums"), parent);
+    EXPECT_EQ(style.font_variant_numeric, 6);
+}
+
+TEST(PropertyCascadeTest, FontFeatureAndVariationSettings) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_TRUE(style.font_feature_settings.empty());
+    EXPECT_TRUE(style.font_variation_settings.empty());
+
+    cascade.apply_declaration(style, make_decl("font-feature-settings", "\"kern\" 1, \"liga\" 0"), parent);
+    EXPECT_EQ(style.font_feature_settings, "\"kern\" 1, \"liga\" 0");
+
+    cascade.apply_declaration(style, make_decl("font-variation-settings", "\"wght\" 700"), parent);
+    EXPECT_EQ(style.font_variation_settings, "\"wght\" 700");
+}
+
+TEST(PropertyCascadeTest, FontOpticalSizing) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.font_optical_sizing, 0);  // default: auto
+
+    cascade.apply_declaration(style, make_decl("font-optical-sizing", "none"), parent);
+    EXPECT_EQ(style.font_optical_sizing, 1);
+
+    cascade.apply_declaration(style, make_decl("font-optical-sizing", "auto"), parent);
+    EXPECT_EQ(style.font_optical_sizing, 0);
+}
+
+TEST(PropertyCascadeTest, FontKerningValues) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.font_kerning, 0);  // default: auto
+
+    cascade.apply_declaration(style, make_decl("font-kerning", "normal"), parent);
+    EXPECT_EQ(style.font_kerning, 1);
+
+    cascade.apply_declaration(style, make_decl("font-kerning", "none"), parent);
+    EXPECT_EQ(style.font_kerning, 2);
+
+    cascade.apply_declaration(style, make_decl("font-kerning", "auto"), parent);
+    EXPECT_EQ(style.font_kerning, 0);
+}
+
+TEST(PropertyCascadeTest, FontStretchValues) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.font_stretch, 5);  // default: normal
+
+    cascade.apply_declaration(style, make_decl("font-stretch", "condensed"), parent);
+    EXPECT_EQ(style.font_stretch, 3);
+
+    cascade.apply_declaration(style, make_decl("font-stretch", "ultra-condensed"), parent);
+    EXPECT_EQ(style.font_stretch, 1);
+
+    cascade.apply_declaration(style, make_decl("font-stretch", "expanded"), parent);
+    EXPECT_EQ(style.font_stretch, 7);
+
+    cascade.apply_declaration(style, make_decl("font-stretch", "ultra-expanded"), parent);
+    EXPECT_EQ(style.font_stretch, 9);
+
+    cascade.apply_declaration(style, make_decl("font-stretch", "normal"), parent);
+    EXPECT_EQ(style.font_stretch, 5);
+}
+
+TEST(PropertyCascadeTest, FontVariantLigatures) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.font_variant_ligatures, 0);  // default: normal
+
+    cascade.apply_declaration(style, make_decl("font-variant-ligatures", "none"), parent);
+    EXPECT_EQ(style.font_variant_ligatures, 1);
+
+    cascade.apply_declaration(style, make_decl("font-variant-ligatures", "common-ligatures"), parent);
+    EXPECT_EQ(style.font_variant_ligatures, 2);
+
+    cascade.apply_declaration(style, make_decl("font-variant-ligatures", "no-common-ligatures"), parent);
+    EXPECT_EQ(style.font_variant_ligatures, 3);
+
+    cascade.apply_declaration(style, make_decl("font-variant-ligatures", "discretionary-ligatures"), parent);
+    EXPECT_EQ(style.font_variant_ligatures, 4);
+
+    cascade.apply_declaration(style, make_decl("font-variant-ligatures", "normal"), parent);
+    EXPECT_EQ(style.font_variant_ligatures, 0);
+}
