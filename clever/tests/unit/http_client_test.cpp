@@ -2818,3 +2818,80 @@ TEST(ResponseTest, BodyEmptyFor204) {
     ASSERT_TRUE(resp.has_value());
     EXPECT_TRUE(resp->body.empty());
 }
+
+// ============================================================================
+// Cycle 638: More HTTP/Net tests
+// ============================================================================
+
+// Response: parse 200 OK status code
+TEST(ResponseTest, Parse200OKStatus) {
+    std::string raw = "HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 200);
+}
+
+// Response: parse 404 Not Found status text verification
+TEST(ResponseTest, Parse404NotFoundStatusText) {
+    std::string raw = "HTTP/1.1 404 Not Found\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 404);
+    EXPECT_EQ(resp->status_text, "Not Found");
+}
+
+// Response: header Content-Type accessible
+TEST(ResponseTest, ContentTypeHeaderAccessible) {
+    std::string raw = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    auto ct = resp->headers.get("Content-Type");
+    ASSERT_TRUE(ct.has_value());
+    EXPECT_EQ(ct.value(), "application/json");
+}
+
+// Response: body_as_string with text response
+TEST(ResponseTest, BodyAsStringTextResponse) {
+    std::string raw = "HTTP/1.1 200 OK\r\n\r\nhello";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->body_as_string(), "hello");
+}
+
+// HeaderMap: set multiple then clear one
+TEST(HeaderMapTest, SetMultipleThenRemoveOne) {
+    HeaderMap map;
+    map.set("a", "1");
+    map.set("b", "2");
+    map.set("c", "3");
+    map.remove("b");
+    EXPECT_TRUE(map.has("a"));
+    EXPECT_FALSE(map.has("b"));
+    EXPECT_TRUE(map.has("c"));
+}
+
+// HeaderMap: overwrite existing key preserves case insensitivity
+TEST(HeaderMapTest, OverwriteKeyPreservesCaseInsensitivity) {
+    HeaderMap map;
+    map.set("X-Request-ID", "abc");
+    map.set("x-request-id", "xyz");
+    auto val = map.get("X-Request-ID");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(val.value(), "xyz");
+}
+
+// Request: method defaults to GET
+TEST(RequestTest, DefaultMethodIsGet) {
+    Request req;
+    EXPECT_EQ(req.method, Method::GET);
+}
+
+// Request: body initially empty
+TEST(RequestTest, BodyInitiallyEmpty) {
+    Request req;
+    EXPECT_TRUE(req.body.empty());
+}
