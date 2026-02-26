@@ -2280,3 +2280,89 @@ TEST(CookieJarTest, FreshJarSizeIsZero) {
     CookieJar jar;
     EXPECT_EQ(jar.size(), 0u);
 }
+
+// ============================================================================
+// Cycle 545: HTTP/net regression tests
+// ============================================================================
+
+// HeaderMap: has() on three set entries
+TEST(HeaderMapTest, ThreeEntriesAllPresent) {
+    HeaderMap map;
+    map.set("X-One", "1");
+    map.set("X-Two", "2");
+    map.set("X-Three", "3");
+    EXPECT_TRUE(map.has("x-one"));
+    EXPECT_TRUE(map.has("x-two"));
+    EXPECT_TRUE(map.has("x-three"));
+    EXPECT_FALSE(map.empty());
+}
+
+// Response: parse 302 redirect
+TEST(ResponseTest, Parse302Redirect) {
+    std::string raw = "HTTP/1.1 302 Found\r\nLocation: https://example.com/new\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 302);
+    auto loc = resp->headers.get("location");
+    EXPECT_TRUE(loc.has_value());
+}
+
+// Response: parse 500 Internal Server Error
+TEST(ResponseTest, Parse500InternalServerError) {
+    std::string raw = "HTTP/1.1 500 Internal Server Error\r\nContent-Length: 0\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 500);
+}
+
+// CookieJar: set two cookies, size is 2
+TEST(CookieJarTest, SetTwoCookiesSizeIsTwo) {
+    CookieJar jar;
+    jar.set_from_header("cookie1=value1", "example.com");
+    jar.set_from_header("cookie2=value2", "example.com");
+    EXPECT_EQ(jar.size(), 2u);
+}
+
+// Request: HEAD method serializes correctly
+TEST(RequestTest, SerializeHeadRequestMethod) {
+    Request req;
+    req.method = Method::HEAD;
+    req.host = "example.com";
+    req.path = "/";
+    auto raw = req.serialize();
+    std::string s(raw.begin(), raw.end());
+    EXPECT_NE(s.find("HEAD"), std::string::npos);
+}
+
+// Request: serialized output includes host
+TEST(RequestTest, SerializeIncludesHostHeader) {
+    Request req;
+    req.method = Method::GET;
+    req.host = "api.example.com";
+    req.path = "/data";
+    auto raw = req.serialize();
+    std::string s(raw.begin(), raw.end());
+    EXPECT_NE(s.find("api.example.com"), std::string::npos);
+}
+
+// Response: body content is preserved
+TEST(ResponseTest, ResponseBodyPreserved) {
+    std::string raw = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 5\r\n\r\nhello";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    std::string body(resp->body.begin(), resp->body.end());
+    EXPECT_EQ(body, "hello");
+}
+
+// HeaderMap: remove() reduces entries
+TEST(HeaderMapTest, RemoveReducesEntries) {
+    HeaderMap map;
+    map.set("A", "1");
+    map.set("B", "2");
+    map.remove("a");
+    EXPECT_FALSE(map.has("a"));
+    EXPECT_TRUE(map.has("b"));
+}
