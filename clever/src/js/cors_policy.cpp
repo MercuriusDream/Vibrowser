@@ -84,6 +84,10 @@ bool has_strict_authority_port_syntax(std::string_view authority) {
 }
 
 std::optional<clever::url::URL> parse_httpish_url(std::string_view input) {
+    if (input.empty() || has_surrounding_ascii_whitespace(input)) {
+        return std::nullopt;
+    }
+
     auto parsed = clever::url::parse(input);
     if (!parsed.has_value()) {
         return std::nullopt;
