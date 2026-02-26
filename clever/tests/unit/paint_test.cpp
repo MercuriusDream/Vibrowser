@@ -39103,6 +39103,18 @@ TEST(WebFontRegistration, PreferredFontSourceSkipsMalformedTechListWithLeadingCo
     EXPECT_EQ(extract_preferred_font_url(src), "fallback.woff");
 }
 
+TEST(WebFontRegistration, PreferredFontSourceRejectsMalformedSourceListWithDoubleComma) {
+    const std::string src =
+        "url(\"valid.woff2\") format('woff2'),, "
+        "url(\"fallback.woff\") format('woff')";
+    EXPECT_TRUE(extract_preferred_font_url(src).empty());
+}
+
+TEST(WebFontRegistration, PreferredFontSourceRejectsMalformedSourceListWithTrailingComma) {
+    const std::string src = "url(\"valid.woff2\") format('woff2'),";
+    EXPECT_TRUE(extract_preferred_font_url(src).empty());
+}
+
 TEST(WebFontRegistration, PreferredFontSourceEmptyWhenNoUrlExists) {
     EXPECT_TRUE(extract_preferred_font_url("local('Arial'), local('Helvetica')").empty());
 }

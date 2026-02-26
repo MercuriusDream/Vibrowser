@@ -284,6 +284,7 @@ std::string extract_preferred_font_url(const std::string& src) {
 
     std::vector<std::string> entries;
     std::string current;
+    bool saw_separator = false;
     int paren_depth = 0;
     bool in_single = false;
     bool in_double = false;
@@ -302,15 +303,23 @@ std::string extract_preferred_font_url(const std::string& src) {
             if (ch == '(') paren_depth++;
             else if (ch == ')' && paren_depth > 0) paren_depth--;
             if (ch == ',' && paren_depth == 0) {
-                entries.push_back(trim(current));
+                const std::string entry = trim(current);
+                if (entry.empty()) return "";
+                entries.push_back(entry);
                 current.clear();
+                saw_separator = true;
                 continue;
             }
         }
         current.push_back(ch);
     }
-    if (!current.empty()) {
-        entries.push_back(trim(current));
+    const std::string trailing_entry = trim(current);
+    if (saw_separator && trailing_entry.empty()) return "";
+    if (!trailing_entry.empty()) {
+        entries.push_back(trailing_entry);
+    }
+    for (const auto& entry : entries) {
+        if (entry.empty()) return "";
     }
 
     for (const auto& entry : entries) {
