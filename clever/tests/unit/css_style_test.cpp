@@ -5179,3 +5179,226 @@ TEST(SelectorMatcherTest, IsPseudoClass) {
     h4.tag_name = "h4";
     EXPECT_FALSE(matcher.matches(h4, complex));
 }
+
+// ============================================================================
+// Cycle 424: :default pseudo-class (submit button, checked/selected option)
+// ============================================================================
+TEST(SelectorMatcherTest, DefaultPseudoClass) {
+    SelectorMatcher matcher;
+
+    SimpleSelector ss;
+    ss.type = SimpleSelectorType::PseudoClass;
+    ss.value = "default";
+
+    CompoundSelector compound;
+    compound.simple_selectors.push_back(ss);
+    auto complex = make_simple_complex(compound);
+
+    // Submit button is the default button in a form
+    ElementView submit_btn;
+    submit_btn.tag_name = "button";
+    submit_btn.attributes = {{"type", "submit"}};
+    EXPECT_TRUE(matcher.matches(submit_btn, complex));
+
+    // Non-submit button is not the default
+    ElementView reset_btn;
+    reset_btn.tag_name = "button";
+    reset_btn.attributes = {{"type", "reset"}};
+    EXPECT_FALSE(matcher.matches(reset_btn, complex));
+
+    // Option with selected attribute is the default
+    ElementView selected_option;
+    selected_option.tag_name = "option";
+    selected_option.attributes = {{"selected", ""}};
+    EXPECT_TRUE(matcher.matches(selected_option, complex));
+}
+
+// ============================================================================
+// Cycle 424: :valid / :invalid form validation pseudo-classes
+// ============================================================================
+TEST(SelectorMatcherTest, ValidPseudoClass) {
+    SelectorMatcher matcher;
+
+    SimpleSelector ss;
+    ss.type = SimpleSelectorType::PseudoClass;
+    ss.value = "valid";
+
+    CompoundSelector compound;
+    compound.simple_selectors.push_back(ss);
+    auto complex = make_simple_complex(compound);
+
+    // All form elements are valid by default (no constraint validation state)
+    ElementView inp;
+    inp.tag_name = "input";
+    EXPECT_TRUE(matcher.matches(inp, complex));
+
+    ElementView form;
+    form.tag_name = "form";
+    EXPECT_TRUE(matcher.matches(form, complex));
+
+    // Non-form element is not valid
+    ElementView div_elem;
+    div_elem.tag_name = "div";
+    EXPECT_FALSE(matcher.matches(div_elem, complex));
+}
+
+TEST(SelectorMatcherTest, InvalidPseudoClass) {
+    SelectorMatcher matcher;
+
+    SimpleSelector ss;
+    ss.type = SimpleSelectorType::PseudoClass;
+    ss.value = "invalid";
+
+    CompoundSelector compound;
+    compound.simple_selectors.push_back(ss);
+    auto complex = make_simple_complex(compound);
+
+    // Without runtime validation state, all inputs are considered valid — :invalid never matches
+    ElementView inp;
+    inp.tag_name = "input";
+    EXPECT_FALSE(matcher.matches(inp, complex));
+}
+
+// ============================================================================
+// Cycle 424: :where() pseudo-class (same as :is() but zero specificity)
+// ============================================================================
+TEST(SelectorMatcherTest, WherePseudoClass) {
+    SelectorMatcher matcher;
+
+    // :where(h1, h2) should match h1 and h2 elements
+    SimpleSelector ss;
+    ss.type = SimpleSelectorType::PseudoClass;
+    ss.value = "where";
+    ss.argument = "h1, h2";
+
+    CompoundSelector compound;
+    compound.simple_selectors.push_back(ss);
+    auto complex = make_simple_complex(compound);
+
+    ElementView h1;
+    h1.tag_name = "h1";
+    EXPECT_TRUE(matcher.matches(h1, complex));
+
+    ElementView h3;
+    h3.tag_name = "h3";
+    EXPECT_FALSE(matcher.matches(h3, complex));
+}
+
+// ============================================================================
+// Cycle 424: :has() pseudo-class (matches if any descendant matches)
+// ============================================================================
+TEST(SelectorMatcherTest, HasPseudoClass) {
+    SelectorMatcher matcher;
+
+    // :has(img) matches an element containing an img descendant
+    SimpleSelector ss;
+    ss.type = SimpleSelectorType::PseudoClass;
+    ss.value = "has";
+    ss.argument = "img";
+
+    CompoundSelector compound;
+    compound.simple_selectors.push_back(ss);
+    auto complex = make_simple_complex(compound);
+
+    ElementView img_child;
+    img_child.tag_name = "img";
+
+    ElementView container;
+    container.tag_name = "div";
+    container.children = {&img_child};
+    EXPECT_TRUE(matcher.matches(container, complex));
+
+    // Container with no children does not match :has(img)
+    ElementView empty_container;
+    empty_container.tag_name = "div";
+    EXPECT_FALSE(matcher.matches(empty_container, complex));
+}
+
+// ============================================================================
+// Cycle 424: :last-of-type and :only-of-type pseudo-classes
+// ============================================================================
+TEST(SelectorMatcherTest, LastOfTypePseudoClass) {
+    SelectorMatcher matcher;
+
+    SimpleSelector ss;
+    ss.type = SimpleSelectorType::PseudoClass;
+    ss.value = "last-of-type";
+
+    CompoundSelector compound;
+    compound.simple_selectors.push_back(ss);
+    auto complex = make_simple_complex(compound);
+
+    // Element with same_type_index at end of same_type_count is last-of-type
+    ElementView last_p;
+    last_p.tag_name = "p";
+    last_p.same_type_index = 2;
+    last_p.same_type_count = 3;
+    last_p.child_index = 4;
+    last_p.sibling_count = 5;
+    EXPECT_TRUE(matcher.matches(last_p, complex));
+
+    ElementView first_p;
+    first_p.tag_name = "p";
+    first_p.same_type_index = 0;
+    first_p.same_type_count = 3;
+    first_p.child_index = 0;
+    first_p.sibling_count = 5;
+    EXPECT_FALSE(matcher.matches(first_p, complex));
+}
+
+TEST(SelectorMatcherTest, OnlyOfTypePseudoClass) {
+    SelectorMatcher matcher;
+
+    SimpleSelector ss;
+    ss.type = SimpleSelectorType::PseudoClass;
+    ss.value = "only-of-type";
+
+    CompoundSelector compound;
+    compound.simple_selectors.push_back(ss);
+    auto complex = make_simple_complex(compound);
+
+    // Only one p among siblings → only-of-type matches
+    ElementView only_p;
+    only_p.tag_name = "p";
+    only_p.same_type_count = 1;
+    only_p.child_index = 1;
+    only_p.sibling_count = 3;
+    EXPECT_TRUE(matcher.matches(only_p, complex));
+
+    // Two p siblings → not only-of-type
+    ElementView one_of_two_p;
+    one_of_two_p.tag_name = "p";
+    one_of_two_p.same_type_count = 2;
+    one_of_two_p.child_index = 0;
+    one_of_two_p.sibling_count = 3;
+    EXPECT_FALSE(matcher.matches(one_of_two_p, complex));
+}
+
+// ============================================================================
+// Cycle 424: :nth-of-type() pseudo-class
+// ============================================================================
+TEST(SelectorMatcherTest, NthOfTypePseudoClass) {
+    SelectorMatcher matcher;
+
+    // :nth-of-type(2) matches the second element of its type
+    SimpleSelector ss;
+    ss.type = SimpleSelectorType::PseudoClass;
+    ss.value = "nth-of-type";
+    ss.argument = "2";
+
+    CompoundSelector compound;
+    compound.simple_selectors.push_back(ss);
+    auto complex = make_simple_complex(compound);
+
+    ElementView second_p;
+    second_p.tag_name = "p";
+    second_p.same_type_index = 1;  // 0-based → 2nd of type
+    second_p.same_type_count = 3;
+    EXPECT_TRUE(matcher.matches(second_p, complex));
+
+    ElementView first_p;
+    first_p.tag_name = "p";
+    first_p.same_type_index = 0;  // 1st of type — does not match :nth-of-type(2)
+    first_p.same_type_count = 3;
+    EXPECT_FALSE(matcher.matches(first_p, complex));
+}
