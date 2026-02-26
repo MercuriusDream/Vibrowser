@@ -7153,3 +7153,155 @@ TEST(PropertyCascadeTest, BackdropFilter) {
     cascade.apply_declaration(style, make_decl("backdrop-filter", "none"), parent);
     EXPECT_TRUE(style.backdrop_filters.empty());
 }
+
+// ---------------------------------------------------------------------------
+// Cycle 454 — CSS text properties: text-decoration/line/style/color/thickness,
+//             text-transform, white-space, word-break, overflow-wrap
+// ---------------------------------------------------------------------------
+
+TEST(PropertyCascadeTest, TextDecorationLineValues) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.text_decoration, TextDecoration::None);
+
+    cascade.apply_declaration(style, make_decl("text-decoration-line", "underline"), parent);
+    EXPECT_EQ(style.text_decoration, TextDecoration::Underline);
+
+    cascade.apply_declaration(style, make_decl("text-decoration-line", "overline"), parent);
+    EXPECT_EQ(style.text_decoration, TextDecoration::Overline);
+
+    cascade.apply_declaration(style, make_decl("text-decoration-line", "line-through"), parent);
+    EXPECT_EQ(style.text_decoration, TextDecoration::LineThrough);
+
+    cascade.apply_declaration(style, make_decl("text-decoration-line", "none"), parent);
+    EXPECT_EQ(style.text_decoration, TextDecoration::None);
+}
+
+TEST(PropertyCascadeTest, TextDecorationStyleValues) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.text_decoration_style, TextDecorationStyle::Solid);
+
+    cascade.apply_declaration(style, make_decl("text-decoration-style", "dashed"), parent);
+    EXPECT_EQ(style.text_decoration_style, TextDecorationStyle::Dashed);
+
+    cascade.apply_declaration(style, make_decl("text-decoration-style", "dotted"), parent);
+    EXPECT_EQ(style.text_decoration_style, TextDecorationStyle::Dotted);
+
+    cascade.apply_declaration(style, make_decl("text-decoration-style", "wavy"), parent);
+    EXPECT_EQ(style.text_decoration_style, TextDecorationStyle::Wavy);
+
+    cascade.apply_declaration(style, make_decl("text-decoration-style", "double"), parent);
+    EXPECT_EQ(style.text_decoration_style, TextDecorationStyle::Double);
+
+    cascade.apply_declaration(style, make_decl("text-decoration-style", "solid"), parent);
+    EXPECT_EQ(style.text_decoration_style, TextDecorationStyle::Solid);
+}
+
+TEST(PropertyCascadeTest, TextDecorationColorAndThickness) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("text-decoration-color", "blue"), parent);
+    EXPECT_EQ(style.text_decoration_color, (Color{0, 0, 255, 255}));
+
+    cascade.apply_declaration(style, make_decl("text-decoration-thickness", "2px"), parent);
+    EXPECT_FLOAT_EQ(style.text_decoration_thickness, 2.0f);
+}
+
+TEST(PropertyCascadeTest, TextDecorationShorthandUnderlineWavy) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    // "underline wavy red" sets line, style, and color
+    cascade.apply_declaration(style, make_decl("text-decoration", "underline wavy red"), parent);
+    EXPECT_EQ(style.text_decoration, TextDecoration::Underline);
+    EXPECT_EQ(style.text_decoration_style, TextDecorationStyle::Wavy);
+    EXPECT_EQ(style.text_decoration_color, (Color{255, 0, 0, 255}));
+}
+
+TEST(PropertyCascadeTest, TextTransformValues) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.text_transform, TextTransform::None);
+
+    cascade.apply_declaration(style, make_decl("text-transform", "uppercase"), parent);
+    EXPECT_EQ(style.text_transform, TextTransform::Uppercase);
+
+    cascade.apply_declaration(style, make_decl("text-transform", "lowercase"), parent);
+    EXPECT_EQ(style.text_transform, TextTransform::Lowercase);
+
+    cascade.apply_declaration(style, make_decl("text-transform", "capitalize"), parent);
+    EXPECT_EQ(style.text_transform, TextTransform::Capitalize);
+
+    cascade.apply_declaration(style, make_decl("text-transform", "none"), parent);
+    EXPECT_EQ(style.text_transform, TextTransform::None);
+}
+
+TEST(PropertyCascadeTest, WhiteSpaceValues) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.white_space, WhiteSpace::Normal);
+
+    cascade.apply_declaration(style, make_decl("white-space", "nowrap"), parent);
+    EXPECT_EQ(style.white_space, WhiteSpace::NoWrap);
+
+    cascade.apply_declaration(style, make_decl("white-space", "pre"), parent);
+    EXPECT_EQ(style.white_space, WhiteSpace::Pre);
+
+    cascade.apply_declaration(style, make_decl("white-space", "pre-wrap"), parent);
+    EXPECT_EQ(style.white_space, WhiteSpace::PreWrap);
+
+    cascade.apply_declaration(style, make_decl("white-space", "pre-line"), parent);
+    EXPECT_EQ(style.white_space, WhiteSpace::PreLine);
+
+    cascade.apply_declaration(style, make_decl("white-space", "normal"), parent);
+    EXPECT_EQ(style.white_space, WhiteSpace::Normal);
+}
+
+TEST(PropertyCascadeTest, WordBreakValues) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.word_break, 0);  // default: normal
+
+    cascade.apply_declaration(style, make_decl("word-break", "break-all"), parent);
+    EXPECT_EQ(style.word_break, 1);
+
+    cascade.apply_declaration(style, make_decl("word-break", "keep-all"), parent);
+    EXPECT_EQ(style.word_break, 2);
+
+    cascade.apply_declaration(style, make_decl("word-break", "normal"), parent);
+    EXPECT_EQ(style.word_break, 0);
+}
+
+TEST(PropertyCascadeTest, OverflowWrapValues) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.overflow_wrap, 0);  // default: normal
+
+    cascade.apply_declaration(style, make_decl("overflow-wrap", "break-word"), parent);
+    EXPECT_EQ(style.overflow_wrap, 1);
+
+    cascade.apply_declaration(style, make_decl("overflow-wrap", "anywhere"), parent);
+    EXPECT_EQ(style.overflow_wrap, 2);
+
+    cascade.apply_declaration(style, make_decl("word-wrap", "break-word"), parent);
+    EXPECT_EQ(style.overflow_wrap, 1);  // word-wrap alias
+
+    cascade.apply_declaration(style, make_decl("overflow-wrap", "normal"), parent);
+    EXPECT_EQ(style.overflow_wrap, 0);
+}
