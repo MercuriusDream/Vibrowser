@@ -2242,3 +2242,73 @@ TEST(DomElement, GetAttributeNulloptForNeverSetKey) {
     auto val = el.get_attribute("data-missing");
     EXPECT_FALSE(val.has_value());
 }
+
+// ============================================================================
+// Cycle 651: More DOM tests
+// ============================================================================
+
+// Element: next sibling is null for single child
+TEST(DomElement, NextSiblingNullForSingleChild) {
+    Element parent("div");
+    auto child = std::make_unique<Element>("p");
+    Element* ptr = child.get();
+    parent.append_child(std::move(child));
+    EXPECT_EQ(ptr->next_sibling(), nullptr);
+}
+
+// Element: previous sibling is null for first child
+TEST(DomElement, PrevSiblingNullForFirstChild) {
+    Element parent("div");
+    auto child = std::make_unique<Element>("p");
+    Element* ptr = child.get();
+    parent.append_child(std::move(child));
+    EXPECT_EQ(ptr->previous_sibling(), nullptr);
+}
+
+// Element: tag_name is accessible
+TEST(DomElement, TagNameAccessible) {
+    Element el("footer");
+    EXPECT_EQ(el.tag_name(), "footer");
+}
+
+// Text: set_data changes content
+TEST(DomText, SetDataChangesContentV2) {
+    Text t("original");
+    t.set_data("updated");
+    EXPECT_EQ(t.data(), "updated");
+}
+
+// Element: child_count with three children
+TEST(DomElement, ChildCountThreeChildren) {
+    Element parent("ul");
+    parent.append_child(std::make_unique<Element>("li"));
+    parent.append_child(std::make_unique<Element>("li"));
+    parent.append_child(std::make_unique<Element>("li"));
+    EXPECT_EQ(parent.child_count(), 3u);
+}
+
+// Element: first_child is first appended
+TEST(DomElement, FirstChildIsFirstAppended) {
+    Element parent("div");
+    auto first = std::make_unique<Element>("h1");
+    Element* first_ptr = first.get();
+    parent.append_child(std::move(first));
+    parent.append_child(std::make_unique<Element>("p"));
+    EXPECT_EQ(parent.first_child(), first_ptr);
+}
+
+// Element: last_child is last appended
+TEST(DomElement, LastChildIsLastAppended) {
+    Element parent("div");
+    parent.append_child(std::make_unique<Element>("h1"));
+    auto last = std::make_unique<Element>("p");
+    Element* last_ptr = last.get();
+    parent.append_child(std::move(last));
+    EXPECT_EQ(parent.last_child(), last_ptr);
+}
+
+// Event: type accessible
+TEST(DomEvent, TypeAccessibleV2) {
+    Event ev("mousedown", true, false);
+    EXPECT_EQ(ev.type(), "mousedown");
+}
