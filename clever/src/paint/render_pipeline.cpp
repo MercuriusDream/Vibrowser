@@ -242,7 +242,10 @@ std::string extract_preferred_font_url(const std::string& src) {
             }
             if (!in_single_quote && !in_double_quote) {
                 if (ch == '(') paren_depth++;
-                else if (ch == ')' && paren_depth > 0) paren_depth--;
+                else if (ch == ')') {
+                    if (paren_depth == 0) return {};
+                    paren_depth--;
+                }
                 if (ch == ',' && paren_depth == 0) {
                     tokens.push_back(trim(current));
                     current.clear();
@@ -304,7 +307,10 @@ std::string extract_preferred_font_url(const std::string& src) {
         }
         if (!in_single && !in_double) {
             if (ch == '(') paren_depth++;
-            else if (ch == ')' && paren_depth > 0) paren_depth--;
+            else if (ch == ')') {
+                if (paren_depth == 0) return "";
+                paren_depth--;
+            }
             if (ch == ',' && paren_depth == 0) {
                 const std::string entry = trim(current);
                 if (entry.empty()) return "";
