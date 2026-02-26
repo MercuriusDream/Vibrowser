@@ -1,12 +1,43 @@
+<p align="center">
+  <a href="https://mercuriusdream.com/Vibrowser/" target="_blank" rel="noreferrer">
+    <img src="https://mercuriusdream.com/Vibrowser/favicon.ico" alt="Vibrowser website logo" width="72" height="72" />
+  </a>
+  <br />
+  <a href="https://mercuriusdream.com/Vibrowser/" target="_blank" rel="noreferrer">
+    <img src="https://img.shields.io/badge/Open%20Vibrowser%20Website-ff4f8b?style=for-the-badge&logo=googlechrome&logoColor=white&labelColor=0a0a0a" alt="Open the Vibrowser website" />
+  </a>
+</p>
+
 ![From Scratch](https://img.shields.io/badge/Mode-From--Scratch%20Browser-ff4f8b?style=flat-square)
 ![C++](https://img.shields.io/badge/C%2B%2B-17-00599C?style=flat-square&logo=c%2B%2B&logoColor=white)
 ![CMake](https://img.shields.io/badge/Build-CMake-064F8C?style=flat-square&logo=cmake&logoColor=white)
+![Website](https://img.shields.io/website?url=https%3A%2F%2Fmercuriusdream.com%2FVibrowser%2F&style=flat-square&up_message=online&down_message=offline&logo=googlechrome&label=Live%20Site&color=06b6d4)
 
-# Vibrowser
+<h1 align="center">Vibrowser</h1>
+<p align="center"><strong>Open-source, from-scratch browser engineering in public.</strong></p>
 
-> Open-source, from-scratch browser engineering in public.
+<p align="center">
+  <a href="https://mercuriusdream.com/Vibrowser/">
+    <img src="https://img.shields.io/badge/Visit%20Website-ff4f8b?style=for-the-badge&logo=googlechrome&logoColor=white&labelColor=0a0a0a" alt="Visit website">
+  </a>
+  <a href="#project-snapshot">
+    <img src="https://img.shields.io/badge/Project%20Snapshot-1f2937?style=for-the-badge&logo=markdown&logoColor=white" alt="Project snapshot">
+  </a>
+  <a href="#landing-page-vite--react">
+    <img src="https://img.shields.io/badge/Landing%20Demo-06b6d4?style=for-the-badge&logo=vite&logoColor=white&labelColor=0f172a" alt="Landing page">
+  </a>
+</p>
 
 <img width="1023" height="802" alt="image" src="https://github.com/user-attachments/assets/d0b873b2-3c8f-4195-8890-be1014ebe8b9" />
+
+## 🎯 Project Snapshot
+
+| What | Details |
+| --- | --- |
+| Project | From-scratch C++17 browser engine |
+| Domain | Browser rendering + parsing + JS runtime internals |
+| Live Demo | https://mercuriusdream.com/Vibrowser/ |
+| Primary Goal | Learnable, inspectable, reproducible browser engineering |
 
 It is a small, opinionated, VIBECODED, from-scratch C++17 engine that exists to prove each browser subsystem can be built, understood, and tuned by hand, one layer at a time.  
 The project is intentionally pragmatic: no magic black boxes, no hand-wavey abstractions, and no pretending it is production-ready before it is.
