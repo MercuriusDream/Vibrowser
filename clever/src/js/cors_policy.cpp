@@ -17,6 +17,12 @@ std::string trim_copy(std::string value) {
     return value;
 }
 
+std::string to_lower_ascii(std::string value) {
+    std::transform(value.begin(), value.end(), value.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    return value;
+}
+
 bool has_invalid_header_octet(std::string_view value) {
     for (unsigned char ch : value) {
         if (ch <= 0x1f || ch == 0x7f) {
@@ -50,6 +56,56 @@ bool is_serialized_http_origin(std::string_view origin) {
     }
 
     return parsed->origin() == origin;
+}
+
+std::optional<std::string> parse_canonical_serialized_origin(std::string_view input) {
+    std::string trimmed = trim_copy(std::string(input));
+    if (trimmed.empty() || has_invalid_header_octet(trimmed)) {
+        return std::nullopt;
+    }
+
+    if (trimmed == "null") {
+        return std::string("null");
+    }
+
+    const std::size_t scheme_end = trimmed.find("://");
+    if (scheme_end == std::string::npos || scheme_end + 3 >= trimmed.size()) {
+        return std::nullopt;
+    }
+    if (trimmed.find_first_of("/?#", scheme_end + 3) != std::string::npos) {
+        return std::nullopt;
+    }
+    if (trimmed.find('@', scheme_end + 3) != std::string::npos) {
+        return std::nullopt;
+    }
+
+    auto parsed = parse_httpish_url(to_lower_ascii(trimmed));
+    if (!parsed.has_value() || parsed->host.empty()) {
+        return std::nullopt;
+    }
+
+    std::string origin = parsed->scheme + "://" + parsed->host;
+    if (parsed->port.has_value()) {
+        const uint16_t default_port = parsed->scheme == "https" ? 443 : 80;
+        if (parsed->port.value() != default_port) {
+            origin += ":" + std::to_string(parsed->port.value());
+        }
+    }
+    return origin;
+}
+
+bool canonical_origins_match(std::string_view left, std::string_view right) {
+    auto left_origin = parse_canonical_serialized_origin(left);
+    if (!left_origin.has_value()) {
+        return false;
+    }
+
+    auto right_origin = parse_canonical_serialized_origin(right);
+    if (!right_origin.has_value()) {
+        return false;
+    }
+
+    return left_origin.value() == right_origin.value();
 }
 
 bool is_invalid_document_origin(std::string_view document_origin) {
@@ -130,10 +186,10 @@ bool cors_allows_response(std::string_view document_origin,
         is_null_document_origin(document_origin) ? "null" : std::string(document_origin);
 
     if (!credentials_requested) {
-        return acao == "*" || acao == expected_origin;
+        return acao == "*" || canonical_origins_match(acao, expected_origin);
     }
 
-    if (acao != expected_origin) {
+    if (!canonical_origins_match(acao, expected_origin)) {
         return false;
     }
 

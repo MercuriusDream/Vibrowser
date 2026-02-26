@@ -5,13 +5,29 @@
 
 ## Current Status
 
-**Phase**: Active Development — Cycle 353 COMPLETE
-**Last Active**: 2026-02-26T14:51:33+0900
-**Current Focus**: CORS/CSP enforcement completion with strict shared JS duplicate ACAO/ACAC header fail-closed validation
-**Momentum**: 3491 tests, ZERO failures, 2488+ features! v0.7.0! CYCLE 353 DONE! 179 BUGS FIXED!
-**Cycle**: 354
+**Phase**: Active Development — Cycle 354 COMPLETE
+**Last Active**: 2026-02-26T16:16:00+0900
+**Current Focus**: CORS/CSP enforcement completion with strict shared JS canonical serialized-origin ACAO matching hardening
+**Momentum**: 3493 tests, ZERO failures, 2489+ features! v0.7.0! CYCLE 354 DONE! 180 BUGS FIXED!
+**Cycle**: 355
 
 ## Session Log
+
+### Cycle 354 — 2026-02-26 — Shared JS CORS helper canonical serialized-origin ACAO matching hardening
+- **CORS/CSP ENFORCEMENT (Priority 1)**: Hardened shared JS CORS policy helper to canonicalize and compare serialized origins for ACAO matching while preserving strict fail-closed malformed-origin rejection.
+- Updated CORS helper behavior (`clever/src/js/cors_policy.cpp`):
+  - added strict serialized-origin parser/canonicalizer for CORS header-origin matching (rejects path/query/fragment/userinfo forms)
+  - normalized scheme/host case and default-port variants during ACAO origin equivalence checks
+  - preserved strict `"null"` and malformed-origin fail-closed semantics
+- Added regression tests (`clever/tests/unit/cors_policy_test.cpp`):
+  - `CrossOriginNonCredentialedAllowsWildcardOrExact` now asserts canonical-equivalent ACAO acceptance (`HTTPS://APP.EXAMPLE:443`)
+  - `CrossOriginCredentialedRequiresExactAndCredentialsTrue` now asserts canonical-equivalent credentialed ACAO acceptance (`HTTPS://APP.EXAMPLE:443` + `ACAC: true`)
+- Validation:
+  - `cmake --build clever/build --target clever_js_cors_tests`
+  - `./clever/build/tests/unit/clever_js_cors_tests --gtest_filter='CORSPolicyTest.*'`
+- Files: `clever/src/js/cors_policy.cpp`, `clever/tests/unit/cors_policy_test.cpp`
+- **2 new tests (3491→3493), CORS unit suite green.**
+- **Ledger divergence resolution**: mtime-precedence sync applied; `.claude/claude-estate.md` and `.codex/codex-estate.md` updated in lockstep for Cycle 354.
 
 ### Cycle 353 — 2026-02-26 — Shared JS CORS helper duplicate ACAO/ACAC header fail-closed hardening
 - **CORS/CSP ENFORCEMENT (Priority 1)**: Hardened shared JS CORS policy helper to fail closed when duplicate CORS policy headers are present in responses.
@@ -3550,6 +3566,7 @@
 
 | # | What | Files | Notes |
 |---|------|-------|-------|
+| 728 | Shared JS CORS helper canonical serialized-origin ACAO matching hardening | clever/src/js/cors_policy.cpp, clever/tests/unit/cors_policy_test.cpp | Canonicalizes serialized ACAO origin comparison (scheme/host case + default-port normalization) while preserving strict fail-closed rejection for malformed path/query/fragment/userinfo origin forms; adds 2 focused regression tests |
 | 727 | Shared JS CORS helper duplicate ACAO/ACAC header fail-closed hardening | clever/src/js/cors_policy.cpp, clever/tests/unit/cors_policy_test.cpp | Rejects duplicate `Access-Control-Allow-Origin` and duplicate credentialed `Access-Control-Allow-Credentials` values in shared JS CORS response evaluation and adds 2 regression tests for strict duplicate-header rejection |
 | 726 | Shared JS CORS helper null-origin + empty-origin fail-closed hardening | clever/src/js/cors_policy.cpp, clever/tests/unit/cors_policy_test.cpp | Fails closed on empty document origins, treats `null` as strict cross-origin with explicit ACAO/ACAC checks, and adds 2 new regression tests plus null-origin header/cross-origin coverage |
 | 725 | Shared JS CORS helper strict ACAC literal `true` fail-closed hardening | clever/src/js/cors_policy.cpp, clever/tests/unit/cors_policy_test.cpp | Requires exact case-sensitive `Access-Control-Allow-Credentials: true` for credentialed cross-origin acceptance and adds regression coverage for `TRUE`/`True` rejection |
@@ -4092,13 +4109,13 @@
 | Metric | Value |
 |--------|-------|
 | Total Sessions | 143 |
-| Total Cycles | 353 |
+| Total Cycles | 354 |
 | Files Created | ~135 |
 | Files Modified | 100+ |
-| Lines Added (est.) | 171690+ |
-| Tests Added | 3491 |
-| Bugs Fixed | 179 |
-| Features Added | 2488 |
+| Lines Added (est.) | 171760+ |
+| Tests Added | 3493 |
+| Bugs Fixed | 180 |
+| Features Added | 2489 |
 
 ## Tell The Next Claude
 
@@ -4106,13 +4123,19 @@
 
 Build: `cd clever && cmake -S . -B build && cmake --build build && ctest --test-dir build`
 
-**3491 tests, 12 libraries (QuickJS!), 1 macOS app, ZERO warnings. v0.7.0. CYCLE 353! 2488+ FEATURES! 179 BUGS FIXED! ANTHROPIC.COM LOADS!**
+**3493 tests, 12 libraries (QuickJS!), 1 macOS app, ZERO warnings. v0.7.0. CYCLE 354! 2489+ FEATURES! 180 BUGS FIXED! ANTHROPIC.COM LOADS!**
 
 **Current implementation vs full browser comparison**:
 - Current implementation: robust single-process browser shell with full JS engine integration, broad DOM/CSS/Fetch coverage, and hardened HTTP/1.x/CORS/CSP policy enforcement.
 - Full browser target: still missing major subsystems like full multi-process isolation, full HTTP/2+/QUIC transport stack, and complete production-grade web font pipeline coverage.
-- Progress snapshot: from early scaffolding to 353 completed cycles, 3491 tests, and 2488+ implemented features.
+- Progress snapshot: from early scaffolding to 354 completed cycles, 3493 tests, and 2489+ implemented features.
 
+
+**Cycle 354 — Shared JS CORS helper canonical serialized-origin ACAO matching hardening in clever JS runtime path**:
+- Hardened `clever::js::cors::cors_allows_response(...)` ACAO matching to use strict serialized-origin canonical comparison instead of raw string equality.
+- Added canonicalized comparison for scheme/host case and default-port equivalents (for example `HTTPS://APP.EXAMPLE:443` vs `https://app.example`) while preserving strict malformed-origin fail-closed rejection.
+- Added focused regression coverage in `clever/tests/unit/cors_policy_test.cpp` for canonical-equivalent non-credentialed and credentialed ACAO acceptance paths.
+- Rebuilt `clever_js_cors_tests` and ran `CORSPolicyTest.*`, all green.
 
 **Cycle 353 — Shared JS CORS helper duplicate ACAO/ACAC header fail-closed hardening in clever JS runtime path**:
 - Hardened `clever::js::cors::cors_allows_response(...)` to require exactly one `Access-Control-Allow-Origin` value and reject duplicate ACAO entries before cross-origin value matching.
