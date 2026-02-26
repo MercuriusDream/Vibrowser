@@ -410,3 +410,91 @@ TEST(MessagePipeTest, ThreeConsecutiveSendsAllReceived) {
         EXPECT_EQ(*received, msgs[i]);
     }
 }
+
+// ============================================================================
+// Cycle 525: MessagePipe regression tests
+// ============================================================================
+
+// Send 256-byte payload
+TEST(MessagePipeTest, Send256BytePayload) {
+    auto [a, b] = MessagePipe::create_pair();
+    std::vector<uint8_t> payload(256);
+    for (int i = 0; i < 256; ++i) payload[i] = static_cast<uint8_t>(i);
+    ASSERT_TRUE(a.send(payload));
+    auto received = b.receive();
+    ASSERT_TRUE(received.has_value());
+    ASSERT_EQ(received->size(), 256u);
+    EXPECT_EQ(*received, payload);
+}
+
+// Bidirectional: both sides send and receive
+TEST(MessagePipeTest, BidirectionalExchange) {
+    auto [a, b] = MessagePipe::create_pair();
+    std::vector<uint8_t> msg_a = {0xAA};
+    std::vector<uint8_t> msg_b = {0xBB};
+    ASSERT_TRUE(a.send(msg_a));
+    ASSERT_TRUE(b.send(msg_b));
+    auto from_a = b.receive();
+    auto from_b = a.receive();
+    ASSERT_TRUE(from_a.has_value());
+    ASSERT_TRUE(from_b.has_value());
+    EXPECT_EQ(from_a->at(0), 0xAA);
+    EXPECT_EQ(from_b->at(0), 0xBB);
+}
+
+// Receive on an empty pipe returns nullopt
+TEST(MessagePipeTest, ReceiveOnEmptyPipeReturnsNullopt) {
+    auto [a, b] = MessagePipe::create_pair();
+    // Nothing was sent, so receive should return empty/fail
+    // (non-blocking check)
+    // We test with a closed sender
+    a.close();
+    auto received = b.receive();
+    // After sender closes, receiver gets nullopt
+    EXPECT_FALSE(received.has_value());
+}
+
+// is_open() returns true on fresh pipe
+TEST(MessagePipeTest, IsOpenOnFreshPipe) {
+    auto [a, b] = MessagePipe::create_pair();
+    EXPECT_TRUE(a.is_open());
+    EXPECT_TRUE(b.is_open());
+}
+
+// After close(), is_open() returns false
+TEST(MessagePipeTest, IsOpenFalseAfterClose) {
+    auto [a, b] = MessagePipe::create_pair();
+    a.close();
+    EXPECT_FALSE(a.is_open());
+}
+
+// Send 5 messages, receive all 5
+TEST(MessagePipeTest, SendFiveMessagesReceiveAll) {
+    auto [a, b] = MessagePipe::create_pair();
+    for (int i = 0; i < 5; ++i) {
+        std::vector<uint8_t> msg = {static_cast<uint8_t>(i * 10)};
+        ASSERT_TRUE(a.send(msg));
+    }
+    for (int i = 0; i < 5; ++i) {
+        auto recv = b.receive();
+        ASSERT_TRUE(recv.has_value());
+        EXPECT_EQ(recv->at(0), static_cast<uint8_t>(i * 10));
+    }
+}
+
+// fd() returns valid file descriptor
+TEST(MessagePipeTest, FdReturnsValidDescriptor) {
+    auto [a, b] = MessagePipe::create_pair();
+    EXPECT_GE(a.fd(), 0);
+    EXPECT_GE(b.fd(), 0);
+}
+
+// Send payload with all 0xFF bytes
+TEST(MessagePipeTest, AllMaxBytesPayload) {
+    auto [a, b] = MessagePipe::create_pair();
+    std::vector<uint8_t> payload(8, 0xFF);
+    ASSERT_TRUE(a.send(payload));
+    auto received = b.receive();
+    ASSERT_TRUE(received.has_value());
+    EXPECT_EQ(*received, payload);
+}
