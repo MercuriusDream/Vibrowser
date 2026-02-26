@@ -111,4 +111,16 @@ TEST(CORSPolicyTest, CrossOriginCredentialedRequiresExactAndCredentialsTrue) {
     malformed_credentials.set("Access-Control-Allow-Credentials", std::string("tr\x01ue"));
     EXPECT_FALSE(cors_allows_response("https://app.example", "https://api.example/data",
                                       malformed_credentials, true));
+
+    clever::net::HeaderMap uppercase_true;
+    uppercase_true.set("Access-Control-Allow-Origin", "https://app.example");
+    uppercase_true.set("Access-Control-Allow-Credentials", "TRUE");
+    EXPECT_FALSE(cors_allows_response("https://app.example", "https://api.example/data",
+                                      uppercase_true, true));
+
+    clever::net::HeaderMap mixed_case_true;
+    mixed_case_true.set("Access-Control-Allow-Origin", "https://app.example");
+    mixed_case_true.set("Access-Control-Allow-Credentials", "True");
+    EXPECT_FALSE(cors_allows_response("https://app.example", "https://api.example/data",
+                                      mixed_case_true, true));
 }

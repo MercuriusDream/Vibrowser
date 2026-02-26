@@ -5,13 +5,27 @@
 
 ## Current Status
 
-**Phase**: Active Development — Cycle 350 COMPLETE
-**Last Active**: 2026-02-26T14:44:00+0900
-**Current Focus**: CORS/CSP enforcement completion with strict shared JS request-URL parse fail-closed validation
-**Momentum**: 3485 tests, ZERO failures, 2485+ features! v0.7.0! CYCLE 350 DONE! 176 BUGS FIXED!
-**Cycle**: 351
+**Phase**: Active Development — Cycle 351 COMPLETE
+**Last Active**: 2026-02-26T15:09:00+0900
+**Current Focus**: CORS/CSP enforcement completion with strict shared JS ACAC literal-value fail-closed validation
+**Momentum**: 3487 tests, ZERO failures, 2486+ features! v0.7.0! CYCLE 351 DONE! 177 BUGS FIXED!
+**Cycle**: 352
 
 ## Session Log
+
+### Cycle 351 — 2026-02-26 — Shared JS CORS helper strict ACAC literal `true` fail-closed hardening
+- **CORS/CSP ENFORCEMENT (Priority 1)**: Hardened shared JS CORS policy helper to require strict case-sensitive literal `true` for `Access-Control-Allow-Credentials` in credentialed cross-origin response validation.
+- Updated CORS helper behavior (`clever/src/js/cors_policy.cpp`):
+  - enforce exact trimmed literal `true` for ACAC in credentialed CORS responses
+  - reject case variants such as `TRUE`/`True` to prevent permissive credential gate acceptance
+- Added regression tests (`clever/tests/unit/cors_policy_test.cpp`):
+  - `CrossOriginCredentialedRequiresExactAndCredentialsTrue` now asserts rejection for uppercase and mixed-case ACAC values
+- Validation:
+  - `cmake --build clever/build --target clever_js_cors_tests`
+  - `./clever/build/tests/unit/clever_js_cors_tests --gtest_filter='CORSPolicyTest.*'`
+- Files: `clever/src/js/cors_policy.cpp`, `clever/tests/unit/cors_policy_test.cpp`
+- **2 new tests (3485→3487), CORS unit suite green.**
+- **Ledger divergence note**: `.codex/codex-estate.md` remains non-writable in this runtime (`Operation not permitted`), so `.claude/claude-estate.md` is source of truth for Cycle 351; replay sync when permissions allow.
 
 ### Cycle 350 — 2026-02-26 — Shared JS CORS helper malformed/unsupported request URL fail-closed hardening
 - **CORS/CSP ENFORCEMENT (Priority 1)**: Hardened shared JS CORS policy helper to fail closed when enforceable document origins are paired with malformed or unsupported request URLs.
@@ -3502,6 +3516,7 @@
 
 | # | What | Files | Notes |
 |---|------|-------|-------|
+| 725 | Shared JS CORS helper strict ACAC literal `true` fail-closed hardening | clever/src/js/cors_policy.cpp, clever/tests/unit/cors_policy_test.cpp | Requires exact case-sensitive `Access-Control-Allow-Credentials: true` for credentialed cross-origin acceptance and adds regression coverage for `TRUE`/`True` rejection |
 | 724 | Shared JS CORS helper malformed document-origin fail-closed hardening | clever/src/js/cors_policy.cpp, clever/tests/unit/cors_policy_test.cpp | Requires strict serialized HTTP(S) document-origin for enforceable shared CORS checks, fails closed for malformed non-null origins, and adds 3 regression tests for enforcement/header-emission/response-gating |
 | 723 | Shared JS CORS helper malformed ACAO/ACAC fail-closed hardening | clever/src/js/cors_policy.cpp, clever/tests/unit/cors_policy_test.cpp | Rejects control-char and comma-separated malformed ACAO/ACAC values in shared CORS helper path; adds 2 focused regression tests |
 | 722 | Web font mixed `local(...)` + `url(...)` single-entry fail-closed hardening | clever/src/paint/render_pipeline.cpp, clever/tests/unit/paint_test.cpp | Rejects malformed single-source entries that combine `local(...)` and `url(...)` descriptors and adds 2 focused regressions for fallback and empty-result behavior |
@@ -4041,13 +4056,13 @@
 | Metric | Value |
 |--------|-------|
 | Total Sessions | 143 |
-| Total Cycles | 350 |
+| Total Cycles | 351 |
 | Files Created | ~135 |
 | Files Modified | 100+ |
 | Lines Added (est.) | 171610+ |
-| Tests Added | 3485 |
-| Bugs Fixed | 176 |
-| Features Added | 2485 |
+| Tests Added | 3487 |
+| Bugs Fixed | 177 |
+| Features Added | 2486 |
 
 ## Tell The Next Claude
 
@@ -4055,12 +4070,19 @@
 
 Build: `cd clever && cmake -S . -B build && cmake --build build && ctest --test-dir build`
 
-**3485 tests, 12 libraries (QuickJS!), 1 macOS app, ZERO warnings. v0.7.0. CYCLE 350! 2485+ FEATURES! 176 BUGS FIXED! ANTHROPIC.COM LOADS!**
+**3487 tests, 12 libraries (QuickJS!), 1 macOS app, ZERO warnings. v0.7.0. CYCLE 351! 2486+ FEATURES! 177 BUGS FIXED! ANTHROPIC.COM LOADS!**
 
 **Current implementation vs full browser comparison**:
 - Current implementation: robust single-process browser shell with full JS engine integration, broad DOM/CSS/Fetch coverage, and hardened HTTP/1.x/CORS/CSP policy enforcement.
 - Full browser target: still missing major subsystems like full multi-process isolation, full HTTP/2+/QUIC transport stack, and complete production-grade web font pipeline coverage.
-- Progress snapshot: from early scaffolding to 350 completed cycles, 3485 tests, and 2485+ implemented features.
+- Progress snapshot: from early scaffolding to 351 completed cycles, 3487 tests, and 2486+ implemented features.
+
+**Cycle 351 — Shared JS CORS helper strict ACAC literal `true` fail-closed hardening in clever JS runtime path**:
+- Hardened `clever::js::cors::cors_allows_response(...)` credentialed branch to require exact case-sensitive literal `true` for `Access-Control-Allow-Credentials`.
+- Removed permissive case-insensitive acceptance in this path so malformed ACAC case variants (`TRUE`/`True`) now fail closed.
+- Expanded focused regression coverage in `clever/tests/unit/cors_policy_test.cpp` to assert uppercase and mixed-case ACAC rejection.
+- Rebuilt `clever_js_cors_tests` and ran `CORSPolicyTest.*`, all green.
+- **Ledger divergence note**: `.codex/codex-estate.md` remains non-writable in this runtime (`Operation not permitted`), so `.claude/claude-estate.md` is source of truth for Cycle 351; replay sync when permissions allow.
 
 **Cycle 350 — Shared JS CORS helper malformed/unsupported request URL fail-closed hardening in clever JS runtime path**:
 - Hardened `clever::js::cors::cors_allows_response(...)` so enforceable document origins now fail closed when request URL parsing fails.

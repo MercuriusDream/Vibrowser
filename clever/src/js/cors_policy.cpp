@@ -17,13 +17,6 @@ std::string trim_copy(std::string value) {
     return value;
 }
 
-std::string lower_copy(std::string value) {
-    std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) {
-        return static_cast<char>(std::tolower(c));
-    });
-    return value;
-}
-
 bool has_invalid_header_octet(std::string_view value) {
     for (unsigned char ch : value) {
         if (ch <= 0x1f || ch == 0x7f) {
@@ -140,7 +133,7 @@ bool cors_allows_response(std::string_view document_origin,
     if (acac.empty() || has_invalid_header_octet(acac)) {
         return false;
     }
-    return lower_copy(acac) == "true";
+    return acac == "true";
 }
 
 } // namespace clever::js::cors
