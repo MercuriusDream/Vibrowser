@@ -1103,6 +1103,12 @@ bool contains_chunked_encoding(const std::string& transfer_encoding_header) {
     if (token.empty()) {
       return false;
     }
+    for (char ch : token) {
+      const unsigned char uch = static_cast<unsigned char>(ch);
+      if (uch <= 0x1f || uch == 0x7f) {
+        return false;
+      }
+    }
     if (token.find('"') != std::string::npos ||
         token.find('\'') != std::string::npos ||
         token.find('\\') != std::string::npos) {

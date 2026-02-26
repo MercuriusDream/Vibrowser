@@ -624,6 +624,12 @@ int main() {
         } else if (browser::net::is_chunked_transfer_encoding("chunk\\ed")) {
             std::cerr << "FAIL: expected escaped malformed transfer-encoding token to be rejected\n";
             ++failures;
+        } else if (browser::net::is_chunked_transfer_encoding(std::string("chunked\x01", 8))) {
+            std::cerr << "FAIL: expected control-character transfer-encoding token to be rejected\n";
+            ++failures;
+        } else if (browser::net::is_chunked_transfer_encoding("chu\tnked")) {
+            std::cerr << "FAIL: expected tab-corrupted transfer-encoding token to be rejected\n";
+            ++failures;
         } else if (browser::net::is_chunked_transfer_encoding("chunked;foo=bar")) {
             std::cerr << "FAIL: expected chunked transfer-encoding with parameters to be rejected\n";
             ++failures;
