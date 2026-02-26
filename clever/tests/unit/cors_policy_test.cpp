@@ -104,6 +104,16 @@ TEST(CORSPolicyTest, CrossOriginRejectsMalformedACAOValue) {
     duplicate_acao.append("Access-Control-Allow-Origin", "https://app.example");
     EXPECT_FALSE(cors_allows_response("https://app.example", "https://api.example/data",
                                       duplicate_acao, false));
+
+    clever::net::HeaderMap empty_port;
+    empty_port.set("Access-Control-Allow-Origin", "https://app.example:");
+    EXPECT_FALSE(cors_allows_response("https://app.example", "https://api.example/data",
+                                      empty_port, false));
+
+    clever::net::HeaderMap nondigit_port;
+    nondigit_port.set("Access-Control-Allow-Origin", "https://app.example:443abc");
+    EXPECT_FALSE(cors_allows_response("https://app.example", "https://api.example/data",
+                                      nondigit_port, false));
 }
 
 TEST(CORSPolicyTest, CrossOriginCredentialedRequiresExactAndCredentialsTrue) {

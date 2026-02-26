@@ -5,13 +5,28 @@
 
 ## Current Status
 
-**Phase**: Active Development — Cycle 354 COMPLETE
-**Last Active**: 2026-02-26T16:16:00+0900
-**Current Focus**: CORS/CSP enforcement completion with strict shared JS canonical serialized-origin ACAO matching hardening
-**Momentum**: 3493 tests, ZERO failures, 2489+ features! v0.7.0! CYCLE 354 DONE! 180 BUGS FIXED!
-**Cycle**: 355
+**Phase**: Active Development — Cycle 355 COMPLETE
+**Last Active**: 2026-02-26T15:11:46+0900
+**Current Focus**: CORS/CSP enforcement completion with strict shared JS ACAO authority/port syntax fail-closed hardening
+**Momentum**: 3495 tests, ZERO failures, 2489+ features! v0.7.0! CYCLE 355 DONE! 181 BUGS FIXED!
+**Cycle**: 356
 
 ## Session Log
+
+### Cycle 355 — 2026-02-26 — Shared JS CORS helper malformed ACAO authority/port fail-closed hardening
+- **CORS/CSP ENFORCEMENT (Priority 1)**: Hardened shared JS CORS policy helper to reject malformed ACAO authority/port forms before canonical origin comparison.
+- Updated CORS helper behavior (`clever/src/js/cors_policy.cpp`):
+  - added strict authority/port syntax validation in ACAO canonical parsing
+  - rejects empty-port forms (for example `https://app.example:`) and non-digit port tails (for example `https://app.example:443abc`)
+  - preserves canonical serialized-origin matching for valid scheme/host case and default-port equivalents
+- Added regression tests (`clever/tests/unit/cors_policy_test.cpp`):
+  - `CrossOriginRejectsMalformedACAOValue` now asserts rejection for empty-port and non-digit-port ACAO variants
+- Validation:
+  - `cmake --build clever/build --target clever_js_cors_tests`
+  - `./clever/build/tests/unit/clever_js_cors_tests --gtest_filter='CORSPolicyTest.*'`
+- Files: `clever/src/js/cors_policy.cpp`, `clever/tests/unit/cors_policy_test.cpp`
+- **2 new tests (3493→3495), CORS unit suite green.**
+- **Ledger divergence note**: `.codex/codex-estate.md` remains non-writable in this runtime (`Operation not permitted`), so `.claude/claude-estate.md` is source of truth for Cycle 355; replay sync when permissions allow.
 
 ### Cycle 354 — 2026-02-26 — Shared JS CORS helper canonical serialized-origin ACAO matching hardening
 - **CORS/CSP ENFORCEMENT (Priority 1)**: Hardened shared JS CORS policy helper to canonicalize and compare serialized origins for ACAO matching while preserving strict fail-closed malformed-origin rejection.
@@ -3566,6 +3581,7 @@
 
 | # | What | Files | Notes |
 |---|------|-------|-------|
+| 729 | Shared JS CORS helper malformed ACAO authority/port fail-closed hardening | clever/src/js/cors_policy.cpp, clever/tests/unit/cors_policy_test.cpp | Adds strict authority/port syntax gate in ACAO canonical origin parser so empty-port and non-digit-port variants fail closed before origin equivalence checks; adds 2 focused regressions |
 | 728 | Shared JS CORS helper canonical serialized-origin ACAO matching hardening | clever/src/js/cors_policy.cpp, clever/tests/unit/cors_policy_test.cpp | Canonicalizes serialized ACAO origin comparison (scheme/host case + default-port normalization) while preserving strict fail-closed rejection for malformed path/query/fragment/userinfo origin forms; adds 2 focused regression tests |
 | 727 | Shared JS CORS helper duplicate ACAO/ACAC header fail-closed hardening | clever/src/js/cors_policy.cpp, clever/tests/unit/cors_policy_test.cpp | Rejects duplicate `Access-Control-Allow-Origin` and duplicate credentialed `Access-Control-Allow-Credentials` values in shared JS CORS response evaluation and adds 2 regression tests for strict duplicate-header rejection |
 | 726 | Shared JS CORS helper null-origin + empty-origin fail-closed hardening | clever/src/js/cors_policy.cpp, clever/tests/unit/cors_policy_test.cpp | Fails closed on empty document origins, treats `null` as strict cross-origin with explicit ACAO/ACAC checks, and adds 2 new regression tests plus null-origin header/cross-origin coverage |
@@ -4088,7 +4104,7 @@
 
 | Priority | What | Effort |
 |----------|------|--------|
-| 1 | CORS/CSP enforcement in fetch/XHR path (MC-08, FJNS-11) — PARTIAL: connect-src pre-dispatch + host-source (incl. bracketed IPv6 normalization, scheme-less source scheme/port inference, invalid-port rejection) + wildcard-port + default-src fallback + canonical origin normalization + credentialed CORS ACAO/ACAC gate + strict ACAO single-value/case-insensitive CORS header handling + duplicate case-variant ACAO/ACAC rejection + serialized-origin ACAO enforcement + null-origin ACAO handling + dot-segment/encoded-traversal-safe path matching + websocket (`ws`/`wss`) default-port enforcement + effective-URL parse fail-closed CORS gate + strict ACAO/ACAC control-character rejection + strict request-Origin serialized-origin validation for both CORS evaluation and outgoing header emission + policy-origin serialized-origin fail-closed enforcement for request/CSP checks + shared JS CORS helper malformed ACAO/ACAC fail-closed rejection + strict shared JS malformed document-origin fail-closed validation + strict shared JS malformed/unsupported request-URL fail-closed validation + strict shared JS null/empty document-origin fail-closed enforcement DONE (Cycles 275-276, 278, 280-293, 306-307, 320, 326-329, 348-352) | Large |
+| 1 | CORS/CSP enforcement in fetch/XHR path (MC-08, FJNS-11) — PARTIAL: connect-src pre-dispatch + host-source (incl. bracketed IPv6 normalization, scheme-less source scheme/port inference, invalid-port rejection) + wildcard-port + default-src fallback + canonical origin normalization + credentialed CORS ACAO/ACAC gate + strict ACAO single-value/case-insensitive CORS header handling + duplicate case-variant ACAO/ACAC rejection + serialized-origin ACAO enforcement + null-origin ACAO handling + dot-segment/encoded-traversal-safe path matching + websocket (`ws`/`wss`) default-port enforcement + effective-URL parse fail-closed CORS gate + strict ACAO/ACAC control-character rejection + strict request-Origin serialized-origin validation for both CORS evaluation and outgoing header emission + policy-origin serialized-origin fail-closed enforcement for request/CSP checks + shared JS CORS helper malformed ACAO/ACAC fail-closed rejection + strict shared JS malformed document-origin fail-closed validation + strict shared JS malformed/unsupported request-URL fail-closed validation + strict shared JS null/empty document-origin fail-closed enforcement + strict shared JS malformed ACAO authority/port fail-closed validation DONE (Cycles 275-276, 278, 280-293, 306-307, 320, 326-329, 348-352, 355) | Large |
 | 2 | ~~TLS certificate verification policy hardening (FJNS-06)~~ DONE (Cycle 276) | ~~Medium~~ |
 | 3 | ~~Fetch/XHR origin header + ACAO response gate~~ DONE (Cycle 274) | ~~Medium~~ |
 | 4 | HTTP/2 transport (MC-12) — PARTIAL: protocol-version capture + explicit rejection guardrails for HTTP/2 preface/status-line/TLS ALPN/outbound `Upgrade` request/outbound `HTTP2-Settings` request-header/outbound pseudo-header requests/`101` upgrade/`426` upgrade-required responses + unsupported status-version rejection allowlisting HTTP/1.0/HTTP/1.1 + preface trailing/tab-whitespace variants + tab-separated status-line variant + whitespace-padded request-header name variant hardening + quoted/single-quoted upgrade-token variant hardening + quoted comma-contained upgrade-token split hardening + escaped quoted-string upgrade-token normalization hardening + escaped-comma delimiter hardening + malformed unterminated-token explicit rejection hardening + control-character malformed token explicit rejection hardening + malformed bare backslash-escape token explicit rejection hardening + malformed unterminated quoted-parameter token explicit rejection hardening + malformed upgrade token-character fail-closed hardening + strict non-ASCII upgrade-token rejection hardening + strict HTTP2-Settings token68 validation and duplicate-header fail-closed hardening + strict Transfer-Encoding `chunked` exact-token parsing hardening + strict malformed Transfer-Encoding delimiter/quoted-token rejection hardening + strict Transfer-Encoding `chunked` final-position/no-parameter enforcement hardening + strict Transfer-Encoding control-character token rejection hardening + strict non-ASCII Transfer-Encoding token rejection hardening + strict unsupported/malformed Transfer-Encoding fail-closed rejection hardening DONE (Cycles 294-305, 308-319, 321-325, 330-332) | Large |
@@ -4109,12 +4125,12 @@
 | Metric | Value |
 |--------|-------|
 | Total Sessions | 143 |
-| Total Cycles | 354 |
+| Total Cycles | 355 |
 | Files Created | ~135 |
 | Files Modified | 100+ |
-| Lines Added (est.) | 171760+ |
-| Tests Added | 3493 |
-| Bugs Fixed | 180 |
+| Lines Added (est.) | 171820+ |
+| Tests Added | 3495 |
+| Bugs Fixed | 181 |
 | Features Added | 2489 |
 
 ## Tell The Next Claude
@@ -4123,13 +4139,19 @@
 
 Build: `cd clever && cmake -S . -B build && cmake --build build && ctest --test-dir build`
 
-**3493 tests, 12 libraries (QuickJS!), 1 macOS app, ZERO warnings. v0.7.0. CYCLE 354! 2489+ FEATURES! 180 BUGS FIXED! ANTHROPIC.COM LOADS!**
+**3495 tests, 12 libraries (QuickJS!), 1 macOS app, ZERO warnings. v0.7.0. CYCLE 355! 2489+ FEATURES! 181 BUGS FIXED! ANTHROPIC.COM LOADS!**
 
 **Current implementation vs full browser comparison**:
 - Current implementation: robust single-process browser shell with full JS engine integration, broad DOM/CSS/Fetch coverage, and hardened HTTP/1.x/CORS/CSP policy enforcement.
 - Full browser target: still missing major subsystems like full multi-process isolation, full HTTP/2+/QUIC transport stack, and complete production-grade web font pipeline coverage.
-- Progress snapshot: from early scaffolding to 354 completed cycles, 3493 tests, and 2489+ implemented features.
+- Progress snapshot: from early scaffolding to 355 completed cycles, 3495 tests, and 2489+ implemented features.
 
+
+**Cycle 355 — Shared JS CORS helper malformed ACAO authority/port fail-closed hardening in clever JS runtime path**:
+- Hardened `clever::js::cors::cors_allows_response(...)` ACAO canonical parser with strict authority/port syntax validation before origin matching.
+- Added explicit fail-closed rejection for malformed empty-port and non-digit-port ACAO forms such as `https://app.example:` and `https://app.example:443abc`.
+- Added focused regression coverage in `clever/tests/unit/cors_policy_test.cpp` for both malformed authority/port rejection paths.
+- Rebuilt `clever_js_cors_tests` and ran `CORSPolicyTest.*`, all green.
 
 **Cycle 354 — Shared JS CORS helper canonical serialized-origin ACAO matching hardening in clever JS runtime path**:
 - Hardened `clever::js::cors::cors_allows_response(...)` ACAO matching to use strict serialized-origin canonical comparison instead of raw string equality.

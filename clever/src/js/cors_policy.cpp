@@ -32,6 +32,56 @@ bool has_invalid_header_octet(std::string_view value) {
     return false;
 }
 
+bool has_strict_authority_port_syntax(std::string_view authority) {
+    if (authority.empty()) {
+        return false;
+    }
+
+    std::size_t host_end = authority.size();
+    std::size_t port_start = std::string::npos;
+
+    if (authority.front() == '[') {
+        const std::size_t closing = authority.find(']');
+        if (closing == std::string::npos) {
+            return false;
+        }
+        host_end = closing + 1;
+        if (host_end < authority.size()) {
+            if (authority[host_end] != ':') {
+                return false;
+            }
+            port_start = host_end + 1;
+        }
+    } else {
+        const std::size_t first_colon = authority.find(':');
+        if (first_colon != std::string::npos) {
+            if (authority.find(':', first_colon + 1) != std::string::npos) {
+                return false;
+            }
+            host_end = first_colon;
+            port_start = first_colon + 1;
+        }
+    }
+
+    if (host_end == 0) {
+        return false;
+    }
+
+    if (port_start == std::string::npos) {
+        return true;
+    }
+    if (port_start >= authority.size()) {
+        return false;
+    }
+
+    for (std::size_t i = port_start; i < authority.size(); ++i) {
+        if (!std::isdigit(static_cast<unsigned char>(authority[i]))) {
+            return false;
+        }
+    }
+    return true;
+}
+
 std::optional<clever::url::URL> parse_httpish_url(std::string_view input) {
     auto parsed = clever::url::parse(input);
     if (!parsed.has_value()) {
@@ -76,6 +126,9 @@ std::optional<std::string> parse_canonical_serialized_origin(std::string_view in
         return std::nullopt;
     }
     if (trimmed.find('@', scheme_end + 3) != std::string::npos) {
+        return std::nullopt;
+    }
+    if (!has_strict_authority_port_syntax(trimmed.substr(scheme_end + 3))) {
         return std::nullopt;
     }
 
