@@ -583,3 +583,55 @@ TEST(CORSPolicyTest, SameOriginAlwaysAllowedNoACAO) {
     EXPECT_TRUE(cors_allows_response("https://example.com", "https://example.com/api",
                                      headers, false));
 }
+
+// ============================================================================
+// Cycle 531: CORS policy regression tests
+// ============================================================================
+
+// http:// URL is cors eligible
+TEST(CORSPolicyTest, HttpURLIsCORSEligible) {
+    EXPECT_TRUE(is_cors_eligible_request_url("http://api.example.com/resource"));
+}
+
+// ws:// URL is not cors eligible
+TEST(CORSPolicyTest, WsURLNotCORSEligible) {
+    EXPECT_FALSE(is_cors_eligible_request_url("ws://echo.example.com/"));
+}
+
+// is_cross_origin: same scheme+host+port returns false
+TEST(CORSPolicyTest, SameOriginIsNotCrossOrigin) {
+    EXPECT_FALSE(is_cross_origin("https://example.com", "https://example.com/path"));
+}
+
+// is_cross_origin: different host returns true
+TEST(CORSPolicyTest, DifferentHostIsCrossOrigin) {
+    EXPECT_TRUE(is_cross_origin("https://app.example.com", "https://api.example.com/data"));
+}
+
+// is_cross_origin: different scheme returns true
+TEST(CORSPolicyTest, DifferentSchemeIsCrossOrigin) {
+    EXPECT_TRUE(is_cross_origin("http://example.com", "https://example.com/path"));
+}
+
+// cors_allows_response: wildcard ACAO allows non-credentialed
+TEST(CORSPolicyTest, WildcardACAOPermitsNonCredential) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "*");
+    EXPECT_TRUE(cors_allows_response("https://app.example", "https://api.example/data",
+                                     headers, false));
+}
+
+// has_enforceable_document_origin: http:// origin without path is enforceable
+TEST(CORSPolicyTest, HttpOriginWithoutPathIsEnforceable) {
+    EXPECT_TRUE(has_enforceable_document_origin("http://example.com"));
+}
+
+// normalize_outgoing_origin_header sets Origin header on cross-origin request
+TEST(CORSPolicyTest, NormalizeOutgoingOriginSetsHeader) {
+    clever::net::HeaderMap req_headers;
+    normalize_outgoing_origin_header(req_headers,
+        "https://app.example.com", "https://api.different.com/resource");
+    auto val = req_headers.get("Origin");
+    EXPECT_TRUE(val.has_value());
+    EXPECT_NE(val->find("app.example.com"), std::string::npos);
+}
