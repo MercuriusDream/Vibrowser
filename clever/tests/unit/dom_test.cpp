@@ -748,3 +748,84 @@ TEST(DomElement, ClassListFromElement) {
     EXPECT_TRUE(elem.class_list().contains("bar"));
     EXPECT_EQ(elem.class_list().length(), 2u);
 }
+
+// ---------------------------------------------------------------------------
+// Cycle 431 — DOM attribute vector, id-clear, dirty-on-set, ClassList items,
+//             text_content empty, remove-preserves-others, Document node type,
+//             and fresh element attribute count
+// ---------------------------------------------------------------------------
+
+TEST(DomElement, AttributesVectorPreservesInsertionOrder) {
+    Element elem("div");
+    elem.set_attribute("name", "test");
+    elem.set_attribute("class", "main");
+    elem.set_attribute("id", "root");
+
+    const auto& attrs = elem.attributes();
+    ASSERT_EQ(attrs.size(), 3u);
+    EXPECT_EQ(attrs[0].name, "name");
+    EXPECT_EQ(attrs[0].value, "test");
+    EXPECT_EQ(attrs[1].name, "class");
+    EXPECT_EQ(attrs[1].value, "main");
+    EXPECT_EQ(attrs[2].name, "id");
+    EXPECT_EQ(attrs[2].value, "root");
+}
+
+TEST(DomElement, RemoveIdAttributeClearsIdAccessor) {
+    Element elem("div");
+    elem.set_attribute("id", "hero");
+    EXPECT_EQ(elem.id(), "hero");
+    elem.remove_attribute("id");
+    EXPECT_EQ(elem.id(), "");
+    EXPECT_FALSE(elem.has_attribute("id"));
+}
+
+TEST(DomElement, SetAttributeMarksDirtyStyle) {
+    Element elem("span");
+    EXPECT_EQ(elem.dirty_flags(), DirtyFlags::None);
+    elem.set_attribute("data-x", "1");
+    // set_attribute triggers on_attribute_changed which marks Style dirty
+    EXPECT_NE(static_cast<uint8_t>(elem.dirty_flags() & DirtyFlags::Style), 0u);
+}
+
+TEST(DomElement, ClassListItemsAccessor) {
+    Element elem("p");
+    elem.class_list().add("alpha");
+    elem.class_list().add("beta");
+    const auto& items = elem.class_list().items();
+    ASSERT_EQ(items.size(), 2u);
+    EXPECT_EQ(items[0], "alpha");
+    EXPECT_EQ(items[1], "beta");
+}
+
+TEST(DomElement, TextContentEmptyElement) {
+    Element elem("div");
+    EXPECT_EQ(elem.text_content(), "");
+}
+
+TEST(DomElement, RemoveAttributePreservesOthers) {
+    Element elem("input");
+    elem.set_attribute("type", "text");
+    elem.set_attribute("name", "username");
+    elem.set_attribute("placeholder", "Enter name");
+    ASSERT_EQ(elem.attributes().size(), 3u);
+
+    elem.remove_attribute("name");
+
+    ASSERT_EQ(elem.attributes().size(), 2u);
+    EXPECT_EQ(elem.get_attribute("type").value(), "text");
+    EXPECT_EQ(elem.get_attribute("placeholder").value(), "Enter name");
+    EXPECT_FALSE(elem.has_attribute("name"));
+}
+
+TEST(DomDocument, DocumentNodeType) {
+    Document doc;
+    EXPECT_EQ(doc.node_type(), NodeType::Document);
+}
+
+TEST(DomElement, FreshElementHasNoAttributes) {
+    Element elem("section");
+    EXPECT_EQ(elem.attributes().size(), 0u);
+    EXPECT_EQ(elem.id(), "");
+    EXPECT_EQ(elem.class_list().length(), 0u);
+}
