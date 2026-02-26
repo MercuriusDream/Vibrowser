@@ -12570,3 +12570,81 @@ TEST(JSEngine, InstanceofArrayFalseForObject) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "false");
 }
+
+// ============================================================================
+// Cycle 571: More JS engine tests
+// ============================================================================
+
+// Object.keys on empty object
+TEST(JSEngine, ObjectKeysEmptyObject) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        Object.keys({}).length
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "0");
+}
+
+// Number.isInteger true for integer
+TEST(JSEngine, NumberIsIntegerTrue) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        Number.isInteger(42)
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true");
+}
+
+// Number.isInteger false for float
+TEST(JSEngine, NumberIsIntegerFalse) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        Number.isInteger(3.14)
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "false");
+}
+
+// Number.isFinite on Infinity
+TEST(JSEngine, NumberIsFiniteOnInfinity) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        Number.isFinite(Infinity)
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "false");
+}
+
+// Math.floor
+TEST(JSEngine, MathFloor) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(Math.floor(4.7))");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "4");
+}
+
+// Math.ceil
+TEST(JSEngine, MathCeil) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(Math.ceil(4.1))");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "5");
+}
+
+// Math.round
+TEST(JSEngine, MathRound) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(Math.round(4.5))");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "5");
+}
+
+// String.prototype.trim
+TEST(JSEngine, StringTrim) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        "  hello world  ".trim()
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "hello world");
+}
