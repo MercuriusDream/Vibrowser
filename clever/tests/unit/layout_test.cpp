@@ -5987,3 +5987,62 @@ TEST(GeometryAudit, BorderBottomThreeValue) {
     node->geometry.border.bottom = 3.0f;
     EXPECT_FLOAT_EQ(node->geometry.border.bottom, 3.0f);
 }
+
+// ============================================================================
+// Cycle 675: More layout tests
+// ============================================================================
+
+// Layout: two children both accessible via children vector
+TEST(LayoutNodeTree, TwoChildrenBothAccessible) {
+    auto parent = make_block("div");
+    auto c1 = make_block("span");
+    auto c2 = make_block("p");
+    parent->append_child(std::move(c1));
+    parent->append_child(std::move(c2));
+    ASSERT_EQ(parent->children.size(), 2u);
+    EXPECT_EQ(parent->children[0]->tag_name, "span");
+    EXPECT_EQ(parent->children[1]->tag_name, "p");
+}
+
+// Layout: tag_name defaults to empty string for new node
+TEST(LayoutNodeProps, TagNameEmptyByDefault) {
+    auto node = std::make_unique<LayoutNode>();
+    EXPECT_TRUE(node->tag_name.empty());
+}
+
+// Layout: is_text false by default
+TEST(LayoutNodeProps, IsTextFalseByDefault) {
+    auto node = make_block("div");
+    EXPECT_FALSE(node->is_text);
+}
+
+// Layout: text node text_content can be set
+TEST(LayoutNodeProps, TextContentCanBeSetExplicit) {
+    auto node = make_text("hello world", 14.0f);
+    EXPECT_EQ(node->text_content, "hello world");
+}
+
+// Layout: align_items defaults to 4 (stretch)
+TEST(FlexboxAudit, AlignItemsDefaultsToFour) {
+    auto node = make_flex("div");
+    EXPECT_EQ(node->align_items, 4);
+}
+
+// Layout: justify_content defaults to 0
+TEST(FlexboxAudit, JustifyContentDefaultsToZero) {
+    auto node = make_flex("div");
+    EXPECT_EQ(node->justify_content, 0);
+}
+
+// Layout: align_content defaults to 0
+TEST(FlexboxAudit, AlignContentDefaultsToZero) {
+    auto node = make_flex("div");
+    EXPECT_EQ(node->align_content, 0);
+}
+
+// Layout: position_type can be set to 1
+TEST(LayoutNodeProps, PositionTypeCanBeSetToOne) {
+    auto node = make_block("div");
+    node->position_type = 1;
+    EXPECT_EQ(node->position_type, 1);
+}
