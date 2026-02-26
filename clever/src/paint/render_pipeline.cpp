@@ -303,6 +303,17 @@ std::optional<std::vector<uint8_t>> decode_font_data_url(const std::string& url)
         return -1;
     };
 
+    const auto first_padding = compact_payload.find('=');
+    if (first_padding != std::string::npos) {
+        for (size_t i = first_padding; i < compact_payload.size(); ++i) {
+            if (compact_payload[i] != '=') return std::nullopt;
+        }
+        const size_t padding_count = compact_payload.size() - first_padding;
+        if (padding_count > 2 || (compact_payload.size() % 4) != 0) return std::nullopt;
+    } else if ((compact_payload.size() % 4) == 1) {
+        return std::nullopt;
+    }
+
     std::vector<uint8_t> decoded;
     decoded.reserve((compact_payload.size() * 3) / 4);
     int val = 0;
