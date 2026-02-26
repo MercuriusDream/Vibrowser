@@ -12956,3 +12956,94 @@ TEST(JSEngine, RegexMatchMethod) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "hello,world");
 }
+
+// ============================================================================
+// Cycle 594: More JS engine tests
+// ============================================================================
+
+// Proxy basic get trap
+TEST(JSEngine, ProxyBasicGetTrap) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var handler = {
+            get: function(target, prop) {
+                return prop in target ? target[prop] : "default";
+            }
+        };
+        var obj = new Proxy({x: 42}, handler);
+        obj.x + "," + obj.missing
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "42,default");
+}
+
+// Reflect.ownKeys on object
+TEST(JSEngine, ReflectOwnKeys) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var keys = Reflect.ownKeys({a: 1, b: 2, c: 3});
+        keys.sort().join(",")
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "a,b,c");
+}
+
+// String.raw template literal
+TEST(JSEngine, StringRawTemplateLiteral) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        String.raw`Hello\nWorld`
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "Hello\\nWorld");
+}
+
+// Array.prototype.fill entire array
+TEST(JSEngine, ArrayFillNewArrayZeros) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        new Array(4).fill(0).join(",")
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "0,0,0,0");
+}
+
+// Array.prototype.copyWithin
+TEST(JSEngine, ArrayCopyWithin) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        [1, 2, 3, 4, 5].copyWithin(0, 3).join(",")
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "4,5,3,4,5");
+}
+
+// Number.toFixed with different precision
+TEST(JSEngine, NumberToFixedThreeDecimals) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        (2.71828).toFixed(3)
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "2.718");
+}
+
+// String.prototype.indexOf
+TEST(JSEngine, StringIndexOf) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        "hello world".indexOf("world")
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "6");
+}
+
+// String.prototype.lastIndexOf
+TEST(JSEngine, StringLastIndexOf) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        "abcabc".lastIndexOf("c")
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "5");
+}
