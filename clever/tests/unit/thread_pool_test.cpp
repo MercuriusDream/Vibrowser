@@ -770,3 +770,76 @@ TEST(ThreadPoolTest, ShutdownDoesNotThrow) {
     ThreadPool pool(2);
     EXPECT_NO_THROW(pool.shutdown());
 }
+
+// ============================================================================
+// Cycle 604: More ThreadPool tests
+// ============================================================================
+
+// Submit: capture string and return its length
+TEST(ThreadPoolTest, SubmitCaptureStringLength) {
+    ThreadPool pool(2);
+    std::string str = "hello";
+    auto fut = pool.submit([str]() { return (int)str.size(); });
+    EXPECT_EQ(fut.get(), 5);
+}
+
+// Submit: double value returned
+TEST(ThreadPoolTest, SubmitReturnsDouble) {
+    ThreadPool pool(2);
+    auto fut = pool.submit([]() -> double { return 3.14; });
+    EXPECT_DOUBLE_EQ(fut.get(), 3.14);
+}
+
+// Post: ten tasks accumulate
+TEST(ThreadPoolTest, PostTenTasksAccumulate) {
+    ThreadPool pool(4);
+    std::atomic<int> count{0};
+    for (int i = 0; i < 10; ++i) {
+        pool.post([&count]() { count++; });
+    }
+    pool.shutdown();
+    EXPECT_EQ(count.load(), 10);
+}
+
+// Submit: negative int returned
+TEST(ThreadPoolTest, SubmitReturnsNegativeInt) {
+    ThreadPool pool(2);
+    auto fut = pool.submit([]() { return -42; });
+    EXPECT_EQ(fut.get(), -42);
+}
+
+// Pool size: five-thread pool reports five
+TEST(ThreadPoolTest, FiveThreadPoolReportsFive) {
+    ThreadPool pool(5);
+    EXPECT_EQ(pool.size(), 5u);
+}
+
+// Submit: bool true returned
+TEST(ThreadPoolTest, SubmitReturnsBoolTrue) {
+    ThreadPool pool(2);
+    auto fut = pool.submit([]() -> bool { return true; });
+    EXPECT_TRUE(fut.get());
+}
+
+// Submit: sequential execution order via atomic
+TEST(ThreadPoolTest, SubmitThreeSequentialIncrements) {
+    ThreadPool pool(1);
+    std::atomic<int> val{0};
+    auto f1 = pool.submit([&val]() { val++; return val.load(); });
+    auto f2 = pool.submit([&val]() { val++; return val.load(); });
+    auto f3 = pool.submit([&val]() { val++; return val.load(); });
+    f1.get(); f2.get(); f3.get();
+    EXPECT_EQ(val.load(), 3);
+}
+
+// Submit: vector element sum
+TEST(ThreadPoolTest, SubmitVectorSum) {
+    ThreadPool pool(2);
+    std::vector<int> v = {1, 2, 3, 4, 5};
+    auto fut = pool.submit([v]() {
+        int sum = 0;
+        for (int x : v) sum += x;
+        return sum;
+    });
+    EXPECT_EQ(fut.get(), 15);
+}
