@@ -13485,3 +13485,92 @@ TEST(JSEngine, NestedTernary) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "medium");
 }
+
+// ============================================================================
+// Cycle 623: More JS engine tests
+// ============================================================================
+
+// String.prototype.matchAll
+TEST(JSEngine, StringMatchAll) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var matches = [...'test1 test2 test3'.matchAll(/test(\d)/g)];
+        matches.length
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "3");
+}
+
+// Promise.race is a function
+TEST(JSEngine, PromiseRaceIsFunction) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        typeof Promise.race
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "function");
+}
+
+// Error name and message
+TEST(JSEngine, ErrorNameAndMessage) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var e = new TypeError("bad type");
+        e.name + ":" + e.message
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "TypeError:bad type");
+}
+
+// Object.hasOwn
+TEST(JSEngine, ObjectHasOwn) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var obj = {a: 1};
+        Object.hasOwn(obj, "a") + "," + Object.hasOwn(obj, "b")
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true,false");
+}
+
+// JSON.stringify nested object
+TEST(JSEngine, JSONStringifyNested) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        JSON.stringify({a: [1, 2]})
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "{\"a\":[1,2]}");
+}
+
+// Array.prototype.toReversed (non-mutating)
+TEST(JSEngine, ArrayToReversed) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var arr = [1, 2, 3];
+        arr.toReversed().join(",") + "|" + arr.join(",")
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "3,2,1|1,2,3");
+}
+
+// Array.prototype.toSorted (non-mutating)
+TEST(JSEngine, ArrayToSorted) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var arr = [3, 1, 2];
+        arr.toSorted().join(",") + "|" + arr.join(",")
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1,2,3|3,1,2");
+}
+
+// globalThis is an object
+TEST(JSEngine, GlobalThisIsObject) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        typeof globalThis
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "object");
+}
