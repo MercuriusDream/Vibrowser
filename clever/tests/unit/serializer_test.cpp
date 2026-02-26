@@ -889,3 +889,91 @@ TEST(SerializerTest, RoundTripU32Zero) {
     EXPECT_EQ(d.read_u32(), 0u);
     EXPECT_FALSE(d.has_remaining());
 }
+
+// ============================================================================
+// Cycle 543: Serializer regression tests
+// ============================================================================
+
+// Write u32 max value (0xFFFFFFFF)
+TEST(SerializerTest, RoundTripU32MaxValue) {
+    Serializer s;
+    s.write_u32(0xFFFFFFFF);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u32(), 0xFFFFFFFFu);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+// Write u16 zero
+TEST(SerializerTest, RoundTripU16Zero) {
+    Serializer s;
+    s.write_u16(0);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u16(), 0u);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+// Write true bool
+TEST(SerializerTest, RoundTripTrueBool) {
+    Serializer s;
+    s.write_bool(true);
+    Deserializer d(s.data());
+    EXPECT_TRUE(d.read_bool());
+    EXPECT_FALSE(d.has_remaining());
+}
+
+// Write u64 max value
+TEST(SerializerTest, RoundTripU64UINT64MAX) {
+    Serializer s;
+    s.write_u64(UINT64_MAX);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u64(), UINT64_MAX);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+// Write multiple bools
+TEST(SerializerTest, MultipleBoolsRoundTrip) {
+    Serializer s;
+    s.write_bool(true);
+    s.write_bool(false);
+    s.write_bool(true);
+    Deserializer d(s.data());
+    EXPECT_TRUE(d.read_bool());
+    EXPECT_FALSE(d.read_bool());
+    EXPECT_TRUE(d.read_bool());
+    EXPECT_FALSE(d.has_remaining());
+}
+
+// Long string round trip
+TEST(SerializerTest, LongStringRoundTrip) {
+    Serializer s;
+    std::string long_str(200, 'x');
+    s.write_string(long_str);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), long_str);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+// Mix u8 with string and u32
+TEST(SerializerTest, MixedTypesRoundTrip) {
+    Serializer s;
+    s.write_u8(7);
+    s.write_string("test");
+    s.write_u32(12345);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u8(), 7u);
+    EXPECT_EQ(d.read_string(), "test");
+    EXPECT_EQ(d.read_u32(), 12345u);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+// Serializer data size grows with writes
+TEST(SerializerTest, DataSizeGrowsWithWrites) {
+    Serializer s;
+    auto size0 = s.data().size();
+    s.write_u8(42);
+    auto size1 = s.data().size();
+    s.write_u32(9999);
+    auto size2 = s.data().size();
+    EXPECT_GT(size1, size0);
+    EXPECT_GT(size2, size1);
+}
