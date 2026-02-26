@@ -12,6 +12,8 @@ using clever::js::cors::should_attach_origin_header;
 TEST(CORSPolicyTest, DocumentOriginEnforcement) {
     EXPECT_FALSE(has_enforceable_document_origin(""));
     EXPECT_FALSE(has_enforceable_document_origin("null"));
+    EXPECT_FALSE(has_enforceable_document_origin("https://app.example/path"));
+    EXPECT_FALSE(has_enforceable_document_origin("ftp://app.example"));
     EXPECT_TRUE(has_enforceable_document_origin("https://app.example"));
 }
 
@@ -25,6 +27,8 @@ TEST(CORSPolicyTest, CrossOriginDetection) {
 TEST(CORSPolicyTest, OriginHeaderAttachmentRule) {
     EXPECT_FALSE(should_attach_origin_header("", "https://api.example/data"));
     EXPECT_FALSE(should_attach_origin_header("https://app.example", "https://app.example/data"));
+    EXPECT_FALSE(
+        should_attach_origin_header("https://app.example/path", "https://api.example/data"));
     EXPECT_TRUE(should_attach_origin_header("https://app.example", "https://api.example/data"));
 }
 
@@ -38,6 +42,13 @@ TEST(CORSPolicyTest, CrossOriginRequiresACAO) {
     clever::net::HeaderMap headers;
     EXPECT_FALSE(cors_allows_response("https://app.example", "https://api.example/data", headers,
                                       false));
+}
+
+TEST(CORSPolicyTest, CrossOriginRejectsMalformedDocumentOrigin) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "https://app.example/path");
+    EXPECT_FALSE(cors_allows_response("https://app.example/path", "https://api.example/data",
+                                      headers, false));
 }
 
 TEST(CORSPolicyTest, CrossOriginNonCredentialedAllowsWildcardOrExact) {
