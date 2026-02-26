@@ -2592,3 +2592,82 @@ TEST(HeaderMapTest, RemoveNonExistentIsNoOp) {
     EXPECT_NO_THROW(map.remove("nonexistent"));
     EXPECT_TRUE(map.has("a"));
 }
+
+// ============================================================================
+// Cycle 602: More Net HTTP tests
+// ============================================================================
+
+// Response: parse 201 Created with zero body
+TEST(ResponseTest, Parse201CreatedZeroBody) {
+    std::string raw = "HTTP/1.1 201 Created\r\nContent-Length: 0\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 201);
+    EXPECT_EQ(resp->status_text, "Created");
+}
+
+// Response: parse 204 No Content (empty body)
+TEST(ResponseTest, Parse204NoContentEmpty) {
+    std::string raw = "HTTP/1.1 204 No Content\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 204);
+}
+
+// Response: parse 304 Not Modified
+TEST(ResponseTest, Parse304NotModified) {
+    std::string raw = "HTTP/1.1 304 Not Modified\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 304);
+}
+
+// Response: parse 401 Unauthorized
+TEST(ResponseTest, Parse401Unauthorized) {
+    std::string raw = "HTTP/1.1 401 Unauthorized\r\nContent-Length: 0\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 401);
+}
+
+// HeaderMap: set multiple keys and iterate count
+TEST(HeaderMapTest, SetFiveKeysHasAll) {
+    HeaderMap map;
+    map.set("A", "1");
+    map.set("B", "2");
+    map.set("C", "3");
+    map.set("D", "4");
+    map.set("E", "5");
+    EXPECT_TRUE(map.has("a"));
+    EXPECT_TRUE(map.has("e"));
+}
+
+// Request: HEAD method
+TEST(RequestTest, HeadMethodSerializes) {
+    Request req;
+    req.method = Method::HEAD;
+    EXPECT_EQ(req.method, Method::HEAD);
+}
+
+// Response: body_as_string with content
+TEST(ResponseTest, BodyAsStringWithJson) {
+    std::string raw = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 15\r\n\r\n{\"status\":\"ok\"}";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->body_as_string(), "{\"status\":\"ok\"}");
+}
+
+// HeaderMap: overwrite preserves case-insensitive key
+TEST(HeaderMapTest, OverwriteWithDifferentCase) {
+    HeaderMap map;
+    map.set("Content-Type", "text/plain");
+    map.set("content-type", "application/json");
+    auto val = map.get("Content-Type");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(*val, "application/json");
+}
