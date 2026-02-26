@@ -1078,3 +1078,85 @@ TEST(SerializerTest, TwoU64ValuesRoundTrip) {
     EXPECT_EQ(d.read_u64(), 0x123456789ABCDEF0ULL);
     EXPECT_FALSE(d.has_remaining());
 }
+
+// ============================================================================
+// Cycle 563: i32, i64, bytes, remaining
+// ============================================================================
+
+// i32 round trip: positive
+TEST(SerializerTest, RoundTripI32Positive) {
+    Serializer s;
+    s.write_i32(42);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i32(), 42);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+// i32 round trip: negative
+TEST(SerializerTest, RoundTripI32Negative) {
+    Serializer s;
+    s.write_i32(-1000);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i32(), -1000);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+// i32 round trip: INT32_MIN
+TEST(SerializerTest, RoundTripI32Min) {
+    Serializer s;
+    s.write_i32(std::numeric_limits<int32_t>::min());
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i32(), std::numeric_limits<int32_t>::min());
+}
+
+// i64 round trip: positive
+TEST(SerializerTest, RoundTripI64Positive) {
+    Serializer s;
+    s.write_i64(1234567890123LL);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i64(), 1234567890123LL);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+// i64 round trip: negative
+TEST(SerializerTest, RoundTripI64Negative) {
+    Serializer s;
+    s.write_i64(-9876543210LL);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i64(), -9876543210LL);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+// bytes round trip
+TEST(SerializerTest, BytesRoundTrip) {
+    Serializer s;
+    std::vector<uint8_t> payload = {0x01, 0x02, 0x03, 0xFF};
+    s.write_bytes(payload.data(), payload.size());
+    Deserializer d(s.data());
+    auto result = d.read_bytes();
+    EXPECT_EQ(result, payload);
+}
+
+// remaining() decreases as reads proceed
+TEST(SerializerTest, RemainingDecreasesAfterRead) {
+    Serializer s;
+    s.write_u8(1);
+    s.write_u8(2);
+    s.write_u8(3);
+    Deserializer d(s.data());
+    size_t before = d.remaining();
+    d.read_u8();
+    size_t after = d.remaining();
+    EXPECT_LT(after, before);
+}
+
+// Mixed i32 and u8 round trip
+TEST(SerializerTest, MixedI32AndU8RoundTrip) {
+    Serializer s;
+    s.write_i32(-7);
+    s.write_u8(200u);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i32(), -7);
+    EXPECT_EQ(d.read_u8(), 200u);
+    EXPECT_FALSE(d.has_remaining());
+}
