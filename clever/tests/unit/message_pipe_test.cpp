@@ -677,3 +677,84 @@ TEST(MessagePipeTest, ThreePairsCoexist) {
     EXPECT_EQ(b2.receive()->at(0), 2u);
     EXPECT_EQ(b3.receive()->at(0), 3u);
 }
+
+// ============================================================================
+// Cycle 570: More MessagePipe tests
+// ============================================================================
+
+// Pipe: fd values are non-negative after creation
+TEST(MessagePipeTest, BothFdsNonNegative) {
+    auto [a, b] = MessagePipe::create_pair();
+    EXPECT_GE(a.fd(), 0);
+    EXPECT_GE(b.fd(), 0);
+}
+
+// Pipe: both ends open after creation
+TEST(MessagePipeTest, BothEndsOpenAfterCreate) {
+    auto [a, b] = MessagePipe::create_pair();
+    EXPECT_TRUE(a.is_open());
+    EXPECT_TRUE(b.is_open());
+}
+
+// Pipe: send 16-byte message, receive preserves all bytes
+TEST(MessagePipeTest, SixteenBytePayloadPreserved) {
+    auto [a, b] = MessagePipe::create_pair();
+    std::vector<uint8_t> msg(16);
+    for (int i = 0; i < 16; ++i) msg[i] = static_cast<uint8_t>(i * 16);
+    ASSERT_TRUE(a.send(msg));
+    auto recv = b.receive();
+    ASSERT_TRUE(recv.has_value());
+    ASSERT_EQ(recv->size(), 16u);
+    EXPECT_EQ(recv->at(0), 0u);
+    EXPECT_EQ(recv->at(15), 240u);
+}
+
+// Pipe: send 3 messages in sequence
+TEST(MessagePipeTest, ThreeMessagesSequential) {
+    auto [a, b] = MessagePipe::create_pair();
+    for (int i = 1; i <= 3; ++i) {
+        ASSERT_TRUE(a.send({static_cast<uint8_t>(i)}));
+    }
+    for (int i = 1; i <= 3; ++i) {
+        auto recv = b.receive();
+        ASSERT_TRUE(recv.has_value());
+        EXPECT_EQ(recv->at(0), static_cast<uint8_t>(i));
+    }
+}
+
+// Pipe: close sender, receiver gets nullopt
+TEST(MessagePipeTest, CloseSenderReceiverGetsNullopt) {
+    auto [a, b] = MessagePipe::create_pair();
+    a.close();
+    auto result = b.receive();
+    EXPECT_FALSE(result.has_value());
+}
+
+// Pipe: close one end, other still open
+TEST(MessagePipeTest, CloseOneEndOtherStillOpen) {
+    auto [a, b] = MessagePipe::create_pair();
+    a.close();
+    EXPECT_TRUE(b.is_open());
+    EXPECT_FALSE(a.is_open());
+}
+
+// Pipe: send from b to a (reverse direction)
+TEST(MessagePipeTest, SendFromBToAWorks) {
+    auto [a, b] = MessagePipe::create_pair();
+    std::vector<uint8_t> msg = {0xAB, 0xCD};
+    ASSERT_TRUE(b.send(msg));
+    auto recv = a.receive();
+    ASSERT_TRUE(recv.has_value());
+    EXPECT_EQ(recv->at(0), 0xABu);
+    EXPECT_EQ(recv->at(1), 0xCDu);
+}
+
+// Pipe: single-byte message round trip
+TEST(MessagePipeTest, SingleByteRoundTripValue) {
+    auto [a, b] = MessagePipe::create_pair();
+    ASSERT_TRUE(a.send({0x42}));
+    auto recv = b.receive();
+    ASSERT_TRUE(recv.has_value());
+    EXPECT_EQ(recv->size(), 1u);
+    EXPECT_EQ(recv->at(0), 0x42u);
+}
