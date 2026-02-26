@@ -1233,3 +1233,93 @@ TEST(DomClassList, ToStringContainsAllClasses) {
     EXPECT_NE(s.find("bar"), std::string::npos);
     EXPECT_NE(s.find("baz"), std::string::npos);
 }
+
+// ============================================================================
+// Cycle 513: DOM regression tests
+// ============================================================================
+
+TEST(DomNode, RemoveOnlyChildLeavesEmptyParent) {
+    auto parent = std::make_unique<Element>("div");
+    Node* child = &parent->append_child(std::make_unique<Element>("span"));
+    EXPECT_EQ(parent->child_count(), 1u);
+    parent->remove_child(*child);
+    EXPECT_EQ(parent->child_count(), 0u);
+    EXPECT_EQ(parent->first_child(), nullptr);
+    EXPECT_EQ(parent->last_child(), nullptr);
+}
+
+TEST(DomNode, InsertBeforeFirstChildMakesItSecond) {
+    auto parent = std::make_unique<Element>("ul");
+    Node* li1 = &parent->append_child(std::make_unique<Element>("li"));
+    Node* li0 = &parent->insert_before(std::make_unique<Element>("li"), li1);
+    EXPECT_EQ(parent->first_child(), li0);
+    EXPECT_EQ(li0->next_sibling(), li1);
+    EXPECT_EQ(li1->previous_sibling(), li0);
+}
+
+TEST(DomNode, ChildCountAfterMixedOps) {
+    auto parent = std::make_unique<Element>("div");
+    Node* a = &parent->append_child(std::make_unique<Element>("a"));
+    Node* b = &parent->append_child(std::make_unique<Element>("b"));
+    parent->append_child(std::make_unique<Element>("c"));
+    EXPECT_EQ(parent->child_count(), 3u);
+    parent->remove_child(*b);
+    EXPECT_EQ(parent->child_count(), 2u);
+    parent->insert_before(std::make_unique<Element>("x"), a);
+    EXPECT_EQ(parent->child_count(), 3u);
+}
+
+TEST(DomElement, MultipleAttributesPreserveAllValues) {
+    Element e("input");
+    e.set_attribute("type", "text");
+    e.set_attribute("name", "username");
+    e.set_attribute("placeholder", "Enter name");
+    EXPECT_EQ(e.get_attribute("type").value_or(""), "text");
+    EXPECT_EQ(e.get_attribute("name").value_or(""), "username");
+    EXPECT_EQ(e.get_attribute("placeholder").value_or(""), "Enter name");
+    EXPECT_EQ(e.attributes().size(), 3u);
+}
+
+TEST(DomElement, TextContentFromNestedElements) {
+    auto outer = std::make_unique<Element>("p");
+    auto inner = std::make_unique<Element>("strong");
+    inner->append_child(std::make_unique<Text>("bold"));
+    outer->append_child(std::move(inner));
+    outer->append_child(std::make_unique<Text>(" text"));
+    EXPECT_EQ(outer->text_content(), "bold text");
+}
+
+TEST(DomClassList, ItemCountAfterRemoveAndAdd) {
+    ClassList cl;
+    cl.add("a");
+    cl.add("b");
+    cl.add("c");
+    EXPECT_EQ(cl.length(), 3u);
+    cl.remove("b");
+    EXPECT_EQ(cl.length(), 2u);
+    cl.add("d");
+    EXPECT_EQ(cl.length(), 3u);
+    EXPECT_TRUE(cl.contains("a"));
+    EXPECT_FALSE(cl.contains("b"));
+    EXPECT_TRUE(cl.contains("d"));
+}
+
+TEST(DomEvent, ListenerCalledOnlyOncePerDispatch) {
+    EventTarget target;
+    int call_count = 0;
+    target.add_event_listener("click", [&call_count](Event&) { call_count++; });
+    auto node = std::make_unique<Element>("button");
+    Event ev("click", true, true);
+    ev.target_ = node.get();
+    ev.current_target_ = node.get();
+    ev.phase_ = EventPhase::AtTarget;
+    target.dispatch_event(ev, *node);
+    EXPECT_EQ(call_count, 1);
+}
+
+TEST(DomDocument, CreateElementHasCorrectTagName) {
+    Document doc;
+    auto el = doc.create_element("article");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name(), "article");
+}
