@@ -1202,3 +1202,71 @@ TEST(URLParser, PasswordFieldExtracted) {
     EXPECT_EQ(result->username, "user");
     EXPECT_EQ(result->password, "pass");
 }
+
+// ============================================================================
+// Cycle 601: More URL parser tests
+// ============================================================================
+
+// URL: ftp scheme parses
+TEST(URLParser, FtpSchemeParsed) {
+    auto result = parse("ftp://files.example.com/pub");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "ftp");
+    EXPECT_EQ(result->host, "files.example.com");
+}
+
+// URL: localhost host
+TEST(URLParser, LocalhostHost) {
+    auto result = parse("http://localhost:3000/");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->host, "localhost");
+    ASSERT_TRUE(result->port.has_value());
+    EXPECT_EQ(*result->port, 3000u);
+}
+
+// URL: IP address host
+TEST(URLParser, IPv4AddressHost) {
+    auto result = parse("http://192.168.1.1/path");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->host, "192.168.1.1");
+}
+
+// URL: path with multiple segments
+TEST(URLParser, PathWithFourSegments) {
+    auto result = parse("https://example.com/a/b/c/d");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->path, "/a/b/c/d");
+}
+
+// URL: fragment without query
+TEST(URLParser, FragmentWithoutQuery) {
+    auto result = parse("https://example.com/page#section");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->fragment, "section");
+    EXPECT_TRUE(result->query.empty());
+}
+
+// URL: empty host invalid
+TEST(URLParser, EmptyFragmentWhenNoHash) {
+    auto result = parse("https://example.com/path");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_TRUE(result->fragment.empty());
+}
+
+// URL: same origin http vs http
+TEST(URLParser, TwoHttpSameHostSameOriginV2) {
+    auto a = parse("http://api.example.com/v1");
+    auto b = parse("http://api.example.com/v2");
+    ASSERT_TRUE(a.has_value());
+    ASSERT_TRUE(b.has_value());
+    EXPECT_TRUE(urls_same_origin(*a, *b));
+}
+
+// URL: different scheme not same origin
+TEST(URLParser, HttpVsFtpNotSameOrigin) {
+    auto a = parse("http://example.com/");
+    auto b = parse("ftp://example.com/");
+    ASSERT_TRUE(a.has_value());
+    ASSERT_TRUE(b.has_value());
+    EXPECT_FALSE(urls_same_origin(*a, *b));
+}

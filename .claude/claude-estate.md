@@ -6,12 +6,170 @@
 ## Current Status
 
 **Phase**: Active Development — Testing Blitz across ALL suites
-**Last Active**: 2026-02-27T23:30:00+0900
-**Current Focus**: Cycle 526 — continuing multi-suite blitz
-**Momentum**: 4238 tests, ZERO failures, all 13 suites green! 525 cycles shipped!
-**Cycle**: 531
+**Last Active**: 2026-02-28T12:30:00+0900
+**Current Focus**: Cycle 601 — continuing multi-suite test blitz
+**Momentum**: ~5100 tests, ZERO failures, all 13 suites green! 600 cycles shipped!
+**Cycle**: 600
 
 ## Session Log
+
+### Cycles 591-600 — 2026-02-28
+- **Cycles**: 10
+- **Theme**: Test blitz — DOM, HTML, Layout, Serializer, JS (x2), CSS
+- **Key Wins**:
+  - Cycle 591: 8 DOM tests (dom 159→167) — NodeType Element/Text/Comment/Document, remove_attribute, first/last child null
+  - Cycle 592: 8 HTML tests (html 152→160) — citation, bdi, ruby/rt, sub/sup/ins/del, var element
+  - Cycle 593: 8 Layout tests (layout 252→260) — border/margin stored, children order, inline/flex modes, geometry x/y defaults, flex-direction row-reverse
+  - Cycle 594: 8 JS tests (js 689→697) — Proxy/Reflect, String.raw, Array fill/copyWithin, Number.toFixed variations, String indexOf/lastIndexOf
+  - Cycle 595: 8 CSS tests (css_p 195→203) — turn/rad/em dimensions, descendant/child combinators, id selector, bg-color, font-weight
+  - Cycle 596: 8 Layout tests (layout 260→268) — geometry width/height/x/y, flex col/col-reverse, overflow=1, position absolute
+  - Cycle 597: 8 DOM tests (dom 167→175) — Document.createElement/createTextNode, tag_name, has_attribute, multi-attr, NodeType v2
+  - Cycle 598: 8 HTML tests (html 160→168) — wbr/br/hr, table caption/tr/td/th, fieldset+legend
+  - Cycle 599: 8 Serializer tests (ipc 198→206) — u8/u16/u32/u64 max, empty string, bool pair, multi-read remaining, string+i32
+  - Cycle 600: 8 JS tests (js 697→705) — WeakRef, FinalizationRegistry, Array.flat/flatMap, Object.entries/values, String.includes/startsWith/endsWith
+- **Running total**: ~5117 (203 css_p + 698 css_s + 175 dom + 168 html + 206 ipc + 73 cors + 705 js + 268 layout + 5 native + 192 net + 1863 paint + 101 platform + 188 url)
+
+### Cycles 586-590 — 2026-02-28
+- **Cycles**: 5
+- **Theme**: Test blitz — CSS, JS, Serializer, URL, Net
+- **Key Wins**:
+  - Cycle 586: 8 CSS tests (css_p 187→195) — ms/s/deg dimensions, compound type+class, three-class, border-radius, named color, padding 4-values
+  - Cycle 587: 8 JS tests (js 681→689) — class static, getter/setter, Symbol unique, Set operations, async/Promise, Array.from Set, typeof function, regex match
+  - Cycle 588: 8 Serializer tests (ipc 190→198) — i32 zero, u8+bool alternating, five u16, i64 zero, 8 bytes, string+i64, u32+bool, 20 u8
+  - Cycle 589: 8 URL tests (url 180→188) — path exact, subdomain, same-host same-origin, different hosts, default port, serialize host, query key, password
+  - Cycle 590: 8 Net tests (net 184→192) — path default, empty body, 403/408 parse, HeaderMap multi-set, cookie stored, status text, remove no-op
+- **Running total**: ~4863 (195 css_p + 698 css_s + 159 dom + 152 html + 198 ipc + 73 cors + 689 js + 252 layout + 5 native + 192 net + 1863 paint + 101 platform + 188 url)
+
+### Cycles 580-585 — 2026-02-28
+- **Cycles**: 6
+- **Theme**: Test blitz — CORS, ThreadPool, DOM, JS, HTML, Layout
+- **Key Wins**:
+  - Cycle 580: 8 CORS tests (cors 65→73) — null string, origin with port, blob: URL, http/https cross-origin, port diff, wildcard blocks cred, cross-origin sets Origin
+  - Cycle 581: 8 ThreadPool tests (platform 93→101) — promise, 2 parallel, capture math, default size, long long, zero, is_running, shutdown no throw
+  - Cycle 582: 8 DOM tests (dom 151→159) — createTextNode, namespace URI, child count, ClassList contains/add/remove
+  - Cycle 583: 8 JS tests (js 673→681) — reduceRight, Object.create, Error constructor, try/catch/finally, class, inheritance, arrow this, Map
+  - Cycle 584: 8 HTML tests (html 144→152) — abbr, mark, time+datetime, progress max, meter text, output for, kbd, samp
+  - Cycle 585: 8 Layout tests (layout 244→252) — inline span, grid template cols/rows/area, justify/align center, single child, height
+- **Running total**: ~4815 (187 css_p + 698 css_s + 159 dom + 152 html + 190 ipc + 73 cors + 681 js + 252 layout + 5 native + 184 net + 1863 paint + 101 platform + 180 url)
+
+### Cycles 571-579 — 2026-02-28
+- **Cycles**: 9
+- **Theme**: Test blitz — JS, CSS, Layout, DOM, HTML, Serializer, URL, Net
+- **Key Wins**:
+  - Cycle 571: 8 JS tests (js 657→665) — Object.keys empty, Number.isInteger/isFinite, Math.floor/ceil/round, String.trim
+  - Cycle 572: 8 CSS tests (css_p 179→187) — percent/float/vh tokens, adjacent-sibling target, universal type, flex/margin decl, 3-rule hierarchy
+  - Cycle 573: 8 Layout tests (layout 236→244) — column-gap, gap, align-self auto, flex-wrap-reverse, text font-size/content, min/max width
+  - Cycle 574: 8 DOM tests (dom 143→151) — set_attribute update, attributes count, id attr, Text data/set_data, Comment data, remove_child, event phase
+  - Cycle 575: 8 HTML tests (html 136→144) — strong, em, anchor, img attrs, input placeholder, h3 in article, code in pre, small
+  - Cycle 576: 8 Serializer tests (ipc 182→190) — i32 max, i64 min, empty bytes, 3 strings, u8+i32, data non-empty, take_data, u64 zero v2
+  - Cycle 577: 8 JS tests (js 665→673) — nullish coalescing 3-vals, optional chaining deep, &&=/||=, array/object destructuring, for-in, String.repeat
+  - Cycle 578: 8 URL tests (url 172→180) — username, port field, path slash, same-origin self, garbage no-crash, query/fragment, port 443
+  - Cycle 579: 8 Net tests (net 176→184) — OPTIONS, request body, 301/503 parse, HeaderMap case-insensitive, get after set, empty body, headers
+- **Running total**: ~4706 (187 css_p + 698 css_s + 151 dom + 144 html + 190 ipc + 65 cors + 673 js + 244 layout + 5 native + 184 net + 1863 paint + 93 platform + 180 url)
+
+### Cycles 565-570 — 2026-02-28
+- **Cycles**: 6
+- **Theme**: Test blitz — JS, URL, Net, CORS, ThreadPool, MessagePipe
+- **Key Wins**:
+  - Cycle 565: 8 JS engine tests (js 649→657) — Object.freeze, Array.of, padStart/padEnd, every, some, typeof null, instanceof
+  - Cycle 566: 8 URL parser tests (url 164→172) — http scheme, multi-segment path, query/fragment fields, same-origin v2, no-port, serialize, empty path
+  - Cycle 567: 8 Net tests (net 168→176) — default GET, PUT/DELETE/PATCH serialize, 404/400 parse, body_as_string, HeaderMap get nullopt
+  - Cycle 568: 8 CORS tests (cors 57→65) — http/subdomain enforceable, file: not eligible, subdomain cross-origin, no-ACAO blocks, wildcard allows, mismatch blocks
+  - Cycle 569: 8 ThreadPool tests (platform 85→93) — 100 tasks, 1/3-thread pools, string return, 5-task accumulate, bool false, vector capture
+  - Cycle 570: 8 MessagePipe tests (ipc 174→182) — both fds/ends, 16-byte payload, 3 sequential, close-sender, reverse direction, single byte
+- **Key Discoveries**:
+  - `HeaderMap::get()` returns `std::optional<std::string>` (not `std::string`)
+- **Running total**: 4605 (179 css_p + 698 css_s + 143 dom + 136 html + 182 ipc + 65 cors + 657 js + 236 layout + 5 native + 176 net + 1863 paint + 93 platform + 172 url)
+
+### Cycles 559-564 — 2026-02-28
+- **Cycles**: 6
+- **Theme**: Test blitz — JS, CSS, Layout, DOM, Serializer, HTML
+- **Key Wins**:
+  - Cycle 559: 8 JS engine tests (js 641→649) — generators, for-of, template literals, spread, destructuring, Set iterator, WeakMap, Promise
+  - Cycle 560: 7 CSS parser tests (css_p 172→179) — ch/vw/px dimensions, pseudo-class hover, attribute exists, empty rule, font-size
+  - Cycle 561: 8 Layout tests (layout 228→236) — z-index, opacity, justify-content, align-items, row-gap, flex-grow fill, overflow, grid-auto-flow
+  - Cycle 562: 8 DOM tests (dom 135→143) — first/last child, sibling traversal, event type/preventDefault, document createElement
+  - Cycle 563: 8 Serializer tests (ipc 166→174) — i32/i64 positive/negative/min, bytes round-trip, remaining(), mixed types
+  - Cycle 564: 8 HTML parser tests (html 128→136) — nav, aside, footer, header, blockquote, div attrs, span, ul children
+- **Key Discoveries**:
+  - `SimpleNode::children` is `vector<unique_ptr<SimpleNode>>` (not `for_each_child`)
+  - CSS TokenizerTest: `ch`, `vw`, `px` dimension units all work
+  - `Event::prevent_default()` is no-op when `cancelable_=false`
+  - `Serializer::write_i32/i64` and `Deserializer::read_i32/i64` exist
+- **Running total**: ~4577 (179 css_p + 698 css_s + 143 dom + 136 html + 174 ipc + 57 cors + 649 js + 236 layout + 5 native + 168 net + 1863 paint + 85 platform + 164 url)
+
+### Cycles 551-555 — 2026-02-28
+- **Cycles**: 5
+- **Theme**: Test blitz — Serializer, URL, JS, CSS, MessagePipe
+- **Key Wins**:
+  - Cycle 551: 8 Serializer tests (ipc 150→158) — interleaved, 10 u8s, string+bool, take&resend, u64 large
+  - Cycle 552: 8 URL tests (url 156→164) — full URL, ws/wss schemes, same-origin checks, serialize
+  - Cycle 553: 8 JS tests (js 633→641) — JSON.stringify/parse, flatMap, matchAll, keys/values/entries iterators, replaceAll
+  - Cycle 554: 8 CSS tests (css 164→172) — hex color, string tokens, !important, id/class selector rules, integer token, em dimension
+  - Cycle 555: 8 MessagePipe tests (ipc 158→166) — 10 sequential msgs, sequential bytes, empty payload, reverse direction, 3 pairs coexist
+- **Running total**: ~4486 (172+698+127+120+166+57+641+220+5+168+1863+85+164)
+
+
+### Cycles 546-550 — 2026-02-28
+- **Cycles**: 5 (Cycle 550 = milestone!)
+- **Theme**: Test blitz — DOM, JS, CORS, ThreadPool, HTML (milestone 550)
+- **Key Wins**:
+  - Cycle 546: 8 DOM tests (dom 119→127) — get_attribute optional, create elem/text, append count, tag names, toggle
+  - Cycle 547: 8 JS tests (js 625→633) — parseInt/Float, concat, toLowerCase/UpperCase, ternary, Object.assign, splice
+  - Cycle 548: 8 CORS tests (cors 49→57) — wildcard+credentialed, mailto/javascript not eligible, same-path same-origin
+  - Cycle 549: 8 ThreadPool tests (platform 77→85) — two tasks, post after shutdown throws, char/float return, 8 threads
+  - Cycle 550: 8 HTML tests (html 112→120) — head/title/meta/script/style/link/embed/object elements (milestone!)
+- **Key Discoveries**:
+  - `get_attribute()` returns `std::optional<std::string>` not `std::string` — use `.has_value()` / `*val`
+- **Total tests**: ~4427 (164 css_p + 698 css_s + 127 dom + 120 html + 150 ipc + 57 cors + 633 js + 220 layout + 5 native + 168 net + 1863 paint + 85 platform + 156 url)
+
+
+### Cycles 541-545 — 2026-02-28
+- **Cycles**: 5
+- **Theme**: Test blitz — CSS, JS, Serializer, Layout, Net
+- **Key Wins**:
+  - Cycle 541: 8 CSS parser tests (css 156→164) — @media, percentage, negative number, url(), comma-list, child combinator, subsequent sibling, attribute selector
+  - Cycle 542: 8 JS tests (js 617→625) — logical OR, charAt, charCodeAt, findIndex, find, includes, split, Math.abs
+  - Cycle 543: 8 Serializer tests (ipc 142→150) — u32 max, u16 zero, true bool, u64 max, multiple bools, long string, mixed types
+  - Cycle 544: 8 Layout tests (layout 212→220) — fixed position, flex wrap, flex column, content_left, flex grow
+  - Cycle 545: 8 Net tests (net 160→168) — 3 headers present, 302/500 parse, two cookies, HEAD/host serialize, response body
+- **Key Discoveries**:
+  - `CSSToken::numeric_value` (not `number_value`)
+  - `HeaderMap` has no `for_each()` or `clear()` — use `has()`/`remove()`
+  - `CookieJar.size()` doesn't decrease when Max-Age=0 is set (only filters at retrieval)
+  - Request `serialize()` doesn't include custom headers — only Host/path/method
+- **Running total**: ~4394 (164 css_p + 698 css_s + 119 dom + 112 html + 150 ipc + 49 cors + 625 js + 220 layout + 5 native + 168 net + 1863 paint + 77 platform + 156 url)
+
+
+### Cycles 537-540 — 2026-02-28
+- **Cycles**: 4
+- **Theme**: Test blitz — DOM, JS, HTML, URL
+- **Key Wins**:
+  - Cycle 537: 8 DOM tests (dom 111→119) — new element checks, text node, class list, comment node
+  - Cycle 538: 8 JS tests (js 609→617) — includes/startsWith/endsWith, Array.from(string), typeof, ObjectKeys
+  - Cycle 539: 8 HTML tests (html 104→112) — form, table, fieldset, select, iframe, sections, pre, ol
+  - Cycle 540: 8 URL tests (url 148→156) — port 3000, custom scheme, trailing slash, same-origin diff ports
+- **Key Discoveries**:
+  - `urls_same_origin(u1, u2)` free function (not a method on URL)
+- **Running total**: ~4354 (156 css_p + 698 css_s + 119 dom + 112 html + 142 ipc + 49 cors + 617 js + 212 layout + 5 native + 160 net + 1863 paint + 77 platform + 156 url)
+
+
+### Cycles 532-536 — 2026-02-28
+- **Cycles**: 5
+- **Theme**: Test blitz — CSS, Layout, Net, ThreadPool, MessagePipe
+- **Key Wins**:
+  - Cycle 532: 8 CSS parser tests (css_parser 148→156) — semicolon/brace tokens, background-color, class selector
+  - Cycle 533: 8 Layout tests (layout 204→212) — height, viewport width, stacking, padding reduces width, max_width
+  - Cycle 534: 8 Net tests (net 152→160) — multiple headers, overwrite header, parse 201/204, cookie jar
+  - Cycle 535: 8 ThreadPool tests (platform 69→77) — pair return, is_running, 6-thread pool, long long, capture
+  - Cycle 536: 8 MessagePipe tests (ipc 134→142) — single byte, two pairs, FIFO order, fd different, close
+- **Key Discoveries**:
+  - `CSSToken::LeftBrace`/`RightBrace` (not `LBrace`/`RBrace`)
+  - Layout padding is `root->geometry.padding.left` not `root->padding.left`
+  - `Response::parse()` takes `vector<uint8_t>`, returns `.status` not `.status_code`
+  - MessagePipe `receive()` is blocking — must close sender to get nullopt
+- **Total tests**: ~4330 (156+698+111+104+142+49+609+212+5+160+1863+77+148)
+
 
 ### Cycles 526-531 — 2026-02-27
 - **Cycles**: 6
