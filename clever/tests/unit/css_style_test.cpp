@@ -6327,3 +6327,143 @@ TEST(PropertyCascadeTest, GridArea) {
     cascade.apply_declaration(style, make_decl("grid-area", "1 / 2 / 3 / 4"), parent);
     EXPECT_EQ(style.grid_area, "1 / 2 / 3 / 4");
 }
+
+// ---------------------------------------------------------------------------
+// Cycle 444 — direction, writing-mode, unicode-bidi, line-clamp,
+//             caret-color, text-orientation, text-combine-upright,
+//             backface-visibility
+// ---------------------------------------------------------------------------
+
+TEST(PropertyCascadeTest, DirectionLtrAndRtl) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.direction, Direction::Ltr);  // default
+
+    cascade.apply_declaration(style, make_decl("direction", "rtl"), parent);
+    EXPECT_EQ(style.direction, Direction::Rtl);
+
+    cascade.apply_declaration(style, make_decl("direction", "ltr"), parent);
+    EXPECT_EQ(style.direction, Direction::Ltr);
+}
+
+TEST(PropertyCascadeTest, WritingModeValues) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.writing_mode, 0);  // default: horizontal-tb
+
+    cascade.apply_declaration(style, make_decl("writing-mode", "vertical-rl"), parent);
+    EXPECT_EQ(style.writing_mode, 1);
+
+    cascade.apply_declaration(style, make_decl("writing-mode", "vertical-lr"), parent);
+    EXPECT_EQ(style.writing_mode, 2);
+
+    cascade.apply_declaration(style, make_decl("writing-mode", "horizontal-tb"), parent);
+    EXPECT_EQ(style.writing_mode, 0);
+}
+
+TEST(PropertyCascadeTest, UnicodeBidiValues) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.unicode_bidi, 0);  // default: normal
+
+    cascade.apply_declaration(style, make_decl("unicode-bidi", "embed"), parent);
+    EXPECT_EQ(style.unicode_bidi, 1);
+
+    cascade.apply_declaration(style, make_decl("unicode-bidi", "bidi-override"), parent);
+    EXPECT_EQ(style.unicode_bidi, 2);
+
+    cascade.apply_declaration(style, make_decl("unicode-bidi", "isolate"), parent);
+    EXPECT_EQ(style.unicode_bidi, 3);
+
+    cascade.apply_declaration(style, make_decl("unicode-bidi", "isolate-override"), parent);
+    EXPECT_EQ(style.unicode_bidi, 4);
+
+    cascade.apply_declaration(style, make_decl("unicode-bidi", "plaintext"), parent);
+    EXPECT_EQ(style.unicode_bidi, 5);
+
+    cascade.apply_declaration(style, make_decl("unicode-bidi", "normal"), parent);
+    EXPECT_EQ(style.unicode_bidi, 0);
+}
+
+TEST(PropertyCascadeTest, LineClampValues) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.line_clamp, -1);  // default: none
+
+    cascade.apply_declaration(style, make_decl("-webkit-line-clamp", "3"), parent);
+    EXPECT_EQ(style.line_clamp, 3);
+
+    cascade.apply_declaration(style, make_decl("line-clamp", "1"), parent);
+    EXPECT_EQ(style.line_clamp, 1);
+
+    cascade.apply_declaration(style, make_decl("line-clamp", "none"), parent);
+    EXPECT_EQ(style.line_clamp, -1);
+}
+
+TEST(PropertyCascadeTest, CaretColorSet) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("caret-color", "red"), parent);
+    EXPECT_EQ(style.caret_color, (Color{255, 0, 0, 255}));
+
+    cascade.apply_declaration(style, make_decl("caret-color", "#00ff00"), parent);
+    EXPECT_EQ(style.caret_color, (Color{0, 255, 0, 255}));
+}
+
+TEST(PropertyCascadeTest, TextOrientationValues) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.text_orientation, 0);  // default: mixed
+
+    cascade.apply_declaration(style, make_decl("text-orientation", "upright"), parent);
+    EXPECT_EQ(style.text_orientation, 1);
+
+    cascade.apply_declaration(style, make_decl("text-orientation", "sideways"), parent);
+    EXPECT_EQ(style.text_orientation, 2);
+
+    cascade.apply_declaration(style, make_decl("text-orientation", "mixed"), parent);
+    EXPECT_EQ(style.text_orientation, 0);
+}
+
+TEST(PropertyCascadeTest, TextCombineUprightValues) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.text_combine_upright, 0);  // default: none
+
+    cascade.apply_declaration(style, make_decl("text-combine-upright", "all"), parent);
+    EXPECT_EQ(style.text_combine_upright, 1);
+
+    cascade.apply_declaration(style, make_decl("text-combine-upright", "digits"), parent);
+    EXPECT_EQ(style.text_combine_upright, 2);
+
+    cascade.apply_declaration(style, make_decl("text-combine-upright", "none"), parent);
+    EXPECT_EQ(style.text_combine_upright, 0);
+}
+
+TEST(PropertyCascadeTest, BackfaceVisibilityValues) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.backface_visibility, 0);  // default: visible
+
+    cascade.apply_declaration(style, make_decl("backface-visibility", "hidden"), parent);
+    EXPECT_EQ(style.backface_visibility, 1);
+
+    cascade.apply_declaration(style, make_decl("backface-visibility", "visible"), parent);
+    EXPECT_EQ(style.backface_visibility, 0);
+}
