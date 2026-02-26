@@ -1732,3 +1732,63 @@ TEST(DomEvent, PhaseInitiallyNone) {
     Event e("keydown", true, true);
     EXPECT_EQ(e.phase(), EventPhase::None);
 }
+
+// ============================================================================
+// Cycle 582: More DOM tests
+// ============================================================================
+
+// Document: create_text_node returns correct content
+TEST(DomDocument, CreateTextNodeContent) {
+    Document doc;
+    auto t = doc.create_text_node("hello text");
+    ASSERT_NE(t, nullptr);
+    EXPECT_EQ(t->data(), "hello text");
+}
+
+// Element: namespace_uri is empty by default
+TEST(DomElement, NamespaceURIEmptyByDefault) {
+    Element e("div");
+    EXPECT_TRUE(e.namespace_uri().empty());
+}
+
+// Element: namespace_uri is set on construction with namespace
+TEST(DomElement, NamespaceURISetInConstructor) {
+    Element e("svg", "http://www.w3.org/2000/svg");
+    EXPECT_EQ(e.namespace_uri(), "http://www.w3.org/2000/svg");
+}
+
+// Node: child_count after three appends
+TEST(DomNode, ChildCountThreeAfterThreeAppends) {
+    auto parent = std::make_unique<Element>("ol");
+    parent->append_child(std::make_unique<Element>("li"));
+    parent->append_child(std::make_unique<Element>("li"));
+    parent->append_child(std::make_unique<Element>("li"));
+    EXPECT_EQ(parent->child_count(), 3u);
+}
+
+// Node: child_count returns 0 initially
+TEST(DomNode, ChildCountZeroInitially) {
+    Element e("p");
+    EXPECT_EQ(e.child_count(), 0u);
+}
+
+// ClassList: contains returns false initially
+TEST(DomClassList, ContainsFalseInitially) {
+    Element e("div");
+    EXPECT_FALSE(e.class_list().contains("active"));
+}
+
+// ClassList: contains returns true after add
+TEST(DomClassList, ContainsTrueAfterAdd) {
+    Element e("div");
+    e.class_list().add("active");
+    EXPECT_TRUE(e.class_list().contains("active"));
+}
+
+// ClassList: remove makes contains return false
+TEST(DomClassList, RemoveMakesContainsFalse) {
+    Element e("div");
+    e.class_list().add("visible");
+    e.class_list().remove("visible");
+    EXPECT_FALSE(e.class_list().contains("visible"));
+}
