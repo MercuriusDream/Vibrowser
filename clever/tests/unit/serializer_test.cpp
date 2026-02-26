@@ -1339,3 +1339,85 @@ TEST(SerializerTest, TwentyU8ValuesRoundTrip) {
     }
     EXPECT_FALSE(d.has_remaining());
 }
+
+// ============================================================================
+// Cycle 599: More serializer tests
+// ============================================================================
+
+// Write u8 max value then read it back
+TEST(SerializerTest, U8MaxValueRoundTrip) {
+    Serializer s;
+    s.write_u8(255);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u8(), 255u);
+}
+
+// Write u16 max value then read it back
+TEST(SerializerTest, U16MaxValueRoundTrip) {
+    Serializer s;
+    s.write_u16(65535);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u16(), 65535u);
+}
+
+// Write u32 max and min
+TEST(SerializerTest, U32MaxAndMinRoundTrip) {
+    Serializer s;
+    s.write_u32(0xFFFFFFFFu);
+    s.write_u32(0u);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u32(), 0xFFFFFFFFu);
+    EXPECT_EQ(d.read_u32(), 0u);
+}
+
+// Write u64 max value
+TEST(SerializerTest, U64MaxValueRoundTrip) {
+    Serializer s;
+    s.write_u64(0xFFFFFFFFFFFFFFFFULL);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u64(), 0xFFFFFFFFFFFFFFFFULL);
+}
+
+// Write empty string followed by has_remaining check
+TEST(SerializerTest, EmptyStringThenExhausted) {
+    Serializer s;
+    s.write_string("");
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "");
+    EXPECT_FALSE(d.has_remaining());
+}
+
+// Write two booleans true/false
+TEST(SerializerTest, TwoBoolTrueFalseRoundTrip) {
+    Serializer s;
+    s.write_bool(true);
+    s.write_bool(false);
+    Deserializer d(s.data());
+    EXPECT_TRUE(d.read_bool());
+    EXPECT_FALSE(d.read_bool());
+}
+
+// Remaining decreases after multiple reads
+TEST(SerializerTest, RemainingDecreasesMultipleReads) {
+    Serializer s;
+    s.write_u8(1);
+    s.write_u8(2);
+    s.write_u8(3);
+    Deserializer d(s.data());
+    auto r0 = d.remaining();
+    d.read_u8();
+    EXPECT_LT(d.remaining(), r0);
+    d.read_u8();
+    d.read_u8();
+    EXPECT_FALSE(d.has_remaining());
+}
+
+// Write string then i32 round-trip
+TEST(SerializerTest, StringThenI32V2) {
+    Serializer s;
+    s.write_string("goodbye");
+    s.write_i32(-999);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "goodbye");
+    EXPECT_EQ(d.read_i32(), -999);
+}
