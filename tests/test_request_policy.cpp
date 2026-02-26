@@ -935,6 +935,40 @@ int main() {
         }
     }
 
+    // Test 49: CORS rejects ACAO values containing control characters
+    {
+        browser::net::RequestPolicy policy;
+        policy.origin = "https://app.example.com";
+        browser::net::Response response;
+        response.headers["access-control-allow-origin"] = "https://app.example.com\x1f";
+        auto result =
+            browser::net::check_cors_response_policy("https://api.example.com/data", response, policy);
+        if (result.allowed) {
+            std::cerr << "FAIL: control-character ACAO should be rejected\n";
+            ++failures;
+        } else {
+            std::cerr << "PASS: control-character ACAO is rejected\n";
+        }
+    }
+
+    // Test 50: credentialed CORS rejects ACAC values containing control characters
+    {
+        browser::net::RequestPolicy policy;
+        policy.origin = "https://app.example.com";
+        policy.credentials_mode_include = true;
+        browser::net::Response response;
+        response.headers["access-control-allow-origin"] = "https://app.example.com";
+        response.headers["access-control-allow-credentials"] = "true\x1f";
+        auto result =
+            browser::net::check_cors_response_policy("https://api.example.com/data", response, policy);
+        if (result.allowed) {
+            std::cerr << "FAIL: control-character ACAC should be rejected for credentialed CORS\n";
+            ++failures;
+        } else {
+            std::cerr << "PASS: control-character ACAC is rejected for credentialed CORS\n";
+        }
+    }
+
     if (failures > 0) {
         std::cerr << "\n" << failures << " test(s) FAILED\n";
         return 1;

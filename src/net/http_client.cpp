@@ -50,6 +50,15 @@ bool starts_with(const std::string& value, const std::string& prefix) {
   return value.size() >= prefix.size() && value.compare(0, prefix.size(), prefix) == 0;
 }
 
+bool has_forbidden_header_value_char(const std::string& value) {
+  for (unsigned char ch : value) {
+    if ((ch <= 0x1F && ch != '\t') || ch == 0x7F) {
+      return true;
+    }
+  }
+  return false;
+}
+
 std::vector<unsigned char> encode_alpn_protocols(
     std::initializer_list<std::string> protocols) {
   std::vector<unsigned char> encoded;
@@ -2124,7 +2133,8 @@ PolicyCheckResult check_cors_response_policy(const std::string& url,
     }
 
     const std::string acao_value = trim_ascii(acao_header.value);
-    if (acao_value.empty() || acao_value.find(',') != std::string::npos) {
+    if (acao_value.empty() || acao_value.find(',') != std::string::npos ||
+        has_forbidden_header_value_char(acao_value)) {
         return {false,
                 PolicyViolation::CorsResponseBlocked,
                 "Cross-origin response blocked: invalid multi-valued Access-Control-Allow-Origin"};
@@ -2184,8 +2194,10 @@ PolicyCheckResult check_cors_response_policy(const std::string& url,
         if (policy.require_acac_for_credentialed_cors) {
             const SingleHeaderLookupResult acac_header = find_single_header_value_case_insensitive(
                 response.headers, "access-control-allow-credentials");
+            const std::string acac_value = acac_header.found ? trim_ascii(acac_header.value) : "";
             if (!acac_header.found || acac_header.duplicate ||
-                trim_ascii(acac_header.value) != "true") {
+                has_forbidden_header_value_char(acac_value) ||
+                acac_value != "true") {
                 return {false,
                         PolicyViolation::CorsResponseBlocked,
                         "Cross-origin response blocked: missing Access-Control-Allow-Credentials=true"};
