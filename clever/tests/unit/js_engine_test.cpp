@@ -13134,3 +13134,95 @@ TEST(JSEngine, StringStartsWithEndsWith) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "true,true");
 }
+
+// ============================================================================
+// Cycle 605: More JS engine tests
+// ============================================================================
+
+// Promise.all is a function
+TEST(JSEngine, PromiseAllIsFunction) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        typeof Promise.all
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "function");
+}
+
+// Generator function with yield*
+TEST(JSEngine, GeneratorYieldStar) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        function* gen() { yield* [1, 2, 3]; }
+        var arr = [];
+        for (var v of gen()) arr.push(v);
+        arr.join(",")
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1,2,3");
+}
+
+// Destructuring assignment with swap
+TEST(JSEngine, DestructuringSwap) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var a = 1, b = 2;
+        [a, b] = [b, a];
+        a + "," + b
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "2,1");
+}
+
+// Tagged template literal
+TEST(JSEngine, TaggedTemplateLiteral) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        function tag(strings, val) { return strings[0] + val + strings[1]; }
+        tag`Hello ${42} World`
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "Hello 42 World");
+}
+
+// Array.from with map function
+TEST(JSEngine, ArrayFromWithMap) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        Array.from([1, 2, 3], function(x) { return x * 3; }).join(",")
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "3,6,9");
+}
+
+// Object.assign merges three sources
+TEST(JSEngine, ObjectAssignThreeSources) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var target = {a: 1};
+        Object.assign(target, {b: 2}, {c: 3});
+        target.a + "," + target.b + "," + target.c
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1,2,3");
+}
+
+// Number.parseInt and Number.parseFloat
+TEST(JSEngine, NumberParseIntAndFloat) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        Number.parseInt("42") + "," + Number.parseFloat("3.14").toFixed(2)
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "42,3.14");
+}
+
+// String.prototype.split with limit
+TEST(JSEngine, StringSplitWithLimit) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        "a,b,c,d".split(",", 2).join("|")
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "a|b");
+}
