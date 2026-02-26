@@ -809,3 +809,83 @@ TEST(SerializerTest, StringWithSpecialPrintableChars) {
     EXPECT_EQ(d.read_string(), special);
     EXPECT_FALSE(d.has_remaining());
 }
+
+// ============================================================================
+// Cycle 528: Serializer regression tests
+// ============================================================================
+
+// Write a single u16 and read it back
+TEST(SerializerTest, RoundTripSingleU16) {
+    Serializer s;
+    s.write_u16(12345);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u16(), 12345u);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+// Write max u16 value
+TEST(SerializerTest, RoundTripMaxU16) {
+    Serializer s;
+    s.write_u16(65535);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u16(), 65535u);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+// Write zero u64 and read back
+TEST(SerializerTest, RoundTripZeroU64) {
+    Serializer s;
+    s.write_u64(0);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u64(), 0u);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+// Empty string round trip
+TEST(SerializerTest, EmptyStringRoundTrip) {
+    Serializer s;
+    s.write_string("");
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "");
+    EXPECT_FALSE(d.has_remaining());
+}
+
+// Write and read multiple strings in sequence
+TEST(SerializerTest, MultipleStringsInSequence) {
+    Serializer s;
+    s.write_string("alpha");
+    s.write_string("beta");
+    s.write_string("gamma");
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "alpha");
+    EXPECT_EQ(d.read_string(), "beta");
+    EXPECT_EQ(d.read_string(), "gamma");
+    EXPECT_FALSE(d.has_remaining());
+}
+
+// Write a single false bool
+TEST(SerializerTest, RoundTripFalseBool) {
+    Serializer s;
+    s.write_bool(false);
+    Deserializer d(s.data());
+    EXPECT_FALSE(d.read_bool());
+    EXPECT_FALSE(d.has_remaining());
+}
+
+// Write u8 max value (255)
+TEST(SerializerTest, RoundTripU8MaxValue) {
+    Serializer s;
+    s.write_u8(255);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u8(), 255u);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+// Write u32 zero
+TEST(SerializerTest, RoundTripU32Zero) {
+    Serializer s;
+    s.write_u32(0);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u32(), 0u);
+    EXPECT_FALSE(d.has_remaining());
+}
