@@ -1153,6 +1153,35 @@ int main() {
         }
     }
 
+    // Test 60: CORS rejects non-ASCII request Origin values
+    {
+        browser::net::RequestPolicy policy;
+        policy.origin = "https://app.ex\xC3\xA9mple.com";
+        browser::net::Response response;
+        response.headers["access-control-allow-origin"] = "https://app.ex\xC3\xA9mple.com";
+        auto result =
+            browser::net::check_cors_response_policy("https://api.example.com/data", response, policy);
+        if (result.allowed) {
+            std::cerr << "FAIL: non-ASCII request Origin should be rejected for CORS checks\n";
+            ++failures;
+        } else {
+            std::cerr << "PASS: CORS rejects non-ASCII request Origin values\n";
+        }
+    }
+
+    // Test 61: request Origin header emission rejects non-ASCII policy Origin values
+    {
+        browser::net::RequestPolicy policy;
+        policy.origin = "https://app.ex\xC3\xA9mple.com";
+        auto headers = browser::net::build_request_headers_for_policy("https://api.example.com/data", policy);
+        if (!headers.empty()) {
+            std::cerr << "FAIL: non-ASCII policy Origin should not be attached as request Origin header\n";
+            ++failures;
+        } else {
+            std::cerr << "PASS: request Origin header emission rejects non-ASCII policy origins\n";
+        }
+    }
+
     if (failures > 0) {
         std::cerr << "\n" << failures << " test(s) FAILED\n";
         return 1;

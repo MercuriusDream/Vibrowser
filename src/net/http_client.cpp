@@ -430,6 +430,14 @@ bool parse_serialized_origin(const std::string& value, std::string& canonical_or
   if (trimmed.empty() || has_forbidden_header_value_char(trimmed)) {
     return false;
   }
+  for (unsigned char ch : trimmed) {
+    if (ch >= 0x80) {
+      return false;
+    }
+  }
+  if (trimmed != value) {
+    return false;
+  }
   if (trimmed == "null") {
     canonical_origin = "null";
     return true;
