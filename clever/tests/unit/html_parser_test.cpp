@@ -605,3 +605,104 @@ TEST(HtmlEntity, TreeBuilderEntity) {
     ASSERT_NE(p, nullptr);
     EXPECT_EQ(p->text_content(), "<div> & \"hello\"");
 }
+
+// ============================================================================
+// Cycle 426: HTML parser structural regression tests
+// ============================================================================
+
+TEST(TreeBuilder, TableStructure) {
+    auto doc = parse("<table><tr><td>cell1</td><td>cell2</td></tr></table>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* table = doc->find_element("table");
+    ASSERT_NE(table, nullptr);
+
+    auto* tr = doc->find_element("tr");
+    ASSERT_NE(tr, nullptr);
+
+    auto* td = doc->find_element("td");
+    ASSERT_NE(td, nullptr);
+    EXPECT_EQ(td->text_content(), "cell1");
+}
+
+TEST(TreeBuilder, AnchorAttributes) {
+    auto doc = parse("<a href=\"https://example.com\" target=\"_blank\">link</a>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* a = doc->find_element("a");
+    ASSERT_NE(a, nullptr);
+
+    // Verify href attribute is preserved
+    bool found_href = false;
+    for (const auto& attr : a->attributes) {
+        if (attr.name == "href") {
+            found_href = true;
+            EXPECT_EQ(attr.value, "https://example.com");
+        }
+    }
+    EXPECT_TRUE(found_href);
+}
+
+TEST(TreeBuilder, SemanticElements) {
+    auto doc = parse("<header><nav>nav</nav></header><main><article>content</article></main><footer>foot</footer>");
+    ASSERT_NE(doc, nullptr);
+
+    EXPECT_NE(doc->find_element("header"), nullptr);
+    EXPECT_NE(doc->find_element("nav"), nullptr);
+    EXPECT_NE(doc->find_element("main"), nullptr);
+    EXPECT_NE(doc->find_element("article"), nullptr);
+    EXPECT_NE(doc->find_element("footer"), nullptr);
+}
+
+TEST(TreeBuilder, UpperCaseTagsNormalized) {
+    auto doc = parse("<DIV><P>text</P></DIV>");
+    ASSERT_NE(doc, nullptr);
+
+    // HTML5 requires tag names to be lowercased
+    auto* div = doc->find_element("div");
+    EXPECT_NE(div, nullptr);
+
+    auto* p = doc->find_element("p");
+    EXPECT_NE(p, nullptr);
+}
+
+TEST(TreeBuilder, FormElements) {
+    auto doc = parse("<form><input type=\"text\" name=\"q\"><button type=\"submit\">Go</button></form>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* form = doc->find_element("form");
+    ASSERT_NE(form, nullptr);
+
+    auto* input = doc->find_element("input");
+    ASSERT_NE(input, nullptr);
+
+    auto* button = doc->find_element("button");
+    ASSERT_NE(button, nullptr);
+    EXPECT_EQ(button->text_content(), "Go");
+}
+
+TEST(TreeBuilder, EmptyDocument) {
+    auto doc = parse("");
+    ASSERT_NE(doc, nullptr);
+    EXPECT_EQ(doc->type, SimpleNode::Document);
+}
+
+TEST(TreeBuilder, UnclosedElementRecovery) {
+    // Tree builder should create the element even when the closing tag is absent
+    auto doc = parse("<div>text without closing tag");
+    ASSERT_NE(doc, nullptr);
+    auto* div = doc->find_element("div");
+    ASSERT_NE(div, nullptr);
+    EXPECT_EQ(div->text_content(), "text without closing tag");
+}
+
+TEST(HtmlEntity, MalformedEntityPassthrough) {
+    // A bare '&' not followed by valid entity should pass through as-is
+    auto tokens = tokenize_all("a & b");
+    std::string text;
+    for (auto& t : tokens) {
+        if (t.type == Token::Character) text += t.data;
+    }
+    // The ampersand and surrounding text should be present
+    EXPECT_NE(text.find("&"), std::string::npos);
+}
