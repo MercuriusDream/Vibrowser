@@ -2312,3 +2312,68 @@ TEST(DomEvent, TypeAccessibleV2) {
     Event ev("mousedown", true, false);
     EXPECT_EQ(ev.type(), "mousedown");
 }
+
+// ============================================================================
+// Cycle 661: More DOM tests
+// ============================================================================
+
+// Element: parent is set after append_child
+TEST(DomElement, ParentIsSetAfterAppend) {
+    Element parent("section");
+    auto child = std::make_unique<Element>("article");
+    Element* child_ptr = child.get();
+    parent.append_child(std::move(child));
+    EXPECT_EQ(child_ptr->parent(), &parent);
+}
+
+// Element: has_attribute false for removed attribute
+TEST(DomElement, HasAttributeFalseAfterRemove) {
+    Element elem("input");
+    elem.set_attribute("disabled", "");
+    elem.remove_attribute("disabled");
+    EXPECT_FALSE(elem.has_attribute("disabled"));
+}
+
+// Element: set_attribute overwrites previous value
+TEST(DomElement, SetAttributeOverwritesPrevious) {
+    Element elem("a");
+    elem.set_attribute("href", "/old");
+    elem.set_attribute("href", "/new");
+    auto val = elem.get_attribute("href");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(val.value(), "/new");
+}
+
+// ClassList: toggle adds "selected" class when absent
+TEST(DomClassList, ToggleAddsSelectedWhenAbsent) {
+    Element elem("li");
+    elem.class_list().toggle("selected");
+    EXPECT_TRUE(elem.class_list().contains("selected"));
+}
+
+// ClassList: toggle removes "selected" class when present
+TEST(DomClassList, ToggleRemovesSelectedWhenPresent) {
+    Element elem("li");
+    elem.class_list().add("selected");
+    elem.class_list().toggle("selected");
+    EXPECT_FALSE(elem.class_list().contains("selected"));
+}
+
+// Text: node type is Text for "world" node
+TEST(DomText, NodeTypeIsTextForWorldNode) {
+    Text t("world");
+    EXPECT_EQ(t.node_type(), NodeType::Text);
+}
+
+// Comment: data returns text
+TEST(DomComment, DataReturnsText) {
+    Comment c("this is a comment");
+    EXPECT_EQ(c.data(), "this is a comment");
+}
+
+// Document: create_element returns non-null
+TEST(DomDocument, CreateElementNonNull) {
+    Document doc;
+    auto elem = doc.create_element("div");
+    EXPECT_NE(elem, nullptr);
+}
