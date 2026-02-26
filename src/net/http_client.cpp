@@ -453,6 +453,9 @@ bool parse_serialized_origin(const std::string& value, std::string& canonical_or
   if (!parse_url(trimmed, parsed, err)) {
     return false;
   }
+  if (parsed.scheme != "http" && parsed.scheme != "https") {
+    return false;
+  }
 
   canonical_origin = canonicalize_origin(trimmed);
   return !canonical_origin.empty();
