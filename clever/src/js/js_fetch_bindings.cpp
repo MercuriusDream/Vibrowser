@@ -16,6 +16,7 @@ extern "C" {
 #include <fcntl.h>
 #include <map>
 #include <netdb.h>
+#include <optional>
 #include <poll.h>
 #include <random>
 #include <string>
@@ -194,8 +195,21 @@ static JSValue js_xhr_send(JSContext* ctx, JSValueConst this_val,
     req.parse_url();
 
     const std::string document_origin = current_document_origin(ctx);
+    const bool enforce_cors_request_policy =
+        cors::has_enforceable_document_origin(document_origin) || document_origin == "null";
+    const bool request_url_eligible = cors::is_cors_eligible_request_url(state->url);
+    if (enforce_cors_request_policy && !request_url_eligible) {
+        state->status = 0;
+        state->status_text = "";
+        state->response_text = "";
+        state->response_headers.clear();
+        state->ready_state = 4; // DONE
+        return JS_UNDEFINED;
+    }
+
     const bool cross_origin = cors::is_cross_origin(document_origin, state->url);
-    const bool should_send_cookies = !cross_origin || state->with_credentials;
+    const bool should_send_cookies =
+        request_url_eligible && (!cross_origin || state->with_credentials);
 
     if (cors::should_attach_origin_header(document_origin, state->url) &&
         !req.headers.has("origin")) {
@@ -1207,11 +1221,15 @@ static JSValue js_global_fetch(JSContext* ctx, JSValueConst /*this_val*/,
 
     req.parse_url();
     const std::string document_origin = current_document_origin(ctx);
+    const bool enforce_cors_request_policy =
+        cors::has_enforceable_document_origin(document_origin) || document_origin == "null";
+    const bool request_url_eligible = cors::is_cors_eligible_request_url(url_str);
     const bool cross_origin = cors::is_cross_origin(document_origin, url_str);
     const bool credentials_requested = (credentials_mode == FetchCredentialsMode::Include);
     const bool should_send_cookies =
-        credentials_mode == FetchCredentialsMode::Include ||
-        (credentials_mode == FetchCredentialsMode::SameOrigin && !cross_origin);
+        request_url_eligible &&
+        (credentials_mode == FetchCredentialsMode::Include ||
+         (credentials_mode == FetchCredentialsMode::SameOrigin && !cross_origin));
 
     if (cors::should_attach_origin_header(document_origin, url_str) &&
         !req.headers.has("origin")) {
@@ -1227,11 +1245,17 @@ static JSValue js_global_fetch(JSContext* ctx, JSValueConst /*this_val*/,
         }
     }
 
-    // Perform synchronous HTTP request
-    clever::net::HttpClient client;
-    client.set_timeout(std::chrono::seconds(30));
-    auto resp = client.fetch(req);
     bool cors_blocked = false;
+    std::optional<clever::net::Response> resp;
+
+    if (enforce_cors_request_policy && !request_url_eligible) {
+        cors_blocked = true;
+    } else {
+        // Perform synchronous HTTP request
+        clever::net::HttpClient client;
+        client.set_timeout(std::chrono::seconds(30));
+        resp = client.fetch(req);
+    }
 
     if (resp.has_value()) {
         const bool cors_allowed =

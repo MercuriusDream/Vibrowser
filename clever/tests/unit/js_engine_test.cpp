@@ -3998,6 +3998,37 @@ TEST(JSFetch, FetchNetworkErrorRejectsPromise) {
     EXPECT_FALSE(result.empty());
 }
 
+TEST(JSFetch, FetchRejectsUnsupportedRequestSchemeBeforeDispatch) {
+    clever::js::JSEngine engine;
+    clever::js::install_window_bindings(engine.context(), "https://app.example/", 1024, 768);
+    clever::js::install_fetch_bindings(engine.context());
+    engine.evaluate(R"(
+        var errMsg = '';
+        fetch('ftp://api.example/data')
+            .then(function(resp) { errMsg = 'should-not-resolve'; })
+            .catch(function(err) { errMsg = err.message || String(err); });
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    clever::js::flush_fetch_promise_jobs(engine.context());
+    auto result = engine.evaluate("errMsg");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "TypeError: Failed to fetch (CORS blocked)");
+}
+
+TEST(JSFetch, XHRRejectsUnsupportedRequestSchemeBeforeDispatch) {
+    clever::js::JSEngine engine;
+    clever::js::install_window_bindings(engine.context(), "https://app.example/", 1024, 768);
+    clever::js::install_fetch_bindings(engine.context());
+    auto result = engine.evaluate(R"(
+        var xhr = new XMLHttpRequest();
+        xhr.open('GET', 'ftp://api.example/data');
+        xhr.send();
+        [xhr.readyState, xhr.status].join(',')
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "4,0");
+}
+
 // ============================================================================
 // Response .type is "basic"
 // ============================================================================

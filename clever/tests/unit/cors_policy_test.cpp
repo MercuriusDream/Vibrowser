@@ -6,6 +6,7 @@
 
 using clever::js::cors::cors_allows_response;
 using clever::js::cors::has_enforceable_document_origin;
+using clever::js::cors::is_cors_eligible_request_url;
 using clever::js::cors::is_cross_origin;
 using clever::js::cors::should_attach_origin_header;
 
@@ -22,6 +23,14 @@ TEST(CORSPolicyTest, CrossOriginDetection) {
     EXPECT_TRUE(is_cross_origin("null", "https://api.example/data"));
     EXPECT_FALSE(is_cross_origin("https://app.example", "https://app.example/path"));
     EXPECT_TRUE(is_cross_origin("https://app.example", "https://api.example/path"));
+}
+
+TEST(CORSPolicyTest, RequestUrlEligibility) {
+    EXPECT_FALSE(is_cors_eligible_request_url(""));
+    EXPECT_FALSE(is_cors_eligible_request_url("ftp://api.example/data"));
+    EXPECT_FALSE(is_cors_eligible_request_url("file:///tmp/test.html"));
+    EXPECT_TRUE(is_cors_eligible_request_url("http://api.example/data"));
+    EXPECT_TRUE(is_cors_eligible_request_url("https://api.example/data"));
 }
 
 TEST(CORSPolicyTest, OriginHeaderAttachmentRule) {

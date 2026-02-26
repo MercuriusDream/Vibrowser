@@ -178,6 +178,10 @@ bool has_enforceable_document_origin(std::string_view document_origin) {
     return is_serialized_http_origin(document_origin);
 }
 
+bool is_cors_eligible_request_url(std::string_view request_url) {
+    return parse_httpish_url(request_url).has_value();
+}
+
 bool is_cross_origin(std::string_view document_origin, std::string_view request_url) {
     auto request = parse_httpish_url(request_url);
     if (!request.has_value()) {
@@ -211,7 +215,7 @@ bool cors_allows_response(std::string_view document_origin,
 
     if ((has_enforceable_document_origin(document_origin) ||
          is_null_document_origin(document_origin)) &&
-        !parse_httpish_url(request_url).has_value()) {
+        !is_cors_eligible_request_url(request_url)) {
         return false;
     }
 
