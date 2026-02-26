@@ -1,10 +1,6 @@
 <p align="center">
   <a href="https://mercuriusdream.com/Vibrowser/" target="_blank" rel="noreferrer">
-    <img src="https://mercuriusdream.com/Vibrowser/favicon.ico" alt="Vibrowser website logo" width="72" height="72" />
-  </a>
-  <br />
-  <a href="https://mercuriusdream.com/Vibrowser/" target="_blank" rel="noreferrer">
-    <img src="https://img.shields.io/badge/Open%20Vibrowser%20Website-ff4f8b?style=for-the-badge&logo=googlechrome&logoColor=white&labelColor=0a0a0a" alt="Open the Vibrowser website" />
+    <img src="https://www.google.com/s2/favicons?domain=mercuriusdream.com&sz=128" alt="Vibrowser website logo" width="72" height="72" />
   </a>
 </p>
 
@@ -16,17 +12,7 @@
 <h1 align="center">Vibrowser</h1>
 <p align="center"><strong>Open-source, from-scratch browser engineering in public.</strong></p>
 
-<p align="center">
-  <a href="https://mercuriusdream.com/Vibrowser/">
-    <img src="https://img.shields.io/badge/Visit%20Website-ff4f8b?style=for-the-badge&logo=googlechrome&logoColor=white&labelColor=0a0a0a" alt="Visit website">
-  </a>
-  <a href="#project-snapshot">
-    <img src="https://img.shields.io/badge/Project%20Snapshot-1f2937?style=for-the-badge&logo=markdown&logoColor=white" alt="Project snapshot">
-  </a>
-  <a href="#landing-page-vite--react">
-    <img src="https://img.shields.io/badge/Landing%20Demo-06b6d4?style=for-the-badge&logo=vite&logoColor=white&labelColor=0f172a" alt="Landing page">
-  </a>
-</p>
+**Website:** [https://mercuriusdream.com/Vibrowser/](https://mercuriusdream.com/Vibrowser/)
 
 <img width="1023" height="802" alt="image" src="https://github.com/user-attachments/assets/d0b873b2-3c8f-4195-8890-be1014ebe8b9" />
 
