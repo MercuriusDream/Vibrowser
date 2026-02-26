@@ -14113,3 +14113,61 @@ TEST(JSEngine, DeleteProperty) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "1");
 }
+
+// ============================================================================
+// Cycle 658: More JS engine tests
+// ============================================================================
+
+TEST(JSEngine, InOperatorExists) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var obj = {x: 1, y: 2};
+        "x" in obj ? "yes" : "no"
+    )");
+    EXPECT_EQ(result, "yes");
+}
+
+TEST(JSEngine, InOperatorMissing) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var obj = {x: 1};
+        "z" in obj ? "yes" : "no"
+    )");
+    EXPECT_EQ(result, "no");
+}
+
+TEST(JSEngine, TernaryTrue) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("true ? 42 : 0");
+    EXPECT_EQ(result, "42");
+}
+
+TEST(JSEngine, TernaryFalse) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("false ? 42 : 99");
+    EXPECT_EQ(result, "99");
+}
+
+TEST(JSEngine, StringSplitLength) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"("a,b,c".split(",").length)");
+    EXPECT_EQ(result, "3");
+}
+
+TEST(JSEngine, StringSplitFirstElement) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"("a,b,c".split(",")[0])");
+    EXPECT_EQ(result, "a");
+}
+
+TEST(JSEngine, ArrayFindReturnsMatch) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"([10, 20, 30].find(function(x) { return x > 15; }))");
+    EXPECT_EQ(result, "20");
+}
+
+TEST(JSEngine, ArrayFindIndexReturnsTwo) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"([10, 20, 30].findIndex(function(x) { return x === 30; }))");
+    EXPECT_EQ(result, "2");
+}
