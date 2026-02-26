@@ -2,6 +2,8 @@
 
 #include <clever/url/url.h>
 
+#include <arpa/inet.h>
+
 #include <algorithm>
 #include <cctype>
 #include <optional>
@@ -40,6 +42,60 @@ bool has_invalid_request_url_octet(std::string_view value) {
         }
     }
     return false;
+}
+
+bool has_valid_serialized_origin_host(std::string_view host) {
+    if (host.empty()) {
+        return false;
+    }
+
+    if (host.front() == '[' || host.back() == ']') {
+        if (host.size() < 2 || host.front() != '[' || host.back() != ']') {
+            return false;
+        }
+        const std::string literal(host.substr(1, host.size() - 2));
+        if (literal.empty()) {
+            return false;
+        }
+        in6_addr ipv6_addr {};
+        return inet_pton(AF_INET6, literal.c_str(), &ipv6_addr) == 1;
+    }
+
+    if (host.size() > 253 || host.front() == '.' || host.back() == '.') {
+        return false;
+    }
+
+    std::size_t label_start = 0;
+    while (label_start <= host.size()) {
+        const std::size_t dot_pos = host.find('.', label_start);
+        const std::size_t label_end = (dot_pos == std::string_view::npos) ? host.size() : dot_pos;
+        if (label_end == label_start) {
+            return false;
+        }
+        if (label_end - label_start > 63) {
+            return false;
+        }
+
+        const unsigned char first = static_cast<unsigned char>(host[label_start]);
+        const unsigned char last = static_cast<unsigned char>(host[label_end - 1]);
+        if (std::isalnum(first) == 0 || std::isalnum(last) == 0) {
+            return false;
+        }
+
+        for (std::size_t i = label_start; i < label_end; ++i) {
+            const unsigned char ch = static_cast<unsigned char>(host[i]);
+            if (std::isalnum(ch) == 0 && ch != '-') {
+                return false;
+            }
+        }
+
+        if (dot_pos == std::string_view::npos) {
+            break;
+        }
+        label_start = dot_pos + 1;
+    }
+
+    return true;
 }
 
 bool has_strict_authority_port_syntax(std::string_view authority) {
@@ -159,6 +215,9 @@ std::optional<clever::url::URL> parse_httpish_url(std::string_view input) {
     }
     if (parsed->host.empty() || !parsed->username.empty() || !parsed->password.empty() ||
         !parsed->fragment.empty()) {
+        return std::nullopt;
+    }
+    if (!has_valid_serialized_origin_host(parsed->host)) {
         return std::nullopt;
     }
 

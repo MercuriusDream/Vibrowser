@@ -14,6 +14,9 @@ TEST(CORSPolicyTest, DocumentOriginEnforcement) {
     EXPECT_FALSE(has_enforceable_document_origin(""));
     EXPECT_FALSE(has_enforceable_document_origin("null"));
     EXPECT_FALSE(has_enforceable_document_origin("https://app.example/path"));
+    EXPECT_FALSE(has_enforceable_document_origin("https://app..example"));
+    EXPECT_FALSE(has_enforceable_document_origin("https://-app.example"));
+    EXPECT_FALSE(has_enforceable_document_origin("https://app-.example"));
     EXPECT_FALSE(has_enforceable_document_origin("ftp://app.example"));
     EXPECT_FALSE(has_enforceable_document_origin(" https://app.example"));
     EXPECT_FALSE(has_enforceable_document_origin("https://app.example "));
@@ -42,6 +45,9 @@ TEST(CORSPolicyTest, RequestUrlEligibility) {
     EXPECT_FALSE(is_cors_eligible_request_url("https://api.example\\data"));
     EXPECT_FALSE(is_cors_eligible_request_url("https://api%2eexample/data"));
     EXPECT_FALSE(is_cors_eligible_request_url("https://api.example%40evil/data"));
+    EXPECT_FALSE(is_cors_eligible_request_url("https://api..example/data"));
+    EXPECT_FALSE(is_cors_eligible_request_url("https://-api.example/data"));
+    EXPECT_FALSE(is_cors_eligible_request_url("https://api-.example/data"));
     EXPECT_FALSE(is_cors_eligible_request_url("https://api.example/%0a"));
     EXPECT_FALSE(is_cors_eligible_request_url("https://api.example/%20"));
     EXPECT_FALSE(is_cors_eligible_request_url("https://api.example/%5Cdata"));
@@ -75,6 +81,12 @@ TEST(CORSPolicyTest, OriginHeaderAttachmentRule) {
         should_attach_origin_header("https://app.example", "https://api%2eexample/data"));
     EXPECT_FALSE(
         should_attach_origin_header("https://app.example", "https://api.example%40evil/data"));
+    EXPECT_FALSE(
+        should_attach_origin_header("https://app.example", "https://api..example/data"));
+    EXPECT_FALSE(
+        should_attach_origin_header("https://app.example", "https://-api.example/data"));
+    EXPECT_FALSE(
+        should_attach_origin_header("https://app.example", "https://api-.example/data"));
     EXPECT_FALSE(
         should_attach_origin_header("https://app.example", "https://api.example/%0d"));
     EXPECT_FALSE(
@@ -141,6 +153,12 @@ TEST(CORSPolicyTest, CrossOriginRejectsMalformedOrUnsupportedRequestUrl) {
         cors_allows_response("https://app.example", "https://api%2eexample/data", headers, false));
     EXPECT_FALSE(cors_allows_response("https://app.example", "https://api.example%40evil/data",
                                       headers, false));
+    EXPECT_FALSE(cors_allows_response("https://app.example", "https://api..example/data", headers,
+                                      false));
+    EXPECT_FALSE(cors_allows_response("https://app.example", "https://-api.example/data", headers,
+                                      false));
+    EXPECT_FALSE(cors_allows_response("https://app.example", "https://api-.example/data", headers,
+                                      false));
     EXPECT_FALSE(
         cors_allows_response("https://app.example", "https://api.example/%00", headers, false));
     EXPECT_FALSE(
@@ -210,6 +228,21 @@ TEST(CORSPolicyTest, CrossOriginRejectsMalformedACAOValue) {
     nondigit_port.set("Access-Control-Allow-Origin", "https://app.example:443abc");
     EXPECT_FALSE(cors_allows_response("https://app.example", "https://api.example/data",
                                       nondigit_port, false));
+
+    clever::net::HeaderMap malformed_host_label;
+    malformed_host_label.set("Access-Control-Allow-Origin", "https://app..example");
+    EXPECT_FALSE(cors_allows_response("https://app.example", "https://api.example/data",
+                                      malformed_host_label, false));
+
+    clever::net::HeaderMap leading_hyphen_label;
+    leading_hyphen_label.set("Access-Control-Allow-Origin", "https://-app.example");
+    EXPECT_FALSE(cors_allows_response("https://app.example", "https://api.example/data",
+                                      leading_hyphen_label, false));
+
+    clever::net::HeaderMap trailing_hyphen_label;
+    trailing_hyphen_label.set("Access-Control-Allow-Origin", "https://app-.example");
+    EXPECT_FALSE(cors_allows_response("https://app.example", "https://api.example/data",
+                                      trailing_hyphen_label, false));
 
     clever::net::HeaderMap surrounding_whitespace_acao;
     surrounding_whitespace_acao.set("Access-Control-Allow-Origin", " https://app.example");
