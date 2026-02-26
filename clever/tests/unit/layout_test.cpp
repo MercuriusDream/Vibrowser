@@ -4420,3 +4420,214 @@ TEST(LayoutEngineTest, FlexRowDirectionColumnGapValAddsHorizontalSpacing) {
     EXPECT_FLOAT_EQ(root->children[1]->geometry.x, 110.0f)
         << "column_gap_val=30 should offset second child by 80+30=110";
 }
+
+// ---------------------------------------------------------------------------
+// Cycle 489 — additional layout engine regression tests
+// ---------------------------------------------------------------------------
+
+// justify-content: flex-end pushes items to end of main axis
+TEST(FlexboxAudit, JustifyContentFlexEnd) {
+    auto root = make_flex("div");
+    root->flex_direction = 0; // row
+    root->justify_content = 1; // flex-end
+    root->specified_width = 400.0f;
+    root->specified_height = 100.0f;
+
+    auto c1 = make_block("div");
+    c1->specified_width = 50.0f;
+    c1->specified_height = 50.0f;
+    c1->flex_grow = 0; c1->flex_shrink = 0;
+
+    auto c2 = make_block("div");
+    c2->specified_width = 50.0f;
+    c2->specified_height = 50.0f;
+    c2->flex_grow = 0; c2->flex_shrink = 0;
+
+    root->append_child(std::move(c1));
+    root->append_child(std::move(c2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 400.0f, 400.0f);
+
+    ASSERT_GE(root->children.size(), 2u);
+    // Total item width = 100, free = 300; flex-end: first at 300, second at 350
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.x, 300.0f)
+        << "justify-content:flex-end should push first item to x=300";
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.x, 350.0f)
+        << "justify-content:flex-end should push second item to x=350";
+}
+
+// justify-content: space-around distributes remaining space around each item
+TEST(FlexboxAudit, JustifyContentSpaceAround) {
+    auto root = make_flex("div");
+    root->flex_direction = 0; // row
+    root->justify_content = 4; // space-around
+    root->specified_width = 400.0f;
+    root->specified_height = 100.0f;
+
+    auto c1 = make_block("div");
+    c1->specified_width = 50.0f;
+    c1->specified_height = 50.0f;
+    c1->flex_grow = 0; c1->flex_shrink = 0;
+
+    auto c2 = make_block("div");
+    c2->specified_width = 50.0f;
+    c2->specified_height = 50.0f;
+    c2->flex_grow = 0; c2->flex_shrink = 0;
+
+    root->append_child(std::move(c1));
+    root->append_child(std::move(c2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 400.0f, 400.0f);
+
+    ASSERT_GE(root->children.size(), 2u);
+    // Free space=300, 2 items, each gets 150 around it; half=75 on each side
+    // c1 starts at 75, c2 starts at 75+50+150=275
+    float x1 = root->children[0]->geometry.x;
+    float x2 = root->children[1]->geometry.x;
+    EXPECT_GT(x1, 0.0f) << "space-around: first item should not be at 0";
+    EXPECT_GT(x2, x1 + 50.0f) << "space-around: gap between items > 0";
+    EXPECT_LT(x2 + 50.0f, 400.0f) << "space-around: last item should not reach end";
+}
+
+// align-items: flex-end positions items at end of cross axis
+TEST(FlexboxAudit, AlignItemsFlexEnd) {
+    auto root = make_flex("div");
+    root->flex_direction = 0; // row
+    root->align_items = 1; // flex-end
+    root->specified_width = 400.0f;
+    root->specified_height = 200.0f;
+
+    auto c1 = make_block("div");
+    c1->specified_width = 80.0f;
+    c1->specified_height = 60.0f;
+    c1->flex_grow = 0; c1->flex_shrink = 0;
+
+    root->append_child(std::move(c1));
+
+    LayoutEngine engine;
+    engine.compute(*root, 400.0f, 400.0f);
+
+    ASSERT_GE(root->children.size(), 1u);
+    // flex-end in cross axis: child at bottom = container_height - child_height = 200-60=140
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.y, 140.0f)
+        << "align-items:flex-end should position child at container_height - child_height";
+}
+
+// flex column direction: child is present and has correct y position
+TEST(FlexboxAudit, FlexColumnChildStacksVertically) {
+    auto root = make_flex("div");
+    root->flex_direction = 2; // column
+    root->specified_width = 400.0f;
+    root->specified_height = 200.0f;
+
+    auto c1 = make_block("div");
+    c1->specified_width = 100.0f;
+    c1->specified_height = 50.0f;
+    c1->flex_grow = 0; c1->flex_shrink = 0;
+
+    auto c2 = make_block("div");
+    c2->specified_width = 100.0f;
+    c2->specified_height = 60.0f;
+    c2->flex_grow = 0; c2->flex_shrink = 0;
+
+    root->append_child(std::move(c1));
+    root->append_child(std::move(c2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 400.0f, 400.0f);
+
+    ASSERT_GE(root->children.size(), 2u);
+    // Second child should be below first
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.y, 0.0f);
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.y, 50.0f)
+        << "flex column: second child should start at y=50 (below first)";
+}
+
+// flex row container without specified_height: height taken from tallest child
+TEST(LayoutEngineTest, FlexRowContainerHeightFromTallestChild) {
+    auto root = make_flex("div");
+    root->flex_direction = 0; // row
+    // No specified_height
+
+    auto c1 = make_block("div");
+    c1->specified_width = 80.0f;
+    c1->specified_height = 60.0f;
+    c1->flex_grow = 0; c1->flex_shrink = 0;
+
+    auto c2 = make_block("div");
+    c2->specified_width = 80.0f;
+    c2->specified_height = 40.0f;
+    c2->flex_grow = 0; c2->flex_shrink = 0;
+
+    root->append_child(std::move(c1));
+    root->append_child(std::move(c2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 400.0f, 400.0f);
+
+    // Container height should be at least the tallest child (60px)
+    EXPECT_GE(root->geometry.height, 60.0f)
+        << "flex row container should be at least as tall as tallest child";
+}
+
+// block with padding+border+margin: child width narrows by padding+border only
+TEST(LayoutEngineTest, BlockChildWidthNarrowsByPaddingAndBorder) {
+    auto root = make_block("div");
+    root->geometry.padding.left = 10.0f;
+    root->geometry.padding.right = 10.0f;
+    root->geometry.border.left = 5.0f;
+    root->geometry.border.right = 5.0f;
+
+    auto child = make_block("div");
+    child->specified_height = 50.0f;
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 400.0f, 400.0f);
+
+    // Child content width = 400 - (padding 10+10) - (border 5+5) = 370
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.width, 370.0f)
+        << "child width should be parent_width - padding - border";
+}
+
+// Three flex items with flex-grow=1 distribute space equally
+TEST(FlexboxAudit, ThreeItemsFlexGrowEqual) {
+    auto root = make_flex("div");
+    root->flex_direction = 0; // row
+    root->specified_height = 100.0f;
+
+    for (int i = 0; i < 3; ++i) {
+        auto c = make_block("div");
+        c->specified_height = 50.0f;
+        c->flex_grow = 1;
+        c->flex_shrink = 0;
+        root->append_child(std::move(c));
+    }
+
+    LayoutEngine engine;
+    engine.compute(*root, 300.0f, 300.0f);
+
+    ASSERT_EQ(root->children.size(), 3u);
+    // Each child should get 300/3 = 100px
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.width, 100.0f);
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.width, 100.0f);
+    EXPECT_FLOAT_EQ(root->children[2]->geometry.width, 100.0f);
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.x, 0.0f);
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.x, 100.0f);
+    EXPECT_FLOAT_EQ(root->children[2]->geometry.x, 200.0f);
+}
+
+// Empty flex container: height 0 if no children and no specified_height
+TEST(LayoutEngineTest, EmptyFlexContainerHeightZero) {
+    auto root = make_flex("div");
+    root->flex_direction = 0; // row
+    // No children, no specified_height
+
+    LayoutEngine engine;
+    engine.compute(*root, 400.0f, 400.0f);
+
+    EXPECT_FLOAT_EQ(root->geometry.height, 0.0f)
+        << "empty flex container with no specified_height should have height=0";
+}
