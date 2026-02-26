@@ -2305,7 +2305,8 @@ PolicyCheckResult check_cors_response_policy(const std::string& url,
         const std::string& acac_value = acac_header.value;
         if (acac_header.duplicate ||
             (acac_header.found &&
-             (has_forbidden_header_value_char(acac_value) ||
+             (acac_value.find(',') != std::string::npos ||
+              has_forbidden_header_value_char(acac_value) ||
               acac_value != trim_ascii(acac_value)))) {
             return {false,
                     PolicyViolation::CorsResponseBlocked,

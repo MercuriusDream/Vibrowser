@@ -1267,6 +1267,43 @@ int main() {
         }
     }
 
+    // Test 67: credentialed CORS rejects comma-separated ACAC value
+    {
+        browser::net::RequestPolicy policy;
+        policy.origin = "https://app.example.com";
+        policy.credentials_mode_include = true;
+        browser::net::Response response;
+        response.headers["access-control-allow-origin"] = "https://app.example.com";
+        response.headers["access-control-allow-credentials"] = "true,false";
+        auto result =
+            browser::net::check_cors_response_policy("https://api.example.com/data", response, policy);
+        if (result.allowed) {
+            std::cerr << "FAIL: credentialed CORS should reject comma-separated ACAC values\n";
+            ++failures;
+        } else {
+            std::cerr << "PASS: credentialed CORS rejects comma-separated ACAC values\n";
+        }
+    }
+
+    // Test 68: credentialed CORS rejects comma-separated ACAC value when ACAC is optional
+    {
+        browser::net::RequestPolicy policy;
+        policy.origin = "https://app.example.com";
+        policy.credentials_mode_include = true;
+        policy.require_acac_for_credentialed_cors = false;
+        browser::net::Response response;
+        response.headers["access-control-allow-origin"] = "https://app.example.com";
+        response.headers["access-control-allow-credentials"] = "true,false";
+        auto result =
+            browser::net::check_cors_response_policy("https://api.example.com/data", response, policy);
+        if (result.allowed) {
+            std::cerr << "FAIL: optional ACAC mode should reject comma-separated ACAC values\n";
+            ++failures;
+        } else {
+            std::cerr << "PASS: optional ACAC mode rejects comma-separated ACAC values\n";
+        }
+    }
+
     if (failures > 0) {
         std::cerr << "\n" << failures << " test(s) FAILED\n";
         return 1;

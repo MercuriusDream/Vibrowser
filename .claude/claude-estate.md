@@ -5,13 +5,29 @@
 
 ## Current Status
 
-**Phase**: Active Development — Cycle 370 COMPLETE
-**Last Active**: 2026-02-26T17:58:33+0900
-**Current Focus**: CORS/CSP enforcement completion with strict native credentialed-CORS ACAC literal-value fail-closed hardening (optional ACAC path)
-**Momentum**: 3515 tests, ZERO failures, 2497+ features! v0.7.0! CYCLE 370 DONE! 196 BUGS FIXED!
-**Cycle**: 370
+**Phase**: Active Development — Cycle 371 COMPLETE
+**Last Active**: 2026-02-26T18:02:02+0900
+**Current Focus**: CORS/CSP enforcement completion with strict native credentialed-CORS comma-separated ACAC fail-closed hardening
+**Momentum**: 3517 tests, ZERO failures, 2498+ features! v0.7.0! CYCLE 371 DONE! 197 BUGS FIXED!
+**Cycle**: 371
 
 ## Session Log
+
+### Cycle 371 — 2026-02-26 — Native credentialed-CORS comma-separated ACAC fail-closed hardening
+- **CORS/CSP ENFORCEMENT (Priority 1)**: Hardened native credentialed CORS response handling to fail closed when `Access-Control-Allow-Credentials` is comma-separated/multi-valued, including optional-ACAC mode.
+- Updated native request policy behavior (`src/net/http_client.cpp`):
+  - tightened `check_cors_response_policy(...)` to reject any present credentialed `Access-Control-Allow-Credentials` value containing commas
+  - preserves strict duplicate/header-control/whitespace/literal-`true` credential validation semantics
+- Added regression coverage (`tests/test_request_policy.cpp`):
+  - new test rejects credentialed CORS `Access-Control-Allow-Credentials: true,false`
+  - new test rejects optional-ACAC credentialed CORS `Access-Control-Allow-Credentials: true,false`
+- Validation:
+  - `cmake --build build_vibrowser --target test_request_policy test_request_contracts -j8`
+  - `./build_vibrowser/test_request_policy`
+  - `./build_vibrowser/test_request_contracts`
+- Files: `src/net/http_client.cpp`, `tests/test_request_policy.cpp`
+- **Targeted policy + contract suites green, no regressions.**
+- **Ledger divergence note**: `.codex/codex-estate.md` remains non-writable in this runtime (`Operation not permitted`), so `.claude/claude-estate.md` is source of truth for Cycle 371; replay sync when permissions allow.
 
 ### Cycle 370 — 2026-02-26 — Native credentialed-CORS optional ACAC literal-value fail-closed hardening
 - **CORS/CSP ENFORCEMENT (Priority 1)**: Hardened native credentialed CORS response handling so `Access-Control-Allow-Credentials` fails closed unless it is exactly literal `true` whenever ACAC is present, including optional-ACAC mode.
@@ -3835,6 +3851,7 @@
 
 | # | What | Files | Notes |
 |---|------|-------|-------|
+| 740 | Native credentialed-CORS comma-separated ACAC fail-closed hardening | src/net/http_client.cpp, tests/test_request_policy.cpp | Rejects comma-separated/multi-valued credentialed `Access-Control-Allow-Credentials` headers (including optional-ACAC mode) and adds focused regressions for `true,false` variants |
 | 739 | Native credentialed-CORS optional ACAC literal-value fail-closed hardening | src/net/http_client.cpp, tests/test_request_policy.cpp | Rejects any present credentialed `Access-Control-Allow-Credentials` value other than exact `true` (including optional-ACAC mode) and adds focused regressions for non-literal/non-ASCII optional ACAC variants |
 | 738 | Shared JS CORS request-URL authority percent-escape fail-closed hardening | clever/src/js/cors_policy.cpp, clever/tests/unit/cors_policy_test.cpp | Rejects percent-escaped authority forms in request URLs so encoded authority delimiter/hostname confusion targets fail closed across shared JS CORS eligibility, Origin-header attachment, and response-policy checks |
 | 737 | Shared JS CORS request-URL percent-encoded control/backslash fail-closed hardening | clever/src/js/cors_policy.cpp, clever/tests/unit/cors_policy_test.cpp | Rejects malformed percent-escapes and percent-decoded control/backslash octets in request URLs so encoded parser-confusion targets fail closed across shared JS CORS eligibility, Origin-header attachment, and response-policy checks |
@@ -4368,7 +4385,7 @@
 
 | Priority | What | Effort |
 |----------|------|--------|
-| 1 | CORS/CSP enforcement in fetch/XHR path (MC-08, FJNS-11) — PARTIAL: connect-src pre-dispatch + host-source (incl. bracketed IPv6 normalization, scheme-less source scheme/port inference, invalid-port rejection) + wildcard-port + default-src fallback + canonical origin normalization + credentialed CORS ACAO/ACAC gate + strict ACAO single-value/case-insensitive CORS header handling + duplicate case-variant ACAO/ACAC rejection + serialized-origin ACAO enforcement + null-origin ACAO handling + dot-segment/encoded-traversal-safe path matching + websocket (`ws`/`wss`) default-port enforcement + effective-URL parse fail-closed CORS gate + strict ACAO/ACAC control-character rejection + strict request-Origin serialized-origin validation for both CORS evaluation and outgoing header emission + policy-origin serialized-origin fail-closed enforcement for request/CSP checks + strict non-HTTP(S) serialized-origin scheme rejection for request-policy/CORS + shared JS CORS helper malformed ACAO/ACAC fail-closed rejection + strict shared JS malformed document-origin fail-closed validation + strict shared JS malformed/unsupported request-URL fail-closed validation + strict shared JS request-URL surrounding-whitespace fail-closed validation + strict shared JS request-URL control/non-ASCII octet fail-closed validation + strict shared JS request-URL embedded-whitespace/userinfo/fragment fail-closed validation + strict shared JS request-URL empty-port authority fail-closed validation + strict shared JS request-URL authority percent-escape fail-closed validation + strict shared JS null/empty document-origin fail-closed enforcement + strict shared JS malformed ACAO authority/port fail-closed validation + strict shared JS non-ASCII ACAO/ACAC/header-origin octet fail-closed validation + strict shared JS serialized-origin/header surrounding-whitespace fail-closed validation + strict fetch/XHR unsupported-scheme pre-dispatch fail-closed request gate + strict unsupported-scheme cookie-attach suppression + strict native serialized-origin embedded/surrounding-whitespace and strict native ACAO/ACAC surrounding-whitespace fail-closed rejection + strict native optional ACAC non-literal/non-ASCII fail-closed rejection DONE (Cycles 275-276, 278, 280-293, 306-307, 320, 326-329, 348-352, 355-370) | Large |
+| 1 | CORS/CSP enforcement in fetch/XHR path (MC-08, FJNS-11) — PARTIAL: connect-src pre-dispatch + host-source (incl. bracketed IPv6 normalization, scheme-less source scheme/port inference, invalid-port rejection) + wildcard-port + default-src fallback + canonical origin normalization + credentialed CORS ACAO/ACAC gate + strict ACAO single-value/case-insensitive CORS header handling + duplicate case-variant ACAO/ACAC rejection + serialized-origin ACAO enforcement + null-origin ACAO handling + dot-segment/encoded-traversal-safe path matching + websocket (`ws`/`wss`) default-port enforcement + effective-URL parse fail-closed CORS gate + strict ACAO/ACAC control-character rejection + strict request-Origin serialized-origin validation for both CORS evaluation and outgoing header emission + policy-origin serialized-origin fail-closed enforcement for request/CSP checks + strict non-HTTP(S) serialized-origin scheme rejection for request-policy/CORS + shared JS CORS helper malformed ACAO/ACAC fail-closed rejection + strict shared JS malformed document-origin fail-closed validation + strict shared JS malformed/unsupported request-URL fail-closed validation + strict shared JS request-URL surrounding-whitespace fail-closed validation + strict shared JS request-URL control/non-ASCII octet fail-closed validation + strict shared JS request-URL embedded-whitespace/userinfo/fragment fail-closed validation + strict shared JS request-URL empty-port authority fail-closed validation + strict shared JS request-URL authority percent-escape fail-closed validation + strict shared JS null/empty document-origin fail-closed enforcement + strict shared JS malformed ACAO authority/port fail-closed validation + strict shared JS non-ASCII ACAO/ACAC/header-origin octet fail-closed validation + strict shared JS serialized-origin/header surrounding-whitespace fail-closed validation + strict fetch/XHR unsupported-scheme pre-dispatch fail-closed request gate + strict unsupported-scheme cookie-attach suppression + strict native serialized-origin embedded/surrounding-whitespace and strict native ACAO/ACAC surrounding-whitespace fail-closed rejection + strict native optional ACAC non-literal/non-ASCII/comma-separated fail-closed rejection DONE (Cycles 275-276, 278, 280-293, 306-307, 320, 326-329, 348-352, 355-371) | Large |
 | 2 | ~~TLS certificate verification policy hardening (FJNS-06)~~ DONE (Cycle 276) | ~~Medium~~ |
 | 3 | ~~Fetch/XHR origin header + ACAO response gate~~ DONE (Cycle 274) | ~~Medium~~ |
 | 4 | HTTP/2 transport (MC-12) — PARTIAL: protocol-version capture + explicit rejection guardrails for HTTP/2 preface/status-line/TLS ALPN/outbound `Upgrade` request/outbound `HTTP2-Settings` request-header/outbound pseudo-header requests/`101` upgrade/`426` upgrade-required responses + unsupported status-version rejection allowlisting HTTP/1.0/HTTP/1.1 + preface trailing/tab-whitespace variants + tab-separated status-line variant + whitespace-padded request-header name variant hardening + quoted/single-quoted upgrade-token variant hardening + quoted comma-contained upgrade-token split hardening + escaped quoted-string upgrade-token normalization hardening + escaped-comma delimiter hardening + malformed unterminated-token explicit rejection hardening + control-character malformed token explicit rejection hardening + malformed bare backslash-escape token explicit rejection hardening + malformed unterminated quoted-parameter token explicit rejection hardening + malformed upgrade token-character fail-closed hardening + strict non-ASCII upgrade-token rejection hardening + strict HTTP2-Settings token68 validation and duplicate-header fail-closed hardening + strict Transfer-Encoding `chunked` exact-token parsing hardening + strict malformed Transfer-Encoding delimiter/quoted-token rejection hardening + strict Transfer-Encoding `chunked` final-position/no-parameter enforcement hardening + strict Transfer-Encoding control-character token rejection hardening + strict non-ASCII Transfer-Encoding token rejection hardening + strict unsupported/malformed Transfer-Encoding fail-closed rejection hardening DONE (Cycles 294-305, 308-319, 321-325, 330-332) | Large |
@@ -4389,13 +4406,13 @@
 | Metric | Value |
 |--------|-------|
 | Total Sessions | 145 |
-| Total Cycles | 370 |
+| Total Cycles | 371 |
 | Files Created | ~135 |
 | Files Modified | 100+ |
 | Lines Added (est.) | 172320+ |
-| Tests Added | 3515 |
-| Bugs Fixed | 196 |
-| Features Added | 2497 |
+| Tests Added | 3517 |
+| Bugs Fixed | 197 |
+| Features Added | 2498 |
 
 ## Tell The Next Claude
 
@@ -4403,12 +4420,18 @@
 
 Build: `cd clever && cmake -S . -B build && cmake --build build && ctest --test-dir build`
 
-**3515 tests, 12 libraries (QuickJS!), 1 macOS app, ZERO warnings. v0.7.0. CYCLE 370! 2497+ FEATURES! 196 BUGS FIXED! ANTHROPIC.COM LOADS!**
+**3517 tests, 12 libraries (QuickJS!), 1 macOS app, ZERO warnings. v0.7.0. CYCLE 371! 2498+ FEATURES! 197 BUGS FIXED! ANTHROPIC.COM LOADS!**
 
 **Current implementation vs full browser comparison**:
 - Current implementation: robust single-process browser shell with full JS engine integration, broad DOM/CSS/Fetch coverage, and hardened HTTP/1.x/CORS/CSP policy enforcement.
 - Full browser target: still missing major subsystems like full multi-process isolation, full HTTP/2+/QUIC transport stack, and complete production-grade web font pipeline coverage.
-- Progress snapshot: from early scaffolding to 370 completed cycles, 3515 tests, and 2497+ implemented features.
+- Progress snapshot: from early scaffolding to 371 completed cycles, 3517 tests, and 2498+ implemented features.
+
+**Cycle 371 — Native credentialed-CORS comma-separated ACAC fail-closed hardening in from_scratch_browser path**:
+- Hardened `check_cors_response_policy(...)` so present credentialed `Access-Control-Allow-Credentials` headers fail closed when comma-separated/multi-valued.
+- Added focused regression coverage in `tests/test_request_policy.cpp` for both required-ACAC and optional-ACAC credentialed CORS paths with `true,false` ACAC variants.
+- Rebuilt and re-ran `test_request_policy` and `test_request_contracts` from `build_vibrowser`, both green.
+- **Ledger divergence note**: `.codex/codex-estate.md` remains non-writable in this runtime (`Operation not permitted`), so `.claude/claude-estate.md` is source of truth for Cycle 371; replay sync when permissions allow.
 
 **Cycle 370 — Native credentialed-CORS optional ACAC literal-value fail-closed hardening in from_scratch_browser path**:
 - Hardened `check_cors_response_policy(...)` so any present credentialed `Access-Control-Allow-Credentials` value must be exact literal `true`, even when ACAC is configured as optional.
