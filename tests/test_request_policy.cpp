@@ -1229,6 +1229,44 @@ int main() {
         }
     }
 
+    // Test 65: credentialed CORS rejects non-literal ACAC value even when ACAC is optional
+    {
+        browser::net::RequestPolicy policy;
+        policy.origin = "https://app.example.com";
+        policy.credentials_mode_include = true;
+        policy.require_acac_for_credentialed_cors = false;
+        browser::net::Response response;
+        response.headers["access-control-allow-origin"] = "https://app.example.com";
+        response.headers["access-control-allow-credentials"] = "false";
+        auto result =
+            browser::net::check_cors_response_policy("https://api.example.com/data", response, policy);
+        if (result.allowed) {
+            std::cerr << "FAIL: credentialed CORS should reject non-literal ACAC values when ACAC is optional\n";
+            ++failures;
+        } else {
+            std::cerr << "PASS: credentialed CORS rejects non-literal ACAC values when ACAC is optional\n";
+        }
+    }
+
+    // Test 66: credentialed CORS rejects non-ASCII ACAC value even when ACAC is optional
+    {
+        browser::net::RequestPolicy policy;
+        policy.origin = "https://app.example.com";
+        policy.credentials_mode_include = true;
+        policy.require_acac_for_credentialed_cors = false;
+        browser::net::Response response;
+        response.headers["access-control-allow-origin"] = "https://app.example.com";
+        response.headers["access-control-allow-credentials"] = "trué";
+        auto result =
+            browser::net::check_cors_response_policy("https://api.example.com/data", response, policy);
+        if (result.allowed) {
+            std::cerr << "FAIL: credentialed CORS should reject non-ASCII ACAC values when ACAC is optional\n";
+            ++failures;
+        } else {
+            std::cerr << "PASS: credentialed CORS rejects non-ASCII ACAC values when ACAC is optional\n";
+        }
+    }
+
     if (failures > 0) {
         std::cerr << "\n" << failures << " test(s) FAILED\n";
         return 1;

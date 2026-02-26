@@ -2311,6 +2311,11 @@ PolicyCheckResult check_cors_response_policy(const std::string& url,
                     PolicyViolation::CorsResponseBlocked,
                     "Cross-origin response blocked: invalid Access-Control-Allow-Credentials header"};
         }
+        if (acac_header.found && acac_value != "true") {
+            return {false,
+                    PolicyViolation::CorsResponseBlocked,
+                    "Cross-origin response blocked: invalid Access-Control-Allow-Credentials header"};
+        }
         if (policy.require_acac_for_credentialed_cors) {
             if (!acac_header.found || acac_value != "true") {
                 return {false,
