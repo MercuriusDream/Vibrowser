@@ -5133,3 +5133,73 @@ TEST(GridLayout, GridRowCanBeStored) {
     node->grid_row = "2 / 4";
     EXPECT_EQ(node->grid_row, "2 / 4");
 }
+
+// ============================================================================
+// Cycle 557: Layout regression tests
+// ============================================================================
+
+// Display type: Block for div
+TEST(LayoutEngineTest, DisplayTypeBlockForDiv) {
+    auto node = make_block("div");
+    EXPECT_EQ(node->display, DisplayType::Block);
+}
+
+// Display type: Inline for span
+TEST(LayoutEngineTest, DisplayTypeInlineForSpan) {
+    auto node = make_inline("span");
+    EXPECT_EQ(node->display, DisplayType::Inline);
+}
+
+// Display type: Flex for flex container
+TEST(LayoutEngineTest, DisplayTypeFlexForFlexContainer) {
+    auto node = make_flex("div");
+    EXPECT_EQ(node->display, DisplayType::Flex);
+}
+
+// Position type 0 = static
+TEST(LayoutPosition, DefaultPositionTypeIsZero) {
+    auto node = make_block("div");
+    EXPECT_EQ(node->position_type, 0);
+}
+
+// Node tag_name is stored correctly
+TEST(LayoutEngineTest, TagNameStoredCorrectly) {
+    auto node = make_block("article");
+    EXPECT_EQ(node->tag_name, "article");
+}
+
+// is_text is false for block node
+TEST(LayoutEngineTest, IsTextFalseForBlockNode) {
+    auto node = make_block("div");
+    EXPECT_FALSE(node->is_text);
+}
+
+// is_text is true for text node
+TEST(LayoutEngineTest, IsTextTrueForTextNode) {
+    auto node = make_text("hello");
+    EXPECT_TRUE(node->is_text);
+    EXPECT_EQ(node->text_content, "hello");
+}
+
+// Flex node: children can be added
+TEST(FlexboxAudit, FlexContainerAcceptsChildren) {
+    auto root = make_flex("div");
+    root->specified_width = 200.0f;
+    root->specified_height = 100.0f;
+
+    for (int i = 0; i < 3; ++i) {
+        auto child = make_block("div");
+        child->specified_width = 50.0f;
+        child->specified_height = 50.0f;
+        root->append_child(std::move(child));
+    }
+
+    EXPECT_EQ(root->children.size(), 3u);
+
+    LayoutEngine engine;
+    engine.compute(*root, 200.0f, 100.0f);
+    // All children should have positive dimensions
+    for (auto& child : root->children) {
+        EXPECT_GE(child->geometry.width, 0.0f);
+    }
+}
