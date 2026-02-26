@@ -1580,3 +1580,72 @@ TEST(CSSParserTest, DeclarationWithNumericValue) {
     }
     EXPECT_TRUE(found);
 }
+
+// ============================================================================
+// Cycle 520: CSS parser regression tests
+// ============================================================================
+
+TEST_F(CSSTokenizerTest, GreaterThanDelimToken) {
+    auto tokens = CSSTokenizer::tokenize_all(">");
+    ASSERT_GE(tokens.size(), 1u);
+    EXPECT_EQ(tokens[0].type, CSSToken::Delim);
+    EXPECT_EQ(tokens[0].value, ">");
+}
+
+TEST_F(CSSTokenizerTest, SingleCommaToken) {
+    auto tokens = CSSTokenizer::tokenize_all(",");
+    ASSERT_GE(tokens.size(), 1u);
+    EXPECT_EQ(tokens[0].type, CSSToken::Comma);
+}
+
+TEST_F(CSSTokenizerTest, ColonToken) {
+    auto tokens = CSSTokenizer::tokenize_all(":");
+    ASSERT_GE(tokens.size(), 1u);
+    EXPECT_EQ(tokens[0].type, CSSToken::Colon);
+}
+
+TEST_F(CSSSelectorTest, UniversalSelectorParsed) {
+    auto list = parse_selector_list("*");
+    ASSERT_EQ(list.selectors.size(), 1u);
+    auto& sel = list.selectors[0];
+    ASSERT_GE(sel.parts.size(), 1u);
+    auto& compound = sel.parts[0].compound;
+    ASSERT_GE(compound.simple_selectors.size(), 1u);
+    EXPECT_EQ(compound.simple_selectors[0].type, SimpleSelectorType::Universal);
+}
+
+TEST_F(CSSSelectorTest, IdSelectorParsed) {
+    auto list = parse_selector_list("#main");
+    ASSERT_EQ(list.selectors.size(), 1u);
+    auto& compound = list.selectors[0].parts[0].compound;
+    bool has_id = false;
+    for (auto& ss : compound.simple_selectors) {
+        if (ss.type == SimpleSelectorType::Id) has_id = true;
+    }
+    EXPECT_TRUE(has_id);
+}
+
+TEST_F(CSSSelectorTest, AdjacentSiblingCombinatorParsed) {
+    auto list = parse_selector_list("h1 + p");
+    ASSERT_EQ(list.selectors.size(), 1u);
+    auto& sel = list.selectors[0];
+    // Should have 2 parts: h1 and p with adjacent-sibling combinator
+    ASSERT_GE(sel.parts.size(), 2u);
+    EXPECT_EQ(sel.parts[1].combinator, Combinator::NextSibling);
+}
+
+TEST_F(CSSStylesheetTest, EmptyRuleBlock) {
+    auto sheet = parse_stylesheet("div {}");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    EXPECT_TRUE(sheet.rules[0].declarations.empty());
+}
+
+TEST(CSSParserTest, ParseDeclarationBlockMultipleProps) {
+    auto decls = parse_declaration_block("color: red; font-size: 16px; display: block");
+    EXPECT_GE(decls.size(), 3u);
+    bool found_display = false;
+    for (auto& d : decls) {
+        if (d.property == "display") found_display = true;
+    }
+    EXPECT_TRUE(found_display);
+}
