@@ -564,3 +564,71 @@ TEST(ThreadPoolTest, SubmitThreeTasksAllCorrect) {
     auto f3 = pool.submit([]() { return 3; });
     EXPECT_EQ(f1.get() + f2.get() + f3.get(), 6);
 }
+
+// ============================================================================
+// Cycle 549: ThreadPool regression tests
+// ============================================================================
+
+// Two tasks submitted concurrently, both complete
+TEST(ThreadPoolTest, TwoTasksBothComplete) {
+    ThreadPool pool(2);
+    auto f1 = pool.submit([]() { return 11; });
+    auto f2 = pool.submit([]() { return 22; });
+    EXPECT_EQ(f1.get(), 11);
+    EXPECT_EQ(f2.get(), 22);
+}
+
+// Submit 0 tasks: pool still running, no tasks
+TEST(ThreadPoolTest, ZeroTasksPoolStillRunning) {
+    ThreadPool pool(2);
+    EXPECT_TRUE(pool.is_running());
+    EXPECT_EQ(pool.size(), 2u);
+}
+
+// Submit after shutdown: throws runtime_error
+TEST(ThreadPoolTest, PostAfterShutdownThrows) {
+    ThreadPool pool(2);
+    pool.shutdown();
+    EXPECT_THROW(pool.post([]() {}), std::runtime_error);
+}
+
+// Submit a task that returns a char
+TEST(ThreadPoolTest, SubmitReturningChar) {
+    ThreadPool pool(2);
+    auto future = pool.submit([]() -> char { return 'Z'; });
+    EXPECT_EQ(future.get(), 'Z');
+}
+
+// Pool size 8: reports 8 threads
+TEST(ThreadPoolTest, EightThreadPool) {
+    ThreadPool pool(8);
+    EXPECT_EQ(pool.size(), 8u);
+    EXPECT_TRUE(pool.is_running());
+}
+
+// is_running becomes false after shutdown
+TEST(ThreadPoolTest, IsRunningFalseAfterShutdown) {
+    ThreadPool pool(2);
+    EXPECT_TRUE(pool.is_running());
+    pool.shutdown();
+    EXPECT_FALSE(pool.is_running());
+}
+
+// Submit: task runs on a thread different from caller
+TEST(ThreadPoolTest, TaskRunsOnDifferentThread) {
+    ThreadPool pool(2);
+    std::promise<std::thread::id> prom;
+    auto fut = prom.get_future();
+    pool.post([&prom]() {
+        prom.set_value(std::this_thread::get_id());
+    });
+    auto task_thread = fut.get();
+    EXPECT_NE(task_thread, std::this_thread::get_id());
+}
+
+// Submit returns future<float>
+TEST(ThreadPoolTest, SubmitReturnsFloat) {
+    ThreadPool pool(2);
+    auto future = pool.submit([]() -> float { return 2.5f; });
+    EXPECT_FLOAT_EQ(future.get(), 2.5f);
+}
