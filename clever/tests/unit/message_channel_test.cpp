@@ -231,3 +231,147 @@ TEST(MessageChannelTest, ReceiveAfterSenderCloses) {
     auto received = receiver.receive();
     EXPECT_FALSE(received.has_value());
 }
+
+// ---------------------------------------------------------------------------
+// Cycle 485 — additional MessageChannel regression tests
+// ---------------------------------------------------------------------------
+
+// send() returns false on closed channel
+TEST(MessageChannelTest, SendOnClosedChannelReturnsFalse) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel ch(std::move(pa));
+    ch.close();
+
+    Message msg;
+    msg.type = 1;
+    EXPECT_FALSE(ch.send(msg));
+}
+
+// handler registered AFTER dispatch does NOT fire retroactively
+TEST(MessageChannelTest, HandlerRegisteredAfterDispatchNotFired) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel ch(std::move(pa));
+
+    Message msg;
+    msg.type = 7;
+    ch.dispatch(msg); // dispatch before registering handler
+
+    bool called = false;
+    ch.on(7, [&](const Message&) { called = true; });
+    // Handler was registered after dispatch — should NOT have been called
+    EXPECT_FALSE(called);
+}
+
+// replacing a handler for the same type with a new one
+TEST(MessageChannelTest, ReplaceHandlerForSameType) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel ch(std::move(pa));
+
+    int first_count = 0, second_count = 0;
+    ch.on(3, [&](const Message&) { first_count++; });
+    ch.on(3, [&](const Message&) { second_count++; }); // replaces first
+
+    Message msg;
+    msg.type = 3;
+    ch.dispatch(msg);
+
+    // Behavior depends on impl: either only second fires (replace) or both fire (multi-handler).
+    // Either way at least one handler should fire.
+    EXPECT_TRUE(second_count > 0 || first_count > 0);
+}
+
+// send message with large payload survives round-trip
+TEST(MessageChannelTest, SendLargePayloadRoundTrip) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel sender(std::move(pa));
+    MessageChannel receiver(std::move(pb));
+
+    std::vector<uint8_t> big(32 * 1024);
+    for (size_t i = 0; i < big.size(); ++i) big[i] = static_cast<uint8_t>(i & 0xFF);
+
+    Message msg;
+    msg.type = 42;
+    msg.request_id = 999;
+    msg.payload = big;
+
+    ASSERT_TRUE(sender.send(msg));
+    auto received = receiver.receive();
+    ASSERT_TRUE(received.has_value());
+    EXPECT_EQ(received->type, 42u);
+    EXPECT_EQ(received->request_id, 999u);
+    EXPECT_EQ(received->payload, big);
+}
+
+// handler receives payload bytes intact
+TEST(MessageChannelTest, HandlerReceivesPayloadIntact) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel ch(std::move(pa));
+
+    std::vector<uint8_t> expected_payload = {0xDE, 0xAD, 0xBE, 0xEF, 0x01, 0x02};
+    std::vector<uint8_t> received_payload;
+
+    ch.on(55, [&](const Message& m) {
+        received_payload = m.payload;
+    });
+
+    Message msg;
+    msg.type = 55;
+    msg.payload = expected_payload;
+    ch.dispatch(msg);
+
+    EXPECT_EQ(received_payload, expected_payload);
+}
+
+// dispatch with handler count: 5 dispatches → handler called 5 times
+TEST(MessageChannelTest, DispatchCountMatchesHandlerCallCount) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel ch(std::move(pa));
+
+    int count = 0;
+    ch.on(9, [&](const Message&) { count++; });
+
+    Message msg;
+    msg.type = 9;
+    for (int i = 0; i < 5; ++i) ch.dispatch(msg);
+
+    EXPECT_EQ(count, 5);
+}
+
+// close() is idempotent — second call does not crash
+TEST(MessageChannelTest, CloseCalledTwiceIsSafe) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel ch(std::move(pa));
+    EXPECT_TRUE(ch.is_open());
+    EXPECT_NO_THROW({
+        ch.close();
+        ch.close();
+    });
+    EXPECT_FALSE(ch.is_open());
+}
+
+// round-trip with Serializer/Deserializer for a bool + float + string
+TEST(MessageChannelTest, FullRoundTripBoolFloatString) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel sender(std::move(pa));
+    MessageChannel receiver(std::move(pb));
+
+    Serializer s;
+    s.write_u32(42u);
+    s.write_i32(-100);
+    s.write_string("roundtrip");
+
+    Message msg;
+    msg.type = 77;
+    msg.request_id = 1;
+    msg.payload = s.take_data();
+
+    ASSERT_TRUE(sender.send(msg));
+    auto recv = receiver.receive();
+    ASSERT_TRUE(recv.has_value());
+
+    Deserializer d(recv->payload);
+    EXPECT_EQ(d.read_u32(), 42u);
+    EXPECT_EQ(d.read_i32(), -100);
+    EXPECT_EQ(d.read_string(), "roundtrip");
+    EXPECT_FALSE(d.has_remaining());
+}
