@@ -1,20 +1,3 @@
-## Agent Git Workflow
-
-All BMAD commands and sub-agents must use a non-`main` git branch for any write operations.
-
-Recommended flow:
-
-- Create or switch to a branch per run:
-  - `git fetch`
-  - `git checkout -b <main-or-dev>/<specific_feature>/<cycle_number>`
-    - Example: `main/feature-a/3` or `dev/feature-a/3`
-- Do all file edits on that branch.
-- Rebase/merge from `main` before finishing to keep history clean:
-  - `git fetch`
-  - `git rebase origin/main` (or `git merge --ff-only origin/main` if rebase is undesirable)
-- Return a final status with branch name, commit(s), and suggested merge target.
-- Do not write/commit to `main`.
-
 ## BMAD Commands
 
 ### Command: estate-browser
