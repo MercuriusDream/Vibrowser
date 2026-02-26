@@ -420,3 +420,91 @@ TEST(EventLoopTest, FIFOOrderPreservedWithDelayedInterspersed) {
     EXPECT_EQ(order[1], 2);
     EXPECT_EQ(order[2], 3);
 }
+
+// ============================================================================
+// Cycle 507: EventLoop regression tests
+// ============================================================================
+
+// pending_count() drops to 0 after run_pending drains all tasks
+TEST(EventLoopTest, PendingCountDropsToZeroAfterRunPending) {
+    EventLoop loop;
+    loop.post_task([]() {});
+    loop.post_task([]() {});
+    loop.post_task([]() {});
+    EXPECT_EQ(loop.pending_count(), 3u);
+    loop.run_pending();
+    EXPECT_EQ(loop.pending_count(), 0u);
+}
+
+// run_pending() with an empty queue does nothing and doesn't crash
+TEST(EventLoopTest, RunPendingWithEmptyQueueIsNoOp) {
+    EventLoop loop;
+    EXPECT_EQ(loop.pending_count(), 0u);
+    EXPECT_NO_THROW(loop.run_pending());
+    EXPECT_EQ(loop.pending_count(), 0u);
+}
+
+// lambda captures std::string by value, result is correct
+TEST(EventLoopTest, PostTaskCapturingStdString) {
+    EventLoop loop;
+    std::string expected = "hello from task";
+    std::string result;
+    loop.post_task([captured = expected, &result]() { result = captured; });
+    expected = "changed";  // change original — should not affect captured
+    loop.run_pending();
+    EXPECT_EQ(result, "hello from task");
+}
+
+// 5 tasks each increment a counter — total should be 5
+TEST(EventLoopTest, FiveTasksSumToFive) {
+    EventLoop loop;
+    int counter = 0;
+    for (int i = 0; i < 5; ++i) {
+        loop.post_task([&counter]() { counter++; });
+    }
+    loop.run_pending();
+    EXPECT_EQ(counter, 5);
+}
+
+// post 7 tasks, pending_count is 7 before running
+TEST(EventLoopTest, PendingCountCorrectAfterBatchPost) {
+    EventLoop loop;
+    for (int i = 0; i < 7; ++i) {
+        loop.post_task([]() {});
+    }
+    EXPECT_EQ(loop.pending_count(), 7u);
+}
+
+// task posted but run_pending never called — task not executed
+TEST(EventLoopTest, PostedTaskNotExecutedWithoutRunPending) {
+    EventLoop loop;
+    bool executed = false;
+    loop.post_task([&executed]() { executed = true; });
+    // Do NOT call run_pending
+    EXPECT_FALSE(executed);
+    EXPECT_EQ(loop.pending_count(), 1u);
+}
+
+// alternating post + run_pending pattern
+TEST(EventLoopTest, AlternatingPostAndRunPending) {
+    EventLoop loop;
+    int counter = 0;
+    loop.post_task([&counter]() { counter += 1; });
+    loop.run_pending();
+    EXPECT_EQ(counter, 1);
+    loop.post_task([&counter]() { counter += 10; });
+    loop.run_pending();
+    EXPECT_EQ(counter, 11);
+    loop.post_task([&counter]() { counter += 100; });
+    loop.run_pending();
+    EXPECT_EQ(counter, 111);
+}
+
+// delayed task with 1-hour delay is not executed by run_pending
+TEST(EventLoopTest, LongDelayedTaskNotRunByRunPending) {
+    EventLoop loop;
+    bool executed = false;
+    loop.post_delayed_task([&executed]() { executed = true; }, std::chrono::hours(1));
+    loop.run_pending();  // non-due delayed task should NOT fire
+    EXPECT_FALSE(executed);
+}
