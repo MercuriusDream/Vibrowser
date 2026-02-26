@@ -13849,3 +13849,88 @@ TEST(JSEngine, ForOfMapEntries) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "3");
 }
+
+// ============================================================================
+// Cycle 645: More JS engine tests
+// ============================================================================
+
+// Async/await type check
+TEST(JSEngine, AsyncFunctionIsFunction) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        async function f() { return 1; }
+        typeof f
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "function");
+}
+
+// String padStart with zeros
+TEST(JSEngine, StringPadStartWithZeros) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        '5'.padStart(3, '0')
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "005");
+}
+
+// String padEnd with dots
+TEST(JSEngine, StringPadEndWithDots) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        'hi'.padEnd(5, '.')
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "hi...");
+}
+
+// Array every
+TEST(JSEngine, ArrayEveryAllPositive) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        [1, 2, 3].every(x => x > 0)
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true");
+}
+
+// Array some
+TEST(JSEngine, ArraySomeHasNegative) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        [1, -2, 3].some(x => x < 0)
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true");
+}
+
+// Object.keys length
+TEST(JSEngine, ObjectKeysLength) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        Object.keys({a: 1, b: 2, c: 3}).length
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "3");
+}
+
+// Number.isInteger
+TEST(JSEngine, NumberIsInteger) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        Number.isInteger(42) + ',' + Number.isInteger(42.5)
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true,false");
+}
+
+// Array.of creates array
+TEST(JSEngine, ArrayOf) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        Array.of(1, 2, 3).length
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "3");
+}
