@@ -755,6 +755,160 @@ int main() {
         }
 
         if (browser::net::parse_http_status_line(
+                std::string("HTTP/1.1\016200 OK", 15), http_version, status_code, reason, err)) {
+            std::cerr << "FAIL: expected status line with SO status-code separator to be rejected\n";
+            ++failures;
+        } else if (err.find("Malformed HTTP status line") == std::string::npos) {
+            std::cerr << "FAIL: expected malformed status-line error for SO status-code separator\n";
+            ++failures;
+        } else {
+            std::cerr << "PASS: status line with SO status-code separator is rejected\n";
+        }
+
+        if (browser::net::parse_http_status_line(
+                std::string("HTTP/1.1 200\016OK", 15), http_version, status_code, reason, err)) {
+            std::cerr << "FAIL: expected status line with SO reason separator to be rejected\n";
+            ++failures;
+        } else if (err.find("Malformed HTTP status line") == std::string::npos) {
+            std::cerr << "FAIL: expected malformed status-line error for SO reason separator\n";
+            ++failures;
+        } else {
+            std::cerr << "PASS: status line with SO reason separator is rejected\n";
+        }
+
+        if (browser::net::parse_http_status_line(
+                std::string("HTTP/1.1\017200 OK", 15), http_version, status_code, reason, err)) {
+            std::cerr << "FAIL: expected status line with SI status-code separator to be rejected\n";
+            ++failures;
+        } else if (err.find("Malformed HTTP status line") == std::string::npos) {
+            std::cerr << "FAIL: expected malformed status-line error for SI status-code separator\n";
+            ++failures;
+        } else {
+            std::cerr << "PASS: status line with SI status-code separator is rejected\n";
+        }
+
+        if (browser::net::parse_http_status_line(
+                std::string("HTTP/1.1 200\017OK", 15), http_version, status_code, reason, err)) {
+            std::cerr << "FAIL: expected status line with SI reason separator to be rejected\n";
+            ++failures;
+        } else if (err.find("Malformed HTTP status line") == std::string::npos) {
+            std::cerr << "FAIL: expected malformed status-line error for SI reason separator\n";
+            ++failures;
+        } else {
+            std::cerr << "PASS: status line with SI reason separator is rejected\n";
+        }
+
+        if (browser::net::parse_http_status_line(
+                std::string("HTTP/1.1\020200 OK", 15), http_version, status_code, reason, err)) {
+            std::cerr << "FAIL: expected status line with DLE status-code separator to be rejected\n";
+            ++failures;
+        } else if (err.find("Malformed HTTP status line") == std::string::npos) {
+            std::cerr << "FAIL: expected malformed status-line error for DLE status-code separator\n";
+            ++failures;
+        } else {
+            std::cerr << "PASS: status line with DLE status-code separator is rejected\n";
+        }
+
+        if (browser::net::parse_http_status_line(
+                std::string("HTTP/1.1 200\020OK", 15), http_version, status_code, reason, err)) {
+            std::cerr << "FAIL: expected status line with DLE reason separator to be rejected\n";
+            ++failures;
+        } else if (err.find("Malformed HTTP status line") == std::string::npos) {
+            std::cerr << "FAIL: expected malformed status-line error for DLE reason separator\n";
+            ++failures;
+        } else {
+            std::cerr << "PASS: status line with DLE reason separator is rejected\n";
+        }
+
+        if (browser::net::parse_http_status_line(
+                std::string("HTTP/1.1\021200 OK", 15), http_version, status_code, reason, err)) {
+            std::cerr << "FAIL: expected status line with DC1 status-code separator to be rejected\n";
+            ++failures;
+        } else if (err.find("Malformed HTTP status line") == std::string::npos) {
+            std::cerr << "FAIL: expected malformed status-line error for DC1 status-code separator\n";
+            ++failures;
+        } else {
+            std::cerr << "PASS: status line with DC1 status-code separator is rejected\n";
+        }
+
+        if (browser::net::parse_http_status_line(
+                std::string("HTTP/1.1 200\021OK", 15), http_version, status_code, reason, err)) {
+            std::cerr << "FAIL: expected status line with DC1 reason separator to be rejected\n";
+            ++failures;
+        } else if (err.find("Malformed HTTP status line") == std::string::npos) {
+            std::cerr << "FAIL: expected malformed status-line error for DC1 reason separator\n";
+            ++failures;
+        } else {
+            std::cerr << "PASS: status line with DC1 reason separator is rejected\n";
+        }
+
+        if (browser::net::parse_http_status_line(
+                std::string("HTTP/1.1\022200 OK", 15), http_version, status_code, reason, err)) {
+            std::cerr << "FAIL: expected status line with DC2 status-code separator to be rejected\n";
+            ++failures;
+        } else if (err.find("Malformed HTTP status line") == std::string::npos) {
+            std::cerr << "FAIL: expected malformed status-line error for DC2 status-code separator\n";
+            ++failures;
+        } else {
+            std::cerr << "PASS: status line with DC2 status-code separator is rejected\n";
+        }
+
+        if (browser::net::parse_http_status_line(
+                std::string("HTTP/1.1 200\022OK", 15), http_version, status_code, reason, err)) {
+            std::cerr << "FAIL: expected status line with DC2 reason separator to be rejected\n";
+            ++failures;
+        } else if (err.find("Malformed HTTP status line") == std::string::npos) {
+            std::cerr << "FAIL: expected malformed status-line error for DC2 reason separator\n";
+            ++failures;
+        } else {
+            std::cerr << "PASS: status line with DC2 reason separator is rejected\n";
+        }
+
+        if (browser::net::parse_http_status_line(
+                std::string("HTTP/1.1\023200 OK", 15), http_version, status_code, reason, err)) {
+            std::cerr << "FAIL: expected status line with DC3 status-code separator to be rejected\n";
+            ++failures;
+        } else if (err.find("Malformed HTTP status line") == std::string::npos) {
+            std::cerr << "FAIL: expected malformed status-line error for DC3 status-code separator\n";
+            ++failures;
+        } else {
+            std::cerr << "PASS: status line with DC3 status-code separator is rejected\n";
+        }
+
+        if (browser::net::parse_http_status_line(
+                std::string("HTTP/1.1 200\023OK", 15), http_version, status_code, reason, err)) {
+            std::cerr << "FAIL: expected status line with DC3 reason separator to be rejected\n";
+            ++failures;
+        } else if (err.find("Malformed HTTP status line") == std::string::npos) {
+            std::cerr << "FAIL: expected malformed status-line error for DC3 reason separator\n";
+            ++failures;
+        } else {
+            std::cerr << "PASS: status line with DC3 reason separator is rejected\n";
+        }
+
+        if (browser::net::parse_http_status_line(
+                std::string("HTTP/1.1\024200 OK", 15), http_version, status_code, reason, err)) {
+            std::cerr << "FAIL: expected status line with DC4 status-code separator to be rejected\n";
+            ++failures;
+        } else if (err.find("Malformed HTTP status line") == std::string::npos) {
+            std::cerr << "FAIL: expected malformed status-line error for DC4 status-code separator\n";
+            ++failures;
+        } else {
+            std::cerr << "PASS: status line with DC4 status-code separator is rejected\n";
+        }
+
+        if (browser::net::parse_http_status_line(
+                std::string("HTTP/1.1 200\024OK", 15), http_version, status_code, reason, err)) {
+            std::cerr << "FAIL: expected status line with DC4 reason separator to be rejected\n";
+            ++failures;
+        } else if (err.find("Malformed HTTP status line") == std::string::npos) {
+            std::cerr << "FAIL: expected malformed status-line error for DC4 reason separator\n";
+            ++failures;
+        } else {
+            std::cerr << "PASS: status line with DC4 reason separator is rejected\n";
+        }
+
+        if (browser::net::parse_http_status_line(
                 "HTTP/1.1 200", http_version, status_code, reason, err)) {
             std::cerr << "FAIL: expected status line missing reason separator to be rejected\n";
             ++failures;
