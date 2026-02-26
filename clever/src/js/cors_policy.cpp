@@ -24,6 +24,15 @@ std::string lower_copy(std::string value) {
     return value;
 }
 
+bool has_invalid_header_octet(std::string_view value) {
+    for (unsigned char ch : value) {
+        if (ch <= 0x1f || ch == 0x7f) {
+            return true;
+        }
+    }
+    return false;
+}
+
 std::optional<clever::url::URL> parse_httpish_url(std::string_view input) {
     auto parsed = clever::url::parse(input);
     if (!parsed.has_value()) {
@@ -78,6 +87,12 @@ bool cors_allows_response(std::string_view document_origin,
     if (acao.empty()) {
         return false;
     }
+    if (has_invalid_header_octet(acao)) {
+        return false;
+    }
+    if (acao.find(',') != std::string::npos) {
+        return false;
+    }
 
     if (!credentials_requested) {
         return acao == "*" || acao == document_origin;
@@ -92,7 +107,11 @@ bool cors_allows_response(std::string_view document_origin,
         return false;
     }
 
-    return lower_copy(trim_copy(*acac_opt)) == "true";
+    std::string acac = trim_copy(*acac_opt);
+    if (acac.empty() || has_invalid_header_octet(acac)) {
+        return false;
+    }
+    return lower_copy(acac) == "true";
 }
 
 } // namespace clever::js::cors

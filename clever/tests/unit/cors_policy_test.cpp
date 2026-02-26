@@ -57,6 +57,18 @@ TEST(CORSPolicyTest, CrossOriginNonCredentialedAllowsWildcardOrExact) {
         cors_allows_response("https://app.example", "https://api.example/data", wrong, false));
 }
 
+TEST(CORSPolicyTest, CrossOriginRejectsMalformedACAOValue) {
+    clever::net::HeaderMap comma_separated;
+    comma_separated.set("Access-Control-Allow-Origin", "https://app.example, https://other.example");
+    EXPECT_FALSE(cors_allows_response("https://app.example", "https://api.example/data",
+                                      comma_separated, false));
+
+    clever::net::HeaderMap control_char;
+    control_char.set("Access-Control-Allow-Origin", std::string("https://app.\x01example"));
+    EXPECT_FALSE(
+        cors_allows_response("https://app.example", "https://api.example/data", control_char, false));
+}
+
 TEST(CORSPolicyTest, CrossOriginCredentialedRequiresExactAndCredentialsTrue) {
     clever::net::HeaderMap wildcard;
     wildcard.set("Access-Control-Allow-Origin", "*");
@@ -74,4 +86,10 @@ TEST(CORSPolicyTest, CrossOriginCredentialedRequiresExactAndCredentialsTrue) {
     exact_and_true.set("Access-Control-Allow-Credentials", "true");
     EXPECT_TRUE(cors_allows_response("https://app.example", "https://api.example/data",
                                      exact_and_true, true));
+
+    clever::net::HeaderMap malformed_credentials;
+    malformed_credentials.set("Access-Control-Allow-Origin", "https://app.example");
+    malformed_credentials.set("Access-Control-Allow-Credentials", std::string("tr\x01ue"));
+    EXPECT_FALSE(cors_allows_response("https://app.example", "https://api.example/data",
+                                      malformed_credentials, true));
 }
