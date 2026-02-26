@@ -13934,3 +13934,95 @@ TEST(JSEngine, ArrayOf) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "3");
 }
+
+// ============================================================================
+// Cycle 649: More JS engine tests
+// ============================================================================
+
+// Logical assignment &&= with truthy sets to 99
+TEST(JSEngine, LogicalAndAssignmentTruthySetTo99) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var x = 1;
+        x &&= 99;
+        x
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "99");
+}
+
+// Logical assignment ||= with falsy sets to 42
+TEST(JSEngine, LogicalOrAssignmentFalsySetTo42) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var x = 0;
+        x ||= 42;
+        x
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "42");
+}
+
+// Logical assignment ??=
+TEST(JSEngine, NullishAssignment) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var x = null;
+        x ??= 'hello';
+        x
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "hello");
+}
+
+// String replaceAll with regex
+TEST(JSEngine, StringReplaceAllSpaces) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        'a b c d'.replaceAll(' ', '-')
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "a-b-c-d");
+}
+
+// Array at negative index
+TEST(JSEngine, ArrayAtNegativeIndex) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        [10, 20, 30].at(-1)
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "30");
+}
+
+// Object.create basic
+TEST(JSEngine, ObjectCreateBasic) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var proto = {greet: function() { return 'hi'; }};
+        var obj = Object.create(proto);
+        obj.greet()
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "hi");
+}
+
+// Math.max of array values
+TEST(JSEngine, MathMaxSpread) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        Math.max(...[3, 1, 4, 1, 5, 9, 2, 6])
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "9");
+}
+
+// Math.min of array values
+TEST(JSEngine, MathMinSpread) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        Math.min(...[3, 1, 4, 1, 5, 9, 2, 6])
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1");
+}
