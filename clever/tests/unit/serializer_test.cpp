@@ -977,3 +977,104 @@ TEST(SerializerTest, DataSizeGrowsWithWrites) {
     EXPECT_GT(size1, size0);
     EXPECT_GT(size2, size1);
 }
+
+// ============================================================================
+// Cycle 551: Serializer regression tests
+// ============================================================================
+
+// Interleaved u16 and u32 round trip
+TEST(SerializerTest, InterleavedU16AndU32) {
+    Serializer s;
+    s.write_u16(100);
+    s.write_u32(200000);
+    s.write_u16(300);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u16(), 100u);
+    EXPECT_EQ(d.read_u32(), 200000u);
+    EXPECT_EQ(d.read_u16(), 300u);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+// Write 10 u8 values and read them all
+TEST(SerializerTest, TenU8ValuesRoundTrip) {
+    Serializer s;
+    for (uint8_t i = 0; i < 10; ++i) {
+        s.write_u8(i * 10);
+    }
+    Deserializer d(s.data());
+    for (uint8_t i = 0; i < 10; ++i) {
+        EXPECT_EQ(d.read_u8(), static_cast<uint8_t>(i * 10));
+    }
+    EXPECT_FALSE(d.has_remaining());
+}
+
+// String followed by bool
+TEST(SerializerTest, StringThenBoolRoundTrip) {
+    Serializer s;
+    s.write_string("hello");
+    s.write_bool(true);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "hello");
+    EXPECT_TRUE(d.read_bool());
+    EXPECT_FALSE(d.has_remaining());
+}
+
+// Take data resets serializer state  
+TEST(SerializerTest, TakeDataAndResend) {
+    Serializer s;
+    s.write_u32(42);
+    auto data1 = s.take_data();
+    EXPECT_FALSE(data1.empty());
+    // After take, serializer should be empty
+    EXPECT_TRUE(s.data().empty());
+    // Can write again
+    s.write_u32(99);
+    auto data2 = s.take_data();
+    EXPECT_FALSE(data2.empty());
+}
+
+// u64 value that uses all 8 bytes
+TEST(SerializerTest, U64LargeValueRoundTrip) {
+    Serializer s;
+    uint64_t val = 0x0102030405060708ULL;
+    s.write_u64(val);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u64(), val);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+// Four u8 values round trip
+TEST(SerializerTest, FourU8RoundTrip) {
+    Serializer s;
+    s.write_u8(10);
+    s.write_u8(20);
+    s.write_u8(30);
+    s.write_u8(40);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u8(), 10u);
+    EXPECT_EQ(d.read_u8(), 20u);
+    EXPECT_EQ(d.read_u8(), 30u);
+    EXPECT_EQ(d.read_u8(), 40u);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+// String with space and punctuation
+TEST(SerializerTest, StringWithSpaceAndPunctuation) {
+    Serializer s;
+    std::string str = "Hello, World!";
+    s.write_string(str);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), str);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+// Two u64 values
+TEST(SerializerTest, TwoU64ValuesRoundTrip) {
+    Serializer s;
+    s.write_u64(0xDEADBEEFCAFEBABEULL);
+    s.write_u64(0x123456789ABCDEF0ULL);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u64(), 0xDEADBEEFCAFEBABEULL);
+    EXPECT_EQ(d.read_u64(), 0x123456789ABCDEF0ULL);
+    EXPECT_FALSE(d.has_remaining());
+}
