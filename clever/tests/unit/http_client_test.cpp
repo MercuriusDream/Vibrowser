@@ -2443,3 +2443,82 @@ TEST(HeaderMapTest, GetMissingKeyReturnsNullopt) {
     HeaderMap map;
     EXPECT_FALSE(map.get("nonexistent").has_value());
 }
+
+// ============================================================================
+// Cycle 579: More net/HTTP tests
+// ============================================================================
+
+// Request: OPTIONS method serializes correctly
+TEST(RequestTest, OptionsMethodSerializes) {
+    Request req;
+    req.method = Method::OPTIONS;
+    req.host = "example.com";
+    req.path = "/api";
+    auto raw = req.serialize();
+    std::string s(raw.begin(), raw.end());
+    EXPECT_NE(s.find("OPTIONS"), std::string::npos);
+}
+
+// Request: body can be stored
+TEST(RequestTest, RequestBodyCanBeStored) {
+    Request req;
+    req.method = Method::POST;
+    req.host = "example.com";
+    req.path = "/submit";
+    std::string body = "key=value";
+    req.body = std::vector<uint8_t>(body.begin(), body.end());
+    EXPECT_EQ(req.body.size(), body.size());
+}
+
+// Response: parse 301 Moved Permanently
+TEST(ResponseTest, Parse301MovedPermanently) {
+    std::string raw = "HTTP/1.1 301 Moved Permanently\r\nLocation: /new\r\nContent-Length: 0\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 301);
+}
+
+// Response: parse 503 Service Unavailable
+TEST(ResponseTest, Parse503ServiceUnavailable) {
+    std::string raw = "HTTP/1.1 503 Service Unavailable\r\nContent-Length: 0\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 503);
+}
+
+// HeaderMap: set and has for case-insensitive check
+TEST(HeaderMapTest, SetAndHasCaseInsensitive) {
+    HeaderMap map;
+    map.set("Content-Type", "application/json");
+    EXPECT_TRUE(map.has("content-type"));
+    EXPECT_TRUE(map.has("CONTENT-TYPE"));
+}
+
+// HeaderMap: get returns value after set
+TEST(HeaderMapTest, GetReturnsValueAfterSet) {
+    HeaderMap map;
+    map.set("Accept", "text/html");
+    auto val = map.get("accept");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(*val, "text/html");
+}
+
+// Response: parse empty body
+TEST(ResponseTest, ParseEmptyBody) {
+    std::string raw = "HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_TRUE(resp->body.empty());
+}
+
+// Response: headers accessible after parse
+TEST(ResponseTest, ParsedResponseHeadersAccessible) {
+    std::string raw = "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: 0\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_TRUE(resp->headers.has("content-type"));
+}
