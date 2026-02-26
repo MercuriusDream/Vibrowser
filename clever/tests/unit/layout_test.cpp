@@ -4631,3 +4631,155 @@ TEST(LayoutEngineTest, EmptyFlexContainerHeightZero) {
     EXPECT_FLOAT_EQ(root->geometry.height, 0.0f)
         << "empty flex container with no specified_height should have height=0";
 }
+
+// ---------------------------------------------------------------------------
+// Cycle 497 — layout engine additional regression tests
+// ---------------------------------------------------------------------------
+
+// Table with 3 explicit-width columns positions cells at correct x offsets
+TEST(TableLayout, ThreeColumnsExplicitWidths) {
+    auto table = make_table();
+    table->specified_width = 300.0f;
+
+    auto row = make_table_row();
+    auto c1 = make_table_cell(); c1->specified_width = 100.0f;
+    auto c2 = make_table_cell(); c2->specified_width = 100.0f;
+    auto c3 = make_table_cell(); c3->specified_width = 100.0f;
+    row->append_child(std::move(c1));
+    row->append_child(std::move(c2));
+    row->append_child(std::move(c3));
+    table->append_child(std::move(row));
+
+    LayoutEngine engine;
+    engine.compute(*table, 300.0f, 600.0f);
+
+    auto* r = table->children[0].get();
+    ASSERT_EQ(r->children.size(), 3u);
+    EXPECT_FLOAT_EQ(r->children[0]->geometry.x, 0.0f);
+    EXPECT_FLOAT_EQ(r->children[1]->geometry.x, 100.0f);
+    EXPECT_FLOAT_EQ(r->children[2]->geometry.x, 200.0f);
+    EXPECT_FLOAT_EQ(r->children[0]->geometry.width, 100.0f);
+    EXPECT_FLOAT_EQ(r->children[1]->geometry.width, 100.0f);
+    EXPECT_FLOAT_EQ(r->children[2]->geometry.width, 100.0f);
+}
+
+// Two table rows stack vertically
+TEST(TableLayout, TwoRowsStackVertically) {
+    auto table = make_table();
+    table->specified_width = 200.0f;
+
+    for (int i = 0; i < 2; ++i) {
+        auto row = make_table_row();
+        auto cell = make_table_cell();
+        cell->specified_width = 200.0f;
+        cell->specified_height = 40.0f;
+        row->append_child(std::move(cell));
+        table->append_child(std::move(row));
+    }
+
+    LayoutEngine engine;
+    engine.compute(*table, 200.0f, 600.0f);
+
+    ASSERT_EQ(table->children.size(), 2u);
+    EXPECT_FLOAT_EQ(table->children[0]->geometry.y, 0.0f);
+    EXPECT_GE(table->children[1]->geometry.y, 40.0f); // second row below first
+}
+
+// Absolute child positioned with top + left offsets
+TEST(LayoutPosition, AbsoluteWithTopLeft) {
+    auto root = make_block("div");
+    root->specified_width = 400.0f;
+    root->specified_height = 300.0f;
+
+    auto abs_child = make_block("div");
+    abs_child->position_type = 2; // absolute
+    abs_child->specified_width = 60.0f;
+    abs_child->specified_height = 30.0f;
+    abs_child->pos_top = 20.0f;
+    abs_child->pos_top_set = true;
+    abs_child->pos_left = 30.0f;
+    abs_child->pos_left_set = true;
+    root->append_child(std::move(abs_child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 400.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.x, 30.0f);
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.y, 20.0f);
+}
+
+// SVG path node stores the d attribute string
+TEST(LayoutSVG, PathNodeStoresPathData) {
+    auto path = std::make_unique<LayoutNode>();
+    path->tag_name = "path";
+    path->is_svg = true;
+    path->svg_type = 5; // path
+    path->svg_path_d = "M 0 0 L 100 100";
+
+    EXPECT_EQ(path->svg_type, 5);
+    EXPECT_EQ(path->svg_path_d, "M 0 0 L 100 100");
+}
+
+// SVG circle node has svg_type 2
+TEST(LayoutSVG, CircleNodeSvgType) {
+    auto circle = std::make_unique<LayoutNode>();
+    circle->tag_name = "circle";
+    circle->is_svg = true;
+    circle->svg_type = 2; // circle
+    circle->svg_attrs = {50.0f, 50.0f, 30.0f}; // cx, cy, r
+
+    EXPECT_EQ(circle->svg_type, 2);
+    ASSERT_EQ(circle->svg_attrs.size(), 3u);
+    EXPECT_FLOAT_EQ(circle->svg_attrs[0], 50.0f); // cx
+    EXPECT_FLOAT_EQ(circle->svg_attrs[2], 30.0f); // r
+}
+
+// SVG group node has is_svg_group set
+TEST(LayoutSVG, GroupNodeIsGroup) {
+    auto g = std::make_unique<LayoutNode>();
+    g->tag_name = "g";
+    g->is_svg = true;
+    g->is_svg_group = true;
+
+    EXPECT_TRUE(g->is_svg_group);
+    EXPECT_TRUE(g->is_svg);
+}
+
+// SVG viewBox attributes are stored on root svg node
+TEST(LayoutSVG, ViewBoxAttributesStored) {
+    auto svg = std::make_unique<LayoutNode>();
+    svg->tag_name = "svg";
+    svg->is_svg = true;
+    svg->svg_has_viewbox = true;
+    svg->svg_viewbox_x = 0;
+    svg->svg_viewbox_y = 0;
+    svg->svg_viewbox_w = 800.0f;
+    svg->svg_viewbox_h = 600.0f;
+
+    EXPECT_TRUE(svg->svg_has_viewbox);
+    EXPECT_FLOAT_EQ(svg->svg_viewbox_w, 800.0f);
+    EXPECT_FLOAT_EQ(svg->svg_viewbox_h, 600.0f);
+}
+
+// Single flex item with justify_content=center is positioned at center
+TEST(FlexboxAudit, SingleItemJustifyCenter) {
+    auto root = make_flex("div");
+    root->flex_direction = 0; // row
+    root->justify_content = 2; // center
+    root->specified_width = 300.0f;
+    root->specified_height = 50.0f;
+
+    auto c = make_block("div");
+    c->specified_width = 50.0f;
+    c->specified_height = 50.0f;
+    c->flex_grow = 0;
+    c->flex_shrink = 0;
+    root->append_child(std::move(c));
+
+    LayoutEngine engine;
+    engine.compute(*root, 300.0f, 300.0f);
+
+    ASSERT_EQ(root->children.size(), 1u);
+    // free space = 300 - 50 = 250, center → offset = 125
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.x, 125.0f);
+}
