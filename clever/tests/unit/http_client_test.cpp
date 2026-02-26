@@ -1776,3 +1776,80 @@ TEST(HttpCacheTest, CacheStoresHeaders) {
     EXPECT_EQ(result->headers.at("content-type"), "text/css");
     EXPECT_EQ(result->headers.at("x-custom"), "value");
 }
+
+// ============================================================================
+// Cycle 427: should_cache_response regression tests
+// ============================================================================
+
+TEST(ShouldCacheResponseTest, CacheableBy200AndNoCCRestrictions) {
+    Response resp;
+    resp.status = 200;
+    CacheControl cc;
+    EXPECT_TRUE(should_cache_response(resp, cc));
+}
+
+TEST(ShouldCacheResponseTest, NonSuccessStatusNotCacheable) {
+    CacheControl cc;
+
+    Response r404;
+    r404.status = 404;
+    EXPECT_FALSE(should_cache_response(r404, cc));
+
+    Response r301;
+    r301.status = 301;
+    EXPECT_FALSE(should_cache_response(r301, cc));
+
+    Response r500;
+    r500.status = 500;
+    EXPECT_FALSE(should_cache_response(r500, cc));
+}
+
+TEST(ShouldCacheResponseTest, NoStorePreventsCaching) {
+    Response resp;
+    resp.status = 200;
+    CacheControl cc;
+    cc.no_store = true;
+    EXPECT_FALSE(should_cache_response(resp, cc));
+}
+
+TEST(ShouldCacheResponseTest, PrivatePreventsCaching) {
+    Response resp;
+    resp.status = 200;
+    CacheControl cc;
+    cc.is_private = true;
+    EXPECT_FALSE(should_cache_response(resp, cc));
+}
+
+TEST(ShouldCacheResponseTest, PublicWithMaxAgeCacheable) {
+    Response resp;
+    resp.status = 200;
+    CacheControl cc;
+    cc.is_public = true;
+    cc.max_age = 86400;
+    EXPECT_TRUE(should_cache_response(resp, cc));
+}
+
+// ============================================================================
+// Cycle 427: parse_cache_control edge cases
+// ============================================================================
+
+TEST(CacheControlTest, ParseUnknownDirectivesIgnored) {
+    // Unknown directives like s-maxage and immutable should not cause parsing to fail
+    auto cc = parse_cache_control("max-age=300, s-maxage=600, immutable");
+    EXPECT_EQ(cc.max_age, 300);
+    EXPECT_FALSE(cc.no_cache);
+}
+
+TEST(CacheControlTest, ParseNoCacheWithMaxAge) {
+    // no-cache coexisting with max-age — both should be recorded
+    auto cc = parse_cache_control("no-cache, max-age=3600");
+    EXPECT_TRUE(cc.no_cache);
+    EXPECT_EQ(cc.max_age, 3600);
+}
+
+TEST(CacheControlTest, ParseNoStoreAndPrivate) {
+    auto cc = parse_cache_control("no-store, private");
+    EXPECT_TRUE(cc.no_store);
+    EXPECT_TRUE(cc.is_private);
+    EXPECT_FALSE(cc.is_public);
+}
