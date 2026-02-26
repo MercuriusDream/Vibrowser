@@ -498,3 +498,92 @@ TEST(MessagePipeTest, AllMaxBytesPayload) {
     ASSERT_TRUE(received.has_value());
     EXPECT_EQ(*received, payload);
 }
+
+// ============================================================================
+// Cycle 536: MessagePipe regression tests
+// ============================================================================
+
+// Send single byte (value 0)
+TEST(MessagePipeTest, SendSingleZeroByte) {
+    auto [a, b] = MessagePipe::create_pair();
+    std::vector<uint8_t> msg = {0x00};
+    ASSERT_TRUE(a.send(msg));
+    auto recv = b.receive();
+    ASSERT_TRUE(recv.has_value());
+    EXPECT_EQ(recv->at(0), 0x00u);
+}
+
+// Create two pairs: they are independent
+TEST(MessagePipeTest, TwoPairsAreIndependent) {
+    auto [a1, b1] = MessagePipe::create_pair();
+    auto [a2, b2] = MessagePipe::create_pair();
+    std::vector<uint8_t> msg1 = {1};
+    std::vector<uint8_t> msg2 = {2};
+    ASSERT_TRUE(a1.send(msg1));
+    ASSERT_TRUE(a2.send(msg2));
+    auto r1 = b1.receive();
+    auto r2 = b2.receive();
+    ASSERT_TRUE(r1.has_value());
+    ASSERT_TRUE(r2.has_value());
+    EXPECT_EQ(r1->at(0), 1u);
+    EXPECT_EQ(r2->at(0), 2u);
+}
+
+// Send 3 messages and receive in FIFO order
+TEST(MessagePipeTest, ReceiveInFIFOOrder) {
+    auto [a, b] = MessagePipe::create_pair();
+    for (uint8_t i = 10; i < 13; ++i) {
+        std::vector<uint8_t> msg = {i};
+        ASSERT_TRUE(a.send(msg));
+    }
+    for (uint8_t i = 10; i < 13; ++i) {
+        auto recv = b.receive();
+        ASSERT_TRUE(recv.has_value());
+        EXPECT_EQ(recv->at(0), i);
+    }
+}
+
+// Send payload with alternating bytes
+TEST(MessagePipeTest, AlternatingBytesRoundTrip) {
+    auto [a, b] = MessagePipe::create_pair();
+    std::vector<uint8_t> payload = {0xAA, 0x55, 0xAA, 0x55};
+    ASSERT_TRUE(a.send(payload));
+    auto recv = b.receive();
+    ASSERT_TRUE(recv.has_value());
+    EXPECT_EQ(*recv, payload);
+}
+
+// fd() values differ between the two ends of a pair
+TEST(MessagePipeTest, FdValuesAreDifferent) {
+    auto [a, b] = MessagePipe::create_pair();
+    EXPECT_NE(a.fd(), b.fd());
+}
+
+// receive returns nullopt after sender closes
+TEST(MessagePipeTest, ReceiveNulloptAfterSenderClose) {
+    auto [a, b] = MessagePipe::create_pair();
+    // Close sender: receiver should get nullopt
+    a.close();
+    auto recv = b.receive();
+    EXPECT_FALSE(recv.has_value());
+}
+
+// Send 2-byte payload and verify size
+TEST(MessagePipeTest, TwoBytesPayloadSizeCorrect) {
+    auto [a, b] = MessagePipe::create_pair();
+    std::vector<uint8_t> msg = {0x12, 0x34};
+    ASSERT_TRUE(a.send(msg));
+    auto recv = b.receive();
+    ASSERT_TRUE(recv.has_value());
+    EXPECT_EQ(recv->size(), 2u);
+    EXPECT_EQ(recv->at(0), 0x12u);
+    EXPECT_EQ(recv->at(1), 0x34u);
+}
+
+// After close, is_open returns false
+TEST(MessagePipeTest, CloseMakesIsOpenFalse) {
+    auto [a, b] = MessagePipe::create_pair();
+    EXPECT_TRUE(a.is_open());
+    a.close();
+    EXPECT_FALSE(a.is_open());
+}
