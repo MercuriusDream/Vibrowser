@@ -1792,3 +1792,62 @@ TEST(DomClassList, RemoveMakesContainsFalse) {
     e.class_list().remove("visible");
     EXPECT_FALSE(e.class_list().contains("visible"));
 }
+
+// ============================================================================
+// Cycle 591: More DOM tests
+// ============================================================================
+
+// Element: node_type is Element
+TEST(DomElement, NodeTypeIsElement) {
+    Element e("span");
+    EXPECT_EQ(e.node_type(), NodeType::Element);
+}
+
+// Text: node_type is Text
+TEST(DomText, NodeTypeIsText) {
+    Text t("content");
+    EXPECT_EQ(t.node_type(), NodeType::Text);
+}
+
+// Comment: node_type is Comment
+TEST(DomComment, NodeTypeIsComment) {
+    Comment c("a comment");
+    EXPECT_EQ(c.node_type(), NodeType::Comment);
+}
+
+// Element: remove_attribute makes has_attribute false
+TEST(DomElement, RemoveAttributeMakesHasFalse) {
+    Element e("input");
+    e.set_attribute("disabled", "");
+    EXPECT_TRUE(e.has_attribute("disabled"));
+    e.remove_attribute("disabled");
+    EXPECT_FALSE(e.has_attribute("disabled"));
+}
+
+// Element: set_attribute with empty value works
+TEST(DomElement, SetAttributeEmptyValue) {
+    Element e("input");
+    e.set_attribute("checked", "");
+    EXPECT_TRUE(e.has_attribute("checked"));
+    auto val = e.get_attribute("checked");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(*val, "");
+}
+
+// Node: first_child is nullptr when no children
+TEST(DomNode, FirstChildNullWhenNoChildren) {
+    Element e("div");
+    EXPECT_EQ(e.first_child(), nullptr);
+}
+
+// Node: last_child is nullptr when no children
+TEST(DomNode, LastChildNullWhenNoChildren) {
+    Element e("div");
+    EXPECT_EQ(e.last_child(), nullptr);
+}
+
+// Document: node_type is Document
+TEST(DomDocument, NodeTypeIsDocument) {
+    Document doc;
+    EXPECT_EQ(doc.node_type(), NodeType::Document);
+}
