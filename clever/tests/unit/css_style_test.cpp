@@ -9651,3 +9651,171 @@ TEST(PropertyCascadeTest, ClipPathInsetAndEllipse) {
     EXPECT_FLOAT_EQ(style.clip_path_values[0], 50.0f);
     EXPECT_FLOAT_EQ(style.clip_path_values[1], 30.0f);
 }
+
+// ---------------------------------------------------------------------------
+// Cycle 470 — caret-color, accent-color, color-interpolation, counter properties,
+//             column-rule, appearance, placeholder-color, writing-mode
+// ---------------------------------------------------------------------------
+
+TEST(PropertyCascadeTest, CaretColorAndAccentColor) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    // default: transparent {0,0,0,0}
+    EXPECT_EQ(style.caret_color.r, 0);
+    EXPECT_EQ(style.caret_color.a, 0);
+
+    cascade.apply_declaration(style, make_decl("caret-color", "red"), parent);
+    EXPECT_EQ(style.caret_color.r, 255);
+    EXPECT_EQ(style.caret_color.g, 0);
+    EXPECT_EQ(style.caret_color.b, 0);
+    EXPECT_EQ(style.caret_color.a, 255);
+
+    cascade.apply_declaration(style, make_decl("accent-color", "blue"), parent);
+    EXPECT_EQ(style.accent_color.r, 0);
+    EXPECT_EQ(style.accent_color.g, 0);
+    EXPECT_EQ(style.accent_color.b, 255);
+    EXPECT_EQ(style.accent_color.a, 255);
+}
+
+TEST(PropertyCascadeTest, ColorInterpolationValues) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.color_interpolation, 0);  // default: auto
+
+    cascade.apply_declaration(style, make_decl("color-interpolation", "srgb"), parent);
+    EXPECT_EQ(style.color_interpolation, 1);
+
+    cascade.apply_declaration(style, make_decl("color-interpolation", "linearrgb"), parent);
+    EXPECT_EQ(style.color_interpolation, 2);
+
+    cascade.apply_declaration(style, make_decl("color-interpolation", "auto"), parent);
+    EXPECT_EQ(style.color_interpolation, 0);
+}
+
+TEST(PropertyCascadeTest, CounterIncrementResetSet) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_TRUE(style.counter_increment.empty());
+
+    cascade.apply_declaration(style, make_decl("counter-increment", "section 1"), parent);
+    EXPECT_EQ(style.counter_increment, "section 1");
+
+    cascade.apply_declaration(style, make_decl("counter-reset", "section 0"), parent);
+    EXPECT_EQ(style.counter_reset, "section 0");
+
+    cascade.apply_declaration(style, make_decl("counter-set", "section 5"), parent);
+    EXPECT_EQ(style.counter_set, "section 5");
+}
+
+TEST(PropertyCascadeTest, ColumnRuleWidthStyleColor) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_FLOAT_EQ(style.column_rule_width, 0.0f);  // default
+    EXPECT_EQ(style.column_rule_style, 0);           // default: none
+
+    cascade.apply_declaration(style, make_decl("column-rule-width", "2px"), parent);
+    EXPECT_FLOAT_EQ(style.column_rule_width, 2.0f);
+
+    cascade.apply_declaration(style, make_decl("column-rule-style", "solid"), parent);
+    EXPECT_EQ(style.column_rule_style, 1);
+
+    cascade.apply_declaration(style, make_decl("column-rule-style", "dashed"), parent);
+    EXPECT_EQ(style.column_rule_style, 2);
+
+    cascade.apply_declaration(style, make_decl("column-rule-style", "dotted"), parent);
+    EXPECT_EQ(style.column_rule_style, 3);
+
+    cascade.apply_declaration(style, make_decl("column-rule-color", "red"), parent);
+    EXPECT_EQ(style.column_rule_color.r, 255);
+    EXPECT_EQ(style.column_rule_color.a, 255);
+}
+
+TEST(PropertyCascadeTest, ColumnRuleShorthand) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    // column-rule: 3px solid red -> sets width, style, color
+    cascade.apply_declaration(style, make_decl("column-rule", "3px solid red"), parent);
+    EXPECT_FLOAT_EQ(style.column_rule_width, 3.0f);
+    EXPECT_EQ(style.column_rule_style, 1);  // solid
+    EXPECT_EQ(style.column_rule_color.r, 255);
+
+    cascade.apply_declaration(style, make_decl("column-rule", "1px dashed blue"), parent);
+    EXPECT_FLOAT_EQ(style.column_rule_width, 1.0f);
+    EXPECT_EQ(style.column_rule_style, 2);  // dashed
+    EXPECT_EQ(style.column_rule_color.b, 255);
+}
+
+TEST(PropertyCascadeTest, AppearanceAllValues) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.appearance, 0);  // default: auto
+
+    cascade.apply_declaration(style, make_decl("appearance", "none"), parent);
+    EXPECT_EQ(style.appearance, 1);
+
+    cascade.apply_declaration(style, make_decl("appearance", "button"), parent);
+    EXPECT_EQ(style.appearance, 4);
+
+    cascade.apply_declaration(style, make_decl("appearance", "textfield"), parent);
+    EXPECT_EQ(style.appearance, 3);
+
+    // -webkit-appearance alias
+    cascade.apply_declaration(style, make_decl("-webkit-appearance", "none"), parent);
+    EXPECT_EQ(style.appearance, 1);
+
+    cascade.apply_declaration(style, make_decl("appearance", "auto"), parent);
+    EXPECT_EQ(style.appearance, 0);
+}
+
+TEST(PropertyCascadeTest, PlaceholderColorAndWritingMode) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    // placeholder-color: transparent by default
+    EXPECT_EQ(style.placeholder_color.a, 0);
+
+    cascade.apply_declaration(style, make_decl("placeholder-color", "red"), parent);
+    EXPECT_EQ(style.placeholder_color.r, 255);
+    EXPECT_EQ(style.placeholder_color.a, 255);
+
+    // writing-mode
+    cascade.apply_declaration(style, make_decl("writing-mode", "vertical-rl"), parent);
+    EXPECT_EQ(style.writing_mode, 1);
+
+    cascade.apply_declaration(style, make_decl("writing-mode", "vertical-lr"), parent);
+    EXPECT_EQ(style.writing_mode, 2);
+
+    cascade.apply_declaration(style, make_decl("writing-mode", "horizontal-tb"), parent);
+    EXPECT_EQ(style.writing_mode, 0);
+}
+
+TEST(PropertyCascadeTest, TransitionPropertyAndDuration) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.transition_property, "all");  // default
+    EXPECT_FLOAT_EQ(style.transition_duration, 0.0f);  // default
+
+    cascade.apply_declaration(style, make_decl("transition-property", "opacity"), parent);
+    EXPECT_EQ(style.transition_property, "opacity");
+
+    cascade.apply_declaration(style, make_decl("transition-duration", "0.3s"), parent);
+    EXPECT_FLOAT_EQ(style.transition_duration, 0.3f);
+
+    cascade.apply_declaration(style, make_decl("transition-delay", "0.1s"), parent);
+    EXPECT_FLOAT_EQ(style.transition_delay, 0.1f);
+}
