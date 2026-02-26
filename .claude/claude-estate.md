@@ -5,13 +5,24 @@
 
 ## Current Status
 
-**Phase**: Active Development — Cycle 408 COMPLETE
-**Last Active**: 2026-02-27T00:21:39+0900
-**Current Focus**: HTTP/2 transport hardening with strict HTTP/1.x status-line STX separator fail-closed regression coverage
-**Momentum**: 3580 tests, ZERO failures, 2500+ features! v0.7.0! CYCLE 408 DONE! 230 BUGS FIXED!
-**Cycle**: 408
+**Phase**: Active Development — Cycle 409 COMPLETE
+**Last Active**: 2026-02-27T00:31:00+0900
+**Current Focus**: HTTP/2 transport hardening with strict HTTP/1.x status-line ETX separator fail-closed regression coverage
+**Momentum**: 3582 tests, ZERO failures, 2500+ features! v0.7.0! CYCLE 409 DONE! 231 BUGS FIXED!
+**Cycle**: 409
 
 ## Session Log
+
+### Cycle 409 — 2026-02-27 — HTTP/1.x status-line ETX separator fail-closed regression hardening
+- **HTTP/2 TRANSPORT (Priority 4)**: Hardened HTTP/1.x status-line guardrail coverage so ETX-byte (`\x03`) separator variants fail closed before response classification and body processing.
+- Updated regression contract coverage (`tests/test_request_contracts.cpp`):
+  - rejects status-line ETX status-code separator variant (`HTTP/1.1\x03200 OK`)
+  - rejects status-line ETX reason separator variant (`HTTP/1.1 200\x03OK`)
+- Validation:
+  - `cmake --build build_vibrowser --target test_request_contracts test_request_policy -j8 && ./build_vibrowser/test_request_contracts && ./build_vibrowser/test_request_policy`
+- Files: `tests/test_request_contracts.cpp`
+- **Targeted native request contract + policy suites green, no regressions.**
+- **Ledger divergence note**: `.codex/codex-estate.md` is non-writable in this runtime (`Operation not permitted`), so `.claude/claude-estate.md` is source of truth for Cycle 409 and sync should be replayed when permissions allow.
 
 ### Cycle 408 — 2026-02-27 — HTTP/1.x status-line STX separator fail-closed regression hardening
 - **HTTP/2 TRANSPORT (Priority 4)**: Hardened HTTP/1.x status-line guardrail coverage so STX-byte (`\x02`) separator variants fail closed before response classification and body processing.
@@ -4409,6 +4420,7 @@
 
 | # | What | Files | Notes |
 |---|------|-------|-------|
+| 772 | HTTP/1.x status-line ETX separator fail-closed regression hardening | tests/test_request_contracts.cpp | Adds explicit fail-closed regression coverage for ETX-byte (`\x03`) separators between version/status-code and status-code/reason components so malformed status lines are continuously blocked before response classification |
 | 771 | HTTP/1.x status-line STX separator fail-closed regression hardening | tests/test_request_contracts.cpp | Adds explicit fail-closed regression coverage for STX-byte (`\x02`) separators between version/status-code and status-code/reason components so malformed status lines are continuously blocked before response classification |
 | 770 | HTTP/1.x status-line SOH separator fail-closed regression hardening | tests/test_request_contracts.cpp | Adds explicit fail-closed regression coverage for SOH-byte (`\x01`) separators between version/status-code and status-code/reason components so malformed status lines are continuously blocked before response classification |
 | 769 | HTTP/1.x status-line DEL separator fail-closed regression hardening | tests/test_request_contracts.cpp | Adds explicit fail-closed regression coverage for DEL-byte (`\x7F`) separators between version/status-code and status-code/reason components so malformed status lines are continuously blocked before response classification |
@@ -4995,14 +5007,14 @@
 
 | Metric | Value |
 |--------|-------|
-| Total Sessions | 160 |
-| Total Cycles | 408 |
+| Total Sessions | 161 |
+| Total Cycles | 409 |
 | Files Created | ~135 |
 | Files Modified | 100+ |
 | Lines Added (est.) | 174180+ |
-| Tests Added | 3580 |
-| Bugs Fixed | 230 |
-| Features Added | 2515 |
+| Tests Added | 3582 |
+| Bugs Fixed | 231 |
+| Features Added | 2517 |
 
 ## Tell The Next Claude
 
@@ -5010,12 +5022,18 @@
 
 Build: `cd clever && cmake -S . -B build && cmake --build build && ctest --test-dir build`
 
-**3580 tests, 12 libraries (QuickJS!), 1 macOS app, ZERO warnings. v0.7.0. CYCLE 408! 2500+ FEATURES! 230 BUGS FIXED! ANTHROPIC.COM LOADS!**
+**3582 tests, 12 libraries (QuickJS!), 1 macOS app, ZERO warnings. v0.7.0. CYCLE 409! 2500+ FEATURES! 231 BUGS FIXED! ANTHROPIC.COM LOADS!**
 
 **Current implementation vs full browser comparison**:
 - Current implementation: robust single-process browser shell with full JS engine integration, broad DOM/CSS/Fetch coverage, and hardened HTTP/1.x/CORS/CSP policy enforcement.
 - Full browser target: still missing major subsystems like full multi-process isolation, full HTTP/2+/QUIC transport stack, and complete production-grade web font pipeline coverage.
-- Progress snapshot: from early scaffolding to 408 completed cycles, 3580 tests, and 2500+ implemented features.
+- Progress snapshot: from early scaffolding to 409 completed cycles, 3582 tests, and 2500+ implemented features.
+
+
+**Cycle 409 — HTTP/1.x status-line ETX separator fail-closed regression hardening**:
+- Added focused regression coverage in `tests/test_request_contracts.cpp` for ETX-byte status-line separator variants that must fail closed (`HTTP/1.1\x03200 OK`, `HTTP/1.1 200\x03OK`).
+- Rebuilt and re-ran `test_request_contracts` and `test_request_policy` from `build_vibrowser`, all green.
+- **Ledger divergence note**: `.codex/codex-estate.md` is non-writable in this runtime (`Operation not permitted`), so `.claude/claude-estate.md` is source of truth for Cycle 409 and sync should be replayed when permissions allow.
 
 **Cycle 408 — HTTP/1.x status-line STX separator fail-closed regression hardening**:
 - Added focused regression coverage in `tests/test_request_contracts.cpp` for STX-byte status-line separator variants that must fail closed (`HTTP/1.1\x02200 OK`, `HTTP/1.1 200\x02OK`).
