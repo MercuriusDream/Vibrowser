@@ -716,3 +716,96 @@ TEST(SerializerTest, TwoWriteBytesCallsRoundTrip) {
 
     EXPECT_FALSE(d.has_remaining());
 }
+
+// ============================================================================
+// Cycle 518: Serializer regression tests
+// ============================================================================
+
+// Round-trip multiple u8 values
+TEST(SerializerTest, MultipleU8ValuesRoundTrip) {
+    Serializer s;
+    s.write_u8(0);
+    s.write_u8(127);
+    s.write_u8(255);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u8(), 0);
+    EXPECT_EQ(d.read_u8(), 127);
+    EXPECT_EQ(d.read_u8(), 255);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+// Alternating u32 and string round-trips
+TEST(SerializerTest, AlternatingU32AndString) {
+    Serializer s;
+    s.write_u32(1000);
+    s.write_string("hello");
+    s.write_u32(2000);
+    s.write_string("world");
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u32(), 1000u);
+    EXPECT_EQ(d.read_string(), "hello");
+    EXPECT_EQ(d.read_u32(), 2000u);
+    EXPECT_EQ(d.read_string(), "world");
+    EXPECT_FALSE(d.has_remaining());
+}
+
+// write_u64 with value fitting in 32 bits
+TEST(SerializerTest, U64FitsIn32Bits) {
+    Serializer s;
+    s.write_u64(0xDEADBEEFu);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u64(), 0xDEADBEEFu);
+}
+
+// take_data leaves serializer in empty state
+TEST(SerializerTest, TakeDataLeavesSerializerEmpty) {
+    Serializer s;
+    s.write_u32(42);
+    auto v = s.take_data();
+    EXPECT_FALSE(v.empty());
+    EXPECT_TRUE(s.data().empty());
+}
+
+// data() on fresh Serializer returns empty vector
+TEST(SerializerTest, FreshSerializerDataIsEmpty) {
+    Serializer s;
+    EXPECT_TRUE(s.data().empty());
+    EXPECT_EQ(s.data().size(), 0u);
+}
+
+// Boolean sequence: write 4 bools, read back in order
+TEST(SerializerTest, BoolSequenceRoundTrip) {
+    Serializer s;
+    s.write_bool(true);
+    s.write_bool(false);
+    s.write_bool(true);
+    s.write_bool(true);
+    Deserializer d(s.data());
+    EXPECT_TRUE(d.read_bool());
+    EXPECT_FALSE(d.read_bool());
+    EXPECT_TRUE(d.read_bool());
+    EXPECT_TRUE(d.read_bool());
+    EXPECT_FALSE(d.has_remaining());
+}
+
+// Deserializer from raw pointer + size (second variant with larger values)
+TEST(SerializerTest, DeserializerFromRawPointerLargeValues) {
+    Serializer s;
+    s.write_u32(999999);
+    s.write_u32(111111);
+    auto bytes = s.data();
+    Deserializer d(bytes.data(), bytes.size());
+    EXPECT_EQ(d.read_u32(), 999999u);
+    EXPECT_EQ(d.read_u32(), 111111u);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+// String with special printable characters
+TEST(SerializerTest, StringWithSpecialPrintableChars) {
+    Serializer s;
+    std::string special = "hello\n\t!@#world";
+    s.write_string(special);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), special);
+    EXPECT_FALSE(d.has_remaining());
+}
