@@ -1318,3 +1318,75 @@ TEST(TreeBuilder, SampElement) {
     ASSERT_NE(samp, nullptr);
     EXPECT_EQ(samp->text_content(), "Error: file not found");
 }
+
+// ============================================================================
+// Cycle 522: HTML parser regression tests
+// ============================================================================
+
+TEST(TreeBuilder, SubElement) {
+    auto doc = parse("<body><p>H<sub>2</sub>O</p></body>");
+    ASSERT_NE(doc, nullptr);
+    auto* sub = doc->find_element("sub");
+    ASSERT_NE(sub, nullptr);
+    EXPECT_EQ(sub->text_content(), "2");
+}
+
+TEST(TreeBuilder, SupElement) {
+    auto doc = parse("<body><p>x<sup>2</sup></p></body>");
+    ASSERT_NE(doc, nullptr);
+    auto* sup = doc->find_element("sup");
+    ASSERT_NE(sup, nullptr);
+    EXPECT_EQ(sup->text_content(), "2");
+}
+
+TEST(TreeBuilder, DelElement) {
+    auto doc = parse("<body><del>old text</del></body>");
+    ASSERT_NE(doc, nullptr);
+    auto* del = doc->find_element("del");
+    ASSERT_NE(del, nullptr);
+    EXPECT_EQ(del->text_content(), "old text");
+}
+
+TEST(TreeBuilder, InsElement) {
+    auto doc = parse("<body><ins>new text</ins></body>");
+    ASSERT_NE(doc, nullptr);
+    auto* ins = doc->find_element("ins");
+    ASSERT_NE(ins, nullptr);
+    EXPECT_EQ(ins->text_content(), "new text");
+}
+
+TEST(TreeBuilder, TimeElementWithDatetime) {
+    auto doc = parse(R"(<body><time datetime="2024-01-15">January 15</time></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* time_el = doc->find_element("time");
+    ASSERT_NE(time_el, nullptr);
+    EXPECT_EQ(time_el->text_content(), "January 15");
+}
+
+TEST(TreeBuilder, OutputElement) {
+    auto doc = parse("<body><output>42</output></body>");
+    ASSERT_NE(doc, nullptr);
+    auto* output = doc->find_element("output");
+    ASSERT_NE(output, nullptr);
+    EXPECT_EQ(output->text_content(), "42");
+}
+
+TEST(TreeBuilder, ProgressElement) {
+    auto doc = parse(R"(<body><progress value="50" max="100"></progress></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* progress = doc->find_element("progress");
+    ASSERT_NE(progress, nullptr);
+    bool found_value = false;
+    for (auto& attr : progress->attributes) {
+        if (attr.name == "value") found_value = true;
+    }
+    EXPECT_TRUE(found_value);
+}
+
+TEST(TreeBuilder, MeterElement) {
+    auto doc = parse(R"(<body><meter value="75" min="0" max="100">75%</meter></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* meter = doc->find_element("meter");
+    ASSERT_NE(meter, nullptr);
+    EXPECT_EQ(meter->text_content(), "75%");
+}
