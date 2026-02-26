@@ -624,6 +624,12 @@ int main() {
         } else if (browser::net::is_chunked_transfer_encoding("chunk\\ed")) {
             std::cerr << "FAIL: expected escaped malformed transfer-encoding token to be rejected\n";
             ++failures;
+        } else if (browser::net::is_chunked_transfer_encoding("chunked;foo=bar")) {
+            std::cerr << "FAIL: expected chunked transfer-encoding with parameters to be rejected\n";
+            ++failures;
+        } else if (browser::net::is_chunked_transfer_encoding("chunked, gzip")) {
+            std::cerr << "FAIL: expected non-final chunked transfer-encoding token to be rejected\n";
+            ++failures;
         } else {
             std::cerr << "PASS: chunked transfer-encoding token detection works as expected\n";
         }

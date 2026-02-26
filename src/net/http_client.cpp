@@ -1108,7 +1108,20 @@ bool contains_chunked_encoding(const std::string& transfer_encoding_header) {
         token.find('\\') != std::string::npos) {
       return false;
     }
-    if (token == "chunked") {
+    if (found_chunked) {
+      return false;
+    }
+
+    const std::size_t semicolon = token.find(';');
+    const std::string coding = trim_ascii(
+        token.substr(0, semicolon == std::string::npos ? token.size() : semicolon));
+    if (coding.empty()) {
+      return false;
+    }
+    if (coding == "chunked") {
+      if (semicolon != std::string::npos) {
+        return false;
+      }
       found_chunked = true;
     }
     if (comma == std::string::npos) {
