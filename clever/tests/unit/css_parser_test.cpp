@@ -2015,3 +2015,87 @@ TEST_F(CSSStylesheetTest, ThreeRulesHierarchy) {
     EXPECT_EQ(sheet.rules[1].selector_text, "h2");
     EXPECT_EQ(sheet.rules[2].selector_text, "h3");
 }
+
+// ============================================================================
+// Cycle 586: More CSS parser tests
+// ============================================================================
+
+// Tokenizer: ms dimension token
+TEST_F(CSSTokenizerTest, MsDimensionToken) {
+    auto tokens = CSSTokenizer::tokenize_all("200ms");
+    ASSERT_GE(tokens.size(), 1u);
+    EXPECT_EQ(tokens[0].type, CSSToken::Dimension);
+    EXPECT_DOUBLE_EQ(tokens[0].numeric_value, 200.0);
+    EXPECT_EQ(tokens[0].unit, "ms");
+}
+
+// Tokenizer: s (seconds) dimension token
+TEST_F(CSSTokenizerTest, SecondsDimensionToken) {
+    auto tokens = CSSTokenizer::tokenize_all("1.5s");
+    ASSERT_GE(tokens.size(), 1u);
+    EXPECT_EQ(tokens[0].type, CSSToken::Dimension);
+    EXPECT_DOUBLE_EQ(tokens[0].numeric_value, 1.5);
+    EXPECT_EQ(tokens[0].unit, "s");
+}
+
+// Tokenizer: deg dimension token
+TEST_F(CSSTokenizerTest, DegDimensionToken) {
+    auto tokens = CSSTokenizer::tokenize_all("90deg");
+    ASSERT_GE(tokens.size(), 1u);
+    EXPECT_EQ(tokens[0].type, CSSToken::Dimension);
+    EXPECT_DOUBLE_EQ(tokens[0].numeric_value, 90.0);
+    EXPECT_EQ(tokens[0].unit, "deg");
+}
+
+// Selector: compound selector (div.class)
+TEST_F(CSSSelectorTest, CompoundTypeAndClass) {
+    auto list = parse_selector_list("div.container");
+    ASSERT_EQ(list.selectors.size(), 1u);
+    auto& compound = list.selectors[0].parts[0].compound;
+    ASSERT_EQ(compound.simple_selectors.size(), 2u);
+    EXPECT_EQ(compound.simple_selectors[0].type, SimpleSelectorType::Type);
+    EXPECT_EQ(compound.simple_selectors[0].value, "div");
+    EXPECT_EQ(compound.simple_selectors[1].type, SimpleSelectorType::Class);
+    EXPECT_EQ(compound.simple_selectors[1].value, "container");
+}
+
+// Selector: three-class compound selector
+TEST_F(CSSSelectorTest, ThreeClassCompoundSelector) {
+    auto list = parse_selector_list(".a.b.c");
+    ASSERT_EQ(list.selectors.size(), 1u);
+    auto& compound = list.selectors[0].parts[0].compound;
+    ASSERT_EQ(compound.simple_selectors.size(), 3u);
+    for (auto& s : compound.simple_selectors) {
+        EXPECT_EQ(s.type, SimpleSelectorType::Class);
+    }
+}
+
+// Stylesheet: border-radius property
+TEST_F(CSSStylesheetTest, BorderRadiusProperty) {
+    auto sheet = parse_stylesheet(".card { border-radius: 8px; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations) {
+        if (d.property == "border-radius") found = true;
+    }
+    EXPECT_TRUE(found);
+}
+
+// Stylesheet: color named value
+TEST_F(CSSStylesheetTest, NamedColorValue) {
+    auto sheet = parse_stylesheet("h1 { color: blue; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    ASSERT_EQ(sheet.rules[0].declarations.size(), 1u);
+    EXPECT_EQ(sheet.rules[0].declarations[0].values[0].value, "blue");
+}
+
+// Stylesheet: padding with four values
+TEST_F(CSSStylesheetTest, PaddingFourValues) {
+    auto sheet = parse_stylesheet("div { padding: 10px 20px 10px 20px; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations) {
+        if (d.property == "padding") found = true;
+    }
+    EXPECT_TRUE(found);
+}
