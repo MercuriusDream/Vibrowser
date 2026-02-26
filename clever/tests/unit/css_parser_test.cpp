@@ -1792,3 +1792,79 @@ TEST_F(CSSSelectorTest, AttributeSelectorTypeText) {
     }
     EXPECT_TRUE(has_attr);
 }
+
+// ============================================================================
+// Cycle 554: CSS parser regression tests
+// ============================================================================
+
+// Hash token with full hex color
+TEST_F(CSSTokenizerTest, FullHexColorHashToken) {
+    auto tokens = CSSTokenizer::tokenize_all("#aabbcc");
+    ASSERT_GE(tokens.size(), 1u);
+    EXPECT_EQ(tokens[0].type, CSSToken::Hash);
+    EXPECT_EQ(tokens[0].value, "aabbcc");
+}
+
+// String token with double quotes
+TEST_F(CSSTokenizerTest, DoubleQuoteStringToken) {
+    auto tokens = CSSTokenizer::tokenize_all("\"hello\"");
+    ASSERT_GE(tokens.size(), 1u);
+    EXPECT_EQ(tokens[0].type, CSSToken::String);
+    EXPECT_EQ(tokens[0].value, "hello");
+}
+
+// String token with single quotes
+TEST_F(CSSTokenizerTest, SingleQuoteStringToken) {
+    auto tokens = CSSTokenizer::tokenize_all("'world'");
+    ASSERT_GE(tokens.size(), 1u);
+    EXPECT_EQ(tokens[0].type, CSSToken::String);
+    EXPECT_EQ(tokens[0].value, "world");
+}
+
+// Declaration with !important
+TEST(CSSParserTest, DeclarationWithImportant) {
+    auto decls = parse_declaration_block("color: red !important");
+    ASSERT_GE(decls.size(), 1u);
+    EXPECT_EQ(decls[0].property, "color");
+    EXPECT_TRUE(decls[0].important);
+}
+
+// Stylesheet with id selector rule
+TEST_F(CSSStylesheetTest, IdSelectorRule) {
+    auto sheet = parse_stylesheet("#header { font-size: 24px; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool has_font_size = false;
+    for (auto& d : sheet.rules[0].declarations) {
+        if (d.property == "font-size") has_font_size = true;
+    }
+    EXPECT_TRUE(has_font_size);
+}
+
+// Stylesheet with class selector rule
+TEST_F(CSSStylesheetTest, ClassSelectorRule) {
+    auto sheet = parse_stylesheet(".container { max-width: 1200px; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool has_max_width = false;
+    for (auto& d : sheet.rules[0].declarations) {
+        if (d.property == "max-width") has_max_width = true;
+    }
+    EXPECT_TRUE(has_max_width);
+}
+
+// Number token is flagged as integer
+TEST_F(CSSTokenizerTest, IntegerNumericToken) {
+    auto tokens = CSSTokenizer::tokenize_all("42");
+    ASSERT_GE(tokens.size(), 1u);
+    EXPECT_EQ(tokens[0].type, CSSToken::Number);
+    EXPECT_DOUBLE_EQ(tokens[0].numeric_value, 42.0);
+    EXPECT_TRUE(tokens[0].is_integer);
+}
+
+// Dimension token (em unit)
+TEST_F(CSSTokenizerTest, EmDimensionToken) {
+    auto tokens = CSSTokenizer::tokenize_all("2em");
+    ASSERT_GE(tokens.size(), 1u);
+    EXPECT_EQ(tokens[0].type, CSSToken::Dimension);
+    EXPECT_DOUBLE_EQ(tokens[0].numeric_value, 2.0);
+    EXPECT_EQ(tokens[0].unit, "em");
+}
