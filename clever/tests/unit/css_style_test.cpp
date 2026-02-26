@@ -8236,3 +8236,149 @@ TEST(PropertyCascadeTest, ScrollPaddingShorthand) {
     EXPECT_FLOAT_EQ(style.scroll_padding_right, 16.0f);
     EXPECT_FLOAT_EQ(style.scroll_padding_left, 16.0f);
 }
+
+// ---------------------------------------------------------------------------
+// Cycle 461 — contain-intrinsic-size, SVG gradient filter properties,
+//             SVG marker properties, place-content shorthand
+// ---------------------------------------------------------------------------
+
+TEST(PropertyCascadeTest, ContainIntrinsicSizeShorthand) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_FLOAT_EQ(style.contain_intrinsic_width, 0.0f);
+    EXPECT_FLOAT_EQ(style.contain_intrinsic_height, 0.0f);
+
+    // two-value: width height
+    cascade.apply_declaration(style, make_decl("contain-intrinsic-size", "200px 100px"), parent);
+    EXPECT_FLOAT_EQ(style.contain_intrinsic_width, 200.0f);
+    EXPECT_FLOAT_EQ(style.contain_intrinsic_height, 100.0f);
+
+    // single value sets both
+    cascade.apply_declaration(style, make_decl("contain-intrinsic-size", "50px"), parent);
+    EXPECT_FLOAT_EQ(style.contain_intrinsic_width, 50.0f);
+    EXPECT_FLOAT_EQ(style.contain_intrinsic_height, 50.0f);
+
+    // "auto" resets to 0
+    cascade.apply_declaration(style, make_decl("contain-intrinsic-size", "auto"), parent);
+    EXPECT_FLOAT_EQ(style.contain_intrinsic_width, 0.0f);
+    EXPECT_FLOAT_EQ(style.contain_intrinsic_height, 0.0f);
+}
+
+TEST(PropertyCascadeTest, ContainIntrinsicWidthAndHeight) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("contain-intrinsic-width", "300px"), parent);
+    EXPECT_FLOAT_EQ(style.contain_intrinsic_width, 300.0f);
+
+    cascade.apply_declaration(style, make_decl("contain-intrinsic-height", "150px"), parent);
+    EXPECT_FLOAT_EQ(style.contain_intrinsic_height, 150.0f);
+
+    // "none" resets to 0
+    cascade.apply_declaration(style, make_decl("contain-intrinsic-width", "none"), parent);
+    EXPECT_FLOAT_EQ(style.contain_intrinsic_width, 0.0f);
+}
+
+TEST(PropertyCascadeTest, SvgStopColorAndOpacity) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.stop_color, 0xFF000000u);  // default black
+    EXPECT_FLOAT_EQ(style.stop_opacity, 1.0f);
+
+    cascade.apply_declaration(style, make_decl("stop-color", "white"), parent);
+    EXPECT_EQ(style.stop_color, 0xFFFFFFFFu);
+
+    cascade.apply_declaration(style, make_decl("stop-opacity", "0.4"), parent);
+    EXPECT_FLOAT_EQ(style.stop_opacity, 0.4f);
+
+    // clamp to 0-1
+    cascade.apply_declaration(style, make_decl("stop-opacity", "1.5"), parent);
+    EXPECT_FLOAT_EQ(style.stop_opacity, 1.0f);
+}
+
+TEST(PropertyCascadeTest, SvgFloodColorAndOpacity) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.flood_color, 0xFF000000u);  // default black
+    EXPECT_FLOAT_EQ(style.flood_opacity, 1.0f);
+
+    cascade.apply_declaration(style, make_decl("flood-color", "blue"), parent);
+    EXPECT_EQ(style.flood_color, 0xFF0000FFu);
+
+    cascade.apply_declaration(style, make_decl("flood-opacity", "0.75"), parent);
+    EXPECT_FLOAT_EQ(style.flood_opacity, 0.75f);
+}
+
+TEST(PropertyCascadeTest, SvgLightingColor) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.lighting_color, 0xFFFFFFFFu);  // default white
+
+    cascade.apply_declaration(style, make_decl("lighting-color", "red"), parent);
+    EXPECT_EQ(style.lighting_color, 0xFFFF0000u);
+
+    cascade.apply_declaration(style, make_decl("lighting-color", "black"), parent);
+    EXPECT_EQ(style.lighting_color, 0xFF000000u);
+}
+
+TEST(PropertyCascadeTest, SvgMarkerShorthandSetsAll) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.marker_shorthand, "");
+    EXPECT_EQ(style.marker_start, "");
+    EXPECT_EQ(style.marker_mid, "");
+    EXPECT_EQ(style.marker_end, "");
+
+    cascade.apply_declaration(style, make_decl("marker", "url(#arrow)"), parent);
+    EXPECT_EQ(style.marker_shorthand, "url(#arrow)");
+    EXPECT_EQ(style.marker_start, "url(#arrow)");
+    EXPECT_EQ(style.marker_mid, "url(#arrow)");
+    EXPECT_EQ(style.marker_end, "url(#arrow)");
+}
+
+TEST(PropertyCascadeTest, SvgMarkerIndividualProperties) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("marker-start", "url(#circle)"), parent);
+    EXPECT_EQ(style.marker_start, "url(#circle)");
+
+    cascade.apply_declaration(style, make_decl("marker-mid", "url(#square)"), parent);
+    EXPECT_EQ(style.marker_mid, "url(#square)");
+
+    cascade.apply_declaration(style, make_decl("marker-end", "url(#arrow)"), parent);
+    EXPECT_EQ(style.marker_end, "url(#arrow)");
+}
+
+TEST(PropertyCascadeTest, PlaceContentShorthand) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    // "center space-between" => align_content=2, justify_content=SpaceBetween
+    cascade.apply_declaration(style, make_decl("place-content", "center space-between"), parent);
+    EXPECT_EQ(style.align_content, 2);
+    EXPECT_EQ(style.justify_content, JustifyContent::SpaceBetween);
+
+    // single "start" => both align_content=0 and justify_content=FlexStart
+    cascade.apply_declaration(style, make_decl("place-content", "start"), parent);
+    EXPECT_EQ(style.align_content, 0);
+    EXPECT_EQ(style.justify_content, JustifyContent::FlexStart);
+
+    // "end center" => align_content=1, justify_content=Center
+    cascade.apply_declaration(style, make_decl("place-content", "end center"), parent);
+    EXPECT_EQ(style.align_content, 1);
+    EXPECT_EQ(style.justify_content, JustifyContent::Center);
+}
