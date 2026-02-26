@@ -1501,3 +1501,82 @@ TEST(CSSNestingTest, NestingWithHoverOnAmpersand) {
     EXPECT_TRUE(found_base);
     EXPECT_TRUE(found_hover);
 }
+
+// ============================================================================
+// Cycle 510: CSS parser regression tests
+// ============================================================================
+
+TEST_F(CSSTokenizerTest, IntegerFlagOnWholeNumber) {
+    auto tokens = CSSTokenizer::tokenize_all("42");
+    ASSERT_GE(tokens.size(), 1u);
+    EXPECT_EQ(tokens[0].type, CSSToken::Number);
+    EXPECT_TRUE(tokens[0].is_integer);
+    EXPECT_DOUBLE_EQ(tokens[0].numeric_value, 42.0);
+}
+
+TEST_F(CSSTokenizerTest, RemDimensionToken) {
+    auto tokens = CSSTokenizer::tokenize_all("1.5rem");
+    ASSERT_GE(tokens.size(), 1u);
+    EXPECT_EQ(tokens[0].type, CSSToken::Dimension);
+    EXPECT_EQ(tokens[0].unit, "rem");
+    EXPECT_DOUBLE_EQ(tokens[0].numeric_value, 1.5);
+}
+
+TEST_F(CSSTokenizerTest, PercentageNumericValue) {
+    auto tokens = CSSTokenizer::tokenize_all("75%");
+    ASSERT_GE(tokens.size(), 1u);
+    EXPECT_EQ(tokens[0].type, CSSToken::Percentage);
+    EXPECT_DOUBLE_EQ(tokens[0].numeric_value, 75.0);
+}
+
+TEST_F(CSSSelectorTest, PseudoClassDisabled) {
+    auto list = parse_selector_list(":disabled");
+    ASSERT_EQ(list.selectors.size(), 1u);
+    auto& compound = list.selectors[0].parts[0].compound;
+    ASSERT_GE(compound.simple_selectors.size(), 1u);
+    EXPECT_EQ(compound.simple_selectors[0].type, SimpleSelectorType::PseudoClass);
+    EXPECT_EQ(compound.simple_selectors[0].value, "disabled");
+}
+
+TEST_F(CSSSelectorTest, PseudoClassChecked) {
+    auto list = parse_selector_list("input:checked");
+    ASSERT_EQ(list.selectors.size(), 1u);
+    auto& parts = list.selectors[0].parts;
+    ASSERT_GE(parts.size(), 1u);
+    bool found_checked = false;
+    for (auto& ss : parts[0].compound.simple_selectors) {
+        if (ss.type == SimpleSelectorType::PseudoClass && ss.value == "checked")
+            found_checked = true;
+    }
+    EXPECT_TRUE(found_checked);
+}
+
+TEST_F(CSSSelectorTest, AttributeSuffixSelector) {
+    auto list = parse_selector_list("[href$=\".pdf\"]");
+    ASSERT_EQ(list.selectors.size(), 1u);
+    auto& compound = list.selectors[0].parts[0].compound;
+    ASSERT_GE(compound.simple_selectors.size(), 1u);
+    EXPECT_EQ(compound.simple_selectors[0].type, SimpleSelectorType::Attribute);
+    EXPECT_EQ(compound.simple_selectors[0].attr_match, AttributeMatch::Suffix);
+}
+
+TEST_F(CSSStylesheetTest, RuleWithMultipleDeclarations) {
+    auto sheet = parse_stylesheet("p { color: red; font-size: 14px; margin: 0; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    EXPECT_GE(sheet.rules[0].declarations.size(), 3u);
+    bool found_color = false;
+    for (auto& d : sheet.rules[0].declarations) {
+        if (d.property == "color") found_color = true;
+    }
+    EXPECT_TRUE(found_color);
+}
+
+TEST(CSSParserTest, DeclarationWithNumericValue) {
+    auto decls = parse_declaration_block("margin: 10px");
+    ASSERT_GE(decls.size(), 1u);
+    bool found = false;
+    for (auto& d : decls) {
+        if (d.property == "margin" && !d.values.empty()) found = true;
+    }
+    EXPECT_TRUE(found);
+}
