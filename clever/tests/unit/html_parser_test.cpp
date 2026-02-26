@@ -2207,3 +2207,64 @@ TEST(TreeBuilder, MainWithH1) {
     auto* main_el = doc->find_element("main");
     ASSERT_NE(main_el, nullptr);
 }
+
+// ============================================================================
+// Cycle 627: More HTML parser tests
+// ============================================================================
+
+TEST(TreeBuilder, ScriptElement) {
+    auto doc = parse(R"(<head><script src="app.js"></script></head><body></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* script = doc->find_element("script");
+    ASSERT_NE(script, nullptr);
+}
+
+TEST(TreeBuilder, StyleElement) {
+    auto doc = parse(R"(<head><style>body { margin: 0; }</style></head><body></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* style = doc->find_element("style");
+    ASSERT_NE(style, nullptr);
+}
+
+TEST(TreeBuilder, LinkElement) {
+    auto doc = parse(R"(<head><link rel="stylesheet" href="styles.css"></head><body></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* link = doc->find_element("link");
+    ASSERT_NE(link, nullptr);
+}
+
+TEST(TreeBuilder, MetaElement) {
+    auto doc = parse(R"(<head><meta charset="UTF-8"></head><body></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* meta = doc->find_element("meta");
+    ASSERT_NE(meta, nullptr);
+}
+
+TEST(TreeBuilder, TitleElement) {
+    auto doc = parse(R"(<head><title>My Page</title></head><body></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* title = doc->find_element("title");
+    ASSERT_NE(title, nullptr);
+    EXPECT_EQ(title->text_content(), "My Page");
+}
+
+TEST(TreeBuilder, BaseElement) {
+    auto doc = parse(R"(<head><base href="https://example.com/"></head><body></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* base = doc->find_element("base");
+    ASSERT_NE(base, nullptr);
+}
+
+TEST(TreeBuilder, NoscriptElement) {
+    auto doc = parse(R"(<body><noscript><p>JavaScript required</p></noscript></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* noscript = doc->find_element("noscript");
+    ASSERT_NE(noscript, nullptr);
+}
+
+TEST(TreeBuilder, TemplateElement) {
+    auto doc = parse(R"(<body><template id="tmpl"><p>Template content</p></template></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* tmpl = doc->find_element("template");
+    ASSERT_NE(tmpl, nullptr);
+}
