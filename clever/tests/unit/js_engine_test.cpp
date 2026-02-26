@@ -11823,3 +11823,105 @@ TEST(JSEngine, ArrayIndexOf) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "1,3,-1");
 }
+
+// ============================================================================
+// Cycle 523: JSEngine regression tests
+// ============================================================================
+
+TEST(JSEngine, WhileLoop) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var sum = 0;
+        var i = 1;
+        while (i <= 5) {
+            sum += i;
+            i++;
+        }
+        String(sum)
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "15");
+}
+
+TEST(JSEngine, DoWhileLoop) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var count = 0;
+        do {
+            count++;
+        } while (count < 3);
+        String(count)
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "3");
+}
+
+TEST(JSEngine, BreakInLoop) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var found = -1;
+        for (var i = 0; i < 10; i++) {
+            if (i === 5) { found = i; break; }
+        }
+        String(found)
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "5");
+}
+
+TEST(JSEngine, ContinueInLoop) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var evens = [];
+        for (var i = 0; i < 6; i++) {
+            if (i % 2 !== 0) continue;
+            evens.push(i);
+        }
+        evens.join(",")
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "0,2,4");
+}
+
+TEST(JSEngine, SetDataStructure) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var s = new Set([1, 2, 3, 2, 1]);
+        String(s.size)
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "3");
+}
+
+TEST(JSEngine, MapDataStructure) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var m = new Map();
+        m.set("key", "value");
+        m.get("key")
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "value");
+}
+
+TEST(JSEngine, ArrowFunctionMultiply) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var double = x => x * 2;
+        double(21)
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "42");
+}
+
+TEST(JSEngine, DefaultFunctionParameters) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        function greet(name = "World") {
+            return "Hello, " + name + "!";
+        }
+        greet() + " " + greet("Alice")
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "Hello, World! Hello, Alice!");
+}
