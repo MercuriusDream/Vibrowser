@@ -217,13 +217,12 @@ bool parse_host_source_token(const std::string& source,
   const std::size_t path_pos = rest.find('/');
   if (path_pos != std::string::npos) {
     path_part = rest.substr(path_pos);
-    rest = rest.substr(0, path_pos);
-  }
-  if (!path_part.empty()) {
-    const std::size_t query_pos = path_part.find_first_of("?#");
-    if (query_pos != std::string::npos) {
-      path_part = path_part.substr(0, query_pos);
+    if (path_part.find_first_of("?#") != std::string::npos) {
+      return false;
     }
+    rest = rest.substr(0, path_pos);
+  } else if (rest.find_first_of("?#") != std::string::npos) {
+    return false;
   }
   if (rest.empty()) {
     return false;

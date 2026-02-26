@@ -864,6 +864,34 @@ int main() {
         }
     }
 
+    // Test 43b: connect-src host-source with query component is treated as invalid and blocked
+    {
+        browser::net::RequestPolicy policy;
+        policy.enforce_connect_src = true;
+        policy.connect_src_sources = {"https://api.example.com/v1/?q=1"};
+        auto blocked = browser::net::check_request_policy("https://api.example.com/v1/users", policy);
+        if (blocked.allowed) {
+            std::cerr << "FAIL: host-source with query component must be treated as invalid and blocked\n";
+            ++failures;
+        } else {
+            std::cerr << "PASS: connect-src rejects host-sources containing query components\n";
+        }
+    }
+
+    // Test 43c: connect-src host-source with fragment component is treated as invalid and blocked
+    {
+        browser::net::RequestPolicy policy;
+        policy.enforce_connect_src = true;
+        policy.connect_src_sources = {"https://api.example.com/v1/#frag"};
+        auto blocked = browser::net::check_request_policy("https://api.example.com/v1/users", policy);
+        if (blocked.allowed) {
+            std::cerr << "FAIL: host-source with fragment component must be treated as invalid and blocked\n";
+            ++failures;
+        } else {
+            std::cerr << "PASS: connect-src rejects host-sources containing fragment components\n";
+        }
+    }
+
     // Test 43: wss host-source without explicit port enforces default secure WebSocket port
     {
         browser::net::RequestPolicy policy;
