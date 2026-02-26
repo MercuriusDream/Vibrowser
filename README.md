@@ -4,14 +4,65 @@
 
 # Vibrowser
 
-> "imagine if we can vibecode smth like chrome one day"
+> Open-source, from-scratch browser engineering in public.
 
 <img width="1023" height="802" alt="image" src="https://github.com/user-attachments/assets/d0b873b2-3c8f-4195-8890-be1014ebe8b9" />
 
 It is a small, opinionated, VIBECODED, from-scratch C++17 engine that exists to prove each browser subsystem can be built, understood, and tuned by hand, one layer at a time.  
-The project is intentionally pragmatic: no magic black boxes, no hand-wavey abstractions, no pretending you are production-ready when you are still in feature-hardening mode.
+The project is intentionally pragmatic: no magic black boxes, no hand-wavey abstractions, and no pretending it is production-ready before it is.
 
 The executable is still `from_scratch_browser`, but the spirit is vibey, curious, and unapologetically experimental.
+
+---
+
+## Open-Source Mission
+
+Vibrowser is an OSS project for people who want to understand browser internals by building them directly:
+
+- network/input ingestion
+- HTML parsing
+- CSS parsing + selector matching
+- style resolution
+- layout
+- paint output
+
+The goal is not to hide complexity. The goal is to make complexity inspectable.
+
+## Development Machine Specs (neofetch)
+
+Current local build machine used for active development:
+
+- OS: `macOS 26.3 25D125 arm64`
+- Host: `MacBookPro18,3`
+- Kernel: `25.3.0`
+- Shell: `zsh 5.9`
+- Terminal: `Codex`
+- CPU: `Apple M1 Pro`
+- GPU: `Apple M1 Pro`
+- Memory: `16GB` (`16384MiB`)
+
+To print your current machine profile:
+
+```bash
+neofetch
+```
+
+## Landing Page (Vite + React)
+
+A dedicated landing page app exists in `landing/` and is ready for GitHub Pages deployment.
+
+```bash
+cd landing
+bun install
+bun run dev
+```
+
+Deployment options:
+
+- Manual deploy to `gh-pages` branch:
+  - `bun run deploy`
+- Automatic deploy via GitHub Actions:
+  - `.github/workflows/landing-pages.yml`
 
 ---
 
