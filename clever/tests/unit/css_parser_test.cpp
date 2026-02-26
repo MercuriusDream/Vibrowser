@@ -2502,3 +2502,80 @@ TEST_F(CSSStylesheetTest, WidthDeclaration) {
     }
     EXPECT_TRUE(found);
 }
+
+// ============================================================================
+// Cycle 646: More CSS parser tests
+// ============================================================================
+
+// Tokenizer: hash token (color)
+TEST_F(CSSTokenizerTest, HashColorToken) {
+    auto tokens = CSSTokenizer::tokenize_all("#ff0000");
+    ASSERT_FALSE(tokens.empty());
+    EXPECT_EQ(tokens[0].type, CSSToken::Hash);
+}
+
+// Tokenizer: at-keyword token
+TEST_F(CSSTokenizerTest, AtKeywordToken) {
+    auto tokens = CSSTokenizer::tokenize_all("@media");
+    ASSERT_FALSE(tokens.empty());
+    EXPECT_EQ(tokens[0].type, CSSToken::AtKeyword);
+}
+
+// Selector: compound selector type+class
+TEST_F(CSSSelectorTest, CompoundTypeAndClassSelector) {
+    auto list = parse_selector_list("div.active");
+    ASSERT_EQ(list.selectors.size(), 1u);
+    auto& compound = list.selectors[0].parts[0].compound;
+    EXPECT_GE(compound.simple_selectors.size(), 2u);
+}
+
+// Selector: multiple classes on one element
+TEST_F(CSSSelectorTest, TwoClassesOnOneElement) {
+    auto list = parse_selector_list(".foo.bar");
+    ASSERT_EQ(list.selectors.size(), 1u);
+    auto& compound = list.selectors[0].parts[0].compound;
+    int class_count = 0;
+    for (auto& ss : compound.simple_selectors) {
+        if (ss.type == SimpleSelectorType::Class) class_count++;
+    }
+    EXPECT_GE(class_count, 2);
+}
+
+// Stylesheet: height property
+TEST_F(CSSStylesheetTest, HeightDeclaration) {
+    auto sheet = parse_stylesheet("div { height: 50px; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations) {
+        if (d.property == "height") { found = true; break; }
+    }
+    EXPECT_TRUE(found);
+}
+
+// Stylesheet: color property
+TEST_F(CSSStylesheetTest, ColorDeclaration) {
+    auto sheet = parse_stylesheet("p { color: red; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations) {
+        if (d.property == "color") { found = true; break; }
+    }
+    EXPECT_TRUE(found);
+}
+
+// Stylesheet: two rules
+TEST_F(CSSStylesheetTest, TwoRulesParsed) {
+    auto sheet = parse_stylesheet("div { color: red; } p { color: blue; }");
+    EXPECT_EQ(sheet.rules.size(), 2u);
+}
+
+// Stylesheet: display property
+TEST_F(CSSStylesheetTest, DisplayDeclaration) {
+    auto sheet = parse_stylesheet("span { display: inline-block; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations) {
+        if (d.property == "display") { found = true; break; }
+    }
+    EXPECT_TRUE(found);
+}
