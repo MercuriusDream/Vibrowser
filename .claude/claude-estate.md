@@ -5,13 +5,30 @@
 
 ## Current Status
 
-**Phase**: Active Development — Cycle 374 COMPLETE
-**Last Active**: 2026-02-26T18:31:57+0900
-**Current Focus**: CORS/CSP enforcement completion with strict native serialized-origin empty explicit-port fail-closed hardening
-**Momentum**: 3521 tests, ZERO failures, 2500+ features! v0.7.0! CYCLE 374 DONE! 199 BUGS FIXED!
-**Cycle**: 374
+**Phase**: Active Development — Cycle 375 COMPLETE
+**Last Active**: 2026-02-26T18:44:00+0900
+**Current Focus**: CORS/CSP enforcement completion with strict native serialized-origin malformed host-label fail-closed hardening
+**Momentum**: 3523 tests, ZERO failures, 2500+ features! v0.7.0! CYCLE 375 DONE! 200 BUGS FIXED!
+**Cycle**: 375
 
 ## Session Log
+
+### Cycle 375 — 2026-02-26 — Native serialized-origin malformed host-label fail-closed hardening
+- **CORS/CSP ENFORCEMENT (Priority 1)**: Hardened native serialized-origin parsing to fail closed when authorities contain malformed non-IPv6 host labels (for example empty labels like `app..example.com`) so malformed origin values cannot pass native CORS response checks or outgoing Origin-header emission.
+- Updated native request policy behavior (`src/net/http_client.cpp`):
+  - added strict serialized-origin host validation for non-IPv6 host labels (no empty labels, leading/trailing dot, or non `[A-Za-z0-9-]` label characters)
+  - added strict IPv6-literal validation via `inet_pton(AF_INET6, ...)` for colon-bearing hosts
+  - preserves strict controls for whitespace/control/non-ASCII/userinfo/path/query/fragment/percent-escape/backslash/empty explicit port and HTTP(S)-only origin schemes
+- Added regression coverage (`tests/test_request_policy.cpp`):
+  - new test rejects CORS `Access-Control-Allow-Origin` values containing malformed host labels
+  - new test rejects outgoing `Origin` header emission for malformed-host-label policy origin values
+- Validation:
+  - `cmake --build build_vibrowser --target test_request_policy test_request_contracts -j8`
+  - `./build_vibrowser/test_request_policy`
+  - `./build_vibrowser/test_request_contracts`
+- Files: `src/net/http_client.cpp`, `tests/test_request_policy.cpp`
+- **Targeted policy + contract suites green, no regressions.**
+- **Ledger sync**: `.claude/claude-estate.md` and `.codex/codex-estate.md` are synchronized in lockstep for Cycle 375.
 
 ### Cycle 374 — 2026-02-26 — Native serialized-origin empty explicit-port fail-closed hardening
 - **CORS/CSP ENFORCEMENT (Priority 1)**: Hardened native serialized-origin parsing to fail closed when authority contains an empty explicit port delimiter (`host:` / `[ipv6]:`) so malformed origin values cannot pass native CORS response checks or outgoing Origin-header emission.
@@ -3899,6 +3916,7 @@
 
 | # | What | Files | Notes |
 |---|------|-------|-------|
+| 744 | Native serialized-origin malformed host-label fail-closed hardening | src/net/http_client.cpp, tests/test_request_policy.cpp | Rejects malformed non-IPv6 host-label serialized origins (for example `app..example.com`) and invalid IPv6 literals so malformed policy/request/ACAO origins fail closed across native CORS response gating and outgoing Origin-header emission |
 | 743 | Native serialized-origin empty explicit-port fail-closed hardening | src/net/http_client.cpp, tests/test_request_policy.cpp | Rejects serialized origin authorities that end with `:` so malformed empty-port policy/request/ACAO origins fail closed across native CORS response gating and outgoing Origin-header emission |
 | 742 | Native serialized-origin authority backslash fail-closed hardening | src/net/http_client.cpp, tests/test_request_policy.cpp | Rejects backslash-containing serialized origin values so malformed policy/request/ACAO origins fail closed across native CORS response gating and outgoing Origin-header emission |
 | 741 | Native serialized-origin percent-escaped authority fail-closed hardening | src/net/http_client.cpp, tests/test_request_policy.cpp | Rejects percent-escaped authority bytes in serialized origin values so malformed policy/request/ACAO origins fail closed across native CORS response gating and outgoing Origin-header emission |
@@ -4457,12 +4475,12 @@
 | Metric | Value |
 |--------|-------|
 | Total Sessions | 146 |
-| Total Cycles | 374 |
+| Total Cycles | 375 |
 | Files Created | ~135 |
 | Files Modified | 100+ |
 | Lines Added (est.) | 172560+ |
-| Tests Added | 3521 |
-| Bugs Fixed | 199 |
+| Tests Added | 3523 |
+| Bugs Fixed | 200 |
 | Features Added | 2500 |
 
 ## Tell The Next Claude
@@ -4471,12 +4489,18 @@
 
 Build: `cd clever && cmake -S . -B build && cmake --build build && ctest --test-dir build`
 
-**3521 tests, 12 libraries (QuickJS!), 1 macOS app, ZERO warnings. v0.7.0. CYCLE 374! 2500+ FEATURES! 199 BUGS FIXED! ANTHROPIC.COM LOADS!**
+**3523 tests, 12 libraries (QuickJS!), 1 macOS app, ZERO warnings. v0.7.0. CYCLE 375! 2500+ FEATURES! 200 BUGS FIXED! ANTHROPIC.COM LOADS!**
 
 **Current implementation vs full browser comparison**:
 - Current implementation: robust single-process browser shell with full JS engine integration, broad DOM/CSS/Fetch coverage, and hardened HTTP/1.x/CORS/CSP policy enforcement.
 - Full browser target: still missing major subsystems like full multi-process isolation, full HTTP/2+/QUIC transport stack, and complete production-grade web font pipeline coverage.
-- Progress snapshot: from early scaffolding to 374 completed cycles, 3521 tests, and 2500+ implemented features.
+- Progress snapshot: from early scaffolding to 375 completed cycles, 3523 tests, and 2500+ implemented features.
+
+**Cycle 375 — Native serialized-origin malformed host-label fail-closed hardening in from_scratch_browser path**:
+- Hardened `parse_serialized_origin(...)` in `src/net/http_client.cpp` to reject malformed non-IPv6 host labels (for example empty labels like `app..example.com`) and invalid IPv6 literals so malformed serialized-origin values fail closed in native CORS response checks and outgoing Origin-header emission.
+- Added focused regression coverage in `tests/test_request_policy.cpp` for malformed-host-label ACAO rejection and malformed-host-label policy-origin Origin-header suppression.
+- Rebuilt and re-ran `test_request_policy` and `test_request_contracts` from `build_vibrowser`, both green.
+- **Ledger sync**: `.claude/claude-estate.md` and `.codex/codex-estate.md` are synchronized in lockstep for Cycle 375.
 
 **Cycle 374 — Native serialized-origin empty explicit-port fail-closed hardening in from_scratch_browser path**:
 - Hardened `parse_serialized_origin(...)` in `src/net/http_client.cpp` to reject authority forms ending with `:` so malformed serialized-origin empty-port values fail closed in native CORS response checks and outgoing Origin-header emission.

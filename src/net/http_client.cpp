@@ -486,6 +486,46 @@ bool parse_serialized_origin(const std::string& value, std::string& canonical_or
   if (parsed.scheme != "http" && parsed.scheme != "https") {
     return false;
   }
+  if (parsed.host.empty()) {
+    return false;
+  }
+
+  const std::string parsed_host = to_lower_ascii(parsed.host);
+  const bool ipv6_literal = parsed_host.find(':') != std::string::npos;
+  if (ipv6_literal) {
+    in6_addr ipv6_addr {};
+    if (inet_pton(AF_INET6, parsed_host.c_str(), &ipv6_addr) != 1) {
+      return false;
+    }
+  } else {
+    if (parsed_host.front() == '.' || parsed_host.back() == '.') {
+      return false;
+    }
+    std::size_t label_start = 0;
+    while (label_start <= parsed_host.size()) {
+      const std::size_t dot_pos = parsed_host.find('.', label_start);
+      const std::size_t label_end =
+          (dot_pos == std::string::npos) ? parsed_host.size() : dot_pos;
+      if (label_end == label_start) {
+        return false;
+      }
+      const unsigned char first = static_cast<unsigned char>(parsed_host[label_start]);
+      const unsigned char last = static_cast<unsigned char>(parsed_host[label_end - 1]);
+      if (std::isalnum(first) == 0 || std::isalnum(last) == 0) {
+        return false;
+      }
+      for (std::size_t i = label_start; i < label_end; ++i) {
+        const unsigned char ch = static_cast<unsigned char>(parsed_host[i]);
+        if (std::isalnum(ch) == 0 && ch != '-') {
+          return false;
+        }
+      }
+      if (dot_pos == std::string::npos) {
+        break;
+      }
+      label_start = dot_pos + 1;
+    }
+  }
 
   canonical_origin = canonicalize_origin(trimmed);
   return !canonical_origin.empty();
