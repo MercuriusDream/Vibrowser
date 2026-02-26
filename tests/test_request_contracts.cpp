@@ -304,6 +304,39 @@ int main() {
         }
 
         if (browser::net::parse_http_status_line(
+                "HTTP/1.1 99 Continue", http_version, status_code, reason, err)) {
+            std::cerr << "FAIL: expected 2-digit HTTP status code to be rejected\n";
+            ++failures;
+        } else if (err.find("Invalid HTTP status code") == std::string::npos) {
+            std::cerr << "FAIL: expected invalid HTTP status code error for 2-digit status\n";
+            ++failures;
+        } else {
+            std::cerr << "PASS: 2-digit HTTP status code is rejected\n";
+        }
+
+        if (browser::net::parse_http_status_line(
+                "HTTP/1.1 2000 Too Many Digits", http_version, status_code, reason, err)) {
+            std::cerr << "FAIL: expected 4-digit HTTP status code to be rejected\n";
+            ++failures;
+        } else if (err.find("Invalid HTTP status code") == std::string::npos) {
+            std::cerr << "FAIL: expected invalid HTTP status code error for 4-digit status\n";
+            ++failures;
+        } else {
+            std::cerr << "PASS: 4-digit HTTP status code is rejected\n";
+        }
+
+        if (browser::net::parse_http_status_line(
+                "HTTP/1.1 600 Invalid", http_version, status_code, reason, err)) {
+            std::cerr << "FAIL: expected out-of-range HTTP status code to be rejected\n";
+            ++failures;
+        } else if (err.find("Invalid HTTP status code") == std::string::npos) {
+            std::cerr << "FAIL: expected invalid HTTP status code error for out-of-range status\n";
+            ++failures;
+        } else {
+            std::cerr << "PASS: out-of-range HTTP status code is rejected\n";
+        }
+
+        if (browser::net::parse_http_status_line(
                 "HTTP/3 200 OK", http_version, status_code, reason, err)) {
             std::cerr << "FAIL: HTTP/3 status line should be rejected as unsupported transport\n";
             ++failures;

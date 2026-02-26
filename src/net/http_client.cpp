@@ -1207,6 +1207,10 @@ bool parse_status_line(const std::string& status_line, Response& response, std::
     err = "Missing HTTP status code";
     return false;
   }
+  if (status_code_str.size() != 3) {
+    err = "Invalid HTTP status code";
+    return false;
+  }
 
   int status_code = 0;
   for (char ch : status_code_str) {
@@ -1215,6 +1219,10 @@ bool parse_status_line(const std::string& status_line, Response& response, std::
       return false;
     }
     status_code = status_code * 10 + (ch - '0');
+  }
+  if (status_code < 100 || status_code > 599) {
+    err = "Invalid HTTP status code";
+    return false;
   }
 
   response.status_code = status_code;
