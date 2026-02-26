@@ -6207,3 +6207,123 @@ TEST(PropertyCascadeTest, BreakRegionValue) {
     cascade.apply_declaration(style, make_decl("break-inside", "avoid-region"), parent);
     EXPECT_EQ(style.break_inside, 4);
 }
+
+// ---------------------------------------------------------------------------
+// Cycle 442 — CSS Grid layout: grid-template-columns/rows, grid-column/row,
+//             grid-column-start/end longhands, grid-auto-flow, grid-auto-rows,
+//             grid-template-areas, grid-area
+// ---------------------------------------------------------------------------
+
+TEST(PropertyCascadeTest, GridTemplateColumnsAndRows) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_TRUE(style.grid_template_columns.empty());
+    EXPECT_TRUE(style.grid_template_rows.empty());
+
+    cascade.apply_declaration(style, make_decl("grid-template-columns", "1fr 2fr 1fr"), parent);
+    EXPECT_EQ(style.grid_template_columns, "1fr 2fr 1fr");
+
+    cascade.apply_declaration(style, make_decl("grid-template-rows", "100px auto"), parent);
+    EXPECT_EQ(style.grid_template_rows, "100px auto");
+}
+
+TEST(PropertyCascadeTest, GridColumnAndRowShorthands) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("grid-column", "1 / 3"), parent);
+    EXPECT_EQ(style.grid_column, "1 / 3");
+
+    cascade.apply_declaration(style, make_decl("grid-row", "2 / 4"), parent);
+    EXPECT_EQ(style.grid_row, "2 / 4");
+}
+
+TEST(PropertyCascadeTest, GridColumnStartEndRebuildShorthand) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    // Set start first, no end yet — shorthand = start only
+    cascade.apply_declaration(style, make_decl("grid-column-start", "2"), parent);
+    EXPECT_EQ(style.grid_column_start, "2");
+    EXPECT_EQ(style.grid_column, "2");
+
+    // Now set end — shorthand should be rebuilt
+    cascade.apply_declaration(style, make_decl("grid-column-end", "5"), parent);
+    EXPECT_EQ(style.grid_column_end, "5");
+    EXPECT_EQ(style.grid_column, "2 / 5");
+}
+
+TEST(PropertyCascadeTest, GridRowStartEndRebuildShorthand) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("grid-row-start", "1"), parent);
+    EXPECT_EQ(style.grid_row_start, "1");
+
+    cascade.apply_declaration(style, make_decl("grid-row-end", "3"), parent);
+    EXPECT_EQ(style.grid_row_end, "3");
+    EXPECT_EQ(style.grid_row, "1 / 3");
+}
+
+TEST(PropertyCascadeTest, GridAutoFlowValues) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.grid_auto_flow, 0);  // default: row
+
+    cascade.apply_declaration(style, make_decl("grid-auto-flow", "column"), parent);
+    EXPECT_EQ(style.grid_auto_flow, 1);
+
+    cascade.apply_declaration(style, make_decl("grid-auto-flow", "dense"), parent);
+    EXPECT_EQ(style.grid_auto_flow, 2);  // dense = row dense
+
+    cascade.apply_declaration(style, make_decl("grid-auto-flow", "column dense"), parent);
+    EXPECT_EQ(style.grid_auto_flow, 3);
+
+    cascade.apply_declaration(style, make_decl("grid-auto-flow", "row"), parent);
+    EXPECT_EQ(style.grid_auto_flow, 0);
+}
+
+TEST(PropertyCascadeTest, GridAutoRowsAndColumns) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("grid-auto-rows", "minmax(100px, auto)"), parent);
+    EXPECT_EQ(style.grid_auto_rows, "minmax(100px, auto)");
+
+    cascade.apply_declaration(style, make_decl("grid-auto-columns", "1fr"), parent);
+    EXPECT_EQ(style.grid_auto_columns, "1fr");
+}
+
+TEST(PropertyCascadeTest, GridTemplateAreas) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_TRUE(style.grid_template_areas.empty());
+
+    const std::string areas = "\"header header\" \"sidebar main\"";
+    cascade.apply_declaration(style, make_decl("grid-template-areas", areas), parent);
+    EXPECT_EQ(style.grid_template_areas, areas);
+}
+
+TEST(PropertyCascadeTest, GridArea) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_TRUE(style.grid_area.empty());
+
+    cascade.apply_declaration(style, make_decl("grid-area", "header"), parent);
+    EXPECT_EQ(style.grid_area, "header");
+
+    cascade.apply_declaration(style, make_decl("grid-area", "1 / 2 / 3 / 4"), parent);
+    EXPECT_EQ(style.grid_area, "1 / 2 / 3 / 4");
+}
