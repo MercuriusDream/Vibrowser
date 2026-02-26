@@ -1458,3 +1458,76 @@ TEST(DomComment, CommentNodeTypeIsComment) {
     EXPECT_EQ(c.node_type(), NodeType::Comment);
     EXPECT_EQ(c.data(), "a comment");
 }
+
+// ============================================================================
+// Cycle 546: DOM regression tests
+// ============================================================================
+
+// Element: get_attribute returns correct value
+TEST(DomElement, GetAttributeReturnsValue) {
+    Element e("img");
+    e.set_attribute("src", "photo.jpg");
+    auto val = e.get_attribute("src");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(*val, "photo.jpg");
+}
+
+// Element: get_attribute returns nullopt for missing attribute
+TEST(DomElement, GetAttributeNulloptForMissing) {
+    Element e("div");
+    EXPECT_FALSE(e.get_attribute("nonexistent").has_value());
+}
+
+// Document: create_element sets correct node type
+TEST(DomDocument, CreateElementNodeType) {
+    Document doc;
+    auto el = doc.create_element("p");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->node_type(), NodeType::Element);
+}
+
+// Document: create_text_node sets correct node type
+TEST(DomDocument, CreateTextNodeType) {
+    Document doc;
+    auto t = doc.create_text_node("sample");
+    ASSERT_NE(t, nullptr);
+    EXPECT_EQ(t->node_type(), NodeType::Text);
+}
+
+// Node: append_child increases child_count
+TEST(DomNode, AppendChildIncrementsCount) {
+    auto parent = std::make_unique<Element>("div");
+    EXPECT_EQ(parent->child_count(), 0u);
+    parent->append_child(std::make_unique<Element>("span"));
+    EXPECT_EQ(parent->child_count(), 1u);
+    parent->append_child(std::make_unique<Element>("span"));
+    EXPECT_EQ(parent->child_count(), 2u);
+}
+
+// Element: tag_name() for different tag names
+TEST(DomElement, DifferentTagNames) {
+    Element e1("header");
+    Element e2("footer");
+    Element e3("nav");
+    EXPECT_EQ(e1.tag_name(), "header");
+    EXPECT_EQ(e2.tag_name(), "footer");
+    EXPECT_EQ(e3.tag_name(), "nav");
+}
+
+// ClassList: toggle adds and removes alternately
+TEST(DomClassList, ToggleAddsAndRemoves) {
+    Element e("p");
+    e.class_list().toggle("active");  // should add
+    EXPECT_TRUE(e.class_list().contains("active"));
+    e.class_list().toggle("active");  // should remove
+    EXPECT_FALSE(e.class_list().contains("active"));
+}
+
+// Text node: data can be updated multiple times
+TEST(DomText, DataUpdatedMultipleTimes) {
+    Text t("first");
+    t.set_data("second");
+    EXPECT_EQ(t.data(), "second");
+    t.set_data("third");
+    EXPECT_EQ(t.data(), "third");
+}
