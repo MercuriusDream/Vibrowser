@@ -84,17 +84,13 @@ function Home() {
     <div className="page">
       {/* Hero */}
       <section className="hero">
-        <div className="hero-badge">
-          <span className="hero-pulse" />
-          agents are running
-        </div>
         <h1 className="hero-title">
           A web browser<br />
-          written by AI agents.
+          written by autonomous agents.
         </h1>
         <p className="hero-lead">
-          No WebKit. No Blink. No Gecko. A C++17 browser engine built from
-          nothing by Claude Code running autonomously — {CYCLES} cycles and
+          No WebKit/Chromium, but a C++17 browser engine built from
+          nothing by Claude Code running in ultralong horizon — {CYCLES} cycles and
           counting.
         </p>
         <div className="hero-actions">
