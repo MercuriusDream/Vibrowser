@@ -9151,3 +9151,174 @@ TEST(PropertyCascadeTest, FlexBasisValues) {
     cascade.apply_declaration(style, make_decl("flex-basis", "0"), parent);
     EXPECT_FLOAT_EQ(style.flex_basis.to_px(), 0.0f);
 }
+
+// ---------------------------------------------------------------------------
+// Cycle 467 — border-image longhands and CSS mask properties
+// ---------------------------------------------------------------------------
+
+TEST(PropertyCascadeTest, BorderImageSourceUrlAndNone) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_TRUE(style.border_image_source.empty());  // default: empty
+
+    cascade.apply_declaration(style, make_decl("border-image-source", "url(foo.png)"), parent);
+    EXPECT_EQ(style.border_image_source, "foo.png");
+
+    cascade.apply_declaration(style, make_decl("border-image-source", "none"), parent);
+    EXPECT_TRUE(style.border_image_source.empty());
+}
+
+TEST(PropertyCascadeTest, BorderImageSliceAndFill) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_FLOAT_EQ(style.border_image_slice, 100.0f);   // default
+    EXPECT_FALSE(style.border_image_slice_fill);          // default
+
+    cascade.apply_declaration(style, make_decl("border-image-slice", "30"), parent);
+    EXPECT_FLOAT_EQ(style.border_image_slice, 30.0f);
+
+    cascade.apply_declaration(style, make_decl("border-image-slice", "25 fill"), parent);
+    EXPECT_FLOAT_EQ(style.border_image_slice, 25.0f);
+    EXPECT_TRUE(style.border_image_slice_fill);
+}
+
+TEST(PropertyCascadeTest, BorderImageWidthAndOutset) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_FLOAT_EQ(style.border_image_width_val, 1.0f);  // default
+    EXPECT_FLOAT_EQ(style.border_image_outset, 0.0f);      // default
+
+    cascade.apply_declaration(style, make_decl("border-image-width", "10px"), parent);
+    EXPECT_FLOAT_EQ(style.border_image_width_val, 10.0f);
+
+    cascade.apply_declaration(style, make_decl("border-image-outset", "5px"), parent);
+    EXPECT_FLOAT_EQ(style.border_image_outset, 5.0f);
+}
+
+TEST(PropertyCascadeTest, BorderImageRepeatValues) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.border_image_repeat, 0);  // default: stretch
+
+    cascade.apply_declaration(style, make_decl("border-image-repeat", "repeat"), parent);
+    EXPECT_EQ(style.border_image_repeat, 1);
+
+    cascade.apply_declaration(style, make_decl("border-image-repeat", "round"), parent);
+    EXPECT_EQ(style.border_image_repeat, 2);
+
+    cascade.apply_declaration(style, make_decl("border-image-repeat", "space"), parent);
+    EXPECT_EQ(style.border_image_repeat, 3);
+
+    cascade.apply_declaration(style, make_decl("border-image-repeat", "stretch"), parent);
+    EXPECT_EQ(style.border_image_repeat, 0);
+}
+
+TEST(PropertyCascadeTest, MaskImageAndShorthand) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_TRUE(style.mask_image.empty());  // default
+
+    cascade.apply_declaration(style, make_decl("mask-image", "url(mask.svg)"), parent);
+    EXPECT_EQ(style.mask_image, "url(mask.svg)");
+
+    // -webkit-mask-image alias
+    cascade.apply_declaration(style, make_decl("-webkit-mask-image", "url(m2.svg)"), parent);
+    EXPECT_EQ(style.mask_image, "url(m2.svg)");
+
+    // mask shorthand stores raw value
+    cascade.apply_declaration(style, make_decl("mask", "url(m.svg) no-repeat center"), parent);
+    EXPECT_FALSE(style.mask_shorthand.empty());
+}
+
+TEST(PropertyCascadeTest, MaskSizeValues) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.mask_size, 0);  // default: auto
+
+    cascade.apply_declaration(style, make_decl("mask-size", "cover"), parent);
+    EXPECT_EQ(style.mask_size, 1);
+
+    cascade.apply_declaration(style, make_decl("mask-size", "contain"), parent);
+    EXPECT_EQ(style.mask_size, 2);
+
+    cascade.apply_declaration(style, make_decl("mask-size", "auto"), parent);
+    EXPECT_EQ(style.mask_size, 0);
+
+    // Explicit pixel size: sets mask_size=3
+    cascade.apply_declaration(style, make_decl("-webkit-mask-size", "50px 30px"), parent);
+    EXPECT_EQ(style.mask_size, 3);
+    EXPECT_FLOAT_EQ(style.mask_size_width, 50.0f);
+    EXPECT_FLOAT_EQ(style.mask_size_height, 30.0f);
+}
+
+TEST(PropertyCascadeTest, MaskRepeatValues) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.mask_repeat, 0);  // default: repeat
+
+    cascade.apply_declaration(style, make_decl("mask-repeat", "repeat-x"), parent);
+    EXPECT_EQ(style.mask_repeat, 1);
+
+    cascade.apply_declaration(style, make_decl("mask-repeat", "repeat-y"), parent);
+    EXPECT_EQ(style.mask_repeat, 2);
+
+    cascade.apply_declaration(style, make_decl("mask-repeat", "no-repeat"), parent);
+    EXPECT_EQ(style.mask_repeat, 3);
+
+    cascade.apply_declaration(style, make_decl("-webkit-mask-repeat", "space"), parent);
+    EXPECT_EQ(style.mask_repeat, 4);
+
+    cascade.apply_declaration(style, make_decl("mask-repeat", "round"), parent);
+    EXPECT_EQ(style.mask_repeat, 5);
+
+    cascade.apply_declaration(style, make_decl("mask-repeat", "repeat"), parent);
+    EXPECT_EQ(style.mask_repeat, 0);
+}
+
+TEST(PropertyCascadeTest, MaskOriginClipCompositeMode) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    // mask-origin
+    EXPECT_EQ(style.mask_origin, 0);  // default: border-box
+    cascade.apply_declaration(style, make_decl("mask-origin", "padding-box"), parent);
+    EXPECT_EQ(style.mask_origin, 1);
+    cascade.apply_declaration(style, make_decl("mask-origin", "content-box"), parent);
+    EXPECT_EQ(style.mask_origin, 2);
+
+    // mask-clip
+    EXPECT_EQ(style.mask_clip, 0);  // default: border-box
+    cascade.apply_declaration(style, make_decl("mask-clip", "padding-box"), parent);
+    EXPECT_EQ(style.mask_clip, 1);
+    cascade.apply_declaration(style, make_decl("-webkit-mask-clip", "no-clip"), parent);
+    EXPECT_EQ(style.mask_clip, 3);
+
+    // mask-composite
+    EXPECT_EQ(style.mask_composite, 0);  // default: add
+    cascade.apply_declaration(style, make_decl("mask-composite", "subtract"), parent);
+    EXPECT_EQ(style.mask_composite, 1);
+    cascade.apply_declaration(style, make_decl("mask-composite", "intersect"), parent);
+    EXPECT_EQ(style.mask_composite, 2);
+
+    // mask-mode
+    EXPECT_EQ(style.mask_mode, 0);  // default: match-source
+    cascade.apply_declaration(style, make_decl("mask-mode", "alpha"), parent);
+    EXPECT_EQ(style.mask_mode, 1);
+    cascade.apply_declaration(style, make_decl("mask-mode", "luminance"), parent);
+    EXPECT_EQ(style.mask_mode, 2);
+}
