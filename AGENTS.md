@@ -1,3 +1,19 @@
+## Agent Git Workflow
+
+All BMAD commands and sub-agents must use a non-`main` git branch for any write operations.
+
+Recommended flow:
+
+- Create or switch to a branch per run:
+  - `git fetch`
+  - `git checkout -b <main-or-dev>/<specific_feature>/<cycle_number>`
+    - Example: `main/feature-a/3` or `dev/feature-a/3`
+- Do all file edits on that branch.
+- Rebase/merge from `main` before finishing to keep history clean:
+  - `git fetch`
+  - `git rebase origin/main` (or `git merge --ff-only origin/main` if rebase is undesirable)
+- Return a final status with branch name, commit(s), and suggested merge target.
+- Do not write/commit to `main`.
 
 ## BMAD Commands
 
@@ -53,6 +69,7 @@ Transition from BMAD planning (Phase 3) to Ralph implementation (Phase 4).
 ### 1. Validate Prerequisites
 
 Check that:
+
 - `bmalph/config.json` exists
 - `.ralph/ralph_loop.sh` exists
 - `_bmad-output/planning-artifacts/` exists with story files
@@ -62,6 +79,7 @@ If any are missing, report the error and suggest running the required commands.
 ### 2. Parse Stories
 
 Read `_bmad-output/planning-artifacts/stories.md` (or any file matching `*stor*.md` or `*epic*.md`):
+
 - Extract epics: `## Epic N: Title`
 - Extract stories: `### Story N.M: Title`
 - Parse acceptance criteria (Given/When/Then blocks)
@@ -95,6 +113,7 @@ Create an ordered list of stories as checkboxes:
 ### 4. Generate `.ralph/PROJECT_CONTEXT.md`
 
 Extract from planning artifacts:
+
 - Project goals from PRD (Executive Summary, Vision, Goals sections)
 - Success metrics from PRD
 - Architecture constraints from architecture document
@@ -133,10 +152,12 @@ Format as:
 ### 5. Copy Specs to `.ralph/specs/`
 
 Copy the entire `_bmad-output/` tree to `.ralph/specs/`:
+
 - This includes `planning-artifacts/`, `implementation-artifacts/`, etc.
 - Preserve directory structure
 
 If specs existed before, generate `SPECS_CHANGELOG.md`:
+
 ```markdown
 # Specs Changelog
 
@@ -155,6 +176,7 @@ Last updated: [timestamp]
 ### 6. Update State
 
 Update `bmalph/state/current-phase.json`:
+
 ```json
 {
   "currentPhase": 4,
@@ -167,6 +189,7 @@ Update `bmalph/state/current-phase.json`:
 ### 7. Report Results
 
 Output:
+
 - Number of stories found
 - Any warnings (missing PRD, architecture, NO-GO status in readiness report)
 - Whether fix_plan progress was preserved
@@ -448,6 +471,7 @@ Adopt the role of the agent defined in `_bmad/bmm/agents/ux-designer.agent.yaml`
 ### 1. Validate Prerequisites
 
 Check that:
+
 - `bmalph/config.json` exists
 - `.ralph/ralph_loop.sh` exists
 - `_bmad-output/planning-artifacts/` exists with story files
@@ -457,6 +481,7 @@ If any are missing, report the error and suggest running the required commands.
 ### 2. Parse Stories
 
 Read `_bmad-output/planning-artifacts/stories.md` (or any file matching `*stor*.md` or `*epic*.md`):
+
 - Extract epics: `## Epic N: Title`
 - Extract stories: `### Story N.M: Title`
 - Parse acceptance criteria (Given/When/Then blocks)
@@ -490,6 +515,7 @@ Create an ordered list of stories as checkboxes:
 ### 4. Generate `.ralph/PROJECT_CONTEXT.md`
 
 Extract from planning artifacts:
+
 - Project goals from PRD (Executive Summary, Vision, Goals sections)
 - Success metrics from PRD
 - Architecture constraints from architecture document
@@ -528,10 +554,12 @@ Format as:
 ### 5. Copy Specs to `.ralph/specs/`
 
 Copy the entire `_bmad-output/` tree to `.ralph/specs/`:
+
 - This includes `planning-artifacts/`, `implementation-artifacts/`, etc.
 - Preserve directory structure
 
 If specs existed before, generate `SPECS_CHANGELOG.md`:
+
 ```markdown
 # Specs Changelog
 
@@ -550,6 +578,7 @@ Last updated: [timestamp]
 ### 6. Update State
 
 Update `bmalph/state/current-phase.json`:
+
 ```json
 {
   "currentPhase": 4,
@@ -562,6 +591,7 @@ Update `bmalph/state/current-phase.json`:
 ### 7. Report Results
 
 Output:
+
 - Number of stories found
 - Any warnings (missing PRD, architecture, NO-GO status in readiness report)
 - Whether fix_plan progress was preserved
@@ -870,14 +900,14 @@ Run the BMAD master agent to navigate phases. Ask for help to discover all avail
     1. It is a trivial pass-through (e.g., single-call wrapper, trivial cast/return glue).
     2. It is effectively used by only one concrete call site.
     3. It adds no **objectively meaningful logic**. Treat this as true only when all are true:
-      - body has at most **3 executable statements**,
-      - no control-flow (`if/for/while/switch/try/catch`),
-      - at most **1 call expression** (the forwarded callee),
-      - no ownership/lifetime handling, locking/atomic synchronization, validation/contract checks, error-code/`errno` translation, cleanup, retry/backoff, boundary/clamping logic.
-    4. It provides no **objective readability benefit**. Treat this as true only when all are true:
-      - inlining the helper into its caller would add at most **3 executable statements**,
-      - caller nesting depth would not increase,
-      - inlining would not duplicate the same code block in **2+** places.
+    - body has at most **3 executable statements**,
+    - no control-flow (`if/for/while/switch/try/catch`),
+    - at most **1 call expression** (the forwarded callee),
+    - no ownership/lifetime handling, locking/atomic synchronization, validation/contract checks, error-code/`errno` translation, cleanup, retry/backoff, boundary/clamping logic.
+    1. It provides no **objective readability benefit**. Treat this as true only when all are true:
+    - inlining the helper into its caller would add at most **3 executable statements**,
+    - caller nesting depth would not increase,
+    - inlining would not duplicate the same code block in **2+** places.
   - Only this class should be force-inlined/removed.
   - ***Explicit exclusions (do NOT treat as meaningless by default):***
     1. For example, in C/C++, callback/entrypoint functions invoked indirectly (function pointers, `std::thread`, signal handlers, hook registries, `atexit`, etc.).
