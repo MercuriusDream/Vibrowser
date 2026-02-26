@@ -1948,3 +1948,73 @@ TEST(TreeBuilder, SampOutputText) {
     ASSERT_NE(samp, nullptr);
     EXPECT_EQ(samp->text_content(), "Hello, World!");
 }
+
+// ============================================================================
+// Cycle 592: More HTML parser tests
+// ============================================================================
+
+TEST(TreeBuilder, CitationElement) {
+    auto doc = parse(R"(<body><blockquote><p>Text</p><cite>Source</cite></blockquote></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* cite = doc->find_element("cite");
+    ASSERT_NE(cite, nullptr);
+    EXPECT_EQ(cite->text_content(), "Source");
+}
+
+TEST(TreeBuilder, BdiElement) {
+    auto doc = parse(R"(<body><p><bdi>مرحبا</bdi></p></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* bdi = doc->find_element("bdi");
+    ASSERT_NE(bdi, nullptr);
+}
+
+TEST(TreeBuilder, RubyWithRtAnnotation) {
+    auto doc = parse(R"(<body><ruby>漢<rt>かん</rt></ruby></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* ruby = doc->find_element("ruby");
+    ASSERT_NE(ruby, nullptr);
+    auto* rt = doc->find_element("rt");
+    ASSERT_NE(rt, nullptr);
+}
+
+TEST(TreeBuilder, SubScriptH2O) {
+    auto doc = parse(R"(<body><p>H<sub>2</sub>O</p></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* sub = doc->find_element("sub");
+    ASSERT_NE(sub, nullptr);
+    EXPECT_EQ(sub->text_content(), "2");
+    // Verify parent is p
+    EXPECT_NE(doc->find_element("p"), nullptr);
+}
+
+TEST(TreeBuilder, SupScriptMC2) {
+    auto doc = parse(R"(<body><p>E = mc<sup>2</sup></p></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* sup = doc->find_element("sup");
+    ASSERT_NE(sup, nullptr);
+    EXPECT_EQ(sup->text_content(), "2");
+}
+
+TEST(TreeBuilder, InsertedTextContent) {
+    auto doc = parse(R"(<body><p>This was <ins>inserted</ins> text</p></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* ins = doc->find_element("ins");
+    ASSERT_NE(ins, nullptr);
+    EXPECT_EQ(ins->text_content(), "inserted");
+}
+
+TEST(TreeBuilder, DeletedTextContent) {
+    auto doc = parse(R"(<body><p>This was <del>deleted</del> text</p></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* del = doc->find_element("del");
+    ASSERT_NE(del, nullptr);
+    EXPECT_EQ(del->text_content(), "deleted");
+}
+
+TEST(TreeBuilder, VarElement) {
+    auto doc = parse(R"(<body><p>The variable <var>x</var> is defined</p></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* var = doc->find_element("var");
+    ASSERT_NE(var, nullptr);
+    EXPECT_EQ(var->text_content(), "x");
+}
