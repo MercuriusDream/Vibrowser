@@ -583,6 +583,18 @@ int main() {
             } else if (browser::net::is_http2_settings_request({{"HTTP2-Settings", "AAMAAABk==="}})) {
                 std::cerr << "FAIL: expected over-padded HTTP2-Settings token68 value to be rejected\n";
                 ++failures;
+            } else if (browser::net::is_http2_settings_request({{"HTTP2-Settings", "AAMAA+Bk"}})) {
+                std::cerr << "FAIL: expected non-base64url '+' in HTTP2-Settings value to be rejected\n";
+                ++failures;
+            } else if (browser::net::is_http2_settings_request({{"HTTP2-Settings", "AAMAA/Bk"}})) {
+                std::cerr << "FAIL: expected non-base64url '/' in HTTP2-Settings value to be rejected\n";
+                ++failures;
+            } else if (browser::net::is_http2_settings_request({{"HTTP2-Settings", "AAMAA.Bk"}})) {
+                std::cerr << "FAIL: expected non-base64url '.' in HTTP2-Settings value to be rejected\n";
+                ++failures;
+            } else if (browser::net::is_http2_settings_request({{"HTTP2-Settings", "AAMAA~Bk"}})) {
+                std::cerr << "FAIL: expected non-base64url '~' in HTTP2-Settings value to be rejected\n";
+                ++failures;
             } else if (browser::net::is_http2_settings_request({{"HTTP2-Settings", std::string("AA\x01", 3)}})) {
                 std::cerr << "FAIL: expected control-character malformed HTTP2-Settings value to be rejected\n";
                 ++failures;

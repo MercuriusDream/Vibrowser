@@ -1587,8 +1587,7 @@ bool request_headers_include_http2_settings(
       }
 
       const bool is_token68_data =
-          std::isalnum(uch) != 0 || ch == '-' || ch == '.' || ch == '_' || ch == '~' ||
-          ch == '+' || ch == '/';
+          std::isalnum(uch) != 0 || ch == '-' || ch == '_';
       if (is_token68_data) {
         if (seen_padding) {
           return false;
