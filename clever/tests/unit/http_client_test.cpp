@@ -2745,3 +2745,76 @@ TEST(ResponseTest, ParsedHeaderCaseInsensitive) {
     ASSERT_TRUE(resp.has_value());
     EXPECT_TRUE(resp->headers.has("content-type"));
 }
+
+// ============================================================================
+// Cycle 621: More Net HTTP tests
+// ============================================================================
+
+// Response: parse 302 Found
+TEST(ResponseTest, Parse302Found) {
+    std::string raw = "HTTP/1.1 302 Found\r\nLocation: /new-path\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 302);
+}
+
+// Response: parse 307 Temporary Redirect
+TEST(ResponseTest, Parse307TemporaryRedirect) {
+    std::string raw = "HTTP/1.1 307 Temporary Redirect\r\nLocation: /temp\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 307);
+}
+
+// Response: parse 308 Permanent Redirect
+TEST(ResponseTest, Parse308PermanentRedirect) {
+    std::string raw = "HTTP/1.1 308 Permanent Redirect\r\nLocation: /new\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 308);
+}
+
+// Response: multiple headers accessible
+TEST(ResponseTest, MultipleHeadersAccessible) {
+    std::string raw = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nX-Custom: value\r\nContent-Length: 0\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_TRUE(resp->headers.has("content-type"));
+    EXPECT_TRUE(resp->headers.has("x-custom"));
+}
+
+// HeaderMap: remove key makes has() false
+TEST(HeaderMapTest, RemoveKeyMakesHasFalse) {
+    HeaderMap map;
+    map.set("X-Token", "abc");
+    map.remove("X-Token");
+    EXPECT_FALSE(map.has("x-token"));
+}
+
+// Request: url can be set
+TEST(RequestTest, UrlCanBeSet) {
+    Request req;
+    req.url = "https://api.example.com/v1/users";
+    EXPECT_EQ(req.url, "https://api.example.com/v1/users");
+}
+
+// Request: body can be set
+TEST(RequestTest, BodyCanBeSet) {
+    Request req;
+    std::string body = "{\"key\": \"value\"}";
+    req.body = std::vector<uint8_t>(body.begin(), body.end());
+    EXPECT_EQ(req.body.size(), body.size());
+}
+
+// Response: body empty for 204
+TEST(ResponseTest, BodyEmptyFor204) {
+    std::string raw = "HTTP/1.1 204 No Content\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_TRUE(resp->body.empty());
+}
