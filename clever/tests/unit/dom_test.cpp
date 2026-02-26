@@ -1159,3 +1159,77 @@ TEST(DomNode, ChildCountUpdatesOnAppendAndRemove) {
     parent->remove_child(c2_ref);
     EXPECT_EQ(parent->child_count(), 1u);
 }
+
+// ============================================================================
+// Cycle 505: DOM regression tests
+// ============================================================================
+
+TEST(DomNode, InsertBeforeAddsChildAtCorrectPosition) {
+    auto parent = std::make_unique<Element>("ul");
+    Node* li1 = &parent->append_child(std::make_unique<Element>("li"));
+    Node* li3 = &parent->append_child(std::make_unique<Element>("li"));
+    Node* li2 = &parent->insert_before(std::make_unique<Element>("li"), li3);
+    EXPECT_EQ(parent->child_count(), 3u);
+    EXPECT_EQ(li1->next_sibling(), li2);
+    EXPECT_EQ(li2->next_sibling(), li3);
+    EXPECT_EQ(li3->previous_sibling(), li2);
+}
+
+TEST(DomElement, HasAttributeReturnsTrueAfterSet) {
+    Element e("div");
+    EXPECT_FALSE(e.has_attribute("class"));
+    e.set_attribute("class", "foo");
+    EXPECT_TRUE(e.has_attribute("class"));
+}
+
+TEST(DomElement, RemoveAttributeThenHasReturnsFalse) {
+    Element e("input");
+    e.set_attribute("type", "text");
+    EXPECT_TRUE(e.has_attribute("type"));
+    e.remove_attribute("type");
+    EXPECT_FALSE(e.has_attribute("type"));
+}
+
+TEST(DomNode, ForEachChildIteratesAllChildren) {
+    auto parent = std::make_unique<Element>("div");
+    parent->append_child(std::make_unique<Element>("span"));
+    parent->append_child(std::make_unique<Text>("hello"));
+    parent->append_child(std::make_unique<Element>("em"));
+    int count = 0;
+    parent->for_each_child([&](const Node&) { count++; });
+    EXPECT_EQ(count, 3);
+}
+
+TEST(DomNode, LastChildAfterMultipleAppends) {
+    auto p = std::make_unique<Element>("p");
+    p->append_child(std::make_unique<Text>("first"));
+    Node* last = &p->append_child(std::make_unique<Text>("last"));
+    EXPECT_EQ(p->last_child(), last);
+}
+
+TEST(DomNode, FirstChildAfterAppend) {
+    auto p = std::make_unique<Element>("p");
+    Node* first = &p->append_child(std::make_unique<Text>("first"));
+    p->append_child(std::make_unique<Text>("second"));
+    EXPECT_EQ(p->first_child(), first);
+}
+
+TEST(DomNode, DirtyFlagsAfterMarkAndClear) {
+    Element e("div");
+    EXPECT_EQ(e.dirty_flags(), DirtyFlags::None);
+    e.mark_dirty(DirtyFlags::Style);
+    EXPECT_EQ(e.dirty_flags() & DirtyFlags::Style, DirtyFlags::Style);
+    e.clear_dirty();
+    EXPECT_EQ(e.dirty_flags(), DirtyFlags::None);
+}
+
+TEST(DomClassList, ToStringContainsAllClasses) {
+    ClassList cl;
+    cl.add("foo");
+    cl.add("bar");
+    cl.add("baz");
+    std::string s = cl.to_string();
+    EXPECT_NE(s.find("foo"), std::string::npos);
+    EXPECT_NE(s.find("bar"), std::string::npos);
+    EXPECT_NE(s.find("baz"), std::string::npos);
+}
