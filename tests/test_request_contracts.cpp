@@ -403,6 +403,28 @@ int main() {
         }
 
         if (browser::net::parse_http_status_line(
+                "HTTP/1.1\t200 OK", http_version, status_code, reason, err)) {
+            std::cerr << "FAIL: expected status line with tab status-code separator to be rejected\n";
+            ++failures;
+        } else if (err.find("Malformed HTTP status line") == std::string::npos) {
+            std::cerr << "FAIL: expected malformed status-line error for tab status-code separator\n";
+            ++failures;
+        } else {
+            std::cerr << "PASS: status line with tab status-code separator is rejected\n";
+        }
+
+        if (browser::net::parse_http_status_line(
+                "HTTP/1.1 200\tOK", http_version, status_code, reason, err)) {
+            std::cerr << "FAIL: expected status line with tab reason separator to be rejected\n";
+            ++failures;
+        } else if (err.find("Malformed HTTP status line") == std::string::npos) {
+            std::cerr << "FAIL: expected malformed status-line error for tab reason separator\n";
+            ++failures;
+        } else {
+            std::cerr << "PASS: status line with tab reason separator is rejected\n";
+        }
+
+        if (browser::net::parse_http_status_line(
                 "HTTP/3 200 OK", http_version, status_code, reason, err)) {
             std::cerr << "FAIL: HTTP/3 status line should be rejected as unsupported transport\n";
             ++failures;

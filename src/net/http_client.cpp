@@ -1185,11 +1185,16 @@ bool parse_status_line(const std::string& status_line, Response& response, std::
     }
   }
 
-  const std::size_t first_space = status_line.find(' ');
-  if (first_space == std::string::npos) {
+  const std::size_t first_separator = status_line.find_first_of(" \t\r\n\f\v");
+  if (first_separator == std::string::npos) {
     err = "Malformed HTTP status line";
     return false;
   }
+  if (status_line[first_separator] != ' ') {
+    err = "Malformed HTTP status line";
+    return false;
+  }
+  const std::size_t first_space = first_separator;
   if (first_space + 1 < status_line.size() && status_line[first_space + 1] == ' ') {
     err = "Malformed HTTP status line";
     return false;
@@ -1210,7 +1215,13 @@ bool parse_status_line(const std::string& status_line, Response& response, std::
   }
   response.http_version = version;
 
-  const std::size_t second_space = status_line.find(' ', first_space + 1);
+  const std::size_t second_separator =
+      status_line.find_first_of(" \t\r\n\f\v", first_space + 1);
+  if (second_separator != std::string::npos && status_line[second_separator] != ' ') {
+    err = "Malformed HTTP status line";
+    return false;
+  }
+  const std::size_t second_space = second_separator;
   const std::string status_code_str =
       (second_space == std::string::npos)
           ? status_line.substr(first_space + 1)
