@@ -3041,3 +3041,80 @@ TEST(RequestTest, DeleteMethodEnumCanBeSet) {
     req.method = Method::DELETE_METHOD;
     EXPECT_EQ(req.method, Method::DELETE_METHOD);
 }
+
+// ============================================================================
+// Cycle 673: More net/http tests
+// ============================================================================
+
+// Response: parse 422 status code
+TEST(ResponseTest, Parse422StatusCode) {
+    std::string raw = "HTTP/1.1 422 Unprocessable Entity\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 422);
+}
+
+// Response: body accessible as string for large content
+TEST(ResponseTest, LargeBodyAccessibleAsString) {
+    std::string body(1000, 'A');
+    std::string raw = "HTTP/1.1 200 OK\r\nContent-Length: 1000\r\n\r\n" + body;
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->body_as_string().size(), 1000u);
+}
+
+// Response: multiple headers all accessible
+TEST(ResponseTest, FourHeadersAllAccessible) {
+    std::string raw = "HTTP/1.1 200 OK\r\n"
+        "Content-Type: text/html\r\n"
+        "X-Header-1: val1\r\n"
+        "X-Header-2: val2\r\n"
+        "X-Header-3: val3\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_TRUE(resp->headers.has("X-Header-1"));
+    EXPECT_TRUE(resp->headers.has("X-Header-2"));
+    EXPECT_TRUE(resp->headers.has("X-Header-3"));
+}
+
+// HeaderMap: overwrite changes value
+TEST(HeaderMapTest, OverwriteChangesValue) {
+    HeaderMap map;
+    map.set("key", "first");
+    map.set("key", "second");
+    auto val = map.get("key");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(val.value(), "second");
+}
+
+// HeaderMap: remove then get returns nullopt
+TEST(HeaderMapTest, RemoveThenGetReturnsNullopt) {
+    HeaderMap map;
+    map.set("temp", "value");
+    map.remove("temp");
+    EXPECT_FALSE(map.get("temp").has_value());
+}
+
+// Request: PATCH method can be set
+TEST(RequestTest, PatchMethodCanBeSet) {
+    Request req;
+    req.method = Method::PATCH;
+    EXPECT_EQ(req.method, Method::PATCH);
+}
+
+// Request: OPTIONS method can be set
+TEST(RequestTest, OptionsMethodCanBeSet) {
+    Request req;
+    req.method = Method::OPTIONS;
+    EXPECT_EQ(req.method, Method::OPTIONS);
+}
+
+// Request: HEAD method can be set
+TEST(RequestTest, HeadMethodCanBeSet) {
+    Request req;
+    req.method = Method::HEAD;
+    EXPECT_EQ(req.method, Method::HEAD);
+}
