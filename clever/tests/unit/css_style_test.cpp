@@ -7947,3 +7947,150 @@ TEST(PropertyCascadeTest, MarginTrimValues) {
     cascade.apply_declaration(style, make_decl("margin-trim", "none"), parent);
     EXPECT_EQ(style.margin_trim, 0);
 }
+
+// ---------------------------------------------------------------------------
+// Cycle 459 — text-rendering, font-smooth, text-size-adjust,
+//             ruby properties, overflow-anchor, overflow-clip-margin
+// ---------------------------------------------------------------------------
+
+TEST(PropertyCascadeTest, TextRenderingValues) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.text_rendering, 0);  // default: auto
+
+    cascade.apply_declaration(style, make_decl("text-rendering", "optimizeSpeed"), parent);
+    EXPECT_EQ(style.text_rendering, 1);
+
+    cascade.apply_declaration(style, make_decl("text-rendering", "optimizeLegibility"), parent);
+    EXPECT_EQ(style.text_rendering, 2);
+
+    cascade.apply_declaration(style, make_decl("text-rendering", "geometricPrecision"), parent);
+    EXPECT_EQ(style.text_rendering, 3);
+
+    cascade.apply_declaration(style, make_decl("text-rendering", "auto"), parent);
+    EXPECT_EQ(style.text_rendering, 0);
+}
+
+TEST(PropertyCascadeTest, FontSmoothingValues) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.font_smooth, 0);  // default: auto
+
+    cascade.apply_declaration(style, make_decl("font-smooth", "none"), parent);
+    EXPECT_EQ(style.font_smooth, 1);
+
+    cascade.apply_declaration(style, make_decl("-webkit-font-smoothing", "antialiased"), parent);
+    EXPECT_EQ(style.font_smooth, 2);
+
+    cascade.apply_declaration(style, make_decl("-webkit-font-smoothing", "subpixel-antialiased"), parent);
+    EXPECT_EQ(style.font_smooth, 3);
+
+    cascade.apply_declaration(style, make_decl("font-smooth", "auto"), parent);
+    EXPECT_EQ(style.font_smooth, 0);
+}
+
+TEST(PropertyCascadeTest, TextSizeAdjustValues) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.text_size_adjust, "auto");
+
+    cascade.apply_declaration(style, make_decl("text-size-adjust", "none"), parent);
+    EXPECT_EQ(style.text_size_adjust, "none");
+
+    cascade.apply_declaration(style, make_decl("-webkit-text-size-adjust", "100%"), parent);
+    EXPECT_EQ(style.text_size_adjust, "100%");
+
+    cascade.apply_declaration(style, make_decl("text-size-adjust", "auto"), parent);
+    EXPECT_EQ(style.text_size_adjust, "auto");
+}
+
+TEST(PropertyCascadeTest, RubyAlignValues) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.ruby_align, 0);  // default: space-around
+
+    cascade.apply_declaration(style, make_decl("ruby-align", "start"), parent);
+    EXPECT_EQ(style.ruby_align, 1);
+
+    cascade.apply_declaration(style, make_decl("ruby-align", "center"), parent);
+    EXPECT_EQ(style.ruby_align, 2);
+
+    cascade.apply_declaration(style, make_decl("ruby-align", "space-between"), parent);
+    EXPECT_EQ(style.ruby_align, 3);
+
+    cascade.apply_declaration(style, make_decl("ruby-align", "space-around"), parent);
+    EXPECT_EQ(style.ruby_align, 0);
+}
+
+TEST(PropertyCascadeTest, RubyPositionValues) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.ruby_position, 0);  // default: over
+
+    cascade.apply_declaration(style, make_decl("ruby-position", "under"), parent);
+    EXPECT_EQ(style.ruby_position, 1);
+
+    cascade.apply_declaration(style, make_decl("ruby-position", "inter-character"), parent);
+    EXPECT_EQ(style.ruby_position, 2);
+
+    cascade.apply_declaration(style, make_decl("ruby-position", "over"), parent);
+    EXPECT_EQ(style.ruby_position, 0);
+}
+
+TEST(PropertyCascadeTest, RubyOverhangValues) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.ruby_overhang, 0);  // default: auto
+
+    cascade.apply_declaration(style, make_decl("ruby-overhang", "none"), parent);
+    EXPECT_EQ(style.ruby_overhang, 1);
+
+    cascade.apply_declaration(style, make_decl("ruby-overhang", "start"), parent);
+    EXPECT_EQ(style.ruby_overhang, 2);
+
+    cascade.apply_declaration(style, make_decl("ruby-overhang", "end"), parent);
+    EXPECT_EQ(style.ruby_overhang, 3);
+
+    cascade.apply_declaration(style, make_decl("ruby-overhang", "auto"), parent);
+    EXPECT_EQ(style.ruby_overhang, 0);
+}
+
+TEST(PropertyCascadeTest, OverflowAnchorValues) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.overflow_anchor, 0);  // default: auto
+
+    cascade.apply_declaration(style, make_decl("overflow-anchor", "none"), parent);
+    EXPECT_EQ(style.overflow_anchor, 1);
+
+    cascade.apply_declaration(style, make_decl("overflow-anchor", "auto"), parent);
+    EXPECT_EQ(style.overflow_anchor, 0);
+}
+
+TEST(PropertyCascadeTest, OverflowClipMarginPx) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_FLOAT_EQ(style.overflow_clip_margin, 0.0f);
+
+    cascade.apply_declaration(style, make_decl("overflow-clip-margin", "16px"), parent);
+    EXPECT_FLOAT_EQ(style.overflow_clip_margin, 16.0f);
+
+    cascade.apply_declaration(style, make_decl("overflow-clip-margin", "0px"), parent);
+    EXPECT_FLOAT_EQ(style.overflow_clip_margin, 0.0f);
+}
