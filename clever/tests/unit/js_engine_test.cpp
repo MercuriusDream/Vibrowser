@@ -13753,3 +13753,99 @@ TEST(JSEngine, SpreadTwoArraysMergedLength) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "4");
 }
+
+// ============================================================================
+// Cycle 640: More JS engine tests
+// ============================================================================
+
+// Optional chaining nested two levels
+TEST(JSEngine, OptionalChainingNestedTwoLevels) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var obj = {a: {b: 42}};
+        obj?.a?.b
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "42");
+}
+
+// Optional chaining returns undefined on missing key
+TEST(JSEngine, OptionalChainingMissingReturnsUndefined) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var obj = {};
+        String(obj?.a?.b)
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "undefined");
+}
+
+// Nullish coalescing null returns default
+TEST(JSEngine, NullishCoalescingNullDefault) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var x = null ?? 'default';
+        x
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "default");
+}
+
+// Nullish coalescing preserves 0
+TEST(JSEngine, NullishCoalescingPreservesZero) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var x = 0 ?? 'default';
+        x
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "0");
+}
+
+// Symbol basic creation
+TEST(JSEngine, SymbolCreate) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        typeof Symbol('desc')
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "symbol");
+}
+
+// WeakMap basic usage
+TEST(JSEngine, WeakMapBasic) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var key = {};
+        var wm = new WeakMap();
+        wm.set(key, 99);
+        wm.get(key)
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "99");
+}
+
+// Generator next with value
+TEST(JSEngine, GeneratorNextWithValue) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        function* gen() { yield 10; yield 20; }
+        var g = gen();
+        g.next().value + g.next().value
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "30");
+}
+
+// for...of with Map entries
+TEST(JSEngine, ForOfMapEntries) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var m = new Map([['a', 1], ['b', 2]]);
+        var sum = 0;
+        for (var [k, v] of m) sum += v;
+        sum
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "3");
+}
