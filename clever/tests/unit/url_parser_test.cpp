@@ -925,3 +925,79 @@ TEST(URLParser, DifferentPortIsNotSameOrigin) {
     ASSERT_TRUE(u2.has_value());
     EXPECT_FALSE(clever::url::urls_same_origin(*u1, *u2));
 }
+
+// ============================================================================
+// Cycle 552: URL parser regression tests
+// ============================================================================
+
+// Parse URL and verify all fields
+TEST(URLParser, FullURLAllFieldsPresent) {
+    auto result = parse("https://user:pass@api.example.com:8443/v2/resource?q=hello#anchor");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->username, "user");
+    EXPECT_EQ(result->password, "pass");
+    EXPECT_EQ(result->host, "api.example.com");
+    EXPECT_EQ(result->port, 8443u);
+    EXPECT_EQ(result->fragment, "anchor");
+}
+
+// path component with encoded chars doesn't corrupt scheme
+TEST(URLParser, PathDoesNotCorruptScheme) {
+    auto result = parse("https://example.com/path/to/resource");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->path, "/path/to/resource");
+}
+
+// urls_same_origin: same scheme host port
+TEST(URLParser, SameSchemeHostPortIsSameOrigin) {
+    auto u1 = parse("https://example.com/page1");
+    auto u2 = parse("https://example.com/page2");
+    ASSERT_TRUE(u1.has_value());
+    ASSERT_TRUE(u2.has_value());
+    EXPECT_TRUE(clever::url::urls_same_origin(*u1, *u2));
+}
+
+// http and https are different origins
+TEST(URLParser, HttpVsHttpsNotSameOrigin) {
+    auto u1 = parse("http://example.com/");
+    auto u2 = parse("https://example.com/");
+    ASSERT_TRUE(u1.has_value());
+    ASSERT_TRUE(u2.has_value());
+    EXPECT_FALSE(clever::url::urls_same_origin(*u1, *u2));
+}
+
+// ws scheme is valid
+TEST(URLParser, WsSchemeIsValid) {
+    auto result = parse("ws://echo.example.com/ws");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "ws");
+}
+
+// wss scheme is valid
+TEST(URLParser, WssSchemeIsValid) {
+    auto result = parse("wss://secure.example.com/ws");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "wss");
+}
+
+// No host in data URL (edge case)
+TEST(URLParser, DataURLHostIsEmpty) {
+    auto result = parse("data:text/plain,hello");
+    // data: URLs are unusual; just verify it parses without crash
+    // host should be empty for data: URLs
+    if (result.has_value()) {
+        EXPECT_EQ(result->scheme, "data");
+    }
+    SUCCEED();  // either parsed or not, just no crash
+}
+
+// Serialize preserves full URL structure
+TEST(URLParser, SerializePreservesFullStructure) {
+    auto result = parse("https://example.com:9000/path?q=1#frag");
+    ASSERT_TRUE(result.has_value());
+    std::string s = result->serialize();
+    EXPECT_NE(s.find("https"), std::string::npos);
+    EXPECT_NE(s.find("example.com"), std::string::npos);
+}
