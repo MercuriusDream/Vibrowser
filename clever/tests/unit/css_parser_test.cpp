@@ -2099,3 +2099,79 @@ TEST_F(CSSStylesheetTest, PaddingFourValues) {
     }
     EXPECT_TRUE(found);
 }
+
+// ============================================================================
+// Cycle 595: More CSS parser tests
+// ============================================================================
+
+// Tokenizer: Turn token
+TEST_F(CSSTokenizerTest, TurnDimensionToken) {
+    auto tokens = CSSTokenizer::tokenize_all("0.5turn");
+    ASSERT_FALSE(tokens.empty());
+    EXPECT_EQ(tokens[0].type, CSSToken::Dimension);
+    EXPECT_EQ(tokens[0].unit, "turn");
+}
+
+// Tokenizer: rad dimension
+TEST_F(CSSTokenizerTest, RadDimensionToken) {
+    auto tokens = CSSTokenizer::tokenize_all("1.5rad");
+    ASSERT_FALSE(tokens.empty());
+    EXPECT_EQ(tokens[0].type, CSSToken::Dimension);
+    EXPECT_EQ(tokens[0].unit, "rad");
+}
+
+// Tokenizer: em dimension with 3.5 value
+TEST_F(CSSTokenizerTest, EmDimensionNumericValue) {
+    auto tokens = CSSTokenizer::tokenize_all("3.5em");
+    ASSERT_FALSE(tokens.empty());
+    EXPECT_EQ(tokens[0].type, CSSToken::Dimension);
+    EXPECT_DOUBLE_EQ(tokens[0].numeric_value, 3.5);
+    EXPECT_EQ(tokens[0].unit, "em");
+}
+
+// Selector: descendant combinator
+TEST_F(CSSSelectorTest, DescendantCombinatorExists) {
+    auto list = parse_selector_list("div p");
+    ASSERT_EQ(list.selectors.size(), 1u);
+    EXPECT_EQ(list.selectors[0].parts.size(), 2u);
+    EXPECT_EQ(list.selectors[0].parts[1].combinator, Combinator::Descendant);
+}
+
+// Selector: child combinator
+TEST_F(CSSSelectorTest, ChildCombinatorExists) {
+    auto list = parse_selector_list("ul > li");
+    ASSERT_EQ(list.selectors.size(), 1u);
+    EXPECT_EQ(list.selectors[0].parts.size(), 2u);
+    EXPECT_EQ(list.selectors[0].parts[1].combinator, Combinator::Child);
+}
+
+// Selector: id selector type
+TEST_F(CSSSelectorTest, IdSelectorType) {
+    auto list = parse_selector_list("#main");
+    ASSERT_EQ(list.selectors.size(), 1u);
+    ASSERT_FALSE(list.selectors[0].parts.empty());
+    auto& compound = list.selectors[0].parts[0].compound;
+    ASSERT_FALSE(compound.simple_selectors.empty());
+    EXPECT_EQ(compound.simple_selectors[0].type, SimpleSelectorType::Id);
+    EXPECT_EQ(compound.simple_selectors[0].value, "main");
+}
+
+// Stylesheet: background-color with named color
+TEST_F(CSSStylesheetTest, BackgroundColorNamedValue) {
+    auto sheet = parse_stylesheet("html { background-color: white; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations) {
+        if (d.property == "background-color") { found = true; break; }
+    }
+    EXPECT_TRUE(found);
+}
+
+// Stylesheet: font-weight declaration
+TEST_F(CSSStylesheetTest, FontWeightDeclaration) {
+    auto sheet = parse_stylesheet("strong { font-weight: bold; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    ASSERT_FALSE(sheet.rules[0].declarations.empty());
+    EXPECT_EQ(sheet.rules[0].declarations[0].property, "font-weight");
+    EXPECT_EQ(sheet.rules[0].declarations[0].values[0].value, "bold");
+}
