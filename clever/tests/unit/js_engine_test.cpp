@@ -11564,3 +11564,97 @@ TEST(JSEngine, ShortCircuitEvaluation) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "true");
 }
+
+// ============================================================================
+// Cycle 511: JS Engine regression tests
+// ============================================================================
+
+TEST(JSEngine, SwitchStatement) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var x = 3;
+        var out = "";
+        switch (x) {
+            case 1: out = "one"; break;
+            case 2: out = "two"; break;
+            case 3: out = "three"; break;
+            default: out = "other";
+        }
+        out
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "three");
+}
+
+TEST(JSEngine, TernaryOperator) {
+    clever::js::JSEngine engine;
+    auto r1 = engine.evaluate("(5 > 3) ? 'yes' : 'no'");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(r1, "yes");
+    auto r2 = engine.evaluate("(1 > 10) ? 'yes' : 'no'");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(r2, "no");
+}
+
+TEST(JSEngine, StringSliceAndIndexOf) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var s = "Hello, World!";
+        String(s.indexOf("World")) + ":" + s.slice(7, 12)
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "7:World");
+}
+
+TEST(JSEngine, ArraySortMethod) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var arr = [3, 1, 4, 1, 5, 9, 2, 6];
+        arr.sort(function(a, b) { return a - b; });
+        arr[0] + "," + arr[7]
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1,9");
+}
+
+TEST(JSEngine, ArrayReduceMethod) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var nums = [1, 2, 3, 4, 5];
+        String(nums.reduce(function(acc, val) { return acc + val; }, 0))
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "15");
+}
+
+TEST(JSEngine, ObjectFreezePreventsMutation) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var obj = Object.freeze({ x: 10 });
+        try {
+            obj.x = 99;  // should silently fail in non-strict mode
+        } catch (e) {}
+        String(obj.x)
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "10");
+}
+
+TEST(JSEngine, ForInLoop) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var obj = { a: 1, b: 2, c: 3 };
+        var keys = [];
+        for (var k in obj) { keys.push(k); }
+        keys.sort().join(",")
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "a,b,c");
+}
+
+TEST(JSEngine, StringRepeatMethod) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("'ab'.repeat(3)");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "ababab");
+}
