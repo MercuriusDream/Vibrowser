@@ -1204,6 +1204,11 @@ bool parse_status_line(const std::string& status_line, Response& response, std::
     err = "Malformed HTTP status line";
     return false;
   }
+  if ((starts_with(version, "HTTP/1.0") && version.size() > 8) ||
+      (starts_with(version, "HTTP/1.1") && version.size() > 8)) {
+    err = "Malformed HTTP status line";
+    return false;
+  }
   if (version == "HTTP/2" || version == "HTTP/2.0") {
     err = "HTTP/2 status line received; HTTP/2 transport is not implemented yet";
     return false;
