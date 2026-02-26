@@ -4,10 +4,12 @@
   </a>
 </p>
 
-![From Scratch](https://img.shields.io/badge/Mode-From--Scratch%20Browser-ff4f8b?style=flat-square)
-![C++](https://img.shields.io/badge/C%2B%2B-17-00599C?style=flat-square&logo=c%2B%2B&logoColor=white)
-![CMake](https://img.shields.io/badge/Build-CMake-064F8C?style=flat-square&logo=cmake&logoColor=white)
-![Website](https://img.shields.io/website?url=https%3A%2F%2Fmercuriusdream.com%2FVibrowser%2F&style=flat-square&up_message=online&down_message=offline&logo=googlechrome&label=Live%20Site&color=06b6d4)
+<p align="center">
+  <img src="https://img.shields.io/badge/Mode-From--Scratch%20Browser-ff4f8b?style=for-the-badge" alt="From Scratch" />
+  <img src="https://img.shields.io/badge/C%2B%2B-17-00599C?style=for-the-badge&logo=c%2B%2B&logoColor=white" alt="C++17" />
+  <img src="https://img.shields.io/badge/Build-CMake-064F8C?style=for-the-badge&logo=cmake&logoColor=white" alt="CMake" />
+  <img src="https://img.shields.io/website?url=https%3A%2F%2Fmercuriusdream.com%2FVibrowser%2F&style=for-the-badge&up_message=ONLINE&down_message=OFFLINE&logo=googlechrome&label=Website&color=06b6d4" alt="Website status" />
+</p>
 
 <h1 align="center">Vibrowser</h1>
 <p align="center"><strong>Open-source, from-scratch browser engineering in public.</strong></p>
