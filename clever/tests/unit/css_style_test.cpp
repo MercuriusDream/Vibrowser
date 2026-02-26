@@ -8828,3 +8828,171 @@ TEST(PropertyCascadeTest, RowGapAndColumnGapLonghands) {
     cascade.apply_declaration(style, make_decl("grid-column-gap", "8px"), parent);
     EXPECT_FLOAT_EQ(style.column_gap_val.to_px(0), 8.0f);
 }
+
+// ---------------------------------------------------------------------------
+// Cycle 465 — font-variant-east-asian, font-variant-alternates,
+//             place-items, flex shorthand, order,
+//             justify-content, align-self, justify-self
+// ---------------------------------------------------------------------------
+
+TEST(PropertyCascadeTest, FontVariantEastAsianValues) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.font_variant_east_asian, 0);  // default: normal
+
+    cascade.apply_declaration(style, make_decl("font-variant-east-asian", "jis78"), parent);
+    EXPECT_EQ(style.font_variant_east_asian, 1);
+
+    cascade.apply_declaration(style, make_decl("font-variant-east-asian", "simplified"), parent);
+    EXPECT_EQ(style.font_variant_east_asian, 5);
+
+    cascade.apply_declaration(style, make_decl("font-variant-east-asian", "traditional"), parent);
+    EXPECT_EQ(style.font_variant_east_asian, 6);
+
+    cascade.apply_declaration(style, make_decl("font-variant-east-asian", "ruby"), parent);
+    EXPECT_EQ(style.font_variant_east_asian, 9);
+
+    cascade.apply_declaration(style, make_decl("font-variant-east-asian", "normal"), parent);
+    EXPECT_EQ(style.font_variant_east_asian, 0);
+}
+
+TEST(PropertyCascadeTest, FontVariantAlternatesValues) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.font_variant_alternates, 0);  // default: normal
+
+    cascade.apply_declaration(style, make_decl("font-variant-alternates", "historical-forms"), parent);
+    EXPECT_EQ(style.font_variant_alternates, 1);
+
+    cascade.apply_declaration(style, make_decl("font-variant-alternates", "normal"), parent);
+    EXPECT_EQ(style.font_variant_alternates, 0);
+}
+
+TEST(PropertyCascadeTest, PlaceItemsShorthand) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    // two values: align-items justify-items
+    cascade.apply_declaration(style, make_decl("place-items", "center start"), parent);
+    EXPECT_EQ(style.align_items, AlignItems::Center);
+    EXPECT_EQ(style.justify_items, 0);  // start
+
+    // single value: sets both
+    cascade.apply_declaration(style, make_decl("place-items", "center"), parent);
+    EXPECT_EQ(style.align_items, AlignItems::Center);
+    EXPECT_EQ(style.justify_items, 2);  // center
+}
+
+TEST(PropertyCascadeTest, FlexShorthandNoneAutoAndExplicit) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_FLOAT_EQ(style.flex_grow, 0.0f);
+    EXPECT_FLOAT_EQ(style.flex_shrink, 1.0f);
+    EXPECT_TRUE(style.flex_basis.is_auto());
+
+    // flex: none => grow=0, shrink=0, basis=auto
+    cascade.apply_declaration(style, make_decl("flex", "none"), parent);
+    EXPECT_FLOAT_EQ(style.flex_grow, 0.0f);
+    EXPECT_FLOAT_EQ(style.flex_shrink, 0.0f);
+    EXPECT_TRUE(style.flex_basis.is_auto());
+
+    // flex: auto => grow=1, shrink=1, basis=auto
+    cascade.apply_declaration(style, make_decl("flex", "auto"), parent);
+    EXPECT_FLOAT_EQ(style.flex_grow, 1.0f);
+    EXPECT_FLOAT_EQ(style.flex_shrink, 1.0f);
+    EXPECT_TRUE(style.flex_basis.is_auto());
+
+    // flex: 2 => grow=2, shrink=1
+    cascade.apply_declaration(style, make_decl("flex", "2"), parent);
+    EXPECT_FLOAT_EQ(style.flex_grow, 2.0f);
+}
+
+TEST(PropertyCascadeTest, OrderProperty) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.order, 0);  // default
+
+    cascade.apply_declaration(style, make_decl("order", "3"), parent);
+    EXPECT_EQ(style.order, 3);
+
+    cascade.apply_declaration(style, make_decl("order", "-1"), parent);
+    EXPECT_EQ(style.order, -1);
+
+    cascade.apply_declaration(style, make_decl("order", "0"), parent);
+    EXPECT_EQ(style.order, 0);
+}
+
+TEST(PropertyCascadeTest, JustifyContentValues) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.justify_content, JustifyContent::FlexStart);
+
+    cascade.apply_declaration(style, make_decl("justify-content", "flex-end"), parent);
+    EXPECT_EQ(style.justify_content, JustifyContent::FlexEnd);
+
+    cascade.apply_declaration(style, make_decl("justify-content", "center"), parent);
+    EXPECT_EQ(style.justify_content, JustifyContent::Center);
+
+    cascade.apply_declaration(style, make_decl("justify-content", "space-between"), parent);
+    EXPECT_EQ(style.justify_content, JustifyContent::SpaceBetween);
+
+    cascade.apply_declaration(style, make_decl("justify-content", "space-around"), parent);
+    EXPECT_EQ(style.justify_content, JustifyContent::SpaceAround);
+
+    cascade.apply_declaration(style, make_decl("justify-content", "space-evenly"), parent);
+    EXPECT_EQ(style.justify_content, JustifyContent::SpaceEvenly);
+}
+
+TEST(PropertyCascadeTest, AlignSelfValues) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.align_self, -1);  // default: auto
+
+    cascade.apply_declaration(style, make_decl("align-self", "flex-start"), parent);
+    EXPECT_EQ(style.align_self, 0);
+
+    cascade.apply_declaration(style, make_decl("align-self", "flex-end"), parent);
+    EXPECT_EQ(style.align_self, 1);
+
+    cascade.apply_declaration(style, make_decl("align-self", "center"), parent);
+    EXPECT_EQ(style.align_self, 2);
+
+    cascade.apply_declaration(style, make_decl("align-self", "stretch"), parent);
+    EXPECT_EQ(style.align_self, 4);
+
+    cascade.apply_declaration(style, make_decl("align-self", "auto"), parent);
+    EXPECT_EQ(style.align_self, -1);
+}
+
+TEST(PropertyCascadeTest, JustifySelfValues) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.justify_self, -1);  // default: auto
+
+    cascade.apply_declaration(style, make_decl("justify-self", "start"), parent);
+    EXPECT_EQ(style.justify_self, 0);
+
+    cascade.apply_declaration(style, make_decl("justify-self", "end"), parent);
+    EXPECT_EQ(style.justify_self, 1);
+
+    cascade.apply_declaration(style, make_decl("justify-self", "center"), parent);
+    EXPECT_EQ(style.justify_self, 2);
+
+    cascade.apply_declaration(style, make_decl("justify-self", "stretch"), parent);
+    EXPECT_EQ(style.justify_self, 4);
+}
