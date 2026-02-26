@@ -504,6 +504,24 @@ bool parse_serialized_origin(const std::string& value, std::string& canonical_or
     if (parsed_host.front() == '.' || parsed_host.back() == '.') {
       return false;
     }
+    bool dotted_decimal_candidate = true;
+    int dot_count = 0;
+    for (unsigned char ch : parsed_host) {
+      if (ch == '.') {
+        ++dot_count;
+        continue;
+      }
+      if (!std::isdigit(ch)) {
+        dotted_decimal_candidate = false;
+        break;
+      }
+    }
+    if (dotted_decimal_candidate && dot_count == 3) {
+      in_addr ipv4_addr {};
+      if (inet_pton(AF_INET, parsed_host.c_str(), &ipv4_addr) != 1) {
+        return false;
+      }
+    }
     std::size_t label_start = 0;
     while (label_start <= parsed_host.size()) {
       const std::size_t dot_pos = parsed_host.find('.', label_start);

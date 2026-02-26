@@ -1451,6 +1451,39 @@ int main() {
         }
     }
 
+    // Test 79: CORS rejects ACAO values with invalid dotted-decimal IPv4 host literals
+    {
+        browser::net::RequestPolicy policy;
+        policy.origin = "https://app.example.com";
+        browser::net::Response response;
+        response.headers["access-control-allow-origin"] = "https://256.1.1.1";
+        auto result =
+            browser::net::check_cors_response_policy("https://api.example.com/data", response, policy);
+        if (result.allowed) {
+            std::cerr
+                << "FAIL: CORS should reject ACAO origins with invalid dotted-decimal IPv4 literals\n";
+            ++failures;
+        } else {
+            std::cerr
+                << "PASS: CORS rejects ACAO origins with invalid dotted-decimal IPv4 literals\n";
+        }
+    }
+
+    // Test 80: request Origin header emission rejects policy Origin values with invalid IPv4 literals
+    {
+        browser::net::RequestPolicy policy;
+        policy.origin = "https://256.1.1.1";
+        auto headers = browser::net::build_request_headers_for_policy("https://api.example.com/data", policy);
+        if (!headers.empty()) {
+            std::cerr
+                << "FAIL: policy Origin with invalid dotted-decimal IPv4 literal should not be attached\n";
+            ++failures;
+        } else {
+            std::cerr
+                << "PASS: request Origin header emission rejects invalid dotted-decimal IPv4 policy origins\n";
+        }
+    }
+
     if (failures > 0) {
         std::cerr << "\n" << failures << " test(s) FAILED\n";
         return 1;

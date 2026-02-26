@@ -65,6 +65,25 @@ bool has_valid_serialized_origin_host(std::string_view host) {
         return false;
     }
 
+    bool dotted_decimal_candidate = true;
+    int dot_count = 0;
+    for (unsigned char ch : host) {
+        if (ch == '.') {
+            ++dot_count;
+            continue;
+        }
+        if (std::isdigit(ch) == 0) {
+            dotted_decimal_candidate = false;
+            break;
+        }
+    }
+    if (dotted_decimal_candidate && dot_count == 3) {
+        in_addr ipv4_addr {};
+        if (inet_pton(AF_INET, std::string(host).c_str(), &ipv4_addr) != 1) {
+            return false;
+        }
+    }
+
     std::size_t label_start = 0;
     while (label_start <= host.size()) {
         const std::size_t dot_pos = host.find('.', label_start);
