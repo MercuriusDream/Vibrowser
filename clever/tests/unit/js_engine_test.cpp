@@ -14335,3 +14335,55 @@ TEST(JSEngine, ArraySortDescending) {
     auto result = engine.evaluate(R"([3, 1, 2].sort(function(a, b) { return b - a; }).join(","))");
     EXPECT_EQ(result, "3,2,1");
 }
+
+// ============================================================================
+// Cycle 677: More JS engine tests
+// ============================================================================
+
+TEST(JSEngine, DateNowTypeofIsNumber) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(typeof Date.now() === "number" ? "yes" : "no")");
+    EXPECT_EQ(result, "yes");
+}
+
+TEST(JSEngine, MathAbsNegative) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("Math.abs(-42)");
+    EXPECT_EQ(result, "42");
+}
+
+TEST(JSEngine, MathCeilRoundsUp) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("Math.ceil(4.1)");
+    EXPECT_EQ(result, "5");
+}
+
+TEST(JSEngine, MathFloorRoundsDown) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("Math.floor(4.9)");
+    EXPECT_EQ(result, "4");
+}
+
+TEST(JSEngine, MathRoundHalfUp) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("Math.round(4.5)");
+    EXPECT_EQ(result, "5");
+}
+
+TEST(JSEngine, MathSqrtOfNine) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("Math.sqrt(9)");
+    EXPECT_EQ(result, "3");
+}
+
+TEST(JSEngine, MathPow) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("Math.pow(2, 10)");
+    EXPECT_EQ(result, "1024");
+}
+
+TEST(JSEngine, MathLogBase) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("Math.log(1)");
+    EXPECT_EQ(result, "0");
+}
