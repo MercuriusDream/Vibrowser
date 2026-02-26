@@ -8,6 +8,7 @@ using clever::js::cors::cors_allows_response;
 using clever::js::cors::has_enforceable_document_origin;
 using clever::js::cors::is_cors_eligible_request_url;
 using clever::js::cors::is_cross_origin;
+using clever::js::cors::normalize_outgoing_origin_header;
 using clever::js::cors::should_attach_origin_header;
 
 TEST(CORSPolicyTest, DocumentOriginEnforcement) {
@@ -104,6 +105,49 @@ TEST(CORSPolicyTest, OriginHeaderAttachmentRule) {
                                     std::string("https://api.\x01example/data")));
     EXPECT_TRUE(should_attach_origin_header("https://app.example", "https://api.example/data"));
     EXPECT_TRUE(should_attach_origin_header("null", "https://api.example/data"));
+}
+
+TEST(CORSPolicyTest, NormalizeOutgoingOriginHeaderStripsSpoofedSameOriginValue) {
+    clever::net::HeaderMap headers;
+    headers.set("Origin", "https://evil.example");
+
+    normalize_outgoing_origin_header(headers, "https://app.example", "https://app.example/data");
+
+    EXPECT_FALSE(headers.has("origin"));
+}
+
+TEST(CORSPolicyTest, NormalizeOutgoingOriginHeaderOverwritesSpoofedCrossOriginValue) {
+    clever::net::HeaderMap headers;
+    headers.set("Origin", "https://evil.example");
+
+    normalize_outgoing_origin_header(headers, "https://app.example", "https://api.example/data");
+
+    ASSERT_TRUE(headers.has("origin"));
+    EXPECT_EQ(headers.get("origin").value(), "https://app.example");
+}
+
+TEST(CORSPolicyTest, NormalizeOutgoingOriginHeaderUsesNullForCrossOriginNullDocument) {
+    clever::net::HeaderMap headers;
+    headers.set("Origin", "https://evil.example");
+
+    normalize_outgoing_origin_header(headers, "null", "https://api.example/data");
+
+    ASSERT_TRUE(headers.has("origin"));
+    EXPECT_EQ(headers.get("origin").value(), "null");
+}
+
+TEST(CORSPolicyTest, NormalizeOutgoingOriginHeaderDropsValueForMalformedInputs) {
+    clever::net::HeaderMap malformed_document;
+    malformed_document.set("Origin", "https://evil.example");
+    normalize_outgoing_origin_header(
+        malformed_document, "https://app.example/path", "https://api.example/data");
+    EXPECT_FALSE(malformed_document.has("origin"));
+
+    clever::net::HeaderMap malformed_request_url;
+    malformed_request_url.set("Origin", "https://evil.example");
+    normalize_outgoing_origin_header(
+        malformed_request_url, "https://app.example", "ftp://api.example/data");
+    EXPECT_FALSE(malformed_request_url.has("origin"));
 }
 
 TEST(CORSPolicyTest, SameOriginResponseAlwaysAllowed) {

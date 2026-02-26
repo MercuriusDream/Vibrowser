@@ -416,6 +416,15 @@ bool should_attach_origin_header(std::string_view document_origin, std::string_v
            is_cross_origin(document_origin, request_url);
 }
 
+void normalize_outgoing_origin_header(clever::net::HeaderMap& request_headers,
+                                      std::string_view document_origin,
+                                      std::string_view request_url) {
+    request_headers.remove("origin");
+    if (should_attach_origin_header(document_origin, request_url)) {
+        request_headers.set("Origin", std::string(document_origin));
+    }
+}
+
 bool cors_allows_response(std::string_view document_origin,
                           std::string_view request_url,
                           const clever::net::HeaderMap& response_headers,

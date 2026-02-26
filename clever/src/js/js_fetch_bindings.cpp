@@ -211,10 +211,7 @@ static JSValue js_xhr_send(JSContext* ctx, JSValueConst this_val,
     const bool should_send_cookies =
         request_url_eligible && (!cross_origin || state->with_credentials);
 
-    if (cors::should_attach_origin_header(document_origin, state->url) &&
-        !req.headers.has("origin")) {
-        req.headers.set("Origin", document_origin);
-    }
+    cors::normalize_outgoing_origin_header(req.headers, document_origin, state->url);
 
     // Attach cookies from shared cookie jar
     auto& jar = clever::net::CookieJar::shared();
@@ -1231,10 +1228,7 @@ static JSValue js_global_fetch(JSContext* ctx, JSValueConst /*this_val*/,
         (credentials_mode == FetchCredentialsMode::Include ||
          (credentials_mode == FetchCredentialsMode::SameOrigin && !cross_origin));
 
-    if (cors::should_attach_origin_header(document_origin, url_str) &&
-        !req.headers.has("origin")) {
-        req.headers.set("Origin", document_origin);
-    }
+    cors::normalize_outgoing_origin_header(req.headers, document_origin, url_str);
 
     // Attach cookies from shared cookie jar
     if (should_send_cookies) {

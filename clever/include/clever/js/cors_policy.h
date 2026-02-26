@@ -9,6 +9,9 @@ bool has_enforceable_document_origin(std::string_view document_origin);
 bool is_cors_eligible_request_url(std::string_view request_url);
 bool is_cross_origin(std::string_view document_origin, std::string_view request_url);
 bool should_attach_origin_header(std::string_view document_origin, std::string_view request_url);
+void normalize_outgoing_origin_header(clever::net::HeaderMap& request_headers,
+                                      std::string_view document_origin,
+                                      std::string_view request_url);
 bool cors_allows_response(std::string_view document_origin,
                           std::string_view request_url,
                           const clever::net::HeaderMap& response_headers,
