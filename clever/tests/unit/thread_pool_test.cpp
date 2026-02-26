@@ -327,3 +327,72 @@ TEST(ThreadPoolTest, SubmitTaskWithMoveOnlyCapture) {
     auto future = pool.submit([v = std::move(value)]() -> int { return *v; });
     EXPECT_EQ(future.get(), 99);
 }
+
+// ============================================================================
+// Cycle 500: ThreadPool milestone regression tests
+// ============================================================================
+
+// submit() returning double precision value
+TEST(ThreadPoolTest, SubmitReturningDouble) {
+    ThreadPool pool(2);
+    auto future = pool.submit([]() -> double { return 3.14159; });
+    EXPECT_DOUBLE_EQ(future.get(), 3.14159);
+}
+
+// submit() returning bool
+TEST(ThreadPoolTest, SubmitReturningBool) {
+    ThreadPool pool(2);
+    auto t = pool.submit([]() -> bool { return true; });
+    auto f = pool.submit([]() -> bool { return false; });
+    EXPECT_TRUE(t.get());
+    EXPECT_FALSE(f.get());
+}
+
+// submit(f, arg1, arg2) — args forwarded to the callable
+TEST(ThreadPoolTest, SubmitWithBoundArguments) {
+    ThreadPool pool(2);
+    auto future = pool.submit([](int x, int y) { return x + y; }, 17, 25);
+    EXPECT_EQ(future.get(), 42);
+}
+
+// ThreadPool(1) — size() == 1
+TEST(ThreadPoolTest, SizeIsOneForSingleThreadPool) {
+    ThreadPool pool(1);
+    EXPECT_EQ(pool.size(), 1u);
+    EXPECT_TRUE(pool.is_running());
+}
+
+// chain two submit calls: second task uses result of first via future
+TEST(ThreadPoolTest, SubmitChainedTasks) {
+    ThreadPool pool(2);
+    auto first = pool.submit([]() { return 10; });
+    int base = first.get();  // synchronise here
+    auto second = pool.submit([base]() { return base * 3; });
+    EXPECT_EQ(second.get(), 30);
+}
+
+// submit() returning a negative integer
+TEST(ThreadPoolTest, SubmitTaskWithNegativeReturn) {
+    ThreadPool pool(2);
+    auto future = pool.submit([]() { return -42; });
+    EXPECT_EQ(future.get(), -42);
+}
+
+// submit() returning a vector
+TEST(ThreadPoolTest, SubmitReturningVector) {
+    ThreadPool pool(2);
+    auto future = pool.submit([]() -> std::vector<int> { return {1, 2, 3, 4, 5}; });
+    auto result = future.get();
+    ASSERT_EQ(result.size(), 5u);
+    EXPECT_EQ(result[0], 1);
+    EXPECT_EQ(result[4], 5);
+}
+
+// submit() returning std::pair<int,int>
+TEST(ThreadPoolTest, SubmitReturningPair) {
+    ThreadPool pool(2);
+    auto future = pool.submit([]() { return std::make_pair(7, 13); });
+    auto [a, b] = future.get();
+    EXPECT_EQ(a, 7);
+    EXPECT_EQ(b, 13);
+}
