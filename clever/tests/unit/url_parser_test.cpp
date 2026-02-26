@@ -793,3 +793,70 @@ TEST(URLParser, SerializeRoundTripsSchemeAndHost) {
     EXPECT_NE(s.find("www.example.com"), std::string::npos);
     EXPECT_NE(s.find("/hello"), std::string::npos);
 }
+
+// ============================================================================
+// Cycle 530: URL parser regression tests
+// ============================================================================
+
+// URL with port 8080
+TEST(URLParser, CustomPortPreserved) {
+    auto result = parse("http://localhost:8080/api");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->port, 8080u);
+    EXPECT_EQ(result->path, "/api");
+}
+
+// Long path with many segments
+TEST(URLParser, LongMultiSegmentPath) {
+    auto result = parse("https://example.com/a/b/c/d/e");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/a/b/c/d/e");
+}
+
+// Fragment is preserved
+TEST(URLParser, FragmentPreserved) {
+    auto result = parse("https://example.com/page#section2");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->fragment, "section2");
+}
+
+// Username in URL
+TEST(URLParser, UsernameExtracted) {
+    auto result = parse("ftp://user@ftp.example.com/");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->username, "user");
+    EXPECT_EQ(result->host, "ftp.example.com");
+}
+
+// URL with both username and password
+TEST(URLParser, UsernameAndPasswordExtracted) {
+    auto result = parse("ftp://admin:secret@ftp.example.com/");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->username, "admin");
+    EXPECT_EQ(result->password, "secret");
+}
+
+// HTTPS with explicit port 443 (default — may or may not strip it)
+TEST(URLParser, ExplicitHTTPSPort443) {
+    auto result = parse("https://example.com:443/path");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/path");
+}
+
+// Query with numeric value
+TEST(URLParser, QueryWithNumericValue) {
+    auto result = parse("https://example.com/search?page=42&limit=10");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_NE(result->query.find("page=42"), std::string::npos);
+    EXPECT_NE(result->query.find("limit=10"), std::string::npos);
+}
+
+// Subdomain preserved in host
+TEST(URLParser, SubdomainInHost) {
+    auto result = parse("https://api.v2.example.com/resource");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->host, "api.v2.example.com");
+}
