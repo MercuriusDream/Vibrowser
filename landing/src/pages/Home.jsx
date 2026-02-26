@@ -320,7 +320,7 @@ cmake -S . -B build && cmake --build build
       {/* License */}
       <section className="section section-last">
         <p className="section-note">
-          MIT License.{" "}
+          GNU AGPLv3 License.{" "}
           <a href="https://github.com/MercuriusDream/Vibrowser/blob/main/LICENSE">
             See LICENSE
           </a>

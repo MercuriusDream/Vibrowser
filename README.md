@@ -446,8 +446,8 @@ No external workflow tooling required to get started; CMake + scripts are enough
 
 ## License and Distribution
 
-Project metadata and legal metadata are handled in repository root docs.  
-Check the corresponding project files for licensing and usage details before packaging or redistributing.
+This project is licensed under the GNU Affero General Public License v3.0 (AGPL-3.0).
+See `LICENSE` in repository root for full terms.
 
 ---
 

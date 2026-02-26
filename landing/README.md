@@ -42,4 +42,4 @@ Vibrowser is built using the **Claude Estate protocol**—autonomous AI agents w
 
 ## License
 
-MIT License. See [LICENSE](LICENSE) for details.
+GNU Affero General Public License v3.0 (AGPL-3.0). See [LICENSE](LICENSE) for full terms.
