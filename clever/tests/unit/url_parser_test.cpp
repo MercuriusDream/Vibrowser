@@ -1612,3 +1612,72 @@ TEST(URLParser, SerializeIncludesQuery) {
     auto s = result->serialize();
     EXPECT_NE(s.find("test"), std::string::npos);
 }
+
+// ============================================================================
+// Cycle 666: More URL parser tests
+// ============================================================================
+
+// URL: username can be parsed from URL
+TEST(URLParser, UsernameFromUserInfoURL) {
+    auto result = parse("https://user@example.com/");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->username, "user");
+}
+
+// URL: port 80 stripped from http URL
+TEST(URLParser, HttpPort80Stripped) {
+    auto result = parse("http://example.com:80/");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_FALSE(result->port.has_value());
+}
+
+// URL: non-default port 8080 preserved for http
+TEST(URLParser, HttpPort8080Preserved) {
+    auto result = parse("http://example.com:8080/api");
+    ASSERT_TRUE(result.has_value());
+    ASSERT_TRUE(result->port.has_value());
+    EXPECT_EQ(result->port.value(), 8080u);
+}
+
+// URL: path with multiple segments
+TEST(URLParser, PathWithThreeSegments) {
+    auto result = parse("https://example.com/a/b/c");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_NE(result->path.find("/a"), std::string::npos);
+    EXPECT_NE(result->path.find("/b"), std::string::npos);
+    EXPECT_NE(result->path.find("/c"), std::string::npos);
+}
+
+// URL: serialize includes fragment
+TEST(URLParser, SerializeIncludesFragment) {
+    auto result = parse("https://example.com/page#section");
+    ASSERT_TRUE(result.has_value());
+    auto s = result->serialize();
+    EXPECT_NE(s.find("section"), std::string::npos);
+}
+
+// URL: same scheme different port is different origin
+TEST(URLParser, DifferentPortNotSameOrigin) {
+    auto a = parse("https://example.com:8080/");
+    auto b = parse("https://example.com:9090/");
+    ASSERT_TRUE(a.has_value());
+    ASSERT_TRUE(b.has_value());
+    EXPECT_FALSE(urls_same_origin(*a, *b));
+}
+
+// URL: http and https same host different scheme
+TEST(URLParser, HttpVsHttpsDifferentSchemeNotSameOrigin) {
+    auto a = parse("http://example.com/");
+    auto b = parse("https://example.com/");
+    ASSERT_TRUE(a.has_value());
+    ASSERT_TRUE(b.has_value());
+    EXPECT_FALSE(urls_same_origin(*a, *b));
+}
+
+// URL: query with multiple params
+TEST(URLParser, QueryWithMultipleParams) {
+    auto result = parse("https://example.com/?a=1&b=2&c=3");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_NE(result->query.find("a=1"), std::string::npos);
+    EXPECT_NE(result->query.find("b=2"), std::string::npos);
+}
