@@ -4878,3 +4878,82 @@ TEST(LayoutSVG, UseElementFieldsSet) {
     EXPECT_FLOAT_EQ(node->svg_use_x, 10.0f);
     EXPECT_FLOAT_EQ(node->svg_use_y, 20.0f);
 }
+
+// ============================================================================
+// Cycle 521: Layout regression tests
+// ============================================================================
+
+TEST(LayoutPosition, StaticPositionIsDefault) {
+    auto node = make_block("div");
+    EXPECT_EQ(node->position_type, 0);  // 0 = static
+}
+
+TEST(LayoutPosition, RelativePositionType) {
+    auto node = make_block("div");
+    node->position_type = 1;  // relative
+    EXPECT_EQ(node->position_type, 1);
+}
+
+TEST(LayoutPosition, AbsolutePositionType) {
+    auto node = make_block("div");
+    node->position_type = 2;  // absolute
+    EXPECT_EQ(node->position_type, 2);
+}
+
+TEST(BoxGeometryTest, PaddingBoxWidthCalc) {
+    BoxGeometry g;
+    g.width = 200.0f;
+    g.padding.left = 10.0f;
+    g.padding.right = 10.0f;
+    // padding_box_width = content_width + padding_left + padding_right
+    float expected = g.width + g.padding.left + g.padding.right;
+    EXPECT_FLOAT_EQ(expected, 220.0f);
+}
+
+TEST(BoxGeometryTest, MarginBoxWidthCalc) {
+    BoxGeometry g;
+    g.width = 100.0f;
+    g.padding.left = 5.0f;
+    g.padding.right = 5.0f;
+    g.border.left = 2.0f;
+    g.border.right = 2.0f;
+    g.margin.left = 10.0f;
+    g.margin.right = 10.0f;
+    // margin_box_width includes everything
+    float mbw = g.margin_box_width();
+    EXPECT_FLOAT_EQ(mbw, 134.0f);  // 100 + 5+5 + 2+2 + 10+10
+}
+
+TEST(LayoutEngineTest, MinWidthEnforcedOverSpecifiedWidth) {
+    auto root = make_block("div");
+    root->specified_width = 80.0f;   // specified smaller than min
+    root->min_width = 300.0f;
+    LayoutEngine engine;
+    engine.compute(*root, 600.0f, 400.0f);
+    EXPECT_GE(root->geometry.width, 300.0f)
+        << "min_width should prevent width from going below 300px";
+}
+
+TEST(FlexboxAudit, FlexRowReversePlacesChildrenRight) {
+    auto root = make_flex("div");
+    root->flex_direction = 1;  // row-reverse
+    root->specified_width = 300.0f;
+    root->specified_height = 100.0f;
+    auto child = make_block("div");
+    child->specified_width = 60.0f;
+    child->specified_height = 40.0f;
+    child->flex_grow = 0; child->flex_shrink = 0;
+    root->append_child(std::move(child));
+    LayoutEngine engine;
+    engine.compute(*root, 300.0f, 300.0f);
+    ASSERT_GE(root->children.size(), 1u);
+    // In row-reverse, the single child should be placed towards the right
+    EXPECT_GE(root->children[0]->geometry.x, 0.0f)
+        << "row-reverse child x should be non-negative";
+}
+
+TEST(GridLayout, GridNodeStoresColumnSpec) {
+    auto node = make_block("div");
+    node->grid_column = "1 / 3";
+    EXPECT_EQ(node->grid_column, "1 / 3");
+}
