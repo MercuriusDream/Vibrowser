@@ -860,3 +860,68 @@ TEST(URLParser, SubdomainInHost) {
     ASSERT_TRUE(result.has_value());
     EXPECT_EQ(result->host, "api.v2.example.com");
 }
+
+// ============================================================================
+// Cycle 540: URL parser regression tests
+// ============================================================================
+
+// URL with port 3000
+TEST(URLParser, Port3000Preserved) {
+    auto result = parse("http://localhost:3000/dev");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->port, 3000u);
+    EXPECT_EQ(result->host, "localhost");
+    EXPECT_EQ(result->path, "/dev");
+}
+
+// URL scheme is preserved for non-http
+TEST(URLParser, CustomSchemePreserved) {
+    auto result = parse("ftp://files.example.com/pub/readme.txt");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "ftp");
+}
+
+// Uppercase scheme is lowercased
+TEST(URLParser, UppercaseSchemeLowercased) {
+    auto result = parse("HTTP://example.com/");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+}
+
+// Path with trailing slash
+TEST(URLParser, PathWithTrailingSlash) {
+    auto result = parse("https://example.com/about/");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->path, "/about/");
+}
+
+// Serialized URL contains path
+TEST(URLParser, SerializeContainsPath) {
+    auto result = parse("https://example.com/docs/guide");
+    ASSERT_TRUE(result.has_value());
+    std::string s = result->serialize();
+    EXPECT_NE(s.find("/docs/guide"), std::string::npos);
+}
+
+// Host is case-insensitive (lowercased)
+TEST(URLParser, HostUppercaseLowercased) {
+    auto result = parse("https://EXAMPLE.COM/");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->host, "example.com");
+}
+
+// Query is preserved as-is
+TEST(URLParser, QueryPreservedAsIs) {
+    auto result = parse("https://search.example.com/find?q=test&lang=en");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_NE(result->query.find("lang=en"), std::string::npos);
+}
+
+// Same-origin: different port is cross-origin
+TEST(URLParser, DifferentPortIsNotSameOrigin) {
+    auto u1 = parse("https://example.com:8080/");
+    auto u2 = parse("https://example.com:9090/");
+    ASSERT_TRUE(u1.has_value());
+    ASSERT_TRUE(u2.has_value());
+    EXPECT_FALSE(clever::url::urls_same_origin(*u1, *u2));
+}
