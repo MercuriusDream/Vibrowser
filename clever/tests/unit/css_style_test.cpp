@@ -5476,3 +5476,135 @@ TEST(PropertyCascadeTest, VarSelfReferenceDoesNotCrash) {
     // Just verify we didn't crash — color may remain default black
     (void)style.color;
 }
+
+// ---------------------------------------------------------------------------
+// Cycle 437 — pointer-events, user-select, text-overflow, scroll-behavior,
+//             touch-action, overscroll-behavior, isolation, will-change
+// ---------------------------------------------------------------------------
+
+TEST(PropertyCascadeTest, PointerEventsNoneAndAuto) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("pointer-events", "none"), parent);
+    EXPECT_EQ(style.pointer_events, PointerEvents::None);
+
+    cascade.apply_declaration(style, make_decl("pointer-events", "auto"), parent);
+    EXPECT_EQ(style.pointer_events, PointerEvents::Auto);
+}
+
+TEST(PropertyCascadeTest, UserSelectValues) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("user-select", "none"), parent);
+    EXPECT_EQ(style.user_select, UserSelect::None);
+
+    cascade.apply_declaration(style, make_decl("user-select", "text"), parent);
+    EXPECT_EQ(style.user_select, UserSelect::Text);
+
+    cascade.apply_declaration(style, make_decl("user-select", "all"), parent);
+    EXPECT_EQ(style.user_select, UserSelect::All);
+
+    cascade.apply_declaration(style, make_decl("user-select", "auto"), parent);
+    EXPECT_EQ(style.user_select, UserSelect::Auto);
+}
+
+TEST(PropertyCascadeTest, TextOverflowEllipsisAndClip) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("text-overflow", "ellipsis"), parent);
+    EXPECT_EQ(style.text_overflow, TextOverflow::Ellipsis);
+
+    cascade.apply_declaration(style, make_decl("text-overflow", "clip"), parent);
+    EXPECT_EQ(style.text_overflow, TextOverflow::Clip);
+
+    cascade.apply_declaration(style, make_decl("text-overflow", "fade"), parent);
+    EXPECT_EQ(style.text_overflow, TextOverflow::Fade);
+}
+
+TEST(PropertyCascadeTest, ScrollBehaviorSmoothAndAuto) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.scroll_behavior, 0);  // default: auto
+
+    cascade.apply_declaration(style, make_decl("scroll-behavior", "smooth"), parent);
+    EXPECT_EQ(style.scroll_behavior, 1);
+
+    cascade.apply_declaration(style, make_decl("scroll-behavior", "auto"), parent);
+    EXPECT_EQ(style.scroll_behavior, 0);
+}
+
+TEST(PropertyCascadeTest, TouchActionValues) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.touch_action, 0);  // default: auto
+
+    cascade.apply_declaration(style, make_decl("touch-action", "none"), parent);
+    EXPECT_EQ(style.touch_action, 1);
+
+    cascade.apply_declaration(style, make_decl("touch-action", "manipulation"), parent);
+    EXPECT_EQ(style.touch_action, 2);
+
+    cascade.apply_declaration(style, make_decl("touch-action", "pan-x"), parent);
+    EXPECT_EQ(style.touch_action, 3);
+
+    cascade.apply_declaration(style, make_decl("touch-action", "pan-y"), parent);
+    EXPECT_EQ(style.touch_action, 4);
+}
+
+TEST(PropertyCascadeTest, OverscrollBehaviorSingleAndTwoValue) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    // Single keyword: sets both x and y
+    cascade.apply_declaration(style, make_decl("overscroll-behavior", "contain"), parent);
+    EXPECT_EQ(style.overscroll_behavior, 1);
+    EXPECT_EQ(style.overscroll_behavior_x, 1);
+    EXPECT_EQ(style.overscroll_behavior_y, 1);
+
+    // Two keywords: x then y
+    cascade.apply_declaration(style, make_decl("overscroll-behavior", "none auto"), parent);
+    EXPECT_EQ(style.overscroll_behavior_x, 2);  // none
+    EXPECT_EQ(style.overscroll_behavior_y, 0);  // auto
+}
+
+TEST(PropertyCascadeTest, IsolationIsolateAndAuto) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.isolation, 0);  // default: auto
+
+    cascade.apply_declaration(style, make_decl("isolation", "isolate"), parent);
+    EXPECT_EQ(style.isolation, 1);
+
+    cascade.apply_declaration(style, make_decl("isolation", "auto"), parent);
+    EXPECT_EQ(style.isolation, 0);
+}
+
+TEST(PropertyCascadeTest, WillChangeStoresValue) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_TRUE(style.will_change.empty());  // default: empty
+
+    cascade.apply_declaration(style, make_decl("will-change", "transform"), parent);
+    EXPECT_EQ(style.will_change, "transform");
+
+    cascade.apply_declaration(style, make_decl("will-change", "opacity, transform"), parent);
+    EXPECT_EQ(style.will_change, "opacity, transform");
+
+    cascade.apply_declaration(style, make_decl("will-change", "auto"), parent);
+    EXPECT_TRUE(style.will_change.empty());
+}
