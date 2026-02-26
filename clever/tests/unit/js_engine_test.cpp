@@ -14026,3 +14026,90 @@ TEST(JSEngine, MathMinSpread) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "1");
 }
+
+// ============================================================================
+// Cycle 655: More JS engine tests
+// ============================================================================
+
+// typeof null is "object" (famous JS quirk)
+TEST(JSEngine, TypeofNullIsObjectQuirk) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        typeof null
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "object");
+}
+
+// typeof undefined
+TEST(JSEngine, TypeofUndefinedIsUndefined) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        typeof undefined
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "undefined");
+}
+
+// typeof number
+TEST(JSEngine, TypeofNumberIsNumber) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        typeof 42
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "number");
+}
+
+// instanceof Array
+TEST(JSEngine, InstanceofArray) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        [] instanceof Array
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true");
+}
+
+// instanceof non-Array object is false
+TEST(JSEngine, ObjectNotInstanceofArray) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var obj = {};
+        obj instanceof Array
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "false");
+}
+
+// Comma operator returns last
+TEST(JSEngine, CommaOperatorReturnsLast) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        (1, 2, 3)
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "3");
+}
+
+// void operator returns undefined
+TEST(JSEngine, VoidReturnsUndefined) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        String(void 0)
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "undefined");
+}
+
+// delete property
+TEST(JSEngine, DeleteProperty) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var obj = {a: 1, b: 2};
+        delete obj.a;
+        Object.keys(obj).length
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1");
+}
