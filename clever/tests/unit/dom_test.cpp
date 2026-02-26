@@ -2043,3 +2043,77 @@ TEST(DomComment, InitialDataFromConstructor) {
     Comment c("comment text");
     EXPECT_EQ(c.data(), "comment text");
 }
+
+// ============================================================================
+// Cycle 626: More DOM tests
+// ============================================================================
+
+// Element: three attributes set
+TEST(DomElement, ThreeAttributesSet) {
+    Element e("input");
+    e.set_attribute("type", "email");
+    e.set_attribute("name", "email");
+    e.set_attribute("required", "");
+    EXPECT_TRUE(e.has_attribute("type"));
+    EXPECT_TRUE(e.has_attribute("name"));
+    EXPECT_TRUE(e.has_attribute("required"));
+}
+
+// Element: attributes count
+TEST(DomElement, AttributesCountThree) {
+    Element e("a");
+    e.set_attribute("href", "#");
+    e.set_attribute("target", "_blank");
+    e.set_attribute("rel", "noopener");
+    auto attrs = e.attributes();
+    EXPECT_EQ(attrs.size(), 3u);
+}
+
+// Element: get_attribute returns empty string value
+TEST(DomElement, GetAttributeEmptyStringValue) {
+    Element e("input");
+    e.set_attribute("disabled", "");
+    auto val = e.get_attribute("disabled");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(*val, "");
+}
+
+// Element: class_list add two items
+TEST(DomClassList, AddTwoItems) {
+    Element e("div");
+    e.class_list().add("btn");
+    e.class_list().add("primary");
+    EXPECT_TRUE(e.class_list().contains("btn"));
+    EXPECT_TRUE(e.class_list().contains("primary"));
+}
+
+// Element: class_list remove one of two
+TEST(DomClassList, RemoveOneOfTwo) {
+    Element e("div");
+    e.class_list().add("a");
+    e.class_list().add("b");
+    e.class_list().remove("a");
+    EXPECT_FALSE(e.class_list().contains("a"));
+    EXPECT_TRUE(e.class_list().contains("b"));
+}
+
+// Document: create_element section returns element type
+TEST(DomDocument, CreateSectionElementNodeType) {
+    Document doc;
+    auto el = doc.create_element("section");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->node_type(), NodeType::Element);
+    EXPECT_EQ(el->tag_name(), "section");
+}
+
+// Text: parent is nullptr initially
+TEST(DomText, ParentNullInitially) {
+    Text t("hello");
+    EXPECT_EQ(t.parent(), nullptr);
+}
+
+// Comment: parent is nullptr initially
+TEST(DomComment, ParentNullInitially) {
+    Comment c("remark");
+    EXPECT_EQ(c.parent(), nullptr);
+}
