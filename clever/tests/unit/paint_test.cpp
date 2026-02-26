@@ -39011,6 +39011,18 @@ TEST(WebFontRegistration, PreferredFontSourceFallsBackToNextUrl) {
     EXPECT_EQ(extract_preferred_font_url(src), "fallback.woff");
 }
 
+TEST(WebFontRegistration, PreferredFontSourceSkipsUnsupportedFormat) {
+    const std::string src =
+        "url(\"legacy.eot\") format('embedded-opentype'), "
+        "url(\"modern.woff2\") format('woff2')";
+    EXPECT_EQ(extract_preferred_font_url(src), "modern.woff2");
+}
+
+TEST(WebFontRegistration, PreferredFontSourceFunctionNamesAreCaseInsensitive) {
+    const std::string src = "URL(\"caps.woff\") FORMAT('WOFF')";
+    EXPECT_EQ(extract_preferred_font_url(src), "caps.woff");
+}
+
 TEST(WebFontRegistration, PreferredFontSourceEmptyWhenNoUrlExists) {
     EXPECT_TRUE(extract_preferred_font_url("local('Arial'), local('Helvetica')").empty());
 }

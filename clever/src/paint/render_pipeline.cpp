@@ -120,34 +120,105 @@ std::string to_lower(const std::string& s) {
 } // end anonymous namespace (temporarily, for easing/interpolation functions)
 
 std::string extract_preferred_font_url(const std::string& src) {
-    // Look for url(...) entries in order and return the first usable URL.
-    // This intentionally accepts WOFF2 so modern @font-face src lists can load.
-    size_t pos = 0;
-    while (pos < src.size()) {
-        auto url_start = src.find("url(", pos);
-        if (url_start == std::string::npos) break;
-        url_start += 4;  // Skip "url("
+    // Parse comma-separated source descriptors and return the first URL
+    // whose optional format(...) is supported by the current pipeline.
+    static const std::unordered_set<std::string> k_supported_formats = {
+        "woff2",
+        "woff",
+        "truetype",
+        "opentype",
+        "woff-variations",
+        "truetype-variations",
+        "opentype-variations"
+    };
 
-        while (url_start < src.size() &&
-               (src[url_start] == ' ' || src[url_start] == '"' || src[url_start] == '\'')) {
-            url_start++;
+    auto parse_function_arg = [&](const std::string& entry,
+                                  const std::string& function_name) -> std::string {
+        const std::string lower_entry = to_lower(entry);
+        const std::string lower_function_name = to_lower(function_name);
+        const std::string needle = lower_function_name + "(";
+        const auto fn_pos = lower_entry.find(needle);
+        if (fn_pos == std::string::npos) return "";
+        size_t open = fn_pos + needle.size() - 1;
+        if (open >= entry.size() || entry[open] != '(') return "";
+
+        size_t close = std::string::npos;
+        bool in_single = false;
+        bool in_double = false;
+        int depth = 0;
+        for (size_t i = open; i < entry.size(); ++i) {
+            const char ch = entry[i];
+            if (ch == '"' && !in_single) {
+                in_double = !in_double;
+                continue;
+            }
+            if (ch == '\'' && !in_double) {
+                in_single = !in_single;
+                continue;
+            }
+            if (in_single || in_double) continue;
+            if (ch == '(') {
+                depth++;
+            } else if (ch == ')') {
+                depth--;
+                if (depth == 0) {
+                    close = i;
+                    break;
+                }
+            }
         }
+        if (close == std::string::npos || close <= open + 1) return "";
 
-        auto url_end = src.find(')', url_start);
-        if (url_end == std::string::npos) break;
-
-        auto end = url_end;
-        while (end > url_start &&
-               (src[end - 1] == ' ' || src[end - 1] == '"' || src[end - 1] == '\'')) {
-            end--;
+        std::string value = trim(entry.substr(open + 1, close - open - 1));
+        if (value.size() >= 2) {
+            if ((value.front() == '"' && value.back() == '"') ||
+                (value.front() == '\'' && value.back() == '\'')) {
+                value = value.substr(1, value.size() - 2);
+            }
         }
+        return trim(value);
+    };
 
-        std::string url = src.substr(url_start, end - url_start);
-        if (!url.empty()) {
-            return url;
+    std::vector<std::string> entries;
+    std::string current;
+    int paren_depth = 0;
+    bool in_single = false;
+    bool in_double = false;
+    for (char ch : src) {
+        if (ch == '"' && !in_single) {
+            in_double = !in_double;
+            current.push_back(ch);
+            continue;
         }
+        if (ch == '\'' && !in_double) {
+            in_single = !in_single;
+            current.push_back(ch);
+            continue;
+        }
+        if (!in_single && !in_double) {
+            if (ch == '(') paren_depth++;
+            else if (ch == ')' && paren_depth > 0) paren_depth--;
+            if (ch == ',' && paren_depth == 0) {
+                entries.push_back(trim(current));
+                current.clear();
+                continue;
+            }
+        }
+        current.push_back(ch);
+    }
+    if (!current.empty()) {
+        entries.push_back(trim(current));
+    }
 
-        pos = url_end + 1;
+    for (const auto& entry : entries) {
+        std::string url = parse_function_arg(entry, "url");
+        if (url.empty()) continue;
+
+        const std::string format = to_lower(parse_function_arg(entry, "format"));
+        if (!format.empty() && k_supported_formats.find(format) == k_supported_formats.end()) {
+            continue;
+        }
+        return url;
     }
     return "";
 }
