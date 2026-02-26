@@ -11732,3 +11732,94 @@ TEST(JSEngine, ObjectSpread) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "1,99,3");
 }
+
+// ============================================================================
+// Cycle 519: JSEngine regression tests
+// ============================================================================
+
+TEST(JSEngine, NullishCoalescingWithZero) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var a = null ?? "default";
+        var b = undefined ?? "fallback";
+        var c = 0 ?? "nonzero";
+        a + "," + b + "," + String(c)
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "default,fallback,0");
+}
+
+TEST(JSEngine, OptionalChainingOnObject) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var obj = { a: { b: 42 } };
+        var v1 = obj?.a?.b;
+        var v2 = obj?.x?.y;
+        String(v1) + "," + String(v2)
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "42,undefined");
+}
+
+TEST(JSEngine, ArrayEveryMethod) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var all = [2, 4, 6].every(function(x) { return x % 2 === 0; });
+        var some = [1, 3, 5].every(function(x) { return x % 2 === 0; });
+        String(all) + "," + String(some)
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true,false");
+}
+
+TEST(JSEngine, ArraySomeMethod) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var any = [1, 2, 3].some(function(x) { return x > 2; });
+        var none = [1, 2, 3].some(function(x) { return x > 10; });
+        String(any) + "," + String(none)
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true,false");
+}
+
+TEST(JSEngine, StringTrimMethods) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        "  hello  ".trim() + "|" + "  hi".trimStart() + "|" + "bye  ".trimEnd()
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "hello|hi|bye");
+}
+
+TEST(JSEngine, ObjectHasOwnProperty) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var obj = { x: 1 };
+        String(obj.hasOwnProperty('x')) + "," + String(obj.hasOwnProperty('toString'))
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true,false");
+}
+
+TEST(JSEngine, NumberIsNaNAndIsFinite) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        String(Number.isNaN(NaN)) + "," +
+        String(Number.isNaN(42)) + "," +
+        String(Number.isFinite(Infinity)) + "," +
+        String(Number.isFinite(100))
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true,false,false,true");
+}
+
+TEST(JSEngine, ArrayIndexOf) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var arr = [10, 20, 30, 20];
+        arr.indexOf(20) + "," + arr.lastIndexOf(20) + "," + arr.indexOf(99)
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1,3,-1");
+}
