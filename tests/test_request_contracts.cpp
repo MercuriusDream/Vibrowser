@@ -296,6 +296,28 @@ int main() {
         }
 
         if (browser::net::parse_http_status_line(
+                " HTTP/2 200 OK", http_version, status_code, reason, err)) {
+            std::cerr << "FAIL: expected leading-whitespace HTTP/2 status line to be treated as malformed\n";
+            ++failures;
+        } else if (err.find("Malformed HTTP status line") == std::string::npos) {
+            std::cerr << "FAIL: expected malformed status-line error for leading-whitespace HTTP/2 variant\n";
+            ++failures;
+        } else {
+            std::cerr << "PASS: leading-whitespace HTTP/2 status line is rejected as malformed\n";
+        }
+
+        if (browser::net::parse_http_status_line(
+                "HTTP/2 200 OK ", http_version, status_code, reason, err)) {
+            std::cerr << "FAIL: expected trailing-whitespace HTTP/2 status line to be treated as malformed\n";
+            ++failures;
+        } else if (err.find("Malformed HTTP status line") == std::string::npos) {
+            std::cerr << "FAIL: expected malformed status-line error for trailing-whitespace HTTP/2 variant\n";
+            ++failures;
+        } else {
+            std::cerr << "PASS: trailing-whitespace HTTP/2 status line is rejected as malformed\n";
+        }
+
+        if (browser::net::parse_http_status_line(
                 "200 OK", http_version, status_code, reason, err)) {
             std::cerr << "FAIL: malformed status line should be rejected\n";
             ++failures;
