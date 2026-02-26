@@ -14171,3 +14171,60 @@ TEST(JSEngine, ArrayFindIndexReturnsTwo) {
     auto result = engine.evaluate(R"([10, 20, 30].findIndex(function(x) { return x === 30; }))");
     EXPECT_EQ(result, "2");
 }
+
+// ============================================================================
+// Cycle 665: More JS engine tests
+// ============================================================================
+
+TEST(JSEngine, StringRepeatThreeTimes) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"("ha".repeat(3))");
+    EXPECT_EQ(result, "hahaha");
+}
+
+TEST(JSEngine, StringStartsWithPrefix) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"("hello world".startsWith("hello") ? "yes" : "no")");
+    EXPECT_EQ(result, "yes");
+}
+
+TEST(JSEngine, StringEndsWithSuffix) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"("hello world".endsWith("world") ? "yes" : "no")");
+    EXPECT_EQ(result, "yes");
+}
+
+TEST(JSEngine, StringIncludesSubstring) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"("foo bar baz".includes("bar") ? "yes" : "no")");
+    EXPECT_EQ(result, "yes");
+}
+
+TEST(JSEngine, ArrayIncludesValue) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"([1, 2, 3, 4].includes(3) ? "yes" : "no")");
+    EXPECT_EQ(result, "yes");
+}
+
+TEST(JSEngine, ArrayJoinWithDash) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"([1, 2, 3].join("-"))");
+    EXPECT_EQ(result, "1-2-3");
+}
+
+TEST(JSEngine, ObjectAssignMergeSumIsThree) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var a = {x: 1};
+        var b = {y: 2};
+        var c = Object.assign(a, b);
+        c.x + c.y
+    )");
+    EXPECT_EQ(result, "3");
+}
+
+TEST(JSEngine, ArrayReduceSum) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"([1, 2, 3, 4, 5].reduce(function(acc, x) { return acc + x; }, 0))");
+    EXPECT_EQ(result, "15");
+}
