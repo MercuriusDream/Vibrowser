@@ -313,3 +313,79 @@ TEST(SerializerTest, RemainingAndHasRemaining) {
     EXPECT_EQ(d.remaining(), 0u);
     EXPECT_FALSE(d.has_remaining());
 }
+
+// ------------------------------------------------------------------
+// Cycle 430 — f64 boundary values, negative zero, underflow gaps,
+//             and embedded-NUL string round-trip
+// ------------------------------------------------------------------
+
+TEST(SerializerTest, RoundTripF64BoundaryValues) {
+    Serializer s;
+    s.write_f64(std::numeric_limits<double>::max());
+    s.write_f64(std::numeric_limits<double>::min());
+    s.write_f64(std::numeric_limits<double>::denorm_min());
+
+    Deserializer d(s.data());
+    EXPECT_DOUBLE_EQ(d.read_f64(), std::numeric_limits<double>::max());
+    EXPECT_DOUBLE_EQ(d.read_f64(), std::numeric_limits<double>::min());
+    EXPECT_DOUBLE_EQ(d.read_f64(), std::numeric_limits<double>::denorm_min());
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, RoundTripF64NegativeZero) {
+    Serializer s;
+    s.write_f64(-0.0);
+
+    Deserializer d(s.data());
+    double result = d.read_f64();
+    // -0.0 and 0.0 compare equal per IEEE 754; verify sign bit preserved
+    EXPECT_EQ(result, -0.0);
+    EXPECT_TRUE(std::signbit(result));
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, DeserializerThrowsOnUnderflowI32) {
+    Serializer s;
+    s.write_u16(1);  // only 2 bytes; read_i32 needs 4
+    Deserializer d(s.data());
+    EXPECT_THROW(d.read_i32(), std::runtime_error);
+}
+
+TEST(SerializerTest, DeserializerThrowsOnUnderflowI64) {
+    Serializer s;
+    s.write_u32(1);  // only 4 bytes; read_i64 needs 8
+    Deserializer d(s.data());
+    EXPECT_THROW(d.read_i64(), std::runtime_error);
+}
+
+TEST(SerializerTest, DeserializerThrowsOnUnderflowBool) {
+    Deserializer d(nullptr, 0);
+    EXPECT_THROW(d.read_bool(), std::runtime_error);
+}
+
+TEST(SerializerTest, DeserializerThrowsOnUnderflowF64) {
+    Serializer s;
+    s.write_u32(1);  // only 4 bytes; read_f64 needs 8
+    Deserializer d(s.data());
+    EXPECT_THROW(d.read_f64(), std::runtime_error);
+}
+
+TEST(SerializerTest, DeserializerThrowsOnUnderflowBytes) {
+    Serializer s;
+    s.write_u32(1000);  // claims 1000-byte payload but buffer ends here
+    Deserializer d(s.data());
+    EXPECT_THROW(d.read_bytes(), std::runtime_error);
+}
+
+TEST(SerializerTest, RoundTripStringWithEmbeddedNul) {
+    // String containing a NUL byte must round-trip as binary-safe data
+    std::string nul_str("hello\0world", 11);
+    Serializer s;
+    s.write_string(nul_str);
+
+    Deserializer d(s.data());
+    std::string result = d.read_string();
+    ASSERT_EQ(result.size(), 11u);
+    EXPECT_EQ(result, nul_str);
+    EXPECT_FALSE(d.has_remaining());
+}
