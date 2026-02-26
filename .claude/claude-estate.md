@@ -5,13 +5,28 @@
 
 ## Current Status
 
-**Phase**: Active Development — Cycle 390 COMPLETE
-**Last Active**: 2026-02-26T21:31:27+0900
-**Current Focus**: HTTP/2 transport hardening with strict HTTP/1.x status-line control/non-ASCII octet fail-closed rejection
-**Momentum**: 3550 tests, ZERO failures, 2500+ features! v0.7.0! CYCLE 390 DONE! 212 BUGS FIXED!
-**Cycle**: 390
+**Phase**: Active Development — Cycle 391 COMPLETE
+**Last Active**: 2026-02-26T21:22:30+0900
+**Current Focus**: HTTP/2 transport hardening with strict HTTP/1.x status-line surrounding-whitespace fail-closed rejection
+**Momentum**: 3552 tests, ZERO failures, 2500+ features! v0.7.0! CYCLE 391 DONE! 213 BUGS FIXED!
+**Cycle**: 391
 
 ## Session Log
+
+### Cycle 391 — 2026-02-26 — HTTP/1.x status-line surrounding-whitespace fail-closed hardening
+- **HTTP/2 TRANSPORT (Priority 4)**: Hardened native HTTP/1.x status-line parsing guardrails so leading/trailing ASCII whitespace fails closed before response classification and body processing.
+- Updated native request/response contract behavior (`src/net/http_client.cpp`):
+  - tightened `parse_status_line(...)` to reject status-line inputs when `trim_ascii(status_line)` changes byte length
+  - preserves explicit HTTP/2 preface/status-line rejection messaging for `PRI * HTTP/2.0` and `HTTP/2*` variants
+  - preserves strict control/non-ASCII octet and unsupported-version guardrails
+- Added regression coverage (`tests/test_request_contracts.cpp`):
+  - rejects leading-whitespace status-line variant (` HTTP/1.1 200 OK`)
+  - rejects trailing-whitespace status-line variant (`HTTP/1.1 200 OK `)
+- Validation:
+  - `cmake --build build_vibrowser --target test_request_contracts test_request_policy -j8 && ./build_vibrowser/test_request_contracts && ./build_vibrowser/test_request_policy`
+- Files: `src/net/http_client.cpp`, `tests/test_request_contracts.cpp`
+- **Targeted native request contract + policy suites green, no regressions.**
+- **Ledger divergence note**: `.codex/codex-estate.md` remains non-writable in this runtime (`Operation not permitted`); `.claude/claude-estate.md` is source of truth for Cycle 391 and sync should be replayed when permissions allow.
 
 ### Cycle 390 — 2026-02-26 — HTTP/1.x status-line control/non-ASCII octet fail-closed hardening
 - **HTTP/2 TRANSPORT (Priority 4)**: Hardened native HTTP/1.x status-line parsing guardrails so control and non-ASCII octets fail closed before response classification and body processing.
@@ -4718,7 +4733,7 @@
 | 1 | CORS/CSP enforcement in fetch/XHR path (MC-08, FJNS-11) — PARTIAL: connect-src pre-dispatch + host-source (incl. bracketed IPv6 normalization, scheme-less source scheme/port inference, invalid-port rejection) + wildcard-port + default-src fallback + canonical origin normalization + credentialed CORS ACAO/ACAC gate + strict ACAO single-value/case-insensitive CORS header handling + duplicate case-variant ACAO/ACAC rejection + serialized-origin ACAO enforcement + null-origin ACAO handling + dot-segment/encoded-traversal-safe path matching + websocket (`ws`/`wss`) default-port enforcement + effective-URL parse fail-closed CORS gate + strict ACAO/ACAC control-character rejection + strict request-Origin serialized-origin validation for both CORS evaluation and outgoing header emission + policy-origin serialized-origin fail-closed enforcement for request/CSP checks + strict non-HTTP(S) serialized-origin scheme rejection for request-policy/CORS + strict native serialized-origin percent-escaped authority fail-closed rejection + strict native serialized-origin authority backslash fail-closed rejection + strict native serialized-origin empty explicit-port fail-closed rejection + strict native serialized-origin non-IPv6 host-length fail-closed rejection + strict native serialized-origin dotted-decimal IPv4 fail-closed rejection + strict native/shared non-canonical dotted-decimal IPv4 (leading-zero octet) fail-closed rejection + strict native/shared legacy shorthand dotted numeric-host fail-closed rejection + strict native/shared legacy hexadecimal numeric-host fail-closed rejection + shared JS CORS helper malformed ACAO/ACAC fail-closed rejection + strict shared JS malformed document-origin fail-closed validation + strict shared JS malformed/unsupported request-URL fail-closed validation + strict shared JS request-URL surrounding-whitespace fail-closed validation + strict shared JS request-URL control/non-ASCII octet fail-closed validation + strict shared JS request-URL embedded-whitespace/userinfo/fragment fail-closed validation + strict shared JS request-URL empty-port authority fail-closed validation + strict shared JS request-URL authority percent-escape fail-closed validation + strict shared JS request-URL dotted-decimal IPv4 fail-closed validation + strict shared JS null/empty document-origin fail-closed enforcement + strict shared JS malformed ACAO authority/port fail-closed validation + strict shared JS non-ASCII ACAO/ACAC/header-origin octet fail-closed validation + strict shared JS serialized-origin/header surrounding-whitespace fail-closed validation + strict fetch/XHR unsupported-scheme pre-dispatch fail-closed request gate + strict unsupported-scheme cookie-attach suppression + strict native serialized-origin embedded/surrounding-whitespace and strict native ACAO/ACAC surrounding-whitespace fail-closed rejection + strict native optional ACAC non-literal/non-ASCII/comma-separated fail-closed rejection DONE (Cycles 275-276, 278, 280-293, 306-307, 320, 326-329, 348-352, 355-382) | Large |
 | 2 | ~~TLS certificate verification policy hardening (FJNS-06)~~ DONE (Cycle 276) | ~~Medium~~ |
 | 3 | ~~Fetch/XHR origin header + ACAO response gate~~ DONE (Cycle 274) | ~~Medium~~ |
-| 4 | HTTP/2 transport (MC-12) — PARTIAL: protocol-version capture + explicit rejection guardrails for HTTP/2 preface/status-line/TLS ALPN/outbound `Upgrade` request/outbound `HTTP2-Settings` request-header/outbound pseudo-header requests/`101` upgrade/`426` upgrade-required responses + unsupported status-version rejection allowlisting HTTP/1.0/HTTP/1.1 + preface trailing/tab-whitespace variants + tab-separated status-line variant + whitespace-padded request-header name variant hardening + quoted/single-quoted upgrade-token variant hardening + quoted comma-contained upgrade-token split hardening + escaped quoted-string upgrade-token normalization hardening + escaped-comma delimiter hardening + malformed unterminated-token explicit rejection hardening + control-character malformed token explicit rejection hardening + malformed bare backslash-escape token explicit rejection hardening + malformed unterminated quoted-parameter token explicit rejection hardening + malformed upgrade token-character fail-closed hardening + strict non-ASCII upgrade-token rejection hardening + strict HTTP2-Settings token68 validation and duplicate-header fail-closed hardening + strict HTTP2-Settings token68 over-padding fail-closed hardening + strict HTTP2-Settings non-base64url token-character fail-closed hardening + strict HTTP2-Settings base64url shape (padding/modulo) fail-closed hardening + strict HTTP2-Settings decoded SETTINGS-frame-length (multiple-of-6 bytes) fail-closed hardening + strict Transfer-Encoding `chunked` exact-token parsing hardening + strict malformed Transfer-Encoding delimiter/quoted-token rejection hardening + strict Transfer-Encoding `chunked` final-position/no-parameter enforcement hardening + strict Transfer-Encoding control-character token rejection hardening + strict non-ASCII Transfer-Encoding token rejection hardening + strict unsupported/malformed Transfer-Encoding fail-closed rejection hardening + strict conflicting `Transfer-Encoding` + `Content-Length` response framing fail-closed rejection + strict ambiguous multi-value `Content-Length` response framing fail-closed rejection + strict HTTP/1.x status-line status-code width/range fail-closed rejection + strict HTTP/1.x status-line control/non-ASCII octet fail-closed rejection DONE (Cycles 294-305, 308-319, 321-325, 330-332, 383-390) | Large |
+| 4 | HTTP/2 transport (MC-12) — PARTIAL: protocol-version capture + explicit rejection guardrails for HTTP/2 preface/status-line/TLS ALPN/outbound `Upgrade` request/outbound `HTTP2-Settings` request-header/outbound pseudo-header requests/`101` upgrade/`426` upgrade-required responses + unsupported status-version rejection allowlisting HTTP/1.0/HTTP/1.1 + preface trailing/tab-whitespace variants + tab-separated status-line variant + whitespace-padded request-header name variant hardening + quoted/single-quoted upgrade-token variant hardening + quoted comma-contained upgrade-token split hardening + escaped quoted-string upgrade-token normalization hardening + escaped-comma delimiter hardening + malformed unterminated-token explicit rejection hardening + control-character malformed token explicit rejection hardening + malformed bare backslash-escape token explicit rejection hardening + malformed unterminated quoted-parameter token explicit rejection hardening + malformed upgrade token-character fail-closed hardening + strict non-ASCII upgrade-token rejection hardening + strict HTTP2-Settings token68 validation and duplicate-header fail-closed hardening + strict HTTP2-Settings token68 over-padding fail-closed hardening + strict HTTP2-Settings non-base64url token-character fail-closed hardening + strict HTTP2-Settings base64url shape (padding/modulo) fail-closed hardening + strict HTTP2-Settings decoded SETTINGS-frame-length (multiple-of-6 bytes) fail-closed hardening + strict Transfer-Encoding `chunked` exact-token parsing hardening + strict malformed Transfer-Encoding delimiter/quoted-token rejection hardening + strict Transfer-Encoding `chunked` final-position/no-parameter enforcement hardening + strict Transfer-Encoding control-character token rejection hardening + strict non-ASCII Transfer-Encoding token rejection hardening + strict unsupported/malformed Transfer-Encoding fail-closed rejection hardening + strict conflicting `Transfer-Encoding` + `Content-Length` response framing fail-closed rejection + strict ambiguous multi-value `Content-Length` response framing fail-closed rejection + strict HTTP/1.x status-line status-code width/range fail-closed rejection + strict HTTP/1.x status-line control/non-ASCII octet fail-closed rejection + strict HTTP/1.x status-line surrounding-whitespace fail-closed rejection DONE (Cycles 294-305, 308-319, 321-325, 330-332, 383-391) | Large |
 | 5 | Web font loading (actual font data) — PARTIAL: WOFF2 source selection + `data:` URL base64/percent-decoded payload registration + format-aware source fallback/case-insensitive URL/FORMAT parsing + list-aware multi-format source acceptance + `woff2-variations` token support + strict `data:` base64 padding/trailing validation with unpadded compatibility + strict malformed empty `format()`/`tech()` descriptor fail-closed rejection + descriptor parser false-positive hardening for quoted URL payload substrings + strict malformed non-base64 `data:` percent-escape rejection + strict malformed top-level `src` source-list delimiter fail-closed rejection + strict unmatched-closing-paren `src`/descriptor fail-closed rejection + strict duplicate single-entry `url`/`format`/`tech` descriptor fail-closed rejection + strict malformed mixed single-entry `local(...)` + `url(...)` source rejection DONE (Cycles 277, 333-347) | Large |
 | 6 | ~~WOFF2 support (TODO in code)~~ DONE (Cycle 277) | ~~Medium~~ |
 | 7 | ~~CSS @layer cascade priority (layer ordering + !important reversal)~~ DONE (Cycle 279) | ~~Medium~~ |
@@ -4736,13 +4751,13 @@
 | Metric | Value |
 |--------|-------|
 | Total Sessions | 147 |
-| Total Cycles | 390 |
+| Total Cycles | 391 |
 | Files Created | ~135 |
 | Files Modified | 100+ |
-| Lines Added (est.) | 173760+ |
-| Tests Added | 3550 |
-| Bugs Fixed | 212 |
-| Features Added | 2505 |
+| Lines Added (est.) | 173790+ |
+| Tests Added | 3552 |
+| Bugs Fixed | 213 |
+| Features Added | 2506 |
 
 ## Tell The Next Claude
 
@@ -4750,12 +4765,18 @@
 
 Build: `cd clever && cmake -S . -B build && cmake --build build && ctest --test-dir build`
 
-**3550 tests, 12 libraries (QuickJS!), 1 macOS app, ZERO warnings. v0.7.0. CYCLE 390! 2500+ FEATURES! 212 BUGS FIXED! ANTHROPIC.COM LOADS!**
+**3552 tests, 12 libraries (QuickJS!), 1 macOS app, ZERO warnings. v0.7.0. CYCLE 391! 2500+ FEATURES! 213 BUGS FIXED! ANTHROPIC.COM LOADS!**
 
 **Current implementation vs full browser comparison**:
 - Current implementation: robust single-process browser shell with full JS engine integration, broad DOM/CSS/Fetch coverage, and hardened HTTP/1.x/CORS/CSP policy enforcement.
 - Full browser target: still missing major subsystems like full multi-process isolation, full HTTP/2+/QUIC transport stack, and complete production-grade web font pipeline coverage.
-- Progress snapshot: from early scaffolding to 390 completed cycles, 3550 tests, and 2500+ implemented features.
+- Progress snapshot: from early scaffolding to 391 completed cycles, 3552 tests, and 2500+ implemented features.
+
+**Cycle 391 — HTTP/1.x status-line surrounding-whitespace fail-closed hardening**:
+- Hardened `parse_status_line(...)` in `src/net/http_client.cpp` to reject leading/trailing ASCII-whitespace status-line variants before status-code parsing, keeping malformed framing inputs fail-closed.
+- Added focused regression coverage in `tests/test_request_contracts.cpp` for leading-whitespace (` HTTP/1.1 200 OK`) and trailing-whitespace (`HTTP/1.1 200 OK `) status-line rejection.
+- Rebuilt and re-ran `test_request_contracts` and `test_request_policy` from `build_vibrowser`, all green.
+- **Ledger divergence note**: `.codex/codex-estate.md` remains non-writable in this runtime (`Operation not permitted`); `.claude/claude-estate.md` is source of truth for Cycle 391 and sync should be replayed when permissions allow.
 
 **Cycle 390 — HTTP/1.x status-line control/non-ASCII octet fail-closed hardening**:
 - Hardened `parse_status_line(...)` in `src/net/http_client.cpp` to reject status-line control (`<=0x1F`, `0x7F`) and non-ASCII (`>=0x80`) octets, preventing malformed byte-sequence acceptance during response classification.
