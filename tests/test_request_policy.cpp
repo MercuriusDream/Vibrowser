@@ -1304,6 +1304,35 @@ int main() {
         }
     }
 
+    // Test 69: CORS rejects ACAO values with percent-escaped authority bytes
+    {
+        browser::net::RequestPolicy policy;
+        policy.origin = "https://app.example.com";
+        browser::net::Response response;
+        response.headers["access-control-allow-origin"] = "https://app%2eexample.com";
+        auto result =
+            browser::net::check_cors_response_policy("https://api.example.com/data", response, policy);
+        if (result.allowed) {
+            std::cerr << "FAIL: CORS should reject percent-escaped ACAO authority values\n";
+            ++failures;
+        } else {
+            std::cerr << "PASS: CORS rejects percent-escaped ACAO authority values\n";
+        }
+    }
+
+    // Test 70: request Origin header emission rejects percent-escaped policy Origin values
+    {
+        browser::net::RequestPolicy policy;
+        policy.origin = "https://app%2eexample.com";
+        auto headers = browser::net::build_request_headers_for_policy("https://api.example.com/data", policy);
+        if (!headers.empty()) {
+            std::cerr << "FAIL: percent-escaped policy Origin should not be attached as request Origin header\n";
+            ++failures;
+        } else {
+            std::cerr << "PASS: request Origin header emission rejects percent-escaped policy origins\n";
+        }
+    }
+
     if (failures > 0) {
         std::cerr << "\n" << failures << " test(s) FAILED\n";
         return 1;

@@ -450,6 +450,9 @@ bool parse_serialized_origin(const std::string& value, std::string& canonical_or
   if (trimmed != value) {
     return false;
   }
+  if (trimmed.find('%') != std::string::npos) {
+    return false;
+  }
   if (trimmed == "null") {
     canonical_origin = "null";
     return true;
