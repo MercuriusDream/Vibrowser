@@ -1867,3 +1867,84 @@ TEST(TreeBuilder, SmallElementPrice) {
     ASSERT_NE(small, nullptr);
     EXPECT_EQ(small->text_content(), "$9.99");
 }
+
+// ============================================================================
+// Cycle 584: More HTML parser tests
+// ============================================================================
+
+TEST(TreeBuilder, AbbrElement) {
+    auto doc = parse(R"(<body><abbr title="World Wide Web">WWW</abbr></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* abbr = doc->find_element("abbr");
+    ASSERT_NE(abbr, nullptr);
+    EXPECT_EQ(abbr->text_content(), "WWW");
+}
+
+TEST(TreeBuilder, MarkWithHighlightedText) {
+    auto doc = parse(R"(<body><p>Search <mark>result</mark> here</p></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* mark = doc->find_element("mark");
+    ASSERT_NE(mark, nullptr);
+    EXPECT_EQ(mark->text_content(), "result");
+}
+
+TEST(TreeBuilder, TimeElementDatetime) {
+    auto doc = parse(R"(<body><time datetime="2025-01-01">New Year</time></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* time = doc->find_element("time");
+    ASSERT_NE(time, nullptr);
+    EXPECT_EQ(time->text_content(), "New Year");
+    bool has_dt = false;
+    for (auto& attr : time->attributes) {
+        if (attr.name == "datetime") has_dt = true;
+    }
+    EXPECT_TRUE(has_dt);
+}
+
+TEST(TreeBuilder, ProgressWithMaxAttr) {
+    auto doc = parse(R"(<body><progress value="70" max="100"></progress></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* progress = doc->find_element("progress");
+    ASSERT_NE(progress, nullptr);
+    bool has_max = false;
+    for (auto& attr : progress->attributes) {
+        if (attr.name == "max" && attr.value == "100") has_max = true;
+    }
+    EXPECT_TRUE(has_max);
+}
+
+TEST(TreeBuilder, MeterWithTextContent) {
+    auto doc = parse(R"(<body><meter value="0.6">60%</meter></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* meter = doc->find_element("meter");
+    ASSERT_NE(meter, nullptr);
+    EXPECT_EQ(meter->text_content(), "60%");
+}
+
+TEST(TreeBuilder, OutputWithForAttr) {
+    auto doc = parse(R"(<body><output for="a b">Result</output></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* output = doc->find_element("output");
+    ASSERT_NE(output, nullptr);
+    bool has_for = false;
+    for (auto& attr : output->attributes) {
+        if (attr.name == "for") has_for = true;
+    }
+    EXPECT_TRUE(has_for);
+}
+
+TEST(TreeBuilder, KbdShortcutText) {
+    auto doc = parse(R"(<body><p>Press <kbd>Ctrl+C</kbd></p></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* kbd = doc->find_element("kbd");
+    ASSERT_NE(kbd, nullptr);
+    EXPECT_EQ(kbd->text_content(), "Ctrl+C");
+}
+
+TEST(TreeBuilder, SampOutputText) {
+    auto doc = parse(R"(<body><p>Output: <samp>Hello, World!</samp></p></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* samp = doc->find_element("samp");
+    ASSERT_NE(samp, nullptr);
+    EXPECT_EQ(samp->text_content(), "Hello, World!");
+}
