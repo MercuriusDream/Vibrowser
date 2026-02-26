@@ -5338,3 +5338,63 @@ TEST(LayoutEngineTest, MaxWidthCanBeStored) {
     node->max_width = 800.0f;
     EXPECT_FLOAT_EQ(node->max_width, 800.0f);
 }
+
+// ============================================================================
+// Cycle 585: More Layout tests
+// ============================================================================
+
+// inline span: display is Inline
+TEST(LayoutEngineTest, InlineSpanDisplayIsInline) {
+    auto node = make_inline("span");
+    EXPECT_EQ(node->display, DisplayType::Inline);
+    EXPECT_EQ(node->tag_name, "span");
+}
+
+// Grid mode: grid_template_columns can be stored
+TEST(LayoutNodeProps, GridTemplateColumnsCanBeSet) {
+    auto node = make_block("div");
+    node->grid_template_columns = "1fr 1fr 1fr";
+    EXPECT_EQ(node->grid_template_columns, "1fr 1fr 1fr");
+}
+
+// Grid: grid_template_rows can be stored
+TEST(LayoutNodeProps, GridTemplateRowsCanBeSet) {
+    auto node = make_block("div");
+    node->grid_template_rows = "100px auto";
+    EXPECT_EQ(node->grid_template_rows, "100px auto");
+}
+
+// Grid: grid_area can be stored
+TEST(LayoutNodeProps, GridAreaCanBeSet) {
+    auto node = make_block("div");
+    node->grid_area = "header";
+    EXPECT_EQ(node->grid_area, "header");
+}
+
+// Flex: justify_content center (value 2)
+TEST(FlexboxAudit, JustifyContentCenterValue) {
+    auto node = make_flex("div");
+    node->justify_content = 2;
+    EXPECT_EQ(node->justify_content, 2);
+}
+
+// Flex: align_items center (value 2)
+TEST(FlexboxAudit, AlignItemsCenterValue) {
+    auto node = make_flex("div");
+    node->align_items = 2;
+    EXPECT_EQ(node->align_items, 2);
+}
+
+// Block: single child appended
+TEST(LayoutEngineTest, SingleChildAppended) {
+    auto parent = make_block("div");
+    parent->append_child(make_block("p"));
+    EXPECT_EQ(parent->children.size(), 1u);
+}
+
+// Block: specified height stored
+TEST(LayoutEngineTest, SpecifiedHeightStored) {
+    auto node = make_block("div");
+    node->specified_height = 200.0f;
+    EXPECT_FLOAT_EQ(node->specified_height, 200.0f);
+}
