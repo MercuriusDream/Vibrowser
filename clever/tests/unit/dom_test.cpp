@@ -1977,3 +1977,69 @@ TEST(DomDocument, NodeTypeIsDocumentV2) {
     EXPECT_NE(doc.node_type(), NodeType::Element);
     EXPECT_EQ(doc.node_type(), NodeType::Document);
 }
+
+// ============================================================================
+// Cycle 617: More DOM tests
+// ============================================================================
+
+// Element: namespace URI is settable
+TEST(DomElement, NamespaceURISettable) {
+    Element e("rect", "http://www.w3.org/2000/svg");
+    EXPECT_EQ(e.namespace_uri(), "http://www.w3.org/2000/svg");
+}
+
+// Element: append two children, first_child correct
+TEST(DomElement, FirstChildAfterTwoAppends) {
+    Element parent("div");
+    auto c1 = std::make_unique<Element>("span");
+    auto c2 = std::make_unique<Element>("p");
+    Element* c1_ptr = c1.get();
+    parent.append_child(std::move(c1));
+    parent.append_child(std::move(c2));
+    EXPECT_EQ(parent.first_child(), c1_ptr);
+}
+
+// Element: append two children, last_child correct
+TEST(DomElement, LastChildAfterTwoAppends) {
+    Element parent("div");
+    auto c1 = std::make_unique<Element>("span");
+    auto c2 = std::make_unique<Element>("p");
+    Element* c2_ptr = c2.get();
+    parent.append_child(std::move(c1));
+    parent.append_child(std::move(c2));
+    EXPECT_EQ(parent.last_child(), c2_ptr);
+}
+
+// Element: parent() after append
+TEST(DomElement, ParentAfterAppend) {
+    Element parent("div");
+    auto child = std::make_unique<Element>("span");
+    Element* child_ptr = child.get();
+    parent.append_child(std::move(child));
+    EXPECT_EQ(child_ptr->parent(), &parent);
+}
+
+// Event: type accessible
+TEST(DomEvent, TypeAccessible) {
+    Event e("click", true, true);
+    EXPECT_EQ(e.type(), "click");
+}
+
+// Event: bubbles and cancelable
+TEST(DomEvent, BubblesAndCancelable) {
+    Event e("submit", true, true);
+    EXPECT_TRUE(e.bubbles());
+    EXPECT_TRUE(e.cancelable());
+}
+
+// Text: initial data from constructor
+TEST(DomText, InitialDataFromConstructor) {
+    Text t("initial text");
+    EXPECT_EQ(t.data(), "initial text");
+}
+
+// Comment: initial data from constructor
+TEST(DomComment, InitialDataFromConstructor) {
+    Comment c("comment text");
+    EXPECT_EQ(c.data(), "comment text");
+}
