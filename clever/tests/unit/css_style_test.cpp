@@ -6467,3 +6467,146 @@ TEST(PropertyCascadeTest, BackfaceVisibilityValues) {
     cascade.apply_declaration(style, make_decl("backface-visibility", "visible"), parent);
     EXPECT_EQ(style.backface_visibility, 0);
 }
+
+// ---------------------------------------------------------------------------
+// Cycle 446 — CSS animation: animation-name, animation-duration,
+//             animation-timing-function, animation-delay,
+//             animation-iteration-count, animation-direction,
+//             animation-fill-mode, animation-play-state
+// ---------------------------------------------------------------------------
+
+TEST(PropertyCascadeTest, AnimationName) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_TRUE(style.animation_name.empty());  // default
+
+    cascade.apply_declaration(style, make_decl("animation-name", "slide-in"), parent);
+    EXPECT_EQ(style.animation_name, "slide-in");
+
+    cascade.apply_declaration(style, make_decl("animation-name", "none"), parent);
+    EXPECT_EQ(style.animation_name, "none");
+}
+
+TEST(PropertyCascadeTest, AnimationDurationSecondsAndMs) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_FLOAT_EQ(style.animation_duration, 0.0f);  // default
+
+    cascade.apply_declaration(style, make_decl("animation-duration", "2s"), parent);
+    EXPECT_FLOAT_EQ(style.animation_duration, 2.0f);
+
+    cascade.apply_declaration(style, make_decl("animation-duration", "500ms"), parent);
+    EXPECT_NEAR(style.animation_duration, 0.5f, 0.001f);
+
+    cascade.apply_declaration(style, make_decl("animation-duration", "0s"), parent);
+    EXPECT_FLOAT_EQ(style.animation_duration, 0.0f);
+}
+
+TEST(PropertyCascadeTest, AnimationTimingFunctionValues) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.animation_timing, 0);  // default: ease
+
+    cascade.apply_declaration(style, make_decl("animation-timing-function", "linear"), parent);
+    EXPECT_EQ(style.animation_timing, 1);
+
+    cascade.apply_declaration(style, make_decl("animation-timing-function", "ease-in"), parent);
+    EXPECT_EQ(style.animation_timing, 2);
+
+    cascade.apply_declaration(style, make_decl("animation-timing-function", "ease-out"), parent);
+    EXPECT_EQ(style.animation_timing, 3);
+
+    cascade.apply_declaration(style, make_decl("animation-timing-function", "ease-in-out"), parent);
+    EXPECT_EQ(style.animation_timing, 4);
+
+    cascade.apply_declaration(style, make_decl("animation-timing-function", "ease"), parent);
+    EXPECT_EQ(style.animation_timing, 0);
+}
+
+TEST(PropertyCascadeTest, AnimationDelaySeconds) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_FLOAT_EQ(style.animation_delay, 0.0f);  // default
+
+    cascade.apply_declaration(style, make_decl("animation-delay", "1s"), parent);
+    EXPECT_FLOAT_EQ(style.animation_delay, 1.0f);
+
+    cascade.apply_declaration(style, make_decl("animation-delay", "250ms"), parent);
+    EXPECT_NEAR(style.animation_delay, 0.25f, 0.001f);
+}
+
+TEST(PropertyCascadeTest, AnimationIterationCount) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_FLOAT_EQ(style.animation_iteration_count, 1.0f);  // default
+
+    cascade.apply_declaration(style, make_decl("animation-iteration-count", "infinite"), parent);
+    EXPECT_FLOAT_EQ(style.animation_iteration_count, -1.0f);
+
+    cascade.apply_declaration(style, make_decl("animation-iteration-count", "3"), parent);
+    EXPECT_FLOAT_EQ(style.animation_iteration_count, 3.0f);
+}
+
+TEST(PropertyCascadeTest, AnimationDirectionValues) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.animation_direction, 0);  // default: normal
+
+    cascade.apply_declaration(style, make_decl("animation-direction", "reverse"), parent);
+    EXPECT_EQ(style.animation_direction, 1);
+
+    cascade.apply_declaration(style, make_decl("animation-direction", "alternate"), parent);
+    EXPECT_EQ(style.animation_direction, 2);
+
+    cascade.apply_declaration(style, make_decl("animation-direction", "alternate-reverse"), parent);
+    EXPECT_EQ(style.animation_direction, 3);
+
+    cascade.apply_declaration(style, make_decl("animation-direction", "normal"), parent);
+    EXPECT_EQ(style.animation_direction, 0);
+}
+
+TEST(PropertyCascadeTest, AnimationFillModeValues) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.animation_fill_mode, 0);  // default: none
+
+    cascade.apply_declaration(style, make_decl("animation-fill-mode", "forwards"), parent);
+    EXPECT_EQ(style.animation_fill_mode, 1);
+
+    cascade.apply_declaration(style, make_decl("animation-fill-mode", "backwards"), parent);
+    EXPECT_EQ(style.animation_fill_mode, 2);
+
+    cascade.apply_declaration(style, make_decl("animation-fill-mode", "both"), parent);
+    EXPECT_EQ(style.animation_fill_mode, 3);
+
+    cascade.apply_declaration(style, make_decl("animation-fill-mode", "none"), parent);
+    EXPECT_EQ(style.animation_fill_mode, 0);
+}
+
+TEST(PropertyCascadeTest, AnimationPlayStateValues) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.animation_play_state, 0);  // default: running
+
+    cascade.apply_declaration(style, make_decl("animation-play-state", "paused"), parent);
+    EXPECT_EQ(style.animation_play_state, 1);
+
+    cascade.apply_declaration(style, make_decl("animation-play-state", "running"), parent);
+    EXPECT_EQ(style.animation_play_state, 0);
+}
