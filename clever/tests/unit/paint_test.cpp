@@ -39127,6 +39127,14 @@ TEST(WebFontRegistration, DecodeFontDataUrlPercentEncoded) {
     EXPECT_EQ((*decoded)[3], 0x03);
 }
 
+TEST(WebFontRegistration, DecodeFontDataUrlRejectsMalformedPercentEscape) {
+    EXPECT_FALSE(decode_font_data_url("data:font/ttf,%0G%01").has_value());
+}
+
+TEST(WebFontRegistration, DecodeFontDataUrlRejectsTruncatedPercentEscape) {
+    EXPECT_FALSE(decode_font_data_url("data:font/ttf,%0").has_value());
+}
+
 TEST(WebFontRegistration, DecodeFontDataUrlRejectsInvalidBase64) {
     EXPECT_FALSE(decode_font_data_url("data:font/ttf;base64,@@@").has_value());
 }

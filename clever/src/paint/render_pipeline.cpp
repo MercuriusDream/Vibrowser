@@ -370,6 +370,22 @@ std::optional<std::vector<uint8_t>> decode_font_data_url(const std::string& url)
         }
     }
     if (!is_base64) {
+        auto has_invalid_percent_escape = [&payload]() -> bool {
+            auto is_hex_digit = [](unsigned char c) -> bool {
+                return std::isxdigit(c) != 0;
+            };
+            for (size_t i = 0; i < payload.size(); ++i) {
+                if (payload[i] != '%') continue;
+                if (i + 2 >= payload.size()) return true;
+                const unsigned char hi = static_cast<unsigned char>(payload[i + 1]);
+                const unsigned char lo = static_cast<unsigned char>(payload[i + 2]);
+                if (!is_hex_digit(hi) || !is_hex_digit(lo)) return true;
+                i += 2;
+            }
+            return false;
+        };
+        if (has_invalid_percent_escape()) return std::nullopt;
+
         const auto decoded = clever::url::percent_decode(payload);
         if (decoded.empty()) return std::nullopt;
         return std::vector<uint8_t>(decoded.begin(), decoded.end());
