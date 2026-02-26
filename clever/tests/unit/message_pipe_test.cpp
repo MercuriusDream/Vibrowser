@@ -311,3 +311,102 @@ TEST(MessagePipeTest, ReceiveFromClosedSenderReturnsNullopt) {
     auto recv = b.receive();
     EXPECT_FALSE(recv.has_value());
 }
+
+// ============================================================================
+// Cycle 501: MessagePipe regression tests
+// ============================================================================
+
+// send/receive exactly 1 byte
+TEST(MessagePipeTest, SendOneByteSingleValue) {
+    auto [a, b] = MessagePipe::create_pair();
+    const uint8_t kByte = 0xAB;
+    ASSERT_TRUE(a.send(&kByte, 1));
+    auto received = b.receive();
+    ASSERT_TRUE(received.has_value());
+    ASSERT_EQ(received->size(), 1u);
+    EXPECT_EQ((*received)[0], kByte);
+}
+
+// 1000-byte payload round-trips correctly
+TEST(MessagePipeTest, Send1000BytePayloadRoundTrip) {
+    auto [a, b] = MessagePipe::create_pair();
+    std::vector<uint8_t> payload(1000);
+    for (size_t i = 0; i < payload.size(); ++i) payload[i] = static_cast<uint8_t>(i % 251);
+    ASSERT_TRUE(a.send(payload));
+    auto received = b.receive();
+    ASSERT_TRUE(received.has_value());
+    EXPECT_EQ(*received, payload);
+}
+
+// 100 bytes of 0xFF are all preserved
+TEST(MessagePipeTest, AllFfBytesPreserved) {
+    auto [a, b] = MessagePipe::create_pair();
+    std::vector<uint8_t> all_ff(100, 0xFF);
+    ASSERT_TRUE(a.send(all_ff));
+    auto received = b.receive();
+    ASSERT_TRUE(received.has_value());
+    EXPECT_EQ(*received, all_ff);
+}
+
+// 10 sequential messages all received intact
+TEST(MessagePipeTest, TenSequentialMessagesAllReceived) {
+    auto [a, b] = MessagePipe::create_pair();
+    for (int i = 0; i < 10; ++i) {
+        std::vector<uint8_t> payload = {static_cast<uint8_t>(i), static_cast<uint8_t>(i + 1)};
+        ASSERT_TRUE(a.send(payload));
+        auto received = b.receive();
+        ASSERT_TRUE(received.has_value());
+        EXPECT_EQ(*received, payload);
+    }
+}
+
+// received payload size matches the sent payload size
+TEST(MessagePipeTest, ReceivedPayloadSizeMatchesSent) {
+    auto [a, b] = MessagePipe::create_pair();
+    std::vector<uint8_t> payload(42, 0x5A);
+    ASSERT_TRUE(a.send(payload));
+    auto received = b.receive();
+    ASSERT_TRUE(received.has_value());
+    EXPECT_EQ(received->size(), payload.size());
+}
+
+// send empty then send non-empty — both received in order
+TEST(MessagePipeTest, EmptyThenNonEmptySequential) {
+    auto [a, b] = MessagePipe::create_pair();
+    std::vector<uint8_t> empty;
+    std::vector<uint8_t> nonempty = {0x01, 0x02, 0x03};
+
+    ASSERT_TRUE(a.send(empty));
+    ASSERT_TRUE(a.send(nonempty));
+
+    auto r1 = b.receive();
+    ASSERT_TRUE(r1.has_value());
+    EXPECT_TRUE(r1->empty());
+
+    auto r2 = b.receive();
+    ASSERT_TRUE(r2.has_value());
+    EXPECT_EQ(*r2, nonempty);
+}
+
+// send 1 byte via raw pointer API
+TEST(MessagePipeTest, SendRawPointerSize1) {
+    auto [a, b] = MessagePipe::create_pair();
+    const uint8_t kVal = 0x77;
+    ASSERT_TRUE(a.send(&kVal, 1));
+    auto received = b.receive();
+    ASSERT_TRUE(received.has_value());
+    ASSERT_EQ(received->size(), 1u);
+    EXPECT_EQ((*received)[0], kVal);
+}
+
+// 3 consecutive sends from A, all received by B
+TEST(MessagePipeTest, ThreeConsecutiveSendsAllReceived) {
+    auto [a, b] = MessagePipe::create_pair();
+    std::vector<std::vector<uint8_t>> msgs = {{1}, {2, 3}, {4, 5, 6}};
+    for (auto& m : msgs) ASSERT_TRUE(a.send(m));
+    for (size_t i = 0; i < msgs.size(); ++i) {
+        auto received = b.receive();
+        ASSERT_TRUE(received.has_value());
+        EXPECT_EQ(*received, msgs[i]);
+    }
+}
