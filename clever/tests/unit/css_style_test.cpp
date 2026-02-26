@@ -5402,3 +5402,77 @@ TEST(SelectorMatcherTest, NthOfTypePseudoClass) {
     first_p.same_type_count = 3;
     EXPECT_FALSE(matcher.matches(first_p, complex));
 }
+
+// ============================================================================
+// Cycle 425: CSS custom properties (--variable) storage and var() resolution
+// ============================================================================
+TEST(PropertyCascadeTest, CustomPropertyStorage) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    // Applying a --custom-property declaration should store it in custom_properties
+    cascade.apply_declaration(style, make_decl("--primary-color", "blue"), parent);
+    ASSERT_NE(style.custom_properties.find("--primary-color"), style.custom_properties.end());
+    EXPECT_EQ(style.custom_properties.at("--primary-color"), "blue");
+}
+
+TEST(PropertyCascadeTest, VarResolutionFromSelfCustomProperty) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    // First store the custom property
+    cascade.apply_declaration(style, make_decl("--my-color", "red"), parent);
+    // Then resolve var(--my-color) in the color property
+    cascade.apply_declaration(style, make_decl("color", "var(--my-color)"), parent);
+    EXPECT_EQ(style.color, (Color{255, 0, 0, 255}));
+}
+
+TEST(PropertyCascadeTest, VarResolutionFromParentCustomProperty) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    // Custom property lives on the parent
+    parent.custom_properties["--inherited-color"] = "#0000ff";
+    cascade.apply_declaration(style, make_decl("color", "var(--inherited-color)"), parent);
+    EXPECT_EQ(style.color, (Color{0, 0, 255, 255}));
+}
+
+TEST(PropertyCascadeTest, VarResolutionFallbackUsed) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    // --undefined-var not set — fallback should be used
+    cascade.apply_declaration(style, make_decl("color", "var(--undefined-var, green)"), parent);
+    EXPECT_EQ(style.color, (Color{0, 128, 0, 255}));
+}
+
+TEST(PropertyCascadeTest, CustomPropertyParsedFromStylesheet) {
+    // CSS custom properties in a stylesheet rule should produce declarations
+    // with property names starting with "--"
+    auto sheet = parse_stylesheet("div { --spacing: 16px; color: red; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found_custom = false;
+    for (const auto& decl : sheet.rules[0].declarations) {
+        if (decl.property == "--spacing") {
+            found_custom = true;
+        }
+    }
+    EXPECT_TRUE(found_custom);
+}
+
+TEST(PropertyCascadeTest, VarSelfReferenceDoesNotCrash) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    // Self-referential var() — should not crash, just leave property unchanged
+    // (the var_pass loop will exhaust without resolving)
+    style.custom_properties["--loop"] = "var(--loop)";
+    cascade.apply_declaration(style, make_decl("color", "var(--loop)"), parent);
+    // Just verify we didn't crash — color may remain default black
+    (void)style.color;
+}
