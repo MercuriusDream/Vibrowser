@@ -1001,6 +1001,45 @@ int main() {
         }
     }
 
+    // Test 53: credentialed CORS rejects duplicate ACAC headers even when ACAC is optional
+    {
+        browser::net::RequestPolicy policy;
+        policy.origin = "https://app.example.com";
+        policy.credentials_mode_include = true;
+        policy.require_acac_for_credentialed_cors = false;
+        browser::net::Response response;
+        response.headers["access-control-allow-origin"] = "https://app.example.com";
+        response.headers["access-control-allow-credentials"] = "true";
+        response.headers["Access-Control-Allow-Credentials"] = "true";
+        auto result =
+            browser::net::check_cors_response_policy("https://api.example.com/data", response, policy);
+        if (result.allowed) {
+            std::cerr << "FAIL: duplicate ACAC headers should be rejected even when ACAC is optional\n";
+            ++failures;
+        } else {
+            std::cerr << "PASS: duplicate ACAC headers are rejected when ACAC is optional\n";
+        }
+    }
+
+    // Test 54: credentialed CORS rejects control-character ACAC values even when ACAC is optional
+    {
+        browser::net::RequestPolicy policy;
+        policy.origin = "https://app.example.com";
+        policy.credentials_mode_include = true;
+        policy.require_acac_for_credentialed_cors = false;
+        browser::net::Response response;
+        response.headers["access-control-allow-origin"] = "https://app.example.com";
+        response.headers["access-control-allow-credentials"] = "true\x1f";
+        auto result =
+            browser::net::check_cors_response_policy("https://api.example.com/data", response, policy);
+        if (result.allowed) {
+            std::cerr << "FAIL: control-character ACAC should be rejected when ACAC is optional\n";
+            ++failures;
+        } else {
+            std::cerr << "PASS: control-character ACAC is rejected when ACAC is optional\n";
+        }
+    }
+
     if (failures > 0) {
         std::cerr << "\n" << failures << " test(s) FAILED\n";
         return 1;

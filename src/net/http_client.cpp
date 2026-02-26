@@ -2207,13 +2207,17 @@ PolicyCheckResult check_cors_response_policy(const std::string& url,
                     PolicyViolation::CorsResponseBlocked,
                     "Cross-origin response blocked: ACAO '*' disallowed for credentialed CORS"};
         }
+        const SingleHeaderLookupResult acac_header = find_single_header_value_case_insensitive(
+            response.headers, "access-control-allow-credentials");
+        const std::string acac_value = acac_header.found ? trim_ascii(acac_header.value) : "";
+        if (acac_header.duplicate ||
+            (acac_header.found && has_forbidden_header_value_char(acac_value))) {
+            return {false,
+                    PolicyViolation::CorsResponseBlocked,
+                    "Cross-origin response blocked: invalid Access-Control-Allow-Credentials header"};
+        }
         if (policy.require_acac_for_credentialed_cors) {
-            const SingleHeaderLookupResult acac_header = find_single_header_value_case_insensitive(
-                response.headers, "access-control-allow-credentials");
-            const std::string acac_value = acac_header.found ? trim_ascii(acac_header.value) : "";
-            if (!acac_header.found || acac_header.duplicate ||
-                has_forbidden_header_value_char(acac_value) ||
-                acac_value != "true") {
+            if (!acac_header.found || acac_value != "true") {
                 return {false,
                         PolicyViolation::CorsResponseBlocked,
                         "Cross-origin response blocked: missing Access-Control-Allow-Credentials=true"};
