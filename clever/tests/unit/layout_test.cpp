@@ -4783,3 +4783,98 @@ TEST(FlexboxAudit, SingleItemJustifyCenter) {
     // free space = 300 - 50 = 250, center → offset = 125
     EXPECT_FLOAT_EQ(root->children[0]->geometry.x, 125.0f);
 }
+
+// ============================================================================
+// Cycle 509: Layout regression tests
+// ============================================================================
+
+TEST(BoxGeometryTest, ContentLeftCalculation) {
+    BoxGeometry g;
+    g.x = 10.0f;
+    g.margin.left = 5.0f;
+    g.border.left = 2.0f;
+    g.padding.left = 8.0f;
+    // content_left = x + margin.left + border.left + padding.left = 10+5+2+8 = 25
+    EXPECT_FLOAT_EQ(g.content_left(), 25.0f);
+}
+
+TEST(BoxGeometryTest, ContentTopCalculation) {
+    BoxGeometry g;
+    g.y = 20.0f;
+    g.margin.top = 4.0f;
+    g.border.top = 1.0f;
+    g.padding.top = 6.0f;
+    // content_top = y + margin.top + border.top + padding.top = 20+4+1+6 = 31
+    EXPECT_FLOAT_EQ(g.content_top(), 31.0f);
+}
+
+TEST(BoxGeometryTest, MarginBoxHeightCalc) {
+    BoxGeometry g;
+    g.height = 100.0f;
+    g.margin.top = 5.0f;    g.margin.bottom = 10.0f;
+    g.border.top = 2.0f;    g.border.bottom = 2.0f;
+    g.padding.top = 8.0f;   g.padding.bottom = 8.0f;
+    // 5+2+8+100+8+2+10 = 135
+    EXPECT_FLOAT_EQ(g.margin_box_height(), 135.0f);
+}
+
+TEST(BoxGeometryTest, BorderBoxHeightCalc) {
+    BoxGeometry g;
+    g.height = 50.0f;
+    g.border.top = 3.0f;    g.border.bottom = 3.0f;
+    g.padding.top = 7.0f;   g.padding.bottom = 7.0f;
+    // 3+7+50+7+3 = 70
+    EXPECT_FLOAT_EQ(g.border_box_height(), 70.0f);
+}
+
+TEST(LayoutEngineTest, MaxWidthConstraintEnforced) {
+    auto root = make_block("div");
+    root->max_width = 200.0f;
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+    EXPECT_LE(root->geometry.width, 200.0f);
+}
+
+TEST(LayoutEngineTest, MinWidthConstraintEnforced) {
+    auto root = make_block("div");
+    root->specified_width = 50.0f;
+    root->min_width = 300.0f;
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+    EXPECT_GE(root->geometry.width, 300.0f);
+}
+
+TEST(FlexboxAudit, AlignItemsCenter) {
+    auto root = make_flex("div");
+    root->flex_direction = 0; // row
+    root->align_items = 2; // center
+    root->specified_width = 400.0f;
+    root->specified_height = 200.0f;
+
+    auto child = make_block("div");
+    child->specified_width = 80.0f;
+    child->specified_height = 60.0f;
+    child->flex_grow = 0; child->flex_shrink = 0;
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 400.0f, 400.0f);
+
+    ASSERT_GE(root->children.size(), 1u);
+    // center: y = (container_height - child_height) / 2 = (200 - 60) / 2 = 70
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.y, 70.0f)
+        << "align-items:center should vertically center child";
+}
+
+TEST(LayoutSVG, UseElementFieldsSet) {
+    auto node = make_block("use");
+    node->is_svg = true;
+    node->is_svg_use = true;
+    node->svg_use_href = "#target";
+    node->svg_use_x = 10.0f;
+    node->svg_use_y = 20.0f;
+    EXPECT_TRUE(node->is_svg_use);
+    EXPECT_EQ(node->svg_use_href, "#target");
+    EXPECT_FLOAT_EQ(node->svg_use_x, 10.0f);
+    EXPECT_FLOAT_EQ(node->svg_use_y, 20.0f);
+}
