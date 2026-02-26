@@ -1327,6 +1327,83 @@ int main() {
         }
 
         if (browser::net::parse_http_status_line(
+                "HTTP/1.10 200 OK", http_version, status_code, reason, err)) {
+            std::cerr << "FAIL: HTTP/1.10 status line should be rejected as malformed\n";
+            ++failures;
+        } else if (err.find("Malformed HTTP status line") == std::string::npos) {
+            std::cerr << "FAIL: expected malformed error for HTTP/1.10; got: " << err << "\n";
+            ++failures;
+        } else {
+            std::cerr << "PASS: HTTP/1.10 status line is rejected as malformed\n";
+        }
+
+        if (browser::net::parse_http_status_line(
+                "HTTP/1.11 200 OK", http_version, status_code, reason, err)) {
+            std::cerr << "FAIL: HTTP/1.11 status line should be rejected as malformed\n";
+            ++failures;
+        } else if (err.find("Malformed HTTP status line") == std::string::npos) {
+            std::cerr << "FAIL: expected malformed error for HTTP/1.11; got: " << err << "\n";
+            ++failures;
+        } else {
+            std::cerr << "PASS: HTTP/1.11 status line is rejected as malformed\n";
+        }
+
+        if (browser::net::parse_http_status_line(
+                "HTTP/1.00 200 OK", http_version, status_code, reason, err)) {
+            std::cerr << "FAIL: HTTP/1.00 status line should be rejected as malformed\n";
+            ++failures;
+        } else if (err.find("Malformed HTTP status line") == std::string::npos) {
+            std::cerr << "FAIL: expected malformed error for HTTP/1.00; got: " << err << "\n";
+            ++failures;
+        } else {
+            std::cerr << "PASS: HTTP/1.00 status line is rejected as malformed\n";
+        }
+
+        if (browser::net::parse_http_status_line(
+                "HTTP/1 200 OK", http_version, status_code, reason, err)) {
+            std::cerr << "FAIL: HTTP/1 status line should be rejected as unsupported version\n";
+            ++failures;
+        } else if (err.find("Unsupported HTTP status line version 'HTTP/1'") == std::string::npos) {
+            std::cerr << "FAIL: expected unsupported-version error for HTTP/1; got: " << err << "\n";
+            ++failures;
+        } else {
+            std::cerr << "PASS: HTTP/1 status line is rejected as unsupported version\n";
+        }
+
+        if (browser::net::parse_http_status_line(
+                "HTTP/1. 200 OK", http_version, status_code, reason, err)) {
+            std::cerr << "FAIL: HTTP/1. status line should be rejected as unsupported version\n";
+            ++failures;
+        } else if (err.find("Unsupported HTTP status line version 'HTTP/1.'") == std::string::npos) {
+            std::cerr << "FAIL: expected unsupported-version error for HTTP/1.; got: " << err << "\n";
+            ++failures;
+        } else {
+            std::cerr << "PASS: HTTP/1. status line is rejected as unsupported version\n";
+        }
+
+        if (browser::net::parse_http_status_line(
+                "HTTP/0.9 200 OK", http_version, status_code, reason, err)) {
+            std::cerr << "FAIL: HTTP/0.9 status line should be rejected as unsupported version\n";
+            ++failures;
+        } else if (err.find("Unsupported HTTP status line version 'HTTP/0.9'") == std::string::npos) {
+            std::cerr << "FAIL: expected unsupported-version error for HTTP/0.9; got: " << err << "\n";
+            ++failures;
+        } else {
+            std::cerr << "PASS: HTTP/0.9 status line is rejected as unsupported version\n";
+        }
+
+        if (browser::net::parse_http_status_line(
+                "HTTP/2.1 200 OK", http_version, status_code, reason, err)) {
+            std::cerr << "FAIL: HTTP/2.1 status line should be rejected as unsupported version\n";
+            ++failures;
+        } else if (err.find("Unsupported HTTP status line version 'HTTP/2.1'") == std::string::npos) {
+            std::cerr << "FAIL: expected unsupported-version error for HTTP/2.1; got: " << err << "\n";
+            ++failures;
+        } else {
+            std::cerr << "PASS: HTTP/2.1 status line is rejected as unsupported version\n";
+        }
+
+        if (browser::net::parse_http_status_line(
                 "PRI * HTTP/2.0", http_version, status_code, reason, err)) {
             std::cerr << "FAIL: HTTP/2 preface line should be rejected until h2 transport is implemented\n";
             ++failures;
