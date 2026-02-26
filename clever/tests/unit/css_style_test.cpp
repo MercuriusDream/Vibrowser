@@ -10791,3 +10791,147 @@ TEST(PropertyCascadeTest, ListStyleImageUrlAndNone) {
     cascade.apply_declaration(style, make_decl("list-style-image", "none"), parent);
     EXPECT_TRUE(style.list_style_image.empty());
 }
+
+// ---------------------------------------------------------------------------
+// Cycle 477 — background-position longhands, inline/block-size, text-emphasis,
+//             text-underline-offset, background and border shorthands
+// ---------------------------------------------------------------------------
+
+TEST(PropertyCascadeTest, BackgroundPositionXLonghand) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.background_position_x, 0);  // default: left
+
+    cascade.apply_declaration(style, make_decl("background-position-x", "right"), parent);
+    EXPECT_EQ(style.background_position_x, 2);
+
+    cascade.apply_declaration(style, make_decl("background-position-x", "center"), parent);
+    EXPECT_EQ(style.background_position_x, 1);
+
+    cascade.apply_declaration(style, make_decl("background-position-x", "left"), parent);
+    EXPECT_EQ(style.background_position_x, 0);
+}
+
+TEST(PropertyCascadeTest, BackgroundPositionYLonghand) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.background_position_y, 0);  // default: top
+
+    cascade.apply_declaration(style, make_decl("background-position-y", "bottom"), parent);
+    EXPECT_EQ(style.background_position_y, 2);
+
+    cascade.apply_declaration(style, make_decl("background-position-y", "center"), parent);
+    EXPECT_EQ(style.background_position_y, 1);
+
+    cascade.apply_declaration(style, make_decl("background-position-y", "top"), parent);
+    EXPECT_EQ(style.background_position_y, 0);
+}
+
+TEST(PropertyCascadeTest, InlineSizeAndBlockSize) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    // inline-size maps to width
+    cascade.apply_declaration(style, make_decl("inline-size", "200px"), parent);
+    EXPECT_FLOAT_EQ(style.width.to_px(), 200.0f);
+
+    // block-size maps to height
+    cascade.apply_declaration(style, make_decl("block-size", "100px"), parent);
+    EXPECT_FLOAT_EQ(style.height.to_px(), 100.0f);
+}
+
+TEST(PropertyCascadeTest, TextEmphasisShorthandColor) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.text_emphasis_style, "none");
+    EXPECT_EQ(style.text_emphasis_color, 0u);
+
+    // "circle red" → style="circle", color=ARGB red (0xFFFF0000)
+    cascade.apply_declaration(style, make_decl("text-emphasis", "circle red"), parent);
+    EXPECT_EQ(style.text_emphasis_style, "circle");
+    EXPECT_EQ(style.text_emphasis_color, 0xFFFF0000u);
+
+    // "none" resets both
+    cascade.apply_declaration(style, make_decl("text-emphasis", "none"), parent);
+    EXPECT_EQ(style.text_emphasis_style, "none");
+    EXPECT_EQ(style.text_emphasis_color, 0u);
+}
+
+TEST(PropertyCascadeTest, TextEmphasisColorDirect) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.text_emphasis_color, 0u);  // default
+
+    // blue → ARGB 0xFF0000FF
+    cascade.apply_declaration(style, make_decl("text-emphasis-color", "blue"), parent);
+    EXPECT_EQ(style.text_emphasis_color, 0xFF0000FFu);
+
+    // green → ARGB 0xFF008000
+    cascade.apply_declaration(style, make_decl("text-emphasis-color", "green"), parent);
+    EXPECT_EQ(style.text_emphasis_color, 0xFF008000u);
+}
+
+TEST(PropertyCascadeTest, TextUnderlineOffset) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_FLOAT_EQ(style.text_underline_offset, 0.0f);  // default
+
+    cascade.apply_declaration(style, make_decl("text-underline-offset", "5px"), parent);
+    EXPECT_FLOAT_EQ(style.text_underline_offset, 5.0f);
+
+    cascade.apply_declaration(style, make_decl("text-underline-offset", "0"), parent);
+    EXPECT_FLOAT_EQ(style.text_underline_offset, 0.0f);
+}
+
+TEST(PropertyCascadeTest, BackgroundShorthandColor) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.background_color.a, 0);  // default: transparent
+
+    cascade.apply_declaration(style, make_decl("background", "red"), parent);
+    EXPECT_EQ(style.background_color.r, 255);
+    EXPECT_EQ(style.background_color.g, 0);
+    EXPECT_EQ(style.background_color.b, 0);
+    EXPECT_EQ(style.background_color.a, 255);
+
+    cascade.apply_declaration(style, make_decl("background", "blue"), parent);
+    EXPECT_EQ(style.background_color.r, 0);
+    EXPECT_EQ(style.background_color.b, 255);
+    EXPECT_EQ(style.background_color.a, 255);
+}
+
+TEST(PropertyCascadeTest, BorderShorthand) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("border", "2px solid blue"), parent);
+    // All 4 sides get same width, style, color
+    EXPECT_FLOAT_EQ(style.border_top.width.to_px(), 2.0f);
+    EXPECT_EQ(style.border_top.style, BorderStyle::Solid);
+    EXPECT_EQ(style.border_top.color.b, 255);
+    EXPECT_EQ(style.border_top.color.a, 255);
+
+    EXPECT_FLOAT_EQ(style.border_right.width.to_px(), 2.0f);
+    EXPECT_EQ(style.border_right.style, BorderStyle::Solid);
+    EXPECT_EQ(style.border_right.color.b, 255);
+
+    EXPECT_FLOAT_EQ(style.border_bottom.width.to_px(), 2.0f);
+    EXPECT_EQ(style.border_bottom.color.b, 255);
+
+    EXPECT_FLOAT_EQ(style.border_left.width.to_px(), 2.0f);
+    EXPECT_EQ(style.border_left.color.b, 255);
+}
