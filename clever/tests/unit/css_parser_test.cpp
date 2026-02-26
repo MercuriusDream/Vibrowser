@@ -1291,3 +1291,118 @@ TEST(CSSParserTest, ParseDeclarationBlock) {
     EXPECT_TRUE(found_color);
     EXPECT_TRUE(found_font_size);
 }
+
+// =============================================================================
+// Cycle 481 — @keyframes percentage stops, multiple animations, pseudo-class
+//             arguments, attribute selectors, complex @supports
+// =============================================================================
+
+TEST(CSSParserTest, KeyframesWithPercentageStops) {
+    auto sheet = parse_stylesheet(R"(
+        @keyframes slide {
+            0% { transform: translateX(0); }
+            50% { transform: translateX(50px); }
+            100% { transform: translateX(100px); }
+        }
+    )");
+    ASSERT_EQ(sheet.keyframes.size(), 1u);
+    EXPECT_EQ(sheet.keyframes[0].name, "slide");
+    ASSERT_EQ(sheet.keyframes[0].keyframes.size(), 3u);
+    EXPECT_EQ(sheet.keyframes[0].keyframes[0].selector, "0%");
+    EXPECT_EQ(sheet.keyframes[0].keyframes[1].selector, "50%");
+    EXPECT_EQ(sheet.keyframes[0].keyframes[2].selector, "100%");
+    // Check declarations were parsed
+    EXPECT_FALSE(sheet.keyframes[0].keyframes[0].declarations.empty());
+    EXPECT_EQ(sheet.keyframes[0].keyframes[0].declarations[0].property, "transform");
+}
+
+TEST(CSSParserTest, KeyframesMultipleInStylesheet) {
+    auto sheet = parse_stylesheet(R"(
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes scaleUp { from { transform: scale(0); } to { transform: scale(1); } }
+    )");
+    ASSERT_EQ(sheet.keyframes.size(), 2u);
+    EXPECT_EQ(sheet.keyframes[0].name, "fadeIn");
+    EXPECT_EQ(sheet.keyframes[1].name, "scaleUp");
+}
+
+TEST_F(CSSSelectorTest, PseudoClassNthChildArgument) {
+    auto list = parse_selector_list("li:nth-child(2n+1)");
+    ASSERT_EQ(list.selectors.size(), 1u);
+    const auto& compound = list.selectors[0].parts[0].compound;
+    bool found_nth = false;
+    for (const auto& ss : compound.simple_selectors) {
+        if (ss.type == SimpleSelectorType::PseudoClass && ss.value == "nth-child") {
+            EXPECT_FALSE(ss.argument.empty()) << "nth-child should have argument";
+            found_nth = true;
+        }
+    }
+    EXPECT_TRUE(found_nth) << "Should have :nth-child pseudo-class";
+}
+
+TEST_F(CSSSelectorTest, PseudoClassNotArgument) {
+    auto list = parse_selector_list("button:not(.disabled)");
+    ASSERT_EQ(list.selectors.size(), 1u);
+    const auto& compound = list.selectors[0].parts[0].compound;
+    bool found_not = false;
+    for (const auto& ss : compound.simple_selectors) {
+        if (ss.type == SimpleSelectorType::PseudoClass && ss.value == "not") {
+            EXPECT_FALSE(ss.argument.empty()) << ":not() should have argument";
+            found_not = true;
+        }
+    }
+    EXPECT_TRUE(found_not) << "Should have :not pseudo-class";
+}
+
+TEST_F(CSSSelectorTest, AttributeSelectorDashMatchLang) {
+    auto list = parse_selector_list("[lang|=en]");
+    ASSERT_EQ(list.selectors.size(), 1u);
+    const auto& compound = list.selectors[0].parts[0].compound;
+    ASSERT_GE(compound.simple_selectors.size(), 1u);
+    const auto& ss = compound.simple_selectors[0];
+    EXPECT_EQ(ss.type, SimpleSelectorType::Attribute);
+    EXPECT_EQ(ss.attr_match, AttributeMatch::DashMatch);
+    EXPECT_EQ(ss.attr_name, "lang");
+    EXPECT_EQ(ss.attr_value, "en");
+}
+
+TEST_F(CSSSelectorTest, SelectorListWithThreeSelectors) {
+    auto list = parse_selector_list("h1, h2, h3");
+    ASSERT_EQ(list.selectors.size(), 3u);
+    EXPECT_EQ(list.selectors[0].parts[0].compound.simple_selectors[0].value, "h1");
+    EXPECT_EQ(list.selectors[1].parts[0].compound.simple_selectors[0].value, "h2");
+    EXPECT_EQ(list.selectors[2].parts[0].compound.simple_selectors[0].value, "h3");
+}
+
+TEST(CSSParserTest, SupportsWithOrCondition) {
+    auto sheet = parse_stylesheet(R"(
+        @supports (display: grid) or (display: flex) {
+            .layout { display: grid; }
+        }
+    )");
+    ASSERT_EQ(sheet.supports_rules.size(), 1u);
+    EXPECT_NE(sheet.supports_rules[0].condition.find("grid"), std::string::npos);
+    ASSERT_EQ(sheet.supports_rules[0].rules.size(), 1u);
+    EXPECT_EQ(sheet.supports_rules[0].rules[0].selector_text, ".layout");
+}
+
+TEST(CSSParserTest, StylesheetWithMixedAtRulesAndRules) {
+    auto sheet = parse_stylesheet(R"(
+        body { margin: 0; }
+        @media (max-width: 600px) { body { font-size: 14px; } }
+        .container { max-width: 1200px; }
+        @keyframes pulse { from { opacity: 1; } to { opacity: 0.5; } }
+    )");
+    ASSERT_GE(sheet.rules.size(), 2u);  // body and .container
+    ASSERT_EQ(sheet.media_queries.size(), 1u);
+    ASSERT_EQ(sheet.keyframes.size(), 1u);
+    // Check regular rules are present
+    bool found_body = false;
+    bool found_container = false;
+    for (const auto& r : sheet.rules) {
+        if (r.selector_text == "body") found_body = true;
+        if (r.selector_text == ".container") found_container = true;
+    }
+    EXPECT_TRUE(found_body);
+    EXPECT_TRUE(found_container);
+}
