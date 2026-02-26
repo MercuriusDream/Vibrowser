@@ -5813,3 +5813,60 @@ TEST(LayoutNodeProps, ModeCanBeFlex) {
     auto node = make_flex("div");
     EXPECT_EQ(node->mode, LayoutMode::Flex);
 }
+
+// ============================================================================
+// Cycle 650: More LayoutNode tests — milestone!
+// ============================================================================
+
+// Block: no children by default
+TEST(LayoutNodeTree, NoChildrenByDefault) {
+    auto node = make_block("div");
+    EXPECT_EQ(node->children.size(), 0u);
+}
+
+// Block: one child appended
+TEST(LayoutNodeTree, OneChildAppended) {
+    auto parent = make_block("div");
+    parent->append_child(make_inline("span"));
+    EXPECT_EQ(parent->children.size(), 1u);
+}
+
+// Layout: geometry padding left can be set
+TEST(GeometryAudit, PaddingLeftTwentyValue) {
+    auto node = make_block("div");
+    node->geometry.padding.left = 20.0f;
+    EXPECT_FLOAT_EQ(node->geometry.padding.left, 20.0f);
+}
+
+// Layout: geometry margin right can be set
+TEST(GeometryAudit, MarginRightTenValue) {
+    auto node = make_block("div");
+    node->geometry.margin.right = 10.0f;
+    EXPECT_FLOAT_EQ(node->geometry.margin.right, 10.0f);
+}
+
+// Layout: geometry border top can be set
+TEST(GeometryAudit, BorderTopTwoValue) {
+    auto node = make_block("div");
+    node->geometry.border.top = 2.0f;
+    EXPECT_FLOAT_EQ(node->geometry.border.top, 2.0f);
+}
+
+// Flex: flex_direction defaults to Row (0)
+TEST(FlexboxAudit, FlexDirectionDefaultsToRow) {
+    auto node = make_flex("div");
+    EXPECT_EQ(node->flex_direction, 0);
+}
+
+// Layout: z_index can be set to negative
+TEST(LayoutNodeProps, ZIndexNegativeValue) {
+    auto node = make_block("div");
+    node->z_index = -5;
+    EXPECT_EQ(node->z_index, -5);
+}
+
+// Layout: opacity defaults to 1.0
+TEST(LayoutNodeProps, OpacityDefaultsToOneV2) {
+    auto node = make_block("div");
+    EXPECT_FLOAT_EQ(node->opacity, 1.0f);
+}
