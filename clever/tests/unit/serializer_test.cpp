@@ -1742,3 +1742,94 @@ TEST(SerializerTest, DataNonEmptyAfterStringWrite) {
     s.write_string("data");
     EXPECT_FALSE(s.data().empty());
 }
+
+// ============================================================================
+// Cycle 653: More Serializer tests
+// ============================================================================
+
+// Write and read exactly 3 strings in sequence
+TEST(SerializerTest, ThreeDistinctStringsSequence) {
+    Serializer s;
+    s.write_string("one");
+    s.write_string("two");
+    s.write_string("three");
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "one");
+    EXPECT_EQ(d.read_string(), "two");
+    EXPECT_EQ(d.read_string(), "three");
+    EXPECT_FALSE(d.has_remaining());
+}
+
+// Write u32 max value
+TEST(SerializerTest, U32MaxValueVerified) {
+    Serializer s;
+    s.write_u32(4294967295u);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u32(), 4294967295u);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+// Write then take data, remaining is 0
+TEST(SerializerTest, TakeDataRemainingZero) {
+    Serializer s;
+    s.write_u8(1);
+    s.write_u8(2);
+    auto data = s.take_data();
+    EXPECT_EQ(data.size(), 2u);
+}
+
+// Bool sequence true, false, true
+TEST(SerializerTest, TrueFalseTrueBoolSequence) {
+    Serializer s;
+    s.write_bool(true);
+    s.write_bool(false);
+    s.write_bool(true);
+    Deserializer d(s.data());
+    EXPECT_TRUE(d.read_bool());
+    EXPECT_FALSE(d.read_bool());
+    EXPECT_TRUE(d.read_bool());
+    EXPECT_FALSE(d.has_remaining());
+}
+
+// Write u8 then i64 interleaved
+TEST(SerializerTest, U8ThenI64Interleaved) {
+    Serializer s;
+    s.write_u8(55u);
+    s.write_i64(-1000000000LL);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u8(), 55u);
+    EXPECT_EQ(d.read_i64(), -1000000000LL);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+// Remaining after partial read
+TEST(SerializerTest, RemainingAfterPartialRead) {
+    Serializer s;
+    s.write_u32(10u);
+    s.write_u32(20u);
+    Deserializer d(s.data());
+    d.read_u32();
+    EXPECT_EQ(d.remaining(), 4u);
+}
+
+// Write 0 u16 and max u32 together
+TEST(SerializerTest, U16ZeroAndU32MaxTogether) {
+    Serializer s;
+    s.write_u16(0u);
+    s.write_u32(4294967295u);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u16(), 0u);
+    EXPECT_EQ(d.read_u32(), 4294967295u);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+// String "abc" then u8 42
+TEST(SerializerTest, StringThenU8RoundTrip) {
+    Serializer s;
+    s.write_string("abc");
+    s.write_u8(42u);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "abc");
+    EXPECT_EQ(d.read_u8(), 42u);
+    EXPECT_FALSE(d.has_remaining());
+}
