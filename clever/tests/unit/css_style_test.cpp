@@ -6748,3 +6748,131 @@ TEST(PropertyCascadeTest, TransitionCubicBezierTimingFunction) {
     EXPECT_NEAR(style.transition_bezier_x2, 1.0f, 0.01f);
     EXPECT_NEAR(style.transition_bezier_y2, 1.0f, 0.01f);
 }
+
+// ---------------------------------------------------------------------------
+// Cycle 448 — CSS transform: translate, rotate, scale, skew, matrix,
+//             transform none, transform-style, transform-origin, perspective,
+//             transform-box
+// ---------------------------------------------------------------------------
+
+TEST(PropertyCascadeTest, TransformTranslate) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_TRUE(style.transforms.empty());  // default: none
+
+    cascade.apply_declaration(style, make_decl("transform", "translate(10px, 20px)"), parent);
+    ASSERT_EQ(style.transforms.size(), 1u);
+    EXPECT_EQ(style.transforms[0].type, TransformType::Translate);
+    EXPECT_FLOAT_EQ(style.transforms[0].x, 10.0f);
+    EXPECT_FLOAT_EQ(style.transforms[0].y, 20.0f);
+}
+
+TEST(PropertyCascadeTest, TransformRotate) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("transform", "rotate(45deg)"), parent);
+    ASSERT_EQ(style.transforms.size(), 1u);
+    EXPECT_EQ(style.transforms[0].type, TransformType::Rotate);
+    EXPECT_FLOAT_EQ(style.transforms[0].angle, 45.0f);
+}
+
+TEST(PropertyCascadeTest, TransformScale) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("transform", "scale(2, 0.5)"), parent);
+    ASSERT_EQ(style.transforms.size(), 1u);
+    EXPECT_EQ(style.transforms[0].type, TransformType::Scale);
+    EXPECT_FLOAT_EQ(style.transforms[0].x, 2.0f);
+    EXPECT_FLOAT_EQ(style.transforms[0].y, 0.5f);
+}
+
+TEST(PropertyCascadeTest, TransformNoneClearsTransforms) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("transform", "rotate(90deg)"), parent);
+    ASSERT_EQ(style.transforms.size(), 1u);
+
+    cascade.apply_declaration(style, make_decl("transform", "none"), parent);
+    EXPECT_TRUE(style.transforms.empty());
+}
+
+TEST(PropertyCascadeTest, TransformStyleFlatAndPreserve3d) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.transform_style, 0);  // default: flat
+
+    cascade.apply_declaration(style, make_decl("transform-style", "preserve-3d"), parent);
+    EXPECT_EQ(style.transform_style, 1);
+
+    cascade.apply_declaration(style, make_decl("transform-style", "flat"), parent);
+    EXPECT_EQ(style.transform_style, 0);
+}
+
+TEST(PropertyCascadeTest, TransformOriginKeywords) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_FLOAT_EQ(style.transform_origin_x, 50.0f);  // default: center
+    EXPECT_FLOAT_EQ(style.transform_origin_y, 50.0f);
+
+    cascade.apply_declaration(style, make_decl("transform-origin", "left top"), parent);
+    EXPECT_FLOAT_EQ(style.transform_origin_x, 0.0f);
+    EXPECT_FLOAT_EQ(style.transform_origin_y, 0.0f);
+
+    cascade.apply_declaration(style, make_decl("transform-origin", "right bottom"), parent);
+    EXPECT_FLOAT_EQ(style.transform_origin_x, 100.0f);
+    EXPECT_FLOAT_EQ(style.transform_origin_y, 100.0f);
+
+    cascade.apply_declaration(style, make_decl("transform-origin", "center center"), parent);
+    EXPECT_FLOAT_EQ(style.transform_origin_x, 50.0f);
+    EXPECT_FLOAT_EQ(style.transform_origin_y, 50.0f);
+}
+
+TEST(PropertyCascadeTest, PerspectivePxAndNone) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_FLOAT_EQ(style.perspective, 0.0f);  // default: none
+
+    cascade.apply_declaration(style, make_decl("perspective", "500px"), parent);
+    EXPECT_FLOAT_EQ(style.perspective, 500.0f);
+
+    cascade.apply_declaration(style, make_decl("perspective", "none"), parent);
+    EXPECT_FLOAT_EQ(style.perspective, 0.0f);
+}
+
+TEST(PropertyCascadeTest, TransformBoxValues) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    // Default: border-box (1) for HTML elements
+    EXPECT_EQ(style.transform_box, 1);
+
+    cascade.apply_declaration(style, make_decl("transform-box", "content-box"), parent);
+    EXPECT_EQ(style.transform_box, 0);
+
+    cascade.apply_declaration(style, make_decl("transform-box", "fill-box"), parent);
+    EXPECT_EQ(style.transform_box, 2);
+
+    cascade.apply_declaration(style, make_decl("transform-box", "stroke-box"), parent);
+    EXPECT_EQ(style.transform_box, 3);
+
+    cascade.apply_declaration(style, make_decl("transform-box", "view-box"), parent);
+    EXPECT_EQ(style.transform_box, 4);
+
+    cascade.apply_declaration(style, make_decl("transform-box", "border-box"), parent);
+    EXPECT_EQ(style.transform_box, 1);
+}
