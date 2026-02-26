@@ -8382,3 +8382,152 @@ TEST(PropertyCascadeTest, PlaceContentShorthand) {
     EXPECT_EQ(style.align_content, 1);
     EXPECT_EQ(style.justify_content, JustifyContent::Center);
 }
+
+// ---------------------------------------------------------------------------
+// Cycle 462 — color-scheme, container, forced-color-adjust, paint-order,
+//             dominant-baseline, text-emphasis, -webkit-text-stroke,
+//             print-color-adjust
+// ---------------------------------------------------------------------------
+
+TEST(PropertyCascadeTest, ColorSchemeValues) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.color_scheme, 0);  // default: normal
+
+    cascade.apply_declaration(style, make_decl("color-scheme", "light"), parent);
+    EXPECT_EQ(style.color_scheme, 1);
+
+    cascade.apply_declaration(style, make_decl("color-scheme", "dark"), parent);
+    EXPECT_EQ(style.color_scheme, 2);
+
+    cascade.apply_declaration(style, make_decl("color-scheme", "light dark"), parent);
+    EXPECT_EQ(style.color_scheme, 3);
+
+    cascade.apply_declaration(style, make_decl("color-scheme", "normal"), parent);
+    EXPECT_EQ(style.color_scheme, 0);
+}
+
+TEST(PropertyCascadeTest, ContainerTypeAndName) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.container_type, 0);
+    EXPECT_EQ(style.container_name, "");
+
+    cascade.apply_declaration(style, make_decl("container-type", "inline-size"), parent);
+    EXPECT_EQ(style.container_type, 2);
+
+    cascade.apply_declaration(style, make_decl("container-type", "size"), parent);
+    EXPECT_EQ(style.container_type, 1);
+
+    cascade.apply_declaration(style, make_decl("container-name", "sidebar"), parent);
+    EXPECT_EQ(style.container_name, "sidebar");
+
+    cascade.apply_declaration(style, make_decl("container-type", "normal"), parent);
+    EXPECT_EQ(style.container_type, 0);
+}
+
+TEST(PropertyCascadeTest, ContainerShorthand) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    // "name / type" shorthand
+    cascade.apply_declaration(style, make_decl("container", "layout / inline-size"), parent);
+    EXPECT_EQ(style.container_name, "layout");
+    EXPECT_EQ(style.container_type, 2);
+}
+
+TEST(PropertyCascadeTest, ForcedColorAdjustValues) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.forced_color_adjust, 0);  // default: auto
+
+    cascade.apply_declaration(style, make_decl("forced-color-adjust", "none"), parent);
+    EXPECT_EQ(style.forced_color_adjust, 1);
+
+    cascade.apply_declaration(style, make_decl("forced-color-adjust", "preserve-parent-color"), parent);
+    EXPECT_EQ(style.forced_color_adjust, 2);
+
+    cascade.apply_declaration(style, make_decl("forced-color-adjust", "auto"), parent);
+    EXPECT_EQ(style.forced_color_adjust, 0);
+}
+
+TEST(PropertyCascadeTest, PaintOrderStoresString) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.paint_order, "normal");
+
+    cascade.apply_declaration(style, make_decl("paint-order", "fill stroke markers"), parent);
+    EXPECT_EQ(style.paint_order, "fill stroke markers");
+
+    cascade.apply_declaration(style, make_decl("paint-order", "stroke fill"), parent);
+    EXPECT_EQ(style.paint_order, "stroke fill");
+
+    cascade.apply_declaration(style, make_decl("paint-order", "normal"), parent);
+    EXPECT_EQ(style.paint_order, "normal");
+}
+
+TEST(PropertyCascadeTest, DominantBaselineValues) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.dominant_baseline, 0);  // default: auto
+
+    cascade.apply_declaration(style, make_decl("dominant-baseline", "alphabetic"), parent);
+    EXPECT_EQ(style.dominant_baseline, 2);
+
+    cascade.apply_declaration(style, make_decl("dominant-baseline", "middle"), parent);
+    EXPECT_EQ(style.dominant_baseline, 4);
+
+    cascade.apply_declaration(style, make_decl("dominant-baseline", "hanging"), parent);
+    EXPECT_EQ(style.dominant_baseline, 7);
+
+    cascade.apply_declaration(style, make_decl("dominant-baseline", "auto"), parent);
+    EXPECT_EQ(style.dominant_baseline, 0);
+}
+
+TEST(PropertyCascadeTest, TextEmphasisStyleAndPosition) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.text_emphasis_style, "none");
+    EXPECT_EQ(style.text_emphasis_position, 0);  // default: over right
+
+    cascade.apply_declaration(style, make_decl("text-emphasis-style", "filled dot"), parent);
+    EXPECT_EQ(style.text_emphasis_style, "filled dot");
+
+    cascade.apply_declaration(style, make_decl("text-emphasis-position", "under right"), parent);
+    EXPECT_EQ(style.text_emphasis_position, 1);
+
+    cascade.apply_declaration(style, make_decl("text-emphasis-position", "under left"), parent);
+    EXPECT_EQ(style.text_emphasis_position, 3);
+
+    cascade.apply_declaration(style, make_decl("text-emphasis-position", "over right"), parent);
+    EXPECT_EQ(style.text_emphasis_position, 0);
+}
+
+TEST(PropertyCascadeTest, WebkitTextStrokeWidthAndColor) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_FLOAT_EQ(style.text_stroke_width, 0.0f);
+
+    cascade.apply_declaration(style, make_decl("-webkit-text-stroke-width", "2px"), parent);
+    EXPECT_FLOAT_EQ(style.text_stroke_width, 2.0f);
+
+    cascade.apply_declaration(style, make_decl("-webkit-text-stroke-color", "red"), parent);
+    EXPECT_EQ(style.text_stroke_color.r, 255);
+    EXPECT_EQ(style.text_stroke_color.g, 0);
+    EXPECT_EQ(style.text_stroke_color.b, 0);
+}
