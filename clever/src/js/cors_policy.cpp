@@ -98,6 +98,11 @@ bool cors_allows_response(std::string_view document_origin,
         return false;
     }
 
+    if (has_enforceable_document_origin(document_origin) &&
+        !parse_httpish_url(request_url).has_value()) {
+        return false;
+    }
+
     if (!is_cross_origin(document_origin, request_url)) {
         return true;
     }

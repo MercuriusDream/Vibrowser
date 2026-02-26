@@ -51,6 +51,14 @@ TEST(CORSPolicyTest, CrossOriginRejectsMalformedDocumentOrigin) {
                                       headers, false));
 }
 
+TEST(CORSPolicyTest, CrossOriginRejectsMalformedOrUnsupportedRequestUrl) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "https://app.example");
+    EXPECT_FALSE(cors_allows_response("https://app.example", "", headers, false));
+    EXPECT_FALSE(cors_allows_response("https://app.example", "ftp://api.example/data", headers,
+                                      false));
+}
+
 TEST(CORSPolicyTest, CrossOriginNonCredentialedAllowsWildcardOrExact) {
     clever::net::HeaderMap wildcard;
     wildcard.set("Access-Control-Allow-Origin", "*");
