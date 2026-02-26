@@ -2175,3 +2175,75 @@ TEST_F(CSSStylesheetTest, FontWeightDeclaration) {
     EXPECT_EQ(sheet.rules[0].declarations[0].property, "font-weight");
     EXPECT_EQ(sheet.rules[0].declarations[0].values[0].value, "bold");
 }
+
+// ============================================================================
+// Cycle 606: More CSS parser tests
+// ============================================================================
+
+// Tokenizer: rem dimension
+TEST_F(CSSTokenizerTest, RemDimensionV2Token) {
+    auto tokens = CSSTokenizer::tokenize_all("1.5rem");
+    ASSERT_FALSE(tokens.empty());
+    EXPECT_EQ(tokens[0].type, CSSToken::Dimension);
+    EXPECT_DOUBLE_EQ(tokens[0].numeric_value, 1.5);
+    EXPECT_EQ(tokens[0].unit, "rem");
+}
+
+// Tokenizer: lvh dimension
+TEST_F(CSSTokenizerTest, LvhDimensionToken) {
+    auto tokens = CSSTokenizer::tokenize_all("50lvh");
+    ASSERT_FALSE(tokens.empty());
+    EXPECT_EQ(tokens[0].type, CSSToken::Dimension);
+}
+
+// Selector: pseudo-element ::after
+TEST_F(CSSSelectorTest, PseudoElementAfter) {
+    auto list = parse_selector_list("p::after");
+    ASSERT_EQ(list.selectors.size(), 1u);
+    ASSERT_FALSE(list.selectors[0].parts.empty());
+    auto& compound = list.selectors[0].parts[0].compound;
+    bool found_pseudo = false;
+    for (auto& s : compound.simple_selectors) {
+        if (s.type == SimpleSelectorType::PseudoElement) { found_pseudo = true; break; }
+    }
+    EXPECT_TRUE(found_pseudo);
+}
+
+// Selector: subsequent sibling combinator
+TEST_F(CSSSelectorTest, SubsequentSiblingCombinatorExists) {
+    auto list = parse_selector_list("h1 ~ p");
+    ASSERT_EQ(list.selectors.size(), 1u);
+    EXPECT_EQ(list.selectors[0].parts.size(), 2u);
+    EXPECT_EQ(list.selectors[0].parts[1].combinator, Combinator::SubsequentSibling);
+}
+
+// Selector: comma separates two selectors
+TEST_F(CSSSelectorTest, CommaSeparatesTwoSelectors) {
+    auto list = parse_selector_list("h1, h2");
+    EXPECT_EQ(list.selectors.size(), 2u);
+}
+
+// Selector: three comma-separated selectors
+TEST_F(CSSSelectorTest, ThreeCommaSelectors) {
+    auto list = parse_selector_list("h1, h2, h3");
+    EXPECT_EQ(list.selectors.size(), 3u);
+}
+
+// Stylesheet: text-align center
+TEST_F(CSSStylesheetTest, TextAlignCenterDeclaration) {
+    auto sheet = parse_stylesheet("p { text-align: center; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations) {
+        if (d.property == "text-align") { found = true; break; }
+    }
+    EXPECT_TRUE(found);
+}
+
+// Stylesheet: line-height value
+TEST_F(CSSStylesheetTest, LineHeightDeclaration) {
+    auto sheet = parse_stylesheet("p { line-height: 1.5; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    ASSERT_FALSE(sheet.rules[0].declarations.empty());
+    EXPECT_EQ(sheet.rules[0].declarations[0].property, "line-height");
+}
