@@ -10743,3 +10743,132 @@ TEST(JSDom, ImageConstructor) {
     EXPECT_EQ(result, "true");
     clever::js::cleanup_dom_bindings(engine.context());
 }
+
+// ============================================================================
+// Cycle 433 — Modern JS language feature regression (QuickJS ES2020+ support)
+// ============================================================================
+
+TEST(JSEngine, OptionalChaining) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var obj = {a: {b: 42}};
+        var checks = [];
+        checks.push(obj?.a?.b === 42);
+        checks.push(obj?.missing?.b === undefined);
+        checks.push(obj?.a?.b?.toString() === '42');
+        var arr = [1, 2, 3];
+        checks.push(arr?.[1] === 2);
+        var fn = null;
+        checks.push(fn?.() === undefined);
+        String(checks.every(function(c){return c;}))
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, NullishCoalescing) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var checks = [];
+        checks.push((null ?? 'default') === 'default');
+        checks.push((undefined ?? 99) === 99);
+        checks.push((0 ?? 'fallback') === 0);
+        checks.push(('' ?? 'fallback') === '');
+        checks.push((false ?? 'fallback') === false);
+        String(checks.every(function(c){return c;}))
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, ArrayDestructuring) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var [a, b, c] = [10, 20, 30];
+        var [x, , z] = [1, 2, 3];
+        var [head, ...tail] = [100, 200, 300];
+        String(a === 10 && b === 20 && c === 30 &&
+               x === 1 && z === 3 &&
+               head === 100 && tail[0] === 200 && tail[1] === 300)
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, ObjectDestructuring) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var {x, y} = {x: 10, y: 20};
+        var {a: renamed, b = 99} = {a: 42};
+        var {p: {q}} = {p: {q: 'nested'}};
+        String(x === 10 && y === 20 &&
+               renamed === 42 && b === 99 &&
+               q === 'nested')
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, SpreadOperator) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var arr1 = [1, 2];
+        var arr2 = [3, 4];
+        var merged = [...arr1, ...arr2];
+        var obj1 = {a: 1};
+        var obj2 = {b: 2};
+        var mergedObj = {...obj1, ...obj2};
+        String(merged.length === 4 &&
+               merged[0] === 1 && merged[3] === 4 &&
+               mergedObj.a === 1 && mergedObj.b === 2)
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, ArrayFlatAndFlatMap) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var nested = [1, [2, [3, [4]]]];
+        var flat1 = nested.flat();
+        var flatAll = nested.flat(Infinity);
+        var doubled = [1, 2, 3].flatMap(function(x) { return [x, x * 2]; });
+        String(flat1.length === 3 &&
+               flatAll.length === 4 && flatAll[3] === 4 &&
+               doubled.join(',') === '1,2,2,4,3,6')
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, ObjectEntriesAndFromEntries) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var obj = {a: 1, b: 2, c: 3};
+        var entries = Object.entries(obj);
+        var reconstructed = Object.fromEntries(entries);
+        var keys = Object.keys(obj);
+        var values = Object.values(obj);
+        String(entries.length === 3 &&
+               reconstructed.a === 1 && reconstructed.c === 3 &&
+               keys.length === 3 &&
+               values.indexOf(2) !== -1)
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, StringPadStartAndPadEnd) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var checks = [];
+        checks.push('5'.padStart(3, '0') === '005');
+        checks.push('42'.padStart(5) === '   42');
+        checks.push('hi'.padEnd(5, '!') === 'hi!!!');
+        checks.push('hello'.padEnd(3) === 'hello');
+        checks.push('abc'.padStart(3) === 'abc');
+        String(checks.every(function(c){return c;}))
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true");
+}
