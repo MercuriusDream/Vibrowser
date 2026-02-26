@@ -124,7 +124,8 @@ std::optional<clever::url::URL> parse_httpish_url(std::string_view input) {
             std::isdigit(low) ? (low - '0')
                               : static_cast<unsigned int>(std::tolower(low) - 'a' + 10);
         const unsigned int decoded = (high_nibble << 4U) | low_nibble;
-        if (decoded <= 0x1f || decoded == 0x7f || decoded == '\\') {
+        if (decoded <= 0x1f || decoded == 0x20 || decoded == 0x7f || decoded > 0x7e ||
+            decoded == '\\') {
             return std::nullopt;
         }
     }
