@@ -2545,3 +2545,69 @@ TEST(TreeBuilder, FooterWithCopyrightText) {
     ASSERT_NE(footer, nullptr);
     EXPECT_EQ(footer->text_content(), "Copyright 2024");
 }
+
+// ============================================================================
+// Cycle 671: More HTML parser tests
+// ============================================================================
+
+TEST(TreeBuilder, HeaderContainingSiteTitle) {
+    auto doc = parse(R"(<body><header><h1>Site Title</h1></header></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* header = doc->find_element("header");
+    ASSERT_NE(header, nullptr);
+    auto* h1 = doc->find_element("h1");
+    ASSERT_NE(h1, nullptr);
+    EXPECT_EQ(h1->text_content(), "Site Title");
+}
+
+TEST(TreeBuilder, MainContainingParagraph) {
+    auto doc = parse(R"(<body><main><p>Main content</p></main></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* main_el = doc->find_element("main");
+    ASSERT_NE(main_el, nullptr);
+    auto* p = doc->find_element("p");
+    ASSERT_NE(p, nullptr);
+    EXPECT_EQ(p->text_content(), "Main content");
+}
+
+TEST(TreeBuilder, SectionContainingParagraph) {
+    auto doc = parse(R"(<body><section><p>Section text</p></section></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* section = doc->find_element("section");
+    ASSERT_NE(section, nullptr);
+}
+
+TEST(TreeBuilder, HrBetweenParagraphs) {
+    auto doc = parse(R"(<body><p>Before</p><hr><p>After</p></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* hr = doc->find_element("hr");
+    ASSERT_NE(hr, nullptr);
+}
+
+TEST(TreeBuilder, BrInsideParagraph) {
+    auto doc = parse(R"(<body><p>Line 1<br>Line 2</p></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* br = doc->find_element("br");
+    ASSERT_NE(br, nullptr);
+}
+
+TEST(TreeBuilder, ImgElement) {
+    auto doc = parse(R"(<body><img src="photo.jpg" alt="Photo"></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* img = doc->find_element("img");
+    ASSERT_NE(img, nullptr);
+}
+
+TEST(TreeBuilder, InputElement) {
+    auto doc = parse(R"(<body><form><input type="text" name="q"></form></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* input = doc->find_element("input");
+    ASSERT_NE(input, nullptr);
+}
+
+TEST(TreeBuilder, TableWithRows) {
+    auto doc = parse(R"(<body><table><tr><td>Cell</td></tr></table></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* table = doc->find_element("table");
+    ASSERT_NE(table, nullptr);
+}
