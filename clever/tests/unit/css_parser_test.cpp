@@ -2579,3 +2579,72 @@ TEST_F(CSSStylesheetTest, DisplayDeclaration) {
     }
     EXPECT_TRUE(found);
 }
+
+// ============================================================================
+// Cycle 654: More CSS parser tests
+// ============================================================================
+
+// Tokenizer: identifier token
+TEST_F(CSSTokenizerTest, IdentifierToken) {
+    auto tokens = CSSTokenizer::tokenize_all("auto");
+    ASSERT_FALSE(tokens.empty());
+    EXPECT_EQ(tokens[0].type, CSSToken::Ident);
+}
+
+// Tokenizer: rgb function token
+TEST_F(CSSTokenizerTest, RgbFunctionToken) {
+    auto tokens = CSSTokenizer::tokenize_all("rgb(");
+    ASSERT_FALSE(tokens.empty());
+    EXPECT_EQ(tokens[0].type, CSSToken::Function);
+}
+
+// Tokenizer: standalone colon token
+TEST_F(CSSTokenizerTest, StandaloneColonToken) {
+    auto tokens = CSSTokenizer::tokenize_all(":");
+    ASSERT_FALSE(tokens.empty());
+    EXPECT_EQ(tokens[0].type, CSSToken::Colon);
+}
+
+// Selector: descendant combinator between type selectors
+TEST_F(CSSSelectorTest, DescendantCombinatorBetweenTypes) {
+    auto list = parse_selector_list("section p");
+    ASSERT_EQ(list.selectors.size(), 1u);
+    EXPECT_GE(list.selectors[0].parts.size(), 2u);
+}
+
+// Stylesheet: font-family property
+TEST_F(CSSStylesheetTest, FontFamilyDeclaration) {
+    auto sheet = parse_stylesheet("body { font-family: sans-serif; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations) {
+        if (d.property == "font-family") { found = true; break; }
+    }
+    EXPECT_TRUE(found);
+}
+
+// Stylesheet: background-color property
+TEST_F(CSSStylesheetTest, BackgroundColorPropertyExists) {
+    auto sheet = parse_stylesheet("div { background-color: blue; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations) {
+        if (d.property == "background-color") { found = true; break; }
+    }
+    EXPECT_TRUE(found);
+}
+
+// Stylesheet: three declarations in one rule
+TEST_F(CSSStylesheetTest, ThreeDeclarationsInRule) {
+    auto sheet = parse_stylesheet("div { color: red; font-size: 16px; margin: 0; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    EXPECT_GE(sheet.rules[0].declarations.size(), 3u);
+}
+
+// Stylesheet: property name preserved
+TEST_F(CSSStylesheetTest, PropertyNamePreserved) {
+    auto sheet = parse_stylesheet("p { letter-spacing: 1px; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    ASSERT_FALSE(sheet.rules[0].declarations.empty());
+    EXPECT_EQ(sheet.rules[0].declarations[0].property, "letter-spacing");
+}
