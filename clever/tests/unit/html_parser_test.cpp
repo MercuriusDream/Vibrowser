@@ -2463,3 +2463,85 @@ TEST(TreeBuilder, StrikethroughElement) {
     ASSERT_NE(s, nullptr);
     EXPECT_EQ(s->text_content(), "strikethrough");
 }
+
+// ============================================================================
+// Cycle 663: More HTML parser tests
+// ============================================================================
+
+TEST(TreeBuilder, SubScriptElement) {
+    auto doc = parse(R"(<body><sub>2</sub></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* sub = doc->find_element("sub");
+    ASSERT_NE(sub, nullptr);
+    EXPECT_EQ(sub->text_content(), "2");
+}
+
+TEST(TreeBuilder, SuperScriptElement) {
+    auto doc = parse(R"(<body><sup>3</sup></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* sup = doc->find_element("sup");
+    ASSERT_NE(sup, nullptr);
+    EXPECT_EQ(sup->text_content(), "3");
+}
+
+TEST(TreeBuilder, SpanWithIdAttribute) {
+    auto doc = parse(R"(<body><span id="hero">text</span></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* span = doc->find_element("span");
+    ASSERT_NE(span, nullptr);
+    bool found_id = false;
+    for (auto& attr : span->attributes) {
+        if (attr.name == "id" && attr.value == "hero") {
+            found_id = true; break;
+        }
+    }
+    EXPECT_TRUE(found_id);
+}
+
+TEST(TreeBuilder, DivWithClassAttribute) {
+    auto doc = parse(R"(<body><div class="container">content</div></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* div = doc->find_element("div");
+    ASSERT_NE(div, nullptr);
+    bool found_class = false;
+    for (auto& attr : div->attributes) {
+        if (attr.name == "class" && attr.value == "container") {
+            found_class = true; break;
+        }
+    }
+    EXPECT_TRUE(found_class);
+}
+
+TEST(TreeBuilder, ArticleWithNestedParagraph) {
+    auto doc = parse(R"(<body><article><p>story content</p></article></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* article = doc->find_element("article");
+    ASSERT_NE(article, nullptr);
+    auto* p = doc->find_element("p");
+    ASSERT_NE(p, nullptr);
+    EXPECT_EQ(p->text_content(), "story content");
+}
+
+TEST(TreeBuilder, AsideWithText) {
+    auto doc = parse(R"(<body><aside>tip text</aside></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* aside = doc->find_element("aside");
+    ASSERT_NE(aside, nullptr);
+    EXPECT_EQ(aside->text_content(), "tip text");
+}
+
+TEST(TreeBuilder, NavWithAnchor) {
+    auto doc = parse(R"(<body><nav><a href="/about">About</a></nav></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* a = doc->find_element("a");
+    ASSERT_NE(a, nullptr);
+    EXPECT_EQ(a->text_content(), "About");
+}
+
+TEST(TreeBuilder, FooterWithCopyrightText) {
+    auto doc = parse(R"(<body><footer>Copyright 2024</footer></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* footer = doc->find_element("footer");
+    ASSERT_NE(footer, nullptr);
+    EXPECT_EQ(footer->text_content(), "Copyright 2024");
+}
