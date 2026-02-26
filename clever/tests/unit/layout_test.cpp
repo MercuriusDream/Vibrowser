@@ -5870,3 +5870,60 @@ TEST(LayoutNodeProps, OpacityDefaultsToOneV2) {
     auto node = make_block("div");
     EXPECT_FLOAT_EQ(node->opacity, 1.0f);
 }
+
+// ============================================================================
+// Cycle 660: More layout tests
+// ============================================================================
+
+// Layout: flex_basis defaults to -1
+TEST(FlexboxAudit, FlexBasisDefaultsToNegOne) {
+    auto node = make_flex("div");
+    EXPECT_FLOAT_EQ(node->flex_basis, -1.0f);
+}
+
+// Layout: flex_basis can be set to 200
+TEST(FlexboxAudit, FlexBasisCanBeSetTo200) {
+    auto node = make_flex("div");
+    node->flex_basis = 200.0f;
+    EXPECT_FLOAT_EQ(node->flex_basis, 200.0f);
+}
+
+// Layout: flex_grow defaults to 0
+TEST(FlexboxAudit, FlexGrowDefaultsToZero) {
+    auto node = make_flex("div");
+    EXPECT_FLOAT_EQ(node->flex_grow, 0.0f);
+}
+
+// Layout: flex_grow can be set to 1
+TEST(FlexboxAudit, FlexGrowCanBeSetToOne) {
+    auto node = make_flex("div");
+    node->flex_grow = 1.0f;
+    EXPECT_FLOAT_EQ(node->flex_grow, 1.0f);
+}
+
+// Layout: flex_shrink defaults to 1
+TEST(FlexboxAudit, FlexShrinkDefaultsToOne) {
+    auto node = make_flex("div");
+    EXPECT_FLOAT_EQ(node->flex_shrink, 1.0f);
+}
+
+// Layout: overflow can be set
+TEST(LayoutNodeProps, OverflowCanBeSet) {
+    auto node = make_block("div");
+    node->overflow = 1;
+    EXPECT_EQ(node->overflow, 1);
+}
+
+// Layout: geometry width can be set
+TEST(GeometryAudit, GeometryWidthCanBeSet) {
+    auto node = make_block("div");
+    node->geometry.width = 300.0f;
+    EXPECT_FLOAT_EQ(node->geometry.width, 300.0f);
+}
+
+// Layout: geometry height can be set
+TEST(GeometryAudit, GeometryHeightCanBeSet) {
+    auto node = make_block("div");
+    node->geometry.height = 200.0f;
+    EXPECT_FLOAT_EQ(node->geometry.height, 200.0f);
+}
