@@ -4940,3 +4940,242 @@ TEST(SelectorMatcherTest, GeneralSiblingCombinator) {
 
     EXPECT_FALSE(matcher.matches(p_alone, complex));
 }
+
+// ============================================================================
+// Cycle 423: :required / :optional form pseudo-classes
+// ============================================================================
+TEST(SelectorMatcherTest, RequiredPseudoClass) {
+    SelectorMatcher matcher;
+
+    SimpleSelector ss;
+    ss.type = SimpleSelectorType::PseudoClass;
+    ss.value = "required";
+
+    CompoundSelector compound;
+    compound.simple_selectors.push_back(ss);
+    auto complex = make_simple_complex(compound);
+
+    ElementView inp_required;
+    inp_required.tag_name = "input";
+    inp_required.attributes = {{"type", "text"}, {"required", ""}};
+    EXPECT_TRUE(matcher.matches(inp_required, complex));
+
+    ElementView inp_optional;
+    inp_optional.tag_name = "input";
+    inp_optional.attributes = {{"type", "text"}};
+    EXPECT_FALSE(matcher.matches(inp_optional, complex));
+}
+
+TEST(SelectorMatcherTest, OptionalPseudoClass) {
+    SelectorMatcher matcher;
+
+    SimpleSelector ss;
+    ss.type = SimpleSelectorType::PseudoClass;
+    ss.value = "optional";
+
+    CompoundSelector compound;
+    compound.simple_selectors.push_back(ss);
+    auto complex = make_simple_complex(compound);
+
+    // input without required attribute is optional
+    ElementView inp;
+    inp.tag_name = "input";
+    inp.attributes = {{"type", "text"}};
+    EXPECT_TRUE(matcher.matches(inp, complex));
+
+    // input with required attribute is not optional
+    ElementView inp_req;
+    inp_req.tag_name = "input";
+    inp_req.attributes = {{"type", "text"}, {"required", ""}};
+    EXPECT_FALSE(matcher.matches(inp_req, complex));
+
+    // Non-form element (div) is not optional
+    ElementView div_elem;
+    div_elem.tag_name = "div";
+    EXPECT_FALSE(matcher.matches(div_elem, complex));
+}
+
+// ============================================================================
+// Cycle 423: :read-only / :read-write content-editability pseudo-classes
+// ============================================================================
+TEST(SelectorMatcherTest, ReadOnlyPseudoClass) {
+    SelectorMatcher matcher;
+
+    SimpleSelector ss;
+    ss.type = SimpleSelectorType::PseudoClass;
+    ss.value = "read-only";
+
+    CompoundSelector compound;
+    compound.simple_selectors.push_back(ss);
+    auto complex = make_simple_complex(compound);
+
+    // Non-editable elements (div, p) are read-only by default
+    ElementView div_elem;
+    div_elem.tag_name = "div";
+    EXPECT_TRUE(matcher.matches(div_elem, complex));
+
+    // input is not read-only by default
+    ElementView inp;
+    inp.tag_name = "input";
+    EXPECT_FALSE(matcher.matches(inp, complex));
+
+    // input with readonly attribute is read-only
+    ElementView inp_ro;
+    inp_ro.tag_name = "input";
+    inp_ro.attributes = {{"readonly", ""}};
+    EXPECT_TRUE(matcher.matches(inp_ro, complex));
+}
+
+TEST(SelectorMatcherTest, ReadWritePseudoClass) {
+    SelectorMatcher matcher;
+
+    SimpleSelector ss;
+    ss.type = SimpleSelectorType::PseudoClass;
+    ss.value = "read-write";
+
+    CompoundSelector compound;
+    compound.simple_selectors.push_back(ss);
+    auto complex = make_simple_complex(compound);
+
+    // input without readonly is read-write
+    ElementView inp;
+    inp.tag_name = "input";
+    EXPECT_TRUE(matcher.matches(inp, complex));
+
+    // input with readonly is not read-write
+    ElementView inp_ro;
+    inp_ro.tag_name = "input";
+    inp_ro.attributes = {{"readonly", ""}};
+    EXPECT_FALSE(matcher.matches(inp_ro, complex));
+
+    // Non-editable element (div) is not read-write
+    ElementView div_elem;
+    div_elem.tag_name = "div";
+    EXPECT_FALSE(matcher.matches(div_elem, complex));
+}
+
+// ============================================================================
+// Cycle 423: :any-link pseudo-class
+// ============================================================================
+TEST(SelectorMatcherTest, AnyLinkPseudoClass) {
+    SelectorMatcher matcher;
+
+    SimpleSelector ss;
+    ss.type = SimpleSelectorType::PseudoClass;
+    ss.value = "any-link";
+
+    CompoundSelector compound;
+    compound.simple_selectors.push_back(ss);
+    auto complex = make_simple_complex(compound);
+
+    ElementView anchor;
+    anchor.tag_name = "a";
+    anchor.attributes = {{"href", "https://example.com"}};
+    EXPECT_TRUE(matcher.matches(anchor, complex));
+
+    // <a> without href should not match
+    ElementView anchor_no_href;
+    anchor_no_href.tag_name = "a";
+    EXPECT_FALSE(matcher.matches(anchor_no_href, complex));
+
+    // Non-link element should not match
+    ElementView div_elem;
+    div_elem.tag_name = "div";
+    div_elem.attributes = {{"href", "https://example.com"}};
+    EXPECT_FALSE(matcher.matches(div_elem, complex));
+}
+
+// ============================================================================
+// Cycle 423: :placeholder-shown pseudo-class
+// ============================================================================
+TEST(SelectorMatcherTest, PlaceholderShownPseudoClass) {
+    SelectorMatcher matcher;
+
+    SimpleSelector ss;
+    ss.type = SimpleSelectorType::PseudoClass;
+    ss.value = "placeholder-shown";
+
+    CompoundSelector compound;
+    compound.simple_selectors.push_back(ss);
+    auto complex = make_simple_complex(compound);
+
+    // input with placeholder and no value → placeholder is visible
+    ElementView inp_empty;
+    inp_empty.tag_name = "input";
+    inp_empty.attributes = {{"placeholder", "Enter name"}};
+    EXPECT_TRUE(matcher.matches(inp_empty, complex));
+
+    // input with placeholder AND a value → placeholder is hidden
+    ElementView inp_filled;
+    inp_filled.tag_name = "input";
+    inp_filled.attributes = {{"placeholder", "Enter name"}, {"value", "Alice"}};
+    EXPECT_FALSE(matcher.matches(inp_filled, complex));
+
+    // input with no placeholder
+    ElementView inp_no_placeholder;
+    inp_no_placeholder.tag_name = "input";
+    EXPECT_FALSE(matcher.matches(inp_no_placeholder, complex));
+}
+
+// ============================================================================
+// Cycle 423: :lang() pseudo-class (exact and prefix matching)
+// ============================================================================
+TEST(SelectorMatcherTest, LangPseudoClass) {
+    SelectorMatcher matcher;
+
+    SimpleSelector ss;
+    ss.type = SimpleSelectorType::PseudoClass;
+    ss.value = "lang";
+    ss.argument = "en";
+
+    CompoundSelector compound;
+    compound.simple_selectors.push_back(ss);
+    auto complex = make_simple_complex(compound);
+
+    // Exact match
+    ElementView elem_en;
+    elem_en.tag_name = "p";
+    elem_en.attributes = {{"lang", "en"}};
+    EXPECT_TRUE(matcher.matches(elem_en, complex));
+
+    // Prefix match: lang="en-US" matches :lang(en)
+    ElementView elem_en_us;
+    elem_en_us.tag_name = "p";
+    elem_en_us.attributes = {{"lang", "en-US"}};
+    EXPECT_TRUE(matcher.matches(elem_en_us, complex));
+
+    // Different language does not match
+    ElementView elem_fr;
+    elem_fr.tag_name = "p";
+    elem_fr.attributes = {{"lang", "fr"}};
+    EXPECT_FALSE(matcher.matches(elem_fr, complex));
+}
+
+// ============================================================================
+// Cycle 423: :is() pseudo-class (matches if any argument selector matches)
+// ============================================================================
+TEST(SelectorMatcherTest, IsPseudoClass) {
+    SelectorMatcher matcher;
+
+    // :is(h1, h2, h3) should match h1, h2, or h3 but not h4
+    SimpleSelector ss;
+    ss.type = SimpleSelectorType::PseudoClass;
+    ss.value = "is";
+    ss.argument = "h1, h2, h3";
+
+    CompoundSelector compound;
+    compound.simple_selectors.push_back(ss);
+    auto complex = make_simple_complex(compound);
+
+    ElementView h1;
+    h1.tag_name = "h1";
+    EXPECT_TRUE(matcher.matches(h1, complex));
+
+    ElementView h2;
+    h2.tag_name = "h2";
+    EXPECT_TRUE(matcher.matches(h2, complex));
+
+    ElementView h4;
+    h4.tag_name = "h4";
+    EXPECT_FALSE(matcher.matches(h4, complex));
+}
