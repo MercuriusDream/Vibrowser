@@ -635,3 +635,55 @@ TEST(CORSPolicyTest, NormalizeOutgoingOriginSetsHeader) {
     EXPECT_TRUE(val.has_value());
     EXPECT_NE(val->find("app.example.com"), std::string::npos);
 }
+
+// ============================================================================
+// Cycle 548: CORS policy regression tests
+// ============================================================================
+
+// cors_allows_response: wildcard ACAO blocks credentialed request
+TEST(CORSPolicyTest, WildcardACAOBlocksCredentialedRequest) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "*");
+    // credentialed=true: wildcard ACAO should block
+    EXPECT_FALSE(cors_allows_response("https://app.example", "https://api.example/data",
+                                      headers, true));
+}
+
+// is_cors_eligible_request_url: mailto: is not eligible
+TEST(CORSPolicyTest, MailtoURLNotCORSEligible) {
+    EXPECT_FALSE(is_cors_eligible_request_url("mailto:user@example.com"));
+}
+
+// is_cors_eligible_request_url: javascript: is not eligible
+TEST(CORSPolicyTest, JavascriptURLNotCORSEligible) {
+    EXPECT_FALSE(is_cors_eligible_request_url("javascript:void(0)"));
+}
+
+// is_cross_origin: same origin with different path is same-origin
+TEST(CORSPolicyTest, SameSchemehostDifferentPathIsSameOrigin) {
+    EXPECT_FALSE(is_cross_origin("https://example.com", "https://example.com/different/path"));
+}
+
+// has_enforceable_document_origin: empty string is not enforceable
+TEST(CORSPolicyTest, EmptyStringNotEnforceable) {
+    EXPECT_FALSE(has_enforceable_document_origin(""));
+}
+
+// should_attach_origin_header: cross-origin should return true
+TEST(CORSPolicyTest, ShouldAttachOriginForCrossOriginRequest) {
+    EXPECT_TRUE(should_attach_origin_header("https://app.example.com", "https://api.example.com/resource"));
+}
+
+// should_attach_origin_header: same-origin should return false
+TEST(CORSPolicyTest, ShouldNotAttachOriginForSameOriginRequest) {
+    EXPECT_FALSE(should_attach_origin_header("https://example.com", "https://example.com/api"));
+}
+
+// cors_allows_response: ACAO matching exact origin allows credentialed
+TEST(CORSPolicyTest, ExactOriginMatchAllowsCredentialedRequest) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "https://app.example");
+    headers.set("Access-Control-Allow-Credentials", "true");
+    EXPECT_TRUE(cors_allows_response("https://app.example", "https://api.example/data",
+                                     headers, true));
+}
