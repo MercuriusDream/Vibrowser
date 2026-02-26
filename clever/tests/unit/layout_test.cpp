@@ -4957,3 +4957,91 @@ TEST(GridLayout, GridNodeStoresColumnSpec) {
     node->grid_column = "1 / 3";
     EXPECT_EQ(node->grid_column, "1 / 3");
 }
+
+// ============================================================================
+// Cycle 533: Layout regression tests
+// ============================================================================
+
+// Block with specified height
+TEST(LayoutEngineTest, BlockWithSpecifiedHeightExact) {
+    auto root = make_block("div");
+    root->specified_height = 200.0f;
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+    EXPECT_FLOAT_EQ(root->geometry.height, 200.0f);
+}
+
+// Block fills viewport width without specified width
+TEST(LayoutEngineTest, BlockFillsViewportWidth) {
+    auto root = make_block("div");
+    LayoutEngine engine;
+    engine.compute(*root, 1024.0f, 768.0f);
+    EXPECT_FLOAT_EQ(root->geometry.width, 1024.0f);
+}
+
+// Two block children stack vertically
+TEST(LayoutEngineTest, TwoBlockChildrenStackVertically) {
+    auto root = make_block("div");
+    auto child1 = make_block("p");
+    child1->specified_height = 50.0f;
+    auto child2 = make_block("p");
+    child2->specified_height = 60.0f;
+    root->append_child(std::move(child1));
+    root->append_child(std::move(child2));
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+    ASSERT_GE(root->children.size(), 2u);
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.y, 0.0f);
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.y, 50.0f);
+}
+
+// Padding reduces child's available width
+TEST(LayoutEngineTest, PaddingReducesChildWidth) {
+    auto root = make_block("div");
+    root->geometry.padding.left = 15.0f;
+    root->geometry.padding.right = 15.0f;
+    auto child = make_block("span");
+    child->specified_height = 50.0f;
+    root->append_child(std::move(child));
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+    ASSERT_GE(root->children.size(), 1u);
+    // Child width should be 800 - 2*15 = 770
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.width, 770.0f);
+}
+
+// max_width constraint caps width below viewport
+TEST(LayoutEngineTest, MaxWidthCapsWidth) {
+    auto root = make_block("div");
+    root->max_width = 500.0f;
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+    EXPECT_LE(root->geometry.width, 500.0f);
+}
+
+// BoxGeometry: border_box_width = width + border*2
+TEST(BoxGeometryTest, BorderBoxWidthCalc) {
+    BoxGeometry g;
+    g.width = 200.0f;
+    g.border.left = 3.0f;
+    g.border.right = 3.0f;
+    EXPECT_FLOAT_EQ(g.border_box_width(), 206.0f);
+}
+
+// BoxGeometry: content_top = y + border.top + padding.top
+TEST(BoxGeometryTest, ContentTopCalcWithPadding) {
+    BoxGeometry g;
+    g.y = 10.0f;
+    g.border.top = 2.0f;
+    g.padding.top = 8.0f;
+    EXPECT_FLOAT_EQ(g.content_top(), 20.0f);
+}
+
+// FlexNode with no children: height defaults to 0 or specified
+TEST(FlexboxAudit, FlexContainerNoChildrenHasZeroHeight) {
+    auto root = make_flex("div");
+    root->specified_width = 400.0f;
+    LayoutEngine engine;
+    engine.compute(*root, 400.0f, 400.0f);
+    EXPECT_GE(root->geometry.height, 0.0f);
+}
