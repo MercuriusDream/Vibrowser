@@ -2415,3 +2415,90 @@ TEST_F(CSSStylesheetTest, PositionAbsoluteDeclaration) {
     }
     EXPECT_TRUE(found);
 }
+
+// ============================================================================
+// Cycle 632: More CSS parser tests
+// ============================================================================
+
+// Tokenizer: string token (double-quoted)
+TEST_F(CSSTokenizerTest, DoubleQuotedStringToken) {
+    auto tokens = CSSTokenizer::tokenize_all("\"hello\"");
+    ASSERT_FALSE(tokens.empty());
+    EXPECT_EQ(tokens[0].type, CSSToken::String);
+}
+
+// Tokenizer: whitespace token
+TEST_F(CSSTokenizerTest, WhitespaceTokenExists) {
+    auto tokens = CSSTokenizer::tokenize_all("div p");
+    bool has_ws = false;
+    for (auto& t : tokens) {
+        if (t.type == CSSToken::Whitespace) { has_ws = true; break; }
+    }
+    EXPECT_TRUE(has_ws);
+}
+
+// Tokenizer: delim token for >
+TEST_F(CSSTokenizerTest, DelimGreaterThanToken) {
+    auto tokens = CSSTokenizer::tokenize_all("div > p");
+    bool has_delim = false;
+    for (auto& t : tokens) {
+        if (t.type == CSSToken::Delim) { has_delim = true; break; }
+    }
+    EXPECT_TRUE(has_delim);
+}
+
+// Selector: attribute selector with contains (~=)
+TEST_F(CSSSelectorTest, AttributeSelectorContains) {
+    auto list = parse_selector_list("[class~=button]");
+    ASSERT_EQ(list.selectors.size(), 1u);
+    auto& compound = list.selectors[0].parts[0].compound;
+    bool found = false;
+    for (auto& ss : compound.simple_selectors) {
+        if (ss.type == SimpleSelectorType::Attribute) { found = true; break; }
+    }
+    EXPECT_TRUE(found);
+}
+
+// Stylesheet: border property
+TEST_F(CSSStylesheetTest, BorderDeclaration) {
+    auto sheet = parse_stylesheet("div { border: 1px solid black; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations) {
+        if (d.property == "border") { found = true; break; }
+    }
+    EXPECT_TRUE(found);
+}
+
+// Stylesheet: padding shorthand
+TEST_F(CSSStylesheetTest, PaddingDeclaration) {
+    auto sheet = parse_stylesheet("p { padding: 10px; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations) {
+        if (d.property == "padding") { found = true; break; }
+    }
+    EXPECT_TRUE(found);
+}
+
+// Stylesheet: margin shorthand
+TEST_F(CSSStylesheetTest, MarginDeclaration) {
+    auto sheet = parse_stylesheet("h1 { margin: 0 auto; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations) {
+        if (d.property == "margin") { found = true; break; }
+    }
+    EXPECT_TRUE(found);
+}
+
+// Stylesheet: width property
+TEST_F(CSSStylesheetTest, WidthDeclaration) {
+    auto sheet = parse_stylesheet(".box { width: 100%; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations) {
+        if (d.property == "width") { found = true; break; }
+    }
+    EXPECT_TRUE(found);
+}
