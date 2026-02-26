@@ -110,12 +110,12 @@ bool cors_allows_response(std::string_view document_origin,
         return true;
     }
 
-    auto acao_opt = response_headers.get("access-control-allow-origin");
-    if (!acao_opt.has_value()) {
+    auto acao_values = response_headers.get_all("access-control-allow-origin");
+    if (acao_values.size() != 1) {
         return false;
     }
 
-    std::string acao = trim_copy(*acao_opt);
+    std::string acao = trim_copy(acao_values.front());
     if (acao.empty()) {
         return false;
     }
@@ -137,12 +137,12 @@ bool cors_allows_response(std::string_view document_origin,
         return false;
     }
 
-    auto acac_opt = response_headers.get("access-control-allow-credentials");
-    if (!acac_opt.has_value()) {
+    auto acac_values = response_headers.get_all("access-control-allow-credentials");
+    if (acac_values.size() != 1) {
         return false;
     }
 
-    std::string acac = trim_copy(*acac_opt);
+    std::string acac = trim_copy(acac_values.front());
     if (acac.empty() || has_invalid_header_octet(acac)) {
         return false;
     }

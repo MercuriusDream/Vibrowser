@@ -93,6 +93,12 @@ TEST(CORSPolicyTest, CrossOriginRejectsMalformedACAOValue) {
     control_char.set("Access-Control-Allow-Origin", std::string("https://app.\x01example"));
     EXPECT_FALSE(
         cors_allows_response("https://app.example", "https://api.example/data", control_char, false));
+
+    clever::net::HeaderMap duplicate_acao;
+    duplicate_acao.append("Access-Control-Allow-Origin", "https://app.example");
+    duplicate_acao.append("Access-Control-Allow-Origin", "https://app.example");
+    EXPECT_FALSE(cors_allows_response("https://app.example", "https://api.example/data",
+                                      duplicate_acao, false));
 }
 
 TEST(CORSPolicyTest, CrossOriginCredentialedRequiresExactAndCredentialsTrue) {
@@ -130,6 +136,13 @@ TEST(CORSPolicyTest, CrossOriginCredentialedRequiresExactAndCredentialsTrue) {
     mixed_case_true.set("Access-Control-Allow-Credentials", "True");
     EXPECT_FALSE(cors_allows_response("https://app.example", "https://api.example/data",
                                       mixed_case_true, true));
+
+    clever::net::HeaderMap duplicate_acac;
+    duplicate_acac.set("Access-Control-Allow-Origin", "https://app.example");
+    duplicate_acac.append("Access-Control-Allow-Credentials", "true");
+    duplicate_acac.append("Access-Control-Allow-Credentials", "true");
+    EXPECT_FALSE(cors_allows_response("https://app.example", "https://api.example/data",
+                                      duplicate_acac, true));
 }
 
 TEST(CORSPolicyTest, CrossOriginNullOriginRequiresStrictACAOAndCredentialsRule) {

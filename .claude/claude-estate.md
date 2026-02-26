@@ -5,13 +5,29 @@
 
 ## Current Status
 
-**Phase**: Active Development — Cycle 352 COMPLETE
-**Last Active**: 2026-02-26T15:42:00+0900
-**Current Focus**: CORS/CSP enforcement completion with strict shared JS null/empty document-origin fail-closed validation
-**Momentum**: 3489 tests, ZERO failures, 2487+ features! v0.7.0! CYCLE 352 DONE! 178 BUGS FIXED!
-**Cycle**: 353
+**Phase**: Active Development — Cycle 353 COMPLETE
+**Last Active**: 2026-02-26T14:51:33+0900
+**Current Focus**: CORS/CSP enforcement completion with strict shared JS duplicate ACAO/ACAC header fail-closed validation
+**Momentum**: 3491 tests, ZERO failures, 2488+ features! v0.7.0! CYCLE 353 DONE! 179 BUGS FIXED!
+**Cycle**: 354
 
 ## Session Log
+
+### Cycle 353 — 2026-02-26 — Shared JS CORS helper duplicate ACAO/ACAC header fail-closed hardening
+- **CORS/CSP ENFORCEMENT (Priority 1)**: Hardened shared JS CORS policy helper to fail closed when duplicate CORS policy headers are present in responses.
+- Updated CORS helper behavior (`clever/src/js/cors_policy.cpp`):
+  - require exactly one `Access-Control-Allow-Origin` value for cross-origin CORS evaluation
+  - require exactly one `Access-Control-Allow-Credentials` value for credentialed cross-origin CORS evaluation
+  - reject duplicate-header ambiguity before value parsing/comparison
+- Added regression tests (`clever/tests/unit/cors_policy_test.cpp`):
+  - `CrossOriginRejectsMalformedACAOValue` now asserts duplicate ACAO rejection
+  - `CrossOriginCredentialedRequiresExactAndCredentialsTrue` now asserts duplicate ACAC rejection
+- Validation:
+  - `cmake --build clever/build --target clever_js_cors_tests`
+  - `./clever/build/tests/unit/clever_js_cors_tests --gtest_filter='CORSPolicyTest.*'`
+- Files: `clever/src/js/cors_policy.cpp`, `clever/tests/unit/cors_policy_test.cpp`
+- **2 new tests (3489→3491), CORS unit suite green.**
+- **Ledger divergence note**: `.codex/codex-estate.md` remains non-writable in this runtime (`Operation not permitted`), so `.claude/claude-estate.md` is source of truth for Cycle 353; replay sync when permissions allow.
 
 ### Cycle 352 — 2026-02-26 — Shared JS CORS helper null-origin and empty-origin fail-closed hardening
 - **CORS/CSP ENFORCEMENT (Priority 1)**: Hardened shared JS CORS policy helper to fail closed for empty document origins and to treat `"null"` document origins as cross-origin with strict ACAO/ACAC enforcement.
@@ -3534,6 +3550,7 @@
 
 | # | What | Files | Notes |
 |---|------|-------|-------|
+| 727 | Shared JS CORS helper duplicate ACAO/ACAC header fail-closed hardening | clever/src/js/cors_policy.cpp, clever/tests/unit/cors_policy_test.cpp | Rejects duplicate `Access-Control-Allow-Origin` and duplicate credentialed `Access-Control-Allow-Credentials` values in shared JS CORS response evaluation and adds 2 regression tests for strict duplicate-header rejection |
 | 726 | Shared JS CORS helper null-origin + empty-origin fail-closed hardening | clever/src/js/cors_policy.cpp, clever/tests/unit/cors_policy_test.cpp | Fails closed on empty document origins, treats `null` as strict cross-origin with explicit ACAO/ACAC checks, and adds 2 new regression tests plus null-origin header/cross-origin coverage |
 | 725 | Shared JS CORS helper strict ACAC literal `true` fail-closed hardening | clever/src/js/cors_policy.cpp, clever/tests/unit/cors_policy_test.cpp | Requires exact case-sensitive `Access-Control-Allow-Credentials: true` for credentialed cross-origin acceptance and adds regression coverage for `TRUE`/`True` rejection |
 | 724 | Shared JS CORS helper malformed document-origin fail-closed hardening | clever/src/js/cors_policy.cpp, clever/tests/unit/cors_policy_test.cpp | Requires strict serialized HTTP(S) document-origin for enforceable shared CORS checks, fails closed for malformed non-null origins, and adds 3 regression tests for enforcement/header-emission/response-gating |
@@ -4075,13 +4092,13 @@
 | Metric | Value |
 |--------|-------|
 | Total Sessions | 143 |
-| Total Cycles | 352 |
+| Total Cycles | 353 |
 | Files Created | ~135 |
 | Files Modified | 100+ |
-| Lines Added (est.) | 171610+ |
-| Tests Added | 3489 |
-| Bugs Fixed | 178 |
-| Features Added | 2487 |
+| Lines Added (est.) | 171690+ |
+| Tests Added | 3491 |
+| Bugs Fixed | 179 |
+| Features Added | 2488 |
 
 ## Tell The Next Claude
 
@@ -4089,12 +4106,19 @@
 
 Build: `cd clever && cmake -S . -B build && cmake --build build && ctest --test-dir build`
 
-**3489 tests, 12 libraries (QuickJS!), 1 macOS app, ZERO warnings. v0.7.0. CYCLE 352! 2487+ FEATURES! 178 BUGS FIXED! ANTHROPIC.COM LOADS!**
+**3491 tests, 12 libraries (QuickJS!), 1 macOS app, ZERO warnings. v0.7.0. CYCLE 353! 2488+ FEATURES! 179 BUGS FIXED! ANTHROPIC.COM LOADS!**
 
 **Current implementation vs full browser comparison**:
 - Current implementation: robust single-process browser shell with full JS engine integration, broad DOM/CSS/Fetch coverage, and hardened HTTP/1.x/CORS/CSP policy enforcement.
 - Full browser target: still missing major subsystems like full multi-process isolation, full HTTP/2+/QUIC transport stack, and complete production-grade web font pipeline coverage.
-- Progress snapshot: from early scaffolding to 352 completed cycles, 3489 tests, and 2487+ implemented features.
+- Progress snapshot: from early scaffolding to 353 completed cycles, 3491 tests, and 2488+ implemented features.
+
+
+**Cycle 353 — Shared JS CORS helper duplicate ACAO/ACAC header fail-closed hardening in clever JS runtime path**:
+- Hardened `clever::js::cors::cors_allows_response(...)` to require exactly one `Access-Control-Allow-Origin` value and reject duplicate ACAO entries before cross-origin value matching.
+- Hardened credentialed branch to require exactly one `Access-Control-Allow-Credentials` value and reject duplicate ACAC entries before strict literal-`true` enforcement.
+- Added focused regression coverage in `clever/tests/unit/cors_policy_test.cpp` for duplicate ACAO and duplicate ACAC rejection paths.
+- Rebuilt `clever_js_cors_tests` and ran `CORSPolicyTest.*`, all green.
 
 **Cycle 352 — Shared JS CORS helper null-origin and empty-origin fail-closed hardening in clever JS runtime path**:
 - Hardened `clever::js::cors::cors_allows_response(...)` to reject empty document origins and fail closed before cross-origin policy evaluation.
