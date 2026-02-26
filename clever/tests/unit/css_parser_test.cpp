@@ -1649,3 +1649,76 @@ TEST(CSSParserTest, ParseDeclarationBlockMultipleProps) {
     }
     EXPECT_TRUE(found_display);
 }
+
+// ============================================================================
+// Cycle 532: CSS parser regression tests
+// ============================================================================
+
+// Semicolon token
+TEST_F(CSSTokenizerTest, SemicolonToken) {
+    auto tokens = CSSTokenizer::tokenize_all(";");
+    ASSERT_GE(tokens.size(), 1u);
+    EXPECT_EQ(tokens[0].type, CSSToken::Semicolon);
+}
+
+// Left curly brace token
+TEST_F(CSSTokenizerTest, LeftBraceToken) {
+    auto tokens = CSSTokenizer::tokenize_all("{");
+    ASSERT_GE(tokens.size(), 1u);
+    EXPECT_EQ(tokens[0].type, CSSToken::LeftBrace);
+}
+
+// Right curly brace token
+TEST_F(CSSTokenizerTest, RightBraceToken) {
+    auto tokens = CSSTokenizer::tokenize_all("}");
+    ASSERT_GE(tokens.size(), 1u);
+    EXPECT_EQ(tokens[0].type, CSSToken::RightBrace);
+}
+
+// Stylesheet with background-color declaration
+TEST_F(CSSStylesheetTest, BackgroundColorDeclaration) {
+    auto sheet = parse_stylesheet("body { background-color: #fff; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations) {
+        if (d.property == "background-color") found = true;
+    }
+    EXPECT_TRUE(found);
+}
+
+// Stylesheet with multiple rules
+TEST_F(CSSStylesheetTest, MultipleRulesParsed) {
+    auto sheet = parse_stylesheet("h1 { color: red; } p { font-size: 14px; }");
+    EXPECT_GE(sheet.rules.size(), 2u);
+}
+
+// Class selector parsed
+TEST_F(CSSSelectorTest, ClassSelectorParsed) {
+    auto list = parse_selector_list(".container");
+    ASSERT_EQ(list.selectors.size(), 1u);
+    bool has_class = false;
+    for (auto& ss : list.selectors[0].parts[0].compound.simple_selectors) {
+        if (ss.type == SimpleSelectorType::Class) has_class = true;
+    }
+    EXPECT_TRUE(has_class);
+}
+
+// Type selector for body
+TEST_F(CSSSelectorTest, TypeSelectorBodyParsed) {
+    auto list = parse_selector_list("body");
+    ASSERT_EQ(list.selectors.size(), 1u);
+    ASSERT_GE(list.selectors[0].parts.size(), 1u);
+    bool has_type = false;
+    for (auto& ss : list.selectors[0].parts[0].compound.simple_selectors) {
+        if (ss.type == SimpleSelectorType::Type) has_type = true;
+    }
+    EXPECT_TRUE(has_type);
+}
+
+// Descendant combinator parsed (h1 p)
+TEST_F(CSSSelectorTest, DescendantCombinatorParsed) {
+    auto list = parse_selector_list("div p");
+    ASSERT_EQ(list.selectors.size(), 1u);
+    ASSERT_GE(list.selectors[0].parts.size(), 2u);
+    EXPECT_EQ(list.selectors[0].parts[1].combinator, Combinator::Descendant);
+}

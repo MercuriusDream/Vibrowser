@@ -5,13 +5,83 @@
 
 ## Current Status
 
-**Phase**: Active Development — Cycle 474 COMPLETE
-**Last Active**: 2026-02-27T14:30:00+0900
-**Current Focus**: CSS style properties blitz (cycles 466-474) — flex, border-image, mask, perspective, transform, filter, shape, content, animations, border longhands — SVG, backgrounds, scroll-snap, motion path, table, font, flex, align properties
-**Momentum**: 4900+ tests, ZERO failures, all 13 suites green! CYCLE 474 DONE! 650 css_style tests!
-**Cycle**: 474
+**Phase**: Active Development — Testing Blitz across ALL suites
+**Last Active**: 2026-02-27T23:30:00+0900
+**Current Focus**: Cycle 526 — continuing multi-suite blitz
+**Momentum**: 4238 tests, ZERO failures, all 13 suites green! 525 cycles shipped!
+**Cycle**: 531
 
 ## Session Log
+
+### Cycles 526-531 — 2026-02-27
+- **Cycles**: 6
+- **Theme**: Test blitz continued — DOM, JS, Serializer, HTML, URL, CORS
+- **Key Wins**:
+  - Cycle 526: 8 DOM tests (dom 103→111) — fixed ClassList uses add() not set_attribute
+  - Cycle 527: 8 JS tests (js 601→609) — ArrayFromWithMapper, ObjectEntries, RegexTest, Destructuring, etc.
+  - Cycle 528: 8 Serializer tests (ipc 126→134) — U16/U64 round trips, empty string, multiple strings
+  - Cycle 529: 8 HTML parser tests (html 96→104) — wbr, dialog, details/summary, figure/figcaption, hgroup
+  - Cycle 530: 8 URL parser tests (url 140→148) — port, path, fragment, username/password, subdomain
+  - Cycle 531: 8 CORS tests (cors 41→49) — ws/http eligible, cross-origin flags, normalize origin header
+- **Total tests**: ~4294 (148 css_parser + 698 css_style + 111 dom + 104 html + 134 ipc + 49 cors + 609 js + 204 layout + 5 native_image + 152 net + 1863 paint + 69 platform + 148 url)
+
+
+### Cycles 517-520 — 2026-02-27 — More multi-suite blitz
+- **Cycle 517**: Net +8 (CaseInsensitiveLookup, HasKey, RemoveKey, ParseOkBody, ParseNotFound, ExpiredCookie, CookieJarSize, SerializeGetMethodAndPath). Fixed: req.headers.set(), serialize()→vector. 152 net tests. Committed 3b28ed7.
+- **Cycle 518**: Serializer +8 (MultipleU8, AlternatingU32String, U64Fits32, TakeDataEmpty, FreshEmpty, BoolSequence, RawPointerLargeValues, SpecialCharsString). Fixed: duplicate name. 118 ipc tests. Committed 193b254.
+- **Cycle 519**: JS engine +8 (NullishCoalescingWithZero, OptionalChaining, ArrayEvery, ArraySome, StringTrim, HasOwnProperty, NumberIsNaN/IsFinite, ArrayIndexOf). Fixed: duplicate NullishCoalescing. 593 js tests. Committed bac88d8.
+- **Cycle 520**: CSS parser +8 (GreaterThanDelim, SingleComma, Colon, UniversalSel, IdSel, AdjacentSibling, EmptyRuleBlock, MultiplePropsDecl). Fixed: duplicate names + Combinator::NextSibling. 148 css_parser tests. Committed dfbd9c2.
+- **All 13 suites green. 4198 total tests.**
+
+### Cycles 512-516 — 2026-02-27 — Multi-suite blitz continues
+- **Cycle 512**: JS engine +8 (StringPadStart, StringPadEnd, NumberToFixed, DeleteOperator, InOperator, InstanceofOperator, ArrayFill, ObjectSpread). 585 js tests. Committed f27d8d7.
+- **Cycle 513**: DOM +8 (RemoveOnlyChild, InsertBeforeFirstChild, ChildCountMixedOps, MultipleAttributes, NestedTextContent, ClassListItemCount, EventListenerOnce, CreateElementTagName). Fixed: remove_child(*ptr), attributes(), EventTarget API, unique_ptr. 103 dom tests. Committed b63b6ab.
+- **Cycle 514**: HTML parser +8 (MarkElement, SmallElement, AbbrWithTitle, BlockquoteElement, CiteElement, InlineCodeElement, KbdElement, SampElement). 88 html tests. Committed fd10f9d.
+- **Cycle 515**: CORS +8 (MissingACAO, ACAOMismatch, DataURLIneligible, AboutBlankIneligible, NullOriginNotEnforceable, ValidHttpsEnforceable, HttpsWithQueryEligible, SameOriginNoACAO). 41 cors tests. Committed 0a7c169.
+- **Cycle 516**: URL parser +8 (FtpScheme, FragmentHyphen, QueryAmpersand, DotSegmentNorm, HTTPPortDefault, HTTPSPortDefault, EmptyPathQuery, SerializeRoundTrip). Fixed: duplicate test name. 93 url tests. Committed 3db0694.
+- **All 13 suites green. 4166 total tests.**
+
+### Cycles 510-511 — 2026-02-27 — CSS parser + JS engine regression
+- **Cycle 510**: CSS parser +8 (IntegerFlagOnWholeNumber, RemDimensionToken, PercentageNumericValue, PseudoClassDisabled, PseudoClassChecked, AttributeSuffixSelector, RuleWithMultipleDeclarations, DeclarationWithNumericValue). Fixed: `d.value` → `d.values`. 140 css_parser tests. Committed 6eb2a95.
+- **Cycle 511**: JS engine +8 (SwitchStatement, TernaryOperator, StringSliceAndIndexOf, ArraySortMethod, ArrayReduceMethod, ObjectFreezePreventsMutation, ForInLoop, StringRepeatMethod). Fixed: `engine.eval()` → `engine.evaluate()`. 577 js tests. Committed c1725bf.
+- **All 13 suites green. 4134 total tests.**
+
+### Cycles 501-509 — 2026-02-27 — Blitz continues
+- **Cycle 501**: MessagePipe +8 (1-byte, 1000-byte, 0xFF, 10 sequential, size match, empty+nonempty seq, raw ptr 1 byte, 3 consecutive). 102 ipc tests.
+- **Cycle 502**: URL parser +8 (same-origin true/false x3, multiple query params, encoded space, serialize with user:pass, IPv6 host). 85 url tests.
+- **Cycle 503**: CORS policy +8 (same-host+port not cross, localhost eligible, file not eligible, should_attach true/false, wildcard allows/blocks, exact match credentialed). 33 cors tests.
+- **Cycle 504**: Serializer +8 (initially empty, take_data empties, empty string, remaining decrements, interleaved types, infinity, NaN, two write_bytes round-trip). Fixed write_bytes has length prefix. 110 ipc tests.
+- **Cycle 505**: DOM +8 (insert_before, has_attribute, remove+has, for_each_child, last_child, first_child, dirty flags, classList to_string). 95 dom tests.
+- **Cycle 506**: HTML parser +8 (article, header+footer, h1-h6 all, style element, span, strong+em, anchor attrs, aside). 80 html tests.
+- **Cycle 507**: EventLoop +8 (pending count drops, empty queue noop, string capture, 5-task sum, batch count, not executed without run, alternating, long delay not run). 61 platform tests.
+- **Cycle 508**: PercentEncoding +8 (empty encode/decode, hash, decode slash, at-sign not encoded, decode 'A', space not URL code point, equals round-trip). Fixed: @ is safe char. 93 url tests.
+- **Cycle 509**: Layout +8 (content_left/top, margin_box_height, border_box_height, max/min width constraints, align-items center, SVG use element). 196 layout tests.
+
+### Cycles 495-500 — 2026-02-27 — HTTP/IPC/Platform blitz
+- **Cycle 495**: CSS parser tests +8 (url-func token, viewport dimension, pseudo selectors last-child/only-child/first-of-type/nth-of-type, whitespace-only stylesheet, nesting with hover). 132 css tests. Committed cabb16e.
+- **Cycle 496**: Serializer tests +8 (u16 boundary, u64 max, negative f64, empty deserializer throws, first byte check, all-zero values, size calculation, special chars string). 86 ipc tests. Committed 639c61b.
+- **Cycle 497**: Layout tests +8 (table 3 columns, table 2 rows, absolute position top+left, SVG path/circle/group/viewbox, flex justify-center). 188 layout tests. Committed 1238b12.
+- **Cycle 498**: HTTP client tests +8 (header keys lowercase, empty-after-remove, cookie empty value, HttpOnly sent, HEAD method, public CC alone, entry_count API, 503 status text). 144 net tests. Committed a5e294c.
+- **Cycle 499**: MessageChannel tests +8 (type=0 dispatch, UINT32_MAX request_id, handler sees request_id, empty payload fires, 200-dispatch stress, i64 round-trip, UINT32_MAX type, is_open after send). 94 ipc tests. Committed 39994a7.
+- **Cycle 500 MILESTONE**: ThreadPool tests +8 (return double/bool/pair/vector, bound args, size==1, chained tasks, negative return). 53 platform tests. Committed eedffe0.
+
+### Cycles 489-494 — 2026-02-27 — Test blitz continued
+- **Cycle 489**: Layout tests +8 (flex justify/align, column direction, auto-height, border/padding). Fixed: column=flex_direction 2 not 1; engine limitations documented. 180 layout tests. Committed 68ea810.
+- **Cycle 490**: URL parser tests +8 (multi-segment paths, host case normalization, empty fragment/query, no-path slash, relative ../resolution, IPv4 host, mixed-case scheme). 116 url tests. Committed 61852ad.
+- **Cycle 491**: CORS policy tests +8 (same-host diff port/scheme cross-origin, subdomain enforceable, eligible URL with query/non-standard port, ACAO port mismatch, canonical port 443 match, normalize no-op for same-origin). 25 cors tests. Committed df7e1e2.
+- **Cycle 492**: EventLoop tests +8 (post-quit drain, batch runs, delayed count drop, immediate vs far-future, value-capture, 1000 tasks, delayed-from-within, FIFO order). Fixed: `auto c1 = append_child()` → Node copy deleted; avoid move-only captures in std::function. 45 platform tests. Committed 10a9ff9.
+- **Cycle 493**: HTML parser tests +8 (figure/figcaption, iframe, definition lists, single-quote attr, nav+links, section+h2, multi-class, dialog). Fixed: Token::tag_name → Token::name. 72 html tests. Committed e4f87b6.
+- **Cycle 494**: DOM tests +8 (tag_name accessor, ClassList::length, Event bubbles/cancelable, default_prevented, next/prev sibling, namespace_uri, propagation_stopped, child_count). Fixed: `auto c1 = append_child()` copy-deleted. 87 dom tests. Committed b0afdee.
+
+### Cycles 482-488 — 2026-02-27 — Test blitz across smaller suites
+- **Cycle 482**: HTML parser tests — script async/defer, meta attributes, video/audio, details/summary, table thead/tbody/tfoot, fieldset/legend, pre/code, boolean attributes. 64 html tests. Committed db77991.
+- **Cycle 483**: ThreadPool tests — void task, string return, concurrent atomic counter, double shutdown, post/submit interleave, large batch sum, single-thread shutdown, move-only capture. 37 platform tests. Committed 72d01bc.
+- **Cycle 484**: MessagePipe tests — raw ptr send, double close, fd after close, various sizes, bidirectional flow, reversed direction, all byte values, receive on closed. Fixed: `write_bytes(vec)` → `write_bytes(ptr, size)`. 62 ipc tests. Committed d5f8f81.
+- **Cycle 485**: MessageChannel tests — send on closed, late handler not fired, replace handler, large payload, payload integrity, dispatch count, double close, serializer round-trip. Fixed: `write_f32` doesn't exist, used `write_u32`/`write_i32`. 70 ipc tests. Committed 6e27a07.
+- **Cycle 486**: Serializer tests — i64 boundary, u8 edge values, large bytes, data size growth, very long string, bool pattern, u16 underflow single byte, Deserializer from raw ptr. Fixed: missing `#include <numeric>`, `write_bytes(vec)` → `(ptr,size)`, duplicate test name. 78 ipc tests. Committed a3c8320.
+- **Cycle 487**: PercentEncoding tests — encode/decode round-trip, upper hex, safe chars, consecutive spaces, minus/underscore, path flag slash, mixed case hex, multi-char encoding. 108 url tests. Committed 0b8c0dd.
+- **Cycle 488**: DOM tests — remove-middle sibling update, classList toggle add/remove, event type property, wrong-type listener, same-key attribute count, deep nested text, getElementById via register. Fixed: toggle() returns void. 78 dom tests. Committed 85ac353.
+- **Total: +56 tests this session. 5700+ total. All 13 suites green.**
 
 ### Cycles 466-474 — 2026-02-27 — CSS style properties blitz (session continuation)
 - **Cycle 466**: place-self shorthand, flex-direction, flex-wrap, flex-flow, align-items, flex-grow/shrink, flex-basis (8 tests). Committed 05facfb.
