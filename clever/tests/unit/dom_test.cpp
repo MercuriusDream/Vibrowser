@@ -2377,3 +2377,70 @@ TEST(DomDocument, CreateElementNonNull) {
     auto elem = doc.create_element("div");
     EXPECT_NE(elem, nullptr);
 }
+
+// ============================================================================
+// Cycle 668: More DOM tests
+// ============================================================================
+
+// Element: two siblings share same parent
+TEST(DomElement, TwoSiblingsShareParent) {
+    Element parent("div");
+    auto c1 = std::make_unique<Element>("h1");
+    auto c2 = std::make_unique<Element>("p");
+    Element* p1 = c1.get();
+    Element* p2 = c2.get();
+    parent.append_child(std::move(c1));
+    parent.append_child(std::move(c2));
+    EXPECT_EQ(p1->parent(), &parent);
+    EXPECT_EQ(p2->parent(), &parent);
+}
+
+// Element: get_attribute returns "photo.jpg" for src
+TEST(DomElement, GetAttributeSrcReturnsPhotoJpg) {
+    Element elem("img");
+    elem.set_attribute("src", "photo.jpg");
+    auto val = elem.get_attribute("src");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(val.value(), "photo.jpg");
+}
+
+// Element: child_count is 0 for br element
+TEST(DomElement, ChildCountZeroForBrElement) {
+    Element leaf("br");
+    EXPECT_EQ(leaf.child_count(), 0u);
+}
+
+// ClassList: contains "invisible" returns false before add
+TEST(DomClassList, ContainsInvisibleFalseBeforeAdd) {
+    Element elem("div");
+    EXPECT_FALSE(elem.class_list().contains("invisible"));
+}
+
+// ClassList: size is zero initially
+TEST(DomClassList, SizeIsZeroInitially) {
+    Element elem("p");
+    EXPECT_EQ(elem.class_list().items().size(), 0u);
+}
+
+// ClassList: adding three classes yields size 3
+TEST(DomClassList, ThreeClassesYieldSizeThree) {
+    Element elem("ul");
+    elem.class_list().add("a");
+    elem.class_list().add("b");
+    elem.class_list().add("c");
+    EXPECT_EQ(elem.class_list().items().size(), 3u);
+}
+
+// Text: data returns initial text
+TEST(DomText, DataReturnsInitialText) {
+    Text t("initial text");
+    EXPECT_EQ(t.data(), "initial text");
+}
+
+// Document: create_text_node data correct
+TEST(DomDocument, CreateTextNodeDataCorrect) {
+    Document doc;
+    auto node = doc.create_text_node("hello");
+    ASSERT_NE(node, nullptr);
+    EXPECT_EQ(node->data(), "hello");
+}
