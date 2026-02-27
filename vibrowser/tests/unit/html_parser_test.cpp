@@ -12939,3 +12939,188 @@ TEST(HtmlParserTest, SiblingParagraphsTextAndParentV82) {
         EXPECT_EQ(p->parent, body);
     }
 }
+
+// ---------------------------------------------------------------------------
+// Round 83 — 8 new HTML parser tests (V83)
+// ---------------------------------------------------------------------------
+
+// 1. Nested lists: ul > li > ul > li structure is preserved
+TEST(HtmlParserTest, NestedUnorderedListsV83) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<ul><li>A<ul><li>A1</li><li>A2</li></ul></li><li>B</li></ul>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto uls = doc->find_all_elements("ul");
+    ASSERT_EQ(uls.size(), 2u);
+
+    auto lis = doc->find_all_elements("li");
+    ASSERT_EQ(lis.size(), 4u);
+    EXPECT_NE(lis[0]->text_content().find("A"), std::string::npos);
+    EXPECT_EQ(lis[1]->text_content(), "A1");
+    EXPECT_EQ(lis[2]->text_content(), "A2");
+    EXPECT_EQ(lis[3]->text_content(), "B");
+}
+
+// 2. Multiple attributes on a single element
+TEST(HtmlParserTest, MultipleAttributesOnElementV83) {
+    auto doc = clever::html::parse(
+        "<html><body><a href=\"/page\" class=\"link\" id=\"main-link\" target=\"_blank\">Go</a></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* a = doc->find_element("a");
+    ASSERT_NE(a, nullptr);
+    EXPECT_EQ(a->tag_name, "a");
+    EXPECT_EQ(get_attr_v63(a, "href"), "/page");
+    EXPECT_EQ(get_attr_v63(a, "class"), "link");
+    EXPECT_EQ(get_attr_v63(a, "id"), "main-link");
+    EXPECT_EQ(get_attr_v63(a, "target"), "_blank");
+    EXPECT_EQ(a->text_content(), "Go");
+}
+
+// 3. Deeply nested divs preserve depth and text
+TEST(HtmlParserTest, DeeplyNestedDivsV83) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<div><div><div><div><span>deep</span></div></div></div></div>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto divs = doc->find_all_elements("div");
+    ASSERT_EQ(divs.size(), 4u);
+
+    auto* span = doc->find_element("span");
+    ASSERT_NE(span, nullptr);
+    EXPECT_EQ(span->text_content(), "deep");
+    // span should be inside the innermost div
+    ASSERT_NE(span->parent, nullptr);
+    EXPECT_EQ(span->parent->tag_name, "div");
+}
+
+// 4. Empty body produces no child elements
+TEST(HtmlParserTest, EmptyBodyNoChildElementsV83) {
+    auto doc = clever::html::parse("<html><head></head><body></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* body = doc->find_element("body");
+    ASSERT_NE(body, nullptr);
+    // Body should have no element children (may have whitespace text nodes)
+    bool has_element_child = false;
+    for (auto& child : body->children) {
+        if (!child->tag_name.empty()) {
+            has_element_child = true;
+        }
+    }
+    EXPECT_FALSE(has_element_child);
+}
+
+// 5. Inline elements inside block: span inside p
+TEST(HtmlParserTest, InlineSpanInsideParagraphV83) {
+    auto doc = clever::html::parse(
+        "<html><body><p>Hello <span>World</span> end</p></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* p = doc->find_element("p");
+    ASSERT_NE(p, nullptr);
+
+    auto* span = doc->find_element("span");
+    ASSERT_NE(span, nullptr);
+    EXPECT_EQ(span->text_content(), "World");
+    EXPECT_EQ(span->parent, p);
+
+    // The paragraph should contain "Hello", the span, and " end"
+    EXPECT_NE(p->text_content().find("Hello"), std::string::npos);
+    EXPECT_NE(p->text_content().find("World"), std::string::npos);
+    EXPECT_NE(p->text_content().find("end"), std::string::npos);
+}
+
+// 6. Multiple void elements in sequence (br, hr, input)
+TEST(HtmlParserTest, MultipleVoidElementsInSequenceV83) {
+    auto doc = clever::html::parse(
+        "<html><body><br><hr><input type=\"email\"><br></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto brs = doc->find_all_elements("br");
+    ASSERT_EQ(brs.size(), 2u);
+    for (auto* br : brs) {
+        EXPECT_TRUE(br->children.empty());
+    }
+
+    auto* hr = doc->find_element("hr");
+    ASSERT_NE(hr, nullptr);
+    EXPECT_TRUE(hr->children.empty());
+
+    auto* input = doc->find_element("input");
+    ASSERT_NE(input, nullptr);
+    EXPECT_EQ(get_attr_v63(input, "type"), "email");
+    EXPECT_TRUE(input->children.empty());
+}
+
+// 7. Headings h1-h6 all parsed with correct text
+TEST(HtmlParserTest, AllHeadingLevelsH1ToH6V83) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<h1>One</h1><h2>Two</h2><h3>Three</h3>"
+        "<h4>Four</h4><h5>Five</h5><h6>Six</h6>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* h1 = doc->find_element("h1");
+    ASSERT_NE(h1, nullptr);
+    EXPECT_EQ(h1->text_content(), "One");
+
+    auto* h2 = doc->find_element("h2");
+    ASSERT_NE(h2, nullptr);
+    EXPECT_EQ(h2->text_content(), "Two");
+
+    auto* h3 = doc->find_element("h3");
+    ASSERT_NE(h3, nullptr);
+    EXPECT_EQ(h3->text_content(), "Three");
+
+    auto* h4 = doc->find_element("h4");
+    ASSERT_NE(h4, nullptr);
+    EXPECT_EQ(h4->text_content(), "Four");
+
+    auto* h5 = doc->find_element("h5");
+    ASSERT_NE(h5, nullptr);
+    EXPECT_EQ(h5->text_content(), "Five");
+
+    auto* h6 = doc->find_element("h6");
+    ASSERT_NE(h6, nullptr);
+    EXPECT_EQ(h6->text_content(), "Six");
+}
+
+// 8. Form with labeled inputs preserves structure
+TEST(HtmlParserTest, FormWithLabeledInputsV83) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<form action=\"/submit\" method=\"post\">"
+        "<label>Name</label><input type=\"text\" name=\"user\">"
+        "<label>Pass</label><input type=\"password\" name=\"pw\">"
+        "<button type=\"submit\">Go</button>"
+        "</form></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* form = doc->find_element("form");
+    ASSERT_NE(form, nullptr);
+    EXPECT_EQ(get_attr_v63(form, "action"), "/submit");
+    EXPECT_EQ(get_attr_v63(form, "method"), "post");
+
+    auto labels = doc->find_all_elements("label");
+    ASSERT_EQ(labels.size(), 2u);
+    EXPECT_EQ(labels[0]->text_content(), "Name");
+    EXPECT_EQ(labels[1]->text_content(), "Pass");
+
+    auto inputs = doc->find_all_elements("input");
+    ASSERT_EQ(inputs.size(), 2u);
+    EXPECT_EQ(get_attr_v63(inputs[0], "type"), "text");
+    EXPECT_EQ(get_attr_v63(inputs[0], "name"), "user");
+    EXPECT_EQ(get_attr_v63(inputs[1], "type"), "password");
+    EXPECT_EQ(get_attr_v63(inputs[1], "name"), "pw");
+
+    auto* button = doc->find_element("button");
+    ASSERT_NE(button, nullptr);
+    EXPECT_EQ(button->text_content(), "Go");
+    EXPECT_EQ(get_attr_v63(button, "type"), "submit");
+}

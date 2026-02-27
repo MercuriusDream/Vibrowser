@@ -24268,3 +24268,170 @@ TEST(JSEngineTest, DestructuringDefaultV82) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "5,42");
 }
+
+// ============================================================================
+// V83 Tests
+// ============================================================================
+
+TEST(JsEngineTest, BitwiseOperationsCompoundV83) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var a = 0xFF;
+        var b = a & 0x0F;
+        var c = b | 0x30;
+        var d = c ^ 0x05;
+        var e = d << 2;
+        var f = e >> 1;
+        '' + b + ',' + c + ',' + d + ',' + e + ',' + f;
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    // a=255, b=15, c=63, d=58, e=232, f=116
+    EXPECT_EQ(result, "15,63,58,232,116");
+}
+
+TEST(JsEngineTest, RecursiveFibonacciV83) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        function fib(n) {
+            if (n <= 1) return n;
+            return fib(n - 1) + fib(n - 2);
+        }
+        '' + fib(0) + ',' + fib(1) + ',' + fib(5) + ',' + fib(10);
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "0,1,5,55");
+}
+
+TEST(JsEngineTest, ClosureCounterStateV83) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        function makeCounter(start) {
+            var count = start;
+            return {
+                inc: function() { count++; return count; },
+                dec: function() { count--; return count; },
+                val: function() { return count; }
+            };
+        }
+        var c = makeCounter(10);
+        c.inc();
+        c.inc();
+        c.inc();
+        c.dec();
+        '' + c.val();
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "12");
+}
+
+TEST(JsEngineTest, ArrayReduceAndSortV83) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var nums = [3, 1, 4, 1, 5, 9, 2, 6];
+        var sum = nums.reduce(function(a, b) { return a + b; }, 0);
+        var sorted = nums.slice().sort(function(a, b) { return a - b; });
+        var unique = sorted.filter(function(v, i, arr) { return i === 0 || v !== arr[i - 1]; });
+        sum + '|' + unique.join(',');
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "31|1,2,3,4,5,6,9");
+}
+
+TEST(JsEngineTest, TryCatchNestedV83) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var log = [];
+        try {
+            log.push('outer-try');
+            try {
+                log.push('inner-try');
+                throw new Error('inner-err');
+            } catch (e) {
+                log.push('inner-catch:' + e.message);
+                throw new Error('rethrown');
+            } finally {
+                log.push('inner-finally');
+            }
+        } catch (e) {
+            log.push('outer-catch:' + e.message);
+        } finally {
+            log.push('outer-finally');
+        }
+        log.join(';');
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "outer-try;inner-try;inner-catch:inner-err;inner-finally;outer-catch:rethrown;outer-finally");
+}
+
+TEST(JsEngineTest, PrototypeChainInheritanceV83) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        function Animal(name) { this.name = name; }
+        Animal.prototype.speak = function() { return this.name + ' makes a sound'; };
+
+        function Dog(name, breed) {
+            Animal.call(this, name);
+            this.breed = breed;
+        }
+        Dog.prototype = Object.create(Animal.prototype);
+        Dog.prototype.constructor = Dog;
+        Dog.prototype.bark = function() { return this.name + ' barks'; };
+
+        var d = new Dog('Rex', 'Labrador');
+        var checks = [
+            d.speak(),
+            d.bark(),
+            '' + (d instanceof Dog),
+            '' + (d instanceof Animal),
+            d.breed
+        ];
+        checks.join('|');
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "Rex makes a sound|Rex barks|true|true|Labrador");
+}
+
+TEST(JsEngineTest, MapAndSetBasicOperationsV83) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var m = new Map();
+        m.set('a', 1);
+        m.set('b', 2);
+        m.set('c', 3);
+        m.set('b', 20);
+
+        var s = new Set();
+        s.add(10);
+        s.add(20);
+        s.add(10);
+        s.add(30);
+
+        var mKeys = [];
+        m.forEach(function(v, k) { mKeys.push(k + ':' + v); });
+
+        var sVals = [];
+        s.forEach(function(v) { sVals.push(v); });
+
+        m.size + '|' + s.size + '|' + mKeys.join(',') + '|' + sVals.join(',');
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "3|3|a:1,b:20,c:3|10,20,30");
+}
+
+TEST(JsEngineTest, StringMethodsChainingV83) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var s = '  Hello, World!  ';
+        var trimmed = s.trim();
+        var upper = trimmed.toUpperCase();
+        var replaced = upper.replace('WORLD', 'JS');
+        var sliced = replaced.slice(0, 9);
+        var starts = '' + trimmed.startsWith('Hello');
+        var ends = '' + trimmed.endsWith('!');
+        var idx = '' + trimmed.indexOf('World');
+        var inc = '' + trimmed.includes('llo');
+        sliced + '|' + starts + '|' + ends + '|' + idx + '|' + inc;
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "HELLO, JS|true|true|7|true");
+}

@@ -15051,3 +15051,214 @@ TEST(LayoutEngineTest, TextNodeHeightBasedOnFontSizeV82) {
     // Root auto-height should equal the text node height
     EXPECT_FLOAT_EQ(root->geometry.height, tp->geometry.height);
 }
+
+// ============================================================
+// V83 tests
+// ============================================================
+
+// Test V83_001: nested flex inside block computes correctly
+TEST(LayoutTest, NestedFlexInsideBlockV83) {
+    auto root = make_block("div");
+    root->specified_width = 600.0f;
+
+    auto flex = make_flex("div");
+    flex->specified_height = 100.0f;
+    auto* fp = flex.get();
+
+    auto fc1 = make_block("div");
+    fc1->flex_grow = 1.0f;
+    auto* fp1 = fc1.get();
+    flex->append_child(std::move(fc1));
+
+    auto fc2 = make_block("div");
+    fc2->flex_grow = 2.0f;
+    auto* fp2 = fc2.get();
+    flex->append_child(std::move(fc2));
+
+    root->append_child(std::move(flex));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // Flex container should fill parent width
+    EXPECT_FLOAT_EQ(fp->geometry.width, 600.0f);
+    // Children should split space by flex-grow ratio 1:2
+    EXPECT_FLOAT_EQ(fp1->geometry.width, 200.0f);
+    EXPECT_FLOAT_EQ(fp2->geometry.width, 400.0f);
+}
+
+// Test V83_002: margin-top on second block child offsets it from first
+TEST(LayoutTest, MarginTopOnSecondChildV83) {
+    auto root = make_block("div");
+    root->specified_width = 400.0f;
+
+    auto c1 = make_block("div");
+    c1->specified_height = 50.0f;
+    auto* p1 = c1.get();
+    root->append_child(std::move(c1));
+
+    auto c2 = make_block("div");
+    c2->specified_height = 60.0f;
+    c2->geometry.margin.top = 20.0f;
+    auto* p2 = c2.get();
+    root->append_child(std::move(c2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(p1->geometry.y, 0.0f);
+    EXPECT_FLOAT_EQ(p2->geometry.y, 70.0f); // 50 + 20 margin
+    EXPECT_FLOAT_EQ(root->geometry.height, 130.0f); // 50 + 20 + 60
+}
+
+// Test V83_003: padding reduces child content width and adds to parent height
+TEST(LayoutTest, PaddingIncreasesParentSizeV83) {
+    auto root = make_block("div");
+    root->specified_width = 300.0f;
+    root->geometry.padding.top = 10.0f;
+    root->geometry.padding.bottom = 15.0f;
+    root->geometry.padding.left = 20.0f;
+    root->geometry.padding.right = 25.0f;
+
+    auto child = make_block("div");
+    child->specified_height = 40.0f;
+    auto* cp = child.get();
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // Child width = parent width - left padding - right padding
+    EXPECT_FLOAT_EQ(cp->geometry.width, 255.0f); // 300 - 20 - 25
+    // Parent height = padding_top + child height + padding_bottom
+    EXPECT_FLOAT_EQ(root->geometry.height, 65.0f); // 10 + 40 + 15
+    // Parent width remains as specified
+    EXPECT_FLOAT_EQ(root->geometry.width, 300.0f);
+}
+
+// Test V83_004: specified width and height override auto sizing
+TEST(LayoutTest, SpecifiedDimensionsOverrideAutoV83) {
+    auto root = make_block("div");
+    root->specified_width = 200.0f;
+    root->specified_height = 150.0f;
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(root->geometry.width, 200.0f);
+    EXPECT_FLOAT_EQ(root->geometry.height, 150.0f);
+}
+
+// Test V83_005: three-level nesting: padding reduces content width at each level
+TEST(LayoutTest, ThreeLevelNestingContentWidthV83) {
+    auto root = make_block("div");
+    root->specified_width = 500.0f;
+    root->geometry.padding.left = 10.0f;
+    root->geometry.padding.right = 10.0f;
+
+    auto mid = make_block("div");
+    mid->geometry.padding.left = 12.0f;
+    mid->geometry.padding.right = 8.0f;
+    auto* mp = mid.get();
+
+    auto inner = make_block("div");
+    inner->specified_height = 30.0f;
+    auto* ip = inner.get();
+    mid->append_child(std::move(inner));
+
+    root->append_child(std::move(mid));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // Mid width = root content width = 500 - 10 - 10 = 480
+    EXPECT_FLOAT_EQ(mp->geometry.width, 480.0f);
+    // Inner width = mid content width = 480 - 12 - 8 = 460
+    EXPECT_FLOAT_EQ(ip->geometry.width, 460.0f);
+    // Inner height as specified
+    EXPECT_FLOAT_EQ(ip->geometry.height, 30.0f);
+}
+
+// Test V83_006: display none child skipped, sibling positioned correctly
+TEST(LayoutTest, DisplayNoneChildSkippedInFlowV83) {
+    auto root = make_block("div");
+    root->specified_width = 400.0f;
+
+    auto c1 = make_block("div");
+    c1->specified_height = 40.0f;
+    auto* p1 = c1.get();
+    root->append_child(std::move(c1));
+
+    auto hidden = make_block("div");
+    hidden->specified_height = 100.0f;
+    hidden->display = DisplayType::None;
+    auto* hp = hidden.get();
+    root->append_child(std::move(hidden));
+
+    auto c3 = make_block("div");
+    c3->specified_height = 35.0f;
+    auto* p3 = c3.get();
+    root->append_child(std::move(c3));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(p1->geometry.y, 0.0f);
+    // Hidden element geometry should be zero
+    EXPECT_FLOAT_EQ(hp->geometry.height, 0.0f);
+    // c3 directly after c1, hidden is skipped
+    EXPECT_FLOAT_EQ(p3->geometry.y, 40.0f);
+    EXPECT_FLOAT_EQ(root->geometry.height, 75.0f); // 40 + 35
+}
+
+// Test V83_007: flex column direction stacks vertically
+TEST(LayoutTest, FlexColumnChildrenStackVerticallyV83) {
+    auto root = make_flex("div");
+    root->specified_width = 300.0f;
+    root->flex_direction = 2; // 2 = column
+
+    auto c1 = make_block("div");
+    c1->specified_height = 50.0f;
+    auto* p1 = c1.get();
+    root->append_child(std::move(c1));
+
+    auto c2 = make_block("div");
+    c2->specified_height = 70.0f;
+    auto* p2 = c2.get();
+    root->append_child(std::move(c2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // In column direction, children stack vertically
+    EXPECT_FLOAT_EQ(p1->geometry.y, 0.0f);
+    EXPECT_FLOAT_EQ(p2->geometry.y, 50.0f);
+    // Both children should fill container width
+    EXPECT_FLOAT_EQ(p1->geometry.width, 300.0f);
+    EXPECT_FLOAT_EQ(p2->geometry.width, 300.0f);
+}
+
+// Test V83_008: border reduces child content width and adds to parent height
+TEST(LayoutTest, BorderAddsToTotalElementSizeV83) {
+    auto root = make_block("div");
+    root->specified_width = 200.0f;
+    root->geometry.border.top = 3.0f;
+    root->geometry.border.bottom = 5.0f;
+    root->geometry.border.left = 4.0f;
+    root->geometry.border.right = 6.0f;
+
+    auto child = make_block("div");
+    child->specified_height = 80.0f;
+    auto* cp = child.get();
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // Child width = parent specified width - border_left - border_right
+    EXPECT_FLOAT_EQ(cp->geometry.width, 190.0f); // 200 - 4 - 6
+    // Root height = border_top + child height + border_bottom
+    EXPECT_FLOAT_EQ(root->geometry.height, 88.0f); // 3 + 80 + 5
+    // Root width stays as specified
+    EXPECT_FLOAT_EQ(root->geometry.width, 200.0f);
+}
