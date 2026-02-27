@@ -3217,3 +3217,59 @@ TEST(TreeBuilder, WbrElementIsParsed) {
     ASSERT_NE(wbr, nullptr);
     EXPECT_EQ(wbr->tag_name, "wbr");
 }
+
+TEST(TreeBuilder, SvgRectElementIsParsed) {
+    auto doc = clever::html::parse(R"(<svg><rect width="100" height="50"/></svg>)");
+    auto* rect = doc->find_element("rect");
+    ASSERT_NE(rect, nullptr);
+    EXPECT_EQ(rect->tag_name, "rect");
+}
+
+TEST(TreeBuilder, SvgCircleElementIsParsed) {
+    auto doc = clever::html::parse(R"(<svg><circle cx="50" cy="50" r="30"/></svg>)");
+    auto* circle = doc->find_element("circle");
+    ASSERT_NE(circle, nullptr);
+    EXPECT_EQ(circle->tag_name, "circle");
+}
+
+TEST(TreeBuilder, SvgPathElementIsParsed) {
+    auto doc = clever::html::parse(R"(<svg><path d="M10 10 L90 90"/></svg>)");
+    auto* path = doc->find_element("path");
+    ASSERT_NE(path, nullptr);
+    EXPECT_EQ(path->tag_name, "path");
+}
+
+TEST(TreeBuilder, SvgTextElementIsParsed) {
+    auto doc = clever::html::parse(R"(<svg><text x="10" y="20">SVG Text</text></svg>)");
+    auto* text_elem = doc->find_element("text");
+    ASSERT_NE(text_elem, nullptr);
+    EXPECT_EQ(text_elem->tag_name, "text");
+}
+
+TEST(TreeBuilder, EmbedElementIsParsed) {
+    auto doc = clever::html::parse(R"(<embed type="application/pdf" src="file.pdf">)");
+    auto* embed = doc->find_element("embed");
+    ASSERT_NE(embed, nullptr);
+    EXPECT_EQ(embed->tag_name, "embed");
+}
+
+TEST(TreeBuilder, ObjectElementIsParsed) {
+    auto doc = clever::html::parse(R"(<object type="image/png" data="img.png"></object>)");
+    auto* obj = doc->find_element("object");
+    ASSERT_NE(obj, nullptr);
+    EXPECT_EQ(obj->tag_name, "object");
+}
+
+TEST(TreeBuilder, SourceElementInVideo) {
+    auto doc = clever::html::parse(R"(<video><source src="movie.mp4" type="video/mp4"></video>)");
+    auto* source = doc->find_element("source");
+    ASSERT_NE(source, nullptr);
+    EXPECT_EQ(source->tag_name, "source");
+}
+
+TEST(TreeBuilder, TrackElementInVideo) {
+    auto doc = clever::html::parse(R"(<video><track kind="subtitles" src="subs.vtt"></video>)");
+    auto* track = doc->find_element("track");
+    ASSERT_NE(track, nullptr);
+    EXPECT_EQ(track->tag_name, "track");
+}
