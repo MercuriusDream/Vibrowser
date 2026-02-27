@@ -7472,3 +7472,43 @@ TEST(LayoutNodeProps, TextSizeAdjustDefaultsAuto) {
     LayoutNode n;
     EXPECT_EQ(n.text_size_adjust, "auto");
 }
+
+TEST(LayoutNodeProps, TextWrapDefaultsZero) {
+    LayoutNode n;
+    EXPECT_EQ(n.text_wrap, 0);
+}
+
+TEST(LayoutNodeProps, FirstLetterFontSizeDefaultsZero) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.first_letter_font_size, 0.0f);
+}
+
+TEST(LayoutNodeProps, FirstLineFontSizeDefaultsZero) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.first_line_font_size, 0.0f);
+}
+
+TEST(LayoutNodeProps, InitialLetterSizeDefaultsZero) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.initial_letter_size, 0.0f);
+}
+
+TEST(LayoutNodeProps, InitialLetterSinkDefaultsZero) {
+    LayoutNode n;
+    EXPECT_EQ(n.initial_letter_sink, 0);
+}
+
+TEST(LayoutNodeProps, OverflowClipMarginDefaultsZero) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.overflow_clip_margin, 0.0f);
+}
+
+TEST(LayoutNodeProps, InitialLetterDefaultsZero) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.initial_letter, 0.0f);
+}
+
+TEST(LayoutNodeProps, InitialLetterAlignDefaultsZero) {
+    LayoutNode n;
+    EXPECT_EQ(n.initial_letter_align, 0);
+}
