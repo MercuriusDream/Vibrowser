@@ -2580,3 +2580,88 @@ TEST(DomEvent, CancelableFlagWorks) {
     Event ev("click", true, true);
     EXPECT_TRUE(ev.cancelable());
 }
+
+// ---------------------------------------------------------------------------
+// Cycle 689 — 8 additional DOM tests
+// ---------------------------------------------------------------------------
+
+// Element: attributes() vector has correct name field
+TEST(DomElement, AttributeVectorFirstNameMatchesSet) {
+    Element elem("a");
+    elem.set_attribute("href", "https://example.com");
+    ASSERT_EQ(elem.attributes().size(), 1u);
+    EXPECT_EQ(elem.attributes()[0].name, "href");
+}
+
+// Element: attributes() vector has correct value field
+TEST(DomElement, AttributeVectorFirstValueMatchesSet) {
+    Element elem("a");
+    elem.set_attribute("href", "https://example.com");
+    ASSERT_EQ(elem.attributes().size(), 1u);
+    EXPECT_EQ(elem.attributes()[0].value, "https://example.com");
+}
+
+// ClassList: length decreases after remove
+TEST(DomClassList, LengthDecreasesAfterRemove) {
+    Element elem("div");
+    elem.class_list().add("foo");
+    elem.class_list().add("bar");
+    elem.class_list().remove("foo");
+    EXPECT_EQ(elem.class_list().length(), 1u);
+}
+
+// Node: previous_sibling of third child is second child
+TEST(DomNode, SiblingThreePreviousIsSecond) {
+    Element parent("div");
+    auto first  = std::make_unique<Element>("p");
+    auto second = std::make_unique<Element>("p");
+    auto third  = std::make_unique<Element>("p");
+    Element* second_ptr = second.get();
+    parent.append_child(std::move(first));
+    parent.append_child(std::move(second));
+    auto& third_ref = parent.append_child(std::move(third));
+    EXPECT_EQ(third_ref.previous_sibling(), second_ptr);
+}
+
+// Node: next_sibling of first child is second child in three-child list
+TEST(DomNode, SiblingThreeNextIsSecond) {
+    Element parent("div");
+    auto first  = std::make_unique<Element>("p");
+    auto second = std::make_unique<Element>("p");
+    Element* first_ptr  = first.get();
+    Element* second_ptr = second.get();
+    parent.append_child(std::move(first));
+    parent.append_child(std::move(second));
+    parent.append_child(std::make_unique<Element>("p"));
+    EXPECT_EQ(first_ptr->next_sibling(), second_ptr);
+}
+
+// Node: child_count is two after insert_before on one-child parent
+TEST(DomNode, ChildCountAfterInsertBeforeIsTwo) {
+    Element parent("div");
+    auto existing = std::make_unique<Element>("span");
+    Element* existing_ptr = existing.get();
+    parent.append_child(std::move(existing));
+    parent.insert_before(std::make_unique<Element>("span"), existing_ptr);
+    EXPECT_EQ(parent.child_count(), 2u);
+}
+
+// Node: remove_child returns non-null unique_ptr (ownership transferred)
+TEST(DomNode, RemoveChildReturnsOwnership) {
+    Element parent("div");
+    auto child = std::make_unique<Element>("span");
+    Element* child_ptr = child.get();
+    parent.append_child(std::move(child));
+    auto removed = parent.remove_child(*child_ptr);
+    EXPECT_NE(removed, nullptr);
+}
+
+// Node: mark_dirty with DirtyFlags::All sets all three flag bits
+TEST(DomNode, MarkDirtyAllSetsAllFlags) {
+    Element elem("div");
+    elem.mark_dirty(DirtyFlags::All);
+    auto flags = elem.dirty_flags();
+    EXPECT_NE(flags & DirtyFlags::Style,  DirtyFlags::None);
+    EXPECT_NE(flags & DirtyFlags::Layout, DirtyFlags::None);
+    EXPECT_NE(flags & DirtyFlags::Paint,  DirtyFlags::None);
+}
