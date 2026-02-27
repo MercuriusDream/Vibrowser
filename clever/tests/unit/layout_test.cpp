@@ -6659,3 +6659,43 @@ TEST(LayoutNodeProps, BorderImageSourceDefaultsEmpty) {
     auto node = make_block("div");
     EXPECT_TRUE(node->border_image_source.empty());
 }
+
+TEST(LayoutNodeProps, ContentVisibilityDefaultsToZero) {
+    LayoutNode n;
+    EXPECT_EQ(n.content_visibility, 0);
+}
+
+TEST(LayoutNodeProps, ColumnSpanDefaultsToZero) {
+    LayoutNode n;
+    EXPECT_EQ(n.column_span, 0);
+}
+
+TEST(LayoutNodeProps, ScrollPaddingTopDefaultsToZero) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.scroll_padding_top, 0.0f);
+}
+
+TEST(LayoutNodeProps, BackfaceVisibilityDefaultsToZero) {
+    LayoutNode n;
+    EXPECT_EQ(n.backface_visibility, 0);
+}
+
+TEST(LayoutNodeProps, PerspectiveDefaultsToZero) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.perspective, 0.0f);
+}
+
+TEST(LayoutNodeProps, MaskImageDefaultsEmpty) {
+    LayoutNode n;
+    EXPECT_EQ(n.mask_image, "");
+}
+
+TEST(LayoutNodeProps, CssRotateDefaultsNone) {
+    LayoutNode n;
+    EXPECT_EQ(n.css_rotate, "none");
+}
+
+TEST(LayoutNodeProps, CssScaleDefaultsNone) {
+    LayoutNode n;
+    EXPECT_EQ(n.css_scale, "none");
+}
