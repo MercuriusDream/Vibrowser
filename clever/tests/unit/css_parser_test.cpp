@@ -5571,3 +5571,75 @@ TEST_F(CSSStylesheetTest, ScrollTimelineNameDeclaration) {
         if (d.property == "scroll-timeline-name") { found = true; break; }
     EXPECT_TRUE(found);
 }
+
+TEST_F(CSSStylesheetTest, ViewTimelineNameDeclaration) {
+    auto sheet = parse_stylesheet("section { view-timeline-name: --hero; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "view-timeline-name") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, ViewTimelineInsetDeclaration) {
+    auto sheet = parse_stylesheet("section { view-timeline-inset: 10%; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "view-timeline-inset") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, ScrollTimelineAxisDeclaration) {
+    auto sheet = parse_stylesheet("div { scroll-timeline-axis: block; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "scroll-timeline-axis") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, OffsetPathDeclaration) {
+    auto sheet = parse_stylesheet("div { offset-path: path('M 0 0 L 100 100'); }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "offset-path") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, OffsetDistanceDeclaration) {
+    auto sheet = parse_stylesheet("div { offset-distance: 50%; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "offset-distance") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, OffsetRotateDeclaration) {
+    auto sheet = parse_stylesheet("div { offset-rotate: auto; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "offset-rotate") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, TextEmphasisPositionDeclaration) {
+    auto sheet = parse_stylesheet("ruby { text-emphasis-position: over right; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "text-emphasis-position") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, TextUnderlineOffsetDeclaration) {
+    auto sheet = parse_stylesheet("a { text-underline-offset: 2px; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "text-underline-offset") { found = true; break; }
+    EXPECT_TRUE(found);
+}
