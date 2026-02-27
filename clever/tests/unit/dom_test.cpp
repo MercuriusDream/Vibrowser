@@ -3868,3 +3868,58 @@ TEST(DomDispatchTree, DispatchTwiceSecondTargetUpdates) {
     dispatch_event_to_tree(event2, elem);
     EXPECT_EQ(event2.target(), &elem);
 }
+
+TEST(DomDispatchTree, TargetNullBeforeDispatch) {
+    Event event("focus");
+    EXPECT_EQ(event.target(), nullptr);
+}
+
+TEST(DomDispatchTree, PhaseNoneBeforeDispatch) {
+    Event event("blur");
+    EXPECT_EQ(event.phase(), EventPhase::None);
+}
+
+TEST(DomDispatchTree, EventTypePreservedAfterDispatch) {
+    Element elem("span");
+    Event event("input");
+    dispatch_event_to_tree(event, elem);
+    EXPECT_EQ(event.type(), "input");
+}
+
+TEST(DomDispatchTree, CurrentTargetNullInitially) {
+    Event event("keydown");
+    EXPECT_EQ(event.current_target(), nullptr);
+}
+
+TEST(DomDispatchTree, BubblesPreservedAfterDispatch) {
+    Element elem("div");
+    Event event("scroll", /*bubbles=*/true);
+    dispatch_event_to_tree(event, elem);
+    EXPECT_TRUE(event.bubbles());
+}
+
+TEST(DomDispatchTree, NonBubblingPreservedAfterDispatch) {
+    Element elem("div");
+    Event event("resize", /*bubbles=*/false);
+    dispatch_event_to_tree(event, elem);
+    EXPECT_FALSE(event.bubbles());
+}
+
+TEST(DomDispatchTree, DispatchToSiblingSetsSiblingTarget) {
+    Element parent("ul");
+    auto li1_ptr = std::make_unique<Element>("li");
+    auto li2_ptr = std::make_unique<Element>("li");
+    Element* li2 = li2_ptr.get();
+    parent.append_child(std::move(li1_ptr));
+    parent.append_child(std::move(li2_ptr));
+    Event event("click");
+    dispatch_event_to_tree(event, *li2);
+    EXPECT_EQ(event.target(), li2);
+}
+
+TEST(DomDispatchTree, CancelablePreservedAfterDispatch) {
+    Element elem("button");
+    Event event("click", /*bubbles=*/true, /*cancelable=*/true);
+    dispatch_event_to_tree(event, elem);
+    EXPECT_TRUE(event.cancelable());
+}
