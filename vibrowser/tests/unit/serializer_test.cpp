@@ -8566,3 +8566,147 @@ TEST(Serializer, RoundtripF64V55) {
     EXPECT_DOUBLE_EQ(d.read_f64(), 55.55);
     EXPECT_FALSE(d.has_remaining());
 }
+
+// ------------------------------------------------------------------
+// V56 Tests: Comprehensive Serialization Coverage
+// ------------------------------------------------------------------
+
+TEST(Serializer, SignedIntegersV56) {
+    Serializer s;
+    s.write_i32(-42);
+    s.write_i32(-1000000);
+    s.write_i64(-9000000000LL);
+    s.write_i64(42LL);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i32(), -42);
+    EXPECT_EQ(d.read_i32(), -1000000);
+    EXPECT_EQ(d.read_i64(), -9000000000LL);
+    EXPECT_EQ(d.read_i64(), 42LL);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(Serializer, DoubleValuesV56) {
+    Serializer s;
+    s.write_f64(3.14159);
+    s.write_f64(2.718281828);
+    s.write_f64(-0.5);
+    s.write_f64(0.0);
+
+    Deserializer d(s.data());
+    EXPECT_DOUBLE_EQ(d.read_f64(), 3.14159);
+    EXPECT_DOUBLE_EQ(d.read_f64(), 2.718281828);
+    EXPECT_DOUBLE_EQ(d.read_f64(), -0.5);
+    EXPECT_DOUBLE_EQ(d.read_f64(), 0.0);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(Serializer, LargeBytesV56) {
+    Serializer s;
+    std::vector<uint8_t> data(2048);
+    for (size_t i = 0; i < data.size(); ++i) {
+        data[i] = static_cast<uint8_t>((i * 17) % 256);
+    }
+    s.write_bytes(data.data(), data.size());
+
+    Deserializer d(s.data());
+    auto result = d.read_bytes();
+    ASSERT_EQ(result.size(), data.size());
+    for (size_t i = 0; i < result.size(); ++i) {
+        EXPECT_EQ(result[i], static_cast<uint8_t>((i * 17) % 256));
+    }
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(Serializer, MultipleStringsV56) {
+    Serializer s;
+    s.write_string("first");
+    s.write_string("second");
+    s.write_string("third-with-special-chars-!@#$");
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "first");
+    EXPECT_EQ(d.read_string(), "second");
+    EXPECT_EQ(d.read_string(), "third-with-special-chars-!@#$");
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(Serializer, EmptyBytesAndStringV56) {
+    Serializer s;
+    s.write_string("");
+    std::vector<uint8_t> empty;
+    if (!empty.empty()) {
+        s.write_bytes(empty.data(), empty.size());
+    }
+    s.write_u8(99);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "");
+    EXPECT_EQ(d.read_u8(), 99u);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(Serializer, BoundaryValuesV56) {
+    Serializer s;
+    s.write_u8(0);
+    s.write_u8(255);
+    s.write_u16(0);
+    s.write_u16(65535);
+    s.write_u32(0);
+    s.write_u32(4294967295u);
+    s.write_i32(-2147483648);
+    s.write_i32(2147483647);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u8(), 0u);
+    EXPECT_EQ(d.read_u8(), 255u);
+    EXPECT_EQ(d.read_u16(), 0u);
+    EXPECT_EQ(d.read_u16(), 65535u);
+    EXPECT_EQ(d.read_u32(), 0u);
+    EXPECT_EQ(d.read_u32(), 4294967295u);
+    EXPECT_EQ(d.read_i32(), -2147483648);
+    EXPECT_EQ(d.read_i32(), 2147483647);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(Serializer, BoolSequenceV56) {
+    Serializer s;
+    s.write_bool(true);
+    s.write_bool(false);
+    s.write_bool(true);
+    s.write_bool(true);
+    s.write_bool(false);
+
+    Deserializer d(s.data());
+    EXPECT_TRUE(d.read_bool());
+    EXPECT_FALSE(d.read_bool());
+    EXPECT_TRUE(d.read_bool());
+    EXPECT_TRUE(d.read_bool());
+    EXPECT_FALSE(d.read_bool());
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(Serializer, ComplexPayloadV56) {
+    Serializer s;
+    s.write_u32(12345);
+    s.write_string("header");
+    std::vector<uint8_t> payload = {0xDE, 0xAD, 0xBE, 0xEF};
+    s.write_bytes(payload.data(), payload.size());
+    s.write_f64(99.99);
+    s.write_bool(false);
+    s.write_i32(-256);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u32(), 12345u);
+    EXPECT_EQ(d.read_string(), "header");
+    auto bytes = d.read_bytes();
+    ASSERT_EQ(bytes.size(), 4);
+    EXPECT_EQ(bytes[0], 0xDEu);
+    EXPECT_EQ(bytes[1], 0xADu);
+    EXPECT_EQ(bytes[2], 0xBEu);
+    EXPECT_EQ(bytes[3], 0xEFu);
+    EXPECT_DOUBLE_EQ(d.read_f64(), 99.99);
+    EXPECT_FALSE(d.read_bool());
+    EXPECT_EQ(d.read_i32(), -256);
+    EXPECT_FALSE(d.has_remaining());
+}

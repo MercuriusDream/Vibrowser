@@ -10356,3 +10356,135 @@ TEST(HttpClient, CookieJarPathScopedCookieMatchingV55) {
     EXPECT_NE(api_path.find("api_token=xyz"), std::string::npos);
     EXPECT_EQ(other_path.find("api_token=xyz"), std::string::npos);
 }
+
+// ============================================================================
+// Cycle X: HTTP/Net tests V56
+// ============================================================================
+
+TEST(HttpClient, RequestMethodAndHostSetupForGetRequestV56) {
+    using namespace clever::net;
+    Request req;
+    req.method = Method::GET;
+    req.host = "www.example.com";
+    req.path = "/index.html";
+    req.headers.set("User-Agent", "TestBrowser/1.0");
+
+    EXPECT_EQ(req.method, Method::GET);
+    EXPECT_EQ(req.host, "www.example.com");
+    EXPECT_EQ(req.path, "/index.html");
+    EXPECT_EQ(req.headers.get("User-Agent").value(), "TestBrowser/1.0");
+}
+
+TEST(HttpClient, RequestBodySerializationWithContentTypeV56) {
+    using namespace clever::net;
+    Request req;
+    req.method = Method::POST;
+    req.host = "api.example.com";
+    req.path = "/v1/items";
+    req.headers.set("Content-Type", "application/json");
+
+    std::string json_body = R"({"name":"test","id":123})";
+    req.body.assign(json_body.begin(), json_body.end());
+
+    auto serialized = req.serialize();
+    std::string serialized_str(serialized.begin(), serialized.end());
+
+    EXPECT_NE(serialized_str.find("POST /v1/items HTTP/1.1"), std::string::npos);
+    EXPECT_NE(serialized_str.find("content-type: application/json"), std::string::npos);
+    EXPECT_NE(serialized_str.find("name"), std::string::npos);
+}
+
+TEST(HttpClient, HeaderMapCasInsensitiveGetAndRemoveV56) {
+    using namespace clever::net;
+    HeaderMap headers;
+
+    headers.set("X-Custom-Header", "value123");
+    EXPECT_EQ(headers.get("x-custom-header").value(), "value123");
+    EXPECT_EQ(headers.get("X-CUSTOM-HEADER").value(), "value123");
+
+    headers.remove("x-custom-header");
+    EXPECT_FALSE(headers.has("X-Custom-Header"));
+}
+
+TEST(HttpClient, CookieJarMultipleCookiesDifferentDomainsV56) {
+    using namespace clever::net;
+    CookieJar jar;
+
+    jar.set_from_header("session_id=abc123; Path=/", "example.com");
+    jar.set_from_header("pref=dark_mode; Path=/", "example.org");
+    jar.set_from_header("token=xyz789; Path=/api", "example.com");
+
+    EXPECT_EQ(jar.size(), 3u);
+
+    std::string example_com_cookies = jar.get_cookie_header("example.com", "/api", false);
+    std::string example_org_cookies = jar.get_cookie_header("example.org", "/", false);
+
+    EXPECT_NE(example_com_cookies.find("session_id"), std::string::npos);
+    EXPECT_NE(example_com_cookies.find("token"), std::string::npos);
+    EXPECT_NE(example_org_cookies.find("pref"), std::string::npos);
+    EXPECT_EQ(example_org_cookies.find("session_id"), std::string::npos);
+}
+
+TEST(HttpClient, ResponseStatusCodeAndHeadersParsingV56) {
+    using namespace clever::net;
+    Response resp;
+    resp.status = 201;
+    resp.status_text = "Created";
+    resp.headers.set("Location", "https://example.com/resource/123");
+    resp.headers.set("Content-Type", "application/json");
+    resp.headers.set("X-Request-Id", "req-456");
+
+    EXPECT_EQ(resp.status, 201u);
+    EXPECT_EQ(resp.status_text, "Created");
+    EXPECT_EQ(resp.headers.get("location").value(), "https://example.com/resource/123");
+    EXPECT_EQ(resp.headers.get("content-type").value(), "application/json");
+    EXPECT_TRUE(resp.headers.has("x-request-id"));
+}
+
+TEST(HttpClient, RequestSerializeDeleteMethodWithoutBodyV56) {
+    using namespace clever::net;
+    Request req;
+    req.method = Method::DELETE_METHOD;
+    req.host = "api.example.com";
+    req.path = "/resource/42";
+    req.headers.set("Authorization", "Bearer token123");
+
+    auto serialized = req.serialize();
+    std::string serialized_str(serialized.begin(), serialized.end());
+
+    EXPECT_NE(serialized_str.find("DELETE /resource/42 HTTP/1.1"), std::string::npos);
+    EXPECT_NE(serialized_str.find("authorization: Bearer token123"), std::string::npos);
+    EXPECT_EQ(req.body.size(), 0u);
+}
+
+TEST(HttpClient, CookieJarHttpOnlyAndSameSiteFlagsV56) {
+    using namespace clever::net;
+    CookieJar jar;
+
+    jar.set_from_header("sensitive=data; Path=/; HttpOnly; SameSite=Strict", "example.com");
+    jar.set_from_header("normal=value; Path=/", "example.com");
+
+    EXPECT_EQ(jar.size(), 2u);
+
+    // Test retrieval with different flags
+    std::string with_all_flags = jar.get_cookie_header("example.com", "/", false, true, true);
+    std::string with_secure_flag = jar.get_cookie_header("example.com", "/", true, true, true);
+
+    EXPECT_FALSE(with_all_flags.empty());
+    EXPECT_FALSE(with_secure_flag.empty());
+}
+
+TEST(HttpClient, ResponseBodyAsStringFromBinaryDataV56) {
+    using namespace clever::net;
+    Response resp;
+    resp.status = 200;
+    resp.status_text = "OK";
+    resp.headers.set("Content-Type", "text/plain");
+
+    std::string text_body = "Response body content";
+    resp.body.assign(text_body.begin(), text_body.end());
+
+    EXPECT_EQ(resp.body_as_string(), "Response body content");
+    EXPECT_EQ(resp.body.size(), text_body.size());
+    EXPECT_EQ(resp.status, 200u);
+}

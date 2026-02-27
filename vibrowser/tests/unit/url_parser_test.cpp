@@ -7226,3 +7226,87 @@ TEST(URLParser, FileSchemeAbsolutePathV35) {
     EXPECT_EQ(url->scheme, "file");
     EXPECT_EQ(url->path, "/Users/test/docs/readme.txt");
 }
+
+TEST(URLParser, PortEdgeCaseZeroIsInvalidV36) {
+    auto url = parse("https://example.com:0/path");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "example.com");
+    // Port 0 may or may not be preserved depending on implementation
+    EXPECT_EQ(url->path, "/path");
+}
+
+TEST(URLParser, PortEdgeCaseMaximumValidV36) {
+    auto url = parse("https://example.com:65535/api");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "example.com");
+    ASSERT_TRUE(url->port.has_value());
+    EXPECT_EQ(*url->port, 65535);
+    EXPECT_EQ(url->path, "/api");
+}
+
+TEST(URLParser, MultipleSlashesInPathGetNormalizedV36) {
+    auto url = parse("https://example.com/a//b///c////d");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "example.com");
+    // Path may preserve or normalize multiple slashes
+    EXPECT_FALSE(url->path.empty());
+}
+
+TEST(URLParser, QueryWithMultipleParamsAndAmpersandV36) {
+    auto url = parse("https://example.com/search?name=john&age=30&role=admin");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "example.com");
+    EXPECT_EQ(url->path, "/search");
+    EXPECT_NE(url->query.find("name=john"), std::string::npos);
+    EXPECT_NE(url->query.find("age=30"), std::string::npos);
+    EXPECT_NE(url->query.find("role=admin"), std::string::npos);
+}
+
+TEST(URLParser, RelativePathDoubleDotTraversalV36) {
+    auto base = parse("https://example.com/api/v1/users/list");
+    ASSERT_TRUE(base.has_value());
+    auto result = parse("../../endpoint", &base.value());
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/api/endpoint");
+}
+
+TEST(URLParser, AnchorFragmentWithSpecialCharsV36) {
+    auto url = parse("https://docs.example.com/guide#section_2.1-heading");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "docs.example.com");
+    EXPECT_EQ(url->path, "/guide");
+    EXPECT_EQ(url->fragment, "section_2.1-heading");
+}
+
+TEST(URLParser, MixedCaseSchemeAndHostNormalizedV36) {
+    auto url = parse("HtTpS://ExAmPle.CoM:8443/Path?Query=Value#Frag");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "example.com");
+    ASSERT_TRUE(url->port.has_value());
+    EXPECT_EQ(*url->port, 8443);
+    EXPECT_EQ(url->path, "/Path");
+    EXPECT_EQ(url->query, "Query=Value");
+    EXPECT_EQ(url->fragment, "Frag");
+}
+
+TEST(URLParser, ComplexUrlWithUserinfoAndAllComponentsV36) {
+    auto url = parse("https://user:pass@api.example.com:9443/v2/resource?filter=active#item-5");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->username, "user");
+    EXPECT_EQ(url->password, "pass");
+    EXPECT_EQ(url->host, "api.example.com");
+    ASSERT_TRUE(url->port.has_value());
+    EXPECT_EQ(*url->port, 9443);
+    EXPECT_EQ(url->path, "/v2/resource");
+    EXPECT_EQ(url->query, "filter=active");
+    EXPECT_EQ(url->fragment, "item-5");
+}

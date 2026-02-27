@@ -9068,3 +9068,191 @@ TEST(TreeBuilder, AttributesWithMixedQuotingStylesV55) {
     EXPECT_EQ(placeholder_value, "Find");
     EXPECT_TRUE(has_disabled);
 }
+
+// ---------------------------------------------------------------------------
+// V34 — HTML parser coverage: form elements, tables, semantic HTML,
+//       nested attributes, empty elements, complex attribute patterns
+// ---------------------------------------------------------------------------
+
+TEST(TreeBuilder, FormElementsWithFieldsetAndLegendV34) {
+    auto doc = parse("<html><body><form><fieldset><legend>Account</legend><input name=\"user\" type=\"text\"/></fieldset></form></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* form = doc->find_element("form");
+    auto* fieldset = doc->find_element("fieldset");
+    auto* legend = doc->find_element("legend");
+    auto* input = doc->find_element("input");
+    ASSERT_NE(form, nullptr);
+    ASSERT_NE(fieldset, nullptr);
+    ASSERT_NE(legend, nullptr);
+    ASSERT_NE(input, nullptr);
+
+    EXPECT_EQ(form->tag_name, "form");
+    EXPECT_EQ(fieldset->tag_name, "fieldset");
+    EXPECT_EQ(legend->tag_name, "legend");
+    EXPECT_EQ(legend->text_content(), "Account");
+    EXPECT_EQ(input->tag_name, "input");
+    EXPECT_EQ(fieldset->parent, form);
+    EXPECT_EQ(legend->parent, fieldset);
+}
+
+TEST(TreeBuilder, TableWithHeaderFooterAndBodyRowsV34) {
+    auto doc = parse("<table><thead><tr><th>Name</th><th>Age</th></tr></thead><tbody><tr><td>Alice</td><td>30</td></tr></tbody><tfoot><tr><td>Total</td><td>1</td></tr></tfoot></table>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* table = doc->find_element("table");
+    auto* thead = doc->find_element("thead");
+    auto* tbody = doc->find_element("tbody");
+    auto* tfoot = doc->find_element("tfoot");
+    auto ths = doc->find_all_elements("th");
+    auto tds = doc->find_all_elements("td");
+
+    ASSERT_NE(table, nullptr);
+    ASSERT_NE(thead, nullptr);
+    ASSERT_NE(tbody, nullptr);
+    ASSERT_NE(tfoot, nullptr);
+    ASSERT_EQ(ths.size(), 2u);
+    ASSERT_EQ(tds.size(), 4u);
+
+    EXPECT_EQ(ths[0]->text_content(), "Name");
+    EXPECT_EQ(ths[1]->text_content(), "Age");
+    EXPECT_EQ(tds[0]->text_content(), "Alice");
+    EXPECT_EQ(tds[1]->text_content(), "30");
+}
+
+TEST(TreeBuilder, SemanticElementsHeaderNavMainAsideFooterV34) {
+    auto doc = parse("<html><body><header><nav><a href=\"/\">Home</a></nav></header><main><article><h1>Title</h1></article></main><aside><p>Sidebar</p></aside><footer>Copyright</footer></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* header = doc->find_element("header");
+    auto* nav = doc->find_element("nav");
+    auto* main = doc->find_element("main");
+    auto* article = doc->find_element("article");
+    auto* aside = doc->find_element("aside");
+    auto* footer = doc->find_element("footer");
+    auto* h1 = doc->find_element("h1");
+
+    ASSERT_NE(header, nullptr);
+    ASSERT_NE(nav, nullptr);
+    ASSERT_NE(main, nullptr);
+    ASSERT_NE(article, nullptr);
+    ASSERT_NE(aside, nullptr);
+    ASSERT_NE(footer, nullptr);
+    ASSERT_NE(h1, nullptr);
+
+    EXPECT_EQ(h1->text_content(), "Title");
+    EXPECT_EQ(footer->text_content(), "Copyright");
+    EXPECT_EQ(aside->text_content(), "Sidebar");
+}
+
+TEST(TreeBuilder, ButtonWithTypeAndNameAttributesV34) {
+    auto doc = parse("<button type=\"submit\" name=\"action\" value=\"save\" class=\"btn-primary\">Save Changes</button>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* button = doc->find_element("button");
+    ASSERT_NE(button, nullptr);
+    EXPECT_EQ(button->tag_name, "button");
+    EXPECT_EQ(button->text_content(), "Save Changes");
+
+    std::string type_val, name_val, value_val, class_val;
+    for (const auto& attr : button->attributes) {
+        if (attr.name == "type") type_val = attr.value;
+        if (attr.name == "name") name_val = attr.value;
+        if (attr.name == "value") value_val = attr.value;
+        if (attr.name == "class") class_val = attr.value;
+    }
+
+    EXPECT_EQ(type_val, "submit");
+    EXPECT_EQ(name_val, "action");
+    EXPECT_EQ(value_val, "save");
+    EXPECT_EQ(class_val, "btn-primary");
+}
+
+TEST(TreeBuilder, LabelInputAssociationWithForAttributeV34) {
+    auto doc = parse("<form><label for=\"email-input\">Email:</label><input id=\"email-input\" type=\"email\" required/></form>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* label = doc->find_element("label");
+    auto* input = doc->find_element("input");
+    ASSERT_NE(label, nullptr);
+    ASSERT_NE(input, nullptr);
+
+    std::string label_for;
+    std::string input_id;
+    std::string input_type;
+    bool is_required = false;
+
+    for (const auto& attr : label->attributes) {
+        if (attr.name == "for") label_for = attr.value;
+    }
+    for (const auto& attr : input->attributes) {
+        if (attr.name == "id") input_id = attr.value;
+        if (attr.name == "type") input_type = attr.value;
+        if (attr.name == "required") is_required = true;
+    }
+
+    EXPECT_EQ(label_for, "email-input");
+    EXPECT_EQ(input_id, "email-input");
+    EXPECT_EQ(input_type, "email");
+    EXPECT_TRUE(is_required);
+}
+
+TEST(TreeBuilder, SelectWithOptgroupAndMultipleOptionsV34) {
+    auto doc = parse("<select name=\"country\" id=\"country-select\"><optgroup label=\"Europe\"><option value=\"de\">Germany</option><option value=\"fr\">France</option></optgroup><optgroup label=\"Asia\"><option value=\"jp\">Japan</option></optgroup></select>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* select = doc->find_element("select");
+    auto optgroups = doc->find_all_elements("optgroup");
+    auto options = doc->find_all_elements("option");
+
+    ASSERT_NE(select, nullptr);
+    ASSERT_EQ(optgroups.size(), 2u);
+    ASSERT_EQ(options.size(), 3u);
+
+    EXPECT_EQ(optgroups[0]->text_content(), "GermanyFrance");
+    EXPECT_EQ(optgroups[1]->text_content(), "Japan");
+    EXPECT_EQ(options[0]->text_content(), "Germany");
+    EXPECT_EQ(options[1]->text_content(), "France");
+    EXPECT_EQ(options[2]->text_content(), "Japan");
+}
+
+TEST(TreeBuilder, ScriptStyleAndMetaElementsV34) {
+    auto doc = parse("<html><head><meta charset=\"UTF-8\"/><meta name=\"viewport\" content=\"width=device-width\"/><style>body { color: red; }</style></head><body><script>var x = 1;</script></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* head = doc->find_element("head");
+    auto metas = doc->find_all_elements("meta");
+    auto* style = doc->find_element("style");
+    auto* script = doc->find_element("script");
+
+    ASSERT_NE(head, nullptr);
+    ASSERT_EQ(metas.size(), 2u);
+    ASSERT_NE(style, nullptr);
+    ASSERT_NE(script, nullptr);
+
+    bool found_charset = false;
+    bool found_viewport = false;
+    for (const auto* meta : metas) {
+        for (const auto& attr : meta->attributes) {
+            if (attr.name == "charset") found_charset = true;
+            if (attr.name == "name" && attr.value == "viewport") found_viewport = true;
+        }
+    }
+    EXPECT_TRUE(found_charset);
+    EXPECT_TRUE(found_viewport);
+}
+
+TEST(TreeBuilder, EmptyAndWhitespaceTextNodesPreservationV34) {
+    auto doc = parse("<div>  <span>inner</span>  </div>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* div = doc->find_element("div");
+    auto* span = doc->find_element("span");
+    ASSERT_NE(div, nullptr);
+    ASSERT_NE(span, nullptr);
+
+    EXPECT_EQ(span->tag_name, "span");
+    EXPECT_EQ(span->text_content(), "inner");
+    const std::string div_text = div->text_content();
+    EXPECT_NE(div_text.find("inner"), std::string::npos);
+}

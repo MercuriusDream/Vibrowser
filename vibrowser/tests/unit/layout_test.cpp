@@ -10185,3 +10185,61 @@ TEST(LayoutNodeProps, ZIndexAssignmentV55) {
     n.z_index = 123;
     EXPECT_EQ(n.z_index, 123);
 }
+
+// --- Cycle 1480: Layout node V56 tests ---
+
+TEST(LayoutNodeProps, BorderRadiusTLAssignmentV56) {
+    using namespace clever::layout;
+    LayoutNode n;
+    n.border_radius_tl = 12.5f;
+    EXPECT_FLOAT_EQ(n.border_radius_tl, 12.5f);
+}
+
+TEST(LayoutNodeProps, BorderRadiusTRAssignmentV56) {
+    using namespace clever::layout;
+    LayoutNode n;
+    n.border_radius_tr = 8.75f;
+    EXPECT_FLOAT_EQ(n.border_radius_tr, 8.75f);
+}
+
+TEST(LayoutNodeProps, BorderRadiusBLAssignmentV56) {
+    using namespace clever::layout;
+    LayoutNode n;
+    n.border_radius_bl = 15.3f;
+    EXPECT_FLOAT_EQ(n.border_radius_bl, 15.3f);
+}
+
+TEST(LayoutNodeProps, BorderRadiusBRAssignmentV56) {
+    using namespace clever::layout;
+    LayoutNode n;
+    n.border_radius_br = 20.0f;
+    EXPECT_FLOAT_EQ(n.border_radius_br, 20.0f);
+}
+
+TEST(LayoutNodeProps, TextAlignAssignmentV56) {
+    using namespace clever::layout;
+    LayoutNode n;
+    n.text_align = 3;  // center
+    EXPECT_EQ(n.text_align, 3);
+}
+
+TEST(LayoutNodeProps, OverflowBlockAssignmentV56) {
+    using namespace clever::layout;
+    LayoutNode n;
+    n.overflow_block = 3;  // auto
+    EXPECT_EQ(n.overflow_block, 3);
+}
+
+TEST(LayoutNodeProps, OverflowInlineAssignmentV56) {
+    using namespace clever::layout;
+    LayoutNode n;
+    n.overflow_inline = 1;  // hidden
+    EXPECT_EQ(n.overflow_inline, 1);
+}
+
+TEST(LayoutNodeProps, OrderAssignmentV56) {
+    using namespace clever::layout;
+    LayoutNode n;
+    n.order = 42;
+    EXPECT_EQ(n.order, 42);
+}

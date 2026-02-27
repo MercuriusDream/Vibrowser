@@ -20689,3 +20689,108 @@ TEST(JSEngine, GeneratorSequenceCycle1497) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "3,4,true,undefined");
 }
+
+// Cycle 1500 — Diverse ES2020+ features: WeakSet, RegExp, BigInt, async iterables,
+// rest parameters, spread operator, optional chaining, nullish coalescing
+TEST(JSEngine, WeakSetObjectStorageCycle1500) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        const ws = new WeakSet();
+        const obj1 = {id: 1};
+        const obj2 = {id: 2};
+        ws.add(obj1);
+        ws.add(obj2);
+        `${ws.has(obj1)},${ws.has(obj2)},${ws.has({})}`
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true,true,false");
+}
+
+TEST(JSEngine, RegExpMatchAndTestCycle1500) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        const re = /[a-z]+\d{2,}/i;
+        const str = 'Test123 and hello456';
+        const matches = str.match(re);
+        `${re.test('Foo99')},${matches ? matches[0] : 'none'}`
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true,Test123");
+}
+
+TEST(JSEngine, BigIntArithmeticCycle1500) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        const a = BigInt('9007199254740992');
+        const b = BigInt('1');
+        const c = a + b;
+        `${c},${typeof c},${c > BigInt('9007199254740992')}`
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "9007199254740993,bigint,true");
+}
+
+TEST(JSEngine, RestParametersAndSpreadCycle1500) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        function sum(...nums) {
+            return nums.reduce((a, b) => a + b, 0);
+        }
+        const arr = [10, 20, 30];
+        const result1 = sum(...arr);
+        const result2 = sum(5, ...[2, 3], 4);
+        `${result1},${result2}`
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "60,14");
+}
+
+TEST(JSEngine, OptionalChainingAndNullishCycle1500) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        const obj = { a: { b: { c: 42 } } };
+        const undef = undefined;
+        const zero = 0;
+        `${obj?.a?.b?.c},${undef?.x?.y},${zero ?? 'empty'},${null ?? 'fallback'}`
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "42,undefined,0,fallback");
+}
+
+TEST(JSEngine, ArrayFlatAndFlatMapCycle1500) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        const nested = [[1, 2], [3, [4, 5]], [6]];
+        const flat = nested.flat(2);
+        const mapped = [1, 2, 3].flatMap(x => [x, x * 2]);
+        `${flat.join(',')},${mapped.join(',')}`
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1,2,3,4,5,6,1,2,2,4,3,6");
+}
+
+TEST(JSEngine, PromiseAllRaceSettledCycle1500) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        const p1 = Promise.resolve(1);
+        const p2 = Promise.resolve(2);
+        const allResult = Promise.all([p1, p2]).constructor.name;
+        const raceResult = Promise.race([p1, p2]).constructor.name;
+        `${allResult},${raceResult}`
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "Promise,Promise");
+}
+
+TEST(JSEngine, ObjectEntriesValuesKeysCycle1500) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        const obj = {x: 10, y: 20, z: 30};
+        const keys = Object.keys(obj).length;
+        const values = Object.values(obj).reduce((a, b) => a + b, 0);
+        const entries = Object.entries(obj).length;
+        `${keys},${values},${entries}`
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "3,60,3");
+}

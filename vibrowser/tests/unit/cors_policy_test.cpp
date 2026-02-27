@@ -4552,3 +4552,62 @@ TEST(CORSPolicy, CredentialsRejectWildcardEvenWithAllowAndExposeHeadersV55) {
                                       "https://api.example/data",
                                       resp_headers, true));
 }
+
+TEST(CORSPolicy, NullOriginAllowedWithWildcardNoCredentialsV56) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "*");
+    EXPECT_TRUE(cors_allows_response("null", "https://api.example/data", headers, false));
+}
+
+TEST(CORSPolicy, NullOriginRejectedWithWildcardWithCredentialsV56) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "*");
+    headers.set("Access-Control-Allow-Credentials", "true");
+    EXPECT_FALSE(cors_allows_response("null", "https://api.example/data", headers, true));
+}
+
+TEST(CORSPolicy, ExplicitNullOriginHeaderAllowsNullDocumentV56) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "null");
+    EXPECT_TRUE(cors_allows_response("null", "https://api.example/data", headers, false));
+}
+
+TEST(CORSPolicy, CaseInsensitiveHeaderMatchingTrueValueV56) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Credentials", "True");
+    EXPECT_FALSE(cors_allows_response("https://app.example", "https://api.example/data", headers,
+                                      true));
+}
+
+TEST(CORSPolicy, MultipleOriginInAllowOriginHeaderInvalidV56) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "https://app.example https://other.example");
+    EXPECT_FALSE(cors_allows_response("https://app.example", "https://api.example/data", headers,
+                                      false));
+}
+
+TEST(CORSPolicy, AllowOriginWithPathComponentRejectedV56) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "https://app.example/admin");
+    EXPECT_FALSE(cors_allows_response("https://app.example", "https://api.example/data", headers,
+                                      false));
+}
+
+TEST(CORSPolicy, HttpAndHttpsOriginMismatchRejectedV56) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "http://app.example");
+    EXPECT_FALSE(cors_allows_response("https://app.example", "https://api.example/data", headers,
+                                      false));
+}
+
+TEST(CORSPolicy, DefaultPortsNormalizedInOriginComparisonV56) {
+    clever::net::HeaderMap headers_http;
+    headers_http.set("Access-Control-Allow-Origin", "http://app.example:80");
+    EXPECT_TRUE(
+        cors_allows_response("http://app.example", "https://api.example/data", headers_http, false));
+
+    clever::net::HeaderMap headers_https;
+    headers_https.set("Access-Control-Allow-Origin", "https://app.example:443");
+    EXPECT_TRUE(cors_allows_response("https://app.example", "https://api.example/data",
+                                     headers_https, false));
+}

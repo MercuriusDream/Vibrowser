@@ -11817,3 +11817,107 @@ TEST(PropertyCascadeTest, ApplyDeclarationOverflowV55) {
     EXPECT_EQ(style.overflow_x, Overflow::Hidden);
     EXPECT_EQ(style.overflow_y, Overflow::Scroll);
 }
+
+TEST(PropertyCascadeTest, ApplyDeclarationVisibilityV56) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    Declaration decl;
+    decl.property = "visibility";
+    decl.values.push_back(make_token("hidden"));
+
+    cascade.apply_declaration(style, decl, parent);
+    EXPECT_EQ(style.visibility, Visibility::Hidden);
+}
+
+TEST(PropertyCascadeTest, ApplyDeclarationCursorV56) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    Declaration decl;
+    decl.property = "cursor";
+    decl.values.push_back(make_token("pointer"));
+
+    cascade.apply_declaration(style, decl, parent);
+    EXPECT_EQ(style.cursor, Cursor::Pointer);
+}
+
+TEST(PropertyCascadeTest, ApplyDeclarationFloatV56) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    Declaration decl;
+    decl.property = "float";
+    decl.values.push_back(make_token("left"));
+
+    cascade.apply_declaration(style, decl, parent);
+    EXPECT_EQ(style.float_val, Float::Left);
+}
+
+TEST(PropertyCascadeTest, ApplyDeclarationClearV56) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    Declaration decl;
+    decl.property = "clear";
+    decl.values.push_back(make_token("both"));
+
+    cascade.apply_declaration(style, decl, parent);
+    EXPECT_EQ(style.clear, Clear::Both);
+}
+
+TEST(PropertyCascadeTest, ApplyDeclarationLetterSpacingV56) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    Declaration decl;
+    decl.property = "letter-spacing";
+    decl.values.push_back(make_token("2px"));
+
+    cascade.apply_declaration(style, decl, parent);
+    EXPECT_FLOAT_EQ(style.letter_spacing.to_px(), 2.0f);
+}
+
+TEST(PropertyCascadeTest, ApplyDeclarationWordSpacingV56) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    Declaration decl;
+    decl.property = "word-spacing";
+    decl.values.push_back(make_token("4px"));
+
+    cascade.apply_declaration(style, decl, parent);
+    EXPECT_FLOAT_EQ(style.word_spacing.to_px(), 4.0f);
+}
+
+TEST(PropertyCascadeTest, ApplyDeclarationBoxSizingV56) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    Declaration decl;
+    decl.property = "box-sizing";
+    decl.values.push_back(make_token("border-box"));
+
+    cascade.apply_declaration(style, decl, parent);
+    EXPECT_EQ(style.box_sizing, BoxSizing::BorderBox);
+}
+
+TEST(PropertyCascadeTest, ApplyDeclarationTextAlignV56) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    Declaration decl;
+    decl.property = "text-align";
+    decl.values.push_back(make_token("center"));
+
+    cascade.apply_declaration(style, decl, parent);
+    EXPECT_EQ(style.text_align, TextAlign::Center);
+}

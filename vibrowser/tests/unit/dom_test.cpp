@@ -8660,3 +8660,161 @@ TEST(DomElement, NestedElementsTagNameAndTextContentRoundTripV55) {
     EXPECT_EQ(inner_ptr->tag_name(), "li");
     EXPECT_EQ(outer->text_content(), "item");
 }
+
+TEST(DomElement, AttributesVectorSizeAndIterationV56) {
+    Document doc;
+    auto el = doc.create_element("div");
+
+    el->set_attribute("class", "container");
+    el->set_attribute("id", "main");
+    el->set_attribute("data-value", "42");
+
+    auto attrs = el->attributes();
+    EXPECT_EQ(attrs.size(), 3u);
+
+    int count = 0;
+    for (const auto& attr : attrs) {
+        count++;
+        EXPECT_FALSE(attr.name.empty());
+        EXPECT_FALSE(attr.value.empty());
+    }
+    EXPECT_EQ(count, 3);
+}
+
+TEST(DomNode, ForEachChildWithMixedNodeTypesV56) {
+    Document doc;
+    auto parent = doc.create_element("div");
+    auto text1 = doc.create_text_node("start");
+    auto elem = doc.create_element("span");
+    auto text2 = doc.create_text_node("end");
+
+    parent->append_child(std::move(text1));
+    parent->append_child(std::move(elem));
+    parent->append_child(std::move(text2));
+
+    int element_count = 0;
+    int text_count = 0;
+    parent->for_each_child([&](Node& child) {
+        if (child.node_type() == NodeType::Element) {
+            element_count++;
+        } else if (child.node_type() == NodeType::Text) {
+            text_count++;
+        }
+    });
+
+    EXPECT_EQ(element_count, 1);
+    EXPECT_EQ(text_count, 2);
+}
+
+TEST(DomNode, CommentNodeTextContentDoesNotAffectParentV56) {
+    Document doc;
+    auto parent = doc.create_element("section");
+    auto text = doc.create_text_node("visible");
+    auto comment = doc.create_comment("hidden comment");
+
+    parent->append_child(std::move(text));
+    parent->append_child(std::move(comment));
+
+    EXPECT_EQ(parent->text_content(), "visible");
+    EXPECT_EQ(parent->child_count(), 2u);
+}
+
+TEST(DomElement, ParentPointerInComplexTreeV56) {
+    Document doc;
+    auto root = doc.create_element("html");
+    auto body = doc.create_element("body");
+    auto div = doc.create_element("div");
+    auto* div_ptr = div.get();
+    auto* body_ptr = body.get();
+
+    div->append_child(doc.create_text_node("text"));
+    body->append_child(std::move(div));
+    root->append_child(std::move(body));
+
+    auto* div_parent = div_ptr->parent();
+    ASSERT_NE(div_parent, nullptr);
+    EXPECT_EQ(div_parent, body_ptr);
+
+    auto* body_parent = body_ptr->parent();
+    ASSERT_NE(body_parent, nullptr);
+    EXPECT_EQ(body_parent, root.get());
+}
+
+TEST(DomElement, ClassListToggleMultipleTimesKeepsStateV56) {
+    Document doc;
+    auto el = doc.create_element("button");
+
+    el->class_list().toggle("active");
+    EXPECT_TRUE(el->class_list().contains("active"));
+    EXPECT_EQ(el->class_list().length(), 1u);
+
+    el->class_list().toggle("active");
+    EXPECT_FALSE(el->class_list().contains("active"));
+    EXPECT_EQ(el->class_list().length(), 0u);
+
+    el->class_list().toggle("active");
+    EXPECT_TRUE(el->class_list().contains("active"));
+    EXPECT_EQ(el->class_list().length(), 1u);
+}
+
+TEST(DomElement, DeepNestedTreeWithMixedNodesV56) {
+    Document doc;
+    auto level1 = doc.create_element("div");
+    auto level2 = doc.create_element("article");
+    auto level3 = doc.create_element("p");
+    auto level4 = doc.create_element("span");
+    auto text = doc.create_text_node("deep");
+    auto* level4_ptr = level4.get();
+
+    level4->append_child(std::move(text));
+    level3->append_child(std::move(level4));
+    level2->append_child(std::move(level3));
+    level1->append_child(std::move(level2));
+
+    EXPECT_EQ(level1->text_content(), "deep");
+    EXPECT_EQ(level4_ptr->tag_name(), "span");
+    EXPECT_EQ(level1->child_count(), 1u);
+}
+
+TEST(DomElement, AttributeOverwriteWithMultipleOperationsV56) {
+    Document doc;
+    auto el = doc.create_element("a");
+
+    el->set_attribute("href", "http://example.com");
+    el->set_attribute("target", "_blank");
+    el->set_attribute("href", "http://other.com");
+    el->set_attribute("rel", "external");
+
+    auto href = el->get_attribute("href");
+    ASSERT_TRUE(href.has_value());
+    EXPECT_EQ(href.value(), "http://other.com");
+
+    auto attrs = el->attributes();
+    EXPECT_EQ(attrs.size(), 3u);
+
+    auto target = el->get_attribute("target");
+    ASSERT_TRUE(target.has_value());
+    EXPECT_EQ(target.value(), "_blank");
+}
+
+TEST(DomNode, ChildRemovalAndReinsertionV56) {
+    Document doc;
+    auto parent = doc.create_element("ol");
+    auto item1 = doc.create_element("li");
+    auto item2 = doc.create_element("li");
+    auto item3 = doc.create_element("li");
+    auto* item2_ptr = item2.get();
+
+    parent->append_child(std::move(item1));
+    parent->append_child(std::move(item2));
+    parent->append_child(std::move(item3));
+
+    EXPECT_EQ(parent->child_count(), 3u);
+
+    auto removed = parent->remove_child(*item2_ptr);
+    EXPECT_NE(removed, nullptr);
+    EXPECT_EQ(parent->child_count(), 2u);
+
+    parent->append_child(std::move(removed));
+    EXPECT_EQ(parent->child_count(), 3u);
+}
