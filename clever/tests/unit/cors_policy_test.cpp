@@ -1509,3 +1509,55 @@ TEST(CORSPolicyTest, HasEnforceableOriginHttpWithDevPort) {
 TEST(CORSPolicyTest, EligibleHttpsWithQueryNoFragment) {
     EXPECT_TRUE(is_cors_eligible_request_url("https://api.example.com/search?q=foo&page=2"));
 }
+
+// Cycle 851 — ACAC edge cases, multi-header, normalize edge cases
+TEST(CORSPolicyTest, CORSRejectsTwoACACHeaders) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "https://app.example");
+    headers.append("Access-Control-Allow-Credentials", "true");
+    headers.append("Access-Control-Allow-Credentials", "true");
+    EXPECT_FALSE(cors_allows_response("https://app.example", "https://api.example/data", headers, true));
+}
+
+TEST(CORSPolicyTest, CORSRejectsACACValueFalse) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "https://app.example");
+    headers.set("Access-Control-Allow-Credentials", "false");
+    EXPECT_FALSE(cors_allows_response("https://app.example", "https://api.example/data", headers, true));
+}
+
+TEST(CORSPolicyTest, CORSRejectsACACValueTrue1) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "https://app.example");
+    headers.set("Access-Control-Allow-Credentials", "True");
+    EXPECT_FALSE(cors_allows_response("https://app.example", "https://api.example/data", headers, true));
+}
+
+TEST(CORSPolicyTest, CORSRejectsACACWithLeadingSpace) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "https://app.example");
+    headers.set("Access-Control-Allow-Credentials", " true");
+    EXPECT_FALSE(cors_allows_response("https://app.example", "https://api.example/data", headers, true));
+}
+
+TEST(CORSPolicyTest, CORSRejectsTwoACAOHeaders) {
+    clever::net::HeaderMap headers;
+    headers.append("Access-Control-Allow-Origin", "https://app.example");
+    headers.append("Access-Control-Allow-Origin", "https://app.example");
+    EXPECT_FALSE(cors_allows_response("https://app.example", "https://api.example/data", headers, false));
+}
+
+TEST(CORSPolicyTest, NormalizeOutgoingSameOriginHttpsExplicitPort443) {
+    clever::net::HeaderMap headers;
+    headers.set("Origin", "https://app.example");
+    normalize_outgoing_origin_header(headers, "https://app.example:443", "https://app.example/page");
+    EXPECT_FALSE(headers.has("origin"));
+}
+
+TEST(CORSPolicyTest, ShouldAttachOriginHeaderNullDocCrossOrigin) {
+    EXPECT_TRUE(should_attach_origin_header("null", "https://api.example/data"));
+}
+
+TEST(CORSPolicyTest, ShouldNotAttachOriginHeaderInvalidDocOrigin) {
+    EXPECT_FALSE(should_attach_origin_header("file:///index.html", "https://api.example/data"));
+}
