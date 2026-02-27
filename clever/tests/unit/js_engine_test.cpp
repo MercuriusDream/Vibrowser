@@ -15606,3 +15606,63 @@ TEST(JSEngine, ArrayToSplicedReturnsNew) {
     auto result = engine.evaluate("const a = [1,2,3]; const b = a.toSpliced(1,1); a.length + ',' + b.length");
     EXPECT_EQ(result, "3,2");
 }
+
+TEST(JSEngine, ObjectSealPreventNewProps) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        const o = Object.seal({x: 1});
+        try { o.y = 2; } catch(e) {}
+        'y' in o
+    )");
+    EXPECT_EQ(result, "false");
+}
+
+TEST(JSEngine, ObjectIsFrozen) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("Object.isFrozen(Object.freeze({}))");
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, ObjectIsSealed) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("Object.isSealed(Object.seal({}))");
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, ObjectDefinePropertyValue) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        const o = {};
+        Object.defineProperty(o, 'x', { value: 42, writable: true });
+        o.x
+    )");
+    EXPECT_EQ(result, "42");
+}
+
+TEST(JSEngine, ObjectGetOwnPropertyNames) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("Object.getOwnPropertyNames({a:1,b:2}).length");
+    EXPECT_EQ(result, "2");
+}
+
+TEST(JSEngine, ObjectCreateWithNull) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("Object.getPrototypeOf(Object.create(null))");
+    EXPECT_EQ(result, "null");
+}
+
+TEST(JSEngine, PropertyDescriptorWritable) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        const o = {};
+        Object.defineProperty(o, 'x', { value: 5, writable: false });
+        Object.getOwnPropertyDescriptor(o, 'x').writable
+    )");
+    EXPECT_EQ(result, "false");
+}
+
+TEST(JSEngine, ObjectSpreadOverrides) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("const base={a:1,b:2}; const o={...base, b:99}; o.b");
+    EXPECT_EQ(result, "99");
+}
