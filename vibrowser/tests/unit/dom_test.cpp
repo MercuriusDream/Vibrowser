@@ -12644,3 +12644,65 @@ TEST(DOMTest, ClassListToggleAddRemoveSemanticsV74) {
     element.class_list().remove("base");
     EXPECT_FALSE(element.class_list().contains("base"));
 }
+
+TEST(DOMTest, ElementCreationStoresTagNameV75) {
+    clever::dom::Element element("div");
+    EXPECT_EQ(element.tag_name(), "div");
+}
+
+TEST(DOMTest, MissingAttributeReturnsEmptyOptionalV75) {
+    clever::dom::Element element("div");
+    EXPECT_FALSE(element.get_attribute("id").has_value());
+}
+
+TEST(DOMTest, SetMultipleAttributesUpdatesAttributeMapV75) {
+    clever::dom::Element element("div");
+    element.set_attribute("id", "main");
+    element.set_attribute("role", "region");
+
+    EXPECT_EQ(element.get_attribute("id").value_or(""), "main");
+    EXPECT_EQ(element.get_attribute("role").value_or(""), "region");
+    EXPECT_EQ(element.attributes().size(), 2u);
+}
+
+TEST(DOMTest, OverwritingAttributeKeepsSingleEntryV75) {
+    clever::dom::Element element("div");
+    element.set_attribute("key", "first");
+    element.set_attribute("key", "second");
+
+    EXPECT_EQ(element.get_attribute("key").value_or(""), "second");
+    EXPECT_EQ(element.attributes().size(), 1u);
+}
+
+TEST(DOMTest, ClassListAddContainsRemoveFlowV75) {
+    clever::dom::Element element("div");
+    element.class_list().add("selected");
+    EXPECT_TRUE(element.class_list().contains("selected"));
+
+    element.class_list().remove("selected");
+    EXPECT_FALSE(element.class_list().contains("selected"));
+}
+
+TEST(DOMTest, ClassListToggleTwiceRestoresOriginalStateV75) {
+    clever::dom::Element element("div");
+    EXPECT_FALSE(element.class_list().contains("active"));
+
+    element.class_list().toggle("active");
+    EXPECT_TRUE(element.class_list().contains("active"));
+
+    element.class_list().toggle("active");
+    EXPECT_FALSE(element.class_list().contains("active"));
+}
+
+TEST(DOMTest, AppendChildRegistersParentAndChildListV75) {
+    clever::dom::Element element("div");
+    element.append_child(std::make_unique<Element>("span"));
+
+    ASSERT_EQ(element.child_count(), 1u);
+    EXPECT_EQ(element.first_child()->parent(), &element);
+}
+
+TEST(DOMTest, NewTextNodeStartsWithoutParentV75) {
+    clever::dom::Text text("hello");
+    EXPECT_EQ(text.parent(), nullptr);
+}

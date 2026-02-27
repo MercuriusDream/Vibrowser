@@ -23571,3 +23571,138 @@ TEST(JSEngineTest, UnsignedRightShiftOperatorShiftsBitsRightV74) {
     EXPECT_TRUE(result.success) << engine.last_error();
     EXPECT_EQ(result.value, "2147483647");
 }
+
+TEST(JSEngineTest, ClosureCapturesAndMutatesStateV75) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var makeCounter = function(start) {
+            var value = start;
+            return function(step) {
+                value += step;
+                return value;
+            };
+        };
+        var counter = makeCounter(1);
+        [counter(2).toString(), counter(3).toString()].join('|')
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "3|6");
+}
+
+TEST(JSEngineTest, PrototypeChainMethodResolutionV75) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        function Animal(name) { this.name = name; }
+        Animal.prototype.speak = function() { return this.name + ':base'; };
+        var dog = new Animal('rex');
+        dog.speak = function() { return this.name + ':dog'; };
+        delete dog.speak;
+        [dog.speak(), (Object.getPrototypeOf(dog) === Animal.prototype).toString()].join('|')
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "rex:base|true");
+}
+
+TEST(JSEngineTest, AsyncAwaitResolvesIntoSharedStateV75) {
+    clever::js::JSEngine engine;
+    engine.evaluate(R"(
+        var asyncValueV75 = 'pending';
+        async function computeV75() {
+            try {
+                var a = await Promise.resolve(6);
+                var b = await Promise.resolve(7);
+                asyncValueV75 = (a + b).toString();
+            } catch (e) {
+                asyncValueV75 = 'error';
+            }
+        }
+        computeV75();
+    )");
+    clever::js::flush_fetch_promise_jobs(engine.context());
+    auto result = engine.evaluate("asyncValueV75");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "13");
+}
+
+TEST(JSEngineTest, DestructuringAndTemplateLiteralComposeValuesV75) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var user = { name: 'Ada', scores: [3, 4, 5] };
+        var name, first, third, missing;
+        ({ name: name, scores: [first, , third], missing: missing = 'na' } = user);
+        `${name}:${first + third}:${missing}`
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "Ada:8:na");
+}
+
+TEST(JSEngineTest, MapAndSetTrackOrderAndUniquenessV75) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var map = new Map([['a', 1], ['b', 2], ['a', 3]]);
+        var set = new Set([1, 2, 2, 3]);
+        [map.get('a').toString(), Array.from(set).join('-'), map.size.toString()].join('|')
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "3|1-2-3|2");
+}
+
+TEST(JSEngineTest, WeakMapAndWeakRefAccessTrackedObjectV75) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var obj = { id: 9 };
+        var wm = new WeakMap();
+        wm.set(obj, 'ok');
+        var wr = new WeakRef(obj);
+        [wm.get(obj), typeof wr.deref(), wm.has(obj).toString()].join('|')
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "ok|object|true");
+}
+
+TEST(JSEngineTest, GeneratorYieldAndReturnSequenceV75) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        function* seq() {
+            yield 2;
+            yield 4;
+            return 8;
+        }
+        var it = seq();
+        var a = it.next();
+        var b = it.next();
+        var c = it.next();
+        [a.value.toString(), b.value.toString(), c.value.toString(), c.done.toString()].join('|')
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "2|4|8|true");
+}
+
+TEST(JSEngineTest, ProxySymbolRegexAndErrorHandlingV75) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var key = Symbol('secret');
+        var target = { plain: 'abc123' };
+        target[key] = 10;
+        var proxy = new Proxy(target, {
+            get: function(t, prop, receiver) {
+                if (prop === 'masked') {
+                    return t.plain.replace(/[0-9]+/, '#');
+                }
+                if (prop === key) {
+                    return t[key] + 1;
+                }
+                return Reflect.get(t, prop, receiver);
+            }
+        });
+        var errorName = 'none';
+        try {
+            throw new TypeError('bad');
+        } catch (e) {
+            errorName = e.name;
+        }
+        [proxy.masked, proxy[key].toString(), errorName, (Object.keys(proxy).indexOf('plain') >= 0).toString()].join('|')
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "abc#|11|TypeError|true");
+}

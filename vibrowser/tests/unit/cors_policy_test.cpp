@@ -5802,3 +5802,60 @@ TEST(CORSPolicyTest, DeleteRequiresPreflightV74) {
                                       headers,
                                       false));
 }
+
+TEST(CORSPolicyTest, SameOriginExactMatchV75) {
+    EXPECT_FALSE(is_cross_origin("http://example.com", "http://example.com"));
+}
+
+TEST(CORSPolicyTest, DifferentSchemeIsCrossOriginV75) {
+    EXPECT_TRUE(is_cross_origin("http://example.com", "https://example.com"));
+}
+
+TEST(CORSPolicyTest, DifferentPortIsCrossOriginV75) {
+    EXPECT_TRUE(is_cross_origin("https://example.com", "https://example.com:8443"));
+}
+
+TEST(CORSPolicyTest, FragmentUrlNotCorsEligibleV75) {
+    EXPECT_FALSE(is_cors_eligible_request_url("https://api.example/resource#frag"));
+}
+
+TEST(CORSPolicyTest, WildcardAcaoAllowsWithoutCredentialsV75) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "*");
+
+    EXPECT_TRUE(cors_allows_response("https://app.example",
+                                     "https://api.example/data",
+                                     headers,
+                                     false));
+}
+
+TEST(CORSPolicyTest, WildcardAcaoRejectsWithCredentialsV75) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "*");
+    headers.set("Access-Control-Allow-Credentials", "true");
+
+    EXPECT_FALSE(cors_allows_response("https://app.example",
+                                      "https://api.example/data",
+                                      headers,
+                                      true));
+}
+
+TEST(CORSPolicyTest, NoAcaoHeaderRejectsV75) {
+    clever::net::HeaderMap blocked;
+    blocked.set("Access-Control-Allow-Methods", "PUT");
+    EXPECT_FALSE(cors_allows_response("https://app.example",
+                                      "https://api.example/preflight",
+                                      blocked,
+                                      false));
+}
+
+TEST(CORSPolicyTest, CorrectAcaoWithMethodsAllowsV75) {
+    clever::net::HeaderMap allowed;
+    allowed.set("Access-Control-Allow-Origin", "https://app.example");
+    allowed.set("Access-Control-Allow-Methods", "PUT, OPTIONS");
+    allowed.set("Access-Control-Allow-Headers", "X-Client-Token");
+    EXPECT_TRUE(cors_allows_response("https://app.example",
+                                     "https://api.example/preflight",
+                                     allowed,
+                                     false));
+}

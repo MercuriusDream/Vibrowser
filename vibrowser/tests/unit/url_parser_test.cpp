@@ -9438,3 +9438,85 @@ TEST(URLParserTest, UrlWithDoubleSlashInPathV74) {
     ASSERT_TRUE(result.has_value());
     EXPECT_EQ(result->path, "//double//slash");
 }
+
+TEST(URLParserTest, HttpsRoundTripComponentsV75) {
+    auto result = clever::url::parse("https://example.com/path?q=1#frag");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_FALSE(result->port.has_value());
+    EXPECT_EQ(result->path, "/path");
+    EXPECT_EQ(result->query, "q=1");
+    EXPECT_EQ(result->fragment, "frag");
+    EXPECT_EQ(result->serialize(), "https://example.com/path?q=1#frag");
+}
+
+TEST(URLParserTest, SpecialSchemesRequireSlashSlashAfterSchemeV75) {
+    EXPECT_FALSE(clever::url::parse("https:example.com/path").has_value());
+    EXPECT_FALSE(clever::url::parse("ftp:example.com/resource").has_value());
+    EXPECT_FALSE(clever::url::parse("ws:example.com/socket").has_value());
+}
+
+TEST(URLParserTest, NonSpecialOpaqueSchemeWithoutAuthorityV75) {
+    auto result = clever::url::parse("data:text/plain,hello%20world?x=1#frag");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "data");
+    EXPECT_TRUE(result->host.empty());
+    EXPECT_EQ(result->path, "text/plain,hello%20world");
+    EXPECT_EQ(result->query, "x=1");
+    EXPECT_EQ(result->fragment, "frag");
+    EXPECT_EQ(result->serialize(), "data:text/plain,hello%20world?x=1#frag");
+}
+
+TEST(URLParserTest, RelativePathResolutionWithBaseUrlV75) {
+    auto base = clever::url::parse("https://example.com/a/b/c/index.html");
+    ASSERT_TRUE(base.has_value());
+
+    auto result = clever::url::parse("../d/e?q=2#frag", &base.value());
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/a/b/d/e");
+    EXPECT_EQ(result->query, "q=2");
+    EXPECT_EQ(result->fragment, "frag");
+    EXPECT_EQ(result->serialize(), "https://example.com/a/b/d/e?q=2#frag");
+}
+
+TEST(URLParserTest, QueryParametersDoubleEncodePercent20V75) {
+    auto result = clever::url::parse("https://example.com/search?name=alice&note=a+b&space=%20");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->path, "/search");
+    EXPECT_EQ(result->query, "name=alice&note=a+b&space=%2520");
+    EXPECT_EQ(result->serialize(), "https://example.com/search?name=alice&note=a+b&space=%2520");
+}
+
+TEST(URLParserTest, FragmentDoubleEncodePercent20V75) {
+    auto result = clever::url::parse("https://example.com/path#frag%20ment");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->path, "/path");
+    EXPECT_EQ(result->fragment, "frag%2520ment");
+    EXPECT_EQ(result->serialize(), "https://example.com/path#frag%2520ment");
+}
+
+TEST(URLParserTest, IdnUnicodeRejectedButPunycodeAcceptedV75) {
+    auto unicode_host = clever::url::parse("https://münich.example/path");
+    EXPECT_FALSE(unicode_host.has_value());
+
+    auto punycode_host = clever::url::parse("https://XN--MNICH-KVA.EXAMPLE/path");
+    ASSERT_TRUE(punycode_host.has_value());
+    EXPECT_EQ(punycode_host->host, "xn--mnich-kva.example");
+    EXPECT_EQ(punycode_host->path, "/path");
+}
+
+TEST(URLParserTest, Ipv6HostAndPortParsesV75) {
+    auto result = clever::url::parse("https://[2001:db8::1]:8443/path?q=1#frag");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "[2001:db8::1]");
+    ASSERT_TRUE(result->port.has_value());
+    EXPECT_EQ(result->port.value(), 8443);
+    EXPECT_EQ(result->path, "/path");
+    EXPECT_EQ(result->query, "q=1");
+    EXPECT_EQ(result->fragment, "frag");
+    EXPECT_EQ(result->serialize(), "https://[2001:db8::1]:8443/path?q=1#frag");
+}

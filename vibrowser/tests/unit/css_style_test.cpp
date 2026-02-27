@@ -14112,3 +14112,70 @@ TEST(PropertyCascadeTest, ResolverLineHeight15emV74) {
 
     EXPECT_FLOAT_EQ(style.line_height.value, 24.0f);
 }
+
+TEST(PropertyCascadeTest, ApplyDeclarationColorHexValueV75) {
+    clever::css::PropertyCascade cascade;
+    clever::css::ComputedStyle style, parent;
+
+    cascade.apply_declaration(style, make_decl("color", "#112233"), parent);
+    EXPECT_EQ(style.color, (Color{17, 34, 51, 255}));
+}
+
+TEST(PropertyCascadeTest, ApplyDeclarationFontStyleItalicEnumV75) {
+    clever::css::PropertyCascade cascade;
+    clever::css::ComputedStyle style, parent;
+
+    cascade.apply_declaration(style, make_decl("font-style", "italic"), parent);
+    EXPECT_EQ(style.font_style, FontStyle::Italic);
+}
+
+TEST(PropertyCascadeTest, ApplyDeclarationBorderTopWidthKeepsStyleNoneV75) {
+    clever::css::PropertyCascade cascade;
+    clever::css::ComputedStyle style, parent;
+
+    cascade.apply_declaration(style, make_decl("border-top-width", "4px"), parent);
+    EXPECT_FLOAT_EQ(style.border_top.width.to_px(), 4.0f);
+    EXPECT_EQ(style.border_top.style, BorderStyle::None);
+}
+
+TEST(PropertyCascadeTest, ApplyDeclarationTransformTranslateXStoresEntryV75) {
+    clever::css::PropertyCascade cascade;
+    clever::css::ComputedStyle style, parent;
+
+    cascade.apply_declaration(style, make_decl("transform", "translateX(24px)"), parent);
+    ASSERT_EQ(style.transforms.size(), 1u);
+    EXPECT_EQ(style.transforms[0].type, TransformType::Translate);
+    EXPECT_FLOAT_EQ(style.transforms[0].x, 24.0f);
+}
+
+TEST(PropertyCascadeTest, ApplyDeclarationTransitionDurationMsToSecondsV75) {
+    clever::css::PropertyCascade cascade;
+    clever::css::ComputedStyle style, parent;
+
+    cascade.apply_declaration(style, make_decl("transition-duration", "175ms"), parent);
+    EXPECT_NEAR(style.transition_duration, 0.175f, 0.001f);
+}
+
+TEST(PropertyCascadeTest, ApplyDeclarationTextTransformUppercaseEnumV75) {
+    clever::css::PropertyCascade cascade;
+    clever::css::ComputedStyle style, parent;
+
+    cascade.apply_declaration(style, make_decl("text-transform", "uppercase"), parent);
+    EXPECT_EQ(style.text_transform, TextTransform::Uppercase);
+}
+
+TEST(PropertyCascadeTest, ApplyDeclarationFlexDirectionColumnReverseV75) {
+    clever::css::PropertyCascade cascade;
+    clever::css::ComputedStyle style, parent;
+
+    cascade.apply_declaration(style, make_decl("flex-direction", "column-reverse"), parent);
+    EXPECT_EQ(style.flex_direction, FlexDirection::ColumnReverse);
+}
+
+TEST(PropertyCascadeTest, ApplyDeclarationGridAutoFlowColumnDenseIntV75) {
+    clever::css::PropertyCascade cascade;
+    clever::css::ComputedStyle style, parent;
+
+    cascade.apply_declaration(style, make_decl("grid-auto-flow", "column dense"), parent);
+    EXPECT_EQ(style.grid_auto_flow, 3);
+}

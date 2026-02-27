@@ -11797,3 +11797,136 @@ TEST(HTMLParserTest, TrackElementWithinVideoV74) {
     EXPECT_EQ(get_attr_v63(track, "src"), "captions.vtt");
     EXPECT_EQ(get_attr_v63(track, "srclang"), "en");
 }
+
+TEST(HTMLParserTest, SemanticElementParsingMainSectionV75) {
+    auto doc = clever::html::parse(
+        "<html><body><main><section><h2>Latest</h2></section></main></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* main = doc->find_element("main");
+    auto* section = doc->find_element("section");
+    auto* heading = doc->find_element("h2");
+    ASSERT_NE(main, nullptr);
+    ASSERT_NE(section, nullptr);
+    ASSERT_NE(heading, nullptr);
+    EXPECT_EQ(main->tag_name, "main");
+    EXPECT_EQ(section->tag_name, "section");
+    EXPECT_EQ(section->parent, main);
+    EXPECT_EQ(heading->parent, section);
+    EXPECT_EQ(heading->text_content(), "Latest");
+}
+
+TEST(HTMLParserTest, AnchorAttributesAndTextV75) {
+    auto doc = clever::html::parse(
+        "<html><body><a href='/docs' target='_blank' rel='noopener'>Docs</a></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* anchor = doc->find_element("a");
+    ASSERT_NE(anchor, nullptr);
+    EXPECT_EQ(anchor->tag_name, "a");
+    EXPECT_EQ(get_attr_v63(anchor, "href"), "/docs");
+    EXPECT_EQ(get_attr_v63(anchor, "target"), "_blank");
+    EXPECT_EQ(get_attr_v63(anchor, "rel"), "noopener");
+    EXPECT_EQ(anchor->text_content(), "Docs");
+}
+
+TEST(HTMLParserTest, NestedElementsParentChainV75) {
+    auto doc = clever::html::parse(
+        "<html><body><div id='outer'><div id='inner'><span>deep</span></div></div></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* span = doc->find_element("span");
+    ASSERT_NE(span, nullptr);
+    auto* inner = span->parent;
+    ASSERT_NE(inner, nullptr);
+    auto* outer = inner->parent;
+    ASSERT_NE(outer, nullptr);
+
+    EXPECT_EQ(inner->tag_name, "div");
+    EXPECT_EQ(outer->tag_name, "div");
+    EXPECT_EQ(get_attr_v63(inner, "id"), "inner");
+    EXPECT_EQ(get_attr_v63(outer, "id"), "outer");
+    EXPECT_EQ(span->text_content(), "deep");
+}
+
+TEST(HTMLParserTest, TextContentAcrossInlineChildrenV75) {
+    auto doc = clever::html::parse(
+        "<html><body><p>alpha <strong>beta</strong> gamma</p></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* paragraph = doc->find_element("p");
+    auto* strong = doc->find_element("strong");
+    ASSERT_NE(paragraph, nullptr);
+    ASSERT_NE(strong, nullptr);
+    EXPECT_EQ(strong->text_content(), "beta");
+
+    const std::string text = paragraph->text_content();
+    const size_t alpha_pos = text.find("alpha");
+    const size_t beta_pos = text.find("beta");
+    const size_t gamma_pos = text.find("gamma");
+    ASSERT_NE(alpha_pos, std::string::npos);
+    ASSERT_NE(beta_pos, std::string::npos);
+    ASSERT_NE(gamma_pos, std::string::npos);
+    EXPECT_LT(alpha_pos, beta_pos);
+    EXPECT_LT(beta_pos, gamma_pos);
+}
+
+TEST(HTMLParserTest, VoidElementsHaveNoChildrenV75) {
+    auto doc = clever::html::parse(
+        "<html><body>start<br><img src='hero.png' alt='hero'><hr>end</body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* br = doc->find_element("br");
+    auto* img = doc->find_element("img");
+    auto* hr = doc->find_element("hr");
+    auto* body = doc->find_element("body");
+    ASSERT_NE(br, nullptr);
+    ASSERT_NE(img, nullptr);
+    ASSERT_NE(hr, nullptr);
+    ASSERT_NE(body, nullptr);
+
+    EXPECT_TRUE(br->children.empty());
+    EXPECT_TRUE(img->children.empty());
+    EXPECT_TRUE(hr->children.empty());
+    EXPECT_EQ(get_attr_v63(img, "src"), "hero.png");
+    EXPECT_EQ(get_attr_v63(img, "alt"), "hero");
+    EXPECT_EQ(body->text_content(), "startend");
+}
+
+TEST(HTMLParserTest, ScriptElementPreservesRawComparatorsV75) {
+    auto doc = clever::html::parse(
+        "<html><body><script>if (a < b) { c = 1; }</script></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* script = doc->find_element("script");
+    ASSERT_NE(script, nullptr);
+    EXPECT_EQ(script->tag_name, "script");
+    const std::string js = script->text_content();
+    EXPECT_NE(js.find("a < b"), std::string::npos);
+    EXPECT_NE(js.find("c = 1"), std::string::npos);
+}
+
+TEST(HTMLParserTest, StyleElementPreservesCssTextV75) {
+    auto doc = clever::html::parse(
+        "<html><body><style>body > p { color: red; }</style></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* style = doc->find_element("style");
+    ASSERT_NE(style, nullptr);
+    EXPECT_EQ(style->tag_name, "style");
+    const std::string css = style->text_content();
+    EXPECT_NE(css.find("body > p"), std::string::npos);
+    EXPECT_NE(css.find("color: red"), std::string::npos);
+}
+
+TEST(HTMLParserTest, TextareaSpecialElementContentAndAttributeV75) {
+    auto doc = clever::html::parse(
+        "<html><body><textarea name='notes'>alpha\nbeta\ngamma</textarea></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* textarea = doc->find_element("textarea");
+    ASSERT_NE(textarea, nullptr);
+    EXPECT_EQ(textarea->tag_name, "textarea");
+    EXPECT_EQ(get_attr_v63(textarea, "name"), "notes");
+    EXPECT_EQ(textarea->text_content(), "alpha\nbeta\ngamma");
+}

@@ -14116,3 +14116,117 @@ TEST(RequestTest, SerializeRequestCrlfEndingsV74) {
     ASSERT_GE(serialized.size(), 4u);
     EXPECT_EQ(serialized.substr(serialized.size() - 4), "\r\n\r\n");
 }
+
+TEST(HTTPClientTest, RequestSerializationLowercasesCustomHeadersV75) {
+    clever::net::Request req;
+    req.method = clever::net::Method::GET;
+    req.url = "http://example.com";
+    req.parse_url();
+    req.headers.set("X-Custom-Token", "abc123");
+
+    auto raw = req.serialize();
+    std::string serialized(raw.begin(), raw.end());
+
+    EXPECT_NE(serialized.find("GET / HTTP/1.1\r\n"), std::string::npos);
+    EXPECT_NE(serialized.find("x-custom-token: abc123\r\n"), std::string::npos);
+    EXPECT_EQ(serialized.find("X-Custom-Token: abc123\r\n"), std::string::npos);
+}
+
+TEST(HTTPClientTest, RequestSerializationAddsContentLengthForBodyV75) {
+    clever::net::Request req;
+    req.method = clever::net::Method::POST;
+    req.url = "http://example.com";
+    req.parse_url();
+
+    const std::string body = "payload";
+    req.body.assign(body.begin(), body.end());
+
+    auto raw = req.serialize();
+    std::string serialized(raw.begin(), raw.end());
+
+    EXPECT_NE(serialized.find("POST / HTTP/1.1\r\n"), std::string::npos);
+    EXPECT_NE(serialized.find("Content-Length: 7\r\n"), std::string::npos);
+    ASSERT_GE(serialized.size(), body.size());
+    EXPECT_EQ(serialized.substr(serialized.size() - body.size()), body);
+}
+
+TEST(HTTPClientTest, HeaderAppendAndGetWorkForRepeatedRequestHeadersV75) {
+    clever::net::Request req;
+    req.method = clever::net::Method::GET;
+    req.url = "http://example.com";
+    req.parse_url();
+    req.headers.append("X-Trace-Id", "trace-a");
+    req.headers.append("x-trace-id", "trace-b");
+
+    auto one_value = req.headers.get("X-Trace-Id");
+    ASSERT_TRUE(one_value.has_value());
+    auto all_values = req.headers.get_all("x-trace-id");
+    EXPECT_EQ(all_values.size(), 2u);
+
+    auto raw = req.serialize();
+    std::string serialized(raw.begin(), raw.end());
+    EXPECT_NE(serialized.find("x-trace-id: trace-a\r\n"), std::string::npos);
+    EXPECT_NE(serialized.find("x-trace-id: trace-b\r\n"), std::string::npos);
+}
+
+TEST(HTTPClientTest, ResponseParsingReadsStatusHeadersAndBodyV75) {
+    const std::string raw_response =
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Type: text/plain\r\n"
+        "Content-Length: 2\r\n"
+        "\r\n"
+        "OK";
+
+    std::vector<uint8_t> bytes(raw_response.begin(), raw_response.end());
+    auto resp = clever::net::Response::parse(bytes);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 200u);
+    ASSERT_TRUE(resp->headers.get("content-type").has_value());
+    EXPECT_EQ(resp->headers.get("content-type").value(), "text/plain");
+    EXPECT_EQ(std::string(resp->body.begin(), resp->body.end()), "OK");
+}
+
+TEST(HTTPClientTest, ResponseParsingCaptures404StatusCodeV75) {
+    const std::string raw_response =
+        "HTTP/1.1 404 Not Found\r\n"
+        "Content-Length: 9\r\n"
+        "\r\n"
+        "not found";
+
+    std::vector<uint8_t> bytes(raw_response.begin(), raw_response.end());
+    auto resp = clever::net::Response::parse(bytes);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 404u);
+    EXPECT_EQ(resp->status_text, "Not Found");
+    EXPECT_EQ(std::string(resp->body.begin(), resp->body.end()), "not found");
+}
+
+TEST(HTTPClientTest, MethodConversionsCoverCommonVerbsV75) {
+    EXPECT_EQ(clever::net::method_to_string(clever::net::Method::GET), "GET");
+    EXPECT_EQ(clever::net::method_to_string(clever::net::Method::DELETE_METHOD), "DELETE");
+    EXPECT_EQ(clever::net::string_to_method("patch"), clever::net::Method::PATCH);
+    EXPECT_EQ(clever::net::string_to_method("OPTIONS"), clever::net::Method::OPTIONS);
+}
+
+TEST(HTTPClientTest, CookieJarStoresAndReturnsMatchingCookieHeaderV75) {
+    clever::net::CookieJar jar;
+    jar.set_from_header("session=abc123; Path=/; HttpOnly", "example.com");
+
+    std::string cookie_header = jar.get_cookie_header("example.com", "/dashboard", false);
+    EXPECT_EQ(cookie_header, "session=abc123");
+}
+
+TEST(HTTPClientTest, CookieJarHonorsSecureAndPathRulesV75) {
+    clever::net::CookieJar jar;
+    jar.set_from_header("token=secure1; Path=/account; Secure", "example.com");
+
+    std::string over_http = jar.get_cookie_header("example.com", "/account/profile", false);
+    std::string wrong_path = jar.get_cookie_header("example.com", "/public", true);
+    std::string allowed = jar.get_cookie_header("example.com", "/account/profile", true);
+
+    EXPECT_TRUE(over_http.empty());
+    EXPECT_TRUE(wrong_path.empty());
+    EXPECT_EQ(allowed, "token=secure1");
+}
