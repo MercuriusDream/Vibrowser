@@ -3273,3 +3273,60 @@ TEST(TreeBuilder, TrackElementInVideo) {
     ASSERT_NE(track, nullptr);
     EXPECT_EQ(track->tag_name, "track");
 }
+
+// Cycle 760 — HTML picture, map, col, and interactive elements
+TEST(TreeBuilder, PictureElementIsParsed) {
+    auto doc = clever::html::parse(R"(<picture><img src="photo.jpg" alt="Photo"></picture>)");
+    auto* picture = doc->find_element("picture");
+    ASSERT_NE(picture, nullptr);
+    EXPECT_EQ(picture->tag_name, "picture");
+}
+
+TEST(TreeBuilder, MapElementIsParsed) {
+    auto doc = clever::html::parse(R"(<map name="nav"><area shape="rect" coords="0,0,100,100" href="#"></map>)");
+    auto* map = doc->find_element("map");
+    ASSERT_NE(map, nullptr);
+    EXPECT_EQ(map->tag_name, "map");
+}
+
+TEST(TreeBuilder, AreaElementInMap) {
+    auto doc = clever::html::parse(R"(<map name="nav"><area shape="circle" coords="50,50,30" href="#"></map>)");
+    auto* area = doc->find_element("area");
+    ASSERT_NE(area, nullptr);
+    EXPECT_EQ(area->tag_name, "area");
+}
+
+TEST(TreeBuilder, ColGroupIsParsed) {
+    auto doc = clever::html::parse(R"(<table><colgroup><col span="2"></colgroup></table>)");
+    auto* colgroup = doc->find_element("colgroup");
+    ASSERT_NE(colgroup, nullptr);
+    EXPECT_EQ(colgroup->tag_name, "colgroup");
+}
+
+TEST(TreeBuilder, ColElementIsParsed) {
+    auto doc = clever::html::parse(R"(<table><colgroup><col span="3"></colgroup></table>)");
+    auto* col = doc->find_element("col");
+    ASSERT_NE(col, nullptr);
+    EXPECT_EQ(col->tag_name, "col");
+}
+
+TEST(TreeBuilder, SlotElementIsParsed) {
+    auto doc = clever::html::parse(R"(<slot name="header">default</slot>)");
+    auto* slot = doc->find_element("slot");
+    ASSERT_NE(slot, nullptr);
+    EXPECT_EQ(slot->tag_name, "slot");
+}
+
+TEST(TreeBuilder, RubyAnnotationIsParsed) {
+    auto doc = clever::html::parse(R"(<ruby>漢<rt>かん</rt></ruby>)");
+    auto* ruby = doc->find_element("ruby");
+    ASSERT_NE(ruby, nullptr);
+    EXPECT_EQ(ruby->tag_name, "ruby");
+}
+
+TEST(TreeBuilder, RubyRtElementIsParsed) {
+    auto doc = clever::html::parse(R"(<ruby>字<rt>ji</rt></ruby>)");
+    auto* rt = doc->find_element("rt");
+    ASSERT_NE(rt, nullptr);
+    EXPECT_EQ(rt->tag_name, "rt");
+}
