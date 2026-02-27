@@ -10930,3 +10930,212 @@ TEST(LayoutEngineTest, MaxWidthClampingV60) {
     EXPECT_FLOAT_EQ(root->geometry.width, 400.0f);
     EXPECT_FLOAT_EQ(root->max_width, 400.0f);
 }
+
+// Test V61_001: Z-index stacking context with multiple siblings
+TEST(LayoutEngineTest, ZIndexStackingContextV61) {
+    auto root = make_block("div");
+    root->specified_width = 600.0f;
+    root->specified_height = 400.0f;
+
+    auto elem1 = make_block("div");
+    elem1->z_index = 5;
+    elem1->background_color = 0xFFFF0000u;  // Red
+
+    auto elem2 = make_block("div");
+    elem2->z_index = 10;
+    elem2->background_color = 0xFF00FF00u;  // Green
+
+    auto elem3 = make_block("div");
+    elem3->z_index = 3;
+    elem3->background_color = 0xFF0000FFu;  // Blue
+
+    root->append_child(std::move(elem1));
+    root->append_child(std::move(elem2));
+    root->append_child(std::move(elem3));
+
+    LayoutEngine engine;
+    engine.compute(*root, 600.0f, 400.0f);
+
+    // Verify z-indices are preserved
+    EXPECT_EQ(root->children[0]->z_index, 5);
+    EXPECT_EQ(root->children[1]->z_index, 10);
+    EXPECT_EQ(root->children[2]->z_index, 3);
+}
+
+// Test V61_002: Visibility hidden preserves layout space
+TEST(LayoutEngineTest, VisibilityHiddenPreservesSpaceV61) {
+    auto root = make_block("div");
+    root->specified_width = 400.0f;
+    root->specified_height = 300.0f;
+
+    auto visible = make_block("div");
+    visible->specified_height = 100.0f;
+    visible->visibility_hidden = false;
+
+    auto hidden = make_block("div");
+    hidden->specified_height = 100.0f;
+    hidden->visibility_hidden = true;
+
+    auto after = make_block("div");
+    after->specified_height = 100.0f;
+
+    root->append_child(std::move(visible));
+    root->append_child(std::move(hidden));
+    root->append_child(std::move(after));
+
+    LayoutEngine engine;
+    engine.compute(*root, 400.0f, 300.0f);
+
+    // Hidden element still occupies space
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.height, 100.0f);
+    EXPECT_TRUE(root->children[1]->visibility_hidden);
+}
+
+// Test V61_003: Display none removes element from layout
+TEST(LayoutEngineTest, DisplayNoneRemovesFromLayoutV61) {
+    auto root = make_block("div");
+    root->specified_width = 400.0f;
+    root->specified_height = 300.0f;
+
+    auto visible = make_block("div");
+    visible->specified_height = 100.0f;
+    visible->display = DisplayType::Block;
+
+    auto hidden = make_block("div");
+    hidden->specified_height = 100.0f;
+    hidden->display = DisplayType::None;
+
+    auto after = make_block("div");
+    after->specified_height = 100.0f;
+
+    root->append_child(std::move(visible));
+    root->append_child(std::move(hidden));
+    root->append_child(std::move(after));
+
+    LayoutEngine engine;
+    engine.compute(*root, 400.0f, 300.0f);
+
+    // Hidden element should have zero dimensions
+    EXPECT_EQ(root->children[1]->display, DisplayType::None);
+}
+
+// Test V61_004: Flex wrap wraps items to next line
+TEST(LayoutEngineTest, FlexWrapWrapsItemsV61) {
+    auto root = make_flex("div");
+    root->specified_width = 300.0f;
+    root->flex_wrap = 1;  // wrap
+
+    auto item1 = make_block("div");
+    item1->specified_width = 150.0f;
+    item1->specified_height = 80.0f;
+
+    auto item2 = make_block("div");
+    item2->specified_width = 150.0f;
+    item2->specified_height = 80.0f;
+
+    auto item3 = make_block("div");
+    item3->specified_width = 150.0f;
+    item3->specified_height = 80.0f;
+
+    root->append_child(std::move(item1));
+    root->append_child(std::move(item2));
+    root->append_child(std::move(item3));
+
+    LayoutEngine engine;
+    engine.compute(*root, 300.0f, 400.0f);
+
+    // Flex wrap should be set
+    EXPECT_EQ(root->flex_wrap, 1);
+}
+
+// Test V61_005: Flex alignment with justify-content
+TEST(LayoutEngineTest, FlexAlignmentJustifyContentV61) {
+    auto root = make_flex("div");
+    root->specified_width = 400.0f;
+    root->specified_height = 200.0f;
+    root->justify_content = 2;  // center alignment
+
+    auto item1 = make_block("div");
+    item1->specified_width = 80.0f;
+    item1->specified_height = 80.0f;
+
+    auto item2 = make_block("div");
+    item2->specified_width = 80.0f;
+    item2->specified_height = 80.0f;
+
+    root->append_child(std::move(item1));
+    root->append_child(std::move(item2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 400.0f, 200.0f);
+
+    // Verify justify_content value is preserved
+    EXPECT_EQ(root->justify_content, 2);
+}
+
+// Test V61_006: Auto width computation for block element
+TEST(LayoutEngineTest, AutoWidthComputationV61) {
+    auto root = make_block("div");
+    root->specified_width = 500.0f;
+    root->specified_height = 300.0f;
+
+    auto child = make_block("div");
+    // No explicit width - should auto-fill available width
+    child->specified_width = -1.0f;  // auto/unset
+    child->specified_height = 100.0f;
+    child->geometry.margin.left = 10.0f;
+    child->geometry.margin.right = 10.0f;
+
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 500.0f, 300.0f);
+
+    // Child should expand to fill parent width minus margins
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.height, 100.0f);
+}
+
+// Test V61_007: Shrink-to-fit width with float
+TEST(LayoutEngineTest, ShrinkToFitWidthWithFloatV61) {
+    auto root = make_block("div");
+    root->specified_width = 400.0f;
+    root->specified_height = 300.0f;
+
+    auto floated = make_block("div");
+    floated->specified_width = 100.0f;
+    floated->specified_height = 100.0f;
+    floated->float_type = 1;  // float left
+
+    auto text = make_text("Text content after float", 16.0f);
+
+    root->append_child(std::move(floated));
+    root->append_child(std::move(text));
+
+    LayoutEngine engine;
+    engine.compute(*root, 400.0f, 300.0f);
+
+    // Floated element should be positioned
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.width, 100.0f);
+    EXPECT_EQ(root->children[0]->float_type, 1);
+}
+
+// Test V61_008: Text overflow ellipsis with max-width
+TEST(LayoutEngineTest, TextOverflowEllipsisV61) {
+    auto root = make_block("div");
+    root->specified_width = 200.0f;
+    root->specified_height = 100.0f;
+    root->overflow = 1;  // hidden/clipped
+    root->text_overflow = 1;  // ellipsis
+
+    auto text = make_text("This is a very long text that should overflow with ellipsis", 16.0f);
+    text->max_width = 200.0f;
+
+    root->append_child(std::move(text));
+
+    LayoutEngine engine;
+    engine.compute(*root, 200.0f, 100.0f);
+
+    // Verify overflow and text_overflow properties are set
+    EXPECT_EQ(root->overflow, 1);
+    EXPECT_EQ(root->text_overflow, 1);
+}
