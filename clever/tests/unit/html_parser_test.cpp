@@ -4090,3 +4090,87 @@ TEST(TreeBuilder, LinkRelPreconnect) {
         if (attr.name == "rel" && attr.value == "preconnect") found = true;
     EXPECT_TRUE(found);
 }
+
+// Cycle 857 — SRI integrity, ol type/start, anchor download, form input, script nomodule, span lang
+TEST(TreeBuilder, LinkIntegrityAttribute) {
+    auto doc = clever::html::parse(
+        "<head><link rel=\"stylesheet\" href=\"style.css\" integrity=\"sha384-abc123\" crossorigin=\"anonymous\"></head>");
+    auto* link = doc->find_element("link");
+    ASSERT_NE(link, nullptr);
+    bool found = false;
+    for (const auto& attr : link->attributes)
+        if (attr.name == "integrity" && attr.value == "sha384-abc123") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, ScriptIntegrityAttribute) {
+    auto doc = clever::html::parse(
+        "<head><script src=\"app.js\" integrity=\"sha256-xyz\"></script></head>");
+    auto* script = doc->find_element("script");
+    ASSERT_NE(script, nullptr);
+    bool found = false;
+    for (const auto& attr : script->attributes)
+        if (attr.name == "integrity" && attr.value == "sha256-xyz") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, OlTypeAlpha) {
+    auto doc = clever::html::parse("<body><ol type=\"a\"><li>first</li></ol></body>");
+    auto* ol = doc->find_element("ol");
+    ASSERT_NE(ol, nullptr);
+    bool found = false;
+    for (const auto& attr : ol->attributes)
+        if (attr.name == "type" && attr.value == "a") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, OlStartAttribute) {
+    auto doc = clever::html::parse("<body><ol start=\"5\"><li>five</li></ol></body>");
+    auto* ol = doc->find_element("ol");
+    ASSERT_NE(ol, nullptr);
+    bool found = false;
+    for (const auto& attr : ol->attributes)
+        if (attr.name == "start" && attr.value == "5") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, AnchorDownloadAttribute) {
+    auto doc = clever::html::parse("<body><a href=\"file.pdf\" download=\"report.pdf\">Download</a></body>");
+    auto* a = doc->find_element("a");
+    ASSERT_NE(a, nullptr);
+    bool found = false;
+    for (const auto& attr : a->attributes)
+        if (attr.name == "download" && attr.value == "report.pdf") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, InputFormAttribute) {
+    auto doc = clever::html::parse(
+        "<body><form id=\"f\"></form><input type=\"text\" form=\"f\" name=\"q\"></body>");
+    auto* input = doc->find_element("input");
+    ASSERT_NE(input, nullptr);
+    bool found = false;
+    for (const auto& attr : input->attributes)
+        if (attr.name == "form" && attr.value == "f") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, ScriptNomodule) {
+    auto doc = clever::html::parse("<head><script nomodule src=\"legacy.js\"></script></head>");
+    auto* script = doc->find_element("script");
+    ASSERT_NE(script, nullptr);
+    bool found = false;
+    for (const auto& attr : script->attributes)
+        if (attr.name == "nomodule") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, SpanLangAttribute) {
+    auto doc = clever::html::parse("<body><span lang=\"fr\">Bonjour</span></body>");
+    auto* span = doc->find_element("span");
+    ASSERT_NE(span, nullptr);
+    bool found = false;
+    for (const auto& attr : span->attributes)
+        if (attr.name == "lang" && attr.value == "fr") found = true;
+    EXPECT_TRUE(found);
+}
