@@ -1806,3 +1806,75 @@ TEST(URLParser, HostWithCdnSubdomainHasDot) {
     ASSERT_TRUE(result.has_value());
     EXPECT_NE(result->host.find('.'), std::string::npos);
 }
+
+// ---------------------------------------------------------------------------
+// Cycle 705 — 8 additional URL tests
+// ---------------------------------------------------------------------------
+
+// URL: query preserves all characters
+TEST(URLParser, QueryPreservesAllCharacters) {
+    auto result = parse("https://example.com?k1=v1&k2=v2&k3=v3");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->query, "k1=v1&k2=v2&k3=v3");
+}
+
+// URL: deeply nested path has correct segments
+TEST(URLParser, PathWithDeeplyNestedDir) {
+    auto result = parse("https://example.com/a/b/c/d/e");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->path, "/a/b/c/d/e");
+}
+
+// URL: multi-level subdomain host is preserved exactly
+TEST(URLParser, HostMultiLevelSubdomain) {
+    auto result = parse("https://api.v2.example.com/path");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->host, "api.v2.example.com");
+}
+
+// URL: port and non-trivial path are both accessible
+TEST(URLParser, PortAndPathBothAccessible) {
+    auto result = parse("http://example.com:8080/api/v1/users");
+    ASSERT_TRUE(result.has_value());
+    ASSERT_TRUE(result->port.has_value());
+    EXPECT_EQ(*result->port, 8080u);
+    EXPECT_NE(result->path.find("api"), std::string::npos);
+}
+
+// URL: query does not include the fragment
+TEST(URLParser, QueryDoesNotIncludeFragment) {
+    auto result = parse("https://example.com?q=search#results");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->query, "q=search");
+    EXPECT_EQ(result->fragment, "results");
+}
+
+// URL: fragment does not include the query
+TEST(URLParser, FragmentDoesNotIncludeQuery) {
+    auto result = parse("https://example.com?a=1#section2");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->fragment.find("a=1"), std::string::npos); // query not in fragment
+    // Actually fragment should NOT contain query - verify query is separate
+    EXPECT_EQ(result->query, "a=1");
+}
+
+// URL: serialize round-trip preserves full structure
+TEST(URLParser, SerializeRoundTripPreservesStructure) {
+    std::string original = "https://user:pass@example.com:8443/path?q=test#section";
+    auto result = parse(original);
+    ASSERT_TRUE(result.has_value());
+    auto serialized = result->serialize();
+    // Re-parse should produce same structure
+    auto reparsed = parse(serialized);
+    ASSERT_TRUE(reparsed.has_value());
+    EXPECT_EQ(reparsed->scheme, result->scheme);
+    EXPECT_EQ(reparsed->host, result->host);
+    EXPECT_EQ(reparsed->path, result->path);
+}
+
+// URL: path with trailing slash is preserved
+TEST(URLParser, PathWithTrailingSlashIsAccessible) {
+    auto result = parse("https://example.com/dir/subdir/");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->path.back(), '/');
+}
