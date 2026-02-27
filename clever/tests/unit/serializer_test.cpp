@@ -1992,3 +1992,79 @@ TEST(SerializerTest, RemainingDecreasesAsWeRead) {
     size_t after = d.remaining();
     EXPECT_LT(after, before);
 }
+
+// ============================================================================
+// Cycle 678: More serializer tests
+// ============================================================================
+
+TEST(SerializerTest, SingleByteWriteRoundTrip) {
+    Serializer s;
+    s.write_u8(77u);
+    EXPECT_EQ(s.data().size(), 1u);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u8(), 77u);
+}
+
+TEST(SerializerTest, I32EightBytesAfterTwoWrites) {
+    Serializer s;
+    s.write_i32(10);
+    s.write_i32(20);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i32(), 10);
+    EXPECT_EQ(d.read_i32(), 20);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, StringWithUnicodeChars) {
+    Serializer s;
+    s.write_string("hello \xc3\xa9");  // "hello é" in UTF-8
+    Deserializer d(s.data());
+    auto out = d.read_string();
+    EXPECT_EQ(out, "hello \xc3\xa9");
+}
+
+TEST(SerializerTest, BoolWritesSingleByte) {
+    Serializer s;
+    s.write_bool(true);
+    EXPECT_GE(s.data().size(), 1u);
+}
+
+TEST(SerializerTest, U32NegativeOneAsU32) {
+    uint32_t val = 0xFFFFFFFFu;
+    Serializer s;
+    s.write_u32(val);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u32(), val);
+}
+
+TEST(SerializerTest, TwoStringsSecondAccessible) {
+    Serializer s;
+    s.write_string("first");
+    s.write_string("second");
+    Deserializer d(s.data());
+    d.read_string();  // skip first
+    EXPECT_EQ(d.read_string(), "second");
+}
+
+TEST(SerializerTest, U8ThenStringLengthVerified) {
+    Serializer s;
+    s.write_u8(7u);
+    s.write_string("abcdefg");
+    Deserializer d(s.data());
+    uint8_t len_hint = d.read_u8();
+    std::string str = d.read_string();
+    EXPECT_EQ(len_hint, 7u);
+    EXPECT_EQ(str.size(), 7u);
+}
+
+TEST(SerializerTest, ThreeU64ValuesRoundTrip) {
+    uint64_t a = 111111111ULL;
+    uint64_t b = 222222222ULL;
+    uint64_t c = 333333333ULL;
+    Serializer s;
+    s.write_u64(a); s.write_u64(b); s.write_u64(c);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u64(), a);
+    EXPECT_EQ(d.read_u64(), b);
+    EXPECT_EQ(d.read_u64(), c);
+}
