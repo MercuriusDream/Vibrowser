@@ -2878,3 +2878,55 @@ TEST(URLParser, NoFragmentPresent) {
     ASSERT_TRUE(url.has_value());
     EXPECT_TRUE(url->fragment.empty());
 }
+
+// Cycle 925 — additional URL parsing coverage
+TEST(URLParser, QueryTwoParams) {
+    auto url = parse("https://example.com/search?foo=1&bar=2");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->query, "foo=1&bar=2");
+}
+
+TEST(URLParser, QuerySingleParam) {
+    auto url = parse("https://example.com/search?q=hello");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->query, "q=hello");
+}
+
+TEST(URLParser, FragmentIsHash) {
+    auto url = parse("https://example.com/page#section");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->fragment, "section");
+}
+
+TEST(URLParser, FragmentWithHyphen) {
+    auto url = parse("https://example.com/docs#getting-started");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->fragment, "getting-started");
+}
+
+TEST(URLParser, PortNonStandardHttp) {
+    auto url = parse("http://example.com:3000/app");
+    ASSERT_TRUE(url.has_value());
+    ASSERT_TRUE(url->port.has_value());
+    EXPECT_EQ(*url->port, 3000);
+}
+
+TEST(URLParser, PortHighValue) {
+    auto url = parse("https://example.com:65535/");
+    ASSERT_TRUE(url.has_value());
+    ASSERT_TRUE(url->port.has_value());
+    EXPECT_EQ(*url->port, 65535);
+}
+
+TEST(URLParser, SubdomainThreeLevels) {
+    auto url = parse("https://a.b.c.example.com/");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->host, "a.b.c.example.com");
+}
+
+TEST(URLParser, QueryAndFragmentBoth) {
+    auto url = parse("https://example.com/p?x=1#top");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->query, "x=1");
+    EXPECT_EQ(url->fragment, "top");
+}
