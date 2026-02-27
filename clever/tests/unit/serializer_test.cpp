@@ -3578,3 +3578,86 @@ TEST(SerializerTest, F64PrecisionNineDigits) {
     Deserializer d(s.data());
     EXPECT_NEAR(d.read_f64(), 1.23456789, 1e-9);
 }
+
+// Cycle 889 — IPC serializer varied patterns
+
+TEST(SerializerTest, U16MaxMinSequence) {
+    Serializer s;
+    s.write_u16(65535);
+    s.write_u16(0);
+    s.write_u16(1000);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u16(), 65535);
+    EXPECT_EQ(d.read_u16(), 0);
+    EXPECT_EQ(d.read_u16(), 1000);
+}
+
+TEST(SerializerTest, StringThenBoolFalseThenU32) {
+    Serializer s;
+    s.write_string("payload");
+    s.write_bool(false);
+    s.write_u32(999);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "payload");
+    EXPECT_EQ(d.read_bool(), false);
+    EXPECT_EQ(d.read_u32(), 999u);
+}
+
+TEST(SerializerTest, I32NegativeOneMillion) {
+    Serializer s;
+    s.write_i32(-1000000);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i32(), -1000000);
+}
+
+TEST(SerializerTest, ThirtySequentialU8) {
+    Serializer s;
+    for (int i = 0; i < 30; i++) {
+        s.write_u8(static_cast<uint8_t>(i));
+    }
+    Deserializer d(s.data());
+    for (int i = 0; i < 30; i++) {
+        EXPECT_EQ(d.read_u8(), static_cast<uint8_t>(i));
+    }
+}
+
+TEST(SerializerTest, I64AllBitsSet) {
+    Serializer s;
+    s.write_i64(static_cast<int64_t>(-1));
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i64(), int64_t{-1});
+}
+
+TEST(SerializerTest, TwoBytesAndThreeStrings) {
+    Serializer s;
+    const uint8_t raw[] = {0xAA, 0xBB};
+    s.write_bytes(raw, 2);
+    s.write_string("one");
+    s.write_string("two");
+    s.write_string("three");
+    Deserializer d(s.data());
+    auto bytes = d.read_bytes();
+    ASSERT_EQ(bytes.size(), 2u);
+    EXPECT_EQ(bytes[0], 0xAAu);
+    EXPECT_EQ(d.read_string(), "one");
+    EXPECT_EQ(d.read_string(), "two");
+    EXPECT_EQ(d.read_string(), "three");
+}
+
+TEST(SerializerTest, FiveU64ValuesAllOdd) {
+    Serializer s;
+    for (int i = 0; i < 5; i++) {
+        s.write_u64(static_cast<uint64_t>(2 * i + 1));
+    }
+    Deserializer d(s.data());
+    for (int i = 0; i < 5; i++) {
+        EXPECT_EQ(d.read_u64(), static_cast<uint64_t>(2 * i + 1));
+    }
+}
+
+TEST(SerializerTest, F64SpecialNegativeValue) {
+    Serializer s;
+    s.write_f64(-999.999);
+    Deserializer d(s.data());
+    EXPECT_NEAR(d.read_f64(), -999.999, 1e-6);
+}
