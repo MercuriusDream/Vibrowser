@@ -1342,3 +1342,48 @@ TEST(CORSPolicyTest, NormalizeOutgoingHeaderNoOpForSameOrigin) {
 TEST(CORSPolicyTest, IsCrossOriginSchemeAndHostBothDiffer) {
     EXPECT_TRUE(is_cross_origin("http://foo.com", "https://bar.com/page"));
 }
+
+TEST(CORSPolicyTest, HttpsSchemeIsEligible) {
+    EXPECT_TRUE(clever::js::cors::is_cors_eligible_request_url("https://example.com/api"));
+}
+
+TEST(CORSPolicyTest, WssSchemeIsNotEligible) {
+    EXPECT_FALSE(clever::js::cors::is_cors_eligible_request_url("wss://example.com/socket"));
+}
+
+TEST(CORSPolicyTest, WsSchemeIsNotEligible) {
+    EXPECT_FALSE(clever::js::cors::is_cors_eligible_request_url("ws://example.com/socket"));
+}
+
+TEST(CORSPolicyTest, QueryDoesNotAffectSameOrigin) {
+    EXPECT_FALSE(clever::js::cors::is_cross_origin("https://example.com",
+                                                    "https://example.com/path?q=1"));
+}
+
+TEST(CORSPolicyTest, CORSAllowsStarNoCredentials) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "*");
+    EXPECT_TRUE(clever::js::cors::cors_allows_response(
+        "https://example.com", "https://api.other.com/data", headers, false));
+}
+
+TEST(CORSPolicyTest, AttachOriginCrossHttpRequest) {
+    clever::net::HeaderMap headers;
+    clever::js::cors::normalize_outgoing_origin_header(
+        headers, "https://foo.com", "https://bar.com/api");
+    auto val = headers.get("Origin");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(*val, "https://foo.com");
+}
+
+TEST(CORSPolicyTest, SchemeFtpMismatchNotCrossOrigin) {
+    EXPECT_FALSE(clever::js::cors::is_cross_origin("https://example.com",
+                                                    "ftp://example.com/file.zip"));
+}
+
+TEST(CORSPolicyTest, RejectsResponseNoACAOHeader) {
+    clever::net::HeaderMap headers;
+    headers.set("Content-Type", "application/json");
+    EXPECT_FALSE(clever::js::cors::cors_allows_response(
+        "https://example.com", "https://api.other.com/data", headers, false));
+}
