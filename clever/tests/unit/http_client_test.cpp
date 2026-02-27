@@ -5294,3 +5294,58 @@ TEST(CookieJarTest, CookieJarEmptyAfterClear) {
     jar.clear();
     EXPECT_EQ(jar.size(), 0u);
 }
+
+TEST(ResponseTest, ResponseStatusHttp301) {
+    Response r;
+    r.status = 301;
+    r.was_redirected = true;
+    EXPECT_EQ(r.status, 301u);
+    EXPECT_TRUE(r.was_redirected);
+}
+
+TEST(ResponseTest, ResponseStatusHttp500) {
+    Response r;
+    r.status = 500;
+    EXPECT_EQ(r.status, 500u);
+}
+
+TEST(ResponseTest, ResponseHeaderSetAndGet) {
+    Response r;
+    r.headers.set("Content-Type", "application/json");
+    auto val = r.headers.get("content-type");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(*val, "application/json");
+}
+
+TEST(ResponseTest, ResponseHeadersEmptyByDefault) {
+    Response r;
+    EXPECT_TRUE(r.headers.empty());
+}
+
+TEST(CookieJarTest, CookieJarTwoSets) {
+    CookieJar jar;
+    jar.set_from_header("a=1; Path=/", "example.com");
+    jar.set_from_header("b=2; Path=/", "example.com");
+    EXPECT_EQ(jar.size(), 2u);
+}
+
+TEST(CookieJarTest, CookieJarClearThenAdd) {
+    CookieJar jar;
+    jar.set_from_header("x=1; Path=/", "example.com");
+    jar.clear();
+    jar.set_from_header("y=2; Path=/", "example.com");
+    EXPECT_EQ(jar.size(), 1u);
+}
+
+TEST(HeaderMapTest, HeaderMapGetNonexistent) {
+    HeaderMap map;
+    auto val = map.get("x-does-not-exist");
+    EXPECT_FALSE(val.has_value());
+}
+
+TEST(HeaderMapTest, HeaderMapEmptyAfterRemoveAll) {
+    HeaderMap map;
+    map.set("x-one", "v1");
+    map.remove("x-one");
+    EXPECT_TRUE(map.empty());
+}
