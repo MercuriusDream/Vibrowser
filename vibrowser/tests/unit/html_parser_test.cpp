@@ -12778,3 +12778,164 @@ TEST(HtmlParserTest, HeadingHierarchyH1ThroughH6V81) {
     EXPECT_EQ(h5->parent, body);
     EXPECT_EQ(h6->parent, body);
 }
+
+// ---------------------------------------------------------------------------
+// V82 — 8 new HTML parser tests covering diverse parsing scenarios.
+// ---------------------------------------------------------------------------
+
+// 1. Parse a <pre> element preserving its text content
+TEST(HtmlParserTest, PreElementPreservesTextContentV82) {
+    auto doc = clever::html::parse(
+        "<html><body><pre>  line1\n  line2\n  line3</pre></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* pre = doc->find_element("pre");
+    ASSERT_NE(pre, nullptr);
+    EXPECT_EQ(pre->tag_name, "pre");
+    // text_content should contain the whitespace and newlines
+    std::string tc = pre->text_content();
+    EXPECT_NE(tc.find("line1"), std::string::npos);
+    EXPECT_NE(tc.find("line2"), std::string::npos);
+    EXPECT_NE(tc.find("line3"), std::string::npos);
+}
+
+// 2. Multiple void tags: <br>, <hr>, <input> should have no children
+TEST(HtmlParserTest, MultipleVoidTagsNoChildrenV82) {
+    auto doc = clever::html::parse(
+        "<html><body><br><hr><input></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* br = doc->find_element("br");
+    auto* hr = doc->find_element("hr");
+    auto* input = doc->find_element("input");
+    ASSERT_NE(br, nullptr);
+    ASSERT_NE(hr, nullptr);
+    ASSERT_NE(input, nullptr);
+
+    EXPECT_EQ(br->tag_name, "br");
+    EXPECT_EQ(hr->tag_name, "hr");
+    EXPECT_EQ(input->tag_name, "input");
+    EXPECT_TRUE(br->children.empty());
+    EXPECT_TRUE(hr->children.empty());
+    EXPECT_TRUE(input->children.empty());
+}
+
+// 3. Deeply nested elements preserve parent chain
+TEST(HtmlParserTest, DeeplyNestedParentChainV82) {
+    auto doc = clever::html::parse(
+        "<html><body><div><section><article><span>deep</span></article></section></div></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* span = doc->find_element("span");
+    ASSERT_NE(span, nullptr);
+    EXPECT_EQ(span->text_content(), "deep");
+
+    auto* article = doc->find_element("article");
+    auto* section = doc->find_element("section");
+    auto* div = doc->find_element("div");
+    ASSERT_NE(article, nullptr);
+    ASSERT_NE(section, nullptr);
+    ASSERT_NE(div, nullptr);
+
+    EXPECT_EQ(span->parent, article);
+    EXPECT_EQ(article->parent, section);
+    EXPECT_EQ(section->parent, div);
+}
+
+// 4. Anchor tag with href and target attributes
+TEST(HtmlParserTest, AnchorTagAttributesV82) {
+    auto doc = clever::html::parse(
+        "<html><body><a href=\"https://example.com\" target=\"_blank\">Link</a></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* a = doc->find_element("a");
+    ASSERT_NE(a, nullptr);
+    EXPECT_EQ(a->tag_name, "a");
+    EXPECT_EQ(a->text_content(), "Link");
+    EXPECT_EQ(get_attr_v63(a, "href"), "https://example.com");
+    EXPECT_EQ(get_attr_v63(a, "target"), "_blank");
+}
+
+// 5. Unordered list with multiple list items
+TEST(HtmlParserTest, UnorderedListItemsV82) {
+    auto doc = clever::html::parse(
+        "<html><body><ul><li>Alpha</li><li>Beta</li><li>Gamma</li></ul></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* ul = doc->find_element("ul");
+    ASSERT_NE(ul, nullptr);
+    EXPECT_EQ(ul->tag_name, "ul");
+
+    auto items = doc->find_all_elements("li");
+    ASSERT_EQ(items.size(), 3u);
+    EXPECT_EQ(items[0]->text_content(), "Alpha");
+    EXPECT_EQ(items[1]->text_content(), "Beta");
+    EXPECT_EQ(items[2]->text_content(), "Gamma");
+
+    for (auto* li : items) {
+        EXPECT_EQ(li->parent, ul);
+    }
+}
+
+// 6. Table structure: table, thead, tbody, tr, th, td
+TEST(HtmlParserTest, TableStructureParsingV82) {
+    auto doc = clever::html::parse(
+        "<html><body><table>"
+        "<thead><tr><th>Name</th><th>Age</th></tr></thead>"
+        "<tbody><tr><td>Alice</td><td>30</td></tr></tbody>"
+        "</table></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* table = doc->find_element("table");
+    ASSERT_NE(table, nullptr);
+
+    auto ths = doc->find_all_elements("th");
+    ASSERT_EQ(ths.size(), 2u);
+    EXPECT_EQ(ths[0]->text_content(), "Name");
+    EXPECT_EQ(ths[1]->text_content(), "Age");
+
+    auto tds = doc->find_all_elements("td");
+    ASSERT_EQ(tds.size(), 2u);
+    EXPECT_EQ(tds[0]->text_content(), "Alice");
+    EXPECT_EQ(tds[1]->text_content(), "30");
+}
+
+// 7. Meta tag with charset is a void element with attribute
+TEST(HtmlParserTest, MetaTagVoidWithCharsetV82) {
+    auto doc = clever::html::parse(
+        "<html><head><meta charset=\"utf-8\"><title>Test</title></head><body></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* meta = doc->find_element("meta");
+    ASSERT_NE(meta, nullptr);
+    EXPECT_EQ(meta->tag_name, "meta");
+    EXPECT_TRUE(meta->children.empty());
+    EXPECT_EQ(get_attr_v63(meta, "charset"), "utf-8");
+
+    auto* title = doc->find_element("title");
+    ASSERT_NE(title, nullptr);
+    EXPECT_EQ(title->text_content(), "Test");
+}
+
+// 8. Sibling paragraphs each have correct text and share the same parent
+TEST(HtmlParserTest, SiblingParagraphsTextAndParentV82) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<p>First paragraph</p>"
+        "<p>Second paragraph</p>"
+        "<p>Third paragraph</p>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto ps = doc->find_all_elements("p");
+    ASSERT_EQ(ps.size(), 3u);
+    EXPECT_EQ(ps[0]->text_content(), "First paragraph");
+    EXPECT_EQ(ps[1]->text_content(), "Second paragraph");
+    EXPECT_EQ(ps[2]->text_content(), "Third paragraph");
+
+    auto* body = doc->find_element("body");
+    ASSERT_NE(body, nullptr);
+    for (auto* p : ps) {
+        EXPECT_EQ(p->parent, body);
+    }
+}

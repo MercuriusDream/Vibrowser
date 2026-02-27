@@ -13345,3 +13345,300 @@ TEST(DomTest, CommentNodeDataAndTypeV81) {
     EXPECT_EQ(div.child_count(), 1u);
     EXPECT_EQ(div.first_child(), comment_ptr);
 }
+
+// ---------------------------------------------------------------------------
+// V82 Round — 8 new diverse DOM tests
+// ---------------------------------------------------------------------------
+
+TEST(DomTest, DeepNestedTreeTraversalV82) {
+    // Build a 5-level deep tree: root > l1 > l2 > l3 > l4 > leaf_text
+    auto root = std::make_unique<Element>("div");
+    auto l1 = std::make_unique<Element>("section");
+    auto l2 = std::make_unique<Element>("article");
+    auto l3 = std::make_unique<Element>("p");
+    auto l4 = std::make_unique<Element>("span");
+    auto leaf = std::make_unique<Text>("deeply nested");
+
+    auto* l1_ptr = l1.get();
+    auto* l2_ptr = l2.get();
+    auto* l3_ptr = l3.get();
+    auto* l4_ptr = l4.get();
+    auto* leaf_ptr = leaf.get();
+
+    l4->append_child(std::move(leaf));
+    l3->append_child(std::move(l4));
+    l2->append_child(std::move(l3));
+    l1->append_child(std::move(l2));
+    root->append_child(std::move(l1));
+
+    // Walk down the tree via first_child at each level
+    EXPECT_EQ(root->first_child(), l1_ptr);
+    EXPECT_EQ(l1_ptr->first_child(), l2_ptr);
+    EXPECT_EQ(l2_ptr->first_child(), l3_ptr);
+    EXPECT_EQ(l3_ptr->first_child(), l4_ptr);
+    EXPECT_EQ(l4_ptr->first_child(), leaf_ptr);
+
+    // Walk back up via parent
+    EXPECT_EQ(leaf_ptr->parent(), l4_ptr);
+    EXPECT_EQ(l4_ptr->parent(), l3_ptr);
+    EXPECT_EQ(l3_ptr->parent(), l2_ptr);
+    EXPECT_EQ(l2_ptr->parent(), l1_ptr);
+    EXPECT_EQ(l1_ptr->parent(), root.get());
+
+    // text_content propagates up from the deepest Text node
+    EXPECT_EQ(root->text_content(), "deeply nested");
+}
+
+TEST(DomTest, ClassListBulkOperationsV82) {
+    // Perform many class additions, removals, and toggles in sequence
+    Element elem("div");
+
+    // Add several classes
+    elem.class_list().add("alpha");
+    elem.class_list().add("beta");
+    elem.class_list().add("gamma");
+    elem.class_list().add("delta");
+    elem.class_list().add("epsilon");
+    EXPECT_EQ(elem.class_list().length(), 5u);
+
+    // Adding a duplicate should not increase length
+    elem.class_list().add("beta");
+    EXPECT_EQ(elem.class_list().length(), 5u);
+
+    // Remove middle classes
+    elem.class_list().remove("beta");
+    elem.class_list().remove("delta");
+    EXPECT_EQ(elem.class_list().length(), 3u);
+    EXPECT_FALSE(elem.class_list().contains("beta"));
+    EXPECT_FALSE(elem.class_list().contains("delta"));
+
+    // Toggle: gamma exists -> remove it; zeta doesn't exist -> add it
+    elem.class_list().toggle("gamma");
+    elem.class_list().toggle("zeta");
+    EXPECT_FALSE(elem.class_list().contains("gamma"));
+    EXPECT_TRUE(elem.class_list().contains("zeta"));
+    EXPECT_EQ(elem.class_list().length(), 3u); // alpha, epsilon, zeta
+
+    // Remaining classes are correct
+    EXPECT_TRUE(elem.class_list().contains("alpha"));
+    EXPECT_TRUE(elem.class_list().contains("epsilon"));
+    EXPECT_TRUE(elem.class_list().contains("zeta"));
+}
+
+TEST(DomTest, SiblingChainIntegrityAfterInsertBeforeV82) {
+    // Build a parent with 3 children, then insert a 4th using insert_before
+    Element parent("ul");
+    auto li1 = std::make_unique<Element>("li");
+    auto li2 = std::make_unique<Element>("li");
+    auto li3 = std::make_unique<Element>("li");
+
+    li1->set_attribute("data-order", "1");
+    li2->set_attribute("data-order", "2");
+    li3->set_attribute("data-order", "3");
+
+    auto* li1_ptr = li1.get();
+    auto* li2_ptr = li2.get();
+    auto* li3_ptr = li3.get();
+
+    parent.append_child(std::move(li1));
+    parent.append_child(std::move(li2));
+    parent.append_child(std::move(li3));
+
+    // Insert a new element before li2
+    auto li_new = std::make_unique<Element>("li");
+    li_new->set_attribute("data-order", "1.5");
+    auto* li_new_ptr = li_new.get();
+    parent.insert_before(std::move(li_new), li2_ptr);
+
+    EXPECT_EQ(parent.child_count(), 4u);
+
+    // Verify forward chain: li1 -> li_new -> li2 -> li3
+    EXPECT_EQ(parent.first_child(), li1_ptr);
+    EXPECT_EQ(li1_ptr->next_sibling(), li_new_ptr);
+    EXPECT_EQ(li_new_ptr->next_sibling(), li2_ptr);
+    EXPECT_EQ(li2_ptr->next_sibling(), li3_ptr);
+    EXPECT_EQ(li3_ptr->next_sibling(), nullptr);
+
+    // Verify backward chain
+    EXPECT_EQ(li3_ptr->previous_sibling(), li2_ptr);
+    EXPECT_EQ(li2_ptr->previous_sibling(), li_new_ptr);
+    EXPECT_EQ(li_new_ptr->previous_sibling(), li1_ptr);
+    EXPECT_EQ(li1_ptr->previous_sibling(), nullptr);
+}
+
+TEST(DomTest, MixedChildTypesElementTextCommentV82) {
+    // A parent with heterogeneous child types: Element, Text, Comment, Element
+    Element parent("div");
+
+    auto header = std::make_unique<Element>("h1");
+    auto text = std::make_unique<Text>("Hello ");
+    auto comment = std::make_unique<Comment>("separator");
+    auto span = std::make_unique<Element>("span");
+
+    auto* header_ptr = header.get();
+    auto* text_ptr = text.get();
+    auto* comment_ptr = comment.get();
+    auto* span_ptr = span.get();
+
+    parent.append_child(std::move(header));
+    parent.append_child(std::move(text));
+    parent.append_child(std::move(comment));
+    parent.append_child(std::move(span));
+
+    EXPECT_EQ(parent.child_count(), 4u);
+
+    // Verify types via node_type
+    EXPECT_EQ(header_ptr->node_type(), NodeType::Element);
+    EXPECT_EQ(text_ptr->node_type(), NodeType::Text);
+    EXPECT_EQ(comment_ptr->node_type(), NodeType::Comment);
+    EXPECT_EQ(span_ptr->node_type(), NodeType::Element);
+
+    // Sibling chain links all node types
+    EXPECT_EQ(header_ptr->next_sibling(), text_ptr);
+    EXPECT_EQ(text_ptr->next_sibling(), comment_ptr);
+    EXPECT_EQ(comment_ptr->next_sibling(), span_ptr);
+
+    // All share the same parent
+    EXPECT_EQ(header_ptr->parent(), &parent);
+    EXPECT_EQ(text_ptr->parent(), &parent);
+    EXPECT_EQ(comment_ptr->parent(), &parent);
+    EXPECT_EQ(span_ptr->parent(), &parent);
+}
+
+TEST(DomTest, RemoveChildAndReattachElsewhereV82) {
+    // Remove a child from one parent and append it to another
+    Element parent_a("div");
+    Element parent_b("section");
+
+    auto child = std::make_unique<Element>("p");
+    child->set_attribute("data-content", "wandering");
+    auto* child_ptr = child.get();
+
+    parent_a.append_child(std::move(child));
+    EXPECT_EQ(parent_a.child_count(), 1u);
+    EXPECT_EQ(child_ptr->parent(), &parent_a);
+
+    // Remove from parent_a — get ownership back
+    auto recovered = parent_a.remove_child(*child_ptr);
+    EXPECT_EQ(parent_a.child_count(), 0u);
+    EXPECT_EQ(parent_a.first_child(), nullptr);
+    EXPECT_EQ(child_ptr->parent(), nullptr);
+
+    // Re-attach to parent_b
+    parent_b.append_child(std::move(recovered));
+    EXPECT_EQ(parent_b.child_count(), 1u);
+    EXPECT_EQ(child_ptr->parent(), &parent_b);
+    EXPECT_EQ(parent_b.first_child(), child_ptr);
+
+    // Attribute survives the move
+    EXPECT_EQ(child_ptr->node_type(), NodeType::Element);
+    auto* elem_ptr = static_cast<Element*>(child_ptr);
+    EXPECT_EQ(elem_ptr->get_attribute("data-content").value(), "wandering");
+}
+
+TEST(DomTest, MultipleAttributeOverwriteAndRemoveV82) {
+    // Stress-test attribute set/overwrite/remove cycles
+    Element elem("input");
+
+    // Set initial attributes
+    elem.set_attribute("type", "text");
+    elem.set_attribute("name", "username");
+    elem.set_attribute("placeholder", "Enter name");
+    elem.set_attribute("maxlength", "50");
+    EXPECT_EQ(elem.attributes().size(), 4u);
+
+    // Overwrite existing attribute values
+    elem.set_attribute("type", "email");
+    elem.set_attribute("placeholder", "Enter email");
+    EXPECT_EQ(elem.get_attribute("type").value(), "email");
+    EXPECT_EQ(elem.get_attribute("placeholder").value(), "Enter email");
+    EXPECT_EQ(elem.attributes().size(), 4u); // count unchanged
+
+    // Remove one, check count
+    elem.remove_attribute("maxlength");
+    EXPECT_EQ(elem.attributes().size(), 3u);
+    EXPECT_FALSE(elem.has_attribute("maxlength"));
+
+    // Remove nonexistent attribute is a no-op
+    elem.remove_attribute("nonexistent");
+    EXPECT_EQ(elem.attributes().size(), 3u);
+
+    // Remove remaining
+    elem.remove_attribute("type");
+    elem.remove_attribute("name");
+    elem.remove_attribute("placeholder");
+    EXPECT_EQ(elem.attributes().size(), 0u);
+
+    // Setting attribute after total removal works
+    elem.set_attribute("id", "revived");
+    EXPECT_EQ(elem.id(), "revived");
+    EXPECT_EQ(elem.attributes().size(), 1u);
+}
+
+TEST(DomTest, EventStopPropagationPreventsLaterListenersV82) {
+    // When stop_propagation is called, subsequent dispatch phases should see it
+    auto node = std::make_unique<Element>("button");
+    EventTarget target;
+
+    int call_count = 0;
+    target.add_event_listener("click", [&](Event& e) {
+        call_count++;
+        e.stop_propagation();
+    });
+    target.add_event_listener("click", [&](Event&) {
+        // This still fires — stop_propagation doesn't skip same-phase listeners
+        call_count++;
+    });
+
+    Event event("click");
+    target.dispatch_event(event, *node);
+
+    // Both listeners at the same target fire
+    EXPECT_EQ(call_count, 2);
+    // But propagation_stopped flag is set for outer phases
+    EXPECT_TRUE(event.propagation_stopped());
+}
+
+TEST(DomTest, DocumentCreateAndAdoptElementsV82) {
+    // Use Document to create elements and build a mini page structure
+    auto doc = std::make_unique<Document>();
+
+    auto html = std::make_unique<Element>("html");
+    auto head = std::make_unique<Element>("head");
+    auto body = std::make_unique<Element>("body");
+    auto title = std::make_unique<Element>("title");
+    auto title_text = std::make_unique<Text>("My Page");
+
+    auto* html_ptr = html.get();
+    auto* head_ptr = head.get();
+    auto* body_ptr = body.get();
+    auto* title_ptr = title.get();
+
+    title->append_child(std::move(title_text));
+    head->append_child(std::move(title));
+    html->append_child(std::move(head));
+    html->append_child(std::move(body));
+    doc->append_child(std::move(html));
+
+    // Document has one child: html
+    EXPECT_EQ(doc->child_count(), 1u);
+    EXPECT_EQ(doc->first_child(), html_ptr);
+
+    // html has two children: head and body
+    EXPECT_EQ(html_ptr->child_count(), 2u);
+    EXPECT_EQ(html_ptr->first_child(), head_ptr);
+    EXPECT_EQ(head_ptr->next_sibling(), body_ptr);
+
+    // head has one child: title
+    EXPECT_EQ(head_ptr->child_count(), 1u);
+    EXPECT_EQ(head_ptr->first_child(), title_ptr);
+
+    // title has text content
+    EXPECT_EQ(title_ptr->text_content(), "My Page");
+
+    // body is empty
+    EXPECT_EQ(body_ptr->child_count(), 0u);
+
+    // doc node type
+    EXPECT_EQ(doc->node_type(), NodeType::Document);
+}

@@ -14889,3 +14889,165 @@ TEST(LayoutEngineTest, ColorsPreservedAfterLayoutV81) {
     EXPECT_EQ(root->background_color, 0xFF336699u);
     EXPECT_EQ(root->color, 0xFFEEDDCCu);
 }
+
+// Test V82_001: padding on parent reduces child auto-width by total horizontal padding
+TEST(LayoutEngineTest, PaddingReducesChildAutoWidthV82) {
+    auto root = make_block("div");
+    root->specified_width = 500.0f;
+    root->geometry.padding.left = 20.0f;
+    root->geometry.padding.right = 30.0f;
+
+    auto child = make_block("p");
+    child->specified_height = 40.0f;
+    auto* cp = child.get();
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // Child auto-width = parent specified_width - padding_left - padding_right
+    EXPECT_FLOAT_EQ(cp->geometry.width, 450.0f);
+}
+
+// Test V82_002: four children stacked vertically sum to parent auto-height
+TEST(LayoutEngineTest, FourChildrenHeightSumsToParentV82) {
+    auto root = make_block("div");
+    root->specified_width = 600.0f;
+
+    float heights[] = {30.0f, 45.0f, 20.0f, 55.0f};
+    for (float h : heights) {
+        auto c = make_block("div");
+        c->specified_height = h;
+        root->append_child(std::move(c));
+    }
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    float total = 30.0f + 45.0f + 20.0f + 55.0f;
+    EXPECT_FLOAT_EQ(root->geometry.height, total);
+}
+
+// Test V82_003: specified width wider than viewport is clamped to viewport
+TEST(LayoutEngineTest, WidthClampedToViewportV82) {
+    auto root = make_block("div");
+    root->specified_width = 1200.0f;
+    root->specified_height = 100.0f;
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(root->geometry.width, 800.0f);
+}
+
+// Test V82_004: margin-left shifts child x position
+TEST(LayoutEngineTest, MarginLeftShiftsChildXV82) {
+    auto root = make_block("div");
+    root->specified_width = 500.0f;
+
+    auto child = make_block("div");
+    child->specified_height = 50.0f;
+    child->geometry.margin.left = 35.0f;
+    auto* cp = child.get();
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(cp->geometry.x, 35.0f);
+    // Width = parent_width - margin_left - margin_right(0)
+    EXPECT_FLOAT_EQ(cp->geometry.width, 465.0f);
+}
+
+// Test V82_005: flex container with three equal flex_grow items splits width evenly
+TEST(LayoutEngineTest, FlexThreeEqualGrowItemsV82) {
+    auto root = make_flex("div");
+    root->specified_width = 900.0f;
+    root->specified_height = 80.0f;
+
+    LayoutNode* ptrs[3];
+    for (int i = 0; i < 3; ++i) {
+        auto item = make_block("div");
+        item->flex_grow = 1.0f;
+        item->specified_height = 80.0f;
+        ptrs[i] = item.get();
+        root->append_child(std::move(item));
+    }
+
+    LayoutEngine engine;
+    engine.compute(*root, 1024.0f, 768.0f);
+
+    EXPECT_FLOAT_EQ(ptrs[0]->geometry.width, 300.0f);
+    EXPECT_FLOAT_EQ(ptrs[1]->geometry.width, 300.0f);
+    EXPECT_FLOAT_EQ(ptrs[2]->geometry.width, 300.0f);
+    // Verify sequential x positioning
+    EXPECT_FLOAT_EQ(ptrs[0]->geometry.x, 0.0f);
+    EXPECT_FLOAT_EQ(ptrs[1]->geometry.x, 300.0f);
+    EXPECT_FLOAT_EQ(ptrs[2]->geometry.x, 600.0f);
+}
+
+// Test V82_006: border on parent reduces child content width
+TEST(LayoutEngineTest, BorderReducesChildContentWidthV82) {
+    auto root = make_block("div");
+    root->specified_width = 400.0f;
+    root->geometry.border.left = 5.0f;
+    root->geometry.border.right = 5.0f;
+
+    auto child = make_block("span");
+    child->specified_height = 30.0f;
+    auto* cp = child.get();
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // Child width = parent_width - border_left - border_right
+    EXPECT_FLOAT_EQ(cp->geometry.width, 390.0f);
+}
+
+// Test V82_007: display:none child does not affect sibling positioning
+TEST(LayoutEngineTest, DisplayNoneDoesNotAffectSiblingPositionV82) {
+    auto root = make_block("div");
+    root->specified_width = 600.0f;
+
+    auto c1 = make_block("div");
+    c1->specified_height = 50.0f;
+    auto* p1 = c1.get();
+    root->append_child(std::move(c1));
+
+    auto hidden = make_block("div");
+    hidden->specified_height = 200.0f;
+    hidden->display = DisplayType::None;
+    root->append_child(std::move(hidden));
+
+    auto c3 = make_block("div");
+    c3->specified_height = 70.0f;
+    auto* p3 = c3.get();
+    root->append_child(std::move(c3));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // c3 should appear right after c1 -- hidden element's height is skipped
+    EXPECT_FLOAT_EQ(p1->geometry.y, 0.0f);
+    EXPECT_FLOAT_EQ(p3->geometry.y, 50.0f);
+    EXPECT_FLOAT_EQ(root->geometry.height, 120.0f);
+}
+
+// Test V82_008: text node produces measurable height based on font size
+TEST(LayoutEngineTest, TextNodeHeightBasedOnFontSizeV82) {
+    auto root = make_block("div");
+    root->specified_width = 400.0f;
+
+    auto text = make_text("Hello World", 20.0f);
+    auto* tp = text.get();
+    root->append_child(std::move(text));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // Text node should have non-zero height derived from font size
+    EXPECT_GT(tp->geometry.height, 0.0f);
+    // Root auto-height should equal the text node height
+    EXPECT_FLOAT_EQ(root->geometry.height, tp->geometry.height);
+}

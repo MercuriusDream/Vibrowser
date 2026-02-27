@@ -10048,3 +10048,82 @@ TEST(URLParserTest, InvalidSchemeReturnsNulloptV81) {
     auto result = clever::url::parse("://missing-scheme.com/path");
     EXPECT_FALSE(result.has_value());
 }
+
+// =============================================================================
+// V82 Tests
+// =============================================================================
+
+TEST(URLParserTest, HttpsDefaultPort443NormalizedV82) {
+    auto result = clever::url::parse("https://secure.example.com:443/login");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "secure.example.com");
+    EXPECT_EQ(result->port, std::nullopt);
+    EXPECT_EQ(result->path, "/login");
+    EXPECT_EQ(result->serialize(), "https://secure.example.com/login");
+}
+
+TEST(URLParserTest, DotSegmentResolutionSingleDotV82) {
+    auto result = clever::url::parse("https://example.com/a/./b/./c");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/a/b/c");
+}
+
+TEST(URLParserTest, PercentEncodedPathDoubleEncodesV82) {
+    auto result = clever::url::parse("https://example.com/dir%2Ffile");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_NE(result->path.find("%252F"), std::string::npos);
+}
+
+TEST(URLParserTest, QueryOnlyRelativeResolutionV82) {
+    auto base = clever::url::parse("https://example.com/page#old");
+    ASSERT_TRUE(base.has_value());
+
+    auto result = clever::url::parse("?newkey=newval", &base.value());
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/page");
+    EXPECT_EQ(result->query, "newkey=newval");
+}
+
+TEST(URLParserTest, PortBoundaryHighValueV82) {
+    auto result = clever::url::parse("http://example.com:65535/endpoint");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "example.com");
+    ASSERT_TRUE(result->port.has_value());
+    EXPECT_EQ(result->port.value(), 65535);
+    EXPECT_EQ(result->path, "/endpoint");
+    EXPECT_EQ(result->serialize(), "http://example.com:65535/endpoint");
+}
+
+TEST(URLParserTest, HostCaseFoldingWithSubdomainsV82) {
+    auto result = clever::url::parse("https://Sub.Domain.EXAMPLE.Org/Path/To/Resource");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "sub.domain.example.org");
+    EXPECT_EQ(result->path, "/Path/To/Resource");
+    EXPECT_EQ(result->port, std::nullopt);
+}
+
+TEST(URLParserTest, EmptyFragmentPreservedV82) {
+    auto result = clever::url::parse("https://example.com/page#");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/page");
+    EXPECT_EQ(result->fragment, "");
+}
+
+TEST(URLParserTest, DoubleDotAtRootClampsV82) {
+    auto result = clever::url::parse("https://example.com/../../../stay");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/stay");
+}

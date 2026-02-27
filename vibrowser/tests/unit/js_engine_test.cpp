@@ -24174,3 +24174,97 @@ TEST(JSEngineTest, StringTemplateLiteralV81) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "Hello world, year 2026");
 }
+
+// ============================================================================
+// V82 Tests
+// ============================================================================
+
+TEST(JSEngineTest, StringReplaceAllV82) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("'aabbcc'.replaceAll('b', 'x')");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "aaxxcc");
+}
+
+TEST(JSEngineTest, ArrayFlatMapChainV82) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("[1,2,3].flatMap(function(x){return [x, x*10]}).join(',')");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1,10,2,20,3,30");
+}
+
+TEST(JSEngineTest, WeakRefBasicV82) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var obj = {value: 42};
+        var ref = new WeakRef(obj);
+        ref.deref().value;
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "42");
+}
+
+TEST(JSEngineTest, MapForEachV82) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var m = new Map();
+        m.set('a', 1);
+        m.set('b', 2);
+        m.set('c', 3);
+        var sum = 0;
+        m.forEach(function(v){ sum += v; });
+        sum;
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "6");
+}
+
+TEST(JSEngineTest, ClosureIIFEV82) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        (function(){
+            var secret = 99;
+            return function(){ return secret + 1; };
+        })()();
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "100");
+}
+
+TEST(JSEngineTest, GeneratorYieldSumV82) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        function* gen() {
+            yield 10;
+            yield 20;
+            yield 30;
+        }
+        var total = 0;
+        for (var v of gen()) total += v;
+        total;
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "60");
+}
+
+TEST(JSEngineTest, RegExpMatchAllV82) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var matches = Array.from('test1 test2 test3'.matchAll(/test(\d)/g));
+        matches.map(function(m){ return m[1]; }).join(',');
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1,2,3");
+}
+
+TEST(JSEngineTest, DestructuringDefaultV82) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var arr = [5];
+        var a = arr[0] !== undefined ? arr[0] : 0;
+        var b = arr[1] !== undefined ? arr[1] : 42;
+        '' + a + ',' + b;
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "5,42");
+}

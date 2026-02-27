@@ -6101,3 +6101,41 @@ TEST(CORSPolicyTest, AcaoMismatchWithCredRejectsV81) {
     EXPECT_FALSE(
         cors_allows_response("https://app.example.com", "https://api.example.com/secure", headers, true));
 }
+
+TEST(CORSPolicyTest, HttpPort80NotEnforceableV82) {
+    EXPECT_FALSE(has_enforceable_document_origin("http://example.com:80"));
+}
+
+TEST(CORSPolicyTest, DataSchemeNotCorsEligibleV82) {
+    EXPECT_FALSE(is_cors_eligible_request_url("data:text/html,<h1>Hi</h1>"));
+}
+
+TEST(CORSPolicyTest, SubdomainIsCrossOriginV82) {
+    EXPECT_TRUE(is_cross_origin("https://app.example.com", "https://api.example.com/resource"));
+}
+
+TEST(CORSPolicyTest, ExactAcaoMatchAllowsResponseV82) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "https://trusted.example.com");
+    EXPECT_TRUE(
+        cors_allows_response("https://trusted.example.com", "https://api.example.com/data", headers, false));
+}
+
+TEST(CORSPolicyTest, SameOriginDifferentPathNotCrossV82) {
+    EXPECT_FALSE(is_cross_origin("https://example.com", "https://example.com/deeply/nested/path?q=1"));
+}
+
+TEST(CORSPolicyTest, BlobSchemeNotCorsEligibleV82) {
+    EXPECT_FALSE(is_cors_eligible_request_url("blob:https://example.com/abc-123"));
+}
+
+TEST(CORSPolicyTest, SameOriginShouldNotAttachHeaderV82) {
+    EXPECT_FALSE(should_attach_origin_header("https://example.com", "https://example.com/api/data"));
+}
+
+TEST(CORSPolicyTest, WildcardAcaoNoCredAllowsV82) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "*");
+    EXPECT_TRUE(
+        cors_allows_response("https://random.example.com", "https://public-api.example.com/open", headers, false));
+}

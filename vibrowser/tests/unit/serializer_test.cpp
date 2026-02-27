@@ -11840,3 +11840,150 @@ TEST(SerializerTest, AllTypesReversedOrderV81) {
     EXPECT_EQ(reader.read_u8(), 77u);
     EXPECT_FALSE(reader.has_remaining());
 }
+
+// ------------------------------------------------------------------
+// V82 tests
+// ------------------------------------------------------------------
+
+TEST(SerializerTest, RoundTripU16PowersOfTwoV82) {
+    Serializer s;
+    s.write_u16(1);
+    s.write_u16(2);
+    s.write_u16(4);
+    s.write_u16(256);
+    s.write_u16(1024);
+    s.write_u16(32768);
+    s.write_u16(65535);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u16(), 1u);
+    EXPECT_EQ(d.read_u16(), 2u);
+    EXPECT_EQ(d.read_u16(), 4u);
+    EXPECT_EQ(d.read_u16(), 256u);
+    EXPECT_EQ(d.read_u16(), 1024u);
+    EXPECT_EQ(d.read_u16(), 32768u);
+    EXPECT_EQ(d.read_u16(), 65535u);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, RoundTripF64SubnormalAndTinyV82) {
+    Serializer s;
+    double subnormal = std::numeric_limits<double>::denorm_min();
+    double tiny = std::numeric_limits<double>::min();  // smallest normal
+    double neg_tiny = -std::numeric_limits<double>::min();
+    s.write_f64(subnormal);
+    s.write_f64(tiny);
+    s.write_f64(neg_tiny);
+
+    Deserializer d(s.data());
+    EXPECT_DOUBLE_EQ(d.read_f64(), subnormal);
+    EXPECT_DOUBLE_EQ(d.read_f64(), tiny);
+    EXPECT_DOUBLE_EQ(d.read_f64(), neg_tiny);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, RoundTripStringWithNewlinesAndTabsV82) {
+    Serializer s;
+    std::string multiline = "line1\nline2\nline3";
+    std::string tabbed = "col1\tcol2\tcol3";
+    std::string mixed = "\r\n\t \r\n\t ";
+    s.write_string(multiline);
+    s.write_string(tabbed);
+    s.write_string(mixed);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), multiline);
+    EXPECT_EQ(d.read_string(), tabbed);
+    EXPECT_EQ(d.read_string(), mixed);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, RoundTripBytesAllZerosV82) {
+    Serializer s;
+    std::vector<uint8_t> zeros(256, 0x00);
+    s.write_bytes(zeros.data(), zeros.size());
+
+    Deserializer d(s.data());
+    auto result = d.read_bytes();
+    EXPECT_EQ(result.size(), 256u);
+    for (size_t i = 0; i < result.size(); ++i) {
+        EXPECT_EQ(result[i], 0x00) << "Mismatch at index " << i;
+    }
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, RoundTripU32BitPatternsV82) {
+    Serializer s;
+    s.write_u32(0x00000000u);
+    s.write_u32(0xFFFFFFFFu);
+    s.write_u32(0xAAAAAAAAu);
+    s.write_u32(0x55555555u);
+    s.write_u32(0x0F0F0F0Fu);
+    s.write_u32(0xF0F0F0F0u);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u32(), 0x00000000u);
+    EXPECT_EQ(d.read_u32(), 0xFFFFFFFFu);
+    EXPECT_EQ(d.read_u32(), 0xAAAAAAAAu);
+    EXPECT_EQ(d.read_u32(), 0x55555555u);
+    EXPECT_EQ(d.read_u32(), 0x0F0F0F0Fu);
+    EXPECT_EQ(d.read_u32(), 0xF0F0F0F0u);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, RoundTripManyStringsV82) {
+    Serializer s;
+    const int count = 50;
+    for (int i = 0; i < count; ++i) {
+        s.write_string("item_" + std::to_string(i));
+    }
+
+    Deserializer d(s.data());
+    for (int i = 0; i < count; ++i) {
+        EXPECT_EQ(d.read_string(), "item_" + std::to_string(i));
+    }
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, RoundTripU64FibonacciValuesV82) {
+    Serializer s;
+    uint64_t a = 0, b = 1;
+    std::vector<uint64_t> fibs;
+    for (int i = 0; i < 20; ++i) {
+        fibs.push_back(a);
+        s.write_u64(a);
+        uint64_t next = a + b;
+        a = b;
+        b = next;
+    }
+
+    Deserializer d(s.data());
+    for (int i = 0; i < 20; ++i) {
+        EXPECT_EQ(d.read_u64(), fibs[i]);
+    }
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, RoundTripInterleavedTypesCompactV82) {
+    Serializer s;
+    s.write_u8(0xFF);
+    s.write_string("between");
+    s.write_u16(12345);
+    s.write_bytes(nullptr, 0);
+    s.write_f64(3.14);
+    s.write_u32(0xDEADBEEFu);
+    s.write_string("");
+    s.write_u64(0xCAFEBABECAFEBABEULL);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u8(), 0xFFu);
+    EXPECT_EQ(d.read_string(), "between");
+    EXPECT_EQ(d.read_u16(), 12345u);
+    auto empty_bytes = d.read_bytes();
+    EXPECT_TRUE(empty_bytes.empty());
+    EXPECT_DOUBLE_EQ(d.read_f64(), 3.14);
+    EXPECT_EQ(d.read_u32(), 0xDEADBEEFu);
+    EXPECT_EQ(d.read_string(), "");
+    EXPECT_EQ(d.read_u64(), 0xCAFEBABECAFEBABEULL);
+    EXPECT_FALSE(d.has_remaining());
+}

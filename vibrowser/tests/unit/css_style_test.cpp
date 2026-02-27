@@ -14937,3 +14937,161 @@ TEST(CSSStyleTest, OpacityAndOverflowCombinedV81) {
     EXPECT_EQ(style.overflow_x, Overflow::Hidden);
     EXPECT_EQ(style.overflow_y, Overflow::Hidden);
 }
+
+// ---------------------------------------------------------------------------
+// V82 Tests
+// ---------------------------------------------------------------------------
+
+TEST(CSSStyleTest, FlexDirectionColumnReverseV82) {
+    // flex-direction: column-reverse should be parsed correctly
+    const std::string css = "div{display:flex;flex-direction:column-reverse;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.display, Display::Flex);
+    EXPECT_EQ(style.flex_direction, FlexDirection::ColumnReverse);
+}
+
+TEST(CSSStyleTest, MarginShorthandTwoValuesV82) {
+    // margin: 12px 24px means top/bottom=12px, left/right=24px
+    const std::string css = "div{margin:12px 24px;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_FLOAT_EQ(style.margin.top.to_px(), 12.0f);
+    EXPECT_FLOAT_EQ(style.margin.right.to_px(), 24.0f);
+    EXPECT_FLOAT_EQ(style.margin.bottom.to_px(), 12.0f);
+    EXPECT_FLOAT_EQ(style.margin.left.to_px(), 24.0f);
+}
+
+TEST(CSSStyleTest, VisibilityHiddenWithPointerEventsNoneV82) {
+    // visibility: hidden and pointer-events: none together
+    const std::string css = "span{visibility:hidden;pointer-events:none;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "span";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.visibility, Visibility::Hidden);
+    EXPECT_EQ(style.pointer_events, PointerEvents::None);
+}
+
+TEST(CSSStyleTest, TextTransformUppercaseWithLetterSpacingV82) {
+    // text-transform: uppercase and letter-spacing: 2px
+    const std::string css = "h1{text-transform:uppercase;letter-spacing:2px;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "h1";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.text_transform, TextTransform::Uppercase);
+    EXPECT_FLOAT_EQ(style.letter_spacing.to_px(), 2.0f);
+}
+
+TEST(CSSStyleTest, BorderRadiusShorthandV82) {
+    // border-radius: 8px should set all four corners
+    const std::string css = "div{border-radius:8px;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_FLOAT_EQ(style.border_radius, 8.0f);
+    EXPECT_FLOAT_EQ(style.border_radius_tl, 8.0f);
+    EXPECT_FLOAT_EQ(style.border_radius_tr, 8.0f);
+    EXPECT_FLOAT_EQ(style.border_radius_bl, 8.0f);
+    EXPECT_FLOAT_EQ(style.border_radius_br, 8.0f);
+}
+
+TEST(CSSStyleTest, PositionFixedWithAllOffsetsV82) {
+    // position: fixed with top/bottom/left offsets
+    const std::string css = "div{position:fixed;top:0px;bottom:10px;left:20px;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.position, Position::Fixed);
+    EXPECT_FLOAT_EQ(style.top.to_px(), 0.0f);
+    EXPECT_FLOAT_EQ(style.bottom.to_px(), 10.0f);
+    EXPECT_FLOAT_EQ(style.left_pos.to_px(), 20.0f);
+}
+
+TEST(CSSStyleTest, CursorPointerAndUserSelectNoneV82) {
+    // cursor: pointer and user-select: none
+    const std::string css = "button{cursor:pointer;user-select:none;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "button";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.cursor, Cursor::Pointer);
+    EXPECT_EQ(style.user_select, UserSelect::None);
+}
+
+TEST(CSSStyleTest, BackgroundColorAndTextAlignCenterV82) {
+    // background-color: green and text-align: center
+    const std::string css = "p{background-color:green;text-align:center;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "p";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.background_color.r, 0);
+    EXPECT_EQ(style.background_color.g, 128);
+    EXPECT_EQ(style.background_color.b, 0);
+    EXPECT_EQ(style.background_color.a, 255);
+    EXPECT_EQ(style.text_align, TextAlign::Center);
+}

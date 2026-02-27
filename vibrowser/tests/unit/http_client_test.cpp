@@ -14761,3 +14761,117 @@ TEST(HttpClientTest, RequestSerializeOptionsMethodV81) {
     EXPECT_TRUE(result.find("access-control-request-method: POST\r\n") != std::string::npos);
     EXPECT_TRUE(result.find("origin: https://app.example.com\r\n") != std::string::npos);
 }
+
+// ===========================================================================
+// V82 Tests
+// ===========================================================================
+
+TEST(HttpClientTest, RequestSerializePutMethodWithBodyV82) {
+    // PUT request should serialize method, host, and body correctly
+    Request req;
+    req.method = Method::PUT;
+    req.host = "api.example.com";
+    req.port = 443;
+    req.path = "/items/42";
+    std::string body_str = R"({"name":"updated"})";
+    req.body.assign(body_str.begin(), body_str.end());
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    EXPECT_TRUE(result.find("PUT /items/42 HTTP/1.1\r\n") != std::string::npos);
+    // Port 443 should be omitted from Host header
+    EXPECT_TRUE(result.find("Host: api.example.com\r\n") != std::string::npos);
+    EXPECT_FALSE(result.find("Host: api.example.com:443") != std::string::npos);
+    // Body should appear at the end after blank line
+    EXPECT_TRUE(result.find(R"({"name":"updated"})") != std::string::npos);
+}
+
+TEST(HttpClientTest, HeaderMapAppendCreatesMultipleValuesV82) {
+    // append() should accumulate values, get() returns first, get_all() returns all
+    HeaderMap hm;
+    hm.append("Accept-Encoding", "gzip");
+    hm.append("Accept-Encoding", "deflate");
+    hm.append("Accept-Encoding", "br");
+
+    EXPECT_TRUE(hm.has("Accept-Encoding"));
+    EXPECT_EQ(hm.get("Accept-Encoding").value(), "gzip");
+
+    auto all = hm.get_all("Accept-Encoding");
+    EXPECT_EQ(all.size(), 3u);
+    EXPECT_EQ(all[0], "gzip");
+    EXPECT_EQ(all[1], "deflate");
+    EXPECT_EQ(all[2], "br");
+}
+
+TEST(HttpClientTest, HeaderMapSetOverwritesAppendedValuesV82) {
+    // set() after multiple append() should collapse to one value
+    HeaderMap hm;
+    hm.append("Via", "proxy1");
+    hm.append("Via", "proxy2");
+    EXPECT_EQ(hm.get_all("Via").size(), 2u);
+
+    hm.set("Via", "final-proxy");
+    EXPECT_EQ(hm.get_all("Via").size(), 1u);
+    EXPECT_EQ(hm.get("Via").value(), "final-proxy");
+}
+
+TEST(HttpClientTest, ResponseEmptyBodyToStringV82) {
+    // body_as_string() on an empty body should return an empty string
+    Response resp;
+    resp.status = 204;
+    EXPECT_TRUE(resp.body.empty());
+    EXPECT_TRUE(resp.body_as_string().empty());
+}
+
+TEST(HttpClientTest, CookieJarMultipleCookiesSameDomainV82) {
+    // Multiple cookies on the same domain should all be returned
+    CookieJar jar;
+    jar.set_from_header("session=abc123", "shop.example.com");
+    jar.set_from_header("cart=xyz789", "shop.example.com");
+
+    EXPECT_EQ(jar.size(), 2u);
+    std::string header = jar.get_cookie_header("shop.example.com", "/", false);
+    EXPECT_TRUE(header.find("session=abc123") != std::string::npos);
+    EXPECT_TRUE(header.find("cart=xyz789") != std::string::npos);
+}
+
+TEST(HttpClientTest, RequestSerializeDeleteMethodCustomPortV82) {
+    // DELETE request on a non-standard port should include port in Host
+    Request req;
+    req.method = Method::DELETE_METHOD;
+    req.host = "db.internal.net";
+    req.port = 9200;
+    req.path = "/index/doc/1";
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    EXPECT_TRUE(result.find("DELETE /index/doc/1 HTTP/1.1\r\n") != std::string::npos);
+    EXPECT_TRUE(result.find("Host: db.internal.net:9200\r\n") != std::string::npos);
+    EXPECT_TRUE(result.find("Connection: keep-alive\r\n") != std::string::npos);
+}
+
+TEST(HttpClientTest, HeaderMapGetNonexistentReturnsNulloptV82) {
+    // get() for a missing key should return nullopt, has() should return false
+    HeaderMap hm;
+    hm.set("X-Real", "value");
+
+    EXPECT_FALSE(hm.has("X-Fake"));
+    EXPECT_FALSE(hm.get("X-Fake").has_value());
+    EXPECT_TRUE(hm.get_all("X-Fake").empty());
+}
+
+TEST(HttpClientTest, CookieJarOverwritesSameCookieNameV82) {
+    // Setting a cookie with the same name on the same domain should overwrite
+    CookieJar jar;
+    jar.set_from_header("token=old", "auth.example.com");
+    EXPECT_EQ(jar.size(), 1u);
+
+    jar.set_from_header("token=new", "auth.example.com");
+    EXPECT_EQ(jar.size(), 1u);
+
+    std::string header = jar.get_cookie_header("auth.example.com", "/", false);
+    EXPECT_TRUE(header.find("token=new") != std::string::npos);
+    EXPECT_FALSE(header.find("token=old") != std::string::npos);
+}
