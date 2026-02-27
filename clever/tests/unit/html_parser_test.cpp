@@ -2963,3 +2963,68 @@ TEST(TreeBuilder, ButtonWithDisabledAttribute) {
     }
     EXPECT_TRUE(found);
 }
+
+TEST(TreeBuilder, ArticleElementIsParsed) {
+    auto doc = clever::html::parse("<article><p>Content</p></article>");
+    auto* article = doc->find_element("article");
+    ASSERT_NE(article, nullptr);
+    EXPECT_EQ(article->tag_name, "article");
+}
+
+TEST(TreeBuilder, AsideElementIsParsed) {
+    auto doc = clever::html::parse("<aside>sidebar</aside>");
+    auto* aside = doc->find_element("aside");
+    ASSERT_NE(aside, nullptr);
+    EXPECT_EQ(aside->tag_name, "aside");
+}
+
+TEST(TreeBuilder, NavElementIsParsed) {
+    auto doc = clever::html::parse("<nav><a href='/'>Home</a></nav>");
+    auto* nav = doc->find_element("nav");
+    ASSERT_NE(nav, nullptr);
+    EXPECT_EQ(nav->tag_name, "nav");
+}
+
+TEST(TreeBuilder, FooterElementIsParsed) {
+    auto doc = clever::html::parse("<footer>Footer text</footer>");
+    auto* footer = doc->find_element("footer");
+    ASSERT_NE(footer, nullptr);
+    EXPECT_EQ(footer->tag_name, "footer");
+}
+
+TEST(TreeBuilder, HeaderElementIsParsed) {
+    auto doc = clever::html::parse("<header><h1>Title</h1></header>");
+    auto* header = doc->find_element("header");
+    ASSERT_NE(header, nullptr);
+    EXPECT_EQ(header->tag_name, "header");
+}
+
+TEST(TreeBuilder, DataAttrOnDiv) {
+    auto doc = clever::html::parse(R"(<div data-id="42">content</div>)");
+    auto* div = doc->find_element("div");
+    ASSERT_NE(div, nullptr);
+    bool found = false;
+    for (const auto& attr : div->attributes) {
+        if (attr.name == "data-id" && attr.value == "42") found = true;
+    }
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, LangAttributeOnHtml) {
+    auto doc = clever::html::parse(R"(<html lang="en"><body></body></html>)");
+    auto* html_elem = doc->find_element("html");
+    ASSERT_NE(html_elem, nullptr);
+    bool found = false;
+    for (const auto& attr : html_elem->attributes) {
+        if (attr.name == "lang" && attr.value == "en") found = true;
+    }
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, FigureWithFigcaptionParsed) {
+    auto doc = clever::html::parse("<figure><img src='x.png'/><figcaption>Caption</figcaption></figure>");
+    auto* figure = doc->find_element("figure");
+    ASSERT_NE(figure, nullptr);
+    auto* figcaption = doc->find_element("figcaption");
+    ASSERT_NE(figcaption, nullptr);
+}
