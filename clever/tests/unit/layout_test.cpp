@@ -6982,3 +6982,43 @@ TEST(LayoutNodeProps, WillChangeDefaultsEmpty) {
     LayoutNode n;
     EXPECT_EQ(n.will_change, "");
 }
+
+TEST(LayoutNodeProps, UserSelectDefaultsZero) {
+    LayoutNode n;
+    EXPECT_EQ(n.user_select, 0);
+}
+
+TEST(LayoutNodeProps, ResizeDefaultsZero) {
+    LayoutNode n;
+    EXPECT_EQ(n.resize, 0);
+}
+
+TEST(LayoutNodeProps, ShapeOutsideTypeDefaultsZero) {
+    LayoutNode n;
+    EXPECT_EQ(n.shape_outside_type, 0);
+}
+
+TEST(LayoutNodeProps, CaretColorDefaultsZero) {
+    LayoutNode n;
+    EXPECT_EQ(n.caret_color, 0u);
+}
+
+TEST(LayoutNodeProps, AccentColorDefaultsZero) {
+    LayoutNode n;
+    EXPECT_EQ(n.accent_color, 0u);
+}
+
+TEST(LayoutNodeProps, ScrollBehaviorDefaultsZero) {
+    LayoutNode n;
+    EXPECT_EQ(n.scroll_behavior, 0);
+}
+
+TEST(LayoutNodeProps, ColorSchemeDefaultsZero) {
+    LayoutNode n;
+    EXPECT_EQ(n.color_scheme, 0);
+}
+
+TEST(LayoutNodeProps, BreakBeforeDefaultsZero) {
+    LayoutNode n;
+    EXPECT_EQ(n.break_before, 0);
+}
