@@ -15111,3 +15111,72 @@ TEST(JSEngine, JSONParseNull) {
     auto result = engine.evaluate("JSON.parse('null')");
     EXPECT_EQ(result, "null");
 }
+
+TEST(JSEngine, ProxyGetTrapReturnsVal) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        const p = new Proxy({val: 42}, {
+            get(target, prop) { return target[prop]; }
+        });
+        p.val
+    )");
+    EXPECT_EQ(result, "42");
+}
+
+TEST(JSEngine, ProxySetTrap) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        let stored = 0;
+        const p = new Proxy({}, {
+            set(target, prop, value) { stored = value; return true; }
+        });
+        p.x = 99;
+        stored
+    )");
+    EXPECT_EQ(result, "99");
+}
+
+TEST(JSEngine, ReflectGetReturnsValue) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("Reflect.get({name: 'test'}, 'name')");
+    EXPECT_EQ(result, "test");
+}
+
+TEST(JSEngine, ReflectHasReturnsBool) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("Reflect.has({x: 1}, 'x')");
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, SymbolUnique) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("Symbol('a') !== Symbol('a')");
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, SymbolDescription) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("Symbol('mySymbol').description");
+    EXPECT_EQ(result, "mySymbol");
+}
+
+TEST(JSEngine, MapSizeAfterThreeAdds) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        const m = new Map();
+        m.set('a', 1);
+        m.set('b', 2);
+        m.set('c', 3);
+        m.size
+    )");
+    EXPECT_EQ(result, "3");
+}
+
+TEST(JSEngine, SetSizeAfterThreeAdds) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        const s = new Set([1, 2, 3, 2, 1]);
+        s.size
+    )");
+    EXPECT_EQ(result, "3");
+}
