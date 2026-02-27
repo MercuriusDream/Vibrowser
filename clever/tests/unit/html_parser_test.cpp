@@ -2686,3 +2686,80 @@ TEST(TreeBuilder, ParagraphAfterHeading) {
     ASSERT_NE(p, nullptr);
     EXPECT_EQ(p->text_content(), "Description text");
 }
+
+// ============================================================================
+// Cycle 686: More HTML parser tests
+// ============================================================================
+
+TEST(TreeBuilder, H3HeadingText) {
+    auto doc = parse(R"(<body><h3>Tertiary Heading</h3></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* h3 = doc->find_element("h3");
+    ASSERT_NE(h3, nullptr);
+    EXPECT_EQ(h3->text_content(), "Tertiary Heading");
+}
+
+TEST(TreeBuilder, H4HeadingText) {
+    auto doc = parse(R"(<body><h4>Fourth Level</h4></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* h4 = doc->find_element("h4");
+    ASSERT_NE(h4, nullptr);
+    EXPECT_EQ(h4->text_content(), "Fourth Level");
+}
+
+TEST(TreeBuilder, FormInputButton) {
+    auto doc = parse(R"(<body><form><input type="email"><button>Go</button></form></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* form = doc->find_element("form");
+    ASSERT_NE(form, nullptr);
+    auto* button = doc->find_element("button");
+    ASSERT_NE(button, nullptr);
+}
+
+TEST(TreeBuilder, ListItemAttributes) {
+    auto doc = parse(R"(<body><ul><li class="item">First</li></ul></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* li = doc->find_element("li");
+    ASSERT_NE(li, nullptr);
+    bool found_class = false;
+    for (auto& attr : li->attributes) {
+        if (attr.name == "class") { found_class = true; break; }
+    }
+    EXPECT_TRUE(found_class);
+}
+
+TEST(TreeBuilder, DivWithMultipleChildren) {
+    auto doc = parse(R"(<body><div><p>one</p><p>two</p><p>three</p></div></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* div = doc->find_element("div");
+    ASSERT_NE(div, nullptr);
+}
+
+TEST(TreeBuilder, MixedInlineAndBlock) {
+    auto doc = parse(R"(<body><p>Hello <strong>world</strong>!</p></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* strong = doc->find_element("strong");
+    ASSERT_NE(strong, nullptr);
+    EXPECT_EQ(strong->text_content(), "world");
+}
+
+TEST(TreeBuilder, LinkWithMultipleAttributes) {
+    auto doc = parse(R"(<body><a href="https://example.com" target="_blank" rel="noopener">Link</a></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* a = doc->find_element("a");
+    ASSERT_NE(a, nullptr);
+    bool found_target = false;
+    for (auto& attr : a->attributes) {
+        if (attr.name == "target") { found_target = true; break; }
+    }
+    EXPECT_TRUE(found_target);
+}
+
+TEST(TreeBuilder, TwoSiblingParagraphs) {
+    auto doc = parse(R"(<body><p>First paragraph</p><p>Second paragraph</p></body>)");
+    ASSERT_NE(doc, nullptr);
+    // Just verify parsing doesn't crash and body exists
+    auto* p = doc->find_element("p");
+    ASSERT_NE(p, nullptr);
+    EXPECT_NE(p->text_content().find("First"), std::string::npos);
+}
