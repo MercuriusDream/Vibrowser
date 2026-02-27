@@ -14764,3 +14764,51 @@ TEST(JSEngine, BitwiseXorAssignment) {
     )");
     EXPECT_EQ(result, "6");
 }
+
+TEST(JSEngine, StringPadStartFive) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("'7'.padStart(5, '0')");
+    EXPECT_EQ(result, "00007");
+}
+
+TEST(JSEngine, StringPadEndEight) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("'hi'.padEnd(8, '-')");
+    EXPECT_EQ(result, "hi------");
+}
+
+TEST(JSEngine, StringRepeatAbThrice) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("'ab'.repeat(3)");
+    EXPECT_EQ(result, "ababab");
+}
+
+TEST(JSEngine, StringStartsWithTrue) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("'hello world'.startsWith('hello')");
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, StringEndsWithTrue) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("'hello world'.endsWith('world')");
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, StringIncludesTrue) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("'hello world'.includes('lo wo')");
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, ArrayFindReturnsFirst) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("[1, 2, 3, 4].find(x => x > 2)");
+    EXPECT_EQ(result, "3");
+}
+
+TEST(JSEngine, ArrayFindIndexReturnsIndex) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("[10, 20, 30].findIndex(x => x === 20)");
+    EXPECT_EQ(result, "1");
+}
