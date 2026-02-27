@@ -7391,3 +7391,44 @@ TEST(LayoutNodeProps, GapDefaultsToZeroV2) {
     LayoutNode n;
     EXPECT_FLOAT_EQ(n.gap, 0.0f);
 }
+
+// Cycle 947 — animation-timeline, print/forced color, transform-style/box, transform-origin defaults
+TEST(LayoutNodeProps, AnimationTimelineDefaultsAuto) {
+    LayoutNode n;
+    EXPECT_EQ(n.animation_timeline, "auto");
+}
+
+TEST(LayoutNodeProps, ForcedColorAdjustDefaultsZero) {
+    LayoutNode n;
+    EXPECT_EQ(n.forced_color_adjust, 0);
+}
+
+TEST(LayoutNodeProps, PrintColorAdjustDefaultsZero) {
+    LayoutNode n;
+    EXPECT_EQ(n.print_color_adjust, 0);
+}
+
+TEST(LayoutNodeProps, TransformStyleDefaultsZero) {
+    LayoutNode n;
+    EXPECT_EQ(n.transform_style, 0);
+}
+
+TEST(LayoutNodeProps, TransformBoxDefaultsOne) {
+    LayoutNode n;
+    EXPECT_EQ(n.transform_box, 1);
+}
+
+TEST(LayoutNodeProps, TransformOriginXFiftyPercent) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.transform_origin_x, 50.0f);
+}
+
+TEST(LayoutNodeProps, TransformOriginYFiftyPercent) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.transform_origin_y, 50.0f);
+}
+
+TEST(LayoutNodeProps, ShapeOutsideValuesDefaultsEmpty) {
+    LayoutNode n;
+    EXPECT_TRUE(n.shape_outside_values.empty());
+}
