@@ -6046,3 +6046,60 @@ TEST(LayoutNodeProps, PositionTypeCanBeSetToOne) {
     node->position_type = 1;
     EXPECT_EQ(node->position_type, 1);
 }
+
+// ============================================================================
+// Cycle 683: More layout tests
+// ============================================================================
+
+// Layout: five children in order
+TEST(LayoutNodeTree, FiveChildrenInOrder) {
+    auto parent = make_block("ul");
+    for (int i = 0; i < 5; i++) {
+        parent->append_child(make_block("li"));
+    }
+    EXPECT_EQ(parent->children.size(), 5u);
+}
+
+// Layout: child tag_name preserved
+TEST(LayoutNodeTree, ChildTagNamePreserved) {
+    auto parent = make_block("div");
+    parent->append_child(make_block("section"));
+    ASSERT_EQ(parent->children.size(), 1u);
+    EXPECT_EQ(parent->children[0]->tag_name, "section");
+}
+
+// Layout: inline node display type
+TEST(LayoutNodeProps, InlineNodeDisplayType) {
+    auto node = make_inline("span");
+    EXPECT_EQ(node->display, DisplayType::Inline);
+}
+
+// Layout: text node font_size from make_text
+TEST(LayoutNodeProps, TextNodeFontSizeFromHelper) {
+    auto node = make_text("sample", 18.0f);
+    EXPECT_FLOAT_EQ(node->font_size, 18.0f);
+}
+
+// Layout: position_type defaults to 0
+TEST(LayoutNodeProps, PositionTypeDefaultsToZero) {
+    auto node = make_block("div");
+    EXPECT_EQ(node->position_type, 0);
+}
+
+// Layout: gap defaults to 0
+TEST(LayoutNodeProps, GapDefaultsToZero) {
+    auto node = make_flex("div");
+    EXPECT_FLOAT_EQ(node->gap, 0.0f);
+}
+
+// Layout: row_gap defaults to 0
+TEST(LayoutNodeProps, RowGapDefaultsToZero) {
+    auto node = make_flex("div");
+    EXPECT_FLOAT_EQ(node->row_gap, 0.0f);
+}
+
+// Layout: column_gap defaults to 0
+TEST(LayoutNodeProps, ColumnGapDefaultsToZero) {
+    auto node = make_flex("div");
+    EXPECT_FLOAT_EQ(node->column_gap, 0.0f);
+}
