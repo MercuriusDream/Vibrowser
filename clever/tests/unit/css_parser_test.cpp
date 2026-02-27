@@ -5499,3 +5499,75 @@ TEST_F(CSSStylesheetTest, MaskSizeDeclaration) {
         if (d.property == "mask-size") { found = true; break; }
     EXPECT_TRUE(found);
 }
+
+TEST_F(CSSStylesheetTest, MaskCompositeDeclaration) {
+    auto sheet = parse_stylesheet("div { mask-composite: add; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "mask-composite") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, MaskOriginDeclaration) {
+    auto sheet = parse_stylesheet("div { mask-origin: content-box; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "mask-origin") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, MaskClipDeclaration) {
+    auto sheet = parse_stylesheet("div { mask-clip: content-box; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "mask-clip") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, ViewTransitionNameDeclaration) {
+    auto sheet = parse_stylesheet("header { view-transition-name: main-header; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "view-transition-name") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, AnimationTimelineDeclaration) {
+    auto sheet = parse_stylesheet("div { animation-timeline: scroll(); }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "animation-timeline") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, AnimationRangeStartDeclaration) {
+    auto sheet = parse_stylesheet("div { animation-range-start: 0%; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "animation-range-start") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, AnimationRangeEndDeclaration) {
+    auto sheet = parse_stylesheet("div { animation-range-end: 100%; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "animation-range-end") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, ScrollTimelineNameDeclaration) {
+    auto sheet = parse_stylesheet("div { scroll-timeline-name: --my-scroll; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "scroll-timeline-name") { found = true; break; }
+    EXPECT_TRUE(found);
+}
