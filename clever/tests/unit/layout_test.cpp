@@ -6739,3 +6739,43 @@ TEST(LayoutNodeProps, OffsetAnchorDefaultsAuto) {
     LayoutNode n;
     EXPECT_EQ(n.offset_anchor, "auto");
 }
+
+TEST(LayoutNodeProps, AnimationNameDefaultsEmpty) {
+    LayoutNode n;
+    EXPECT_EQ(n.animation_name, "");
+}
+
+TEST(LayoutNodeProps, AnimationDurationDefaultsZero) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.animation_duration, 0.0f);
+}
+
+TEST(LayoutNodeProps, AnimationDelayDefaultsZero) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.animation_delay, 0.0f);
+}
+
+TEST(LayoutNodeProps, AnimationIterationCountDefaultsOne) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.animation_iteration_count, 1.0f);
+}
+
+TEST(LayoutNodeProps, AnimationDirectionDefaultsZero) {
+    LayoutNode n;
+    EXPECT_EQ(n.animation_direction, 0);
+}
+
+TEST(LayoutNodeProps, AnimationFillModeDefaultsZero) {
+    LayoutNode n;
+    EXPECT_EQ(n.animation_fill_mode, 0);
+}
+
+TEST(LayoutNodeProps, TransitionPropertyDefaultsAll) {
+    LayoutNode n;
+    EXPECT_EQ(n.transition_property, "all");
+}
+
+TEST(LayoutNodeProps, TransitionDurationDefaultsZero) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.transition_duration, 0.0f);
+}
