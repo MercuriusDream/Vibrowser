@@ -15386,3 +15386,55 @@ TEST(JSEngine, ErrorStack) {
     auto result = engine.evaluate("(function() { try { throw new Error('oops'); } catch(e) { return e.message; } })()");
     EXPECT_EQ(result, "oops");
 }
+
+TEST(JSEngine, ParseIntRadix16) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("parseInt('ff', 16)");
+    EXPECT_EQ(result, "255");
+}
+
+TEST(JSEngine, ParseIntRadix2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("parseInt('1010', 2)");
+    EXPECT_EQ(result, "10");
+}
+
+TEST(JSEngine, ParseFloatTrailingChars) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("parseFloat('3.14xyz')");
+    EXPECT_EQ(result, "3.14");
+}
+
+TEST(JSEngine, ArrayFindLastIndex) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("[1, 2, 3, 2, 1].findLastIndex(x => x === 2)");
+    EXPECT_EQ(result, "3");
+}
+
+TEST(JSEngine, ArrayWith) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("[1, 2, 3].with(1, 99)[1]");
+    EXPECT_EQ(result, "99");
+}
+
+TEST(JSEngine, ObjectGroupBy) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        const arr = [1, 2, 3, 4];
+        const g = Object.groupBy(arr, n => n % 2 === 0 ? 'even' : 'odd');
+        g.even.length
+    )");
+    EXPECT_EQ(result, "2");
+}
+
+TEST(JSEngine, ArrayFindLast) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("[1, 2, 3, 2, 1].findLast(x => x === 2)");
+    EXPECT_EQ(result, "2");
+}
+
+TEST(JSEngine, StringNormalizeNFC) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("typeof 'hello'.normalize");
+    EXPECT_EQ(result, "function");
+}
