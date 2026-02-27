@@ -3044,3 +3044,62 @@ TEST(SerializerTest, F64NegativePiRoundTrip) {
     Deserializer d(s.data());
     EXPECT_DOUBLE_EQ(d.read_f64(), -3.14159265358979);
 }
+
+// Cycle 822 — boundary values and bulk sequences
+TEST(SerializerTest, MaxUint32RoundTrip) {
+    Serializer s;
+    s.write_u32(0xFFFFFFFFu);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u32(), 0xFFFFFFFFu);
+}
+
+TEST(SerializerTest, MinInt32RoundTrip) {
+    Serializer s;
+    s.write_i32(-2147483648);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i32(), -2147483648);
+}
+
+TEST(SerializerTest, MaxInt64RoundTrip) {
+    Serializer s;
+    s.write_i64(9223372036854775807LL);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i64(), 9223372036854775807LL);
+}
+
+TEST(SerializerTest, MinInt64RoundTrip) {
+    Serializer s;
+    s.write_i64(-9223372036854775807LL - 1);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i64(), -9223372036854775807LL - 1);
+}
+
+TEST(SerializerTest, FortyBoolsAlternating) {
+    Serializer s;
+    for (int i = 0; i < 40; i++) s.write_bool(i % 2 == 0);
+    Deserializer d(s.data());
+    for (int i = 0; i < 40; i++) EXPECT_EQ(d.read_bool(), i % 2 == 0);
+}
+
+TEST(SerializerTest, FiftyI32NegativeSequence) {
+    Serializer s;
+    for (int i = 1; i <= 50; i++) s.write_i32(-i);
+    Deserializer d(s.data());
+    for (int i = 1; i <= 50; i++) EXPECT_EQ(d.read_i32(), -i);
+}
+
+TEST(SerializerTest, SeventyU32Sequential) {
+    Serializer s;
+    for (uint32_t i = 0; i < 70; i++) s.write_u32(i * 100);
+    Deserializer d(s.data());
+    for (uint32_t i = 0; i < 70; i++) EXPECT_EQ(d.read_u32(), i * 100);
+}
+
+TEST(SerializerTest, TwentyBoolsTrueThenFalse) {
+    Serializer s;
+    for (int i = 0; i < 10; i++) s.write_bool(true);
+    for (int i = 0; i < 10; i++) s.write_bool(false);
+    Deserializer d(s.data());
+    for (int i = 0; i < 10; i++) EXPECT_TRUE(d.read_bool());
+    for (int i = 0; i < 10; i++) EXPECT_FALSE(d.read_bool());
+}
