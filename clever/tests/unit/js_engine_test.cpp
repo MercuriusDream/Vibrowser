@@ -16501,3 +16501,56 @@ TEST(JSEngine, DataViewGetInt32) {
         "v.getInt32(0,false)");
     EXPECT_EQ(result, "12345678");
 }
+
+// Cycle 855 — BigInt advanced ops, DataView little-endian, TypedArray copyWithin
+TEST(JSEngine, BigIntToString) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("(123456789012345678901234567890n).toString()");
+    EXPECT_EQ(result, "123456789012345678901234567890");
+}
+
+TEST(JSEngine, BigIntNegative) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("(-100n).toString()");
+    EXPECT_EQ(result, "-100");
+}
+
+TEST(JSEngine, BigIntDivision) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("(100n / 3n).toString()");
+    EXPECT_EQ(result, "33");
+}
+
+TEST(JSEngine, BigIntModulo) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("(17n % 5n).toString()");
+    EXPECT_EQ(result, "2");
+}
+
+TEST(JSEngine, BigIntBitwiseAnd) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("(0b1100n & 0b1010n).toString()");
+    EXPECT_EQ(result, "8");
+}
+
+TEST(JSEngine, BigIntBitwiseOr) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("(0b1100n | 0b1010n).toString()");
+    EXPECT_EQ(result, "14");
+}
+
+TEST(JSEngine, BigIntLeftShift) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("(1n << 10n).toString()");
+    EXPECT_EQ(result, "1024");
+}
+
+TEST(JSEngine, DataViewLittleEndianInt32) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "const b=new ArrayBuffer(4);"
+        "const v=new DataView(b);"
+        "v.setInt32(0,0x01020304,true);"
+        "v.getInt32(0,true)");
+    EXPECT_EQ(result, "16909060");
+}
