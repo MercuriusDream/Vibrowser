@@ -3330,3 +3330,81 @@ TEST(TreeBuilder, RubyRtElementIsParsed) {
     ASSERT_NE(rt, nullptr);
     EXPECT_EQ(rt->tag_name, "rt");
 }
+
+// Cycle 767 — HTML form advanced elements
+TEST(TreeBuilder, OptgroupElementIsParsed) {
+    auto doc = clever::html::parse(R"(<select><optgroup label="Group A"><option>A1</option></optgroup></select>)");
+    auto* optgroup = doc->find_element("optgroup");
+    ASSERT_NE(optgroup, nullptr);
+    EXPECT_EQ(optgroup->tag_name, "optgroup");
+}
+
+TEST(TreeBuilder, SelectOptgroupLabelAttr) {
+    auto doc = clever::html::parse(R"(<select><optgroup label="Colors"><option>Red</option></optgroup></select>)");
+    auto* optgroup = doc->find_element("optgroup");
+    ASSERT_NE(optgroup, nullptr);
+    bool found = false;
+    for (const auto& attr : optgroup->attributes)
+        if (attr.name == "label" && attr.value == "Colors") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, FormNovalidateAttr) {
+    auto doc = clever::html::parse(R"(<form novalidate action="/submit"></form>)");
+    auto* form = doc->find_element("form");
+    ASSERT_NE(form, nullptr);
+    bool found = false;
+    for (const auto& attr : form->attributes)
+        if (attr.name == "novalidate") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, InputAutocompleteAttr) {
+    auto doc = clever::html::parse(R"(<input type="text" autocomplete="email">)");
+    auto* input = doc->find_element("input");
+    ASSERT_NE(input, nullptr);
+    bool found = false;
+    for (const auto& attr : input->attributes)
+        if (attr.name == "autocomplete" && attr.value == "email") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, InputAutofocusAttr) {
+    auto doc = clever::html::parse(R"(<input type="search" autofocus>)");
+    auto* input = doc->find_element("input");
+    ASSERT_NE(input, nullptr);
+    bool found = false;
+    for (const auto& attr : input->attributes)
+        if (attr.name == "autofocus") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, ButtonFormActionAttr) {
+    auto doc = clever::html::parse(R"(<button formaction="/override" type="submit">Go</button>)");
+    auto* btn = doc->find_element("button");
+    ASSERT_NE(btn, nullptr);
+    bool found = false;
+    for (const auto& attr : btn->attributes)
+        if (attr.name == "formaction" && attr.value == "/override") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, InputPatternAttr) {
+    auto doc = clever::html::parse(R"(<input type="text" pattern="[A-Z]{3}">)");
+    auto* input = doc->find_element("input");
+    ASSERT_NE(input, nullptr);
+    bool found = false;
+    for (const auto& attr : input->attributes)
+        if (attr.name == "pattern") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, InputListAttr) {
+    auto doc = clever::html::parse(R"(<input type="text" list="suggestions"><datalist id="suggestions"></datalist>)");
+    auto* input = doc->find_element("input");
+    ASSERT_NE(input, nullptr);
+    bool found = false;
+    for (const auto& attr : input->attributes)
+        if (attr.name == "list" && attr.value == "suggestions") found = true;
+    EXPECT_TRUE(found);
+}
