@@ -5281,3 +5281,83 @@ TEST(URLParser, SchemeDataUrlWithMimeTypeV12) {
     EXPECT_EQ(url->scheme, "data");
     EXPECT_TRUE(url->host.empty());
 }
+
+// Cycle 1285: URL parser tests
+
+TEST(URLParser, UrlWithMixedCaseSchemeAndHostV13) {
+    auto url = parse("HTTPS://Example.COM/path");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "example.com");
+    EXPECT_EQ(url->path, "/path");
+}
+
+TEST(URLParser, UrlWithTrailingSlashAndQueryV13) {
+    auto url = parse("https://www.example.com/?search=test&limit=10");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "www.example.com");
+    EXPECT_EQ(url->path, "/");
+    EXPECT_NE(url->query.find("search=test"), std::string::npos);
+    EXPECT_NE(url->query.find("limit=10"), std::string::npos);
+}
+
+TEST(URLParser, UrlWithMultiplePathSegmentsAndPortV13) {
+    auto url = parse("http://localhost:3000/api/v1/users/profile");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "http");
+    EXPECT_EQ(url->host, "localhost");
+    ASSERT_TRUE(url->port.has_value());
+    EXPECT_EQ(url->port.value(), 3000u);
+    EXPECT_EQ(url->path, "/api/v1/users/profile");
+}
+
+TEST(URLParser, UrlWithSubdomainsAndComplexPathV13) {
+    auto url = parse("https://mail.google.co.uk/mail/u/0?hl=en#inbox");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "mail.google.co.uk");
+    EXPECT_EQ(url->path, "/mail/u/0");
+    EXPECT_NE(url->query.find("hl=en"), std::string::npos);
+    EXPECT_EQ(url->fragment, "inbox");
+}
+
+TEST(URLParser, UrlWithEmptyFragmentAndQueryV13) {
+    auto url = parse("https://example.com/document?version=2#");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "example.com");
+    EXPECT_EQ(url->path, "/document");
+    EXPECT_NE(url->query.find("version=2"), std::string::npos);
+    EXPECT_TRUE(url->fragment.empty() || url->fragment == "");
+}
+
+TEST(URLParser, UrlWithUnusualButValidPortNumberV13) {
+    auto url = parse("https://secure.example.org:65535/secure/data");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "secure.example.org");
+    ASSERT_TRUE(url->port.has_value());
+    EXPECT_EQ(url->port.value(), 65535u);
+    EXPECT_EQ(url->path, "/secure/data");
+}
+
+TEST(URLParser, UrlWithOnlyQueryNoPathOrFragmentV13) {
+    auto url = parse("https://analytics.example.net?event=page_load&user_id=12345");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "analytics.example.net");
+    EXPECT_EQ(url->path, "/");
+    EXPECT_NE(url->query.find("event=page_load"), std::string::npos);
+    EXPECT_NE(url->query.find("user_id=12345"), std::string::npos);
+}
+
+TEST(URLParser, UrlWithDeepPathHierarchyV13) {
+    auto url = parse("https://storage.example.io/bucket/year/2025/month/02/day/27/file.json");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "storage.example.io");
+    EXPECT_EQ(url->path, "/bucket/year/2025/month/02/day/27/file.json");
+    EXPECT_TRUE(url->query.empty());
+    EXPECT_TRUE(url->fragment.empty());
+}

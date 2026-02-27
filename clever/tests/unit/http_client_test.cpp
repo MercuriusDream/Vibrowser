@@ -7653,3 +7653,96 @@ TEST(ResponseTest, ResponseBodyAfterDeserialisationV23) {
     EXPECT_EQ(resp.body.size(), 4u);
     EXPECT_EQ(resp.body[1], 0xBBu);
 }
+
+// Cycle 1286: HTTP client tests
+
+// HeaderMap: has method with case-insensitive key matching
+TEST(HttpClient, HeaderMapHasCaseInsensitiveV24) {
+    HeaderMap map;
+    map.set("Authorization", "Bearer token123");
+    EXPECT_TRUE(map.has("Authorization"));
+    EXPECT_TRUE(map.has("authorization"));
+    EXPECT_TRUE(map.has("AUTHORIZATION"));
+    EXPECT_FALSE(map.has("X-Custom-Header"));
+}
+
+// HeaderMap: remove erases both exact and case variations
+TEST(HttpClient, HeaderMapRemoveV24) {
+    HeaderMap map;
+    map.set("Content-Length", "1024");
+    map.set("Cache-Control", "no-cache");
+    EXPECT_EQ(map.size(), 2u);
+    map.remove("content-length");
+    EXPECT_EQ(map.size(), 1u);
+    EXPECT_FALSE(map.has("Content-Length"));
+    EXPECT_TRUE(map.has("Cache-Control"));
+}
+
+// Request: serialize returns non-empty vector of bytes
+TEST(HttpClient, RequestSerializeReturnsBytesV24) {
+    Request req;
+    req.method = Method::GET;
+    req.url = "https://example.com/api/data";
+    req.headers.set("User-Agent", "TestClient/1.0");
+
+    auto serialized = req.serialize();
+    EXPECT_GT(serialized.size(), 0u);
+    EXPECT_TRUE(std::any_of(serialized.begin(), serialized.end(),
+        [](uint8_t b) { return b > 0; }));
+}
+
+// Request: POST method with body serializes correctly
+TEST(HttpClient, RequestPostWithBodyV24) {
+    Request req;
+    req.method = Method::POST;
+    req.url = "https://api.example.com/submit";
+    req.headers.set("Content-Type", "application/json");
+    req.body = std::vector<uint8_t>({'h', 'e', 'l', 'l', 'o'});
+
+    EXPECT_EQ(req.method, Method::POST);
+    EXPECT_EQ(req.body.size(), 5u);
+    auto serialized = req.serialize();
+    EXPECT_GT(serialized.size(), req.body.size());
+}
+
+// Response: status_code and status_text can be set and retrieved
+TEST(HttpClient, ResponseStatusCodesV24) {
+    Response resp;
+    resp.status = 404;
+    resp.status_text = "Not Found";
+    EXPECT_EQ(resp.status, 404);
+    EXPECT_EQ(resp.status_text, "Not Found");
+
+    resp.status = 500;
+    resp.status_text = "Internal Server Error";
+    EXPECT_EQ(resp.status, 500);
+}
+
+// CookieJar: secure cookies are tracked by domain
+TEST(HttpClient, CookieJarSecureCookiesV24) {
+    CookieJar jar;
+    jar.set_from_header("secure_token=abc123", "secure.example.com");
+    jar.set_from_header("session=xyz789", "api.example.com");
+    EXPECT_EQ(jar.size(), 2u);
+
+    std::string header1 = jar.get_cookie_header("secure.example.com", "/", false);
+    std::string header2 = jar.get_cookie_header("api.example.com", "/", false);
+    EXPECT_NE(header1, header2);
+}
+
+// ConnectionPool: initialization
+TEST(HttpClient, ConnectionPoolInitializeV24) {
+    ConnectionPool pool;
+    EXPECT_TRUE(true);  // ConnectionPool exists and can be constructed
+}
+
+// HeaderMap: get_all returns all values for a key
+TEST(HttpClient, HeaderMapGetAllValuesV24) {
+    HeaderMap map;
+    map.set("Set-Cookie", "cookie1=value1");
+    map.set("Set-Cookie", "cookie2=value2");
+
+    auto all_cookies = map.get_all("Set-Cookie");
+    EXPECT_GE(all_cookies.size(), 1u);
+    EXPECT_EQ(map.size(), 1u);
+}

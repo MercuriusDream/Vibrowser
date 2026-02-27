@@ -9013,3 +9013,44 @@ TEST(LayoutNodeProps, BorderCollapseDefaultV21) {
     LayoutNode n;
     EXPECT_FALSE(n.border_collapse);
 }
+
+// Cycle 1289: Layout node tests
+TEST(LayoutNodeProps, TableLayoutDefaultV22) {
+    LayoutNode n;
+    EXPECT_EQ(n.table_layout, 0);
+}
+
+TEST(LayoutNodeProps, CellPaddingDefaultV22) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.table_cellpadding, -1.0f);
+}
+
+TEST(LayoutNodeProps, CellSpacingDefaultV22) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.table_cellspacing, -1.0f);
+}
+
+TEST(LayoutNodeProps, BorderSpacingDefaultV22) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.border_spacing, 2.0f);
+}
+
+TEST(LayoutNodeProps, ColspanDefaultV22) {
+    LayoutNode n;
+    EXPECT_EQ(n.colspan, 1);
+}
+
+TEST(LayoutNodeProps, RowspanDefaultV22) {
+    LayoutNode n;
+    EXPECT_EQ(n.rowspan, 1);
+}
+
+TEST(LayoutNodeProps, CaptionSideDefaultV22) {
+    LayoutNode n;
+    EXPECT_EQ(n.caption_side, 0);
+}
+
+TEST(LayoutNodeProps, MaskCompositeDefaultV22) {
+    LayoutNode n;
+    EXPECT_EQ(n.mask_composite, 0);
+}

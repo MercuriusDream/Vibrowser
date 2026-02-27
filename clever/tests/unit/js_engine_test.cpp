@@ -19114,3 +19114,53 @@ TEST(JSEngine, ObjectAssignCycle1281) {
     auto result = engine.evaluate("var obj1 = {a: 1}; var obj2 = {b: 2}; var merged = Object.assign({}, obj1, obj2); (merged.a + merged.b).toString()");
     EXPECT_EQ(result, "3");
 }
+
+// Cycle 1290: JS engine tests
+
+TEST(JSEngine, StringPadStartCycle1290) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var str = '5'; var padded = str.padStart(3, '0'); padded");
+    EXPECT_EQ(result, "005");
+}
+
+TEST(JSEngine, StringPadEndCycle1290) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var str = '42'; var padded = str.padEnd(5, '*'); padded");
+    EXPECT_EQ(result, "42***");
+}
+
+TEST(JSEngine, ArrayIncludesMethodCycle1290) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var arr = [10, 20, 30, 40]; arr.includes(20).toString()");
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, ArrayFindMethodCycle1290) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var arr = [1, 2, 3, 4, 5]; var found = arr.find(x => x > 3); found.toString()");
+    EXPECT_EQ(result, "4");
+}
+
+TEST(JSEngine, MathPowerOperationCycle1290) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var result = Math.pow(2, 8); result.toString()");
+    EXPECT_EQ(result, "256");
+}
+
+TEST(JSEngine, MathSqrtOperationCycle1290) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var result = Math.sqrt(144); result.toString()");
+    EXPECT_EQ(result, "12");
+}
+
+TEST(JSEngine, ObjectKeysMethodCycle1290) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var obj = {a: 1, b: 2, c: 3}; var keys = Object.keys(obj); keys.length.toString()");
+    EXPECT_EQ(result, "3");
+}
+
+TEST(JSEngine, ArrayReduceMethodCycle1290) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var arr = [1, 2, 3, 4]; var sum = arr.reduce((acc, val) => acc + val, 0); sum.toString()");
+    EXPECT_EQ(result, "10");
+}

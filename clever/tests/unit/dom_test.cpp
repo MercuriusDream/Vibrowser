@@ -6974,3 +6974,62 @@ TEST(DomElement, SetAttributeWithSpecialChars) {
     el->set_attribute("data-info", "a&b<c>d");
     EXPECT_EQ(el->get_attribute("data-info"), "a&b<c>d");
 }
+
+// Cycle 1282: DOM element tests
+
+TEST(DomElement, TagNameDialogV2) {
+    Document doc;
+    auto el = doc.create_element("dialog");
+    EXPECT_EQ(el->tag_name(), "dialog");
+}
+
+TEST(DomElement, TagNameTemplateV2) {
+    Document doc;
+    auto el = doc.create_element("template");
+    EXPECT_EQ(el->tag_name(), "template");
+}
+
+TEST(DomElement, SetAttributeSandbox) {
+    Document doc;
+    auto el = doc.create_element("iframe");
+    el->set_attribute("sandbox", "allow-scripts");
+    EXPECT_EQ(el->get_attribute("sandbox"), "allow-scripts");
+}
+
+TEST(DomElement, SetAttributeLoading) {
+    Document doc;
+    auto el = doc.create_element("img");
+    el->set_attribute("loading", "lazy");
+    EXPECT_EQ(el->get_attribute("loading"), "lazy");
+}
+
+TEST(DomElement, ChildCountOneHundredFifty) {
+    Document doc;
+    auto parent = doc.create_element("div");
+    for (int i = 0; i < 150; ++i) {
+        parent->append_child(doc.create_element("span"));
+    }
+    EXPECT_EQ(parent->child_count(), 150u);
+}
+
+TEST(DomElement, RemoveAttributeTitleV2) {
+    Document doc;
+    auto el = doc.create_element("div");
+    el->set_attribute("title", "tooltip");
+    el->remove_attribute("title");
+    EXPECT_FALSE(el->has_attribute("title"));
+}
+
+TEST(DomElement, HasAttributeControls) {
+    Document doc;
+    auto el = doc.create_element("video");
+    el->set_attribute("controls", "");
+    EXPECT_TRUE(el->has_attribute("controls"));
+}
+
+TEST(DomElement, EmptyAttributeValue) {
+    Document doc;
+    auto el = doc.create_element("input");
+    el->set_attribute("value", "");
+    EXPECT_EQ(el->get_attribute("value"), "");
+}

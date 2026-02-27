@@ -3366,3 +3366,41 @@ TEST(CORSPolicyTest, NotEnforceableExplicitHttpDefaultPortV30) {
 TEST(CORSPolicyTest, NotCORSEligibleWithInvalidHostV30) {
     EXPECT_FALSE(is_cors_eligible_request_url("https://_invalid.example.com/data"));
 }
+
+// Cycle 1283: CORS policy tests
+
+TEST(CORSPolicyTest, CrossOriginWithNonDefaultPortV31) {
+    EXPECT_TRUE(is_cross_origin("https://app.example:8443", "https://api.example:8443/data"));
+}
+
+TEST(CORSPolicyTest, IsCORSEligibleWithNonDefaultPortV31) {
+    EXPECT_TRUE(is_cors_eligible_request_url("https://api.example:8443/v1/users"));
+}
+
+TEST(CORSPolicyTest, ShouldAttachOriginHeaderDifferentPortV31) {
+    EXPECT_TRUE(should_attach_origin_header("https://app.example:8080", "https://api.example:8443/data"));
+}
+
+TEST(CORSPolicyTest, CORSAllowsWildcardOriginV31) {
+    clever::net::HeaderMap resp_headers;
+    resp_headers.set("Access-Control-Allow-Origin", "*");
+    EXPECT_TRUE(cors_allows_response("https://app.example", "https://api.example/data", resp_headers, false));
+}
+
+TEST(CORSPolicyTest, HasEnforceableOriginWithSubdomainV31) {
+    EXPECT_TRUE(has_enforceable_document_origin("https://sub.app.example.com"));
+}
+
+TEST(CORSPolicyTest, NotEnforceableExplicitHttpsDefaultPortV31) {
+    EXPECT_FALSE(has_enforceable_document_origin("https://localhost:443"));
+}
+
+TEST(CORSPolicyTest, ShouldAttachOriginHeaderCrossPortV31) {
+    EXPECT_TRUE(should_attach_origin_header("https://app.example:8080", "https://app.example:9090/api"));
+}
+
+TEST(CORSPolicyTest, CORSAllowsExactOriginMatchWithoutCredentialsV31) {
+    clever::net::HeaderMap resp_headers;
+    resp_headers.set("Access-Control-Allow-Origin", "https://app.example:8080");
+    EXPECT_TRUE(cors_allows_response("https://app.example:8080", "https://api.example:8443/secure", resp_headers, false));
+}

@@ -8019,3 +8019,77 @@ TEST_F(CSSStylesheetTest, StrokeDasharrayV21) {
         if (d.property == "stroke-dasharray") { found = true; break; }
     EXPECT_TRUE(found);
 }
+
+// Cycle 1287: CSS parser tests
+
+TEST_F(CSSStylesheetTest, BorderRadiusV22) {
+    auto sheet = parse_stylesheet("div { border-radius: 10px; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "border-radius") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, TransformV22) {
+    auto sheet = parse_stylesheet("span { transform: rotate(45deg); }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "transform") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, FilterV22) {
+    auto sheet = parse_stylesheet("img { filter: blur(5px); }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "filter") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, BackdropFilterV22) {
+    auto sheet = parse_stylesheet(".modal { backdrop-filter: blur(10px); }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "backdrop-filter") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, ClipPathV22) {
+    auto sheet = parse_stylesheet("section { clip-path: polygon(0% 0%, 100% 0%, 50% 100%); }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "clip-path") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, MaskImageV22) {
+    auto sheet = parse_stylesheet("article { mask-image: url(#mask); }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "mask-image") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, ScrollBehaviorV22) {
+    auto sheet = parse_stylesheet("html { scroll-behavior: smooth; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "scroll-behavior") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, ScrollSnapTypeV22) {
+    auto sheet = parse_stylesheet(".container { scroll-snap-type: x mandatory; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "scroll-snap-type") { found = true; break; }
+    EXPECT_TRUE(found);
+}

@@ -7471,3 +7471,61 @@ TEST(TreeBuilder, FormElementV9) {
     ASSERT_NE(el, nullptr);
     EXPECT_EQ(el->tag_name, "form");
 }
+
+// Cycle 1288: HTML parser tests
+
+TEST(TreeBuilder, NavElementV10) {
+    auto doc = clever::html::parse("<nav><a href=\"/\">Home</a><a href=\"/about\">About</a></nav>");
+    auto* el = doc->find_element("nav");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "nav");
+}
+
+TEST(TreeBuilder, HeaderElementV10) {
+    auto doc = clever::html::parse("<header><h1>Page Title</h1><p>Subtitle</p></header>");
+    auto* el = doc->find_element("header");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "header");
+}
+
+TEST(TreeBuilder, FooterElementV10) {
+    auto doc = clever::html::parse("<footer><p>Copyright 2024</p><a href=\"/privacy\">Privacy</a></footer>");
+    auto* el = doc->find_element("footer");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "footer");
+}
+
+TEST(TreeBuilder, ArticleElementV10) {
+    auto doc = clever::html::parse("<article><h2>Article Title</h2><p>Article content goes here</p></article>");
+    auto* el = doc->find_element("article");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "article");
+}
+
+TEST(TreeBuilder, SectionElementV10) {
+    auto doc = clever::html::parse("<section><h2>Section Title</h2><p>Section content</p></section>");
+    auto* el = doc->find_element("section");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "section");
+}
+
+TEST(TreeBuilder, AsideElementV10) {
+    auto doc = clever::html::parse("<aside><h3>Sidebar</h3><ul><li>Item 1</li><li>Item 2</li></ul></aside>");
+    auto* el = doc->find_element("aside");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "aside");
+}
+
+TEST(TreeBuilder, MainElementV10) {
+    auto doc = clever::html::parse("<main><article><h1>Main Content</h1><p>This is the main content</p></article></main>");
+    auto* el = doc->find_element("main");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "main");
+}
+
+TEST(TreeBuilder, FigureElementV10) {
+    auto doc = clever::html::parse("<figure><img src=\"image.jpg\" alt=\"Description\" /><figcaption>Image caption</figcaption></figure>");
+    auto* el = doc->find_element("figure");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "figure");
+}

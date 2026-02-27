@@ -6394,3 +6394,61 @@ TEST(SerializerTest, BoolFalseValueV20) {
     Deserializer d(s.data());
     EXPECT_FALSE(d.read_bool());
 }
+
+// Cycle 1284: Serializer tests
+
+TEST(SerializerTest, U8MidRangeValueV21) {
+    Serializer s;
+    s.write_u8(128);
+    Deserializer d(s.data());
+    EXPECT_EQ(128, d.read_u8());
+}
+
+TEST(SerializerTest, U16MidRangeValueV21) {
+    Serializer s;
+    s.write_u16(32768);
+    Deserializer d(s.data());
+    EXPECT_EQ(32768, d.read_u16());
+}
+
+TEST(SerializerTest, U32MidRangeValueV21) {
+    Serializer s;
+    s.write_u32(2147483648);
+    Deserializer d(s.data());
+    EXPECT_EQ(2147483648, d.read_u32());
+}
+
+TEST(SerializerTest, U64MidRangeValueV21) {
+    Serializer s;
+    s.write_u64(9223372036854775808ULL);
+    Deserializer d(s.data());
+    EXPECT_EQ(9223372036854775808ULL, d.read_u64());
+}
+
+TEST(SerializerTest, I32NegativeMaxV21) {
+    Serializer s;
+    s.write_i32(-2147483648);
+    Deserializer d(s.data());
+    EXPECT_EQ(-2147483648, d.read_i32());
+}
+
+TEST(SerializerTest, I64NegativeMaxV21) {
+    Serializer s;
+    s.write_i64(-9223372036854775807LL);
+    Deserializer d(s.data());
+    EXPECT_EQ(-9223372036854775807LL, d.read_i64());
+}
+
+TEST(SerializerTest, F64SmallValueV21) {
+    Serializer s;
+    s.write_f64(1.23456789e-100);
+    Deserializer d(s.data());
+    EXPECT_NEAR(1.23456789e-100, d.read_f64(), 1e-110);
+}
+
+TEST(SerializerTest, StringMultiwordValueV21) {
+    Serializer s;
+    s.write_string("Hello World Test String");
+    Deserializer d(s.data());
+    EXPECT_EQ("Hello World Test String", d.read_string());
+}
