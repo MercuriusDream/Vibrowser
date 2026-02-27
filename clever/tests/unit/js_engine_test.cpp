@@ -16049,3 +16049,52 @@ TEST(JSEngine, ReflectIsExtensibleTrue) {
         "Reflect.isExtensible({})");
     EXPECT_EQ(result, "true");
 }
+
+// Cycle 814 — Template literals: arithmetic, ternary, nested, method call
+TEST(JSEngine, TemplateLiteralArithmetic) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("`${2 + 3}`");
+    EXPECT_EQ(result, "5");
+}
+
+TEST(JSEngine, TemplateLiteralTernary) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("const x = 10; `${x > 5 ? 'big' : 'small'}`");
+    EXPECT_EQ(result, "big");
+}
+
+TEST(JSEngine, TemplateLiteralMethodCall) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("const s = 'hello'; `${s.toUpperCase()}`");
+    EXPECT_EQ(result, "HELLO");
+}
+
+TEST(JSEngine, TemplateLiteralNestedTemplates) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("const a = 'x'; `outer ${`inner ${a}`} end`");
+    EXPECT_EQ(result, "outer inner x end");
+}
+
+TEST(JSEngine, TemplateLiteralMultipleExpressions) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("`${1} + ${2} = ${1+2}`");
+    EXPECT_EQ(result, "1 + 2 = 3");
+}
+
+TEST(JSEngine, TemplateLiteralArrayAccess) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("const arr = [10,20,30]; `value=${arr[1]}`");
+    EXPECT_EQ(result, "value=20");
+}
+
+TEST(JSEngine, TemplateLiteralFunctionInvoke) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("const f = (n) => n * n; `square=${f(4)}`");
+    EXPECT_EQ(result, "square=16");
+}
+
+TEST(JSEngine, TemplateLiteralObjectProperty) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("const obj = {name:'Alice', age:30}; `${obj.name} is ${obj.age}`");
+    EXPECT_EQ(result, "Alice is 30");
+}
