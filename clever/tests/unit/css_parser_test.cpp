@@ -5065,3 +5065,76 @@ TEST_F(CSSStylesheetTest, FontStretchDeclaration) {
         if (d.property == "font-stretch") { found = true; break; }
     EXPECT_TRUE(found);
 }
+
+// Cycle 936 — font-variant, text-emphasis, text-rendering, color-adjust
+TEST_F(CSSStylesheetTest, FontVariantNumericDeclaration) {
+    auto sheet = parse_stylesheet("body { font-variant-numeric: oldstyle-nums; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "font-variant-numeric") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, FontVariantLigaturesDeclaration) {
+    auto sheet = parse_stylesheet("p { font-variant-ligatures: no-common-ligatures; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "font-variant-ligatures") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, FontVariantCapsDeclaration) {
+    auto sheet = parse_stylesheet(".caps { font-variant-caps: small-caps; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "font-variant-caps") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, FontOpticalSizingDeclaration) {
+    auto sheet = parse_stylesheet("body { font-optical-sizing: auto; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "font-optical-sizing") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, TextEmphasisStyleDeclaration) {
+    auto sheet = parse_stylesheet(".em { text-emphasis-style: filled circle; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "text-emphasis-style") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, TextEmphasisColorDeclaration) {
+    auto sheet = parse_stylesheet(".em { text-emphasis-color: blue; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "text-emphasis-color") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, TextRenderingDeclaration) {
+    auto sheet = parse_stylesheet("body { text-rendering: optimizeLegibility; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "text-rendering") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, PrintColorAdjustDeclaration) {
+    auto sheet = parse_stylesheet(".logo { print-color-adjust: exact; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "print-color-adjust") { found = true; break; }
+    EXPECT_TRUE(found);
+}
