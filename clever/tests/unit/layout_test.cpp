@@ -6207,3 +6207,51 @@ TEST(LayoutNodeProps, LineHeightDefaultsToOnePointTwo) {
     auto node = make_block("p");
     EXPECT_FLOAT_EQ(node->line_height, 1.2f);
 }
+
+// Layout: flex_grow defaults to 0
+TEST(LayoutNodeProps, FlexGrowDefaultsToZero) {
+    auto node = make_block("div");
+    EXPECT_FLOAT_EQ(node->flex_grow, 0.0f);
+}
+
+// Layout: flex_shrink defaults to 1
+TEST(LayoutNodeProps, FlexShrinkDefaultsToOne) {
+    auto node = make_block("div");
+    EXPECT_FLOAT_EQ(node->flex_shrink, 1.0f);
+}
+
+// Layout: flex_basis defaults to -1 (auto)
+TEST(LayoutNodeProps, FlexBasisDefaultsToNegativeOne) {
+    auto node = make_block("div");
+    EXPECT_FLOAT_EQ(node->flex_basis, -1.0f);
+}
+
+// Layout: flex_direction defaults to 0 (row)
+TEST(LayoutNodeProps, FlexDirectionDefaultsToZero) {
+    auto node = make_block("div");
+    EXPECT_EQ(node->flex_direction, 0);
+}
+
+// Layout: flex_wrap defaults to 0 (nowrap)
+TEST(LayoutNodeProps, FlexWrapDefaultsToZero) {
+    auto node = make_block("div");
+    EXPECT_EQ(node->flex_wrap, 0);
+}
+
+// Layout: opacity defaults to 1.0
+TEST(LayoutNodeProps, OpacityDefaultsToOneV3) {
+    auto node = make_block("div");
+    EXPECT_FLOAT_EQ(node->opacity, 1.0f);
+}
+
+// Layout: z_index defaults to 0
+TEST(LayoutNodeProps, ZIndexDefaultsToZeroV2) {
+    auto node = make_block("div");
+    EXPECT_EQ(node->z_index, 0);
+}
+
+// Layout: grid_template_columns defaults empty
+TEST(LayoutNodeProps, GridTemplateColumnsDefaultsEmpty) {
+    auto node = make_block("div");
+    EXPECT_TRUE(node->grid_template_columns.empty());
+}
