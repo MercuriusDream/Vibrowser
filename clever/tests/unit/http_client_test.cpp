@@ -4170,3 +4170,68 @@ TEST(ResponseTest, CrossOriginEmbedderPolicyHeader) {
     ASSERT_TRUE(val.has_value());
     EXPECT_EQ(*val, "require-corp");
 }
+
+// Cycle 845 — informational, multi-status, and less-common codes
+TEST(ResponseTest, Parse100Continue) {
+    std::string raw = "HTTP/1.1 100 Continue\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 100);
+}
+
+TEST(ResponseTest, Parse101SwitchingProtocols) {
+    std::string raw = "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nContent-Length: 0\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 101);
+}
+
+TEST(ResponseTest, Parse102Processing) {
+    std::string raw = "HTTP/1.1 102 Processing\r\nContent-Length: 0\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 102);
+}
+
+TEST(ResponseTest, Parse207MultiStatus) {
+    std::string raw = "HTTP/1.1 207 Multi-Status\r\nContent-Length: 0\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 207);
+}
+
+TEST(ResponseTest, Parse208AlreadyReported) {
+    std::string raw = "HTTP/1.1 208 Already Reported\r\nContent-Length: 0\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 208);
+}
+
+TEST(ResponseTest, Parse226IMUsed) {
+    std::string raw = "HTTP/1.1 226 IM Used\r\nContent-Length: 0\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 226);
+}
+
+TEST(ResponseTest, Parse424FailedDependency) {
+    std::string raw = "HTTP/1.1 424 Failed Dependency\r\nContent-Length: 0\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 424);
+}
+
+TEST(ResponseTest, Parse425TooEarly) {
+    std::string raw = "HTTP/1.1 425 Too Early\r\nContent-Length: 0\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 425);
+}
