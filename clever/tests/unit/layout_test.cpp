@@ -8761,3 +8761,45 @@ TEST(LayoutNodeProps, ScrollSnapAlignDefaultV15) {
     LayoutNode n;
     EXPECT_EQ(n.scroll_snap_align, "");
 }
+
+// Cycle 1235: LayoutNode property tests V16
+
+TEST(LayoutNodeProps, LineHeightDefaultV16) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.line_height, 1.2f);
+}
+
+TEST(LayoutNodeProps, TabSizeDefaultV16) {
+    LayoutNode n;
+    EXPECT_EQ(n.tab_size, 4);
+}
+
+TEST(LayoutNodeProps, PointerEventsDefaultV16) {
+    LayoutNode n;
+    EXPECT_EQ(n.pointer_events, 0);
+}
+
+TEST(LayoutNodeProps, CaretColorDefaultV16) {
+    LayoutNode n;
+    EXPECT_EQ(n.caret_color, 0u);
+}
+
+TEST(LayoutNodeProps, ColumnCountDefaultV16) {
+    LayoutNode n;
+    EXPECT_EQ(n.column_count, -1);
+}
+
+TEST(LayoutNodeProps, ColumnWidthDefaultV16) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.column_width, -1.0f);
+}
+
+TEST(LayoutNodeProps, InputRangeMinDefaultV16) {
+    LayoutNode n;
+    EXPECT_EQ(n.input_range_min, 0);
+}
+
+TEST(LayoutNodeProps, MeterOptimumDefaultV16) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.meter_optimum, 0.5f);
+}

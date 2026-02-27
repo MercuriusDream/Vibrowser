@@ -4804,3 +4804,83 @@ TEST(URLParser, SubdomainPortPathQueryV6) {
     EXPECT_NE(url->query.find("enabled=true"), std::string::npos);
     EXPECT_NE(url->query.find("beta=1"), std::string::npos);
 }
+
+// Cycle 1231: URL parser tests V7
+TEST(URLParser, BasicHttpUrlWithPathV7) {
+    auto url = parse("http://example.org/index.html");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "http");
+    EXPECT_EQ(url->host, "example.org");
+    EXPECT_EQ(url->path, "/index.html");
+    EXPECT_TRUE(url->query.empty());
+    EXPECT_TRUE(url->fragment.empty());
+}
+
+TEST(URLParser, UrlWithComplexPathAndQueryV7) {
+    auto url = parse("https://api.example.com/v2/users/search?name=john&age=30");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "api.example.com");
+    EXPECT_EQ(url->path, "/v2/users/search");
+    EXPECT_NE(url->query.find("name=john"), std::string::npos);
+    EXPECT_NE(url->query.find("age=30"), std::string::npos);
+}
+
+TEST(URLParser, UrlWithFragmentAndQueryV7) {
+    auto url = parse("https://docs.example.net/guide?section=intro#getting-started");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "docs.example.net");
+    EXPECT_EQ(url->path, "/guide");
+    EXPECT_NE(url->query.find("section=intro"), std::string::npos);
+    EXPECT_EQ(url->fragment, "getting-started");
+}
+
+TEST(URLParser, UrlWithSubdomainAndPortV7) {
+    auto url = parse("http://mail.example.com:3000/inbox");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "http");
+    EXPECT_EQ(url->host, "mail.example.com");
+    EXPECT_EQ(url->port, 3000);
+    EXPECT_EQ(url->path, "/inbox");
+}
+
+TEST(URLParser, UrlWithMultipleQueryParametersV7) {
+    auto url = parse("https://search.example.io/results?q=test&limit=10&offset=20&sort=date");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "search.example.io");
+    EXPECT_EQ(url->path, "/results");
+    EXPECT_NE(url->query.find("q=test"), std::string::npos);
+    EXPECT_NE(url->query.find("limit=10"), std::string::npos);
+    EXPECT_NE(url->query.find("offset=20"), std::string::npos);
+}
+
+TEST(URLParser, UrlWithUsernamePasswordV7) {
+    auto url = parse("https://user:pass@secure.example.com/private/data");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "secure.example.com");
+    EXPECT_EQ(url->username, "user");
+    EXPECT_EQ(url->password, "pass");
+    EXPECT_EQ(url->path, "/private/data");
+}
+
+TEST(URLParser, UrlWithDeepPathStructureV7) {
+    auto url = parse("https://cdn.example.dev/content/assets/images/graphics/logo.png");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "cdn.example.dev");
+    EXPECT_TRUE(url->path.find("/content/assets/images/graphics/logo.png") != std::string::npos);
+}
+
+TEST(URLParser, UrlWithQueryFragmentAndPortV7) {
+    auto url = parse("http://localhost:9000/dashboard?tab=analytics#metrics");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "http");
+    EXPECT_EQ(url->host, "localhost");
+    EXPECT_EQ(url->port, 9000);
+    EXPECT_EQ(url->path, "/dashboard");
+    EXPECT_NE(url->query.find("tab=analytics"), std::string::npos);
+    EXPECT_EQ(url->fragment, "metrics");
+}

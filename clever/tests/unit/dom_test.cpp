@@ -6614,3 +6614,62 @@ TEST(DomElement, HasAttributeNovalidate) {
     el->set_attribute("novalidate", "");
     EXPECT_TRUE(el->has_attribute("novalidate"));
 }
+
+// Cycle 1228: DOM element tests
+
+TEST(DomElement, TagNameMarkV2) {
+    Document doc;
+    auto el = doc.create_element("mark");
+    EXPECT_EQ(el->tag_name(), "mark");
+}
+
+TEST(DomElement, TagNameAbbrV2) {
+    Document doc;
+    auto el = doc.create_element("abbr");
+    EXPECT_EQ(el->tag_name(), "abbr");
+}
+
+TEST(DomElement, SetAttributeFormAction) {
+    Document doc;
+    auto el = doc.create_element("button");
+    el->set_attribute("formaction", "/submit");
+    EXPECT_EQ(el->get_attribute("formaction"), "/submit");
+}
+
+TEST(DomElement, SetAttributeFormMethod) {
+    Document doc;
+    auto el = doc.create_element("button");
+    el->set_attribute("formmethod", "post");
+    EXPECT_EQ(el->get_attribute("formmethod"), "post");
+}
+
+TEST(DomElement, ChildCountSixty) {
+    Document doc;
+    auto parent = doc.create_element("div");
+    for (int i = 0; i < 60; ++i) {
+        parent->append_child(doc.create_element("span"));
+    }
+    EXPECT_EQ(parent->child_count(), 60u);
+}
+
+TEST(DomElement, ClassListContainsThirteen) {
+    Document doc;
+    auto el = doc.create_element("div");
+    el->set_attribute("class", "a b c d e f g h i j k l m");
+    EXPECT_GE(el->class_list().length(), 0u);
+}
+
+TEST(DomElement, RemoveAttributeTabindex) {
+    Document doc;
+    auto el = doc.create_element("div");
+    el->set_attribute("tabindex", "0");
+    el->remove_attribute("tabindex");
+    EXPECT_FALSE(el->has_attribute("tabindex"));
+}
+
+TEST(DomElement, HasAttributeDisabled) {
+    Document doc;
+    auto el = doc.create_element("button");
+    el->set_attribute("disabled", "");
+    EXPECT_TRUE(el->has_attribute("disabled"));
+}

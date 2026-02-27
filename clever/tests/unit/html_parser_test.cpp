@@ -7122,3 +7122,62 @@ TEST(TreeBuilder, BdiElementV3) {
     ASSERT_NE(el, nullptr);
     EXPECT_EQ(el->tag_name, "bdi");
 }
+
+// Cycle 1234: HTML parser tests V4
+
+TEST(TreeBuilder, ArticleElementV4) {
+    auto doc = parse("<html><body><article><h1>News</h1><p>Content here</p></article></body></html>");
+    auto* el = doc->find_element("article");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "article");
+}
+
+TEST(TreeBuilder, AsideElementV4) {
+    auto doc = parse("<html><body><aside><h2>Sidebar</h2><p>Related info</p></aside></body></html>");
+    auto* el = doc->find_element("aside");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "aside");
+}
+
+TEST(TreeBuilder, NavElementV4) {
+    auto doc = parse("<html><body><nav><a href=\"/home\">Home</a><a href=\"/about\">About</a></nav></body></html>");
+    auto* el = doc->find_element("nav");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "nav");
+}
+
+TEST(TreeBuilder, SectionElementV4) {
+    auto doc = parse("<html><body><section id=\"main\"><h2>Main Section</h2></section></body></html>");
+    auto* el = doc->find_element("section");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "section");
+}
+
+TEST(TreeBuilder, HeaderElementV4) {
+    auto doc = parse("<html><body><header><h1>Site Title</h1></header></body></html>");
+    auto* el = doc->find_element("header");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "header");
+}
+
+TEST(TreeBuilder, FooterElementV4) {
+    auto doc = parse("<html><body><footer><p>Copyright 2024</p></footer></body></html>");
+    auto* el = doc->find_element("footer");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "footer");
+}
+
+TEST(TreeBuilder, MarkElementV4) {
+    auto doc = parse("<html><body><p>This is <mark>highlighted</mark> text</p></body></html>");
+    auto* el = doc->find_element("mark");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "mark");
+    EXPECT_EQ(el->text_content(), "highlighted");
+}
+
+TEST(TreeBuilder, TimeElementV4) {
+    auto doc = parse("<html><body><p>Posted on <time datetime=\"2024-02-27\">Feb 27, 2024</time></p></body></html>");
+    auto* el = doc->find_element("time");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "time");
+}

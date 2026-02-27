@@ -6046,3 +6046,61 @@ TEST(SerializerTest, StringMixedCaseV14) {
     Deserializer d(s.data());
     EXPECT_EQ("MixedCaseString", d.read_string());
 }
+
+// Cycle 1230: IPC serializer tests V15
+
+TEST(SerializerTest, U8EdgeCaseV15) {
+    Serializer s;
+    s.write_u8(127);
+    Deserializer d(s.data());
+    EXPECT_EQ(127, d.read_u8());
+}
+
+TEST(SerializerTest, U16EdgeCaseV15) {
+    Serializer s;
+    s.write_u16(65535);
+    Deserializer d(s.data());
+    EXPECT_EQ(65535, d.read_u16());
+}
+
+TEST(SerializerTest, U32EdgeCaseV15) {
+    Serializer s;
+    s.write_u32(4294967295U);
+    Deserializer d(s.data());
+    EXPECT_EQ(4294967295U, d.read_u32());
+}
+
+TEST(SerializerTest, U64EdgeCaseV15) {
+    Serializer s;
+    s.write_u64(18446744073709551615ULL);
+    Deserializer d(s.data());
+    EXPECT_EQ(18446744073709551615ULL, d.read_u64());
+}
+
+TEST(SerializerTest, I32NegativeMinV15) {
+    Serializer s;
+    s.write_i32(-2147483648);
+    Deserializer d(s.data());
+    EXPECT_EQ(-2147483648, d.read_i32());
+}
+
+TEST(SerializerTest, I64NegativeMinV15) {
+    Serializer s;
+    s.write_i64(-9223372036854775807LL);
+    Deserializer d(s.data());
+    EXPECT_EQ(-9223372036854775807LL, d.read_i64());
+}
+
+TEST(SerializerTest, F64EulerValueV15) {
+    Serializer s;
+    s.write_f64(2.718281828459045);
+    Deserializer d(s.data());
+    EXPECT_NEAR(2.718281828459045, d.read_f64(), 1e-15);
+}
+
+TEST(SerializerTest, StringWithSpecialCharsV15) {
+    Serializer s;
+    s.write_string("Hello@World#2026!");
+    Deserializer d(s.data());
+    EXPECT_EQ("Hello@World#2026!", d.read_string());
+}

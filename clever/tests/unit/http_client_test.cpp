@@ -6936,3 +6936,100 @@ TEST(CookieJarTest, SetFromHeaderAndGetCookieHeaderV17) {
     auto cookie_header = jar.get_cookie_header("api.example.com", "/", false);
     EXPECT_FALSE(cookie_header.empty());
 }
+
+// ============================================================================
+// Cycle 1232: HTTP/Net tests V18
+// ============================================================================
+
+// HeaderMap: append() adds values without overwriting V18
+TEST(HeaderMapTest, AppendAddValuesWithoutOverwritingV18) {
+    HeaderMap map;
+    map.set("X-Custom", "value1");
+    map.append("X-Custom", "value2");
+    map.append("X-Custom", "value3");
+    EXPECT_EQ(map.size(), 3u);
+    auto all = map.get_all("X-Custom");
+    EXPECT_EQ(all.size(), 3u);
+    EXPECT_TRUE(std::find(all.begin(), all.end(), "value1") != all.end());
+    EXPECT_TRUE(std::find(all.begin(), all.end(), "value2") != all.end());
+    EXPECT_TRUE(std::find(all.begin(), all.end(), "value3") != all.end());
+}
+
+// Request: body field stores raw bytes V18
+TEST(RequestTest, BodyFieldStoresRawBytesV18) {
+    Request req;
+    req.method = Method::POST;
+    req.host = "api.example.com";
+    req.path = "/upload";
+    req.body = {0x48, 0x65, 0x6C, 0x6C, 0x6F};  // "Hello"
+    EXPECT_EQ(req.body.size(), 5u);
+    EXPECT_EQ(req.body[0], 0x48);
+    EXPECT_EQ(req.body[4], 0x6F);
+}
+
+// Request: parse_url handles HTTPS URLs correctly V18
+TEST(RequestTest, ParseUrlHandlesHttpsUrlsV18) {
+    Request req;
+    req.url = "https://secure.example.com:8443/path/to/resource";
+    req.parse_url();
+    EXPECT_EQ(req.host, "secure.example.com");
+    EXPECT_EQ(req.port, 8443);
+    EXPECT_EQ(req.path, "/path/to/resource");
+    EXPECT_TRUE(req.use_tls);
+}
+
+// Response: body_as_string() converts vector<uint8_t> to string V18
+TEST(ResponseTest, BodyAsStringConvertsVectorToStringV18) {
+    std::string raw = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nHello World";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    std::string body_str = resp->body_as_string();
+    EXPECT_EQ(body_str, "Hello World");
+}
+
+// Response: parse handles 404 status code V18
+TEST(ResponseTest, ParseHandles404StatusCodeV18) {
+    std::string raw = "HTTP/1.1 404 Not Found\r\nContent-Length: 9\r\n\r\nNot found";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 404u);
+    EXPECT_EQ(resp->status_text, "Not Found");
+}
+
+// CookieJar: secure cookies not sent over insecure connection V18
+TEST(CookieJarTest, SecureCookiesNotSentOverInsecureV18) {
+    CookieJar jar;
+    jar.set_from_header("secure_token=secret123; Secure", "bank.example.com");
+    jar.set_from_header("regular=public", "bank.example.com");
+    auto header_insecure = jar.get_cookie_header("bank.example.com", "/", false);
+    auto header_secure = jar.get_cookie_header("bank.example.com", "/", true);
+    EXPECT_FALSE(header_insecure.empty());
+    EXPECT_TRUE(header_insecure.find("secure_token") == std::string::npos);
+    EXPECT_TRUE(header_insecure.find("regular") != std::string::npos);
+    EXPECT_TRUE(header_secure.find("secure_token") != std::string::npos);
+}
+
+// Method: DELETE_METHOD enum works correctly V18
+TEST(MethodTest, DeleteMethodEnumV18) {
+    Method m = Method::DELETE_METHOD;
+    EXPECT_EQ(m, Method::DELETE_METHOD);
+    EXPECT_NE(m, Method::GET);
+    EXPECT_NE(m, Method::POST);
+    EXPECT_NE(m, Method::PUT);
+}
+
+// HeaderMap: iteration works with multiple headers V18
+TEST(HeaderMapTest, IterationWorksWithMultipleHeadersV18) {
+    HeaderMap map;
+    map.set("Host", "example.com");
+    map.set("User-Agent", "TestAgent/1.0");
+    map.append("Accept", "text/html");
+    map.append("Accept", "application/json");
+    size_t count = 0;
+    for (auto it = map.begin(); it != map.end(); ++it) {
+        count++;
+    }
+    EXPECT_EQ(count, 4u);
+}

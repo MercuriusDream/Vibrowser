@@ -18814,3 +18814,53 @@ TEST(JSEngine, StringReplaceAllCycle1227) {
     auto result = engine.evaluate("'aabbcc'.replaceAll('b', 'x')");
     EXPECT_EQ(result, "aaxxcc");
 }
+
+// Cycle 1236: JS engine tests
+
+TEST(JSEngine, ArrayAtNegativeIndexCycle1236) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var arr = [1, 2, 3, 4, 5]; arr.at(-1).toString()");
+    EXPECT_EQ(result, "5");
+}
+
+TEST(JSEngine, StringPadStartCycle1236) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("'42'.padStart(5, '0')");
+    EXPECT_EQ(result, "00042");
+}
+
+TEST(JSEngine, ObjectFromEntriesCycle1236) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var entries = [['x', 1], ['y', 2]]; var obj = Object.fromEntries(entries); obj.x.toString()");
+    EXPECT_EQ(result, "1");
+}
+
+TEST(JSEngine, ArrayFlatMapCycle1236) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var arr = [1, 2, 3]; var result = arr.flatMap(function(x) { return [x, x * 2]; }); result.length.toString()");
+    EXPECT_EQ(result, "6");
+}
+
+TEST(JSEngine, PromiseAllRejectsCycle1236) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("typeof Promise.allSettled");
+    EXPECT_EQ(result, "function");
+}
+
+TEST(JSEngine, BigIntOperationsCycle1236) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var big = BigInt(999); typeof big");
+    EXPECT_EQ(result, "bigint");
+}
+
+TEST(JSEngine, ArrayIncludesNaNCycle1236) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var arr = [1, NaN, 3]; arr.includes(NaN).toString()");
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, ObjectHasOwnPropertyCycle1236) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var obj = {a: 1, b: 2}; Object.prototype.hasOwnProperty.call(obj, 'a').toString()");
+    EXPECT_EQ(result, "true");
+}

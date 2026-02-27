@@ -7557,3 +7557,77 @@ TEST_F(CSSStylesheetTest, ScrollSnapAlignV15) {
         if (d.property == "scroll-snap-align") found = true;
     EXPECT_TRUE(found);
 }
+
+// Cycle 1233: CSS parser tests V16
+
+TEST_F(CSSStylesheetTest, LineClampV16) {
+    auto sheet = parse_stylesheet(".text { -webkit-line-clamp: 3; }");
+    ASSERT_FALSE(sheet.rules.empty());
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "-webkit-line-clamp") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, AppearanceV16) {
+    auto sheet = parse_stylesheet(".btn { -webkit-appearance: none; }");
+    ASSERT_FALSE(sheet.rules.empty());
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "-webkit-appearance") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, BackgroundClipV16) {
+    auto sheet = parse_stylesheet(".box { background-clip: padding-box; }");
+    ASSERT_FALSE(sheet.rules.empty());
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "background-clip") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, TextStrokeV16) {
+    auto sheet = parse_stylesheet(".headline { -webkit-text-stroke: 1px black; }");
+    ASSERT_FALSE(sheet.rules.empty());
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "-webkit-text-stroke") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, UserDragV16) {
+    auto sheet = parse_stylesheet(".item { -webkit-user-drag: element; }");
+    ASSERT_FALSE(sheet.rules.empty());
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "-webkit-user-drag") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, BoxReflectV16) {
+    auto sheet = parse_stylesheet(".mirror { -webkit-box-reflect: below 5px; }");
+    ASSERT_FALSE(sheet.rules.empty());
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "-webkit-box-reflect") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, TextFillColorV16) {
+    auto sheet = parse_stylesheet(".text { -webkit-text-fill-color: blue; }");
+    ASSERT_FALSE(sheet.rules.empty());
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "-webkit-text-fill-color") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, TapHighlightColorV16) {
+    auto sheet = parse_stylesheet(".link { -webkit-tap-highlight-color: transparent; }");
+    ASSERT_FALSE(sheet.rules.empty());
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "-webkit-tap-highlight-color") found = true;
+    EXPECT_TRUE(found);
+}
