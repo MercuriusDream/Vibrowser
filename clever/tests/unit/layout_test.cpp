@@ -7189,3 +7189,43 @@ TEST(LayoutNodeProps, TextDecorationDefaultsZero) {
     LayoutNode n;
     EXPECT_EQ(n.text_decoration, 0);
 }
+
+TEST(LayoutNodeProps, TextOverflowDefaultsZero) {
+    LayoutNode n;
+    EXPECT_EQ(n.text_overflow, 0);
+}
+
+TEST(LayoutNodeProps, WhiteSpaceDefaultsZero) {
+    LayoutNode n;
+    EXPECT_EQ(n.white_space, 0);
+}
+
+TEST(LayoutNodeProps, TextIndentDefaultsZero) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.text_indent, 0.0f);
+}
+
+TEST(LayoutNodeProps, MaskModeDefaultsZero) {
+    LayoutNode n;
+    EXPECT_EQ(n.mask_mode, 0);
+}
+
+TEST(LayoutNodeProps, MaskRepeatDefaultsZero) {
+    LayoutNode n;
+    EXPECT_EQ(n.mask_repeat, 0);
+}
+
+TEST(LayoutNodeProps, MaskSizeDefaultsZero) {
+    LayoutNode n;
+    EXPECT_EQ(n.mask_size, 0);
+}
+
+TEST(LayoutNodeProps, ImageOrientationDefaultsZero) {
+    LayoutNode n;
+    EXPECT_EQ(n.image_orientation, 0);
+}
+
+TEST(LayoutNodeProps, MaskPositionDefaultsPercent) {
+    LayoutNode n;
+    EXPECT_EQ(n.mask_position, "0% 0%");
+}
