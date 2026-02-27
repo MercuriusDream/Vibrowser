@@ -7665,3 +7665,90 @@ TEST(Serializer, MixedTypesU16BoolStringBytesV35) {
     EXPECT_EQ(binary[3], 0xDDu);
     EXPECT_FALSE(d.has_remaining());
 }
+
+TEST(Serializer, RoundtripU32MaxValueV36) {
+    Serializer s;
+    s.write_u32(UINT32_MAX);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u32(), UINT32_MAX);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(Serializer, RoundtripI64MinValueV36) {
+    Serializer s;
+    s.write_i64(INT64_MIN);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i64(), INT64_MIN);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(Serializer, RoundtripF64NaNV36) {
+    Serializer s;
+    s.write_f64(std::nan(""));
+
+    Deserializer d(s.data());
+    double result = d.read_f64();
+    EXPECT_TRUE(std::isnan(result));
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(Serializer, RoundtripStringWithNullByteV36) {
+    Serializer s;
+    std::string str_with_null("hello\0world", 11);
+    s.write_string(str_with_null);
+
+    Deserializer d(s.data());
+    std::string result = d.read_string();
+    EXPECT_EQ(result.size(), 11u);
+    EXPECT_EQ(result, str_with_null);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(Serializer, RoundtripBytesEmptyV36) {
+    Serializer s;
+    s.write_bytes(nullptr, 0u);
+
+    Deserializer d(s.data());
+    auto result = d.read_bytes();
+    EXPECT_EQ(result.size(), 0u);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(Serializer, RoundtripMultipleBoolsV36) {
+    Serializer s;
+    s.write_bool(true);
+    s.write_bool(false);
+    s.write_bool(true);
+    s.write_bool(false);
+
+    Deserializer d(s.data());
+    EXPECT_TRUE(d.read_bool());
+    EXPECT_FALSE(d.read_bool());
+    EXPECT_TRUE(d.read_bool());
+    EXPECT_FALSE(d.read_bool());
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(Serializer, RoundtripU8MaxV36) {
+    Serializer s;
+    s.write_u8(255u);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u8(), 255u);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(Serializer, SequentialStringsV36) {
+    Serializer s;
+    s.write_string("first_string");
+    s.write_string("second_string");
+    s.write_string("third_string");
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "first_string");
+    EXPECT_EQ(d.read_string(), "second_string");
+    EXPECT_EQ(d.read_string(), "third_string");
+    EXPECT_FALSE(d.has_remaining());
+}

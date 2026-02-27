@@ -9625,3 +9625,43 @@ TEST(LayoutNodeProps, PaddingLeftDefaultV36) {
     LayoutNode n;
     EXPECT_FLOAT_EQ(n.geometry.padding.left, 0.0f);
 }
+
+TEST(LayoutNodeProps, BorderTopWidthDefaultV37) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.geometry.border.top, 0.0f);
+}
+
+TEST(LayoutNodeProps, BorderRightWidthDefaultV37) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.geometry.border.right, 0.0f);
+}
+
+TEST(LayoutNodeProps, BorderBottomWidthDefaultV37) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.geometry.border.bottom, 0.0f);
+}
+
+TEST(LayoutNodeProps, BorderLeftWidthDefaultV37) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.geometry.border.left, 0.0f);
+}
+
+TEST(LayoutNodeProps, ScrollMarginTopDefaultV37) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.scroll_margin_top, 0.0f);
+}
+
+TEST(LayoutNodeProps, ScrollMarginRightDefaultV37) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.scroll_margin_right, 0.0f);
+}
+
+TEST(LayoutNodeProps, ScrollPaddingTopDefaultV37) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.scroll_padding_top, 0.0f);
+}
+
+TEST(LayoutNodeProps, ScrollPaddingRightDefaultV37) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.scroll_padding_right, 0.0f);
+}

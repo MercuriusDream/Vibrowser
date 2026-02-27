@@ -9117,3 +9117,77 @@ TEST_F(CSSStylesheetTest, TextDecorationThicknessV36) {
         if (d.property == "text-decoration-thickness") { found = true; break; }
     EXPECT_TRUE(found);
 }
+
+// Cycle 1399: 8 layout and table property tests V37
+
+TEST_F(CSSStylesheetTest, VisibilityV37) {
+    auto ss = parse_stylesheet("div { visibility: hidden; }");
+    ASSERT_EQ(ss.rules.size(), 1);
+    bool found = false;
+    for (auto& d : ss.rules[0].declarations)
+        if (d.property == "visibility") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, BoxSizingV37) {
+    auto ss = parse_stylesheet("div { box-sizing: border-box; }");
+    ASSERT_EQ(ss.rules.size(), 1);
+    bool found = false;
+    for (auto& d : ss.rules[0].declarations)
+        if (d.property == "box-sizing") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, FloatPropertyV37) {
+    auto ss = parse_stylesheet("div { float: left; }");
+    ASSERT_EQ(ss.rules.size(), 1);
+    bool found = false;
+    for (auto& d : ss.rules[0].declarations)
+        if (d.property == "float") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, ClearV37) {
+    auto ss = parse_stylesheet("div { clear: both; }");
+    ASSERT_EQ(ss.rules.size(), 1);
+    bool found = false;
+    for (auto& d : ss.rules[0].declarations)
+        if (d.property == "clear") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, TableLayoutV37) {
+    auto ss = parse_stylesheet("table { table-layout: fixed; }");
+    ASSERT_EQ(ss.rules.size(), 1);
+    bool found = false;
+    for (auto& d : ss.rules[0].declarations)
+        if (d.property == "table-layout") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, BorderCollapseV37) {
+    auto ss = parse_stylesheet("table { border-collapse: collapse; }");
+    ASSERT_EQ(ss.rules.size(), 1);
+    bool found = false;
+    for (auto& d : ss.rules[0].declarations)
+        if (d.property == "border-collapse") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, EmptyCellsV37) {
+    auto ss = parse_stylesheet("td { empty-cells: hide; }");
+    ASSERT_EQ(ss.rules.size(), 1);
+    bool found = false;
+    for (auto& d : ss.rules[0].declarations)
+        if (d.property == "empty-cells") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, CaptionSideV37) {
+    auto ss = parse_stylesheet("table { caption-side: bottom; }");
+    ASSERT_EQ(ss.rules.size(), 1);
+    bool found = false;
+    for (auto& d : ss.rules[0].declarations)
+        if (d.property == "caption-side") { found = true; break; }
+    EXPECT_TRUE(found);
+}

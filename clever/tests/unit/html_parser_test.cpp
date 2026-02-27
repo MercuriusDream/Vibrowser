@@ -8349,3 +8349,59 @@ TEST(TreeBuilder, LabelElementV24) {
     ASSERT_NE(el, nullptr);
     EXPECT_EQ(el->tag_name, "label");
 }
+
+TEST(TreeBuilder, IframeElementV25) {
+    auto doc = clever::html::parse("<html><body><iframe src=\"page.html\"></iframe></body></html>");
+    auto* el = doc->find_element("iframe");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "iframe");
+}
+
+TEST(TreeBuilder, EmbedElementV25) {
+    auto doc = clever::html::parse("<html><body><embed src=\"plugin.swf\" type=\"application/x-shockwave-flash\"></body></html>");
+    auto* el = doc->find_element("embed");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "embed");
+}
+
+TEST(TreeBuilder, ObjectElementV25) {
+    auto doc = clever::html::parse("<html><body><object data=\"movie.mp4\" type=\"video/mp4\"></object></body></html>");
+    auto* el = doc->find_element("object");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "object");
+}
+
+TEST(TreeBuilder, AudioElementV25) {
+    auto doc = clever::html::parse("<html><body><audio controls><source src=\"sound.mp3\" type=\"audio/mpeg\"></audio></body></html>");
+    auto* el = doc->find_element("audio");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "audio");
+}
+
+TEST(TreeBuilder, VideoElementV25) {
+    auto doc = clever::html::parse("<html><body><video width=\"640\" height=\"480\"><source src=\"movie.mp4\" type=\"video/mp4\"></video></body></html>");
+    auto* el = doc->find_element("video");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "video");
+}
+
+TEST(TreeBuilder, SourceElementV25) {
+    auto doc = clever::html::parse("<html><body><audio><source src=\"sound.mp3\" type=\"audio/mpeg\"></audio></body></html>");
+    auto* el = doc->find_element("source");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "source");
+}
+
+TEST(TreeBuilder, PictureElementV25) {
+    auto doc = clever::html::parse("<html><body><picture><source srcset=\"large.jpg\" media=\"(min-width: 768px)\"><img src=\"small.jpg\" alt=\"Image\"></picture></body></html>");
+    auto* el = doc->find_element("picture");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "picture");
+}
+
+TEST(TreeBuilder, CanvasElementV25) {
+    auto doc = clever::html::parse("<html><body><canvas id=\"myCanvas\" width=\"200\" height=\"100\"></canvas></body></html>");
+    auto* el = doc->find_element("canvas");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "canvas");
+}

@@ -7908,3 +7908,52 @@ TEST(DomElement, ClassListRemoveAndToggle) {
     el->class_list().remove("active");
     EXPECT_FALSE(el->class_list().contains("active"));
 }
+
+TEST(DomElement, SetAttributeSpellcheck) {
+    Document doc;
+    auto el = doc.create_element("div");
+    el->set_attribute("spellcheck", "true");
+    EXPECT_TRUE(el->has_attribute("spellcheck"));
+    EXPECT_EQ(el->get_attribute("spellcheck"), "true");
+}
+
+TEST(DomElement, SetAttributeContenteditablePlaintext) {
+    Document doc;
+    auto el = doc.create_element("div");
+    el->set_attribute("contenteditable", "plaintext-only");
+    EXPECT_TRUE(el->has_attribute("contenteditable"));
+    EXPECT_EQ(el->get_attribute("contenteditable"), "plaintext-only");
+}
+
+TEST(DomElement, ChildCountAfterRemove) {
+    Document doc;
+    auto parent = doc.create_element("div");
+    auto child1 = doc.create_element("span");
+    auto child2 = doc.create_element("span");
+    auto child3 = doc.create_element("span");
+    auto* raw1 = child1.get();
+
+    parent->append_child(std::move(child1));
+    parent->append_child(std::move(child2));
+    parent->append_child(std::move(child3));
+
+    EXPECT_EQ(parent->child_count(), 3u);
+    parent->remove_child(*raw1);
+    EXPECT_EQ(parent->child_count(), 2u);
+}
+
+TEST(DomElement, HasAttributeFormaction) {
+    Document doc;
+    auto el = doc.create_element("button");
+    el->set_attribute("formaction", "/submit");
+    EXPECT_TRUE(el->has_attribute("formaction"));
+}
+
+TEST(DomElement, ClassListToggleTwice) {
+    Document doc;
+    auto el = doc.create_element("div");
+    el->class_list().toggle("x");
+    EXPECT_TRUE(el->class_list().contains("x"));
+    el->class_list().toggle("x");
+    EXPECT_FALSE(el->class_list().contains("x"));
+}

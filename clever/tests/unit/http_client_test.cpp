@@ -9408,3 +9408,114 @@ TEST(HttpClient, ResponseParse100ContinueV38) {
     EXPECT_EQ(resp->status, 100u);
     EXPECT_TRUE(resp->body.empty());
 }
+
+// ===========================================================================
+// V39 Test Suite: 8 new tests for HeaderMap, Request, Response, and CookieJar
+// ===========================================================================
+
+TEST(HttpClient, HeaderMapSetOverwritesExistingV39) {
+    using namespace clever::net;
+    HeaderMap map;
+    map.set("content-type", "text/html");
+    EXPECT_EQ(map.get("content-type").value(), "text/html");
+
+    // Set the same key again with a different value
+    map.set("content-type", "application/json");
+    EXPECT_EQ(map.get("content-type").value(), "application/json");
+    EXPECT_EQ(map.size(), 1u);
+}
+
+TEST(HttpClient, RequestSerializeGetWithQueryV39) {
+    using namespace clever::net;
+    Request req;
+    req.method = Method::GET;
+    req.url = "http://example.com/search?q=test&limit=10";
+    req.headers.set("User-Agent", "TestClient/1.0");
+
+    auto serialized = req.serialize();
+    EXPECT_GT(serialized.size(), 0u);
+
+    std::string serialized_str(serialized.begin(), serialized.end());
+    EXPECT_NE(serialized_str.find("GET"), std::string::npos);
+}
+
+TEST(HttpClient, ResponseParse301MovedPermanentlyV39) {
+    using namespace clever::net;
+    std::string raw_str = "HTTP/1.1 301 Moved\r\n"
+                          "Location: /new\r\n"
+                          "\r\n";
+
+    std::vector<uint8_t> raw(raw_str.begin(), raw_str.end());
+    auto resp = Response::parse(raw);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 301u);
+    EXPECT_TRUE(resp->headers.has("Location"));
+    EXPECT_EQ(resp->headers.get("Location").value(), "/new");
+}
+
+TEST(HttpClient, HeaderMapHasReturnsFalseAfterRemoveV39) {
+    using namespace clever::net;
+    HeaderMap map;
+    map.set("Authorization", "Bearer abc123");
+    EXPECT_TRUE(map.has("Authorization"));
+
+    map.remove("Authorization");
+    EXPECT_FALSE(map.has("Authorization"));
+}
+
+TEST(HttpClient, RequestPatchMethodV39) {
+    using namespace clever::net;
+    Request req;
+    req.method = Method::PATCH;
+    req.url = "http://api.example.com/resource/42";
+    req.headers.set("Content-Type", "application/json");
+
+    std::string patch_body = "{\"status\":\"updated\"}";
+    req.body.assign(patch_body.begin(), patch_body.end());
+
+    auto serialized = req.serialize();
+    EXPECT_GT(serialized.size(), 0u);
+
+    std::string serialized_str(serialized.begin(), serialized.end());
+    EXPECT_NE(serialized_str.find("PATCH"), std::string::npos);
+}
+
+TEST(HttpClient, CookieJarSetAndGetV39) {
+    using namespace clever::net;
+    CookieJar jar;
+    jar.clear();
+
+    jar.set_from_header("session_id=abc123", "example.com");
+    std::string cookie_header = jar.get_cookie_header("example.com", "/", false);
+    EXPECT_NE(cookie_header.find("session_id"), std::string::npos);
+}
+
+TEST(HttpClient, HeaderMapSizeAfterMultipleOpsV39) {
+    using namespace clever::net;
+    HeaderMap map;
+    map.set("Header-A", "value-a");
+    map.set("Header-B", "value-b");
+    map.set("Header-C", "value-c");
+
+    EXPECT_EQ(map.size(), 3u);
+
+    map.remove("Header-B");
+    EXPECT_EQ(map.size(), 2u);
+}
+
+TEST(HttpClient, ResponseParse200WithBodyV39) {
+    using namespace clever::net;
+    std::string raw_str = "HTTP/1.1 200 OK\r\n"
+                          "Content-Length: 5\r\n"
+                          "\r\n"
+                          "hello";
+
+    std::vector<uint8_t> raw(raw_str.begin(), raw_str.end());
+    auto resp = Response::parse(raw);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 200u);
+    EXPECT_EQ(resp->body.size(), 5u);
+    EXPECT_EQ(std::string(resp->body.begin(), resp->body.end()), "hello");
+}

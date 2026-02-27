@@ -4112,3 +4112,47 @@ TEST(CORSPolicy, IsCrossOriginDifferentPortsCrossOriginV45) {
     // Different ports are cross-origin (even with same scheme and host)
     EXPECT_TRUE(is_cross_origin("https://api.example.com:8443", "https://api.example.com:9443/endpoint"));
 }
+
+TEST(CORSPolicy, HasEnforceableDocumentOriginHttpPort8080EnforceableV46) {
+    // Port 8080 is NOT a default port, so it is enforceable
+    EXPECT_TRUE(has_enforceable_document_origin("http://origin.example.com:8080"));
+}
+
+TEST(CORSPolicy, IsCorsEligibleRequestUrlBlobSchemeNotEligibleV46) {
+    // blob: scheme URLs are NOT CORS-eligible
+    EXPECT_FALSE(is_cors_eligible_request_url("blob:https://example.com/550e8400-e29b-41d4-a716-446655440000"));
+}
+
+TEST(CORSPolicy, IsCrossOriginDifferentSchemeCrossV46) {
+    // HTTP vs HTTPS with same host is cross-origin
+    EXPECT_TRUE(is_cross_origin("http://api.example.com", "https://api.example.com/endpoint"));
+}
+
+TEST(CORSPolicy, ShouldAttachOriginHeaderHttpsOriginReturnsTrueV46) {
+    // Valid HTTPS origin should return TRUE for should_attach
+    EXPECT_TRUE(should_attach_origin_header("https://secure.example.com", "https://api.example.com/data"));
+}
+
+TEST(CORSPolicy, NormalizeOutgoingOriginHeaderSetsHeaderV46) {
+    // normalize_outgoing_origin_header should set the Origin header
+    clever::net::HeaderMap headers;
+    normalize_outgoing_origin_header(headers, "https://origin.example.com", "https://api.example.com/endpoint");
+    EXPECT_EQ(headers.get("origin"), "https://origin.example.com");
+}
+
+TEST(CORSPolicy, CorsAllowsResponseWildcardNoCredentialsTrueV46) {
+    // Wildcard ACAO without credentials requirement should be allowed
+    clever::net::HeaderMap resp_headers;
+    resp_headers.set("Access-Control-Allow-Origin", "*");
+    EXPECT_TRUE(cors_allows_response("https://trusted.example.com", "https://api.example.com/data", resp_headers, false));
+}
+
+TEST(CORSPolicy, HasEnforceableDocumentOriginFileSchemeNotEnforceableV46) {
+    // file:// scheme is NOT enforceable for CORS
+    EXPECT_FALSE(has_enforceable_document_origin("file:///home/user/document.html"));
+}
+
+TEST(CORSPolicy, IsCrossOriginSameOriginNotCrossV46) {
+    // Identical origins (scheme, host, port) are NOT cross-origin
+    EXPECT_FALSE(is_cross_origin("https://api.example.com:443", "https://api.example.com:443/endpoint"));
+}

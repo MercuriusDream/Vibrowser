@@ -20066,3 +20066,59 @@ TEST(JSEngine, MathLog2Cycle1416) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "3");
 }
+
+TEST(JSEngine, ArrayIndexOfCycle1425) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("[10,20,30].indexOf(20)");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1");
+}
+
+TEST(JSEngine, ArrayLastIndexOfCycle1425) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("[1,2,3,2,1].lastIndexOf(2)");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "3");
+}
+
+TEST(JSEngine, StringTrimCycle1425) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("\"  hello  \".trim()");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "hello");
+}
+
+TEST(JSEngine, StringTrimStartCycle1425) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("\"  hello  \".trimStart()");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "hello  ");
+}
+
+TEST(JSEngine, StringTrimEndCycle1425) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("\"  hello  \".trimEnd()");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "  hello");
+}
+
+TEST(JSEngine, MathMinCycle1425) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("Math.min(3,1,4,1,5)");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1");
+}
+
+TEST(JSEngine, MathMaxCycle1425) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("Math.max(3,1,4,1,5)");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "5");
+}
+
+TEST(JSEngine, ArrayJoinCustomSepCycle1425) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("[1,2,3].join(\" - \")");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1 - 2 - 3");
+}
