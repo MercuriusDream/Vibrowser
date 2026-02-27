@@ -6,12 +6,148 @@
 ## Current Status
 
 **Phase**: Active Development — Testing Blitz across ALL suites
-**Last Active**: 2026-02-28T12:30:00+0900
-**Current Focus**: Cycle 601 — continuing multi-suite test blitz
-**Momentum**: ~5100 tests, ZERO failures, all 13 suites green! 600 cycles shipped!
-**Cycle**: 600
+**Last Active**: 2026-02-27T00:00:00+0900
+**Current Focus**: Cycle 700 — milestone cycle, layout tests
+**Momentum**: ~7000+ tests, ZERO failures, all 13 suites green! 699 cycles shipped!
+**Cycle**: 699
 
 ## Session Log
+
+### Cycles 689-699 — 2026-02-27
+- **Cycles**: 11
+- **Theme**: Test blitz — DOM, JS, HTML, CSS, Layout, Serializer, URL, Net, CORS
+- **Key Wins**:
+  - Cycle 689: 8 DOM tests (dom 255→263) — Attribute struct fields, ClassList length decrease, sibling traversal, insert_before count, remove returns ownership, DirtyFlags::All
+  - Cycle 690: 8 JS bitwise tests (js 849→857) — BitwiseAnd, BitwiseOr, BitwiseXor, BitwiseNot, LeftShift, RightShift, UnsignedRightShift, BitwiseAndAssignment
+  - Cycle 691: 8 HTML tests (html 248→256) — InputTypeNumber, InputTypeRange, InputTypeDate, InputTypeTel, OlWithStart, BlockquoteWithCite, InputTypeFile, OlReversed
+  - Cycle 692: 8 CSS tests (css_p 276→284) — NthChildOdd, NthChildEven, LastOfType, NthLastChild, CalcDecl, CustomProperty, LetterSpacing, LineHeightNumericValue
+  - Cycle 693: 8 Layout tests (layout 348→356) — MixBlendMode, LetterSpacing, WordSpacing, ObjectFit, ObjectPositionX/Y, FontWeight, FontItalic defaults
+  - Cycle 694: 8 Serializer tests (ipc 278→286) — TwoF64InSequence, F64WithU32, F64Pi, F64Epsilon, F64LargeExponent, StringThenF64, F64ThenBool, ThreeF64
+  - Cycle 695: 8 URL tests (url 252→260) — PathHtml, QueryMultiplePairs, Port9000, LoopbackIPv4, FragmentHyphen, PasswordExtracted, SchemeHttp, SubdomainHasDot
+  - Cycle 696: 8 Net tests (net 248→256) — AuthorizationHeader, AcceptLanguage, IfNoneMatch, ContentTypeJson, LastModified, RangeHeader, XContentTypeOptions, XFrameOptions
+  - Cycle 697: 8 CORS tests (cors 113→121) — EligibleWithFragment, Port3000Eligible, ShouldAttachPortedCrossOrigin, HttpsIPEnforceable, NotCrossOriginPath, NormalizeHeaderSetsValue, BlocksMismatchedPort, SameOriginWithPortNoAttach
+  - Cycle 698: 8 JS Math/trig tests (js 857→865) — ExponentOperator, MathPI, MathE, MathSinZero, MathCosZero, MathExpZero, MathAtan2, MathCbrt
+  - Cycle 699: 8 DOM tests (dom 263→271) — MarkDirtyStyleNotPaint, AttributeVectorSecond, ChildCountZeroAfterAll, ParentNullAfterRemove, RegisterIdAndRetrieve, UnregisterIdClears, InsertBeforeFirst, ThreeChildrenViaSiblings
+- **Running total**: ~7030 (284 css_p + 698 css_s + 271 dom + 256 html + 286 ipc + 121 cors + 865 js + 356 layout + 5 native + 256 net + 1863 paint + 117 platform + 260 url)
+
+### Cycles 666-683 — 2026-02-28
+- **Cycles**: 18
+- **Theme**: Test blitz — URL, Layout, DOM, JS, Serializer, HTML, CSS, Net, CORS
+- **Key Wins**:
+  - Cycle 666: 8 URL tests (url 236→244) — username, http 80 stripped, port 8080, three-segment path, serialize fragment, diff port, http vs https, multi params
+  - Cycle 667: 8 Layout tests (layout 324→332) — geometry x/y, padding right/bottom, margin left/top, border right/bottom
+  - Cycle 668: 8 DOM tests (dom 231→239) — TwoSiblingsShareParent, GetAttributeSrc, ChildCountZero, ContainsInvisibleFalse, SizeIsZero, ThreeClasses, DataReturnsInitial, CreateTextNodeDataCorrect
+  - Cycle 669: 8 JS tests (js 809→817) — ObjectEntriesLength, ObjectValuesSum, ArrayFlatOneLevelDeep, ArrayFlatMapDoubles, NumberToFixedTwoDecimalsPi (fix duplicate), StringTrim/TrimStart/TrimEnd
+  - Cycle 670: 8 Serializer tests (ipc 254→262) — FourBool, U8AllFour, I32PosNegZero, StringLengthMatches, U32OneMillion, I64MaxPositive, MultiTypesInterleaved, RemainingDecreases
+  - Cycle 671: 8 HTML tests (html 224→232) — HeaderContainingSiteTitle, MainContainingP, SectionContainingP, HrBetweenP, BrInsideP, ImgElement, InputElement, TableWithRows
+  - Cycle 672: 8 CSS tests (css_p 259→268) — LeftParen, RightParen, Opacity, OverflowScrollBox (fix), TextTransform, Visibility, CursorAuto (fix), TransitionOnInput (fix), FlexShorthand
+  - Cycle 673: 8 Net tests (net 240→248) — Parse422, LargeBody, FourHeaders, OverwriteChanges, RemoveThenNullopt, PATCH, OPTIONS, HEAD methods
+  - Cycle 674: 8 JS tests (js 817→825) — ArrayFill, ArrayCopyWithin, StringSlice, StringSubstring, RegexTest true/false, ArraySortAsc/Desc
+  - Cycle 675: 8 Layout tests (layout 332→340) — TwoChildrenAccessible, TagNameEmpty, IsTextFalse, TextContentExplicit, AlignItemsDefaultsToFour (fix: was 4 not 0), JustifyContent/AlignContent/PositionType
+  - Cycle 676: 8 DOM tests (dom 239→247) — ThreeAttributesAll, NamespaceURIEmpty, NodeTypeSpan, TagNameMatchesCtor, RemoveNonExistent, AddSameTwice, CommentNodeType (fix dup), DocumentNodeType (fix dup)
+  - Cycle 677: 8 JS tests (js 825→833) — DateNowTypeofIsNumber (fix dup), MathAbs, MathCeil, MathFloor, MathRound, MathSqrt, MathPow, MathLog
+  - Cycle 678: 8 Serializer tests (ipc 262→270) — SingleByteWrite, I32EightBytes, StringUnicode, BoolSingleByte, U32AllOnes, TwoStringsSecond, U8ThenStringLength, ThreeU64Values
+  - Cycle 679: 8 HTML tests (html 232→240) — AnchorHrefText, ParagraphMultipleWords, H1/H2 headings, NestedDivs, SpanDataAttr, ButtonTypeAttr, ParagraphAfterHeading
+  - Cycle 680: 8 CSS tests (css_p 268→276) — GridTemplateColumns, PositionRelative, TopLeftDeclarations, IdSelectorMain (fix), PseudoClassHoverOnAnchor (fix), BoxShadow, TextOverflow, WhiteSpace
+  - Cycle 681: 8 URL tests (url 244→252) — FtpScheme, FtpVsHttpsDiff, PathIsSlash, HostSubdomain, SerializeNonEmpty, PathEndpoint, Port4430SameOrigin (fix), PasswordEmpty
+  - Cycle 682: 8 JS tests (js 833→841) — ForOfArraySum, ForInObjectKeys, WhileLoopCount, DoWhileOnce, SwitchCaseMatch/Default, LabeledBreak, ContinueSkips
+  - Cycle 683: 8 Layout tests (layout 340→348) — FiveChildrenInOrder, ChildTagNamePreserved, InlineDisplayType, TextNodeFontSize, PositionTypeDefault, Gap/RowGap/ColumnGapDefaultsToZero
+- **Running total**: ~6645 (276 css_p + 698 css_s + 247 dom + 240 html + 270 ipc + 105 cors + 841 js + 348 layout + 5 native + 248 net + 1863 paint + 117 platform + 252 url)
+
+### Cycles 649-665 — 2026-02-28
+- **Cycles**: 17
+- **Theme**: Test blitz — JS, CSS, Layout, DOM, HTML, Serializer, URL, Net, CORS
+- **Key Wins**:
+  - Cycle 649: 8 JS tests (js 777→785) — LogicalAndAssignment, LogicalOrAssignment, NullishAssignment, StringReplaceAllSpaces, ArrayAtNegativeIndex, ObjectCreateBasic, MathMaxSpread, MathMinSpread
+  - Cycle 650: 8 Layout tests (layout 308→316) — NoChildren, OneChild, PaddingLeft20, MarginRight10, BorderTop2, FlexDirection=row, ZIndex negative, OpacityDefaultsToOneV2
+  - Cycle 651: 8 DOM tests (dom 215→223) — NextSiblingNull, PrevSiblingNull, TagNameAccessible, SetDataChangesV2, ChildCountThree, FirstChildIsFirst, LastChildIsLast, TypeAccessibleV2
+  - Cycle 652: 8 HTML tests (html 208→216) — SampElement, VarElement, Cite, Q, Italic, Bold, Underline, Strikethrough
+  - Cycle 653: 8 Serializer tests (ipc 238→246) — ThreeStrings, U32Max, TakeDataRemainingZero, TrueFalseTrueBool, U8ThenI64, RemainingAfterPartial, U16ZeroU32Max, StringThenU8
+  - Cycle 654: 8 CSS tests (css_p 243→251) — Identifier, RgbFunction, StandaloneColon, DescendantCombinator, FontFamily, BackgroundColor, ThreeDeclarations, PropertyNamePreserved
+  - Cycle 655: 8 JS tests (js 785→793) — TypeofNullIsObjectQuirk, TypeofUndefined, TypeofNumber, InstanceofArray, ObjectNotInstanceofArray (fix: var obj = {}), CommaOperator, Void, Delete
+  - Cycle 656: 8 URL tests (url 228→236) — OriginIncludes, HttpScheme, PathQueryFragment, Port8443, AppleVsOrangeNotSameOrigin, QueryEmpty?, FragmentEmpty#, SerializeQuery
+  - Cycle 657: 8 Net tests (net 232→240) — Parse400+body, Parse401+WWW-Auth, Parse403+text, Parse503+Retry-After, CaseInsensitiveLower, HasReturnsTrueAfterSet, PutMethod, DeleteMethodEnum
+  - Cycle 658: 8 JS tests (js 793→801) — InOperatorExists/Missing, TernaryTrue/False, StringSplitLength/FirstElement, ArrayFindReturnsMatch, ArrayFindIndexReturnsTwo (fix: clever::js:: namespace)
+  - Cycle 659: 8 CSS tests (css_p 251→259) — SemicolonDelim, OpeningBrace, ClosingBrace, ClassSelectorOnDiv, TwoSelectorsComma, BorderRadiusParagraph, FontSize, ZIndex
+  - Cycle 660: 8 Layout tests (layout 316→324) — FlexBasis-1/200, FlexGrow0/1, FlexShrink1, Overflow, GeomWidth, GeomHeight
+  - Cycle 661: 8 DOM tests (dom 223→231) — ParentSet, HasAttributeFalseAfterRemove, SetAttributeOverwrites, ToggleAddsSelected, ToggleRemovesSelected, NodeTypeIsTextWorld, DataReturnsText, CreateElementNonNull
+  - Cycle 662: 8 Serializer tests (ipc 246→254) — U16Min/50K, U64Max, I64Min, EmptyStringExplicit, 500CharString, U32ThenBool, TwoI32Ordered
+  - Cycle 663: 8 HTML tests (html 216→224) — SubScript, SuperScript, SpanWithId, DivWithClass, ArticleWithP, AsideWithText, NavWithAnchor, FooterCopyright
+  - Cycle 664: 8 CORS tests (cors 97→105) — HttpLocalhostEnforceable, HttpsPortEnforceable, HttpVsHttpsCross, HttpsToHttpsNot, FileNotEligible, BlobNotEligible, AttachOrigin, NoOriginSame
+  - Cycle 665: 8 JS tests (js 801→809) — StringRepeat, StartsWith, EndsWith, Includes, ArrayIncludes, ArrayJoin, ObjectAssignMergeSumIsThree (fix: deduplicate), ArrayReduceSum
+- **Running total**: ~6320 (259 css_p + 698 css_s + 231 dom + 224 html + 254 ipc + 105 cors + 809 js + 324 layout + 5 native + 240 net + 1863 paint + 117 platform + 236 url)
+
+### Cycles 637-648 — 2026-02-28
+- **Cycles**: 12
+- **Theme**: Test blitz — URL, Net, CORS, JS, Layout, DOM, HTML, Serializer, CSS
+- **Key Wins**:
+  - Cycle 637: 8 URL tests (url 212→220) — password, https scheme, html path, host extraction, diff-scheme not same-origin, same host+port, query, fragment
+  - Cycle 638: 8 Net tests (net 216→224) — 200 OK, 404 Not Found, Content-Type, body_as_string, set/remove multi, overwrite case-insensitive, default GET, empty body
+  - Cycle 639: 8 CORS tests (cors 89→97) — https eligible v2, ws not eligible, ftp not eligible, path not enforceable, empty/null not enforceable, cross-origin sets Origin, missing ACAO blocks
+  - Cycle 640: 8 JS tests (js 761→769) — optional chaining nested, optional missing undefined, nullish null default, nullish preserves 0, Symbol, WeakMap, Generator.next values, for-of Map entries
+  - Cycle 641: 8 Layout tests (layout 300→308) — SpecifiedWidth/Height, AlignSelf int 2, Gap/RowGap/ColumnGap values, FlexWrap int 1, mode Flex
+  - Cycle 642: 8 DOM tests (dom 207→215) — NodeType v3 x3, AppendChildReturnsNonNull, first/last child null when empty, classList empty initially, get_attribute nullopt
+  - Cycle 643: 8 HTML tests (html 200→208) — code/pre/blockquote/abbr/small/mark/time/kbd elements
+  - Cycle 644: 8 Serializer tests (ipc 230→238) — 5 u8 values, i32 zero, string punctuation, u8+string+bool seq, i64 zero, remaining exact, u16 zero+max, data non-empty
+  - Cycle 645: 8 JS tests (js 769→777) — async typeof, padStart zeros, padEnd dots, Array.every, Array.some, Object.keys length, Number.isInteger, Array.of
+  - Cycle 646: 8 CSS tests (css_p 235→243) — hash token, @keyword token, compound selector, two classes, height/color/two-rules/display decl
+  - Cycle 647: 8 URL tests (url 220→228) — invalid URL nullopt, multi-segment path, serialize path, port 443 flexible, scheme lowercase v2, same-origin no port, hello path slash, root path
+  - Cycle 648: 8 Net tests (net 224→232) — 201/301, Location header, Content-Length, HeaderMap get nullopt, empty map, POST method, url empty
+- **Running total**: ~6000 (243 css_p + 698 css_s + 215 dom + 208 html + 238 ipc + 97 cors + 777 js + 308 layout + 5 native + 232 net + 1863 paint + 117 platform + 228 url)
+
+### Cycles 621-636 — 2026-02-28
+- **Cycles**: 16
+- **Theme**: Test blitz — Net, Serializer, JS, URL, CORS, ThreadPool, CSS, Layout, DOM, HTML
+- **Key Wins**:
+  - Cycle 621: 8 Net tests (net 208→216) — 302/307/308, multi-header, remove key, url/body set, 204 body empty
+  - Cycle 622: 8 Serializer tests (ipc 214→222) — i32 max/-1, interleaved, bool true, u64 zero, u32 large, 10 strings, take data
+  - Cycle 623: 8 JS tests (js 737→745) — matchAll, Promise.race typeof, Error name+msg, Object.hasOwn, JSON.stringify nested, toReversed, toSorted, globalThis
+  - Cycle 624: 8 CSS tests (css_p 219→227) — vmax/svh dims, integer/float token, class/type name, overflow/position
+  - Cycle 625: 8 Layout tests (layout 284→292) — opacity 1/0/0.5, text font_size/content, three children, flex_grow fractional, z_index default
+  - Cycle 626: 8 DOM tests (dom 191→199) — three attrs, attrs count, empty string attr, classList add/remove two, section element node type, Text/Comment parent null
+  - Cycle 627: 8 HTML tests (html 184→192) — script/style/link/meta/title/base/noscript/template
+  - Cycle 628: 8 JS tests (js 745→753) — JSON.parse, JSON.stringify array, Date.now, parseInt hex, isNaN, isFinite, encodeURI, decodeURI
+  - Cycle 629: 8 CORS tests (cors 81→89) — origin+port allow, empty ACAO block, data:/javascript: not eligible, same-origin paths, subdomain cross-origin, IP enforceable, same-origin no header
+  - Cycle 630: 8 ThreadPool tests (platform 109→117) — pair/float return, non-empty string, 50-tasks, pool size 6, Fibonacci, vector accumulate, isRunning
+  - Cycle 631: 8 Serializer tests (ipc 222→230) — bool false, u8 max+min, i32 -1000, u64 9B, string digits, two u32 ordered, bool+string, i64 -123B
+  - Cycle 632: 8 CSS tests (css_p 227→235) — double-quote string, whitespace, delim>, attr contains, border/padding/margin/width decl
+  - Cycle 633: 8 Layout tests (layout 292→300) — DisplayType block/inline/flex, tag_name, is_text, font_size, min/max width
+  - Cycle 634: 8 DOM tests (dom 199→207) — SVG namespace, required attr empty, has_attribute false, remove_attribute, classList two, toggle add/remove, createElement nav, createTextNode
+  - Cycle 635: 8 HTML tests (html 192→200) — head/body elements, span in div, ul with 3 li, ol, dl, em, strong
+  - Cycle 636: 8 JS tests (js 753→761) — Map set/get/size, Set has/size, ArrayDestructuringSum, ObjectDestructuringMultiply, RestParametersSumFour, SpreadTwoArraysMergedLength
+- **Running total**: ~5810 (235 css_p + 698 css_s + 207 dom + 200 html + 230 ipc + 89 cors + 761 js + 300 layout + 5 native + 216 net + 1863 paint + 117 platform + 212 url)
+
+### Cycles 615-620 — 2026-02-28
+- **Cycles**: 6
+- **Theme**: Test blitz — CSS, Layout, DOM, HTML, JS, URL
+- **Key Wins**:
+  - Cycle 615: 8 CSS tests (css_p 211→219) — zero number, negative decimal, :focus/:active, attr value, cursor, transition, two-decl
+  - Cycle 616: 8 Layout tests (layout 276→284) — flex_basis set/-1 default, two children, padding/margin/border, justify/align
+  - Cycle 617: 8 DOM tests (dom 183→191) — namespace URI, first/last child after appends, parent(), Event type/bubbles/cancelable, Text/Comment constructors
+  - Cycle 618: 8 HTML tests (html 176→184) — video/audio, picture+source, figcaption, details+summary, dialog, address, main
+  - Cycle 619: 8 JS tests (js 729→737) — Array.find, Object.fromEntries, includes NaN, replaceAll, BigInt, logical AND/OR, nested ternary
+  - Cycle 620: 8 URL tests (url 204→212) — scheme lowercase, multi-query, empty query, encoded path, port 3000, different-port, serialize, empty username
+- **Running total**: ~5580 (219 css_p + 698 css_s + 191 dom + 184 html + 214 ipc + 81 cors + 737 js + 284 layout + 5 native + 208 net + 1863 paint + 109 platform + 212 url)
+
+### Cycles 601-614 — 2026-02-28
+- **Cycles**: 14
+- **Theme**: Test blitz — URL, Net, CORS, ThreadPool, JS (x3), CSS, Layout, DOM, HTML, Serializer
+- **Key Wins**:
+  - Cycle 601: 8 URL tests (url 188→196) — ftp scheme, localhost port, IPv4, multi-segment, fragment, same-port same-origin
+  - Cycle 602: 8 Net tests (net 192→200) — 201/204/304/401, HeaderMap multi/overwrite, HEAD, JSON body
+  - Cycle 603: 8 CORS tests (cors 73→81) — exact/wildcard allow/block, https/http eligible, same-origin no-header, enforceable
+  - Cycle 604: 8 ThreadPool tests (platform 101→109) — string length, double, 10-task, negative, 5-thread, bool, sequential, vector sum
+  - Cycle 605: 8 JS tests (js 705→713) — Promise.all typeof, Generator yield*, destructuring swap, tagged template, Array.from+map, Object.assign, Number.parse, String.split limit
+  - Cycle 606: 8 CSS tests (css_p 203→211) — rem/lvh, ::after, subsequent-sibling, multi-comma, text-align, line-height
+  - Cycle 607: 8 Layout tests (layout 268→276) — z-index neg/large, align_content, padding/margin/border, inline width, flex_shrink
+  - Cycle 608: 8 DOM tests (dom 175→183) — ClassList toggle, items(), remove_attr v2, get_attr, Text.set_data, append_child
+  - Cycle 609: 8 HTML tests (html 168→176) — select/option, textarea, button, label, form, iframe, canvas
+  - Cycle 610: 8 JS tests (js 713→721) — computed props, for-of string, Array.isArray, Object.getPrototypeOf, trimStart/End, Array.at, String.at, Math.hypot
+  - Cycle 611: 8 URL tests (url 196→204) — data: URL, port parsing, query/fragment, path slash, same-port, host parsing
+  - Cycle 612: 8 Net tests (net 200→208) — 422/429/500/502, HeaderMap has/get, POST URL, case-insensitive access
+  - Cycle 613: 8 Serializer tests (ipc 206→214) — u8 zero, three strings, four bools, five u32, i64 +/-, spaces, bool non-empty, u16 alternating
+  - Cycle 614: 8 JS tests (js 721→729) — Math.sign/trunc/log2/log10, Number.isNaN/MAX/MIN_SAFE, Array.findIndex not-found
+- **Running total**: ~5340 (211 css_p + 698 css_s + 183 dom + 176 html + 214 ipc + 81 cors + 729 js + 276 layout + 5 native + 208 net + 1863 paint + 109 platform + 204 url)
 
 ### Cycles 591-600 — 2026-02-28
 - **Cycles**: 10

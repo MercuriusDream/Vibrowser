@@ -6155,3 +6155,55 @@ TEST(LayoutNodeProps, FontItalicDefaultsFalse) {
     auto node = make_block("p");
     EXPECT_FALSE(node->font_italic);
 }
+
+// ---------------------------------------------------------------------------
+// Cycle 700 — milestone: 8 LayoutNode boolean default tests
+// ---------------------------------------------------------------------------
+
+// Layout: is_canvas defaults to false
+TEST(LayoutNodeProps, IsCanvasDefaultsFalse) {
+    auto node = make_block("canvas");
+    EXPECT_FALSE(node->is_canvas);
+}
+
+// Layout: is_iframe defaults to false
+TEST(LayoutNodeProps, IsIframeDefaultsFalse) {
+    auto node = make_block("iframe");
+    EXPECT_FALSE(node->is_iframe);
+}
+
+// Layout: is_svg defaults to false
+TEST(LayoutNodeProps, IsSvgDefaultsFalse) {
+    auto node = make_block("div");
+    EXPECT_FALSE(node->is_svg);
+}
+
+// Layout: is_svg_group defaults to false
+TEST(LayoutNodeProps, IsSvgGroupDefaultsFalse) {
+    auto node = make_block("g");
+    EXPECT_FALSE(node->is_svg_group);
+}
+
+// Layout: is_slot defaults to false
+TEST(LayoutNodeProps, IsSlotDefaultsFalse) {
+    auto node = make_block("slot");
+    EXPECT_FALSE(node->is_slot);
+}
+
+// Layout: is_kbd defaults to false
+TEST(LayoutNodeProps, IsKbdDefaultsFalse) {
+    auto node = make_block("kbd");
+    EXPECT_FALSE(node->is_kbd);
+}
+
+// Layout: is_monospace defaults to false
+TEST(LayoutNodeProps, IsMonospaceDefaultsFalse) {
+    auto node = make_block("pre");
+    EXPECT_FALSE(node->is_monospace);
+}
+
+// Layout: line_height defaults to 1.2
+TEST(LayoutNodeProps, LineHeightDefaultsToOnePointTwo) {
+    auto node = make_block("p");
+    EXPECT_FLOAT_EQ(node->line_height, 1.2f);
+}
