@@ -4628,3 +4628,77 @@ TEST_F(CSSStylesheetTest, ScrollMarginDeclaration) {
         if (d.property == "scroll-margin") { found = true; break; }
     EXPECT_TRUE(found);
 }
+
+// Cycle 883 — CSS declaration tests
+
+TEST_F(CSSStylesheetTest, ShapeMarginDeclaration) {
+    auto sheet = parse_stylesheet("img { shape-margin: 8px; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "shape-margin") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, BorderCollapseDeclaration) {
+    auto sheet = parse_stylesheet("table { border-collapse: collapse; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "border-collapse") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, BorderSpacingDeclaration) {
+    auto sheet = parse_stylesheet("table { border-spacing: 4px 8px; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "border-spacing") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, CaptionSideDeclaration) {
+    auto sheet = parse_stylesheet("table { caption-side: bottom; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "caption-side") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, EmptyCellsDeclaration) {
+    auto sheet = parse_stylesheet("td { empty-cells: hide; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "empty-cells") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, HangingPunctuationDeclaration) {
+    auto sheet = parse_stylesheet("p { hanging-punctuation: first; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "hanging-punctuation") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, InsetDeclaration) {
+    auto sheet = parse_stylesheet(".box { inset: 10px 20px; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "inset") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, FontSynthesisDeclaration) {
+    auto sheet = parse_stylesheet("body { font-synthesis: weight style; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "font-synthesis") { found = true; break; }
+    EXPECT_TRUE(found);
+}
