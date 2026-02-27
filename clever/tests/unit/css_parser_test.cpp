@@ -6968,3 +6968,77 @@ TEST_F(CSSStylesheetTest, FloatV7) {
         if (d.property == "float") { found = true; break; }
     EXPECT_TRUE(found);
 }
+
+// --- Cycle 1161: 8 CSS tests ---
+
+TEST_F(CSSStylesheetTest, MarginV8) {
+    auto sheet = parse_stylesheet("div { margin: 10px; }");
+    ASSERT_FALSE(sheet.rules.empty());
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "margin") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, PaddingV8) {
+    auto sheet = parse_stylesheet("div { padding: 5px; }");
+    ASSERT_FALSE(sheet.rules.empty());
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "padding") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, BorderV8) {
+    auto sheet = parse_stylesheet("div { border: 1px solid black; }");
+    ASSERT_FALSE(sheet.rules.empty());
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "border") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, WidthV8) {
+    auto sheet = parse_stylesheet("div { width: 100%; }");
+    ASSERT_FALSE(sheet.rules.empty());
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "width") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, HeightV8) {
+    auto sheet = parse_stylesheet("div { height: auto; }");
+    ASSERT_FALSE(sheet.rules.empty());
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "height") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, ColorV8) {
+    auto sheet = parse_stylesheet("div { color: red; }");
+    ASSERT_FALSE(sheet.rules.empty());
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "color") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, BackgroundColorV8) {
+    auto sheet = parse_stylesheet("div { background-color: blue; }");
+    ASSERT_FALSE(sheet.rules.empty());
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "background-color") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, FontSizeV8) {
+    auto sheet = parse_stylesheet("div { font-size: 14px; }");
+    ASSERT_FALSE(sheet.rules.empty());
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "font-size") found = true;
+    EXPECT_TRUE(found);
+}

@@ -5573,3 +5573,61 @@ TEST(SerializerTest, BoolFalseAloneV5) {
     Deserializer d(s.data());
     EXPECT_FALSE(d.read_bool());
 }
+
+// --- Cycle 1158: 8 IPC tests ---
+
+TEST(SerializerTest, U8TwoHundredV7) {
+    Serializer s;
+    s.write_u8(200);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u8(), 200);
+}
+
+TEST(SerializerTest, U16FortyThousandV7) {
+    Serializer s;
+    s.write_u16(40000);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u16(), 40000);
+}
+
+TEST(SerializerTest, I32NegTenThousandV7) {
+    Serializer s;
+    s.write_i32(-10000);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i32(), -10000);
+}
+
+TEST(SerializerTest, U64HundredBillionV7) {
+    Serializer s;
+    s.write_u64(100000000000ULL);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u64(), 100000000000ULL);
+}
+
+TEST(SerializerTest, F64PiOverTwoV7) {
+    Serializer s;
+    s.write_f64(1.5707963267948966);
+    Deserializer d(s.data());
+    EXPECT_DOUBLE_EQ(d.read_f64(), 1.5707963267948966);
+}
+
+TEST(SerializerTest, StringEmptyV7) {
+    Serializer s;
+    s.write_string("");
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "");
+}
+
+TEST(SerializerTest, I64MaxMinusOneV7) {
+    Serializer s;
+    s.write_i64(9223372036854775806LL);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i64(), 9223372036854775806LL);
+}
+
+TEST(SerializerTest, BoolTrueV7) {
+    Serializer s;
+    s.write_bool(true);
+    Deserializer d(s.data());
+    EXPECT_TRUE(d.read_bool());
+}

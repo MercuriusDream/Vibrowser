@@ -8425,3 +8425,45 @@ TEST(LayoutNodeProps, WillChangeDefaultsEmptyV2) {
     LayoutNode n;
     EXPECT_TRUE(n.will_change.empty());
 }
+
+// --- Cycle 1163: 8 Layout tests ---
+
+TEST(LayoutNodeProps, IsolationDefaultsZeroV2) {
+    LayoutNode n;
+    EXPECT_EQ(n.isolation, 0);
+}
+
+TEST(LayoutNodeProps, ContainerNameDefaultsEmptyV2) {
+    LayoutNode n;
+    EXPECT_TRUE(n.container_name.empty());
+}
+
+TEST(LayoutNodeProps, ContainerTypeDefaultsZeroV2) {
+    LayoutNode n;
+    EXPECT_EQ(n.container_type, 0);
+}
+
+TEST(LayoutNodeProps, BreakBeforeDefaultsZeroV2) {
+    LayoutNode n;
+    EXPECT_EQ(n.break_before, 0);
+}
+
+TEST(LayoutNodeProps, BreakAfterDefaultsZeroV2) {
+    LayoutNode n;
+    EXPECT_EQ(n.break_after, 0);
+}
+
+TEST(LayoutNodeProps, BreakInsideDefaultsZeroV2) {
+    LayoutNode n;
+    EXPECT_EQ(n.break_inside, 0);
+}
+
+TEST(LayoutNodeProps, PageBreakBeforeDefaultsZeroV2) {
+    LayoutNode n;
+    EXPECT_EQ(n.page_break_before, 0);
+}
+
+TEST(LayoutNodeProps, PageBreakAfterDefaultsZeroV2) {
+    LayoutNode n;
+    EXPECT_EQ(n.page_break_after, 0);
+}

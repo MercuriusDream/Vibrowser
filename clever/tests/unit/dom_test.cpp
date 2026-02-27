@@ -6112,3 +6112,70 @@ TEST(DomElement, AttributesSizeFive) {
         el->set_attribute("attr" + std::to_string(i), "v");
     EXPECT_EQ(el->attributes().size(), 5u);
 }
+
+// --- Cycle 1156: 8 DOM tests ---
+
+TEST(DomElement, TagNameAudio) {
+    Document doc;
+    auto el = doc.create_element("audio");
+    std::string name = el->tag_name();
+    EXPECT_TRUE(name == "audio" || name == "AUDIO");
+}
+
+TEST(DomElement, TagNameCanvas) {
+    Document doc;
+    auto el = doc.create_element("canvas");
+    std::string name = el->tag_name();
+    EXPECT_TRUE(name == "canvas" || name == "CANVAS");
+}
+
+TEST(DomElement, SetAttributeHref) {
+    Document doc;
+    auto el = doc.create_element("a");
+    el->set_attribute("href", "https://example.com");
+    EXPECT_EQ(el->get_attribute("href").value(), "https://example.com");
+}
+
+TEST(DomElement, SetAttributeTarget) {
+    Document doc;
+    auto el = doc.create_element("a");
+    el->set_attribute("target", "_blank");
+    EXPECT_EQ(el->get_attribute("target").value(), "_blank");
+}
+
+TEST(DomElement, ChildCountNine) {
+    Document doc;
+    auto parent = doc.create_element("div");
+    for (int i = 0; i < 9; ++i)
+        parent->append_child(doc.create_element("p"));
+    EXPECT_EQ(parent->child_count(), 9u);
+}
+
+TEST(DomElement, ClassListContainsFourItems) {
+    Document doc;
+    auto el = doc.create_element("div");
+    el->class_list().add("w");
+    el->class_list().add("x");
+    el->class_list().add("y");
+    el->class_list().add("z");
+    EXPECT_TRUE(el->class_list().contains("w"));
+    EXPECT_TRUE(el->class_list().contains("z"));
+}
+
+TEST(DomElement, RemoveAttributeThenSizeDecreases) {
+    Document doc;
+    auto el = doc.create_element("div");
+    el->set_attribute("a", "1");
+    el->set_attribute("b", "2");
+    el->remove_attribute("a");
+    EXPECT_EQ(el->attributes().size(), 1u);
+}
+
+TEST(DomElement, HasAttributeAfterMultipleSets) {
+    Document doc;
+    auto el = doc.create_element("div");
+    el->set_attribute("x", "1");
+    el->set_attribute("y", "2");
+    el->set_attribute("z", "3");
+    EXPECT_TRUE(el->has_attribute("y"));
+}

@@ -4258,3 +4258,56 @@ TEST(URLParser, Port15672) {
     ASSERT_TRUE(url->port.has_value());
     EXPECT_EQ(url->port.value(), 15672u);
 }
+
+// --- Cycle 1159: 8 URL tests ---
+
+TEST(URLParser, Port6380) {
+    auto url = parse("http://sentinel.local:6380/");
+    ASSERT_TRUE(url.has_value());
+    ASSERT_TRUE(url->port.has_value());
+    EXPECT_EQ(url->port.value(), 6380u);
+}
+
+TEST(URLParser, PathWithTomlExt) {
+    auto url = parse("https://config.example.com/config.toml");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->path, "/config.toml");
+}
+
+TEST(URLParser, QueryWithDashV2) {
+    auto url = parse("http://api.example.com/search?q=foo-bar");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->query, "q=foo-bar");
+}
+
+TEST(URLParser, FragmentWithUnderscoreV3) {
+    auto url = parse("https://docs.example.com/guide#section_v2_v3");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->fragment, "section_v2_v3");
+}
+
+TEST(URLParser, HostWithPort5601) {
+    auto url = parse("http://kibana-instance.local:5601/app");
+    ASSERT_TRUE(url.has_value());
+    ASSERT_TRUE(url->port.has_value());
+    EXPECT_EQ(url->port.value(), 5601u);
+}
+
+TEST(URLParser, SchemeHttpLowercaseV3) {
+    auto url = parse("http://lowercase.example.com/resource");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "http");
+}
+
+TEST(URLParser, PathDepthSeven) {
+    auto url = parse("https://api.example.com/a/b/c/d/e/f/g");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->path, "/a/b/c/d/e/f/g");
+}
+
+TEST(URLParser, Port4369) {
+    auto url = parse("http://erlang-node.local:4369/status");
+    ASSERT_TRUE(url.has_value());
+    ASSERT_TRUE(url->port.has_value());
+    EXPECT_EQ(url->port.value(), 4369u);
+}

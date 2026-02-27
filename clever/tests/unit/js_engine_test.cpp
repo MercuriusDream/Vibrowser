@@ -18414,3 +18414,53 @@ TEST(JSEngine, NumberToFixedV2) {
     auto result = engine.evaluate("(3.14159).toFixed(2)");
     EXPECT_EQ(result, "3.14");
 }
+
+// --- Cycle 1164: 8 JS tests ---
+
+TEST(JSEngine, MapDeleteReturnsTrue) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var m = new Map([['a', 1]]); m.delete('a').toString()");
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, SetDeleteReturnsTrue) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var s = new Set([1, 2, 3]); s.delete(1).toString()");
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, ArraySortNumbers) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var arr = [3, 1, 2]; arr.sort((a, b) => a - b); arr.toString()");
+    EXPECT_EQ(result, "1,2,3");
+}
+
+TEST(JSEngine, StringSplitByComma) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("'a,b,c'.split(',').length.toString()");
+    EXPECT_EQ(result, "3");
+}
+
+TEST(JSEngine, JSONStringifyNull) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("JSON.stringify(null)");
+    EXPECT_EQ(result, "null");
+}
+
+TEST(JSEngine, JSONParseNumber) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("JSON.parse('42').toString()");
+    EXPECT_EQ(result, "42");
+}
+
+TEST(JSEngine, MathMaxThreeArgs) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("Math.max(1, 5, 3).toString()");
+    EXPECT_EQ(result, "5");
+}
+
+TEST(JSEngine, MathMinThreeArgs) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("Math.min(1, 5, 3).toString()");
+    EXPECT_EQ(result, "1");
+}

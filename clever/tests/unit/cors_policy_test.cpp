@@ -2859,3 +2859,39 @@ TEST(CORSPolicyTest, CorsBlocksMismatchV16) {
     headers.set("access-control-allow-origin", "https://other.com");
     EXPECT_FALSE(cors_allows_response("https://myapp.com", "https://api.com/", headers, false));
 }
+
+// --- Cycle 1157: 8 CORS tests ---
+
+TEST(CORSPolicyTest, CrossOriginDiffHostV17) {
+    EXPECT_TRUE(is_cross_origin("https://app.example.com", "https://api.example.com/data"));
+}
+
+TEST(CORSPolicyTest, SameOriginLocalhostV17) {
+    EXPECT_FALSE(is_cross_origin("http://localhost", "http://localhost/api"));
+}
+
+TEST(CORSPolicyTest, EnforceableHttpsV17) {
+    EXPECT_TRUE(has_enforceable_document_origin("https://example.com"));
+}
+
+TEST(CORSPolicyTest, NotEnforceableEmptyV17) {
+    EXPECT_FALSE(has_enforceable_document_origin(""));
+}
+
+TEST(CORSPolicyTest, CorsEligibleHttpsQueryV17) {
+    EXPECT_TRUE(is_cors_eligible_request_url("https://api.example.com/v1/users?id=123"));
+}
+
+TEST(CORSPolicyTest, NotCorsEligibleAboutBlankV17) {
+    EXPECT_FALSE(is_cors_eligible_request_url("about:blank"));
+}
+
+TEST(CORSPolicyTest, AttachOriginDiffHostV17) {
+    EXPECT_TRUE(should_attach_origin_header("https://app.example.com", "https://api.example.com/data"));
+}
+
+TEST(CORSPolicyTest, CorsAllowsExactOriginV17) {
+    clever::net::HeaderMap headers;
+    headers.set("access-control-allow-origin", "https://myapp.com");
+    EXPECT_TRUE(cors_allows_response("https://myapp.com", "https://api.example.com/data", headers, false));
+}

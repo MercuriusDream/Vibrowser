@@ -6472,3 +6472,61 @@ TEST(TreeBuilder, ListWithItems) {
     ASSERT_NE(el, nullptr);
     EXPECT_EQ(el->tag_name, "ul");
 }
+
+// --- Cycle 1162: 8 HTML tests ---
+
+TEST(TreeBuilder, TableWithRowsV2) {
+    auto doc = clever::html::parse("<body><table><tr><td>Cell</td></tr></table></body>");
+    auto* el = doc->find_element("table");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "table");
+}
+
+TEST(TreeBuilder, OrderedListWithItems) {
+    auto doc = clever::html::parse("<body><ol><li>First</li><li>Second</li></ol></body>");
+    auto* el = doc->find_element("ol");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "ol");
+}
+
+TEST(TreeBuilder, UnorderedListWithItemsV2) {
+    auto doc = clever::html::parse("<body><ul><li>Item A</li><li>Item B</li></ul></body>");
+    auto* el = doc->find_element("ul");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "ul");
+}
+
+TEST(TreeBuilder, DefinitionListV2) {
+    auto doc = clever::html::parse("<body><dl><dt>Term</dt><dd>Definition</dd></dl></body>");
+    auto* el = doc->find_element("dl");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "dl");
+}
+
+TEST(TreeBuilder, FormWithInputs) {
+    auto doc = clever::html::parse("<body><form><input type=\"text\"></form></body>");
+    auto* el = doc->find_element("form");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "form");
+}
+
+TEST(TreeBuilder, SelectWithOptionsV2) {
+    auto doc = clever::html::parse("<body><select><option>Choice 1</option><option>Choice 2</option></select></body>");
+    auto* el = doc->find_element("select");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "select");
+}
+
+TEST(TreeBuilder, TextareaWithContent) {
+    auto doc = clever::html::parse("<body><textarea>Sample text</textarea></body>");
+    auto* el = doc->find_element("textarea");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "textarea");
+}
+
+TEST(TreeBuilder, ButtonWithTextV2) {
+    auto doc = clever::html::parse("<body><button>Click me</button></body>");
+    auto* el = doc->find_element("button");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "button");
+}

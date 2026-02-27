@@ -6191,3 +6191,57 @@ TEST(HeaderMapTest, HasAfterAppendV9) {
     h.append("Authorization", "Bearer token");
     EXPECT_TRUE(h.has("Authorization"));
 }
+
+// --- Cycle 1160: 8 Net tests ---
+
+TEST(MethodTest, MethodToStringDeleteV10) {
+    EXPECT_EQ(method_to_string(Method::DELETE_METHOD), "DELETE");
+}
+
+TEST(MethodTest, StringToMethodPutV10) {
+    EXPECT_EQ(string_to_method("PUT"), Method::PUT);
+}
+
+TEST(HeaderMapTest, SizeAfterFiveSetsV10) {
+    HeaderMap h;
+    h.set("K1", "V1");
+    h.set("K2", "V2");
+    h.set("K3", "V3");
+    h.set("K4", "V4");
+    h.set("K5", "V5");
+    EXPECT_EQ(h.size(), 5u);
+}
+
+TEST(HeaderMapTest, RemoveAllThenSizeZeroV10) {
+    HeaderMap h;
+    h.set("A", "1");
+    h.set("B", "2");
+    h.remove("A");
+    h.remove("B");
+    EXPECT_EQ(h.size(), 0u);
+}
+
+TEST(ResponseTest, ResponseStatus100V10) {
+    Response r;
+    r.status = 100;
+    EXPECT_EQ(r.status, 100);
+}
+
+TEST(ResponseTest, ResponseStatus202V10) {
+    Response r;
+    r.status = 202;
+    EXPECT_EQ(r.status, 202);
+}
+
+TEST(ResponseTest, ResponseStatus404V10) {
+    Response r;
+    r.status = 404;
+    EXPECT_EQ(r.status, 404);
+}
+
+TEST(HeaderMapTest, GetMissingReturnsNulloptV10) {
+    HeaderMap h;
+    h.set("X-Header", "value");
+    auto result = h.get("X-Missing");
+    EXPECT_EQ(result, std::nullopt);
+}
