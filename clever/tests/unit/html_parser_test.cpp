@@ -4573,3 +4573,83 @@ TEST(TreeBuilder, InputPlaceholderAttr) {
         if (attr.name == "placeholder" && attr.value == "Enter name") found = true;
     EXPECT_TRUE(found);
 }
+
+TEST(TreeBuilder, OptionValueAttr) {
+    auto doc = clever::html::parse("<body><select><option value=\"opt1\">Option 1</option></select></body>");
+    auto* el = doc->find_element("option");
+    ASSERT_NE(el, nullptr);
+    bool found = false;
+    for (const auto& attr : el->attributes)
+        if (attr.name == "value" && attr.value == "opt1") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, OptionSelectedAttr) {
+    auto doc = clever::html::parse("<body><select><option selected>A</option></select></body>");
+    auto* el = doc->find_element("option");
+    ASSERT_NE(el, nullptr);
+    bool found = false;
+    for (const auto& attr : el->attributes)
+        if (attr.name == "selected") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, OptionDisabledAttr) {
+    auto doc = clever::html::parse("<body><select><option disabled>B</option></select></body>");
+    auto* el = doc->find_element("option");
+    ASSERT_NE(el, nullptr);
+    bool found = false;
+    for (const auto& attr : el->attributes)
+        if (attr.name == "disabled") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, OptGroupLabelAttr) {
+    auto doc = clever::html::parse("<body><select><optgroup label=\"Group 1\"><option>A</option></optgroup></select></body>");
+    auto* el = doc->find_element("optgroup");
+    ASSERT_NE(el, nullptr);
+    bool found = false;
+    for (const auto& attr : el->attributes)
+        if (attr.name == "label" && attr.value == "Group 1") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, MeterMinAttr) {
+    auto doc = clever::html::parse("<body><meter min=\"0\" max=\"100\" value=\"50\">50%</meter></body>");
+    auto* el = doc->find_element("meter");
+    ASSERT_NE(el, nullptr);
+    bool found = false;
+    for (const auto& attr : el->attributes)
+        if (attr.name == "min" && attr.value == "0") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, ProgressMaxAttr) {
+    auto doc = clever::html::parse("<body><progress max=\"200\" value=\"100\"></progress></body>");
+    auto* el = doc->find_element("progress");
+    ASSERT_NE(el, nullptr);
+    bool found = false;
+    for (const auto& attr : el->attributes)
+        if (attr.name == "max" && attr.value == "200") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, TdColspanAttr) {
+    auto doc = clever::html::parse("<body><table><tr><td colspan=\"3\">Cell</td></tr></table></body>");
+    auto* el = doc->find_element("td");
+    ASSERT_NE(el, nullptr);
+    bool found = false;
+    for (const auto& attr : el->attributes)
+        if (attr.name == "colspan" && attr.value == "3") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, ThScopeAttr) {
+    auto doc = clever::html::parse("<body><table><tr><th scope=\"col\">Header</th></tr></table></body>");
+    auto* el = doc->find_element("th");
+    ASSERT_NE(el, nullptr);
+    bool found = false;
+    for (const auto& attr : el->attributes)
+        if (attr.name == "scope" && attr.value == "col") found = true;
+    EXPECT_TRUE(found);
+}
