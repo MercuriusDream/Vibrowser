@@ -1684,3 +1684,44 @@ TEST(CORSPolicyTest, NormalizeDoesNotAttachOriginForSameOriginNullDoc) {
     normalize_outgoing_origin_header(headers, "null", "null");
     EXPECT_FALSE(headers.get("Origin").has_value());
 }
+
+// Cycle 888 — CORS policy edge cases
+
+TEST(CORSPolicyTest, HttpsPort8443IsCrossOriginFromDefault) {
+    EXPECT_TRUE(is_cross_origin("https://example.com", "https://example.com:8443/path"));
+}
+
+TEST(CORSPolicyTest, NullOriginIsNotEnforceable) {
+    EXPECT_FALSE(has_enforceable_document_origin("null"));
+}
+
+TEST(CORSPolicyTest, UppercaseSchemeOriginNotEnforceable) {
+    EXPECT_FALSE(has_enforceable_document_origin("HTTP://example.com"));
+}
+
+TEST(CORSPolicyTest, HttpUrlWithQueryStringIsCorsEligible) {
+    EXPECT_TRUE(is_cors_eligible_request_url("http://api.example.com/search?q=test"));
+}
+
+TEST(CORSPolicyTest, CORSRejectsACAOWithCommaList) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "https://a.com, https://b.com");
+    EXPECT_FALSE(cors_allows_response("https://a.com", "https://api.other.com/data", headers, false));
+}
+
+TEST(CORSPolicyTest, ACAOWithLeadingSpaceIsRejected) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", " https://app.example");
+    EXPECT_FALSE(cors_allows_response("https://app.example", "https://api.example.com/data", headers, false));
+}
+
+TEST(CORSPolicyTest, CORSRejectsWhenMultipleACAOHeadersPresent) {
+    clever::net::HeaderMap headers;
+    headers.append("Access-Control-Allow-Origin", "https://app.example");
+    headers.append("Access-Control-Allow-Origin", "https://other.example");
+    EXPECT_FALSE(cors_allows_response("https://app.example", "https://api.example.com/data", headers, false));
+}
+
+TEST(CORSPolicyTest, HttpsUrlWithFragmentNotCorsEligible) {
+    EXPECT_FALSE(is_cors_eligible_request_url("https://example.com/page#section"));
+}
