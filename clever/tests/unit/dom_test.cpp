@@ -4059,3 +4059,69 @@ TEST(DomText, TextNodeTypeIsText) {
     Text t("content");
     EXPECT_EQ(t.node_type(), NodeType::Text);
 }
+
+
+// Cycle 878 — Node parent pointer, dirty flags, Document create, Comment content
+TEST(DomNode, ParentSetAfterInsertBefore) {
+    Element parent("div");
+    auto ref_ptr = std::make_unique<Element>("span");
+    Element* ref = ref_ptr.get();
+    parent.append_child(std::move(ref_ptr));
+    auto new_ptr = std::make_unique<Element>("p");
+    Element* newNode = new_ptr.get();
+    parent.insert_before(std::move(new_ptr), ref);
+    EXPECT_EQ(newNode->parent(), &parent);
+}
+
+TEST(DomNode, TwoChildrenAddedInOrder) {
+    Element parent("div");
+    parent.append_child(std::make_unique<Element>("h1"));
+    parent.append_child(std::make_unique<Element>("p"));
+    EXPECT_EQ(parent.child_count(), 2u);
+    EXPECT_NE(parent.first_child(), parent.last_child());
+}
+
+TEST(DomNode, MarkDirtyLayoutSetsLayoutFlag) {
+    Element e("div");
+    e.mark_dirty(DirtyFlags::Layout);
+    EXPECT_NE(e.dirty_flags() & DirtyFlags::Layout, DirtyFlags::None);
+}
+
+TEST(DomNode, MarkDirtyAllSetsAllFlagsV2) {
+    Element e("section");
+    e.mark_dirty(DirtyFlags::All);
+    EXPECT_NE(e.dirty_flags() & DirtyFlags::Paint, DirtyFlags::None);
+    EXPECT_NE(e.dirty_flags() & DirtyFlags::Style, DirtyFlags::None);
+    EXPECT_NE(e.dirty_flags() & DirtyFlags::Layout, DirtyFlags::None);
+}
+
+TEST(DomDocument, CreateCommentIsCommentType) {
+    Document doc;
+    auto comment = doc.create_comment("test comment");
+    ASSERT_NE(comment, nullptr);
+    EXPECT_EQ(comment->node_type(), NodeType::Comment);
+}
+
+TEST(DomComment, CommentDataIsPreserved) {
+    Comment c("my comment data");
+    EXPECT_EQ(c.data(), "my comment data");
+}
+
+TEST(DomDocument, CreateTextReturnsTextNode) {
+    Document doc;
+    auto text = doc.create_text_node("world");
+    ASSERT_NE(text, nullptr);
+    EXPECT_EQ(text->node_type(), NodeType::Text);
+}
+
+TEST(DomNode, ForEachChildVisitsInOrder) {
+    Element parent("ol");
+    parent.append_child(std::make_unique<Element>("li"));
+    parent.append_child(std::make_unique<Element>("li"));
+    parent.append_child(std::make_unique<Element>("li"));
+    std::vector<const Node*> visited;
+    parent.for_each_child([&](const Node& n) { visited.push_back(&n); });
+    EXPECT_EQ(visited.size(), 3u);
+    EXPECT_EQ(visited[0], parent.first_child());
+    EXPECT_EQ(visited[2], parent.last_child());
+}
