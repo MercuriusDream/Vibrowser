@@ -4398,3 +4398,84 @@ TEST(CSSParserTest, ImportRuleUrlStoredCorrectly) {
     ASSERT_EQ(sheet.imports.size(), 1u);
     EXPECT_NE(sheet.imports[0].url.find("roboto"), std::string::npos);
 }
+
+// Cycle 856 — pseudo-class: only-of-type, scope, in-range, out-of-range, indeterminate, default, read-write, has
+TEST_F(CSSSelectorTest, PseudoClassOnlyOfType) {
+    auto list = parse_selector_list("p:only-of-type");
+    ASSERT_EQ(list.selectors.size(), 1u);
+    const auto& compound = list.selectors[0].parts[0].compound;
+    bool found = false;
+    for (const auto& ss : compound.simple_selectors)
+        if (ss.type == SimpleSelectorType::PseudoClass && ss.value == "only-of-type") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSSelectorTest, PseudoClassScope) {
+    auto list = parse_selector_list(":scope > div");
+    ASSERT_GE(list.selectors.size(), 1u);
+    const auto& compound = list.selectors[0].parts[0].compound;
+    bool found = false;
+    for (const auto& ss : compound.simple_selectors)
+        if (ss.type == SimpleSelectorType::PseudoClass && ss.value == "scope") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSSelectorTest, PseudoClassInRange) {
+    auto list = parse_selector_list("input:in-range");
+    ASSERT_EQ(list.selectors.size(), 1u);
+    const auto& compound = list.selectors[0].parts[0].compound;
+    bool found = false;
+    for (const auto& ss : compound.simple_selectors)
+        if (ss.type == SimpleSelectorType::PseudoClass && ss.value == "in-range") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSSelectorTest, PseudoClassOutOfRange) {
+    auto list = parse_selector_list("input:out-of-range");
+    ASSERT_EQ(list.selectors.size(), 1u);
+    const auto& compound = list.selectors[0].parts[0].compound;
+    bool found = false;
+    for (const auto& ss : compound.simple_selectors)
+        if (ss.type == SimpleSelectorType::PseudoClass && ss.value == "out-of-range") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSSelectorTest, PseudoClassIndeterminate) {
+    auto list = parse_selector_list("input:indeterminate");
+    ASSERT_EQ(list.selectors.size(), 1u);
+    const auto& compound = list.selectors[0].parts[0].compound;
+    bool found = false;
+    for (const auto& ss : compound.simple_selectors)
+        if (ss.type == SimpleSelectorType::PseudoClass && ss.value == "indeterminate") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSSelectorTest, PseudoClassDefault) {
+    auto list = parse_selector_list("button:default");
+    ASSERT_EQ(list.selectors.size(), 1u);
+    const auto& compound = list.selectors[0].parts[0].compound;
+    bool found = false;
+    for (const auto& ss : compound.simple_selectors)
+        if (ss.type == SimpleSelectorType::PseudoClass && ss.value == "default") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSSelectorTest, PseudoClassReadWrite) {
+    auto list = parse_selector_list("textarea:read-write");
+    ASSERT_EQ(list.selectors.size(), 1u);
+    const auto& compound = list.selectors[0].parts[0].compound;
+    bool found = false;
+    for (const auto& ss : compound.simple_selectors)
+        if (ss.type == SimpleSelectorType::PseudoClass && ss.value == "read-write") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSSelectorTest, PseudoClassLocalLink) {
+    auto list = parse_selector_list("a:local-link");
+    ASSERT_EQ(list.selectors.size(), 1u);
+    const auto& compound = list.selectors[0].parts[0].compound;
+    bool found = false;
+    for (const auto& ss : compound.simple_selectors)
+        if (ss.type == SimpleSelectorType::PseudoClass && ss.value == "local-link") found = true;
+    EXPECT_TRUE(found);
+}
