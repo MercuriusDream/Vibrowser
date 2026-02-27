@@ -3272,3 +3272,103 @@ TEST_F(CSSStylesheetTest, ColumnsDeclaration) {
     }
     EXPECT_TRUE(found);
 }
+
+// Selector: attribute suffix [href$=".pdf"]
+TEST_F(CSSSelectorTest, AttributeSelectorSuffixPdf) {
+    auto list = parse_selector_list(R"(a[href$=".pdf"])");
+    ASSERT_EQ(list.selectors.size(), 1u);
+    const auto& compound = list.selectors[0].parts[0].compound;
+    bool found = false;
+    for (const auto& ss : compound.simple_selectors) {
+        if (ss.type == SimpleSelectorType::Attribute && ss.attr_match == AttributeMatch::Suffix) {
+            found = true; break;
+        }
+    }
+    EXPECT_TRUE(found);
+}
+
+// Selector: attribute substring [class*="nav"]
+TEST_F(CSSSelectorTest, AttributeSelectorSubstringNav) {
+    auto list = parse_selector_list(R"(div[class*="nav"])");
+    ASSERT_EQ(list.selectors.size(), 1u);
+    const auto& compound = list.selectors[0].parts[0].compound;
+    bool found = false;
+    for (const auto& ss : compound.simple_selectors) {
+        if (ss.type == SimpleSelectorType::Attribute && ss.attr_match == AttributeMatch::Substring) {
+            found = true; break;
+        }
+    }
+    EXPECT_TRUE(found);
+}
+
+// Selector: attribute dash-match [lang|="en"]
+TEST_F(CSSSelectorTest, AttributeSelectorDashMatchLangEn) {
+    auto list = parse_selector_list(R"(p[lang|="en"])");
+    ASSERT_EQ(list.selectors.size(), 1u);
+    const auto& compound = list.selectors[0].parts[0].compound;
+    bool found = false;
+    for (const auto& ss : compound.simple_selectors) {
+        if (ss.type == SimpleSelectorType::Attribute && ss.attr_match == AttributeMatch::DashMatch) {
+            found = true; break;
+        }
+    }
+    EXPECT_TRUE(found);
+}
+
+// Selector: attribute includes [class~="widget"]
+TEST_F(CSSSelectorTest, AttributeSelectorIncludesWidget) {
+    auto list = parse_selector_list(R"(div[class~="widget"])");
+    ASSERT_EQ(list.selectors.size(), 1u);
+    const auto& compound = list.selectors[0].parts[0].compound;
+    bool found = false;
+    for (const auto& ss : compound.simple_selectors) {
+        if (ss.type == SimpleSelectorType::Attribute && ss.attr_match == AttributeMatch::Includes) {
+            found = true; break;
+        }
+    }
+    EXPECT_TRUE(found);
+}
+
+// Stylesheet: gap declaration
+TEST_F(CSSStylesheetTest, GapDeclaration) {
+    auto sheet = parse_stylesheet(".grid { gap: 16px; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations) {
+        if (d.property == "gap") { found = true; break; }
+    }
+    EXPECT_TRUE(found);
+}
+
+// Stylesheet: column-gap declaration
+TEST_F(CSSStylesheetTest, ColumnGapDeclaration) {
+    auto sheet = parse_stylesheet(".flex { column-gap: 8px; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations) {
+        if (d.property == "column-gap") { found = true; break; }
+    }
+    EXPECT_TRUE(found);
+}
+
+// Stylesheet: row-gap declaration
+TEST_F(CSSStylesheetTest, RowGapDeclaration) {
+    auto sheet = parse_stylesheet(".flex { row-gap: 12px; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations) {
+        if (d.property == "row-gap") { found = true; break; }
+    }
+    EXPECT_TRUE(found);
+}
+
+// Stylesheet: place-items declaration
+TEST_F(CSSStylesheetTest, PlaceItemsDeclaration) {
+    auto sheet = parse_stylesheet(".grid { place-items: center; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations) {
+        if (d.property == "place-items") { found = true; break; }
+    }
+    EXPECT_TRUE(found);
+}
