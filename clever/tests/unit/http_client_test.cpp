@@ -4089,3 +4089,84 @@ TEST(ResponseTest, ReferrerPolicyHeader) {
     ASSERT_TRUE(rp.has_value());
     EXPECT_EQ(*rp, "no-referrer-when-downgrade");
 }
+
+// Cycle 835 — HTTP response headers: Accept-Ranges, Age, Transfer-Encoding, Permissions-Policy, Access-Control-Expose-Headers, CORP, COOP, COEP, NEL
+TEST(ResponseTest, AcceptRangesHeader) {
+    std::string raw = "HTTP/1.1 200 OK\r\nAccept-Ranges: bytes\r\nContent-Length: 0\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    auto val = resp->headers.get("Accept-Ranges");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(*val, "bytes");
+}
+
+TEST(ResponseTest, AgeHeader) {
+    std::string raw = "HTTP/1.1 200 OK\r\nAge: 1234\r\nContent-Length: 0\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    auto val = resp->headers.get("Age");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(*val, "1234");
+}
+
+TEST(ResponseTest, TransferEncodingChunked) {
+    std::string raw = "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nContent-Length: 0\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    auto val = resp->headers.get("Transfer-Encoding");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(*val, "chunked");
+}
+
+TEST(ResponseTest, PermissionsPolicyHeader) {
+    std::string raw = "HTTP/1.1 200 OK\r\nPermissions-Policy: geolocation=(), microphone=()\r\nContent-Length: 0\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    auto val = resp->headers.get("Permissions-Policy");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_NE(val->find("geolocation"), std::string::npos);
+}
+
+TEST(ResponseTest, AccessControlExposeHeadersHeader) {
+    std::string raw = "HTTP/1.1 200 OK\r\nAccess-Control-Expose-Headers: X-Custom-Header, X-Request-ID\r\nContent-Length: 0\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    auto val = resp->headers.get("Access-Control-Expose-Headers");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_NE(val->find("X-Custom-Header"), std::string::npos);
+}
+
+TEST(ResponseTest, CrossOriginResourcePolicyHeader) {
+    std::string raw = "HTTP/1.1 200 OK\r\nCross-Origin-Resource-Policy: same-origin\r\nContent-Length: 0\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    auto val = resp->headers.get("Cross-Origin-Resource-Policy");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(*val, "same-origin");
+}
+
+TEST(ResponseTest, CrossOriginOpenerPolicyHeader) {
+    std::string raw = "HTTP/1.1 200 OK\r\nCross-Origin-Opener-Policy: same-origin\r\nContent-Length: 0\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    auto val = resp->headers.get("Cross-Origin-Opener-Policy");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(*val, "same-origin");
+}
+
+TEST(ResponseTest, CrossOriginEmbedderPolicyHeader) {
+    std::string raw = "HTTP/1.1 200 OK\r\nCross-Origin-Embedder-Policy: require-corp\r\nContent-Length: 0\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    auto val = resp->headers.get("Cross-Origin-Embedder-Policy");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(*val, "require-corp");
+}
