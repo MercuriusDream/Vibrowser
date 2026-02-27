@@ -4061,3 +4061,75 @@ TEST(CSSParserTest, FontFaceUnicodeRange) {
     ASSERT_GE(sheet.font_faces.size(), 1u);
     EXPECT_FALSE(sheet.font_faces[0].unicode_range.empty());
 }
+
+TEST_F(CSSStylesheetTest, GridTemplateRowsDeclaration) {
+    auto sheet = parse_stylesheet(".grid { grid-template-rows: 100px auto 50px; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "grid-template-rows") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, GridAutoFlowDeclaration) {
+    auto sheet = parse_stylesheet(".grid { grid-auto-flow: dense column; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "grid-auto-flow") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, GridTemplateAreasDeclaration) {
+    auto sheet = parse_stylesheet(".layout { grid-template-areas: 'header header' 'sidebar main'; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "grid-template-areas") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, JustifyItemsDeclaration) {
+    auto sheet = parse_stylesheet(".grid { justify-items: center; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "justify-items") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, AlignItemsDeclaration) {
+    auto sheet = parse_stylesheet(".flex { align-items: stretch; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "align-items") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, FlexGrowDeclaration) {
+    auto sheet = parse_stylesheet(".item { flex-grow: 2; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "flex-grow") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, FlexShrinkDeclaration) {
+    auto sheet = parse_stylesheet(".item { flex-shrink: 0; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "flex-shrink") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, FlexWrapDeclaration) {
+    auto sheet = parse_stylesheet(".container { flex-wrap: wrap-reverse; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "flex-wrap") { found = true; break; }
+    EXPECT_TRUE(found);
+}
