@@ -3214,3 +3214,41 @@ TEST(CORSPolicyTest, NotEnforceableInvalidSchemeV26) {
 TEST(CORSPolicyTest, CORSEligibleLocalhostWithPortV26) {
     EXPECT_TRUE(is_cors_eligible_request_url("http://localhost:8080/api/data"));
 }
+
+// Cycle 1247: CORS policy tests V27
+
+TEST(CORSPolicyTest, IsCrossOriginHttpVsHttpsV27) {
+    EXPECT_TRUE(is_cross_origin("http://example.com", "https://example.com/data"));
+}
+
+TEST(CORSPolicyTest, HasEnforceableOriginIpv6AddressV27) {
+    EXPECT_TRUE(has_enforceable_document_origin("https://[2001:db8::1]"));
+}
+
+TEST(CORSPolicyTest, CORSEligibleWithMultipleQueryParamsV27) {
+    EXPECT_TRUE(is_cors_eligible_request_url("https://api.example.com/search?q=test&limit=20&offset=0"));
+}
+
+TEST(CORSPolicyTest, ShouldAttachOriginDifferentHostV27) {
+    EXPECT_TRUE(should_attach_origin_header("https://app.example.com", "https://cdn.example.org/assets"));
+}
+
+TEST(CORSPolicyTest, CORSAllowsExactOriginMatchV27) {
+    clever::net::HeaderMap resp_headers;
+    resp_headers.set("Access-Control-Allow-Origin", "https://web.example.com");
+    EXPECT_TRUE(cors_allows_response("https://web.example.com", "https://api.example.com/endpoint", resp_headers, false));
+}
+
+TEST(CORSPolicyTest, CORSBlocksPartialOriginMatchV27) {
+    clever::net::HeaderMap resp_headers;
+    resp_headers.set("Access-Control-Allow-Origin", "https://api.example.com");
+    EXPECT_FALSE(cors_allows_response("https://web.example.com", "https://api.example.com/data", resp_headers, false));
+}
+
+TEST(CORSPolicyTest, NotEnforceableEmptyOriginV27) {
+    EXPECT_FALSE(has_enforceable_document_origin(""));
+}
+
+TEST(CORSPolicyTest, NotCORSEligibleWithEmbeddedCredentialsV27) {
+    EXPECT_FALSE(is_cors_eligible_request_url("https://user:password@secure.example.com/api"));
+}

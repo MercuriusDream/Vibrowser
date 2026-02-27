@@ -6731,3 +6731,66 @@ TEST(DomElement, GetAttributeDefaultEmpty) {
     auto el = doc.create_element("div");
     EXPECT_FALSE(el->has_attribute("nonexistent"));
 }
+
+// Cycle 1246: DOM element tests
+
+TEST(DomElement, TagNameVar) {
+    Document doc;
+    auto el = doc.create_element("var");
+    EXPECT_EQ(el->tag_name(), "var");
+}
+
+TEST(DomElement, TagNameCite) {
+    Document doc;
+    auto el = doc.create_element("cite");
+    EXPECT_EQ(el->tag_name(), "cite");
+}
+
+TEST(DomElement, SetAttributePattern) {
+    Document doc;
+    auto el = doc.create_element("input");
+    el->set_attribute("pattern", "[0-9]+");
+    EXPECT_EQ(el->get_attribute("pattern"), "[0-9]+");
+}
+
+TEST(DomElement, SetAttributeStep) {
+    Document doc;
+    auto el = doc.create_element("input");
+    el->set_attribute("step", "0.01");
+    EXPECT_EQ(el->get_attribute("step"), "0.01");
+}
+
+TEST(DomElement, ChildCountEighty) {
+    Document doc;
+    auto parent = doc.create_element("div");
+    for (int i = 0; i < 80; ++i) {
+        parent->append_child(doc.create_element("p"));
+    }
+    EXPECT_EQ(parent->child_count(), 80u);
+}
+
+TEST(DomElement, RemoveAttributeDraggable) {
+    Document doc;
+    auto el = doc.create_element("div");
+    el->set_attribute("draggable", "true");
+    el->remove_attribute("draggable");
+    EXPECT_FALSE(el->has_attribute("draggable"));
+}
+
+TEST(DomElement, HasAttributeHiddenV2) {
+    Document doc;
+    auto el = doc.create_element("div");
+    el->set_attribute("hidden", "");
+    EXPECT_TRUE(el->has_attribute("hidden"));
+}
+
+TEST(DomElement, MultipleAttributesSet) {
+    Document doc;
+    auto el = doc.create_element("input");
+    el->set_attribute("type", "text");
+    el->set_attribute("name", "field");
+    el->set_attribute("required", "");
+    EXPECT_TRUE(el->has_attribute("type"));
+    EXPECT_TRUE(el->has_attribute("name"));
+    EXPECT_TRUE(el->has_attribute("required"));
+}

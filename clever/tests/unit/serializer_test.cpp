@@ -6162,3 +6162,61 @@ TEST(SerializerTest, StringEmptyV16) {
     Deserializer d(s.data());
     EXPECT_EQ("", d.read_string());
 }
+
+// Cycle 1248: IPC serializer tests V17
+
+TEST(SerializerTest, U8MaxBoundaryV17) {
+    Serializer s;
+    s.write_u8(255);
+    Deserializer d(s.data());
+    EXPECT_EQ(255, d.read_u8());
+}
+
+TEST(SerializerTest, U16MaxValueV17) {
+    Serializer s;
+    s.write_u16(65535);
+    Deserializer d(s.data());
+    EXPECT_EQ(65535, d.read_u16());
+}
+
+TEST(SerializerTest, U32MidRangeV17) {
+    Serializer s;
+    s.write_u32(2147483648U);
+    Deserializer d(s.data());
+    EXPECT_EQ(2147483648U, d.read_u32());
+}
+
+TEST(SerializerTest, U64MaxValueV17) {
+    Serializer s;
+    s.write_u64(18446744073709551615ULL);
+    Deserializer d(s.data());
+    EXPECT_EQ(18446744073709551615ULL, d.read_u64());
+}
+
+TEST(SerializerTest, I32NegativeMinV17) {
+    Serializer s;
+    s.write_i32(-2147483648);
+    Deserializer d(s.data());
+    EXPECT_EQ(-2147483648, d.read_i32());
+}
+
+TEST(SerializerTest, I64PositiveMaxV17) {
+    Serializer s;
+    s.write_i64(9223372036854775807LL);
+    Deserializer d(s.data());
+    EXPECT_EQ(9223372036854775807LL, d.read_i64());
+}
+
+TEST(SerializerTest, F64VerySmallValueV17) {
+    Serializer s;
+    s.write_f64(1.23456789e-10);
+    Deserializer d(s.data());
+    EXPECT_NEAR(1.23456789e-10, d.read_f64(), 1e-20);
+}
+
+TEST(SerializerTest, StringLongValueV17) {
+    Serializer s;
+    s.write_string("The quick brown fox jumps over the lazy dog");
+    Deserializer d(s.data());
+    EXPECT_EQ("The quick brown fox jumps over the lazy dog", d.read_string());
+}

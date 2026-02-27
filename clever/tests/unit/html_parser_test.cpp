@@ -7240,3 +7240,60 @@ TEST(TreeBuilder, TimeElementV5) {
     ASSERT_NE(el, nullptr);
     EXPECT_EQ(el->tag_name, "time");
 }
+
+// Cycle 1252: HTML parser tests V6
+TEST(TreeBuilder, ArticleElementV6) {
+    auto doc = clever::html::parse("<article><h2>Article Title</h2><p>Content here</p></article>");
+    auto* el = doc->find_element("article");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "article");
+}
+
+TEST(TreeBuilder, AsideElementV6) {
+    auto doc = clever::html::parse("<aside role=\"complementary\"><h3>Sidebar</h3></aside>");
+    auto* el = doc->find_element("aside");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "aside");
+}
+
+TEST(TreeBuilder, NavElementV6) {
+    auto doc = clever::html::parse("<nav id=\"main-nav\"><a href=\"/\">Home</a></nav>");
+    auto* el = doc->find_element("nav");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "nav");
+}
+
+TEST(TreeBuilder, SectionElementV6) {
+    auto doc = clever::html::parse("<section class=\"content\"><h2>Section</h2></section>");
+    auto* el = doc->find_element("section");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "section");
+}
+
+TEST(TreeBuilder, HeaderElementV6) {
+    auto doc = clever::html::parse("<header><h1>Site Title</h1></header>");
+    auto* el = doc->find_element("header");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "header");
+}
+
+TEST(TreeBuilder, FooterElementV6) {
+    auto doc = clever::html::parse("<footer><p>Copyright 2024</p></footer>");
+    auto* el = doc->find_element("footer");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "footer");
+}
+
+TEST(TreeBuilder, MarkElementV6) {
+    auto doc = clever::html::parse("<p>This is <mark class=\"highlight\">highlighted</mark></p>");
+    auto* el = doc->find_element("mark");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "mark");
+}
+
+TEST(TreeBuilder, TimeElementV6) {
+    auto doc = clever::html::parse("<time>January 1, 2025</time>");
+    auto* el = doc->find_element("time");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "time");
+}

@@ -7165,3 +7165,131 @@ TEST(RequestTest, SerializeWithEmptyBodyV19) {
     EXPECT_NE(result.find("GET /fetch HTTP/1.1\r\n"), std::string::npos);
     EXPECT_NE(result.find("Host: example.com\r\n"), std::string::npos);
 }
+
+// Cycle 1250: HTTP/Net tests V20
+
+// HeaderMap: set overwrites previous value V20
+TEST(HeaderMapTest, SetOverwritesPreviousValueV20) {
+    HeaderMap hm;
+    hm.set("Content-Type", "text/html");
+    auto v1 = hm.get("Content-Type");
+    EXPECT_TRUE(v1.has_value());
+    EXPECT_EQ(v1.value(), "text/html");
+
+    hm.set("Content-Type", "application/json");
+    auto v2 = hm.get("Content-Type");
+    EXPECT_TRUE(v2.has_value());
+    EXPECT_EQ(v2.value(), "application/json");
+}
+
+// HeaderMap: append adds multiple values V20
+TEST(HeaderMapTest, AppendAddsMultipleValuesV20) {
+    HeaderMap hm;
+    hm.append("Set-Cookie", "session=abc");
+    hm.append("Set-Cookie", "token=xyz");
+
+    auto all = hm.get_all("Set-Cookie");
+    EXPECT_EQ(all.size(), 2u);
+    EXPECT_EQ(all[0], "session=abc");
+    EXPECT_EQ(all[1], "token=xyz");
+}
+
+// Response: body is vector<uint8_t> V20
+TEST(ResponseTest, BodyIsVectorUint8V20) {
+    Response resp;
+    resp.status = 200;
+    resp.status_text = "OK";
+
+    std::vector<uint8_t> body_data = {0x48, 0x65, 0x6c, 0x6c, 0x6f}; // "Hello"
+    resp.body = body_data;
+
+    EXPECT_EQ(resp.body.size(), 5u);
+    EXPECT_EQ(resp.body[0], 0x48);
+    EXPECT_EQ(resp.body[4], 0x6f);
+}
+
+// Request: serialize returns vector<uint8_t> V20
+TEST(RequestTest, SerializeReturnsVectorUint8V20) {
+    Request req;
+    req.method = Method::POST;
+    req.host = "api.example.com";
+    req.path = "/endpoint";
+    req.headers.set("Content-Type", "application/json");
+
+    std::vector<uint8_t> body = {0x7b, 0x22, 0x7d}; // "{}"
+    req.body = body;
+
+    auto serialized = req.serialize();
+    EXPECT_GT(serialized.size(), 0u);
+
+    // Verify it's actually uint8_t
+    static_assert(std::is_same_v<std::vector<uint8_t>, decltype(serialized)>);
+}
+
+// CookieJar: get_cookie_header with domain path and secure V20
+TEST(CookieJarTest, GetCookieHeaderWithDomainPathSecureV20) {
+    CookieJar jar;
+    jar.set_from_header("session=token123; Path=/admin; Secure", "example.com");
+    jar.set_from_header("preference=dark", "example.com");
+
+    // Request to HTTPS /admin - should include secure cookie
+    std::string header_secure = jar.get_cookie_header("example.com", "/admin", true);
+    EXPECT_FALSE(header_secure.empty());
+    EXPECT_NE(header_secure.find("session=token123"), std::string::npos);
+
+    // Request to HTTP /admin - should NOT include secure cookie
+    std::string header_insecure = jar.get_cookie_header("example.com", "/admin", false);
+    EXPECT_EQ(header_insecure.find("session=token123"), std::string::npos);
+}
+
+// CookieJar: set_from_header parses domain correctly V20
+TEST(CookieJarTest, SetFromHeaderParsesDomainCorrectlyV20) {
+    CookieJar jar;
+
+    jar.set_from_header("id=abc123; Domain=.example.com", "example.com");
+    EXPECT_EQ(jar.size(), 1u);
+
+    jar.set_from_header("session=xyz456; Domain=sub.example.com", "sub.example.com");
+    EXPECT_EQ(jar.size(), 2u);
+
+    jar.set_from_header("token=final; Path=/secure", "example.com");
+    EXPECT_EQ(jar.size(), 3u);
+}
+
+// Method: all enum values exist and are distinct V20
+TEST(MethodTest, AllEnumValuesExistAndDistinctV20) {
+    std::vector<Method> methods = {
+        Method::GET,
+        Method::POST,
+        Method::PUT,
+        Method::DELETE_METHOD,
+        Method::HEAD,
+        Method::OPTIONS,
+        Method::PATCH
+    };
+
+    EXPECT_EQ(methods.size(), 7u);
+
+    // Verify all are distinct
+    for (size_t i = 0; i < methods.size(); ++i) {
+        for (size_t j = i + 1; j < methods.size(); ++j) {
+            EXPECT_NE(methods[i], methods[j]);
+        }
+    }
+}
+
+// Response: body_as_string converts vector<uint8_t> correctly V20
+TEST(ResponseTest, BodyAsStringConvertsCorrectlyV20) {
+    Response resp;
+    resp.status = 200;
+    resp.status_text = "OK";
+
+    // Create a body from UTF-8 bytes
+    std::string expected_text = "Hello, World!";
+    std::vector<uint8_t> body_bytes(expected_text.begin(), expected_text.end());
+    resp.body = body_bytes;
+
+    std::string result = resp.body_as_string();
+    EXPECT_EQ(result, expected_text);
+    EXPECT_EQ(result.length(), 13u);
+}

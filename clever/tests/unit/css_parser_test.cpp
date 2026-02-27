@@ -7723,3 +7723,77 @@ TEST_F(CSSStylesheetTest, MinBlockSizeV17) {
         if (d.property == "min-block-size") { found = true; break; }
     EXPECT_TRUE(found);
 }
+
+// Cycle 1251: CSS parser tests V18
+
+TEST_F(CSSStylesheetTest, PaddingBlockV18) {
+    auto sheet = parse_stylesheet(".box { padding-block: 20px; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "padding-block") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, PaddingInlineV18) {
+    auto sheet = parse_stylesheet(".box { padding-inline: 25px; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "padding-inline") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, InsetV18) {
+    auto sheet = parse_stylesheet(".absolute { inset: 10px; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "inset") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, OverscrollBehaviorV18) {
+    auto sheet = parse_stylesheet("html { overscroll-behavior: contain; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "overscroll-behavior") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, ScrollBehaviorV18) {
+    auto sheet = parse_stylesheet("html { scroll-behavior: smooth; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "scroll-behavior") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, ScrollMarginV18) {
+    auto sheet = parse_stylesheet(".section { scroll-margin: 50px; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "scroll-margin") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, ScrollPaddingV18) {
+    auto sheet = parse_stylesheet(".viewport { scroll-padding: 30px; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "scroll-padding") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, SnapAlignV18) {
+    auto sheet = parse_stylesheet(".item { snap-align: start; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "snap-align") { found = true; break; }
+    EXPECT_TRUE(found);
+}

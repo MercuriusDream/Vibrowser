@@ -4967,3 +4967,80 @@ TEST(URLParser, UrlWithIpv4HostAndMultipleSegmentsV8) {
     EXPECT_TRUE(url->query.empty());
     EXPECT_TRUE(url->fragment.empty());
 }
+
+// Cycle 1249: URL parser tests V9
+
+TEST(URLParser, HttpsUrlWithSubdomainAndPathV9) {
+    auto url = parse("https://api.v2.example.com/users/list");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "api.v2.example.com");
+    EXPECT_EQ(url->path, "/users/list");
+    EXPECT_TRUE(url->query.empty());
+    EXPECT_TRUE(url->fragment.empty());
+}
+
+TEST(URLParser, UrlWithTrailingSlashV9) {
+    auto url = parse("http://example.org/path/to/resource/");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "http");
+    EXPECT_EQ(url->host, "example.org");
+    EXPECT_EQ(url->path, "/path/to/resource/");
+}
+
+TEST(URLParser, FtpUrlWithUserCredentialsV9) {
+    auto url = parse("ftp://user:password@files.example.net/pub/data");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "ftp");
+    EXPECT_EQ(url->username, "user");
+    EXPECT_EQ(url->password, "password");
+    EXPECT_EQ(url->host, "files.example.net");
+    EXPECT_EQ(url->path, "/pub/data");
+}
+
+TEST(URLParser, UrlWithSpecialCharactersInQueryV9) {
+    auto url = parse("https://search.example.io/find?q=hello%20world&lang=en-US");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "search.example.io");
+    EXPECT_EQ(url->path, "/find");
+    EXPECT_NE(url->query.find("q="), std::string::npos);
+    EXPECT_NE(url->query.find("lang=en-US"), std::string::npos);
+}
+
+TEST(URLParser, LocalhostWithFragmentAndQueryV9) {
+    auto url = parse("http://localhost:8888/page?id=42#section-top");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "http");
+    EXPECT_EQ(url->host, "localhost");
+    EXPECT_EQ(url->port, 8888);
+    EXPECT_EQ(url->path, "/page");
+    EXPECT_NE(url->query.find("id=42"), std::string::npos);
+    EXPECT_EQ(url->fragment, "section-top");
+}
+
+TEST(URLParser, HttpsHostOnlyReturnsSlashPathV9) {
+    auto url = parse("https://secure.example.com");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "secure.example.com");
+    EXPECT_EQ(url->path, "/");
+}
+
+TEST(URLParser, UrlWithEmptyQueryAndFragmentV9) {
+    auto url = parse("http://data.service.org/api/v3/items?#anchor");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "http");
+    EXPECT_EQ(url->host, "data.service.org");
+    EXPECT_EQ(url->path, "/api/v3/items");
+    EXPECT_TRUE(url->query.empty());
+    EXPECT_EQ(url->fragment, "anchor");
+}
+
+TEST(URLParser, SameOriginCheckMultipleUrlsV9) {
+    auto url1 = parse("https://app.example.net/dashboard");
+    auto url2 = parse("https://app.example.net/settings/profile");
+    ASSERT_TRUE(url1.has_value());
+    ASSERT_TRUE(url2.has_value());
+    EXPECT_TRUE(urls_same_origin(*url1, *url2));
+}

@@ -8845,3 +8845,45 @@ TEST(LayoutNodeProps, SvgTransformScaleDefaultV17) {
     LayoutNode n;
     EXPECT_FLOAT_EQ(n.svg_transform_sx, 1.0f);
 }
+
+// Cycle 1253: LayoutNode property tests V18
+
+TEST(LayoutNodeProps, BorderStartStartRadiusDefaultV18) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.border_start_start_radius, 0.0f);
+}
+
+TEST(LayoutNodeProps, BorderStartEndRadiusDefaultV18) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.border_start_end_radius, 0.0f);
+}
+
+TEST(LayoutNodeProps, BorderEndStartRadiusDefaultV18) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.border_end_start_radius, 0.0f);
+}
+
+TEST(LayoutNodeProps, BorderEndEndRadiusDefaultV18) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.border_end_end_radius, 0.0f);
+}
+
+TEST(LayoutNodeProps, ScrollbarThumbColorDefaultV18) {
+    LayoutNode n;
+    EXPECT_EQ(n.scrollbar_thumb_color, 0u);
+}
+
+TEST(LayoutNodeProps, ScrollbarTrackColorDefaultV18) {
+    LayoutNode n;
+    EXPECT_EQ(n.scrollbar_track_color, 0u);
+}
+
+TEST(LayoutNodeProps, OverflowBlockDefaultV18) {
+    LayoutNode n;
+    EXPECT_EQ(n.overflow_block, 0);
+}
+
+TEST(LayoutNodeProps, OverflowInlineDefaultV18) {
+    LayoutNode n;
+    EXPECT_EQ(n.overflow_inline, 0);
+}

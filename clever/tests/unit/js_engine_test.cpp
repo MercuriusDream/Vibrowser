@@ -18914,3 +18914,53 @@ TEST(JSEngine, ClassDefinitionCycle1245) {
     auto result = engine.evaluate("class Calculator { add(a, b) { return a + b; } } var calc = new Calculator(); calc.add(7, 8).toString()");
     EXPECT_EQ(result, "15");
 }
+
+// Cycle 1254: JS engine tests
+
+TEST(JSEngine, ArrowFunctionCycle1254) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var add = (a, b) => a + b; add(5, 3).toString()");
+    EXPECT_EQ(result, "8");
+}
+
+TEST(JSEngine, MapIterationCycle1254) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var map = new Map(); map.set('key1', 100); map.set('key2', 200); map.get('key1').toString()");
+    EXPECT_EQ(result, "100");
+}
+
+TEST(JSEngine, SetOperationsCycle1254) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var set = new Set([1, 2, 3, 2, 1]); set.size.toString()");
+    EXPECT_EQ(result, "3");
+}
+
+TEST(JSEngine, ForOfLoopCycle1254) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var arr = [10, 20, 30]; var sum = 0; for (var item of arr) { sum += item; } sum.toString()");
+    EXPECT_EQ(result, "60");
+}
+
+TEST(JSEngine, SymbolCreationCycle1254) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var sym = Symbol('test'); typeof sym");
+    EXPECT_EQ(result, "symbol");
+}
+
+TEST(JSEngine, ProxyHandlerGetCycle1254) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var target = {x: 42}; var handler = {get: function(obj, prop) { return obj[prop] * 2; }}; var proxy = new Proxy(target, handler); proxy.x.toString()");
+    EXPECT_EQ(result, "84");
+}
+
+TEST(JSEngine, IteratorProtocolCycle1254) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var arr = [1, 2, 3]; var iter = arr[Symbol.iterator](); iter.next().value.toString()");
+    EXPECT_EQ(result, "1");
+}
+
+TEST(JSEngine, GeneratorFunctionCycle1254) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("function* gen() { yield 5; yield 10; } var g = gen(); g.next().value.toString()");
+    EXPECT_EQ(result, "5");
+}
