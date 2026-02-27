@@ -14679,3 +14679,88 @@ TEST(JSEngine, MathCbrtOfEight) {
     auto result = engine.evaluate("Math.cbrt(8)");
     EXPECT_EQ(result, "2");
 }
+
+// ---------------------------------------------------------------------------
+// Cycle 701 — Map/Set operations and flat depth
+// ---------------------------------------------------------------------------
+
+TEST(JSEngine, MapForEachIterates) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var m = new Map();
+        m.set("a", 1);
+        m.set("b", 2);
+        var count = 0;
+        m.forEach(function(v) { count += v; });
+        count
+    )");
+    EXPECT_EQ(result, "3");
+}
+
+TEST(JSEngine, SetForEachIterates) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var s = new Set([10, 20, 30]);
+        var total = 0;
+        s.forEach(function(v) { total += v; });
+        total
+    )");
+    EXPECT_EQ(result, "60");
+}
+
+TEST(JSEngine, MapDeleteRemovesEntry) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var m = new Map();
+        m.set("key", "value");
+        m.delete("key");
+        m.size
+    )");
+    EXPECT_EQ(result, "0");
+}
+
+TEST(JSEngine, SetDeleteRemovesValue) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var s = new Set([1, 2, 3]);
+        s.delete(2);
+        s.size
+    )");
+    EXPECT_EQ(result, "2");
+}
+
+TEST(JSEngine, ArrayFlatDepthTwo) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        [1, [2, [3, [4]]]].flat(2).length
+    )");
+    EXPECT_EQ(result, "4");
+}
+
+TEST(JSEngine, ArrayFlatInfinity) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        [1, [2, [3, [4, [5]]]]].flat(Infinity).join(",")
+    )");
+    EXPECT_EQ(result, "1,2,3,4,5");
+}
+
+TEST(JSEngine, BitwiseOrAssignment) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var x = 4;
+        x |= 3;
+        x
+    )");
+    EXPECT_EQ(result, "7");
+}
+
+TEST(JSEngine, BitwiseXorAssignment) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var x = 15;
+        x ^= 9;
+        x
+    )");
+    EXPECT_EQ(result, "6");
+}
