@@ -3180,3 +3180,54 @@ TEST(URLParser, QueryKeyOnlyNoValue) {
     ASSERT_TRUE(url.has_value());
     EXPECT_FALSE(url->query.empty());
 }
+
+TEST(URLParser, PathWithGifExtension) {
+    auto url = parse("https://example.com/img/animation.gif");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->path, "/img/animation.gif");
+}
+
+TEST(URLParser, PathWithJpegExtension) {
+    auto url = parse("https://example.com/photos/photo.jpeg");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->path, "/photos/photo.jpeg");
+}
+
+TEST(URLParser, PathWithWebpExtension) {
+    auto url = parse("https://cdn.example.com/image.webp");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->path, "/image.webp");
+}
+
+TEST(URLParser, Port3306Preserved) {
+    auto url = parse("http://db.example.com:3306/schema");
+    ASSERT_TRUE(url.has_value());
+    ASSERT_TRUE(url->port.has_value());
+    EXPECT_EQ(*url->port, 3306);
+}
+
+TEST(URLParser, Port5432Preserved) {
+    auto url = parse("http://db.example.com:5432/postgres");
+    ASSERT_TRUE(url.has_value());
+    ASSERT_TRUE(url->port.has_value());
+    EXPECT_EQ(*url->port, 5432);
+}
+
+TEST(URLParser, Port27017Preserved) {
+    auto url = parse("http://mongo.example.com:27017/mydb");
+    ASSERT_TRUE(url.has_value());
+    ASSERT_TRUE(url->port.has_value());
+    EXPECT_EQ(*url->port, 27017);
+}
+
+TEST(URLParser, QueryWithMultipleEqualsSigns) {
+    auto url = parse("https://example.com/?data=a=b=c");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_FALSE(url->query.empty());
+}
+
+TEST(URLParser, PathWithHyphensAndNumbers) {
+    auto url = parse("https://example.com/post-123-article");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->path, "/post-123-article");
+}
