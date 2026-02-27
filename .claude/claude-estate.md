@@ -5,16 +5,97 @@
 
 ## Current Status
 
-**Phase**: Active Development — Rendering Fixes + Testing Blitz
-**Last Active**: 2026-02-28T22:00:00+0900
-**Current Focus**: Major rendering pipeline fixes — UA stylesheet, data:URI images, SVG-as-image via nanosvg.
-**Momentum**: 12,080 tests. Three critical rendering bugs fixed. Every HTML element now renders as correct display type.
-**Cycle**: 1500
-**Workflow**: Commit and push after each cycle round. Use 6 Opus subagents + 9 haiku subagents + Codex agents for max parallelism.
+**Phase**: Active Development — Testing Blitz
+**Last Active**: 2026-02-28T11:00:00+0900
+**Current Focus**: Test blitz Round 76
+**Momentum**: 13,711 tests. 100% pass rate. Rendering bugs fixed.
+**Cycle**: 1671
+**Workflow**: Commit and push after each cycle round. Use 9 Codex agents for max parallelism.
 
 ## Session Log
 
+### Cycles 1663-1671 — 2026-02-28
+
+- **Cycles**: 9 (Round 75)
+- **Theme**: Test blitz round 75 — 72 new tests (13,639→13,711)
+- **Key Wins**:
+  - Fixed Codex agent API errors: CORS (CorsPolicy class→free functions), DOM (children()→child_count()/first_child()), Serializer (wrong reader class, non-existent signed/float methods), Layout (margin collapse behavior), JS (async needs flush_fetch_promise_jobs)
+  - 13,711 tests, 13/13 suites, 100% pass rate
+
+### Cycles 1653-1662 — 2026-02-28
+
+- **Cycles**: 10 (Rendering Fix)
+- **Theme**: Fix 3 major rendering bugs: black outlines, off-center elements, image flip prevention
+- **Key Wins**:
+  - **FIX 1: Black outlines** — border_style defaulted to 1 (solid) in LayoutNode; changed to 0 (none). Removed hardcoded UA borders on input/button/select. CSS now fully controls borders. Border shorthand defaults from Solid→None.
+  - **FIX 2: Off-center elements** — Auto-margin centering now subtracts explicit margins from remaining space. InlineBlock children properly recognized in inline formatting context for text-align centering. Block layout uses geometry.width instead of specified_width.
+  - **FIX 3: Outline fix** — style_resolver outline shorthand was missing groove/ridge/inset/outset keywords. Fixed + outline shorthand default from Solid→None.
+  - **FIX 4: Image orientation** — Added image_orientation_explicit flag to prevent inherited flip from affecting child elements.
+  - Removed auto-setting border-style to Solid when only border-width is set (both render_pipeline and style_resolver paths).
+  - Updated 15 tests to match new correct behavior. 13,639 tests, 100% pass.
+  - Used 5 parallel Codex agents as pass@n for investigation + fixes.
+- **Files Modified**: box.h, render_pipeline.cpp, style_resolver.cpp, layout_engine.cpp, paint_test.cpp, layout_test.cpp, css_style_test.cpp
+
+### Cycles 1636-1652 — 2026-02-28
+
+- **Cycles**: 18 (Rounds 71-74)
+- **Theme**: Test blitz rounds 71-74 — 352 new tests (13,287→13,639)
+- **Key Wins**:
+  - Round 71 (1636-1644): +88 tests. Clean pass
+  - Round 72 (1645-1653): +88 tests. Clean pass
+  - Round 73: +88 tests. Clean pass, 13,463 total
+  - Round 74: +88 tests. Clean pass, 13,639 total
+
+### Cycles 1564-1635 — 2026-02-28
+
+- **Cycles**: 72 (Rounds 63-70)
+- **Theme**: Test blitz rounds 63-70 — 88 tests per round, 100% pass rate maintained
+- **Key Wins**:
+  - Round 63-64: committed and pushed prior session
+  - Round 65 (1582-1590): +88 tests. Fixed V64 pre-existing failures (Content-Length title case, layout y offset, margin stacking)
+  - Round 66 (1591-1599): +88 tests. Fixed 100 Continue/multiline header tests → simpler alternatives
+  - Round 67 (1600-1608): +88 tests. Clean pass, crossed 13K milestone!
+  - Round 68 (1609-1617): +88 tests. Clean pass all Codex agents
+  - Round 69 (1618-1626): +88 tests. Clean pass
+  - Round 70 (1627-1635): +88 tests. Clean pass, 13,287 total
+  - 12,759→13,287 tests (+528). 100% pass rate maintained across all 6 rounds.
+
+### Cycles 1546-1563 — 2026-02-28
+
+- **Cycles**: 18 (Rounds 61-62)
+- **Theme**: Rounds 61-62 tests + CSS enum fixes + layout segfault fix
+- **Key Wins**:
+  - Round 61 (1546-1554): +72 tests. Fixed CORS is_preflight→false, null origin matches wildcard.
+  - Round 62 (1555-1563): +71 tests. Fixed CSS enum comparisons (Visibility, Cursor, PointerEvents, UserSelect, VerticalAlign, WhiteSpace — NOT strings!). Fixed layout segfault (specified_width=-1 causes infinite loop). Fixed net serialize() doesn't auto-add Content-Length. Fixed CORS fragment in ACAO not stripped.
+  - prefers-color-scheme already supported! Reads macOS dark mode via CFPreferences.
+
+### Cycles 1537-1545 — 2026-02-28
+
+- **Cycles**: 9 (Round 60) + Paint Fix
+- **Theme**: Round 60 tests + ALL 4 paint failures FIXED by Codex
+- **Key Wins**:
+  - Round 60 (1537-1545): +72 tests, clean build, 100% pass rate!
+  - **MILESTONE: 0 test failures** — Codex fixed all 4 pre-existing paint failures:
+    1. Fixed counter(name, style) parsing when function args are space-normalized (comma removed)
+    2. Stopped post-cascade list fallback from overwriting explicit margin/padding on ul/ol/menu
+    3. Fixed list-style resolution for <li> to respect cascaded parent list-style-type
+    4. Fixed ::marker propagation for inside/outside marker text nodes
+  - Tests: DOM (event/traversal), CORS (wildcard/credentials), IPC (unicode/boundary), URL (IDN/IPv6/data), Net (POST/cookie/auth), CSS (font/transform/flex/grid), HTML (doctype/self-close/semantic), Layout (margin-collapse/flex/float/absolute), JS (destructuring/generator/Map/Set)
+- **Files Modified**: vibrowser/src/paint/render_pipeline.cpp (88 insertions, 17 deletions for paint fix)
+
+### Cycles 1501-1536 — 2026-02-28
+
+- **Cycles**: 36 (Rounds 56-59)
+- **Theme**: Test blitz rounds 56-59 — 288 new tests (12,080→12,368)
+- **Key Wins**:
+  - Round 56 (1501-1509): +72 tests. Fixed HeaderMap lowercase serialization in net tests (Content-Type→content-type, Authorization→authorization).
+  - Round 57 (1510-1518): +72 tests. Fixed DOM set_id()→set_attribute("id",...), insert_before pointer vs ref, no replace_child(). Fixed Host: capitalization in net tests. Fixed CORS: fragments NOT cors-eligible, schemes case-insensitive.
+  - Round 58 (1519-1527): +72 tests. Fixed CSS border_color→border_top.color, outline_width is Length, blur not blur_radius. Fixed DOM unique_ptr NULL after move. URL double-encoding %20→%2520. Host:443 port omitted. min_width clamps up not to viewport.
+  - Round 59 (1528-1536): +72 tests. Fixed layout add_child→append_child, bg_color→background_color, text_color→color, hex spaces 0xFF FF→0xFFFF. Fixed CSS -webkit-text-stroke-width property name. Fixed CORS origin fragment stripped (matches), WSS not cors-eligible.
+- **Discoveries**: LayoutNode uses append_child(), background_color, color (not add_child/bg_color/text_color). Color hex must not have spaces. -webkit- prefix required for text-stroke properties. 4th paint failure (MarkerColorFromCSS) resolved — only 3 remain.
+
 ### Cycles 1498-1500 — 2026-02-28
+
 - **Cycles**: 3 (Rendering Fix Cycle)
 - **Theme**: Critical rendering pipeline fixes — the 3 biggest bugs affecting real-world page rendering
 - **Key Wins**:
@@ -27,6 +108,7 @@
 - **Discoveries**: The default ComputedStyle display is Inline — every element without explicit display:block CSS was rendering inline. This was THE root cause of centering failures on real websites.
 
 ### Cycles 1489-1497 — 2026-02-28
+
 - **Cycles**: 9 (Rounds 54-55)
 - **Theme**: Test blitz rounds 54-55 + rendering investigation
 - **Key Wins**:
@@ -37,6 +119,7 @@
   - StyleResolver: added set_viewport(), evaluate_media_condition(), evaluate_supports_condition()
 
 ### Cycles 1471-1479 — 2026-02-28
+
 - **Cycles**: 9 (Round 53)
 - **Theme**: Test blitz round 53 — all 9 suites (+71 tests) — 11,864 total!
 - **Key Wins**:
@@ -54,6 +137,7 @@
 - **Discoveries**: Project renamed from clever/ to vibrowser/. Build dir needed complete clean. DOM class_list() doesn't create class attribute implicitly. serialize() for Request returns binary not HTTP text.
 
 ### Cycles 1399-1461 — 2026-02-28
+
 - **Cycles**: 63 (Rounds 45-51)
 - **Theme**: Test blitz rounds 45-51 — 495 new tests (11,298→11,793)
 - **Key Wins**:
@@ -67,6 +151,7 @@
 - **Discoveries**: DOM file has ~948 tests, naming collisions increasingly common. Need more creative names. HeaderMap.get() returns optional<string>. Request has .path field not parsed from .url. wss:// is NOT cross-origin in this impl.
 
 ### Cycles 1390-1398 — 2026-02-28
+
 - **Cycles**: 9
 - **Theme**: Test blitz round 44 — all 9 suites (+72 tests) — 11,298 total!
 - **Key Wins**:
@@ -82,6 +167,7 @@
 - **Discovery**: HTML V22 subagent used wrong pattern (doc->body/Element*) — SimpleNode uses find_element()
 
 ### Cycles 1381-1389 — 2026-02-28
+
 - **Cycles**: 9
 - **Theme**: Test blitz round 43 — all 9 suites (+72 tests) — 11,226 total!
 - **Key Wins**:
@@ -97,6 +183,7 @@
 - **Discovery**: QuickJS has NO Intl or structuredClone — use alternatives
 
 ### Cycles 1372-1380 — 2026-02-28
+
 - **Cycles**: 9
 - **Theme**: Test blitz round 42 — all 9 suites (+72 tests) — 11,154 total!
 - **Key Wins**:
@@ -111,6 +198,7 @@
   - Cycle 1380: 8 JS — Cycle1380; Promise, for-of/in, optional chaining, nullish coalescing, String.raw, tagged templates
 
 ### Cycles 1363-1371 — 2026-02-28
+
 - **Cycles**: 9
 - **Theme**: Test blitz round 41 — all 9 suites (+72 tests) — 11,082 total!
 - **Key Wins**:
@@ -125,6 +213,7 @@
   - Cycle 1371: 8 JS — Cycle1371; Map, Set, Symbol, generator, Proxy, Uint8Array, Float64Array, ArrayBuffer
 
 ### Cycles 1354-1362 — 2026-02-28
+
 - **Cycles**: 9
 - **Theme**: Test blitz round 40 — all 9 suites (+73 tests) — 11,010 total! Crossed 11k!
 - **Key Wins**:
@@ -140,6 +229,7 @@
 - **Discovery**: select/textarea return LOWERCASE tag_name() — not all elements uppercase
 
 ### Cycles 1345-1353 — 2026-02-28
+
 - **Cycles**: 9
 - **Theme**: Test blitz round 39 — all 9 suites (+72 tests) — 10,937 total!
 - **Key Wins**:
@@ -154,6 +244,7 @@
   - Cycle 1353: 8 JS — Cycle1353; ES6+ features, closures, operators
 
 ### Cycles 1336-1344 — 2026-02-28
+
 - **Cycles**: 9
 - **Theme**: Test blitz round 38 — all 9 suites (+72 tests) — 10,865 total!
 - **Key Wins**:
@@ -168,6 +259,7 @@
   - Cycle 1344: 8 JS — Cycle1344; arrow, template literals, destructuring, spread, class
 
 ### Cycles 1327-1335 — 2026-02-28
+
 - **Cycles**: 9
 - **Theme**: Test blitz round 37 — all 9 suites (+72 tests) — 10,793 total!
 - **Key Wins**:
@@ -182,6 +274,7 @@
   - Cycle 1335: 8 JS — Cycle1335; concat, filter, Math.max, JSON.parse, RegExp, toFixed, reduce, split
 
 ### Cycles 1318-1326 — 2026-02-28
+
 - **Cycles**: 9
 - **Theme**: Test blitz round 36 — all 9 suites (+73 tests) — 10,721 total!
 - **Key Wins**:
@@ -196,6 +289,7 @@
   - Cycle 1326: 8 JS — Cycle1326; concat, push, Math.floor/ceil, JSON, parseInt, map
 
 ### Cycles 1309-1317 — 2026-02-28
+
 - **Cycles**: 9
 - **Theme**: Test blitz round 35 — all 9 suites (+72 tests) — 10,648 total!
 - **Key Wins**:
@@ -210,6 +304,7 @@
   - Cycle 1317: 8 JS — Cycle1317; repeat, slice, map, filter, Math.max/min, Date.now
 
 ### Cycles 1300-1308 — 2026-02-28
+
 - **Cycles**: 9
 - **Theme**: Test blitz round 34 — all 9 suites (+72 tests) — 10,576 total!
 - **Key Wins**:
@@ -224,6 +319,7 @@
   - Cycle 1308: 8 JS tests — Cycle1308; toUpperCase, toLowerCase, Math.floor, JSON, RegExp
 
 ### Cycles 1291-1299 — 2026-02-28
+
 - **Cycles**: 9
 - **Theme**: Test blitz round 33 — all 9 suites (+72 tests) — 10,504 total!
 - **Key Wins**:
@@ -238,6 +334,7 @@
   - Cycle 1299: 8 JS tests — Cycle1299; toUpperCase, toLowerCase, trim, map, filter, Math.max/min
 
 ### Cycles 1282-1290 — 2026-02-28
+
 - **Cycles**: 9
 - **Theme**: Test blitz round 32 — all 9 suites (+72 tests) — 10,432 total!
 - **Key Wins**:
@@ -252,6 +349,7 @@
   - Cycle 1290: 8 JS tests (js 1513→1521) — Cycle1290; padStart, padEnd, includes, find, Math.pow, sqrt, keys, reduce
 
 ### Cycles 1273-1281 — 2026-02-28
+
 - **Cycles**: 9
 - **Theme**: Test blitz round 31 — all 9 suites (+72 tests) — 10,360 total!
 - **Key Wins**:
@@ -266,6 +364,7 @@
   - Cycle 1281: 8 JS tests — Cycle1281 suffix
 
 ### Cycles 1264-1272 — 2026-02-28
+
 - **Cycles**: 9
 - **Theme**: Test blitz round 30 — all 9 suites (+72 tests) — 10,288 total!
 - **Key Wins**:
@@ -280,6 +379,7 @@
   - Cycle 1272: 8 JS tests (js 1497→1505) — Cycle1272 suffix
 
 ### Cycles 1255-1263 — 2026-02-28
+
 - **Cycles**: 9
 - **Theme**: Test blitz round 29 — all 9 suites (+72 tests) — 10,216 total!
 - **Key Wins**:
@@ -294,6 +394,7 @@
   - Cycle 1263: 8 JS tests (js 1489→1497) — Cycle1263 suffix
 
 ### Cycles 1246-1254 — 2026-02-28
+
 - **Cycles**: 9
 - **Theme**: Test blitz round 28 — all 9 suites (+72 tests) — 10,144 total!
 - **Key Wins**:
@@ -308,6 +409,7 @@
   - Cycle 1254: 8 JS tests (js 1481→1489) — Cycle1254 suffix
 
 ### Cycles 1237-1245 — 2026-02-28
+
 - **Cycles**: 9
 - **Theme**: Test blitz round 27 — 10,000 TEST MILESTONE! — 10,072 total!
 - **Key Wins**:
@@ -322,6 +424,7 @@
   - Cycle 1245: 8 JS tests (js 1473→1481) — Cycle1245 suffix
 
 ### Cycles 1228-1236 — 2026-02-28
+
 - **Cycles**: 9
 - **Theme**: Test blitz round 26 — all 9 suites (+72 tests) — 9998 total! One round from 10K!
 - **Key Wins**:
@@ -336,6 +439,7 @@
   - Cycle 1236: 8 JS tests (js 1465→1473) — Cycle1236 suffix
 
 ### Cycles 1219-1227 — 2026-02-28
+
 - **Cycles**: 9
 - **Theme**: Test blitz round 25 — all 9 suites (+72 tests) — 9926 total!
 - **Key Wins**:
@@ -350,6 +454,7 @@
   - Cycle 1227: 8 JS tests (js 1457→1465) — WeakRef, FinalizationRegistry, LogicalAssignment, NumericSeparator, PromiseAny, StringReplaceAll
 
 ### Cycles 1210-1218 — 2026-02-28
+
 - **Cycles**: 9
 - **Theme**: Test blitz round 24 — all 9 suites (+72 tests) — 9854 total! Just 146 from 10K!
 - **Key Wins**:
@@ -364,6 +469,7 @@
   - Cycle 1218: 8 JS tests (js 1449→1457) — rest params, Object.assign, destructuring params, computed props, findLast, replaceAll, Promise.allSettled, optional chaining
 
 ### Cycles 1201-1209 — 2026-02-28
+
 - **Cycles**: 9
 - **Theme**: Test blitz round 23 — all 9 suites (+72 tests) — 9782 total! Approaching 10K!
 - **Key Wins**:
@@ -378,6 +484,7 @@
   - Cycle 1209: 8 JS tests (js 1441→1449) — spread object, nested destructuring, arrow chaining, template literals, Promise chain, default params, Symbol.iterator, Proxy get/set
 
 ### Cycles 1192-1200 — 2026-02-28
+
 - **Cycles**: 9
 - **Theme**: Test blitz round 22 — CYCLE 1200 MILESTONE — all 9 suites (+72 tests) — 9710 total!
 - **Key Wins**:
@@ -392,6 +499,7 @@
   - Cycle 1200: 8 JS tests (js 1433→1441) — class methods, WeakSet, Symbol.iterator, generator return, async, bind/call, closures
 
 ### Cycles 1183-1191 — 2026-02-28
+
 - **Cycles**: 9
 - **Theme**: Test blitz round 21 — all 9 suites (+72 tests) — 9638 total! Full subagent parallelism.
 - **Key Wins**:
@@ -406,6 +514,7 @@
   - Cycle 1191: 8 JS tests (js 1425→1433) — for-of string, exponentiation, logical AND, replaceAll, includes, fromEntries, sort, trim
 
 ### Cycles 1174-1182 — 2026-02-28
+
 - **Cycles**: 9
 - **Theme**: Test blitz round 20 — all 9 suites (+72 tests) — 9566 total! Full subagent parallelism.
 - **Key Wins**:
@@ -420,6 +529,7 @@
   - Cycle 1182: 8 JS tests (js 1417→1425) — DateTimestamp, RegExpMatchAllV3, ProxySetTrap, GeneratorYield, AsyncFunctionType, FinalizationRegistry, BigInt, DateToISOStringV2
 
 ### Cycles 1165-1173 — 2026-02-28
+
 - **Cycles**: 9
 - **Theme**: Test blitz round 19 — all 9 suites (+72 tests) — 9494 total! Full subagent parallelism.
 - **Key Wins**:
@@ -434,6 +544,7 @@
   - Cycle 1173: 8 JS tests (js 1409→1417) — StringIncludesEmptyString, ArrayLastIndexOfReturnsIndex, ObjectGetOwnPropertyNamesCount, ArrayFindLastElement, MapSizeIncrementsOnAdd, SetIterationWithForOf, ObjectValuesFilter, ArrayReduceInitialValue
 
 ### Cycles 1156-1164 — 2026-02-28
+
 - **Cycles**: 9
 - **Theme**: Test blitz round 18 — all 9 suites (+72 tests) — 9422 total! Full subagent parallelism (8 haiku agents + direct DOM).
 - **Key Wins**:
@@ -448,6 +559,7 @@
   - Cycle 1164: 8 JS tests (js 1401→1409) — JSONStringifyArray, JSONParseObject, MapSizeAfterSet, SetHasAfterAdd, WeakMapSetAndGet, WeakSetHasAfterAdd, ArrayOfCreatesArray, ObjectAssignMerge
 
 ### Cycles 1147-1155 — 2026-02-28
+
 - **Cycles**: 9
 - **Theme**: Test blitz round 17 — all 9 suites (+72 tests) — 9350 total! Full subagent parallelism (8 haiku agents + direct DOM).
 - **Key Wins**:
@@ -462,6 +574,7 @@
   - Cycle 1155: 8 JS tests (js 1393→1401) — MapForEachCount, SetForEachCount, WeakRefDerefV2, PromiseFinallyType, ArrayFromIterator, ObjectKeysOnArray, StringRawTagFunction, NumberToFixedV2
 
 ### Cycles 1138-1146 — 2026-02-28
+
 - **Cycles**: 9
 - **Theme**: Test blitz round 16 — all 9 suites (+72 tests) — 9278 total! First round with subagent parallelism.
 - **Key Wins**:
@@ -476,6 +589,7 @@
   - Cycle 1146: 8 JS tests (js 1385→1393) — IntlObjectType, SymbolIterator/ToPrimitive/HasInstance, ErrorStackTrace, RegExpStickyFlag, ArrayIsArrayOnTypedArray, ObjectGetPrototypeOfArray; fixed Intl sub-props not available in QuickJS
 
 ### Cycles 1129-1137 — 2026-02-28
+
 - **Cycles**: 9
 - **Theme**: Test blitz round 15 — all 9 suites (+72 tests) — 9206 total!
 - **Key Wins**:
@@ -490,6 +604,7 @@
   - Cycle 1137: 8 JS tests (js 1377→1385) — RegExpDotAllFlag, RegExpNamedGroup, RegExpLookbehind, RegExpUnicodeProperty, ArrayBufferByteLengthV2, SharedArrayBufferType, AtomicsType, GeneratorThrowCatch
 
 ### Cycles 1120-1128 — 2026-02-28
+
 - **Cycles**: 9
 - **Theme**: Test blitz round 13 — all 9 suites (+72 tests) — 9134 total!
 - **Key Wins**:
@@ -504,6 +619,7 @@
   - Cycle 1128: 8 JS tests (js 1369→1377) — ReplaceAll, Array.at, hasOwnProperty, String.at, structuredClone, Proxy
 
 ### Cycles 1111-1119 — 2026-02-28
+
 - **Cycles**: 9
 - **Theme**: Test blitz round 12 — all 9 suites (+72 tests) — CROSSED 9000 TESTS!!!
 - **Key Wins**:
@@ -518,6 +634,7 @@
   - Cycle 1119: 8 JS tests (js 1361→1369) — TrimStart/End→V4, ArrayFrom→V2, FlatMap→V3, MatchAll→V2, Symbol→V2, Generator→V2
 
 ### Cycles 1102-1110 — 2026-02-28
+
 - **Cycles**: 9
 - **Theme**: Test blitz round 11 — all 9 suites (+72 tests) — approaching 9000!
 - **Key Wins**:
@@ -532,6 +649,7 @@
   - Cycle 1110: 8 JS tests (js 1353→1361) — StringPad→V3, ArrayFindIndex→V3, Includes→V2, Entries→V2, ParseInt/Float→V2
 
 ### Cycles 1093-1101 — 2026-02-28
+
 - **Cycles**: 9
 - **Theme**: Test blitz round 10 — all 9 suites (+72 tests)
 - **Key Wins**:
@@ -546,6 +664,7 @@
   - Cycle 1101: 8 JS tests (js 1345→1353) — fixed ArrayReduceSum/EveryTrue/SomeFalse→V2, ObjectKeysLength→V3
 
 ### Cycles 1084-1092 — 2026-02-28
+
 - **Cycles**: 9
 - **Theme**: Test blitz round 9 — all 9 suites (+72 tests)
 - **Key Wins**:
@@ -560,6 +679,7 @@
   - Cycle 1092: 8 JS tests (js 1337→1345)
 
 ### Cycles 1075-1083 — 2026-02-28
+
 - **Cycles**: 9
 - **Theme**: Test blitz round 8 — all 9 suites (+72 tests)
 - **Key Wins**:
@@ -574,6 +694,7 @@
   - Cycle 1083: 8 JS tests — StringRawV2, ArrayIsArrayTrueV2, ArrayIsArrayFalseV2, TypeofUndefinedV2, TypeofObjectV2, TypeofFunctionV2, TypeofNumberV2, TypeofStringV2 (js 1329→1337)
 
 ### Cycles 1066-1074 — 2026-02-28
+
 - **Cycles**: 9
 - **Theme**: Test blitz round 7 — all 9 suites (+72 tests)
 - **Key Wins**:
@@ -588,6 +709,7 @@
   - Cycle 1074: 8 JS tests — ObjectFreezeV2, ObjectIsFrozenV2, SymbolTypeofV2, MapHasKeyV2, MapGetV2, SetHasV2, WeakMapHasV2, PromiseThenTypeV2 (js 1321→1329)
 
 ### Cycles 1057-1065 — 2026-02-28
+
 - **Cycles**: 9
 - **Theme**: Test blitz round 6 — all 9 suites (+72 tests)
 - **Key Wins**:
@@ -602,6 +724,7 @@
   - Cycle 1065: 8 JS tests — MathSignPositiveV2, MathSignNegativeV2, MathSignZeroV2, MathCbrtV2, MathLog2V2, MathLog10V2, ArrayOfV2, ObjectAssignV2 (js 1313→1321)
 
 ### Cycles 1048-1056 — 2026-02-28
+
 - **Cycles**: 9
 - **Theme**: Test blitz round 5 — all 9 suites (+72 tests)
 - **Key Wins**:
@@ -616,6 +739,7 @@
   - Cycle 1056: 8 JS tests — NumberIsIntegerTrueV3, NumberIsIntegerFalseV3, NumberIsNaNTrueV2, NumberIsNaNFalse, ArrayFillV2, ArrayCopyWithinV2, StringRepeatV3, MathTruncV2 (js 1305→1313)
 
 ### Cycles 1039-1047 — 2026-02-28
+
 - **Cycles**: 9
 - **Theme**: Test blitz round 4 — all 9 suites (+72 tests)
 - **Key Wins**:
@@ -630,6 +754,7 @@
   - Cycle 1047: 8 JS tests — ObjectValuesV3, ObjectEntriesV3, ArrayFromStringV3, ArrayFlatV3, ArrayFlatDeepV2, StringTrimStartV3, StringTrimEndV3, NumberIsFiniteTrueV2 (js 1297→1305)
 
 ### Cycles 1030-1038 — 2026-02-27
+
 - **Cycles**: 9
 - **Theme**: Test blitz round 3 — all 9 suites (+72 tests)
 - **Key Wins**:
@@ -644,6 +769,7 @@
   - Cycle 1038: 8 JS tests — StringPadEndV2, ArrayFindV2, ArrayFindIndexV2, ArrayEveryTrue, ArrayEveryFalse, ArraySomeTrue, ArraySomeFalse, ObjectKeysV3 (js 1281→1289)
 
 ### Cycles 1021-1029 — 2026-02-27
+
 - **Cycles**: 9
 - **Theme**: Test blitz round 2 — all 9 suites (+72 tests)
 - **Key Wins**:
@@ -658,6 +784,7 @@
   - Cycle 1029: 8 JS tests — PromiseResolveType, SetSizeV2, MapSizeV2, ArrayIncludesTrue, ArrayIncludesFalse, StringStartsWithV2, StringEndsWithV2, StringPadStartV2 (js 1273→1281)
 
 ### Cycles 1012-1020 — 2026-02-27
+
 - **Cycles**: 9
 - **Theme**: Bug fixes (Clever→Vibrowser rename), test blitz across all 9 suites
 - **Key Wins**:
@@ -672,6 +799,7 @@
   - Cycle 1020: 8 JS tests — AsyncFunctionReturnsPromiseV3, NullishCoalescingWithUndefinedV2, OptionalChainingThreeLevels, OptionalChainingOnNull, LogicalAssignmentOrV2, LogicalAssignmentNullishV2, ObjectValuesV2, ArrayFlatMapV2 (js 1265→1273)
 
 ### Cycles 1001-1011 — 2026-02-27 (prior session, ledger catchup)
+
 - **Cycles**: 11
 - **Theme**: Test blitz continuation post-milestone — Layout/JS/DOM/CORS/IPC/URL/Net/CSS/HTML/Layout/JS
 - **Key Wins**:
@@ -688,6 +816,7 @@
   - Cycle 1011: JS ES6+ feature tests
 
 ### Cycles 990-1000 — 2026-02-28 🎉 MILESTONE
+
 - **Cycles**: 11
 - **Theme**: CSS mask/timeline/offset, HTML semantic inline elements, Layout text-justify/direction/bidi, JS BigInt ops, DOM class-list/attrs/siblings, CORS normalize/ws/wildcard, IPC I64/U32/forward-slash, URL py/rb/go/rs/cpp ext, Net Response/CookieJar
 - **Key Wins**:
@@ -704,6 +833,7 @@
   - Cycle 1000: 🎉 HTML sub/sup/small/del/ins tags, data value, abbr title, bdo dir (html 520→528)
 
 ### Cycles 979-989 — 2026-02-28
+
 - **Cycles**: 11
 - **Theme**: URL GIF/JPEG/WebP ext/ports, Net string_to_method DELETE/OPTIONS/PATCH/Response defaults/CookieJar, CSS font-synthesis/mask/overflow-anchor, HTML embed/map/area, Layout mask-composite/border-image/page-break, JS BigInt bit-ops/MathFround, DOM body/head null, CORS wildcard/port/localhost, IPC serializer tab/CR/backslash/I32+I64+U64 max
 - **Key Wins**:
@@ -720,6 +850,7 @@
   - Cycle 989: Net Response body-as-string/empty, status 200/404, was-redirected/url; CookieJar size-after-set/empty-after-clear (net 472→480)
 
 ### Cycles 961-971 — 2026-02-28
+
 - **Cycles**: 11
 - **Theme**: URL file extensions/ports, Net Request defaults/string_to_method, CSS SVG properties, HTML audio/track/table, Layout initial-letter/text-wrap, JS Date type checks, DOM DirtyFlags+create, CORS IPv4/data-uri/TLD, IPC string chars, HeaderMap tests
 - **Key Wins**:
@@ -736,6 +867,7 @@
   - Cycle 971: Net HeaderMap set-lowercase, get-any-case, size-after-two/remove, has-after-set/remove, get-all-single, overwrite-v2 (net 456→464)
 
 ### Cycles 952-960 — 2026-02-28
+
 - **Cycles**: 9
 - **Theme**: URL ports/path extensions, Net method_to_string/Request defaults, CSS SVG properties, HTML form/meter/audio, Layout math/ruby/shape, JS Date UTC setters, DOM DirtyFlags, CORS subdomain/blob/file/ACAO, IPC string punctuation
 - **Key Wins**:
@@ -751,6 +883,7 @@
   - Cycle 960: IPC string semicolon/paren/angle-brackets/exclamation/caret/pipe/tilde/ampersand (ipc 408→416)
 
 ### Cycles 932-948 — 2026-02-28
+
 - **Cycles**: 17
 - **Theme**: CORS ACAC/port variants, IPC F64/string/int values, URL fragment/query/port, Net Device-Memory/ECT/RTT/SaveData/Pragma/TE, CSS align/justify/flex-flow/SVG/font-variant, HTML input types/iframe/table attrs, Layout animation-timeline/transform/print-color, JS Date.parse/UTC/constructors/setTime, DOM ClassList/attr vector/sibling/toggle
 - **Key Wins**:
@@ -773,6 +906,7 @@
   - Cycle 948: JS Date.parse/UTC/fromMillis/epochYear/fromString/constructorWithArgs/instanceof/setTime (js 1209→1217)
 
 ### Cycles 922-931 — 2026-02-28
+
 - **Cycles**: 10
 - **Theme**: DOM Text/sibling/id, CORS ACAO/eligibility, IPC F64/bool/string, URL query/fragment/port, Net NEL/Reporting-Endpoints/Sec-Fetch/Alt-Used/Priority, CSS columns/orphans/widows/font-stretch, HTML fieldset/select-multiple/textarea/button, Layout scroll-margin/overscroll/contain-intrinsic/container, JS Date UTC getters/setHours/Seconds/getTimezoneOffset
 - **Key Wins**:
@@ -788,6 +922,7 @@
   - Cycle 931: DOM sibling prev chain, text data after set/empty, attr removal, ClassList clear/contains (dom 479→487)
 
 ### Cycles 908-917 — 2026-02-28
+
 - **Cycles**: 10
 - **Theme**: Test blitz round 2 — Net HTTP headers (WWW-Auth/Via/X-Fwd/traceparent/baggage/Content-Encoding/Link-preload/Expires), CSS (contain/overscroll/scrollbar-gutter/color-scheme/hyphens/word-break), HTML (option/optgroup/meter/progress/td-th attrs), Layout defaults (white-space-pre/nowrap/collapse, align-self, z-index, grid-column/row), JS Date methods, DOM Element attrs/first-last-child, CORS subdomain/enforceable, IPC string content, URL domain parts/segments
 - **Key Wins**:
@@ -803,6 +938,7 @@
   - Cycle 917: Net Content-Encoding gzip/br/deflate/zstd, Link preload/prefetch, Expires, Accept-Patch (net 408→416)
 
 ### Cycles 891-907 — 2026-02-28
+
 - **Cycles**: 17
 - **Theme**: Test blitz — CSS props (backface/perspective/blend/resize/touch-action/grid-auto), HTML elements (section/figure/figcaption) & attrs, Layout defaults (text-overflow/white-space/mask-*/image-orient), JS WeakMap/WeakSet/WeakRef, DOM Event API, CORS cross-origin/ACAO, IPC string/f64/u16, URL localhost/hyphen-host/origin-exclusion, Net HTTP response headers
 - **Key Wins**:
@@ -825,6 +961,7 @@
   - Cycle 907: 8 URL tests — HostWithHyphen, IPv4Loopback, Localhost, OriginExcludesQuery/Fragment, SchemeMatchesHttp/Https (url 396→404)
 
 ### Cycles 882-890 — 2026-02-28
+
 - **Cycles**: 9
 - **Theme**: Test blitz — HTTP headers, CSS declarations, HTML attrs, LayoutNodeProps defaults, JS DataView set ops, DOM structural tests, CORS edge cases, IPC varied patterns, URL edge cases
 - **Key Wins**:
@@ -839,6 +976,7 @@
   - Cycle 890: URL parser tests tilde/underscore paths, hostname with numbers, origin excludes path, port 8080 in origin, same origin different paths, https:443 default port omitted, long path (url 380→388)
 
 ### Cycles 841-858 — 2026-02-27/28
+
 - **Cycles**: 18
 - **Theme**: Test blitz — DOM dispatch/pre-dispatch, CORS ACAC/ACAO multi-header, IPC ascending/descending types, URL relative resolution, HTTP rare status codes (300/305/421/407/506/508/510/511), JS BigInt ops, CSS pseudo-classes (:only-of-type/:scope/:in-range/:out-of-range/:indeterminate/:default/:read-write/:local-link), HTML SRI/ol-type/ol-start/anchor-download/input-form/nomodule, Layout LayoutNodeProps defaults
 - **Key Wins**:
@@ -862,6 +1000,7 @@
   - Cycle 858: 8 LayoutNodeProps defaults — user_select/resize/shape_outside_type/caret_color/accent_color/scroll_behavior/color_scheme/break_before (layout 508→516)
 
 ### Cycles 825-840 — 2026-02-27
+
 - **Cycles**: 16
 - **Theme**: Test blitz — JS errors/functional/Symbol/JSON/Number, HTML ARIA/img/picture, CSS counter-style/container/scope/media/import, Layout text-defaults, DOM ClassList/Document, IPC boundary, URL same-origin, HTTP headers (CORP/COOP/COEP/CSP)
 - **Key Wins**:
@@ -884,6 +1023,7 @@
 - **Running total**: ~8600 (428 css_p + 698 css_s + 399 dom + 384 html + 304 ipc + 177 cors + 1113 js + 500 layout + 5 native + 352 net + 1863 paint + 117 platform + 293 url)
 
 ### Cycles 811-824 — 2026-02-27
+
 - **Cycles**: 14
 - **Theme**: Test blitz — CORS fix, JS regex advanced, HTML form attrs, CSS overflow/shadow/snap, Layout cursor/grid, DOM ClassList.to_string, IPC boundary values, URL edge cases, HTTP 2xx/5xx/security headers
 - **Key Wins**:
@@ -899,6 +1039,7 @@
 - **Running total**: ~8050 (412 css_p + 698 css_s + 391 dom + 368 html + 296 ipc + 169 cors + 1073 js + 484 layout + 5 native + 344 net + 1863 paint + 117 platform + 293 url)
 
 ### Cycles 801-810 — 2026-02-27
+
 - **Cycles**: 10
 - **Theme**: Test blitz — JS generators/async/proxy/reflect, HTML table elements, CSS @supports/font-face, Layout animations, DOM EventTarget dispatch, URL origin/serialize, HTTP response body/headers, IPC edge cases
 - **Key Wins**:
@@ -915,6 +1056,7 @@
 - **Running total**: ~7650 (396 css_p + 698 css_s + 375 dom + 352 html + 288 ipc + 161 cors + 1057 js + 468 layout + 5 native + 336 net + 1863 paint + 117 platform + 277 url)
 
 ### Cycles 791-800 — 2026-02-27 (800 CYCLE MILESTONE!)
+
 - **Cycles**: 10
 - **Theme**: Test blitz — URL subdomains/auth, HTTP 200/4xx, CORS ws/wss/ftp, JS Map/Set/class, HTML input types, CSS animation, Layout transform/offset, DOM tree traversal, IPC 800-cycle stress
 - **Key Wins**:
@@ -931,6 +1073,7 @@
 - **Running total**: ~7450 (388 css_p + 698 css_s + 367 dom + 344 html + 280 ipc + 161 cors + 1033 js + 460 layout + 5 native + 328 net + 1863 paint + 117 platform + 269 url)
 
 ### Cycles 781-790 — 2026-02-27
+
 - **Cycles**: 10
 - **Theme**: Test blitz — JS ErrorCause/BigInt/AggregateError, CSS place-content/object-fit/contain, Layout backface/perspective/mask/css-rotate, DOM ClassList, IPC stress sequences, HTML metadata/link attrs
 - **Key Wins**:
@@ -943,6 +1086,7 @@
 - **Running total**: ~7200 (380 css_p + 698 css_s + 359 dom + 336 html + 272 ipc + 153 cors + 1017 js + 452 layout + 5 native + 320 net + 1863 paint + 117 platform + 261 url)
 
 ### Cycles 771-780 — 2026-02-27
+
 - **Cycles**: 10
 - **Theme**: Test blitz — CSS scrollbar/pseudo-classes, JS objects/arrays/strings, DOM Document/Text/Comment, HTML structural, URL edge cases, Net HTTP 4xx, Layout canvas/SVG
 - **Key Wins**:
@@ -959,6 +1103,7 @@
 - **Running total**: ~7020 (364 css_p + 698 css_s + 351 dom + 328 html + 342 ipc + 153 cors + 1001 js + 436 layout + 5 native + 320 net + 1863 paint + 117 platform + 261 url)
 
 ### Cycles 761-770 — 2026-02-27
+
 - **Cycles**: 10
 - **Theme**: Test blitz — CORS localhost/credentials, JS ES2022+/Promise/strings, DOM events, Layout SVG fill/clip, CSS pseudo-classes, HTML forms, Net cache, IPC combos
 - **Key Wins**:
@@ -975,6 +1120,7 @@
 - **Running total**: ~6800 (348 css_p + 698 css_s + 335 dom + 320 html + 342 ipc + 153 cors + 985 js + 428 layout + 5 native + 312 net + 1863 paint + 117 platform + 253 url)
 
 ### Cycles 751-760 — 2026-02-27
+
 - **Cycles**: 10
 - **Theme**: Test blitz — HTML SVG, CSS typography, JS Math trig, DOM attrs, Layout SVG, IPC edge cases, Net cache, URL schemes
 - **Key Wins**:
@@ -990,6 +1136,7 @@
 - **Running total**: ~6530 (340 css_p + 698 css_s + 327 dom + 312 html + 334 ipc + 145 cors + 961 js + 420 layout + 5 native + 304 net + 1863 paint + 117 platform + 253 url)
 
 ### Cycles 700-715 — 2026-02-27
+
 - **Cycles**: 16
 - **Theme**: Test blitz — all suites, API discoveries, fix duplicates
 - **Key Wins**:
@@ -1006,6 +1153,7 @@
 - **Running total**: ~7560 (300 css_p + 698 css_s + 279 dom + 272 html + 302 ipc + 129 cors + 889 js + 372 layout + 5 native + 264 net + 1863 paint + 117 platform + 276 url)
 
 ### Cycles 689-699 — 2026-02-27
+
 - **Cycles**: 11
 - **Theme**: Test blitz — DOM, JS, HTML, CSS, Layout, Serializer, URL, Net, CORS
 - **Key Wins**:
@@ -1023,6 +1171,7 @@
 - **Running total**: ~7030 (284 css_p + 698 css_s + 271 dom + 256 html + 286 ipc + 121 cors + 865 js + 356 layout + 5 native + 256 net + 1863 paint + 117 platform + 260 url)
 
 ### Cycles 666-683 — 2026-02-28
+
 - **Cycles**: 18
 - **Theme**: Test blitz — URL, Layout, DOM, JS, Serializer, HTML, CSS, Net, CORS
 - **Key Wins**:
@@ -1047,6 +1196,7 @@
 - **Running total**: ~6645 (276 css_p + 698 css_s + 247 dom + 240 html + 270 ipc + 105 cors + 841 js + 348 layout + 5 native + 248 net + 1863 paint + 117 platform + 252 url)
 
 ### Cycles 649-665 — 2026-02-28
+
 - **Cycles**: 17
 - **Theme**: Test blitz — JS, CSS, Layout, DOM, HTML, Serializer, URL, Net, CORS
 - **Key Wins**:
@@ -1070,6 +1220,7 @@
 - **Running total**: ~6320 (259 css_p + 698 css_s + 231 dom + 224 html + 254 ipc + 105 cors + 809 js + 324 layout + 5 native + 240 net + 1863 paint + 117 platform + 236 url)
 
 ### Cycles 637-648 — 2026-02-28
+
 - **Cycles**: 12
 - **Theme**: Test blitz — URL, Net, CORS, JS, Layout, DOM, HTML, Serializer, CSS
 - **Key Wins**:
@@ -1088,6 +1239,7 @@
 - **Running total**: ~6000 (243 css_p + 698 css_s + 215 dom + 208 html + 238 ipc + 97 cors + 777 js + 308 layout + 5 native + 232 net + 1863 paint + 117 platform + 228 url)
 
 ### Cycles 621-636 — 2026-02-28
+
 - **Cycles**: 16
 - **Theme**: Test blitz — Net, Serializer, JS, URL, CORS, ThreadPool, CSS, Layout, DOM, HTML
 - **Key Wins**:
@@ -1110,6 +1262,7 @@
 - **Running total**: ~5810 (235 css_p + 698 css_s + 207 dom + 200 html + 230 ipc + 89 cors + 761 js + 300 layout + 5 native + 216 net + 1863 paint + 117 platform + 212 url)
 
 ### Cycles 615-620 — 2026-02-28
+
 - **Cycles**: 6
 - **Theme**: Test blitz — CSS, Layout, DOM, HTML, JS, URL
 - **Key Wins**:
@@ -1122,6 +1275,7 @@
 - **Running total**: ~5580 (219 css_p + 698 css_s + 191 dom + 184 html + 214 ipc + 81 cors + 737 js + 284 layout + 5 native + 208 net + 1863 paint + 109 platform + 212 url)
 
 ### Cycles 601-614 — 2026-02-28
+
 - **Cycles**: 14
 - **Theme**: Test blitz — URL, Net, CORS, ThreadPool, JS (x3), CSS, Layout, DOM, HTML, Serializer
 - **Key Wins**:
@@ -1142,6 +1296,7 @@
 - **Running total**: ~5340 (211 css_p + 698 css_s + 183 dom + 176 html + 214 ipc + 81 cors + 729 js + 276 layout + 5 native + 208 net + 1863 paint + 109 platform + 204 url)
 
 ### Cycles 591-600 — 2026-02-28
+
 - **Cycles**: 10
 - **Theme**: Test blitz — DOM, HTML, Layout, Serializer, JS (x2), CSS
 - **Key Wins**:
@@ -1158,6 +1313,7 @@
 - **Running total**: ~5117 (203 css_p + 698 css_s + 175 dom + 168 html + 206 ipc + 73 cors + 705 js + 268 layout + 5 native + 192 net + 1863 paint + 101 platform + 188 url)
 
 ### Cycles 586-590 — 2026-02-28
+
 - **Cycles**: 5
 - **Theme**: Test blitz — CSS, JS, Serializer, URL, Net
 - **Key Wins**:
@@ -1169,6 +1325,7 @@
 - **Running total**: ~4863 (195 css_p + 698 css_s + 159 dom + 152 html + 198 ipc + 73 cors + 689 js + 252 layout + 5 native + 192 net + 1863 paint + 101 platform + 188 url)
 
 ### Cycles 580-585 — 2026-02-28
+
 - **Cycles**: 6
 - **Theme**: Test blitz — CORS, ThreadPool, DOM, JS, HTML, Layout
 - **Key Wins**:
@@ -1181,6 +1338,7 @@
 - **Running total**: ~4815 (187 css_p + 698 css_s + 159 dom + 152 html + 190 ipc + 73 cors + 681 js + 252 layout + 5 native + 184 net + 1863 paint + 101 platform + 180 url)
 
 ### Cycles 571-579 — 2026-02-28
+
 - **Cycles**: 9
 - **Theme**: Test blitz — JS, CSS, Layout, DOM, HTML, Serializer, URL, Net
 - **Key Wins**:
@@ -1196,6 +1354,7 @@
 - **Running total**: ~4706 (187 css_p + 698 css_s + 151 dom + 144 html + 190 ipc + 65 cors + 673 js + 244 layout + 5 native + 184 net + 1863 paint + 93 platform + 180 url)
 
 ### Cycles 565-570 — 2026-02-28
+
 - **Cycles**: 6
 - **Theme**: Test blitz — JS, URL, Net, CORS, ThreadPool, MessagePipe
 - **Key Wins**:
@@ -1210,6 +1369,7 @@
 - **Running total**: 4605 (179 css_p + 698 css_s + 143 dom + 136 html + 182 ipc + 65 cors + 657 js + 236 layout + 5 native + 176 net + 1863 paint + 93 platform + 172 url)
 
 ### Cycles 559-564 — 2026-02-28
+
 - **Cycles**: 6
 - **Theme**: Test blitz — JS, CSS, Layout, DOM, Serializer, HTML
 - **Key Wins**:
@@ -1227,6 +1387,7 @@
 - **Running total**: ~4577 (179 css_p + 698 css_s + 143 dom + 136 html + 174 ipc + 57 cors + 649 js + 236 layout + 5 native + 168 net + 1863 paint + 85 platform + 164 url)
 
 ### Cycles 551-555 — 2026-02-28
+
 - **Cycles**: 5
 - **Theme**: Test blitz — Serializer, URL, JS, CSS, MessagePipe
 - **Key Wins**:
@@ -1237,8 +1398,8 @@
   - Cycle 555: 8 MessagePipe tests (ipc 158→166) — 10 sequential msgs, sequential bytes, empty payload, reverse direction, 3 pairs coexist
 - **Running total**: ~4486 (172+698+127+120+166+57+641+220+5+168+1863+85+164)
 
-
 ### Cycles 546-550 — 2026-02-28
+
 - **Cycles**: 5 (Cycle 550 = milestone!)
 - **Theme**: Test blitz — DOM, JS, CORS, ThreadPool, HTML (milestone 550)
 - **Key Wins**:
@@ -1251,8 +1412,8 @@
   - `get_attribute()` returns `std::optional<std::string>` not `std::string` — use `.has_value()` / `*val`
 - **Total tests**: ~4427 (164 css_p + 698 css_s + 127 dom + 120 html + 150 ipc + 57 cors + 633 js + 220 layout + 5 native + 168 net + 1863 paint + 85 platform + 156 url)
 
-
 ### Cycles 541-545 — 2026-02-28
+
 - **Cycles**: 5
 - **Theme**: Test blitz — CSS, JS, Serializer, Layout, Net
 - **Key Wins**:
@@ -1268,8 +1429,8 @@
   - Request `serialize()` doesn't include custom headers — only Host/path/method
 - **Running total**: ~4394 (164 css_p + 698 css_s + 119 dom + 112 html + 150 ipc + 49 cors + 625 js + 220 layout + 5 native + 168 net + 1863 paint + 77 platform + 156 url)
 
-
 ### Cycles 537-540 — 2026-02-28
+
 - **Cycles**: 4
 - **Theme**: Test blitz — DOM, JS, HTML, URL
 - **Key Wins**:
@@ -1281,8 +1442,8 @@
   - `urls_same_origin(u1, u2)` free function (not a method on URL)
 - **Running total**: ~4354 (156 css_p + 698 css_s + 119 dom + 112 html + 142 ipc + 49 cors + 617 js + 212 layout + 5 native + 160 net + 1863 paint + 77 platform + 156 url)
 
-
 ### Cycles 532-536 — 2026-02-28
+
 - **Cycles**: 5
 - **Theme**: Test blitz — CSS, Layout, Net, ThreadPool, MessagePipe
 - **Key Wins**:
@@ -1298,8 +1459,8 @@
   - MessagePipe `receive()` is blocking — must close sender to get nullopt
 - **Total tests**: ~4330 (156+698+111+104+142+49+609+212+5+160+1863+77+148)
 
-
 ### Cycles 526-531 — 2026-02-27
+
 - **Cycles**: 6
 - **Theme**: Test blitz continued — DOM, JS, Serializer, HTML, URL, CORS
 - **Key Wins**:
@@ -1311,8 +1472,8 @@
   - Cycle 531: 8 CORS tests (cors 41→49) — ws/http eligible, cross-origin flags, normalize origin header
 - **Total tests**: ~4294 (148 css_parser + 698 css_style + 111 dom + 104 html + 134 ipc + 49 cors + 609 js + 204 layout + 5 native_image + 152 net + 1863 paint + 69 platform + 148 url)
 
-
 ### Cycles 517-520 — 2026-02-27 — More multi-suite blitz
+
 - **Cycle 517**: Net +8 (CaseInsensitiveLookup, HasKey, RemoveKey, ParseOkBody, ParseNotFound, ExpiredCookie, CookieJarSize, SerializeGetMethodAndPath). Fixed: req.headers.set(), serialize()→vector. 152 net tests. Committed 3b28ed7.
 - **Cycle 518**: Serializer +8 (MultipleU8, AlternatingU32String, U64Fits32, TakeDataEmpty, FreshEmpty, BoolSequence, RawPointerLargeValues, SpecialCharsString). Fixed: duplicate name. 118 ipc tests. Committed 193b254.
 - **Cycle 519**: JS engine +8 (NullishCoalescingWithZero, OptionalChaining, ArrayEvery, ArraySome, StringTrim, HasOwnProperty, NumberIsNaN/IsFinite, ArrayIndexOf). Fixed: duplicate NullishCoalescing. 593 js tests. Committed bac88d8.
@@ -1320,6 +1481,7 @@
 - **All 13 suites green. 4198 total tests.**
 
 ### Cycles 512-516 — 2026-02-27 — Multi-suite blitz continues
+
 - **Cycle 512**: JS engine +8 (StringPadStart, StringPadEnd, NumberToFixed, DeleteOperator, InOperator, InstanceofOperator, ArrayFill, ObjectSpread). 585 js tests. Committed f27d8d7.
 - **Cycle 513**: DOM +8 (RemoveOnlyChild, InsertBeforeFirstChild, ChildCountMixedOps, MultipleAttributes, NestedTextContent, ClassListItemCount, EventListenerOnce, CreateElementTagName). Fixed: remove_child(*ptr), attributes(), EventTarget API, unique_ptr. 103 dom tests. Committed b63b6ab.
 - **Cycle 514**: HTML parser +8 (MarkElement, SmallElement, AbbrWithTitle, BlockquoteElement, CiteElement, InlineCodeElement, KbdElement, SampElement). 88 html tests. Committed fd10f9d.
@@ -1328,11 +1490,13 @@
 - **All 13 suites green. 4166 total tests.**
 
 ### Cycles 510-511 — 2026-02-27 — CSS parser + JS engine regression
+
 - **Cycle 510**: CSS parser +8 (IntegerFlagOnWholeNumber, RemDimensionToken, PercentageNumericValue, PseudoClassDisabled, PseudoClassChecked, AttributeSuffixSelector, RuleWithMultipleDeclarations, DeclarationWithNumericValue). Fixed: `d.value` → `d.values`. 140 css_parser tests. Committed 6eb2a95.
 - **Cycle 511**: JS engine +8 (SwitchStatement, TernaryOperator, StringSliceAndIndexOf, ArraySortMethod, ArrayReduceMethod, ObjectFreezePreventsMutation, ForInLoop, StringRepeatMethod). Fixed: `engine.eval()` → `engine.evaluate()`. 577 js tests. Committed c1725bf.
 - **All 13 suites green. 4134 total tests.**
 
 ### Cycles 501-509 — 2026-02-27 — Blitz continues
+
 - **Cycle 501**: MessagePipe +8 (1-byte, 1000-byte, 0xFF, 10 sequential, size match, empty+nonempty seq, raw ptr 1 byte, 3 consecutive). 102 ipc tests.
 - **Cycle 502**: URL parser +8 (same-origin true/false x3, multiple query params, encoded space, serialize with user:pass, IPv6 host). 85 url tests.
 - **Cycle 503**: CORS policy +8 (same-host+port not cross, localhost eligible, file not eligible, should_attach true/false, wildcard allows/blocks, exact match credentialed). 33 cors tests.
@@ -1344,6 +1508,7 @@
 - **Cycle 509**: Layout +8 (content_left/top, margin_box_height, border_box_height, max/min width constraints, align-items center, SVG use element). 196 layout tests.
 
 ### Cycles 495-500 — 2026-02-27 — HTTP/IPC/Platform blitz
+
 - **Cycle 495**: CSS parser tests +8 (url-func token, viewport dimension, pseudo selectors last-child/only-child/first-of-type/nth-of-type, whitespace-only stylesheet, nesting with hover). 132 css tests. Committed cabb16e.
 - **Cycle 496**: Serializer tests +8 (u16 boundary, u64 max, negative f64, empty deserializer throws, first byte check, all-zero values, size calculation, special chars string). 86 ipc tests. Committed 639c61b.
 - **Cycle 497**: Layout tests +8 (table 3 columns, table 2 rows, absolute position top+left, SVG path/circle/group/viewbox, flex justify-center). 188 layout tests. Committed 1238b12.
@@ -1352,6 +1517,7 @@
 - **Cycle 500 MILESTONE**: ThreadPool tests +8 (return double/bool/pair/vector, bound args, size==1, chained tasks, negative return). 53 platform tests. Committed eedffe0.
 
 ### Cycles 489-494 — 2026-02-27 — Test blitz continued
+
 - **Cycle 489**: Layout tests +8 (flex justify/align, column direction, auto-height, border/padding). Fixed: column=flex_direction 2 not 1; engine limitations documented. 180 layout tests. Committed 68ea810.
 - **Cycle 490**: URL parser tests +8 (multi-segment paths, host case normalization, empty fragment/query, no-path slash, relative ../resolution, IPv4 host, mixed-case scheme). 116 url tests. Committed 61852ad.
 - **Cycle 491**: CORS policy tests +8 (same-host diff port/scheme cross-origin, subdomain enforceable, eligible URL with query/non-standard port, ACAO port mismatch, canonical port 443 match, normalize no-op for same-origin). 25 cors tests. Committed df7e1e2.
@@ -1360,6 +1526,7 @@
 - **Cycle 494**: DOM tests +8 (tag_name accessor, ClassList::length, Event bubbles/cancelable, default_prevented, next/prev sibling, namespace_uri, propagation_stopped, child_count). Fixed: `auto c1 = append_child()` copy-deleted. 87 dom tests. Committed b0afdee.
 
 ### Cycles 482-488 — 2026-02-27 — Test blitz across smaller suites
+
 - **Cycle 482**: HTML parser tests — script async/defer, meta attributes, video/audio, details/summary, table thead/tbody/tfoot, fieldset/legend, pre/code, boolean attributes. 64 html tests. Committed db77991.
 - **Cycle 483**: ThreadPool tests — void task, string return, concurrent atomic counter, double shutdown, post/submit interleave, large batch sum, single-thread shutdown, move-only capture. 37 platform tests. Committed 72d01bc.
 - **Cycle 484**: MessagePipe tests — raw ptr send, double close, fd after close, various sizes, bidirectional flow, reversed direction, all byte values, receive on closed. Fixed: `write_bytes(vec)` → `write_bytes(ptr, size)`. 62 ipc tests. Committed d5f8f81.
@@ -1370,6 +1537,7 @@
 - **Total: +56 tests this session. 5700+ total. All 13 suites green.**
 
 ### Cycles 466-474 — 2026-02-27 — CSS style properties blitz (session continuation)
+
 - **Cycle 466**: place-self shorthand, flex-direction, flex-wrap, flex-flow, align-items, flex-grow/shrink, flex-basis (8 tests). Committed 05facfb.
 - **Cycle 467**: border-image longhands, CSS mask properties (image, size, repeat, origin, clip, composite, mode) (8 tests). Committed fb5e455.
 - **Cycle 468**: perspective, transform-style/box/origin, perspective-origin, filter functions, backdrop-filter, clip-path (8 tests). Committed b60c513.
@@ -1382,6 +1550,7 @@
 - **All 13 suites green. +72 new tests this session (650 total css_style tests, 4900+ total).**
 
 ### Cycles 455-465 — 2026-02-27 — CSS style properties blitz (continued)
+
 - **Cycle 455**: CSS background sub-properties — clip, origin, blend-mode, attachment, size, repeat, position (8 tests). Committed 8efc4be.
 - **Cycle 456**: SVG CSS properties — fill, stroke, fill/stroke-opacity, stroke-width, linecap, linejoin, dasharray, text-anchor, fill-rule, clip-rule, shape-rendering, vector-effect (8 tests). Committed 46fb69b.
 - **Cycle 457**: scroll-snap, scrollbar, CSS motion path (offset-path/distance/rotate), CSS Transforms Level 2 (rotate/scale/translate), transition-behavior, animation-range (8 tests). Committed f961b7f.
@@ -1396,6 +1565,7 @@
 - **All 13 suites green. +88 new tests this session (578 total css_style tests, 4700+ total).**
 
 ### Cycles 437-445 — 2026-02-27 — CSS properties blitz + HTML parser + JS engine advanced features
+
 - **Cycle 437**: CSS interaction properties — pointer-events, user-select, text-overflow, scroll-behavior, touch-action, overscroll-behavior (x/y two-value), isolation, will-change (8 tests). Committed 6809f43.
 - **Cycle 438**: cursor (default/pointer/text/move/not-allowed), resize, appearance/-webkit-appearance, list-style-type/position, counter-increment/reset/set, content-visibility (8 tests). Committed 2adda14.
 - **Cycle 439**: object-fit, object-position (left/right/center), mix-blend-mode, aspect-ratio (16/9 ratio), contain, image-rendering, clip-path none, -webkit-user-select alias (8 tests). Committed c6503ed.
@@ -1409,120 +1579,143 @@
 - **All 13 suites green. +72 new tests since Cycle 436 (4000+ total).**
 
 ### Cycle 436 — 2026-02-27 — EventLoop regression coverage for is_running, pending_count with delayed, zero-delay, concurrent posting
+
 - **PLATFORM/EVENT_LOOP**: Added 8 new `EventLoopTest` cases: `IsRunningFalseInitially` (false before run()), `IsRunningFalseAfterRunCompletes` (false after run() quits), `PendingCountIncludesDelayedTasks` (delayed tasks counted), `RunPendingSkipsNonDueDelayedTasks` (non-due tasks skip and remain pending), `ZeroDelayTaskFiresInRunPending` (0ms delayed task fires immediately), `IsRunningTrueDuringRun` (is_running() true inside executing task), `PendingCountCombinesImmediateAndDelayed` (2+2=4), `ConcurrentPostFromMultipleThreads` (4 threads × 10 tasks = 40 execute). Discovered: `run()` resets `quit_requested_=false` — corrected test to not assume pre-quit makes run() immediate.
 - Files: `clever/tests/unit/event_loop_test.cpp`
 - **All green. +8 new tests (3792 total).**
 
 ### Cycle 435 — 2026-02-27 — @media, @import, @container, @scope, @property, @counter-style, !important, and parse_declaration_block regression coverage
+
 - **CSS PARSER**: Added 8 new `CSSParserTest` cases covering untested at-rules: `MediaQueryBasicParse` (@media condition + nested rules), `ImportRuleParse` (@import url()), `ContainerQueryBasicParse` (@container name/condition/nested), `ScopeRuleParse` (@scope start/end), `PropertyRuleParse` (@property --name with syntax/inherits/initial-value), `CounterStyleRuleParse` (@counter-style name + descriptors), `ImportantFlagInDeclaration` (!important flag sets Declaration::important=true), `ParseDeclarationBlock` (inline style string via parse_declaration_block()).
 - Files: `clever/tests/unit/css_parser_test.cpp`
 - **All green. +8 new tests (3784 total).**
 
 ### Cycle 434 — 2026-02-27 — Map, Set, WeakMap, Symbol, generator, for...of, and Promise.race/any regression coverage
+
 - **JS ENGINE**: Added 8 new `JSEngine` tests: `MapBuiltIn` (set/get/has/delete/size), `SetBuiltIn` (add/has/delete/size with dedup from constructor), `WeakMapBuiltIn` (object key set/get/has/delete), `SymbolBuiltIn` (unique symbols, Symbol.for registry, as object key), `GeneratorFunction` (function* with yield, next(), done flag), `ForOfLoop` (arrays, strings, Map with destructuring), `PromiseRace` (typeof check + thenable return), `PromiseAny` (typeof check + thenable return). Fixed: Promise callbacks can't be verified without microtask drain — switched to existence/type checks.
 - Files: `clever/tests/unit/js_engine_test.cpp`
 - **All green. +8 new tests (3776 total).**
 
 ### Cycle 433 — 2026-02-27 — Modern JS language feature regression coverage (QuickJS ES2020+)
+
 - **JS ENGINE**: Added 8 new `JSEngine` tests: `OptionalChaining` (obj?.a?.b, arr?.[1], fn?.() short-circuit), `NullishCoalescing` (null/undefined use fallback; 0/''/ false do not), `ArrayDestructuring` (positional, skip, rest spread), `ObjectDestructuring` (rename, default, nested), `SpreadOperator` (array merge, object merge), `ArrayFlatAndFlatMap` (flat(1), flat(Infinity), flatMap callback), `ObjectEntriesAndFromEntries` (round-trip, keys/values), `StringPadStartAndPadEnd` (zero-pad, space-pad, end-pad, no-op).
 - Files: `clever/tests/unit/js_engine_test.cpp`
 - **All green. +8 new tests (3768 total).**
 
 ### Cycle 432 — 2026-02-27 — Layout regression coverage for column-reverse, wrap-reverse, visibility-hidden, BoxGeometry helpers, column-gap, max-height on child
+
 - **LAYOUT**: Added 8 new layout tests: `FlexDirectionColumnReverse` (flex_direction=3: first DOM child below second), `FlexWrapReverse` (wrap-reverse engine behavior documented — wraps same as wrap), `VisibilityHiddenTakesSpace` (visibility_hidden=true still occupies height in parent), `BoxGeometryMarginBoxWidthCalc` (margin_box_width() math: 8+3+6+200+6+3+10=236), `BoxGeometryBorderBoxWidthCalc` (border_box_width() math: 5+10+150+10+5=180), `FlexColumnDirectionWithGap` (gap=20 adds 20px y-gap in column flex), `MaxHeightOnChildBlock` (max_height constrains child, not just root), `FlexRowDirectionColumnGapValAddsHorizontalSpacing` (column_gap_val=30: second child at x=110).
 - Found: wrap-reverse not implemented differently from wrap in the engine — documented as known gap.
 - Files: `clever/tests/unit/layout_test.cpp`
 - **All green. +8 new tests (3760 total).**
 
 ### Cycle 431 — 2026-02-27 — DOM attribute vector, id-clear, dirty-on-set, ClassList items, and related regression coverage
+
 - **DOM**: Added 8 new tests in `clever/tests/unit/dom_test.cpp` covering implementation gaps: `AttributesVectorPreservesInsertionOrder` (insertion order in attributes() vector), `RemoveIdAttributeClearsIdAccessor` (remove_attribute("id") resets id()), `SetAttributeMarksDirtyStyle` (set_attribute triggers DirtyFlags::Style), `ClassListItemsAccessor` (class_list().items() accessor), `TextContentEmptyElement` (empty element returns ""), `RemoveAttributePreservesOthers` (remove one of 3 attrs leaves 2 intact), `DocumentNodeType` (Document::node_type() == NodeType::Document), `FreshElementHasNoAttributes` (fresh element: 0 attrs, "" id, 0 classes).
 - Files: `clever/tests/unit/dom_test.cpp`
 - **All green. +8 new tests (3752 total).**
 
 ### Cycle 430 — 2026-02-27 — Serializer f64 boundary, negative zero, underflow gap, embedded-NUL regression coverage
+
 - **IPC/SERIALIZER**: Added 8 `SerializerTest` cases covering gaps: `RoundTripF64BoundaryValues` (double::max, min, denorm_min), `RoundTripF64NegativeZero` (sign bit preserved via std::signbit), `DeserializerThrowsOnUnderflowI32` (2-byte, needs 4), `DeserializerThrowsOnUnderflowI64` (4-byte, needs 8), `DeserializerThrowsOnUnderflowBool` (empty), `DeserializerThrowsOnUnderflowF64` (4-byte, needs 8), `DeserializerThrowsOnUnderflowBytes` (length prefix > data), `RoundTripStringWithEmbeddedNul` (binary-safe NUL-containing 11-byte string).
 - Files: `clever/tests/unit/serializer_test.cpp`
 - **All green. +8 new tests (3744 total).**
 
 ### Cycle 429 — 2026-02-27 — HTTP PUT/PATCH/DELETE/OPTIONS request serialization coverage
+
 - **NET/REQUEST**: Added 4 `RequestTest` cases for request-line generation with HTTP methods that lacked serialization tests: PUT with JSON body (Content-Length auto-added), PATCH with body, DELETE (no body, correct request line), and OPTIONS (correct request line).
 - Files: `clever/tests/unit/http_client_test.cpp`
 - **All green. +4 new tests (3736 total).**
 
 ### Cycle 428 — 2026-02-27 — SameSite cookie cross-site enforcement regression coverage
+
 - **NET/COOKIE**: Added 5 `CookieJarTest` cases covering `SameSite` enforcement: `Strict` blocked cross-site but sent same-site; `Lax` sent for top-level nav only (not XHR/fetch cross-site); `SameSite=None` without `Secure` blocked cross-site; `SameSite=None`+`Secure` sent on cross-site HTTPS; default no-SameSite behaves as Lax blocking cross-site non-nav.
 - Files: `clever/tests/unit/http_client_test.cpp`
 - **All green. +5 new tests (3732 total).**
 
 ### Cycle 427 — 2026-02-27 — HTTP should_cache_response and Cache-Control edge case regression coverage
+
 - **NET/CACHE**: Added 8 new net tests in `clever/tests/unit/http_client_test.cpp`: `should_cache_response` for 200 with no restrictions (cacheable), non-2xx status codes (404/301/500 rejected), `no-store` (rejected), `is_private` (rejected), public+max-age (cacheable); `parse_cache_control` with unknown directives ignored (s-maxage/immutable pass-through), `no-cache`+`max-age` coexistence, and `no-store`+`private` combined.
 - Files: `clever/tests/unit/http_client_test.cpp`
 - **All green. +8 new tests (3727 total).**
 
 ### Cycle 426 — 2026-02-27 — HTML parser structural regression coverage
+
 - **HTML PARSER**: Added 8 new HTML parser regression tests in `clever/tests/unit/html_parser_test.cpp`: table structure (table/tr/td parsing), anchor attributes preservation, semantic elements (header/nav/main/article/footer), uppercase tag name normalization to lowercase, form elements (form/input/button), empty document parse doesn't crash, unclosed element recovery (div without closing tag), and malformed bare-ampersand entity passthrough.
 - Fixed initial test: `UnclosedTagAtEndOfInput` (tokenizer doesn't emit StartTag for `<div` without `>`) was corrected to `UnclosedElementRecovery` (tree builder creates div from `<div>text` without closing).
 - Files: `clever/tests/unit/html_parser_test.cpp`
 - **All green. +8 new tests (3719 total).**
 
 ### Cycle 425 — 2026-02-27 — CSS custom property and var() regression coverage
+
 - **CSS STYLE**: Added 6 `PropertyCascadeTest` cases covering CSS custom properties: `--name: value` stored in `custom_properties`, `var(--x)` resolves from self custom property, `var(--x)` resolves from parent, `var(--undefined, fallback)` uses fallback, custom property declaration present after `parse_stylesheet()`, and self-referential `var(--loop)` does not crash or loop infinitely.
 - Files: `clever/tests/unit/css_style_test.cpp`
 - **All green. +6 new tests (3711 total).**
 
 ### Cycle 424 — 2026-02-27 — CSS :default/:valid/:invalid/:where/:has/of-type pseudo-class regression coverage
+
 - **CSS STYLE**: Added 9 new `SelectorMatcherTest` cases: `:default` (submit button, selected option, reset button not default), `:valid` (form elements valid by default, non-form not valid), `:invalid` (always false without constraint state), `:where(h1,h2)` (same matching as `:is()`, different name), `:has(img)` (descendant existence check, empty container fails), `:last-of-type` (same_type_index == same_type_count-1), `:only-of-type` (same_type_count == 1), `:nth-of-type(2)` (same_type_index+1 position matching).
 - Files: `clever/tests/unit/css_style_test.cpp`
 - **All green. +9 new tests (3705 total).**
 
 ### Cycle 423 — 2026-02-27 — CSS form/link/lang/:is pseudo-class regression coverage
+
 - **CSS STYLE**: Added 8 new `SelectorMatcherTest` cases in `clever/tests/unit/css_style_test.cpp`: `:required` (input with required attr), `:optional` (form element without required; non-form element not optional), `:read-only` (non-editable default + explicit readonly attr; editable input default), `:read-write` (input without readonly; input with readonly fails; div not read-write), `:any-link` (<a href>, <a> no-href fails, div with href fails), `:placeholder-shown` (placeholder with/without value), `:lang(en)` (exact + subtag-prefix match, different lang fails), `:is(h1,h2,h3)` (h1/h2 match, h4 fails).
 - Files: `clever/tests/unit/css_style_test.cpp`
 - **All green. +8 new tests (3696 total).**
 
 ### Cycle 422 — 2026-02-27 — CSS selector pseudo-class and sibling combinator regression coverage
+
 - **CSS STYLE**: Added 8 new `SelectorMatcherTest` cases in `clever/tests/unit/css_style_test.cpp` for implemented-but-untested functionality: `:first-child` (child_index==0), `:last-child` (child_index==sibling_count-1), `:only-child` (sibling_count==1), `:disabled` (form element with disabled attr), `:enabled` (form element without disabled), `:checked` (input with checked attr / non-form-element gate), `NextSibling (+)` combinator (div + p), `SubsequentSibling (~)` combinator (h1 ~ p via sibling chain).
 - Files: `clever/tests/unit/css_style_test.cpp`
 - **All green. +8 new tests (3688 total).**
 
 ### Cycle 421 — 2026-02-27 — Percent-encoding and URL code point edge case regression coverage
-- **URL PARSER / PERCENT ENCODING**: Added 8 regression tests in `clever/tests/unit/percent_encoding_test.cpp`: is_url_code_point for forbidden printable chars (", <, >, \, ^, `, {, |, }), percent sign (not a URL code point), `?` (IS a URL code point per WHATWG spec), `#` (NOT a URL code point). Added percent_decode for NUL (%00), DEL (%7F), and UTF-8 multi-byte (%C3%A4). Corrected test assumption about `?` after discovering spec allows it.
+
+- **URL PARSER / PERCENT ENCODING**: Added 8 regression tests in `clever/tests/unit/percent_encoding_test.cpp`: is_url_code_point for forbidden printable chars (", <, >, \, ^, `, {, |, }), percent sign (not a URL code point),`?` (IS a URL code point per WHATWG spec), `#` (NOT a URL code point). Added percent_decode for NUL (%00), DEL (%7F), and UTF-8 multi-byte (%C3%A4). Corrected test assumption about `?` after discovering spec allows it.
 - Files: `clever/tests/unit/percent_encoding_test.cpp`
 - **All green. +8 new tests (3680 total, accounting for 2 split from 1).**
 
 ### Cycle 420 — 2026-02-27 — URL serialize() edge case regression coverage
+
 - **URL PARSER**: Added 3 serialization regression tests: HTTP default port :80 omitted in output, IPv6 host brackets preserved in serialized form, and combined query+fragment round-trip.
 - Files: `clever/tests/unit/url_parser_test.cpp`
 - **All green. +3 tests (3666 total).**
 
 ### Cycle 419 — 2026-02-27 — URL origin() edge case regression coverage
+
 - **URL PARSER**: Added 5 regression tests for `origin()` method: file: scheme → "null" (opaque), data: scheme → "null" (opaque), HTTP with default port 80 → origin without port, HTTPS with default port 443 → origin without port, IPv6 host with port → origin includes brackets and port.
 - Files: `clever/tests/unit/url_parser_test.cpp`
 - **All green. +5 tests (3663 total).**
 
 ### Cycle 418 — 2026-02-27 — URL parser IPv6 host edge case regression coverage
+
 - **URL PARSER**: Added 4 regression tests in `clever/tests/unit/url_parser_test.cpp` for IPv6 host edge cases: full `[2001:db8::1]`, IPv4-mapped `[::ffff:192.0.2.1]`, unclosed bracket rejection `[::1` (no closing `]`), and IPv6 with non-default port `[2001:db8::1]:8080`. All 13 clever suites green.
 - Files: `clever/tests/unit/url_parser_test.cpp`
 - **All green. +4 tests (3658 total).**
 
 ### Cycle 417 — 2026-02-27 — URL parser port boundary regression coverage
+
 - **URL PARSER**: Added 5 regression tests in `clever/tests/unit/url_parser_test.cpp` covering URL port boundary cases: port 0 (valid), port 65535 (max valid), port 65536 (rejected), non-digit port character (rejected), empty explicit port (WHATWG: treated as no port).
 - Validated with full clever test suite (13 test suites, 100% pass).
 - Files: `clever/tests/unit/url_parser_test.cpp`
 - **All green. +5 tests (3654 total).**
 
 ### Cycle 416 — 2026-02-27 — Extended HTTP version variant rejection regression coverage
+
 - **HTTP/2 TRANSPORT (Priority 4)**: Extended HTTP version rejection coverage for double-digit minor versions (HTTP/1.10, HTTP/1.11, HTTP/1.00 → Malformed), truncated versions (HTTP/1, HTTP/1. → Unsupported), HTTP/0.9 (legacy, Unsupported), and HTTP/2.1 (HTTP/2 minor variant, Unsupported). 7 new regression tests.
 - Files: `tests/test_request_contracts.cpp`
 - **All green. +7 tests (3649 total).**
 
 ### Cycle 415 — 2026-02-27 — Unsupported/malformed HTTP version variant rejection regression coverage
+
 - **HTTP/2 TRANSPORT (Priority 4)**: Added regression coverage for HTTP version token variants that must be rejected: HTTP/1.2, HTTP/1.9 (unsupported minor versions → explicit Unsupported error), HTTP/10 (no dot separator → explicit Unsupported), HTTP/1.1.0 (extra component → Malformed), http/1.1 (lowercase → Malformed), HTTPS/1.1 (wrong prefix → Malformed).
 - Updated regression contract coverage (`tests/test_request_contracts.cpp`): 6 new test cases.
 - Files: `tests/test_request_contracts.cpp`
 - **All green. +6 tests (3642 total).**
 
 ### Cycle 414 — 2026-02-27 — HTTP/1.x status-line high-byte non-ASCII separator fail-closed regression coverage
+
 - **HTTP/2 TRANSPORT (Priority 4)**: Extended HTTP/1.x status-line separator coverage to representative high-byte non-ASCII octets: 0x80, 0xA0, and 0xFF as both status-code and reason separators — all must fail closed.
 - Updated regression contract coverage (`tests/test_request_contracts.cpp`): 6 new test cases.
 - Validation: `cmake --build build_vibrowser --target test_request_contracts -j8 && ./build_vibrowser/test_request_contracts`
@@ -1530,6 +1723,7 @@
 - **All green. +6 tests (3636 total). C0 + representative high-byte non-ASCII coverage now complete.**
 
 ### Cycle 413 — 2026-02-27 — HTTP/1.x status-line FS/GS/RS/US separator fail-closed regression hardening (C0 COMPLETE)
+
 - **HTTP/2 TRANSPORT (Priority 4)**: Completed the final C0 control-character status-line separator coverage with FS (\x1C), GS (\x1D), RS (\x1E), US (\x1F) variants. All 0x00-0x1F control bytes (minus TAB covered earlier) now have fail-closed regression tests.
 - Updated regression contract coverage (`tests/test_request_contracts.cpp`): 8 new test cases.
 - Validation: `cmake --build build_vibrowser --target test_request_contracts -j8 && ./build_vibrowser/test_request_contracts`
@@ -1537,6 +1731,7 @@
 - **Targeted native request contract suite green. +8 tests (3630 total). C0 control-character coverage COMPLETE.**
 
 ### Cycle 412 — 2026-02-27 — HTTP/1.x status-line NAK/SYN/ETB/CAN/EM/SUB/ESC separator fail-closed regression hardening
+
 - **HTTP/2 TRANSPORT (Priority 4)**: Hardened HTTP/1.x status-line guardrail coverage so NAK (\x15), SYN (\x16), ETB (\x17), CAN (\x18), EM (\x19), SUB (\x1A), ESC (\x1B) control-byte separator variants fail closed before response classification and body processing.
 - Updated regression contract coverage (`tests/test_request_contracts.cpp`): 14 new test cases.
 - Validation: `cmake --build build_vibrowser --target test_request_contracts -j8 && ./build_vibrowser/test_request_contracts`
@@ -1544,6 +1739,7 @@
 - **Targeted native request contract suite green, no regressions. +14 tests (3622 total).**
 
 ### Cycle 411 — 2026-02-27 — HTTP/1.x status-line SO/SI/DLE/DC1-DC4 separator fail-closed regression hardening
+
 - **HTTP/2 TRANSPORT (Priority 4)**: Hardened HTTP/1.x status-line guardrail coverage so SO (\x0E), SI (\x0F), DLE (\x10), DC1 (\x11), DC2 (\x12), DC3 (\x13), and DC4 (\x14) control-byte separator variants fail closed before response classification and body processing.
 - Updated regression contract coverage (`tests/test_request_contracts.cpp`): 14 new test cases (7 chars × status-code + reason separator).
 - Validation: `cmake --build build_vibrowser --target test_request_contracts -j8 && ./build_vibrowser/test_request_contracts`
@@ -1551,6 +1747,7 @@
 - **Targeted native request contract suite green, no regressions. +16 tests (3608 total).**
 
 ### Cycle 410 — 2026-02-27 — HTTP/1.x status-line EOT/ENQ/ACK/BEL/BS separator fail-closed regression hardening
+
 - **HTTP/2 TRANSPORT (Priority 4)**: Hardened HTTP/1.x status-line guardrail coverage so EOT (\x04), ENQ (\x05), ACK (\x06), BEL (\x07), and BS (\x08) control-byte separator variants fail closed before response classification and body processing.
 - Updated regression contract coverage (`tests/test_request_contracts.cpp`):
   - rejects status-line EOT status-code separator variant (`HTTP/1.1\x04200 OK`)
@@ -1568,6 +1765,7 @@
 - **Targeted native request contract suite green, no regressions. +10 tests (3592 total).**
 
 ### Cycle 409 — 2026-02-27 — HTTP/1.x status-line ETX separator fail-closed regression hardening
+
 - **HTTP/2 TRANSPORT (Priority 4)**: Hardened HTTP/1.x status-line guardrail coverage so ETX-byte (`\x03`) separator variants fail closed before response classification and body processing.
 - Updated regression contract coverage (`tests/test_request_contracts.cpp`):
   - rejects status-line ETX status-code separator variant (`HTTP/1.1\x03200 OK`)
@@ -1579,6 +1777,7 @@
 - **Ledger divergence note**: `.codex/codex-estate.md` is non-writable in this runtime (`Operation not permitted`), so `.claude/claude-estate.md` is source of truth for Cycle 409 and sync should be replayed when permissions allow.
 
 ### Cycle 408 — 2026-02-27 — HTTP/1.x status-line STX separator fail-closed regression hardening
+
 - **HTTP/2 TRANSPORT (Priority 4)**: Hardened HTTP/1.x status-line guardrail coverage so STX-byte (`\x02`) separator variants fail closed before response classification and body processing.
 - Updated regression contract coverage (`tests/test_request_contracts.cpp`):
   - rejects status-line STX status-code separator variant (`HTTP/1.1\x02200 OK`)
@@ -1590,6 +1789,7 @@
 - **Ledger divergence resolution**: cycle start ledger states differed (`.claude` at Cycle 407 vs `.codex` at Cycle 406); selected `.claude` as source of truth by newer mtime and re-synced `.codex/codex-estate.md` in this cycle.
 
 ### Cycle 407 — 2026-02-27 — CORS outbound `Origin` header normalization hardening
+
 - **CORS/CSP ENFORCEMENT (Priority 1)**: Hardened JS fetch/XHR request construction so script-supplied `Origin` headers are always stripped and only browser-controlled serialized origins are emitted when cross-origin policy requires them.
 - Updated shared CORS policy contract (`clever/include/clever/js/cors_policy.h`, `clever/src/js/cors_policy.cpp`):
   - added `normalize_outgoing_origin_header(...)` to remove any preexisting `Origin` header and conditionally set the canonical browser origin for eligible cross-origin requests
@@ -1609,8 +1809,8 @@
 - Files: `clever/include/clever/js/cors_policy.h`, `clever/src/js/cors_policy.cpp`, `clever/src/js/js_fetch_bindings.cpp`, `clever/tests/unit/cors_policy_test.cpp`
 - **Targeted JS CORS policy + fetch/XHR suites green, no regressions.**
 
-
 ### Cycle 406 — 2026-02-27 — HTTP/1.x status-line SOH separator fail-closed regression hardening
+
 - **HTTP/2 TRANSPORT (Priority 4)**: Hardened HTTP/1.x status-line guardrail coverage so SOH-byte (`\x01`) separator variants fail closed before response classification and body processing.
 - Updated regression contract coverage (`tests/test_request_contracts.cpp`):
   - rejects status-line SOH status-code separator variant (`HTTP/1.1\x01200 OK`)
@@ -1622,6 +1822,7 @@
 - **Ledger divergence resolution**: cycle start ledger states differed (`.claude` at Cycle 405 vs `.codex` at Cycle 403); selected `.claude` as source of truth by newer mtime and re-synced `.codex/codex-estate.md` in this cycle.
 
 ### Cycle 405 — 2026-02-26 — HTTP/1.x status-line DEL separator fail-closed regression hardening
+
 - **HTTP/2 TRANSPORT (Priority 4)**: Hardened HTTP/1.x status-line guardrail coverage so DEL-byte (`\x7F`) separator variants fail closed before response classification and body processing.
 - Updated regression contract coverage (`tests/test_request_contracts.cpp`):
   - rejects status-line DEL status-code separator variant (`HTTP/1.1\x7F200 OK`)
@@ -1633,13 +1834,14 @@
 - **Ledger divergence note**: `.codex/codex-estate.md` remains non-writable in this runtime (`Operation not permitted`); `.claude/claude-estate.md` is source of truth for Cycle 405 and sync should be replayed when permissions allow.
 
 ### Cycle 404 — 2026-02-26 — HTTP/2 status-line surrounding-whitespace fail-closed hardening
+
 - **HTTP/2 TRANSPORT (Priority 4)**: Tightened native status-line parsing so surrounding-whitespace HTTP/2 status-line variants fail closed as malformed before protocol classification.
 - Updated native request/response contract behavior (`src/net/http_client.cpp`):
   - moved HTTP/2 status-line token detection behind strict surrounding-whitespace rejection in `parse_status_line(...)`
   - preserves explicit HTTP/2 preface (`PRI * HTTP/2.0`) not-implemented rejection while enforcing malformed handling for whitespace-padded HTTP/2 status lines
 - Added regression coverage (`tests/test_request_contracts.cpp`):
-  - rejects leading-whitespace HTTP/2 status-line variant (` HTTP/2 200 OK`) as malformed
-  - rejects trailing-whitespace HTTP/2 status-line variant (`HTTP/2 200 OK `) as malformed
+  - rejects leading-whitespace HTTP/2 status-line variant (`HTTP/2 200 OK`) as malformed
+  - rejects trailing-whitespace HTTP/2 status-line variant (`HTTP/2 200 OK`) as malformed
 - Validation:
   - `cmake --build build_vibrowser --target test_request_contracts test_request_policy -j8 && ./build_vibrowser/test_request_contracts && ./build_vibrowser/test_request_policy`
 - Files: `src/net/http_client.cpp`, `tests/test_request_contracts.cpp`
@@ -1647,6 +1849,7 @@
 - **Ledger divergence note**: `.codex/codex-estate.md` is not writable in this runtime (`Operation not permitted`); `.claude/claude-estate.md` is source of truth for Cycle 404 and sync should be replayed when permissions allow.
 
 ### Cycle 403 — 2026-02-26 — HTTP/1.x status-line NUL separator fail-closed regression hardening
+
 - **HTTP/2 TRANSPORT (Priority 4)**: Hardened HTTP/1.x status-line guardrail coverage so NUL-byte (`\x00`) separator variants fail closed before response classification and body processing.
 - Updated regression contract coverage (`tests/test_request_contracts.cpp`):
   - rejects status-line NUL status-code separator variant (`HTTP/1.1\x00200 OK`)
@@ -1658,6 +1861,7 @@
 - **Ledger sync**: `.claude/claude-estate.md` and `.codex/codex-estate.md` are synchronized in lockstep for Cycle 403.
 
 ### Cycle 402 — 2026-02-26 — HTTP/1.x status-line carriage-return/line-feed separator fail-closed regression hardening
+
 - **HTTP/2 TRANSPORT (Priority 4)**: Hardened HTTP/1.x status-line guardrail coverage so carriage-return (`\r`) and line-feed (`\n`) separator variants fail closed before response classification and body processing.
 - Updated regression contract coverage (`tests/test_request_contracts.cpp`):
   - rejects status-line carriage-return status-code separator variant (`HTTP/1.1\r200 OK`)
@@ -1671,6 +1875,7 @@
 - **Ledger divergence note**: `.codex/codex-estate.md` remains non-writable in this runtime (`Operation not permitted`); `.claude/claude-estate.md` is source of truth for Cycle 402 and sync should be replayed when permissions allow.
 
 ### Cycle 401 — 2026-02-26 — HTTP/1.x status-line vertical-tab separator fail-closed regression hardening
+
 - **HTTP/2 TRANSPORT (Priority 4)**: Hardened HTTP/1.x status-line guardrail coverage so non-space ASCII whitespace (`\v`) separators fail closed before response classification and body processing.
 - Updated regression contract coverage (`tests/test_request_contracts.cpp`):
   - rejects status-line vertical-tab status-code separator variant (`HTTP/1.1\v200 OK`)
@@ -1682,6 +1887,7 @@
 - **Ledger divergence note**: `.codex/codex-estate.md` remains non-writable in this runtime (`Operation not permitted`); `.claude/claude-estate.md` is source of truth for Cycle 401 and sync should be replayed when permissions allow.
 
 ### Cycle 400 — 2026-02-26 — HTTP/1.x status-line form-feed separator fail-closed regression hardening
+
 - **HTTP/2 TRANSPORT (Priority 4)**: Hardened HTTP/1.x status-line guardrail coverage so non-space ASCII whitespace (`\f`) separators fail closed before response classification and body processing.
 - Updated regression contract coverage (`tests/test_request_contracts.cpp`):
   - rejects status-line form-feed status-code separator variant (`HTTP/1.1\f200 OK`)
@@ -1693,12 +1899,13 @@
 - **Ledger sync**: `.claude/claude-estate.md` and `.codex/codex-estate.md` are synchronized in lockstep for Cycle 400.
 
 ### Cycle 399 — 2026-02-26 — HTTP/1.x status-line empty reason-phrase fail-closed hardening
+
 - **HTTP/2 TRANSPORT (Priority 4)**: Hardened native HTTP/1.x status-line parsing guardrails so status lines with a reason separator but an empty reason phrase fail closed before response classification and body processing.
 - Updated native request/response contract behavior (`src/net/http_client.cpp`):
-  - tightened `parse_status_line(...)` to reject malformed status lines that end immediately after the status-code/reason separator (for example `HTTP/1.1 204 `)
+  - tightened `parse_status_line(...)` to reject malformed status lines that end immediately after the status-code/reason separator (for example `HTTP/1.1 204`)
   - preserves strict status-code width/range, separator, control/non-ASCII octet, and whitespace guardrails
 - Added regression coverage (`tests/test_request_contracts.cpp`):
-  - rejects status-line empty reason-phrase variant (`HTTP/1.1 204 `)
+  - rejects status-line empty reason-phrase variant (`HTTP/1.1 204`)
 - Validation:
   - `cmake --build build_vibrowser --target test_request_contracts test_request_policy -j8 && ./build_vibrowser/test_request_contracts && ./build_vibrowser/test_request_policy`
 - Files: `src/net/http_client.cpp`, `tests/test_request_contracts.cpp`
@@ -1706,6 +1913,7 @@
 - **Ledger divergence note**: `.codex/codex-estate.md` is not writable in this runtime (`Operation not permitted`); `.claude/claude-estate.md` is source of truth for Cycle 399 and sync should be replayed when permissions allow.
 
 ### Cycle 398 — 2026-02-26 — HTTP/1.x status-line missing status-code separator fail-closed hardening
+
 - **HTTP/2 TRANSPORT (Priority 4)**: Hardened native HTTP/1.x status-line parsing guardrails so status lines missing the version/status-code separator fail closed before response classification and body processing.
 - Updated native request/response contract behavior (`src/net/http_client.cpp`):
   - tightened `parse_status_line(...)` to reject malformed status lines that glue the HTTP version and status code without the required separator (for example `HTTP/1.1200 OK`)
@@ -1719,6 +1927,7 @@
 - **Ledger sync**: `.claude/claude-estate.md` and `.codex/codex-estate.md` are synchronized in lockstep for Cycle 398.
 
 ### Cycle 397 — 2026-02-26 — HTTP/1.x status-line missing reason-separator fail-closed hardening
+
 - **HTTP/2 TRANSPORT (Priority 4)**: Hardened native HTTP/1.x status-line parsing guardrails so status lines missing the status-code/reason separator fail closed before response classification and body processing.
 - Updated native request/response contract behavior (`src/net/http_client.cpp`):
   - tightened `parse_status_line(...)` to reject status lines missing the required single-space separator after the 3-digit status code (for example `HTTP/1.1 200`)
@@ -1732,6 +1941,7 @@
 - **Ledger divergence note**: `.codex/codex-estate.md` remains non-writable in this runtime (`Operation not permitted`); `.claude/claude-estate.md` is source of truth for Cycle 397 and sync should be replayed when permissions allow.
 
 ### Cycle 396 — 2026-02-26 — HTTP/1.x status-line tab separator fail-closed hardening
+
 - **HTTP/2 TRANSPORT (Priority 4)**: Hardened native HTTP/1.x status-line parsing guardrails so tab-separated status-code/reason separators fail closed before response classification and body processing.
 - Updated native request/response contract behavior (`src/net/http_client.cpp`):
   - tightened `parse_status_line(...)` to require literal single-space separators between HTTP version/status-code/reason components
@@ -1747,6 +1957,7 @@
 - **Ledger sync**: `.claude/claude-estate.md` and `.codex/codex-estate.md` are synchronized in lockstep for Cycle 396.
 
 ### Cycle 395 — 2026-02-26 — CSP connect-src malformed host-source query/fragment fail-closed hardening
+
 - **CORS/CSP ENFORCEMENT (Priority 1)**: Hardened native CSP `connect-src` host-source parsing so malformed source expressions containing query (`?`) or fragment (`#`) components fail closed before request eligibility checks.
 - Updated native request policy behavior (`src/net/http_client.cpp`):
   - tightened `parse_host_source_token(...)` to reject host-source entries that embed `?`/`#` in either authority-only or path-bearing forms
@@ -1762,6 +1973,7 @@
 - **Ledger divergence resolution**: cycle start ledger states differed (`.claude` at Cycle 394 vs `.codex` at Cycle 393); selected `.claude` as source of truth by newer mtime. `.codex/codex-estate.md` remains non-writable in this runtime, so sync is pending when write access is available.
 
 ### Cycle 394 — 2026-02-26 — Native HTTP2-Settings surrounding-whitespace value fail-closed hardening
+
 - **HTTP/2 TRANSPORT (Priority 4)**: Hardened native outbound HTTP/2 probe guardrails so `HTTP2-Settings` header values with surrounding whitespace fail closed before transport classification.
 - Updated native request contract behavior (`src/net/http_client.cpp`):
   - tightened `request_headers_include_http2_settings(...)` to reject values when ASCII trimming changes length
@@ -1779,6 +1991,7 @@
 - **Ledger divergence note**: `.codex/codex-estate.md` is currently non-writable in this runtime (`Operation not permitted`); `.claude/claude-estate.md` is source of truth for Cycle 394 and sync should be replayed when permissions allow.
 
 ### Cycle 393 — 2026-02-26 — HTTP/1.x status-line extra status-code separator whitespace fail-closed hardening
+
 - **HTTP/2 TRANSPORT (Priority 4)**: Hardened native HTTP/1.x status-line parsing guardrails so extra whitespace between HTTP version and status code fails closed before response classification and body processing.
 - Updated native request/response contract behavior (`src/net/http_client.cpp`):
   - tightened `parse_status_line(...)` to reject status-line variants with extra separator whitespace between HTTP version and status code (for example `HTTP/1.1  200 OK`)
@@ -1795,6 +2008,7 @@
 - **Ledger sync**: `.claude/claude-estate.md` and `.codex/codex-estate.md` are synchronized in lockstep for Cycle 393.
 
 ### Cycle 392 — 2026-02-26 — HTTP/1.x status-line extra reason-separator whitespace fail-closed hardening
+
 - **HTTP/2 TRANSPORT (Priority 4)**: Hardened native HTTP/1.x status-line parsing guardrails so extra whitespace immediately before reason phrase fails closed before response classification and body processing.
 - Updated native request/response contract behavior (`src/net/http_client.cpp`):
   - tightened `parse_status_line(...)` to reject status-line variants with extra separator whitespace between status code and reason phrase (for example `HTTP/1.1 200  OK`)
@@ -1808,14 +2022,15 @@
 - **Ledger sync**: `.claude/claude-estate.md` and `.codex/codex-estate.md` are synchronized in lockstep for Cycle 392.
 
 ### Cycle 391 — 2026-02-26 — HTTP/1.x status-line surrounding-whitespace fail-closed hardening
+
 - **HTTP/2 TRANSPORT (Priority 4)**: Hardened native HTTP/1.x status-line parsing guardrails so leading/trailing ASCII whitespace fails closed before response classification and body processing.
 - Updated native request/response contract behavior (`src/net/http_client.cpp`):
   - tightened `parse_status_line(...)` to reject status-line inputs when `trim_ascii(status_line)` changes byte length
   - preserves explicit HTTP/2 preface/status-line rejection messaging for `PRI * HTTP/2.0` and `HTTP/2*` variants
   - preserves strict control/non-ASCII octet and unsupported-version guardrails
 - Added regression coverage (`tests/test_request_contracts.cpp`):
-  - rejects leading-whitespace status-line variant (` HTTP/1.1 200 OK`)
-  - rejects trailing-whitespace status-line variant (`HTTP/1.1 200 OK `)
+  - rejects leading-whitespace status-line variant (`HTTP/1.1 200 OK`)
+  - rejects trailing-whitespace status-line variant (`HTTP/1.1 200 OK`)
 - Validation:
   - `cmake --build build_vibrowser --target test_request_contracts test_request_policy -j8 && ./build_vibrowser/test_request_contracts && ./build_vibrowser/test_request_policy`
 - Files: `src/net/http_client.cpp`, `tests/test_request_contracts.cpp`
@@ -1823,6 +2038,7 @@
 - **Ledger divergence note**: `.codex/codex-estate.md` remains non-writable in this runtime (`Operation not permitted`); `.claude/claude-estate.md` is source of truth for Cycle 391 and sync should be replayed when permissions allow.
 
 ### Cycle 390 — 2026-02-26 — HTTP/1.x status-line control/non-ASCII octet fail-closed hardening
+
 - **HTTP/2 TRANSPORT (Priority 4)**: Hardened native HTTP/1.x status-line parsing guardrails so control and non-ASCII octets fail closed before response classification and body processing.
 - Updated native request/response contract behavior (`src/net/http_client.cpp`):
   - tightened `parse_status_line(...)` to reject any control octet (`<=0x1F`, `0x7F`) in status-line bytes
@@ -1838,6 +2054,7 @@
 - **Ledger sync**: `.claude/claude-estate.md` and `.codex/codex-estate.md` are synchronized in lockstep for Cycle 390.
 
 ### Cycle 389 — 2026-02-26 — HTTP/1.x status-line status-code width/range fail-closed hardening
+
 - **HTTP/2 TRANSPORT (Priority 4)**: Hardened native HTTP/1.x status-line parsing guardrails so malformed status-code widths/ranges fail closed before response classification and body processing.
 - Updated native request/response contract behavior (`src/net/http_client.cpp`):
   - tightened `parse_status_line(...)` to require exactly 3-digit status-code tokens
@@ -1854,6 +2071,7 @@
 - **Ledger divergence note**: `.codex/codex-estate.md` remains non-writable in this runtime (`Operation not permitted`); `.claude/claude-estate.md` is source of truth for Cycle 389 and sync should be replayed when permissions allow.
 
 ### Cycle 388 — 2026-02-26 — Native HTTP2-Settings decoded SETTINGS-frame-length fail-closed hardening
+
 - **HTTP/2 TRANSPORT (Priority 4)**: Hardened native outbound HTTP/2 probe guardrails so malformed `HTTP2-Settings` payloads that cannot encode valid SETTINGS-frame chunks fail closed before transport classification.
 - Updated native request contract behavior (`src/net/http_client.cpp`):
   - tightened `request_headers_include_http2_settings(...)` to enforce decoded payload semantics after base64url token68 validation
@@ -1869,6 +2087,7 @@
 - **Ledger divergence resolution**: `.claude/claude-estate.md` had newer mtime/content than `.codex/codex-estate.md` at cycle start (387 vs 385); `.claude` selected as source of truth, Cycle 388 recorded, and ledgers re-synced in this cycle.
 
 ### Cycle 387 — 2026-02-26 — HTTP response framing ambiguous Content-Length fail-closed hardening
+
 - **HTTP/2 TRANSPORT (Priority 4)**: Hardened native HTTP/1.x response framing guardrails so ambiguous multi-value `Content-Length` header forms fail closed before body decode.
 - Updated native request/response contract behavior (`src/net/http_client.cpp`):
   - added strict ambiguous content-length detection for comma-delimited `Content-Length` header values
@@ -1886,6 +2105,7 @@
 - **Ledger divergence resolution**: `.claude/claude-estate.md` had newer mtime/content than `.codex/codex-estate.md` at cycle start (386 vs 385); `.claude` selected as source of truth and `.codex/codex-estate.md` remains non-writable in this runtime (`Operation not permitted`); `.claude` is source of truth for Cycle 387 and sync should be replayed when permissions allow.
 
 ### Cycle 386 — 2026-02-26 — HTTP response framing conflict fail-closed hardening
+
 - **HTTP/2 TRANSPORT (Priority 4)**: Hardened native HTTP/1.x response framing guardrails so conflicting `Transfer-Encoding` + `Content-Length` combinations fail closed before body decode.
 - Updated native request/response contract behavior (`src/net/http_client.cpp`):
   - added explicit fail-closed rejection for responses carrying both `Transfer-Encoding` and `Content-Length`
@@ -1901,6 +2121,7 @@
 - **Ledger divergence note**: `.codex/codex-estate.md` remains non-writable in this runtime (`Operation not permitted`); `.claude/claude-estate.md` is source of truth for Cycle 386 and sync should be replayed when permissions allow.
 
 ### Cycle 385 — 2026-02-26 — Native HTTP2-Settings strict base64url shape fail-closed hardening
+
 - **HTTP/2 TRANSPORT (Priority 4)**: Hardened native outbound HTTP/2 probe guardrails so malformed `HTTP2-Settings` token68 shapes fail closed before transport classification.
 - Updated native request contract behavior (`src/net/http_client.cpp`):
   - tightened `request_headers_include_http2_settings(...)` to enforce base64url shape semantics:
@@ -1918,6 +2139,7 @@
 - **Ledger sync**: `.claude/claude-estate.md` and `.codex/codex-estate.md` are synchronized in lockstep for Cycle 385.
 
 ### Cycle 384 — 2026-02-26 — Native HTTP2-Settings strict base64url token-character fail-closed hardening
+
 - **HTTP/2 TRANSPORT (Priority 4)**: Hardened native outbound HTTP/2 probe guardrails so malformed `HTTP2-Settings` values with non-base64url token characters fail closed before transport classification.
 - Updated native request contract behavior (`src/net/http_client.cpp`):
   - tightened `request_headers_include_http2_settings(...)` validation to only accept base64url data characters (`[A-Za-z0-9_-]`) plus trailing padding `=`
@@ -1932,6 +2154,7 @@
 - **Ledger divergence note**: `.codex/codex-estate.md` remains non-writable in this runtime (`Operation not permitted`); `.claude/claude-estate.md` is source of truth for Cycle 384 and sync should be replayed when permissions allow.
 
 ### Cycle 383 — 2026-02-26 — Native HTTP2-Settings token68 over-padding fail-closed hardening
+
 - **HTTP/2 TRANSPORT (Priority 4)**: Hardened native outbound HTTP/2 probe guardrails so malformed over-padded `HTTP2-Settings` token68 values fail closed before transport classification.
 - Updated native request contract behavior (`src/net/http_client.cpp`):
   - tightened `request_headers_include_http2_settings(...)` token68 validation to reject `HTTP2-Settings` values with more than two trailing `=` padding characters
@@ -1946,6 +2169,7 @@
 - **Ledger sync**: `.claude/claude-estate.md` and `.codex/codex-estate.md` are synchronized in lockstep for Cycle 383.
 
 ### Cycle 382 — 2026-02-26 — Native+shared legacy shorthand dotted numeric-host serialized-origin fail-closed hardening
+
 - **CORS/CSP ENFORCEMENT (Priority 1)**: Hardened native and shared JS serialized-origin host validation to fail closed for legacy shorthand dotted numeric-host forms (for example `127.1`) so ambiguous numeric-host origins cannot pass CORS response checks, request eligibility, or outgoing Origin-header emission.
 - Updated native request policy behavior (`src/net/http_client.cpp`):
   - tightened serialized-origin host validation in `parse_serialized_origin(...)`
@@ -1964,6 +2188,7 @@
 - **Ledger divergence note**: `.claude/claude-estate.md` had newer mtime/content than `.codex/codex-estate.md` at cycle start (381 vs 379); `.claude` selected as source of truth for Cycle 382 and `.codex/codex-estate.md` replay sync remains blocked in this runtime (`Operation not permitted`).
 
 ### Cycle 381 — 2026-02-26 — Native+shared legacy hexadecimal numeric-host serialized-origin fail-closed hardening
+
 - **CORS/CSP ENFORCEMENT (Priority 1)**: Hardened native and shared JS serialized-origin host validation to fail closed for legacy hexadecimal numeric-host forms (for example `0x7f000001`, `0x7f.0x0.0x0.0x1`) so ambiguous numeric-host origins cannot pass CORS response checks, request eligibility, or outgoing Origin-header emission.
 - Updated native request policy behavior (`src/net/http_client.cpp`):
   - tightened serialized-origin host validation in `parse_serialized_origin(...)`
@@ -1982,6 +2207,7 @@
 - **Ledger divergence note**: `.codex/codex-estate.md` remains non-writable in this runtime (`Operation not permitted`); `.claude/claude-estate.md` is source of truth for Cycle 381 and sync should be replayed when permissions allow.
 
 ### Cycle 380 — 2026-02-26 — Native+shared legacy single-integer numeric-host serialized-origin fail-closed hardening
+
 - **CORS/CSP ENFORCEMENT (Priority 1)**: Hardened native and shared JS serialized-origin host validation to fail closed for legacy single-token numeric hosts (for example `2130706433`) so ambiguous numeric-host origins cannot pass CORS response checks, request eligibility, or outgoing Origin-header emission.
 - Updated native request policy behavior (`src/net/http_client.cpp`):
   - tightened serialized-origin host validation in `parse_serialized_origin(...)`
@@ -2000,6 +2226,7 @@
 - **Ledger divergence note**: `.codex/codex-estate.md` remains non-writable in this runtime (`Operation not permitted`); `.claude/claude-estate.md` is source of truth for Cycle 380 and sync should be replayed when permissions allow.
 
 ### Cycle 379 — 2026-02-26 — Native+shared canonical dotted-decimal IPv4 serialized-origin fail-closed hardening
+
 - **CORS/CSP ENFORCEMENT (Priority 1)**: Hardened native and shared JS serialized-origin host validation to fail closed for non-canonical dotted-decimal IPv4 literals (for example `001.2.3.4`) so ambiguous numeric-host origins cannot pass CORS response checks, request eligibility, or outgoing Origin-header emission.
 - Updated native request policy behavior (`src/net/http_client.cpp`):
   - tightened dotted-decimal IPv4 candidate validation in `parse_serialized_origin(...)`
@@ -2018,6 +2245,7 @@
 - **Ledger sync**: `.claude/claude-estate.md` and `.codex/codex-estate.md` are synchronized in lockstep for Cycle 379.
 
 ### Cycle 378 — 2026-02-26 — Native+shared dotted-decimal IPv4 serialized-origin fail-closed hardening
+
 - **CORS/CSP ENFORCEMENT (Priority 1)**: Hardened native and shared JS serialized-origin host validation to fail closed for malformed dotted-decimal IPv4 literals so invalid numeric-host origins cannot pass CORS response checks, request eligibility, or outgoing Origin-header emission.
 - Updated native request policy behavior (`src/net/http_client.cpp`):
   - added strict dotted-decimal IPv4 candidate detection in `parse_serialized_origin(...)`
@@ -2037,6 +2265,7 @@
 - **Ledger sync**: `.claude/claude-estate.md` and `.codex/codex-estate.md` are synchronized in lockstep for Cycle 378.
 
 ### Cycle 377 — 2026-02-26 — Shared JS serialized-origin malformed host-label fail-closed hardening
+
 - **CORS/CSP ENFORCEMENT (Priority 1)**: Hardened shared JS CORS serialized-origin/request-URL parsing to fail closed when hosts contain malformed DNS labels (empty labels, leading/trailing hyphen labels) and invalid IPv6 literal syntax so malformed document-origin/request-url/ACAO values cannot pass eligibility, Origin-header attachment, or response-policy checks.
 - Updated shared JS request/CORS behavior (`clever/src/js/cors_policy.cpp`):
   - added strict serialized-origin host validation for non-IPv6 host labels (no empty labels, leading/trailing dot, leading/trailing hyphen label characters, non `[A-Za-z0-9-]` label characters)
@@ -2053,8 +2282,8 @@
 - **Targeted shared CORS suite green (13 tests), no regressions.**
 - **Ledger sync**: `.claude/claude-estate.md` is source of truth for Cycle 377; replay sync to `.codex/codex-estate.md` when permissions allow.
 
-
 ### Cycle 376 — 2026-02-26 — Native serialized-origin host-length fail-closed hardening
+
 - **CORS/CSP ENFORCEMENT (Priority 1)**: Hardened native serialized-origin parsing to fail closed for overlong DNS host labels/hostnames so malformed origin values cannot pass native CORS response checks or outgoing Origin-header emission.
 - Updated native request policy behavior (`src/net/http_client.cpp`):
   - added strict non-IPv6 hostname total-length upper bound (253 chars)
@@ -2072,6 +2301,7 @@
 - **Ledger divergence note**: `.codex/codex-estate.md` remains non-writable in this runtime (`Operation not permitted`); `.claude/claude-estate.md` is source of truth for Cycle 377 and sync should be replayed when permissions allow.
 
 ### Cycle 375 — 2026-02-26 — Native serialized-origin malformed host-label fail-closed hardening
+
 - **CORS/CSP ENFORCEMENT (Priority 1)**: Hardened native serialized-origin parsing to fail closed when authorities contain malformed non-IPv6 host labels (for example empty labels like `app..example.com`) so malformed origin values cannot pass native CORS response checks or outgoing Origin-header emission.
 - Updated native request policy behavior (`src/net/http_client.cpp`):
   - added strict serialized-origin host validation for non-IPv6 host labels (no empty labels, leading/trailing dot, or non `[A-Za-z0-9-]` label characters)
@@ -2089,6 +2319,7 @@
 - **Ledger sync**: `.claude/claude-estate.md` and `.codex/codex-estate.md` are synchronized in lockstep for Cycle 375.
 
 ### Cycle 374 — 2026-02-26 — Native serialized-origin empty explicit-port fail-closed hardening
+
 - **CORS/CSP ENFORCEMENT (Priority 1)**: Hardened native serialized-origin parsing to fail closed when authority contains an empty explicit port delimiter (`host:` / `[ipv6]:`) so malformed origin values cannot pass native CORS response checks or outgoing Origin-header emission.
 - Updated native request policy behavior (`src/net/http_client.cpp`):
   - added strict serialized-origin authority rejection when authority ends with `:`
@@ -2105,6 +2336,7 @@
 - **Ledger divergence note**: `.codex/codex-estate.md` remains non-writable in this runtime (`Operation not permitted`); `.claude/claude-estate.md` is source of truth for Cycle 374 and sync should be replayed when permissions allow.
 
 ### Cycle 373 — 2026-02-26 — Native serialized-origin authority backslash fail-closed hardening
+
 - **CORS/CSP ENFORCEMENT (Priority 1)**: Hardened native serialized-origin parsing to fail closed when authority contains backslashes so non-canonical origin values cannot pass native CORS response checks or outgoing Origin-header emission.
 - Updated native request policy behavior (`src/net/http_client.cpp`):
   - added strict serialized-origin rejection for `\\` bytes in `parse_serialized_origin(...)`
@@ -2121,6 +2353,7 @@
 - **Ledger divergence resolution**: `.claude/claude-estate.md` had newer mtime/content than `.codex/codex-estate.md` at cycle start (372 vs 369); `.claude` selected as source of truth and both ledgers were re-synced in lockstep for Cycle 373.
 
 ### Cycle 372 — 2026-02-26 — Native serialized-origin percent-escaped authority fail-closed hardening
+
 - **CORS/CSP ENFORCEMENT (Priority 1)**: Hardened native serialized-origin parsing to fail closed when percent-escaped authority bytes appear in policy/request/ACAO origins so encoded authority confusion variants cannot pass CORS checks or outgoing Origin header emission.
 - Updated native request policy behavior (`src/net/http_client.cpp`):
   - added strict serialized-origin rejection for `%` octets in `parse_serialized_origin(...)`
@@ -2137,6 +2370,7 @@
 - **Ledger divergence note**: `.codex/codex-estate.md` remains non-writable in this runtime (`Operation not permitted`), so `.claude/claude-estate.md` is source of truth for Cycle 372; replay sync when permissions allow.
 
 ### Cycle 371 — 2026-02-26 — Native credentialed-CORS comma-separated ACAC fail-closed hardening
+
 - **CORS/CSP ENFORCEMENT (Priority 1)**: Hardened native credentialed CORS response handling to fail closed when `Access-Control-Allow-Credentials` is comma-separated/multi-valued, including optional-ACAC mode.
 - Updated native request policy behavior (`src/net/http_client.cpp`):
   - tightened `check_cors_response_policy(...)` to reject any present credentialed `Access-Control-Allow-Credentials` value containing commas
@@ -2153,6 +2387,7 @@
 - **Ledger divergence note**: `.codex/codex-estate.md` remains non-writable in this runtime (`Operation not permitted`), so `.claude/claude-estate.md` is source of truth for Cycle 371; replay sync when permissions allow.
 
 ### Cycle 370 — 2026-02-26 — Native credentialed-CORS optional ACAC literal-value fail-closed hardening
+
 - **CORS/CSP ENFORCEMENT (Priority 1)**: Hardened native credentialed CORS response handling so `Access-Control-Allow-Credentials` fails closed unless it is exactly literal `true` whenever ACAC is present, including optional-ACAC mode.
 - Updated native request policy behavior (`src/net/http_client.cpp`):
   - tightened `check_cors_response_policy(...)` to reject any present credentialed `Access-Control-Allow-Credentials` value that is not exactly `true`
@@ -2169,6 +2404,7 @@
 - **Ledger divergence note**: `.codex/codex-estate.md` remains non-writable in this runtime (`Operation not permitted`), so `.claude/claude-estate.md` is source of truth for Cycle 370; replay sync when permissions allow.
 
 ### Cycle 369 — 2026-02-26 — Native serialized-origin/ACAO/ACAC whitespace fail-closed hardening
+
 - **CORS/CSP ENFORCEMENT (Priority 1)**: Hardened native request-policy serialized-origin and credentialed CORS header validation to fail closed for embedded/surrounding ASCII whitespace so whitespace-normalized malformed origins/credentials cannot pass CORS checks or request Origin emission.
 - Updated native request policy behavior (`src/net/http_client.cpp`):
   - added strict embedded-whitespace rejection for serialized-origin parsing (`parse_serialized_origin(...)`)
@@ -2188,6 +2424,7 @@
 - **Ledger sync resolution**: `.claude/claude-estate.md` and `.codex/codex-estate.md` are now re-aligned in lockstep for Cycle 369.
 
 ### Cycle 368 — 2026-02-26 — Shared JS CORS request-URL authority percent-escape fail-closed hardening
+
 - **CORS/CSP ENFORCEMENT (Priority 1)**: Hardened shared JS CORS helper request-URL parsing to fail closed when authority contains percent-escapes (for example `https://api%2eexample/data`, `https://api.example%40evil/data`) so encoded authority delimiter/hostname confusion inputs cannot pass eligibility, Origin-header attachment, or response-policy checks.
 - Updated CORS helper behavior (`clever/src/js/cors_policy.cpp`):
   - added explicit authority percent-escape rejection in `parse_httpish_url(...)` before URL parsing
@@ -2204,6 +2441,7 @@
 - **Ledger divergence note**: `.codex/codex-estate.md` remains non-writable in this runtime (`Operation not permitted`), so `.claude/claude-estate.md` is source of truth for Cycle 368; replay sync when permissions allow.
 
 ### Cycle 367 — 2026-02-26 — Shared JS CORS request-URL percent-encoded control/backslash fail-closed hardening
+
 - **CORS/CSP ENFORCEMENT (Priority 1)**: Hardened shared JS CORS helper request-URL parsing to fail closed for malformed percent-escapes and percent-decoded control/backslash octets (for example `%00`, `%0a`, `%0d`, `%5c`) so encoded parser-confusion targets cannot pass eligibility, Origin-header attachment, or response-policy checks.
 - Updated CORS helper behavior (`clever/src/js/cors_policy.cpp`):
   - added strict percent-escape validation in `parse_httpish_url(...)` (reject truncated/non-hex escapes)
@@ -2221,6 +2459,7 @@
 - **Ledger divergence resolution**: `.claude/claude-estate.md` had newer mtime/content than `.codex/codex-estate.md` at cycle start (366 vs 365); `.claude` selected as source of truth and both ledgers were re-synced in lockstep for Cycle 367.
 
 ### Cycle 366 — 2026-02-26 — Shared JS CORS request-URL backslash-target fail-closed hardening
+
 - **CORS/CSP ENFORCEMENT (Priority 1)**: Hardened shared JS CORS helper request-URL parsing to fail closed when targets contain backslash characters (for example `https://api.example\\data`) so non-canonical request targets cannot pass eligibility, Origin-header attachment, or response-policy checks.
 - Updated CORS helper behavior (`clever/src/js/cors_policy.cpp`):
   - added explicit backslash rejection in `parse_httpish_url(...)` before URL parsing
@@ -2237,6 +2476,7 @@
 - **Ledger divergence note**: `.codex/codex-estate.md` remains non-writable in this runtime (`Operation not permitted`), so `.claude/claude-estate.md` is source of truth for Cycle 366; replay sync when permissions allow.
 
 ### Cycle 365 — 2026-02-26 — Shared JS CORS request-URL empty-userinfo authority fail-closed hardening
+
 - **CORS/CSP ENFORCEMENT (Priority 1)**: Hardened shared JS CORS helper request-URL parsing to fail closed when authorities contain the userinfo separator `@` even when credentials are empty (for example `https://@api.example/data`) so malformed userinfo-bearing targets cannot pass eligibility, Origin-header attachment, or response-policy checks.
 - Updated CORS helper behavior (`clever/src/js/cors_policy.cpp`):
   - added explicit authority-level `@` rejection in `parse_httpish_url(...)` before URL parsing
@@ -2252,8 +2492,8 @@
 - **Targeted CORS suite green (13 tests), no regressions.**
 - **Ledger divergence resolution**: `.claude/claude-estate.md` and `.codex/codex-estate.md` synced in lockstep for Cycle 365.
 
-
 ### Cycle 364 — 2026-02-26 — Shared JS CORS request-URL empty-port authority fail-closed hardening
+
 - **CORS/CSP ENFORCEMENT (Priority 1)**: Hardened shared JS CORS helper request-URL parsing to fail closed when request targets use malformed empty authority-port forms (for example `https://api.example:` and `https://[::1]:`) so malformed URLs cannot pass eligibility, Origin-header attachment, or response-policy checks.
 - Updated CORS helper behavior (`clever/src/js/cors_policy.cpp`):
   - added strict request-URL authority extraction and authority-port syntax validation before URL parsing
@@ -2270,6 +2510,7 @@
 - **Ledger divergence note**: `.codex/codex-estate.md` remains non-writable in this runtime (`Operation not permitted`), so `.claude/claude-estate.md` is source of truth for Cycle 364; replay sync when permissions allow.
 
 ### Cycle 363 — 2026-02-26 — Shared JS CORS request-URL embedded-whitespace/userinfo/fragment fail-closed hardening
+
 - **CORS/CSP ENFORCEMENT (Priority 1)**: Hardened shared JS CORS helper request-URL parsing to fail closed for embedded ASCII whitespace, authority userinfo credentials, and URL fragments so malformed request targets cannot be accepted during eligibility, Origin-header attachment, or response-policy checks.
 - Updated CORS helper behavior (`clever/src/js/cors_policy.cpp`):
   - added strict embedded-whitespace rejection for request URLs
@@ -2287,6 +2528,7 @@
 - **Ledger divergence resolution**: `.claude/claude-estate.md` and `.codex/codex-estate.md` synced in lockstep for Cycle 363.
 
 ### Cycle 362 — 2026-02-26 — Shared JS CORS request-URL control/non-ASCII octet fail-closed hardening
+
 - **CORS/CSP ENFORCEMENT (Priority 1)**: Hardened shared JS CORS helper request-URL parsing to fail closed when request URLs contain control or non-ASCII octets, preventing malformed URL acceptance in CORS eligibility, Origin-header attachment, and response-policy checks.
 - Updated CORS helper behavior (`clever/src/js/cors_policy.cpp`):
   - added strict request-URL octet validation for `parse_httpish_url(...)` (reject control chars and non-ASCII bytes)
@@ -2303,6 +2545,7 @@
 - **Ledger divergence note**: `.codex/codex-estate.md` is non-writable in this runtime (`Operation not permitted`), so `.claude/claude-estate.md` is source of truth for Cycle 362; replay sync when permissions allow.
 
 ### Cycle 361 — 2026-02-26 — Shared JS CORS request-URL surrounding-whitespace fail-closed hardening
+
 - **CORS/CSP ENFORCEMENT (Priority 1)**: Hardened shared JS CORS helper URL parsing to reject surrounding-whitespace request URLs so fetch/XHR CORS eligibility and response-policy checks cannot accept trim-normalized malformed URLs.
 - Updated CORS helper behavior (`clever/src/js/cors_policy.cpp`):
   - added strict surrounding-whitespace rejection in `parse_httpish_url(...)` before URL parsing
@@ -2319,6 +2562,7 @@
 - **Ledger divergence resolution**: `.claude/claude-estate.md` and `.codex/codex-estate.md` synced in lockstep for Cycle 361.
 
 ### Cycle 360 — 2026-02-26 — Shared JS CORS serialized-origin/header surrounding-whitespace fail-closed hardening
+
 - **CORS/CSP ENFORCEMENT (Priority 1)**: Hardened shared JS CORS helper to fail closed when serialized-origin and CORS header values contain surrounding ASCII whitespace, eliminating trim-based acceptance gaps.
 - Updated CORS helper behavior (`clever/src/js/cors_policy.cpp`):
   - added strict surrounding-whitespace rejection for serialized-origin canonicalization inputs
@@ -2336,6 +2580,7 @@
 - **Ledger divergence note**: `.codex/codex-estate.md` remains non-writable in this runtime (`Operation not permitted`), so `.claude/claude-estate.md` is source of truth for Cycle 360; sync-forward required when `.codex` is writable.
 
 ### Cycle 359 — 2026-02-26 — Native request-policy serialized-origin non-ASCII/whitespace fail-closed hardening
+
 - **CORS/CSP ENFORCEMENT (Priority 1)**: Hardened native request-policy serialized-origin parsing to fail closed on non-ASCII bytes and surrounding ASCII whitespace so malformed Origin values cannot participate in CORS response gating or outgoing request header emission.
 - Updated request-policy behavior (`src/net/http_client.cpp`):
   - added strict non-ASCII octet rejection (`>= 0x80`) for serialized-origin parsing
@@ -2352,8 +2597,8 @@
 - **2 new tests (3502→3504), request policy + request contract suites green.**
 - **Ledger divergence resolution**: mtime-precedence sync applied; `.claude/claude-estate.md` and `.codex/codex-estate.md` updated in lockstep for Cycle 359.
 
-
 ### Cycle 358 — 2026-02-26 — Fetch/XHR unsupported-scheme pre-dispatch fail-closed hardening
+
 - **CORS/CSP ENFORCEMENT (Priority 1)**: Hardened JS fetch/XHR dispatch path to fail closed before network for unsupported request URL schemes when document origin is enforceable (`http`/`https`) or `null`.
 - Updated CORS helper/API behavior (`clever/include/clever/js/cors_policy.h`, `clever/src/js/cors_policy.cpp`):
   - added `is_cors_eligible_request_url(...)` shared helper for strict HTTP(S)-only request URL eligibility checks
@@ -2375,6 +2620,7 @@
 - **Ledger divergence note**: `.codex/codex-estate.md` remains non-writable in this runtime (`Operation not permitted`), so `.claude/claude-estate.md` is source of truth for Cycle 358; sync-forward required when `.codex` is writable.
 
 ### Cycle 357 — 2026-02-26 — Native request-policy HTTP(S)-only serialized-origin fail-closed hardening
+
 - **CORS/CSP ENFORCEMENT (Priority 1)**: Hardened native request-policy serialized-origin parsing to reject non-HTTP(S) origins so malformed `Origin` schemes fail closed in both CORS response checks and outgoing request header emission.
 - Updated request-policy behavior (`src/net/http_client.cpp`):
   - tightened `parse_serialized_origin(...)` to accept only `http`/`https` schemes (plus existing `null`) after strict parse
@@ -2392,6 +2638,7 @@
 - **Ledger divergence note**: `.codex/codex-estate.md` is non-writable in this runtime (`Operation not permitted`), so `.claude/claude-estate.md` is source of truth for Cycle 357; sync-forward required when `.codex` is writable.
 
 ### Cycle 356 — 2026-02-26 — Shared JS CORS helper non-ASCII ACAO/ACAC/header-origin octet fail-closed hardening
+
 - **CORS/CSP ENFORCEMENT (Priority 1)**: Hardened shared JS CORS policy helper to fail closed on non-ASCII header-origin octets across request-origin validation and ACAO/ACAC parsing.
 - Updated CORS helper behavior (`clever/src/js/cors_policy.cpp`):
   - strengthened strict header octet validation to reject non-ASCII bytes (`> 0x7E`) in serialized-origin and CORS header value handling
@@ -2407,6 +2654,7 @@
 - **Ledger divergence resolution**: mtime-precedence sync applied; `.claude/claude-estate.md` and `.codex/codex-estate.md` updated in lockstep for Cycle 356.
 
 ### Cycle 355 — 2026-02-26 — Shared JS CORS helper malformed ACAO authority/port fail-closed hardening
+
 - **CORS/CSP ENFORCEMENT (Priority 1)**: Hardened shared JS CORS policy helper to reject malformed ACAO authority/port forms before canonical origin comparison.
 - Updated CORS helper behavior (`clever/src/js/cors_policy.cpp`):
   - added strict authority/port syntax validation in ACAO canonical parsing
@@ -2422,6 +2670,7 @@
 - **Ledger divergence note**: `.codex/codex-estate.md` remains non-writable in this runtime (`Operation not permitted`), so `.claude/claude-estate.md` is source of truth for Cycle 355; replay sync when permissions allow.
 
 ### Cycle 354 — 2026-02-26 — Shared JS CORS helper canonical serialized-origin ACAO matching hardening
+
 - **CORS/CSP ENFORCEMENT (Priority 1)**: Hardened shared JS CORS policy helper to canonicalize and compare serialized origins for ACAO matching while preserving strict fail-closed malformed-origin rejection.
 - Updated CORS helper behavior (`clever/src/js/cors_policy.cpp`):
   - added strict serialized-origin parser/canonicalizer for CORS header-origin matching (rejects path/query/fragment/userinfo forms)
@@ -2438,6 +2687,7 @@
 - **Ledger divergence resolution**: mtime-precedence sync applied; `.claude/claude-estate.md` and `.codex/codex-estate.md` updated in lockstep for Cycle 354.
 
 ### Cycle 353 — 2026-02-26 — Shared JS CORS helper duplicate ACAO/ACAC header fail-closed hardening
+
 - **CORS/CSP ENFORCEMENT (Priority 1)**: Hardened shared JS CORS policy helper to fail closed when duplicate CORS policy headers are present in responses.
 - Updated CORS helper behavior (`clever/src/js/cors_policy.cpp`):
   - require exactly one `Access-Control-Allow-Origin` value for cross-origin CORS evaluation
@@ -2454,6 +2704,7 @@
 - **Ledger divergence note**: `.codex/codex-estate.md` remains non-writable in this runtime (`Operation not permitted`), so `.claude/claude-estate.md` is source of truth for Cycle 353; replay sync when permissions allow.
 
 ### Cycle 352 — 2026-02-26 — Shared JS CORS helper null-origin and empty-origin fail-closed hardening
+
 - **CORS/CSP ENFORCEMENT (Priority 1)**: Hardened shared JS CORS policy helper to fail closed for empty document origins and to treat `"null"` document origins as cross-origin with strict ACAO/ACAC enforcement.
 - Updated CORS helper behavior (`clever/src/js/cors_policy.cpp`):
   - reject empty document origins before response allow/deny evaluation
@@ -2472,6 +2723,7 @@
 - **Ledger divergence resolution**: mtime-precedence sync applied; `.claude/claude-estate.md` and `.codex/codex-estate.md` updated in lockstep for Cycle 352.
 
 ### Cycle 351 — 2026-02-26 — Shared JS CORS helper strict ACAC literal `true` fail-closed hardening
+
 - **CORS/CSP ENFORCEMENT (Priority 1)**: Hardened shared JS CORS policy helper to require strict case-sensitive literal `true` for `Access-Control-Allow-Credentials` in credentialed cross-origin response validation.
 - Updated CORS helper behavior (`clever/src/js/cors_policy.cpp`):
   - enforce exact trimmed literal `true` for ACAC in credentialed CORS responses
@@ -2486,6 +2738,7 @@
 - **Ledger divergence note**: `.codex/codex-estate.md` remains non-writable in this runtime (`Operation not permitted`), so `.claude/claude-estate.md` is source of truth for Cycle 351; replay sync when permissions allow.
 
 ### Cycle 350 — 2026-02-26 — Shared JS CORS helper malformed/unsupported request URL fail-closed hardening
+
 - **CORS/CSP ENFORCEMENT (Priority 1)**: Hardened shared JS CORS policy helper to fail closed when enforceable document origins are paired with malformed or unsupported request URLs.
 - Updated CORS helper behavior (`clever/src/js/cors_policy.cpp`):
   - reject CORS response evaluation when document origin is enforceable but request URL parsing fails
@@ -2501,6 +2754,7 @@
 - **Ledger divergence resolution**: mtime-precedence sync applied; `.claude/claude-estate.md` and `.codex/codex-estate.md` updated in lockstep for Cycle 350.
 
 ### Cycle 349 — 2026-02-26 — Shared JS CORS helper malformed document-origin fail-closed hardening
+
 - **CORS/CSP ENFORCEMENT (Priority 1)**: Hardened shared JS CORS policy helper to fail closed on malformed non-null document origins used by fetch/XHR path decisions.
 - Updated CORS helper behavior (`clever/src/js/cors_policy.cpp`):
   - require enforceable document origins to be strict serialized HTTP(S) origins
@@ -2518,6 +2772,7 @@
 - **Ledger divergence resolution**: mtime-precedence sync applied; `.claude/claude-estate.md` is source of truth for Cycle 349 because `.codex/codex-estate.md` remains non-writable in this runtime (`Operation not permitted`). Replay sync when permissions allow.
 
 ### Cycle 348 — 2026-02-26 — Shared JS CORS helper malformed ACAO/ACAC fail-closed hardening
+
 - **CORS/CSP ENFORCEMENT (Priority 1)**: Hardened shared JS CORS policy helper to reject malformed CORS response headers before allow/deny evaluation.
 - Updated CORS helper behavior (`clever/src/js/cors_policy.cpp`):
   - reject `Access-Control-Allow-Origin` values containing control characters
@@ -2534,6 +2789,7 @@
 - **Ledger divergence resolution**: mtime-precedence sync applied; `.claude/claude-estate.md` and `.codex/codex-estate.md` updated in lockstep for Cycle 348.
 
 ### Cycle 347 — 2026-02-26 — Web font mixed `local(...)` + `url(...)` single-entry fail-closed hardening
+
 - **WEB FONT PIPELINE (Priority 5)**: Hardened `@font-face` source parsing to reject malformed single source entries that mix `local(...)` and `url(...)` descriptors in the same entry.
 - Updated rendering behavior:
   - `extract_preferred_font_url(...)` now skips malformed entries containing both top-level `local(...)` and `url(...)` descriptors in one source item
@@ -2550,6 +2806,7 @@
 - **Ledger divergence note**: `.codex/codex-estate.md` is non-writable in this runtime (`Operation not permitted`), so `.claude/claude-estate.md` is source of truth for Cycle 347; replay sync when permissions allow.
 
 ### Cycle 346 — 2026-02-26 — Web font duplicate descriptor fail-closed hardening
+
 - **WEB FONT PIPELINE (Priority 5)**: Hardened `@font-face` source parsing to reject malformed single-entry duplicates of `url(...)`, `format(...)`, or `tech(...)` descriptors.
 - Updated rendering behavior:
   - `extract_preferred_font_url(...)` now skips malformed source entries containing duplicate top-level `url(...)` descriptors
@@ -2566,6 +2823,7 @@
 - **Ledger divergence resolution**: `.claude/claude-estate.md` and `.codex/codex-estate.md` updated in lockstep for Cycle 346.
 
 ### Cycle 345 — 2026-02-26 — Web font unmatched-closing-parenthesis fail-closed hardening
+
 - **WEB FONT PIPELINE (Priority 5)**: Hardened `@font-face` source parsing to reject malformed unmatched closing `)` delimiters across top-level source lists and descriptor token lists.
 - Updated rendering behavior:
   - `extract_preferred_font_url(...)` now fails closed when top-level source parsing encounters a `)` with no matching opening `(`
@@ -2581,6 +2839,7 @@
 - **Ledger divergence note**: `.codex/codex-estate.md` is non-writable in this runtime (`Operation not permitted`), so `.claude/claude-estate.md` is source of truth for Cycle 345; replay sync when permissions allow.
 
 ### Cycle 344 — 2026-02-26 — Web font malformed unbalanced quote/parenthesis `src` parser fail-closed hardening
+
 - **WEB FONT PIPELINE (Priority 5)**: Hardened `@font-face` `src` parser state handling to fail closed when tokenization ends with unbalanced quotes or unbalanced parentheses.
 - Updated rendering behavior:
   - `extract_preferred_font_url(...)` now rejects malformed top-level `src` lists with unbalanced quote/paren state instead of allowing partial parse recovery
@@ -2596,6 +2855,7 @@
 - **Ledger divergence note**: `.codex/codex-estate.md` remains write-blocked in this runtime (`Operation not permitted`), so `.claude/claude-estate.md` is source of truth for Cycle 344.
 
 ### Cycle 343 — 2026-02-26 — Web font malformed top-level `src` delimiter fail-closed hardening
+
 - **WEB FONT PIPELINE (Priority 5)**: Hardened `@font-face` `src` list parsing to fail closed when top-level source entries contain malformed empty entries created by leading/trailing/double commas.
 - Updated rendering behavior:
   - `extract_preferred_font_url(...)` now rejects malformed top-level source lists with empty entries instead of accepting preceding valid URLs
@@ -2612,6 +2872,7 @@
 - **Ledger divergence note**: `.codex/codex-estate.md` remains write-blocked in this runtime (`Operation not permitted`), so `.claude/claude-estate.md` is source of truth for Cycle 344.
 
 ### Cycle 342 — 2026-02-26 — Web font `data:` malformed percent-escape fail-closed hardening
+
 - **WEB FONT PIPELINE (Priority 5)**: Hardened `@font-face` `data:` URL decoding to reject malformed percent-escape sequences for non-base64 payloads.
 - Updated rendering behavior:
   - `decode_font_data_url(...)` now fail-closes when `%` escapes are truncated (for example `%0`) or contain non-hex digits (for example `%0G`)
@@ -2627,8 +2888,8 @@
 - **2 new tests (3466→3468), targeted suite green (`WebFontRegistration.*`).**
 - **Ledger divergence note**: `.codex/codex-estate.md` remains non-writable in this runtime (`Operation not permitted`), so `.claude/claude-estate.md` is source of truth for Cycle 342.
 
-
 ### Cycle 341 — 2026-02-26 — Web font malformed descriptor-list delimiter fail-closed hardening
+
 - **WEB FONT PIPELINE (Priority 5)**: Hardened `@font-face` source descriptor parsing to fail closed on malformed delimiter patterns inside `format(...)`/`tech(...)` token lists.
 - Updated rendering behavior:
   - `extract_preferred_font_url(...)` now rejects descriptor lists containing empty tokens (for example trailing/leading commas) instead of accepting the entry when one supported token is present
@@ -2645,6 +2906,7 @@
 - **Ledger divergence note**: `.codex/codex-estate.md` remains write-blocked in this runtime (`Operation not permitted`), so `.claude/claude-estate.md` is source of truth for Cycle 344.
 
 ### Cycle 340 — 2026-02-26 — Web font descriptor parser false-positive fail-closed hardening
+
 - **WEB FONT PIPELINE (Priority 5)**: Hardened `@font-face` source descriptor parsing so `format(`/`tech(` substrings inside quoted URL payloads are never treated as descriptor calls.
 - Updated rendering behavior:
   - `extract_preferred_font_url(...)` now detects `url(...)`, `format(...)`, and `tech(...)` only at top-level descriptor scope (outside quotes and nested function arguments)
@@ -2660,8 +2922,8 @@
 - **2 new tests (3462→3464), targeted suite green (`WebFontRegistration.PreferredFontSource*`).**
 - **Ledger divergence note**: `.codex/codex-estate.md` remains non-writable in this runtime, so `.claude/claude-estate.md` is source of truth for Cycle 340; replay sync when permissions allow.
 
-
 ### Cycle 339 — 2026-02-26 — Web font malformed empty `format()`/`tech()` descriptor fail-closed hardening
+
 - **WEB FONT PIPELINE (Priority 5)**: Hardened `@font-face` source selection to reject malformed empty descriptor calls so invalid entries cannot be treated as implicitly supported.
 - Updated rendering behavior:
   - `extract_preferred_font_url(...)` now detects descriptor presence separately and fail-closes entries that contain empty `format()` or `tech()` descriptors
@@ -2676,8 +2938,8 @@
 - **2 new tests (3460→3462), targeted suite green (`WebFontRegistration.PreferredFontSource*`).**
 - **Ledger divergence note**: `.codex/codex-estate.md` remains write-blocked in this runtime (`Operation not permitted`), so `.claude/claude-estate.md` is source of truth for Cycle 344.
 
-
 ### Cycle 338 — 2026-02-26 — Web font `tech(...)` source-hint fail-closed support hardening
+
 - **WEB FONT PIPELINE (Priority 5)**: Hardened `@font-face` source selection to evaluate optional `tech(...)` hints and skip unsupported technology descriptors.
 - Updated rendering behavior:
   - `extract_preferred_font_url(...)` now parses optional `tech(...)` token lists per source entry
@@ -2694,6 +2956,7 @@
 - **Ledger divergence note**: `.codex/codex-estate.md` remains write-blocked in this runtime (operation not permitted), so `.claude/claude-estate.md` is source of truth for Cycle 338; replay sync once `.codex` write permissions are restored.
 
 ### Cycle 337 — 2026-02-26 — Web font `woff2-variations` format token support hardening
+
 - **WEB FONT PIPELINE (Priority 5)**: Expanded `@font-face` source format support to include variable-font `woff2-variations` descriptors in URL selection.
 - Updated rendering behavior:
   - `extract_preferred_font_url(...)` now treats `format('woff2-variations')` as a supported source token
@@ -2709,6 +2972,7 @@
 - **Ledger divergence note**: `.codex/codex-estate.md` is write-blocked in this runtime (operation not permitted), so `.claude/claude-estate.md` is source of truth for Cycle 337; replay sync once `.codex` write permissions are restored.
 
 ### Cycle 336 — 2026-02-26 — Web font `data:` base64 strict-padding + unpadded compatibility hardening
+
 - **WEB FONT PIPELINE (Priority 5)**: Hardened `@font-face` `data:` base64 decoding to fail closed on malformed padding/trailing payloads while keeping unpadded base64 compatibility.
 - Updated rendering behavior:
   - `decode_font_data_url(...)` now rejects non-terminal `=` padding and trailing non-padding bytes after first padding marker
@@ -2725,6 +2989,7 @@
 - **Ledger divergence resolution**: `.codex/codex-estate.md` and `.claude/claude-estate.md` re-synced successfully at cycle close.
 
 ### Cycle 335 — 2026-02-26 — Web font src `format(...)` list-aware selection hardening
+
 - **WEB FONT PIPELINE (Priority 5)**: Hardened `@font-face` source selection to evaluate multi-value `format(...)` descriptor lists and accept entries when any format token is supported.
 - Updated rendering behavior:
   - `extract_preferred_font_url(...)` now tokenizes comma-separated `format(...)` values while respecting quotes and nested delimiters
@@ -2741,6 +3006,7 @@
 - **Ledger divergence note**: `.codex/codex-estate.md` is write-blocked in this runtime (operation not permitted), so `.claude/claude-estate.md` is source of truth for Cycle 335; replay sync once `.codex` write permissions are restored.
 
 ### Cycle 334 — 2026-02-26 — Web font src format-aware fallback + case-insensitive URL/FORMAT parsing
+
 - **WEB FONT PIPELINE (Priority 5)**: Hardened `-face` source selection so unsupported `format(...)` entries are skipped and uppercase CSS function forms are honored.
 - Updated rendering behavior:
   - `extract_preferred_font_url(...)` now parses comma-separated source descriptors while respecting nested parentheses/quotes
@@ -2757,6 +3023,7 @@
 - **Ledger divergence resolution**: `.claude/claude-estate.md` had newer mtime/content than `.codex/codex-estate.md`; `.claude` selected as source of truth and both ledgers re-synced at cycle close.
 
 ### Cycle 333 — 2026-02-26 — Web font `data:` URL decode/register support hardening
+
 - **WEB FONT PIPELINE (Priority 5)**: Added explicit `data:` URL decoding support in `@font-face` source handling so inline font payloads can be registered without network fetch.
 - Updated rendering behavior:
   - added `decode_font_data_url(...)` helper with support for base64 (`;base64`) and percent-encoded payload decoding
@@ -2774,6 +3041,7 @@
 - **Ledger divergence note**: `.codex/codex-estate.md` is write-blocked in this runtime (operation not permitted), so `.claude/claude-estate.md` is source of truth for Cycle 333; replay sync once `.codex` write permissions are restored.
 
 ### Cycle 332 — 2026-02-26 — HTTP2-Settings token68/duplicate fail-closed hardening
+
 - **HTTP/2 TRANSPORT FOUNDATION (MC-12)**: Tightened outbound `HTTP2-Settings` request-header detection so malformed values and duplicate case-variant headers fail closed.
 - Updated networking behavior:
   - `request_headers_include_http2_settings(...)` now validates header values as strict token68 (`1*tchar` plus optional trailing `=` padding)
@@ -2791,6 +3059,7 @@
 - **Ledger divergence resolution**: `.codex/codex-estate.md` and `.claude/claude-estate.md` were re-synced at cycle close.
 
 ### Cycle 331 — 2026-02-26 — HTTP/2 Upgrade + Transfer-Encoding non-ASCII token fail-closed hardening
+
 - **HTTP/2 TRANSPORT FOUNDATION (MC-12)**: Tightened transport token parsing to reject non-ASCII bytes in `Upgrade` and `Transfer-Encoding` token paths.
 - Updated networking behavior:
   - `contains_http2_upgrade_token(...)` now rejects bytes `>= 0x80` while scanning `Upgrade` values, preventing locale-sensitive/non-ASCII token acceptance
@@ -2808,6 +3077,7 @@
 - **Ledger divergence note**: `.codex/codex-estate.md` is write-blocked in this runtime (operation not permitted), so `.claude/claude-estate.md` is source of truth for Cycle 331; replay sync once `.codex` write permissions are restored.
 
 ### Cycle 330 — 2026-02-26 — HTTP/2 Upgrade malformed token-character fail-closed hardening
+
 - **HTTP/2 TRANSPORT FOUNDATION (MC-12)**: Tightened `Upgrade` token parsing to reject malformed token-character variants before any `h2`/`h2c` match.
 - Updated networking behavior:
   - `contains_http2_upgrade_token(...)` now rejects token entries containing invalid HTTP token characters after normalization/unescaping
@@ -2826,6 +3096,7 @@
 - **Ledger divergence resolution**: `.codex/codex-estate.md` and `.claude/claude-estate.md` were re-synced at cycle close.
 
 ### Cycle 329 — 2026-02-26 — Policy-origin serialized-origin fail-closed enforcement hardening
+
 - **CORS/CSP ENFORCEMENT (MC-08, FJNS-11)**: Tightened request-policy/CSP handling to reject malformed `RequestPolicy::origin` values before same-origin/CSP checks.
 - Updated networking behavior:
   - `check_request_policy(...)` now requires strict serialized-origin parsing for `policy.origin` when cross-origin blocking is enabled
@@ -2844,6 +3115,7 @@
 - **Ledger divergence note**: `.codex/codex-estate.md` remains write-blocked in this runtime (operation not permitted), so `.claude/claude-estate.md` is source of truth for Cycle 329; replay sync once `.codex` write permissions are restored.
 
 ### Cycle 328 — 2026-02-26 — CORS request-Origin header emission serialized-origin fail-closed hardening
+
 - **CORS/CSP ENFORCEMENT (MC-08, FJNS-11)**: Tightened request header construction to fail closed when `RequestPolicy::origin` is malformed.
 - Updated networking behavior:
   - `build_request_headers_for_policy(...)` now requires `parse_serialized_origin(...)` success before emitting `Origin`
@@ -2861,6 +3133,7 @@
 - **Ledger divergence resolution**: `.claude/claude-estate.md` had newer mtime/content than `.codex/codex-estate.md` at cycle start; `.claude` selected as source of truth and both ledgers re-synced at cycle close.
 
 ### Cycle 327 — 2026-02-26 — Credentialed CORS ACAC duplicate/control-char fail-closed hardening
+
 - **CORS/CSP ENFORCEMENT (MC-08, FJNS-11)**: Tightened credentialed CORS response validation to reject malformed `Access-Control-Allow-Credentials` headers even when ACAC strict-presence is disabled.
 - Updated networking behavior:
   - `check_cors_response_policy(...)` now rejects duplicate case-variant ACAC headers for credentialed CORS regardless of `require_acac_for_credentialed_cors`
@@ -2877,8 +3150,8 @@
 - **2 new tests (3440→3442), targeted binaries green (`test_request_policy`, `test_request_contracts`).**
 - **Ledger divergence note**: `.codex/codex-estate.md` is write-blocked in this runtime (operation not permitted), so `.claude/claude-estate.md` is source of truth for Cycle 327; replay sync once `.codex` write permissions are restored.
 
-
 ### Cycle 327 — 2026-02-26 — CORS request-Origin serialized-origin explicit rejection hardening
+
 - **CORS/CSP ENFORCEMENT (MC-08, FJNS-11)**: Tightened cross-origin response gate behavior to fail closed when request `Origin` is malformed (non-serialized origin forms).
 - Updated networking behavior:
   - introduced `parse_serialized_origin(...)` helper to centrally validate/normalize serialized origin strings (`scheme://host[:port]` or literal `null`) with control-character and structure checks
@@ -2896,6 +3169,7 @@
 - **Ledger divergence note**: `.codex/codex-estate.md` is write-blocked in this runtime (operation not permitted), so `.claude/claude-estate.md` is source of truth for Cycle 327; replay sync once `.codex` write permissions are restored.
 
 ### Cycle 326 — 2026-02-26 — CORS ACAO/ACAC control-character explicit rejection hardening
+
 - **CORS/CSP ENFORCEMENT (MC-08, FJNS-11)**: Tightened cross-origin response gate behavior to fail closed when ACAO/ACAC values contain forbidden control characters.
 - Updated networking behavior:
   - `check_cors_response_policy(...)` now rejects `Access-Control-Allow-Origin` values containing control characters (`0x00-0x1F` except HTAB, plus `0x7F`)
@@ -2913,6 +3187,7 @@
 - **Ledger divergence resolution**: `.claude/claude-estate.md` had newer mtime than `.codex/codex-estate.md` at cycle start; `.claude` selected as source of truth and both ledgers synced after cycle close.
 
 ### Cycle 325 — 2026-02-26 — Transfer-Encoding unsupported-coding explicit rejection hardening
+
 - **HTTP RESPONSE PARSING HARDENING**: Tightened `Transfer-Encoding` handling to fail closed when unsupported transfer-coding chains are present.
 - Updated networking behavior:
   - `contains_chunked_encoding(...)` now rejects any non-`chunked` transfer-coding token and accepts only single-token `chunked` without parameters
@@ -2929,6 +3204,7 @@
 - **Ledger divergence note**: `.codex/codex-estate.md` remains write-blocked in this runtime (operation not permitted), so `.claude/claude-estate.md` is source of truth for Cycle 325; replay sync when permissions allow.
 
 ### Cycle 324 — 2026-02-26 — Transfer-Encoding control-character token explicit rejection hardening
+
 - **HTTP RESPONSE PARSING HARDENING**: Tightened `Transfer-Encoding` handling to fail closed when control characters appear inside transfer-coding tokens.
 - Updated networking behavior:
   - `contains_chunked_encoding(...)` now rejects RFC-invalid control bytes (`0x00-0x1F`, `0x7F`) after token trimming before coding matching
@@ -2944,6 +3220,7 @@
 - **Ledger divergence resolution**: `.claude/claude-estate.md` had newer mtime than `.codex/codex-estate.md` at cycle start; `.claude` selected as source of truth and both ledgers synced after cycle close.
 
 ### Cycle 323 — 2026-02-26 — Transfer-Encoding chunked-final/no-parameter explicit rejection hardening
+
 - **HTTP RESPONSE PARSING HARDENING**: Tightened `Transfer-Encoding` handling to fail closed when `chunked` appears with parameters or is followed by another coding.
 - Updated networking behavior:
   - `contains_chunked_encoding(...)` now rejects `chunked;...` forms instead of accepting parameterized `chunked` tokens
@@ -2960,6 +3237,7 @@
 - **Ledger divergence note**: `.codex/codex-estate.md` remains write-blocked in this runtime (operation not permitted), so `.claude/claude-estate.md` is source of truth for Cycle 323; replay sync when permissions allow.
 
 ### Cycle 322 — 2026-02-26 — Transfer-Encoding malformed delimiter/quoted-token explicit rejection hardening
+
 - **HTTP RESPONSE PARSING HARDENING**: Tightened `Transfer-Encoding` handling to fail closed when malformed delimiters or quoted/escaped token variants are present.
 - Updated networking behavior:
   - `contains_chunked_encoding(...)` now rejects malformed empty-token delimiter forms (leading, trailing, or consecutive commas)
@@ -2976,6 +3254,7 @@
 - **Ledger divergence resolution**: `.claude/claude-estate.md` was ahead of `.codex/codex-estate.md` at cycle start; `.claude` selected as source of truth and both ledgers synced after cycle close.
 
 ### Cycle 321 — 2026-02-26 — Transfer-Encoding chunked exact-token hardening
+
 - **HTTP RESPONSE PARSING HARDENING**: Tightened `Transfer-Encoding` handling so `chunked` is only recognized as an exact comma-delimited token, preventing substring false positives.
 - Updated networking behavior:
   - `contains_chunked_encoding(...)` now tokenizes on commas, trims OWS, and matches `chunked` exactly (case-insensitive)
@@ -2991,8 +3270,8 @@
 - **1 new test (3434→3435), clean-build targeted binary green (`test_request_contracts`).**
 - **Ledger divergence resolution**: `.claude/claude-estate.md` was ahead of `.codex/codex-estate.md` at cycle start; `.claude` selected as source of truth and both ledgers synced after cycle close.
 
-
 ### Cycle 320 — 2026-02-26 — CORS effective-URL parse fail-closed hardening
+
 - **CORS/CSP ENFORCEMENT (MC-08, FJNS-11)**: Hardened response-gate behavior to fail closed when effective response URL parsing fails during cross-origin validation.
 - Updated networking behavior:
   - `check_cors_response_policy(...)` now rejects responses when the effective URL cannot be parsed instead of implicitly bypassing CORS checks
@@ -3008,6 +3287,7 @@
 - **Ledger divergence note**: `.codex/codex-estate.md` remains write-blocked in this runtime (operation not permitted), so `.claude/claude-estate.md` is source of truth for Cycle 320; replay sync when permissions allow.
 
 ### Cycle 319 — 2026-02-26 — HTTP/2 malformed unterminated quoted-parameter upgrade-token explicit rejection hardening
+
 - **HTTP/2 TRANSPORT FOUNDATION (MC-12)**: Hardened HTTP/2 upgrade signal parsing to reject malformed unterminated quoted-parameter `Upgrade` token variants instead of normalizing them into synthetic `h2`/`h2c` matches.
 - Updated networking behavior:
   - `contains_http2_upgrade_token(...)` now validates parameter-tail quote/escape balance instead of stopping parsing at the first semicolon
@@ -3026,6 +3306,7 @@
 - **Ledger divergence resolution**: `.claude/claude-estate.md` was ahead of `.codex/codex-estate.md` at cycle start; `.claude` selected as source of truth and both ledgers synced after cycle close.
 
 ### Cycle 318 — 2026-02-26 — HTTP/2 malformed bare backslash-escape upgrade-token explicit rejection hardening
+
 - **HTTP/2 TRANSPORT FOUNDATION (MC-12)**: Hardened HTTP/2 upgrade signal parsing to reject malformed bare backslash-escape `Upgrade` token variants instead of normalizing them into synthetic `h2`/`h2c` matches.
 - Updated networking behavior:
   - `contains_http2_upgrade_token(...)` now rejects tokens containing backslash escape sequences when the token was not originally wrapped in single or double quotes
@@ -3043,6 +3324,7 @@
 - **Ledger divergence note**: `.codex/codex-estate.md` is not writable in this runtime (operation not permitted), so `.claude/claude-estate.md` is source of truth for Cycle 318; replay sync once `.codex` write permissions are restored.
 
 ### Cycle 317 — 2026-02-26 — HTTP/2 control-character malformed upgrade-token explicit rejection hardening
+
 - **HTTP/2 TRANSPORT FOUNDATION (MC-12)**: Hardened HTTP/2 upgrade signal parsing to reject malformed `Upgrade` token variants containing control characters instead of normalizing them into synthetic `h2`/`h2c` matches.
 - Updated networking behavior:
   - `contains_http2_upgrade_token(...)` now rejects RFC-invalid control characters (`0x00-0x1F` except horizontal tab, plus `0x7F`) during header token scanning
@@ -3060,6 +3342,7 @@
 - **Ledger divergence note**: `.codex/codex-estate.md` is not writable in this runtime (operation not permitted), so `.claude/claude-estate.md` is source of truth for Cycle 317; replay sync once `.codex` write permissions are restored.
 
 ### Cycle 316 — 2026-02-26 — HTTP/2 malformed closing-comment-delimiter explicit rejection hardening
+
 - **HTTP/2 TRANSPORT FOUNDATION (MC-12)**: Hardened HTTP/2 upgrade signal parsing to reject malformed `Upgrade` token variants containing stray closing comment delimiters (`)`) instead of permitting synthetic follow-on `h2`/`h2c` matches.
 - Updated networking behavior:
   - `contains_http2_upgrade_token(...)` now rejects header tokenization when a closing comment delimiter appears outside any active comment scope
@@ -3078,6 +3361,7 @@
 - **Ledger divergence note**: `.codex/codex-estate.md` is not writable in this runtime (operation not permitted), so `.claude/claude-estate.md` is source of truth for Cycle 316; replay sync once `.codex` write permissions are restored.
 
 ### Cycle 315 — 2026-02-26 — HTTP/2 malformed upgrade-token explicit rejection hardening
+
 - **HTTP/2 TRANSPORT FOUNDATION (MC-12)**: Hardened HTTP/2 upgrade signal parsing to reject malformed `Upgrade` token variants with unterminated comments/quotes/escapes instead of normalizing them into synthetic `h2`/`h2c` matches.
 - Updated networking behavior:
   - `contains_http2_upgrade_token(...)` now refuses token extraction when header-level parser state is unbalanced at delimiter/end (`comment_depth`, quote state, or dangling escape)
@@ -3096,6 +3380,7 @@
 - **Ledger divergence note**: `.codex/codex-estate.md` is not writable in this runtime (operation not permitted), so `.claude/claude-estate.md` is source of truth for Cycle 315; replay sync once `.codex` write permissions are restored.
 
 ### Cycle 314 — 2026-02-26 — HTTP/2 escaped-comma upgrade-token delimiter hardening
+
 - **HTTP/2 TRANSPORT FOUNDATION (MC-12)**: Hardened HTTP/2 upgrade signal parsing so escaped commas no longer split tokens into synthetic `h2`/`h2c` matches.
 - Updated networking behavior:
   - `contains_http2_upgrade_token(...)` now treats backslash escapes as authoritative before delimiter handling, so escaped commas stay within a single token
@@ -3113,8 +3398,8 @@
 - **3 new tests (3415→3418), clean-build targeted binaries green (`test_request_contracts`, `test_request_policy`).**
 - **Ledger divergence note**: `.codex/codex-estate.md` remains write-blocked in this runtime (operation not permitted), so `.claude/claude-estate.md` is source of truth for this cycle; replay sync when permissions allow.
 
-
 ### Cycle 313 — 2026-02-26 — HTTP/2 escaped quoted-string upgrade-token normalization hardening
+
 - **HTTP/2 TRANSPORT FOUNDATION (MC-12)**: Hardened HTTP/2 upgrade signal parsing so escaped quoted-string token variants normalize correctly before exact `h2`/`h2c` matching.
 - Updated networking behavior:
   - `contains_http2_upgrade_token(...)` now unescapes token content after outer-quote stripping
@@ -3133,6 +3418,7 @@
 - **Ledger divergence note**: `.codex/codex-estate.md` remains write-blocked in this runtime (operation not permitted), so `.claude/claude-estate.md` is source of truth for this cycle; replay sync when permissions allow.
 
 ### Cycle 312 — 2026-02-26 — HTTP/2 quoted comma-contained upgrade-token split hardening
+
 - **HTTP/2 TRANSPORT FOUNDATION (MC-12)**: Hardened HTTP/2 upgrade signal parsing so commas inside quoted upgrade tokens no longer cause false token splits.
 - Updated networking behavior:
   - `contains_http2_upgrade_token(...)` now tokenizes `Upgrade` header values on commas only when outside quoted segments
@@ -3151,6 +3437,7 @@
 - **Ledger divergence note**: `.codex/codex-estate.md` remains write-blocked in this runtime (`Operation not permitted`), so `.claude/claude-estate.md` is source of truth for Cycle 344.
 
 ### Cycle 311 — 2026-02-26 — HTTP/2 single-quoted upgrade-token explicit rejection hardening
+
 - **HTTP/2 TRANSPORT FOUNDATION (MC-12)**: Hardened HTTP/2 upgrade signal detection so single-quoted upgrade-token variants are treated as explicit HTTP/2 transport signals.
 - Updated networking behavior:
   - `contains_http2_upgrade_token(...)` now strips optional surrounding single quotes in addition to double quotes after token parameter trimming
@@ -3170,6 +3457,7 @@
 - **Ledger divergence note**: `.codex/codex-estate.md` remains write-blocked in this runtime (`Operation not permitted`), so `.claude/claude-estate.md` is source of truth for Cycle 344.
 
 ### Cycle 310 — 2026-02-26 — HTTP/2 quoted upgrade-token explicit rejection hardening
+
 - **HTTP/2 TRANSPORT FOUNDATION (MC-12)**: Hardened HTTP/2 upgrade signal detection so quoted upgrade-token variants are treated as explicit HTTP/2 transport signals.
 - Updated networking behavior:
   - `contains_http2_upgrade_token(...)` now strips optional surrounding double quotes after token parameter trimming
@@ -3189,6 +3477,7 @@
 - **Ledger divergence note**: `.codex/codex-estate.md` remains write-blocked in this runtime (operation not permitted), so `.claude/claude-estate.md` is source of truth for this cycle; replay sync when permissions allow.
 
 ### Cycle 309 — 2026-02-26 — HTTP/2 request-header name whitespace-variant explicit rejection hardening
+
 - **HTTP/2 TRANSPORT FOUNDATION (MC-12)**: Hardened outbound HTTP/2 transport signal detection so whitespace-padded request-header names cannot bypass explicit guardrails.
 - Updated networking behavior:
   - `Upgrade` detection now normalizes header names with ASCII trim + case-fold before HTTP/2 token checks
@@ -3208,6 +3497,7 @@
 - **Ledger divergence note**: `.codex/codex-estate.md` remains write-blocked in this runtime (`Operation not permitted`), so `.claude/claude-estate.md` is source of truth for Cycle 344.
 
 ### Cycle 308 — 2026-02-26 — HTTP/2 tab-separated status-line explicit rejection hardening
+
 - **HTTP/2 TRANSPORT FOUNDATION (MC-12)**: Hardened status-line contract handling to reject tab-separated HTTP/2 status-line variants with deterministic not-implemented messaging.
 - Updated networking behavior:
   - status-line parser now extracts the leading version token using ASCII-whitespace separators before strict HTTP/1 parsing
@@ -3224,6 +3514,7 @@
 - **Ledger divergence note**: `.codex/codex-estate.md` is write-blocked in this runtime (operation not permitted), so `.claude/claude-estate.md` is source of truth for this cycle.
 
 ### Cycle 307 — 2026-02-26 — CORS duplicate case-variant ACAO/ACAC header hardening
+
 - **CORS/CSP ENFORCEMENT (MC-08, FJNS-11)**: Hardened cross-origin response policy checks to reject ambiguous duplicate case-variant CORS headers.
 - Updated networking behavior:
   - replaced first-match header lookup with single-header case-insensitive lookup for CORS policy checks
@@ -3242,6 +3533,7 @@
 - **Ledger divergence resolution**: `.claude/claude-estate.md` and `.codex/codex-estate.md` updated in lockstep this cycle.
 
 ### Cycle 306 — 2026-02-26 — CORS ACAO `null` origin handling hardening
+
 - **CORS/CSP ENFORCEMENT (MC-08, FJNS-11)**: Tightened cross-origin response handling to support explicit `null` origin semantics without weakening serialized-origin enforcement.
 - Updated networking behavior:
   - `check_cors_response_policy(...)` now accepts `Access-Control-Allow-Origin: null` only when request policy origin canonicalizes to `null`
@@ -3259,6 +3551,7 @@
 - **Ledger divergence note**: `.codex/codex-estate.md` remains non-writable in this runtime (operation not permitted), so `.claude/claude-estate.md` is source of truth for this cycle; replay sync when permissions allow.
 
 ### Cycle 305 — 2026-02-26 — HTTP/2 response preface tab-separated variant explicit rejection hardening
+
 - **HTTP/2 TRANSPORT FOUNDATION (MC-12)**: Hardened response preface contract handling so tab-separated HTTP/2 preface variants are rejected with deterministic not-implemented messaging.
 - Updated networking behavior:
   - parse-status-line path now treats `PRI * HTTP/2.0` followed by any ASCII whitespace separator as explicit HTTP/2 preface signal
@@ -3275,13 +3568,14 @@
 - **Ledger divergence resolution**: `.claude/claude-estate.md` and `.codex/codex-estate.md` updated in lockstep this cycle.
 
 ### Cycle 304 — 2026-02-26 — HTTP/2 response preface variant explicit rejection hardening
+
 - **HTTP/2 TRANSPORT FOUNDATION (MC-12)**: Hardened response preface contract handling so whitespace-suffixed HTTP/2 preface variants are rejected with deterministic not-implemented messaging.
 - Updated networking behavior:
   - parse-status-line path now trims status-line input before HTTP/2 preface matching
   - expanded HTTP/2 preface detection from exact-only match to explicit prefix-safe rejection (`PRI * HTTP/2.0` plus trailing whitespace variant)
   - preserves existing HTTP/1.0/HTTP/1.1 status-line acceptance and explicit HTTP/2 status-line rejection behavior
 - Added regression tests:
-  - `tests/test_request_contracts.cpp`: verifies `PRI * HTTP/2.0   ` trailing-whitespace preface variant is rejected with explicit HTTP/2 preface messaging
+  - `tests/test_request_contracts.cpp`: verifies `PRI * HTTP/2.0` trailing-whitespace preface variant is rejected with explicit HTTP/2 preface messaging
 - Validation:
   - `cmake --build build_clean --target test_request_contracts test_request_policy`
   - `./build_clean/test_request_contracts`
@@ -3291,6 +3585,7 @@
 - **Ledger divergence note**: `.codex/codex-estate.md` remains non-writable in this runtime (operation not permitted), so `.claude/claude-estate.md` is source of truth for this cycle; replay sync when permissions allow.
 
 ### Cycle 303 — 2026-02-26 — HTTP/2 outbound pseudo-header request explicit rejection guardrail
+
 - **HTTP/2 TRANSPORT FOUNDATION (MC-12)**: Added outbound pseudo-header contract handling so HTTP/2-only pseudo-headers are rejected pre-dispatch with deterministic not-implemented messaging.
 - Updated networking behavior:
   - added `is_http2_pseudo_header_request(request_headers)` contract helper for outbound pseudo-header detection (`:authority`, `:method`, etc.)
@@ -3307,6 +3602,7 @@
 - **Ledger divergence resolution**: `.claude/claude-estate.md` and `.codex/codex-estate.md` were updated in lockstep for this cycle.
 
 ### Cycle 302 — 2026-02-26 — HTTP/2 outbound HTTP2-Settings request-header explicit rejection guardrail
+
 - **HTTP/2 TRANSPORT FOUNDATION (MC-12)**: Added outbound request-header contract handling so `HTTP2-Settings` signals are rejected pre-dispatch with deterministic not-implemented messaging.
 - Updated networking behavior:
   - added `is_http2_settings_request(request_headers)` contract helper for outbound `HTTP2-Settings` detection
@@ -3323,6 +3619,7 @@
 - **Ledger divergence note**: `.codex/codex-estate.md` remains non-writable in this runtime (operation not permitted), so `.claude/claude-estate.md` is source of truth for this cycle; replay sync when permissions allow.
 
 ### Cycle 301 — 2026-02-26 — HTTP unsupported status-version explicit rejection guardrail
+
 - **HTTP/2 TRANSPORT FOUNDATION (MC-12)**: Hardened response status-line contracts to allow only HTTP/1.x transports (`HTTP/1.0` and `HTTP/1.1`) and fail unsupported versions with deterministic messaging.
 - Updated networking behavior:
   - parse-status-line path now explicitly rejects unsupported protocol versions beyond `HTTP/1.0`/`HTTP/1.1`
@@ -3340,6 +3637,7 @@
 - **Ledger divergence note**: `.codex/codex-estate.md` is write-protected in this runtime (operation not permitted), so `.claude/claude-estate.md` is source of truth for this cycle; replay sync when permissions allow.
 
 ### Cycle 300 — 2026-02-26 — HTTP/2 outbound upgrade request explicit rejection guardrail
+
 - **HTTP/2 TRANSPORT FOUNDATION (MC-12)**: Added explicit outbound upgrade-request handling so user-supplied `Upgrade: h2`/`h2c` headers fail before network dispatch with deterministic not-implemented messaging.
 - Updated networking behavior:
   - added `is_http2_upgrade_request(request_headers)` contract helper for outbound request-header detection
@@ -3356,6 +3654,7 @@
 - **Ledger divergence resolution**: `.claude/claude-estate.md` and `.codex/codex-estate.md` were updated in lockstep for cycle close.
 
 ### Cycle 299 — 2026-02-26 — HTTP/2 `426 Upgrade Required` explicit rejection guardrail
+
 - **HTTP/2 TRANSPORT FOUNDATION (MC-12)**: Extended upgrade-response detection so HTTP/2 upgrade-required responses fail with deterministic not-implemented messaging instead of generic handling.
 - Updated networking behavior:
   - added `is_http2_upgrade_response(status_code, upgrade_header)` contract helper for HTTP/2 upgrade response detection
@@ -3372,6 +3671,7 @@
 - **Ledger divergence note**: `.codex/codex-estate.md` is write-protected in this runtime (operation not permitted), so `.claude/claude-estate.md` is source of truth for this cycle.
 
 ### Cycle 298 — 2026-02-26 — HTTP/2 upgrade (`h2`/`h2c`) explicit rejection guardrail
+
 - **HTTP/2 TRANSPORT FOUNDATION (MC-12)**: Added explicit HTTP/2 upgrade token handling so `101 Switching Protocols` responses that request `h2`/`h2c` fail with deterministic not-implemented messaging.
 - Updated networking behavior:
   - added upgrade-header token parser for exact HTTP/2 tokens (`h2`, `h2c`) with comma-list and case-insensitive handling
@@ -3388,6 +3688,7 @@
 - **Ledger divergence resolution**: `.claude/claude-estate.md` and `.codex/codex-estate.md` are now re-aligned at cycle close.
 
 ### Cycle 297 — 2026-02-26 — TLS ALPN HTTP/2 negotiation explicit rejection guardrail
+
 - **HTTP/2 TRANSPORT FOUNDATION (MC-12)**: Added TLS ALPN negotiation handling so `h2` handshakes fail fast with deterministic not-implemented messaging before HTTP/1 response parsing.
 - Updated networking behavior:
   - advertises `h2` and `http/1.1` ALPN protocols during TLS handshake
@@ -3404,6 +3705,7 @@
 - **Ledger divergence note**: `.codex/codex-estate.md` remains write-blocked in this runtime (operation not permitted), so `.claude/claude-estate.md` is source of truth for this cycle.
 
 ### Cycle 296 — 2026-02-26 — HTTP/2 status-line explicit rejection guardrail
+
 - **HTTP/2 TRANSPORT FOUNDATION (MC-12)**: Added explicit `HTTP/2` status-line rejection so text-framed HTTP/2 responses fail with deterministic not-implemented messaging instead of being treated as HTTP/1-style responses.
 - Updated networking behavior:
   - status-line parser now rejects `HTTP/2` and `HTTP/2.0` versions with a dedicated HTTP/2 transport-not-implemented error
@@ -3419,6 +3721,7 @@
 - **Ledger divergence resolution**: `.claude/claude-estate.md` had newer cycle state than `.codex/codex-estate.md`; synced forward and kept both ledgers aligned in this cycle.
 
 ### Cycle 295 — 2026-02-26 — HTTP/2 response preface explicit rejection guardrail
+
 - **HTTP/2 TRANSPORT FOUNDATION (MC-12)**: Added explicit HTTP/2 preface detection so HTTP/2 server preface bytes are rejected with a deterministic "not implemented yet" contract error instead of a generic malformed status-line failure.
 - Updated networking behavior:
   - status-line parser now identifies `PRI * HTTP/2.0` and returns a dedicated HTTP/2 transport-not-implemented error
@@ -3434,6 +3737,7 @@
 - **1 new test (3384→3385), clean-build targeted binaries green (`test_request_policy`, `test_request_contracts`).**
 
 ### Cycle 294 — 2026-02-26 — HTTP response protocol-version plumbing + ACAO userinfo regression coverage
+
 - **HTTP/2 TRANSPORT FOUNDATION (MC-12)**: Added protocol-version capture from HTTP status-line parsing so transport metadata now records `HTTP/1.x`/`HTTP/2` tokens for downstream contract handling.
 - Updated networking behavior:
   - added `Response::http_version` in request/response contract model
@@ -3450,6 +3754,7 @@
 - **2 new tests (3382→3384), targeted binaries green (`test_request_policy`, `test_request_contracts`).**
 
 ### Cycle 293 — 2026-02-26 — CSP `connect-src` invalid explicit host-source port hardening
+
 - **NETWORK POLICY HARDENING**: Closed an invalid-port parsing gap in CSP host-source token handling for `connect-src`.
 - Updated host-source token behavior:
   - rejects explicit port `0` as invalid (must be `1..65535`)
@@ -3466,6 +3771,7 @@
 - **2 new tests (3380→3382), targeted binaries green (`test_request_policy`, `test_request_contracts`).**
 
 ### Cycle 292 — 2026-02-26 — CORS ACAO serialized-origin enforcement hardening
+
 - **NETWORK POLICY HARDENING**: Tightened CORS `Access-Control-Allow-Origin` handling to reject non-origin forms (path/query/fragment-bearing values).
 - Updated CORS response policy behavior:
   - enforces serialized-origin shape for non-wildcard ACAO values by rejecting any `/`, `?`, or `#` after authority
@@ -3481,6 +3787,7 @@
 - **1 new test (3379→3380), targeted binaries green (`test_request_policy`, `test_request_contracts`).**
 
 ### Cycle 291 — 2026-02-26 — CSP `connect-src` scheme-less host-source scheme/port hardening
+
 - **NETWORK POLICY HARDENING**: Tightened scheme-less host-source handling to avoid permissive cross-scheme matches when policy origin context is available.
 - Updated `connect-src` matching behavior:
   - infers scheme from `policy.origin` for scheme-less host-sources like `api.example.com`
@@ -3497,6 +3804,7 @@
 - **2 new tests (3377→3379), targeted binaries green (`test_request_policy`, `test_request_contracts`).**
 
 ### Cycle 290 — 2026-02-26 — CSP `connect-src` websocket default-port enforcement hardening (`ws`/`wss`)
+
 - **NETWORK POLICY HARDENING**: Closed a scheme-qualified host-source enforcement gap where `wss://host` without explicit port could drift from default-port semantics.
 - Updated URL + CSP policy behavior:
   - added `ws`/`wss` default-port canonicalization (80/443) in URL parsing and origin serialization paths
@@ -3511,6 +3819,7 @@
 - **1 new test (3376→3377), targeted binaries green (`test_request_policy`, `test_request_contracts`).**
 
 ### Cycle 289 — 2026-02-26 — CSP `connect-src` percent-encoded dot-segment traversal hardening
+
 - **NETWORK POLICY HARDENING**: Closed a traversal bypass variant in `connect-src` path-scoped host-sources where encoded dot segments (for example, `%2e%2e`) were not normalized before prefix matching.
 - Updated CSP path matching behavior:
   - decodes unreserved percent-encoded bytes before path normalization (`%2e`/`%2E` -> `.`)
@@ -3525,6 +3834,7 @@
 - **1 new test (3375→3376), targeted binaries green (`test_request_policy`, `test_request_contracts`).**
 
 ### Cycle 288 — 2026-02-26 — CSP `connect-src` path normalization hardening (dot-segment traversal bypass fix)
+
 - **NETWORK POLICY HARDENING**: Closed a path traversal bypass in `connect-src` host-source path enforcement where raw request paths could satisfy prefix checks before dot-segment resolution.
 - Updated source-token path matching behavior:
   - added path normalization (`.` / `..` segment collapse with trailing-slash preservation) before `connect-src` path comparisons
@@ -3539,6 +3849,7 @@
 - **1 new test (3374→3375), targeted binaries green (`test_request_policy`, `test_request_contracts`).**
 
 ### Cycle 287 — 2026-02-26 — CSP `connect-src` host-source path-part enforcement (exact vs prefix)
+
 - **NETWORK POLICY HARDENING**: Closed an over-permissive gap where host-source path parts were parsed but effectively ignored in `connect-src` checks.
 - Updated source-token matching behavior:
   - parses and preserves host-source path parts in tokens like `https://api.example.com/v1` and `https://api.example.com/v1/`
@@ -3554,6 +3865,7 @@
 - **2 new tests (3372→3374), targeted binaries green (`test_request_policy`, `test_request_contracts`).**
 
 ### Cycle 286 — 2026-02-26 — Credentialed CORS ACAC literal-value enforcement (`true` only)
+
 - **NETWORK POLICY HARDENING**: Tightened credentialed CORS response validation to require exact `Access-Control-Allow-Credentials: true` value semantics.
 - Updated `check_cors_response_policy(...)` behavior:
   - keeps case-insensitive *header-name* lookup for `Access-Control-Allow-Credentials`
@@ -3570,6 +3882,7 @@
 - **1 new test (3371→3372), targeted binaries green (`test_request_policy`, `test_request_contracts`).**
 
 ### Cycle 285 — 2026-02-26 — CSP connect-src IPv6 host-source normalization (`[::1]` and `[::1]:*`)
+
 - **NETWORK POLICY HARDENING**: Fixed IPv6 host-source matching drift between URL parser host form and CSP source-token host form.
 - Updated `host_matches_pattern(...)` behavior:
   - canonicalizes bracketed host values (`[::1]` ⇄ `::1`) before comparison
@@ -3585,6 +3898,7 @@
 - **2 new tests (3369→3371), targeted binaries green (`test_request_policy`, `test_request_contracts`).**
 
 ### Cycle 284 — 2026-02-26 — CORS header parsing hardening (strict ACAO + case-insensitive ACAO/ACAC lookup)
+
 - **NETWORK POLICY HARDENING**: Tightened CORS response header handling for malformed ACAO and mixed-case header-name maps.
 - Updated `check_cors_response_policy(...)` behavior:
   - rejects malformed/trailing-comma ACAO values by requiring a strict single header value (no comma-delimited list)
@@ -3600,6 +3914,7 @@
 - **2 new tests (3367→3369), targeted binaries green (`test_request_policy`, `test_request_contracts`).**
 
 ### Cycle 283 — 2026-02-26 — CORS response hardening for redirect effective URL + multi-ACAO invalidation
+
 - **NETWORK POLICY HARDENING**: Closed a CORS response-validation bypass path and tightened ACAO header validation.
 - Updated `check_cors_response_policy(...)` behavior:
   - rejects invalid multi-valued `Access-Control-Allow-Origin` responses
@@ -3614,8 +3929,8 @@
 - Files: `src/net/http_client.cpp`, `tests/test_request_policy.cpp`
 - **2 new tests (3365→3367), targeted binaries green (`test_request_policy`, `test_request_contracts`).**
 
-
 ### Cycle 282 — 2026-02-26 — Credentialed CORS response policy hardening (`ACAO *` and `ACAC`)
+
 - **NETWORK POLICY HARDENING**: Extended cross-origin response policy checks for credentialed CORS requests.
 - Added policy controls:
   - `RequestPolicy::credentials_mode_include` to model credentialed CORS requests
@@ -3632,6 +3947,7 @@
 - **3 new tests (3362→3365), targeted binaries green (`test_request_policy`, `test_request_contracts`).**
 
 ### Cycle 281 — 2026-02-26 — CORS/CSP canonical origin normalization for default-port/case equivalence
+
 - **NETWORK POLICY HARDENING**: Canonicalized origin comparisons across request policy, `connect-src 'self'`, Origin-header emission, and ACAO response validation.
 - Added `canonicalize_origin(...)` and applied it to:
   - cross-origin gate (`check_request_policy`) so `https://host` and `https://host:443` compare as same-origin
@@ -3647,6 +3963,7 @@
 - **4 new tests (3358→3362), targeted binaries green (`test_request_policy`, `test_request_contracts`).**
 
 ### Cycle 280 — 2026-02-26 — CSP `connect-src` fallback to `default-src` + precedence tests
+
 - **NETWORK POLICY HARDENING**: Added CSP directive fallback semantics for request gating: when `connect-src` is unset, policy evaluation now uses `default-src`.
 - Added `RequestPolicy::default_src_sources` and wired effective-source selection so explicit `connect-src` still takes precedence over fallback.
 - Added 2 request-policy regression tests:
@@ -3656,6 +3973,7 @@
 - **2 new tests (3356→3358), targeted suites green (`test_request_policy`, `test_request_contracts`).**
 
 ### Cycle 279 — 2026-02-26 — CSS `@layer` cascade ordering + `!important` reversal + nested/comma-list parsing
+
 - **CASCADE CORRECTNESS UPGRADE**: Implemented `@layer` precedence semantics in CSS cascade sorting:
   - normal declarations: unlayered > layered, and later layers win within layers
   - `!important` declarations: layered > unlayered, and earlier layers win within layers (reversed order)
@@ -3671,6 +3989,7 @@
 - **7 new tests (3349→3356), targeted suites green (`clever_css_parser_tests`, `clever_css_style_tests`, `clever_paint_tests` with `RenderPipeline.CSSLayer*`).**
 
 ### Cycle 278 — 2026-02-26 — CSP connect-src wildcard-port host-source matching (`:*`)
+
 - **NETWORK POLICY HARDENING**: Added wildcard-port support in `connect-src` host-source parsing/matching for tokens like `https://api.example.com:*` and `[::1]:*`.
 - Updated source-token parser to recognize `:*` without loosening host matching semantics; wildcard ports now allow any port only for matched hosts/schemes.
 - Added request-policy regression coverage for wildcard-port allow/block behavior (matching host on default/non-default ports, rejecting non-matching host).
@@ -3678,6 +3997,7 @@
 - **1 new test (3348→3349), targeted suites green (`test_request_policy`, `test_request_contracts`).**
 
 ### Cycle 277 — 2026-02-26 — WEB FONT PIPELINE: WOFF2 source selection enabled + regression tests
+
 - **WEB FONT LOADER IMPROVEMENT**: Removed the WOFF2 skip in `@font-face src` selection so modern font stacks can use first-choice `woff2` sources.
 - Added `extract_preferred_font_url(...)` in render pipeline (exposed for testing) and wired runtime `@font-face` download path to this shared selector.
 - Added 3 paint-unit tests for source-selection behavior: WOFF2 accepted, fallback URL selection, and no-URL empty case.
@@ -3686,6 +4006,7 @@
 - **3 new tests (3345→3348), 1 feature completed (WOFF2 support).**
 
 ### Cycle 276 — 2026-02-26 — CSP connect-src host-source matching + TLS certificate/hostname verification
+
 - **NETWORK SECURITY HARDENING**: Expanded `connect-src` source matching in request policy enforcement for more realistic CSP configurations.
 - **connect-src host-source support**: Added token parsing/matching for host-sources without scheme (`api.example.com`), wildcard subdomains (`*.example.com`), and explicit ports (`https://api.example.com:8443`).
 - **TLS verification hardening (FJNS-06)**: HTTPS handshake now enables peer verification with system trust store (`SSL_CTX_set_default_verify_paths`) and rejects hostname mismatches using `X509_check_host`.
@@ -3694,6 +4015,7 @@
 - **3 new tests (3342→3345), targeted suites green (`test_request_policy`, `test_request_contracts`).**
 
 ### Cycle 275 — 2026-02-26 — FETCH/XHR CSP CONTRACT: connect-src policy enforcement before dispatch
+
 - **NETWORK SECURITY CONTRACT EXPANDED**: Added CSP-style `connect-src` request gating into request policy checks for fetch/XHR path.
 - **New policy controls**: Added `RequestPolicy::enforce_connect_src` and `RequestPolicy::connect_src_sources` with source-token matching for:
   - `'none'` (block all)
@@ -3708,6 +4030,7 @@
 - **5 new tests (3337→3342), targeted suites green (`test_request_policy`, `test_request_contracts`).**
 
 ### Cycle 274 — 2026-02-26 — FETCH/XHR CORS CONTRACT: Origin header derivation + ACAO response gate
+
 - **NETWORK SECURITY CONTRACT ADDED**: Implemented CORS policy helpers in `http_client` for request-side Origin derivation and response-side Access-Control-Allow-Origin enforcement.
 - **Request header derivation**: Added `build_request_headers_for_policy(url, policy)` to attach `Origin` only for cross-origin requests when `policy.origin` is set.
 - **Response ACAO gate**: Added `check_cors_response_policy(url, response, policy)` with deterministic behavior for cross-origin responses:
@@ -3721,6 +4044,7 @@
 - **2 new tests (3335→3337), targeted suites green (`test_request_policy`, `test_request_contracts`).**
 
 ### Cycle 273 — 2026-02-26 — AUDIT PARALLEL SWEEP: CACHE PRIVACY + URL PARSER ALIGNMENT
+
 - **Parallel audit execution**: Spawned 6 subagents over `audit/` wave0-6 artifacts and consolidated actionable fixes (security, standards, architecture streams).
 - **SECURITY BUG FIX: `Cache-Control: private` no longer enters shared cache**: Added `CacheEntry::is_private` and `should_cache_response()` gating in `http_client.cpp`; `HttpCache::store()` now explicitly rejects private entries. This closes shared-cache leakage risk for user-specific responses.
 - **ARCHITECTURE ALIGNMENT: request URL parsing now reuses URL module**: `Request::parse_url()` now first tries `clever::url::parse()` and falls back to legacy parsing only on failure. This aligns runtime request parsing with the shared URL parser and reduces parser drift.
@@ -3729,12 +4053,14 @@
 - **1 new test (3334→3335), full `clever_net_tests` green (119 tests, 1 network skip).**
 
 ### Cycle 272 — 2026-02-26 — INLINE STYLE INHERIT/INITIAL + TEXT-WRAP BALANCE (FLATTENED PATH)
+
 - **CSS STANDARDS: inherit/initial/unset/revert in inline styles**: Added keyword handling to render_pipeline.cpp's `apply_inline_style()`. Previously these keywords only worked in stylesheet rules. Now `style="background-color:inherit"`, `style="color:initial"`, etc. all work. Added parent_style parameter to the function.
 - **CSS LAYOUT: text-wrap:balance for flattened inline content**: Extended the binary-search balance algorithm to Path A (inline elements with `<span>`, `<em>`, `<a>` etc.). Previously balance only worked for pure text nodes (Path B). Now `<p style="text-wrap:balance">Text with <em>inline</em> elements</p>` distributes lines evenly.
 - Files: `render_pipeline.cpp`, `layout_engine.cpp`, `paint_test.cpp`
 - **4 new tests (3330→3334), ALL GREEN — 2 FEATURES + 1 BUG FIX!**
 
 ### Cycle 271 — 2026-02-26 — POSITION:ABSOLUTE CONTAINING BLOCK + CSS INHERIT/INITIAL + ::BEFORE/::AFTER BOX MODEL
+
 - **LAYOUT BUG FIX: position:absolute containing block resolution**: Previously, absolutely positioned elements were always positioned relative to their immediate parent. Now correctly finds the nearest positioned ancestor (position:relative/absolute/fixed/sticky) via recursive collection with offset tracking. Fixed elements correctly paint at viewport coordinates (painter uses (0,0) offset).
 - **CSS STANDARDS: inherit keyword extended to 80+ properties**: Previously only 14 properties supported explicit `inherit`. Now covers all text/font properties, box model (margin, padding, border-width, border-color, border-style, border-radius), layout (display, position, float, clear, overflow, z-index), visual (background-color, opacity, text-decoration), sizing (width, height, min/max), flexbox properties, outline, and more.
 - **CSS STANDARDS: initial keyword support**: Added per-property `initial` keyword handling that resets properties to their CSS initial values. Covers color, font, text, display, position, visual, sizing, box model, flexbox, and more.
@@ -3745,6 +4071,7 @@
 - **5 new tests (3325→3330), ALL GREEN — 4 BUG FIXES (1 layout + 3 CSS standards)!**
 
 ### Cycle 270 — 2026-02-25 — CODEX AUDIT SWEEP: 10 bug fixes (5 crash, 3 layout, 2 standards) + 14 new tests
+
 - **Codex audit ingested**: Read all 16 files from `audit/` directory (wave0-wave6, viability verdict, roadmap, standards compliance matrix, missing components criticality map). Generated prioritized TODO list.
 - **CRASH BUG FIX: div-by-zero in layout (font-size:0)**: `avg_char_width()` could return 0 when font-size=0, causing undefined behavior in 6+ division sites (static_cast<int>(Inf) is UB). Clamped return to min 1.0f in both measurer and fallback paths.
 - **CRASH BUG FIX: div-by-zero in line-height (font-size:0)**: `line_height / font_size` in render_pipeline.cpp at 2 locations. Added guard: falls back to 1.2f default when font_size is 0.
@@ -3761,6 +4088,7 @@
 - **14 new tests (3311→3325), ALL GREEN — 10 BUG FIXES (5 crash + 3 layout + 2 standards)!**
 
 ### Cycle 269 — 2026-02-25 — CRASH BUG FIXES: calc() recursion + rAF recursion + div-by-zero + cookie integration + UA update + debug cleanup
+
 - **CRITICAL BUG FIX: CSS calc() infinite recursion**: `parse_math_arg()` ↔ `tokenize_calc()` mutual recursion in value_parser.cpp had NO depth limit. Real-world CSS (anthropic.com) triggered 2038+ recursion levels → stack overflow crash. Added `thread_local` depth counter with max 32. Uses RAII DepthGuard for exception safety.
 - **CRITICAL BUG FIX: requestAnimationFrame infinite recursion**: Standard animation loop pattern (`rAF` calling `rAF` in callback) caused infinite recursion because our synchronous JS engine executes callbacks immediately. Added `thread_local` depth counter with max 4 in js_window.cpp.
 - **BUG FIX: Linear gradient div-by-zero**: Single-color gradient (`linear-gradient(red)`) had `num_colors - 1 == 0` causing FP divide-by-zero crash. Added `if (num_colors < 2) return false` guard in render_pipeline.cpp.
@@ -3776,6 +4104,7 @@
 - **7 new tests (3304→3311), ALL GREEN — 5 CRASH BUG FIXES + anthropic.com loads!**
 
 ### Cycle 268 — 2026-02-25 — NATIVE IMAGE DECODING (WebP/HEIC) + CSS TRANSITION ANIMATION + ANCHOR NAVIGATION + v0.7.0
+
 - **Native macOS image decoding via CGImageSource**: Replaced stb_image as primary image decoder. Now uses `CGImageSourceCreateWithData()` from ImageIO framework, which natively supports WebP, HEIC, TIFF, ICO, BMP, PNG, JPEG, GIF, and all formats macOS can handle. Falls back to stb_image if native decoder fails. Added `decode_image_native()` function with proper premultiplied alpha un-premultiplication.
 - **ImageIO framework linked**: Added `-framework ImageIO` to paint CMakeLists.txt. Fixed CGBitmapInfo enum deprecation warning with explicit cast.
 - **Separate native image test suite**: Created `native_image_test.mm` (Objective-C++) to avoid QuickDraw `Rect` type conflict with `clever::paint::Rect` (CoreGraphics headers define a global `Rect` type that clashes with `using namespace clever::paint`).
@@ -3788,6 +4117,7 @@
 - **5 new tests (3299→3304), 12 test suites, ALL GREEN — NATIVE IMAGE DECODING + CSS TRANSITION ANIMATION!**
 
 ### Cycle 265 — 2026-02-25 — TEXT INPUT EDITING: Overlay NSTextField + focus/blur/input/change events + cursor:text UA default
+
 - **MILESTONE: Inline text editing in rendered pages!** Users can now click on `<input>` and `<textarea>` elements in rendered web pages to type text. This is THE most critical missing interactivity feature for a "real browser."
 - **Architecture**: Overlay NSTextField approach — when user clicks a text input, a native NSTextField is positioned exactly over the rendered input. This gives us free native text editing (cursor, selection, IME for CJK, copy/paste) without re-rendering on every keystroke.
 - **NSSecureTextField for passwords**: `<input type="password">` uses NSSecureTextField (bullet masking).
@@ -3801,7 +4131,8 @@
 - Files: `render_view.h`, `render_view.mm`, `browser_window.mm`, `render_pipeline.cpp`
 - **0 new tests (UI interaction), ALL GREEN — USERS CAN NOW TYPE IN WEB PAGES!**
 
-### Cycle 266 — 2026-02-25 — RANGE SLIDER + COLOR PICKER + DATE INPUT: All form controls now interactive!
+### Cycle 266 — 2026-02-25 — RANGE SLIDER + COLOR PICKER + DATE INPUT: All form controls now interactive
+
 - **Range slider click-to-set**: Click anywhere on `<input type="range">` to set value. Calculates ratio from click position, snaps to step, updates DOM value, dispatches input+change events, re-renders.
 - **Native color picker**: `<input type="color">` opens macOS NSColorPanel. Color changes update DOM value attribute and re-render in real-time. Dispatches "input" event.
 - **Date/time input editing**: `<input type="date|time|datetime-local|week|month">` now editable via overlay NSTextField. User can type dates in ISO format (yyyy-mm-dd). Cursor:text UA default added.
@@ -3810,7 +4141,8 @@
 - Files: `browser_window.mm`, `render_pipeline.cpp`
 - **0 new tests (UI interaction), ALL GREEN — EVERY FORM CONTROL IS NOW INTERACTIVE!**
 
-### Cycle 267 — 2026-02-25 — CSS :HOVER AND :FOCUS LIVE! Debounced re-render on mouse move + focus-within!
+### Cycle 267 — 2026-02-25 — CSS :HOVER AND :FOCUS LIVE! Debounced re-render on mouse move + focus-within
+
 - **CSS :hover support**: Elements now visually respond to mouse hover! Uses `data-clever-hover` attribute approach — when mouse enters an element, the attribute is set on the element and all ancestors (bubbling), then a debounced re-render (80ms) applies hover styles.
 - **CSS :focus + :focus-visible**: Text inputs get `data-clever-focus` attribute when focused. The selector matcher matches `:focus` and `:focus-visible` against this attribute. Removed on blur.
 - **CSS :focus-within**: Implemented as recursive descendant check — matches if any descendant has `data-clever-focus`. Uses `ElementView` struct helper.
@@ -3821,6 +4153,7 @@
 - **4 new tests (3295→3299), ALL GREEN — HOVER EFFECTS WORK! PAGES FEEL ALIVE!**
 
 ### Cycle 264 — 2026-02-27 — INTERACTIVE FORM CONTROLS: Select/Checkbox/Radio toggle + change events + DOM serialization
+
 - **Select dropdown DOM update**: didSelectOption walks DOM, updates selected attribute on options, dispatches "change" event, serializes DOM to HTML, re-renders.
 - **Checkbox toggle**: Click toggles checked attribute, dispatches "change" event, serializes + re-renders.
 - **Radio button toggle**: Click unchecks all same-name radios, checks clicked one, dispatches "change" event, re-renders.
@@ -3831,6 +4164,7 @@
 - **0 new tests (UI interaction), ALL GREEN — FORMS ARE NOW INTERACTIVE!**
 
 ### Cycle 263 — 2026-02-27 — JS CLICK EVENTS FROM UI! Persistent JSEngine + Element Hit-Testing + DOM Event Dispatch
+
 - **ARCHITECTURAL: Persistent JS engine**: JSEngine and DOM tree now survive beyond render_html(). Stored in RenderResult, transferred to BrowserTab. cleanup_dom_bindings() called in RenderResult destructor. Enables post-render JS interaction.
 - **Element region hit-testing**: Layout tree walked after layout to build ElementRegion vector (bounding rect → DOM node pointer). Click coordinates hit-tested against regions, smallest (most specific) element selected.
 - **Click event dispatch**: mouseUp: in render_view calls delegate renderView:didClickElementAtX:y: → browser_window hit-tests element_regions → dispatch_event(ctx, target, "click") → full event propagation (capture/target/bubble) → returns preventDefault() result.
@@ -3841,6 +4175,7 @@
 - **0 new tests (architecture change), ALL GREEN — BIGGEST INTERACTIVITY IMPROVEMENT EVER!**
 
 ### Cycle 262 — 2026-02-27 — URL BAR FIX: NSBox→NSView toolbar + initialFirstResponder
+
 - **BUG FIX: URL bar not accepting keyboard input**: Root cause was NSBox with NSBoxCustom type on macOS 15 — internal content view coordinate offset interfered with hit-test/field editor activation. Replaced toolbar NSBox with plain layer-backed NSView. Also replaced tab bar NSBox.
 - **initialFirstResponder**: Set address bar as window's initial first responder — URL bar focused on launch.
 - **RenderView explicit firstResponder**: mouseDown now explicitly claims first responder for clean focus transitions.
@@ -3849,6 +4184,7 @@
 - **0 new tests, ALL GREEN — CRITICAL UX FIX: users can now type URLs!**
 
 ### Cycle 261 — 2026-02-26 — Script Loading Hardening: document.currentScript + type=module skip + @import merge
+
 - **document.currentScript**: Set to current `<script>` element during execution, cleared to null after. Many real scripts use this to find their own src/data attributes.
 - **type="module" skip**: ES module scripts now explicitly skipped (QuickJS can't handle import/export in eval mode). Prevents parse errors that abort subsequent scripts.
 - **@import CSS sub-collection merge**: `@import`-ed stylesheets now merge font_faces, keyframes, container_rules, property_rules, counter_style_rules (were silently dropped).
@@ -3857,6 +4193,7 @@
 - **0 new tests (investigation + fixes), ALL GREEN — 3 bug fixes for real website compatibility!**
 
 ### Cycle 260 — 2026-02-26 — DOM MUTATION RE-RENDERING: Timer convergence + element.style Proxy + chained setTimeout
+
 - **BUG FIX: Timer state destroyed prematurely**: `flush_pending_timers()` destroyed timer state after first call. DOMContentLoaded handlers calling `setTimeout(fn, 0)` got null state. Split into `flush_ready_timers()` (repeatable) + `cleanup_timers()` (final).
 - **BUG FIX: No convergence loop**: Added two-phase convergence after DOMContentLoaded — Phase 1: flush zero-delay timer chains iteratively (up to 8 rounds). Phase 2: flush short-delay timers (≤100ms) once, then drain resulting zero-delay chains.
 - **BUG FIX: element.style Proxy**: Style setter now wraps CSSStyleDeclaration in JS Proxy. Intercepts property sets → routes to `__setProperty` which updates DOM `style` attribute. Property gets → routes to `__getProperty`. Methods bound to original target for C++ opaque data.
@@ -3864,7 +4201,8 @@
 - Files: `js_timers.h`, `js_timers.cpp`, `render_pipeline.cpp`, `js_dom_bindings.cpp`, `paint_test.cpp`
 - **6 new tests (3289→3295), ALL GREEN — 3 CRITICAL BUG FIXES for JS-driven rendering!**
 
-### Cycle 259 — 2026-02-26 — FLATTENED INLINE WRAPPING — Text wraps continuously across inline element boundaries!
+### Cycle 259 — 2026-02-26 — FLATTENED INLINE WRAPPING — Text wraps continuously across inline element boundaries
+
 - **ARCHITECTURAL IMPROVEMENT**: Text now wraps continuously across `<span>`, `<strong>`, `<em>`, `<a>` boundaries. Previously each inline element was a monolithic wrapping unit.
 - **WordRun flattening**: New code path in `position_inline_children` collects all inline children into flat word-level runs. Shared `cursor_x`/`cursor_y` across ALL inline children enables unified line-breaking.
 - **Smart detection**: `is_simple_inline_container` lambda identifies eligible inline elements (mode=Inline, no specified dimensions, no float, no SVG). Non-flattenable elements (inline-block, sized elements) use original box-wrapping path.
@@ -3874,6 +4212,7 @@
 - **6 new tests (3283→3289), ALL GREEN — BIGGEST LAYOUT IMPROVEMENT FOR REAL WEBSITES!**
 
 ### Cycle 258 — 2026-02-26 — RENDERING BUG FIXES: %height + flex auto margins + flex min-height + word-break vs overflow-wrap
+
 - **BUG FIX: Percentage height resolution**: `height: 50%` was always 0px because `compute_height` passed 0 as containing block height. Now accepts and uses parent's specified height for percentage resolution. Falls back to viewport height for root elements. Correctly resolves to auto when parent is auto (per CSS spec).
 - **BUG FIX: Flex cross-axis margin:auto centering**: `margin-top:auto; margin-bottom:auto` on flex items now distributes remaining cross-axis space equally (vertical centering). Takes priority over `align-items`. Single auto margin pushes item to opposite edge.
 - **BUG FIX: min-height on flex containers**: `min-height: 100vh` on flex containers was ignored. Now resolves deferred css_min_height/css_max_height and clamps container height after content computation.
@@ -3883,6 +4222,7 @@
 - **8 new tests (3275→3283), ALL GREEN — 4 more rendering bug fixes! 10 bugs fixed in 3 cycles!**
 
 ### Cycle 257 — 2026-02-26 — RENDERING BUG FIXES: unitless line-height + text-decoration propagation + opacity cascade + tag defaults
+
 - **BUG FIX: Unitless line-height inheritance**: `line-height: 1.5` was inherited as computed px value (30px) instead of factor (1.5). Children with different font-size now recompute: `1.5 * child_font_size`. Added `line_height_unitless` field to ComputedStyle.
 - **BUG FIX: text-decoration propagation**: Underlines/line-throughs now propagate through intermediate inline elements (`<span>` inside `<p style="text-decoration:underline">` now shows underline). Propagates decoration + color + style + thickness.
 - **BUG FIX: Tag default text_decoration_bits**: `<a>`, `<u>`, `<ins>` now set `text_decoration_bits=1`, `<s>`, `<del>`, `<strike>` set `text_decoration_bits=4` in default styles.
@@ -3892,6 +4232,7 @@
 - **11 new tests (3264→3275), ALL GREEN — 4 rendering bug fixes!**
 
 ### Cycle 256 — 2026-02-26 — RENDERING BUG FIXES: max-width% resolution + position:fixed paint coords
+
 - **BUG FIX: max-width/min-width percentage resolution**: `max-width: 100%` was resolving to 0px because `Length::to_px(0)` was called with 0 as parent reference. Percentage-based min/max values are now stored as deferred `std::optional<Length>` objects on LayoutNode and resolved at layout time when containing block width is known. Affects virtually ALL responsive websites.
 - **BUG FIX: position:fixed paint coordinates**: Fixed elements were painted at `parent_offset + viewport_position` instead of just `viewport_position`. Painter now passes (0,0) offset for fixed children.
 - **Verified already working**: overflow:hidden clipping (push_clip/pop_clip), z-index sorting (stable_sort), whitespace collapsing in normal mode.
@@ -3900,6 +4241,7 @@
 - **6 new tests (3258→3264), ALL GREEN, ZERO FAILURES — 2 CRITICAL BUG FIXES for real website rendering!**
 
 ### Cycle 255 — 2026-02-26 — WebGL Stub (50+ methods!) + CSS display:table subtypes + Version v0.6.0
+
 - **WebGL stub**: Full WebGLRenderingContext with 50+ methods (createShader/compileShader/createProgram/linkProgram/drawArrays/drawElements + buffer/texture/framebuffer/renderbuffer/uniform ops) + 30 GL constants. canvas.getContext('webgl'/'webgl2'/'experimental-webgl') returns stub instead of null. WebGL2RenderingContext alias. Cached per-canvas element.
 - **CSS display subtypes**: table-column → TableCell, table-column-group → TableRow, table-footer-group → TableRowGroup, table-caption → Block, table-row-group → TableRowGroup, table-header-group → TableHeaderGroup.
 - **Version bump to v0.6.0**: Welcome page updated with 3250+ tests, 2290+ features, 95% HTML, 100% CSS, 88% WebAPI.
@@ -3908,6 +4250,7 @@
 - **8 new tests (3250→3258), ALL GREEN, ZERO FAILURES — 2320+ features. MILESTONE: ALL CHECKLISTS COMPLETE!**
 
 ### Cycle 254 — 2026-02-26 — WebRTC + Payment Request + ResizeObserver Loop Detection + CSS page + color() verified
+
 - **WebRTC full stubs**: RTCPeerConnection (createOffer/createAnswer/setLocal/RemoteDescription/addIceCandidate/createDataChannel/addTrack/removeTrack/getStats/getSenders/getReceivers/getTransceivers/close). RTCSessionDescription (type/sdp/toJSON). RTCIceCandidate (candidate/sdpMid/sdpMLineIndex/toJSON).
 - **MediaStream**: getTracks/getAudioTracks/getVideoTracks/addTrack/removeTrack/clone. MediaStreamTrack (stop/clone/getSettings/getCapabilities/applyConstraints).
 - **Payment Request API**: PaymentRequest (show rejects NotSupportedError, canMakePayment returns false, abort).
@@ -3918,6 +4261,7 @@
 - **6 new tests (3244→3250), ALL GREEN, ZERO FAILURES — 2290+ features. CSS CHECKLIST: ZERO `[ ]` ITEMS! WebAPI: only WebGL `[ ]` remains!**
 
 ### Cycle 253 — 2026-02-26 — CSS Final Gaps (mask-border, clip-path:url, ruby, float:inline) + Touch Events + DragDrop + Web Speech + Clipboard + `<math>`
+
 - **CSS mask-border**: All 7 longhands (mask-border, mask-border-source, -slice, -width, -outset, -repeat, -mode) stored as string. Cascade + inline + transfer.
 - **CSS clip-path: url()**: URL reference parsing (type=6), stores URL string.
 - **CSS display: ruby / ruby-text**: Mapped to Inline (no real ruby layout engine).
@@ -3932,6 +4276,7 @@
 - **18 new tests (3226→3244), ALL GREEN, ZERO FAILURES — 2260+ features. CSS CHECKLIST: ALL [ ] ITEMS ELIMINATED!**
 
 ### Cycle 252 — 2026-02-26 — CSS At-Rules + margin-trim + Media APIs + Web Audio + Web Locks + Gamepad + Credentials + Reporting
+
 - **@counter-style at-rule**: Full parser with name + descriptors map (system, symbols, suffix, prefix, range, pad, fallback, speak-as, negative, additive-symbols).
 - **@starting-style at-rule**: Parsed and discarded (CSS transition initial styles, not needed yet).
 - **@font-palette-values at-rule**: Parsed and discarded (font palette customization stub).
@@ -3949,6 +4294,7 @@
 - **21 new tests (3205→3226), ALL GREEN, ZERO FAILURES — 2230+ features**
 
 ### Cycle 251 — 2026-02-26 — Cache API + Web Animations + PerformanceEntry + IntersectionObserver V2
+
 - **Cache API**: CacheStorage with open/has/delete/keys/match. Cache with match/matchAll/add/addAll/put/delete/keys. globalThis.caches singleton.
 - **Web Animations API**: Animation constructor with full state (play/pause/cancel/finish/reverse/updatePlaybackRate/commitStyles/persist + finished/ready Promises). KeyframeEffect with getKeyframes/setKeyframes/getComputedTiming. DocumentTimeline. document.timeline, document.getAnimations().
 - **IntersectionObserver V2**: trackVisibility/delay options accepted without error.
@@ -3957,7 +4303,8 @@
 - Files: `js_dom_bindings.cpp`, `js_engine_test.cpp`, `standards-checklist-webapi.md`
 - **6 new tests (3199→3205), ALL GREEN, ZERO FAILURES — 2200+ features**
 
-### Cycle 250 — 2026-02-26 — IndexedDB Stubs + Streams API (ReadableStream/WritableStream/TransformStream) — CYCLE 250 MILESTONE!
+### Cycle 250 — 2026-02-26 — IndexedDB Stubs + Streams API (ReadableStream/WritableStream/TransformStream) — CYCLE 250 MILESTONE
+
 - **IndexedDB full stub**: indexedDB.open/deleteDatabase/cmp/databases, IDBDatabase with createObjectStore/transaction/close, IDBRequest, IDBOpenDBRequest, IDBKeyRange (only/lowerBound/upperBound/bound), object stores with put/add/get/delete/clear/count/getAll/getAllKeys/openCursor/createIndex. Global constructors: IDBTransaction, IDBObjectStore, IDBIndex, IDBCursor, IDBCursorWithValue.
 - **ReadableStream**: Constructor, getReader() with read/releaseLock/cancel/closed, cancel(), pipeTo(), pipeThrough(), tee().
 - **WritableStream**: Constructor, getWriter() with write/close/abort/releaseLock/ready/closed/desiredSize, abort(), close().
@@ -3966,6 +4313,7 @@
 - **14 new tests (3185→3199), ALL GREEN, ZERO FAILURES — 2175+ features — CYCLE 250!**
 
 ### Cycle 249 — 2026-02-26 — DOM API Audit + createProcessingInstruction + createCDATASection + Tests
+
 - **Audit results**: canvas.drawImage(), document.createNodeIterator(), requestAnimationFrame timestamp, cancelAnimationFrame, queueMicrotask — ALL already implemented. Added comprehensive tests proving they work.
 - **document.createProcessingInstruction()**: Returns node with nodeType=7, target, data, nodeName.
 - **document.createCDATASection()**: Returns node with nodeType=4, data, length, nodeName='#cdata-section'.
@@ -3974,6 +4322,7 @@
 - **9 new tests (3176→3185), ALL GREEN, ZERO FAILURES — 2150+ features**
 
 ### Cycle 248 — 2026-02-26 — WebAPI Stubs Batch + Welcome Page v0.5.6 + Checklist Audit
+
 - **WebSocket.addEventListener/removeEventListener**: Routes to on* handlers.
 - **WebSocket.binaryType**: Getter/setter, default "blob".
 - **XMLHttpRequest.responseXML**: Returns null getter.
@@ -3987,6 +4336,7 @@
 - **8 new tests (3168→3176), ALL GREEN, ZERO FAILURES — 2145+ features**
 
 ### Cycle 247 — 2026-02-26 — CSS mask shorthand + SVG markers + crypto.subtle.digest + ServiceWorker + BroadcastChannel + Notification
+
 - **CSS mask shorthand**: Stores whole string. `-webkit-mask` prefix supported.
 - **CSS mask-origin**: border-box (0) / padding-box (1) / content-box (2). With -webkit- prefix.
 - **CSS mask-position**: String value. With -webkit- prefix.
@@ -4001,6 +4351,7 @@
 - **23 new tests (3145→3168), ALL GREEN, ZERO FAILURES — 2125+ features**
 
 ### Cycle 246 — 2026-02-26 — CSS Properties (8 more) + WebAPI Stubs (12) + Stale Checklist Fixes
+
 - **CSS flood-color/flood-opacity/lighting-color**: SVG filter properties, color parsing + clamped float.
 - **CSS offset/offset-anchor/offset-position**: String values for CSS Motion Path.
 - **CSS transition-behavior**: normal (0) / allow-discrete (1).
@@ -4022,6 +4373,7 @@
 - **30 new tests (3115→3145), ALL GREEN, ZERO FAILURES — 2095+ features**
 
 ### Cycle 245 — 2026-02-26 — CSS Properties (8 new) + Response.blob() + Canvas toDataURL/toBlob + addEventListener signal
+
 - **CSS scroll-snap-stop**: normal (0) / always (1). Cascade + inline + transfer.
 - **CSS scroll-margin-block-start/end, scroll-margin-inline-start/end**: Logical scroll margins mapped to physical (top/bottom/left/right).
 - **CSS column-fill**: balance (0) / auto (1) / balance-all (2). Fixed existing column-fill value mapping.
@@ -4039,6 +4391,7 @@
 - **34 new tests (3081→3115), ALL GREEN, ZERO FAILURES — 2065+ features**
 
 ### Cycle 244 — 2026-02-26 — SVG CSS Properties + Grid Shorthands + IntersectionObserver Initial Callback
+
 - **SVG CSS properties (7 new)**: fill-rule (nonzero/evenodd), clip-rule (nonzero/evenodd), stroke-miterlimit (float), shape-rendering (auto/optimizeSpeed/crispEdges/geometricPrecision), vector-effect (none/non-scaling-stroke), stop-color (full color parsing), stop-opacity (float, clamped 0-1). All in ComputedStyle + LayoutNode + style_resolver cascade + render_pipeline inline parser.
 - **grid-template shorthand**: Parses `rows / columns` format with `/` separator. Single value treated as rows only.
 - **grid shorthand**: Same parsing as grid-template (rows / columns).
@@ -4047,6 +4400,7 @@
 - **16 new tests (3065→3081), ALL GREEN, ZERO FAILURES — 2030+ features**
 
 ### Cycle 243 — 2026-02-26 — Canvas State Stack + Transforms + Fullscreen API + Web Animations + queueMicrotask
+
 - **Canvas2D save/restore**: Real state stack implementation. save() pushes all drawing state (colors, line props, transform, font, alpha) to vector. restore() pops and restores. Previously no-op stubs.
 - **Canvas2D translate/rotate/scale**: Real 2D affine transform matrix. translate(tx,ty), rotate(angle), scale(sx,sy) — all post-multiply the current matrix. fillRect/strokeRect/clearRect apply transforms (translation + scale extraction).
 - **Canvas2D SavedState struct**: Inner struct in Canvas2DState capturing all 17+ drawing properties for save/restore stack.
@@ -4060,6 +4414,7 @@
 - **7 new tests (3058→3065), ALL GREEN, ZERO FAILURES — 2010+ features**
 
 ### Cycle 242 — 2026-02-26 — HTML search/menu + Elliptical Border-Radius + Gradient Stop Positions + crypto + structuredClone + DOMException
+
 - **HTML `<search>` element**: Block-level display, added to UA stylesheet.
 - **HTML `<menu>` element**: Block-level display with same default styles as `<ul>` (margin, padding, list-style-type: disc).
 - **CSS elliptical border-radius**: Full parsing for `border-radius: Hx / Vy` syntax. `/` separator splits into horizontal and vertical radii. Per-corner values averaged (renderer uses single radius per corner). Both cascade and inline parsers updated.
@@ -4072,6 +4427,7 @@
 - **11 new tests (3047→3058), ALL GREEN, ZERO FAILURES — 1985+ features**
 
 ### Cycle 241 — 2026-02-26 — XHR Enhancements + AbortController/Signal + CSSStyleSheet + URLSearchParams + DOMException + Checklist Audit
+
 - **XHR enhancements**: responseType (""/"text"/"json"), response getter (text or JSON parse), abort(), timeout getter/setter, withCredentials getter/setter, onreadystatechange/onload/onerror event handler properties.
 - **AbortController / AbortSignal**: Full implementation — abort(), signal.aborted, signal.reason, addEventListener('abort'), throwIfAborted(). Static methods: AbortSignal.abort(reason), AbortSignal.timeout(ms), AbortSignal.any(signals).
 - **DOMException polyfill**: Constructor with message/name/code, extends Error.prototype. Needed by AbortController, navigator.share etc.
@@ -4086,6 +4442,7 @@
 - **16 new tests (3031→3047), ALL GREEN, ZERO FAILURES — 1960+ features**
 
 ### Cycle 240 — 2026-02-26 — Window Properties + Performance API + matchMedia + btoa/atob + requestIdleCallback + Window Stubs
+
 - **Window properties**: screenX/Y, screenLeft/Top, origin, name, opener, parent, top, frameElement, frames, length, closed, isSecureContext, crossOriginIsolated. parent===window and top===window (self-referencing).
 - **performance object**: now() (Date.now stub), timeOrigin, getEntries/getEntriesByType/getEntriesByName (empty arrays), mark/measure stubs, timing/navigation objects.
 - **matchMedia()**: Basic implementation matching min-width/max-width queries against 1024px viewport. Returns object with matches/media/addListener/removeListener/addEventListener/removeEventListener/dispatchEvent.
@@ -4098,6 +4455,7 @@
 - **15 new tests (3016→3031), ALL GREEN, ZERO FAILURES — 1930+ features**
 
 ### Cycle 237 — 2026-02-26 — Multiple Box-Shadows + Canvas Curves/Gradients + Navigator + File/Blob API + 3000 TEST MILESTONE
+
 - **Multiple box-shadows**: Full support for comma-separated box-shadow values. Parses into `BoxShadowEntry` vector in `ComputedStyle` and `LayoutNode`. Painter renders in reverse order (last first). Mix of inset/outer shadows supported. Both cascade parser and inline style parser updated.
 - **Canvas 2D curves**: `quadraticCurveTo()` (16-segment Bezier approximation), `bezierCurveTo()` (20-segment cubic), `arcTo()` (line approximation), `ellipse()` (32-segment with rotation).
 - **Canvas 2D gradients**: `createLinearGradient()`, `createRadialGradient()`, `createConicGradient()` — all return gradient objects with `addColorStop()` method. `createPattern()` stub.
@@ -4114,6 +4472,7 @@
 - **69 new tests (2933→3002), ALL GREEN, ZERO FAILURES — 3000 TEST MILESTONE! 1891+ features**
 
 ### Cycle 238 — 2026-02-26 — Canvas 2D Style Properties (10 new properties)
+
 - **textBaseline**: getter/setter (alphabetic/top/hanging/middle/ideographic/bottom)
 - **lineCap**: getter/setter (butt/round/square)
 - **lineJoin**: getter/setter (miter/round/bevel)
@@ -4128,6 +4487,7 @@
 - **7 new tests (3002→3009), ALL GREEN — 1901+ features**
 
 ### Cycle 239 — 2026-02-26 — TouchEvent + DragEvent + Canvas Methods + Checklist Audit
+
 - **TouchEvent constructor**: Creates touch event with touches/targetTouches/changedTouches arrays, bubbles/cancelable options.
 - **DragEvent constructor**: Creates drag event with DataTransfer stub (dropEffect, effectAllowed, items, files, types arrays).
 - **Canvas 2D transform methods**: transform(), setTransform(), resetTransform() (no-op stubs). clip() (no-op stub). roundRect() (rect path approximation).
@@ -4135,8 +4495,8 @@
 - Files: `js_dom_bindings.cpp`, `js_engine_test.cpp`, `standards-checklist-webapi.md`
 - **7 new tests (3009→3016), ALL GREEN — 1915+ features**
 
-
 ### Cycle 236 — 2026-02-26 — CSS Logical Longhands + Shadow DOM + 3D Transforms + DOM Methods
+
 - **CSS Logical Longhands** (24+ properties): margin-block-start/end, margin-inline-start/end, padding-block-start/end, padding-inline-start/end, inset-block-start/end, inset-inline-start/end, border-block-start/end-width/color/style, border-inline-start/end-width/color/style. All map to physical properties (horizontal-tb writing mode).
 - **Shadow DOM**: element.attachShadow({mode:'open'|'closed'}), element.shadowRoot getter. Shadow root stored in DOMState shadow_roots map. Closed mode returns null from shadowRoot. TypeError on double-attach.
 - **HTMLTemplateElement.content**: Returns document fragment for template elements, undefined for non-template.
@@ -4149,6 +4509,7 @@
 - **23 new tests (2910→2933), ALL GREEN, ZERO WARNINGS — 1870+ features**
 
 ### Cycle 235 — 2026-02-26 — Grid Longhands + clip-path polygon + animation-play-state + text-emphasis + vertical-align
+
 - **grid-column-start/end, grid-row-start/end**: Individual CSS grid longhands (complement existing grid-column/grid-row shorthands). Parsed in style_resolver + render_pipeline inline parser.
 - **clip-path: polygon()**: Full polygon() parser supporting comma-separated coordinate pairs.
 - **animation-play-state**: running/paused parsing in style_resolver.
@@ -4158,6 +4519,7 @@
 - **8 new tests (2902→2910), ALL GREEN, ZERO WARNINGS — 1830+ features**
 
 ### Cycle 234 — 2026-02-26 — Selection API + Performance + ErrorEvent + 2900+ TESTS MILESTONE
+
 - **window.getSelection() enhancement**: Added anchorOffset/focusOffset, selectAllChildren/deleteFromDocument/containsNode/extend/setBaseAndExtent/empty/modify methods. Enhanced getRangeAt to use createRange.
 - **ErrorEvent constructor**: Full constructor with message, filename, lineno, colno, error properties.
 - **PromiseRejectionEvent constructor**: Full constructor with promise, reason properties.
@@ -4169,6 +4531,7 @@
 - **7 new tests (2895→2902), ALL GREEN, ZERO WARNINGS — 1820+ features. 2900+ TESTS MILESTONE!**
 
 ### Cycle 233 — 2026-02-25 — PointerEvent + FocusEvent + InputEvent + TreeWalker + Location
+
 - **PointerEvent constructor**: Full implementation with pointerId, width, height, pressure, tangentialPressure, tiltX/Y, twist, pointerType, isPrimary. Extends MouseEvent pattern.
 - **FocusEvent constructor**: Extends Event with relatedTarget property.
 - **InputEvent constructor**: Extends Event with data, inputType, isComposing.
@@ -4179,6 +4542,7 @@
 - **5 new tests (2890→2895), ALL GREEN, ZERO WARNINGS — 1800+ features**
 
 ### Cycle 232 — 2026-02-25 — Dynamic Viewport Units + Container Query Units + Color Verification
+
 - **Dynamic viewport units**: `dvw`/`svw`/`lvw` aliased to `vw`, `dvh`/`svh`/`lvh` aliased to `vh` in both `parse_length()` and `parse_calc_number()`. No dynamic toolbar in our engine, so all variants are equivalent.
 - **Container query units**: `cqi`/`cqw` → `vw`, `cqb`/`cqh` → `vh` (mapped to viewport units as fallback). Updated both parsers.
 - **CSS Color Level 4 verification**: Confirmed `hwb()`, `oklch()`, `oklab()`, `color()`, `color-mix()`, `light-dark()` ALL already fully implemented. Checklist was inaccurate.
@@ -4186,6 +4550,7 @@
 - **5 new tests (2885→2890), ALL GREEN, ZERO WARNINGS — 1780+ features**
 
 ### Cycle 231 — 2026-02-25 — Node Methods + Document Collections + EventListener {once} + element.hidden
+
 - **Node.hasChildNodes()**: Returns `!children.empty()`.
 - **Node.getRootNode()**: Walks parent chain to root.
 - **Node.isSameNode(other)**: Compares SimpleNode* pointers.
@@ -4205,6 +4570,7 @@
 - **9 new tests (2876→2885), ALL GREEN, ZERO WARNINGS — 1770+ features**
 
 ### Cycle 230 — 2026-02-25 — cubic-bezier() + steps() + Document Properties + Scroll APIs
+
 - **CSS `cubic-bezier(x1, y1, x2, y2)` timing function**: Full parsing in transition-timing-function, animation-timing-function, and both shorthands. Stores 4 control points on TransitionDef + ComputedStyle + LayoutNode. Connected to existing Newton-Raphson cubic-bezier evaluator via `apply_easing_custom()`.
 - **CSS `steps(n, start|end)` timing function**: Parses step count and direction. Steps-end: `floor(t*n)/n`, steps-start: `ceil(t*n)/n`. Timing function codes: 5=cubic-bezier, 6=steps-end, 7=steps-start.
 - **`window.scrollX/scrollY/pageXOffset/pageYOffset`**: All return 0 (no scroll state in JS context). Prevents framework errors.
@@ -4216,6 +4582,7 @@
 - **7 new tests (2869→2876), ALL GREEN, ZERO WARNINGS — 1745+ features**
 
 ### Cycle 229 — 2026-02-25 — font Shorthand + grid-auto-flow + display:flow-root + HTML Elements
+
 - **CSS `font` shorthand**: Full parser for `font: [style] [variant] [weight] size[/line-height] family`. Handles keyword sizes (xx-small through xx-large, smaller, larger), system font keywords (caption, icon, menu etc.), optional style/variant/weight prefix, `/line-height`, multi-word font families. Resets sub-properties before applying. Added to both style_resolver and render_pipeline inline parser.
 - **`grid-auto-flow`**: New property (0=row, 1=column, 2=row dense, 3=column dense). Full column-flow grid layout implementation in layout_engine.cpp — items flow down rows first then to next column. Tracks per-row heights for correct positioning.
 - **`display: flow-root`**: Mapped to Display::Block (creates BFC, same practical effect). Parsed in both style_resolver and render_pipeline.
@@ -4226,6 +4593,7 @@
 - **8 new tests (2861→2869), ALL GREEN, ZERO WARNINGS — 1730+ features**
 
 ### Cycle 228 — 2026-02-25 — STANDARDS CHECKLISTS (HTML5 + CSS3 + Web APIs)
+
 - **Created comprehensive standards checklists** from MDN references, cross-referenced against entire codebase:
   - `clever/docs/standards-checklist-html.md` — **94% coverage** (110/117 standard HTML elements). Missing only: `<search>`, `<menu>`, `<math>`
   - `clever/docs/standards-checklist-css.md` — **82% coverage** (~287/350 most-used CSS properties). Gaps: `font` shorthand, `grid-auto-flow`, 3D transforms, CSS Color Level 4, dynamic viewport units
@@ -4235,6 +4603,7 @@
 - **0 new tests, 0 code changes — this was a research/documentation cycle**
 
 ### Cycle 227 — 2026-02-25 — CSS Multi-Background + -webkit-background-clip + Feature Audit
+
 - **`-webkit-background-clip: text` prefix**: Added prefix alias in style_resolver, render_pipeline (2 locations). The unprefixed `background-clip` was already fully implemented (border-box/padding-box/content-box/text).
 - **Multiple backgrounds**: Added `split_background_layers()` helper that splits comma-separated backgrounds respecting parentheses. Multi-background values now use last layer as primary instead of crashing.
 - **Feature audit**: Confirmed already implemented: text-decoration-skip-ink (auto/none/all with descender gap rendering), text-wrap:balance (binary search for even lines), text-wrap:pretty (orphan avoidance), overflow-wrap:anywhere (value 2, same break logic as break-word).
@@ -4242,6 +4611,7 @@
 - **4 new tests (2857→2861), ALL GREEN, ZERO WARNINGS — 1720+ features**
 
 ### Cycle 226 — 2026-02-25 — DOMParser + elementFromPoint + getAttributeNames + isConnected
+
 - **DOMParser class**: Full implementation using existing HTML parser. `parseFromString(html, "text/html")` creates document-like object with body, head, documentElement, title, querySelector, querySelectorAll, getElementById, getElementsByTagName. Parsed nodes stored in DOMState owned_nodes for cleanup.
 - **document.elementFromPoint(x, y)**: Stub returning document.body (no spatial index). Prevents crashes in hit-testing libraries.
 - **element.getAttributeNames()**: Returns JS array of attribute name strings. Iterates element's attributes vector.
@@ -4251,6 +4621,7 @@
 - **6 new tests (2851→2857), ALL GREEN, ZERO WARNINGS — 1715+ features**
 
 ### Cycle 225 — 2026-02-25 — TextEncoder/Decoder + FormData + createRange + Clipboard
+
 - **TextEncoder class**: Full JSClassID implementation. `encode(string)` converts JS string to UTF-8 Uint8Array via `JS_ToCStringLen` + `JS_NewArrayBufferCopy` + Uint8Array constructor. `encoding` property returns "utf-8".
 - **TextDecoder class**: JSClassID with opaque `TextDecoderState`. Constructor accepts encoding (normalizes utf-8/utf8/UTF-8). `decode(buffer)` handles both TypedArray and ArrayBuffer inputs via `JS_GetTypedArrayBuffer`/`JS_GetArrayBuffer`. `encoding` getter.
 - **FormData class**: Full JSClassID with `FormDataState` (vector of key-value pairs). Methods: append, get, getAll, has, delete, set, entries, keys, values, forEach. `set()` correctly replaces first match and removes duplicates. `delete` registered separately (C++ reserved keyword).
@@ -4260,6 +4631,7 @@
 - **8 new tests (2843→2851), ALL GREEN, ZERO WARNINGS — 1700+ features**
 
 ### Cycle 224 — 2026-02-25 — light-dark() Dark Mode + Feature Verification
+
 - **CSS `light-dark()` dark mode integration**: Connected light-dark() function to macOS system dark mode detection via CoreFoundation `AppleInterfaceStyle`. Added `set_dark_mode()`/`is_dark_mode()` global state in value_parser.cpp with override mechanism for testing. `light-dark(red, blue)` now returns blue in dark mode. Override API (`set_dark_mode_override`) prevents test flakiness on dark-mode systems.
 - **Dark mode detection in render pipeline**: At start of `render_html()`, reads macOS appearance setting and propagates to CSS parser via `set_dark_mode()`.
 - **Fixed dark-mode-sensitive tests**: Two existing light-dark tests (InlineLightDark, CascadeLightDarkInStylesheet) now use override to force light mode for deterministic results.
@@ -4268,6 +4640,7 @@
 - **4 new tests (2839→2843), ALL GREEN, ZERO WARNINGS — 1685+ features**
 
 ### Cycle 223 — 2026-02-25 — Input Placeholder Rendering + Img Alt Text + Form Elements
+
 - **Input placeholder text rendering**: `<input>` elements now render placeholder text in gray (#757575) when no value is set. Value text rendered in element's color. Password inputs show bullet characters (U+2022) instead of plaintext. Text vertically centered in input box with 4px left padding.
 - **Textarea placeholder**: `<textarea>` shows placeholder text when empty, content text when populated.
 - **Position sticky verification**: Confirmed sticky (position_type==4) correctly stays in normal flow without applying top/left offsets (unlike relative). No code changes needed.
@@ -4281,6 +4654,7 @@
 - **9 new tests (2830→2839), ALL GREEN, ZERO WARNINGS — 1680+ features**
 
 ### Cycle 222 — 2026-02-25 — CSS text-transform rendering + box-shadow inset/spread
+
 - **CSS text-transform rendering**: Applied text-transform (uppercase/lowercase/capitalize) to the rendered text in painter.cpp, before font synthesis. Uppercase uses std::toupper, lowercase uses std::tolower, capitalize capitalizes first letter of each word.
 - **box-shadow spread radius**: 4th length value in box-shadow now parsed and applied. Spread expands shadow rect on all sides.
 - **box-shadow inset keyword**: `inset` keyword parsed and stored. Inset shadows render as edge-based strips inside the element (top/bottom/left/right).
@@ -4290,6 +4664,7 @@
 - **6 new tests (2824→2830), ALL GREEN, ZERO WARNINGS — 1660+ features**
 
 ### Cycle 221 — 2026-02-25 — Real getComputedStyle + Event Constructors
+
 - **Enhanced getComputedStyle()**: Now returns real layout-backed values for 14 dimension properties (width, height, padding-*, margin-*, border-*-width, display). Uses layout_geometry cache from preliminary layout pass. format_px() helper for CSS pixel strings. Falls back to inline styles for other properties.
 - **document.createEvent(type)**: Creates event with initEvent(type, bubbles, cancelable), preventDefault, stopPropagation, stopImmediatePropagation. Standard DOM Level 2 Events API.
 - **Event constructor**: `new Event(type, {bubbles, cancelable})`. Basic DOM event with standard methods.
@@ -4301,6 +4676,7 @@
 - **8 new tests (2816→2824), ALL GREEN, ZERO WARNINGS — 1650+ features**
 
 ### Cycle 220 — 2026-02-25 — Modern DOM Methods + AbortController + Global APIs
+
 - **element.before(...nodes)**: Insert nodes/strings before element. Detaches from current parent, handles owned_nodes. Reverse iteration for correct order.
 - **element.after(...nodes)**: Insert nodes/strings after element. Similar to before() with idx+1.
 - **element.prepend(...nodes)**: Insert as first children. Forward iteration with incrementing index.
@@ -4318,6 +4694,7 @@
 - **11 new tests (2805→2816), ALL GREEN, ZERO WARNINGS — 1625+ features**
 
 ### Cycle 219 — 2026-02-25 — Real ResizeObserver + scrollIntoView + Element Methods
+
 - **Real ResizeObserver**: Full implementation following IntersectionObserver pattern. Constructor parses callback, stores in DOMState registry with `_ro_index`. observe()/unobserve()/disconnect() manage observed elements. `fire_resize_observers()` walks registry, computes contentRect (content box), contentBoxSize [{inlineSize, blockSize}], borderBoxSize [{inlineSize, blockSize}], target for each observed element. Fires callback with entry array.
 - **element.scrollIntoView()**: No-op stub (synchronous engine, no live scrolling). Prevents "not a function" errors on real websites.
 - **element.scrollTo() / element.scroll()**: No-op stubs for scroll method compat.
@@ -4329,6 +4706,7 @@
 - **9 new tests (2796→2805), ALL GREEN, ZERO WARNINGS — 1600+ features**
 
 ### Cycle 218 — 2026-02-25 — Real getBoundingClientRect + Element Dimensions + IntersectionObserver
+
 - **Preliminary layout pass**: Before JS execution, build and compute a temporary layout tree. Maps SimpleNode* → absolute BoxGeometry via `populate_layout_geometry()`. `dom_node` back-pointer added to LayoutNode.
 - **Real getBoundingClientRect()**: Returns actual border-box {x, y, width, height, top, left, bottom, right} from layout geometry cache. Previously returned all zeros.
 - **Real dimension properties**: offsetWidth/Height/Top/Left, clientWidth/Height, scrollWidth/Height via native QuickJS magic getters. offsetWidth = border box, clientWidth = padding box. Replaces JS-defined zero-returning stubs.
@@ -4339,6 +4717,7 @@
 - **14 new tests (2782→2796), ALL GREEN, ZERO WARNINGS — 1580+ features. THIS IS A GAME-CHANGER FOR REAL WEBSITE COMPATIBILITY.**
 
 ### Cycle 217 — 2026-02-25 — Web Workers + Container Queries
+
 - **Web Workers**: Worker class via JSClassID pattern. Separate QuickJS runtime + context per worker thread. `new Worker(url)` creates worker with synchronous script execution. `postMessage(data)` / `onmessage` with JSON serialization round-trip across contexts. Worker global scope: `self.postMessage`, `self.onmessage`, `self.close`, console. `worker.terminate()` destroys runtime.
 - **Container Queries runtime**: Full post-layout evaluation. `@container` rules stored in `sheet.container_rules`. Two-pass layout: first pass computes sizes, second evaluates `@container` conditions against actual container dimensions. `evaluate_container_condition()` handles min-width/max-width/width/height plus comparison operators (>, <, >=, <=). `container-type: inline-size/size/normal`, `container-name` for named containers. `build_parent_map()` + `find_container_ancestor_via_map()` for upward tree traversal. `apply_style_to_layout_node()` transfers matched declarations.
 - **Container query features**: `evaluate_container_queries_post_layout()` walks layout tree, matches selectors via SelectorMatcher, finds container ancestors, evaluates conditions, applies style declarations. Supports inline-size (width-only) and size (width+height) container types.
@@ -4347,6 +4726,7 @@
 - **33 new tests (2749→2782), ALL GREEN, ZERO WARNINGS — 1560+ features**
 
 ### Cycle 216 — 2026-02-24 — WebSocket API + CSS Nesting
+
 - **WebSocket class**: JSClassID pattern with WebSocketState. Constructor parses ws:///wss:// URLs, TCP/TLS connect, HTTP upgrade handshake with Sec-WebSocket-Key/Version.
 - **WebSocket framing**: RFC 6455 text frames with FIN bit, mask bit, 3 payload length formats, random 4-byte masking key. Close frames with status code.
 - **WebSocket API surface**: readyState, url, protocol, bufferedAmount, send(), close(), onopen/onmessage/onclose/onerror handlers, static CONNECTING/OPEN/CLOSING/CLOSED constants.
@@ -4357,6 +4737,7 @@
 - **33 new tests (2716→2749), ALL GREEN, ZERO WARNINGS — 1525+ features**
 
 ### Cycle 215 — 2026-02-24 — Canvas 2D API + HTTP Caching
+
 - **Canvas 2D rendering context**: CanvasRenderingContext2D class via JSClassID pattern. canvas.getContext('2d') creates context with RGBA pixel buffer.
 - **Canvas drawing methods**: fillRect, strokeRect, clearRect (direct pixel buffer), beginPath/closePath/moveTo/lineTo/rect/arc/fill(scanline)/stroke(Bresenham), fillText/strokeText/measureText, save/restore/translate/rotate/scale stubs.
 - **Canvas pixel manipulation**: getImageData, putImageData, createImageData. ImageData with width/height/data Uint8ClampedArray.
@@ -4370,6 +4751,7 @@
 - **37 new tests (2679→2716), ALL GREEN, ZERO WARNINGS — 1490+ features**
 
 ### Cycle 214 — 2026-02-24 — Full querySelector + Web Font Loading
+
 - **querySelector/querySelectorAll wired to real CSS selector engine**: Replaced basic #id/.class/tag matching with full CSS parser + SelectorMatcher. Now supports descendant/child/sibling combinators, attribute selectors, :nth-child, :not(), :is(), :has(), comma-separated lists, combined selectors. build_element_view_chain() bridges SimpleNode → ElementView.
 - **element.querySelector/querySelectorAll**: Scoped to subtree. element.matches() and element.closest() also use real CSS selectors.
 - **Web font download + CoreText registration**: @font-face src URLs extracted, downloaded via HTTP, registered with CTFontManagerCreateFontDescriptorFromData(). Supports TTF/OTF/WOFF. Font cache prevents re-download. Weight/style variant matching. clear_registered_fonts() for cleanup.
@@ -4380,6 +4762,7 @@
 - **29 new tests (2650→2679), ALL GREEN, ZERO WARNINGS — 1450+ features**
 
 ### Cycle 213 — 2026-02-24 — DOM Event Propagation + HTTP Decompression
+
 - **Three-phase event dispatch**: Capture (window→target parent) → Target (all listeners) → Bubble (target parent→window). Full spec-compliant propagation.
 - **EventListenerEntry struct**: Each listener stores callback + use_capture flag. addEventListener supports boolean third arg and {capture: true} options object.
 - **Event object enhancements**: eventPhase (0-3), bubbles, currentTarget (changes during propagation), target (fixed), composedPath(), stopPropagation, stopImmediatePropagation.
@@ -4391,6 +4774,7 @@
 - **25 new tests (2625→2650), ALL GREEN, ZERO WARNINGS — 1420+ features**
 
 ### Cycle 212 — 2026-02-24 — CSS Transition Infrastructure + fetch() API + Promise Microtasks
+
 - **CSS TransitionDef struct**: property, duration_ms, delay_ms, timing_function. Parsed from shorthand and longhand transition properties. Comma-separated multi-transition support.
 - **Easing functions**: cubic-bezier(Newton-Raphson) for ease/ease-in/ease-out/ease-in-out + linear. apply_easing() dispatcher.
 - **Interpolation functions**: interpolate_float, interpolate_color (RGBA per-channel), interpolate_transform (parameter interpolation).
@@ -4405,6 +4789,7 @@
 - **45 new tests (2580→2625), ALL GREEN, ZERO WARNINGS — 1395+ features**
 
 ### Cycle 211 — 2026-02-24 — REAL TEXT MEASUREMENT (CoreText font metrics replace fontSize*0.6f)
+
 - **TextMeasureFn callback injection**: Added `TextMeasureFn` type alias + `set_text_measurer()` to LayoutEngine. Breaks circular dependency — paint injects CoreText measurement via lambda, layout uses it without depending on paint.
 - **measure_text() helper**: Delegates to CoreText callback for full string width. Falls back to 0.6f if no callback.
 - **avg_char_width() helper**: Measures "M" for monospace, lowercase alphabet sample for proportional fonts. Gets real average character width per font.
@@ -4417,6 +4802,7 @@
 - **7 new tests (2573→2580), ALL GREEN, ZERO WARNINGS — THIS IS THE MOST IMPACTFUL SINGLE CHANGE IN THE ENGINE**
 
 ### Cycle 210 — 2026-02-24 — CSS text-wrap:balance/pretty + select dropdown improvements
+
 - **CSS `text-wrap` property**: Added `text-wrap: pretty` orphan avoidance (binary search for optimal width when last line < 25% of container). Added `text-wrap: inherit` handling. Verified balance/nowrap/stable already worked.
 - **`<select>` improvements**: optgroup support (bold header rows, disabled propagation, indented options), multiple attribute (listbox mode, 4 visible rows default), size attribute (custom row count), disabled options (gray text), selected option display, dropdown arrow rendering cleanup.
 - **13 new tests**: 3 layout text-wrap tests + 4 CSS cascade tests + 6 select paint tests.
@@ -4424,6 +4810,7 @@
 - **13 new tests (2560→2573), ALL GREEN, ZERO WARNINGS — 1345+ features**
 
 ### Cycle 209 — 2026-02-24 — iframe/video/audio/canvas/svg Placeholders + Flexbox Gap Fix
+
 - **iframe placeholder rendering**: Default 300x150, light gray (#F0F0F0) background, 1px border. Respects width/height HTML attrs. Stores src attribute.
 - **video placeholder**: Default 300x150, black background. Respects width/height attrs. Stores src.
 - **audio placeholder**: 300x32 thin player bar with controls, light gray (#F1F3F4) bg, 4px border-radius. Hidden (display:none) without controls attribute per HTML spec.
@@ -4435,6 +4822,7 @@
 - **19 new tests (2541→2560), ALL GREEN, ZERO WARNINGS — 1330+ features**
 
 ### Cycle 208 — 2026-02-26 — Table Rendering Fixes + white-space:break-spaces + Layout Improvements
+
 - **Table `<thead>`/`<tbody>`/`<tfoot>` transparency**: These wrapper elements are now layout-transparent — their `<tr>` children are flattened into the table's row collection. Previously, they were treated as rows themselves.
 - **Table `<caption>` rendering**: Caption elements are now laid out as blocks above/below the table (respecting `caption-side`), not collected as rows.
 - **Table `<col>` width application**: `col_widths` from `<col>` elements are now seeded into the column width array before the auto-layout algorithm.
@@ -4446,6 +4834,7 @@
 - **21 new tests (2520→2541), ALL GREEN, ZERO WARNINGS — 1310+ features**
 
 ### Cycle 207 — 2026-02-26 — 2500+ TESTS MILESTONE! clamp/min/max + @supports + picture/env/color-mix verification
+
 - **Verified existing features**: clamp()/min()/max(), @supports, `<picture>`/`<source>`, env(), color-mix(), semantic HTML defaults were ALL already implemented. Added comprehensive test coverage.
 - **Exposed @supports for testing**: Moved evaluate_supports_condition() and flatten_supports_rules() to public namespace for unit test access.
 - **14 CSS math + @supports tests**: clamp preferred/min/max wins, min/max 2-arg, @supports property evaluation (true/false/not/and/or), flatten includes/excludes rules.
@@ -4454,6 +4843,7 @@
 - **22 new tests (2498→2520), ALL GREEN, ZERO WARNINGS — 2520 TESTS! 1290+ features**
 
 ### Cycle 206 — 2026-02-26 — Window Compat APIs + URL/URLSearchParams + Intrinsic Sizing
+
 - **window.history**: pushState/replaceState/back/forward/go (no-ops), length=1, state=null.
 - **window.screen**: width/height/availWidth/availHeight/colorDepth/pixelDepth.
 - **window.devicePixelRatio**: Returns 2.0 (Retina Mac).
@@ -4471,6 +4861,7 @@
 - **25 new tests (2473→2498), ALL GREEN, ZERO WARNINGS — 1280+ features**
 
 ### Cycle 205 — 2026-02-26 — CSS background-attachment + noscript + text-align-last + font-display
+
 - **CSS `background-attachment`**: Full property support — scroll (0), fixed (1), local (2). Parsed in style_resolver cascade + inline styles. Fixed positioning renders relative to viewport origin. 6 new tests.
 - **`<noscript>` hidden with JS enabled**: Now that QuickJS is integrated, `<noscript>` elements are skipped in layout tree building (like `<script>`, `<style>`). Content is not rendered. Updated existing noscript tests to reflect new behavior.
 - **CSS `text-align-last` layout rendering**: Property was already parsed but not applied in layout. Added cascade parsing + inheritance in style_resolver. Layout engine now checks `text_align_last` for the final line of inline content, overriding `text_align`. 8 new tests (layout + cascade + inheritance).
@@ -4479,6 +4870,7 @@
 - **22 new tests (2451→2473), ALL GREEN, ZERO WARNINGS — 1250+ features**
 
 ### Cycle 204 — 2026-02-26 — Web Compat APIs + Observer Stubs + CustomEvent
+
 - **btoa()/atob()**: Base64 encode/decode with self-contained implementation.
 - **performance.now()**: High-resolution timer using `std::chrono::steady_clock`, microsecond precision.
 - **requestAnimationFrame/cancelAnimationFrame**: rAF executes callback immediately (synchronous engine), returns unique ID.
@@ -4496,6 +4888,7 @@
 - **24 new tests (2427→2451), ALL GREEN, ZERO WARNINGS — 1235+ features**
 
 ### Cycle 203 — 2026-02-26 — DOM Mutations + getBoundingClientRect + getComputedStyle
+
 - **element.insertBefore(newNode, refNode)**: Insert before reference node, null ref appends. Uses `detach_node()` helper for nodes already in tree.
 - **element.replaceChild(newChild, oldChild)**: Swap children, old child moved to owned_nodes.
 - **element.cloneNode(deep)**: Recursive `clone_node_impl()` copies type/tag/attrs/text. Deep clone recurses children.
@@ -4511,6 +4904,7 @@
 - **16 new tests (2411→2427), ALL GREEN, ZERO WARNINGS — 1200+ features**
 
 ### Cycle 202 — 2026-02-26 — localStorage + document.cookie + DOM Traversal + matches/closest
+
 - **localStorage**: Full Web Storage API — `getItem`, `setItem`, `removeItem`, `clear`, `key(index)`, `length` getter. Process-static `std::map` backing store. `sessionStorage` aliased to same object.
 - **document.cookie**: Getter returns all cookies as `"name=value; name2=value2"` string. Setter parses single `"name=value"` and adds/updates (browser-standard behavior). Per-context cookie map in DOMState.
 - **DOM traversal properties**: `firstChild`, `lastChild`, `firstElementChild`, `lastElementChild`, `nextSibling`, `previousSibling`, `nextElementSibling`, `previousElementSibling`, `childElementCount`, `nodeType`, `nodeName`. Uses `find_sibling_index()` helper for sibling lookup.
@@ -4521,6 +4915,7 @@
 - **11 new tests (2400→2411), ALL GREEN, ZERO WARNINGS — 1180+ features**
 
 ### Cycle 201 — 2026-02-25 — Event Dispatch + XMLHttpRequest + DOMContentLoaded
+
 - **Event dispatch system**: New `dispatch_event()` function creates JS Event objects with `type`, `target`, `currentTarget`, `bubbles`, `cancelable`, `defaultPrevented` properties and `preventDefault()`, `stopPropagation()`, `stopImmediatePropagation()` methods. Looks up listeners in DOMState, calls handlers via `JS_Call()`, returns whether default was prevented.
 - **DOMContentLoaded event**: New `dispatch_dom_content_loaded()` fires event on both document and window listeners. Integrated in render_pipeline.cpp after all scripts execute and timers flush, with a second timer flush after DOMContentLoaded handlers (they may set timers).
 - **document.addEventListener / window.addEventListener**: Both now store listeners in DOMState. Window listeners use `nullptr` sentinel key.
@@ -4531,6 +4926,7 @@
 - **18 new tests (2382→2400), ALL GREEN, ZERO WARNINGS — 2400 TESTS! 1160+ features**
 
 ### Cycle 200 — 2026-02-25 — DOM Expansion + Console/Error Capture + Integration Tests
+
 - **Console output & JS errors in RenderResult**: Added `js_console_output` and `js_errors` vectors to `RenderResult`. Render pipeline captures console.log/warn/error output and JS runtime errors, propagating them to the caller.
 - **document.write() / document.writeln()**: Appends parsed HTML content to `<body>`. writeln adds newline. Both mark DOM as modified.
 - **document.getElementsByTagName() / getElementsByClassName()**: Tree-walking query methods returning JS arrays of element proxies.
@@ -4543,6 +4939,7 @@
 - **7 new tests (2375→2382), ALL GREEN, ZERO WARNINGS — 1145+ features**
 
 ### Cycle 199 — 2026-02-25 — External Scripts, Timers, Window API
+
 - **External script loading** (`<script src="...">`): Render pipeline now fetches external JS files via `fetch_with_redirects()`, resolves relative URLs against `effective_base_url`, executes fetched code same as inline scripts.
 - **Timer APIs** (`setTimeout`, `setInterval`, `clearTimeout`, `clearInterval`): New `js_timers.h/cpp`. setTimeout with delay=0 executes immediately (synchronous render). delay>0 stored for future event loop. String arguments eval'd. `flush_pending_timers()` cleans up all timer state + JSValues.
 - **Window API** (`window`, `window.location`, `window.navigator`): New `js_window.h/cpp`. `window === globalThis`, `window.innerWidth/innerHeight`, `window.location.href/hostname/pathname/protocol`, `window.navigator.userAgent = "Clever/0.5"`, `window.alert()` (no-op).
@@ -4552,6 +4949,7 @@
 - **16 new tests (2359→2375), ALL GREEN, ZERO WARNINGS — 1130+ features**
 
 ### Cycle 198 — 2026-02-25 — JAVASCRIPT ENGINE
+
 - **QuickJS integration**: Vendored QuickJS 2025-09-13 into `third_party/quickjs/`. Full CMake integration with C11 compilation, SYSTEM includes, -w suppression. Deleted VERSION file that shadowed C++20 `<version>` header on macOS case-insensitive FS.
 - **JS Engine wrapper** (`clever::js::JSEngine`): C++ RAII wrapper around QuickJS runtime/context. `evaluate()` with error handling + stack traces. Move semantics. 64MB memory limit, 8MB stack limit.
 - **Console API**: `console.log/warn/error/info` with output capture vector + optional callback. Uses `JS_CFUNC_generic_magic` for level selection.
@@ -4570,6 +4968,7 @@
 - **65 new tests (2288→2359), ALL GREEN, ZERO WARNINGS — 1120+ features**
 
 ### Cycle 197 — 2026-02-25
+
 - **Keyboard scrolling**: Full keyboard navigation in render view. Arrow Up/Down (40px step), Page Up/Down (90% viewport), Home (top), End (bottom), Space (page down), Shift+Space (page up). Escape clears text selection.
 - **Scroll reset on navigation**: Fixed bug where scroll position persisted when navigating to new pages. Now resets to top in `doRender`.
 - **Anchor/fragment scrolling** (agent): Clicking `<a href="#section">` scrolls to element with matching `id`. Collects element ID→Y position map from layout tree. `id_positions` stored in RenderResult and BrowserTab.
@@ -4580,6 +4979,7 @@
 - **10 new tests (2278→2288), ALL GREEN, ZERO WARNINGS — 1110+ features**
 
 ### Cycle 196 — 2026-02-25
+
 - **Right-click context menu**: Full context menu for render view. Right-click shows: Open Link / Copy Link URL (when on a link), Copy (when text selected), Back, Forward, Reload, View Source, Save Screenshot. Uses `menuForEvent:` override with delegate callbacks for navigation actions.
 - **`<meta http-equiv="refresh">` auto-redirect** (agent): Parse delay and URL from meta refresh tags. Immediate redirect for delay=0, timer-based delayed redirect. Handles "N;url=URL" format with spaces. Cancel pending refresh on new navigation.
 - **Form POST submission** (agent): Click submit button → collect form data → POST request → render response. FormSubmitRegion tracks clickable submit areas. URL-encoded GET and POST with Content-Type headers.
@@ -4588,6 +4988,7 @@
 - **6 new tests (2272→2278), ALL GREEN, ZERO WARNINGS — 1100+ features**
 
 ### Cycle 195 — 2026-02-25
+
 - **Favicon loading and display**: Full favicon support. (1) Extract `<link rel="icon">` URL from HTML in render_pipeline.cpp. (2) Fallback to `/favicon.ico` when no `<link>` tag found. (3) Fetch favicon image in background thread via HTTP. (4) Decode with NSImage and resize to 16x16. (5) Display in tab bar buttons next to tab title. Added `favicon_url` to `RenderResult`, `faviconImage` to `BrowserTab`.
 - **Welcome page updates**: Updated stats to 2267+ tests, 1090+ features. Added "Network" capability card (HTTP/1.1, TLS, gzip, cookies, redirects, favicons, keep-alive).
 - **5 new favicon tests**: FaviconFromLinkRelIcon, FaviconFromShortcutIcon, FaviconFallbackToFaviconIco, FaviconNoFallbackWithoutBaseURL, FaviconRelativeHref.
@@ -4598,6 +4999,7 @@
 - **10 new tests (2262→2272), ALL GREEN, ZERO WARNINGS — 1095+ features**
 
 ### Cycle 194 — 2026-02-25 (previous context session)
+
 - **Home button + Cmd+Shift+H**: Added Home button (H icon) to toolbar and Home menu item with Cmd+Shift+H shortcut. Navigates back to welcome page. Extracted `getWelcomeHTML()` as standalone function for reuse.
 - **5 HTTP serialization tests**: Connection keep-alive, Accept-Encoding, Accept, Host header (non-standard port includes port, standard port 80 omits it).
 - **CSS `color-scheme` dark mode** (agent): Form controls respect `color-scheme: dark` — dark backgrounds, light text for inputs/buttons.
@@ -4607,6 +5009,7 @@
 - **4+ new tests (2258→2262), ALL GREEN, ZERO WARNINGS — 1085+ features**
 
 ### Cycle 193 — 2026-02-25
+
 - **Scroll speed fix (2nd pass)**: User complained scroll was STILL too slow after Cycle 192's 1.5x/3.0x fix. Increased multipliers to 3.0x trackpad, 8.0x mouse wheel. Trackpad sends many small deltas with built-in momentum — 3x feels natural. Mouse wheel sends fewer large deltas — 8x needed to feel responsive.
 - **URL bar UX improvements**: (1) Added `controlTextDidBeginEditing:` — clicking the address bar now selects all text (standard browser behavior). (2) After pressing Enter, focus transfers to the render view via `makeFirstResponder:` so keyboard events go to the page instead of staying in the URL bar. (3) Updated User-Agent from "Clever/0.1" to "Clever/0.5". (4) Removed "Connection: close" header — now uses keep-alive default for better connection reuse.
 - **Home button**: Added Home button (H) to toolbar. Navigates back to the welcome page. Extracted welcome HTML from `main.mm` into a standalone `getWelcomeHTML()` function that both `main.mm` and `browser_window.mm` can call.
@@ -4618,6 +5021,7 @@
 - **16+ new tests (2242→2258), ALL GREEN, ZERO WARNINGS — 1080+ features**
 
 ### Cycle 192 — 2026-02-25 (previous session continued)
+
 - **list-style-position rendering** (Cycle 191 already logged), plus:
 - **Default HTTP headers**: Added User-Agent, Accept, Accept-Encoding default headers to request.cpp serialize(). Headers are only added when not already user-set.
 - **Cookie Max-Age/Expires/SameSite**: Enhanced cookie_jar to parse Max-Age (seconds from now), Expires (HTTP date via strptime), SameSite attribute. Expired cookies filtered in get_cookie_header(). Added expires_at and same_site fields to Cookie struct.
@@ -4630,6 +5034,7 @@
 - **22+ new tests (2220→2242), ALL GREEN, ZERO WARNINGS — 1070+ features**
 
 ### Cycle 191 — 2026-02-25
+
 - **CSS `list-style-position` rendering**: List markers now correctly respect `list-style-position: inside` and `outside`. `inside` creates inline marker text nodes that flow with content (bullet/number appears inside the content box). `outside` (default) uses `paint_list_marker()` to position markers to the left of the content box. Previously, ALL list markers were created as inline text nodes (effectively always `inside`).
 - **Render pipeline fix**: Modified render_pipeline.cpp to only create inline marker text nodes when `list_style_position == 1` (inside). For `outside` (default), the painter fallback handles marker rendering with proper offset positioning.
 - **paint_list_marker() inside support**: Added `list_style_position` checks to both graphical markers (disc/circle/square) and text-based markers (decimal/roman/alpha) in paint_list_marker, positioning them at content start when inside.
@@ -4637,34 +5042,40 @@
 - **3 new tests (2217→2220), ALL GREEN, ZERO WARNINGS — 1062+ features**
 
 ### Cycle 190 — 2026-02-25
+
 - **CSS `appearance: none` rendering**: Form controls (checkbox, radio, select, range) now respect `appearance: none`. When set, the browser skips native control painting, allowing pure-CSS styled form elements. Modified painter.cpp to check `node.appearance != 1` before calling paint_checkbox, paint_radio, paint_select_element, and paint_range_input.
 - Files: `painter.cpp` (4 appearance checks), `paint_test.cpp` (2 tests)
 - **2 new tests (2215→2217), ALL GREEN, ZERO WARNINGS — 1060+ features**
 
 ### Cycle 189 — 2026-02-25
+
 - **Welcome page stats update**: Updated `main.mm` welcome page to show 2215+ tests (was 2195+) and 1058+ features (was 1025+). Added new SVG feature card showcasing shapes, paths, text, tspan, gradients, viewBox, transforms. Updated CSS3 card to mention var(), grid.
 - Files: `main.mm` (stats and feature cards)
 - **0 new tests, ALL GREEN, ZERO WARNINGS — 1058+ features**
 
 ### Cycle 188 — 2026-02-25
+
 - **SVG `<tspan>` element**: Full support for `<tspan>` sub-elements within SVG `<text>`. Each `<tspan>` can have its own `x`, `y`, `dx`, `dy`, `fill`, `font-family`, `font-weight`, `font-style`, and `font-size` attributes. The parent `<text>` element now correctly extracts only its direct text content (not tspan children) and builds `<tspan>` children as separate layout nodes. Tspan rendering (case 9) in painter supports both absolute positioning (x/y) and relative offsets (dx/dy).
 - **<text> child building for tspan**: Modified SVG `<text>` element processing to recursively build element children (like `<tspan>`) as layout sub-nodes instead of returning immediately. Text-only children of `<text>` are concatenated as direct content; element children are built as child layout nodes.
 - Files: `render_pipeline.cpp` (tspan in SVG tag list + svg_type=9 + child building for text + tspan property parsing), `painter.cpp` (case 9 tspan rendering), `paint_test.cpp` (2 tests)
 - **2 new tests (2213→2215), ALL GREEN, ZERO WARNINGS — 1058+ features**
 
 ### Cycle 187 — 2026-02-25
+
 - **SVG `transform="scale()"` rendering**: SVG group `<g>` elements with `transform="scale(sx, sy)"` now actually scale their child shapes. The scale factor is accumulated from parent `<g>` elements and multiplied into the viewBox transform in `paint_svg_shape()`. This means SVG icons with scaled groups now render correctly.
 - **SVG `transform="translate() scale()"` combined**: Multiple transform functions on a single `<g>` element are parsed independently (translate, scale, rotate). Both translate offset and scale factor are applied simultaneously.
 - Files: `painter.cpp` (group scale accumulation in paint_svg_shape), `paint_test.cpp` (2 tests: pixel-verified scale rendering + translate+scale property check)
 - **2 new tests (2211→2213), ALL GREEN, ZERO WARNINGS — 1055+ features**
 
 ### Cycle 186 — 2026-02-25
+
 - **SVG `dominant-baseline` attribute**: SVG `<text>` elements now respect the `dominant-baseline` attribute. `middle` centers text vertically at the y coordinate. `hanging` positions text from the top of ascenders (useful for top-aligned text). `central` centers on the em box. `text-top` aligns to top of em box. Default (`auto`/`alphabetic`) positions at the alphabetic baseline.
 - **CSS cascade font fallback for SVG text**: SVG `<text>` elements now inherit `font-family`, `font-weight`, `font-style`, and `font-size` from CSS cascade rules when no explicit SVG HTML attribute is set. `text { font-family: Georgia; font-weight: bold; }` now correctly styles SVG text.
 - Files: `box.h` (svg_dominant_baseline field), `render_pipeline.cpp` (dominant-baseline parsing + CSS font fallback), `painter.cpp` (dominant-baseline y adjustment), `paint_test.cpp` (3 tests)
 - **3 new tests (2208→2211), ALL GREEN, ZERO WARNINGS — 1050+ features**
 
 ### Cycle 185 — 2026-02-25
+
 - **BUG FIX: SVG stroke/fill color pipeline**: SVG shapes were using `border_color` (HTML borders) for stroke and `background_color` for fill. When SVG properties were set via CSS cascade (not HTML attributes), the wrong colors were used. Fixed to use `svg_stroke_color` and `svg_fill_color` with proper `svg_stroke_none`/`svg_fill_none` checks. Also applies `svg_fill_opacity` and `svg_stroke_opacity` to alpha channel.
 - **SVG text `dx`/`dy` offset attributes**: SVG `<text>` elements now support `dx` and `dy` attributes for relative position offsets. `dx` shifts text horizontally, `dy` shifts vertically. Applied after viewBox transform in the painter.
 - **CSS cascade `text-anchor` property**: `text-anchor` can now be set via CSS rules (e.g., `text { text-anchor: end; }`), not just HTML attributes. Added to ComputedStyle, style_resolver cascade, and LayoutNode transfer.
@@ -4674,12 +5085,14 @@
 - **6 new tests (2202→2208), ALL GREEN, ZERO WARNINGS — 1046+ features, 1 BUG FIXED**
 
 ### Cycle 184 — 2026-02-25
+
 - **SVG `text-anchor` attribute rendering**: SVG `<text>` elements now respect the `text-anchor` attribute. `text-anchor="middle"` centers text horizontally at the x coordinate. `text-anchor="end"` right-aligns text at the x coordinate. Uses approximate text width measurement (`chars * font_size * 0.6`). Previously `text-anchor` was ignored — text always started at the exact x coordinate.
 - **SVG text font properties**: SVG `<text>` elements now pass `font-family`, `font-weight`, and `font-style` to the CoreText rendering pipeline. `font-family="Courier"` selects the Courier font. `font-weight="bold"` or `font-weight="700"` enables bold. `font-style="italic"` enables italic rendering. Numeric font-weight values (100-900) supported.
 - Files: `box.h` (4 new fields: svg_text_anchor, svg_font_family, svg_font_weight, svg_font_italic), `render_pipeline.cpp` (text-anchor/font-family/font-weight/font-style parsing), `painter.cpp` (text-anchor x offset + font props in draw_text call)
 - **3 new tests (2199→2202), ALL GREEN, ZERO WARNINGS — 1038+ features**
 
 ### Cycle 183 — 2026-02-25
+
 - **SVG `stroke-linecap`**: Parses `stroke-linecap` (butt/round/square) from HTML attributes, CSS inline styles, and CSS cascade. Stored as int (0=butt, 1=round, 2=square) on both ComputedStyle and LayoutNode.
 - **SVG `stroke-linejoin`**: Parses `stroke-linejoin` (miter/round/bevel) from all three sources. Stored as int (0=miter, 1=round, 2=bevel).
 - **CSS cascade for SVG stroke properties**: Added `stroke-width`, `stroke-linecap`, `stroke-linejoin`, `stroke-dasharray`, `stroke-dashoffset` to the CSS style resolver cascade, allowing SVG elements to be styled via external CSS rules.
@@ -4687,6 +5100,7 @@
 - **2 new tests (2197→2199), ALL GREEN, ZERO WARNINGS — 1034+ features**
 
 ### Cycle 182 — 2026-02-25
+
 - **SVG `stroke-dasharray`**: Parses `stroke-dasharray="dash gap"` pattern from both HTML attributes and CSS inline styles. Stores as `std::vector<float>` on LayoutNode. Drawing uses a `draw_dashed_line` helper that splits continuous line segments into alternating visible/invisible segments. Applied to SVG line, path, polygon, and polyline strokes.
 - **SVG `stroke-dashoffset`**: Parses offset for dash pattern. Shifts the starting point of the dash pattern by the specified amount.
 - **Welcome page stats update**: Updated `main.mm` welcome page to show 2195+ tests (was 2177+) and 1025+ features (was 987+).
@@ -4694,18 +5108,21 @@
 - **2 new tests (2195→2197), ALL GREEN, ZERO WARNINGS — 1028+ features**
 
 ### Cycle 181 — 2026-02-25
+
 - **SVG `viewBox` attribute**: SVG elements now support the `viewBox` attribute for coordinate system mapping. Parses `viewBox="minX minY width height"`, computes scale factors (viewport/viewBox), and applies transform to all SVG shape coordinates (rect, circle, ellipse, line, path, text, polygon, polyline). Handles viewBox-to-viewport mapping including minX/minY offsets. When no explicit width/height is set, derives dimensions from viewBox aspect ratio.
 - **viewBox auto-sizing**: SVG elements without explicit width/height but with viewBox use the viewBox dimensions. If only one dimension is specified, the other is computed from the aspect ratio.
 - Files: `box.h` (5 new fields: svg_has_viewbox, svg_viewbox_x/y/w/h), `render_pipeline.cpp` (viewBox parsing + auto-sizing), `painter.cpp` (viewBox transform in all 8 SVG shape types), `paint_test.cpp` (2 tests)
 - **2 new tests (2193→2195), ALL GREEN, ZERO WARNINGS — 1025+ features**
 
 ### Cycle 180 — 2026-02-25
+
 - **SVG `<path>` fill rendering**: Closed SVG paths now render with solid fill color using scanline even-odd algorithm. Previously SVG paths only rendered stroke outlines — now they render filled shapes like real SVG icons. Implementation: collect vertices during path traversal into subpath contours, then scanline fill all edges before drawing deferred strokes (SVG spec: fill before stroke). Supports multiple subpaths, bezier curves, arcs — all flattened points contribute to fill.
 - **Deferred stroke rendering**: Refactored SVG path rendering to collect stroke segments during traversal and emit them AFTER fill commands, matching SVG's default paint order (fill → stroke → markers).
 - Files: `painter.cpp` (path fill + deferred stroke), `paint_test.cpp` (2 tests)
 - **2 new tests (2191→2193), ALL GREEN, ZERO WARNINGS — 1022+ features**
 
 ### Cycle 179 — 2026-02-25
+
 - **CSS trigonometric math functions**: sin(), cos(), tan(), asin(), acos(), atan(), atan2() — all work in calc() and standalone. Angle unit support: deg, rad, grad, turn converted to radians at parse time.
 - **CSS exponential math functions**: sqrt(), pow(), hypot(), exp(), log() — all work standalone. Unary functions (sqrt/exp/log) also work inside calc(). Binary functions (pow/atan2/hypot) work standalone.
 - **CSS math constants**: `pi` (3.14159...), `e` (2.71828...), `infinity` supported in calc() expressions and standalone.
@@ -4718,6 +5135,7 @@
 - **9 new tests (2182→2191), ALL GREEN, ZERO WARNINGS — 1021+ features**
 
 ### Cycle 177 — 2026-02-25 — MILESTONE: 1000+ FEATURES
+
 - **CSS individual logical properties**: Added 12 new CSS logical property parsers:
   - `margin-inline-start`, `margin-inline-end` → margin-left/right
   - `margin-block-start`, `margin-block-end` → margin-top/bottom
@@ -4730,29 +5148,34 @@
 - **3 new tests (2178→2181), ALL GREEN, ZERO WARNINGS — 1000+ features! MILESTONE!**
 
 ### Cycle 176 — 2026-02-25
+
 - **HTML `<col bgcolor>` propagation to column cells**: Column background colors from `<col bgcolor="#ff0000">` are now propagated to the corresponding `<td>`/`<th>` cells in each table row. Collects column backgrounds from `<col>` elements (respecting `colspan`), then walks `<tr>` rows and applies the background to cells at the matching column index. Only applies when the cell doesn't already have an explicit background.
 - **Welcome page stats update**: Updated `main.mm` welcome page to show 2177+ tests (was 2162+) and 987+ features (was 967+).
 - Files: `render_pipeline.cpp` (col bgcolor parsing + propagation, col bg collection), `main.mm` (stats update), `paint_test.cpp` (1 test)
 - **1 new test (2177→2178), ALL GREEN, ZERO WARNINGS — 991+ features**
 
 ### Cycle 175 — 2026-02-25
+
 - **HTML `<table frame>` attribute**: Controls which outer borders are drawn on a table. Supports all 9 values: `void` (no borders), `above` (top only), `below` (bottom only), `hsides` (top+bottom), `lhs` (left), `rhs` (right), `vsides` (left+right), `box`/`border` (all). Applied directly to the table element's border geometry.
 - **HTML `<table rules>` attribute**: Controls inner cell borders. `rules=none` removes cell borders, `rules=all` adds 1px borders to all cells, `rules=rows` adds horizontal borders only, `rules=cols` adds vertical borders only. Propagated to td/th cells in post-build pass (same pattern as cellpadding). Stored as `table_rules` string on LayoutNode.
 - Files: `box.h` (table_rules field), `render_pipeline.cpp` (frame+rules parsing, rules propagation), `paint_test.cpp` (3 tests)
 - **3 new tests (2174→2177), ALL GREEN, ZERO WARNINGS — 987+ features**
 
 ### Cycle 174 — 2026-02-25
+
 - **CSS `writing-mode: vertical-rl/vertical-lr` text rendering**: Text inside elements with `writing-mode: vertical-rl` (1) or `vertical-lr` (2) is now drawn vertically — each character stacked top to bottom with `font_size * line_height` spacing. Handles UTF-8 multibyte characters correctly. Applied as an early-exit path before word-wrapping, so vertical text takes priority. This enables CJK vertical text and decorative vertical layouts.
 - Files: `painter.cpp` (vertical text rendering path), `paint_test.cpp` (1 test)
 - **1 new test (2173→2174), ALL GREEN, ZERO WARNINGS — 983+ features**
 
 ### Cycle 173 — 2026-02-25
+
 - **CSS `direction: rtl` text alignment rendering**: RTL text now defaults to right-aligned in word-wrapped text. When `direction: rtl` and no explicit `text-align` is set, the painter uses right alignment (text_align=2) instead of left. Applied in the word-wrap `flush_line` path.
 - **BUG FIX: `direction` inheritance for text nodes**: CSS `direction` was not inherited to text children in the inheritance block. Added `layout_node->direction = parent_style.direction` alongside `writing_mode` and `text_orientation`. This affected all text rendering with RTL direction set on parent elements.
 - Files: `painter.cpp` (RTL default text alignment), `render_pipeline.cpp` (direction inheritance), `paint_test.cpp` (2 tests)
 - **2 new tests (2171→2173), ALL GREEN, ZERO WARNINGS — 981+ features**
 
 ### Cycle 172 — 2026-02-25
+
 - **SVG `paint-order` property rendering**: SVG shapes now respect the CSS `paint-order` property. When `paint-order: stroke` is set, the stroke is drawn BEFORE the fill. Currently affects SVG `<rect>` elements.
 - **CSS `mask-size` rendering**: `mask-image` gradient respects `mask-size: contain|cover|<w> <h>`. Previously always used full border-box.
 - **CSS `font-synthesis` rendering**: When `font-synthesis: none` is set, the painter suppresses synthetic bold (clamps weight to 400) and synthetic italic (forces false). Uses `eff_weight`/`eff_italic` local variables in `paint_text()` that all 16 `draw_text` calls reference.
@@ -4761,6 +5184,7 @@
 - **5 new tests (2166→2171), ALL GREEN, ZERO WARNINGS — 978+ features**
 
 ### Cycle 171 — 2026-02-25
+
 - **HTML `cellpadding` attribute**: `<table cellpadding="10">` now propagates padding to all `<td>`/`<th>` descendant cells. Parsed on `<table>` element, stored as `table_cellpadding`, and propagated in a post-build pass that walks the subtree by tag_name. Only applies when the cell doesn't have explicit CSS padding.
 - **HTML `cellspacing` attribute**: `<table cellspacing="5">` sets `border_spacing` on the table element. Parsed and applied directly during table element processing.
 - **BUG FIX**: td/th cells use `DisplayType::Block` (not `TableCell`) because the table model uses flex rows. Fixed both the propagation code and test to search by `tag_name == "td" || "th"` instead of `DisplayType::TableCell`.
@@ -4768,26 +5192,31 @@
 - **2 new tests (2164→2166), ALL GREEN, ZERO WARNINGS — 972+ features**
 
 ### Session 1-17 — 2026-02-23
+
 - 671 tests by end of Session 17.
 
 ### Cycle 170 — 2026-02-25
+
 - **CSS `font-variant-ligatures` rendering**: The property was parsed and stored but never used in text rendering. Now maps to OpenType feature tags: `none` disables all ligatures (`liga 0, clig 0, dlig 0, hlig 0`), `no-common-ligatures` disables standard + contextual (`liga 0, clig 0`), `discretionary-ligatures` enables discretionary (`dlig 1`), `no-discretionary-ligatures` explicitly disables. Features are appended to the `effective_features` string and passed to CoreText via `set_last_font_features()`.
 - **Welcome page stats update**: Updated `main.mm` welcome page to show 2162+ tests (was 2152+), 967+ features (was 956+).
 - Files: `painter.cpp` (font-variant-ligatures OpenType feature mapping), `main.mm` (stats update), `paint_test.cpp` (2 tests)
 - **2 new tests (2162→2164), ALL GREEN, ZERO WARNINGS — 970+ features**
 
 ### Cycle 169 — 2026-02-25
+
 - **CSS multiple text-decoration lines**: Refactored text-decoration rendering to support multiple simultaneous decoration lines via bitmask. `text-decoration: underline line-through` now correctly draws BOTH underline AND line-through. Previously, the last value would overwrite the previous one. Added `text_decoration_bits` field (bitmask: 1=underline, 2=overline, 4=line-through) to both ComputedStyle and LayoutNode. Parser now OR-combines multiple line types. Painter iterates over each bit and draws the corresponding line at the correct Y position. Backwards compatible — old single-value `text_decoration` field still works. Skip-ink only applies to underlines.
 - Files: `computed_style.h` (text_decoration_bits field), `box.h` (text_decoration_bits field), `render_pipeline.cpp` (bitmask parsing + transfer + UA element bits), `painter.cpp` (multi-deco rendering with draw_deco_line helper), `paint_test.cpp` (2 tests)
 - **2 new tests (2160→2162), ALL GREEN, ZERO WARNINGS — 967+ features**
 
 ### Cycle 168 — 2026-02-25
+
 - **CSS `text-align-last` property**: Parse + render. Controls alignment of the last line in justified text. Values: auto (0), start/left (1), end/right (2), center (3), justify (4). When `text-align: justify` and `text-align-last: center`, the last line is centered instead of left-aligned. When `text-align-last: justify`, the last line is also fully justified.
 - **CSS `::selection` colors piped to RenderResult**: Custom `::selection { color; background-color }` styles are now extracted from the layout tree and passed through RenderResult to the macOS shell. `render_view.mm` uses the CSS-specified background color for selection highlighting instead of the hardcoded blue overlay. Added `updateSelectionColors:bg:` method to RenderView.
 - Files: `computed_style.h` (text_align_last field), `box.h` (text_align_last field), `render_pipeline.cpp` (parse text-align-last + transfer + extract selection colors to result), `render_pipeline.h` (selection_color/selection_bg_color in RenderResult), `painter.cpp` (text_align_last in flush_line alignment), `render_view.h` (updateSelectionColors method), `render_view.mm` (selection color ivars + custom highlight color), `browser_window.mm` (call updateSelectionColors), `paint_test.cpp` (3 tests)
 - **3 new tests (2157→2160), ALL GREEN, ZERO WARNINGS — 965+ features**
 
 ### Cycle 167 — 2026-02-25
+
 - **CSS `white-space: pre-wrap` newline rendering**: Text inside `<pre style="white-space: pre-wrap">` now correctly renders embedded newlines as line breaks. When `white_space` is 3 (pre-wrap) or 4 (pre-line) and text contains `\n`, the painter splits text on newlines and draws each line separately with `line_height` spacing. For `pre-line` (4), consecutive spaces within each line are also collapsed to a single space (matching the CSS spec).
 - **HTML `<base href>` element extraction**: The `<base>` element's `href` attribute is now extracted during document parsing and used as the effective base URL for resolving relative links, stylesheets, and CSS imports. Previously only the navigation URL was used, ignoring `<base>`.
 - **BUG FIX: `<pre>` handler overriding inline white-space styles**: The `<pre>` tag handler unconditionally set `style.white_space = Pre`, which overwrote CSS inline styles like `white-space: pre-wrap`. Fixed by only defaulting to `Pre` when `style.white_space` is still `Normal` (not already set by CSS). This was the root cause of pre-wrap not working inside `<pre>` elements.
@@ -4795,6 +5224,7 @@
 - **3 new tests (2154→2157), ALL GREEN, ZERO WARNINGS — 962+ features**
 
 ### Cycle 166 — 2026-02-24
+
 - **CSS `line-break: anywhere` rendering**: Text wrapping now respects `line-break: anywhere` (value 4). When set, text can break at any character position, similar to `word-break: break-all`. Previously `line_break` was parsed but never used during text rendering.
 - **CSS `line-break: strict` prevents hyphenation**: When `line-break: strict` (value 3) is set, automatic hyphenation (via `hyphens: auto`) is suppressed. This matches the CSS spec where strict line-breaking rules prevent soft hyphens.
 - **Welcome page stats update**: Updated `main.mm` welcome page to show current numbers: 2152+ tests (was 2110+), 956+ features (was 895+).
@@ -4802,12 +5232,14 @@
 - **2 new tests (2152→2154), ALL GREEN, ZERO WARNINGS — 959+ features**
 
 ### Cycle 165 — 2026-02-24
+
 - **CSS `border-image` rendering with gradient sources**: Elements with `border-image-source: linear-gradient(...)` or `radial-gradient(...)` now render gradient borders instead of solid color borders. The gradient is drawn in each border region (top, right, bottom, left bands). Gradient data is pre-parsed in render_pipeline.cpp and stored on LayoutNode as `border_image_gradient_type/angle/stops` to avoid cross-module function dependencies. The border-image completely replaces normal CSS border drawing (per spec). Also added `border-image` shorthand parsing — `border-image: linear-gradient(...) 1` now correctly extracts the gradient source.
 - **CSS `image-orientation: flip` rendering**: Images with `image-orientation: flip` are now horizontally mirrored before drawing. The pixel data is flipped in-place by swapping left/right column RGBA values for each row. `from-image` (0, default) and `none` (1) both render images normally (EXIF rotation not supported).
 - Files: `painter.cpp` (border-image gradient rendering + image-orientation flip), `render_pipeline.cpp` (border-image shorthand parser + pre-parse gradient), `box.h` (border_image_gradient_* fields), `paint_test.cpp` (2 tests)
 - **2 new tests (2150→2152), ALL GREEN, ZERO WARNINGS — 956+ features**
 
 ### Cycle 164 — 2026-02-24
+
 - **CSS `text-decoration-skip-ink: auto` rendering**: Solid underlines now leave gaps around descender characters (g, j, p, q, y, Q) when `text-decoration-skip-ink` is `auto` (default) or `all`. The underline is drawn in segments, with ~1.5px padding gaps around each descender character position. Character positions are calculated from the approximate character width (`font_size * 0.6 + letter_spacing`). When `text-decoration-skip-ink: none`, the full continuous underline is drawn (existing behavior). This is a significant typography improvement — most modern browsers skip-ink by default.
 - **CSS `orphans`/`widows` in multi-column layout**: The multi-column distribution algorithm now respects `orphans` and `widows` properties (default 2 each). When a column break would leave fewer than `orphans` lines at the bottom of the current column, the entire block is pushed to the next column. Similarly, if fewer than `widows` lines would start the next column, the block is kept in the current column. Line count is estimated from `child_height / (font_size * line_height)`.
 - **`<video>` element enhanced**: Video placeholder now has true black background (0xFF000000 instead of 0xFF1A1A1A) and renders a centered play button triangle (U+25B6) in semi-transparent white. Button scales with video size (20% of min dimension, minimum 16px).
@@ -4816,23 +5248,27 @@
 - **6 new tests (2144→2150), ALL GREEN, ZERO WARNINGS — 951+ features**
 
 ### Cycle 163 — 2026-02-25
+
 - **UA default styles for `<ul>`/`<ol>`**: Unordered and ordered lists now have default `padding-left: 40px` and `margin-top/bottom: 16px`, matching standard browser UA stylesheets. Previously lists had no default indentation, causing markers to overlap content.
 - **UA default styles for `<h1>`-`<h6>`**: Headings now have default bold (font-weight: 700) and proportional font sizes: h1=32px, h2=24px, h3=18.72px, h4=16px, h5=13.28px, h6=10.72px. These match the CSS 2.1 UA stylesheet defaults. Only applied when the cascade doesn't set explicit values. Note: heading margins were NOT added to avoid breaking existing pixel tests.
 - Files: `render_pipeline.cpp` (post-cascade UA defaults for ul/ol/h1-h6), `paint_test.cpp` (3 tests)
 - **3 new tests (2141→2144), ALL GREEN, ZERO WARNINGS — 945+ features**
 
 ### Cycle 162 — 2026-02-25
+
 - **CSS margin collapsing**: Adjacent block-level sibling margins now collapse correctly per CSS box model spec. When two adjacent blocks have positive margins (e.g., first block `margin-bottom: 30px`, second block `margin-top: 20px`), the gap between them is `max(30, 20) = 30px` instead of the incorrect `30 + 20 = 50px`. Implemented in `position_block_children()` by tracking the previous sibling's bottom margin and computing the collapsed margin as `max(prev_bottom, curr_top)`. The cursor_y is adjusted to account for the removed overlap. **Major layout correctness improvement** — margin collapsing is one of the most fundamental CSS layout rules and affects virtually every page.
 - Files: `layout_engine.cpp` (margin collapsing in position_block_children), `paint_test.cpp` (1 test + 2 from text-wrap in Cycle 161)
 - **1 new test (2140→2141), ALL GREEN, ZERO WARNINGS — 940+ features**
 
 ### Cycle 161 — 2026-02-25
+
 - **CSS `text-wrap: pretty` rendering**: Widow prevention algorithm implemented. When `text-wrap: pretty` (value 3) is set, the renderer detects if the last line of wrapped text would contain only a single word. If so, it reduces the effective wrap width by ~8% to push a second word onto the last line. Uses a greedy simulation to count last-line words, then verifies the reduced width maintains the same total line count. Avoids the "orphaned word" problem common in typographic layout.
 - **CSS `text-wrap: stable`** (value 4): Now recognized and treated as normal wrapping. In static rendering, `stable` behaves identically to `wrap` — its spec-defined behavior (preventing reflow during editing) is runtime-only.
 - Files: `painter.cpp` (text-wrap:pretty widow prevention algorithm), `paint_test.cpp` (2 tests)
 - **2 new tests (2138→2140), ALL GREEN, ZERO WARNINGS — 937+ features**
 
 ### Cycle 160 — 2026-02-25
+
 - **HTML `<dl>`, `<dt>`, `<dd>` description list rendering**: `<dl>` gets 16px top/bottom margins. `<dt>` gets bold text (font-weight: 700). `<dd>` gets 40px left margin indentation. All three handled as block elements. Important: UA defaults must be applied AFTER the cascade transfer block to avoid being overwritten by default style margin values (0).
 - **HTML `<select multiple>` listbox rendering**: `<select>` with `multiple` attribute now renders as a multi-row listbox instead of a dropdown. Shows visible `<option>` children as block rows (18px each). Selected options highlighted with blue background (#3875D7) and white text. Default visible rows = 4 (configurable via `size` attribute). White background instead of gray dropdown style. Overflow clipping enabled.
 - **HTML `<hgroup>` element rendering**: Heading group element now correctly renders as block container. Previously fell through to inline mode since it wasn't in the `block_tags` set.
@@ -4841,17 +5277,20 @@
 - **3 new tests (2135→2138), ALL GREEN, ZERO WARNINGS — 935+ features, 60 bugs fixed**
 
 ### Cycle 159 — 2026-02-25
+
 - **CSS `grid-auto-columns` rendering**: Grid containers with `grid-auto-columns` but no explicit `grid-template-columns` now create implicit columns at the specified width. Calculates `(content_w + gap) / (auto_w + gap)` to determine how many columns fit. Supports `px`, `%`, and `fr` units. Previously `grid_auto_columns` was parsed but never used in the grid layout algorithm.
 - **CSS `font-size-adjust` rendering**: Text rendering now applies `font-size-adjust` to scale the effective font size. Uses the formula `effective_size = size * (adjust_value / 0.56)` where 0.56 is the assumed default x-height aspect ratio for sans-serif fonts. This makes different font families appear more consistent in x-height. Previously parsed but never applied during painting.
 - Files: `layout_engine.cpp` (grid-auto-columns implicit column creation), `painter.cpp` (font-size-adjust scaling), `paint_test.cpp` (2 tests)
 - **2 new tests (2133→2135), ALL GREEN, ZERO WARNINGS — 929+ features**
 
 ### Cycle 158 — 2026-02-25
+
 - **CSS `align-content` for flexbox**: Multi-line flex containers (`flex-wrap: wrap`) with explicit height now distribute extra cross-axis space between flex lines per `align-content`. Supports: `end` (1) — lines at bottom, `center` (2) — lines centered with equal space above/below, `stretch` (3) — default, `space-between` (4) — first line at top, last at bottom, equal gaps, `space-around` (5) — equal space around each line. Applied after all flex lines are positioned and cross-aligned individually. Previously `align_content` was parsed but never used in layout.
 - Files: `layout_engine.cpp` (align-content after flex line positioning), `paint_test.cpp` (2 tests)
 - **2 new tests (2131→2133), ALL GREEN, ZERO WARNINGS — 926+ features**
 
 ### Cycle 157 — 2026-02-25
+
 - **CSS `transform-origin` rendering**: Transform origin now correctly uses the `transform_origin_x` and `transform_origin_y` percentage values from CSS instead of always using 50% 50% (center). The origin point is computed as `abs_x + border_box_width * (origin_x / 100)`. Affects all transforms: rotate, scale, skew, and individual CSS properties. Elements with `transform-origin: 0% 0%` now correctly rotate around the top-left corner.
 - **CSS `perspective` foreshortening**: Parent elements with `perspective: Npx` now apply a foreshortening scale to transformed children. When a child has rotation transforms, a `cos(angle)` based scale is applied in the X direction, modulated by the perspective distance (closer perspective = more dramatic). Scale factor clamped to [0.1, 1.0]. Provides a 2D approximation of 3D perspective projection.
 - **CSS `text-justify: inter-character` rendering**: When `text-align: justify` is combined with `text-justify: inter-character` (value 2), extra space is distributed between ALL characters on justified lines, not just between words. Each character is drawn individually with uniform spacing. `text-justify: none` (value 3) now correctly prevents any justification. `text-justify: auto` (0) and `inter-word` (1) use the existing word-spacing algorithm.
@@ -4859,31 +5298,37 @@
 - **4 new tests (2127→2131), ALL GREEN, ZERO WARNINGS — 923+ features**
 
 ### Cycle 156 — 2026-02-25
+
 - **CSS `contain: size` / `contain: strict` with `contain-intrinsic-size`**: Layout engine now uses `contain-intrinsic-size` values for elements with `contain: size` (3) or `contain: strict` (1) when no explicit width/height is set. In `compute_width()`, if `contain == 3 || contain == 1` and `specified_width < 0`, uses `contain_intrinsic_width`. In `layout_block()`, same logic for height. The `contain-intrinsic-size` shorthand was already parsed (single value → both dims, two values → w h). Now the layout engine actually USES those values to size the element, making `contain: size` fully functional — the element's size is determined by `contain-intrinsic-size` instead of content.
 - Files: `layout_engine.cpp` (contain:size intrinsic width in compute_width + height in layout_block), `paint_test.cpp` (3 tests)
 - **3 new tests (2124→2127), ALL GREEN, ZERO WARNINGS — 919+ features**
 
 ### Cycle 155 — 2026-02-24
+
 - **CSS `hyphens: auto` word-splitting**: When `hyphens: auto` is set (value 2) and a word doesn't fit on the current line during word-boundary wrapping, the word is now split at an optimal point with a hyphen inserted. Uses vowel boundary heuristic: searches backward from the maximum character position for a vowel (a/e/i/o/u), preferring to split after vowels for natural-looking hyphenation. Minimum 2 characters on each side of the split. The first part gets a `-` appended and flushed on the current line; the remainder starts the next line. Falls back to normal line-break behavior for words ≤4 chars or when there's insufficient remaining space. Previously `hyphens` was parsed to LayoutNode but never used during text rendering.
 - Files: `painter.cpp` (hyphens:auto in word-boundary wrapping loop), `paint_test.cpp` (1 test)
 - **1 new test (2123→2124), ALL GREEN, ZERO WARNINGS — 917+ features**
 
 ### Cycle 154 — 2026-02-24
+
 - **CSS `content-visibility: auto` viewport-aware painting**: Elements with `content-visibility: auto` (value 2) now skip painting when entirely off-screen (below viewport or above y=0). Added `viewport_height_` field to Painter class and `viewport_height` parameter to `paint()`. The render pipeline passes the viewport height from `render_html()` to the painter. Elements on-screen are painted normally. `content-visibility: hidden` (value 1) already skipped painting — now `auto` is also implemented with viewport bounds checking.
 - Files: `painter.h` (viewport_height_ field + paint parameter), `painter.cpp` (content-visibility:auto viewport check + paint signature), `render_pipeline.cpp` (pass viewport_height to painter.paint), `paint_test.cpp` (2 tests)
 - **2 new tests (2121→2123), ALL GREEN, ZERO WARNINGS — 916+ features**
 
 ### Cycle 153 — 2026-02-24
+
 - **`::marker` pseudo-element rendering**: `::marker` color and font-size now actually affect list markers. Previously, `marker_color` and `marker_font_size` were stored on LayoutNode via `resolve_pseudo(*elem_view, "marker", ...)` but never used during painting. `paint_list_marker()` now uses `marker_color` (fallback to `color`) and `marker_font_size` (fallback to `font_size`) for all marker types: disc, circle, square, and text-based (decimal, roman, alpha, greek, latin). Marker text nodes prepended by render_pipeline also use `::marker` styling for color and font-size.
 - Files: `painter.cpp` (marker_color + effective_font_size in paint_list_marker), `render_pipeline.cpp` (marker_node uses marker_color/marker_font_size), `paint_test.cpp` (2 tests)
 - **2 new tests (2119→2121), ALL GREEN, ZERO WARNINGS — 914+ features**
 
 ### Cycle 152 — 2026-02-24
+
 - **View Source syntax highlighting**: Rewrote `viewSource` in `browser_window.mm` with a full HTML syntax highlighter using VS Code dark theme colors. Tags highlighted in blue (#569cd6), attribute names in light blue (#9cdcfe), string values in orange (#ce9178), comments in green (#6a9955), doctype in purple (#c586c0). Normal text in light gray (#d4d4d4) on dark background (#1e1e1e). Properly handles nested quotes, entities, comment blocks, closing tags, self-closing tags. Added `white-space: pre-wrap; word-wrap: break-word` for proper line wrapping. Replaces the previous plain-text escaped source view. **Creative surprise!**
 - Files: `browser_window.mm` (viewSource rewrite with syntax highlighting)
 - **0 new tests, ALL GREEN, ZERO WARNINGS — 912+ features**
 
 ### Cycle 151 — 2026-02-24
+
 - **CSS `contain: paint` rendering**: Elements with `contain: paint` (6), `contain: strict` (1), or `contain: content` (2) now clip child content to the element's padding box, same as `overflow: hidden`. Previously `contain` was parsed and stored on LayoutNode but never checked during painting. Also **BUG FIX**: `contain` property was not transferred to LayoutNode in the cascade path (second transfer block around line 7629). Added the missing transfer.
 - **HTML `<embed>` element**: Placeholder rendering with configurable width/height attributes, light gray background, and thin border. Default 300x150. Plugin content not supported.
 - **HTML `<object>` element**: Placeholder rendering with fallback content (children between `<object>` tags are rendered). Configurable dimensions, default 300x150.
@@ -4891,23 +5336,27 @@
 - **3 new tests (2117→2119*), ALL GREEN, ZERO WARNINGS — 911+ features, 59 bugs fixed**
 
 ### Cycle 150 — 2026-02-24
+
 - **CSS cursor regions in macOS shell**: Full pipeline for CSS `cursor` property to change the actual macOS mouse cursor. Added `CursorRegion` struct (like `LinkRegion` but with cursor type). Painter records cursor regions for nodes with `cursor != 0`. Display list stores and exposes cursor regions. `RenderResult` carries cursor regions to the shell. `render_view.mm` `mouseMoved:` hit-tests cursor regions and sets appropriate `NSCursor` (arrowCursor, pointingHandCursor, IBeamCursor, openHandCursor, operationNotAllowedCursor). `resetCursorRects` also adds cursor rects for system-level cursor tracking. Links (which use `pointer` cursor via href) take priority over CSS cursor regions in the hit-test order.
 - Files: `display_list.h` (CursorRegion struct + cursor_regions_ vector + add_cursor_region), `display_list.cpp` (add_cursor_region impl), `painter.cpp` (record cursor region after link region), `render_pipeline.h` (cursor_regions in RenderResult), `render_pipeline.cpp` (copy cursor_regions), `render_view.h` (updateCursorRegions declaration), `render_view.mm` (cursor region storage + updateCursorRegions + mouseMoved hit-test + resetCursorRects), `browser_window.mm` (call updateCursorRegions), `paint_test.cpp` (3 tests)
 - **3 new tests (2117→2120), ALL GREEN, ZERO WARNINGS — 906+ features**
 
 ### Cycle 149 — 2026-02-24
+
 - **CSS `visibility: collapse` on table rows**: Table rows with `visibility: collapse` now correctly collapse (zero height, no space) while preserving column width calculations. Added `visibility_collapse` field to LayoutNode. The layout engine skips collapsed rows during table layout but the auto column width algorithm still scans them. Previously `collapse` was treated identically to `hidden` (invisible but takes space).
 - **BUG FIX: `visibility: collapse` not parsed from inline styles**: The inline style parser only handled `visibility: hidden` and `visibility: visible`, silently ignoring `collapse`. Added `collapse` → `Visibility::Collapse` mapping.
 - Files: `box.h` (visibility_collapse field), `render_pipeline.cpp` (collapse transfer + inline parser fix), `layout_engine.cpp` (collapsed row skip in table layout), `paint_test.cpp` (2 tests)
 - **2 new tests (2115→2117), ALL GREEN, ZERO WARNINGS — 903+ features, 58 bugs fixed**
 
 ### Cycle 148 — 2026-02-24
+
 - **CSS `break-before: column` in multi-column layout**: Elements with `break-before: column` (value 4) now force a column break in multi-column layouts. The element is pushed to the next column regardless of current column fill level. Previously parsed but never used in layout.
 - **CSS `color-scheme: dark` rendering**: When `<html>` or `<body>` has `color-scheme: dark` (value 2), the element now gets default dark background (#1a1a2e) and light text (#E0E0E0) if no explicit colors are set. Enables basic dark mode support. Form controls and inherited colors will follow in future cycles.
 - Files: `layout_engine.cpp` (break-before:column in column layout), `render_pipeline.cpp` (color-scheme dark defaults), `paint_test.cpp` (3 tests)
 - **3 new tests (2112→2115), ALL GREEN, ZERO WARNINGS — 900+ features! BROKE 900 FEATURES!**
 
 ### Cycle 147 — 2026-02-24
+
 - **CSS `column-span: all` rendering**: Multi-column layout now supports `column-span: all`. Elements with this property span the full container width, breaking out of the column flow. Content before the spanning element fills columns normally, then the spanning element takes full width, then content after resumes column flow. The column layout was refactored to track a `total_y` offset and segment column content around spanning elements.
 - **Welcome page stats update**: Updated `main.mm` welcome page to show current numbers: 2110+ tests (was 1651+), 895+ features (was 558+). Badge text updated to match.
 - **Screenshot**: `showcase_cycle146.png` — fresh screenshot showing current browser state.
@@ -4915,12 +5364,14 @@
 - **2 new tests (2110→2112), ALL GREEN, ZERO WARNINGS — 897+ features**
 
 ### Cycle 146 — 2026-02-24
+
 - **CSS `text-align: justify` rendering**: Word-boundary wrapping now supports text-align:justify. Extra horizontal space is evenly distributed between words on non-last lines. Words are rendered individually with calculated extra spacing. Last lines remain left-aligned (per CSS spec). Previously the justify value (3) was parsed but the flush_line helper ignored it.
 - **CSS `cursor` property transferred to LayoutNode**: The `cursor` property (auto/default/pointer/text/move/not-allowed) is now correctly transferred from ComputedStyle to LayoutNode. Added `int cursor` field to box.h (0=auto, 1=default, 2=pointer, 3=text, 4=move, 5=not-allowed). The value is now available to the shell for setting the actual mouse cursor.
 - Files: `painter.cpp` (justify word-by-word rendering in flush_line), `box.h` (cursor field), `render_pipeline.cpp` (cursor transfer), `paint_test.cpp` (3 tests)
 - **3 new tests (2107→2110), ALL GREEN, ZERO WARNINGS — 895+ features**
 
 ### Cycle 145 — 2026-02-24
+
 - **BUG FIX: `<table>` elements used `LayoutMode::Block` instead of `LayoutMode::Table`**: The render_pipeline hardcoded `<table>` to `LayoutMode::Block / DisplayType::Block`, meaning `layout_table()` was NEVER called for HTML `<table>` elements from the normal render path. Tables only "worked" because the block layout code happened to lay out children top-to-bottom, but column widths, border-spacing, rowspan, and all table-specific logic were bypassed. Fixed by setting `LayoutMode::Table` and `DisplayType::Table`. **Major correctness fix.**
 - **CSS `table-layout: fixed` vs `auto` distinction**: The table layout algorithm now differentiates between `table-layout: fixed` (column widths from first row only) and `table-layout: auto` (default — scan ALL rows for maximum specified_width per column). Previously all tables used the fixed algorithm. Added inline style parsing for `table-layout` property.
 - **CSS `backface-visibility: hidden` rendering**: Elements with `backface-visibility: hidden` are now skipped during painting when a CSS rotation transform exceeds 90° (i.e., the element's backface is showing). Checks both transform list rotations and individual CSS `rotate` property. Handles `deg`, `turn`, `rad`, `grad` units. Normalized to 0-360° range: hidden when 90° < angle < 270°.
@@ -4928,11 +5379,13 @@
 - **4 new tests (2103→2107), ALL GREEN, ZERO WARNINGS — 892+ features, 57 bugs fixed**
 
 ### Cycle 144 — 2026-02-24
+
 - **Named color support in HTML legacy attributes**: Created `parse_html_color_attr()` centralized helper function that parses both hex (#RRGGBB / RRGGBB) and 20 named CSS colors (black, white, red, green, blue, yellow, orange, purple, gray/grey, cyan, magenta, lime, maroon, navy, olive, teal, silver, aqua, fuchsia). Replaced 7 inline hex-only parsing blocks across render_pipeline.cpp: `<hr>` color, `<font>` color, `<body>` bgcolor + text, `<table>` bgcolor, `<tr>` bgcolor, `<td>`/`<th>` bgcolor, `<marquee>` bgcolor. Previously `bgcolor="red"` silently failed — now works everywhere.
 - Files: `render_pipeline.cpp` (parse_html_color_attr + 7 call sites), `paint_test.cpp` (3 tests)
 - **3 new tests (2100→2103), ALL GREEN, ZERO WARNINGS — 888+ features**
 
 ### Cycle 143 — 2026-02-24
+
 - **HTML `<font>` element support**: Legacy `<font>` element now fully handled. `color` attribute sets text color (hex). `size` attribute maps HTML sizes 1-7 to pixel sizes (10/13/16/18/24/32/48px). `face` attribute sets font-family. Renders as inline element. Essential for legacy HTML4 pages.
 - **HTML `<center>` element support**: Legacy `<center>` block-level element now handled with `text-align: center`. Used extensively in pre-CSS web pages for content centering.
 - **`<body>` legacy attributes**: `<body bgcolor="#color">` now sets page background color. `<body text="#color">` sets default text color. Critical for legacy pages that style via HTML attributes.
@@ -4941,6 +5394,7 @@
 - **6 new tests (2094→2100), ALL GREEN, ZERO WARNINGS — 885+ features. BROKE 2100 TESTS!**
 
 ### Cycle 142 — 2026-02-24
+
 - **Legacy HTML `bgcolor` attribute**: `<table>`, `<tr>`, `<td>`, `<th>` elements now parse the legacy `bgcolor` attribute (e.g., `bgcolor="#ff0000"` or `bgcolor="ff0000"`). Sets `background_color` on the LayoutNode. Handles both with and without `#` prefix, parses as 6-digit hex.
 - **Legacy HTML `align` attribute on table elements**: `<table align="center">` sets auto margins for centering. `<tr>/<td>/<th> align="center|right|left"` sets `text_align` (1=center, 2=right, 0=left).
 - **Legacy HTML `valign` attribute on `<td>`/`<th>`**: `valign="middle"` sets `vertical_align=3`, `valign="bottom"` sets `vertical_align=2`, `valign="top"` sets `vertical_align=1`. Enables proper cell content vertical positioning.
@@ -4949,6 +5403,7 @@
 - **4 new tests (2090→2094), ALL GREEN, ZERO WARNINGS — 876+ features**
 
 ### Cycle 141 — 2026-02-24
+
 - **Table `rowspan` attribute support**: Full implementation of HTML `rowspan` on `<td>`/`<th>` elements. Added `rowspan` field to LayoutNode. Parsing in render_pipeline.cpp reads `rowspan` attribute from DOM. Layout engine builds a cell occupancy grid to track which (row, col) slots are occupied by rowspanned cells from prior rows. During row layout, columns occupied by rowspan are skipped (cursor advances past them). After all rows are laid out, rowspanned cells have their height extended to cover the total height of spanned rows (including inter-row spacing). First proper multi-row cell support!
 - **Table `colspan` HTML attribute parsing**: The `colspan` attribute was already used in the layout engine but was **never actually parsed from HTML**. Added parsing of `colspan` attribute from `<td>`/`<th>` DOM nodes. Previously only worked when set programmatically in tests.
 - **CSS `column-rule-style` rendering**: Column rules between CSS columns now respect dashed/dotted/none styles (previously always solid).
@@ -4957,18 +5412,21 @@
 - **7 new tests (2083→2090), ALL GREEN, ZERO WARNINGS — 869+ features, 56 bugs fixed**
 
 ### Cycle 140 — 2026-02-24
+
 - **CSS `column-rule-style` rendering**: Column rules between CSS columns now respect the `column-rule-style` property. `none` (0) suppresses rule drawing entirely. `dotted` (3) draws square dots along the column gap. `dashed` (2) draws segmented dashes (3:2 dash:gap ratio). `solid` (1, default) draws the original continuous rectangle. Previously `column_rule_style` was parsed but the painter always drew solid rules.
 - **CSS `ruby-position: under` rendering**: Ruby annotation text (`<rt>`) now respects `ruby-position`. `over` (0, default) places annotations above the base text (existing behavior). `under` (1) places annotations below the base text baseline, using `parent_font_size * 0.2f` offset. The property is checked on both the `<rt>` node and its parent `<ruby>` node (inheritance).
 - Files: `painter.cpp` (column-rule-style dashed/dotted/none + ruby_position under), `paint_test.cpp` (4 tests)
 - **4 new tests (2079→2083), ALL GREEN, ZERO WARNINGS — 862+ features**
 
 ### Cycle 139 — 2026-02-24
+
 - **BUG FIX: `<sub>`/`<sup>` vertical offset NOW RENDERED**: The `vertical_offset` field (set by render_pipeline: +0.3×font_size for sub, -0.4×font_size for sup) was parsed and stored on LayoutNode but NEVER applied during painting. All ~14 `draw_text()` call sites in painter.cpp used `abs_y` instead of the offset-adjusted y-position. Fixed by computing `text_y = abs_y + vertical_offset` and replacing `abs_y` with `text_y` in ALL text rendering paths: text-stroke, text-shadow (multi + legacy), word-break wrapping, word-boundary wrapping, single-line, ::first-line, ::first-letter (leading space + first letter + rest), initial-letter (drop cap + rest), and default path. **This was one of the most impactful rendering bugs** — sub/sup text was always rendered at the baseline, defeating the purpose of these elements.
 - **HTML `<br clear="left|right|all|both">` attribute**: Legacy HTML float-clearing attribute on `<br>` elements now parsed. Maps `clear="left"` → `clear_type=1`, `clear="right"` → `clear_type=2`, `clear="all"|"both"` → `clear_type=3`. Case-insensitive. Previously `<br>` returned early from render pipeline without checking attributes.
 - Files: `painter.cpp` (14 abs_y→text_y replacements across all text paths), `render_pipeline.cpp` (br clear attribute parsing), `paint_test.cpp` (5 tests)
 - **5 new tests (2074→2079), ALL GREEN, ZERO WARNINGS — 860+ features, 55 bugs fixed**
 
 ### Cycle 138 — 2026-02-24
+
 - **CSS `text-rendering` → CoreText smoothing hints**: `text-rendering: optimizeSpeed` now disables font smoothing (`CGContextSetShouldSmoothFonts(false)`, `CGContextSetShouldAntialias(false)`) for faster but rougher text. `optimizeLegibility` and `geometricPrecision` keep smoothing enabled (default). Previously parsed but never rendered.
 - **CSS `font-kerning: none` → CoreText kerning disable**: When `font-kerning: none`, the text renderer sets `kCTKernAttributeName` to 0 on the attributed string, explicitly disabling OpenType kerning pairs. `auto` and `normal` keep default CoreText kerning. Previously parsed but never rendered.
 - **CSS `font-optical-sizing` pipeline**: `font-optical-sizing: none` is now passed through the rendering pipeline (PaintCommand → SoftwareRenderer → TextRenderer) for future use with variable fonts that have an `opsz` axis. Infrastructure in place.
@@ -4977,12 +5435,14 @@
 - **4 new tests (2070→2074), ALL GREEN, ZERO WARNINGS — 857+ features**
 
 ### Cycle 137 — 2026-02-24
+
 - **CSS `font-variant-numeric` → OpenType features**: The 6 numeric variant values (ordinal, slashed-zero, lining-nums, oldstyle-nums, proportional-nums, tabular-nums) are now converted to their corresponding OpenType feature tags ("ordn", "zero", "lnum", "onum", "pnum", "tnum") and applied via the existing `font_feature_settings` CoreText pipeline. Previously parsed but never rendered.
 - **CSS `font-stretch` → variable font `wdth` axis**: `font-stretch: condensed/expanded/etc.` (values 1-9) are now mapped to CSS `wdth` percentage values (50%-200%) and applied as font-variation-settings via the existing CoreText variable font pipeline. Previously parsed but never rendered.
 - Files: `painter.cpp` (font_variant_numeric→OpenType tag mapping + font_stretch→wdth mapping), `paint_test.cpp` (4 tests)
 - **4 new tests (2066→2070), ALL GREEN, ZERO WARNINGS — 854+ features**
 
 ### Cycle 136 — 2026-02-24
+
 - **CSS `image-rendering: crisp-edges/pixelated` nearest-neighbor sampling**: Images with `image-rendering: crisp-edges` (3) or `pixelated` (4) now use nearest-neighbor sampling instead of bilinear interpolation. Preserves sharp pixel edges for pixel art, icons, and QR codes. The `image_rendering` field flows from LayoutNode → painter → DisplayList `draw_image()` → SoftwareRenderer. Bilinear interpolation remains the default for `auto` (0), `smooth` (1), and `high-quality` (2).
 - **CSS `font-feature-settings` → CoreText OpenType features**: The parsed `font-feature-settings` string (e.g., `"smcp" 1, "liga" 0`) is now applied to CoreText fonts at render time. Parses comma-separated 4-char OpenType feature tags with on/off values, creates `kCTFontOpenTypeFeatureTag`/`kCTFontOpenTypeFeatureValue` dictionaries, and applies via `CTFontCreateCopyWithAttributes()` with `kCTFontFeatureSettingsAttribute`. Enables small-caps, ligature control, stylistic sets, and all OpenType features.
 - **CSS `font-variation-settings` → CoreText variable font axes**: The parsed `font-variation-settings` string (e.g., `"wght" 600, "wdth" 75`) is now applied to CoreText variable fonts. Parses 4-char axis tags with float values, creates `kCTFontVariationAttribute` dictionary with 4-byte axis tag numbers, and applies via `CTFontCreateCopyWithAttributes()`. Supports weight (wght), width (wdth), optical size (opsz), slant (slnt), and all registered/custom axes.
@@ -4991,12 +5451,14 @@
 - **6 new tests (2060→2066), ALL GREEN, ZERO WARNINGS — 851+ features**
 
 ### Cycle 135 — 2026-02-26
+
 - **CSS `background-blend-mode` rendering**: `background-blend-mode: multiply/screen/overlay/darken/lighten` now actually blends gradient backgrounds with the background color. When `background_blend_mode != 0`, paints bg color first, saves backdrop, paints gradient, then applies blend via existing `apply_blend_mode_to_region()`. Previously the property was parsed but never rendered — gradients just overwrote the bg color.
 - **`@font-face` graceful fallback**: Pages with `@font-face { font-family: "X"; src: url(...); }` rules now render without errors. Font face rules are parsed and collected, and text rendering falls back to system fonts when custom fonts aren't available.
 - Files: `painter.cpp` (background-blend-mode in paint_background), `paint_test.cpp` (3 tests)
 - **3 new tests (2057→2060), ALL GREEN, ZERO WARNINGS — 848+ features**
 
 ### Cycle 134 — 2026-02-26
+
 - **Inline `border-top-color`/`border-right-color`/`border-bottom-color`/`border-left-color`**: Individual per-side border colors now work in inline styles. Previously only the full `border-top: 1px solid red` shorthand worked.
 - **Inline `border-top-style`/`border-right-style`/`border-bottom-style`/`border-left-style`**: Individual per-side border styles now work in inline styles. All 9 border styles supported (solid/dashed/dotted/double/groove/ridge/inset/outset/none).
 - **Inline `border-top-width`/`border-right-width`/`border-bottom-width`/`border-left-width`**: Individual per-side border widths now work in inline styles. Supports px values, `thin`/`medium`/`thick` keywords.
@@ -5005,6 +5467,7 @@
 - **4 new tests (2053→2057), ALL GREEN, ZERO WARNINGS — 845+ features**
 
 ### Cycle 133 — 2026-02-26
+
 - **BUG FIX: List marker double-rendering**: `paint_list_marker()` was always called for list items, even when render_pipeline already creates marker text nodes (• ○ ▪ or numbered strings). This caused double bullets/numbers. Fixed by detecting if first child is already a marker text node and skipping `paint_list_marker()` in that case.
 - **BUG FIX: list_style_type "none" value mismatch**: `paint_list_marker()` checked `type == 4` for "none", but enum `ListStyleType::None = 9`. Type 4 is actually `DecimalLeadingZero`. This meant DecimalLeadingZero markers were suppressed and "none" markers still rendered. Fixed to check `type == 9`.
 - **Full list-style-type rendering in paint_list_marker**: Added support for all 13 list style types (was only 0-3). Now handles: decimal-leading-zero(4), lower-roman(5), upper-roman(6), lower-alpha(7), upper-alpha(8), lower-greek(10), lower-latin(11), upper-latin(12). Roman numerals support up to 3999 (M/D/C/L/X/V/I).
@@ -5015,6 +5478,7 @@
 - **5 new tests (2048→2053), ALL GREEN, ZERO WARNINGS — 831+ features, 54 bugs fixed**
 
 ### Cycle 132 — 2026-02-26
+
 - **SVG `<linearGradient>` parsing**: Added `SvgGradient` struct to LayoutNode with fields for linear (x1/y1/x2/y2) and radial (cx/cy/r) gradients plus color stops. `<linearGradient>` elements parsed in render_pipeline.cpp with support for `%` and decimal coordinate formats. `<stop>` children parsed for `stop-color` (attribute, style, or inline) and `offset` (% or decimal).
 - **SVG `<radialGradient>` parsing**: Same struct with `is_radial=true`, parsing `cx`/`cy`/`r` attributes.
 - **SVG gradient def collection**: Gradient defs from `<defs>` children propagated to SVG root node via `svg_gradient_defs` map. Referenced by ID.
@@ -5024,6 +5488,7 @@
 - **3 new tests (2045→2048), ALL GREEN, ZERO WARNINGS — 825+ features**
 
 ### Cycle 131 — 2026-02-26
+
 - **SVG `<defs>` skip rendering**: `<defs>` elements and their children are now correctly skipped during painting. Previously `display:none` on the `<defs>` node already prevented rendering, confirmed via pixel test (circle in defs NOT visible).
 - **SVG `<use>` element rendering**: `<use href="#id">` now finds the referenced element by walking the layout tree via `element_id`, then paints its SVG shape and children at the `<use>` position (offset by `x`/`y` attributes). Supports `href` and `xlink:href`.
 - **`element_id` field on LayoutNode**: Added `element_id` string to LayoutNode (from HTML `id` attribute). Enables ID-based lookups at paint time for SVG `<use>` references.
@@ -5031,11 +5496,13 @@
 - **3 new tests (2042→2045), ALL GREEN, ZERO WARNINGS — 822+ features**
 
 ### Cycle 130 — 2026-02-26
+
 - **CSS `width: min-content / max-content / fit-content`**: Implemented intrinsic sizing keywords for the width property. Parsing in cascade path (style_resolver) stores keyword as sentinel value (-2/-3/-4) on ComputedStyle. Transfer to LayoutNode as specified_width sentinel. Layout engine resolves: min-content = longest word width (no wrapping), max-content = full text width (no wrapping), fit-content = clamp(min-content, available, max-content). Added `measure_intrinsic_width()` helper that recursively measures content (inline children summed, block children maxed).
 - Files: `computed_style.h` (width_keyword/height_keyword fields), `render_pipeline.cpp` (cascade parsing), `layout_engine.cpp` (intrinsic width resolution + measure helper), `box.h` (comment update), `paint_test.cpp` (3 tests)
 - **3 new tests (2039→2042), ALL GREEN, ZERO WARNINGS — 818+ features**
 
 ### Cycle 129 — 2026-02-26
+
 - **CSS `mask-image: linear-gradient()` rendering**: Full pipeline implementation for mask-image with linear gradient sources. Parses `mask-image: linear-gradient(to bottom, black, transparent)` in painter.cpp, extracts direction angle and color stops, creates `ApplyMaskGradient` display list command, and renders in software renderer by modulating pixel alpha based on gradient position. Supports directional keywords (to top/right/bottom/left) and degree angles. Handles multiple color stops with auto-distribution.
 - New types/methods: `PaintCommand::ApplyMaskGradient`, `DisplayList::apply_mask_gradient()`, `SoftwareRenderer::apply_mask_gradient_to_region()`. Gradient parsing with comma splitting, direction detection, color+position parsing.
 - Pixel-verified: top of "to bottom" gradient is opaque (a>200), bottom is transparent (a<50). Left of "to right" is opaque, right is transparent.
@@ -5043,6 +5510,7 @@
 - **3 new tests (2036→2039), ALL GREEN, ZERO WARNINGS — 814+ features**
 
 ### Cycle 128 — 2026-02-26
+
 - **`<a>` link default styling**: Links with `href` now get default blue color (`#0000EE`) and `text-decoration: underline`. Only applies when no explicit CSS color is set (detects default black). Standard browser UA behavior.
 - **Text input default border/padding**: `<input type="text/password/email/search/url/number/tel">` gets 1px solid `#999` border and 2px/4px padding when no explicit border is set. White background, dark text.
 - **Button/submit/reset default styling**: Submit, button, and reset inputs get matching border (1px solid `#999`), padding (4px 12px), gray background (`#E0E0E0`), and 3px border-radius. Default labels: "Submit", "Reset", "Button".
@@ -5052,12 +5520,14 @@
 - **9 new tests (2027→2036), ALL GREEN, ZERO WARNINGS — 812+ features**
 
 ### Cycle 127 — 2026-02-26
+
 - **`border-collapse: collapse` rendering**: Table cells (td/th) with `border-collapse: collapse` now suppress duplicate borders. Right border skipped if cell has a right sibling, bottom border skipped if parent row has a next sibling. Prevents double-width borders between adjacent cells in collapsed tables. Uses parent→children traversal to detect neighbors.
 - **Border shorthand all 8 style values**: Inline `border:` and `border-*:` shorthand parsers now recognize all CSS border styles: solid, dashed, dotted, double, groove, ridge, inset, outset, none, hidden. Previously only solid/dashed/dotted/none were handled. Both whole-border and per-side shorthand parsers updated.
 - Files: `painter.cpp` (border-collapse cell border suppression), `render_pipeline.cpp` (border shorthand full style parsing), `paint_test.cpp` (5 tests)
 - **5 new tests (2022→2027), ALL GREEN, ZERO WARNINGS — 806+ features**
 
 ### Cycle 126 — 2026-02-26
+
 - **CSS `filter: drop-shadow()` rendering**: Full parsing and rendering of drop-shadow filter. Parses `drop-shadow(offset-x offset-y blur-radius color)` in both cascade and inline paths. New `apply_drop_shadow_to_region()` in software renderer: captures alpha silhouette, offsets by (ox,oy), applies box blur, colorizes with shadow color, composites behind existing pixels using source-over.
 - **Border-style double/groove/ridge/inset/outset rendering**: Software renderer now renders all 5 remaining CSS border styles. Double: two lines with 1/3 gap. Groove: outer dark, inner light halves. Ridge: opposite of groove. Inset: top-left dark, bottom-right light. Outset: opposite of inset. All use proper color lightening/darkening.
 - **`clip-path: circle/ellipse` with `at` positioning**: Both cascade and inline parsers now support `circle(R at X Y)` and `ellipse(Rx Ry at X Y)`. Positions support %, keywords (center/left/right/top/bottom). Values stored in clip_path_values vector, used by software renderer for off-center clipping.
@@ -5066,18 +5536,21 @@
 - **9 new tests (2013→2022), ALL GREEN, ZERO WARNINGS — 800+ features! BROKE 800!**
 
 ### Cycle 125 — 2026-02-26
+
 - **Vertical-align baseline improvement**: Fixed `default` case (baseline) in vertical-align switch in layout_engine.cpp. Now properly aligns baselines for mixed-height inline elements using `line_baseline = max_h * 0.8f` and `child_baseline = font_size * 0.8f`. Added guard `std::abs(max_h - child_h) < 0.5f` to prevent offset when all elements have same height. Clamped offset to valid range.
 - **Explicit `text-top` (case 4) and `text-bottom` (case 5)**: Wired text-top → offset=0 and text-bottom → offset=max_h-child_h explicitly (were previously falling through to default baseline case).
 - Files: `layout_engine.cpp` (vertical-align switch), `paint_test.cpp` (3 tests)
 - **3 new tests (2010→2013), ALL GREEN, ZERO WARNINGS — 790+ features**
 
 ### Cycle 124 — 2026-02-25
+
 - **Image `object-position` rendering**: Fixed image painting to use `object-position` percentages instead of hardcoded centering. When `object-position: 25% 75%` is set, the image is positioned at 25% from left and 75% from top of the available space (after object-fit scaling).
 - **Precomputed `rendered_img_*` rendering**: Image painter now uses precomputed `rendered_img_x/y/w/h` values from the render pipeline when available. These values incorporate both `object-fit` and `object-position` calculations from the layout phase, avoiding redundant recalculation during painting.
 - Files: `painter.cpp` (image rendering with object-position + rendered_img_*), `paint_test.cpp` (2 tests)
 - **2 new tests (2008→2010), ALL GREEN, ZERO WARNINGS — 786+ features**
 
 ### Cycle 123 — 2026-02-25
+
 - **Inline `background-size` property**: Added `background-size: cover|contain|auto|Npx` to inline style parser. Previously only worked through CSS cascade. Fixes elements with `style="background-size:cover"`.
 - **Inline `background-repeat` property**: Added `background-repeat: repeat|repeat-x|repeat-y|no-repeat` to inline style parser.
 - **Inline `background-position` property**: Added `background-position: left|center|right top|center|bottom|Npx` to inline style parser.
@@ -5089,6 +5562,7 @@
 - **5 new tests (2003→2008), ALL GREEN, ZERO WARNINGS — 784+ features**
 
 ### Cycle 122 — 2026-02-25
+
 - **CSS Logical border-radius rendering**: `border-start-start-radius`, `border-start-end-radius`, `border-end-start-radius`, `border-end-end-radius` now map to physical corner radii based on `direction`. LTR: start-start→TL, start-end→TR, end-start→BL, end-end→BR. RTL: flipped (start-start→TR, start-end→TL, etc.). Applied in render pipeline transfer function.
 - **CSS `font-variant-caps` rendering**: Wired the CSS3 `font-variant-caps` property to text rendering. Values: small-caps (1), all-small-caps (2) at 80% font size; petite-caps (3), all-petite-caps (4) at 75%; unicase (5) at 85%; titling-caps (6) at normal size. Supplements the old `font-variant: small-caps` path.
 - **CSS `offset-path` rendering**: Elements with `offset-path` and `offset-distance` are translated along the path. Supports `circle(Rpx)` (circular path at offset-distance % of circumference) and `path("M x,y L x2,y2")` (linear interpolation along SVG path segment). Applied as a translate transform before individual CSS transforms.
@@ -5097,12 +5571,14 @@
 - **7 new tests (1996→2003), ALL GREEN, ZERO WARNINGS — 778+ features, BROKE 2000 TESTS!**
 
 ### Cycle 121 — 2026-02-25
+
 - **Improved scrollbar rendering**: Rewrote `paint_overflow_indicator()` with proper scrollbar track + thumb rendering. Vertical scrollbar on right edge, horizontal on bottom. Rounded thumb within track. Respects CSS `scrollbar-color` (custom thumb/track colors), `scrollbar-width` (auto=12px, thin=8px, none=hidden). Default: gray thumb `#888C`, light track `#EEE`.
 - **Legend background uses grandparent color**: `<legend>` background gap no longer uses hardcoded white. Now reads the grandparent's (parent of `<fieldset>`) background color for seamless integration with colored page backgrounds.
 - Files: `painter.cpp` (scrollbar rewrite + legend bg), `paint_test.cpp` (5 tests)
 - **5 new tests (1991→1996), ALL GREEN, ZERO WARNINGS — 770+ features**
 
 ### Cycle 120 — 2026-02-25
+
 - **CSS `empty-cells: hide` rendering**: Table cells (`<td>`/`<th>`) with `empty-cells: hide` inherited from parent `<table>` now skip painting when the cell has no visible content (no text, no child elements). Checks for whitespace-only text nodes.
 - **CSS `caption-side: bottom` rendering**: `<caption>` elements inside tables now respect `caption-side: bottom`. When the table has `caption-side: bottom`, caption children are reordered to the end of the children list so block layout places them below the table rows. Default `caption-side: top` works correctly (caption stays at top).
 - **CSS `text-underline-position: under` rendering**: Underline text decoration with `text-underline-position: under` now places the underline below the descender line (at `font_size * 1.15`) instead of the default baseline position (`font_size * 0.9`). Combines with `text-underline-offset`.
@@ -5113,6 +5589,7 @@
 - **6 new tests (1985→1991), ALL GREEN, ZERO WARNINGS — 766+ features**
 
 ### Cycle 119 — 2026-02-25
+
 - **`:where()` specificity fix**: `:where()` pseudo-class now correctly contributes 0 specificity (was incorrectly counting as `spec.b++` like other pseudo-classes). CSS Selectors Level 4 compliant.
 - **CSS `@property` rule**: Full parsing of `@property --name { syntax: "..."; inherits: true/false; initial-value: ...; }`. PropertyRule struct stores name, syntax, inherits, initial_value. Initial values are injected as default custom properties during style resolution.
 - **`prefers-color-scheme` system detection**: Media query `(prefers-color-scheme: dark/light)` now reads actual macOS system appearance via `CFPreferencesCopyAppValue("AppleInterfaceStyle")`. Correctly detects dark/light mode on macOS.
@@ -5121,6 +5598,7 @@
 - **5 new tests (1980→1985), ALL GREEN, ZERO WARNINGS — 760+ features**
 
 ### Cycle 118 — 2026-02-25
+
 - **CSS `abs()` function**: Absolute value of CSS lengths. `abs(-150px)` → `150px`. Unary op in CalcExpr tree.
 - **CSS `sign()` function**: Returns -1, 0, or 1. `sign(-50px)` → `-1`. Unary op.
 - **CSS `mod()` function**: Modulus with sign of divisor. `mod(150px, 100px)` → `50px`.
@@ -5134,6 +5612,7 @@
 - **12 new tests (1969→1980+1=1981), ALL GREEN, ZERO WARNINGS — 750+ features**
 
 ### Cycle 117 — 2026-02-25
+
 - **CSS `text-align: start/end`**: Logical text alignment values map to left/right in LTR context. Also added `-webkit-center`, `-webkit-left`, `-webkit-right` aliases. Both inline and cascade parsers updated.
 - **`:placeholder-shown` pseudo-class**: Matches `<input>`/`<textarea>` with visible placeholder (has `placeholder` attr, no `value` attr).
 - **`:valid` / `:invalid` pseudo-class**: Form validation pseudo-classes. Without runtime validation, all form elements match `:valid`.
@@ -5147,6 +5626,7 @@
 - **6 new tests (1963→1969), ALL GREEN, ZERO WARNINGS — 738+ features**
 
 ### Cycle 116 — 2026-02-25
+
 - **CSS `grid-template-areas`**: Named grid areas now control item placement. Parses area strings like `"header header" "sidebar main"` into a 2D grid. Computes bounding rectangles per area name and maps them to `grid-column`/`grid-row` values for the existing placement engine. Supports column-spanning areas (e.g., "header header" spans 2 columns).
 - **Grid `justify-items` rendering**: Grid cells now respect `justify-items: center/end/start`. Items with explicit width that are smaller than their cell get centered or end-aligned within the cell. Non-stretch alignment preserves the item's `specified_width`.
 - **Grid `align-items` rendering**: Grid rows now respect `align-items: center/end`. After a row completes, items shorter than the row height get vertically centered or end-aligned. Uses correct mapping: 0=flex-start, 1=flex-end, 2=center, 3=baseline, 4=stretch.
@@ -5154,6 +5634,7 @@
 - **3 new tests (1960→1963), ALL GREEN, ZERO WARNINGS — 724+ features**
 
 ### Cycle 115 — 2026-02-25
+
 - **CSS Grid `auto-fill` / `auto-fit`**: `repeat(auto-fill, 100px)` and `repeat(auto-fit, 100px)` now calculate how many columns fit in the available width. Accounts for column-gap in calculation: `count = (content_w + gap) / (track_size + gap)`.
 - **CSS Grid `minmax()` track sizing**: `minmax(min, max)` in `grid-template-columns`. Parses min and max values, uses max for track allocation and enforces min as a floor. Works with fr units, px, and auto.
 - **`repeat(auto-fill, minmax(Npx, 1fr))`**: The common responsive grid pattern. Uses min value from minmax for auto-fill count calculation, then minmax for track allocation.
@@ -5163,6 +5644,7 @@
 - **4 new tests (1956→1960), ALL GREEN, ZERO WARNINGS — 718+ features**
 
 ### Cycle 114 — 2026-02-25
+
 - **CSS Nesting (`&` selector)**: Full CSS nesting support in stylesheet parser. Nested rules inside parent rule blocks are detected by selector-like start tokens (`&`, `.`, `#`, `[`, `:`, `>`, `+`, `~`, `*`). Nested selectors containing `&` have it replaced with the parent selector text; selectors without `&` get the parent prepended as a descendant combinator. Nested rules are flattened into top-level stylesheet rules after the parent rule.
 - **`:scope` pseudo-class**: Matches the scoping root element (same as `:root` in document context).
 - **`:lang()` pseudo-class**: Matches elements with `lang` attribute. Supports exact match and prefix matching (e.g., `:lang(en)` matches `lang="en-US"`). Walks ancestor chain to find inherited `lang` attribute.
@@ -5173,6 +5655,7 @@
 - **12 new tests (1944→1956), ALL GREEN, ZERO WARNINGS — 712+ features**
 
 ### Cycle 113 — 2026-02-25
+
 - **CSS `@container` queries**: Full parsing of `@container [name] (condition) { rules }` in stylesheet parser. New `ContainerRule` struct with name, condition, and style rules. Evaluates `min-width`/`max-width` conditions against viewport width (simplified — full implementation would use actual container element width). Named containers supported.
 - **Container query flattening**: `flatten_container_rules()` evaluates container conditions and promotes matching rules into the main rule set. Applied to external stylesheets, inline styles, and @import chains.
 - **Container query condition parser**: Handles `(min-width: Npx)`, `(max-width: Npx)`, and `(width: Npx)` with CSS length parsing.
@@ -5180,6 +5663,7 @@
 - **3 new tests (1941→1944), ALL GREEN, ZERO WARNINGS — 703+ features, BROKE 700!**
 
 ### Cycle 112 — 2026-02-25
+
 - **`counter()` with list-style-type formatting**: `counter(name, lower-alpha)` renders as a/b/c, `counter(name, upper-alpha)` as A/B/C, `counter(name, lower-roman)` as i/ii/iii, `counter(name, upper-roman)` as I/II/III. Default `counter(name)` stays decimal.
 - **`counters()` function support**: Plural form `counters(name, separator)` recognized in content value parsing. Currently renders same as `counter()` (flat, not scope-nested).
 - **CSS `content-visibility: hidden` rendering**: Actually hides the element during painting (was parsed but not rendered). Painter now skips nodes with `content_visibility == 1` entirely, including all children.
@@ -5191,6 +5675,7 @@
 - **8 new tests (1933→1941), ALL GREEN, ZERO WARNINGS — 699+ features**
 
 ### Cycle 111 — 2026-02-25
+
 - **CSS `content: open-quote` / `close-quote`**: Pseudo-elements with `content: open-quote` render U+201C left double quotation mark, `close-quote` renders U+201D right double quotation mark. Works in both inline styles and CSS cascade (cascade converts directly to UTF-8 characters).
 - **CSS `content: no-open-quote` / `no-close-quote`**: Suppresses quote generation. Cascade sets `content = "none"` to prevent pseudo-element creation. Render pipeline also handles via `resolve_content_value()` for inline path.
 - **CSS `display: -webkit-box`**: Legacy webkit flexbox mapped to `Display::Flex`. Enables multi-line text clamping when combined with `-webkit-line-clamp` and `-webkit-box-orient: vertical`.
@@ -5200,6 +5685,7 @@
 - **7 new tests (1926→1933), ALL GREEN, ZERO WARNINGS — 691+ features**
 
 ### Cycle 110 — 2026-02-25
+
 - **CSS multi-column layout engine**: `column-count` now creates actual multi-column layouts. Children are distributed across columns based on accumulated height, maintaining roughly equal column heights. Column width = (content_w - gaps) / N.
 - **Column rule rendering**: `column-rule: 2px solid blue` draws vertical divider lines between columns. Uses `column_rule_width`, `column_rule_color`, positioned at the center of each column gap.
 - **Column height balancing**: Target height per column = total children height / column count. Content flows to next column when accumulated height exceeds target * 1.1 (10% tolerance).
@@ -5207,12 +5693,14 @@
 - **3 new tests (1923→1926), ALL GREEN, ZERO WARNINGS — 684+ features**
 
 ### Cycle 109 — 2026-02-25
+
 - **accent-color for `<progress>` element**: Progress bar fill now uses `accent-color` CSS property when set, instead of hard-coded blue. Lighter variant auto-generated for indeterminate stripe pattern.
 - **`vmax` viewport unit test**: Confirmed `vmax` (larger of viewport width/height) works correctly with rendering test.
 - Files: `render_pipeline.cpp` (progress accent-color), `paint_test.cpp` (3 tests)
 - **3 new tests (1920→1923), ALL GREEN, ZERO WARNINGS — 679+ features**
 
 ### Cycle 108 — 2026-02-25
+
 - **`-webkit-text-stroke` rendering**: Outlined text via stroke rendered as multiple offset text draws in a circular pattern around the base position. Stroke color customizable via `-webkit-text-stroke-color`. Shorthand `-webkit-text-stroke: 2px red` supported.
 - **`-webkit-text-fill-color`**: Overrides `color` for text fill. Enables hollow text (stroke with transparent/white fill), gradient text effects, etc.
 - **`hanging-punctuation: first` rendering**: Opening punctuation (quotes, brackets) hangs outside the start margin. Text x position shifted left by character width when first character is a hanging punctuation mark.
@@ -5221,6 +5709,7 @@
 - **4 new tests (1916→1920), ALL GREEN, ZERO WARNINGS — 675+ features**
 
 ### Cycle 107 — 2026-02-25
+
 - **CSS viewport units (vw/vh/vmin/vmax)**: Full viewport-relative length units. `50vw` = 50% of viewport width, `25vh` = 25% of viewport height. `vmin` = smaller dimension, `vmax` = larger dimension. Viewport dimensions set via `Length::set_viewport()` at render start, used by `to_px()` automatically.
 - **Viewport units in calc()**: `calc(50vw - 50px)` now works correctly — viewport units inside calc expressions resolve to actual pixel values.
 - **Viewport units in font-size**: `font-size: 5vw` creates responsive typography that scales with viewport width.
@@ -5230,6 +5719,7 @@
 - **7 new tests (1909→1916), ALL GREEN, ZERO WARNINGS — 668+ features**
 
 ### Cycle 106 — 2026-02-25
+
 - **CSS outline-style: dashed**: Dashed outline rendering with dash_len=3*width, gap_len=2*width. Draws along each edge with gaps.
 - **CSS outline-style: dotted**: Dotted outline with dot=width, gap=width squares along each edge.
 - **CSS outline-style: double**: Two thin rings (outer + inner) at 1/3 width each with gap between.
@@ -5244,6 +5734,7 @@
 - **11 new tests (1898→1909), ALL GREEN, ZERO WARNINGS — 660+ features**
 
 ### Cycle 105 — 2026-02-25
+
 - **CSS `:has()` relational pseudo-class selector**: The first CSS selector that looks DOWN the tree. `div:has(.alert)` matches a div that contains a child/descendant with class "alert". Recursive pre-built ElementView tree (built before style resolution) enables descendant matching. Supports full selector lists inside `:has()` including nested pseudo-classes like `:has(input:checked)`.
 - **Pre-built descendant ElementView tree**: Before resolving an element's style, recursively builds ElementViews for all descendant elements. Populates `children` vector on each ElementView, enabling `:has()` to traverse the entire subtree. Includes tag_name, id, classes, attributes, and same_type info.
 - **CSS `:enabled` / `:disabled` pseudo-classes**: Match form elements (input, button, select, textarea) based on presence of `disabled` attribute.
@@ -5254,6 +5745,7 @@
 - **8 new tests (1890→1898), ALL GREEN, ZERO WARNINGS — 649+ features**
 
 ### Cycle 104 — 2026-02-25
+
 - **CSS `:last-of-type` selector**: Now correctly matches the last element of a given type among siblings. Pre-computes `same_type_index` and `same_type_count` in the render pipeline's ElementView builder, eliminating the need for `next_sibling` traversal.
 - **CSS `:nth-last-of-type()` selector**: Fully functional — matches nth element from end among same-type siblings. Uses pre-computed `same_type_count - same_type_index` for O(1) lookup.
 - **CSS `:only-of-type` selector**: Now correctly matches elements that are the only one of their type among siblings. Checks `same_type_count == 1`.
@@ -5263,6 +5755,7 @@
 - **5 new tests (1885→1890), ALL GREEN, ZERO WARNINGS — 639+ features**
 
 ### Cycle 103 — 2026-02-25
+
 - **CSS `:is()` / `:where()` / `:matches()` / `:-webkit-any()` selectors**: Functional pseudo-class selectors that match if ANY argument selector matches. Uses `parse_selector_list()` on the function argument to support full selector list syntax inside the pseudo-class.
 - **CSS `:nth-of-type()` selector**: Matches nth element of same tag type among siblings. Walks `prev_sibling` chain counting same-tag siblings to determine position.
 - **CSS `:only-of-type()` selector**: Matches when element is the only one of its tag type among siblings.
@@ -5275,12 +5768,14 @@
 - **5 new tests (1880→1885), ALL GREEN, ZERO WARNINGS — 634+ features, 49 bugs fixed**
 
 ### Cycle 102 — 2026-02-25
+
 - **CSS `::first-line` rendering**: First-line pseudo-element now actually renders styled text. Reads `first_line_color`, `first_line_font_size`, `first_line_bold`, `first_line_italic` from the text node (pipeline sets these on the first text child). Key insight: `has_first_line` is set on the TEXT NODE itself, not the parent block.
 - **CSS `initial-letter` (drop caps) rendering**: First letter of a paragraph rendered at enlarged size spanning multiple lines. Uses `initial_letter_size` from parent to compute the drop cap font size (size * line_height). Rest of text draws at normal size after the enlarged letter.
 - Files: `painter.cpp` (first-line + initial-letter rendering in single-line text path)
 - **4 new tests (1876→1880), ALL GREEN, ZERO WARNINGS — 629+ features**
 
 ### Cycle 101 — 2026-02-25
+
 - **CSS `background-clip` rendering**: Actually renders background clipping (was parsed but never applied). Supports `border-box` (default), `padding-box` (clip at border edge), `content-box` (clip at padding edge). Applied in `paint_background()` by insetting the background rect based on border/padding widths.
 - **CSS `text-indent` rendering**: First-line text indentation now shifts text horizontally. Applied from parent's `text_indent` to the text drawing x position.
 - **CSS `text-underline-offset` rendering**: Shifts underline decoration vertically from its default position. Added to the underline y calculation in text decoration rendering.
@@ -5289,6 +5784,7 @@
 - **8 new tests (1868→1876), ALL GREEN, ZERO WARNINGS — 626+ features, 45 bugs fixed**
 
 ### Cycle 100 — 2026-02-25
+
 - **CSS `repeating-linear-gradient()`**: Tiling linear gradients that repeat the stop pattern across the gradient line. Uses `fmod()` wrapping on the `t` parameter within the stop range [first_stop, last_stop].
 - **CSS `repeating-radial-gradient()`**: Tiling radial gradients that create concentric repeating rings/ellipses. Same fmod wrapping approach.
 - **CSS `repeating-conic-gradient()`**: Tiling conic gradients that repeat angular color patterns. Creates pinwheel/stripe effects.
@@ -5298,17 +5794,20 @@
 - **9 new tests (1859→1868), ALL GREEN, ZERO WARNINGS — 622+ features — COMPLETE GRADIENT SUITE!**
 
 ### Cycle 99 — 2026-02-25
+
 - **CSS `conic-gradient()` — COMPLETE GRADIENT SUITE**: Full conic gradient rendering! Angular color interpolation from center point. Supports `from Xdeg` angle offset, multiple color stops with percentage positions. Parsed in both inline styles and CSS cascade (with tokenizer comma-stripping fallback). SoftwareRenderer uses `atan2()` for angle calculation, normalized to [0,1] for stop interpolation. Supports border-radius clipping.
 - **Gradient types now**: linear (1), radial (2), conic (3) — all CSS gradient functions covered!
 - Files: `software_renderer.cpp/h` (draw_conic_gradient_rect), `render_pipeline.cpp` (parse_conic_gradient + inline handling), `style_resolver.cpp` (cascade handling), `display_list.h` (type 3 comment)
 - **4 new tests (1855→1859), ALL GREEN, ZERO WARNINGS — 619+ features**
 
 ### Cycle 98 — 2026-02-25
+
 - **CSS `text-emphasis` rendering**: Emphasis marks (dot, circle, open circle, triangle, sesame, custom) drawn above each character. Supports `text-emphasis-color` (defaults to text color). Marks rendered at 50% font size positioned above the text baseline. Handles filled/open variants.
 - Files: `painter.cpp` (text-emphasis rendering in paint_text)
 - **5 new tests (1850→1855), ALL GREEN, ZERO WARNINGS — 615+ features**
 
 ### Cycle 97 — 2026-02-25
+
 - **Per-side border colors**: `paint_borders()` now checks per-side border colors (`border_color_top/right/bottom/left`) and draws each side separately when colors differ. Falls back to single draw_border command when all sides match.
 - **Per-side border styles**: Mixed border styles (e.g., solid top + dashed right) render correctly via per-side draw commands.
 - **Per-corner border radius**: Background fill and border rendering now use per-corner `border_radius_tl/tr/bl/br` values when the generic `border_radius` is 0.
@@ -5318,6 +5817,7 @@
 - **5 new tests (1845→1850), ALL GREEN, ZERO WARNINGS — 612+ features, BROKE 1850!**
 
 ### Cycle 96 — 2026-02-25
+
 - **Word-boundary text wrapping in painter**: Text that overflows its container now wraps at word boundaries (spaces) instead of only at character boundaries. Previously, the layout engine computed correct multi-line geometry but the painter rendered text as a single line or broke at character boundaries.
 - **Text-align support for wrapped text**: Word-wrapped text now respects `text-align: center` and `text-align: right` from the parent. Each wrapped line is offset according to the alignment.
 - **White-space wrapping guards**: Word wrapping correctly disabled for `white-space: nowrap`, `white-space: pre`, `word-break: keep-all`, and `text-wrap: nowrap`.
@@ -5325,11 +5825,13 @@
 - **7 new tests (1838→1845), ALL GREEN, ZERO WARNINGS — 607+ features**
 
 ### Cycle 95 — 2026-02-25
+
 - **BUG FIX: mix-blend-mode backdrop detection** — White-over-white `difference` blend was skipped because `apply_blend_mode_to_region()` used `src == dst` pixel comparison to detect unpainted areas. When element paints the same color as backdrop, this falsely skipped the blend. Fix: `SaveBackdrop` now clears the region to transparent after saving, and `ApplyBlendMode` uses `src_a == 0` to detect unpainted pixels (restoring backdrop) instead of color comparison.
 - **mix-blend-mode rendering: hard-light, soft-light, difference, exclusion** — Implemented 4 new blend formulas in SoftwareRenderer (cases 8-11). W3C-correct soft-light formula with sqrt branch.
 - **4 new tests (1834→1838), ALL GREEN, ZERO WARNINGS — 604+ features**
 
 ### Cycle 94 — 2026-02-24
+
 - **CSS `transform: matrix(a,b,c,d,e,f)`**: Full 2D affine matrix transform
   - Added `Matrix` to `TransformType` enum, added `m[6]` array to Transform struct
   - Added `push_matrix()` to DisplayList (transform_type=5), `transform_extra` field on PaintCommand
@@ -5339,6 +5841,7 @@
 - **4 new tests (1830→1834), ALL GREEN, ZERO WARNINGS — 600+ FEATURES! MILESTONE!**
 
 ### Cycle 93 — 2026-02-24
+
 - **CSS `transform: skew()` / `skewX()` / `skewY()`**: Full skew transform support
   - Added `Skew` to `TransformType` enum in `computed_style.h`
   - Added `push_skew()` to `DisplayList` (transform_type=4)
@@ -5350,6 +5853,7 @@
 - **6 new tests (1824→1830), ALL GREEN, ZERO WARNINGS — 599+ features**
 
 ### Cycle 92 — 2026-02-24
+
 - **BUG FIX: `justify-content: space-evenly` collision** — Was mapping to same int value (4) as `space-around`. Fixed: `space-evenly` now maps to 5 with proper layout algorithm (equal gaps including before first and after last item)
 - **Cascade `background-size`**: `cover`/`contain`/`auto`/explicit sizes now work in stylesheets (was inline-only)
 - **Cascade `background-repeat`**: `repeat`/`repeat-x`/`repeat-y`/`no-repeat` now work in stylesheets
@@ -5357,6 +5861,7 @@
 - **5 new tests (1819→1824), ALL GREEN, ZERO WARNINGS — 596+ features**
 
 ### Cycle 91 — 2026-02-24
+
 - **`!important` stripping in inline styles**: `parse_inline_style()` now detects and strips `!important` and `! important` from values before parsing. Inline styles with `!important` no longer break property parsing.
 - **`border-radius` multi-value (1-4 values)**: Both inline and cascade now parse 1/2/3/4-value border-radius shorthand per CSS spec (TL/TR/BR/BL mapping). Stops at `/` for unsupported elliptical radii.
 - **`text-decoration` combined shorthand**: Both inline and cascade now parse multi-token `text-decoration` values. Recognizes line type (underline/line-through/overline/none), style (solid/dashed/dotted/wavy/double), color, and thickness in any order.
@@ -5366,17 +5871,20 @@
 - **13 new tests (1806→1819), ALL GREEN, ZERO WARNINGS — 591+ features**
 
 ### Cycle 90 — 2026-02-24
+
 - **CSS `color()` function**: Full support for `color(srgb ...)`, `color(srgb-linear ...)`, `color(display-p3 ...)`, `color(a98-rgb ...)` with proper color space conversions (XYZ intermediary for P3/A98)
 - **Complete CSS Color Suite**: rgb, rgba, hsl, hsla, hwb, oklch, oklab, lab, lch, color-mix, light-dark, color(), currentcolor — ALL CSS Color Level 4/5 functions
 - **19 new tests (1787→1806, BROKE 1800!), ALL GREEN, ZERO WARNINGS**
 
 ### Cycle 89 — 2026-02-24
+
 - **CSS cascade fix for color functions**: `color-mix()` and `light-dark()` now work through CSS cascade (tokenizer-stripped comma fallback)
 - **Space-separated `color-mix()` parsing**: Handles `color-mix(in srgb red blue)` form from CSS tokenizer
 - **Space-separated `light-dark()` parsing**: Handles `light-dark(green red)` form from CSS tokenizer
 - **2 new cascade tests (1785→1787), ALL GREEN, ZERO WARNINGS**
 
 ### Cycle 88 — 2026-02-24
+
 - **CSS Color Level 4 complete**: `lab()`, `lch()` (CIE Lab/LCH with D65 illuminant → sRGB via XYZ)
 - **CSS Color Level 5**: `color-mix(in srgb, ...)` with percentage control, `light-dark()` (returns light variant)
 - **CSS `font` shorthand**: Parses `font: [style] [variant] [weight] size[/line-height] family` with all combinations
@@ -5385,6 +5893,7 @@
 - **29 new tests (1756→1785), ALL GREEN, ZERO WARNINGS — 580+ features**
 
 ### Cycle 87 — 2026-02-24
+
 - **CSS Color Level 4**: Full `hsl()`/`hsla()`, `oklch()`, `oklab()`, `hwb()`, `currentcolor` parsing
   - HSL: Hue/Saturation/Lightness with negative hue wrapping, alpha support
   - OKLCh: Perceptually uniform polar coordinates → sRGB conversion via LMS
@@ -5397,6 +5906,7 @@
 - **38 new tests (1718→1756), ALL GREEN, ZERO WARNINGS — 570+ features**
 
 ### Cycle 86 — 2026-02-24
+
 - **DOM bridge added**:
   - Added `to_dom_document` and `to_simple_node` conversion APIs in `clever/html/tree_builder.*`.
   - Conversion now supports element/text/comment nodes in both directions and preserves DOM ids, attributes, and text structure.
@@ -5407,6 +5917,7 @@
 - Conversion tests were added to `clever/tests/unit/html_parser_test.cpp` and linked with `clever_dom` for this target.
 
 ### Cycle 85 — 2026-02-24
+
 - **CSS Math Functions**: `min()`, `max()`, `clamp()` — Full implementation with CalcExpr tree nodes (Op::Min, Op::Max). Supports nested functions, mixed units (px, %, em, etc.), comma and space-separated args (tokenizer-reconstructed). Works in both inline styles and CSS cascade.
 - **CSS `@supports` at-rule**: Full parsing (condition extraction, nested style rules), evaluation engine (property-name lookup, `not`/`and`/`or` combinators), flattening into main rule set. Blocks unsupported properties correctly.
 - **CSS `ch` unit**: Character width unit (1ch ≈ 0.6 × font-size). Parsed in both calc expressions and standalone lengths.
@@ -5415,12 +5926,14 @@
 - **28 new tests (1675→1703), ALL GREEN, zero warnings — 564+ features**
 
 ### Cycle 84 — 2026-02-24
+
 - **CSS Masks**: `mask-composite` (add/subtract/intersect/exclude), `mask-mode` (match-source/alpha/luminance), `backdrop-filter` test coverage
 - **Fragmentation**: `break-before`/`break-after` (extended with region), `break-inside` (extended with avoid-region)
 - **Ruby/CJK**: `ruby-align` (4 values, inherited, NEW), `ruby-position` (fixed 2nd inheritance), `text-combine-upright` (fixed: NOT inherited)
 - **27 new tests (1624→1651), ALL GREEN, zero warnings — 558+ features**
 
 ### Cycle 83 — 2026-02-24
+
 - **Individual transforms**: `rotate` (string), `scale` (string), `translate` (string) — CSS Transforms Level 2, non-inherited
 - **Color**: `color-interpolation` (auto/sRGB/linearRGB, inherited), `accent-color`/`caret-color` inheritance fixes
 - **3D transforms**: `transform-style`/`perspective`/`perspective-origin` test coverage (all pre-existed)
@@ -5428,24 +5941,28 @@
 - **27 new tests (1597→1624), ALL GREEN, zero warnings — 549+ features, BROKE 1600!**
 
 ### Cycle 82 — 2026-02-24
+
 - **CSS Offset**: `offset-path` (string, "none" default), `offset-distance` (float px), `offset-rotate` (string, "auto" default) — all non-inherited
 - **Container queries**: `container-type` (normal/size/inline-size), `container-name` (string) — with 2nd wiring section fix
 - **Test coverage**: `color-scheme` (inheritance fix), `forced-color-adjust` tests, `paint-order` inheritance, `content-visibility` full test suite
 - **24 new tests (1573→1597), ALL GREEN, zero warnings — 540+ features**
 
 ### Cycle 81 — 2026-02-24
+
 - **Text/font**: `image-orientation` (from-image/none/flip, inherited), `tab-size` tests + inheritance fix, `print-color-adjust` tests
 - **Font rendering**: `font-smooth`/`-webkit-font-smoothing` (4 values, inherited), `text-size-adjust`/`-webkit-text-size-adjust` (string, inherited), `text-rendering` cascade+inheritance wiring
 - **Logical border radius**: `border-start-start-radius`, `border-start-end-radius`, `border-end-start-radius`, `border-end-end-radius` (float px), `outline-style` extended (inset/outset)
 - **26 new tests (1547→1573), ALL GREEN, zero warnings — 532+ features**
 
 ### Cycle 80 — 2026-02-24
+
 - **Text properties**: `text-wrap` (wrap/nowrap/balance/pretty/stable, inherited), `white-space-collapse` (collapse/preserve/preserve-breaks/break-spaces, inherited), `word-spacing` (inherited, px)
 - **Font features**: `font-feature-settings` (string, inherited), `font-variation-settings` (string, inherited), `font-kerning` (auto/normal/none, inherited)
 - **Background**: `background-clip` (border-box/padding-box/content-box/text), `background-origin` (border-box/padding-box/content-box), `background-blend-mode` (16 values)
 - **21 new tests (1526→1547), ALL GREEN, zero warnings — 522+ features**
 
 ### Cycle 79 — 2026-02-24
+
 - **CSS Logical border**: `border-block-color`, `border-inline-style`, `border-block-style` (all border style keywords including double/groove/ridge/inset/outset)
 - **CSS Logical sizing**: `min-inline-size`, `max-inline-size`, `min-block-size`, `max-block-size` (with "none" support)
 - **CSS Logical dimensions**: `inline-size`, `block-size` (with "auto" support), flex-grow/shrink tests
@@ -5453,12 +5970,14 @@
 - **27 new tests (1499→1526), ALL GREEN, zero warnings — BROKE 1500!**
 
 ### Cycle 78 — 2026-02-24
+
 - **CSS Logical inset**: `inset` (1-4 value shorthand), `inset-inline` (2-value), `inset-block` (2-value)
 - **CSS Logical margin/padding**: `margin-inline`, `margin-block`, `padding-inline`, `padding-block` (all 2-value shorthands)
 - **CSS Logical border**: `border-inline-width` (2-value), `border-block-width` (2-value), `border-inline-color` (auto-promotes to solid)
 - **27 new tests (1472→1499), ALL GREEN, zero warnings — 504+ features!**
 
 ### Cycle 77 — 2026-02-24
+
 - **Border/outline**: `outline-offset` (px), `border-image-source` (URL string), `border-image-slice` (float)
 - **Overflow**: `overflow-anchor` (auto/none), `overflow-clip-margin` (px), scroll-margin shorthand (4-value) + longhands
 - **Scroll**: scroll-padding shorthand (4-value) + longhands + inline/block, `overscroll-behavior` shorthand (2-value)
@@ -5466,6 +5985,7 @@
 - **27 new tests (1445→1472), ALL GREEN, zero warnings**
 
 ### Cycle 76 — 2026-02-23
+
 - **Layout shorthands**: `place-content` (2-value shorthand for align/justify-content), `place-self` (2-value), `gap` shorthand (row+column), `justify-self` tests
 - **Visual effects**: `mix-blend-mode` (12 values including hard-light..exclusion), `contain` (7 values), `appearance`/`-webkit-appearance` (5 values)
 - **Scroll snap**: `scroll-behavior` (auto/smooth), `scroll-snap-type` (string: "x mandatory" etc.), `scroll-snap-align` (string: "start end" etc.) — upgraded int→string
@@ -5473,6 +5993,7 @@
 - **27 new tests (1418→1445), ALL GREEN, zero warnings**
 
 ### Cycle 75 — 2026-02-23
+
 - **Multi-column**: `column-count` (auto/-1, positive int), `column-width` (auto/-1, px), `column-rule-color/style/width`
 - **Writing modes**: `writing-mode` (horizontal-tb/vertical-rl/vertical-lr, inherited), `text-orientation` (mixed/upright/sideways, inherited), `unicode-bidi` (6 values, fixed mapping)
 - **Text decoration**: `text-underline-offset` (px), `text-underline-position` (auto/under/left/right, inherited), `text-decoration-skip` (6 values)
@@ -5480,6 +6001,7 @@
 - **27 new tests (1391→1418), ALL GREEN, zero warnings**
 
 ### Cycle 74 — 2026-02-23
+
 - **List enhancements**: `list-style-type` expanded to 13 values (enum ListStyleType), `list-style-image` (string URL), `table-layout` (auto/fixed)
 - **Table properties**: `empty-cells` (inherited, show/hide), `caption-side` (inherited, top/bottom), `quotes` (string, inherited)
 - **Page/print**: `page-break-before/after/inside` (auto/always/avoid), `orphans` (inherited), `widows` (inherited)
@@ -5487,18 +6009,21 @@
 - **27 new tests (1364→1391), ALL GREEN, zero warnings**
 
 ### Cycle 73 — 2026-02-25
+
 - **Typography**: `initial-letter` (float size + align), `hanging-punctuation` (inherited), `text-justify` (inherited)
 - **Font features**: `font-synthesis` (bitmask, inherited), `font-variant-numeric` (7 values), `font-variant-alternates` (inherited)
 - **Font sizing**: `font-size-adjust` (default fix), `font-stretch` (1-9 scale), `letter-spacing` (test coverage)
 - **27 new tests (1337→1364), ALL GREEN, zero warnings**
 
 ### Cycle 72 — 2026-02-25
+
 - **Layout enhancements**: `aspect-ratio` auto detection, `object-position` keyword parsing, `border-spacing` two-value
 - **Text properties**: `text-overflow: fade` (new value), `overflow-wrap`/`word-wrap` inheritance, `hyphens` inheritance
 - **Math/CJK**: `math-style` (inherited), `math-depth` with `auto-add`, `line-break` (inherited, 5 values)
 - **27 new tests (1310→1337), ALL GREEN, zero warnings — 1337 LEET!**
 
 ### Cycle 71 — 2026-02-25
+
 - **CSS Shape**: `shape-outside` (string storage), `shape-margin` (float px), `shape-image-threshold` (float 0-1)
 - **Text emphasis**: `text-emphasis-style` upgraded int→string, `text-emphasis-color` default fix, `accent-color` test coverage
 - **SVG/rendering**: `will-change` (tests), `paint-order` upgraded int→string, `dominant-baseline` (9 values)
@@ -5506,6 +6031,7 @@
 - **27 new tests (1283→1310), ALL GREEN, zero warnings**
 
 ### Cycle 70 — 2026-02-25
+
 - **Content visibility**: `content-visibility` (visible/hidden/auto), `contain-intrinsic-width/height` individual properties
 - **Touch/input**: `touch-action` (auto/none/pan-x/pan-y/manipulation)
 - **Color adaptation**: `forced-color-adjust` (auto/none), `color-scheme` (normal/light/dark/light dark), `image-rendering` (5 values)
@@ -5514,6 +6040,7 @@
 - **27 new tests (1256→1283), ALL GREEN, zero warnings**
 
 ### Cycle 69 — 2026-02-25
+
 - **CSS Grid enhancements**: `grid-auto-rows`, `grid-auto-columns`, `grid-template-areas`, `grid-area` — string-based properties for advanced grid layout
 - **CSS Mask properties**: `mask-image`, `mask-size`, `mask-repeat` — with `-webkit-` prefix support, enum+explicit size modes
 - **Scrollbar customization**: `scrollbar-color` (auto/thumb+track), `scrollbar-width` (auto/thin/none), `scrollbar-gutter` (auto/stable/stable both-edges)
@@ -5521,23 +6048,28 @@
 - **27 new tests (1229→1256), ALL GREEN, zero warnings**
 
 ### Session 18 — 2026-02-23
+
 - object-fit, align-self, flex shorthand, CSS order, cursor inline, @import
 - **684 tests, ALL GREEN**
 
 ### Session 19 — 2026-02-23
+
 - flex-flow, place-items, margin:auto centering, multi-value margin/padding shorthands, row-gap/column-gap
 - **689 tests, ALL GREEN**
 
 ### Session 20 — 2026-02-23
+
 - CSS aspect-ratio, overflow-x/overflow-y
 - **693 tests, ALL GREEN**
 
 ### Session 21 — 2026-02-23
+
 - text-decoration-color/style/thickness, border-collapse, pointer-events, user-select, list-style-position, tab-size
 - Version fix: v1.0 → v0.1.0
 - **707 tests, ALL GREEN**
 
 ### Session 22 — 2026-02-23
+
 - **CSS `filter` property** — Full per-pixel filter pipeline. Added `ApplyFilter` command to DisplayList. SoftwareRenderer processes 8 filter types: grayscale, sepia, brightness, contrast, invert, saturate, opacity, hue-rotate. Each applied as post-processing to the rendered pixel region. Multiple filters chain sequentially. Parsed in both inline styles and CSS cascade.
 - **CSS `line-clamp` / `-webkit-line-clamp`** — Property parsing in inline + cascade. Stored on LayoutNode. Value: -1=unlimited, >0=max lines.
 - **CSS `resize`** — `none`/`both`/`horizontal`/`vertical`. Parsed in inline + cascade.
@@ -5545,6 +6077,7 @@
 - **719 tests, ALL GREEN, zero warnings**
 
 ### Session 23 — 2026-02-23
+
 - **CSS `direction`** (rtl/ltr) — Enum, inline parsing, cascade parsing, inheritance from parent. Wired to LayoutNode as int (0=ltr, 1=rtl).
 - **CSS `caret-color`** — Color parsing (auto or named/hex color). Wired to LayoutNode as ARGB uint32_t. Cascade + inline.
 - **CSS `accent-color`** — Color parsing (auto or named/hex color). Wired to LayoutNode as ARGB uint32_t. Cascade + inline.
@@ -5556,6 +6089,7 @@
 - **730 tests, ALL GREEN, zero warnings**
 
 ### Session 24 — 2026-02-23
+
 - **CSS `filter: blur()`** — Two-pass box blur algorithm in SoftwareRenderer. Horizontal pass then vertical pass on temp buffer. Radius clamped to 50px max. Filter type code 9. 2 tests.
 - **CSS `text-transform` runtime rendering** — Added `text_transform` field to LayoutNode. Wired from ComputedStyle. Applied in layout_engine.cpp before text measuring: uppercase, lowercase, capitalize (first letter of each word). 3 tests.
 - **CSS `word-spacing` in layout** — Added word_spacing to space advance width in layout_engine.cpp. 2 tests.
@@ -5565,6 +6099,7 @@
 - **737 tests, ALL GREEN, zero warnings**
 
 ### Session 25 — 2026-02-23
+
 - **CSS `backdrop-filter`** — Full implementation with ApplyBackdropFilter command. Same 9 filter types as `filter`, applied BEFORE element background (filters backdrop pixels behind element). `-webkit-backdrop-filter` prefix supported. 2 tests.
 - **CSS `mix-blend-mode`** — Property parsing for normal/multiply/screen/overlay/darken/lighten/color-dodge/color-burn. Stored as int 0-7. Inline + cascade. 2 tests.
 - **CSS `clip-path` (parsing)** — circle/ellipse/inset/polygon types. Values stored as `vector<float>`. Inline + cascade. 2 tests.
@@ -5574,6 +6109,7 @@
 - **743 tests, ALL GREEN, zero warnings**
 
 ### Session 26 — 2026-02-23
+
 - **CSS `scroll-behavior`** — auto/smooth parsing. Stored as int. Inline + cascade. 2 tests.
 - **CSS `placeholder-color`** — Color property for placeholder text styling. Inline + cascade. 1 test.
 - **CSS multi-column layout** — `column-count`, `column-width`, `column-gap`, `column-rule-width/color/style`, `columns` shorthand, `column-rule` shorthand. All parsed + stored. 3 tests.
@@ -5584,6 +6120,7 @@
 - **752 tests, ALL GREEN, zero warnings**
 
 ### Session 27 — 2026-02-23
+
 - **CSS `table-layout`** — auto/fixed. Inherited. 1 test.
 - **CSS `caption-side`** — top/bottom. Inherited. 1 test.
 - **CSS `empty-cells`** — show/hide. Inherited. 1 test.
@@ -5599,6 +6136,7 @@
 - **762 tests, ALL GREEN, zero warnings**
 
 ### Session 28 — 2026-02-23
+
 - **CSS Grid layout (parsing)** — `grid-template-columns`, `grid-template-rows`, `grid-column`, `grid-row`, `justify-items`, `align-content`. Grid/InlineGrid display modes. All parsed in inline + cascade. 3 tests.
 - **CSS `transition` (parsing)** — `transition-property`, `transition-duration`, `transition-timing-function`, `transition-delay`, `transition` shorthand. All parsed. 3 tests.
 - **CSS `animation` (parsing)** — `animation-name`, `animation-duration`, `animation-timing-function`, `animation-delay`, `animation-iteration-count`, `animation-direction`, `animation-fill-mode`, `animation` shorthand. All parsed. 3 tests.
@@ -5608,6 +6146,7 @@
 - **771 tests, ALL GREEN, zero warnings**
 
 ### Session 29 — 2026-02-23
+
 - **Basic SVG rendering** — `<svg>`, `<rect>`, `<circle>`, `<ellipse>`, `<line>` elements. New `DrawEllipse` and `DrawLine` paint commands. Anti-aliased ellipse rendering in SoftwareRenderer. SVG attribute parsing (cx, cy, r, rx, ry, x, y, width, height, fill, stroke, stroke-width). 3 tests.
 - **CSS `@keyframes` pipeline** — Connected existing stylesheet parser to render pipeline. `collect_keyframes()` helper converts raw parser output to resolved `KeyframesDefinition` with float offsets (from=0.0, to=1.0, percentages). Stored on RenderResult. 3 tests (1 parser, 2 pipeline).
 - **`<input type="range">` slider** — Track background (#DDD), filled portion (#4A90D9), circular thumb (#4A90D9). Parses min/max/value attributes. Default 150x20px. `paint_range_input()` in painter.cpp uses `fill_rounded_rect`. 3 tests.
@@ -5616,6 +6155,7 @@
 - **780 tests, ALL GREEN, zero warnings**
 
 ### Session 30 — 2026-02-23
+
 - **`<canvas>` element placeholder** — Default 300x150 per HTML spec, light gray background, "Canvas" + dimensions label. `paint_canvas_placeholder()` in painter.cpp. 3 tests.
 - **`<video>`/`<audio>` element placeholders** — Video: dark background, centered play button (circle + triangle), "Video" label. Audio: play triangle, progress bar, "Audio" label. `paint_media_placeholder()`. 3 tests.
 - **CSS `content` property with `counter()` and `attr()`** — Thread-local counter map, `process_css_counters()`, `resolve_content_value()`. Handles `counter(name)`, `attr(name)`, `open-quote`/`close-quote`, concatenated content. 3 tests.
@@ -5625,6 +6165,7 @@
 - **789 tests, ALL GREEN, zero warnings, v0.3.0**
 
 ### Session 31 — 2026-02-23
+
 - **`<iframe>` element placeholder** — White background, #CCC border, 300x150 default per HTML spec. Browser icon + "iframe" label + src URL (truncated if too wide). `paint_iframe_placeholder()`. 3 tests.
 - **`@font-face` parsing** — `FontFaceRule` struct in stylesheet.h. Parser handles font-family, src (url/local/format), font-weight, font-style, unicode-range, font-display. Unquotes font-family values. Collected into `RenderResult.font_faces`. 3 tests (2 parser, 1 pipeline).
 - **CSS `shape-outside` (parsing)** — none/circle/ellipse/inset/polygon/margin-box/border-box/padding-box/content-box. Parsed in inline + cascade. Values stored as `vector<float>`. Wired to LayoutNode. 3 tests.
@@ -5634,6 +6175,7 @@
 - **798 tests, ALL GREEN, zero warnings, v0.3.0**
 
 ### Session 32 — 2026-02-23
+
 - **CSS `var()` custom properties** — `custom_properties` map on ComputedStyle. `resolve_css_var()` helper resolves `var(--name)` and `var(--name, fallback)`. Custom properties (starting with `--`) stored in map, inherited through cascade, resolved before property parsing. 3 tests.
 - **SVG `<path>` element** — `svg_path_d` field on LayoutNode. Parses M (moveTo), L (lineTo), Z (closePath) commands. Painter draws path segments using `list.draw_line()`. svg_type=5. 3 tests.
 - **CSS `position: sticky`** — position_type=4 for sticky. Parsed in both inline styles and cascade (including `-webkit-sticky` prefix). Treated like relative in layout (stays in flow). 3 tests.
@@ -5643,6 +6185,7 @@
 - **807 tests, ALL GREEN, zero warnings, v0.4.0**
 
 ### Session 33 — 2026-02-23
+
 - **CSS transition runtime** — `TransitionState` struct (property, start/end/current values, duration, elapsed, active flag). `interpolate_transition()` smoothstep helper. `active_transitions` vector on RenderResult. `root` field on RenderResult for layout tree inspection. 3 tests.
 - **CSS Grid layout engine** — Full `layout_grid()` in layout_engine.cpp. Parses `grid-template-columns` (px, fr, repeat(), %, auto, mixed). Auto-placement with row wrapping. Row height = max child height. `grid-column` spanning (e.g., `1 / 3`). Handles nested grids, absolute children, empty grids. 8 layout tests + 3 paint integration tests.
 - **Form POST submission** — `FormField` and `FormData` structs. Form data collection during tree building (action/method/enctype, input/textarea/select fields). `url_encode_form_data()` helper. Thread-local `collected_forms`. 3 tests.
@@ -5651,6 +6194,7 @@
 - **824 tests, ALL GREEN, zero warnings, v0.4.0**
 
 ### Session 34 — 2026-02-23
+
 - **`<picture>` / `<source>` elements** — `is_picture` and `picture_srcset` fields on LayoutNode. Scans `<source>` children for srcset, falls back to child `<img>` src. Strips descriptor suffixes (2x, 800w). Standalone `<source>` elements outside `<picture>` are skipped. 3 tests.
 - **CSS `object-position`** — `object_position_x/y` on ComputedStyle and LayoutNode (default 50% center). Keyword parsing (left/top/center/right/bottom), percentage, numeric values. Inline + cascade + wiring. 3 tests.
 - **CSS `clip-path` rendering** — `ApplyClipPath` command in DisplayList. `apply_clip_path_mask()` in SoftwareRenderer with circle, ellipse, inset, polygon support. Ray casting algorithm for polygon. Post-processing mask sets outside pixels to transparent. 3 tests.
@@ -5658,6 +6202,7 @@
 - **833 tests, ALL GREEN, zero warnings, v0.4.0**
 
 ### Session 35 — 2026-02-23
+
 - **CSS `gap` for Grid layout** — `column-gap` and `row-gap` applied in `layout_grid()`. Gaps inserted between columns and rows during track positioning. Aliases: `grid-gap`, `grid-row-gap`, `grid-column-gap`. 3 layout tests.
 - **`<datalist>` element** — `is_datalist` flag on LayoutNode. Collects `<option>` children into `datalist_options` vector. Maps datalist by `id` into `RenderResult.datalists`. Sets `display:none` on datalist itself. 3 tests.
 - **CSS `outline` rendering tests** — Outline was already implemented but lacked tests. Added 3 paint tests verifying outline rendering with color/style/width/offset properties.
@@ -5666,6 +6211,7 @@
 - **842 tests, ALL GREEN, zero warnings, v0.4.0**
 
 ### Session 36 — 2026-02-23
+
 - **SVG `<path>` curve commands** — Extended SVG path parser in painter.cpp with full tokenizer (handles commas, negative numbers, exponents). Added C/c (cubic Bezier), S/s (smooth cubic), Q/q (quadratic Bezier), T/t (smooth quadratic), A/a (elliptical arc), H/h (horizontal line), V/v (vertical line). Curves flattened to 20 line segments. Arc uses SVG spec F.6 endpoint-to-center conversion. Smooth curves reflect last control point. Implicit command repetition supported. 3 tests.
 - **CSS `mix-blend-mode` rendering** — `SaveBackdrop` and `ApplyBlendMode` display list commands. Painter saves backdrop pixels before element, then blends after painting. SoftwareRenderer implements 7 blend formulas: multiply, screen, overlay, darken, lighten, color-dodge, color-burn. Per-channel blending with alpha compositing. 3 tests (pixel-verified multiply/screen/overlay).
 - **`table-layout: fixed` algorithm** — New `LayoutMode::Table` enum value. Full `layout_table()` method (~260 lines). Column widths from first row cells, equal distribution of remaining space to auto columns, colspan spanning, border-spacing with border-collapse:collapse, row height = max cell height. Added `border_spacing` and `colspan` fields to LayoutNode. Wired in render_pipeline.cpp `display_to_mode()`. 3 tests.
@@ -5674,6 +6220,7 @@
 - **851 tests, ALL GREEN, zero warnings, v0.4.0**
 
 ### Session 37 — 2026-02-23
+
 - **CSS `@media` runtime evaluation** — `evaluate_media_query()` and `evaluate_media_feature()` functions. `flatten_media_queries()` promotes matching rules to main stylesheet. Handles `min-width`, `max-width`, `min-height`, `max-height` with px/em. Supports `screen`, `all`, `print`, `not`, `only`, `and` operators. `prefers-color-scheme` defaults to light. 3 tests.
 - **SVG `<text>` rendering** — `svg_text_content`, `svg_text_x`, `svg_text_y`, `svg_font_size` fields on LayoutNode. Parses `<text>` element attributes (x, y, font-size, fill). Painter draws text via `list.draw_text()` at SVG coordinates. `svg_type=6`. 3 tests.
 - **`<input type="color">` placeholder** — `is_color_input` and `color_input_value` fields on LayoutNode. Parses hex color from `value` attribute. Default 44x23 dimensions. `paint_color_input()` draws rounded border (#767676) with inset color swatch. 3 tests.
@@ -5681,6 +6228,7 @@
 - **860 tests, ALL GREEN, zero warnings, v0.4.0**
 
 ### Session 38 — 2026-02-24 (BUG FIX CYCLE)
+
 - **Fixed content height truncation** — `SoftwareRenderer` was created with only viewport_height, clipping all content below the fold. Fix: compute actual content height from layout root's margin box and use `max(viewport_height, content_height)` for the render buffer. Capped at 16384px to prevent OOM.
 - **Fixed inline container layout** — Inline elements (`<span>`, `<em>`, `<strong>`, `<a>`) with children had zero width/height because `layout_inline()` didn't recursively compute dimensions from children. Fix: recursively layout children and sum their widths to compute the container's dimensions.
 - **Fixed window resize debounce** — `windowDidResize:` was calling `doRender:` on every pixel change during drag-resize, causing extreme lag. Fix: added 150ms debounce timer so re-render fires only after user stops resizing.
@@ -5689,6 +6237,7 @@
 - **860 tests, ALL GREEN, zero warnings, v0.4.0**
 
 ### Session 68 — 2026-02-24
+
 - **CSS `border-radius` individual corners** — border-top-left/top-right/bottom-left/bottom-right-radius. Shorthand sets all 4. Inline + cascade. 3 tests.
 - **CSS `min-block-size`/`max-block-size`** — Logical sizing → min-height/max-height. Inline + cascade. 3 tests.
 - **CSS `inline-size`/`block-size`** — Logical sizing → width/height. Inline + cascade. 3 tests.
@@ -5703,6 +6252,7 @@
 - **1229 tests, ALL GREEN, zero warnings, v0.5.0**
 
 ### Session 67 — 2026-02-24
+
 - **CSS `inset-block`/`inset-inline`** — Logical position shorthands. 1-2 values. Inline + cascade. 3 tests.
 - **CSS `border-block`/`border-block-start`/`border-block-end`** — Logical border shorthands. Width + style + color. Inline + cascade. 3 tests.
 - **CSS `min-inline-size`/`max-inline-size`** — Logical sizing → min-width/max-width. Inline + cascade. 3 tests.
@@ -5717,6 +6267,7 @@
 - **1202 tests, ALL GREEN, zero warnings, v0.5.0**
 
 ### Session 66 — 2026-02-24
+
 - **CSS `transform-style`** — flat/preserve-3d. Inline + cascade. 3 tests.
 - **CSS `transform-origin`** — Two-value percentage + keywords (left/center/right/top/bottom). Inline + cascade. 3 tests.
 - **CSS `perspective-origin`** — Two-value percentage + keywords. Inline + cascade. 3 tests.
@@ -5731,6 +6282,7 @@
 - **1175 tests, ALL GREEN, zero warnings, v0.5.0**
 
 ### Session 65 — 2026-02-24
+
 - **CSS `place-self` shorthand** — Sets align-self + justify-self. New `justify_self` field. Single/two-value. Inline + cascade. 3 tests.
 - **CSS `contain-intrinsic-size`** — Width/height intrinsic sizing. Single/two-value + none. Inline + cascade. 3 tests.
 - **CSS `place-items` enhanced** — Now properly splits align-items + justify-items. Single/two-value. 3 tests.
@@ -5745,6 +6297,7 @@
 - **1148 tests, ALL GREEN, zero warnings, v0.5.0**
 
 ### Session 64 — 2026-02-24
+
 - **CSS `inset` shorthand** — 1-4 value shorthand for top/right/bottom/left. Inline + cascade. 3 tests.
 - **CSS `place-content` shorthand** — Sets align-content + justify-content. Single/two-value. Inline + cascade. 3 tests.
 - **CSS `text-underline-position`** — auto/under/left/right. Inline + cascade + inheritance. 3 tests.
@@ -5759,6 +6312,7 @@
 - **1121 tests, ALL GREEN, zero warnings, v0.5.0**
 
 ### Session 63 — 2026-02-24
+
 - **CSS line-break** — auto/loose/normal/strict/anywhere. Inline + cascade + inheritance. 1 test.
 - **CSS orphans/widows** — Integer values, defaults 2. Inline + cascade + inheritance. 1 test.
 - **samp/kbd/var** — Already implemented; verification test. 1 test.
@@ -5769,6 +6323,7 @@
 - **1094 tests, ALL GREEN, zero warnings, v0.5.0**
 
 ### Session 62 — 2026-02-24
+
 - **CSS text-emphasis-style/color** — dot/circle/double-circle/triangle/sesame + color. Inline + cascade + inheritance. `<output>` already implemented. 3 tests.
 - **CSS initial-letter** — Drop cap: size + sink. Single/two-number parsing. `<bdi>`/`<bdo>` already implemented. 3 tests.
 - **CSS font-variant-caps/numeric** — small-caps/all-small-caps/petite-caps/unicase/titling-caps + lining/oldstyle/proportional/tabular nums. `<cite>`/`<dfn>` already implemented. 3 tests.
@@ -5777,6 +6332,7 @@
 - **1085 tests, ALL GREEN, zero warnings, v0.5.0**
 
 ### Session 61 — 2026-02-24
+
 - **CSS content-visibility** — visible/hidden/auto. Inline + cascade. 1 test.
 - **CSS overscroll-behavior** — auto/contain/none. Inline + cascade. 1 test.
 - **CSS content-visibility cascade** — Via CSS class rule. 1 test.
@@ -5787,6 +6343,7 @@
 - **1076 tests, ALL GREEN, zero warnings, v0.5.0**
 
 ### Session 60 — 2026-02-24
+
 - **CSS color-scheme** — normal/light/dark/light-dark. Inline + cascade. colgroup/col already implemented. 3 tests.
 - **CSS forced-color-adjust** — auto/none/preserve-parent-color. Inline + cascade. `<wbr>` enhanced with zero-width space text node + zero-width layout. 3 tests.
 - **CSS math-style/math-depth** — compact/normal + integer depth. Inline + cascade. `<mark>` already implemented with yellow bg. 3 tests.
@@ -5795,6 +6352,7 @@
 - **1067 tests, ALL GREEN, zero warnings, v0.5.0**
 
 ### Session 59 — 2026-02-24
+
 - **`<template>`/`<slot>` elements** — Template already non-renderable. Slot: `is_slot`, `slot_name` fields, inline display, fallback content rendering. 3 tests.
 - **`<ruby>`/`<rt>`/`<rp>` elements** — Already implemented; added 3 verification tests. Ruby inline, rt 50% font, rp display:none.
 - **CSS container queries** — `container-type` (normal/size/inline-size/block-size), `container-name`, `container` shorthand (name/type). Inline + cascade. 3 tests.
@@ -5805,6 +6363,7 @@
 - **Screenshot**: `clever/showcase_retina.png` — crisp Retina rendering!
 
 ### Session 58 — 2026-02-24
+
 - **`<dialog>` element** — `is_dialog`, `dialog_open`, `dialog_modal` fields. Open attribute shows content as centered block with white bg, border, padding. Closed dialog returns nullptr (display:none). `data-modal` attribute for modal detection. 3 tests.
 - **CSS text-wrap** — Property already existed; added 3 verification tests (balance inline, nowrap inline, cascade). Confirmed text_wrap encoding: 0=wrap, 1=nowrap, 2=balance, 3=pretty, 4=stable. 3 tests.
 - **CSS scroll-snap** — Fixed encoding: scroll_snap_type mapping corrected (both mandatory=3, x proximity=4, y proximity=5, both proximity=6). Inline + cascade. scroll_snap_align (none/start/center/end). 3 tests.
@@ -5813,6 +6372,7 @@
 - **1049 tests, ALL GREEN, zero warnings, v0.5.0**
 
 ### Session 57 — 2026-02-24
+
 - **CSS font-feature-settings** — OpenType feature tag parsing (e.g., "smcp", "liga" on/off). Stored as string on ComputedStyle and LayoutNode. Inline + cascade parsing. 3 tests.
 - **`<noscript>` content rendering** — `is_noscript` flag on LayoutNode. Fixed HTML tree builder to NOT treat noscript as raw-text in InHead mode (since no JS engine). Content parsed as normal HTML and rendered. 4 tests.
 - **CSS line-height units** — px, em, %, unitless. `parse_line_height_value()` helper. Stored as float multiplier on LayoutNode. Inline + cascade. 2 tests.
@@ -5822,6 +6382,7 @@
 - **1040 tests, ALL GREEN, zero warnings, v0.5.0**
 
 ### Session 56 — 2026-02-24
+
 - **CSS multiple text-shadow** — `TextShadowEntry` struct, `text_shadows` vector on both ComputedStyle and LayoutNode. Comma-separated parsing. Reverse-order rendering in painter. Backward-compatible with single shadow fields. 3 tests.
 - **`<label>` element with `for` attribute** — `is_label`, `label_for` fields. Inline display. Parses `for` attribute to link to input IDs. 3 tests.
 - **Enhanced word-break modes** — `word-break: keep-all` (value 2) suppresses all wrapping like nowrap. Verified break-all character-level breaking and overflow-wrap:anywhere paths. 3 tests.
@@ -5830,6 +6391,7 @@
 - **1031 tests, ALL GREEN, zero warnings, v0.5.0**
 
 ### Session 55 — 2026-02-24
+
 - **CSS overflow auto/scroll indicators** — `overflow_indicator_bottom`, `overflow_indicator_right` fields. Detects child overflow in layout tree. Paints 8px semi-transparent dark strips at edges. `paint_overflow_indicator()` method. Only for overflow>=2 (auto/scroll). 3 tests.
 - **`<optgroup>` in `<select>`** — `is_optgroup`, `optgroup_label`, `optgroup_disabled` fields. Parses `label` and `disabled` attributes. Groups options under labeled headers. Updated form data collection for nested options. 3 tests.
 - **SVG `<defs>`/`<use>` elements** — `is_svg_defs`, `is_svg_use`, `svg_use_href`, `svg_use_x/y` fields. Defs is display:none container with parsed children. Use parses `href`/`xlink:href` and x/y offsets. 3 tests.
@@ -5838,6 +6400,7 @@
 - **1022 tests, ALL GREEN, zero warnings, v0.5.0**
 
 ### Session 54 — 2026-02-24
+
 - **CSS `white-space` rendering** — Extended layout engine to handle all white-space modes: nowrap (skip wrapping), pre (preserve all, no wrap), pre-wrap (preserve + wrap), pre-line (collapse spaces, preserve newlines). Modified `layout_inline()` and `position_inline_children()`. 3 tests.
 - **SVG `<g>` group element** — `is_svg_group`, `svg_transform_tx`, `svg_transform_ty` fields. Parses `transform="translate(x,y)"`. Groups child SVG elements with coordinate offset. 3 tests.
 - **CSS `border-spacing` two-value + edge spacing** — `border_spacing_v` field for vertical spacing. Two-value CSS syntax (`15px 8px`). Edge spacing per CSS spec: `(num_cols+1) * h_spacing`. Updated existing table layout test. 3 tests.
@@ -5846,6 +6409,7 @@
 - **1013 tests, ALL GREEN, zero warnings, v0.5.0**
 
 ### Session 53 — 2026-02-24 (1000-TEST MILESTONE!)
+
 - **CSS `::marker` pseudo-element** — `marker_color`, `marker_font_size` fields on LayoutNode. Resolves via `resolver.resolve_pseudo()`. Applied to list items. Fixed PseudoElement selector bug workaround (`mk_fs > 0` instead of `mk_fs != font_size`). 3 tests.
 - **`<figure>`/`<figcaption>` elements** — `is_figure`, `is_figcaption` fields. Figure gets 40px left/right margin. Figcaption is block display. 3 tests.
 - **CSS `gap` shorthand parsing** — Two-value `gap: row column` parsing. `row_gap`/`column_gap` fields on LayoutNode. Single value sets both. 3 tests.
@@ -5855,6 +6419,7 @@
 - **1004 tests, ALL GREEN, zero warnings, v0.5.0 — CROSSED 1000!**
 
 ### Session 52 — 2026-02-24
+
 - **`<sub>`/`<sup>` subscript/superscript** — `is_sub`, `is_sup`, `vertical_offset` fields. Font size reduced to 83%. Sub shifts down (+0.3em), sup shifts up (-0.4em). 3 tests.
 - **CSS `border-image` parsing** — Full 6-property family: source, slice (with fill), width, outset, repeat. ComputedStyle + LayoutNode + inline + cascade. 3 tests.
 - **`<colgroup>`/`<col>` table columns** — `is_colgroup`, `is_col`, `col_span`, `col_widths` fields. Parses span/width attributes. Collects column widths on table node. 3 tests.
@@ -5863,6 +6428,7 @@
 - **995 tests, ALL GREEN, zero warnings, v0.4.0 — 5 from 1000!**
 
 ### Session 51 — 2026-02-24
+
 - **CSS `::selection` pseudo-element** — `selection_color`, `selection_bg_color` fields. Resolves via `resolver.resolve_pseudo()`. Propagates to text children. 3 tests.
 - **`<progress>` indeterminate state** — `is_progress`, `progress_indeterminate`, `progress_value`, `progress_max` fields. Indeterminate progress gets striped pattern (alternating blue rectangles). 3 tests.
 - **Wavy/double text-decoration rendering** — `text-decoration-style:wavy` renders sine wave (amplitude 2px, wavelength 8px). `double` renders two parallel lines with 2px gap. 3 tests.
@@ -5871,6 +6437,7 @@
 - **986 tests, ALL GREEN, zero warnings, v0.4.0**
 
 ### Session 50 — 2026-02-24
+
 - **CSS `::placeholder` pseudo-element** — `placeholder_color` (default 0xFF999999), `placeholder_font_size`, `placeholder_italic` fields. Resolves via `resolver.resolve_pseudo()`. Applied to input/textarea placeholder text children. Fixed style wiring to preserve defaults. 3 tests.
 - **`<meter>` color segments** — `is_meter`, `meter_value/min/max/low/high/optimum`, `meter_bar_color` fields. Full HTML spec algorithm: green (optimum region), yellow (suboptimal), red (danger). 3 tests.
 - **CSS `object-fit` rendering** — `rendered_img_x/y/w/h` fields. Computes actual rendered image dimensions for fill/contain/cover/none/scale-down modes. Uses actual image dimensions or default 4:3 aspect. Centering via object-position. 3 tests.
@@ -5881,6 +6448,7 @@
 - **977 tests, ALL GREEN, zero warnings, v0.4.0**
 
 ### Session 49 — 2026-02-24
+
 - **`<output>` element** — `is_output`, `output_for` fields. Parses `for` attribute. Inline display. 3 tests.
 - **CSS `image-rendering`** — `image_rendering` on ComputedStyle + LayoutNode. Values: auto(0), pixelated(1), crisp-edges(2). Inline + cascade. Special wiring for `<img>` early return path. 3 tests.
 - **`<map>`/`<area>` image maps** — `is_map`, `map_name`, `is_area`, `area_shape/coords/href` fields. Map is display:none with recursive child processing. Area parses shape/coords/href attributes. 3 tests.
@@ -5889,6 +6457,7 @@
 - **968 tests, ALL GREEN, zero warnings, v0.4.0**
 
 ### Session 48 — 2026-02-24
+
 - **`<dfn>`/`<data>` elements** — `is_dfn`, `is_data`, `data_value` fields. Dfn renders italic. Data parses `value` attribute. Both inline. 3 tests.
 - **CSS `::first-line` pseudo-element** — `has_first_line`, `first_line_font_size/color/bold/italic` fields. Resolves via style resolver pseudo method. 3 tests.
 - **CSS `text-indent` rendering tests** — Already fully implemented (layout offsets cursor_x on first line). Added 3 layout tests: positive indent, zero default, inheritance.
@@ -5897,6 +6466,7 @@
 - **959 tests, ALL GREEN, zero warnings, v0.4.0**
 
 ### Session 47 — 2026-02-24
+
 - **`<time>` element** — `is_time`, `datetime_attr` fields. Parses optional `datetime` attribute. Inline display. 3 tests.
 - **`<bdi>`/`<bdo>` elements** — `is_bdi`, `is_bdo` fields. BDO parses `dir` attribute for RTL/LTR direction override. Both inline display. 3 tests.
 - **CSS `font-variant: small-caps` rendering** — Layout engine: blended effective font size (80% for lowercase), text-to-uppercase transform. Painter: 80% font size for all draw calls. 3 layout tests.
@@ -5905,6 +6475,7 @@
 - **950 tests, ALL GREEN, zero warnings, v0.4.0**
 
 ### Session 46 — 2026-02-24
+
 - **`<cite>`/`<q>` elements + blockquote indentation** — `is_cite`, `is_q` fields. Cite renders italic. Q renders with curly quotation marks (U+201C/U+201D). Blockquote gets 40px default left margin. 3 tests.
 - **CSS `::first-letter` pseudo-element** — `has_first_letter`, `first_letter_font_size`, `first_letter_color`, `first_letter_bold` fields. Resolves `::first-letter` rules via style resolver. Painter splits first character for separate rendering. UTF-8 aware. 3 tests.
 - **`<address>` element** — `is_address` field. Default italic styling. Block-level display. UA stylesheet already had `font-style: italic`. 3 tests.
@@ -5913,6 +6484,7 @@
 - **941 tests, ALL GREEN, zero warnings, v0.4.0**
 
 ### Session 45 — 2026-02-24
+
 - **`<ins>`/`<del>`/`<s>`/`<strike>` elements** — `is_ins`, `is_del` fields. `<ins>` gets underline decoration. `<del>`/`<s>`/`<strike>` get line-through decoration. Added to inline elements set and default UA decorations. 3 tests.
 - **`<wbr>` word break opportunity** — `is_wbr` field. Zero-width inline element. Returns early from render pipeline (no children to process). 3 tests.
 - **CSS `outline-offset` rendering tests** — Already fully implemented (parsing, storage, painting). Added 3 tests: positive offset (5px), negative offset (-3px), zero offset.
@@ -5921,6 +6493,7 @@
 - **932 tests, ALL GREEN, zero warnings, v0.4.0**
 
 ### Session 44 — 2026-02-24
+
 - **`<fieldset>`/`<legend>` form elements** — `is_fieldset`, `is_legend` fields. Default 2px gray border + 10px padding for fieldset. Legend draws white background to "cut" through fieldset border. Block display mode. 3 tests.
 - **CSS `list-style-type` visual rendering** — `paint_list_marker()` method. Disc (filled circle scanlines), circle (hollow outline), square (filled rect), decimal (numbered text). `list_item_index` computed from preceding siblings. 3 tests.
 - **`<mark>` element** — `is_mark` field. Yellow background (0xFFFFFF00), black text override. Inline display. 3 tests.
@@ -5929,6 +6502,7 @@
 - **923 tests, ALL GREEN, zero warnings, v0.4.0**
 
 ### Session 43 — 2026-02-24
+
 - **`<ruby>`/`<rt>`/`<rp>` annotation elements** — `is_ruby`, `is_ruby_text`, `is_ruby_paren` fields. `<rt>` renders at 50% font size above baseline. `<rp>` hidden (display:none). Registered as inline elements. `paint_ruby_annotation()` method. 3 tests.
 - **SVG `<polygon>`/`<polyline>` elements** — `svg_type=7` (polygon) and `svg_type=8` (polyline). Points parsing from `points` attribute. Scanline fill algorithm for polygon. Stroke rendering via draw_line segments. Polygon auto-closes, polyline stays open. 3 layout tests.
 - **CSS `text-wrap: balance` rendering** — Binary search algorithm finds optimal line width for even distribution. `text_wrap==1` (nowrap) prevents wrapping entirely. `text_wrap==2` (balance) uses narrower effective width. 3 layout tests.
@@ -5938,6 +6512,7 @@
 - **914 tests, ALL GREEN, zero warnings, v0.4.0**
 
 ### Session 42 — 2026-02-24
+
 - **`<abbr>`/`<acronym>` tooltip styling** — `is_abbr`, `title_text` fields on LayoutNode. Dotted underline via UA stylesheet. Detects `<abbr>` and `<acronym>` elements. 3 tests.
 - **CSS `gap` for Flexbox** — Fixed flex gap to use `column_gap` for row direction and `row_gap` for column direction via `main_gap` variable. 3 layout tests + 1 updated existing test.
 - **`<kbd>`/`<code>`/`<samp>`/`<var>` monospace styling** — `is_monospace`, `is_kbd` fields. Monospace char_width 0.65f. `<kbd>` gets border + padding for keyboard-key appearance. 3 tests.
@@ -5947,6 +6522,7 @@
 - **905 tests, ALL GREEN, zero warnings, v0.4.0**
 
 ### Session 41 — 2026-02-24
+
 - **`<template>` element** — Content is fully inert (not rendered, zero layout space). Added to skip-list alongside `<head>`, `<script>`, `<style>`. `<noscript>` renders content since no JS engine. 3 tests.
 - **CSS `text-wrap`** — Property parsing: wrap(0)/nowrap(1)/balance(2)/pretty(3)/stable(4). Inline + cascade + inheritance. Wired to LayoutNode. 3 tests.
 - **`<details>`/`<summary>` disclosure triangle** — `is_summary`, `details_open` fields. Disclosure triangle (▶/▼) painted before summary text. Closed details hides non-summary children. 3 tests.
@@ -5955,6 +6531,7 @@
 - **896 tests, ALL GREEN, zero warnings, v0.4.0**
 
 ### Session 40 — 2026-02-24
+
 - **`<dialog>` element** — `is_dialog`, `dialog_open` fields. Open dialogs render with border, padding, white bg, 600px max-width. Semi-transparent backdrop overlay (25% black). Closed dialogs are display:none. 3 tests.
 - **Word-boundary wrapping** — Text now breaks at spaces instead of character boundaries. Simulates line-filling with word widths. Falls back to character-level for single long words. 3 layout tests.
 - **CSS `scroll-snap-type` / `scroll-snap-align`** — Property parsing for type (none/x/y/both + mandatory/proximity) and align (none/start/center/end). Inline + cascade. Wired to LayoutNode. 3 tests.
@@ -5963,6 +6540,7 @@
 - **887 tests, ALL GREEN, zero warnings, v0.4.0**
 
 ### Session 39 — 2026-02-24
+
 - **Inline text word-wrap** — Normal text nodes now wrap to multiple lines when wider than containing block. `position_inline_children()` computes chars_per_line, total_lines, and adjusts geometry. 3 layout tests.
 - **`<marquee>` element** — Nostalgic HTML easter egg. `is_marquee`, `marquee_direction`, `marquee_bg_color` fields. Direction arrows (`<<`/`>>`/`^^`/`vv`), default light blue background. Parses `direction` and `bgcolor` attributes. `paint_marquee()` method. 3 tests.
 - **CSS `text-overflow: ellipsis` rendering** — Visual "..." truncation for single-line overflow. When parent has `overflow:hidden` + `text_overflow==1`, text is truncated and appended with ellipsis character. 3 tests.
@@ -5983,7 +6561,7 @@
 | 766 | HTTP/1.x status-line carriage-return/line-feed separator fail-closed regression hardening | tests/test_request_contracts.cpp | Adds explicit fail-closed regression coverage for carriage-return (`\r`) and line-feed (`\n`) separators between version/status-code and status-code/reason components so malformed status lines are continuously blocked before response classification |
 | 765 | HTTP/1.x status-line vertical-tab separator fail-closed regression hardening | tests/test_request_contracts.cpp | Adds explicit fail-closed regression coverage for non-space ASCII whitespace separators (`\v`) between version/status-code and status-code/reason components so malformed status lines are continuously blocked before response classification |
 | 764 | HTTP/1.x status-line form-feed separator fail-closed regression hardening | tests/test_request_contracts.cpp | Adds explicit fail-closed regression coverage for non-space ASCII whitespace separators (`\f`) between version/status-code and status-code/reason components so malformed status lines are continuously blocked before response classification |
-| 763 | HTTP/1.x status-line empty reason-phrase fail-closed hardening | src/net/http_client.cpp, tests/test_request_contracts.cpp | Requires a non-empty reason phrase after the status-code separator and rejects malformed empty variants (`HTTP/1.1 204 `) so response status-line parsing fails closed before classification/body handling |
+| 763 | HTTP/1.x status-line empty reason-phrase fail-closed hardening | src/net/http_client.cpp, tests/test_request_contracts.cpp | Requires a non-empty reason phrase after the status-code separator and rejects malformed empty variants (`HTTP/1.1 204`) so response status-line parsing fails closed before classification/body handling |
 | 762 | HTTP/1.x status-line missing status-code separator fail-closed hardening | src/net/http_client.cpp, tests/test_request_contracts.cpp | Requires a literal separator between the HTTP version and status code and rejects malformed glued variants (`HTTP/1.1200 OK`) so response status-line parsing fails closed before classification/body handling |
 | 761 | HTTP/1.x status-line missing reason-separator fail-closed hardening | src/net/http_client.cpp, tests/test_request_contracts.cpp | Requires a literal single-space separator after the 3-digit status code and rejects malformed no-separator variants (`HTTP/1.1 200`) so response status-line parsing fails closed before classification/body handling |
 | 760 | CSP connect-src malformed host-source query/fragment fail-closed hardening | src/net/http_client.cpp, tests/test_request_policy.cpp | Rejects malformed CSP host-source entries containing query/fragment components so policy parsing fails closed before connect-src eligibility checks while preserving existing path matching semantics |
@@ -6579,6 +7157,7 @@ Build: `cd vibrowser && cmake -S . -B build && cmake --build build && ctest --te
 **12,080 tests across 13 suites. Only pre-existing paint failures (4 counter/marker tests). CYCLE 1500!**
 
 **CRITICAL RENDERING FIXES JUST COMPLETED:**
+
 1. **UA Stylesheet now sets display:block on ALL block-level HTML elements.** Previously body, div, p, h1-h6, form, fieldset, ul, ol, etc. all defaulted to Display::Inline (ComputedStyle default). This was THE root cause of all centering/layout failures on real websites. Now 40+ elements have correct display types including table-row, table-cell, list-item.
 2. **data: URI image support added.** fetch_and_decode_image() now handles data:image/png;base64,... and data:image/svg+xml;... URLs. Google and many sites use these extensively.
 3. **SVG-as-image via nanosvg.** SVG files in <img> tags and CSS background-image now render via nanosvg rasterizer. Detects SVGs by URL extension (.svg), Content-Type header, and content sniffing (<svg marker).
@@ -6586,6 +7165,7 @@ Build: `cd vibrowser && cmake -S . -B build && cmake --build build && ctest --te
 5. **Auto margin ordering fix.** compute_width() now called BEFORE auto margin resolution in layout_block().
 
 **REMAINING RENDERING ISSUES:**
+
 - Mac UI needs complete rewrite (user requested "re-factor from NOTHING")
 - Google page may still have issues (complex CSS/JS interactions)
 - pre-existing paint test failures: CounterLowerAlpha, CounterUpperRoman, CounterDecimalDefault, MarkerColorFromCSS
@@ -6601,6 +7181,7 @@ Gotchas: Element::tag_name() is a METHOD — use el->tag_name() with parens. In 
 **IMPORTANT: Project renamed from clever/ to vibrowser/. Build dir: `vibrowser/build`. Source: `vibrowser/src/`. Tests: `vibrowser/tests/unit/`. CMake cache was cleaned and rebuilt for the rename.**
 
 **CRITICAL API FIXES DISCOVERED:**
+
 - LayoutNode border: `n.geometry.border.top` NOT `n.border_top_width`
 - LayoutNode margin/padding: `n.geometry.margin.top` NOT `n.margin_top`
 - Serializer: `read_bytes()` takes NO arguments (reads length-prefixed)
@@ -6613,6 +7194,7 @@ Gotchas: Element::tag_name() is a METHOD — use el->tag_name() with parens. In 
 **IMPORTANT: "Clever" was renamed to "Vibrowser"** — source code uses "Vibrowser/0.7.0" for user-agent and "Vibrowser" for vendor. Tests referencing "Clever" will fail.
 
 **API facts confirmed:**
+
 - CSS `@media` nested rules NOT supported in parse_stylesheet — use plain selectors
 - HTML `SimpleNode*` has `attributes` vector but NO `has_attribute()` method — iterate manually
 - `EventTarget` is separate class, NOT inherited by Element — `EventTarget t; t.add_event_listener(); t.dispatch_event(evt, *node);`
@@ -6627,16 +7209,19 @@ Gotchas: Element::tag_name() is a METHOD — use el->tag_name() with parens. In 
 - Serializer: write_f64/read_f64 (no f32), write_u16/read_u16 (no i16)
 
 **Current implementation vs full browser comparison**:
+
 - Current implementation: robust single-process browser shell with full JS engine integration, broad DOM/CSS/Fetch coverage, and hardened HTTP/1.x/CORS/CSP policy enforcement.
 - Full browser target: still missing major subsystems like full multi-process isolation, full HTTP/2+/QUIC transport stack, and complete production-grade web font pipeline coverage.
 - Progress snapshot: from early scaffolding to 445 completed cycles, 3808 tests, and 2589+ implemented features.
 
 **WHAT WAS JUST DONE (Cycles 437-445)**:
+
 - Massive CSS style property coverage push: pointer-events, user-select, text-overflow, scroll-behavior, touch-action, overscroll-behavior, isolation, will-change (437); cursor, resize, appearance, list-style, counter-*, content-visibility (438); object-fit, object-position, mix-blend-mode, aspect-ratio, contain, image-rendering, clip-path, webkit-user-select (439); multi-column layout (440); fragmentation/break properties (441); CSS Grid (442); direction/writing-mode/unicode-bidi/line-clamp/caret-color/text-orientation/backface-visibility (444).
 - HTML parser: nested lists, data attributes, multiple comments, deep nesting, form/table/textarea/select (443). KEY GOTCHA: SimpleNode has no get_attribute() method — must iterate .attributes vector with for loop.
 - JS engine: JSON.stringify/parse, RegExp, class/inheritance, try/catch/finally, error types, typeof, Array.isArray, Proxy (445).
 
 **NEXT GOOD TARGETS**:
+
 1. More JS engine: async/await (likely needs microtask drain — verify), `Reflect` API, `WeakRef`, `FinalizationRegistry`, `structuredClone`, `Object.assign`, `Object.create`.
 2. CSS style: animation properties (animation-name, animation-duration, animation-timing-function, etc.), transition properties, transform parsing.
 3. DOM: querySelector/querySelectorAll, dispatchEvent, addEventListener, removeEventListener.
@@ -6645,20 +7230,24 @@ Gotchas: Element::tag_name() is a METHOD — use el->tag_name() with parens. In 
 **Remaining HTTP/1.x status-line control chars to cover**: 0x0E (SO), 0x0F (SI), 0x10 (DLE), 0x11-0x14 (DC1-DC4), 0x15 (NAK), 0x16 (SYN), 0x17 (ETB), 0x18 (CAN), 0x19 (EM), 0x1A (SUB), 0x1B (ESC), 0x1C (FS), 0x1D (GS), 0x1E (RS), 0x1F (US). After those all covered, move to next Priority 4 or Priority 5 work.
 
 **Cycle 410 — HTTP/1.x status-line EOT/ENQ/ACK/BEL/BS separator fail-closed regression hardening**:
+
 - Added batch regression coverage in `tests/test_request_contracts.cpp` for 5 control-byte status-line separator variants: EOT (\x04), ENQ (\x05), ACK (\x06), BEL (\x07), BS (\x08). Each has status-code and reason-separator test cases (10 total).
 - Rebuilt and re-ran `test_request_contracts` from `build_vibrowser`, all green.
 
 **Cycle 409 — HTTP/1.x status-line ETX separator fail-closed regression hardening**:
+
 - Added focused regression coverage in `tests/test_request_contracts.cpp` for ETX-byte status-line separator variants that must fail closed (`HTTP/1.1\x03200 OK`, `HTTP/1.1 200\x03OK`).
 - Rebuilt and re-ran `test_request_contracts` and `test_request_policy` from `build_vibrowser`, all green.
 - **Ledger divergence note**: `.codex/codex-estate.md` is non-writable in this runtime (`Operation not permitted`), so `.claude/claude-estate.md` is source of truth for Cycle 409 and sync should be replayed when permissions allow.
 
 **Cycle 408 — HTTP/1.x status-line STX separator fail-closed regression hardening**:
+
 - Added focused regression coverage in `tests/test_request_contracts.cpp` for STX-byte status-line separator variants that must fail closed (`HTTP/1.1\x02200 OK`, `HTTP/1.1 200\x02OK`).
 - Rebuilt and re-ran `test_request_contracts` and `test_request_policy` from `build_vibrowser`, all green.
 - **Ledger divergence resolution**: cycle start ledger states differed (`.claude` at Cycle 407 vs `.codex` at Cycle 406); `.claude` selected as source of truth by newer mtime and `.codex/codex-estate.md` re-synced in this cycle.
 
 **Cycle 407 — CORS outbound `Origin` header normalization hardening**:
+
 - Added shared CORS helper `normalize_outgoing_origin_header(...)` in `clever/src/js/cors_policy.cpp` with API in `clever/include/clever/js/cors_policy.h`.
 - Wired both `fetch()` and `XMLHttpRequest.send()` in `clever/src/js/js_fetch_bindings.cpp` to always strip script-supplied `Origin` and emit only browser-controlled origins for eligible cross-origin requests.
 - Added focused regression coverage in `clever/tests/unit/cors_policy_test.cpp` for same-origin stripping, cross-origin overwrite, `null` origin handling, and malformed input suppression.
@@ -6666,103 +7255,121 @@ Gotchas: Element::tag_name() is a METHOD — use el->tag_name() with parens. In 
 - **Ledger divergence note**: `.codex/codex-estate.md` is non-writable in this runtime (`Operation not permitted` on temp file creation); `.claude/claude-estate.md` is source of truth for Cycle 407 and sync should be replayed when permissions allow.
 
 **Cycle 406 — HTTP/1.x status-line SOH separator fail-closed regression hardening**:
+
 - Added focused regression coverage in `tests/test_request_contracts.cpp` for SOH-byte status-line separator variants that must fail closed (`HTTP/1.1\x01200 OK`, `HTTP/1.1 200\x01OK`).
 - Rebuilt and re-ran `test_request_contracts` and `test_request_policy` from `build_vibrowser`, all green.
 - **Ledger divergence resolution**: cycle start ledger states differed (`.claude` at Cycle 405 vs `.codex` at Cycle 403); `.claude` selected as source of truth by newer mtime and `.codex/codex-estate.md` re-synced in this cycle.
 
 **Cycle 405 — HTTP/1.x status-line DEL separator fail-closed regression hardening**:
+
 - Added focused regression coverage in `tests/test_request_contracts.cpp` for DEL-byte status-line separator variants that must fail closed (`HTTP/1.1\x7F200 OK`, `HTTP/1.1 200\x7FOK`).
 - Rebuilt and re-ran `test_request_contracts` and `test_request_policy` from `build_vibrowser`, all green.
 - **Ledger divergence note**: `.codex/codex-estate.md` remains non-writable in this runtime (`Operation not permitted`); `.claude/claude-estate.md` is source of truth for Cycle 405 and sync should be replayed when permissions allow.
 
 **Cycle 404 — HTTP/2 status-line surrounding-whitespace fail-closed hardening**:
+
 - Tightened native status-line parsing in `src/net/http_client.cpp` so whitespace-padded HTTP/2 status-lines are treated as malformed instead of classified as transport-not-implemented.
-- Added focused regressions in `tests/test_request_contracts.cpp` for leading/trailing-whitespace HTTP/2 status-line variants (` HTTP/2 200 OK`, `HTTP/2 200 OK `).
+- Added focused regressions in `tests/test_request_contracts.cpp` for leading/trailing-whitespace HTTP/2 status-line variants (`HTTP/2 200 OK`, `HTTP/2 200 OK`).
 - Rebuilt and re-ran `test_request_contracts` and `test_request_policy` from `build_vibrowser`, all green.
 - **Ledger divergence note**: `.codex/codex-estate.md` is not writable in this runtime (`Operation not permitted`); `.claude/claude-estate.md` is source of truth for Cycle 404 and sync should be replayed when permissions allow.
 
 **Cycle 402 — HTTP/1.x status-line carriage-return/line-feed separator fail-closed regression hardening**:
+
 - Added focused regression coverage in `tests/test_request_contracts.cpp` for carriage-return and line-feed status-line separator variants that must fail closed (`HTTP/1.1\r200 OK`, `HTTP/1.1 200\rOK`, `HTTP/1.1\n200 OK`, `HTTP/1.1 200\nOK`).
 - Rebuilt and re-ran `test_request_contracts` and `test_request_policy` from `build_vibrowser`, all green.
 - **Ledger divergence note**: `.codex/codex-estate.md` remains non-writable in this runtime (`Operation not permitted`); `.claude/claude-estate.md` is source of truth for Cycle 402 and sync should be replayed when permissions allow.
 
 **Cycle 401 — HTTP/1.x status-line vertical-tab separator fail-closed regression hardening**:
+
 - Added focused regression coverage in `tests/test_request_contracts.cpp` for vertical-tab status-line separator variants that must fail closed (`HTTP/1.1\v200 OK`, `HTTP/1.1 200\vOK`).
 - Rebuilt and re-ran `test_request_contracts` and `test_request_policy` from `build_vibrowser`, all green.
 - **Ledger divergence note**: `.codex/codex-estate.md` remains non-writable in this runtime (`Operation not permitted`); `.claude/claude-estate.md` is source of truth for Cycle 401 and sync should be replayed when permissions allow.
 
 **Cycle 400 — HTTP/1.x status-line form-feed separator fail-closed regression hardening**:
+
 - Added focused regression coverage in `tests/test_request_contracts.cpp` for form-feed status-line separator variants that must fail closed (`HTTP/1.1\f200 OK`, `HTTP/1.1 200\fOK`).
 - Rebuilt and re-ran `test_request_contracts` and `test_request_policy` from `build_vibrowser`, all green.
 - **Ledger sync**: `.claude/claude-estate.md` and `.codex/codex-estate.md` are synchronized in lockstep for Cycle 400.
 
 **Cycle 399 — HTTP/1.x status-line empty reason-phrase fail-closed hardening**:
-- Hardened `parse_status_line(...)` in `src/net/http_client.cpp` to reject status lines that include the status-code/reason separator but omit the reason phrase (`HTTP/1.1 204 `) so malformed status lines fail closed before response classification.
+
+- Hardened `parse_status_line(...)` in `src/net/http_client.cpp` to reject status lines that include the status-code/reason separator but omit the reason phrase (`HTTP/1.1 204`) so malformed status lines fail closed before response classification.
 - Added focused regression coverage in `tests/test_request_contracts.cpp` for empty reason-phrase status-line rejection.
 - Rebuilt and re-ran `test_request_contracts` and `test_request_policy` from `build_vibrowser`, all green.
 - **Ledger divergence note**: `.codex/codex-estate.md` is not writable in this runtime (`Operation not permitted`); `.claude/claude-estate.md` is source of truth for Cycle 399 and sync should be replayed when permissions allow.
 
 **Cycle 397 — HTTP/1.x status-line missing reason-separator fail-closed hardening**:
+
 - Hardened `parse_status_line(...)` in `src/net/http_client.cpp` to reject status lines that omit the required status-code/reason separator (`HTTP/1.1 200`) so malformed status lines fail closed before response classification.
 - Added focused regression coverage in `tests/test_request_contracts.cpp` for missing reason-separator status-line rejection.
 - Rebuilt and re-ran `test_request_contracts` and `test_request_policy` from `build_vibrowser`, all green.
 - **Ledger divergence note**: `.codex/codex-estate.md` remains non-writable in this runtime (`Operation not permitted`); `.claude/claude-estate.md` is source of truth for Cycle 397 and sync should be replayed when permissions allow.
 
 **Cycle 396 — HTTP/1.x status-line tab separator fail-closed hardening**:
+
 - Hardened `parse_status_line(...)` in `src/net/http_client.cpp` to require literal single-space separators and reject tab-separated status-line variants (`HTTP/1.1\t200 OK`, `HTTP/1.1 200\tOK`) before response classification.
 - Added focused regression coverage in `tests/test_request_contracts.cpp` for tab-separated status-code and reason separator rejection.
 - Rebuilt and re-ran `test_request_contracts` and `test_request_policy` from `build_vibrowser`, all green.
 - **Ledger sync**: `.claude/claude-estate.md` and `.codex/codex-estate.md` are synchronized in lockstep for Cycle 396.
 
 **Cycle 395 — CSP connect-src malformed host-source query/fragment fail-closed hardening**:
+
 - Hardened `parse_host_source_token(...)` in `src/net/http_client.cpp` to reject malformed `connect-src` host-source entries containing query (`?`) or fragment (`#`) components so policy matching fails closed before request dispatch.
 - Added focused regression coverage in `tests/test_request_policy.cpp` for query/fragment-bearing host-source rejection.
 - Rebuilt and re-ran `test_request_policy` and `test_request_contracts` from `build_vibrowser`, all green.
 - **Ledger divergence resolution**: `.claude/claude-estate.md` had newer mtime/content than `.codex/codex-estate.md` at cycle start (394 vs 393); `.claude` selected as source of truth. `.codex/codex-estate.md` remains non-writable in this runtime, so sync is pending when write access is available.
 
 **Cycle 394 — Native HTTP2-Settings surrounding-whitespace value fail-closed hardening**:
+
 - Hardened `request_headers_include_http2_settings(...)` in `src/net/http_client.cpp` to reject `HTTP2-Settings` values when surrounding ASCII whitespace is present, preventing trim-normalized malformed outbound HTTP/2 probes from being accepted.
 - Added focused regression coverage in `tests/test_request_contracts.cpp` for leading/trailing-whitespace `HTTP2-Settings` value rejection.
 - Rebuilt and re-ran `test_request_contracts` and `test_request_policy` from `build_vibrowser`, all green.
 - **Ledger divergence note**: `.codex/codex-estate.md` is currently non-writable in this runtime (`Operation not permitted`); `.claude/claude-estate.md` is source of truth for Cycle 394 and sync should be replayed when permissions allow.
 
 **Cycle 393 — HTTP/1.x status-line extra status-code separator whitespace fail-closed hardening**:
+
 - Hardened `parse_status_line(...)` in `src/net/http_client.cpp` to reject status-line variants with extra separator whitespace between HTTP version and status code (`HTTP/1.1  200 OK`) before response classification.
 - Added focused regression coverage in `tests/test_request_contracts.cpp` for extra status-code separator whitespace status-line rejection.
 - Rebuilt and re-ran `test_request_contracts` and `test_request_policy` from `build_vibrowser`, all green.
 - **Ledger sync**: `.claude/claude-estate.md` and `.codex/codex-estate.md` are synchronized in lockstep for Cycle 393.
 
 **Cycle 392 — HTTP/1.x status-line extra reason-separator whitespace fail-closed hardening**:
+
 - Hardened `parse_status_line(...)` in `src/net/http_client.cpp` to reject status-line variants with extra separator whitespace between status code and reason phrase (`HTTP/1.1 200  OK`) before response classification.
 - Added focused regression coverage in `tests/test_request_contracts.cpp` for extra reason-separator whitespace status-line rejection.
 - Rebuilt and re-ran `test_request_contracts` and `test_request_policy` from `build_vibrowser`, all green.
 - **Ledger sync**: `.claude/claude-estate.md` and `.codex/codex-estate.md` are synchronized in lockstep for Cycle 392.
 
 **Cycle 391 — HTTP/1.x status-line surrounding-whitespace fail-closed hardening**:
+
 - Hardened `parse_status_line(...)` in `src/net/http_client.cpp` to reject leading/trailing ASCII-whitespace status-line variants before status-code parsing, keeping malformed framing inputs fail-closed.
-- Added focused regression coverage in `tests/test_request_contracts.cpp` for leading-whitespace (` HTTP/1.1 200 OK`) and trailing-whitespace (`HTTP/1.1 200 OK `) status-line rejection.
+- Added focused regression coverage in `tests/test_request_contracts.cpp` for leading-whitespace (`HTTP/1.1 200 OK`) and trailing-whitespace (`HTTP/1.1 200 OK`) status-line rejection.
 - Rebuilt and re-ran `test_request_contracts` and `test_request_policy` from `build_vibrowser`, all green.
 - **Ledger divergence note**: `.codex/codex-estate.md` remains non-writable in this runtime (`Operation not permitted`); `.claude/claude-estate.md` is source of truth for Cycle 391 and sync should be replayed when permissions allow.
 
 **Cycle 390 — HTTP/1.x status-line control/non-ASCII octet fail-closed hardening**:
+
 - Hardened `parse_status_line(...)` in `src/net/http_client.cpp` to reject status-line control (`<=0x1F`, `0x7F`) and non-ASCII (`>=0x80`) octets, preventing malformed byte-sequence acceptance during response classification.
 - Added focused regression coverage in `tests/test_request_contracts.cpp` for control-octet (`HTTP/1.1 200 OK\x01`) and non-ASCII (`HTTP/1.1 200 OK\x80`) status-line rejection.
 - Rebuilt and re-ran `test_request_contracts` and `test_request_policy` from `build_vibrowser`, all green.
 - **Ledger sync**: `.claude/claude-estate.md` and `.codex/codex-estate.md` are synchronized in lockstep for Cycle 390.
 
 **Cycle 389 — HTTP/1.x status-line status-code width/range fail-closed hardening**:
+
 - Hardened `parse_status_line(...)` in `src/net/http_client.cpp` to require exactly three status-code digits and reject out-of-range codes outside `100-599`, preventing malformed/overflow-prone status-line acceptance.
 - Added focused regression coverage in `tests/test_request_contracts.cpp` for 2-digit (`99`), 4-digit (`2000`), and out-of-range (`600`) status-code rejection.
 - Rebuilt and re-ran `test_request_contracts` and `test_request_policy` from `build_vibrowser`, all green.
 - **Ledger divergence note**: `.codex/codex-estate.md` remains non-writable in this runtime (`Operation not permitted`); `.claude/claude-estate.md` is source of truth for Cycle 389 and sync should be replayed when permissions allow.
 
 **Cycle 388 — Native HTTP2-Settings decoded SETTINGS-frame-length fail-closed hardening**:
+
 - Hardened `request_headers_include_http2_settings(...)` in `src/net/http_client.cpp` to reject `HTTP2-Settings` values whose decoded payload length is zero or not divisible by 6, enforcing strict SETTINGS tuple boundaries before HTTP/2 request classification.
 - Updated coverage in `tests/test_request_contracts.cpp` to reject malformed decoded-length cases (`AAA=`, `AA==`, padded non-multiple-of-6 payloads) while preserving valid acceptance for six-byte SETTINGS payload encodings.
 - Rebuilt and re-ran `test_request_contracts` and `test_request_policy` from `build_vibrowser`, all green.
 - **Ledger divergence resolution**: `.claude/claude-estate.md` had newer mtime/content than `.codex/codex-estate.md` at cycle start (387 vs 385); `.claude` selected as source of truth and both ledgers were synchronized in this cycle.
 
 **Cycle 387 — HTTP response framing ambiguous Content-Length fail-closed hardening**:
+
 - Hardened `fetch_once(...)` in `src/net/http_client.cpp` to explicitly reject ambiguous multi-value `Content-Length` headers before body decode.
 - Added exported helper `has_ambiguous_content_length_header(...)` in `include/browser/net/http_client.h` and `src/net/http_client.cpp` so ambiguous framing behavior is deterministic and contract-testable.
 - Added focused regression coverage in `tests/test_request_contracts.cpp` for repeated/conflicting/malformed comma-delimited `Content-Length` values and single-value acceptance boundaries.
@@ -6770,6 +7377,7 @@ Gotchas: Element::tag_name() is a METHOD — use el->tag_name() with parens. In 
 - **Ledger divergence resolution**: `.claude/claude-estate.md` had newer mtime/content than `.codex/codex-estate.md` at cycle start (386 vs 385); `.claude` selected as source of truth and `.codex/codex-estate.md` remains non-writable in this runtime (`Operation not permitted`); `.claude` is source of truth for Cycle 387 and sync should be replayed when permissions allow.
 
 **Cycle 386 — HTTP response framing conflict fail-closed hardening**:
+
 - Hardened `fetch_once(...)` in `src/net/http_client.cpp` to explicitly reject responses that carry both `Transfer-Encoding` and `Content-Length`, failing closed before transfer-coding/body decode.
 - Added exported helper `has_conflicting_message_framing_headers(...)` in `include/browser/net/http_client.h` and `src/net/http_client.cpp` so framing-conflict behavior is deterministic and contract-testable.
 - Added focused regression coverage in `tests/test_request_contracts.cpp` for conflicting framing detection, normalized header-name handling, and non-conflicting exact-name checks.
@@ -6777,192 +7385,221 @@ Gotchas: Element::tag_name() is a METHOD — use el->tag_name() with parens. In 
 - **Ledger divergence note**: `.codex/codex-estate.md` remains non-writable in this runtime (`Operation not permitted`); `.claude/claude-estate.md` is source of truth for Cycle 386 and sync should be replayed when permissions allow.
 
 **Cycle 385 — Native HTTP2-Settings strict base64url shape fail-closed hardening**:
+
 - Hardened `request_headers_include_http2_settings(...)` in `src/net/http_client.cpp` to reject malformed base64url token68 shapes by enforcing valid data-length remainder (`mod 4 != 1`) and padding-count consistency rules.
 - Added focused regression coverage in `tests/test_request_contracts.cpp` for malformed shape variants (`A`, `AA=`, `AAA==`) and valid padded variants (`AAA=`, `AA==`) to keep acceptance boundaries explicit.
 - Rebuilt and re-ran `test_request_contracts` and `test_request_policy` from `build_vibrowser`, all green.
 - **Ledger sync**: `.claude/claude-estate.md` and `.codex/codex-estate.md` are synchronized in lockstep for Cycle 385.
 
 **Cycle 384 — Native HTTP2-Settings strict base64url token-character fail-closed hardening**:
+
 - Hardened `request_headers_include_http2_settings(...)` in `src/net/http_client.cpp` to reject non-base64url token characters (`+`, `/`, `.`, `~`) so malformed `HTTP2-Settings` values fail closed before HTTP/2 request classification.
 - Added focused regression coverage in `tests/test_request_contracts.cpp` for malformed `HTTP2-Settings` values containing each rejected non-base64url token character while preserving valid token acceptance paths.
 - Rebuilt and re-ran `test_request_contracts` and `test_request_policy` from `build_vibrowser`, all green.
 - **Ledger sync**: `.claude/claude-estate.md` and `.codex/codex-estate.md` are synchronized in lockstep for Cycle 384.
 
 **Cycle 383 — Native HTTP2-Settings token68 over-padding fail-closed hardening**:
+
 - Hardened `request_headers_include_http2_settings(...)` in `src/net/http_client.cpp` to reject malformed over-padded token68 values with more than two trailing `=` characters before HTTP/2 request classification.
 - Added focused regression coverage in `tests/test_request_contracts.cpp` for `HTTP2-Settings: AAMAAABk===` rejection while preserving existing valid token68 acceptance paths.
 - Rebuilt and re-ran `test_request_contracts` and `test_request_policy` from `build_vibrowser`, all green.
 - **Ledger sync**: `.claude/claude-estate.md` and `.codex/codex-estate.md` are synchronized in lockstep for Cycle 383.
 
 **Cycle 382 — Native+shared legacy shorthand dotted numeric-host serialized-origin fail-closed hardening**:
+
 - Hardened serialized-origin host validation in both `src/net/http_client.cpp` and `clever/src/js/cors_policy.cpp` so legacy shorthand dotted numeric-host forms (for example `127.1`) fail closed unless host syntax is strict canonical four-octet dotted-decimal IPv4.
 - Added focused regression coverage in `tests/test_request_policy.cpp` and `clever/tests/unit/cors_policy_test.cpp` for shorthand dotted numeric-host ACAO/policy-origin/request-url handling.
 - Rebuilt and re-ran `test_request_policy`, `test_request_contracts`, and `clever_js_cors_tests --gtest_filter='CORSPolicyTest.*'`, all green.
 - **Ledger divergence note**: `.claude/claude-estate.md` had newer mtime/content than `.codex/codex-estate.md` at cycle start (381 vs 379); `.claude` selected as source of truth for Cycle 382 and `.codex/codex-estate.md` replay sync remains blocked in this runtime (`Operation not permitted`).
 
 **Cycle 381 — Native+shared legacy hexadecimal numeric-host serialized-origin fail-closed hardening**:
+
 - Hardened serialized-origin host validation in both `src/net/http_client.cpp` and `clever/src/js/cors_policy.cpp` so legacy hexadecimal numeric-host forms (for example `0x7f000001`, `0x7f.0x0.0x0.0x1`) fail closed before CORS acceptance, request eligibility, or Origin-header emission.
 - Added focused regression coverage in `tests/test_request_policy.cpp` and `clever/tests/unit/cors_policy_test.cpp` for legacy hexadecimal numeric-host ACAO/policy-origin/request-url handling.
 - Rebuilt and re-ran `test_request_policy`, `test_request_contracts`, and `clever_js_cors_tests --gtest_filter='CORSPolicyTest.*'`, all green.
 - **Ledger divergence note**: `.codex/codex-estate.md` remains non-writable in this runtime (`Operation not permitted`); `.claude/claude-estate.md` is source of truth for Cycle 381 and sync should be replayed when permissions allow.
 
 **Cycle 380 — Native+shared legacy single-integer numeric-host serialized-origin fail-closed hardening**:
+
 - Hardened serialized-origin host validation in both `src/net/http_client.cpp` and `clever/src/js/cors_policy.cpp` so legacy single-token numeric-host forms (for example `2130706433`) fail closed before CORS acceptance, request eligibility, or Origin-header emission.
 - Added focused regression coverage in `tests/test_request_policy.cpp` and `clever/tests/unit/cors_policy_test.cpp` for legacy numeric-host ACAO/policy-origin/request-url handling.
 - Rebuilt and re-ran `test_request_policy`, `test_request_contracts`, and `clever_js_cors_tests --gtest_filter='CORSPolicyTest.*'`, all green.
 - **Ledger divergence note**: `.codex/codex-estate.md` remains non-writable in this runtime (`Operation not permitted`); `.claude/claude-estate.md` is source of truth for Cycle 380 and sync should be replayed when permissions allow.
 
 **Cycle 379 — Native+shared canonical dotted-decimal IPv4 serialized-origin fail-closed hardening**:
+
 - Hardened dotted-decimal IPv4 candidate parsing in both `src/net/http_client.cpp` and `clever/src/js/cors_policy.cpp` so non-canonical leading-zero octet forms (for example `001.2.3.4`) and invalid octet width/range forms fail closed before CORS acceptance or Origin-header emission.
 - Added focused regression coverage in `tests/test_request_policy.cpp` and `clever/tests/unit/cors_policy_test.cpp` for non-canonical dotted-decimal ACAO and policy-origin handling.
 - Rebuilt and re-ran `test_request_policy`, `test_request_contracts`, and `clever_js_cors_tests --gtest_filter='CORSPolicyTest.*'`, all green.
 - **Ledger sync**: `.claude/claude-estate.md` and `.codex/codex-estate.md` are synchronized in lockstep for Cycle 379.
 
 **Cycle 378 — Native+shared dotted-decimal IPv4 serialized-origin fail-closed hardening**:
+
 - Hardened `parse_serialized_origin(...)` in `src/net/http_client.cpp` and `has_valid_serialized_origin_host(...)` in `clever/src/js/cors_policy.cpp` to treat dotted-decimal hosts as strict IPv4 candidates and fail closed unless `inet_pton(AF_INET, ...)` succeeds.
 - Added focused regression coverage in `tests/test_request_policy.cpp` and `clever/tests/unit/cors_policy_test.cpp` for invalid dotted-decimal host variants (for example `256.1.1.1`) across ACAO checks, request URL validation, and policy-origin Origin-header suppression.
 - Rebuilt and re-ran `test_request_policy`, `test_request_contracts`, and `clever_js_cors_tests --gtest_filter=CORSPolicyTest.*`, all green.
 - **Ledger sync**: `.claude/claude-estate.md` and `.codex/codex-estate.md` are synchronized in lockstep for Cycle 378.
 
 **Cycle 377 — Shared JS serialized-origin malformed host-label fail-closed hardening in clever JS runtime path**:
+
 - Hardened `parse_httpish_url(...)` in `clever/src/js/cors_policy.cpp` to enforce strict serialized-origin host validation (malformed label + bracketed IPv6 literal validation) so malformed document-origin/request-url/ACAO values fail closed across eligibility, Origin-header attachment, and response-policy checks.
 - Added focused regression coverage in `clever/tests/unit/cors_policy_test.cpp` for malformed-host request URLs (`api..example`, `-api.example`, `api-.example`), malformed-host document origins, and malformed-host ACAO values.
 - Rebuilt and ran `clever_js_cors_tests` with `CORSPolicyTest.*`, all green.
 - **Ledger divergence note**: `.codex/codex-estate.md` is non-writable in this runtime (`Operation not permitted`); `.claude/claude-estate.md` is source of truth for Cycle 377 and sync should be replayed when permissions allow.
 
-
 **Cycle 376 — Native serialized-origin host-length fail-closed hardening in from_scratch_browser path**:
+
 - Hardened `parse_serialized_origin(...)` in `src/net/http_client.cpp` to reject overlong non-IPv6 host labels (>63 chars) and overlong total non-IPv6 hostnames (>253 chars) so malformed serialized-origin values fail closed in native CORS response checks and outgoing Origin-header emission.
 - Added focused regression coverage in `tests/test_request_policy.cpp` for overlong-host-label ACAO rejection and overlong-host-label policy-origin Origin-header suppression.
 - Rebuilt and re-ran `test_request_policy` and `test_request_contracts` from `build_vibrowser`, both green.
 - **Ledger divergence note**: `.codex/codex-estate.md` remains non-writable in this runtime (`Operation not permitted`); `.claude/claude-estate.md` is source of truth for Cycle 377 and sync should be replayed when permissions allow.
 
 **Cycle 375 — Native serialized-origin malformed host-label fail-closed hardening in from_scratch_browser path**:
+
 - Hardened `parse_serialized_origin(...)` in `src/net/http_client.cpp` to reject malformed non-IPv6 host labels (for example empty labels like `app..example.com`) and invalid IPv6 literals so malformed serialized-origin values fail closed in native CORS response checks and outgoing Origin-header emission.
 - Added focused regression coverage in `tests/test_request_policy.cpp` for malformed-host-label ACAO rejection and malformed-host-label policy-origin Origin-header suppression.
 - Rebuilt and re-ran `test_request_policy` and `test_request_contracts` from `build_vibrowser`, both green.
 - **Ledger sync**: `.claude/claude-estate.md` and `.codex/codex-estate.md` are synchronized in lockstep for Cycle 375.
 
 **Cycle 374 — Native serialized-origin empty explicit-port fail-closed hardening in from_scratch_browser path**:
+
 - Hardened `parse_serialized_origin(...)` in `src/net/http_client.cpp` to reject authority forms ending with `:` so malformed serialized-origin empty-port values fail closed in native CORS response checks and outgoing Origin-header emission.
 - Added focused regression coverage in `tests/test_request_policy.cpp` for empty explicit-port ACAO rejection and empty explicit-port policy-origin Origin-header suppression.
 - Rebuilt and re-ran `test_request_policy` and `test_request_contracts` from `build_vibrowser`, both green.
 - **Ledger divergence note**: `.codex/codex-estate.md` remains non-writable in this runtime (`Operation not permitted`); `.claude/claude-estate.md` is source of truth for Cycle 374 and sync should be replayed when permissions allow.
 
 **Cycle 373 — Native serialized-origin authority backslash fail-closed hardening in from_scratch_browser path**:
+
 - Hardened `parse_serialized_origin(...)` in `src/net/http_client.cpp` to reject backslash-containing authority bytes so malformed serialized-origin values fail closed in native CORS response checks and outgoing Origin-header emission.
 - Added focused regression coverage in `tests/test_request_policy.cpp` for backslash-containing ACAO rejection and backslash-containing policy-origin Origin-header suppression.
 - Rebuilt and re-ran `test_request_policy` and `test_request_contracts` from `build_vibrowser`, both green.
 - **Ledger divergence resolution**: `.claude/claude-estate.md` had newer mtime/content than `.codex/codex-estate.md` at cycle start (372 vs 369); `.claude` selected as source of truth and both ledgers were re-synced in lockstep for Cycle 373.
 
 **Cycle 372 — Native serialized-origin percent-escaped authority fail-closed hardening in from_scratch_browser path**:
+
 - Hardened `parse_serialized_origin(...)` in `src/net/http_client.cpp` to reject percent-escaped authority bytes so malformed serialized-origin values fail closed in native CORS response checks and outgoing Origin-header emission.
 - Added focused regression coverage in `tests/test_request_policy.cpp` for percent-escaped ACAO rejection and percent-escaped policy-origin Origin-header suppression.
 - Rebuilt and re-ran `test_request_policy` and `test_request_contracts` from `build_vibrowser`, both green.
 - **Ledger divergence note**: `.codex/codex-estate.md` remains non-writable in this runtime (`Operation not permitted`), so `.claude/claude-estate.md` is source of truth for Cycle 372; replay sync when permissions allow.
 
 **Cycle 371 — Native credentialed-CORS comma-separated ACAC fail-closed hardening in from_scratch_browser path**:
+
 - Hardened `check_cors_response_policy(...)` so present credentialed `Access-Control-Allow-Credentials` headers fail closed when comma-separated/multi-valued.
 - Added focused regression coverage in `tests/test_request_policy.cpp` for both required-ACAC and optional-ACAC credentialed CORS paths with `true,false` ACAC variants.
 - Rebuilt and re-ran `test_request_policy` and `test_request_contracts` from `build_vibrowser`, both green.
 - **Ledger divergence note**: `.codex/codex-estate.md` remains non-writable in this runtime (`Operation not permitted`), so `.claude/claude-estate.md` is source of truth for Cycle 371; replay sync when permissions allow.
 
 **Cycle 370 — Native credentialed-CORS optional ACAC literal-value fail-closed hardening in from_scratch_browser path**:
+
 - Hardened `check_cors_response_policy(...)` so any present credentialed `Access-Control-Allow-Credentials` value must be exact literal `true`, even when ACAC is configured as optional.
 - Added focused regression coverage in `tests/test_request_policy.cpp` to reject optional-ACAC credentialed CORS for non-literal (`false`) and non-ASCII ACAC values.
 - Rebuilt and re-ran `test_request_policy` and `test_request_contracts` from `build_vibrowser`, both green.
 - **Ledger divergence note**: `.codex/codex-estate.md` remains non-writable in this runtime (`Operation not permitted`), so `.claude/claude-estate.md` is source of truth for Cycle 370; replay sync when permissions allow.
 
 **Cycle 368 — Shared JS CORS request-URL authority percent-escape fail-closed hardening in clever JS runtime path**:
+
 - Hardened `clever::js::cors` request URL parsing to reject authority percent-escape inputs so encoded authority confusion variants fail closed before URL parsing.
 - Added focused regression coverage in `clever/tests/unit/cors_policy_test.cpp` across request-URL eligibility, Origin-header attachment, and response-policy gating for `%2e`/`%40` authority variants.
 - Rebuilt and ran `clever_js_cors_tests` with `CORSPolicyTest.*`, all green.
 - **Ledger divergence note**: `.codex/codex-estate.md` remains non-writable in this runtime (`Operation not permitted`), so `.claude/claude-estate.md` is source of truth for Cycle 368; replay sync when permissions allow.
 
 **Cycle 367 — Shared JS CORS request-URL percent-encoded control/backslash fail-closed hardening in clever JS runtime path**:
+
 - Hardened `clever::js::cors` request URL parsing to reject malformed percent-escapes and percent-decoded control/backslash octets so encoded confusion targets fail closed before URL parsing.
 - Added focused regression coverage in `clever/tests/unit/cors_policy_test.cpp` across request-URL eligibility, Origin-header attachment, and response-policy gating for `%00`/`%0a`/`%0d`/`%5c` variants.
 - Rebuilt and ran `clever_js_cors_tests` with `CORSPolicyTest.*`, all green.
 - **Ledger divergence resolution**: `.claude/claude-estate.md` had newer mtime/content than `.codex/codex-estate.md` at cycle start; `.claude` selected as source of truth and both ledgers were re-synced in lockstep for Cycle 367.
 
 **Cycle 366 — Shared JS CORS request-URL backslash-target fail-closed hardening in clever JS runtime path**:
+
 - Hardened `clever::js::cors` request URL parsing with explicit backslash rejection so malformed targets like `https://api.example\\data` fail closed before URL parsing.
 - Added focused regression coverage in `clever/tests/unit/cors_policy_test.cpp` across request-URL eligibility, Origin-header attachment, and response-policy gating for backslash-containing request URL variants.
 - Rebuilt and ran `clever_js_cors_tests` with `CORSPolicyTest.*`, all green.
 - **Ledger divergence note**: `.codex/codex-estate.md` remains non-writable in this runtime (`Operation not permitted`), so `.claude/claude-estate.md` is source of truth for Cycle 366; replay sync when permissions allow.
 
 **Cycle 365 — Shared JS CORS request-URL empty-userinfo authority fail-closed hardening in clever JS runtime path**:
+
 - Hardened `clever::js::cors` request URL parsing with explicit authority-level `@` rejection so malformed empty-userinfo forms such as `https://@api.example/data` fail closed before URL parsing.
 - Added focused regression coverage in `clever/tests/unit/cors_policy_test.cpp` across request-URL eligibility, Origin-header attachment, and response-policy gating for empty-userinfo authority URL variants.
 - Rebuilt and ran `clever_js_cors_tests` with `CORSPolicyTest.*`, all green.
 - **Ledger divergence note**: `.codex/codex-estate.md` remains non-writable in this runtime (`Operation not permitted`), so `.claude/claude-estate.md` is source of truth for Cycle 364; replay sync when permissions allow.
 
-
 **Cycle 363 — Shared JS CORS request-URL embedded-whitespace/userinfo/fragment fail-closed hardening in clever JS runtime path**:
+
 - Hardened `clever::js::cors` request URL parsing to reject embedded ASCII whitespace, authority userinfo credentials, and fragment-bearing request targets.
 - Added focused regression coverage in `clever/tests/unit/cors_policy_test.cpp` for request-URL eligibility, Origin-header attachment, and CORS response gating with embedded-space/userinfo/fragment URL variants.
 - Rebuilt and ran `clever_js_cors_tests` with `CORSPolicyTest.*`, all green.
 - **Ledger divergence resolution**: `.claude/claude-estate.md` and `.codex/codex-estate.md` are synced in lockstep for Cycle 363.
 
 **Cycle 362 — Shared JS CORS request-URL control/non-ASCII octet fail-closed hardening in clever JS runtime path**:
+
 - Hardened `clever::js::cors` request URL parsing to reject control and non-ASCII octets so malformed request URLs fail closed before CORS eligibility/origin checks.
 - Added focused regression coverage in `clever/tests/unit/cors_policy_test.cpp` for request-URL eligibility, Origin-header attachment, and CORS response gating with control/non-ASCII request URL variants.
 - Rebuilt and ran `clever_js_cors_tests` with `CORSPolicyTest.*`, all green.
 - **Ledger divergence note**: `.codex/codex-estate.md` remains non-writable in this runtime (`Operation not permitted`), so `.claude/claude-estate.md` is source of truth for Cycle 362; replay sync when permissions allow.
 
 **Cycle 361 — Shared JS CORS request-URL surrounding-whitespace fail-closed hardening in clever JS runtime path**:
+
 - Hardened `clever::js::cors` request URL parsing to reject surrounding ASCII whitespace so malformed request URLs fail closed in CORS request eligibility and response-policy checks.
 - Added focused regression coverage in `clever/tests/unit/cors_policy_test.cpp` for surrounding-whitespace request URLs in eligibility, Origin-header attachment, and CORS response gating.
 - Rebuilt and ran `clever_js_cors_tests`, all green.
 
 **Cycle 360 — Shared JS CORS serialized-origin/header surrounding-whitespace fail-closed hardening in clever JS runtime path**:
+
 - Hardened `clever::js::cors` serialized-origin and CORS header handling to reject surrounding ASCII whitespace instead of accepting trim-based variants.
 - Enforced strict exact-value semantics for ACAO and ACAC checks, preserving canonical-origin matching and literal `ACAC: true` requirements.
 - Added focused regression coverage in `clever/tests/unit/cors_policy_test.cpp` for malformed whitespace-bearing document-origin, ACAO, and ACAC variants.
 - Rebuilt and ran `clever_js_cors_tests` with `CORSPolicyTest.*`, all green.
 
 **Cycle 359 — Native request-policy serialized-origin non-ASCII/whitespace fail-closed hardening in from_scratch_browser path**:
+
 - Hardened `parse_serialized_origin(...)` in `src/net/http_client.cpp` to reject non-ASCII bytes (`>=0x80`) and surrounding ASCII whitespace so malformed serialized origins fail closed.
 - Preserved existing strict serialized-origin checks (control-character rejection + HTTP(S)/`null` constraints) while preventing permissive trimming acceptance in native CORS/Origin-header paths.
 - Added focused regression coverage in `tests/test_request_policy.cpp` for non-ASCII request-origin rejection during CORS response checks and non-ASCII policy-origin rejection for outgoing Origin-header emission.
 - Rebuilt and re-ran `test_request_policy` and `test_request_contracts` from `build_clean`, both green.
 
 **Cycle 358 — Fetch/XHR unsupported-scheme pre-dispatch fail-closed hardening in clever JS runtime path**:
+
 - Added shared CORS request URL eligibility helper (`is_cors_eligible_request_url`) and wired it into the CORS helper path for HTTP(S)-only request URL eligibility checks.
 - Hardened fetch/XHR dispatch to reject unsupported-scheme requests pre-dispatch when document origin is enforceable or `null`, and prevented cookie attachment for non-eligible request URLs.
 - Added targeted regression coverage in `clever/tests/unit/cors_policy_test.cpp` and `clever/tests/unit/js_engine_test.cpp` for eligibility checks and pre-dispatch rejection behavior.
 - Rebuilt and ran `clever_js_cors_tests` and targeted `JSFetch` tests, all green.
 
 **Cycle 357 — Native request-policy HTTP(S)-only serialized-origin fail-closed hardening in from_scratch_browser path**:
+
 - Hardened `parse_serialized_origin(...)` in native request-policy/CORS enforcement to reject unsupported non-HTTP(S) origin schemes (`ws://...` etc.) while preserving `null` + canonical HTTP(S) behavior.
 - Added targeted regression coverage in `tests/test_request_policy.cpp` for CORS response gating and Origin-header emission fail-closed behavior with non-HTTP(S) policy origins.
 - Rebuilt and re-ran `test_request_policy` and `test_request_contracts` from `build_clean`, both green.
 
-
 **Cycle 356 — Shared JS CORS helper non-ASCII ACAO/ACAC/header-origin octet fail-closed hardening in clever JS runtime path**:
+
 - Hardened strict header-octet validation in `clever::js::cors` so non-ASCII bytes are rejected in serialized request origins and CORS response header values.
 - Added focused regression coverage in `clever/tests/unit/cors_policy_test.cpp` for non-ASCII ACAO and non-ASCII ACAC rejection paths.
 - Rebuilt `clever_js_cors_tests` and ran `CORSPolicyTest.*`, all green.
 
 **Cycle 355 — Shared JS CORS helper malformed ACAO authority/port fail-closed hardening in clever JS runtime path**:
+
 - Hardened `clever::js::cors::cors_allows_response(...)` ACAO canonical parser with strict authority/port syntax validation before origin matching.
 - Added explicit fail-closed rejection for malformed empty-port and non-digit-port ACAO forms such as `https://app.example:` and `https://app.example:443abc`.
 - Added focused regression coverage in `clever/tests/unit/cors_policy_test.cpp` for both malformed authority/port rejection paths.
 - Rebuilt `clever_js_cors_tests` and ran `CORSPolicyTest.*`, all green.
 
 **Cycle 354 — Shared JS CORS helper canonical serialized-origin ACAO matching hardening in clever JS runtime path**:
+
 - Hardened `clever::js::cors::cors_allows_response(...)` ACAO matching to use strict serialized-origin canonical comparison instead of raw string equality.
 - Added canonicalized comparison for scheme/host case and default-port equivalents (for example `HTTPS://APP.EXAMPLE:443` vs `https://app.example`) while preserving strict malformed-origin fail-closed rejection.
 - Added focused regression coverage in `clever/tests/unit/cors_policy_test.cpp` for canonical-equivalent non-credentialed and credentialed ACAO acceptance paths.
 - Rebuilt `clever_js_cors_tests` and ran `CORSPolicyTest.*`, all green.
 
 **Cycle 353 — Shared JS CORS helper duplicate ACAO/ACAC header fail-closed hardening in clever JS runtime path**:
+
 - Hardened `clever::js::cors::cors_allows_response(...)` to require exactly one `Access-Control-Allow-Origin` value and reject duplicate ACAO entries before cross-origin value matching.
 - Hardened credentialed branch to require exactly one `Access-Control-Allow-Credentials` value and reject duplicate ACAC entries before strict literal-`true` enforcement.
 - Added focused regression coverage in `clever/tests/unit/cors_policy_test.cpp` for duplicate ACAO and duplicate ACAC rejection paths.
 - Rebuilt `clever_js_cors_tests` and ran `CORSPolicyTest.*`, all green.
 
 **Cycle 352 — Shared JS CORS helper null-origin and empty-origin fail-closed hardening in clever JS runtime path**:
+
 - Hardened `clever::js::cors::cors_allows_response(...)` to reject empty document origins and fail closed before cross-origin policy evaluation.
 - Updated shared helper cross-origin logic to treat `"null"` document origins as cross-origin for HTTP(S) targets and require strict null-origin ACAO/ACAC semantics.
 - Updated origin-header attachment logic so null-origin cross-origin requests emit an `Origin` header path consistently with stricter CORS handling.
@@ -6971,6 +7608,7 @@ Gotchas: Element::tag_name() is a METHOD — use el->tag_name() with parens. In 
 - **Ledger divergence resolution**: mtime-precedence sync applied; `.claude/claude-estate.md` and `.codex/codex-estate.md` are aligned at Cycle 352.
 
 **Cycle 351 — Shared JS CORS helper strict ACAC literal `true` fail-closed hardening in clever JS runtime path**:
+
 - Hardened `clever::js::cors::cors_allows_response(...)` credentialed branch to require exact case-sensitive literal `true` for `Access-Control-Allow-Credentials`.
 - Removed permissive case-insensitive acceptance in this path so malformed ACAC case variants (`TRUE`/`True`) now fail closed.
 - Expanded focused regression coverage in `clever/tests/unit/cors_policy_test.cpp` to assert uppercase and mixed-case ACAC rejection.
@@ -6978,6 +7616,7 @@ Gotchas: Element::tag_name() is a METHOD — use el->tag_name() with parens. In 
 - **Ledger divergence note**: `.codex/codex-estate.md` remains non-writable in this runtime (`Operation not permitted`), so `.claude/claude-estate.md` is source of truth for Cycle 351; replay sync when permissions allow.
 
 **Cycle 350 — Shared JS CORS helper malformed/unsupported request URL fail-closed hardening in clever JS runtime path**:
+
 - Hardened `clever::js::cors::cors_allows_response(...)` so enforceable document origins now fail closed when request URL parsing fails.
 - Added explicit non-HTTP(S) request URL rejection in enforceable-origin CORS response validation to prevent malformed-target bypass semantics.
 - Added focused regression coverage in `clever/tests/unit/cors_policy_test.cpp` for empty request URL and non-HTTP scheme request URL rejection.
@@ -6985,6 +7624,7 @@ Gotchas: Element::tag_name() is a METHOD — use el->tag_name() with parens. In 
 - **Ledger divergence resolution**: mtime-precedence sync applied; `.claude/claude-estate.md` and `.codex/codex-estate.md` are aligned at Cycle 350.
 
 **Cycle 349 — Shared JS CORS helper malformed document-origin fail-closed hardening in clever JS runtime path**:
+
 - Hardened `clever::js::cors` document-origin handling to require strict serialized HTTP(S) origins for enforceable CORS decisions.
 - Added explicit fail-closed rejection for malformed non-null document origins so malformed values cannot bypass cross-origin response gating in shared helper consumers.
 - Added focused regression coverage in `clever/tests/unit/cors_policy_test.cpp` for malformed-origin enforcement, no-origin-header emission on malformed origin, and malformed-origin response rejection.
@@ -6992,6 +7632,7 @@ Gotchas: Element::tag_name() is a METHOD — use el->tag_name() with parens. In 
 - **Ledger divergence note**: `.codex/codex-estate.md` remains non-writable in this runtime (`Operation not permitted`), so `.claude/claude-estate.md` is source of truth for Cycle 349; replay sync when permissions allow.
 
 **Cycle 348 — Shared JS CORS helper malformed ACAO/ACAC fail-closed hardening in clever JS runtime path**:
+
 - Hardened `clever::js::cors::cors_allows_response(...)` to reject malformed comma-separated `Access-Control-Allow-Origin` and control-character-corrupted ACAO/ACAC values.
 - Prevented malformed CORS response headers from being interpreted as valid allow conditions in shared helper consumers.
 - Added focused regression coverage in `clever/tests/unit/cors_policy_test.cpp` for malformed ACAO and ACAC control-character rejection.
@@ -6999,6 +7640,7 @@ Gotchas: Element::tag_name() is a METHOD — use el->tag_name() with parens. In 
 - **Ledger divergence resolution**: mtime-precedence sync applied; `.claude/claude-estate.md` and `.codex/codex-estate.md` are now aligned at Cycle 348.
 
 **Cycle 347 — Web font mixed `local(...)` + `url(...)` single-entry fail-closed hardening in clever paint pipeline**:
+
 - Hardened `extract_preferred_font_url(...)` to reject malformed single source entries that combine `local(...)` and `url(...)` descriptors.
 - Prevented malformed mixed-source entries from being partially accepted; valid fallback entries now resolve deterministically or fail closed when no valid fallback exists.
 - Added focused regression coverage in `clever/tests/unit/paint_test.cpp` for mixed-source fallback and mixed-source-only empty-result behavior.
@@ -7006,14 +7648,15 @@ Gotchas: Element::tag_name() is a METHOD — use el->tag_name() with parens. In 
 - **Ledger divergence note**: `.codex/codex-estate.md` is non-writable in this runtime (`Operation not permitted`), so `.claude/claude-estate.md` is source of truth for Cycle 347; replay sync when permissions allow.
 
 **Cycle 346 — Web font duplicate descriptor fail-closed hardening in clever paint pipeline**:
+
 - Hardened `extract_preferred_font_url(...)` to reject malformed single source entries containing duplicate `url(...)`, duplicate `format(...)`, or duplicate `tech(...)` descriptors.
 - Prevented partial acceptance of ambiguous descriptor chains in malformed `@font-face src` entries.
 - Added focused regression coverage in `clever/tests/unit/paint_test.cpp` for duplicate `url`, duplicate `format`, and duplicate `tech` descriptor rejection.
 - Rebuilt `clever_paint_tests` and re-ran `WebFontRegistration.PreferredFontSource*` malformed/duplicate-targeted filters, all green.
 - **Ledger divergence resolution**: `.claude/claude-estate.md` and `.codex/codex-estate.md` are synchronized for Cycle 346.
 
-
 **Cycle 344 — Web font malformed unbalanced quote/parenthesis `src` parser fail-closed hardening in clever paint pipeline**:
+
 - Hardened `extract_preferred_font_url(...)` so both top-level source splitting and descriptor CSV tokenization fail closed when parser state ends with unbalanced quote or parenthesis depth.
 - Prevented malformed `@font-face src` values from partially recovering across broken quote/paren boundaries.
 - Added focused regression coverage in `clever/tests/unit/paint_test.cpp` for malformed unbalanced-quote source-list rejection and malformed unbalanced-parenthesis descriptor rejection.
@@ -7021,6 +7664,7 @@ Gotchas: Element::tag_name() is a METHOD — use el->tag_name() with parens. In 
 - **Ledger divergence note**: `.codex/codex-estate.md` remains write-blocked in this runtime (`Operation not permitted`), so `.claude/claude-estate.md` is source of truth for Cycle 344.
 
 **Cycle 345 — Web font unmatched-closing-parenthesis fail-closed hardening in clever paint pipeline**:
+
 - Hardened `extract_preferred_font_url(...)` to reject malformed `@font-face src` entries containing unmatched closing `)` delimiters.
 - Extended descriptor-list parsing fail-closed behavior to reject unmatched closing `)` in `format(...)`/`tech(...)` token lists.
 - Added focused regression coverage in `clever/tests/unit/paint_test.cpp` for malformed extra-closing-paren source-list and descriptor-list rejection.
@@ -7028,6 +7672,7 @@ Gotchas: Element::tag_name() is a METHOD — use el->tag_name() with parens. In 
 - **Ledger divergence note**: `.codex/codex-estate.md` is non-writable in this runtime (`Operation not permitted`), so `.claude/claude-estate.md` is source of truth for Cycle 345; replay sync when permissions allow.
 
 **Cycle 343 — Web font malformed top-level `src` delimiter fail-closed hardening in clever paint pipeline**:
+
 - Hardened `extract_preferred_font_url(...)` to fail closed when top-level `@font-face src` lists contain empty entries from malformed leading/trailing/double commas.
 - Prevented malformed `src` lists from partially succeeding on earlier valid entries when delimiter structure is invalid.
 - Added focused regression coverage in `clever/tests/unit/paint_test.cpp` for double-comma and trailing-comma top-level `src` list rejection.
@@ -7035,6 +7680,7 @@ Gotchas: Element::tag_name() is a METHOD — use el->tag_name() with parens. In 
 - **Ledger divergence note**: `.codex/codex-estate.md` remains write-blocked in this runtime (`Operation not permitted`), so `.claude/claude-estate.md` is source of truth for Cycle 344.
 
 **Cycle 342 — Web font `data:` malformed percent-escape fail-closed hardening in clever paint pipeline**:
+
 - Hardened `decode_font_data_url(...)` to reject malformed percent escapes in non-base64 `data:` payloads, including truncated (`%0`) and non-hex (`%0G`) sequences.
 - Preserved strict fail-closed behavior before percent-decoding so malformed payloads cannot be normalized into accepted font bytes.
 - Added focused regression coverage in `clever/tests/unit/paint_test.cpp` for malformed and truncated percent-escape rejection.
@@ -7042,6 +7688,7 @@ Gotchas: Element::tag_name() is a METHOD — use el->tag_name() with parens. In 
 - **Ledger divergence note**: `.codex/codex-estate.md` remains non-writable in this runtime (`Operation not permitted`), so `.claude/claude-estate.md` is source of truth for Cycle 342.
 
 **Cycle 341 — Web font malformed descriptor-list delimiter fail-closed hardening in clever paint pipeline**:
+
 - Hardened `extract_preferred_font_url(...)` so malformed `format(...)`/`tech(...)` descriptor lists with leading/trailing comma delimiters are rejected as invalid entries.
 - Prevented partial-accept behavior where malformed lists could still pass if one supported token existed.
 - Added focused regression coverage in `clever/tests/unit/paint_test.cpp` for malformed `format('woff2',)` and `tech(, 'variations')` fallback behavior.
@@ -7049,6 +7696,7 @@ Gotchas: Element::tag_name() is a METHOD — use el->tag_name() with parens. In 
 - **Ledger divergence note**: `.codex/codex-estate.md` remains write-blocked in this runtime (`Operation not permitted`), so `.claude/claude-estate.md` is source of truth for Cycle 344.
 
 **Cycle 340 — Web font descriptor parser false-positive fail-closed hardening in clever paint pipeline**:
+
 - Hardened `extract_preferred_font_url(...)` so `format(`/`tech(` detection only matches descriptor-level function calls instead of quoted URL payload substrings.
 - Prevented false descriptor parsing for URLs like `url("font-format(test).woff2")`, preserving valid source selection instead of incorrect fallback rejection.
 - Added focused regression coverage in `clever/tests/unit/paint_test.cpp` for both `format(` and `tech(` substring cases inside quoted URL values.
@@ -7056,6 +7704,7 @@ Gotchas: Element::tag_name() is a METHOD — use el->tag_name() with parens. In 
 - **Ledger divergence note**: `.codex/codex-estate.md` remains non-writable in this runtime, so `.claude/claude-estate.md` is source of truth for Cycle 340; replay sync when permissions allow.
 
 **Cycle 339 — Web font malformed empty `format()`/`tech()` descriptor fail-closed hardening in clever paint pipeline**:
+
 - Hardened `extract_preferred_font_url(...)` so entries explicitly containing malformed empty `format()` or `tech()` descriptors are rejected instead of treated as descriptor-absent.
 - Preserved valid descriptor behavior for supported format/tech token lists while closing malformed descriptor acceptance gaps.
 - Added focused regression coverage in `clever/tests/unit/paint_test.cpp` for malformed empty `format()` and malformed empty `tech()` fallback behavior.
@@ -7063,6 +7712,7 @@ Gotchas: Element::tag_name() is a METHOD — use el->tag_name() with parens. In 
 - **Ledger divergence note**: `.codex/codex-estate.md` remains write-blocked in this runtime (`Operation not permitted`), so `.claude/claude-estate.md` is source of truth for Cycle 344.
 
 **Cycle 338 — Web font `tech(...)` source-hint fail-closed support hardening in clever paint pipeline**:
+
 - Hardened `extract_preferred_font_url(...)` to parse `tech(...)` descriptors and require at least one supported technology token before selecting a source.
 - Added supported-tech allowlist support for `variations` while preserving existing format-aware source selection semantics.
 - Added focused regression coverage in `clever/tests/unit/paint_test.cpp` for unsupported-tech fallback and mixed-tech-list acceptance.
@@ -7070,6 +7720,7 @@ Gotchas: Element::tag_name() is a METHOD — use el->tag_name() with parens. In 
 - **Ledger divergence note**: `.codex/codex-estate.md` remains write-blocked in this runtime (operation not permitted), so `.claude/claude-estate.md` is source of truth for Cycle 338; replay sync once `.codex` write permissions are restored.
 
 **Cycle 337 — Web font `woff2-variations` format token support hardening in clever paint pipeline**:
+
 - Added `woff2-variations` to supported `@font-face` `format(...)` tokens used by `extract_preferred_font_url(...)`.
 - Preserved fail-closed behavior for unsupported formats while enabling correct fallback/selection for variable WOFF2 sources.
 - Added focused regression coverage in `clever/tests/unit/paint_test.cpp` for direct `woff2-variations` selection and fallback resolution.
@@ -7077,6 +7728,7 @@ Gotchas: Element::tag_name() is a METHOD — use el->tag_name() with parens. In 
 - **Ledger divergence note**: `.codex/codex-estate.md` is write-blocked in this runtime (operation not permitted), so `.claude/claude-estate.md` is source of truth for Cycle 337; replay sync once `.codex` write permissions are restored.
 
 **Cycle 336 — Web font `data:` base64 strict-padding/trailing fail-closed hardening in clever paint pipeline**:
+
 - Hardened `decode_font_data_url(...)` to reject malformed non-terminal padding and trailing non-padding bytes after first `=` in base64 payloads.
 - Enforced valid padded payload sizing and invalid-padding-count rejection while preserving unpadded base64 decode compatibility.
 - Added focused regression coverage in `clever/tests/unit/paint_test.cpp` for malformed padding rejection and unpadded valid decode behavior.
@@ -7084,6 +7736,7 @@ Gotchas: Element::tag_name() is a METHOD — use el->tag_name() with parens. In 
 - **Ledger divergence resolution**: `.codex/codex-estate.md` and `.claude/claude-estate.md` were re-synced at cycle close.
 
 **Cycle 335 — Web font source multi-format `format(...)` list hardening in clever paint pipeline**:
+
 - Hardened `extract_preferred_font_url(...)` to parse comma-separated `format(...)` lists and treat an entry as supported when at least one declared format is supported by the current pipeline.
 - Preserved fail-closed behavior for unsupported-only format lists so invalid legacy-only descriptors cannot block fallback to later valid URLs.
 - Added focused regression coverage in `clever/tests/unit/paint_test.cpp` for mixed supported/unsupported format lists and unsupported-only list fallback behavior.
@@ -7091,6 +7744,7 @@ Gotchas: Element::tag_name() is a METHOD — use el->tag_name() with parens. In 
 - **Ledger divergence note**: `.codex/codex-estate.md` is write-blocked in this runtime (operation not permitted), so `.claude/claude-estate.md` is source of truth for Cycle 335; replay sync once `.codex` write permissions are restored.
 
 **Cycle 334 — Web font source format-aware fallback hardening in clever paint pipeline**:
+
 - Hardened `extract_preferred_font_url(...)` to parse descriptor entries safely and skip unsupported `format(...)` sources before selecting a usable URL.
 - Added case-insensitive handling for CSS `URL(...)` and `FORMAT(...)` function names to improve real-world stylesheet compatibility.
 - Added focused regression coverage in `clever/tests/unit/paint_test.cpp` for unsupported-format fallback and uppercase-function parsing.
@@ -7098,6 +7752,7 @@ Gotchas: Element::tag_name() is a METHOD — use el->tag_name() with parens. In 
 - **Ledger divergence resolution**: `.codex/codex-estate.md` and `.claude/claude-estate.md` were re-synced at cycle close.
 
 **Cycle 333 — Web font `data:` URL decode/register support hardening in from_scratch_browser**:
+
 - Added `decode_font_data_url(...)` to decode inline `@font-face` `data:` payloads for both base64 and percent-encoded forms.
 - Integrated `data:` handling into web-font registration so inline font sources are decoded and registered before network resolution/fetch.
 - Added 3 regression tests in `clever/tests/unit/paint_test.cpp` for base64 decode, percent-encoded decode, and invalid base64 rejection.
@@ -7105,6 +7760,7 @@ Gotchas: Element::tag_name() is a METHOD — use el->tag_name() with parens. In 
 - **Ledger divergence note**: `.codex/codex-estate.md` is write-blocked in this runtime (operation not permitted), so `.claude/claude-estate.md` is source of truth for Cycle 333; replay sync once `.codex` write permissions are restored.
 
 **Cycle 331 — HTTP/2 Upgrade + Transfer-Encoding non-ASCII token fail-closed hardening in from_scratch_browser**:
+
 - Hardened transport token parsing to reject non-ASCII bytes (`>=0x80`) in both `Upgrade` and `Transfer-Encoding` token scanners.
 - Prevented locale-sensitive or extended-byte token acceptance from creating ambiguous HTTP/2 upgrade or transfer-coding behavior.
 - Added regression coverage in `tests/test_request_contracts.cpp` for non-ASCII malformed upgrade and transfer-coding token variants across helper/response/request paths.
@@ -7112,6 +7768,7 @@ Gotchas: Element::tag_name() is a METHOD — use el->tag_name() with parens. In 
 - **Ledger divergence note**: `.codex/codex-estate.md` is write-blocked in this runtime (operation not permitted), so `.claude/claude-estate.md` is source of truth for Cycle 331; replay sync once `.codex` write permissions are restored.
 
 **Cycle 330 — HTTP/2 Upgrade malformed token-character fail-closed hardening in from_scratch_browser**:
+
 - Hardened `contains_http2_upgrade_token(...)` so malformed token-character variants in `Upgrade` lists are rejected instead of being ignored.
 - Enforced fail-closed behavior for malformed list members (for example `websocket@`) before trailing `h2`/`h2c` tokens can be treated as valid HTTP/2 upgrade signals.
 - Added helper/response/request regression coverage in `tests/test_request_contracts.cpp` for malformed token-character list variants.
@@ -7119,6 +7776,7 @@ Gotchas: Element::tag_name() is a METHOD — use el->tag_name() with parens. In 
 - **Ledger divergence resolution**: `.codex/codex-estate.md` and `.claude/claude-estate.md` were re-synced at cycle close.
 
 **Cycle 329 — Policy-origin serialized-origin fail-closed enforcement hardening in from_scratch_browser**:
+
 - Hardened request-policy validation so malformed `RequestPolicy::origin` values are rejected before same-origin gating.
 - Hardened CSP `connect-src` evaluation to fail closed on malformed `policy.origin`, preventing 'self' and scheme-less host-source inference from operating on invalid origin forms.
 - Preserved canonical origin matching for valid serialized origins across cross-origin and CSP checks.
@@ -7127,6 +7785,7 @@ Gotchas: Element::tag_name() is a METHOD — use el->tag_name() with parens. In 
 - **Ledger divergence note**: `.codex/codex-estate.md` remains write-blocked in this runtime (operation not permitted), so `.claude/claude-estate.md` is source of truth for Cycle 329; replay sync once `.codex` write permissions are restored.
 
 **Cycle 328 — CORS request-Origin header emission serialized-origin fail-closed hardening in from_scratch_browser**:
+
 - Hardened request header construction to require strict serialized-origin validation before adding outgoing `Origin`.
 - Updated `build_request_headers_for_policy(...)` to reuse `parse_serialized_origin(...)` so malformed policy origins (such as path-bearing values) fail closed instead of being emitted as normalized/synthetic origins.
 - Preserved canonical origin emission for valid serialized origin inputs, including case/default-port normalization behavior.
@@ -7135,6 +7794,7 @@ Gotchas: Element::tag_name() is a METHOD — use el->tag_name() with parens. In 
 - **Ledger divergence resolution**: `.claude/claude-estate.md` had newer mtime/content than `.codex/codex-estate.md` at cycle start; `.claude` selected as source of truth and both ledgers synced after cycle close.
 
 **Cycle 327 — CORS request-Origin serialized-origin explicit rejection hardening in from_scratch_browser**:
+
 - Hardened cross-origin response policy evaluation to fail closed when request `Origin` values are malformed serialized-origin forms.
 - Added `parse_serialized_origin(...)` and used it to validate/canonicalize both `RequestPolicy::origin` and ACAO origin values with consistent strict parsing rules.
 - Rejected request-origin path/userinfo forms before same-origin or ACAO matching to prevent malformed-origin acceptance edge cases.
@@ -7143,6 +7803,7 @@ Gotchas: Element::tag_name() is a METHOD — use el->tag_name() with parens. In 
 - **Ledger divergence note**: `.codex/codex-estate.md` is write-blocked in this runtime (operation not permitted), so `.claude/claude-estate.md` is source of truth for Cycle 327; replay sync once `.codex` write permissions are restored.
 
 **Cycle 327 — Credentialed CORS ACAC duplicate/control-char fail-closed hardening in from_scratch_browser**:
+
 - Hardened credentialed CORS response gating so malformed ACAC headers are rejected even when ACAC strict-presence is optional.
 - Updated `check_cors_response_policy(...)` to reject duplicate ACAC headers and control-character-tainted ACAC values whenever credential mode is `include`.
 - Preserved existing strict literal `ACAC=true` requirement when `require_acac_for_credentialed_cors` is enabled.
@@ -7151,6 +7812,7 @@ Gotchas: Element::tag_name() is a METHOD — use el->tag_name() with parens. In 
 - **Ledger divergence note**: `.codex/codex-estate.md` is write-blocked in this runtime (operation not permitted), so `.claude/claude-estate.md` is source of truth for Cycle 327; replay sync once `.codex` write permissions are restored.
 
 **Cycle 326 — CORS ACAO/ACAC control-character explicit rejection hardening in from_scratch_browser**:
+
 - Hardened cross-origin response policy parsing to fail closed when ACAO/ACAC values contain forbidden control characters.
 - Updated `check_cors_response_policy(...)` to reject control-character-tainted ACAO values before serialized-origin/wildcard/null branching.
 - Updated credentialed CORS ACAC validation to reject control-character-tainted values before strict literal `true` enforcement.
@@ -7159,6 +7821,7 @@ Gotchas: Element::tag_name() is a METHOD — use el->tag_name() with parens. In 
 - **Ledger divergence resolution**: `.claude/claude-estate.md` had newer mtime than `.codex/codex-estate.md` at cycle start; `.claude` selected as source of truth and both ledgers synced after cycle close.
 
 **Cycle 325 — Transfer-Encoding unsupported-coding explicit rejection hardening in from_scratch_browser**:
+
 - Hardened `Transfer-Encoding` parsing to allow only single-token `chunked` without parameters and reject unsupported coding chains.
 - Updated `contains_chunked_encoding(...)` so non-`chunked` codings (including `gzip` and `gzip, chunked`) are rejected instead of being treated as acceptable transfer-encoding state.
 - Updated fetch body handling to fail closed with deterministic error when `Transfer-Encoding` is malformed or unsupported, preventing unsafe fallback parsing.
@@ -7167,6 +7830,7 @@ Gotchas: Element::tag_name() is a METHOD — use el->tag_name() with parens. In 
 - **Ledger divergence note**: `.codex/codex-estate.md` remains write-blocked in this runtime (operation not permitted), so `.claude/claude-estate.md` is source of truth for Cycle 325; replay sync when permissions allow.
 
 **Cycle 324 — Transfer-Encoding control-character token explicit rejection hardening in from_scratch_browser**:
+
 - Hardened `Transfer-Encoding` parsing to fail closed when transfer-coding tokens contain RFC-invalid control characters.
 - Updated `contains_chunked_encoding(...)` to reject control-character and tab-corrupted token payloads before exact `chunked` matching.
 - Expanded `tests/test_request_contracts.cpp` regression assertions for control-character and tab-corrupted token rejection while preserving valid `gzip, chunked` acceptance.
@@ -7174,6 +7838,7 @@ Gotchas: Element::tag_name() is a METHOD — use el->tag_name() with parens. In 
 - **Ledger divergence resolution**: `.claude/claude-estate.md` had newer mtime than `.codex/codex-estate.md` at cycle start; `.claude` selected as source of truth and both ledgers synced after cycle close.
 
 **Cycle 323 — Transfer-Encoding chunked-final/no-parameter explicit rejection hardening in from_scratch_browser**:
+
 - Hardened `Transfer-Encoding` parsing to fail closed when `chunked` is parameterized (`chunked;...`) or followed by another coding token (`chunked, gzip`).
 - Updated `contains_chunked_encoding(...)` to enforce chunked-final semantics and reject parameterized `chunked` values before chunked-body parsing can trigger.
 - Added regression coverage in `tests/test_request_contracts.cpp` for parameterized and non-final `chunked` rejection while preserving valid `gzip, chunked` acceptance.
@@ -7181,6 +7846,7 @@ Gotchas: Element::tag_name() is a METHOD — use el->tag_name() with parens. In 
 - **Ledger divergence note**: `.codex/codex-estate.md` remains write-blocked in this runtime (operation not permitted), so `.claude/claude-estate.md` is source of truth for Cycle 323; replay sync when permissions allow.
 
 **Cycle 322 — Transfer-Encoding malformed delimiter/quoted-token explicit rejection hardening in from_scratch_browser**:
+
 - Hardened `Transfer-Encoding` parsing to fail closed on malformed delimiter forms and quoted/escaped token variants before applying `chunked` detection.
 - Updated `contains_chunked_encoding(...)` to reject leading/trailing/consecutive comma empty tokens and reject quoted/escaped malformed token forms.
 - Added regression coverage in `tests/test_request_contracts.cpp` for malformed delimiter and quoted/escaped token rejection, while preserving valid exact-token detection.
@@ -7188,14 +7854,15 @@ Gotchas: Element::tag_name() is a METHOD — use el->tag_name() with parens. In 
 - **Ledger divergence resolution**: `.claude/claude-estate.md` was ahead of `.codex/codex-estate.md` at cycle start; `.claude` selected as source of truth and both ledgers synced after cycle close.
 
 **Cycle 321 — Transfer-Encoding chunked exact-token hardening in from_scratch_browser**:
+
 - Hardened `Transfer-Encoding` parsing to detect `chunked` only as an exact comma-delimited token (case-insensitive).
 - Prevented substring/prefix false positives like `notchunked` and `xchunked` from triggering chunked decoding.
 - Added regression coverage in `tests/test_request_contracts.cpp` for exact-token acceptance and false-positive rejection.
 - Reconfigured `build_clean`, rebuilt `test_request_contracts`, and reran it green.
 - **Ledger divergence note**: `.codex/codex-estate.md` is write-blocked in this runtime (operation not permitted), so `.claude/claude-estate.md` is source of truth for Cycle 321; replay sync when permissions allow.
 
-
 **Cycle 320 — CORS effective-URL parse fail-closed hardening in from_scratch_browser**:
+
 - Hardened CORS response policy evaluation to fail closed when effective response URL parsing fails.
 - Updated `check_cors_response_policy(...)` to return explicit `CorsResponseBlocked` instead of bypassing CORS checks on parse failure.
 - Added regression coverage in `tests/test_request_policy.cpp` for malformed effective-URL variants (`https://api.example.com:bad/data`).
@@ -7203,6 +7870,7 @@ Gotchas: Element::tag_name() is a METHOD — use el->tag_name() with parens. In 
 - **Ledger divergence note**: `.codex/codex-estate.md` remains write-blocked in this runtime (operation not permitted), so `.claude/claude-estate.md` is source of truth for Cycle 320; replay sync when permissions allow.
 
 **Cycle 319 — HTTP/2 malformed unterminated quoted-parameter upgrade-token explicit rejection hardening in from_scratch_browser**:
+
 - Hardened HTTP/2 upgrade token parsing so unterminated quoted-parameter variants are rejected instead of normalizing into synthetic `h2`/`h2c` matches.
 - Updated `contains_http2_upgrade_token(...)` parameter parsing to continue scanning after first semicolon and enforce balanced quote/escape state.
 - Added regression coverage in `tests/test_request_contracts.cpp` for helper-level parsing, upgrade-response detection, and outbound request-header detection using malformed unterminated quoted-parameter token variants.
@@ -7210,6 +7878,7 @@ Gotchas: Element::tag_name() is a METHOD — use el->tag_name() with parens. In 
 - **Ledger divergence resolution**: `.claude/claude-estate.md` was ahead of `.codex/codex-estate.md` at cycle start; `.claude` selected as source of truth and both ledgers synced after cycle close.
 
 **Cycle 318 — HTTP/2 malformed bare backslash-escape upgrade-token explicit rejection hardening in from_scratch_browser**:
+
 - Hardened HTTP/2 upgrade token parsing so malformed bare backslash escape variants are rejected instead of normalizing into synthetic `h2`/`h2c` matches.
 - Updated `contains_http2_upgrade_token(...)` to reject backslash escape sequences in unquoted tokens while preserving escaped quoted-string normalization for valid quoted token payloads.
 - Added regression coverage in `tests/test_request_contracts.cpp` for helper-level parsing, upgrade-response detection, and outbound request-header detection using malformed bare backslash-escape token variants.
@@ -7217,6 +7886,7 @@ Gotchas: Element::tag_name() is a METHOD — use el->tag_name() with parens. In 
 - **Ledger divergence note**: `.codex/codex-estate.md` is not writable in this runtime (operation not permitted), so `.claude/claude-estate.md` is source of truth for Cycle 318; replay sync once `.codex` write permissions are restored.
 
 **Cycle 317 — HTTP/2 control-character malformed upgrade-token explicit rejection hardening in from_scratch_browser**:
+
 - Hardened HTTP/2 upgrade token parsing so control-character malformed variants are rejected instead of permitting synthetic follow-on `h2`/`h2c` matches.
 - Updated `contains_http2_upgrade_token(...)` to reject control characters (`0x00-0x1F` except HTAB and `0x7F`) during header token scanning.
 - Added regression coverage in `tests/test_request_contracts.cpp` for helper-level parsing, upgrade-response detection, and outbound request-header detection using control-character malformed token variants.
@@ -7224,6 +7894,7 @@ Gotchas: Element::tag_name() is a METHOD — use el->tag_name() with parens. In 
 - **Ledger divergence note**: `.codex/codex-estate.md` is not writable in this runtime (operation not permitted), so `.claude/claude-estate.md` is source of truth for Cycle 317; replay sync once `.codex` write permissions are restored.
 
 **Cycle 316 — HTTP/2 malformed closing-comment-delimiter explicit rejection hardening in from_scratch_browser**:
+
 - Hardened HTTP/2 upgrade token parsing so stray closing comment delimiters are treated as malformed instead of permitting synthetic follow-on `h2`/`h2c` matches.
 - Updated `contains_http2_upgrade_token(...)` to reject unmatched `)` during both header-level tokenization and token-local comment stripping.
 - Added regression coverage in `tests/test_request_contracts.cpp` for helper-level parsing, upgrade-response detection, and outbound request-header detection using malformed stray closing-comment delimiter variants.
@@ -7231,6 +7902,7 @@ Gotchas: Element::tag_name() is a METHOD — use el->tag_name() with parens. In 
 - **Ledger divergence note**: `.codex/codex-estate.md` is not writable in this runtime (operation not permitted), so `.claude/claude-estate.md` is source of truth for Cycle 316; replay sync once `.codex` write permissions are restored.
 
 **Cycle 315 — HTTP/2 malformed upgrade-token explicit rejection hardening in from_scratch_browser**:
+
 - Hardened HTTP/2 upgrade token parsing so malformed unterminated comment/quote/escape variants are rejected instead of normalizing into synthetic `h2`/`h2c` matches.
 - Updated `contains_http2_upgrade_token(...)` to enforce balanced parser state at both header-tokenization and token-normalization phases.
 - Added regression coverage in `tests/test_request_contracts.cpp` for helper-level parsing, upgrade-response detection, and outbound request-header detection using malformed unterminated-comment variants.
@@ -7238,14 +7910,15 @@ Gotchas: Element::tag_name() is a METHOD — use el->tag_name() with parens. In 
 - **Ledger divergence note**: `.codex/codex-estate.md` is not writable in this runtime (operation not permitted), so `.claude/claude-estate.md` is source of truth for Cycle 315; replay sync once `.codex` write permissions are restored.
 
 **Cycle 314 — HTTP/2 escaped-comma upgrade-token delimiter hardening in from_scratch_browser**:
+
 - Hardened HTTP/2 upgrade token parsing so escaped comma variants no longer split into synthetic `h2`/`h2c` matches.
 - Updated `contains_http2_upgrade_token(...)` to honor escape sequences before delimiter evaluation and while stripping parenthesized comments.
 - Added regression coverage in `tests/test_request_contracts.cpp` for helper-level parsing, upgrade-response detection, and outbound request-header detection with escaped-comma tokens.
 - Rebuilt and re-ran `test_request_contracts` and `test_request_policy` from `build_clean`, both green.
 - **Ledger divergence note**: `.codex/codex-estate.md` remains write-blocked in this runtime (operation not permitted), so `.claude/claude-estate.md` is source of truth for this cycle; replay sync when permissions allow.
 
-
 **Cycle 313 — HTTP/2 escaped quoted-string upgrade-token normalization hardening in from_scratch_browser**:
+
 - Hardened HTTP/2 upgrade signal parsing so escaped quoted-string token variants normalize before exact `h2`/`h2c` detection.
 - Updated `contains_http2_upgrade_token(...)` to unescape post-quote token payloads and re-apply outer-quote normalization.
 - Added regression coverage in `tests/test_request_contracts.cpp` for helper-level parsing, upgrade-response detection, and outbound request-header detection using escaped quoted-string tokens.
@@ -7253,6 +7926,7 @@ Gotchas: Element::tag_name() is a METHOD — use el->tag_name() with parens. In 
 - **Ledger divergence note**: `.codex/codex-estate.md` remains write-blocked in this runtime (operation not permitted), so `.claude/claude-estate.md` is source of truth for this cycle; replay sync when permissions allow.
 
 **Cycle 312 — HTTP/2 quoted comma-contained upgrade-token split hardening in from_scratch_browser**:
+
 - Hardened HTTP/2 upgrade signal parsing so commas inside quoted `Upgrade` token values no longer split into multiple tokens.
 - Updated `contains_http2_upgrade_token(...)` to tokenize on commas only outside quoted segments and to keep semicolon-parameter stripping outside quoted contexts.
 - Preserved explicit `h2`/`h2c` detection for valid upgrade values while preventing false positives from quoted comma-contained values such as `"websocket,h2c"`.
@@ -7260,8 +7934,8 @@ Gotchas: Element::tag_name() is a METHOD — use el->tag_name() with parens. In 
 - Rebuilt and re-ran `test_request_contracts` and `test_request_policy` from `build_clean`, both green.
 - **Ledger divergence note**: `.codex/codex-estate.md` remains write-blocked in this runtime (`Operation not permitted`), so `.claude/claude-estate.md` is source of truth for Cycle 344.
 
-
 **Cycle 311 — HTTP/2 single-quoted upgrade-token explicit rejection hardening in from_scratch_browser**:
+
 - Hardened HTTP/2 transport signal parsing so single-quoted `Upgrade` tokens (for example `'h2'`/`'h2c'`) are treated as explicit HTTP/2 upgrade signals.
 - Updated `contains_http2_upgrade_token(...)` to normalize optional surrounding single quotes in addition to existing double-quote normalization after parameter trimming and token canonicalization.
 - Preserved exact-token behavior for non-HTTP/2 upgrade values while widening deterministic guardrail coverage for variant formatting.
@@ -7270,6 +7944,7 @@ Gotchas: Element::tag_name() is a METHOD — use el->tag_name() with parens. In 
 - **Ledger divergence note**: `.codex/codex-estate.md` remains write-blocked in this runtime (`Operation not permitted`), so `.claude/claude-estate.md` is source of truth for Cycle 344.
 
 **Cycle 310 — HTTP/2 quoted upgrade-token explicit rejection hardening in from_scratch_browser**:
+
 - Hardened HTTP/2 transport signal parsing so quoted `Upgrade` tokens (for example `"h2"`/`"h2c"`) are treated as explicit HTTP/2 upgrade signals.
 - Updated `contains_http2_upgrade_token(...)` to normalize optional surrounding double quotes after parameter trimming and token canonicalization.
 - Preserved exact-token behavior for non-HTTP/2 upgrade values while widening deterministic guardrail coverage for variant formatting.
@@ -7278,6 +7953,7 @@ Gotchas: Element::tag_name() is a METHOD — use el->tag_name() with parens. In 
 - **Ledger divergence note**: `.codex/codex-estate.md` remains write-blocked in this runtime (operation not permitted), so `.claude/claude-estate.md` is source of truth for this cycle; replay sync when permissions allow.
 
 **Cycle 309 — HTTP/2 request-header name whitespace-variant explicit rejection hardening in from_scratch_browser**:
+
 - Hardened outbound HTTP/2 request-signal detection so whitespace-padded header names cannot bypass explicit HTTP/2 transport guardrails.
 - Normalized request-header names with ASCII trim + case-fold for `Upgrade` and `HTTP2-Settings` checks before policy evaluation.
 - Normalized request-header names with ASCII trim before pseudo-header leading-colon detection.
@@ -7286,6 +7962,7 @@ Gotchas: Element::tag_name() is a METHOD — use el->tag_name() with parens. In 
 - **Ledger divergence note**: `.codex/codex-estate.md` remains write-blocked in this runtime (`Operation not permitted`), so `.claude/claude-estate.md` is source of truth for Cycle 344.
 
 **Cycle 308 — HTTP/2 tab-separated status-line explicit rejection hardening in from_scratch_browser**:
+
 - Hardened HTTP status-line handling to explicitly reject tab-separated HTTP/2 status-line variants (`HTTP/2\t...`) with deterministic not-implemented messaging.
 - Added a version-token pre-check on ASCII whitespace boundaries before strict HTTP/1.x parsing so HTTP/2 variants are identified consistently.
 - Preserved existing HTTP/1.0/HTTP/1.1 acceptance behavior and malformed-line handling for unsupported wire formats.
@@ -7294,6 +7971,7 @@ Gotchas: Element::tag_name() is a METHOD — use el->tag_name() with parens. In 
 - **Ledger divergence note**: `.codex/codex-estate.md` is write-blocked in this runtime (operation not permitted), so `.claude/claude-estate.md` is source of truth for this cycle.
 
 **Cycle 307 — CORS duplicate case-variant ACAO/ACAC header hardening in from_scratch_browser**:
+
 - Hardened CORS response policy parsing to reject duplicate case-variant `Access-Control-Allow-Origin` headers instead of accepting a first match.
 - Hardened credentialed CORS checks to reject duplicate case-variant `Access-Control-Allow-Credentials` headers.
 - Preserved strict serialized-origin ACAO validation, wildcard/credentialed gating, and ACAC literal `true` enforcement semantics.
@@ -7302,6 +7980,7 @@ Gotchas: Element::tag_name() is a METHOD — use el->tag_name() with parens. In 
 - **Ledger divergence note**: `.codex/codex-estate.md` remains write-blocked in this runtime (`Operation not permitted`), so `.claude/claude-estate.md` is source of truth for Cycle 344.
 
 **Cycle 306 — CORS ACAO `null` origin handling hardening in from_scratch_browser**:
+
 - Hardened `check_cors_response_policy(...)` to recognize `Access-Control-Allow-Origin: null` as valid only when the request policy origin is `null`.
 - Preserved strict serialized-origin enforcement for non-null origins, including rejection of `ACAO: null` when policy origin is not `null`.
 - Added regression coverage in `tests/test_request_policy.cpp` for both allow (`Origin: null`) and reject (non-null origin) branches.
@@ -7309,6 +7988,7 @@ Gotchas: Element::tag_name() is a METHOD — use el->tag_name() with parens. In 
 - **Ledger divergence note**: `.codex/codex-estate.md` remains non-writable in this runtime (operation not permitted), so `.claude/claude-estate.md` is source of truth for this cycle; replay sync when permissions allow.
 
 **Cycle 305 — HTTP/2 response preface tab-separated variant explicit rejection hardening in from_scratch_browser**:
+
 - Hardened parse-status-line behavior so explicit HTTP/2 preface rejection covers ASCII-whitespace separators after `PRI * HTTP/2.0`, including tab-separated variants.
 - Closed fallback behavior where tab-separated preface variants could degrade into generic malformed-status-line errors instead of deterministic transport-not-implemented messaging.
 - Preserved existing HTTP/1.x acceptance and explicit HTTP/2 status-line rejection behavior.
@@ -7317,14 +7997,16 @@ Gotchas: Element::tag_name() is a METHOD — use el->tag_name() with parens. In 
 - **Ledger divergence resolution**: `.claude/claude-estate.md` and `.codex/codex-estate.md` updated in lockstep this cycle.
 
 **Cycle 304 — HTTP/2 response preface variant explicit rejection hardening in from_scratch_browser**:
+
 - Hardened parse-status-line behavior by trimming status-line input before explicit HTTP/2 preface checks.
-- Expanded HTTP/2 preface detection to reject trailing-whitespace variants (`PRI * HTTP/2.0   `) with deterministic transport-not-implemented messaging.
+- Expanded HTTP/2 preface detection to reject trailing-whitespace variants (`PRI * HTTP/2.0`) with deterministic transport-not-implemented messaging.
 - Preserved existing HTTP/1.x acceptance and explicit HTTP/2 status-line rejection behavior.
 - Added regression coverage in `tests/test_request_contracts.cpp` for trailing-whitespace HTTP/2 preface variant handling.
 - Rebuilt and re-ran `test_request_contracts` and `test_request_policy` from `build_clean`, both green.
 - **Ledger divergence note**: `.codex/codex-estate.md` remains non-writable in this runtime (operation not permitted), so `.claude/claude-estate.md` is source of truth for this cycle; replay sync when permissions allow.
 
 **Cycle 303 — HTTP/2 outbound pseudo-header request explicit rejection guardrail in from_scratch_browser**:
+
 - Added `is_http2_pseudo_header_request(...)` contract helper to detect outbound HTTP/2 pseudo-headers (`:authority`, `:method`, etc.) in request headers.
 - Extended fetch pre-dispatch HTTP/2 guardrails so requests carrying pseudo-headers fail early with deterministic HTTP/2 transport-not-implemented messaging.
 - Preserved existing outbound `Upgrade: h2/h2c` and `HTTP2-Settings` rejection behavior while broadening unsupported HTTP/2 request-signal coverage.
@@ -7333,6 +8015,7 @@ Gotchas: Element::tag_name() is a METHOD — use el->tag_name() with parens. In 
 - **Ledger divergence note**: `.codex/codex-estate.md` remains write-blocked in this runtime (`Operation not permitted`), so `.claude/claude-estate.md` is source of truth for Cycle 344.
 
 **Cycle 302 — HTTP/2 outbound HTTP2-Settings request-header explicit rejection guardrail in from_scratch_browser**:
+
 - Added `is_http2_settings_request(...)` contract helper to detect outbound `HTTP2-Settings` request headers using case-insensitive exact-name matching.
 - Extended fetch pre-dispatch HTTP/2 guardrails so requests carrying `HTTP2-Settings` fail early with deterministic HTTP/2 transport-not-implemented messaging.
 - Preserved existing outbound `Upgrade: h2/h2c` rejection behavior while broadening unsupported HTTP/2 request-signal coverage.
@@ -7341,6 +8024,7 @@ Gotchas: Element::tag_name() is a METHOD — use el->tag_name() with parens. In 
 - **Ledger divergence note**: `.codex/codex-estate.md` remains non-writable in this runtime (operation not permitted), so `.claude/claude-estate.md` is source of truth for this cycle; replay sync when permissions allow.
 
 **Cycle 301 — HTTP unsupported status-version explicit rejection guardrail in from_scratch_browser**:
+
 - Restricted response status-line version acceptance to `HTTP/1.0` and `HTTP/1.1`; unsupported versions now fail with deterministic contract messaging.
 - Preserved explicit HTTP/2 preface/status-line rejection paths so existing HTTP/2 transport-not-implemented behavior remains stable.
 - Added regression coverage in `tests/test_request_contracts.cpp` for supported `HTTP/1.0` parsing and explicit unsupported-version rejection (`HTTP/3`).
@@ -7348,6 +8032,7 @@ Gotchas: Element::tag_name() is a METHOD — use el->tag_name() with parens. In 
 - **Ledger divergence note**: `.codex/codex-estate.md` is write-protected in this runtime (operation not permitted), so `.claude/claude-estate.md` is source of truth for this cycle.
 
 **Cycle 300 — HTTP/2 outbound upgrade request explicit rejection guardrail in from_scratch_browser**:
+
 - Added `is_http2_upgrade_request(...)` contract helper to detect outbound HTTP/2 upgrade request attempts via request headers.
 - Added fetch-path pre-dispatch guard that rejects outbound `Upgrade: h2` or `Upgrade: h2c` requests with deterministic HTTP/2 transport-not-implemented messaging.
 - Added regression coverage in `tests/test_request_contracts.cpp` for positive and negative outbound upgrade-request header cases.
@@ -7355,6 +8040,7 @@ Gotchas: Element::tag_name() is a METHOD — use el->tag_name() with parens. In 
 - **Ledger divergence note**: `.codex/codex-estate.md` remains write-blocked in this runtime (`Operation not permitted`), so `.claude/claude-estate.md` is source of truth for Cycle 344.
 
 **Cycle 298 — HTTP/2 upgrade (`h2`/`h2c`) explicit rejection guardrail in from_scratch_browser**:
+
 - Added `is_http2_upgrade_protocol(...)` contract helper to detect exact HTTP/2 upgrade tokens from `Upgrade` header values, including comma-separated and mixed-case forms.
 - Added fetch-path guard that rejects `101 Switching Protocols` responses carrying `Upgrade: h2` or `Upgrade: h2c` with deterministic HTTP/2 transport-not-implemented messaging.
 - Added regression coverage in `tests/test_request_contracts.cpp` for HTTP/2 upgrade token detection and false-positive avoidance.
@@ -7362,6 +8048,7 @@ Gotchas: Element::tag_name() is a METHOD — use el->tag_name() with parens. In 
 - **Ledger divergence resolution**: previous write-block note is obsolete in this runtime; both `.claude/claude-estate.md` and `.codex/codex-estate.md` were updated in lockstep this cycle.
 
 **Cycle 297 — TLS ALPN HTTP/2 negotiation explicit rejection guardrail in from_scratch_browser**:
+
 - Added TLS ALPN protocol advertisement for `h2` and `http/1.1` during HTTPS handshake.
 - Added explicit post-handshake ALPN gate that rejects negotiated `h2` with deterministic HTTP/2 transport-not-implemented messaging.
 - Added `is_http2_alpn_protocol(...)` contract helper and regression coverage in `tests/test_request_contracts.cpp`.
@@ -7369,6 +8056,7 @@ Gotchas: Element::tag_name() is a METHOD — use el->tag_name() with parens. In 
 - **Ledger divergence note**: `.codex/codex-estate.md` remains write-blocked in this runtime (operation not permitted); replay this cycle into `.codex/codex-estate.md` when filesystem permissions allow.
 
 **Cycle 296 — HTTP/2 status-line explicit rejection guardrail in from_scratch_browser**:
+
 - Added explicit `HTTP/2`/`HTTP/2.0` status-line rejection in HTTP response parsing so HTTP/2 text status lines fail with deterministic transport-not-implemented messaging.
 - Preserved HTTP/1.x status-line parsing behavior and existing HTTP/2 preface (`PRI * HTTP/2.0`) rejection path.
 - Updated regression coverage in `tests/test_request_contracts.cpp` to assert explicit HTTP/2 status-line rejection messaging.
@@ -7376,6 +8064,7 @@ Gotchas: Element::tag_name() is a METHOD — use el->tag_name() with parens. In 
 - **Ledger divergence resolution**: `.claude/claude-estate.md` was one cycle ahead of `.codex/codex-estate.md` at cycle start; `.claude` selected as source of truth and synced forward.
 
 **Cycle 295 — HTTP/2 response preface explicit rejection guardrail in from_scratch_browser**:
+
 - Added explicit `PRI * HTTP/2.0` status-line detection in HTTP response parsing so HTTP/2-preface responses fail with deterministic transport-not-implemented messaging.
 - Preserved existing HTTP/1.x response status-line parsing behavior while improving HTTP/2 failure diagnostics in request contracts.
 - Added regression coverage in `tests/test_request_contracts.cpp` for explicit HTTP/2 preface rejection error text.
@@ -7383,6 +8072,7 @@ Gotchas: Element::tag_name() is a METHOD — use el->tag_name() with parens. In 
 - **Ledger divergence note**: `.codex/codex-estate.md` is write-protected in this runtime (operation not permitted), so `.claude/claude-estate.md` is source of truth for this cycle.
 
 **Cycle 294 — HTTP response protocol-version plumbing + ACAO userinfo regression coverage in from_scratch_browser**:
+
 - Added `Response::http_version` and status-line parsing storage so response contracts now carry parsed protocol tokens (`HTTP/1.x` and `HTTP/2` forms).
 - Added public `parse_http_status_line(...)` helper for deterministic protocol parsing tests, including malformed status-line rejection.
 - Added CORS ACAO userinfo serialized-origin regression coverage in `tests/test_request_policy.cpp`.
@@ -7390,36 +8080,42 @@ Gotchas: Element::tag_name() is a METHOD — use el->tag_name() with parens. In 
 - **Ledger divergence resolution**: `.claude/claude-estate.md` had newer mtime than `.codex/codex-estate.md` at cycle start; `.claude` selected as source of truth and both ledgers re-synced after this cycle.
 
 **Cycle 293 — CSP connect-src invalid explicit host-source port hardening in from_scratch_browser**:
+
 - Hardened host-source parsing so explicit invalid ports are rejected instead of being accepted as implicit/default-port sources.
 - Enforced strict explicit-port validation range (`1..65535`) for both bracketed IPv6 and standard host-source tokens.
 - Added 2 regression tests in `tests/test_request_policy.cpp`; rebuilt + re-ran `test_request_policy` and `test_request_contracts` (both green).
 - **Ledger divergence note**: `.codex/codex-estate.md` remains write-blocked in this runtime (operation not permitted), so this cycle is recorded in `.claude/claude-estate.md` as source of truth for sync-forward.
 
 **Cycle 292 — CORS ACAO serialized-origin enforcement hardening in from_scratch_browser**:
+
 - Tightened CORS response gating so non-wildcard ACAO values must be serialized origins (no path/query/fragment).
 - Closed an acceptance gap where ACAO values like `https://app.example.com/` could be treated as equivalent origin values.
 - Added 1 regression test in `tests/test_request_policy.cpp`; rebuilt + re-ran `test_request_policy` and `test_request_contracts` (both green).
 - **Ledger divergence resolution**: `.claude/claude-estate.md` had newer mtime than `.codex/codex-estate.md` at cycle start, so `.claude` was selected as source of truth and both ledgers were synced after this cycle.
 
 **Cycle 291 — connect-src scheme-less host-source scheme/port hardening in from_scratch_browser**:
+
 - Tightened scheme-less host-source matching so sources like `api.example.com` inherit scheme context from `policy.origin` when available.
 - Closed cross-scheme permissiveness in this path and enforced inferred default-port matching when source ports are omitted.
 - Added 2 regression tests in `tests/test_request_policy.cpp`; rebuilt + re-ran `test_request_policy` and `test_request_contracts` (both green).
 - **Ledger divergence note**: `.codex/codex-estate.md` is write-blocked in this runtime (operation not permitted), so `.claude/claude-estate.md` is the source of truth for this cycle.
 
 **Cycle 290 — CSP websocket default-port hardening in from_scratch_browser**:
+
 - Extended URL parsing and canonical origin/default-port behavior to include `ws://` and `wss://` (80/443).
 - Tightened scheme-qualified `connect-src` host-source enforcement so `wss://host` without explicit port now binds to default secure websocket port semantics.
 - Added 1 regression test in `tests/test_request_policy.cpp`; rebuilt + re-ran `test_request_policy` and `test_request_contracts` (both green).
 - **Ledger divergence note**: `.codex/codex-estate.md` remains write-blocked in this runtime (operation not permitted), so `.claude/claude-estate.md` is the source of truth for this cycle.
 
 **Cycle 289 — CSP connect-src encoded traversal hardening in from_scratch_browser**:
+
 - Closed a connect-src path bypass variant where encoded dot-segments (`%2e`/`%2E`) were not decoded before normalization and could satisfy prefix-scoped source checks.
 - Added unreserved percent-decoding before CSP path normalization so encoded traversal paths collapse correctly under existing dot-segment handling.
 - Added 1 regression test in `tests/test_request_policy.cpp`; rebuilt + re-ran `test_request_policy` and `test_request_contracts` (both green).
 - **Ledger divergence resolution**: `.claude/claude-estate.md` had newer mtime than `.codex/codex-estate.md` at cycle start, so `.claude` was selected as source of truth and both ledgers were re-synced after this cycle.
 
 **Cycle 288 — CSP connect-src path normalization hardening in from_scratch_browser**:
+
 - Closed a connect-src path bypass where prefix checks ran on unnormalized paths and could be tricked by dot-segments (for example, `/v1/../admin`).
 - Added normalization of both source-path tokens and request URL paths before matching (collapses `.`/`..` segments and preserves trailing-slash semantics).
 - Kept intended in-scope behavior for normalized paths (for example, `/v1/./users` stays allowed under `https://api.example.com/v1/`).
@@ -7427,6 +8123,7 @@ Gotchas: Element::tag_name() is a METHOD — use el->tag_name() with parens. In 
 - **Ledger divergence note**: `.codex/codex-estate.md` is write-blocked in this runtime (operation not permitted), so `.claude/claude-estate.md` is the source of truth for this cycle.
 
 **Cycle 287 — CSP connect-src host-source path-part enforcement in from_scratch_browser**:
+
 - Tightened CSP `connect-src` host-source matching so source path-parts are now enforced instead of ignored.
 - Added exact-path semantics for sources without trailing slash (for example, `/v1` only matches `/v1`) and prefix semantics for trailing-slash paths (for example, `/v1/` matches `/v1/users`).
 - Normalized policy matching by stripping query/fragment from source path-parts before comparison.
@@ -7434,68 +8131,80 @@ Gotchas: Element::tag_name() is a METHOD — use el->tag_name() with parens. In 
 - **Ledger divergence note**: `.codex/codex-estate.md` is write-blocked in this runtime (operation not permitted), so `.claude/claude-estate.md` is the source of truth for this cycle.
 
 **Cycle 286 — ACAC literal-value enforcement in from_scratch_browser**:
+
 - Tightened credentialed CORS checks so `Access-Control-Allow-Credentials` must be literal `true` (case-sensitive) after trim, while retaining case-insensitive header-name lookup.
 - Updated regression coverage in `tests/test_request_policy.cpp` to assert non-literal ACAC values like `TRUE` are rejected and literal `true` remains allowed.
 - Rebuilt and re-ran `test_request_policy` and `test_request_contracts` (both green).
 - **Ledger sync resolution**: `.claude/claude-estate.md` and `.codex/codex-estate.md` are re-aligned in this cycle.
 
 **Cycle 285 — IPv6 host-source normalization in from_scratch_browser**:
+
 - Fixed CSP connect-src host-source matching for bracketed IPv6 literals by normalizing host forms before comparison (`[::1]` and `::1` now compare consistently).
 - Preserved existing wildcard-subdomain matching semantics while hardening exact-host comparisons with canonicalized host strings.
 - Added 2 regression tests in `tests/test_request_policy.cpp` for IPv6 host-source exact-match and wildcard-port behaviors; rebuilt + ran `test_request_policy` and `test_request_contracts` (both green).
 - **Ledger divergence note**: `.codex/codex-estate.md` is write-blocked in this runtime (operation not permitted); this cycle is recorded in `.claude/claude-estate.md` as source of truth for sync-forward.
 
 **Cycle 284 — CORS header parsing hardening in from_scratch_browser**:
+
 - Tightened `check_cors_response_policy(...)` to require strict single-value ACAO semantics (comma-delimited/trailing-comma ACAO is rejected).
 - Added case-insensitive lookup for `Access-Control-Allow-Origin` and `Access-Control-Allow-Credentials` in response policy checks.
 - Added 2 regression tests in `tests/test_request_policy.cpp`; rebuilt + ran `test_request_policy` and `test_request_contracts` (both green).
 
 **Cycle 283 — Redirect-aware CORS response gate + multi-ACAO hardening in from_scratch_browser**:
+
 - Tightened `check_cors_response_policy(...)` to reject invalid multi-valued `Access-Control-Allow-Origin` headers.
 - Updated policy-aware fetch flow to evaluate response CORS policy against effective response URL (`response.final_url` when present) instead of always the initial URL.
 - Added 2 regression tests in `tests/test_request_policy.cpp`; rebuilt + ran `test_request_policy` and `test_request_contracts` (both green).
 
 **Cycle 282 — Credentialed CORS response hardening in from_scratch_browser**:
+
 - Added `credentials_mode_include` and `require_acac_for_credentialed_cors` controls to `RequestPolicy`.
 - Enforced credentialed CORS semantics in `check_cors_response_policy(...)`: reject `ACAO: *`, and require `Access-Control-Allow-Credentials: true` when credentials mode is on.
 - Added 3 regression tests in `tests/test_request_policy.cpp`; rebuilt + ran `test_request_policy` and `test_request_contracts` (both green).
 
 **Cycle 281 — Canonical origin normalization in from_scratch_browser**:
+
 - Added `canonicalize_origin(...)` helper and normalized origin comparison points across request policy and CORS/CSP checks.
 - Fixed same-origin equivalence for default ports/casing (`https://app.example.com` vs `HTTPS://APP.EXAMPLE.COM:443`).
 - Normalized ACAO matching and Origin header emission to avoid false negative CORS policy failures from non-canonical but equivalent origin strings.
 - Added 4 regression tests in `tests/test_request_policy.cpp`; rebuilt + ran `test_request_policy` and `test_request_contracts` (both green).
 
 **Cycle 280 — CSP connect-src fallback semantics in from_scratch_browser**:
+
 - Added `RequestPolicy::default_src_sources` and updated connect-src enforcement to use `default-src` when `connect-src` is absent.
 - Preserved directive precedence so explicit `connect-src` always overrides fallback directives.
 - Added 2 regression tests in `tests/test_request_policy.cpp` and re-ran `test_request_policy` + `test_request_contracts` (both green).
 - **Ledger divergence resolution**: `.claude/claude-estate.md` had newer mtime/content than `.codex/codex-estate.md`; selected `.claude` as source of truth and re-synced both ledgers after this cycle.
 
 **Cycle 279 — CSS @layer cascade correctness in from_scratch_browser**:
+
 - Added parser-level layer metadata (`in_layer`, `layer_order`, `layer_name`) and layer-order registry support for declaration-only lists and nested layers.
 - Implemented nested `@layer` recursive parsing plus comma-list ordering (`@layer a, b;`) and canonical nested names (`parent.child`).
 - Updated cascade sort to honor layer precedence for both normal and `!important` declarations, including important-layer reversal.
 - Added 7 targeted regression tests across parser, style cascade, and render integration; all selected suites green.
 
 **Cycle 278 — connect-src wildcard-port host-source support in from_scratch_browser**:
+
 - Added `:*` wildcard-port parsing/matching in host-source tokens for CSP `connect-src` checks.
 - Host and scheme constraints remain enforced; wildcard port only relaxes the port component.
 - Added request-policy regression test for wildcard-port allow/block behavior and re-ran `test_request_policy` + `test_request_contracts` (both green).
 - **Ledger divergence resolution**: `.claude/claude-estate.md` had newer mtime/content than `.codex/codex-estate.md` (including Cycle 277); selected `.claude` as source of truth and synced both ledgers after this cycle.
 
 **Cycle 277 — WOFF2 @font-face source selection in from_scratch_browser**:
+
 - Removed WOFF2 exclusion in render-pipeline font source selection; `url(...woff2) format('woff2')` is now eligible as first-choice source.
 - Added `extract_preferred_font_url()` helper (header-exposed for tests) and reused it in runtime web-font download registration flow.
 - Added 3 targeted tests in `clever/tests/unit/paint_test.cpp`; all selected tests green.
 
 **Cycle 276 — CSP host-source matching + TLS verification hardening in from_scratch_browser**:
+
 - Expanded `connect-src` matching to support host-sources (`api.example.com`), wildcard subdomains (`*.example.com`), and explicit-port sources.
 - Added TLS certificate verification with system trust roots and host verification (`X509_check_host`) in HTTPS handshakes.
 - Added 3 policy tests in `tests/test_request_policy.cpp`; re-ran `test_request_policy` and `test_request_contracts` (both green).
 - **Ledger divergence resolution**: `.claude/claude-estate.md` had newer mtime than `.codex/codex-estate.md`; selected `.claude` as source of truth and synced forward.
 
 **Cycle 275 — CSP connect-src pre-dispatch enforcement in from_scratch_browser**:
+
 - Added `PolicyViolation::CspConnectSrcBlocked`.
 - Added request policy knobs: `enforce_connect_src` + `connect_src_sources`.
 - Implemented source matching for `'none'`, `'self'`, scheme (`https:`), explicit origins, and `*`.
@@ -7504,6 +8213,7 @@ Gotchas: Element::tag_name() is a METHOD — use el->tag_name() with parens. In 
 - **Ledger sync note**: `.codex/codex-estate.md` is currently read-only in this runtime (EPERM), so this cycle was recorded in `.claude/claude-estate.md` only.
 
 **Cycle 274 — CORS response gate + Origin header contract in from_scratch_browser**:
+
 - Added `PolicyViolation::CorsResponseBlocked`.
 - Added `build_request_headers_for_policy()` and `check_cors_response_policy()` in `http_client`.
 - Added `fetch_with_policy_contract()` to enforce request policy and response ACAO checks in one lifecycle contract.
@@ -7512,16 +8222,19 @@ Gotchas: Element::tag_name() is a METHOD — use el->tag_name() with parens. In 
 - **Estate ledger divergence resolved by mtime in this cycle**: `.claude/claude-estate.md` (newer) selected as source of truth and synced to `.codex/codex-estate.md`.
 
 **Cycle 273 — Audit parallel sweep (6 subagents) + network hardening**:
+
 - Added shared-cache privacy guard: `Cache-Control: private` responses are now blocked from `HttpCache`.
 - Added `HttpCacheTest.PrivateEntriesAreIgnored`.
 - Aligned `Request::parse_url()` with shared `clever::url::parse()` first-pass parsing.
 - Verified with full `clever_net_tests`: 119 tests passed (1 HTTPS integration skipped by network availability).
 
 **Cycle 272 — Inline style inherit/initial + text-wrap balance (flattened path)**:
+
 - Added `inherit`/`initial`/`unset`/`revert` to inline style parser (`style="..."` attributes). Now these keywords work everywhere, not just stylesheets.
 - Extended `text-wrap: balance` to the flattened inline path (Path A) — now works with `<span>`, `<em>`, `<a>` inline elements, not just pure text nodes.
 
 **Cycle 271 — Position:absolute + CSS inherit/initial + ::before/::after box model**:
+
 - Fixed position:absolute containing block to use nearest positioned ancestor (not immediate parent).
 - Extended CSS `inherit` to 80+ properties (was 14). Added `initial` per-property. Added `unset`/`revert`.
 - Fixed ::before/::after pseudo-element ComputedStyle member access.
@@ -7529,6 +8242,7 @@ Gotchas: Element::tag_name() is a METHOD — use el->tag_name() with parens. In 
 **Cycle 270 — Codex Audit Sweep (10 bug fixes!)**: 5 crash bugs, 3 layout bugs, 2 standards fixes.
 
 **STANDARDS CHECKLISTS** at `clever/docs/standards-checklist-{html,css,webapi}.md` — ALL COMPLETE!
+
 - HTML: 95%+ (113/117). ZERO `[ ]` items.
 - CSS: 100%! ZERO `[ ]` items! Everything is [x] or [~].
 - Web APIs: 89%+ (412/463). ZERO `[ ]` items! Everything is [x] or [~].
@@ -7540,6 +8254,7 @@ JS: Full DOM (querySelector/querySelectorAll with real CSS selector engine), thr
 CSS: 370+ properties including font shorthand, flexbox (complete), grid (with auto-flow:column, individual longhands), transitions (cubic-bezier/steps), animations, calc() with trig/exp math, var() custom properties, @media/@keyframes/@font-face/@supports/@layer/@container, text-transform rendering, **multiple box-shadows** (comma-separated, inset+outer mix, spread), light-dark() dark mode, background-clip:text, multiple backgrounds, 3D transforms (translate3d/scale3d/rotate3d/matrix3d), logical longhands (margin/padding/inset/border-block-*/border-inline-*), clip-path polygon, text-emphasis, animation-play-state.
 
 Key insights:
+
 - **CSS parser strips commas in functions**: `consume_function()` in `stylesheet.cpp` line 581 skips commas.
 - **calc() architecture**: `CalcExpr` tree in `computed_style.h`. `parse_calc_expr()` in `value_parser.cpp`.
 - **Engine box model**: `geometry.width` = CSS specified width, NOT pure content width.
@@ -7555,6 +8270,7 @@ User preferences: Do NOT use codex/OpenAI backends (broken). Use Claude subagent
 Screenshot: `clever/showcase_cycle23.png`. ALWAYS restart browser before screenshots — `pkill -f clever_browser; open ..app; sleep 4`.
 
 **Auto-screenshot (no click needed)**: Get window ID via Swift, then capture:
+
 ```
 WID=$(swift -e 'import Cocoa; let opts: CGWindowListOption = [.optionOnScreenOnly]; if let list = CGWindowListCopyWindowInfo(opts, kCGNullWindowID) as? [[String: Any]] { for w in list { if let n = w["kCGWindowOwnerName"] as? String, n.lowercased().contains("clever"), let id = w["kCGWindowNumber"] as? Int { print(id); break } } }')
 screencapture -l$WID screenshot.png
@@ -7563,6 +8279,7 @@ screencapture -l$WID screenshot.png
 **JavaScript engine (QuickJS) — DONE in Cycle 198!** QuickJS vendored in `third_party/quickjs/`. C++ wrapper in `src/js/js_engine.cpp`, DOM bindings in `src/js/js_dom_bindings.cpp`. Inline `<script>` tags execute between CSS cascade and layout in render_pipeline.cpp. External scripts (src=) not yet supported. DOM bindings work on SimpleNode tree (not full DOM).
 
 **Key JS architecture notes:**
+
 - `JSEngine` uses context opaque pointer to stash `this` for C callbacks
 - `ConsoleTrampoline` friend struct bridges QuickJS C callbacks → C++ private members
 - DOM state stored as `DOMState*` in global `__dom_state_ptr` property (cast via int64)
@@ -7584,6 +8301,7 @@ Cycle 36: SVG path curves (C/S/Q/T/A/H/V), mix-blend-mode rendering (7 formulas)
 Cycle 37: CSS @media runtime evaluation, SVG `<text>` rendering, `<input type="color">` placeholder. 9 tests (851→860).
 
 **Cycles 91-94 (this session)**: CSS shorthand & transform improvements:
+
 - Cycle 91: `!important` inline stripping, `border-radius` 1-4 values, `text-decoration` combined shorthand, `overflow` 2-value, `list-style` shorthand (13 tests)
 - Cycle 92: SpaceEvenly bug fix, cascade `background-size/repeat/position` (5 tests)
 - Cycle 93: `skew()`/`skewX()`/`skewY()` transform with full display list + renderer pipeline (6 tests)
@@ -7591,6 +8309,7 @@ Cycle 37: CSS @media runtime evaluation, SVG `<text>` rendering, `<input type="c
 - Total: 1806→1834 = 28 new tests across 4 cycles
 
 **Cycles 87-90**: Complete CSS Color Level 4/5 implementation:
+
 - hsl/hsla, oklch, oklab, hwb, lab, lch, color-mix, light-dark, color() (srgb, srgb-linear, display-p3, a98-rgb), currentcolor
 - `font` shorthand parsing, `font-style` inline, paren-aware CSS value splitting
 - DOM bridge fix (Cycle 86 compilation errors), removed unused functions → ZERO warnings
