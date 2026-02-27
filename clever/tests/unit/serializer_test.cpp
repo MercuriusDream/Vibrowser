@@ -6747,3 +6747,62 @@ TEST(SerializerTest, StringAndBoolV26) {
     EXPECT_EQ(d.read_string(), "Cycle1329");
     EXPECT_EQ(d.read_bool(), false);
 }
+
+// Cycle 1338
+TEST(SerializerTest, U8RoundTripV27) {
+    Serializer s;
+    s.write_u8(255);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u8(), 255);
+}
+
+TEST(SerializerTest, U16RoundTripV27) {
+    Serializer s;
+    s.write_u16(65535);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u16(), 65535);
+}
+
+TEST(SerializerTest, U32RoundTripV27) {
+    Serializer s;
+    s.write_u32(4294967295U);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u32(), 4294967295U);
+}
+
+TEST(SerializerTest, U64RoundTripV27) {
+    Serializer s;
+    s.write_u64(18446744073709551615ULL);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u64(), 18446744073709551615ULL);
+}
+
+TEST(SerializerTest, I32RoundTripV27) {
+    Serializer s;
+    s.write_i32(2147483647);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i32(), 2147483647);
+}
+
+TEST(SerializerTest, I64RoundTripV27) {
+    Serializer s;
+    s.write_i64(9223372036854775806LL);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i64(), 9223372036854775806LL);
+}
+
+TEST(SerializerTest, F64RoundTripV27) {
+    Serializer s;
+    s.write_f64(3.141592653589793);
+    Deserializer d(s.data());
+    EXPECT_DOUBLE_EQ(d.read_f64(), 3.141592653589793);
+}
+
+TEST(SerializerTest, StringAndBoolV27) {
+    Serializer s;
+    s.write_string("Cycle1338");
+    s.write_bool(true);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "Cycle1338");
+    EXPECT_EQ(d.read_bool(), true);
+}

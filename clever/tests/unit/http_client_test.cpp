@@ -8219,3 +8219,92 @@ TEST(HttpClient, CookieJarClearV29) {
     jar.clear();
     EXPECT_EQ(jar.size(), 0u);
 }
+
+// Cycle 1340
+
+// HeaderMap: set overwrites existing value
+TEST(HttpClient, HeaderMapSetOverwritesV30) {
+    HeaderMap headers;
+    headers.set("Content-Type", "text/html");
+    EXPECT_EQ(headers.get("Content-Type"), "text/html");
+
+    headers.set("Content-Type", "application/json");
+    EXPECT_EQ(headers.get("Content-Type"), "application/json");
+}
+
+// HeaderMap: has checks for header presence
+TEST(HttpClient, HeaderMapHasV30) {
+    HeaderMap headers;
+    headers.set("Authorization", "Bearer token");
+
+    EXPECT_TRUE(headers.has("Authorization"));
+    EXPECT_FALSE(headers.has("X-Custom-Header"));
+}
+
+// HeaderMap: remove deletes header
+TEST(HttpClient, HeaderMapRemoveV30) {
+    HeaderMap headers;
+    headers.set("X-Custom", "value");
+    EXPECT_TRUE(headers.has("X-Custom"));
+
+    headers.remove("X-Custom");
+    EXPECT_FALSE(headers.has("X-Custom"));
+}
+
+// HeaderMap: size returns header count
+TEST(HttpClient, HeaderMapSizeV30) {
+    HeaderMap headers;
+    EXPECT_EQ(headers.size(), 0u);
+
+    headers.set("Content-Type", "application/json");
+    headers.set("Accept", "application/json");
+    EXPECT_EQ(headers.size(), 2u);
+}
+
+// Request: serialize returns vector<uint8_t>
+TEST(HttpClient, RequestSerializeV30) {
+    Request req;
+    req.method = Method::POST;
+    req.url = "http://example.com/api";
+    req.headers.set("Content-Type", "application/json");
+    req.body = {'{', '"', 'k', 'e', 'y', '"', ':', '"', 'v', 'a', 'l', '"', '}'};
+
+    std::vector<uint8_t> serialized = req.serialize();
+    EXPECT_GT(serialized.size(), 0u);
+}
+
+// Response: status returns uint16_t status code
+TEST(HttpClient, ResponseStatusUint16V30) {
+    Response resp;
+    resp.status = 404;
+    resp.status_text = "Not Found";
+
+    EXPECT_EQ(resp.status, 404u);
+    EXPECT_EQ(resp.status_text, "Not Found");
+}
+
+// Request: method property supports HTTP methods
+TEST(HttpClient, RequestMethodsV30) {
+    Request req1, req2, req3, req4, req5;
+
+    req1.method = Method::GET;
+    req2.method = Method::POST;
+    req3.method = Method::PUT;
+    req4.method = Method::DELETE_METHOD;
+    req5.method = Method::HEAD;
+
+    EXPECT_EQ(req1.method, Method::GET);
+    EXPECT_EQ(req2.method, Method::POST);
+    EXPECT_EQ(req3.method, Method::PUT);
+    EXPECT_EQ(req4.method, Method::DELETE_METHOD);
+    EXPECT_EQ(req5.method, Method::HEAD);
+}
+
+// CookieJar: get_cookie_header returns formatted cookie string
+TEST(HttpClient, CookieJarGetCookieHeaderV30) {
+    CookieJar jar;
+    jar.set_from_header("session=abc123; Path=/; Secure", "example.com");
+
+    std::string cookieHeader = jar.get_cookie_header("example.com", "/", true);
+    EXPECT_FALSE(cookieHeader.empty());
+}

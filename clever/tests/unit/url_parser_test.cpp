@@ -5770,3 +5770,84 @@ TEST(URLParser, UrlWithQueryAndFragmentV18) {
     EXPECT_EQ(url->query, "sort=date&page=1");
     EXPECT_EQ(url->fragment, "comments");
 }
+
+// Cycle 1339
+TEST(URLParser, HostOnlyUrlV19) {
+    auto url = parse("https://example.com");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "example.com");
+    EXPECT_EQ(url->path, "/");
+    EXPECT_TRUE(url->query.empty());
+    EXPECT_TRUE(url->fragment.empty());
+}
+
+TEST(URLParser, DefaultHttpPortV19) {
+    auto url = parse("http://example.com:80/path");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "http");
+    EXPECT_EQ(url->host, "example.com");
+    // Default port 80 normalized away
+    EXPECT_EQ(url->path, "/path");
+}
+
+TEST(URLParser, DefaultHttpsPortV19) {
+    auto url = parse("https://example.com:443/path");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "example.com");
+    // Default port 443 normalized away
+    EXPECT_EQ(url->path, "/path");
+}
+
+TEST(URLParser, NonDefaultPortV19) {
+    auto url = parse("https://example.com:8443/api/v1");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "example.com");
+    EXPECT_EQ(url->port, 8443);
+    EXPECT_EQ(url->path, "/api/v1");
+    EXPECT_TRUE(url->query.empty());
+    EXPECT_TRUE(url->fragment.empty());
+}
+
+TEST(URLParser, ParentDirectoryResolutionV19) {
+    auto url = parse("https://server.org/docs/api/../guide/readme.txt");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "server.org");
+    EXPECT_EQ(url->path, "/docs/guide/readme.txt");
+    EXPECT_TRUE(url->query.empty());
+    EXPECT_TRUE(url->fragment.empty());
+}
+
+TEST(URLParser, FullUrlWithAllComponentsV19) {
+    auto url = parse("https://api.example.net:9000/v2/users?filter=active&limit=50#section");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "api.example.net");
+    EXPECT_EQ(url->port, 9000);
+    EXPECT_EQ(url->path, "/v2/users");
+    EXPECT_EQ(url->query, "filter=active&limit=50");
+    EXPECT_EQ(url->fragment, "section");
+}
+
+TEST(URLParser, TrailingSlashNormalizationV19) {
+    auto url = parse("https://example.com/");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "example.com");
+    EXPECT_EQ(url->path, "/");
+    EXPECT_TRUE(url->query.empty());
+    EXPECT_TRUE(url->fragment.empty());
+}
+
+TEST(URLParser, ComplexQueryStringV19) {
+    auto url = parse("https://search.example.com/results?q=test&category=docs&year=2025&sort=relevance#top-results");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "search.example.com");
+    EXPECT_EQ(url->path, "/results");
+    EXPECT_EQ(url->query, "q=test&category=docs&year=2025&sort=relevance");
+    EXPECT_EQ(url->fragment, "top-results");
+}

@@ -7342,3 +7342,63 @@ TEST(DomElement, SetAttributeWithUnicode) {
     el->set_attribute("data-name", "test-value-123");
     EXPECT_EQ(el->get_attribute("data-name"), "test-value-123");
 }
+
+// Cycle 1336: DOM element tests
+
+TEST(DomElement, TagNameObject) {
+    Document doc;
+    auto el = doc.create_element("object");
+    EXPECT_EQ(el->tag_name(), "object");
+}
+
+TEST(DomElement, TagNameParam) {
+    Document doc;
+    auto el = doc.create_element("param");
+    EXPECT_EQ(el->tag_name(), "param");
+}
+
+TEST(DomElement, SetAttributeScope) {
+    Document doc;
+    auto el = doc.create_element("th");
+    el->set_attribute("scope", "col");
+    EXPECT_EQ(el->get_attribute("scope"), "col");
+}
+
+TEST(DomElement, SetAttributeHeaders) {
+    Document doc;
+    auto el = doc.create_element("td");
+    el->set_attribute("headers", "h1 h2");
+    EXPECT_EQ(el->get_attribute("headers"), "h1 h2");
+}
+
+TEST(DomElement, AppendMultipleChildren) {
+    Document doc;
+    auto parent = doc.create_element("div");
+    parent->append_child(doc.create_element("span"));
+    parent->append_child(doc.create_element("p"));
+    parent->append_child(doc.create_element("a"));
+    EXPECT_EQ(parent->child_count(), 3u);
+}
+
+TEST(DomElement, RemoveAttributeSrc) {
+    Document doc;
+    auto el = doc.create_element("img");
+    el->set_attribute("src", "image.png");
+    el->remove_attribute("src");
+    EXPECT_FALSE(el->has_attribute("src"));
+}
+
+TEST(DomElement, HasAttributeDisabledV2) {
+    Document doc;
+    auto el = doc.create_element("button");
+    el->set_attribute("disabled", "");
+    EXPECT_TRUE(el->has_attribute("disabled"));
+}
+
+TEST(DomElement, LongAttributeValue) {
+    Document doc;
+    auto el = doc.create_element("div");
+    std::string long_val(1000, 'x');
+    el->set_attribute("data-long", long_val);
+    EXPECT_EQ(el->get_attribute("data-long"), long_val);
+}

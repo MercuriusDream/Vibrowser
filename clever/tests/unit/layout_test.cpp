@@ -9262,3 +9262,44 @@ TEST(LayoutNodeProps, MixBlendModeDefaultV27) {
     LayoutNode n;
     EXPECT_EQ(n.mix_blend_mode, 0);
 }
+
+// Cycle 1343
+TEST(LayoutNodeProps, ScrollSnapStopDefaultV28) {
+    LayoutNode n;
+    EXPECT_EQ(n.scroll_snap_stop, 0);
+}
+
+TEST(LayoutNodeProps, SvgFillOpacityDefaultV28) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.svg_fill_opacity, 1.0f);
+}
+
+TEST(LayoutNodeProps, SvgStrokeOpacityDefaultV28) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.svg_stroke_opacity, 1.0f);
+}
+
+TEST(LayoutNodeProps, BorderRadiusTLDefaultV28) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.border_radius_tl, 0.0f);
+}
+
+TEST(LayoutNodeProps, BorderRadiusTRDefaultV28) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.border_radius_tr, 0.0f);
+}
+
+TEST(LayoutNodeProps, LineHeightDefaultV28) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.line_height, 1.2f);
+}
+
+TEST(LayoutNodeProps, BorderRadiusBLDefaultV28) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.border_radius_bl, 0.0f);
+}
+
+TEST(LayoutNodeProps, BorderRadiusBRDefaultV28) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.border_radius_br, 0.0f);
+}

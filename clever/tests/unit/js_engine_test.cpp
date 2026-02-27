@@ -19412,3 +19412,52 @@ TEST(JSEngine, StringSplitCycle1335) {
     auto result = engine.evaluate("var str = 'a,b,c'; var parts = str.split(','); parts.toString()");
     EXPECT_EQ(result, "a,b,c");
 }
+
+// Cycle 1344
+TEST(JSEngine, ArrowFunctionCycle1344) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var add = (x, y) => x + y; add(5, 3).toString()");
+    EXPECT_EQ(result, "8");
+}
+
+TEST(JSEngine, TemplateLiteralCycle1344) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var name = 'World'; `Hello, ${name}!`");
+    EXPECT_EQ(result, "Hello, World!");
+}
+
+TEST(JSEngine, DestructuringArrayCycle1344) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var [a, b] = [10, 20]; (a + b).toString()");
+    EXPECT_EQ(result, "30");
+}
+
+TEST(JSEngine, SpreadOperatorArrayCycle1344) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var arr1 = [1, 2]; var arr2 = [...arr1, 3]; arr2.toString()");
+    EXPECT_EQ(result, "1,2,3");
+}
+
+TEST(JSEngine, DefaultParametersCycle1344) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("function greet(name = 'Guest') { return 'Hello ' + name; } greet()");
+    EXPECT_EQ(result, "Hello Guest");
+}
+
+TEST(JSEngine, ObjectShorthandCycle1344) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var x = 5, y = 10; var obj = {x, y}; (obj.x + obj.y).toString()");
+    EXPECT_EQ(result, "15");
+}
+
+TEST(JSEngine, ForOfLoopCycle1344) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var sum = 0; for (const val of [1, 2, 3, 4]) { sum += val; } sum.toString()");
+    EXPECT_EQ(result, "10");
+}
+
+TEST(JSEngine, ClassDeclarationCycle1344) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("class Point { constructor(x, y) { this.x = x; this.y = y; } } var p = new Point(3, 4); (p.x + p.y).toString()");
+    EXPECT_EQ(result, "7");
+}

@@ -7816,3 +7816,60 @@ TEST(TreeBuilder, SectionElementV15) {
     ASSERT_NE(el, nullptr);
     EXPECT_EQ(el->tag_name, "section");
 }
+
+// Cycle 1342
+TEST(TreeBuilder, DivElementV16) {
+    auto doc = clever::html::parse("<html><body><div>content</div></body></html>");
+    auto* el = doc->find_element("div");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "div");
+}
+
+TEST(TreeBuilder, SpanElementV16) {
+    auto doc = clever::html::parse("<html><body><span>text</span></body></html>");
+    auto* el = doc->find_element("span");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "span");
+}
+
+TEST(TreeBuilder, ArticleElementV16) {
+    auto doc = clever::html::parse("<html><body><article><header>Article</header></article></body></html>");
+    auto* el = doc->find_element("article");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "article");
+}
+
+TEST(TreeBuilder, HeaderElementV16) {
+    auto doc = clever::html::parse("<html><body><header><nav>Navigation</nav></header></body></html>");
+    auto* el = doc->find_element("header");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "header");
+}
+
+TEST(TreeBuilder, FooterElementV16) {
+    auto doc = clever::html::parse("<html><body><footer><p>Footer content</p></footer></body></html>");
+    auto* el = doc->find_element("footer");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "footer");
+}
+
+TEST(TreeBuilder, NavElementV16) {
+    auto doc = clever::html::parse("<html><body><nav><a>Link</a></nav></body></html>");
+    auto* el = doc->find_element("nav");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "nav");
+}
+
+TEST(TreeBuilder, AsideElementV16) {
+    auto doc = clever::html::parse("<html><body><aside>Sidebar</aside></body></html>");
+    auto* el = doc->find_element("aside");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "aside");
+}
+
+TEST(TreeBuilder, MainElementV16) {
+    auto doc = clever::html::parse("<html><body><main>Main content</main></body></html>");
+    auto* el = doc->find_element("main");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "main");
+}

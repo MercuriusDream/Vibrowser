@@ -8460,3 +8460,76 @@ TEST_F(CSSStylesheetTest, ClipPathV27) {
         if (d.property == "clip-path") { found = true; break; }
     EXPECT_TRUE(found);
 }
+
+// Cycle 1341
+TEST_F(CSSStylesheetTest, DisplayV28) {
+    auto sheet = parse_stylesheet("div { display: flex; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "display") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, PositionV28) {
+    auto sheet = parse_stylesheet("span { position: absolute; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "position") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, OverflowV28) {
+    auto sheet = parse_stylesheet("p { overflow: hidden; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "overflow") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, ZIndexV28) {
+    auto sheet = parse_stylesheet("section { z-index: 999; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "z-index") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, OpacityV28) {
+    auto sheet = parse_stylesheet("a { opacity: 0.5; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "opacity") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, VisibilityV28) {
+    auto sheet = parse_stylesheet("button { visibility: visible; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "visibility") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, CursorV28) {
+    auto sheet = parse_stylesheet("input { cursor: pointer; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "cursor") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, BackfaceVisibilityV28) {
+    auto sheet = parse_stylesheet("div { backface-visibility: hidden; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "backface-visibility") { found = true; break; }
+    EXPECT_TRUE(found);
+}

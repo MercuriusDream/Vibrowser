@@ -3608,3 +3608,57 @@ TEST(CORSPolicy, CORSRejectsNullOriginWithoutHeaderV36) {
     resp_headers.set("Access-Control-Allow-Origin", "https://example.com:8080");
     EXPECT_FALSE(cors_allows_response("null", "https://server.example:9090/data", resp_headers, false));
 }
+
+// Cycle 1337
+
+TEST(CORSPolicy, IsCrossOriginPort8080V37) {
+    EXPECT_FALSE(is_cross_origin("https://api.example:8080", "https://api.example:8080/data"));
+    EXPECT_TRUE(is_cross_origin("https://api.example:8080", "https://api.example:8443/data"));
+    EXPECT_TRUE(is_cross_origin("https://api.example:8080", "https://different.example:8080/data"));
+}
+
+TEST(CORSPolicy, HasEnforceableDocumentOriginPort8443V37) {
+    EXPECT_TRUE(has_enforceable_document_origin("https://app.example:8443"));
+    EXPECT_TRUE(has_enforceable_document_origin("https://app.example:9090"));
+    EXPECT_FALSE(has_enforceable_document_origin("https://app.example:"));
+    EXPECT_FALSE(has_enforceable_document_origin("https://app.example:99999"));
+}
+
+TEST(CORSPolicy, IsCorsEligibleRequestUrlPort9090V37) {
+    EXPECT_TRUE(is_cors_eligible_request_url("https://api.example:9090/path"));
+    EXPECT_TRUE(is_cors_eligible_request_url("https://api.example:8443/resource"));
+    EXPECT_TRUE(is_cors_eligible_request_url("https://api.example:8080/data"));
+    EXPECT_FALSE(is_cors_eligible_request_url("https://api.example:8080/path with spaces"));
+}
+
+TEST(CORSPolicy, ShouldAttachOriginHeaderPort8443CrossOriginV37) {
+    EXPECT_TRUE(should_attach_origin_header("https://client.example:8080", "https://server.example:8443/api"));
+    EXPECT_TRUE(should_attach_origin_header("https://client.example:9090", "https://server.example:8443/api"));
+    EXPECT_FALSE(should_attach_origin_header("https://same.example:8080", "https://same.example:8080/api"));
+}
+
+TEST(CORSPolicy, CORSAllowsWildcardOriginWithPort8080V37) {
+    clever::net::HeaderMap resp_headers;
+    resp_headers.set("Access-Control-Allow-Origin", "*");
+    EXPECT_TRUE(cors_allows_response("https://client.example:8080", "https://server.example:9090/data", resp_headers, false));
+    EXPECT_TRUE(cors_allows_response("https://client.example:8443", "https://server.example:8080/data", resp_headers, false));
+}
+
+TEST(CORSPolicy, CORSRejectsWildcardOriginWithCredentialsV37) {
+    clever::net::HeaderMap resp_headers;
+    resp_headers.set("Access-Control-Allow-Origin", "*");
+    EXPECT_FALSE(cors_allows_response("https://client.example:8080", "https://server.example:9090/data", resp_headers, true));
+}
+
+TEST(CORSPolicy, CORSAllowsMultipleOriginHeaderPort9090V37) {
+    clever::net::HeaderMap resp_headers;
+    resp_headers.set("Access-Control-Allow-Origin", "https://trusted.example:8080");
+    EXPECT_TRUE(cors_allows_response("https://trusted.example:8080", "https://server.example:9090/resource", resp_headers, false));
+    EXPECT_FALSE(cors_allows_response("https://untrusted.example:8080", "https://server.example:9090/resource", resp_headers, false));
+}
+
+TEST(CORSPolicy, ShouldAttachOriginHeaderAllNonStandardPortsV37) {
+    EXPECT_TRUE(should_attach_origin_header("https://app.example:8080", "https://api.example:8443/endpoint"));
+    EXPECT_TRUE(should_attach_origin_header("https://app.example:9090", "https://api.example:8080/endpoint"));
+    EXPECT_TRUE(should_attach_origin_header("https://app.example:8443", "https://api.example:9090/endpoint"));
+}
