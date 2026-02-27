@@ -8975,3 +8975,120 @@ TEST(URLParserTest, CustomSchemeUrlV70) {
     EXPECT_EQ(with_authority->host, "host");
     EXPECT_EQ(with_authority->path, "/resource");
 }
+
+TEST(URLParserTest, BasicHttpWithPathV71) {
+    auto result = clever::url::parse("http://example.com/path");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/path");
+}
+
+TEST(URLParserTest, HttpsWithQueryParamsV71) {
+    auto result = clever::url::parse("https://example.com/search?a=1&b=two words");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->path, "/search");
+    EXPECT_EQ(result->query, "a=1&b=two%20words");
+}
+
+TEST(URLParserTest, UrlWithFragmentAfterQueryV71) {
+    auto result = clever::url::parse("https://example.com/find?q=browser#top");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->path, "/find");
+    EXPECT_EQ(result->query, "q=browser");
+    EXPECT_EQ(result->fragment, "top");
+}
+
+TEST(URLParserTest, UrlWithPort3000V71) {
+    auto result = clever::url::parse("http://localhost:3000/app");
+    ASSERT_TRUE(result.has_value());
+    ASSERT_TRUE(result->port.has_value());
+    EXPECT_EQ(result->port.value(), 3000);
+    EXPECT_EQ(result->path, "/app");
+}
+
+TEST(URLParserTest, NoPathUrlDefaultsToSlashV71) {
+    auto result = clever::url::parse("https://example.com");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->path, "/");
+}
+
+TEST(URLParserTest, UrlSchemeFtpV71) {
+    auto result = clever::url::parse("ftp://files.example.com/downloads");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "ftp");
+    EXPECT_EQ(result->host, "files.example.com");
+    EXPECT_EQ(result->path, "/downloads");
+}
+
+TEST(URLParserTest, UrlHostWithSubdomainV71) {
+    auto result = clever::url::parse("https://api.dev.example.com/v1");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->host, "api.dev.example.com");
+    EXPECT_EQ(result->path, "/v1");
+}
+
+TEST(URLParserTest, UrlPathWithMultipleSegmentsV71) {
+    auto result = clever::url::parse("https://example.com/a/b/c/d");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->path, "/a/b/c/d");
+}
+
+TEST(URLParserTest, UrlQueryWithHashValueV71) {
+    auto result = clever::url::parse("https://example.com/path?hash=%23value");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->query, "hash=%2523value");
+}
+
+TEST(URLParserTest, EmptyFragmentV71) {
+    auto result = clever::url::parse("https://example.com/path#");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->path, "/path");
+    EXPECT_TRUE(result->fragment.empty());
+}
+
+TEST(URLParserTest, PortExtractionV71) {
+    auto result = clever::url::parse("https://example.com:3000/dashboard");
+    ASSERT_TRUE(result.has_value());
+    ASSERT_TRUE(result->port.has_value());
+    EXPECT_EQ(result->port.value(), 3000);
+    EXPECT_EQ(result->host, "example.com");
+}
+
+TEST(URLParserTest, SchemeHostOnlyUrlRequiresSlashesV71) {
+    auto valid = clever::url::parse("https://only-host.example");
+    ASSERT_TRUE(valid.has_value());
+    EXPECT_EQ(valid->host, "only-host.example");
+    EXPECT_EQ(valid->path, "/");
+
+    auto invalid = clever::url::parse("https:only-host.example");
+    EXPECT_FALSE(invalid.has_value());
+}
+
+TEST(URLParserTest, UrlWithTrailingSlashV71) {
+    auto result = clever::url::parse("https://example.com/path/");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->path, "/path/");
+}
+
+TEST(URLParserTest, UrlPercentEncodingInPathV71) {
+    auto result = clever::url::parse("https://example.com/a%20b");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->path, "/a%2520b");
+}
+
+TEST(URLParserTest, UrlWithUserAtHostV71) {
+    auto result = clever::url::parse("https://user@example.com/path");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->username, "user");
+    EXPECT_TRUE(result->password.empty());
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/path");
+}
+
+TEST(URLParserTest, UrlQueryEmptyValueKeyV71) {
+    auto result = clever::url::parse("https://example.com/path?key=");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->query, "key=");
+}

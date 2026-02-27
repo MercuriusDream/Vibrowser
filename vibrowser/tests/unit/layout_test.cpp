@@ -13069,3 +13069,177 @@ TEST(LayoutEngineTest, DisplayNoneChildNotCountedInHeightV70) {
     EXPECT_FLOAT_EQ(root->children[2]->geometry.y, 30.0f);
     EXPECT_FLOAT_EQ(root->geometry.height, 50.0f);
 }
+
+// Test V71_001: child x starts at 0 in normal block flow
+TEST(LayoutEngineTest, ChildXStartsAtZeroV71) {
+    auto root = make_block("div");
+    root->specified_width = 480.0f;
+
+    auto child = make_block("div");
+    child->specified_height = 24.0f;
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    const float vw = 800.0f;
+    const float vh = 600.0f;
+    engine.compute(*root, vw, vh);
+
+    ASSERT_EQ(root->children.size(), 1u);
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.x, 0.0f);
+}
+
+// Test V71_002: two children y positions stack vertically
+TEST(LayoutEngineTest, TwoChildrenYPositionsStackV71) {
+    auto root = make_block("div");
+    root->specified_width = 500.0f;
+
+    auto first = make_block("div");
+    first->specified_height = 35.0f;
+    auto second = make_block("div");
+    second->specified_height = 45.0f;
+    root->append_child(std::move(first));
+    root->append_child(std::move(second));
+
+    LayoutEngine engine;
+    const float vw = 700.0f;
+    const float vh = 500.0f;
+    engine.compute(*root, vw, vh);
+
+    ASSERT_EQ(root->children.size(), 2u);
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.y, 0.0f);
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.y, 35.0f);
+}
+
+// Test V71_003: text node width is computed from content length and font size
+TEST(LayoutEngineTest, TextNodeWidthBasedOnContentV71) {
+    auto root = make_block("div");
+    auto text = make_text("Seven77", 10.0f); // 7 * 10 * 0.6 = 42
+    root->append_child(std::move(text));
+
+    LayoutEngine engine;
+    const float vw = 320.0f;
+    const float vh = 240.0f;
+    engine.compute(*root, vw, vh);
+
+    ASSERT_EQ(root->children.size(), 1u);
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.width, 42.0f);
+}
+
+// Test V71_004: max_height clamps oversized content
+TEST(LayoutEngineTest, MaxHeightClampsOversizedContentV71) {
+    auto root = make_block("div");
+    root->specified_width = 300.0f;
+    root->max_height = 70.0f;
+
+    auto child = make_block("div");
+    child->specified_height = 200.0f;
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    const float vw = 800.0f;
+    const float vh = 600.0f;
+    engine.compute(*root, vw, vh);
+
+    ASSERT_EQ(root->children.size(), 1u);
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.height, 200.0f);
+    EXPECT_FLOAT_EQ(root->geometry.height, 70.0f);
+}
+
+// Test V71_005: block child fills available width of its parent
+TEST(LayoutEngineTest, BlockFillsAvailableWidthV71) {
+    auto root = make_block("div");
+    root->specified_width = 640.0f;
+
+    auto child = make_block("div");
+    child->specified_height = 30.0f;
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    const float vw = 1000.0f;
+    const float vh = 700.0f;
+    engine.compute(*root, vw, vh);
+
+    ASSERT_EQ(root->children.size(), 1u);
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.width, 640.0f);
+}
+
+// Test V71_006: nested block paddings propagate to grandchild available width
+TEST(LayoutEngineTest, NestedBlockPaddingPropagationV71) {
+    auto root = make_block("div");
+    root->specified_width = 300.0f;
+    root->geometry.padding.left = 10.0f;
+    root->geometry.padding.right = 10.0f;
+
+    auto child = make_block("div");
+    child->geometry.padding.left = 15.0f;
+    child->geometry.padding.right = 5.0f;
+
+    auto grandchild = make_block("div");
+    grandchild->specified_height = 16.0f;
+    child->append_child(std::move(grandchild));
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    const float vw = 600.0f;
+    const float vh = 400.0f;
+    engine.compute(*root, vw, vh);
+
+    ASSERT_EQ(root->children.size(), 1u);
+    ASSERT_EQ(root->children[0]->children.size(), 1u);
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.width, 280.0f);
+    EXPECT_FLOAT_EQ(root->children[0]->children[0]->geometry.width, 260.0f);
+}
+
+// Test V71_007: absolute positioned child is removed from normal flow
+TEST(LayoutEngineTest, AbsolutePositionRemovesFromFlowV71) {
+    auto root = make_block("div");
+    root->specified_width = 420.0f;
+
+    auto first = make_block("div");
+    first->specified_height = 50.0f;
+    root->append_child(std::move(first));
+
+    auto absolute = make_block("div");
+    absolute->position_type = 2; // absolute
+    absolute->specified_width = 80.0f;
+    absolute->specified_height = 120.0f;
+    absolute->pos_left = 22.0f;
+    absolute->pos_left_set = true;
+    absolute->pos_top = 9.0f;
+    absolute->pos_top_set = true;
+    root->append_child(std::move(absolute));
+
+    auto third = make_block("div");
+    third->specified_height = 30.0f;
+    root->append_child(std::move(third));
+
+    LayoutEngine engine;
+    const float vw = 420.0f;
+    const float vh = 600.0f;
+    engine.compute(*root, vw, vh);
+
+    ASSERT_EQ(root->children.size(), 3u);
+    EXPECT_FLOAT_EQ(root->children[2]->geometry.y, 50.0f);
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.x, 22.0f);
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.y, 9.0f);
+}
+
+// Test V71_008: margin-bottom on last child contributes to parent height
+TEST(LayoutEngineTest, MarginBottomOnLastChildV71) {
+    auto root = make_block("div");
+    root->specified_width = 400.0f;
+
+    auto child = make_block("div");
+    child->specified_height = 20.0f;
+    child->geometry.margin.bottom = 18.0f;
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    const float vw = 800.0f;
+    const float vh = 600.0f;
+    engine.compute(*root, vw, vh);
+
+    ASSERT_EQ(root->children.size(), 1u);
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.y, 0.0f);
+    EXPECT_FLOAT_EQ(root->geometry.height, 38.0f);
+}

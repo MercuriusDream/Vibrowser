@@ -13582,3 +13582,133 @@ TEST(PropertyCascadeTest, ResolverBoxSizingBorderBoxValueV70) {
 
     EXPECT_EQ(style.box_sizing, BoxSizing::BorderBox);
 }
+
+TEST(PropertyCascadeTest, ResolverWidthPxValueV71) {
+    const std::string css = "div { width: 100px; }";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_FLOAT_EQ(style.width.to_px(), 100.0f);
+}
+
+TEST(PropertyCascadeTest, ResolverHeightPxValueV71) {
+    const std::string css = "div { height: 50px; }";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_FLOAT_EQ(style.height.to_px(), 50.0f);
+}
+
+TEST(PropertyCascadeTest, ResolverDisplayInlineBlockValueV71) {
+    const std::string css = "div { display: inline-block; }";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.display, Display::InlineBlock);
+}
+
+TEST(PropertyCascadeTest, ResolverOverflowScrollIntValueV71) {
+    const std::string css = "div { overflow: scroll; }";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(static_cast<int>(style.overflow_x), 2);
+    EXPECT_EQ(static_cast<int>(style.overflow_y), 2);
+}
+
+TEST(PropertyCascadeTest, ResolverPointerEventsNoneEnumV71) {
+    const std::string css = "div { pointer-events: none; }";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.pointer_events, PointerEvents::None);
+}
+
+TEST(PropertyCascadeTest, ResolverUserSelectNoneEnumV71) {
+    const std::string css = "div { user-select: none; }";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.user_select, UserSelect::None);
+}
+
+TEST(PropertyCascadeTest, ResolverTransformTranslateXExistsV71) {
+    const std::string css = "div { transform: translateX(12px); }";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    ASSERT_FALSE(style.transforms.empty());
+    EXPECT_EQ(style.transforms[0].type, TransformType::Translate);
+}
+
+TEST(PropertyCascadeTest, ResolverTransitionDurationValueV71) {
+    const std::string css = "div { transition-duration: 250ms; }";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_NEAR(style.transition_duration, 0.25f, 0.001f);
+}

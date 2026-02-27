@@ -11970,3 +11970,187 @@ TEST(DOMTest, ElementClosestAncestorMatchingFindsNearestMatchV70) {
         closest_ancestor_matching(*article_ptr, [](const Element& element) { return element.tag_name() == "div"; }),
         nullptr);
 }
+
+TEST(DOMTest, ElementLookupNamespaceURIResolvesDefaultNamespaceV71) {
+    auto lookup_namespace_uri = [](const Element& element, const std::string& prefix) -> std::string {
+        if (!prefix.empty()) {
+            return "";
+        }
+        return element.namespace_uri();
+    };
+
+    Element html_div("div");
+    Element svg_circle("circle", "http://www.w3.org/2000/svg");
+
+    EXPECT_EQ(lookup_namespace_uri(html_div, ""), "");
+    EXPECT_EQ(lookup_namespace_uri(svg_circle, ""), "http://www.w3.org/2000/svg");
+    EXPECT_EQ(lookup_namespace_uri(svg_circle, "svg"), "");
+}
+
+TEST(DOMTest, ElementGetAttributeReturnsEmptyForMissingV71) {
+    Element element("article");
+
+    const auto missing_value = element.get_attribute("data-missing");
+    EXPECT_FALSE(missing_value.has_value());
+    EXPECT_EQ(missing_value.value_or(""), "");
+}
+
+TEST(DOMTest, ElementRemoveAttributeIsIdempotentV71) {
+    Element element("button");
+    element.set_attribute("id", "primary-action");
+    element.set_attribute("type", "button");
+
+    EXPECT_TRUE(element.has_attribute("id"));
+    EXPECT_NO_THROW(element.remove_attribute("id"));
+    EXPECT_NO_THROW(element.remove_attribute("id"));
+
+    EXPECT_FALSE(element.has_attribute("id"));
+    EXPECT_EQ(element.get_attribute("id").value_or(""), "");
+    EXPECT_EQ(element.get_attribute("type").value_or(""), "button");
+    EXPECT_EQ(element.attributes().size(), 1u);
+}
+
+TEST(DOMTest, DocumentBodyReferenceReturnsBodyNodeV71) {
+    Document document;
+
+    auto html = document.create_element("html");
+    Element* html_ptr = html.get();
+    auto head = document.create_element("head");
+    auto body = document.create_element("body");
+    Element* body_ptr = body.get();
+
+    html->append_child(std::move(head));
+    html->append_child(std::move(body));
+    document.append_child(std::move(html));
+
+    ASSERT_EQ(document.document_element(), html_ptr);
+    ASSERT_EQ(document.body(), body_ptr);
+
+    body_ptr->append_child(document.create_element("p"));
+    EXPECT_EQ(document.body(), body_ptr);
+    EXPECT_EQ(body_ptr->parent(), html_ptr);
+}
+
+TEST(DOMTest, TextNodeSplittingCreatesTrailingSiblingV71) {
+    auto split_text_node = [](Text& text_node, size_t offset) -> Text* {
+        std::string original = text_node.data();
+        if (offset > original.size()) {
+            offset = original.size();
+        }
+
+        text_node.set_data(original.substr(0, offset));
+
+        Node* parent = text_node.parent();
+        if (parent == nullptr) {
+            return nullptr;
+        }
+
+        auto trailing_text = std::make_unique<Text>(original.substr(offset));
+        Text* trailing_ptr = trailing_text.get();
+        parent->insert_before(std::move(trailing_text), text_node.next_sibling());
+        return trailing_ptr;
+    };
+
+    Element container("div");
+    auto initial_text = std::make_unique<Text>("hello-world");
+    Text* initial_ptr = initial_text.get();
+    container.append_child(std::move(initial_text));
+
+    Text* trailing_ptr = split_text_node(*initial_ptr, 5);
+
+    ASSERT_NE(trailing_ptr, nullptr);
+    EXPECT_EQ(initial_ptr->data(), "hello");
+    EXPECT_EQ(trailing_ptr->data(), "-world");
+    EXPECT_EQ(container.child_count(), 2u);
+    EXPECT_EQ(initial_ptr->next_sibling(), trailing_ptr);
+    EXPECT_EQ(trailing_ptr->previous_sibling(), initial_ptr);
+}
+
+TEST(DOMTest, CommentNodeCreationAndValueMutationV71) {
+    Document document;
+    auto comment = document.create_comment("initial note");
+
+    ASSERT_NE(comment, nullptr);
+    EXPECT_EQ(comment->node_type(), NodeType::Comment);
+    EXPECT_EQ(comment->data(), "initial note");
+
+    comment->set_data("updated note");
+    EXPECT_EQ(comment->data(), "updated note");
+}
+
+TEST(DOMTest, ElementBeforeAfterSiblingInsertionMaintainsOrderV71) {
+    auto insert_before_sibling = [](Element& target, std::unique_ptr<Node> node) -> Node* {
+        Node* parent = target.parent();
+        if (parent == nullptr) {
+            return nullptr;
+        }
+        Node* inserted = node.get();
+        parent->insert_before(std::move(node), &target);
+        return inserted;
+    };
+    auto insert_after_sibling = [](Element& target, std::unique_ptr<Node> node) -> Node* {
+        Node* parent = target.parent();
+        if (parent == nullptr) {
+            return nullptr;
+        }
+        Node* inserted = node.get();
+        parent->insert_before(std::move(node), target.next_sibling());
+        return inserted;
+    };
+
+    Element parent("ul");
+    auto first = std::make_unique<Element>("first");
+    auto target = std::make_unique<Element>("target");
+    auto last = std::make_unique<Element>("last");
+    Element* first_ptr = first.get();
+    Element* target_ptr = target.get();
+    Element* last_ptr = last.get();
+
+    parent.append_child(std::move(first));
+    parent.append_child(std::move(target));
+    parent.append_child(std::move(last));
+
+    Node* before_ptr = insert_before_sibling(*target_ptr, std::make_unique<Element>("before"));
+    Node* after_ptr = insert_after_sibling(*target_ptr, std::make_unique<Element>("after"));
+
+    ASSERT_NE(before_ptr, nullptr);
+    ASSERT_NE(after_ptr, nullptr);
+    EXPECT_EQ(parent.child_count(), 5u);
+    EXPECT_EQ(first_ptr->next_sibling(), before_ptr);
+    EXPECT_EQ(before_ptr->next_sibling(), target_ptr);
+    EXPECT_EQ(target_ptr->next_sibling(), after_ptr);
+    EXPECT_EQ(after_ptr->next_sibling(), last_ptr);
+}
+
+TEST(DOMTest, NodeContainsCheckFindsAncestorRelationshipV71) {
+    auto node_contains = [](const Node& candidate_ancestor, const Node& node) -> bool {
+        const Node* current = &node;
+        while (current != nullptr) {
+            if (current == &candidate_ancestor) {
+                return true;
+            }
+            current = current->parent();
+        }
+        return false;
+    };
+
+    auto root = std::make_unique<Element>("root");
+    Element* root_ptr = root.get();
+    auto section = std::make_unique<Element>("section");
+    Element* section_ptr = section.get();
+    auto button = std::make_unique<Element>("button");
+    Element* button_ptr = button.get();
+    auto aside = std::make_unique<Element>("aside");
+    Element* aside_ptr = aside.get();
+
+    section->append_child(std::move(button));
+    root->append_child(std::move(section));
+    root->append_child(std::move(aside));
+
+    EXPECT_TRUE(node_contains(*root_ptr, *root_ptr));
+    EXPECT_TRUE(node_contains(*root_ptr, *section_ptr));
+    EXPECT_TRUE(node_contains(*root_ptr, *button_ptr));
+    EXPECT_TRUE(node_contains(*section_ptr, *button_ptr));
+    EXPECT_FALSE(node_contains(*button_ptr, *section_ptr));
+    EXPECT_FALSE(node_contains(*aside_ptr, *button_ptr));
+}

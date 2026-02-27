@@ -10666,3 +10666,93 @@ TEST(SerializerTest, SerializerDataReturnsRawBufferV70) {
     const std::vector<uint8_t> expected = {0xABu, 0x12u, 0x34u, 0x01u};
     EXPECT_EQ(raw, expected);
 }
+
+TEST(SerializerTest, WriteReadSingleU32Value1000V71) {
+    Serializer s;
+    s.write_u32(1000u);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u32(), 1000u);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, WriteReadStringWithEmojiCharactersV71) {
+    const std::string text = "Launch \xF0\x9F\x9A\x80 and smile \xF0\x9F\x98\x84";
+    Serializer s;
+    s.write_string(text);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), text);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, WriteBoolFalseAndVerifyV71) {
+    Serializer s;
+    s.write_bool(false);
+
+    Deserializer d(s.data());
+    EXPECT_FALSE(d.read_bool());
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, WriteBytes512PatternDataV71) {
+    std::vector<uint8_t> bytes(512);
+    for (size_t i = 0; i < bytes.size(); ++i) {
+        bytes[i] = static_cast<uint8_t>((i * 37u) & 0xFFu);
+    }
+
+    Serializer s;
+    s.write_bytes(bytes.data(), bytes.size());
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_bytes(), bytes);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, TwoStringsBackToBackReadCorrectlyV71) {
+    const std::string first = "first string";
+    const std::string second = "second string";
+    Serializer s;
+    s.write_string(first);
+    s.write_string(second);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), first);
+    EXPECT_EQ(d.read_string(), second);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, U32ThenStringThenU32PatternV71) {
+    const uint32_t prefix = 0x12345678u;
+    const std::string middle = "payload";
+    const uint32_t suffix = 0xABCDEF01u;
+    Serializer s;
+    s.write_u32(prefix);
+    s.write_string(middle);
+    s.write_u32(suffix);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u32(), prefix);
+    EXPECT_EQ(d.read_string(), middle);
+    EXPECT_EQ(d.read_u32(), suffix);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, EmptyStringWriteReadV71) {
+    Serializer s;
+    s.write_string("");
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "");
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, BytesAllFFThroughoutV71) {
+    std::vector<uint8_t> bytes(128, 0xFFu);
+    Serializer s;
+    s.write_bytes(bytes.data(), bytes.size());
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_bytes(), bytes);
+    EXPECT_FALSE(d.has_remaining());
+}

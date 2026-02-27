@@ -23058,3 +23058,201 @@ TEST(JSEngineTest, ObjectFreezePreventsModificationV70) {
     EXPECT_TRUE(result.success) << engine.last_error();
     EXPECT_EQ(result.value, "1|TypeError|true");
 }
+
+TEST(JSEngineTest, PromiseResolveThenChainV71) {
+    clever::js::JSEngine engine;
+    const std::string js = R"(
+        var v71PromiseChain = 'pending';
+        Promise.resolve(5)
+            .then(function(value) { return value * 3; })
+            .then(function(value) { return value + 2; })
+            .then(function(value) {
+                v71PromiseChain = value.toString();
+            });
+        'scheduled'
+    )";
+    auto setup = EvalResultV66{false, ""};
+    setup.value = engine.evaluate(js);
+    setup.success = !engine.has_error();
+    EXPECT_TRUE(setup.success) << engine.last_error();
+    EXPECT_EQ(setup.value, "scheduled");
+
+    clever::js::flush_fetch_promise_jobs(engine.context());
+
+    auto result = EvalResultV66{false, ""};
+    result.value = engine.evaluate("v71PromiseChain");
+    result.success = !engine.has_error();
+    EXPECT_TRUE(result.success) << engine.last_error();
+    EXPECT_EQ(result.value, "17");
+}
+
+TEST(JSEngineTest, AsyncFunctionReturnsValueV71) {
+    clever::js::JSEngine engine;
+    const std::string js = R"(
+        var v71AsyncValue = 'pending';
+        async function buildV71Value() {
+            return 71;
+        }
+        buildV71Value().then(function(value) {
+            v71AsyncValue = value.toString();
+        });
+        'scheduled'
+    )";
+    auto setup = EvalResultV66{false, ""};
+    setup.value = engine.evaluate(js);
+    setup.success = !engine.has_error();
+    EXPECT_TRUE(setup.success) << engine.last_error();
+    EXPECT_EQ(setup.value, "scheduled");
+
+    clever::js::flush_fetch_promise_jobs(engine.context());
+
+    auto result = EvalResultV66{false, ""};
+    result.value = engine.evaluate("v71AsyncValue");
+    result.success = !engine.has_error();
+    EXPECT_TRUE(result.success) << engine.last_error();
+    EXPECT_EQ(result.value, "71");
+}
+
+TEST(JSEngineTest, ForAwaitOfSimulationV71) {
+    clever::js::JSEngine engine;
+    const std::string js = R"(
+        var v71ForAwaitResult = 'pending';
+        var asyncIterable = {
+            [Symbol.asyncIterator]: function() {
+                var current = 1;
+                return {
+                    next: function() {
+                        if (current <= 3) {
+                            return Promise.resolve({ value: current++, done: false });
+                        }
+                        return Promise.resolve({ value: undefined, done: true });
+                    }
+                };
+            }
+        };
+
+        async function collectV71() {
+            var values = [];
+            for await (var value of asyncIterable) {
+                values.push((value * 10).toString());
+            }
+            return values.join(',');
+        }
+
+        collectV71().then(function(text) {
+            v71ForAwaitResult = text;
+        });
+        'scheduled'
+    )";
+    auto setup = EvalResultV66{false, ""};
+    setup.value = engine.evaluate(js);
+    setup.success = !engine.has_error();
+    EXPECT_TRUE(setup.success) << engine.last_error();
+    EXPECT_EQ(setup.value, "scheduled");
+
+    clever::js::flush_fetch_promise_jobs(engine.context());
+
+    auto result = EvalResultV66{false, ""};
+    result.value = engine.evaluate("v71ForAwaitResult");
+    result.success = !engine.has_error();
+    EXPECT_TRUE(result.success) << engine.last_error();
+    EXPECT_EQ(result.value, "10,20,30");
+}
+
+TEST(JSEngineTest, SymbolToPrimitiveConversionV71) {
+    clever::js::JSEngine engine;
+    const std::string js = R"(
+        var obj = {
+            base: 7,
+            [Symbol.toPrimitive]: function(hint) {
+                if (hint === 'number') {
+                    return this.base * 6;
+                }
+                if (hint === 'string') {
+                    return 'B' + this.base.toString();
+                }
+                return 99;
+            }
+        };
+
+        [
+            (+obj).toString(),
+            String(obj),
+            (obj == 99).toString()
+        ].join('|')
+    )";
+    auto result = EvalResultV66{false, ""};
+    result.value = engine.evaluate(js);
+    result.success = !engine.has_error();
+    EXPECT_TRUE(result.success) << engine.last_error();
+    EXPECT_EQ(result.value, "42|B7|true");
+}
+
+TEST(JSEngineTest, ReflectOwnKeysIncludesSymbolAndHiddenV71) {
+    clever::js::JSEngine engine;
+    const std::string js = R"(
+        var sym = Symbol('id');
+        var obj = { a: 1 };
+        obj[2] = 'two';
+        obj[sym] = 'symbol-value';
+        Object.defineProperty(obj, 'hidden', { value: 3, enumerable: false });
+
+        Reflect.ownKeys(obj).map(function(key) {
+            if (typeof key === 'symbol') {
+                return 'sym:' + key.description;
+            }
+            return String(key);
+        }).join(',')
+    )";
+    auto result = EvalResultV66{false, ""};
+    result.value = engine.evaluate(js);
+    result.success = !engine.has_error();
+    EXPECT_TRUE(result.success) << engine.last_error();
+    EXPECT_EQ(result.value, "2,a,hidden,sym:id");
+}
+
+TEST(JSEngineTest, ArrayFromStringBuildsCharactersV71) {
+    clever::js::JSEngine engine;
+    const std::string js = R"(
+        var chars = Array.from('V71!');
+        [chars.join(','), chars.length.toString(), chars[2]].join('|')
+    )";
+    auto result = EvalResultV66{false, ""};
+    result.value = engine.evaluate(js);
+    result.success = !engine.has_error();
+    EXPECT_TRUE(result.success) << engine.last_error();
+    EXPECT_EQ(result.value, "V,7,1,!|4|1");
+}
+
+TEST(JSEngineTest, MapSizePropertyTracksEntriesV71) {
+    clever::js::JSEngine engine;
+    const std::string js = R"(
+        var map = new Map();
+        map.set('x', 1);
+        map.set('y', 2);
+        map.set('x', 3);
+        map.delete('y');
+        [map.size.toString(), map.get('x').toString(), map.has('y').toString()].join('|')
+    )";
+    auto result = EvalResultV66{false, ""};
+    result.value = engine.evaluate(js);
+    result.success = !engine.has_error();
+    EXPECT_TRUE(result.success) << engine.last_error();
+    EXPECT_EQ(result.value, "1|3|false");
+}
+
+TEST(JSEngineTest, SetHasMethodChecksMembershipV71) {
+    clever::js::JSEngine engine;
+    const std::string js = R"(
+        var set = new Set([1, 2, 2, 3]);
+        var beforeDelete = set.has(2);
+        set.delete(2);
+        var afterDelete = set.has(2);
+        [beforeDelete.toString(), afterDelete.toString(), set.size.toString()].join('|')
+    )";
+    auto result = EvalResultV66{false, ""};
+    result.value = engine.evaluate(js);
+    result.success = !engine.has_error();
+    EXPECT_TRUE(result.success) << engine.last_error();
+    EXPECT_EQ(result.value, "true|false|2");
+}

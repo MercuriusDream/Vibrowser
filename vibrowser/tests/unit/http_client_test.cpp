@@ -13295,3 +13295,204 @@ TEST(RequestTest, RequestBodyBinaryDataV70) {
     ASSERT_GE(bytes.size(), req.body.size());
     EXPECT_TRUE(std::equal(req.body.begin(), req.body.end(), bytes.end() - static_cast<std::ptrdiff_t>(req.body.size())));
 }
+
+// ---------------------------------------------------------------------------
+// Cycle 71: requested Request/Response/HeaderMap coverage additions
+// ---------------------------------------------------------------------------
+
+TEST(RequestTest, GetSerializeMinimalV71) {
+    Request req;
+    req.method = Method::GET;
+    req.host = "example.com";
+    req.port = 80;
+    req.path = "/";
+
+    auto bytes = req.serialize();
+    std::string serialized(bytes.begin(), bytes.end());
+
+    EXPECT_NE(serialized.find("GET / HTTP/1.1\r\n"), std::string::npos);
+}
+
+TEST(RequestTest, PostSerializeBodyTestDataV71) {
+    Request req;
+    req.method = Method::POST;
+    req.host = "example.com";
+    req.port = 80;
+    req.path = "/submit";
+    const std::string body = "test data";
+    req.body.assign(body.begin(), body.end());
+
+    auto bytes = req.serialize();
+    std::string serialized(bytes.begin(), bytes.end());
+
+    EXPECT_NE(serialized.find("POST /submit HTTP/1.1\r\n"), std::string::npos);
+    EXPECT_NE(serialized.find("Content-Length: 9\r\n"), std::string::npos);
+    EXPECT_EQ(serialized.substr(serialized.size() - body.size()), body);
+}
+
+TEST(ResponseTest, Parse200WithHeadersV71) {
+    std::string raw =
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Type: text/plain\r\n"
+        "X-Trace-Id: abc123\r\n"
+        "Content-Length: 2\r\n"
+        "\r\n"
+        "OK";
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 200u);
+    ASSERT_TRUE(resp->headers.get("x-trace-id").has_value());
+    EXPECT_EQ(resp->headers.get("x-trace-id").value(), "abc123");
+}
+
+TEST(ResponseTest, Parse500ErrorV71) {
+    std::string raw =
+        "HTTP/1.1 500 Internal Server Error\r\n"
+        "Content-Length: 5\r\n"
+        "\r\n"
+        "error";
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 500u);
+    EXPECT_EQ(resp->status_text, "Internal Server Error");
+}
+
+TEST(HeaderMapTest, SetOverwritesExistingValueV71) {
+    HeaderMap map;
+    map.set("Content-Type", "text/plain");
+    map.set("Content-Type", "application/json");
+
+    ASSERT_TRUE(map.get("content-type").has_value());
+    EXPECT_EQ(map.get("content-type").value(), "application/json");
+}
+
+TEST(HeaderMapTest, GetMissingReturnsNulloptV71) {
+    HeaderMap map;
+    EXPECT_FALSE(map.get("x-missing").has_value());
+}
+
+TEST(HeaderMapTest, EmptyTrueInitiallyV71) {
+    HeaderMap map;
+    EXPECT_TRUE(map.empty());
+}
+
+TEST(HeaderMapTest, SizeAfterTwoSetsV71) {
+    HeaderMap map;
+    map.set("a", "1");
+    map.set("b", "2");
+    EXPECT_EQ(map.size(), 2u);
+}
+
+TEST(RequestTest, RequestPort443V71) {
+    Request req;
+    req.method = Method::GET;
+    req.host = "secure.example.com";
+    req.port = 443;
+    req.use_tls = true;
+    req.path = "/secure";
+
+    auto bytes = req.serialize();
+    std::string serialized(bytes.begin(), bytes.end());
+
+    EXPECT_NE(serialized.find("GET /secure HTTP/1.1\r\n"), std::string::npos);
+    EXPECT_NE(serialized.find("Host: secure.example.com\r\n"), std::string::npos);
+}
+
+TEST(RequestTest, RequestPathApiUsersV71) {
+    Request req;
+    req.method = Method::GET;
+    req.host = "api.example.com";
+    req.port = 80;
+    req.path = "/api/users";
+
+    auto bytes = req.serialize();
+    std::string serialized(bytes.begin(), bytes.end());
+
+    EXPECT_NE(serialized.find("GET /api/users HTTP/1.1\r\n"), std::string::npos);
+}
+
+TEST(ResponseTest, BodyAsStringV71) {
+    std::string raw =
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Length: 11\r\n"
+        "\r\n"
+        "hello world";
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->body_as_string(), "hello world");
+}
+
+TEST(ResponseTest, ParseStatus204V71) {
+    std::string raw =
+        "HTTP/1.1 204 No Content\r\n"
+        "Content-Length: 0\r\n"
+        "\r\n";
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 204u);
+}
+
+TEST(RequestTest, UserAgentCustomV71) {
+    Request req;
+    req.method = Method::GET;
+    req.host = "client.example.com";
+    req.port = 80;
+    req.path = "/";
+    req.headers.set("User-Agent", "V71Agent/1.0");
+
+    auto bytes = req.serialize();
+    std::string serialized(bytes.begin(), bytes.end());
+
+    EXPECT_NE(serialized.find("user-agent: V71Agent/1.0\r\n"), std::string::npos);
+}
+
+TEST(HeaderMapTest, RemoveDecrementsSizeV71) {
+    HeaderMap map;
+    map.set("a", "1");
+    map.set("b", "2");
+    EXPECT_EQ(map.size(), 2u);
+
+    map.remove("a");
+    EXPECT_EQ(map.size(), 1u);
+}
+
+TEST(ResponseTest, ParseContentTypeJsonV71) {
+    std::string raw =
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Type: application/json\r\n"
+        "Content-Length: 2\r\n"
+        "\r\n"
+        "{}";
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value());
+    ASSERT_TRUE(resp->headers.get("content-type").has_value());
+    EXPECT_EQ(resp->headers.get("content-type").value(), "application/json");
+}
+
+TEST(RequestTest, HostAutoFromHostFieldV71) {
+    Request req;
+    req.method = Method::GET;
+    req.host = "autohost.example.com";
+    req.port = 80;
+    req.path = "/";
+
+    auto bytes = req.serialize();
+    std::string serialized(bytes.begin(), bytes.end());
+
+    EXPECT_NE(serialized.find("Host: autohost.example.com\r\n"), std::string::npos);
+}

@@ -11309,3 +11309,118 @@ TEST(HTMLParserTest, ImgSelfClosingWithSrcV70) {
     EXPECT_EQ(get_attr_v63(img, "src"), "photo.png");
     EXPECT_TRUE(img->children.empty());
 }
+
+TEST(HTMLParserTest, ButtonElementWithTextV71) {
+    auto doc = clever::html::parse("<button>Submit Form</button>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* button = doc->find_element("button");
+    ASSERT_NE(button, nullptr);
+    EXPECT_EQ(button->tag_name, "button");
+    EXPECT_EQ(button->text_content(), "Submit Form");
+}
+
+TEST(HTMLParserTest, SpanInsideParagraphV71) {
+    auto doc = clever::html::parse("<p>Before <span>inline</span> after</p>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* paragraph = doc->find_element("p");
+    auto* span = doc->find_element("span");
+    ASSERT_NE(paragraph, nullptr);
+    ASSERT_NE(span, nullptr);
+    EXPECT_EQ(paragraph->tag_name, "p");
+    EXPECT_EQ(span->tag_name, "span");
+    EXPECT_EQ(span->parent, paragraph);
+    EXPECT_EQ(span->text_content(), "inline");
+}
+
+TEST(HTMLParserTest, StrongAndEmElementsV71) {
+    auto doc = clever::html::parse("<p><strong>Bold</strong> and <em>Italic</em></p>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* paragraph = doc->find_element("p");
+    auto* strong = doc->find_element("strong");
+    auto* em = doc->find_element("em");
+    ASSERT_NE(paragraph, nullptr);
+    ASSERT_NE(strong, nullptr);
+    ASSERT_NE(em, nullptr);
+    EXPECT_EQ(strong->parent, paragraph);
+    EXPECT_EQ(em->parent, paragraph);
+    EXPECT_EQ(strong->text_content(), "Bold");
+    EXPECT_EQ(em->text_content(), "Italic");
+}
+
+TEST(HTMLParserTest, BrProducesEmptyElementV71) {
+    auto doc = clever::html::parse("<p>Line1<br>Line2</p>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* paragraph = doc->find_element("p");
+    auto* br = doc->find_element("br");
+    ASSERT_NE(paragraph, nullptr);
+    ASSERT_NE(br, nullptr);
+    EXPECT_EQ(br->tag_name, "br");
+    EXPECT_EQ(br->parent, paragraph);
+    EXPECT_TRUE(br->children.empty());
+}
+
+TEST(HTMLParserTest, HrSelfClosingElementV71) {
+    auto doc = clever::html::parse("<hr/>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* hr = doc->find_element("hr");
+    ASSERT_NE(hr, nullptr);
+    EXPECT_EQ(hr->tag_name, "hr");
+    EXPECT_TRUE(hr->children.empty());
+}
+
+TEST(HTMLParserTest, DivWithIdAndClassAttributesV71) {
+    auto doc = clever::html::parse("<div id='main' class='container'>Box</div>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* div = doc->find_element("div");
+    ASSERT_NE(div, nullptr);
+    EXPECT_EQ(div->tag_name, "div");
+    EXPECT_EQ(get_attr_v63(div, "id"), "main");
+    EXPECT_EQ(get_attr_v63(div, "class"), "container");
+    EXPECT_EQ(div->text_content(), "Box");
+}
+
+TEST(HTMLParserTest, NestedSpansV71) {
+    auto doc = clever::html::parse("<span>Outer<span>Inner</span></span>");
+    ASSERT_NE(doc, nullptr);
+
+    auto spans = doc->find_all_elements("span");
+    ASSERT_EQ(spans.size(), 2u);
+
+    clever::html::SimpleNode* outer = nullptr;
+    clever::html::SimpleNode* inner = nullptr;
+    for (auto* span : spans) {
+        if (span->parent != nullptr && span->parent->tag_name == "span") inner = span;
+    }
+    for (auto* span : spans) {
+        if (span != inner) outer = span;
+    }
+
+    ASSERT_NE(outer, nullptr);
+    ASSERT_NE(inner, nullptr);
+    EXPECT_EQ(inner->parent, outer);
+    EXPECT_EQ(inner->text_content(), "Inner");
+    EXPECT_EQ(outer->text_content(), "OuterInner");
+}
+
+TEST(HTMLParserTest, MultipleParagraphsInBodyV71) {
+    auto doc = clever::html::parse("<body><p>First</p><p>Second</p><p>Third</p></body>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* body = doc->find_element("body");
+    auto paragraphs = doc->find_all_elements("p");
+    ASSERT_NE(body, nullptr);
+    ASSERT_EQ(paragraphs.size(), 3u);
+
+    EXPECT_EQ(paragraphs[0]->parent, body);
+    EXPECT_EQ(paragraphs[1]->parent, body);
+    EXPECT_EQ(paragraphs[2]->parent, body);
+    EXPECT_EQ(paragraphs[0]->text_content(), "First");
+    EXPECT_EQ(paragraphs[1]->text_content(), "Second");
+    EXPECT_EQ(paragraphs[2]->text_content(), "Third");
+}
