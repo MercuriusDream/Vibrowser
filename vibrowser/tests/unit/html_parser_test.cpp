@@ -13857,3 +13857,238 @@ TEST(HtmlParserTest, WhitespaceTextNodesBetweenBlocksV86) {
     // (or exactly 3 if parser strips inter-element whitespace - either is valid)
     EXPECT_GE(body->children.size(), 3u);
 }
+
+// ---------------------------------------------------------------------------
+// Cycle V87 — HTML parser coverage: tables, lists, nested forms, inline
+//             elements, multiple attributes, sibling traversal, DOCTYPE
+//             handling, and mixed inline/block content.
+// ---------------------------------------------------------------------------
+
+// 1. Table parsing preserves structure (thead, tbody, tr, td)
+TEST(HtmlParserTest, TableStructurePreservedV87) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<table>"
+        "<thead><tr><th>Name</th><th>Age</th></tr></thead>"
+        "<tbody><tr><td>Alice</td><td>30</td></tr>"
+        "<tr><td>Bob</td><td>25</td></tr></tbody>"
+        "</table>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* table = doc->find_element("table");
+    ASSERT_NE(table, nullptr);
+
+    auto tds = table->find_all_elements("td");
+    ASSERT_EQ(tds.size(), 4u);
+    EXPECT_EQ(tds[0]->text_content(), "Alice");
+    EXPECT_EQ(tds[1]->text_content(), "30");
+    EXPECT_EQ(tds[2]->text_content(), "Bob");
+    EXPECT_EQ(tds[3]->text_content(), "25");
+
+    auto ths = table->find_all_elements("th");
+    ASSERT_EQ(ths.size(), 2u);
+    EXPECT_EQ(ths[0]->text_content(), "Name");
+    EXPECT_EQ(ths[1]->text_content(), "Age");
+}
+
+// 2. Ordered and unordered lists with nested items
+TEST(HtmlParserTest, NestedListStructureV87) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<ul>"
+        "<li>Fruit"
+        "  <ol><li>Apple</li><li>Banana</li></ol>"
+        "</li>"
+        "<li>Veggie</li>"
+        "</ul>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* ul = doc->find_element("ul");
+    ASSERT_NE(ul, nullptr);
+
+    auto outer_lis = ul->find_all_elements("li");
+    // Should find at least 4 li elements total (2 outer + 2 inner)
+    EXPECT_GE(outer_lis.size(), 4u);
+
+    auto* ol = doc->find_element("ol");
+    ASSERT_NE(ol, nullptr);
+    auto inner_lis = ol->find_all_elements("li");
+    ASSERT_EQ(inner_lis.size(), 2u);
+    EXPECT_EQ(inner_lis[0]->text_content(), "Apple");
+    EXPECT_EQ(inner_lis[1]->text_content(), "Banana");
+}
+
+// 3. Multiple void elements in sequence (br, hr, img, input)
+TEST(HtmlParserTest, MultipleVoidElementsInSequenceV87) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<p>Line one<br>Line two<br>Line three</p>"
+        "<hr>"
+        "<img src=\"pic.jpg\" alt=\"Photo\">"
+        "<input type=\"checkbox\" checked>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto brs = doc->find_all_elements("br");
+    EXPECT_EQ(brs.size(), 2u);
+
+    auto* hr = doc->find_element("hr");
+    EXPECT_NE(hr, nullptr);
+
+    auto* img = doc->find_element("img");
+    ASSERT_NE(img, nullptr);
+    EXPECT_EQ(get_attr_v63(img, "src"), "pic.jpg");
+    EXPECT_EQ(get_attr_v63(img, "alt"), "Photo");
+
+    auto* input = doc->find_element("input");
+    ASSERT_NE(input, nullptr);
+    EXPECT_EQ(get_attr_v63(input, "type"), "checkbox");
+}
+
+// 4. Inline formatting elements preserve text content (b, i, em, strong, u)
+TEST(HtmlParserTest, InlineFormattingElementsV87) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<p><b>Bold</b> and <i>Italic</i> and <em>Emphasis</em> and "
+        "<strong>Strong</strong> and <u>Underline</u></p>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* b = doc->find_element("b");
+    ASSERT_NE(b, nullptr);
+    EXPECT_EQ(b->text_content(), "Bold");
+
+    auto* i = doc->find_element("i");
+    ASSERT_NE(i, nullptr);
+    EXPECT_EQ(i->text_content(), "Italic");
+
+    auto* em = doc->find_element("em");
+    ASSERT_NE(em, nullptr);
+    EXPECT_EQ(em->text_content(), "Emphasis");
+
+    auto* strong = doc->find_element("strong");
+    ASSERT_NE(strong, nullptr);
+    EXPECT_EQ(strong->text_content(), "Strong");
+
+    auto* u = doc->find_element("u");
+    ASSERT_NE(u, nullptr);
+    EXPECT_EQ(u->text_content(), "Underline");
+}
+
+// 5. Element with many attributes preserves them all
+TEST(HtmlParserTest, ElementWithManyAttributesV87) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<div id=\"main\" class=\"container\" data-x=\"10\" data-y=\"20\" "
+        "style=\"color:red\" title=\"Main Box\" role=\"region\" "
+        "aria-label=\"Content\">Content</div>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* div = doc->find_element("div");
+    ASSERT_NE(div, nullptr);
+    EXPECT_EQ(div->text_content(), "Content");
+
+    EXPECT_EQ(get_attr_v63(div, "id"), "main");
+    EXPECT_EQ(get_attr_v63(div, "class"), "container");
+    EXPECT_EQ(get_attr_v63(div, "data-x"), "10");
+    EXPECT_EQ(get_attr_v63(div, "data-y"), "20");
+    EXPECT_EQ(get_attr_v63(div, "style"), "color:red");
+    EXPECT_EQ(get_attr_v63(div, "title"), "Main Box");
+    EXPECT_EQ(get_attr_v63(div, "role"), "region");
+    EXPECT_EQ(get_attr_v63(div, "aria-label"), "Content");
+}
+
+// 6. Sibling elements at same level keep correct order
+TEST(HtmlParserTest, SiblingElementOrderPreservedV87) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<section id=\"s1\">First</section>"
+        "<section id=\"s2\">Second</section>"
+        "<section id=\"s3\">Third</section>"
+        "<section id=\"s4\">Fourth</section>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto sections = doc->find_all_elements("section");
+    ASSERT_EQ(sections.size(), 4u);
+
+    EXPECT_EQ(get_attr_v63(sections[0], "id"), "s1");
+    EXPECT_EQ(sections[0]->text_content(), "First");
+
+    EXPECT_EQ(get_attr_v63(sections[1], "id"), "s2");
+    EXPECT_EQ(sections[1]->text_content(), "Second");
+
+    EXPECT_EQ(get_attr_v63(sections[2], "id"), "s3");
+    EXPECT_EQ(sections[2]->text_content(), "Third");
+
+    EXPECT_EQ(get_attr_v63(sections[3], "id"), "s4");
+    EXPECT_EQ(sections[3]->text_content(), "Fourth");
+}
+
+// 7. DOCTYPE node is present in parsed document
+TEST(HtmlParserTest, DoctypeNodePresentInDocumentV87) {
+    auto doc = clever::html::parse(
+        "<!DOCTYPE html>"
+        "<html><head><title>DocType Test</title></head>"
+        "<body><p>Hello</p></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    // The document root should have a DocumentType child
+    bool found_doctype = false;
+    for (auto& child : doc->children) {
+        if (child->type == clever::html::SimpleNode::DocumentType) {
+            found_doctype = true;
+            break;
+        }
+    }
+    EXPECT_TRUE(found_doctype);
+
+    auto* title = doc->find_element("title");
+    ASSERT_NE(title, nullptr);
+    EXPECT_EQ(title->text_content(), "DocType Test");
+
+    auto* p = doc->find_element("p");
+    ASSERT_NE(p, nullptr);
+    EXPECT_EQ(p->text_content(), "Hello");
+}
+
+// 8. Mixed block and inline content in a single parent
+TEST(HtmlParserTest, MixedBlockAndInlineContentV87) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<div>"
+        "Text before "
+        "<span>inline span</span>"
+        " text middle "
+        "<p>block paragraph</p>"
+        "<a href=\"#\">link</a>"
+        " trailing text"
+        "</div>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* div = doc->find_element("div");
+    ASSERT_NE(div, nullptr);
+
+    // div should have multiple children (text nodes + elements)
+    EXPECT_GE(div->children.size(), 3u);
+
+    auto* span = div->find_element("span");
+    ASSERT_NE(span, nullptr);
+    EXPECT_EQ(span->text_content(), "inline span");
+
+    auto* a = doc->find_element("a");
+    ASSERT_NE(a, nullptr);
+    EXPECT_EQ(a->text_content(), "link");
+    EXPECT_EQ(get_attr_v63(a, "href"), "#");
+
+    // The overall text_content of the div should contain all text
+    std::string full_text = div->text_content();
+    EXPECT_NE(full_text.find("Text before"), std::string::npos);
+    EXPECT_NE(full_text.find("inline span"), std::string::npos);
+    EXPECT_NE(full_text.find("block paragraph"), std::string::npos);
+    EXPECT_NE(full_text.find("link"), std::string::npos);
+}

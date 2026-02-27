@@ -14282,3 +14282,133 @@ TEST(DomTest, ParentPointerAfterAppendV86) {
     EXPECT_EQ(elem_ptr->parent(), parent_ptr);
     EXPECT_EQ(text_ptr->parent(), parent_ptr);
 }
+
+// ---------------------------------------------------------------------------
+// V87 Tests
+// ---------------------------------------------------------------------------
+
+TEST(DomTest, ElementSetAndGetMultipleAttributesV87) {
+    Element elem("input");
+    elem.set_attribute("type", "text");
+    elem.set_attribute("name", "username");
+    elem.set_attribute("placeholder", "Enter name");
+
+    EXPECT_EQ(elem.get_attribute("type").value(), "text");
+    EXPECT_EQ(elem.get_attribute("name").value(), "username");
+    EXPECT_EQ(elem.get_attribute("placeholder").value(), "Enter name");
+    EXPECT_FALSE(elem.get_attribute("value").has_value());
+}
+
+TEST(DomTest, ClassListAddRemoveContainsToggleV87) {
+    Element elem("div");
+    elem.class_list().add("alpha");
+    elem.class_list().add("beta");
+    elem.class_list().add("gamma");
+
+    EXPECT_TRUE(elem.class_list().contains("alpha"));
+    EXPECT_TRUE(elem.class_list().contains("beta"));
+    EXPECT_TRUE(elem.class_list().contains("gamma"));
+
+    elem.class_list().remove("beta");
+    EXPECT_FALSE(elem.class_list().contains("beta"));
+    EXPECT_TRUE(elem.class_list().contains("alpha"));
+
+    // toggle removes existing
+    elem.class_list().toggle("alpha");
+    EXPECT_FALSE(elem.class_list().contains("alpha"));
+
+    // toggle adds missing
+    elem.class_list().toggle("delta");
+    EXPECT_TRUE(elem.class_list().contains("delta"));
+}
+
+TEST(DomTest, RemoveChildByDereferenceV87) {
+    auto parent = std::make_unique<Element>("ul");
+    auto li1 = std::make_unique<Element>("li");
+    auto li2 = std::make_unique<Element>("li");
+    auto* li1_ptr = li1.get();
+    auto* li2_ptr = li2.get();
+
+    parent->append_child(std::move(li1));
+    parent->append_child(std::move(li2));
+    EXPECT_EQ(parent->child_count(), 2u);
+
+    parent->remove_child(*li1_ptr);
+    EXPECT_EQ(parent->child_count(), 1u);
+    EXPECT_EQ(parent->first_child(), li2_ptr);
+}
+
+TEST(DomTest, InsertBeforeMiddleChildV87) {
+    auto parent = std::make_unique<Element>("div");
+    auto a = std::make_unique<Element>("a");
+    auto c = std::make_unique<Element>("c");
+    auto* a_ptr = a.get();
+    auto* c_ptr = c.get();
+
+    parent->append_child(std::move(a));
+    parent->append_child(std::move(c));
+
+    auto b = std::make_unique<Element>("b");
+    auto* b_ptr = b.get();
+    parent->insert_before(std::move(b), c_ptr);
+
+    EXPECT_EQ(parent->child_count(), 3u);
+    EXPECT_EQ(parent->first_child(), a_ptr);
+    EXPECT_EQ(a_ptr->next_sibling(), b_ptr);
+    EXPECT_EQ(b_ptr->next_sibling(), c_ptr);
+}
+
+TEST(DomTest, TextNodeContentAndTypeV87) {
+    Text t("Hello, world!");
+    EXPECT_EQ(t.text_content(), "Hello, world!");
+    EXPECT_EQ(t.node_type(), NodeType::Text);
+}
+
+TEST(DomTest, CommentNodeTypeAndContentV87) {
+    Comment c("This is a comment");
+    EXPECT_EQ(c.node_type(), NodeType::Comment);
+    EXPECT_EQ(c.data(), "This is a comment");
+}
+
+TEST(DomTest, OverwriteAttributeValueV87) {
+    Element elem("meta");
+    elem.set_attribute("charset", "ascii");
+    EXPECT_EQ(elem.get_attribute("charset").value(), "ascii");
+
+    elem.set_attribute("charset", "utf-8");
+    EXPECT_EQ(elem.get_attribute("charset").value(), "utf-8");
+}
+
+TEST(DomTest, SiblingTraversalAfterInsertBeforeV87) {
+    auto parent = std::make_unique<Element>("nav");
+    auto first = std::make_unique<Element>("span");
+    auto last = std::make_unique<Element>("span");
+    auto* first_ptr = first.get();
+    auto* last_ptr = last.get();
+
+    parent->append_child(std::move(first));
+    parent->append_child(std::move(last));
+
+    // Insert two nodes before last
+    auto mid1 = std::make_unique<Element>("em");
+    auto mid2 = std::make_unique<Element>("strong");
+    auto* mid1_ptr = mid1.get();
+    auto* mid2_ptr = mid2.get();
+
+    parent->insert_before(std::move(mid1), last_ptr);
+    parent->insert_before(std::move(mid2), last_ptr);
+
+    EXPECT_EQ(parent->child_count(), 4u);
+
+    // Traverse: first -> mid1 -> mid2 -> last -> nullptr
+    auto* cur = parent->first_child();
+    EXPECT_EQ(cur, first_ptr);
+    cur = cur->next_sibling();
+    EXPECT_EQ(cur, mid1_ptr);
+    cur = cur->next_sibling();
+    EXPECT_EQ(cur, mid2_ptr);
+    cur = cur->next_sibling();
+    EXPECT_EQ(cur, last_ptr);
+    cur = cur->next_sibling();
+    EXPECT_EQ(cur, nullptr);
+}

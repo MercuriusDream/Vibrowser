@@ -12673,3 +12673,145 @@ TEST(SerializerTest, MultipleStringsWithSpecialCharsV86) {
     EXPECT_EQ(d.read_string(), "unicode: \xC3\xA9\xC3\xA0\xC3\xBC");
     EXPECT_FALSE(d.has_remaining());
 }
+
+TEST(SerializerTest, U8BoundaryValuesV87) {
+    Serializer s;
+    s.write_u8(0);
+    s.write_u8(1);
+    s.write_u8(127);
+    s.write_u8(128);
+    s.write_u8(254);
+    s.write_u8(255);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u8(), 0);
+    EXPECT_EQ(d.read_u8(), 1);
+    EXPECT_EQ(d.read_u8(), 127);
+    EXPECT_EQ(d.read_u8(), 128);
+    EXPECT_EQ(d.read_u8(), 254);
+    EXPECT_EQ(d.read_u8(), 255);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, U16PowersOfTwoV87) {
+    Serializer s;
+    for (int i = 0; i < 16; ++i) {
+        s.write_u16(static_cast<uint16_t>(1u << i));
+    }
+
+    Deserializer d(s.data());
+    for (int i = 0; i < 16; ++i) {
+        EXPECT_EQ(d.read_u16(), static_cast<uint16_t>(1u << i));
+    }
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, F64SpecialValuesV87) {
+    Serializer s;
+    s.write_f64(0.0);
+    s.write_f64(-0.0);
+    s.write_f64(std::numeric_limits<double>::infinity());
+    s.write_f64(-std::numeric_limits<double>::infinity());
+    s.write_f64(std::numeric_limits<double>::min());
+    s.write_f64(std::numeric_limits<double>::max());
+    s.write_f64(std::numeric_limits<double>::epsilon());
+    s.write_f64(std::numeric_limits<double>::quiet_NaN());
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_f64(), 0.0);
+    EXPECT_EQ(d.read_f64(), -0.0);
+    EXPECT_EQ(d.read_f64(), std::numeric_limits<double>::infinity());
+    EXPECT_EQ(d.read_f64(), -std::numeric_limits<double>::infinity());
+    EXPECT_EQ(d.read_f64(), std::numeric_limits<double>::min());
+    EXPECT_EQ(d.read_f64(), std::numeric_limits<double>::max());
+    EXPECT_EQ(d.read_f64(), std::numeric_limits<double>::epsilon());
+    EXPECT_TRUE(std::isnan(d.read_f64()));
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, EmptyBytesRoundTripV87) {
+    Serializer s;
+    std::vector<uint8_t> empty;
+    s.write_bytes(empty.data(), 0);
+
+    Deserializer d(s.data());
+    auto result = d.read_bytes();
+    EXPECT_TRUE(result.empty());
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, LargeBytesPayloadV87) {
+    Serializer s;
+    std::vector<uint8_t> big(4096);
+    std::iota(big.begin(), big.end(), static_cast<uint8_t>(0));
+    s.write_bytes(big.data(), big.size());
+
+    Deserializer d(s.data());
+    auto result = d.read_bytes();
+    EXPECT_EQ(result.size(), 4096u);
+    EXPECT_EQ(result, big);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, InterleavedTypesV87) {
+    Serializer s;
+    s.write_u8(42);
+    s.write_string("hello");
+    s.write_u32(0xDEADBEEFu);
+    s.write_f64(3.14);
+    s.write_u16(9999);
+    std::vector<uint8_t> blob = {0xCA, 0xFE};
+    s.write_bytes(blob.data(), blob.size());
+    s.write_u64(0x0102030405060708uLL);
+    s.write_string("");
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u8(), 42);
+    EXPECT_EQ(d.read_string(), "hello");
+    EXPECT_EQ(d.read_u32(), 0xDEADBEEFu);
+    EXPECT_DOUBLE_EQ(d.read_f64(), 3.14);
+    EXPECT_EQ(d.read_u16(), 9999);
+    auto bytes_out = d.read_bytes();
+    EXPECT_EQ(bytes_out.size(), 2u);
+    EXPECT_EQ(bytes_out[0], 0xCA);
+    EXPECT_EQ(bytes_out[1], 0xFE);
+    EXPECT_EQ(d.read_u64(), 0x0102030405060708uLL);
+    EXPECT_EQ(d.read_string(), "");
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, ManyStringsV87) {
+    Serializer s;
+    std::vector<std::string> strings;
+    for (int i = 0; i < 100; ++i) {
+        strings.push_back("str_" + std::to_string(i));
+    }
+    for (const auto& str : strings) {
+        s.write_string(str);
+    }
+
+    Deserializer d(s.data());
+    for (int i = 0; i < 100; ++i) {
+        EXPECT_EQ(d.read_string(), "str_" + std::to_string(i));
+    }
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, U32AlternatingBitsV87) {
+    Serializer s;
+    s.write_u32(0xAAAAAAAAu);
+    s.write_u32(0x55555555u);
+    s.write_u32(0x0F0F0F0Fu);
+    s.write_u32(0xF0F0F0F0u);
+    s.write_u32(0x00FF00FFu);
+    s.write_u32(0xFF00FF00u);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u32(), 0xAAAAAAAAu);
+    EXPECT_EQ(d.read_u32(), 0x55555555u);
+    EXPECT_EQ(d.read_u32(), 0x0F0F0F0Fu);
+    EXPECT_EQ(d.read_u32(), 0xF0F0F0F0u);
+    EXPECT_EQ(d.read_u32(), 0x00FF00FFu);
+    EXPECT_EQ(d.read_u32(), 0xFF00FF00u);
+    EXPECT_FALSE(d.has_remaining());
+}

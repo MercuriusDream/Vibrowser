@@ -15763,3 +15763,174 @@ TEST(CSSStyleTest, ClassSelectorWithPositionOffsetsV86) {
     EXPECT_FLOAT_EQ(style.right_pos.to_px(), 15.0f);
     EXPECT_FLOAT_EQ(style.bottom.to_px(), 25.0f);
 }
+
+// ===========================================================================
+// V87 Tests
+// ===========================================================================
+
+TEST(CSSStyleTest, MarginShorthandFourValuesV87) {
+    // margin shorthand with four distinct values resolves all four edges
+    const std::string css = "div{margin:5px 10px 15px 20px;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_FLOAT_EQ(style.margin.top.value, 5.0f);
+    EXPECT_FLOAT_EQ(style.margin.right.value, 10.0f);
+    EXPECT_FLOAT_EQ(style.margin.bottom.value, 15.0f);
+    EXPECT_FLOAT_EQ(style.margin.left.value, 20.0f);
+}
+
+TEST(CSSStyleTest, PaddingLeftAndTopResolveV87) {
+    // padding-left and padding-top set individually via longhand properties
+    const std::string css = "span{padding-left:12px;padding-top:8px;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "span";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_FLOAT_EQ(style.padding.left.value, 12.0f);
+    EXPECT_FLOAT_EQ(style.padding.top.value, 8.0f);
+}
+
+TEST(CSSStyleTest, BorderTopSolidRedV87) {
+    // border-top longhand properties set width, style, and color
+    const std::string css = "div{border-top-width:3px;border-top-style:solid;border-top-color:red;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_FLOAT_EQ(style.border_top.width.to_px(), 3.0f);
+    EXPECT_EQ(style.border_top.style, BorderStyle::Solid);
+    EXPECT_EQ(style.border_top.color.r, 255);
+    EXPECT_EQ(style.border_top.color.g, 0);
+    EXPECT_EQ(style.border_top.color.b, 0);
+}
+
+TEST(CSSStyleTest, AbsolutePositionWithAllOffsetsV87) {
+    // position: absolute with top, right, bottom, left offsets
+    const std::string css = ".overlay{position:absolute;top:10px;right:20px;bottom:30px;left:40px;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+    elem.classes = {"overlay"};
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.position, Position::Absolute);
+    EXPECT_FLOAT_EQ(style.top.to_px(), 10.0f);
+    EXPECT_FLOAT_EQ(style.right_pos.to_px(), 20.0f);
+    EXPECT_FLOAT_EQ(style.bottom.to_px(), 30.0f);
+    EXPECT_FLOAT_EQ(style.left_pos.to_px(), 40.0f);
+}
+
+TEST(CSSStyleTest, VisibilityHiddenWithCursorPointerV87) {
+    // visibility: hidden and cursor: pointer on a single element
+    const std::string css = "a{visibility:hidden;cursor:pointer;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "a";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.visibility, Visibility::Hidden);
+    EXPECT_EQ(style.cursor, Cursor::Pointer);
+}
+
+TEST(CSSStyleTest, WhiteSpaceNowrapWithTextOverflowV87) {
+    // white-space: nowrap resolves correctly
+    const std::string css = "p{white-space:nowrap;overflow:hidden;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "p";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.white_space, WhiteSpace::NoWrap);
+    EXPECT_EQ(style.overflow_x, Overflow::Hidden);
+    EXPECT_EQ(style.overflow_y, Overflow::Hidden);
+}
+
+TEST(CSSStyleTest, IdSelectorMarginAutoWithDisplayBlockV87) {
+    // ID selector with margin: auto and display: block
+    const std::string css = "#container{display:block;margin:auto;width:500px;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+    elem.id = "container";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.display, Display::Block);
+    EXPECT_TRUE(style.margin.top.is_auto());
+    EXPECT_TRUE(style.margin.right.is_auto());
+    EXPECT_TRUE(style.margin.bottom.is_auto());
+    EXPECT_TRUE(style.margin.left.is_auto());
+    EXPECT_FLOAT_EQ(style.width.to_px(), 500.0f);
+}
+
+TEST(CSSStyleTest, ClassSelectorBorderDashedBlueWithPaddingV87) {
+    // Class selector with dashed blue border longhands and padding shorthand
+    const std::string css = ".card{border-top-width:2px;border-top-style:dashed;border-top-color:blue;padding:16px;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "section";
+    elem.classes = {"card"};
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_FLOAT_EQ(style.border_top.width.to_px(), 2.0f);
+    EXPECT_EQ(style.border_top.style, BorderStyle::Dashed);
+    EXPECT_EQ(style.border_top.color.r, 0);
+    EXPECT_EQ(style.border_top.color.g, 0);
+    EXPECT_EQ(style.border_top.color.b, 255);
+    EXPECT_FLOAT_EQ(style.padding.top.value, 16.0f);
+    EXPECT_FLOAT_EQ(style.padding.right.value, 16.0f);
+    EXPECT_FLOAT_EQ(style.padding.bottom.value, 16.0f);
+    EXPECT_FLOAT_EQ(style.padding.left.value, 16.0f);
+}

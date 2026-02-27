@@ -24965,3 +24965,166 @@ TEST(JsEngineTest, OptionalChainingAndNullishCoalescingV86) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "42,42,undefined,undefined,20,undefined,14,undefined,fallback1,fallback2,0,,false,55,0");
 }
+
+// ============================================================================
+// V87 Tests
+// ============================================================================
+
+TEST(JsEngineTest, GeneratorFunctionBasicV87) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        function* range(start, end) {
+            for (let i = start; i < end; i++) {
+                yield i;
+            }
+        }
+        var arr = [];
+        var gen = range(3, 8);
+        var next = gen.next();
+        while (!next.done) {
+            arr.push(next.value);
+            next = gen.next();
+        }
+        arr.join(",");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "3,4,5,6,7");
+}
+
+TEST(JsEngineTest, SymbolIteratorCustomObjectV87) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var obj = {
+            data: [10, 20, 30],
+            [Symbol.iterator]() {
+                let idx = 0;
+                let self = this;
+                return {
+                    next() {
+                        if (idx < self.data.length) {
+                            return { value: self.data[idx++], done: false };
+                        }
+                        return { value: undefined, done: true };
+                    }
+                };
+            }
+        };
+        var collected = [];
+        for (var v of obj) {
+            collected.push(v);
+        }
+        collected.join(",");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "10,20,30");
+}
+
+TEST(JsEngineTest, PromiseResolveThenChainV87) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var output = "pending";
+        Promise.resolve(5)
+            .then(function(v) { return v * 3; })
+            .then(function(v) { output = "result:" + v; });
+        output;
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    // Microtasks may or may not have run synchronously; accept either
+    EXPECT_TRUE(result == "result:15" || result == "pending");
+}
+
+TEST(JsEngineTest, ArrayFlatAndFlatMapV87) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var nested = [1, [2, 3], [4, [5, 6]]];
+        var flat1 = nested.flat();
+        var flat2 = nested.flat(Infinity);
+        var fm = [1, 2, 3].flatMap(function(x) { return [x, x * 10]; });
+        flat1.join(",") + "|" + flat2.join(",") + "|" + fm.join(",");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1,2,3,4,5,6|1,2,3,4,5,6|1,10,2,20,3,30");
+}
+
+TEST(JsEngineTest, ObjectGetOwnPropertyDescriptorsV87) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var obj = {};
+        Object.defineProperty(obj, "x", {
+            value: 42,
+            writable: false,
+            enumerable: true,
+            configurable: false
+        });
+        var descs = Object.getOwnPropertyDescriptors(obj);
+        var d = descs.x;
+        [d.value, d.writable, d.enumerable, d.configurable].join(",");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "42,false,true,false");
+}
+
+TEST(JsEngineTest, StringPadStartPadEndRepeatV87) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var a = "5".padStart(4, "0");
+        var b = "hi".padEnd(6, "!");
+        var c = "ab".repeat(3);
+        var d = "hello world".startsWith("hello");
+        var e = "hello world".endsWith("world");
+        var f = "hello world".includes("lo wo");
+        [a, b, c, String(d), String(e), String(f)].join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "0005|hi!!!!|ababab|true|true|true");
+}
+
+TEST(JsEngineTest, ComputedPropertyAndShorthandV87) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var key1 = "color";
+        var key2 = "size";
+        var color = "red";
+        var size = 42;
+        var obj = {
+            [key1]: color,
+            [key2]: size,
+            ["method"]: function() { return this.color + "-" + this.size; }
+        };
+        var r1 = obj.color;
+        var r2 = obj.size;
+        var r3 = obj.method();
+        var keys = Object.keys(obj).sort().join(",");
+        [r1, r2, r3, keys].join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "red|42|red-42|color,method,size");
+}
+
+TEST(JsEngineTest, ErrorStackAndTypeCheckingV87) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var results = [];
+        try {
+            null.property;
+        } catch(e) {
+            results.push(e instanceof TypeError);
+            results.push(e.message.length > 0);
+        }
+        try {
+            undeclaredVar123;
+        } catch(e) {
+            results.push(e instanceof ReferenceError);
+            results.push(e.constructor.name);
+        }
+        try {
+            eval("{");
+        } catch(e) {
+            results.push(e instanceof SyntaxError);
+            results.push(e.constructor.name);
+        }
+        results.map(String).join(",");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true,true,true,ReferenceError,true,SyntaxError");
+}

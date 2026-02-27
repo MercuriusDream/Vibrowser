@@ -15381,3 +15381,132 @@ TEST(HttpClientTest, CookieJarSecureCookieNotReturnedForInsecureRequestV86) {
     EXPECT_TRUE(secure_hdr.find("token=secret") != std::string::npos);
     EXPECT_TRUE(secure_hdr.find("public=yes") != std::string::npos);
 }
+
+TEST(HttpClientTest, HeaderMapAppendCreatesMultipleValuesV87) {
+    // append should add a second value for the same key, not overwrite
+    HeaderMap map;
+    map.set("Accept", "text/html");
+    map.append("Accept", "application/json");
+
+    auto all = map.get_all("Accept");
+    EXPECT_EQ(all.size(), 2u);
+    EXPECT_EQ(all[0], "text/html");
+    EXPECT_EQ(all[1], "application/json");
+
+    // get returns the first value
+    auto first = map.get("Accept");
+    ASSERT_TRUE(first.has_value());
+    EXPECT_EQ(first.value(), "text/html");
+}
+
+TEST(HttpClientTest, RequestSerializeOmitsPort443ForHttpsV87) {
+    // Port 443 should be omitted from the Host header in serialized output
+    Request req;
+    req.method = Method::GET;
+    req.host = "secure.example.com";
+    req.port = 443;
+    req.path = "/index.html";
+
+    auto bytes = req.serialize();
+    std::string serialized(bytes.begin(), bytes.end());
+
+    // Host header must NOT contain :443
+    EXPECT_TRUE(serialized.find("Host: secure.example.com\r\n") != std::string::npos);
+    EXPECT_FALSE(serialized.find("Host: secure.example.com:443") != std::string::npos);
+}
+
+TEST(HttpClientTest, RequestSerializeIncludesNonStandardPortV87) {
+    // A non-standard port (not 80 or 443) must appear in the Host header
+    Request req;
+    req.method = Method::GET;
+    req.host = "api.example.com";
+    req.port = 8080;
+    req.path = "/v1/status";
+
+    auto bytes = req.serialize();
+    std::string serialized(bytes.begin(), bytes.end());
+
+    EXPECT_TRUE(serialized.find("Host: api.example.com:8080\r\n") != std::string::npos);
+}
+
+TEST(HttpClientTest, ResponseBodyAsStringReturnsUtf8V87) {
+    // body_as_string should faithfully return the body bytes as a string
+    Response resp;
+    resp.status = 200;
+    std::string text = "Hello, world!";
+    resp.body = std::vector<uint8_t>(text.begin(), text.end());
+
+    EXPECT_EQ(resp.body_as_string(), "Hello, world!");
+    EXPECT_EQ(resp.body.size(), 13u);
+}
+
+TEST(HttpClientTest, HeaderMapSetOverwritesPreviousValueV87) {
+    // set should replace any existing value(s) for the key
+    HeaderMap map;
+    map.set("Content-Type", "text/plain");
+    map.append("Content-Type", "text/html");
+
+    // Now set overwrites both values with a single new one
+    map.set("Content-Type", "application/json");
+
+    auto all = map.get_all("Content-Type");
+    EXPECT_EQ(all.size(), 1u);
+    EXPECT_EQ(all[0], "application/json");
+
+    auto val = map.get("Content-Type");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(val.value(), "application/json");
+}
+
+TEST(HttpClientTest, CookieJarGetCookieHeaderPathMatchingV87) {
+    // Cookies set on a specific path should only be returned for that path
+    CookieJar jar;
+    jar.set_from_header("sid=abc123; Path=/app", "example.com");
+    jar.set_from_header("global=yes; Path=/", "example.com");
+
+    // Request to /app should include both cookies
+    std::string app_hdr = jar.get_cookie_header("example.com", "/app", false);
+    EXPECT_TRUE(app_hdr.find("sid=abc123") != std::string::npos);
+    EXPECT_TRUE(app_hdr.find("global=yes") != std::string::npos);
+
+    // Request to / should only include the global cookie
+    std::string root_hdr = jar.get_cookie_header("example.com", "/", false);
+    EXPECT_FALSE(root_hdr.find("sid=abc123") != std::string::npos);
+    EXPECT_TRUE(root_hdr.find("global=yes") != std::string::npos);
+}
+
+TEST(HttpClientTest, RequestSerializeWithBodyAndMethodPostV87) {
+    // POST request should include Content-Length and the body
+    Request req;
+    req.method = Method::POST;
+    req.host = "api.example.com";
+    req.port = 80;
+    req.path = "/submit";
+    std::string body_str = "key=value";
+    req.body = std::vector<uint8_t>(body_str.begin(), body_str.end());
+
+    auto bytes = req.serialize();
+    std::string serialized(bytes.begin(), bytes.end());
+
+    // Must start with POST
+    EXPECT_TRUE(serialized.find("POST /submit HTTP/1.1\r\n") == 0);
+    // Port 80 omitted from Host
+    EXPECT_TRUE(serialized.find("Host: api.example.com\r\n") != std::string::npos);
+    EXPECT_FALSE(serialized.find("Host: api.example.com:80") != std::string::npos);
+    // Body should appear at the end
+    EXPECT_TRUE(serialized.find("key=value") != std::string::npos);
+}
+
+TEST(HttpClientTest, HeaderMapRemoveNonexistentKeyIsNoOpV87) {
+    // Removing a key that doesn't exist should not change the map
+    HeaderMap map;
+    map.set("X-Custom", "value1");
+    EXPECT_EQ(map.size(), 1u);
+
+    map.remove("X-Nonexistent");
+    EXPECT_EQ(map.size(), 1u);
+    EXPECT_TRUE(map.has("X-Custom"));
+
+    auto val = map.get("X-Nonexistent");
+    EXPECT_FALSE(val.has_value());
+}
