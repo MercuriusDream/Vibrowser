@@ -6179,3 +6179,68 @@ TEST(DomElement, HasAttributeAfterMultipleSets) {
     el->set_attribute("z", "3");
     EXPECT_TRUE(el->has_attribute("y"));
 }
+
+// --- Cycle 1165: 8 DOM tests ---
+
+TEST(DomElement, TagNameLabel) {
+    Document doc;
+    auto el = doc.create_element("label");
+    EXPECT_EQ(el->tag_name(), "label");
+}
+
+TEST(DomElement, TagNameFieldset) {
+    Document doc;
+    auto el = doc.create_element("fieldset");
+    EXPECT_EQ(el->tag_name(), "fieldset");
+}
+
+TEST(DomElement, SetAttributeLang) {
+    Document doc;
+    auto el = doc.create_element("html");
+    el->set_attribute("lang", "en");
+    EXPECT_EQ(el->get_attribute("lang"), "en");
+}
+
+TEST(DomElement, SetAttributeTabindex) {
+    Document doc;
+    auto el = doc.create_element("div");
+    el->set_attribute("tabindex", "0");
+    EXPECT_EQ(el->get_attribute("tabindex"), "0");
+}
+
+TEST(DomElement, ChildCountTen) {
+    Document doc;
+    auto parent = doc.create_element("div");
+    for (int i = 0; i < 10; ++i) {
+        parent->append_child(doc.create_element("span"));
+    }
+    EXPECT_EQ(parent->child_count(), 10u);
+}
+
+TEST(DomClassList, ClassListRemoveThree) {
+    Document doc;
+    auto el = doc.create_element("div");
+    el->class_list().add("a");
+    el->class_list().add("b");
+    el->class_list().add("c");
+    el->class_list().add("d");
+    el->class_list().remove("b");
+    el->class_list().remove("c");
+    el->class_list().remove("d");
+    EXPECT_EQ(el->class_list().length(), 1u);
+}
+
+TEST(DomElement, RemoveAttributeClass) {
+    Document doc;
+    auto el = doc.create_element("div");
+    el->set_attribute("class", "foo");
+    el->remove_attribute("class");
+    EXPECT_FALSE(el->has_attribute("class"));
+}
+
+TEST(DomElement, HasAttributeHidden) {
+    Document doc;
+    auto el = doc.create_element("div");
+    el->set_attribute("hidden", "");
+    EXPECT_TRUE(el->has_attribute("hidden"));
+}

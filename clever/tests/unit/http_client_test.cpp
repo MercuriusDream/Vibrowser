@@ -6245,3 +6245,95 @@ TEST(HeaderMapTest, GetMissingReturnsNulloptV10) {
     auto result = h.get("X-Missing");
     EXPECT_EQ(result, std::nullopt);
 }
+
+// ============================================================================
+// Cycle 1169: HTTP/net regression tests
+// ============================================================================
+
+// HeaderMap: get_all returns vector of matching headers V11
+TEST(HeaderMapTest, GetAllReturnsVectorOfMatchingHeadersV11) {
+    HeaderMap h;
+    h.append("Set-Cookie", "session=abc");
+    h.append("Set-Cookie", "token=xyz");
+    auto cookies = h.get_all("set-cookie");
+    EXPECT_EQ(cookies.size(), 2u);
+}
+
+// HeaderMap: has returns true for case-insensitive key match V11
+TEST(HeaderMapTest, HasReturnsTrueForCaseInsensitiveKeyV11) {
+    HeaderMap h;
+    h.set("X-Custom-Header", "value123");
+    EXPECT_TRUE(h.has("x-custom-header"));
+    EXPECT_TRUE(h.has("X-CUSTOM-HEADER"));
+}
+
+// Request: method enum GET serializes correctly V11
+TEST(RequestTest, MethodGetSerializesCorrectlyV11) {
+    Request req;
+    req.method = Method::GET;
+    req.host = "test.example.com";
+    req.path = "/resource";
+    auto raw = req.serialize();
+    std::string s(raw.begin(), raw.end());
+    EXPECT_NE(s.find("GET"), std::string::npos);
+}
+
+// Request: method enum DELETE_METHOD serializes correctly V11
+TEST(RequestTest, MethodDeleteSerializesCorrectlyV11) {
+    Request req;
+    req.method = Method::DELETE_METHOD;
+    req.host = "api.test.com";
+    req.path = "/item/42";
+    auto raw = req.serialize();
+    std::string s(raw.begin(), raw.end());
+    EXPECT_NE(s.find("DELETE"), std::string::npos);
+}
+
+// Response: parse 500 Internal Server Error V11
+TEST(ResponseTest, Parse500InternalServerErrorV11) {
+    std::string raw = "HTTP/1.1 500 Internal Server Error\r\nContent-Length: 0\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 500);
+    EXPECT_EQ(resp->status_text, "Internal Server Error");
+}
+
+// Response: body contains parsed content correctly V11
+TEST(ResponseTest, ResponseBodyContentParsedCorrectlyV11) {
+    std::string raw =
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Length: 11\r\n"
+        "\r\n"
+        "hello world";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->body.size(), 11u);
+    std::string body_str(resp->body.begin(), resp->body.end());
+    EXPECT_EQ(body_str, "hello world");
+}
+
+// CookieJar: clear removes all cookies V11
+TEST(CookieJarTest, ClearRemovesAllCookiesV11) {
+    CookieJar jar;
+    jar.set_from_header("cookie1=value1", "example.com");
+    jar.set_from_header("cookie2=value2", "example.com");
+    EXPECT_GT(jar.size(), 0u);
+    jar.clear();
+    EXPECT_EQ(jar.size(), 0u);
+}
+
+// Response: parse 301 Moved Permanently with Location header V11
+TEST(ResponseTest, Parse301MovedPermanentlyV11) {
+    std::string raw =
+        "HTTP/1.1 301 Moved Permanently\r\n"
+        "Location: https://newlocation.example.com\r\n"
+        "Content-Length: 0\r\n"
+        "\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 301);
+    EXPECT_EQ(resp->status_text, "Moved Permanently");
+}

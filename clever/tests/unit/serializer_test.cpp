@@ -5631,3 +5631,69 @@ TEST(SerializerTest, BoolTrueV7) {
     Deserializer d(s.data());
     EXPECT_TRUE(d.read_bool());
 }
+
+// ---------------------------------------------------------------------------
+// Cycle 1167 — 8 additional serializer tests (comprehensive type coverage)
+// ---------------------------------------------------------------------------
+
+TEST(SerializerTest, U16MaxValueV8) {
+    Serializer s;
+    s.write_u16(65535u);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u16(), 65535u);
+}
+
+TEST(SerializerTest, I32NegativeFiftyV8) {
+    Serializer s;
+    s.write_i32(-50);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i32(), -50);
+}
+
+TEST(SerializerTest, U64SmallValueV8) {
+    Serializer s;
+    s.write_u64(12345ULL);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u64(), 12345ULL);
+}
+
+TEST(SerializerTest, F64NegativeOnePointFiveV8) {
+    Serializer s;
+    s.write_f64(-1.5);
+    Deserializer d(s.data());
+    EXPECT_DOUBLE_EQ(d.read_f64(), -1.5);
+}
+
+TEST(SerializerTest, StringWithNumbersV8) {
+    Serializer s;
+    s.write_string("test123456");
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "test123456");
+}
+
+TEST(SerializerTest, I64NegativeTrillionV8) {
+    Serializer s;
+    s.write_i64(-1000000000000LL);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i64(), -1000000000000LL);
+}
+
+TEST(SerializerTest, BoolSequenceV8) {
+    Serializer s;
+    s.write_bool(true);
+    s.write_bool(false);
+    s.write_bool(true);
+    Deserializer d(s.data());
+    EXPECT_TRUE(d.read_bool());
+    EXPECT_FALSE(d.read_bool());
+    EXPECT_TRUE(d.read_bool());
+}
+
+TEST(SerializerTest, MixedU32AndI32V8) {
+    Serializer s;
+    s.write_u32(999u);
+    s.write_i32(-999);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u32(), 999u);
+    EXPECT_EQ(d.read_i32(), -999);
+}

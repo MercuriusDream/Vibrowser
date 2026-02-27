@@ -8467,3 +8467,45 @@ TEST(LayoutNodeProps, PageBreakAfterDefaultsZeroV2) {
     LayoutNode n;
     EXPECT_EQ(n.page_break_after, 0);
 }
+
+// --- Cycle 1172: 8 Layout tests for table and media properties ---
+
+TEST(LayoutNodeProps, TableCellpaddingDefaultsNegOne) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.table_cellpadding, -1.0f);
+}
+
+TEST(LayoutNodeProps, TableCellspacingDefaultsNegOne) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.table_cellspacing, -1.0f);
+}
+
+TEST(LayoutNodeProps, TableRulesDefaultsEmpty) {
+    LayoutNode n;
+    EXPECT_TRUE(n.table_rules.empty());
+}
+
+TEST(LayoutNodeProps, TableLayoutDefaultsZero) {
+    LayoutNode n;
+    EXPECT_EQ(n.table_layout, 0);
+}
+
+TEST(LayoutNodeProps, CaptionSideDefaultsZero) {
+    LayoutNode n;
+    EXPECT_EQ(n.caption_side, 0);
+}
+
+TEST(LayoutNodeProps, EmptyCellsDefaultsZero) {
+    LayoutNode n;
+    EXPECT_EQ(n.empty_cells, 0);
+}
+
+TEST(LayoutNodeProps, MediaTypeDefaultsZero) {
+    LayoutNode n;
+    EXPECT_EQ(n.media_type, 0);
+}
+
+TEST(LayoutNodeProps, ColspanDefaultsOne) {
+    LayoutNode n;
+    EXPECT_EQ(n.colspan, 1);
+}

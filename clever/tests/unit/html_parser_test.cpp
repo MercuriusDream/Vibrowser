@@ -6530,3 +6530,59 @@ TEST(TreeBuilder, ButtonWithTextV2) {
     ASSERT_NE(el, nullptr);
     EXPECT_EQ(el->tag_name, "button");
 }
+
+TEST(TreeBuilder, HeadingGroupWithTitleAndSubtitle) {
+    auto doc = clever::html::parse("<body><hgroup><h1>Main Title</h1><p>Subtitle</p></hgroup></body>");
+    auto* el = doc->find_element("hgroup");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "hgroup");
+}
+
+TEST(TreeBuilder, MapWithAreaElements) {
+    auto doc = clever::html::parse("<body><map name=\"locations\"><area shape=\"circle\" coords=\"100,100,50\" href=\"#region1\"></map></body>");
+    auto* el = doc->find_element("map");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "map");
+}
+
+TEST(TreeBuilder, PictureWithMultipleSources) {
+    auto doc = clever::html::parse("<body><picture><source media=\"(min-width: 800px)\" srcset=\"large.jpg\"><source media=\"(min-width: 480px)\" srcset=\"medium.jpg\"><img src=\"small.jpg\" alt=\"Responsive image\"></picture></body>");
+    auto* el = doc->find_element("picture");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "picture");
+}
+
+TEST(TreeBuilder, SourceElementWithMediaType) {
+    auto doc = clever::html::parse("<body><video><source src=\"movie.mp4\" type=\"video/mp4\"><source src=\"movie.webm\" type=\"video/webm\"></video></body>");
+    auto* el = doc->find_element("source");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "source");
+}
+
+TEST(TreeBuilder, TrackElementInAudio) {
+    auto doc = clever::html::parse("<body><audio controls><source src=\"audio.mp3\" type=\"audio/mpeg\"><track kind=\"captions\" src=\"captions.vtt\" srclang=\"en\" label=\"English\"></audio></body>");
+    auto* el = doc->find_element("track");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "track");
+}
+
+TEST(TreeBuilder, LabelWithNestedInput) {
+    auto doc = clever::html::parse("<body><label>Username: <input type=\"text\" name=\"username\"></label></body>");
+    auto* el = doc->find_element("label");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "label");
+}
+
+TEST(TreeBuilder, OptgroupWithOptions) {
+    auto doc = clever::html::parse("<body><select><optgroup label=\"Group1\"><option>Option A</option><option>Option B</option></optgroup><optgroup label=\"Group2\"><option>Option C</option></optgroup></select></body>");
+    auto* el = doc->find_element("optgroup");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "optgroup");
+}
+
+TEST(TreeBuilder, TimeElementWithPubdate) {
+    auto doc = clever::html::parse("<body><article><p>Published on <time datetime=\"2026-02-27T10:30:00Z\">February 27, 2026</time></p></article></body>");
+    auto* el = doc->find_element("time");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "time");
+}

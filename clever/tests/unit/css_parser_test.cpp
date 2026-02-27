@@ -7042,3 +7042,77 @@ TEST_F(CSSStylesheetTest, FontSizeV8) {
         if (d.property == "font-size") found = true;
     EXPECT_TRUE(found);
 }
+
+// --- Cycle 1170: 8 CSS tests ---
+
+TEST_F(CSSStylesheetTest, DisplayV9) {
+    auto sheet = parse_stylesheet("div { display: flex; }");
+    ASSERT_FALSE(sheet.rules.empty());
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "display") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, PositionV9) {
+    auto sheet = parse_stylesheet("div { position: absolute; }");
+    ASSERT_FALSE(sheet.rules.empty());
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "position") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, OverflowV9) {
+    auto sheet = parse_stylesheet("div { overflow: hidden; }");
+    ASSERT_FALSE(sheet.rules.empty());
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "overflow") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, ZIndexV9) {
+    auto sheet = parse_stylesheet("div { z-index: 100; }");
+    ASSERT_FALSE(sheet.rules.empty());
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "z-index") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, OpacityV9) {
+    auto sheet = parse_stylesheet("div { opacity: 0.5; }");
+    ASSERT_FALSE(sheet.rules.empty());
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "opacity") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, TransformV9) {
+    auto sheet = parse_stylesheet("div { transform: rotate(45deg); }");
+    ASSERT_FALSE(sheet.rules.empty());
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "transform") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, TextAlignV9) {
+    auto sheet = parse_stylesheet("div { text-align: center; }");
+    ASSERT_FALSE(sheet.rules.empty());
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "text-align") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, BoxShadowV9) {
+    auto sheet = parse_stylesheet("div { box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1); }");
+    ASSERT_FALSE(sheet.rules.empty());
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "box-shadow") found = true;
+    EXPECT_TRUE(found);
+}

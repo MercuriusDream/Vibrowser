@@ -18464,3 +18464,53 @@ TEST(JSEngine, MathMinThreeArgs) {
     auto result = engine.evaluate("Math.min(1, 5, 3).toString()");
     EXPECT_EQ(result, "1");
 }
+
+// --- Cycle 1173: 8 JS tests ---
+
+TEST(JSEngine, StringIncludesEmptyString) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("'hello world'.includes('').toString()");
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, ArrayLastIndexOfReturnsIndex) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var arr = [1, 2, 3, 2, 1]; arr.lastIndexOf(2).toString()");
+    EXPECT_EQ(result, "3");
+}
+
+TEST(JSEngine, ObjectGetOwnPropertyNamesCount) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("Object.getOwnPropertyNames({a: 1, b: 2, c: 3}).length.toString()");
+    EXPECT_EQ(result, "3");
+}
+
+TEST(JSEngine, ArrayFindLastElement) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var arr = [5, 10, 15, 20]; var result = arr.find((x) => x > 12); result.toString()");
+    EXPECT_EQ(result, "15");
+}
+
+TEST(JSEngine, MapSizeIncrementsOnAdd) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var m = new Map(); m.set('x', 1); m.set('y', 2); m.set('z', 3); m.size.toString()");
+    EXPECT_EQ(result, "3");
+}
+
+TEST(JSEngine, SetIterationWithForOf) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var s = new Set([10, 20, 30]); var sum = 0; for (var v of s) sum += v; sum.toString()");
+    EXPECT_EQ(result, "60");
+}
+
+TEST(JSEngine, ObjectValuesFilter) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var obj = {a: 1, b: 2, c: 3}; Object.values(obj).filter(v => v > 1).length.toString()");
+    EXPECT_EQ(result, "2");
+}
+
+TEST(JSEngine, ArrayReduceInitialValue) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var arr = [1, 2, 3]; arr.reduce((acc, val) => acc + val, 10).toString()");
+    EXPECT_EQ(result, "16");
+}

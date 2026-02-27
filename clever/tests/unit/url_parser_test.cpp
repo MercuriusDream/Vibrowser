@@ -4311,3 +4311,57 @@ TEST(URLParser, Port4369) {
     ASSERT_TRUE(url->port.has_value());
     EXPECT_EQ(url->port.value(), 4369u);
 }
+
+// --- Cycle 1168: 8 URL tests ---
+
+TEST(URLParser, Port7001) {
+    auto url = parse("http://api-service.local:7001/");
+    ASSERT_TRUE(url.has_value());
+    ASSERT_TRUE(url->port.has_value());
+    EXPECT_EQ(url->port.value(), 7001u);
+}
+
+TEST(URLParser, PathWithJsonlExt) {
+    auto url = parse("https://data.example.com/logs/output.jsonl");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->path, "/logs/output.jsonl");
+}
+
+TEST(URLParser, QueryWithPlusSignV3) {
+    auto url = parse("https://example.com/search?q=hello+world+test");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->query, "q=hello+world+test");
+}
+
+TEST(URLParser, FragmentWithAsteriskV2) {
+    auto url = parse("https://docs.example.com/guide#section*subsection");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->fragment, "section*subsection");
+}
+
+TEST(URLParser, HostWithPort8081) {
+    auto url = parse("http://web-server.local:8081/app/index");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->host, "web-server.local");
+    ASSERT_TRUE(url->port.has_value());
+    EXPECT_EQ(url->port.value(), 8081u);
+}
+
+TEST(URLParser, SchemeHttpV4) {
+    auto url = parse("http://service-gateway.local/health");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "http");
+}
+
+TEST(URLParser, PathDepthEight) {
+    auto url = parse("https://api.example.com/v1/users/123/profile/data/export/format");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->path, "/v1/users/123/profile/data/export/format");
+}
+
+TEST(URLParser, Port7002) {
+    auto url = parse("http://metrics-collector.local:7002/metrics");
+    ASSERT_TRUE(url.has_value());
+    ASSERT_TRUE(url->port.has_value());
+    EXPECT_EQ(url->port.value(), 7002u);
+}
