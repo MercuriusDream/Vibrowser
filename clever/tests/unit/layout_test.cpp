@@ -7309,3 +7309,44 @@ TEST(LayoutNodeProps, ScrollMarginLeftDefaultsZero) {
     LayoutNode n;
     EXPECT_FLOAT_EQ(n.scroll_margin_left, 0.0f);
 }
+
+// Cycle 929 — scroll-margin, overscroll-behavior, contain-intrinsic, container defaults
+TEST(LayoutNodeProps, ScrollMarginRightDefaultsZero) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.scroll_margin_right, 0.0f);
+}
+
+TEST(LayoutNodeProps, ScrollPaddingRightDefaultsZero) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.scroll_padding_right, 0.0f);
+}
+
+TEST(LayoutNodeProps, ScrollPaddingBottomDefaultsZero) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.scroll_padding_bottom, 0.0f);
+}
+
+TEST(LayoutNodeProps, ScrollPaddingLeftDefaultsZero) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.scroll_padding_left, 0.0f);
+}
+
+TEST(LayoutNodeProps, OverscrollBehaviorDefaultsZero) {
+    LayoutNode n;
+    EXPECT_EQ(n.overscroll_behavior, 0);
+}
+
+TEST(LayoutNodeProps, OverscrollBehaviorXDefaultsZero) {
+    LayoutNode n;
+    EXPECT_EQ(n.overscroll_behavior_x, 0);
+}
+
+TEST(LayoutNodeProps, ContainIntrinsicWidthDefaultsZero) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.contain_intrinsic_width, 0.0f);
+}
+
+TEST(LayoutNodeProps, ContainerTypeDefaultsZero) {
+    LayoutNode n;
+    EXPECT_EQ(n.container_type, 0);
+}
