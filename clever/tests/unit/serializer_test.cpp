@@ -2214,3 +2214,91 @@ TEST(SerializerTest, ThreeF64ValuesInOrder) {
     EXPECT_DOUBLE_EQ(d.read_f64(), 1.0);
     EXPECT_FALSE(d.has_remaining());
 }
+
+// ---------------------------------------------------------------------------
+// Cycle 702 — 8 additional serializer tests (bytes and edge cases)
+// ---------------------------------------------------------------------------
+
+TEST(SerializerTest, BytesWithNullByteInMiddle) {
+    Serializer s;
+    std::vector<uint8_t> data = {0x01, 0x00, 0x02, 0x00, 0x03};
+    s.write_bytes(data.data(), data.size());
+    Deserializer d(s.data());
+    auto result = d.read_bytes();
+    EXPECT_EQ(result, data);
+}
+
+TEST(SerializerTest, BytesWithAllOnes) {
+    Serializer s;
+    std::vector<uint8_t> data(8, 0xFF);
+    s.write_bytes(data.data(), data.size());
+    Deserializer d(s.data());
+    auto result = d.read_bytes();
+    EXPECT_EQ(result, data);
+}
+
+TEST(SerializerTest, BytesThenString) {
+    Serializer s;
+    std::vector<uint8_t> bytes = {1, 2, 3};
+    s.write_bytes(bytes.data(), bytes.size());
+    s.write_string("hello");
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_bytes(), bytes);
+    EXPECT_EQ(d.read_string(), "hello");
+}
+
+TEST(SerializerTest, StringThenBytes) {
+    Serializer s;
+    std::vector<uint8_t> bytes = {10, 20, 30};
+    s.write_string("world");
+    s.write_bytes(bytes.data(), bytes.size());
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "world");
+    EXPECT_EQ(d.read_bytes(), bytes);
+}
+
+TEST(SerializerTest, U8MaxValueThenString) {
+    Serializer s;
+    s.write_u8(255u);
+    s.write_string("max");
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u8(), 255u);
+    EXPECT_EQ(d.read_string(), "max");
+}
+
+TEST(SerializerTest, I32NegativeMaxAndMinInSequence) {
+    Serializer s;
+    s.write_i32(std::numeric_limits<int32_t>::max());
+    s.write_i32(std::numeric_limits<int32_t>::min());
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i32(), std::numeric_limits<int32_t>::max());
+    EXPECT_EQ(d.read_i32(), std::numeric_limits<int32_t>::min());
+}
+
+TEST(SerializerTest, BoolFalseReadBack) {
+    Serializer s;
+    s.write_bool(false);
+    s.write_bool(true);
+    s.write_bool(false);
+    Deserializer d(s.data());
+    EXPECT_FALSE(d.read_bool());
+    EXPECT_TRUE(d.read_bool());
+    EXPECT_FALSE(d.read_bool());
+}
+
+TEST(SerializerTest, MixedTypesLargeSequence) {
+    Serializer s;
+    s.write_u8(42u);
+    s.write_string("test");
+    s.write_i32(-100);
+    s.write_bool(true);
+    s.write_f64(1.23);
+    s.write_u64(999999u);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u8(), 42u);
+    EXPECT_EQ(d.read_string(), "test");
+    EXPECT_EQ(d.read_i32(), -100);
+    EXPECT_TRUE(d.read_bool());
+    EXPECT_DOUBLE_EQ(d.read_f64(), 1.23);
+    EXPECT_EQ(d.read_u64(), 999999u);
+}
