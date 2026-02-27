@@ -2930,3 +2930,53 @@ TEST(URLParser, QueryAndFragmentBoth) {
     EXPECT_EQ(url->query, "x=1");
     EXPECT_EQ(url->fragment, "top");
 }
+
+// Cycle 934 — URL parsing: path numbers, host variants, scheme confirmation
+TEST(URLParser, PathWithNumberSegment) {
+    auto url = parse("https://example.com/users/42/profile");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->path, "/users/42/profile");
+}
+
+TEST(URLParser, HostAllNumbers) {
+    auto url = parse("https://192.168.1.1/path");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->host, "192.168.1.1");
+}
+
+TEST(URLParser, FragmentWithUnderscore) {
+    auto url = parse("https://example.com/page#my_section");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->fragment, "my_section");
+}
+
+TEST(URLParser, QueryEqualsValue) {
+    auto url = parse("https://example.com/?key=value");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->query, "key=value");
+}
+
+TEST(URLParser, HostWithUnderscoreIsValid) {
+    auto url = parse("https://my_host.example.com/path");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->host, "my_host.example.com");
+}
+
+TEST(URLParser, HttpSchemeConfirmedLower) {
+    auto url = parse("http://example.com/");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "http");
+}
+
+TEST(URLParser, PortOneIsValid) {
+    auto url = parse("http://example.com:1/path");
+    ASSERT_TRUE(url.has_value());
+    ASSERT_TRUE(url->port.has_value());
+    EXPECT_EQ(*url->port, 1);
+}
+
+TEST(URLParser, PathAllNumbers) {
+    auto url = parse("https://example.com/123/456/789");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->path, "/123/456/789");
+}
