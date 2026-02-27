@@ -14914,3 +14914,64 @@ TEST(JSEngine, ClassInstanceMethod) {
     )");
     EXPECT_EQ(result, "Dog speaks");
 }
+
+TEST(JSEngine, GeneratorYieldsValues) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        function* gen() { yield 1; yield 2; yield 3; }
+        const g = gen();
+        g.next().value + g.next().value + g.next().value
+    )");
+    EXPECT_EQ(result, "6");
+}
+
+TEST(JSEngine, ForOfGeneratorSum) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        function* range(n) { for (let i = 0; i < n; i++) yield i; }
+        let sum = 0;
+        for (const x of range(5)) sum += x;
+        sum
+    )");
+    EXPECT_EQ(result, "10");
+}
+
+TEST(JSEngine, IteratorProtocolManual) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        const arr = [10, 20, 30];
+        const it = arr[Symbol.iterator]();
+        it.next().value
+    )");
+    EXPECT_EQ(result, "10");
+}
+
+TEST(JSEngine, NullCoalescingOperator) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("null ?? 'default'");
+    EXPECT_EQ(result, "default");
+}
+
+TEST(JSEngine, OptionalChainingProperty) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("const obj = {a: {b: 42}}; obj?.a?.b");
+    EXPECT_EQ(result, "42");
+}
+
+TEST(JSEngine, OptionalChainingNullReturnsUndefined) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("const obj = null; String(obj?.a)");
+    EXPECT_EQ(result, "undefined");
+}
+
+TEST(JSEngine, LogicalAndAssignmentV2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("let x = 1; x &&= 5; x");
+    EXPECT_EQ(result, "5");
+}
+
+TEST(JSEngine, LogicalOrAssignmentV2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("let x = 0; x ||= 42; x");
+    EXPECT_EQ(result, "42");
+}
