@@ -4552,3 +4552,79 @@ TEST_F(CSSStylesheetTest, FontKerningDeclaration) {
         if (d.property == "font-kerning") { found = true; break; }
     EXPECT_TRUE(found);
 }
+
+
+
+
+// Cycle 874 — CSS less-common properties: text-combine-upright, text-orientation, line-break, hyphenate-character, box-decoration-break, mask-type, scroll-snap-stop, scroll-margin
+TEST_F(CSSStylesheetTest, TextCombineUprightDeclaration) {
+    auto sheet = parse_stylesheet("span { text-combine-upright: all; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "text-combine-upright") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, TextOrientationDeclaration) {
+    auto sheet = parse_stylesheet("div { text-orientation: mixed; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "text-orientation") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, LineBreakDeclaration) {
+    auto sheet = parse_stylesheet("p { line-break: strict; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "line-break") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, HyphenateCharacterDeclaration) {
+    auto sheet = parse_stylesheet("p { hyphenate-character: auto; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "hyphenate-character") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, BoxDecorationBreakDeclaration) {
+    auto sheet = parse_stylesheet("span { box-decoration-break: clone; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "box-decoration-break") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, MaskTypeDeclaration) {
+    auto sheet = parse_stylesheet("mask { mask-type: luminance; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "mask-type") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, ScrollSnapStopDeclaration) {
+    auto sheet = parse_stylesheet(".item { scroll-snap-stop: always; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "scroll-snap-stop") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, ScrollMarginDeclaration) {
+    auto sheet = parse_stylesheet(".item { scroll-margin: 10px 20px; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "scroll-margin") { found = true; break; }
+    EXPECT_TRUE(found);
+}
