@@ -3794,3 +3794,77 @@ TEST(DomDocument, GetElementByIdMissingKeyReturnsNull) {
     Document doc;
     EXPECT_EQ(doc.get_element_by_id("nonexistent"), nullptr);
 }
+
+// ---------------------------------------------------------------------------
+// dispatch_event_to_tree tests (Cycle 841)
+// ---------------------------------------------------------------------------
+TEST(DomDispatchTree, OrphanNodeTargetIsSet) {
+    auto elem = std::make_unique<Element>("div");
+    Element* ptr = elem.get();
+    Event event("click");
+    dispatch_event_to_tree(event, *ptr);
+    EXPECT_EQ(event.target(), ptr);
+}
+
+TEST(DomDispatchTree, OrphanNodePhaseIsNoneAfterDispatch) {
+    auto elem = std::make_unique<Element>("div");
+    Event event("click");
+    dispatch_event_to_tree(event, *elem);
+    EXPECT_EQ(event.phase(), EventPhase::None);
+}
+
+TEST(DomDispatchTree, OrphanNodeCurrentTargetNullAfterDispatch) {
+    auto elem = std::make_unique<Element>("div");
+    Event event("click");
+    dispatch_event_to_tree(event, *elem);
+    EXPECT_EQ(event.current_target(), nullptr);
+}
+
+TEST(DomDispatchTree, ChildTargetIsChild) {
+    Element parent("div");
+    auto child_ptr = std::make_unique<Element>("span");
+    Element* child = child_ptr.get();
+    parent.append_child(std::move(child_ptr));
+    Event event("click");
+    dispatch_event_to_tree(event, *child);
+    EXPECT_EQ(event.target(), child);
+}
+
+TEST(DomDispatchTree, ChildTargetNotParent) {
+    Element parent("div");
+    auto child_ptr = std::make_unique<Element>("span");
+    Element* child = child_ptr.get();
+    parent.append_child(std::move(child_ptr));
+    Event event("mouseover");
+    dispatch_event_to_tree(event, *child);
+    EXPECT_NE(event.target(), &parent);
+}
+
+TEST(DomDispatchTree, GrandchildTargetIsGrandchild) {
+    Element root("div");
+    auto child_ptr = std::make_unique<Element>("section");
+    auto grand_ptr = std::make_unique<Element>("p");
+    Element* grandchild = grand_ptr.get();
+    child_ptr->append_child(std::move(grand_ptr));
+    root.append_child(std::move(child_ptr));
+    Event event("focus");
+    dispatch_event_to_tree(event, *grandchild);
+    EXPECT_EQ(event.target(), grandchild);
+}
+
+TEST(DomDispatchTree, NonBubblingTargetIsSet) {
+    auto elem = std::make_unique<Element>("input");
+    Element* ptr = elem.get();
+    Event event("change", /*bubbles=*/false);
+    dispatch_event_to_tree(event, *ptr);
+    EXPECT_EQ(event.target(), ptr);
+}
+
+TEST(DomDispatchTree, DispatchTwiceSecondTargetUpdates) {
+    Element elem("button");
+    Event event1("click");
+    Event event2("keypress");
+    dispatch_event_to_tree(event1, elem);
+    dispatch_event_to_tree(event2, elem);
+    EXPECT_EQ(event2.target(), &elem);
+}
