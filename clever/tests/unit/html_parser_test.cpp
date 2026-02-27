@@ -4887,3 +4887,84 @@ TEST(TreeBuilder, ScriptNoModuleAttr) {
         if (attr.name == "nomodule") found = true;
     EXPECT_TRUE(found);
 }
+
+// Cycle 946 — table attributes, anchor hreflang, iframe srcdoc/loading, form name
+TEST(TreeBuilder, TableBorderAttr) {
+    auto doc = clever::html::parse("<body><table border=\"1\"><tr><td>cell</td></tr></table></body>");
+    auto* el = doc->find_element("table");
+    ASSERT_NE(el, nullptr);
+    bool found = false;
+    for (const auto& attr : el->attributes)
+        if (attr.name == "border" && attr.value == "1") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, TableSummaryAttr) {
+    auto doc = clever::html::parse("<body><table summary=\"Product list\"></table></body>");
+    auto* el = doc->find_element("table");
+    ASSERT_NE(el, nullptr);
+    bool found = false;
+    for (const auto& attr : el->attributes)
+        if (attr.name == "summary") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, TdRowspanAttr) {
+    auto doc = clever::html::parse("<body><table><tr><td rowspan=\"2\">cell</td></tr></table></body>");
+    auto* el = doc->find_element("td");
+    ASSERT_NE(el, nullptr);
+    bool found = false;
+    for (const auto& attr : el->attributes)
+        if (attr.name == "rowspan" && attr.value == "2") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, AnchorHreflangAttr) {
+    auto doc = clever::html::parse("<body><a href=\"/fr\" hreflang=\"fr\">French</a></body>");
+    auto* el = doc->find_element("a");
+    ASSERT_NE(el, nullptr);
+    bool found = false;
+    for (const auto& attr : el->attributes)
+        if (attr.name == "hreflang" && attr.value == "fr") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, AnchorPingAttr) {
+    auto doc = clever::html::parse("<body><a href=\"/link\" ping=\"/analytics\">Click</a></body>");
+    auto* el = doc->find_element("a");
+    ASSERT_NE(el, nullptr);
+    bool found = false;
+    for (const auto& attr : el->attributes)
+        if (attr.name == "ping") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, IframeSrcdocAttr) {
+    auto doc = clever::html::parse("<body><iframe srcdoc=\"<p>Hello</p>\"></iframe></body>");
+    auto* el = doc->find_element("iframe");
+    ASSERT_NE(el, nullptr);
+    bool found = false;
+    for (const auto& attr : el->attributes)
+        if (attr.name == "srcdoc") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, IframeLoadingLazyAttr) {
+    auto doc = clever::html::parse("<body><iframe src=\"/page\" loading=\"lazy\"></iframe></body>");
+    auto* el = doc->find_element("iframe");
+    ASSERT_NE(el, nullptr);
+    bool found = false;
+    for (const auto& attr : el->attributes)
+        if (attr.name == "loading" && attr.value == "lazy") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, FormNameAttr) {
+    auto doc = clever::html::parse("<body><form name=\"loginForm\"></form></body>");
+    auto* el = doc->find_element("form");
+    ASSERT_NE(el, nullptr);
+    bool found = false;
+    for (const auto& attr : el->attributes)
+        if (attr.name == "name" && attr.value == "loginForm") found = true;
+    EXPECT_TRUE(found);
+}
