@@ -2034,3 +2034,37 @@ TEST(CORSPolicyTest, ACAODifferentOriginBlocks) {
     headers.set("access-control-allow-origin", "https://other.com");
     EXPECT_FALSE(cors_allows_response("https://trusted.com", "https://api.trusted.com/data", headers, false));
 }
+
+TEST(CORSPolicyTest, CrossOriginDifferentTLD) {
+    EXPECT_TRUE(is_cross_origin("https://example.com", "https://example.org/data"));
+}
+
+TEST(CORSPolicyTest, CrossOriginSameTLDDiffDomain) {
+    EXPECT_TRUE(is_cross_origin("https://example.com", "https://other.com/data"));
+}
+
+TEST(CORSPolicyTest, SameOriginIPv4Localhost) {
+    EXPECT_FALSE(is_cross_origin("http://127.0.0.1:3000", "http://127.0.0.1:3000/api"));
+}
+
+TEST(CORSPolicyTest, SameOriginLocalhostWithPort) {
+    EXPECT_FALSE(is_cross_origin("http://localhost:8080", "http://localhost:8080/api/data"));
+}
+
+TEST(CORSPolicyTest, ACAOWithPathIgnored) {
+    clever::net::HeaderMap headers;
+    headers.set("access-control-allow-origin", "https://trusted.com");
+    EXPECT_TRUE(cors_allows_response("https://trusted.com", "https://api.trusted.com/v1/data?key=val", headers, false));
+}
+
+TEST(CORSPolicyTest, CorsEligibleHttpWithQueryParam) {
+    EXPECT_TRUE(is_cors_eligible_request_url("http://api.example.com/search?q=test"));
+}
+
+TEST(CORSPolicyTest, NotCorsEligibleDataUri) {
+    EXPECT_FALSE(is_cors_eligible_request_url("data:text/html,<h1>Hello</h1>"));
+}
+
+TEST(CORSPolicyTest, AttachOriginForCrossOriginHttps) {
+    EXPECT_TRUE(should_attach_origin_header("https://app.example.com", "https://api.other.com/data"));
+}
