@@ -6303,3 +6303,51 @@ TEST(LayoutNodeProps, SvgStrokeNoneDefaultsTrue) {
     auto node = make_block("line");
     EXPECT_TRUE(node->svg_stroke_none);
 }
+
+// Layout: border_color defaults to black (0xFF000000)
+TEST(LayoutNodeProps, BorderColorDefaultsBlack) {
+    auto node = make_block("div");
+    EXPECT_EQ(node->border_color, 0xFF000000u);
+}
+
+// Layout: border_style defaults to 1 (solid)
+TEST(LayoutNodeProps, BorderStyleDefaultsToOne) {
+    auto node = make_block("div");
+    EXPECT_EQ(node->border_style, 1);
+}
+
+// Layout: border_color_top defaults to black
+TEST(LayoutNodeProps, BorderColorTopDefaultsBlack) {
+    auto node = make_block("div");
+    EXPECT_EQ(node->border_color_top, 0xFF000000u);
+}
+
+// Layout: border_color_bottom defaults to black
+TEST(LayoutNodeProps, BorderColorBottomDefaultsBlack) {
+    auto node = make_block("div");
+    EXPECT_EQ(node->border_color_bottom, 0xFF000000u);
+}
+
+// Layout: box_shadows defaults to empty
+TEST(LayoutNodeProps, BoxShadowsDefaultsEmpty) {
+    auto node = make_block("div");
+    EXPECT_TRUE(node->box_shadows.empty());
+}
+
+// Layout: outline_width defaults to 0
+TEST(LayoutNodeProps, OutlineWidthDefaultsToZero) {
+    auto node = make_block("a");
+    EXPECT_FLOAT_EQ(node->outline_width, 0.0f);
+}
+
+// Layout: outline_style defaults to 0 (none)
+TEST(LayoutNodeProps, OutlineStyleDefaultsToZero) {
+    auto node = make_block("a");
+    EXPECT_EQ(node->outline_style, 0);
+}
+
+// Layout: outline_offset defaults to 0
+TEST(LayoutNodeProps, OutlineOffsetDefaultsToZero) {
+    auto node = make_block("a");
+    EXPECT_FLOAT_EQ(node->outline_offset, 0.0f);
+}
