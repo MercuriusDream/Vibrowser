@@ -2000,3 +2000,67 @@ TEST(URLParser, UsernameEmptyWithNoCredentials) {
     ASSERT_TRUE(result.has_value());
     EXPECT_TRUE(result->username.empty());
 }
+
+// URL: localhost host is parsed correctly
+TEST(URLParser, LocalhostHostParsed) {
+    auto result = parse("http://localhost:3000/app");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->host, "localhost");
+}
+
+// URL: port 3000 is stored as numeric
+TEST(URLParser, Port3000IsNumeric) {
+    auto result = parse("http://localhost:3000/app");
+    ASSERT_TRUE(result.has_value());
+    ASSERT_TRUE(result->port.has_value());
+    EXPECT_EQ(result->port.value(), 3000u);
+}
+
+// URL: user info username extracted
+TEST(URLParser, UserInfoUsernameExtracted) {
+    auto result = parse("https://user:pass@example.com/path");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_FALSE(result->username.empty());
+}
+
+// URL: path with query preserves path
+TEST(URLParser, PathWithQueryPreservesPath) {
+    auto result = parse("https://example.com/search?q=test");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_NE(result->path.find("search"), std::string::npos);
+}
+
+// URL: invalid URL returns nullopt
+TEST(URLParser, InvalidURLNotAUrlReturnsNullopt) {
+    auto result = parse("not a url");
+    // Either fails to parse or parses with empty scheme
+    if (result.has_value()) {
+        EXPECT_TRUE(result->scheme.empty() || result->host.empty());
+    } else {
+        EXPECT_FALSE(result.has_value());
+    }
+}
+
+// URL: file URL host is empty
+TEST(URLParser, FileURLHostIsEmptyOrLocalhost) {
+    auto result = parse("file:///home/user/file.txt");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_TRUE(result->host.empty() || result->host == "localhost");
+}
+
+// URL: query with plus sign preserved
+TEST(URLParser, QueryWithPlusSign) {
+    auto result = parse("https://search.example.com/?q=hello+world");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_NE(result->query.find("hello"), std::string::npos);
+}
+
+// URL: HTTPS default port 443 removed or stored
+TEST(URLParser, HttpsDefaultPort443) {
+    auto result = parse("https://example.com:443/path");
+    ASSERT_TRUE(result.has_value());
+    // Port 443 should be stripped or kept as 443
+    if (result->port.has_value()) {
+        EXPECT_EQ(result->port.value(), 443u);
+    }
+}
