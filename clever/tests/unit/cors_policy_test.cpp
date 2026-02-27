@@ -3328,3 +3328,41 @@ TEST(CORSPolicyTest, CORSBlocksIncorrectOriginWithSpecificPortV29) {
     resp_headers.set("Access-Control-Allow-Origin", "https://wrong.example.com:8080");
     EXPECT_FALSE(cors_allows_response("https://app.example.com:3000", "https://api.example.com/data", resp_headers, false));
 }
+
+// Cycle 1274: CORS policy tests V30
+
+TEST(CORSPolicyTest, IsCrossOriginExplicitHttpDefaultPortV30) {
+    EXPECT_FALSE(is_cross_origin("http://example.com:80", "http://example.com/data"));
+}
+
+TEST(CORSPolicyTest, HasEnforceableOriginExplicitHttpsDefaultPortV30) {
+    EXPECT_FALSE(has_enforceable_document_origin("https://secure.example.com:443"));
+}
+
+TEST(CORSPolicyTest, IsCORSEligibleWithQueryParamsAndPathV30) {
+    EXPECT_TRUE(is_cors_eligible_request_url("https://api.example.com/v1/search?query=data&page=1"));
+}
+
+TEST(CORSPolicyTest, ShouldAttachOriginDifferentDomainV30) {
+    EXPECT_TRUE(should_attach_origin_header("https://app.example.com", "https://service.example.org/api"));
+}
+
+TEST(CORSPolicyTest, CORSAllowsExactOriginMatchWithCredentialsV30) {
+    clever::net::HeaderMap resp_headers;
+    resp_headers.set("Access-Control-Allow-Origin", "https://trusted.example.com");
+    EXPECT_TRUE(cors_allows_response("https://trusted.example.com", "https://api.example.com/secure", resp_headers, false));
+}
+
+TEST(CORSPolicyTest, CORSBlocksWildcardWithCredentialsRequestV30) {
+    clever::net::HeaderMap resp_headers;
+    resp_headers.set("Access-Control-Allow-Origin", "*");
+    EXPECT_FALSE(cors_allows_response("https://any.example.com", "https://api.example.com/data", resp_headers, true));
+}
+
+TEST(CORSPolicyTest, NotEnforceableExplicitHttpDefaultPortV30) {
+    EXPECT_FALSE(has_enforceable_document_origin("http://localhost:80"));
+}
+
+TEST(CORSPolicyTest, NotCORSEligibleWithInvalidHostV30) {
+    EXPECT_FALSE(is_cors_eligible_request_url("https://_invalid.example.com/data"));
+}

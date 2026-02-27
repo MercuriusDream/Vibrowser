@@ -7553,3 +7553,103 @@ TEST(MethodTest, DeleteMethodEnumDistinctV22) {
     EXPECT_NE(Method::DELETE_METHOD, Method::OPTIONS);
     EXPECT_NE(Method::DELETE_METHOD, Method::PATCH);
 }
+
+// ============================================================================
+// Cycle 1277: HTTP/Net tests V23
+// ============================================================================
+
+// Request: serialize with HEAD method
+TEST(RequestTest, SerializeHeadMethodReturnsVectorUint8V23) {
+    Request req;
+    req.method = Method::HEAD;
+    req.host = "example.com";
+    req.path = "/resource";
+    req.headers.set("User-Agent", "TestAgent");
+
+    auto serialized = req.serialize();
+    EXPECT_GT(serialized.size(), 0u);
+}
+
+// Request: serialize with DELETE_METHOD
+TEST(RequestTest, SerializeDeleteMethodReturnsVectorUint8V23) {
+    Request req;
+    req.method = Method::DELETE_METHOD;
+    req.host = "api.example.com";
+    req.path = "/api/item/42";
+    req.headers.set("Authorization", "Bearer token123");
+
+    auto serialized = req.serialize();
+    EXPECT_GT(serialized.size(), 0u);
+}
+
+// Request: serialize with OPTIONS method
+TEST(RequestTest, SerializeOptionsMethodReturnsVectorUint8V23) {
+    Request req;
+    req.method = Method::OPTIONS;
+    req.host = "cors.example.com";
+    req.path = "/api/endpoint";
+
+    auto serialized = req.serialize();
+    EXPECT_GT(serialized.size(), 0u);
+}
+
+// Request: serialize with PATCH method and body
+TEST(RequestTest, SerializePatchMethodWithBodyV23) {
+    Request req;
+    req.method = Method::PATCH;
+    req.host = "api.example.com";
+    req.path = "/api/user/123";
+    req.headers.set("Content-Type", "application/json");
+    std::string payload = "{\"status\": \"active\"}";
+    req.body = std::vector<uint8_t>(payload.begin(), payload.end());
+
+    auto serialized = req.serialize();
+    EXPECT_GT(serialized.size(), 0u);
+}
+
+// HeaderMap: set overwrites with multiple calls
+TEST(HeaderMapTest, SetOverwritesMultipleTimesV23) {
+    HeaderMap map;
+    map.set("x-custom", "first");
+    EXPECT_EQ(map.get("x-custom"), "first");
+
+    map.set("x-custom", "second");
+    EXPECT_EQ(map.get("x-custom"), "second");
+
+    map.set("x-custom", "third");
+    EXPECT_EQ(map.get("x-custom"), "third");
+}
+
+// CookieJar: get_cookie_header returns empty for non-existent domain
+TEST(CookieJarTest, GetCookieHeaderNonExistentDomainReturnsEmptyV23) {
+    CookieJar jar;
+    jar.set_from_header("session=xyz", "example.com");
+
+    std::string header = jar.get_cookie_header("other.com", "/", false);
+    EXPECT_EQ(header, "");
+}
+
+// CookieJar: multiple cookies in same domain
+TEST(CookieJarTest, MultipleCookiesSameDomainV23) {
+    CookieJar jar;
+    jar.set_from_header("cookie1=value1", "example.com");
+    jar.set_from_header("cookie2=value2", "example.com");
+    jar.set_from_header("cookie3=value3", "example.com");
+
+    EXPECT_EQ(jar.size(), 3u);
+    jar.clear();
+    EXPECT_EQ(jar.size(), 0u);
+}
+
+// Response: body holds binary data from request-response cycle
+TEST(ResponseTest, ResponseBodyAfterDeserialisationV23) {
+    Response resp;
+    resp.status = 201;
+    resp.status_text = "Created";
+
+    std::vector<uint8_t> payload = {0xAA, 0xBB, 0xCC, 0xDD};
+    resp.body = payload;
+
+    EXPECT_EQ(resp.body.size(), 4u);
+    EXPECT_EQ(resp.body[1], 0xBBu);
+}

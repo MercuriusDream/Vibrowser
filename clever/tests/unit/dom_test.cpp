@@ -6915,3 +6915,62 @@ TEST(DomElement, SetAndGetMultipleAttrs) {
     EXPECT_EQ(el->get_attribute("href"), "/page");
     EXPECT_EQ(el->get_attribute("target"), "_blank");
 }
+
+// Cycle 1273: DOM element tests
+
+TEST(DomElement, TagNameRp) {
+    Document doc;
+    auto el = doc.create_element("rp");
+    EXPECT_EQ(el->tag_name(), "rp");
+}
+
+TEST(DomElement, TagNameWbrV2) {
+    Document doc;
+    auto el = doc.create_element("wbr");
+    EXPECT_EQ(el->tag_name(), "wbr");
+}
+
+TEST(DomElement, SetAttributeCoords) {
+    Document doc;
+    auto el = doc.create_element("area");
+    el->set_attribute("coords", "0,0,100,100");
+    EXPECT_EQ(el->get_attribute("coords"), "0,0,100,100");
+}
+
+TEST(DomElement, SetAttributeShape) {
+    Document doc;
+    auto el = doc.create_element("area");
+    el->set_attribute("shape", "rect");
+    EXPECT_EQ(el->get_attribute("shape"), "rect");
+}
+
+TEST(DomElement, ChildCountOneTwenty) {
+    Document doc;
+    auto parent = doc.create_element("div");
+    for (int i = 0; i < 120; ++i) {
+        parent->append_child(doc.create_element("span"));
+    }
+    EXPECT_EQ(parent->child_count(), 120u);
+}
+
+TEST(DomElement, RemoveAttributeAccesskey) {
+    Document doc;
+    auto el = doc.create_element("button");
+    el->set_attribute("accesskey", "s");
+    el->remove_attribute("accesskey");
+    EXPECT_FALSE(el->has_attribute("accesskey"));
+}
+
+TEST(DomElement, HasAttributeAsync) {
+    Document doc;
+    auto el = doc.create_element("script");
+    el->set_attribute("async", "");
+    EXPECT_TRUE(el->has_attribute("async"));
+}
+
+TEST(DomElement, SetAttributeWithSpecialChars) {
+    Document doc;
+    auto el = doc.create_element("div");
+    el->set_attribute("data-info", "a&b<c>d");
+    EXPECT_EQ(el->get_attribute("data-info"), "a&b<c>d");
+}

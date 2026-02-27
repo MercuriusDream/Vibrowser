@@ -5201,3 +5201,83 @@ TEST(URLParser, HttpsWithSubdomainChainAndFragmentV11) {
     EXPECT_EQ(url->path, "/images/banner.jpg");
     EXPECT_EQ(url->fragment, "cache-buster");
 }
+
+// Cycle 1276: URL parser tests V12
+
+TEST(URLParser, HostOnlyHttpsUrlV12) {
+    auto url = parse("https://example.org");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "example.org");
+    EXPECT_EQ(url->path, "/");
+    EXPECT_TRUE(url->query.empty());
+    EXPECT_TRUE(url->fragment.empty());
+}
+
+TEST(URLParser, UrlWithPortAndQueryParamsV12) {
+    auto url = parse("http://api.service.local:9090/endpoint?token=abc123&version=2");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "http");
+    EXPECT_EQ(url->host, "api.service.local");
+    ASSERT_TRUE(url->port.has_value());
+    EXPECT_EQ(url->port.value(), 9090u);
+    EXPECT_EQ(url->path, "/endpoint");
+    EXPECT_NE(url->query.find("token=abc123"), std::string::npos);
+    EXPECT_NE(url->query.find("version=2"), std::string::npos);
+}
+
+TEST(URLParser, UrlWithUsernameAndPasswordV12) {
+    auto url = parse("ftp://admin:secure@files.backup.net/archive/data.zip");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "ftp");
+    EXPECT_FALSE(url->username.empty());
+    EXPECT_FALSE(url->password.empty());
+    EXPECT_EQ(url->host, "files.backup.net");
+    EXPECT_EQ(url->path, "/archive/data.zip");
+}
+
+TEST(URLParser, UrlWithComplexPathAndFragmentV12) {
+    auto url = parse("https://docs.example.io/reference/api/v3/methods#authentication");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "docs.example.io");
+    EXPECT_EQ(url->path, "/reference/api/v3/methods");
+    EXPECT_EQ(url->fragment, "authentication");
+    EXPECT_TRUE(url->query.empty());
+}
+
+TEST(URLParser, Ipv4AddressWithCustomPortV12) {
+    auto url = parse("http://10.20.30.40:8080/admin/dashboard");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "http");
+    EXPECT_EQ(url->host, "10.20.30.40");
+    ASSERT_TRUE(url->port.has_value());
+    EXPECT_EQ(url->port.value(), 8080u);
+    EXPECT_EQ(url->path, "/admin/dashboard");
+}
+
+TEST(URLParser, UrlWithSpecialCharsInPathSegmentV12) {
+    auto url = parse("https://service.example.com/api/resource-id_123/sub.item");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "service.example.com");
+    EXPECT_NE(url->path.find("resource-id_123"), std::string::npos);
+    EXPECT_NE(url->path.find("sub.item"), std::string::npos);
+}
+
+TEST(URLParser, UrlWithQueryAndFragmentNoPathV12) {
+    auto url = parse("https://app.domain.co?user=john&action=login#top");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "app.domain.co");
+    EXPECT_EQ(url->path, "/");
+    EXPECT_NE(url->query.find("user=john"), std::string::npos);
+    EXPECT_EQ(url->fragment, "top");
+}
+
+TEST(URLParser, SchemeDataUrlWithMimeTypeV12) {
+    auto url = parse("data:application/json;charset=utf-8,{\"key\":\"value\"}");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "data");
+    EXPECT_TRUE(url->host.empty());
+}

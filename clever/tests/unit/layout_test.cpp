@@ -8971,3 +8971,45 @@ TEST(LayoutNodeProps, MaxWidthDefaultV20) {
     LayoutNode n;
     EXPECT_FLOAT_EQ(n.max_width, 1e9f);
 }
+
+// Cycle 1280: LayoutNode property tests V21
+
+TEST(LayoutNodeProps, MaxHeightDefaultV21) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.max_height, 1e9f);
+}
+
+TEST(LayoutNodeProps, MinWidthDefaultV21) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.min_width, 0.0f);
+}
+
+TEST(LayoutNodeProps, MinHeightDefaultV21) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.min_height, 0.0f);
+}
+
+TEST(LayoutNodeProps, WordSpacingDefaultV21) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.word_spacing, 0.0f);
+}
+
+TEST(LayoutNodeProps, ZIndexDefaultV21) {
+    LayoutNode n;
+    EXPECT_EQ(n.z_index, 0);
+}
+
+TEST(LayoutNodeProps, ObjectFitDefaultV21) {
+    LayoutNode n;
+    EXPECT_EQ(n.object_fit, 0);
+}
+
+TEST(LayoutNodeProps, TextTransformDefaultV21) {
+    LayoutNode n;
+    EXPECT_EQ(n.text_transform, 0);
+}
+
+TEST(LayoutNodeProps, BorderCollapseDefaultV21) {
+    LayoutNode n;
+    EXPECT_FALSE(n.border_collapse);
+}

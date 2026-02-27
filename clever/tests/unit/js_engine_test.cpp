@@ -19064,3 +19064,53 @@ TEST(JSEngine, MapObjectCycle1272) {
     auto result = engine.evaluate("var map = new Map(); map.set('key1', 100); map.set('key2', 200); map.size.toString()");
     EXPECT_EQ(result, "2");
 }
+
+// Cycle 1281: JS engine tests
+
+TEST(JSEngine, PromiseResolveCycle1281) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("Promise.resolve(42).then(function(v) { return v * 2; }).then(function(v) { return v.toString(); })");
+    EXPECT_NE(result, "");
+}
+
+TEST(JSEngine, SymbolCreationCycle1281) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var sym1 = Symbol('test'); var sym2 = Symbol('test'); (sym1 === sym2).toString()");
+    EXPECT_EQ(result, "false");
+}
+
+TEST(JSEngine, ProxyBasicCycle1281) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var target = {x: 5}; var proxy = new Proxy(target, {get: function(obj, prop) { return obj[prop] * 2; }}); proxy.x.toString()");
+    EXPECT_EQ(result, "10");
+}
+
+TEST(JSEngine, WeakMapCycle1281) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var wm = new WeakMap(); var obj = {}; wm.set(obj, 123); wm.has(obj).toString()");
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, SetCollectionCycle1281) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var set = new Set([1, 2, 3, 2, 1]); set.size.toString()");
+    EXPECT_EQ(result, "3");
+}
+
+TEST(JSEngine, ForOfLoopCycle1281) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var sum = 0; for (var num of [1, 2, 3, 4]) { sum = sum + num; } sum.toString()");
+    EXPECT_EQ(result, "10");
+}
+
+TEST(JSEngine, TemplateLiteralCycle1281) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var name = 'World'; var greeting = `Hello, ${name}!`; greeting");
+    EXPECT_EQ(result, "Hello, World!");
+}
+
+TEST(JSEngine, ObjectAssignCycle1281) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var obj1 = {a: 1}; var obj2 = {b: 2}; var merged = Object.assign({}, obj1, obj2); (merged.a + merged.b).toString()");
+    EXPECT_EQ(result, "3");
+}

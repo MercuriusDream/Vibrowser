@@ -7413,3 +7413,61 @@ TEST(TreeBuilder, MarkElementV8) {
     ASSERT_NE(el, nullptr);
     EXPECT_EQ(el->tag_name, "mark");
 }
+
+// Cycle 1279: HTML parser tests V9
+
+TEST(TreeBuilder, ParagraphElementV9) {
+    auto doc = clever::html::parse("<div><p>This is a paragraph</p></div>");
+    auto* el = doc->find_element("p");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "p");
+}
+
+TEST(TreeBuilder, SpanElementV9) {
+    auto doc = clever::html::parse("<p>Text with <span>inline styling</span> applied</p>");
+    auto* el = doc->find_element("span");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "span");
+}
+
+TEST(TreeBuilder, UnorderedListElementV9) {
+    auto doc = clever::html::parse("<ul><li>Item 1</li><li>Item 2</li></ul>");
+    auto* el = doc->find_element("ul");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "ul");
+}
+
+TEST(TreeBuilder, OrderedListElementV9) {
+    auto doc = clever::html::parse("<ol><li>First</li><li>Second</li></ol>");
+    auto* el = doc->find_element("ol");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "ol");
+}
+
+TEST(TreeBuilder, ListItemElementV9) {
+    auto doc = clever::html::parse("<ul><li>Item content</li></ul>");
+    auto* el = doc->find_element("li");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "li");
+}
+
+TEST(TreeBuilder, DivElementV9) {
+    auto doc = clever::html::parse("<div class=\"container\"><p>Content inside div</p></div>");
+    auto* el = doc->find_element("div");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "div");
+}
+
+TEST(TreeBuilder, TableElementV9) {
+    auto doc = clever::html::parse("<table><tr><td>Cell 1</td><td>Cell 2</td></tr></table>");
+    auto* el = doc->find_element("table");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "table");
+}
+
+TEST(TreeBuilder, FormElementV9) {
+    auto doc = clever::html::parse("<form action=\"/submit\"><input type=\"text\" /><button type=\"submit\">Submit</button></form>");
+    auto* el = doc->find_element("form");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "form");
+}

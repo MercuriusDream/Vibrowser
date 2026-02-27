@@ -7945,3 +7945,77 @@ TEST_F(CSSStylesheetTest, TextTransformV20) {
         if (d.property == "text-transform") { found = true; break; }
     EXPECT_TRUE(found);
 }
+
+// Cycle 1278: CSS parser tests V21
+
+TEST_F(CSSStylesheetTest, BlockSizeV21) {
+    auto sheet = parse_stylesheet(".box { block-size: 200px; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "block-size") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, InlineSizeV21) {
+    auto sheet = parse_stylesheet(".element { inline-size: 300px; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "inline-size") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, LineClampV21) {
+    auto sheet = parse_stylesheet(".truncate { line-clamp: 3; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "line-clamp") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, PageBreakAfterV21) {
+    auto sheet = parse_stylesheet(".section { page-break-after: always; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "page-break-after") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, PageBreakBeforeV21) {
+    auto sheet = parse_stylesheet(".header { page-break-before: avoid; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "page-break-before") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, PageBreakInsideV21) {
+    auto sheet = parse_stylesheet(".table { page-break-inside: avoid; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "page-break-inside") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, QuotesV21) {
+    auto sheet = parse_stylesheet("q { quotes: '\"' '\"'; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "quotes") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, StrokeDasharrayV21) {
+    auto sheet = parse_stylesheet("path { stroke-dasharray: 5, 10; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "stroke-dasharray") { found = true; break; }
+    EXPECT_TRUE(found);
+}
