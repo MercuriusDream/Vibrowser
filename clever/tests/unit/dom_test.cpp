@@ -3329,3 +3329,47 @@ TEST(DomDocument, DocumentNodeTypeIsDocument) {
     Document doc;
     EXPECT_EQ(doc.node_type(), NodeType::Document);
 }
+
+// Cycle 780 — Text and Comment node accessor tests
+TEST(DomText, TextNodeSetDataChanges) {
+    Text t("initial");
+    t.set_data("updated");
+    EXPECT_EQ(t.data(), "updated");
+}
+
+TEST(DomText, TextNodeTextContentMatchesData) {
+    Text t("hello world");
+    EXPECT_EQ(t.text_content(), "hello world");
+}
+
+TEST(DomText, TextNodeNodeTypeIsText) {
+    Text t("abc");
+    EXPECT_EQ(t.node_type(), NodeType::Text);
+}
+
+TEST(DomText, TextNodeInitialDataEmpty) {
+    Text t("");
+    EXPECT_TRUE(t.data().empty());
+}
+
+TEST(DomText, TextNodeChildCountZero) {
+    Text t("no children");
+    EXPECT_EQ(t.child_count(), 0u);
+}
+
+TEST(DomComment, CommentNodeTypeIsCommentV2) {
+    Comment c("a comment");
+    EXPECT_EQ(c.node_type(), NodeType::Comment);
+}
+
+TEST(DomComment, CommentSetDataUpdates) {
+    Comment c("old");
+    c.set_data("new content");
+    EXPECT_EQ(c.data(), "new content");
+}
+
+TEST(DomComment, CommentTextContentIsEmpty) {
+    Comment c("ignored in layout");
+    // comment text content should be empty (not exposed to layout)
+    EXPECT_TRUE(c.text_content().empty());
+}
