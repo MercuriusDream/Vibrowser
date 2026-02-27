@@ -4206,3 +4206,61 @@ TEST_F(CSSStylesheetTest, ColumnFillDeclaration) {
         if (d.property == "column-fill") { found = true; break; }
     EXPECT_TRUE(found);
 }
+
+// Cycle 827 — counter-style descriptors, container query variants, scope rule variants
+TEST(CSSParserTest, CounterStyleSymbolsDescriptor) {
+    auto sheet = parse_stylesheet(
+        "@counter-style emoji-list { system: cyclic; symbols: '🔴' '🟡' '🟢'; suffix: ' '; }");
+    ASSERT_GE(sheet.counter_style_rules.size(), 1u);
+    EXPECT_TRUE(sheet.counter_style_rules[0].descriptors.count("symbols") > 0);
+}
+
+TEST(CSSParserTest, CounterStyleSuffixDescriptor) {
+    auto sheet = parse_stylesheet(
+        "@counter-style period-list { system: numeric; symbols: '0' '1' '2' '3' '4' '5' '6' '7' '8' '9'; suffix: '. '; }");
+    ASSERT_GE(sheet.counter_style_rules.size(), 1u);
+    EXPECT_TRUE(sheet.counter_style_rules[0].descriptors.count("suffix") > 0);
+}
+
+TEST(CSSParserTest, TwoCounterStyleRules) {
+    auto sheet = parse_stylesheet(
+        "@counter-style alpha { system: alphabetic; symbols: a b c; }"
+        "@counter-style roman { system: additive; additive-symbols: 1000 M, 500 D; }");
+    EXPECT_EQ(sheet.counter_style_rules.size(), 2u);
+}
+
+TEST(CSSParserTest, ContainerQueryMaxWidth) {
+    auto sheet = parse_stylesheet(
+        "@container card (max-width: 300px) { .label { font-size: 0.8em; } }");
+    ASSERT_EQ(sheet.container_rules.size(), 1u);
+    EXPECT_NE(sheet.container_rules[0].condition.find("300px"), std::string::npos);
+}
+
+TEST(CSSParserTest, ContainerQueryAnonymous) {
+    auto sheet = parse_stylesheet(
+        "@container (min-width: 600px) { .hero { padding: 2rem; } }");
+    ASSERT_EQ(sheet.container_rules.size(), 1u);
+    // anonymous container — name may be empty
+    EXPECT_EQ(sheet.container_rules[0].rules.size(), 1u);
+}
+
+TEST(CSSParserTest, ContainerQueryTwoRules) {
+    auto sheet = parse_stylesheet(
+        "@container main (min-width: 800px) { h1 { font-size: 2em; } }"
+        "@container sidebar (max-width: 250px) { nav { display: none; } }");
+    EXPECT_EQ(sheet.container_rules.size(), 2u);
+}
+
+TEST(CSSParserTest, ScopeRuleNoEndBoundary) {
+    auto sheet = parse_stylesheet(
+        "@scope (.article) { p { line-height: 1.6; } }");
+    ASSERT_EQ(sheet.scope_rules.size(), 1u);
+    EXPECT_NE(sheet.scope_rules[0].scope_start.find("article"), std::string::npos);
+}
+
+TEST(CSSParserTest, TwoScopeRules) {
+    auto sheet = parse_stylesheet(
+        "@scope (.card) { .title { font-weight: bold; } }"
+        "@scope (.nav) to (.footer) { a { color: white; } }");
+    EXPECT_EQ(sheet.scope_rules.size(), 2u);
+}
