@@ -3970,3 +3970,66 @@ TEST(SerializerTest, U32AndStringSequence) {
     EXPECT_EQ(d.read_u32(), uint32_t{42});
     EXPECT_EQ(d.read_string(), "hello");
 }
+
+// Cycle 933 — additional serializer: F64 math constants, mixed large sequences
+TEST(SerializerTest, F64SqrtTwoRoundTrip) {
+    Serializer s;
+    s.write_f64(1.41421356237);
+    Deserializer d(s.data());
+    EXPECT_NEAR(d.read_f64(), 1.41421356237, 1e-9);
+}
+
+TEST(SerializerTest, F64EulerNumberRoundTrip) {
+    Serializer s;
+    s.write_f64(2.71828182845);
+    Deserializer d(s.data());
+    EXPECT_NEAR(d.read_f64(), 2.71828182845, 1e-9);
+}
+
+TEST(SerializerTest, FourF64ValuesInOrder) {
+    Serializer s;
+    s.write_f64(1.0);
+    s.write_f64(2.0);
+    s.write_f64(3.0);
+    s.write_f64(4.0);
+    Deserializer d(s.data());
+    EXPECT_DOUBLE_EQ(d.read_f64(), 1.0);
+    EXPECT_DOUBLE_EQ(d.read_f64(), 2.0);
+    EXPECT_DOUBLE_EQ(d.read_f64(), 3.0);
+    EXPECT_DOUBLE_EQ(d.read_f64(), 4.0);
+}
+
+TEST(SerializerTest, StringWithBackslashPath) {
+    Serializer s;
+    s.write_string("path\\to\\file");
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "path\\to\\file");
+}
+
+TEST(SerializerTest, I64TwoHundredRoundTrip) {
+    Serializer s;
+    s.write_i64(200LL);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i64(), 200LL);
+}
+
+TEST(SerializerTest, I64BigNegativeRoundTrip) {
+    Serializer s;
+    s.write_i64(-9000000000LL);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i64(), -9000000000LL);
+}
+
+TEST(SerializerTest, U64HundredRoundTrip) {
+    Serializer s;
+    s.write_u64(100ULL);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u64(), 100ULL);
+}
+
+TEST(SerializerTest, I32PlusHundredRoundTrip) {
+    Serializer s;
+    s.write_i32(100);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i32(), 100);
+}
