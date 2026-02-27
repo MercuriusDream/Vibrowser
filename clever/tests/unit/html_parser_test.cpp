@@ -5347,3 +5347,68 @@ TEST(TreeBuilder, CiteTextParsed) {
     ASSERT_NE(el, nullptr);
     EXPECT_EQ(el->tag_name, "cite");
 }
+
+TEST(TreeBuilder, SubTagParsed) {
+    auto doc = clever::html::parse("<body><p>H<sub>2</sub>O</p></body>");
+    auto* el = doc->find_element("sub");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "sub");
+}
+
+TEST(TreeBuilder, SupTagParsed) {
+    auto doc = clever::html::parse("<body><p>E=mc<sup>2</sup></p></body>");
+    auto* el = doc->find_element("sup");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "sup");
+}
+
+TEST(TreeBuilder, SmallTagParsed) {
+    auto doc = clever::html::parse("<body><p><small>Fine print</small></p></body>");
+    auto* el = doc->find_element("small");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "small");
+}
+
+TEST(TreeBuilder, DelTagParsed) {
+    auto doc = clever::html::parse("<body><p><del>old text</del></p></body>");
+    auto* el = doc->find_element("del");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "del");
+}
+
+TEST(TreeBuilder, InsTagParsed) {
+    auto doc = clever::html::parse("<body><p><ins>new text</ins></p></body>");
+    auto* el = doc->find_element("ins");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "ins");
+}
+
+TEST(TreeBuilder, DataValueAttr) {
+    auto doc = clever::html::parse("<body><data value=\"42\">Forty-two</data></body>");
+    auto* el = doc->find_element("data");
+    ASSERT_NE(el, nullptr);
+    bool found = false;
+    for (const auto& attr : el->attributes)
+        if (attr.name == "value" && attr.value == "42") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, AbbrTitleAttr) {
+    auto doc = clever::html::parse("<body><abbr title=\"HyperText Markup Language\">HTML</abbr></body>");
+    auto* el = doc->find_element("abbr");
+    ASSERT_NE(el, nullptr);
+    bool found = false;
+    for (const auto& attr : el->attributes)
+        if (attr.name == "title") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, BdoDirAttr) {
+    auto doc = clever::html::parse("<body><bdo dir=\"rtl\">Hello</bdo></body>");
+    auto* el = doc->find_element("bdo");
+    ASSERT_NE(el, nullptr);
+    bool found = false;
+    for (const auto& attr : el->attributes)
+        if (attr.name == "dir" && attr.value == "rtl") found = true;
+    EXPECT_TRUE(found);
+}
