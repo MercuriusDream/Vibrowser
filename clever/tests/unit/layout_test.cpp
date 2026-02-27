@@ -6819,3 +6819,44 @@ TEST(LayoutNodeProps, AlignContentDefaultsZero) {
     LayoutNode n;
     EXPECT_EQ(n.align_content, 0);
 }
+
+// Cycle 820 — LayoutNode defaults: cursor, scroll-snap, text-shadow, column-rule, grid-row/column/area, column-fill
+TEST(LayoutNodeProps, CursorDefaultsZero) {
+    LayoutNode n;
+    EXPECT_EQ(n.cursor, 0);
+}
+
+TEST(LayoutNodeProps, ScrollSnapTypeDefaultsEmpty) {
+    LayoutNode n;
+    EXPECT_EQ(n.scroll_snap_type, "");
+}
+
+TEST(LayoutNodeProps, ScrollSnapAlignDefaultsEmpty) {
+    LayoutNode n;
+    EXPECT_EQ(n.scroll_snap_align, "");
+}
+
+TEST(LayoutNodeProps, TextShadowOffsetXDefaultsZero) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.text_shadow_offset_x, 0.0f);
+}
+
+TEST(LayoutNodeProps, ColumnRuleWidthDefaultsZero) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.column_rule_width, 0.0f);
+}
+
+TEST(LayoutNodeProps, GridRowDefaultsEmpty) {
+    LayoutNode n;
+    EXPECT_EQ(n.grid_row, "");
+}
+
+TEST(LayoutNodeProps, GridColumnDefaultsEmpty) {
+    LayoutNode n;
+    EXPECT_EQ(n.grid_column, "");
+}
+
+TEST(LayoutNodeProps, GridAreaDefaultsEmpty) {
+    LayoutNode n;
+    EXPECT_EQ(n.grid_area, "");
+}
