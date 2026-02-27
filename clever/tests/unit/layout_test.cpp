@@ -6618,3 +6618,44 @@ TEST(LayoutNodeProps, SvgFillNoneDefaultsFalse) {
     auto node = make_block("rect");
     EXPECT_FALSE(node->svg_fill_none);
 }
+
+// Cycle 782 — gradient, backdrop filter, and border-image field defaults
+TEST(LayoutNodeProps, GradientTypeDefaultsToZero) {
+    auto node = make_block("div");
+    EXPECT_EQ(node->gradient_type, 0);
+}
+
+TEST(LayoutNodeProps, GradientAngleDefaultsTo180) {
+    auto node = make_block("div");
+    EXPECT_FLOAT_EQ(node->gradient_angle, 180.0f);
+}
+
+TEST(LayoutNodeProps, GradientStopsDefaultsEmpty) {
+    auto node = make_block("div");
+    EXPECT_TRUE(node->gradient_stops.empty());
+}
+
+TEST(LayoutNodeProps, BackdropFiltersDefaultsEmpty) {
+    auto node = make_block("dialog");
+    EXPECT_TRUE(node->backdrop_filters.empty());
+}
+
+TEST(LayoutNodeProps, DialogModalDefaultsFalse) {
+    auto node = make_block("dialog");
+    EXPECT_FALSE(node->dialog_modal);
+}
+
+TEST(LayoutNodeProps, LightingColorDefaultsWhite) {
+    auto node = make_block("feSpecularLighting");
+    EXPECT_EQ(node->lighting_color, 0xFFFFFFFFu);
+}
+
+TEST(LayoutNodeProps, StopColorDefaultsBlack) {
+    auto node = make_block("stop");
+    EXPECT_EQ(node->stop_color, 0xFF000000u);
+}
+
+TEST(LayoutNodeProps, BorderImageSourceDefaultsEmpty) {
+    auto node = make_block("div");
+    EXPECT_TRUE(node->border_image_source.empty());
+}
