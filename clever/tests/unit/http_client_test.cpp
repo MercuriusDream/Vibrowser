@@ -3948,3 +3948,73 @@ TEST(ResponseTest, Parse431RequestHeaderFieldsTooLarge) {
     ASSERT_TRUE(resp.has_value());
     EXPECT_EQ(resp->status, 431);
 }
+
+TEST(ResponseTest, ResponseBodyContentIsCorrect) {
+    std::string raw = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nHello Test";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->body_as_string(), "Hello Test");
+}
+
+TEST(ResponseTest, ResponseBodySizeMatchesContent) {
+    std::string raw = "HTTP/1.1 200 OK\r\n\r\n12345";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->body.size(), 5u);
+}
+
+TEST(ResponseTest, ResponseHeaderContentType) {
+    std::string raw = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{}";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    auto ct = resp->headers.get("content-type");
+    ASSERT_TRUE(ct.has_value());
+    EXPECT_NE(ct->find("json"), std::string::npos);
+}
+
+TEST(ResponseTest, ResponseHeaderServerName) {
+    std::string raw = "HTTP/1.1 200 OK\r\nServer: nginx/1.18\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    auto sv = resp->headers.get("server");
+    ASSERT_TRUE(sv.has_value());
+    EXPECT_NE(sv->find("nginx"), std::string::npos);
+}
+
+TEST(ResponseTest, ResponseHeaderCacheControl) {
+    std::string raw = "HTTP/1.1 200 OK\r\nCache-Control: no-cache, no-store\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    auto cc = resp->headers.get("cache-control");
+    ASSERT_TRUE(cc.has_value());
+    EXPECT_NE(cc->find("no-cache"), std::string::npos);
+}
+
+TEST(ResponseTest, ResponseStatus200TextOK) {
+    std::string raw = "HTTP/1.1 200 OK\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status_text, "OK");
+}
+
+TEST(ResponseTest, ResponseStatus201TextCreated) {
+    std::string raw = "HTTP/1.1 201 Created\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status_text, "Created");
+}
+
+TEST(ResponseTest, ResponseBodyJsonString) {
+    std::string raw = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{\"ok\":true}";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->body_as_string(), "{\"ok\":true}");
+}
