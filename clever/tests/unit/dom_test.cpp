@@ -4620,3 +4620,55 @@ TEST(DomEventTarget, RemoveAllListenersPreventsDispatch) {
     target.dispatch_event(evt, *elem);
     EXPECT_FALSE(fired);
 }
+
+TEST(DomNode, ClearDirtyAfterMarkStyle) {
+    Element elem("div");
+    elem.mark_dirty(DirtyFlags::Style);
+    elem.clear_dirty();
+    EXPECT_EQ(elem.dirty_flags(), DirtyFlags::None);
+}
+
+TEST(DomNode, ClearDirtyAfterMarkLayout) {
+    Element elem("span");
+    elem.mark_dirty(DirtyFlags::Layout);
+    elem.clear_dirty();
+    EXPECT_EQ(elem.dirty_flags(), DirtyFlags::None);
+}
+
+TEST(DomNode, ClearDirtyAfterMarkPaint) {
+    Element elem("p");
+    elem.mark_dirty(DirtyFlags::Paint);
+    elem.clear_dirty();
+    EXPECT_EQ(elem.dirty_flags(), DirtyFlags::None);
+}
+
+TEST(DomNode, DirtyNoneInitially) {
+    Element elem("div");
+    EXPECT_EQ(elem.dirty_flags(), DirtyFlags::None);
+}
+
+TEST(DomNode, MarkDirtyStyleOnlyStyle) {
+    Element elem("div");
+    elem.mark_dirty(DirtyFlags::Style);
+    EXPECT_NE(elem.dirty_flags() & DirtyFlags::Style, DirtyFlags::None);
+    EXPECT_EQ(elem.dirty_flags() & DirtyFlags::Layout, DirtyFlags::None);
+}
+
+TEST(DomNode, MarkDirtyPaintOnlyPaint) {
+    Element elem("div");
+    elem.mark_dirty(DirtyFlags::Paint);
+    EXPECT_NE(elem.dirty_flags() & DirtyFlags::Paint, DirtyFlags::None);
+    EXPECT_EQ(elem.dirty_flags() & DirtyFlags::Style, DirtyFlags::None);
+}
+
+TEST(DomNode, DirtyAllContainsLayout) {
+    Element elem("div");
+    elem.mark_dirty(DirtyFlags::All);
+    EXPECT_NE(elem.dirty_flags() & DirtyFlags::Layout, DirtyFlags::None);
+}
+
+TEST(DomNode, DirtyAllContainsStyle) {
+    Element elem("div");
+    elem.mark_dirty(DirtyFlags::All);
+    EXPECT_NE(elem.dirty_flags() & DirtyFlags::Style, DirtyFlags::None);
+}
