@@ -2064,3 +2064,53 @@ TEST(URLParser, HttpsDefaultPort443) {
         EXPECT_EQ(result->port.value(), 443u);
     }
 }
+
+// Cycle 759 — URL special schemes and edge cases
+TEST(URLParser, JavascriptScheme) {
+    auto result = parse("javascript:void(0)");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "javascript");
+}
+
+TEST(URLParser, MailtoScheme) {
+    auto result = parse("mailto:user@example.com");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "mailto");
+}
+
+TEST(URLParser, TelScheme) {
+    auto result = parse("tel:+1-555-1234");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "tel");
+}
+
+TEST(URLParser, AboutBlankScheme) {
+    auto result = parse("about:blank");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "about");
+}
+
+TEST(URLParser, PercentEncodedPathSegment) {
+    auto result = parse("https://example.com/path%20with%20spaces");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_NE(result->path.find("path"), std::string::npos);
+}
+
+TEST(URLParser, QueryStringMultipleAmpersands) {
+    auto result = parse("https://example.com/?a=1&b=2&c=3&d=4");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_NE(result->query.find("a=1"), std::string::npos);
+    EXPECT_NE(result->query.find("d=4"), std::string::npos);
+}
+
+TEST(URLParser, FragmentWithSlash) {
+    auto result = parse("https://example.com/page#section/one");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_NE(result->fragment.find("section"), std::string::npos);
+}
+
+TEST(URLParser, PathWithMultipleDots) {
+    auto result = parse("https://example.com/a/b/../c");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_FALSE(result->path.empty());
+}
