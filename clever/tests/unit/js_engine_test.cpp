@@ -14860,3 +14860,57 @@ TEST(JSEngine, NumberIsFiniteTrue) {
     auto result = engine.evaluate("Number.isFinite(3.14)");
     EXPECT_EQ(result, "true");
 }
+
+TEST(JSEngine, DestructuringArrayFirst) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("const [a, b] = [10, 20]; a");
+    EXPECT_EQ(result, "10");
+}
+
+TEST(JSEngine, DestructuringObjectProp) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("const {x, y} = {x: 3, y: 7}; x + y");
+    EXPECT_EQ(result, "10");
+}
+
+TEST(JSEngine, SpreadOperatorArray) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("[...[1,2], ...[3,4]].length");
+    EXPECT_EQ(result, "4");
+}
+
+TEST(JSEngine, RestParameterLength) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("function f(...args) { return args.length; } f(1,2,3)");
+    EXPECT_EQ(result, "3");
+}
+
+TEST(JSEngine, TemplateLiteralBasic) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("const name = 'World'; `Hello ${name}`");
+    EXPECT_EQ(result, "Hello World");
+}
+
+TEST(JSEngine, DefaultParameterGuestFallback) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("function greet(name = 'Guest') { return name; } greet()");
+    EXPECT_EQ(result, "Guest");
+}
+
+TEST(JSEngine, ArrowFunctionImplicitReturn) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("const double = x => x * 2; double(7)");
+    EXPECT_EQ(result, "14");
+}
+
+TEST(JSEngine, ClassInstanceMethod) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        class Animal {
+            constructor(name) { this.name = name; }
+            speak() { return this.name + ' speaks'; }
+        }
+        new Animal('Dog').speak()
+    )");
+    EXPECT_EQ(result, "Dog speaks");
+}
