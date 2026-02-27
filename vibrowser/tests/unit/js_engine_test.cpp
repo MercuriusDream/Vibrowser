@@ -23483,3 +23483,91 @@ TEST(JSEngineTest, CommaOperatorReturnsLastExpressionV73) {
     EXPECT_TRUE(result.success) << engine.last_error();
     EXPECT_EQ(result.value, "3|5|21");
 }
+
+TEST(JSEngineTest, LogicalAndShortCircuitSkipsRightSideEffectsV74) {
+    clever::js::JSEngine engine;
+    const std::string js = R"(
+        var sideEffects = 0;
+        var value = 0 && (sideEffects += 1);
+        [String(value), sideEffects.toString()].join('|')
+    )";
+    auto result = EvalResultV66{false, ""};
+    result.value = engine.evaluate(js);
+    result.success = !engine.has_error();
+    EXPECT_TRUE(result.success) << engine.last_error();
+    EXPECT_EQ(result.value, "0|0");
+}
+
+TEST(JSEngineTest, LogicalOrShortCircuitSkipsRightSideEffectsV74) {
+    clever::js::JSEngine engine;
+    const std::string js = R"(
+        var sideEffects = 0;
+        var value = 'left' || (sideEffects += 1);
+        [value, sideEffects.toString()].join('|')
+    )";
+    auto result = EvalResultV66{false, ""};
+    result.value = engine.evaluate(js);
+    result.success = !engine.has_error();
+    EXPECT_TRUE(result.success) << engine.last_error();
+    EXPECT_EQ(result.value, "left|0");
+}
+
+TEST(JSEngineTest, BitwiseAndOperatorCombinesBitsV74) {
+    clever::js::JSEngine engine;
+    const std::string js = "(6 & 3).toString()";
+    auto result = EvalResultV66{false, ""};
+    result.value = engine.evaluate(js);
+    result.success = !engine.has_error();
+    EXPECT_TRUE(result.success) << engine.last_error();
+    EXPECT_EQ(result.value, "2");
+}
+
+TEST(JSEngineTest, BitwiseOrOperatorCombinesBitsV74) {
+    clever::js::JSEngine engine;
+    const std::string js = "(6 | 3).toString()";
+    auto result = EvalResultV66{false, ""};
+    result.value = engine.evaluate(js);
+    result.success = !engine.has_error();
+    EXPECT_TRUE(result.success) << engine.last_error();
+    EXPECT_EQ(result.value, "7");
+}
+
+TEST(JSEngineTest, BitwiseXorOperatorCombinesBitsV74) {
+    clever::js::JSEngine engine;
+    const std::string js = "(6 ^ 3).toString()";
+    auto result = EvalResultV66{false, ""};
+    result.value = engine.evaluate(js);
+    result.success = !engine.has_error();
+    EXPECT_TRUE(result.success) << engine.last_error();
+    EXPECT_EQ(result.value, "5");
+}
+
+TEST(JSEngineTest, LeftShiftOperatorShiftsBitsLeftV74) {
+    clever::js::JSEngine engine;
+    const std::string js = "(5 << 2).toString()";
+    auto result = EvalResultV66{false, ""};
+    result.value = engine.evaluate(js);
+    result.success = !engine.has_error();
+    EXPECT_TRUE(result.success) << engine.last_error();
+    EXPECT_EQ(result.value, "20");
+}
+
+TEST(JSEngineTest, RightShiftOperatorShiftsBitsRightV74) {
+    clever::js::JSEngine engine;
+    const std::string js = "(-8 >> 2).toString()";
+    auto result = EvalResultV66{false, ""};
+    result.value = engine.evaluate(js);
+    result.success = !engine.has_error();
+    EXPECT_TRUE(result.success) << engine.last_error();
+    EXPECT_EQ(result.value, "-2");
+}
+
+TEST(JSEngineTest, UnsignedRightShiftOperatorShiftsBitsRightV74) {
+    clever::js::JSEngine engine;
+    const std::string js = "(-1 >>> 1).toString()";
+    auto result = EvalResultV66{false, ""};
+    result.value = engine.evaluate(js);
+    result.success = !engine.has_error();
+    EXPECT_TRUE(result.success) << engine.last_error();
+    EXPECT_EQ(result.value, "2147483647");
+}

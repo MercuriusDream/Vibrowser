@@ -11703,3 +11703,97 @@ TEST(HTMLParserTest, ImgAltAttributeV73) {
     EXPECT_EQ(get_attr_v63(img, "src"), "photo.jpg");
     EXPECT_EQ(get_attr_v63(img, "alt"), "profile image");
 }
+
+TEST(HTMLParserTest, VideoElementWithSrcAttributeV74) {
+    auto doc = clever::html::parse("<body><video src='movie.mp4'></video></body>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* video = doc->find_element("video");
+    ASSERT_NE(video, nullptr);
+    EXPECT_EQ(video->tag_name, "video");
+    EXPECT_EQ(get_attr_v63(video, "src"), "movie.mp4");
+}
+
+TEST(HTMLParserTest, AudioElementWithControlsAttributeV74) {
+    auto doc = clever::html::parse("<body><audio controls></audio></body>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* audio = doc->find_element("audio");
+    ASSERT_NE(audio, nullptr);
+    EXPECT_EQ(audio->tag_name, "audio");
+    EXPECT_EQ(get_attr_v63(audio, "controls"), "");
+}
+
+TEST(HTMLParserTest, CanvasElementDimensionsV74) {
+    auto doc = clever::html::parse("<body><canvas width='640' height='360'></canvas></body>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* canvas = doc->find_element("canvas");
+    ASSERT_NE(canvas, nullptr);
+    EXPECT_EQ(canvas->tag_name, "canvas");
+    EXPECT_EQ(get_attr_v63(canvas, "width"), "640");
+    EXPECT_EQ(get_attr_v63(canvas, "height"), "360");
+}
+
+TEST(HTMLParserTest, IframeElementSrcAttributeV74) {
+    auto doc = clever::html::parse("<body><iframe src='https://example.com/embed'></iframe></body>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* iframe = doc->find_element("iframe");
+    ASSERT_NE(iframe, nullptr);
+    EXPECT_EQ(iframe->tag_name, "iframe");
+    EXPECT_EQ(get_attr_v63(iframe, "src"), "https://example.com/embed");
+}
+
+TEST(HTMLParserTest, EmbedElementTypeAttributeV74) {
+    auto doc = clever::html::parse("<body><embed type='application/pdf'></body>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* embed = doc->find_element("embed");
+    ASSERT_NE(embed, nullptr);
+    EXPECT_EQ(embed->tag_name, "embed");
+    EXPECT_EQ(get_attr_v63(embed, "type"), "application/pdf");
+}
+
+TEST(HTMLParserTest, ObjectElementDataAttributeV74) {
+    auto doc = clever::html::parse("<body><object data='movie.swf'></object></body>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* object = doc->find_element("object");
+    ASSERT_NE(object, nullptr);
+    EXPECT_EQ(object->tag_name, "object");
+    EXPECT_EQ(get_attr_v63(object, "data"), "movie.swf");
+}
+
+TEST(HTMLParserTest, SourceElementWithinVideoV74) {
+    auto doc = clever::html::parse(
+        "<body><video><source src='movie.webm' type='video/webm'></video></body>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* video = doc->find_element("video");
+    auto* source = doc->find_element("source");
+    ASSERT_NE(video, nullptr);
+    ASSERT_NE(source, nullptr);
+    EXPECT_EQ(video->tag_name, "video");
+    EXPECT_EQ(source->tag_name, "source");
+    EXPECT_EQ(source->parent, video);
+    EXPECT_EQ(get_attr_v63(source, "src"), "movie.webm");
+    EXPECT_EQ(get_attr_v63(source, "type"), "video/webm");
+}
+
+TEST(HTMLParserTest, TrackElementWithinVideoV74) {
+    auto doc = clever::html::parse(
+        "<body><video><track kind='captions' src='captions.vtt' srclang='en'></video></body>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* video = doc->find_element("video");
+    auto* track = doc->find_element("track");
+    ASSERT_NE(video, nullptr);
+    ASSERT_NE(track, nullptr);
+    EXPECT_EQ(video->tag_name, "video");
+    EXPECT_EQ(track->tag_name, "track");
+    EXPECT_EQ(track->parent, video);
+    EXPECT_EQ(get_attr_v63(track, "kind"), "captions");
+    EXPECT_EQ(get_attr_v63(track, "src"), "captions.vtt");
+    EXPECT_EQ(get_attr_v63(track, "srclang"), "en");
+}

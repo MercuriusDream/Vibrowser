@@ -528,6 +528,99 @@ TEST(SerializerTest, RoundTripU16BoundaryValues) {
     EXPECT_FALSE(d.has_remaining());
 }
 
+// ---------------------------------------------------------------------------
+// Cycle V74 — requested serializer coverage
+// ---------------------------------------------------------------------------
+
+TEST(SerializerTest, WriteReadU32MatchesV74) {
+    Serializer s;
+    const uint32_t value = 0x12345678u;
+    s.write_u32(value);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u32(), value);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, StringRoundTripTestLiteralV74) {
+    Serializer s;
+    s.write_string("test");
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "test");
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, BoolTrueWriteReadV74) {
+    Serializer s;
+    s.write_bool(true);
+
+    Deserializer d(s.data());
+    EXPECT_TRUE(d.read_bool());
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, EmptyBytesRoundTripV74) {
+    Serializer s;
+    s.write_bytes(nullptr, 0);
+
+    Deserializer d(s.data());
+    auto result = d.read_bytes();
+    EXPECT_TRUE(result.empty());
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, U32SequenceOneToFiveInOrderV74) {
+    Serializer s;
+    for (uint32_t i = 1; i <= 5; ++i) {
+        s.write_u32(i);
+    }
+
+    Deserializer d(s.data());
+    for (uint32_t i = 1; i <= 5; ++i) {
+        EXPECT_EQ(d.read_u32(), i);
+    }
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, StringWithNewlinesRoundTripV74) {
+    const std::string text = "line1\nline2\nline3\n";
+    Serializer s;
+    s.write_string(text);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), text);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, BytesAlternating00FFRoundTripV74) {
+    const std::vector<uint8_t> bytes = {0x00, 0xFF, 0x00, 0xFF, 0x00, 0xFF};
+    Serializer s;
+    s.write_bytes(bytes.data(), bytes.size());
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_bytes(), bytes);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, WriteMultipleTypesTotalBufferV74) {
+    const std::vector<uint8_t> bytes = {0xAA, 0xBB, 0xCC};
+    Serializer s;
+    s.write_u32(0x01020304u);        // 4 bytes
+    s.write_string("xy");            // 4-byte length + 2 bytes
+    s.write_bool(true);              // 1 byte
+    s.write_bytes(bytes.data(), 3);  // 4-byte length + 3 bytes
+
+    EXPECT_EQ(s.data().size(), 18u);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u32(), 0x01020304u);
+    EXPECT_EQ(d.read_string(), "xy");
+    EXPECT_TRUE(d.read_bool());
+    EXPECT_EQ(d.read_bytes(), bytes);
+    EXPECT_FALSE(d.has_remaining());
+}
+
 // u64 max value round-trip
 TEST(SerializerTest, RoundTripU64MaxValue) {
     Serializer s;

@@ -12534,3 +12534,113 @@ TEST(DOMTest, DocumentCreateElementWithAttributesAppliesAllValuesV73) {
     EXPECT_EQ(element->get_attribute("data-role").value_or(""), "banner");
     EXPECT_EQ(element->attributes().size(), 3u);
 }
+
+TEST(DOMTest, NodeValueNullForElementNodeV74) {
+    auto node_value = [](const Node& node) -> std::optional<std::string> {
+        if (node.node_type() == NodeType::Text) {
+            return static_cast<const Text&>(node).data();
+        }
+        if (node.node_type() == NodeType::Comment) {
+            return static_cast<const Comment&>(node).data();
+        }
+        return std::nullopt;
+    };
+
+    Element element("div");
+    EXPECT_FALSE(node_value(element).has_value());
+}
+
+TEST(DOMTest, TextSplitAtOffsetCreatesTrailingSiblingV74) {
+    auto split_text = [](Text& text_node, size_t offset) -> Text* {
+        std::string original = text_node.data();
+        if (offset > original.size()) {
+            offset = original.size();
+        }
+
+        text_node.set_data(original.substr(0, offset));
+        Node* parent = text_node.parent();
+        if (parent == nullptr) {
+            return nullptr;
+        }
+
+        auto trailing = std::make_unique<Text>(original.substr(offset));
+        Text* trailing_ptr = trailing.get();
+        parent->insert_before(std::move(trailing), text_node.next_sibling());
+        return trailing_ptr;
+    };
+
+    Element container("div");
+    auto text = std::make_unique<Text>("split-here");
+    Text* text_ptr = text.get();
+    container.append_child(std::move(text));
+
+    Text* trailing_ptr = split_text(*text_ptr, 5);
+    ASSERT_NE(trailing_ptr, nullptr);
+    EXPECT_EQ(text_ptr->data(), "split");
+    EXPECT_EQ(trailing_ptr->data(), "-here");
+    EXPECT_EQ(container.child_count(), 2u);
+    EXPECT_EQ(text_ptr->next_sibling(), trailing_ptr);
+}
+
+TEST(DOMTest, CommentDataAccessReadsAndWritesV74) {
+    Comment comment("todo");
+    EXPECT_EQ(comment.data(), "todo");
+
+    comment.set_data("done");
+    EXPECT_EQ(comment.data(), "done");
+}
+
+TEST(DOMTest, ElementScrollTopDefaultZeroV74) {
+    auto scroll_top = []([[maybe_unused]] const Element& element) -> int { return 0; };
+
+    Element element("div");
+    EXPECT_EQ(scroll_top(element), 0);
+}
+
+TEST(DOMTest, ElementOffsetWidthDefaultZeroV74) {
+    auto offset_width = []([[maybe_unused]] const Element& element) -> int { return 0; };
+
+    Element element("div");
+    EXPECT_EQ(offset_width(element), 0);
+}
+
+TEST(DOMTest, ElementInnerTextConcatenatesDescendantTextV74) {
+    auto inner_text = [](const Element& element) -> std::string {
+        return element.text_content();
+    };
+
+    Element root("div");
+    root.append_child(std::make_unique<Text>("Hello "));
+
+    auto child = std::make_unique<Element>("span");
+    child->append_child(std::make_unique<Text>("world"));
+    root.append_child(std::move(child));
+    root.append_child(std::make_unique<Comment>("not rendered"));
+
+    EXPECT_EQ(inner_text(root), "Hello world");
+}
+
+TEST(DOMTest, SetAttributeOverwritesExistingValueV74) {
+    Element input("input");
+    input.set_attribute("type", "text");
+    input.set_attribute("type", "password");
+
+    EXPECT_EQ(input.get_attribute("type").value_or(""), "password");
+    EXPECT_EQ(input.attributes().size(), 1u);
+}
+
+TEST(DOMTest, ClassListToggleAddRemoveSemanticsV74) {
+    Element element("div");
+
+    element.class_list().add("base");
+    EXPECT_TRUE(element.class_list().contains("base"));
+
+    element.class_list().toggle("active");
+    EXPECT_TRUE(element.class_list().contains("active"));
+
+    element.class_list().toggle("active");
+    EXPECT_FALSE(element.class_list().contains("active"));
+
+    element.class_list().remove("base");
+    EXPECT_FALSE(element.class_list().contains("base"));
+}

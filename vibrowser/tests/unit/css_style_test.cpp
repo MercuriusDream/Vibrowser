@@ -13983,3 +13983,131 @@ TEST(PropertyCascadeTest, ResolverBorderWidth1pxAllSidesV73) {
     EXPECT_FLOAT_EQ(style.border_bottom.width.to_px(), 1.0f);
     EXPECT_FLOAT_EQ(style.border_left.width.to_px(), 1.0f);
 }
+
+TEST(PropertyCascadeTest, ResolverColorGreenNamedV74) {
+    const std::string css = "div { color: green; }";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.color, (Color{0, 128, 0, 255}));
+}
+
+TEST(PropertyCascadeTest, ResolverFontSize18pxV74) {
+    const std::string css = "div { font-size: 18px; }";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_FLOAT_EQ(style.font_size.to_px(), 18.0f);
+}
+
+TEST(PropertyCascadeTest, ResolverDisplayFlexV74) {
+    const std::string css = "div { display: flex; }";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.display, Display::Flex);
+}
+
+TEST(PropertyCascadeTest, ResolverPositionRelativeV74) {
+    const std::string css = "div { position: relative; }";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.position, Position::Relative);
+}
+
+TEST(PropertyCascadeTest, ResolverMarginLeft10pxV74) {
+    const std::string css = "div { margin-left: 10px; }";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_FLOAT_EQ(style.margin.left.to_px(), 10.0f);
+}
+
+TEST(PropertyCascadeTest, ResolverPaddingRight5pxV74) {
+    const std::string css = "div { padding-right: 5px; }";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_FLOAT_EQ(style.padding.right.to_px(), 5.0f);
+}
+
+TEST(PropertyCascadeTest, ResolverBorderRadius3pxV74) {
+    const std::string css = "div { border-radius: 3px; }";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_FLOAT_EQ(style.border_radius, 3.0f);
+}
+
+TEST(PropertyCascadeTest, ResolverLineHeight15emV74) {
+    const std::string css = "p { line-height: 1.5em; }";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "p";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_FLOAT_EQ(style.line_height.value, 24.0f);
+}

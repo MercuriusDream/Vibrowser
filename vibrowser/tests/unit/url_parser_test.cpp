@@ -9327,3 +9327,114 @@ TEST(URLParserTest, TrailingHashPreservedV73) {
     EXPECT_EQ(result->path, "/path");
     EXPECT_TRUE(result->fragment.empty());
 }
+
+TEST(URLParserTest, SchemeExtractionHttpsV74) {
+    auto result = clever::url::parse("https://example.com/page");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+}
+
+TEST(URLParserTest, HostExtractionExampleComV74) {
+    auto result = clever::url::parse("https://example.com/page");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->host, "example.com");
+}
+
+TEST(URLParserTest, PathExtractionPageV74) {
+    auto result = clever::url::parse("https://example.com/page");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->path, "/page");
+}
+
+TEST(URLParserTest, QueryExtractionKeyValueV74) {
+    auto result = clever::url::parse("https://example.com/page?key=value");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->query, "key=value");
+}
+
+TEST(URLParserTest, FragmentExtractionSectionV74) {
+    auto result = clever::url::parse("https://example.com/page#section");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->fragment, "section");
+}
+
+TEST(URLParserTest, PortExtraction9090V74) {
+    auto result = clever::url::parse("https://example.com:9090/page");
+    ASSERT_TRUE(result.has_value());
+    ASSERT_TRUE(result->port.has_value());
+    EXPECT_EQ(result->port.value(), 9090);
+}
+
+TEST(URLParserTest, UrlWithoutPathDefaultsToSlashV74) {
+    auto result = clever::url::parse("https://example.com?key=value");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->path, "/");
+    EXPECT_EQ(result->query, "key=value");
+}
+
+TEST(URLParserTest, UrlWithOnlyHostRequiresSlashSlashV74) {
+    auto valid = clever::url::parse("https://example.com");
+    ASSERT_TRUE(valid.has_value());
+    EXPECT_EQ(valid->host, "example.com");
+    EXPECT_EQ(valid->path, "/");
+
+    auto invalid = clever::url::parse("https:example.com");
+    EXPECT_FALSE(invalid.has_value());
+}
+
+TEST(URLParserTest, UrlWithEncodedQuestionMarkInPathV74) {
+    auto result = clever::url::parse("https://example.com/search%3Fterm");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->path, "/search%253Fterm");
+}
+
+TEST(URLParserTest, UrlSpecialCharsInFragmentV74) {
+    auto result = clever::url::parse("https://example.com/page#sec%20tion");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->fragment, "sec%2520tion");
+}
+
+TEST(URLParserTest, HttpSchemeRecognizedV74) {
+    auto valid = clever::url::parse("http://example.com/page");
+    ASSERT_TRUE(valid.has_value());
+    EXPECT_EQ(valid->scheme, "http");
+
+    auto invalid = clever::url::parse("http:example.com/page");
+    EXPECT_FALSE(invalid.has_value());
+}
+
+TEST(URLParserTest, FtpSchemeRecognizedV74) {
+    auto valid = clever::url::parse("ftp://example.com/resource");
+    ASSERT_TRUE(valid.has_value());
+    EXPECT_EQ(valid->scheme, "ftp");
+    EXPECT_EQ(valid->host, "example.com");
+
+    auto invalid = clever::url::parse("ftp:example.com/resource");
+    EXPECT_FALSE(invalid.has_value());
+}
+
+TEST(URLParserTest, DataUriBasicV74) {
+    auto result = clever::url::parse("data:text/plain,hello");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "data");
+    EXPECT_TRUE(result->host.empty());
+    EXPECT_EQ(result->path, "text/plain,hello");
+}
+
+TEST(URLParserTest, PathTrailingSlashV74) {
+    auto result = clever::url::parse("https://example.com/page/");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->path, "/page/");
+}
+
+TEST(URLParserTest, HostCaseInsensitiveV74) {
+    auto result = clever::url::parse("https://ExAmPlE.CoM/page");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->host, "example.com");
+}
+
+TEST(URLParserTest, UrlWithDoubleSlashInPathV74) {
+    auto result = clever::url::parse("https://example.com//double//slash");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->path, "//double//slash");
+}
