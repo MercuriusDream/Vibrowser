@@ -3154,3 +3154,66 @@ TEST(TreeBuilder, ProgressElementIsParsed) {
     ASSERT_NE(progress, nullptr);
     EXPECT_EQ(progress->tag_name, "progress");
 }
+
+TEST(TreeBuilder, TableHeaderCellIsParsed) {
+    auto doc = clever::html::parse("<table><tr><th>Header</th><td>Data</td></tr></table>");
+    auto* th = doc->find_element("th");
+    ASSERT_NE(th, nullptr);
+    EXPECT_EQ(th->tag_name, "th");
+}
+
+TEST(TreeBuilder, TableBodyCaptionParsed) {
+    auto doc = clever::html::parse("<table><caption>My Table</caption><tr><td>cell</td></tr></table>");
+    auto* caption = doc->find_element("caption");
+    ASSERT_NE(caption, nullptr);
+    EXPECT_EQ(caption->tag_name, "caption");
+}
+
+TEST(TreeBuilder, NestedUnorderedList) {
+    auto doc = clever::html::parse("<ul><li>Item 1<ul><li>Sub-item</li></ul></li></ul>");
+    auto all_ul = doc->find_all_elements("ul");
+    EXPECT_GE(all_ul.size(), 2u);
+}
+
+TEST(TreeBuilder, DefinitionListIsParsed) {
+    auto doc = clever::html::parse("<dl><dt>Term</dt><dd>Definition</dd></dl>");
+    auto* dl = doc->find_element("dl");
+    ASSERT_NE(dl, nullptr);
+    auto* dt = doc->find_element("dt");
+    ASSERT_NE(dt, nullptr);
+    auto* dd = doc->find_element("dd");
+    ASSERT_NE(dd, nullptr);
+}
+
+TEST(TreeBuilder, CustomDataAttributeParsed) {
+    auto doc = clever::html::parse(R"(<span data-user-id="42" data-role="admin">text</span>)");
+    auto* span = doc->find_element("span");
+    ASSERT_NE(span, nullptr);
+    bool has_user_id = false, has_role = false;
+    for (const auto& attr : span->attributes) {
+        if (attr.name == "data-user-id") has_user_id = true;
+        if (attr.name == "data-role") has_role = true;
+    }
+    EXPECT_TRUE(has_user_id && has_role);
+}
+
+TEST(TreeBuilder, MeterElementIsParsed) {
+    auto doc = clever::html::parse(R"(<meter value="6" min="0" max="10">6 out of 10</meter>)");
+    auto* meter = doc->find_element("meter");
+    ASSERT_NE(meter, nullptr);
+    EXPECT_EQ(meter->tag_name, "meter");
+}
+
+TEST(TreeBuilder, OutputElementIsParsed) {
+    auto doc = clever::html::parse(R"(<output for="a b" name="result">0</output>)");
+    auto* output = doc->find_element("output");
+    ASSERT_NE(output, nullptr);
+    EXPECT_EQ(output->tag_name, "output");
+}
+
+TEST(TreeBuilder, WbrElementIsParsed) {
+    auto doc = clever::html::parse("<p>Very<wbr>LongWord</p>");
+    auto* wbr = doc->find_element("wbr");
+    ASSERT_NE(wbr, nullptr);
+    EXPECT_EQ(wbr->tag_name, "wbr");
+}
