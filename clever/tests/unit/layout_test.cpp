@@ -6399,3 +6399,51 @@ TEST(LayoutNodeProps, PointerEventsDefaultsToZero) {
     auto node = make_block("div");
     EXPECT_EQ(node->pointer_events, 0);
 }
+
+// Layout: svg_type defaults to 0 (none)
+TEST(LayoutNodeProps, SvgTypeDefaultsToZero) {
+    auto node = make_block("div");
+    EXPECT_EQ(node->svg_type, 0);
+}
+
+// Layout: svg_has_viewbox defaults to false
+TEST(LayoutNodeProps, SvgHasViewboxDefaultsFalse) {
+    auto node = make_block("svg");
+    EXPECT_FALSE(node->svg_has_viewbox);
+}
+
+// Layout: svg_viewbox_x defaults to 0
+TEST(LayoutNodeProps, SvgViewboxXDefaultsToZero) {
+    auto node = make_block("svg");
+    EXPECT_FLOAT_EQ(node->svg_viewbox_x, 0.0f);
+}
+
+// Layout: svg_viewbox_w defaults to 0
+TEST(LayoutNodeProps, SvgViewboxWDefaultsToZero) {
+    auto node = make_block("svg");
+    EXPECT_FLOAT_EQ(node->svg_viewbox_w, 0.0f);
+}
+
+// Layout: svg_fill_color defaults to black (0xFF000000)
+TEST(LayoutNodeProps, SvgFillColorDefaultsBlack) {
+    auto node = make_block("rect");
+    EXPECT_EQ(node->svg_fill_color, 0xFF000000u);
+}
+
+// Layout: svg_stroke_color defaults to black (0xFF000000)
+TEST(LayoutNodeProps, SvgStrokeColorDefaultsBlack) {
+    auto node = make_block("circle");
+    EXPECT_EQ(node->svg_stroke_color, 0xFF000000u);
+}
+
+// Layout: grid_template_rows defaults to empty
+TEST(LayoutNodeProps, GridTemplateRowsDefaultsEmpty) {
+    auto node = make_block("div");
+    EXPECT_TRUE(node->grid_template_rows.empty());
+}
+
+// Layout: column_count defaults to -1 (auto)
+TEST(LayoutNodeProps, ColumnCountDefaultsNegativeOne) {
+    auto node = make_block("div");
+    EXPECT_EQ(node->column_count, -1);
+}
