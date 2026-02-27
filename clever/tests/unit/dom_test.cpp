@@ -3923,3 +3923,80 @@ TEST(DomDispatchTree, CancelablePreservedAfterDispatch) {
     dispatch_event_to_tree(event, elem);
     EXPECT_TRUE(event.cancelable());
 }
+
+// Cycle 859 — DomNode traversal edge cases
+TEST(DomNode, ForEachChildCountsAllChildren) {
+    Element parent("ul");
+    parent.append_child(std::make_unique<Element>("li"));
+    parent.append_child(std::make_unique<Element>("li"));
+    parent.append_child(std::make_unique<Element>("li"));
+    int count = 0;
+    parent.for_each_child([&](const Node&) { ++count; });
+    EXPECT_EQ(count, 3);
+}
+
+TEST(DomNode, ForEachChildEmptyNeverCalled) {
+    Element elem("div");
+    int count = 0;
+    elem.for_each_child([&](const Node&) { ++count; });
+    EXPECT_EQ(count, 0);
+}
+
+TEST(DomNode, FirstChildPrevSiblingIsNull) {
+    Element parent("div");
+    auto child_ptr = std::make_unique<Element>("span");
+    parent.append_child(std::move(child_ptr));
+    EXPECT_EQ(parent.first_child()->previous_sibling(), nullptr);
+}
+
+TEST(DomNode, LastChildNextSiblingIsNull) {
+    Element parent("div");
+    parent.append_child(std::make_unique<Element>("span"));
+    parent.append_child(std::make_unique<Element>("p"));
+    EXPECT_EQ(parent.last_child()->next_sibling(), nullptr);
+}
+
+TEST(DomNode, TraverseAllChildrenViaNextSibling) {
+    Element parent("ol");
+    parent.append_child(std::make_unique<Element>("li"));
+    parent.append_child(std::make_unique<Element>("li"));
+    parent.append_child(std::make_unique<Element>("li"));
+    int count = 0;
+    for (Node* n = parent.first_child(); n != nullptr; n = n->next_sibling()) {
+        ++count;
+    }
+    EXPECT_EQ(count, 3);
+}
+
+TEST(DomNode, TraverseBackwardsViaPreviousSibling) {
+    Element parent("nav");
+    parent.append_child(std::make_unique<Element>("a"));
+    parent.append_child(std::make_unique<Element>("a"));
+    parent.append_child(std::make_unique<Element>("a"));
+    int count = 0;
+    for (Node* n = parent.last_child(); n != nullptr; n = n->previous_sibling()) {
+        ++count;
+    }
+    EXPECT_EQ(count, 3);
+}
+
+TEST(DomNode, ChildCountAfterRemoveIsOne) {
+    Element parent("div");
+    auto child1_ptr = std::make_unique<Element>("span");
+    Element* child1_raw = child1_ptr.get();
+    parent.append_child(std::make_unique<Element>("p"));
+    parent.append_child(std::move(child1_ptr));
+    EXPECT_EQ(parent.child_count(), 2u);
+    parent.remove_child(*child1_raw);
+    EXPECT_EQ(parent.child_count(), 1u);
+}
+
+TEST(DomNode, TextNodeSiblingOfElement) {
+    Element parent("p");
+    auto text = std::make_unique<Text>("Hello");
+    Text* text_ptr = text.get();
+    parent.append_child(std::make_unique<Element>("em"));
+    parent.append_child(std::move(text));
+    EXPECT_EQ(parent.child_count(), 2u);
+    EXPECT_EQ(parent.last_child(), text_ptr);
+}
