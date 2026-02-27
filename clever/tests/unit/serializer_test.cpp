@@ -3661,3 +3661,91 @@ TEST(SerializerTest, F64SpecialNegativeValue) {
     Deserializer d(s.data());
     EXPECT_NEAR(d.read_f64(), -999.999, 1e-6);
 }
+
+// Cycle 897 — IPC serializer varied patterns
+
+TEST(SerializerTest, AlternatingI32AndU64) {
+    Serializer s;
+    s.write_i32(-100);
+    s.write_u64(999999999999ULL);
+    s.write_i32(200);
+    s.write_u64(1ULL);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i32(), -100);
+    EXPECT_EQ(d.read_u64(), 999999999999ULL);
+    EXPECT_EQ(d.read_i32(), 200);
+    EXPECT_EQ(d.read_u64(), 1ULL);
+}
+
+TEST(SerializerTest, BoolStringBoolSequence) {
+    Serializer s;
+    s.write_bool(true);
+    s.write_string("middle");
+    s.write_bool(false);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_bool(), true);
+    EXPECT_EQ(d.read_string(), "middle");
+    EXPECT_EQ(d.read_bool(), false);
+}
+
+TEST(SerializerTest, TenBoolAlternating) {
+    Serializer s;
+    for (int i = 0; i < 10; i++) {
+        s.write_bool(i % 2 == 0);
+    }
+    Deserializer d(s.data());
+    for (int i = 0; i < 10; i++) {
+        EXPECT_EQ(d.read_bool(), i % 2 == 0);
+    }
+}
+
+TEST(SerializerTest, SingleCharString) {
+    Serializer s;
+    s.write_string("x");
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "x");
+}
+
+TEST(SerializerTest, I64ThenU32ThenString) {
+    Serializer s;
+    s.write_i64(-9999999999LL);
+    s.write_u32(42);
+    s.write_string("result");
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i64(), -9999999999LL);
+    EXPECT_EQ(d.read_u32(), 42u);
+    EXPECT_EQ(d.read_string(), "result");
+}
+
+TEST(SerializerTest, I32MaxMinMax) {
+    Serializer s;
+    s.write_i32(2147483647);
+    s.write_i32(-2147483648);
+    s.write_i32(2147483647);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i32(), 2147483647);
+    EXPECT_EQ(d.read_i32(), -2147483648);
+    EXPECT_EQ(d.read_i32(), 2147483647);
+}
+
+TEST(SerializerTest, U32ThenI64ThenBool) {
+    Serializer s;
+    s.write_u32(0xDEADBEEF);
+    s.write_i64(-1LL);
+    s.write_bool(true);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u32(), 0xDEADBEEFu);
+    EXPECT_EQ(d.read_i64(), int64_t{-1});
+    EXPECT_EQ(d.read_bool(), true);
+}
+
+TEST(SerializerTest, LargeU16SequenceOfFifty) {
+    Serializer s;
+    for (int i = 0; i < 50; i++) {
+        s.write_u16(static_cast<uint16_t>(i * 100));
+    }
+    Deserializer d(s.data());
+    for (int i = 0; i < 50; i++) {
+        EXPECT_EQ(d.read_u16(), static_cast<uint16_t>(i * 100));
+    }
+}
