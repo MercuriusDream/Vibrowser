@@ -2665,3 +2665,95 @@ TEST(DomNode, MarkDirtyAllSetsAllFlags) {
     EXPECT_NE(flags & DirtyFlags::Layout, DirtyFlags::None);
     EXPECT_NE(flags & DirtyFlags::Paint,  DirtyFlags::None);
 }
+
+// ---------------------------------------------------------------------------
+// Cycle 699 — 8 additional DOM tests
+// ---------------------------------------------------------------------------
+
+// Node: mark_dirty(Style) does NOT set Paint flag
+TEST(DomNode, MarkDirtyStyleNotPaint) {
+    Element elem("div");
+    elem.mark_dirty(DirtyFlags::Style);
+    EXPECT_EQ(elem.dirty_flags() & DirtyFlags::Paint, DirtyFlags::None);
+}
+
+// Element: attributes() vector second element has correct name
+TEST(DomElement, AttributeVectorSecondNameMatchesSet) {
+    Element elem("img");
+    elem.set_attribute("src", "photo.jpg");
+    elem.set_attribute("alt", "A photo");
+    ASSERT_GE(elem.attributes().size(), 2u);
+    EXPECT_EQ(elem.attributes()[1].name, "alt");
+}
+
+// Node: child_count is zero after removing all children
+TEST(DomNode, ChildCountZeroAfterRemovingAllChildren) {
+    Element parent("div");
+    auto c1 = std::make_unique<Element>("p");
+    auto c2 = std::make_unique<Element>("p");
+    Element* c1_ptr = c1.get();
+    Element* c2_ptr = c2.get();
+    parent.append_child(std::move(c1));
+    parent.append_child(std::move(c2));
+    parent.remove_child(*c1_ptr);
+    parent.remove_child(*c2_ptr);
+    EXPECT_EQ(parent.child_count(), 0u);
+}
+
+// Node: parent is null after being removed from parent
+TEST(DomNode, ParentNullAfterRemoveFromParent) {
+    Element parent("div");
+    auto child = std::make_unique<Element>("span");
+    Element* child_ptr = child.get();
+    parent.append_child(std::move(child));
+    parent.remove_child(*child_ptr);
+    EXPECT_EQ(child_ptr->parent(), nullptr);
+}
+
+// Document: register_id then get_element_by_id returns that element
+TEST(DomDocument, DocumentRegisterIdAndRetrieve) {
+    Document doc;
+    auto elem = doc.create_element("div");
+    Element* ptr = elem.get();
+    doc.register_id("my-id", ptr);
+    EXPECT_EQ(doc.get_element_by_id("my-id"), ptr);
+}
+
+// Document: unregister_id clears lookup
+TEST(DomDocument, DocumentUnregisterIdClearsLookup) {
+    Document doc;
+    auto elem = doc.create_element("div");
+    Element* ptr = elem.get();
+    doc.register_id("some-id", ptr);
+    doc.unregister_id("some-id");
+    EXPECT_EQ(doc.get_element_by_id("some-id"), nullptr);
+}
+
+// Node: insert_before at front makes new node the first_child
+TEST(DomNode, InsertBeforeFirstNodeBecomesFirstChild) {
+    Element parent("div");
+    auto orig = std::make_unique<Element>("p");
+    Element* orig_ptr = orig.get();
+    parent.append_child(std::move(orig));
+    auto newnode = std::make_unique<Element>("h1");
+    Element* new_ptr = newnode.get();
+    parent.insert_before(std::move(newnode), orig_ptr);
+    EXPECT_EQ(parent.first_child(), new_ptr);
+}
+
+// Node: three children can be traversed via next_sibling in order
+TEST(DomNode, ThreeChildrenInOrderViaSiblings) {
+    Element parent("ul");
+    auto a = std::make_unique<Element>("li");
+    auto b = std::make_unique<Element>("li");
+    auto c = std::make_unique<Element>("li");
+    Element* a_ptr = a.get();
+    Element* b_ptr = b.get();
+    Element* c_ptr = c.get();
+    parent.append_child(std::move(a));
+    parent.append_child(std::move(b));
+    parent.append_child(std::move(c));
+    EXPECT_EQ(a_ptr->next_sibling(), b_ptr);
+    EXPECT_EQ(b_ptr->next_sibling(), c_ptr);
+    EXPECT_EQ(c_ptr->next_sibling(), nullptr);
+}
