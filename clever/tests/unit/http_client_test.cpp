@@ -3397,3 +3397,94 @@ TEST(RequestTest, ConnectionHeaderSet) {
     ASSERT_TRUE(val.has_value());
     EXPECT_EQ(val.value(), "keep-alive");
 }
+
+// Request: Cookie header can be set
+TEST(RequestTest, CookieHeaderSet) {
+    Request req;
+    req.headers.set("Cookie", "session=abc123; user=john");
+    auto val = req.headers.get("Cookie");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_NE(val.value().find("session"), std::string::npos);
+}
+
+// Request: X-Requested-With header for AJAX
+TEST(RequestTest, XRequestedWithHeaderSet) {
+    Request req;
+    req.headers.set("X-Requested-With", "XMLHttpRequest");
+    auto val = req.headers.get("X-Requested-With");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(val.value(), "XMLHttpRequest");
+}
+
+// Request: X-API-Key header can be set
+TEST(RequestTest, XApiKeyHeaderSet) {
+    Request req;
+    req.headers.set("X-API-Key", "supersecretkey");
+    auto val = req.headers.get("X-API-Key");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(val.value(), "supersecretkey");
+}
+
+// Response: parse 500 Internal Server Error
+TEST(ResponseTest, Parse500InternalServerErrorV2) {
+    std::string raw =
+        "HTTP/1.1 500 Internal Server Error\r\n"
+        "Content-Length: 0\r\n"
+        "\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 500);
+}
+
+// Response: parse 502 Bad Gateway
+TEST(ResponseTest, Parse502BadGatewayV2) {
+    std::string raw =
+        "HTTP/1.1 502 Bad Gateway\r\n"
+        "Content-Length: 0\r\n"
+        "\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 502);
+}
+
+// Response: parse 503 Service Unavailable
+TEST(ResponseTest, Parse503ServiceUnavailableRetryAfter) {
+    std::string raw =
+        "HTTP/1.1 503 Service Unavailable\r\n"
+        "Retry-After: 120\r\n"
+        "Content-Length: 0\r\n"
+        "\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 503);
+}
+
+// Response: parse 504 Gateway Timeout
+TEST(ResponseTest, Parse504GatewayTimeout) {
+    std::string raw =
+        "HTTP/1.1 504 Gateway Timeout\r\n"
+        "Content-Length: 0\r\n"
+        "\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 504);
+}
+
+// Response: Set-Cookie response header parsed
+TEST(ResponseTest, SetCookieHeaderInResponse) {
+    std::string raw =
+        "HTTP/1.1 200 OK\r\n"
+        "Set-Cookie: sessionid=xyz; HttpOnly; Path=/\r\n"
+        "Content-Length: 0\r\n"
+        "\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    auto val = resp->headers.get("Set-Cookie");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_NE(val.value().find("sessionid"), std::string::npos);
+}
