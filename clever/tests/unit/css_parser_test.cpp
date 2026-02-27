@@ -5138,3 +5138,76 @@ TEST_F(CSSStylesheetTest, PrintColorAdjustDeclaration) {
         if (d.property == "print-color-adjust") { found = true; break; }
     EXPECT_TRUE(found);
 }
+
+// Cycle 945 — SVG CSS properties and flex/grid alignment
+TEST_F(CSSStylesheetTest, AlignContentDeclaration) {
+    auto sheet = parse_stylesheet(".flex { align-content: center; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "align-content") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, JustifyContentDeclaration) {
+    auto sheet = parse_stylesheet(".flex { justify-content: space-between; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "justify-content") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, FlexFlowDeclaration) {
+    auto sheet = parse_stylesheet(".flex { flex-flow: row wrap; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "flex-flow") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, StrokeLinecapDeclaration) {
+    auto sheet = parse_stylesheet("path { stroke-linecap: round; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "stroke-linecap") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, StrokeLinejoinDeclaration) {
+    auto sheet = parse_stylesheet("path { stroke-linejoin: bevel; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "stroke-linejoin") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, FillOpacityDeclaration) {
+    auto sheet = parse_stylesheet("rect { fill-opacity: 0.5; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "fill-opacity") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, StrokeOpacityDeclaration) {
+    auto sheet = parse_stylesheet("path { stroke-opacity: 0.8; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "stroke-opacity") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, DominantBaselineDeclaration) {
+    auto sheet = parse_stylesheet("text { dominant-baseline: middle; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "dominant-baseline") { found = true; break; }
+    EXPECT_TRUE(found);
+}
