@@ -15812,3 +15812,67 @@ TEST(JSEngine, MapGetReturnsUndefinedForMissing) {
     auto result = engine.evaluate("const m = new Map(); typeof m.get('nope')");
     EXPECT_EQ(result, "undefined");
 }
+
+// Cycle 798 — class inheritance, super, private fields, getters/setters
+TEST(JSEngine, ClassExtendsCallsInheritedMethod) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "class Animal { speak() { return 'generic'; } }"
+        "class Dog extends Animal { speak() { return 'woof'; } }"
+        "new Dog().speak()");
+    EXPECT_EQ(result, "woof");
+}
+
+TEST(JSEngine, ClassSuperCallsParent) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "class Base { val() { return 10; } }"
+        "class Derived extends Base { val() { return super.val() + 5; } }"
+        "new Derived().val()");
+    EXPECT_EQ(result, "15");
+}
+
+TEST(JSEngine, ClassGetterAccessor) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "class Circle { constructor(r) { this.r = r; } get area() { return Math.PI * this.r * this.r; } }"
+        "typeof new Circle(5).area");
+    EXPECT_EQ(result, "number");
+}
+
+TEST(JSEngine, ClassSetterAccessor) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "class Box { constructor() { this._v = 0; } set value(v) { this._v = v; } get value() { return this._v; } }"
+        "const b = new Box(); b.value = 42; b.value");
+    EXPECT_EQ(result, "42");
+}
+
+TEST(JSEngine, ClassInstanceOf) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "class Foo {} const f = new Foo(); f instanceof Foo");
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, ClassInheritanceInstanceOf) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "class A {} class B extends A {} new B() instanceof A");
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, ClassPrivateField) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "class Counter { #count = 0; increment() { this.#count++; return this.#count; } }"
+        "new Counter().increment()");
+    EXPECT_EQ(result, "1");
+}
+
+TEST(JSEngine, ClassStaticField) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "class Config { static version = '1.0'; } Config.version");
+    EXPECT_EQ(result, "1.0");
+}
