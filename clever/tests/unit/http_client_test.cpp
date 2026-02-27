@@ -4472,3 +4472,89 @@ TEST(ResponseTest, ContentSecurityPolicyInResponse) {
     ASSERT_TRUE(val.has_value());
     EXPECT_EQ(*val, "default-src 'self'");
 }
+
+// Cycle 882 — HTTP header tests
+
+TEST(RequestTest, DNTHeaderSet) {
+    Request req;
+    req.headers.set("DNT", "1");
+    auto val = req.headers.get("DNT");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(val.value(), "1");
+}
+
+TEST(RequestTest, SecFetchSiteHeaderSet) {
+    Request req;
+    req.headers.set("Sec-Fetch-Site", "cross-site");
+    auto val = req.headers.get("Sec-Fetch-Site");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(val.value(), "cross-site");
+}
+
+TEST(RequestTest, SecFetchModeHeaderSet) {
+    Request req;
+    req.headers.set("Sec-Fetch-Mode", "navigate");
+    auto val = req.headers.get("Sec-Fetch-Mode");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(val.value(), "navigate");
+}
+
+TEST(RequestTest, SecFetchDestHeaderSet) {
+    Request req;
+    req.headers.set("Sec-Fetch-Dest", "document");
+    auto val = req.headers.get("Sec-Fetch-Dest");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(val.value(), "document");
+}
+
+TEST(ResponseTest, LinkHeaderInResponse) {
+    std::string raw =
+        "HTTP/1.1 200 OK\r\n"
+        "Link: <https://example.com/page2>; rel=\"next\"\r\n"
+        "Content-Length: 0\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    auto val = resp->headers.get("link");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_NE(val->find("next"), std::string::npos);
+}
+
+TEST(ResponseTest, AltSvcHeaderInResponse) {
+    std::string raw =
+        "HTTP/1.1 200 OK\r\n"
+        "Alt-Svc: h2=\"example.com:443\"\r\n"
+        "Content-Length: 0\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    auto val = resp->headers.get("alt-svc");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_NE(val->find("h2"), std::string::npos);
+}
+
+TEST(ResponseTest, ContentRangeHeaderInResponse) {
+    std::string raw =
+        "HTTP/1.1 206 Partial Content\r\n"
+        "Content-Range: bytes 0-999/5000\r\n"
+        "Content-Length: 1000\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    auto val = resp->headers.get("content-range");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_NE(val->find("bytes"), std::string::npos);
+}
+
+TEST(ResponseTest, AccessControlMaxAgeInResponse) {
+    std::string raw =
+        "HTTP/1.1 204 No Content\r\n"
+        "Access-Control-Max-Age: 86400\r\n"
+        "Content-Length: 0\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    auto val = resp->headers.get("access-control-max-age");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(*val, "86400");
+}
