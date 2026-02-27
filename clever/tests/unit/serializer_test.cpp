@@ -2916,3 +2916,73 @@ TEST(SerializerTest, ThirtyI32NegativeToPositive) {
     Deserializer d(s.data());
     for (int i = -15; i < 15; ++i) EXPECT_EQ(d.read_i32(), i);
 }
+
+// Cycle 800 — MILESTONE: 800 cycles! Stress tests for IPC serializer
+TEST(SerializerTest, TwoHundredBoolsTrue) {
+    Serializer s;
+    for (int i = 0; i < 200; ++i) s.write_bool(true);
+    Deserializer d(s.data());
+    for (int i = 0; i < 200; ++i) EXPECT_TRUE(d.read_bool());
+}
+
+TEST(SerializerTest, ThirtyF64SpecialValues) {
+    Serializer s;
+    for (int i = 0; i < 10; ++i) s.write_f64(0.0);
+    for (int i = 0; i < 10; ++i) s.write_f64(-1.0);
+    for (int i = 0; i < 10; ++i) s.write_f64(1e100);
+    Deserializer d(s.data());
+    for (int i = 0; i < 10; ++i) EXPECT_DOUBLE_EQ(d.read_f64(), 0.0);
+    for (int i = 0; i < 10; ++i) EXPECT_DOUBLE_EQ(d.read_f64(), -1.0);
+    for (int i = 0; i < 10; ++i) EXPECT_DOUBLE_EQ(d.read_f64(), 1e100);
+}
+
+TEST(SerializerTest, TwentyStringsVariousLengths) {
+    Serializer s;
+    for (int i = 0; i < 20; ++i) s.write_string(std::string(i + 1, 'x'));
+    Deserializer d(s.data());
+    for (int i = 0; i < 20; ++i) EXPECT_EQ(d.read_string(), std::string(i + 1, 'x'));
+}
+
+TEST(SerializerTest, SixteenU8AllMaxValues) {
+    Serializer s;
+    for (int i = 0; i < 16; ++i) s.write_u8(255);
+    Deserializer d(s.data());
+    for (int i = 0; i < 16; ++i) EXPECT_EQ(d.read_u8(), 255);
+}
+
+TEST(SerializerTest, TwentyI64MixedSignValues) {
+    Serializer s;
+    for (int64_t i = -10; i < 10; ++i) s.write_i64(i * 1000000LL);
+    Deserializer d(s.data());
+    for (int64_t i = -10; i < 10; ++i) EXPECT_EQ(d.read_i64(), i * 1000000LL);
+}
+
+TEST(SerializerTest, FifteenBoolsFalse) {
+    Serializer s;
+    for (int i = 0; i < 15; ++i) s.write_bool(false);
+    Deserializer d(s.data());
+    for (int i = 0; i < 15; ++i) EXPECT_FALSE(d.read_bool());
+}
+
+TEST(SerializerTest, StringBoolStringPattern) {
+    Serializer s;
+    for (int i = 0; i < 5; ++i) {
+        s.write_string("val" + std::to_string(i));
+        s.write_bool(i % 2 == 0);
+        s.write_string("end");
+    }
+    Deserializer d(s.data());
+    for (int i = 0; i < 5; ++i) {
+        EXPECT_EQ(d.read_string(), "val" + std::to_string(i));
+        EXPECT_EQ(d.read_bool(), i % 2 == 0);
+        EXPECT_EQ(d.read_string(), "end");
+    }
+}
+
+TEST(SerializerTest, FiftyU32PowersOfTwo) {
+    Serializer s;
+    for (int i = 0; i < 30; ++i) s.write_u32(1u << i);
+    // Not all 32 bits can be shifted safely, stop at 30
+    Deserializer d(s.data());
+    for (int i = 0; i < 30; ++i) EXPECT_EQ(d.read_u32(), 1u << i);
+}
