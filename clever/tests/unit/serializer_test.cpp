@@ -4033,3 +4033,60 @@ TEST(SerializerTest, I32PlusHundredRoundTrip) {
     Deserializer d(s.data());
     EXPECT_EQ(d.read_i32(), 100);
 }
+
+// Cycle 942 — additional serializer: string content variants, numeric edge cases
+TEST(SerializerTest, StringWithDash) {
+    Serializer s;
+    s.write_string("well-formed-name");
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "well-formed-name");
+}
+
+TEST(SerializerTest, StringWithDot) {
+    Serializer s;
+    s.write_string("file.name.txt");
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "file.name.txt");
+}
+
+TEST(SerializerTest, StringWithPercent) {
+    Serializer s;
+    s.write_string("100%");
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "100%");
+}
+
+TEST(SerializerTest, StringUrlPath) {
+    Serializer s;
+    s.write_string("https://example.com/path");
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "https://example.com/path");
+}
+
+TEST(SerializerTest, I32MinusHundredRoundTrip) {
+    Serializer s;
+    s.write_i32(-100);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i32(), -100);
+}
+
+TEST(SerializerTest, I32MinusThousandRoundTrip) {
+    Serializer s;
+    s.write_i32(-1000);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i32(), -1000);
+}
+
+TEST(SerializerTest, U32ThousandRoundTrip) {
+    Serializer s;
+    s.write_u32(1000);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u32(), uint32_t{1000});
+}
+
+TEST(SerializerTest, I64ThousandRoundTrip) {
+    Serializer s;
+    s.write_i64(1000LL);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i64(), 1000LL);
+}
