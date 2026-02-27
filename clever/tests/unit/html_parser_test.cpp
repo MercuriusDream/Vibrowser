@@ -2863,3 +2863,103 @@ TEST(TreeBuilder, OlReversedAttribute) {
     }
     EXPECT_TRUE(has_reversed);
 }
+
+// ---------------------------------------------------------------------------
+// Cycle 703 — 8 additional HTML tests (more input types and form attributes)
+// ---------------------------------------------------------------------------
+
+TEST(TreeBuilder, InputTypePassword) {
+    auto doc = parse(R"(<body><input type="password" name="pwd" required></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* input = doc->find_element("input");
+    ASSERT_NE(input, nullptr);
+    bool found = false;
+    for (auto& attr : input->attributes) {
+        if (attr.name == "type" && attr.value == "password") { found = true; break; }
+    }
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, InputTypeHiddenWithValue) {
+    auto doc = parse(R"(<body><input type="hidden" name="csrf" value="abc123"></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* input = doc->find_element("input");
+    ASSERT_NE(input, nullptr);
+    bool found_value = false;
+    for (auto& attr : input->attributes) {
+        if (attr.name == "value" && attr.value == "abc123") { found_value = true; break; }
+    }
+    EXPECT_TRUE(found_value);
+}
+
+TEST(TreeBuilder, InputTypeColorWithDefaultValue) {
+    auto doc = parse(R"(<body><input type="color" value="#ff0000"></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* input = doc->find_element("input");
+    ASSERT_NE(input, nullptr);
+    bool found = false;
+    for (auto& attr : input->attributes) {
+        if (attr.name == "value" && attr.value == "#ff0000") { found = true; break; }
+    }
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, InputTypeWeekIsParsed) {
+    auto doc = parse(R"(<body><input type="week" name="week"></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* input = doc->find_element("input");
+    ASSERT_NE(input, nullptr);
+    bool found = false;
+    for (auto& attr : input->attributes) {
+        if (attr.name == "type" && attr.value == "week") { found = true; break; }
+    }
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, SelectWithMultipleAttribute) {
+    auto doc = parse(R"(<body><select multiple name="colors"><option>Red</option></select></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* sel = doc->find_element("select");
+    ASSERT_NE(sel, nullptr);
+    bool found = false;
+    for (auto& attr : sel->attributes) {
+        if (attr.name == "multiple") { found = true; break; }
+    }
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, TextareaWithNameAttribute) {
+    auto doc = parse(R"(<body><textarea name="message" rows="5" cols="40">Default text</textarea></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* ta = doc->find_element("textarea");
+    ASSERT_NE(ta, nullptr);
+    bool found = false;
+    for (auto& attr : ta->attributes) {
+        if (attr.name == "name" && attr.value == "message") { found = true; break; }
+    }
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, FormWithEnctype) {
+    auto doc = parse(R"(<body><form action="/upload" method="post" enctype="multipart/form-data"></form></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* form = doc->find_element("form");
+    ASSERT_NE(form, nullptr);
+    bool found = false;
+    for (auto& attr : form->attributes) {
+        if (attr.name == "enctype") { found = true; break; }
+    }
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, ButtonWithDisabledAttribute) {
+    auto doc = parse(R"(<body><button disabled type="submit">Submit</button></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* btn = doc->find_element("button");
+    ASSERT_NE(btn, nullptr);
+    bool found = false;
+    for (auto& attr : btn->attributes) {
+        if (attr.name == "disabled") { found = true; break; }
+    }
+    EXPECT_TRUE(found);
+}
