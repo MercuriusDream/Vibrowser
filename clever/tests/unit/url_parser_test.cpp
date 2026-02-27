@@ -2980,3 +2980,54 @@ TEST(URLParser, PathAllNumbers) {
     ASSERT_TRUE(url.has_value());
     EXPECT_EQ(url->path, "/123/456/789");
 }
+
+// Cycle 943 — fragment variants, query variants, path API version
+TEST(URLParser, FragmentWithDot) {
+    auto url = parse("https://example.com/page#section.1");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->fragment, "section.1");
+}
+
+TEST(URLParser, FragmentWithDash) {
+    auto url = parse("https://example.com/page#how-to-use");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->fragment, "how-to-use");
+}
+
+TEST(URLParser, FragmentWithNumber) {
+    auto url = parse("https://example.com/docs#section123");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->fragment, "section123");
+}
+
+TEST(URLParser, QueryWithDash) {
+    auto url = parse("https://example.com/?first-name=John");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->query, "first-name=John");
+}
+
+TEST(URLParser, QueryWithDot) {
+    auto url = parse("https://example.com/?v=1.2.3");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->query, "v=1.2.3");
+}
+
+TEST(URLParser, PathApiV2) {
+    auto url = parse("https://api.example.com/v2/users/me");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->path, "/v2/users/me");
+}
+
+TEST(URLParser, Port4000Preserved) {
+    auto url = parse("http://localhost:4000/");
+    ASSERT_TRUE(url.has_value());
+    ASSERT_TRUE(url->port.has_value());
+    EXPECT_EQ(*url->port, 4000);
+}
+
+TEST(URLParser, Port8000Preserved) {
+    auto url = parse("http://localhost:8000/app");
+    ASSERT_TRUE(url.has_value());
+    ASSERT_TRUE(url->port.has_value());
+    EXPECT_EQ(*url->port, 8000);
+}
