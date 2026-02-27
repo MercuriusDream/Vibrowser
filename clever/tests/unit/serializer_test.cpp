@@ -3355,3 +3355,80 @@ TEST(SerializerTest, TenOddU64Values) {
     Deserializer d(s.data());
     for (int i = 0; i < 10; i++) EXPECT_EQ(d.read_u64(), static_cast<uint64_t>(i * 2 + 1));
 }
+
+// Cycle 861 — increasing length strings, powers of 2, tab/newline strings, interleaved types
+TEST(SerializerTest, FiveStringsIncreasingLength) {
+    Serializer s;
+    const std::string strs[] = {"a", "bb", "cccc", "dddddddd", "eeeeeeeeeeeeeeee"};
+    for (const auto& str : strs) s.write_string(str);
+    Deserializer d(s.data());
+    for (const auto& str : strs) EXPECT_EQ(d.read_string(), str);
+}
+
+TEST(SerializerTest, I64InterleavedWithF64) {
+    Serializer s;
+    for (int i = 0; i < 5; i++) {
+        s.write_i64(static_cast<int64_t>(i) * -1000);
+        s.write_f64(static_cast<double>(i) * 3.14);
+    }
+    Deserializer d(s.data());
+    for (int i = 0; i < 5; i++) {
+        EXPECT_EQ(d.read_i64(), static_cast<int64_t>(i) * -1000);
+        EXPECT_DOUBLE_EQ(d.read_f64(), static_cast<double>(i) * 3.14);
+    }
+}
+
+TEST(SerializerTest, U16PowersOfTwo) {
+    Serializer s;
+    for (int i = 0; i < 8; i++) s.write_u16(static_cast<uint16_t>(1 << i));
+    Deserializer d(s.data());
+    for (int i = 0; i < 8; i++) EXPECT_EQ(d.read_u16(), static_cast<uint16_t>(1 << i));
+}
+
+TEST(SerializerTest, BytesAllSameValue0xCC) {
+    Serializer s;
+    const std::vector<uint8_t> data(16, 0xCC);
+    s.write_bytes(data.data(), data.size());
+    Deserializer d(s.data());
+    auto out = d.read_bytes();
+    ASSERT_EQ(out.size(), 16u);
+    for (auto b : out) EXPECT_EQ(b, 0xCCu);
+}
+
+TEST(SerializerTest, StringContainingTabs) {
+    Serializer s;
+    s.write_string("col1\tcol2\tcol3");
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "col1\tcol2\tcol3");
+}
+
+TEST(SerializerTest, StringContainingNewlines) {
+    Serializer s;
+    s.write_string("line1\nline2\nline3");
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "line1\nline2\nline3");
+}
+
+TEST(SerializerTest, U8SurroundingString) {
+    Serializer s;
+    s.write_u8(0xFF);
+    s.write_string("middle");
+    s.write_u8(0x00);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u8(), 0xFFu);
+    EXPECT_EQ(d.read_string(), "middle");
+    EXPECT_EQ(d.read_u8(), 0x00u);
+}
+
+TEST(SerializerTest, MixedI32U32InterleaveSign) {
+    Serializer s;
+    for (int i = 0; i < 5; i++) {
+        s.write_i32(-(i + 1) * 1000);
+        s.write_u32(static_cast<uint32_t>((i + 1) * 2000));
+    }
+    Deserializer d(s.data());
+    for (int i = 0; i < 5; i++) {
+        EXPECT_EQ(d.read_i32(), -(i + 1) * 1000);
+        EXPECT_EQ(d.read_u32(), static_cast<uint32_t>((i + 1) * 2000));
+    }
+}
