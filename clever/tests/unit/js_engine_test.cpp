@@ -16219,3 +16219,63 @@ TEST(JSEngine, TypeErrorInstanceofError) {
         "var e = new TypeError('bad'); (e instanceof TypeError) + ',' + (e instanceof Error)");
     EXPECT_EQ(result, "true,true");
 }
+
+// Cycle 829 — Functional programming: reduce variants, flatMap, filter-map chains
+TEST(JSEngine, ReduceToObject) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "const pairs = [['a',1],['b',2],['c',3]];"
+        "const obj = pairs.reduce((acc,[k,v]) => { acc[k]=v; return acc; }, {});"
+        "obj.a + obj.b + obj.c");
+    EXPECT_EQ(result, "6");
+}
+
+TEST(JSEngine, ReduceMaxValue) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "[3,1,4,1,5,9,2,6].reduce((max,v) => v > max ? v : max, 0)");
+    EXPECT_EQ(result, "9");
+}
+
+TEST(JSEngine, ReduceProduct) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "[1,2,3,4,5].reduce((acc,v) => acc * v, 1)");
+    EXPECT_EQ(result, "120");
+}
+
+TEST(JSEngine, ReduceConcatStrings) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "['a','b','c','d'].reduce((acc,v) => acc + v, '')");
+    EXPECT_EQ(result, "abcd");
+}
+
+TEST(JSEngine, FlatMapFilterEvens) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "[[1,2],[3,4],[5,6]].flatMap(a => a).filter(n => n % 2 === 0).join(',')");
+    EXPECT_EQ(result, "2,4,6");
+}
+
+TEST(JSEngine, FilterMapJoinChain) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "[1,2,3,4,5,6].filter(n => n % 2 === 0).map(n => n * n).join(',')");
+    EXPECT_EQ(result, "4,16,36");
+}
+
+TEST(JSEngine, SortThenMapJoin) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "[3,1,4,1,5,9].sort((a,b) => a-b).map(n => n*2).join(',')");
+    EXPECT_EQ(result, "2,2,6,8,10,18");
+}
+
+TEST(JSEngine, ObjectEntriesReduceToSum) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "const scores = {alice: 85, bob: 92, carol: 78};"
+        "Object.entries(scores).reduce((sum,[,v]) => sum + v, 0)");
+    EXPECT_EQ(result, "255");
+}
