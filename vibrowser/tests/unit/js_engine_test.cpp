@@ -24594,3 +24594,141 @@ TEST(JsEngineTest, ObjectEntriesFromEntriesAndFreezeV84) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "10|20|30|true|100");
 }
+
+TEST(JsEngineTest, WeakRefAndDerefV85) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var target = {name: "weak-test"};
+        var ref = new WeakRef(target);
+        var d = ref.deref();
+        var alive = (d !== undefined) ? d.name : "gone";
+        alive;
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "weak-test");
+}
+
+TEST(JsEngineTest, FinalizationRegistryCreationV85) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var called = false;
+        var registry = new FinalizationRegistry(function(value) {
+            called = true;
+        });
+        var obj = {};
+        registry.register(obj, "my-value");
+        typeof registry.register === 'function' && typeof registry.unregister === 'function';
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JsEngineTest, PromiseStaticMethodsAndThenableV85) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var isAllSettled = typeof Promise.allSettled === 'function';
+        var p = Promise.allSettled([Promise.resolve(1), Promise.reject("e")]);
+        var isThenable = typeof p.then === 'function' && typeof p.catch === 'function';
+        var hasResolve = typeof Promise.resolve === 'function';
+        var hasReject = typeof Promise.reject === 'function';
+        var hasRace = typeof Promise.race === 'function';
+        var hasAny = typeof Promise.any === 'function';
+        isAllSettled + "|" + isThenable + "|" + hasResolve + "|" + hasReject + "|" + hasRace + "|" + hasAny;
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true|true|true|true|true|true");
+}
+
+TEST(JsEngineTest, OptionalChainingAndNullishCoalescingV85) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var obj = {a: {b: {c: 42}}};
+        var v1 = obj?.a?.b?.c;
+        var v2 = obj?.x?.y?.z;
+        var v3 = null ?? "default";
+        var v4 = undefined ?? "fallback";
+        var v5 = 0 ?? "not-this";
+        var v6 = "" ?? "not-this-either";
+        v1 + "|" + v2 + "|" + v3 + "|" + v4 + "|" + v5 + "|" + v6;
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "42|undefined|default|fallback|0|");
+}
+
+TEST(JsEngineTest, LogicalAssignmentOperatorsV85) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var a = null;
+        a ??= 100;
+        var b = 0;
+        b ||= 200;
+        var c = 5;
+        c &&= 300;
+        var d = "hello";
+        d ??= "nope";
+        a + "|" + b + "|" + c + "|" + d;
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "100|200|300|hello");
+}
+
+TEST(JsEngineTest, ArrayFlatAndFlatMapV85) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var nested = [1, [2, 3], [4, [5, 6]]];
+        var flat1 = nested.flat();
+        var flat2 = nested.flat(Infinity);
+        var words = ["hello world", "foo bar"];
+        var letters = words.flatMap(function(w) { return w.split(" "); });
+        flat1.join(",") + "|" + flat2.join(",") + "|" + letters.join(",");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1,2,3,4,5,6|1,2,3,4,5,6|hello,world,foo,bar");
+}
+
+TEST(JsEngineTest, StringReplaceAllAndMatchAllV85) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var s = "aabbccaabbcc";
+        var replaced = s.replaceAll("aa", "XX");
+        var text = "cat bat hat";
+        var re = /[a-z]at/g;
+        var matches = [];
+        var iter = text.matchAll(re);
+        var m = iter.next();
+        while (!m.done) {
+            matches.push(m.value[0]);
+            m = iter.next();
+        }
+        replaced + "|" + matches.join(",");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "XXbbccXXbbcc|cat,bat,hat");
+}
+
+TEST(JsEngineTest, ErrorCauseAndAggregateErrorV85) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var cause;
+        try {
+            throw new Error("outer", {cause: "inner-reason"});
+        } catch(e) {
+            cause = e.cause;
+        }
+        var msgs = [];
+        try {
+            throw new AggregateError(
+                [new Error("e1"), new Error("e2"), new Error("e3")],
+                "multiple errors"
+            );
+        } catch(e) {
+            msgs.push(e.message);
+            msgs.push(e.errors.length);
+            msgs.push(e.errors[0].message);
+            msgs.push(e.errors[2].message);
+        }
+        cause + "|" + msgs.join(",");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "inner-reason|multiple errors,3,e1,e3");
+}

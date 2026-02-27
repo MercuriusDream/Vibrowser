@@ -13987,3 +13987,154 @@ TEST(DomTest, InsertBeforeMiddleChildV84) {
     EXPECT_EQ(c_ptr->next_sibling(), nullptr);
     EXPECT_EQ(b_ptr->parent(), parent.get());
 }
+
+// ---------------------------------------------------------------------------
+// V85 Tests
+// ---------------------------------------------------------------------------
+
+TEST(DomTest, ElementAttributeOverwriteV85) {
+    Element elem("input");
+    elem.set_attribute("type", "text");
+    EXPECT_EQ(elem.get_attribute("type").value(), "text");
+
+    // Overwrite the same attribute with a new value
+    elem.set_attribute("type", "password");
+    EXPECT_EQ(elem.get_attribute("type").value(), "password");
+
+    // Confirm only one attribute exists (overwrite, not duplicate)
+    elem.set_attribute("name", "field1");
+    EXPECT_EQ(elem.get_attribute("name").value(), "field1");
+    EXPECT_EQ(elem.get_attribute("type").value(), "password");
+}
+
+TEST(DomTest, ClassListToggleAddRemoveV85) {
+    Element elem("div");
+
+    // toggle adds when absent
+    elem.class_list().toggle("active");
+    EXPECT_TRUE(elem.class_list().contains("active"));
+
+    // toggle removes when present
+    elem.class_list().toggle("active");
+    EXPECT_FALSE(elem.class_list().contains("active"));
+
+    // add then remove via named methods
+    elem.class_list().add("hidden");
+    elem.class_list().add("bold");
+    EXPECT_TRUE(elem.class_list().contains("hidden"));
+    EXPECT_TRUE(elem.class_list().contains("bold"));
+
+    elem.class_list().remove("hidden");
+    EXPECT_FALSE(elem.class_list().contains("hidden"));
+    EXPECT_TRUE(elem.class_list().contains("bold"));
+}
+
+TEST(DomTest, RemoveChildUpdatesParentAndSiblingsV85) {
+    auto parent = std::make_unique<Element>("ul");
+    auto li1 = std::make_unique<Element>("li");
+    auto li2 = std::make_unique<Element>("li");
+    auto li3 = std::make_unique<Element>("li");
+    auto* li1_ptr = li1.get();
+    auto* li2_ptr = li2.get();
+    auto* li3_ptr = li3.get();
+
+    parent->append_child(std::move(li1));
+    parent->append_child(std::move(li2));
+    parent->append_child(std::move(li3));
+    EXPECT_EQ(parent->child_count(), 3u);
+
+    // Remove the middle child
+    parent->remove_child(*li2_ptr);
+    EXPECT_EQ(parent->child_count(), 2u);
+    EXPECT_EQ(parent->first_child(), li1_ptr);
+    EXPECT_EQ(li1_ptr->next_sibling(), li3_ptr);
+    EXPECT_EQ(li3_ptr->next_sibling(), nullptr);
+}
+
+TEST(DomTest, CommentNodeDataAndSetDataV85) {
+    Comment comment("initial data");
+    EXPECT_EQ(comment.node_type(), NodeType::Comment);
+    EXPECT_EQ(comment.data(), "initial data");
+
+    comment.set_data("updated data");
+    EXPECT_EQ(comment.data(), "updated data");
+
+    // Empty data
+    comment.set_data("");
+    EXPECT_EQ(comment.data(), "");
+}
+
+TEST(DomTest, TextNodeContentAndTypeV85) {
+    Text text("Hello, World!");
+    EXPECT_EQ(text.node_type(), NodeType::Text);
+    EXPECT_EQ(text.text_content(), "Hello, World!");
+
+    // Text with special characters
+    Text text2("<script>alert('xss')</script>");
+    EXPECT_EQ(text2.text_content(), "<script>alert('xss')</script>");
+}
+
+TEST(DomTest, InsertBeforeFirstChildV85) {
+    auto parent = std::make_unique<Element>("div");
+    auto existing = std::make_unique<Element>("span");
+    auto new_first = std::make_unique<Element>("em");
+    auto* existing_ptr = existing.get();
+    auto* new_first_ptr = new_first.get();
+
+    parent->append_child(std::move(existing));
+    EXPECT_EQ(parent->first_child(), existing_ptr);
+
+    // Insert before the first (and only) child
+    parent->insert_before(std::move(new_first), existing_ptr);
+    EXPECT_EQ(parent->child_count(), 2u);
+    EXPECT_EQ(parent->first_child(), new_first_ptr);
+    EXPECT_EQ(new_first_ptr->next_sibling(), existing_ptr);
+    EXPECT_EQ(existing_ptr->next_sibling(), nullptr);
+    EXPECT_EQ(new_first_ptr->parent(), parent.get());
+}
+
+TEST(DomTest, MixedNodeTypesAsChildrenV85) {
+    auto parent = std::make_unique<Element>("div");
+    auto child_elem = std::make_unique<Element>("p");
+    auto child_text = std::make_unique<Text>("some text");
+    auto child_comment = std::make_unique<Comment>("a comment");
+    auto* elem_ptr = child_elem.get();
+    auto* text_ptr = child_text.get();
+    auto* comment_ptr = child_comment.get();
+
+    parent->append_child(std::move(child_elem));
+    parent->append_child(std::move(child_text));
+    parent->append_child(std::move(child_comment));
+
+    EXPECT_EQ(parent->child_count(), 3u);
+
+    // Verify node types in order
+    auto* first = parent->first_child();
+    EXPECT_EQ(first, elem_ptr);
+    EXPECT_EQ(first->node_type(), NodeType::Element);
+
+    auto* second = first->next_sibling();
+    EXPECT_EQ(second, text_ptr);
+    EXPECT_EQ(second->node_type(), NodeType::Text);
+
+    auto* third = second->next_sibling();
+    EXPECT_EQ(third, comment_ptr);
+    EXPECT_EQ(third->node_type(), NodeType::Comment);
+
+    EXPECT_EQ(third->next_sibling(), nullptr);
+}
+
+TEST(DomTest, GetAttributeReturnsNulloptWhenMissingV85) {
+    Element elem("div");
+
+    // No attributes set — get_attribute should return nullopt
+    EXPECT_FALSE(elem.get_attribute("id").has_value());
+    EXPECT_FALSE(elem.get_attribute("class").has_value());
+    EXPECT_FALSE(elem.get_attribute("nonexistent").has_value());
+
+    // Set one attribute, others still missing
+    elem.set_attribute("id", "main");
+    EXPECT_TRUE(elem.get_attribute("id").has_value());
+    EXPECT_EQ(elem.get_attribute("id").value(), "main");
+    EXPECT_FALSE(elem.get_attribute("class").has_value());
+}

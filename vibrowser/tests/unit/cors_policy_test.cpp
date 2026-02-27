@@ -6228,3 +6228,52 @@ TEST(CORSPolicyTest, SameOriginSkipsCorsNoHeadersNeededV84) {
     EXPECT_TRUE(
         cors_allows_response("https://app.example.com", "https://app.example.com/other", empty_headers, true));
 }
+
+TEST(CORSPolicyTest, DataSchemeUrlNotCorsEligibleV85) {
+    EXPECT_FALSE(is_cors_eligible_request_url("data:text/html,<h1>Hi</h1>"));
+    EXPECT_FALSE(is_cors_eligible_request_url("data:application/json,{}"));
+}
+
+TEST(CORSPolicyTest, FileSchemeUrlNotCorsEligibleV85) {
+    EXPECT_FALSE(is_cors_eligible_request_url("file:///etc/passwd"));
+    EXPECT_FALSE(is_cors_eligible_request_url("file:///home/user/document.html"));
+}
+
+TEST(CORSPolicyTest, DifferentPortIsCrossOriginV85) {
+    EXPECT_TRUE(is_cross_origin("https://example.com", "https://example.com:8443/api"));
+    EXPECT_TRUE(is_cross_origin("http://example.com", "http://example.com:3000/data"));
+}
+
+TEST(CORSPolicyTest, DifferentSubdomainIsCrossOriginV85) {
+    EXPECT_TRUE(is_cross_origin("https://app.example.com", "https://api.example.com/data"));
+    EXPECT_TRUE(is_cross_origin("https://www.example.com", "https://cdn.example.com/asset"));
+}
+
+TEST(CORSPolicyTest, ShouldAttachOriginForCrossOriginRequestV85) {
+    EXPECT_TRUE(should_attach_origin_header("https://mysite.com", "https://api.othersite.com/endpoint"));
+    EXPECT_TRUE(should_attach_origin_header("https://frontend.io", "https://backend.io/graphql"));
+}
+
+TEST(CORSPolicyTest, WildcardAcaoWithoutCredentialsAllowsV85) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "*");
+    EXPECT_TRUE(
+        cors_allows_response("https://anysite.example.com", "https://api.example.com/public", headers, false));
+}
+
+TEST(CORSPolicyTest, ExactOriginMatchWithCredentialsAllowsV85) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "https://trusted.example.com");
+    headers.set("Access-Control-Allow-Credentials", "true");
+    EXPECT_TRUE(
+        cors_allows_response("https://trusted.example.com", "https://api.example.com/private", headers, true));
+}
+
+TEST(CORSPolicyTest, MismatchedOriginInAcaoRejectsV85) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "https://allowed.example.com");
+    EXPECT_FALSE(
+        cors_allows_response("https://attacker.example.com", "https://api.example.com/secret", headers, false));
+    EXPECT_FALSE(
+        cors_allows_response("https://attacker.example.com", "https://api.example.com/secret", headers, true));
+}

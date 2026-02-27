@@ -13344,3 +13344,279 @@ TEST(HtmlParserTest, MixedContentTextNodesV84) {
     EXPECT_EQ(div->children[2]->tag_name, "");
     EXPECT_EQ(div->children[2]->text_content(), " after");
 }
+
+// ============================================================================
+// Cycle V85 — 8 additional HTML parser tests
+// ============================================================================
+
+// 1. Definition list (dl/dt/dd) structure parsing
+TEST(HtmlParserTest, DefinitionListStructureV85) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<dl>"
+        "<dt>Term 1</dt><dd>Definition 1</dd>"
+        "<dt>Term 2</dt><dd>Definition 2</dd>"
+        "</dl>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* dl = doc->find_element("dl");
+    ASSERT_NE(dl, nullptr);
+
+    auto dts = doc->find_all_elements("dt");
+    auto dds = doc->find_all_elements("dd");
+    ASSERT_EQ(dts.size(), 2u);
+    ASSERT_EQ(dds.size(), 2u);
+
+    EXPECT_EQ(dts[0]->text_content(), "Term 1");
+    EXPECT_EQ(dts[1]->text_content(), "Term 2");
+    EXPECT_EQ(dds[0]->text_content(), "Definition 1");
+    EXPECT_EQ(dds[1]->text_content(), "Definition 2");
+}
+
+// 2. Nested lists (ul containing ol)
+TEST(HtmlParserTest, NestedListsUlContainingOlV85) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<ul>"
+        "<li>Item A</li>"
+        "<li>Item B"
+        "<ol><li>Sub 1</li><li>Sub 2</li></ol>"
+        "</li>"
+        "<li>Item C</li>"
+        "</ul>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* ul = doc->find_element("ul");
+    ASSERT_NE(ul, nullptr);
+
+    auto lis = ul->find_all_elements("li");
+    ASSERT_GE(lis.size(), 3u);
+    EXPECT_EQ(lis[0]->text_content(), "Item A");
+
+    auto* ol = doc->find_element("ol");
+    ASSERT_NE(ol, nullptr);
+
+    auto sub_lis = ol->find_all_elements("li");
+    ASSERT_EQ(sub_lis.size(), 2u);
+    EXPECT_EQ(sub_lis[0]->text_content(), "Sub 1");
+    EXPECT_EQ(sub_lis[1]->text_content(), "Sub 2");
+}
+
+// 3. Table with thead, tbody, tfoot structure
+TEST(HtmlParserTest, TableTheadTbodyTfootV85) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<table>"
+        "<thead><tr><th>Name</th><th>Age</th></tr></thead>"
+        "<tbody><tr><td>Alice</td><td>30</td></tr>"
+        "<tr><td>Bob</td><td>25</td></tr></tbody>"
+        "<tfoot><tr><td>Total</td><td>2</td></tr></tfoot>"
+        "</table>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* thead = doc->find_element("thead");
+    ASSERT_NE(thead, nullptr);
+    auto ths = thead->find_all_elements("th");
+    ASSERT_EQ(ths.size(), 2u);
+    EXPECT_EQ(ths[0]->text_content(), "Name");
+    EXPECT_EQ(ths[1]->text_content(), "Age");
+
+    auto* tbody = doc->find_element("tbody");
+    ASSERT_NE(tbody, nullptr);
+    auto body_tds = tbody->find_all_elements("td");
+    ASSERT_EQ(body_tds.size(), 4u);
+    EXPECT_EQ(body_tds[0]->text_content(), "Alice");
+    EXPECT_EQ(body_tds[1]->text_content(), "30");
+    EXPECT_EQ(body_tds[2]->text_content(), "Bob");
+    EXPECT_EQ(body_tds[3]->text_content(), "25");
+
+    auto* tfoot = doc->find_element("tfoot");
+    ASSERT_NE(tfoot, nullptr);
+    auto foot_tds = tfoot->find_all_elements("td");
+    ASSERT_EQ(foot_tds.size(), 2u);
+    EXPECT_EQ(foot_tds[0]->text_content(), "Total");
+    EXPECT_EQ(foot_tds[1]->text_content(), "2");
+}
+
+// 4. Multiple void elements in sequence (br, hr, input, img)
+TEST(HtmlParserTest, MultipleVoidElementsInSequenceV85) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<div>"
+        "<input type=\"text\" name=\"field1\">"
+        "<br>"
+        "<input type=\"email\" name=\"field2\">"
+        "<hr>"
+        "<img src=\"logo.png\" alt=\"Logo\">"
+        "</div>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto inputs = doc->find_all_elements("input");
+    ASSERT_EQ(inputs.size(), 2u);
+    EXPECT_EQ(get_attr_v63(inputs[0], "type"), "text");
+    EXPECT_EQ(get_attr_v63(inputs[0], "name"), "field1");
+    EXPECT_EQ(get_attr_v63(inputs[1], "type"), "email");
+    EXPECT_EQ(get_attr_v63(inputs[1], "name"), "field2");
+
+    auto* br = doc->find_element("br");
+    ASSERT_NE(br, nullptr);
+
+    auto* hr = doc->find_element("hr");
+    ASSERT_NE(hr, nullptr);
+
+    auto* img = doc->find_element("img");
+    ASSERT_NE(img, nullptr);
+    EXPECT_EQ(get_attr_v63(img, "src"), "logo.png");
+    EXPECT_EQ(get_attr_v63(img, "alt"), "Logo");
+}
+
+// 5. Fieldset with legend and form controls
+TEST(HtmlParserTest, FieldsetWithLegendAndControlsV85) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<form action=\"/register\" method=\"post\">"
+        "<fieldset>"
+        "<legend>Personal Info</legend>"
+        "<label for=\"fname\">First:</label>"
+        "<input type=\"text\" id=\"fname\" name=\"fname\">"
+        "<label for=\"lname\">Last:</label>"
+        "<input type=\"text\" id=\"lname\" name=\"lname\">"
+        "</fieldset>"
+        "</form>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* form = doc->find_element("form");
+    ASSERT_NE(form, nullptr);
+    EXPECT_EQ(get_attr_v63(form, "action"), "/register");
+    EXPECT_EQ(get_attr_v63(form, "method"), "post");
+
+    auto* fieldset = doc->find_element("fieldset");
+    ASSERT_NE(fieldset, nullptr);
+
+    auto* legend = doc->find_element("legend");
+    ASSERT_NE(legend, nullptr);
+    EXPECT_EQ(legend->text_content(), "Personal Info");
+
+    auto labels = doc->find_all_elements("label");
+    ASSERT_EQ(labels.size(), 2u);
+    EXPECT_EQ(get_attr_v63(labels[0], "for"), "fname");
+    EXPECT_EQ(labels[0]->text_content(), "First:");
+    EXPECT_EQ(get_attr_v63(labels[1], "for"), "lname");
+    EXPECT_EQ(labels[1]->text_content(), "Last:");
+
+    auto inputs = doc->find_all_elements("input");
+    ASSERT_EQ(inputs.size(), 2u);
+    EXPECT_EQ(get_attr_v63(inputs[0], "id"), "fname");
+    EXPECT_EQ(get_attr_v63(inputs[1], "id"), "lname");
+}
+
+// 6. Deeply nested inline elements (span inside em inside strong inside a)
+TEST(HtmlParserTest, DeeplyNestedInlineElementsV85) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<p><a href=\"/page\"><strong><em><span class=\"hl\">Deep text</span></em></strong></a></p>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* a = doc->find_element("a");
+    ASSERT_NE(a, nullptr);
+    EXPECT_EQ(get_attr_v63(a, "href"), "/page");
+
+    auto* strong = doc->find_element("strong");
+    ASSERT_NE(strong, nullptr);
+
+    auto* em = doc->find_element("em");
+    ASSERT_NE(em, nullptr);
+
+    auto* span = doc->find_element("span");
+    ASSERT_NE(span, nullptr);
+    EXPECT_EQ(get_attr_v63(span, "class"), "hl");
+    EXPECT_EQ(span->text_content(), "Deep text");
+
+    // Verify the entire chain has the same text content
+    EXPECT_EQ(a->text_content(), "Deep text");
+    EXPECT_EQ(strong->text_content(), "Deep text");
+    EXPECT_EQ(em->text_content(), "Deep text");
+}
+
+// 7. Article with header, footer, and multiple sections
+TEST(HtmlParserTest, ArticleWithHeaderFooterSectionsV85) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<article>"
+        "<header><h1>Article Title</h1></header>"
+        "<section><h2>Introduction</h2><p>Intro text here.</p></section>"
+        "<section><h2>Conclusion</h2><p>Closing remarks.</p></section>"
+        "<footer><p>Published 2026</p></footer>"
+        "</article>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* article = doc->find_element("article");
+    ASSERT_NE(article, nullptr);
+
+    auto* header = doc->find_element("header");
+    ASSERT_NE(header, nullptr);
+    auto* h1 = header->find_element("h1");
+    ASSERT_NE(h1, nullptr);
+    EXPECT_EQ(h1->text_content(), "Article Title");
+
+    auto sections = doc->find_all_elements("section");
+    ASSERT_EQ(sections.size(), 2u);
+
+    auto* h2_intro = sections[0]->find_element("h2");
+    ASSERT_NE(h2_intro, nullptr);
+    EXPECT_EQ(h2_intro->text_content(), "Introduction");
+    auto* p_intro = sections[0]->find_element("p");
+    ASSERT_NE(p_intro, nullptr);
+    EXPECT_EQ(p_intro->text_content(), "Intro text here.");
+
+    auto* h2_concl = sections[1]->find_element("h2");
+    ASSERT_NE(h2_concl, nullptr);
+    EXPECT_EQ(h2_concl->text_content(), "Conclusion");
+    auto* p_concl = sections[1]->find_element("p");
+    ASSERT_NE(p_concl, nullptr);
+    EXPECT_EQ(p_concl->text_content(), "Closing remarks.");
+
+    auto* footer = doc->find_element("footer");
+    ASSERT_NE(footer, nullptr);
+    auto* p_foot = footer->find_element("p");
+    ASSERT_NE(p_foot, nullptr);
+    EXPECT_EQ(p_foot->text_content(), "Published 2026");
+}
+
+// 8. Multiple data attributes and aria attributes on a single element
+TEST(HtmlParserTest, MultipleDataAndAriaAttributesV85) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<div id=\"widget\""
+        " data-type=\"chart\""
+        " data-source=\"/api/data\""
+        " data-refresh=\"30\""
+        " aria-label=\"Sales Chart\""
+        " aria-hidden=\"false\""
+        " role=\"img\""
+        " class=\"dashboard-widget\">"
+        "Chart Content"
+        "</div>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* div = doc->find_element("div");
+    ASSERT_NE(div, nullptr);
+
+    EXPECT_EQ(get_attr_v63(div, "id"), "widget");
+    EXPECT_EQ(get_attr_v63(div, "data-type"), "chart");
+    EXPECT_EQ(get_attr_v63(div, "data-source"), "/api/data");
+    EXPECT_EQ(get_attr_v63(div, "data-refresh"), "30");
+    EXPECT_EQ(get_attr_v63(div, "aria-label"), "Sales Chart");
+    EXPECT_EQ(get_attr_v63(div, "aria-hidden"), "false");
+    EXPECT_EQ(get_attr_v63(div, "role"), "img");
+    EXPECT_EQ(get_attr_v63(div, "class"), "dashboard-widget");
+    EXPECT_EQ(div->text_content(), "Chart Content");
+}

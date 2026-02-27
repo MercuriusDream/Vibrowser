@@ -15120,3 +15120,135 @@ TEST(HttpClientTest, CookieJarClearRemovesAllCookiesV84) {
     EXPECT_EQ(jar.get_cookie_header("two.com", "/", false), "");
     EXPECT_EQ(jar.get_cookie_header("three.com", "/", false), "");
 }
+
+// ===========================================================================
+// V85 Tests
+// ===========================================================================
+
+TEST(HttpClientTest, HeaderMapAppendCreatesMultipleValuesV85) {
+    // append() should add a second value without overwriting the first
+    HeaderMap map;
+    map.set("Accept", "text/html");
+    map.append("Accept", "application/json");
+
+    auto all = map.get_all("Accept");
+    EXPECT_EQ(all.size(), 2u);
+    EXPECT_EQ(all[0], "text/html");
+    EXPECT_EQ(all[1], "application/json");
+
+    // get() should return the first value
+    EXPECT_EQ(map.get("Accept").value(), "text/html");
+}
+
+TEST(HttpClientTest, HeaderMapRemoveDeletesKeyEntirelyV85) {
+    // remove() should delete all values for a key; has() should return false
+    HeaderMap map;
+    map.set("X-Custom", "val1");
+    map.append("X-Custom", "val2");
+    EXPECT_TRUE(map.has("X-Custom"));
+    EXPECT_EQ(map.get_all("X-Custom").size(), 2u);
+
+    map.remove("X-Custom");
+    EXPECT_FALSE(map.has("X-Custom"));
+    EXPECT_FALSE(map.get("X-Custom").has_value());
+    EXPECT_TRUE(map.get_all("X-Custom").empty());
+}
+
+TEST(HttpClientTest, HeaderMapSizeAndEmptyV85) {
+    // size() counts total entries; empty() reflects zero entries
+    HeaderMap map;
+    EXPECT_TRUE(map.empty());
+    EXPECT_EQ(map.size(), 0u);
+
+    map.set("A", "1");
+    map.set("B", "2");
+    map.append("A", "extra");  // append adds another entry
+    EXPECT_FALSE(map.empty());
+    EXPECT_EQ(map.size(), 3u);
+
+    map.remove("A");  // removes all entries for key "A"
+    EXPECT_EQ(map.size(), 1u);
+
+    map.remove("B");
+    EXPECT_TRUE(map.empty());
+}
+
+TEST(HttpClientTest, RequestSerializeDeleteMethodV85) {
+    // DELETE_METHOD should serialize as "DELETE" in the request line
+    Request req;
+    req.method = Method::DELETE_METHOD;
+    req.host = "api.example.com";
+    req.port = 443;
+    req.path = "/items/42";
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    EXPECT_TRUE(result.find("DELETE /items/42 HTTP/1.1\r\n") != std::string::npos);
+    // Port 443 should be omitted from Host header
+    EXPECT_TRUE(result.find("Host: api.example.com\r\n") != std::string::npos);
+    EXPECT_TRUE(result.find(":443") == std::string::npos);
+}
+
+TEST(HttpClientTest, RequestSerializeOmitsPort80V85) {
+    // Port 80 should be omitted from the Host header in serialize()
+    Request req;
+    req.method = Method::GET;
+    req.host = "www.example.com";
+    req.port = 80;
+    req.path = "/index.html";
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    EXPECT_TRUE(result.find("Host: www.example.com\r\n") != std::string::npos);
+    EXPECT_TRUE(result.find(":80") == std::string::npos);
+}
+
+TEST(HttpClientTest, RequestSerializeCustomPortIncludedV85) {
+    // Non-standard ports (not 80 or 443) should appear in the Host header
+    Request req;
+    req.method = Method::POST;
+    req.host = "localhost";
+    req.port = 3000;
+    req.path = "/api/data";
+    req.body = std::vector<uint8_t>{'t', 'e', 's', 't'};
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    EXPECT_TRUE(result.find("POST /api/data HTTP/1.1\r\n") != std::string::npos);
+    EXPECT_TRUE(result.find("Host: localhost:3000\r\n") != std::string::npos);
+}
+
+TEST(HttpClientTest, ResponseBodyAsStringMultibyteContentV85) {
+    // body_as_string() should correctly return multi-byte UTF-8 content
+    Response resp;
+    resp.status = 200;
+    std::string utf8_text = "Hello \xC3\xA9\xC3\xA0\xC3\xBC";  // e-acute, a-grave, u-umlaut
+    resp.body.assign(utf8_text.begin(), utf8_text.end());
+
+    std::string result = resp.body_as_string();
+    EXPECT_EQ(result, utf8_text);
+    EXPECT_EQ(result.size(), utf8_text.size());
+}
+
+TEST(HttpClientTest, CookieJarMultipleCookiesDifferentDomainsV85) {
+    // Cookies set on different domains should be independent
+    CookieJar jar;
+    jar.set_from_header("sid=abc", "alpha.com");
+    jar.set_from_header("sid=xyz", "beta.com");
+    jar.set_from_header("lang=en", "alpha.com");
+
+    std::string alpha_hdr = jar.get_cookie_header("alpha.com", "/", false);
+    std::string beta_hdr = jar.get_cookie_header("beta.com", "/", false);
+
+    // alpha.com should have sid=abc and lang=en, but NOT sid=xyz
+    EXPECT_TRUE(alpha_hdr.find("sid=abc") != std::string::npos);
+    EXPECT_TRUE(alpha_hdr.find("lang=en") != std::string::npos);
+    EXPECT_FALSE(alpha_hdr.find("sid=xyz") != std::string::npos);
+
+    // beta.com should have sid=xyz only
+    EXPECT_TRUE(beta_hdr.find("sid=xyz") != std::string::npos);
+    EXPECT_FALSE(beta_hdr.find("lang=en") != std::string::npos);
+}

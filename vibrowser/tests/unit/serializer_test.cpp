@@ -12348,3 +12348,184 @@ TEST(SerializerTest, MixedTypeStressSequenceV84) {
     EXPECT_TRUE(b2.empty());
     EXPECT_FALSE(d.has_remaining());
 }
+
+// ------------------------------------------------------------------
+// V85 tests
+// ------------------------------------------------------------------
+
+TEST(SerializerTest, U8BoundaryValuesV85) {
+    Serializer s;
+    s.write_u8(0);
+    s.write_u8(1);
+    s.write_u8(127);
+    s.write_u8(128);
+    s.write_u8(254);
+    s.write_u8(255);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u8(), 0u);
+    EXPECT_EQ(d.read_u8(), 1u);
+    EXPECT_EQ(d.read_u8(), 127u);
+    EXPECT_EQ(d.read_u8(), 128u);
+    EXPECT_EQ(d.read_u8(), 254u);
+    EXPECT_EQ(d.read_u8(), 255u);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, U16PowersOfTwoV85) {
+    Serializer s;
+    for (int i = 0; i < 16; ++i) {
+        s.write_u16(static_cast<uint16_t>(1u << i));
+    }
+
+    Deserializer d(s.data());
+    for (int i = 0; i < 16; ++i) {
+        EXPECT_EQ(d.read_u16(), static_cast<uint16_t>(1u << i));
+    }
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, U32AlternatingBitPatternsV85) {
+    Serializer s;
+    s.write_u32(0x55555555u);
+    s.write_u32(0xAAAAAAAAu);
+    s.write_u32(0x0F0F0F0Fu);
+    s.write_u32(0xF0F0F0F0u);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u32(), 0x55555555u);
+    EXPECT_EQ(d.read_u32(), 0xAAAAAAAAu);
+    EXPECT_EQ(d.read_u32(), 0x0F0F0F0Fu);
+    EXPECT_EQ(d.read_u32(), 0xF0F0F0F0u);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, U64LargeValuesV85) {
+    Serializer s;
+    s.write_u64(0ULL);
+    s.write_u64(1ULL);
+    s.write_u64(0x00000000FFFFFFFFuLL);
+    s.write_u64(0xFFFFFFFF00000000uLL);
+    s.write_u64(0xFFFFFFFFFFFFFFFFuLL);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u64(), 0ULL);
+    EXPECT_EQ(d.read_u64(), 1ULL);
+    EXPECT_EQ(d.read_u64(), 0x00000000FFFFFFFFuLL);
+    EXPECT_EQ(d.read_u64(), 0xFFFFFFFF00000000uLL);
+    EXPECT_EQ(d.read_u64(), 0xFFFFFFFFFFFFFFFFuLL);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, F64SpecialValuesV85) {
+    Serializer s;
+    s.write_f64(0.0);
+    s.write_f64(-0.0);
+    s.write_f64(std::numeric_limits<double>::infinity());
+    s.write_f64(-std::numeric_limits<double>::infinity());
+    s.write_f64(std::numeric_limits<double>::min());
+    s.write_f64(std::numeric_limits<double>::max());
+    s.write_f64(std::numeric_limits<double>::epsilon());
+
+    Deserializer d(s.data());
+    EXPECT_DOUBLE_EQ(d.read_f64(), 0.0);
+    double neg_zero = d.read_f64();
+    EXPECT_DOUBLE_EQ(neg_zero, 0.0);
+    EXPECT_TRUE(std::signbit(neg_zero));
+    EXPECT_EQ(d.read_f64(), std::numeric_limits<double>::infinity());
+    EXPECT_EQ(d.read_f64(), -std::numeric_limits<double>::infinity());
+    EXPECT_DOUBLE_EQ(d.read_f64(), std::numeric_limits<double>::min());
+    EXPECT_DOUBLE_EQ(d.read_f64(), std::numeric_limits<double>::max());
+    EXPECT_DOUBLE_EQ(d.read_f64(), std::numeric_limits<double>::epsilon());
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, StringWithNullBytesV85) {
+    Serializer s;
+    std::string with_nulls("hello\0world", 11);
+    s.write_string(with_nulls);
+    s.write_string("");
+    std::string long_str(1000, 'X');
+    s.write_string(long_str);
+
+    Deserializer d(s.data());
+    std::string r1 = d.read_string();
+    EXPECT_EQ(r1.size(), 11u);
+    EXPECT_EQ(r1, with_nulls);
+    EXPECT_EQ(d.read_string(), "");
+    EXPECT_EQ(d.read_string(), long_str);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, BytesIncreasingLengthsV85) {
+    Serializer s;
+    // Write byte arrays of lengths 0, 1, 4, 16, 256
+    s.write_bytes(nullptr, 0);
+
+    uint8_t one_byte[] = {0x42};
+    s.write_bytes(one_byte, 1);
+
+    uint8_t four_bytes[] = {10, 20, 30, 40};
+    s.write_bytes(four_bytes, 4);
+
+    std::vector<uint8_t> sixteen(16);
+    std::iota(sixteen.begin(), sixteen.end(), static_cast<uint8_t>(0));
+    s.write_bytes(sixteen.data(), sixteen.size());
+
+    std::vector<uint8_t> big(256);
+    for (size_t i = 0; i < 256; ++i) big[i] = static_cast<uint8_t>(255 - i);
+    s.write_bytes(big.data(), big.size());
+
+    Deserializer d(s.data());
+    auto r0 = d.read_bytes();
+    EXPECT_TRUE(r0.empty());
+
+    auto r1 = d.read_bytes();
+    ASSERT_EQ(r1.size(), 1u);
+    EXPECT_EQ(r1[0], 0x42u);
+
+    auto r4 = d.read_bytes();
+    ASSERT_EQ(r4.size(), 4u);
+    EXPECT_EQ(r4[0], 10u);
+    EXPECT_EQ(r4[3], 40u);
+
+    auto r16 = d.read_bytes();
+    ASSERT_EQ(r16.size(), 16u);
+    for (size_t i = 0; i < 16; ++i) {
+        EXPECT_EQ(r16[i], static_cast<uint8_t>(i));
+    }
+
+    auto r256 = d.read_bytes();
+    ASSERT_EQ(r256.size(), 256u);
+    for (size_t i = 0; i < 256; ++i) {
+        EXPECT_EQ(r256[i], static_cast<uint8_t>(255 - i));
+    }
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, InterleavedTypesRoundTripV85) {
+    Serializer s;
+    s.write_u8(42);
+    s.write_string("interleaved");
+    s.write_u32(0xCAFEBABEu);
+    uint8_t blob[] = {9, 8, 7, 6, 5};
+    s.write_bytes(blob, 5);
+    s.write_f64(2.718281828459045);
+    s.write_u16(12345);
+    s.write_u64(0xFEDCBA9876543210uLL);
+    s.write_string("end");
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u8(), 42u);
+    EXPECT_EQ(d.read_string(), "interleaved");
+    EXPECT_EQ(d.read_u32(), 0xCAFEBABEu);
+    auto rb = d.read_bytes();
+    ASSERT_EQ(rb.size(), 5u);
+    EXPECT_EQ(rb[0], 9u);
+    EXPECT_EQ(rb[4], 5u);
+    EXPECT_DOUBLE_EQ(d.read_f64(), 2.718281828459045);
+    EXPECT_EQ(d.read_u16(), 12345u);
+    EXPECT_EQ(d.read_u64(), 0xFEDCBA9876543210uLL);
+    EXPECT_EQ(d.read_string(), "end");
+    EXPECT_FALSE(d.has_remaining());
+}

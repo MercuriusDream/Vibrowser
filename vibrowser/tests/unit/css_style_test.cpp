@@ -15420,3 +15420,180 @@ TEST(CSSStyleTest, OpacityAndPointerEventsNoneV84) {
     EXPECT_EQ(style.pointer_events, PointerEvents::None);
     EXPECT_EQ(style.user_select, UserSelect::None);
 }
+
+// ===========================================================================
+// V85 Tests
+// ===========================================================================
+
+TEST(CSSStyleTest, PositionAbsoluteWithOffsetsV85) {
+    // position: absolute with all four position offsets
+    const std::string css = "div{position:absolute;top:10px;right:20px;bottom:30px;left:40px;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.position, Position::Absolute);
+    EXPECT_FLOAT_EQ(style.top.to_px(), 10.0f);
+    EXPECT_FLOAT_EQ(style.right_pos.to_px(), 20.0f);
+    EXPECT_FLOAT_EQ(style.bottom.to_px(), 30.0f);
+    EXPECT_FLOAT_EQ(style.left_pos.to_px(), 40.0f);
+}
+
+TEST(CSSStyleTest, MarginAndPaddingEdgeSizesV85) {
+    // margin and padding set via EdgeSizes struct fields
+    const std::string css = "div{margin:5px 10px 15px 20px;padding:2px 4px 6px 8px;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_FLOAT_EQ(style.margin.top.to_px(), 5.0f);
+    EXPECT_FLOAT_EQ(style.margin.right.to_px(), 10.0f);
+    EXPECT_FLOAT_EQ(style.margin.bottom.to_px(), 15.0f);
+    EXPECT_FLOAT_EQ(style.margin.left.to_px(), 20.0f);
+
+    EXPECT_FLOAT_EQ(style.padding.top.to_px(), 2.0f);
+    EXPECT_FLOAT_EQ(style.padding.right.to_px(), 4.0f);
+    EXPECT_FLOAT_EQ(style.padding.bottom.to_px(), 6.0f);
+    EXPECT_FLOAT_EQ(style.padding.left.to_px(), 8.0f);
+}
+
+TEST(CSSStyleTest, BorderEdgePropertiesV85) {
+    // border shorthand sets all four sides, then override individual side styles
+    const std::string css = "div{border:3px solid red;border-bottom-style:dashed;border-bottom-color:blue;border-bottom-width:1px;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_FLOAT_EQ(style.border_top.width.value, 3.0f);
+    EXPECT_EQ(style.border_top.style, BorderStyle::Solid);
+    EXPECT_EQ(style.border_top.color.r, 255);
+    EXPECT_EQ(style.border_top.color.g, 0);
+    EXPECT_EQ(style.border_top.color.b, 0);
+
+    EXPECT_FLOAT_EQ(style.border_bottom.width.value, 1.0f);
+    EXPECT_EQ(style.border_bottom.style, BorderStyle::Dashed);
+    EXPECT_EQ(style.border_bottom.color.b, 255);
+}
+
+TEST(CSSStyleTest, DisplayFlexWithDirectionAndWrapV85) {
+    // display: flex with flex-direction: column and flex-wrap: wrap
+    const std::string css = "div{display:flex;flex-direction:column;flex-wrap:wrap;justify-content:center;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.display, Display::Flex);
+    EXPECT_EQ(style.flex_direction, FlexDirection::Column);
+    EXPECT_EQ(style.flex_wrap, FlexWrap::Wrap);
+    EXPECT_EQ(style.justify_content, JustifyContent::Center);
+}
+
+TEST(CSSStyleTest, VisibilityHiddenAndWhiteSpacePreV85) {
+    // visibility: hidden and white-space: pre
+    const std::string css = "span{visibility:hidden;white-space:pre;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "span";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.visibility, Visibility::Hidden);
+    EXPECT_EQ(style.white_space, WhiteSpace::Pre);
+}
+
+TEST(CSSStyleTest, CursorTypesResolveCorrectlyV85) {
+    // cursor: text resolves to Cursor::Text
+    const std::string css = "input{cursor:text;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "input";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.cursor, Cursor::Text);
+}
+
+TEST(CSSStyleTest, FontSizeWeightAndColorV85) {
+    // font-size, font-weight, and color resolved together
+    const std::string css = "p{font-size:24px;font-weight:700;color:green;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "p";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_FLOAT_EQ(style.font_size.value, 24.0f);
+    EXPECT_EQ(style.font_weight, 700);
+    EXPECT_EQ(style.color.r, 0);
+    EXPECT_EQ(style.color.g, 128);
+    EXPECT_EQ(style.color.b, 0);
+}
+
+TEST(CSSStyleTest, InheritColorFromParentStyleV85) {
+    // color is an inherited property; child should get parent's color
+    const std::string css = "div{background-color:yellow;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+
+    ComputedStyle parent;
+    parent.color = Color{255, 0, 0, 255}; // red parent color
+    auto style = resolver.resolve(elem, parent);
+
+    // color should be inherited from parent since CSS doesn't set it
+    EXPECT_EQ(style.color.r, 255);
+    EXPECT_EQ(style.color.g, 0);
+    EXPECT_EQ(style.color.b, 0);
+
+    // background-color is NOT inherited; should be yellow from CSS
+    EXPECT_EQ(style.background_color.r, 255);
+    EXPECT_EQ(style.background_color.g, 255);
+    EXPECT_EQ(style.background_color.b, 0);
+}

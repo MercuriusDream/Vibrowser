@@ -10270,3 +10270,75 @@ TEST(UrlParserTest, CompletelyInvalidUrlReturnsNulloptV84) {
     auto result = clever::url::parse("not-a-url-at-all");
     EXPECT_FALSE(result.has_value());
 }
+
+// =============================================================================
+// V85 Tests
+// =============================================================================
+
+TEST(UrlParserTest, FtpSchemeWithPathAndFragmentV85) {
+    auto result = clever::url::parse("ftp://files.example.com/pub/docs/readme.txt#top");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "ftp");
+    EXPECT_EQ(result->host, "files.example.com");
+    EXPECT_EQ(result->port, std::nullopt);
+    EXPECT_EQ(result->path, "/pub/docs/readme.txt");
+    EXPECT_TRUE(result->query.empty());
+    EXPECT_EQ(result->fragment, "top");
+}
+
+TEST(UrlParserTest, HttpsDefaultPort443NormalizedAwayV85) {
+    auto result = clever::url::parse("https://secure.example.com:443/login?next=/dashboard");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "secure.example.com");
+    EXPECT_EQ(result->port, std::nullopt);
+    EXPECT_EQ(result->path, "/login");
+    EXPECT_EQ(result->query, "next=/dashboard");
+}
+
+TEST(UrlParserTest, MixedCaseHostFullyLowercasedV85) {
+    auto result = clever::url::parse("https://API.SubDomain.EXAMPLE.COM/v2/resource");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->host, "api.subdomain.example.com");
+    EXPECT_EQ(result->path, "/v2/resource");
+}
+
+TEST(UrlParserTest, DotDotResolvesToRootWhenExhaustedV85) {
+    auto result = clever::url::parse("https://example.com/a/../../../b");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/b");
+}
+
+TEST(UrlParserTest, PercentEncodedSpaceDoubleEncodedV85) {
+    auto result = clever::url::parse("https://example.com/hello%20world");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->path, "/hello%2520world");
+}
+
+TEST(UrlParserTest, EmptyStringReturnsNulloptV85) {
+    auto result = clever::url::parse("");
+    EXPECT_FALSE(result.has_value());
+}
+
+TEST(UrlParserTest, QueryWithMultipleParamsNoFragmentV85) {
+    auto result = clever::url::parse("https://search.example.com/find?lang=en&sort=date&page=3");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "search.example.com");
+    EXPECT_EQ(result->path, "/find");
+    EXPECT_EQ(result->query, "lang=en&sort=date&page=3");
+    EXPECT_TRUE(result->fragment.empty());
+}
+
+TEST(UrlParserTest, SerializeReconstructsUrlCorrectlyV85) {
+    auto result = clever::url::parse("https://example.com:9090/api/data?key=abc#ref");
+    ASSERT_TRUE(result.has_value());
+    std::string serialized = result->serialize();
+    EXPECT_NE(serialized.find("https"), std::string::npos);
+    EXPECT_NE(serialized.find("example.com"), std::string::npos);
+    EXPECT_NE(serialized.find("9090"), std::string::npos);
+    EXPECT_NE(serialized.find("/api/data"), std::string::npos);
+    EXPECT_NE(serialized.find("key=abc"), std::string::npos);
+    EXPECT_NE(serialized.find("ref"), std::string::npos);
+}
