@@ -15067,3 +15067,112 @@ TEST(DomTest, SetAttributeIdAndVerifyTreeStructureV93) {
     EXPECT_EQ(static_cast<Element*>(c1)->get_attribute("id").value(), "s1");
     EXPECT_EQ(static_cast<Element*>(c2)->get_attribute("id").value(), "s2");
 }
+
+TEST(DomTest, AppendChildReturnsReferenceV94) {
+    Element parent("ul");
+    auto li = std::make_unique<Element>("li");
+    auto* expected = li.get();
+    Node& returned = parent.append_child(std::move(li));
+    EXPECT_EQ(&returned, expected);
+    EXPECT_EQ(parent.child_count(), 1u);
+    EXPECT_EQ(parent.first_child(), expected);
+}
+
+TEST(DomTest, RemoveChildUpdatesFirstAndLastV94) {
+    Element parent("ol");
+    auto a = std::make_unique<Element>("li");
+    auto* a_ptr = a.get();
+    parent.append_child(std::move(a));
+    auto b = std::make_unique<Element>("li");
+    auto* b_ptr = b.get();
+    parent.append_child(std::move(b));
+    auto c = std::make_unique<Element>("li");
+    auto* c_ptr = c.get();
+    parent.append_child(std::move(c));
+    parent.remove_child(*b_ptr);
+    EXPECT_EQ(parent.child_count(), 2u);
+    EXPECT_EQ(parent.first_child(), a_ptr);
+    EXPECT_EQ(parent.last_child(), c_ptr);
+    EXPECT_EQ(a_ptr->next_sibling(), c_ptr);
+    EXPECT_EQ(c_ptr->previous_sibling(), a_ptr);
+}
+
+TEST(DomTest, ClassListMultipleOpsV94) {
+    Element el("div");
+    el.class_list().add("alpha");
+    el.class_list().add("beta");
+    el.class_list().add("gamma");
+    EXPECT_TRUE(el.class_list().contains("alpha"));
+    EXPECT_TRUE(el.class_list().contains("beta"));
+    EXPECT_TRUE(el.class_list().contains("gamma"));
+    el.class_list().toggle("beta");
+    EXPECT_FALSE(el.class_list().contains("beta"));
+    el.class_list().remove("alpha");
+    EXPECT_FALSE(el.class_list().contains("alpha"));
+    EXPECT_TRUE(el.class_list().contains("gamma"));
+}
+
+TEST(DomTest, NestedTextContentConcatenationV94) {
+    Element div("div");
+    div.append_child(std::make_unique<Text>("Hello "));
+    auto span = std::make_unique<Element>("span");
+    span->append_child(std::make_unique<Text>("beautiful "));
+    div.append_child(std::move(span));
+    div.append_child(std::make_unique<Text>("world"));
+    EXPECT_EQ(div.text_content(), "Hello beautiful world");
+    EXPECT_EQ(div.child_count(), 3u);
+}
+
+TEST(DomTest, InsertBeforeAtFrontV94) {
+    Element parent("div");
+    auto orig = std::make_unique<Element>("b");
+    auto* orig_ptr = orig.get();
+    parent.append_child(std::move(orig));
+    auto first = std::make_unique<Element>("a");
+    auto* first_ptr = first.get();
+    parent.insert_before(std::move(first), orig_ptr);
+    EXPECT_EQ(parent.child_count(), 2u);
+    EXPECT_EQ(parent.first_child(), first_ptr);
+    EXPECT_EQ(parent.last_child(), orig_ptr);
+    EXPECT_EQ(first_ptr->next_sibling(), orig_ptr);
+    EXPECT_EQ(orig_ptr->previous_sibling(), first_ptr);
+}
+
+TEST(DomTest, AttributeOverwritePreservesCountV94) {
+    Element el("input");
+    el.set_attribute("type", "text");
+    el.set_attribute("value", "abc");
+    EXPECT_EQ(el.attributes().size(), 2u);
+    el.set_attribute("value", "xyz");
+    EXPECT_EQ(el.attributes().size(), 2u);
+    EXPECT_EQ(el.get_attribute("value").value(), "xyz");
+    EXPECT_EQ(el.get_attribute("type").value(), "text");
+}
+
+TEST(DomTest, TextContentOfEmptyElementV94) {
+    Element empty("div");
+    EXPECT_EQ(empty.text_content(), "");
+    EXPECT_EQ(empty.child_count(), 0u);
+    EXPECT_EQ(empty.first_child(), nullptr);
+    EXPECT_EQ(empty.last_child(), nullptr);
+}
+
+TEST(DomTest, ParentAndSiblingPointersAfterInsertV94) {
+    Element parent("nav");
+    auto a = std::make_unique<Element>("a");
+    auto* a_ptr = a.get();
+    parent.append_child(std::move(a));
+    auto c = std::make_unique<Element>("c");
+    auto* c_ptr = c.get();
+    parent.append_child(std::move(c));
+    auto b = std::make_unique<Element>("b");
+    auto* b_ptr = b.get();
+    parent.insert_before(std::move(b), c_ptr);
+    EXPECT_EQ(b_ptr->parent(), &parent);
+    EXPECT_EQ(a_ptr->next_sibling(), b_ptr);
+    EXPECT_EQ(b_ptr->previous_sibling(), a_ptr);
+    EXPECT_EQ(b_ptr->next_sibling(), c_ptr);
+    EXPECT_EQ(c_ptr->previous_sibling(), b_ptr);
+    EXPECT_EQ(a_ptr->previous_sibling(), nullptr);
+    EXPECT_EQ(c_ptr->next_sibling(), nullptr);
+}

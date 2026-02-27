@@ -17271,3 +17271,216 @@ TEST(LayoutTest, BorderShrinksContentAndAddsHeightV93) {
     // Root width stays as specified
     EXPECT_FLOAT_EQ(root->geometry.width, 300.0f);
 }
+
+// Test V94_001: flex column distributes vertical space with flex_grow
+TEST(LayoutTest, FlexColumnGrowDistributesVerticalSpaceV94) {
+    auto root = make_flex("div");
+    root->specified_width = 400.0f;
+    root->specified_height = 300.0f;
+    root->flex_direction = 2; // Column
+
+    auto c1 = make_block("div");
+    c1->specified_height = 50.0f;
+    c1->flex_grow = 1.0f;
+
+    auto c2 = make_block("div");
+    c2->specified_height = 50.0f;
+    c2->flex_grow = 3.0f;
+
+    root->append_child(std::move(c1));
+    root->append_child(std::move(c2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // Flex grow distributes space; children share the container height
+    float h1 = root->children[0]->geometry.height;
+    float h2 = root->children[1]->geometry.height;
+    // c2 has 3x the grow factor of c1, so it should be taller
+    EXPECT_GT(h2, h1);
+    EXPECT_GT(h1, 0.0f);
+    EXPECT_GT(h2, 0.0f);
+}
+
+// Test V94_002: z_index assignment does not affect block layout positions
+TEST(LayoutTest, ZIndexDoesNotAffectBlockLayoutV94) {
+    auto root = make_block("div");
+    root->specified_width = 600.0f;
+
+    auto c1 = make_block("div");
+    c1->specified_height = 40.0f;
+    c1->z_index = 10;
+
+    auto c2 = make_block("div");
+    c2->specified_height = 60.0f;
+    c2->z_index = 5;
+
+    auto c3 = make_block("div");
+    c3->specified_height = 30.0f;
+    c3->z_index = 99;
+
+    root->append_child(std::move(c1));
+    root->append_child(std::move(c2));
+    root->append_child(std::move(c3));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // Children stack vertically regardless of z_index
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.y, 0.0f);
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.y, 40.0f);
+    EXPECT_FLOAT_EQ(root->children[2]->geometry.y, 100.0f);
+    EXPECT_FLOAT_EQ(root->geometry.height, 130.0f);
+}
+
+// Test V94_003: opacity does not change layout dimensions
+TEST(LayoutTest, OpacityDoesNotChangeLayoutDimensionsV94) {
+    auto root = make_block("div");
+    root->specified_width = 500.0f;
+
+    auto child = make_block("div");
+    child->specified_width = 200.0f;
+    child->specified_height = 100.0f;
+    child->opacity = 0.5f;
+
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.width, 200.0f);
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.height, 100.0f);
+    EXPECT_FLOAT_EQ(root->geometry.height, 100.0f);
+}
+
+// Test V94_004: flex row with mixed grow and fixed children
+TEST(LayoutTest, FlexRowMixedGrowAndFixedV94) {
+    auto root = make_flex("div");
+    root->specified_width = 600.0f;
+    root->specified_height = 100.0f;
+    root->flex_direction = 0; // Row
+
+    auto fixed1 = make_block("div");
+    fixed1->specified_width = 100.0f;
+    fixed1->flex_grow = 0.0f;
+
+    auto grow1 = make_block("div");
+    grow1->flex_grow = 2.0f;
+
+    auto fixed2 = make_block("div");
+    fixed2->specified_width = 50.0f;
+    fixed2->flex_grow = 0.0f;
+
+    root->append_child(std::move(fixed1));
+    root->append_child(std::move(grow1));
+    root->append_child(std::move(fixed2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // Fixed children keep their widths; grow child takes remaining
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.width, 100.0f);
+    EXPECT_FLOAT_EQ(root->children[2]->geometry.width, 50.0f);
+    // grow child gets 600 - 100 - 50 = 450
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.width, 450.0f);
+}
+
+// Test V94_005: deeply nested blocks propagate height upward
+TEST(LayoutTest, DeeplyNestedBlocksPropagateHeightV94) {
+    auto root = make_block("div");
+    root->specified_width = 400.0f;
+
+    auto mid = make_block("div");
+    auto inner = make_block("div");
+    inner->specified_height = 75.0f;
+
+    mid->append_child(std::move(inner));
+    root->append_child(std::move(mid));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // Height should propagate from inner -> mid -> root
+    EXPECT_FLOAT_EQ(root->children[0]->children[0]->geometry.height, 75.0f);
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.height, 75.0f);
+    EXPECT_FLOAT_EQ(root->geometry.height, 75.0f);
+}
+
+// Test V94_006: block with combined padding, border, and margin
+TEST(LayoutTest, CombinedPaddingBorderMarginV94) {
+    auto root = make_block("div");
+    root->specified_width = 500.0f;
+
+    auto child = make_block("div");
+    child->specified_height = 60.0f;
+    child->geometry.margin.left = 10.0f;
+    child->geometry.margin.right = 10.0f;
+    child->geometry.padding.left = 15.0f;
+    child->geometry.padding.right = 15.0f;
+    child->geometry.border.left = 2.0f;
+    child->geometry.border.right = 2.0f;
+
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // Child geometry.width = parent width - horizontal margins = 500 - 10 - 10 = 480
+    // Padding and border are part of the child's own box, not subtracted from geometry.width
+    float cw = root->children[0]->geometry.width;
+    EXPECT_FLOAT_EQ(cw, 480.0f);
+}
+
+// Test V94_007: background_color and color do not affect layout
+TEST(LayoutTest, ColorsDoNotAffectLayoutV94) {
+    auto root = make_block("div");
+    root->specified_width = 300.0f;
+    root->background_color = 0xFF0000FFu;
+    root->color = 0xFFFFFFFFu;
+
+    auto c1 = make_block("div");
+    c1->specified_height = 50.0f;
+    c1->background_color = 0xFFFF0000u;
+    c1->color = 0xFF00FF00u;
+
+    auto c2 = make_block("div");
+    c2->specified_height = 50.0f;
+    c2->background_color = 0x00000000u;
+
+    root->append_child(std::move(c1));
+    root->append_child(std::move(c2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // Layout identical regardless of color values
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.y, 0.0f);
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.height, 50.0f);
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.y, 50.0f);
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.height, 50.0f);
+    EXPECT_FLOAT_EQ(root->geometry.height, 100.0f);
+    EXPECT_FLOAT_EQ(root->geometry.width, 300.0f);
+}
+
+// Test V94_008: font_size on text node determines its height
+TEST(LayoutTest, FontSizeDeterminesTextNodeHeightV94) {
+    auto root = make_block("div");
+    root->specified_width = 400.0f;
+
+    auto t1 = make_text("Hello", 12.0f);
+    auto t2 = make_text("World", 24.0f);
+
+    auto* t1_ptr = t1.get();
+    auto* t2_ptr = t2.get();
+
+    root->append_child(std::move(t1));
+    root->append_child(std::move(t2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // Larger font_size should produce taller geometry
+    EXPECT_GT(t2_ptr->geometry.height, 0.0f);
+    EXPECT_GT(t1_ptr->geometry.height, 0.0f);
+    EXPECT_GT(t2_ptr->geometry.height, t1_ptr->geometry.height);
+}

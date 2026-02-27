@@ -16856,3 +16856,179 @@ TEST(CSSStyleTest, PositionRelativeWithPaddingAndColorV93) {
     EXPECT_EQ(style.background_color.b, 0x63);
     EXPECT_EQ(style.display, Display::InlineBlock);
 }
+
+// ---------------------------------------------------------------------------
+// V94 tests
+// ---------------------------------------------------------------------------
+
+TEST(CSSStyleTest, FlexGrowShrinkWithOpacityV94) {
+    const std::string css = ".flex-item{flex-grow:2;flex-shrink:0.5;opacity:0.75;display:flex;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+    elem.classes = {"flex-item"};
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_FLOAT_EQ(style.flex_grow, 2.0f);
+    EXPECT_FLOAT_EQ(style.flex_shrink, 0.5f);
+    EXPECT_FLOAT_EQ(style.opacity, 0.75f);
+    EXPECT_EQ(style.display, Display::Flex);
+}
+
+TEST(CSSStyleTest, ZIndexWithPositionAbsoluteV94) {
+    const std::string css = ".overlay{position:absolute;z-index:999;background-color:#000000;opacity:0.5;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+    elem.classes = {"overlay"};
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.position, Position::Absolute);
+    EXPECT_EQ(style.z_index, 999);
+    EXPECT_EQ(style.background_color.r, 0x00);
+    EXPECT_EQ(style.background_color.g, 0x00);
+    EXPECT_EQ(style.background_color.b, 0x00);
+    EXPECT_FLOAT_EQ(style.opacity, 0.5f);
+}
+
+TEST(CSSStyleTest, BorderTopSolidWithMarginV94) {
+    const std::string css = ".card{border-top-width:3px;border-top-style:solid;border-top-color:#ff5722;margin-top:16px;margin-right:24px;margin-bottom:16px;margin-left:24px;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "section";
+    elem.classes = {"card"};
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_FLOAT_EQ(style.border_top.width.to_px(), 3.0f);
+    EXPECT_EQ(style.border_top.style, BorderStyle::Solid);
+    EXPECT_FLOAT_EQ(style.margin.top.to_px(), 16.0f);
+    EXPECT_FLOAT_EQ(style.margin.right.to_px(), 24.0f);
+    EXPECT_FLOAT_EQ(style.margin.bottom.to_px(), 16.0f);
+    EXPECT_FLOAT_EQ(style.margin.left.to_px(), 24.0f);
+}
+
+TEST(CSSStyleTest, CursorPointerWithPointerEventsNoneV94) {
+    const std::string css = ".disabled-link{cursor:pointer;pointer-events:none;user-select:none;color:#999999;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "a";
+    elem.classes = {"disabled-link"};
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.cursor, Cursor::Pointer);
+    EXPECT_EQ(style.pointer_events, PointerEvents::None);
+    EXPECT_EQ(style.user_select, UserSelect::None);
+    EXPECT_EQ(style.color.r, 0x99);
+    EXPECT_EQ(style.color.g, 0x99);
+    EXPECT_EQ(style.color.b, 0x99);
+}
+
+TEST(CSSStyleTest, WhiteSpaceNoWrapWithFontWeightBoldV94) {
+    const std::string css = ".tag{white-space:nowrap;font-weight:700;font-size:12px;display:inline-block;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "span";
+    elem.classes = {"tag"};
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.white_space, WhiteSpace::NoWrap);
+    EXPECT_EQ(style.font_weight, 700);
+    EXPECT_FLOAT_EQ(style.font_size.to_px(), 12.0f);
+    EXPECT_EQ(style.display, Display::InlineBlock);
+}
+
+TEST(CSSStyleTest, VerticalAlignMiddleWithPaddingAllSidesV94) {
+    const std::string css = ".cell{vertical-align:middle;padding:10px 20px 30px 40px;text-align:right;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "td";
+    elem.classes = {"cell"};
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.vertical_align, VerticalAlign::Middle);
+    EXPECT_FLOAT_EQ(style.padding.top.to_px(), 10.0f);
+    EXPECT_FLOAT_EQ(style.padding.right.to_px(), 20.0f);
+    EXPECT_FLOAT_EQ(style.padding.bottom.to_px(), 30.0f);
+    EXPECT_FLOAT_EQ(style.padding.left.to_px(), 40.0f);
+    EXPECT_EQ(style.text_align, TextAlign::Right);
+}
+
+TEST(CSSStyleTest, PositionFixedWithZIndexAndVisibilityV94) {
+    const std::string css = ".tooltip{position:fixed;z-index:1000;visibility:hidden;font-size:14px;line-height:1.4;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+    elem.classes = {"tooltip"};
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.position, Position::Fixed);
+    EXPECT_EQ(style.z_index, 1000);
+    EXPECT_EQ(style.visibility, Visibility::Hidden);
+    EXPECT_FLOAT_EQ(style.font_size.to_px(), 14.0f);
+    EXPECT_FLOAT_EQ(style.line_height_unitless, 1.4f);
+}
+
+TEST(CSSStyleTest, DisplayNoneWithBorderAndBackgroundV94) {
+    const std::string css = ".hidden-panel{display:none;border-bottom-width:2px;border-bottom-style:solid;background-color:#e8eaf6;margin-top:8px;margin-right:8px;margin-bottom:8px;margin-left:8px;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+    elem.classes = {"hidden-panel"};
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.display, Display::None);
+    EXPECT_FLOAT_EQ(style.border_bottom.width.to_px(), 2.0f);
+    EXPECT_EQ(style.border_bottom.style, BorderStyle::Solid);
+    EXPECT_FLOAT_EQ(style.margin.top.to_px(), 8.0f);
+    EXPECT_FLOAT_EQ(style.margin.right.to_px(), 8.0f);
+    EXPECT_FLOAT_EQ(style.margin.bottom.to_px(), 8.0f);
+    EXPECT_FLOAT_EQ(style.margin.left.to_px(), 8.0f);
+}

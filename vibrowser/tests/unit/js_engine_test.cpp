@@ -26373,3 +26373,232 @@ TEST(JsEngineTest, RegExpAdvancedFeaturesV93) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "2025/12/31|4:hello,world,foo,bar|aabBcdCD|true|false|one,two,three");
 }
+
+// ============================================================================
+// V94 Tests
+// ============================================================================
+
+TEST(JsEngineTest, WeakMapAndWeakSetBasicsV94) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var results = [];
+        var wm = new WeakMap();
+        var obj1 = {name: "alpha"};
+        var obj2 = {name: "beta"};
+        wm.set(obj1, 100);
+        wm.set(obj2, 200);
+        results.push(wm.has(obj1));
+        results.push(wm.get(obj1));
+        results.push(wm.get(obj2));
+        wm.delete(obj1);
+        results.push(wm.has(obj1));
+        results.push(wm.has(obj2));
+        var ws = new WeakSet();
+        var obj3 = {id: 3};
+        ws.add(obj3);
+        results.push(ws.has(obj3));
+        ws.delete(obj3);
+        results.push(ws.has(obj3));
+        results.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true|100|200|false|true|true|false");
+}
+
+TEST(JsEngineTest, SymbolIteratorProtocolV94) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var results = [];
+        var range = {};
+        range[Symbol.iterator] = function() {
+            var current = 1;
+            var last = 5;
+            return {
+                next: function() {
+                    if (current <= last) {
+                        return { value: current++, done: false };
+                    }
+                    return { done: true };
+                }
+            };
+        };
+        var collected = [];
+        for (var v of range) {
+            collected.push(v);
+        }
+        results.push(collected.join(","));
+        results.push(collected.length);
+        var arr = Array.from(range);
+        results.push(arr.reduce(function(a, b) { return a + b; }, 0));
+        var s = new Set(range);
+        results.push(s.size);
+        results.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1,2,3,4,5|5|15|5");
+}
+
+TEST(JsEngineTest, ProxyGetSetDeleteHasV94) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var results = [];
+        var log = [];
+        var target = {x: 10, y: 20};
+        var p = new Proxy(target, {
+            get: function(t, prop) {
+                log.push("get:" + prop);
+                return t[prop];
+            },
+            set: function(t, prop, val) {
+                log.push("set:" + prop + "=" + val);
+                t[prop] = val;
+                return true;
+            },
+            deleteProperty: function(t, prop) {
+                log.push("del:" + prop);
+                delete t[prop];
+                return true;
+            },
+            has: function(t, prop) {
+                log.push("has:" + prop);
+                return prop in t;
+            }
+        });
+        results.push(p.x);
+        p.z = 30;
+        results.push("z" in p);
+        delete p.y;
+        results.push("y" in p);
+        results.push(log.join(","));
+        results.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "10|true|false|get:x,set:z=30,has:z,del:y,has:y");
+}
+
+TEST(JsEngineTest, ReflectOwnKeysAndApplyV94) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var results = [];
+        var obj = {a: 1, b: 2, c: 3};
+        var keys = Reflect.ownKeys(obj);
+        results.push(keys.join(","));
+        function sum(x, y, z) { return x + y + z; }
+        var r = Reflect.apply(sum, null, [10, 20, 30]);
+        results.push(r);
+        var constructed = Reflect.construct(Array, [1, 2, 3]);
+        results.push(constructed.length);
+        results.push(Reflect.has(obj, "b"));
+        Reflect.defineProperty(obj, "d", {value: 99, enumerable: true});
+        results.push(obj.d);
+        Reflect.deleteProperty(obj, "a");
+        results.push(Reflect.has(obj, "a"));
+        results.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "a,b,c|60|3|true|99|false");
+}
+
+TEST(JsEngineTest, GeneratorDelegationYieldStarV94) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var results = [];
+        function* inner() {
+            yield "a";
+            yield "b";
+            return "innerDone";
+        }
+        function* outer() {
+            yield "start";
+            var ret = yield* inner();
+            results.push("ret:" + ret);
+            yield "end";
+        }
+        var gen = outer();
+        var vals = [];
+        var step;
+        while (true) {
+            step = gen.next();
+            if (step.done) break;
+            vals.push(step.value);
+        }
+        results.unshift(vals.join(","));
+        results.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "start,a,b,end|ret:innerDone");
+}
+
+TEST(JsEngineTest, MapChainedOperationsV94) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var results = [];
+        var m = new Map();
+        var entries = [["x",1],["y",2],["z",3],["w",4],["v",5]];
+        for (var i = 0; i < entries.length; i++) {
+            m.set(entries[i][0], entries[i][1]);
+        }
+        results.push(m.size);
+        var keys = [];
+        var vals = [];
+        m.forEach(function(val, key) {
+            keys.push(key);
+            vals.push(val);
+        });
+        results.push(keys.join(","));
+        results.push(vals.reduce(function(a, b) { return a + b; }, 0));
+        m.delete("z");
+        results.push(m.size);
+        results.push(m.has("z"));
+        results.push(m.has("w"));
+        var iter = m.entries();
+        var first = iter.next().value;
+        results.push(first[0] + "=" + first[1]);
+        results.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "5|x,y,z,w,v|15|4|false|true|x=1");
+}
+
+TEST(JsEngineTest, ArrayFlatAndFlatMapV94) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var results = [];
+        var nested = [1, [2, 3], [4, [5, 6]]];
+        var flat1 = nested.flat();
+        results.push(flat1.join(","));
+        var flat2 = nested.flat(Infinity);
+        results.push(flat2.join(","));
+        var sentences = ["hello world", "foo bar baz"];
+        var words = sentences.flatMap(function(s) { return s.split(" "); });
+        results.push(words.join(","));
+        results.push(words.length);
+        var empty = [1, 2, 3].flatMap(function(x) { return x % 2 === 0 ? [x] : []; });
+        results.push(empty.join(","));
+        results.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1,2,3,4,5,6|1,2,3,4,5,6|hello,world,foo,bar,baz|5|2");
+}
+
+TEST(JsEngineTest, ObjectEntriesFromEntriesAssignV94) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var results = [];
+        var obj = {a: 1, b: 2, c: 3};
+        var entries = Object.entries(obj);
+        results.push(entries.map(function(e) { return e[0] + ":" + e[1]; }).join(","));
+        var rebuilt = Object.fromEntries(entries.map(function(e) {
+            return [e[0], e[1] * 10];
+        }));
+        results.push(rebuilt.a + "," + rebuilt.b + "," + rebuilt.c);
+        var merged = Object.assign({}, {x: 1}, {y: 2, x: 10}, {z: 3});
+        results.push(merged.x + "," + merged.y + "," + merged.z);
+        var vals = Object.values(merged);
+        vals.sort(function(a, b) { return a - b; });
+        results.push(vals.join(","));
+        results.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "a:1,b:2,c:3|10,20,30|10,2,3|2,3,10");
+}

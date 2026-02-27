@@ -16172,3 +16172,103 @@ TEST(HttpClientTest, CookieJarMultipleCookiesSameDomainV93) {
     EXPECT_TRUE(cookies.find("b=2") != std::string::npos);
     EXPECT_TRUE(cookies.find("c=3") != std::string::npos);
 }
+
+TEST(HttpClientTest, HeaderMapSetOverwritePreservesLatestValueV94) {
+    HeaderMap headers;
+    headers.set("Cache-Control", "no-cache");
+    headers.set("Cache-Control", "max-age=3600");
+    auto val = headers.get("Cache-Control");
+    EXPECT_TRUE(val.has_value());
+    EXPECT_EQ(val.value(), "max-age=3600");
+    EXPECT_EQ(headers.size(), 1u);
+}
+
+TEST(HttpClientTest, RequestSerializePutMethodWithBodyV94) {
+    Request req;
+    req.method = Method::PUT;
+    req.host = "api.example.com";
+    req.port = 443;
+    req.path = "/resource/42";
+    req.use_tls = true;
+    std::string body_str = "{\"name\":\"updated\"}";
+    req.body = std::vector<uint8_t>(body_str.begin(), body_str.end());
+    auto bytes = req.serialize();
+    std::string s(bytes.begin(), bytes.end());
+    EXPECT_TRUE(s.find("PUT /resource/42 HTTP/1.1\r\n") == 0);
+    EXPECT_TRUE(s.find("Host: api.example.com\r\n") != std::string::npos);
+    EXPECT_TRUE(s.find("{\"name\":\"updated\"}") != std::string::npos);
+}
+
+TEST(HttpClientTest, ResponseBodyAsStringReturnsUtf8ContentV94) {
+    Response resp;
+    resp.status = 200;
+    resp.status_text = "OK";
+    std::string content = "Hello, World! 123";
+    resp.body = std::vector<uint8_t>(content.begin(), content.end());
+    EXPECT_EQ(resp.body_as_string(), "Hello, World! 123");
+    EXPECT_EQ(resp.body.size(), 17u);
+}
+
+TEST(HttpClientTest, HeaderMapRemoveNonexistentKeyDoesNotAffectSizeV94) {
+    HeaderMap headers;
+    headers.set("Accept", "text/html");
+    headers.set("Connection", "keep-alive");
+    EXPECT_EQ(headers.size(), 2u);
+    headers.remove("X-Nonexistent");
+    EXPECT_EQ(headers.size(), 2u);
+    EXPECT_TRUE(headers.has("Accept"));
+    EXPECT_TRUE(headers.has("Connection"));
+}
+
+TEST(HttpClientTest, CookieJarSeparateDomainsIsolatedV94) {
+    CookieJar jar;
+    jar.set_from_header("session=abc", "alpha.com");
+    jar.set_from_header("session=xyz", "beta.com");
+    std::string alpha_cookies = jar.get_cookie_header("alpha.com", "/", false);
+    std::string beta_cookies = jar.get_cookie_header("beta.com", "/", false);
+    EXPECT_TRUE(alpha_cookies.find("session=abc") != std::string::npos);
+    EXPECT_TRUE(alpha_cookies.find("session=xyz") == std::string::npos);
+    EXPECT_TRUE(beta_cookies.find("session=xyz") != std::string::npos);
+    EXPECT_TRUE(beta_cookies.find("session=abc") == std::string::npos);
+}
+
+TEST(HttpClientTest, RequestSerializeOmitsPort443ForHttpsV94) {
+    Request req;
+    req.method = Method::GET;
+    req.host = "secure.example.com";
+    req.port = 443;
+    req.path = "/api";
+    req.use_tls = true;
+    auto bytes = req.serialize();
+    std::string s(bytes.begin(), bytes.end());
+    EXPECT_TRUE(s.find("Host: secure.example.com\r\n") != std::string::npos);
+    EXPECT_TRUE(s.find(":443") == std::string::npos);
+}
+
+TEST(HttpClientTest, HeaderMapEmptyAfterRemovingAllEntriesV94) {
+    HeaderMap headers;
+    headers.set("X-One", "1");
+    headers.set("X-Two", "2");
+    EXPECT_FALSE(headers.empty());
+    headers.remove("X-One");
+    headers.remove("X-Two");
+    EXPECT_TRUE(headers.empty());
+    EXPECT_EQ(headers.size(), 0u);
+}
+
+TEST(HttpClientTest, RequestSerializePostDefaultPort80OmittedV94) {
+    Request req;
+    req.method = Method::POST;
+    req.host = "www.example.com";
+    req.port = 80;
+    req.path = "/submit";
+    req.use_tls = false;
+    std::string body_str = "field=value";
+    req.body = std::vector<uint8_t>(body_str.begin(), body_str.end());
+    auto bytes = req.serialize();
+    std::string s(bytes.begin(), bytes.end());
+    EXPECT_TRUE(s.find("POST /submit HTTP/1.1\r\n") == 0);
+    EXPECT_TRUE(s.find("Host: www.example.com\r\n") != std::string::npos);
+    EXPECT_TRUE(s.find(":80") == std::string::npos);
+    EXPECT_TRUE(s.find("field=value") != std::string::npos);
+}

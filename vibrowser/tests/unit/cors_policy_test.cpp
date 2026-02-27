@@ -6874,3 +6874,78 @@ TEST(CORSPolicyTest, NormalizeOutgoingOriginHeaderCrossOriginV93) {
     normalize_outgoing_origin_header(same_headers, "https://same.com", "https://same.com/path");
     EXPECT_FALSE(same_headers.get("Origin").has_value());
 }
+
+TEST(CORSPolicyTest, FragmentURLsNotCorsEligibleV94) {
+    // URLs with fragments are NOT cors-eligible
+    EXPECT_FALSE(is_cors_eligible_request_url("https://example.com/page#section"));
+    EXPECT_FALSE(is_cors_eligible_request_url("http://example.com/path#frag"));
+    // Without fragment, same URLs are eligible
+    EXPECT_TRUE(is_cors_eligible_request_url("https://example.com/page"));
+    EXPECT_TRUE(is_cors_eligible_request_url("http://example.com/path"));
+}
+
+TEST(CORSPolicyTest, WssSchemeNotCorsEligibleV94) {
+    // wss:// is NOT cors-eligible
+    EXPECT_FALSE(is_cors_eligible_request_url("wss://socket.example.com/live"));
+    // ws:// is also not cors-eligible
+    EXPECT_FALSE(is_cors_eligible_request_url("ws://socket.example.com/live"));
+    // https equivalent is eligible
+    EXPECT_TRUE(is_cors_eligible_request_url("https://socket.example.com/live"));
+}
+
+TEST(CORSPolicyTest, DataBlobSchemesNotEnforceableV94) {
+    // data: and blob: are NOT enforceable document origins
+    EXPECT_FALSE(has_enforceable_document_origin("data:application/json,{}"));
+    EXPECT_FALSE(has_enforceable_document_origin("blob:https://trusted.com/abc-123"));
+    EXPECT_FALSE(has_enforceable_document_origin("data:,"));
+    EXPECT_FALSE(has_enforceable_document_origin("blob:null/someuuid"));
+}
+
+TEST(CORSPolicyTest, IPAddressOriginsAreEnforceableV94) {
+    // IP addresses with http/https scheme ARE enforceable
+    EXPECT_TRUE(has_enforceable_document_origin("https://10.0.0.1"));
+    EXPECT_TRUE(has_enforceable_document_origin("http://172.16.0.1:3000"));
+    EXPECT_TRUE(has_enforceable_document_origin("https://192.168.100.200"));
+    // Loopback IP
+    EXPECT_TRUE(has_enforceable_document_origin("http://127.0.0.1"));
+}
+
+TEST(CORSPolicyTest, CorsAllowsWildcardWithCredentialsV94) {
+    // Wildcard ACAO with credentials_requested=true should be REJECTED
+    clever::net::HeaderMap h;
+    h.set("Access-Control-Allow-Origin", "*");
+    EXPECT_FALSE(cors_allows_response("https://app.example.com", "https://api.other.com/data", h, true));
+    // Wildcard ACAO without credentials is accepted
+    EXPECT_TRUE(cors_allows_response("https://app.example.com", "https://api.other.com/data", h, false));
+}
+
+TEST(CORSPolicyTest, CorsAllowsExactOriginWithCredentialsV94) {
+    // Exact origin match with credentials requires ACAC: true header
+    clever::net::HeaderMap h;
+    h.set("Access-Control-Allow-Origin", "https://app.example.com");
+    h.set("Access-Control-Allow-Credentials", "true");
+    EXPECT_TRUE(cors_allows_response("https://app.example.com", "https://api.other.com/data", h, true));
+    // Without ACAC header, credentials request is rejected even with exact origin
+    clever::net::HeaderMap h2;
+    h2.set("Access-Control-Allow-Origin", "https://app.example.com");
+    EXPECT_FALSE(cors_allows_response("https://app.example.com", "https://api.other.com/data", h2, true));
+}
+
+TEST(CORSPolicyTest, CrossOriginPortDifferencesV94) {
+    // Different non-default ports on same host are cross-origin
+    EXPECT_TRUE(is_cross_origin("https://example.com:8080", "https://example.com:9090/path"));
+    // Explicit :443 on https is the default port, so normalized away -- same origin as no port
+    EXPECT_FALSE(is_cross_origin("https://example.com:443", "https://example.com/path"));
+    // Non-default port vs default port is cross-origin
+    EXPECT_TRUE(is_cross_origin("https://example.com:8080", "https://example.com/path"));
+    // Same scheme+host+port is same-origin
+    EXPECT_FALSE(is_cross_origin("https://example.com:8080", "https://example.com:8080/path"));
+}
+
+TEST(CORSPolicyTest, ShouldAttachOriginSubdomainCrossOriginV94) {
+    // Subdomain differences count as cross-origin, so origin should be attached
+    EXPECT_TRUE(should_attach_origin_header("https://app.example.com", "https://api.example.com/v1"));
+    EXPECT_TRUE(should_attach_origin_header("https://www.example.com", "https://cdn.example.com/assets"));
+    // Same full origin should NOT attach
+    EXPECT_FALSE(should_attach_origin_header("https://app.example.com", "https://app.example.com/api"));
+}

@@ -14926,3 +14926,181 @@ TEST(HtmlParserTest, MixedInlineElementsTextNodesV93) {
     // Verify the p has children including text nodes between inline elements
     ASSERT_GE(p->children.size(), 5u);
 }
+
+// ============================================================================
+// V94 Tests
+// ============================================================================
+
+// 1. Parse definition list (dl/dt/dd) structure
+TEST(HtmlParserTest, DefinitionListStructureV94) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<dl>"
+        "<dt>Term1</dt><dd>Def1</dd>"
+        "<dt>Term2</dt><dd>Def2</dd>"
+        "</dl>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* dl = doc->find_element("dl");
+    ASSERT_NE(dl, nullptr);
+    auto dts = dl->find_all_elements("dt");
+    auto dds = dl->find_all_elements("dd");
+    ASSERT_EQ(dts.size(), 2u);
+    ASSERT_EQ(dds.size(), 2u);
+    EXPECT_EQ(dts[0]->text_content(), "Term1");
+    EXPECT_EQ(dts[1]->text_content(), "Term2");
+    EXPECT_EQ(dds[0]->text_content(), "Def1");
+    EXPECT_EQ(dds[1]->text_content(), "Def2");
+}
+
+// 2. Parse multiple data attributes on a single element
+TEST(HtmlParserTest, MultipleDataAttributesV94) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<div data-id=\"42\" data-role=\"main\" data-visible=\"true\">Content</div>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* div = doc->find_element("div");
+    ASSERT_NE(div, nullptr);
+    EXPECT_EQ(get_attr_v63(div, "data-id"), "42");
+    EXPECT_EQ(get_attr_v63(div, "data-role"), "main");
+    EXPECT_EQ(get_attr_v63(div, "data-visible"), "true");
+    EXPECT_EQ(div->text_content(), "Content");
+}
+
+// 3. Parse sibling heading elements at the same level
+TEST(HtmlParserTest, SiblingHeadingsV94) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<h1>Title</h1>"
+        "<h2>Subtitle</h2>"
+        "<h3>Section</h3>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* h1 = doc->find_element("h1");
+    auto* h2 = doc->find_element("h2");
+    auto* h3 = doc->find_element("h3");
+    ASSERT_NE(h1, nullptr);
+    ASSERT_NE(h2, nullptr);
+    ASSERT_NE(h3, nullptr);
+    EXPECT_EQ(h1->text_content(), "Title");
+    EXPECT_EQ(h2->text_content(), "Subtitle");
+    EXPECT_EQ(h3->text_content(), "Section");
+}
+
+// 4. Parse a table with thead and tbody sections
+TEST(HtmlParserTest, TableTheadTbodyV94) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<table>"
+        "<thead><tr><th>Name</th><th>Age</th></tr></thead>"
+        "<tbody><tr><td>Alice</td><td>30</td></tr></tbody>"
+        "</table>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* table = doc->find_element("table");
+    ASSERT_NE(table, nullptr);
+    auto ths = table->find_all_elements("th");
+    ASSERT_EQ(ths.size(), 2u);
+    EXPECT_EQ(ths[0]->text_content(), "Name");
+    EXPECT_EQ(ths[1]->text_content(), "Age");
+    auto tds = table->find_all_elements("td");
+    ASSERT_EQ(tds.size(), 2u);
+    EXPECT_EQ(tds[0]->text_content(), "Alice");
+    EXPECT_EQ(tds[1]->text_content(), "30");
+}
+
+// 5. Parse void elements (br, hr, img) mixed with text
+TEST(HtmlParserTest, VoidElementsMixedWithTextV94) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<p>Line one<br>Line two</p>"
+        "<hr>"
+        "<img src=\"pic.jpg\" alt=\"A picture\">"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* p = doc->find_element("p");
+    ASSERT_NE(p, nullptr);
+    auto* br = p->find_element("br");
+    ASSERT_NE(br, nullptr);
+    auto* body = doc->find_element("body");
+    ASSERT_NE(body, nullptr);
+    auto* hr = body->find_element("hr");
+    ASSERT_NE(hr, nullptr);
+    auto* img = body->find_element("img");
+    ASSERT_NE(img, nullptr);
+    EXPECT_EQ(get_attr_v63(img, "src"), "pic.jpg");
+    EXPECT_EQ(get_attr_v63(img, "alt"), "A picture");
+}
+
+// 6. Parse nested ordered lists
+TEST(HtmlParserTest, NestedOrderedListsV94) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<ol>"
+        "<li>First"
+          "<ol><li>Sub-A</li><li>Sub-B</li></ol>"
+        "</li>"
+        "<li>Second</li>"
+        "</ol>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* ol = doc->find_element("ol");
+    ASSERT_NE(ol, nullptr);
+    auto outer_lis = ol->find_all_elements("li");
+    // Should find all li elements including nested ones
+    ASSERT_GE(outer_lis.size(), 4u);
+    // The nested ol should exist inside the first li
+    auto* nested_ol = ol->find_element("ol");
+    ASSERT_NE(nested_ol, nullptr);
+    auto nested_lis = nested_ol->find_all_elements("li");
+    ASSERT_EQ(nested_lis.size(), 2u);
+    EXPECT_EQ(nested_lis[0]->text_content(), "Sub-A");
+    EXPECT_EQ(nested_lis[1]->text_content(), "Sub-B");
+}
+
+// 7. Parse blockquote with nested paragraph and cite
+TEST(HtmlParserTest, BlockquoteWithCiteV94) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<blockquote cite=\"https://example.com\">"
+        "<p>To be or not to be.</p>"
+        "</blockquote>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* bq = doc->find_element("blockquote");
+    ASSERT_NE(bq, nullptr);
+    EXPECT_EQ(get_attr_v63(bq, "cite"), "https://example.com");
+    auto* p = bq->find_element("p");
+    ASSERT_NE(p, nullptr);
+    EXPECT_EQ(p->text_content(), "To be or not to be.");
+}
+
+// 8. Parse a form with select and multiple option children
+TEST(HtmlParserTest, FormSelectOptionsV94) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<form action=\"/submit\">"
+        "<select name=\"color\">"
+        "<option value=\"r\">Red</option>"
+        "<option value=\"g\">Green</option>"
+        "<option value=\"b\">Blue</option>"
+        "</select>"
+        "</form>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* form = doc->find_element("form");
+    ASSERT_NE(form, nullptr);
+    EXPECT_EQ(get_attr_v63(form, "action"), "/submit");
+    auto* sel = form->find_element("select");
+    ASSERT_NE(sel, nullptr);
+    EXPECT_EQ(get_attr_v63(sel, "name"), "color");
+    auto opts = sel->find_all_elements("option");
+    ASSERT_EQ(opts.size(), 3u);
+    EXPECT_EQ(get_attr_v63(opts[0], "value"), "r");
+    EXPECT_EQ(opts[0]->text_content(), "Red");
+    EXPECT_EQ(get_attr_v63(opts[1], "value"), "g");
+    EXPECT_EQ(opts[1]->text_content(), "Green");
+    EXPECT_EQ(get_attr_v63(opts[2], "value"), "b");
+    EXPECT_EQ(opts[2]->text_content(), "Blue");
+}

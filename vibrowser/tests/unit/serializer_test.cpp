@@ -13657,3 +13657,147 @@ TEST(SerializerTest, RepeatedSerializerReuseV93) {
     EXPECT_EQ(d2.read_string(), "second");
     EXPECT_FALSE(d2.has_remaining());
 }
+
+TEST(SerializerTest, U64MaxAndZeroRoundTripV94) {
+    Serializer s;
+    s.write_u64(0ULL);
+    s.write_u64(0xFFFFFFFFFFFFFFFFULL);
+    s.write_u64(1ULL);
+    s.write_u64(0x8000000000000000ULL);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u64(), 0ULL);
+    EXPECT_EQ(d.read_u64(), 0xFFFFFFFFFFFFFFFFULL);
+    EXPECT_EQ(d.read_u64(), 1ULL);
+    EXPECT_EQ(d.read_u64(), 0x8000000000000000ULL);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, F64SubnormalAndTinyValuesV94) {
+    Serializer s;
+    s.write_f64(5e-324);
+    s.write_f64(-5e-324);
+    s.write_f64(2.2250738585072014e-308);
+    s.write_f64(1e-100);
+
+    Deserializer d(s.data());
+    EXPECT_DOUBLE_EQ(d.read_f64(), 5e-324);
+    EXPECT_DOUBLE_EQ(d.read_f64(), -5e-324);
+    EXPECT_DOUBLE_EQ(d.read_f64(), 2.2250738585072014e-308);
+    EXPECT_DOUBLE_EQ(d.read_f64(), 1e-100);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, BytesWithAllByteValuesV94) {
+    Serializer s;
+    std::vector<uint8_t> all_bytes(256);
+    for (int i = 0; i < 256; ++i) {
+        all_bytes[i] = static_cast<uint8_t>(i);
+    }
+    s.write_bytes(all_bytes.data(), all_bytes.size());
+
+    Deserializer d(s.data());
+    auto result = d.read_bytes();
+    EXPECT_EQ(result.size(), 256u);
+    for (int i = 0; i < 256; ++i) {
+        EXPECT_EQ(result[i], static_cast<uint8_t>(i));
+    }
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, StringThenBytesInterleavedV94) {
+    Serializer s;
+    s.write_string("hello");
+    uint8_t buf[] = {0xDE, 0xAD, 0xBE, 0xEF};
+    s.write_bytes(buf, 4);
+    s.write_string("world");
+    s.write_bytes(buf, 0);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "hello");
+    auto b1 = d.read_bytes();
+    EXPECT_EQ(b1.size(), 4u);
+    EXPECT_EQ(b1[0], 0xDE);
+    EXPECT_EQ(b1[3], 0xEF);
+    EXPECT_EQ(d.read_string(), "world");
+    auto b2 = d.read_bytes();
+    EXPECT_EQ(b2.size(), 0u);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, U16AlternatingBitPatternsV94) {
+    Serializer s;
+    s.write_u16(0x0000);
+    s.write_u16(0xFFFF);
+    s.write_u16(0xAAAA);
+    s.write_u16(0x5555);
+    s.write_u16(0x00FF);
+    s.write_u16(0xFF00);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u16(), 0x0000);
+    EXPECT_EQ(d.read_u16(), 0xFFFF);
+    EXPECT_EQ(d.read_u16(), 0xAAAA);
+    EXPECT_EQ(d.read_u16(), 0x5555);
+    EXPECT_EQ(d.read_u16(), 0x00FF);
+    EXPECT_EQ(d.read_u16(), 0xFF00);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, MultipleEmptyStringsV94) {
+    Serializer s;
+    for (int i = 0; i < 10; ++i) {
+        s.write_string("");
+    }
+
+    Deserializer d(s.data());
+    for (int i = 0; i < 10; ++i) {
+        EXPECT_EQ(d.read_string(), "");
+    }
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, U32PowersOfTwoV94) {
+    Serializer s;
+    for (int bit = 0; bit < 32; ++bit) {
+        s.write_u32(1u << bit);
+    }
+
+    Deserializer d(s.data());
+    for (int bit = 0; bit < 32; ++bit) {
+        EXPECT_EQ(d.read_u32(), 1u << bit);
+    }
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, AllTypesKitchenSinkV94) {
+    Serializer s;
+    s.write_u8(0x42);
+    s.write_u16(0x1234);
+    s.write_u32(0xDEADBEEFu);
+    s.write_u64(0x0A0B0C0D0E0F1011ULL);
+    s.write_f64(3.141592653589793);
+    s.write_string("kitchen sink");
+    uint8_t blob[] = {1, 2, 3};
+    s.write_bytes(blob, 3);
+    s.write_f64(-0.0);
+    s.write_u8(0);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u8(), 0x42);
+    EXPECT_EQ(d.read_u16(), 0x1234);
+    EXPECT_EQ(d.read_u32(), 0xDEADBEEFu);
+    EXPECT_EQ(d.read_u64(), 0x0A0B0C0D0E0F1011ULL);
+    EXPECT_DOUBLE_EQ(d.read_f64(), 3.141592653589793);
+    EXPECT_EQ(d.read_string(), "kitchen sink");
+    auto b = d.read_bytes();
+    EXPECT_EQ(b.size(), 3u);
+    EXPECT_EQ(b[0], 1);
+    EXPECT_EQ(b[1], 2);
+    EXPECT_EQ(b[2], 3);
+    double neg_zero = d.read_f64();
+    EXPECT_DOUBLE_EQ(neg_zero, 0.0);
+    EXPECT_TRUE(std::signbit(neg_zero));
+    EXPECT_EQ(d.read_u8(), 0);
+    EXPECT_FALSE(d.has_remaining());
+}
