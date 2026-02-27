@@ -2942,3 +2942,79 @@ TEST(DomClassList, RemoveBothReducesLengthToZero) {
     cl.remove("y");
     EXPECT_EQ(cl.length(), 0u);
 }
+
+TEST(DomDocument, CreateElementReturnsCorrectTag) {
+    Document doc;
+    auto elem = doc.create_element("section");
+    EXPECT_EQ(elem->tag_name(), "section");
+}
+
+TEST(DomDocument, CreateTextNodeHelloData) {
+    Document doc;
+    auto txt = doc.create_text_node("hello");
+    EXPECT_EQ(txt->data(), "hello");
+}
+
+TEST(DomDocument, CreateCommentHasCorrectData) {
+    Document doc;
+    auto comment = doc.create_comment("TODO: fix this");
+    EXPECT_EQ(comment->data(), "TODO: fix this");
+}
+
+TEST(DomNode, DeepTreeFourLevels) {
+    Element level1("html");
+    auto l2 = std::make_unique<Element>("body");
+    auto l3 = std::make_unique<Element>("div");
+    auto l4 = std::make_unique<Element>("p");
+    Element* l4_ptr = l4.get();
+    l3->append_child(std::move(l4));
+    l2->append_child(std::move(l3));
+    level1.append_child(std::move(l2));
+    // l4 is at depth 3 from level1
+    auto* body = level1.first_child();
+    ASSERT_NE(body, nullptr);
+    auto* div = body->first_child();
+    ASSERT_NE(div, nullptr);
+    EXPECT_EQ(div->first_child(), l4_ptr);
+}
+
+TEST(DomNode, MultipleChildrenPreserveOrder) {
+    Element parent("ul");
+    std::vector<Element*> ptrs;
+    for (int i = 0; i < 5; ++i) {
+        auto child = std::make_unique<Element>("li");
+        ptrs.push_back(child.get());
+        parent.append_child(std::move(child));
+    }
+    auto* cur = parent.first_child();
+    for (int i = 0; i < 5; ++i) {
+        EXPECT_EQ(cur, ptrs[i]);
+        cur = cur->next_sibling();
+    }
+}
+
+TEST(DomElement, SetAndGetMultipleAttributes) {
+    Element elem("input");
+    elem.set_attribute("type", "text");
+    elem.set_attribute("name", "username");
+    elem.set_attribute("placeholder", "Enter name");
+    EXPECT_EQ(elem.get_attribute("type").value(), "text");
+    EXPECT_EQ(elem.get_attribute("name").value(), "username");
+    EXPECT_EQ(elem.get_attribute("placeholder").value(), "Enter name");
+}
+
+TEST(DomNode, TagNameIsLowercaseDiv) {
+    Element div("div");
+    EXPECT_EQ(div.tag_name(), "div");
+}
+
+TEST(DomNode, ChildCountAfterRemoveIsCorrect) {
+    Element parent("div");
+    auto c1 = std::make_unique<Element>("span");
+    auto c2 = std::make_unique<Element>("p");
+    Element* c2_ptr = c2.get();
+    parent.append_child(std::move(c1));
+    parent.append_child(std::move(c2));
+    parent.remove_child(*c2_ptr);
+    EXPECT_EQ(parent.child_count(), 1u);
+}
