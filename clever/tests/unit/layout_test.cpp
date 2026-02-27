@@ -7632,3 +7632,43 @@ TEST(LayoutNodeProps, MarqueDirectionDefaultsZero) {
     LayoutNode n;
     EXPECT_EQ(n.marquee_direction, 0);
 }
+
+TEST(LayoutNodeProps, FloatTypeDefaultsZero) {
+    LayoutNode n;
+    EXPECT_EQ(n.float_type, 0);
+}
+
+TEST(LayoutNodeProps, ClearTypeDefaultsZero) {
+    LayoutNode n;
+    EXPECT_EQ(n.clear_type, 0);
+}
+
+TEST(LayoutNodeProps, VerticalAlignDefaultsZero) {
+    LayoutNode n;
+    EXPECT_EQ(n.vertical_align, 0);
+}
+
+TEST(LayoutNodeProps, VisibilityHiddenDefaultsFalse) {
+    LayoutNode n;
+    EXPECT_FALSE(n.visibility_hidden);
+}
+
+TEST(LayoutNodeProps, DisplayContentsDefaultsFalse) {
+    LayoutNode n;
+    EXPECT_FALSE(n.display_contents);
+}
+
+TEST(LayoutNodeProps, OverflowDefaultsZero) {
+    LayoutNode n;
+    EXPECT_EQ(n.overflow, 0);
+}
+
+TEST(LayoutNodeProps, OverflowIndicatorBottomDefaultsFalse) {
+    LayoutNode n;
+    EXPECT_FALSE(n.overflow_indicator_bottom);
+}
+
+TEST(LayoutNodeProps, OverflowIndicatorRightDefaultsFalse) {
+    LayoutNode n;
+    EXPECT_FALSE(n.overflow_indicator_right);
+}
