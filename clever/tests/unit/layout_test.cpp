@@ -6901,3 +6901,44 @@ TEST(LayoutNodeProps, ScrollSnapStopDefaultsZero) {
     LayoutNode n;
     EXPECT_EQ(n.scroll_snap_stop, 0);
 }
+
+// Cycle 839 — LayoutNode defaults: font-variant, font-feature-settings, text-underline-offset, text-decoration-style/transform, text-justify
+TEST(LayoutNodeProps, FontVariantDefaultsZero) {
+    LayoutNode n;
+    EXPECT_EQ(n.font_variant, 0);
+}
+
+TEST(LayoutNodeProps, FontVariantCapsDefaultsZero) {
+    LayoutNode n;
+    EXPECT_EQ(n.font_variant_caps, 0);
+}
+
+TEST(LayoutNodeProps, FontVariantNumericDefaultsZero) {
+    LayoutNode n;
+    EXPECT_EQ(n.font_variant_numeric, 0);
+}
+
+TEST(LayoutNodeProps, FontVariantLigaturesDefaultsZero) {
+    LayoutNode n;
+    EXPECT_EQ(n.font_variant_ligatures, 0);
+}
+
+TEST(LayoutNodeProps, FontFeatureSettingsDefaultsEmpty) {
+    LayoutNode n;
+    EXPECT_EQ(n.font_feature_settings, "");
+}
+
+TEST(LayoutNodeProps, FontVariationSettingsDefaultsEmpty) {
+    LayoutNode n;
+    EXPECT_EQ(n.font_variation_settings, "");
+}
+
+TEST(LayoutNodeProps, FontOpticalSizingDefaultsZero) {
+    LayoutNode n;
+    EXPECT_EQ(n.font_optical_sizing, 0);
+}
+
+TEST(LayoutNodeProps, TextUnderlineOffsetDefaultsZero) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.text_underline_offset, 0.0f);
+}
