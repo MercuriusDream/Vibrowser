@@ -1921,3 +1921,43 @@ TEST(CORSPolicyTest, AttachOriginForHttpApiSubdomain) {
 TEST(CORSPolicyTest, DoNotAttachOriginSameSchemeHostPort) {
     EXPECT_FALSE(should_attach_origin_header("https://example.com", "https://example.com/page"));
 }
+
+// Cycle 941 — additional CORS edge cases: ACAC missing, FTP cross-origin, doc origin variants
+TEST(CORSPolicyTest, ACACMissingBlocksCredentialed) {
+    clever::net::HeaderMap headers;
+    headers.set("access-control-allow-origin", "https://app.example.com");
+    // No ACAC header — credentials blocked
+    EXPECT_FALSE(cors_allows_response("https://app.example.com", "https://api.example.com/data", headers, true));
+}
+
+TEST(CORSPolicyTest, HttpIsCrossOriginWithHttpsDiffHost) {
+    EXPECT_TRUE(is_cross_origin("http://example.com", "https://other.example.com/data"));
+}
+
+TEST(CORSPolicyTest, SameSchemeDifferentHostIsCrossOrigin) {
+    EXPECT_TRUE(is_cross_origin("https://alpha.com", "https://beta.com/path"));
+}
+
+TEST(CORSPolicyTest, CorsDocOriginNullShouldAttach) {
+    EXPECT_TRUE(should_attach_origin_header("null", "https://example.com/api"));
+}
+
+TEST(CORSPolicyTest, CorsDocOriginEmptyNoAttach) {
+    EXPECT_FALSE(should_attach_origin_header("", "https://example.com/api"));
+}
+
+TEST(CORSPolicyTest, CorsDocOriginFileNoAttach) {
+    EXPECT_FALSE(should_attach_origin_header("file://", "https://example.com/api"));
+}
+
+TEST(CORSPolicyTest, ACAOWithPortMatchesExactly) {
+    clever::net::HeaderMap headers;
+    headers.set("access-control-allow-origin", "https://example.com:8080");
+    EXPECT_TRUE(cors_allows_response("https://example.com:8080", "https://api.example.com/data", headers, false));
+}
+
+TEST(CORSPolicyTest, ACAOWithPortMismatchBlocks) {
+    clever::net::HeaderMap headers;
+    headers.set("access-control-allow-origin", "https://example.com:8080");
+    EXPECT_FALSE(cors_allows_response("https://example.com:9090", "https://api.example.com/data", headers, false));
+}
