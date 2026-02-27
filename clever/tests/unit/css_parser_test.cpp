@@ -3184,3 +3184,91 @@ TEST_F(CSSStylesheetTest, PointerEventsDeclaration) {
     }
     EXPECT_TRUE(found);
 }
+
+// Stylesheet: font-family declaration with quoted value
+TEST_F(CSSStylesheetTest, FontFamilyQuotedValue) {
+    auto sheet = parse_stylesheet(R"(body { font-family: "Arial", sans-serif; })");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations) {
+        if (d.property == "font-family") { found = true; break; }
+    }
+    EXPECT_TRUE(found);
+}
+
+// Stylesheet: background-color with rgb()
+TEST_F(CSSStylesheetTest, BackgroundColorRgbDeclaration) {
+    auto sheet = parse_stylesheet("div { background-color: rgb(255, 0, 0); }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations) {
+        if (d.property == "background-color") { found = true; break; }
+    }
+    EXPECT_TRUE(found);
+}
+
+// Stylesheet: background-color with rgba()
+TEST_F(CSSStylesheetTest, BackgroundColorRgbaDeclaration) {
+    auto sheet = parse_stylesheet("div { background-color: rgba(0, 0, 255, 0.5); }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations) {
+        if (d.property == "background-color") { found = true; break; }
+    }
+    EXPECT_TRUE(found);
+}
+
+// Stylesheet: border-radius declaration
+TEST_F(CSSStylesheetTest, BorderRadiusDeclaration) {
+    auto sheet = parse_stylesheet(".btn { border-radius: 4px; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations) {
+        if (d.property == "border-radius") { found = true; break; }
+    }
+    EXPECT_TRUE(found);
+}
+
+// Stylesheet: outline declaration
+TEST_F(CSSStylesheetTest, OutlineDeclaration) {
+    auto sheet = parse_stylesheet("a:focus { outline: 2px solid blue; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations) {
+        if (d.property == "outline") { found = true; break; }
+    }
+    EXPECT_TRUE(found);
+}
+
+// Stylesheet: user-select declaration
+TEST_F(CSSStylesheetTest, UserSelectDeclaration) {
+    auto sheet = parse_stylesheet(".noselect { user-select: none; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations) {
+        if (d.property == "user-select") { found = true; break; }
+    }
+    EXPECT_TRUE(found);
+}
+
+// Stylesheet: resize declaration
+TEST_F(CSSStylesheetTest, ResizeDeclaration) {
+    auto sheet = parse_stylesheet("textarea { resize: vertical; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations) {
+        if (d.property == "resize") { found = true; break; }
+    }
+    EXPECT_TRUE(found);
+}
+
+// Stylesheet: columns declaration
+TEST_F(CSSStylesheetTest, ColumnsDeclaration) {
+    auto sheet = parse_stylesheet(".multi { columns: 3; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations) {
+        if (d.property == "columns") { found = true; break; }
+    }
+    EXPECT_TRUE(found);
+}
