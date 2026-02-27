@@ -3016,3 +3016,83 @@ TEST_F(CSSStylesheetTest, LineHeightOnParagraphElement) {
     }
     EXPECT_TRUE(found);
 }
+
+// ---------------------------------------------------------------------------
+// Cycle 704 — 8 additional CSS parser tests
+// ---------------------------------------------------------------------------
+
+// Selector: :focus-within pseudo-class
+TEST_F(CSSSelectorTest, PseudoClassFocusWithin) {
+    auto list = parse_selector_list("div:focus-within");
+    ASSERT_EQ(list.selectors.size(), 1u);
+    const auto& compound = list.selectors[0].parts[0].compound;
+    bool found = false;
+    for (const auto& ss : compound.simple_selectors) {
+        if (ss.type == SimpleSelectorType::PseudoClass && ss.value == "focus-within") {
+            found = true;
+            break;
+        }
+    }
+    EXPECT_TRUE(found);
+}
+
+// Selector: :is() functional pseudo-class
+TEST_F(CSSSelectorTest, PseudoClassIsParsed) {
+    auto list = parse_selector_list(":is(h1, h2, h3)");
+    ASSERT_EQ(list.selectors.size(), 1u);
+    EXPECT_FALSE(list.selectors[0].parts.empty());
+}
+
+// Selector: :where() functional pseudo-class
+TEST_F(CSSSelectorTest, PseudoClassWhereParsed) {
+    auto list = parse_selector_list(":where(.nav, .header)");
+    ASSERT_EQ(list.selectors.size(), 1u);
+    EXPECT_FALSE(list.selectors[0].parts.empty());
+}
+
+// Selector: ::placeholder pseudo-element
+TEST_F(CSSSelectorTest, PseudoElementPlaceholder) {
+    auto list = parse_selector_list("input::placeholder");
+    ASSERT_EQ(list.selectors.size(), 1u);
+    EXPECT_FALSE(list.selectors[0].parts.empty());
+}
+
+// Selector: ::selection pseudo-element
+TEST_F(CSSSelectorTest, PseudoElementSelection) {
+    auto list = parse_selector_list("p::selection");
+    ASSERT_EQ(list.selectors.size(), 1u);
+    EXPECT_FALSE(list.selectors[0].parts.empty());
+}
+
+// Stylesheet: max-width declaration
+TEST_F(CSSStylesheetTest, MaxWidthDeclaration) {
+    auto sheet = parse_stylesheet(".container { max-width: 1200px; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations) {
+        if (d.property == "max-width") { found = true; break; }
+    }
+    EXPECT_TRUE(found);
+}
+
+// Stylesheet: min-height declaration
+TEST_F(CSSStylesheetTest, MinHeightDeclaration) {
+    auto sheet = parse_stylesheet("section { min-height: 100vh; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations) {
+        if (d.property == "min-height") { found = true; break; }
+    }
+    EXPECT_TRUE(found);
+}
+
+// Stylesheet: aspect-ratio declaration
+TEST_F(CSSStylesheetTest, AspectRatioDeclaration) {
+    auto sheet = parse_stylesheet("video { aspect-ratio: 16 / 9; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations) {
+        if (d.property == "aspect-ratio") { found = true; break; }
+    }
+    EXPECT_TRUE(found);
+}
