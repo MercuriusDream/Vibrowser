@@ -4090,3 +4090,60 @@ TEST(SerializerTest, I64ThousandRoundTrip) {
     Deserializer d(s.data());
     EXPECT_EQ(d.read_i64(), 1000LL);
 }
+
+// Cycle 951 — strings with special chars, large numeric values
+TEST(SerializerTest, StringWithAtSign) {
+    Serializer s;
+    s.write_string("user@example.com");
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "user@example.com");
+}
+
+TEST(SerializerTest, StringWithHashSign) {
+    Serializer s;
+    s.write_string("color: #ff0000");
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "color: #ff0000");
+}
+
+TEST(SerializerTest, StringWithQuestionMark) {
+    Serializer s;
+    s.write_string("is it working?");
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "is it working?");
+}
+
+TEST(SerializerTest, StringWithStar) {
+    Serializer s;
+    s.write_string("glob: *.txt");
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "glob: *.txt");
+}
+
+TEST(SerializerTest, I32PlusMillionRoundTrip) {
+    Serializer s;
+    s.write_i32(1000000);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i32(), 1000000);
+}
+
+TEST(SerializerTest, I32MinusMillionRoundTrip) {
+    Serializer s;
+    s.write_i32(-1000000);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i32(), -1000000);
+}
+
+TEST(SerializerTest, F64OneTenthRoundTrip) {
+    Serializer s;
+    s.write_f64(0.1);
+    Deserializer d(s.data());
+    EXPECT_NEAR(d.read_f64(), 0.1, 1e-15);
+}
+
+TEST(SerializerTest, U64MillionRoundTrip) {
+    Serializer s;
+    s.write_u64(1000000ULL);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u64(), 1000000ULL);
+}
