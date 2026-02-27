@@ -3884,3 +3884,67 @@ TEST(ResponseTest, Parse507InsufficientStorage) {
     ASSERT_TRUE(resp.has_value());
     EXPECT_EQ(resp->status, 507);
 }
+
+TEST(ResponseTest, Parse200OKBasic) {
+    std::string raw = "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n<html></html>";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 200);
+}
+
+TEST(ResponseTest, Parse402PaymentRequired) {
+    std::string raw = "HTTP/1.1 402 Payment Required\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 402);
+}
+
+TEST(ResponseTest, Parse414URITooLong) {
+    std::string raw = "HTTP/1.1 414 URI Too Long\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 414);
+}
+
+TEST(ResponseTest, Parse417ExpectationFailed) {
+    std::string raw = "HTTP/1.1 417 Expectation Failed\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 417);
+}
+
+TEST(ResponseTest, Parse423Locked) {
+    std::string raw = "HTTP/1.1 423 Locked\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 423);
+}
+
+TEST(ResponseTest, Parse426UpgradeRequired) {
+    std::string raw = "HTTP/1.1 426 Upgrade Required\r\nUpgrade: HTTP/2\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 426);
+}
+
+TEST(ResponseTest, Parse428PreconditionRequired) {
+    std::string raw = "HTTP/1.1 428 Precondition Required\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 428);
+}
+
+TEST(ResponseTest, Parse431RequestHeaderFieldsTooLarge) {
+    std::string raw = "HTTP/1.1 431 Request Header Fields Too Large\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 431);
+}
