@@ -8093,3 +8093,77 @@ TEST_F(CSSStylesheetTest, ScrollSnapTypeV22) {
         if (d.property == "scroll-snap-type") { found = true; break; }
     EXPECT_TRUE(found);
 }
+
+// Cycle 1296: CSS parser tests
+
+TEST_F(CSSStylesheetTest, ScrollSnapAlignV23) {
+    auto sheet = parse_stylesheet(".item { scroll-snap-align: center; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "scroll-snap-align") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, ScrollSnapStopV23) {
+    auto sheet = parse_stylesheet(".item { scroll-snap-stop: always; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "scroll-snap-stop") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, ScrollPaddingV23) {
+    auto sheet = parse_stylesheet(".container { scroll-padding: 20px; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "scroll-padding") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, ScrollMarginV23) {
+    auto sheet = parse_stylesheet(".element { scroll-margin: 10px 5px; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "scroll-margin") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, OverscrollBehaviorV23) {
+    auto sheet = parse_stylesheet("body { overscroll-behavior: contain; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "overscroll-behavior") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, TouchActionV23) {
+    auto sheet = parse_stylesheet("button { touch-action: manipulation; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "touch-action") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, UserSelectV23) {
+    auto sheet = parse_stylesheet(".no-select { user-select: none; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "user-select") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, WebkitAppearanceV23) {
+    auto sheet = parse_stylesheet("input { -webkit-appearance: none; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "-webkit-appearance") { found = true; break; }
+    EXPECT_TRUE(found);
+}

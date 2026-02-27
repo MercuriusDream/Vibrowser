@@ -5361,3 +5361,83 @@ TEST(URLParser, UrlWithDeepPathHierarchyV13) {
     EXPECT_TRUE(url->query.empty());
     EXPECT_TRUE(url->fragment.empty());
 }
+
+// Cycle 1294: URL parser tests
+
+TEST(URLParser, UrlWithIPv4AddressV14) {
+    auto url = parse("http://192.168.1.1:8080/admin/dashboard");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "http");
+    EXPECT_EQ(url->host, "192.168.1.1");
+    ASSERT_TRUE(url->port.has_value());
+    EXPECT_EQ(url->port.value(), 8080u);
+    EXPECT_EQ(url->path, "/admin/dashboard");
+}
+
+TEST(URLParser, UrlWithSimpleFilenameV14) {
+    auto url = parse("https://cdn.example.com/image.png");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "cdn.example.com");
+    EXPECT_EQ(url->path, "/image.png");
+    EXPECT_TRUE(url->query.empty());
+    EXPECT_TRUE(url->fragment.empty());
+}
+
+TEST(URLParser, UrlWithNumberedSubdomainV14) {
+    auto url = parse("https://api1.service.example.org/v2/resource");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "api1.service.example.org");
+    EXPECT_EQ(url->path, "/v2/resource");
+    EXPECT_FALSE(url->port.has_value());
+}
+
+TEST(URLParser, UrlWithMultipleQueryParametersV14) {
+    auto url = parse("https://search.example.com/results?q=test&limit=10&offset=20&sort=relevance");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "search.example.com");
+    EXPECT_EQ(url->path, "/results");
+    EXPECT_NE(url->query.find("q=test"), std::string::npos);
+    EXPECT_NE(url->query.find("limit=10"), std::string::npos);
+    EXPECT_NE(url->query.find("offset=20"), std::string::npos);
+}
+
+TEST(URLParser, UrlWithFragmentAndPathOnlyV14) {
+    auto url = parse("https://documentation.site.io/guide/intro#installation");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "documentation.site.io");
+    EXPECT_EQ(url->path, "/guide/intro");
+    EXPECT_TRUE(url->query.empty());
+    EXPECT_EQ(url->fragment, "installation");
+}
+
+TEST(URLParser, UrlWithDefaultPortForHTTPV14) {
+    auto url = parse("http://example.com:80/path");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "http");
+    EXPECT_EQ(url->host, "example.com");
+    EXPECT_EQ(url->path, "/path");
+}
+
+TEST(URLParser, UrlWithFileExtensionAndQueryV14) {
+    auto url = parse("https://api.example.net/data.json?format=pretty&include_meta=true");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "api.example.net");
+    EXPECT_EQ(url->path, "/data.json");
+    EXPECT_NE(url->query.find("format=pretty"), std::string::npos);
+    EXPECT_NE(url->query.find("include_meta=true"), std::string::npos);
+}
+
+TEST(URLParser, UrlWithRootPathAndFragmentV14) {
+    auto url = parse("https://www.example.co.uk/?utm_source=email#top");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "www.example.co.uk");
+    EXPECT_EQ(url->path, "/");
+    EXPECT_NE(url->query.find("utm_source=email"), std::string::npos);
+    EXPECT_EQ(url->fragment, "top");
+}

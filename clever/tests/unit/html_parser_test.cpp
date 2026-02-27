@@ -7529,3 +7529,61 @@ TEST(TreeBuilder, FigureElementV10) {
     ASSERT_NE(el, nullptr);
     EXPECT_EQ(el->tag_name, "figure");
 }
+
+// Cycle 1297: HTML parser tests
+
+TEST(TreeBuilder, HeaderElementV11) {
+    auto doc = clever::html::parse("<header><nav><a href=\"/\">Home</a></nav></header>");
+    auto* el = doc->find_element("header");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "header");
+}
+
+TEST(TreeBuilder, FooterElementV11) {
+    auto doc = clever::html::parse("<footer><p>Copyright 2024</p><p>All rights reserved</p></footer>");
+    auto* el = doc->find_element("footer");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "footer");
+}
+
+TEST(TreeBuilder, NavElementV11) {
+    auto doc = clever::html::parse("<nav><ul><li><a href=\"/about\">About</a></li><li><a href=\"/contact\">Contact</a></li></ul></nav>");
+    auto* el = doc->find_element("nav");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "nav");
+}
+
+TEST(TreeBuilder, ButtonElementV11) {
+    auto doc = clever::html::parse("<button type=\"submit\">Send Form</button>");
+    auto* el = doc->find_element("button");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "button");
+}
+
+TEST(TreeBuilder, InputElementV11) {
+    auto doc = clever::html::parse("<input type=\"text\" placeholder=\"Enter name\" />");
+    auto* el = doc->find_element("input");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "input");
+}
+
+TEST(TreeBuilder, TextareaElementV11) {
+    auto doc = clever::html::parse("<textarea rows=\"5\" cols=\"40\">Default text</textarea>");
+    auto* el = doc->find_element("textarea");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "textarea");
+}
+
+TEST(TreeBuilder, SelectElementV11) {
+    auto doc = clever::html::parse("<select><option value=\"opt1\">Option 1</option><option value=\"opt2\">Option 2</option></select>");
+    auto* el = doc->find_element("select");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "select");
+}
+
+TEST(TreeBuilder, LabelElementV11) {
+    auto doc = clever::html::parse("<label for=\"username\">Username</label>");
+    auto* el = doc->find_element("label");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "label");
+}

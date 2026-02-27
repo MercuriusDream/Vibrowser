@@ -7033,3 +7033,67 @@ TEST(DomElement, EmptyAttributeValue) {
     el->set_attribute("value", "");
     EXPECT_EQ(el->get_attribute("value"), "");
 }
+
+// Cycle 1291: DOM element tests
+
+TEST(DomElement, TagNameDetailsV2) {
+    Document doc;
+    auto el = doc.create_element("details");
+    EXPECT_EQ(el->tag_name(), "details");
+}
+
+TEST(DomElement, TagNameSummaryV3) {
+    Document doc;
+    auto el = doc.create_element("summary");
+    EXPECT_EQ(el->tag_name(), "summary");
+}
+
+TEST(DomElement, SetAttributeDecoding) {
+    Document doc;
+    auto el = doc.create_element("img");
+    el->set_attribute("decoding", "async");
+    EXPECT_EQ(el->get_attribute("decoding"), "async");
+}
+
+TEST(DomElement, SetAttributeFetchpriority) {
+    Document doc;
+    auto el = doc.create_element("img");
+    el->set_attribute("fetchpriority", "high");
+    EXPECT_EQ(el->get_attribute("fetchpriority"), "high");
+}
+
+TEST(DomElement, ChildCountTwoHundred) {
+    Document doc;
+    auto parent = doc.create_element("div");
+    for (int i = 0; i < 200; ++i) {
+        parent->append_child(doc.create_element("span"));
+    }
+    EXPECT_EQ(parent->child_count(), 200u);
+}
+
+TEST(DomElement, RemoveAttributeLang) {
+    Document doc;
+    auto el = doc.create_element("div");
+    el->set_attribute("lang", "en");
+    el->remove_attribute("lang");
+    EXPECT_FALSE(el->has_attribute("lang"));
+}
+
+TEST(DomElement, HasAttributeAutoplay) {
+    Document doc;
+    auto el = doc.create_element("video");
+    el->set_attribute("autoplay", "");
+    EXPECT_TRUE(el->has_attribute("autoplay"));
+}
+
+TEST(DomElement, AttributeCountAfterMultipleSets) {
+    Document doc;
+    auto el = doc.create_element("div");
+    el->set_attribute("id", "test");
+    el->set_attribute("class", "foo");
+    el->set_attribute("style", "color:red");
+    el->set_attribute("data-x", "1");
+    el->set_attribute("data-y", "2");
+    EXPECT_TRUE(el->has_attribute("id"));
+    EXPECT_TRUE(el->has_attribute("data-y"));
+}

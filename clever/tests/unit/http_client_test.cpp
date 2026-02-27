@@ -7746,3 +7746,97 @@ TEST(HttpClient, HeaderMapGetAllValuesV24) {
     EXPECT_GE(all_cookies.size(), 1u);
     EXPECT_EQ(map.size(), 1u);
 }
+
+// Cycle 1295: HTTP client tests
+
+// HeaderMap: remove clears a header
+TEST(HttpClient, HeaderMapRemoveV25) {
+    HeaderMap map;
+    map.set("Content-Type", "text/html");
+    map.set("Content-Length", "1024");
+    EXPECT_EQ(map.size(), 2u);
+
+    map.remove("Content-Type");
+    EXPECT_FALSE(map.get("Content-Type").has_value());
+    EXPECT_EQ(map.size(), 1u);
+    EXPECT_TRUE(map.get("Content-Length").has_value());
+}
+
+// HeaderMap: has checks for header existence
+TEST(HttpClient, HeaderMapHasV25) {
+    HeaderMap map;
+    map.set("Authorization", "Bearer token");
+
+    EXPECT_TRUE(map.has("Authorization"));
+    EXPECT_TRUE(map.has("authorization"));
+    EXPECT_FALSE(map.has("X-Missing"));
+}
+
+// Request: serialize produces non-empty bytes
+TEST(HttpClient, RequestSerializeV25) {
+    Request req;
+    req.method = Method::POST;
+    req.url = "https://example.com/api";
+    req.headers.set("Content-Type", "application/json");
+    req.body = std::vector<uint8_t>{'t', 'e', 's', 't'};
+
+    auto serialized = req.serialize();
+    EXPECT_GT(serialized.size(), 0u);
+}
+
+// Request: different methods create different requests
+TEST(HttpClient, RequestMethodsV25) {
+    Request get_req, post_req, delete_req;
+    get_req.method = Method::GET;
+    post_req.method = Method::POST;
+    delete_req.method = Method::DELETE_METHOD;
+
+    EXPECT_NE(static_cast<int>(get_req.method), static_cast<int>(post_req.method));
+    EXPECT_NE(static_cast<int>(post_req.method), static_cast<int>(delete_req.method));
+}
+
+// Response: status and body content
+TEST(HttpClient, ResponseStatusAndBodyV25) {
+    Response resp;
+    resp.status = 404;
+    resp.body = std::vector<uint8_t>{'N', 'o', 't', 'F', 'o', 'u', 'n', 'd'};
+
+    EXPECT_EQ(resp.status, 404);
+    EXPECT_EQ(resp.body.size(), 8u);
+}
+
+// CookieJar: clear removes all cookies
+TEST(HttpClient, CookieJarClearV25) {
+    CookieJar jar;
+    jar.set_from_header("session=abc123", "example.com");
+    jar.set_from_header("token=xyz789", "api.example.com");
+    EXPECT_GT(jar.size(), 0u);
+
+    jar.clear();
+    EXPECT_EQ(jar.size(), 0u);
+}
+
+// Request: PUT method with body
+TEST(HttpClient, RequestPutMethodV25) {
+    Request req;
+    req.method = Method::PUT;
+    req.url = "https://example.com/resource/123";
+    req.headers.set("Content-Type", "application/json");
+    std::string json = R"({"name":"updated"})";
+    req.body = std::vector<uint8_t>(json.begin(), json.end());
+
+    EXPECT_EQ(req.method, Method::PUT);
+    EXPECT_EQ(req.body.size(), json.size());
+}
+
+// HeaderMap: case-insensitive operations after removal
+TEST(HttpClient, HeaderMapCaseInsensitiveRemoveV25) {
+    HeaderMap map;
+    map.set("X-Custom-Header", "value1");
+    map.set("X-Another", "value2");
+
+    map.remove("x-custom-header");
+    EXPECT_FALSE(map.get("X-CUSTOM-HEADER").has_value());
+    EXPECT_FALSE(map.get("x-custom-header").has_value());
+    EXPECT_TRUE(map.get("X-Another").has_value());
+}

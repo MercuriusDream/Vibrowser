@@ -6452,3 +6452,60 @@ TEST(SerializerTest, StringMultiwordValueV21) {
     Deserializer d(s.data());
     EXPECT_EQ("Hello World Test String", d.read_string());
 }
+
+// Cycle 1293: Serializer tests
+TEST(SerializerTest, U8ZeroValueV22) {
+    Serializer s;
+    s.write_u8(0);
+    Deserializer d(s.data());
+    EXPECT_EQ(0, d.read_u8());
+}
+
+TEST(SerializerTest, U16MaxValueV22) {
+    Serializer s;
+    s.write_u16(65535);
+    Deserializer d(s.data());
+    EXPECT_EQ(65535, d.read_u16());
+}
+
+TEST(SerializerTest, U32MidRangeValueV22) {
+    Serializer s;
+    s.write_u32(2147483647);
+    Deserializer d(s.data());
+    EXPECT_EQ(2147483647, d.read_u32());
+}
+
+TEST(SerializerTest, U64SmallValueV22) {
+    Serializer s;
+    s.write_u64(256);
+    Deserializer d(s.data());
+    EXPECT_EQ(256, d.read_u64());
+}
+
+TEST(SerializerTest, I32SmallNegativeV22) {
+    Serializer s;
+    s.write_i32(-100);
+    Deserializer d(s.data());
+    EXPECT_EQ(-100, d.read_i32());
+}
+
+TEST(SerializerTest, I64ZeroValueV22) {
+    Serializer s;
+    s.write_i64(0);
+    Deserializer d(s.data());
+    EXPECT_EQ(0, d.read_i64());
+}
+
+TEST(SerializerTest, F64ZeroValueV22) {
+    Serializer s;
+    s.write_f64(0.0);
+    Deserializer d(s.data());
+    EXPECT_EQ(0.0, d.read_f64());
+}
+
+TEST(SerializerTest, StringEmptyValueV22) {
+    Serializer s;
+    s.write_string("");
+    Deserializer d(s.data());
+    EXPECT_EQ("", d.read_string());
+}

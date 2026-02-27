@@ -9054,3 +9054,44 @@ TEST(LayoutNodeProps, MaskCompositeDefaultV22) {
     LayoutNode n;
     EXPECT_EQ(n.mask_composite, 0);
 }
+
+// Cycle 1298: Layout node tests
+TEST(LayoutNodeProps, TextTransformDefaultV23) {
+    LayoutNode n;
+    EXPECT_EQ(n.text_transform, 0);
+}
+
+TEST(LayoutNodeProps, TextDecorationDefaultV23) {
+    LayoutNode n;
+    EXPECT_EQ(n.text_decoration, 0);
+}
+
+TEST(LayoutNodeProps, TextDecorationStyleDefaultV23) {
+    LayoutNode n;
+    EXPECT_EQ(n.text_decoration_style, 0);
+}
+
+TEST(LayoutNodeProps, TextDecorationThicknessDefaultV23) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.text_decoration_thickness, 0.0f);
+}
+
+TEST(LayoutNodeProps, OverflowDefaultV23) {
+    LayoutNode n;
+    EXPECT_EQ(n.overflow, 0);
+}
+
+TEST(LayoutNodeProps, GridAutoFlowDefaultV23) {
+    LayoutNode n;
+    EXPECT_EQ(n.grid_auto_flow, 0);
+}
+
+TEST(LayoutNodeProps, AspectRatioDefaultV23) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.aspect_ratio, 0.0f);
+}
+
+TEST(LayoutNodeProps, StopOpacityDefaultV23) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.stop_opacity, 1.0f);
+}

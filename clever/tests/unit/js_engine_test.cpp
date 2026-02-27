@@ -19164,3 +19164,53 @@ TEST(JSEngine, ArrayReduceMethodCycle1290) {
     auto result = engine.evaluate("var arr = [1, 2, 3, 4]; var sum = arr.reduce((acc, val) => acc + val, 0); sum.toString()");
     EXPECT_EQ(result, "10");
 }
+
+// Cycle 1299: JS engine tests
+
+TEST(JSEngine, StringToUpperCaseCycle1299) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var str = 'hello world'; var upper = str.toUpperCase(); upper");
+    EXPECT_EQ(result, "HELLO WORLD");
+}
+
+TEST(JSEngine, StringToLowerCaseCycle1299) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var str = 'HELLO WORLD'; var lower = str.toLowerCase(); lower");
+    EXPECT_EQ(result, "hello world");
+}
+
+TEST(JSEngine, StringTrimMethodCycle1299) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var str = '   hello   '; var trimmed = str.trim(); trimmed");
+    EXPECT_EQ(result, "hello");
+}
+
+TEST(JSEngine, ArrayMapMethodCycle1299) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var arr = [1, 2, 3]; var mapped = arr.map(x => x * 2); mapped.join(',')");
+    EXPECT_EQ(result, "2,4,6");
+}
+
+TEST(JSEngine, ArrayFilterMethodCycle1299) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var arr = [1, 2, 3, 4, 5]; var filtered = arr.filter(x => x > 2); filtered.join(',')");
+    EXPECT_EQ(result, "3,4,5");
+}
+
+TEST(JSEngine, MathMaxMethodCycle1299) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var max = Math.max(10, 5, 8, 3); max.toString()");
+    EXPECT_EQ(result, "10");
+}
+
+TEST(JSEngine, MathMinMethodCycle1299) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var min = Math.min(10, 5, 8, 3); min.toString()");
+    EXPECT_EQ(result, "3");
+}
+
+TEST(JSEngine, ObjectValuesCycle1299) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var obj = {x: 10, y: 20, z: 30}; var vals = Object.values(obj); vals.length.toString()");
+    EXPECT_EQ(result, "3");
+}
