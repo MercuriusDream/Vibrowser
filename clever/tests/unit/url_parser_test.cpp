@@ -1681,3 +1681,67 @@ TEST(URLParser, QueryWithMultipleParams) {
     EXPECT_NE(result->query.find("a=1"), std::string::npos);
     EXPECT_NE(result->query.find("b=2"), std::string::npos);
 }
+
+// ============================================================================
+// Cycle 681: More URL parser tests
+// ============================================================================
+
+// URL: ftp scheme parsed correctly
+TEST(URLParser, FtpSchemeParsedCorrectly) {
+    auto result = parse("ftp://files.example.com/pub/");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "ftp");
+}
+
+// URL: ftp and https are different origins
+TEST(URLParser, FtpVsHttpsDifferentOrigins) {
+    auto a = parse("ftp://example.com/");
+    auto b = parse("https://example.com/");
+    ASSERT_TRUE(a.has_value());
+    ASSERT_TRUE(b.has_value());
+    EXPECT_FALSE(urls_same_origin(*a, *b));
+}
+
+// URL: path is "/" for root with no trailing content
+TEST(URLParser, PathIsSlashForBareRoot) {
+    auto result = parse("https://www.example.com/");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->path, "/");
+}
+
+// URL: host includes subdomain
+TEST(URLParser, HostIncludesSubdomain) {
+    auto result = parse("https://api.example.com/v1");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->host, "api.example.com");
+}
+
+// URL: serialize produces non-empty string
+TEST(URLParser, SerializeProducesNonEmptyString) {
+    auto result = parse("https://example.com/page");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_FALSE(result->serialize().empty());
+}
+
+// URL: path contains endpoint name
+TEST(URLParser, PathContainsEndpointName) {
+    auto result = parse("https://api.example.com/users/list");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_NE(result->path.find("users"), std::string::npos);
+}
+
+// URL: port 4430 same host is same origin regardless of path
+TEST(URLParser, Port4430SameHostIsSameOrigin) {
+    auto a = parse("https://example.com:4430/a");
+    auto b = parse("https://example.com:4430/b");
+    ASSERT_TRUE(a.has_value());
+    ASSERT_TRUE(b.has_value());
+    EXPECT_TRUE(urls_same_origin(*a, *b));
+}
+
+// URL: password defaults to empty
+TEST(URLParser, PasswordDefaultsToEmpty) {
+    auto result = parse("https://example.com/");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_TRUE(result->password.empty());
+}
