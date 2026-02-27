@@ -3934,3 +3934,86 @@ TEST(TreeBuilder, AriaRequiredAttr) {
         if (attr.name == "aria-required" && attr.value == "true") found = true;
     EXPECT_TRUE(found);
 }
+
+// Cycle 837 — img srcset/loading/decoding/crossorigin, picture source media/type
+TEST(TreeBuilder, ImgSrcsetAttr) {
+    auto doc = clever::html::parse(R"(<img src="small.jpg" srcset="small.jpg 320w, large.jpg 1280w" alt="photo">)");
+    auto* img = doc->find_element("img");
+    ASSERT_NE(img, nullptr);
+    bool found = false;
+    for (const auto& attr : img->attributes)
+        if (attr.name == "srcset") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, ImgLoadingLazy) {
+    auto doc = clever::html::parse(R"(<img src="image.jpg" loading="lazy" alt="lazy">)");
+    auto* img = doc->find_element("img");
+    ASSERT_NE(img, nullptr);
+    bool found = false;
+    for (const auto& attr : img->attributes)
+        if (attr.name == "loading" && attr.value == "lazy") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, ImgDecodingAsync) {
+    auto doc = clever::html::parse(R"(<img src="big.jpg" decoding="async" alt="async">)");
+    auto* img = doc->find_element("img");
+    ASSERT_NE(img, nullptr);
+    bool found = false;
+    for (const auto& attr : img->attributes)
+        if (attr.name == "decoding" && attr.value == "async") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, ImgCrossOriginAnonymous) {
+    auto doc = clever::html::parse(R"(<img src="avatar.png" crossorigin="anonymous" alt="avatar">)");
+    auto* img = doc->find_element("img");
+    ASSERT_NE(img, nullptr);
+    bool found = false;
+    for (const auto& attr : img->attributes)
+        if (attr.name == "crossorigin" && attr.value == "anonymous") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, ImgSizesAttr) {
+    auto doc = clever::html::parse(R"(<img src="photo.jpg" sizes="(max-width: 600px) 100vw, 50vw" srcset="s.jpg 600w, l.jpg 1200w" alt="">)");
+    auto* img = doc->find_element("img");
+    ASSERT_NE(img, nullptr);
+    bool found = false;
+    for (const auto& attr : img->attributes)
+        if (attr.name == "sizes") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, ImgWidthHeightAttrs) {
+    auto doc = clever::html::parse(R"(<img src="photo.jpg" width="800" height="600" alt="photo">)");
+    auto* img = doc->find_element("img");
+    ASSERT_NE(img, nullptr);
+    bool foundW = false, foundH = false;
+    for (const auto& attr : img->attributes) {
+        if (attr.name == "width" && attr.value == "800") foundW = true;
+        if (attr.name == "height" && attr.value == "600") foundH = true;
+    }
+    EXPECT_TRUE(foundW && foundH);
+}
+
+TEST(TreeBuilder, PictureSourceMedia) {
+    auto doc = clever::html::parse(R"HTML(<picture><source media="(min-width: 800px)" srcset="large.jpg"><img src="small.jpg" alt=""></picture>)HTML");
+    auto* source = doc->find_element("source");
+    ASSERT_NE(source, nullptr);
+    bool found = false;
+    for (const auto& attr : source->attributes)
+        if (attr.name == "media") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, PictureSourceType) {
+    auto doc = clever::html::parse(R"(<picture><source srcset="photo.webp" type="image/webp"><img src="photo.jpg" alt=""></picture>)");
+    auto* source = doc->find_element("source");
+    ASSERT_NE(source, nullptr);
+    bool found = false;
+    for (const auto& attr : source->attributes)
+        if (attr.name == "type" && attr.value == "image/webp") found = true;
+    EXPECT_TRUE(found);
+}
