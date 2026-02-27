@@ -5205,3 +5205,83 @@ TEST(TreeBuilder, ColWidthAttr) {
         if (attr.name == "width" && attr.value == "100") found = true;
     EXPECT_TRUE(found);
 }
+
+TEST(TreeBuilder, EmbedSrcAttr) {
+    auto doc = clever::html::parse("<body><embed src=\"movie.swf\"></body>");
+    auto* el = doc->find_element("embed");
+    ASSERT_NE(el, nullptr);
+    bool found = false;
+    for (const auto& attr : el->attributes)
+        if (attr.name == "src" && attr.value == "movie.swf") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, EmbedTypeAttr) {
+    auto doc = clever::html::parse("<body><embed type=\"application/x-shockwave-flash\"></body>");
+    auto* el = doc->find_element("embed");
+    ASSERT_NE(el, nullptr);
+    bool found = false;
+    for (const auto& attr : el->attributes)
+        if (attr.name == "type") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, EmbedWidthAttr) {
+    auto doc = clever::html::parse("<body><embed width=\"300\"></body>");
+    auto* el = doc->find_element("embed");
+    ASSERT_NE(el, nullptr);
+    bool found = false;
+    for (const auto& attr : el->attributes)
+        if (attr.name == "width" && attr.value == "300") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, EmbedHeightAttr) {
+    auto doc = clever::html::parse("<body><embed height=\"200\"></body>");
+    auto* el = doc->find_element("embed");
+    ASSERT_NE(el, nullptr);
+    bool found = false;
+    for (const auto& attr : el->attributes)
+        if (attr.name == "height" && attr.value == "200") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, MapNameAttr) {
+    auto doc = clever::html::parse("<body><map name=\"navmap\"></map></body>");
+    auto* el = doc->find_element("map");
+    ASSERT_NE(el, nullptr);
+    bool found = false;
+    for (const auto& attr : el->attributes)
+        if (attr.name == "name" && attr.value == "navmap") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, AreaHrefAttr) {
+    auto doc = clever::html::parse("<body><map name=\"m\"><area href=\"/page\"></area></map></body>");
+    auto* el = doc->find_element("area");
+    ASSERT_NE(el, nullptr);
+    bool found = false;
+    for (const auto& attr : el->attributes)
+        if (attr.name == "href" && attr.value == "/page") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, AreaShapeAttr) {
+    auto doc = clever::html::parse("<body><map name=\"m\"><area shape=\"rect\"></area></map></body>");
+    auto* el = doc->find_element("area");
+    ASSERT_NE(el, nullptr);
+    bool found = false;
+    for (const auto& attr : el->attributes)
+        if (attr.name == "shape" && attr.value == "rect") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, AreaCoordsAttr) {
+    auto doc = clever::html::parse("<body><map name=\"m\"><area coords=\"0,0,100,100\"></area></map></body>");
+    auto* el = doc->find_element("area");
+    ASSERT_NE(el, nullptr);
+    bool found = false;
+    for (const auto& attr : el->attributes)
+        if (attr.name == "coords") found = true;
+    EXPECT_TRUE(found);
+}
