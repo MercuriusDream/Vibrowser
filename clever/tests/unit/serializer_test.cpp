@@ -4203,3 +4203,59 @@ TEST(SerializerTest, StringWithAmpersand) {
     Deserializer d(s.data());
     EXPECT_EQ(d.read_string(), "foo=1&bar=2");
 }
+
+TEST(SerializerTest, StringWithSingleQuote) {
+    Serializer s;
+    s.write_string("it's a test");
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "it's a test");
+}
+
+TEST(SerializerTest, StringWithDoubleQuote) {
+    Serializer s;
+    s.write_string("say \"hello\"");
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "say \"hello\"");
+}
+
+TEST(SerializerTest, StringWithDollarSign) {
+    Serializer s;
+    s.write_string("price: $9.99");
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "price: $9.99");
+}
+
+TEST(SerializerTest, StringWithLessThan) {
+    Serializer s;
+    s.write_string("a < b");
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "a < b");
+}
+
+TEST(SerializerTest, StringWithGreaterThan) {
+    Serializer s;
+    s.write_string("a > b");
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "a > b");
+}
+
+TEST(SerializerTest, StringWithLeadingSpace) {
+    Serializer s;
+    s.write_string("  indented text");
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "  indented text");
+}
+
+TEST(SerializerTest, StringNumericOnly) {
+    Serializer s;
+    s.write_string("123456789");
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "123456789");
+}
+
+TEST(SerializerTest, StringWithNegativeSign) {
+    Serializer s;
+    s.write_string("-1.5e-3");
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "-1.5e-3");
+}
