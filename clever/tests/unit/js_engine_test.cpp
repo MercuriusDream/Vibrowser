@@ -19314,3 +19314,52 @@ TEST(JSEngine, ObjectKeysCycle1317) {
     auto result = engine.evaluate("var obj = {x: 1, y: 2, z: 3}; var keys = Object.keys(obj); keys.length.toString()");
     EXPECT_EQ(result, "3");
 }
+
+// Cycle 1326: JS engine tests
+TEST(JSEngine, StringConcatenationCycle1326) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var str = 'Hello' + ' ' + 'World'; str");
+    EXPECT_EQ(result, "Hello World");
+}
+
+TEST(JSEngine, ArrayPushCycle1326) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var arr = [1, 2]; arr.push(3); arr.length.toString()");
+    EXPECT_EQ(result, "3");
+}
+
+TEST(JSEngine, MathFloorCycle1326) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var result = Math.floor(4.7); result.toString()");
+    EXPECT_EQ(result, "4");
+}
+
+TEST(JSEngine, JSONStringifyCycle1326) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var obj = {a: 1, b: 2}; JSON.stringify(obj)");
+    EXPECT_EQ(result, "{\"a\":1,\"b\":2}");
+}
+
+TEST(JSEngine, ObjectPropertyAccessCycle1326) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var obj = {name: 'test', value: 42}; (obj.name + obj.value.toString())");
+    EXPECT_EQ(result, "test42");
+}
+
+TEST(JSEngine, NumberParseIntCycle1326) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var num = parseInt('123'); num.toString()");
+    EXPECT_EQ(result, "123");
+}
+
+TEST(JSEngine, ArrayMapCycle1326) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var arr = [1, 2, 3]; var mapped = arr.map(x => x * 2); mapped.toString()");
+    EXPECT_EQ(result, "2,4,6");
+}
+
+TEST(JSEngine, MathCeilCycle1326) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var result = Math.ceil(4.2); result.toString()");
+    EXPECT_EQ(result, "5");
+}

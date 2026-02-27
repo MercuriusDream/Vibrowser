@@ -8314,3 +8314,76 @@ TEST_F(CSSStylesheetTest, TextDecorationColorV25) {
         if (d.property == "text-decoration-color") { found = true; break; }
     EXPECT_TRUE(found);
 }
+
+// Cycle 1323: CSS parser tests
+TEST_F(CSSStylesheetTest, BorderRadiusV26) {
+    auto sheet = parse_stylesheet("div { border-radius: 10px; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "border-radius") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, BoxShadowV26) {
+    auto sheet = parse_stylesheet("div { box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "box-shadow") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, TextShadowV26) {
+    auto sheet = parse_stylesheet("p { text-shadow: 2px 2px 4px gray; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "text-shadow") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, TransformV26) {
+    auto sheet = parse_stylesheet("span { transform: rotate(45deg); }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "transform") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, TransitionV26) {
+    auto sheet = parse_stylesheet("button { transition: all 0.3s ease; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "transition") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, AnimationV26) {
+    auto sheet = parse_stylesheet("div { animation: slide 2s infinite; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "animation") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, FilterV26) {
+    auto sheet = parse_stylesheet("img { filter: blur(5px); }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "filter") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, BackdropFilterV26) {
+    auto sheet = parse_stylesheet("div { backdrop-filter: blur(10px); }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "backdrop-filter") { found = true; break; }
+    EXPECT_TRUE(found);
+}

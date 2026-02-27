@@ -8042,3 +8042,97 @@ TEST(HttpClient, CookieJarClearAllV27) {
     jar.clear();
     EXPECT_EQ(jar.size(), 0u);
 }
+
+// Cycle 1322: HTTP client tests
+
+// HeaderMap: set overwrites existing key
+TEST(HttpClient, HeaderMapSetOverwritesV28) {
+    HeaderMap headers;
+    headers.set("Content-Type", "text/plain");
+    EXPECT_EQ(headers.get("Content-Type"), "text/plain");
+
+    headers.set("Content-Type", "application/json");
+    EXPECT_EQ(headers.get("Content-Type"), "application/json");
+}
+
+// HeaderMap: remove deletes a header
+TEST(HttpClient, HeaderMapRemoveV28) {
+    HeaderMap headers;
+    headers.set("X-Custom", "value123");
+    EXPECT_TRUE(headers.has("X-Custom"));
+
+    headers.remove("X-Custom");
+    EXPECT_FALSE(headers.has("X-Custom"));
+}
+
+// HeaderMap: size returns correct count
+TEST(HttpClient, HeaderMapSizeV28) {
+    HeaderMap headers;
+    EXPECT_EQ(headers.size(), 0u);
+
+    headers.set("Content-Type", "text/html");
+    EXPECT_EQ(headers.size(), 1u);
+
+    headers.set("Content-Length", "256");
+    EXPECT_EQ(headers.size(), 2u);
+}
+
+// Request: method getter returns correct HTTP method
+TEST(HttpClient, RequestMethodGetterV28) {
+    Request req;
+    req.method = Method::POST;
+    EXPECT_EQ(req.method, Method::POST);
+
+    req.method = Method::PUT;
+    EXPECT_EQ(req.method, Method::PUT);
+}
+
+// Request: url property stores and retrieves correctly
+TEST(HttpClient, RequestUrlPropertyV28) {
+    Request req;
+    req.url = "https://api.example.com/v1/users";
+    EXPECT_EQ(req.url, "https://api.example.com/v1/users");
+}
+
+// Request: serialize produces vector<uint8_t> with method and headers
+TEST(HttpClient, RequestSerializeV28) {
+    Request req;
+    req.method = Method::GET;
+    req.url = "http://example.com/test";
+    req.headers.set("User-Agent", "TestClient/1.0");
+
+    auto serialized = req.serialize();
+    EXPECT_GT(serialized.size(), 0u);
+    EXPECT_TRUE(serialized.data() != nullptr);
+}
+
+// Response: status is uint16_t not status_code
+TEST(HttpClient, ResponseStatusUint16V28) {
+    Response resp;
+    resp.status = 404;
+    EXPECT_EQ(resp.status, 404);
+
+    resp.status = 500;
+    EXPECT_EQ(resp.status, 500);
+}
+
+// Response: body is vector<uint8_t>
+TEST(HttpClient, ResponseBodyVectorV28) {
+    Response resp;
+    std::string content = "Hello, World!";
+    resp.body = std::vector<uint8_t>(content.begin(), content.end());
+
+    EXPECT_EQ(resp.body.size(), content.size());
+    EXPECT_TRUE(resp.body.data() != nullptr);
+}
+
+// CookieJar: get_cookie_header with secure flag
+TEST(HttpClient, CookieJarGetCookieHeaderSecureV28) {
+    CookieJar jar;
+    jar.set_from_header("auth=token123; Secure; Path=/api", "api.example.com");
+
+    auto secure_header = jar.get_cookie_header("api.example.com", "/api", true);
+    EXPECT_FALSE(secure_header.empty());
+
+    auto insecure_header = jar.get_cookie_header("api.example.com", "/api", false);
+}

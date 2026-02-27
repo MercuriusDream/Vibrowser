@@ -5606,3 +5606,84 @@ TEST(URLParser, UrlWithDeepPathTraversalResolutionV16) {
     EXPECT_EQ(url->path, "/a/d/file.txt");
     EXPECT_TRUE(url->query.empty());
 }
+
+// Cycle 1321: URL parser tests
+
+TEST(URLParser, SimpleHttpUrlV17) {
+    auto url = parse("http://example.com");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "http");
+    EXPECT_EQ(url->host, "example.com");
+    EXPECT_EQ(url->path, "/");
+    EXPECT_TRUE(url->query.empty());
+    EXPECT_TRUE(url->fragment.empty());
+}
+
+TEST(URLParser, HttpsUrlWithPathAndQueryV17) {
+    auto url = parse("https://api.service.com/v1/users?id=42&sort=asc");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "api.service.com");
+    EXPECT_EQ(url->path, "/v1/users");
+    EXPECT_EQ(url->query, "id=42&sort=asc");
+    EXPECT_TRUE(url->fragment.empty());
+}
+
+TEST(URLParser, UrlWithFragmentV17) {
+    auto url = parse("https://docs.example.org/guide#section-2");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "docs.example.org");
+    EXPECT_EQ(url->path, "/guide");
+    EXPECT_TRUE(url->query.empty());
+    EXPECT_EQ(url->fragment, "section-2");
+}
+
+TEST(URLParser, UrlWithExplicitDefaultPortV17) {
+    auto url = parse("http://localhost:80/app");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "http");
+    EXPECT_EQ(url->host, "localhost");
+    // Default port 80 for HTTP is normalized away
+    EXPECT_EQ(url->path, "/app");
+}
+
+TEST(URLParser, UrlWithCustomPortAndComplexPathV17) {
+    auto url = parse("https://cdn.media.net:4443/assets/images/logo.svg");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "cdn.media.net");
+    ASSERT_TRUE(url->port.has_value());
+    EXPECT_EQ(url->port.value(), 4443);
+    EXPECT_EQ(url->path, "/assets/images/logo.svg");
+}
+
+TEST(URLParser, UrlWithParentDirResolutionV17) {
+    auto url = parse("https://server.example.com/files/docs/../reports/index.html");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "server.example.com");
+    EXPECT_EQ(url->path, "/files/reports/index.html");
+    EXPECT_TRUE(url->query.empty());
+}
+
+TEST(URLParser, UrlWithMultipleLevelPathTraversalV17) {
+    auto url = parse("https://app.example.io/ui/components/button/../../theme/colors.css");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "app.example.io");
+    EXPECT_EQ(url->path, "/ui/theme/colors.css");
+    EXPECT_TRUE(url->query.empty());
+}
+
+TEST(URLParser, UrlWithAllComponentsV17) {
+    auto url = parse("https://user-api.example.net:6443/api/v2/profile?user=john&format=json#bio");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "user-api.example.net");
+    ASSERT_TRUE(url->port.has_value());
+    EXPECT_EQ(url->port.value(), 6443);
+    EXPECT_EQ(url->path, "/api/v2/profile");
+    EXPECT_EQ(url->query, "user=john&format=json");
+    EXPECT_EQ(url->fragment, "bio");
+}

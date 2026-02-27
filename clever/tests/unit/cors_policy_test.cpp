@@ -3518,3 +3518,46 @@ TEST(CORSPolicy, CORSRejectsMissingAllowOriginV34) {
     resp_headers.set("Content-Type", "application/json");
     EXPECT_FALSE(cors_allows_response("https://client.example:8080", "https://server.example:9090/api", resp_headers, false));
 }
+
+// Cycle 1319: CORS policy tests
+
+TEST(CORSPolicy, IsCrossOriginWithMultipleCustomPortsV35) {
+    EXPECT_TRUE(is_cross_origin("https://api.example:8080", "https://api.example:8443/data"));
+}
+
+TEST(CORSPolicy, HasEnforceableOriginWithPort9090V35) {
+    EXPECT_TRUE(has_enforceable_document_origin("https://localhost:9090"));
+}
+
+TEST(CORSPolicy, IsCorsEligibleWithCustomHttpPortV35) {
+    EXPECT_TRUE(is_cors_eligible_request_url("http://example.com:9090/api/v1"));
+}
+
+TEST(CORSPolicy, ShouldAttachOriginHeaderDifferentPortsV35) {
+    EXPECT_TRUE(should_attach_origin_header("https://app.example:8080", "https://app.example:8443/endpoint"));
+}
+
+TEST(CORSPolicy, CORSAllowsWildcardOriginV35) {
+    clever::net::HeaderMap resp_headers;
+    resp_headers.set("Access-Control-Allow-Origin", "*");
+    EXPECT_TRUE(cors_allows_response("https://any.example:8080", "https://api.example:9090/resource", resp_headers, false));
+}
+
+TEST(CORSPolicy, CORSRejectsCredentialsWithWildcardV35) {
+    clever::net::HeaderMap resp_headers;
+    resp_headers.set("Access-Control-Allow-Origin", "*");
+    EXPECT_FALSE(cors_allows_response("https://client.example:8443", "https://secure.example:8080/auth", resp_headers, true));
+}
+
+TEST(CORSPolicy, CORSAllowsWithAccessControlAllowCredentialsV35) {
+    clever::net::HeaderMap resp_headers;
+    resp_headers.set("Access-Control-Allow-Origin", "https://trusted.example:9090");
+    resp_headers.set("Access-Control-Allow-Credentials", "true");
+    EXPECT_TRUE(cors_allows_response("https://trusted.example:9090", "https://api.example:8443/secure", resp_headers, true));
+}
+
+TEST(CORSPolicy, CORSAllowsNullOriginWhenHeaderMatchesV35) {
+    clever::net::HeaderMap resp_headers;
+    resp_headers.set("Access-Control-Allow-Origin", "null");
+    EXPECT_TRUE(cors_allows_response("null", "https://api.example:8080/data", resp_headers, false));
+}

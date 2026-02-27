@@ -7702,3 +7702,60 @@ TEST(TreeBuilder, EmbedElementV13) {
     ASSERT_NE(el, nullptr);
     EXPECT_EQ(el->tag_name, "embed");
 }
+
+// Cycle 1324: HTML parser tests
+TEST(TreeBuilder, FormElementV14) {
+    auto doc = clever::html::parse("<form method=\"POST\" action=\"/submit\"><input type=\"text\" name=\"username\"><input type=\"password\" name=\"password\"></form>");
+    auto* el = doc->find_element("form");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "form");
+}
+
+TEST(TreeBuilder, InputElementV14) {
+    auto doc = clever::html::parse("<input type=\"email\" placeholder=\"Enter email\" required>");
+    auto* el = doc->find_element("input");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "input");
+}
+
+TEST(TreeBuilder, SelectElementV14) {
+    auto doc = clever::html::parse("<select name=\"colors\"><option value=\"red\">Red</option><option value=\"blue\">Blue</option></select>");
+    auto* el = doc->find_element("select");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "select");
+}
+
+TEST(TreeBuilder, TextareaElementV14) {
+    auto doc = clever::html::parse("<textarea rows=\"10\" cols=\"50\" name=\"comment\">Default text</textarea>");
+    auto* el = doc->find_element("textarea");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "textarea");
+}
+
+TEST(TreeBuilder, LabelElementV14) {
+    auto doc = clever::html::parse("<label for=\"username\">Username:</label><input id=\"username\" type=\"text\">");
+    auto* el = doc->find_element("label");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "label");
+}
+
+TEST(TreeBuilder, FieldsetElementV14) {
+    auto doc = clever::html::parse("<fieldset><legend>Contact Info</legend><input type=\"text\" name=\"name\"></fieldset>");
+    auto* el = doc->find_element("fieldset");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "fieldset");
+}
+
+TEST(TreeBuilder, TableElementV14) {
+    auto doc = clever::html::parse("<table border=\"1\"><tr><td>Cell 1</td><td>Cell 2</td></tr></table>");
+    auto* el = doc->find_element("table");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "table");
+}
+
+TEST(TreeBuilder, CanvasElementV14) {
+    auto doc = clever::html::parse("<canvas id=\"myCanvas\" width=\"200\" height=\"100\"></canvas>");
+    auto* el = doc->find_element("canvas");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "canvas");
+}

@@ -7216,3 +7216,66 @@ TEST(DomElement, DataAttributeCustom) {
     el->set_attribute("data-custom-value", "hello-world");
     EXPECT_EQ(el->get_attribute("data-custom-value"), "hello-world");
 }
+
+// Cycle 1318: DOM element tests
+
+TEST(DomElement, TagNamePictureV2) {
+    Document doc;
+    auto el = doc.create_element("picture");
+    EXPECT_EQ(el->tag_name(), "picture");
+}
+
+TEST(DomElement, TagNameSourceV2) {
+    Document doc;
+    auto el = doc.create_element("source");
+    EXPECT_EQ(el->tag_name(), "source");
+}
+
+TEST(DomElement, SetAttributeCols) {
+    Document doc;
+    auto el = doc.create_element("textarea");
+    el->set_attribute("cols", "40");
+    EXPECT_EQ(el->get_attribute("cols"), "40");
+}
+
+TEST(DomElement, SetAttributeSpan) {
+    Document doc;
+    auto el = doc.create_element("col");
+    el->set_attribute("span", "2");
+    EXPECT_EQ(el->get_attribute("span"), "2");
+}
+
+TEST(DomElement, ChildCountOneThousand) {
+    Document doc;
+    auto parent = doc.create_element("div");
+    for (int i = 0; i < 1000; ++i) {
+        parent->append_child(doc.create_element("span"));
+    }
+    EXPECT_EQ(parent->child_count(), 1000u);
+}
+
+TEST(DomElement, RemoveAttributeClassV2) {
+    Document doc;
+    auto el = doc.create_element("div");
+    el->set_attribute("class", "foo bar");
+    el->remove_attribute("class");
+    EXPECT_FALSE(el->has_attribute("class"));
+}
+
+TEST(DomElement, HasAttributePlaysInline) {
+    Document doc;
+    auto el = doc.create_element("video");
+    el->set_attribute("playsinline", "");
+    EXPECT_TRUE(el->has_attribute("playsinline"));
+}
+
+TEST(DomElement, MultipleDataAttributes) {
+    Document doc;
+    auto el = doc.create_element("div");
+    el->set_attribute("data-a", "1");
+    el->set_attribute("data-b", "2");
+    el->set_attribute("data-c", "3");
+    EXPECT_EQ(el->get_attribute("data-a"), "1");
+    EXPECT_EQ(el->get_attribute("data-b"), "2");
+    EXPECT_EQ(el->get_attribute("data-c"), "3");
+}
