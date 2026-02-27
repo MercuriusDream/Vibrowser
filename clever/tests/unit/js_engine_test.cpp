@@ -16154,3 +16154,68 @@ TEST(JSEngine, RegexFlagsProperty) {
     auto result = engine.evaluate("/abc/gi.flags");
     EXPECT_EQ(result, "gi");
 }
+
+// Cycle 825 — Error classes, nested try/catch, finally, custom error extending Error
+TEST(JSEngine, ClassExtendsError) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "class AppError extends Error { constructor(msg) { super(msg); this.name='AppError'; } }"
+        "try { throw new AppError('fail'); } catch(e) { e.name + ':' + e.message }");
+    EXPECT_EQ(result, "AppError:fail");
+}
+
+TEST(JSEngine, FinallyAlwaysRuns) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "let log = '';"
+        "try { log += 'try'; throw 'err'; } catch(e) { log += 'catch'; } finally { log += 'finally'; }"
+        "log");
+    EXPECT_EQ(result, "trycatchfinally");
+}
+
+TEST(JSEngine, FinallyRunsOnNoThrow) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "let ran = false;"
+        "try { 1+1; } finally { ran = true; }"
+        "String(ran)");
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, NestedTryCatch) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "let r = '';"
+        "try { try { throw 'inner'; } catch(e) { r += 'inner:' + e; throw 'outer'; } } catch(e) { r += ',outer:' + e; }"
+        "r");
+    EXPECT_EQ(result, "inner:inner,outer:outer");
+}
+
+TEST(JSEngine, CatchRethrowCaughtByOuter) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "function risky() { try { throw new Error('oops'); } catch(e) { throw e; } }"
+        "try { risky(); } catch(e) { e.message }");
+    EXPECT_EQ(result, "oops");
+}
+
+TEST(JSEngine, RangeErrorType) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "var e = new RangeError('out of range'); e instanceof RangeError");
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, ErrorInstanceofError) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "var e = new Error('test'); e instanceof Error");
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, TypeErrorInstanceofError) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "var e = new TypeError('bad'); (e instanceof TypeError) + ',' + (e instanceof Error)");
+    EXPECT_EQ(result, "true,true");
+}

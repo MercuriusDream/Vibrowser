@@ -6,12 +6,43 @@
 ## Current Status
 
 **Phase**: Active Development — Testing Blitz across ALL suites
-**Last Active**: 2026-02-27T15:30:00+0900
-**Current Focus**: Cycle 801+ — continuing test blitz
-**Momentum**: ~7450+ active+static tests, ZERO failures, all suites green! **800 CYCLES MILESTONE!** JS 1033 tests!
-**Cycle**: 800
+**Last Active**: 2026-02-27T18:00:00+0900
+**Current Focus**: Cycle 825 — JS error handling advanced
+**Momentum**: ~8000+ active+static tests, ZERO failures, all suites green! 824 cycles done! JS 1073 tests!
+**Cycle**: 824
 
 ## Session Log
+
+### Cycles 811-824 — 2026-02-27
+- **Cycles**: 14
+- **Theme**: Test blitz — CORS fix, JS regex advanced, HTML form attrs, CSS overflow/shadow/snap, Layout cursor/grid, DOM ClassList.to_string, IPC boundary values, URL edge cases, HTTP 2xx/5xx/security headers
+- **Key Wins**:
+  - Cycle 816: 8 CORS tests (cors 161→169) — exact-origin, wrong-origin, should-attach, normalize, credentials, port; Fixed: CrossOriginDifferentPortNumber used default port 443 → changed to 8080 vs 8443
+  - Cycle 817: 8 JS tests (js 1065→1073) — RegexNamedCapture, PositiveLookahead, NegativeLookahead, PositiveLookbehind, NegativeLookbehind, DotAll, Source, Flags; Fixed 2 tests for actual engine backtracking
+  - Cycle 818: 8 HTML tests (html 360→368) — FormEnctype, SelectSize, TextareaWrap, LabelFor, InputTabindex, InputReadonly, InputDisabled, ButtonTypeReset
+  - Cycle 819: 8 CSS tests (css_p 404→412) — OverflowX, OverflowY, TextShadow, Cursor, ScrollSnapType, ScrollSnapAlign, ColumnRuleWidth, ColumnFill
+  - Cycle 820: 8 Layout tests (layout 476→484) — CursorDefault, ScrollSnapType/Align empty, TextShadowOffsetX, ColumnRuleWidth, GridRow/Column/Area empty
+  - Cycle 821: 8 DOM tests (dom 383→391) — ClassList.to_string() 4 variants, Comment in tree (parent/count), Text empty/data==content
+  - Cycle 822: 8 IPC tests (ipc 288→296) — MaxUint32, MinInt32, MaxInt64, MinInt64, 40-bool-alternating, 50-i32-negative, 70-u32-sequential, 20-bool-true+false
+  - Cycle 823: 8 URL tests (url 285→293) — PercentInQuery/Fragment, MultiAmpQuery, LongPath, Port80, EqualInValue, HashOnly, UpperCaseSchemeNormalized
+  - Cycle 824: 8 Net tests (net 336→344) — Parse202/203/205/501/505, CSP header, HSTS header, ReferrerPolicy header
+- **Running total**: ~8050 (412 css_p + 698 css_s + 391 dom + 368 html + 296 ipc + 169 cors + 1073 js + 484 layout + 5 native + 344 net + 1863 paint + 117 platform + 293 url)
+
+### Cycles 801-810 — 2026-02-27
+- **Cycles**: 10
+- **Theme**: Test blitz — JS generators/async/proxy/reflect, HTML table elements, CSS @supports/font-face, Layout animations, DOM EventTarget dispatch, URL origin/serialize, HTTP response body/headers, IPC edge cases
+- **Key Wins**:
+  - Cycle 801: 8 JS tests (js 1033→1041) — GeneratorFour, CompletedDone, ForOf range, ArrayFromGen, SpreadFromGen, Fibonacci, ReturnValueProp, NextWithArg
+  - Cycle 802: 8 HTML tests (html 344→352) — TbodyElement, TheadElement, TfootElement, TrElement, TdElement, ThElement, TableColspan, TableCaption
+  - Cycle 803: 8 CSS tests (css_p 388→396) — SupportsOr/And, PropertyRuleInherits/Syntax/Initial, FontFaceWeight/Style/UnicodeRange; Fixed: unicode_range stored with spaces
+  - Cycle 804: 8 Layout tests (layout 460→468) — AnimationName/Duration/Delay/IterationCount/Direction/FillMode, TransitionProperty/Duration
+  - Cycle 805: 8 JS tests (js 1041→1049) — AsyncArrow, AsyncFunctionReturnsPromiseV2, PromiseResolveType, PromiseRejectType, PromiseAllIsFunctionV2, PromiseRaceIsObject, AsyncGeneratorType, PromiseChainType; Fixed 2 duplicates
+  - Cycle 806: 8 DOM tests (dom 367→375) — EventTarget AddListener, TwoListeners, WrongType, RemoveAll, DispatchTwice, ListenerReceivesEvent, ThreeTypes, DispatchReturnsTrue
+  - Cycle 807: 8 URL tests (url 269→277) — SerializeHttpsFull, SerializeOmitsDefaultPort, OriginHttp/Https, OriginWithPort, SameOriginDiffHost/Scheme/Port
+  - Cycle 808: 8 Net tests (net 328→336) — ResponseBodyContent, BodySize, ContentType header, Server header, CacheControl header, Status200Text, Status201Text, BodyJsonString
+  - Cycle 809: 8 JS tests (js 1049→1057) — ProxyHas/GetDefault/SetModifies, ReflectDelete/Set/OwnKeysCount/GetPrototype/IsExtensible
+  - Cycle 810: 8 IPC tests (ipc 280→288) — SerializerNotEmpty, SingleU64/I32/F64, ZeroBytes, 200xU8, NegI64, NegF64
+- **Running total**: ~7650 (396 css_p + 698 css_s + 375 dom + 352 html + 288 ipc + 161 cors + 1057 js + 468 layout + 5 native + 336 net + 1863 paint + 117 platform + 277 url)
 
 ### Cycles 791-800 — 2026-02-27 (800 CYCLE MILESTONE!)
 - **Cycles**: 10
