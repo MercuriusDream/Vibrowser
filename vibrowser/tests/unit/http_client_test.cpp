@@ -15510,3 +15510,141 @@ TEST(HttpClientTest, HeaderMapRemoveNonexistentKeyIsNoOpV87) {
     auto val = map.get("X-Nonexistent");
     EXPECT_FALSE(val.has_value());
 }
+
+// ===========================================================================
+// V88 Tests
+// ===========================================================================
+
+TEST(HttpClientTest, HeaderMapAppendThenGetReturnsFirstValueV88) {
+    // append adds multiple values; get returns the first one
+    HeaderMap map;
+    map.append("Accept", "text/html");
+    map.append("Accept", "application/json");
+    map.append("Accept", "text/plain");
+
+    auto first = map.get("Accept");
+    ASSERT_TRUE(first.has_value());
+    EXPECT_EQ(first.value(), "text/html");
+
+    auto all = map.get_all("Accept");
+    EXPECT_EQ(all.size(), 3u);
+    EXPECT_EQ(all[0], "text/html");
+    EXPECT_EQ(all[1], "application/json");
+    EXPECT_EQ(all[2], "text/plain");
+}
+
+TEST(HttpClientTest, HeaderMapSetAfterAppendOverwritesToSingleValueV88) {
+    // set after multiple appends should collapse to one value
+    HeaderMap map;
+    map.append("X-Token", "aaa");
+    map.append("X-Token", "bbb");
+    map.append("X-Token", "ccc");
+    EXPECT_EQ(map.get_all("X-Token").size(), 3u);
+
+    map.set("X-Token", "final");
+    EXPECT_EQ(map.get_all("X-Token").size(), 1u);
+    EXPECT_EQ(map.get("X-Token").value(), "final");
+    EXPECT_EQ(map.size(), 1u);
+}
+
+TEST(HttpClientTest, RequestSerializeGetDefaultPort80OmittedFromHostV88) {
+    // Port 80 should be omitted from Host header for GET
+    Request req;
+    req.method = Method::GET;
+    req.host = "www.example.com";
+    req.port = 80;
+    req.path = "/index.html";
+
+    auto raw = req.serialize();
+    std::string serialized(raw.begin(), raw.end());
+
+    EXPECT_TRUE(serialized.find("GET /index.html HTTP/1.1\r\n") == 0);
+    EXPECT_TRUE(serialized.find("Host: www.example.com\r\n") != std::string::npos);
+    // Port 80 must not appear
+    EXPECT_TRUE(serialized.find("Host: www.example.com:80") == std::string::npos);
+}
+
+TEST(HttpClientTest, RequestSerializeDeleteMethodWithPort443OmittedV88) {
+    // Port 443 should be omitted from Host header
+    Request req;
+    req.method = Method::DELETE_METHOD;
+    req.host = "api.service.io";
+    req.port = 443;
+    req.path = "/resource/42";
+
+    auto raw = req.serialize();
+    std::string serialized(raw.begin(), raw.end());
+
+    EXPECT_TRUE(serialized.find("DELETE /resource/42 HTTP/1.1\r\n") == 0);
+    EXPECT_TRUE(serialized.find("Host: api.service.io\r\n") != std::string::npos);
+    EXPECT_TRUE(serialized.find("Host: api.service.io:443") == std::string::npos);
+}
+
+TEST(HttpClientTest, RequestSerializePutWithNonStandardPortIncludedV88) {
+    // Non-standard port (8080) must be included in Host header
+    Request req;
+    req.method = Method::PUT;
+    req.host = "internal.corp.net";
+    req.port = 8080;
+    req.path = "/api/update";
+    req.body = std::vector<uint8_t>{'d', 'a', 't', 'a'};
+
+    auto raw = req.serialize();
+    std::string serialized(raw.begin(), raw.end());
+
+    EXPECT_TRUE(serialized.find("PUT /api/update HTTP/1.1\r\n") == 0);
+    EXPECT_TRUE(serialized.find("Host: internal.corp.net:8080\r\n") != std::string::npos);
+    EXPECT_TRUE(serialized.find("data") != std::string::npos);
+}
+
+TEST(HttpClientTest, CookieJarMultipleCookiesSameDomainDifferentPathsV88) {
+    // Cookies on the same domain but different paths should be independent
+    CookieJar jar;
+    jar.set_from_header("session=abc123; Path=/app", "example.com");
+    jar.set_from_header("token=xyz789; Path=/api", "example.com");
+
+    EXPECT_EQ(jar.size(), 2u);
+
+    std::string app_cookies = jar.get_cookie_header("example.com", "/app", false);
+    EXPECT_TRUE(app_cookies.find("session=abc123") != std::string::npos);
+
+    std::string api_cookies = jar.get_cookie_header("example.com", "/api", false);
+    EXPECT_TRUE(api_cookies.find("token=xyz789") != std::string::npos);
+}
+
+TEST(HttpClientTest, ResponseBodyAsStringAndHeadersInteractionV88) {
+    // Response can store both headers and body simultaneously
+    Response resp;
+    resp.status = 200;
+    resp.headers.set("Content-Type", "application/json");
+    resp.headers.set("X-Request-Id", "req-001");
+    std::string json_body = R"({"status":"ok"})";
+    resp.body = std::vector<uint8_t>(json_body.begin(), json_body.end());
+
+    EXPECT_EQ(resp.status, 200);
+    EXPECT_EQ(resp.body_as_string(), R"({"status":"ok"})");
+    EXPECT_EQ(resp.headers.get("Content-Type").value(), "application/json");
+    EXPECT_EQ(resp.headers.get("X-Request-Id").value(), "req-001");
+    EXPECT_EQ(resp.headers.size(), 2u);
+}
+
+TEST(HttpClientTest, CookieJarClearThenSetNewCookieV88) {
+    // After clearing, the jar should accept new cookies fresh
+    CookieJar jar;
+    jar.set_from_header("old=stale", "old.example.com");
+    jar.set_from_header("legacy=data", "old.example.com");
+    EXPECT_EQ(jar.size(), 2u);
+
+    jar.clear();
+    EXPECT_EQ(jar.size(), 0u);
+
+    jar.set_from_header("fresh=new", "new.example.com");
+    EXPECT_EQ(jar.size(), 1u);
+
+    std::string cookies = jar.get_cookie_header("new.example.com", "/", false);
+    EXPECT_TRUE(cookies.find("fresh=new") != std::string::npos);
+
+    // Old domain should return nothing
+    std::string old_cookies = jar.get_cookie_header("old.example.com", "/", false);
+    EXPECT_TRUE(old_cookies.empty());
+}

@@ -10493,3 +10493,77 @@ TEST(UrlParserTest, SerializeReconstructsUrlWithNonDefaultPortV87) {
     EXPECT_NE(serialized.find("mode=debug"), std::string::npos);
     EXPECT_NE(serialized.find("top"), std::string::npos);
 }
+
+// =============================================================================
+// V88 Tests
+// =============================================================================
+
+TEST(UrlParserTest, TrailingDotDotCollapsesToRootV88) {
+    auto result = clever::url::parse("https://example.com/a/b/c/../../../..");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/");
+}
+
+TEST(UrlParserTest, PercentEncodedSpaceDoubleEncodedV88) {
+    auto result = clever::url::parse("https://example.com/hello%20world");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_NE(result->path.find("%2520"), std::string::npos);
+}
+
+TEST(UrlParserTest, HttpDefaultPort80NormalizedToNulloptV88) {
+    auto result = clever::url::parse("http://www.example.com:80/index.html");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "www.example.com");
+    EXPECT_EQ(result->port, std::nullopt);
+    EXPECT_EQ(result->path, "/index.html");
+}
+
+TEST(UrlParserTest, HostUppercaseFullyLowercasedV88) {
+    auto result = clever::url::parse("https://WWW.EXAMPLE.COM/Page");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->host, "www.example.com");
+    EXPECT_EQ(result->path, "/Page");
+}
+
+TEST(UrlParserTest, SchemeOnlyNoPathDefaultsSlashV88) {
+    auto result = clever::url::parse("https://example.com");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/");
+}
+
+TEST(UrlParserTest, MissingSchemeReturnsNulloptV88) {
+    auto result = clever::url::parse("://example.com/path");
+    EXPECT_FALSE(result.has_value());
+}
+
+TEST(UrlParserTest, QueryWithMultipleParamsPreservedV88) {
+    auto result = clever::url::parse("https://api.example.com/search?q=test&page=2&lang=en#top");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "api.example.com");
+    EXPECT_EQ(result->path, "/search");
+    EXPECT_NE(result->query.find("q=test"), std::string::npos);
+    EXPECT_NE(result->query.find("page=2"), std::string::npos);
+    EXPECT_NE(result->query.find("lang=en"), std::string::npos);
+    EXPECT_EQ(result->fragment, "top");
+}
+
+TEST(UrlParserTest, SerializeIncludesAllComponentsV88) {
+    auto result = clever::url::parse("https://data.example.com:9443/api/v2?format=json#resp");
+    ASSERT_TRUE(result.has_value());
+    ASSERT_TRUE(result->port.has_value());
+    EXPECT_EQ(result->port.value(), 9443);
+    std::string serialized = result->serialize();
+    EXPECT_NE(serialized.find("https"), std::string::npos);
+    EXPECT_NE(serialized.find("data.example.com"), std::string::npos);
+    EXPECT_NE(serialized.find("9443"), std::string::npos);
+    EXPECT_NE(serialized.find("/api/v2"), std::string::npos);
+    EXPECT_NE(serialized.find("format=json"), std::string::npos);
+    EXPECT_NE(serialized.find("resp"), std::string::npos);
+}

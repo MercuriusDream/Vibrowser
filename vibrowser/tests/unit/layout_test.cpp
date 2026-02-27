@@ -16140,3 +16140,246 @@ TEST(LayoutTest, FlexRowFixedAndTwoGrowChildrenV87) {
     EXPECT_FLOAT_EQ(pg1->geometry.x, 100.0f);
     EXPECT_FLOAT_EQ(pg2->geometry.x, 300.0f);
 }
+
+// Test V88_001: block with padding on all sides reduces child content area
+TEST(LayoutTest, BlockPaddingAllSidesReducesChildAreaV88) {
+    auto root = make_block("div");
+    root->specified_width = 500.0f;
+    root->specified_height = 400.0f;
+    root->geometry.padding.top = 15.0f;
+    root->geometry.padding.bottom = 15.0f;
+    root->geometry.padding.left = 25.0f;
+    root->geometry.padding.right = 25.0f;
+
+    auto child = make_block("div");
+    child->specified_height = 100.0f;
+    auto* cp = child.get();
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // Child width = 500 - 25 - 25 = 450
+    EXPECT_FLOAT_EQ(cp->geometry.width, 450.0f);
+    EXPECT_FLOAT_EQ(cp->geometry.height, 100.0f);
+    EXPECT_FLOAT_EQ(cp->geometry.x, 0.0f);
+    EXPECT_FLOAT_EQ(cp->geometry.y, 0.0f);
+}
+
+// Test V88_002: flex row with equal grow children splits width evenly
+TEST(LayoutTest, FlexRowEqualGrowSplitsEvenlyV88) {
+    auto root = make_flex("div");
+    root->specified_width = 900.0f;
+    root->specified_height = 120.0f;
+    root->flex_direction = 0; // row
+
+    auto c1 = make_block("div");
+    c1->specified_width = 0.0f;
+    c1->specified_height = 80.0f;
+    c1->flex_grow = 1.0f;
+    auto* p1 = c1.get();
+    root->append_child(std::move(c1));
+
+    auto c2 = make_block("div");
+    c2->specified_width = 0.0f;
+    c2->specified_height = 80.0f;
+    c2->flex_grow = 1.0f;
+    auto* p2 = c2.get();
+    root->append_child(std::move(c2));
+
+    auto c3 = make_block("div");
+    c3->specified_width = 0.0f;
+    c3->specified_height = 80.0f;
+    c3->flex_grow = 1.0f;
+    auto* p3 = c3.get();
+    root->append_child(std::move(c3));
+
+    LayoutEngine engine;
+    engine.compute(*root, 1024.0f, 768.0f);
+
+    // 900 / 3 = 300 each
+    EXPECT_FLOAT_EQ(p1->geometry.width, 300.0f);
+    EXPECT_FLOAT_EQ(p2->geometry.width, 300.0f);
+    EXPECT_FLOAT_EQ(p3->geometry.width, 300.0f);
+    EXPECT_FLOAT_EQ(p1->geometry.x, 0.0f);
+    EXPECT_FLOAT_EQ(p2->geometry.x, 300.0f);
+    EXPECT_FLOAT_EQ(p3->geometry.x, 600.0f);
+}
+
+// Test V88_003: nested block containers propagate width correctly
+TEST(LayoutTest, NestedBlockContainersPropagateWidthV88) {
+    auto root = make_block("div");
+    root->specified_width = 700.0f;
+
+    auto mid = make_block("div");
+    auto* pm = mid.get();
+
+    auto inner = make_block("div");
+    inner->specified_height = 50.0f;
+    auto* pi = inner.get();
+    mid->append_child(std::move(inner));
+
+    root->append_child(std::move(mid));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // Both mid and inner should inherit root's width
+    EXPECT_FLOAT_EQ(pm->geometry.width, 700.0f);
+    EXPECT_FLOAT_EQ(pi->geometry.width, 700.0f);
+    EXPECT_FLOAT_EQ(pi->geometry.height, 50.0f);
+}
+
+// Test V88_004: block with margin top and bottom positions children correctly
+TEST(LayoutTest, BlockChildMarginTopPositioningV88) {
+    auto root = make_block("div");
+    root->specified_width = 600.0f;
+
+    auto c1 = make_block("div");
+    c1->specified_height = 50.0f;
+    c1->geometry.margin.top = 30.0f;
+    auto* p1 = c1.get();
+    root->append_child(std::move(c1));
+
+    auto c2 = make_block("div");
+    c2->specified_height = 70.0f;
+    c2->geometry.margin.top = 15.0f;
+    auto* p2 = c2.get();
+    root->append_child(std::move(c2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // First child at y=30 (its margin top)
+    EXPECT_FLOAT_EQ(p1->geometry.y, 30.0f);
+    EXPECT_FLOAT_EQ(p1->geometry.height, 50.0f);
+    // Second child y = 30 + 50 + max(0, 15) = 95
+    EXPECT_FLOAT_EQ(p2->geometry.y, 95.0f);
+    EXPECT_FLOAT_EQ(p2->geometry.height, 70.0f);
+}
+
+// Test V88_005: flex column with fixed-height children positions vertically
+TEST(LayoutTest, FlexColumnFixedHeightChildrenPositionV88) {
+    auto root = make_flex("div");
+    root->specified_width = 400.0f;
+    root->specified_height = 500.0f;
+    root->flex_direction = 2; // column
+
+    auto c1 = make_block("div");
+    c1->specified_height = 100.0f;
+    auto* p1 = c1.get();
+    root->append_child(std::move(c1));
+
+    auto c2 = make_block("div");
+    c2->specified_height = 150.0f;
+    auto* p2 = c2.get();
+    root->append_child(std::move(c2));
+
+    auto c3 = make_block("div");
+    c3->specified_height = 80.0f;
+    auto* p3 = c3.get();
+    root->append_child(std::move(c3));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(p1->geometry.y, 0.0f);
+    EXPECT_FLOAT_EQ(p1->geometry.height, 100.0f);
+    EXPECT_FLOAT_EQ(p2->geometry.y, 100.0f);
+    EXPECT_FLOAT_EQ(p2->geometry.height, 150.0f);
+    EXPECT_FLOAT_EQ(p3->geometry.y, 250.0f);
+    EXPECT_FLOAT_EQ(p3->geometry.height, 80.0f);
+}
+
+// Test V88_006: display none child excluded from layout flow
+TEST(LayoutTest, DisplayNoneChildExcludedFromFlowV88) {
+    auto root = make_block("div");
+    root->specified_width = 500.0f;
+
+    auto c1 = make_block("div");
+    c1->specified_height = 60.0f;
+    auto* p1 = c1.get();
+    root->append_child(std::move(c1));
+
+    auto hidden = make_block("div");
+    hidden->specified_height = 200.0f;
+    hidden->display = DisplayType::None;
+    root->append_child(std::move(hidden));
+
+    auto c3 = make_block("div");
+    c3->specified_height = 40.0f;
+    auto* p3 = c3.get();
+    root->append_child(std::move(c3));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // First child at y=0
+    EXPECT_FLOAT_EQ(p1->geometry.y, 0.0f);
+    EXPECT_FLOAT_EQ(p1->geometry.height, 60.0f);
+    // Hidden child should not take up space; third child follows first
+    EXPECT_FLOAT_EQ(p3->geometry.y, 60.0f);
+    EXPECT_FLOAT_EQ(p3->geometry.height, 40.0f);
+}
+
+// Test V88_007: block root with border reduces available width for children
+TEST(LayoutTest, BlockBorderReducesChildWidthV88) {
+    auto root = make_block("div");
+    root->specified_width = 600.0f;
+    root->specified_height = 300.0f;
+    root->geometry.border.left = 10.0f;
+    root->geometry.border.right = 10.0f;
+    root->geometry.border.top = 5.0f;
+    root->geometry.border.bottom = 5.0f;
+
+    auto child = make_block("div");
+    child->specified_height = 80.0f;
+    auto* cp = child.get();
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // Child width = 600 - 10 - 10 = 580
+    EXPECT_FLOAT_EQ(cp->geometry.width, 580.0f);
+    EXPECT_FLOAT_EQ(cp->geometry.height, 80.0f);
+}
+
+// Test V88_008: flex row with one grow child absorbs all remaining space
+TEST(LayoutTest, FlexRowSingleGrowChildAbsorbsSpaceV88) {
+    auto root = make_flex("div");
+    root->specified_width = 800.0f;
+    root->specified_height = 100.0f;
+    root->flex_direction = 0; // row
+
+    auto fixed1 = make_block("div");
+    fixed1->specified_width = 120.0f;
+    fixed1->specified_height = 60.0f;
+    auto* pf1 = fixed1.get();
+    root->append_child(std::move(fixed1));
+
+    auto grow = make_block("div");
+    grow->specified_width = 0.0f;
+    grow->specified_height = 60.0f;
+    grow->flex_grow = 1.0f;
+    auto* pg = grow.get();
+    root->append_child(std::move(grow));
+
+    auto fixed2 = make_block("div");
+    fixed2->specified_width = 80.0f;
+    fixed2->specified_height = 60.0f;
+    auto* pf2 = fixed2.get();
+    root->append_child(std::move(fixed2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 1024.0f, 768.0f);
+
+    // Fixed children keep their widths, grow child gets remainder
+    // Remaining = 800 - 120 - 0 - 80 = 600
+    EXPECT_FLOAT_EQ(pf1->geometry.width, 120.0f);
+    EXPECT_FLOAT_EQ(pg->geometry.width, 600.0f);
+    EXPECT_FLOAT_EQ(pf2->geometry.width, 80.0f);
+    EXPECT_FLOAT_EQ(pf1->geometry.x, 0.0f);
+    EXPECT_FLOAT_EQ(pg->geometry.x, 120.0f);
+    EXPECT_FLOAT_EQ(pf2->geometry.x, 720.0f);
+}

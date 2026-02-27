@@ -6415,3 +6415,77 @@ TEST(CORSPolicyTest, CorsAllowsResponseWhenAcaoMatchesWithTrailingSlashDifferenc
     EXPECT_FALSE(
         cors_allows_response("https://app.example.com/", "https://api.example.com/resource", headers, false));
 }
+
+// ============================================================================
+// V88 Tests
+// ============================================================================
+
+TEST(CORSPolicyTest, CrossOriginDifferentSubdomainsV88) {
+    // Different subdomains of the same base domain are cross-origin
+    EXPECT_TRUE(is_cross_origin("https://www.example.com", "https://api.example.com/data"));
+    EXPECT_TRUE(is_cross_origin("https://mail.example.com", "https://calendar.example.com/events"));
+    // Same subdomain is same-origin
+    EXPECT_FALSE(is_cross_origin("https://api.example.com", "https://api.example.com/v2/users"));
+}
+
+TEST(CORSPolicyTest, CorsAllowsWildcardWithoutCredentialsV88) {
+    // Wildcard ACAO should allow response when credentials are NOT requested
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "*");
+    EXPECT_TRUE(
+        cors_allows_response("https://any.example.com", "https://api.example.com/public", headers, false));
+    // Wildcard ACAO should reject when credentials ARE requested
+    EXPECT_FALSE(
+        cors_allows_response("https://any.example.com", "https://api.example.com/public", headers, true));
+}
+
+TEST(CORSPolicyTest, ShouldAttachOriginSameOriginV88) {
+    // Same-origin requests should not need an Origin header attached
+    EXPECT_FALSE(should_attach_origin_header("https://app.example.com", "https://app.example.com/api/data"));
+    EXPECT_FALSE(should_attach_origin_header("http://localhost:3000", "http://localhost:3000/status"));
+}
+
+TEST(CORSPolicyTest, CorsEligibleStandardSchemesV88) {
+    // Standard http and https URLs are CORS-eligible
+    EXPECT_TRUE(is_cors_eligible_request_url("https://api.example.com/data"));
+    EXPECT_TRUE(is_cors_eligible_request_url("http://api.example.com/data"));
+    // data: and blob: URLs are not CORS-eligible
+    EXPECT_FALSE(is_cors_eligible_request_url("data:text/html,<h1>test</h1>"));
+    EXPECT_FALSE(is_cors_eligible_request_url("blob:https://example.com/uuid"));
+}
+
+TEST(CORSPolicyTest, EnforceableOriginRejectsIPAddressLiteralsV88) {
+    // IP address literals without valid domain should not be enforceable
+    EXPECT_FALSE(has_enforceable_document_origin("https://999.999.999.999"));
+    // Bare scheme with no host is not enforceable
+    EXPECT_FALSE(has_enforceable_document_origin("https://"));
+    // Explicit default port :443 is not enforceable (per spec: explicit :443 not enforceable)
+    EXPECT_FALSE(has_enforceable_document_origin("https://secure.example.com:443"));
+}
+
+TEST(CORSPolicyTest, CorsRejectsCredentialedRequestWithoutAcacV88) {
+    // Credentialed request needs Access-Control-Allow-Credentials: true
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "https://app.example.com");
+    // Without ACAC header, credentialed request should be rejected
+    EXPECT_FALSE(
+        cors_allows_response("https://app.example.com", "https://api.example.com/secure", headers, true));
+    // With ACAC: true, credentialed request should be allowed
+    headers.set("Access-Control-Allow-Credentials", "true");
+    EXPECT_TRUE(
+        cors_allows_response("https://app.example.com", "https://api.example.com/secure", headers, true));
+}
+
+TEST(CORSPolicyTest, CrossOriginDifferentPortsV88) {
+    // Different ports make requests cross-origin
+    EXPECT_TRUE(is_cross_origin("https://app.example.com:8080", "https://app.example.com:9090/api"));
+    // Same explicit port is same-origin
+    EXPECT_FALSE(is_cross_origin("https://app.example.com:8080", "https://app.example.com:8080/api"));
+}
+
+TEST(CORSPolicyTest, ShouldAttachOriginNullOriginV88) {
+    // null origin is opaque — should attach origin for cross-origin but null is not a real origin
+    EXPECT_TRUE(should_attach_origin_header("null", "https://api.example.com/data"));
+    // Empty origin should not attach
+    EXPECT_FALSE(should_attach_origin_header("", "https://api.example.com/data"));
+}

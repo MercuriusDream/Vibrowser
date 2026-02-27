@@ -14092,3 +14092,175 @@ TEST(HtmlParserTest, MixedBlockAndInlineContentV87) {
     EXPECT_NE(full_text.find("block paragraph"), std::string::npos);
     EXPECT_NE(full_text.find("link"), std::string::npos);
 }
+
+// ---------------------------------------------------------------------------
+// V88 tests: advanced HTML parsing scenarios
+// ---------------------------------------------------------------------------
+
+// 1. Nested tables are parsed with correct structure
+TEST(HtmlParserTest, NestedTablesV88) {
+    auto doc = clever::html::parse(
+        "<html><body><table>"
+        "<tr><td>Outer Cell"
+        "<table><tr><td>Inner Cell</td></tr></table>"
+        "</td></tr>"
+        "</table></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto tables = doc->find_all_elements("table");
+    EXPECT_GE(tables.size(), 2u);
+
+    auto tds = doc->find_all_elements("td");
+    EXPECT_GE(tds.size(), 2u);
+
+    // Inner cell text should be accessible
+    std::string body_text = doc->find_element("body")->text_content();
+    EXPECT_NE(body_text.find("Outer Cell"), std::string::npos);
+    EXPECT_NE(body_text.find("Inner Cell"), std::string::npos);
+}
+
+// 2. Data attributes are preserved correctly
+TEST(HtmlParserTest, DataAttributesPreservedV88) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<div data-id=\"42\" data-role=\"widget\" data-empty=\"\">content</div>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* div = doc->find_element("div");
+    ASSERT_NE(div, nullptr);
+
+    EXPECT_EQ(get_attr_v63(div, "data-id"), "42");
+    EXPECT_EQ(get_attr_v63(div, "data-role"), "widget");
+    EXPECT_EQ(get_attr_v63(div, "data-empty"), "");
+    EXPECT_EQ(div->text_content(), "content");
+}
+
+// 3. Multiple script tags with content are parsed
+TEST(HtmlParserTest, MultipleScriptTagsV88) {
+    auto doc = clever::html::parse(
+        "<html><head>"
+        "<script>var a = 1;</script>"
+        "<script type=\"module\">import x from './x';</script>"
+        "</head><body><p>After scripts</p></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto scripts = doc->find_all_elements("script");
+    EXPECT_GE(scripts.size(), 2u);
+
+    auto* p = doc->find_element("p");
+    ASSERT_NE(p, nullptr);
+    EXPECT_EQ(p->text_content(), "After scripts");
+}
+
+// 4. Deeply nested elements maintain parent-child relationships
+TEST(HtmlParserTest, DeeplyNestedElementsV88) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<div><section><article><header><h1>Deep Title</h1></header></article></section></div>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* div = doc->find_element("div");
+    ASSERT_NE(div, nullptr);
+
+    auto* section = doc->find_element("section");
+    ASSERT_NE(section, nullptr);
+
+    auto* article = doc->find_element("article");
+    ASSERT_NE(article, nullptr);
+
+    auto* header = doc->find_element("header");
+    ASSERT_NE(header, nullptr);
+
+    auto* h1 = doc->find_element("h1");
+    ASSERT_NE(h1, nullptr);
+    EXPECT_EQ(h1->text_content(), "Deep Title");
+}
+
+// 5. Adjacent text nodes around comments
+TEST(HtmlParserTest, TextAroundCommentsV88) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<p>Before<!-- comment -->After</p>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* p = doc->find_element("p");
+    ASSERT_NE(p, nullptr);
+
+    std::string text = p->text_content();
+    EXPECT_NE(text.find("Before"), std::string::npos);
+    EXPECT_NE(text.find("After"), std::string::npos);
+}
+
+// 6. Definition list (dl/dt/dd) structure
+TEST(HtmlParserTest, DefinitionListStructureV88) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<dl>"
+        "<dt>Term 1</dt><dd>Definition 1</dd>"
+        "<dt>Term 2</dt><dd>Definition 2</dd>"
+        "</dl>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* dl = doc->find_element("dl");
+    ASSERT_NE(dl, nullptr);
+
+    auto dts = doc->find_all_elements("dt");
+    EXPECT_EQ(dts.size(), 2u);
+    EXPECT_EQ(dts[0]->text_content(), "Term 1");
+    EXPECT_EQ(dts[1]->text_content(), "Term 2");
+
+    auto dds = doc->find_all_elements("dd");
+    EXPECT_EQ(dds.size(), 2u);
+    EXPECT_EQ(dds[0]->text_content(), "Definition 1");
+    EXPECT_EQ(dds[1]->text_content(), "Definition 2");
+}
+
+// 7. Multiple classes in a single class attribute
+TEST(HtmlParserTest, MultipleClassAttributeValuesV88) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<div class=\"alpha beta gamma\">Styled</div>"
+        "<span class=\"one two\">Also styled</span>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* div = doc->find_element("div");
+    ASSERT_NE(div, nullptr);
+    std::string div_class = get_attr_v63(div, "class");
+    EXPECT_NE(div_class.find("alpha"), std::string::npos);
+    EXPECT_NE(div_class.find("beta"), std::string::npos);
+    EXPECT_NE(div_class.find("gamma"), std::string::npos);
+
+    auto* span = doc->find_element("span");
+    ASSERT_NE(span, nullptr);
+    std::string span_class = get_attr_v63(span, "class");
+    EXPECT_NE(span_class.find("one"), std::string::npos);
+    EXPECT_NE(span_class.find("two"), std::string::npos);
+}
+
+// 8. Inline style attribute is preserved verbatim
+TEST(HtmlParserTest, InlineStyleAttributePreservedV88) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<p style=\"color: red; font-size: 14px;\">Red text</p>"
+        "<div style=\"margin: 0 auto;\">Centered</div>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* p = doc->find_element("p");
+    ASSERT_NE(p, nullptr);
+    std::string p_style = get_attr_v63(p, "style");
+    EXPECT_NE(p_style.find("color: red"), std::string::npos);
+    EXPECT_NE(p_style.find("font-size: 14px"), std::string::npos);
+    EXPECT_EQ(p->text_content(), "Red text");
+
+    auto* div = doc->find_element("div");
+    ASSERT_NE(div, nullptr);
+    std::string div_style = get_attr_v63(div, "style");
+    EXPECT_NE(div_style.find("margin: 0 auto"), std::string::npos);
+    EXPECT_EQ(div->text_content(), "Centered");
+}

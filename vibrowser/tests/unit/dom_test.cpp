@@ -14412,3 +14412,161 @@ TEST(DomTest, SiblingTraversalAfterInsertBeforeV87) {
     cur = cur->next_sibling();
     EXPECT_EQ(cur, nullptr);
 }
+
+// ---------------------------------------------------------------------------
+// V88 Round — 8 new tests
+// ---------------------------------------------------------------------------
+
+TEST(DomTest, ElementClassListToggleMultipleV88) {
+    Element elem("div");
+    elem.class_list().add("alpha");
+    elem.class_list().add("beta");
+    elem.class_list().add("gamma");
+    EXPECT_TRUE(elem.class_list().contains("alpha"));
+    EXPECT_TRUE(elem.class_list().contains("beta"));
+    EXPECT_TRUE(elem.class_list().contains("gamma"));
+
+    // Toggle off alpha and gamma, leave beta
+    elem.class_list().toggle("alpha");
+    elem.class_list().toggle("gamma");
+    EXPECT_FALSE(elem.class_list().contains("alpha"));
+    EXPECT_TRUE(elem.class_list().contains("beta"));
+    EXPECT_FALSE(elem.class_list().contains("gamma"));
+
+    // Toggle alpha back on
+    elem.class_list().toggle("alpha");
+    EXPECT_TRUE(elem.class_list().contains("alpha"));
+}
+
+TEST(DomTest, InsertBeforeFirstChildV88) {
+    Element parent("ul");
+    auto first = std::make_unique<Element>("li");
+    auto* first_ptr = first.get();
+    parent.append_child(std::move(first));
+
+    // Insert a new node before the first child (i.e., at position 0)
+    auto new_first = std::make_unique<Element>("li");
+    auto* new_first_ptr = new_first.get();
+    parent.insert_before(std::move(new_first), first_ptr);
+
+    EXPECT_EQ(parent.child_count(), 2u);
+    EXPECT_EQ(parent.first_child(), new_first_ptr);
+    EXPECT_EQ(new_first_ptr->next_sibling(), first_ptr);
+    EXPECT_EQ(first_ptr->next_sibling(), nullptr);
+}
+
+TEST(DomTest, RemoveChildMiddleNodeV88) {
+    Element parent("div");
+    auto c1 = std::make_unique<Element>("span");
+    auto c2 = std::make_unique<Element>("em");
+    auto c3 = std::make_unique<Element>("strong");
+    auto* c1_ptr = c1.get();
+    auto* c2_ptr = c2.get();
+    auto* c3_ptr = c3.get();
+    parent.append_child(std::move(c1));
+    parent.append_child(std::move(c2));
+    parent.append_child(std::move(c3));
+    EXPECT_EQ(parent.child_count(), 3u);
+
+    // Remove the middle child
+    parent.remove_child(*c2_ptr);
+    EXPECT_EQ(parent.child_count(), 2u);
+    EXPECT_EQ(parent.first_child(), c1_ptr);
+    EXPECT_EQ(c1_ptr->next_sibling(), c3_ptr);
+    EXPECT_EQ(c3_ptr->next_sibling(), nullptr);
+}
+
+TEST(DomTest, TextNodeContentAndTypeV88) {
+    Text text("Hello, world!");
+    EXPECT_EQ(text.node_type(), NodeType::Text);
+    EXPECT_EQ(text.text_content(), "Hello, world!");
+
+    // Empty text node
+    Text empty_text("");
+    EXPECT_EQ(empty_text.text_content(), "");
+    EXPECT_EQ(empty_text.node_type(), NodeType::Text);
+}
+
+TEST(DomTest, CommentNodeDataAndTypeV88) {
+    Comment comment("This is a comment");
+    EXPECT_EQ(comment.node_type(), NodeType::Comment);
+    EXPECT_EQ(comment.data(), "This is a comment");
+
+    // Comment with special characters
+    Comment special("<!-- inner --> &amp;");
+    EXPECT_EQ(special.data(), "<!-- inner --> &amp;");
+}
+
+TEST(DomTest, AttributeOverwriteV88) {
+    Element elem("input");
+    elem.set_attribute("type", "text");
+    ASSERT_TRUE(elem.get_attribute("type").has_value());
+    EXPECT_EQ(elem.get_attribute("type").value(), "text");
+
+    // Overwrite with a new value
+    elem.set_attribute("type", "password");
+    ASSERT_TRUE(elem.get_attribute("type").has_value());
+    EXPECT_EQ(elem.get_attribute("type").value(), "password");
+
+    // Overwrite with empty string
+    elem.set_attribute("type", "");
+    ASSERT_TRUE(elem.get_attribute("type").has_value());
+    EXPECT_EQ(elem.get_attribute("type").value(), "");
+}
+
+TEST(DomTest, DeepNestedTraversalV88) {
+    Element root("div");
+    auto level1 = std::make_unique<Element>("section");
+    auto* level1_ptr = level1.get();
+    auto level2 = std::make_unique<Element>("article");
+    auto* level2_ptr = level2.get();
+    auto level3 = std::make_unique<Element>("p");
+    auto* level3_ptr = level3.get();
+    auto leaf = std::make_unique<Text>("deep content");
+    auto* leaf_ptr = leaf.get();
+
+    level3_ptr->append_child(std::move(leaf));
+    level2_ptr->append_child(std::move(level3));
+    level1_ptr->append_child(std::move(level2));
+    root.append_child(std::move(level1));
+
+    // Verify 4-level deep nesting
+    EXPECT_EQ(root.child_count(), 1u);
+    EXPECT_EQ(root.first_child(), level1_ptr);
+
+    auto* l2 = level1_ptr->first_child();
+    EXPECT_EQ(l2, level2_ptr);
+    EXPECT_EQ(l2->parent(), level1_ptr);
+
+    auto* l3 = level2_ptr->first_child();
+    EXPECT_EQ(l3, level3_ptr);
+    EXPECT_EQ(l3->parent(), level2_ptr);
+
+    auto* lf = level3_ptr->first_child();
+    EXPECT_EQ(lf, leaf_ptr);
+    EXPECT_EQ(lf->parent(), level3_ptr);
+    EXPECT_EQ(leaf_ptr->text_content(), "deep content");
+}
+
+TEST(DomTest, ParentPointerAfterAppendV88) {
+    Element parent("nav");
+    auto child1 = std::make_unique<Element>("a");
+    auto* child1_ptr = child1.get();
+    auto child2 = std::make_unique<Element>("a");
+    auto* child2_ptr = child2.get();
+
+    // Before appending, parent is null
+    EXPECT_EQ(child1_ptr->parent(), nullptr);
+    EXPECT_EQ(child2_ptr->parent(), nullptr);
+
+    parent.append_child(std::move(child1));
+    parent.append_child(std::move(child2));
+
+    // After appending, parent is set correctly
+    EXPECT_EQ(child1_ptr->parent(), &parent);
+    EXPECT_EQ(child2_ptr->parent(), &parent);
+
+    // Siblings correct
+    EXPECT_EQ(child1_ptr->next_sibling(), child2_ptr);
+    EXPECT_EQ(child2_ptr->next_sibling(), nullptr);
+}

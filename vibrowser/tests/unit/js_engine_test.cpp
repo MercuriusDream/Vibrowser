@@ -25128,3 +25128,259 @@ TEST(JsEngineTest, ErrorStackAndTypeCheckingV87) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "true,true,true,ReferenceError,true,SyntaxError");
 }
+
+// ============================================================================
+// V88 tests
+// ============================================================================
+
+TEST(JsEngineTest, WeakRefAndFinalizationRegistryV88) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var log = [];
+        // Keep strong reference so WeakRef doesn't get collected
+        var strong = { name: "temp" };
+        var wr = new WeakRef(strong);
+        log.push(wr.deref().name);
+        log.push(typeof wr.deref());
+        // FinalizationRegistry constructor exists
+        var fr = new FinalizationRegistry(function(val) {});
+        log.push(typeof fr.register);
+        log.push(typeof fr.unregister);
+        log.join(",");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "temp,object,function,function");
+}
+
+TEST(JsEngineTest, IteratorProtocolCustomV88) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var range = {
+            from: 1,
+            to: 5,
+            [Symbol.iterator]() {
+                var current = this.from;
+                var last = this.to;
+                return {
+                    next() {
+                        if (current <= last) {
+                            return { value: current++, done: false };
+                        }
+                        return { done: true };
+                    }
+                };
+            }
+        };
+        var collected = [];
+        for (var v of range) collected.push(v);
+        // Also test spread with custom iterator
+        var arr = [...range];
+        collected.join(",") + "|" + arr.join(",");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1,2,3,4,5|1,2,3,4,5");
+}
+
+TEST(JsEngineTest, AsyncGeneratorBasicsV88) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        // Test generator (sync) with yield and return
+        function* counter(start, end) {
+            for (var i = start; i <= end; i++) {
+                yield i;
+            }
+            return "done";
+        }
+        var gen = counter(10, 13);
+        var results = [];
+        var step;
+        while (!(step = gen.next()).done) {
+            results.push(step.value);
+        }
+        results.push(step.value); // return value
+        // Test generator with early return
+        var gen2 = counter(1, 100);
+        gen2.next(); // 1
+        gen2.next(); // 2
+        var ret = gen2.return("stopped");
+        results.push(ret.value);
+        results.push(ret.done);
+        results.join(",");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "10,11,12,13,done,stopped,true");
+}
+
+TEST(JsEngineTest, ProxyWithMultipleTrapsV88) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var log = [];
+        var target = { x: 1, y: 2, z: 3 };
+        var handler = {
+            get(obj, prop) {
+                log.push("get:" + prop);
+                return obj[prop];
+            },
+            set(obj, prop, val) {
+                log.push("set:" + prop + "=" + val);
+                obj[prop] = val;
+                return true;
+            },
+            has(obj, prop) {
+                log.push("has:" + prop);
+                return prop in obj;
+            },
+            deleteProperty(obj, prop) {
+                log.push("del:" + prop);
+                delete obj[prop];
+                return true;
+            },
+            ownKeys(obj) {
+                log.push("keys");
+                return Object.keys(obj);
+            }
+        };
+        var p = new Proxy(target, handler);
+        p.x;            // get
+        p.w = 4;        // set
+        "y" in p;        // has
+        delete p.z;      // delete
+        Object.keys(p);  // ownKeys + get for each
+        log.slice(0, 5).join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "get:x|set:w=4|has:y|del:z|keys");
+}
+
+TEST(JsEngineTest, TaggedTemplateLiteralsV88) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        function highlight(strings, ...values) {
+            var result = "";
+            strings.forEach(function(str, i) {
+                result += str;
+                if (i < values.length) {
+                    result += "[" + values[i] + "]";
+                }
+            });
+            return result;
+        }
+        var name = "world";
+        var count = 42;
+        var out = highlight`Hello ${name}, you have ${count} items!`;
+        // Also test raw strings
+        var rawTag = function(strings) {
+            return strings.raw[0];
+        };
+        var rawResult = rawTag`line1\nline2`;
+        out + "|" + rawResult;
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "Hello [world], you have [42] items!|line1\\nline2");
+}
+
+TEST(JsEngineTest, SymbolDescriptionAndWellKnownV88) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var results = [];
+        // Symbol basics
+        var s1 = Symbol("myKey");
+        var s2 = Symbol("myKey");
+        results.push(s1 !== s2);            // unique
+        results.push(s1.description);       // "myKey"
+        results.push(typeof s1);            // "symbol"
+
+        // Symbol.for global registry
+        var g1 = Symbol.for("shared");
+        var g2 = Symbol.for("shared");
+        results.push(g1 === g2);            // same from registry
+        results.push(Symbol.keyFor(g1));    // "shared"
+
+        // Well-known: Symbol.toPrimitive
+        var obj = {
+            [Symbol.toPrimitive](hint) {
+                if (hint === "number") return 99;
+                if (hint === "string") return "custom";
+                return true;
+            }
+        };
+        results.push(+obj);           // 99
+        results.push(`${obj}`);        // "custom"
+        results.map(String).join(",");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true,myKey,symbol,true,shared,99,custom");
+}
+
+TEST(JsEngineTest, DestructuringAdvancedPatternsV88) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var results = [];
+        // Nested object destructuring with defaults and rename
+        var data = { a: { b: { c: 10 } }, d: [1, 2, 3] };
+        var { a: { b: { c: deep } }, d: [first, ...rest] } = data;
+        results.push(deep);
+        results.push(first);
+        results.push(rest.join("+"));
+
+        // Destructuring with computed property keys
+        var key = "name";
+        var obj = { name: "Alice", age: 30 };
+        var { [key]: extractedName, age } = obj;
+        results.push(extractedName);
+        results.push(age);
+
+        // Swap via destructuring
+        var x = "left", y = "right";
+        [x, y] = [y, x];
+        results.push(x);
+        results.push(y);
+
+        // Default values in nested destructuring
+        var { p: { q = 99 } = {} } = {};
+        results.push(q);
+
+        results.join(",");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "10,1,2+3,Alice,30,right,left,99");
+}
+
+TEST(JsEngineTest, PromiseAllSettledAndRaceV88) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var results = [];
+        // Test Promise static methods exist and work
+        results.push(typeof Promise.allSettled);
+        results.push(typeof Promise.any);
+        results.push(typeof Promise.race);
+        results.push(typeof Promise.all);
+
+        // Test Promise.resolve/reject
+        var p1 = Promise.resolve(42);
+        results.push(p1 instanceof Promise);
+
+        // Test promise chaining synchronously
+        var chain = Promise.resolve(10)
+            .then(function(v) { return v * 2; })
+            .then(function(v) { return v + 5; });
+        results.push(chain instanceof Promise);
+
+        // Test Promise constructor
+        var custom = new Promise(function(resolve, reject) {
+            resolve("immediate");
+        });
+        results.push(custom instanceof Promise);
+
+        // Test AggregateError exists (used by Promise.any)
+        try {
+            throw new AggregateError([new Error("e1")], "all failed");
+        } catch(e) {
+            results.push(e.message);
+            results.push(e.errors.length);
+        }
+        results.join(",");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "function,function,function,function,true,true,true,all failed,1");
+}

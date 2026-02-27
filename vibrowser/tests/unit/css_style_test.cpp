@@ -15934,3 +15934,164 @@ TEST(CSSStyleTest, ClassSelectorBorderDashedBlueWithPaddingV87) {
     EXPECT_FLOAT_EQ(style.padding.bottom.value, 16.0f);
     EXPECT_FLOAT_EQ(style.padding.left.value, 16.0f);
 }
+
+TEST(CSSStyleTest, MarginTopAndBottomWithAutoSidesV88) {
+    // margin-top and margin-bottom explicit, left/right auto
+    const std::string css = "div{margin-top:20px;margin-bottom:30px;margin-left:auto;margin-right:auto;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_FLOAT_EQ(style.margin.top.to_px(), 20.0f);
+    EXPECT_FLOAT_EQ(style.margin.bottom.to_px(), 30.0f);
+    EXPECT_TRUE(style.margin.left.is_auto());
+    EXPECT_TRUE(style.margin.right.is_auto());
+}
+
+TEST(CSSStyleTest, PaddingShorthandTwoValuesV88) {
+    // padding shorthand with two values: vertical horizontal
+    const std::string css = "section{padding:10px 24px;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "section";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_FLOAT_EQ(style.padding.top.value, 10.0f);
+    EXPECT_FLOAT_EQ(style.padding.bottom.value, 10.0f);
+    EXPECT_FLOAT_EQ(style.padding.left.value, 24.0f);
+    EXPECT_FLOAT_EQ(style.padding.right.value, 24.0f);
+}
+
+TEST(CSSStyleTest, BorderRightSolidGreenV88) {
+    // border-right longhand: width, style, color
+    const std::string css = "span{border-right-width:5px;border-right-style:solid;border-right-color:green;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "span";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_FLOAT_EQ(style.border_right.width.to_px(), 5.0f);
+    EXPECT_EQ(style.border_right.style, BorderStyle::Solid);
+    EXPECT_EQ(style.border_right.color.r, 0);
+    EXPECT_EQ(style.border_right.color.g, 128);
+    EXPECT_EQ(style.border_right.color.b, 0);
+}
+
+TEST(CSSStyleTest, FixedPositionWithTopAndLeftV88) {
+    // position: fixed with top and left offsets only
+    const std::string css = "#banner{position:fixed;top:0px;left:0px;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+    elem.id = "banner";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.position, Position::Fixed);
+    EXPECT_FLOAT_EQ(style.top.to_px(), 0.0f);
+    EXPECT_FLOAT_EQ(style.left_pos.to_px(), 0.0f);
+}
+
+TEST(CSSStyleTest, VisibilityCollapseOnTableRowV88) {
+    // visibility: collapse is valid for table elements
+    const std::string css = "tr{visibility:collapse;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "tr";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.visibility, Visibility::Collapse);
+}
+
+TEST(CSSStyleTest, CursorNotAllowedWithUserSelectNoneV88) {
+    // cursor: not-allowed and user-select: none together
+    const std::string css = ".disabled{cursor:not-allowed;user-select:none;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "button";
+    elem.classes = {"disabled"};
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.cursor, Cursor::NotAllowed);
+    EXPECT_EQ(style.user_select, UserSelect::None);
+}
+
+TEST(CSSStyleTest, WhiteSpacePreWithOverflowScrollV88) {
+    // white-space: pre with overflow-x: scroll
+    const std::string css = "code{white-space:pre;overflow-x:scroll;overflow-y:hidden;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "code";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.white_space, WhiteSpace::Pre);
+    EXPECT_EQ(style.overflow_x, Overflow::Scroll);
+    EXPECT_EQ(style.overflow_y, Overflow::Hidden);
+}
+
+TEST(CSSStyleTest, BorderBottomDottedWithMarginShorthandThreeValuesV88) {
+    // border-bottom dotted + margin shorthand 3 values: top right/left bottom
+    const std::string css = "p{border-bottom-width:1px;border-bottom-style:dotted;border-bottom-color:black;margin:8px 16px 24px;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "p";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_FLOAT_EQ(style.border_bottom.width.to_px(), 1.0f);
+    EXPECT_EQ(style.border_bottom.style, BorderStyle::Dotted);
+    EXPECT_EQ(style.border_bottom.color.r, 0);
+    EXPECT_EQ(style.border_bottom.color.g, 0);
+    EXPECT_EQ(style.border_bottom.color.b, 0);
+    EXPECT_FLOAT_EQ(style.margin.top.to_px(), 8.0f);
+    EXPECT_FLOAT_EQ(style.margin.right.to_px(), 16.0f);
+    EXPECT_FLOAT_EQ(style.margin.bottom.to_px(), 24.0f);
+    EXPECT_FLOAT_EQ(style.margin.left.to_px(), 16.0f);
+}

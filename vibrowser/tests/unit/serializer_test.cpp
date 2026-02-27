@@ -12815,3 +12815,146 @@ TEST(SerializerTest, U32AlternatingBitsV87) {
     EXPECT_EQ(d.read_u32(), 0xFF00FF00u);
     EXPECT_FALSE(d.has_remaining());
 }
+
+// ------------------------------------------------------------------
+// V88 Tests
+// ------------------------------------------------------------------
+
+TEST(SerializerTest, U8BoundaryValuesV88) {
+    Serializer s;
+    s.write_u8(0);
+    s.write_u8(1);
+    s.write_u8(128);
+    s.write_u8(254);
+    s.write_u8(255);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u8(), 0);
+    EXPECT_EQ(d.read_u8(), 1);
+    EXPECT_EQ(d.read_u8(), 128);
+    EXPECT_EQ(d.read_u8(), 254);
+    EXPECT_EQ(d.read_u8(), 255);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, U16PowersOfTwoV88) {
+    Serializer s;
+    for (int i = 0; i < 16; ++i) {
+        s.write_u16(static_cast<uint16_t>(1u << i));
+    }
+
+    Deserializer d(s.data());
+    for (int i = 0; i < 16; ++i) {
+        EXPECT_EQ(d.read_u16(), static_cast<uint16_t>(1u << i));
+    }
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, F64SpecialValuesV88) {
+    Serializer s;
+    s.write_f64(0.0);
+    s.write_f64(-0.0);
+    s.write_f64(std::numeric_limits<double>::infinity());
+    s.write_f64(-std::numeric_limits<double>::infinity());
+    s.write_f64(std::numeric_limits<double>::min());
+    s.write_f64(std::numeric_limits<double>::max());
+    s.write_f64(std::numeric_limits<double>::epsilon());
+
+    Deserializer d(s.data());
+    EXPECT_DOUBLE_EQ(d.read_f64(), 0.0);
+    double neg_zero = d.read_f64();
+    EXPECT_DOUBLE_EQ(neg_zero, 0.0);
+    EXPECT_TRUE(std::signbit(neg_zero));
+    EXPECT_EQ(d.read_f64(), std::numeric_limits<double>::infinity());
+    EXPECT_EQ(d.read_f64(), -std::numeric_limits<double>::infinity());
+    EXPECT_DOUBLE_EQ(d.read_f64(), std::numeric_limits<double>::min());
+    EXPECT_DOUBLE_EQ(d.read_f64(), std::numeric_limits<double>::max());
+    EXPECT_DOUBLE_EQ(d.read_f64(), std::numeric_limits<double>::epsilon());
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, EmptyBytesRoundTripV88) {
+    Serializer s;
+    std::vector<uint8_t> empty_bytes;
+    s.write_bytes(empty_bytes.data(), empty_bytes.size());
+
+    Deserializer d(s.data());
+    auto result = d.read_bytes();
+    EXPECT_TRUE(result.empty());
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, LargeBytesBlockV88) {
+    Serializer s;
+    std::vector<uint8_t> big(4096);
+    std::iota(big.begin(), big.end(), static_cast<uint8_t>(0));
+    s.write_bytes(big.data(), big.size());
+
+    Deserializer d(s.data());
+    auto result = d.read_bytes();
+    EXPECT_EQ(result.size(), 4096u);
+    for (size_t i = 0; i < 4096; ++i) {
+        EXPECT_EQ(result[i], static_cast<uint8_t>(i & 0xFF));
+    }
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, StringWithNullBytesV88) {
+    Serializer s;
+    std::string with_nulls("hello\0world", 11);
+    s.write_string(with_nulls);
+
+    Deserializer d(s.data());
+    std::string out = d.read_string();
+    EXPECT_EQ(out.size(), 11u);
+    EXPECT_EQ(out, with_nulls);
+    EXPECT_EQ(out[5], '\0');
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, U64MaxAndMinValuesV88) {
+    Serializer s;
+    s.write_u64(0uLL);
+    s.write_u64(1uLL);
+    s.write_u64(0xFFFFFFFFFFFFFFFFuLL);
+    s.write_u64(0x8000000000000000uLL);
+    s.write_u64(0x7FFFFFFFFFFFFFFFuLL);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u64(), 0uLL);
+    EXPECT_EQ(d.read_u64(), 1uLL);
+    EXPECT_EQ(d.read_u64(), 0xFFFFFFFFFFFFFFFFuLL);
+    EXPECT_EQ(d.read_u64(), 0x8000000000000000uLL);
+    EXPECT_EQ(d.read_u64(), 0x7FFFFFFFFFFFFFFFuLL);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, InterleavedTypesComplexV88) {
+    Serializer s;
+    s.write_u8(0xFF);
+    s.write_f64(-273.15);
+    s.write_string("temperature");
+    s.write_u32(100u);
+    s.write_bytes(reinterpret_cast<const uint8_t*>("\xDE\xAD\xBE\xEF"), 4);
+    s.write_u16(0x1234);
+    s.write_u64(999999999999uLL);
+    s.write_string("");
+    s.write_u8(0);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u8(), 0xFF);
+    EXPECT_DOUBLE_EQ(d.read_f64(), -273.15);
+    EXPECT_EQ(d.read_string(), "temperature");
+    EXPECT_EQ(d.read_u32(), 100u);
+    auto bytes = d.read_bytes();
+    EXPECT_EQ(bytes.size(), 4u);
+    EXPECT_EQ(bytes[0], 0xDE);
+    EXPECT_EQ(bytes[1], 0xAD);
+    EXPECT_EQ(bytes[2], 0xBE);
+    EXPECT_EQ(bytes[3], 0xEF);
+    EXPECT_EQ(d.read_u16(), 0x1234);
+    EXPECT_EQ(d.read_u64(), 999999999999uLL);
+    EXPECT_EQ(d.read_string(), "");
+    EXPECT_EQ(d.read_u8(), 0);
+    EXPECT_FALSE(d.has_remaining());
+}
