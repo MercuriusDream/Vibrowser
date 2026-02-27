@@ -1998,3 +1998,39 @@ TEST(CORSPolicyTest, ACAOWildcardAllows200Response) {
     headers.set("access-control-allow-origin", "*");
     EXPECT_TRUE(cors_allows_response("https://app.example.com", "https://cdn.example.com/data.json", headers, false));
 }
+
+TEST(CORSPolicyTest, CrossOriginSubdomainToRoot) {
+    EXPECT_TRUE(is_cross_origin("https://sub.example.com", "https://example.com/api"));
+}
+
+TEST(CORSPolicyTest, CrossOriginRootToSubdomain) {
+    EXPECT_TRUE(is_cross_origin("https://example.com", "https://sub.example.com/data"));
+}
+
+TEST(CORSPolicyTest, SameOriginHttpsExactNoPort) {
+    EXPECT_FALSE(is_cross_origin("https://example.com", "https://example.com/path"));
+}
+
+TEST(CORSPolicyTest, NotCorsEligibleFileUrl) {
+    EXPECT_FALSE(is_cors_eligible_request_url("file:///home/user/page.html"));
+}
+
+TEST(CORSPolicyTest, NotCorsEligibleBlobUrl) {
+    EXPECT_FALSE(is_cors_eligible_request_url("blob:https://example.com/uuid"));
+}
+
+TEST(CORSPolicyTest, CorsEligibleHttpsNoPort) {
+    EXPECT_TRUE(is_cors_eligible_request_url("https://api.example.com/v1/data"));
+}
+
+TEST(CORSPolicyTest, ACAOMatchesDocOriginExact) {
+    clever::net::HeaderMap headers;
+    headers.set("access-control-allow-origin", "https://trusted.com");
+    EXPECT_TRUE(cors_allows_response("https://trusted.com", "https://api.trusted.com/data", headers, false));
+}
+
+TEST(CORSPolicyTest, ACAODifferentOriginBlocks) {
+    clever::net::HeaderMap headers;
+    headers.set("access-control-allow-origin", "https://other.com");
+    EXPECT_FALSE(cors_allows_response("https://trusted.com", "https://api.trusted.com/data", headers, false));
+}
