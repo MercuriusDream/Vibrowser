@@ -1725,3 +1725,50 @@ TEST(CORSPolicyTest, CORSRejectsWhenMultipleACAOHeadersPresent) {
 TEST(CORSPolicyTest, HttpsUrlWithFragmentNotCorsEligible) {
     EXPECT_FALSE(is_cors_eligible_request_url("https://example.com/page#section"));
 }
+
+// Cycle 896 — CORS policy tests
+
+TEST(CORSPolicyTest, CredentialRequestNeedsACACTrue) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "https://app.example");
+    headers.set("Access-Control-Allow-Credentials", "false");
+    EXPECT_FALSE(cors_allows_response("https://app.example", "https://api.example.com/data", headers, true));
+}
+
+TEST(CORSPolicyTest, WildcardWithCredentialsFails) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "*");
+    headers.set("Access-Control-Allow-Credentials", "true");
+    EXPECT_FALSE(cors_allows_response("https://app.example", "https://api.example.com/data", headers, true));
+}
+
+TEST(CORSPolicyTest, NullOriginCrossOriginAllowedWithWildcard) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "*");
+    // null origin with wildcard ACAO and no credentials = allowed
+    EXPECT_TRUE(cors_allows_response("null", "https://api.example.com/data", headers, false));
+}
+
+TEST(CORSPolicyTest, SameOriginNoCredentialCheckNeeded) {
+    clever::net::HeaderMap headers;
+    // No ACAO header needed for same-origin
+    EXPECT_TRUE(cors_allows_response("https://example.com", "https://example.com/api", headers, false));
+}
+
+TEST(CORSPolicyTest, ShouldAttachOriginWhenNullAndCrossOrigin) {
+    EXPECT_TRUE(should_attach_origin_header("null", "https://api.other.com/data"));
+}
+
+TEST(CORSPolicyTest, ACAOMissingMeansResponseDenied) {
+    clever::net::HeaderMap headers;
+    // No Access-Control-Allow-Origin header at all
+    EXPECT_FALSE(cors_allows_response("https://app.example", "https://api.example.com/data", headers, false));
+}
+
+TEST(CORSPolicyTest, IPAddressOriginIsEnforceable) {
+    EXPECT_TRUE(has_enforceable_document_origin("http://192.168.1.1"));
+}
+
+TEST(CORSPolicyTest, IPAddressIsCorsEligibleRequestUrl) {
+    EXPECT_TRUE(is_cors_eligible_request_url("http://10.0.0.1/api/data"));
+}
