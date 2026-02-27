@@ -5643,3 +5643,74 @@ TEST_F(CSSStylesheetTest, TextUnderlineOffsetDeclaration) {
         if (d.property == "text-underline-offset") { found = true; break; }
     EXPECT_TRUE(found);
 }
+TEST_F(CSSStylesheetTest, TextDecorationThicknessDeclarationV2) {
+    auto sheet = parse_stylesheet("a { text-decoration-thickness: 2px; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "text-decoration-thickness") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, TextDecorationSkipInkDeclarationV2) {
+    auto sheet = parse_stylesheet("a { text-decoration-skip-ink: auto; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "text-decoration-skip-ink") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, AccentColorDeclarationV2) {
+    auto sheet = parse_stylesheet("input { accent-color: blue; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "accent-color") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, AppearanceDeclarationV2) {
+    auto sheet = parse_stylesheet("button { appearance: none; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "appearance") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, ColorSchemeDeclarationV2) {
+    auto sheet = parse_stylesheet(":root { color-scheme: dark light; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "color-scheme") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, ContainDeclarationV2) {
+    auto sheet = parse_stylesheet(".box { contain: layout style; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "contain") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, ContainerTypeDeclarationV2) {
+    auto sheet = parse_stylesheet(".card { container-type: inline-size; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "container-type") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, ContainerNameDeclarationV2) {
+    auto sheet = parse_stylesheet(".sidebar { container-name: sidebar; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "container-name") { found = true; break; }
+    EXPECT_TRUE(found);
+}
