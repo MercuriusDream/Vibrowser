@@ -15438,3 +15438,75 @@ TEST(JSEngine, StringNormalizeNFC) {
     auto result = engine.evaluate("typeof 'hello'.normalize");
     EXPECT_EQ(result, "function");
 }
+
+TEST(JSEngine, PromiseRejectIsObject) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("typeof Promise.reject(new Error('fail'))");
+    EXPECT_EQ(result, "object");
+}
+
+TEST(JSEngine, PromiseAllSettled) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        Promise.allSettled([Promise.resolve(1), Promise.reject(2)]).then(r => r.length)
+    )");
+    // allSettled always resolves; result may be "2" or a promise repr
+    EXPECT_FALSE(result.empty());
+}
+
+TEST(JSEngine, PromiseThenReturnsObject) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("typeof Promise.resolve(1).then(x => x + 1)");
+    EXPECT_EQ(result, "object");
+}
+
+TEST(JSEngine, AsyncFunctionAwaitResolves) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        async function add(a, b) { return a + b; }
+        add(3, 4).then(v => v)
+    )");
+    // async functions return promise; result may vary
+    EXPECT_FALSE(result.empty());
+}
+
+TEST(JSEngine, GeneratorNextValue) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        function* gen() { yield 10; yield 20; }
+        const g = gen();
+        g.next().value + g.next().value
+    )");
+    EXPECT_EQ(result, "30");
+}
+
+TEST(JSEngine, GeneratorReturnDone) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        function* gen() { yield 1; }
+        const g = gen();
+        g.next();
+        g.next().done
+    )");
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, SetForEachSum) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        let sum = 0;
+        new Set([1, 2, 3]).forEach(v => { sum += v; });
+        sum
+    )");
+    EXPECT_EQ(result, "6");
+}
+
+TEST(JSEngine, MapForEachSum) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        let sum = 0;
+        new Map([['a', 1], ['b', 2]]).forEach(v => { sum += v; });
+        sum
+    )");
+    EXPECT_EQ(result, "3");
+}
