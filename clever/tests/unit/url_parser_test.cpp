@@ -2829,3 +2829,52 @@ TEST(URLParser, SchemeMatchesHttps) {
     ASSERT_TRUE(url.has_value());
     EXPECT_EQ(url->scheme, "https");
 }
+
+TEST(URLParser, HostnameTwoPartDomain) {
+    auto url = parse("https://example.com/path");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->host, "example.com");
+}
+
+TEST(URLParser, HostnameThreePartDomain) {
+    auto url = parse("https://www.example.com/path");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->host, "www.example.com");
+}
+
+TEST(URLParser, PortPreservedHttp8080) {
+    auto url = parse("http://example.com:8080/api");
+    ASSERT_TRUE(url.has_value());
+    ASSERT_TRUE(url->port.has_value());
+    EXPECT_EQ(*url->port, 8080);
+}
+
+TEST(URLParser, ThreeSegmentPath) {
+    auto url = parse("https://example.com/a/b/c");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->path, "/a/b/c");
+}
+
+TEST(URLParser, FourSegmentPath) {
+    auto url = parse("https://example.com/a/b/c/d");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->path, "/a/b/c/d");
+}
+
+TEST(URLParser, FiveSegmentPath) {
+    auto url = parse("https://example.com/1/2/3/4/5");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->path, "/1/2/3/4/5");
+}
+
+TEST(URLParser, NoQueryStringPresent) {
+    auto url = parse("https://example.com/page");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_TRUE(url->query.empty());
+}
+
+TEST(URLParser, NoFragmentPresent) {
+    auto url = parse("https://example.com/page");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_TRUE(url->fragment.empty());
+}
