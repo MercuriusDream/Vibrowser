@@ -5047,3 +5047,82 @@ TEST(TreeBuilder, AudioAutoplayAttr) {
         if (attr.name == "autoplay") found = true;
     EXPECT_TRUE(found);
 }
+TEST(TreeBuilder, AudioMutedAttr) {
+    auto doc = clever::html::parse("<body><audio muted src=\"/audio.mp3\"></audio></body>");
+    auto* el = doc->find_element("audio");
+    ASSERT_NE(el, nullptr);
+    bool found = false;
+    for (const auto& attr : el->attributes)
+        if (attr.name == "muted") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, ProgressValueAttr) {
+    auto doc = clever::html::parse("<body><progress value=\"60\" max=\"100\"></progress></body>");
+    auto* el = doc->find_element("progress");
+    ASSERT_NE(el, nullptr);
+    bool found = false;
+    for (const auto& attr : el->attributes)
+        if (attr.name == "value" && attr.value == "60") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, TrackSrcAttr) {
+    auto doc = clever::html::parse("<body><video><track src=\"/captions.vtt\"></track></video></body>");
+    auto* el = doc->find_element("track");
+    ASSERT_NE(el, nullptr);
+    bool found = false;
+    for (const auto& attr : el->attributes)
+        if (attr.name == "src" && attr.value == "/captions.vtt") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, TrackKindAttr) {
+    auto doc = clever::html::parse("<body><video><track kind=\"subtitles\"></track></video></body>");
+    auto* el = doc->find_element("track");
+    ASSERT_NE(el, nullptr);
+    bool found = false;
+    for (const auto& attr : el->attributes)
+        if (attr.name == "kind" && attr.value == "subtitles") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, TrackLabelAttr) {
+    auto doc = clever::html::parse("<body><video><track label=\"English\"></track></video></body>");
+    auto* el = doc->find_element("track");
+    ASSERT_NE(el, nullptr);
+    bool found = false;
+    for (const auto& attr : el->attributes)
+        if (attr.name == "label" && attr.value == "English") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, TrackSrclangAttr) {
+    auto doc = clever::html::parse("<body><video><track srclang=\"en\"></track></video></body>");
+    auto* el = doc->find_element("track");
+    ASSERT_NE(el, nullptr);
+    bool found = false;
+    for (const auto& attr : el->attributes)
+        if (attr.name == "srclang" && attr.value == "en") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, TableCellpaddingAttr) {
+    auto doc = clever::html::parse("<body><table cellpadding=\"5\"></table></body>");
+    auto* el = doc->find_element("table");
+    ASSERT_NE(el, nullptr);
+    bool found = false;
+    for (const auto& attr : el->attributes)
+        if (attr.name == "cellpadding" && attr.value == "5") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, TableCellspacingAttr) {
+    auto doc = clever::html::parse("<body><table cellspacing=\"0\"></table></body>");
+    auto* el = doc->find_element("table");
+    ASSERT_NE(el, nullptr);
+    bool found = false;
+    for (const auto& attr : el->attributes)
+        if (attr.name == "cellspacing" && attr.value == "0") found = true;
+    EXPECT_TRUE(found);
+}
