@@ -10226,3 +10226,95 @@ TEST(SerializerTest, WriteBytesExactOneBytePayloadV66) {
     EXPECT_EQ(result[0], byte);
     EXPECT_FALSE(d.has_remaining());
 }
+
+TEST(SerializerTest, WriteU32ZeroAndMaxTogetherV67) {
+    Serializer s;
+    s.write_u32(0u);
+    s.write_u32(std::numeric_limits<uint32_t>::max());
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u32(), uint32_t{0u});
+    EXPECT_EQ(d.read_u32(), std::numeric_limits<uint32_t>::max());
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, WriteStringWithUnicodeCharactersV67) {
+    Serializer s;
+    const std::string text = "\xF0\x9F\x9A\x80 Browser \xE2\x9C\x85 \xE4\xB8\x96\xE7\x95\x8C";
+    s.write_string(text);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), text);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, ReadStringAfterMultipleU32ReadsV67) {
+    Serializer s;
+    s.write_u32(7u);
+    s.write_u32(11u);
+    s.write_u32(13u);
+    s.write_string("after-u32-values");
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u32(), uint32_t{7u});
+    EXPECT_EQ(d.read_u32(), uint32_t{11u});
+    EXPECT_EQ(d.read_u32(), uint32_t{13u});
+    EXPECT_EQ(d.read_string(), "after-u32-values");
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, WriteBoolAlternatingTrueFalseTenTimesV67) {
+    Serializer s;
+    for (int i = 0; i < 10; ++i) {
+        s.write_bool((i % 2) == 0);
+    }
+
+    Deserializer d(s.data());
+    for (int i = 0; i < 10; ++i) {
+        EXPECT_EQ(d.read_bool(), (i % 2) == 0);
+    }
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, WriteBytesWith256BytePayloadV67) {
+    Serializer s;
+    std::vector<uint8_t> payload(256);
+    for (size_t i = 0; i < payload.size(); ++i) {
+        payload[i] = static_cast<uint8_t>(i);
+    }
+    s.write_bytes(payload.data(), payload.size());
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_bytes(), payload);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, EmptySerializerHasZeroSizeV67) {
+    Serializer s;
+    EXPECT_EQ(s.data().size(), 0u);
+}
+
+TEST(SerializerTest, WriteStringThenBytesVerifyOrderV67) {
+    Serializer s;
+    const std::string label = "header-v67";
+    const std::vector<uint8_t> bytes = {0x10, 0x20, 0x30, 0x40};
+    s.write_string(label);
+    s.write_bytes(bytes.data(), bytes.size());
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), label);
+    EXPECT_EQ(d.read_bytes(), bytes);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, MultipleStringsConcatenatedCorrectlyV67) {
+    Serializer s;
+    s.write_string("alpha");
+    s.write_string("-");
+    s.write_string("omega");
+
+    Deserializer d(s.data());
+    const std::string combined = d.read_string() + d.read_string() + d.read_string();
+    EXPECT_EQ(combined, "alpha-omega");
+    EXPECT_FALSE(d.has_remaining());
+}

@@ -10986,3 +10986,235 @@ TEST(DOMTest, CompareDocumentPositionBasicsV66) {
     EXPECT_EQ(compare_document_position(*left_ptr, *left_ptr), 0u);
     EXPECT_EQ(compare_document_position(*root, disconnected), kDisconnected);
 }
+
+TEST(DOMTest, FirstChildLastChildAccessorsTrackMutationsV67) {
+    Element parent("div");
+    EXPECT_EQ(parent.first_child(), nullptr);
+    EXPECT_EQ(parent.last_child(), nullptr);
+
+    auto first = std::make_unique<Element>("first");
+    auto second = std::make_unique<Element>("second");
+    auto third = std::make_unique<Element>("third");
+    Element* first_ptr = first.get();
+    Element* second_ptr = second.get();
+    Element* third_ptr = third.get();
+
+    parent.append_child(std::move(first));
+    parent.append_child(std::move(second));
+    parent.append_child(std::move(third));
+
+    EXPECT_EQ(parent.first_child(), first_ptr);
+    EXPECT_EQ(parent.last_child(), third_ptr);
+
+    auto removed_first = parent.remove_child(*first_ptr);
+    EXPECT_NE(removed_first, nullptr);
+    EXPECT_EQ(parent.first_child(), second_ptr);
+    EXPECT_EQ(parent.last_child(), third_ptr);
+
+    auto removed_third = parent.remove_child(*third_ptr);
+    EXPECT_NE(removed_third, nullptr);
+    EXPECT_EQ(parent.first_child(), second_ptr);
+    EXPECT_EQ(parent.last_child(), second_ptr);
+
+    auto removed_second = parent.remove_child(*second_ptr);
+    EXPECT_NE(removed_second, nullptr);
+    EXPECT_EQ(parent.first_child(), nullptr);
+    EXPECT_EQ(parent.last_child(), nullptr);
+}
+
+TEST(DOMTest, PreviousNextSiblingTraversalMatchesTreeOrderV67) {
+    Element parent("list");
+    auto a = std::make_unique<Element>("a");
+    auto b = std::make_unique<Element>("b");
+    auto c = std::make_unique<Element>("c");
+    auto d = std::make_unique<Element>("d");
+
+    parent.append_child(std::move(a));
+    parent.append_child(std::move(b));
+    parent.append_child(std::move(c));
+    parent.append_child(std::move(d));
+
+    std::vector<std::string> forward_tags;
+    for (Node* node = parent.first_child(); node != nullptr; node = node->next_sibling()) {
+        forward_tags.push_back(static_cast<Element*>(node)->tag_name());
+    }
+
+    std::vector<std::string> reverse_tags;
+    for (Node* node = parent.last_child(); node != nullptr; node = node->previous_sibling()) {
+        reverse_tags.push_back(static_cast<Element*>(node)->tag_name());
+    }
+
+    ASSERT_EQ(forward_tags.size(), 4u);
+    ASSERT_EQ(reverse_tags.size(), 4u);
+    EXPECT_EQ(forward_tags[0], "a");
+    EXPECT_EQ(forward_tags[1], "b");
+    EXPECT_EQ(forward_tags[2], "c");
+    EXPECT_EQ(forward_tags[3], "d");
+    EXPECT_EQ(reverse_tags[0], "d");
+    EXPECT_EQ(reverse_tags[1], "c");
+    EXPECT_EQ(reverse_tags[2], "b");
+    EXPECT_EQ(reverse_tags[3], "a");
+}
+
+TEST(DOMTest, OwnerDocumentReferenceResolvedFromAncestorDocumentV67) {
+    auto owner_document = [](const Node* node) -> const Document* {
+        for (const Node* current = node; current != nullptr; current = current->parent()) {
+            if (current->node_type() == NodeType::Document) {
+                return static_cast<const Document*>(current);
+            }
+        }
+        return nullptr;
+    };
+
+    Document doc;
+    auto host = std::make_unique<Element>("host");
+    Element* host_ptr = host.get();
+    auto leaf = std::make_unique<Text>("leaf");
+    Text* leaf_ptr = leaf.get();
+    host->append_child(std::move(leaf));
+
+    EXPECT_EQ(owner_document(host_ptr), nullptr);
+    EXPECT_EQ(owner_document(leaf_ptr), nullptr);
+
+    doc.append_child(std::move(host));
+    EXPECT_EQ(owner_document(host_ptr), &doc);
+    EXPECT_EQ(owner_document(leaf_ptr), &doc);
+
+    auto removed = doc.remove_child(*host_ptr);
+    EXPECT_NE(removed, nullptr);
+    EXPECT_EQ(owner_document(removed.get()), nullptr);
+    EXPECT_EQ(owner_document(leaf_ptr), nullptr);
+}
+
+TEST(DOMTest, IsConnectedDetectionTracksAttachmentToDocumentV67) {
+    auto is_connected = [](const Node& node) {
+        for (const Node* current = &node; current != nullptr; current = current->parent()) {
+            if (current->node_type() == NodeType::Document) {
+                return true;
+            }
+        }
+        return false;
+    };
+
+    Document doc;
+    auto container = std::make_unique<Element>("container");
+    Element* container_ptr = container.get();
+    auto child = std::make_unique<Element>("child");
+    Element* child_ptr = child.get();
+    container->append_child(std::move(child));
+
+    EXPECT_TRUE(is_connected(doc));
+    EXPECT_FALSE(is_connected(*container_ptr));
+    EXPECT_FALSE(is_connected(*child_ptr));
+
+    doc.append_child(std::move(container));
+    EXPECT_TRUE(is_connected(*container_ptr));
+    EXPECT_TRUE(is_connected(*child_ptr));
+
+    auto removed = doc.remove_child(*container_ptr);
+    EXPECT_NE(removed, nullptr);
+    EXPECT_FALSE(is_connected(*container_ptr));
+    EXPECT_FALSE(is_connected(*child_ptr));
+}
+
+TEST(DOMTest, TextContentGetterCombinesAllDescendantTextV67) {
+    Element root("div");
+    root.append_child(std::make_unique<Text>("A"));
+
+    auto span = std::make_unique<Element>("span");
+    span->append_child(std::make_unique<Text>("B"));
+
+    auto strong = std::make_unique<Element>("strong");
+    strong->append_child(std::make_unique<Text>("C"));
+    span->append_child(std::move(strong));
+
+    root.append_child(std::move(span));
+    root.append_child(std::make_unique<Comment>("ignore"));
+
+    auto section = std::make_unique<Element>("section");
+    section->append_child(std::make_unique<Text>("D"));
+    auto em = std::make_unique<Element>("em");
+    em->append_child(std::make_unique<Text>("E"));
+    section->append_child(std::move(em));
+    root.append_child(std::move(section));
+
+    EXPECT_EQ(root.text_content(), "ABCDE");
+}
+
+TEST(DOMTest, SetAttributeSupportsSpecialCharactersInValueV67) {
+    Element element("div");
+    const std::string special_value = "a b&c<d>\"e' f\\n\\t/?=;+,%[]{}|^`~";
+
+    element.set_attribute("data-raw", special_value);
+    ASSERT_TRUE(element.has_attribute("data-raw"));
+    ASSERT_TRUE(element.get_attribute("data-raw").has_value());
+    EXPECT_EQ(element.get_attribute("data-raw").value(), special_value);
+
+    element.set_attribute("data-raw", special_value + "!");
+    EXPECT_EQ(element.attributes().size(), 1u);
+    EXPECT_EQ(element.get_attribute("data-raw").value(), special_value + "!");
+}
+
+TEST(DOMTest, GetElementsByTagNameLikeCountingFindsMatchingDescendantsV67) {
+    auto count_by_tag_name = [](const Node& root, const std::string& tag_name, const auto& self) -> size_t {
+        size_t total = 0;
+        if (root.node_type() == NodeType::Element) {
+            const auto* element = static_cast<const Element*>(&root);
+            if (element->tag_name() == tag_name) {
+                ++total;
+            }
+        }
+
+        for (Node* child = root.first_child(); child != nullptr; child = child->next_sibling()) {
+            total += self(*child, tag_name, self);
+        }
+        return total;
+    };
+
+    Element root("root");
+    root.append_child(std::make_unique<Element>("div"));
+
+    auto section = std::make_unique<Element>("section");
+    section->append_child(std::make_unique<Element>("div"));
+    root.append_child(std::move(section));
+
+    auto article = std::make_unique<Element>("article");
+    article->append_child(std::make_unique<Element>("div"));
+    article->append_child(std::make_unique<Element>("span"));
+    root.append_child(std::move(article));
+
+    EXPECT_EQ(count_by_tag_name(root, "div", count_by_tag_name), 3u);
+    EXPECT_EQ(count_by_tag_name(root, "span", count_by_tag_name), 1u);
+    EXPECT_EQ(count_by_tag_name(root, "root", count_by_tag_name), 1u);
+    EXPECT_EQ(count_by_tag_name(root, "missing", count_by_tag_name), 0u);
+}
+
+TEST(DOMTest, EventListenerAddAndRemovalSemanticsByTypeV67) {
+    EventTarget target;
+    Element node("button");
+
+    int click_count = 0;
+    int input_count = 0;
+
+    target.add_event_listener("click", [&](Event&) { ++click_count; }, true);
+    target.add_event_listener("click", [&](Event&) { ++click_count; }, false);
+    target.add_event_listener("input", [&](Event&) { ++input_count; }, false);
+
+    Event click_event("click");
+    click_event.phase_ = EventPhase::AtTarget;
+    EXPECT_TRUE(target.dispatch_event(click_event, node));
+    EXPECT_EQ(click_count, 2);
+    EXPECT_EQ(input_count, 0);
+
+    target.remove_all_listeners("click");
+
+    Event click_event_after_removal("click");
+    click_event_after_removal.phase_ = EventPhase::AtTarget;
+    EXPECT_TRUE(target.dispatch_event(click_event_after_removal, node));
+    EXPECT_EQ(click_count, 2);
+
+    Event input_event("input");
+    input_event.phase_ = EventPhase::AtTarget;
+    EXPECT_TRUE(target.dispatch_event(input_event, node));
+    EXPECT_EQ(input_count, 1);
+}

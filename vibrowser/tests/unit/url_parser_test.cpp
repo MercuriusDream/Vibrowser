@@ -8464,3 +8464,122 @@ TEST(URLParser, JavascriptSchemeOpaqueURLV65) {
     EXPECT_TRUE(result->query.empty());
     EXPECT_TRUE(result->fragment.empty());
 }
+
+// =============================================================================
+// V67: requested URL parser coverage
+// =============================================================================
+
+TEST(URLParserTest, FtpSchemeUrlParsesAndDoubleEncodesPercentPathV67) {
+    auto result = clever::url::parse("ftp://files.example.com/archive%20docs/report.txt");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "ftp");
+    EXPECT_EQ(result->host, "files.example.com");
+    EXPECT_EQ(result->path, "/archive%2520docs/report.txt");
+}
+
+TEST(URLParserTest, MailtoSchemeUrlParsesAsOpaqueV67) {
+    auto result = clever::url::parse("mailto:user@example.com?subject=hello%20world");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "mailto");
+    EXPECT_TRUE(result->host.empty());
+    EXPECT_EQ(result->path, "user@example.com");
+    EXPECT_EQ(result->query, "subject=hello%20world");
+}
+
+TEST(URLParserTest, WsSchemeUrlParsesWithAuthorityV67) {
+    auto result = clever::url::parse("ws://chat.example.com:80/socket");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "ws");
+    EXPECT_EQ(result->host, "chat.example.com");
+    EXPECT_EQ(result->port, std::nullopt);
+    EXPECT_EQ(result->path, "/socket");
+}
+
+TEST(URLParserTest, DotSegmentsAreNormalizedInPathV67) {
+    auto result = clever::url::parse("https://example.com/a/b/../c/./d");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->path, "/a/c/d");
+}
+
+TEST(URLParserTest, SchemeIsCaseInsensitiveAndBackslashSeparatorRejectedV67) {
+    auto upper = clever::url::parse("HtTpS://MiXeD.Example/ok%20path");
+    ASSERT_TRUE(upper.has_value());
+    EXPECT_EQ(upper->scheme, "https");
+    EXPECT_EQ(upper->host, "mixed.example");
+    EXPECT_EQ(upper->path, "/ok%2520path");
+
+    auto bad_separator = clever::url::parse("https:\\\\mixed.example\\bad");
+    EXPECT_FALSE(bad_separator.has_value());
+}
+
+TEST(URLParserTest, EmptyFragmentDelimiterProducesEmptyFragmentFieldV67) {
+    auto result = clever::url::parse("https://example.com/path#");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->path, "/path");
+    EXPECT_TRUE(result->fragment.empty());
+}
+
+TEST(URLParserTest, QueryWithSpecialCharactersAndPercentDoubleEncodingV67) {
+    auto result = clever::url::parse("https://example.com/search?a=1&b=?&c=%20");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->query, "a=1&b=?&c=%2520");
+}
+
+TEST(URLParserTest, PortZeroIsAcceptedV67) {
+    auto result = clever::url::parse("http://example.com:0/path");
+    ASSERT_TRUE(result.has_value());
+    ASSERT_TRUE(result->port.has_value());
+    EXPECT_EQ(result->port.value(), 0);
+}
+
+TEST(URLParserTest, Port65535IsAcceptedV67) {
+    auto result = clever::url::parse("http://example.com:65535/path");
+    ASSERT_TRUE(result.has_value());
+    ASSERT_TRUE(result->port.has_value());
+    EXPECT_EQ(result->port.value(), 65535);
+}
+
+TEST(URLParserTest, Port65536IsRejectedV67) {
+    auto result = clever::url::parse("http://example.com:65536/path");
+    EXPECT_FALSE(result.has_value());
+}
+
+TEST(URLParserTest, HostTrailingWhitespaceIsTrimmedFromInputV67) {
+    auto result = clever::url::parse("  https://Example.com/path  \r\n\t");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/path");
+}
+
+TEST(URLParserTest, SpecialSchemePathStartsWithSlashV67) {
+    auto result = clever::url::parse("https://example.com/path/to/page");
+    ASSERT_TRUE(result.has_value());
+    ASSERT_FALSE(result->path.empty());
+    EXPECT_EQ(result->path.front(), '/');
+}
+
+TEST(URLParserTest, SchemeOnlyHttpUrlIsRejectedV67) {
+    auto result = clever::url::parse("http:");
+    EXPECT_FALSE(result.has_value());
+}
+
+TEST(URLParserTest, AtSignInPathComponentIsPreservedV67) {
+    auto result = clever::url::parse("https://example.com/user@domain/profile");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/user@domain/profile");
+}
+
+TEST(URLParserTest, ConsecutiveQuestionMarksInQueryArePreservedV67) {
+    auto result = clever::url::parse("https://example.com/search??a=1??b=2");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->path, "/search");
+    EXPECT_EQ(result->query, "?a=1??b=2");
+}
+
+TEST(URLParserTest, EncodedHashInQueryValueIsDoubleEncodedV67) {
+    auto result = clever::url::parse("https://example.com/path?token=a%23b");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->query, "token=a%2523b");
+    EXPECT_TRUE(result->fragment.empty());
+}

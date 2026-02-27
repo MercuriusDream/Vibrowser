@@ -22476,3 +22476,155 @@ TEST(JSEngineTest, PromiseAllMultiplePromisesV66) {
     EXPECT_TRUE(result.success) << engine.last_error();
     EXPECT_EQ(result.value, "2,3,5|10");
 }
+
+TEST(JSEngineTest, ArrayIsArrayChecksArrayLikeAndValuesV67) {
+    clever::js::JSEngine engine;
+    const std::string js_code = R"(
+        [
+            Array.isArray([1, 2, 3]).toString(),
+            Array.isArray({0: 'x', length: 1}).toString(),
+            Array.isArray('not-array').toString(),
+            Array.isArray(Array.prototype).toString()
+        ].join('|')
+    )";
+    auto value = engine.evaluate(js_code);
+    auto result = EvalResultV66{!engine.has_error(), value};
+    EXPECT_TRUE(result.success) << engine.last_error();
+    EXPECT_EQ(result.value, "true|false|false|true");
+}
+
+TEST(JSEngineTest, TypeofOperatorAcrossCoreTypesV67) {
+    clever::js::JSEngine engine;
+    const std::string js_code = R"(
+        [
+            typeof undefined,
+            typeof null,
+            typeof 42,
+            typeof 'text',
+            typeof true,
+            typeof function() {},
+            typeof { k: 1 },
+            typeof Symbol('v67')
+        ].join('|')
+    )";
+    auto value = engine.evaluate(js_code);
+    auto result = EvalResultV66{!engine.has_error(), value};
+    EXPECT_TRUE(result.success) << engine.last_error();
+    EXPECT_EQ(result.value, "undefined|object|number|string|boolean|function|object|symbol");
+}
+
+TEST(JSEngineTest, JsonStringifyParseRoundTripPreservesFieldsV67) {
+    clever::js::JSEngine engine;
+    const std::string js_code = R"(
+        var original = {
+            a: 1,
+            b: 'text',
+            c: [2, 3],
+            d: { e: true },
+            f: null
+        };
+        var json = JSON.stringify(original);
+        var parsed = JSON.parse(json);
+        [
+            json,
+            parsed.a.toString(),
+            parsed.b,
+            parsed.c.join(','),
+            parsed.d.e.toString(),
+            (parsed.f === null).toString()
+        ].join('|')
+    )";
+    auto value = engine.evaluate(js_code);
+    auto result = EvalResultV66{!engine.has_error(), value};
+    EXPECT_TRUE(result.success) << engine.last_error();
+    EXPECT_EQ(result.value, "{\"a\":1,\"b\":\"text\",\"c\":[2,3],\"d\":{\"e\":true},\"f\":null}|1|text|2,3|true|true");
+}
+
+TEST(JSEngineTest, RegExpTestMethodMatchesAndRejectsV67) {
+    clever::js::JSEngine engine;
+    const std::string js_code = R"(
+        var spaced = /quick\s+js/i;
+        [
+            spaced.test('Quick   JS').toString(),
+            spaced.test('Quick Browser').toString(),
+            /\d{3}/.test('id:123').toString()
+        ].join('|')
+    )";
+    auto value = engine.evaluate(js_code);
+    auto result = EvalResultV66{!engine.has_error(), value};
+    EXPECT_TRUE(result.success) << engine.last_error();
+    EXPECT_EQ(result.value, "true|false|true");
+}
+
+TEST(JSEngineTest, StringPrototypeRepeatRepeatsExpectedCountV67) {
+    clever::js::JSEngine engine;
+    const std::string js_code = R"(
+        [
+            'na'.repeat(4),
+            'go'.repeat(0),
+            '*'.repeat(3)
+        ].join('|')
+    )";
+    auto value = engine.evaluate(js_code);
+    auto result = EvalResultV66{!engine.has_error(), value};
+    EXPECT_TRUE(result.success) << engine.last_error();
+    EXPECT_EQ(result.value, "nananana||***");
+}
+
+TEST(JSEngineTest, ArrayPrototypeFlatRespectsDepthV67) {
+    clever::js::JSEngine engine;
+    const std::string js_code = R"(
+        var nested = [1, [2, [3, 4]], 5];
+        var one = nested.flat();
+        var deep = nested.flat(2);
+        [
+            one.length.toString(),
+            Array.isArray(one[2]).toString(),
+            deep.join(','),
+            [1, [2], [3, [4]]].flat(2).join(',')
+        ].join('|')
+    )";
+    auto value = engine.evaluate(js_code);
+    auto result = EvalResultV66{!engine.has_error(), value};
+    EXPECT_TRUE(result.success) << engine.last_error();
+    EXPECT_EQ(result.value, "4|true|1,2,3,4,5|1,2,3,4");
+}
+
+TEST(JSEngineTest, ObjectKeysOrderingNumericThenInsertionV67) {
+    clever::js::JSEngine engine;
+    const std::string js_code = R"(
+        var obj = {};
+        obj['2'] = 'two';
+        obj['10'] = 'ten';
+        obj['1'] = 'one';
+        obj['b'] = 'bee';
+        obj['a'] = 'aye';
+        obj['01'] = 'leading';
+        Object.keys(obj).join(',') + '|' + Object.values(obj).join(',')
+    )";
+    auto value = engine.evaluate(js_code);
+    auto result = EvalResultV66{!engine.has_error(), value};
+    EXPECT_TRUE(result.success) << engine.last_error();
+    EXPECT_EQ(result.value, "1,2,10,b,a,01|one,two,ten,bee,aye,leading");
+}
+
+TEST(JSEngineTest, TryCatchExposesErrorMessageV67) {
+    clever::js::JSEngine engine;
+    const std::string js_code = R"(
+        var caught = '';
+        try {
+            throw new Error('boom message V67');
+        } catch (err) {
+            caught = [
+                err.name,
+                err.message,
+                (err.toString().indexOf('boom message V67') >= 0).toString()
+            ].join('|');
+        }
+        caught
+    )";
+    auto value = engine.evaluate(js_code);
+    auto result = EvalResultV66{!engine.has_error(), value};
+    EXPECT_TRUE(result.success) << engine.last_error();
+    EXPECT_EQ(result.value, "Error|boom message V67|true");
+}

@@ -10802,3 +10802,108 @@ TEST(HTMLParserTest, CommentNodesInTreeV66) {
     }
     EXPECT_TRUE(found_comment);
 }
+
+TEST(HTMLParserTest, NestedAnchorTagsV67) {
+    auto doc = clever::html::parse(
+        "<div><a href='https://outer.example'>Outer <a href='https://inner.example'>Inner</a> tail</a></div>");
+    ASSERT_NE(doc, nullptr);
+
+    auto anchors = doc->find_all_elements("a");
+    ASSERT_EQ(anchors.size(), 2u);
+    EXPECT_EQ(anchors[0]->tag_name, "a");
+    EXPECT_EQ(anchors[1]->tag_name, "a");
+    EXPECT_EQ(get_attr_v63(anchors[0], "href"), "https://outer.example");
+    EXPECT_EQ(get_attr_v63(anchors[1], "href"), "https://inner.example");
+    EXPECT_NE(anchors[0]->text_content().find("Outer"), std::string::npos);
+    EXPECT_NE(anchors[1]->text_content().find("Inner"), std::string::npos);
+}
+
+TEST(HTMLParserTest, ImageWithSrcAndAltAttributesV67) {
+    auto doc = clever::html::parse("<body><img src='/assets/logo.png' alt='Site Logo'></body>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* img = doc->find_element("img");
+    ASSERT_NE(img, nullptr);
+    EXPECT_EQ(img->tag_name, "img");
+    EXPECT_TRUE(img->children.empty());
+    EXPECT_EQ(get_attr_v63(img, "src"), "/assets/logo.png");
+    EXPECT_EQ(get_attr_v63(img, "alt"), "Site Logo");
+}
+
+TEST(HTMLParserTest, TextareaPreservesInnerTextV67) {
+    auto doc = clever::html::parse("<textarea>first line\nsecond line</textarea>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* textarea = doc->find_element("textarea");
+    ASSERT_NE(textarea, nullptr);
+    EXPECT_EQ(textarea->tag_name, "textarea");
+    EXPECT_EQ(textarea->text_content(), "first line\nsecond line");
+}
+
+TEST(HTMLParserTest, OptionElementsWithinSelectV67) {
+    auto doc =
+        clever::html::parse("<select name='country'><option value='us'>United States</option><option value='kr'>Korea</option></select>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* select = doc->find_element("select");
+    auto options = doc->find_all_elements("option");
+    ASSERT_NE(select, nullptr);
+    ASSERT_EQ(options.size(), 2u);
+    EXPECT_EQ(select->tag_name, "select");
+    EXPECT_EQ(get_attr_v63(select, "name"), "country");
+    EXPECT_EQ(options[0]->parent, select);
+    EXPECT_EQ(options[1]->parent, select);
+    EXPECT_EQ(get_attr_v63(options[0], "value"), "us");
+    EXPECT_EQ(get_attr_v63(options[1], "value"), "kr");
+}
+
+TEST(HTMLParserTest, OrderedListWithStartAttributeV67) {
+    auto doc = clever::html::parse("<ol start='5'><li>five</li><li>six</li></ol>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* ol = doc->find_element("ol");
+    auto items = doc->find_all_elements("li");
+    ASSERT_NE(ol, nullptr);
+    ASSERT_EQ(items.size(), 2u);
+    EXPECT_EQ(ol->tag_name, "ol");
+    EXPECT_EQ(get_attr_v63(ol, "start"), "5");
+    EXPECT_EQ(items[0]->text_content(), "five");
+    EXPECT_EQ(items[1]->text_content(), "six");
+}
+
+TEST(HTMLParserTest, TableCaptionElementV67) {
+    auto doc =
+        clever::html::parse("<table><caption>Quarterly Results</caption><tr><td>Q1</td></tr></table>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* table = doc->find_element("table");
+    auto* caption = doc->find_element("caption");
+    ASSERT_NE(table, nullptr);
+    ASSERT_NE(caption, nullptr);
+    EXPECT_EQ(table->tag_name, "table");
+    EXPECT_EQ(caption->tag_name, "caption");
+    EXPECT_EQ(caption->parent, table);
+    EXPECT_EQ(caption->text_content(), "Quarterly Results");
+}
+
+TEST(HTMLParserTest, InputWithTypeAndValueAttributesV67) {
+    auto doc = clever::html::parse("<form><input type='email' value='user@example.com'></form>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* input = doc->find_element("input");
+    ASSERT_NE(input, nullptr);
+    EXPECT_EQ(input->tag_name, "input");
+    EXPECT_EQ(get_attr_v63(input, "type"), "email");
+    EXPECT_EQ(get_attr_v63(input, "value"), "user@example.com");
+}
+
+TEST(HTMLParserTest, DivWithInlineStyleAttributeV67) {
+    auto doc = clever::html::parse("<div style='color: red; font-weight: bold;'>Styled text</div>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* div = doc->find_element("div");
+    ASSERT_NE(div, nullptr);
+    EXPECT_EQ(div->tag_name, "div");
+    EXPECT_EQ(get_attr_v63(div, "style"), "color: red; font-weight: bold;");
+    EXPECT_EQ(div->text_content(), "Styled text");
+}

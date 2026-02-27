@@ -13048,3 +13048,140 @@ TEST(PropertyCascadeTest, CursorPointerEnumValueParsesV66) {
 
     EXPECT_EQ(style.cursor, Cursor::Pointer);
 }
+
+TEST(PropertyCascadeTest, ResolverDisplayBlockFromStylesheetV67) {
+    const std::string css = "span { display: block; }";
+    const std::string tag = "span";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = tag;
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.display, Display::Block);
+}
+
+TEST(PropertyCascadeTest, ResolverVisibilityHiddenEnumV67) {
+    const std::string css = "div { visibility: hidden; }";
+    const std::string tag = "div";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = tag;
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.visibility, Visibility::Hidden);
+}
+
+TEST(PropertyCascadeTest, ResolverOverflowHiddenValueV67) {
+    const std::string css = "div { overflow: hidden; }";
+    const std::string tag = "div";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = tag;
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(static_cast<int>(style.overflow_x), 1);
+    EXPECT_EQ(static_cast<int>(style.overflow_y), 1);
+}
+
+TEST(PropertyCascadeTest, ResolverTextAlignCenterV67) {
+    const std::string css = "div { text-align: center; }";
+    const std::string tag = "div";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = tag;
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.text_align, TextAlign::Center);
+}
+
+TEST(PropertyCascadeTest, ResolverLineHeightEmValueV67) {
+    const std::string css = "p { line-height: 1.5em; }";
+    const std::string tag = "p";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = tag;
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_FLOAT_EQ(style.line_height.value, 24.0f);
+}
+
+TEST(PropertyCascadeTest, ResolverWhiteSpaceNowrapEnumV67) {
+    const std::string css = "div { white-space: nowrap; }";
+    const std::string tag = "div";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = tag;
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.white_space, WhiteSpace::NoWrap);
+}
+
+TEST(PropertyCascadeTest, ResolverPositionAbsoluteV67) {
+    const std::string css = "div { position: absolute; }";
+    const std::string tag = "div";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = tag;
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.position, Position::Absolute);
+}
+
+TEST(PropertyCascadeTest, ResolverFloatLeftV67) {
+    const std::string css = "div { float: left; }";
+    const std::string tag = "div";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = tag;
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.float_val, Float::Left);
+}
