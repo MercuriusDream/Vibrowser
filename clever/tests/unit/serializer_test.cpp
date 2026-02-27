@@ -2656,3 +2656,100 @@ TEST(SerializerTest, TwoStringsPreserveContents) {
     EXPECT_EQ(d.read_string(), "alpha");
     EXPECT_EQ(d.read_string(), "beta");
 }
+
+// Cycle 770 — IPC serializer additional combinations
+TEST(SerializerTest, TenF64ValuesRoundTrip) {
+    clever::ipc::Serializer s;
+    for (int i = 0; i < 10; ++i) s.write_f64(i * 1.5);
+    clever::ipc::Deserializer d(s.data());
+    for (int i = 0; i < 10; ++i) EXPECT_DOUBLE_EQ(d.read_f64(), i * 1.5);
+}
+
+TEST(SerializerTest, U32FiveValues) {
+    clever::ipc::Serializer s;
+    s.write_u32(0); s.write_u32(1); s.write_u32(100); s.write_u32(1000); s.write_u32(UINT32_MAX);
+    clever::ipc::Deserializer d(s.data());
+    EXPECT_EQ(d.read_u32(), 0u);
+    EXPECT_EQ(d.read_u32(), 1u);
+    EXPECT_EQ(d.read_u32(), 100u);
+    EXPECT_EQ(d.read_u32(), 1000u);
+    EXPECT_EQ(d.read_u32(), UINT32_MAX);
+}
+
+TEST(SerializerTest, BoolThenU64Sequence) {
+    clever::ipc::Serializer s;
+    s.write_bool(false);
+    s.write_u64(9999999999ull);
+    s.write_bool(true);
+    clever::ipc::Deserializer d(s.data());
+    EXPECT_FALSE(d.read_bool());
+    EXPECT_EQ(d.read_u64(), 9999999999ull);
+    EXPECT_TRUE(d.read_bool());
+}
+
+TEST(SerializerTest, StringBeforeAndAfterI32) {
+    clever::ipc::Serializer s;
+    s.write_string("before");
+    s.write_i32(42);
+    s.write_string("after");
+    clever::ipc::Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "before");
+    EXPECT_EQ(d.read_i32(), 42);
+    EXPECT_EQ(d.read_string(), "after");
+}
+
+TEST(SerializerTest, FiveStringsDifferentLengths) {
+    clever::ipc::Serializer s;
+    s.write_string("a");
+    s.write_string("bb");
+    s.write_string("ccc");
+    s.write_string("dddd");
+    s.write_string("eeeee");
+    clever::ipc::Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "a");
+    EXPECT_EQ(d.read_string(), "bb");
+    EXPECT_EQ(d.read_string(), "ccc");
+    EXPECT_EQ(d.read_string(), "dddd");
+    EXPECT_EQ(d.read_string(), "eeeee");
+}
+
+TEST(SerializerTest, AllTypesCombinedOnce) {
+    clever::ipc::Serializer s;
+    s.write_bool(true);
+    s.write_u8(7);
+    s.write_u16(300);
+    s.write_u32(70000);
+    s.write_u64(5000000000ull);
+    s.write_i32(-42);
+    s.write_i64(-9000000000ll);
+    s.write_f64(3.14);
+    s.write_string("combo");
+    clever::ipc::Deserializer d(s.data());
+    EXPECT_TRUE(d.read_bool());
+    EXPECT_EQ(d.read_u8(), 7);
+    EXPECT_EQ(d.read_u16(), 300u);
+    EXPECT_EQ(d.read_u32(), 70000u);
+    EXPECT_EQ(d.read_u64(), 5000000000ull);
+    EXPECT_EQ(d.read_i32(), -42);
+    EXPECT_EQ(d.read_i64(), -9000000000ll);
+    EXPECT_DOUBLE_EQ(d.read_f64(), 3.14);
+    EXPECT_EQ(d.read_string(), "combo");
+}
+
+TEST(SerializerTest, TwentyBoolsAlternating) {
+    clever::ipc::Serializer s;
+    for (int i = 0; i < 20; ++i) s.write_bool(i % 2 == 0);
+    clever::ipc::Deserializer d(s.data());
+    for (int i = 0; i < 20; ++i) EXPECT_EQ(d.read_bool(), i % 2 == 0);
+}
+
+TEST(SerializerTest, MixedLargeAndSmallInts) {
+    clever::ipc::Serializer s;
+    s.write_u8(1);
+    s.write_u64(std::numeric_limits<uint64_t>::max());
+    s.write_u8(2);
+    clever::ipc::Deserializer d(s.data());
+    EXPECT_EQ(d.read_u8(), 1);
+    EXPECT_EQ(d.read_u64(), std::numeric_limits<uint64_t>::max());
+    EXPECT_EQ(d.read_u8(), 2);
+}
