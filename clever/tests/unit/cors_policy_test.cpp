@@ -2105,3 +2105,42 @@ TEST(CORSPolicyTest, ACAONullStringBlocks) {
     headers.set("access-control-allow-origin", "null");
     EXPECT_FALSE(cors_allows_response("https://app.example.com", "https://api.example.com/data", headers, false));
 }
+
+TEST(CORSPolicyTest, CrossOriginPortDiffers) {
+    EXPECT_TRUE(is_cross_origin("https://example.com:8443", "https://example.com:9443/api"));
+}
+
+TEST(CORSPolicyTest, SameOriginHttpsPort443) {
+    EXPECT_FALSE(is_cross_origin("https://example.com:443", "https://example.com/path"));
+}
+
+TEST(CORSPolicyTest, EnforceableLocalhost) {
+    // localhost is considered enforceable (secure context per Fetch spec)
+    EXPECT_TRUE(has_enforceable_document_origin("http://localhost"));
+}
+
+TEST(CORSPolicyTest, NotEnforceableFile) {
+    EXPECT_FALSE(has_enforceable_document_origin("file:///home/user/page.html"));
+}
+
+TEST(CORSPolicyTest, NotEnforceableAboutBlank) {
+    EXPECT_FALSE(has_enforceable_document_origin("about:blank"));
+}
+
+TEST(CORSPolicyTest, CorsAllowsWildcardNoCredentials) {
+    clever::net::HeaderMap headers;
+    headers.set("access-control-allow-origin", "*");
+    EXPECT_TRUE(cors_allows_response("https://app.example.com", "https://api.other.com/data", headers, false));
+}
+
+TEST(CORSPolicyTest, ACAOWildcardBlocksWithCredentials) {
+    clever::net::HeaderMap headers;
+    headers.set("access-control-allow-origin", "*");
+    EXPECT_FALSE(cors_allows_response("https://app.example.com", "https://api.other.com/data", headers, true));
+}
+
+TEST(CORSPolicyTest, NormalizeSetsOriginHeader) {
+    clever::net::HeaderMap req_headers;
+    normalize_outgoing_origin_header(req_headers, "https://app.example.com", "https://api.other.com/data");
+    EXPECT_TRUE(req_headers.has("origin"));
+}
