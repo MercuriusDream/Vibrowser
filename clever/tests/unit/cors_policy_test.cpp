@@ -1069,3 +1069,58 @@ TEST(CORSPolicyTest, NullOriginAttachesOriginHeader) {
 TEST(CORSPolicyTest, MalformedOriginNoHeader) {
     EXPECT_FALSE(should_attach_origin_header("not-a-url", "https://api.example.com/data"));
 }
+
+// ---------------------------------------------------------------------------
+// Cycle 697 — 8 additional CORS tests
+// ---------------------------------------------------------------------------
+// CORS: URL with fragment is NOT CORS eligible in this implementation
+// CORS: URL with fragment is CORS eligible (fragment not sent over wire)
+TEST(CORSPolicyTest, CORSEligibleURLWithFragment) {
+    EXPECT_FALSE(is_cors_eligible_request_url("https://example.com/api#section"));
+}
+
+// CORS: URL with port 3000 is CORS eligible
+TEST(CORSPolicyTest, CORSEligibleURLWithPort3000) {
+    EXPECT_TRUE(is_cors_eligible_request_url("http://localhost:3000/api/data"));
+}
+
+// CORS: cross-origin with different ports should attach origin header
+TEST(CORSPolicyTest, ShouldAttachOriginForPortedCrossOrigin) {
+    EXPECT_TRUE(should_attach_origin_header("https://app.example.com",
+                                            "https://api.example.com:8080/data"));
+}
+
+// CORS: https URL with IP address origin is enforceable
+TEST(CORSPolicyTest, HasEnforceableOriginHttpsIP) {
+    EXPECT_TRUE(has_enforceable_document_origin("https://192.168.1.1"));
+}
+
+// CORS: same origin with different paths is NOT cross-origin
+TEST(CORSPolicyTest, IsNotCrossOriginPathDifference) {
+    EXPECT_FALSE(is_cross_origin("https://example.com", "https://example.com/other/path"));
+}
+
+// CORS: normalize sets origin header value for cross-origin request
+TEST(CORSPolicyTest, NormalizeHeaderSetsOriginValue) {
+    clever::net::HeaderMap headers;
+    normalize_outgoing_origin_header(headers, "https://app.example.com",
+                                     "https://api.example.com/resource");
+    auto origin = headers.get("origin");
+    ASSERT_TRUE(origin.has_value());
+    EXPECT_EQ(origin.value(), "https://app.example.com");
+}
+
+// CORS: ACAO with different port blocks same-host response
+TEST(CORSPolicyTest, CORSBlocksMismatchedPortInACAO) {
+    clever::net::HeaderMap resp_headers;
+    resp_headers.set("Access-Control-Allow-Origin", "https://example.com:9000");
+    EXPECT_FALSE(cors_allows_response("https://example.com",
+                                      "https://api.example.com/data",
+                                      resp_headers, false));
+}
+
+// CORS: should not attach Origin for same-origin request with port
+TEST(CORSPolicyTest, ShouldNotAttachOriginSameOriginWithPort) {
+    EXPECT_FALSE(should_attach_origin_header("https://example.com:8443",
+                                             "https://example.com:8443/api"));
+}
