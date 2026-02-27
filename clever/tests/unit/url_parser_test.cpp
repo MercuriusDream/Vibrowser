@@ -2669,3 +2669,55 @@ TEST(URLParser, FragmentWithSpaceEncoded) {
     ASSERT_TRUE(url.has_value());
     EXPECT_NE(url->fragment.find("section"), std::string::npos);
 }
+
+// Cycle 890 — URL parser edge cases
+
+TEST(URLParser, PathWithTildeSegment) {
+    auto url = parse("https://example.com/~user/home");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->path, "/~user/home");
+}
+
+TEST(URLParser, PathWithUnderscoreSegment) {
+    auto url = parse("https://example.com/file_name.html");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->path, "/file_name.html");
+}
+
+TEST(URLParser, HostnameWithTrailingNumbers) {
+    auto url = parse("https://api2.example.com/v1");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->host, "api2.example.com");
+}
+
+TEST(URLParser, OriginExcludesPath) {
+    auto url = parse("https://example.com/some/deep/path?q=1#frag");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->origin(), "https://example.com");
+}
+
+TEST(URLParser, HttpsPort8080InOrigin) {
+    auto url = parse("https://example.com:8080/path");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->origin(), "https://example.com:8080");
+}
+
+TEST(URLParser, SameOriginDifferentPaths) {
+    auto url1 = parse("https://example.com/page1");
+    auto url2 = parse("https://example.com/page2");
+    ASSERT_TRUE(url1.has_value());
+    ASSERT_TRUE(url2.has_value());
+    EXPECT_EQ(url1->origin(), url2->origin());
+}
+
+TEST(URLParser, PortRemovedForHttpsDefault) {
+    auto url = parse("https://example.com:443/resource");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_FALSE(url->port.has_value());
+}
+
+TEST(URLParser, LongPathMultipleSegments) {
+    auto url = parse("https://example.com/a/b/c/d/e/f/g");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->path, "/a/b/c/d/e/f/g");
+}
