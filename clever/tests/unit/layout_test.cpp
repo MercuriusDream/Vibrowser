@@ -7350,3 +7350,44 @@ TEST(LayoutNodeProps, ContainerTypeDefaultsZero) {
     LayoutNode n;
     EXPECT_EQ(n.container_type, 0);
 }
+
+// Cycle 938 — container-name, contain-intrinsic-height, offset-rotate/position, margin-trim defaults
+TEST(LayoutNodeProps, ContainerNameDefaultsEmpty) {
+    LayoutNode n;
+    EXPECT_EQ(n.container_name, "");
+}
+
+TEST(LayoutNodeProps, ContainIntrinsicHeightDefaultsZero) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.contain_intrinsic_height, 0.0f);
+}
+
+TEST(LayoutNodeProps, OverscrollBehaviorYDefaultsZero) {
+    LayoutNode n;
+    EXPECT_EQ(n.overscroll_behavior_y, 0);
+}
+
+TEST(LayoutNodeProps, OffsetRotateDefaultsAuto) {
+    LayoutNode n;
+    EXPECT_EQ(n.offset_rotate, "auto");
+}
+
+TEST(LayoutNodeProps, OffsetPositionDefaultsNormal) {
+    LayoutNode n;
+    EXPECT_EQ(n.offset_position, "normal");
+}
+
+TEST(LayoutNodeProps, MarginTrimDefaultsZero) {
+    LayoutNode n;
+    EXPECT_EQ(n.margin_trim, 0);
+}
+
+TEST(LayoutNodeProps, ColumnGapValDefaultsToZero) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.column_gap_val, 0.0f);
+}
+
+TEST(LayoutNodeProps, GapDefaultsToZeroV2) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.gap, 0.0f);
+}
