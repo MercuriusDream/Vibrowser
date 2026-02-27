@@ -7279,3 +7279,66 @@ TEST(DomElement, MultipleDataAttributes) {
     EXPECT_EQ(el->get_attribute("data-b"), "2");
     EXPECT_EQ(el->get_attribute("data-c"), "3");
 }
+
+// Cycle 1327: DOM element tests
+
+TEST(DomElement, TagNameTrack) {
+    Document doc;
+    auto el = doc.create_element("track");
+    EXPECT_EQ(el->tag_name(), "track");
+}
+
+TEST(DomElement, TagNameEmbed) {
+    Document doc;
+    auto el = doc.create_element("embed");
+    EXPECT_EQ(el->tag_name(), "embed");
+}
+
+TEST(DomElement, SetAttributeMedia) {
+    Document doc;
+    auto el = doc.create_element("link");
+    el->set_attribute("media", "screen");
+    EXPECT_EQ(el->get_attribute("media"), "screen");
+}
+
+TEST(DomElement, SetAttributeCharset) {
+    Document doc;
+    auto el = doc.create_element("meta");
+    el->set_attribute("charset", "utf-8");
+    EXPECT_EQ(el->get_attribute("charset"), "utf-8");
+}
+
+TEST(DomElement, NestedChildCounts) {
+    Document doc;
+    auto outer = doc.create_element("div");
+    auto inner = doc.create_element("div");
+    for (int i = 0; i < 5; ++i) {
+        inner->append_child(doc.create_element("span"));
+    }
+    auto* inner_ptr = inner.get();
+    outer->append_child(std::move(inner));
+    EXPECT_EQ(outer->child_count(), 1u);
+    EXPECT_EQ(inner_ptr->child_count(), 5u);
+}
+
+TEST(DomElement, RemoveAttributeHrefV2) {
+    Document doc;
+    auto el = doc.create_element("a");
+    el->set_attribute("href", "https://example.com");
+    el->remove_attribute("href");
+    EXPECT_FALSE(el->has_attribute("href"));
+}
+
+TEST(DomElement, HasAttributeSelected) {
+    Document doc;
+    auto el = doc.create_element("option");
+    el->set_attribute("selected", "");
+    EXPECT_TRUE(el->has_attribute("selected"));
+}
+
+TEST(DomElement, SetAttributeWithUnicode) {
+    Document doc;
+    auto el = doc.create_element("div");
+    el->set_attribute("data-name", "test-value-123");
+    EXPECT_EQ(el->get_attribute("data-name"), "test-value-123");
+}

@@ -7759,3 +7759,60 @@ TEST(TreeBuilder, CanvasElementV14) {
     ASSERT_NE(el, nullptr);
     EXPECT_EQ(el->tag_name, "canvas");
 }
+
+// Cycle 1333
+TEST(TreeBuilder, DivElementV15) {
+    auto doc = clever::html::parse("<html><body><div>content</div></body></html>");
+    auto* el = doc->find_element("div");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "div");
+}
+
+TEST(TreeBuilder, SpanElementV15) {
+    auto doc = clever::html::parse("<html><body><span>text</span></body></html>");
+    auto* el = doc->find_element("span");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "span");
+}
+
+TEST(TreeBuilder, AnchorElementV15) {
+    auto doc = clever::html::parse("<html><body><a href=\"/page\">link</a></body></html>");
+    auto* el = doc->find_element("a");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "a");
+}
+
+TEST(TreeBuilder, ParagraphElementV15) {
+    auto doc = clever::html::parse("<html><body><p>paragraph</p></body></html>");
+    auto* el = doc->find_element("p");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "p");
+}
+
+TEST(TreeBuilder, HeadingElementV15) {
+    auto doc = clever::html::parse("<html><body><h1>heading</h1></body></html>");
+    auto* el = doc->find_element("h1");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "h1");
+}
+
+TEST(TreeBuilder, UnorderedListV15) {
+    auto doc = clever::html::parse("<html><body><ul><li>item</li></ul></body></html>");
+    auto* el = doc->find_element("ul");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "ul");
+}
+
+TEST(TreeBuilder, OrderedListV15) {
+    auto doc = clever::html::parse("<html><body><ol><li>item</li></ol></body></html>");
+    auto* el = doc->find_element("ol");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "ol");
+}
+
+TEST(TreeBuilder, SectionElementV15) {
+    auto doc = clever::html::parse("<html><body><section><article>content</article></section></body></html>");
+    auto* el = doc->find_element("section");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "section");
+}

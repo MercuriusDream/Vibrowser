@@ -5687,3 +5687,86 @@ TEST(URLParser, UrlWithAllComponentsV17) {
     EXPECT_EQ(url->query, "user=john&format=json");
     EXPECT_EQ(url->fragment, "bio");
 }
+
+// Cycle 1330
+
+TEST(URLParser, SimpleHttpUrlV18) {
+    auto url = parse("http://example.com/index.html");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "http");
+    EXPECT_EQ(url->host, "example.com");
+    EXPECT_EQ(url->path, "/index.html");
+    EXPECT_TRUE(url->query.empty());
+    EXPECT_TRUE(url->fragment.empty());
+}
+
+TEST(URLParser, HostOnlyWithDefaultPathV18) {
+    auto url = parse("https://website.org");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "website.org");
+    EXPECT_EQ(url->path, "/");
+    EXPECT_TRUE(url->query.empty());
+    EXPECT_TRUE(url->fragment.empty());
+}
+
+TEST(URLParser, UrlWithQueryParametersV18) {
+    auto url = parse("https://api.service.io/search?q=test&limit=10");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "api.service.io");
+    EXPECT_EQ(url->path, "/search");
+    EXPECT_EQ(url->query, "q=test&limit=10");
+    EXPECT_TRUE(url->fragment.empty());
+}
+
+TEST(URLParser, UrlWithFragmentOnlyV18) {
+    auto url = parse("https://docs.example.com/guide#section2");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "docs.example.com");
+    EXPECT_EQ(url->path, "/guide");
+    EXPECT_TRUE(url->query.empty());
+    EXPECT_EQ(url->fragment, "section2");
+}
+
+TEST(URLParser, UrlWithCustomNonStandardPortV18) {
+    auto url = parse("http://localhost:8080/app/main");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "http");
+    EXPECT_EQ(url->host, "localhost");
+    ASSERT_TRUE(url->port.has_value());
+    EXPECT_EQ(url->port.value(), 8080);
+    EXPECT_EQ(url->path, "/app/main");
+    EXPECT_TRUE(url->query.empty());
+}
+
+TEST(URLParser, UrlWithParentDirectoryResolutionV18) {
+    auto url = parse("https://cdn.example.net/assets/images/../styles/main.css");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "cdn.example.net");
+    EXPECT_EQ(url->path, "/assets/styles/main.css");
+    EXPECT_TRUE(url->query.empty());
+    EXPECT_TRUE(url->fragment.empty());
+}
+
+TEST(URLParser, UrlWithDeepPathV18) {
+    auto url = parse("https://repo.developer.com/org/project/src/main/java/App.java");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "repo.developer.com");
+    EXPECT_EQ(url->path, "/org/project/src/main/java/App.java");
+    EXPECT_TRUE(url->query.empty());
+    EXPECT_TRUE(url->fragment.empty());
+}
+
+TEST(URLParser, UrlWithQueryAndFragmentV18) {
+    auto url = parse("https://blog.site.info/posts/2025/02?sort=date&page=1#comments");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "blog.site.info");
+    EXPECT_EQ(url->path, "/posts/2025/02");
+    EXPECT_EQ(url->query, "sort=date&page=1");
+    EXPECT_EQ(url->fragment, "comments");
+}

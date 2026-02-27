@@ -19363,3 +19363,52 @@ TEST(JSEngine, MathCeilCycle1326) {
     auto result = engine.evaluate("var result = Math.ceil(4.2); result.toString()");
     EXPECT_EQ(result, "5");
 }
+
+// Cycle 1335
+TEST(JSEngine, StringConcatenationCycle1335) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var str1 = 'Hello'; var str2 = 'World'; (str1 + ' ' + str2)");
+    EXPECT_EQ(result, "Hello World");
+}
+
+TEST(JSEngine, ArrayFilterCycle1335) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var arr = [1, 2, 3, 4, 5]; var filtered = arr.filter(x => x > 2); filtered.toString()");
+    EXPECT_EQ(result, "3,4,5");
+}
+
+TEST(JSEngine, MathMaxCycle1335) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var result = Math.max(10, 20, 5); result.toString()");
+    EXPECT_EQ(result, "20");
+}
+
+TEST(JSEngine, JSONParseCycle1335) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var obj = JSON.parse('{\"x\":10}'); obj.x.toString()");
+    EXPECT_EQ(result, "10");
+}
+
+TEST(JSEngine, RegExpTestCycle1335) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var pattern = /hello/i; pattern.test('HELLO') ? 'true' : 'false'");
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, NumberToFixedCycle1335) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var num = 3.14159; num.toFixed(2)");
+    EXPECT_EQ(result, "3.14");
+}
+
+TEST(JSEngine, ArrayReduceCycle1335) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var arr = [1, 2, 3, 4]; var sum = arr.reduce((a, b) => a + b); sum.toString()");
+    EXPECT_EQ(result, "10");
+}
+
+TEST(JSEngine, StringSplitCycle1335) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var str = 'a,b,c'; var parts = str.split(','); parts.toString()");
+    EXPECT_EQ(result, "a,b,c");
+}

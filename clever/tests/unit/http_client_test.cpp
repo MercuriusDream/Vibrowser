@@ -8136,3 +8136,86 @@ TEST(HttpClient, CookieJarGetCookieHeaderSecureV28) {
 
     auto insecure_header = jar.get_cookie_header("api.example.com", "/api", false);
 }
+
+// Cycle 1331
+
+// HeaderMap: set overwrites existing values
+TEST(HttpClient, HeaderMapSetOverwritesV29) {
+    HeaderMap headers;
+    headers.set("Content-Type", "text/html");
+    EXPECT_EQ(headers.get("Content-Type").value(), "text/html");
+    
+    headers.set("Content-Type", "application/json");
+    EXPECT_EQ(headers.get("Content-Type").value(), "application/json");
+}
+
+// HeaderMap: get returns optional with empty for missing key
+TEST(HttpClient, HeaderMapGetMissingV29) {
+    HeaderMap headers;
+    headers.set("X-Custom", "value");
+    
+    auto result = headers.get("X-Missing");
+    EXPECT_FALSE(result.has_value());
+}
+
+// HeaderMap: has checks key existence correctly
+TEST(HttpClient, HeaderMapHasV29) {
+    HeaderMap headers;
+    headers.set("Authorization", "Bearer token123");
+    
+    EXPECT_TRUE(headers.has("Authorization"));
+    EXPECT_FALSE(headers.has("X-Missing-Header"));
+}
+
+// HeaderMap: remove deletes header entry
+TEST(HttpClient, HeaderMapRemoveV29) {
+    HeaderMap headers;
+    headers.set("X-Request-ID", "abc123");
+    EXPECT_TRUE(headers.has("X-Request-ID"));
+    
+    headers.remove("X-Request-ID");
+    EXPECT_FALSE(headers.has("X-Request-ID"));
+}
+
+// Request: method property stores and serializes correctly
+TEST(HttpClient, RequestMethodPropertyV29) {
+    Request req;
+    req.method = Method::POST;
+    req.url = "http://api.example.com/data";
+    req.body = std::vector<uint8_t>{'d', 'a', 't', 'a'};
+    
+    auto serialized = req.serialize();
+    EXPECT_GT(serialized.size(), 0u);
+    std::string serialized_str(serialized.begin(), serialized.end());
+    EXPECT_NE(serialized_str.find("POST"), std::string::npos);
+}
+
+// Response: status_text stores response status message
+TEST(HttpClient, ResponseStatusTextV29) {
+    Response resp;
+    resp.status = 200;
+    resp.status_text = "OK";
+    
+    EXPECT_EQ(resp.status, 200);
+    EXPECT_EQ(resp.status_text, "OK");
+}
+
+// CookieJar: set_from_header and size tracking
+TEST(HttpClient, CookieJarSetFromHeaderSizeV29) {
+    CookieJar jar;
+    jar.clear();
+    
+    EXPECT_EQ(jar.size(), 0u);
+    jar.set_from_header("session=xyz789; Path=/", "example.com");
+    EXPECT_GT(jar.size(), 0u);
+}
+
+// CookieJar: clear removes all cookies
+TEST(HttpClient, CookieJarClearV29) {
+    CookieJar jar;
+    jar.set_from_header("auth=token456; Path=/", "example.com");
+    EXPECT_GT(jar.size(), 0u);
+    
+    jar.clear();
+    EXPECT_EQ(jar.size(), 0u);
+}

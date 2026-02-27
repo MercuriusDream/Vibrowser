@@ -8387,3 +8387,76 @@ TEST_F(CSSStylesheetTest, BackdropFilterV26) {
         if (d.property == "backdrop-filter") { found = true; break; }
     EXPECT_TRUE(found);
 }
+
+// Cycle 1332
+TEST_F(CSSStylesheetTest, PaddingV27) {
+    auto sheet = parse_stylesheet("p { padding: 10px; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "padding") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, MarginV27) {
+    auto sheet = parse_stylesheet("span { margin: 5px 10px; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "margin") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, BorderRadiusV27) {
+    auto sheet = parse_stylesheet("button { border-radius: 8px; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "border-radius") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, BoxShadowV27) {
+    auto sheet = parse_stylesheet("div { box-shadow: 0 4px 6px rgba(0,0,0,0.1); }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "box-shadow") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, TextShadowV27) {
+    auto sheet = parse_stylesheet("h1 { text-shadow: 2px 2px 4px gray; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "text-shadow") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, TransformV27) {
+    auto sheet = parse_stylesheet("div { transform: rotate(45deg); }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "transform") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, PerspectiveV27) {
+    auto sheet = parse_stylesheet("section { perspective: 1000px; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "perspective") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, ClipPathV27) {
+    auto sheet = parse_stylesheet("img { clip-path: circle(50%); }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "clip-path") { found = true; break; }
+    EXPECT_TRUE(found);
+}

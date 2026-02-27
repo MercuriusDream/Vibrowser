@@ -9220,3 +9220,45 @@ TEST(LayoutNodeProps, SvgStrokeOpacityDefaultV26) {
     LayoutNode n;
     EXPECT_FLOAT_EQ(n.svg_stroke_opacity, 1.0f);
 }
+
+// Cycle 1334: Layout node tests
+
+TEST(LayoutNodeProps, TextWrapDefaultV27) {
+    LayoutNode n;
+    EXPECT_EQ(n.text_wrap, 0);
+}
+
+TEST(LayoutNodeProps, ContainerTypeDefaultV27) {
+    LayoutNode n;
+    EXPECT_EQ(n.container_type, 0);
+}
+
+TEST(LayoutNodeProps, AccentColorDefaultV27) {
+    LayoutNode n;
+    EXPECT_EQ(n.accent_color, 0u);
+}
+
+TEST(LayoutNodeProps, ColorSchemeDefaultV27) {
+    LayoutNode n;
+    EXPECT_EQ(n.color_scheme, 0);
+}
+
+TEST(LayoutNodeProps, ScrollSnapTypeDefaultV27) {
+    LayoutNode n;
+    EXPECT_EQ(n.scroll_snap_type, "");
+}
+
+TEST(LayoutNodeProps, ScrollSnapAlignDefaultV27) {
+    LayoutNode n;
+    EXPECT_EQ(n.scroll_snap_align, "");
+}
+
+TEST(LayoutNodeProps, OpacityDefaultV27) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.opacity, 1.0f);
+}
+
+TEST(LayoutNodeProps, MixBlendModeDefaultV27) {
+    LayoutNode n;
+    EXPECT_EQ(n.mix_blend_mode, 0);
+}
