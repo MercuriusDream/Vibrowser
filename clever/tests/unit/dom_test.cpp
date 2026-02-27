@@ -4429,3 +4429,66 @@ TEST(DomElement, TextContentFromTextChild) {
     parent.append_child(std::make_unique<Text>("visible"));
     EXPECT_EQ(parent.text_content(), "visible");
 }
+
+// Cycle 931 — sibling chain, ClassList, text, attribute removal
+TEST(DomNode, SecondChildHasPrevSibling) {
+    Element parent("div");
+    Node& first = parent.append_child(std::make_unique<Element>("span"));
+    Node& second = parent.append_child(std::make_unique<Element>("p"));
+    EXPECT_EQ(second.previous_sibling(), &first);
+}
+
+TEST(DomNode, ThreeChildrenPrevChain) {
+    Element parent("ul");
+    parent.append_child(std::make_unique<Element>("li"));
+    parent.append_child(std::make_unique<Element>("li"));
+    parent.append_child(std::make_unique<Element>("li"));
+    auto* last = parent.last_child();
+    ASSERT_NE(last, nullptr);
+    auto* mid = last->previous_sibling();
+    ASSERT_NE(mid, nullptr);
+    auto* first_node = mid->previous_sibling();
+    ASSERT_NE(first_node, nullptr);
+    EXPECT_EQ(first_node->previous_sibling(), nullptr);
+}
+
+TEST(DomText, TextNodeDataAfterSet) {
+    Text t("old");
+    t.set_data("new value");
+    EXPECT_EQ(t.data(), "new value");
+    EXPECT_EQ(t.text_content(), "new value");
+}
+
+TEST(DomText, TextEmptyData) {
+    Text t("");
+    EXPECT_EQ(t.data(), "");
+    EXPECT_EQ(t.text_content(), "");
+}
+
+TEST(DomElement, AttrAbsentAfterRemove) {
+    Element elem("p");
+    elem.set_attribute("title", "hello");
+    elem.remove_attribute("title");
+    EXPECT_FALSE(elem.get_attribute("title").has_value());
+}
+
+TEST(DomElement, RemoveNonExistentAttrNoop) {
+    Element elem("div");
+    EXPECT_NO_THROW(elem.remove_attribute("nonexistent"));
+}
+
+TEST(DomClassList, ClassListClearAfterRemove) {
+    ClassList cl;
+    cl.add("a");
+    cl.add("b");
+    cl.remove("a");
+    cl.remove("b");
+    EXPECT_EQ(cl.length(), 0u);
+}
+
+TEST(DomClassList, ClassListContainsAfterAdd) {
+    ClassList cl;
+    cl.add("highlight");
+    EXPECT_TRUE(cl.contains("highlight"));
+    EXPECT_FALSE(cl.contains("other"));
+}
