@@ -2859,3 +2859,86 @@ TEST(DomNode, TextContentOnSpanMatchesContent) {
     span.append_child(std::move(txt));
     EXPECT_NE(span.text_content().find("hello"), std::string::npos);
 }
+
+TEST(DomClassList, ToStringHasClass) {
+    ClassList cl;
+    cl.add("active");
+    cl.add("visible");
+    std::string str = cl.to_string();
+    EXPECT_NE(str.find("active"), std::string::npos);
+}
+
+
+
+
+
+
+
+
+
+TEST(DomClassList, SupportsTwoItems) {
+    ClassList cl;
+    cl.add("alpha");
+    cl.add("beta");
+    EXPECT_EQ(cl.length(), 2u);
+}
+
+
+
+
+
+
+
+
+
+TEST(DomNode, ChildCountAfterTwoAppends) {
+    Element div("div");
+    div.append_child(std::make_unique<Element>("span"));
+    div.append_child(std::make_unique<Element>("p"));
+    EXPECT_EQ(div.child_count(), 2u);
+}
+
+TEST(DomNode, GrandchildAccessibleViaFirstChild) {
+    Element outer("div");
+    auto middle = std::make_unique<Element>("section");
+    auto inner = std::make_unique<Element>("p");
+    middle->append_child(std::move(inner));
+    outer.append_child(std::move(middle));
+    auto* section = outer.first_child();
+    ASSERT_NE(section, nullptr);
+    EXPECT_NE(section->first_child(), nullptr);
+}
+
+TEST(DomNode, PreviousSiblingNullForFirstChild) {
+    Element parent("ul");
+    auto li = std::make_unique<Element>("li");
+    Element* li_ptr = li.get();
+    parent.append_child(std::move(li));
+    EXPECT_EQ(li_ptr->previous_sibling(), nullptr);
+}
+
+TEST(DomNode, NextSiblingNullForLastChild) {
+    Element parent("ul");
+    auto li = std::make_unique<Element>("li");
+    Element* li_ptr = li.get();
+    parent.append_child(std::move(li));
+    EXPECT_EQ(li_ptr->next_sibling(), nullptr);
+}
+
+TEST(DomClassList, RemoveThenAddActsAsReplace) {
+    ClassList cl;
+    cl.add("old-class");
+    cl.remove("old-class");
+    cl.add("new-class");
+    EXPECT_FALSE(cl.contains("old-class"));
+    EXPECT_TRUE(cl.contains("new-class"));
+}
+
+TEST(DomClassList, RemoveBothReducesLengthToZero) {
+    ClassList cl;
+    cl.add("x");
+    cl.add("y");
+    cl.remove("x");
+    cl.remove("y");
+    EXPECT_EQ(cl.length(), 0u);
+}
