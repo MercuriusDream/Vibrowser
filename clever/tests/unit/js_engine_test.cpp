@@ -17464,3 +17464,51 @@ TEST(JSEngine, BigIntFromString) {
     auto result = engine.evaluate("BigInt('123').toString()");
     EXPECT_EQ(result, "123");
 }
+
+TEST(JSEngine, BigIntBitXor) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("(5n ^ 3n).toString()");
+    EXPECT_EQ(result, "6");
+}
+
+TEST(JSEngine, BigIntShiftRight) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("(16n >> 2n).toString()");
+    EXPECT_EQ(result, "4");
+}
+
+TEST(JSEngine, BigIntDivide) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("(10n / 3n).toString()");
+    EXPECT_EQ(result, "3");
+}
+
+TEST(JSEngine, BigIntFromNumber) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("BigInt(42).toString()");
+    EXPECT_EQ(result, "42");
+}
+
+TEST(JSEngine, BigIntCompareGt) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("10n > 5n");
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, BigIntCompareLt) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("3n < 7n");
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, BigIntCompareEq) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("5n === 5n");
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, BigIntBitNot) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("(~0n).toString()");
+    EXPECT_EQ(result, "-1");
+}
