@@ -2822,3 +2822,89 @@ TEST_F(CSSStylesheetTest, FlexShorthandDeclaration) {
     }
     EXPECT_TRUE(found);
 }
+
+// ============================================================================
+// Cycle 680: More CSS parser tests
+// ============================================================================
+
+// Stylesheet: grid-template-columns declaration
+TEST_F(CSSStylesheetTest, GridTemplateColumnsDeclaration) {
+    auto sheet = parse_stylesheet(".grid { grid-template-columns: 1fr 1fr; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations) {
+        if (d.property == "grid-template-columns") { found = true; break; }
+    }
+    EXPECT_TRUE(found);
+}
+
+// Stylesheet: position relative declaration
+TEST_F(CSSStylesheetTest, PositionRelativeDeclaration) {
+    auto sheet = parse_stylesheet("div { position: relative; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations) {
+        if (d.property == "position") { found = true; break; }
+    }
+    EXPECT_TRUE(found);
+}
+
+// Stylesheet: top/left absolute positioning
+TEST_F(CSSStylesheetTest, TopLeftDeclarations) {
+    auto sheet = parse_stylesheet(".popup { position: absolute; top: 10px; left: 20px; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found_top = false, found_left = false;
+    for (auto& d : sheet.rules[0].declarations) {
+        if (d.property == "top") found_top = true;
+        if (d.property == "left") found_left = true;
+    }
+    EXPECT_TRUE(found_top);
+    EXPECT_TRUE(found_left);
+}
+
+// Selector: ID selector #main
+TEST_F(CSSSelectorTest, IdSelectorMain) {
+    auto list = parse_selector_list("#main");
+    ASSERT_EQ(list.selectors.size(), 1u);
+    EXPECT_FALSE(list.selectors[0].parts.empty());
+}
+
+// Selector: pseudo-class a:hover
+TEST_F(CSSSelectorTest, PseudoClassHoverOnAnchor) {
+    auto list = parse_selector_list("a:hover");
+    ASSERT_EQ(list.selectors.size(), 1u);
+    EXPECT_FALSE(list.selectors[0].parts.empty());
+}
+
+// Stylesheet: box-shadow declaration
+TEST_F(CSSStylesheetTest, BoxShadowDeclaration) {
+    auto sheet = parse_stylesheet(".card { box-shadow: 0 2px 4px rgba(0,0,0,0.1); }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations) {
+        if (d.property == "box-shadow") { found = true; break; }
+    }
+    EXPECT_TRUE(found);
+}
+
+// Stylesheet: text-overflow declaration
+TEST_F(CSSStylesheetTest, TextOverflowDeclaration) {
+    auto sheet = parse_stylesheet("p { text-overflow: ellipsis; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations) {
+        if (d.property == "text-overflow") { found = true; break; }
+    }
+    EXPECT_TRUE(found);
+}
+
+// Stylesheet: white-space declaration
+TEST_F(CSSStylesheetTest, WhiteSpaceDeclaration) {
+    auto sheet = parse_stylesheet("pre { white-space: pre; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations) {
+        if (d.property == "white-space") { found = true; break; }
+    }
+    EXPECT_TRUE(found);
+}
