@@ -4404,3 +4404,69 @@ TEST(SerializerTest, I64MaxRoundTrip) {
     Deserializer d(s.data());
     EXPECT_EQ(d.read_i64(), 9223372036854775807LL);
 }
+
+TEST(SerializerTest, I64MinRoundTrip) {
+    Serializer s;
+    s.write_i64(-9223372036854775807LL - 1LL);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i64(), -9223372036854775807LL - 1LL);
+}
+
+TEST(SerializerTest, U32MaxRoundTrip) {
+    Serializer s;
+    s.write_u32(4294967295U);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u32(), 4294967295U);
+}
+
+TEST(SerializerTest, StringWithForwardSlash) {
+    Serializer s;
+    s.write_string("path/to/resource");
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "path/to/resource");
+}
+
+TEST(SerializerTest, StringWithCurlyBraces) {
+    Serializer s;
+    s.write_string("{key: value}");
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "{key: value}");
+}
+
+TEST(SerializerTest, AlternatingTypesTenItems) {
+    Serializer s;
+    s.write_bool(true);
+    s.write_i32(1);
+    s.write_bool(false);
+    s.write_i32(2);
+    s.write_bool(true);
+    Deserializer d(s.data());
+    EXPECT_TRUE(d.read_bool());
+    EXPECT_EQ(d.read_i32(), 1);
+    EXPECT_FALSE(d.read_bool());
+    EXPECT_EQ(d.read_i32(), 2);
+    EXPECT_TRUE(d.read_bool());
+}
+
+TEST(SerializerTest, BoolThenF64) {
+    Serializer s;
+    s.write_bool(true);
+    s.write_f64(3.14159265);
+    Deserializer d(s.data());
+    EXPECT_TRUE(d.read_bool());
+    EXPECT_NEAR(d.read_f64(), 3.14159265, 1e-9);
+}
+
+TEST(SerializerTest, I64NegativeRoundTrip) {
+    Serializer s;
+    s.write_i64(-42LL);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i64(), -42LL);
+}
+
+TEST(SerializerTest, U16RoundTrip) {
+    Serializer s;
+    s.write_u16(65535);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u16(), 65535);
+}
