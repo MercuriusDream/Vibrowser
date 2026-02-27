@@ -4992,3 +4992,76 @@ TEST_F(CSSStylesheetTest, FilterBlurDeclaration) {
         if (d.property == "filter") { found = true; break; }
     EXPECT_TRUE(found);
 }
+
+// Cycle 927 — additional CSS property declarations
+TEST_F(CSSStylesheetTest, ColumnCountDeclaration) {
+    auto sheet = parse_stylesheet(".grid { column-count: 3; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "column-count") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, ColumnWidthDeclaration) {
+    auto sheet = parse_stylesheet(".grid { column-width: 200px; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "column-width") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, ColumnSpanDeclaration) {
+    auto sheet = parse_stylesheet("h2 { column-span: all; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "column-span") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, OrphansDeclaration) {
+    auto sheet = parse_stylesheet("p { orphans: 2; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "orphans") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, WidowsDeclaration) {
+    auto sheet = parse_stylesheet("p { widows: 2; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "widows") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, ColumnRuleStyleDeclaration) {
+    auto sheet = parse_stylesheet(".multi { column-rule-style: dashed; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "column-rule-style") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, ColumnRuleColorDeclaration) {
+    auto sheet = parse_stylesheet(".multi { column-rule-color: red; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "column-rule-color") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, FontStretchDeclaration) {
+    auto sheet = parse_stylesheet("body { font-stretch: condensed; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "font-stretch") { found = true; break; }
+    EXPECT_TRUE(found);
+}
