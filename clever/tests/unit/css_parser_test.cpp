@@ -2241,7 +2241,7 @@ TEST_F(CSSStylesheetTest, TextAlignCenterDeclaration) {
 }
 
 // Stylesheet: line-height value
-TEST_F(CSSStylesheetTest, LineHeightDeclaration) {
+TEST_F(CSSStylesheetTest, LineHeightNumericValue) {
     auto sheet = parse_stylesheet("p { line-height: 1.5; }");
     ASSERT_EQ(sheet.rules.size(), 1u);
     ASSERT_FALSE(sheet.rules[0].declarations.empty());
@@ -2905,6 +2905,114 @@ TEST_F(CSSStylesheetTest, WhiteSpaceDeclaration) {
     bool found = false;
     for (auto& d : sheet.rules[0].declarations) {
         if (d.property == "white-space") { found = true; break; }
+    }
+    EXPECT_TRUE(found);
+}
+
+// ---------------------------------------------------------------------------
+// Cycle 692 — 8 additional CSS parser tests
+// ---------------------------------------------------------------------------
+
+// Selector: li:nth-child(odd) has "odd" argument
+TEST_F(CSSSelectorTest, NthChildOddSelector) {
+    auto list = parse_selector_list("li:nth-child(odd)");
+    ASSERT_EQ(list.selectors.size(), 1u);
+    const auto& compound = list.selectors[0].parts[0].compound;
+    bool found = false;
+    for (const auto& ss : compound.simple_selectors) {
+        if (ss.type == SimpleSelectorType::PseudoClass && ss.value == "nth-child") {
+            found = true;
+            break;
+        }
+    }
+    EXPECT_TRUE(found);
+}
+
+// Selector: li:nth-child(even) is parsed
+TEST_F(CSSSelectorTest, NthChildEvenSelector) {
+    auto list = parse_selector_list("li:nth-child(even)");
+    ASSERT_EQ(list.selectors.size(), 1u);
+    const auto& compound = list.selectors[0].parts[0].compound;
+    bool found = false;
+    for (const auto& ss : compound.simple_selectors) {
+        if (ss.type == SimpleSelectorType::PseudoClass && ss.value == "nth-child") {
+            found = true;
+            break;
+        }
+    }
+    EXPECT_TRUE(found);
+}
+
+// Selector: p:last-of-type is parsed
+TEST_F(CSSSelectorTest, LastOfTypePseudo) {
+    auto list = parse_selector_list("p:last-of-type");
+    ASSERT_EQ(list.selectors.size(), 1u);
+    const auto& compound = list.selectors[0].parts[0].compound;
+    bool found = false;
+    for (const auto& ss : compound.simple_selectors) {
+        if (ss.type == SimpleSelectorType::PseudoClass && ss.value == "last-of-type") {
+            found = true;
+            break;
+        }
+    }
+    EXPECT_TRUE(found);
+}
+
+// Selector: tr:nth-last-child(2) is parsed
+TEST_F(CSSSelectorTest, NthLastChildPseudo) {
+    auto list = parse_selector_list("tr:nth-last-child(2)");
+    ASSERT_EQ(list.selectors.size(), 1u);
+    const auto& compound = list.selectors[0].parts[0].compound;
+    bool found = false;
+    for (const auto& ss : compound.simple_selectors) {
+        if (ss.type == SimpleSelectorType::PseudoClass && ss.value == "nth-last-child") {
+            found = true;
+            break;
+        }
+    }
+    EXPECT_TRUE(found);
+}
+
+// Stylesheet: calc() value in width declaration
+TEST_F(CSSStylesheetTest, CalcDeclaration) {
+    auto sheet = parse_stylesheet("div { width: calc(100% - 20px); }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations) {
+        if (d.property == "width") { found = true; break; }
+    }
+    EXPECT_TRUE(found);
+}
+
+// Stylesheet: CSS custom property (--variable) declaration
+TEST_F(CSSStylesheetTest, CustomPropertyDeclaration) {
+    auto sheet = parse_stylesheet(":root { --primary-color: #0066cc; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations) {
+        if (d.property == "--primary-color") { found = true; break; }
+    }
+    EXPECT_TRUE(found);
+}
+
+// Stylesheet: letter-spacing declaration
+TEST_F(CSSStylesheetTest, LetterSpacingDeclaration) {
+    auto sheet = parse_stylesheet("h1 { letter-spacing: 0.1em; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations) {
+        if (d.property == "letter-spacing") { found = true; break; }
+    }
+    EXPECT_TRUE(found);
+}
+
+// Stylesheet: line-height declaration
+TEST_F(CSSStylesheetTest, LineHeightOnParagraphElement) {
+    auto sheet = parse_stylesheet("p { line-height: 1.6; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations) {
+        if (d.property == "line-height") { found = true; break; }
     }
     EXPECT_TRUE(found);
 }
