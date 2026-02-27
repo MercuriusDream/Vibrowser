@@ -16554,3 +16554,60 @@ TEST(JSEngine, DataViewLittleEndianInt32) {
         "v.getInt32(0,true)");
     EXPECT_EQ(result, "16909060");
 }
+
+// Cycle 864 — BigInt XOR/NOT/right-shift/typeof, Number to BigInt, DataView big-endian variants
+TEST(JSEngine, BigIntBitwiseXor) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("(0b1100n ^ 0b1010n).toString()");
+    EXPECT_EQ(result, "6");
+}
+
+TEST(JSEngine, BigIntRightShift) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("(1024n >> 3n).toString()");
+    EXPECT_EQ(result, "128");
+}
+
+TEST(JSEngine, BigIntTypeofIsBigint) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("typeof 42n");
+    EXPECT_EQ(result, "bigint");
+}
+
+TEST(JSEngine, BigIntZero) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("(0n).toString()");
+    EXPECT_EQ(result, "0");
+}
+
+TEST(JSEngine, BigIntPower) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("(2n ** 32n).toString()");
+    EXPECT_EQ(result, "4294967296");
+}
+
+TEST(JSEngine, BigIntAbsoluteNegative) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("(-42n < 0n).toString()");
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, DataViewGetFloat32) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "const b=new ArrayBuffer(4);"
+        "const v=new DataView(b);"
+        "v.setFloat32(0,1.5,false);"
+        "v.getFloat32(0,false)");
+    EXPECT_EQ(result, "1.5");
+}
+
+TEST(JSEngine, DataViewGetUint16) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "const b=new ArrayBuffer(2);"
+        "const v=new DataView(b);"
+        "v.setUint16(0,12345,false);"
+        "v.getUint16(0,false)");
+    EXPECT_EQ(result, "12345");
+}
