@@ -16908,3 +16908,79 @@ TEST(JSEngine, WeakSetAddTwiceSameObject) {
         "s.has(o)");
     EXPECT_EQ(result, "true");
 }
+
+TEST(JSEngine, WeakMapDeleteReturnsFalse) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "const m=new WeakMap();"
+        "const k={};"
+        "m.delete(k)");
+    EXPECT_EQ(result, "false");
+}
+
+TEST(JSEngine, WeakMapDeleteReturnsTrue) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "const m=new WeakMap();"
+        "const k={};"
+        "m.set(k,1);"
+        "m.delete(k)");
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, WeakSetDeleteReturnsTrue) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "const s=new WeakSet();"
+        "const o={};"
+        "s.add(o);"
+        "s.delete(o)");
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, WeakSetDeleteReturnsFalse) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "const s=new WeakSet();"
+        "const o={};"
+        "s.delete(o)");
+    EXPECT_EQ(result, "false");
+}
+
+TEST(JSEngine, WeakMapHasReturnsFalseOnEmpty) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "const m=new WeakMap();"
+        "const k={};"
+        "m.has(k)");
+    EXPECT_EQ(result, "false");
+}
+
+TEST(JSEngine, WeakMapHasReturnsTrueAfterSet) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "const m=new WeakMap();"
+        "const k={};"
+        "m.set(k,99);"
+        "m.has(k)");
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, WeakRefDerefSameObject) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "const o={val:7};"
+        "const ref=new WeakRef(o);"
+        "ref.deref()===o");
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, WeakMapGetValueAfterSet) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "const m=new WeakMap();"
+        "const k={};"
+        "m.set(k,'hello');"
+        "m.get(k)");
+    EXPECT_EQ(result, "hello");
+}
