@@ -4147,3 +4147,59 @@ TEST(SerializerTest, U64MillionRoundTrip) {
     Deserializer d(s.data());
     EXPECT_EQ(d.read_u64(), 1000000ULL);
 }
+
+TEST(SerializerTest, StringWithSemicolon) {
+    Serializer s;
+    s.write_string("key: value; other: one");
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "key: value; other: one");
+}
+
+TEST(SerializerTest, StringWithParen) {
+    Serializer s;
+    s.write_string("rgb(255, 0, 128)");
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "rgb(255, 0, 128)");
+}
+
+TEST(SerializerTest, StringWithAngleBrackets) {
+    Serializer s;
+    s.write_string("<div class=\"foo\">");
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "<div class=\"foo\">");
+}
+
+TEST(SerializerTest, StringWithExclamation) {
+    Serializer s;
+    s.write_string("Hello, World!");
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "Hello, World!");
+}
+
+TEST(SerializerTest, StringWithCaret) {
+    Serializer s;
+    s.write_string("regex: ^[a-z]+$");
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "regex: ^[a-z]+$");
+}
+
+TEST(SerializerTest, StringWithPipe) {
+    Serializer s;
+    s.write_string("one|two|three");
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "one|two|three");
+}
+
+TEST(SerializerTest, StringWithTilde) {
+    Serializer s;
+    s.write_string("~/.bashrc");
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "~/.bashrc");
+}
+
+TEST(SerializerTest, StringWithAmpersand) {
+    Serializer s;
+    s.write_string("foo=1&bar=2");
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "foo=1&bar=2");
+}
