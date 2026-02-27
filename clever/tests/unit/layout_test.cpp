@@ -7229,3 +7229,43 @@ TEST(LayoutNodeProps, MaskPositionDefaultsPercent) {
     LayoutNode n;
     EXPECT_EQ(n.mask_position, "0% 0%");
 }
+
+TEST(LayoutNodeProps, WhiteSpacePreDefaultsFalse) {
+    LayoutNode n;
+    EXPECT_FALSE(n.white_space_pre);
+}
+
+TEST(LayoutNodeProps, WhiteSpaceNowrapDefaultsFalse) {
+    LayoutNode n;
+    EXPECT_FALSE(n.white_space_nowrap);
+}
+
+TEST(LayoutNodeProps, WhiteSpaceCollapseDefaultsZero) {
+    LayoutNode n;
+    EXPECT_EQ(n.white_space_collapse, 0);
+}
+
+TEST(LayoutNodeProps, AlignSelfDefaultsMinusOne) {
+    LayoutNode n;
+    EXPECT_EQ(n.align_self, -1);
+}
+
+TEST(LayoutNodeProps, ZIndexDefaultsZero) {
+    LayoutNode n;
+    EXPECT_EQ(n.z_index, 0);
+}
+
+TEST(LayoutNodeProps, GridColumnStartDefaultsEmpty) {
+    LayoutNode n;
+    EXPECT_TRUE(n.grid_column_start.empty());
+}
+
+TEST(LayoutNodeProps, GridColumnEndDefaultsEmpty) {
+    LayoutNode n;
+    EXPECT_TRUE(n.grid_column_end.empty());
+}
+
+TEST(LayoutNodeProps, GridRowStartDefaultsEmpty) {
+    LayoutNode n;
+    EXPECT_TRUE(n.grid_row_start.empty());
+}
