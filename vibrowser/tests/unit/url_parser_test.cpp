@@ -11384,3 +11384,71 @@ TEST(UrlParserTest, DotDotSegmentsCollapseToRootV99) {
     EXPECT_EQ(result->host, "example.com");
     EXPECT_EQ(result->path, "/d");
 }
+
+// =============================================================================
+// V100 Tests
+// =============================================================================
+
+TEST(UrlParserTest, HttpDefaultPort80OmittedV100) {
+    auto result = clever::url::parse("http://example.com:80/index.html");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->port, std::nullopt);
+    EXPECT_EQ(result->path, "/index.html");
+}
+
+TEST(UrlParserTest, HttpsDefaultPort443OmittedV100) {
+    auto result = clever::url::parse("https://secure.example.org:443/login?redirect=/home");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "secure.example.org");
+    EXPECT_EQ(result->port, std::nullopt);
+    EXPECT_EQ(result->path, "/login");
+    EXPECT_EQ(result->query, "redirect=/home");
+}
+
+TEST(UrlParserTest, NonStandardPortOnHttpPreservedV100) {
+    auto result = clever::url::parse("http://dev.local:3000/api/v2/users");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "dev.local");
+    ASSERT_TRUE(result->port.has_value());
+    EXPECT_EQ(result->port.value(), 3000);
+    EXPECT_EQ(result->path, "/api/v2/users");
+}
+
+TEST(UrlParserTest, DoubleEncodesPercentSequencesInPathV100) {
+    auto result = clever::url::parse("https://example.com/file%20name.txt");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->path, "/file%2520name.txt");
+}
+
+TEST(UrlParserTest, InvalidSchemeMissingColonReturnsNulloptV100) {
+    auto result = clever::url::parse("notaurl");
+    EXPECT_FALSE(result.has_value());
+}
+
+TEST(UrlParserTest, EmptyStringReturnsNulloptV100) {
+    auto result = clever::url::parse("");
+    EXPECT_FALSE(result.has_value());
+}
+
+TEST(UrlParserTest, SerializeRoundTripWithQueryAndFragmentV100) {
+    auto result = clever::url::parse("https://shop.example.com/products?category=books&sort=price#reviews");
+    ASSERT_TRUE(result.has_value());
+    std::string s = result->serialize();
+    EXPECT_NE(s.find("shop.example.com"), std::string::npos);
+    EXPECT_NE(s.find("/products"), std::string::npos);
+    EXPECT_NE(s.find("category=books"), std::string::npos);
+    EXPECT_NE(s.find("sort=price"), std::string::npos);
+    EXPECT_NE(s.find("#reviews"), std::string::npos);
+}
+
+TEST(UrlParserTest, PathWithMultipleSlashesAndDotSegmentsV100) {
+    auto result = clever::url::parse("https://example.com/a/b/c/../../d/./e");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/a/d/e");
+}

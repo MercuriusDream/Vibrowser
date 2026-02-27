@@ -16960,3 +16960,156 @@ TEST(HttpClientTest, CookieJarClearThenReAddWorksV99) {
     EXPECT_TRUE(cookies.find("session=old") == std::string::npos);
     EXPECT_TRUE(cookies.find("pref=dark") == std::string::npos);
 }
+
+// ===========================================================================
+// V100 Tests
+// ===========================================================================
+
+// 1. Request serialize POST with Content-Length matching body size
+TEST(HttpClientTest, SerializePostBodyContentLengthMatchesSizeV100) {
+    Request req;
+    req.method = Method::POST;
+    req.host = "api.example.com";
+    req.port = 443;
+    req.path = "/submit";
+    req.use_tls = true;
+    std::string body_str = "username=alice&password=secret";
+    req.body.assign(body_str.begin(), body_str.end());
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    // Content-Length should match body size exactly
+    std::string expected_cl = "Content-Length: " + std::to_string(body_str.size()) + "\r\n";
+    EXPECT_TRUE(result.find(expected_cl) != std::string::npos);
+    EXPECT_TRUE(result.find("POST /submit HTTP/1.1\r\n") != std::string::npos);
+    // Port 443 HTTPS default should be omitted from Host
+    EXPECT_TRUE(result.find("Host: api.example.com\r\n") != std::string::npos);
+    EXPECT_TRUE(result.find(":443") == std::string::npos);
+    // Body should appear at the end after double CRLF
+    EXPECT_TRUE(result.find("username=alice&password=secret") != std::string::npos);
+}
+
+// 2. ParseUrl extracts fragment-free path from HTTP URL with default port
+TEST(HttpClientTest, ParseUrlHttpDefaultPortSetsFieldsV100) {
+    Request req;
+    req.url = "http://www.example.org/index.html";
+    req.parse_url();
+
+    EXPECT_EQ(req.host, "www.example.org");
+    EXPECT_EQ(req.port, 80);
+    EXPECT_EQ(req.path, "/index.html");
+    EXPECT_FALSE(req.use_tls);
+    EXPECT_TRUE(req.query.empty());
+}
+
+// 3. Response::parse handles 403 Forbidden with body and custom header
+TEST(HttpClientTest, ResponseParse403ForbiddenWithBodyV100) {
+    std::string raw =
+        "HTTP/1.1 403 Forbidden\r\n"
+        "Content-Type: text/plain\r\n"
+        "Content-Length: 13\r\n"
+        "X-Reason: blocked\r\n"
+        "\r\n"
+        "Access denied";
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 403);
+    EXPECT_EQ(resp->status_text, "Forbidden");
+    EXPECT_EQ(resp->body_as_string(), "Access denied");
+    EXPECT_TRUE(resp->headers.has("content-type"));
+    EXPECT_EQ(resp->headers.get("content-type").value(), "text/plain");
+    EXPECT_EQ(resp->headers.get("x-reason").value(), "blocked");
+}
+
+// 4. HeaderMap: get_all returns single element after set (not append)
+TEST(HttpClientTest, HeaderMapGetAllReturnsSingleAfterSetV100) {
+    HeaderMap headers;
+    headers.set("Authorization", "Bearer tok123");
+
+    auto all = headers.get_all("authorization");
+    EXPECT_EQ(all.size(), 1u);
+    EXPECT_EQ(all[0], "Bearer tok123");
+
+    // Overwrite with set again — still single
+    headers.set("Authorization", "Bearer tok456");
+    auto all2 = headers.get_all("authorization");
+    EXPECT_EQ(all2.size(), 1u);
+    EXPECT_EQ(all2[0], "Bearer tok456");
+}
+
+// 5. CookieJar: cookies scoped to subdomain not returned for parent domain
+TEST(HttpClientTest, CookieJarSubdomainNotReturnedForParentV100) {
+    CookieJar jar;
+    jar.set_from_header("token=sub123; Path=/", "sub.example.com");
+
+    // Requesting from parent domain should NOT get subdomain cookie
+    std::string parent_cookies = jar.get_cookie_header("example.com", "/", false);
+    EXPECT_TRUE(parent_cookies.find("token=sub123") == std::string::npos);
+
+    // But the subdomain itself should get it
+    std::string sub_cookies = jar.get_cookie_header("sub.example.com", "/", false);
+    EXPECT_TRUE(sub_cookies.find("token=sub123") != std::string::npos);
+}
+
+// 6. Request serialize HEAD with query string, custom headers lowercase
+TEST(HttpClientTest, SerializeHeadWithQueryAndCustomHeadersV100) {
+    Request req;
+    req.method = Method::HEAD;
+    req.host = "cdn.example.net";
+    req.port = 8080;
+    req.path = "/assets/main.css";
+    req.query = "v=2.1.0";
+    req.headers.set("X-Request-Id", "abc-def-123");
+    req.headers.set("Accept-Encoding", "gzip");
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    // HEAD request line with query
+    EXPECT_TRUE(result.find("HEAD /assets/main.css?v=2.1.0 HTTP/1.1\r\n") != std::string::npos);
+    // Non-standard port included in Host
+    EXPECT_TRUE(result.find("Host: cdn.example.net:8080\r\n") != std::string::npos);
+    // Custom headers should be lowercase
+    EXPECT_TRUE(result.find("x-request-id: abc-def-123\r\n") != std::string::npos);
+    EXPECT_TRUE(result.find("accept-encoding: gzip\r\n") != std::string::npos);
+    // HEAD has no body, so no Content-Length (or Content-Length: 0)
+    EXPECT_TRUE(result.find("username") == std::string::npos);
+}
+
+// 7. Response::parse handles 200 with chunked-style body (Content-Length based)
+TEST(HttpClientTest, ResponseParse200LargeBodyV100) {
+    std::string body_content(512, 'X');
+    std::string raw =
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Type: application/octet-stream\r\n"
+        "Content-Length: " + std::to_string(body_content.size()) + "\r\n"
+        "\r\n" + body_content;
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 200);
+    EXPECT_EQ(resp->body_as_string().size(), 512u);
+    EXPECT_EQ(resp->body_as_string(), body_content);
+    EXPECT_EQ(resp->headers.get("content-type").value(), "application/octet-stream");
+}
+
+// 8. ParseUrl with HTTPS, query string, and non-standard port
+TEST(HttpClientTest, ParseUrlHttpsQueryNonStandardPortV100) {
+    Request req;
+    req.url = "https://api.example.io:9443/v2/search?q=test%20query&limit=50";
+    req.parse_url();
+
+    EXPECT_EQ(req.host, "api.example.io");
+    EXPECT_EQ(req.port, 9443);
+    EXPECT_EQ(req.path, "/v2/search");
+    EXPECT_TRUE(req.use_tls);
+    // Query string should be preserved (may be percent-encoded)
+    EXPECT_FALSE(req.query.empty());
+    EXPECT_TRUE(req.query.find("limit=50") != std::string::npos);
+}

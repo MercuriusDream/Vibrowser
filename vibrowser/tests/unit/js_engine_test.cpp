@@ -27610,3 +27610,177 @@ TEST(JsEngineTest, RegExpExecAndGroupsV99) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "2025-12-31|2025|12|31|hello,world,foo|true|false");
 }
+
+// ============================================================================
+// V100 Tests
+// ============================================================================
+
+TEST(JsEngineTest, GeneratorFibonacciSequenceV100) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        function* fib() {
+            var a = 0, b = 1;
+            while (true) {
+                yield a;
+                var tmp = a;
+                a = b;
+                b = tmp + b;
+            }
+        }
+        var gen = fib();
+        var nums = [];
+        for (var i = 0; i < 10; i++) {
+            nums.push(gen.next().value);
+        }
+        nums.join(",");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "0,1,1,2,3,5,8,13,21,34");
+}
+
+TEST(JsEngineTest, ProxyTrapGetSetV100) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var log = [];
+        var target = { x: 10 };
+        var handler = {
+            get: function(obj, prop) {
+                log.push("get:" + prop);
+                return obj[prop];
+            },
+            set: function(obj, prop, value) {
+                log.push("set:" + prop + "=" + value);
+                obj[prop] = value;
+                return true;
+            }
+        };
+        var p = new Proxy(target, handler);
+        var v = p.x;
+        p.y = 42;
+        var v2 = p.y;
+        log.join("|") + ";" + v + ";" + v2;
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "get:x|set:y=42|get:y;10;42");
+}
+
+TEST(JsEngineTest, WeakRefAndFinalizationBasicsV100) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var obj = { name: "test" };
+        var wr = new WeakRef(obj);
+        var derefed = wr.deref();
+        var sameName = derefed.name;
+        var isObj = typeof derefed === "object";
+        sameName + "|" + isObj;
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "test|true");
+}
+
+TEST(JsEngineTest, SymbolIteratorCustomIterableV100) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var range = {
+            from: 1,
+            to: 5,
+            [Symbol.iterator]: function() {
+                var current = this.from;
+                var last = this.to;
+                return {
+                    next: function() {
+                        if (current <= last) {
+                            return { done: false, value: current++ };
+                        } else {
+                            return { done: true };
+                        }
+                    }
+                };
+            }
+        };
+        var collected = [];
+        for (var val of range) {
+            collected.push(val);
+        }
+        collected.join(",");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1,2,3,4,5");
+}
+
+TEST(JsEngineTest, MapAndSetOperationsV100) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var m = new Map();
+        m.set("a", 1);
+        m.set("b", 2);
+        m.set("c", 3);
+        m.delete("b");
+        var keys = [];
+        var vals = [];
+        m.forEach(function(v, k) { keys.push(k); vals.push(v); });
+        var s = new Set([10, 20, 30, 20, 10]);
+        var sArr = [];
+        s.forEach(function(v) { sArr.push(v); });
+        var hasC = m.has("c");
+        var hasB = m.has("b");
+        var mSize = m.size;
+        var sSize = s.size;
+        keys.join(",") + "|" + vals.join(",") + "|" + hasC + "|" + hasB + "|" + mSize + "|" + sSize + "|" + sArr.join(",");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "a,c|1,3|true|false|2|3|10,20,30");
+}
+
+TEST(JsEngineTest, TypedArraySortAndReduceV100) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var arr = new Int32Array([5, -3, 8, 0, -1, 7]);
+        arr.sort();
+        var sorted = Array.from(arr).join(",");
+        var sum = arr.reduce(function(acc, v) { return acc + v; }, 0);
+        var f64 = new Float64Array([1.5, 2.5, 3.0]);
+        var product = f64.reduce(function(acc, v) { return acc * v; }, 1);
+        var u8 = new Uint8Array([255, 128, 0]);
+        var mapped = u8.map(function(v) { return 255 - v; });
+        var inverted = Array.from(mapped).join(",");
+        sorted + "|" + sum + "|" + product + "|" + inverted;
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "-3,-1,0,5,7,8|16|11.25|0,127,255");
+}
+
+TEST(JsEngineTest, DestructuringSpreadRestTemplateV100) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var arr = [1, 2, 3, 4, 5];
+        var first = arr[0], rest = arr.slice(1);
+        var obj = { name: "Alice", age: 30, city: "NYC" };
+        var name = obj.name, remaining = {};
+        Object.keys(obj).forEach(function(k) { if (k !== "name") remaining[k] = obj[k]; });
+        var merged = Object.assign({}, { a: 1, b: 2 }, { b: 3, c: 4 });
+        var tag = "Result: " + first + " | rest=[" + rest.join(",") + "] | name=" + name + " | merged=" + JSON.stringify(merged);
+        tag;
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "Result: 1 | rest=[2,3,4,5] | name=Alice | merged={\"a\":1,\"b\":3,\"c\":4}");
+}
+
+TEST(JsEngineTest, ReflectOwnKeysAndDefinePropertyV100) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var obj = {};
+        Reflect.defineProperty(obj, "x", { value: 42, writable: false, enumerable: true, configurable: false });
+        Reflect.defineProperty(obj, "y", { value: 99, writable: true, enumerable: true, configurable: true });
+        var keys = Reflect.ownKeys(obj).join(",");
+        var getX = Reflect.get(obj, "x");
+        var setOk = Reflect.set(obj, "y", 200);
+        var getY = Reflect.get(obj, "y");
+        var setFail = Reflect.set(obj, "x", 100);
+        var getXAfter = Reflect.get(obj, "x");
+        var hasProp = Reflect.has(obj, "x");
+        keys + "|" + getX + "|" + setOk + "|" + getY + "|" + setFail + "|" + getXAfter + "|" + hasProp;
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "x,y|42|true|200|false|42|true");
+}

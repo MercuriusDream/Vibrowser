@@ -15712,3 +15712,133 @@ TEST(DomTest, SetAttributeOverwritesExistingValueV99) {
     EXPECT_EQ(el.get_attribute("src").value(), "new.png");
     EXPECT_EQ(el.attributes().size(), 1u);
 }
+
+// ---------------------------------------------------------------------------
+// V100 Tests
+// ---------------------------------------------------------------------------
+
+TEST(DomTest, ElementNodeTypeAndTagNameV100) {
+    Element el("section");
+    EXPECT_EQ(el.node_type(), NodeType::Element);
+    EXPECT_EQ(el.tag_name(), "section");
+    EXPECT_EQ(el.child_count(), 0u);
+    EXPECT_EQ(el.first_child(), nullptr);
+    EXPECT_EQ(el.last_child(), nullptr);
+    EXPECT_EQ(el.parent(), nullptr);
+}
+
+TEST(DomTest, SetAndRemoveMultipleAttributesV100) {
+    Element el("input");
+    el.set_attribute("type", "text");
+    el.set_attribute("name", "username");
+    el.set_attribute("placeholder", "Enter name");
+    EXPECT_EQ(el.attributes().size(), 3u);
+    EXPECT_TRUE(el.has_attribute("type"));
+    EXPECT_TRUE(el.has_attribute("name"));
+    EXPECT_TRUE(el.has_attribute("placeholder"));
+
+    el.remove_attribute("name");
+    EXPECT_EQ(el.attributes().size(), 2u);
+    EXPECT_FALSE(el.has_attribute("name"));
+    EXPECT_EQ(el.get_attribute("type").value(), "text");
+    EXPECT_EQ(el.get_attribute("placeholder").value(), "Enter name");
+
+    el.remove_attribute("type");
+    el.remove_attribute("placeholder");
+    EXPECT_EQ(el.attributes().size(), 0u);
+}
+
+TEST(DomTest, AppendMultipleChildrenAndTraverseV100) {
+    Element parent("ul");
+    auto li1 = std::make_unique<Element>("li");
+    auto li2 = std::make_unique<Element>("li");
+    auto li3 = std::make_unique<Element>("li");
+    auto* rawLi1 = li1.get();
+    auto* rawLi2 = li2.get();
+    auto* rawLi3 = li3.get();
+
+    parent.append_child(std::move(li1));
+    parent.append_child(std::move(li2));
+    parent.append_child(std::move(li3));
+
+    EXPECT_EQ(parent.child_count(), 3u);
+    EXPECT_EQ(parent.first_child(), rawLi1);
+    EXPECT_EQ(parent.last_child(), rawLi3);
+    EXPECT_EQ(rawLi1->next_sibling(), rawLi2);
+    EXPECT_EQ(rawLi2->next_sibling(), rawLi3);
+    EXPECT_EQ(rawLi3->next_sibling(), nullptr);
+}
+
+TEST(DomTest, InsertBeforeMiddleChildV100) {
+    Element parent("div");
+    auto a = std::make_unique<Element>("a");
+    auto c = std::make_unique<Element>("c");
+    auto* rawA = a.get();
+    auto* rawC = c.get();
+    parent.append_child(std::move(a));
+    parent.append_child(std::move(c));
+
+    auto b = std::make_unique<Element>("b");
+    auto* rawB = b.get();
+    parent.insert_before(std::move(b), rawC);
+
+    EXPECT_EQ(parent.child_count(), 3u);
+    EXPECT_EQ(parent.first_child(), rawA);
+    EXPECT_EQ(rawA->next_sibling(), rawB);
+    EXPECT_EQ(rawB->next_sibling(), rawC);
+    EXPECT_EQ(parent.last_child(), rawC);
+}
+
+TEST(DomTest, TextNodeCreationAndContentV100) {
+    Text txt("Hello, world!");
+    EXPECT_EQ(txt.node_type(), NodeType::Text);
+    EXPECT_EQ(txt.text_content(), "Hello, world!");
+    EXPECT_EQ(txt.parent(), nullptr);
+    EXPECT_EQ(txt.next_sibling(), nullptr);
+}
+
+TEST(DomTest, CommentNodeDataAndNodeTypeV100) {
+    Comment cmt("This is a comment");
+    EXPECT_EQ(cmt.node_type(), NodeType::Comment);
+    EXPECT_EQ(cmt.data(), "This is a comment");
+}
+
+TEST(DomTest, ClassListAddRemoveContainsToggleV100) {
+    Element el("div");
+    el.class_list().add("active");
+    el.class_list().add("visible");
+    EXPECT_TRUE(el.class_list().contains("active"));
+    EXPECT_TRUE(el.class_list().contains("visible"));
+    EXPECT_FALSE(el.class_list().contains("hidden"));
+
+    el.class_list().toggle("active");
+    EXPECT_FALSE(el.class_list().contains("active"));
+
+    el.class_list().toggle("active");
+    EXPECT_TRUE(el.class_list().contains("active"));
+
+    el.class_list().remove("visible");
+    EXPECT_FALSE(el.class_list().contains("visible"));
+    EXPECT_TRUE(el.class_list().contains("active"));
+}
+
+TEST(DomTest, RemoveChildFromMiddleUpdatesLinksV100) {
+    Element parent("div");
+    auto a = std::make_unique<Element>("span");
+    auto b = std::make_unique<Element>("span");
+    auto c = std::make_unique<Element>("span");
+    auto* rawA = a.get();
+    auto* rawB = b.get();
+    auto* rawC = c.get();
+    parent.append_child(std::move(a));
+    parent.append_child(std::move(b));
+    parent.append_child(std::move(c));
+
+    EXPECT_EQ(parent.child_count(), 3u);
+    parent.remove_child(*rawB);
+
+    EXPECT_EQ(parent.child_count(), 2u);
+    EXPECT_EQ(parent.first_child(), rawA);
+    EXPECT_EQ(parent.last_child(), rawC);
+    EXPECT_EQ(rawA->next_sibling(), rawC);
+}

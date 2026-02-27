@@ -16045,3 +16045,154 @@ TEST(HtmlParserTest, ArticleWithHeaderFooterAndSectionsV99) {
     ASSERT_NE(small, nullptr);
     EXPECT_EQ(small->text_content(), "Copyright 2026");
 }
+
+// ============================================================================
+// V100 Tests
+// ============================================================================
+
+TEST(HtmlParserTest, NestedListsWithMixedContentV100) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<ul><li>Item 1</li><li><ol><li>Sub A</li><li>Sub B</li></ol></li><li>Item 3</li></ul>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* ul = doc->find_element("ul");
+    ASSERT_NE(ul, nullptr);
+    auto lis = ul->find_all_elements("li");
+    // The top-level ul has 3 li children, but find_all_elements is recursive
+    // so it finds all 5 li elements (3 in ul + 2 in ol)
+    EXPECT_EQ(lis.size(), 5u);
+    EXPECT_EQ(lis[0]->text_content(), "Item 1");
+    auto* ol = ul->find_element("ol");
+    ASSERT_NE(ol, nullptr);
+    auto sub_lis = ol->find_all_elements("li");
+    ASSERT_EQ(sub_lis.size(), 2u);
+    EXPECT_EQ(sub_lis[0]->text_content(), "Sub A");
+    EXPECT_EQ(sub_lis[1]->text_content(), "Sub B");
+}
+
+TEST(HtmlParserTest, TableStructureWithRowsAndCellsV100) {
+    auto doc = clever::html::parse(
+        "<html><body><table>"
+        "<tr><th>Name</th><th>Age</th></tr>"
+        "<tr><td>Alice</td><td>30</td></tr>"
+        "<tr><td>Bob</td><td>25</td></tr>"
+        "</table></body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* table = doc->find_element("table");
+    ASSERT_NE(table, nullptr);
+    auto rows = table->find_all_elements("tr");
+    ASSERT_EQ(rows.size(), 3u);
+    auto headers = rows[0]->find_all_elements("th");
+    ASSERT_EQ(headers.size(), 2u);
+    EXPECT_EQ(headers[0]->text_content(), "Name");
+    EXPECT_EQ(headers[1]->text_content(), "Age");
+    auto cells = rows[1]->find_all_elements("td");
+    ASSERT_EQ(cells.size(), 2u);
+    EXPECT_EQ(cells[0]->text_content(), "Alice");
+    EXPECT_EQ(cells[1]->text_content(), "30");
+}
+
+TEST(HtmlParserTest, MultipleAttributesOnSingleElementV100) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<input type=\"email\" name=\"user_email\" placeholder=\"you@example.com\" required=\"\" disabled=\"\"/>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* input = doc->find_element("input");
+    ASSERT_NE(input, nullptr);
+    EXPECT_EQ(get_attr_v63(input, "type"), "email");
+    EXPECT_EQ(get_attr_v63(input, "name"), "user_email");
+    EXPECT_EQ(get_attr_v63(input, "placeholder"), "you@example.com");
+    EXPECT_EQ(get_attr_v63(input, "required"), "");
+    EXPECT_EQ(get_attr_v63(input, "disabled"), "");
+    EXPECT_GE(input->attributes.size(), 5u);
+}
+
+TEST(HtmlParserTest, DeeplyNestedDivStructureV100) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<div><div><div><div><div><span>Deep</span></div></div></div></div></div>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* span = doc->find_element("span");
+    ASSERT_NE(span, nullptr);
+    EXPECT_EQ(span->text_content(), "Deep");
+    // Verify the nesting depth by walking up through divs
+    auto divs = doc->find_all_elements("div");
+    EXPECT_EQ(divs.size(), 5u);
+}
+
+TEST(HtmlParserTest, EmptyElementsAndSiblingTextNodesV100) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<p>Before</p><br/><hr/><p>After</p>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto ps = doc->find_all_elements("p");
+    ASSERT_EQ(ps.size(), 2u);
+    EXPECT_EQ(ps[0]->text_content(), "Before");
+    EXPECT_EQ(ps[1]->text_content(), "After");
+    auto* br = doc->find_element("br");
+    EXPECT_NE(br, nullptr);
+    auto* hr = doc->find_element("hr");
+    EXPECT_NE(hr, nullptr);
+}
+
+TEST(HtmlParserTest, DefinitionListDlDtDdV100) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<dl>"
+        "<dt>HTML</dt><dd>HyperText Markup Language</dd>"
+        "<dt>CSS</dt><dd>Cascading Style Sheets</dd>"
+        "</dl>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* dl = doc->find_element("dl");
+    ASSERT_NE(dl, nullptr);
+    auto dts = dl->find_all_elements("dt");
+    ASSERT_EQ(dts.size(), 2u);
+    EXPECT_EQ(dts[0]->text_content(), "HTML");
+    EXPECT_EQ(dts[1]->text_content(), "CSS");
+    auto dds = dl->find_all_elements("dd");
+    ASSERT_EQ(dds.size(), 2u);
+    EXPECT_EQ(dds[0]->text_content(), "HyperText Markup Language");
+    EXPECT_EQ(dds[1]->text_content(), "Cascading Style Sheets");
+}
+
+TEST(HtmlParserTest, AnchorTagsWithHrefAndTargetAttributesV100) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<a href=\"https://example.com\" target=\"_blank\" rel=\"noopener\">Example</a>"
+        "<a href=\"/about\" class=\"nav-link\">About</a>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto anchors = doc->find_all_elements("a");
+    ASSERT_EQ(anchors.size(), 2u);
+    EXPECT_EQ(get_attr_v63(anchors[0], "href"), "https://example.com");
+    EXPECT_EQ(get_attr_v63(anchors[0], "target"), "_blank");
+    EXPECT_EQ(get_attr_v63(anchors[0], "rel"), "noopener");
+    EXPECT_EQ(anchors[0]->text_content(), "Example");
+    EXPECT_EQ(get_attr_v63(anchors[1], "href"), "/about");
+    EXPECT_EQ(get_attr_v63(anchors[1], "class"), "nav-link");
+    EXPECT_EQ(anchors[1]->text_content(), "About");
+}
+
+TEST(HtmlParserTest, DataAttributesOnElementV100) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<div data-id=\"42\" data-role=\"container\" data-active=\"true\">"
+        "<span data-tooltip=\"Hello world\">Hover me</span>"
+        "</div>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* div = doc->find_element("div");
+    ASSERT_NE(div, nullptr);
+    EXPECT_EQ(get_attr_v63(div, "data-id"), "42");
+    EXPECT_EQ(get_attr_v63(div, "data-role"), "container");
+    EXPECT_EQ(get_attr_v63(div, "data-active"), "true");
+    auto* span = doc->find_element("span");
+    ASSERT_NE(span, nullptr);
+    EXPECT_EQ(get_attr_v63(span, "data-tooltip"), "Hello world");
+    EXPECT_EQ(span->text_content(), "Hover me");
+}
