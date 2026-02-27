@@ -3471,3 +3471,83 @@ TEST(TreeBuilder, MathElementIsParsed) {
     ASSERT_NE(math, nullptr);
     EXPECT_EQ(math->tag_name, "math");
 }
+
+TEST(TreeBuilder, ScriptDeferAttr) {
+    auto doc = clever::html::parse(R"(<script defer src="app.js"></script>)");
+    auto* script = doc->find_element("script");
+    ASSERT_NE(script, nullptr);
+    bool found = false;
+    for (const auto& attr : script->attributes)
+        if (attr.name == "defer") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, ScriptAsyncAttr) {
+    auto doc = clever::html::parse(R"(<script async src="analytics.js"></script>)");
+    auto* script = doc->find_element("script");
+    ASSERT_NE(script, nullptr);
+    bool found = false;
+    for (const auto& attr : script->attributes)
+        if (attr.name == "async") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, LinkCanonical) {
+    auto doc = clever::html::parse(R"(<head><link rel="canonical" href="https://example.com/page"></head>)");
+    auto* link = doc->find_element("link");
+    ASSERT_NE(link, nullptr);
+    bool found = false;
+    for (const auto& attr : link->attributes)
+        if (attr.name == "rel" && attr.value == "canonical") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, LinkPreload) {
+    auto doc = clever::html::parse(R"(<head><link rel="preload" href="font.woff2" as="font"></head>)");
+    auto* link = doc->find_element("link");
+    ASSERT_NE(link, nullptr);
+    bool found = false;
+    for (const auto& attr : link->attributes)
+        if (attr.name == "as" && attr.value == "font") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, LinkDnsPrefetch) {
+    auto doc = clever::html::parse(R"(<head><link rel="dns-prefetch" href="//cdn.example.com"></head>)");
+    auto* link = doc->find_element("link");
+    ASSERT_NE(link, nullptr);
+    bool found = false;
+    for (const auto& attr : link->attributes)
+        if (attr.name == "rel" && attr.value == "dns-prefetch") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, MetaViewport) {
+    auto doc = clever::html::parse(R"(<head><meta name="viewport" content="width=device-width,initial-scale=1"></head>)");
+    auto* meta = doc->find_element("meta");
+    ASSERT_NE(meta, nullptr);
+    bool found = false;
+    for (const auto& attr : meta->attributes)
+        if (attr.name == "name" && attr.value == "viewport") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, MetaDescription) {
+    auto doc = clever::html::parse(R"(<head><meta name="description" content="Page description here"></head>)");
+    auto* meta = doc->find_element("meta");
+    ASSERT_NE(meta, nullptr);
+    bool found = false;
+    for (const auto& attr : meta->attributes)
+        if (attr.name == "content" && attr.value == "Page description here") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, MetaOgTitle) {
+    auto doc = clever::html::parse(R"(<head><meta property="og:title" content="My Page Title"></head>)");
+    auto* meta = doc->find_element("meta");
+    ASSERT_NE(meta, nullptr);
+    bool found = false;
+    for (const auto& attr : meta->attributes)
+        if (attr.name == "property" && attr.value == "og:title") found = true;
+    EXPECT_TRUE(found);
+}
