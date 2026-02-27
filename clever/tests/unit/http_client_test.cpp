@@ -5108,3 +5108,39 @@ TEST(RequestTest, RequestDefaultPathIsSlash) {
     Request req;
     EXPECT_EQ(req.path, "/");
 }
+
+TEST(RequestTest, RequestDefaultHostIsEmpty) {
+    Request req;
+    EXPECT_TRUE(req.host.empty());
+}
+
+TEST(RequestTest, RequestDefaultUrlIsEmpty) {
+    Request req;
+    EXPECT_TRUE(req.url.empty());
+}
+
+TEST(RequestTest, RequestDefaultUseTLSFalse) {
+    Request req;
+    EXPECT_FALSE(req.use_tls);
+}
+
+TEST(RequestTest, RequestBodyDefaultEmpty) {
+    Request req;
+    EXPECT_TRUE(req.body.empty());
+}
+
+TEST(RequestTest, StringToMethodGetParsed) {
+    EXPECT_EQ(string_to_method("GET"), Method::GET);
+}
+
+TEST(RequestTest, StringToMethodPostParsed) {
+    EXPECT_EQ(string_to_method("POST"), Method::POST);
+}
+
+TEST(RequestTest, StringToMethodPutParsed) {
+    EXPECT_EQ(string_to_method("PUT"), Method::PUT);
+}
+
+TEST(RequestTest, StringToMethodHeadParsed) {
+    EXPECT_EQ(string_to_method("HEAD"), Method::HEAD);
+}
