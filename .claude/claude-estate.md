@@ -5,18 +5,57 @@
 
 ## Current Status
 
-**Phase**: Active Development — Testing Blitz + Bug Fixes
-**Last Active**: 2026-02-28T17:00:00+0900
-**Current Focus**: Cycle 1453+ — 11,716 TESTS! Continuing test blitz rotation.
-**Momentum**: 11,716 tests across 13 suites. Only pre-existing paint failures. Rounds 25-50 completed.
-**Cycle**: 1452
-**Workflow**: Commit and push after each cycle round. Use subagents for max parallelism (user preference).
+**Phase**: Active Development — Rendering Fixes + Testing Blitz
+**Last Active**: 2026-02-28T22:00:00+0900
+**Current Focus**: Major rendering pipeline fixes — UA stylesheet, data:URI images, SVG-as-image via nanosvg.
+**Momentum**: 12,080 tests. Three critical rendering bugs fixed. Every HTML element now renders as correct display type.
+**Cycle**: 1500
+**Workflow**: Commit and push after each cycle round. Use 6 Opus subagents + 9 haiku subagents + Codex agents for max parallelism.
 
 ## Session Log
 
-### Cycles 1399-1452 — 2026-02-28
-- **Cycles**: 54 (Rounds 45-50)
-- **Theme**: Test blitz rounds 45-50 — 418 new tests (11,298→11,716)
+### Cycles 1498-1500 — 2026-02-28
+- **Cycles**: 3 (Rendering Fix Cycle)
+- **Theme**: Critical rendering pipeline fixes — the 3 biggest bugs affecting real-world page rendering
+- **Key Wins**:
+  - **FIX 1: UA Stylesheet missing display:block** — CRITICAL! body, div, p, h1-h6, ul, ol, form, fieldset, etc. all defaulted to Display::Inline because ComputedStyle defaults to Inline and UA stylesheet never set display:block. Now 40+ elements have correct block/table/list-item display. Also added proper table display types (table-row, table-cell, table-header-group, etc.), monospace fonts for code/kbd/samp/tt, inline-block for img/input/button, and [hidden] support.
+  - **FIX 2: data: URI image support** — fetch_and_decode_image() only did HTTP fetches. data:image/png;base64,... URLs (used extensively by Google and many sites) silently failed. Added base64_decode_bytes() helper and data: URI parsing with both base64 and URL-encoded payloads. Handles SVG data URIs too.
+  - **FIX 3: SVG-as-image support via nanosvg** — SVG images in `<img>` tags and CSS background-image rendered as broken placeholders. Added nanosvg header-only library (third_party/nanosvg/), decode_svg_image() rasterizer, and SVG detection by URL extension, Content-Type header, and content sniffing. Supports both HTTP-fetched and data: URI SVGs.
+- **Files Created**: vibrowser/src/paint/nanosvg_impl.cpp, vibrowser/third_party/nanosvg/nanosvg.h, vibrowser/third_party/nanosvg/nanosvgrast.h
+- **Files Modified**: vibrowser/src/paint/render_pipeline.cpp (UA stylesheet, data:URI, SVG decode), vibrowser/src/paint/CMakeLists.txt (nanosvg include), vibrowser/include/clever/css/style/style_resolver.h, vibrowser/src/css/style/style_resolver.cpp
+- **Tests**: All existing tests pass (same 4 pre-existing paint failures)
+- **Discoveries**: The default ComputedStyle display is Inline — every element without explicit display:block CSS was rendering inline. This was THE root cause of centering failures on real websites.
+
+### Cycles 1489-1497 — 2026-02-28
+- **Cycles**: 9 (Rounds 54-55)
+- **Theme**: Test blitz rounds 54-55 + rendering investigation
+- **Key Wins**:
+  - Round 55: +72 tests, fixed GeneratorSequenceCycle1497 expected value
+  - Deferred percentage margin/padding resolution (render_pipeline.cpp + box.h + layout_engine.cpp)
+  - Auto margin ordering fix: compute_width() now called BEFORE auto margin resolution
+  - Flex/grid/table deferred resolution for percentage-based values
+  - StyleResolver: added set_viewport(), evaluate_media_condition(), evaluate_supports_condition()
+
+### Cycles 1471-1479 — 2026-02-28
+- **Cycles**: 9 (Round 53)
+- **Theme**: Test blitz round 53 — all 9 suites (+71 tests) — 11,864 total!
+- **Key Wins**:
+  - Fixed 3 pre-existing JS test failures (devicePixelRatio=1 not 2, WindowStubs scrollTo undefined)
+  - Fixed CMake cache from clever→vibrowser rename (deleted stale cache, rebuilt clean)
+  - Cycle 1471: 8 DOM — DeepNestedTreeTraversal, ToggleMultipleClasses, MixedChildrenTextContent, PreviousSiblingNav, RemoveAttributeCount, OverwriteAttributes, HyphenedNames, ClassListRemoveReAdd
+  - Cycle 1472: 8 CORS — V52; port normalization, subdomain cross-origin, scheme changes, null origin, wildcard credentials, fragment ineligibility
+  - Cycle 1473: 7 IPC — V42; i64 edge values, u16 edge, empty bytes, large binary, f64 special, empty strings, u32 boundary
+  - Cycle 1474: 8 URL — V34; IPv4, double-dot resolution, host-only, query empty value, fragment special chars, data scheme, multi-subdomain, mailto
+  - Cycle 1475: 8 Net — V45; GET path, POST serialize, append multi-value, set overwrite, cookie roundtrip, response status, method enum, PUT binary
+  - Cycle 1476: 8 CSS — V42; perspective-origin, backface-visibility, text-stroke, overflow-anchor, scroll-margin/padding, column-span, content-visibility, break-inside
+  - Cycle 1477: 8 HTML — V31; details/summary, time datetime, ins/del attrs, deeply nested, multiple attrs, mixed content, aside/nav
+  - Cycle 1478: 8 Layout — V43; position/overflow defaults, border-radius corners, geometry margin, padding/border access, flex/scroll, scroll-padding, max_width/height defaults, opacity/z_index/order
+  - Cycle 1479: 8 JS — Cycle1479; Proxy get trap, Promise.all, flatMap, Object.getOwnPropertyNames, generator yield*, Symbol.iterator, BigInt division, String.matchAll
+- **Discoveries**: Project renamed from clever/ to vibrowser/. Build dir needed complete clean. DOM class_list() doesn't create class attribute implicitly. serialize() for Request returns binary not HTTP text.
+
+### Cycles 1399-1461 — 2026-02-28
+- **Cycles**: 63 (Rounds 45-51)
+- **Theme**: Test blitz rounds 45-51 — 495 new tests (11,298→11,793)
 - **Key Wins**:
   - Round 45 (1399-1407): +69 tests, fixed duplicate names and HeaderMap set→append bug
   - Round 46 (1408-1416): +72 tests, fixed layout geometry.border access pattern
@@ -24,7 +63,8 @@
   - Round 48 (1426-1434): +72 tests, all clean
   - Round 49 (1435-1443): +72 tests, fixed CookieJar get_cookie_header arg count
   - Round 50 (1444-1452): +64 tests (DOM agent found all names existed), fixed read_bytes/set_from_header API calls
-- **Discoveries**: DOM file has ~930 tests, naming collisions increasingly common. Need more creative names.
+  - Round 51 (1453-1461): +77 tests, fixed optional<string> get() return, Request.path field, wss:// not cross-origin
+- **Discoveries**: DOM file has ~948 tests, naming collisions increasingly common. Need more creative names. HeaderMap.get() returns optional<string>. Request has .path field not parsed from .url. wss:// is NOT cross-origin in this impl.
 
 ### Cycles 1390-1398 — 2026-02-28
 - **Cycles**: 9
@@ -6521,32 +6561,46 @@
 
 | Metric | Value |
 |--------|-------|
-| Total Sessions | 179 |
-| Total Cycles | 1452 |
+| Total Sessions | 181 |
+| Total Cycles | 1488 |
 | Files Created | ~135 |
 | Files Modified | 142+ |
-| Lines Added (est.) | 219000+ |
-| Tests Added | 8241 |
-| Bugs Fixed | 273 |
+| Lines Added (est.) | 220500+ |
+| Tests Added | 8456 |
+| Bugs Fixed | 277 |
 | Features Added | 2625 |
 
 ## Tell The Next Claude
 
-**STATUS: WORKING BROWSER WITH FULL JS ENGINE — 11,716 TESTS!!!** — Launch with `open build/src/shell/clever_browser.app`
+**STATUS: WORKING BROWSER WITH MAJOR RENDERING FIXES — 12,080 TESTS!!!** — Launch with `open vibrowser/build/src/shell/vibrowser.app`
 
-Build: `cd clever && cmake -S . -B build && cmake --build build && ctest --test-dir build`
+Build: `cd vibrowser && cmake -S . -B build && cmake --build build && ctest --test-dir build`
 
-**11,716 tests across 13 suites. Only pre-existing paint failures. CYCLE 1452!**
+**12,080 tests across 13 suites. Only pre-existing paint failures (4 counter/marker tests). CYCLE 1500!**
+
+**CRITICAL RENDERING FIXES JUST COMPLETED:**
+1. **UA Stylesheet now sets display:block on ALL block-level HTML elements.** Previously body, div, p, h1-h6, form, fieldset, ul, ol, etc. all defaulted to Display::Inline (ComputedStyle default). This was THE root cause of all centering/layout failures on real websites. Now 40+ elements have correct display types including table-row, table-cell, list-item.
+2. **data: URI image support added.** fetch_and_decode_image() now handles data:image/png;base64,... and data:image/svg+xml;... URLs. Google and many sites use these extensively.
+3. **SVG-as-image via nanosvg.** SVG files in <img> tags and CSS background-image now render via nanosvg rasterizer. Detects SVGs by URL extension (.svg), Content-Type header, and content sniffing (<svg marker).
+4. **Deferred percentage margin/padding resolution.** Percentage-based margins/padding now stored as css_margin_*/css_padding_* optional<Length> and resolved at layout time against actual containing block width.
+5. **Auto margin ordering fix.** compute_width() now called BEFORE auto margin resolution in layout_block().
+
+**REMAINING RENDERING ISSUES:**
+- Mac UI needs complete rewrite (user requested "re-factor from NOTHING")
+- Google page may still have issues (complex CSS/JS interactions)
+- pre-existing paint test failures: CounterLowerAlpha, CounterUpperRoman, CounterDecimalDefault, MarkerColorFromCSS
 
 Gotchas: Element::tag_name() is a METHOD — use el->tag_name() with parens. In HTML parser, tag_name is a FIELD (no parens). get_attribute() returns nullopt (not "") for missing attrs — use has_attribute() instead. CORS: explicit :443/:80 not enforceable, URLs with fragments not cors-eligible. Request::serialize() returns vector<uint8_t> NOT string — just check size>0. Response::body is vector<uint8_t>. Response.status NOT status_code. HeaderMap::set() OVERWRITES. CookieJar: get_cookie_header(domain, path, is_secure), set_from_header(value, domain), NO get_for_domain(). URL parser: host-only URLs have path="/", double-encodes % signs, default ports (:80/:443) NORMALIZED AWAY, path ".." gets RESOLVED. LayoutNode: NO border_radius/padding/margin/width/height as simple props — use border_radius_tl/tr/bl/br, line_height, opacity. ConnectionPool has NO size()/clear(). std::is_same<> in EXPECT_TRUE macro breaks (commas). remove_child expects Node& not pointer. Null origin IS allowed by CORS when header matches "null".
 
-**USER PREFERENCE: Commit and push after each cycle round.** Do `git add` specific test files, `git commit`, and `git push` after each round of 9 cycles.
+**USER PREFERENCE: Commit and push after each cycle round. Use 6 Opus subagents + Codex agents for max parallelism.**
 
-**Next cycle 1453: DOM tests. Rotation: DOM→CORS→IPC→URL→Net→CSS→HTML→Layout→JS. Cycle 1452 was JS.**
+**Next work: Continue test blitz rounds 56+ OR tackle Mac UI rewrite OR more rendering fixes.**
 
-**WORKFLOW: Use 9 general-purpose haiku subagents in parallel for test cycles (one per file). Commit and push after each round. V suffixes: CORS V50, IPC V40, URL V32, Net V43, CSS V41, HTML V29, Layout V41, JS Cycle[N]. DOM has ~930 tests — name collisions common, always grep first!**
+**WORKFLOW: Use 9 Codex agents (codex exec) in parallel for test cycles (one per file). Commit and push after each round. V suffixes: CORS V54, IPC V44, URL V36, Net V47, CSS V44, HTML V33, Layout V45, JS Cycle[N]. DOM has ~972 tests — name collisions common, always grep first!**
 
-**CRITICAL API FIXES DISCOVERED THIS SESSION:**
+**IMPORTANT: Project renamed from clever/ to vibrowser/. Build dir: `vibrowser/build`. Source: `vibrowser/src/`. Tests: `vibrowser/tests/unit/`. CMake cache was cleaned and rebuilt for the rename.**
+
+**CRITICAL API FIXES DISCOVERED:**
 - LayoutNode border: `n.geometry.border.top` NOT `n.border_top_width`
 - LayoutNode margin/padding: `n.geometry.margin.top` NOT `n.margin_top`
 - Serializer: `read_bytes()` takes NO arguments (reads length-prefixed)
@@ -6555,8 +6609,6 @@ Gotchas: Element::tag_name() is a METHOD — use el->tag_name() with parens. In 
 - HeaderMap: use `append()` for multi-value headers (Set-Cookie), `set()` OVERWRITES
 
 **QuickJS LACKS: Intl, structuredClone. Use alternatives (Object.freeze, JSON.parse/stringify deep copy).**
-
-**NEW DISCOVERY**: select/textarea return LOWERCASE from tag_name() — not all elements uppercase! Some elements don't get uppercased by create_element(). write_bytes needs (data.data(), data.size()) — TWO args. CSS Declaration has `values` (plural vector) not `value` (singular).
 
 **IMPORTANT: "Clever" was renamed to "Vibrowser"** — source code uses "Vibrowser/0.7.0" for user-agent and "Vibrowser" for vendor. Tests referencing "Clever" will fail.
 

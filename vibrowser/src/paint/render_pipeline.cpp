@@ -19,6 +19,8 @@
 #include <clever/js/js_window.h>
 #include <clever/url/percent_encoding.h>
 #include <stb_image.h>
+#include <nanosvg.h>
+#include <nanosvgrast.h>
 #ifdef __APPLE__
 #include <CoreFoundation/CoreFoundation.h>
 #include <CoreGraphics/CoreGraphics.h>
@@ -5526,6 +5528,85 @@ static void image_cache_store(const std::string& url, const DecodedImage& image)
     image_cache_evict();
 }
 
+// Rasterize SVG data to RGBA pixels using nanosvg
+static DecodedImage decode_svg_image(const char* svg_data, size_t length, float target_width = 0) {
+    DecodedImage result;
+    // nsvgParse modifies the input string, so we need a mutable copy
+    std::string svg_copy(svg_data, length);
+    NSVGimage* svg = nsvgParse(svg_copy.data(), "px", 96.0f);
+    if (!svg) return result;
+
+    if (svg->width <= 0 || svg->height <= 0) {
+        nsvgDelete(svg);
+        return result;
+    }
+
+    // Determine rasterization scale — default to 1x, or scale to target_width
+    float scale = 1.0f;
+    if (target_width > 0 && svg->width > 0) {
+        scale = target_width / svg->width;
+    }
+    // Clamp to reasonable sizes
+    int w = static_cast<int>(svg->width * scale);
+    int h = static_cast<int>(svg->height * scale);
+    if (w <= 0 || h <= 0 || w > 4096 || h > 4096) {
+        // Fall back to original size or clamp
+        if (w > 4096 || h > 4096) {
+            float max_dim = std::max(svg->width, svg->height);
+            scale = 4096.0f / max_dim;
+            w = static_cast<int>(svg->width * scale);
+            h = static_cast<int>(svg->height * scale);
+        }
+        if (w <= 0 || h <= 0) {
+            nsvgDelete(svg);
+            return result;
+        }
+    }
+
+    NSVGrasterizer* rast = nsvgCreateRasterizer();
+    if (!rast) {
+        nsvgDelete(svg);
+        return result;
+    }
+
+    auto pixels = std::make_shared<std::vector<uint8_t>>(static_cast<size_t>(w) * h * 4, 0);
+    nsvgRasterize(rast, svg, 0, 0, scale, pixels->data(), w, h, w * 4);
+
+    nsvgDeleteRasterizer(rast);
+    nsvgDelete(svg);
+
+    result.width = w;
+    result.height = h;
+    result.pixels = pixels;
+    return result;
+}
+
+// Base64 decode helper for data: URI image support
+static bool base64_decode_bytes(const std::string& input, std::vector<uint8_t>& output) {
+    output.clear();
+    output.reserve(input.size() * 3 / 4);
+    unsigned int val = 0;
+    int valb = -8;
+    for (char c : input) {
+        if (c == '=') break;
+        if (c == ' ' || c == '\n' || c == '\r' || c == '\t') continue;
+        int d = -1;
+        if (c >= 'A' && c <= 'Z') d = c - 'A';
+        else if (c >= 'a' && c <= 'z') d = c - 'a' + 26;
+        else if (c >= '0' && c <= '9') d = c - '0' + 52;
+        else if (c == '+') d = 62;
+        else if (c == '/') d = 63;
+        if (d < 0) return false;
+        val = (val << 6) + static_cast<unsigned>(d);
+        valb += 6;
+        if (valb >= 0) {
+            output.push_back(static_cast<uint8_t>((val >> valb) & 0xFF));
+            valb -= 8;
+        }
+    }
+    return true;
+}
+
 DecodedImage fetch_and_decode_image(const std::string& url) {
     DecodedImage result;
     if (url.empty()) return result;
@@ -5537,11 +5618,101 @@ DecodedImage fetch_and_decode_image(const std::string& url) {
         return cache_it->second;
     }
 
+    // Handle data: URIs (e.g., data:image/png;base64,iVBOR...)
+    if (url.size() > 5 && to_lower(url.substr(0, 5)) == "data:") {
+        auto comma_pos = url.find(',');
+        if (comma_pos == std::string::npos || comma_pos + 1 >= url.size()) return result;
+
+        std::string metadata = to_lower(url.substr(5, comma_pos - 5));
+        std::string payload = url.substr(comma_pos + 1);
+
+        bool is_base64 = (metadata.find("base64") != std::string::npos);
+        bool is_svg = (metadata.find("image/svg") != std::string::npos);
+
+        // Handle SVG data: URIs
+        if (is_svg) {
+            std::string svg_text;
+            if (is_base64) {
+                std::vector<uint8_t> decoded;
+                if (!base64_decode_bytes(payload, decoded) || decoded.empty()) return result;
+                svg_text.assign(decoded.begin(), decoded.end());
+            } else {
+                svg_text = payload;
+            }
+            result = decode_svg_image(svg_text.c_str(), svg_text.size());
+            if (result.pixels) image_cache_store(url, result);
+            return result;
+        }
+
+        std::vector<uint8_t> raw_bytes;
+        if (is_base64) {
+            if (!base64_decode_bytes(payload, raw_bytes) || raw_bytes.empty()) return result;
+        } else {
+            // URL-encoded data
+            raw_bytes.assign(payload.begin(), payload.end());
+        }
+
+#ifdef __APPLE__
+        result = decode_image_native(raw_bytes.data(), raw_bytes.size());
+        if (result.pixels) {
+            image_cache_store(url, result);
+            return result;
+        }
+#endif
+        int w = 0, h = 0, channels = 0;
+        unsigned char* data = stbi_load_from_memory(
+            raw_bytes.data(), static_cast<int>(raw_bytes.size()),
+            &w, &h, &channels, 4);
+        if (data) {
+            result.width = w;
+            result.height = h;
+            result.pixels = std::make_shared<std::vector<uint8_t>>(data, data + w * h * 4);
+            stbi_image_free(data);
+            image_cache_store(url, result);
+        }
+        return result;
+    }
+
     auto response = fetch_with_redirects(url, "image/*", 10);
     if (!response || response->status >= 400) return result;
 
     const auto& body = response->body;
     if (body.empty()) return result;
+
+    // Check for SVG: by URL extension or by content sniffing (starts with "<svg" or "<?xml")
+    {
+        bool is_svg = false;
+        // Check URL extension
+        std::string url_lower = to_lower(url);
+        auto q_pos = url_lower.find('?');
+        std::string path_part = (q_pos != std::string::npos) ? url_lower.substr(0, q_pos) : url_lower;
+        if (path_part.size() >= 4 && path_part.substr(path_part.size() - 4) == ".svg") {
+            is_svg = true;
+        }
+        // Check content-type header
+        if (!is_svg) {
+            std::string ct = to_lower(response->headers.get("content-type").value_or(""));
+            if (ct.find("image/svg") != std::string::npos) is_svg = true;
+        }
+        // Content sniff: look for SVG markers
+        if (!is_svg && body.size() >= 4) {
+            size_t sniff_len = std::min(body.size(), size_t(256));
+            std::string start(body.begin(), body.begin() + static_cast<ptrdiff_t>(sniff_len));
+            std::string start_lower = to_lower(start);
+            if (start_lower.find("<svg") != std::string::npos ||
+                (start_lower.find("<?xml") != std::string::npos && start_lower.find("<svg") != std::string::npos)) {
+                is_svg = true;
+            }
+        }
+        if (is_svg) {
+            std::string svg_text(body.begin(), body.end());
+            result = decode_svg_image(svg_text.c_str(), svg_text.size());
+            if (result.pixels) {
+                image_cache_store(url, result);
+                return result;
+            }
+        }
+    }
 
 #ifdef __APPLE__
     // Try native macOS decoder first (supports WebP, HEIC, TIFF, ICO, etc.)
@@ -11371,6 +11542,15 @@ RenderResult render_html(const std::string& html, const std::string& base_url,
 
         // User-agent stylesheet
         static const std::string ua_css =
+            // Block-level elements (HTML spec default display values)
+            "html, body, div, p, blockquote, pre, figure, figcaption, "
+            "h1, h2, h3, h4, h5, h6, "
+            "ul, ol, li, dl, dd, dt, "
+            "form, fieldset, legend, details, summary, "
+            "table, thead, tbody, tfoot, caption, "
+            "nav, aside, section, article, main, header, footer, search, menu, "
+            "address, hr, noscript, center, dialog, hgroup "
+            "{ display: block; }"
             "body { margin: 8px; }"
             "h1 { margin-top: 21px; margin-bottom: 21px; }"
             "h2 { margin-top: 19px; margin-bottom: 19px; }"
@@ -11378,9 +11558,9 @@ RenderResult render_html(const std::string& html, const std::string& base_url,
             "h4, h5, h6 { margin-top: 21px; margin-bottom: 21px; }"
             "p { margin-top: 16px; margin-bottom: 16px; }"
             "ul, ol, menu { margin-top: 16px; margin-bottom: 16px; padding-left: 40px; list-style-type: disc; }"
-            "li { margin-bottom: 4px; }"
+            "li { display: list-item; margin-bottom: 4px; }"
             "blockquote { margin: 16px 40px; }"
-            "pre { margin: 16px 0; padding: 8px; background-color: #f5f5f5; }"
+            "pre { margin: 16px 0; padding: 8px; background-color: #f5f5f5; white-space: pre; font-family: monospace; }"
             "hr { margin: 8px 0; }"
             "a { color: #0000ee; text-decoration: underline; }"
             "em, i, cite, dfn, var { font-style: italic; }"
@@ -11388,20 +11568,28 @@ RenderResult render_html(const std::string& html, const std::string& base_url,
             "u, ins { text-decoration: underline; }"
             "s, del { text-decoration: line-through; }"
             "small { font-size: 13px; }"
-            "sub { font-size: 12px; }"
-            "sup { font-size: 12px; }"
+            "sub { font-size: 12px; vertical-align: sub; }"
+            "sup { font-size: 12px; vertical-align: super; }"
             "mark { background-color: #ffff00; color: #000000; }"
             "abbr, acronym { text-decoration: underline; text-decoration-style: dotted; }"
             "address { font-style: italic; }"
             "figcaption { font-size: 14px; color: #666; }"
             "figure { margin: 16px 40px; }"
-            "nav, aside, section, article, main, header, footer, search, menu { display: block; }"
             "fieldset { border: 1px solid #999; padding: 8px; margin: 8px 0; }"
             "legend { font-weight: bold; padding: 0 4px; }"
-            "table { margin: 0; }"
-            "td, th { padding: 4px 8px; }"
-            "thead { font-weight: bold; }"
-            "caption { text-align: center; font-weight: bold; padding: 4px 0; }";
+            "table { display: table; margin: 0; border-collapse: separate; border-spacing: 2px; }"
+            "tr { display: table-row; }"
+            "td, th { display: table-cell; padding: 4px 8px; }"
+            "thead { display: table-header-group; font-weight: bold; }"
+            "tbody { display: table-row-group; }"
+            "tfoot { display: table-footer-group; }"
+            "caption { display: table-caption; text-align: center; font-weight: bold; padding: 4px 0; }"
+            "col { display: table-column; }"
+            "colgroup { display: table-column-group; }"
+            "code, kbd, samp, tt { font-family: monospace; }"
+            "img { display: inline-block; }"
+            "input, button, select, textarea { display: inline-block; }"
+            "hidden, [hidden] { display: none; }";
 
         auto ua_stylesheet = clever::css::parse_stylesheet(ua_css);
 
