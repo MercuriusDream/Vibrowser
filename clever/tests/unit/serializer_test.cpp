@@ -3827,3 +3827,75 @@ TEST(SerializerTest, FiveU16DistinctValues) {
     EXPECT_EQ(d.read_u16(), uint16_t{32767});
     EXPECT_EQ(d.read_u16(), uint16_t{65535});
 }
+
+TEST(SerializerTest, StringWithColon) {
+    Serializer s;
+    s.write_string("http://example.com");
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "http://example.com");
+}
+
+TEST(SerializerTest, StringWithEquals) {
+    Serializer s;
+    s.write_string("key=value");
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "key=value");
+}
+
+TEST(SerializerTest, StringWithBrackets) {
+    Serializer s;
+    s.write_string("[1, 2, 3]");
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "[1, 2, 3]");
+}
+
+TEST(SerializerTest, DoubleU64ThenBool) {
+    Serializer s;
+    s.write_u64(UINT64_MAX);
+    s.write_u64(0ULL);
+    s.write_bool(true);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u64(), UINT64_MAX);
+    EXPECT_EQ(d.read_u64(), 0ULL);
+    EXPECT_EQ(d.read_bool(), true);
+}
+
+TEST(SerializerTest, U8U16U32Sequence) {
+    Serializer s;
+    s.write_u8(255);
+    s.write_u16(65535);
+    s.write_u32(0xFFFFFFFF);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u8(), uint8_t{255});
+    EXPECT_EQ(d.read_u16(), uint16_t{65535});
+    EXPECT_EQ(d.read_u32(), uint32_t{0xFFFFFFFF});
+}
+
+TEST(SerializerTest, U32U16U8Sequence) {
+    Serializer s;
+    s.write_u32(1000000);
+    s.write_u16(1000);
+    s.write_u8(10);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u32(), uint32_t{1000000});
+    EXPECT_EQ(d.read_u16(), uint16_t{1000});
+    EXPECT_EQ(d.read_u8(), uint8_t{10});
+}
+
+TEST(SerializerTest, I32ThenString) {
+    Serializer s;
+    s.write_i32(-1);
+    s.write_string("minus one");
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i32(), -1);
+    EXPECT_EQ(d.read_string(), "minus one");
+}
+
+TEST(SerializerTest, StringThenI32) {
+    Serializer s;
+    s.write_string("answer");
+    s.write_i32(42);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "answer");
+    EXPECT_EQ(d.read_i32(), 42);
+}
