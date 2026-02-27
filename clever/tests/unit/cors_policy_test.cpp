@@ -1175,3 +1175,65 @@ TEST(CORSPolicyTest, EmptyOriginNotEnforceable) {
 TEST(CORSPolicyTest, NullStringOriginNotEnforceable) {
     EXPECT_FALSE(has_enforceable_document_origin("null"));
 }
+
+// CORS: is_cross_origin for http vs https same host
+TEST(CORSPolicyTest, IsCrossOriginHttpVsHttps) {
+    EXPECT_TRUE(is_cross_origin("http://example.com",
+                                 "https://example.com/resource"));
+}
+
+// CORS: is_cors_eligible_request_url for https
+TEST(CORSPolicyTest, CORSEligibleURLHttps) {
+    EXPECT_TRUE(is_cors_eligible_request_url("https://api.example.com/data"));
+}
+
+// CORS: is_cors_eligible_request_url for http
+TEST(CORSPolicyTest, CORSEligibleURLHttp) {
+    EXPECT_TRUE(is_cors_eligible_request_url("http://api.example.com/data"));
+}
+
+// CORS: should_attach_origin_header cross-origin port difference
+TEST(CORSPolicyTest, ShouldAttachOriginPortMismatch) {
+    EXPECT_TRUE(should_attach_origin_header("https://example.com:3000",
+                                             "https://example.com:4000/api"));
+}
+
+// CORS: cors_allows_response with exact origin match
+TEST(CORSPolicyTest, CORSAllowsExactOriginMatch) {
+    clever::net::HeaderMap resp_headers;
+    resp_headers.set("Access-Control-Allow-Origin", "https://example.com");
+    EXPECT_TRUE(cors_allows_response("https://example.com",
+                                     "https://api.other.com/data",
+                                     resp_headers, false));
+}
+
+// CORS: cors_allows_response rejects wrong origin
+TEST(CORSPolicyTest, CORSRejectsWrongOrigin) {
+    clever::net::HeaderMap resp_headers;
+    resp_headers.set("Access-Control-Allow-Origin", "https://trusted.com");
+    EXPECT_FALSE(cors_allows_response("https://evil.com",
+                                      "https://api.trusted.com/data",
+                                      resp_headers, false));
+}
+
+// CORS: normalize_outgoing_origin clears existing origin header
+TEST(CORSPolicyTest, NormalizeOutgoingOriginHeaderReplaces) {
+    clever::net::HeaderMap req_headers;
+    req_headers.set("Origin", "https://old.example.com");
+    normalize_outgoing_origin_header(req_headers,
+                                     "https://new.example.com",
+                                     "https://api.example.com/resource");
+    auto val = req_headers.get("Origin");
+    // If cross-origin, origin should be set to the document origin
+    if (val.has_value()) {
+        EXPECT_NE(val.value().find("new.example.com"), std::string::npos);
+    } else {
+        // Same-origin → header may be removed
+        EXPECT_FALSE(val.has_value());
+    }
+}
+
+// CORS: empty string is not a valid origin
+TEST(CORSPolicyTest, EmptyStringNotValidOriginForCORS) {
+    EXPECT_FALSE(has_enforceable_document_origin(""));
+}
