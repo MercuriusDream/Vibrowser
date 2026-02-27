@@ -15237,3 +15237,51 @@ TEST(JSEngine, InOperatorObjectKey) {
     auto result = engine.evaluate("'x' in {x: 1, y: 2}");
     EXPECT_EQ(result, "true");
 }
+
+TEST(JSEngine, NumberToString) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("(255).toString(16)");
+    EXPECT_EQ(result, "ff");
+}
+
+TEST(JSEngine, NumberToBinary) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("(10).toString(2)");
+    EXPECT_EQ(result, "1010");
+}
+
+TEST(JSEngine, NumberToOctal) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("(8).toString(8)");
+    EXPECT_EQ(result, "10");
+}
+
+TEST(JSEngine, MathMin) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("Math.min(3, 1, 4, 1, 5, 9)");
+    EXPECT_EQ(result, "1");
+}
+
+TEST(JSEngine, MathMax) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("Math.max(3, 1, 4, 1, 5, 9)");
+    EXPECT_EQ(result, "9");
+}
+
+TEST(JSEngine, MathTruncPositive) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("Math.trunc(4.7)");
+    EXPECT_EQ(result, "4");
+}
+
+TEST(JSEngine, MathTruncNegative) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("Math.trunc(-4.7)");
+    EXPECT_EQ(result, "-4");
+}
+
+TEST(JSEngine, MathSignPositive) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("Math.sign(42)");
+    EXPECT_EQ(result, "1");
+}
