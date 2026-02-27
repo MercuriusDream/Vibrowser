@@ -17416,3 +17416,51 @@ TEST(JSEngine, ParseIntEmptyStringIsNaN) {
     auto result = engine.evaluate("isNaN(parseInt(''))");
     EXPECT_EQ(result, "true");
 }
+
+TEST(JSEngine, MathFround) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("Math.fround(1.337) === Math.fround(1.337)");
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, ParseFloatInfinity) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("parseFloat('Infinity')");
+    EXPECT_EQ(result, "Infinity");
+}
+
+TEST(JSEngine, WeakSetDeleteRemoves) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("(function(){ var ws = new WeakSet(); var o = {}; ws.add(o); ws.delete(o); return ws.has(o); })()");
+    EXPECT_EQ(result, "false");
+}
+
+TEST(JSEngine, BigIntBitAnd) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("(7n & 3n).toString()");
+    EXPECT_EQ(result, "3");
+}
+
+TEST(JSEngine, BigIntBitOr) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("(4n | 3n).toString()");
+    EXPECT_EQ(result, "7");
+}
+
+TEST(JSEngine, BigIntShiftLeft) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("(1n << 3n).toString()");
+    EXPECT_EQ(result, "8");
+}
+
+TEST(JSEngine, BigIntNegation) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("(-5n).toString()");
+    EXPECT_EQ(result, "-5");
+}
+
+TEST(JSEngine, BigIntFromString) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("BigInt('123').toString()");
+    EXPECT_EQ(result, "123");
+}
