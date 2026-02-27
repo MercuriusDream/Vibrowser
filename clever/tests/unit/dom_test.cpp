@@ -4917,3 +4917,70 @@ TEST(DomElement, ClassListToggleAdds) {
     div->class_list().toggle("highlight");
     EXPECT_TRUE(div->class_list().contains("highlight"));
 }
+
+TEST(DomNode, NodeAppendChildSetsParent) {
+    Document doc;
+    auto parent = doc.create_element("div");
+    auto child = doc.create_element("span");
+    auto* raw = child.get();
+    parent->append_child(std::move(child));
+    EXPECT_EQ(raw->parent(), parent.get());
+}
+
+TEST(DomElement, ElementGetAttributeNotSet) {
+    Document doc;
+    auto el = doc.create_element("div");
+    EXPECT_FALSE(el->get_attribute("data-x").has_value());
+}
+
+TEST(DomElement, ElementSetAndGetTwo) {
+    Document doc;
+    auto el = doc.create_element("input");
+    el->set_attribute("type", "text");
+    el->set_attribute("name", "username");
+    EXPECT_EQ(el->get_attribute("type"), "text");
+    EXPECT_EQ(el->get_attribute("name"), "username");
+}
+
+TEST(DomElement, ElementClassListLength) {
+    Document doc;
+    auto div = doc.create_element("div");
+    div->class_list().add("a");
+    div->class_list().add("b");
+    div->class_list().add("c");
+    EXPECT_EQ(div->class_list().length(), 3u);
+}
+
+TEST(DomNode, TextNodeParentAfterAppend) {
+    Document doc;
+    auto div = doc.create_element("div");
+    auto text = doc.create_text_node("hello");
+    auto* raw = text.get();
+    div->append_child(std::move(text));
+    EXPECT_EQ(raw->parent(), div.get());
+}
+
+TEST(DomNode, NodeChildCountAfterAppendThree) {
+    Document doc;
+    auto ul = doc.create_element("ul");
+    ul->append_child(doc.create_element("li"));
+    ul->append_child(doc.create_element("li"));
+    ul->append_child(doc.create_element("li"));
+    EXPECT_EQ(ul->child_count(), 3u);
+}
+
+TEST(DomElement, ElementClassListToStringTwo) {
+    Document doc;
+    auto div = doc.create_element("div");
+    div->class_list().add("foo");
+    div->class_list().add("bar");
+    EXPECT_FALSE(div->class_list().to_string().empty());
+}
+
+TEST(DomNode, NodeTextContentRecursive) {
+    Document doc;
+    auto div = doc.create_element("div");
+    div->append_child(doc.create_text_node("Hello "));
+    div->append_child(doc.create_text_node("World"));
+    EXPECT_EQ(div->text_content(), "Hello World");
+}
