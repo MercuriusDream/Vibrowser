@@ -16826,3 +16826,85 @@ TEST(JSEngine, DataViewTwoValuesInBuffer) {
         "v.getUint16(0,false)+v.getUint16(2,false)");
     EXPECT_EQ(result, "700");
 }
+
+// Cycle 894 — WeakMap/WeakSet additional operations
+
+TEST(JSEngine, WeakMapDeleteRemovesEntry) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "const m=new WeakMap();"
+        "const k={};"
+        "m.set(k,42);"
+        "m.delete(k);"
+        "m.has(k)");
+    EXPECT_EQ(result, "false");
+}
+
+TEST(JSEngine, WeakMapGetUndefinedForMissing) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "const m=new WeakMap();"
+        "const k={};"
+        "String(m.get(k))");
+    EXPECT_EQ(result, "undefined");
+}
+
+TEST(JSEngine, WeakMapGetReturnsValue) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "const m=new WeakMap();"
+        "const k={};"
+        "m.set(k,'hello');"
+        "m.get(k)");
+    EXPECT_EQ(result, "hello");
+}
+
+TEST(JSEngine, WeakSetHasFalseAfterDelete) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "const s=new WeakSet();"
+        "const o={};"
+        "s.add(o);"
+        "s.delete(o);"
+        "s.has(o)");
+    EXPECT_EQ(result, "false");
+}
+
+TEST(JSEngine, WeakSetHasTrueAfterAdd) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "const s=new WeakSet();"
+        "const o={};"
+        "s.add(o);"
+        "s.has(o)");
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, WeakMapTwoObjectKeys) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "const m=new WeakMap();"
+        "const k1={}; const k2={};"
+        "m.set(k1,1); m.set(k2,2);"
+        "m.get(k1)+m.get(k2)");
+    EXPECT_EQ(result, "3");
+}
+
+TEST(JSEngine, WeakRefDerefReturnsObjectValue) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "const obj={x:42};"
+        "const ref=new WeakRef(obj);"
+        "ref.deref().x");
+    EXPECT_EQ(result, "42");
+}
+
+TEST(JSEngine, WeakSetAddTwiceSameObject) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "const s=new WeakSet();"
+        "const o={};"
+        "s.add(o); s.add(o);"
+        "s.has(o)");
+    EXPECT_EQ(result, "true");
+}
