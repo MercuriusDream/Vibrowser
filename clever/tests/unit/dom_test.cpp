@@ -4846,3 +4846,74 @@ TEST(DomElement, ElementRemoveAttrReducesCount) {
     el->remove_attribute("href");
     EXPECT_EQ(el->attributes().size(), 1u);
 }
+
+TEST(DomElement, ElementGetAttrReturnsValue) {
+    Document doc;
+    auto el = doc.create_element("a");
+    el->set_attribute("href", "https://example.com");
+    EXPECT_EQ(el->get_attribute("href"), "https://example.com");
+}
+
+TEST(DomElement, ElementTwoAttrsCount) {
+    Document doc;
+    auto el = doc.create_element("img");
+    el->set_attribute("src", "photo.jpg");
+    el->set_attribute("alt", "A photo");
+    EXPECT_EQ(el->attributes().size(), 2u);
+}
+
+TEST(DomNode, NodeNextSiblingSetCorrectly) {
+    Document doc;
+    auto ul = doc.create_element("ul");
+    auto li1 = doc.create_element("li");
+    auto li2 = doc.create_element("li");
+    ul->append_child(std::move(li1));
+    ul->append_child(std::move(li2));
+    auto* first = ul->first_child();
+    ASSERT_NE(first, nullptr);
+    auto* second = first->next_sibling();
+    ASSERT_NE(second, nullptr);
+    EXPECT_EQ(second->node_type(), NodeType::Element);
+}
+
+TEST(DomNode, NodePrevSiblingSetCorrectly) {
+    Document doc;
+    auto div = doc.create_element("div");
+    div->append_child(doc.create_element("p"));
+    div->append_child(doc.create_element("span"));
+    auto* last = div->last_child();
+    ASSERT_NE(last, nullptr);
+    auto* prev = last->previous_sibling();
+    ASSERT_NE(prev, nullptr);
+    auto* pelem = dynamic_cast<Element*>(prev);
+    ASSERT_NE(pelem, nullptr);
+    EXPECT_EQ(pelem->tag_name(), "p");
+}
+
+TEST(DomElement, ClassListEmptyInitially) {
+    Document doc;
+    auto div = doc.create_element("div");
+    EXPECT_EQ(div->class_list().length(), 0u);
+}
+
+TEST(DomElement, ClassListAddSingle) {
+    Document doc;
+    auto div = doc.create_element("div");
+    div->class_list().add("active");
+    EXPECT_TRUE(div->class_list().contains("active"));
+}
+
+TEST(DomElement, ClassListRemoveSingle) {
+    Document doc;
+    auto div = doc.create_element("div");
+    div->class_list().add("active");
+    div->class_list().remove("active");
+    EXPECT_FALSE(div->class_list().contains("active"));
+}
+
+TEST(DomElement, ClassListToggleAdds) {
+    Document doc;
+    auto div = doc.create_element("div");
+    div->class_list().toggle("highlight");
+    EXPECT_TRUE(div->class_list().contains("highlight"));
+}
