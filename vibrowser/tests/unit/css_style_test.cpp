@@ -12806,3 +12806,124 @@ TEST(PropertyCascadeTest, WordSpacingLastDeclarationWinsV64) {
     cascade.apply_declaration(style, make_decl("word-spacing", "7px"), parent);
     EXPECT_FLOAT_EQ(style.word_spacing.to_px(16.0f), 7.0f);
 }
+
+TEST(PropertyCascadeTest, OpacityParsesDecimalFromResolverV65) {
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet("div { opacity: 0.42; }");
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_FLOAT_EQ(style.opacity, 0.42f);
+}
+
+TEST(PropertyCascadeTest, ZIndexLastDeclarationWinsNegativeValueV65) {
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet("div { z-index: 5; z-index: -7; }");
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.z_index, -7);
+}
+
+TEST(PropertyCascadeTest, TextIndentParsesPixelLengthV65) {
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet("p { text-indent: 24px; }");
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "p";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_FLOAT_EQ(style.text_indent.to_px(16.0f), 24.0f);
+}
+
+TEST(PropertyCascadeTest, TextTransformUppercaseParsesV65) {
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet("span { text-transform: uppercase; }");
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "span";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.text_transform, TextTransform::Uppercase);
+}
+
+TEST(PropertyCascadeTest, ListStyleTypeUpperRomanParsesV65) {
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet("li { list-style-type: upper-roman; }");
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "li";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.list_style_type, ListStyleType::UpperRoman);
+}
+
+TEST(PropertyCascadeTest, OutlineWidthIndividualPropertyParsesV65) {
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet("div { outline-width: 3px; }");
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_FLOAT_EQ(style.outline_width.to_px(16.0f), 3.0f);
+}
+
+TEST(PropertyCascadeTest, BoxShadowInsetParsesOffsetBlurSpreadAndColorV65) {
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet("div { box-shadow: inset 2px 4px 6px 8px red; }");
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    ASSERT_EQ(style.box_shadows.size(), 1u);
+    EXPECT_TRUE(style.box_shadows[0].inset);
+    EXPECT_FLOAT_EQ(style.box_shadows[0].offset_x, 2.0f);
+    EXPECT_FLOAT_EQ(style.box_shadows[0].offset_y, 4.0f);
+    EXPECT_FLOAT_EQ(style.box_shadows[0].blur, 6.0f);
+    EXPECT_FLOAT_EQ(style.box_shadows[0].spread, 8.0f);
+    EXPECT_EQ(style.box_shadows[0].color.r, 255);
+    EXPECT_EQ(style.box_shadows[0].color.g, 0);
+    EXPECT_EQ(style.box_shadows[0].color.b, 0);
+    EXPECT_EQ(style.box_shadows[0].color.a, 255);
+}
+
+TEST(PropertyCascadeTest, LetterSpacingParsesPixelValueV65) {
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet("div { letter-spacing: 2px; }");
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_FLOAT_EQ(style.letter_spacing.to_px(16.0f), 2.0f);
+}

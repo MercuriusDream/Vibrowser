@@ -10457,3 +10457,221 @@ TEST(DomNode, NestedElementsPreserveParentChainAndTextV64) {
     EXPECT_EQ(paragraph_ptr->parent(), section_ptr);
     EXPECT_EQ(article->text_content(), "content");
 }
+
+TEST(DomElement, AttributeManipulationSetOverwriteRemoveAndIdV65) {
+    Element input("input");
+    EXPECT_TRUE(input.attributes().empty());
+
+    input.set_attribute("type", "text");
+    input.set_attribute("placeholder", "Search");
+    input.set_attribute("id", "query");
+
+    EXPECT_EQ(input.id(), "query");
+    EXPECT_TRUE(input.has_attribute("type"));
+    EXPECT_EQ(input.get_attribute("placeholder"), "Search");
+
+    input.set_attribute("type", "password");
+    EXPECT_EQ(input.get_attribute("type"), "password");
+
+    input.remove_attribute("placeholder");
+    EXPECT_FALSE(input.has_attribute("placeholder"));
+    EXPECT_FALSE(input.get_attribute("placeholder").has_value());
+    EXPECT_EQ(input.attributes().size(), 2u);
+}
+
+TEST(DomNode, NodeRemovalDetachesAndReturnsOwnedSubtreeV65) {
+    Element root("div");
+    auto section = std::make_unique<Element>("section");
+    auto* section_ptr = section.get();
+    auto text = std::make_unique<Text>("payload");
+    section->append_child(std::move(text));
+
+    root.append_child(std::move(section));
+    ASSERT_EQ(root.child_count(), 1u);
+    ASSERT_EQ(root.first_child(), section_ptr);
+
+    auto removed = root.remove_child(*section_ptr);
+    ASSERT_NE(removed, nullptr);
+    EXPECT_EQ(removed.get(), section_ptr);
+    EXPECT_EQ(removed->parent(), nullptr);
+    EXPECT_EQ(root.child_count(), 0u);
+    EXPECT_EQ(root.first_child(), nullptr);
+    EXPECT_EQ(root.last_child(), nullptr);
+    EXPECT_EQ(removed->text_content(), "payload");
+}
+
+TEST(DomNode, CloneLikeCopiesStructureWithoutSharingNodesV65) {
+    auto source = std::make_unique<Element>("svg", "http://www.w3.org/2000/svg");
+    source->set_attribute("id", "icon");
+
+    auto group = std::make_unique<Element>("g");
+    auto* source_group_ptr = group.get();
+    group->set_attribute("class", "accent");
+    group->append_child(std::make_unique<Text>("hello"));
+    source->append_child(std::move(group));
+
+    auto clone_like = [&](const Node* node, const auto& self) -> std::unique_ptr<Node> {
+        switch (node->node_type()) {
+        case NodeType::Element: {
+            auto* source_element = static_cast<const Element*>(node);
+            auto clone_element = std::make_unique<Element>(source_element->tag_name(),
+                                                           source_element->namespace_uri());
+            for (const auto& attr : source_element->attributes()) {
+                clone_element->set_attribute(attr.name, attr.value);
+            }
+            for (Node* child = source_element->first_child(); child != nullptr;
+                 child = child->next_sibling()) {
+                clone_element->append_child(self(child, self));
+            }
+            return clone_element;
+        }
+        case NodeType::Text:
+            return std::make_unique<Text>(static_cast<const Text*>(node)->data());
+        case NodeType::Comment:
+            return std::make_unique<Comment>(static_cast<const Comment*>(node)->data());
+        case NodeType::Document: {
+            auto clone_document = std::make_unique<Document>();
+            for (Node* child = node->first_child(); child != nullptr;
+                 child = child->next_sibling()) {
+                clone_document->append_child(self(child, self));
+            }
+            return clone_document;
+        }
+        default:
+            return nullptr;
+        }
+    };
+
+    auto cloned_node = clone_like(source.get(), clone_like);
+    auto* cloned_root = static_cast<Element*>(cloned_node.get());
+    ASSERT_NE(cloned_root, nullptr);
+    ASSERT_NE(cloned_root, source.get());
+    EXPECT_EQ(cloned_root->tag_name(), "svg");
+    EXPECT_EQ(cloned_root->namespace_uri(), "http://www.w3.org/2000/svg");
+    EXPECT_EQ(cloned_root->get_attribute("id"), "icon");
+    EXPECT_EQ(cloned_root->text_content(), "hello");
+
+    auto* cloned_group = static_cast<Element*>(cloned_root->first_child());
+    ASSERT_NE(cloned_group, nullptr);
+    EXPECT_NE(cloned_group, source_group_ptr);
+    EXPECT_EQ(cloned_group->get_attribute("class"), "accent");
+
+    source->set_attribute("id", "mutated");
+    source_group_ptr->set_attribute("class", "changed");
+    EXPECT_EQ(cloned_root->get_attribute("id"), "icon");
+    EXPECT_EQ(cloned_group->get_attribute("class"), "accent");
+}
+
+TEST(DomNode, SiblingTraversalReflectsTreeAfterMiddleRemovalV65) {
+    Element list("ul");
+    auto first = std::make_unique<Element>("li");
+    auto* first_ptr = first.get();
+    auto second = std::make_unique<Element>("li");
+    auto* second_ptr = second.get();
+    auto third = std::make_unique<Element>("li");
+    auto* third_ptr = third.get();
+    auto fourth = std::make_unique<Element>("li");
+    auto* fourth_ptr = fourth.get();
+
+    list.append_child(std::move(first));
+    list.append_child(std::move(second));
+    list.append_child(std::move(third));
+    list.append_child(std::move(fourth));
+
+    auto removed = list.remove_child(*second_ptr);
+    ASSERT_NE(removed, nullptr);
+    EXPECT_EQ(removed.get(), second_ptr);
+    EXPECT_EQ(removed->parent(), nullptr);
+
+    EXPECT_EQ(first_ptr->previous_sibling(), nullptr);
+    EXPECT_EQ(first_ptr->next_sibling(), third_ptr);
+    EXPECT_EQ(third_ptr->previous_sibling(), first_ptr);
+    EXPECT_EQ(third_ptr->next_sibling(), fourth_ptr);
+    EXPECT_EQ(fourth_ptr->previous_sibling(), third_ptr);
+    EXPECT_EQ(fourth_ptr->next_sibling(), nullptr);
+}
+
+TEST(DomElement, InnerHtmlLikeReplaceChildrenByRemoveAndAppendV65) {
+    Element container("div");
+    container.append_child(std::make_unique<Text>("old"));
+    container.append_child(std::make_unique<Comment>("ignored"));
+    container.append_child(std::make_unique<Text>(" value"));
+    ASSERT_EQ(container.child_count(), 3u);
+    EXPECT_EQ(container.text_content(), "old value");
+
+    while (container.first_child() != nullptr) {
+        auto* node = container.first_child();
+        auto removed = container.remove_child(*node);
+        EXPECT_EQ(removed->parent(), nullptr);
+    }
+    EXPECT_EQ(container.child_count(), 0u);
+    EXPECT_EQ(container.text_content(), "");
+
+    auto paragraph = std::make_unique<Element>("p");
+    auto* paragraph_ptr = paragraph.get();
+    paragraph->append_child(std::make_unique<Text>("new"));
+    container.append_child(std::move(paragraph));
+    container.append_child(std::make_unique<Text>(" content"));
+
+    EXPECT_EQ(container.first_child(), paragraph_ptr);
+    EXPECT_EQ(container.last_child()->node_type(), NodeType::Text);
+    EXPECT_EQ(container.child_count(), 2u);
+    EXPECT_EQ(container.text_content(), "new content");
+}
+
+TEST(DomElement, NamespaceHandlingKeepsUrisIndependentV65) {
+    Element html_div("div");
+    Element svg_rect("rect", "http://www.w3.org/2000/svg");
+
+    html_div.set_attribute("id", "main");
+    svg_rect.set_attribute("id", "shape");
+
+    EXPECT_EQ(html_div.namespace_uri(), "");
+    EXPECT_EQ(svg_rect.namespace_uri(), "http://www.w3.org/2000/svg");
+    EXPECT_EQ(html_div.tag_name(), "div");
+    EXPECT_EQ(svg_rect.tag_name(), "rect");
+    EXPECT_EQ(html_div.get_attribute("id"), "main");
+    EXPECT_EQ(svg_rect.get_attribute("id"), "shape");
+}
+
+TEST(DomNode, NodeTypeChecksForElementTextCommentAndDocumentV65) {
+    Element element("article");
+    Text text("hello");
+    Comment comment("meta");
+    Document document;
+
+    EXPECT_EQ(element.node_type(), NodeType::Element);
+    EXPECT_EQ(text.node_type(), NodeType::Text);
+    EXPECT_EQ(comment.node_type(), NodeType::Comment);
+    EXPECT_EQ(document.node_type(), NodeType::Document);
+    EXPECT_EQ(text.data(), "hello");
+    EXPECT_EQ(comment.data(), "meta");
+}
+
+TEST(DomNode, ChildCountingUsesChildrenVectorAcrossMutationsV65) {
+    Element root("div");
+    auto text = std::make_unique<Text>("A");
+    auto* text_ptr = text.get();
+    auto middle = std::make_unique<Element>("span");
+    auto* middle_ptr = middle.get();
+    auto tail_comment = std::make_unique<Comment>("tail");
+    auto* tail_comment_ptr = tail_comment.get();
+
+    root.append_child(std::move(text));
+    root.append_child(std::move(middle));
+    root.append_child(std::move(tail_comment));
+    ASSERT_EQ(root.child_count(), 3u);
+    EXPECT_EQ(root.first_child(), text_ptr);
+    EXPECT_EQ(root.last_child(), tail_comment_ptr);
+
+    auto removed_comment = root.remove_child(*tail_comment_ptr);
+    ASSERT_NE(removed_comment, nullptr);
+    EXPECT_EQ(root.child_count(), 2u);
+    EXPECT_EQ(root.last_child(), middle_ptr);
+
+    auto removed_text = root.remove_child(*text_ptr);
+    ASSERT_NE(removed_text, nullptr);
+    EXPECT_EQ(root.child_count(), 1u);
+    EXPECT_EQ(root.first_child(), middle_ptr);
+    EXPECT_EQ(root.last_child(), middle_ptr);
+}

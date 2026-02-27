@@ -10523,3 +10523,131 @@ TEST(HtmlParserTest, TextContentIncludesTextAroundCommentsV64) {
     EXPECT_NE(text.find("gamma"), std::string::npos);
     EXPECT_NE(text.find("delta"), std::string::npos);
 }
+
+TEST(HtmlParserTest, NestedListsUlOlLiStructureV65) {
+    auto doc = clever::html::parse("<body><ul><li>Item A<ol><li>Sub 1</li><li>Sub 2</li></ol></li><li>Item B</li></ul></body>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* ul = doc->find_element("ul");
+    auto* ol = doc->find_element("ol");
+    ASSERT_NE(ul, nullptr);
+    ASSERT_NE(ol, nullptr);
+
+    auto lis = doc->find_all_elements("li");
+    ASSERT_EQ(lis.size(), 4u);
+    EXPECT_EQ(ol->parent->tag_name, "li");
+    EXPECT_EQ(lis[0]->text_content(), "Item ASub 1Sub 2");
+    EXPECT_EQ(lis[1]->text_content(), "Sub 1");
+    EXPECT_EQ(lis[2]->text_content(), "Sub 2");
+    EXPECT_EQ(lis[3]->text_content(), "Item B");
+}
+
+TEST(HtmlParserTest, TableWithTheadTbodyRowsAndCellsV65) {
+    auto doc = clever::html::parse(
+        "<table><thead><tr><td>H1</td><td>H2</td></tr></thead>"
+        "<tbody><tr><td>A1</td><td>A2</td></tr><tr><td>B1</td><td>B2</td></tr></tbody></table>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* table = doc->find_element("table");
+    auto* thead = doc->find_element("thead");
+    auto* tbody = doc->find_element("tbody");
+    ASSERT_NE(table, nullptr);
+    ASSERT_NE(thead, nullptr);
+    ASSERT_NE(tbody, nullptr);
+
+    auto rows = doc->find_all_elements("tr");
+    auto cells = doc->find_all_elements("td");
+    EXPECT_EQ(rows.size(), 3u);
+    EXPECT_EQ(cells.size(), 6u);
+    EXPECT_EQ(cells[0]->text_content(), "H1");
+    EXPECT_EQ(cells[1]->text_content(), "H2");
+    EXPECT_EQ(cells[4]->text_content(), "B1");
+    EXPECT_EQ(cells[5]->text_content(), "B2");
+}
+
+TEST(HtmlParserTest, FormElementsInputTypesAndSelectOptionsV65) {
+    auto doc = clever::html::parse(
+        "<form action='/submit' method='post'>"
+        "<input type='text' name='username'>"
+        "<input type='password' name='password'>"
+        "<select name='role'><option value='admin'>Admin</option><option value='user' selected>User</option></select>"
+        "</form>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* form = doc->find_element("form");
+    ASSERT_NE(form, nullptr);
+
+    auto inputs = doc->find_all_elements("input");
+    ASSERT_EQ(inputs.size(), 2u);
+    EXPECT_EQ(get_attr_v63(inputs[0], "type"), "text");
+    EXPECT_EQ(get_attr_v63(inputs[1], "type"), "password");
+
+    auto selects = doc->find_all_elements("select");
+    auto options = doc->find_all_elements("option");
+    ASSERT_EQ(selects.size(), 1u);
+    ASSERT_EQ(options.size(), 2u);
+    EXPECT_EQ(get_attr_v63(selects[0], "name"), "role");
+    EXPECT_EQ(get_attr_v63(options[0], "value"), "admin");
+    EXPECT_EQ(get_attr_v63(options[1], "value"), "user");
+    EXPECT_EQ(get_attr_v63(options[1], "selected"), "");
+}
+
+TEST(HtmlParserTest, ScriptTagRawContentPreservedV65) {
+    auto doc = clever::html::parse("<body><script>if (a < b && c > d) { x = \"ok\"; }</script></body>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* script = doc->find_element("script");
+    ASSERT_NE(script, nullptr);
+    ASSERT_FALSE(script->children.empty());
+
+    const std::string text = script->text_content();
+    EXPECT_NE(text.find("a < b"), std::string::npos);
+    EXPECT_NE(text.find("c > d"), std::string::npos);
+    EXPECT_NE(text.find("x = \"ok\""), std::string::npos);
+}
+
+TEST(HtmlParserTest, StyleTagRawCssContentPreservedV65) {
+    auto doc = clever::html::parse("<head><style>body > .item { color: red; content: \"<ok>\"; }</style></head>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* style = doc->find_element("style");
+    ASSERT_NE(style, nullptr);
+    ASSERT_FALSE(style->children.empty());
+
+    const std::string css = style->text_content();
+    EXPECT_NE(css.find("body > .item"), std::string::npos);
+    EXPECT_NE(css.find("color: red"), std::string::npos);
+    EXPECT_NE(css.find("<ok>"), std::string::npos);
+}
+
+TEST(HtmlParserTest, MetaCharsetAttributeParsedV65) {
+    auto doc = clever::html::parse("<head><meta charset='utf-8'><meta name='viewport' content='width=device-width'></head>");
+    ASSERT_NE(doc, nullptr);
+
+    auto metas = doc->find_all_elements("meta");
+    ASSERT_EQ(metas.size(), 2u);
+    EXPECT_EQ(get_attr_v63(metas[0], "charset"), "utf-8");
+    EXPECT_EQ(get_attr_v63(metas[1], "name"), "viewport");
+    EXPECT_EQ(get_attr_v63(metas[1], "content"), "width=device-width");
+}
+
+TEST(HtmlParserTest, LinkRelStylesheetAttributesParsedV65) {
+    auto doc = clever::html::parse("<head><link rel='stylesheet' href='/assets/app.css'></head>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* link = doc->find_element("link");
+    ASSERT_NE(link, nullptr);
+    EXPECT_TRUE(link->children.empty());
+    EXPECT_EQ(get_attr_v63(link, "rel"), "stylesheet");
+    EXPECT_EQ(get_attr_v63(link, "href"), "/assets/app.css");
+}
+
+TEST(HtmlParserTest, EmptyBodyHasNoChildrenOrTextV65) {
+    auto doc = clever::html::parse("<html><head><title>t</title></head><body></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* body = doc->find_element("body");
+    ASSERT_NE(body, nullptr);
+    EXPECT_TRUE(body->children.empty());
+    EXPECT_TRUE(body->text_content().empty());
+}

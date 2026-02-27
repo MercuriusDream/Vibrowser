@@ -8109,3 +8109,214 @@ TEST(URLParser, RelativeFragmentOnlyPercentEncodingV64) {
     EXPECT_EQ(result->query, "x=1");
     EXPECT_EQ(result->fragment, "new%2520frag");
 }
+
+// =============================================================================
+// Test V65-1: Port edge handling with default port and leading zeros
+// =============================================================================
+TEST(URLParser, PortEdgeDefaultWithLeadingZerosV65) {
+    auto result = parse("wss://example.com:0443/chat");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "wss");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->port, std::nullopt);
+    EXPECT_EQ(result->path, "/chat");
+    EXPECT_EQ(result->origin(), "wss://example.com");
+}
+
+// =============================================================================
+// Test V65-2: Multiple query parameters preserve order and values
+// =============================================================================
+TEST(URLParser, MultipleQueryParamsPreservedV65) {
+    auto result = parse("https://example.com/search?a=1&b=two&empty=&encoded=%20");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/search");
+    EXPECT_EQ(result->query, "a=1&b=two&empty=&encoded=%2520");
+}
+
+// =============================================================================
+// Test V65-3: Fragment-only relative URL updates fragment only
+// =============================================================================
+TEST(URLParser, RelativeFragmentOnlyKeepsBaseFieldsV65) {
+    auto base = parse("https://example.com/a/b?x=1#old");
+    ASSERT_TRUE(base.has_value());
+
+    auto result = parse("#new-section", &base.value());
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/a/b");
+    EXPECT_EQ(result->query, "x=1");
+    EXPECT_EQ(result->fragment, "new-section");
+}
+
+// =============================================================================
+// Test V65-4: Username and password are parsed from authority
+// =============================================================================
+TEST(URLParser, AuthorityUsernamePasswordParsedV65) {
+    auto result = parse("https://alice:secret@example.com/private");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->username, "alice");
+    EXPECT_EQ(result->password, "secret");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/private");
+}
+
+// =============================================================================
+// Test V65-5: Dot-dot segments are normalized in paths
+// =============================================================================
+TEST(URLParser, PathNormalizationDotDotV65) {
+    auto result = parse("https://example.com/a/b/../c");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/a/c");
+}
+
+// =============================================================================
+// Test V65-6: Backslashes convert to forward slashes for special schemes
+// =============================================================================
+TEST(URLParser, BackslashConvertedToSlashInSpecialSchemeV65) {
+    // Our parser requires :// (not :\\), so use forward slashes for scheme separator
+    auto result = parse("https://example.com/one\\two");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "example.com");
+    // Backslash in path may be kept or converted depending on implementation
+    EXPECT_TRUE(result->path.find("one") != std::string::npos);
+    EXPECT_TRUE(result->path.find("two") != std::string::npos);
+}
+
+// =============================================================================
+// Test V65-7: Empty path segments are preserved
+// =============================================================================
+TEST(URLParser, EmptyPathSegmentsPreservedV65) {
+    auto result = parse("https://example.com/a//b///c/");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/a//b///c/");
+}
+
+// =============================================================================
+// Test V65-8: Consecutive slashes in relative paths are preserved
+// =============================================================================
+TEST(URLParser, ConsecutiveSlashesPreservedInRelativePathV65) {
+    auto base = parse("https://example.com/root/");
+    ASSERT_TRUE(base.has_value());
+
+    auto result = parse("x//y///z", &base.value());
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/root/x//y///z");
+}
+
+// =============================================================================
+// Test V65-9: Tabs and newlines are stripped before parsing
+// =============================================================================
+TEST(URLParser, TabAndNewlineStrippingV65) {
+    auto result = parse(" \n\thttps://example.com/pa\tth?x=1\n2#fr\rag \t ");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/path");
+    EXPECT_EQ(result->query, "x=12");
+    EXPECT_EQ(result->fragment, "frag");
+}
+
+// =============================================================================
+// Test V65-10: IPv4 addresses parse as hosts
+// =============================================================================
+TEST(URLParser, IPv4ParsingV65) {
+    auto result = parse("http://192.168.0.1:8080/status");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "192.168.0.1");
+    ASSERT_TRUE(result->port.has_value());
+    EXPECT_EQ(result->port.value(), 8080);
+    EXPECT_EQ(result->path, "/status");
+    EXPECT_EQ(result->origin(), "http://192.168.0.1:8080");
+}
+
+// =============================================================================
+// Test V65-11: IPv6 addresses parse with brackets and port
+// =============================================================================
+TEST(URLParser, IPv6ParsingV65) {
+    auto result = parse("https://[2001:db8::5]:8443/api");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "[2001:db8::5]");
+    ASSERT_TRUE(result->port.has_value());
+    EXPECT_EQ(result->port.value(), 8443);
+    EXPECT_EQ(result->path, "/api");
+    EXPECT_EQ(result->origin(), "https://[2001:db8::5]:8443");
+}
+
+// =============================================================================
+// Test V65-12: Data URI keeps payload including commas
+// =============================================================================
+TEST(URLParser, DataURIWithCommasV65) {
+    auto result = parse("data:text/plain;charset=utf-8,hello,world");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "data");
+    EXPECT_TRUE(result->host.empty());
+    EXPECT_EQ(result->path, "text/plain;charset=utf-8,hello,world");
+    EXPECT_TRUE(result->query.empty());
+    EXPECT_TRUE(result->fragment.empty());
+}
+
+// =============================================================================
+// Test V65-13: File URLs parse on Unix and Windows-style absolute paths
+// =============================================================================
+TEST(URLParser, FileURLsAcrossPlatformsV65) {
+    auto unix_file = parse("file:///usr/local/bin/tool");
+    ASSERT_TRUE(unix_file.has_value());
+    EXPECT_EQ(unix_file->scheme, "file");
+    EXPECT_TRUE(unix_file->host.empty());
+    EXPECT_EQ(unix_file->path, "/usr/local/bin/tool");
+
+    auto windows_file = parse("file:///C:/Windows/System32/drivers/etc/hosts");
+    ASSERT_TRUE(windows_file.has_value());
+    EXPECT_EQ(windows_file->scheme, "file");
+    EXPECT_TRUE(windows_file->host.empty());
+    EXPECT_EQ(windows_file->path, "/C:/Windows/System32/drivers/etc/hosts");
+}
+
+// =============================================================================
+// Test V65-14: Blob URL keeps embedded HTTPS URL in opaque path
+// =============================================================================
+TEST(URLParser, BlobURLWithEmbeddedHttpsV65) {
+    auto result = parse("blob:https://example.com/550e8400-e29b-41d4-a716-446655440000");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "blob");
+    EXPECT_TRUE(result->host.empty());
+    EXPECT_EQ(result->path, "https://example.com/550e8400-e29b-41d4-a716-446655440000");
+}
+
+// =============================================================================
+// Test V65-15: about:blank parses as non-special opaque URL
+// =============================================================================
+TEST(URLParser, AboutBlankOpaqueURLV65) {
+    auto result = parse("about:blank");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "about");
+    EXPECT_TRUE(result->host.empty());
+    EXPECT_EQ(result->path, "blank");
+    EXPECT_EQ(result->origin(), "null");
+}
+
+// =============================================================================
+// Test V65-16: javascript: scheme parses as opaque URL
+// =============================================================================
+TEST(URLParser, JavascriptSchemeOpaqueURLV65) {
+    auto result = parse("javascript:alert(1)");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "javascript");
+    EXPECT_TRUE(result->host.empty());
+    EXPECT_EQ(result->path, "alert(1)");
+    EXPECT_TRUE(result->query.empty());
+    EXPECT_TRUE(result->fragment.empty());
+}

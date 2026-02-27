@@ -9926,3 +9926,167 @@ TEST(SerializerTest, HasRemainingTransitionsToFalseAtExactBoundaryV64) {
     EXPECT_DOUBLE_EQ(d.read_f64(), 3.5);
     EXPECT_FALSE(d.has_remaining());
 }
+
+TEST(SerializerTest, VeryLargeStringRoundTripAndBoundaryMarkerV65) {
+    Serializer s;
+    const std::string large_text(131072, 'L');
+
+    s.write_string(large_text);
+    s.write_u32(0x1234ABCDu);
+
+    const auto& wire = s.data();
+    Deserializer d(wire.data(), wire.size());
+
+    EXPECT_EQ(d.read_string(), large_text);
+    EXPECT_EQ(d.read_u32(), uint32_t{0x1234ABCDu});
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, AlternatingTypePatternMaintainsExactReadOrderV65) {
+    Serializer s;
+    const std::vector<uint8_t> block = {0x10, 0x20, 0x30};
+
+    s.write_u32(101u);
+    s.write_string("one");
+    s.write_bool(true);
+    s.write_u32(202u);
+    s.write_string("two");
+    s.write_bool(false);
+    s.write_bytes(block.data(), block.size());
+
+    const auto& wire = s.data();
+    Deserializer d(wire.data(), wire.size());
+
+    EXPECT_EQ(d.read_u32(), uint32_t{101u});
+    EXPECT_EQ(d.read_string(), "one");
+    EXPECT_TRUE(d.read_bool());
+    EXPECT_EQ(d.read_u32(), uint32_t{202u});
+    EXPECT_EQ(d.read_string(), "two");
+    EXPECT_FALSE(d.read_bool());
+    EXPECT_EQ(d.read_bytes(), block);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, MultipleBoolSequenceRoundTripV65) {
+    Serializer s;
+    const std::vector<bool> pattern = {true, false, false, true, true, false, true, false, true};
+
+    for (bool value : pattern) {
+        s.write_bool(value);
+    }
+
+    const auto& wire = s.data();
+    Deserializer d(wire.data(), wire.size());
+
+    for (bool expected : pattern) {
+        EXPECT_EQ(d.read_bool(), expected);
+    }
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, ZeroLengthBytesCanAppearBetweenTypedFieldsV65) {
+    Serializer s;
+
+    s.write_string("prefix");
+    s.write_bytes(nullptr, 0);
+    s.write_u32(777u);
+    s.write_bool(true);
+
+    const auto& wire = s.data();
+    Deserializer d(wire.data(), wire.size());
+
+    EXPECT_EQ(d.read_string(), "prefix");
+    EXPECT_TRUE(d.read_bytes().empty());
+    EXPECT_EQ(d.read_u32(), uint32_t{777u});
+    EXPECT_TRUE(d.read_bool());
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, U32MaxValueRoundTripWithNeighborsV65) {
+    Serializer s;
+
+    s.write_u32(1u);
+    s.write_u32(std::numeric_limits<uint32_t>::max());
+    s.write_u32(0u);
+
+    const auto& wire = s.data();
+    Deserializer d(wire.data(), wire.size());
+
+    EXPECT_EQ(d.read_u32(), uint32_t{1u});
+    EXPECT_EQ(d.read_u32(), std::numeric_limits<uint32_t>::max());
+    EXPECT_EQ(d.read_u32(), uint32_t{0u});
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, NestedSerializationPayloadRoundTripV65) {
+    Serializer inner;
+    const std::vector<uint8_t> inner_bytes = {9, 8, 7, 6};
+    inner.write_u32(0xCAFEBABEu);
+    inner.write_string("inner-v65");
+    inner.write_bytes(inner_bytes.data(), inner_bytes.size());
+    inner.write_bool(true);
+
+    const auto& inner_wire = inner.data();
+    Serializer outer;
+    outer.write_u32(0xDEADBEEFu);
+    outer.write_bytes(inner_wire.data(), inner_wire.size());
+    outer.write_string("outer-end");
+
+    const auto& outer_wire = outer.data();
+    Deserializer outer_d(outer_wire.data(), outer_wire.size());
+
+    EXPECT_EQ(outer_d.read_u32(), uint32_t{0xDEADBEEFu});
+    const std::vector<uint8_t> packed_inner = outer_d.read_bytes();
+    EXPECT_EQ(outer_d.read_string(), "outer-end");
+    EXPECT_FALSE(outer_d.has_remaining());
+
+    Deserializer inner_d(packed_inner.data(), packed_inner.size());
+    EXPECT_EQ(inner_d.read_u32(), uint32_t{0xCAFEBABEu});
+    EXPECT_EQ(inner_d.read_string(), "inner-v65");
+    EXPECT_EQ(inner_d.read_bytes(), inner_bytes);
+    EXPECT_TRUE(inner_d.read_bool());
+    EXPECT_FALSE(inner_d.has_remaining());
+}
+
+TEST(SerializerTest, SequentialReadsExhaustBufferAtExactEndV65) {
+    Serializer s;
+
+    s.write_u32(42u);
+    s.write_string("done");
+    s.write_bytes(nullptr, 0);
+
+    const auto& wire = s.data();
+    Deserializer d(wire.data(), wire.size());
+
+    EXPECT_TRUE(d.has_remaining());
+    EXPECT_EQ(d.read_u32(), uint32_t{42u});
+    EXPECT_TRUE(d.has_remaining());
+    EXPECT_EQ(d.read_string(), "done");
+    EXPECT_TRUE(d.has_remaining());
+    EXPECT_TRUE(d.read_bytes().empty());
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, MixedStringBytesU32SequenceRoundTripV65) {
+    Serializer s;
+    const std::vector<uint8_t> first = {0x01, 0x02};
+    const std::vector<uint8_t> second = {0xAA, 0xBB, 0xCC};
+
+    s.write_string("alpha");
+    s.write_bytes(first.data(), first.size());
+    s.write_u32(100u);
+    s.write_string("beta");
+    s.write_bytes(second.data(), second.size());
+    s.write_u32(200u);
+
+    const auto& wire = s.data();
+    Deserializer d(wire.data(), wire.size());
+
+    EXPECT_EQ(d.read_string(), "alpha");
+    EXPECT_EQ(d.read_bytes(), first);
+    EXPECT_EQ(d.read_u32(), uint32_t{100u});
+    EXPECT_EQ(d.read_string(), "beta");
+    EXPECT_EQ(d.read_bytes(), second);
+    EXPECT_EQ(d.read_u32(), uint32_t{200u});
+    EXPECT_FALSE(d.has_remaining());
+}

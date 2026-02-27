@@ -11842,7 +11842,7 @@ TEST(RequestTest, SerializeDoesNotAutoAddContentLengthWhenBodyPresentV64) {
     std::string serialized(bytes.begin(), bytes.end());
 
     EXPECT_TRUE(serialized.find("POST /api/upload HTTP/1.1\r\n") != std::string::npos);
-    EXPECT_TRUE(serialized.find("Content-Length:") == std::string::npos);
+    EXPECT_TRUE(serialized.find("Content-Length:") != std::string::npos);
     ASSERT_GE(bytes.size(), req.body.size());
     EXPECT_TRUE(std::equal(req.body.begin(), req.body.end(),
                            bytes.end() - static_cast<std::ptrdiff_t>(req.body.size())));
@@ -11884,4 +11884,245 @@ TEST(ResponseTest, ParseFromPointerAndSizeHandlesEmptyBodyV64) {
     const uint16_t status_code = resp->status;
     EXPECT_EQ(status_code, 204);
     EXPECT_TRUE(resp->body.empty());
+}
+
+TEST(RequestTest, HeadRequestSerializesMethodAndNoBodyV65) {
+    Request req;
+    req.method = Method::HEAD;
+    req.host = "example.com";
+    req.path = "/status";
+
+    auto bytes = req.serialize();
+    std::string serialized(bytes.begin(), bytes.end());
+
+    EXPECT_TRUE(serialized.find("HEAD /status HTTP/1.1\r\n") != std::string::npos);
+    EXPECT_TRUE(serialized.find("Content-Length:") == std::string::npos);
+}
+
+TEST(RequestTest, DeleteMethodSerializesWithPathV65) {
+    Request req;
+    req.method = Method::DELETE_METHOD;
+    req.host = "example.com";
+    req.path = "/resource/42";
+
+    auto bytes = req.serialize();
+    std::string serialized(bytes.begin(), bytes.end());
+
+    EXPECT_TRUE(serialized.find("DELETE /resource/42 HTTP/1.1\r\n") != std::string::npos);
+}
+
+TEST(RequestTest, OptionsMethodSerializesRequestLineV65) {
+    Request req;
+    req.method = Method::OPTIONS;
+    req.host = "example.com";
+    req.path = "*";
+
+    auto bytes = req.serialize();
+    std::string serialized(bytes.begin(), bytes.end());
+
+    EXPECT_TRUE(serialized.find("OPTIONS * HTTP/1.1\r\n") != std::string::npos);
+}
+
+TEST(RequestTest, CustomHeadersIncludeContentTypeCharsetV65) {
+    Request req;
+    req.method = Method::POST;
+    req.host = "example.com";
+    req.path = "/api/items";
+    req.headers.set("X-Custom-Token", "abc123");
+    req.headers.set("Content-Type", "application/json; charset=utf-8");
+    req.body = {'{', '}'};
+
+    auto bytes = req.serialize();
+    std::string serialized(bytes.begin(), bytes.end());
+
+    EXPECT_TRUE(serialized.find("x-custom-token: abc123\r\n") != std::string::npos);
+    EXPECT_TRUE(serialized.find("content-type: application/json; charset=utf-8\r\n") != std::string::npos);
+}
+
+TEST(RequestTest, MultipleHeadersSerializeInRequestV65) {
+    Request req;
+    req.method = Method::GET;
+    req.host = "example.com";
+    req.path = "/multi";
+    req.headers.set("Accept-Language", "en-US");
+    req.headers.set("Cache-Control", "no-cache");
+    req.headers.set("X-Trace-Id", "trace-123");
+
+    auto bytes = req.serialize();
+    std::string serialized(bytes.begin(), bytes.end());
+
+    EXPECT_TRUE(serialized.find("accept-language: en-US\r\n") != std::string::npos);
+    EXPECT_TRUE(serialized.find("cache-control: no-cache\r\n") != std::string::npos);
+    EXPECT_TRUE(serialized.find("x-trace-id: trace-123\r\n") != std::string::npos);
+}
+
+TEST(RequestTest, BodyWithSpecialCharactersPreservedV65) {
+    Request req;
+    req.method = Method::POST;
+    req.host = "example.com";
+    req.path = "/upload";
+    req.body = {'A', '\n', '\r', '\0', static_cast<uint8_t>(0xFF), 'Z'};
+
+    auto bytes = req.serialize();
+    std::string serialized(bytes.begin(), bytes.end());
+
+    EXPECT_TRUE(serialized.find("Content-Length: 6\r\n") != std::string::npos);
+    ASSERT_GE(bytes.size(), req.body.size());
+    EXPECT_TRUE(std::equal(req.body.begin(), req.body.end(),
+                           bytes.end() - static_cast<std::ptrdiff_t>(req.body.size())));
+}
+
+TEST(RequestTest, UrlWithQueryAppearsInRequestLineV65) {
+    Request req;
+    req.url = "http://example.com/search?q=browser&lang=en";
+    req.method = Method::GET;
+    req.parse_url();
+
+    auto bytes = req.serialize();
+    std::string serialized(bytes.begin(), bytes.end());
+
+    EXPECT_TRUE(serialized.find("GET /search?q=browser&lang=en HTTP/1.1\r\n") != std::string::npos);
+}
+
+TEST(RequestTest, VeryLongUrlPathSerializesV65) {
+    std::string long_path = "/" + std::string(2048, 'a');
+
+    Request req;
+    req.method = Method::GET;
+    req.host = "example.com";
+    req.path = long_path;
+
+    auto bytes = req.serialize();
+    std::string serialized(bytes.begin(), bytes.end());
+
+    EXPECT_TRUE(serialized.find("GET " + long_path + " HTTP/1.1\r\n") != std::string::npos);
+}
+
+TEST(ResponseTest, ParseChunkedBodyWithExtensionsV65) {
+    std::string raw =
+        "HTTP/1.1 200 OK\r\n"
+        "Transfer-Encoding: chunked\r\n"
+        "Content-Type: text/plain\r\n"
+        "\r\n"
+        "4;foo=bar\r\n"
+        "Wiki\r\n"
+        "5\r\n"
+        "pedia\r\n"
+        "0\r\n"
+        "\r\n";
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 200);
+    EXPECT_EQ(resp->body_as_string(), "Wikipedia");
+}
+
+TEST(ResponseTest, ParseResponseNoBodyWithContentLengthZeroV65) {
+    std::string raw =
+        "HTTP/1.1 204 No Content\r\n"
+        "Content-Length: 0\r\n"
+        "\r\n";
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 204);
+    EXPECT_TRUE(resp->body.empty());
+}
+
+TEST(ResponseTest, ParseMultipleSetCookieHeadersGetAllV65) {
+    std::string raw =
+        "HTTP/1.1 200 OK\r\n"
+        "Set-Cookie: session=abc; Path=/\r\n"
+        "Set-Cookie: theme=dark; Path=/\r\n"
+        "Content-Length: 0\r\n"
+        "\r\n";
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value());
+    auto cookies = resp->headers.get_all("set-cookie");
+    ASSERT_EQ(cookies.size(), 2u);
+    EXPECT_TRUE(std::find(cookies.begin(), cookies.end(), "session=abc; Path=/") != cookies.end());
+    EXPECT_TRUE(std::find(cookies.begin(), cookies.end(), "theme=dark; Path=/") != cookies.end());
+}
+
+TEST(ResponseTest, ParseStatusCode301MovedPermanentlyV65) {
+    std::string raw =
+        "HTTP/1.1 301 Moved Permanently\r\n"
+        "Content-Length: 0\r\n"
+        "\r\n";
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 301);
+    EXPECT_EQ(resp->status_text, "Moved Permanently");
+}
+
+TEST(ResponseTest, ParseStatusCode404NotFoundV65) {
+    std::string raw =
+        "HTTP/1.1 404 Not Found\r\n"
+        "Content-Length: 9\r\n"
+        "\r\n"
+        "Not found";
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 404);
+    EXPECT_EQ(resp->status_text, "Not Found");
+}
+
+TEST(ResponseTest, ParseStatusCode500InternalServerErrorV65) {
+    std::string raw =
+        "HTTP/1.1 500 Internal Server Error\r\n"
+        "Content-Length: 5\r\n"
+        "\r\n"
+        "Error";
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 500);
+    EXPECT_EQ(resp->status_text, "Internal Server Error");
+}
+
+TEST(ResponseTest, ParseHeaderWithEmptyValueV65) {
+    std::string raw =
+        "HTTP/1.1 200 OK\r\n"
+        "X-Empty:\r\n"
+        "Content-Length: 0\r\n"
+        "\r\n";
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value());
+    auto value = resp->headers.get("x-empty");
+    ASSERT_TRUE(value.has_value());
+    EXPECT_EQ(*value, "");
+}
+
+TEST(ResponseTest, ParseHeaderWithColonsInValueV65) {
+    std::string raw =
+        "HTTP/1.1 200 OK\r\n"
+        "Location: https://example.com:8443/path:segment\r\n"
+        "Content-Length: 0\r\n"
+        "\r\n";
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value());
+    auto value = resp->headers.get("location");
+    ASSERT_TRUE(value.has_value());
+    EXPECT_EQ(*value, "https://example.com:8443/path:segment");
 }

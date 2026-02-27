@@ -22201,3 +22201,116 @@ TEST(JSEngineTest, StringPadRepeatAndTrimV64) {
     )");
     EXPECT_EQ(result, "007xx|hi|ababab");
 }
+
+TEST(JSEngineTest, WeakMapWeakSetBasicUsageV65) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var wm = new WeakMap();
+        var ws = new WeakSet();
+        var key = {};
+        wm.set(key, 'value-1');
+        ws.add(key);
+        [wm.has(key).toString(), wm.get(key), ws.has(key).toString()].join('|')
+    )");
+    EXPECT_EQ(result, "true|value-1|true");
+}
+
+TEST(JSEngineTest, SymbolDescriptionAndTypeofV65) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var sym = Symbol('token');
+        [typeof sym, sym.description, String(sym)].join('|')
+    )");
+    EXPECT_EQ(result, "symbol|token|Symbol(token)");
+}
+
+TEST(JSEngineTest, AsyncAwaitWithPromiseResolveV65) {
+    clever::js::JSEngine engine;
+    engine.evaluate(R"(
+        var asyncResultV65 = 'pending';
+        async function runAsyncV65() {
+            var value = await Promise.resolve(21);
+            asyncResultV65 = (value * 2).toString();
+        }
+        runAsyncV65();
+    )");
+    clever::js::flush_fetch_promise_jobs(engine.context());
+    auto result = engine.evaluate("asyncResultV65");
+    EXPECT_EQ(result, "42");
+}
+
+TEST(JSEngineTest, OptionalChainingNestedObjectsV65) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var data = {
+            user: {
+                profile: {
+                    name: 'Ada'
+                }
+            }
+        };
+        var present = data?.user?.profile?.name;
+        var missing = data?.user?.contact?.email;
+        [present, (missing === undefined ? 'undef' : missing)].join('|')
+    )");
+    EXPECT_EQ(result, "Ada|undef");
+}
+
+TEST(JSEngineTest, ArrayFromWithMapFunctionV65) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var mapped = Array.from({ length: 4 }, function(_, idx) {
+            return (idx + 1) * 3;
+        });
+        mapped.join(',')
+    )");
+    EXPECT_EQ(result, "3,6,9,12");
+}
+
+TEST(JSEngineTest, ObjectEntriesFromEntriesRoundtripV65) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var original = { alpha: 1, beta: 2, gamma: 3 };
+        var entries = Object.entries(original);
+        var rebuilt = Object.fromEntries(entries);
+        [
+            entries.map(function(pair) { return pair[0] + ':' + pair[1]; }).join(','),
+            rebuilt.alpha.toString(),
+            rebuilt.beta.toString(),
+            rebuilt.gamma.toString()
+        ].join('|')
+    )");
+    EXPECT_EQ(result, "alpha:1,beta:2,gamma:3|1|2|3");
+}
+
+TEST(JSEngineTest, TemplateLiteralTagFunctionsV65) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        function emphasize(strings) {
+            return strings[0] + '<' + arguments[1] + '>' + strings[1] + '<' + arguments[2] + '>' + strings[2];
+        }
+        var who = 'browser';
+        var version = 65;
+        emphasize`Hello ${who} v${version}`
+    )");
+    EXPECT_EQ(result, "Hello <browser> v<65>");
+}
+
+TEST(JSEngineTest, ProxyGetSetHandlersV65) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var target = { count: 1 };
+        var proxy = new Proxy(target, {
+            get: function(obj, prop) {
+                return obj[prop] + 5;
+            },
+            set: function(obj, prop, value) {
+                obj[prop] = value * 2;
+                return true;
+            }
+        });
+        proxy.count = 4;
+        [proxy.count.toString(), target.count.toString()].join('|')
+    )");
+    EXPECT_EQ(result, "13|8");
+}
