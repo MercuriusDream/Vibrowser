@@ -2986,3 +2986,61 @@ TEST(SerializerTest, FiftyU32PowersOfTwo) {
     Deserializer d(s.data());
     for (int i = 0; i < 30; ++i) EXPECT_EQ(d.read_u32(), 1u << i);
 }
+
+// Cycle 810 — IPC Serializer edge cases and single-value tests
+TEST(SerializerTest, SerializerDataNotEmptyAfterWrite) {
+    Serializer s;
+    s.write_u8(42);
+    EXPECT_FALSE(s.data().empty());
+}
+
+TEST(SerializerTest, SingleU64ValueRoundTrip) {
+    Serializer s;
+    s.write_u64(9007199254740992ULL);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u64(), 9007199254740992ULL);
+}
+
+TEST(SerializerTest, SingleI32NegativeRoundTrip) {
+    Serializer s;
+    s.write_i32(-999999);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i32(), -999999);
+}
+
+TEST(SerializerTest, SingleF64PiRoundTrip) {
+    Serializer s;
+    s.write_f64(3.14159265358979);
+    Deserializer d(s.data());
+    EXPECT_DOUBLE_EQ(d.read_f64(), 3.14159265358979);
+}
+
+TEST(SerializerTest, ZeroBytesVectorRoundTrip) {
+    Serializer s;
+    std::vector<uint8_t> empty_bytes;
+    s.write_bytes(empty_bytes.data(), empty_bytes.size());
+    Deserializer d(s.data());
+    auto result = d.read_bytes();
+    EXPECT_TRUE(result.empty());
+}
+
+TEST(SerializerTest, TwoHundredU8Values) {
+    Serializer s;
+    for (int i = 0; i < 200; ++i) s.write_u8(static_cast<uint8_t>(i % 256));
+    Deserializer d(s.data());
+    for (int i = 0; i < 200; ++i) EXPECT_EQ(d.read_u8(), static_cast<uint8_t>(i % 256));
+}
+
+TEST(SerializerTest, NegativeI64RoundTrip) {
+    Serializer s;
+    s.write_i64(-9999999999999LL);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i64(), -9999999999999LL);
+}
+
+TEST(SerializerTest, F64NegativePiRoundTrip) {
+    Serializer s;
+    s.write_f64(-3.14159265358979);
+    Deserializer d(s.data());
+    EXPECT_DOUBLE_EQ(d.read_f64(), -3.14159265358979);
+}
