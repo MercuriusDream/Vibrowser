@@ -7700,3 +7700,65 @@ TEST(DomElement, SetAttributeSpecialChars) {
     el->set_attribute("data-text", "Hello <World> & \"Friends\"");
     EXPECT_EQ(el->get_attribute("data-text"), "Hello <World> & \"Friends\"");
 }
+
+TEST(DomElement, TagNameSub) {
+    Document doc;
+    auto el = doc.create_element("sub");
+    EXPECT_FALSE(el->tag_name().empty());
+}
+
+TEST(DomElement, TagNameSup) {
+    Document doc;
+    auto el = doc.create_element("sup");
+    EXPECT_FALSE(el->tag_name().empty());
+}
+
+TEST(DomElement, SetAttributeContenteditable) {
+    Document doc;
+    auto el = doc.create_element("div");
+    el->set_attribute("contenteditable", "true");
+    EXPECT_EQ(el->get_attribute("contenteditable"), "true");
+}
+
+TEST(DomElement, SetAttributeDraggableV2) {
+    Document doc;
+    auto el = doc.create_element("div");
+    el->set_attribute("draggable", "true");
+    EXPECT_EQ(el->get_attribute("draggable"), "true");
+}
+
+TEST(DomElement, MultipleRemoveAttribute) {
+    Document doc;
+    auto el = doc.create_element("div");
+    el->set_attribute("a", "1");
+    el->set_attribute("b", "2");
+    el->set_attribute("c", "3");
+    el->remove_attribute("a");
+    el->remove_attribute("c");
+    EXPECT_FALSE(el->has_attribute("a"));
+    EXPECT_TRUE(el->has_attribute("b"));
+    EXPECT_FALSE(el->has_attribute("c"));
+}
+
+TEST(DomElement, RemoveAttributeType) {
+    Document doc;
+    auto el = doc.create_element("input");
+    el->set_attribute("type", "text");
+    el->remove_attribute("type");
+    EXPECT_FALSE(el->has_attribute("type"));
+}
+
+TEST(DomElement, HasAttributeOpenV2) {
+    Document doc;
+    auto el = doc.create_element("details");
+    el->set_attribute("open", "");
+    EXPECT_TRUE(el->has_attribute("open"));
+}
+
+TEST(DomElement, SetAndGetBooleanAttribute) {
+    Document doc;
+    auto el = doc.create_element("input");
+    el->set_attribute("disabled", "");
+    EXPECT_TRUE(el->has_attribute("disabled"));
+    EXPECT_EQ(el->get_attribute("disabled"), "");
+}

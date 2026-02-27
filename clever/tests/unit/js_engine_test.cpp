@@ -19849,3 +19849,81 @@ TEST(JSEngine, CommaOperatorCycle1389) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "3");
 }
+
+TEST(JSEngine, ArrayFromCycle1398) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "const arr = Array.from('hello'); "
+        "arr.join('-')");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "h-e-l-l-o");
+}
+
+TEST(JSEngine, ArrayIsArrayCycle1398) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "const arr = [1, 2, 3]; "
+        "const obj = {0: 1, 1: 2, length: 2}; "
+        "Array.isArray(arr) && !Array.isArray(obj)");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, ObjectEntriesCycle1398) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "const obj = {a: 1, b: 2, c: 3}; "
+        "const entries = Object.entries(obj); "
+        "entries.length === 3 && entries[0][0] === 'a' && entries[0][1] === 1");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, ObjectValuesCycle1398) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "const obj = {x: 10, y: 20, z: 30}; "
+        "const vals = Object.values(obj); "
+        "vals.join(',')");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "10,20,30");
+}
+
+TEST(JSEngine, StringFromCharCodeCycle1398) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "const str = String.fromCharCode(72, 101, 108, 108, 111); "
+        "str");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "Hello");
+}
+
+TEST(JSEngine, NumberParseIntCycle1398) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "const a = Number.parseInt('42', 10); "
+        "const b = Number.parseInt('FF', 16); "
+        "(a + b)");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "297");
+}
+
+TEST(JSEngine, NumberParseFloatCycle1398) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "const a = Number.parseFloat('3.14'); "
+        "const b = Number.parseFloat('2.86'); "
+        "const c = Math.round((a + b) * 100) / 100; "
+        "c");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "6");
+}
+
+TEST(JSEngine, MathTruncCycle1398) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "const vals = [Math.trunc(3.7), Math.trunc(-3.7), Math.trunc(0.5), Math.trunc(-0.5)]; "
+        "vals.join(',')");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "3,-3,0,0");
+}

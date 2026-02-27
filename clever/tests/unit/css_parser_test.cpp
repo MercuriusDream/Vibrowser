@@ -8897,3 +8897,77 @@ TEST_F(CSSStylesheetTest, FlexFlowV33) {
         if (d.property == "flex-flow") { found = true; break; }
     EXPECT_TRUE(found);
 }
+
+// Cycle 1352: 8 border property tests V34
+
+TEST_F(CSSStylesheetTest, BorderTopV34) {
+    auto ss = parse_stylesheet("div { border-top: 1px solid black; }");
+    ASSERT_EQ(ss.rules.size(), 1);
+    bool found = false;
+    for (auto& d : ss.rules[0].declarations)
+        if (d.property == "border-top") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, BorderBottomV34) {
+    auto ss = parse_stylesheet("div { border-bottom: 2px dashed blue; }");
+    ASSERT_EQ(ss.rules.size(), 1);
+    bool found = false;
+    for (auto& d : ss.rules[0].declarations)
+        if (d.property == "border-bottom") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, BorderLeftV34) {
+    auto ss = parse_stylesheet("div { border-left: 3px dotted green; }");
+    ASSERT_EQ(ss.rules.size(), 1);
+    bool found = false;
+    for (auto& d : ss.rules[0].declarations)
+        if (d.property == "border-left") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, BorderRightV34) {
+    auto ss = parse_stylesheet("div { border-right: 4px solid red; }");
+    ASSERT_EQ(ss.rules.size(), 1);
+    bool found = false;
+    for (auto& d : ss.rules[0].declarations)
+        if (d.property == "border-right") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, BorderColorV34) {
+    auto ss = parse_stylesheet("div { border-color: #ff0000; }");
+    ASSERT_EQ(ss.rules.size(), 1);
+    bool found = false;
+    for (auto& d : ss.rules[0].declarations)
+        if (d.property == "border-color") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, BorderStyleV34) {
+    auto ss = parse_stylesheet("div { border-style: dashed; }");
+    ASSERT_EQ(ss.rules.size(), 1);
+    bool found = false;
+    for (auto& d : ss.rules[0].declarations)
+        if (d.property == "border-style") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, BorderWidthV34) {
+    auto ss = parse_stylesheet("div { border-width: 5px; }");
+    ASSERT_EQ(ss.rules.size(), 1);
+    bool found = false;
+    for (auto& d : ss.rules[0].declarations)
+        if (d.property == "border-width") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, BorderCollapseV34) {
+    auto ss = parse_stylesheet("table { border-collapse: collapse; }");
+    ASSERT_EQ(ss.rules.size(), 1);
+    bool found = false;
+    for (auto& d : ss.rules[0].declarations)
+        if (d.property == "border-collapse") { found = true; break; }
+    EXPECT_TRUE(found);
+}

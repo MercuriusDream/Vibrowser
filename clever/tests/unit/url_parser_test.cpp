@@ -6267,3 +6267,92 @@ TEST(URLParser, LoopbackWithCustomPortV24) {
     EXPECT_EQ(url->query, "level=info");
     EXPECT_EQ(url->fragment, "");
 }
+
+TEST(URLParser, SimpleHttpsWithoutPortV25) {
+    auto url = parse("https://api.service.io/users");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "api.service.io");
+    EXPECT_EQ(url->port, std::nullopt);
+    EXPECT_EQ(url->path, "/users");
+    EXPECT_EQ(url->query, "");
+    EXPECT_EQ(url->fragment, "");
+}
+
+TEST(URLParser, HostOnlyWithHttpV25) {
+    auto url = parse("http://example.com");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "http");
+    EXPECT_EQ(url->host, "example.com");
+    EXPECT_EQ(url->port, std::nullopt);
+    EXPECT_EQ(url->path, "/");
+    EXPECT_EQ(url->query, "");
+    EXPECT_EQ(url->fragment, "");
+}
+
+TEST(URLParser, DeepPathWithMultipleSegmentsV25) {
+    auto url = parse("https://storage.cloud.io/bucket/folder/subfolder/file.txt");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "storage.cloud.io");
+    EXPECT_EQ(url->port, std::nullopt);
+    EXPECT_EQ(url->path, "/bucket/folder/subfolder/file.txt");
+    EXPECT_EQ(url->query, "");
+    EXPECT_EQ(url->fragment, "");
+}
+
+TEST(URLParser, QueryWithMultipleParametersAndFragmentV25) {
+    auto url = parse("http://video.example.org/player?id=abc123&autoplay=1&quality=hd#t=45s");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "http");
+    EXPECT_EQ(url->host, "video.example.org");
+    EXPECT_EQ(url->port, std::nullopt);
+    EXPECT_EQ(url->path, "/player");
+    EXPECT_EQ(url->query, "id=abc123&autoplay=1&quality=hd");
+    EXPECT_EQ(url->fragment, "t=45s");
+}
+
+TEST(URLParser, PathResolutionWithDotDotsAndTrailingSlashV25) {
+    auto url = parse("https://docs.site.net/guides/../tutorials/../index.html/");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "docs.site.net");
+    EXPECT_EQ(url->port, std::nullopt);
+    EXPECT_EQ(url->path, "/index.html/");
+    EXPECT_EQ(url->query, "");
+    EXPECT_EQ(url->fragment, "");
+}
+
+TEST(URLParser, CustomPortWithSimplePathV25) {
+    auto url = parse("http://localhost:8080/health");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "http");
+    EXPECT_EQ(url->host, "localhost");
+    ASSERT_TRUE(url->port.has_value());
+    EXPECT_EQ(url->port.value(), 8080);
+    EXPECT_EQ(url->path, "/health");
+    EXPECT_EQ(url->query, "");
+    EXPECT_EQ(url->fragment, "");
+}
+
+TEST(URLParser, NumericSubdomainWithQueryV25) {
+    auto url = parse("https://v2.api.domain.com/data?page=1&size=20&sort=-date");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "v2.api.domain.com");
+    EXPECT_EQ(url->port, std::nullopt);
+    EXPECT_EQ(url->path, "/data");
+    EXPECT_EQ(url->query, "page=1&size=20&sort=-date");
+    EXPECT_EQ(url->fragment, "");
+}
+
+TEST(URLParser, PathWithDotSegmentResolutionV25) {
+    auto url = parse("http://www.example.net/a/./b/../c/./d");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "http");
+    EXPECT_EQ(url->host, "www.example.net");
+    EXPECT_EQ(url->port, std::nullopt);
+    EXPECT_EQ(url->path, "/a/c/d");
+    EXPECT_EQ(url->query, "");
+    EXPECT_EQ(url->fragment, "");
+}

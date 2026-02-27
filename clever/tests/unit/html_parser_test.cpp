@@ -8181,3 +8181,59 @@ TEST(TreeBuilder, LegendElementV21) {
     EXPECT_EQ(el->tag_name, "legend");
     EXPECT_EQ(el->text_content(), "Address");
 }
+
+TEST(TreeBuilder, SpanV22) {
+    auto doc = clever::html::parse("<html><body><span>span content</span></body></html>");
+    auto* el = doc->find_element("span");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "span");
+}
+
+TEST(TreeBuilder, AnchorV22) {
+    auto doc = clever::html::parse("<html><body><a href=\"#\">link</a></body></html>");
+    auto* el = doc->find_element("a");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "a");
+}
+
+TEST(TreeBuilder, ParagraphV22) {
+    auto doc = clever::html::parse("<html><body><p>paragraph text</p></body></html>");
+    auto* el = doc->find_element("p");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "p");
+}
+
+TEST(TreeBuilder, H1V22) {
+    auto doc = clever::html::parse("<html><body><h1>heading 1</h1></body></html>");
+    auto* el = doc->find_element("h1");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "h1");
+}
+
+TEST(TreeBuilder, H2V22) {
+    auto doc = clever::html::parse("<html><body><h2>heading 2</h2></body></html>");
+    auto* el = doc->find_element("h2");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "h2");
+}
+
+TEST(TreeBuilder, H3V22) {
+    auto doc = clever::html::parse("<html><body><h3>heading 3</h3></body></html>");
+    auto* el = doc->find_element("h3");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "h3");
+}
+
+TEST(TreeBuilder, FormV22) {
+    auto doc = clever::html::parse("<html><body><form></form></body></html>");
+    auto* el = doc->find_element("form");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "form");
+}
+
+TEST(TreeBuilder, InputV22) {
+    auto doc = clever::html::parse("<html><body><input type=\"text\"></body></html>");
+    auto* el = doc->find_element("input");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "input");
+}

@@ -9505,3 +9505,43 @@ TEST(LayoutNodeProps, ContainerTypeDefaultV33) {
     LayoutNode n;
     EXPECT_EQ(n.container_type, 0);
 }
+
+TEST(LayoutNodeProps, BorderRadiusTLDefaultV34) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.border_radius_tl, 0.0f);
+}
+
+TEST(LayoutNodeProps, BorderRadiusTRDefaultV34) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.border_radius_tr, 0.0f);
+}
+
+TEST(LayoutNodeProps, ScrollPaddingBottomDefaultV34) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.scroll_padding_bottom, 0.0f);
+}
+
+TEST(LayoutNodeProps, ScrollPaddingLeftDefaultV34) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.scroll_padding_left, 0.0f);
+}
+
+TEST(LayoutNodeProps, AccentColorDefaultV34) {
+    LayoutNode n;
+    EXPECT_EQ(n.accent_color, 0);
+}
+
+TEST(LayoutNodeProps, ColorSchemeDefaultV34) {
+    LayoutNode n;
+    EXPECT_EQ(n.color_scheme, 0);
+}
+
+TEST(LayoutNodeProps, ScrollSnapTypeDefaultV34) {
+    LayoutNode n;
+    EXPECT_EQ(n.scroll_snap_type, "");
+}
+
+TEST(LayoutNodeProps, ZIndexDefaultV34) {
+    LayoutNode n;
+    EXPECT_EQ(n.z_index, 0);
+}

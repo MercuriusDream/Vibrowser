@@ -3975,3 +3975,51 @@ TEST(CORSPolicy, CorsAllowsResponseCredentialsWithoutHeaderV42) {
     // When credentials=false, should allow even without Allow-Credentials header
     EXPECT_TRUE(cors_allows_response("https://trusted.example.com", "https://api.example.com/data", resp_headers, false));
 }
+
+// --- Cycle 1149: 8 CORS tests (V43) ---
+
+TEST(CORSPolicy, NotEnforceablePortDefaultHttpV43) {
+    // :80 is NOT enforceable for http
+    EXPECT_FALSE(has_enforceable_document_origin("http://example.com:80"));
+}
+
+TEST(CORSPolicy, NotEnforceablePortDefaultHttpsV43) {
+    // :443 is NOT enforceable for https
+    EXPECT_FALSE(has_enforceable_document_origin("https://example.com:443"));
+}
+
+TEST(CORSPolicy, FragmentNonEmptyNotEligibleV43) {
+    // Non-empty fragment makes URL not CORS eligible
+    EXPECT_FALSE(is_cors_eligible_request_url("https://api.example.com/data#section"));
+}
+
+TEST(CORSPolicy, FragmentEmptyIsEligibleV43) {
+    // Empty fragment (#) is still eligible for CORS
+    EXPECT_TRUE(is_cors_eligible_request_url("https://api.example.com/data#"));
+}
+
+TEST(CORSPolicy, ShouldAttachNullOriginTrueV43) {
+    // should_attach("null", url) should return TRUE
+    EXPECT_TRUE(should_attach_origin_header("null", "https://api.example.com/data"));
+}
+
+TEST(CORSPolicy, ShouldAttachEmptyOriginFalseV43) {
+    // should_attach("", url) should return FALSE
+    EXPECT_FALSE(should_attach_origin_header("", "https://api.example.com/data"));
+}
+
+TEST(CORSPolicy, NormalizeOutgoingNullOriginV43) {
+    clever::net::HeaderMap headers;
+    // normalize_outgoing_origin_header should handle null origin
+    normalize_outgoing_origin_header(headers, "null", "https://api.example.com/data");
+    // null origin should be preserved
+    EXPECT_EQ(headers.get("origin"), "null");
+}
+
+TEST(CORSPolicy, CorsAllowsWildcardWithCredentialsRejectV43) {
+    clever::net::HeaderMap resp_headers;
+    resp_headers.set("Access-Control-Allow-Origin", "*");
+    resp_headers.set("Access-Control-Allow-Credentials", "true");
+    // Wildcard + credentials=true MUST REJECT per CORS spec
+    EXPECT_FALSE(cors_allows_response("https://app.example.com", "https://api.example.com/data", resp_headers, true));
+}

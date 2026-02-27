@@ -8924,3 +8924,190 @@ TEST(HttpClient, RequestPatchPartialUpdateV35) {
     std::vector<uint8_t> serialized = req.serialize();
     EXPECT_GT(serialized.size(), 0u);
 }
+
+// Test 1: Request DELETE method with custom headers and empty body
+TEST(HttpClient, RequestDeleteWithCustomHeadersV36) {
+    Request req;
+    req.method = Method::DELETE_METHOD;
+    req.url = "https://api.example.com/resources/42";
+    req.headers.set("Authorization", "Bearer token-abc");
+    req.headers.set("X-Delete-Reason", "user-requested");
+    req.body.clear();
+    req.parse_url();
+
+    EXPECT_EQ(req.method, Method::DELETE_METHOD);
+    EXPECT_EQ(req.host, "api.example.com");
+    EXPECT_TRUE(req.use_tls);
+    EXPECT_EQ(req.port, 443u);
+    EXPECT_TRUE(req.headers.has("Authorization"));
+    EXPECT_EQ(req.headers.get("X-Delete-Reason").value(), "user-requested");
+    EXPECT_EQ(req.body.size(), 0u);
+
+    std::vector<uint8_t> serialized = req.serialize();
+    EXPECT_GT(serialized.size(), 0u);
+}
+
+// Test 2: Request HEAD method for metadata without body
+TEST(HttpClient, RequestHeadMethodNoBodyV36) {
+    Request req;
+    req.method = Method::HEAD;
+    req.url = "https://cdn.example.com/images/photo.jpg";
+    req.headers.set("User-Agent", "Browser/3.0");
+    req.parse_url();
+
+    EXPECT_EQ(req.method, Method::HEAD);
+    EXPECT_EQ(req.host, "cdn.example.com");
+    EXPECT_EQ(req.path, "/images/photo.jpg");
+    EXPECT_TRUE(req.use_tls);
+    EXPECT_TRUE(req.body.empty());
+
+    std::vector<uint8_t> serialized = req.serialize();
+    EXPECT_GT(serialized.size(), 0u);
+}
+
+// Test 3: Request OPTIONS for CORS preflight with origin header
+TEST(HttpClient, RequestOptionsForCorsPreflightV36) {
+    Request req;
+    req.method = Method::OPTIONS;
+    req.url = "https://api.example.com/data";
+    req.headers.set("Origin", "https://client.example.com");
+    req.headers.set("Access-Control-Request-Method", "POST");
+    req.headers.set("Access-Control-Request-Headers", "Content-Type,Authorization");
+    req.parse_url();
+
+    EXPECT_EQ(req.method, Method::OPTIONS);
+    EXPECT_TRUE(req.headers.has("Origin"));
+    EXPECT_EQ(req.headers.get("Access-Control-Request-Method").value(), "POST");
+    EXPECT_EQ(req.headers.get("Access-Control-Request-Headers").value(), "Content-Type,Authorization");
+
+    std::vector<uint8_t> serialized = req.serialize();
+    EXPECT_GT(serialized.size(), 0u);
+}
+
+// Test 4: Response with 404 Not Found and error body
+TEST(HttpClient, Response404NotFoundWithErrorV36) {
+    Response resp;
+    resp.status = 404;
+    resp.status_text = "Not Found";
+    resp.url = "https://example.com/nonexistent";
+    resp.was_redirected = false;
+
+    std::string error_body = R"({"error":"Resource not found","path":"/nonexistent"})";
+    resp.body.assign(error_body.begin(), error_body.end());
+    resp.headers.set("Content-Type", "application/json");
+    resp.headers.set("X-Error-Code", "RESOURCE_NOT_FOUND");
+
+    EXPECT_EQ(resp.status, 404u);
+    EXPECT_EQ(resp.status_text, "Not Found");
+    EXPECT_FALSE(resp.was_redirected);
+    EXPECT_GT(resp.body.size(), 0u);
+    EXPECT_EQ(resp.headers.get("X-Error-Code").value(), "RESOURCE_NOT_FOUND");
+    EXPECT_EQ(resp.body_as_string(), error_body);
+}
+
+// Test 5: Response with 500 Server Error and retry-after header
+TEST(HttpClient, Response500ServerErrorWithRetryV36) {
+    Response resp;
+    resp.status = 500;
+    resp.status_text = "Internal Server Error";
+    resp.url = "https://api.example.com/process";
+    resp.was_redirected = false;
+
+    std::string error_msg = "Server encountered an error processing your request";
+    resp.body.assign(error_msg.begin(), error_msg.end());
+    resp.headers.set("Content-Type", "text/plain");
+    resp.headers.set("Retry-After", "60");
+    resp.headers.set("X-Request-ID", "err-server-500");
+
+    EXPECT_EQ(resp.status, 500u);
+    EXPECT_TRUE(resp.headers.has("Retry-After"));
+    EXPECT_EQ(resp.headers.get("Retry-After").value(), "60");
+    EXPECT_TRUE(resp.headers.has("X-Request-ID"));
+    EXPECT_FALSE(resp.was_redirected);
+}
+
+// Test 6: HeaderMap with multiple values and case-insensitive access
+TEST(HttpClient, HeaderMapMultipleValuesV36) {
+    HeaderMap map;
+
+    // Single-value headers
+    map.set("Host", "example.com");
+    map.set("Content-Type", "application/json");
+
+    // Multi-value headers (append)
+    map.append("Accept-Encoding", "gzip");
+    map.append("Accept-Encoding", "deflate");
+    map.append("Accept-Encoding", "br");
+
+    map.append("Cache-Control", "no-cache");
+    map.append("Cache-Control", "no-store");
+
+    // Verify single-value access
+    EXPECT_EQ(map.get("host").value(), "example.com");
+    EXPECT_EQ(map.get("HOST").value(), "example.com");
+
+    // Verify multi-value access
+    auto encodings = map.get_all("accept-encoding");
+    EXPECT_EQ(encodings.size(), 3u);
+    EXPECT_EQ(map.get_all("Accept-Encoding").size(), 3u);
+
+    // Total size includes all individual entries
+    EXPECT_EQ(map.size(), 7u);
+
+    // Verify has() method
+    EXPECT_TRUE(map.has("content-type"));
+    EXPECT_TRUE(map.has("CACHE-CONTROL"));
+    EXPECT_FALSE(map.has("non-existent-header"));
+}
+
+// Test 7: CookieJar with domain matching and path-based access
+TEST(HttpClient, CookieJarDomainAndPathMatchingV36) {
+    CookieJar jar;
+    jar.clear();
+
+    // Set cookies for root path
+    jar.set_from_header("session_id=abc123; Path=/; Domain=example.com", "example.com");
+    jar.set_from_header("user_pref=darkmode; Path=/; Domain=.example.com; Secure", "example.com");
+
+    // Set cookies for specific paths
+    jar.set_from_header("admin_token=xyz789; Path=/admin; Domain=example.com", "example.com");
+    jar.set_from_header("api_key=key999; Path=/api/v1; Domain=api.example.com", "api.example.com");
+
+    size_t total = jar.size();
+    EXPECT_GE(total, 2u);
+
+    // Get cookies for root path on example.com (should include root-path cookies)
+    std::string root_cookies = jar.get_cookie_header("example.com", "/", true);
+    EXPECT_GT(root_cookies.length(), 0u);
+
+    // Get cookies for /admin path (should include both root and admin cookies)
+    std::string admin_cookies = jar.get_cookie_header("example.com", "/admin", true);
+    EXPECT_GT(admin_cookies.length(), 0u);
+}
+
+// Test 8: Request POST with form-encoded body and Content-Length header
+TEST(HttpClient, RequestPostFormEncodedWithContentLengthV36) {
+    Request req;
+    req.method = Method::POST;
+    req.url = "https://example.com/login";
+
+    // Set up form-encoded body
+    std::string form_body = "username=john&password=secret&remember=true";
+    req.body.assign(form_body.begin(), form_body.end());
+
+    // Set headers
+    req.headers.set("Content-Type", "application/x-www-form-urlencoded");
+    req.headers.set("Content-Length", std::to_string(form_body.length()));
+    req.headers.set("Accept", "text/html");
+    req.parse_url();
+
+    EXPECT_EQ(req.method, Method::POST);
+    EXPECT_EQ(req.body.size(), form_body.length());
+    EXPECT_EQ(req.headers.get("Content-Type").value(), "application/x-www-form-urlencoded");
+    EXPECT_EQ(req.headers.get("Content-Length").value(), std::to_string(form_body.length()));
+    EXPECT_TRUE(req.use_tls);
+    EXPECT_EQ(req.port, 443u);
+
+    std::vector<uint8_t> serialized = req.serialize();
+    EXPECT_GT(serialized.size(), 0u);
+}
