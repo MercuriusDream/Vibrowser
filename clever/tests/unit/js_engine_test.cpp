@@ -14489,3 +14489,80 @@ TEST(JSEngine, ContinueSkipsIteration) {
     )");
     EXPECT_EQ(result, "8");  // 0+1+3+4=8
 }
+
+// ============================================================================
+// Cycle 685: More JS engine tests
+// ============================================================================
+
+TEST(JSEngine, ClosureCaptures) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        function makeAdder(x) {
+            return function(y) { return x + y; };
+        }
+        var add5 = makeAdder(5);
+        add5(3)
+    )");
+    EXPECT_EQ(result, "8");
+}
+
+TEST(JSEngine, IIFEExecution) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"((function() { return 42; })())");
+    EXPECT_EQ(result, "42");
+}
+
+TEST(JSEngine, RecursiveFibonacci) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        function fib(n) {
+            if (n <= 1) return n;
+            return fib(n - 1) + fib(n - 2);
+        }
+        fib(10)
+    )");
+    EXPECT_EQ(result, "55");
+}
+
+TEST(JSEngine, DefaultParameterValue) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        function greet(name = "world") { return "hello " + name; }
+        greet()
+    )");
+    EXPECT_EQ(result, "hello world");
+}
+
+TEST(JSEngine, ArrowFunctionSum) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var add = (a, b) => a + b;
+        add(10, 20)
+    )");
+    EXPECT_EQ(result, "30");
+}
+
+TEST(JSEngine, ArrowFunctionInMap) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"([1, 2, 3].map(x => x * x).join(","))");
+    EXPECT_EQ(result, "1,4,9");
+}
+
+TEST(JSEngine, TemplateLiteralExpression) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var x = 5;
+        `x is ${x}`
+    )");
+    EXPECT_EQ(result, "x is 5");
+}
+
+TEST(JSEngine, DestructuringRename) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var obj = {name: "Alice", age: 30};
+        var {name: n, age: a} = obj;
+        n + " is " + a
+    )");
+    EXPECT_EQ(result, "Alice is 30");
+}
