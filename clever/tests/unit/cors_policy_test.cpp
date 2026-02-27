@@ -2144,3 +2144,44 @@ TEST(CORSPolicyTest, NormalizeSetsOriginHeader) {
     normalize_outgoing_origin_header(req_headers, "https://app.example.com", "https://api.other.com/data");
     EXPECT_TRUE(req_headers.has("origin"));
 }
+
+TEST(CORSPolicyTest, NormalizeOriginValueIsDocOrigin) {
+    clever::net::HeaderMap req_headers;
+    normalize_outgoing_origin_header(req_headers, "https://app.example.com", "https://api.other.com/data");
+    auto origin = req_headers.get("origin");
+    ASSERT_TRUE(origin.has_value());
+    EXPECT_EQ(*origin, "https://app.example.com");
+}
+
+TEST(CORSPolicyTest, NormalizeNoOriginForSameOrigin) {
+    clever::net::HeaderMap req_headers;
+    normalize_outgoing_origin_header(req_headers, "https://example.com", "https://example.com/api");
+    EXPECT_FALSE(req_headers.has("origin"));
+}
+
+TEST(CORSPolicyTest, NotCorsEligibleWs) {
+    // ws:// not supported as CORS-eligible in this implementation
+    EXPECT_FALSE(is_cors_eligible_request_url("ws://example.com/socket"));
+}
+
+TEST(CORSPolicyTest, CorsEligibleHttpsWithPort) {
+    EXPECT_TRUE(is_cors_eligible_request_url("https://example.com:4433/api"));
+}
+
+TEST(CORSPolicyTest, CrossOriginSchemeHttpVsHttps) {
+    EXPECT_TRUE(is_cross_origin("http://example.com", "https://example.com/page"));
+}
+
+TEST(CORSPolicyTest, SameOriginDifferentQueryParam) {
+    EXPECT_FALSE(is_cross_origin("https://example.com", "https://example.com?q=test"));
+}
+
+TEST(CORSPolicyTest, CrossOriginTwoDifferentHighPorts) {
+    EXPECT_TRUE(is_cross_origin("https://example.com:9000", "https://example.com:9001/page"));
+}
+
+TEST(CORSPolicyTest, ACAOMatchesCrossOriginExact) {
+    clever::net::HeaderMap headers;
+    headers.set("access-control-allow-origin", "https://app.example.com");
+    EXPECT_TRUE(cors_allows_response("https://app.example.com", "https://api.other.com/data", headers, false));
+}
