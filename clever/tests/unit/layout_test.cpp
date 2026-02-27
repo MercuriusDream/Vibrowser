@@ -6779,3 +6779,43 @@ TEST(LayoutNodeProps, TransitionDurationDefaultsZero) {
     LayoutNode n;
     EXPECT_FLOAT_EQ(n.transition_duration, 0.0f);
 }
+
+TEST(LayoutNodeProps, GridAutoRowsDefaultsEmpty) {
+    LayoutNode n;
+    EXPECT_EQ(n.grid_auto_rows, "");
+}
+
+TEST(LayoutNodeProps, GridAutoColumnsDefaultsEmpty) {
+    LayoutNode n;
+    EXPECT_EQ(n.grid_auto_columns, "");
+}
+
+TEST(LayoutNodeProps, GridTemplateAreasDefaultsEmpty) {
+    LayoutNode n;
+    EXPECT_EQ(n.grid_template_areas, "");
+}
+
+TEST(LayoutNodeProps, JustifyItemsDefaultsThree) {
+    LayoutNode n;
+    EXPECT_EQ(n.justify_items, 3);
+}
+
+TEST(LayoutNodeProps, AlignItemsDefaultsFour) {
+    LayoutNode n;
+    EXPECT_EQ(n.align_items, 4);
+}
+
+TEST(LayoutNodeProps, AlignSelfDefaultsNegOne) {
+    LayoutNode n;
+    EXPECT_EQ(n.align_self, -1);
+}
+
+TEST(LayoutNodeProps, JustifySelfDefaultsNegOne) {
+    LayoutNode n;
+    EXPECT_EQ(n.justify_self, -1);
+}
+
+TEST(LayoutNodeProps, AlignContentDefaultsZero) {
+    LayoutNode n;
+    EXPECT_EQ(n.align_content, 0);
+}
