@@ -16336,3 +16336,62 @@ TEST(JSEngine, SetSizeAfterDelete) {
         "const s = new Set([1,2,3,4,5]); s.delete(3); s.size");
     EXPECT_EQ(result, "4");
 }
+
+// Cycle 836 — Symbol.for, Symbol.keyFor, Symbol.iterator custom, Symbol as property key, typeof symbol
+TEST(JSEngine, SymbolForReturnsCached) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "Symbol.for('app.id') === Symbol.for('app.id')");
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, SymbolForDifferentKeys) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "Symbol.for('a') !== Symbol.for('b')");
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, SymbolKeyFor) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "const s = Symbol.for('my.key'); Symbol.keyFor(s)");
+    EXPECT_EQ(result, "my.key");
+}
+
+TEST(JSEngine, TypeofSymbol) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "typeof Symbol('test')");
+    EXPECT_EQ(result, "symbol");
+}
+
+TEST(JSEngine, SymbolAsPropertyKey) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "const sym = Symbol('key'); const obj = {}; obj[sym] = 42; obj[sym]");
+    EXPECT_EQ(result, "42");
+}
+
+TEST(JSEngine, SymbolNotInObjectKeys) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "const sym = Symbol('hidden'); const obj = { [sym]: 1, visible: 2 };"
+        "Object.keys(obj).length");
+    EXPECT_EQ(result, "1");
+}
+
+TEST(JSEngine, SymbolIteratorCustomObject) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "const iter = { [Symbol.iterator]() { let n=0; return { next() { return n<3 ? {value:n++,done:false} : {done:true}; } }; } };"
+        "[...iter].join(',')");
+    EXPECT_EQ(result, "0,1,2");
+}
+
+TEST(JSEngine, SymbolDescriptionProperty) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "Symbol('my-desc').description");
+    EXPECT_EQ(result, "my-desc");
+}
