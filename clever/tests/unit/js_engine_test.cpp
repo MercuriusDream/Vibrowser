@@ -18514,3 +18514,53 @@ TEST(JSEngine, ArrayReduceInitialValue) {
     auto result = engine.evaluate("var arr = [1, 2, 3]; arr.reduce((acc, val) => acc + val, 10).toString()");
     EXPECT_EQ(result, "16");
 }
+
+// --- Cycle 1182: 8 JS tests ---
+
+TEST(JSEngine, DateTimestampValue) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var d = new Date(1000); d.getTime().toString()");
+    EXPECT_EQ(result, "1000");
+}
+
+TEST(JSEngine, RegExpMatchAllV3) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var matches = Array.from('abacad'.matchAll(/a./g)); matches.length.toString()");
+    EXPECT_EQ(result, "3");
+}
+
+TEST(JSEngine, ProxySetTrapReturn) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var target = {}; var p = new Proxy(target, { set: (t, k, v) => (t[k] = v, true) }); p.x = 42; target.x.toString()");
+    EXPECT_EQ(result, "42");
+}
+
+TEST(JSEngine, GeneratorYieldValue) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("function* gen() { yield 5; yield 10; } var g = gen(); g.next().value.toString()");
+    EXPECT_EQ(result, "5");
+}
+
+TEST(JSEngine, AsyncFunctionTypeOf) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("async function foo() { return 42; } typeof foo");
+    EXPECT_EQ(result, "function");
+}
+
+TEST(JSEngine, FinalizationRegistryType) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("typeof FinalizationRegistry");
+    EXPECT_TRUE(result == "function" || result == "undefined");
+}
+
+TEST(JSEngine, BigIntAddition) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("(10n + 20n).toString()");
+    EXPECT_EQ(result, "30");
+}
+
+TEST(JSEngine, DateToISOStringV2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var d = new Date('2024-01-15T00:00:00Z'); d.toISOString().substring(0, 10)");
+    EXPECT_EQ(result, "2024-01-15");
+}

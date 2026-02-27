@@ -4365,3 +4365,66 @@ TEST(URLParser, Port7002) {
     ASSERT_TRUE(url->port.has_value());
     EXPECT_EQ(url->port.value(), 7002u);
 }
+
+// ============================================================================
+// Cycle 1177: More URL parser tests
+// ============================================================================
+
+// URL: pipe character in path is percent-encoded
+TEST(URLParser, PathWithPipeIsPercentEncoded) {
+    auto result = parse("https://example.com/data|content");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_NE(result->path.find("%7C"), std::string::npos);
+}
+
+// URL: pipe character in query is percent-encoded
+TEST(URLParser, QueryWithPipeIsPercentEncoded) {
+    auto result = parse("https://example.com/?filter=active|inactive");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_NE(result->query.find("%7C"), std::string::npos);
+}
+
+// URL: fragment with numeric and dash identifiers
+TEST(URLParser, FragmentWithNumericDashId) {
+    auto result = parse("https://example.com/docs#section-123-end");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->fragment, "section-123-end");
+}
+
+// URL: port 2121 (FTP alternate) preserved
+TEST(URLParser, Port2121Preserved) {
+    auto result = parse("ftp://ftp-backup.local:2121/archives");
+    ASSERT_TRUE(result.has_value());
+    ASSERT_TRUE(result->port.has_value());
+    EXPECT_EQ(result->port.value(), 2121u);
+}
+
+// URL: query parameter with multiple equals signs
+TEST(URLParser, QueryWithMultipleEqualsV4) {
+    auto result = parse("https://example.com/?formula=x=2*y+5");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->query, "formula=x=2*y+5");
+}
+
+// URL: path with underscores and hyphens mixed
+TEST(URLParser, PathWithUnderscoresAndHyphens) {
+    auto result = parse("https://api.example.com/v2-api_service/get_user-profile");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->path, "/v2-api_service/get_user-profile");
+}
+
+// URL: host with hyphenated subdomain and numeric TLD-like
+TEST(URLParser, HostWithHyphenSubdomainV3) {
+    auto result = parse("https://api-gateway-v2.internal-test.com/");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->host, "api-gateway-v2.internal-test.com");
+}
+
+// URL: same origin comparison with different default ports per scheme
+TEST(URLParser, DifferentSchemesDifferentDefaultPorts) {
+    auto http_url = parse("http://example.com/");
+    auto ftp_url = parse("ftp://example.com/");
+    ASSERT_TRUE(http_url.has_value());
+    ASSERT_TRUE(ftp_url.has_value());
+    EXPECT_FALSE(urls_same_origin(*http_url, *ftp_url));
+}

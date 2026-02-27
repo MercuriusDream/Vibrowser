@@ -6586,3 +6586,98 @@ TEST(TreeBuilder, TimeElementWithPubdate) {
     ASSERT_NE(el, nullptr);
     EXPECT_EQ(el->tag_name, "time");
 }
+
+TEST(TreeBuilder, LinkStyledAttr) {
+    auto doc = clever::html::parse(R"(<head><link rel="stylesheet" href="style.css"></head>)");
+    auto* el = doc->find_element("link");
+    ASSERT_NE(el, nullptr);
+    bool found_rel = false, found_href = false;
+    for (const auto& attr : el->attributes) {
+        if (attr.name == "rel") found_rel = true;
+        if (attr.name == "href") found_href = true;
+    }
+    EXPECT_TRUE(found_rel && found_href);
+}
+
+TEST(TreeBuilder, InputFormenctype) {
+    auto doc = clever::html::parse(R"(<form><input type="submit" formenctype="application/x-www-form-urlencoded"></form>)");
+    auto* el = doc->find_element("input");
+    ASSERT_NE(el, nullptr);
+    bool found = false;
+    for (const auto& attr : el->attributes) {
+        if (attr.name == "formenctype") found = true;
+    }
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, AnchorRelNoopener) {
+    auto doc = clever::html::parse(R"(<a href="https://example.com" rel="noopener noreferrer">Link</a>)");
+    auto* el = doc->find_element("a");
+    ASSERT_NE(el, nullptr);
+    bool found = false;
+    for (const auto& attr : el->attributes) {
+        if (attr.name == "rel") found = true;
+    }
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, MetaImageAttr) {
+    auto doc = clever::html::parse(R"(<head><meta name="og:image" content="image.png"></head>)");
+    auto* el = doc->find_element("meta");
+    ASSERT_NE(el, nullptr);
+    bool found_name = false, found_content = false;
+    for (const auto& attr : el->attributes) {
+        if (attr.name == "name") found_name = true;
+        if (attr.name == "content") found_content = true;
+    }
+    EXPECT_TRUE(found_name && found_content);
+}
+
+TEST(TreeBuilder, TextareaMinlength) {
+    auto doc = clever::html::parse(R"(<textarea minlength="5" maxlength="500"></textarea>)");
+    auto* el = doc->find_element("textarea");
+    ASSERT_NE(el, nullptr);
+    bool has_min = false, has_max = false;
+    for (const auto& attr : el->attributes) {
+        if (attr.name == "minlength") has_min = true;
+        if (attr.name == "maxlength") has_max = true;
+    }
+    EXPECT_TRUE(has_min && has_max);
+}
+
+TEST(TreeBuilder, SelectOptgroupDisabled) {
+    auto doc = clever::html::parse(R"(<select><optgroup label="Group1" disabled><option>Opt1</option></optgroup></select>)");
+    auto* el = doc->find_element("optgroup");
+    ASSERT_NE(el, nullptr);
+    bool found = false;
+    for (const auto& attr : el->attributes) {
+        if (attr.name == "disabled") found = true;
+    }
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, InputTypeWeekV2) {
+    auto doc = clever::html::parse(R"(<input type="week" value="2026-W09" min="2026-W01" max="2026-W52">)");
+    auto* el = doc->find_element("input");
+    ASSERT_NE(el, nullptr);
+    bool has_type = false, has_value = false, has_min = false;
+    for (const auto& attr : el->attributes) {
+        if (attr.name == "type") has_type = true;
+        if (attr.name == "value") has_value = true;
+        if (attr.name == "min") has_min = true;
+    }
+    EXPECT_TRUE(has_type && has_value && has_min);
+}
+
+TEST(TreeBuilder, LinkIconAttr) {
+    auto doc = clever::html::parse(R"(<head><link rel="icon" href="favicon.ico" type="image/x-icon"></head>)");
+    auto* el = doc->find_element("link");
+    ASSERT_NE(el, nullptr);
+    bool has_rel = false, has_href = false, has_type = false;
+    for (const auto& attr : el->attributes) {
+        if (attr.name == "rel") has_rel = true;
+        if (attr.name == "href") has_href = true;
+        if (attr.name == "type") has_type = true;
+    }
+    EXPECT_TRUE(has_rel && has_href && has_type);
+}

@@ -5697,3 +5697,64 @@ TEST(SerializerTest, MixedU32AndI32V8) {
     EXPECT_EQ(d.read_u32(), 999u);
     EXPECT_EQ(d.read_i32(), -999);
 }
+
+// Cycle 1176 — Additional serializer tests
+TEST(SerializerTest, U16RoundTripV9) {
+    Serializer s;
+    s.write_u16(65535);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u16(), 65535);
+}
+
+TEST(SerializerTest, I64PositiveMillionV9) {
+    Serializer s;
+    s.write_i64(1000000LL);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i64(), 1000000LL);
+}
+
+TEST(SerializerTest, F64SmallDecimalV9) {
+    Serializer s;
+    s.write_f64(0.123456789);
+    Deserializer d(s.data());
+    EXPECT_NEAR(d.read_f64(), 0.123456789, 1e-9);
+}
+
+TEST(SerializerTest, StringEmptyV9) {
+    Serializer s;
+    s.write_string("");
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "");
+}
+
+TEST(SerializerTest, BoolTrueOnlyV9) {
+    Serializer s;
+    s.write_bool(true);
+    Deserializer d(s.data());
+    EXPECT_TRUE(d.read_bool());
+}
+
+TEST(SerializerTest, U32ZeroV9) {
+    Serializer s;
+    s.write_u32(0u);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u32(), 0u);
+}
+
+TEST(SerializerTest, I32MaxV9) {
+    Serializer s;
+    s.write_i32(2147483647);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i32(), 2147483647);
+}
+
+TEST(SerializerTest, U8MinMaxSequenceV9) {
+    Serializer s;
+    s.write_u8(0);
+    s.write_u8(255);
+    s.write_u8(128);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u8(), 0);
+    EXPECT_EQ(d.read_u8(), 255);
+    EXPECT_EQ(d.read_u8(), 128);
+}

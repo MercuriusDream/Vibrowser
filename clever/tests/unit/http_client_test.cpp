@@ -6337,3 +6337,110 @@ TEST(ResponseTest, Parse301MovedPermanentlyV11) {
     EXPECT_EQ(resp->status, 301);
     EXPECT_EQ(resp->status_text, "Moved Permanently");
 }
+
+// Cycle 1178: HTTP/net regression tests
+// ============================================================================
+
+// HeaderMap: remove operation for specific key V12
+TEST(HeaderMapTest, RemoveOperationForSpecificKeyV12) {
+    HeaderMap h;
+    h.set("Authorization", "Bearer token123");
+    h.set("X-Request-ID", "req-456");
+    EXPECT_TRUE(h.has("Authorization"));
+    h.remove("Authorization");
+    EXPECT_FALSE(h.has("Authorization"));
+    EXPECT_TRUE(h.has("X-Request-ID"));
+}
+
+// HeaderMap: size returns accurate count after multiple operations V12
+TEST(HeaderMapTest, SizeReturnsAccurateCountAfterOperationsV12) {
+    HeaderMap h;
+    EXPECT_EQ(h.size(), 0u);
+    h.set("Header1", "value1");
+    EXPECT_EQ(h.size(), 1u);
+    h.set("Header2", "value2");
+    h.set("Header3", "value3");
+    EXPECT_EQ(h.size(), 3u);
+    h.remove("Header2");
+    EXPECT_EQ(h.size(), 2u);
+}
+
+// Request: method enum POST with body serializes correctly V12
+TEST(RequestTest, MethodPostWithBodySerializesCorrectlyV12) {
+    Request req;
+    req.method = Method::POST;
+    req.host = "api.example.com";
+    req.path = "/submit";
+    req.body = std::vector<uint8_t>{'t', 'e', 's', 't', 'd', 'a', 't', 'a'};
+    auto raw = req.serialize();
+    std::string s(raw.begin(), raw.end());
+    EXPECT_NE(s.find("POST"), std::string::npos);
+    EXPECT_NE(s.find("testdata"), std::string::npos);
+}
+
+// Request: method enum PUT serializes correctly V12
+TEST(RequestTest, MethodPutSerializesCorrectlyV12) {
+    Request req;
+    req.method = Method::PUT;
+    req.host = "api.service.com";
+    req.path = "/resource/123";
+    auto raw = req.serialize();
+    std::string s(raw.begin(), raw.end());
+    EXPECT_NE(s.find("PUT"), std::string::npos);
+}
+
+// Response: parse 204 No Content with empty body V12
+TEST(ResponseTest, Parse204NoContentWithEmptyBodyV12) {
+    std::string raw =
+        "HTTP/1.1 204 No Content\r\n"
+        "Content-Length: 0\r\n"
+        "\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 204);
+    EXPECT_EQ(resp->status_text, "No Content");
+    EXPECT_EQ(resp->body.size(), 0u);
+}
+
+// Response: parse 302 Found with Location header redirect V12
+TEST(ResponseTest, Parse302FoundWithLocationRedirectV12) {
+    std::string raw =
+        "HTTP/1.1 302 Found\r\n"
+        "Location: https://redirect.example.com/target\r\n"
+        "Content-Length: 0\r\n"
+        "\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 302);
+    auto location = resp->headers.get("Location");
+    EXPECT_TRUE(location.has_value());
+    EXPECT_EQ(location.value(), "https://redirect.example.com/target");
+}
+
+// CookieJar: add multiple cookies and retrieve cookie header V12
+TEST(CookieJarTest, AddMultipleCookiesAndGetHeaderV12) {
+    CookieJar jar;
+    jar.set_from_header("session_id=abc123", "example.com");
+    jar.set_from_header("user_pref=dark", "example.com");
+    EXPECT_EQ(jar.size(), 2u);
+    auto header = jar.get_cookie_header("example.com", "/", false);
+    EXPECT_FALSE(header.empty());
+}
+
+// Response: parse 403 Forbidden with error description body V12
+TEST(ResponseTest, Parse403ForbiddenWithErrorBodyV12) {
+    std::string raw =
+        "HTTP/1.1 403 Forbidden\r\n"
+        "Content-Length: 19\r\n"
+        "\r\n"
+        "Access Denied Error";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 403);
+    EXPECT_EQ(resp->status_text, "Forbidden");
+    std::string body_str(resp->body.begin(), resp->body.end());
+    EXPECT_EQ(body_str, "Access Denied Error");
+}

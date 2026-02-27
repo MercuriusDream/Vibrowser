@@ -6244,3 +6244,65 @@ TEST(DomElement, HasAttributeHidden) {
     el->set_attribute("hidden", "");
     EXPECT_TRUE(el->has_attribute("hidden"));
 }
+
+// --- Cycle 1174: 8 DOM tests ---
+
+TEST(DomElement, TagNameLegend) {
+    Document doc;
+    auto el = doc.create_element("legend");
+    EXPECT_EQ(el->tag_name(), "legend");
+}
+
+TEST(DomElement, TagNameCaption) {
+    Document doc;
+    auto el = doc.create_element("caption");
+    EXPECT_EQ(el->tag_name(), "caption");
+}
+
+TEST(DomElement, SetAttributeDisabled) {
+    Document doc;
+    auto el = doc.create_element("input");
+    el->set_attribute("disabled", "");
+    EXPECT_TRUE(el->has_attribute("disabled"));
+}
+
+TEST(DomElement, SetAttributeReadonly) {
+    Document doc;
+    auto el = doc.create_element("input");
+    el->set_attribute("readonly", "");
+    EXPECT_EQ(el->get_attribute("readonly"), "");
+}
+
+TEST(DomElement, ChildCountEleven) {
+    Document doc;
+    auto parent = doc.create_element("ul");
+    for (int i = 0; i < 11; ++i) {
+        parent->append_child(doc.create_element("li"));
+    }
+    EXPECT_EQ(parent->child_count(), 11u);
+}
+
+TEST(DomClassList, ClassListToggleTwo) {
+    Document doc;
+    auto el = doc.create_element("div");
+    el->class_list().add("a");
+    el->class_list().add("b");
+    el->class_list().toggle("a");
+    el->class_list().toggle("b");
+    EXPECT_EQ(el->class_list().length(), 0u);
+}
+
+TEST(DomElement, RemoveAttributeStyle) {
+    Document doc;
+    auto el = doc.create_element("div");
+    el->set_attribute("style", "color:red");
+    el->remove_attribute("style");
+    EXPECT_FALSE(el->has_attribute("style"));
+}
+
+TEST(DomElement, HasAttributeChecked) {
+    Document doc;
+    auto el = doc.create_element("input");
+    el->set_attribute("checked", "");
+    EXPECT_TRUE(el->has_attribute("checked"));
+}

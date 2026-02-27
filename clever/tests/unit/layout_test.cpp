@@ -8509,3 +8509,45 @@ TEST(LayoutNodeProps, ColspanDefaultsOne) {
     LayoutNode n;
     EXPECT_EQ(n.colspan, 1);
 }
+
+// Cycle 1181 — 8 Layout tests for text stroke, line break, and mask properties
+
+TEST(LayoutNodeProps, TextStrokeColorDefaultBlackV3) {
+    LayoutNode n;
+    EXPECT_EQ(n.text_stroke_color, 0xFF000000);
+}
+
+TEST(LayoutNodeProps, TextFillColorDefaultZeroV3) {
+    LayoutNode n;
+    EXPECT_EQ(n.text_fill_color, 0);
+}
+
+TEST(LayoutNodeProps, LineBreakDefaultsZero) {
+    LayoutNode n;
+    EXPECT_EQ(n.line_break, 0);
+}
+
+TEST(LayoutNodeProps, TextRenderingDefaultsZero) {
+    LayoutNode n;
+    EXPECT_EQ(n.text_rendering, 0);
+}
+
+TEST(LayoutNodeProps, BgAttachmentDefaultsZero) {
+    LayoutNode n;
+    EXPECT_EQ(n.bg_attachment, 0);
+}
+
+TEST(LayoutNodeProps, FontSmoothDefaultsZero) {
+    LayoutNode n;
+    EXPECT_EQ(n.font_smooth, 0);
+}
+
+TEST(LayoutNodeProps, ScrollbarWidthDefaultsZero) {
+    LayoutNode n;
+    EXPECT_EQ(n.scrollbar_width, 0);
+}
+
+TEST(LayoutNodeProps, ScrollbarGutterDefaultsZero) {
+    LayoutNode n;
+    EXPECT_EQ(n.scrollbar_gutter, 0);
+}

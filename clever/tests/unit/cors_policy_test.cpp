@@ -2931,3 +2931,38 @@ TEST(CORSPolicyTest, CorsAllowsWildcardOriginV18) {
     headers.set("access-control-allow-origin", "*");
     EXPECT_TRUE(cors_allows_response("https://myapp.com", "https://api.example.com/data", headers, false));
 }
+
+// Cycle 1175 — CORS additional V19 tests
+TEST(CORSPolicyTest, CrossOriginDifferentSubdomainV19) {
+    EXPECT_TRUE(is_cross_origin("https://app.example.com", "https://api.example.com/data"));
+}
+
+TEST(CORSPolicyTest, SameOriginImplicitPortHttpV19) {
+    EXPECT_FALSE(is_cross_origin("http://example.com", "http://example.com:80/page"));
+}
+
+TEST(CORSPolicyTest, EnforceableOriginLocalhost127V19) {
+    EXPECT_TRUE(has_enforceable_document_origin("http://127.0.0.1:3000"));
+}
+
+TEST(CORSPolicyTest, NotEnforceableFileUrlV19) {
+    EXPECT_FALSE(has_enforceable_document_origin("file:///var/www/index.html"));
+}
+
+TEST(CORSPolicyTest, CorsAllowsResponseWithACAOMatchV19) {
+    clever::net::HeaderMap resp_headers;
+    resp_headers.set("Access-Control-Allow-Origin", "https://trusted.com");
+    EXPECT_TRUE(cors_allows_response("https://trusted.com", "https://api.example.com/endpoint", resp_headers, false));
+}
+
+TEST(CORSPolicyTest, CorsEligibleHttpsCustomPortV19) {
+    EXPECT_TRUE(is_cors_eligible_request_url("https://api.service.com:9443/v1/resource"));
+}
+
+TEST(CORSPolicyTest, ShouldAttachOriginCrossOriginV19) {
+    EXPECT_TRUE(should_attach_origin_header("https://webapp.com", "https://backend.com/api"));
+}
+
+TEST(CORSPolicyTest, NotEnforceableDataUrlV19) {
+    EXPECT_FALSE(has_enforceable_document_origin("data:text/html,<h1>Test</h1>"));
+}

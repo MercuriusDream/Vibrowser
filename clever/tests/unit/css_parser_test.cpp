@@ -7116,3 +7116,78 @@ TEST_F(CSSStylesheetTest, BoxShadowV9) {
         if (d.property == "box-shadow") found = true;
     EXPECT_TRUE(found);
 }
+
+TEST_F(CSSStylesheetTest, TextShadowV10) {
+    auto sheet = parse_stylesheet("p { text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3); }");
+    ASSERT_FALSE(sheet.rules.empty());
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "text-shadow") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, BackgroundImageV10) {
+    auto sheet = parse_stylesheet("section { background-image: url('image.png'); }");
+    ASSERT_FALSE(sheet.rules.empty());
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "background-image") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, TransformOriginV10) {
+    auto sheet = parse_stylesheet("button { transform-origin: center; }");
+    ASSERT_FALSE(sheet.rules.empty());
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "transform-origin") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, TransitionV10) {
+    auto sheet = parse_stylesheet("a { transition: all 0.3s ease-in-out; }");
+    ASSERT_FALSE(sheet.rules.empty());
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "transition") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, AnimationV10) {
+    auto sheet = parse_stylesheet("@keyframes slide { from { left: 0; } to { left: 100%; } } div { animation: slide 2s; }");
+    ASSERT_FALSE(sheet.rules.empty());
+    bool found = false;
+    for (auto& rule : sheet.rules) {
+        for (auto& d : rule.declarations) {
+            if (d.property == "animation") found = true;
+        }
+    }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, FilterV10) {
+    auto sheet = parse_stylesheet("img { filter: blur(5px) brightness(1.2); }");
+    ASSERT_FALSE(sheet.rules.empty());
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "filter") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, BackdropFilterV10) {
+    auto sheet = parse_stylesheet(".overlay { backdrop-filter: blur(10px); }");
+    ASSERT_FALSE(sheet.rules.empty());
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "backdrop-filter") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, MixBlendModeV10) {
+    auto sheet = parse_stylesheet("span { mix-blend-mode: multiply; }");
+    ASSERT_FALSE(sheet.rules.empty());
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "mix-blend-mode") found = true;
+    EXPECT_TRUE(found);
+}
