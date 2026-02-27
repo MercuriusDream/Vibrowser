@@ -8533,3 +8533,77 @@ TEST_F(CSSStylesheetTest, BackfaceVisibilityV28) {
         if (d.property == "backface-visibility") { found = true; break; }
     EXPECT_TRUE(found);
 }
+
+TEST_F(CSSStylesheetTest, PointerEventsV29) {
+    auto sheet = parse_stylesheet("a { pointer-events: none; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "pointer-events") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, UserSelectV29) {
+    auto sheet = parse_stylesheet("p { user-select: none; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "user-select") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, MixBlendModeV29) {
+    auto sheet = parse_stylesheet("img { mix-blend-mode: multiply; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "mix-blend-mode") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, FilterV29) {
+    auto sheet = parse_stylesheet("div { filter: blur(5px); }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "filter") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, ClipPathV29) {
+    auto sheet = parse_stylesheet("span { clip-path: circle(50%); }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "clip-path") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, MaskV29) {
+    auto sheet = parse_stylesheet("h1 { mask: url(#mask); }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "mask") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, TransformOriginV29) {
+    auto sheet = parse_stylesheet("button { transform-origin: center; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "transform-origin") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, PerspectiveV29) {
+    auto sheet = parse_stylesheet("section { perspective: 1000px; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "perspective") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+// Cycle 1350

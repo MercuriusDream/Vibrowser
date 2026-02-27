@@ -5851,3 +5851,88 @@ TEST(URLParser, ComplexQueryStringV19) {
     EXPECT_EQ(url->query, "q=test&category=docs&year=2025&sort=relevance");
     EXPECT_EQ(url->fragment, "top-results");
 }
+
+// Cycle 1348
+TEST(URLParser, BasicHttpUrlV20) {
+    auto url = parse("http://example.com/page");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "http");
+    EXPECT_EQ(url->host, "example.com");
+    EXPECT_EQ(url->port, std::nullopt);
+    EXPECT_EQ(url->path, "/page");
+    EXPECT_TRUE(url->query.empty());
+    EXPECT_TRUE(url->fragment.empty());
+}
+
+TEST(URLParser, HttpsWithPathAndQueryV20) {
+    auto url = parse("https://secure.example.org/login?redirect=home");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "secure.example.org");
+    EXPECT_EQ(url->port, std::nullopt);
+    EXPECT_EQ(url->path, "/login");
+    EXPECT_EQ(url->query, "redirect=home");
+    EXPECT_TRUE(url->fragment.empty());
+}
+
+TEST(URLParser, CustomPortUrlV20) {
+    auto url = parse("http://localhost:3000/api/v1");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "http");
+    EXPECT_EQ(url->host, "localhost");
+    ASSERT_TRUE(url->port.has_value());
+    EXPECT_EQ(url->port.value(), 3000);
+    EXPECT_EQ(url->path, "/api/v1");
+    EXPECT_TRUE(url->query.empty());
+}
+
+TEST(URLParser, HostOnlyWithDefaultPortV20) {
+    auto url = parse("https://example.net:443");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "example.net");
+    EXPECT_EQ(url->port, std::nullopt);
+    EXPECT_EQ(url->path, "/");
+}
+
+TEST(URLParser, MultipleQueryParamsWithFragmentV20) {
+    auto url = parse("https://docs.example.io/api?version=2&format=json#section2");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "docs.example.io");
+    EXPECT_EQ(url->port, std::nullopt);
+    EXPECT_EQ(url->path, "/api");
+    EXPECT_EQ(url->query, "version=2&format=json");
+    EXPECT_EQ(url->fragment, "section2");
+}
+
+TEST(URLParser, DeepPathHierarchyV20) {
+    auto url = parse("http://files.example.com/storage/uploads/documents/archive");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "http");
+    EXPECT_EQ(url->host, "files.example.com");
+    EXPECT_EQ(url->port, std::nullopt);
+    EXPECT_EQ(url->path, "/storage/uploads/documents/archive");
+    EXPECT_TRUE(url->query.empty());
+}
+
+TEST(URLParser, HttpDefaultPortNormalizedV20) {
+    auto url = parse("http://example.org:80/resource");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "http");
+    EXPECT_EQ(url->host, "example.org");
+    EXPECT_EQ(url->port, std::nullopt);
+    EXPECT_EQ(url->path, "/resource");
+}
+
+TEST(URLParser, ComplexUrlAllComponentsV20) {
+    auto url = parse("https://api.service.net:8443/v3/endpoint?key=abc&token=xyz#result");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "api.service.net");
+    ASSERT_TRUE(url->port.has_value());
+    EXPECT_EQ(url->port.value(), 8443);
+    EXPECT_EQ(url->path, "/v3/endpoint");
+    EXPECT_EQ(url->query, "key=abc&token=xyz");
+    EXPECT_EQ(url->fragment, "result");
+}

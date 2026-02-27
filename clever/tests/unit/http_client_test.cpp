@@ -8308,3 +8308,97 @@ TEST(HttpClient, CookieJarGetCookieHeaderV30) {
     std::string cookieHeader = jar.get_cookie_header("example.com", "/", true);
     EXPECT_FALSE(cookieHeader.empty());
 }
+
+// Cycle 1349
+
+// HeaderMap: set OVERWRITES existing values
+TEST(HttpClient, HeaderMapSetOverwritesV31) {
+    HeaderMap headers;
+    headers.set("X-Custom", "initial");
+    EXPECT_EQ(headers.get("X-Custom"), "initial");
+
+    headers.set("X-Custom", "overwritten");
+    EXPECT_EQ(headers.get("X-Custom"), "overwritten");
+}
+
+// HeaderMap: get retrieves header value
+TEST(HttpClient, HeaderMapGetV31) {
+    HeaderMap headers;
+    headers.set("Content-Type", "text/plain");
+    headers.set("Accept-Encoding", "gzip");
+
+    EXPECT_EQ(headers.get("Content-Type"), "text/plain");
+    EXPECT_EQ(headers.get("Accept-Encoding"), "gzip");
+}
+
+// HeaderMap: has checks for header existence
+TEST(HttpClient, HeaderMapHasV31) {
+    HeaderMap headers;
+    headers.set("Authorization", "Bearer token123");
+
+    EXPECT_TRUE(headers.has("Authorization"));
+    EXPECT_FALSE(headers.has("X-Missing-Header"));
+}
+
+// HeaderMap: remove deletes headers
+TEST(HttpClient, HeaderMapRemoveV31) {
+    HeaderMap headers;
+    headers.set("X-Remove-Me", "value");
+    headers.set("X-Keep", "value");
+
+    EXPECT_TRUE(headers.has("X-Remove-Me"));
+    headers.remove("X-Remove-Me");
+    EXPECT_FALSE(headers.has("X-Remove-Me"));
+    EXPECT_TRUE(headers.has("X-Keep"));
+}
+
+// HeaderMap: size returns count of headers
+TEST(HttpClient, HeaderMapSizeV31) {
+    HeaderMap headers;
+    EXPECT_EQ(headers.size(), 0u);
+
+    headers.set("Header1", "value1");
+    EXPECT_EQ(headers.size(), 1u);
+
+    headers.set("Header2", "value2");
+    headers.set("Header3", "value3");
+    EXPECT_EQ(headers.size(), 3u);
+}
+
+// HeaderMap: get_all returns all values for a header
+TEST(HttpClient, HeaderMapGetAllV31) {
+    HeaderMap headers;
+    headers.set("Set-Cookie", "session=abc");
+    headers.set("Set-Cookie", "user=john");
+
+    std::vector<std::string> cookies = headers.get_all("Set-Cookie");
+    EXPECT_GT(cookies.size(), 0u);
+}
+
+// Request: serialize returns vector<uint8_t> with method, url, headers, body
+TEST(HttpClient, RequestSerializeV31) {
+    Request req;
+    req.method = Method::PUT;
+    req.url = "https://api.example.com/resource/123";
+    req.headers.set("Content-Type", "application/json");
+    req.headers.set("Authorization", "Bearer token");
+    req.body = {'d', 'a', 't', 'a'};
+
+    std::vector<uint8_t> serialized = req.serialize();
+    EXPECT_GT(serialized.size(), 0u);
+    EXPECT_TRUE(serialized.size() >= req.body.size());
+}
+
+// Response: status, status_text, headers, body properties
+TEST(HttpClient, ResponsePropertiesV31) {
+    Response resp;
+    resp.status = 201;
+    resp.status_text = "Created";
+    resp.headers.set("Location", "/resource/42");
+    resp.body = {'r', 'e', 's', 'p', 'o', 'n', 's', 'e'};
+
+    EXPECT_EQ(resp.status, 201u);
+    EXPECT_EQ(resp.status_text, "Created");
+    EXPECT_EQ(resp.headers.get("Location"), "/resource/42");
+    EXPECT_EQ(resp.body.size(), 8u);
+}

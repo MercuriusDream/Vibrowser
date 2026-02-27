@@ -7402,3 +7402,61 @@ TEST(DomElement, LongAttributeValue) {
     el->set_attribute("data-long", long_val);
     EXPECT_EQ(el->get_attribute("data-long"), long_val);
 }
+
+// Cycle 1345: DOM element tests
+
+TEST(DomElement, TagNameMapV2) {
+    Document doc;
+    auto el = doc.create_element("map");
+    EXPECT_EQ(el->tag_name(), "map");
+}
+
+TEST(DomElement, TagNameArea) {
+    Document doc;
+    auto el = doc.create_element("area");
+    EXPECT_EQ(el->tag_name(), "area");
+}
+
+TEST(DomElement, SetAttributeIntegrity) {
+    Document doc;
+    auto el = doc.create_element("script");
+    el->set_attribute("integrity", "sha384-abc123");
+    EXPECT_EQ(el->get_attribute("integrity"), "sha384-abc123");
+}
+
+TEST(DomElement, SetAttributeCrossorigin) {
+    Document doc;
+    auto el = doc.create_element("link");
+    el->set_attribute("crossorigin", "anonymous");
+    EXPECT_EQ(el->get_attribute("crossorigin"), "anonymous");
+}
+
+TEST(DomElement, CreateManyElements) {
+    Document doc;
+    for (int i = 0; i < 100; ++i) {
+        auto el = doc.create_element("div");
+        EXPECT_EQ(el->tag_name(), "div");
+    }
+}
+
+TEST(DomElement, RemoveNonexistentAttribute) {
+    Document doc;
+    auto el = doc.create_element("div");
+    el->remove_attribute("nonexistent");
+    EXPECT_FALSE(el->has_attribute("nonexistent"));
+}
+
+TEST(DomElement, HasAttributeCheckedV2) {
+    Document doc;
+    auto el = doc.create_element("input");
+    el->set_attribute("checked", "");
+    EXPECT_TRUE(el->has_attribute("checked"));
+}
+
+TEST(DomElement, SetAttributeEmptyName) {
+    Document doc;
+    auto el = doc.create_element("div");
+    el->set_attribute("data-empty", "");
+    EXPECT_TRUE(el->has_attribute("data-empty"));
+    EXPECT_EQ(el->get_attribute("data-empty"), "");
+}

@@ -7873,3 +7873,60 @@ TEST(TreeBuilder, MainElementV16) {
     ASSERT_NE(el, nullptr);
     EXPECT_EQ(el->tag_name, "main");
 }
+
+// Cycle 1351
+TEST(TreeBuilder, ArticleElementV17) {
+    auto doc = clever::html::parse("<html><body><article>Article content</article></body></html>");
+    auto* el = doc->find_element("article");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "article");
+}
+
+TEST(TreeBuilder, SectionElementV17) {
+    auto doc = clever::html::parse("<html><body><section>Section content</section></body></html>");
+    auto* el = doc->find_element("section");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "section");
+}
+
+TEST(TreeBuilder, HeaderElementV17) {
+    auto doc = clever::html::parse("<html><body><header>Header content</header></body></html>");
+    auto* el = doc->find_element("header");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "header");
+}
+
+TEST(TreeBuilder, FigureElementV17) {
+    auto doc = clever::html::parse("<html><body><figure><figcaption>Caption</figcaption></figure></body></html>");
+    auto* el = doc->find_element("figure");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "figure");
+}
+
+TEST(TreeBuilder, FigcaptionElementV17) {
+    auto doc = clever::html::parse("<html><body><figure><figcaption>Image caption</figcaption></figure></body></html>");
+    auto* el = doc->find_element("figcaption");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "figcaption");
+}
+
+TEST(TreeBuilder, MarkElementV17) {
+    auto doc = clever::html::parse("<html><body><p>Text with <mark>highlight</mark></p></body></html>");
+    auto* el = doc->find_element("mark");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "mark");
+}
+
+TEST(TreeBuilder, TimeElementV17) {
+    auto doc = clever::html::parse("<html><body><time datetime=\"2026-02-27\">Today</time></body></html>");
+    auto* el = doc->find_element("time");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "time");
+}
+
+TEST(TreeBuilder, AddressElementV17) {
+    auto doc = clever::html::parse("<html><body><address>Contact info</address></body></html>");
+    auto* el = doc->find_element("address");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "address");
+}

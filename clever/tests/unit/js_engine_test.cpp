@@ -19461,3 +19461,52 @@ TEST(JSEngine, ClassDeclarationCycle1344) {
     auto result = engine.evaluate("class Point { constructor(x, y) { this.x = x; this.y = y; } } var p = new Point(3, 4); (p.x + p.y).toString()");
     EXPECT_EQ(result, "7");
 }
+
+// Cycle 1353
+TEST(JSEngine, ArrowFunctionsCycle1353) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("const add = (a, b) => a + b; add(5, 3).toString()");
+    EXPECT_EQ(result, "8");
+}
+
+TEST(JSEngine, TemplateLiteralsCycle1353) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("const name = 'World'; const greeting = `Hello, ${name}!`; greeting");
+    EXPECT_EQ(result, "Hello, World!");
+}
+
+TEST(JSEngine, DestructuringAssignmentCycle1353) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("const [a, b, c] = [10, 20, 30]; (a + b + c).toString()");
+    EXPECT_EQ(result, "60");
+}
+
+TEST(JSEngine, RestParametersCycle1353) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("function sum(...args) { return args.reduce((a, b) => a + b, 0); } sum(1, 2, 3, 4).toString()");
+    EXPECT_EQ(result, "10");
+}
+
+TEST(JSEngine, ProxyObjectCycle1353) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("const obj = {value: 42}; const proxy = new Proxy(obj, {}); proxy.value.toString()");
+    EXPECT_EQ(result, "42");
+}
+
+TEST(JSEngine, AsyncAwaitCycle1353) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("async function getValue() { return 100; } getValue().then(val => val.toString())");
+    EXPECT_TRUE(!result.empty());
+}
+
+TEST(JSEngine, GeneratorFunctionCycle1353) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("function* gen() { yield 1; yield 2; yield 3; } const g = gen(); g.next().value.toString()");
+    EXPECT_EQ(result, "1");
+}
+
+TEST(JSEngine, SymbolPrimitiveCycle1353) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("const sym = Symbol('test'); typeof sym");
+    EXPECT_EQ(result, "symbol");
+}

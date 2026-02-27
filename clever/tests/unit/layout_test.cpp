@@ -9303,3 +9303,44 @@ TEST(LayoutNodeProps, BorderRadiusBRDefaultV28) {
     LayoutNode n;
     EXPECT_FLOAT_EQ(n.border_radius_br, 0.0f);
 }
+
+// Cycle 1352
+TEST(LayoutNodeProps, TransformOriginXDefaultV29) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.transform_origin_x, 50.0f);
+}
+
+TEST(LayoutNodeProps, TransformOriginYDefaultV29) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.transform_origin_y, 50.0f);
+}
+
+TEST(LayoutNodeProps, OpacityDefaultV29) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.opacity, 1.0f);
+}
+
+TEST(LayoutNodeProps, ZIndexDefaultV29) {
+    LayoutNode n;
+    EXPECT_EQ(n.z_index, 0);
+}
+
+TEST(LayoutNodeProps, ColumnGapValDefaultV29) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.column_gap_val, 0.0f);
+}
+
+TEST(LayoutNodeProps, GapDefaultV29) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.gap, 0.0f);
+}
+
+TEST(LayoutNodeProps, ContainerNameDefaultV29) {
+    LayoutNode n;
+    EXPECT_EQ(n.container_name, "");
+}
+
+TEST(LayoutNodeProps, ContainerTypeDefaultV29) {
+    LayoutNode n;
+    EXPECT_EQ(n.container_type, 0);
+}
