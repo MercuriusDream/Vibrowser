@@ -6,12 +6,27 @@
 ## Current Status
 
 **Phase**: Active Development — Testing Blitz + Bug Fixes
-**Last Active**: 2026-02-28T04:45:00+0900
-**Current Focus**: Cycle 1129+ — 9134 tests! Continuing test blitz rotation
-**Momentum**: 9134 tests pass across 12/13 suites. URL 604, IPC 654, Net 608, DOM 663, HTML 648, CSS-parser 692, CSS-style 698, Layout 764, Paint 1863(4fail), JS 1377, CORS 441, Platform 117, NativeImage 5. Only 4 pre-existing paint failures.
-**Cycle**: 1128
+**Last Active**: 2026-02-28T05:15:00+0900
+**Current Focus**: Cycle 1138+ — 9206 tests! Continuing test blitz rotation. Commit+push each cycle.
+**Momentum**: 9206 tests pass across 12/13 suites. URL 612, IPC 662, Net 616, DOM 671, HTML 656, CSS-parser 700, CSS-style 698, Layout 772, Paint 1863(4fail), JS 1385, CORS 449, Platform 117, NativeImage 5. Only 4 pre-existing paint failures.
+**Cycle**: 1137
+**Workflow**: Commit and push after each cycle round (user preference)
 
 ## Session Log
+
+### Cycles 1129-1137 — 2026-02-28
+- **Cycles**: 9
+- **Theme**: Test blitz round 15 — all 9 suites (+72 tests) — 9206 total!
+- **Key Wins**:
+  - Cycle 1129: 8 DOM tests (dom 663→671) — TagNameProgress/Meter, SetAttributeValue/Placeholder, ChildCountSix, ClassListAddThree, HasAttributeFalseAfterRemove, AttributesSizeAfterThreeSets
+  - Cycle 1130: 8 CORS tests (cors 441→449) — CrossOriginDiffTld, SameOriginHttpsLocalhost, EnforceableHttpExampleOrg, NotEnforceableBlob, CorsEligibleHttpsStatic, NotCorsEligibleFile, AttachOriginCrossSubdomains, CorsAllowsMatchWithNoCreds (V14)
+  - Cycle 1131: 8 IPC tests (ipc 654→662) — U8TwentyFive, U16FiveThousand, I32NegTen, U64TenMillion, F64GoldenRatio, StringWithBackslash, I64NegTenBillion, BoolTrueAlone (V4)
+  - Cycle 1132: 8 URL tests (url 604→612) — Port1433, PathWithSvgExtV2, QueryWithEqualsV2, FragmentUpperCase, HostWithManyHyphens, SchemeHttpsUpperToLower, PathEmpty, Port11211
+  - Cycle 1133: 8 Net tests (net 608→616) — MethodToStringOptions, StringToMethodHead, SizeZeroAfterRemoveAll, SetCaseInsensitive, ResponseStatus200/400/404/408 (V7)
+  - Cycle 1134: 8 CSS tests (css-parser 692→700) — AspectRatioV5, PlaceItemsV2, PlaceContentV2, PlaceSelfV2, ColumnCountV5, ColumnGapV5, RowGapV2, InsetV5
+  - Cycle 1135: 8 HTML tests (html 648→656) — Nobr, Rb, Rtc, RpV2, Acronym, Marquee, FramesetNotInBody, HeadElementExistsV2
+  - Cycle 1136: 8 Layout tests (layout 764→772) — TextFillColorDefaultZero, ClipPathTypeDefaultZero, ClipPathValuesDefaultEmpty, ClipPathPathDataDefaultEmpty, MaskBorderDefaultEmpty, MaskShorthandDefaultEmpty, ShapeOutsideStrDefaultEmpty, MaskSizeWidthDefaultZero
+  - Cycle 1137: 8 JS tests (js 1377→1385) — RegExpDotAllFlag, RegExpNamedGroup, RegExpLookbehind, RegExpUnicodeProperty, ArrayBufferByteLengthV2, SharedArrayBufferType, AtomicsType, GeneratorThrowCatch
 
 ### Cycles 1120-1128 — 2026-02-28
 - **Cycles**: 9
@@ -6085,26 +6100,28 @@
 
 | Metric | Value |
 |--------|-------|
-| Total Sessions | 175 |
-| Total Cycles | 1128 |
+| Total Sessions | 176 |
+| Total Cycles | 1137 |
 | Files Created | ~135 |
 | Files Modified | 142+ |
-| Lines Added (est.) | 202000+ |
-| Tests Added | 5659 |
-| Bugs Fixed | 250 |
+| Lines Added (est.) | 203000+ |
+| Tests Added | 5731 |
+| Bugs Fixed | 251 |
 | Features Added | 2625 |
 
 ## Tell The Next Claude
 
-**STATUS: WORKING BROWSER WITH FULL JS ENGINE — 9134 TESTS!!!** — Launch with `open build/src/shell/clever_browser.app`
+**STATUS: WORKING BROWSER WITH FULL JS ENGINE — 9206 TESTS!!!** — Launch with `open build/src/shell/clever_browser.app`
 
 Build: `cd clever && cmake -S . -B build && cmake --build build && ctest --test-dir build`
 
-**9134 tests pass across 12/13 suites. URL 604, IPC 654, Net 608, DOM 663, HTML 648, CSS-parser 692, CSS-style 698, Layout 764, Paint 1863(4fail), JS 1377, CORS 441, Platform 117, NativeImage 5. Only 4 pre-existing paint failures. CYCLE 1128!**
+**9206 tests pass across 12/13 suites. URL 612, IPC 662, Net 616, DOM 671, HTML 656, CSS-parser 700, CSS-style 698, Layout 772, Paint 1863(4fail), JS 1385, CORS 449, Platform 117, NativeImage 5. Only 4 pre-existing paint failures. CYCLE 1137!**
 
 Gotchas: Element::tag_name() is a METHOD — use el->tag_name() with parens. ClassList::toggle() returns void. attributes().size() not attributes_size(). CORS: explicit :443 not enforceable, URLs with fragments not cors-eligible, wss:// scheme not supported in cross-origin check. write_bytes takes (ptr, len). LayoutNode colors are ARGB: color=0xFF000000, bg=0x00000000, border_color_*=0xFF000000, lighting_color=0xFFFFFFFF, placeholder_color=0xFF757575. text_stroke_width exists, svg_stroke_width does NOT. Promise callbacks don't execute synchronously. Test names must be unique — ALWAYS grep before adding — V suffixes up to V6+ for many CSS properties.
 
-**Next cycle 1084: DOM tests. Rotation: DOM→CORS→IPC→URL→Net→CSS→HTML→Layout→JS. Cycle 1083 was JS.**
+**USER PREFERENCE: Commit and push after each cycle round.** Do `git add` specific test files, `git commit`, and `git push` after each round of 9 cycles.
+
+**Next cycle 1138: DOM tests. Rotation: DOM→CORS→IPC→URL→Net→CSS→HTML→Layout→JS. Cycle 1137 was JS.**
 
 **IMPORTANT: "Clever" was renamed to "Vibrowser"** — source code uses "Vibrowser/0.7.0" for user-agent and "Vibrowser" for vendor. Tests referencing "Clever" will fail.
 
