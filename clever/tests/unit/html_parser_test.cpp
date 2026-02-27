@@ -3772,3 +3772,84 @@ TEST(TreeBuilder, AudioLoopAttr) {
         if (attr.name == "loop") found = true;
     EXPECT_TRUE(found);
 }
+
+// Cycle 818 — form/input/label attributes: enctype, size, wrap, for, tabindex, readonly, disabled, button type
+TEST(TreeBuilder, FormEnctypeAttr) {
+    auto doc = clever::html::parse(R"(<form enctype="multipart/form-data" action="/upload" method="post"></form>)");
+    auto* form = doc->find_element("form");
+    ASSERT_NE(form, nullptr);
+    bool found = false;
+    for (const auto& attr : form->attributes)
+        if (attr.name == "enctype" && attr.value == "multipart/form-data") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, SelectSizeAttr) {
+    auto doc = clever::html::parse(R"(<select size="5" name="options"></select>)");
+    auto* sel = doc->find_element("select");
+    ASSERT_NE(sel, nullptr);
+    bool found = false;
+    for (const auto& attr : sel->attributes)
+        if (attr.name == "size" && attr.value == "5") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, TextareaWrapAttr) {
+    auto doc = clever::html::parse(R"(<textarea wrap="hard" rows="4" cols="40"></textarea>)");
+    auto* ta = doc->find_element("textarea");
+    ASSERT_NE(ta, nullptr);
+    bool found = false;
+    for (const auto& attr : ta->attributes)
+        if (attr.name == "wrap" && attr.value == "hard") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, LabelForAttr) {
+    auto doc = clever::html::parse(R"(<label for="username">Name</label>)");
+    auto* label = doc->find_element("label");
+    ASSERT_NE(label, nullptr);
+    bool found = false;
+    for (const auto& attr : label->attributes)
+        if (attr.name == "for" && attr.value == "username") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, InputTabindexAttr) {
+    auto doc = clever::html::parse(R"(<input type="text" tabindex="3" name="field">)");
+    auto* input = doc->find_element("input");
+    ASSERT_NE(input, nullptr);
+    bool found = false;
+    for (const auto& attr : input->attributes)
+        if (attr.name == "tabindex" && attr.value == "3") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, InputReadonlyAttr) {
+    auto doc = clever::html::parse(R"(<input type="text" readonly value="locked">)");
+    auto* input = doc->find_element("input");
+    ASSERT_NE(input, nullptr);
+    bool found = false;
+    for (const auto& attr : input->attributes)
+        if (attr.name == "readonly") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, InputDisabledAttr) {
+    auto doc = clever::html::parse(R"(<input type="submit" disabled value="Send">)");
+    auto* input = doc->find_element("input");
+    ASSERT_NE(input, nullptr);
+    bool found = false;
+    for (const auto& attr : input->attributes)
+        if (attr.name == "disabled") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, ButtonTypeResetAttr) {
+    auto doc = clever::html::parse(R"(<button type="reset">Clear</button>)");
+    auto* btn = doc->find_element("button");
+    ASSERT_NE(btn, nullptr);
+    bool found = false;
+    for (const auto& attr : btn->attributes)
+        if (attr.name == "type" && attr.value == "reset") found = true;
+    EXPECT_TRUE(found);
+}
