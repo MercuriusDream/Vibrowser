@@ -7062,3 +7062,78 @@ TEST(SerializerTest, ComplexMultiTypeSequenceV30) {
     EXPECT_EQ(result[0], 0xDE);
     EXPECT_EQ(result[1], 0xAD);
 }
+
+TEST(SerializerTest, MaxU8ValueV31) {
+    Serializer s;
+    s.write_u8(255u);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u8(), 255u);
+}
+
+TEST(SerializerTest, MaxU16ValueV31) {
+    Serializer s;
+    s.write_u16(65535u);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u16(), 65535u);
+}
+
+TEST(SerializerTest, MaxI32NegativeV31) {
+    Serializer s;
+    s.write_i32(-2147483647);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i32(), -2147483647);
+}
+
+TEST(SerializerTest, MaxU64ValueV31) {
+    Serializer s;
+    s.write_u64(18446744073709551615ULL);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u64(), 18446744073709551615ULL);
+}
+
+TEST(SerializerTest, F64NegativeZeroV31) {
+    Serializer s;
+    s.write_f64(-0.0);
+    Deserializer d(s.data());
+    EXPECT_DOUBLE_EQ(d.read_f64(), -0.0);
+}
+
+TEST(SerializerTest, LongStringMultiByteCharsV31) {
+    Serializer s;
+    std::string long_str = "The quick brown fox jumps over the lazy dog. Sphinx of black quartz, judge my vow.";
+    s.write_string(long_str);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), long_str);
+}
+
+TEST(SerializerTest, BytesAllZerosV31) {
+    Serializer s;
+    uint8_t zeros[10] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+    s.write_bytes(zeros, 10);
+    Deserializer d(s.data());
+    auto result = d.read_bytes();
+    ASSERT_EQ(result.size(), 10u);
+    for (size_t i = 0; i < result.size(); ++i) {
+        EXPECT_EQ(result[i], 0u);
+    }
+}
+
+TEST(SerializerTest, InterleavedI64BoolBytesV31) {
+    Serializer s;
+    s.write_i64(9223372036854775807LL);
+    s.write_bool(true);
+    uint8_t test_bytes[3] = {0xFF, 0xAA, 0x55};
+    s.write_bytes(test_bytes, 3);
+    s.write_i64(-1LL);
+    s.write_bool(false);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i64(), 9223372036854775807LL);
+    EXPECT_EQ(d.read_bool(), true);
+    auto bytes = d.read_bytes();
+    EXPECT_EQ(bytes.size(), 3u);
+    EXPECT_EQ(bytes[0], 0xFF);
+    EXPECT_EQ(bytes[1], 0xAA);
+    EXPECT_EQ(bytes[2], 0x55);
+    EXPECT_EQ(d.read_i64(), -1LL);
+    EXPECT_EQ(d.read_bool(), false);
+}

@@ -9425,3 +9425,43 @@ TEST(LayoutNodeProps, ScrollSnapAlignDefaultV31) {
     LayoutNode n;
     EXPECT_EQ(n.scroll_snap_align, "");
 }
+
+TEST(LayoutNodeProps, FlexGrowDefaultV32) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.flex_grow, 0.0f);
+}
+
+TEST(LayoutNodeProps, FlexShrinkDefaultV32) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.flex_shrink, 1.0f);
+}
+
+TEST(LayoutNodeProps, TransformOriginXDefaultV32) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.transform_origin_x, 50.0f);
+}
+
+TEST(LayoutNodeProps, TransformOriginYDefaultV32) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.transform_origin_y, 50.0f);
+}
+
+TEST(LayoutNodeProps, ColumnGapValDefaultV32) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.column_gap_val, 0.0f);
+}
+
+TEST(LayoutNodeProps, ScrollMarginTopDefaultV32) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.scroll_margin_top, 0.0f);
+}
+
+TEST(LayoutNodeProps, ScrollPaddingLeftDefaultV32) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.scroll_padding_left, 0.0f);
+}
+
+TEST(LayoutNodeProps, OrderDefaultV32) {
+    LayoutNode n;
+    EXPECT_EQ(n.order, 0);
+}

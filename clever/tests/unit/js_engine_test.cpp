@@ -19673,3 +19673,104 @@ TEST(JSEngine, ArrayBufferAndDataViewCycle1371) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "383");
 }
+
+TEST(JSEngine, PromiseResolveCycle1380) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        const p = Promise.resolve(42);
+        p.then(val => val * 2);
+        "promise created"
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "promise created");
+}
+
+TEST(JSEngine, PromiseRejectCycle1380) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        const p = Promise.reject(new Error("test error"));
+        p.catch(err => err.message);
+        "promise rejected"
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "promise rejected");
+}
+
+TEST(JSEngine, ForOfLoopCycle1380) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        const arr = [10, 20, 30];
+        let sum = 0;
+        for (const val of arr) {
+            sum += val;
+        }
+        sum
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "60");
+}
+
+TEST(JSEngine, ForInLoopCycle1380) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        const obj = { a: 1, b: 2, c: 3 };
+        let keys = [];
+        for (const key in obj) {
+            keys.push(key);
+        }
+        keys.length
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "3");
+}
+
+TEST(JSEngine, OptionalChainingCycle1380) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        const obj = { a: { b: { c: 42 } } };
+        const val1 = obj?.a?.b?.c;
+        const val2 = obj?.x?.y?.z;
+        [val1, val2]
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "42,");
+}
+
+TEST(JSEngine, NullishCoalescingCycle1380) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        const a = null;
+        const b = undefined;
+        const c = 0;
+        const d = "";
+        const val1 = a ?? "default1";
+        const val2 = c ?? "default2";
+        val1 + "," + val2
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "default1,0");
+}
+
+TEST(JSEngine, StringRawTaggedTemplateCycle1380) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        const str = String.raw`Line 1\nLine 2`;
+        str.includes("\\n")
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, TaggedTemplateLiteralCycle1380) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        function tag(strings, ...values) {
+            return strings.length + values.length;
+        }
+        const a = 10;
+        const b = 20;
+        tag`Hello ${a} world ${b}!`
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "5");
+}

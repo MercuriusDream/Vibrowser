@@ -3830,3 +3830,76 @@ TEST(CORSPolicy, CORSAllowsResponseWildcardOriginV40) {
     EXPECT_TRUE(cors_allows_response("https://any.example.com", "https://api.example.com/data", resp_headers, false));
     EXPECT_TRUE(cors_allows_response("null", "https://api.example.com/data", resp_headers, false));
 }
+
+// Cycle 1348 — 8 additional CORS tests with V41 suffix
+
+TEST(CORSPolicy, HasEnforceableDocumentOriginExplicitPortsV41) {
+    // Explicit default ports (:80/:443) are NOT enforceable
+    EXPECT_FALSE(has_enforceable_document_origin("http://app.example.com:80"));
+    EXPECT_FALSE(has_enforceable_document_origin("https://app.example.com:443"));
+    // Non-standard ports are enforceable
+    EXPECT_TRUE(has_enforceable_document_origin("http://app.example.com:8080"));
+    EXPECT_TRUE(has_enforceable_document_origin("https://app.example.com:8443"));
+}
+
+TEST(CORSPolicy, IsCORSEligibleRequestUrlFragmentEdgeV41) {
+    // URLs with fragments (#) are NOT cors-eligible
+    EXPECT_FALSE(is_cors_eligible_request_url("https://api.example.com/data#top"));
+    EXPECT_FALSE(is_cors_eligible_request_url("https://api.example.com/page#section"));
+    // Valid URLs without fragments
+    EXPECT_TRUE(is_cors_eligible_request_url("https://api.example.com/data"));
+    EXPECT_TRUE(is_cors_eligible_request_url("http://api.example.com:3000/endpoint"));
+}
+
+TEST(CORSPolicy, IsCrossOriginSubdomainVariationV41) {
+    // Different subdomains are cross-origin
+    EXPECT_TRUE(is_cross_origin("https://api.example.com", "https://data.example.com/resource"));
+    EXPECT_TRUE(is_cross_origin("https://v1.api.example.com", "https://v2.api.example.com/resource"));
+    // Same origin with path variation should not be cross-origin
+    EXPECT_FALSE(is_cross_origin("https://api.example.com", "https://api.example.com/v2/resource"));
+}
+
+TEST(CORSPolicy, ShouldAttachOriginHeaderNullOriginV41) {
+    // Null origin still attaches origin header (should return TRUE)
+    EXPECT_TRUE(should_attach_origin_header("null", "https://api.example.com/data"));
+    // Empty string origin does NOT attach (should return FALSE)
+    EXPECT_FALSE(should_attach_origin_header("", "https://api.example.com/data"));
+    // Valid origins should attach when cross-origin
+    EXPECT_TRUE(should_attach_origin_header("https://app.example.com", "https://api.example.com/data"));
+}
+
+TEST(CORSPolicy, NormalizeOutgoingOriginHeaderNullOriginV41) {
+    clever::net::HeaderMap headers;
+    // Null origin should still result in origin header being set
+    normalize_outgoing_origin_header(headers, "null", "https://api.example.com/data");
+    EXPECT_TRUE(headers.has("origin"));
+    EXPECT_EQ(headers.get("origin"), "null");
+}
+
+TEST(CORSPolicy, NormalizeOutgoingOriginHeaderEmptyOriginV41) {
+    clever::net::HeaderMap headers;
+    // Empty origin should not set origin header
+    normalize_outgoing_origin_header(headers, "", "https://api.example.com/data");
+    EXPECT_FALSE(headers.has("origin"));
+}
+
+TEST(CORSPolicy, CORSAllowsResponseWithCredentialsRequiredHeaderV41) {
+    clever::net::HeaderMap resp_headers;
+    resp_headers.set("Access-Control-Allow-Origin", "https://trusted.example.com");
+    resp_headers.set("Access-Control-Allow-Credentials", "true");
+    // With credentials_requested=true and proper headers should allow
+    EXPECT_TRUE(cors_allows_response("https://trusted.example.com", "https://api.example.com/data", resp_headers, true));
+    // Without credentials header should reject when credentials requested
+    clever::net::HeaderMap no_creds_headers;
+    no_creds_headers.set("Access-Control-Allow-Origin", "https://trusted.example.com");
+    EXPECT_FALSE(cors_allows_response("https://trusted.example.com", "https://api.example.com/data", no_creds_headers, true));
+}
+
+TEST(CORSPolicy, CORSAllowsResponseOriginMismatchV41) {
+    clever::net::HeaderMap resp_headers;
+    resp_headers.set("Access-Control-Allow-Origin", "https://trusted.example.com");
+    // Origin mismatch should reject the request
+    EXPECT_FALSE(cors_allows_response("https://untrusted.example.com", "https://api.example.com/data", resp_headers, false));
+    // Correct origin should allow
+    EXPECT_TRUE(cors_allows_response("https://trusted.example.com", "https://api.example.com/data", resp_headers, false));
+}

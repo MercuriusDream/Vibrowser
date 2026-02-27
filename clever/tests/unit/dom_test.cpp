@@ -7583,3 +7583,61 @@ TEST(DomElement, SetAttributeOverwriteV4) {
     el->set_attribute("data-x", "new");
     EXPECT_EQ(el->get_attribute("data-x"), "new");
 }
+
+TEST(DomElement, TagNameCode) {
+    Document doc;
+    auto el = doc.create_element("code");
+    EXPECT_FALSE(el->tag_name().empty());
+}
+
+TEST(DomElement, TagNameStrong) {
+    Document doc;
+    auto el = doc.create_element("strong");
+    EXPECT_FALSE(el->tag_name().empty());
+}
+
+TEST(DomElement, SetAttributeTabindexV2) {
+    Document doc;
+    auto el = doc.create_element("div");
+    el->set_attribute("tabindex", "0");
+    EXPECT_EQ(el->get_attribute("tabindex"), "0");
+}
+
+TEST(DomElement, SetAttributeAriaLabelV2) {
+    Document doc;
+    auto el = doc.create_element("button");
+    el->set_attribute("aria-label", "Close");
+    EXPECT_EQ(el->get_attribute("aria-label"), "Close");
+}
+
+TEST(DomElement, ChildCount10000) {
+    Document doc;
+    auto parent = doc.create_element("div");
+    for (int i = 0; i < 10000; ++i) {
+        parent->append_child(doc.create_element("span"));
+    }
+    int count = 0;
+    parent->for_each_child([&](const Node&) { ++count; });
+    EXPECT_EQ(count, 10000);
+}
+
+TEST(DomElement, RemoveAttributeDataCustom) {
+    Document doc;
+    auto el = doc.create_element("div");
+    el->set_attribute("data-custom", "value");
+    el->remove_attribute("data-custom");
+    EXPECT_FALSE(el->has_attribute("data-custom"));
+}
+
+TEST(DomElement, HasAttributeMultipleV2) {
+    Document doc;
+    auto el = doc.create_element("select");
+    el->set_attribute("multiple", "");
+    EXPECT_TRUE(el->has_attribute("multiple"));
+}
+
+TEST(DomElement, GetAttributeReturnsNulloptForMissingV2) {
+    Document doc;
+    auto el = doc.create_element("div");
+    EXPECT_EQ(el->get_attribute("nonexistent"), std::nullopt);
+}

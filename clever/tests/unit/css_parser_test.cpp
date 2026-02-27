@@ -8750,4 +8750,78 @@ TEST_F(CSSStylesheetTest, ObjectPositionV31) {
     EXPECT_TRUE(found);
 }
 
+// Cycle 1351: CSS parser tests V32
+
+TEST_F(CSSStylesheetTest, GapV32) {
+    auto ss = parse_stylesheet(".grid { gap: 10px; }");
+    ASSERT_EQ(ss.rules.size(), 1);
+    bool found = false;
+    for (auto& d : ss.rules[0].declarations)
+        if (d.property == "gap") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, RowGapV32) {
+    auto ss = parse_stylesheet(".grid { row-gap: 20px; }");
+    ASSERT_EQ(ss.rules.size(), 1);
+    bool found = false;
+    for (auto& d : ss.rules[0].declarations)
+        if (d.property == "row-gap") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, ColumnGapV32) {
+    auto ss = parse_stylesheet(".grid { column-gap: 15px; }");
+    ASSERT_EQ(ss.rules.size(), 1);
+    bool found = false;
+    for (auto& d : ss.rules[0].declarations)
+        if (d.property == "column-gap") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, PlaceItemsV32) {
+    auto ss = parse_stylesheet(".container { place-items: center; }");
+    ASSERT_EQ(ss.rules.size(), 1);
+    bool found = false;
+    for (auto& d : ss.rules[0].declarations)
+        if (d.property == "place-items") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, PlaceContentV32) {
+    auto ss = parse_stylesheet(".container { place-content: space-between; }");
+    ASSERT_EQ(ss.rules.size(), 1);
+    bool found = false;
+    for (auto& d : ss.rules[0].declarations)
+        if (d.property == "place-content") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, PlaceSelfV32) {
+    auto ss = parse_stylesheet(".item { place-self: end; }");
+    ASSERT_EQ(ss.rules.size(), 1);
+    bool found = false;
+    for (auto& d : ss.rules[0].declarations)
+        if (d.property == "place-self") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, GridTemplateColumnsV32) {
+    auto ss = parse_stylesheet(".grid { grid-template-columns: 1fr 2fr 1fr; }");
+    ASSERT_EQ(ss.rules.size(), 1);
+    bool found = false;
+    for (auto& d : ss.rules[0].declarations)
+        if (d.property == "grid-template-columns") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, GridTemplateRowsV32) {
+    auto ss = parse_stylesheet(".grid { grid-template-rows: auto 100px auto; }");
+    ASSERT_EQ(ss.rules.size(), 1);
+    bool found = false;
+    for (auto& d : ss.rules[0].declarations)
+        if (d.property == "grid-template-rows") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
 // Cycle 1350

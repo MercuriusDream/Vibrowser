@@ -6098,3 +6098,84 @@ TEST(URLParser, DeepSubdomainWithHighPortV22) {
     EXPECT_EQ(url->query, "view=analytics");
     EXPECT_EQ(url->fragment, "section");
 }
+
+TEST(URLParser, HostOnlyPathNormalizationV23) {
+    auto url = parse("https://example.org");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "example.org");
+    EXPECT_EQ(url->path, "/");
+    EXPECT_EQ(url->port, std::nullopt);
+    EXPECT_EQ(url->query, "");
+    EXPECT_EQ(url->fragment, "");
+}
+
+TEST(URLParser, PathWithDoubleDotResolutionV23) {
+    auto url = parse("http://files.example.net/documents/../public/file.txt");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "http");
+    EXPECT_EQ(url->host, "files.example.net");
+    EXPECT_EQ(url->path, "/public/file.txt");
+    EXPECT_EQ(url->port, std::nullopt);
+}
+
+TEST(URLParser, PathWithMultipleDotResolutionV23) {
+    auto url = parse("https://data.example.com/api/v1/../../assets/image.png");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "data.example.com");
+    EXPECT_EQ(url->path, "/assets/image.png");
+}
+
+TEST(URLParser, CustomPortWithQueryFragmentV23) {
+    auto url = parse("http://localhost:9000/api/test?key=value&mode=debug#top");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "http");
+    EXPECT_EQ(url->host, "localhost");
+    ASSERT_TRUE(url->port.has_value());
+    EXPECT_EQ(url->port.value(), 9000);
+    EXPECT_EQ(url->path, "/api/test");
+    EXPECT_EQ(url->query, "key=value&mode=debug");
+    EXPECT_EQ(url->fragment, "top");
+}
+
+TEST(URLParser, NumericSubdomainWithPortV23) {
+    auto url = parse("https://192.168.1.100:8443/admin/console");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "192.168.1.100");
+    ASSERT_TRUE(url->port.has_value());
+    EXPECT_EQ(url->port.value(), 8443);
+    EXPECT_EQ(url->path, "/admin/console");
+}
+
+TEST(URLParser, LongPathWithMultipleSegmentsV23) {
+    auto url = parse("http://example.io/static/assets/images/icons/theme/dark/logo.svg?v=2.1");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "http");
+    EXPECT_EQ(url->host, "example.io");
+    EXPECT_EQ(url->path, "/static/assets/images/icons/theme/dark/logo.svg");
+    EXPECT_EQ(url->query, "v=2.1");
+    EXPECT_EQ(url->port, std::nullopt);
+}
+
+TEST(URLParser, HTTPSDefaultPortOmittedV23) {
+    auto url = parse("https://secure.api.example.com:443/v2/endpoint?token=abc123");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "secure.api.example.com");
+    EXPECT_EQ(url->port, std::nullopt);
+    EXPECT_EQ(url->path, "/v2/endpoint");
+    EXPECT_EQ(url->query, "token=abc123");
+}
+
+TEST(URLParser, RootPathWithQueryAndFragmentV23) {
+    auto url = parse("https://cdn.example.net/?utm_source=ref&utm_medium=social#content");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "cdn.example.net");
+    EXPECT_EQ(url->path, "/");
+    EXPECT_EQ(url->query, "utm_source=ref&utm_medium=social");
+    EXPECT_EQ(url->fragment, "content");
+    EXPECT_EQ(url->port, std::nullopt);
+}

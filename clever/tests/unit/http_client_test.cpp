@@ -8633,3 +8633,123 @@ TEST(HttpClient, RequestPutMethodWithJsonV33) {
     EXPECT_EQ(req.method, Method::PUT);
     EXPECT_TRUE(req.headers.has("X-API-Key"));
 }
+
+// Request: DELETE method with custom headers and empty body
+TEST(HttpClient, RequestDeleteMethodV34) {
+    Request req;
+    req.method = Method::DELETE_METHOD;
+    req.url = "https://api.example.com/resource/123";
+    req.headers.set("Authorization", "Bearer token-abc123");
+    req.headers.set("X-Request-ID", "req-456");
+
+    EXPECT_EQ(req.method, Method::DELETE_METHOD);
+    EXPECT_EQ(req.url, "https://api.example.com/resource/123");
+    EXPECT_TRUE(req.headers.has("Authorization"));
+    EXPECT_EQ(req.body.size(), 0u);
+    EXPECT_EQ(req.headers.get("X-Request-ID").value(), "req-456");
+}
+
+// Response: Status 404 with error body content
+TEST(HttpClient, Response404NotFoundV34) {
+    Response resp;
+    resp.status = 404;
+    resp.status_text = "Not Found";
+    resp.url = "https://example.com/missing";
+    resp.was_redirected = false;
+
+    std::string error_msg = "The requested resource was not found";
+    resp.body.assign(error_msg.begin(), error_msg.end());
+    resp.headers.set("Content-Type", "text/plain");
+
+    EXPECT_EQ(resp.status, 404u);
+    EXPECT_EQ(resp.status_text, "Not Found");
+    EXPECT_FALSE(resp.was_redirected);
+    EXPECT_GT(resp.body.size(), 0u);
+}
+
+// CookieJar: Set and retrieve cookie with domain
+TEST(HttpClient, CookieJarSetAndGetV34) {
+    CookieJar jar;
+    jar.set_from_header("session_id=abc123; Path=/; Domain=example.com", "example.com");
+
+    std::string cookie_header = jar.get_cookie_header("example.com", "/", false);
+    EXPECT_FALSE(cookie_header.empty());
+    EXPECT_GT(jar.size(), 0u);
+}
+
+// CookieJar: Clear all cookies
+TEST(HttpClient, CookieJarClearV34) {
+    CookieJar jar;
+    jar.set_from_header("user=john; Path=/", "example.com");
+    jar.set_from_header("token=xyz789; Path=/", "api.example.com");
+
+    EXPECT_GT(jar.size(), 0u);
+    jar.clear();
+    EXPECT_EQ(jar.size(), 0u);
+}
+
+// Request: HEAD method with multiple headers
+TEST(HttpClient, RequestHeadMethodV34) {
+    Request req;
+    req.method = Method::HEAD;
+    req.url = "https://example.com/document.pdf";
+    req.headers.set("Accept", "application/pdf");
+    req.headers.set("User-Agent", "Mozilla/5.0");
+    req.headers.set("Accept-Encoding", "gzip, deflate");
+
+    EXPECT_EQ(req.method, Method::HEAD);
+    EXPECT_TRUE(req.headers.has("Accept"));
+    EXPECT_TRUE(req.headers.has("User-Agent"));
+    std::vector<uint8_t> serialized = req.serialize();
+    EXPECT_GT(serialized.size(), 0u);
+}
+
+// Response: 200 OK with large body and multiple headers
+TEST(HttpClient, Response200OkWithLargeBodyV34) {
+    Response resp;
+    resp.status = 200;
+    resp.status_text = "OK";
+    resp.url = "https://example.com/data";
+    resp.was_redirected = false;
+
+    // Create large body (10KB of data)
+    std::string large_content(10240, 'A');
+    resp.body.assign(large_content.begin(), large_content.end());
+
+    resp.headers.set("Content-Type", "application/octet-stream");
+    resp.headers.set("Content-Length", "10240");
+    resp.headers.set("Cache-Control", "max-age=3600");
+    resp.headers.set("ETag", "\"abc123def456\"");
+
+    EXPECT_EQ(resp.status, 200u);
+    EXPECT_EQ(resp.body.size(), 10240u);
+    EXPECT_EQ(resp.headers.get("Content-Length").value(), "10240");
+}
+
+// Request: OPTIONS method for CORS preflight
+TEST(HttpClient, RequestOptionsMethodV34) {
+    Request req;
+    req.method = Method::OPTIONS;
+    req.url = "https://api.example.com/endpoint";
+    req.headers.set("Origin", "https://frontend.example.com");
+    req.headers.set("Access-Control-Request-Method", "POST");
+    req.headers.set("Access-Control-Request-Headers", "content-type, authorization");
+
+    EXPECT_EQ(req.method, Method::OPTIONS);
+    EXPECT_TRUE(req.headers.has("Origin"));
+    EXPECT_EQ(req.headers.get("Access-Control-Request-Method").value(), "POST");
+}
+
+// HeaderMap: Multiple values with same key and case-insensitive retrieval
+TEST(HttpClient, HeaderMapMultipleValuesV34) {
+    HeaderMap map;
+    map.append("Set-Cookie", "session=xyz123");
+    map.append("Set-Cookie", "user_id=999");
+    map.append("set-cookie", "theme=dark");
+
+    auto all = map.get_all("Set-Cookie");
+    EXPECT_EQ(all.size(), 3u);
+
+    auto all_lower = map.get_all("set-cookie");
+    EXPECT_EQ(all_lower.size(), 3u);
+}

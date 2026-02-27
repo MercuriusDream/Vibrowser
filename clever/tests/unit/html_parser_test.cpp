@@ -8056,3 +8056,67 @@ TEST(TreeBuilder, ImageElementV19) {
     ASSERT_NE(img, nullptr);
     EXPECT_EQ(img->tag_name, "img");
 }
+
+TEST(TreeBuilder, StrongElementV20) {
+    auto doc = clever::html::parse("<html><body><p><strong>Bold text</strong></p></body></html>");
+    auto* el = doc->find_element("strong");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "strong");
+    EXPECT_EQ(el->text_content(), "Bold text");
+}
+
+TEST(TreeBuilder, EmElementV20) {
+    auto doc = clever::html::parse("<html><body><p><em>Emphasized text</em></p></body></html>");
+    auto* el = doc->find_element("em");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "em");
+    EXPECT_EQ(el->text_content(), "Emphasized text");
+}
+
+TEST(TreeBuilder, BElementV20) {
+    auto doc = clever::html::parse("<html><body><p><b>Bold</b></p></body></html>");
+    auto* el = doc->find_element("b");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "b");
+    EXPECT_EQ(el->text_content(), "Bold");
+}
+
+TEST(TreeBuilder, IElementV20) {
+    auto doc = clever::html::parse("<html><body><p><i>Italic</i></p></body></html>");
+    auto* el = doc->find_element("i");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "i");
+    EXPECT_EQ(el->text_content(), "Italic");
+}
+
+TEST(TreeBuilder, UElementV20) {
+    auto doc = clever::html::parse("<html><body><p><u>Underlined</u></p></body></html>");
+    auto* el = doc->find_element("u");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "u");
+    EXPECT_EQ(el->text_content(), "Underlined");
+}
+
+TEST(TreeBuilder, DelElementV20) {
+    auto doc = clever::html::parse("<html><body><p><del>Deleted text</del></p></body></html>");
+    auto* el = doc->find_element("del");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "del");
+    EXPECT_EQ(el->text_content(), "Deleted text");
+}
+
+TEST(TreeBuilder, SupElementV20) {
+    auto doc = clever::html::parse("<html><body><p>E=mc<sup>2</sup></p></body></html>");
+    auto* el = doc->find_element("sup");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "sup");
+    EXPECT_EQ(el->text_content(), "2");
+}
+
+TEST(TreeBuilder, AbbrElementV20) {
+    auto doc = clever::html::parse("<html><body><p><abbr title=\"HyperText Markup Language\">HTML</abbr></p></body></html>");
+    auto* el = doc->find_element("abbr");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "abbr");
+    EXPECT_EQ(el->text_content(), "HTML");
+}
