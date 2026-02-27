@@ -4264,3 +4264,58 @@ TEST(CSSParserTest, TwoScopeRules) {
         "@scope (.nav) to (.footer) { a { color: white; } }");
     EXPECT_EQ(sheet.scope_rules.size(), 2u);
 }
+
+// Cycle 838 — @media query features and @import rules
+TEST_F(CSSStylesheetTest, MediaQueryMaxWidth) {
+    auto sheet = parse_stylesheet(
+        "@media (max-width: 480px) { .mobile-only { display: block; } }");
+    ASSERT_EQ(sheet.media_queries.size(), 1u);
+    EXPECT_NE(sheet.media_queries[0].condition.find("max-width"), std::string::npos);
+}
+
+TEST_F(CSSStylesheetTest, MediaQueryPrint) {
+    auto sheet = parse_stylesheet(
+        "@media print { .no-print { display: none; } }");
+    ASSERT_EQ(sheet.media_queries.size(), 1u);
+    EXPECT_NE(sheet.media_queries[0].condition.find("print"), std::string::npos);
+}
+
+TEST_F(CSSStylesheetTest, TwoMediaQueries) {
+    auto sheet = parse_stylesheet(
+        "@media (min-width: 768px) { .desktop { display: flex; } }"
+        "@media (max-width: 767px) { .mobile { display: block; } }");
+    EXPECT_EQ(sheet.media_queries.size(), 2u);
+}
+
+TEST_F(CSSStylesheetTest, MediaQueryPrefersColorSchemeDark) {
+    auto sheet = parse_stylesheet(
+        "@media (prefers-color-scheme: dark) { body { background: #000; } }");
+    ASSERT_EQ(sheet.media_queries.size(), 1u);
+    EXPECT_NE(sheet.media_queries[0].condition.find("prefers-color-scheme"), std::string::npos);
+}
+
+TEST_F(CSSStylesheetTest, MediaQueryPrefersReducedMotion) {
+    auto sheet = parse_stylesheet(
+        "@media (prefers-reduced-motion: reduce) { * { animation: none; } }");
+    ASSERT_EQ(sheet.media_queries.size(), 1u);
+    EXPECT_NE(sheet.media_queries[0].condition.find("prefers-reduced-motion"), std::string::npos);
+}
+
+TEST(CSSParserTest, ImportRuleWithMediaQuery) {
+    auto sheet = parse_stylesheet("@import url(\"print.css\") print;");
+    ASSERT_GE(sheet.imports.size(), 1u);
+    EXPECT_NE(sheet.imports[0].url.find("print.css"), std::string::npos);
+}
+
+TEST(CSSParserTest, TwoImportRules) {
+    auto sheet = parse_stylesheet(
+        "@import url(\"reset.css\");"
+        "@import url(\"theme.css\");");
+    EXPECT_EQ(sheet.imports.size(), 2u);
+}
+
+TEST(CSSParserTest, ImportRuleUrlStoredCorrectly) {
+    auto sheet = parse_stylesheet("@import url(\"fonts/roboto.css\");");
+    ASSERT_EQ(sheet.imports.size(), 1u);
+    EXPECT_NE(sheet.imports[0].url.find("roboto"), std::string::npos);
+}
