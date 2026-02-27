@@ -1019,3 +1019,53 @@ TEST(CORSPolicyTest, AttachOriginHeaderForCrossOrigin) {
 TEST(CORSPolicyTest, NoOriginHeaderForSameOrigin) {
     EXPECT_FALSE(should_attach_origin_header("https://example.com", "https://example.com/api"));
 }
+
+// ============================================================================
+// Cycle 687: More CORS policy tests
+// ============================================================================
+
+// CORS: normalize sets Origin header for cross-origin http request
+TEST(CORSPolicyTest, NormalizeSetsCrossOriginHeader) {
+    clever::net::HeaderMap headers;
+    normalize_outgoing_origin_header(headers, "http://localhost:3000", "https://api.example.com/data");
+    EXPECT_TRUE(headers.has("origin"));
+}
+
+// CORS: normalize clears Origin header for same-origin http request
+TEST(CORSPolicyTest, NormalizeClearsSameOriginHeader) {
+    clever::net::HeaderMap headers;
+    headers.set("Origin", "http://localhost:3000");
+    normalize_outgoing_origin_header(headers, "http://localhost:3000", "http://localhost:3000/api");
+    EXPECT_FALSE(headers.has("origin"));
+}
+
+// CORS: is_cors_eligible_request_url for http URL
+TEST(CORSPolicyTest, HttpURLIsEligible) {
+    EXPECT_TRUE(is_cors_eligible_request_url("http://example.com/api"));
+}
+
+// CORS: is_cors_eligible_request_url for https URL
+TEST(CORSPolicyTest, HttpsURLIsEligible) {
+    EXPECT_TRUE(is_cors_eligible_request_url("https://example.com/api"));
+}
+
+// CORS: has_enforceable_document_origin for http://localhost
+TEST(CORSPolicyTest, HttpLocalhostHasEnforceableOrigin) {
+    EXPECT_TRUE(has_enforceable_document_origin("http://localhost"));
+}
+
+// CORS: is_cross_origin for different subdomains
+TEST(CORSPolicyTest, DifferentSubdomainsAreCrossOrigin) {
+    EXPECT_TRUE(is_cross_origin("https://www.example.com", "https://api.example.com/data"));
+}
+
+// CORS: should_attach_origin_header for null origin
+TEST(CORSPolicyTest, NullOriginAttachesOriginHeader) {
+    // "null" serialized origin still attaches an origin header
+    EXPECT_TRUE(should_attach_origin_header("null", "https://api.example.com/data"));
+}
+
+// CORS: should_attach_origin_header for malformed origin
+TEST(CORSPolicyTest, MalformedOriginNoHeader) {
+    EXPECT_FALSE(should_attach_origin_header("not-a-url", "https://api.example.com/data"));
+}
