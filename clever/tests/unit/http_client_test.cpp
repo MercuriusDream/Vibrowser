@@ -4851,3 +4851,93 @@ TEST(ResponseTest, AcceptPatchInResponse) {
     ASSERT_TRUE(val.has_value());
     EXPECT_NE(val->find("json"), std::string::npos);
 }
+
+// Cycle 926 — additional HTTP response header coverage
+TEST(ResponseTest, NELHeaderInResponse) {
+    std::string raw =
+        "HTTP/1.1 200 OK\r\n"
+        "NEL: {\"report_to\":\"default\",\"max_age\":86400}\r\n"
+        "Content-Length: 0\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    auto val = resp->headers.get("nel");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_NE(val->find("max_age"), std::string::npos);
+}
+
+TEST(ResponseTest, ReportingEndpointsHeaderInResponse) {
+    std::string raw =
+        "HTTP/1.1 200 OK\r\n"
+        "Reporting-Endpoints: default=\"https://reports.example.com\"\r\n"
+        "Content-Length: 0\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    auto val = resp->headers.get("reporting-endpoints");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_NE(val->find("reports.example.com"), std::string::npos);
+}
+
+TEST(RequestTest, SecFetchUserHeaderSet) {
+    Request req("https://example.com/");
+    req.headers.set("Sec-Fetch-User", "?1");
+    auto val = req.headers.get("sec-fetch-user");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(*val, "?1");
+}
+
+TEST(RequestTest, SecChUaHeaderSet) {
+    Request req("https://example.com/");
+    req.headers.set("Sec-CH-UA", "\"Chromium\";v=\"120\"");
+    auto val = req.headers.get("sec-ch-ua");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_NE(val->find("Chromium"), std::string::npos);
+}
+
+TEST(ResponseTest, AltUsedHeaderInResponse) {
+    std::string raw =
+        "HTTP/1.1 200 OK\r\n"
+        "Alt-Used: cdn.example.com\r\n"
+        "Content-Length: 0\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    auto val = resp->headers.get("alt-used");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(*val, "cdn.example.com");
+}
+
+TEST(ResponseTest, PriorityHeaderInResponse) {
+    std::string raw =
+        "HTTP/1.1 200 OK\r\n"
+        "Priority: u=1\r\n"
+        "Content-Length: 0\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    auto val = resp->headers.get("priority");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(*val, "u=1");
+}
+
+TEST(RequestTest, PriorityRequestHeaderSet) {
+    Request req("https://example.com/resource");
+    req.headers.set("Priority", "u=0, i");
+    auto val = req.headers.get("priority");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_NE(val->find("u=0"), std::string::npos);
+}
+
+TEST(ResponseTest, ContentLocationInResponsePath) {
+    std::string raw =
+        "HTTP/1.1 201 Created\r\n"
+        "Content-Location: /items/42\r\n"
+        "Content-Length: 0\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    auto val = resp->headers.get("content-location");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(*val, "/items/42");
+}
