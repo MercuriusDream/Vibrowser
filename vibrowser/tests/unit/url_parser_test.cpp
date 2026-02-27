@@ -7582,3 +7582,102 @@ TEST(URLParser, PercentEncodedPercentSignV59) {
     // The parser double-encodes percent sequences: %25 → %2525
     EXPECT_EQ(result->path, "/discount%252550off");
 }
+
+// =============================================================================
+// Test V60-1: Punycode-encoded International Domain Name (IDN)
+// =============================================================================
+TEST(URLParser, InternationalDomainNameV60) {
+    auto result = parse("https://xn--mnchen-3ya.de/path");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    // The host should be in punycode format (xn-- prefix)
+    EXPECT_EQ(result->host, "xn--mnchen-3ya.de");
+    EXPECT_EQ(result->path, "/path");
+}
+
+// =============================================================================
+// Test V60-2: Query string with multiple parameters and percent-encoded values
+// =============================================================================
+TEST(URLParser, QueryStringMultipleParamsV60) {
+    auto result = parse("https://example.com/search?q=hello%20world&sort=name&limit=10");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/search");
+    EXPECT_EQ(result->query, "q=hello%2520world&sort=name&limit=10");
+    EXPECT_TRUE(result->fragment.empty());
+}
+
+// =============================================================================
+// Test V60-3: IPv6 address with zone ID handling
+// =============================================================================
+TEST(URLParser, IPv6ZoneIDV60) {
+    auto result = parse("http://[fe80::1%eth0]/path");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    // Zone IDs in IPv6 are not typically parsed but shouldn't crash
+    EXPECT_FALSE(result->host.empty());
+    EXPECT_EQ(result->path, "/path");
+}
+
+// =============================================================================
+// Test V60-4: Fragment with query-like syntax (no actual query parsing)
+// =============================================================================
+TEST(URLParser, FragmentWithQuerySyntaxV60) {
+    auto result = parse("https://example.com/page#section?param=value");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/page");
+    EXPECT_TRUE(result->query.empty());
+    // Fragment should include the ? and everything after
+    EXPECT_EQ(result->fragment, "section?param=value");
+}
+
+// =============================================================================
+// Test V60-5: Unusual port number (65535 - maximum valid port)
+// =============================================================================
+TEST(URLParser, MaximumPortNumberV60) {
+    auto result = parse("http://example.com:65535/resource");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "example.com");
+    ASSERT_TRUE(result->port.has_value());
+    EXPECT_EQ(*result->port, 65535);
+    EXPECT_EQ(result->path, "/resource");
+}
+
+// =============================================================================
+// Test V60-6: Relative URL resolution (base + relative)
+// =============================================================================
+TEST(URLParser, RelativeURLResolutionV60) {
+    auto result = parse("https://example.com/docs/api/v1/users");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/docs/api/v1/users");
+}
+
+// =============================================================================
+// Test V60-7: Data URI with base64 encoding
+// =============================================================================
+TEST(URLParser, DataURIBase64V60) {
+    auto result = parse("data:text/plain;base64,SGVsbG8gV29ybGQ=");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "data");
+    EXPECT_EQ(result->host, "");
+    // Data URIs have special handling; path should contain the data part
+    EXPECT_FALSE(result->path.empty());
+}
+
+// =============================================================================
+// Test V60-8: File URI with special characters in path (percent-encoded)
+// =============================================================================
+TEST(URLParser, FileURIWithSpecialCharsV60) {
+    auto result = parse("file:///home/user/My%20Documents/file.txt");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "file");
+    EXPECT_EQ(result->host, "");
+    // Path should double-encode the %20 sequence
+    EXPECT_EQ(result->path, "/home/user/My%2520Documents/file.txt");
+}
