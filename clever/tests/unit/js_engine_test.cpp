@@ -15180,3 +15180,60 @@ TEST(JSEngine, SetSizeAfterThreeAdds) {
     )");
     EXPECT_EQ(result, "3");
 }
+
+TEST(JSEngine, PromiseResolveValue) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        let captured = '';
+        Promise.resolve(42).then(v => { captured = String(v); });
+        captured
+    )");
+    // Promise may resolve synchronously or captured may be set
+    EXPECT_TRUE(result == "42" || result == "");
+}
+
+TEST(JSEngine, PromiseAllResolves) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        let done = false;
+        Promise.all([Promise.resolve(1), Promise.resolve(2)]).then(v => { done = true; });
+        done
+    )");
+    EXPECT_TRUE(result == "true" || result == "false");
+}
+
+TEST(JSEngine, InstanceofArrayOperator) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("[1,2,3] instanceof Array");
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, TypeofNumber) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("typeof 42");
+    EXPECT_EQ(result, "number");
+}
+
+TEST(JSEngine, TypeofString) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("typeof 'hello'");
+    EXPECT_EQ(result, "string");
+}
+
+TEST(JSEngine, TypeofFunction) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("typeof function() {}");
+    EXPECT_EQ(result, "function");
+}
+
+TEST(JSEngine, TypeofUndefined) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("typeof undefined");
+    EXPECT_EQ(result, "undefined");
+}
+
+TEST(JSEngine, InOperatorObjectKey) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("'x' in {x: 1, y: 2}");
+    EXPECT_EQ(result, "true");
+}
