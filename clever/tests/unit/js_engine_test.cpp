@@ -17512,3 +17512,51 @@ TEST(JSEngine, BigIntBitNot) {
     auto result = engine.evaluate("(~0n).toString()");
     EXPECT_EQ(result, "-1");
 }
+
+TEST(JSEngine, ReflectApply) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("Reflect.apply(Math.max, null, [3, 1, 4, 1, 5]).toString()");
+    EXPECT_EQ(result, "5");
+}
+
+TEST(JSEngine, ReflectConstruct) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("(Reflect.construct(Array, [3])).length.toString()");
+    EXPECT_EQ(result, "3");
+}
+
+TEST(JSEngine, ReflectGet) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("Reflect.get({x: 42}, 'x').toString()");
+    EXPECT_EQ(result, "42");
+}
+
+TEST(JSEngine, ReflectHas) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("Reflect.has({a: 1}, 'a').toString()");
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, ReflectSet) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("(function(){ var o = {}; Reflect.set(o, 'x', 99); return o.x; })().toString()");
+    EXPECT_EQ(result, "99");
+}
+
+TEST(JSEngine, MathMax3Args) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("Math.max(1, 2, 3).toString()");
+    EXPECT_EQ(result, "3");
+}
+
+TEST(JSEngine, PropertyShorthand) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("(function(){ var x = 5; return {x}.x; })().toString()");
+    EXPECT_EQ(result, "5");
+}
+
+TEST(JSEngine, ShorthandMethod) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("({double(x) { return x * 2; }}).double(7).toString()");
+    EXPECT_EQ(result, "14");
+}
