@@ -4125,3 +4125,85 @@ TEST(DomNode, ForEachChildVisitsInOrder) {
     EXPECT_EQ(visited[0], parent.first_child());
     EXPECT_EQ(visited[2], parent.last_child());
 }
+
+// Cycle 887 — DOM structural and attribute tests
+
+TEST(DomNode, RemoveAndReAppendSameChild) {
+    Element parent("div");
+    parent.append_child(std::make_unique<Element>("span"));
+    auto* child = parent.first_child();
+    auto owned = parent.remove_child(*child);
+    EXPECT_EQ(parent.child_count(), 0u);
+    parent.append_child(std::move(owned));
+    EXPECT_EQ(parent.child_count(), 1u);
+}
+
+TEST(DomNode, AllChildrenRemovedLeaveEmpty) {
+    Element parent("ul");
+    parent.append_child(std::make_unique<Element>("li"));
+    parent.append_child(std::make_unique<Element>("li"));
+    parent.remove_child(*parent.first_child());
+    parent.remove_child(*parent.first_child());
+    EXPECT_EQ(parent.child_count(), 0u);
+    EXPECT_EQ(parent.first_child(), nullptr);
+}
+
+TEST(DomElement, AttributeCountDecreases) {
+    Element e("input");
+    e.set_attribute("type", "text");
+    e.set_attribute("name", "username");
+    EXPECT_EQ(e.attributes().size(), 2u);
+    e.remove_attribute("type");
+    EXPECT_EQ(e.attributes().size(), 1u);
+}
+
+TEST(DomElement, SetAndRemoveOneAttribute) {
+    Element e("img");
+    e.set_attribute("alt", "description");
+    EXPECT_TRUE(e.has_attribute("alt"));
+    e.remove_attribute("alt");
+    EXPECT_FALSE(e.has_attribute("alt"));
+}
+
+TEST(DomElement, AttributeNameCasePreserved) {
+    Element e("div");
+    e.set_attribute("data-Value", "42");
+    const auto& attrs = e.attributes();
+    ASSERT_EQ(attrs.size(), 1u);
+    EXPECT_EQ(attrs[0].name, "data-Value");
+}
+
+TEST(DomDocument, CreateElementInDocumentContext) {
+    Document doc;
+    auto elem = doc.create_element("section");
+    ASSERT_NE(elem, nullptr);
+    EXPECT_EQ(elem->tag_name(), "section");
+    EXPECT_EQ(elem->node_type(), NodeType::Element);
+}
+
+TEST(DomNode, SiblingOrderAfterInsertBefore) {
+    Element parent("nav");
+    parent.append_child(std::make_unique<Element>("a")); // first
+    parent.append_child(std::make_unique<Element>("b")); // last
+    auto* last = parent.last_child();
+    parent.insert_before(std::make_unique<Element>("c"), last);
+    // order: a, c, b
+    EXPECT_EQ(parent.first_child()->next_sibling(), last->previous_sibling());
+}
+
+TEST(DomElement, MultipleAttributeValuesDistinct) {
+    Element e("input");
+    e.set_attribute("type", "email");
+    e.set_attribute("placeholder", "Enter email");
+    e.set_attribute("required", "");
+    EXPECT_EQ(e.attributes().size(), 3u);
+    bool found_type = false, found_placeholder = false, found_required = false;
+    for (const auto& attr : e.attributes()) {
+        if (attr.name == "type" && attr.value == "email") found_type = true;
+        if (attr.name == "placeholder" && attr.value == "Enter email") found_placeholder = true;
+        if (attr.name == "required" && attr.value == "") found_required = true;
+    }
+    EXPECT_TRUE(found_type);
+    EXPECT_TRUE(found_placeholder);
+    EXPECT_TRUE(found_required);
+}
