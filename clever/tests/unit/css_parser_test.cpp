@@ -5427,3 +5427,75 @@ TEST_F(CSSStylesheetTest, FontSynthesisWeightDeclaration) {
         if (d.property == "font-synthesis-weight") { found = true; break; }
     EXPECT_TRUE(found);
 }
+
+TEST_F(CSSStylesheetTest, FontSynthesisStyleDeclaration) {
+    auto sheet = parse_stylesheet("body { font-synthesis-style: none; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "font-synthesis-style") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, FontSynthesisSmallCapsDeclaration) {
+    auto sheet = parse_stylesheet("body { font-synthesis-small-caps: none; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "font-synthesis-small-caps") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, FontSynthesisPositionDeclaration) {
+    auto sheet = parse_stylesheet("body { font-synthesis-position: none; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "font-synthesis-position") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, OverflowAnchorDeclaration) {
+    auto sheet = parse_stylesheet("div { overflow-anchor: none; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "overflow-anchor") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, ForcedColorAdjustDeclaration) {
+    auto sheet = parse_stylesheet("div { forced-color-adjust: none; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "forced-color-adjust") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, MaskRepeatDeclaration) {
+    auto sheet = parse_stylesheet("div { mask-repeat: no-repeat; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "mask-repeat") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, MaskPositionDeclaration) {
+    auto sheet = parse_stylesheet("div { mask-position: center; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "mask-position") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, MaskSizeDeclaration) {
+    auto sheet = parse_stylesheet("div { mask-size: contain; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "mask-size") { found = true; break; }
+    EXPECT_TRUE(found);
+}
