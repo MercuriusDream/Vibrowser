@@ -2611,3 +2611,78 @@ TEST(TreeBuilder, TableWithRows) {
     auto* table = doc->find_element("table");
     ASSERT_NE(table, nullptr);
 }
+
+// ============================================================================
+// Cycle 679: More HTML parser tests
+// ============================================================================
+
+TEST(TreeBuilder, AnchorHrefText) {
+    auto doc = parse(R"(<body><a href="https://example.com">Click here</a></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* a = doc->find_element("a");
+    ASSERT_NE(a, nullptr);
+    EXPECT_EQ(a->text_content(), "Click here");
+}
+
+TEST(TreeBuilder, ParagraphWithMultipleWords) {
+    auto doc = parse(R"(<body><p>one two three four five</p></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* p = doc->find_element("p");
+    ASSERT_NE(p, nullptr);
+    EXPECT_NE(p->text_content().find("three"), std::string::npos);
+}
+
+TEST(TreeBuilder, H1HeadingText) {
+    auto doc = parse(R"(<body><h1>Main Heading</h1></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* h1 = doc->find_element("h1");
+    ASSERT_NE(h1, nullptr);
+    EXPECT_EQ(h1->text_content(), "Main Heading");
+}
+
+TEST(TreeBuilder, H2SubHeadingText) {
+    auto doc = parse(R"(<body><h2>Sub Heading</h2></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* h2 = doc->find_element("h2");
+    ASSERT_NE(h2, nullptr);
+    EXPECT_EQ(h2->text_content(), "Sub Heading");
+}
+
+TEST(TreeBuilder, NestedDivsFound) {
+    auto doc = parse(R"(<body><div><div id="inner">content</div></div></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* div = doc->find_element("div");
+    ASSERT_NE(div, nullptr);
+}
+
+TEST(TreeBuilder, SpanWithDataAttribute) {
+    auto doc = parse(R"(<body><span data-value="42">text</span></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* span = doc->find_element("span");
+    ASSERT_NE(span, nullptr);
+    bool found = false;
+    for (auto& attr : span->attributes) {
+        if (attr.name == "data-value" && attr.value == "42") {
+            found = true; break;
+        }
+    }
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, ButtonWithTypeAttribute) {
+    auto doc = parse(R"(<body><button type="submit">Submit</button></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* btn = doc->find_element("button");
+    ASSERT_NE(btn, nullptr);
+    EXPECT_EQ(btn->text_content(), "Submit");
+}
+
+TEST(TreeBuilder, ParagraphAfterHeading) {
+    auto doc = parse(R"(<body><h1>Title</h1><p>Description text</p></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* h1 = doc->find_element("h1");
+    ASSERT_NE(h1, nullptr);
+    auto* p = doc->find_element("p");
+    ASSERT_NE(p, nullptr);
+    EXPECT_EQ(p->text_content(), "Description text");
+}
