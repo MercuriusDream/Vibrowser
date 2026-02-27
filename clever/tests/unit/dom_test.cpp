@@ -3508,3 +3508,96 @@ TEST(DomNode, InsertBeforeNullAppendsAtEnd) {
     parent->insert_before(doc.create_element("last"), nullptr);
     EXPECT_EQ(parent->child_count(), 2u);
 }
+
+TEST(DomEventTarget, AddListenerCalledOnDispatch) {
+    Document doc;
+    auto elem = doc.create_element("button");
+    int called = 0;
+    EventTarget target;
+    target.add_event_listener("click", [&](Event&) { ++called; });
+    Event ev("click");
+    target.dispatch_event(ev, *elem);
+    EXPECT_EQ(called, 1);
+}
+
+TEST(DomEventTarget, TwoListenersBothCalled) {
+    Document doc;
+    auto elem = doc.create_element("div");
+    int count = 0;
+    EventTarget target;
+    target.add_event_listener("input", [&](Event&) { ++count; });
+    target.add_event_listener("input", [&](Event&) { ++count; });
+    Event ev("input");
+    target.dispatch_event(ev, *elem);
+    EXPECT_EQ(count, 2);
+}
+
+TEST(DomEventTarget, WrongEventTypeNotCalled) {
+    Document doc;
+    auto elem = doc.create_element("span");
+    int count = 0;
+    EventTarget target;
+    target.add_event_listener("click", [&](Event&) { ++count; });
+    Event ev("mouseover");
+    target.dispatch_event(ev, *elem);
+    EXPECT_EQ(count, 0);
+}
+
+TEST(DomEventTarget, RemoveAllListenersPreventsCall) {
+    Document doc;
+    auto elem = doc.create_element("p");
+    int count = 0;
+    EventTarget target;
+    target.add_event_listener("focus", [&](Event&) { ++count; });
+    target.remove_all_listeners("focus");
+    Event ev("focus");
+    target.dispatch_event(ev, *elem);
+    EXPECT_EQ(count, 0);
+}
+
+TEST(DomEventTarget, DispatchTwiceCallsTwice) {
+    Document doc;
+    auto elem = doc.create_element("div");
+    int count = 0;
+    EventTarget target;
+    target.add_event_listener("change", [&](Event&) { ++count; });
+    Event ev("change");
+    target.dispatch_event(ev, *elem);
+    target.dispatch_event(ev, *elem);
+    EXPECT_EQ(count, 2);
+}
+
+TEST(DomEventTarget, ListenerReceivesCorrectEvent) {
+    Document doc;
+    auto elem = doc.create_element("input");
+    std::string captured_type;
+    EventTarget target;
+    target.add_event_listener("keyup", [&](Event& e) { captured_type = e.type(); });
+    Event ev("keyup");
+    target.dispatch_event(ev, *elem);
+    EXPECT_EQ(captured_type, "keyup");
+}
+
+TEST(DomEventTarget, ThreeListenersDifferentTypes) {
+    Document doc;
+    auto elem = doc.create_element("div");
+    int clicks = 0, keys = 0;
+    EventTarget target;
+    target.add_event_listener("click", [&](Event&) { ++clicks; });
+    target.add_event_listener("keydown", [&](Event&) { ++keys; });
+    Event e1("click"), e2("keydown");
+    target.dispatch_event(e1, *elem);
+    target.dispatch_event(e2, *elem);
+    EXPECT_EQ(clicks, 1);
+    EXPECT_EQ(keys, 1);
+}
+
+TEST(DomEventTarget, DispatchReturnsTrue) {
+    Document doc;
+    auto elem = doc.create_element("div");
+    EventTarget target;
+    target.add_event_listener("click", [](Event&) {});
+    Event ev("click");
+    bool result = target.dispatch_event(ev, *elem);
+    EXPECT_TRUE(result);
+}
