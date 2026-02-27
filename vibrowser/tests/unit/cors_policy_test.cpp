@@ -5859,3 +5859,87 @@ TEST(CORSPolicyTest, CorrectAcaoWithMethodsAllowsV75) {
                                      allowed,
                                      false));
 }
+
+TEST(CORSPolicyTest, HttpsDefaultPortAndExplicit443AreSameOriginV76) {
+    EXPECT_FALSE(is_cross_origin("https://example.com", "https://example.com:443/path"));
+}
+
+TEST(CORSPolicyTest, NonDefaultHttpsPortIsCrossOriginV76) {
+    EXPECT_TRUE(is_cross_origin("https://example.com", "https://example.com:444/path"));
+}
+
+TEST(CORSPolicyTest, FragmentInRequestUrlIsNotCorsEligibleV76) {
+    EXPECT_FALSE(is_cors_eligible_request_url("https://api.example/data?view=full#section-2"));
+}
+
+TEST(CORSPolicyTest, WssUrlIsNotTreatedAsCrossOriginV76) {
+    EXPECT_FALSE(is_cross_origin("https://app.example", "wss://app.example/socket"));
+}
+
+TEST(CORSPolicyTest, ExactAcaoAndAcacAllowCredentialsV76) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "https://app.example");
+    headers.set("Access-Control-Allow-Credentials", "true");
+    EXPECT_TRUE(
+        cors_allows_response("https://app.example", "https://api.example/data", headers, true));
+}
+
+TEST(CORSPolicyTest, ExactAcaoWithoutAcacRejectsCredentialsV76) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "https://app.example");
+    EXPECT_FALSE(
+        cors_allows_response("https://app.example", "https://api.example/data", headers, true));
+}
+
+TEST(CORSPolicyTest, WildcardAcaoAllowsWhenNoCredentialsV76) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "*");
+    EXPECT_TRUE(
+        cors_allows_response("https://client.example", "https://api.example/data", headers, false));
+}
+
+TEST(CORSPolicyTest, WildcardAcaoRejectsWhenCredentialsRequestedV76) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "*");
+    headers.set("Access-Control-Allow-Credentials", "true");
+    EXPECT_FALSE(
+        cors_allows_response("https://client.example", "https://api.example/data", headers, true));
+}
+
+TEST(CORSPolicyTest, DifferentSchemeIsCrossOriginV77) {
+    EXPECT_TRUE(is_cross_origin("http://a.com", "https://a.com"));
+}
+
+TEST(CORSPolicyTest, SameOriginPathDifferenceNotCrossOriginV77) {
+    EXPECT_FALSE(is_cross_origin("https://a.com/x", "https://a.com/y"));
+}
+
+TEST(CORSPolicyTest, AcaoExactMatchAllowsNonCredentialedV77) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "https://origin.example");
+    EXPECT_TRUE(
+        cors_allows_response("https://origin.example", "https://api.example/data", headers, false));
+}
+
+TEST(CORSPolicyTest, AcaoMismatchRejectsV77) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "https://allowed.example");
+    EXPECT_FALSE(
+        cors_allows_response("https://denied.example", "https://api.example/data", headers, false));
+}
+
+TEST(CORSPolicyTest, DataUrlNotCorsEligibleV77) {
+    EXPECT_FALSE(is_cors_eligible_request_url("data:text/html,<h1>Test</h1>"));
+}
+
+TEST(CORSPolicyTest, BlobUrlNotCorsEligibleV77) {
+    EXPECT_FALSE(is_cors_eligible_request_url("blob:https://a.com/550e8400"));
+}
+
+TEST(CORSPolicyTest, AboutBlankNotCorsEligibleV77) {
+    EXPECT_FALSE(is_cors_eligible_request_url("about:blank"));
+}
+
+TEST(CORSPolicyTest, SameOriginSamePortNotCrossOriginV77) {
+    EXPECT_FALSE(is_cross_origin("https://example.com", "https://example.com/api/data"));
+}

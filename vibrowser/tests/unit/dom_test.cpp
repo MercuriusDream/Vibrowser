@@ -12706,3 +12706,211 @@ TEST(DOMTest, NewTextNodeStartsWithoutParentV75) {
     clever::dom::Text text("hello");
     EXPECT_EQ(text.parent(), nullptr);
 }
+
+TEST(DOMTest, DOMTreeManipulationInsertBeforeReordersChildrenV76) {
+    clever::dom::Element parent("ul");
+    auto first = std::make_unique<clever::dom::Element>("li");
+    auto third = std::make_unique<clever::dom::Element>("li");
+    auto second = std::make_unique<clever::dom::Element>("li");
+
+    auto* first_ptr = first.get();
+    auto* third_ptr = third.get();
+    auto* second_ptr = second.get();
+
+    parent.append_child(std::move(first));
+    parent.append_child(std::move(third));
+    parent.insert_before(std::move(second), third_ptr);
+
+    EXPECT_EQ(parent.child_count(), 3u);
+    EXPECT_EQ(parent.first_child(), first_ptr);
+    EXPECT_EQ(first_ptr->next_sibling(), second_ptr);
+    EXPECT_EQ(second_ptr->next_sibling(), third_ptr);
+}
+
+TEST(DOMTest, AttributeHandlingRemoveKeepsRemainingEntriesV76) {
+    clever::dom::Element element("div");
+    element.set_attribute("id", "main");
+    element.set_attribute("role", "region");
+    element.set_attribute("data-state", "ready");
+
+    element.remove_attribute("role");
+
+    EXPECT_FALSE(element.get_attribute("role").has_value());
+    EXPECT_EQ(element.get_attribute("id").value_or(""), "main");
+    EXPECT_EQ(element.get_attribute("data-state").value_or(""), "ready");
+    EXPECT_EQ(element.attributes().size(), 2u);
+}
+
+TEST(DOMTest, TextContentIncludesDescendantTextNodesV76) {
+    clever::dom::Element root("div");
+    root.append_child(std::make_unique<clever::dom::Text>("Hello"));
+
+    auto child = std::make_unique<clever::dom::Element>("span");
+    child->append_child(std::make_unique<clever::dom::Text>(", world"));
+    root.append_child(std::move(child));
+
+    EXPECT_EQ(root.text_content(), "Hello, world");
+}
+
+TEST(DOMTest, ClassListToggleMaintainsMembershipStateV76) {
+    clever::dom::Element element("div");
+    element.class_list().add("base");
+    EXPECT_TRUE(element.class_list().contains("base"));
+
+    element.class_list().toggle("active");
+    EXPECT_TRUE(element.class_list().contains("active"));
+
+    element.class_list().toggle("active");
+    EXPECT_FALSE(element.class_list().contains("active"));
+
+    element.class_list().remove("base");
+    EXPECT_FALSE(element.class_list().contains("base"));
+}
+
+TEST(DOMTest, EventTargetsExposeCurrentTargetDuringDispatchV76) {
+    clever::dom::EventTarget target;
+    clever::dom::Element button("button");
+    bool saw_current_target = false;
+
+    target.add_event_listener(
+        "click",
+        [&](clever::dom::Event& event) {
+            saw_current_target = (event.current_target() == &button);
+        },
+        false);
+
+    clever::dom::Event event("click");
+    event.target_ = &button;
+    event.current_target_ = &button;
+    event.phase_ = clever::dom::EventPhase::AtTarget;
+
+    EXPECT_TRUE(target.dispatch_event(event, button));
+    EXPECT_TRUE(saw_current_target);
+}
+
+TEST(DOMTest, NodeTraversalUsesSiblingLinksInOrderV76) {
+    clever::dom::Element parent("div");
+    auto first = std::make_unique<clever::dom::Element>("a");
+    auto second = std::make_unique<clever::dom::Element>("b");
+    auto third = std::make_unique<clever::dom::Element>("c");
+
+    auto* first_ptr = first.get();
+    auto* second_ptr = second.get();
+    auto* third_ptr = third.get();
+
+    parent.append_child(std::move(first));
+    parent.append_child(std::move(second));
+    parent.append_child(std::move(third));
+
+    EXPECT_EQ(parent.first_child(), first_ptr);
+    EXPECT_EQ(first_ptr->next_sibling(), second_ptr);
+    EXPECT_EQ(second_ptr->next_sibling(), third_ptr);
+    EXPECT_EQ(third_ptr->next_sibling(), nullptr);
+    EXPECT_EQ(third_ptr->previous_sibling(), second_ptr);
+}
+
+TEST(DOMTest, ElementCreationCreatesRequestedTagNamesV76) {
+    clever::dom::Element article("article");
+    clever::dom::Element nav("nav");
+
+    EXPECT_EQ(article.tag_name(), "article");
+    EXPECT_EQ(nav.tag_name(), "nav");
+}
+
+TEST(DOMTest, ParentChildRelationshipClearedAfterRemoveChildV76) {
+    clever::dom::Element parent("section");
+    auto child = std::make_unique<clever::dom::Element>("p");
+    auto* child_ptr = child.get();
+
+    parent.append_child(std::move(child));
+    ASSERT_EQ(parent.child_count(), 1u);
+    EXPECT_EQ(child_ptr->parent(), &parent);
+
+    auto removed = parent.remove_child(*child_ptr);
+    EXPECT_EQ(removed.get(), child_ptr);
+    EXPECT_EQ(parent.child_count(), 0u);
+    EXPECT_EQ(parent.first_child(), nullptr);
+    EXPECT_EQ(child_ptr->parent(), nullptr);
+}
+
+TEST(DOMTest, SetAttributeOverwritesExistingValueV77) {
+    clever::dom::Element element("div");
+
+    element.set_attribute("data-value", "first");
+    EXPECT_EQ(element.get_attribute("data-value").value_or(""), "first");
+
+    element.set_attribute("data-value", "second");
+    EXPECT_EQ(element.get_attribute("data-value").value_or(""), "second");
+}
+
+TEST(DOMTest, CommentNodeTextContentMatchesConstructionV77) {
+    clever::dom::Comment comment("hello");
+    EXPECT_EQ(comment.data(), "hello");
+}
+
+TEST(DOMTest, TextNodePreservesSpecialCharactersV77) {
+    clever::dom::Text text("<b>&amp;");
+    std::string content = text.text_content();
+    EXPECT_NE(content.find('<'), std::string::npos);
+    EXPECT_NE(content.find('>'), std::string::npos);
+}
+
+TEST(DOMTest, SequentialAppendChildGrowsCountV77) {
+    clever::dom::Element parent("div");
+
+    parent.append_child(std::make_unique<clever::dom::Element>("span"));
+    EXPECT_EQ(parent.child_count(), 1u);
+
+    parent.append_child(std::make_unique<clever::dom::Element>("div"));
+    EXPECT_EQ(parent.child_count(), 2u);
+
+    parent.append_child(std::make_unique<clever::dom::Element>("p"));
+    EXPECT_EQ(parent.child_count(), 3u);
+
+    parent.append_child(std::make_unique<clever::dom::Element>("a"));
+    EXPECT_EQ(parent.child_count(), 4u);
+
+    parent.append_child(std::make_unique<clever::dom::Element>("button"));
+    EXPECT_EQ(parent.child_count(), 5u);
+}
+
+TEST(DOMTest, RootElementParentIsNullptrV77) {
+    clever::dom::Element element("div");
+    EXPECT_EQ(element.parent(), nullptr);
+}
+
+TEST(DOMTest, TagNamePreservesLowercaseV77) {
+    clever::dom::Element element("SPAN");
+    EXPECT_EQ(element.tag_name(), "SPAN");
+}
+
+TEST(DOMTest, ClassListAddRemoveContainsV77) {
+    clever::dom::Element element("div");
+
+    element.class_list().add("btn");
+    element.class_list().add("primary");
+    element.class_list().add("lg");
+
+    EXPECT_TRUE(element.class_list().contains("btn"));
+    EXPECT_TRUE(element.class_list().contains("primary"));
+    EXPECT_TRUE(element.class_list().contains("lg"));
+
+    element.class_list().remove("primary");
+    EXPECT_FALSE(element.class_list().contains("primary"));
+    EXPECT_TRUE(element.class_list().contains("btn"));
+    EXPECT_TRUE(element.class_list().contains("lg"));
+}
+
+TEST(DOMTest, RemoveChildReturnsOwnershipV77) {
+    clever::dom::Element parent("div");
+    auto child = std::make_unique<clever::dom::Element>("span");
+    auto* child_ptr = child.get();
+
+    parent.append_child(std::move(child));
+    ASSERT_EQ(parent.child_count(), 1u);
+
+    auto removed = parent.remove_child(*child_ptr);
+    EXPECT_NE(removed.get(), nullptr);
+    EXPECT_EQ(removed.get(), child_ptr);
+    EXPECT_EQ(parent.child_count(), 0u);
+}

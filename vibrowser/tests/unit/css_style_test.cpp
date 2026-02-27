@@ -14179,3 +14179,246 @@ TEST(PropertyCascadeTest, ApplyDeclarationGridAutoFlowColumnDenseIntV75) {
     cascade.apply_declaration(style, make_decl("grid-auto-flow", "column dense"), parent);
     EXPECT_EQ(style.grid_auto_flow, 3);
 }
+
+TEST(CSSStyleTest, CascadeSpecificityWinsForNonImportantDeclarationsV76) {
+    PropertyCascade cascade;
+    ComputedStyle parent_style;
+
+    StyleRule type_rule;
+    type_rule.declarations.push_back(make_decl("display", "block"));
+
+    StyleRule class_rule;
+    class_rule.declarations.push_back(make_decl("display", "flex"));
+
+    MatchedRule low_specificity_match;
+    low_specificity_match.rule = &type_rule;
+    low_specificity_match.specificity = {0, 0, 1};
+    low_specificity_match.source_order = 10;
+
+    MatchedRule high_specificity_match;
+    high_specificity_match.rule = &class_rule;
+    high_specificity_match.specificity = {0, 1, 0};
+    high_specificity_match.source_order = 1;
+
+    auto result = cascade.cascade({low_specificity_match, high_specificity_match}, parent_style);
+    EXPECT_EQ(result.display, Display::Flex);
+}
+
+TEST(CSSStyleTest, CascadeImportantOverridesHigherSpecificityV76) {
+    PropertyCascade cascade;
+    ComputedStyle parent_style;
+
+    StyleRule high_specificity_rule;
+    high_specificity_rule.declarations.push_back(make_decl("display", "flex"));
+
+    StyleRule important_rule;
+    important_rule.declarations.push_back(make_decl("display", "block", true));
+
+    MatchedRule high_specificity_match;
+    high_specificity_match.rule = &high_specificity_rule;
+    high_specificity_match.specificity = {1, 0, 0};
+    high_specificity_match.source_order = 0;
+
+    MatchedRule important_match;
+    important_match.rule = &important_rule;
+    important_match.specificity = {0, 0, 1};
+    important_match.source_order = 1;
+
+    auto result = cascade.cascade({high_specificity_match, important_match}, parent_style);
+    EXPECT_EQ(result.display, Display::Block);
+}
+
+TEST(CSSStyleTest, ApplyBorderTopWidthDoesNotImplySolidStyleV76) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("border-top-width", "6px"), parent);
+
+    EXPECT_FLOAT_EQ(style.border_top.width.to_px(), 6.0f);
+    EXPECT_EQ(style.border_top.style, BorderStyle::None);
+}
+
+TEST(CSSStyleTest, ApplyBorderWidthShorthandKeepsAllSideStylesNoneV76) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("border-width", "1px 2px 3px 4px"), parent);
+
+    EXPECT_FLOAT_EQ(style.border_top.width.to_px(), 1.0f);
+    EXPECT_FLOAT_EQ(style.border_right.width.to_px(), 2.0f);
+    EXPECT_FLOAT_EQ(style.border_bottom.width.to_px(), 3.0f);
+    EXPECT_FLOAT_EQ(style.border_left.width.to_px(), 4.0f);
+    EXPECT_EQ(style.border_top.style, BorderStyle::None);
+    EXPECT_EQ(style.border_right.style, BorderStyle::None);
+    EXPECT_EQ(style.border_bottom.style, BorderStyle::None);
+    EXPECT_EQ(style.border_left.style, BorderStyle::None);
+}
+
+TEST(CSSStyleTest, ApplyMarginShorthandThreeValuesExpandsCorrectlyV76) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl_multi("margin", {"4px", "8px", "12px"}), parent);
+
+    EXPECT_FLOAT_EQ(style.margin.top.to_px(), 4.0f);
+    EXPECT_FLOAT_EQ(style.margin.right.to_px(), 8.0f);
+    EXPECT_FLOAT_EQ(style.margin.bottom.to_px(), 12.0f);
+    EXPECT_FLOAT_EQ(style.margin.left.to_px(), 8.0f);
+}
+
+TEST(CSSStyleTest, ApplyVisibilityAndCursorInheritUseParentEnumsV76) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    parent.visibility = Visibility::Hidden;
+    parent.cursor = Cursor::Pointer;
+
+    cascade.apply_declaration(style, make_decl("visibility", "inherit"), parent);
+    cascade.apply_declaration(style, make_decl("cursor", "inherit"), parent);
+
+    EXPECT_EQ(style.visibility, Visibility::Hidden);
+    EXPECT_EQ(style.cursor, Cursor::Pointer);
+}
+
+TEST(CSSStyleTest, ResolveInheritedColorAndCursorFromParentV76) {
+    StyleResolver resolver;
+    ElementView elem;
+    elem.tag_name = "span";
+
+    ComputedStyle parent;
+    parent.color = Color{9, 99, 199, 255};
+    parent.cursor = Cursor::Move;
+    parent.display = Display::Flex;
+
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.color, (Color{9, 99, 199, 255}));
+    EXPECT_EQ(style.cursor, Cursor::Move);
+    EXPECT_EQ(style.display, Display::Inline);
+}
+
+TEST(CSSStyleTest, ResolveLineHeightEmToComputedPxV76) {
+    const std::string css = "p { line-height: 1.5em; }";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "p";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_FLOAT_EQ(style.line_height.value, 24.0f);
+}
+
+TEST(CSSStyleTest, ParseDisplayGridV77) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("display", "grid"), parent);
+    EXPECT_EQ(style.display, Display::Grid);
+}
+
+TEST(CSSStyleTest, ParsePositionStickyV77) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("position", "sticky"), parent);
+    EXPECT_EQ(style.position, Position::Sticky);
+}
+
+TEST(CSSStyleTest, ParseOpacityHalfV77) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("opacity", "0.5"), parent);
+    EXPECT_FLOAT_EQ(style.opacity, 0.5f);
+}
+
+TEST(CSSStyleTest, ParseFontSize24pxV77) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("font-size", "24px"), parent);
+    EXPECT_FLOAT_EQ(style.font_size.to_px(), 24.0f);
+}
+
+TEST(CSSStyleTest, ImportantOverridesNormalDeclarationV77) {
+    PropertyCascade cascade;
+    ComputedStyle parent_style;
+
+    StyleRule normal_rule;
+    normal_rule.declarations.push_back(make_decl("color", "red", false));
+
+    StyleRule important_rule;
+    important_rule.declarations.push_back(make_decl("color", "blue", true));
+
+    MatchedRule normal_match;
+    normal_match.rule = &normal_rule;
+    normal_match.specificity = {0, 0, 1};
+    normal_match.source_order = 0;
+
+    MatchedRule important_match;
+    important_match.rule = &important_rule;
+    important_match.specificity = {0, 0, 1};
+    important_match.source_order = 1;
+
+    auto result = cascade.cascade({normal_match, important_match}, parent_style);
+    EXPECT_EQ(result.color, (Color{0, 0, 255, 255}));
+}
+
+TEST(CSSStyleTest, ClassSelectorMatchingV77) {
+    const std::string css = ".active { color: red; }";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+    elem.classes.push_back("active");
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.color, (Color{255, 0, 0, 255}));
+}
+
+TEST(CSSStyleTest, IdSelectorMatchingV77) {
+    const std::string css = "#main { display: flex; }";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+    elem.id = "main";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.display, Display::Flex);
+}
+
+TEST(CSSStyleTest, LastDeclarationWinsV77) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("display", "block"), parent);
+    EXPECT_EQ(style.display, Display::Block);
+
+    cascade.apply_declaration(style, make_decl("display", "inline"), parent);
+    EXPECT_EQ(style.display, Display::Inline);
+}

@@ -11930,3 +11930,269 @@ TEST(HTMLParserTest, TextareaSpecialElementContentAndAttributeV75) {
     EXPECT_EQ(get_attr_v63(textarea, "name"), "notes");
     EXPECT_EQ(textarea->text_content(), "alpha\nbeta\ngamma");
 }
+
+TEST(HTMLParserTest, DocumentScaffoldHtmlHeadBodyV76) {
+    auto doc = clever::html::parse(
+        "<html><head><title>Parser V76</title></head><body><main><h1>Welcome</h1></main></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* html = doc->find_element("html");
+    auto* head = doc->find_element("head");
+    auto* title = doc->find_element("title");
+    auto* body = doc->find_element("body");
+    auto* main = doc->find_element("main");
+    auto* h1 = doc->find_element("h1");
+    ASSERT_NE(html, nullptr);
+    ASSERT_NE(head, nullptr);
+    ASSERT_NE(title, nullptr);
+    ASSERT_NE(body, nullptr);
+    ASSERT_NE(main, nullptr);
+    ASSERT_NE(h1, nullptr);
+
+    EXPECT_EQ(html->tag_name, "html");
+    EXPECT_EQ(head->parent, html);
+    EXPECT_EQ(body->parent, html);
+    EXPECT_EQ(main->parent, body);
+    EXPECT_EQ(title->text_content(), "Parser V76");
+    EXPECT_EQ(h1->text_content(), "Welcome");
+}
+
+TEST(HTMLParserTest, TreeBuildSectionContainsTwoArticlesV76) {
+    auto doc = clever::html::parse(
+        "<html><body><section id='feed'><article><p>First</p></article><article><p>Second</p></article></section></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* section = doc->find_element("section");
+    ASSERT_NE(section, nullptr);
+    EXPECT_EQ(section->tag_name, "section");
+    EXPECT_EQ(get_attr_v63(section, "id"), "feed");
+
+    size_t article_count = 0;
+    for (auto& child : section->children) {
+        if (!child) continue;
+        if (child->type != clever::html::SimpleNode::Element) continue;
+        if (child->tag_name != "article") continue;
+        article_count++;
+        EXPECT_EQ(child->parent, section);
+    }
+    EXPECT_EQ(article_count, 2u);
+}
+
+TEST(HTMLParserTest, ScriptElementParsedAndFoundV76) {
+    auto doc = clever::html::parse(
+        "<html><body><script>console.log('hello');</script><p>after</p></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* script = doc->find_element("script");
+    ASSERT_NE(script, nullptr);
+    EXPECT_EQ(script->tag_name, "script");
+
+    auto* p = doc->find_element("p");
+    ASSERT_NE(p, nullptr);
+    EXPECT_EQ(p->text_content(), "after");
+}
+
+TEST(HTMLParserTest, StyleSpecialElementKeepsSelectorTextV76) {
+    auto doc = clever::html::parse(
+        "<html><body><style>.box::before { content: \"<p>\"; } body > p { color: blue; }</style></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* style = doc->find_element("style");
+    ASSERT_NE(style, nullptr);
+    EXPECT_EQ(style->tag_name, "style");
+
+    const std::string css = style->text_content();
+    EXPECT_NE(css.find("content: \"<p>\""), std::string::npos);
+    EXPECT_NE(css.find("body > p"), std::string::npos);
+    EXPECT_EQ(doc->find_element("p"), nullptr);
+}
+
+TEST(HTMLParserTest, TextareaAttributeAndChildPresenceV76) {
+    auto doc = clever::html::parse(
+        "<html><body><textarea rows='3' cols='40'>some text here</textarea></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* textarea = doc->find_element("textarea");
+    ASSERT_NE(textarea, nullptr);
+    EXPECT_EQ(textarea->tag_name, "textarea");
+    EXPECT_EQ(get_attr_v63(textarea, "rows"), "3");
+    EXPECT_EQ(get_attr_v63(textarea, "cols"), "40");
+    EXPECT_FALSE(textarea->text_content().empty());
+}
+
+TEST(HTMLParserTest, VoidElementsRemainLeafNodesV76) {
+    auto doc = clever::html::parse(
+        "<html><body><div>start<img src='x.png'>middle<br>end<hr></div></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* div = doc->find_element("div");
+    auto* img = doc->find_element("img");
+    auto* br = doc->find_element("br");
+    auto* hr = doc->find_element("hr");
+    ASSERT_NE(div, nullptr);
+    ASSERT_NE(img, nullptr);
+    ASSERT_NE(br, nullptr);
+    ASSERT_NE(hr, nullptr);
+
+    EXPECT_TRUE(img->children.empty());
+    EXPECT_TRUE(br->children.empty());
+    EXPECT_TRUE(hr->children.empty());
+    EXPECT_EQ(img->parent, div);
+    EXPECT_EQ(br->parent, div);
+    EXPECT_EQ(hr->parent, div);
+    EXPECT_EQ(get_attr_v63(img, "src"), "x.png");
+    EXPECT_EQ(div->text_content(), "startmiddleend");
+}
+
+TEST(HTMLParserTest, AttributeHandlingQuotedUnquotedBooleanV76) {
+    auto doc = clever::html::parse(
+        "<html><body><input type=text disabled value='abc' data-id=99></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* input = doc->find_element("input");
+    ASSERT_NE(input, nullptr);
+    EXPECT_EQ(input->tag_name, "input");
+    EXPECT_EQ(get_attr_v63(input, "type"), "text");
+    EXPECT_EQ(get_attr_v63(input, "disabled"), "");
+    EXPECT_EQ(get_attr_v63(input, "value"), "abc");
+    EXPECT_EQ(get_attr_v63(input, "data-id"), "99");
+}
+
+TEST(HTMLParserTest, AttributeHandlingHyphenatedAndTextV76) {
+    auto doc = clever::html::parse(
+        "<html><body><a href='/search?q=one&lang=en' title='go now' aria-label=\"Search Link\" rel=noopener>Search</a></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* anchor = doc->find_element("a");
+    ASSERT_NE(anchor, nullptr);
+    EXPECT_EQ(anchor->tag_name, "a");
+    EXPECT_EQ(get_attr_v63(anchor, "href"), "/search?q=one&lang=en");
+    EXPECT_EQ(get_attr_v63(anchor, "title"), "go now");
+    EXPECT_EQ(get_attr_v63(anchor, "aria-label"), "Search Link");
+    EXPECT_EQ(get_attr_v63(anchor, "rel"), "noopener");
+    EXPECT_EQ(anchor->text_content(), "Search");
+}
+
+TEST(HTMLParserTest, NestedDivsParentChildRelationV77) {
+    auto doc = clever::html::parse("<html><body><div id='outer'><div id='inner'>text</div></div></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* outer = doc->find_element("div");
+    ASSERT_NE(outer, nullptr);
+    EXPECT_EQ(outer->tag_name, "div");
+    EXPECT_EQ(get_attr_v63(outer, "id"), "outer");
+
+    clever::html::SimpleNode* inner = nullptr;
+    for (auto& child : outer->children) {
+        if (child && child->type == clever::html::SimpleNode::Element && child->tag_name == "div") {
+            inner = child.get();
+            break;
+        }
+    }
+    ASSERT_NE(inner, nullptr);
+    EXPECT_EQ(inner->tag_name, "div");
+    EXPECT_EQ(get_attr_v63(inner, "id"), "inner");
+    EXPECT_EQ(inner->parent, outer);
+    EXPECT_EQ(inner->text_content(), "text");
+}
+
+TEST(HTMLParserTest, MultipleParagraphsCountV77) {
+    auto doc = clever::html::parse("<html><body><p>First</p><p>Second</p><p>Third</p></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto paragraphs = doc->find_all_elements("p");
+    ASSERT_EQ(paragraphs.size(), 3u);
+
+    EXPECT_EQ(paragraphs[0]->tag_name, "p");
+    EXPECT_EQ(paragraphs[1]->tag_name, "p");
+    EXPECT_EQ(paragraphs[2]->tag_name, "p");
+    EXPECT_EQ(paragraphs[0]->text_content(), "First");
+    EXPECT_EQ(paragraphs[1]->text_content(), "Second");
+    EXPECT_EQ(paragraphs[2]->text_content(), "Third");
+}
+
+TEST(HTMLParserTest, UnorderedListWithItemsV77) {
+    auto doc = clever::html::parse("<html><body><ul><li>a</li><li>b</li></ul></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* ul = doc->find_element("ul");
+    ASSERT_NE(ul, nullptr);
+    EXPECT_EQ(ul->tag_name, "ul");
+
+    size_t li_count = 0;
+    for (auto& child : ul->children) {
+        if (child && child->type == clever::html::SimpleNode::Element && child->tag_name == "li") {
+            li_count++;
+            EXPECT_EQ(child->parent, ul);
+        }
+    }
+    EXPECT_EQ(li_count, 2u);
+}
+
+TEST(HTMLParserTest, AnchorTagHrefAndTextV77) {
+    auto doc = clever::html::parse("<html><body><a href='/link'>click</a></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* anchor = doc->find_element("a");
+    ASSERT_NE(anchor, nullptr);
+    EXPECT_EQ(anchor->tag_name, "a");
+    EXPECT_EQ(get_attr_v63(anchor, "href"), "/link");
+    EXPECT_EQ(anchor->text_content(), "click");
+}
+
+TEST(HTMLParserTest, ImageVoidElementNoChildrenV77) {
+    auto doc = clever::html::parse("<html><body><img src='x.png' alt='pic'></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* img = doc->find_element("img");
+    ASSERT_NE(img, nullptr);
+    EXPECT_EQ(img->tag_name, "img");
+    EXPECT_EQ(get_attr_v63(img, "src"), "x.png");
+    EXPECT_EQ(get_attr_v63(img, "alt"), "pic");
+    EXPECT_TRUE(img->children.empty());
+}
+
+TEST(HTMLParserTest, FormWithInputAndButtonV77) {
+    auto doc = clever::html::parse("<html><body><form><input type='text'><button>Submit</button></form></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* form = doc->find_element("form");
+    ASSERT_NE(form, nullptr);
+    EXPECT_EQ(form->tag_name, "form");
+
+    auto* input = doc->find_element("input");
+    ASSERT_NE(input, nullptr);
+    EXPECT_EQ(input->tag_name, "input");
+    EXPECT_EQ(input->parent, form);
+
+    auto* button = doc->find_element("button");
+    ASSERT_NE(button, nullptr);
+    EXPECT_EQ(button->tag_name, "button");
+    EXPECT_EQ(button->parent, form);
+    EXPECT_EQ(button->text_content(), "Submit");
+}
+
+TEST(HTMLParserTest, HeadingTagsH1H2V77) {
+    auto doc = clever::html::parse("<html><body><h1>Main</h1><h2>Sub</h2></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* h1 = doc->find_element("h1");
+    auto* h2 = doc->find_element("h2");
+    ASSERT_NE(h1, nullptr);
+    ASSERT_NE(h2, nullptr);
+    EXPECT_EQ(h1->tag_name, "h1");
+    EXPECT_EQ(h2->tag_name, "h2");
+    EXPECT_EQ(h1->text_content(), "Main");
+    EXPECT_EQ(h2->text_content(), "Sub");
+}
+
+TEST(HTMLParserTest, SpanWithClassAttributeV77) {
+    auto doc = clever::html::parse("<html><body><span class='highlight'>text</span></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* span = doc->find_element("span");
+    ASSERT_NE(span, nullptr);
+    EXPECT_EQ(span->tag_name, "span");
+    EXPECT_EQ(get_attr_v63(span, "class"), "highlight");
+    EXPECT_EQ(span->text_content(), "text");
+}

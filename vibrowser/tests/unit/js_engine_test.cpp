@@ -23706,3 +23706,221 @@ TEST(JSEngineTest, ProxySymbolRegexAndErrorHandlingV75) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "abc#|11|TypeError|true");
 }
+
+TEST(JSEngineTest, AsyncAwaitCombinesResolvedValuesV76) {
+    clever::js::JSEngine engine;
+    engine.evaluate(R"(
+        var asyncResultV76 = 'pending';
+        async function runV76() {
+            var base = await Promise.resolve(5);
+            var bonus = await Promise.resolve(base * 2);
+            asyncResultV76 = `${base + bonus}`;
+        }
+        runV76();
+    )");
+    clever::js::flush_fetch_promise_jobs(engine.context());
+    auto result = engine.evaluate("asyncResultV76");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "15");
+}
+
+TEST(JSEngineTest, DestructuringWithTemplateLiteralFormatsValueV76) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var payload = {
+            user: { name: 'Lin', tags: ['core', 'js', 'v76'] },
+            stats: { open: 2, closed: 5 }
+        };
+        var userName, firstTag, thirdTag, openCount, closedCount;
+        ({
+            user: { name: userName, tags: [firstTag, , thirdTag] },
+            stats: { open: openCount, closed: closedCount }
+        } = payload);
+        `${userName}:${firstTag}/${thirdTag}:${openCount + closedCount}`
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "Lin:core/v76:7");
+}
+
+TEST(JSEngineTest, ProxyReflectInterceptsAndDelegatesReadsV76) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var target = { value: 4, label: 'n' };
+        var proxy = new Proxy(target, {
+            get: function(t, prop, receiver) {
+                if (prop === 'value') {
+                    return Reflect.get(t, prop, receiver) * 3;
+                }
+                return Reflect.get(t, prop, receiver);
+            },
+            set: function(t, prop, value, receiver) {
+                if (prop === 'value') {
+                    return Reflect.set(t, prop, value + 1, receiver);
+                }
+                return Reflect.set(t, prop, value, receiver);
+            }
+        });
+        proxy.value = 6;
+        [proxy.value.toString(), target.value.toString(), proxy.label].join('|')
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "21|7|n");
+}
+
+TEST(JSEngineTest, MapAndSetPreserveExpectedCollectionsV76) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var map = new Map();
+        map.set('x', 1);
+        map.set('y', 2);
+        map.set('x', 5);
+        var set = new Set(['a', 'b', 'a']);
+        set.add('c');
+        [map.get('x').toString(), map.size.toString(), Array.from(set).join(',')].join('|')
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "5|2|a,b,c");
+}
+
+TEST(JSEngineTest, GeneratorYieldsDelegatedSequenceAndReturnV76) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        function* chain() {
+            yield 'start';
+            yield* [1, 2];
+            return 'done';
+        }
+        var it = chain();
+        var a = it.next();
+        var b = it.next();
+        var c = it.next();
+        var d = it.next();
+        [a.value, b.value.toString(), c.value.toString(), d.value, d.done.toString()].join('|')
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "start|1|2|done|true");
+}
+
+TEST(JSEngineTest, SymbolKeyStaysOutsideStringEnumerationV76) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var secret = Symbol('secret');
+        var obj = { visible: 'yes' };
+        obj[secret] = 'hidden';
+        var keys = Object.keys(obj);
+        var symbols = Object.getOwnPropertySymbols(obj);
+        [keys.join(','), symbols.length.toString(), obj[symbols[0]]].join('|')
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "visible|1|hidden");
+}
+
+TEST(JSEngineTest, ClassInheritanceUsesSuperAndStaticMethodV76) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        class Base {
+            constructor(name) { this.name = name; }
+            greet() { return `hi ${this.name}`; }
+        }
+        class Child extends Base {
+            greet() { return `${super.greet()}!`; }
+            static kind() { return 'child'; }
+        }
+        var instance = new Child('v76');
+        [instance.greet(), Child.kind(), (instance instanceof Base).toString()].join('|')
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "hi v76!|child|true");
+}
+
+TEST(JSEngineTest, ClosureRetainsLexicalStateAcrossInvocationsV76) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var makeAccumulator = function(seed) {
+            var total = seed;
+            return function(delta) {
+                total += delta;
+                return total;
+            };
+        };
+        var acc = makeAccumulator(10);
+        [acc(1).toString(), acc(-3).toString(), acc(5).toString()].join('|')
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "11|8|13");
+}
+
+TEST(JSEngineTest, ArrayReduceSumV77) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("[1,2,3,4].reduce((a,b)=>a+b,0).toString()");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "10");
+}
+
+TEST(JSEngineTest, ObjectKeysAndValuesV77) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("Object.keys({a:1,b:2}).join('|')");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "a|b");
+}
+
+TEST(JSEngineTest, StringSplitAndJoinRoundTripV77) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("\"a-b-c\".split(\"-\").join(\",\")");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "a,b,c");
+}
+
+TEST(JSEngineTest, MapSetGetHasV77) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var map = new Map();
+        map.set('key', 42);
+        [map.get('key').toString(), map.has('key').toString(), map.has('missing').toString()].join('|')
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "42|true|false");
+}
+
+TEST(JSEngineTest, SetAddHasSizeV77) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var set = new Set();
+        set.add(1);
+        set.add(2);
+        set.add(1);
+        [set.size.toString(), set.has(1).toString(), set.has(3).toString()].join('|')
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "2|true|false");
+}
+
+TEST(JSEngineTest, DestructuringWithDefaultsV77) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var {a=10, b=20} = {a:5};
+        [a.toString(), b.toString()].join('|')
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "5|20");
+}
+
+TEST(JSEngineTest, SpreadOperatorConcatV77) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("[...[1,2],...[3,4]].join('|')");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1|2|3|4");
+}
+
+TEST(JSEngineTest, PromiseResolveThenV77) {
+    clever::js::JSEngine engine;
+    engine.evaluate(R"(
+        var promiseResult;
+        Promise.resolve(42).then(function(v) { promiseResult = (v*2).toString(); });
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    clever::js::flush_fetch_promise_jobs(engine.context());
+    auto result = engine.evaluate("promiseResult");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "84");
+}

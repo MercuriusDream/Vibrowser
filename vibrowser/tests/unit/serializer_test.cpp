@@ -11209,3 +11209,249 @@ TEST(SerializerTest, InterleavedStringsBytesAndNumbersV75) {
     EXPECT_EQ(reader.read_i32(), -42);
     EXPECT_DOUBLE_EQ(reader.read_f64(), -0.5);
 }
+
+TEST(SerializerTest, UnsignedRoundTripBoundariesV76) {
+    clever::ipc::Serializer s;
+    s.write_u8(0u);
+    s.write_u8(255u);
+    s.write_u16(0u);
+    s.write_u16(65535u);
+    s.write_u32(0u);
+    s.write_u32(4294967295u);
+    s.write_u64(0u);
+    s.write_u64(18446744073709551615ull);
+
+    clever::ipc::Deserializer reader(s.data());
+    EXPECT_EQ(reader.read_u8(), 0u);
+    EXPECT_EQ(reader.read_u8(), 255u);
+    EXPECT_EQ(reader.read_u16(), 0u);
+    EXPECT_EQ(reader.read_u16(), 65535u);
+    EXPECT_EQ(reader.read_u32(), 0u);
+    EXPECT_EQ(reader.read_u32(), 4294967295u);
+    EXPECT_EQ(reader.read_u64(), 0u);
+    EXPECT_EQ(reader.read_u64(), 18446744073709551615ull);
+    EXPECT_FALSE(reader.has_remaining());
+}
+
+TEST(SerializerTest, SignedAndFloatRoundTripEdgesV76) {
+    clever::ipc::Serializer s;
+    s.write_i32(std::numeric_limits<int32_t>::min());
+    s.write_i32(-1);
+    s.write_i32(0);
+    s.write_i32(std::numeric_limits<int32_t>::max());
+    s.write_f64(-0.0);
+    s.write_f64(0.0);
+    s.write_f64(std::numeric_limits<double>::denorm_min());
+    s.write_f64(std::numeric_limits<double>::max());
+
+    clever::ipc::Deserializer reader(s.data());
+    EXPECT_EQ(reader.read_i32(), std::numeric_limits<int32_t>::min());
+    EXPECT_EQ(reader.read_i32(), -1);
+    EXPECT_EQ(reader.read_i32(), 0);
+    EXPECT_EQ(reader.read_i32(), std::numeric_limits<int32_t>::max());
+    EXPECT_DOUBLE_EQ(reader.read_f64(), -0.0);
+    EXPECT_DOUBLE_EQ(reader.read_f64(), 0.0);
+    EXPECT_DOUBLE_EQ(reader.read_f64(), std::numeric_limits<double>::denorm_min());
+    EXPECT_DOUBLE_EQ(reader.read_f64(), std::numeric_limits<double>::max());
+    EXPECT_FALSE(reader.has_remaining());
+}
+
+TEST(SerializerTest, StringUtf8AndEmbeddedNullRoundTripV76) {
+    const std::string utf8 =
+        "plain-\xED\x95\x9C\xEA\xB8\x80-\xE6\xBC\xA2\xE5\xAD\x97-"
+        "\xF0\x9F\x9A\x80";
+    const std::string with_nulls("A\0B\0C", 5);
+
+    clever::ipc::Serializer s;
+    s.write_string(utf8);
+    s.write_string(with_nulls);
+
+    clever::ipc::Deserializer reader(s.data());
+    EXPECT_EQ(reader.read_string(), utf8);
+    EXPECT_EQ(reader.read_string(), with_nulls);
+    EXPECT_FALSE(reader.has_remaining());
+}
+
+TEST(SerializerTest, BinaryAllByteValuesRoundTripV76) {
+    std::vector<uint8_t> payload(256u);
+    for (size_t i = 0; i < payload.size(); ++i) {
+        payload[i] = static_cast<uint8_t>(i);
+    }
+
+    clever::ipc::Serializer s;
+    s.write_bytes(payload.data(), payload.size());
+
+    clever::ipc::Deserializer reader(s.data());
+    EXPECT_EQ(reader.read_bytes(), payload);
+    EXPECT_FALSE(reader.has_remaining());
+}
+
+TEST(SerializerTest, BinaryPayloadWithZerosAndLengthMarkersV76) {
+    const std::vector<uint8_t> payload = {
+        0x00u, 0x00u, 0xFFu, 0x00u, 0x10u, 0x00u, 0x80u, 0x00u};
+
+    clever::ipc::Serializer s;
+    s.write_u32(static_cast<uint32_t>(payload.size()));
+    s.write_bytes(payload.data(), payload.size());
+    s.write_u32(0u);
+
+    clever::ipc::Deserializer reader(s.data());
+    EXPECT_EQ(reader.read_u32(), payload.size());
+    EXPECT_EQ(reader.read_bytes(), payload);
+    EXPECT_EQ(reader.read_u32(), 0u);
+    EXPECT_FALSE(reader.has_remaining());
+}
+
+TEST(SerializerTest, MixedTypeRoundTripSequenceV76) {
+    const std::string label("id:\0\x7F", 5);
+    const std::vector<uint8_t> bytes = {0xDEu, 0xADu, 0xBEu, 0xEFu, 0x00u};
+
+    clever::ipc::Serializer s;
+    s.write_u8(17u);
+    s.write_u16(65000u);
+    s.write_u32(1234567890u);
+    s.write_u64(9000000000000000000ull);
+    s.write_i32(-20260001);
+    s.write_f64(3.141592653589793);
+    s.write_string(label);
+    s.write_bytes(bytes.data(), bytes.size());
+
+    clever::ipc::Deserializer reader(s.data());
+    EXPECT_EQ(reader.read_u8(), 17u);
+    EXPECT_EQ(reader.read_u16(), 65000u);
+    EXPECT_EQ(reader.read_u32(), 1234567890u);
+    EXPECT_EQ(reader.read_u64(), 9000000000000000000ull);
+    EXPECT_EQ(reader.read_i32(), -20260001);
+    EXPECT_DOUBLE_EQ(reader.read_f64(), 3.141592653589793);
+    EXPECT_EQ(reader.read_string(), label);
+    EXPECT_EQ(reader.read_bytes(), bytes);
+    EXPECT_FALSE(reader.has_remaining());
+}
+
+TEST(SerializerTest, EmptyThenNonEmptyStringRoundTripV76) {
+    const std::string non_empty = "serializer-v76";
+
+    clever::ipc::Serializer s;
+    s.write_string("");
+    s.write_string(non_empty);
+    s.write_u16(42u);
+
+    clever::ipc::Deserializer reader(s.data());
+    EXPECT_EQ(reader.read_string(), "");
+    EXPECT_EQ(reader.read_string(), non_empty);
+    EXPECT_EQ(reader.read_u16(), 42u);
+    EXPECT_FALSE(reader.has_remaining());
+}
+
+TEST(SerializerTest, MultipleByteBlobsInterleavedWithNumbersV76) {
+    const std::vector<uint8_t> first = {0x01u, 0x02u, 0x03u};
+    const std::vector<uint8_t> second(64u, 0xA5u);
+    const std::vector<uint8_t> third = {0x00u, 0xFFu, 0x7Fu, 0x80u};
+
+    clever::ipc::Serializer s;
+    s.write_u32(1u);
+    s.write_bytes(first.data(), first.size());
+    s.write_u32(2u);
+    s.write_bytes(second.data(), second.size());
+    s.write_u32(3u);
+    s.write_bytes(third.data(), third.size());
+
+    clever::ipc::Deserializer reader(s.data());
+    EXPECT_EQ(reader.read_u32(), 1u);
+    EXPECT_EQ(reader.read_bytes(), first);
+    EXPECT_EQ(reader.read_u32(), 2u);
+    EXPECT_EQ(reader.read_bytes(), second);
+    EXPECT_EQ(reader.read_u32(), 3u);
+    EXPECT_EQ(reader.read_bytes(), third);
+    EXPECT_FALSE(reader.has_remaining());
+}
+
+TEST(SerializerTest, RoundTripU8MinMaxV77) {
+    Serializer s;
+    s.write_u8(0);
+    s.write_u8(255);
+
+    Deserializer reader(s.data());
+    EXPECT_EQ(reader.read_u8(), 0u);
+    EXPECT_EQ(reader.read_u8(), 255u);
+    EXPECT_FALSE(reader.has_remaining());
+}
+
+TEST(SerializerTest, RoundTripU64LargeV77) {
+    Serializer s;
+    s.write_u64(UINT64_MAX - 1);
+
+    Deserializer reader(s.data());
+    EXPECT_EQ(reader.read_u64(), UINT64_MAX - 1);
+    EXPECT_FALSE(reader.has_remaining());
+}
+
+TEST(SerializerTest, RoundTripEmptyStringV77) {
+    Serializer s;
+    s.write_string("");
+
+    Deserializer reader(s.data());
+    EXPECT_EQ(reader.read_string(), "");
+    EXPECT_FALSE(reader.has_remaining());
+}
+
+TEST(SerializerTest, RoundTripEmptyBytesV77) {
+    std::vector<uint8_t> empty;
+    Serializer s;
+    s.write_bytes(empty.data(), empty.size());
+
+    Deserializer reader(s.data());
+    EXPECT_EQ(reader.read_bytes(), empty);
+    EXPECT_FALSE(reader.has_remaining());
+}
+
+TEST(SerializerTest, InterleavedStringsAndU32V77) {
+    const std::string str1 = "hello";
+    const std::string str2 = "world";
+
+    Serializer s;
+    s.write_string(str1);
+    s.write_u32(42u);
+    s.write_string(str2);
+
+    Deserializer reader(s.data());
+    EXPECT_EQ(reader.read_string(), str1);
+    EXPECT_EQ(reader.read_u32(), 42u);
+    EXPECT_EQ(reader.read_string(), str2);
+    EXPECT_FALSE(reader.has_remaining());
+}
+
+TEST(SerializerTest, F64NegativeRoundTripV77) {
+    Serializer s;
+    s.write_f64(-123.456);
+
+    Deserializer reader(s.data());
+    EXPECT_DOUBLE_EQ(reader.read_f64(), -123.456);
+    EXPECT_FALSE(reader.has_remaining());
+}
+
+TEST(SerializerTest, F64ZeroRoundTripV77) {
+    Serializer s;
+    s.write_f64(0.0);
+
+    Deserializer reader(s.data());
+    EXPECT_DOUBLE_EQ(reader.read_f64(), 0.0);
+    EXPECT_FALSE(reader.has_remaining());
+}
+
+TEST(SerializerTest, HasRemainingFalseAfterFullReadV77) {
+    Serializer s;
+    s.write_u8(100);
+    s.write_u16(2000u);
+    s.write_u32(30000u);
+    s.write_f64(99.99);
+    s.write_string("complete");
+
+    Deserializer reader(s.data());
+    EXPECT_EQ(reader.read_u8(), 100u);
+    EXPECT_EQ(reader.read_u16(), 2000u);
+    EXPECT_EQ(reader.read_u32(), 30000u);
+    EXPECT_DOUBLE_EQ(reader.read_f64(), 99.99);
+    EXPECT_EQ(reader.read_string(), "complete");
+    EXPECT_FALSE(reader.has_remaining());
+}

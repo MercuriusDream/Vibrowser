@@ -14230,3 +14230,172 @@ TEST(HTTPClientTest, CookieJarHonorsSecureAndPathRulesV75) {
     EXPECT_TRUE(wrong_path.empty());
     EXPECT_EQ(allowed, "token=secure1");
 }
+
+TEST(HttpClientTest, RequestSerializationPreservesExplicitContentLengthHeaderV76) {
+    Request req;
+    req.method = Method::POST;
+    req.url = "http://example.com/upload";
+    req.parse_url();
+
+    const std::string body = "payload";
+    req.body.assign(body.begin(), body.end());
+    req.headers.set("Content-Length", "99");
+
+    auto raw = req.serialize();
+    std::string serialized(raw.begin(), raw.end());
+
+    EXPECT_NE(serialized.find("POST /upload HTTP/1.1\r\n"), std::string::npos);
+    EXPECT_NE(serialized.find("content-length: 99\r\n"), std::string::npos);
+    EXPECT_EQ(serialized.find("Content-Length: 7\r\n"), std::string::npos);
+}
+
+TEST(HttpClientTest, RequestSerializationIncludesPatchMethodAndQueryV76) {
+    Request req;
+    req.method = Method::PATCH;
+    req.url = "http://api.example.com/v1/items?id=76&mode=full";
+    req.parse_url();
+
+    auto raw = req.serialize();
+    std::string serialized(raw.begin(), raw.end());
+
+    EXPECT_NE(serialized.find("PATCH /v1/items?id=76&mode=full HTTP/1.1\r\n"), std::string::npos);
+    EXPECT_NE(serialized.find("Host: api.example.com\r\n"), std::string::npos);
+}
+
+TEST(HttpClientTest, ResponseParsingRespectsContentLengthWhenExtraBytesPresentV76) {
+    const std::string raw_response =
+        "HTTP/1.1 201 Created\r\n"
+        "X-Request-Id: 76\r\n"
+        "Content-Length: 4\r\n"
+        "\r\n"
+        "DONEEXTRA";
+
+    std::vector<uint8_t> bytes(raw_response.begin(), raw_response.end());
+    auto resp = Response::parse(bytes);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 201u);
+    EXPECT_EQ(resp->status_text, "Created");
+    ASSERT_TRUE(resp->headers.get("x-request-id").has_value());
+    EXPECT_EQ(resp->headers.get("x-request-id").value(), "76");
+    EXPECT_EQ(std::string(resp->body.begin(), resp->body.end()), "DONE");
+}
+
+TEST(HttpClientTest, ResponseParsingUsesRemainingDataWhenNoContentLengthV76) {
+    const std::string raw_response =
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Type: text/plain\r\n"
+        "\r\n"
+        "streamed-body";
+
+    std::vector<uint8_t> bytes(raw_response.begin(), raw_response.end());
+    auto resp = Response::parse(bytes);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 200u);
+    EXPECT_EQ(std::string(resp->body.begin(), resp->body.end()), "streamed-body");
+}
+
+TEST(HttpClientTest, ResponseParsingRejectsNonNumericStatusCodeV76) {
+    const std::string raw_response =
+        "HTTP/1.1 ABC NotNumeric\r\n"
+        "Content-Length: 0\r\n"
+        "\r\n";
+
+    std::vector<uint8_t> bytes(raw_response.begin(), raw_response.end());
+    auto resp = Response::parse(bytes);
+
+    EXPECT_FALSE(resp.has_value());
+}
+
+TEST(HttpClientTest, RequestSerializationUsesLowercaseCustomAcceptEncodingHeaderV76) {
+    Request req;
+    req.method = Method::GET;
+    req.url = "http://example.com/encoding";
+    req.parse_url();
+    req.headers.set("Accept-Encoding", "br");
+
+    auto raw = req.serialize();
+    std::string serialized(raw.begin(), raw.end());
+
+    EXPECT_NE(serialized.find("GET /encoding HTTP/1.1\r\n"), std::string::npos);
+    EXPECT_NE(serialized.find("accept-encoding: br\r\n"), std::string::npos);
+    EXPECT_EQ(serialized.find("Accept-Encoding: gzip, deflate\r\n"), std::string::npos);
+}
+
+TEST(HttpClientTest, CookieJarReplacesCookieWithSameNameDomainAndPathV76) {
+    CookieJar jar;
+    jar.set_from_header("session=old; Path=/", "example.com");
+    jar.set_from_header("session=new; Path=/", "example.com");
+
+    std::string cookie_header = jar.get_cookie_header("example.com", "/dashboard", false);
+    EXPECT_EQ(cookie_header, "session=new");
+    EXPECT_EQ(jar.size(), 1u);
+}
+
+TEST(HttpClientTest, MethodConversionDefaultsUnknownMethodToGetV76) {
+    EXPECT_EQ(method_to_string(Method::HEAD), "HEAD");
+    EXPECT_EQ(string_to_method("trace"), Method::GET);
+}
+
+// ============================================================================
+// Cycle X: HTTP/Net tests V77
+// ============================================================================
+
+TEST(HttpClientTest, RequestSerializeIncludesHostHeaderV77) {
+    Request req;
+    req.url = "https://example.com/api/endpoint";
+    req.parse_url();
+    req.method = Method::GET;
+
+    auto serialized = req.serialize();
+    std::string serialized_str(serialized.begin(), serialized.end());
+    EXPECT_NE(serialized_str.find("Host:"), std::string::npos);
+}
+
+TEST(HttpClientTest, HeaderMapRemoveThenHasReturnsFalseV77) {
+    HeaderMap headers;
+    headers.set("X-Custom-Header", "value");
+    EXPECT_TRUE(headers.has("X-Custom-Header"));
+
+    headers.remove("X-Custom-Header");
+    EXPECT_FALSE(headers.has("X-Custom-Header"));
+}
+
+TEST(HttpClientTest, CookieJarTwoDifferentCookiesSameDomainV77) {
+    CookieJar jar;
+    jar.set_from_header("cookie1=abc; Path=/", "example.com");
+    jar.set_from_header("cookie2=xyz; Path=/", "example.com");
+
+    std::string cookie_header = jar.get_cookie_header("example.com", "/", false);
+    EXPECT_NE(cookie_header.find("cookie1=abc"), std::string::npos);
+    EXPECT_NE(cookie_header.find("cookie2=xyz"), std::string::npos);
+}
+
+TEST(HttpClientTest, ResponseDefaultStatusIsZeroV77) {
+    Response resp;
+    EXPECT_EQ(resp.status, 0u);
+}
+
+TEST(HttpClientTest, MethodPostStringRoundTripV77) {
+    EXPECT_EQ(method_to_string(Method::POST), "POST");
+}
+
+TEST(HttpClientTest, HeaderMapSetSameKeyTwiceLastWinsV77) {
+    HeaderMap headers;
+    headers.set("X-Header", "first");
+    EXPECT_EQ(headers.get("X-Header").value(), "first");
+
+    headers.set("X-Header", "second");
+    EXPECT_EQ(headers.get("X-Header").value(), "second");
+}
+
+TEST(HttpClientTest, CookieJarEmptyReturnsEmptyHeaderV77) {
+    CookieJar jar;
+    std::string cookie_header = jar.get_cookie_header("example.com", "/", false);
+    EXPECT_EQ(cookie_header, "");
+}
+
+TEST(HttpClientTest, MethodPatchToStringV77) {
+    EXPECT_EQ(method_to_string(Method::PATCH), "PATCH");
+}
