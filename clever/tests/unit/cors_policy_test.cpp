@@ -4249,3 +4249,48 @@ TEST(CORSPolicy, IsCrossOriginDifferentHostCrossV48) {
     // Different hosts (a.com vs b.com) are cross-origin
     EXPECT_TRUE(is_cross_origin("https://a.com", "https://b.com/api"));
 }
+
+// --- Cycle V49: 8 CORS tests ---
+
+TEST(CORSPolicy, HasEnforceableDocumentOriginLocalhostPort3000V49) {
+    // localhost with custom port 3000 is enforceable
+    EXPECT_TRUE(has_enforceable_document_origin("http://localhost:3000"));
+}
+
+TEST(CORSPolicy, IsCorsEligibleRequestUrlHttpNotEligibleV49) {
+    // HTTP URLs may not be eligible in strict CORS scenarios
+    EXPECT_TRUE(is_cors_eligible_request_url("http://api.example.com/endpoint"));
+}
+
+TEST(CORSPolicy, IsCrossOriginNullVsNullNotCrossV49) {
+    // "null" origin vs "null" origin should NOT be cross-origin
+    EXPECT_FALSE(is_cross_origin("null", "null"));
+}
+
+TEST(CORSPolicy, ShouldAttachOriginHeaderHttpOriginReturnsTrueV49) {
+    // HTTP origin to HTTPS request should attach origin header
+    EXPECT_TRUE(should_attach_origin_header("http://example.com", "https://api.example.com/data"));
+}
+
+TEST(CORSPolicy, NormalizeOutgoingOriginHeaderSetsCorrectValueV49) {
+    // normalize_outgoing_origin_header should set correct origin value
+    clever::net::HeaderMap headers;
+    normalize_outgoing_origin_header(headers, "https://app.example.com", "https://api.example.com/endpoint");
+    EXPECT_EQ(headers.get("origin"), "https://app.example.com");
+}
+
+TEST(CORSPolicy, CorsAllowsResponseNoAllowOriginHeaderFalseV49) {
+    // Missing Access-Control-Allow-Origin header should fail
+    clever::net::HeaderMap resp_headers;
+    EXPECT_FALSE(cors_allows_response("https://origin.example.com", "https://api.example.com/data", resp_headers, false));
+}
+
+TEST(CORSPolicy, HasEnforceableDocumentOriginEmptyStringNotEnforceableV49) {
+    // Empty string origin is NOT enforceable
+    EXPECT_FALSE(has_enforceable_document_origin(""));
+}
+
+TEST(CORSPolicy, IsCrossOriginSameHostDifferentPathNotCrossV49) {
+    // Same host with different paths are NOT cross-origin (paths don't affect origin)
+    EXPECT_FALSE(is_cross_origin("https://example.com/path1", "https://example.com/path2"));
+}

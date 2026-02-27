@@ -8518,3 +8518,59 @@ TEST(TreeBuilder, VarElementV27) {
     ASSERT_NE(el, nullptr);
     EXPECT_EQ(el->tag_name, "var");
 }
+
+TEST(TreeBuilder, WbrElementV28) {
+    auto doc = clever::html::parse("<html><body><p>This is a very long word<wbr>that can break here</p></body></html>");
+    auto* el = doc->find_element("wbr");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "wbr");
+}
+
+TEST(TreeBuilder, RubyElementV28) {
+    auto doc = clever::html::parse("<html><body><ruby>Hello<rt>English</rt></ruby></body></html>");
+    auto* el = doc->find_element("ruby");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "ruby");
+}
+
+TEST(TreeBuilder, RtElementV28) {
+    auto doc = clever::html::parse("<html><body><ruby>Hello<rt>English</rt></ruby></body></html>");
+    auto* el = doc->find_element("rt");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "rt");
+}
+
+TEST(TreeBuilder, RpElementV28) {
+    auto doc = clever::html::parse("<html><body><ruby>Hello<rp>(</rp><rt>English</rt><rp>)</rp></ruby></body></html>");
+    auto* el = doc->find_element("rp");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "rp");
+}
+
+TEST(TreeBuilder, BdiElementV28) {
+    auto doc = clever::html::parse("<html><body><p>The number <bdi>42</bdi> is meaningful.</p></body></html>");
+    auto* el = doc->find_element("bdi");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "bdi");
+}
+
+TEST(TreeBuilder, DataElementV28) {
+    auto doc = clever::html::parse("<html><body><p>The product <data value=\"5\">costs $5</data></p></body></html>");
+    auto* el = doc->find_element("data");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "data");
+}
+
+TEST(TreeBuilder, TimeElementV28) {
+    auto doc = clever::html::parse("<html><body><p>The event is on <time datetime=\"2026-02-27\">February 27, 2026</time></p></body></html>");
+    auto* el = doc->find_element("time");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "time");
+}
+
+TEST(TreeBuilder, SmallElementV28) {
+    auto doc = clever::html::parse("<html><body><p>This is <small>fine print</small> text.</p></body></html>");
+    auto* el = doc->find_element("small");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "small");
+}

@@ -9705,3 +9705,94 @@ TEST(HttpClient, ResponseParse500InternalServerV41) {
     ASSERT_TRUE(resp.has_value());
     EXPECT_EQ(resp->status, 500u);
 }
+
+TEST(HttpClient, HeaderMapSetAndGetV42) {
+    using namespace clever::net;
+    HeaderMap map;
+
+    map.set("Content-Type", "text/html");
+    EXPECT_EQ(map.get("Content-Type"), "text/html");
+}
+
+TEST(HttpClient, RequestSerializeContainsHostV42) {
+    using namespace clever::net;
+    Request req;
+    req.method = Method::GET;
+    req.url = "https://example.com/path";
+
+    auto serialized = req.serialize();
+    std::string serialized_str(serialized.begin(), serialized.end());
+
+    EXPECT_NE(serialized_str.find("Host:"), std::string::npos);
+}
+
+TEST(HttpClient, ResponseParse304NotModifiedV42) {
+    using namespace clever::net;
+    std::string raw_str = "HTTP/1.1 304 Not Modified\r\n"
+                          "\r\n";
+
+    std::vector<uint8_t> raw(raw_str.begin(), raw_str.end());
+    auto resp = Response::parse(raw);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 304u);
+}
+
+TEST(HttpClient, HeaderMapAppendThreeValuesV42) {
+    using namespace clever::net;
+    HeaderMap map;
+
+    map.append("Accept", "text/html");
+    map.append("Accept", "application/json");
+    map.append("Accept", "application/xml");
+
+    auto values = map.get_all("Accept");
+    EXPECT_EQ(values.size(), 3u);
+}
+
+TEST(HttpClient, RequestBodyNonEmptyV42) {
+    using namespace clever::net;
+    Request req;
+    req.method = Method::POST;
+    req.url = "https://example.com/api";
+    req.body = {'d', 'a', 't', 'a'};
+
+    EXPECT_GT(req.body.size(), 0u);
+    auto serialized = req.serialize();
+    EXPECT_GT(serialized.size(), 0u);
+}
+
+TEST(HttpClient, CookieJarHttpOnlyV42) {
+    using namespace clever::net;
+    CookieJar jar;
+
+    jar.set_from_header("sessionid=abc123; HttpOnly; Path=/", "example.com");
+    auto header = jar.get_cookie_header("example.com", "/", false, true, false);
+
+    EXPECT_NE(header, "");
+}
+
+TEST(HttpClient, HeaderMapEmptyAfterAllRemovedV42) {
+    using namespace clever::net;
+    HeaderMap map;
+
+    map.set("Header-1", "value-1");
+    map.set("Header-2", "value-2");
+
+    map.remove("Header-1");
+    map.remove("Header-2");
+
+    EXPECT_TRUE(map.empty());
+}
+
+TEST(HttpClient, ResponseParse201CreatedV42) {
+    using namespace clever::net;
+    std::string raw_str = "HTTP/1.1 201 Created\r\n"
+                          "\r\n";
+
+    std::vector<uint8_t> raw(raw_str.begin(), raw_str.end());
+    auto resp = Response::parse(raw);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 201u);
+}

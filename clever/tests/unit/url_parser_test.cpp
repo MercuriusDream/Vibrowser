@@ -6811,3 +6811,68 @@ TEST(URLParser, HostWithHyphenV30) {
     EXPECT_EQ(url->query, "");
     EXPECT_EQ(url->fragment, "");
 }
+
+TEST(URLParser, DataSchemeV31) {
+    auto url = parse("data:text/html,Hello");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "data");
+}
+
+TEST(URLParser, HttpPort80NormalizedV31) {
+    auto url = parse("http://a.com:80/");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "http");
+    EXPECT_EQ(url->host, "a.com");
+    EXPECT_EQ(url->port, std::nullopt);
+    EXPECT_EQ(url->path, "/");
+}
+
+TEST(URLParser, QueryWithAmpersandV31) {
+    auto url = parse("https://a.com/?a=1&b=2");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "a.com");
+    EXPECT_TRUE(url->query.find("a=1") != std::string::npos);
+}
+
+TEST(URLParser, FragmentWithSpecialCharsV31) {
+    auto url = parse("https://a.com/page#top-section");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "a.com");
+    EXPECT_EQ(url->path, "/page");
+    EXPECT_EQ(url->fragment, "top-section");
+}
+
+TEST(URLParser, HostNumericOnlyV31) {
+    auto url = parse("http://127.0.0.1:8080/");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "http");
+    EXPECT_EQ(url->host, "127.0.0.1");
+    EXPECT_EQ(url->port, 8080);
+    EXPECT_EQ(url->path, "/");
+}
+
+TEST(URLParser, PathResolveDoubleDotV31) {
+    auto url = parse("https://a.com/x/y/z/../../w");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "a.com");
+    EXPECT_EQ(url->path, "/x/w");
+}
+
+TEST(URLParser, HttpsNoPathNoQueryV31) {
+    auto url = parse("https://example.org");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "example.org");
+}
+
+TEST(URLParser, CustomPort1234V31) {
+    auto url = parse("http://a.com:1234/test");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "http");
+    EXPECT_EQ(url->host, "a.com");
+    EXPECT_EQ(url->port, 1234);
+    EXPECT_EQ(url->path, "/test");
+}

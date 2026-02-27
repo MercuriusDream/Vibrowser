@@ -20234,3 +20234,59 @@ TEST(JSEngine, MathSqrtCycle1443) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "12");
 }
+
+TEST(JSEngine, ArrayFindIndexCycle1452) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("[10,20,30].findIndex(x=>x===20)");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1");
+}
+
+TEST(JSEngine, ArrayIncludesCycle1452) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("[1,2,3].includes(2).toString()");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, StringReplaceAllCycle1452) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("\"aabbcc\".replaceAll(\"b\",\"x\")");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "aaxxcc");
+}
+
+TEST(JSEngine, NumberIsIntegerCycle1452) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("Number.isInteger(42).toString()");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, NumberIsNaNCycle1452) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("Number.isNaN(NaN).toString()");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, MathRoundCycle1452) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("Math.round(4.6)");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "5");
+}
+
+TEST(JSEngine, MathFloorCycle1452) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("Math.floor(4.9)");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "4");
+}
+
+TEST(JSEngine, MathCeilCycle1452) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("Math.ceil(4.1)");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "5");
+}

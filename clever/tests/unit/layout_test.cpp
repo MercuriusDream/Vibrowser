@@ -9745,3 +9745,48 @@ TEST(LayoutNodeProps, GeometryBorderLeftDefaultV39) {
     LayoutNode n;
     EXPECT_FLOAT_EQ(n.geometry.border.left, 0.0f);
 }
+
+TEST(LayoutNodeProps, TagNameDefaultEmptyV40) {
+    LayoutNode n;
+    EXPECT_TRUE(n.tag_name.empty());
+}
+
+TEST(LayoutNodeProps, ModeDefaultBlockV40) {
+    LayoutNode n;
+    EXPECT_EQ(n.mode, LayoutMode::Block);
+}
+
+TEST(LayoutNodeProps, DisplayDefaultBlockV40) {
+    LayoutNode n;
+    EXPECT_EQ(n.display, DisplayType::Block);
+}
+
+TEST(LayoutNodeProps, OpacitySetAndCheckV40) {
+    LayoutNode n;
+    n.opacity = 0.5f;
+    EXPECT_FLOAT_EQ(n.opacity, 0.5f);
+}
+
+TEST(LayoutNodeProps, FlexGrowSetAndCheckV40) {
+    LayoutNode n;
+    n.flex_grow = 2.0f;
+    EXPECT_FLOAT_EQ(n.flex_grow, 2.0f);
+}
+
+TEST(LayoutNodeProps, ZIndexSetAndCheckV40) {
+    LayoutNode n;
+    n.z_index = 10;
+    EXPECT_EQ(n.z_index, 10);
+}
+
+TEST(LayoutNodeProps, MinWidthSetAndCheckV40) {
+    LayoutNode n;
+    n.min_width = 100.0f;
+    EXPECT_FLOAT_EQ(n.min_width, 100.0f);
+}
+
+TEST(LayoutNodeProps, MaxHeightSetAndCheckV40) {
+    LayoutNode n;
+    n.max_height = 500.0f;
+    EXPECT_FLOAT_EQ(n.max_height, 500.0f);
+}

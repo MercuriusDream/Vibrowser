@@ -7938,3 +7938,90 @@ TEST(Serializer, RoundtripI64PositiveLargeV38) {
     EXPECT_EQ(d.read_i64(), 999999999999LL);
     EXPECT_FALSE(d.has_remaining());
 }
+
+TEST(Serializer, RoundtripU8AllValuesV39) {
+    Serializer s;
+    s.write_u8(0);
+    s.write_u8(1);
+    s.write_u8(127);
+    s.write_u8(128);
+    s.write_u8(255);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u8(), 0);
+    EXPECT_EQ(d.read_u8(), 1);
+    EXPECT_EQ(d.read_u8(), 127);
+    EXPECT_EQ(d.read_u8(), 128);
+    EXPECT_EQ(d.read_u8(), 255);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(Serializer, RoundtripI32ZeroV39) {
+    Serializer s;
+    s.write_i32(0);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i32(), 0);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(Serializer, RoundtripF64NegZeroV39) {
+    Serializer s;
+    s.write_f64(-0.0);
+
+    Deserializer d(s.data());
+    double value = d.read_f64();
+    EXPECT_EQ(value, 0.0);
+    EXPECT_TRUE(std::signbit(value));
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(Serializer, RoundtripStringWithSpacesV39) {
+    Serializer s;
+    s.write_string("hello world foo bar");
+
+    Deserializer d(s.data());
+    std::string result = d.read_string();
+    EXPECT_EQ(result, "hello world foo bar");
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(Serializer, RoundtripBytesPatternV39) {
+    Serializer s;
+    uint8_t data[] = {0xDE, 0xAD, 0xBE, 0xEF};
+    s.write_bytes(data, 4);
+
+    Deserializer d(s.data());
+    std::vector<uint8_t> result = d.read_bytes();
+    EXPECT_EQ(result.size(), 4u);
+    EXPECT_EQ(result[0], 0xDEu);
+    EXPECT_EQ(result[1], 0xADu);
+    EXPECT_EQ(result[2], 0xBEu);
+    EXPECT_EQ(result[3], 0xEFu);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(Serializer, RoundtripU64OneV39) {
+    Serializer s;
+    s.write_u64(1ULL);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u64(), 1ULL);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(Serializer, RoundtripI64MaxV39) {
+    Serializer s;
+    s.write_i64(INT64_MAX);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i64(), INT64_MAX);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(Serializer, EmptySerializerHasNoRemainingV39) {
+    Serializer s;
+
+    Deserializer d(s.data());
+    EXPECT_FALSE(d.has_remaining());
+}
