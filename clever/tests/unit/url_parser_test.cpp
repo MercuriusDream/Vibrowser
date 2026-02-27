@@ -3231,3 +3231,52 @@ TEST(URLParser, PathWithHyphensAndNumbers) {
     ASSERT_TRUE(url.has_value());
     EXPECT_EQ(url->path, "/post-123-article");
 }
+
+TEST(URLParser, PathWithPhpExtension) {
+    auto url = parse("https://example.com/page.php");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->path, "/page.php");
+}
+
+TEST(URLParser, PathWithAspExtension) {
+    auto url = parse("https://example.com/index.asp");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->path, "/index.asp");
+}
+
+TEST(URLParser, PathWithTsExtension) {
+    auto url = parse("https://cdn.example.com/app.ts");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->path, "/app.ts");
+}
+
+TEST(URLParser, Port8888Preserved) {
+    auto url = parse("http://dev.local:8888/app");
+    ASSERT_TRUE(url.has_value());
+    ASSERT_TRUE(url->port.has_value());
+    EXPECT_EQ(*url->port, 8888);
+}
+
+TEST(URLParser, FtpSchemeParses) {
+    auto url = parse("ftp://ftp.example.com/pub/file.tar.gz");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_FALSE(url->host.empty());
+}
+
+TEST(URLParser, HostWithNumbers) {
+    auto url = parse("https://host123.example.com/page");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_FALSE(url->host.empty());
+}
+
+TEST(URLParser, HostFiveParts) {
+    auto url = parse("https://a.b.c.d.example.com/");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_FALSE(url->host.empty());
+}
+
+TEST(URLParser, QueryWithLangAndPageParams) {
+    auto url = parse("https://example.com/search?q=test&lang=en&page=2");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_FALSE(url->query.empty());
+}
