@@ -3629,3 +3629,52 @@ TEST_F(CSSStylesheetTest, TabSizeDeclaration) {
     }
     EXPECT_TRUE(found);
 }
+
+// Cycle 764 — pseudo-element selector targeting
+TEST_F(CSSStylesheetTest, PseudoElementFirstLine) {
+    auto sheet = parse_stylesheet("p::first-line { font-weight: bold; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    EXPECT_NE(sheet.rules[0].selector_text.find("first-line"), std::string::npos);
+}
+
+TEST_F(CSSStylesheetTest, PseudoElementFirstLetter) {
+    auto sheet = parse_stylesheet("p::first-letter { font-size: 2em; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    EXPECT_NE(sheet.rules[0].selector_text.find("first-letter"), std::string::npos);
+}
+
+TEST_F(CSSStylesheetTest, PseudoElementMarker) {
+    auto sheet = parse_stylesheet("li::marker { color: red; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    EXPECT_NE(sheet.rules[0].selector_text.find("marker"), std::string::npos);
+}
+
+TEST_F(CSSStylesheetTest, PseudoClassFocus) {
+    auto sheet = parse_stylesheet("input:focus { outline: 2px solid blue; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    EXPECT_NE(sheet.rules[0].selector_text.find("focus"), std::string::npos);
+}
+
+TEST_F(CSSStylesheetTest, PseudoClassVisited) {
+    auto sheet = parse_stylesheet("a:visited { color: purple; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    EXPECT_NE(sheet.rules[0].selector_text.find("visited"), std::string::npos);
+}
+
+TEST_F(CSSStylesheetTest, PseudoClassChecked) {
+    auto sheet = parse_stylesheet("input:checked { background: green; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    EXPECT_NE(sheet.rules[0].selector_text.find("checked"), std::string::npos);
+}
+
+TEST_F(CSSStylesheetTest, PseudoClassDisabled) {
+    auto sheet = parse_stylesheet("button:disabled { opacity: 0.5; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    EXPECT_NE(sheet.rules[0].selector_text.find("disabled"), std::string::npos);
+}
+
+TEST_F(CSSStylesheetTest, PseudoClassEnabled) {
+    auto sheet = parse_stylesheet("button:enabled { cursor: pointer; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    EXPECT_NE(sheet.rules[0].selector_text.find("enabled"), std::string::npos);
+}
