@@ -4365,3 +4365,110 @@ TEST(RequestTest, ExpectContinueHeaderSet) {
     ASSERT_TRUE(val.has_value());
     EXPECT_EQ(*val, "100-continue");
 }
+
+
+// Cycle 873 — security/caching response headers: Last-Modified, Retry-After, X-Content-Type-Options, Referrer-Policy, HSTS, X-Frame-Options, Cache-Control, Content-Security-Policy
+TEST(ResponseTest, LastModifiedHeaderInResponse) {
+    std::string raw =
+        "HTTP/1.1 200 OK\r\n"
+        "Last-Modified: Wed, 21 Oct 2015 07:28:00 GMT\r\n"
+        "Content-Length: 0\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    auto val = resp->headers.get("last-modified");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_NE(val->find("21 Oct 2015"), std::string::npos);
+}
+
+TEST(ResponseTest, RetryAfterInResponse) {
+    std::string raw =
+        "HTTP/1.1 503 Service Unavailable\r\n"
+        "Retry-After: 120\r\n"
+        "Content-Length: 0\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 503);
+    auto val = resp->headers.get("retry-after");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(*val, "120");
+}
+
+TEST(ResponseTest, XContentTypeOptionsInResponse) {
+    std::string raw =
+        "HTTP/1.1 200 OK\r\n"
+        "X-Content-Type-Options: nosniff\r\n"
+        "Content-Length: 0\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    auto val = resp->headers.get("x-content-type-options");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(*val, "nosniff");
+}
+
+TEST(ResponseTest, ReferrerPolicyInResponse) {
+    std::string raw =
+        "HTTP/1.1 200 OK\r\n"
+        "Referrer-Policy: strict-origin-when-cross-origin\r\n"
+        "Content-Length: 0\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    auto val = resp->headers.get("referrer-policy");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(*val, "strict-origin-when-cross-origin");
+}
+
+TEST(ResponseTest, HSTSInResponse) {
+    std::string raw =
+        "HTTP/1.1 200 OK\r\n"
+        "Strict-Transport-Security: max-age=31536000; includeSubDomains\r\n"
+        "Content-Length: 0\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    auto val = resp->headers.get("strict-transport-security");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_NE(val->find("max-age=31536000"), std::string::npos);
+}
+
+TEST(ResponseTest, XFrameOptionsInResponse) {
+    std::string raw =
+        "HTTP/1.1 200 OK\r\n"
+        "X-Frame-Options: DENY\r\n"
+        "Content-Length: 0\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    auto val = resp->headers.get("x-frame-options");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(*val, "DENY");
+}
+
+TEST(ResponseTest, CacheControlNoCacheInResponse) {
+    std::string raw =
+        "HTTP/1.1 200 OK\r\n"
+        "Cache-Control: no-cache, no-store, must-revalidate\r\n"
+        "Content-Length: 0\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    auto val = resp->headers.get("cache-control");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_NE(val->find("no-cache"), std::string::npos);
+}
+
+TEST(ResponseTest, ContentSecurityPolicyInResponse) {
+    std::string raw =
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Security-Policy: default-src 'self'\r\n"
+        "Content-Length: 0\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    auto val = resp->headers.get("content-security-policy");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(*val, "default-src 'self'");
+}
