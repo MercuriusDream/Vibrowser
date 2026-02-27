@@ -4470,3 +4470,68 @@ TEST(SerializerTest, U16RoundTrip) {
     Deserializer d(s.data());
     EXPECT_EQ(d.read_u16(), 65535);
 }
+
+TEST(SerializerTest, U8ZeroRoundTrip) {
+    Serializer s;
+    s.write_u8(0);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u8(), 0);
+}
+
+TEST(SerializerTest, U8MaxRoundTrip) {
+    Serializer s;
+    s.write_u8(255);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u8(), 255);
+}
+
+TEST(SerializerTest, F64NaNV2RoundTrip) {
+    Serializer s;
+    s.write_f64(std::numeric_limits<double>::quiet_NaN());
+    Deserializer d(s.data());
+    EXPECT_TRUE(std::isnan(d.read_f64()));
+}
+
+TEST(SerializerTest, F64NegativeInfinityRoundTrip) {
+    Serializer s;
+    s.write_f64(-std::numeric_limits<double>::infinity());
+    Deserializer d(s.data());
+    double v = d.read_f64();
+    EXPECT_TRUE(std::isinf(v) && v < 0);
+}
+
+TEST(SerializerTest, StringWithPipeChar) {
+    Serializer s;
+    s.write_string("a|b|c");
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "a|b|c");
+}
+
+TEST(SerializerTest, StringWithColonChar) {
+    Serializer s;
+    s.write_string("key:value");
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "key:value");
+}
+
+TEST(SerializerTest, TwoBoolsThenString) {
+    Serializer s;
+    s.write_bool(true);
+    s.write_bool(false);
+    s.write_string("done");
+    Deserializer d(s.data());
+    EXPECT_TRUE(d.read_bool());
+    EXPECT_FALSE(d.read_bool());
+    EXPECT_EQ(d.read_string(), "done");
+}
+
+TEST(SerializerTest, I32ThenU32ThenI64) {
+    Serializer s;
+    s.write_i32(-100);
+    s.write_u32(200);
+    s.write_i64(-300LL);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i32(), -100);
+    EXPECT_EQ(d.read_u32(), 200u);
+    EXPECT_EQ(d.read_i64(), -300LL);
+}
