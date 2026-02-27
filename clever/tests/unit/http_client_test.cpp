@@ -5349,3 +5349,53 @@ TEST(HeaderMapTest, HeaderMapEmptyAfterRemoveAll) {
     map.remove("x-one");
     EXPECT_TRUE(map.empty());
 }
+
+TEST(HeaderMapTest, HeaderMapHasTrueAfterSet) {
+    HeaderMap map;
+    map.set("content-type", "text/html");
+    EXPECT_TRUE(map.has("content-type"));
+}
+
+TEST(HeaderMapTest, HeaderMapHasFalseBeforeSet) {
+    HeaderMap map;
+    EXPECT_FALSE(map.has("authorization"));
+}
+
+TEST(HeaderMapTest, HeaderMapSizeIncrementsOnSet) {
+    HeaderMap map;
+    map.set("a", "1");
+    map.set("b", "2");
+    EXPECT_EQ(map.size(), 2u);
+}
+
+TEST(HeaderMapTest, HeaderMapGetAllMultiple) {
+    HeaderMap map;
+    map.append("set-cookie", "a=1");
+    map.append("set-cookie", "b=2");
+    auto vals = map.get_all("set-cookie");
+    EXPECT_EQ(vals.size(), 2u);
+}
+
+TEST(ResponseTest, ResponseStatusHttp201) {
+    Response r;
+    r.status = 201;
+    EXPECT_EQ(r.status, 201);
+}
+
+TEST(ResponseTest, ResponseStatusHttp204) {
+    Response r;
+    r.status = 204;
+    EXPECT_EQ(r.status, 204);
+}
+
+TEST(ResponseTest, ResponseStatusHttp400) {
+    Response r;
+    r.status = 400;
+    EXPECT_EQ(r.status, 400);
+}
+
+TEST(ResponseTest, ResponseStatusHttp403) {
+    Response r;
+    r.status = 403;
+    EXPECT_EQ(r.status, 403);
+}
