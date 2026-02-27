@@ -9877,3 +9877,95 @@ TEST(URLParserTest, EmptyFragmentV79) {
     EXPECT_EQ(result->path, "/path");
     EXPECT_TRUE(result->fragment.empty());
 }
+
+// =============================================================================
+// V80 Tests
+// =============================================================================
+
+TEST(URLParserTest, WssSchemeV80) {
+    auto result = clever::url::parse("wss://chat.example.com/live?room=42#lobby");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "wss");
+    EXPECT_EQ(result->host, "chat.example.com");
+    EXPECT_EQ(result->port, std::nullopt);
+    EXPECT_EQ(result->path, "/live");
+    EXPECT_EQ(result->query, "room=42");
+    EXPECT_EQ(result->fragment, "lobby");
+    EXPECT_EQ(result->serialize(), "wss://chat.example.com/live?room=42#lobby");
+}
+
+TEST(URLParserTest, DataUrlBasicV80) {
+    auto result = clever::url::parse("data:text/plain;charset=utf-8,hello%20world");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "data");
+    EXPECT_EQ(result->path, "text/plain;charset=utf-8,hello%20world");
+    EXPECT_TRUE(result->host.empty());
+}
+
+TEST(URLParserTest, RelativePathWithBaseV80) {
+    auto base = clever::url::parse("https://example.com/docs/guide/chapter1.html");
+    ASSERT_TRUE(base.has_value());
+
+    auto result = clever::url::parse("../tutorial/intro.html", &base.value());
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/docs/tutorial/intro.html");
+}
+
+TEST(URLParserTest, UrlWithUsernameV80) {
+    auto result = clever::url::parse("https://admin:s3cret@dashboard.example.com:9443/panel");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->username, "admin");
+    EXPECT_EQ(result->password, "s3cret");
+    EXPECT_EQ(result->host, "dashboard.example.com");
+    ASSERT_TRUE(result->port.has_value());
+    EXPECT_EQ(result->port.value(), 9443);
+    EXPECT_EQ(result->path, "/panel");
+}
+
+TEST(URLParserTest, DeepPathV80) {
+    auto result = clever::url::parse("https://cdn.example.com/assets/js/vendor/lib/v2/bundle.min.js");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "cdn.example.com");
+    EXPECT_EQ(result->path, "/assets/js/vendor/lib/v2/bundle.min.js");
+    EXPECT_EQ(result->port, std::nullopt);
+    EXPECT_TRUE(result->query.empty());
+    EXPECT_TRUE(result->fragment.empty());
+}
+
+TEST(URLParserTest, QueryWithSpecialCharsV80) {
+    auto result = clever::url::parse("https://search.example.com/find?q=a+b&tag=c%26d&limit=10");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "search.example.com");
+    EXPECT_EQ(result->path, "/find");
+    EXPECT_NE(result->query.find("q=a+b"), std::string::npos);
+    EXPECT_NE(result->query.find("limit=10"), std::string::npos);
+}
+
+TEST(URLParserTest, HttpPort8080V80) {
+    auto result = clever::url::parse("http://localhost:8080/api/v3/status?verbose=true#details");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "localhost");
+    ASSERT_TRUE(result->port.has_value());
+    EXPECT_EQ(result->port.value(), 8080);
+    EXPECT_EQ(result->path, "/api/v3/status");
+    EXPECT_EQ(result->query, "verbose=true");
+    EXPECT_EQ(result->fragment, "details");
+    EXPECT_EQ(result->serialize(), "http://localhost:8080/api/v3/status?verbose=true#details");
+}
+
+TEST(URLParserTest, TrailingDotInHostV80) {
+    auto result = clever::url::parse("https://WWW.Example.COM./resource?key=val");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "www.example.com.");
+    EXPECT_EQ(result->path, "/resource");
+    EXPECT_EQ(result->query, "key=val");
+    EXPECT_EQ(result->port, std::nullopt);
+    EXPECT_EQ(result->serialize(), "https://www.example.com./resource?key=val");
+}

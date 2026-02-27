@@ -6022,3 +6022,42 @@ TEST(CORSPolicyTest, ShouldNotAttachOriginSameOriginV79) {
 TEST(CORSPolicyTest, FtpUrlNotCorsEligibleV79) {
     EXPECT_FALSE(is_cors_eligible_request_url("ftp://files.example.com/report.csv"));
 }
+
+TEST(CORSPolicyTest, HttpPort80NotEnforceableV80) {
+    EXPECT_FALSE(has_enforceable_document_origin("http://example.com:80"));
+}
+
+TEST(CORSPolicyTest, DifferentSubdomainsCrossOriginV80) {
+    EXPECT_TRUE(is_cross_origin("https://www.example.com", "https://api.example.com/v1/data"));
+}
+
+TEST(CORSPolicyTest, AcaoExactMatchWithCredAndAcacV80) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "https://client.example.com");
+    headers.set("Access-Control-Allow-Credentials", "true");
+    EXPECT_TRUE(
+        cors_allows_response("https://client.example.com", "https://api.example.com/secure", headers, true));
+}
+
+TEST(CORSPolicyTest, FileUrlNotCorsEligibleV80) {
+    EXPECT_FALSE(is_cors_eligible_request_url("file:///home/user/doc.html"));
+}
+
+TEST(CORSPolicyTest, MailtoNotCorsEligibleV80) {
+    EXPECT_FALSE(is_cors_eligible_request_url("mailto:user@example.com"));
+}
+
+TEST(CORSPolicyTest, SameOriginShouldNotAttachV80) {
+    EXPECT_FALSE(should_attach_origin_header("https://site.example.com", "https://site.example.com/api/v2"));
+}
+
+TEST(CORSPolicyTest, NullOriginNotEnforceableV80) {
+    EXPECT_FALSE(has_enforceable_document_origin("null"));
+}
+
+TEST(CORSPolicyTest, WildcardAcaoNoCredV80) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "*");
+    EXPECT_TRUE(
+        cors_allows_response("https://any.example.com", "https://open-api.example.com/public", headers, false));
+}

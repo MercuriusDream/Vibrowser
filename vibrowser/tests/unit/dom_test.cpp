@@ -13100,3 +13100,118 @@ TEST(DOMTest, ElementTagNameVariousTagsV79) {
     EXPECT_EQ(article.tag_name(), "article");
     EXPECT_EQ(aside.tag_name(), "aside");
 }
+
+// ---------------------------------------------------------------------------
+// V80 Tests
+// ---------------------------------------------------------------------------
+
+TEST(DOMTest, ForEachChildCallbackV80) {
+    clever::dom::Element parent("ul");
+    auto li1 = std::make_unique<clever::dom::Element>("li");
+    auto li2 = std::make_unique<clever::dom::Element>("li");
+    auto li3 = std::make_unique<clever::dom::Element>("li");
+
+    clever::dom::Node* li1_ptr = li1.get();
+    clever::dom::Node* li2_ptr = li2.get();
+    clever::dom::Node* li3_ptr = li3.get();
+
+    parent.append_child(std::move(li1));
+    parent.append_child(std::move(li2));
+    parent.append_child(std::move(li3));
+
+    std::vector<const clever::dom::Node*> visited;
+    parent.for_each_child([&](const clever::dom::Node& child) {
+        visited.push_back(&child);
+    });
+
+    ASSERT_EQ(visited.size(), 3u);
+    EXPECT_EQ(visited[0], li1_ptr);
+    EXPECT_EQ(visited[1], li2_ptr);
+    EXPECT_EQ(visited[2], li3_ptr);
+}
+
+TEST(DOMTest, SetAttributeOverwriteV80) {
+    clever::dom::Element elem("input");
+    elem.set_attribute("type", "text");
+    ASSERT_TRUE(elem.has_attribute("type"));
+    EXPECT_EQ(elem.get_attribute("type").value(), "text");
+
+    elem.set_attribute("type", "password");
+    EXPECT_EQ(elem.get_attribute("type").value(), "password");
+
+    // Ensure only one attribute entry, not two
+    elem.set_attribute("type", "email");
+    EXPECT_EQ(elem.get_attribute("type").value(), "email");
+}
+
+TEST(DOMTest, TextNodeTextContentV80) {
+    clever::dom::Text text("Hello, World!");
+    EXPECT_EQ(text.text_content(), "Hello, World!");
+    EXPECT_EQ(text.node_type(), clever::dom::NodeType::Text);
+}
+
+TEST(DOMTest, AppendChildUpdatesParentV80) {
+    clever::dom::Element parent("div");
+    auto child = std::make_unique<clever::dom::Element>("span");
+    clever::dom::Node* child_ptr = child.get();
+
+    EXPECT_EQ(child_ptr->parent(), nullptr);
+
+    parent.append_child(std::move(child));
+
+    EXPECT_EQ(child_ptr->parent(), static_cast<clever::dom::Node*>(&parent));
+    EXPECT_EQ(parent.child_count(), 1u);
+    EXPECT_EQ(parent.first_child(), child_ptr);
+    EXPECT_EQ(parent.last_child(), child_ptr);
+}
+
+TEST(DOMTest, ClassListMultipleToggleV80) {
+    clever::dom::Element elem("div");
+
+    // Toggle on
+    elem.class_list().toggle("active");
+    EXPECT_TRUE(elem.class_list().contains("active"));
+
+    // Toggle off
+    elem.class_list().toggle("active");
+    EXPECT_FALSE(elem.class_list().contains("active"));
+
+    // Toggle on again
+    elem.class_list().toggle("active");
+    EXPECT_TRUE(elem.class_list().contains("active"));
+
+    // Toggle off again
+    elem.class_list().toggle("active");
+    EXPECT_FALSE(elem.class_list().contains("active"));
+}
+
+TEST(DOMTest, RemoveNonexistentAttributeNoErrorV80) {
+    clever::dom::Element elem("div");
+
+    // Removing an attribute that was never set should not throw or crash
+    elem.remove_attribute("nonexistent");
+
+    EXPECT_FALSE(elem.has_attribute("nonexistent"));
+    auto val = elem.get_attribute("nonexistent");
+    EXPECT_FALSE(val.has_value());
+}
+
+TEST(DOMTest, NodeTypeElementCheckV80) {
+    clever::dom::Element elem("article");
+    clever::dom::Text text("some text");
+    clever::dom::Comment comment("a comment");
+
+    EXPECT_EQ(elem.node_type(), clever::dom::NodeType::Element);
+    EXPECT_EQ(text.node_type(), clever::dom::NodeType::Text);
+    EXPECT_EQ(comment.node_type(), clever::dom::NodeType::Comment);
+}
+
+TEST(DOMTest, EmptyClassListContainsFalseV80) {
+    clever::dom::Element elem("div");
+
+    // No classes added — contains should return false for anything
+    EXPECT_FALSE(elem.class_list().contains("foo"));
+    EXPECT_FALSE(elem.class_list().contains("bar"));
+    EXPECT_FALSE(elem.class_list().contains(""));
+    EXPECT_FALSE(elem.class_list().contains("active"));
+}

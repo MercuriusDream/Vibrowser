@@ -14649,3 +14649,138 @@ TEST(CSSStyleTest, ParseDisplayTableV79) {
 
     EXPECT_EQ(style.display, Display::Table);
 }
+
+// ===========================================================================
+// V80 Tests
+// ===========================================================================
+
+TEST(CSSStyleTest, ParseDisplayFlexV80) {
+    const std::string css = "div{display:flex;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.display, Display::Flex);
+}
+
+TEST(CSSStyleTest, ParsePositionStaticExplicitV80) {
+    const std::string css = "span{position:static;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "span";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.position, Position::Static);
+}
+
+TEST(CSSStyleTest, ParseVisibilityVisibleV80) {
+    const std::string css = "p{visibility:visible;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "p";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.visibility, Visibility::Visible);
+}
+
+TEST(CSSStyleTest, DefaultCursorIsAutoV80) {
+    ComputedStyle style;
+
+    EXPECT_EQ(style.cursor, Cursor::Auto);
+}
+
+TEST(CSSStyleTest, ParseDisplayInlineV80) {
+    const std::string css = "span{display:inline;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "span";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.display, Display::Inline);
+}
+
+TEST(CSSStyleTest, ParseFontSizeEmV80) {
+    // 1.5em with default parent font-size (16px) should resolve to 24px
+    const std::string css = "p{font-size:1.5em;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "p";
+
+    ComputedStyle parent;
+    // parent uses default font-size of 16px
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_FLOAT_EQ(style.font_size.to_px(16.0f), 24.0f);
+}
+
+TEST(CSSStyleTest, ParseColorHexV80) {
+    // #ff0000 should resolve to red (255, 0, 0)
+    const std::string css = "div{color:#ff0000;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.color.r, 255);
+    EXPECT_EQ(style.color.g, 0);
+    EXPECT_EQ(style.color.b, 0);
+    EXPECT_EQ(style.color.a, 255);
+}
+
+TEST(CSSStyleTest, TagSelectorMatchesV80) {
+    // CSS targets "h2" tag; verify it applies to h2 but not to div
+    const std::string css = "h2{display:flex;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ComputedStyle parent;
+
+    // h2 element should get display:flex
+    ElementView h2_elem;
+    h2_elem.tag_name = "h2";
+    auto h2_style = resolver.resolve(h2_elem, parent);
+    EXPECT_EQ(h2_style.display, Display::Flex);
+
+    // div element should NOT get display:flex (default for div is block)
+    ElementView div_elem;
+    div_elem.tag_name = "div";
+    auto div_style = resolver.resolve(div_elem, parent);
+    EXPECT_NE(div_style.display, Display::Flex);
+}

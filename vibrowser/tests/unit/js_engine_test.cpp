@@ -24043,3 +24043,59 @@ TEST(JSEngineTest, ObjectEntriesV79) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "a:1|b:2");
 }
+
+TEST(JSEngineTest, ArrayIndexOfV80) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("[10,20,30].indexOf(20).toString()");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1");
+}
+
+TEST(JSEngineTest, ArraySliceV80) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("[1,2,3,4].slice(1,3).join('|')");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "2|3");
+}
+
+TEST(JSEngineTest, StringCharAtV80) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("\"hello\".charAt(1)");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "e");
+}
+
+TEST(JSEngineTest, StringPadStartV80) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("\"5\".padStart(3,\"0\")");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "005");
+}
+
+TEST(JSEngineTest, MathAbsNegativeV80) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("Math.abs(-42).toString()");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "42");
+}
+
+TEST(JSEngineTest, MathFloorCeilV80) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("Math.floor(3.7)+'|'+Math.ceil(3.2)");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "3|4");
+}
+
+TEST(JSEngineTest, TypeofChecksV80) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("typeof 42+'|'+typeof \"hi\"+'|'+typeof true");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "number|string|boolean");
+}
+
+TEST(JSEngineTest, ArrayFromStringV80) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("Array.from(\"abc\").join('|')");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "a|b|c");
+}

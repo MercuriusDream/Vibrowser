@@ -14518,3 +14518,102 @@ TEST(HttpClientTest, RequestBodyCanBeSetV79) {
     EXPECT_EQ(req.body[0], 0x48);
     EXPECT_EQ(req.body[4], 0x6F);
 }
+
+// ===========================================================================
+// V80 Tests
+// ===========================================================================
+
+TEST(HttpClientTest, RequestSerializeMethodLineV80) {
+    // Verify that serializing a POST request produces the correct method in
+    // the request line
+    Request req;
+    req.method = Method::POST;
+    req.host = "api.example.com";
+    req.port = 443;
+    req.path = "/submit";
+    req.use_tls = true;
+
+    std::string payload = "data=hello";
+    req.body.assign(payload.begin(), payload.end());
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    // Request line must start with POST
+    EXPECT_NE(result.find("POST /submit HTTP/1.1\r\n"), std::string::npos);
+    // Host header should omit port 443 for TLS
+    EXPECT_NE(result.find("Host: api.example.com\r\n"), std::string::npos);
+    // Content-Length should be present for body
+    EXPECT_NE(result.find("Content-Length: 10\r\n"), std::string::npos);
+}
+
+TEST(HttpClientTest, HeaderMapMultipleGetAllV80) {
+    // Append multiple values to the same header and verify get_all returns them
+    HeaderMap headers;
+    headers.append("X-Tag", "alpha");
+    headers.append("X-Tag", "beta");
+    headers.append("X-Tag", "gamma");
+
+    auto all = headers.get_all("x-tag");
+    EXPECT_EQ(all.size(), 3u);
+    EXPECT_TRUE(std::find(all.begin(), all.end(), "alpha") != all.end());
+    EXPECT_TRUE(std::find(all.begin(), all.end(), "beta") != all.end());
+    EXPECT_TRUE(std::find(all.begin(), all.end(), "gamma") != all.end());
+}
+
+TEST(HttpClientTest, CookieJarSecureFlagV80) {
+    // A Secure cookie must only be sent when the secure parameter is true
+    CookieJar jar;
+    jar.set_from_header("token=xyz789; Secure; Path=/", "secure.example.com");
+
+    // Not sent over insecure connection
+    std::string insecure = jar.get_cookie_header("secure.example.com", "/", false);
+    EXPECT_TRUE(insecure.empty());
+
+    // Sent over secure connection
+    std::string secure = jar.get_cookie_header("secure.example.com", "/", true);
+    EXPECT_FALSE(secure.empty());
+    EXPECT_NE(secure.find("token=xyz789"), std::string::npos);
+}
+
+TEST(HttpClientTest, ResponseHeadersEmptyV80) {
+    // A freshly constructed Response should have no headers
+    Response resp;
+    EXPECT_FALSE(resp.headers.has("Content-Type"));
+    EXPECT_FALSE(resp.headers.has("Server"));
+    auto all = resp.headers.get_all("Content-Type");
+    EXPECT_TRUE(all.empty());
+}
+
+TEST(HttpClientTest, MethodPutToStringV80) {
+    // Verify PUT method converts to the correct string
+    EXPECT_EQ(method_to_string(Method::PUT), "PUT");
+}
+
+TEST(HttpClientTest, RequestDefaultUrlEmptyV80) {
+    // A default-constructed Request should have an empty url field
+    Request req;
+    EXPECT_TRUE(req.url.empty());
+}
+
+TEST(HttpClientTest, CookieJarOverwriteSameNameV80) {
+    // Setting a cookie with the same name for the same domain should overwrite
+    CookieJar jar;
+    jar.set_from_header("pref=dark", "example.org");
+    jar.set_from_header("pref=light", "example.org");
+
+    EXPECT_EQ(jar.size(), 1u);
+    std::string header = jar.get_cookie_header("example.org", "/", false);
+    EXPECT_EQ(header, "pref=light");
+}
+
+TEST(HttpClientTest, HeaderMapGetAfterRemoveNulloptV80) {
+    // After removing a header, get() should return nullopt
+    HeaderMap headers;
+    headers.set("Authorization", "Bearer abc123");
+    EXPECT_TRUE(headers.get("Authorization").has_value());
+
+    headers.remove("Authorization");
+    EXPECT_FALSE(headers.has("Authorization"));
+    EXPECT_EQ(headers.get("Authorization"), std::nullopt);
+}

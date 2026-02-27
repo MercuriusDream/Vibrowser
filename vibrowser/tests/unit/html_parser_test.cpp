@@ -12449,3 +12449,125 @@ TEST(HTMLParserTest, FooterElementFoundV79) {
     ASSERT_NE(body, nullptr);
     EXPECT_EQ(footer->parent, body);
 }
+
+// ---------------------------------------------------------------------------
+// V80 Tests
+// ---------------------------------------------------------------------------
+
+TEST(HTMLParserTest, HeaderElementFoundV80) {
+    auto doc = clever::html::parse("<html><body><header>Site Header</header></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* header = doc->find_element("header");
+    ASSERT_NE(header, nullptr);
+    EXPECT_EQ(header->tag_name, "header");
+    EXPECT_EQ(header->text_content(), "Site Header");
+
+    auto* body = doc->find_element("body");
+    ASSERT_NE(body, nullptr);
+    EXPECT_EQ(header->parent, body);
+}
+
+TEST(HTMLParserTest, ArticleWithParagraphV80) {
+    auto doc = clever::html::parse("<html><body><article><p>Article text</p></article></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* article = doc->find_element("article");
+    ASSERT_NE(article, nullptr);
+    EXPECT_EQ(article->tag_name, "article");
+
+    auto* p = doc->find_element("p");
+    ASSERT_NE(p, nullptr);
+    EXPECT_EQ(p->tag_name, "p");
+    EXPECT_EQ(p->text_content(), "Article text");
+    EXPECT_EQ(p->parent, article);
+}
+
+TEST(HTMLParserTest, SectionWithIdV80) {
+    auto doc = clever::html::parse("<html><body><section id=\"main\">Content</section></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* section = doc->find_element("section");
+    ASSERT_NE(section, nullptr);
+    EXPECT_EQ(section->tag_name, "section");
+    EXPECT_EQ(get_attr_v63(section, "id"), "main");
+    EXPECT_EQ(section->text_content(), "Content");
+}
+
+TEST(HTMLParserTest, BrVoidNoChildrenV80) {
+    auto doc = clever::html::parse("<html><body><p>Line1<br>Line2</p></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* br = doc->find_element("br");
+    ASSERT_NE(br, nullptr);
+    EXPECT_EQ(br->tag_name, "br");
+    EXPECT_TRUE(br->children.empty());
+}
+
+TEST(HTMLParserTest, DataAttributeParsedV80) {
+    auto doc = clever::html::parse(R"(<html><body><div data-value="42">Info</div></body></html>)");
+    ASSERT_NE(doc, nullptr);
+
+    auto* div = doc->find_element("div");
+    ASSERT_NE(div, nullptr);
+    EXPECT_EQ(get_attr_v63(div, "data-value"), "42");
+    EXPECT_EQ(div->text_content(), "Info");
+}
+
+TEST(HTMLParserTest, NestedListsV80) {
+    auto doc = clever::html::parse("<html><body><ul><li>Outer<ul><li>Inner</li></ul></li></ul></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto all_ul = doc->find_all_elements("ul");
+    ASSERT_GE(all_ul.size(), 2u);
+
+    auto all_li = doc->find_all_elements("li");
+    ASSERT_GE(all_li.size(), 2u);
+
+    // The inner ul should be nested inside the outer li
+    auto* outer_ul = all_ul[0];
+    EXPECT_EQ(outer_ul->tag_name, "ul");
+
+    auto* body = doc->find_element("body");
+    ASSERT_NE(body, nullptr);
+    EXPECT_EQ(outer_ul->parent, body);
+}
+
+TEST(HTMLParserTest, FigureWithFigcaptionV80) {
+    auto doc = clever::html::parse("<html><body><figure><img src=\"photo.jpg\"><figcaption>A photo</figcaption></figure></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* figure = doc->find_element("figure");
+    ASSERT_NE(figure, nullptr);
+    EXPECT_EQ(figure->tag_name, "figure");
+
+    auto* figcaption = doc->find_element("figcaption");
+    ASSERT_NE(figcaption, nullptr);
+    EXPECT_EQ(figcaption->tag_name, "figcaption");
+    EXPECT_EQ(figcaption->text_content(), "A photo");
+    EXPECT_EQ(figcaption->parent, figure);
+
+    auto* img = doc->find_element("img");
+    ASSERT_NE(img, nullptr);
+    EXPECT_EQ(get_attr_v63(img, "src"), "photo.jpg");
+}
+
+TEST(HTMLParserTest, DetailsAndSummaryV80) {
+    auto doc = clever::html::parse("<html><body><details><summary>Click me</summary><p>Hidden content</p></details></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* details = doc->find_element("details");
+    ASSERT_NE(details, nullptr);
+    EXPECT_EQ(details->tag_name, "details");
+
+    auto* summary = doc->find_element("summary");
+    ASSERT_NE(summary, nullptr);
+    EXPECT_EQ(summary->tag_name, "summary");
+    EXPECT_EQ(summary->text_content(), "Click me");
+    EXPECT_EQ(summary->parent, details);
+
+    auto* p = doc->find_element("p");
+    ASSERT_NE(p, nullptr);
+    EXPECT_EQ(p->text_content(), "Hidden content");
+    EXPECT_EQ(p->parent, details);
+}

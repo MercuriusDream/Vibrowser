@@ -11633,3 +11633,93 @@ TEST(SerializerTest, U16AllOnesV79) {
     EXPECT_EQ(reader.read_u16(), 0xFFFFu);
     EXPECT_FALSE(reader.has_remaining());
 }
+
+TEST(SerializerTest, U64OneV80) {
+    Serializer s;
+    s.write_u64(1);
+
+    Deserializer reader(s.data());
+    EXPECT_EQ(reader.read_u64(), 1u);
+    EXPECT_FALSE(reader.has_remaining());
+}
+
+TEST(SerializerTest, F64NegZeroV80) {
+    Serializer s;
+    s.write_f64(-0.0);
+
+    Deserializer reader(s.data());
+    double val = reader.read_f64();
+    EXPECT_DOUBLE_EQ(val, 0.0);
+    EXPECT_TRUE(std::signbit(val));
+    EXPECT_FALSE(reader.has_remaining());
+}
+
+TEST(SerializerTest, StringUnicodeV80) {
+    Serializer s;
+    std::string unicode_str = "\xC3\xA9\xE4\xB8\xAD\xF0\x9F\x98\x80";
+    s.write_string(unicode_str);
+
+    Deserializer reader(s.data());
+    EXPECT_EQ(reader.read_string(), unicode_str);
+    EXPECT_FALSE(reader.has_remaining());
+}
+
+TEST(SerializerTest, LargeBytesV80) {
+    Serializer s;
+    std::vector<uint8_t> large(1024);
+    std::iota(large.begin(), large.end(), static_cast<uint8_t>(0));
+    s.write_bytes(large.data(), large.size());
+
+    Deserializer reader(s.data());
+    auto result = reader.read_bytes();
+    EXPECT_EQ(result.size(), 1024u);
+    for (size_t i = 0; i < 1024; ++i) {
+        EXPECT_EQ(result[i], static_cast<uint8_t>(i & 0xFF));
+    }
+    EXPECT_FALSE(reader.has_remaining());
+}
+
+TEST(SerializerTest, U8ThenStringThenU8V80) {
+    Serializer s;
+    s.write_u8(0xAA);
+    s.write_string("middle");
+    s.write_u8(0xBB);
+
+    Deserializer reader(s.data());
+    EXPECT_EQ(reader.read_u8(), 0xAAu);
+    EXPECT_EQ(reader.read_string(), "middle");
+    EXPECT_EQ(reader.read_u8(), 0xBBu);
+    EXPECT_FALSE(reader.has_remaining());
+}
+
+TEST(SerializerTest, U32SequenceV80) {
+    Serializer s;
+    for (uint32_t i = 0; i < 5; ++i) {
+        s.write_u32(i * 1000);
+    }
+
+    Deserializer reader(s.data());
+    for (uint32_t i = 0; i < 5; ++i) {
+        EXPECT_EQ(reader.read_u32(), i * 1000);
+    }
+    EXPECT_FALSE(reader.has_remaining());
+}
+
+TEST(SerializerTest, F64VerySmallV80) {
+    Serializer s;
+    double tiny = std::numeric_limits<double>::min();
+    s.write_f64(tiny);
+
+    Deserializer reader(s.data());
+    EXPECT_DOUBLE_EQ(reader.read_f64(), tiny);
+    EXPECT_FALSE(reader.has_remaining());
+}
+
+TEST(SerializerTest, U16ZeroV80) {
+    Serializer s;
+    s.write_u16(0);
+
+    Deserializer reader(s.data());
+    EXPECT_EQ(reader.read_u16(), 0u);
+    EXPECT_FALSE(reader.has_remaining());
+}

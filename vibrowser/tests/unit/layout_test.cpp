@@ -14623,3 +14623,111 @@ TEST(LayoutEngineTest, MaxWidthClampsV79) {
 
     EXPECT_FLOAT_EQ(root->geometry.width, 600.0f);
 }
+
+// Test V80_001: five block children total height equals sum of child heights
+TEST(LayoutEngineTest, FiveChildrenTotalHeightV80) {
+    auto root = make_block("div");
+    float heights[] = {20.0f, 35.0f, 10.0f, 45.0f, 15.0f};
+    float total = 0.0f;
+    for (float h : heights) {
+        auto child = make_block("div");
+        child->specified_height = h;
+        root->append_child(std::move(child));
+        total += h;
+    }
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(root->geometry.height, total);  // 125
+    EXPECT_EQ(root->children.size(), 5u);
+}
+
+// Test V80_002: min_height clamps content height upward
+TEST(LayoutEngineTest, MinHeightClampsUpV80) {
+    auto root = make_block("div");
+    root->specified_width = 400.0f;
+    // Single child with 30px height, but root has min_height 200
+    auto child = make_block("div");
+    child->specified_height = 30.0f;
+    root->append_child(std::move(child));
+    root->min_height = 200.0f;
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // min_height should clamp the root height up from 30 to 200
+    EXPECT_GE(root->geometry.height, 200.0f);
+}
+
+// Test V80_003: flex_shrink defaults to 1
+TEST(LayoutEngineTest, FlexShrinkDefaultOneV80) {
+    auto node = make_block("div");
+    EXPECT_FLOAT_EQ(node->flex_shrink, 1.0f);
+}
+
+// Test V80_004: line_height is preserved after layout compute
+TEST(LayoutEngineTest, LineHeightPreservedV80) {
+    auto root = make_block("div");
+    root->specified_width = 600.0f;
+    root->specified_height = 100.0f;
+    root->line_height = 2.0f;
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(root->line_height, 2.0f);
+}
+
+// Test V80_005: geometry x defaults to zero for root block
+TEST(LayoutEngineTest, GeometryXDefaultsZeroV80) {
+    auto root = make_block("div");
+    root->specified_width = 500.0f;
+    root->specified_height = 300.0f;
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(root->geometry.x, 0.0f);
+}
+
+// Test V80_006: nested grandchild inherits parent width
+TEST(LayoutEngineTest, NestedBlockWidthInheritV80) {
+    auto root = make_block("div");
+    root->specified_width = 600.0f;
+
+    auto parent = make_block("div");
+    auto grandchild = make_block("div");
+    grandchild->specified_height = 20.0f;
+    parent->append_child(std::move(grandchild));
+
+    root->append_child(std::move(parent));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // parent inherits root's 600 width, grandchild inherits parent's width
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.width, 600.0f);
+    EXPECT_FLOAT_EQ(root->children[0]->children[0]->geometry.width, 600.0f);
+}
+
+// Test V80_007: mode defaults to Block for make_block nodes
+TEST(LayoutEngineTest, ModeBlockDefaultV80) {
+    auto node = make_block("section");
+    EXPECT_EQ(node->mode, LayoutMode::Block);
+}
+
+// Test V80_008: padding left and right are preserved after layout
+TEST(LayoutEngineTest, PaddingLeftRightPreservedV80) {
+    auto root = make_block("div");
+    root->specified_width = 500.0f;
+    root->specified_height = 200.0f;
+    root->geometry.padding.left = 25.0f;
+    root->geometry.padding.right = 35.0f;
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(root->geometry.padding.left, 25.0f);
+    EXPECT_FLOAT_EQ(root->geometry.padding.right, 35.0f);
+}
