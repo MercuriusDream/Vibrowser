@@ -5472,3 +5472,66 @@ TEST(CORSPolicyTest, OriginComparisonIgnoresUrlPathV69) {
     EXPECT_TRUE(
         cors_allows_response("https://app.example", "https://app.example/other/path", headers, false));
 }
+
+TEST(CORSPolicyTest, HeadMethodIsSimpleRequestV70) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "https://app.example");
+    headers.set("Access-Control-Request-Method", "HEAD");
+    EXPECT_TRUE(
+        cors_allows_response("https://app.example", "https://api.example/data", headers, false));
+}
+
+TEST(CORSPolicyTest, DeleteMethodNotSimpleRequestV70) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Request-Method", "DELETE");
+    EXPECT_FALSE(
+        cors_allows_response("https://app.example", "https://api.example/data", headers, false));
+}
+
+TEST(CORSPolicyTest, ContentTypeApplicationJsonTriggersPreflightV70) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Request-Method", "POST");
+    headers.set("Content-Type", "application/json");
+    EXPECT_FALSE(
+        cors_allows_response("https://app.example", "https://api.example/data", headers, false));
+}
+
+TEST(CORSPolicyTest, AcaoStarWithNoCredentialsAllowedV70) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "*");
+    EXPECT_TRUE(
+        cors_allows_response("https://app.example", "https://api.example/data", headers, false));
+}
+
+TEST(CORSPolicyTest, AcamPostExplicitlyListedPassesV70) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "https://app.example");
+    headers.set("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+    headers.set("Access-Control-Request-Method", "POST");
+    EXPECT_TRUE(
+        cors_allows_response("https://app.example", "https://api.example/data", headers, false));
+}
+
+TEST(CORSPolicyTest, AcahContentTypeExplicitlyListedV70) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "https://app.example");
+    headers.set("Access-Control-Allow-Headers", "Content-Type");
+    headers.set("Access-Control-Request-Headers", "Content-Type");
+    EXPECT_TRUE(
+        cors_allows_response("https://app.example", "https://api.example/data", headers, false));
+}
+
+TEST(CORSPolicyTest, AccessControlAllowCredentialsTrueStringMatchV70) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "https://app.example");
+    headers.set("Access-Control-Allow-Credentials", "true");
+    EXPECT_TRUE(
+        cors_allows_response("https://app.example", "https://api.example/data", headers, true));
+}
+
+TEST(CORSPolicyTest, AcaoMustExactlyMatchRequestOriginV70) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "https://other.example");
+    EXPECT_FALSE(
+        cors_allows_response("https://app.example", "https://api.example/data", headers, false));
+}

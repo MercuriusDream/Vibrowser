@@ -12935,3 +12935,137 @@ TEST(LayoutEngineTest, LargeFontTextNodeHeightV69) {
     EXPECT_NEAR(root->children[0]->geometry.height, 144.0f, 0.001f);
     EXPECT_NEAR(root->geometry.height, 144.0f, 0.001f);
 }
+
+// Test V70_001: root width defaults to viewport width
+TEST(LayoutEngineTest, RootWidthEqualsViewportV70) {
+    auto root = make_block("div");
+
+    LayoutEngine engine;
+    engine.compute(*root, 777.0f, 500.0f);
+
+    EXPECT_FLOAT_EQ(root->geometry.width, 777.0f);
+}
+
+// Test V70_002: root auto height is the sum of two block children heights
+TEST(LayoutEngineTest, RootChildrenHeightsSumV70) {
+    auto root = make_block("div");
+
+    auto first = make_block("div");
+    first->specified_height = 35.0f;
+    auto second = make_block("div");
+    second->specified_height = 45.0f;
+
+    root->append_child(std::move(first));
+    root->append_child(std::move(second));
+
+    LayoutEngine engine;
+    engine.compute(*root, 640.0f, 360.0f);
+
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.y, 0.0f);
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.y, 35.0f);
+    EXPECT_FLOAT_EQ(root->geometry.height, 80.0f);
+}
+
+// Test V70_003: text node height scales with font size 24
+TEST(LayoutEngineTest, TextNodeFontSize24HeightV70) {
+    auto root = make_block("div");
+    auto text = make_text("V70", 24.0f);
+    root->append_child(std::move(text));
+
+    LayoutEngine engine;
+    engine.compute(*root, 500.0f, 300.0f);
+
+    EXPECT_NEAR(root->children[0]->geometry.height, 28.8f, 0.001f);
+    EXPECT_NEAR(root->geometry.height, 28.8f, 0.001f);
+}
+
+// Test V70_004: specified width 200 is honored
+TEST(LayoutEngineTest, SpecifiedWidth200HonoredV70) {
+    auto root = make_block("div");
+    root->specified_width = 500.0f;
+
+    auto child = make_block("div");
+    child->specified_width = 200.0f;
+    child->specified_height = 20.0f;
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 900.0f, 400.0f);
+
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.width, 200.0f);
+}
+
+// Test V70_005: root specified width wider than viewport is clamped
+TEST(LayoutEngineTest, SpecifiedWidthWiderThanViewportClampedV70) {
+    auto root = make_block("div");
+    root->specified_width = 1200.0f;
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(root->geometry.width, 800.0f);
+}
+
+// Test V70_006: left margin shifts child x position
+TEST(LayoutEngineTest, MarginLeftPushesXPositionV70) {
+    auto root = make_block("div");
+    root->specified_width = 400.0f;
+
+    auto child = make_block("div");
+    child->specified_height = 30.0f;
+    child->geometry.margin.left = 40.0f;
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 700.0f, 500.0f);
+
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.x, 40.0f);
+}
+
+// Test V70_007: nested block elements inherit available width
+TEST(LayoutEngineTest, ThreeNestedBlocksWidthInheritanceV70) {
+    auto root = make_block("div");
+    root->specified_width = 620.0f;
+
+    auto child = make_block("div");
+    auto grandchild = make_block("div");
+    auto great_grandchild = make_block("div");
+    great_grandchild->specified_height = 10.0f;
+
+    grandchild->append_child(std::move(great_grandchild));
+    child->append_child(std::move(grandchild));
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 900.0f, 700.0f);
+
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.width, 620.0f);
+    EXPECT_FLOAT_EQ(root->children[0]->children[0]->geometry.width, 620.0f);
+    EXPECT_FLOAT_EQ(root->children[0]->children[0]->children[0]->geometry.width, 620.0f);
+}
+
+// Test V70_008: display:none child is removed from normal flow height
+TEST(LayoutEngineTest, DisplayNoneChildNotCountedInHeightV70) {
+    auto root = make_block("div");
+    root->specified_width = 500.0f;
+
+    auto first = make_block("div");
+    first->specified_height = 30.0f;
+
+    auto hidden = make_block("div");
+    hidden->display = DisplayType::None;
+    hidden->specified_height = 100.0f;
+
+    auto third = make_block("div");
+    third->specified_height = 20.0f;
+
+    root->append_child(std::move(first));
+    root->append_child(std::move(hidden));
+    root->append_child(std::move(third));
+
+    LayoutEngine engine;
+    engine.compute(*root, 700.0f, 500.0f);
+
+    EXPECT_FLOAT_EQ(root->children[2]->geometry.y, 30.0f);
+    EXPECT_FLOAT_EQ(root->geometry.height, 50.0f);
+}

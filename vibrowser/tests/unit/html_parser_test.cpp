@@ -11172,3 +11172,140 @@ TEST(HTMLParserTest, ArticleElementStructureV69) {
     EXPECT_EQ(paragraph->text_content(), "Feature summary.");
     EXPECT_EQ(footer->text_content(), "Published today");
 }
+
+TEST(HTMLParserTest, EmptyHtmlDocumentV70) {
+    auto doc = clever::html::parse("");
+    ASSERT_NE(doc, nullptr);
+    EXPECT_EQ(doc->type, clever::html::SimpleNode::Document);
+
+    auto* html = doc->find_element("html");
+    auto* head = doc->find_element("head");
+    auto* body = doc->find_element("body");
+    ASSERT_NE(html, nullptr);
+    ASSERT_NE(head, nullptr);
+    ASSERT_NE(body, nullptr);
+    EXPECT_EQ(html->tag_name, "html");
+    EXPECT_EQ(head->tag_name, "head");
+    EXPECT_EQ(body->tag_name, "body");
+}
+
+TEST(HTMLParserTest, SingleParagraphTextV70) {
+    auto doc = clever::html::parse("<p>Hello parser world</p>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* paragraph = doc->find_element("p");
+    ASSERT_NE(paragraph, nullptr);
+    EXPECT_EQ(paragraph->tag_name, "p");
+    EXPECT_EQ(paragraph->text_content(), "Hello parser world");
+}
+
+TEST(HTMLParserTest, NestedDivsThreeLevelsV70) {
+    auto doc = clever::html::parse("<div id='outer'><div id='middle'><div id='inner'>Core</div></div></div>");
+    ASSERT_NE(doc, nullptr);
+
+    auto divs = doc->find_all_elements("div");
+    ASSERT_EQ(divs.size(), 3u);
+
+    clever::html::SimpleNode* outer = nullptr;
+    clever::html::SimpleNode* middle = nullptr;
+    clever::html::SimpleNode* inner = nullptr;
+    for (auto* div : divs) {
+        if (get_attr_v63(div, "id") == "outer") outer = div;
+        if (get_attr_v63(div, "id") == "middle") middle = div;
+        if (get_attr_v63(div, "id") == "inner") inner = div;
+    }
+
+    ASSERT_NE(outer, nullptr);
+    ASSERT_NE(middle, nullptr);
+    ASSERT_NE(inner, nullptr);
+    EXPECT_EQ(outer->tag_name, "div");
+    EXPECT_EQ(middle->tag_name, "div");
+    EXPECT_EQ(inner->tag_name, "div");
+    EXPECT_EQ(middle->parent, outer);
+    EXPECT_EQ(inner->parent, middle);
+    EXPECT_EQ(inner->text_content(), "Core");
+}
+
+TEST(HTMLParserTest, UnorderedListWithItemsV70) {
+    auto doc = clever::html::parse("<ul><li>Alpha</li><li>Beta</li><li>Gamma</li></ul>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* ul = doc->find_element("ul");
+    auto items = doc->find_all_elements("li");
+    ASSERT_NE(ul, nullptr);
+    ASSERT_EQ(items.size(), 3u);
+
+    EXPECT_EQ(ul->tag_name, "ul");
+    EXPECT_EQ(items[0]->tag_name, "li");
+    EXPECT_EQ(items[1]->tag_name, "li");
+    EXPECT_EQ(items[2]->tag_name, "li");
+    EXPECT_EQ(items[0]->parent, ul);
+    EXPECT_EQ(items[1]->parent, ul);
+    EXPECT_EQ(items[2]->parent, ul);
+    EXPECT_EQ(items[0]->text_content(), "Alpha");
+    EXPECT_EQ(items[1]->text_content(), "Beta");
+    EXPECT_EQ(items[2]->text_content(), "Gamma");
+}
+
+TEST(HTMLParserTest, TableWithRowsAndCellsV70) {
+    auto doc = clever::html::parse("<table><tr><td>A1</td><td>B1</td></tr><tr><td>A2</td><td>B2</td></tr></table>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* table = doc->find_element("table");
+    auto rows = doc->find_all_elements("tr");
+    auto cells = doc->find_all_elements("td");
+    ASSERT_NE(table, nullptr);
+    ASSERT_EQ(rows.size(), 2u);
+    ASSERT_EQ(cells.size(), 4u);
+
+    EXPECT_EQ(table->tag_name, "table");
+    EXPECT_EQ(rows[0]->tag_name, "tr");
+    EXPECT_EQ(rows[1]->tag_name, "tr");
+    EXPECT_EQ(cells[0]->parent, rows[0]);
+    EXPECT_EQ(cells[1]->parent, rows[0]);
+    EXPECT_EQ(cells[2]->parent, rows[1]);
+    EXPECT_EQ(cells[3]->parent, rows[1]);
+    EXPECT_EQ(cells[0]->text_content(), "A1");
+    EXPECT_EQ(cells[1]->text_content(), "B1");
+    EXPECT_EQ(cells[2]->text_content(), "A2");
+    EXPECT_EQ(cells[3]->text_content(), "B2");
+}
+
+TEST(HTMLParserTest, FormWithInputElementV70) {
+    auto doc = clever::html::parse("<form action='/submit'><input type='text' name='username'></form>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* form = doc->find_element("form");
+    auto* input = doc->find_element("input");
+    ASSERT_NE(form, nullptr);
+    ASSERT_NE(input, nullptr);
+
+    EXPECT_EQ(form->tag_name, "form");
+    EXPECT_EQ(input->tag_name, "input");
+    EXPECT_EQ(input->parent, form);
+    EXPECT_EQ(get_attr_v63(form, "action"), "/submit");
+    EXPECT_EQ(get_attr_v63(input, "type"), "text");
+    EXPECT_EQ(get_attr_v63(input, "name"), "username");
+}
+
+TEST(HTMLParserTest, AnchorWithHrefAttributeV70) {
+    auto doc = clever::html::parse("<a href='https://example.com/docs'>Read docs</a>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* anchor = doc->find_element("a");
+    ASSERT_NE(anchor, nullptr);
+    EXPECT_EQ(anchor->tag_name, "a");
+    EXPECT_EQ(get_attr_v63(anchor, "href"), "https://example.com/docs");
+    EXPECT_EQ(anchor->text_content(), "Read docs");
+}
+
+TEST(HTMLParserTest, ImgSelfClosingWithSrcV70) {
+    auto doc = clever::html::parse("<img src='photo.png'/>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* img = doc->find_element("img");
+    ASSERT_NE(img, nullptr);
+    EXPECT_EQ(img->tag_name, "img");
+    EXPECT_EQ(get_attr_v63(img, "src"), "photo.png");
+    EXPECT_TRUE(img->children.empty());
+}

@@ -2,6 +2,7 @@
 #include <clever/url/url.h>
 #include <optional>
 #include <string>
+#include <vector>
 
 using namespace clever::url;
 
@@ -8840,4 +8841,137 @@ TEST(URLParserTest, HostExtractionFromFullUrlV69) {
     EXPECT_EQ(result->host, "sub.example.com");
     ASSERT_TRUE(result->port.has_value());
     EXPECT_EQ(result->port.value(), 8443);
+}
+
+TEST(URLParserTest, BasicHttpsUrlComponentsV70) {
+    auto result = clever::url::parse("https://example.com/path/to/page");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/path/to/page");
+    EXPECT_EQ(result->port, std::nullopt);
+}
+
+TEST(URLParserTest, HttpUrlWithPort8080V70) {
+    auto result = clever::url::parse("http://example.com:8080/api");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "example.com");
+    ASSERT_TRUE(result->port.has_value());
+    EXPECT_EQ(result->port.value(), 8080);
+    EXPECT_EQ(result->path, "/api");
+}
+
+TEST(URLParserTest, UrlPathSegmentsSplitV70) {
+    auto result = clever::url::parse("https://example.com/a/b/c");
+    ASSERT_TRUE(result.has_value());
+    ASSERT_EQ(result->path, "/a/b/c");
+
+    std::vector<std::string> segments;
+    size_t start = 1;
+    while (start <= result->path.size()) {
+        size_t slash = result->path.find('/', start);
+        if (slash == std::string::npos) {
+            segments.push_back(result->path.substr(start));
+            break;
+        }
+        segments.push_back(result->path.substr(start, slash - start));
+        start = slash + 1;
+    }
+
+    ASSERT_EQ(segments.size(), 3u);
+    EXPECT_EQ(segments[0], "a");
+    EXPECT_EQ(segments[1], "b");
+    EXPECT_EQ(segments[2], "c");
+}
+
+TEST(URLParserTest, UrlWithQueryAndFragmentTogetherV70) {
+    auto result = clever::url::parse("https://example.com/search?q=one#section-2");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->path, "/search");
+    EXPECT_EQ(result->query, "q=one");
+    EXPECT_EQ(result->fragment, "section-2");
+}
+
+TEST(URLParserTest, HttpsDefaultPort443OmittedV70) {
+    auto result = clever::url::parse("https://example.com:443/home");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->port, std::nullopt);
+    EXPECT_EQ(result->path, "/home");
+}
+
+TEST(URLParserTest, HttpDefaultPort80OmittedV70) {
+    auto result = clever::url::parse("http://example.com:80/home");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->port, std::nullopt);
+    EXPECT_EQ(result->path, "/home");
+}
+
+TEST(URLParserTest, UrlWithEncodedSpaceInQueryPercent2520V70) {
+    auto result = clever::url::parse("https://example.com/search?q=%20");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->query, "q=%2520");
+}
+
+TEST(URLParserTest, EmptyUrlReturnsNulloptV70) {
+    auto result = clever::url::parse("");
+    EXPECT_FALSE(result.has_value());
+}
+
+TEST(URLParserTest, WhitespaceOnlyUrlReturnsNulloptV70) {
+    auto result = clever::url::parse(" \t\r\n ");
+    EXPECT_FALSE(result.has_value());
+}
+
+TEST(URLParserTest, UrlWithUppercaseSchemeNormalizedV70) {
+    auto result = clever::url::parse("HTTPS://Example.com/Path");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/Path");
+
+    auto missing_slashes = clever::url::parse("HTTPS:Example.com/Path");
+    EXPECT_FALSE(missing_slashes.has_value());
+}
+
+TEST(URLParserTest, PathDotDotRemovalV70) {
+    auto result = clever::url::parse("https://example.com/a/b/../c");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->path, "/a/c");
+}
+
+TEST(URLParserTest, UrlWithMultiplePathSegmentsV70) {
+    auto result = clever::url::parse("https://example.com/one/two/three/four");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->path, "/one/two/three/four");
+}
+
+TEST(URLParserTest, FragmentOnlyPreservedV70) {
+    auto result = clever::url::parse("https://example.com/page#fragment-only");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->path, "/page");
+    EXPECT_TRUE(result->query.empty());
+    EXPECT_EQ(result->fragment, "fragment-only");
+}
+
+TEST(URLParserTest, QueryWithAmpersandSeparatedParamsV70) {
+    auto result = clever::url::parse("https://example.com/search?a=1&b=2&c=3");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->query, "a=1&b=2&c=3");
+}
+
+TEST(URLParserTest, FileUrlWithHostV70) {
+    auto result = clever::url::parse("file://localhost/etc/hosts");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "file");
+    EXPECT_EQ(result->host, "localhost");
+    EXPECT_EQ(result->path, "/etc/hosts");
+}
+
+TEST(URLParserTest, CustomSchemeUrlV70) {
+    auto with_authority = clever::url::parse("custom://host/resource");
+    ASSERT_TRUE(with_authority.has_value());
+    EXPECT_EQ(with_authority->scheme, "custom");
+    EXPECT_EQ(with_authority->host, "host");
+    EXPECT_EQ(with_authority->path, "/resource");
 }

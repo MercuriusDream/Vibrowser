@@ -22930,3 +22930,131 @@ TEST(JSEngineTest, ErrorPrototypeStackExistsV69) {
     EXPECT_TRUE(result.success) << engine.last_error();
     EXPECT_EQ(result.value, "true|string|true");
 }
+
+TEST(JSEngineTest, MathMaxAndMinBasicValuesV70) {
+    clever::js::JSEngine engine;
+    const std::string js = R"(
+        var maxValue = Math.max(4, -3, 9, 1);
+        var minValue = Math.min(4, -3, 9, 1);
+        [maxValue.toString(), minValue.toString()].join('|')
+    )";
+    auto result = EvalResultV66{false, ""};
+    result.value = engine.evaluate(js);
+    result.success = !engine.has_error();
+    EXPECT_TRUE(result.success) << engine.last_error();
+    EXPECT_EQ(result.value, "9|-3");
+}
+
+TEST(JSEngineTest, DateNowReturnsNumberV70) {
+    clever::js::JSEngine engine;
+    const std::string js = R"(
+        var now = Date.now();
+        [typeof now, Number.isFinite(now).toString(), (now > 0).toString()].join('|')
+    )";
+    auto result = EvalResultV66{false, ""};
+    result.value = engine.evaluate(js);
+    result.success = !engine.has_error();
+    EXPECT_TRUE(result.success) << engine.last_error();
+    EXPECT_EQ(result.value, "number|true|true");
+}
+
+TEST(JSEngineTest, ArrayPrototypeReduceAccumulationV70) {
+    clever::js::JSEngine engine;
+    const std::string js = R"(
+        var sum = [1, 2, 3, 4].reduce(function(acc, value) {
+            return acc + value;
+        }, 0);
+        var text = ['a', 'b', 'c'].reduce(function(acc, value) {
+            return acc + value;
+        }, '');
+        [sum.toString(), text].join('|')
+    )";
+    auto result = EvalResultV66{false, ""};
+    result.value = engine.evaluate(js);
+    result.success = !engine.has_error();
+    EXPECT_TRUE(result.success) << engine.last_error();
+    EXPECT_EQ(result.value, "10|abc");
+}
+
+TEST(JSEngineTest, StringPrototypeSplitVariantsV70) {
+    clever::js::JSEngine engine;
+    const std::string js = R"(
+        var words = 'hello world'.split(' ');
+        var limited = 'red,green,blue,yellow'.split(',', 3);
+        [words.join(','), limited.join(','), limited.length.toString()].join('|')
+    )";
+    auto result = EvalResultV66{false, ""};
+    result.value = engine.evaluate(js);
+    result.success = !engine.has_error();
+    EXPECT_TRUE(result.success) << engine.last_error();
+    EXPECT_EQ(result.value, "hello,world|red,green,blue|3");
+}
+
+TEST(JSEngineTest, ParseIntAndParseFloatConversionsV70) {
+    clever::js::JSEngine engine;
+    const std::string js = R"(
+        var a = parseInt('42px', 10);
+        var b = parseInt('101', 2);
+        var c = parseFloat('3.14xyz');
+        var d = parseFloat('5');
+        [a.toString(), b.toString(), c.toString(), d.toString()].join('|')
+    )";
+    auto result = EvalResultV66{false, ""};
+    result.value = engine.evaluate(js);
+    result.success = !engine.has_error();
+    EXPECT_TRUE(result.success) << engine.last_error();
+    EXPECT_EQ(result.value, "42|5|3.14|5");
+}
+
+TEST(JSEngineTest, NumberToStringWithRadixV70) {
+    clever::js::JSEngine engine;
+    const std::string js = R"(
+        var value = 255;
+        [value.toString(2), value.toString(8), value.toString(16), (35).toString(36)].join('|')
+    )";
+    auto result = EvalResultV66{false, ""};
+    result.value = engine.evaluate(js);
+    result.success = !engine.has_error();
+    EXPECT_TRUE(result.success) << engine.last_error();
+    EXPECT_EQ(result.value, "11111111|377|ff|z");
+}
+
+TEST(JSEngineTest, ArraySortCustomComparatorOrderingV70) {
+    clever::js::JSEngine engine;
+    const std::string js = R"(
+        var ascending = [10, 2, 30, 4].slice().sort(function(a, b) {
+            return a - b;
+        });
+        var byLastDigit = [21, 14, 35, 42].slice().sort(function(a, b) {
+            return (a % 10) - (b % 10);
+        });
+        [ascending.join(','), byLastDigit.join(',')].join('|')
+    )";
+    auto result = EvalResultV66{false, ""};
+    result.value = engine.evaluate(js);
+    result.success = !engine.has_error();
+    EXPECT_TRUE(result.success) << engine.last_error();
+    EXPECT_EQ(result.value, "2,4,10,30|21,42,14,35");
+}
+
+TEST(JSEngineTest, ObjectFreezePreventsModificationV70) {
+    clever::js::JSEngine engine;
+    const std::string js = R"(
+        var obj = Object.freeze({ x: 1 });
+        var caught = 'none';
+        try {
+            (function() {
+                'use strict';
+                obj.x = 99;
+            })();
+        } catch (e) {
+            caught = e.name;
+        }
+        [obj.x.toString(), caught, Object.isFrozen(obj).toString()].join('|')
+    )";
+    auto result = EvalResultV66{false, ""};
+    result.value = engine.evaluate(js);
+    result.success = !engine.has_error();
+    EXPECT_TRUE(result.success) << engine.last_error();
+    EXPECT_EQ(result.value, "1|TypeError|true");
+}

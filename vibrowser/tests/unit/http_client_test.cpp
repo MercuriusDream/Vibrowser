@@ -13098,3 +13098,200 @@ TEST(RequestTest, SerializeHostIncludesCustomPortV69) {
 
     EXPECT_NE(serialized.find("Host: api.example.com:8443\r\n"), std::string::npos);
 }
+
+// ---------------------------------------------------------------------------
+// Cycle 70: requested HTTP client coverage additions
+// ---------------------------------------------------------------------------
+
+TEST(RequestTest, GetRequestBasicSerializeV70) {
+    Request req;
+    req.method = Method::GET;
+    req.host = "example.com";
+    req.port = 80;
+    req.path = "/index";
+
+    auto bytes = req.serialize();
+    std::string serialized(bytes.begin(), bytes.end());
+
+    EXPECT_NE(serialized.find("GET /index HTTP/1.1\r\n"), std::string::npos);
+    EXPECT_NE(serialized.find("Host: example.com\r\n"), std::string::npos);
+}
+
+TEST(RequestTest, PostRequestWithBodyContentLengthAutoV70) {
+    Request req;
+    req.method = Method::POST;
+    req.host = "example.com";
+    req.port = 80;
+    req.path = "/submit";
+    const std::string body = "hello";
+    req.body.assign(body.begin(), body.end());
+
+    auto bytes = req.serialize();
+    std::string serialized(bytes.begin(), bytes.end());
+
+    EXPECT_NE(serialized.find("POST /submit HTTP/1.1\r\n"), std::string::npos);
+    EXPECT_NE(serialized.find("Content-Length: 5\r\n"), std::string::npos);
+}
+
+TEST(ResponseTest, Response200BodyExtractionV70) {
+    std::string raw =
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Length: 5\r\n"
+        "\r\n"
+        "Hello";
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 200u);
+    EXPECT_EQ(resp->body_as_string(), "Hello");
+}
+
+TEST(ResponseTest, Response404NoBodyV70) {
+    std::string raw =
+        "HTTP/1.1 404 Not Found\r\n"
+        "Content-Length: 0\r\n"
+        "\r\n";
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 404u);
+    EXPECT_TRUE(resp->body.empty());
+}
+
+TEST(HeaderMapTest, HeaderMapSetThenGetV70) {
+    HeaderMap headers;
+    headers.set("Content-Type", "application/json");
+
+    ASSERT_TRUE(headers.get("content-type").has_value());
+    EXPECT_EQ(headers.get("content-type").value(), "application/json");
+}
+
+TEST(HeaderMapTest, HeaderMapHasReturnsTrueAfterSetV70) {
+    HeaderMap headers;
+    headers.set("X-Trace-Id", "abc123");
+
+    EXPECT_TRUE(headers.has("x-trace-id"));
+}
+
+TEST(HeaderMapTest, HeaderMapRemoveThenHasFalseV70) {
+    HeaderMap headers;
+    headers.set("Authorization", "Bearer token");
+    headers.remove("authorization");
+
+    EXPECT_FALSE(headers.has("Authorization"));
+}
+
+TEST(HeaderMapTest, HeaderMapSizeIncrementsV70) {
+    HeaderMap headers;
+    EXPECT_EQ(headers.size(), 0u);
+    headers.set("a", "1");
+    EXPECT_EQ(headers.size(), 1u);
+    headers.set("b", "2");
+    EXPECT_EQ(headers.size(), 2u);
+}
+
+TEST(HeaderMapTest, HeaderMapEmptyInitiallyTrueV70) {
+    HeaderMap headers;
+    EXPECT_TRUE(headers.empty());
+}
+
+TEST(HeaderMapTest, HeaderMapGetAllMultipleValuesV70) {
+    HeaderMap headers;
+    headers.append("Set-Cookie", "a=1");
+    headers.append("Set-Cookie", "b=2");
+
+    auto all = headers.get_all("set-cookie");
+    EXPECT_EQ(all.size(), 2u);
+    EXPECT_TRUE(std::find(all.begin(), all.end(), "a=1") != all.end());
+    EXPECT_TRUE(std::find(all.begin(), all.end(), "b=2") != all.end());
+}
+
+TEST(RequestTest, RequestPathStartsWithSlashV70) {
+    Request req;
+    req.url = "http://example.com";
+    req.parse_url();
+
+    EXPECT_FALSE(req.path.empty());
+    EXPECT_EQ(req.path.front(), '/');
+}
+
+TEST(ResponseTest, ResponseStatus301RedirectV70) {
+    std::string raw =
+        "HTTP/1.1 301 Moved Permanently\r\n"
+        "Location: https://example.com/new\r\n"
+        "Content-Length: 0\r\n"
+        "\r\n";
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 301u);
+    ASSERT_TRUE(resp->headers.get("location").has_value());
+    EXPECT_EQ(resp->headers.get("location").value(), "https://example.com/new");
+}
+
+TEST(RequestTest, RequestSerializeIncludesCrlfV70) {
+    Request req;
+    req.method = Method::GET;
+    req.host = "example.com";
+    req.port = 80;
+    req.path = "/";
+
+    auto bytes = req.serialize();
+    std::string serialized(bytes.begin(), bytes.end());
+
+    EXPECT_NE(serialized.find("\r\n"), std::string::npos);
+    ASSERT_GE(serialized.size(), 4u);
+    EXPECT_EQ(serialized.substr(serialized.size() - 4), "\r\n\r\n");
+}
+
+TEST(ResponseTest, ResponseParseMinimalValidV70) {
+    std::string raw = "HTTP/1.1 200 OK\r\n\r\n";
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 200u);
+    EXPECT_EQ(resp->status_text, "OK");
+    EXPECT_TRUE(resp->headers.empty());
+    EXPECT_TRUE(resp->body.empty());
+}
+
+TEST(ResponseTest, ResponseHeadersCaseInsensitiveV70) {
+    std::string raw =
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Type: text/plain\r\n"
+        "Content-Length: 0\r\n"
+        "\r\n";
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value());
+    ASSERT_TRUE(resp->headers.get("content-type").has_value());
+    ASSERT_TRUE(resp->headers.get("CONTENT-TYPE").has_value());
+    EXPECT_EQ(resp->headers.get("content-type").value(), "text/plain");
+    EXPECT_EQ(resp->headers.get("CONTENT-TYPE").value(), "text/plain");
+}
+
+TEST(RequestTest, RequestBodyBinaryDataV70) {
+    Request req;
+    req.method = Method::POST;
+    req.host = "bin.example.com";
+    req.port = 80;
+    req.path = "/upload";
+    req.body = {0x00, 0xFF, 0x41, 0x00, 0x42};
+
+    auto bytes = req.serialize();
+    std::string serialized(bytes.begin(), bytes.end());
+
+    EXPECT_NE(serialized.find("Content-Length: 5\r\n"), std::string::npos);
+    ASSERT_GE(bytes.size(), req.body.size());
+    EXPECT_TRUE(std::equal(req.body.begin(), req.body.end(), bytes.end() - static_cast<std::ptrdiff_t>(req.body.size())));
+}

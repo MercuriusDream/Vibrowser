@@ -10578,3 +10578,91 @@ TEST(SerializerTest, InterleaveU32AndBool20TimesV69) {
     }
     EXPECT_FALSE(d.has_remaining());
 }
+
+TEST(SerializerTest, WriteReadU32Value42V70) {
+    Serializer s;
+    s.write_u32(42u);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u32(), 42u);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, WriteReadStringHelloWorldV70) {
+    const std::string text = "hello world";
+    Serializer s;
+    s.write_string(text);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), text);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, WriteBoolTrueThenFalseReadBothV70) {
+    Serializer s;
+    s.write_bool(true);
+    s.write_bool(false);
+
+    Deserializer d(s.data());
+    EXPECT_TRUE(d.read_bool());
+    EXPECT_FALSE(d.read_bool());
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, WriteBytesExactDataPreservedV70) {
+    const std::vector<uint8_t> bytes = {0xDEu, 0xADu, 0xBEu, 0xEFu, 0x00u, 0x7Fu};
+    Serializer s;
+    s.write_bytes(bytes.data(), bytes.size());
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_bytes(), bytes);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, WriteStringWithQuotesAndBackslashesV70) {
+    const std::string text = "say \"hello\" \\\\ path";
+    Serializer s;
+    s.write_string(text);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), text);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, MultipleU32SequentialReadOrderV70) {
+    Serializer s;
+    s.write_u32(1u);
+    s.write_u32(42u);
+    s.write_u32(1000u);
+    s.write_u32(0xFFFFFFFFu);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u32(), 1u);
+    EXPECT_EQ(d.read_u32(), 42u);
+    EXPECT_EQ(d.read_u32(), 1000u);
+    EXPECT_EQ(d.read_u32(), 0xFFFFFFFFu);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, WriteBytesEmptyFollowedByNonEmptyV70) {
+    const std::vector<uint8_t> bytes = {0x01u, 0x02u, 0x03u, 0xFFu};
+    Serializer s;
+    s.write_bytes(nullptr, 0);
+    s.write_bytes(bytes.data(), bytes.size());
+
+    Deserializer d(s.data());
+    EXPECT_TRUE(d.read_bytes().empty());
+    EXPECT_EQ(d.read_bytes(), bytes);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, SerializerDataReturnsRawBufferV70) {
+    Serializer s;
+    s.write_u8(0xABu);
+    s.write_u16(0x1234u);
+    s.write_bool(true);
+
+    const auto& raw = s.data();
+    const std::vector<uint8_t> expected = {0xABu, 0x12u, 0x34u, 0x01u};
+    EXPECT_EQ(raw, expected);
+}

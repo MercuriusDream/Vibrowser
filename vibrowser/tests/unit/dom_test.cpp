@@ -11677,3 +11677,296 @@ TEST(DOMTest, TitleAttributeRoundTripOnElementV69) {
     anchor.remove_attribute("title");
     EXPECT_FALSE(anchor.get_attribute("title").has_value());
 }
+
+TEST(DOMTest, MultipleEventListenersSameEventInvokeInOrderV70) {
+    EventTarget target;
+    Element node("button");
+    std::vector<int> call_order;
+
+    target.add_event_listener("click", [&](Event&) { call_order.push_back(1); }, false);
+    target.add_event_listener("click", [&](Event&) { call_order.push_back(2); }, false);
+    target.add_event_listener("click", [&](Event&) { call_order.push_back(3); }, false);
+
+    Event event("click");
+    event.target_ = &node;
+    event.current_target_ = &node;
+    event.phase_ = EventPhase::AtTarget;
+
+    EXPECT_TRUE(target.dispatch_event(event, node));
+    ASSERT_EQ(call_order.size(), 3u);
+    EXPECT_EQ(call_order[0], 1);
+    EXPECT_EQ(call_order[1], 2);
+    EXPECT_EQ(call_order[2], 3);
+}
+
+TEST(DOMTest, EventStopPropagationBlocksAncestorDispatchV70) {
+    auto grandparent = std::make_unique<Element>("div");
+    auto parent = std::make_unique<Element>("section");
+    auto child = std::make_unique<Element>("button");
+
+    Element* grandparent_ptr = grandparent.get();
+    Element* parent_ptr = parent.get();
+    Element* child_ptr = child.get();
+
+    parent->append_child(std::move(child));
+    grandparent->append_child(std::move(parent));
+
+    EventTarget grandparent_target;
+    EventTarget parent_target;
+    EventTarget child_target;
+    std::vector<std::string> log;
+
+    grandparent_target.add_event_listener("click", [&](Event&) { log.push_back("grandparent"); }, false);
+    parent_target.add_event_listener("click", [&](Event&) { log.push_back("parent"); }, false);
+    child_target.add_event_listener(
+        "click",
+        [&](Event& event) {
+            log.push_back("child");
+            event.stop_propagation();
+        },
+        false);
+
+    Event event("click");
+    event.target_ = child_ptr;
+    event.current_target_ = child_ptr;
+    event.phase_ = EventPhase::AtTarget;
+    child_target.dispatch_event(event, *child_ptr);
+
+    if (!event.propagation_stopped() && event.bubbles()) {
+        event.phase_ = EventPhase::Bubbling;
+        event.current_target_ = parent_ptr;
+        parent_target.dispatch_event(event, *parent_ptr);
+    }
+
+    if (!event.propagation_stopped() && event.bubbles()) {
+        event.current_target_ = grandparent_ptr;
+        grandparent_target.dispatch_event(event, *grandparent_ptr);
+    }
+
+    ASSERT_EQ(log.size(), 1u);
+    EXPECT_EQ(log[0], "child");
+    EXPECT_TRUE(event.propagation_stopped());
+}
+
+TEST(DOMTest, EventPreventDefaultFlagReflectsCancelableStateV70) {
+    EventTarget target;
+    Element form("form");
+
+    target.add_event_listener(
+        "submit",
+        [&](Event& event) {
+            event.prevent_default();
+        },
+        false);
+
+    Event cancelable_event("submit", true, true);
+    cancelable_event.target_ = &form;
+    cancelable_event.current_target_ = &form;
+    cancelable_event.phase_ = EventPhase::AtTarget;
+
+    EXPECT_FALSE(cancelable_event.default_prevented());
+    EXPECT_FALSE(target.dispatch_event(cancelable_event, form));
+    EXPECT_TRUE(cancelable_event.default_prevented());
+
+    Event non_cancelable_event("submit", true, false);
+    non_cancelable_event.target_ = &form;
+    non_cancelable_event.current_target_ = &form;
+    non_cancelable_event.phase_ = EventPhase::AtTarget;
+
+    EXPECT_TRUE(target.dispatch_event(non_cancelable_event, form));
+    EXPECT_FALSE(non_cancelable_event.default_prevented());
+}
+
+TEST(DOMTest, DocumentCreateTextNodeProducesTextNodeV70) {
+    Document doc;
+    auto text_node = doc.create_text_node("hello V70");
+
+    ASSERT_NE(text_node, nullptr);
+    EXPECT_EQ(text_node->node_type(), NodeType::Text);
+    EXPECT_EQ(text_node->data(), "hello V70");
+    EXPECT_EQ(text_node->text_content(), "hello V70");
+    EXPECT_EQ(text_node->parent(), nullptr);
+}
+
+TEST(DOMTest, DocumentCreateCommentProducesCommentNodeV70) {
+    Document doc;
+    auto comment_node = doc.create_comment("comment V70");
+
+    ASSERT_NE(comment_node, nullptr);
+    EXPECT_EQ(comment_node->node_type(), NodeType::Comment);
+    EXPECT_EQ(comment_node->data(), "comment V70");
+    EXPECT_EQ(comment_node->parent(), nullptr);
+}
+
+TEST(DOMTest, ElementChildrenCountAfterMultipleAppendsV70) {
+    Element parent("div");
+
+    auto first_element = std::make_unique<Element>("span");
+    auto text_node = std::make_unique<Text>("middle");
+    auto comment_node = std::make_unique<Comment>("note");
+    auto last_element = std::make_unique<Element>("strong");
+
+    Node* first_element_ptr = first_element.get();
+    Node* text_node_ptr = text_node.get();
+    Node* comment_node_ptr = comment_node.get();
+    Node* last_element_ptr = last_element.get();
+
+    parent.append_child(std::move(first_element));
+    parent.append_child(std::move(text_node));
+    parent.append_child(std::move(comment_node));
+    parent.append_child(std::move(last_element));
+
+    EXPECT_EQ(parent.child_count(), 4u);
+    EXPECT_EQ(parent.first_child(), first_element_ptr);
+    EXPECT_EQ(parent.last_child(), last_element_ptr);
+    EXPECT_EQ(first_element_ptr->next_sibling(), text_node_ptr);
+    EXPECT_EQ(text_node_ptr->next_sibling(), comment_node_ptr);
+    EXPECT_EQ(comment_node_ptr->next_sibling(), last_element_ptr);
+}
+
+TEST(DOMTest, NodeIsEqualNodeSemanticsCompareStructureAndDataV70) {
+    auto is_equal_node = [](const Node& left, const Node& right, const auto& self) -> bool {
+        if (left.node_type() != right.node_type()) {
+            return false;
+        }
+
+        if (left.node_type() == NodeType::Element) {
+            const auto* left_element = static_cast<const Element*>(&left);
+            const auto* right_element = static_cast<const Element*>(&right);
+
+            if (left_element->tag_name() != right_element->tag_name()) {
+                return false;
+            }
+            if (left_element->namespace_uri() != right_element->namespace_uri()) {
+                return false;
+            }
+
+            const auto& left_attributes = left_element->attributes();
+            const auto& right_attributes = right_element->attributes();
+            if (left_attributes.size() != right_attributes.size()) {
+                return false;
+            }
+            for (const auto& left_attribute : left_attributes) {
+                bool matched = false;
+                for (const auto& right_attribute : right_attributes) {
+                    if (left_attribute.name == right_attribute.name
+                        && left_attribute.value == right_attribute.value) {
+                        matched = true;
+                        break;
+                    }
+                }
+                if (!matched) {
+                    return false;
+                }
+            }
+        } else if (left.node_type() == NodeType::Text) {
+            const auto* left_text = static_cast<const Text*>(&left);
+            const auto* right_text = static_cast<const Text*>(&right);
+            if (left_text->data() != right_text->data()) {
+                return false;
+            }
+        } else if (left.node_type() == NodeType::Comment) {
+            const auto* left_comment = static_cast<const Comment*>(&left);
+            const auto* right_comment = static_cast<const Comment*>(&right);
+            if (left_comment->data() != right_comment->data()) {
+                return false;
+            }
+        }
+
+        if (left.child_count() != right.child_count()) {
+            return false;
+        }
+
+        Node* left_child = left.first_child();
+        Node* right_child = right.first_child();
+        while (left_child != nullptr && right_child != nullptr) {
+            if (!self(*left_child, *right_child, self)) {
+                return false;
+            }
+            left_child = left_child->next_sibling();
+            right_child = right_child->next_sibling();
+        }
+
+        return left_child == nullptr && right_child == nullptr;
+    };
+
+    auto left_root = std::make_unique<Element>("div");
+    left_root->set_attribute("id", "root");
+    auto left_span = std::make_unique<Element>("span");
+    left_span->set_attribute("class", "label");
+    left_span->append_child(std::make_unique<Text>("hello"));
+    left_root->append_child(std::move(left_span));
+
+    auto right_root = std::make_unique<Element>("div");
+    right_root->set_attribute("id", "root");
+    auto right_span = std::make_unique<Element>("span");
+    Element* right_span_ptr = right_span.get();
+    right_span->set_attribute("class", "label");
+    auto right_text = std::make_unique<Text>("hello");
+    Text* right_text_ptr = right_text.get();
+    right_span->append_child(std::move(right_text));
+    right_root->append_child(std::move(right_span));
+
+    EXPECT_TRUE(is_equal_node(*left_root, *right_root, is_equal_node));
+
+    right_span_ptr->set_attribute("class", "label updated");
+    EXPECT_FALSE(is_equal_node(*left_root, *right_root, is_equal_node));
+
+    right_span_ptr->set_attribute("class", "label");
+    right_text_ptr->set_data("changed");
+    EXPECT_FALSE(is_equal_node(*left_root, *right_root, is_equal_node));
+}
+
+TEST(DOMTest, ElementClosestAncestorMatchingFindsNearestMatchV70) {
+    auto closest_ancestor_matching = [](const Node& start, const auto& predicate) -> Element* {
+        Node* current = start.parent();
+        while (current != nullptr) {
+            if (current->node_type() == NodeType::Element) {
+                auto* element = static_cast<Element*>(current);
+                if (predicate(*element)) {
+                    return element;
+                }
+            }
+            current = current->parent();
+        }
+        return nullptr;
+    };
+
+    auto article = std::make_unique<Element>("article");
+    Element* article_ptr = article.get();
+    article->set_attribute("data-scope", "root");
+
+    auto section = std::make_unique<Element>("section");
+    Element* section_ptr = section.get();
+    section->set_attribute("data-scope", "container");
+
+    auto div = std::make_unique<Element>("div");
+    Element* div_ptr = div.get();
+
+    auto button = std::make_unique<Element>("button");
+    Element* button_ptr = button.get();
+
+    div->append_child(std::move(button));
+    section->append_child(std::move(div));
+    article->append_child(std::move(section));
+
+    EXPECT_EQ(
+        closest_ancestor_matching(*button_ptr, [](const Element& element) { return element.tag_name() == "div"; }),
+        div_ptr);
+    EXPECT_EQ(
+        closest_ancestor_matching(*button_ptr, [](const Element& element) { return element.tag_name() == "section"; }),
+        section_ptr);
+    EXPECT_EQ(
+        closest_ancestor_matching(
+            *button_ptr,
+            [](const Element& element) {
+                return element.has_attribute("data-scope");
+            }),
+        section_ptr);
+    EXPECT_EQ(
+        closest_ancestor_matching(*button_ptr, [](const Element& element) { return element.tag_name() == "nav"; }),
+        nullptr);
+    EXPECT_EQ(
+        closest_ancestor_matching(*article_ptr, [](const Element& element) { return element.tag_name() == "div"; }),
+        nullptr);
+}

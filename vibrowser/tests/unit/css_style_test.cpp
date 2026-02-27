@@ -13454,3 +13454,131 @@ TEST(PropertyCascadeTest, ResolverZIndexAutoDefaultZeroV69) {
 
     EXPECT_EQ(style.z_index, 0);
 }
+
+TEST(PropertyCascadeTest, ResolverMarginTopPxValueV70) {
+    const std::string css = "div { margin-top: 24px; }";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_FLOAT_EQ(style.margin.top.to_px(), 24.0f);
+}
+
+TEST(PropertyCascadeTest, ResolverMarginLeftAutoValueV70) {
+    const std::string css = "div { margin-left: auto; }";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_TRUE(style.margin.left.is_auto());
+}
+
+TEST(PropertyCascadeTest, ResolverPaddingBottomPxValueV70) {
+    const std::string css = "div { padding-bottom: 14px; }";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_FLOAT_EQ(style.padding.bottom.to_px(), 14.0f);
+}
+
+TEST(PropertyCascadeTest, ResolverBorderBottomWidthPxValueV70) {
+    const std::string css = "div { border-bottom-width: 6px; }";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_FLOAT_EQ(style.border_bottom.width.to_px(), 6.0f);
+}
+
+TEST(PropertyCascadeTest, ResolverTextIndentEmValueV70) {
+    const std::string css = "div { text-indent: 2em; }";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_FLOAT_EQ(style.text_indent.to_px(16.0f), 32.0f);
+}
+
+TEST(PropertyCascadeTest, ResolverWordBreakBreakAllValueV70) {
+    const std::string css = "div { word-break: break-all; }";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.word_break, 1);
+}
+
+TEST(PropertyCascadeTest, ResolverVerticalAlignBaselineEnumV70) {
+    const std::string css = "span { vertical-align: baseline; }";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "span";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.vertical_align, VerticalAlign::Baseline);
+}
+
+TEST(PropertyCascadeTest, ResolverBoxSizingBorderBoxValueV70) {
+    const std::string css = "div { box-sizing: border-box; }";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.box_sizing, BoxSizing::BorderBox);
+}
