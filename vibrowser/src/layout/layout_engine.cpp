@@ -412,8 +412,10 @@ void LayoutEngine::layout_block(LayoutNode& node, float containing_width) {
     // Resolve auto margins for centering (AFTER width is resolved)
     bool auto_left = (node.geometry.margin.left < 0);
     bool auto_right = (node.geometry.margin.right < 0);
-    if ((auto_left || auto_right) && node.specified_width >= 0) {
-        float remaining = containing_width - node.specified_width;
+    if (auto_left || auto_right) {
+        float remaining = containing_width - node.geometry.width;
+        if (!auto_left) remaining -= node.geometry.margin.left;
+        if (!auto_right) remaining -= node.geometry.margin.right;
         if (remaining < 0) remaining = 0;
         if (auto_left && auto_right) {
             node.geometry.margin.left = remaining / 2.0f;
@@ -446,7 +448,12 @@ void LayoutEngine::layout_block(LayoutNode& node, float containing_width) {
     for (auto& child : node.children) {
         if (child->display == DisplayType::None || child->mode == LayoutMode::None) continue;
         if (child->position_type == 2 || child->position_type == 3) continue;
-        if (child->mode == LayoutMode::Inline || child->is_text) {
+        bool inline_like = child->is_text
+            || child->mode == LayoutMode::Inline
+            || child->mode == LayoutMode::InlineBlock
+            || child->display == DisplayType::Inline
+            || child->display == DisplayType::InlineBlock;
+        if (inline_like) {
             has_inline_children = true;
         } else {
             has_block_children = true;
@@ -1302,7 +1309,28 @@ void LayoutEngine::position_inline_children(LayoutNode& node, float containing_w
                 extract_runs(*child, vi);
             } else {
                 // Non-flattenable element: treat as a single box
-                layout_inline(*child, containing_width);
+                if (child->mode == LayoutMode::InlineBlock ||
+                    child->display == DisplayType::InlineBlock) {
+                    // Inline-block uses block formatting internally, but
+                    // participates in this inline formatting context as one box.
+                    if (child->specified_width >= 0) {
+                        child->geometry.width = child->specified_width;
+                    }
+                    layout_block(*child, child->specified_width >= 0 ? child->specified_width : containing_width);
+                    if (child->specified_width < 0) {
+                        float max_child_w = 0;
+                        for (auto& gc : child->children) {
+                            if (gc->display == DisplayType::None || gc->mode == LayoutMode::None) continue;
+                            float w = gc->geometry.margin_box_width();
+                            max_child_w = std::max(max_child_w, gc->geometry.x + w);
+                        }
+                        child->geometry.width = max_child_w
+                            + child->geometry.padding.left + child->geometry.padding.right
+                            + child->geometry.border.left + child->geometry.border.right;
+                    }
+                } else {
+                    layout_inline(*child, containing_width);
+                }
                 WordRun br;
                 br.word = "";
                 br.width = child->geometry.margin_box_width();
@@ -1483,7 +1511,8 @@ void LayoutEngine::position_inline_children(LayoutNode& node, float containing_w
         auto& child = node.children[visible[vi]];
 
         // Layout child — InlineBlock uses block model internally but participates inline
-        if (child->mode == LayoutMode::InlineBlock) {
+        if (child->mode == LayoutMode::InlineBlock ||
+            child->display == DisplayType::InlineBlock) {
             // Shrink-wrap: use specified width or compute from content
             if (child->specified_width >= 0) {
                 child->geometry.width = child->specified_width;

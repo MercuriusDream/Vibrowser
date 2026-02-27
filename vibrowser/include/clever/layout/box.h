@@ -311,11 +311,11 @@ struct LayoutNode {
     int tab_size = 4;
 
     // Border style: 0=none, 1=solid, 2=dashed, 3=dotted
-    int border_style = 1;
-    int border_style_top = 1;    // per-side border style
-    int border_style_right = 1;
-    int border_style_bottom = 1;
-    int border_style_left = 1;
+    int border_style = 0;
+    int border_style_top = 0;    // per-side border style
+    int border_style_right = 0;
+    int border_style_bottom = 0;
+    int border_style_left = 0;
 
     // Border radius (single value for all corners)
     float border_radius = 0;
@@ -941,6 +941,8 @@ struct LayoutNode {
 
     // Image orientation: 0=from-image (default), 1=none, 2=flip
     int image_orientation = 0;
+    // True when image-orientation: flip/none/from-image is set on this element itself.
+    bool image_orientation_explicit = false;
 
     // Font smoothing / -webkit-font-smoothing: 0=auto, 1=none, 2=antialiased, 3=subpixel-antialiased
     int font_smooth = 0;

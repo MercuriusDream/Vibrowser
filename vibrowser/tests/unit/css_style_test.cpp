@@ -3135,8 +3135,9 @@ TEST(CSSLogicalLonghands, BorderLogicalLonghands) {
         make_decl("border-block-start-width", "3px"), parent);
     EXPECT_FLOAT_EQ(style.border_top.width.value, 3.0f)
         << "border-block-start-width should map to border-top width";
-    EXPECT_EQ(style.border_top.style, BorderStyle::Solid)
-        << "setting border width should auto-set style to solid";
+    // Setting width alone does NOT auto-set style to solid anymore
+    EXPECT_EQ(style.border_top.style, BorderStyle::None)
+        << "setting border width alone should leave style as None";
 
     // border-block-end-color
     cascade.apply_declaration(style,

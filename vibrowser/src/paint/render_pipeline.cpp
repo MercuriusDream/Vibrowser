@@ -1914,7 +1914,7 @@ void apply_inline_style(clever::css::ComputedStyle& style, const std::string& st
             // Split by spaces (respecting parentheses for color functions like hsl())
             auto border_parts = split_whitespace_paren(d.value);
             clever::css::Length border_width = clever::css::Length::px(1);
-            clever::css::BorderStyle border_style_val = clever::css::BorderStyle::Solid;
+            clever::css::BorderStyle border_style_val = clever::css::BorderStyle::None;
             clever::css::Color border_color = style.color;
             for (const auto& part : border_parts) {
                 auto bw = clever::css::parse_length(part);
@@ -1924,7 +1924,10 @@ void apply_inline_style(clever::css::ComputedStyle& style, const std::string& st
                     part_lower == "double" || part_lower == "none" || part_lower == "groove" ||
                     part_lower == "ridge" || part_lower == "inset" || part_lower == "outset" ||
                     part_lower == "hidden") {
-                    if (part_lower == "none" || part_lower == "hidden") border_style_val = clever::css::BorderStyle::None;
+                    if (part_lower == "none" || part_lower == "hidden") {
+                        border_style_val = clever::css::BorderStyle::None;
+                        border_width = clever::css::Length::zero();
+                    }
                     else if (part_lower == "solid") border_style_val = clever::css::BorderStyle::Solid;
                     else if (part_lower == "dashed") border_style_val = clever::css::BorderStyle::Dashed;
                     else if (part_lower == "dotted") border_style_val = clever::css::BorderStyle::Dotted;
@@ -1947,7 +1950,7 @@ void apply_inline_style(clever::css::ComputedStyle& style, const std::string& st
             // Per-side border shorthand: "width style color"
             auto bp = split_whitespace_paren(d.value);
             clever::css::Length bw = clever::css::Length::px(1);
-            clever::css::BorderStyle bs_val = clever::css::BorderStyle::Solid;
+            clever::css::BorderStyle bs_val = clever::css::BorderStyle::None;
             clever::css::Color bc = style.color;
             for (const auto& part : bp) {
                 auto w = clever::css::parse_length(part);
@@ -1956,7 +1959,10 @@ void apply_inline_style(clever::css::ComputedStyle& style, const std::string& st
                 if (pl == "solid" || pl == "dashed" || pl == "dotted" || pl == "double" ||
                     pl == "none" || pl == "hidden" || pl == "groove" || pl == "ridge" ||
                     pl == "inset" || pl == "outset") {
-                    if (pl == "none" || pl == "hidden") bs_val = clever::css::BorderStyle::None;
+                    if (pl == "none" || pl == "hidden") {
+                        bs_val = clever::css::BorderStyle::None;
+                        bw = clever::css::Length::zero();
+                    }
                     else if (pl == "solid") bs_val = clever::css::BorderStyle::Solid;
                     else if (pl == "dashed") bs_val = clever::css::BorderStyle::Dashed;
                     else if (pl == "dotted") bs_val = clever::css::BorderStyle::Dotted;
@@ -1979,14 +1985,17 @@ void apply_inline_style(clever::css::ComputedStyle& style, const std::string& st
             // CSS border-block logical shorthands: parse "width style color"
             auto bb_parts = split_whitespace_paren(d.value);
             clever::css::Length bw = clever::css::Length::px(1);
-            clever::css::BorderStyle bs_val = clever::css::BorderStyle::Solid;
+            clever::css::BorderStyle bs_val = clever::css::BorderStyle::None;
             clever::css::Color bc = style.color;
             for (const auto& part : bb_parts) {
                 auto bwp = clever::css::parse_length(part);
                 if (bwp) { bw = *bwp; continue; }
                 std::string pl = to_lower(part);
                 if (pl == "solid" || pl == "dashed" || pl == "dotted" || pl == "double" || pl == "none") {
-                    if (pl == "none") bs_val = clever::css::BorderStyle::None;
+                    if (pl == "none") {
+                        bs_val = clever::css::BorderStyle::None;
+                        bw = clever::css::Length::zero();
+                    }
                     else if (pl == "solid") bs_val = clever::css::BorderStyle::Solid;
                     else if (pl == "dashed") bs_val = clever::css::BorderStyle::Dashed;
                     else if (pl == "dotted") bs_val = clever::css::BorderStyle::Dotted;
@@ -2748,7 +2757,7 @@ void apply_inline_style(clever::css::ComputedStyle& style, const std::string& st
             std::string part;
             clever::css::Length outline_width = clever::css::Length::px(1);
             clever::css::Color outline_color = style.color;
-            clever::css::BorderStyle outline_style = clever::css::BorderStyle::Solid;
+            clever::css::BorderStyle outline_style = clever::css::BorderStyle::None;
             while (oss >> part) {
                 auto ow = clever::css::parse_length(part);
                 if (ow) { outline_width = *ow; continue; }
@@ -2757,7 +2766,10 @@ void apply_inline_style(clever::css::ComputedStyle& style, const std::string& st
                     part_lower == "double" || part_lower == "groove" || part_lower == "ridge" ||
                     part_lower == "inset" || part_lower == "outset" ||
                     part_lower == "none") {
-                    if (part_lower == "none") outline_style = clever::css::BorderStyle::None;
+                    if (part_lower == "none") {
+                        outline_style = clever::css::BorderStyle::None;
+                        outline_width = clever::css::Length::zero();
+                    }
                     else if (part_lower == "solid") outline_style = clever::css::BorderStyle::Solid;
                     else if (part_lower == "dashed") outline_style = clever::css::BorderStyle::Dashed;
                     else if (part_lower == "dotted") outline_style = clever::css::BorderStyle::Dotted;
@@ -2797,7 +2809,7 @@ void apply_inline_style(clever::css::ComputedStyle& style, const std::string& st
             // Parse shorthand: [width] [style] [color]
             auto parts = split_whitespace(d.value);
             clever::css::Length bw = clever::css::Length::px(0);
-            clever::css::BorderStyle bs = clever::css::BorderStyle::Solid;
+            clever::css::BorderStyle bs = clever::css::BorderStyle::None;
             clever::css::Color bc = style.color;
             for (auto& p : parts) {
                 std::string pl = to_lower(p);
@@ -2826,13 +2838,9 @@ void apply_inline_style(clever::css::ComputedStyle& style, const std::string& st
             auto biw_end = biw_v2.empty() ? biw_start : clever::css::parse_length(biw_v2);
             if (biw_start) {
                 style.border_left.width = *biw_start;
-                if (style.border_left.style == clever::css::BorderStyle::None)
-                    style.border_left.style = clever::css::BorderStyle::Solid;
             }
             if (biw_end) {
                 style.border_right.width = *biw_end;
-                if (style.border_right.style == clever::css::BorderStyle::None)
-                    style.border_right.style = clever::css::BorderStyle::Solid;
             }
         } else if (d.property == "border-block-width") {
             // CSS border-block-width: sets block (top/bottom) border widths
@@ -2843,13 +2851,9 @@ void apply_inline_style(clever::css::ComputedStyle& style, const std::string& st
             auto bbw_end = bbw_v2.empty() ? bbw_start : clever::css::parse_length(bbw_v2);
             if (bbw_start) {
                 style.border_top.width = *bbw_start;
-                if (style.border_top.style == clever::css::BorderStyle::None)
-                    style.border_top.style = clever::css::BorderStyle::Solid;
             }
             if (bbw_end) {
                 style.border_bottom.width = *bbw_end;
-                if (style.border_bottom.style == clever::css::BorderStyle::None)
-                    style.border_bottom.style = clever::css::BorderStyle::Solid;
             }
         } else if (d.property == "border-inline-color") {
             // CSS border-inline-color: sets inline (left/right) border colors
@@ -2894,24 +2898,16 @@ void apply_inline_style(clever::css::ComputedStyle& style, const std::string& st
             style.border_bottom.style = parse_bs(val_lower);
         } else if (d.property == "border-inline-start-width") {
             auto v = clever::css::parse_length(val_lower);
-            if (v) { style.border_left.width = *v;
-                if (style.border_left.style == clever::css::BorderStyle::None)
-                    style.border_left.style = clever::css::BorderStyle::Solid; }
+            if (v) { style.border_left.width = *v; }
         } else if (d.property == "border-inline-end-width") {
             auto v = clever::css::parse_length(val_lower);
-            if (v) { style.border_right.width = *v;
-                if (style.border_right.style == clever::css::BorderStyle::None)
-                    style.border_right.style = clever::css::BorderStyle::Solid; }
+            if (v) { style.border_right.width = *v; }
         } else if (d.property == "border-block-start-width") {
             auto v = clever::css::parse_length(val_lower);
-            if (v) { style.border_top.width = *v;
-                if (style.border_top.style == clever::css::BorderStyle::None)
-                    style.border_top.style = clever::css::BorderStyle::Solid; }
+            if (v) { style.border_top.width = *v; }
         } else if (d.property == "border-block-end-width") {
             auto v = clever::css::parse_length(val_lower);
-            if (v) { style.border_bottom.width = *v;
-                if (style.border_bottom.style == clever::css::BorderStyle::None)
-                    style.border_bottom.style = clever::css::BorderStyle::Solid; }
+            if (v) { style.border_bottom.width = *v; }
         } else if (d.property == "border-inline-start-color") {
             auto c = clever::css::parse_color(d.value);
             if (c) style.border_left.color = *c;
@@ -4140,9 +4136,9 @@ void apply_inline_style(clever::css::ComputedStyle& style, const std::string& st
             if (val_lower == "economy") style.print_color_adjust = 0;
             else if (val_lower == "exact") style.print_color_adjust = 1;
         } else if (d.property == "image-orientation") {
-            if (val_lower == "from-image") style.image_orientation = 0;
-            else if (val_lower == "none") style.image_orientation = 1;
-            else if (val_lower == "flip") style.image_orientation = 2;
+            if (val_lower == "from-image") { style.image_orientation = 0; style.image_orientation_explicit = true; }
+            else if (val_lower == "none") { style.image_orientation = 1; style.image_orientation_explicit = true; }
+            else if (val_lower == "flip") { style.image_orientation = 2; style.image_orientation_explicit = true; }
         } else if (d.property == "font-kerning") {
             if (val_lower == "auto") style.font_kerning = 0;
             else if (val_lower == "normal") style.font_kerning = 1;
@@ -5458,9 +5454,8 @@ DecodedImage decode_image_native(const uint8_t* data, size_t length) {
         return result;
     }
 
-    // Draw image (CG uses bottom-left origin, flip to top-left)
-    CGContextTranslateCTM(ctx, 0, h);
-    CGContextScaleCTM(ctx, 1, -1);
+    // Draw image into the RGBA buffer as-is. The CGBitmapContext memory layout
+    // already matches our renderer's top-left row-major expectation here.
     CGContextDrawImage(ctx, CGRectMake(0, 0, w, h), image);
     CGContextRelease(ctx);
     CGImageRelease(image);
@@ -6030,6 +6025,7 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
         layout_node->font_optical_sizing = parent_style.font_optical_sizing;
         layout_node->print_color_adjust = parent_style.print_color_adjust;
         layout_node->image_orientation = parent_style.image_orientation;
+        layout_node->image_orientation_explicit = parent_style.image_orientation_explicit;
         layout_node->font_kerning = parent_style.font_kerning;
         layout_node->font_variant_ligatures = parent_style.font_variant_ligatures;
         layout_node->font_variant_east_asian = parent_style.font_variant_east_asian;
@@ -6823,6 +6819,7 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
     layout_node->font_optical_sizing = style.font_optical_sizing;
     layout_node->print_color_adjust = style.print_color_adjust;
     layout_node->image_orientation = style.image_orientation;
+    layout_node->image_orientation_explicit = style.image_orientation_explicit;
     layout_node->font_kerning = style.font_kerning;
     layout_node->font_variant_ligatures = style.font_variant_ligatures;
     layout_node->font_variant_east_asian = style.font_variant_east_asian;
@@ -7301,35 +7298,61 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
         std::string type = to_lower(get_attr(node, "type"));
         if (type.empty()) type = "text";
 
+        // Inputs return early below, so apply CSS border/outline now.
+        auto convert_bs = [](clever::css::BorderStyle bs) -> int {
+            if (bs == clever::css::BorderStyle::None) return 0;
+            if (bs == clever::css::BorderStyle::Solid) return 1;
+            if (bs == clever::css::BorderStyle::Dashed) return 2;
+            if (bs == clever::css::BorderStyle::Dotted) return 3;
+            if (bs == clever::css::BorderStyle::Double) return 4;
+            if (bs == clever::css::BorderStyle::Groove) return 5;
+            if (bs == clever::css::BorderStyle::Ridge) return 6;
+            if (bs == clever::css::BorderStyle::Inset) return 7;
+            if (bs == clever::css::BorderStyle::Outset) return 8;
+            return 0;
+        };
+        auto border_width_or_zero = [](const clever::css::BorderEdge& edge) -> float {
+            if (edge.style == clever::css::BorderStyle::None) return 0.0f;
+            return edge.width.to_px(0);
+        };
+        layout_node->geometry.border.top = border_width_or_zero(style.border_top);
+        layout_node->geometry.border.right = border_width_or_zero(style.border_right);
+        layout_node->geometry.border.bottom = border_width_or_zero(style.border_bottom);
+        layout_node->geometry.border.left = border_width_or_zero(style.border_left);
+        layout_node->border_color_top = color_to_argb(style.border_top.color);
+        layout_node->border_color_right = color_to_argb(style.border_right.color);
+        layout_node->border_color_bottom = color_to_argb(style.border_bottom.color);
+        layout_node->border_color_left = color_to_argb(style.border_left.color);
+        layout_node->border_color = layout_node->border_color_top;
+        layout_node->border_style_top = convert_bs(style.border_top.style);
+        layout_node->border_style_right = convert_bs(style.border_right.style);
+        layout_node->border_style_bottom = convert_bs(style.border_bottom.style);
+        layout_node->border_style_left = convert_bs(style.border_left.style);
+        layout_node->border_style = layout_node->border_style_top;
+
+        if (style.outline_style != clever::css::BorderStyle::None) {
+            float outline_width = style.outline_width.to_px(0);
+            if (outline_width > 0) {
+                layout_node->outline_width = outline_width;
+                layout_node->outline_color = color_to_argb(style.outline_color);
+                layout_node->outline_style = convert_bs(style.outline_style);
+                layout_node->outline_offset = style.outline_offset.to_px(0);
+            }
+        }
+
         if (type == "text" || type == "password" || type == "email" ||
             type == "search" || type == "url" || type == "number" || type == "tel") {
-            // Text input: bordered rectangle with placeholder/value text
+            // Text input: placeholder/value text and sizing defaults.
             if (layout_node->specified_width < 0) layout_node->specified_width = 180;
             if (layout_node->specified_height < 0) layout_node->specified_height = 24;
 
-            // Default styling: white bg, gray border, padding
-            // Apply dark mode colors when color-scheme: dark
+            // Apply dark mode colors when color-scheme: dark.
             bool dark_input = (layout_node->color_scheme == 2);
             if (layout_node->background_color == 0x00000000 ||
                 layout_node->background_color == 0xFF000000) {
                 layout_node->background_color = dark_input ? 0xFF1E1E1E : 0xFFFFFFFF;
             }
             layout_node->color = dark_input ? 0xFFE0E0E0 : 0xFF333333;
-            // Default 1px solid gray border if no border explicitly set
-            if (layout_node->geometry.border.top <= 0 &&
-                layout_node->geometry.border.bottom <= 0) {
-                layout_node->geometry.border = {1, 1, 1, 1};
-                uint32_t bdr = dark_input ? 0xFF555555 : 0xFF999999;
-                layout_node->border_color = bdr;
-                layout_node->border_color_top = bdr;
-                layout_node->border_color_right = bdr;
-                layout_node->border_color_bottom = bdr;
-                layout_node->border_color_left = bdr;
-                layout_node->border_style_top = 1;
-                layout_node->border_style_right = 1;
-                layout_node->border_style_bottom = 1;
-                layout_node->border_style_left = 1;
-            }
             if (layout_node->geometry.padding.top <= 0) {
                 layout_node->geometry.padding = {2, 4, 2, 4};
             }
@@ -7383,20 +7406,6 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
             bool dark_btn = (layout_node->color_scheme == 2);
             layout_node->background_color = dark_btn ? 0xFF1E1E1E : 0xFFE0E0E0;
             layout_node->color = dark_btn ? 0xFFE0E0E0 : 0xFF333333;
-            // Default button border and padding
-            if (layout_node->geometry.border.top <= 0) {
-                layout_node->geometry.border = {1, 1, 1, 1};
-                uint32_t bdr = dark_btn ? 0xFF555555 : 0xFF999999;
-                layout_node->border_color = bdr;
-                layout_node->border_color_top = bdr;
-                layout_node->border_color_right = bdr;
-                layout_node->border_color_bottom = bdr;
-                layout_node->border_color_left = bdr;
-                layout_node->border_style_top = 1;
-                layout_node->border_style_right = 1;
-                layout_node->border_style_bottom = 1;
-                layout_node->border_style_left = 1;
-            }
             if (layout_node->geometry.padding.top <= 0) {
                 layout_node->geometry.padding = {4, 12, 4, 12};
             }
@@ -7452,12 +7461,6 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
             if (layout_node->specified_height < 0) layout_node->specified_height = 26;
             layout_node->background_color = 0xFFE0E0E0;
             layout_node->color = 0xFF333333;
-            layout_node->geometry.border = {1, 1, 1, 1};
-            layout_node->border_color = 0xFF999999;
-            layout_node->border_color_top = layout_node->border_color_right =
-                layout_node->border_color_bottom = layout_node->border_color_left = 0xFF999999;
-            layout_node->border_style_top = layout_node->border_style_right =
-                layout_node->border_style_bottom = layout_node->border_style_left = 1;
             layout_node->geometry.padding = {4, 8, 4, 8};
             layout_node->border_radius = 3.0f;
 
@@ -7477,12 +7480,6 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
             if (layout_node->specified_height < 0) layout_node->specified_height = 24;
             layout_node->background_color = 0xFFFFFFFF;
             layout_node->color = 0xFF333333;
-            layout_node->geometry.border = {1, 1, 1, 1};
-            layout_node->border_color = 0xFF999999;
-            layout_node->border_color_top = layout_node->border_color_right =
-                layout_node->border_color_bottom = layout_node->border_color_left = 0xFF999999;
-            layout_node->border_style_top = layout_node->border_style_right =
-                layout_node->border_style_bottom = layout_node->border_style_left = 1;
             layout_node->geometry.padding = {2, 4, 2, 4};
 
             // UA default cursor: text for date/time inputs
@@ -7578,7 +7575,6 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
         layout_node->mode = clever::layout::LayoutMode::Block;
         layout_node->display = clever::layout::DisplayType::InlineBlock;
         layout_node->geometry.padding = {4, 6, 4, 6};
-        layout_node->geometry.border = {1, 1, 1, 1};
         return layout_node;
     }
 
@@ -9952,21 +9948,26 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
     }
 
     // Outline (does not affect layout)
+    layout_node->outline_width = 0;
+    layout_node->outline_style = 0;
+    layout_node->outline_offset = 0;
     if (style.outline_style != clever::css::BorderStyle::None) {
-        layout_node->outline_width = style.outline_width.to_px(0);
-        layout_node->outline_color = color_to_argb(style.outline_color);
-        // Map BorderStyle enum to int: 0=none, 1=solid, 2=dashed, 3=dotted, 4=double, 5=groove, 6=ridge, 7=inset, 8=outset
-        auto os = style.outline_style;
-        if (os == clever::css::BorderStyle::Solid) layout_node->outline_style = 1;
-        else if (os == clever::css::BorderStyle::Dashed) layout_node->outline_style = 2;
-        else if (os == clever::css::BorderStyle::Dotted) layout_node->outline_style = 3;
-        else if (os == clever::css::BorderStyle::Double) layout_node->outline_style = 4;
-        else if (os == clever::css::BorderStyle::Groove) layout_node->outline_style = 5;
-        else if (os == clever::css::BorderStyle::Ridge) layout_node->outline_style = 6;
-        else if (os == clever::css::BorderStyle::Inset) layout_node->outline_style = 7;
-        else if (os == clever::css::BorderStyle::Outset) layout_node->outline_style = 8;
-        else layout_node->outline_style = 1; // default to solid for unsupported
-        layout_node->outline_offset = style.outline_offset.to_px(0);
+        float outline_width = style.outline_width.to_px(0);
+        if (outline_width > 0) {
+            layout_node->outline_width = outline_width;
+            layout_node->outline_color = color_to_argb(style.outline_color);
+            // Map BorderStyle enum to int: 0=none, 1=solid, 2=dashed, 3=dotted, 4=double, 5=groove, 6=ridge, 7=inset, 8=outset
+            auto os = style.outline_style;
+            if (os == clever::css::BorderStyle::Solid) layout_node->outline_style = 1;
+            else if (os == clever::css::BorderStyle::Dashed) layout_node->outline_style = 2;
+            else if (os == clever::css::BorderStyle::Dotted) layout_node->outline_style = 3;
+            else if (os == clever::css::BorderStyle::Double) layout_node->outline_style = 4;
+            else if (os == clever::css::BorderStyle::Groove) layout_node->outline_style = 5;
+            else if (os == clever::css::BorderStyle::Ridge) layout_node->outline_style = 6;
+            else if (os == clever::css::BorderStyle::Inset) layout_node->outline_style = 7;
+            else if (os == clever::css::BorderStyle::Outset) layout_node->outline_style = 8;
+            layout_node->outline_offset = style.outline_offset.to_px(0);
+        }
     }
 
     // Border image

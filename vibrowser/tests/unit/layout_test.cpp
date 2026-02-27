@@ -6311,9 +6311,9 @@ TEST(LayoutNodeProps, BorderColorDefaultsBlack) {
 }
 
 // Layout: border_style defaults to 1 (solid)
-TEST(LayoutNodeProps, BorderStyleDefaultsToOne) {
+TEST(LayoutNodeProps, BorderStyleDefaultsToZero) {
     auto node = make_block("div");
-    EXPECT_EQ(node->border_style, 1);
+    EXPECT_EQ(node->border_style, 0);
 }
 
 // Layout: border_color_top defaults to black
@@ -12837,9 +12837,11 @@ TEST(LayoutEngineTest, MarginAutoWithSpecifiedWidthV69) {
     LayoutEngine engine;
     engine.compute(*root, 800.0f, 300.0f);
 
-    EXPECT_FLOAT_EQ(root->children[0]->geometry.margin.left, 300.0f);
+    // With new auto-margin logic: remaining = containing_width - width - explicit_margin
+    // remaining = 500 - 200 - 30 = 270, auto left gets 270
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.margin.left, 270.0f);
     EXPECT_FLOAT_EQ(root->children[0]->geometry.margin.right, 30.0f);
-    EXPECT_FLOAT_EQ(root->children[0]->geometry.x, 300.0f);
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.x, 270.0f);
 }
 
 // Test V69_004: root padding reduces available width for child content

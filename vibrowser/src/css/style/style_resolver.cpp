@@ -166,6 +166,7 @@ ComputedStyle PropertyCascade::cascade(
     style.font_optical_sizing = parent_style.font_optical_sizing;
     style.print_color_adjust = parent_style.print_color_adjust;
     style.image_orientation = parent_style.image_orientation;
+    style.image_orientation_explicit = false;
     style.tab_size = parent_style.tab_size;
     style.font_kerning = parent_style.font_kerning;
     style.font_variant_ligatures = parent_style.font_variant_ligatures;
@@ -902,7 +903,7 @@ void PropertyCascade::apply_declaration(
         std::istringstream bss(value_str);
         std::string part;
         Length border_width = Length::px(1);
-        BorderStyle border_style = BorderStyle::Solid;
+        BorderStyle border_style = BorderStyle::None;
         Color border_color = style.color;
         while (bss >> part) {
             // Try as length
@@ -915,6 +916,7 @@ void PropertyCascade::apply_declaration(
             if (part_lower == "solid" || part_lower == "dashed" || part_lower == "dotted" ||
                 part_lower == "double" || part_lower == "none") {
                 border_style = parse_border_style_value(part_lower);
+                if (part_lower == "none") border_width = Length::zero();
                 continue;
             }
             // Try as color
@@ -933,7 +935,7 @@ void PropertyCascade::apply_declaration(
         std::istringstream bbs(value_str);
         std::string part;
         Length bw = Length::px(1);
-        BorderStyle bs_val = BorderStyle::Solid;
+        BorderStyle bs_val = BorderStyle::None;
         Color bc = style.color;
         while (bbs >> part) {
             auto bwp = parse_length(part);
@@ -944,6 +946,7 @@ void PropertyCascade::apply_declaration(
             if (part_lower == "solid" || part_lower == "dashed" || part_lower == "dotted" ||
                 part_lower == "double" || part_lower == "none") {
                 bs_val = parse_border_style_value(part_lower);
+                if (part_lower == "none") bw = Length::zero();
                 continue;
             }
             auto bcp = parse_color(part);
@@ -1103,7 +1106,7 @@ void PropertyCascade::apply_declaration(
         // Parse shorthand: [width] [style] [color]
         auto parts = split_whitespace(value_str);
         Length bw = Length::px(0);
-        BorderStyle bs = BorderStyle::Solid;
+        BorderStyle bs = BorderStyle::None;
         Color bc = style.color;
         for (auto& p : parts) {
             std::string pl = to_lower(p);
@@ -1134,14 +1137,10 @@ void PropertyCascade::apply_declaration(
         auto l1 = parse_length(v1);
         if (l1) {
             style.border_left.width = *l1;
-            if (style.border_left.style == BorderStyle::None)
-                style.border_left.style = BorderStyle::Solid;
         }
         auto l2 = v2.empty() ? l1 : parse_length(v2);
         if (l2) {
             style.border_right.width = *l2;
-            if (style.border_right.style == BorderStyle::None)
-                style.border_right.style = BorderStyle::Solid;
         }
         return;
     }
@@ -1154,14 +1153,10 @@ void PropertyCascade::apply_declaration(
         auto l1 = parse_length(v1);
         if (l1) {
             style.border_top.width = *l1;
-            if (style.border_top.style == BorderStyle::None)
-                style.border_top.style = BorderStyle::Solid;
         }
         auto l2 = v2.empty() ? l1 : parse_length(v2);
         if (l2) {
             style.border_bottom.width = *l2;
-            if (style.border_bottom.style == BorderStyle::None)
-                style.border_bottom.style = BorderStyle::Solid;
         }
         return;
     }
@@ -1227,30 +1222,22 @@ void PropertyCascade::apply_declaration(
     // ---- CSS border logical longhand properties (width/style/color per side) ----
     if (prop == "border-block-start-width") {
         auto v = parse_length(value_str);
-        if (v) { style.border_top.width = *v;
-            if (style.border_top.style == BorderStyle::None)
-                style.border_top.style = BorderStyle::Solid; }
+        if (v) { style.border_top.width = *v; }
         return;
     }
     if (prop == "border-block-end-width") {
         auto v = parse_length(value_str);
-        if (v) { style.border_bottom.width = *v;
-            if (style.border_bottom.style == BorderStyle::None)
-                style.border_bottom.style = BorderStyle::Solid; }
+        if (v) { style.border_bottom.width = *v; }
         return;
     }
     if (prop == "border-inline-start-width") {
         auto v = parse_length(value_str);
-        if (v) { style.border_left.width = *v;
-            if (style.border_left.style == BorderStyle::None)
-                style.border_left.style = BorderStyle::Solid; }
+        if (v) { style.border_left.width = *v; }
         return;
     }
     if (prop == "border-inline-end-width") {
         auto v = parse_length(value_str);
-        if (v) { style.border_right.width = *v;
-            if (style.border_right.style == BorderStyle::None)
-                style.border_right.style = BorderStyle::Solid; }
+        if (v) { style.border_right.width = *v; }
         return;
     }
     if (prop == "border-block-start-color") {
@@ -2806,7 +2793,7 @@ void PropertyCascade::apply_declaration(
         std::istringstream oss(value_str);
         std::string part;
         Length outline_width = Length::px(1);
-        BorderStyle outline_style_val = BorderStyle::Solid;
+        BorderStyle outline_style_val = BorderStyle::None;
         Color outline_color = style.color;
         while (oss >> part) {
             auto ow = parse_length(part);
@@ -2815,8 +2802,10 @@ void PropertyCascade::apply_declaration(
             std::transform(part_lower.begin(), part_lower.end(), part_lower.begin(),
                            [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
             if (part_lower == "solid" || part_lower == "dashed" || part_lower == "dotted" ||
-                part_lower == "double" || part_lower == "none") {
+                part_lower == "double" || part_lower == "none" || part_lower == "groove" ||
+                part_lower == "ridge" || part_lower == "inset" || part_lower == "outset") {
                 outline_style_val = parse_border_style_value(part_lower);
+                if (part_lower == "none") outline_width = Length::zero();
                 continue;
             }
             auto oc = parse_color(part);
@@ -4575,9 +4564,9 @@ void PropertyCascade::apply_declaration(
 
     // ---- Image orientation (inherited) ----
     if (prop == "image-orientation") {
-        if (value_lower == "from-image") style.image_orientation = 0;
-        else if (value_lower == "none") style.image_orientation = 1;
-        else if (value_lower == "flip") style.image_orientation = 2;
+        if (value_lower == "from-image") { style.image_orientation = 0; style.image_orientation_explicit = true; }
+        else if (value_lower == "none") { style.image_orientation = 1; style.image_orientation_explicit = true; }
+        else if (value_lower == "flip") { style.image_orientation = 2; style.image_orientation_explicit = true; }
         return;
     }
 
@@ -6033,6 +6022,7 @@ ComputedStyle StyleResolver::resolve(
     result.font_optical_sizing = parent_style.font_optical_sizing;
     result.print_color_adjust = parent_style.print_color_adjust;
     result.image_orientation = parent_style.image_orientation;
+    result.image_orientation_explicit = false;
     result.font_kerning = parent_style.font_kerning;
     result.font_variant_ligatures = parent_style.font_variant_ligatures;
     result.font_variant_east_asian = parent_style.font_variant_east_asian;
