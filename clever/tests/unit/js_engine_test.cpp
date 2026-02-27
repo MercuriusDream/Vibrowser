@@ -17089,3 +17089,61 @@ TEST(JSEngine, DateGetUTCHours) {
     auto result = engine.evaluate("typeof new Date().getUTCHours()");
     EXPECT_EQ(result, "number");
 }
+
+// Cycle 930 — Date UTC setters, getters, and locale methods
+TEST(JSEngine, DateGetUTCMinutes) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("typeof new Date().getUTCMinutes()");
+    EXPECT_EQ(result, "number");
+}
+
+TEST(JSEngine, DateGetUTCSeconds) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("typeof new Date().getUTCSeconds()");
+    EXPECT_EQ(result, "number");
+}
+
+TEST(JSEngine, DateGetUTCMilliseconds) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("typeof new Date().getUTCMilliseconds()");
+    EXPECT_EQ(result, "number");
+}
+
+TEST(JSEngine, DateGetUTCDate) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("typeof new Date().getUTCDate()");
+    EXPECT_EQ(result, "number");
+}
+
+TEST(JSEngine, DateSetHours) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "const d=new Date();"
+        "d.setHours(10);"
+        "d.getHours()");
+    EXPECT_EQ(result, "10");
+}
+
+TEST(JSEngine, DateSetMinutes) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "const d=new Date();"
+        "d.setMinutes(30);"
+        "d.getMinutes()");
+    EXPECT_EQ(result, "30");
+}
+
+TEST(JSEngine, DateSetSeconds) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "const d=new Date();"
+        "d.setSeconds(45);"
+        "d.getSeconds()");
+    EXPECT_EQ(result, "45");
+}
+
+TEST(JSEngine, DateGetTimezoneOffset) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("typeof new Date().getTimezoneOffset()");
+    EXPECT_EQ(result, "number");
+}
