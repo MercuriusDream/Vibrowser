@@ -3408,3 +3408,66 @@ TEST(TreeBuilder, InputListAttr) {
         if (attr.name == "list" && attr.value == "suggestions") found = true;
     EXPECT_TRUE(found);
 }
+
+// Cycle 775 — HTML structural and modern elements
+TEST(TreeBuilder, HGroupElementIsParsed) {
+    auto doc = clever::html::parse(R"(<hgroup><h1>Title</h1><p>Tagline</p></hgroup>)");
+    auto* hgroup = doc->find_element("hgroup");
+    ASSERT_NE(hgroup, nullptr);
+    EXPECT_EQ(hgroup->tag_name, "hgroup");
+}
+
+TEST(TreeBuilder, SearchElementIsParsedV2) {
+    auto doc = clever::html::parse(R"(<search><form><input type="search"></form></search>)");
+    auto* search = doc->find_element("search");
+    ASSERT_NE(search, nullptr);
+    EXPECT_EQ(search->tag_name, "search");
+}
+
+TEST(TreeBuilder, MenuElementIsParsed) {
+    auto doc = clever::html::parse(R"(<menu><li>Item 1</li><li>Item 2</li></menu>)");
+    auto* menu = doc->find_element("menu");
+    ASSERT_NE(menu, nullptr);
+    EXPECT_EQ(menu->tag_name, "menu");
+}
+
+TEST(TreeBuilder, SummaryElementIsParsed) {
+    auto doc = clever::html::parse(R"(<details><summary>Click me</summary><p>Content</p></details>)");
+    auto* summary = doc->find_element("summary");
+    ASSERT_NE(summary, nullptr);
+    EXPECT_EQ(summary->tag_name, "summary");
+}
+
+TEST(TreeBuilder, PreFormattedElement) {
+    auto doc = clever::html::parse(R"(<pre>  code  here  </pre>)");
+    auto* pre = doc->find_element("pre");
+    ASSERT_NE(pre, nullptr);
+    EXPECT_EQ(pre->tag_name, "pre");
+}
+
+TEST(TreeBuilder, ScriptTypeModuleAttr) {
+    auto doc = clever::html::parse(R"(<script type="module" src="app.js"></script>)");
+    auto* script = doc->find_element("script");
+    ASSERT_NE(script, nullptr);
+    bool found = false;
+    for (const auto& attr : script->attributes)
+        if (attr.name == "type" && attr.value == "module") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, BlockquoteCiteAttr) {
+    auto doc = clever::html::parse(R"(<blockquote cite="https://example.com"><p>Quote</p></blockquote>)");
+    auto* bq = doc->find_element("blockquote");
+    ASSERT_NE(bq, nullptr);
+    bool found = false;
+    for (const auto& attr : bq->attributes)
+        if (attr.name == "cite") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, MathElementIsParsed) {
+    auto doc = clever::html::parse(R"(<math><mi>x</mi><mo>+</mo><mn>1</mn></math>)");
+    auto* math = doc->find_element("math");
+    ASSERT_NE(math, nullptr);
+    EXPECT_EQ(math->tag_name, "math");
+}
