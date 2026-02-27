@@ -2515,3 +2515,77 @@ TEST(SerializerTest, BoolTrueAfterFalseSeries) {
     EXPECT_FALSE(d.read_bool());
     EXPECT_TRUE(d.read_bool());
 }
+
+TEST(SerializerTest, EmptyBytesNullPtrRoundTrip) {
+    clever::ipc::Serializer s;
+    s.write_bytes(nullptr, 0);
+    clever::ipc::Deserializer d(s.data());
+    auto bytes = d.read_bytes();
+    EXPECT_EQ(bytes.size(), 0u);
+}
+
+TEST(SerializerTest, SingleByteValueRoundTrip) {
+    clever::ipc::Serializer s;
+    uint8_t val = 127;
+    s.write_bytes(&val, 1);
+    clever::ipc::Deserializer d(s.data());
+    auto bytes = d.read_bytes();
+    ASSERT_EQ(bytes.size(), 1u);
+    EXPECT_EQ(bytes[0], 127);
+}
+
+TEST(SerializerTest, I32MinPlusOne) {
+    clever::ipc::Serializer s;
+    s.write_i32(std::numeric_limits<int32_t>::min() + 1);
+    clever::ipc::Deserializer d(s.data());
+    EXPECT_EQ(d.read_i32(), std::numeric_limits<int32_t>::min() + 1);
+}
+
+TEST(SerializerTest, StringThenBoolThenU32) {
+    clever::ipc::Serializer s;
+    s.write_string("key");
+    s.write_bool(true);
+    s.write_u32(12345u);
+    clever::ipc::Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "key");
+    EXPECT_TRUE(d.read_bool());
+    EXPECT_EQ(d.read_u32(), 12345u);
+}
+
+TEST(SerializerTest, ThreeStringsPreserveOrder) {
+    clever::ipc::Serializer s;
+    s.write_string("first");
+    s.write_string("second");
+    s.write_string("third");
+    clever::ipc::Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "first");
+    EXPECT_EQ(d.read_string(), "second");
+    EXPECT_EQ(d.read_string(), "third");
+}
+
+TEST(SerializerTest, U8ZeroAndMaxAlternating) {
+    clever::ipc::Serializer s;
+    s.write_u8(0);
+    s.write_u8(255);
+    s.write_u8(0);
+    s.write_u8(255);
+    clever::ipc::Deserializer d(s.data());
+    EXPECT_EQ(d.read_u8(), 0);
+    EXPECT_EQ(d.read_u8(), 255);
+    EXPECT_EQ(d.read_u8(), 0);
+    EXPECT_EQ(d.read_u8(), 255);
+}
+
+TEST(SerializerTest, F64NaNRoundTrip) {
+    clever::ipc::Serializer s;
+    s.write_f64(std::numeric_limits<double>::quiet_NaN());
+    clever::ipc::Deserializer d(s.data());
+    EXPECT_TRUE(std::isnan(d.read_f64()));
+}
+
+TEST(SerializerTest, I64PositiveMaxRoundTrip) {
+    clever::ipc::Serializer s;
+    s.write_i64(std::numeric_limits<int64_t>::max());
+    clever::ipc::Deserializer d(s.data());
+    EXPECT_EQ(d.read_i64(), std::numeric_limits<int64_t>::max());
+}
