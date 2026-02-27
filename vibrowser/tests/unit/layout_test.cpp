@@ -16856,3 +16856,210 @@ TEST(LayoutTest, BlockBorderPaddingReducesChildAreaV91) {
     EXPECT_FLOAT_EQ(root->children[0]->geometry.x, 15.0f);
     EXPECT_FLOAT_EQ(root->children[0]->geometry.height, 60.0f);
 }
+
+// Test V92_001: flex container distributes equal flex_grow among children
+TEST(LayoutTest, FlexEqualGrowDistributionV92) {
+    auto root = make_flex("div");
+    root->specified_width = 600.0f;
+    root->specified_height = 100.0f;
+
+    auto c1 = make_block("div");
+    c1->flex_grow = 1.0f;
+    c1->specified_height = 50.0f;
+
+    auto c2 = make_block("div");
+    c2->flex_grow = 1.0f;
+    c2->specified_height = 50.0f;
+
+    auto c3 = make_block("div");
+    c3->flex_grow = 1.0f;
+    c3->specified_height = 50.0f;
+
+    root->append_child(std::move(c1));
+    root->append_child(std::move(c2));
+    root->append_child(std::move(c3));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.width, 200.0f);
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.width, 200.0f);
+    EXPECT_FLOAT_EQ(root->children[2]->geometry.width, 200.0f);
+}
+
+// Test V92_002: block child with zero specified_height gets zero height
+TEST(LayoutTest, BlockChildZeroHeightV92) {
+    auto root = make_block("div");
+    root->specified_width = 400.0f;
+
+    auto child = make_block("span");
+    child->specified_height = 0.0f;
+
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.height, 0.0f);
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.width, 400.0f);
+}
+
+// Test V92_003: opacity and z_index preserved through layout
+TEST(LayoutTest, OpacityAndZIndexPreservedV92) {
+    auto root = make_block("div");
+    root->specified_width = 300.0f;
+    root->opacity = 0.5f;
+    root->z_index = 10;
+
+    auto child = make_block("div");
+    child->opacity = 0.8f;
+    child->z_index = 5;
+    child->specified_height = 40.0f;
+
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(root->opacity, 0.5f);
+    EXPECT_EQ(root->z_index, 10);
+    EXPECT_FLOAT_EQ(root->children[0]->opacity, 0.8f);
+    EXPECT_EQ(root->children[0]->z_index, 5);
+}
+
+// Test V92_004: flex column direction stacks children vertically
+TEST(LayoutTest, FlexColumnStacksVerticallyV92) {
+    auto root = make_flex("div");
+    root->specified_width = 300.0f;
+    root->flex_direction = 2; // Column
+
+    auto c1 = make_block("div");
+    c1->specified_height = 40.0f;
+
+    auto c2 = make_block("div");
+    c2->specified_height = 60.0f;
+
+    root->append_child(std::move(c1));
+    root->append_child(std::move(c2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.y, 0.0f);
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.y, 40.0f);
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.width, 300.0f);
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.width, 300.0f);
+}
+
+// Test V92_005: display none child does not affect sibling positions
+TEST(LayoutTest, DisplayNoneChildNoEffectV92) {
+    auto root = make_block("div");
+    root->specified_width = 500.0f;
+
+    auto c1 = make_block("div");
+    c1->specified_height = 30.0f;
+
+    auto hidden = make_block("div");
+    hidden->display = DisplayType::None;
+    hidden->specified_height = 100.0f;
+
+    auto c2 = make_block("div");
+    c2->specified_height = 50.0f;
+
+    root->append_child(std::move(c1));
+    root->append_child(std::move(hidden));
+    root->append_child(std::move(c2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.y, 0.0f);
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.height, 30.0f);
+    // c2 is at index 2, should be right after c1 since hidden is skipped
+    EXPECT_FLOAT_EQ(root->children[2]->geometry.y, 30.0f);
+    EXPECT_FLOAT_EQ(root->children[2]->geometry.height, 50.0f);
+}
+
+// Test V92_006: nested block containers compute correct widths
+TEST(LayoutTest, NestedBlockContainersWidthV92) {
+    auto root = make_block("div");
+    root->specified_width = 600.0f;
+    root->geometry.padding.left = 20.0f;
+    root->geometry.padding.right = 20.0f;
+
+    auto mid = make_block("section");
+    mid->geometry.padding.left = 10.0f;
+    mid->geometry.padding.right = 10.0f;
+
+    auto inner = make_block("p");
+    inner->specified_height = 25.0f;
+
+    mid->append_child(std::move(inner));
+    root->append_child(std::move(mid));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // mid width = 600 - 20 - 20 = 560
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.width, 560.0f);
+    // inner width = 560 - 10 - 10 = 540
+    EXPECT_FLOAT_EQ(root->children[0]->children[0]->geometry.width, 540.0f);
+}
+
+// Test V92_007: background_color and color preserved after layout
+TEST(LayoutTest, BackgroundAndColorPreservedV92) {
+    auto root = make_block("div");
+    root->specified_width = 200.0f;
+    root->background_color = 0xFF00FF00u;
+    root->color = 0xFF0000FFu;
+
+    auto child = make_block("div");
+    child->background_color = 0xFFFF0000u;
+    child->color = 0xFF00FF00u;
+    child->specified_height = 35.0f;
+
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_EQ(root->background_color, 0xFF00FF00u);
+    EXPECT_EQ(root->color, 0xFF0000FFu);
+    EXPECT_EQ(root->children[0]->background_color, 0xFFFF0000u);
+    EXPECT_EQ(root->children[0]->color, 0xFF00FF00u);
+}
+
+// Test V92_008: font_size preserved and multiple block children stack
+TEST(LayoutTest, FontSizePreservedAndChildrenStackV92) {
+    auto root = make_block("div");
+    root->specified_width = 400.0f;
+    root->font_size = 18.0f;
+
+    auto c1 = make_block("h1");
+    c1->font_size = 32.0f;
+    c1->specified_height = 40.0f;
+
+    auto c2 = make_block("p");
+    c2->font_size = 14.0f;
+    c2->specified_height = 20.0f;
+
+    auto c3 = make_block("footer");
+    c3->font_size = 12.0f;
+    c3->specified_height = 30.0f;
+
+    root->append_child(std::move(c1));
+    root->append_child(std::move(c2));
+    root->append_child(std::move(c3));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(root->font_size, 18.0f);
+    EXPECT_FLOAT_EQ(root->children[0]->font_size, 32.0f);
+    EXPECT_FLOAT_EQ(root->children[1]->font_size, 14.0f);
+    EXPECT_FLOAT_EQ(root->children[2]->font_size, 12.0f);
+    // Children stack vertically: y positions = 0, 40, 60
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.y, 0.0f);
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.y, 40.0f);
+    EXPECT_FLOAT_EQ(root->children[2]->geometry.y, 60.0f);
+}

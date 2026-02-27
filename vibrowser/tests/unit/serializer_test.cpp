@@ -13383,3 +13383,130 @@ TEST(SerializerTest, U32DescendingSequenceV91) {
     }
     EXPECT_FALSE(d.has_remaining());
 }
+
+TEST(SerializerTest, U16AlternatingBitPatternsV92) {
+    Serializer s;
+    s.write_u16(0xAAAA);
+    s.write_u16(0x5555);
+    s.write_u16(0xFF00);
+    s.write_u16(0x00FF);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u16(), 0xAAAA);
+    EXPECT_EQ(d.read_u16(), 0x5555);
+    EXPECT_EQ(d.read_u16(), 0xFF00);
+    EXPECT_EQ(d.read_u16(), 0x00FF);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, F64SubnormalAndTinyValuesV92) {
+    Serializer s;
+    double subnormal = std::numeric_limits<double>::denorm_min();
+    double tiny = std::numeric_limits<double>::min();
+    double epsilon = std::numeric_limits<double>::epsilon();
+    s.write_f64(subnormal);
+    s.write_f64(tiny);
+    s.write_f64(epsilon);
+
+    Deserializer d(s.data());
+    EXPECT_DOUBLE_EQ(d.read_f64(), subnormal);
+    EXPECT_DOUBLE_EQ(d.read_f64(), tiny);
+    EXPECT_DOUBLE_EQ(d.read_f64(), epsilon);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, BoolStringBoolInterleavedV92) {
+    Serializer s;
+    s.write_bool(true);
+    s.write_string("between");
+    s.write_bool(false);
+    s.write_string("bools");
+    s.write_bool(true);
+
+    Deserializer d(s.data());
+    EXPECT_TRUE(d.read_bool());
+    EXPECT_EQ(d.read_string(), "between");
+    EXPECT_FALSE(d.read_bool());
+    EXPECT_EQ(d.read_string(), "bools");
+    EXPECT_TRUE(d.read_bool());
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, I32I64MixedNegativePositiveV92) {
+    Serializer s;
+    s.write_i32(-2147483647);
+    s.write_i64(9223372036854775807LL);
+    s.write_i32(1);
+    s.write_i64(-9223372036854775807LL);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i32(), -2147483647);
+    EXPECT_EQ(d.read_i64(), 9223372036854775807LL);
+    EXPECT_EQ(d.read_i32(), 1);
+    EXPECT_EQ(d.read_i64(), -9223372036854775807LL);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, BytesBinaryPayload256V92) {
+    Serializer s;
+    std::vector<uint8_t> payload(256);
+    for (int i = 0; i < 256; ++i) {
+        payload[i] = static_cast<uint8_t>(i);
+    }
+    s.write_bytes(payload.data(), payload.size());
+
+    Deserializer d(s.data());
+    auto result = d.read_bytes();
+    EXPECT_EQ(result.size(), 256u);
+    for (int i = 0; i < 256; ++i) {
+        EXPECT_EQ(result[i], static_cast<uint8_t>(i));
+    }
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, U64PowersOfTwoV92) {
+    Serializer s;
+    for (int shift = 0; shift < 64; ++shift) {
+        s.write_u64(1ULL << shift);
+    }
+
+    Deserializer d(s.data());
+    for (int shift = 0; shift < 64; ++shift) {
+        EXPECT_EQ(d.read_u64(), 1ULL << shift);
+    }
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, MultipleStringsWithSpecialCharsV92) {
+    Serializer s;
+    s.write_string("hello\tworld");
+    s.write_string("line1\nline2");
+    s.write_string(std::string("null\0char", 9));
+    s.write_string("");
+    s.write_string("back\\slash");
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "hello\tworld");
+    EXPECT_EQ(d.read_string(), "line1\nline2");
+    EXPECT_EQ(d.read_string(), std::string("null\0char", 9));
+    EXPECT_EQ(d.read_string(), "");
+    EXPECT_EQ(d.read_string(), "back\\slash");
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, TakeDataAndDeserializeV92) {
+    Serializer s;
+    s.write_u32(0xCAFEBABEu);
+    s.write_string("moved");
+    s.write_f64(1.0 / 3.0);
+
+    auto buf = s.take_data();
+    EXPECT_GT(buf.size(), 0u);
+    EXPECT_TRUE(s.data().empty());
+
+    Deserializer d(buf.data(), buf.size());
+    EXPECT_EQ(d.read_u32(), 0xCAFEBABEu);
+    EXPECT_EQ(d.read_string(), "moved");
+    EXPECT_DOUBLE_EQ(d.read_f64(), 1.0 / 3.0);
+    EXPECT_FALSE(d.has_remaining());
+}

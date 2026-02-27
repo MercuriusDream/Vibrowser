@@ -16536,3 +16536,159 @@ TEST(CSSStyleTest, MarginPaddingAsymmetricWithDisplayNoneV91) {
     EXPECT_FLOAT_EQ(style.padding.bottom.to_px(), 25.0f);
     EXPECT_FLOAT_EQ(style.padding.left.to_px(), 35.0f);
 }
+
+TEST(CSSStyleTest, FlexGrowShrinkWithDisplayFlexV92) {
+    const std::string css = ".flex-item{display:flex;flex-grow:2;flex-shrink:0.5;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+    elem.classes = {"flex-item"};
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.display, Display::Flex);
+    EXPECT_FLOAT_EQ(style.flex_grow, 2.0f);
+    EXPECT_FLOAT_EQ(style.flex_shrink, 0.5f);
+}
+
+TEST(CSSStyleTest, VisibilityHiddenWithOpacityV92) {
+    const std::string css = ".ghost{visibility:hidden;opacity:0.3;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "span";
+    elem.classes = {"ghost"};
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.visibility, Visibility::Hidden);
+    EXPECT_FLOAT_EQ(style.opacity, 0.3f);
+}
+
+TEST(CSSStyleTest, CursorPointerWithUserSelectNoneV92) {
+    const std::string css = ".btn{cursor:pointer;user-select:none;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "button";
+    elem.classes = {"btn"};
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.cursor, Cursor::Pointer);
+    EXPECT_EQ(style.user_select, UserSelect::None);
+}
+
+TEST(CSSStyleTest, ZIndexWithPositionRelativeV92) {
+    const std::string css = ".overlay{position:relative;z-index:50;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+    elem.classes = {"overlay"};
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.position, Position::Relative);
+    EXPECT_EQ(style.z_index, 50);
+}
+
+TEST(CSSStyleTest, TextAlignCenterWithFontWeightBoldV92) {
+    const std::string css = ".heading{text-align:center;font-weight:700;font-size:24px;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "h1";
+    elem.classes = {"heading"};
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.text_align, TextAlign::Center);
+    EXPECT_EQ(style.font_weight, 700);
+    EXPECT_FLOAT_EQ(style.font_size.value, 24.0f);
+}
+
+TEST(CSSStyleTest, PointerEventsNoneWithPositionFixedV92) {
+    const std::string css = ".no-click{pointer-events:none;position:fixed;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+    elem.classes = {"no-click"};
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.pointer_events, PointerEvents::None);
+    EXPECT_EQ(style.position, Position::Fixed);
+}
+
+TEST(CSSStyleTest, BackgroundColorWithPaddingUniformV92) {
+    const std::string css = ".card{background-color:#ff8800;padding:16px;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+    elem.classes = {"card"};
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.background_color.r, 0xFF);
+    EXPECT_EQ(style.background_color.g, 0x88);
+    EXPECT_EQ(style.background_color.b, 0x00);
+    EXPECT_EQ(style.background_color.a, 255);
+    EXPECT_FLOAT_EQ(style.padding.top.to_px(), 16.0f);
+    EXPECT_FLOAT_EQ(style.padding.right.to_px(), 16.0f);
+    EXPECT_FLOAT_EQ(style.padding.bottom.to_px(), 16.0f);
+    EXPECT_FLOAT_EQ(style.padding.left.to_px(), 16.0f);
+}
+
+TEST(CSSStyleTest, VerticalAlignMiddleWithDisplayInlineBlockV92) {
+    const std::string css = ".icon{vertical-align:middle;display:inline-block;color:#00ff00;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "img";
+    elem.classes = {"icon"};
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.vertical_align, VerticalAlign::Middle);
+    EXPECT_EQ(style.display, Display::InlineBlock);
+    EXPECT_EQ(style.color.r, 0x00);
+    EXPECT_EQ(style.color.g, 0xFF);
+    EXPECT_EQ(style.color.b, 0x00);
+    EXPECT_EQ(style.color.a, 255);
+}

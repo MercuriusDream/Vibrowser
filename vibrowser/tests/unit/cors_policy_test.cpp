@@ -6730,3 +6730,76 @@ TEST(CORSPolicyTest, DataAndBlobSchemesNotEnforceableV91) {
     // Regular http is enforceable (origin format, no path)
     EXPECT_TRUE(has_enforceable_document_origin("http://example.com"));
 }
+
+TEST(CORSPolicyTest, CrossOriginSameHostDifferentSchemeV92) {
+    // http vs https on the same host is cross-origin
+    EXPECT_TRUE(is_cross_origin("http://app.example.com", "https://app.example.com/api"));
+    EXPECT_TRUE(is_cross_origin("https://app.example.com", "http://app.example.com/api"));
+    // Same scheme+host = not cross-origin
+    EXPECT_FALSE(is_cross_origin("https://app.example.com", "https://app.example.com/other"));
+}
+
+TEST(CORSPolicyTest, CorsEligibleHttpsVariousPathsV92) {
+    // Standard https URLs with normal paths should be eligible
+    EXPECT_TRUE(is_cors_eligible_request_url("https://api.example.com/v1/users"));
+    EXPECT_TRUE(is_cors_eligible_request_url("https://cdn.example.com/images/logo.png"));
+    EXPECT_TRUE(is_cors_eligible_request_url("http://api.example.com/data"));
+    // Query strings should be fine
+    EXPECT_TRUE(is_cors_eligible_request_url("https://api.example.com/search?q=test"));
+}
+
+TEST(CORSPolicyTest, EnforceableOriginSubdomainVariantsV92) {
+    // Valid subdomains are enforceable
+    EXPECT_TRUE(has_enforceable_document_origin("https://sub.domain.example.com"));
+    EXPECT_TRUE(has_enforceable_document_origin("https://a.b.c.example.com"));
+    // Single-label hostnames are enforceable if valid
+    EXPECT_TRUE(has_enforceable_document_origin("https://localhost"));
+    // With path -> not enforceable (origins don't have paths)
+    EXPECT_FALSE(has_enforceable_document_origin("https://sub.example.com/path"));
+}
+
+TEST(CORSPolicyTest, CorsAllowsResponseWildcardNoCredsV92) {
+    // Wildcard ACAO without credentials -> allow
+    clever::net::HeaderMap h;
+    h.set("Access-Control-Allow-Origin", "*");
+    EXPECT_TRUE(cors_allows_response("https://requester.example.com", "https://target.example.com/api", h, false));
+    // Wildcard ACAO with credentials -> reject
+    EXPECT_FALSE(cors_allows_response("https://requester.example.com", "https://target.example.com/api", h, true));
+}
+
+TEST(CORSPolicyTest, ShouldAttachOriginEmptyOriginV92) {
+    // Empty origin should NOT attach (same-origin treated as no origin)
+    EXPECT_FALSE(should_attach_origin_header("", "https://target.example.com/api"));
+    // Null origin should attach
+    EXPECT_TRUE(should_attach_origin_header("null", "https://target.example.com/api"));
+}
+
+TEST(CORSPolicyTest, CorsEligibleRejectsJavascriptSchemeV92) {
+    // javascript: URLs are not cors-eligible
+    EXPECT_FALSE(is_cors_eligible_request_url("javascript:alert(1)"));
+    // about: URLs are not cors-eligible
+    EXPECT_FALSE(is_cors_eligible_request_url("about:blank"));
+    // Empty string not eligible
+    EXPECT_FALSE(is_cors_eligible_request_url(""));
+}
+
+TEST(CORSPolicyTest, CrossOriginEmptyAndNullOriginsV92) {
+    // Empty origin -> not cross-origin (treated as same-origin/no origin)
+    EXPECT_FALSE(is_cross_origin("", "https://example.com/path"));
+    // Null origin is always cross-origin
+    EXPECT_TRUE(is_cross_origin("null", "https://example.com/path"));
+    EXPECT_TRUE(is_cross_origin("null", "http://example.com/path"));
+}
+
+TEST(CORSPolicyTest, CorsAllowsResponseExactMatchWithCredsV92) {
+    // Exact origin match with credentials and ACAC header -> allow
+    clever::net::HeaderMap h;
+    h.set("Access-Control-Allow-Origin", "https://my.app.com");
+    h.set("Access-Control-Allow-Credentials", "true");
+    EXPECT_TRUE(cors_allows_response("https://my.app.com", "https://api.service.com/data", h, true));
+    // Different origin in ACAO -> reject even if ACAC is true
+    clever::net::HeaderMap h2;
+    h2.set("Access-Control-Allow-Origin", "https://other.app.com");
+    h2.set("Access-Control-Allow-Credentials", "true");
+    EXPECT_FALSE(cors_allows_response("https://my.app.com", "https://api.service.com/data", h2, true));
+}

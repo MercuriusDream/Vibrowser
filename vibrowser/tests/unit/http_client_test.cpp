@@ -15972,3 +15972,106 @@ TEST(HttpClientTest, RequestSerializeHeadMethodNoBodyV91) {
     EXPECT_TRUE(serialized.find("Host: cdn.example.com\r\n") != std::string::npos);
     EXPECT_TRUE(req.body.empty());
 }
+
+TEST(HttpClientTest, HeaderMapRemoveThenHasReturnsFalseV92) {
+    HeaderMap headers;
+    headers.set("X-Custom", "val1");
+    headers.set("X-Other", "val2");
+    EXPECT_TRUE(headers.has("X-Custom"));
+    headers.remove("X-Custom");
+    EXPECT_FALSE(headers.has("X-Custom"));
+    EXPECT_TRUE(headers.has("X-Other"));
+    EXPECT_EQ(headers.size(), 1u);
+}
+
+TEST(HttpClientTest, HeaderMapSetOverwritePreservesLatestV92) {
+    HeaderMap headers;
+    headers.set("Content-Type", "text/plain");
+    headers.set("Content-Type", "application/json");
+    auto val = headers.get("Content-Type");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(val.value(), "application/json");
+    EXPECT_EQ(headers.size(), 1u);
+}
+
+TEST(HttpClientTest, RequestSerializePostWithCustomHeadersV92) {
+    Request req;
+    req.method = Method::POST;
+    req.host = "api.example.com";
+    req.port = 443;
+    req.path = "/v2/submit";
+    req.use_tls = true;
+    std::string payload = "{\"key\":\"value\"}";
+    req.body.assign(payload.begin(), payload.end());
+    req.headers.set("Content-Type", "application/json");
+
+    auto bytes = req.serialize();
+    std::string s(bytes.begin(), bytes.end());
+    EXPECT_TRUE(s.find("POST /v2/submit HTTP/1.1\r\n") == 0);
+    EXPECT_TRUE(s.find("Host: api.example.com\r\n") != std::string::npos);
+    EXPECT_TRUE(s.find("content-type: application/json\r\n") != std::string::npos);
+}
+
+TEST(HttpClientTest, RequestParseUrlExtractsQueryStringV92) {
+    Request req;
+    req.url = "https://search.example.com/find?q=hello&lang=en";
+    req.parse_url();
+    EXPECT_EQ(req.host, "search.example.com");
+    EXPECT_EQ(req.port, 443);
+    EXPECT_TRUE(req.path.find("q=hello") != std::string::npos || req.query.find("q=hello") != std::string::npos);
+    EXPECT_TRUE(req.use_tls);
+}
+
+TEST(HttpClientTest, ResponseMultipleHeadersSameKeyV92) {
+    Response resp;
+    resp.status = 200;
+    resp.status_text = "OK";
+    resp.headers.set("X-Request-Id", "abc123");
+    resp.headers.set("X-Trace", "trace-456");
+    EXPECT_EQ(resp.headers.size(), 2u);
+    EXPECT_EQ(resp.headers.get("X-Request-Id").value(), "abc123");
+    EXPECT_EQ(resp.headers.get("X-Trace").value(), "trace-456");
+}
+
+TEST(HttpClientTest, CookieJarPathScopingV92) {
+    CookieJar jar;
+    jar.set_from_header("sess=abc; Path=/app", "example.com");
+    jar.set_from_header("root=xyz; Path=/", "example.com");
+
+    std::string app_cookies = jar.get_cookie_header("example.com", "/app/page", true);
+    std::string root_cookies = jar.get_cookie_header("example.com", "/other", true);
+
+    EXPECT_TRUE(app_cookies.find("sess=abc") != std::string::npos);
+    EXPECT_TRUE(app_cookies.find("root=xyz") != std::string::npos);
+    EXPECT_TRUE(root_cookies.find("root=xyz") != std::string::npos);
+}
+
+TEST(HttpClientTest, RequestBodyAssignAndSerializeLargeV92) {
+    Request req;
+    req.method = Method::POST;
+    req.host = "upload.example.com";
+    req.port = 443;
+    req.path = "/data";
+    req.use_tls = true;
+    std::string large(500, 'A');
+    req.body.assign(large.begin(), large.end());
+
+    auto bytes = req.serialize();
+    std::string s(bytes.begin(), bytes.end());
+    EXPECT_TRUE(s.find("POST /data HTTP/1.1\r\n") == 0);
+    EXPECT_EQ(req.body.size(), 500u);
+}
+
+TEST(HttpClientTest, HeaderMapEmptyAfterRemoveAllV92) {
+    HeaderMap headers;
+    headers.set("A", "1");
+    headers.set("B", "2");
+    headers.set("C", "3");
+    EXPECT_EQ(headers.size(), 3u);
+    EXPECT_FALSE(headers.empty());
+    headers.remove("A");
+    headers.remove("B");
+    headers.remove("C");
+    EXPECT_EQ(headers.size(), 0u);
+    EXPECT_TRUE(headers.empty());
+}

@@ -14634,3 +14634,134 @@ TEST(HtmlParserTest, SectionWithMultipleHeadingsV91) {
     ASSERT_NE(h3, nullptr);
     EXPECT_EQ(h3->text_content(), "Sub-subtitle");
 }
+
+// 1. Parse blockquote with cite attribute
+TEST(HtmlParserTest, BlockquoteWithCiteAttrV92) {
+    auto doc = clever::html::parse(
+        "<html><body><blockquote cite=\"https://example.com\"><p>Famous quote</p></blockquote></body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* bq = doc->find_element("blockquote");
+    ASSERT_NE(bq, nullptr);
+    EXPECT_EQ(get_attr_v63(bq, "cite"), "https://example.com");
+    auto* p = bq->find_element("p");
+    ASSERT_NE(p, nullptr);
+    EXPECT_EQ(p->text_content(), "Famous quote");
+}
+
+// 2. Parse definition list (dl/dt/dd)
+TEST(HtmlParserTest, DefinitionListDlDtDdV92) {
+    auto doc = clever::html::parse(
+        "<html><body><dl><dt>Term</dt><dd>Definition</dd></dl></body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* dl = doc->find_element("dl");
+    ASSERT_NE(dl, nullptr);
+    auto* dt = dl->find_element("dt");
+    ASSERT_NE(dt, nullptr);
+    EXPECT_EQ(dt->text_content(), "Term");
+    auto* dd = dl->find_element("dd");
+    ASSERT_NE(dd, nullptr);
+    EXPECT_EQ(dd->text_content(), "Definition");
+}
+
+// 3. Parse table with thead and tbody
+TEST(HtmlParserTest, TableTheadTbodyV92) {
+    auto doc = clever::html::parse(
+        "<html><body><table><thead><tr><th>Name</th></tr></thead>"
+        "<tbody><tr><td>Alice</td></tr></tbody></table></body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* table = doc->find_element("table");
+    ASSERT_NE(table, nullptr);
+    auto* thead = table->find_element("thead");
+    ASSERT_NE(thead, nullptr);
+    auto* th = thead->find_element("th");
+    ASSERT_NE(th, nullptr);
+    EXPECT_EQ(th->text_content(), "Name");
+    auto* tbody = table->find_element("tbody");
+    ASSERT_NE(tbody, nullptr);
+    auto* td = tbody->find_element("td");
+    ASSERT_NE(td, nullptr);
+    EXPECT_EQ(td->text_content(), "Alice");
+}
+
+// 4. Parse nav with multiple links
+TEST(HtmlParserTest, NavWithMultipleLinksV92) {
+    auto doc = clever::html::parse(
+        "<html><body><nav><a href=\"/home\">Home</a><a href=\"/about\">About</a><a href=\"/contact\">Contact</a></nav></body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* nav = doc->find_element("nav");
+    ASSERT_NE(nav, nullptr);
+    auto links = nav->find_all_elements("a");
+    ASSERT_EQ(links.size(), 3u);
+    EXPECT_EQ(get_attr_v63(links[0], "href"), "/home");
+    EXPECT_EQ(links[0]->text_content(), "Home");
+    EXPECT_EQ(get_attr_v63(links[1], "href"), "/about");
+    EXPECT_EQ(links[1]->text_content(), "About");
+    EXPECT_EQ(get_attr_v63(links[2], "href"), "/contact");
+    EXPECT_EQ(links[2]->text_content(), "Contact");
+}
+
+// 5. Parse article with time element
+TEST(HtmlParserTest, ArticleWithTimeElementV92) {
+    auto doc = clever::html::parse(
+        "<html><body><article><time datetime=\"2026-01-15\">January 15</time>"
+        "<p>Article body</p></article></body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* article = doc->find_element("article");
+    ASSERT_NE(article, nullptr);
+    auto* time_el = article->find_element("time");
+    ASSERT_NE(time_el, nullptr);
+    EXPECT_EQ(get_attr_v63(time_el, "datetime"), "2026-01-15");
+    EXPECT_EQ(time_el->text_content(), "January 15");
+    auto* p = article->find_element("p");
+    ASSERT_NE(p, nullptr);
+    EXPECT_EQ(p->text_content(), "Article body");
+}
+
+// 6. Parse form with select and option elements
+TEST(HtmlParserTest, FormWithSelectOptionsV92) {
+    auto doc = clever::html::parse(
+        "<html><body><form><select name=\"color\">"
+        "<option value=\"r\">Red</option><option value=\"g\">Green</option>"
+        "</select></form></body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* form = doc->find_element("form");
+    ASSERT_NE(form, nullptr);
+    auto* select = form->find_element("select");
+    ASSERT_NE(select, nullptr);
+    EXPECT_EQ(get_attr_v63(select, "name"), "color");
+    auto options = select->find_all_elements("option");
+    ASSERT_EQ(options.size(), 2u);
+    EXPECT_EQ(get_attr_v63(options[0], "value"), "r");
+    EXPECT_EQ(options[0]->text_content(), "Red");
+    EXPECT_EQ(get_attr_v63(options[1], "value"), "g");
+    EXPECT_EQ(options[1]->text_content(), "Green");
+}
+
+// 7. Parse nested divs with data attributes
+TEST(HtmlParserTest, NestedDivsWithDataAttrsV92) {
+    auto doc = clever::html::parse(
+        "<html><body><div data-id=\"outer\"><div data-id=\"inner\"><span>Content</span></div></div></body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto divs = doc->find_all_elements("div");
+    ASSERT_GE(divs.size(), 2u);
+    EXPECT_EQ(get_attr_v63(divs[0], "data-id"), "outer");
+    EXPECT_EQ(get_attr_v63(divs[1], "data-id"), "inner");
+    auto* span = divs[1]->find_element("span");
+    ASSERT_NE(span, nullptr);
+    EXPECT_EQ(span->text_content(), "Content");
+}
+
+// 8. Parse footer with address element
+TEST(HtmlParserTest, FooterWithAddressElementV92) {
+    auto doc = clever::html::parse(
+        "<html><body><footer><address>123 Main St</address><small>Copyright 2026</small></footer></body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* footer = doc->find_element("footer");
+    ASSERT_NE(footer, nullptr);
+    auto* address = footer->find_element("address");
+    ASSERT_NE(address, nullptr);
+    EXPECT_EQ(address->text_content(), "123 Main St");
+    auto* small = footer->find_element("small");
+    ASSERT_NE(small, nullptr);
+    EXPECT_EQ(small->text_content(), "Copyright 2026");
+}

@@ -10796,3 +10796,70 @@ TEST(UrlParserTest, FtpDefaultPort21NormalizedV91) {
     EXPECT_TRUE(result->query.empty());
     EXPECT_TRUE(result->fragment.empty());
 }
+
+TEST(UrlParserTest, HttpSchemeDefaultPort80OmittedV92) {
+    auto result = clever::url::parse("http://www.example.org:80/index.html");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "www.example.org");
+    EXPECT_EQ(result->port, std::nullopt);
+    EXPECT_EQ(result->path, "/index.html");
+}
+
+TEST(UrlParserTest, PathOnlyNoQueryNoFragmentV92) {
+    auto result = clever::url::parse("https://cdn.example.com/assets/logo.svg");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "cdn.example.com");
+    EXPECT_EQ(result->path, "/assets/logo.svg");
+    EXPECT_TRUE(result->query.empty());
+    EXPECT_TRUE(result->fragment.empty());
+}
+
+TEST(UrlParserTest, FragmentOnlyNoQueryV92) {
+    auto result = clever::url::parse("https://docs.example.com/guide#section-5");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->path, "/guide");
+    EXPECT_TRUE(result->query.empty());
+    EXPECT_EQ(result->fragment, "section-5");
+}
+
+TEST(UrlParserTest, DoubleEncodedSpaceInQueryV92) {
+    auto result = clever::url::parse("https://search.example.com/find?q=hello%20world");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_NE(result->query.find("%2520"), std::string::npos);
+}
+
+TEST(UrlParserTest, HighPortNumberPreservedV92) {
+    auto result = clever::url::parse("https://app.example.com:65535/status");
+    ASSERT_TRUE(result.has_value());
+    ASSERT_TRUE(result->port.has_value());
+    EXPECT_EQ(result->port.value(), 65535);
+    EXPECT_EQ(result->path, "/status");
+}
+
+TEST(UrlParserTest, SerializeIncludesSchemeAndHostV92) {
+    auto result = clever::url::parse("https://serialize-test.example.com/page?k=v#h");
+    ASSERT_TRUE(result.has_value());
+    std::string s = result->serialize();
+    EXPECT_NE(s.find("https"), std::string::npos);
+    EXPECT_NE(s.find("serialize-test.example.com"), std::string::npos);
+    EXPECT_NE(s.find("/page"), std::string::npos);
+}
+
+TEST(UrlParserTest, SchemeCaseInsensitiveLoweredV92) {
+    auto result = clever::url::parse("HTTPS://UPPER.EXAMPLE.COM/PATH");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "upper.example.com");
+}
+
+TEST(UrlParserTest, MultipleQueryParametersPreservedV92) {
+    auto result = clever::url::parse("https://api.example.com/v2/data?page=3&size=50&sort=asc");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->path, "/v2/data");
+    EXPECT_NE(result->query.find("page=3"), std::string::npos);
+    EXPECT_NE(result->query.find("size=50"), std::string::npos);
+    EXPECT_NE(result->query.find("sort=asc"), std::string::npos);
+    EXPECT_TRUE(result->fragment.empty());
+}
