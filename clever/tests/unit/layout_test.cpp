@@ -7147,3 +7147,45 @@ TEST(LayoutNodeProps, BorderImageOutsetDefaultsZero) {
     LayoutNode n;
     EXPECT_FLOAT_EQ(n.border_image_outset, 0.0f);
 }
+
+// Cycle 893 — LayoutNode property defaults
+
+TEST(LayoutNodeProps, TextTransformDefaultsZero) {
+    LayoutNode n;
+    EXPECT_EQ(n.text_transform, 0);
+}
+
+TEST(LayoutNodeProps, FontSizeDefaultsSixteen) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.font_size, 16.0f);
+}
+
+TEST(LayoutNodeProps, FontSizeAdjustDefaultsZero) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.font_size_adjust, 0.0f);
+}
+
+TEST(LayoutNodeProps, WordBreakDefaultsZero) {
+    LayoutNode n;
+    EXPECT_EQ(n.word_break, 0);
+}
+
+TEST(LayoutNodeProps, OverflowWrapDefaultsZero) {
+    LayoutNode n;
+    EXPECT_EQ(n.overflow_wrap, 0);
+}
+
+TEST(LayoutNodeProps, FontStretchDefaultsFive) {
+    LayoutNode n;
+    EXPECT_EQ(n.font_stretch, 5);
+}
+
+TEST(LayoutNodeProps, BorderImageWidthDefaultsOne) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.border_image_width_val, 1.0f);
+}
+
+TEST(LayoutNodeProps, TextDecorationDefaultsZero) {
+    LayoutNode n;
+    EXPECT_EQ(n.text_decoration, 0);
+}
