@@ -7355,3 +7355,61 @@ TEST(TreeBuilder, CodeElementV7) {
     ASSERT_NE(el, nullptr);
     EXPECT_EQ(el->tag_name, "code");
 }
+
+// Cycle 1270: HTML parser tests V8
+
+TEST(TreeBuilder, HeaderElementV8) {
+    auto doc = clever::html::parse("<header><h1>Site Title</h1><nav>Menu</nav></header>");
+    auto* el = doc->find_element("header");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "header");
+}
+
+TEST(TreeBuilder, FooterElementV8) {
+    auto doc = clever::html::parse("<footer><p>Copyright 2025</p></footer>");
+    auto* el = doc->find_element("footer");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "footer");
+}
+
+TEST(TreeBuilder, NavElementV8) {
+    auto doc = clever::html::parse("<nav><ul><li><a href=\"/\">Home</a></li></ul></nav>");
+    auto* el = doc->find_element("nav");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "nav");
+}
+
+TEST(TreeBuilder, AsideElementV8) {
+    auto doc = clever::html::parse("<aside><h3>Related Links</h3><ul><li>Link 1</li></ul></aside>");
+    auto* el = doc->find_element("aside");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "aside");
+}
+
+TEST(TreeBuilder, SectionElementV8) {
+    auto doc = clever::html::parse("<section><h2>Introduction</h2><p>Content section</p></section>");
+    auto* el = doc->find_element("section");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "section");
+}
+
+TEST(TreeBuilder, MainElementV8) {
+    auto doc = clever::html::parse("<main><article><h1>Main content</h1></article></main>");
+    auto* el = doc->find_element("main");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "main");
+}
+
+TEST(TreeBuilder, TimeElementV8) {
+    auto doc = clever::html::parse("<article><time datetime=\"2025-02-27\">Today</time></article>");
+    auto* el = doc->find_element("time");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "time");
+}
+
+TEST(TreeBuilder, MarkElementV8) {
+    auto doc = clever::html::parse("<p>This is <mark>highlighted</mark> text</p>");
+    auto* el = doc->find_element("mark");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "mark");
+}

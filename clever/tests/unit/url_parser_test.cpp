@@ -5123,3 +5123,81 @@ TEST(URLParser, UrlWithNumericSubdomainAndQueryV10) {
     EXPECT_NE(url->query.find("limit=50"), std::string::npos);
     EXPECT_EQ(url->fragment, "results");
 }
+
+// ============================================================================
+// Cycle 1267: URL parser tests V11
+// ============================================================================
+
+TEST(URLParser, FileSchemeUrlWithPathV11) {
+    auto url = parse("file:///home/user/documents/file.txt");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "file");
+    EXPECT_EQ(url->host, "");
+    EXPECT_EQ(url->path, "/home/user/documents/file.txt");
+    EXPECT_TRUE(url->query.empty());
+    EXPECT_TRUE(url->fragment.empty());
+}
+
+TEST(URLParser, UrlWithSpecialCharactersInPathV11) {
+    auto url = parse("https://example.com/api/v1/resource-name_123");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "example.com");
+    EXPECT_EQ(url->path, "/api/v1/resource-name_123");
+}
+
+TEST(URLParser, UrlWithPortAndAllComponentsV11) {
+    auto url = parse("https://user:pwd@data.example.io:8443/api/fetch?action=get#section");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->username, "user");
+    EXPECT_EQ(url->password, "pwd");
+    EXPECT_EQ(url->host, "data.example.io");
+    EXPECT_EQ(url->port, 8443);
+    EXPECT_EQ(url->path, "/api/fetch");
+    EXPECT_NE(url->query.find("action=get"), std::string::npos);
+    EXPECT_EQ(url->fragment, "section");
+}
+
+TEST(URLParser, SingleLevelDomainWithPathV11) {
+    auto url = parse("http://localhost:3000/app");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "http");
+    EXPECT_EQ(url->host, "localhost");
+    EXPECT_EQ(url->port, 3000);
+    EXPECT_EQ(url->path, "/app");
+}
+
+TEST(URLParser, UrlWithComplexQueryStringV11) {
+    auto url = parse("https://search.example.net/find?q=test&sort=date&page=1&limit=20");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "search.example.net");
+    EXPECT_EQ(url->path, "/find");
+    EXPECT_NE(url->query.find("q=test"), std::string::npos);
+    EXPECT_NE(url->query.find("sort=date"), std::string::npos);
+    EXPECT_NE(url->query.find("page=1"), std::string::npos);
+}
+
+TEST(URLParser, UrlWithLongPathSegmentsV11) {
+    auto url = parse("http://api.backend.company.io/v2/accounts/12345/transactions/67890/details");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "http");
+    EXPECT_EQ(url->host, "api.backend.company.io");
+    EXPECT_EQ(url->path, "/v2/accounts/12345/transactions/67890/details");
+}
+
+TEST(URLParser, DataUrlSchemeV11) {
+    auto url = parse("data:text/plain;base64,SGVsbG8gV29ybGQ=");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "data");
+}
+
+TEST(URLParser, HttpsWithSubdomainChainAndFragmentV11) {
+    auto url = parse("https://cdn.static.assets.example.com/images/banner.jpg#cache-buster");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "cdn.static.assets.example.com");
+    EXPECT_EQ(url->path, "/images/banner.jpg");
+    EXPECT_EQ(url->fragment, "cache-buster");
+}

@@ -7458,3 +7458,98 @@ TEST(RequestResponseTest, CompleteTransactionV21) {
     EXPECT_EQ(resp.body.size(), json.length());
     EXPECT_EQ(resp.body_as_string(), json);
 }
+
+// ============================================================================
+// Cycle 1268: HTTP/Net tests V22
+// ============================================================================
+
+// Request: serialize returns vector<uint8_t> with POST method
+TEST(RequestTest, SerializePostMethodReturnsVectorUint8V22) {
+    Request req;
+    req.method = Method::POST;
+    req.host = "api.example.com";
+    req.path = "/api/users";
+    req.headers.set("Content-Type", "application/json");
+
+    auto serialized = req.serialize();
+    EXPECT_GT(serialized.size(), 0u);
+}
+
+// Request: serialize with PUT method and body
+TEST(RequestTest, SerializePutMethodWithBodyV22) {
+    Request req;
+    req.method = Method::PUT;
+    req.host = "api.example.com";
+    req.path = "/api/resource/123";
+    req.headers.set("Content-Type", "application/json");
+    std::string payload = "{\"name\": \"updated\"}";
+    req.body = std::vector<uint8_t>(payload.begin(), payload.end());
+
+    auto serialized = req.serialize();
+    EXPECT_GT(serialized.size(), 0u);
+}
+
+// HeaderMap: set overwrites previous value
+TEST(HeaderMapTest, SetOverwritesPreviousValueV22) {
+    HeaderMap map;
+    map.set("accept", "text/html");
+    EXPECT_EQ(map.get("accept"), "text/html");
+
+    map.set("accept", "application/json");
+    EXPECT_EQ(map.get("accept"), "application/json");
+}
+
+// Response: body is vector<uint8_t> with binary data
+TEST(ResponseTest, BodyIsVectorUint8WithBinaryDataV22) {
+    Response resp;
+    resp.status = 200;
+    resp.status_text = "OK";
+
+    std::vector<uint8_t> binary_data = {0x00, 0x01, 0x02, 0xFF, 0xFE};
+    resp.body = binary_data;
+
+    EXPECT_EQ(resp.body.size(), 5u);
+    EXPECT_EQ(resp.body[0], 0x00u);
+    EXPECT_EQ(resp.body[4], 0xFEu);
+}
+
+// CookieJar: get_cookie_header with domain, path, and secure flag
+TEST(CookieJarTest, GetCookieHeaderWithDomainPathSecureV22) {
+    CookieJar jar;
+    jar.set_from_header("session_id=abc123", "example.com");
+
+    std::string header = jar.get_cookie_header("example.com", "/", false);
+    EXPECT_NE(header.find("session_id"), std::string::npos);
+}
+
+// CookieJar: set_from_header and size interaction
+TEST(CookieJarTest, SetFromHeaderAndSizeInteractionV22) {
+    CookieJar jar;
+
+    jar.set_from_header("cookie1=value1", "example.com");
+    EXPECT_EQ(jar.size(), 1u);
+
+    jar.set_from_header("cookie2=value2", "example.com");
+    EXPECT_EQ(jar.size(), 2u);
+}
+
+// CookieJar: clear empties all cookies
+TEST(CookieJarTest, ClearEmptiesAllCookiesV22) {
+    CookieJar jar;
+    jar.set_from_header("a=1", "example.com");
+    jar.set_from_header("b=2", "example.com");
+
+    EXPECT_EQ(jar.size(), 2u);
+    jar.clear();
+    EXPECT_EQ(jar.size(), 0u);
+}
+
+// Method enum: DELETE_METHOD is distinct from other methods
+TEST(MethodTest, DeleteMethodEnumDistinctV22) {
+    EXPECT_NE(Method::DELETE_METHOD, Method::GET);
+    EXPECT_NE(Method::DELETE_METHOD, Method::POST);
+    EXPECT_NE(Method::DELETE_METHOD, Method::PUT);
+    EXPECT_NE(Method::DELETE_METHOD, Method::HEAD);
+    EXPECT_NE(Method::DELETE_METHOD, Method::OPTIONS);
+    EXPECT_NE(Method::DELETE_METHOD, Method::PATCH);
+}

@@ -8929,3 +8929,45 @@ TEST(LayoutNodeProps, BackgroundColorDefaultV19) {
     LayoutNode n;
     EXPECT_EQ(n.background_color, 0x00000000u);
 }
+
+// Cycle 1271: LayoutNode property tests V20
+
+TEST(LayoutNodeProps, StrokeMiterlimitDefaultV20) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.stroke_miterlimit, 4.0f);
+}
+
+TEST(LayoutNodeProps, LineHeightDefaultV20) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.line_height, 1.2f);
+}
+
+TEST(LayoutNodeProps, BorderSpacingDefaultV20) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.border_spacing, 2.0f);
+}
+
+TEST(LayoutNodeProps, TabSizeDefaultV20) {
+    LayoutNode n;
+    EXPECT_EQ(n.tab_size, 4);
+}
+
+TEST(LayoutNodeProps, PlaceholderColorDefaultV20) {
+    LayoutNode n;
+    EXPECT_EQ(n.placeholder_color, 0xFF757575u);
+}
+
+TEST(LayoutNodeProps, TextUnderlineOffsetDefaultV20) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.text_underline_offset, 0.0f);
+}
+
+TEST(LayoutNodeProps, HyphensDefaultV20) {
+    LayoutNode n;
+    EXPECT_EQ(n.hyphens, 1);
+}
+
+TEST(LayoutNodeProps, MaxWidthDefaultV20) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.max_width, 1e9f);
+}

@@ -6278,3 +6278,61 @@ TEST(SerializerTest, BoolTrueValueV18) {
     Deserializer d(s.data());
     EXPECT_TRUE(d.read_bool());
 }
+
+// Cycle 1266: IPC serializer tests V19
+
+TEST(SerializerTest, U8MaxValueV19) {
+    Serializer s;
+    s.write_u8(255);
+    Deserializer d(s.data());
+    EXPECT_EQ(255, d.read_u8());
+}
+
+TEST(SerializerTest, U16HalfMaxV19) {
+    Serializer s;
+    s.write_u16(32768);
+    Deserializer d(s.data());
+    EXPECT_EQ(32768, d.read_u16());
+}
+
+TEST(SerializerTest, U32HalfMaxV19) {
+    Serializer s;
+    s.write_u32(2147483648U);
+    Deserializer d(s.data());
+    EXPECT_EQ(2147483648U, d.read_u32());
+}
+
+TEST(SerializerTest, U64LowRangeV19) {
+    Serializer s;
+    s.write_u64(1099511627776ULL);
+    Deserializer d(s.data());
+    EXPECT_EQ(1099511627776ULL, d.read_u64());
+}
+
+TEST(SerializerTest, I32NegativeMinV19) {
+    Serializer s;
+    s.write_i32(-2147483648);
+    Deserializer d(s.data());
+    EXPECT_EQ(-2147483648, d.read_i32());
+}
+
+TEST(SerializerTest, I64ZeroValueV19) {
+    Serializer s;
+    s.write_i64(0);
+    Deserializer d(s.data());
+    EXPECT_EQ(0, d.read_i64());
+}
+
+TEST(SerializerTest, F64NegativeValueV19) {
+    Serializer s;
+    s.write_f64(-3.14159265);
+    Deserializer d(s.data());
+    EXPECT_NEAR(-3.14159265, d.read_f64(), 1e-8);
+}
+
+TEST(SerializerTest, StringEmptyValueV19) {
+    Serializer s;
+    s.write_string("");
+    Deserializer d(s.data());
+    EXPECT_EQ("", d.read_string());
+}

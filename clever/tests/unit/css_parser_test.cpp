@@ -7871,3 +7871,77 @@ TEST_F(CSSStylesheetTest, PaintOrderV19) {
         if (d.property == "paint-order") { found = true; break; }
     EXPECT_TRUE(found);
 }
+
+// Cycle 1269: CSS parser tests V20
+
+TEST_F(CSSStylesheetTest, BackgroundAttachmentV20) {
+    auto sheet = parse_stylesheet("body { background-attachment: fixed; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "background-attachment") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, TextDecorationColorV20) {
+    auto sheet = parse_stylesheet("span { text-decoration-color: red; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "text-decoration-color") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, TextDecorationStyleV20) {
+    auto sheet = parse_stylesheet("a { text-decoration-style: wavy; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "text-decoration-style") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, TextDecorationThicknessV20) {
+    auto sheet = parse_stylesheet("em { text-decoration-thickness: 2px; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "text-decoration-thickness") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, TextUnderlineOffsetV20) {
+    auto sheet = parse_stylesheet("u { text-underline-offset: 3px; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "text-underline-offset") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, WordSpacingV20) {
+    auto sheet = parse_stylesheet("p { word-spacing: 0.5em; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "word-spacing") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, LetterSpacingV20) {
+    auto sheet = parse_stylesheet("h1 { letter-spacing: 2px; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "letter-spacing") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, TextTransformV20) {
+    auto sheet = parse_stylesheet(".uppercase { text-transform: uppercase; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "text-transform") { found = true; break; }
+    EXPECT_TRUE(found);
+}

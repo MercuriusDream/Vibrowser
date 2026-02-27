@@ -6854,3 +6854,64 @@ TEST(DomElement, OverwriteAttributeV2) {
     el->set_attribute("id", "second");
     EXPECT_EQ(el->get_attribute("id"), "second");
 }
+
+// Cycle 1264: DOM element tests
+
+TEST(DomElement, TagNameRuby) {
+    Document doc;
+    auto el = doc.create_element("ruby");
+    EXPECT_EQ(el->tag_name(), "ruby");
+}
+
+TEST(DomElement, TagNameRt) {
+    Document doc;
+    auto el = doc.create_element("rt");
+    EXPECT_EQ(el->tag_name(), "rt");
+}
+
+TEST(DomElement, SetAttributeEnctype) {
+    Document doc;
+    auto el = doc.create_element("form");
+    el->set_attribute("enctype", "multipart/form-data");
+    EXPECT_EQ(el->get_attribute("enctype"), "multipart/form-data");
+}
+
+TEST(DomElement, SetAttributeNovalidateV2) {
+    Document doc;
+    auto el = doc.create_element("form");
+    el->set_attribute("novalidate", "true");
+    EXPECT_EQ(el->get_attribute("novalidate"), "true");
+}
+
+TEST(DomElement, ChildCountHundred) {
+    Document doc;
+    auto parent = doc.create_element("div");
+    for (int i = 0; i < 100; ++i) {
+        parent->append_child(doc.create_element("span"));
+    }
+    EXPECT_EQ(parent->child_count(), 100u);
+}
+
+TEST(DomElement, RemoveAttributeDir) {
+    Document doc;
+    auto el = doc.create_element("div");
+    el->set_attribute("dir", "rtl");
+    el->remove_attribute("dir");
+    EXPECT_FALSE(el->has_attribute("dir"));
+}
+
+TEST(DomElement, HasAttributeDefer) {
+    Document doc;
+    auto el = doc.create_element("script");
+    el->set_attribute("defer", "");
+    EXPECT_TRUE(el->has_attribute("defer"));
+}
+
+TEST(DomElement, SetAndGetMultipleAttrs) {
+    Document doc;
+    auto el = doc.create_element("a");
+    el->set_attribute("href", "/page");
+    el->set_attribute("target", "_blank");
+    EXPECT_EQ(el->get_attribute("href"), "/page");
+    EXPECT_EQ(el->get_attribute("target"), "_blank");
+}

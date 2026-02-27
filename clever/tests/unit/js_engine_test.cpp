@@ -19014,3 +19014,53 @@ TEST(JSEngine, ArrayEveryMethodCycle1263) {
     auto result = engine.evaluate("var arr = [2, 4, 6, 8]; var allEven = arr.every(function(n) { return n % 2 == 0; }); allEven.toString()");
     EXPECT_EQ(result, "true");
 }
+
+// Cycle 1272: JS engine tests
+
+TEST(JSEngine, ArrowFunctionBasicCycle1272) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var add = (a, b) => a + b; add(5, 7).toString()");
+    EXPECT_EQ(result, "12");
+}
+
+TEST(JSEngine, DestructuringObjectCycle1272) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var obj = {x: 10, y: 20}; var {x, y} = obj; (x + y).toString()");
+    EXPECT_EQ(result, "30");
+}
+
+TEST(JSEngine, DestructuringArrayCycle1272) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var arr = [1, 2, 3]; var [first, second] = arr; (first + second).toString()");
+    EXPECT_EQ(result, "3");
+}
+
+TEST(JSEngine, RestParametersCycle1272) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("function sum(...args) { return args.reduce(function(a, b) { return a + b; }); } sum(1, 2, 3, 4).toString()");
+    EXPECT_EQ(result, "10");
+}
+
+TEST(JSEngine, SpreadOperatorArrayCycle1272) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var arr1 = [1, 2]; var arr2 = [3, 4]; var combined = [...arr1, ...arr2]; combined.length.toString()");
+    EXPECT_EQ(result, "4");
+}
+
+TEST(JSEngine, DefaultParameterValueCycle1272) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("function greet(name = 'Guest') { return 'Hello, ' + name; } greet()");
+    EXPECT_EQ(result, "Hello, Guest");
+}
+
+TEST(JSEngine, ClassConstructorCycle1272) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("class Rectangle { constructor(width, height) { this.width = width; this.height = height; } } var rect = new Rectangle(5, 10); (rect.width * rect.height).toString()");
+    EXPECT_EQ(result, "50");
+}
+
+TEST(JSEngine, MapObjectCycle1272) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var map = new Map(); map.set('key1', 100); map.set('key2', 200); map.size.toString()");
+    EXPECT_EQ(result, "2");
+}
