@@ -6103,3 +6103,55 @@ TEST(LayoutNodeProps, ColumnGapDefaultsToZero) {
     auto node = make_flex("div");
     EXPECT_FLOAT_EQ(node->column_gap, 0.0f);
 }
+
+// ---------------------------------------------------------------------------
+// Cycle 693 — 8 additional layout property default tests
+// ---------------------------------------------------------------------------
+
+// Layout: mix_blend_mode defaults to 0
+TEST(LayoutNodeProps, MixBlendModeDefaultsToZero) {
+    auto node = make_block("div");
+    EXPECT_EQ(node->mix_blend_mode, 0);
+}
+
+// Layout: letter_spacing defaults to 0
+TEST(LayoutNodeProps, LetterSpacingDefaultsToZero) {
+    auto node = make_block("p");
+    EXPECT_FLOAT_EQ(node->letter_spacing, 0.0f);
+}
+
+// Layout: word_spacing defaults to 0
+TEST(LayoutNodeProps, WordSpacingDefaultsToZero) {
+    auto node = make_block("p");
+    EXPECT_FLOAT_EQ(node->word_spacing, 0.0f);
+}
+
+// Layout: object_fit defaults to 0 (fill)
+TEST(LayoutNodeProps, ObjectFitDefaultsToZero) {
+    auto node = make_block("img");
+    EXPECT_EQ(node->object_fit, 0);
+}
+
+// Layout: object_position_x defaults to 50
+TEST(LayoutNodeProps, ObjectPositionXDefaultsFifty) {
+    auto node = make_block("img");
+    EXPECT_FLOAT_EQ(node->object_position_x, 50.0f);
+}
+
+// Layout: object_position_y defaults to 50
+TEST(LayoutNodeProps, ObjectPositionYDefaultsFifty) {
+    auto node = make_block("img");
+    EXPECT_FLOAT_EQ(node->object_position_y, 50.0f);
+}
+
+// Layout: font_weight defaults to 400
+TEST(LayoutNodeProps, FontWeightDefaultsFourHundred) {
+    auto node = make_block("p");
+    EXPECT_EQ(node->font_weight, 400);
+}
+
+// Layout: font_italic defaults to false
+TEST(LayoutNodeProps, FontItalicDefaultsFalse) {
+    auto node = make_block("p");
+    EXPECT_FALSE(node->font_italic);
+}
