@@ -4000,3 +4000,62 @@ TEST(DomNode, TextNodeSiblingOfElement) {
     EXPECT_EQ(parent.child_count(), 2u);
     EXPECT_EQ(parent.last_child(), text_ptr);
 }
+
+
+// Cycle 869 — Element attribute/classList/textContent/nodeType operations
+TEST(DomElement, GetAttributeAfterOverwrite) {
+    Element elem("a");
+    elem.set_attribute("href", "http://example.com");
+    elem.set_attribute("href", "http://other.com");
+    auto val = elem.get_attribute("href");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(val.value(), "http://other.com");
+}
+
+TEST(DomElement, SetThreeAttributesAccessibleByName) {
+    Element elem("input");
+    elem.set_attribute("type", "text");
+    elem.set_attribute("name", "username");
+    elem.set_attribute("placeholder", "Enter name");
+    auto ph = elem.get_attribute("placeholder");
+    ASSERT_TRUE(ph.has_value());
+    EXPECT_EQ(ph.value(), "Enter name");
+}
+
+TEST(DomElement, HasAttributeAfterRemoval) {
+    Element elem("div");
+    elem.set_attribute("hidden", "");
+    elem.remove_attribute("hidden");
+    EXPECT_FALSE(elem.has_attribute("hidden"));
+}
+
+TEST(DomElement, ClassListContainsAfterToggle) {
+    Element elem("li");
+    elem.class_list().add("selected");
+    elem.class_list().toggle("selected");
+    EXPECT_FALSE(elem.class_list().contains("selected"));
+}
+
+TEST(DomElement, ClassListAddTwiceSameClass) {
+    Element elem("span");
+    elem.class_list().add("foo");
+    elem.class_list().add("foo");
+    EXPECT_TRUE(elem.class_list().contains("foo"));
+}
+
+TEST(DomElement, TextContentOfElementWithText) {
+    Element elem("p");
+    auto text = std::make_unique<Text>("Hello World");
+    elem.append_child(std::move(text));
+    EXPECT_EQ(elem.text_content(), "Hello World");
+}
+
+TEST(DomElement, ElementNodeTypeIsElement) {
+    Element elem("div");
+    EXPECT_EQ(elem.node_type(), NodeType::Element);
+}
+
+TEST(DomText, TextNodeTypeIsText) {
+    Text t("content");
+    EXPECT_EQ(t.node_type(), NodeType::Text);
+}
