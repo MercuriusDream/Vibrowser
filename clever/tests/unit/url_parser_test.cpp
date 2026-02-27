@@ -2384,3 +2384,60 @@ TEST(URLParser, EmptyQueryAndFragmentAfterParse) {
     EXPECT_TRUE(url->query.empty());
     EXPECT_TRUE(url->fragment.empty());
 }
+
+// Cycle 844 — serialization omits separators, custom origin, traversal clamp
+TEST(URLParser, SerializeNoQueryOmitsQuestionMark) {
+    auto url = clever::url::parse("https://example.com/path");
+    ASSERT_TRUE(url.has_value());
+    std::string s = url->serialize();
+    EXPECT_EQ(s.find('?'), std::string::npos);
+}
+
+TEST(URLParser, SerializeNoFragmentOmitsHash) {
+    auto url = clever::url::parse("https://example.com/path?q=1");
+    ASSERT_TRUE(url.has_value());
+    std::string s = url->serialize();
+    EXPECT_EQ(s.find('#'), std::string::npos);
+}
+
+TEST(URLParser, OriginCustomSchemeIsNull) {
+    auto url = clever::url::parse("custom://host/path");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->origin(), "null");
+}
+
+TEST(URLParser, PathTraversalAboveRootClamped) {
+    auto url = clever::url::parse("https://example.com/../../../a");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->path, "/a");
+}
+
+TEST(URLParser, SerializeQueryPresentNoFragment) {
+    auto url = clever::url::parse("https://example.com/p?k=v");
+    ASSERT_TRUE(url.has_value());
+    std::string s = url->serialize();
+    EXPECT_NE(s.find('?'), std::string::npos);
+    EXPECT_EQ(s.find('#'), std::string::npos);
+}
+
+TEST(URLParser, SerializeFragmentPresentNoQuery) {
+    auto url = clever::url::parse("https://example.com/p#anchor");
+    ASSERT_TRUE(url.has_value());
+    std::string s = url->serialize();
+    EXPECT_EQ(s.find('?'), std::string::npos);
+    EXPECT_NE(s.find('#'), std::string::npos);
+}
+
+TEST(URLParser, UppercaseInputHostNormalizedToLowercase) {
+    auto url = clever::url::parse("HTTPS://EXAMPLE.COM/path");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->host, "example.com");
+}
+
+TEST(URLParser, SameOriginAfterUppercaseInput) {
+    auto a = clever::url::parse("HTTPS://EXAMPLE.COM/foo");
+    auto b = clever::url::parse("https://example.com/bar");
+    ASSERT_TRUE(a.has_value());
+    ASSERT_TRUE(b.has_value());
+    EXPECT_TRUE(clever::url::urls_same_origin(*a, *b));
+}
