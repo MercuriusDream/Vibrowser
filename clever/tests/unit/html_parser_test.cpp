@@ -3028,3 +3028,63 @@ TEST(TreeBuilder, FigureWithFigcaptionParsed) {
     auto* figcaption = doc->find_element("figcaption");
     ASSERT_NE(figcaption, nullptr);
 }
+
+TEST(TreeBuilder, MetaCharsetIsParsed) {
+    auto doc = clever::html::parse(R"(<html><head><meta charset="UTF-8"></head></html>)");
+    auto* meta = doc->find_element("meta");
+    ASSERT_NE(meta, nullptr);
+    EXPECT_EQ(meta->tag_name, "meta");
+}
+
+TEST(TreeBuilder, ScriptElementIsParsed) {
+    auto doc = clever::html::parse("<html><head><script>var x = 1;</script></head></html>");
+    auto* script = doc->find_element("script");
+    ASSERT_NE(script, nullptr);
+    EXPECT_EQ(script->tag_name, "script");
+}
+
+TEST(TreeBuilder, StyleElementIsParsed) {
+    auto doc = clever::html::parse("<html><head><style>body { color: red; }</style></head></html>");
+    auto* style = doc->find_element("style");
+    ASSERT_NE(style, nullptr);
+    EXPECT_EQ(style->tag_name, "style");
+}
+
+TEST(TreeBuilder, MarkElementIsParsed) {
+    auto doc = clever::html::parse("<p>Some <mark>highlighted</mark> text</p>");
+    auto* mark = doc->find_element("mark");
+    ASSERT_NE(mark, nullptr);
+    EXPECT_EQ(mark->tag_name, "mark");
+}
+
+TEST(TreeBuilder, SectionWithIdAttr) {
+    auto doc = clever::html::parse(R"(<section id="main"><p>text</p></section>)");
+    auto* section = doc->find_element("section");
+    ASSERT_NE(section, nullptr);
+    bool found = false;
+    for (const auto& attr : section->attributes) {
+        if (attr.name == "id" && attr.value == "main") found = true;
+    }
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, AbbrElementIsParsed) {
+    auto doc = clever::html::parse(R"(<abbr title="HyperText Markup Language">HTML</abbr>)");
+    auto* abbr = doc->find_element("abbr");
+    ASSERT_NE(abbr, nullptr);
+    EXPECT_EQ(abbr->tag_name, "abbr");
+}
+
+TEST(TreeBuilder, TimeElementIsParsed) {
+    auto doc = clever::html::parse(R"(<time datetime="2024-01-01">January 1</time>)");
+    auto* time_elem = doc->find_element("time");
+    ASSERT_NE(time_elem, nullptr);
+    EXPECT_EQ(time_elem->tag_name, "time");
+}
+
+TEST(TreeBuilder, VideoElementIsParsed) {
+    auto doc = clever::html::parse(R"(<video src="movie.mp4" controls></video>)");
+    auto* video = doc->find_element("video");
+    ASSERT_NE(video, nullptr);
+    EXPECT_EQ(video->tag_name, "video");
+}
