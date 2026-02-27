@@ -2557,3 +2557,60 @@ TEST(URLParser, WsSameOriginWithSelf) {
     ASSERT_TRUE(b.has_value());
     EXPECT_TRUE(urls_same_origin(*a, *b));
 }
+
+
+// Cycle 872 — double-dot path normalization, port boundaries, percent-encoded query, hash-in-fragment, IPv4 port
+TEST(URLParser, DotDotNormalizesPath) {
+    auto url = parse("https://example.com/a/b/../c");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->path, "/a/c");
+}
+
+TEST(URLParser, MultipleDotDotNormalizesUpTwoLevels) {
+    auto url = parse("https://example.com/a/b/c/../../d");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->path, "/a/d");
+}
+
+TEST(URLParser, PortZeroIsDistinctFromDefault) {
+    auto url = parse("http://example.com:0/path");
+    ASSERT_TRUE(url.has_value());
+    ASSERT_TRUE(url->port.has_value());
+    EXPECT_EQ(url->port.value(), 0);
+}
+
+TEST(URLParser, MaxValidPort65535) {
+    auto url = parse("https://example.com:65535/path");
+    ASSERT_TRUE(url.has_value());
+    ASSERT_TRUE(url->port.has_value());
+    EXPECT_EQ(url->port.value(), 65535);
+}
+
+TEST(URLParser, PercentEncodedQueryPreserved) {
+    auto url = parse("https://example.com/search?q=hello%20world");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->query, "q=hello%2520world");
+}
+
+TEST(URLParser, FragmentDoesNotAppearInQuery) {
+    auto url = parse("https://example.com/page?key=value#section");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->query, "key=value");
+    EXPECT_EQ(url->fragment, "section");
+}
+
+TEST(URLParser, IPv4WithPortSameOriginWithSelf) {
+    auto a = parse("http://192.168.1.1:8080/");
+    auto b = parse("http://192.168.1.1:8080/api");
+    ASSERT_TRUE(a.has_value());
+    ASSERT_TRUE(b.has_value());
+    EXPECT_TRUE(urls_same_origin(*a, *b));
+}
+
+TEST(URLParser, IPv4DifferentOctetNotSameOrigin) {
+    auto a = parse("http://192.168.1.1/");
+    auto b = parse("http://192.168.1.2/");
+    ASSERT_TRUE(a.has_value());
+    ASSERT_TRUE(b.has_value());
+    EXPECT_FALSE(urls_same_origin(*a, *b));
+}
