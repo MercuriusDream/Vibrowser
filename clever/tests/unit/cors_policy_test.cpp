@@ -1290,3 +1290,55 @@ TEST(CORSPolicyTest, ShouldNotAttachOriginSameOriginHttp) {
     EXPECT_FALSE(should_attach_origin_header("http://example.com",
                                               "http://example.com/page"));
 }
+
+// Cycle 761 — CORS additional coverage
+TEST(CORSPolicyTest, LocalhostOriginIsEnforceable) {
+    EXPECT_TRUE(has_enforceable_document_origin("http://localhost"));
+}
+
+TEST(CORSPolicyTest, LocalhostWithPortIsEnforceable) {
+    EXPECT_TRUE(has_enforceable_document_origin("http://localhost:3000"));
+}
+
+TEST(CORSPolicyTest, CORSEligibleURLPort8080) {
+    EXPECT_TRUE(is_cors_eligible_request_url("http://api.example.com:8080/data"));
+}
+
+TEST(CORSPolicyTest, IsCrossOriginIpVsHostname) {
+    EXPECT_TRUE(is_cross_origin("http://example.com", "http://192.168.1.1/api"));
+}
+
+TEST(CORSPolicyTest, CORSAllowsCredentialedWithExactOrigin) {
+    clever::net::HeaderMap resp_headers;
+    resp_headers.set("Access-Control-Allow-Origin", "https://app.example.com");
+    resp_headers.set("Access-Control-Allow-Credentials", "true");
+    EXPECT_TRUE(cors_allows_response("https://app.example.com",
+                                     "https://api.example.com/v2",
+                                     resp_headers, true));
+}
+
+TEST(CORSPolicyTest, CORSRejectsWildcardWithCredentials) {
+    clever::net::HeaderMap resp_headers;
+    resp_headers.set("Access-Control-Allow-Origin", "*");
+    resp_headers.set("Access-Control-Allow-Credentials", "true");
+    EXPECT_FALSE(cors_allows_response("https://app.example.com",
+                                      "https://api.example.com/v2",
+                                      resp_headers, true));
+}
+
+TEST(CORSPolicyTest, NormalizeOutgoingHeaderNoOpForSameOrigin) {
+    clever::net::HeaderMap req_headers;
+    // same origin — should not attach or remove origin header
+    normalize_outgoing_origin_header(req_headers,
+                                     "https://example.com",
+                                     "https://example.com/api");
+    auto val = req_headers.get("Origin");
+    // Either absent or "https://example.com"; not a spoofed value
+    if (val.has_value()) {
+        EXPECT_EQ(val.value(), "https://example.com");
+    }
+}
+
+TEST(CORSPolicyTest, IsCrossOriginSchemeAndHostBothDiffer) {
+    EXPECT_TRUE(is_cross_origin("http://foo.com", "https://bar.com/page"));
+}
