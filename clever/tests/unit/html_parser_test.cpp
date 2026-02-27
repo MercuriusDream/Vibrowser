@@ -5285,3 +5285,65 @@ TEST(TreeBuilder, AreaCoordsAttr) {
         if (attr.name == "coords") found = true;
     EXPECT_TRUE(found);
 }
+
+TEST(TreeBuilder, SummaryTextParsed) {
+    auto doc = clever::html::parse("<body><details><summary>Toggle me</summary></details></body>");
+    auto* el = doc->find_element("summary");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "summary");
+}
+
+TEST(TreeBuilder, OutputForAttr) {
+    auto doc = clever::html::parse("<body><form id=\"f\"><output for=\"x y\"></output></form></body>");
+    auto* el = doc->find_element("output");
+    ASSERT_NE(el, nullptr);
+    bool found = false;
+    for (const auto& attr : el->attributes)
+        if (attr.name == "for" && attr.value == "x y") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, TimeDateTime) {
+    auto doc = clever::html::parse("<body><time datetime=\"2026-02-28\">Today</time></body>");
+    auto* el = doc->find_element("time");
+    ASSERT_NE(el, nullptr);
+    bool found = false;
+    for (const auto& attr : el->attributes)
+        if (attr.name == "datetime" && attr.value == "2026-02-28") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, MarkTextParsed) {
+    auto doc = clever::html::parse("<body><p>Find <mark>this</mark> word</p></body>");
+    auto* el = doc->find_element("mark");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "mark");
+}
+
+TEST(TreeBuilder, KbdTextParsed) {
+    auto doc = clever::html::parse("<body><p>Press <kbd>Ctrl+C</kbd></p></body>");
+    auto* el = doc->find_element("kbd");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "kbd");
+}
+
+TEST(TreeBuilder, SampTextParsed) {
+    auto doc = clever::html::parse("<body><p><samp>error: file not found</samp></p></body>");
+    auto* el = doc->find_element("samp");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "samp");
+}
+
+TEST(TreeBuilder, VarTextParsed) {
+    auto doc = clever::html::parse("<body><p>Let <var>x</var> = 5</p></body>");
+    auto* el = doc->find_element("var");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "var");
+}
+
+TEST(TreeBuilder, CiteTextParsed) {
+    auto doc = clever::html::parse("<body><p><cite>ECMA-262</cite></p></body>");
+    auto* el = doc->find_element("cite");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "cite");
+}
