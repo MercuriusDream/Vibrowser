@@ -4479,3 +4479,76 @@ TEST_F(CSSSelectorTest, PseudoClassLocalLink) {
         if (ss.type == SimpleSelectorType::PseudoClass && ss.value == "local-link") found = true;
     EXPECT_TRUE(found);
 }
+
+// Cycle 865 — CSS perspective, transform-style, font-feature-settings, break properties, font-kerning, forced-color-adjust
+TEST_F(CSSStylesheetTest, PerspectiveDeclaration) {
+    auto sheet = parse_stylesheet(".box { perspective: 800px; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "perspective") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, PerspectiveOriginDeclaration) {
+    auto sheet = parse_stylesheet(".box { perspective-origin: 50% 50%; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "perspective-origin") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, TransformStyleDeclaration) {
+    auto sheet = parse_stylesheet(".box { transform-style: preserve-3d; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "transform-style") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, FontFeatureSettingsDeclaration) {
+    auto sheet = parse_stylesheet("p { font-feature-settings: \"liga\" 1, \"kern\" 1; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "font-feature-settings") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, BreakBeforeDeclaration) {
+    auto sheet = parse_stylesheet(".chapter { break-before: page; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "break-before") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, BreakAfterDeclaration) {
+    auto sheet = parse_stylesheet(".section { break-after: column; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "break-after") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, BreakInsideDeclaration) {
+    auto sheet = parse_stylesheet("img { break-inside: avoid; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "break-inside") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, FontKerningDeclaration) {
+    auto sheet = parse_stylesheet("body { font-kerning: normal; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "font-kerning") { found = true; break; }
+    EXPECT_TRUE(found);
+}
