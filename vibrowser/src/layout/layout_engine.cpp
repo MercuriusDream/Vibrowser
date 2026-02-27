@@ -1,0 +1,3523 @@
+#include <clever/layout/layout_engine.h>
+
+#include <algorithm>
+#include <cctype>
+#include <cmath>
+#include <sstream>
+
+namespace clever::layout {
+
+// ---------------------------------------------------------------------------
+// Text measurement helpers (delegate to platform callback or fallback to 0.6f)
+// ---------------------------------------------------------------------------
+
+float LayoutEngine::measure_text(const std::string& text, float font_size,
+                                  const std::string& font_family, int font_weight,
+                                  bool is_italic, float letter_spacing) const {
+    if (text_measurer_ && !text.empty()) {
+        return text_measurer_(text, font_size, font_family, font_weight, is_italic, letter_spacing);
+    }
+    // Fallback: approximate
+    float char_w = font_size * 0.6f + letter_spacing;
+    return static_cast<float>(text.size()) * char_w;
+}
+
+float LayoutEngine::avg_char_width(float font_size, const std::string& font_family,
+                                    int font_weight, bool is_italic, bool is_monospace,
+                                    float letter_spacing) const {
+    if (text_measurer_) {
+        // Measure a representative string to get average char width
+        float measured;
+        if (is_monospace) {
+            measured = text_measurer_("M", font_size, font_family, font_weight, is_italic, letter_spacing);
+        } else {
+            // Measure lowercase alphabet + space to get average proportional char width
+            static const std::string sample = "abcdefghijklmnopqrstuvwxyz ";
+            measured = text_measurer_(sample, font_size, font_family, font_weight, is_italic, letter_spacing) / 27.0f;
+        }
+        // Clamp to minimum 1.0 to prevent division-by-zero in layout calculations
+        return std::max(1.0f, measured);
+    }
+    // Fallback: approximate
+    float result = font_size * (is_monospace ? 0.65f : 0.6f) + letter_spacing;
+    // Clamp to minimum 1.0 to prevent division-by-zero in layout calculations
+    return std::max(1.0f, result);
+}
+
+// ---------------------------------------------------------------------------
+
+// Measure intrinsic content width for min-content/max-content sizing
+static float measure_intrinsic_width(const LayoutNode& node, bool max_content,
+                                      const TextMeasureFn* measurer, int depth = 0) {
+    if (depth > 256) return 0;
+    float width = 0;
+    if (node.is_text && !node.text_content.empty()) {
+        if (max_content) {
+            // max-content: no wrapping, full text width
+            if (measurer && *measurer) {
+                width = (*measurer)(node.text_content, node.font_size, node.font_family,
+                                    node.font_weight, node.font_italic, node.letter_spacing);
+            } else {
+                float char_w = node.font_size * 0.6f;
+                width = static_cast<float>(node.text_content.size()) * char_w;
+            }
+        } else {
+            // min-content: longest word — measure each word individually
+            float longest_word = 0;
+            if (measurer && *measurer) {
+                std::string cur_word;
+                for (char c : node.text_content) {
+                    if (c == ' ' || c == '\t' || c == '\n') {
+                        if (!cur_word.empty()) {
+                            float w = (*measurer)(cur_word, node.font_size, node.font_family,
+                                                  node.font_weight, node.font_italic, node.letter_spacing);
+                            longest_word = std::max(longest_word, w);
+                            cur_word.clear();
+                        }
+                    } else {
+                        cur_word += c;
+                    }
+                }
+                if (!cur_word.empty()) {
+                    float w = (*measurer)(cur_word, node.font_size, node.font_family,
+                                          node.font_weight, node.font_italic, node.letter_spacing);
+                    longest_word = std::max(longest_word, w);
+                }
+            } else {
+                float char_w = node.font_size * 0.6f;
+                float cur_word = 0;
+                for (char c : node.text_content) {
+                    if (c == ' ' || c == '\t' || c == '\n') {
+                        longest_word = std::max(longest_word, cur_word);
+                        cur_word = 0;
+                    } else {
+                        cur_word += char_w;
+                    }
+                }
+                longest_word = std::max(longest_word, cur_word);
+            }
+            width = longest_word;
+        }
+    }
+    // Recurse into children and accumulate
+    float children_width = 0;
+    for (auto& child : node.children) {
+        float cw = measure_intrinsic_width(*child, max_content, measurer, depth + 1);
+        if (child->mode == LayoutMode::Inline || child->display == DisplayType::Inline ||
+            child->display == DisplayType::InlineBlock) {
+            children_width += cw; // inline: sum widths
+        } else {
+            children_width = std::max(children_width, cw); // block: max width
+        }
+    }
+    float padding_border = node.geometry.padding.left + node.geometry.padding.right +
+                           node.geometry.border.left + node.geometry.border.right;
+    return std::max(width, children_width) + padding_border;
+}
+
+// Measure intrinsic content height for min-content/max-content sizing
+// For height, min-content and max-content both resolve to the natural content height
+// (the height needed to display content without overflow).
+// The difference only matters when content could reflow vertically, which is rare.
+static float measure_intrinsic_height(const LayoutNode& node, bool max_content,
+                                       const TextMeasureFn* measurer, int depth = 0) {
+    if (depth > 256) return 0;
+    float height = 0;
+    if (node.is_text && !node.text_content.empty()) {
+        float line_h = node.font_size * 1.2f; // approximate line height
+        if (max_content) {
+            // max-content height: single line of text
+            height = line_h;
+        } else {
+            // min-content height: text wrapped to its min-content width (longest word)
+            // Count the number of lines needed when wrapped to longest-word width
+            float char_w;
+            if (measurer && *measurer) {
+                // Use average char width for wrapping calculations
+                static const std::string sample = "abcdefghijklmnopqrstuvwxyz ";
+                char_w = (*measurer)(sample, node.font_size, node.font_family,
+                                     node.font_weight, node.font_italic, node.letter_spacing) / 27.0f;
+            } else {
+                char_w = node.font_size * 0.6f;
+            }
+            float longest_word = 0;
+            float cur_word = 0;
+            for (char c : node.text_content) {
+                if (c == ' ' || c == '\t' || c == '\n') {
+                    longest_word = std::max(longest_word, cur_word);
+                    cur_word = 0;
+                } else {
+                    cur_word += char_w;
+                }
+            }
+            longest_word = std::max(longest_word, cur_word);
+            // Count words to approximate lines when wrapped at longest-word width
+            float total_text_w = static_cast<float>(node.text_content.size()) * char_w;
+            if (longest_word > 0) {
+                int lines = std::max(1, static_cast<int>(std::ceil(total_text_w / longest_word)));
+                height = static_cast<float>(lines) * line_h;
+            } else {
+                height = line_h;
+            }
+        }
+    }
+    // Recurse into children and accumulate
+    float children_height = 0;
+    for (auto& child : node.children) {
+        float ch = measure_intrinsic_height(*child, max_content, measurer, depth + 1);
+        if (child->mode == LayoutMode::Inline || child->display == DisplayType::Inline ||
+            child->display == DisplayType::InlineBlock) {
+            children_height = std::max(children_height, ch); // inline: max height (same line)
+        } else {
+            children_height += ch; // block: sum heights (stacked)
+        }
+    }
+    float padding_border = node.geometry.padding.top + node.geometry.padding.bottom +
+                           node.geometry.border.top + node.geometry.border.bottom;
+    return std::max(height, children_height) + padding_border;
+}
+
+void LayoutEngine::compute(LayoutNode& root, float viewport_width, float viewport_height) {
+    viewport_width_ = viewport_width;
+    viewport_height_ = viewport_height;
+    root.geometry.x = 0;
+    root.geometry.y = 0;
+
+    // Resolve intrinsic sizing keywords for root: -2=min-content, -3=max-content, -4=fit-content
+    if (root.specified_width <= -2 && root.specified_width >= -4) {
+        int kw = static_cast<int>(root.specified_width);
+        const TextMeasureFn* mp = text_measurer_ ? &text_measurer_ : nullptr;
+        float min_w = measure_intrinsic_width(root, false, mp);
+        float max_w = measure_intrinsic_width(root, true, mp);
+        if (kw == -2) {
+            root.specified_width = min_w;
+        } else if (kw == -3) {
+            root.specified_width = max_w;
+        } else { // -4 = fit-content
+            root.specified_width = std::max(min_w, std::min(viewport_width, max_w));
+        }
+    }
+
+    // Resolve deferred calc/percent min/max for root
+    if (root.css_min_width.has_value()) {
+        root.min_width = root.css_min_width->to_px(viewport_width);
+    }
+    if (root.css_max_width.has_value()) {
+        root.max_width = root.css_max_width->to_px(viewport_width);
+    }
+
+    // Root width: specified (capped at viewport), or viewport, with min/max
+    float w;
+    if (root.specified_width >= 0) {
+        w = std::min(root.specified_width, viewport_width);
+    } else {
+        w = viewport_width;
+    }
+    w = std::max(w, root.min_width);
+    w = std::min(w, root.max_width);
+    // Also cap max_width at viewport
+    w = std::min(w, viewport_width);
+    root.geometry.width = w;
+
+    switch (root.mode) {
+        case LayoutMode::Block:
+        case LayoutMode::InlineBlock:
+            layout_block(root, viewport_width);
+            break;
+        case LayoutMode::Flex:
+            layout_flex(root, viewport_width);
+            break;
+        case LayoutMode::Grid:
+            layout_grid(root, viewport_width);
+            break;
+        case LayoutMode::Table:
+            layout_table(root, viewport_width);
+            break;
+        case LayoutMode::Inline:
+            layout_inline(root, viewport_width);
+            break;
+        case LayoutMode::None:
+            root.geometry.width = 0;
+            root.geometry.height = 0;
+            return;
+        default:
+            layout_block(root, viewport_width);
+            break;
+    }
+}
+
+float LayoutEngine::compute_width(LayoutNode& node, float containing_width) {
+    // For a block element:
+    //   If specified_width is set, use it.
+    //   Otherwise, width = containing_width - horizontal margins.
+    //   (padding and border do NOT reduce the content width; they are inside the box)
+
+    // Resolve deferred calc/percent width now that we know containing_width
+    if (node.css_width.has_value()) {
+        float resolved = node.css_width->to_px(containing_width);
+        node.specified_width = resolved;
+    }
+
+    // Resolve deferred calc/percent min/max-width
+    if (node.css_min_width.has_value()) {
+        node.min_width = node.css_min_width->to_px(containing_width);
+    }
+    if (node.css_max_width.has_value()) {
+        node.max_width = node.css_max_width->to_px(containing_width);
+    }
+
+    // contain: size (3) or strict (1) — use contain-intrinsic-size if no explicit width
+    if ((node.contain == 3 || node.contain == 1) && node.specified_width < 0 && node.contain_intrinsic_width > 0) {
+        node.specified_width = node.contain_intrinsic_width;
+    }
+
+    // Resolve intrinsic sizing keywords: -2=min-content, -3=max-content, -4=fit-content
+    if (node.specified_width <= -2 && node.specified_width >= -4) {
+        int kw = static_cast<int>(node.specified_width);
+        const TextMeasureFn* mp = text_measurer_ ? &text_measurer_ : nullptr;
+        float min_w = measure_intrinsic_width(node, false, mp);
+        float max_w = measure_intrinsic_width(node, true, mp);
+        if (kw == -2) {
+            node.specified_width = min_w;
+        } else if (kw == -3) {
+            node.specified_width = max_w;
+        } else { // -4 = fit-content
+            node.specified_width = std::max(min_w, std::min(containing_width, max_w));
+        }
+    }
+
+    float w;
+    if (node.specified_width >= 0) {
+        w = node.specified_width;
+        // border-box: specified width includes padding and border.
+        // In this engine, geometry.width is used as the outer content dimension
+        // (content_w = width - padding - border for children), so for border-box
+        // we keep specified_width as-is — layout_block's content_w calculation
+        // will naturally give children the correct content area.
+        // No adjustment needed here; it matches the engine convention.
+    } else {
+        float horiz_margins = 0;
+        // Only subtract non-auto margins
+        if (node.geometry.margin.left >= 0) horiz_margins += node.geometry.margin.left;
+        if (node.geometry.margin.right >= 0) horiz_margins += node.geometry.margin.right;
+        w = containing_width - horiz_margins;
+    }
+    w = std::max(w, node.min_width);
+    w = std::min(w, node.max_width);
+    return std::max(w, 0.0f);
+}
+
+float LayoutEngine::compute_height(LayoutNode& node, float containing_height) {
+    // Determine the containing block's height for percentage resolution.
+    // In CSS, percentage heights only resolve when the containing block has
+    // a definite (explicitly set) height. If containing_height is not provided
+    // (<0), try to get it from the parent node or the viewport.
+    float cb_height = containing_height;
+    if (cb_height < 0) {
+        // Walk up to the parent: if it has a definite height, use it
+        if (node.parent && node.parent->specified_height >= 0) {
+            cb_height = node.parent->specified_height;
+        } else if (!node.parent) {
+            // Root element: resolve against viewport height
+            cb_height = viewport_height_;
+        } else {
+            // Parent has auto height: percentage heights resolve to auto (0)
+            cb_height = 0;
+        }
+    }
+
+    // Resolve deferred calc/percent height
+    if (node.css_height.has_value()) {
+        float resolved = node.css_height->to_px(cb_height);
+        node.specified_height = resolved;
+    }
+
+    // Resolve deferred calc/percent min/max-height
+    if (node.css_min_height.has_value()) {
+        node.min_height = node.css_min_height->to_px(cb_height);
+    }
+    if (node.css_max_height.has_value()) {
+        node.max_height = node.css_max_height->to_px(cb_height);
+    }
+
+    // Resolve intrinsic sizing keywords: -2=min-content, -3=max-content, -4=fit-content
+    if (node.specified_height <= -2 && node.specified_height >= -4) {
+        int kw = static_cast<int>(node.specified_height);
+        const TextMeasureFn* mhp = text_measurer_ ? &text_measurer_ : nullptr;
+        float min_h = measure_intrinsic_height(node, false, mhp);
+        float max_h = measure_intrinsic_height(node, true, mhp);
+        if (kw == -2) {
+            node.specified_height = min_h;
+        } else if (kw == -3) {
+            node.specified_height = max_h;
+        } else { // -4 = fit-content
+            // For height, fit-content is essentially max-content since
+            // height doesn't have an "available space" constraint like width does
+            node.specified_height = max_h;
+        }
+    }
+
+    if (node.specified_height >= 0) {
+        float h = node.specified_height;
+        // border-box: specified height includes padding and border
+        // No adjustment needed — matches engine convention where geometry.height
+        // is the outer content dimension
+        h = std::max(h, node.min_height);
+        h = std::min(h, node.max_height);
+        return h;
+    }
+    return -1; // signal: compute from children
+}
+
+void LayoutEngine::layout_block(LayoutNode& node, float containing_width) {
+    if (node.display == DisplayType::None || node.mode == LayoutMode::None) {
+        node.geometry.width = 0;
+        node.geometry.height = 0;
+        return;
+    }
+
+    // contain: size (3) or strict (1) — use contain-intrinsic-size for auto dimensions
+    if (node.contain == 3 || node.contain == 1) {
+        if (node.specified_height < 0 && node.contain_intrinsic_height > 0) {
+            node.specified_height = node.contain_intrinsic_height;
+        }
+    }
+
+    // Resolve deferred percentage/calc margins against containing block width
+    // (CSS spec: percentage margins resolve against containing block's WIDTH, even for top/bottom)
+    if (node.css_margin_top.has_value())
+        node.geometry.margin.top = node.css_margin_top->to_px(containing_width);
+    if (node.css_margin_right.has_value())
+        node.geometry.margin.right = node.css_margin_right->to_px(containing_width);
+    if (node.css_margin_bottom.has_value())
+        node.geometry.margin.bottom = node.css_margin_bottom->to_px(containing_width);
+    if (node.css_margin_left.has_value())
+        node.geometry.margin.left = node.css_margin_left->to_px(containing_width);
+
+    // Resolve deferred percentage/calc padding against containing block width
+    if (node.css_padding_top.has_value())
+        node.geometry.padding.top = node.css_padding_top->to_px(containing_width);
+    if (node.css_padding_right.has_value())
+        node.geometry.padding.right = node.css_padding_right->to_px(containing_width);
+    if (node.css_padding_bottom.has_value())
+        node.geometry.padding.bottom = node.css_padding_bottom->to_px(containing_width);
+    if (node.css_padding_left.has_value())
+        node.geometry.padding.left = node.css_padding_left->to_px(containing_width);
+
+    // Compute width FIRST (resolves css_width percentage) — needed before auto margins
+    if (node.parent != nullptr) {
+        node.geometry.width = compute_width(node, containing_width);
+    }
+
+    // Resolve auto margins for centering (AFTER width is resolved)
+    bool auto_left = (node.geometry.margin.left < 0);
+    bool auto_right = (node.geometry.margin.right < 0);
+    if ((auto_left || auto_right) && node.specified_width >= 0) {
+        float remaining = containing_width - node.specified_width;
+        if (remaining < 0) remaining = 0;
+        if (auto_left && auto_right) {
+            node.geometry.margin.left = remaining / 2.0f;
+            node.geometry.margin.right = remaining / 2.0f;
+        } else if (auto_left) {
+            node.geometry.margin.left = remaining;
+        } else {
+            node.geometry.margin.right = remaining;
+        }
+    } else {
+        // Set any negative (auto) margins to 0
+        if (node.geometry.margin.left < 0) node.geometry.margin.left = 0;
+        if (node.geometry.margin.right < 0) node.geometry.margin.right = 0;
+    }
+
+    // Set x from left margin
+    if (node.parent != nullptr) {
+        node.geometry.x = node.geometry.margin.left;
+    }
+
+    // Content area width for children = width - padding - border
+    float content_w = node.geometry.width
+        - node.geometry.padding.left - node.geometry.padding.right
+        - node.geometry.border.left - node.geometry.border.right;
+    if (content_w < 0) content_w = 0;
+
+    // Determine children layout mode (skip absolute/fixed — they're out of flow)
+    bool has_inline_children = false;
+    bool has_block_children = false;
+    for (auto& child : node.children) {
+        if (child->display == DisplayType::None || child->mode == LayoutMode::None) continue;
+        if (child->position_type == 2 || child->position_type == 3) continue;
+        if (child->mode == LayoutMode::Inline || child->is_text) {
+            has_inline_children = true;
+        } else {
+            has_block_children = true;
+        }
+    }
+
+    float children_height = 0;
+
+    if (has_inline_children && !has_block_children) {
+        // Inline formatting context
+        position_inline_children(node, content_w);
+        // Compute children height from inline layout
+        for (auto& child : node.children) {
+            if (child->display == DisplayType::None || child->mode == LayoutMode::None) continue;
+            if (child->position_type == 2 || child->position_type == 3) continue;
+            float bottom = child->geometry.y + child->geometry.margin_box_height();
+            if (bottom > children_height) children_height = bottom;
+        }
+    } else {
+        // Block formatting context
+        position_block_children(node);
+        for (auto& child : node.children) {
+            if (child->display == DisplayType::None || child->mode == LayoutMode::None) continue;
+            if (child->position_type == 2 || child->position_type == 3) continue;
+            children_height += child->geometry.margin_box_height();
+        }
+    }
+
+    // Apply CSS multi-column layout (column-count)
+    if (node.column_count > 0 && content_w > 0 && children_height > 0) {
+        int ncols = node.column_count;
+        float gap = node.column_gap_val;
+        float col_w = (content_w - gap * static_cast<float>(ncols - 1)) / static_cast<float>(ncols);
+        if (col_w < 10) col_w = 10; // minimum column width
+
+        // Collect visible children
+        std::vector<LayoutNode*> visible_children;
+        for (auto& child : node.children) {
+            if (child->display == DisplayType::None || child->mode == LayoutMode::None) continue;
+            if (child->position_type == 2 || child->position_type == 3) continue;
+            visible_children.push_back(child.get());
+        }
+
+        // Calculate total height of non-spanning children for target
+        float non_span_height = 0;
+        for (auto* child : visible_children) {
+            if (child->column_span != 1) {
+                non_span_height += child->geometry.margin_box_height();
+            }
+        }
+
+        float target_col_h = non_span_height / static_cast<float>(ncols);
+        if (target_col_h < 20) target_col_h = non_span_height;
+
+        int current_col = 0;
+        float col_y = 0;
+        float max_col_h = 0;
+        float total_y = 0; // tracks overall y position for spanning elements
+
+        for (auto* child : visible_children) {
+            float child_h = child->geometry.margin_box_height();
+
+            // column-span: all — span full width, break out of column flow
+            if (child->column_span == 1) {
+                // Finalize current column segment
+                if (col_y > max_col_h) max_col_h = col_y;
+                total_y += max_col_h;
+
+                // Position spanning element at full width
+                child->geometry.x = child->geometry.margin.left;
+                child->geometry.y = total_y + child->geometry.margin.top;
+                child->geometry.width = content_w;
+
+                total_y += child_h;
+
+                // Reset column flow for content after spanning element
+                current_col = 0;
+                col_y = 0;
+                max_col_h = 0;
+                continue;
+            }
+
+            // break-before: column (value 4) — force a column break before this element
+            if (child->break_before == 4 && current_col < ncols - 1 && col_y > 0) {
+                if (col_y > max_col_h) max_col_h = col_y;
+                current_col++;
+                col_y = 0;
+            }
+
+            // Move to next column if this child would exceed target
+            if (col_y > 0 && col_y + child_h > target_col_h * 1.1f && current_col < ncols - 1) {
+                // orphans/widows check: estimate line count in this child
+                int min_orphans = (node.orphans > 0) ? node.orphans : 2;
+                int min_widows = (node.widows > 0) ? node.widows : 2;
+                float line_h = child->font_size * child->line_height;
+                if (line_h > 0 && child_h > line_h * 2) {
+                    // Approximate lines that fit before column break
+                    float remaining_space = target_col_h * 1.1f - col_y;
+                    int lines_before = static_cast<int>(remaining_space / line_h);
+                    int total_lines = static_cast<int>(child_h / line_h);
+                    int lines_after = total_lines - lines_before;
+                    // If splitting would leave too few orphans or widows, push to next column
+                    if (lines_before > 0 && lines_before < min_orphans) {
+                        // Too few lines at bottom of column — push whole element to next column
+                        if (col_y > max_col_h) max_col_h = col_y;
+                        current_col++;
+                        col_y = 0;
+                    } else if (lines_after > 0 && lines_after < min_widows) {
+                        // Too few lines would start next column — push to next column
+                        if (col_y > max_col_h) max_col_h = col_y;
+                        current_col++;
+                        col_y = 0;
+                    } else {
+                        if (col_y > max_col_h) max_col_h = col_y;
+                        current_col++;
+                        col_y = 0;
+                    }
+                } else {
+                    // break-inside: avoid — push entire element to next column instead of splitting
+                    if (col_y > max_col_h) max_col_h = col_y;
+                    current_col++;
+                    col_y = 0;
+                }
+            }
+
+            // Position child in current column
+            float col_x = static_cast<float>(current_col) * (col_w + gap);
+            child->geometry.x = col_x + child->geometry.margin.left;
+            child->geometry.y = total_y + col_y + child->geometry.margin.top;
+
+            // Constrain child width to column width
+            if (child->geometry.width > col_w) {
+                child->geometry.width = col_w - child->geometry.padding.left -
+                                        child->geometry.padding.right -
+                                        child->geometry.border.left -
+                                        child->geometry.border.right;
+                if (child->geometry.width < 0) child->geometry.width = 0;
+            }
+
+            col_y += child_h;
+        }
+        if (col_y > max_col_h) max_col_h = col_y;
+        total_y += max_col_h;
+        children_height = total_y;
+    }
+
+    // Apply line-clamp: limit children_height to N lines worth of text.
+    // When line_clamp > 0, compute how many lines the text would occupy if
+    // word-wrapped to fit content_w, then clamp both children_height and
+    // the text child's geometry.
+    if (node.line_clamp > 0 && has_inline_children && content_w > 0) {
+        for (auto& child : node.children) {
+            if (!child->is_text || child->text_content.empty()) continue;
+
+            float char_width = avg_char_width(child->font_size, child->font_family, child->font_weight,
+                                              child->font_italic, child->is_monospace, child->letter_spacing);
+            if (char_width <= 0) continue;
+            float single_line_h = child->font_size * child->line_height;
+            if (single_line_h <= 0) continue;
+
+            float text_width = measure_text(child->text_content, child->font_size, child->font_family,
+                                            child->font_weight, child->font_italic, child->letter_spacing);
+            if (text_width <= content_w) continue; // text fits on one line, no clamping needed
+
+            // Compute how many lines the text would naturally wrap to
+            int chars_per_line = std::max(1, static_cast<int>(content_w / char_width));
+            int total_lines = static_cast<int>(
+                (child->text_content.length() + static_cast<size_t>(chars_per_line) - 1)
+                / static_cast<size_t>(chars_per_line));
+
+            if (total_lines <= node.line_clamp) continue; // already within clamp
+
+            // Clamp: set the text child height to line_clamp lines
+            float clamped_h = single_line_h * static_cast<float>(node.line_clamp);
+            child->geometry.height = clamped_h;
+            child->geometry.width = std::min(text_width, content_w);
+
+            // Recompute children_height from the clamped children
+            children_height = 0;
+            for (auto& c : node.children) {
+                if (c->display == DisplayType::None || c->mode == LayoutMode::None) continue;
+                if (c->position_type == 2 || c->position_type == 3) continue;
+                float bottom = c->geometry.y + c->geometry.margin_box_height();
+                if (bottom > children_height) children_height = bottom;
+            }
+            break; // process only the first text child for line-clamp
+        }
+    }
+
+    // Compute height
+    float h = compute_height(node);
+    if (h < 0 && node.aspect_ratio > 0) {
+        // Aspect ratio: height = width / ratio
+        h = node.geometry.width / node.aspect_ratio;
+    }
+    if (h < 0) {
+        // Height from children + padding + border
+        h = children_height
+            + node.geometry.padding.top + node.geometry.padding.bottom
+            + node.geometry.border.top + node.geometry.border.bottom;
+    }
+    h = std::max(h, node.min_height);
+    h = std::min(h, node.max_height);
+    node.geometry.height = h;
+
+    // Position absolute/fixed children now that container dimensions are known
+    position_absolute_children(node);
+
+    // Note: apply_positioning is NOT called here.
+    // The caller (position_block_children, flex_layout) is responsible for
+    // calling apply_positioning after setting the child's position.
+}
+
+void LayoutEngine::layout_inline(LayoutNode& node, float containing_width) {
+    if (node.display == DisplayType::None || node.mode == LayoutMode::None) {
+        node.geometry.width = 0;
+        node.geometry.height = 0;
+        return;
+    }
+
+    if (node.is_text) {
+        // <wbr> elements are zero-width break opportunities — skip text measurement
+        if (node.is_wbr) {
+            node.geometry.width = 0;
+            node.geometry.height = 0;
+            return;
+        }
+        // Apply text-transform before measuring
+        if (node.text_transform == 2) { // uppercase
+            std::transform(node.text_content.begin(), node.text_content.end(),
+                           node.text_content.begin(),
+                           [](unsigned char c) { return static_cast<char>(std::toupper(c)); });
+        } else if (node.text_transform == 3) { // lowercase
+            std::transform(node.text_content.begin(), node.text_content.end(),
+                           node.text_content.begin(),
+                           [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        } else if (node.text_transform == 1) { // capitalize
+            bool cap_next = true;
+            for (size_t i = 0; i < node.text_content.size(); i++) {
+                if (node.text_content[i] == ' ') {
+                    cap_next = true;
+                } else if (cap_next) {
+                    node.text_content[i] = static_cast<char>(std::toupper(static_cast<unsigned char>(node.text_content[i])));
+                    cap_next = false;
+                }
+            }
+        }
+
+        // font-variant: small-caps — measure per-character width since
+        // originally-lowercase letters render at 80% font size while
+        // originally-uppercase letters render at 100%.
+        float effective_font_size = node.font_size;
+        if (node.font_variant == 1) {
+            // Compute a blended effective font size based on the ratio of
+            // lowercase vs uppercase characters in the original text.
+            int lower_count = 0;
+            int upper_count = 0;
+            for (char c : node.text_content) {
+                if (std::islower(static_cast<unsigned char>(c))) lower_count++;
+                else if (std::isupper(static_cast<unsigned char>(c))) upper_count++;
+            }
+            int total_alpha = lower_count + upper_count;
+            if (total_alpha > 0) {
+                float lower_ratio = static_cast<float>(lower_count) / static_cast<float>(total_alpha);
+                // Blend: lowercase chars use 80% size, uppercase use 100%
+                float blend = lower_ratio * 0.8f + (1.0f - lower_ratio) * 1.0f;
+                effective_font_size = node.font_size * blend;
+            }
+            // Transform text to uppercase for display (small-caps shows all caps)
+            std::transform(node.text_content.begin(), node.text_content.end(),
+                           node.text_content.begin(),
+                           [](unsigned char c) { return static_cast<char>(std::toupper(c)); });
+        }
+
+        float char_width = avg_char_width(effective_font_size, node.font_family, node.font_weight,
+                                          node.font_italic, node.is_monospace, node.letter_spacing);
+        float single_line_height = node.font_size * node.line_height;
+
+        if (node.white_space_pre || node.white_space == 4) {
+            // Pre-formatted or pre-line text: respect newlines
+            // white_space 2 (pre) and 3 (pre-wrap): preserve all whitespace and newlines
+            // white_space 4 (pre-line): spaces already collapsed, but newlines preserved
+            // For pre-formatted text, measure each line individually if measurer available
+            if (text_measurer_) {
+                float max_line_width = 0;
+                int line_count = 1;
+                std::string current_line;
+                for (char c : node.text_content) {
+                    if (c == '\n') {
+                        float lw = current_line.empty() ? 0.0f :
+                            measure_text(current_line, effective_font_size, node.font_family,
+                                         node.font_weight, node.font_italic, node.letter_spacing);
+                        if (node.word_spacing != 0) {
+                            for (char sc : current_line) {
+                                if (sc == ' ') lw += node.word_spacing;
+                            }
+                        }
+                        max_line_width = std::max(max_line_width, lw);
+                        current_line.clear();
+                        line_count++;
+                    } else if (c == '\t') {
+                        // Approximate tab as tab_size spaces
+                        for (int ti = 0; ti < node.tab_size; ti++) current_line += ' ';
+                    } else {
+                        current_line += c;
+                    }
+                }
+                if (!current_line.empty()) {
+                    float lw = measure_text(current_line, effective_font_size, node.font_family,
+                                            node.font_weight, node.font_italic, node.letter_spacing);
+                    if (node.word_spacing != 0) {
+                        for (char sc : current_line) {
+                            if (sc == ' ') lw += node.word_spacing;
+                        }
+                    }
+                    max_line_width = std::max(max_line_width, lw);
+                }
+                node.geometry.width = max_line_width;
+                node.geometry.height = single_line_height * static_cast<float>(line_count);
+            } else {
+                float max_line_width = 0;
+                int line_count = 1;
+                float current_line_width = 0;
+
+                for (char c : node.text_content) {
+                    if (c == '\n') {
+                        max_line_width = std::max(max_line_width, current_line_width);
+                        current_line_width = 0;
+                        line_count++;
+                    } else if (c == '\t') {
+                        current_line_width += (char_width + node.letter_spacing) * node.tab_size;
+                    } else {
+                        current_line_width += char_width + node.letter_spacing;
+                        if (c == ' ') {
+                            current_line_width += node.word_spacing;
+                        }
+                    }
+                }
+                max_line_width = std::max(max_line_width, current_line_width);
+
+                node.geometry.width = max_line_width;
+                node.geometry.height = single_line_height * static_cast<float>(line_count);
+            }
+        } else {
+            // Normal text: use real measurement or fallback
+            float text_width = measure_text(node.text_content, effective_font_size, node.font_family,
+                                            node.font_weight, node.font_italic, node.letter_spacing);
+            // Add word_spacing for each space character
+            if (node.word_spacing != 0) {
+                for (char c : node.text_content) {
+                    if (c == ' ') text_width += node.word_spacing;
+                }
+            }
+            node.geometry.width = text_width;
+            node.geometry.height = single_line_height;
+        }
+        return;
+    }
+
+    // Inline element with specified dimensions
+    if (node.specified_width >= 0) {
+        node.geometry.width = node.specified_width;
+    }
+    if (node.specified_height >= 0) {
+        node.geometry.height = node.specified_height;
+    }
+
+    // For inline container elements (span, em, strong, a, etc.) that have
+    // children but no explicit dimensions, compute width/height from children.
+    if (!node.children.empty() && node.specified_width < 0) {
+        float total_w = 0;
+        float max_h = 0;
+        for (auto& child : node.children) {
+            if (child->display == DisplayType::None || child->mode == LayoutMode::None)
+                continue;
+            layout_inline(*child, containing_width);
+            child->geometry.x = total_w;
+            child->geometry.y = 0;
+            total_w += child->geometry.margin_box_width();
+            max_h = std::max(max_h, child->geometry.margin_box_height());
+        }
+        if (node.geometry.width <= 0) node.geometry.width = total_w;
+        if (node.geometry.height <= 0) node.geometry.height = max_h;
+    }
+}
+
+void LayoutEngine::layout_flex(LayoutNode& node, float containing_width) {
+    if (node.display == DisplayType::None || node.mode == LayoutMode::None) {
+        node.geometry.width = 0;
+        node.geometry.height = 0;
+        return;
+    }
+
+    // Resolve deferred percentage margins/padding for the flex container
+    if (node.css_margin_top.has_value())
+        node.geometry.margin.top = node.css_margin_top->to_px(containing_width);
+    if (node.css_margin_right.has_value())
+        node.geometry.margin.right = node.css_margin_right->to_px(containing_width);
+    if (node.css_margin_bottom.has_value())
+        node.geometry.margin.bottom = node.css_margin_bottom->to_px(containing_width);
+    if (node.css_margin_left.has_value())
+        node.geometry.margin.left = node.css_margin_left->to_px(containing_width);
+    if (node.css_padding_top.has_value())
+        node.geometry.padding.top = node.css_padding_top->to_px(containing_width);
+    if (node.css_padding_right.has_value())
+        node.geometry.padding.right = node.css_padding_right->to_px(containing_width);
+    if (node.css_padding_bottom.has_value())
+        node.geometry.padding.bottom = node.css_padding_bottom->to_px(containing_width);
+    if (node.css_padding_left.has_value())
+        node.geometry.padding.left = node.css_padding_left->to_px(containing_width);
+    // Clear auto margins for flex containers (block-level flex uses auto margin centering)
+    if (node.geometry.margin.left < 0) node.geometry.margin.left = 0;
+    if (node.geometry.margin.right < 0) node.geometry.margin.right = 0;
+
+    // Compute width (non-root)
+    if (node.parent != nullptr) {
+        node.geometry.width = compute_width(node, containing_width);
+    }
+
+    flex_layout(node, node.geometry.width);
+}
+
+void LayoutEngine::layout_children(LayoutNode& node) {
+    float content_w = node.geometry.width
+        - node.geometry.padding.left - node.geometry.padding.right
+        - node.geometry.border.left - node.geometry.border.right;
+
+    for (auto& child : node.children) {
+        if (child->display == DisplayType::None || child->mode == LayoutMode::None) {
+            child->geometry.width = 0;
+            child->geometry.height = 0;
+            continue;
+        }
+        switch (child->mode) {
+            case LayoutMode::Block:
+            case LayoutMode::InlineBlock:
+                layout_block(*child, content_w);
+                break;
+            case LayoutMode::Inline:
+                layout_inline(*child, content_w);
+                break;
+            case LayoutMode::Flex:
+                layout_flex(*child, content_w);
+                break;
+            case LayoutMode::Grid:
+                layout_grid(*child, content_w);
+                break;
+            case LayoutMode::Table:
+                layout_table(*child, content_w);
+                break;
+            default:
+                layout_block(*child, content_w);
+                break;
+        }
+    }
+}
+
+void LayoutEngine::position_block_children(LayoutNode& node) {
+    float content_w = node.geometry.width
+        - node.geometry.padding.left - node.geometry.padding.right
+        - node.geometry.border.left - node.geometry.border.right;
+    if (content_w < 0) content_w = 0;
+
+    // Track active floats
+    struct FloatRegion {
+        float x, y, width, height;
+        int type; // 1=left, 2=right
+        int shape_type = 0; // 0=none, 1=circle, 2=ellipse, 3=inset
+        std::vector<float> shape_values;
+        float shape_margin = 0; // CSS shape-margin: extra space around shape
+    };
+    std::vector<FloatRegion> floats;
+
+    auto available_at_y = [&](float y, float h, float& left_offset, float& right_offset) {
+        left_offset = 0;
+        right_offset = 0;
+        for (auto& f : floats) {
+            if (y + h > f.y && y < f.y + f.height) {
+                float effective_width = f.width;
+
+                // Apply shape-outside if present
+                if (f.shape_type == 1 && !f.shape_values.empty()) {
+                    // circle(radius) — shape_values[0] = radius in px
+                    float radius = f.shape_values[0] + f.shape_margin;
+                    float cx = f.x + f.width / 2.0f;
+                    float cy = f.y + f.height / 2.0f;
+                    float mid_y = y + h / 2.0f;
+                    float dy = mid_y - cy;
+                    if (std::abs(dy) < radius) {
+                        float dx = std::sqrt(radius * radius - dy * dy);
+                        if (f.type == 1) {
+                            // Left float: exclusion extends from float left to cx + dx
+                            effective_width = (cx + dx) - f.x;
+                        } else {
+                            // Right float: exclusion from cx - dx to float right
+                            effective_width = (f.x + f.width) - (cx - dx);
+                        }
+                    } else {
+                        effective_width = 0; // Outside circle, no exclusion
+                    }
+                } else if (f.shape_type == 2 && f.shape_values.size() >= 2) {
+                    // ellipse(rx ry) — shape_values[0]=rx, [1]=ry
+                    float rx = f.shape_values[0] + f.shape_margin;
+                    float ry = f.shape_values[1] + f.shape_margin;
+                    float cx = f.x + f.width / 2.0f;
+                    float cy = f.y + f.height / 2.0f;
+                    float mid_y = y + h / 2.0f;
+                    float dy = mid_y - cy;
+                    if (ry > 0 && std::abs(dy) < ry) {
+                        float t = dy / ry;
+                        float dx = rx * std::sqrt(1.0f - t * t);
+                        if (f.type == 1) {
+                            effective_width = (cx + dx) - f.x;
+                        } else {
+                            effective_width = (f.x + f.width) - (cx - dx);
+                        }
+                    } else {
+                        effective_width = 0;
+                    }
+                } else if (f.shape_type == 3 && f.shape_values.size() >= 4) {
+                    // inset(top right bottom left) — shape_values[0-3]
+                    // shape-margin expands the shape (reduces insets)
+                    float sm = f.shape_margin;
+                    float inset_top = std::max(0.0f, f.shape_values[0] - sm);
+                    float inset_right = std::max(0.0f, f.shape_values[1] - sm);
+                    float inset_bottom = std::max(0.0f, f.shape_values[2] - sm);
+                    float inset_left = std::max(0.0f, f.shape_values[3] - sm);
+                    float shape_top = f.y + inset_top;
+                    float shape_bottom = f.y + f.height - inset_bottom;
+                    float mid_y = y + h / 2.0f;
+                    if (mid_y >= shape_top && mid_y <= shape_bottom) {
+                        effective_width = f.width - inset_left - inset_right;
+                    } else {
+                        effective_width = 0;
+                    }
+                }
+
+                if (effective_width > 0) {
+                    if (f.type == 1) left_offset = std::max(left_offset, f.x + effective_width);
+                    if (f.type == 2) right_offset = std::max(right_offset, content_w - (f.x + f.width - effective_width));
+                }
+            }
+        }
+    };
+
+    float cursor_y = 0;
+    float prev_margin_bottom = 0; // Track previous sibling's bottom margin for collapsing
+    bool first_child = true;
+    for (auto& child : node.children) {
+        if (child->display == DisplayType::None || child->mode == LayoutMode::None) {
+            child->geometry.width = 0;
+            child->geometry.height = 0;
+            continue;
+        }
+
+        // Skip absolute/fixed from normal flow — they are positioned separately
+        if (child->position_type == 2 || child->position_type == 3) {
+            continue;
+        }
+
+        // Handle clear property
+        if (child->clear_type != 0) {
+            float clear_y = cursor_y;
+            for (auto& f : floats) {
+                bool applies = (child->clear_type == 3) ||
+                               (child->clear_type == 1 && f.type == 1) ||
+                               (child->clear_type == 2 && f.type == 2);
+                if (applies) {
+                    clear_y = std::max(clear_y, f.y + f.height);
+                }
+            }
+            cursor_y = clear_y;
+        }
+
+        // Determine available width considering floats
+        float left_off = 0, right_off = 0;
+        available_at_y(cursor_y, 20, left_off, right_off); // estimate 20px height
+        float avail_w = content_w - left_off - right_off;
+        if (avail_w < 0) avail_w = content_w;
+
+        // Layout child
+        float layout_width = (child->float_type != 0) ? avail_w : content_w;
+        switch (child->mode) {
+            case LayoutMode::Block:
+                layout_block(*child, layout_width);
+                break;
+            case LayoutMode::InlineBlock:
+                // Inline-block shrink-wraps to content unless explicit width
+                if (child->specified_width >= 0) {
+                    child->geometry.width = child->specified_width;
+                    layout_block(*child, child->specified_width);
+                } else {
+                    layout_block(*child, layout_width);
+                    // Shrink-wrap width to content
+                    float max_cw = 0;
+                    for (auto& gc : child->children) {
+                        if (gc->display == DisplayType::None || gc->mode == LayoutMode::None) continue;
+                        float w = gc->geometry.x + gc->geometry.margin_box_width();
+                        max_cw = std::max(max_cw, w);
+                    }
+                    child->geometry.width = max_cw
+                        + child->geometry.padding.left + child->geometry.padding.right
+                        + child->geometry.border.left + child->geometry.border.right;
+                }
+                break;
+            case LayoutMode::Inline:
+                layout_inline(*child, layout_width);
+                break;
+            case LayoutMode::Flex:
+                layout_flex(*child, layout_width);
+                break;
+            case LayoutMode::Grid:
+                layout_grid(*child, layout_width);
+                break;
+            case LayoutMode::Table:
+                layout_table(*child, layout_width);
+                break;
+            default:
+                layout_block(*child, layout_width);
+                break;
+        }
+
+        if (child->float_type != 0) {
+            // Float element — position beside existing floats
+            float child_w = child->geometry.margin_box_width();
+            float child_h = child->geometry.margin_box_height();
+
+            if (child->float_type == 1) {
+                child->geometry.x = left_off + child->geometry.margin.left;
+            } else {
+                child->geometry.x = content_w - right_off - child_w + child->geometry.margin.left;
+            }
+            child->geometry.y = cursor_y + child->geometry.margin.top;
+
+            floats.push_back({
+                child->geometry.x,
+                cursor_y,
+                child_w,
+                child_h,
+                child->float_type,
+                child->shape_outside_type,
+                child->shape_outside_values,
+                child->shape_margin
+            });
+            // Floats don't advance cursor_y
+        } else {
+            // Normal flow — position after considering floats
+            available_at_y(cursor_y, child->geometry.margin_box_height(), left_off, right_off);
+            child->geometry.x = left_off + child->geometry.margin.left;
+
+            // CSS margin collapsing: adjacent block-level margins collapse
+            // The collapsed margin = max(prev_bottom_margin, curr_top_margin)
+            // instead of prev_bottom + curr_top
+            float top_margin = child->geometry.margin.top;
+            if (!first_child && top_margin > 0 && prev_margin_bottom > 0) {
+                // Collapse: use max instead of sum
+                float collapsed = std::max(prev_margin_bottom, top_margin);
+                // cursor_y already includes prev_margin_bottom, so adjust
+                cursor_y -= prev_margin_bottom;
+                child->geometry.y = cursor_y + collapsed;
+            } else {
+                child->geometry.y = cursor_y + top_margin;
+            }
+            cursor_y = child->geometry.y + child->geometry.border_box_height() + child->geometry.margin.bottom;
+            prev_margin_bottom = child->geometry.margin.bottom;
+            first_child = false;
+        }
+
+        apply_positioning(*child);
+    }
+}
+
+void LayoutEngine::position_inline_children(LayoutNode& node, float containing_width) {
+    float cursor_x = 0;
+    float cursor_y = 0;
+    float line_height = 0;
+
+    // Track line start indices for text-align adjustment
+    struct LineInfo {
+        size_t start_idx;
+        size_t end_idx;
+        float width;
+        float y;
+    };
+    std::vector<LineInfo> lines;
+    size_t line_start = 0;
+
+    // Collect non-hidden, in-flow children indices
+    std::vector<size_t> visible;
+    for (size_t i = 0; i < node.children.size(); i++) {
+        auto& child = node.children[i];
+        if (child->display == DisplayType::None || child->mode == LayoutMode::None) {
+            child->geometry.width = 0;
+            child->geometry.height = 0;
+            continue;
+        }
+        if (child->position_type == 2 || child->position_type == 3) continue;
+        visible.push_back(i);
+    }
+
+    // Apply text-indent to first line
+    if (node.text_indent != 0) {
+        cursor_x = node.text_indent;
+    }
+
+    // -----------------------------------------------------------------------
+    // Flattened inline wrapping: when inline container elements (span, strong,
+    // em, a, etc.) contain text, flatten all children into a continuous stream
+    // of word runs so that text wraps naturally across inline element boundaries.
+    //
+    // Example: <p>Hello <strong>world this is long</strong> end</p>
+    // Instead of wrapping the entire <strong> as one box, we extract individual
+    // words and wrap them in a single shared line-breaking context.
+    // -----------------------------------------------------------------------
+
+    // Helper: check if an inline element is a "simple inline container"
+    // (contains only text children or nested simple inline containers,
+    //  no specified dimensions, no special features that need box-level layout)
+    auto is_simple_inline_container = [](const LayoutNode& n) -> bool {
+        // Must be an inline element (not text, not InlineBlock, not a replaced element)
+        if (n.is_text) return false;
+        if (n.display == DisplayType::InlineBlock) return false;
+        if (n.mode != LayoutMode::Inline) return false;
+        if (n.specified_width >= 0 || n.specified_height >= 0) return false;
+        if (n.float_type != 0) return false;
+        if (n.is_svg || n.is_canvas || n.is_iframe) return false;
+        if (n.children.empty()) return false;
+        // Check that all children are either text or simple inline containers
+        for (auto& c : n.children) {
+            if (c->is_text) continue;
+            if (c->display == DisplayType::InlineBlock) return false;
+            if (c->mode != LayoutMode::Inline) return false;
+            if (c->specified_width >= 0 || c->specified_height >= 0) return false;
+        }
+        return true;
+    };
+
+    // Check if flattened inline wrapping should be used:
+    // - wrapping is not suppressed
+    // - at least one visible child is a simple inline container with text
+    // - containing_width > 0
+    bool nowrap_parent = (node.white_space == 1 || node.white_space == 2);
+    bool has_inline_container = false;
+    if (!nowrap_parent && containing_width > 0) {
+        for (size_t vi = 0; vi < visible.size(); vi++) {
+            auto& child = node.children[visible[vi]];
+            if (is_simple_inline_container(*child)) {
+                has_inline_container = true;
+                break;
+            }
+        }
+    }
+
+    if (has_inline_container) {
+        // --- Flattened inline wrapping path ---
+        //
+        // Collect all inline children into a flat list of word runs.
+        // Each run is either a word (with styling from its originating element)
+        // or a non-text element that we treat as a single box.
+
+        struct WordRun {
+            std::string word;        // word text (empty for non-text box runs)
+            float width;             // measured or specified width
+            float height;            // line height for text, box height for elements
+            size_t child_vi;         // index into visible[]
+            bool is_space;           // true if this is a word separator space
+            bool is_box;             // true if this is a non-flattenable element
+            float font_size;         // for line height computation
+            float line_ht_mult;      // line_height multiplier
+        };
+        std::vector<WordRun> runs;
+
+        // Recursive helper: extract word runs from a node and its children.
+        // `child_vi` is the top-level visible child index that owns these runs.
+        std::function<void(LayoutNode&, size_t)> extract_runs;
+        extract_runs = [&](LayoutNode& n, size_t child_vi) {
+            if (n.is_text && !n.text_content.empty()) {
+                // Split text into words
+                const std::string& text = n.text_content;
+                float fs = n.font_size;
+                float lh = n.line_height;
+
+                // Handle newlines: treat \n as a line break
+                size_t start = 0;
+                while (start < text.size()) {
+                    if (text[start] == '\n') {
+                        // Newline: push a special "line break" run
+                        WordRun br;
+                        br.word = "\n";
+                        br.width = 0;
+                        br.height = fs * lh;
+                        br.child_vi = child_vi;
+                        br.is_space = false;
+                        br.is_box = false;
+                        br.font_size = fs;
+                        br.line_ht_mult = lh;
+                        runs.push_back(br);
+                        start++;
+                        continue;
+                    }
+
+                    size_t sp = text.find_first_of(" \n", start);
+                    if (sp == std::string::npos) sp = text.size();
+                    std::string word = text.substr(start, sp - start);
+                    if (!word.empty()) {
+                        float word_w = measure_text(word, fs, n.font_family,
+                                                    n.font_weight, n.font_italic, n.letter_spacing);
+                        WordRun wr;
+                        wr.word = word;
+                        wr.width = word_w;
+                        wr.height = fs * lh;
+                        wr.child_vi = child_vi;
+                        wr.is_space = false;
+                        wr.is_box = false;
+                        wr.font_size = fs;
+                        wr.line_ht_mult = lh;
+                        runs.push_back(wr);
+                    }
+                    if (sp < text.size() && text[sp] == ' ') {
+                        float space_w = measure_text(" ", fs, n.font_family,
+                                                     n.font_weight, n.font_italic, n.letter_spacing);
+                        WordRun sr;
+                        sr.word = " ";
+                        sr.width = space_w;
+                        sr.height = fs * lh;
+                        sr.child_vi = child_vi;
+                        sr.is_space = true;
+                        sr.is_box = false;
+                        sr.font_size = fs;
+                        sr.line_ht_mult = lh;
+                        runs.push_back(sr);
+                        sp++;
+                    }
+                    start = sp;
+                }
+                return;
+            }
+
+            // Non-text inline element: recurse into children
+            for (auto& c : n.children) {
+                if (c->display == DisplayType::None || c->mode == LayoutMode::None) continue;
+                extract_runs(*c, child_vi);
+            }
+        };
+
+        for (size_t vi = 0; vi < visible.size(); vi++) {
+            auto& child = node.children[visible[vi]];
+
+            if (child->is_text || is_simple_inline_container(*child)) {
+                // Layout inline to apply text transforms etc.
+                layout_inline(*child, containing_width);
+                // Extract word runs
+                extract_runs(*child, vi);
+            } else {
+                // Non-flattenable element: treat as a single box
+                layout_inline(*child, containing_width);
+                WordRun br;
+                br.word = "";
+                br.width = child->geometry.margin_box_width();
+                br.height = child->geometry.margin_box_height();
+                br.child_vi = vi;
+                br.is_space = false;
+                br.is_box = true;
+                br.font_size = child->font_size;
+                br.line_ht_mult = child->line_height;
+                runs.push_back(br);
+            }
+        }
+
+        // Now perform word-level wrapping across all runs.
+        // Track per-child: first line y, max x extent, number of lines spanned.
+        struct ChildPlacement {
+            float first_x = -1;     // x position of first run on first line
+            float first_y = -1;     // y position of first line
+            float max_x = 0;        // maximum x extent reached
+            float min_x = 1e9f;     // minimum x position (for width calculation)
+            float last_y = -1;      // y position of last line
+            float max_line_h = 0;   // maximum line height
+            int line_count = 0;     // number of lines this child spans
+            bool placed = false;
+        };
+        std::vector<ChildPlacement> placements(visible.size());
+
+        // text-wrap: balance — narrow effective_width to distribute lines evenly.
+        // Uses the same binary-search approach as the pure-text-node path (Path B).
+        float effective_cw = containing_width;
+        if (node.text_wrap == 2 && !runs.empty()) {
+            // Compute total text width
+            float total_run_w = 0;
+            for (auto& r : runs) {
+                if (r.word != "\n") total_run_w += r.width;
+            }
+            if (total_run_w > containing_width) {
+                // Count lines at a given width using greedy wrapping
+                auto count_lines = [&](float w) -> int {
+                    int lines_c = 1;
+                    float lc = cursor_x;
+                    for (auto& r : runs) {
+                        if (r.word == "\n") { lines_c++; lc = 0; continue; }
+                        if (r.is_space && lc == 0) continue;
+                        if (lc > 0 && lc + r.width > w && !r.is_space) {
+                            lines_c++; lc = 0;
+                            if (r.is_space) continue;
+                        }
+                        lc += r.width;
+                    }
+                    return lines_c;
+                };
+                int greedy_lines = count_lines(containing_width);
+                if (greedy_lines > 1) {
+                    float lo = total_run_w / static_cast<float>(greedy_lines);
+                    float hi = containing_width;
+                    for (int iter = 0; iter < 20; iter++) {
+                        float mid = (lo + hi) / 2.0f;
+                        if (count_lines(mid) <= greedy_lines) hi = mid;
+                        else lo = mid;
+                    }
+                    effective_cw = hi;
+                    if (effective_cw > containing_width) effective_cw = containing_width;
+                }
+            }
+        }
+
+        float cx = cursor_x;
+        float cy = cursor_y;
+        float lh_cur = 0;
+        size_t run_line_start = 0;
+
+        for (size_t ri = 0; ri < runs.size(); ri++) {
+            auto& run = runs[ri];
+
+            // Handle line break runs
+            if (run.word == "\n") {
+                lines.push_back({run_line_start, visible.size(), cx, cy}); // approximate
+                cx = 0;
+                cy += std::max(lh_cur, run.height);
+                lh_cur = 0;
+                continue;
+            }
+
+            // Skip leading spaces at start of line
+            if (run.is_space && cx == 0) continue;
+
+            // Check if this run fits on the current line (use effective_cw for balance)
+            if (cx > 0 && cx + run.width > effective_cw && !run.is_space) {
+                // Wrap to next line
+                cx = 0;
+                cy += lh_cur;
+                lh_cur = 0;
+                // Skip spaces at start of new line
+                if (run.is_space) continue;
+            }
+
+            // Place the run
+            auto& pl = placements[run.child_vi];
+            if (!pl.placed) {
+                pl.first_x = cx;
+                pl.first_y = cy;
+                pl.last_y = cy;
+                pl.min_x = cx;
+                pl.line_count = 1;
+                pl.placed = true;
+            }
+            if (cy > pl.last_y) {
+                pl.line_count++;
+                pl.last_y = cy;
+            }
+            pl.min_x = std::min(pl.min_x, cx);
+            pl.max_x = std::max(pl.max_x, cx + run.width);
+            pl.max_line_h = std::max(pl.max_line_h, run.height);
+
+            cx += run.width;
+            lh_cur = std::max(lh_cur, run.height);
+        }
+
+        // Assign geometry back to each child based on placements
+        for (size_t vi = 0; vi < visible.size(); vi++) {
+            auto& child = node.children[visible[vi]];
+            auto& pl = placements[vi];
+
+            if (!pl.placed) {
+                child->geometry.x = 0;
+                child->geometry.y = 0;
+                child->geometry.width = 0;
+                child->geometry.height = 0;
+                continue;
+            }
+
+            child->geometry.x = pl.first_x;
+            child->geometry.y = pl.first_y;
+
+            if (pl.line_count > 1) {
+                // Element spans multiple lines:
+                // Width = containing_width (it covers the full line on wrapped lines)
+                // Height = number of lines * line height
+                child->geometry.width = std::max(pl.max_x - pl.min_x, containing_width - pl.first_x);
+                child->geometry.height = pl.max_line_h * static_cast<float>(pl.line_count);
+            } else {
+                // Single line: width = extent of its runs
+                child->geometry.width = pl.max_x - pl.first_x;
+                child->geometry.height = pl.max_line_h;
+            }
+
+            // For inline container children, position their sub-children relatively
+            if (is_simple_inline_container(*child)) {
+                // Recompute child text nodes' positions relative to the container
+                float sub_x = 0;
+                for (auto& sub : child->children) {
+                    if (sub->display == DisplayType::None || sub->mode == LayoutMode::None) continue;
+                    sub->geometry.x = sub_x;
+                    sub->geometry.y = 0;
+                    sub_x += sub->geometry.margin_box_width();
+                }
+            }
+
+            apply_positioning(*child);
+        }
+
+        // Update final cursor position for container height calculation
+        cursor_y = cy;
+        line_height = lh_cur;
+
+        // Record line info for text-align (simplified: treat as single line group)
+        if (!visible.empty()) {
+            lines.push_back({0, visible.size(), cx, cy});
+        }
+
+    } else {
+    // --- Original (non-flattened) inline wrapping path ---
+    // Used when there are no inline container elements with text,
+    // or when wrapping is suppressed.
+
+    for (size_t vi = 0; vi < visible.size(); vi++) {
+        auto& child = node.children[visible[vi]];
+
+        // Layout child — InlineBlock uses block model internally but participates inline
+        if (child->mode == LayoutMode::InlineBlock) {
+            // Shrink-wrap: use specified width or compute from content
+            if (child->specified_width >= 0) {
+                child->geometry.width = child->specified_width;
+            }
+            layout_block(*child, child->specified_width >= 0 ? child->specified_width : containing_width);
+            // Shrink-wrap width to content if no explicit width
+            if (child->specified_width < 0) {
+                float max_child_w = 0;
+                for (auto& gc : child->children) {
+                    if (gc->display == DisplayType::None || gc->mode == LayoutMode::None) continue;
+                    float w = gc->geometry.margin_box_width();
+                    max_child_w = std::max(max_child_w, gc->geometry.x + w);
+                }
+                child->geometry.width = max_child_w
+                    + child->geometry.padding.left + child->geometry.padding.right
+                    + child->geometry.border.left + child->geometry.border.right;
+            }
+        } else {
+            layout_inline(*child, containing_width);
+        }
+
+        float child_width = child->geometry.margin_box_width();
+        float child_height = child->geometry.margin_box_height();
+
+        // word-break: break-all (1) breaks at ANY character boundary unconditionally.
+        // overflow-wrap: break-word (1) / anywhere (2) only breaks mid-word when
+        // a single word doesn't fit — it should use word-boundary wrapping first,
+        // falling back to character-level breaks only for overlong words.
+        // The word-boundary wrapping path (below) already handles breaking long
+        // words via its count_lines_at_width lambda, so overflow-wrap text
+        // correctly enters that path rather than the character-level path.
+        bool can_break_word = (child->word_break == 1);
+
+        // word-break: keep-all (value 2) prevents ALL word breaking — text
+        // stays on a single line unless explicit line breaks exist (like nowrap
+        // for word-breaking purposes). This suppresses both word-boundary and
+        // character-level breaking.
+        bool keep_all = (child->word_break == 2);
+
+        // Determine if wrapping is suppressed by white-space on the parent node.
+        // white_space: 0=normal (wrap), 1=nowrap (no wrap), 2=pre (no wrap),
+        //              3=pre-wrap (wrap), 4=pre-line (wrap), 5=break-spaces (wrap)
+        bool nowrap = (node.white_space == 1 || node.white_space == 2 || keep_all);
+
+        // Check wrapping (skip if nowrap or pre — no line wrapping allowed)
+        if (!nowrap && cursor_x > 0 && cursor_x + child_width > containing_width) {
+            // If this is a text node that can break mid-word, try to fit
+            // partial characters on current line first, then wrap the rest
+            if (can_break_word && child->is_text && !child->text_content.empty()) {
+                float char_w = avg_char_width(child->font_size, child->font_family, child->font_weight,
+                                              child->font_italic, child->is_monospace, child->letter_spacing);
+                float avail = containing_width - cursor_x;
+                int chars_on_line = static_cast<int>(avail / char_w);
+                if (chars_on_line <= 0) {
+                    // No room on current line, wrap to next line
+                    lines.push_back({line_start, vi, cursor_x, cursor_y});
+                    line_start = vi;
+                    cursor_x = 0;
+                    cursor_y += line_height;
+                    line_height = 0;
+                }
+            } else {
+                lines.push_back({line_start, vi, cursor_x, cursor_y});
+                line_start = vi;
+                cursor_x = 0;
+                cursor_y += line_height;
+                line_height = 0;
+            }
+        }
+
+        // If this is a text node with word-breaking enabled and it's still too wide
+        // for the containing width, re-layout it to wrap character-by-character
+        // (skip if nowrap — no wrapping allowed)
+        if (!nowrap && can_break_word && child->is_text && !child->text_content.empty()) {
+            float char_w = avg_char_width(child->font_size, child->font_family, child->font_weight,
+                                          child->font_italic, child->is_monospace, child->letter_spacing);
+            float single_line_h = child->font_size * child->line_height;
+            float total_text_width = measure_text(child->text_content, child->font_size, child->font_family,
+                                                  child->font_weight, child->font_italic, child->letter_spacing);
+            float avail_first_line = containing_width - cursor_x;
+
+            if (total_text_width > avail_first_line) {
+                // Text needs to wrap across multiple lines
+                int chars_first = std::max(1, static_cast<int>(avail_first_line / char_w));
+                int remaining = static_cast<int>(child->text_content.length()) - chars_first;
+                int chars_per_full_line = std::max(1, static_cast<int>(containing_width / char_w));
+
+                int extra_lines = 0;
+                if (remaining > 0) {
+                    extra_lines = (remaining + chars_per_full_line - 1) / chars_per_full_line;
+                }
+
+                int total_lines = 1 + extra_lines;
+                child->geometry.width = std::min(total_text_width, containing_width);
+                child->geometry.height = single_line_h * static_cast<float>(total_lines);
+                child_width = child->geometry.width;
+                child_height = child->geometry.height;
+            }
+        }
+
+        // For normal text (word-break: normal), wrap at word boundaries when
+        // the text node is wider than the available containing width.
+        // text_wrap: 1 = nowrap (skip wrapping entirely)
+        // text_wrap: 2 = balance (use narrower target width for even lines)
+        // Also skip if white-space prevents wrapping (nowrap, pre)
+        if (!nowrap && !can_break_word && child->is_text && !child->text_content.empty() &&
+            containing_width > 0 && child->text_wrap != 1) {
+            float char_w = avg_char_width(child->font_size, child->font_family, child->font_weight,
+                                          child->font_italic, child->is_monospace, child->letter_spacing);
+            float single_line_h = child->font_size * child->line_height;
+            float total_text_width = measure_text(child->text_content, child->font_size, child->font_family,
+                                                  child->font_weight, child->font_italic, child->letter_spacing);
+
+            // Split text into words (used by both greedy and balanced paths)
+            const std::string& text = child->text_content;
+            std::vector<std::string> words;
+            {
+                size_t start = 0;
+                while (start < text.size()) {
+                    size_t sp = text.find(' ', start);
+                    if (sp == std::string::npos) {
+                        words.push_back(text.substr(start));
+                        break;
+                    }
+                    words.push_back(text.substr(start, sp - start));
+                    start = sp + 1;
+                }
+            }
+
+            // Lambda: count how many lines the words take at a given width
+            auto count_lines_at_width = [&](float w) -> int {
+                int lines = 1;
+                float lc = cursor_x;
+                for (size_t wi = 0; wi < words.size(); wi++) {
+                    float word_w = static_cast<float>(words[wi].length()) * char_w;
+                    if (word_w > w && words[wi].length() > 1) {
+                        float avail = w - lc;
+                        int cf = std::max(1, static_cast<int>(avail / char_w));
+                        int rem = static_cast<int>(words[wi].length()) - cf;
+                        int cpf = std::max(1, static_cast<int>(w / char_w));
+                        if (rem > 0) lines += (rem + cpf - 1) / cpf;
+                        int llc = rem % cpf;
+                        lc = (llc == 0 && rem > 0) ? w : static_cast<float>(llc) * char_w;
+                    } else {
+                        if (lc + word_w > w && lc > 0) {
+                            lines++;
+                            lc = 0;
+                        }
+                        lc += word_w;
+                    }
+                    if (wi + 1 < words.size()) lc += char_w;
+                }
+                return lines;
+            };
+
+            // For text-wrap: balance, use binary search to find the narrowest
+            // width that produces the same number of lines as greedy wrapping.
+            float effective_width = containing_width;
+            if (child->text_wrap == 2 && total_text_width > containing_width) {
+                int greedy_lines = count_lines_at_width(containing_width);
+                if (greedy_lines > 1) {
+                    // Binary search: find minimum width in [ideal, containing_width]
+                    // that still yields greedy_lines lines.
+                    float lo = total_text_width / static_cast<float>(greedy_lines);
+                    float hi = containing_width;
+                    // Ensure lo is at least char_w
+                    if (lo < char_w) lo = char_w;
+                    for (int iter = 0; iter < 20; iter++) {
+                        float mid = (lo + hi) / 2.0f;
+                        if (count_lines_at_width(mid) <= greedy_lines) {
+                            hi = mid;
+                        } else {
+                            lo = mid;
+                        }
+                    }
+                    effective_width = hi;
+                    if (effective_width > containing_width) effective_width = containing_width;
+                }
+            }
+
+            // For text-wrap: pretty, avoid orphans (short last lines).
+            // If the last line is < 25% of container width, try a slightly narrower
+            // effective width that pulls a word from the previous line down.
+            if (child->text_wrap == 3 && total_text_width > containing_width) {
+                int greedy_lines = count_lines_at_width(containing_width);
+                if (greedy_lines >= 2) {
+                    // Estimate last line width by simulating greedy wrapping
+                    float last_line_w = 0;
+                    {
+                        float lc = cursor_x;
+                        for (size_t wi = 0; wi < words.size(); wi++) {
+                            float word_w = static_cast<float>(words[wi].length()) * char_w;
+                            if (lc + word_w > containing_width && lc > 0) {
+                                lc = 0;
+                            }
+                            lc += word_w;
+                            if (wi + 1 < words.size()) lc += char_w;
+                        }
+                        last_line_w = lc;
+                    }
+                    // If last line is less than 25% of container width, try to
+                    // redistribute by narrowing the effective width slightly.
+                    // This pushes a word from the penultimate line to the last line.
+                    if (last_line_w < containing_width * 0.25f && last_line_w > 0) {
+                        // Binary search: find narrowest width that keeps same line count
+                        // but allows one more line (greedy_lines + 1) to redistribute.
+                        float lo = total_text_width / static_cast<float>(greedy_lines + 1);
+                        float hi = containing_width;
+                        if (lo < char_w) lo = char_w;
+                        for (int iter = 0; iter < 20; iter++) {
+                            float mid = (lo + hi) / 2.0f;
+                            if (count_lines_at_width(mid) <= greedy_lines) {
+                                hi = mid;
+                            } else {
+                                lo = mid;
+                            }
+                        }
+                        // Only use narrower width if it doesn't increase line count
+                        if (count_lines_at_width(hi) <= greedy_lines) {
+                            effective_width = hi;
+                            if (effective_width > containing_width) effective_width = containing_width;
+                        }
+                    }
+                }
+            }
+
+            if (total_text_width > effective_width) {
+                int total_lines = count_lines_at_width(effective_width);
+
+                child->geometry.width = std::min(total_text_width, effective_width);
+                child->geometry.height = single_line_h * static_cast<float>(total_lines);
+                child_width = child->geometry.width;
+                child_height = child->geometry.height;
+            }
+        }
+
+        // For pre-wrap (white_space 3) and break-spaces (white_space 5) text:
+        // account for word wrapping within each sub-line between \n characters.
+        // The layout_inline() already computed dimensions for \n splits, but
+        // sub-lines may also need to wrap at the container edge.
+        // break-spaces is like pre-wrap but trailing spaces are not hung
+        // (they contribute to line width and can cause wrapping).
+        if ((node.white_space == 3 || node.white_space == 5) &&
+            child->is_text && !child->text_content.empty() &&
+            containing_width > 0) {
+            float char_w = avg_char_width(child->font_size, child->font_family, child->font_weight,
+                                          child->font_italic, child->is_monospace, child->letter_spacing);
+            float single_line_h = child->font_size * child->line_height;
+            if (char_w > 0 && single_line_h > 0) {
+                // Split on newlines, count wrapped lines for each sub-line
+                int total_lines = 0;
+                float max_w = 0;
+                const std::string& text = child->text_content;
+                size_t pos = 0;
+                while (pos <= text.size()) {
+                    size_t nl = text.find('\n', pos);
+                    if (nl == std::string::npos) nl = text.size();
+                    size_t sub_len = nl - pos;
+                    float sub_width = 0;
+                    for (size_t i = pos; i < nl; i++) {
+                        if (text[i] == '\t')
+                            sub_width += (char_w) * child->tab_size;
+                        else
+                            sub_width += char_w;
+                    }
+                    if (sub_width > containing_width) {
+                        int chars_per_line = std::max(1, static_cast<int>(containing_width / char_w));
+                        int sub_lines = (static_cast<int>(sub_len) + chars_per_line - 1) / chars_per_line;
+                        if (sub_lines < 1) sub_lines = 1;
+                        total_lines += sub_lines;
+                        max_w = std::max(max_w, containing_width);
+                    } else {
+                        total_lines += 1;
+                        max_w = std::max(max_w, sub_width);
+                    }
+                    pos = nl + 1;
+                    if (nl == text.size()) break;
+                }
+                child->geometry.width = max_w;
+                child->geometry.height = single_line_h * static_cast<float>(total_lines);
+                child_width = child->geometry.width;
+                child_height = child->geometry.height;
+            }
+        }
+
+        child->geometry.x = cursor_x;
+        child->geometry.y = cursor_y;
+
+        cursor_x += child_width;
+        line_height = std::max(line_height, child_height);
+
+        apply_positioning(*child);
+    }
+    } // end else (non-flattened path)
+
+    // Record last line
+    if (line_start < visible.size()) {
+        lines.push_back({line_start, visible.size(), cursor_x, cursor_y});
+    }
+
+    // Apply text-align adjustment (including text-align-last for final line)
+    if ((node.text_align != 0 || node.text_align_last != 0) && containing_width > 0) {
+        for (size_t li = 0; li < lines.size(); li++) {
+            auto& line = lines[li];
+            float extra = containing_width - line.width;
+            if (extra <= 0) continue;
+
+            bool is_last_line = (li == lines.size() - 1);
+
+            // Determine effective alignment for this line.
+            // text_align_last: 0=auto, 1=left/start, 2=right/end, 3=center, 4=justify
+            // For the last line, text_align_last overrides text_align when non-auto.
+            int eff_align = node.text_align; // 0=left, 1=center, 2=right, 3=justify
+            if (is_last_line && node.text_align_last != 0) {
+                // Map text_align_last values to the text_align integer scheme:
+                // text_align_last 1=left -> 0, 2=right -> 2, 3=center -> 1, 4=justify -> 3
+                switch (node.text_align_last) {
+                    case 1: eff_align = 0; break; // left/start
+                    case 2: eff_align = 2; break; // right/end
+                    case 3: eff_align = 1; break; // center
+                    case 4: eff_align = 3; break; // justify
+                    default: break;
+                }
+            }
+
+            float offset = 0;
+            if (eff_align == 1) {        // center
+                offset = extra / 2.0f;
+            } else if (eff_align == 2) { // right
+                offset = extra;
+            } else if (eff_align == 3) { // justify
+                // Distribute extra space between words on this line.
+                // Don't justify the last line unless text-align-last says justify.
+                bool justify_this_line = !is_last_line || node.text_align_last == 4;
+                size_t item_count = line.end_idx - line.start_idx;
+                if (justify_this_line && item_count > 1) {
+                    float gap = extra / static_cast<float>(item_count - 1);
+                    for (size_t vi = line.start_idx; vi < line.end_idx; vi++) {
+                        float idx_in_line = static_cast<float>(vi - line.start_idx);
+                        node.children[visible[vi]]->geometry.x += gap * idx_in_line;
+                    }
+                    continue; // skip the offset-based shift below
+                }
+                // Last line with justify but text-align-last=auto: left-align (offset = 0)
+            }
+
+            if (offset > 0) {
+                for (size_t vi = line.start_idx; vi < line.end_idx; vi++) {
+                    node.children[visible[vi]]->geometry.x += offset;
+                }
+            }
+        }
+    }
+
+    // Apply vertical-align within each line
+    for (auto& line : lines) {
+        // Compute line height for this line
+        float max_h = 0;
+        for (size_t vi = line.start_idx; vi < line.end_idx; vi++) {
+            auto& child = node.children[visible[vi]];
+            max_h = std::max(max_h, child->geometry.margin_box_height());
+        }
+
+        for (size_t vi = line.start_idx; vi < line.end_idx; vi++) {
+            auto& child = node.children[visible[vi]];
+            float child_h = child->geometry.margin_box_height();
+            float va_offset = 0;
+
+            switch (child->vertical_align) {
+                case 1: // top
+                    va_offset = 0;
+                    break;
+                case 2: // middle
+                    va_offset = (max_h - child_h) / 2.0f;
+                    break;
+                case 3: // bottom
+                    va_offset = max_h - child_h;
+                    break;
+                case 4: // text-top — align top with parent's text top
+                    va_offset = 0;
+                    break;
+                case 5: // text-bottom — align bottom with parent's text bottom
+                    va_offset = max_h - child_h;
+                    break;
+                default: { // baseline (0) — align child baseline with line baseline
+                    // For same-height elements, just bottom-align (equivalent to baseline)
+                    if (std::abs(max_h - child_h) < 0.5f) {
+                        va_offset = 0; // same height — no offset needed
+                    } else {
+                        // Mixed heights: align baselines
+                        // For text: baseline = ascent (80% of font size from top)
+                        // For replaced elements: baseline = bottom edge
+                        float line_baseline = max_h * 0.8f;
+                        float child_baseline = child_h; // replaced elements: bottom = baseline
+                        if (child->is_text || child->display == clever::layout::DisplayType::Inline) {
+                            child_baseline = child->font_size > 0 ? child->font_size * 0.8f : child_h;
+                        }
+                        va_offset = line_baseline - child_baseline;
+                        if (va_offset < 0) va_offset = 0;
+                        if (va_offset > max_h - child_h) va_offset = max_h - child_h;
+                    }
+                    break;
+                }
+            }
+
+            if (va_offset > 0) {
+                child->geometry.y += va_offset;
+            }
+        }
+    }
+}
+
+void LayoutEngine::flex_layout(LayoutNode& node, float containing_width) {
+    bool is_row = (node.flex_direction == 0 || node.flex_direction == 1);
+    bool is_reverse = (node.flex_direction == 1 || node.flex_direction == 3);
+
+    // For flex-direction: row, the main axis gap is column-gap.
+    // For flex-direction: column, the main axis gap is row-gap.
+    // The CSS "gap" shorthand sets both node.gap (row-gap) and node.column_gap_val (column-gap).
+    float main_gap = is_row ? node.column_gap_val : node.gap;
+
+    float main_size = containing_width;
+
+    // Collect flex items
+    struct FlexItem {
+        LayoutNode* child;
+        float basis;
+    };
+    std::vector<FlexItem> items;
+    float total_basis = 0;
+
+    for (auto& child : node.children) {
+        if (child->display == DisplayType::None || child->mode == LayoutMode::None) {
+            child->geometry.width = 0;
+            child->geometry.height = 0;
+            continue;
+        }
+        // Skip absolute/fixed from flex flow
+        if (child->position_type == 2 || child->position_type == 3) continue;
+
+        // Resolve deferred percentage/calc values for flex items
+        if (child->css_width.has_value()) {
+            child->specified_width = child->css_width->to_px(containing_width);
+        }
+        if (child->css_min_width.has_value()) {
+            child->min_width = child->css_min_width->to_px(containing_width);
+        }
+        if (child->css_max_width.has_value()) {
+            child->max_width = child->css_max_width->to_px(containing_width);
+        }
+        // Resolve deferred percentage margins/padding for flex items
+        if (child->css_margin_top.has_value())
+            child->geometry.margin.top = child->css_margin_top->to_px(containing_width);
+        if (child->css_margin_right.has_value())
+            child->geometry.margin.right = child->css_margin_right->to_px(containing_width);
+        if (child->css_margin_bottom.has_value())
+            child->geometry.margin.bottom = child->css_margin_bottom->to_px(containing_width);
+        if (child->css_margin_left.has_value())
+            child->geometry.margin.left = child->css_margin_left->to_px(containing_width);
+        if (child->css_padding_top.has_value())
+            child->geometry.padding.top = child->css_padding_top->to_px(containing_width);
+        if (child->css_padding_right.has_value())
+            child->geometry.padding.right = child->css_padding_right->to_px(containing_width);
+        if (child->css_padding_bottom.has_value())
+            child->geometry.padding.bottom = child->css_padding_bottom->to_px(containing_width);
+        if (child->css_padding_left.has_value())
+            child->geometry.padding.left = child->css_padding_left->to_px(containing_width);
+        // Clear auto margins for flex items (flex uses justify/align instead)
+        if (child->geometry.margin.left < 0) child->geometry.margin.left = 0;
+        if (child->geometry.margin.right < 0) child->geometry.margin.right = 0;
+
+        float basis;
+        if (child->flex_basis >= 0) {
+            basis = child->flex_basis;
+        } else if (is_row && child->specified_width >= 0) {
+            basis = child->specified_width;
+        } else if (!is_row && child->specified_height >= 0) {
+            basis = child->specified_height;
+        } else {
+            basis = 0;
+        }
+
+        items.push_back({child.get(), basis});
+        total_basis += basis;
+    }
+
+    // Sort items by CSS order property (stable sort preserves DOM order for equal values)
+    bool has_order = false;
+    for (auto& item : items) {
+        if (item.child->order != 0) { has_order = true; break; }
+    }
+    if (has_order) {
+        std::stable_sort(items.begin(), items.end(),
+            [](const FlexItem& a, const FlexItem& b) {
+                return a.child->order < b.child->order;
+            });
+    }
+
+    // Reverse item order for row-reverse / column-reverse
+    if (is_reverse && !items.empty()) {
+        std::reverse(items.begin(), items.end());
+    }
+
+    float total_gap = 0;
+    if (items.size() > 1) {
+        total_gap = main_gap * static_cast<float>(items.size() - 1);
+    }
+
+    // Split items into flex lines
+    struct FlexLine {
+        size_t start = 0, end = 0;
+        float total_basis = 0;
+        float max_cross = 0;
+    };
+    std::vector<FlexLine> lines;
+
+    if (node.flex_wrap != 0 && !items.empty()) {
+        // Wrap mode: start new line when items exceed main_size
+        FlexLine current_line;
+        current_line.start = 0;
+        float line_basis = 0;
+        for (size_t i = 0; i < items.size(); i++) {
+            float item_size = items[i].basis;
+            if (i > current_line.start && line_basis + item_size > main_size) {
+                current_line.end = i;
+                current_line.total_basis = line_basis;
+                lines.push_back(current_line);
+                current_line = {};
+                current_line.start = i;
+                line_basis = 0;
+            }
+            line_basis += item_size;
+            if (i > current_line.start) line_basis += main_gap;
+        }
+        current_line.end = items.size();
+        current_line.total_basis = line_basis;
+        lines.push_back(current_line);
+    } else {
+        // No wrap: single line
+        FlexLine single;
+        single.start = 0;
+        single.end = items.size();
+        single.total_basis = total_basis + total_gap;
+        lines.push_back(single);
+    }
+
+    // Process each flex line
+    float cross_cursor = 0;
+    for (auto& line : lines) {
+        // Compute line total basis and gap
+        float line_total_gap = 0;
+        size_t line_count = line.end - line.start;
+        if (line_count > 1) {
+            line_total_gap = main_gap * static_cast<float>(line_count - 1);
+        }
+
+        float line_total_basis = 0;
+        for (size_t i = line.start; i < line.end; i++) {
+            line_total_basis += items[i].basis;
+        }
+
+        float remaining = main_size - line_total_basis - line_total_gap;
+
+        // Flex grow / shrink within this line
+        if (remaining > 0) {
+            float total_grow = 0;
+            for (size_t i = line.start; i < line.end; i++) {
+                total_grow += items[i].child->flex_grow;
+            }
+            if (total_grow > 0) {
+                for (size_t i = line.start; i < line.end; i++) {
+                    items[i].basis += (items[i].child->flex_grow / total_grow) * remaining;
+                }
+            }
+        } else if (remaining < 0 && node.flex_wrap == 0) {
+            float total_shrink_weighted = 0;
+            for (size_t i = line.start; i < line.end; i++) {
+                total_shrink_weighted += items[i].child->flex_shrink * items[i].basis;
+            }
+            if (total_shrink_weighted > 0) {
+                float overflow = -remaining;
+                for (size_t i = line.start; i < line.end; i++) {
+                    float shrink_amount = (items[i].child->flex_shrink * items[i].basis / total_shrink_weighted) * overflow;
+                    items[i].basis -= shrink_amount;
+                    if (items[i].basis < 0) items[i].basis = 0;
+                }
+            }
+        }
+
+        // Apply min/max on each item in this line
+        // Resolve deferred percentage min/max-width for flex items
+        for (size_t i = line.start; i < line.end; i++) {
+            if (items[i].child->css_min_width.has_value()) {
+                items[i].child->min_width = items[i].child->css_min_width->to_px(main_size);
+            }
+            if (items[i].child->css_max_width.has_value()) {
+                items[i].child->max_width = items[i].child->css_max_width->to_px(main_size);
+            }
+            items[i].basis = std::max(items[i].basis, items[i].child->min_width);
+            items[i].basis = std::min(items[i].basis, items[i].child->max_width);
+        }
+
+        // Compute total used main size for this line
+        float total_used = line_total_gap;
+        for (size_t i = line.start; i < line.end; i++) {
+            total_used += items[i].basis;
+        }
+
+        // Justify-content for this line
+        float cursor_main = 0;
+        float gap_between = main_gap;
+        float remaining_space = main_size - total_used;
+        if (remaining_space < 0) remaining_space = 0;
+
+        switch (node.justify_content) {
+            case 0: cursor_main = 0; break;
+            case 1: cursor_main = remaining_space; break;
+            case 2: cursor_main = remaining_space / 2.0f; break;
+            case 3: // space-between
+                if (line_count > 1) {
+                    gap_between = main_gap + remaining_space / static_cast<float>(line_count - 1);
+                }
+                cursor_main = 0;
+                break;
+            case 4: // space-around
+                if (line_count > 0) {
+                    float space_unit = remaining_space / static_cast<float>(line_count);
+                    cursor_main = space_unit / 2.0f;
+                    gap_between = main_gap + space_unit;
+                }
+                break;
+            case 5: // space-evenly
+                if (line_count > 0) {
+                    float space_unit = remaining_space / static_cast<float>(line_count + 1);
+                    cursor_main = space_unit;
+                    gap_between = main_gap + space_unit;
+                }
+                break;
+            default: break;
+        }
+
+        // Position items along main axis
+        line.max_cross = 0;
+        for (size_t i = line.start; i < line.end; ++i) {
+            auto& item = items[i];
+            auto* child = item.child;
+
+            if (is_row) {
+                child->geometry.width = item.basis;
+                if (child->specified_height >= 0) {
+                    child->geometry.height = child->specified_height;
+                } else {
+                    float child_content_w = child->geometry.width
+                        - child->geometry.padding.left - child->geometry.padding.right
+                        - child->geometry.border.left - child->geometry.border.right;
+                    if (child_content_w < 0) child_content_w = 0;
+                    position_block_children(*child);
+                    float ch = 0;
+                    for (auto& gc : child->children) {
+                        if (gc->display == DisplayType::None || gc->mode == LayoutMode::None) continue;
+                        ch += gc->geometry.margin_box_height();
+                    }
+                    child->geometry.height = ch
+                        + child->geometry.padding.top + child->geometry.padding.bottom
+                        + child->geometry.border.top + child->geometry.border.bottom;
+                }
+                child->geometry.x = cursor_main;
+                child->geometry.y = cross_cursor;
+                line.max_cross = std::max(line.max_cross, child->geometry.margin_box_height());
+            } else {
+                child->geometry.height = item.basis;
+                if (child->specified_width >= 0) {
+                    child->geometry.width = child->specified_width;
+                } else {
+                    child->geometry.width = containing_width;
+                }
+                child->geometry.y = cursor_main;
+                child->geometry.x = cross_cursor;
+                line.max_cross = std::max(line.max_cross, child->geometry.margin_box_width());
+            }
+
+            cursor_main += item.basis;
+            if (i + 1 < line.end) {
+                cursor_main += gap_between;
+            }
+        }
+
+        // Cross-axis align-items for this line
+        // For single-line flex with specified container size, use container cross
+        float line_cross = line.max_cross;
+        if (lines.size() == 1) {
+            if (is_row && node.specified_height >= 0) {
+                line_cross = node.specified_height;
+            } else if (!is_row) {
+                line_cross = containing_width;
+            }
+        }
+        for (size_t i = line.start; i < line.end; i++) {
+            auto* child = items[i].child;
+            float child_cross = is_row ? child->geometry.height : child->geometry.width;
+
+            // In flexbox, auto margins on the cross-axis take priority over
+            // align-items/align-self. Distribute remaining cross-axis space
+            // to auto margins before falling through to alignment.
+            bool auto_margin_top = (is_row && child->geometry.margin.top < 0);
+            bool auto_margin_bottom = (is_row && child->geometry.margin.bottom < 0);
+            bool auto_margin_left = (!is_row && child->geometry.margin.left < 0);
+            bool auto_margin_right = (!is_row && child->geometry.margin.right < 0);
+            bool has_cross_auto_margin = (is_row ? (auto_margin_top || auto_margin_bottom)
+                                                  : (auto_margin_left || auto_margin_right));
+
+            if (has_cross_auto_margin) {
+                float remaining_cross = line_cross - child_cross;
+                if (remaining_cross < 0) remaining_cross = 0;
+                if (is_row) {
+                    if (auto_margin_top && auto_margin_bottom) {
+                        child->geometry.margin.top = remaining_cross / 2.0f;
+                        child->geometry.margin.bottom = remaining_cross / 2.0f;
+                        child->geometry.y = cross_cursor + child->geometry.margin.top;
+                    } else if (auto_margin_top) {
+                        child->geometry.margin.top = remaining_cross;
+                        child->geometry.margin.bottom = 0;
+                        child->geometry.y = cross_cursor + remaining_cross;
+                    } else {
+                        child->geometry.margin.top = 0;
+                        child->geometry.margin.bottom = remaining_cross;
+                        // y stays at cross_cursor (flex-start)
+                    }
+                } else {
+                    if (auto_margin_left && auto_margin_right) {
+                        child->geometry.margin.left = remaining_cross / 2.0f;
+                        child->geometry.margin.right = remaining_cross / 2.0f;
+                        child->geometry.x = cross_cursor + child->geometry.margin.left;
+                    } else if (auto_margin_left) {
+                        child->geometry.margin.left = remaining_cross;
+                        child->geometry.margin.right = 0;
+                        child->geometry.x = cross_cursor + remaining_cross;
+                    } else {
+                        child->geometry.margin.left = 0;
+                        child->geometry.margin.right = remaining_cross;
+                    }
+                }
+            } else {
+            // Use align-self if set, otherwise fall back to parent's align-items
+            int align = (child->align_self >= 0) ? child->align_self : node.align_items;
+            switch (align) {
+                case 0: break; // flex-start
+                case 1: // flex-end
+                    if (is_row) child->geometry.y = cross_cursor + line_cross - child_cross;
+                    else child->geometry.x = cross_cursor + line_cross - child_cross;
+                    break;
+                case 2: // center
+                    if (is_row) child->geometry.y = cross_cursor + (line_cross - child_cross) / 2.0f;
+                    else child->geometry.x = cross_cursor + (line_cross - child_cross) / 2.0f;
+                    break;
+                case 3: break; // baseline (treat as flex-start)
+                case 4: // stretch
+                    if (is_row && child->specified_height < 0) {
+                        child->geometry.height = line_cross;
+                    } else if (!is_row && child->specified_width < 0) {
+                        child->geometry.width = line_cross;
+                    }
+                    break;
+                default: break;
+            }
+            } // end else (no cross-axis auto margin)
+
+            apply_positioning(*child);
+        }
+
+        cross_cursor += line_cross;
+    }
+
+    // Container height
+    if (node.specified_height >= 0) {
+        node.geometry.height = node.specified_height;
+    } else {
+        if (is_row) {
+            node.geometry.height = cross_cursor;
+        } else {
+            float total_main = 0;
+            for (auto& item : items) {
+                total_main += item.basis;
+            }
+            total_main += total_gap;
+            node.geometry.height = total_main;
+        }
+    }
+
+    // Resolve deferred percentage/calc min-height and max-height for flex containers.
+    // This is critical for patterns like min-height: 100vh on flex containers.
+    {
+        float cb_height = viewport_height_;
+        if (node.parent && node.parent->specified_height >= 0) {
+            cb_height = node.parent->specified_height;
+        }
+        if (node.css_min_height.has_value()) {
+            node.min_height = node.css_min_height->to_px(cb_height);
+        }
+        if (node.css_max_height.has_value()) {
+            node.max_height = node.css_max_height->to_px(cb_height);
+        }
+    }
+    node.geometry.height = std::max(node.geometry.height, node.min_height);
+    node.geometry.height = std::min(node.geometry.height, node.max_height);
+
+    // align-content: distribute extra cross-axis space between flex lines (multi-line)
+    if (lines.size() > 1 && node.align_content != 0 && is_row && node.specified_height >= 0) {
+        float total_line_cross = 0;
+        for (auto& line : lines) total_line_cross += line.max_cross;
+        float extra = node.specified_height - total_line_cross;
+        if (extra > 0) {
+            float offset = 0;
+            float gap = 0;
+            size_t n_lines = lines.size();
+            switch (node.align_content) {
+                case 1: offset = extra; break; // end
+                case 2: offset = extra / 2.0f; break; // center
+                case 3: // stretch — divide extra evenly among lines
+                    break;
+                case 4: // space-between
+                    if (n_lines > 1) gap = extra / static_cast<float>(n_lines - 1);
+                    break;
+                case 5: // space-around
+                    gap = extra / static_cast<float>(n_lines);
+                    offset = gap / 2.0f;
+                    break;
+                default: break;
+            }
+            // Shift all items in each line by accumulated offset
+            float cumulative = offset;
+            for (size_t li = 0; li < lines.size(); li++) {
+                if (li > 0) cumulative += gap;
+                if (cumulative != 0) {
+                    for (size_t i = lines[li].start; i < lines[li].end; i++) {
+                        items[i].child->geometry.y += cumulative;
+                    }
+                }
+            }
+        }
+    }
+
+    // Position absolute/fixed children
+    position_absolute_children(node);
+}
+
+void LayoutEngine::apply_positioning(LayoutNode& node) {
+    if (node.position_type == 1) { // relative only
+        if (node.pos_top_set) node.geometry.y += node.pos_top;
+        else if (node.pos_bottom_set) node.geometry.y -= node.pos_bottom;
+        if (node.pos_left_set) node.geometry.x += node.pos_left;
+        else if (node.pos_right_set) node.geometry.x -= node.pos_right;
+    }
+    // position_type == 4 (sticky): element stays in normal flow position.
+    // The top/left/right/bottom offsets are used at paint time by the
+    // RenderView to composite the element at its "stuck" position during scroll.
+}
+
+void LayoutEngine::position_absolute_children(LayoutNode& node) {
+    // CSS spec: the containing block for position:absolute is the nearest
+    // ancestor with position != static (relative/absolute/fixed/sticky).
+    // Only positioned ancestors (or the root) serve as containing blocks.
+    bool is_containing_block = (node.position_type != 0 || node.parent == nullptr);
+    if (!is_containing_block) return;
+
+    float container_w = node.geometry.width;
+    float container_h = node.geometry.height;
+
+    // Recursively collect abs/fixed descendants whose containing block is this node.
+    // Track the cumulative offset from this containing block to each child's parent,
+    // so we can position the child correctly in the coordinate space of its immediate parent.
+    struct AbsInfo {
+        LayoutNode* child;
+        float parent_offset_x;
+        float parent_offset_y;
+    };
+    std::vector<AbsInfo> abs_children;
+
+    std::function<void(LayoutNode&, float, float)> collect =
+        [&](LayoutNode& parent, float offset_x, float offset_y) {
+        for (auto& c : parent.children) {
+            if (c->display == DisplayType::None || c->mode == LayoutMode::None) continue;
+            if (c->position_type == 2 || c->position_type == 3) {
+                // Abs/fixed child — belongs to this containing block
+                abs_children.push_back({c.get(), offset_x, offset_y});
+                // Don't recurse — this child forms its own containing block
+                continue;
+            }
+            if (c->position_type != 0) {
+                // Positioned child (relative/sticky) — forms its own containing block.
+                // Don't recurse; it will handle its own abs children.
+                continue;
+            }
+            // Static child — recurse, accumulating geometric offset
+            collect(*c, offset_x + c->geometry.x, offset_y + c->geometry.y);
+        }
+    };
+    collect(node, 0, 0);
+
+    for (auto& [child, parent_ox, parent_oy] : abs_children) {
+        // For fixed positioning, use viewport dimensions
+        float ref_w = (child->position_type == 3) ? viewport_width_ : container_w;
+        float ref_h = (child->position_type == 3) ? viewport_height_ : container_h;
+
+        // Layout the child to compute its dimensions
+        if (child->specified_width >= 0) {
+            child->geometry.width = child->specified_width;
+        } else if (child->pos_left_set && child->pos_right_set) {
+            child->geometry.width = ref_w - child->pos_left - child->pos_right;
+        } else {
+            child->geometry.width = ref_w;
+        }
+
+        switch (child->mode) {
+            case LayoutMode::Block:
+            case LayoutMode::InlineBlock:
+                layout_block(*child, child->geometry.width);
+                break;
+            case LayoutMode::Inline:
+                layout_inline(*child, child->geometry.width);
+                break;
+            case LayoutMode::Flex:
+                layout_flex(*child, child->geometry.width);
+                break;
+            case LayoutMode::Grid:
+                layout_grid(*child, child->geometry.width);
+                break;
+            case LayoutMode::Table:
+                layout_table(*child, child->geometry.width);
+                break;
+            default:
+                layout_block(*child, child->geometry.width);
+                break;
+        }
+
+        // For fixed positioning (position_type == 3), the painter uses (0,0) as the
+        // parent offset, so geometry.x/y should be viewport-relative directly.
+        // For absolute positioning (position_type == 2), subtract parent offset so that
+        // the rendered position (which sums x/y from root to child) is correct.
+        float ox = (child->position_type == 3) ? 0.0f : parent_ox;
+        float oy = (child->position_type == 3) ? 0.0f : parent_oy;
+
+        if (child->pos_left_set) {
+            child->geometry.x = child->pos_left - ox;
+        } else if (child->pos_right_set) {
+            child->geometry.x = ref_w - child->geometry.margin_box_width() - child->pos_right
+                + child->geometry.margin.left - ox;
+        } else {
+            child->geometry.x = -ox;
+        }
+
+        if (child->pos_top_set) {
+            child->geometry.y = child->pos_top - oy;
+        } else if (child->pos_bottom_set) {
+            child->geometry.y = ref_h - child->geometry.margin_box_height() - child->pos_bottom
+                + child->geometry.margin.top - oy;
+        } else {
+            child->geometry.y = -oy;
+        }
+    }
+}
+
+void LayoutEngine::layout_grid(LayoutNode& node, float containing_width) {
+    if (node.display == DisplayType::None || node.mode == LayoutMode::None) {
+        node.geometry.width = 0;
+        node.geometry.height = 0;
+        return;
+    }
+
+    // Resolve deferred percentage margins/padding
+    if (node.css_margin_top.has_value())
+        node.geometry.margin.top = node.css_margin_top->to_px(containing_width);
+    if (node.css_margin_right.has_value())
+        node.geometry.margin.right = node.css_margin_right->to_px(containing_width);
+    if (node.css_margin_bottom.has_value())
+        node.geometry.margin.bottom = node.css_margin_bottom->to_px(containing_width);
+    if (node.css_margin_left.has_value())
+        node.geometry.margin.left = node.css_margin_left->to_px(containing_width);
+    if (node.css_padding_top.has_value())
+        node.geometry.padding.top = node.css_padding_top->to_px(containing_width);
+    if (node.css_padding_right.has_value())
+        node.geometry.padding.right = node.css_padding_right->to_px(containing_width);
+    if (node.css_padding_bottom.has_value())
+        node.geometry.padding.bottom = node.css_padding_bottom->to_px(containing_width);
+    if (node.css_padding_left.has_value())
+        node.geometry.padding.left = node.css_padding_left->to_px(containing_width);
+    if (node.geometry.margin.left < 0) node.geometry.margin.left = 0;
+    if (node.geometry.margin.right < 0) node.geometry.margin.right = 0;
+
+    // Compute width (non-root)
+    if (node.parent != nullptr) {
+        node.geometry.width = compute_width(node, containing_width);
+    }
+
+    float content_w = node.geometry.width
+        - node.geometry.padding.left - node.geometry.padding.right
+        - node.geometry.border.left - node.geometry.border.right;
+    if (content_w < 0) content_w = 0;
+
+    // Step 1: Parse grid-template-columns to determine column widths
+    std::vector<float> col_widths;
+    std::string cols = node.grid_template_columns;
+    if (!cols.empty()) {
+        // Expand repeat(N, ...) before parsing
+        std::string expanded;
+        size_t pos = 0;
+        while (pos < cols.size()) {
+            size_t rep = cols.find("repeat(", pos);
+            if (rep == std::string::npos) {
+                expanded += cols.substr(pos);
+                break;
+            }
+            expanded += cols.substr(pos, rep - pos);
+            size_t paren_start = rep + 7; // after "repeat("
+            size_t comma = cols.find(',', paren_start);
+            if (comma == std::string::npos) {
+                expanded += cols.substr(pos);
+                break;
+            }
+            std::string count_str = cols.substr(paren_start, comma - paren_start);
+            while (!count_str.empty() && count_str.front() == ' ') count_str.erase(count_str.begin());
+            while (!count_str.empty() && count_str.back() == ' ') count_str.pop_back();
+
+            size_t depth = 1;
+            size_t end = comma + 1;
+            while (end < cols.size() && depth > 0) {
+                if (cols[end] == '(') depth++;
+                else if (cols[end] == ')') depth--;
+                if (depth > 0) end++;
+            }
+            std::string pattern = cols.substr(comma + 1, end - comma - 1);
+            while (!pattern.empty() && pattern.front() == ' ') pattern.erase(pattern.begin());
+            while (!pattern.empty() && pattern.back() == ' ') pattern.pop_back();
+
+            int count = 0;
+            if (count_str == "auto-fill" || count_str == "auto-fit") {
+                // auto-fill/auto-fit: compute how many tracks fit in available width
+                // Parse the pattern to get the track size
+                float track_size = 0;
+                if (pattern.find("px") != std::string::npos) {
+                    try { track_size = std::stof(pattern); } catch (...) {}
+                } else if (pattern.find('%') != std::string::npos) {
+                    float pct = 0;
+                    try { pct = std::stof(pattern); } catch (...) {}
+                    track_size = content_w * pct / 100.0f;
+                } else if (pattern.find("minmax(") != std::string::npos) {
+                    // minmax(min, max) — use min for auto-fill count calculation
+                    size_t mmp = pattern.find("minmax(") + 7;
+                    size_t mmc = pattern.find(',', mmp);
+                    if (mmc != std::string::npos) {
+                        std::string min_str = pattern.substr(mmp, mmc - mmp);
+                        while (!min_str.empty() && min_str.front() == ' ') min_str.erase(min_str.begin());
+                        if (min_str.find("px") != std::string::npos) {
+                            try { track_size = std::stof(min_str); } catch (...) {}
+                        }
+                    }
+                }
+                float gap = node.column_gap;
+                if (track_size > 0) {
+                    count = static_cast<int>((content_w + gap) / (track_size + gap));
+                    if (count < 1) count = 1;
+                } else {
+                    count = 1;
+                }
+            } else {
+                try { count = std::stoi(count_str); }
+                catch (...) { count = 1; }
+            }
+
+            for (int i = 0; i < count; i++) {
+                if (!expanded.empty() && expanded.back() != ' ') expanded += ' ';
+                expanded += pattern;
+            }
+            pos = end + 1;
+        }
+
+        // Parse track specifications, handling minmax() functions
+        float total_fr = 0;
+        struct TrackSpec { float value; bool is_fr; float min_value = 0; };
+        std::vector<TrackSpec> specs;
+
+        // Simple tokenizer that handles minmax() as a single token
+        std::vector<std::string> track_tokens;
+        {
+            size_t ti = 0;
+            while (ti < expanded.size()) {
+                while (ti < expanded.size() && expanded[ti] == ' ') ti++;
+                if (ti >= expanded.size()) break;
+                if (expanded.substr(ti, 7) == "minmax(") {
+                    // Consume until matching ')'
+                    size_t start = ti;
+                    int d = 0;
+                    while (ti < expanded.size()) {
+                        if (expanded[ti] == '(') d++;
+                        else if (expanded[ti] == ')') { d--; if (d == 0) { ti++; break; } }
+                        ti++;
+                    }
+                    track_tokens.push_back(expanded.substr(start, ti - start));
+                } else {
+                    size_t start = ti;
+                    while (ti < expanded.size() && expanded[ti] != ' ') ti++;
+                    track_tokens.push_back(expanded.substr(start, ti - start));
+                }
+            }
+        }
+
+        for (auto& token : track_tokens) {
+            if (token.substr(0, 7) == "minmax(") {
+                // minmax(min, max) — use max for track sizing, min as floor
+                size_t mmp = 7;
+                size_t mmc = token.find(',', mmp);
+                if (mmc != std::string::npos) {
+                    std::string min_str = token.substr(mmp, mmc - mmp);
+                    std::string max_str = token.substr(mmc + 1);
+                    // Remove trailing ')'
+                    if (!max_str.empty() && max_str.back() == ')') max_str.pop_back();
+                    while (!min_str.empty() && min_str.front() == ' ') min_str.erase(min_str.begin());
+                    while (!min_str.empty() && min_str.back() == ' ') min_str.pop_back();
+                    while (!max_str.empty() && max_str.front() == ' ') max_str.erase(max_str.begin());
+                    while (!max_str.empty() && max_str.back() == ' ') max_str.pop_back();
+
+                    float min_val = 0;
+                    if (min_str.find("px") != std::string::npos) {
+                        try { min_val = std::stof(min_str); } catch (...) {}
+                    }
+
+                    if (max_str.find("fr") != std::string::npos) {
+                        float fr = 0;
+                        try { fr = std::stof(max_str); } catch (...) { fr = 1; }
+                        specs.push_back({fr, true, min_val});
+                        total_fr += fr;
+                    } else if (max_str.find("px") != std::string::npos) {
+                        float px = 0;
+                        try { px = std::stof(max_str); } catch (...) {}
+                        specs.push_back({std::max(px, min_val), false, min_val});
+                    } else if (max_str == "auto") {
+                        specs.push_back({1.0f, true, min_val});
+                        total_fr += 1.0f;
+                    } else {
+                        specs.push_back({min_val, false, min_val});
+                    }
+                } else {
+                    specs.push_back({1.0f, true, 0});
+                    total_fr += 1.0f;
+                }
+            } else if (token.find("fr") != std::string::npos) {
+                float fr = 0;
+                try { fr = std::stof(token); } catch (...) { fr = 1; }
+                specs.push_back({fr, true});
+                total_fr += fr;
+            } else if (token.find("px") != std::string::npos) {
+                float px = 0;
+                try { px = std::stof(token); } catch (...) {}
+                specs.push_back({px, false});
+            } else if (token.find('%') != std::string::npos) {
+                float pct = 0;
+                try { pct = std::stof(token); } catch (...) {}
+                specs.push_back({content_w * pct / 100.0f, false});
+            } else if (token == "auto") {
+                specs.push_back({1.0f, true});
+                total_fr += 1.0f;
+            } else {
+                float val = 0;
+                try { val = std::stof(token); } catch (...) {}
+                specs.push_back({val, false});
+            }
+        }
+
+        // Calculate fr unit size
+        float fixed_total = 0;
+        for (auto& s : specs) {
+            if (!s.is_fr) fixed_total += s.value;
+        }
+        float fr_space = content_w - fixed_total;
+        if (fr_space < 0) fr_space = 0;
+        float fr_size = total_fr > 0 ? fr_space / total_fr : 0;
+
+        for (auto& s : specs) {
+            float w = s.is_fr ? s.value * fr_size : s.value;
+            // Apply minmax() floor
+            if (s.min_value > 0 && w < s.min_value) w = s.min_value;
+            col_widths.push_back(w);
+        }
+    }
+
+    if (col_widths.empty()) {
+        // If grid-auto-columns is set and no explicit template, use auto columns
+        if (!node.grid_auto_columns.empty()) {
+            float auto_w = 0;
+            try {
+                std::string ac = node.grid_auto_columns;
+                if (ac.find("px") != std::string::npos) {
+                    auto_w = std::stof(ac);
+                } else if (ac.find('%') != std::string::npos) {
+                    float pct = std::stof(ac);
+                    auto_w = content_w * pct / 100.0f;
+                } else if (ac.find("fr") != std::string::npos) {
+                    auto_w = content_w;
+                }
+            } catch (...) {}
+            if (auto_w > 0) {
+                float g = node.column_gap_val;
+                int auto_count = std::max(1, static_cast<int>((content_w + g) / (auto_w + g)));
+                for (int i = 0; i < auto_count; i++) col_widths.push_back(auto_w);
+            }
+        }
+        if (col_widths.empty()) {
+            col_widths.push_back(content_w); // single column fallback
+        }
+    }
+
+    int num_cols = static_cast<int>(col_widths.size());
+
+    // Step 2: Parse grid-template-rows (optional, for explicit row heights)
+    std::vector<float> row_heights_explicit;
+    std::string rows = node.grid_template_rows;
+    if (!rows.empty()) {
+        std::istringstream iss(rows);
+        std::string token;
+        while (iss >> token) {
+            if (token.find("px") != std::string::npos) {
+                try { row_heights_explicit.push_back(std::stof(token)); } catch (...) {}
+            } else if (token.find("fr") != std::string::npos) {
+                try { row_heights_explicit.push_back(-std::stof(token)); } catch (...) {}
+            } else if (token != "auto") {
+                try { row_heights_explicit.push_back(std::stof(token)); } catch (...) {}
+            }
+        }
+    }
+
+    // Step 3: Collect in-flow children
+    std::vector<LayoutNode*> grid_items;
+    for (auto& child : node.children) {
+        if (child->display == DisplayType::None || child->mode == LayoutMode::None) {
+            child->geometry.width = 0;
+            child->geometry.height = 0;
+            continue;
+        }
+        if (child->position_type == 2 || child->position_type == 3) continue;
+        grid_items.push_back(child.get());
+    }
+
+    // Step 4: Place children into grid cells
+    float col_x_start = node.geometry.padding.left + node.geometry.border.left;
+    float row_y = node.geometry.padding.top + node.geometry.border.top;
+
+    // Grid gap support: row_gap between rows, col_gap between columns
+    float col_gap = node.column_gap_val; // column-gap
+    float row_gap = node.gap;            // row-gap (reuse flex gap field)
+
+    // Parse grid-template-areas into a 2D grid of area names
+    // Format: "header header" "sidebar main" "footer footer"
+    struct AreaRect { int row_start; int col_start; int row_end; int col_end; };
+    std::unordered_map<std::string, AreaRect> area_map;
+    if (!node.grid_template_areas.empty()) {
+        std::vector<std::vector<std::string>> area_grid;
+        std::string areas = node.grid_template_areas;
+        size_t qpos = 0;
+        while (qpos < areas.size()) {
+            size_t q1 = areas.find('"', qpos);
+            if (q1 == std::string::npos) q1 = areas.find('\'', qpos);
+            if (q1 == std::string::npos) break;
+            char q_char = areas[q1];
+            size_t q2 = areas.find(q_char, q1 + 1);
+            if (q2 == std::string::npos) break;
+            std::string row_str = areas.substr(q1 + 1, q2 - q1 - 1);
+            std::vector<std::string> row_cells;
+            std::istringstream rss(row_str);
+            std::string cell;
+            while (rss >> cell) {
+                row_cells.push_back(cell);
+            }
+            area_grid.push_back(std::move(row_cells));
+            qpos = q2 + 1;
+        }
+
+        // Build area_map: for each named area, find its bounding rectangle
+        for (int r = 0; r < static_cast<int>(area_grid.size()); r++) {
+            for (int c = 0; c < static_cast<int>(area_grid[r].size()); c++) {
+                const auto& name = area_grid[r][c];
+                if (name == ".") continue; // '.' means empty cell
+                auto it = area_map.find(name);
+                if (it == area_map.end()) {
+                    area_map[name] = {r, c, r + 1, c + 1};
+                } else {
+                    it->second.row_start = std::min(it->second.row_start, r);
+                    it->second.col_start = std::min(it->second.col_start, c);
+                    it->second.row_end = std::max(it->second.row_end, r + 1);
+                    it->second.col_end = std::max(it->second.col_end, c + 1);
+                }
+            }
+        }
+    }
+
+    // grid-auto-flow: column support
+    // When grid_auto_flow is 1 (column) or 3 (column dense), place items column-by-column
+    bool column_flow = (node.grid_auto_flow == 1 || node.grid_auto_flow == 3);
+    int num_rows_for_col_flow = 0;
+    if (column_flow && !grid_items.empty()) {
+        // Calculate number of rows: if explicit row template exists, use that count,
+        // otherwise compute from grid items and columns
+        if (!row_heights_explicit.empty()) {
+            num_rows_for_col_flow = static_cast<int>(row_heights_explicit.size());
+        } else {
+            // Use ceil(items / cols) as number of rows
+            num_rows_for_col_flow = (static_cast<int>(grid_items.size()) + num_cols - 1) / num_cols;
+        }
+        if (num_rows_for_col_flow < 1) num_rows_for_col_flow = 1;
+    }
+
+    int col_index = 0;
+    int row_index = 0;
+    float row_height = 0;
+
+    // For column flow: track per-row heights to position items vertically
+    std::vector<float> col_flow_row_heights;
+    if (column_flow) {
+        col_flow_row_heights.resize(num_rows_for_col_flow, 0.0f);
+    }
+
+    for (auto* child : grid_items) {
+        // Check grid-area placement first (named area from grid-template-areas)
+        if (!child->grid_area.empty() && !area_map.empty()) {
+            auto ait = area_map.find(child->grid_area);
+            if (ait != area_map.end()) {
+                auto& ar = ait->second;
+                // Map area name to grid-column/grid-row for the existing placement logic
+                child->grid_column = std::to_string(ar.col_start + 1) + " / " + std::to_string(ar.col_end + 1);
+                child->grid_row = std::to_string(ar.row_start + 1) + " / " + std::to_string(ar.row_end + 1);
+            }
+        }
+
+        // Clamp col_index to valid range
+        if (col_index >= num_cols) col_index = num_cols - 1;
+
+        float col_x = col_x_start;
+        for (int i = 0; i < col_index; i++) col_x += col_widths[i] + col_gap;
+
+        float cell_width = col_widths[col_index];
+
+        // Handle grid-column spanning (e.g. "1 / 3" means columns 1-2)
+        int col_span = 1;
+        if (!child->grid_column.empty()) {
+            auto slash = child->grid_column.find('/');
+            if (slash != std::string::npos) {
+                try {
+                    int start = std::stoi(child->grid_column.substr(0, slash));
+                    int end_line = std::stoi(child->grid_column.substr(slash + 1));
+                    if (start >= 1 && end_line > start && end_line <= num_cols + 1) {
+                        col_index = start - 1;
+                        col_span = end_line - start;
+                        col_x = col_x_start;
+                        for (int i = 0; i < col_index; i++) col_x += col_widths[i] + col_gap;
+                        cell_width = 0;
+                        for (int i = col_index; i < col_index + col_span && i < num_cols; i++) {
+                            cell_width += col_widths[i];
+                            if (i > col_index) cell_width += col_gap; // include gap between spanned columns
+                        }
+                    }
+                } catch (...) {}
+            }
+        }
+
+        // Set child width: respect explicit width for non-stretch alignment
+        {
+            int justify = node.justify_items;
+            if (child->justify_self >= 0) justify = child->justify_self;
+            if (justify != 3 && child->specified_width > 0) {
+                // Non-stretch alignment with explicit width — keep the explicit width
+                child->geometry.width = child->specified_width;
+            } else {
+                child->geometry.width = cell_width;
+            }
+        }
+
+        // Layout the child within its cell
+        switch (child->mode) {
+            case LayoutMode::Block:
+            case LayoutMode::InlineBlock:
+                layout_block(*child, cell_width);
+                break;
+            case LayoutMode::Inline:
+                layout_inline(*child, cell_width);
+                break;
+            case LayoutMode::Flex:
+                layout_flex(*child, cell_width);
+                break;
+            case LayoutMode::Grid:
+                layout_grid(*child, cell_width);
+                break;
+            default:
+                layout_block(*child, cell_width);
+                break;
+        }
+
+        // Position after layout (layout_block may override x/y)
+        child->geometry.x = col_x;
+        if (column_flow) {
+            // For column flow: compute row_y from accumulated row heights
+            float computed_row_y = col_x_start == 0 ? 0 : 0; // start from top padding
+            computed_row_y = node.geometry.padding.top + node.geometry.border.top;
+            for (int r = 0; r < row_index; r++) {
+                computed_row_y += col_flow_row_heights[r] + row_gap;
+            }
+            child->geometry.y = computed_row_y;
+        } else {
+            child->geometry.y = row_y;
+        }
+
+        // Grid cell alignment — justify-items (horizontal)
+        // Applied after layout so we know the child's actual size
+        float child_actual_w = child->geometry.margin_box_width();
+        if (child_actual_w < cell_width) {
+            int justify = node.justify_items;
+            if (child->justify_self >= 0) justify = child->justify_self;
+            // 0=start, 1=end, 2=center, 3=stretch
+            if (justify == 2) {
+                child->geometry.x = col_x + (cell_width - child_actual_w) / 2.0f;
+            } else if (justify == 1) {
+                child->geometry.x = col_x + cell_width - child_actual_w;
+            }
+            // 3=stretch: child already fills width from layout
+        }
+
+        // Use explicit row height if available, then grid-auto-rows for implicit rows
+        float child_h = child->geometry.margin_box_height();
+        if (row_index < static_cast<int>(row_heights_explicit.size()) &&
+            row_heights_explicit[row_index] > 0) {
+            child_h = std::max(child_h, row_heights_explicit[row_index]);
+            child->geometry.height = std::max(child->geometry.height, row_heights_explicit[row_index]);
+        } else if (!node.grid_auto_rows.empty()) {
+            // grid-auto-rows: apply to implicit rows
+            float auto_h = 0;
+            try {
+                std::string ar = node.grid_auto_rows;
+                if (ar.find("px") != std::string::npos) {
+                    auto_h = std::stof(ar);
+                } else if (ar.find('%') != std::string::npos) {
+                    float pct = std::stof(ar);
+                    auto_h = node.geometry.height * pct / 100.0f;
+                }
+            } catch (...) {}
+            if (auto_h > 0) {
+                child_h = std::max(child_h, auto_h);
+                child->geometry.height = std::max(child->geometry.height, auto_h);
+            }
+        }
+        row_height = std::max(row_height, child_h);
+
+        apply_positioning(*child);
+
+        if (column_flow) {
+            // Update per-row height tracking for column flow
+            if (row_index < static_cast<int>(col_flow_row_heights.size())) {
+                col_flow_row_heights[row_index] = std::max(col_flow_row_heights[row_index], child_h);
+            }
+            // Column-major flow: advance row first, wrap to next column
+            row_index++;
+            if (row_index >= num_rows_for_col_flow) {
+                row_index = 0;
+                col_index += col_span;
+            }
+        } else {
+            col_index += col_span;
+            if (col_index >= num_cols) {
+                // Vertical alignment (align-items) for this completed row
+                // Go back and center/end-align items that are shorter than row_height
+                if (node.align_items > 0 && node.align_items != 4) { // 0=start, 4=stretch (default), skip
+                    // Walk back through items in this row
+                    for (int i = static_cast<int>(grid_items.size()) - 1; i >= 0; i--) {
+                        auto* item = grid_items[i];
+                        if (item->geometry.y == row_y) {
+                            float item_h = item->geometry.margin_box_height();
+                            int align = node.align_items;
+                            if (item->align_self >= 0) align = item->align_self;
+                            // 0=flex-start, 1=flex-end, 2=center, 3=baseline, 4=stretch
+                            if (align == 2 && item_h < row_height) {
+                                item->geometry.y += (row_height - item_h) / 2.0f;
+                            } else if (align == 1 && item_h < row_height) {
+                                item->geometry.y += row_height - item_h;
+                            }
+                        } else {
+                            break;
+                        }
+                    }
+                }
+                row_y += row_height + row_gap;
+                row_height = 0;
+                col_index = 0;
+                row_index++;
+            }
+        }
+    }
+
+    // Account for last partial row
+    if (column_flow) {
+        // For column flow: compute total height from accumulated row heights
+        float total_row_h = 0;
+        for (int r = 0; r < static_cast<int>(col_flow_row_heights.size()); r++) {
+            total_row_h += col_flow_row_heights[r];
+            if (r > 0) total_row_h += row_gap;
+        }
+        row_y = (node.geometry.padding.top + node.geometry.border.top) + total_row_h;
+    } else if (col_index > 0) {
+        row_y += row_height;
+    } else if (row_index > 0) {
+        // Remove trailing row_gap after last completed row
+        row_y -= row_gap;
+    }
+
+    // Compute container height
+    float total_content_height = row_y - (node.geometry.padding.top + node.geometry.border.top);
+    float total_height = total_content_height
+        + node.geometry.padding.top + node.geometry.padding.bottom
+        + node.geometry.border.top + node.geometry.border.bottom;
+
+    if (node.specified_height >= 0) {
+        node.geometry.height = node.specified_height;
+    } else {
+        node.geometry.height = std::max(node.geometry.height, total_height);
+    }
+    node.geometry.height = std::max(node.geometry.height, node.min_height);
+    node.geometry.height = std::min(node.geometry.height, node.max_height);
+
+    // Position absolute/fixed children
+    position_absolute_children(node);
+}
+
+void LayoutEngine::layout_table(LayoutNode& node, float containing_width) {
+    if (node.display == DisplayType::None || node.mode == LayoutMode::None) {
+        node.geometry.width = 0;
+        node.geometry.height = 0;
+        return;
+    }
+
+    // Resolve deferred percentage margins/padding
+    if (node.css_margin_top.has_value())
+        node.geometry.margin.top = node.css_margin_top->to_px(containing_width);
+    if (node.css_margin_right.has_value())
+        node.geometry.margin.right = node.css_margin_right->to_px(containing_width);
+    if (node.css_margin_bottom.has_value())
+        node.geometry.margin.bottom = node.css_margin_bottom->to_px(containing_width);
+    if (node.css_margin_left.has_value())
+        node.geometry.margin.left = node.css_margin_left->to_px(containing_width);
+    if (node.css_padding_top.has_value())
+        node.geometry.padding.top = node.css_padding_top->to_px(containing_width);
+    if (node.css_padding_right.has_value())
+        node.geometry.padding.right = node.css_padding_right->to_px(containing_width);
+    if (node.css_padding_bottom.has_value())
+        node.geometry.padding.bottom = node.css_padding_bottom->to_px(containing_width);
+    if (node.css_padding_left.has_value())
+        node.geometry.padding.left = node.css_padding_left->to_px(containing_width);
+    if (node.geometry.margin.left < 0) node.geometry.margin.left = 0;
+    if (node.geometry.margin.right < 0) node.geometry.margin.right = 0;
+
+    // Compute table width
+    if (node.parent != nullptr) {
+        node.geometry.width = compute_width(node, containing_width);
+    }
+
+    float content_w = node.geometry.width
+        - node.geometry.padding.left - node.geometry.padding.right
+        - node.geometry.border.left - node.geometry.border.right;
+    if (content_w < 0) content_w = 0;
+
+    // Determine border-spacing: 0 when border-collapse is true
+    // Horizontal and vertical spacing (CSS border-spacing two-value syntax)
+    float h_spacing = node.border_collapse ? 0.0f : node.border_spacing;
+    float v_spacing = node.border_collapse ? 0.0f
+        : ((node.border_spacing_v > 0) ? node.border_spacing_v : node.border_spacing);
+
+    // Collect table rows, flattening thead/tbody/tfoot wrappers
+    // Also separate out <caption> elements for separate layout
+    std::vector<LayoutNode*> rows;
+    std::vector<LayoutNode*> captions;
+    auto is_table_section = [](const std::string& tag) {
+        // Case-insensitive check for thead/tbody/tfoot
+        if (tag.size() < 5) return false;
+        std::string t;
+        t.reserve(tag.size());
+        for (char c : tag) t += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        return t == "thead" || t == "tbody" || t == "tfoot";
+    };
+    auto is_caption = [](const std::string& tag) {
+        if (tag.size() != 7) return false;
+        std::string t;
+        t.reserve(tag.size());
+        for (char c : tag) t += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        return t == "caption";
+    };
+    for (auto& child : node.children) {
+        if (child->display == DisplayType::None || child->mode == LayoutMode::None) {
+            child->geometry.width = 0;
+            child->geometry.height = 0;
+            continue;
+        }
+        if (child->position_type == 2 || child->position_type == 3) continue;
+        if (is_caption(child->tag_name)) {
+            captions.push_back(child.get());
+            continue;
+        }
+        if (is_table_section(child->tag_name)) {
+            // Flatten: collect tr children from thead/tbody/tfoot
+            for (auto& grandchild : child->children) {
+                if (grandchild->display == DisplayType::None || grandchild->mode == LayoutMode::None) {
+                    grandchild->geometry.width = 0;
+                    grandchild->geometry.height = 0;
+                    continue;
+                }
+                if (grandchild->position_type == 2 || grandchild->position_type == 3) continue;
+                rows.push_back(grandchild.get());
+            }
+            // Zero out the section wrapper dimensions (it's transparent)
+            child->geometry.width = 0;
+            child->geometry.height = 0;
+            continue;
+        }
+        rows.push_back(child.get());
+    }
+
+    // ---- Layout captions with caption_side=top before the table rows ----
+    float caption_top_height = 0;
+    float caption_bottom_height = 0;
+    for (auto* cap : captions) {
+        layout_block(*cap, content_w);
+        cap->geometry.x = node.geometry.padding.left + node.geometry.border.left;
+        if (cap->caption_side == 0) { // top
+            cap->geometry.y = node.geometry.padding.top + node.geometry.border.top + caption_top_height;
+            caption_top_height += cap->geometry.margin_box_height();
+        }
+        // bottom captions positioned later
+    }
+
+    if (rows.empty()) {
+        // Layout bottom captions even if no rows
+        float bottom_y = node.geometry.padding.top + node.geometry.border.top + caption_top_height;
+        for (auto* cap : captions) {
+            if (cap->caption_side == 1) { // bottom
+                cap->geometry.y = bottom_y + caption_bottom_height;
+                caption_bottom_height += cap->geometry.margin_box_height();
+            }
+        }
+        float h = compute_height(node);
+        node.geometry.height = (h >= 0) ? h : (node.geometry.padding.top + node.geometry.padding.bottom
+            + node.geometry.border.top + node.geometry.border.bottom
+            + caption_top_height + caption_bottom_height);
+        return;
+    }
+
+    // Determine column count from first row (accounting for colspan)
+    LayoutNode* first_row = rows[0];
+    std::vector<LayoutNode*> first_row_cells;
+    for (auto& cell : first_row->children) {
+        if (cell->display == DisplayType::None || cell->mode == LayoutMode::None) continue;
+        if (cell->position_type == 2 || cell->position_type == 3) continue;
+        first_row_cells.push_back(cell.get());
+    }
+
+    int num_cols = 0;
+    for (auto* cell : first_row_cells) {
+        num_cols += cell->colspan;
+    }
+    if (num_cols == 0) num_cols = 1;
+
+    // CSS spec: border-spacing applies between cells and at the edges of the table
+    float total_h_spacing = h_spacing * static_cast<float>(num_cols + 1);
+    float available_for_cols = content_w - total_h_spacing;
+    if (available_for_cols < 0) available_for_cols = 0;
+
+    std::vector<float> col_widths(static_cast<size_t>(num_cols), -1.0f); // -1 = auto
+
+    // ---- Seed column widths from <col> elements (colgroup/col) ----
+    if (!node.col_widths.empty()) {
+        for (size_t ci = 0; ci < node.col_widths.size() && ci < static_cast<size_t>(num_cols); ci++) {
+            if (node.col_widths[ci] >= 0) {
+                col_widths[ci] = node.col_widths[ci];
+            }
+        }
+    }
+
+    bool is_fixed_layout = (node.table_layout == 1);
+
+    if (is_fixed_layout) {
+        // ---- Fixed table layout (CSS 2.1 Section 17.5.2.1) ----
+        // Column widths are determined from the first row only.
+        int col_idx = 0;
+        for (auto* cell : first_row_cells) {
+            int span = cell->colspan;
+            if (col_idx >= num_cols) break;
+            if (cell->specified_width >= 0 && span == 1) {
+                col_widths[static_cast<size_t>(col_idx)] = cell->specified_width;
+            } else if (cell->specified_width >= 0 && span > 1) {
+                float per_col = cell->specified_width / static_cast<float>(span);
+                for (int s = 0; s < span && (col_idx + s) < num_cols; s++) {
+                    col_widths[static_cast<size_t>(col_idx + s)] = per_col;
+                }
+            }
+            col_idx += span;
+        }
+    } else {
+        // ---- Auto table layout (CSS 2.1 Section 17.5.2.2) ----
+        // Scan ALL rows: use the maximum specified_width per column.
+        for (auto* row : rows) {
+            int col_idx = 0;
+            for (auto& cell : row->children) {
+                if (cell->display == DisplayType::None || cell->mode == LayoutMode::None) continue;
+                if (cell->position_type == 2 || cell->position_type == 3) continue;
+                int span = cell->colspan;
+                if (span < 1) span = 1;
+                if (cell->specified_width >= 0 && span == 1 && col_idx < num_cols) {
+                    float cur = col_widths[static_cast<size_t>(col_idx)];
+                    if (cur < 0 || cell->specified_width > cur) {
+                        col_widths[static_cast<size_t>(col_idx)] = cell->specified_width;
+                    }
+                } else if (cell->specified_width >= 0 && span > 1) {
+                    float per_col = cell->specified_width / static_cast<float>(span);
+                    for (int s = 0; s < span && (col_idx + s) < num_cols; s++) {
+                        float cur = col_widths[static_cast<size_t>(col_idx + s)];
+                        if (cur < 0 || per_col > cur) {
+                            col_widths[static_cast<size_t>(col_idx + s)] = per_col;
+                        }
+                    }
+                }
+                col_idx += span;
+            }
+        }
+    }
+
+    // Distribute remaining space to auto columns equally
+    float used_width = 0;
+    int auto_cols = 0;
+    for (int i = 0; i < num_cols; i++) {
+        if (col_widths[static_cast<size_t>(i)] >= 0) {
+            used_width += col_widths[static_cast<size_t>(i)];
+        } else {
+            auto_cols++;
+        }
+    }
+
+    float remaining = available_for_cols - used_width;
+    if (remaining < 0) remaining = 0;
+    float auto_col_width = (auto_cols > 0) ? remaining / static_cast<float>(auto_cols) : 0.0f;
+
+    for (int i = 0; i < num_cols; i++) {
+        if (col_widths[static_cast<size_t>(i)] < 0) {
+            col_widths[static_cast<size_t>(i)] = auto_col_width;
+        }
+    }
+
+    // ---- Build cell occupancy grid for rowspan support ----
+    // Grid tracks which (row, col) slots are occupied by a rowspanned cell
+    // from a previous row. Value: pointer to the cell that occupies that slot (or nullptr).
+    int num_rows_total = static_cast<int>(rows.size());
+    // occupancy[row][col] = cell pointer if occupied by a rowspan from a prior row
+    std::vector<std::vector<LayoutNode*>> occupancy(
+        static_cast<size_t>(num_rows_total),
+        std::vector<LayoutNode*>(static_cast<size_t>(num_cols), nullptr));
+
+    // First pass: scan all rows and mark occupancy from rowspan cells
+    for (size_t ri = 0; ri < rows.size(); ri++) {
+        auto* row = rows[ri];
+        int cell_col = 0;
+        for (auto& cell_ptr : row->children) {
+            if (cell_ptr->display == DisplayType::None || cell_ptr->mode == LayoutMode::None) continue;
+            if (cell_ptr->position_type == 2 || cell_ptr->position_type == 3) continue;
+            // Skip columns already occupied by rowspan from a prior row
+            while (cell_col < num_cols && occupancy[ri][static_cast<size_t>(cell_col)] != nullptr) {
+                cell_col++;
+            }
+            int cspan = cell_ptr->colspan;
+            if (cspan < 1) cspan = 1;
+            int rspan = cell_ptr->rowspan;
+            if (rspan < 1) rspan = 1;
+            // Mark occupancy for rowspan > 1
+            for (int dr = 1; dr < rspan && (static_cast<int>(ri) + dr) < num_rows_total; dr++) {
+                for (int dc = 0; dc < cspan && (cell_col + dc) < num_cols; dc++) {
+                    occupancy[static_cast<size_t>(static_cast<int>(ri) + dr)]
+                             [static_cast<size_t>(cell_col + dc)] = cell_ptr.get();
+                }
+            }
+            cell_col += cspan;
+        }
+    }
+
+    // ---- Lay out each row ----
+    // Start with vertical edge spacing before first row, plus top caption height
+    float cursor_y = node.geometry.padding.top + node.geometry.border.top + caption_top_height + v_spacing;
+
+    // Track row y-positions and heights for rowspan height adjustment
+    std::vector<float> row_y_positions(static_cast<size_t>(num_rows_total), 0);
+    std::vector<float> row_heights(static_cast<size_t>(num_rows_total), 0);
+
+    // Track cells that have rowspan > 1 for later height adjustment
+    struct RowspanInfo {
+        LayoutNode* cell;
+        int start_row;
+        int rspan;
+    };
+    std::vector<RowspanInfo> rowspan_cells;
+
+    for (size_t ri = 0; ri < rows.size(); ri++) {
+        auto* row = rows[ri];
+
+        // visibility: collapse — skip row layout but preserve column widths
+        if (row->visibility_collapse) {
+            row->geometry.height = 0;
+            row->geometry.y = cursor_y;
+            row_y_positions[ri] = cursor_y;
+            row_heights[ri] = 0;
+            for (auto& cell : row->children) {
+                cell->geometry.width = 0;
+                cell->geometry.height = 0;
+            }
+            continue;
+        }
+
+        // Add vertical spacing before rows (except the first — edge spacing already added)
+        if (ri > 0) {
+            cursor_y += v_spacing;
+        }
+
+        row_y_positions[ri] = cursor_y;
+
+        // Collect cells in this row
+        std::vector<LayoutNode*> cells;
+        for (auto& cell : row->children) {
+            if (cell->display == DisplayType::None || cell->mode == LayoutMode::None) {
+                cell->geometry.width = 0;
+                cell->geometry.height = 0;
+                continue;
+            }
+            if (cell->position_type == 2 || cell->position_type == 3) continue;
+            cells.push_back(cell.get());
+        }
+
+        // Position cells in this row — start with horizontal edge spacing
+        float cursor_x = node.geometry.padding.left + node.geometry.border.left + h_spacing;
+        int cell_col = 0;
+        float row_height = 0;
+
+        for (auto* cell : cells) {
+            // Skip columns occupied by rowspan from a prior row
+            while (cell_col < num_cols && occupancy[ri][static_cast<size_t>(cell_col)] != nullptr) {
+                // Advance cursor_x past the occupied column
+                cursor_x += col_widths[static_cast<size_t>(cell_col)] + h_spacing;
+                cell_col++;
+            }
+
+            int span = cell->colspan;
+            if (span < 1) span = 1;
+
+            // Track rowspan cells
+            if (cell->rowspan > 1) {
+                rowspan_cells.push_back({cell, static_cast<int>(ri), cell->rowspan});
+            }
+
+            // Compute cell width from column widths
+            float cell_w = 0;
+            for (int s = 0; s < span && (cell_col + s) < num_cols; s++) {
+                cell_w += col_widths[static_cast<size_t>(cell_col + s)];
+                if (s > 0) cell_w += h_spacing; // include spacing between spanned columns
+            }
+
+            cell->geometry.width = cell_w;
+            cell->geometry.x = cursor_x;
+
+            // Layout cell contents
+            float cell_content_w = cell_w
+                - cell->geometry.padding.left - cell->geometry.padding.right
+                - cell->geometry.border.left - cell->geometry.border.right;
+            if (cell_content_w < 0) cell_content_w = 0;
+
+            // Layout cell's children
+            bool cell_has_inline = false;
+            bool cell_has_block = false;
+            for (auto& gc : cell->children) {
+                if (gc->display == DisplayType::None || gc->mode == LayoutMode::None) continue;
+                if (gc->position_type == 2 || gc->position_type == 3) continue;
+                if (gc->mode == LayoutMode::Inline || gc->is_text) {
+                    cell_has_inline = true;
+                } else {
+                    cell_has_block = true;
+                }
+            }
+
+            float cell_children_height = 0;
+            if (cell_has_inline && !cell_has_block) {
+                // Layout inline children within the cell
+                for (auto& gc : cell->children) {
+                    if (gc->display == DisplayType::None || gc->mode == LayoutMode::None) continue;
+                    layout_inline(*gc, cell_content_w);
+                }
+                position_inline_children(*cell, cell_content_w);
+                for (auto& gc : cell->children) {
+                    if (gc->display == DisplayType::None || gc->mode == LayoutMode::None) continue;
+                    if (gc->position_type == 2 || gc->position_type == 3) continue;
+                    float bottom = gc->geometry.y + gc->geometry.margin_box_height();
+                    if (bottom > cell_children_height) cell_children_height = bottom;
+                }
+            } else {
+                // Layout block children within the cell
+                for (auto& gc : cell->children) {
+                    if (gc->display == DisplayType::None || gc->mode == LayoutMode::None) continue;
+                    if (gc->position_type == 2 || gc->position_type == 3) continue;
+                    switch (gc->mode) {
+                        case LayoutMode::Block:
+                        case LayoutMode::InlineBlock:
+                            layout_block(*gc, cell_content_w);
+                            break;
+                        case LayoutMode::Inline:
+                            layout_inline(*gc, cell_content_w);
+                            break;
+                        case LayoutMode::Flex:
+                            layout_flex(*gc, cell_content_w);
+                            break;
+                        case LayoutMode::Grid:
+                            layout_grid(*gc, cell_content_w);
+                            break;
+                        case LayoutMode::Table:
+                            layout_table(*gc, cell_content_w);
+                            break;
+                        default:
+                            layout_block(*gc, cell_content_w);
+                            break;
+                    }
+                    cell_children_height += gc->geometry.margin_box_height();
+                }
+            }
+
+            // Compute cell height (for non-rowspan cells, this determines row height)
+            float ch = compute_height(*cell);
+            if (ch < 0) {
+                ch = cell_children_height
+                    + cell->geometry.padding.top + cell->geometry.padding.bottom
+                    + cell->geometry.border.top + cell->geometry.border.bottom;
+            }
+            cell->geometry.height = ch;
+
+            // Only count non-rowspan cells toward row height (rowspan cells span multiple rows)
+            if (cell->rowspan <= 1) {
+                row_height = std::max(row_height, cell->geometry.margin_box_height());
+            }
+
+            // Advance cursor_x to next column
+            cursor_x += cell_w;
+            if (cell_col + span < num_cols) {
+                cursor_x += h_spacing;
+            }
+            cell_col += span;
+        }
+
+        // Set row geometry
+        row->geometry.x = node.geometry.padding.left + node.geometry.border.left;
+        row->geometry.y = cursor_y;
+        row->geometry.width = content_w;
+        row->geometry.height = row_height;
+        row_heights[ri] = row_height;
+
+        // Adjust cell y positions relative to the row, applying vertical-align
+        for (auto* cell : cells) {
+            if (cell->rowspan > 1) {
+                cell->geometry.y = 0; // rowspan cells start at top of their first row
+                continue;
+            }
+            float cell_h = cell->geometry.margin_box_height();
+            float va_offset = 0;
+            // vertical_align: 0=baseline, 1=top, 2=middle, 3=bottom, 4=text-top, 5=text-bottom
+            // In table cell context: default is baseline (treated as top)
+            switch (cell->vertical_align) {
+                case 1: // top
+                    va_offset = 0;
+                    break;
+                case 2: // middle
+                    va_offset = (row_height - cell_h) / 2.0f;
+                    break;
+                case 3: // bottom
+                    va_offset = row_height - cell_h;
+                    break;
+                default: // baseline (0) — treat as top for table cells
+                    va_offset = 0;
+                    break;
+            }
+            if (va_offset < 0) va_offset = 0;
+            cell->geometry.y = va_offset;
+        }
+
+        cursor_y += row_height;
+    }
+
+    // ---- Rowspan height adjustment ----
+    // For cells with rowspan > 1, compute total spanned height and extend cell height
+    for (auto& rsi : rowspan_cells) {
+        int end_row = std::min(rsi.start_row + rsi.rspan, num_rows_total);
+        float total_spanned_h = 0;
+        for (int r = rsi.start_row; r < end_row; r++) {
+            total_spanned_h += row_heights[static_cast<size_t>(r)];
+            if (r > rsi.start_row) total_spanned_h += v_spacing;
+        }
+        // Extend cell height to cover spanned rows
+        if (total_spanned_h > rsi.cell->geometry.height) {
+            rsi.cell->geometry.height = total_spanned_h;
+        }
+    }
+
+    // Add vertical edge spacing after last row
+    cursor_y += v_spacing;
+
+    // ---- Layout bottom captions ----
+    for (auto* cap : captions) {
+        if (cap->caption_side == 1) { // bottom
+            cap->geometry.y = cursor_y + caption_bottom_height;
+            caption_bottom_height += cap->geometry.margin_box_height();
+        }
+    }
+    cursor_y += caption_bottom_height;
+
+    // Compute table height
+    float total_content_height = cursor_y
+        - (node.geometry.padding.top + node.geometry.border.top);
+    float total_height = total_content_height
+        + node.geometry.padding.top + node.geometry.padding.bottom
+        + node.geometry.border.top + node.geometry.border.bottom;
+
+    float h = compute_height(node);
+    if (h >= 0) {
+        node.geometry.height = h;
+    } else {
+        node.geometry.height = total_height;
+    }
+    node.geometry.height = std::max(node.geometry.height, node.min_height);
+    node.geometry.height = std::min(node.geometry.height, node.max_height);
+
+    // Position absolute/fixed children
+    position_absolute_children(node);
+}
+
+} // namespace clever::layout
