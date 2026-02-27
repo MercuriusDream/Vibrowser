@@ -15510,3 +15510,51 @@ TEST(JSEngine, MapForEachSum) {
     )");
     EXPECT_EQ(result, "3");
 }
+
+TEST(JSEngine, StringSearch) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("'hello world'.search(/world/)");
+    EXPECT_EQ(result, "6");
+}
+
+TEST(JSEngine, StringConcat) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("'foo'.concat('bar', 'baz')");
+    EXPECT_EQ(result, "foobarbaz");
+}
+
+TEST(JSEngine, StringLocaleCompareEqual) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("'a'.localeCompare('a')");
+    EXPECT_EQ(result, "0");
+}
+
+TEST(JSEngine, StringFromCharCode) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("String.fromCharCode(72, 105)");
+    EXPECT_EQ(result, "Hi");
+}
+
+TEST(JSEngine, StringCharCodeAtFirst) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("'Z'.charCodeAt(0)");
+    EXPECT_EQ(result, "90");
+}
+
+TEST(JSEngine, StringWrapInArray) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("[...'abc'].length");
+    EXPECT_EQ(result, "3");
+}
+
+TEST(JSEngine, StringToLowerCaseResult) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("'HELLO'.toLowerCase()");
+    EXPECT_EQ(result, "hello");
+}
+
+TEST(JSEngine, StringToUpperCaseResult) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("'world'.toUpperCase()");
+    EXPECT_EQ(result, "WORLD");
+}
