@@ -3819,3 +3819,68 @@ TEST(CacheControlTest, MaxAgeNegativeOneWhenAbsent) {
     auto cc = clever::net::parse_cache_control("no-cache");
     EXPECT_EQ(cc.max_age, -1);
 }
+
+// Cycle 779 — HTTP 4xx and 5xx status code coverage
+TEST(ResponseTest, Parse405MethodNotAllowed) {
+    std::string raw = "HTTP/1.1 405 Method Not Allowed\r\nAllow: GET, POST\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 405);
+}
+
+TEST(ResponseTest, Parse406NotAcceptable) {
+    std::string raw = "HTTP/1.1 406 Not Acceptable\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 406);
+}
+
+TEST(ResponseTest, Parse411LengthRequired) {
+    std::string raw = "HTTP/1.1 411 Length Required\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 411);
+}
+
+TEST(ResponseTest, Parse412PreconditionFailed) {
+    std::string raw = "HTTP/1.1 412 Precondition Failed\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 412);
+}
+
+TEST(ResponseTest, Parse413ContentTooLarge) {
+    std::string raw = "HTTP/1.1 413 Content Too Large\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 413);
+}
+
+TEST(ResponseTest, Parse416RangeNotSatisfiable) {
+    std::string raw = "HTTP/1.1 416 Range Not Satisfiable\r\nContent-Range: bytes */1000\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 416);
+}
+
+TEST(ResponseTest, Parse418ImATeapot) {
+    std::string raw = "HTTP/1.1 418 I'm a Teapot\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 418);
+}
+
+TEST(ResponseTest, Parse507InsufficientStorage) {
+    std::string raw = "HTTP/1.1 507 Insufficient Storage\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 507);
+}
