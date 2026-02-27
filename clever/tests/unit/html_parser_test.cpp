@@ -5126,3 +5126,82 @@ TEST(TreeBuilder, TableCellspacingAttr) {
         if (attr.name == "cellspacing" && attr.value == "0") found = true;
     EXPECT_TRUE(found);
 }
+TEST(TreeBuilder, TrackDefaultAttr) {
+    auto doc = clever::html::parse("<body><video><track default src=\"/captions.vtt\"></track></video></body>");
+    auto* el = doc->find_element("track");
+    ASSERT_NE(el, nullptr);
+    bool found = false;
+    for (const auto& attr : el->attributes)
+        if (attr.name == "default") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, SourceSrcsetAttr) {
+    auto doc = clever::html::parse("<body><picture><source srcset=\"/img@2x.png 2x\"></source></picture></body>");
+    auto* el = doc->find_element("source");
+    ASSERT_NE(el, nullptr);
+    bool found = false;
+    for (const auto& attr : el->attributes)
+        if (attr.name == "srcset") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, ButtonDisabledAttr) {
+    auto doc = clever::html::parse("<body><button disabled>Click</button></body>");
+    auto* el = doc->find_element("button");
+    ASSERT_NE(el, nullptr);
+    bool found = false;
+    for (const auto& attr : el->attributes)
+        if (attr.name == "disabled") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, SelectFormAttr) {
+    auto doc = clever::html::parse("<body><select form=\"myForm\" name=\"color\"></select></body>");
+    auto* el = doc->find_element("select");
+    ASSERT_NE(el, nullptr);
+    bool found = false;
+    for (const auto& attr : el->attributes)
+        if (attr.name == "form" && attr.value == "myForm") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, InputFormactionAttr) {
+    auto doc = clever::html::parse("<body><input type=\"submit\" formaction=\"/alt-submit\"></body>");
+    auto* el = doc->find_element("input");
+    ASSERT_NE(el, nullptr);
+    bool found = false;
+    for (const auto& attr : el->attributes)
+        if (attr.name == "formaction") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, InputFormmethodAttr) {
+    auto doc = clever::html::parse("<body><input type=\"submit\" formmethod=\"post\"></body>");
+    auto* el = doc->find_element("input");
+    ASSERT_NE(el, nullptr);
+    bool found = false;
+    for (const auto& attr : el->attributes)
+        if (attr.name == "formmethod" && attr.value == "post") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, TextareaFormAttr) {
+    auto doc = clever::html::parse("<body><textarea form=\"signup\" name=\"bio\"></textarea></body>");
+    auto* el = doc->find_element("textarea");
+    ASSERT_NE(el, nullptr);
+    bool found = false;
+    for (const auto& attr : el->attributes)
+        if (attr.name == "form" && attr.value == "signup") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, ColWidthAttr) {
+    auto doc = clever::html::parse("<body><table><colgroup><col width=\"100\"></col></colgroup></table></body>");
+    auto* el = doc->find_element("col");
+    ASSERT_NE(el, nullptr);
+    bool found = false;
+    for (const auto& attr : el->attributes)
+        if (attr.name == "width" && attr.value == "100") found = true;
+    EXPECT_TRUE(found);
+}
