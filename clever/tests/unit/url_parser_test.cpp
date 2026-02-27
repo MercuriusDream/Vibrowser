@@ -2502,3 +2502,58 @@ TEST(URLParser, OriginHttpsWithNonDefaultPort8443IncludesPort) {
     ASSERT_TRUE(url.has_value());
     EXPECT_EQ(url->origin(), "https://example.com:8443");
 }
+
+// Cycle 862 — WS/WSS/FTP origin, multi-dot path normalization, URL scheme checks
+TEST(URLParser, WsOriginOmitsDefaultPort80) {
+    auto url = parse("ws://chat.example.com:80/socket");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->origin(), "ws://chat.example.com");
+}
+
+TEST(URLParser, WssOriginOmitsDefaultPort443) {
+    auto url = parse("wss://secure.example.com:443/socket");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->origin(), "wss://secure.example.com");
+}
+
+TEST(URLParser, FtpOriginOmitsDefaultPort21) {
+    auto url = parse("ftp://files.example.com:21/pub/");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->origin(), "ftp://files.example.com");
+}
+
+TEST(URLParser, WsNonDefaultPortIncludedInOrigin) {
+    auto url = parse("ws://chat.example.com:9000/socket");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->origin(), "ws://chat.example.com:9000");
+}
+
+TEST(URLParser, MultipleDotNormalizationPath) {
+    auto url = parse("https://example.com/a/./b/./c");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->path, "/a/b/c");
+}
+
+TEST(URLParser, WssAndHttpsNotSameOriginSameHost) {
+    auto a = parse("wss://example.com/");
+    auto b = parse("https://example.com/");
+    ASSERT_TRUE(a.has_value());
+    ASSERT_TRUE(b.has_value());
+    EXPECT_FALSE(urls_same_origin(*a, *b));
+}
+
+TEST(URLParser, FtpAndHttpNotSameOriginSameHost) {
+    auto a = parse("ftp://example.com/");
+    auto b = parse("http://example.com/");
+    ASSERT_TRUE(a.has_value());
+    ASSERT_TRUE(b.has_value());
+    EXPECT_FALSE(urls_same_origin(*a, *b));
+}
+
+TEST(URLParser, WsSameOriginWithSelf) {
+    auto a = parse("ws://chat.example.com/room");
+    auto b = parse("ws://chat.example.com/chat");
+    ASSERT_TRUE(a.has_value());
+    ASSERT_TRUE(b.has_value());
+    EXPECT_TRUE(urls_same_origin(*a, *b));
+}
