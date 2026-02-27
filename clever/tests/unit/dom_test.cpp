@@ -2757,3 +2757,46 @@ TEST(DomNode, ThreeChildrenInOrderViaSiblings) {
     EXPECT_EQ(b_ptr->next_sibling(), c_ptr);
     EXPECT_EQ(c_ptr->next_sibling(), nullptr);
 }
+
+TEST(DomNode, TextNodeHasNoChildren) {
+    Text txt("hello");
+    EXPECT_EQ(txt.child_count(), 0u);
+}
+
+TEST(DomNode, ElementTagNamePreservedOnCreate) {
+    Element span("span");
+    EXPECT_EQ(span.tag_name(), "span");
+}
+
+TEST(DomNode, HasAttributeReturnsFalseWhenAbsent) {
+    Element div("div");
+    EXPECT_FALSE(div.has_attribute("class"));
+}
+
+TEST(DomNode, HasAttributeReturnsTrueAfterSet) {
+    Element div("div");
+    div.set_attribute("class", "box");
+    EXPECT_TRUE(div.has_attribute("class"));
+}
+
+TEST(DomNode, GetAttributeReturnsNulloptWhenAbsent) {
+    Element img("img");
+    EXPECT_FALSE(img.get_attribute("src").has_value());
+}
+
+TEST(DomNode, RemoveAttributeErasesIt) {
+    Element p("p");
+    p.set_attribute("id", "main");
+    p.remove_attribute("id");
+    EXPECT_FALSE(p.has_attribute("id"));
+}
+
+TEST(DomNode, FirstChildNullOnEmptyElement) {
+    Element ul("ul");
+    EXPECT_EQ(ul.first_child(), nullptr);
+}
+
+TEST(DomNode, LastChildNullOnEmptyElement) {
+    Element ol("ol");
+    EXPECT_EQ(ol.last_child(), nullptr);
+}
