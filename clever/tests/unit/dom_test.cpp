@@ -3672,3 +3672,59 @@ TEST(DomElement, DataAttributeInAttributesList) {
         if (attr.name == "data-role") found = true;
     EXPECT_TRUE(found);
 }
+
+// Cycle 821 — ClassList::to_string(), Comment in tree, Text node edge cases
+TEST(DomClassList, ToStringEmptyIsEmpty) {
+    ClassList cl;
+    EXPECT_EQ(cl.to_string(), "");
+}
+
+TEST(DomClassList, ToStringSingleClass) {
+    ClassList cl;
+    cl.add("foo");
+    EXPECT_EQ(cl.to_string(), "foo");
+}
+
+TEST(DomClassList, ToStringTwoClassesSpaceSeparated) {
+    ClassList cl;
+    cl.add("foo");
+    cl.add("bar");
+    std::string s = cl.to_string();
+    EXPECT_NE(s.find("foo"), std::string::npos);
+    EXPECT_NE(s.find("bar"), std::string::npos);
+}
+
+TEST(DomClassList, ToStringAfterRemoveDropsClass) {
+    ClassList cl;
+    cl.add("alpha");
+    cl.add("beta");
+    cl.remove("alpha");
+    EXPECT_EQ(cl.to_string().find("alpha"), std::string::npos);
+    EXPECT_NE(cl.to_string().find("beta"), std::string::npos);
+}
+
+TEST(DomComment, AppendedToParentHasCorrectParent) {
+    Element parent("div");
+    auto comment = std::make_unique<Comment>("a note");
+    auto* ptr = comment.get();
+    parent.append_child(std::move(comment));
+    EXPECT_EQ(ptr->parent(), &parent);
+}
+
+TEST(DomComment, AppendedCommentIncreasesChildCount) {
+    Element parent("section");
+    parent.append_child(std::make_unique<Comment>("note1"));
+    parent.append_child(std::make_unique<Comment>("note2"));
+    EXPECT_EQ(parent.child_count(), 2u);
+}
+
+TEST(DomText, EmptyTextNodeDataIsEmpty) {
+    Text t("");
+    EXPECT_EQ(t.data(), "");
+    EXPECT_EQ(t.text_content(), "");
+}
+
+TEST(DomText, TextContentEqualsData) {
+    Text t("hello world");
+    EXPECT_EQ(t.text_content(), t.data());
+}
