@@ -2777,3 +2777,55 @@ TEST(URLParser, TwoSegmentPath) {
     ASSERT_TRUE(url.has_value());
     EXPECT_EQ(url->path, "/a/b");
 }
+
+TEST(URLParser, HostWithHyphen) {
+    auto url = parse("https://my-site.example.com/page");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->host, "my-site.example.com");
+}
+
+TEST(URLParser, IPv4LoopbackOrigin) {
+    auto url = parse("http://127.0.0.1:3000/api");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->host, "127.0.0.1");
+    ASSERT_TRUE(url->port.has_value());
+    EXPECT_EQ(*url->port, 3000);
+}
+
+TEST(URLParser, LocalhostOriginIsHttp) {
+    auto url = parse("http://localhost/path");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "http");
+    EXPECT_EQ(url->host, "localhost");
+}
+
+TEST(URLParser, LocalhostPortNumber) {
+    auto url = parse("http://localhost:8080/");
+    ASSERT_TRUE(url.has_value());
+    ASSERT_TRUE(url->port.has_value());
+    EXPECT_EQ(*url->port, 8080);
+}
+
+TEST(URLParser, OriginExcludesQuery) {
+    auto url = parse("https://example.com/page?key=value");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->origin(), "https://example.com");
+}
+
+TEST(URLParser, OriginExcludesFragment) {
+    auto url = parse("https://example.com/page#section");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->origin(), "https://example.com");
+}
+
+TEST(URLParser, SchemeMatchesHttp) {
+    auto url = parse("http://example.com/");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "http");
+}
+
+TEST(URLParser, SchemeMatchesHttps) {
+    auto url = parse("https://secure.example.com/");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+}
