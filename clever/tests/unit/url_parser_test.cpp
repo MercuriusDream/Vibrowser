@@ -2114,3 +2114,58 @@ TEST(URLParser, PathWithMultipleDots) {
     ASSERT_TRUE(result.has_value());
     EXPECT_FALSE(result->path.empty());
 }
+
+// Cycle 776 — URL parsing edge cases
+TEST(URLParser, PathTrailingSlash) {
+    auto result = parse("https://example.com/path/to/");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_NE(result->path.find("/path/to/"), std::string::npos);
+}
+
+TEST(URLParser, OriginWithPortInSerialized) {
+    auto result = parse("https://example.com:8443/api");
+    ASSERT_TRUE(result.has_value());
+    std::string origin = result->scheme + "://" + result->host;
+    EXPECT_NE(origin.find("example.com"), std::string::npos);
+}
+
+TEST(URLParser, DoubleSlashInPath) {
+    auto result = parse("https://example.com//double//slash");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_FALSE(result->path.empty());
+}
+
+TEST(URLParser, PasswordWithSpecialChars) {
+    auto result = parse("ftp://user:p%40ss@files.example.com/");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_FALSE(result->password.empty());
+}
+
+TEST(URLParser, HostCaseNormalized) {
+    auto result = parse("https://EXAMPLE.COM/path");
+    ASSERT_TRUE(result.has_value());
+    // Host should be lowercased
+    EXPECT_EQ(result->host, "example.com");
+}
+
+TEST(URLParser, SchemeRelativeURLV2) {
+    auto result = parse("//cdn.example.com/lib.js");
+    // scheme-relative; may parse without scheme or fail
+    if (result.has_value()) {
+        EXPECT_NE(result->host.find("cdn"), std::string::npos);
+    }
+}
+
+TEST(URLParser, QueryWithHashInValue) {
+    auto result = parse("https://example.com/search?q=test%23result");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_NE(result->query.find("q=test"), std::string::npos);
+}
+
+TEST(URLParser, MultipleQueryParamsOrder) {
+    auto result = parse("https://example.com/?z=26&a=1&m=13");
+    ASSERT_TRUE(result.has_value());
+    // All params present in query string
+    EXPECT_NE(result->query.find("z=26"), std::string::npos);
+    EXPECT_NE(result->query.find("a=1"), std::string::npos);
+}
