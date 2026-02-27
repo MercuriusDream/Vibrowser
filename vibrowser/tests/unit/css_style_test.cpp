@@ -16225,3 +16225,152 @@ TEST(CSSStyleTest, FlexGrowShrinkAndOpacityV89) {
     EXPECT_FLOAT_EQ(style.flex_shrink, 0.5f);
     EXPECT_FLOAT_EQ(style.opacity, 0.8f);
 }
+
+TEST(CSSStyleTest, DisplayGridWithOverflowAutoV90) {
+    const std::string css = "section{display:grid;overflow-x:auto;overflow-y:auto;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "section";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.display, Display::Grid);
+    EXPECT_EQ(style.overflow_x, Overflow::Auto);
+    EXPECT_EQ(style.overflow_y, Overflow::Auto);
+}
+
+TEST(CSSStyleTest, CursorNotAllowedWithPointerEventsNoneV90) {
+    const std::string css = ".disabled{cursor:not-allowed;pointer-events:none;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "button";
+    elem.classes = {"disabled"};
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.cursor, Cursor::NotAllowed);
+    EXPECT_EQ(style.pointer_events, PointerEvents::None);
+}
+
+TEST(CSSStyleTest, UserSelectAllWithVisibilityCollapseV90) {
+    const std::string css = "tr.hidden{user-select:all;visibility:collapse;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "tr";
+    elem.classes = {"hidden"};
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.user_select, UserSelect::All);
+    EXPECT_EQ(style.visibility, Visibility::Collapse);
+}
+
+TEST(CSSStyleTest, VerticalAlignTopWithLineHeightV90) {
+    const std::string css = "span{vertical-align:top;line-height:1.8;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "span";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.vertical_align, VerticalAlign::Top);
+    EXPECT_FLOAT_EQ(style.line_height_unitless, 1.8f);
+}
+
+TEST(CSSStyleTest, PositionAbsoluteWithZindexAndInsetsV90) {
+    const std::string css = "#overlay{position:absolute;z-index:100;top:0px;left_pos:0px;right:20px;bottom:20px;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+    elem.id = "overlay";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.position, Position::Absolute);
+    EXPECT_EQ(style.z_index, 100);
+    EXPECT_FLOAT_EQ(style.top.to_px(), 0.0f);
+}
+
+TEST(CSSStyleTest, InlineBlockWithPaddingAndMarginV90) {
+    const std::string css = ".badge{display:inline-block;padding:4px;margin:8px;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "span";
+    elem.classes = {"badge"};
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.display, Display::InlineBlock);
+    EXPECT_FLOAT_EQ(style.padding.top.to_px(), 4.0f);
+    EXPECT_FLOAT_EQ(style.padding.bottom.to_px(), 4.0f);
+    EXPECT_FLOAT_EQ(style.margin.top.to_px(), 8.0f);
+    EXPECT_FLOAT_EQ(style.margin.bottom.to_px(), 8.0f);
+}
+
+TEST(CSSStyleTest, BorderLeftSolidBlueWithWidthV90) {
+    const std::string css = "aside{border-left-width:5px;border-left-style:solid;border-left-color:blue;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "aside";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_FLOAT_EQ(style.border_left.width.to_px(), 5.0f);
+    EXPECT_EQ(style.border_left.style, BorderStyle::Solid);
+    EXPECT_EQ(style.border_left.color.b, 255);
+}
+
+TEST(CSSStyleTest, WhiteSpacePreLineWithTextAlignCenterV90) {
+    const std::string css = "pre.code{white-space:pre-line;text-align:center;font-size:14px;font-weight:700;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "pre";
+    elem.classes = {"code"};
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.white_space, WhiteSpace::PreLine);
+    EXPECT_EQ(style.text_align, TextAlign::Center);
+    EXPECT_FLOAT_EQ(style.font_size.value, 14.0f);
+    EXPECT_EQ(style.font_weight, 700);
+}

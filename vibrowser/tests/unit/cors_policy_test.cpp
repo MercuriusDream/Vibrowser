@@ -6558,3 +6558,80 @@ TEST(CORSPolicyTest, NullOriginAttachesHeaderCrossOriginV89) {
     // Empty origin should NOT attach
     EXPECT_FALSE(should_attach_origin_header("", "https://api.example.com/data"));
 }
+
+TEST(CORSPolicyTest, FragmentUrlNotCorsEligibleV90) {
+    // URLs with fragments (#frag) are NOT CORS-eligible
+    EXPECT_FALSE(is_cors_eligible_request_url("https://api.example.com/page#section"));
+    EXPECT_FALSE(is_cors_eligible_request_url("http://example.com/data#top"));
+    EXPECT_FALSE(is_cors_eligible_request_url("https://cdn.example.com/file.js#hash"));
+    // Without fragment should be eligible
+    EXPECT_TRUE(is_cors_eligible_request_url("https://api.example.com/page"));
+}
+
+TEST(CORSPolicyTest, WssAndWsNotCorsEligibleV90) {
+    // wss:// and ws:// are NOT CORS-eligible (only http/https/data/blob)
+    EXPECT_FALSE(is_cors_eligible_request_url("wss://realtime.example.com/feed"));
+    EXPECT_FALSE(is_cors_eligible_request_url("ws://realtime.example.com/feed"));
+    // http and https ARE eligible
+    EXPECT_TRUE(is_cors_eligible_request_url("https://realtime.example.com/feed"));
+    EXPECT_TRUE(is_cors_eligible_request_url("http://realtime.example.com/feed"));
+}
+
+TEST(CORSPolicyTest, SameSchemeHostPortNotCrossOriginV90) {
+    // Same scheme+host+port = same origin (NOT cross-origin)
+    EXPECT_FALSE(is_cross_origin("https://shop.example.com", "https://shop.example.com/cart"));
+    EXPECT_FALSE(is_cross_origin("http://localhost:3000", "http://localhost:3000/api/items"));
+    // Different scheme = cross-origin
+    EXPECT_TRUE(is_cross_origin("http://shop.example.com", "https://shop.example.com/cart"));
+    // Different host = cross-origin
+    EXPECT_TRUE(is_cross_origin("https://shop.example.com", "https://store.example.com/cart"));
+}
+
+TEST(CORSPolicyTest, ExplicitDefaultPortNotEnforceableV90) {
+    // Explicit :443 on https is NOT enforceable
+    EXPECT_FALSE(has_enforceable_document_origin("https://secure.example.com:443"));
+    // Explicit :80 on http is NOT enforceable
+    EXPECT_FALSE(has_enforceable_document_origin("http://plain.example.com:80"));
+    // Non-default ports ARE enforceable
+    EXPECT_TRUE(has_enforceable_document_origin("https://secure.example.com:9443"));
+    EXPECT_TRUE(has_enforceable_document_origin("http://plain.example.com:3000"));
+}
+
+TEST(CORSPolicyTest, CaseInsensitiveSchemesCrossOriginV90) {
+    // Schemes are case-insensitive for cross-origin check
+    EXPECT_FALSE(is_cross_origin("HTTPS://app.example.com", "https://app.example.com/path"));
+    EXPECT_FALSE(is_cross_origin("https://app.example.com", "HTTPS://app.example.com/path"));
+    EXPECT_FALSE(is_cross_origin("HTTP://app.example.com", "http://app.example.com/path"));
+}
+
+TEST(CORSPolicyTest, WildcardAcaoWithCredentialsRejectsV90) {
+    // Wildcard "*" ACAO with credentials requested must REJECT
+    clever::net::HeaderMap h;
+    h.set("Access-Control-Allow-Origin", "*");
+    h.set("Access-Control-Allow-Credentials", "true");
+    EXPECT_FALSE(cors_allows_response("https://portal.example.com", "https://api.example.com/v2", h, true));
+    // Wildcard without credentials should ALLOW
+    EXPECT_TRUE(cors_allows_response("https://portal.example.com", "https://api.example.com/v2", h, false));
+}
+
+TEST(CORSPolicyTest, ShouldAttachOriginHeaderCrossOriginV90) {
+    // Origin header should be attached when origin and destination differ
+    EXPECT_TRUE(should_attach_origin_header("https://frontend.example.com", "https://backend.example.com/api"));
+    // Same origin should NOT attach
+    EXPECT_FALSE(should_attach_origin_header("https://frontend.example.com", "https://frontend.example.com/api"));
+    // Null origin always attaches
+    EXPECT_TRUE(should_attach_origin_header("null", "https://backend.example.com/api"));
+}
+
+TEST(CORSPolicyTest, CorsAllowsExactOriginMatchNoCredsV90) {
+    // CORS allows response when ACAO exactly matches origin, no credentials
+    clever::net::HeaderMap h2;
+    h2.set("Access-Control-Allow-Origin", "https://dashboard.example.com");
+    EXPECT_TRUE(cors_allows_response("https://dashboard.example.com", "https://api.example.com/stats", h2, false));
+    // Mismatch should reject
+    h2.set("Access-Control-Allow-Origin", "https://other.example.com");
+    EXPECT_FALSE(cors_allows_response("https://dashboard.example.com", "https://api.example.com/stats", h2, false));
+    // Wildcard without credentials should allow
+    h2.set("Access-Control-Allow-Origin", "*");
+    EXPECT_TRUE(cors_allows_response("https://dashboard.example.com", "https://api.example.com/stats", h2, false));
+}

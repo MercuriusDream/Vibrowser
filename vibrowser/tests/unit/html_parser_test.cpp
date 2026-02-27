@@ -14388,3 +14388,124 @@ TEST(HtmlParserTest, MixedTextAndElementChildrenV89) {
     EXPECT_EQ(p->children[2]->tag_name, "");
     EXPECT_EQ(p->children[2]->text_content(), " world");
 }
+
+// 1. Parse definition list (dl > dt + dd)
+TEST(HtmlParserTest, DefinitionListStructureV90) {
+    auto doc = clever::html::parse(
+        "<html><body><dl><dt>Term</dt><dd>Definition</dd></dl></body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* dl = doc->find_element("dl");
+    ASSERT_NE(dl, nullptr);
+    auto* dt = dl->find_element("dt");
+    ASSERT_NE(dt, nullptr);
+    EXPECT_EQ(dt->text_content(), "Term");
+    auto dds = dl->find_all_elements("dd");
+    ASSERT_EQ(dds.size(), 1u);
+    EXPECT_EQ(dds[0]->text_content(), "Definition");
+}
+
+// 2. Parse nested spans with attributes
+TEST(HtmlParserTest, NestedSpansWithAttributesV90) {
+    auto doc = clever::html::parse(
+        "<html><body><span class=\"outer\"><span id=\"inner\">Text</span></span></body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto spans = doc->find_all_elements("span");
+    ASSERT_EQ(spans.size(), 2u);
+    // Outer span has class attribute
+    bool found_outer = false;
+    for (auto* s : spans) {
+        for (auto& attr : s->attributes) {
+            if (attr.name == "class" && attr.value == "outer") found_outer = true;
+        }
+    }
+    EXPECT_TRUE(found_outer);
+    // Inner span has text
+    auto* inner = spans[1];
+    EXPECT_EQ(inner->text_content(), "Text");
+}
+
+// 3. Parse table with thead and tbody
+TEST(HtmlParserTest, TableTheadTbodyV90) {
+    auto doc = clever::html::parse(
+        "<html><body><table><thead><tr><th>Header</th></tr></thead>"
+        "<tbody><tr><td>Cell</td></tr></tbody></table></body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* table = doc->find_element("table");
+    ASSERT_NE(table, nullptr);
+    auto* th = table->find_element("th");
+    ASSERT_NE(th, nullptr);
+    EXPECT_EQ(th->text_content(), "Header");
+    auto* td = table->find_element("td");
+    ASSERT_NE(td, nullptr);
+    EXPECT_EQ(td->text_content(), "Cell");
+}
+
+// 4. Parse multiple void elements (br, hr, img)
+TEST(HtmlParserTest, MultipleVoidElementsV90) {
+    auto doc = clever::html::parse(
+        "<html><body><p>Line1<br>Line2</p><hr><img src=\"pic.png\"></body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* p = doc->find_element("p");
+    ASSERT_NE(p, nullptr);
+    auto* br = p->find_element("br");
+    ASSERT_NE(br, nullptr);
+    EXPECT_EQ(br->children.size(), 0u);
+    auto* hr = doc->find_element("hr");
+    ASSERT_NE(hr, nullptr);
+    auto* img = doc->find_element("img");
+    ASSERT_NE(img, nullptr);
+    EXPECT_EQ(img->children.size(), 0u);
+}
+
+// 5. Parse deeply nested divs (4 levels)
+TEST(HtmlParserTest, DeeplyNestedDivsV90) {
+    auto doc = clever::html::parse(
+        "<html><body><div><div><div><div>Deep</div></div></div></div></body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto divs = doc->find_all_elements("div");
+    ASSERT_EQ(divs.size(), 4u);
+    // The innermost div has the text
+    auto* innermost = divs[3];
+    EXPECT_EQ(innermost->text_content(), "Deep");
+    EXPECT_EQ(innermost->children.size(), 1u); // text node
+}
+
+// 6. Parse blockquote with paragraph
+TEST(HtmlParserTest, BlockquoteWithParagraphV90) {
+    auto doc = clever::html::parse(
+        "<html><body><blockquote><p>Quoted text here</p></blockquote></body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* bq = doc->find_element("blockquote");
+    ASSERT_NE(bq, nullptr);
+    auto* p = bq->find_element("p");
+    ASSERT_NE(p, nullptr);
+    EXPECT_EQ(p->text_content(), "Quoted text here");
+}
+
+// 7. Parse pre element preserving content
+TEST(HtmlParserTest, PreElementContentV90) {
+    auto doc = clever::html::parse(
+        "<html><body><pre>code line</pre></body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* pre = doc->find_element("pre");
+    ASSERT_NE(pre, nullptr);
+    EXPECT_EQ(pre->text_content(), "code line");
+}
+
+// 8. Parse anchor with href and target attributes
+TEST(HtmlParserTest, AnchorWithMultipleAttributesV90) {
+    auto doc = clever::html::parse(
+        "<html><body><a href=\"https://example.com\" target=\"_blank\">Link</a></body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* a = doc->find_element("a");
+    ASSERT_NE(a, nullptr);
+    EXPECT_EQ(a->text_content(), "Link");
+    bool found_href = false;
+    bool found_target = false;
+    for (auto& attr : a->attributes) {
+        if (attr.name == "href" && attr.value == "https://example.com") found_href = true;
+        if (attr.name == "target" && attr.value == "_blank") found_target = true;
+    }
+    EXPECT_TRUE(found_href);
+    EXPECT_TRUE(found_target);
+}

@@ -10649,3 +10649,79 @@ TEST(UrlParserTest, DoubleEncodedPercentInPathV89) {
     EXPECT_EQ(result->host, "cdn.example.com");
     EXPECT_NE(result->path.find("%2520"), std::string::npos);
 }
+
+TEST(UrlParserTest, HttpDefaultPortIsNulloptV90) {
+    auto result = clever::url::parse("http://example.com/index.html");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_FALSE(result->port.has_value());
+    EXPECT_EQ(result->path, "/index.html");
+    EXPECT_TRUE(result->query.empty());
+    EXPECT_TRUE(result->fragment.empty());
+}
+
+TEST(UrlParserTest, HttpsNonDefaultPortV90) {
+    auto result = clever::url::parse("https://secure.example.org:8443/admin/dashboard");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "secure.example.org");
+    ASSERT_TRUE(result->port.has_value());
+    EXPECT_EQ(result->port.value(), 8443);
+    EXPECT_EQ(result->path, "/admin/dashboard");
+}
+
+TEST(UrlParserTest, MultipleQueryParametersV90) {
+    auto result = clever::url::parse("https://api.example.com/search?lang=en&page=3&sort=date");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->host, "api.example.com");
+    EXPECT_EQ(result->path, "/search");
+    EXPECT_NE(result->query.find("lang=en"), std::string::npos);
+    EXPECT_NE(result->query.find("page=3"), std::string::npos);
+    EXPECT_NE(result->query.find("sort=date"), std::string::npos);
+    EXPECT_TRUE(result->fragment.empty());
+}
+
+TEST(UrlParserTest, FragmentWithSlashesV90) {
+    auto result = clever::url::parse("https://wiki.example.com/article#section/subsection/detail");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->host, "wiki.example.com");
+    EXPECT_EQ(result->path, "/article");
+    EXPECT_EQ(result->fragment, "section/subsection/detail");
+}
+
+TEST(UrlParserTest, SerializePreservesComponentsV90) {
+    auto result = clever::url::parse("https://store.example.com:9090/products/item?id=42#reviews");
+    ASSERT_TRUE(result.has_value());
+    std::string s = result->serialize();
+    EXPECT_NE(s.find("https"), std::string::npos);
+    EXPECT_NE(s.find("store.example.com"), std::string::npos);
+    EXPECT_NE(s.find("9090"), std::string::npos);
+    EXPECT_NE(s.find("/products/item"), std::string::npos);
+    EXPECT_NE(s.find("id=42"), std::string::npos);
+    EXPECT_NE(s.find("reviews"), std::string::npos);
+}
+
+TEST(UrlParserTest, DoubleEncodedSpaceInQueryV90) {
+    auto result = clever::url::parse("https://example.com/search?q=hello%20world");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/search");
+    EXPECT_NE(result->query.find("%2520"), std::string::npos);
+}
+
+TEST(UrlParserTest, DeepNestedPathSegmentsV90) {
+    auto result = clever::url::parse("https://cdn.example.net/assets/img/icons/logo.svg");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "cdn.example.net");
+    EXPECT_FALSE(result->port.has_value());
+    EXPECT_EQ(result->path, "/assets/img/icons/logo.svg");
+    EXPECT_TRUE(result->query.empty());
+    EXPECT_TRUE(result->fragment.empty());
+}
+
+TEST(UrlParserTest, InvalidSchemeReturnNulloptV90) {
+    auto result = clever::url::parse("://missing-scheme.com/page");
+    EXPECT_FALSE(result.has_value());
+}

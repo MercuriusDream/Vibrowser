@@ -25526,3 +25526,186 @@ TEST(JsEngineTest, ArrowFunctionWithClosureV89) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "3,2,0,1,2");
 }
+
+TEST(JsEngineTest, WeakMapAndWeakSetBasicsV90) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var results = [];
+        var wm = new WeakMap();
+        var obj1 = {};
+        var obj2 = {};
+        wm.set(obj1, "alpha");
+        wm.set(obj2, "beta");
+        results.push(wm.has(obj1));
+        results.push(wm.get(obj1));
+        results.push(wm.has(obj2));
+        wm.delete(obj2);
+        results.push(wm.has(obj2));
+        var ws = new WeakSet();
+        ws.add(obj1);
+        results.push(ws.has(obj1));
+        results.push(ws.has(obj2));
+        results.join(",");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true,alpha,true,false,true,false");
+}
+
+TEST(JsEngineTest, GeneratorFunctionIterationV90) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var results = [];
+        function* range(start, end) {
+            for (var i = start; i < end; i++) {
+                yield i;
+            }
+        }
+        var gen = range(3, 7);
+        var item = gen.next();
+        while (!item.done) {
+            results.push(item.value);
+            item = gen.next();
+        }
+        results.join(",");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "3,4,5,6");
+}
+
+TEST(JsEngineTest, TemplateLiteralsAndTaggedTemplatesV90) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var results = [];
+        var name = "World";
+        var age = 42;
+        results.push(`Hello ${name}!`);
+        results.push(`Sum: ${2 + 3}`);
+        function tag(strings, val1, val2) {
+            return strings[0] + val1.toUpperCase() + strings[1] + (val2 * 2) + strings[2];
+        }
+        results.push(tag`name=${name} age=${age}!`);
+        results.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "Hello World!|Sum: 5|name=WORLD age=84!");
+}
+
+TEST(JsEngineTest, ObjectDestructuringAndDefaultsV90) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var results = [];
+        var obj = {x: 10, y: 20, z: 30};
+        var {x, y, z, w = 99} = obj;
+        results.push(x);
+        results.push(y);
+        results.push(z);
+        results.push(w);
+        var [a, , b, c = 77] = [1, 2, 3];
+        results.push(a);
+        results.push(b);
+        results.push(c);
+        results.join(",");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "10,20,30,99,1,3,77");
+}
+
+TEST(JsEngineTest, SymbolPropertyKeysV90) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var results = [];
+        var sym = Symbol("myKey");
+        var obj = {};
+        obj[sym] = 42;
+        results.push(obj[sym]);
+        results.push(typeof sym);
+        results.push(sym.toString());
+        results.push(sym.description);
+        var sym2 = Symbol.for("shared");
+        var sym3 = Symbol.for("shared");
+        results.push(sym2 === sym3);
+        results.push(Symbol.keyFor(sym2));
+        results.join(",");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "42,symbol,Symbol(myKey),myKey,true,shared");
+}
+
+TEST(JsEngineTest, ProxyTrapGetAndSetV90) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var results = [];
+        var target = {a: 1, b: 2};
+        var log = [];
+        var handler = {
+            get: function(obj, prop) {
+                log.push("get:" + prop);
+                return obj[prop];
+            },
+            set: function(obj, prop, value) {
+                log.push("set:" + prop);
+                obj[prop] = value * 2;
+                return true;
+            }
+        };
+        var proxy = new Proxy(target, handler);
+        proxy.c = 5;
+        results.push(proxy.a);
+        results.push(proxy.c);
+        results.push(log.join("|"));
+        results.join(",");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1,10,set:c|get:a|get:c");
+}
+
+TEST(JsEngineTest, ArrayFlatAndFlatMapV90) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var results = [];
+        var nested = [1, [2, 3], [4, [5, 6]]];
+        results.push(JSON.stringify(nested.flat()));
+        results.push(JSON.stringify(nested.flat(Infinity)));
+        var words = ["hello world", "foo bar"];
+        var letters = words.flatMap(function(w) { return w.split(" "); });
+        results.push(JSON.stringify(letters));
+        results.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "[1,2,3,4,[5,6]]|[1,2,3,4,5,6]|[\"hello\",\"world\",\"foo\",\"bar\"]");
+}
+
+TEST(JsEngineTest, TryCatchFinallyErrorTypesV90) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var results = [];
+        try {
+            null.property;
+        } catch(e) {
+            results.push(e instanceof TypeError);
+        }
+        try {
+            eval("}{");
+        } catch(e) {
+            results.push(e instanceof SyntaxError);
+        }
+        try {
+            decodeURIComponent("%");
+        } catch(e) {
+            results.push(e instanceof URIError);
+        }
+        var finallyRan = false;
+        try {
+            throw new RangeError("out of range");
+        } catch(e) {
+            results.push(e instanceof RangeError);
+            results.push(e.message);
+        } finally {
+            finallyRan = true;
+        }
+        results.push(finallyRan);
+        results.join(",");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true,true,true,true,out of range,true");
+}

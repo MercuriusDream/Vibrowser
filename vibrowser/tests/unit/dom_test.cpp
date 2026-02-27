@@ -14663,3 +14663,106 @@ TEST(DomTest, GrandchildParentChainV89) {
     EXPECT_EQ(root.child_count(), 1u);
     EXPECT_EQ(child_ptr->child_count(), 1u);
 }
+
+TEST(DomTest, AttributeMapSizeAfterMultipleSetsV90) {
+    Element el("div");
+    el.set_attribute("id", "main");
+    el.set_attribute("class", "container");
+    el.set_attribute("data-role", "panel");
+    EXPECT_EQ(el.attributes().size(), 3u);
+    EXPECT_TRUE(el.has_attribute("data-role"));
+    el.remove_attribute("class");
+    EXPECT_EQ(el.attributes().size(), 2u);
+    EXPECT_FALSE(el.has_attribute("class"));
+}
+
+TEST(DomTest, ClassListToggleTwiceRestoresV90) {
+    Element el("span");
+    EXPECT_FALSE(el.class_list().contains("active"));
+    el.class_list().toggle("active");
+    EXPECT_TRUE(el.class_list().contains("active"));
+    el.class_list().toggle("active");
+    EXPECT_FALSE(el.class_list().contains("active"));
+}
+
+TEST(DomTest, InsertBeforeUpdatesAllSiblingsV90) {
+    Element parent("ul");
+    auto li1 = std::make_unique<Element>("li");
+    auto* li1_ptr = li1.get();
+    auto li3 = std::make_unique<Element>("li");
+    auto* li3_ptr = li3.get();
+    parent.append_child(std::move(li1));
+    parent.append_child(std::move(li3));
+    auto li2 = std::make_unique<Element>("li");
+    auto* li2_ptr = li2.get();
+    parent.insert_before(std::move(li2), li3_ptr);
+    EXPECT_EQ(li1_ptr->next_sibling(), li2_ptr);
+    EXPECT_EQ(li2_ptr->next_sibling(), li3_ptr);
+    EXPECT_EQ(li3_ptr->previous_sibling(), li2_ptr);
+    EXPECT_EQ(li2_ptr->previous_sibling(), li1_ptr);
+    EXPECT_EQ(parent.child_count(), 3u);
+}
+
+TEST(DomTest, DocumentCreateElementReturnsUniqueTagV90) {
+    Document doc;
+    auto div = doc.create_element("div");
+    auto span = doc.create_element("span");
+    EXPECT_EQ(div->tag_name(), "div");
+    EXPECT_EQ(span->tag_name(), "span");
+    EXPECT_NE(div.get(), span.get());
+}
+
+TEST(DomTest, OverwriteAttributePreservesOthersV90) {
+    Element el("a");
+    el.set_attribute("href", "http://example.com");
+    el.set_attribute("target", "_blank");
+    el.set_attribute("href", "http://other.com");
+    EXPECT_EQ(el.get_attribute("href").value(), "http://other.com");
+    EXPECT_EQ(el.get_attribute("target").value(), "_blank");
+    EXPECT_EQ(el.attributes().size(), 2u);
+}
+
+TEST(DomTest, RemoveChildClearsParentAndSiblingsV90) {
+    Element parent("div");
+    auto a = std::make_unique<Element>("p");
+    auto* a_ptr = a.get();
+    auto b = std::make_unique<Element>("p");
+    auto* b_ptr = b.get();
+    auto c = std::make_unique<Element>("p");
+    auto* c_ptr = c.get();
+    parent.append_child(std::move(a));
+    parent.append_child(std::move(b));
+    parent.append_child(std::move(c));
+    parent.remove_child(*b_ptr);
+    EXPECT_EQ(parent.child_count(), 2u);
+    EXPECT_EQ(a_ptr->next_sibling(), c_ptr);
+    EXPECT_EQ(c_ptr->previous_sibling(), a_ptr);
+}
+
+TEST(DomTest, TextContentConcatenatesMultipleChildrenV90) {
+    Element div("div");
+    div.append_child(std::make_unique<Text>("Hello "));
+    auto span = std::make_unique<Element>("span");
+    span->append_child(std::make_unique<Text>("World"));
+    div.append_child(std::move(span));
+    div.append_child(std::make_unique<Text>("!"));
+    EXPECT_EQ(div.text_content(), "Hello World!");
+}
+
+TEST(DomTest, FirstLastChildAfterRemovalsV90) {
+    Element parent("div");
+    auto a = std::make_unique<Element>("span");
+    auto* a_ptr = a.get();
+    auto b = std::make_unique<Element>("span");
+    auto c = std::make_unique<Element>("span");
+    auto* c_ptr = c.get();
+    parent.append_child(std::move(a));
+    parent.append_child(std::move(b));
+    parent.append_child(std::move(c));
+    EXPECT_EQ(parent.first_child(), a_ptr);
+    EXPECT_EQ(parent.last_child(), c_ptr);
+    parent.remove_child(*a_ptr);
+    EXPECT_NE(parent.first_child(), a_ptr);
+    EXPECT_EQ(parent.last_child(), c_ptr);
+    EXPECT_EQ(parent.child_count(), 2u);
+}

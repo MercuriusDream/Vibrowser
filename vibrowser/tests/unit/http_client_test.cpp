@@ -15752,3 +15752,121 @@ TEST(HttpClientTest, HeaderMapSetOverwritesExistingValueV89) {
     EXPECT_EQ(h.get("Authorization").value(), "Bearer new-token");
     EXPECT_EQ(h.size(), 1u);
 }
+
+TEST(HttpClientTest, HeaderMapRemoveAndVerifyEmptyV90) {
+    HeaderMap h;
+    h.set("X-Token", "abc123");
+    h.set("X-Request-Id", "req-001");
+    EXPECT_EQ(h.size(), 2u);
+    EXPECT_FALSE(h.empty());
+
+    h.remove("X-Token");
+    EXPECT_EQ(h.size(), 1u);
+    EXPECT_FALSE(h.has("X-Token"));
+    EXPECT_TRUE(h.has("X-Request-Id"));
+
+    h.remove("X-Request-Id");
+    EXPECT_EQ(h.size(), 0u);
+    EXPECT_TRUE(h.empty());
+}
+
+TEST(HttpClientTest, RequestSerializeDeleteMethodV90) {
+    Request req;
+    req.method = Method::DELETE_METHOD;
+    req.host = "api.example.com";
+    req.port = 443;
+    req.path = "/resources/42";
+    req.use_tls = true;
+
+    auto bytes = req.serialize();
+    std::string serialized(bytes.begin(), bytes.end());
+    EXPECT_TRUE(serialized.find("DELETE /resources/42 HTTP/1.1\r\n") == 0);
+    EXPECT_TRUE(serialized.find("Host: api.example.com\r\n") != std::string::npos);
+}
+
+TEST(HttpClientTest, RequestSerializePutWithBodyV90) {
+    Request req;
+    req.method = Method::PUT;
+    req.host = "api.example.com";
+    req.port = 80;
+    req.path = "/items/7";
+    req.use_tls = false;
+    std::string body_str = "{\"name\":\"updated\"}";
+    req.body = std::vector<uint8_t>(body_str.begin(), body_str.end());
+    req.headers.set("Content-Type", "application/json");
+
+    auto bytes = req.serialize();
+    std::string serialized(bytes.begin(), bytes.end());
+    EXPECT_TRUE(serialized.find("PUT /items/7 HTTP/1.1\r\n") == 0);
+    EXPECT_TRUE(serialized.find("Host: api.example.com\r\n") != std::string::npos);
+    EXPECT_TRUE(serialized.find("content-type: application/json\r\n") != std::string::npos);
+    EXPECT_TRUE(serialized.find(body_str) != std::string::npos);
+}
+
+TEST(HttpClientTest, ResponseBodyEmptyVectorV90) {
+    Response resp;
+    resp.status = 204;
+    resp.status_text = "No Content";
+
+    EXPECT_TRUE(resp.body.empty());
+    EXPECT_EQ(resp.body_as_string(), "");
+    EXPECT_EQ(resp.status, 204);
+    EXPECT_EQ(resp.status_text, "No Content");
+}
+
+TEST(HttpClientTest, HeaderMapHasCaseInsensitiveV90) {
+    HeaderMap h;
+    h.set("Content-Type", "text/html");
+    h.set("X-Custom-Header", "value1");
+
+    EXPECT_TRUE(h.has("content-type"));
+    EXPECT_TRUE(h.has("CONTENT-TYPE"));
+    EXPECT_TRUE(h.has("Content-Type"));
+    EXPECT_TRUE(h.has("x-custom-header"));
+    EXPECT_FALSE(h.has("X-Missing"));
+}
+
+TEST(HttpClientTest, CookieJarDifferentDomainsIsolatedV90) {
+    CookieJar jar;
+    jar.set_from_header("session=aaa", "alpha.example.com");
+    jar.set_from_header("session=bbb", "beta.example.com");
+
+    std::string alpha_cookies = jar.get_cookie_header("alpha.example.com", "/", false);
+    std::string beta_cookies = jar.get_cookie_header("beta.example.com", "/", false);
+
+    EXPECT_TRUE(alpha_cookies.find("session=aaa") != std::string::npos);
+    EXPECT_TRUE(alpha_cookies.find("session=bbb") == std::string::npos);
+    EXPECT_TRUE(beta_cookies.find("session=bbb") != std::string::npos);
+    EXPECT_TRUE(beta_cookies.find("session=aaa") == std::string::npos);
+}
+
+TEST(HttpClientTest, RequestSerializeCustomPortNonStandardV90) {
+    Request req;
+    req.method = Method::GET;
+    req.host = "internal.corp.net";
+    req.port = 3000;
+    req.path = "/api/status";
+    req.use_tls = false;
+    req.headers.set("Accept", "text/plain");
+
+    auto bytes = req.serialize();
+    std::string serialized(bytes.begin(), bytes.end());
+    EXPECT_TRUE(serialized.find("GET /api/status HTTP/1.1\r\n") == 0);
+    EXPECT_TRUE(serialized.find("Host: internal.corp.net:3000\r\n") != std::string::npos);
+    EXPECT_TRUE(serialized.find("accept: text/plain\r\n") != std::string::npos);
+}
+
+TEST(HttpClientTest, ResponseHeadersMultipleFieldsV90) {
+    Response resp;
+    resp.status = 200;
+    resp.status_text = "OK";
+    resp.headers.set("Content-Type", "application/json");
+    resp.headers.set("Cache-Control", "no-cache");
+    resp.headers.set("X-Request-Id", "req-12345");
+
+    EXPECT_EQ(resp.headers.size(), 3u);
+    EXPECT_EQ(resp.headers.get("Content-Type").value(), "application/json");
+    EXPECT_EQ(resp.headers.get("Cache-Control").value(), "no-cache");
+    EXPECT_EQ(resp.headers.get("X-Request-Id").value(), "req-12345");
+    EXPECT_FALSE(resp.headers.has("X-Missing"));
+}
