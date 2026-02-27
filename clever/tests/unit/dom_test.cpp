@@ -3426,3 +3426,85 @@ TEST(DomClassList, ClassListContainsReturnsFalseEmpty) {
     ClassList cl;
     EXPECT_FALSE(cl.contains("anything"));
 }
+
+TEST(DomNode, TextContentIncludesChildText) {
+    Document doc;
+    auto elem = doc.create_element("p");
+    auto txt = doc.create_text_node("hello");
+    elem->append_child(std::move(txt));
+    EXPECT_EQ(elem->text_content(), "hello");
+}
+
+TEST(DomNode, MultiLevelTreeParentIsCorrect) {
+    Document doc;
+    auto root = doc.create_element("div");
+    auto child = doc.create_element("span");
+    auto grandchild = doc.create_element("em");
+    child->append_child(std::move(grandchild));
+    Node* gc = child->first_child();
+    root->append_child(std::move(child));
+    ASSERT_NE(gc, nullptr);
+    ASSERT_NE(gc->parent(), nullptr);
+    EXPECT_EQ(gc->parent()->parent(), root.get());
+}
+
+TEST(DomNode, ForEachChildCountsCorrectly) {
+    Document doc;
+    auto elem = doc.create_element("ul");
+    elem->append_child(doc.create_element("li"));
+    elem->append_child(doc.create_element("li"));
+    elem->append_child(doc.create_element("li"));
+    int count = 0;
+    elem->for_each_child([&](const Node&) { ++count; });
+    EXPECT_EQ(count, 3);
+}
+
+TEST(DomNode, RemoveMiddleChildLeavesOthers) {
+    Document doc;
+    auto parent = doc.create_element("div");
+    auto& c1 = parent->append_child(doc.create_element("a"));
+    auto& c2 = parent->append_child(doc.create_element("b"));
+    auto& c3 = parent->append_child(doc.create_element("c"));
+    (void)c3;
+    parent->remove_child(c2);
+    EXPECT_EQ(parent->child_count(), 2u);
+    EXPECT_EQ(c1.next_sibling(), parent->last_child());
+}
+
+TEST(DomNode, AppendAfterRemoveRestoresChild) {
+    Document doc;
+    auto parent = doc.create_element("div");
+    parent->append_child(doc.create_element("span"));
+    auto removed = parent->remove_child(*parent->first_child());
+    EXPECT_EQ(parent->child_count(), 0u);
+    parent->append_child(std::move(removed));
+    EXPECT_EQ(parent->child_count(), 1u);
+}
+
+TEST(DomNode, TextContentConcatenatesMultipleTexts) {
+    Document doc;
+    auto elem = doc.create_element("p");
+    elem->append_child(doc.create_text_node("foo"));
+    elem->append_child(doc.create_text_node("bar"));
+    EXPECT_EQ(elem->text_content(), "foobar");
+}
+
+TEST(DomNode, SiblingTraversalAllThree) {
+    Document doc;
+    auto parent = doc.create_element("div");
+    parent->append_child(doc.create_element("a"));
+    parent->append_child(doc.create_element("b"));
+    parent->append_child(doc.create_element("c"));
+    Node* cur = parent->first_child();
+    int count = 0;
+    while (cur) { ++count; cur = cur->next_sibling(); }
+    EXPECT_EQ(count, 3);
+}
+
+TEST(DomNode, InsertBeforeNullAppendsAtEnd) {
+    Document doc;
+    auto parent = doc.create_element("div");
+    parent->append_child(doc.create_element("first"));
+    parent->insert_before(doc.create_element("last"), nullptr);
+    EXPECT_EQ(parent->child_count(), 2u);
+}
