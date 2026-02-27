@@ -7434,3 +7434,142 @@ TEST(SerializerTest, EdgeCaseZeroAndNegativeV33) {
     EXPECT_EQ(d.read_string(), "");
     EXPECT_FALSE(d.has_remaining());
 }
+
+TEST(SerializerTest, U8MaxValueV34) {
+    Serializer s;
+    s.write_u8(255u);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u8(), 255u);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, U16MaxValueV34) {
+    Serializer s;
+    s.write_u16(65535u);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u16(), 65535u);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, U32MaxValueV34) {
+    Serializer s;
+    s.write_u32(4294967295u);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u32(), 4294967295u);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, U64MaxValueV34) {
+    Serializer s;
+    s.write_u64(18446744073709551615ULL);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u64(), 18446744073709551615ULL);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, I32MinMaxRangeV34) {
+    Serializer s;
+    s.write_i32(2147483647);    // INT32_MAX
+    s.write_i32(-2147483648);   // INT32_MIN
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i32(), 2147483647);
+    EXPECT_EQ(d.read_i32(), -2147483648);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, I64MinMaxRangeV34) {
+    Serializer s;
+    s.write_i64(9223372036854775807LL);   // INT64_MAX
+    s.write_i64(-9223372036854775807LL);  // INT64_MIN+1 (avoid implementation issues)
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i64(), 9223372036854775807LL);
+    EXPECT_EQ(d.read_i64(), -9223372036854775807LL);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, F64ScientificNotationV34) {
+    Serializer s;
+    s.write_f64(1.23e-10);
+    s.write_f64(9.87e+20);
+    Deserializer d(s.data());
+    EXPECT_DOUBLE_EQ(d.read_f64(), 1.23e-10);
+    EXPECT_DOUBLE_EQ(d.read_f64(), 9.87e+20);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, BoolAndBytesSequenceV34) {
+    Serializer s;
+    s.write_bool(true);
+    s.write_bool(false);
+    uint8_t binary_data[] = { 0xDE, 0xAD, 0xBE, 0xEF, 0x00 };
+    s.write_bytes(binary_data, 5u);
+    Deserializer d(s.data());
+    EXPECT_TRUE(d.read_bool());
+    EXPECT_FALSE(d.read_bool());
+    auto bytes = d.read_bytes();
+    ASSERT_EQ(bytes.size(), 5u);
+    EXPECT_EQ(bytes[0], 0xDEu);
+    EXPECT_EQ(bytes[1], 0xADu);
+    EXPECT_EQ(bytes[2], 0xBEu);
+    EXPECT_EQ(bytes[3], 0xEFu);
+    EXPECT_EQ(bytes[4], 0x00u);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, StringAndBytesInterleavedV34) {
+    Serializer s;
+    s.write_string("start");
+    uint8_t binary1[] = { 0xAA, 0xBB };
+    s.write_bytes(binary1, 2u);
+    s.write_string("middle");
+    uint8_t binary2[] = { 0xCC, 0xDD, 0xEE };
+    s.write_bytes(binary2, 3u);
+    s.write_string("end");
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "start");
+    auto bytes1 = d.read_bytes();
+    ASSERT_EQ(bytes1.size(), 2u);
+    EXPECT_EQ(bytes1[0], 0xAAu);
+    EXPECT_EQ(bytes1[1], 0xBBu);
+    EXPECT_EQ(d.read_string(), "middle");
+    auto bytes2 = d.read_bytes();
+    ASSERT_EQ(bytes2.size(), 3u);
+    EXPECT_EQ(bytes2[0], 0xCCu);
+    EXPECT_EQ(bytes2[1], 0xDDu);
+    EXPECT_EQ(bytes2[2], 0xEEu);
+    EXPECT_EQ(d.read_string(), "end");
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, AllTypesComprehensiveV34) {
+    Serializer s;
+    s.write_u8(42u);
+    s.write_u16(1234u);
+    s.write_u32(123456u);
+    s.write_u64(9876543210ULL);
+    s.write_i32(-999);
+    s.write_i64(-888888888LL);
+    s.write_f64(3.14159265);
+    s.write_bool(true);
+    s.write_string("comprehensive_test");
+    uint8_t data[] = { 0x11, 0x22, 0x33 };
+    s.write_bytes(data, 3u);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u8(), 42u);
+    EXPECT_EQ(d.read_u16(), 1234u);
+    EXPECT_EQ(d.read_u32(), 123456u);
+    EXPECT_EQ(d.read_u64(), 9876543210ULL);
+    EXPECT_EQ(d.read_i32(), -999);
+    EXPECT_EQ(d.read_i64(), -888888888LL);
+    EXPECT_DOUBLE_EQ(d.read_f64(), 3.14159265);
+    EXPECT_TRUE(d.read_bool());
+    EXPECT_EQ(d.read_string(), "comprehensive_test");
+    auto binary = d.read_bytes();
+    ASSERT_EQ(binary.size(), 3u);
+    EXPECT_EQ(binary[0], 0x11u);
+    EXPECT_EQ(binary[1], 0x22u);
+    EXPECT_EQ(binary[2], 0x33u);
+    EXPECT_FALSE(d.has_remaining());
+}

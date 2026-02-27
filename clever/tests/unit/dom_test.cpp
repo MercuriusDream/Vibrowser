@@ -7762,3 +7762,65 @@ TEST(DomElement, SetAndGetBooleanAttribute) {
     EXPECT_TRUE(el->has_attribute("disabled"));
     EXPECT_EQ(el->get_attribute("disabled"), "");
 }
+
+TEST(DomElement, TagNameDel) {
+    Document doc;
+    auto el = doc.create_element("del");
+    EXPECT_FALSE(el->tag_name().empty());
+}
+
+TEST(DomElement, TagNameIns) {
+    Document doc;
+    auto el = doc.create_element("ins");
+    EXPECT_FALSE(el->tag_name().empty());
+}
+
+TEST(DomElement, SetAttributeTitle) {
+    Document doc;
+    auto el = doc.create_element("div");
+    el->set_attribute("title", "tooltip text");
+    EXPECT_EQ(el->get_attribute("title"), "tooltip text");
+}
+
+TEST(DomElement, SetAttributeLangV2) {
+    Document doc;
+    auto el = doc.create_element("html");
+    el->set_attribute("lang", "en");
+    EXPECT_EQ(el->get_attribute("lang"), "en");
+}
+
+TEST(DomElement, FirstChildAfterAppend) {
+    Document doc;
+    auto parent = doc.create_element("div");
+    auto child = doc.create_element("p");
+    auto* raw = child.get();
+    parent->append_child(std::move(child));
+    EXPECT_EQ(parent->first_child(), raw);
+}
+
+TEST(DomElement, RemoveAttributeWidth) {
+    Document doc;
+    auto el = doc.create_element("img");
+    el->set_attribute("width", "100");
+    el->remove_attribute("width");
+    EXPECT_EQ(el->get_attribute("width"), std::nullopt);
+}
+
+TEST(DomElement, HasAttributeAutofocusV2) {
+    Document doc;
+    auto el = doc.create_element("input");
+    el->set_attribute("autofocus", "");
+    EXPECT_TRUE(el->has_attribute("autofocus"));
+}
+
+TEST(DomElement, AttributeCountAfterOperations) {
+    Document doc;
+    auto el = doc.create_element("div");
+    el->set_attribute("a", "1");
+    el->set_attribute("b", "2");
+    el->set_attribute("c", "3");
+    el->remove_attribute("b");
+    EXPECT_TRUE(el->has_attribute("a"));
+    EXPECT_FALSE(el->has_attribute("b"));
+    EXPECT_TRUE(el->has_attribute("c"));
+}

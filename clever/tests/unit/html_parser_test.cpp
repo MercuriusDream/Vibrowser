@@ -8237,3 +8237,59 @@ TEST(TreeBuilder, InputV22) {
     ASSERT_NE(el, nullptr);
     EXPECT_EQ(el->tag_name, "input");
 }
+
+TEST(TreeBuilder, TableElementV23) {
+    auto doc = clever::html::parse("<html><body><table><tr><td>cell</td></tr></table></body></html>");
+    auto* el = doc->find_element("table");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "table");
+}
+
+TEST(TreeBuilder, TableHeadV23) {
+    auto doc = clever::html::parse("<html><body><table><thead><tr><th>Header</th></tr></thead></table></body></html>");
+    auto* el = doc->find_element("thead");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "thead");
+}
+
+TEST(TreeBuilder, TableBodyV23) {
+    auto doc = clever::html::parse("<html><body><table><tbody><tr><td>data</td></tr></tbody></table></body></html>");
+    auto* el = doc->find_element("tbody");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "tbody");
+}
+
+TEST(TreeBuilder, TableRowV23) {
+    auto doc = clever::html::parse("<html><body><table><tr><td>cell1</td><td>cell2</td></tr></table></body></html>");
+    auto* el = doc->find_element("tr");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "tr");
+}
+
+TEST(TreeBuilder, TableDataV23) {
+    auto doc = clever::html::parse("<html><body><table><tr><td>content</td></tr></table></body></html>");
+    auto* el = doc->find_element("td");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "td");
+}
+
+TEST(TreeBuilder, TableHeaderV23) {
+    auto doc = clever::html::parse("<html><body><table><tr><th>Title</th></tr></table></body></html>");
+    auto* el = doc->find_element("th");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "th");
+}
+
+TEST(TreeBuilder, TableCaptionV23) {
+    auto doc = clever::html::parse("<html><body><table><caption>Table Title</caption><tr><td>cell</td></tr></table></body></html>");
+    auto* el = doc->find_element("caption");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "caption");
+}
+
+TEST(TreeBuilder, TableColgroupV23) {
+    auto doc = clever::html::parse("<html><body><table><colgroup><col></colgroup><tr><td>cell</td></tr></table></body></html>");
+    auto* el = doc->find_element("colgroup");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "colgroup");
+}

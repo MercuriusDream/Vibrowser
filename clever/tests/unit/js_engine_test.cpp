@@ -19927,3 +19927,86 @@ TEST(JSEngine, MathTruncCycle1398) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "3,-3,0,0");
 }
+
+TEST(JSEngine, ArrayOfCycle1407) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "const arr = Array.of(1, 2, 3, 4, 5); "
+        "arr.join(',')");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1,2,3,4,5");
+}
+
+TEST(JSEngine, ArrayFillCycle1407) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "const arr = new Array(5).fill(42); "
+        "arr.join(',')");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "42,42,42,42,42");
+}
+
+TEST(JSEngine, StringPrototypeAtCycle1407) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "const str = 'hello'; "
+        "const a = str.at(0); "
+        "const b = str.at(-1); "
+        "(a + b)");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "ho");
+}
+
+TEST(JSEngine, ArrayPrototypeAtCycle1407) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "const arr = [10, 20, 30, 40]; "
+        "const a = arr.at(0); "
+        "const b = arr.at(-1); "
+        "(a + b)");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "50");
+}
+
+TEST(JSEngine, ObjectFromEntriesCycle1407) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "const entries = [['a', 1], ['b', 2], ['c', 3]]; "
+        "const obj = Object.fromEntries(entries); "
+        "(obj.a + obj.b + obj.c)");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "6");
+}
+
+TEST(JSEngine, ArrayFlatCycle1407) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "const arr = [1, [2, 3], [4, [5, 6]]]; "
+        "const flattened = arr.flat(2); "
+        "flattened.join(',')");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1,2,3,4,5,6");
+}
+
+TEST(JSEngine, MathSignCycle1407) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "const a = Math.sign(42); "
+        "const b = Math.sign(-10); "
+        "const c = Math.sign(0); "
+        "(a + ',' + b + ',' + c)");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1,-1,0");
+}
+
+TEST(JSEngine, MathCbrtCycle1407) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "const a = Math.cbrt(8); "
+        "const b = Math.cbrt(27); "
+        "const c = Math.cbrt(-8); "
+        "const sum = Math.round((a + b + c) * 100) / 100; "
+        "sum");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "3");
+}

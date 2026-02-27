@@ -8971,3 +8971,75 @@ TEST_F(CSSStylesheetTest, BorderCollapseV34) {
         if (d.property == "border-collapse") { found = true; break; }
     EXPECT_TRUE(found);
 }
+
+TEST_F(CSSStylesheetTest, TransitionV35) {
+    auto ss = parse_stylesheet("div { transition: all 0.3s ease; }");
+    ASSERT_EQ(ss.rules.size(), 1);
+    bool found = false;
+    for (auto& d : ss.rules[0].declarations)
+        if (d.property == "transition") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, AnimationNameV35) {
+    auto ss = parse_stylesheet("div { animation-name: slide; }");
+    ASSERT_EQ(ss.rules.size(), 1);
+    bool found = false;
+    for (auto& d : ss.rules[0].declarations)
+        if (d.property == "animation-name") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, AnimationDurationV35) {
+    auto ss = parse_stylesheet("div { animation-duration: 2s; }");
+    ASSERT_EQ(ss.rules.size(), 1);
+    bool found = false;
+    for (auto& d : ss.rules[0].declarations)
+        if (d.property == "animation-duration") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, AnimationDelayV35) {
+    auto ss = parse_stylesheet("div { animation-delay: 1s; }");
+    ASSERT_EQ(ss.rules.size(), 1);
+    bool found = false;
+    for (auto& d : ss.rules[0].declarations)
+        if (d.property == "animation-delay") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, TransformV35) {
+    auto ss = parse_stylesheet("div { transform: scale(1.5); }");
+    ASSERT_EQ(ss.rules.size(), 1);
+    bool found = false;
+    for (auto& d : ss.rules[0].declarations)
+        if (d.property == "transform") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, TransformOriginV35) {
+    auto ss = parse_stylesheet("div { transform-origin: center center; }");
+    ASSERT_EQ(ss.rules.size(), 1);
+    bool found = false;
+    for (auto& d : ss.rules[0].declarations)
+        if (d.property == "transform-origin") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, BackfaceVisibilityV35) {
+    auto ss = parse_stylesheet("div { backface-visibility: hidden; }");
+    ASSERT_EQ(ss.rules.size(), 1);
+    bool found = false;
+    for (auto& d : ss.rules[0].declarations)
+        if (d.property == "backface-visibility") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, PerspectiveV35) {
+    auto ss = parse_stylesheet("div { perspective: 1000px; }");
+    ASSERT_EQ(ss.rules.size(), 1);
+    bool found = false;
+    for (auto& d : ss.rules[0].declarations)
+        if (d.property == "perspective") { found = true; break; }
+    EXPECT_TRUE(found);
+}

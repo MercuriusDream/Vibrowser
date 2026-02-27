@@ -4023,3 +4023,48 @@ TEST(CORSPolicy, CorsAllowsWildcardWithCredentialsRejectV43) {
     // Wildcard + credentials=true MUST REJECT per CORS spec
     EXPECT_FALSE(cors_allows_response("https://app.example.com", "https://api.example.com/data", resp_headers, true));
 }
+
+TEST(CORSPolicy, HasEnforceableDocumentOriginHttpPort80NotEnforceableV44) {
+    // Port :80 for HTTP is NOT enforceable (default port)
+    EXPECT_FALSE(has_enforceable_document_origin("http://origin.example.com:80"));
+}
+
+TEST(CORSPolicy, HasEnforceableDocumentOriginHttpsPort443NotEnforceableV44) {
+    // Port :443 for HTTPS is NOT enforceable (default port)
+    EXPECT_FALSE(has_enforceable_document_origin("https://origin.example.com:443"));
+}
+
+TEST(CORSPolicy, IsCorsEligibleRequestUrlWithNonEmptyFragmentNotEligibleV44) {
+    // Non-empty fragment makes URL NOT eligible
+    EXPECT_FALSE(is_cors_eligible_request_url("https://api.example.com/data#section"));
+}
+
+TEST(CORSPolicy, IsCrossOriginNullOriginAlwaysCrossV44) {
+    // null origin is always cross-origin
+    EXPECT_TRUE(is_cross_origin("null", "https://api.example.com/endpoint"));
+}
+
+TEST(CORSPolicy, ShouldAttachOriginHeaderNullOriginReturnsTrueV44) {
+    // should_attach("null", url) should return TRUE per gotchas
+    EXPECT_TRUE(should_attach_origin_header("null", "https://api.example.com/resource"));
+}
+
+TEST(CORSPolicy, ShouldAttachOriginHeaderEmptyOriginReturnsFalseV44) {
+    // should_attach("", url) should return FALSE per gotchas
+    EXPECT_FALSE(should_attach_origin_header("", "https://api.example.com/resource"));
+}
+
+TEST(CORSPolicy, CorsAllowsResponseCredentialsTrueRequiresSpecificOriginNotWildcardV44) {
+    // When credentials=true, Allow-Credentials AND specific origin required (NOT wildcard)
+    clever::net::HeaderMap resp_headers;
+    resp_headers.set("Access-Control-Allow-Origin", "https://trusted.example.com");
+    resp_headers.set("Access-Control-Allow-Credentials", "true");
+    EXPECT_TRUE(cors_allows_response("https://trusted.example.com", "https://api.example.com/data", resp_headers, true));
+}
+
+TEST(CORSPolicy, NormalizeOutgoingOriginHeaderNullOriginPreservedV44) {
+    // normalize_outgoing_origin_header should preserve null origin when header="null"
+    clever::net::HeaderMap headers;
+    normalize_outgoing_origin_header(headers, "null", "https://api.example.com/data");
+    EXPECT_EQ(headers.get("origin"), "null");
+}

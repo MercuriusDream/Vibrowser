@@ -6356,3 +6356,95 @@ TEST(URLParser, PathWithDotSegmentResolutionV25) {
     EXPECT_EQ(url->query, "");
     EXPECT_EQ(url->fragment, "");
 }
+
+TEST(URLParser, ComplexPathResolutionWithMultipleDotSegmentsV26) {
+    auto url = parse("https://example.org/a/b/c/../../d/../e/f");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "example.org");
+    EXPECT_EQ(url->port, std::nullopt);
+    EXPECT_EQ(url->path, "/a/e/f");
+    EXPECT_EQ(url->query, "");
+    EXPECT_EQ(url->fragment, "");
+}
+
+TEST(URLParser, HostOnlyUrlReturnsSlashPathV26) {
+    auto url = parse("http://test.example.com");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "http");
+    EXPECT_EQ(url->host, "test.example.com");
+    EXPECT_EQ(url->port, std::nullopt);
+    EXPECT_EQ(url->path, "/");
+    EXPECT_EQ(url->query, "");
+    EXPECT_EQ(url->fragment, "");
+}
+
+TEST(URLParser, HttpsNonDefaultPort3000NormalizedV26) {
+    auto url = parse("https://api.service.io:3000/v1/endpoint");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "api.service.io");
+    EXPECT_EQ(url->port, 3000);
+    EXPECT_EQ(url->path, "/v1/endpoint");
+    EXPECT_EQ(url->query, "");
+    EXPECT_EQ(url->fragment, "");
+}
+
+TEST(URLParser, ComplexQueryStringWithMultipleParametersAndValuesV26) {
+    auto url = parse("https://search.service.com/results?q=test&filter=active&sort=date&limit=10");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "search.service.com");
+    EXPECT_EQ(url->port, std::nullopt);
+    EXPECT_EQ(url->path, "/results");
+    EXPECT_NE(url->query.find("q=test"), std::string::npos);
+    EXPECT_NE(url->query.find("filter=active"), std::string::npos);
+    EXPECT_NE(url->query.find("sort=date"), std::string::npos);
+    EXPECT_NE(url->query.find("limit=10"), std::string::npos);
+    EXPECT_EQ(url->fragment, "");
+}
+
+TEST(URLParser, FragmentWithComplexIdentifierV26) {
+    auto url = parse("https://docs.example.io/manual/guide#installation-requirements-section");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "docs.example.io");
+    EXPECT_EQ(url->port, std::nullopt);
+    EXPECT_EQ(url->path, "/manual/guide");
+    EXPECT_EQ(url->query, "");
+    EXPECT_EQ(url->fragment, "installation-requirements-section");
+}
+
+TEST(URLParser, DeepPathWithTraversalResolvingFromRootV26) {
+    auto url = parse("http://cdn.example.net/static/../assets/../../data/./files/image.png");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "http");
+    EXPECT_EQ(url->host, "cdn.example.net");
+    EXPECT_EQ(url->port, std::nullopt);
+    EXPECT_EQ(url->path, "/data/files/image.png");
+    EXPECT_EQ(url->query, "");
+    EXPECT_EQ(url->fragment, "");
+}
+
+TEST(URLParser, QueryAndFragmentBothPresentV26) {
+    auto url = parse("https://auth.example.com/callback?code=abc123&state=xyz#section");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "auth.example.com");
+    EXPECT_EQ(url->port, std::nullopt);
+    EXPECT_EQ(url->path, "/callback");
+    EXPECT_NE(url->query.find("code=abc123"), std::string::npos);
+    EXPECT_NE(url->query.find("state=xyz"), std::string::npos);
+    EXPECT_EQ(url->fragment, "section");
+}
+
+TEST(URLParser, SubdomainWithNonDefaultPortAndComplexPathV26) {
+    auto url = parse("https://staging.cdn.example.com:9443/v2/media/./content/../resource/file.mp4");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "staging.cdn.example.com");
+    EXPECT_EQ(url->port, 9443);
+    EXPECT_EQ(url->path, "/v2/media/resource/file.mp4");
+    EXPECT_EQ(url->query, "");
+    EXPECT_EQ(url->fragment, "");
+}
