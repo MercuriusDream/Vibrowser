@@ -7269,3 +7269,43 @@ TEST(LayoutNodeProps, GridRowStartDefaultsEmpty) {
     LayoutNode n;
     EXPECT_TRUE(n.grid_row_start.empty());
 }
+
+TEST(LayoutNodeProps, GridRowEndDefaultsEmpty) {
+    LayoutNode n;
+    EXPECT_TRUE(n.grid_row_end.empty());
+}
+
+TEST(LayoutNodeProps, AnimationCompositionDefaultsZero) {
+    LayoutNode n;
+    EXPECT_EQ(n.animation_composition, 0);
+}
+
+TEST(LayoutNodeProps, TextUnderlinePositionDefaultsZero) {
+    LayoutNode n;
+    EXPECT_EQ(n.text_underline_position, 0);
+}
+
+TEST(LayoutNodeProps, FontVariantPositionDefaultsZero) {
+    LayoutNode n;
+    EXPECT_EQ(n.font_variant_position, 0);
+}
+
+TEST(LayoutNodeProps, RubyPositionDefaultsZero) {
+    LayoutNode n;
+    EXPECT_EQ(n.ruby_position, 0);
+}
+
+TEST(LayoutNodeProps, ScrollMarginTopDefaultsZero) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.scroll_margin_top, 0.0f);
+}
+
+TEST(LayoutNodeProps, ScrollMarginBottomDefaultsZero) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.scroll_margin_bottom, 0.0f);
+}
+
+TEST(LayoutNodeProps, ScrollMarginLeftDefaultsZero) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.scroll_margin_left, 0.0f);
+}
