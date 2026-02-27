@@ -4920,3 +4920,75 @@ TEST_F(CSSStylesheetTest, WordBreakBreakAllDeclaration) {
         if (d.property == "word-break") { found = true; break; }
     EXPECT_TRUE(found);
 }
+
+TEST_F(CSSStylesheetTest, TextDecorationLineDeclaration) {
+    auto sheet = parse_stylesheet("a { text-decoration-line: underline; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "text-decoration-line") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, TextDecorationColorDeclaration) {
+    auto sheet = parse_stylesheet("a { text-decoration-color: red; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "text-decoration-color") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, TextDecorationStyleDeclaration) {
+    auto sheet = parse_stylesheet("a { text-decoration-style: dotted; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "text-decoration-style") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, TextDecorationThicknessDeclaration) {
+    auto sheet = parse_stylesheet("a { text-decoration-thickness: 2px; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "text-decoration-thickness") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, TextUnderlinePositionDeclaration) {
+    auto sheet = parse_stylesheet("p { text-underline-position: under; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "text-underline-position") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, BoxShadowRgbaDeclaration) {
+    auto sheet = parse_stylesheet(".card { box-shadow: 2px 2px 5px rgba(0,0,0,0.3); }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "box-shadow") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, ClipDeclaration) {
+    auto sheet = parse_stylesheet(".legacy { clip: rect(0 100px 100px 0); }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "clip") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, FilterBlurDeclaration) {
+    auto sheet = parse_stylesheet("img { filter: blur(4px); }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "filter") { found = true; break; }
+    EXPECT_TRUE(found);
+}
