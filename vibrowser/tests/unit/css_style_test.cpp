@@ -12613,3 +12613,128 @@ TEST(PropertyCascadeTest, WhiteSpacePropertyV62) {
     cascade.apply_declaration(style, make_decl("white-space", "normal"), parent);
     EXPECT_EQ(style.white_space, WhiteSpace::Normal) << "white-space should be 'normal'";
 }
+
+TEST(PropertyCascadeTest, SpecificityWinsWhenBothDeclarationsImportantV63) {
+    PropertyCascade cascade;
+    ComputedStyle parent_style;
+
+    StyleRule low_specificity_rule;
+    low_specificity_rule.declarations.push_back(make_decl("display", "block", true));
+
+    StyleRule high_specificity_rule;
+    high_specificity_rule.declarations.push_back(make_decl("display", "flex", true));
+
+    MatchedRule low_specificity_match;
+    low_specificity_match.rule = &low_specificity_rule;
+    low_specificity_match.specificity = {0, 0, 1};
+    low_specificity_match.source_order = 10;
+
+    MatchedRule high_specificity_match;
+    high_specificity_match.rule = &high_specificity_rule;
+    high_specificity_match.specificity = {0, 1, 0};
+    high_specificity_match.source_order = 1;
+
+    auto result = cascade.cascade({low_specificity_match, high_specificity_match}, parent_style);
+    EXPECT_EQ(result.display, Display::Flex);
+}
+
+TEST(PropertyCascadeTest, InheritKeywordCopiesVisibilityAndCursorV63) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    parent.visibility = Visibility::Collapse;
+    parent.cursor = Cursor::Move;
+
+    cascade.apply_declaration(style, make_decl("visibility", "inherit"), parent);
+    EXPECT_EQ(style.visibility, Visibility::Collapse);
+
+    cascade.apply_declaration(style, make_decl("cursor", "inherit"), parent);
+    EXPECT_EQ(style.cursor, Cursor::Move);
+}
+
+TEST(PropertyCascadeTest, ShorthandMarginThreeValueExpansionV63) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl_multi("margin", {"4px", "8px", "12px"}), parent);
+
+    EXPECT_FLOAT_EQ(style.margin.top.to_px(16.0f), 4.0f);
+    EXPECT_FLOAT_EQ(style.margin.right.to_px(16.0f), 8.0f);
+    EXPECT_FLOAT_EQ(style.margin.bottom.to_px(16.0f), 12.0f);
+    EXPECT_FLOAT_EQ(style.margin.left.to_px(16.0f), 8.0f);
+}
+
+TEST(PropertyCascadeTest, BoxModelBorderTopColorAndOutlineWidthV63) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("border-top-color", "rgb(12,34,56)"), parent);
+    EXPECT_EQ(style.border_top.color.r, 12);
+    EXPECT_EQ(style.border_top.color.g, 34);
+    EXPECT_EQ(style.border_top.color.b, 56);
+
+    cascade.apply_declaration(style, make_decl("outline-width", "5px"), parent);
+    EXPECT_FLOAT_EQ(style.outline_width.to_px(16.0f), 5.0f);
+}
+
+TEST(PropertyCascadeTest, TextPropertiesVerticalAlignAndWhiteSpaceV63) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("vertical-align", "text-bottom"), parent);
+    EXPECT_EQ(style.vertical_align, VerticalAlign::TextBottom);
+
+    cascade.apply_declaration(style, make_decl("white-space", "break-spaces"), parent);
+    EXPECT_EQ(style.white_space, WhiteSpace::BreakSpaces);
+}
+
+TEST(PropertyCascadeTest, TextSpacingWordAndLetterSpacingV63) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("word-spacing", "6px"), parent);
+    EXPECT_FLOAT_EQ(style.word_spacing.to_px(16.0f), 6.0f);
+
+    cascade.apply_declaration(style, make_decl("letter-spacing", "1.5px"), parent);
+    EXPECT_FLOAT_EQ(style.letter_spacing.to_px(16.0f), 1.5f);
+}
+
+TEST(PropertyCascadeTest, VisualEffectsOpacityAndFilterResetV63) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("opacity", "0.35"), parent);
+    EXPECT_FLOAT_EQ(style.opacity, 0.35f);
+
+    cascade.apply_declaration(style, make_decl("filter", "blur(6px)"), parent);
+    ASSERT_EQ(style.filters.size(), 1u);
+    EXPECT_EQ(style.filters[0].first, 9);
+    EXPECT_FLOAT_EQ(style.filters[0].second, 6.0f);
+
+    cascade.apply_declaration(style, make_decl("filter", "none"), parent);
+    EXPECT_TRUE(style.filters.empty());
+}
+
+TEST(PropertyCascadeTest, TransitionShorthandLinearWithDelayV63) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("transition", "opacity 150ms linear 75ms"), parent);
+
+    ASSERT_EQ(style.transitions.size(), 1u);
+    EXPECT_EQ(style.transitions[0].property, "opacity");
+    EXPECT_NEAR(style.transitions[0].duration_ms, 150.0f, 1.0f);
+    EXPECT_EQ(style.transitions[0].timing_function, 1);
+    EXPECT_NEAR(style.transitions[0].delay_ms, 75.0f, 1.0f);
+
+    EXPECT_EQ(style.transition_property, "opacity");
+    EXPECT_NEAR(style.transition_duration, 0.15f, 0.001f);
+    EXPECT_NEAR(style.transition_delay, 0.075f, 0.001f);
+}

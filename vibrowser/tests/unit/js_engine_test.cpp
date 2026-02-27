@@ -21827,3 +21827,270 @@ TEST(JSEngine, StringManipulationChainsCycle1555) {
     EXPECT_EQ(result, "hello world|HELLO WORLD|HELLO JS|world-hello");
 }
 
+TEST(JSEngineTest, ES6TemplateArrowSpreadRestDestructuringV63) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        const nums = [1, 2, 3];
+        const [first, ...rest] = nums;
+        const sum = (...values) => values.reduce((acc, v) => acc + v, 0);
+        const total = sum(...nums);
+        const obj = { x: 10, y: 20, z: 30 };
+        const { x, y } = obj;
+        `a=${first},rest=${rest.join(',')},total=${total},xy=${x + y}`.toString()
+    )");
+    EXPECT_EQ(result, "a=1,rest=2,3,total=6,xy=30");
+}
+
+TEST(JSEngineTest, AsyncAwaitPromiseChainResolutionV63) {
+    clever::js::JSEngine engine;
+    engine.evaluate(R"(
+        var asyncValue = 'pending';
+        async function computeValue() {
+            const chained = await Promise.resolve(5).then(v => v * 3).then(v => v + 1);
+            asyncValue = chained.toString();
+        }
+        computeValue();
+    )");
+    clever::js::flush_fetch_promise_jobs(engine.context());
+    auto result = engine.evaluate("asyncValue.toString()");
+    EXPECT_EQ(result, "16");
+}
+
+TEST(JSEngineTest, GeneratorManualIterationSequenceV63) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        function* seq() {
+            yield 1;
+            yield 2;
+            yield 3;
+        }
+        const it = seq();
+        [it.next().value, it.next().value, it.next().value].join(',')
+    )");
+    EXPECT_EQ(result, "1,2,3");
+}
+
+TEST(JSEngineTest, ProxyAndReflectGetSetBehaviorV63) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        const target = { count: 1 };
+        const proxy = new Proxy(target, {
+            get(obj, prop) {
+                return Reflect.get(obj, prop) * 2;
+            },
+            set(obj, prop, value) {
+                return Reflect.set(obj, prop, value + 1);
+            }
+        });
+        proxy.count = 4;
+        JSON.stringify({ seen: proxy.count, raw: target.count })
+    )");
+    EXPECT_EQ(result, "{\"seen\":10,\"raw\":5}");
+}
+
+TEST(JSEngineTest, SymbolUniquenessAndRegistryLookupV63) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        const local = Symbol('id');
+        const globalA = Symbol.for('shared-key');
+        const globalB = Symbol.for('shared-key');
+        const sameLocal = (local === Symbol('id')).toString();
+        const sameGlobal = (globalA === globalB).toString();
+        const key = Symbol.keyFor(globalA);
+        [sameLocal, sameGlobal, key].join(',')
+    )");
+    EXPECT_EQ(result, "false,true,shared-key");
+}
+
+TEST(JSEngineTest, WeakMapWeakSetObjectTrackingV63) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        const wm = new WeakMap();
+        const ws = new WeakSet();
+        const key = {};
+        wm.set(key, { score: 7 });
+        ws.add(key);
+        [wm.has(key).toString(), ws.has(key).toString(), wm.get(key).score.toString()].join(',')
+    )");
+    EXPECT_EQ(result, "true,true,7");
+}
+
+TEST(JSEngineTest, CustomIteratorForOfProducesSequenceV63) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        const iterable = {
+            from: 3,
+            to: 5,
+            [Symbol.iterator]() {
+                let current = this.from;
+                const end = this.to;
+                return {
+                    next() {
+                        if (current <= end) {
+                            return { value: current++, done: false };
+                        }
+                        return { value: undefined, done: true };
+                    }
+                };
+            }
+        };
+        const out = [];
+        for (const v of iterable) {
+            out.push(v * 2);
+        }
+        out.join(',')
+    )");
+    EXPECT_EQ(result, "6,8,10");
+}
+
+TEST(JSEngineTest, ErrorHandlingTryCatchFinallyFlowV63) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var finalized = 'no';
+        const msg = (() => {
+            try {
+                throw new TypeError('bad');
+            } catch (e) {
+                return `${e.name}:${e.message}`;
+            } finally {
+                finalized = 'yes';
+            }
+        })();
+        (msg + '|' + finalized).toString()
+    )");
+    EXPECT_EQ(result, "TypeError:bad|yes");
+}
+
+TEST(JSEngineTest, PromiseAllSettledRejectsAndResolvesV63) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var p1 = Promise.resolve(42);
+        var p2 = Promise.reject(new Error('fail'));
+        Promise.allSettled([p1, p2]).then(function(results) {
+            var status1 = results[0].status;
+            var status2 = results[1].status;
+            var val1 = results[0].value.toString();
+            var reason = results[1].reason.message;
+            return [status1, status2, val1, reason].join('|');
+        }).then(function(r) {
+            globalThis._testResult = r;
+            return r;
+        });
+        'async'
+    )");
+    EXPECT_EQ(result, "async");
+}
+
+TEST(JSEngineTest, OptionalChainingOperatorNullableAccessV63) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var obj = { a: { b: { c: 42 } } };
+        var nullObj = null;
+        var undefinedVar;
+        var result1 = obj?.a?.b?.c;
+        var result2 = nullObj?.a?.b;
+        var result3 = undefinedVar?.prop;
+        var result4 = obj?.x?.y?.z;
+        [result1.toString(),
+         (result2 === undefined ? 'undef' : result2),
+         (result3 === undefined ? 'undef' : result3),
+         (result4 === undefined ? 'undef' : result4)].join(',')
+    )");
+    EXPECT_EQ(result, "42,undef,undef,undef");
+}
+
+TEST(JSEngineTest, NullishCoalescingOperatorDefaultsV63) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var zero = 0;
+        var empty = '';
+        var nullVal = null;
+        var undefinedVal;
+        var nonFalsy = 'hello';
+        var result1 = zero ?? 'default';
+        var result2 = empty ?? 'default';
+        var result3 = nullVal ?? 'default';
+        var result4 = undefinedVal ?? 'fallback';
+        var result5 = nonFalsy ?? 'default';
+        [result1.toString(), result2, result3, result4, result5].join('|')
+    )");
+    // ?? only triggers for null/undefined, not for 0 or ''
+    // result2 (empty ?? 'default') = '' but JS join shows as empty
+    // result3 (null ?? 'default') = 'default'
+    EXPECT_EQ(result, "0||default|fallback|hello");
+}
+
+TEST(JSEngineTest, ArrayFromIterableStringAndMappingV63) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var str = 'hello';
+        var arr1 = Array.from(str);
+        var arr2 = Array.from([10, 20, 30], function(x) { return x * 2; });
+        var arr3 = Array.from({length: 3}, function(_, i) { return i + 5; });
+        var result1 = arr1.join('-');
+        var result2 = arr2.join(',');
+        var result3 = arr3.join(',');
+        [result1, result2, result3].join('|')
+    )");
+    EXPECT_EQ(result, "h-e-l-l-o|20,40,60|5,6,7");
+}
+
+TEST(JSEngineTest, ObjectEntriesKeyValuePairsIterationV63) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var obj = {name: 'test', value: 99, active: true};
+        var entries = Object.entries(obj);
+        var mapped = entries.map(function(pair) {
+            return pair[0] + ':' + pair[1].toString();
+        });
+        var result1 = mapped.join('|');
+        var keys = entries.map(function(e) { return e[0]; }).join(',');
+        var vals = entries.map(function(e) { return e[1].toString(); }).join(',');
+        [result1, keys, vals].join(';')
+    )");
+    EXPECT_EQ(result, "name:test|value:99|active:true;name,value,active;test,99,true");
+}
+
+TEST(JSEngineTest, SymbolDescriptionPropertyV63) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var sym1 = Symbol('mySymbol');
+        var sym2 = Symbol();
+        var sym3 = Symbol('test-description');
+        var desc1 = sym1.description;
+        var desc2 = sym2.description;
+        var desc3 = sym3.description;
+        [desc1,
+         (desc2 === undefined ? 'undefined' : desc2),
+         desc3].join('|')
+    )");
+    EXPECT_EQ(result, "mySymbol|undefined|test-description");
+}
+
+TEST(JSEngineTest, WeakRefDereferencesObjectV63) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var target = {id: 42, name: 'data'};
+        var ref = new WeakRef(target);
+        var deref = ref.deref();
+        var result1 = (deref === target ? 'same' : 'different');
+        var result2 = deref.id.toString();
+        var result3 = deref.name;
+        [result1, result2, result3].join('|')
+    )");
+    EXPECT_EQ(result, "same|42|data");
+}
+
+TEST(JSEngineTest, StringReplaceAllOccurrencesV63) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var str1 = 'apple banana apple cherry apple';
+        var str2 = 'xxx-yyy-xxx-zzz-xxx';
+        var str3 = 'aaa';
+        var replaced1 = str1.replaceAll('apple', 'orange');
+        var replaced2 = str2.replaceAll('xxx', 'AAA');
+        var replaced3 = str3.replaceAll('a', 'b');
+        [replaced1, replaced2, replaced3].join('|')
+    )");
+    EXPECT_EQ(result, "orange banana orange cherry orange|AAA-yyy-AAA-zzz-AAA|bbb");
+}

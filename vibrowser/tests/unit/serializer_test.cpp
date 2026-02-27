@@ -9543,3 +9543,203 @@ TEST(SerializerTest, BufferSizeVerificationV62) {
     EXPECT_EQ(d.read_i64(), int64_t{-6});
     EXPECT_FALSE(d.has_remaining());
 }
+
+TEST(SerializerTest, MixedTypeSerializationOrderV63) {
+    Serializer s;
+    const std::vector<uint8_t> payload = {0x00, 0x7F, 0x80, 0xFF, 0x2A};
+
+    s.write_u8(0xAB);
+    s.write_u16(0x1234);
+    s.write_u32(0x89ABCDEFu);
+    s.write_u64(0x1122334455667788ULL);
+    s.write_i64(-1234567890123456789LL);
+    s.write_f64(-42.125);
+    s.write_string("ipc-mixed-v63");
+    s.write_bytes(payload.data(), payload.size());
+
+    const auto& wire = s.data();
+    Deserializer d(wire.data(), wire.size());
+
+    EXPECT_EQ(d.read_u8(), uint8_t{0xAB});
+    EXPECT_EQ(d.read_u16(), uint16_t{0x1234});
+    EXPECT_EQ(d.read_u32(), uint32_t{0x89ABCDEFu});
+    EXPECT_EQ(d.read_u64(), uint64_t{0x1122334455667788ULL});
+    EXPECT_EQ(d.read_i64(), int64_t{-1234567890123456789LL});
+    EXPECT_DOUBLE_EQ(d.read_f64(), -42.125);
+    EXPECT_EQ(d.read_string(), "ipc-mixed-v63");
+    EXPECT_EQ(d.read_bytes(), payload);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, NumericBoundaryValuesV63) {
+    Serializer s;
+
+    s.write_u8(std::numeric_limits<uint8_t>::min());
+    s.write_u8(std::numeric_limits<uint8_t>::max());
+    s.write_u16(std::numeric_limits<uint16_t>::min());
+    s.write_u16(std::numeric_limits<uint16_t>::max());
+    s.write_u32(std::numeric_limits<uint32_t>::min());
+    s.write_u32(std::numeric_limits<uint32_t>::max());
+    s.write_u64(std::numeric_limits<uint64_t>::min());
+    s.write_u64(std::numeric_limits<uint64_t>::max());
+    s.write_i64(std::numeric_limits<int64_t>::min());
+    s.write_i64(std::numeric_limits<int64_t>::max());
+    s.write_f64(std::numeric_limits<double>::lowest());
+    s.write_f64(std::numeric_limits<double>::max());
+    s.write_f64(-0.0);
+
+    const auto& wire = s.data();
+    Deserializer d(wire.data(), wire.size());
+
+    EXPECT_EQ(d.read_u8(), std::numeric_limits<uint8_t>::min());
+    EXPECT_EQ(d.read_u8(), std::numeric_limits<uint8_t>::max());
+    EXPECT_EQ(d.read_u16(), std::numeric_limits<uint16_t>::min());
+    EXPECT_EQ(d.read_u16(), std::numeric_limits<uint16_t>::max());
+    EXPECT_EQ(d.read_u32(), std::numeric_limits<uint32_t>::min());
+    EXPECT_EQ(d.read_u32(), std::numeric_limits<uint32_t>::max());
+    EXPECT_EQ(d.read_u64(), std::numeric_limits<uint64_t>::min());
+    EXPECT_EQ(d.read_u64(), std::numeric_limits<uint64_t>::max());
+    EXPECT_EQ(d.read_i64(), std::numeric_limits<int64_t>::min());
+    EXPECT_EQ(d.read_i64(), std::numeric_limits<int64_t>::max());
+    EXPECT_DOUBLE_EQ(d.read_f64(), std::numeric_limits<double>::lowest());
+    EXPECT_DOUBLE_EQ(d.read_f64(), std::numeric_limits<double>::max());
+    const double negative_zero = d.read_f64();
+    EXPECT_EQ(negative_zero, 0.0);
+    EXPECT_TRUE(std::signbit(negative_zero));
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, LargeBytesPayloadPatternV63) {
+    Serializer s;
+    std::vector<uint8_t> payload(128 * 1024);
+    for (size_t i = 0; i < payload.size(); ++i) {
+        payload[i] = static_cast<uint8_t>((i * 31 + 7) % 256);
+    }
+
+    s.write_bytes(payload.data(), payload.size());
+    s.write_u32(0xA1B2C3D4u);
+
+    const auto& wire = s.data();
+    Deserializer d(wire.data(), wire.size());
+
+    EXPECT_EQ(d.read_bytes(), payload);
+    EXPECT_EQ(d.read_u32(), uint32_t{0xA1B2C3D4u});
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, LargeStringRoundTripAndFollowupV63) {
+    Serializer s;
+    std::string large_text(20000, '\0');
+    for (size_t i = 0; i < large_text.size(); ++i) {
+        large_text[i] = static_cast<char>('a' + (i % 26));
+    }
+
+    s.write_string(large_text);
+    s.write_u16(4242);
+
+    const auto& wire = s.data();
+    Deserializer d(wire.data(), wire.size());
+
+    EXPECT_EQ(d.read_string(), large_text);
+    EXPECT_EQ(d.read_u16(), uint16_t{4242});
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, EmptyDataBlocksRoundTripV63) {
+    Serializer s;
+
+    s.write_string("");
+    s.write_bytes(nullptr, 0);
+    s.write_u8(42);
+    s.write_string("");
+
+    const auto& wire = s.data();
+    Deserializer d(wire.data(), wire.size());
+
+    EXPECT_EQ(d.read_string(), "");
+    EXPECT_TRUE(d.read_bytes().empty());
+    EXPECT_EQ(d.read_u8(), uint8_t{42});
+    EXPECT_EQ(d.read_string(), "");
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, SequentialReadsMaintainOrderV63) {
+    Serializer s;
+    for (uint16_t i = 0; i < 64; ++i) {
+        s.write_u16(static_cast<uint16_t>(i * 17));
+        s.write_u8(static_cast<uint8_t>(255 - i));
+        s.write_i64((i % 2 == 0) ? static_cast<int64_t>(i) : -static_cast<int64_t>(i));
+    }
+
+    const auto& wire = s.data();
+    Deserializer d(wire.data(), wire.size());
+
+    for (uint16_t i = 0; i < 64; ++i) {
+        EXPECT_EQ(d.read_u16(), static_cast<uint16_t>(i * 17));
+        EXPECT_EQ(d.read_u8(), static_cast<uint8_t>(255 - i));
+        const int64_t expected = (i % 2 == 0) ? static_cast<int64_t>(i) : -static_cast<int64_t>(i);
+        EXPECT_EQ(d.read_i64(), expected);
+    }
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, DataIntegrityCopiedBufferUnaffectedByLaterWritesV63) {
+    Serializer s;
+    const std::vector<uint8_t> payload = {9, 8, 7, 6};
+
+    s.write_u32(0x01020304u);
+    s.write_string("stable");
+    s.write_bytes(payload.data(), payload.size());
+    s.write_i64(-999);
+
+    const std::vector<uint8_t> snapshot = s.data();
+    s.write_u64(0xDEADBEEFDEADBEEFULL);
+
+    EXPECT_LT(snapshot.size(), s.data().size());
+
+    Deserializer d(snapshot.data(), snapshot.size());
+    EXPECT_EQ(d.read_u32(), uint32_t{0x01020304u});
+    EXPECT_EQ(d.read_string(), "stable");
+    EXPECT_EQ(d.read_bytes(), payload);
+    EXPECT_EQ(d.read_i64(), int64_t{-999});
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, ReencodeRoundTripMatchesOriginalBufferV63) {
+    Serializer original;
+    const std::vector<uint8_t> blob = {0x10, 0x20, 0x30, 0x40, 0x50};
+
+    original.write_u8(33);
+    original.write_u16(4096);
+    original.write_u32(700000u);
+    original.write_u64(0x0F0E0D0C0B0A0908ULL);
+    original.write_i64(-44444444444LL);
+    original.write_f64(1.0 / 3.0);
+    original.write_string("reencode-check");
+    original.write_bytes(blob.data(), blob.size());
+
+    const auto& wire = original.data();
+    Deserializer d(wire.data(), wire.size());
+
+    const uint8_t u8 = d.read_u8();
+    const uint16_t u16 = d.read_u16();
+    const uint32_t u32 = d.read_u32();
+    const uint64_t u64 = d.read_u64();
+    const int64_t i64 = d.read_i64();
+    const double f64 = d.read_f64();
+    const std::string str = d.read_string();
+    const std::vector<uint8_t> bytes = d.read_bytes();
+    EXPECT_FALSE(d.has_remaining());
+
+    Serializer reencoded;
+    reencoded.write_u8(u8);
+    reencoded.write_u16(u16);
+    reencoded.write_u32(u32);
+    reencoded.write_u64(u64);
+    reencoded.write_i64(i64);
+    reencoded.write_f64(f64);
+    reencoded.write_string(str);
+    reencoded.write_bytes(bytes.data(), bytes.size());
+
+    EXPECT_EQ(original.data(), reencoded.data());
+}

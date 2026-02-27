@@ -10074,3 +10074,319 @@ TEST(TreeBuilder, DetailsAndSummaryV62) {
     auto ps = doc->find_all_elements("p");
     EXPECT_EQ(ps.size(), 2u);
 }
+
+// Test 1: Nested tables with complex structure
+TEST(TreeBuilder, NestedTablesV63) {
+    auto doc = parse("<html><body><table><tr><td><table><tr><td>Inner cell</td></tr></table></td><td>Outer cell</td></tr></table></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto tables = doc->find_all_elements("table");
+    EXPECT_EQ(tables.size(), 2u);
+
+    auto tds = doc->find_all_elements("td");
+    EXPECT_EQ(tds.size(), 3u);
+
+    // find_all_elements returns depth-first: inner td first, then outer tds
+    bool found_inner = false, found_outer = false;
+    for (auto* td : tds) {
+        if (td->text_content().find("Inner cell") != std::string::npos) found_inner = true;
+        if (td->text_content().find("Outer cell") != std::string::npos) found_outer = true;
+    }
+    EXPECT_TRUE(found_inner);
+    EXPECT_TRUE(found_outer);
+}
+
+// Test 2: Form elements with attributes
+TEST(TreeBuilder, FormElementsV63) {
+    auto doc = parse("<html><body><form id=\"myform\" action=\"/submit\" method=\"POST\"><input type=\"text\" name=\"username\" placeholder=\"Enter name\"><textarea name=\"message\" rows=\"5\" cols=\"40\">Default text</textarea><select name=\"options\"><option value=\"opt1\">Option 1</option><option value=\"opt2\" selected>Option 2</option></select><button type=\"submit\">Send</button></form></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* form = doc->find_element("form");
+    ASSERT_NE(form, nullptr);
+
+    auto inputs = doc->find_all_elements("input");
+    EXPECT_EQ(inputs.size(), 1u);
+
+    auto textareas = doc->find_all_elements("textarea");
+    EXPECT_EQ(textareas.size(), 1u);
+    EXPECT_EQ(textareas[0]->text_content(), "Default text");
+
+    auto selects = doc->find_all_elements("select");
+    EXPECT_EQ(selects.size(), 1u);
+
+    auto options = doc->find_all_elements("option");
+    EXPECT_EQ(options.size(), 2u);
+
+    auto buttons = doc->find_all_elements("button");
+    EXPECT_EQ(buttons.size(), 1u);
+}
+
+// Test 3: Media tags (audio, video, source, track)
+TEST(TreeBuilder, MediaTagsV63) {
+    auto doc = parse("<html><body><audio controls id=\"myaudio\"><source src=\"audio.mp3\" type=\"audio/mpeg\"><source src=\"audio.ogg\" type=\"audio/ogg\"><track kind=\"captions\" src=\"captions.vtt\">Your browser does not support audio.</audio><video width=\"320\" height=\"240\" controls><source src=\"movie.mp4\" type=\"video/mp4\"><source src=\"movie.ogg\" type=\"video/ogg\">Video not supported</video></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto audios = doc->find_all_elements("audio");
+    EXPECT_EQ(audios.size(), 1u);
+
+    auto videos = doc->find_all_elements("video");
+    EXPECT_EQ(videos.size(), 1u);
+
+    auto sources = doc->find_all_elements("source");
+    EXPECT_EQ(sources.size(), 4u);
+
+    auto tracks = doc->find_all_elements("track");
+    EXPECT_EQ(tracks.size(), 1u);
+}
+
+// Test 4: SVG inline elements
+TEST(TreeBuilder, InlineSvgV63) {
+    auto doc = parse("<html><body><p>Inline SVG: <svg xmlns=\"http://www.w3.org/2000/svg\" width=\"100\" height=\"100\"><circle cx=\"50\" cy=\"50\" r=\"40\" fill=\"red\"/><rect x=\"10\" y=\"10\" width=\"30\" height=\"30\" fill=\"blue\"/></svg> end</p></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto svgs = doc->find_all_elements("svg");
+    EXPECT_EQ(svgs.size(), 1u);
+
+    auto circles = doc->find_all_elements("circle");
+    EXPECT_EQ(circles.size(), 1u);
+
+    auto rects = doc->find_all_elements("rect");
+    EXPECT_EQ(rects.size(), 1u);
+
+    std::string text = doc->text_content();
+    EXPECT_TRUE(text.find("Inline SVG") != std::string::npos);
+    EXPECT_TRUE(text.find("end") != std::string::npos);
+}
+
+// Test 5: Custom data attributes
+TEST(TreeBuilder, CustomDataAttributesV63) {
+    auto doc = parse("<html><body><div id=\"item1\" data-id=\"123\" data-name=\"Product A\" data-price=\"99.99\" data-tags=\"electronics,gadget\">Special Item</div><p data-timestamp=\"2024-02-28\" data-user-role=\"admin\">Tagged paragraph</p></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    // find_element searches by tag name, not id — find div instead
+    auto divs = doc->find_all_elements("div");
+    ASSERT_GE(divs.size(), 1u);
+    EXPECT_EQ(divs[0]->text_content(), "Special Item");
+
+    auto ps = doc->find_all_elements("p");
+    ASSERT_GE(ps.size(), 1u);
+    EXPECT_EQ(ps[0]->text_content(), "Tagged paragraph");
+}
+
+// Test 6: Whitespace handling in mixed content
+TEST(TreeBuilder, WhitespaceHandlingV63) {
+    auto doc = parse("<html><body><p>Text with   multiple    spaces</p><div>Line 1\nLine 2\nLine 3</div><span>\n  Indented text  \n</span></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto ps = doc->find_all_elements("p");
+    ASSERT_EQ(ps.size(), 1u);
+    std::string p_text = ps[0]->text_content();
+    EXPECT_TRUE(p_text.find("Text") != std::string::npos);
+    EXPECT_TRUE(p_text.find("spaces") != std::string::npos);
+
+    auto divs = doc->find_all_elements("div");
+    ASSERT_GE(divs.size(), 1u);
+
+    auto spans = doc->find_all_elements("span");
+    ASSERT_EQ(spans.size(), 1u);
+}
+
+// Test 7: HTML entity encoding and special characters
+TEST(TreeBuilder, EntityEncodingV63) {
+    auto doc = parse("<html><body><p>Copyright &copy; 2024 &ndash; All rights reserved</p><p>Less than &lt; Greater than &gt; Ampersand &amp;</p><p>Quote &quot; and Apostrophe &apos;</p><p>Math: 1 &plus; 1 &equals; 2</p></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto ps = doc->find_all_elements("p");
+    EXPECT_EQ(ps.size(), 4u);
+
+    std::string first_p = ps[0]->text_content();
+    EXPECT_TRUE(first_p.find("Copyright") != std::string::npos);
+    EXPECT_TRUE(first_p.find("2024") != std::string::npos);
+
+    std::string second_p = ps[1]->text_content();
+    EXPECT_TRUE(second_p.find("Less") != std::string::npos);
+
+    std::string doc_text = doc->text_content();
+    EXPECT_TRUE(doc_text.find("2024") != std::string::npos);
+}
+
+// Test 8: Script tags with content and attributes
+TEST(TreeBuilder, ScriptTagsV63) {
+    auto doc = parse("<html><head><script type=\"text/javascript\">var x = 10; console.log('test');</script><script async src=\"https://example.com/script.js\"></script></head><body><script>alert('inline');</script><script type=\"application/json\" id=\"data\">{\"key\": \"value\"}</script></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto scripts = doc->find_all_elements("script");
+    EXPECT_EQ(scripts.size(), 4u);
+
+    std::string first_script = scripts[0]->text_content();
+    EXPECT_TRUE(first_script.find("var x") != std::string::npos || first_script.find("console") != std::string::npos);
+
+    std::string json_script = scripts[3]->text_content();
+    EXPECT_TRUE(json_script.find("key") != std::string::npos);
+}
+
+// ---------------------------------------------------------------------------
+// Cycle V63 — HTML parser coverage for self-closing/void/nesting/text/script,
+//             comments/doctype/malformed recovery using SimpleNode fields.
+// ---------------------------------------------------------------------------
+
+static std::string get_attr_v63(const clever::html::SimpleNode* node, const std::string& key) {
+    for (const auto& a : node->attributes) {
+        if (a.name == key) return a.value;
+    }
+    return "";
+}
+
+TEST(HtmlParserTest, SelfClosingTagAttributesAndLowercaseV63) {
+    auto doc = clever::html::parse("<HTML><BODY><IMG SRC=\"hero.png\" ALT=\"Hero\"/></BODY></HTML>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* img = doc->find_element("img");
+    ASSERT_NE(img, nullptr);
+
+    EXPECT_EQ(img->tag_name, "img");
+    EXPECT_TRUE(img->children.empty());
+    EXPECT_EQ(get_attr_v63(img, "src"), "hero.png");
+    EXPECT_EQ(get_attr_v63(img, "alt"), "Hero");
+}
+
+TEST(HtmlParserTest, VoidElementsDoNotWrapFollowingTextV63) {
+    auto doc = clever::html::parse("<body>alpha<br>beta<hr>gamma<input type=\"text\">delta</body>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* body = doc->find_element("body");
+    auto* br = doc->find_element("br");
+    auto* hr = doc->find_element("hr");
+    auto* input = doc->find_element("input");
+    ASSERT_NE(body, nullptr);
+    ASSERT_NE(br, nullptr);
+    ASSERT_NE(hr, nullptr);
+    ASSERT_NE(input, nullptr);
+
+    EXPECT_TRUE(br->children.empty());
+    EXPECT_TRUE(hr->children.empty());
+    EXPECT_TRUE(input->children.empty());
+    EXPECT_EQ(input->parent, body);
+    EXPECT_EQ(get_attr_v63(input, "type"), "text");
+
+    const std::string text = body->text_content();
+    EXPECT_NE(text.find("alpha"), std::string::npos);
+    EXPECT_NE(text.find("beta"), std::string::npos);
+    EXPECT_NE(text.find("gamma"), std::string::npos);
+    EXPECT_NE(text.find("delta"), std::string::npos);
+}
+
+TEST(HtmlParserTest, NestedStructureMaintainsTreeShapeV63) {
+    auto doc = clever::html::parse("<main><section><article><h1>T</h1><p>Body <em>text</em></p></article></section></main>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* main = doc->find_element("main");
+    auto* section = doc->find_element("section");
+    auto* article = doc->find_element("article");
+    auto* h1 = doc->find_element("h1");
+    auto* p = doc->find_element("p");
+    auto* em = doc->find_element("em");
+    ASSERT_NE(main, nullptr);
+    ASSERT_NE(section, nullptr);
+    ASSERT_NE(article, nullptr);
+    ASSERT_NE(h1, nullptr);
+    ASSERT_NE(p, nullptr);
+    ASSERT_NE(em, nullptr);
+
+    EXPECT_EQ(section->parent, main);
+    EXPECT_EQ(article->parent, section);
+    EXPECT_EQ(h1->parent, article);
+    EXPECT_EQ(p->parent, article);
+    EXPECT_EQ(em->parent, p);
+    EXPECT_EQ(p->text_content(), "Body text");
+}
+
+TEST(HtmlParserTest, TextNormalizationKeepsSingleLeafTextNodeV63) {
+    auto doc = clever::html::parse("<div>Hello   parser world</div>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* div = doc->find_element("div");
+    ASSERT_NE(div, nullptr);
+    ASSERT_EQ(div->children.size(), 1u);
+
+    const auto* text_node = div->children[0].get();
+    ASSERT_NE(text_node, nullptr);
+    EXPECT_EQ(text_node->type, clever::html::SimpleNode::Text);
+    EXPECT_TRUE(text_node->tag_name.empty());
+    EXPECT_EQ(text_node->data, "Hello   parser world");
+}
+
+TEST(HtmlParserTest, ScriptAndStyleRawTextHandledV63) {
+    auto doc = clever::html::parse("<body><script>if (a < b) { c = 1; }</script><style>body { color: red; }</style></body>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* script = doc->find_element("script");
+    auto* style = doc->find_element("style");
+    ASSERT_NE(script, nullptr);
+    ASSERT_NE(style, nullptr);
+
+    ASSERT_FALSE(script->children.empty());
+    ASSERT_FALSE(style->children.empty());
+    EXPECT_TRUE(script->children[0]->tag_name.empty());
+    EXPECT_TRUE(style->children[0]->tag_name.empty());
+
+    EXPECT_NE(script->text_content().find("a < b"), std::string::npos);
+    EXPECT_NE(style->text_content().find("color: red"), std::string::npos);
+}
+
+TEST(HtmlParserTest, CommentsArePreservedAsCommentNodesV63) {
+    auto doc = clever::html::parse("<body>left<!-- middle -->right</body>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* body = doc->find_element("body");
+    ASSERT_NE(body, nullptr);
+
+    bool found_comment = false;
+    for (const auto& child : body->children) {
+        if (child->type == clever::html::SimpleNode::Comment) {
+            found_comment = true;
+            EXPECT_EQ(child->data, " middle ");
+        }
+    }
+    EXPECT_TRUE(found_comment);
+
+    const std::string text = body->text_content();
+    EXPECT_NE(text.find("left"), std::string::npos);
+    EXPECT_NE(text.find("middle"), std::string::npos);
+    EXPECT_NE(text.find("right"), std::string::npos);
+}
+
+TEST(HtmlParserTest, DoctypeIsCapturedAtDocumentLevelV63) {
+    auto doc = clever::html::parse("<!DOCTYPE HTML><html><body><p>x</p></body></html>");
+    ASSERT_NE(doc, nullptr);
+    ASSERT_FALSE(doc->children.empty());
+
+    bool found_doctype = false;
+    for (const auto& child : doc->children) {
+        if (child->type == clever::html::SimpleNode::DocumentType) {
+            found_doctype = true;
+            EXPECT_EQ(child->doctype_name, "html");
+        }
+    }
+    EXPECT_TRUE(found_doctype);
+    EXPECT_EQ(doc->children.front()->type, clever::html::SimpleNode::DocumentType);
+    EXPECT_NE(doc->find_element("html"), nullptr);
+}
+
+TEST(HtmlParserTest, MalformedHtmlRecoveryClosesParagraphBeforeDivV63) {
+    auto doc = clever::html::parse("<body><p>one<div>two</div>three");
+    ASSERT_NE(doc, nullptr);
+
+    auto* body = doc->find_element("body");
+    auto* p = doc->find_element("p");
+    auto* div = doc->find_element("div");
+    ASSERT_NE(body, nullptr);
+    ASSERT_NE(p, nullptr);
+    ASSERT_NE(div, nullptr);
+
+    EXPECT_EQ(p->parent, body);
+    EXPECT_EQ(div->parent, body);
+    EXPECT_EQ(p->text_content(), "one");
+    EXPECT_EQ(div->text_content(), "two");
+    EXPECT_NE(body->text_content().find("three"), std::string::npos);
+}

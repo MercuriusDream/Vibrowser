@@ -10036,3 +10036,281 @@ TEST(DomNode, InsertBeforeIntegrityV62) {
     EXPECT_EQ(i2->previous_sibling(), i1);
     EXPECT_EQ(i3->previous_sibling(), i2);
 }
+
+TEST(DomNode, DeepCloneLikeSubtreeCopiesStructureIndependentlyV63) {
+    auto root = std::make_unique<Element>("div");
+    root->set_attribute("id", "root");
+
+    auto section = std::make_unique<Element>("section");
+    auto* section_ptr = section.get();
+    section->set_attribute("id", "hero");
+
+    auto text = std::make_unique<Text>("hello");
+    section->append_child(std::move(text));
+
+    auto note = std::make_unique<Comment>("note");
+    section->append_child(std::move(note));
+
+    root->append_child(std::move(section));
+
+    std::function<std::unique_ptr<Node>(const Node*)> deep_clone =
+        [&](const Node* source) -> std::unique_ptr<Node> {
+            if (source->node_type() == NodeType::Element) {
+                const auto* source_element = static_cast<const Element*>(source);
+                auto clone_element = std::make_unique<Element>(source_element->tag_name());
+                for (const auto& attr : source_element->attributes()) {
+                    clone_element->set_attribute(attr.name, attr.value);
+                }
+                for (const Node* child = source->first_child(); child != nullptr; child = child->next_sibling()) {
+                    clone_element->append_child(deep_clone(child));
+                }
+                return clone_element;
+            }
+
+            if (source->node_type() == NodeType::Text) {
+                const auto* source_text = static_cast<const Text*>(source);
+                return std::make_unique<Text>(source_text->data());
+            }
+
+            if (source->node_type() == NodeType::Comment) {
+                const auto* source_comment = static_cast<const Comment*>(source);
+                return std::make_unique<Comment>(source_comment->data());
+            }
+
+            auto clone_document = std::make_unique<Document>();
+            for (const Node* child = source->first_child(); child != nullptr; child = child->next_sibling()) {
+                clone_document->append_child(deep_clone(child));
+            }
+            return clone_document;
+        };
+
+    auto cloned_root_node = deep_clone(root.get());
+    auto* cloned_root = static_cast<Element*>(cloned_root_node.get());
+    auto* cloned_section = static_cast<Element*>(cloned_root->first_child());
+
+    ASSERT_NE(cloned_section, nullptr);
+    EXPECT_NE(cloned_section, section_ptr);
+    EXPECT_EQ(cloned_root->tag_name(), "div");
+    EXPECT_EQ(cloned_section->tag_name(), "section");
+    EXPECT_EQ(cloned_section->get_attribute("id"), "hero");
+    EXPECT_EQ(cloned_root->text_content(), "hello");
+
+    section_ptr->set_attribute("id", "hero-updated");
+    section_ptr->append_child(std::make_unique<Text>("!"));
+
+    EXPECT_EQ(root->text_content(), "hello!");
+    EXPECT_EQ(cloned_root->text_content(), "hello");
+    EXPECT_EQ(cloned_section->get_attribute("id"), "hero");
+}
+
+TEST(DomNode, EventHandlingImmediateStopSkipsLaterListenersV63) {
+    EventTarget target;
+    std::vector<std::string> log;
+
+    target.add_event_listener(
+        "click",
+        [&](Event& event) {
+            log.push_back("first");
+            event.stop_immediate_propagation();
+        },
+        false);
+
+    target.add_event_listener(
+        "click",
+        [&](Event&) {
+            log.push_back("second");
+        },
+        false);
+
+    Element element("button");
+    Event event("click");
+    event.target_ = &element;
+    event.current_target_ = &element;
+    event.phase_ = EventPhase::AtTarget;
+
+    bool dispatch_result = target.dispatch_event(event, element);
+
+    EXPECT_TRUE(dispatch_result);
+    EXPECT_TRUE(event.immediate_propagation_stopped());
+    ASSERT_EQ(log.size(), 1u);
+    EXPECT_EQ(log[0], "first");
+}
+
+TEST(DomNode, NodeTypeChecksElementTextCommentDocumentV63) {
+    Element element("article");
+    Text text("hello");
+    Comment comment("note");
+    Document document;
+
+    EXPECT_EQ(element.node_type(), NodeType::Element);
+    EXPECT_EQ(text.node_type(), NodeType::Text);
+    EXPECT_EQ(comment.node_type(), NodeType::Comment);
+    EXPECT_EQ(document.node_type(), NodeType::Document);
+}
+
+TEST(DomElement, QuerySelectorPatternLikeTraversalFindsIdClassAndTagV63) {
+    auto root = std::make_unique<Element>("div");
+
+    auto header = std::make_unique<Element>("header");
+    auto* header_ptr = header.get();
+    header->set_attribute("id", "top");
+
+    auto button = std::make_unique<Element>("button");
+    auto* button_ptr = button.get();
+    button->class_list().add("primary");
+
+    auto span = std::make_unique<Element>("span");
+    auto* span_ptr = span.get();
+
+    root->append_child(std::move(header));
+    root->append_child(std::move(button));
+    root->append_child(std::move(span));
+
+    auto matches_selector = [&](Element* element, const std::string& selector) {
+        if (selector.empty()) {
+            return false;
+        }
+        if (selector[0] == '#') {
+            auto id_value = element->get_attribute("id");
+            return id_value.has_value() && id_value.value() == selector.substr(1);
+        }
+        if (selector[0] == '.') {
+            return element->class_list().contains(selector.substr(1));
+        }
+        return element->tag_name() == selector;
+    };
+
+    std::function<Element*(Node*, const std::string&)> query_like_first =
+        [&](Node* start, const std::string& selector) -> Element* {
+            if (start->node_type() == NodeType::Element) {
+                auto* as_element = static_cast<Element*>(start);
+                if (matches_selector(as_element, selector)) {
+                    return as_element;
+                }
+            }
+
+            for (Node* child = start->first_child(); child != nullptr; child = child->next_sibling()) {
+                Element* found = query_like_first(child, selector);
+                if (found != nullptr) {
+                    return found;
+                }
+            }
+            return nullptr;
+        };
+
+    EXPECT_EQ(query_like_first(root.get(), "#top"), header_ptr);
+    EXPECT_EQ(query_like_first(root.get(), ".primary"), button_ptr);
+    EXPECT_EQ(query_like_first(root.get(), "span"), span_ptr);
+    EXPECT_EQ(query_like_first(root.get(), ".missing"), nullptr);
+}
+
+TEST(DomElement, InnerHtmlLikeRewriteReplacesSubtreeContentV63) {
+    auto container = std::make_unique<Element>("div");
+
+    auto old_text = std::make_unique<Text>("old");
+    container->append_child(std::move(old_text));
+    auto old_comment = std::make_unique<Comment>("old-comment");
+    container->append_child(std::move(old_comment));
+
+    while (container->first_child() != nullptr) {
+        Node* victim = container->first_child();
+        auto removed = container->remove_child(*victim);
+        EXPECT_EQ(removed->parent(), nullptr);
+    }
+    EXPECT_EQ(container->child_count(), 0u);
+
+    auto paragraph = std::make_unique<Element>("p");
+    auto* paragraph_ptr = paragraph.get();
+    auto paragraph_text = std::make_unique<Text>("Hello");
+    paragraph->append_child(std::move(paragraph_text));
+
+    auto note = std::make_unique<Comment>("ignored");
+    auto tail_text = std::make_unique<Text>(" world");
+
+    container->append_child(std::move(paragraph));
+    container->append_child(std::move(note));
+    container->append_child(std::move(tail_text));
+
+    EXPECT_EQ(container->first_child(), paragraph_ptr);
+    EXPECT_EQ(container->child_count(), 3u);
+    EXPECT_EQ(container->text_content(), "Hello world");
+}
+
+TEST(DomNode, SiblingNavigationEdgeCasesAfterEndRemovalsV63) {
+    auto parent = std::make_unique<Element>("ul");
+
+    auto li1 = std::make_unique<Element>("li");
+    auto* li1_ptr = li1.get();
+    auto li2 = std::make_unique<Element>("li");
+    auto* li2_ptr = li2.get();
+    auto li3 = std::make_unique<Element>("li");
+    auto* li3_ptr = li3.get();
+    auto li4 = std::make_unique<Element>("li");
+    auto* li4_ptr = li4.get();
+
+    parent->append_child(std::move(li1));
+    parent->append_child(std::move(li2));
+    parent->append_child(std::move(li3));
+    parent->append_child(std::move(li4));
+
+    auto removed_first = parent->remove_child(*li1_ptr);
+    EXPECT_EQ(removed_first->parent(), nullptr);
+    EXPECT_EQ(parent->first_child(), li2_ptr);
+    EXPECT_EQ(li2_ptr->previous_sibling(), nullptr);
+
+    auto removed_last = parent->remove_child(*li4_ptr);
+    EXPECT_EQ(removed_last->parent(), nullptr);
+    EXPECT_EQ(parent->last_child(), li3_ptr);
+    EXPECT_EQ(li3_ptr->next_sibling(), nullptr);
+
+    EXPECT_EQ(li2_ptr->next_sibling(), li3_ptr);
+    EXPECT_EQ(li3_ptr->previous_sibling(), li2_ptr);
+    EXPECT_EQ(parent->child_count(), 2u);
+}
+
+TEST(DomElement, AttributeIterationPreservesOrderAfterOverwriteAndRemoveV63) {
+    Element input("input");
+    input.set_attribute("data-a", "1");
+    input.set_attribute("data-b", "2");
+    input.set_attribute("data-c", "3");
+
+    input.set_attribute("data-b", "22");
+    input.remove_attribute("data-a");
+
+    const auto& attrs = input.attributes();
+    ASSERT_EQ(attrs.size(), 2u);
+    EXPECT_EQ(attrs[0].name, "data-b");
+    EXPECT_EQ(attrs[0].value, "22");
+    EXPECT_EQ(attrs[1].name, "data-c");
+    EXPECT_EQ(attrs[1].value, "3");
+}
+
+TEST(DomNode, MixedContentTreeTextAndParentLinksV63) {
+    auto root = std::make_unique<Element>("article");
+
+    auto text_a = std::make_unique<Text>("A");
+    auto span = std::make_unique<Element>("span");
+    auto* span_ptr = span.get();
+    span->set_attribute("id", "middle");
+
+    auto span_text = std::make_unique<Text>("B");
+    auto* span_text_ptr = span_text.get();
+    span->append_child(std::move(span_text));
+
+    auto comment = std::make_unique<Comment>("ignored");
+    auto* comment_ptr = comment.get();
+    auto text_d = std::make_unique<Text>("D");
+
+    root->append_child(std::move(text_a));
+    root->append_child(std::move(span));
+    root->append_child(std::move(comment));
+    root->append_child(std::move(text_d));
+
+    EXPECT_EQ(root->text_content(), "ABD");
+    EXPECT_EQ(root->child_count(), 4u);
+    EXPECT_EQ(span_ptr->parent(), root.get());
+    EXPECT_EQ(span_text_ptr->parent(), span_ptr);
+    EXPECT_EQ(comment_ptr->data(), "ignored");
+    EXPECT_EQ(span_ptr->next_sibling(), comment_ptr);
+    EXPECT_EQ(comment_ptr->previous_sibling(), span_ptr);
+}

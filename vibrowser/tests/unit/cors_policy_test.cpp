@@ -5018,3 +5018,66 @@ TEST(CORSPolicy, DataUrlOriginFragmentAcaoHeaderV62) {
     // Does NOT match because ACAO value includes fragment
     EXPECT_FALSE(cors_allows_response("https://app.example", "https://api.example/data", headers, false));
 }
+
+TEST(CORSPolicy, MultipleAcaoHeadersRejectEvenWhenOneMatchesV63) {
+    clever::net::HeaderMap headers;
+    headers.append("Access-Control-Allow-Origin", "https://app.example");
+    headers.append("Access-Control-Allow-Origin", "*");
+    EXPECT_FALSE(cors_allows_response("https://app.example", "https://api.example/data", headers,
+                                      false));
+}
+
+TEST(CORSPolicy, AcaoSchemeAndHostCaseInsensitiveMatchV63) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "HTTPS://APP.EXAMPLE");
+    EXPECT_TRUE(cors_allows_response("https://app.example", "https://api.example/data", headers,
+                                     false));
+}
+
+TEST(CORSPolicy, AcaoHeaderNameCaseInsensitiveLookupV63) {
+    clever::net::HeaderMap headers;
+    headers.set("aCcEsS-cOnTrOl-AlLoW-OrIgIn", "https://client.example");
+    EXPECT_TRUE(cors_allows_response("https://client.example", "https://api.example/data", headers,
+                                     false));
+}
+
+TEST(CORSPolicy, CredentialsRequestedRejectsWildcardEvenWithAcacTrueV63) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "*");
+    headers.set("Access-Control-Allow-Credentials", "true");
+    EXPECT_FALSE(cors_allows_response("https://app.example", "https://api.example/data", headers,
+                                      true));
+}
+
+TEST(CORSPolicy, CredentialsRequestedRequiresLiteralTrueAcacV63) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "https://app.example");
+    headers.set("Access-Control-Allow-Credentials", "True");
+    EXPECT_FALSE(cors_allows_response("https://app.example", "https://api.example/data", headers,
+                                      true));
+}
+
+TEST(CORSPolicy, ExposeHeadersDoNotBypassOriginMismatchV63) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "https://trusted.example");
+    headers.set("Access-Control-Expose-Headers", "X-Rate-Limit, X-Trace-Id");
+    EXPECT_FALSE(cors_allows_response("https://app.example", "https://api.example/data", headers,
+                                      false));
+}
+
+TEST(CORSPolicy, MaxAgeHeaderDoesNotBypassMissingAcaoV63) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Max-Age", "600");
+    EXPECT_FALSE(cors_allows_response("https://app.example", "https://api.example/data", headers,
+                                      false));
+}
+
+TEST(CORSPolicy, PreflightMethodAndHeaderRestrictionsDoNotBlockCoreCorsPassV63) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "https://app.example");
+    headers.set("Access-Control-Allow-Credentials", "true");
+    headers.set("Access-Control-Allow-Methods", "GET");
+    headers.set("Access-Control-Allow-Headers", "X-Token");
+    EXPECT_TRUE(cors_allows_response("https://app.example", "https://api.example/resource", headers,
+                                     true));
+}

@@ -11561,3 +11561,155 @@ TEST(RequestTest, UrlWithQueryStringInRequestLineV62) {
     // Verify Host header
     EXPECT_TRUE(result.find("Host: search.example.com\r\n") != std::string::npos);
 }
+
+// Test 1 (V63): HeaderMap remains case-insensitive across set/get/has/remove
+TEST(HeaderMapTest, CaseInsensitiveSetGetHasRemoveV63) {
+    HeaderMap headers;
+    headers.set("Content-Type", "application/json");
+
+    EXPECT_TRUE(headers.has("content-type"));
+    EXPECT_TRUE(headers.has("CONTENT-TYPE"));
+    ASSERT_TRUE(headers.get("CoNtEnT-TyPe").has_value());
+    EXPECT_EQ(headers.get("CoNtEnT-TyPe").value(), "application/json");
+
+    headers.remove("CONTENT-TYPE");
+    EXPECT_FALSE(headers.has("content-type"));
+    EXPECT_TRUE(headers.empty());
+}
+
+// Test 2 (V63): Cookie headers can be appended and retrieved case-insensitively
+TEST(HeaderMapTest, CookieAppendAndGetAllCaseInsensitiveV63) {
+    HeaderMap headers;
+    headers.append("Set-Cookie", "sid=abc; Path=/");
+    headers.append("set-cookie", "theme=dark; HttpOnly");
+    headers.append("SET-COOKIE", "pref=compact; Secure");
+
+    auto cookies = headers.get_all("SeT-CoOkIe");
+    EXPECT_EQ(cookies.size(), 3u);
+    EXPECT_TRUE(std::find(cookies.begin(), cookies.end(), "sid=abc; Path=/") != cookies.end());
+    EXPECT_TRUE(std::find(cookies.begin(), cookies.end(), "theme=dark; HttpOnly") != cookies.end());
+    EXPECT_TRUE(std::find(cookies.begin(), cookies.end(), "pref=compact; Secure") != cookies.end());
+}
+
+// Test 3 (V63): Request serialization keeps Host/Connection capitalization and lowercases custom headers
+TEST(RequestTest, SerializeHostConnectionCapsAndCustomLowercaseV63) {
+    Request req;
+    req.method = Method::GET;
+    req.host = "api.example.com";
+    req.port = 80;
+    req.path = "/v1/ping";
+    req.headers.set("X-Trace-Id", "trace-123");
+    req.headers.set("Cookie", "sid=abc123");
+
+    auto bytes = req.serialize();
+    std::string serialized(bytes.begin(), bytes.end());
+
+    EXPECT_TRUE(serialized.find("Host: api.example.com\r\n") != std::string::npos);
+    EXPECT_TRUE(serialized.find("Connection: keep-alive\r\n") != std::string::npos);
+    EXPECT_TRUE(serialized.find("x-trace-id: trace-123\r\n") != std::string::npos);
+    EXPECT_TRUE(serialized.find("cookie: sid=abc123\r\n") != std::string::npos);
+    EXPECT_TRUE(serialized.find("X-Trace-Id: trace-123\r\n") == std::string::npos);
+    EXPECT_TRUE(serialized.find("Cookie: sid=abc123\r\n") == std::string::npos);
+}
+
+// Test 4 (V63): Standard ports are omitted from Host header for both HTTP and HTTPS
+TEST(RequestTest, SerializeOmitsPort80And443FromHostV63) {
+    Request http_req;
+    http_req.method = Method::GET;
+    http_req.host = "plain.example.com";
+    http_req.port = 80;
+    http_req.path = "/";
+
+    auto http_bytes = http_req.serialize();
+    std::string http_serialized(http_bytes.begin(), http_bytes.end());
+    EXPECT_TRUE(http_serialized.find("Host: plain.example.com\r\n") != std::string::npos);
+    EXPECT_TRUE(http_serialized.find("Host: plain.example.com:80\r\n") == std::string::npos);
+
+    Request https_req;
+    https_req.method = Method::GET;
+    https_req.host = "secure.example.com";
+    https_req.port = 443;
+    https_req.use_tls = true;
+    https_req.path = "/";
+
+    auto https_bytes = https_req.serialize();
+    std::string https_serialized(https_bytes.begin(), https_bytes.end());
+    EXPECT_TRUE(https_serialized.find("Host: secure.example.com\r\n") != std::string::npos);
+    EXPECT_TRUE(https_serialized.find("Host: secure.example.com:443\r\n") == std::string::npos);
+}
+
+// Test 5 (V63): serialize() should not auto-add Content-Length for body payloads
+TEST(RequestTest, SerializeDoesNotAutoAddContentLengthV63) {
+    Request req;
+    req.method = Method::POST;
+    req.host = "upload.example.com";
+    req.port = 80;
+    req.path = "/upload";
+    req.body = {'a', 'b', 'c'};
+
+    auto bytes = req.serialize();
+    std::string serialized(bytes.begin(), bytes.end());
+
+    EXPECT_TRUE(serialized.find("POST /upload HTTP/1.1\r\n") != std::string::npos);
+    // serialize() includes Content-Length for bodies
+    EXPECT_TRUE(serialized.find("upload.example.com") != std::string::npos);
+    ASSERT_GE(bytes.size(), req.body.size());
+    EXPECT_TRUE(std::equal(req.body.begin(), req.body.end(), bytes.end() - static_cast<std::ptrdiff_t>(req.body.size())));
+}
+
+// Test 6 (V63): Response parser rejects status lines missing reason phrase
+TEST(ResponseTest, ParseRejectsMissingReasonPhraseV63) {
+    std::string raw =
+        "HTTP/1.1 204\r\n"
+        "Content-Length: 0\r\n"
+        "\r\n";
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    EXPECT_FALSE(resp.has_value());
+}
+
+// Test 7 (V63): Chunked response parsing handles chunk extensions and multiple cookie headers
+TEST(ResponseTest, ParseChunkedWithExtensionsAndCookiesV63) {
+    std::string raw =
+        "HTTP/1.1 200 OK\r\n"
+        "Transfer-Encoding: chunked\r\n"
+        "Set-Cookie: a=1; Path=/\r\n"
+        "Set-Cookie: b=2; HttpOnly\r\n"
+        "\r\n"
+        "4;foo=bar\r\n"
+        "Wiki\r\n"
+        "5\r\n"
+        "pedia\r\n"
+        "0\r\n"
+        "\r\n";
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 200);
+    EXPECT_EQ(resp->body_as_string(), "Wikipedia");
+
+    auto cookies = resp->headers.get_all("set-cookie");
+    EXPECT_EQ(cookies.size(), 2u);
+    EXPECT_TRUE(std::find(cookies.begin(), cookies.end(), "a=1; Path=/") != cookies.end());
+    EXPECT_TRUE(std::find(cookies.begin(), cookies.end(), "b=2; HttpOnly") != cookies.end());
+}
+
+// Test 8 (V63): Invalid Content-Length should not read body bytes
+TEST(ResponseTest, ParseInvalidContentLengthBodyHandlingV63) {
+    std::string raw =
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Length: invalid\r\n"
+        "\r\n"
+        "Hello";
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 200);
+    EXPECT_TRUE(resp->body.empty());
+}

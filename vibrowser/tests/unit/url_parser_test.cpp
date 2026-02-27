@@ -7876,3 +7876,120 @@ TEST(URLParser, SchemeOnlyURLV62) {
     EXPECT_TRUE(result->host.empty());
     EXPECT_EQ(result->path, "/");
 }
+
+// =============================================================================
+// Test V63-1: FTP URL with authentication, custom port, query, and fragment
+// =============================================================================
+TEST(URLParser, FtpAuthPortQueryFragmentV63) {
+    auto result = parse("ftp://user:pa%20ss@files.example.com:2121/archive%20docs/report.txt?mode=bin#sec%201");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "ftp");
+    EXPECT_EQ(result->username, "user");
+    EXPECT_EQ(result->password, "pa%2520ss");
+    EXPECT_EQ(result->host, "files.example.com");
+    EXPECT_EQ(result->port.value_or(0), 2121);
+    EXPECT_EQ(result->path, "/archive%2520docs/report.txt");
+    EXPECT_EQ(result->query, "mode=bin");
+    EXPECT_EQ(result->fragment, "sec%25201");
+}
+
+// =============================================================================
+// Test V63-2: WS relative path resolution against a base URL
+// =============================================================================
+TEST(URLParser, WsRelativePathResolutionV63) {
+    auto base = parse("ws://chat.example.com/room/index.html");
+    ASSERT_TRUE(base.has_value());
+
+    auto result = parse("../topic%20one?lang=en#live", &base.value());
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "ws");
+    EXPECT_EQ(result->host, "chat.example.com");
+    EXPECT_EQ(result->port.value_or(0), 0);
+    EXPECT_EQ(result->path, "/topic%2520one");
+    EXPECT_EQ(result->query, "lang=en");
+    EXPECT_EQ(result->fragment, "live");
+}
+
+// =============================================================================
+// Test V63-3: WSS with punycode IDN host and unicode host rejection
+// =============================================================================
+TEST(URLParser, WssPunycodeAndUnicodeIDNBehaviorV63) {
+    auto punycode = parse("wss://xn--mnchen-3ya.de:443/chat#room-1");
+    ASSERT_TRUE(punycode.has_value());
+    EXPECT_EQ(punycode->scheme, "wss");
+    EXPECT_EQ(punycode->host, "xn--mnchen-3ya.de");
+    EXPECT_EQ(punycode->port.value_or(0), 0);
+    EXPECT_EQ(punycode->path, "/chat");
+    EXPECT_EQ(punycode->fragment, "room-1");
+
+    auto unicode = parse("wss://münchen.de/chat");
+    EXPECT_FALSE(unicode.has_value());
+}
+
+// =============================================================================
+// Test V63-4: File URL path preserves special path chars and double-encodes %
+// =============================================================================
+TEST(URLParser, FileWindowsPathPercentDoubleEncodingV63) {
+    auto result = parse("file:///C:/Program%20Files/MyApp/app.exe");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "file");
+    EXPECT_TRUE(result->host.empty());
+    EXPECT_EQ(result->port.value_or(0), 0);
+    EXPECT_EQ(result->path, "/C:/Program%2520Files/MyApp/app.exe");
+}
+
+// =============================================================================
+// Test V63-5: Data URL keeps opaque path/query/fragment without authority
+// =============================================================================
+TEST(URLParser, DataOpaquePathQueryFragmentV63) {
+    auto result = parse("data:text/plain,hello%20world?x=1#frag%202");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "data");
+    EXPECT_TRUE(result->host.empty());
+    EXPECT_EQ(result->port.value_or(0), 0);
+    EXPECT_EQ(result->path, "text/plain,hello%20world");
+    EXPECT_EQ(result->query, "x=1");
+    EXPECT_EQ(result->fragment, "frag%202");
+}
+
+// =============================================================================
+// Test V63-6: Blob URL keeps nested URL in opaque path
+// =============================================================================
+TEST(URLParser, BlobOpaqueNestedURLV63) {
+    auto result = parse("blob:https://example.com/id%20one?download=true#part%201");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "blob");
+    EXPECT_TRUE(result->host.empty());
+    EXPECT_EQ(result->port.value_or(0), 0);
+    EXPECT_EQ(result->path, "https://example.com/id%20one");
+    EXPECT_EQ(result->query, "download=true");
+    EXPECT_EQ(result->fragment, "part%201");
+}
+
+// =============================================================================
+// Test V63-7: Mailto URL parses as opaque and keeps query and fragment
+// =============================================================================
+TEST(URLParser, MailtoOpaqueQueryFragmentV63) {
+    auto result = parse("mailto:user.name+tag@example.com?subject=hello%20world&body=line1#line-frag");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "mailto");
+    EXPECT_TRUE(result->host.empty());
+    EXPECT_EQ(result->port.value_or(0), 0);
+    EXPECT_EQ(result->path, "user.name+tag@example.com");
+    EXPECT_EQ(result->query, "subject=hello%20world&body=line1");
+    EXPECT_EQ(result->fragment, "line-frag");
+}
+
+// =============================================================================
+// Test V63-8: Tel URL with semicolon params and fragment
+// =============================================================================
+TEST(URLParser, TelOpaqueNumberWithParamsV63) {
+    auto result = parse("tel:+1-800-555-0123;ext=77#dial-now");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "tel");
+    EXPECT_TRUE(result->host.empty());
+    EXPECT_EQ(result->port.value_or(0), 0);
+    EXPECT_EQ(result->path, "+1-800-555-0123;ext=77");
+    EXPECT_TRUE(result->query.empty());
+    EXPECT_EQ(result->fragment, "dial-now");
+}
