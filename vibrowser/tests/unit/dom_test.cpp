@@ -13215,3 +13215,133 @@ TEST(DOMTest, EmptyClassListContainsFalseV80) {
     EXPECT_FALSE(elem.class_list().contains(""));
     EXPECT_FALSE(elem.class_list().contains("active"));
 }
+
+// ---------------------------------------------------------------------------
+// V81 Tests
+// ---------------------------------------------------------------------------
+
+TEST(DomTest, DocumentCreateElementFactoryV81) {
+    Document doc;
+    auto elem = doc.create_element("section");
+    EXPECT_EQ(elem->tag_name(), "section");
+    EXPECT_EQ(elem->node_type(), NodeType::Element);
+    EXPECT_EQ(elem->child_count(), 0u);
+    EXPECT_EQ(elem->parent(), nullptr);
+}
+
+TEST(DomTest, InsertBeforeFirstChildReordersV81) {
+    Element parent("ul");
+    auto li1 = std::make_unique<Element>("li");
+    auto li2 = std::make_unique<Element>("li");
+    auto li0 = std::make_unique<Element>("li");
+
+    li1->set_attribute("data-order", "1");
+    li2->set_attribute("data-order", "2");
+    li0->set_attribute("data-order", "0");
+
+    auto* li1_ptr = li1.get();
+    parent.append_child(std::move(li1));
+    parent.append_child(std::move(li2));
+
+    // Insert li0 before li1, making it the new first child
+    auto* li0_ptr = li0.get();
+    parent.insert_before(std::move(li0), li1_ptr);
+
+    EXPECT_EQ(parent.child_count(), 3u);
+    EXPECT_EQ(parent.first_child(), li0_ptr);
+    EXPECT_EQ(li0_ptr->next_sibling(), li1_ptr);
+    EXPECT_EQ(li0_ptr->previous_sibling(), nullptr);
+}
+
+TEST(DomTest, TextNodeSetDataUpdatesContentV81) {
+    Text txt("initial");
+    EXPECT_EQ(txt.text_content(), "initial");
+    EXPECT_EQ(txt.data(), "initial");
+
+    txt.set_data("updated");
+    EXPECT_EQ(txt.text_content(), "updated");
+    EXPECT_EQ(txt.data(), "updated");
+}
+
+TEST(DomTest, ElementTextContentAggregatesChildrenV81) {
+    Element div("div");
+    auto t1 = std::make_unique<Text>("Hello");
+    auto span = std::make_unique<Element>("span");
+    auto t2 = std::make_unique<Text>(" World");
+    span->append_child(std::move(t2));
+
+    div.append_child(std::move(t1));
+    div.append_child(std::move(span));
+
+    // text_content() should recursively concatenate all text nodes
+    EXPECT_EQ(div.text_content(), "Hello World");
+}
+
+TEST(DomTest, ClassListLengthAndItemsV81) {
+    Element elem("div");
+    EXPECT_EQ(elem.class_list().length(), 0u);
+
+    elem.class_list().add("alpha");
+    elem.class_list().add("beta");
+    elem.class_list().add("gamma");
+    EXPECT_EQ(elem.class_list().length(), 3u);
+
+    // Adding a duplicate should not increase length
+    elem.class_list().add("alpha");
+    EXPECT_EQ(elem.class_list().length(), 3u);
+
+    // items() should contain exact classes
+    const auto& items = elem.class_list().items();
+    EXPECT_EQ(items.size(), 3u);
+    EXPECT_TRUE(elem.class_list().contains("alpha"));
+    EXPECT_TRUE(elem.class_list().contains("beta"));
+    EXPECT_TRUE(elem.class_list().contains("gamma"));
+}
+
+TEST(DomTest, RemoveChildReturnOwnershipV81) {
+    Element parent("div");
+    auto child = std::make_unique<Element>("p");
+    auto* child_ptr = child.get();
+    parent.append_child(std::move(child));
+
+    EXPECT_EQ(parent.child_count(), 1u);
+    EXPECT_EQ(child_ptr->parent(), static_cast<Node*>(&parent));
+
+    // remove_child returns the unique_ptr, transferring ownership back
+    auto recovered = parent.remove_child(*child_ptr);
+    EXPECT_NE(recovered, nullptr);
+    EXPECT_EQ(parent.child_count(), 0u);
+    EXPECT_EQ(child_ptr->parent(), nullptr);
+    EXPECT_EQ(parent.first_child(), nullptr);
+}
+
+TEST(DomTest, SetAttributeIdUpdatesIdShortcutV81) {
+    Element elem("div");
+    EXPECT_EQ(elem.id(), "");
+
+    elem.set_attribute("id", "main-content");
+    EXPECT_EQ(elem.id(), "main-content");
+    EXPECT_EQ(elem.get_attribute("id").value(), "main-content");
+    EXPECT_TRUE(elem.has_attribute("id"));
+
+    // Overwriting id attribute updates the shortcut
+    elem.set_attribute("id", "sidebar");
+    EXPECT_EQ(elem.id(), "sidebar");
+}
+
+TEST(DomTest, CommentNodeDataAndTypeV81) {
+    Comment c("This is a comment");
+    EXPECT_EQ(c.node_type(), NodeType::Comment);
+    EXPECT_EQ(c.data(), "This is a comment");
+
+    c.set_data("Updated comment");
+    EXPECT_EQ(c.data(), "Updated comment");
+
+    // Comment can be appended as child
+    Element div("div");
+    auto comment = std::make_unique<Comment>("child comment");
+    auto* comment_ptr = comment.get();
+    div.append_child(std::move(comment));
+    EXPECT_EQ(div.child_count(), 1u);
+    EXPECT_EQ(div.first_child(), comment_ptr);
+}

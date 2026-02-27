@@ -14784,3 +14784,156 @@ TEST(CSSStyleTest, TagSelectorMatchesV80) {
     auto div_style = resolver.resolve(div_elem, parent);
     EXPECT_NE(div_style.display, Display::Flex);
 }
+
+// ---------------------------------------------------------------------------
+// V81 Tests
+// ---------------------------------------------------------------------------
+
+TEST(CSSStyleTest, PositionAbsoluteWithOffsetsV81) {
+    // Verify position:absolute plus top/left offsets are resolved correctly
+    const std::string css = "div{position:absolute;top:25px;left:40px;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.position, Position::Absolute);
+    EXPECT_FLOAT_EQ(style.top.to_px(), 25.0f);
+    EXPECT_FLOAT_EQ(style.left_pos.to_px(), 40.0f);
+}
+
+TEST(CSSStyleTest, PaddingShorthandFourValuesV81) {
+    // padding: top right bottom left (4-value shorthand)
+    const std::string css = "section{padding:5px 10px 15px 20px;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "section";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_FLOAT_EQ(style.padding.top.to_px(), 5.0f);
+    EXPECT_FLOAT_EQ(style.padding.right.to_px(), 10.0f);
+    EXPECT_FLOAT_EQ(style.padding.bottom.to_px(), 15.0f);
+    EXPECT_FLOAT_EQ(style.padding.left.to_px(), 20.0f);
+}
+
+TEST(CSSStyleTest, TextDecorationLineThroughV81) {
+    // text-decoration: line-through should be parsed
+    const std::string css = "span{text-decoration:line-through;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "span";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.text_decoration, TextDecoration::LineThrough);
+}
+
+TEST(CSSStyleTest, MinMaxDimensionsV81) {
+    // min-width, max-width, min-height, max-height
+    const std::string css = "div{min-width:80px;max-width:500px;min-height:40px;max-height:300px;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_FLOAT_EQ(style.min_width.to_px(), 80.0f);
+    EXPECT_FLOAT_EQ(style.max_width.to_px(), 500.0f);
+    EXPECT_FLOAT_EQ(style.min_height.to_px(), 40.0f);
+    EXPECT_FLOAT_EQ(style.max_height.to_px(), 300.0f);
+}
+
+TEST(CSSStyleTest, WhiteSpacePreWrapV81) {
+    // white-space: pre-wrap should parse correctly
+    const std::string css = "pre{white-space:pre-wrap;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "pre";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.white_space, WhiteSpace::PreWrap);
+}
+
+TEST(CSSStyleTest, ZIndexNegativeValueV81) {
+    // z-index: -5 should be parsed as a negative integer
+    const std::string css = "div{z-index:-5;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.z_index, -5);
+}
+
+TEST(CSSStyleTest, BorderSideIndividualPropertiesV81) {
+    // Set individual border-top properties
+    const std::string css = "div{border-top-width:4px;border-top-style:dashed;border-top-color:blue;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_FLOAT_EQ(style.border_top.width.value, 4.0f);
+    EXPECT_EQ(style.border_top.style, BorderStyle::Dashed);
+    EXPECT_EQ(style.border_top.color.b, 255);
+    EXPECT_EQ(style.border_top.color.a, 255);
+}
+
+TEST(CSSStyleTest, OpacityAndOverflowCombinedV81) {
+    // opacity: 0.3 and overflow: hidden together
+    const std::string css = "div{opacity:0.3;overflow:hidden;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_FLOAT_EQ(style.opacity, 0.3f);
+    EXPECT_EQ(style.overflow_x, Overflow::Hidden);
+    EXPECT_EQ(style.overflow_y, Overflow::Hidden);
+}

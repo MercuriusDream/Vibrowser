@@ -6061,3 +6061,43 @@ TEST(CORSPolicyTest, WildcardAcaoNoCredV80) {
     EXPECT_TRUE(
         cors_allows_response("https://any.example.com", "https://open-api.example.com/public", headers, false));
 }
+
+TEST(CORSPolicyTest, FragmentUrlNotCorsEligibleV81) {
+    EXPECT_FALSE(is_cors_eligible_request_url("https://example.com/page#section"));
+}
+
+TEST(CORSPolicyTest, WssUrlNotCorsEligibleV81) {
+    EXPECT_FALSE(is_cors_eligible_request_url("wss://stream.example.com/feed"));
+}
+
+TEST(CORSPolicyTest, HttpsPort443NotEnforceableV81) {
+    EXPECT_FALSE(has_enforceable_document_origin("https://example.com:443"));
+}
+
+TEST(CORSPolicyTest, WildcardAcaoWithCredRejectsV81) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "*");
+    headers.set("Access-Control-Allow-Credentials", "true");
+    EXPECT_FALSE(
+        cors_allows_response("https://app.example.com", "https://api.example.com/data", headers, true));
+}
+
+TEST(CORSPolicyTest, CaseInsensitiveSchemeIsCorsEligibleV81) {
+    EXPECT_TRUE(is_cors_eligible_request_url("HTTPS://example.com/resource"));
+}
+
+TEST(CORSPolicyTest, CrossOriginShouldAttachOriginV81) {
+    EXPECT_TRUE(should_attach_origin_header("https://frontend.example.com", "https://backend.example.com/api"));
+}
+
+TEST(CORSPolicyTest, DifferentSchemesAreCrossOriginV81) {
+    EXPECT_TRUE(is_cross_origin("http://example.com", "https://example.com/path"));
+}
+
+TEST(CORSPolicyTest, AcaoMismatchWithCredRejectsV81) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "https://other.example.com");
+    headers.set("Access-Control-Allow-Credentials", "true");
+    EXPECT_FALSE(
+        cors_allows_response("https://app.example.com", "https://api.example.com/secure", headers, true));
+}

@@ -11723,3 +11723,120 @@ TEST(SerializerTest, U16ZeroV80) {
     EXPECT_EQ(reader.read_u16(), 0u);
     EXPECT_FALSE(reader.has_remaining());
 }
+
+TEST(SerializerTest, U8AllPowersOfTwoV81) {
+    Serializer s;
+    for (int i = 0; i < 8; ++i) {
+        s.write_u8(static_cast<uint8_t>(1u << i));
+    }
+
+    Deserializer reader(s.data());
+    for (int i = 0; i < 8; ++i) {
+        EXPECT_EQ(reader.read_u8(), static_cast<uint8_t>(1u << i));
+    }
+    EXPECT_FALSE(reader.has_remaining());
+}
+
+TEST(SerializerTest, F64DenormalizedValueV81) {
+    Serializer s;
+    double denorm = std::numeric_limits<double>::denorm_min();
+    s.write_f64(denorm);
+
+    Deserializer reader(s.data());
+    EXPECT_DOUBLE_EQ(reader.read_f64(), denorm);
+    EXPECT_FALSE(reader.has_remaining());
+}
+
+TEST(SerializerTest, StringSingleCharRepeatedV81) {
+    Serializer s;
+    std::string repeated(256, 'Z');
+    s.write_string(repeated);
+
+    Deserializer reader(s.data());
+    std::string result = reader.read_string();
+    EXPECT_EQ(result.size(), 256u);
+    EXPECT_EQ(result, repeated);
+    EXPECT_FALSE(reader.has_remaining());
+}
+
+TEST(SerializerTest, BytesAllZerosV81) {
+    Serializer s;
+    std::vector<uint8_t> zeros(512, 0);
+    s.write_bytes(zeros.data(), zeros.size());
+
+    Deserializer reader(s.data());
+    auto result = reader.read_bytes();
+    EXPECT_EQ(result.size(), 512u);
+    for (size_t i = 0; i < 512; ++i) {
+        EXPECT_EQ(result[i], 0u);
+    }
+    EXPECT_FALSE(reader.has_remaining());
+}
+
+TEST(SerializerTest, U16U32U64DescendingV81) {
+    Serializer s;
+    s.write_u16(65535);
+    s.write_u32(4294967295u);
+    s.write_u64(UINT64_MAX);
+
+    Deserializer reader(s.data());
+    EXPECT_EQ(reader.read_u16(), 65535u);
+    EXPECT_EQ(reader.read_u32(), 4294967295u);
+    EXPECT_EQ(reader.read_u64(), UINT64_MAX);
+    EXPECT_FALSE(reader.has_remaining());
+}
+
+TEST(SerializerTest, MultipleEmptyStringsV81) {
+    Serializer s;
+    for (int i = 0; i < 10; ++i) {
+        s.write_string("");
+    }
+
+    Deserializer reader(s.data());
+    for (int i = 0; i < 10; ++i) {
+        EXPECT_EQ(reader.read_string(), "");
+    }
+    EXPECT_FALSE(reader.has_remaining());
+}
+
+TEST(SerializerTest, F64SpecialSequenceV81) {
+    Serializer s;
+    s.write_f64(std::numeric_limits<double>::infinity());
+    s.write_f64(-std::numeric_limits<double>::infinity());
+    s.write_f64(std::numeric_limits<double>::max());
+    s.write_f64(std::numeric_limits<double>::lowest());
+
+    Deserializer reader(s.data());
+    EXPECT_EQ(reader.read_f64(), std::numeric_limits<double>::infinity());
+    EXPECT_EQ(reader.read_f64(), -std::numeric_limits<double>::infinity());
+    EXPECT_DOUBLE_EQ(reader.read_f64(), std::numeric_limits<double>::max());
+    EXPECT_DOUBLE_EQ(reader.read_f64(), std::numeric_limits<double>::lowest());
+    EXPECT_FALSE(reader.has_remaining());
+}
+
+TEST(SerializerTest, AllTypesReversedOrderV81) {
+    Serializer s;
+    std::vector<uint8_t> raw_bytes = {0xDE, 0xAD, 0xBE, 0xEF};
+    s.write_bytes(raw_bytes.data(), raw_bytes.size());
+    s.write_string("reversed");
+    s.write_f64(2.71828);
+    s.write_u64(123456789012345ULL);
+    s.write_u32(42);
+    s.write_u16(999);
+    s.write_u8(77);
+
+    Deserializer reader(s.data());
+    auto bytes_out = reader.read_bytes();
+    EXPECT_EQ(bytes_out.size(), 4u);
+    EXPECT_EQ(bytes_out[0], 0xDE);
+    EXPECT_EQ(bytes_out[1], 0xAD);
+    EXPECT_EQ(bytes_out[2], 0xBE);
+    EXPECT_EQ(bytes_out[3], 0xEF);
+    EXPECT_EQ(reader.read_string(), "reversed");
+    EXPECT_DOUBLE_EQ(reader.read_f64(), 2.71828);
+    EXPECT_EQ(reader.read_u64(), 123456789012345ULL);
+    EXPECT_EQ(reader.read_u32(), 42u);
+    EXPECT_EQ(reader.read_u16(), 999u);
+    EXPECT_EQ(reader.read_u8(), 77u);
+    EXPECT_FALSE(reader.has_remaining());
+}

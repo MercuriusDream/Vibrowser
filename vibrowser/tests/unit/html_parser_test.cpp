@@ -12571,3 +12571,210 @@ TEST(HTMLParserTest, DetailsAndSummaryV80) {
     EXPECT_EQ(p->text_content(), "Hidden content");
     EXPECT_EQ(p->parent, details);
 }
+
+// ---------------------------------------------------------------------------
+// V81 tests: diverse HTML parsing — void elements, nested structures,
+//            attributes, inline content, empty elements, heading hierarchy
+// ---------------------------------------------------------------------------
+
+TEST(HtmlParserTest, MultipleSiblingVoidElementsBrHrWbrV81) {
+    auto doc = clever::html::parse("<body>one<br>two<hr>three<wbr>four</body>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* body = doc->find_element("body");
+    ASSERT_NE(body, nullptr);
+
+    auto* br = doc->find_element("br");
+    auto* hr = doc->find_element("hr");
+    auto* wbr = doc->find_element("wbr");
+    ASSERT_NE(br, nullptr);
+    ASSERT_NE(hr, nullptr);
+    ASSERT_NE(wbr, nullptr);
+
+    EXPECT_TRUE(br->children.empty());
+    EXPECT_TRUE(hr->children.empty());
+    EXPECT_TRUE(wbr->children.empty());
+
+    EXPECT_EQ(br->parent, body);
+    EXPECT_EQ(hr->parent, body);
+    EXPECT_EQ(wbr->parent, body);
+
+    const std::string text = body->text_content();
+    EXPECT_NE(text.find("one"), std::string::npos);
+    EXPECT_NE(text.find("two"), std::string::npos);
+    EXPECT_NE(text.find("three"), std::string::npos);
+    EXPECT_NE(text.find("four"), std::string::npos);
+}
+
+TEST(HtmlParserTest, DefinitionListDlDtDdStructureV81) {
+    auto doc = clever::html::parse("<html><body><dl><dt>Term1</dt><dd>Def1</dd><dt>Term2</dt><dd>Def2</dd></dl></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* dl = doc->find_element("dl");
+    ASSERT_NE(dl, nullptr);
+    EXPECT_EQ(dl->tag_name, "dl");
+
+    auto dts = doc->find_all_elements("dt");
+    auto dds = doc->find_all_elements("dd");
+    ASSERT_EQ(dts.size(), 2u);
+    ASSERT_EQ(dds.size(), 2u);
+
+    EXPECT_EQ(dts[0]->text_content(), "Term1");
+    EXPECT_EQ(dts[1]->text_content(), "Term2");
+    EXPECT_EQ(dds[0]->text_content(), "Def1");
+    EXPECT_EQ(dds[1]->text_content(), "Def2");
+
+    EXPECT_EQ(dts[0]->parent, dl);
+    EXPECT_EQ(dds[0]->parent, dl);
+    EXPECT_EQ(dts[1]->parent, dl);
+    EXPECT_EQ(dds[1]->parent, dl);
+}
+
+TEST(HtmlParserTest, DeeplyNestedDivsParentChainV81) {
+    auto doc = clever::html::parse("<div id=\"a\"><div id=\"b\"><div id=\"c\"><div id=\"d\">leaf</div></div></div></div>");
+    ASSERT_NE(doc, nullptr);
+
+    auto divs = doc->find_all_elements("div");
+    ASSERT_EQ(divs.size(), 4u);
+
+    EXPECT_EQ(get_attr_v63(divs[0], "id"), "a");
+    EXPECT_EQ(get_attr_v63(divs[1], "id"), "b");
+    EXPECT_EQ(get_attr_v63(divs[2], "id"), "c");
+    EXPECT_EQ(get_attr_v63(divs[3], "id"), "d");
+
+    EXPECT_EQ(divs[1]->parent, divs[0]);
+    EXPECT_EQ(divs[2]->parent, divs[1]);
+    EXPECT_EQ(divs[3]->parent, divs[2]);
+    EXPECT_EQ(divs[3]->text_content(), "leaf");
+}
+
+TEST(HtmlParserTest, MultipleAttributesOnSingleElementV81) {
+    auto doc = clever::html::parse("<a href=\"https://example.com\" target=\"_blank\" rel=\"noopener\" title=\"Link\">click</a>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* a = doc->find_element("a");
+    ASSERT_NE(a, nullptr);
+    EXPECT_EQ(a->tag_name, "a");
+
+    EXPECT_EQ(get_attr_v63(a, "href"), "https://example.com");
+    EXPECT_EQ(get_attr_v63(a, "target"), "_blank");
+    EXPECT_EQ(get_attr_v63(a, "rel"), "noopener");
+    EXPECT_EQ(get_attr_v63(a, "title"), "Link");
+    EXPECT_EQ(a->text_content(), "click");
+}
+
+TEST(HtmlParserTest, SpecialCharsInTextContentPreservedV81) {
+    auto doc = clever::html::parse("<p>5 &lt; 10 &amp; 20 &gt; 15</p>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* p = doc->find_element("p");
+    ASSERT_NE(p, nullptr);
+
+    const std::string text = p->text_content();
+    EXPECT_NE(text.find("5"), std::string::npos);
+    EXPECT_NE(text.find("<"), std::string::npos);
+    EXPECT_NE(text.find("10"), std::string::npos);
+    EXPECT_NE(text.find("&"), std::string::npos);
+    EXPECT_NE(text.find(">"), std::string::npos);
+    EXPECT_NE(text.find("15"), std::string::npos);
+}
+
+TEST(HtmlParserTest, MixedInlineElementsInsideParagraphV81) {
+    auto doc = clever::html::parse("<p>Hello <b>bold</b> and <i>italic</i> and <code>code</code> world</p>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* p = doc->find_element("p");
+    ASSERT_NE(p, nullptr);
+
+    auto* b = doc->find_element("b");
+    auto* i = doc->find_element("i");
+    auto* code = doc->find_element("code");
+    ASSERT_NE(b, nullptr);
+    ASSERT_NE(i, nullptr);
+    ASSERT_NE(code, nullptr);
+
+    EXPECT_EQ(b->parent, p);
+    EXPECT_EQ(i->parent, p);
+    EXPECT_EQ(code->parent, p);
+
+    EXPECT_EQ(b->text_content(), "bold");
+    EXPECT_EQ(i->text_content(), "italic");
+    EXPECT_EQ(code->text_content(), "code");
+
+    const std::string full = p->text_content();
+    EXPECT_NE(full.find("Hello"), std::string::npos);
+    EXPECT_NE(full.find("bold"), std::string::npos);
+    EXPECT_NE(full.find("italic"), std::string::npos);
+    EXPECT_NE(full.find("code"), std::string::npos);
+    EXPECT_NE(full.find("world"), std::string::npos);
+}
+
+TEST(HtmlParserTest, EmptyElementsHaveNoChildrenV81) {
+    auto doc = clever::html::parse("<html><body><div></div><span></span><p></p></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* div = doc->find_element("div");
+    auto* span = doc->find_element("span");
+    auto* p = doc->find_element("p");
+    ASSERT_NE(div, nullptr);
+    ASSERT_NE(span, nullptr);
+    ASSERT_NE(p, nullptr);
+
+    EXPECT_TRUE(div->children.empty());
+    EXPECT_TRUE(span->children.empty());
+    EXPECT_TRUE(p->children.empty());
+
+    EXPECT_EQ(div->text_content(), "");
+    EXPECT_EQ(span->text_content(), "");
+    EXPECT_EQ(p->text_content(), "");
+}
+
+TEST(HtmlParserTest, HeadingHierarchyH1ThroughH6V81) {
+    auto doc = clever::html::parse(
+        "<body>"
+        "<h1>Heading 1</h1>"
+        "<h2>Heading 2</h2>"
+        "<h3>Heading 3</h3>"
+        "<h4>Heading 4</h4>"
+        "<h5>Heading 5</h5>"
+        "<h6>Heading 6</h6>"
+        "</body>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* body = doc->find_element("body");
+    ASSERT_NE(body, nullptr);
+
+    auto* h1 = doc->find_element("h1");
+    auto* h2 = doc->find_element("h2");
+    auto* h3 = doc->find_element("h3");
+    auto* h4 = doc->find_element("h4");
+    auto* h5 = doc->find_element("h5");
+    auto* h6 = doc->find_element("h6");
+    ASSERT_NE(h1, nullptr);
+    ASSERT_NE(h2, nullptr);
+    ASSERT_NE(h3, nullptr);
+    ASSERT_NE(h4, nullptr);
+    ASSERT_NE(h5, nullptr);
+    ASSERT_NE(h6, nullptr);
+
+    EXPECT_EQ(h1->tag_name, "h1");
+    EXPECT_EQ(h2->tag_name, "h2");
+    EXPECT_EQ(h3->tag_name, "h3");
+    EXPECT_EQ(h4->tag_name, "h4");
+    EXPECT_EQ(h5->tag_name, "h5");
+    EXPECT_EQ(h6->tag_name, "h6");
+
+    EXPECT_EQ(h1->text_content(), "Heading 1");
+    EXPECT_EQ(h2->text_content(), "Heading 2");
+    EXPECT_EQ(h3->text_content(), "Heading 3");
+    EXPECT_EQ(h4->text_content(), "Heading 4");
+    EXPECT_EQ(h5->text_content(), "Heading 5");
+    EXPECT_EQ(h6->text_content(), "Heading 6");
+
+    EXPECT_EQ(h1->parent, body);
+    EXPECT_EQ(h2->parent, body);
+    EXPECT_EQ(h3->parent, body);
+    EXPECT_EQ(h4->parent, body);
+    EXPECT_EQ(h5->parent, body);
+    EXPECT_EQ(h6->parent, body);
+}

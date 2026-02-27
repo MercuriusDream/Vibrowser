@@ -14617,3 +14617,147 @@ TEST(HttpClientTest, HeaderMapGetAfterRemoveNulloptV80) {
     EXPECT_FALSE(headers.has("Authorization"));
     EXPECT_EQ(headers.get("Authorization"), std::nullopt);
 }
+
+// ===========================================================================
+// V81 Tests
+// ===========================================================================
+
+TEST(HttpClientTest, HeaderMapAppendCreatesMultipleValuesV81) {
+    // append() should add values without overwriting existing ones
+    HeaderMap headers;
+    headers.set("Accept", "text/html");
+    headers.append("Accept", "application/json");
+    headers.append("Accept", "text/plain");
+
+    auto all = headers.get_all("Accept");
+    EXPECT_EQ(all.size(), 3u);
+    // get() returns the first value
+    EXPECT_EQ(headers.get("Accept").value(), "text/html");
+    // All three values should be present
+    EXPECT_EQ(all[0], "text/html");
+    EXPECT_EQ(all[1], "application/json");
+    EXPECT_EQ(all[2], "text/plain");
+}
+
+TEST(HttpClientTest, RequestSerializePatchWithBodyV81) {
+    // PATCH request should serialize with correct method, body, and content-length
+    Request req;
+    req.method = Method::PATCH;
+    req.host = "api.example.com";
+    req.port = 443;
+    req.path = "/users/42";
+
+    std::string body_str = R"({"name":"updated"})";
+    req.body.assign(body_str.begin(), body_str.end());
+    req.headers.set("Content-Type", "application/json");
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    EXPECT_TRUE(result.find("PATCH /users/42 HTTP/1.1\r\n") != std::string::npos);
+    // Port 443 should be omitted from Host header
+    EXPECT_TRUE(result.find("Host: api.example.com\r\n") != std::string::npos);
+    EXPECT_FALSE(result.find("Host: api.example.com:443") != std::string::npos);
+    // Content-Length should match body size
+    EXPECT_TRUE(result.find("Content-Length: 18\r\n") != std::string::npos);
+    // Body should appear after the blank line
+    EXPECT_TRUE(result.find("\r\n\r\n{\"name\":\"updated\"}") != std::string::npos);
+}
+
+TEST(HttpClientTest, ResponseBodyAsStringConversionV81) {
+    // body_as_string() should correctly convert uint8_t vector to string
+    Response resp;
+    resp.status = 200;
+    std::string text = "Hello, World!";
+    resp.body.assign(text.begin(), text.end());
+
+    EXPECT_EQ(resp.body_as_string(), "Hello, World!");
+    EXPECT_EQ(resp.body.size(), 13u);
+}
+
+TEST(HttpClientTest, CookieJarPathScopingRulesV81) {
+    // Cookies set with a path should only match that path and sub-paths
+    CookieJar jar;
+    jar.set_from_header("token=abc; Path=/api", "example.com");
+    jar.set_from_header("lang=en; Path=/", "example.com");
+
+    // /api/v2 is a sub-path of /api, both cookies should apply
+    std::string api_header = jar.get_cookie_header("example.com", "/api/v2", false);
+    EXPECT_TRUE(api_header.find("token=abc") != std::string::npos);
+    EXPECT_TRUE(api_header.find("lang=en") != std::string::npos);
+
+    // /dashboard is not under /api, so token should NOT be present
+    std::string dash_header = jar.get_cookie_header("example.com", "/dashboard", false);
+    EXPECT_TRUE(dash_header.find("lang=en") != std::string::npos);
+    EXPECT_TRUE(dash_header.find("token=abc") == std::string::npos);
+}
+
+TEST(HttpClientTest, HeaderMapSetOverwritesPreviousValueV81) {
+    // set() should overwrite any existing values for the same key
+    HeaderMap headers;
+    headers.set("Cache-Control", "no-cache");
+    headers.append("Cache-Control", "no-store");
+    EXPECT_EQ(headers.get_all("Cache-Control").size(), 2u);
+
+    // set() should replace all values with a single one
+    headers.set("Cache-Control", "max-age=3600");
+    EXPECT_EQ(headers.get_all("Cache-Control").size(), 1u);
+    EXPECT_EQ(headers.get("Cache-Control").value(), "max-age=3600");
+}
+
+TEST(HttpClientTest, RequestSerializeHeadMethodNoBodyV81) {
+    // HEAD requests should never include a body even if one is attached
+    Request req;
+    req.method = Method::HEAD;
+    req.host = "example.com";
+    req.port = 80;
+    req.path = "/status";
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    EXPECT_TRUE(result.find("HEAD /status HTTP/1.1\r\n") != std::string::npos);
+    EXPECT_TRUE(result.find("Host: example.com\r\n") != std::string::npos);
+    // Port 80 should be omitted from Host
+    EXPECT_FALSE(result.find("Host: example.com:80") != std::string::npos);
+    // Connection header should be present
+    EXPECT_TRUE(result.find("Connection: keep-alive\r\n") != std::string::npos);
+}
+
+TEST(HttpClientTest, CookieJarClearRemovesAllCookiesV81) {
+    // clear() should remove cookies from all domains
+    CookieJar jar;
+    jar.set_from_header("a=1", "alpha.com");
+    jar.set_from_header("b=2", "beta.com");
+    jar.set_from_header("c=3", "gamma.com");
+    EXPECT_EQ(jar.size(), 3u);
+
+    jar.clear();
+    EXPECT_EQ(jar.size(), 0u);
+
+    // Verify no cookies are returned for any domain after clear
+    EXPECT_TRUE(jar.get_cookie_header("alpha.com", "/", false).empty());
+    EXPECT_TRUE(jar.get_cookie_header("beta.com", "/", false).empty());
+    EXPECT_TRUE(jar.get_cookie_header("gamma.com", "/", false).empty());
+}
+
+TEST(HttpClientTest, RequestSerializeOptionsMethodV81) {
+    // OPTIONS request should serialize correctly with custom headers lowercase
+    Request req;
+    req.method = Method::OPTIONS;
+    req.host = "cors.example.com";
+    req.port = 8080;
+    req.path = "/resource";
+    req.headers.set("Access-Control-Request-Method", "POST");
+    req.headers.set("Origin", "https://app.example.com");
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    EXPECT_TRUE(result.find("OPTIONS /resource HTTP/1.1\r\n") != std::string::npos);
+    // Non-standard port should appear in Host header
+    EXPECT_TRUE(result.find("Host: cors.example.com:8080\r\n") != std::string::npos);
+    // Custom headers should be lowercase
+    EXPECT_TRUE(result.find("access-control-request-method: POST\r\n") != std::string::npos);
+    EXPECT_TRUE(result.find("origin: https://app.example.com\r\n") != std::string::npos);
+}

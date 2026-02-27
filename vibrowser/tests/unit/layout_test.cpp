@@ -14731,3 +14731,161 @@ TEST(LayoutEngineTest, PaddingLeftRightPreservedV80) {
     EXPECT_FLOAT_EQ(root->geometry.padding.left, 25.0f);
     EXPECT_FLOAT_EQ(root->geometry.padding.right, 35.0f);
 }
+
+// Test V81_001: three stacked block children have cumulative y positions
+TEST(LayoutEngineTest, ThreeStackedBlocksYPositionsV81) {
+    auto root = make_block("div");
+    root->specified_width = 400.0f;
+
+    auto c1 = make_block("div");
+    c1->specified_height = 40.0f;
+    auto* p1 = c1.get();
+    root->append_child(std::move(c1));
+
+    auto c2 = make_block("div");
+    c2->specified_height = 60.0f;
+    auto* p2 = c2.get();
+    root->append_child(std::move(c2));
+
+    auto c3 = make_block("div");
+    c3->specified_height = 25.0f;
+    auto* p3 = c3.get();
+    root->append_child(std::move(c3));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(p1->geometry.y, 0.0f);
+    EXPECT_FLOAT_EQ(p2->geometry.y, 40.0f);
+    EXPECT_FLOAT_EQ(p3->geometry.y, 100.0f);
+}
+
+// Test V81_002: display:none child does not contribute to parent height
+TEST(LayoutEngineTest, DisplayNoneNoHeightContributionV81) {
+    auto root = make_block("div");
+    root->specified_width = 600.0f;
+
+    auto visible = make_block("div");
+    visible->specified_height = 50.0f;
+    root->append_child(std::move(visible));
+
+    auto hidden = make_block("div");
+    hidden->specified_height = 100.0f;
+    hidden->display = DisplayType::None;
+    root->append_child(std::move(hidden));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // Only the visible child's height should count
+    EXPECT_FLOAT_EQ(root->geometry.height, 50.0f);
+}
+
+// Test V81_003: border widths are preserved after layout
+TEST(LayoutEngineTest, BorderWidthsPreservedV81) {
+    auto root = make_block("div");
+    root->specified_width = 300.0f;
+    root->specified_height = 200.0f;
+    root->geometry.border.top = 3.0f;
+    root->geometry.border.right = 5.0f;
+    root->geometry.border.bottom = 3.0f;
+    root->geometry.border.left = 5.0f;
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(root->geometry.border.top, 3.0f);
+    EXPECT_FLOAT_EQ(root->geometry.border.right, 5.0f);
+    EXPECT_FLOAT_EQ(root->geometry.border.bottom, 3.0f);
+    EXPECT_FLOAT_EQ(root->geometry.border.left, 5.0f);
+}
+
+// Test V81_004: flex container distributes space by flex_grow ratio
+TEST(LayoutEngineTest, FlexGrowDistributionV81) {
+    auto root = make_flex("div");
+    root->specified_width = 600.0f;
+    root->specified_height = 100.0f;
+
+    auto a = make_block("div");
+    a->flex_grow = 1.0f;
+    a->specified_height = 100.0f;
+    auto* pa = a.get();
+    root->append_child(std::move(a));
+
+    auto b = make_block("div");
+    b->flex_grow = 2.0f;
+    b->specified_height = 100.0f;
+    auto* pb = b.get();
+    root->append_child(std::move(b));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // Child a gets 1/3, child b gets 2/3 of 600
+    EXPECT_FLOAT_EQ(pa->geometry.width, 200.0f);
+    EXPECT_FLOAT_EQ(pb->geometry.width, 400.0f);
+}
+
+// Test V81_005: root with no specified dimensions and no children has zero height
+TEST(LayoutEngineTest, EmptyRootZeroHeightV81) {
+    auto root = make_block("div");
+    // No specified_width or specified_height set, no children
+
+    LayoutEngine engine;
+    engine.compute(*root, 1024.0f, 768.0f);
+
+    // Width should fill viewport, height should be zero (no content)
+    EXPECT_FLOAT_EQ(root->geometry.width, 1024.0f);
+    EXPECT_FLOAT_EQ(root->geometry.height, 0.0f);
+}
+
+// Test V81_006: child block inherits full width of parent with specified width
+TEST(LayoutEngineTest, ChildInheritsParentSpecifiedWidthV81) {
+    auto root = make_block("div");
+    root->specified_width = 500.0f;
+
+    auto child = make_block("p");
+    child->specified_height = 30.0f;
+    auto* cp = child.get();
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(cp->geometry.width, 500.0f);
+}
+
+// Test V81_007: margin_box_width returns content + padding + border + margin
+TEST(LayoutEngineTest, MarginBoxWidthCalculationV81) {
+    auto root = make_block("div");
+    root->specified_width = 200.0f;
+    root->specified_height = 100.0f;
+    root->geometry.margin.left = 10.0f;
+    root->geometry.margin.right = 10.0f;
+    root->geometry.padding.left = 15.0f;
+    root->geometry.padding.right = 15.0f;
+    root->geometry.border.left = 2.0f;
+    root->geometry.border.right = 2.0f;
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // margin_box_width = margin.left + border.left + padding.left + width + padding.right + border.right + margin.right
+    float expected = 10.0f + 2.0f + 15.0f + 200.0f + 15.0f + 2.0f + 10.0f;
+    EXPECT_FLOAT_EQ(root->geometry.margin_box_width(), expected);
+}
+
+// Test V81_008: background_color and color on node are preserved after layout
+TEST(LayoutEngineTest, ColorsPreservedAfterLayoutV81) {
+    auto root = make_block("div");
+    root->specified_width = 400.0f;
+    root->specified_height = 200.0f;
+    root->background_color = 0xFF336699u;
+    root->color = 0xFFEEDDCCu;
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_EQ(root->background_color, 0xFF336699u);
+    EXPECT_EQ(root->color, 0xFFEEDDCCu);
+}

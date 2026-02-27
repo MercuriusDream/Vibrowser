@@ -24099,3 +24099,78 @@ TEST(JSEngineTest, ArrayFromStringV80) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "a|b|c");
 }
+
+// ============================================================================
+// V81 Tests
+// ============================================================================
+
+TEST(JSEngineTest, StringReplaceAllV81) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("'aabbcc'.split('b').join('x')");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "aaxxcc");
+}
+
+TEST(JSEngineTest, ArrayReduceSumV81) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("[10,20,30,40].reduce((acc,v)=>acc+v,0)");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "100");
+}
+
+TEST(JSEngineTest, ObjectKeysValuesV81) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var obj = {a:1, b:2, c:3};
+        Object.keys(obj).join(',') + '|' + Object.values(obj).join(',')
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "a,b,c|1,2,3");
+}
+
+TEST(JSEngineTest, MathMinMaxV81) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("Math.min(5,2,8,1) + '|' + Math.max(5,2,8,1)");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1|8");
+}
+
+TEST(JSEngineTest, ClosureCounterV81) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        function makeCounter() {
+            var count = 0;
+            return function() { count++; return count; };
+        }
+        var c = makeCounter();
+        c(); c(); c();
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "3");
+}
+
+TEST(JSEngineTest, DestructuringAssignmentV81) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var arr = [10, 20, 30];
+        var a = arr[0], b = arr[1], c = arr[2];
+        a + b + c
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "60");
+}
+
+TEST(JSEngineTest, ArrayFindIndexV81) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("[4,9,16,25].findIndex(function(x){return x>10})");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "2");
+}
+
+TEST(JSEngineTest, StringTemplateLiteralV81) {
+    clever::js::JSEngine engine;
+    engine.evaluate("var name = 'world'; var year = 2026;");
+    auto result = engine.evaluate("`Hello ${name}, year ${year}`");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "Hello world, year 2026");
+}
