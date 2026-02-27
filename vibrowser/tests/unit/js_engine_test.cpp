@@ -22755,3 +22755,178 @@ TEST(JSEngineTest, DefaultParameterValuesFallbackV68) {
     EXPECT_TRUE(result.success) << engine.last_error();
     EXPECT_EQ(result.value, "hello guest!|hello Ada?|hello guest.");
 }
+
+TEST(JSEngineTest, StringRawTemplateTagPreservesEscapesV69) {
+    clever::js::JSEngine engine;
+    const std::string js = R"(
+        var raw = String.raw`line1\nline2\t${42}`;
+        var hasEscapedNewline = raw.indexOf('\\n') >= 0;
+        var hasEscapedTab = raw.indexOf('\\t') >= 0;
+        [raw, hasEscapedNewline.toString(), hasEscapedTab.toString()].join('|')
+    )";
+    auto result = EvalResultV66{false, ""};
+    result.value = engine.evaluate(js);
+    result.success = !engine.has_error();
+    EXPECT_TRUE(result.success) << engine.last_error();
+    EXPECT_EQ(result.value, "line1\\nline2\\t42|true|true");
+}
+
+TEST(JSEngineTest, SymbolIteratorProtocolCustomIterableV69) {
+    clever::js::JSEngine engine;
+    const std::string js = R"(
+        var iterable = {
+            start: 1,
+            end: 3,
+            [Symbol.iterator]: function() {
+                var current = this.start;
+                var end = this.end;
+                return {
+                    next: function() {
+                        if (current <= end) {
+                            return { value: current++, done: false };
+                        }
+                        return { value: undefined, done: true };
+                    }
+                };
+            }
+        };
+        var values = [];
+        for (var value of iterable) {
+            values.push(value * 2);
+        }
+        values.join(',')
+    )";
+    auto result = EvalResultV66{false, ""};
+    result.value = engine.evaluate(js);
+    result.success = !engine.has_error();
+    EXPECT_TRUE(result.success) << engine.last_error();
+    EXPECT_EQ(result.value, "2,4,6");
+}
+
+TEST(JSEngineTest, WeakRefBasicUsageDereferenceV69) {
+    clever::js::JSEngine engine;
+    const std::string js = R"(
+        var target = { id: 69, label: 'weak' };
+        var ref = new WeakRef(target);
+        var deref = ref.deref();
+        [
+            (deref === target).toString(),
+            deref.id.toString(),
+            deref.label
+        ].join('|')
+    )";
+    auto result = EvalResultV66{false, ""};
+    result.value = engine.evaluate(js);
+    result.success = !engine.has_error();
+    EXPECT_TRUE(result.success) << engine.last_error();
+    EXPECT_EQ(result.value, "true|69|weak");
+}
+
+TEST(JSEngineTest, FinalizationRegistryConstructorAvailabilityV69) {
+    clever::js::JSEngine engine;
+    const std::string js = R"(
+        var registry = new FinalizationRegistry(function() {});
+        [
+            typeof FinalizationRegistry,
+            registry.constructor.name,
+            (registry instanceof FinalizationRegistry).toString()
+        ].join('|')
+    )";
+    auto result = EvalResultV66{false, ""};
+    result.value = engine.evaluate(js);
+    result.success = !engine.has_error();
+    EXPECT_TRUE(result.success) << engine.last_error();
+    EXPECT_EQ(result.value, "function|FinalizationRegistry|true");
+}
+
+TEST(JSEngineTest, GlobalThisAccessAndMutationV69) {
+    clever::js::JSEngine engine;
+    const std::string js = R"(
+        globalThis.v69GlobalValue = 123;
+        var same = (globalThis === globalThis.globalThis).toString();
+        var readBack = globalThis.v69GlobalValue.toString();
+        delete globalThis.v69GlobalValue;
+        [same, readBack, (typeof globalThis).toString()].join('|')
+    )";
+    auto result = EvalResultV66{false, ""};
+    result.value = engine.evaluate(js);
+    result.success = !engine.has_error();
+    EXPECT_TRUE(result.success) << engine.last_error();
+    EXPECT_EQ(result.value, "true|123|object");
+}
+
+TEST(JSEngineTest, JsonStructuredCloneLikeDeepCopyV69) {
+    clever::js::JSEngine engine;
+    const std::string js = R"(
+        var source = {
+            name: 'copy',
+            nested: { value: 2 },
+            list: [1, { marker: 3 }]
+        };
+        var clone = JSON.parse(JSON.stringify(source));
+        clone.nested.value = 9;
+        clone.list[1].marker = 7;
+        [
+            source.nested.value.toString(),
+            clone.nested.value.toString(),
+            source.list[1].marker.toString(),
+            clone.list[1].marker.toString(),
+            (source !== clone).toString()
+        ].join('|')
+    )";
+    auto result = EvalResultV66{false, ""};
+    result.value = engine.evaluate(js);
+    result.success = !engine.has_error();
+    EXPECT_TRUE(result.success) << engine.last_error();
+    EXPECT_EQ(result.value, "2|9|3|7|true");
+}
+
+TEST(JSEngineTest, QueueMicrotaskExecutionOrderV69) {
+    clever::js::JSEngine engine;
+    const std::string setup_js = R"(
+        if (typeof queueMicrotask !== 'function') {
+            globalThis.queueMicrotask = function(callback) {
+                Promise.resolve().then(callback);
+            };
+        }
+        var v69MicrotaskOrder = [];
+        v69MicrotaskOrder.push('sync-start');
+        queueMicrotask(function() {
+            v69MicrotaskOrder.push('microtask');
+        });
+        Promise.resolve().then(function() {
+            v69MicrotaskOrder.push('promise-then');
+        });
+        v69MicrotaskOrder.push('sync-end');
+        'scheduled'
+    )";
+    auto setup = EvalResultV66{false, ""};
+    setup.value = engine.evaluate(setup_js);
+    setup.success = !engine.has_error();
+    EXPECT_TRUE(setup.success) << engine.last_error();
+    EXPECT_EQ(setup.value, "scheduled");
+
+    clever::js::flush_fetch_promise_jobs(engine.context());
+
+    auto result = EvalResultV66{false, ""};
+    result.value = engine.evaluate("v69MicrotaskOrder.join(',')");
+    result.success = !engine.has_error();
+    EXPECT_TRUE(result.success) << engine.last_error();
+    EXPECT_EQ(result.value, "sync-start,sync-end,microtask,promise-then");
+}
+
+TEST(JSEngineTest, ErrorPrototypeStackExistsV69) {
+    clever::js::JSEngine engine;
+    const std::string js = R"(
+        var err = new Error('boom-v69');
+        var hasStack = ('stack' in err).toString();
+        var stackType = typeof err.stack;
+        var nonEmptyStack = (stackType === 'string' && err.stack.length > 0).toString();
+        [hasStack, stackType, nonEmptyStack].join('|')
+    )";
+    auto result = EvalResultV66{false, ""};
+    result.value = engine.evaluate(js);
+    result.success = !engine.has_error();
+    EXPECT_TRUE(result.success) << engine.last_error();
+    EXPECT_EQ(result.value, "true|string|true");
+}

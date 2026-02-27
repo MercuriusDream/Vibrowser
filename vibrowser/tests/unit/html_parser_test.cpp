@@ -11032,3 +11032,143 @@ TEST(HTMLParserTest, MarkElementHighlightV68) {
     EXPECT_EQ(mark->text_content(), "important");
     EXPECT_EQ(paragraph->text_content(), "Read the important part.");
 }
+
+TEST(HTMLParserTest, PreElementPreservesWhitespaceV69) {
+    auto doc = clever::html::parse("<pre>  alpha\n    beta\tgamma  </pre>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* pre = doc->find_element("pre");
+    ASSERT_NE(pre, nullptr);
+    EXPECT_EQ(pre->tag_name, "pre");
+    EXPECT_EQ(pre->text_content(), "  alpha\n    beta\tgamma  ");
+}
+
+TEST(HTMLParserTest, CodeElementInlineV69) {
+    auto doc = clever::html::parse("<p>Use <code>std::string_view</code> for lightweight text views.</p>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* paragraph = doc->find_element("p");
+    auto* code = doc->find_element("code");
+    ASSERT_NE(paragraph, nullptr);
+    ASSERT_NE(code, nullptr);
+    EXPECT_EQ(paragraph->tag_name, "p");
+    EXPECT_EQ(code->tag_name, "code");
+    EXPECT_EQ(code->parent, paragraph);
+    EXPECT_EQ(code->text_content(), "std::string_view");
+    EXPECT_EQ(paragraph->text_content(), "Use std::string_view for lightweight text views.");
+}
+
+TEST(HTMLParserTest, NavWithAnchorLinksV69) {
+    auto doc = clever::html::parse(
+        "<nav><a href='/home'>Home</a><a href='/docs'>Docs</a><a href='/contact'>Contact</a></nav>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* nav = doc->find_element("nav");
+    auto anchors = doc->find_all_elements("a");
+    ASSERT_NE(nav, nullptr);
+    ASSERT_EQ(anchors.size(), 3u);
+    EXPECT_EQ(nav->tag_name, "nav");
+    EXPECT_EQ(anchors[0]->tag_name, "a");
+    EXPECT_EQ(anchors[1]->tag_name, "a");
+    EXPECT_EQ(anchors[2]->tag_name, "a");
+    EXPECT_EQ(anchors[0]->parent, nav);
+    EXPECT_EQ(anchors[1]->parent, nav);
+    EXPECT_EQ(anchors[2]->parent, nav);
+    EXPECT_EQ(get_attr_v63(anchors[0], "href"), "/home");
+    EXPECT_EQ(get_attr_v63(anchors[1], "href"), "/docs");
+    EXPECT_EQ(get_attr_v63(anchors[2], "href"), "/contact");
+    EXPECT_EQ(anchors[0]->text_content(), "Home");
+    EXPECT_EQ(anchors[1]->text_content(), "Docs");
+    EXPECT_EQ(anchors[2]->text_content(), "Contact");
+}
+
+TEST(HTMLParserTest, HeaderAndFooterElementsV69) {
+    auto doc = clever::html::parse("<body><header><h1>Site Title</h1></header><footer>All rights reserved</footer></body>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* body = doc->find_element("body");
+    auto* header = doc->find_element("header");
+    auto* footer = doc->find_element("footer");
+    ASSERT_NE(body, nullptr);
+    ASSERT_NE(header, nullptr);
+    ASSERT_NE(footer, nullptr);
+    EXPECT_EQ(header->tag_name, "header");
+    EXPECT_EQ(footer->tag_name, "footer");
+    EXPECT_EQ(header->parent, body);
+    EXPECT_EQ(footer->parent, body);
+    EXPECT_EQ(header->text_content(), "Site Title");
+    EXPECT_EQ(footer->text_content(), "All rights reserved");
+}
+
+TEST(HTMLParserTest, MainElementV69) {
+    auto doc = clever::html::parse("<main><h1>Main Content</h1><p>Primary article text.</p></main>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* main = doc->find_element("main");
+    auto* heading = doc->find_element("h1");
+    auto* paragraph = doc->find_element("p");
+    ASSERT_NE(main, nullptr);
+    ASSERT_NE(heading, nullptr);
+    ASSERT_NE(paragraph, nullptr);
+    EXPECT_EQ(main->tag_name, "main");
+    EXPECT_EQ(heading->parent, main);
+    EXPECT_EQ(paragraph->parent, main);
+    EXPECT_EQ(heading->text_content(), "Main Content");
+    EXPECT_EQ(paragraph->text_content(), "Primary article text.");
+}
+
+TEST(HTMLParserTest, AsideElementV69) {
+    auto doc = clever::html::parse("<main><aside><p>Related links</p></aside><p>Core content</p></main>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* main = doc->find_element("main");
+    auto* aside = doc->find_element("aside");
+    ASSERT_NE(main, nullptr);
+    ASSERT_NE(aside, nullptr);
+    EXPECT_EQ(main->tag_name, "main");
+    EXPECT_EQ(aside->tag_name, "aside");
+    EXPECT_EQ(aside->parent, main);
+    EXPECT_EQ(aside->text_content(), "Related links");
+}
+
+TEST(HTMLParserTest, SectionWithHeadingV69) {
+    auto doc = clever::html::parse("<section><h2>Overview</h2><p>Section details.</p></section>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* section = doc->find_element("section");
+    auto* heading = doc->find_element("h2");
+    auto* paragraph = doc->find_element("p");
+    ASSERT_NE(section, nullptr);
+    ASSERT_NE(heading, nullptr);
+    ASSERT_NE(paragraph, nullptr);
+    EXPECT_EQ(section->tag_name, "section");
+    EXPECT_EQ(heading->tag_name, "h2");
+    EXPECT_EQ(heading->parent, section);
+    EXPECT_EQ(paragraph->parent, section);
+    EXPECT_EQ(heading->text_content(), "Overview");
+}
+
+TEST(HTMLParserTest, ArticleElementStructureV69) {
+    auto doc = clever::html::parse(
+        "<article><header><h2>Release Notes</h2></header><p>Feature summary.</p><footer>Published today</footer></article>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* article = doc->find_element("article");
+    auto* header = doc->find_element("header");
+    auto* heading = doc->find_element("h2");
+    auto* paragraph = doc->find_element("p");
+    auto* footer = doc->find_element("footer");
+    ASSERT_NE(article, nullptr);
+    ASSERT_NE(header, nullptr);
+    ASSERT_NE(heading, nullptr);
+    ASSERT_NE(paragraph, nullptr);
+    ASSERT_NE(footer, nullptr);
+    EXPECT_EQ(article->tag_name, "article");
+    EXPECT_EQ(header->parent, article);
+    EXPECT_EQ(paragraph->parent, article);
+    EXPECT_EQ(footer->parent, article);
+    EXPECT_EQ(heading->parent, header);
+    EXPECT_EQ(heading->text_content(), "Release Notes");
+    EXPECT_EQ(paragraph->text_content(), "Feature summary.");
+    EXPECT_EQ(footer->text_content(), "Published today");
+}

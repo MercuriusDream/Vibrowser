@@ -12785,3 +12785,153 @@ TEST(LayoutEngineTest, MinWidthPreventsShrinkingBelowThresholdV68) {
     EXPECT_FLOAT_EQ(root->geometry.width, 150.0f);
     EXPECT_FLOAT_EQ(root->children[0]->geometry.width, 150.0f);
 }
+
+// Test V69_001: viewport height does not cap normal block-flow content height
+TEST(LayoutEngineTest, ViewportHeightDoesNotConstrainBlockHeightV69) {
+    auto root = make_block("div");
+    root->specified_width = 320.0f;
+
+    auto child = make_block("div");
+    child->specified_height = 700.0f;
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 320.0f, 120.0f);
+
+    EXPECT_FLOAT_EQ(root->geometry.height, 700.0f);
+    EXPECT_GT(root->geometry.height, 120.0f);
+}
+
+// Test V69_002: horizontal auto margins center a fixed-width child
+TEST(LayoutEngineTest, AutoMarginCenteringHorizontalV69) {
+    auto root = make_block("div");
+    root->specified_width = 600.0f;
+
+    auto child = make_block("div");
+    child->specified_width = 240.0f;
+    child->specified_height = 20.0f;
+    child->geometry.margin.left = -1.0f;
+    child->geometry.margin.right = -1.0f;
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 900.0f, 400.0f);
+
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.margin.left, 180.0f);
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.margin.right, 180.0f);
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.x, 180.0f);
+}
+
+// Test V69_003: one-sided auto margin resolves when width is specified
+TEST(LayoutEngineTest, MarginAutoWithSpecifiedWidthV69) {
+    auto root = make_block("div");
+    root->specified_width = 500.0f;
+
+    auto child = make_block("div");
+    child->specified_width = 200.0f;
+    child->specified_height = 18.0f;
+    child->geometry.margin.left = -1.0f;
+    child->geometry.margin.right = 30.0f;
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 300.0f);
+
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.margin.left, 300.0f);
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.margin.right, 30.0f);
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.x, 300.0f);
+}
+
+// Test V69_004: root padding reduces available width for child content
+TEST(LayoutEngineTest, PaddingOnRootElementV69) {
+    auto root = make_block("div");
+    root->specified_width = 400.0f;
+    root->geometry.padding.left = 25.0f;
+    root->geometry.padding.right = 25.0f;
+    root->geometry.padding.top = 8.0f;
+    root->geometry.padding.bottom = 12.0f;
+
+    auto child = make_block("div");
+    child->specified_height = 30.0f;
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 1000.0f, 200.0f);
+
+    EXPECT_FLOAT_EQ(root->geometry.width, 400.0f);
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.width, 350.0f);
+    EXPECT_FLOAT_EQ(root->geometry.height, 50.0f);
+}
+
+// Test V69_005: root border reduces child content width and contributes to height
+TEST(LayoutEngineTest, BorderOnRootElementV69) {
+    auto root = make_block("div");
+    root->specified_width = 360.0f;
+    root->geometry.border.left = 6.0f;
+    root->geometry.border.right = 6.0f;
+    root->geometry.border.top = 2.0f;
+    root->geometry.border.bottom = 4.0f;
+
+    auto child = make_block("div");
+    child->specified_height = 40.0f;
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 900.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.width, 348.0f);
+    EXPECT_FLOAT_EQ(root->geometry.height, 46.0f);
+}
+
+// Test V69_006: child can remain wider than parent when overflow is set
+TEST(LayoutEngineTest, ChildWiderThanParentWithOverflowV69) {
+    auto root = make_block("div");
+    root->specified_width = 200.0f;
+    root->overflow = 1; // hidden
+
+    auto child = make_block("div");
+    child->specified_width = 320.0f;
+    child->specified_height = 20.0f;
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 700.0f, 400.0f);
+
+    EXPECT_FLOAT_EQ(root->geometry.width, 200.0f);
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.width, 320.0f);
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.x, 0.0f);
+    EXPECT_EQ(root->overflow, 1);
+}
+
+// Test V69_007: explicit zero-size child is preserved in the tree and layout
+TEST(LayoutEngineTest, ZeroSizeElementExistsInTreeV69) {
+    auto root = make_block("div");
+    root->specified_width = 250.0f;
+
+    auto child = make_block("div");
+    child->specified_width = 0.0f;
+    child->specified_height = 0.0f;
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 500.0f, 300.0f);
+
+    EXPECT_EQ(root->children.size(), 1u);
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.width, 0.0f);
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.height, 0.0f);
+}
+
+// Test V69_008: text node height scales with large font size
+TEST(LayoutEngineTest, LargeFontTextNodeHeightV69) {
+    auto root = make_block("div");
+    root->specified_width = 600.0f;
+
+    auto text = make_text("A", 120.0f);
+    root->append_child(std::move(text));
+
+    LayoutEngine engine;
+    engine.compute(*root, 600.0f, 250.0f);
+
+    EXPECT_NEAR(root->children[0]->geometry.height, 144.0f, 0.001f);
+    EXPECT_NEAR(root->geometry.height, 144.0f, 0.001f);
+}

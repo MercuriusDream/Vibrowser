@@ -11478,3 +11478,202 @@ TEST(DOMTest, WhitespaceOnlyTextNodesArePreservedAsTextNodesV68) {
     EXPECT_EQ(trailing_ws_ptr->data(), "  ");
     EXPECT_EQ(root.text_content(), "\n  \tX  ");
 }
+
+TEST(DOMTest, ElementIdGetterAndSetterViaAttributeV69) {
+    Element element("div");
+    EXPECT_EQ(element.id(), "");
+
+    element.set_attribute("id", "hero");
+    EXPECT_EQ(element.id(), "hero");
+    EXPECT_EQ(element.get_attribute("id"), "hero");
+
+    element.set_attribute("id", "hero-main");
+    EXPECT_EQ(element.id(), "hero-main");
+    EXPECT_EQ(element.get_attribute("id"), "hero-main");
+
+    element.remove_attribute("id");
+    EXPECT_EQ(element.id(), "");
+    EXPECT_FALSE(element.get_attribute("id").has_value());
+}
+
+TEST(DOMTest, ClassNamePropertyManipulationViaClassAttributeV69) {
+    Element element("div");
+    EXPECT_FALSE(element.get_attribute("class").has_value());
+
+    element.set_attribute("class", "card elevated");
+    ASSERT_TRUE(element.get_attribute("class").has_value());
+    EXPECT_EQ(element.get_attribute("class").value(), "card elevated");
+
+    element.set_attribute("class", "card interactive selected");
+    EXPECT_EQ(element.get_attribute("class").value(), "card interactive selected");
+
+    element.remove_attribute("class");
+    EXPECT_FALSE(element.get_attribute("class").has_value());
+}
+
+TEST(DOMTest, StyleAttributeParsingExtractsKeyValuesV69) {
+    auto get_style_property = [](const Element& element, const std::string& property_name) -> std::string {
+        const auto style = element.get_attribute("style");
+        if (!style.has_value()) {
+            return "";
+        }
+
+        const std::string& text = style.value();
+        size_t cursor = 0;
+        while (cursor < text.size()) {
+            const size_t colon = text.find(':', cursor);
+            if (colon == std::string::npos) {
+                break;
+            }
+            const size_t semicolon = text.find(';', colon);
+            const size_t decl_end = semicolon == std::string::npos ? text.size() : semicolon;
+
+            std::string key = text.substr(cursor, colon - cursor);
+            std::string value = text.substr(colon + 1, decl_end - (colon + 1));
+
+            while (!key.empty() && key.front() == ' ') {
+                key.erase(0, 1);
+            }
+            while (!key.empty() && key.back() == ' ') {
+                key.pop_back();
+            }
+            while (!value.empty() && value.front() == ' ') {
+                value.erase(0, 1);
+            }
+            while (!value.empty() && value.back() == ' ') {
+                value.pop_back();
+            }
+
+            if (key == property_name) {
+                return value;
+            }
+            cursor = semicolon == std::string::npos ? text.size() : semicolon + 1;
+            while (cursor < text.size() && text[cursor] == ' ') {
+                ++cursor;
+            }
+        }
+        return "";
+    };
+
+    Element element("div");
+    element.set_attribute("style", "color: red; font-size: 16px; margin: 0 auto");
+
+    EXPECT_EQ(get_style_property(element, "color"), "red");
+    EXPECT_EQ(get_style_property(element, "font-size"), "16px");
+    EXPECT_EQ(get_style_property(element, "margin"), "0 auto");
+    EXPECT_EQ(get_style_property(element, "padding"), "");
+}
+
+TEST(DOMTest, DataAttributeAccessByDatasetKeyV69) {
+    auto key_to_data_attribute = [](const std::string& key) {
+        std::string attribute_name = "data-";
+        for (char ch : key) {
+            if (ch >= 'A' && ch <= 'Z') {
+                attribute_name.push_back('-');
+                attribute_name.push_back(static_cast<char>(ch - 'A' + 'a'));
+            } else {
+                attribute_name.push_back(ch);
+            }
+        }
+        return attribute_name;
+    };
+
+    auto set_dataset_value = [&](Element& element, const std::string& key, const std::string& value) {
+        element.set_attribute(key_to_data_attribute(key), value);
+    };
+
+    auto get_dataset_value = [&](const Element& element, const std::string& key) {
+        return element.get_attribute(key_to_data_attribute(key));
+    };
+
+    Element element("section");
+    set_dataset_value(element, "userId", "42");
+    set_dataset_value(element, "buildVersion", "2026.02");
+
+    EXPECT_EQ(get_dataset_value(element, "userId"), "42");
+    EXPECT_EQ(get_dataset_value(element, "buildVersion"), "2026.02");
+    EXPECT_TRUE(element.has_attribute("data-user-id"));
+    EXPECT_TRUE(element.has_attribute("data-build-version"));
+    EXPECT_FALSE(get_dataset_value(element, "missingKey").has_value());
+}
+
+TEST(DOMTest, HiddenAttributeToggleUsesPresenceSemanticsV69) {
+    auto is_hidden = [](const Element& element) {
+        return element.has_attribute("hidden");
+    };
+
+    auto set_hidden = [](Element& element, bool hidden) {
+        if (hidden) {
+            element.set_attribute("hidden", "");
+        } else {
+            element.remove_attribute("hidden");
+        }
+    };
+
+    Element element("div");
+    EXPECT_FALSE(is_hidden(element));
+
+    set_hidden(element, true);
+    EXPECT_TRUE(is_hidden(element));
+    EXPECT_TRUE(element.get_attribute("hidden").has_value());
+
+    set_hidden(element, false);
+    EXPECT_FALSE(is_hidden(element));
+    EXPECT_FALSE(element.get_attribute("hidden").has_value());
+}
+
+TEST(DOMTest, ContentEditableFlagReflectsAttributeValuesV69) {
+    auto is_content_editable = [](const Element& element) {
+        const auto value = element.get_attribute("contenteditable");
+        if (!value.has_value()) {
+            return false;
+        }
+        return value.value().empty() || value.value() == "true" || value.value() == "plaintext-only";
+    };
+
+    Element element("div");
+    EXPECT_FALSE(is_content_editable(element));
+
+    element.set_attribute("contenteditable", "true");
+    EXPECT_TRUE(is_content_editable(element));
+
+    element.set_attribute("contenteditable", "false");
+    EXPECT_FALSE(is_content_editable(element));
+
+    element.set_attribute("contenteditable", "");
+    EXPECT_TRUE(is_content_editable(element));
+}
+
+TEST(DOMTest, TabIndexDefaultAndCustomValuesV69) {
+    auto tab_index = [](const Element& element) {
+        const auto value = element.get_attribute("tabindex");
+        if (!value.has_value()) {
+            return 0;
+        }
+        return std::stoi(value.value());
+    };
+
+    Element button("button");
+    EXPECT_EQ(tab_index(button), 0);
+
+    button.set_attribute("tabindex", "3");
+    EXPECT_EQ(tab_index(button), 3);
+
+    button.set_attribute("tabindex", "-1");
+    EXPECT_EQ(tab_index(button), -1);
+}
+
+TEST(DOMTest, TitleAttributeRoundTripOnElementV69) {
+    Element anchor("a");
+    EXPECT_FALSE(anchor.get_attribute("title").has_value());
+
+    anchor.set_attribute("title", "Open project documentation");
+    ASSERT_TRUE(anchor.get_attribute("title").has_value());
+    EXPECT_EQ(anchor.get_attribute("title").value(), "Open project documentation");
+
+    anchor.set_attribute("title", "Open updated docs");
+    EXPECT_EQ(anchor.get_attribute("title").value(), "Open updated docs");
+
+    anchor.remove_attribute("title");
+    EXPECT_FALSE(anchor.get_attribute("title").has_value());
+}

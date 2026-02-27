@@ -13324,3 +13324,133 @@ TEST(PropertyCascadeTest, ResolverMinWidthPxValueV68) {
 
     EXPECT_FLOAT_EQ(style.min_width.to_px(), 120.0f);
 }
+
+TEST(PropertyCascadeTest, ResolverMaxWidthPxValueV69) {
+    const std::string css = "div { max-width: 320px; }";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_FLOAT_EQ(style.max_width.to_px(), 320.0f);
+}
+
+TEST(PropertyCascadeTest, ResolverMaxHeightPxValueV69) {
+    const std::string css = "div { max-height: 180px; }";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_FLOAT_EQ(style.max_height.to_px(), 180.0f);
+}
+
+TEST(PropertyCascadeTest, ResolverWidthAutoDefaultV69) {
+    const std::string css = "div { color: red; }";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_TRUE(style.width.is_auto());
+}
+
+TEST(PropertyCascadeTest, ResolverHeightAutoDefaultV69) {
+    const std::string css = "div { color: blue; }";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_TRUE(style.height.is_auto());
+}
+
+TEST(PropertyCascadeTest, ResolverColorInheritanceFromParentV69) {
+    const std::string css = "span { display: inline; }";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "span";
+
+    ComputedStyle parent;
+    parent.color = Color{12, 34, 56, 255};
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.color, parent.color);
+}
+
+TEST(PropertyCascadeTest, ResolverFontSizeInheritanceFromParentV69) {
+    const std::string css = "span { display: inline; }";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "span";
+
+    ComputedStyle parent;
+    parent.font_size = Length::px(22.0f);
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_FLOAT_EQ(style.font_size.to_px(), 22.0f);
+}
+
+TEST(PropertyCascadeTest, ResolverOpacityDefaultOneV69) {
+    const std::string css = "div { color: green; }";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_FLOAT_EQ(style.opacity, 1.0f);
+}
+
+TEST(PropertyCascadeTest, ResolverZIndexAutoDefaultZeroV69) {
+    const std::string css = "div { color: black; }";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.z_index, 0);
+}

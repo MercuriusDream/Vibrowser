@@ -10473,3 +10473,108 @@ TEST(SerializerTest, MixedTypeStress50OperationsV68) {
     }
     EXPECT_FALSE(d.has_remaining());
 }
+
+TEST(SerializerTest, RoundTripStringWithNullByteInsideV69) {
+    const std::string with_null("abc\0def", 7);
+    Serializer s;
+    s.write_string(with_null);
+
+    Deserializer d(s.data());
+    const std::string roundtrip = d.read_string();
+    EXPECT_EQ(roundtrip, with_null);
+    EXPECT_EQ(roundtrip.size(), 7u);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, RoundTripBytesWithAll256ByteValuesV69) {
+    std::vector<uint8_t> bytes(256);
+    for (size_t i = 0; i < bytes.size(); ++i) {
+        bytes[i] = static_cast<uint8_t>(i);
+    }
+
+    Serializer s;
+    s.write_bytes(bytes.data(), bytes.size());
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_bytes(), bytes);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, WriteU32BoundaryValuesV69) {
+    Serializer s;
+    s.write_u32(0u);
+    s.write_u32(1u);
+    s.write_u32(255u);
+    s.write_u32(256u);
+    s.write_u32(65535u);
+    s.write_u32(65536u);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u32(), 0u);
+    EXPECT_EQ(d.read_u32(), 1u);
+    EXPECT_EQ(d.read_u32(), 255u);
+    EXPECT_EQ(d.read_u32(), 256u);
+    EXPECT_EQ(d.read_u32(), 65535u);
+    EXPECT_EQ(d.read_u32(), 65536u);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, ReadStringTwiceReturnsSameValueV69) {
+    Serializer s;
+    s.write_string("same-value");
+    s.write_string("same-value");
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "same-value");
+    EXPECT_EQ(d.read_string(), "same-value");
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, WriteBoolSequenceOf100TruesV69) {
+    Serializer s;
+    for (int i = 0; i < 100; ++i) {
+        s.write_bool(true);
+    }
+
+    Deserializer d(s.data());
+    for (int i = 0; i < 100; ++i) {
+        EXPECT_TRUE(d.read_bool());
+    }
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, EmptyBytesWriteSizeIsZeroV69) {
+    Serializer s;
+    s.write_bytes(nullptr, 0);
+
+    Deserializer d(s.data());
+    const auto bytes = d.read_bytes();
+    EXPECT_EQ(bytes.size(), 0u);
+    EXPECT_TRUE(bytes.empty());
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, StringWithNewlinesAndTabsRoundTripV69) {
+    const std::string text = "line1\nline2\tcol2\n\tindented";
+    Serializer s;
+    s.write_string(text);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), text);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, InterleaveU32AndBool20TimesV69) {
+    Serializer s;
+    for (uint32_t i = 0; i < 20; ++i) {
+        s.write_u32(100u + i);
+        s.write_bool((i % 2u) == 0u);
+    }
+
+    Deserializer d(s.data());
+    for (uint32_t i = 0; i < 20; ++i) {
+        EXPECT_EQ(d.read_u32(), 100u + i);
+        EXPECT_EQ(d.read_bool(), (i % 2u) == 0u);
+    }
+    EXPECT_FALSE(d.has_remaining());
+}

@@ -5393,3 +5393,82 @@ TEST(CORSPolicyTest, AccessControlRequestMethodDoesNotBypassAcaoValidationV68) {
     EXPECT_FALSE(
         cors_allows_response("https://app.example", "https://api.example/data", headers, false));
 }
+
+TEST(CORSPolicyTest, SimpleRequestSafelistedHeadersAllowedV69) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "https://app.example");
+    headers.set("Access-Control-Allow-Headers",
+                "Accept, Accept-Language, Content-Language");
+    EXPECT_TRUE(
+        cors_allows_response("https://app.example", "https://api.example/data", headers, false));
+}
+
+TEST(CORSPolicyTest, CorsWithNonStandardPortAllowedWhenAcaoMatchesV69) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "https://app.example:8443");
+    EXPECT_TRUE(cors_allows_response("https://app.example:8443",
+                                     "https://api.example:9443/data",
+                                     headers,
+                                     false));
+}
+
+TEST(CORSPolicyTest, WildcardAcaoMatchesAnyOriginWithoutCredentialsV69) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "*");
+    EXPECT_TRUE(cors_allows_response("https://random-client.example:7443",
+                                     "https://api.example/data",
+                                     headers,
+                                     false));
+}
+
+TEST(CORSPolicyTest, AcahWildcardAcceptsAnyHeaderV69) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "https://app.example");
+    headers.set("Access-Control-Allow-Headers", "*");
+    headers.set("Access-Control-Request-Headers", "X-App-Token, X-Trace-Id");
+    EXPECT_TRUE(
+        cors_allows_response("https://app.example", "https://api.example/data", headers, false));
+}
+
+TEST(CORSPolicyTest, AcamWildcardAcceptsAnyMethodV69) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "https://app.example");
+    headers.set("Access-Control-Allow-Methods", "*");
+    headers.set("Access-Control-Request-Method", "PATCH");
+    EXPECT_TRUE(
+        cors_allows_response("https://app.example", "https://api.example/data", headers, false));
+}
+
+TEST(CORSPolicyTest, PreflightCacheExpiredResendsPreflightV69) {
+    clever::net::HeaderMap first_preflight;
+    first_preflight.set("Access-Control-Allow-Origin", "https://app.example");
+    first_preflight.set("Access-Control-Allow-Methods", "PUT, OPTIONS");
+    first_preflight.set("Access-Control-Allow-Headers", "X-Auth-Token");
+    first_preflight.set("Access-Control-Max-Age", "1");
+    EXPECT_TRUE(cors_allows_response("https://app.example",
+                                     "https://api.example/resource/42",
+                                     first_preflight,
+                                     false));
+
+    clever::net::HeaderMap second_preflight_after_expiry;
+    second_preflight_after_expiry.set("Access-Control-Allow-Origin", "https://other.example");
+    second_preflight_after_expiry.set("Access-Control-Allow-Methods", "PUT, OPTIONS");
+    second_preflight_after_expiry.set("Access-Control-Allow-Headers", "X-Auth-Token");
+    second_preflight_after_expiry.set("Access-Control-Max-Age", "1");
+    EXPECT_FALSE(cors_allows_response("https://app.example",
+                                      "https://api.example/resource/42",
+                                      second_preflight_after_expiry,
+                                      false));
+}
+
+TEST(CORSPolicyTest, DifferentOriginDifferentPathStillCrossOriginV69) {
+    EXPECT_TRUE(is_cross_origin("https://app.example", "https://api.example/v1/items/42"));
+}
+
+TEST(CORSPolicyTest, OriginComparisonIgnoresUrlPathV69) {
+    EXPECT_FALSE(is_cross_origin("https://app.example", "https://app.example/other/path"));
+
+    clever::net::HeaderMap headers;
+    EXPECT_TRUE(
+        cors_allows_response("https://app.example", "https://app.example/other/path", headers, false));
+}
