@@ -17254,3 +17254,69 @@ TEST(JSEngine, DateGetMillisAfterSetTime) {
         "d.getTime()");
     EXPECT_EQ(result, "1000");
 }
+
+TEST(JSEngine, DateSetUTCMinutes) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "const d=new Date(0);"
+        "d.setUTCMinutes(30);"
+        "d.getUTCMinutes()");
+    EXPECT_EQ(result, "30");
+}
+
+TEST(JSEngine, DateSetUTCSeconds) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "const d=new Date(0);"
+        "d.setUTCSeconds(45);"
+        "d.getUTCSeconds()");
+    EXPECT_EQ(result, "45");
+}
+
+TEST(JSEngine, DateSetUTCMilliseconds) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "const d=new Date(0);"
+        "d.setUTCMilliseconds(500);"
+        "d.getUTCMilliseconds()");
+    EXPECT_EQ(result, "500");
+}
+
+TEST(JSEngine, DateSetUTCDate) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "const d=new Date(0);"
+        "d.setUTCDate(15);"
+        "d.getUTCDate()");
+    EXPECT_EQ(result, "15");
+}
+
+TEST(JSEngine, DateSetUTCMonth) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "const d=new Date(0);"
+        "d.setUTCMonth(5);"
+        "d.getUTCMonth()");
+    EXPECT_EQ(result, "5");
+}
+
+TEST(JSEngine, DateSetMilliseconds) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "const d=new Date(1000000);"
+        "d.setMilliseconds(0);"
+        "d.getMilliseconds()");
+    EXPECT_EQ(result, "0");
+}
+
+TEST(JSEngine, DateGetHoursReturnsNumber) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("typeof new Date().getHours()");
+    EXPECT_EQ(result, "number");
+}
+
+TEST(JSEngine, DateGetMinutesReturnsNumber) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("typeof new Date().getMinutes()");
+    EXPECT_EQ(result, "number");
+}
