@@ -3460,3 +3460,91 @@ TEST_F(CSSStylesheetTest, MaskImageDeclaration) {
     }
     EXPECT_TRUE(found);
 }
+
+// Stylesheet: color-scheme declaration
+TEST_F(CSSStylesheetTest, ColorSchemeDeclaration) {
+    auto sheet = parse_stylesheet(":root { color-scheme: light dark; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations) {
+        if (d.property == "color-scheme") { found = true; break; }
+    }
+    EXPECT_TRUE(found);
+}
+
+// Stylesheet: font-variant declaration
+TEST_F(CSSStylesheetTest, FontVariantDeclaration) {
+    auto sheet = parse_stylesheet("p { font-variant: small-caps; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations) {
+        if (d.property == "font-variant") { found = true; break; }
+    }
+    EXPECT_TRUE(found);
+}
+
+// Stylesheet: text-align-last declaration
+TEST_F(CSSStylesheetTest, TextAlignLastDeclaration) {
+    auto sheet = parse_stylesheet("p { text-align-last: justify; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations) {
+        if (d.property == "text-align-last") { found = true; break; }
+    }
+    EXPECT_TRUE(found);
+}
+
+// Stylesheet: writing-mode declaration
+TEST_F(CSSStylesheetTest, WritingModeDeclaration) {
+    auto sheet = parse_stylesheet(".vertical { writing-mode: vertical-rl; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations) {
+        if (d.property == "writing-mode") { found = true; break; }
+    }
+    EXPECT_TRUE(found);
+}
+
+// Stylesheet: direction declaration
+TEST_F(CSSStylesheetTest, DirectionDeclaration) {
+    auto sheet = parse_stylesheet("[dir=rtl] { direction: rtl; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations) {
+        if (d.property == "direction") { found = true; break; }
+    }
+    EXPECT_TRUE(found);
+}
+
+// Stylesheet: counter-reset declaration
+TEST_F(CSSStylesheetTest, CounterResetDeclaration) {
+    auto sheet = parse_stylesheet("body { counter-reset: section 0; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations) {
+        if (d.property == "counter-reset") { found = true; break; }
+    }
+    EXPECT_TRUE(found);
+}
+
+// Stylesheet: counter-increment declaration
+TEST_F(CSSStylesheetTest, CounterIncrementDeclaration) {
+    auto sheet = parse_stylesheet("h2 { counter-increment: section; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations) {
+        if (d.property == "counter-increment") { found = true; break; }
+    }
+    EXPECT_TRUE(found);
+}
+
+// Stylesheet: list-style-type declaration
+TEST_F(CSSStylesheetTest, ListStyleTypeDeclaration) {
+    auto sheet = parse_stylesheet("ul { list-style-type: disc; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations) {
+        if (d.property == "list-style-type") { found = true; break; }
+    }
+    EXPECT_TRUE(found);
+}
