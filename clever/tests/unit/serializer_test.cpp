@@ -3506,3 +3506,75 @@ TEST(SerializerTest, U32ZeroAndMaxAlternating) {
         EXPECT_EQ(d.read_u32(), expected);
     }
 }
+// Cycle 880 — serializer: 2000-byte string, bytes all zero, negative F64, I32 boundaries, backslash string, 20 u8, 5 large U64, F64 precision
+TEST(SerializerTest, TwoThousandCharStringRoundTrip) {
+    Serializer s;
+    std::string big(2000, 'Z');
+    s.write_string(big);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), big);
+}
+
+TEST(SerializerTest, FourBytesAllZero) {
+    Serializer s;
+    const uint8_t data[4] = {0x00, 0x00, 0x00, 0x00};
+    s.write_bytes(data, 4);
+    Deserializer d(s.data());
+    auto result = d.read_bytes();
+    ASSERT_EQ(result.size(), 4u);
+    for (auto b : result) EXPECT_EQ(b, 0x00u);
+}
+
+TEST(SerializerTest, NegativeF64RoundTrip) {
+    Serializer s;
+    s.write_f64(-2.718281828);
+    Deserializer d(s.data());
+    EXPECT_NEAR(d.read_f64(), -2.718281828, 1e-9);
+}
+
+TEST(SerializerTest, I32MinAndMaxAndZero) {
+    Serializer s;
+    s.write_i32(INT32_MIN);
+    s.write_i32(INT32_MAX);
+    s.write_i32(0);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i32(), INT32_MIN);
+    EXPECT_EQ(d.read_i32(), INT32_MAX);
+    EXPECT_EQ(d.read_i32(), 0);
+}
+
+TEST(SerializerTest, StringWithBackslash) {
+    Serializer s;
+    s.write_string("path\\to\\file");
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "path\\to\\file");
+}
+
+TEST(SerializerTest, TwentySequentialU8Values) {
+    Serializer s;
+    for (int i = 0; i < 20; i++) {
+        s.write_u8(static_cast<uint8_t>(i * 10));
+    }
+    Deserializer d(s.data());
+    for (int i = 0; i < 20; i++) {
+        EXPECT_EQ(d.read_u8(), static_cast<uint8_t>(i * 10));
+    }
+}
+
+TEST(SerializerTest, FiveLargeU64Values) {
+    Serializer s;
+    for (uint64_t i = 1; i <= 5; i++) {
+        s.write_u64(i * 1000000000000ULL);
+    }
+    Deserializer d(s.data());
+    for (uint64_t i = 1; i <= 5; i++) {
+        EXPECT_EQ(d.read_u64(), i * 1000000000000ULL);
+    }
+}
+
+TEST(SerializerTest, F64PrecisionNineDigits) {
+    Serializer s;
+    s.write_f64(1.23456789);
+    Deserializer d(s.data());
+    EXPECT_NEAR(d.read_f64(), 1.23456789, 1e-9);
+}
