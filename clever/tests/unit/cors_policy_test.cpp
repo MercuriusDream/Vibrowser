@@ -1882,3 +1882,42 @@ TEST(CORSPolicyTest, DifferentPortSameSchemeSameHost) {
 TEST(CORSPolicyTest, SameOriginExactMatchNotCrossOrigin) {
     EXPECT_FALSE(is_cross_origin("https://example.com", "https://example.com/resource"));
 }
+
+// Cycle 932 — additional CORS policy: ACAC, origin header, eligibility edge cases
+TEST(CORSPolicyTest, ACACTrueAllowsCredentials) {
+    clever::net::HeaderMap headers;
+    headers.set("access-control-allow-origin", "https://app.example.com");
+    headers.set("access-control-allow-credentials", "true");
+    EXPECT_TRUE(cors_allows_response("https://app.example.com", "https://api.example.com/data", headers, true));
+}
+
+TEST(CORSPolicyTest, ACACFalseBlocksCredentials) {
+    clever::net::HeaderMap headers;
+    headers.set("access-control-allow-origin", "https://app.example.com");
+    headers.set("access-control-allow-credentials", "false");
+    EXPECT_FALSE(cors_allows_response("https://app.example.com", "https://api.example.com/data", headers, true));
+}
+
+TEST(CORSPolicyTest, CrossOriginPort8080IsNotSameOrigin) {
+    EXPECT_TRUE(is_cross_origin("https://example.com", "https://example.com:8080/path"));
+}
+
+TEST(CORSPolicyTest, CrossOriginPort8443IsNotSameOrigin) {
+    EXPECT_TRUE(is_cross_origin("https://example.com", "https://example.com:8443/api"));
+}
+
+TEST(CORSPolicyTest, HttpCorsEligibleWithPath) {
+    EXPECT_TRUE(is_cors_eligible_request_url("http://api.example.com/v1/data"));
+}
+
+TEST(CORSPolicyTest, HttpsCorsEligibleWithQuery) {
+    EXPECT_TRUE(is_cors_eligible_request_url("https://api.example.com/search?q=test"));
+}
+
+TEST(CORSPolicyTest, AttachOriginForHttpApiSubdomain) {
+    EXPECT_TRUE(should_attach_origin_header("https://app.example.com", "https://api.example.com/data"));
+}
+
+TEST(CORSPolicyTest, DoNotAttachOriginSameSchemeHostPort) {
+    EXPECT_FALSE(should_attach_origin_header("https://example.com", "https://example.com/page"));
+}
