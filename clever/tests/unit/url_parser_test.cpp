@@ -1745,3 +1745,64 @@ TEST(URLParser, PasswordDefaultsToEmpty) {
     ASSERT_TRUE(result.has_value());
     EXPECT_TRUE(result->password.empty());
 }
+
+// ---------------------------------------------------------------------------
+// Cycle 695 — 8 additional URL tests
+// ---------------------------------------------------------------------------
+
+// URL: path with .html extension is preserved
+TEST(URLParser, PathWithHtmlExtensionPageDotHtml) {
+    auto result = parse("https://example.com/page.html");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->path, "/page.html");
+}
+
+// URL: query with multiple key=value pairs
+TEST(URLParser, QueryWithMultiplePairs) {
+    auto result = parse("https://example.com?name=Alice&age=30");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->query, "name=Alice&age=30");
+}
+
+// URL: non-standard port 9000 is preserved
+TEST(URLParser, PortNineThousandPreserved) {
+    auto result = parse("http://example.com:9000/api");
+    ASSERT_TRUE(result.has_value());
+    ASSERT_TRUE(result->port.has_value());
+    EXPECT_EQ(*result->port, 9000u);
+}
+
+// URL: 127.0.0.1 loopback address is parsed as host
+TEST(URLParser, LoopbackIPv4Host) {
+    auto result = parse("http://127.0.0.1/path");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->host, "127.0.0.1");
+}
+
+// URL: fragment with hyphenated section name
+TEST(URLParser, FragmentHyphenSection) {
+    auto result = parse("https://docs.example.com/api#get-started");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->fragment, "get-started");
+}
+
+// URL: password is correctly extracted from auth info
+TEST(URLParser, PasswordExtractedFromUserInfo) {
+    auto result = parse("https://user:p4ssw0rd@example.com/");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->password, "p4ssw0rd");
+}
+
+// URL: scheme is "http" for a basic HTTP URL
+TEST(URLParser, SchemeHttpConfirmed) {
+    auto result = parse("http://example.com/home");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+}
+
+// URL: host with CDN subdomain contains dot
+TEST(URLParser, HostWithCdnSubdomainHasDot) {
+    auto result = parse("https://cdn.example.com/assets/style.css");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_NE(result->host.find('.'), std::string::npos);
+}
