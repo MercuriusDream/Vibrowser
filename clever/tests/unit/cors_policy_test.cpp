@@ -4068,3 +4068,47 @@ TEST(CORSPolicy, NormalizeOutgoingOriginHeaderNullOriginPreservedV44) {
     normalize_outgoing_origin_header(headers, "null", "https://api.example.com/data");
     EXPECT_EQ(headers.get("origin"), "null");
 }
+
+TEST(CORSPolicy, HasEnforceableDocumentOriginCustomPort8443EnforceableV45) {
+    // Custom port 8443 (non-default) is enforceable
+    EXPECT_TRUE(has_enforceable_document_origin("https://origin.example.com:8443"));
+}
+
+TEST(CORSPolicy, IsCorsEligibleRequestUrlDataSchemeNotEligibleV45) {
+    // data: scheme URLs are NOT CORS-eligible
+    EXPECT_FALSE(is_cors_eligible_request_url("data:text/html,<h1>Test</h1>"));
+}
+
+TEST(CORSPolicy, IsCrossOriginSameOriginSamePortNotCrossV45) {
+    // Same origin (scheme, host, port) is NOT cross-origin
+    EXPECT_FALSE(is_cross_origin("https://api.example.com", "https://api.example.com/endpoint"));
+}
+
+TEST(CORSPolicy, ShouldAttachOriginHeaderValidOriginTrueV45) {
+    // Valid origin should return TRUE for should_attach
+    EXPECT_TRUE(should_attach_origin_header("https://app.example.com", "https://api.example.com/data"));
+}
+
+TEST(CORSPolicy, NormalizeOutgoingOriginHeaderStripsPathV45) {
+    // normalize_outgoing_origin_header should use origin, not full URL with path
+    clever::net::HeaderMap headers;
+    normalize_outgoing_origin_header(headers, "https://app.example.com", "https://api.example.com/path/to/resource");
+    EXPECT_EQ(headers.get("origin"), "https://app.example.com");
+}
+
+TEST(CORSPolicy, CorsAllowsResponseExactOriginMatchNoCredentialsTrueV45) {
+    // Exact origin match without credentials requirement should be allowed
+    clever::net::HeaderMap resp_headers;
+    resp_headers.set("Access-Control-Allow-Origin", "https://trusted.example.com");
+    EXPECT_TRUE(cors_allows_response("https://trusted.example.com", "https://api.example.com/data", resp_headers, false));
+}
+
+TEST(CORSPolicy, HasEnforceableDocumentOriginFtpSchemeNotEnforceableV45) {
+    // ftp:// scheme is NOT enforceable (not http/https)
+    EXPECT_FALSE(has_enforceable_document_origin("ftp://origin.example.com"));
+}
+
+TEST(CORSPolicy, IsCrossOriginDifferentPortsCrossOriginV45) {
+    // Different ports are cross-origin (even with same scheme and host)
+    EXPECT_TRUE(is_cross_origin("https://api.example.com:8443", "https://api.example.com:9443/endpoint"));
+}

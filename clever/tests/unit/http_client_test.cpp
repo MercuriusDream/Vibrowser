@@ -9288,3 +9288,123 @@ TEST(HttpClient, CookieJarMultipleDomainsAndSecureFlagV37) {
     // Should get uid but not secure token
     EXPECT_GT(insecure_header.length(), 0u);
 }
+
+// ===========================================================================
+// V38 Test Suite: 8 new tests for HeaderMap, Request, Response, and CookieJar
+// ===========================================================================
+
+TEST(HttpClient, HeaderMapAppendMultipleValuesV38) {
+    HeaderMap map;
+    map.append("accept", "text/html");
+    map.append("accept", "text/plain");
+    map.append("accept", "application/json");
+
+    auto values = map.get_all("accept");
+    EXPECT_EQ(values.size(), 3u);
+    EXPECT_EQ(values[0], "text/html");
+    EXPECT_EQ(values[1], "text/plain");
+    EXPECT_EQ(values[2], "application/json");
+}
+
+TEST(HttpClient, RequestSerializePostWithBodyV38) {
+    Request req;
+    req.method = Method::POST;
+    req.url = "http://example.com/api";
+    req.headers.set("Content-Type", "application/json");
+
+    std::string json_body = "{\"key\": \"value\"}";
+    req.body.assign(json_body.begin(), json_body.end());
+
+    auto serialized = req.serialize();
+    EXPECT_GT(serialized.size(), 0u);
+
+    std::string serialized_str(serialized.begin(), serialized.end());
+    EXPECT_NE(serialized_str.find("POST"), std::string::npos);
+    EXPECT_NE(serialized_str.find("{\"key\": \"value\"}"), std::string::npos);
+}
+
+TEST(HttpClient, ResponseParse206PartialContentV38) {
+    std::string raw_str = "HTTP/1.1 206 Partial Content\r\n"
+                          "Content-Length: 10\r\n"
+                          "Content-Range: bytes 0-9/100\r\n"
+                          "\r\n"
+                          "0123456789";
+
+    std::vector<uint8_t> raw(raw_str.begin(), raw_str.end());
+    auto resp = Response::parse(raw);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 206u);
+    EXPECT_TRUE(resp->headers.has("Content-Range"));
+    EXPECT_EQ(resp->body.size(), 10u);
+}
+
+TEST(HttpClient, HeaderMapEmptyAfterClearV38) {
+    HeaderMap map;
+    map.set("Authorization", "Bearer token123");
+    map.set("Cookie", "session=abc");
+    map.set("User-Agent", "TestClient/1.0");
+
+    EXPECT_EQ(map.size(), 3u);
+    EXPECT_FALSE(map.empty());
+
+    map.remove("Authorization");
+    map.remove("Cookie");
+    map.remove("User-Agent");
+
+    EXPECT_EQ(map.size(), 0u);
+    EXPECT_TRUE(map.empty());
+}
+
+TEST(HttpClient, RequestHeadMethodNoBodyV38) {
+    Request req;
+    req.method = Method::HEAD;
+    req.url = "http://example.com/resource";
+    req.headers.set("Accept", "text/html");
+
+    auto serialized = req.serialize();
+    EXPECT_GT(serialized.size(), 0u);
+
+    std::string serialized_str(serialized.begin(), serialized.end());
+    EXPECT_NE(serialized_str.find("HEAD"), std::string::npos);
+    // Headers stored lowercase in HeaderMap
+    EXPECT_NE(serialized_str.find("accept: text/html"), std::string::npos);
+}
+
+TEST(HttpClient, CookieJarClearRemovesAllV38) {
+    CookieJar jar;
+    jar.set_from_header("session_id=xyz789", "example.com");
+    jar.set_from_header("tracking=12345", "analytics.example.com");
+    jar.set_from_header("pref=dark_mode", "example.com");
+
+    EXPECT_EQ(jar.size(), 3u);
+
+    jar.clear();
+
+    EXPECT_EQ(jar.size(), 0u);
+    EXPECT_TRUE(jar.get_cookie_header("example.com", "/", false).empty());
+}
+
+TEST(HttpClient, HeaderMapGetReturnsNulloptForMissingV38) {
+    HeaderMap map;
+    map.set("Existing-Header", "value");
+
+    auto existing = map.get("Existing-Header");
+    EXPECT_TRUE(existing.has_value());
+    EXPECT_EQ(existing.value(), "value");
+
+    auto missing = map.get("NonExistent-Header");
+    EXPECT_FALSE(missing.has_value());
+}
+
+TEST(HttpClient, ResponseParse100ContinueV38) {
+    std::string raw_str = "HTTP/1.1 100 Continue\r\n"
+                          "\r\n";
+
+    std::vector<uint8_t> raw(raw_str.begin(), raw_str.end());
+    auto resp = Response::parse(raw);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 100u);
+    EXPECT_TRUE(resp->body.empty());
+}

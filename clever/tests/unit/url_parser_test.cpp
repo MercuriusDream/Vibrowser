@@ -6448,3 +6448,97 @@ TEST(URLParser, SubdomainWithNonDefaultPortAndComplexPathV26) {
     EXPECT_EQ(url->query, "");
     EXPECT_EQ(url->fragment, "");
 }
+
+TEST(URLParser, HttpsWithUsernameAndPasswordV27) {
+    auto url = parse("https://user:pass@example.com/secure");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->username, "user");
+    EXPECT_EQ(url->password, "pass");
+    EXPECT_EQ(url->host, "example.com");
+    EXPECT_EQ(url->port, std::nullopt);
+    EXPECT_EQ(url->path, "/secure");
+    EXPECT_EQ(url->query, "");
+    EXPECT_EQ(url->fragment, "");
+}
+
+TEST(URLParser, HostOnlyWithTrailingSlashV27) {
+    auto url = parse("https://example.com/");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "example.com");
+    EXPECT_EQ(url->port, std::nullopt);
+    EXPECT_EQ(url->path, "/");
+    EXPECT_EQ(url->query, "");
+    EXPECT_EQ(url->fragment, "");
+    EXPECT_TRUE(url->username.empty());
+    EXPECT_TRUE(url->password.empty());
+}
+
+TEST(URLParser, MultipleDotSegmentsResolvedV27) {
+    auto url = parse("https://a.com/a/b/c/../../d");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "a.com");
+    EXPECT_EQ(url->port, std::nullopt);
+    EXPECT_EQ(url->path, "/a/d");
+    EXPECT_EQ(url->query, "");
+    EXPECT_EQ(url->fragment, "");
+}
+
+TEST(URLParser, QueryWithSpecialCharsV27) {
+    auto url = parse("https://a.com/search?q=hello+world&lang=en");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "a.com");
+    EXPECT_EQ(url->port, std::nullopt);
+    EXPECT_EQ(url->path, "/search");
+    EXPECT_NE(url->query.find("q=hello+world"), std::string::npos);
+    EXPECT_NE(url->query.find("lang=en"), std::string::npos);
+    EXPECT_EQ(url->fragment, "");
+}
+
+TEST(URLParser, FragmentOnlyV27) {
+    auto url = parse("https://a.com/page#top");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "a.com");
+    EXPECT_EQ(url->port, std::nullopt);
+    EXPECT_EQ(url->path, "/page");
+    EXPECT_EQ(url->query, "");
+    EXPECT_EQ(url->fragment, "top");
+}
+
+TEST(URLParser, CustomPort9090V27) {
+    auto url = parse("https://a.com:9090/api");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "a.com");
+    ASSERT_TRUE(url->port.has_value());
+    EXPECT_EQ(url->port.value(), 9090);
+    EXPECT_EQ(url->path, "/api");
+    EXPECT_EQ(url->query, "");
+    EXPECT_EQ(url->fragment, "");
+}
+
+TEST(URLParser, HttpDefaultPort80NormalizedV27) {
+    auto url = parse("http://a.com:80/page");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "http");
+    EXPECT_EQ(url->host, "a.com");
+    EXPECT_EQ(url->port, std::nullopt);
+    EXPECT_EQ(url->path, "/page");
+    EXPECT_EQ(url->query, "");
+    EXPECT_EQ(url->fragment, "");
+}
+
+TEST(URLParser, DeepSubdomainWithPathV27) {
+    auto url = parse("https://a.b.c.d.example.com/deep/path/file.html");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "a.b.c.d.example.com");
+    EXPECT_EQ(url->port, std::nullopt);
+    EXPECT_EQ(url->path, "/deep/path/file.html");
+    EXPECT_EQ(url->query, "");
+    EXPECT_EQ(url->fragment, "");
+}

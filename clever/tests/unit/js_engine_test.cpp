@@ -20010,3 +20010,59 @@ TEST(JSEngine, MathCbrtCycle1407) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "3");
 }
+
+TEST(JSEngine, ArrayReduceRightCycle1416) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("[1,2,3,4].reduceRight((a,b)=>a-b)");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "-2");
+}
+
+TEST(JSEngine, StringRepeatCycle1416) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("\"abc\".repeat(3)");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "abcabcabc");
+}
+
+TEST(JSEngine, NumberToFixedCycle1416) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("(3.14159).toFixed(2)");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "3.14");
+}
+
+TEST(JSEngine, DateNowCycle1416) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("typeof Date.now()");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "number");
+}
+
+TEST(JSEngine, ArrayFillCycle1416) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("[1,2,3,4].fill(0,1,3).join(\",\")");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1,0,0,4");
+}
+
+TEST(JSEngine, StringStartsWithCycle1416) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("\"hello world\".startsWith(\"hello\")");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, StringEndsWithCycle1416) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("\"hello world\".endsWith(\"world\")");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, MathLog2Cycle1416) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("Math.log2(8)");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "3");
+}

@@ -7573,3 +7573,95 @@ TEST(SerializerTest, AllTypesComprehensiveV34) {
     EXPECT_EQ(binary[2], 0x33u);
     EXPECT_FALSE(d.has_remaining());
 }
+
+// ------------------------------------------------------------------
+// V35 Test Suite (8 additional tests)
+// ------------------------------------------------------------------
+
+TEST(Serializer, RoundtripU8ZeroV35) {
+    Serializer s;
+    s.write_u8(0);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u8(), 0u);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(Serializer, RoundtripU64MaxValueV35) {
+    Serializer s;
+    s.write_u64(std::numeric_limits<uint64_t>::max());
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u64(), std::numeric_limits<uint64_t>::max());
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(Serializer, RoundtripI32NegativeOneV35) {
+    Serializer s;
+    s.write_i32(-1);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i32(), -1);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(Serializer, RoundtripF64NegativeInfinityV35) {
+    Serializer s;
+    s.write_f64(-INFINITY);
+
+    Deserializer d(s.data());
+    double result = d.read_f64();
+    EXPECT_TRUE(std::isinf(result) && result < 0);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(Serializer, RoundtripEmptyStringV35) {
+    Serializer s;
+    s.write_string("");
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "");
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(Serializer, RoundtripBoolFalseV35) {
+    Serializer s;
+    s.write_bool(false);
+
+    Deserializer d(s.data());
+    EXPECT_FALSE(d.read_bool());
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(Serializer, RoundtripLargeStringV35) {
+    Serializer s;
+    std::string large_string(10000, 'x');
+    s.write_string(large_string);
+
+    Deserializer d(s.data());
+    std::string result = d.read_string();
+    EXPECT_EQ(result.size(), 10000u);
+    EXPECT_EQ(result, large_string);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(Serializer, MixedTypesU16BoolStringBytesV35) {
+    Serializer s;
+    s.write_u16(12345);
+    s.write_bool(true);
+    s.write_string("test_data");
+    uint8_t bytes_data[] = { 0xAA, 0xBB, 0xCC, 0xDD };
+    s.write_bytes(bytes_data, 4u);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u16(), 12345u);
+    EXPECT_TRUE(d.read_bool());
+    EXPECT_EQ(d.read_string(), "test_data");
+    auto binary = d.read_bytes();
+    ASSERT_EQ(binary.size(), 4u);
+    EXPECT_EQ(binary[0], 0xAAu);
+    EXPECT_EQ(binary[1], 0xBBu);
+    EXPECT_EQ(binary[2], 0xCCu);
+    EXPECT_EQ(binary[3], 0xDDu);
+    EXPECT_FALSE(d.has_remaining());
+}

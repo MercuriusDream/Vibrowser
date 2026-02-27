@@ -9585,3 +9585,43 @@ TEST(LayoutNodeProps, TransformOriginYDefaultV35) {
     LayoutNode n;
     EXPECT_FLOAT_EQ(n.transform_origin_y, 50.0f);
 }
+
+TEST(LayoutNodeProps, MinWidthDefaultV36) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.min_width, 0.0f);
+}
+
+TEST(LayoutNodeProps, MinHeightDefaultV36) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.min_height, 0.0f);
+}
+
+TEST(LayoutNodeProps, MaxWidthDefaultV36) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.max_width, 1e9f);
+}
+
+TEST(LayoutNodeProps, MaxHeightDefaultV36) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.max_height, 1e9f);
+}
+
+TEST(LayoutNodeProps, MarginTopDefaultV36) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.geometry.margin.top, 0.0f);
+}
+
+TEST(LayoutNodeProps, MarginRightDefaultV36) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.geometry.margin.right, 0.0f);
+}
+
+TEST(LayoutNodeProps, PaddingBottomDefaultV36) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.geometry.padding.bottom, 0.0f);
+}
+
+TEST(LayoutNodeProps, PaddingLeftDefaultV36) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.geometry.padding.left, 0.0f);
+}

@@ -9043,3 +9043,77 @@ TEST_F(CSSStylesheetTest, PerspectiveV35) {
         if (d.property == "perspective") { found = true; break; }
     EXPECT_TRUE(found);
 }
+
+// Cycle 1398: 8 text decoration property tests V36
+
+TEST_F(CSSStylesheetTest, OverflowXV36) {
+    auto ss = parse_stylesheet("div { overflow-x: hidden; }");
+    ASSERT_EQ(ss.rules.size(), 1);
+    bool found = false;
+    for (auto& d : ss.rules[0].declarations)
+        if (d.property == "overflow-x") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, OverflowYV36) {
+    auto ss = parse_stylesheet("div { overflow-y: scroll; }");
+    ASSERT_EQ(ss.rules.size(), 1);
+    bool found = false;
+    for (auto& d : ss.rules[0].declarations)
+        if (d.property == "overflow-y") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, TextTransformV36) {
+    auto ss = parse_stylesheet("p { text-transform: uppercase; }");
+    ASSERT_EQ(ss.rules.size(), 1);
+    bool found = false;
+    for (auto& d : ss.rules[0].declarations)
+        if (d.property == "text-transform") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, TextDecorationV36) {
+    auto ss = parse_stylesheet("a { text-decoration: underline; }");
+    ASSERT_EQ(ss.rules.size(), 1);
+    bool found = false;
+    for (auto& d : ss.rules[0].declarations)
+        if (d.property == "text-decoration") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, TextDecorationColorV36) {
+    auto ss = parse_stylesheet("a { text-decoration-color: red; }");
+    ASSERT_EQ(ss.rules.size(), 1);
+    bool found = false;
+    for (auto& d : ss.rules[0].declarations)
+        if (d.property == "text-decoration-color") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, TextDecorationStyleV36) {
+    auto ss = parse_stylesheet("a { text-decoration-style: wavy; }");
+    ASSERT_EQ(ss.rules.size(), 1);
+    bool found = false;
+    for (auto& d : ss.rules[0].declarations)
+        if (d.property == "text-decoration-style") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, TextDecorationLineV36) {
+    auto ss = parse_stylesheet("a { text-decoration-line: line-through; }");
+    ASSERT_EQ(ss.rules.size(), 1);
+    bool found = false;
+    for (auto& d : ss.rules[0].declarations)
+        if (d.property == "text-decoration-line") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, TextDecorationThicknessV36) {
+    auto ss = parse_stylesheet("a { text-decoration-thickness: 2px; }");
+    ASSERT_EQ(ss.rules.size(), 1);
+    bool found = false;
+    for (auto& d : ss.rules[0].declarations)
+        if (d.property == "text-decoration-thickness") { found = true; break; }
+    EXPECT_TRUE(found);
+}

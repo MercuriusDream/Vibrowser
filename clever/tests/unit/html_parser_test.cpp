@@ -8293,3 +8293,59 @@ TEST(TreeBuilder, TableColgroupV23) {
     ASSERT_NE(el, nullptr);
     EXPECT_EQ(el->tag_name, "colgroup");
 }
+
+TEST(TreeBuilder, TableTbodyV24) {
+    auto doc = clever::html::parse("<html><body><table><tbody><tr><td>data</td></tr></tbody></table></body></html>");
+    auto* el = doc->find_element("tbody");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "tbody");
+}
+
+TEST(TreeBuilder, TableTheadV24) {
+    auto doc = clever::html::parse("<html><body><table><thead><tr><th>Header</th></tr></thead></table></body></html>");
+    auto* el = doc->find_element("thead");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "thead");
+}
+
+TEST(TreeBuilder, TableTfootV24) {
+    auto doc = clever::html::parse("<html><body><table><tfoot><tr><td>footer</td></tr></tfoot></table></body></html>");
+    auto* el = doc->find_element("tfoot");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "tfoot");
+}
+
+TEST(TreeBuilder, SelectOptionV24) {
+    auto doc = clever::html::parse("<html><body><select><option value=\"opt1\">Option 1</option></select></body></html>");
+    auto* el = doc->find_element("option");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "option");
+}
+
+TEST(TreeBuilder, SelectOptgroupV24) {
+    auto doc = clever::html::parse("<html><body><select><optgroup label=\"Group 1\"><option>Option</option></optgroup></select></body></html>");
+    auto* el = doc->find_element("optgroup");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "optgroup");
+}
+
+TEST(TreeBuilder, TextareaElementV24) {
+    auto doc = clever::html::parse("<html><body><form><textarea rows=\"5\" cols=\"50\">Text here</textarea></form></body></html>");
+    auto* el = doc->find_element("textarea");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "textarea");
+}
+
+TEST(TreeBuilder, ButtonElementV24) {
+    auto doc = clever::html::parse("<html><body><form><button type=\"submit\">Submit</button></form></body></html>");
+    auto* el = doc->find_element("button");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "button");
+}
+
+TEST(TreeBuilder, LabelElementV24) {
+    auto doc = clever::html::parse("<html><body><form><label for=\"input1\">Label Text</label><input id=\"input1\" type=\"text\"></form></body></html>");
+    auto* el = doc->find_element("label");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "label");
+}

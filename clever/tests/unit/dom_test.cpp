@@ -7824,3 +7824,87 @@ TEST(DomElement, AttributeCountAfterOperations) {
     EXPECT_FALSE(el->has_attribute("b"));
     EXPECT_TRUE(el->has_attribute("c"));
 }
+
+TEST(DomElement, SetAttributeDirRtl) {
+    Document doc;
+    auto el = doc.create_element("div");
+    el->set_attribute("dir", "rtl");
+    auto val = el->get_attribute("dir");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(val.value(), "rtl");
+}
+
+TEST(DomElement, SetAttributeAccesskeyS) {
+    Document doc;
+    auto el = doc.create_element("button");
+    el->set_attribute("accesskey", "s");
+    auto val = el->get_attribute("accesskey");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(val.value(), "s");
+}
+
+TEST(DomElement, LastChildAfterMultipleAppends) {
+    Document doc;
+    auto parent = doc.create_element("div");
+    auto child1 = doc.create_element("p");
+    auto child2 = doc.create_element("p");
+    auto child3 = doc.create_element("p");
+    auto* raw3 = child3.get();
+
+    parent->append_child(std::move(child1));
+    parent->append_child(std::move(child2));
+    parent->append_child(std::move(child3));
+
+    EXPECT_EQ(parent->child_count(), 3u);
+    EXPECT_EQ(parent->last_child(), raw3);
+}
+
+TEST(DomElement, RemoveAttributeHeightImg) {
+    Document doc;
+    auto el = doc.create_element("img");
+    el->set_attribute("height", "200");
+    EXPECT_TRUE(el->has_attribute("height"));
+    el->remove_attribute("height");
+    EXPECT_EQ(el->get_attribute("height"), std::nullopt);
+}
+
+TEST(DomElement, HasAttributeNovalidateForm) {
+    Document doc;
+    auto el = doc.create_element("form");
+    el->set_attribute("novalidate", "");
+    EXPECT_TRUE(el->has_attribute("novalidate"));
+}
+
+TEST(DomElement, ForEachChildCountsFourChildren) {
+    Document doc;
+    auto parent = doc.create_element("ul");
+    auto child1 = doc.create_element("li");
+    auto child2 = doc.create_element("li");
+    auto child3 = doc.create_element("li");
+    auto child4 = doc.create_element("li");
+
+    parent->append_child(std::move(child1));
+    parent->append_child(std::move(child2));
+    parent->append_child(std::move(child3));
+    parent->append_child(std::move(child4));
+
+    int count = 0;
+    parent->for_each_child([&count](const Node&) { count++; });
+    EXPECT_EQ(count, 4);
+}
+
+TEST(DomElement, ClassListAddAndContains) {
+    Document doc;
+    auto el = doc.create_element("div");
+    el->class_list().add("primary");
+    EXPECT_TRUE(el->class_list().contains("primary"));
+}
+
+TEST(DomElement, ClassListRemoveAndToggle) {
+    Document doc;
+    auto el = doc.create_element("span");
+    el->class_list().add("active");
+    EXPECT_TRUE(el->class_list().contains("active"));
+    el->class_list().remove("active");
+    EXPECT_FALSE(el->class_list().contains("active"));
+}
