@@ -16448,3 +16448,56 @@ TEST(JSEngine, MathRoundNegative) {
     auto result = engine.evaluate("Math.round(-4.5)");
     EXPECT_EQ(result, "-4");
 }
+
+// Cycle 846 — typed arrays and DataView
+TEST(JSEngine, Uint8ArraySetAndGet) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("new Uint8Array([10,20,30])[1]");
+    EXPECT_EQ(result, "20");
+}
+
+TEST(JSEngine, Int32ArrayNegativeValue) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("new Int32Array([-42])[0]");
+    EXPECT_EQ(result, "-42");
+}
+
+TEST(JSEngine, Float64ArrayPiValue) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("new Float64Array([Math.PI])[0].toFixed(5)");
+    EXPECT_EQ(result, "3.14159");
+}
+
+TEST(JSEngine, Uint16ArrayLength) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("new Uint16Array(5).length");
+    EXPECT_EQ(result, "5");
+}
+
+TEST(JSEngine, Uint8ClampedArrayClampsHigh) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("new Uint8ClampedArray([300])[0]");
+    EXPECT_EQ(result, "255");
+}
+
+TEST(JSEngine, Uint8ClampedArrayClampsLow) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("new Uint8ClampedArray([-5])[0]");
+    EXPECT_EQ(result, "0");
+}
+
+TEST(JSEngine, Int8ArrayMinValue) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("new Int8Array([-128])[0]");
+    EXPECT_EQ(result, "-128");
+}
+
+TEST(JSEngine, DataViewGetInt32) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "const b=new ArrayBuffer(4);"
+        "const v=new DataView(b);"
+        "v.setInt32(0,12345678,false);"
+        "v.getInt32(0,false)");
+    EXPECT_EQ(result, "12345678");
+}
