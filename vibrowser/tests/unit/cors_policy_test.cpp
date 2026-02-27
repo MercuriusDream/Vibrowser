@@ -5081,3 +5081,61 @@ TEST(CORSPolicy, PreflightMethodAndHeaderRestrictionsDoNotBlockCoreCorsPassV63) 
     EXPECT_TRUE(cors_allows_response("https://app.example", "https://api.example/resource", headers,
                                      true));
 }
+
+TEST(CORSPolicy, AcaoFragmentNotStrippedFromHttpOriginV64) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "https://app.example#frag");
+    ASSERT_TRUE(headers.has("access-control-allow-origin"));
+    EXPECT_EQ(headers.get("access-control-allow-origin").value(), "https://app.example#frag");
+    EXPECT_FALSE(cors_allows_response("https://app.example", "https://api.example/data", headers,
+                                      false));
+}
+
+TEST(CORSPolicy, AcaoFragmentNotStrippedFromNullOriginV64) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "null#frag");
+    EXPECT_FALSE(cors_allows_response("null", "https://api.example/data", headers, false));
+}
+
+TEST(CORSPolicy, NullOriginMatchesWildcardWhenNotCredentialedV64) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "*");
+    EXPECT_TRUE(cors_allows_response("null", "https://api.example/data", headers, false));
+}
+
+TEST(CORSPolicy, NullOriginWildcardRejectedWhenCredentialsRequestedV64) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "*");
+    headers.set("Access-Control-Allow-Credentials", "true");
+    EXPECT_FALSE(cors_allows_response("null", "https://api.example/data", headers, true));
+}
+
+TEST(CORSPolicy, WssRequestUrlNotCorsEligibleWithEnforceableOriginV64) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "https://app.example");
+    EXPECT_FALSE(cors_allows_response("https://app.example", "wss://api.example/socket", headers,
+                                      false));
+}
+
+TEST(CORSPolicy, WssRequestUrlNotCorsEligibleWithNullOriginV64) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "*");
+    EXPECT_FALSE(cors_allows_response("null", "wss://api.example/socket", headers, false));
+}
+
+TEST(CORSPolicy, MultipleAcaoValuesAppendedRejectForNullOriginV64) {
+    clever::net::HeaderMap headers;
+    headers.append("Access-Control-Allow-Origin", "null");
+    headers.append("Access-Control-Allow-Origin", "*");
+    EXPECT_FALSE(cors_allows_response("null", "https://api.example/data", headers, false));
+}
+
+TEST(CORSPolicy, HeaderMapCaseInsensitiveGetAndHasStillAllowCorsV64) {
+    clever::net::HeaderMap headers;
+    headers.set("aCcEsS-cOnTrOl-AlLoW-OrIgIn", "https://client.example");
+    ASSERT_TRUE(headers.has("access-control-allow-origin"));
+    ASSERT_TRUE(headers.get("Access-Control-Allow-Origin").has_value());
+    EXPECT_EQ(headers.get("Access-Control-Allow-Origin").value(), "https://client.example");
+    EXPECT_TRUE(cors_allows_response("https://client.example", "https://api.example/data", headers,
+                                     false));
+}

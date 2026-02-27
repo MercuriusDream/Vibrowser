@@ -10390,3 +10390,136 @@ TEST(HtmlParserTest, MalformedHtmlRecoveryClosesParagraphBeforeDivV63) {
     EXPECT_EQ(div->text_content(), "two");
     EXPECT_NE(body->text_content().find("three"), std::string::npos);
 }
+
+TEST(HtmlParserTest, FindAllElementsReturnsDocumentOrderV64) {
+    auto doc = clever::html::parse("<ul><li>first</li><li>second</li></ul><ol><li>third</li></ol>");
+    ASSERT_NE(doc, nullptr);
+
+    auto items = doc->find_all_elements("li");
+    ASSERT_EQ(items.size(), 3u);
+    EXPECT_EQ(items[0]->text_content(), "first");
+    EXPECT_EQ(items[1]->text_content(), "second");
+    EXPECT_EQ(items[2]->text_content(), "third");
+}
+
+TEST(HtmlParserTest, LowercaseTagNamesStoredInNodesV64) {
+    auto doc = clever::html::parse("<DIV><SPAN>Hi</SPAN></DIV>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* div = doc->find_element("div");
+    auto* span = doc->find_element("span");
+    ASSERT_NE(div, nullptr);
+    ASSERT_NE(span, nullptr);
+
+    EXPECT_EQ(div->tag_name, "div");
+    EXPECT_EQ(span->tag_name, "span");
+    EXPECT_EQ(span->text_content(), "Hi");
+}
+
+TEST(HtmlParserTest, FindElementReturnsFirstDepthFirstMatchV64) {
+    auto doc = clever::html::parse("<div><span>first</span><section><span>second</span></section></div>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* first_span = doc->find_element("span");
+    ASSERT_NE(first_span, nullptr);
+    EXPECT_EQ(first_span->text_content(), "first");
+
+    auto spans = doc->find_all_elements("span");
+    ASSERT_EQ(spans.size(), 2u);
+    EXPECT_EQ(spans[1]->text_content(), "second");
+}
+
+TEST(HtmlParserTest, TextContentCombinesNestedInlineTextV64) {
+    auto doc = clever::html::parse("<p>alpha <strong>beta</strong> <em>gamma</em></p>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* p = doc->find_element("p");
+    ASSERT_NE(p, nullptr);
+
+    const std::string text = p->text_content();
+    const std::size_t alpha_pos = text.find("alpha");
+    const std::size_t beta_pos = text.find("beta");
+    const std::size_t gamma_pos = text.find("gamma");
+    EXPECT_NE(alpha_pos, std::string::npos);
+    EXPECT_NE(beta_pos, std::string::npos);
+    EXPECT_NE(gamma_pos, std::string::npos);
+    EXPECT_LT(alpha_pos, beta_pos);
+    EXPECT_LT(beta_pos, gamma_pos);
+}
+
+TEST(HtmlParserTest, VoidElementRemainsLeafAndSiblingStaysSeparateV64) {
+    auto doc = clever::html::parse("<div><img src='x'><p>after</p></div>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* div = doc->find_element("div");
+    auto* img = doc->find_element("img");
+    auto* p = doc->find_element("p");
+    ASSERT_NE(div, nullptr);
+    ASSERT_NE(img, nullptr);
+    ASSERT_NE(p, nullptr);
+
+    EXPECT_EQ(img->parent, div);
+    EXPECT_TRUE(img->children.empty());
+    EXPECT_EQ(p->parent, div);
+    EXPECT_EQ(p->text_content(), "after");
+}
+
+TEST(HtmlParserTest, AttributesAccessibleByNameAndValueV64) {
+    auto doc = clever::html::parse("<a href=\"/docs\" title=\"Docs\" data-id=\"42\">read</a>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* a = doc->find_element("a");
+    ASSERT_NE(a, nullptr);
+    ASSERT_EQ(a->attributes.size(), 3u);
+
+    auto find_attr = [&](const std::string& name) -> const std::string* {
+        for (const auto& attr : a->attributes) {
+            if (attr.name == name) return &attr.value;
+        }
+        return nullptr;
+    };
+
+    const std::string* href = find_attr("href");
+    const std::string* title = find_attr("title");
+    const std::string* data_id = find_attr("data-id");
+    ASSERT_NE(href, nullptr);
+    ASSERT_NE(title, nullptr);
+    ASSERT_NE(data_id, nullptr);
+    EXPECT_EQ(*href, "/docs");
+    EXPECT_EQ(*title, "Docs");
+    EXPECT_EQ(*data_id, "42");
+}
+
+TEST(HtmlParserTest, CommentNodeExistsAmongElementChildrenV64) {
+    auto doc = clever::html::parse("<div>left<!-- center --><span>right</span></div>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* div = doc->find_element("div");
+    auto* span = doc->find_element("span");
+    ASSERT_NE(div, nullptr);
+    ASSERT_NE(span, nullptr);
+
+    bool found_comment = false;
+    for (const auto& child : div->children) {
+        if (child->type == clever::html::SimpleNode::Comment) {
+            found_comment = true;
+            EXPECT_EQ(child->data, " center ");
+        }
+    }
+    EXPECT_TRUE(found_comment);
+    EXPECT_EQ(span->parent, div);
+}
+
+TEST(HtmlParserTest, TextContentIncludesTextAroundCommentsV64) {
+    auto doc = clever::html::parse("<div>alpha<!--beta--><em>gamma</em>delta</div>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* div = doc->find_element("div");
+    ASSERT_NE(div, nullptr);
+
+    const std::string text = div->text_content();
+    EXPECT_NE(text.find("alpha"), std::string::npos);
+    EXPECT_NE(text.find("beta"), std::string::npos);
+    EXPECT_NE(text.find("gamma"), std::string::npos);
+    EXPECT_NE(text.find("delta"), std::string::npos);
+}

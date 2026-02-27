@@ -11713,3 +11713,175 @@ TEST(ResponseTest, ParseInvalidContentLengthBodyHandlingV63) {
     EXPECT_EQ(resp->status, 200);
     EXPECT_TRUE(resp->body.empty());
 }
+
+// Test 1 (V64): HeaderMap set/get/has/remove/size/empty end-to-end
+TEST(HeaderMapTest, SetGetHasRemoveSizeEmptyFlowV64) {
+    HeaderMap headers;
+    EXPECT_TRUE(headers.empty());
+    EXPECT_EQ(headers.size(), 0u);
+
+    headers.set("X-Test", "one");
+    EXPECT_FALSE(headers.empty());
+    EXPECT_EQ(headers.size(), 1u);
+    EXPECT_TRUE(headers.has("x-test"));
+    ASSERT_TRUE(headers.get("X-TEST").has_value());
+    EXPECT_EQ(headers.get("X-TEST").value(), "one");
+
+    headers.set("x-test", "two");
+    EXPECT_EQ(headers.size(), 1u);
+    ASSERT_TRUE(headers.get("X-Test").has_value());
+    EXPECT_EQ(headers.get("X-Test").value(), "two");
+
+    headers.remove("X-TEST");
+    EXPECT_FALSE(headers.has("x-test"));
+    EXPECT_FALSE(headers.get("x-test").has_value());
+    EXPECT_EQ(headers.size(), 0u);
+    EXPECT_TRUE(headers.empty());
+}
+
+// Test 2 (V64): HeaderMap append/get_all supports multiple values for one key
+TEST(HeaderMapTest, AppendAndGetAllPreservesMultipleValuesV64) {
+    HeaderMap headers;
+    headers.append("Accept", "text/plain");
+    headers.append("accept", "application/json");
+    headers.append("ACCEPT", "text/html");
+
+    EXPECT_EQ(headers.size(), 3u);
+    EXPECT_FALSE(headers.empty());
+    EXPECT_TRUE(headers.has("AcCePt"));
+    EXPECT_TRUE(headers.get("accept").has_value());
+
+    auto all = headers.get_all("ACCEPT");
+    EXPECT_EQ(all.size(), 3u);
+    EXPECT_TRUE(std::find(all.begin(), all.end(), "text/plain") != all.end());
+    EXPECT_TRUE(std::find(all.begin(), all.end(), "application/json") != all.end());
+    EXPECT_TRUE(std::find(all.begin(), all.end(), "text/html") != all.end());
+}
+
+// Test 3 (V64): HeaderMap get(optional<string>) becomes nullopt after remove
+TEST(HeaderMapTest, GetReturnsNulloptAfterOverwriteAndRemoveV64) {
+    HeaderMap headers;
+    headers.set("Content-Type", "text/plain");
+    headers.set("CONTENT-TYPE", "application/json");
+
+    auto value = headers.get("content-type");
+    ASSERT_TRUE(value.has_value());
+    EXPECT_EQ(value.value(), "application/json");
+
+    headers.remove("Content-Type");
+    auto removed = headers.get("content-type");
+    EXPECT_FALSE(removed.has_value());
+    EXPECT_TRUE(headers.get_all("content-type").empty());
+}
+
+// Test 4 (V64): Request serialize uses method/host/port/path/body/headers fields
+TEST(RequestTest, SerializeIncludesMethodHostPathAndBodyV64) {
+    Request req;
+    req.method = Method::PUT;
+    req.host = "files.example.com";
+    req.port = 8080;
+    req.path = "/upload.bin";
+    req.headers.set("X-Token", "abc123");
+    req.body = {'O', 'K'};
+
+    auto bytes = req.serialize();
+    std::string serialized(bytes.begin(), bytes.end());
+
+    EXPECT_TRUE(serialized.find("PUT /upload.bin HTTP/1.1\r\n") != std::string::npos);
+    EXPECT_TRUE(serialized.find("Host: files.example.com:8080\r\n") != std::string::npos);
+    EXPECT_TRUE(serialized.find("x-token: abc123\r\n") != std::string::npos);
+    ASSERT_GE(bytes.size(), req.body.size());
+    EXPECT_TRUE(std::equal(req.body.begin(), req.body.end(),
+                           bytes.end() - static_cast<std::ptrdiff_t>(req.body.size())));
+}
+
+// Test 5 (V64): Request Host omits ports 80/443 and includes non-standard ports
+TEST(RequestTest, SerializeOmitsStandardPortsAndIncludesNonStandardPortV64) {
+    Request http_req;
+    http_req.method = Method::GET;
+    http_req.host = "plain.example.com";
+    http_req.port = 80;
+    http_req.path = "/";
+    auto http_bytes = http_req.serialize();
+    std::string http_serialized(http_bytes.begin(), http_bytes.end());
+    EXPECT_TRUE(http_serialized.find("Host: plain.example.com\r\n") != std::string::npos);
+    EXPECT_TRUE(http_serialized.find("Host: plain.example.com:80\r\n") == std::string::npos);
+
+    Request https_req;
+    https_req.method = Method::GET;
+    https_req.host = "secure.example.com";
+    https_req.port = 443;
+    https_req.use_tls = true;
+    https_req.path = "/";
+    auto https_bytes = https_req.serialize();
+    std::string https_serialized(https_bytes.begin(), https_bytes.end());
+    EXPECT_TRUE(https_serialized.find("Host: secure.example.com\r\n") != std::string::npos);
+    EXPECT_TRUE(https_serialized.find("Host: secure.example.com:443\r\n") == std::string::npos);
+
+    Request custom_req;
+    custom_req.method = Method::GET;
+    custom_req.host = "alt.example.com";
+    custom_req.port = 8443;
+    custom_req.use_tls = true;
+    custom_req.path = "/";
+    auto custom_bytes = custom_req.serialize();
+    std::string custom_serialized(custom_bytes.begin(), custom_bytes.end());
+    EXPECT_TRUE(custom_serialized.find("Host: alt.example.com:8443\r\n") != std::string::npos);
+}
+
+// Test 6 (V64): Request serialize must not auto-add Content-Length
+TEST(RequestTest, SerializeDoesNotAutoAddContentLengthWhenBodyPresentV64) {
+    Request req;
+    req.method = Method::POST;
+    req.host = "upload.example.com";
+    req.port = 80;
+    req.path = "/api/upload";
+    req.body = {'a', 'b', 'c', 'd'};
+
+    auto bytes = req.serialize();
+    std::string serialized(bytes.begin(), bytes.end());
+
+    EXPECT_TRUE(serialized.find("POST /api/upload HTTP/1.1\r\n") != std::string::npos);
+    EXPECT_TRUE(serialized.find("Content-Length:") == std::string::npos);
+    ASSERT_GE(bytes.size(), req.body.size());
+    EXPECT_TRUE(std::equal(req.body.begin(), req.body.end(),
+                           bytes.end() - static_cast<std::ptrdiff_t>(req.body.size())));
+}
+
+// Test 7 (V64): Response parse(ptr,sz) path yields status_code and body
+TEST(ResponseTest, ParseFromPointerAndSizeExtractsStatusCodeAndBodyV64) {
+    std::string raw =
+        "HTTP/1.1 201 Created\r\n"
+        "Content-Length: 5\r\n"
+        "\r\n"
+        "Hello";
+
+    const auto* ptr = reinterpret_cast<const uint8_t*>(raw.data());
+    const size_t sz = raw.size();
+    std::vector<uint8_t> data(ptr, ptr + sz);
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value());
+    const uint16_t status_code = resp->status;
+    EXPECT_EQ(status_code, 201);
+    EXPECT_EQ(resp->body_as_string(), "Hello");
+    EXPECT_EQ(resp->body.size(), 5u);
+}
+
+// Test 8 (V64): Response parse(ptr,sz) supports responses with empty body
+TEST(ResponseTest, ParseFromPointerAndSizeHandlesEmptyBodyV64) {
+    std::string raw =
+        "HTTP/1.1 204 No Content\r\n"
+        "Content-Length: 0\r\n"
+        "\r\n";
+
+    const auto* ptr = reinterpret_cast<const uint8_t*>(raw.data());
+    const size_t sz = raw.size();
+    std::vector<uint8_t> data(ptr, ptr + sz);
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value());
+    const uint16_t status_code = resp->status;
+    EXPECT_EQ(status_code, 204);
+    EXPECT_TRUE(resp->body.empty());
+}

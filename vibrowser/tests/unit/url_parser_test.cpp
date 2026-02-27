@@ -7993,3 +7993,119 @@ TEST(URLParser, TelOpaqueNumberWithParamsV63) {
     EXPECT_TRUE(result->query.empty());
     EXPECT_EQ(result->fragment, "dial-now");
 }
+
+// =============================================================================
+// Test V64-1: Encoded path/query/fragment values are double-encoded in special URLs
+// =============================================================================
+TEST(URLParser, PercentEncodedPathQueryFragmentDoubleEncodedV64) {
+    auto result = parse("https://example.com/a%20b/c%2Fd?x=y%20z#k%20v");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/a%2520b/c%252Fd");
+    EXPECT_EQ(result->query, "x=y%2520z");
+    EXPECT_EQ(result->fragment, "k%2520v");
+}
+
+// =============================================================================
+// Test V64-2: Userinfo percent sequences are double-encoded
+// =============================================================================
+TEST(URLParser, UserInfoPercentDoubleEncodingV64) {
+    auto result = parse("https://user%20name:pa%2Fss@example.com/private");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->username, "user%2520name");
+    EXPECT_EQ(result->password, "pa%252Fss");
+    EXPECT_EQ(result->path, "/private");
+}
+
+// =============================================================================
+// Test V64-3: Relative URL resolution keeps double-encoding on pre-encoded input
+// =============================================================================
+TEST(URLParser, RelativeResolutionWithEncodedSegmentsV64) {
+    auto base = parse("https://example.com/a/b/c/");
+    ASSERT_TRUE(base.has_value());
+
+    auto result = parse("../d%20e?u=v%20w#f%20g", &base.value());
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/a/b/d%2520e");
+    EXPECT_EQ(result->query, "u=v%2520w");
+    EXPECT_EQ(result->fragment, "f%2520g");
+}
+
+// =============================================================================
+// Test V64-4: File URL path double-encodes pre-encoded path bytes
+// =============================================================================
+TEST(URLParser, FilePathPreEncodedBytesDoubleEncodedV64) {
+    auto result = parse("file:///tmp/my%20file%23v1.txt");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "file");
+    EXPECT_TRUE(result->host.empty());
+    EXPECT_EQ(result->path, "/tmp/my%2520file%2523v1.txt");
+}
+
+// =============================================================================
+// Test V64-5: IPv6 host with non-default port and encoded components
+// =============================================================================
+TEST(URLParser, IPv6NonDefaultPortWithEncodedComponentsV64) {
+    auto result = parse("https://[2001:db8::1]:8443/api%20v1?filter=a%20b#sec%20two");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "[2001:db8::1]");
+    ASSERT_TRUE(result->port.has_value());
+    EXPECT_EQ(result->port.value(), 8443);
+    EXPECT_EQ(result->path, "/api%2520v1");
+    EXPECT_EQ(result->query, "filter=a%2520b");
+    EXPECT_EQ(result->fragment, "sec%2520two");
+}
+
+// =============================================================================
+// Test V64-6: Scheme-relative URL reuses base scheme and normalizes host
+// =============================================================================
+TEST(URLParser, SchemeRelativeWithUserinfoAndDefaultPortV64) {
+    auto base = parse("https://base.example/root");
+    ASSERT_TRUE(base.has_value());
+
+    auto result = parse("//user%20x:pa%20y@MiXeD.Example:443/a%20b?x=%20#f%20", &base.value());
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "mixed.example");
+    EXPECT_EQ(result->port, std::nullopt);
+    EXPECT_EQ(result->username, "user%2520x");
+    EXPECT_EQ(result->password, "pa%2520y");
+    EXPECT_EQ(result->path, "/a%2520b");
+    EXPECT_EQ(result->query, "x=%2520");
+    EXPECT_EQ(result->fragment, "f%2520");
+}
+
+// =============================================================================
+// Test V64-7: Opaque blob URL keeps percent sequences unchanged
+// =============================================================================
+TEST(URLParser, BlobOpaquePercentSequencesNotReencodedV64) {
+    auto result = parse("blob:https://example.com/id%20one?download=100%25#frag%20x");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "blob");
+    EXPECT_TRUE(result->host.empty());
+    EXPECT_EQ(result->path, "https://example.com/id%20one");
+    EXPECT_EQ(result->query, "download=100%25");
+    EXPECT_EQ(result->fragment, "frag%20x");
+}
+
+// =============================================================================
+// Test V64-8: Relative fragment-only URL keeps base query and encodes fragment
+// =============================================================================
+TEST(URLParser, RelativeFragmentOnlyPercentEncodingV64) {
+    auto base = parse("https://example.com/a/b?x=1#old");
+    ASSERT_TRUE(base.has_value());
+
+    auto result = parse("#new%20frag", &base.value());
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/a/b");
+    EXPECT_EQ(result->query, "x=1");
+    EXPECT_EQ(result->fragment, "new%2520frag");
+}

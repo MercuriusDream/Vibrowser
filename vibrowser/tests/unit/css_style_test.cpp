@@ -12738,3 +12738,71 @@ TEST(PropertyCascadeTest, TransitionShorthandLinearWithDelayV63) {
     EXPECT_NEAR(style.transition_duration, 0.15f, 0.001f);
     EXPECT_NEAR(style.transition_delay, 0.075f, 0.001f);
 }
+
+TEST(PropertyCascadeTest, VisibilityHiddenParsesV64) {
+    PropertyCascade cascade;
+    ComputedStyle style, parent;
+
+    cascade.apply_declaration(style, make_decl("visibility", "hidden"), parent);
+    EXPECT_EQ(style.visibility, Visibility::Hidden);
+}
+
+TEST(PropertyCascadeTest, VisibilityLastDeclarationWinsHiddenV64) {
+    PropertyCascade cascade;
+    ComputedStyle style, parent;
+
+    cascade.apply_declaration(style, make_decl("visibility", "visible"), parent);
+    cascade.apply_declaration(style, make_decl("visibility", "hidden"), parent);
+    EXPECT_EQ(style.visibility, Visibility::Hidden);
+}
+
+TEST(PropertyCascadeTest, CursorPointerParsesV64) {
+    PropertyCascade cascade;
+    ComputedStyle style, parent;
+
+    cascade.apply_declaration(style, make_decl("cursor", "pointer"), parent);
+    EXPECT_EQ(style.cursor, Cursor::Pointer);
+}
+
+TEST(PropertyCascadeTest, CursorLastDeclarationWinsPointerV64) {
+    PropertyCascade cascade;
+    ComputedStyle style, parent;
+
+    cascade.apply_declaration(style, make_decl("cursor", "default"), parent);
+    cascade.apply_declaration(style, make_decl("cursor", "pointer"), parent);
+    EXPECT_EQ(style.cursor, Cursor::Pointer);
+}
+
+TEST(PropertyCascadeTest, WhiteSpaceNoWrapParsesV64) {
+    PropertyCascade cascade;
+    ComputedStyle style, parent;
+
+    cascade.apply_declaration(style, make_decl("white-space", "nowrap"), parent);
+    EXPECT_EQ(style.white_space, WhiteSpace::NoWrap);
+}
+
+TEST(PropertyCascadeTest, WhiteSpaceLastDeclarationWinsNoWrapV64) {
+    PropertyCascade cascade;
+    ComputedStyle style, parent;
+
+    cascade.apply_declaration(style, make_decl("white-space", "normal"), parent);
+    cascade.apply_declaration(style, make_decl("white-space", "nowrap"), parent);
+    EXPECT_EQ(style.white_space, WhiteSpace::NoWrap);
+}
+
+TEST(PropertyCascadeTest, WordSpacingLengthParsesPxV64) {
+    PropertyCascade cascade;
+    ComputedStyle style, parent;
+
+    cascade.apply_declaration(style, make_decl("word-spacing", "4px"), parent);
+    EXPECT_FLOAT_EQ(style.word_spacing.to_px(16.0f), 4.0f);
+}
+
+TEST(PropertyCascadeTest, WordSpacingLastDeclarationWinsV64) {
+    PropertyCascade cascade;
+    ComputedStyle style, parent;
+
+    cascade.apply_declaration(style, make_decl("word-spacing", "1px"), parent);
+    cascade.apply_declaration(style, make_decl("word-spacing", "7px"), parent);
+    EXPECT_FLOAT_EQ(style.word_spacing.to_px(16.0f), 7.0f);
+}

@@ -22094,3 +22094,110 @@ TEST(JSEngineTest, StringReplaceAllOccurrencesV63) {
     )");
     EXPECT_EQ(result, "orange banana orange cherry orange|AAA-yyy-AAA-zzz-AAA|bbb");
 }
+
+TEST(JSEngineTest, MapIterationAndOverrideOrderV64) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var map = new Map([['a', 1], ['b', 2]]);
+        map.set('a', 3);
+        var keys = Array.from(map.keys()).join(',');
+        var values = Array.from(map.values()).join(',');
+        [keys, values, map.get('a').toString(), map.size.toString()].join('|')
+    )");
+    EXPECT_EQ(result, "a,b|3,2|3|2");
+}
+
+TEST(JSEngineTest, SetUniquenessAndSpreadSortV64) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var set = new Set([3, 1, 3, 2, 1]);
+        var sorted = Array.from(set).sort(function(a, b) { return a - b; });
+        [sorted.join(','), set.has(2).toString(), set.size.toString()].join('|')
+    )");
+    EXPECT_EQ(result, "1,2,3|true|3");
+}
+
+TEST(JSEngineTest, ObjectFreezeBlocksWriteInStrictModeV64) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var obj = Object.freeze({ x: 1 });
+        var caught = 'no';
+        try {
+            (function() {
+                'use strict';
+                obj.x = 2;
+            })();
+        } catch (e) {
+            caught = e.name;
+        }
+        [obj.x.toString(), caught].join('|')
+    )");
+    EXPECT_EQ(result, "1|TypeError");
+}
+
+TEST(JSEngineTest, ArrayFlatAndFlatMapCompositionV64) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var nested = [1, [2, [3]], 4];
+        var flattened = nested.flat(2).join(',');
+        var mapped = [1, 2, 3].flatMap(function(x) { return [x, x * 10]; }).join(',');
+        [flattened, mapped].join('|')
+    )");
+    EXPECT_EQ(result, "1,2,3,4|1,10,2,20,3,30");
+}
+
+TEST(JSEngineTest, DateUTCConstructionAndISOStringV64) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var date = new Date(Date.UTC(2020, 0, 2, 3, 4, 5));
+        [date.getUTCFullYear().toString(),
+         (date.getUTCMonth() + 1).toString(),
+         date.toISOString()].join('|')
+    )");
+    EXPECT_EQ(result, "2020|1|2020-01-02T03:04:05.000Z");
+}
+
+TEST(JSEngineTest, RegexCaptureAndReplaceCallbackV64) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var input = 'id=42;code=7';
+        var match = input.match(/id=(\d+);code=(\d+)/);
+        var swapped = input.replace(/id=(\d+);code=(\d+)/, function(_, a, b) {
+            return 'id=' + b + ';code=' + a;
+        });
+        [match[1], match[2], swapped].join('|')
+    )");
+    EXPECT_EQ(result, "42|7|id=7;code=42");
+}
+
+TEST(JSEngineTest, JSONStringifyReplacerAndParseReviverV64) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var obj = { keep: 1, drop: 2, nested: { v: 3 } };
+        var json = JSON.stringify(obj, function(key, value) {
+            if (key === 'drop') {
+                return undefined;
+            }
+            return value;
+        });
+        var parsed = JSON.parse(json, function(key, value) {
+            if (key === 'v') {
+                return value * 10;
+            }
+            return value;
+        });
+        [json, parsed.nested.v.toString(), ('drop' in parsed).toString()].join('|')
+    )");
+    EXPECT_EQ(result, "{\"keep\":1,\"nested\":{\"v\":3}}|30|false");
+}
+
+TEST(JSEngineTest, StringPadRepeatAndTrimV64) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var padded = '7'.padStart(3, '0').padEnd(5, 'x');
+        var trimmed = '  hi  '.trim();
+        var repeated = 'ab'.repeat(3);
+        [padded, trimmed, repeated].join('|')
+    )");
+    EXPECT_EQ(result, "007xx|hi|ababab");
+}

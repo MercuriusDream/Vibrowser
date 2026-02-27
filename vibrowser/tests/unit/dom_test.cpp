@@ -10314,3 +10314,146 @@ TEST(DomNode, MixedContentTreeTextAndParentLinksV63) {
     EXPECT_EQ(span_ptr->next_sibling(), comment_ptr);
     EXPECT_EQ(comment_ptr->previous_sibling(), span_ptr);
 }
+
+TEST(DomElement, AttributeLifecycleSetGetHasRemoveV64) {
+    Element input("input");
+    EXPECT_EQ(input.tag_name(), "input");
+
+    EXPECT_FALSE(input.has_attribute("placeholder"));
+    input.set_attribute("placeholder", "Search");
+    EXPECT_TRUE(input.has_attribute("placeholder"));
+    EXPECT_EQ(input.get_attribute("placeholder"), "Search");
+
+    input.remove_attribute("placeholder");
+    EXPECT_FALSE(input.has_attribute("placeholder"));
+    EXPECT_FALSE(input.get_attribute("placeholder").has_value());
+}
+
+TEST(DomElement, AttributesOverwriteAndOrderAfterRemoveV64) {
+    Element button("button");
+    button.set_attribute("type", "button");
+    button.set_attribute("aria-label", "Save");
+    button.set_attribute("type", "submit");
+    button.remove_attribute("aria-label");
+
+    const auto& attrs = button.attributes();
+    ASSERT_EQ(attrs.size(), 1u);
+    EXPECT_EQ(attrs[0].name, "type");
+    EXPECT_EQ(attrs[0].value, "submit");
+}
+
+TEST(DomElement, ClassListAddRemoveContainsToggleSequenceV64) {
+    Element div("div");
+    auto& classes = div.class_list();
+
+    classes.add("panel");
+    classes.add("active");
+    EXPECT_TRUE(classes.contains("panel"));
+    EXPECT_TRUE(classes.contains("active"));
+
+    classes.toggle("active");
+    EXPECT_FALSE(classes.contains("active"));
+
+    classes.toggle("hidden");
+    EXPECT_TRUE(classes.contains("hidden"));
+
+    classes.remove("panel");
+    EXPECT_FALSE(classes.contains("panel"));
+}
+
+TEST(DomNode, FirstAndLastChildTrackAppendedElementsV64) {
+    Element list("ul");
+    auto first = std::make_unique<Element>("li");
+    auto* first_ptr = first.get();
+    auto second = std::make_unique<Element>("li");
+    auto* second_ptr = second.get();
+
+    list.append_child(std::move(first));
+    list.append_child(std::move(second));
+
+    EXPECT_EQ(list.first_child(), first_ptr);
+    EXPECT_EQ(list.last_child(), second_ptr);
+    EXPECT_EQ(first_ptr->next_sibling(), second_ptr);
+    EXPECT_EQ(second_ptr->previous_sibling(), first_ptr);
+}
+
+TEST(DomNode, ParentAndSiblingPointersAcrossThreeChildrenV64) {
+    Element parent("nav");
+    auto a = std::make_unique<Element>("a");
+    auto* a_ptr = a.get();
+    auto b = std::make_unique<Element>("a");
+    auto* b_ptr = b.get();
+    auto c = std::make_unique<Element>("a");
+    auto* c_ptr = c.get();
+
+    parent.append_child(std::move(a));
+    parent.append_child(std::move(b));
+    parent.append_child(std::move(c));
+
+    EXPECT_EQ(a_ptr->parent(), &parent);
+    EXPECT_EQ(b_ptr->parent(), &parent);
+    EXPECT_EQ(c_ptr->parent(), &parent);
+    EXPECT_EQ(a_ptr->previous_sibling(), nullptr);
+    EXPECT_EQ(a_ptr->next_sibling(), b_ptr);
+    EXPECT_EQ(b_ptr->previous_sibling(), a_ptr);
+    EXPECT_EQ(b_ptr->next_sibling(), c_ptr);
+    EXPECT_EQ(c_ptr->previous_sibling(), b_ptr);
+    EXPECT_EQ(c_ptr->next_sibling(), nullptr);
+}
+
+TEST(DomElement, TextContentIncludesTextAndSkipsCommentNodesV64) {
+    Element root("div");
+    auto text_a = std::make_unique<Text>("Hello");
+    auto* text_a_ptr = text_a.get();
+    auto comment = std::make_unique<Comment>("ignored");
+    auto* comment_ptr = comment.get();
+
+    auto span = std::make_unique<Element>("span");
+    auto* span_ptr = span.get();
+    auto span_text = std::make_unique<Text>(" world");
+    auto* span_text_ptr = span_text.get();
+    span->append_child(std::move(span_text));
+
+    root.append_child(std::move(text_a));
+    root.append_child(std::move(comment));
+    root.append_child(std::move(span));
+
+    EXPECT_EQ(root.text_content(), "Hello world");
+    EXPECT_EQ(text_a_ptr->data(), "Hello");
+    EXPECT_EQ(comment_ptr->data(), "ignored");
+    EXPECT_EQ(span_ptr->first_child(), span_text_ptr);
+}
+
+TEST(DomNode, AppendedTextNodeRetainsDataAndParentV64) {
+    Element paragraph("p");
+    auto text = std::make_unique<Text>("inline");
+    auto* text_ptr = text.get();
+
+    paragraph.append_child(std::move(text));
+
+    EXPECT_EQ(paragraph.first_child(), text_ptr);
+    EXPECT_EQ(paragraph.last_child(), text_ptr);
+    EXPECT_EQ(text_ptr->parent(), &paragraph);
+    EXPECT_EQ(text_ptr->data(), "inline");
+    EXPECT_EQ(paragraph.text_content(), "inline");
+}
+
+TEST(DomNode, NestedElementsPreserveParentChainAndTextV64) {
+    auto article = std::make_unique<Element>("article");
+    auto section = std::make_unique<Element>("section");
+    auto* section_ptr = section.get();
+    auto paragraph = std::make_unique<Element>("p");
+    auto* paragraph_ptr = paragraph.get();
+    auto text = std::make_unique<Text>("content");
+
+    paragraph->append_child(std::move(text));
+    section->append_child(std::move(paragraph));
+    article->append_child(std::move(section));
+
+    ASSERT_NE(article->first_child(), nullptr);
+    EXPECT_EQ(article->first_child(), section_ptr);
+    EXPECT_EQ(section_ptr->first_child(), paragraph_ptr);
+    EXPECT_EQ(section_ptr->parent(), article.get());
+    EXPECT_EQ(paragraph_ptr->parent(), section_ptr);
+    EXPECT_EQ(article->text_content(), "content");
+}
