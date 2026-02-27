@@ -5524,3 +5524,85 @@ TEST(URLParser, UrlWithPathTraversalPatternV15) {
     EXPECT_EQ(url->path, "/files/backup/archive.zip");
     EXPECT_TRUE(url->query.empty());
 }
+
+// Cycle 1312: URL parser tests
+
+TEST(URLParser, HttpSchemeWithStandardPortV16) {
+    auto url = parse("http://example.com:80/page");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "http");
+    EXPECT_EQ(url->host, "example.com");
+    EXPECT_EQ(url->port, std::nullopt);
+    EXPECT_EQ(url->path, "/page");
+    EXPECT_TRUE(url->query.empty());
+}
+
+TEST(URLParser, HttpsSchemeWithStandardPortV16) {
+    auto url = parse("https://secure.example.org:443/login");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "secure.example.org");
+    EXPECT_EQ(url->port, std::nullopt);
+    EXPECT_EQ(url->path, "/login");
+    EXPECT_TRUE(url->query.empty());
+}
+
+TEST(URLParser, HostOnlyUrlV16) {
+    auto url = parse("https://api.example.com");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "api.example.com");
+    EXPECT_EQ(url->port, std::nullopt);
+    EXPECT_EQ(url->path, "/");
+    EXPECT_TRUE(url->query.empty());
+}
+
+TEST(URLParser, UrlWithMultiplePathSegmentsV16) {
+    auto url = parse("https://cdn.example.com/assets/images/banner/header.jpg");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "cdn.example.com");
+    EXPECT_EQ(url->path, "/assets/images/banner/header.jpg");
+    EXPECT_TRUE(url->query.empty());
+    EXPECT_EQ(url->fragment, "");
+}
+
+TEST(URLParser, UrlWithQueryAndFragmentV16) {
+    auto url = parse("https://docs.example.com/guide?section=intro&version=2#overview");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "docs.example.com");
+    EXPECT_EQ(url->path, "/guide");
+    EXPECT_NE(url->query.find("section=intro"), std::string::npos);
+    EXPECT_NE(url->query.find("version=2"), std::string::npos);
+    EXPECT_EQ(url->fragment, "overview");
+}
+
+TEST(URLParser, NonStandardPortNumberV16) {
+    auto url = parse("https://service.example.net:9443/api/v1");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "service.example.net");
+    ASSERT_TRUE(url->port.has_value());
+    EXPECT_EQ(url->port.value(), 9443);
+    EXPECT_EQ(url->path, "/api/v1");
+}
+
+TEST(URLParser, SubdomainWithHyphensAndNumbersV16) {
+    auto url = parse("https://api-v2-prod.example.io:8080/data");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "api-v2-prod.example.io");
+    ASSERT_TRUE(url->port.has_value());
+    EXPECT_EQ(url->port.value(), 8080);
+    EXPECT_EQ(url->path, "/data");
+}
+
+TEST(URLParser, UrlWithDeepPathTraversalResolutionV16) {
+    auto url = parse("https://storage.example.com/a/b/c/../../d/file.txt");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "storage.example.com");
+    EXPECT_EQ(url->path, "/a/d/file.txt");
+    EXPECT_TRUE(url->query.empty());
+}

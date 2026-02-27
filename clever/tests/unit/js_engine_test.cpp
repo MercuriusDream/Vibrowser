@@ -19264,3 +19264,53 @@ TEST(JSEngine, ArrayIncludesCycle1308) {
     auto result = engine.evaluate("var arr = [1, 2, 3, 4, 5]; arr.includes(3) ? 'true' : 'false'");
     EXPECT_EQ(result, "true");
 }
+
+// Cycle 1317: JS engine tests
+
+TEST(JSEngine, StringRepeatCycle1317) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("'ab'.repeat(3)");
+    EXPECT_EQ(result, "ababab");
+}
+
+TEST(JSEngine, StringSliceCycle1317) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("'hello'.slice(1, 4)");
+    EXPECT_EQ(result, "ell");
+}
+
+TEST(JSEngine, ArrayMapCycle1317) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var arr = [1, 2, 3]; var mapped = arr.map(x => x * 2); mapped.toString()");
+    EXPECT_EQ(result, "2,4,6");
+}
+
+TEST(JSEngine, ArrayFilterCycle1317) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var arr = [1, 2, 3, 4, 5]; var filtered = arr.filter(x => x > 2); filtered.toString()");
+    EXPECT_EQ(result, "3,4,5");
+}
+
+TEST(JSEngine, MathMaxCycle1317) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var result = Math.max(5, 10, 3); result.toString()");
+    EXPECT_EQ(result, "10");
+}
+
+TEST(JSEngine, MathMinCycle1317) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var result = Math.min(5, 10, 3); result.toString()");
+    EXPECT_EQ(result, "3");
+}
+
+TEST(JSEngine, DateNowCycle1317) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var now = Date.now(); typeof now === 'number' ? 'true' : 'false'");
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, ObjectKeysCycle1317) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var obj = {x: 1, y: 2, z: 3}; var keys = Object.keys(obj); keys.length.toString()");
+    EXPECT_EQ(result, "3");
+}

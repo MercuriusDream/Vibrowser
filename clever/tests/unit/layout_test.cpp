@@ -9136,3 +9136,45 @@ TEST(LayoutNodeProps, MixBlendModeDefaultV24) {
     LayoutNode n;
     EXPECT_EQ(n.mix_blend_mode, 0);
 }
+
+// Cycle 1316: Layout node tests
+
+TEST(LayoutNodeProps, TextWrapDefaultV25) {
+    LayoutNode n;
+    EXPECT_EQ(n.text_wrap, 0);
+}
+
+TEST(LayoutNodeProps, ContainerTypeDefaultV25) {
+    LayoutNode n;
+    EXPECT_EQ(n.container_type, 0);
+}
+
+TEST(LayoutNodeProps, BorderRadiusTLDefaultV25) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.border_radius_tl, 0.0f);
+}
+
+TEST(LayoutNodeProps, BorderRadiusTRDefaultV25) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.border_radius_tr, 0.0f);
+}
+
+TEST(LayoutNodeProps, BorderRadiusBLDefaultV25) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.border_radius_bl, 0.0f);
+}
+
+TEST(LayoutNodeProps, BorderRadiusBRDefaultV25) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.border_radius_br, 0.0f);
+}
+
+TEST(LayoutNodeProps, LineHeightDefaultV25) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.line_height, 1.2f);
+}
+
+TEST(LayoutNodeProps, ZIndexDefaultV25) {
+    LayoutNode n;
+    EXPECT_EQ(n.z_index, 0);
+}

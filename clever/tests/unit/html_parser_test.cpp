@@ -7644,3 +7644,61 @@ TEST(TreeBuilder, ProgressElementV12) {
     ASSERT_NE(el, nullptr);
     EXPECT_EQ(el->tag_name, "progress");
 }
+
+// Cycle 1315: HTML parser tests
+
+TEST(TreeBuilder, DetailElementV13) {
+    auto doc = clever::html::parse("<details open=\"open\"><summary>Summary</summary><p>Content</p></details>");
+    auto* el = doc->find_element("details");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "details");
+}
+
+TEST(TreeBuilder, SummaryElementV13) {
+    auto doc = clever::html::parse("<details><summary>Summary text</summary></details>");
+    auto* el = doc->find_element("summary");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "summary");
+}
+
+TEST(TreeBuilder, MarkerElementV13) {
+    auto doc = clever::html::parse("<ul><li><marker>point</marker></li></ul>");
+    auto* el = doc->find_element("marker");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "marker");
+}
+
+TEST(TreeBuilder, TimeElementV13) {
+    auto doc = clever::html::parse("<time datetime=\"2026-02-27\">February 27, 2026</time>");
+    auto* el = doc->find_element("time");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "time");
+}
+
+TEST(TreeBuilder, MenuElementV13) {
+    auto doc = clever::html::parse("<menu type=\"toolbar\"><li>File</li><li>Edit</li></menu>");
+    auto* el = doc->find_element("menu");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "menu");
+}
+
+TEST(TreeBuilder, PictureElementV13) {
+    auto doc = clever::html::parse("<picture><source srcset=\"image.jpg\" media=\"(min-width: 600px)\"><img src=\"fallback.jpg\" alt=\"image\"></picture>");
+    auto* el = doc->find_element("picture");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "picture");
+}
+
+TEST(TreeBuilder, TrackElementV13) {
+    auto doc = clever::html::parse("<video><track kind=\"subtitles\" src=\"subs.vtt\" srclang=\"en\"></track></video>");
+    auto* el = doc->find_element("track");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "track");
+}
+
+TEST(TreeBuilder, EmbedElementV13) {
+    auto doc = clever::html::parse("<embed type=\"application/x-shockwave-flash\" src=\"animation.swf\" width=\"400\" height=\"300\">");
+    auto* el = doc->find_element("embed");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "embed");
+}

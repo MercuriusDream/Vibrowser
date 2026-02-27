@@ -7157,3 +7157,62 @@ TEST(DomElement, SetAttributeOverwriteV3) {
     el->set_attribute("id", "second");
     EXPECT_EQ(el->get_attribute("id"), "second");
 }
+
+// Cycle 1309: DOM element tests
+
+TEST(DomElement, TagNameOutputV2) {
+    Document doc;
+    auto el = doc.create_element("output");
+    EXPECT_EQ(el->tag_name(), "output");
+}
+
+TEST(DomElement, TagNameDataV2) {
+    Document doc;
+    auto el = doc.create_element("data");
+    EXPECT_EQ(el->tag_name(), "data");
+}
+
+TEST(DomElement, SetAttributeWrap) {
+    Document doc;
+    auto el = doc.create_element("textarea");
+    el->set_attribute("wrap", "hard");
+    EXPECT_EQ(el->get_attribute("wrap"), "hard");
+}
+
+TEST(DomElement, SetAttributeRows) {
+    Document doc;
+    auto el = doc.create_element("textarea");
+    el->set_attribute("rows", "10");
+    EXPECT_EQ(el->get_attribute("rows"), "10");
+}
+
+TEST(DomElement, ChildCountFiveHundred) {
+    Document doc;
+    auto parent = doc.create_element("div");
+    for (int i = 0; i < 500; ++i) {
+        parent->append_child(doc.create_element("span"));
+    }
+    EXPECT_EQ(parent->child_count(), 500u);
+}
+
+TEST(DomElement, RemoveAttributeId) {
+    Document doc;
+    auto el = doc.create_element("div");
+    el->set_attribute("id", "myid");
+    el->remove_attribute("id");
+    EXPECT_FALSE(el->has_attribute("id"));
+}
+
+TEST(DomElement, HasAttributeMuted) {
+    Document doc;
+    auto el = doc.create_element("video");
+    el->set_attribute("muted", "");
+    EXPECT_TRUE(el->has_attribute("muted"));
+}
+
+TEST(DomElement, DataAttributeCustom) {
+    Document doc;
+    auto el = doc.create_element("div");
+    el->set_attribute("data-custom-value", "hello-world");
+    EXPECT_EQ(el->get_attribute("data-custom-value"), "hello-world");
+}

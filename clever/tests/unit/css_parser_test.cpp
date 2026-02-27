@@ -8240,3 +8240,77 @@ TEST_F(CSSStylesheetTest, ContentVisibilityV24) {
         if (d.property == "content-visibility") { found = true; break; }
     EXPECT_TRUE(found);
 }
+
+// Cycle 1314: CSS parser tests
+
+TEST_F(CSSStylesheetTest, ScrollBehaviorV25) {
+    auto sheet = parse_stylesheet("html { scroll-behavior: smooth; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "scroll-behavior") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, ScrollMarginV25) {
+    auto sheet = parse_stylesheet(".section { scroll-margin: 10px; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "scroll-margin") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, ScrollPaddingV25) {
+    auto sheet = parse_stylesheet(".container { scroll-padding: 20px 10px; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "scroll-padding") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, SnapTypeV25) {
+    auto sheet = parse_stylesheet(".scroller { scroll-snap-type: x mandatory; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "scroll-snap-type") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, SnapAlignV25) {
+    auto sheet = parse_stylesheet(".child { scroll-snap-align: center; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "scroll-snap-align") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, TextDecorationLineV25) {
+    auto sheet = parse_stylesheet("a { text-decoration-line: underline; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "text-decoration-line") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, TextDecorationStyleV25) {
+    auto sheet = parse_stylesheet("a { text-decoration-style: wavy; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "text-decoration-style") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, TextDecorationColorV25) {
+    auto sheet = parse_stylesheet("a { text-decoration-color: red; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "text-decoration-color") { found = true; break; }
+    EXPECT_TRUE(found);
+}

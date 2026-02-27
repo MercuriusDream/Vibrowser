@@ -7941,3 +7941,104 @@ TEST(HttpClient, ResponseErrorStatusV26) {
     EXPECT_EQ(resp.status_text, "Service Unavailable");
     EXPECT_GT(resp.body.size(), 0u);
 }
+
+// Cycle 1313: HTTP client tests
+
+// HeaderMap: multiple overwrites on same key
+TEST(HttpClient, HeaderMapOverwriteMultipleTimesV27) {
+    HeaderMap map;
+    map.set("Authorization", "Bearer token1");
+    EXPECT_EQ(map.get("Authorization"), "Bearer token1");
+
+    map.set("Authorization", "Bearer token2");
+    EXPECT_EQ(map.get("Authorization"), "Bearer token2");
+
+    map.set("Authorization", "Bearer token3");
+    EXPECT_EQ(map.get("Authorization"), "Bearer token3");
+    EXPECT_EQ(map.size(), 1u);
+}
+
+// HeaderMap: get_all returns all values for multi-valued headers
+TEST(HttpClient, HeaderMapGetAllV27) {
+    HeaderMap map;
+    map.set("Set-Cookie", "session=abc123");
+    map.set("Set-Cookie", "path=/");
+
+    auto all_values = map.get_all("Set-Cookie");
+    EXPECT_GE(all_values.size(), 1u);
+    EXPECT_TRUE(map.has("Set-Cookie"));
+}
+
+// Request: DELETE method with URL parameters
+TEST(HttpClient, RequestDeleteMethodWithParamsV27) {
+    Request req;
+    req.method = Method::DELETE_METHOD;
+    req.url = "https://api.example.com/resource/42?force=true";
+    req.headers.set("Authorization", "Bearer token");
+
+    EXPECT_EQ(req.method, Method::DELETE_METHOD);
+    EXPECT_TRUE(req.url.find("/resource/42") != std::string::npos);
+    EXPECT_TRUE(req.headers.has("Authorization"));
+}
+
+// Request: HEAD method for resource metadata
+TEST(HttpClient, RequestHeadMethodV27) {
+    Request req;
+    req.method = Method::HEAD;
+    req.url = "https://example.com/document.pdf";
+    req.headers.set("Accept", "application/pdf");
+
+    EXPECT_EQ(req.method, Method::HEAD);
+    EXPECT_TRUE(req.body.empty());
+    EXPECT_TRUE(req.headers.has("Accept"));
+}
+
+// Request: serialize returns vector<uint8_t>
+TEST(HttpClient, RequestSerializeV27) {
+    Request req;
+    req.method = Method::POST;
+    req.url = "https://api.example.com/data";
+    req.headers.set("Content-Type", "application/json");
+    std::string body_str = R"({"key":"value"})";
+    req.body = std::vector<uint8_t>(body_str.begin(), body_str.end());
+
+    auto serialized = req.serialize();
+    EXPECT_GT(serialized.size(), 0u);
+}
+
+// Response: 200 OK status with headers and body
+TEST(HttpClient, ResponseSuccessWithHeadersAndBodyV27) {
+    Response resp;
+    resp.status = 200;
+    resp.status_text = "OK";
+    resp.headers.set("Content-Type", "text/html");
+    resp.headers.set("Content-Length", "1024");
+    std::string body = "<html><body>Success</body></html>";
+    resp.body = std::vector<uint8_t>(body.begin(), body.end());
+
+    EXPECT_EQ(resp.status, 200);
+    EXPECT_EQ(resp.status_text, "OK");
+    EXPECT_TRUE(resp.headers.has("Content-Type"));
+    EXPECT_EQ(resp.body.size(), body.size());
+}
+
+// CookieJar: set_from_header parses cookie header
+TEST(HttpClient, CookieJarSetFromHeaderV27) {
+    CookieJar jar;
+    jar.set_from_header("session=abc123xyz; Path=/; Secure", "example.com");
+
+    EXPECT_GT(jar.size(), 0u);
+    auto cookie_header = jar.get_cookie_header("example.com", "/", true);
+    EXPECT_FALSE(cookie_header.empty());
+}
+
+// CookieJar: clear removes all cookies
+TEST(HttpClient, CookieJarClearAllV27) {
+    CookieJar jar;
+    jar.set_from_header("id=user001", "example.com");
+    jar.set_from_header("token=xyz789", "api.example.com");
+    EXPECT_GT(jar.size(), 0u);
+
+    jar.clear();
+    EXPECT_EQ(jar.size(), 0u);
+}
