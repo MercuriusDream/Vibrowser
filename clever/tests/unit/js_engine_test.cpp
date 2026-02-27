@@ -15338,3 +15338,51 @@ TEST(JSEngine, ArrayGroupByLike) {
     )");
     EXPECT_EQ(result, "2-3");
 }
+
+TEST(JSEngine, MathSignNegative) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("Math.sign(-5)");
+    EXPECT_EQ(result, "-1");
+}
+
+TEST(JSEngine, MathCosPI) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("Math.round(Math.cos(Math.PI))");
+    EXPECT_EQ(result, "-1");
+}
+
+TEST(JSEngine, MathSinHalfPI) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("Math.round(Math.sin(Math.PI / 2))");
+    EXPECT_EQ(result, "1");
+}
+
+TEST(JSEngine, MathTanZero) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("Math.tan(0)");
+    EXPECT_EQ(result, "0");
+}
+
+TEST(JSEngine, ArrayFlatDeep) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("[1, [2, [3, [4]]]].flat(Infinity).length");
+    EXPECT_EQ(result, "4");
+}
+
+TEST(JSEngine, StringCodePointAt) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("'A'.codePointAt(0)");
+    EXPECT_EQ(result, "65");
+}
+
+TEST(JSEngine, StringFromCodePoint) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("String.fromCodePoint(65)");
+    EXPECT_EQ(result, "A");
+}
+
+TEST(JSEngine, ErrorStack) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("(function() { try { throw new Error('oops'); } catch(e) { return e.message; } })()");
+    EXPECT_EQ(result, "oops");
+}
