@@ -3488,3 +3488,97 @@ TEST(ResponseTest, SetCookieHeaderInResponse) {
     ASSERT_TRUE(val.has_value());
     EXPECT_NE(val.value().find("sessionid"), std::string::npos);
 }
+
+// Response: ETag header parsed
+TEST(ResponseTest, ETagHeaderParsed) {
+    std::string raw =
+        "HTTP/1.1 200 OK\r\n"
+        "ETag: \"abc123\"\r\n"
+        "Content-Length: 0\r\n"
+        "\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    auto val = resp->headers.get("ETag");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_NE(val.value().find("abc123"), std::string::npos);
+}
+
+// Response: Vary header parsed
+TEST(ResponseTest, VaryHeaderParsed) {
+    std::string raw =
+        "HTTP/1.1 200 OK\r\n"
+        "Vary: Accept-Encoding, Accept-Language\r\n"
+        "Content-Length: 0\r\n"
+        "\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    auto val = resp->headers.get("Vary");
+    ASSERT_TRUE(val.has_value());
+}
+
+// Response: parse 201 Created
+TEST(ResponseTest, Parse201CreatedWithLocation) {
+    std::string raw =
+        "HTTP/1.1 201 Created\r\n"
+        "Location: /resources/123\r\n"
+        "Content-Length: 0\r\n"
+        "\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 201);
+}
+
+// Response: parse 400 Bad Request
+TEST(ResponseTest, Parse400BadRequestSimple) {
+    std::string raw =
+        "HTTP/1.1 400 Bad Request\r\n"
+        "Content-Length: 0\r\n"
+        "\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 400);
+}
+
+// Response: parse 401 Unauthorized
+TEST(ResponseTest, Parse401UnauthorizedBearer) {
+    std::string raw =
+        "HTTP/1.1 401 Unauthorized\r\n"
+        "WWW-Authenticate: Bearer\r\n"
+        "Content-Length: 0\r\n"
+        "\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 401);
+}
+
+// Request: Accept-Encoding header set
+TEST(RequestTest, AcceptEncodingHeaderSet) {
+    Request req;
+    req.headers.set("Accept-Encoding", "gzip, deflate, br");
+    auto val = req.headers.get("Accept-Encoding");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_NE(val.value().find("gzip"), std::string::npos);
+}
+
+// Request: Pragma no-cache header set
+TEST(RequestTest, PragmaNoCacheHeaderSet) {
+    Request req;
+    req.headers.set("Pragma", "no-cache");
+    auto val = req.headers.get("Pragma");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(val.value(), "no-cache");
+}
+
+// Request: Content-Encoding header set
+TEST(RequestTest, ContentEncodingHeaderSet) {
+    Request req;
+    req.headers.set("Content-Encoding", "gzip");
+    auto val = req.headers.get("Content-Encoding");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(val.value(), "gzip");
+}
