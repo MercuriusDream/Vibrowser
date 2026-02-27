@@ -16395,3 +16395,56 @@ TEST(JSEngine, SymbolDescriptionProperty) {
         "Symbol('my-desc').description");
     EXPECT_EQ(result, "my-desc");
 }
+
+// Cycle 840 — JSON replacer/reviver, Number methods, Math rounding
+TEST(JSEngine, JsonStringifyReplacer) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "JSON.stringify({a:1,b:2,c:3}, ['a','c'])");
+    EXPECT_NE(result.find("\"a\""), std::string::npos);
+    EXPECT_EQ(result.find("\"b\""), std::string::npos);
+}
+
+TEST(JSEngine, JsonStringifyIndented) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "JSON.stringify({x:1}, null, 2)");
+    EXPECT_NE(result.find("\n"), std::string::npos);
+}
+
+TEST(JSEngine, JsonParseReviver) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "JSON.parse('{\"n\":42}', (k,v) => k==='n' ? v*2 : v).n");
+    EXPECT_EQ(result, "84");
+}
+
+TEST(JSEngine, NumberToFixedSix) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("(3.14159).toFixed(2)");
+    EXPECT_EQ(result, "3.14");
+}
+
+TEST(JSEngine, NumberToPrecisionFive) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("(123.456).toPrecision(5)");
+    EXPECT_EQ(result, "123.46");
+}
+
+TEST(JSEngine, NumberToExponentialTwo) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("(12345).toExponential(2)");
+    EXPECT_EQ(result, "1.23e+4");
+}
+
+TEST(JSEngine, MathRoundHalf) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("Math.round(4.5)");
+    EXPECT_EQ(result, "5");
+}
+
+TEST(JSEngine, MathRoundNegative) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("Math.round(-4.5)");
+    EXPECT_EQ(result, "-4");
+}
