@@ -3728,3 +3728,69 @@ TEST(DomText, TextContentEqualsData) {
     Text t("hello world");
     EXPECT_EQ(t.text_content(), t.data());
 }
+
+// Cycle 830 — Document: create/append, getElementById after unregister, id from attribute, child count
+TEST(DomDocument, CreateElementAppendToDocChildCount) {
+    Document doc;
+    auto elem = doc.create_element("section");
+    doc.append_child(std::move(elem));
+    EXPECT_EQ(doc.child_count(), 1u);
+}
+
+TEST(DomDocument, CreateTextNodeAppendedChildCount) {
+    Document doc;
+    auto txt = doc.create_text_node("Hello");
+    doc.append_child(std::move(txt));
+    EXPECT_EQ(doc.child_count(), 1u);
+}
+
+TEST(DomDocument, CreateCommentAppendedFirstChild) {
+    Document doc;
+    auto c = doc.create_comment("copyright 2026");
+    auto* ptr = c.get();
+    doc.append_child(std::move(c));
+    EXPECT_EQ(doc.first_child(), ptr);
+}
+
+TEST(DomDocument, GetElementByIdAfterUnregisterReturnsNull) {
+    Document doc;
+    auto elem = doc.create_element("div");
+    auto* ptr = elem.get();
+    doc.register_id("main", ptr);
+    doc.unregister_id("main");
+    EXPECT_EQ(doc.get_element_by_id("main"), nullptr);
+}
+
+TEST(DomDocument, RegisterTwoIdsRetrieval) {
+    Document doc;
+    auto a = doc.create_element("div");
+    auto b = doc.create_element("span");
+    auto* aptr = a.get();
+    auto* bptr = b.get();
+    doc.register_id("alpha", aptr);
+    doc.register_id("beta", bptr);
+    EXPECT_EQ(doc.get_element_by_id("alpha"), aptr);
+    EXPECT_EQ(doc.get_element_by_id("beta"), bptr);
+}
+
+TEST(DomDocument, GetElementByIdViaSetAttribute) {
+    Document doc;
+    auto elem = doc.create_element("input");
+    elem->set_attribute("id", "email-field");
+    auto* ptr = elem.get();
+    doc.register_id("email-field", ptr);
+    EXPECT_EQ(doc.get_element_by_id("email-field"), ptr);
+}
+
+TEST(DomDocument, CreateMultipleChildrenCount) {
+    Document doc;
+    doc.append_child(doc.create_element("div"));
+    doc.append_child(doc.create_element("p"));
+    doc.append_child(doc.create_text_node("text"));
+    EXPECT_EQ(doc.child_count(), 3u);
+}
+
+TEST(DomDocument, GetElementByIdMissingKeyReturnsNull) {
+    Document doc;
+    EXPECT_EQ(doc.get_element_by_id("nonexistent"), nullptr);
+}
