@@ -2721,3 +2721,59 @@ TEST(URLParser, LongPathMultipleSegments) {
     ASSERT_TRUE(url.has_value());
     EXPECT_EQ(url->path, "/a/b/c/d/e/f/g");
 }
+
+TEST(URLParser, MinimalHttpUrl) {
+    auto url = parse("http://x.co");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "http");
+    EXPECT_EQ(url->host, "x.co");
+    EXPECT_FALSE(url->port.has_value());
+    EXPECT_EQ(url->path, "/");
+}
+
+TEST(URLParser, PathEndingWithSlashAndQuery) {
+    auto url = parse("https://example.com/dir/?key=val");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->path, "/dir/");
+    EXPECT_EQ(url->query, "key=val");
+}
+
+TEST(URLParser, FullUrlWithFragment) {
+    auto url = parse("https://example.com/page?q=1#section");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->path, "/page");
+    EXPECT_EQ(url->query, "q=1");
+    EXPECT_EQ(url->fragment, "section");
+}
+
+TEST(URLParser, HttpHostOnlyDefaultsToSlash) {
+    auto url = parse("http://example.com");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->path, "/");
+    EXPECT_FALSE(url->port.has_value());
+}
+
+TEST(URLParser, CaseSensitivePath) {
+    auto url = parse("https://example.com/Foo/Bar");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->path, "/Foo/Bar");
+}
+
+TEST(URLParser, PortRemovedForHttpDefault) {
+    auto url = parse("http://example.com:80/page");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_FALSE(url->port.has_value());
+    EXPECT_EQ(url->path, "/page");
+}
+
+TEST(URLParser, SingleSegmentPath) {
+    auto url = parse("https://example.com/about");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->path, "/about");
+}
+
+TEST(URLParser, TwoSegmentPath) {
+    auto url = parse("https://example.com/a/b");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->path, "/a/b");
+}
