@@ -3092,3 +3092,76 @@ TEST(DomNode, RemoveChildReturnsAndOrphansNode) {
     EXPECT_EQ(removed.get(), child_ptr);
     EXPECT_EQ(parent.child_count(), 0u);
 }
+
+TEST(DomDocument, CreateElementSectionTag) {
+    Document doc;
+    auto elem = doc.create_element("article");
+    EXPECT_EQ(elem->tag_name(), "article");
+    EXPECT_EQ(elem->node_type(), NodeType::Element);
+}
+
+TEST(DomNode, EmptyTextContentForNewElement) {
+    Element div("div");
+    EXPECT_TRUE(div.text_content().empty());
+}
+
+TEST(DomNode, TextContentUpdatesAfterChildAdded) {
+    Element div("div");
+    auto txt = std::make_unique<Text>("changed");
+    div.append_child(std::move(txt));
+    EXPECT_NE(div.text_content().find("changed"), std::string::npos);
+}
+
+TEST(DomNode, ForEachChildLambdaReceivesTag) {
+    Element parent("nav");
+    parent.append_child(std::make_unique<Element>("a"));
+    parent.append_child(std::make_unique<Element>("button"));
+    std::vector<std::string> tags;
+    parent.for_each_child([&](const Node& child) {
+        if (child.node_type() == NodeType::Element) {
+            tags.push_back(static_cast<const Element&>(child).tag_name());
+        }
+    });
+    ASSERT_EQ(tags.size(), 2u);
+    EXPECT_EQ(tags[0], "a");
+    EXPECT_EQ(tags[1], "button");
+}
+
+TEST(DomNode, InsertBeforeNullReferenceAppends) {
+    Element parent("div");
+    auto child = std::make_unique<Element>("p");
+    Element* p_ptr = child.get();
+    parent.insert_before(std::move(child), nullptr);
+    EXPECT_EQ(parent.first_child(), p_ptr);
+}
+
+TEST(DomNode, MarkDirtyPaintOnlyLayout) {
+    Element div("div");
+    div.mark_dirty(DirtyFlags::Paint);
+    EXPECT_EQ(div.dirty_flags() & DirtyFlags::Layout, DirtyFlags::None);
+    EXPECT_NE(div.dirty_flags() & DirtyFlags::Paint, DirtyFlags::None);
+}
+
+TEST(DomDocument, MultipleRegisteredIds) {
+    Document doc;
+    auto e1 = doc.create_element("div");
+    auto e2 = doc.create_element("span");
+    Element* p1 = e1.get();
+    Element* p2 = e2.get();
+    doc.register_id("first", p1);
+    doc.register_id("second", p2);
+    EXPECT_EQ(doc.get_element_by_id("first"), p1);
+    EXPECT_EQ(doc.get_element_by_id("second"), p2);
+}
+
+TEST(DomNode, ChildrenCountAfterInsertBeforeMiddle) {
+    Element parent("ol");
+    auto li1 = std::make_unique<Element>("li");
+    auto li2 = std::make_unique<Element>("li");
+    auto li3 = std::make_unique<Element>("li");
+    Element* li3_ptr = li3.get();
+    parent.append_child(std::move(li1));
+    parent.append_child(std::move(li3));
+    parent.insert_before(std::move(li2), li3_ptr);
+    EXPECT_EQ(parent.child_count(), 3u);
+}
