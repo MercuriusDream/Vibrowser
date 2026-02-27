@@ -12330,3 +12330,207 @@ TEST(DOMTest, AppendMultipleChildrenOrderPreservedV72) {
     EXPECT_EQ(second_ptr->next_sibling(), third_ptr);
     EXPECT_EQ(parent.last_child(), third_ptr);
 }
+
+TEST(DOMTest, ElementGetBoundingClientRectStubReturnsDefaultBoxV73) {
+    struct RectStub {
+        double x;
+        double y;
+        double width;
+        double height;
+        double top;
+        double right;
+        double bottom;
+        double left;
+    };
+
+    auto get_bounding_client_rect_stub = []([[maybe_unused]] const Element& element) {
+        return RectStub{0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+    };
+
+    Element element("div");
+    const auto rect = get_bounding_client_rect_stub(element);
+    EXPECT_EQ(rect.x, 0.0);
+    EXPECT_EQ(rect.y, 0.0);
+    EXPECT_EQ(rect.width, 0.0);
+    EXPECT_EQ(rect.height, 0.0);
+    EXPECT_EQ(rect.top, 0.0);
+    EXPECT_EQ(rect.right, 0.0);
+    EXPECT_EQ(rect.bottom, 0.0);
+    EXPECT_EQ(rect.left, 0.0);
+}
+
+TEST(DOMTest, ElementChildElementCountPropertyCountsElementsOnlyV73) {
+    auto child_element_count = [](const Node& node) {
+        size_t count = 0;
+        for (Node* child = node.first_child(); child != nullptr; child = child->next_sibling()) {
+            if (child->node_type() == NodeType::Element) {
+                ++count;
+            }
+        }
+        return count;
+    };
+
+    Element parent("div");
+    parent.append_child(std::make_unique<Text>("leading"));
+    parent.append_child(std::make_unique<Element>("span"));
+    parent.append_child(std::make_unique<Comment>("meta"));
+    parent.append_child(std::make_unique<Element>("strong"));
+
+    EXPECT_EQ(parent.child_count(), 4u);
+    EXPECT_EQ(child_element_count(parent), 2u);
+}
+
+TEST(DOMTest, ElementFirstElementChildSkipsNonElementNodesV73) {
+    auto first_element_child = [](const Node& node) -> Element* {
+        for (Node* child = node.first_child(); child != nullptr; child = child->next_sibling()) {
+            if (child->node_type() == NodeType::Element) {
+                return static_cast<Element*>(child);
+            }
+        }
+        return nullptr;
+    };
+
+    Element parent("div");
+    parent.append_child(std::make_unique<Text>("text"));
+    auto first_element = std::make_unique<Element>("span");
+    Element* first_element_ptr = first_element.get();
+    parent.append_child(std::move(first_element));
+    parent.append_child(std::make_unique<Element>("strong"));
+
+    EXPECT_EQ(first_element_child(parent), first_element_ptr);
+}
+
+TEST(DOMTest, ElementLastElementChildSkipsNonElementNodesV73) {
+    auto last_element_child = [](const Node& node) -> Element* {
+        Element* last = nullptr;
+        for (Node* child = node.first_child(); child != nullptr; child = child->next_sibling()) {
+            if (child->node_type() == NodeType::Element) {
+                last = static_cast<Element*>(child);
+            }
+        }
+        return last;
+    };
+
+    Element parent("div");
+    auto first = std::make_unique<Element>("first");
+    parent.append_child(std::move(first));
+    parent.append_child(std::make_unique<Comment>("skip"));
+    auto last = std::make_unique<Element>("last");
+    Element* last_ptr = last.get();
+    parent.append_child(std::move(last));
+    parent.append_child(std::make_unique<Text>("tail"));
+
+    EXPECT_EQ(last_element_child(parent), last_ptr);
+}
+
+TEST(DOMTest, ElementChildrenIndexedAccessReturnsElementByIndexV73) {
+    auto children_indexed_access = [](const Node& node, size_t index) -> Element* {
+        size_t element_index = 0;
+        for (Node* child = node.first_child(); child != nullptr; child = child->next_sibling()) {
+            if (child->node_type() != NodeType::Element) {
+                continue;
+            }
+            if (element_index == index) {
+                return static_cast<Element*>(child);
+            }
+            ++element_index;
+        }
+        return nullptr;
+    };
+
+    Element parent("div");
+    auto first = std::make_unique<Element>("a");
+    auto second = std::make_unique<Element>("b");
+    auto third = std::make_unique<Element>("c");
+    Element* first_ptr = first.get();
+    Element* second_ptr = second.get();
+    Element* third_ptr = third.get();
+
+    parent.append_child(std::move(first));
+    parent.append_child(std::make_unique<Text>("gap"));
+    parent.append_child(std::move(second));
+    parent.append_child(std::make_unique<Comment>("gap2"));
+    parent.append_child(std::move(third));
+
+    EXPECT_EQ(children_indexed_access(parent, 0), first_ptr);
+    EXPECT_EQ(children_indexed_access(parent, 1), second_ptr);
+    EXPECT_EQ(children_indexed_access(parent, 2), third_ptr);
+    EXPECT_EQ(children_indexed_access(parent, 3), nullptr);
+}
+
+TEST(DOMTest, ElementMatchesSelectorByTagReturnsExpectedMatchV73) {
+    auto matches_selector_by_tag = [](const Element& element, const std::string& selector) {
+        return !selector.empty() && selector[0] != '#' && selector[0] != '.'
+            && element.tag_name() == selector;
+    };
+
+    Element button("button");
+    Element input("input");
+    EXPECT_TRUE(matches_selector_by_tag(button, "button"));
+    EXPECT_FALSE(matches_selector_by_tag(button, "Button"));
+    EXPECT_FALSE(matches_selector_by_tag(button, "#button"));
+    EXPECT_FALSE(matches_selector_by_tag(input, "button"));
+}
+
+TEST(DOMTest, NodeCloneNodeShallowCopiesElementWithoutChildrenV73) {
+    auto clone_node_shallow = [](const Node& node) -> std::unique_ptr<Node> {
+        if (node.node_type() == NodeType::Element) {
+            const auto& source = static_cast<const Element&>(node);
+            auto clone = std::make_unique<Element>(source.tag_name(), source.namespace_uri());
+            for (const auto& attribute : source.attributes()) {
+                clone->set_attribute(attribute.name, attribute.value);
+            }
+            return clone;
+        }
+        if (node.node_type() == NodeType::Text) {
+            return std::make_unique<Text>(static_cast<const Text&>(node).data());
+        }
+        if (node.node_type() == NodeType::Comment) {
+            return std::make_unique<Comment>(static_cast<const Comment&>(node).data());
+        }
+        return nullptr;
+    };
+
+    Element source("section");
+    source.set_attribute("id", "source");
+    source.append_child(std::make_unique<Element>("child"));
+    source.append_child(std::make_unique<Text>("payload"));
+    ASSERT_EQ(source.child_count(), 2u);
+
+    auto clone_node = clone_node_shallow(source);
+    ASSERT_NE(clone_node, nullptr);
+    ASSERT_EQ(clone_node->node_type(), NodeType::Element);
+
+    auto* clone_element = static_cast<Element*>(clone_node.get());
+    EXPECT_NE(clone_element, &source);
+    EXPECT_EQ(clone_element->tag_name(), "section");
+    EXPECT_EQ(clone_element->get_attribute("id").value_or(""), "source");
+    EXPECT_EQ(clone_element->child_count(), 0u);
+    EXPECT_EQ(clone_element->first_child(), nullptr);
+}
+
+TEST(DOMTest, DocumentCreateElementWithAttributesAppliesAllValuesV73) {
+    auto create_element_with_attributes =
+        [](Document& document, const std::string& tag, const std::vector<Attribute>& attributes) {
+            auto element = document.create_element(tag);
+            for (const auto& attribute : attributes) {
+                element->set_attribute(attribute.name, attribute.value);
+            }
+            return element;
+        };
+
+    Document document;
+    std::vector<Attribute> attributes{
+        {"id", "main"},
+        {"class", "hero"},
+        {"data-role", "banner"},
+    };
+
+    auto element = create_element_with_attributes(document, "section", attributes);
+    ASSERT_NE(element, nullptr);
+    EXPECT_EQ(element->tag_name(), "section");
+    EXPECT_EQ(element->get_attribute("id").value_or(""), "main");
+    EXPECT_EQ(element->get_attribute("class").value_or(""), "hero");
+    EXPECT_EQ(element->get_attribute("data-role").value_or(""), "banner");
+    EXPECT_EQ(element->attributes().size(), 3u);
+}

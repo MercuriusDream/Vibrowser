@@ -23384,3 +23384,102 @@ TEST(JSEngineTest, ArrayPrototypeEveryChecksPredicateAcrossItemsV72) {
     EXPECT_TRUE(result.success) << engine.last_error();
     EXPECT_EQ(result.value, "true|false|true");
 }
+
+TEST(JSEngineTest, TypeofUndefinedReturnsUndefinedV73) {
+    clever::js::JSEngine engine;
+    const std::string js = "typeof undefined";
+    auto result = EvalResultV66{false, ""};
+    result.value = engine.evaluate(js);
+    result.success = !engine.has_error();
+    EXPECT_TRUE(result.success) << engine.last_error();
+    EXPECT_EQ(result.value, "undefined");
+}
+
+TEST(JSEngineTest, TypeofNullReturnsObjectV73) {
+    clever::js::JSEngine engine;
+    const std::string js = "typeof null";
+    auto result = EvalResultV66{false, ""};
+    result.value = engine.evaluate(js);
+    result.success = !engine.has_error();
+    EXPECT_TRUE(result.success) << engine.last_error();
+    EXPECT_EQ(result.value, "object");
+}
+
+TEST(JSEngineTest, TypeofFunctionReturnsFunctionV73) {
+    clever::js::JSEngine engine;
+    const std::string js = "typeof function namedFn() { return 73; }";
+    auto result = EvalResultV66{false, ""};
+    result.value = engine.evaluate(js);
+    result.success = !engine.has_error();
+    EXPECT_TRUE(result.success) << engine.last_error();
+    EXPECT_EQ(result.value, "function");
+}
+
+TEST(JSEngineTest, InstanceofOperatorChecksPrototypeChainV73) {
+    clever::js::JSEngine engine;
+    const std::string js = R"(
+        var arr = [1, 2, 3];
+        [(arr instanceof Array).toString(), (arr instanceof Object).toString()].join('|')
+    )";
+    auto result = EvalResultV66{false, ""};
+    result.value = engine.evaluate(js);
+    result.success = !engine.has_error();
+    EXPECT_TRUE(result.success) << engine.last_error();
+    EXPECT_EQ(result.value, "true|true");
+}
+
+TEST(JSEngineTest, InOperatorChecksObjectPropertyV73) {
+    clever::js::JSEngine engine;
+    const std::string js = R"(
+        var obj = { alpha: 1 };
+        [('alpha' in obj).toString(), ('beta' in obj).toString()].join('|')
+    )";
+    auto result = EvalResultV66{false, ""};
+    result.value = engine.evaluate(js);
+    result.success = !engine.has_error();
+    EXPECT_TRUE(result.success) << engine.last_error();
+    EXPECT_EQ(result.value, "true|false");
+}
+
+TEST(JSEngineTest, DeleteOperatorRemovesPropertyV73) {
+    clever::js::JSEngine engine;
+    const std::string js = R"(
+        var obj = { keep: 1, remove: 2 };
+        var deleted = delete obj.remove;
+        [deleted.toString(), ('remove' in obj).toString(), Object.keys(obj).join(',')].join('|')
+    )";
+    auto result = EvalResultV66{false, ""};
+    result.value = engine.evaluate(js);
+    result.success = !engine.has_error();
+    EXPECT_TRUE(result.success) << engine.last_error();
+    EXPECT_EQ(result.value, "true|false|keep");
+}
+
+TEST(JSEngineTest, VoidOperatorReturnsUndefinedV73) {
+    clever::js::JSEngine engine;
+    const std::string js = R"(
+        var base = 10;
+        var value = void (base + 5);
+        [(value === undefined).toString(), base.toString()].join('|')
+    )";
+    auto result = EvalResultV66{false, ""};
+    result.value = engine.evaluate(js);
+    result.success = !engine.has_error();
+    EXPECT_TRUE(result.success) << engine.last_error();
+    EXPECT_EQ(result.value, "true|10");
+}
+
+TEST(JSEngineTest, CommaOperatorReturnsLastExpressionV73) {
+    clever::js::JSEngine engine;
+    const std::string js = R"(
+        var first = (1, 2, 3);
+        var second = (4, 5);
+        var third = (10, 20) + 1;
+        [first.toString(), second.toString(), third.toString()].join('|')
+    )";
+    auto result = EvalResultV66{false, ""};
+    result.value = engine.evaluate(js);
+    result.success = !engine.has_error();
+    EXPECT_TRUE(result.success) << engine.last_error();
+    EXPECT_EQ(result.value, "3|5|21");
+}

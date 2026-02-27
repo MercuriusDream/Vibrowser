@@ -13707,3 +13707,200 @@ TEST(HeaderMapTest, RemoveReturnTypeIsVoidV72) {
     using RemoveSignature = void (HeaderMap::*)(const std::string&);
     EXPECT_TRUE((std::is_same_v<decltype(&HeaderMap::remove), RemoveSignature>));
 }
+
+// ---------------------------------------------------------------------------
+// Cycle 73: requested Request/Response/HeaderMap coverage additions
+// ---------------------------------------------------------------------------
+
+TEST(RequestTest, SerializeGetFormatV73) {
+    Request req;
+    req.method = Method::GET;
+    req.host = "example.com";
+    req.port = 80;
+    req.path = "/index.html";
+
+    auto bytes = req.serialize();
+    std::string serialized(bytes.begin(), bytes.end());
+
+    EXPECT_NE(serialized.find("GET /index.html HTTP/1.1\r\n"), std::string::npos);
+    EXPECT_NE(serialized.find("Host: example.com\r\n"), std::string::npos);
+    EXPECT_NE(serialized.find("\r\n\r\n"), std::string::npos);
+}
+
+TEST(RequestTest, SerializePostWithBodyV73) {
+    Request req;
+    req.method = Method::POST;
+    req.host = "post.example.com";
+    req.port = 80;
+    req.path = "/submit";
+    const std::string body = "a=1&b=two";
+    req.body.assign(body.begin(), body.end());
+
+    auto bytes = req.serialize();
+    std::string serialized(bytes.begin(), bytes.end());
+
+    EXPECT_NE(serialized.find("POST /submit HTTP/1.1\r\n"), std::string::npos);
+    EXPECT_NE(serialized.find("Content-Length: 9\r\n"), std::string::npos);
+    EXPECT_EQ(serialized.substr(serialized.size() - body.size()), body);
+}
+
+TEST(ResponseTest, Parse200V73) {
+    const std::string raw =
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Length: 2\r\n"
+        "\r\n"
+        "OK";
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 200);
+    EXPECT_EQ(resp->status_text, "OK");
+}
+
+TEST(ResponseTest, Parse404V73) {
+    const std::string raw =
+        "HTTP/1.1 404 Not Found\r\n"
+        "Content-Length: 0\r\n"
+        "\r\n";
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 404);
+    EXPECT_EQ(resp->status_text, "Not Found");
+}
+
+TEST(HeaderMapTest, SetOverwriteV73) {
+    HeaderMap map;
+    map.set("Content-Type", "text/plain");
+    map.set("content-type", "application/json");
+
+    ASSERT_TRUE(map.get("Content-Type").has_value());
+    EXPECT_EQ(map.get("Content-Type").value(), "application/json");
+    EXPECT_EQ(map.get_all("content-type").size(), 1u);
+}
+
+TEST(HeaderMapTest, HasAfterSetV73) {
+    HeaderMap map;
+    map.set("X-Trace-Id", "trace-123");
+
+    EXPECT_TRUE(map.has("x-trace-id"));
+    EXPECT_TRUE(map.has("X-Trace-Id"));
+}
+
+TEST(HeaderMapTest, RemoveV73) {
+    HeaderMap map;
+    map.set("X-Remove-Me", "gone");
+    EXPECT_TRUE(map.has("x-remove-me"));
+
+    map.remove("X-Remove-Me");
+    EXPECT_FALSE(map.has("x-remove-me"));
+}
+
+TEST(HeaderMapTest, EmptyDefaultV73) {
+    HeaderMap map;
+    EXPECT_TRUE(map.empty());
+    EXPECT_EQ(map.size(), 0u);
+}
+
+TEST(HeaderMapTest, SizeTrackingV73) {
+    HeaderMap map;
+    EXPECT_EQ(map.size(), 0u);
+
+    map.set("Host", "example.com");
+    EXPECT_EQ(map.size(), 1u);
+
+    map.append("Accept", "text/html");
+    EXPECT_EQ(map.size(), 2u);
+
+    map.append("Accept", "application/json");
+    EXPECT_EQ(map.size(), 3u);
+
+    map.set("Accept", "*/*");
+    EXPECT_EQ(map.size(), 2u);
+}
+
+TEST(HeaderMapTest, GetMissingNulloptV73) {
+    HeaderMap map;
+    EXPECT_FALSE(map.get("x-missing").has_value());
+}
+
+TEST(RequestTest, DefaultPort80V73) {
+    Request req;
+    req.url = "http://example.com/path";
+    req.parse_url();
+
+    EXPECT_EQ(req.port, 80);
+}
+
+TEST(RequestTest, PathIndexHtmlV73) {
+    Request req;
+    req.url = "http://example.com/index.html";
+    req.parse_url();
+
+    EXPECT_EQ(req.path, "/index.html");
+}
+
+TEST(ResponseTest, HeadersExtractionV73) {
+    const std::string raw =
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Type: text/plain\r\n"
+        "X-Test: V73\r\n"
+        "Content-Length: 2\r\n"
+        "\r\n"
+        "ok";
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value());
+    ASSERT_TRUE(resp->headers.get("content-type").has_value());
+    ASSERT_TRUE(resp->headers.get("x-test").has_value());
+    EXPECT_EQ(resp->headers.get("content-type").value(), "text/plain");
+    EXPECT_EQ(resp->headers.get("x-test").value(), "V73");
+}
+
+TEST(ResponseTest, BodyAsStringV73) {
+    const std::string raw =
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Length: 11\r\n"
+        "\r\n"
+        "hello world";
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->body_as_string(), "hello world");
+}
+
+TEST(RequestTest, BodyPreservesBinaryV73) {
+    Request req;
+    req.method = Method::POST;
+    req.host = "upload.example.com";
+    req.port = 80;
+    req.path = "/binary";
+    req.body = {0x00, 0x7F, 0x80, 0xFF, 0x42};
+
+    auto bytes = req.serialize();
+    ASSERT_GE(bytes.size(), req.body.size());
+    EXPECT_TRUE(std::equal(req.body.begin(), req.body.end(),
+                           bytes.end() - static_cast<std::ptrdiff_t>(req.body.size())));
+}
+
+TEST(ResponseTest, StatusCode500V73) {
+    const std::string raw =
+        "HTTP/1.1 500 Internal Server Error\r\n"
+        "Content-Length: 0\r\n"
+        "\r\n";
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 500);
+    EXPECT_EQ(resp->status_text, "Internal Server Error");
+}

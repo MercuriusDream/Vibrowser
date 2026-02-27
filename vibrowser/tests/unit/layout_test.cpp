@@ -13402,3 +13402,132 @@ TEST(LayoutEngineTest, SpecifiedHeightOverridesFlowHeightV72) {
     EXPECT_FLOAT_EQ(root->children[1]->geometry.y, 40.0f);
     EXPECT_FLOAT_EQ(root->geometry.height, 75.0f);
 }
+
+// Test V73_001: empty block has zero height
+TEST(LayoutEngineTest, EmptyBlockZeroHeightV73) {
+    auto root = make_block("div");
+
+    LayoutEngine engine;
+    const float vw = 800.0f;
+    const float vh = 600.0f;
+    engine.compute(*root, vw, vh);
+
+    EXPECT_FLOAT_EQ(root->geometry.height, 0.0f);
+}
+
+// Test V73_002: single text child contributes height to parent
+TEST(LayoutEngineTest, SingleTextChildHeightV73) {
+    auto root = make_block("div");
+    auto text = make_text("hello", 20.0f);
+    root->append_child(std::move(text));
+
+    LayoutEngine engine;
+    const float vw = 700.0f;
+    const float vh = 400.0f;
+    engine.compute(*root, vw, vh);
+
+    ASSERT_EQ(root->children.size(), 1u);
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.height, 24.0f);
+    EXPECT_FLOAT_EQ(root->geometry.height, 24.0f);
+}
+
+// Test V73_003: two block children heights sum in normal flow
+TEST(LayoutEngineTest, TwoBlocksSumHeightsV73) {
+    auto root = make_block("div");
+    auto first = make_block("div");
+    first->specified_height = 30.0f;
+    auto second = make_block("div");
+    second->specified_height = 45.0f;
+    root->append_child(std::move(first));
+    root->append_child(std::move(second));
+
+    LayoutEngine engine;
+    const float vw = 640.0f;
+    const float vh = 480.0f;
+    engine.compute(*root, vw, vh);
+
+    ASSERT_EQ(root->children.size(), 2u);
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.y, 30.0f);
+    EXPECT_FLOAT_EQ(root->geometry.height, 75.0f);
+}
+
+// Test V73_004: specified width is respected
+TEST(LayoutEngineTest, SpecifiedWidthRespectedV73) {
+    auto root = make_block("div");
+    root->specified_width = 320.0f;
+
+    LayoutEngine engine;
+    const float vw = 900.0f;
+    const float vh = 500.0f;
+    engine.compute(*root, vw, vh);
+
+    EXPECT_FLOAT_EQ(root->geometry.width, 320.0f);
+}
+
+// Test V73_005: min-height enforces minimum box height
+TEST(LayoutEngineTest, MinHeightEnforcedV73) {
+    auto root = make_block("div");
+    root->min_height = 90.0f;
+
+    LayoutEngine engine;
+    const float vw = 600.0f;
+    const float vh = 300.0f;
+    engine.compute(*root, vw, vh);
+
+    EXPECT_FLOAT_EQ(root->geometry.height, 90.0f);
+}
+
+// Test V73_006: max-width clamps computed width
+TEST(LayoutEngineTest, MaxWidthClampedV73) {
+    auto root = make_block("div");
+    root->max_width = 250.0f;
+
+    LayoutEngine engine;
+    const float vw = 1000.0f;
+    const float vh = 600.0f;
+    engine.compute(*root, vw, vh);
+
+    EXPECT_FLOAT_EQ(root->geometry.width, 250.0f);
+}
+
+// Test V73_007: padding is included in total box dimensions
+TEST(LayoutEngineTest, PaddingAddedToBoxV73) {
+    auto root = make_block("div");
+    auto child = make_block("div");
+    child->specified_width = 120.0f;
+    child->specified_height = 20.0f;
+    child->geometry.padding.left = 8.0f;
+    child->geometry.padding.right = 12.0f;
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    const float vw = 500.0f;
+    const float vh = 400.0f;
+    engine.compute(*root, vw, vh);
+
+    ASSERT_EQ(root->children.size(), 1u);
+    const auto& g = root->children[0]->geometry;
+    EXPECT_FLOAT_EQ(g.width, 120.0f);
+    EXPECT_FLOAT_EQ(g.border_box_width(), 140.0f);
+}
+
+// Test V73_008: border contributes to total box dimensions
+TEST(LayoutEngineTest, BorderIncludedInTotalV73) {
+    auto root = make_block("div");
+    auto child = make_block("div");
+    child->specified_width = 100.0f;
+    child->specified_height = 22.0f;
+    child->geometry.border.top = 3.0f;
+    child->geometry.border.bottom = 5.0f;
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    const float vw = 500.0f;
+    const float vh = 300.0f;
+    engine.compute(*root, vw, vh);
+
+    ASSERT_EQ(root->children.size(), 1u);
+    const auto& g = root->children[0]->geometry;
+    EXPECT_FLOAT_EQ(g.height, 22.0f);
+    EXPECT_FLOAT_EQ(g.border_box_height(), 30.0f);
+}

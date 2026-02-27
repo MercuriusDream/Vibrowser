@@ -10873,3 +10873,104 @@ TEST(SerializerTest, DeserializerFromRawBufferV72) {
     EXPECT_EQ(d.read_string(), "raw-buffer");
     EXPECT_FALSE(d.has_remaining());
 }
+
+TEST(SerializerTest, WriteU32PowersOfTwoV73) {
+    Serializer s;
+    for (uint32_t i = 0; i < 32u; ++i) {
+        s.write_u32(1u << i);
+    }
+
+    Deserializer d(s.data());
+    for (uint32_t i = 0; i < 32u; ++i) {
+        EXPECT_EQ(d.read_u32(), 1u << i);
+    }
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, WriteStringWithCjkCharactersV73) {
+    const std::string text =
+        "\xE6\xBC\xA2\xE5\xAD\x97\xE3\x81\x8B\xE3\x81\xAA\xED\x95\x9C\xEA\xB8\x80";
+    Serializer s;
+    s.write_string(text);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), text);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, WriteBoolAfterStringV73) {
+    Serializer s;
+    s.write_string("hello");
+    s.write_bool(true);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "hello");
+    EXPECT_TRUE(d.read_bool());
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, WriteBytesExactSize1024V73) {
+    std::vector<uint8_t> bytes(1024);
+    for (size_t i = 0; i < bytes.size(); ++i) {
+        bytes[i] = static_cast<uint8_t>(i & 0xFFu);
+    }
+
+    Serializer s;
+    s.write_bytes(bytes.data(), bytes.size());
+
+    Deserializer d(s.data());
+    const std::vector<uint8_t> read_back = d.read_bytes();
+    EXPECT_EQ(read_back.size(), 1024u);
+    EXPECT_EQ(read_back, bytes);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, WriteU32ThenBytesInterleavedV73) {
+    const std::vector<uint8_t> first = {0x10u, 0x20u, 0x30u};
+    const std::vector<uint8_t> second = {0x01u, 0x02u, 0x03u, 0x04u, 0x05u};
+
+    Serializer s;
+    s.write_u32(11u);
+    s.write_bytes(first.data(), first.size());
+    s.write_u32(22u);
+    s.write_bytes(second.data(), second.size());
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u32(), 11u);
+    EXPECT_EQ(d.read_bytes(), first);
+    EXPECT_EQ(d.read_u32(), 22u);
+    EXPECT_EQ(d.read_bytes(), second);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, EmptyBufferSizeIsZeroV73) {
+    Serializer s;
+    EXPECT_EQ(s.data().size(), 0u);
+}
+
+TEST(SerializerTest, WriteReadStringPreservesLengthV73) {
+    const std::string text("abc\0def", 7);
+    Serializer s;
+    s.write_string(text);
+
+    Deserializer d(s.data());
+    const std::string read_back = d.read_string();
+    EXPECT_EQ(read_back.size(), text.size());
+    EXPECT_EQ(read_back, text);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, MultipleWritesTotalDataSizeV73) {
+    const std::vector<uint8_t> payload = {0xAAu, 0xBBu, 0x00u, 0x11u, 0x22u};
+    Serializer s;
+    s.write_u32(0xAABBCCDDu);
+    s.write_string("abc");
+    s.write_bool(false);
+    s.write_bytes(payload.data(), payload.size());
+    s.write_u16(0xBEEFu);
+
+    const size_t expected_size =
+        sizeof(uint32_t) + sizeof(uint32_t) + 3u + sizeof(uint8_t) +
+        sizeof(uint32_t) + payload.size() + sizeof(uint16_t);
+    EXPECT_EQ(s.data().size(), expected_size);
+}

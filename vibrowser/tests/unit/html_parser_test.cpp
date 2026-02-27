@@ -11582,3 +11582,124 @@ TEST(HTMLParserTest, TextareaWithDefaultTextV72) {
     EXPECT_EQ(textarea->tag_name, "textarea");
     EXPECT_EQ(textarea->text_content(), "Default text value");
 }
+
+TEST(HTMLParserTest, BodyContainsDivChildrenV73) {
+    auto doc = clever::html::parse("<body><div>First</div><div>Second</div></body>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* body = doc->find_element("body");
+    ASSERT_NE(body, nullptr);
+    ASSERT_EQ(body->children.size(), 2u);
+    EXPECT_EQ(body->children[0]->type, clever::html::SimpleNode::Element);
+    EXPECT_EQ(body->children[1]->type, clever::html::SimpleNode::Element);
+    EXPECT_EQ(body->children[0]->tag_name, "div");
+    EXPECT_EQ(body->children[1]->tag_name, "div");
+    EXPECT_EQ(body->children[0]->text_content(), "First");
+    EXPECT_EQ(body->children[1]->text_content(), "Second");
+}
+
+TEST(HTMLParserTest, HeadHasTitleElementV73) {
+    auto doc = clever::html::parse("<html><head><title>Parser Title</title></head><body></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* head = doc->find_element("head");
+    auto* title = doc->find_element("title");
+    ASSERT_NE(head, nullptr);
+    ASSERT_NE(title, nullptr);
+    EXPECT_EQ(head->tag_name, "head");
+    EXPECT_EQ(title->tag_name, "title");
+    EXPECT_EQ(title->parent, head);
+    EXPECT_EQ(title->text_content(), "Parser Title");
+}
+
+TEST(HTMLParserTest, MetaCharsetUtf8V73) {
+    auto doc = clever::html::parse("<head><meta charset='utf-8'></head>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* meta = doc->find_element("meta");
+    ASSERT_NE(meta, nullptr);
+    EXPECT_EQ(meta->tag_name, "meta");
+    EXPECT_EQ(get_attr_v63(meta, "charset"), "utf-8");
+}
+
+TEST(HTMLParserTest, LinkStylesheetElementV73) {
+    auto doc = clever::html::parse("<head><link rel='stylesheet' href='/assets/site.css'></head>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* link = doc->find_element("link");
+    ASSERT_NE(link, nullptr);
+    EXPECT_EQ(link->tag_name, "link");
+    EXPECT_TRUE(link->children.empty());
+    EXPECT_EQ(get_attr_v63(link, "rel"), "stylesheet");
+    EXPECT_EQ(get_attr_v63(link, "href"), "/assets/site.css");
+}
+
+TEST(HTMLParserTest, EmptyDivHasNoChildrenV73) {
+    auto doc = clever::html::parse("<body><div></div></body>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* div = doc->find_element("div");
+    ASSERT_NE(div, nullptr);
+    EXPECT_EQ(div->tag_name, "div");
+    EXPECT_TRUE(div->children.empty());
+    EXPECT_TRUE(div->text_content().empty());
+}
+
+TEST(HTMLParserTest, TextAfterElementInBodyV73) {
+    auto doc = clever::html::parse("<body><span>lead</span>tail</body>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* body = doc->find_element("body");
+    ASSERT_NE(body, nullptr);
+    EXPECT_EQ(body->text_content(), "leadtail");
+
+    bool found_text_after_span = false;
+    for (size_t i = 0; i + 1 < body->children.size(); ++i) {
+        if (body->children[i]->type == clever::html::SimpleNode::Element &&
+            body->children[i]->tag_name == "span" &&
+            body->children[i + 1]->type == clever::html::SimpleNode::Text &&
+            body->children[i + 1]->data == "tail") {
+            found_text_after_span = true;
+        }
+    }
+    EXPECT_TRUE(found_text_after_span);
+}
+
+TEST(HTMLParserTest, BrBetweenTextNodesV73) {
+    auto doc = clever::html::parse("<body>alpha<br>beta</body>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* body = doc->find_element("body");
+    auto* br = doc->find_element("br");
+    ASSERT_NE(body, nullptr);
+    ASSERT_NE(br, nullptr);
+    EXPECT_EQ(br->tag_name, "br");
+    EXPECT_EQ(br->parent, body);
+    EXPECT_TRUE(br->children.empty());
+    EXPECT_EQ(body->text_content(), "alphabeta");
+
+    bool found_br_between_text = false;
+    for (size_t i = 1; i + 1 < body->children.size(); ++i) {
+        if (body->children[i]->type == clever::html::SimpleNode::Element &&
+            body->children[i]->tag_name == "br" &&
+            body->children[i - 1]->type == clever::html::SimpleNode::Text &&
+            body->children[i + 1]->type == clever::html::SimpleNode::Text &&
+            body->children[i - 1]->data == "alpha" &&
+            body->children[i + 1]->data == "beta") {
+            found_br_between_text = true;
+        }
+    }
+    EXPECT_TRUE(found_br_between_text);
+}
+
+TEST(HTMLParserTest, ImgAltAttributeV73) {
+    auto doc = clever::html::parse("<body><img src='photo.jpg' alt='profile image'></body>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* img = doc->find_element("img");
+    ASSERT_NE(img, nullptr);
+    EXPECT_EQ(img->tag_name, "img");
+    EXPECT_TRUE(img->children.empty());
+    EXPECT_EQ(get_attr_v63(img, "src"), "photo.jpg");
+    EXPECT_EQ(get_attr_v63(img, "alt"), "profile image");
+}
