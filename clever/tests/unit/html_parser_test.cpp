@@ -3551,3 +3551,83 @@ TEST(TreeBuilder, MetaOgTitle) {
         if (attr.name == "property" && attr.value == "og:title") found = true;
     EXPECT_TRUE(found);
 }
+
+TEST(TreeBuilder, InputTypeRangeV2) {
+    auto doc = clever::html::parse(R"(<input type="range" min="0" max="100" value="50">)");
+    auto* input = doc->find_element("input");
+    ASSERT_NE(input, nullptr);
+    bool found = false;
+    for (const auto& attr : input->attributes)
+        if (attr.name == "type" && attr.value == "range") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, InputTypeColor) {
+    auto doc = clever::html::parse(R"(<input type="color" value="#ff0000">)");
+    auto* input = doc->find_element("input");
+    ASSERT_NE(input, nullptr);
+    bool found = false;
+    for (const auto& attr : input->attributes)
+        if (attr.name == "type" && attr.value == "color") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, InputTypeDateV2) {
+    auto doc = clever::html::parse(R"(<input type="date" name="birthday">)");
+    auto* input = doc->find_element("input");
+    ASSERT_NE(input, nullptr);
+    bool found = false;
+    for (const auto& attr : input->attributes)
+        if (attr.name == "type" && attr.value == "date") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, InputTypeTime) {
+    auto doc = clever::html::parse(R"(<input type="time" name="appt">)");
+    auto* input = doc->find_element("input");
+    ASSERT_NE(input, nullptr);
+    bool found = false;
+    for (const auto& attr : input->attributes)
+        if (attr.name == "type" && attr.value == "time") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, InputTypeFileV2) {
+    auto doc = clever::html::parse(R"(<input type="file" accept=".pdf,.doc">)");
+    auto* input = doc->find_element("input");
+    ASSERT_NE(input, nullptr);
+    bool found = false;
+    for (const auto& attr : input->attributes)
+        if (attr.name == "type" && attr.value == "file") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, InputTypeNumberV2) {
+    auto doc = clever::html::parse(R"(<input type="number" min="1" max="10" step="1">)");
+    auto* input = doc->find_element("input");
+    ASSERT_NE(input, nullptr);
+    bool found = false;
+    for (const auto& attr : input->attributes)
+        if (attr.name == "type" && attr.value == "number") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, InputTypeEmailV2) {
+    auto doc = clever::html::parse(R"(<input type="email" required placeholder="you@example.com">)");
+    auto* input = doc->find_element("input");
+    ASSERT_NE(input, nullptr);
+    bool found = false;
+    for (const auto& attr : input->attributes)
+        if (attr.name == "type" && attr.value == "email") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, InputTypePasswordV2) {
+    auto doc = clever::html::parse(R"(<input type="password" autocomplete="current-password">)");
+    auto* input = doc->find_element("input");
+    ASSERT_NE(input, nullptr);
+    bool found = false;
+    for (const auto& attr : input->attributes)
+        if (attr.name == "type" && attr.value == "password") found = true;
+    EXPECT_TRUE(found);
+}
