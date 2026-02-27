@@ -19510,3 +19510,55 @@ TEST(JSEngine, SymbolPrimitiveCycle1353) {
     auto result = engine.evaluate("const sym = Symbol('test'); typeof sym");
     EXPECT_EQ(result, "symbol");
 }
+
+// Cycle 1362 - String Methods
+TEST(JSEngine, StringPadStartCycle1362) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("const str = '5'; str.padStart(3, '0')");
+    EXPECT_EQ(result, "005");
+}
+
+TEST(JSEngine, StringIncludesMethodCycle1362) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("const text = 'JavaScript'; text.includes('Script').toString()");
+    EXPECT_EQ(result, "true");
+}
+
+// Cycle 1362 - Array Methods
+TEST(JSEngine, ArrayFindMethodCycle1362) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("const arr = [1, 2, 3, 4, 5]; arr.find(x => x > 3).toString()");
+    EXPECT_EQ(result, "4");
+}
+
+TEST(JSEngine, ArrayFlatMapMethodCycle1362) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("const arr = [1, 2, 3]; arr.flatMap(x => [x, x * 2]).toString()");
+    EXPECT_EQ(result, "1,2,2,4,3,6");
+}
+
+// Cycle 1362 - Object Methods
+TEST(JSEngine, ObjectKeysCycle1362) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("const obj = {a: 1, b: 2, c: 3}; Object.keys(obj).toString()");
+    EXPECT_EQ(result, "a,b,c");
+}
+
+TEST(JSEngine, ObjectAssignCycle1362) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("const obj1 = {a: 1}; const obj2 = {b: 2}; const merged = Object.assign({}, obj1, obj2); (merged.a + merged.b).toString()");
+    EXPECT_EQ(result, "3");
+}
+
+// Cycle 1362 - Number Methods
+TEST(JSEngine, NumberIsFiniteCycle1362) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("Number.isFinite(42).toString()");
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, ArraySomeMethodCycle1362) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("const arr = [1, 2, 3, 4]; arr.some(x => x > 3).toString()");
+    EXPECT_EQ(result, "true");
+}

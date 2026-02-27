@@ -8606,4 +8606,76 @@ TEST_F(CSSStylesheetTest, PerspectiveV29) {
     EXPECT_TRUE(found);
 }
 
+TEST_F(CSSStylesheetTest, FontWeightV30) {
+    auto ss = parse_stylesheet("strong { font-weight: 700; }");
+    ASSERT_EQ(ss.rules.size(), 1);
+    bool found = false;
+    for (auto& d : ss.rules[0].declarations)
+        if (d.property == "font-weight") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, LineHeightV30) {
+    auto ss = parse_stylesheet("p { line-height: 1.5; }");
+    ASSERT_EQ(ss.rules.size(), 1);
+    bool found = false;
+    for (auto& d : ss.rules[0].declarations)
+        if (d.property == "line-height") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, LetterSpacingV30) {
+    auto ss = parse_stylesheet("h2 { letter-spacing: 0.05em; }");
+    ASSERT_EQ(ss.rules.size(), 1);
+    bool found = false;
+    for (auto& d : ss.rules[0].declarations)
+        if (d.property == "letter-spacing") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, WordSpacingV30) {
+    auto ss = parse_stylesheet("div { word-spacing: 2px; }");
+    ASSERT_EQ(ss.rules.size(), 1);
+    bool found = false;
+    for (auto& d : ss.rules[0].declarations)
+        if (d.property == "word-spacing") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, TextIndentV30) {
+    auto ss = parse_stylesheet("article { text-indent: 2rem; }");
+    ASSERT_EQ(ss.rules.size(), 1);
+    bool found = false;
+    for (auto& d : ss.rules[0].declarations)
+        if (d.property == "text-indent") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, VerticalAlignV30) {
+    auto ss = parse_stylesheet("img { vertical-align: middle; }");
+    ASSERT_EQ(ss.rules.size(), 1);
+    bool found = false;
+    for (auto& d : ss.rules[0].declarations)
+        if (d.property == "vertical-align") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, WhiteSpaceV30) {
+    auto ss = parse_stylesheet("pre { white-space: pre-wrap; }");
+    ASSERT_EQ(ss.rules.size(), 1);
+    bool found = false;
+    for (auto& d : ss.rules[0].declarations)
+        if (d.property == "white-space") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, TextOverflowV30) {
+    auto ss = parse_stylesheet("span { text-overflow: ellipsis; }");
+    ASSERT_EQ(ss.rules.size(), 1);
+    bool found = false;
+    for (auto& d : ss.rules[0].declarations)
+        if (d.property == "text-overflow") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
 // Cycle 1350

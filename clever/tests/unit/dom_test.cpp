@@ -7460,3 +7460,66 @@ TEST(DomElement, SetAttributeEmptyName) {
     EXPECT_TRUE(el->has_attribute("data-empty"));
     EXPECT_EQ(el->get_attribute("data-empty"), "");
 }
+
+TEST(DomElement, TagNameSelect) {
+    Document doc;
+    auto el = doc.create_element("select");
+    EXPECT_EQ(el->tag_name(), "select");
+}
+
+TEST(DomElement, TagNameTextarea) {
+    Document doc;
+    auto el = doc.create_element("textarea");
+    EXPECT_EQ(el->tag_name(), "textarea");
+}
+
+TEST(DomElement, SetAttributeActionV2) {
+    Document doc;
+    auto el = doc.create_element("form");
+    el->set_attribute("action", "/submit");
+    EXPECT_EQ(el->get_attribute("action"), "/submit");
+}
+
+TEST(DomElement, SetAttributeMethodV2) {
+    Document doc;
+    auto el = doc.create_element("form");
+    el->set_attribute("method", "post");
+    EXPECT_EQ(el->get_attribute("method"), "post");
+}
+
+TEST(DomElement, ChildCount2000) {
+    Document doc;
+    auto parent = doc.create_element("div");
+    for (int i = 0; i < 2000; ++i) {
+        parent->append_child(doc.create_element("span"));
+    }
+    int count = 0;
+    parent->for_each_child([&](const Node&) { ++count; });
+    EXPECT_EQ(count, 2000);
+}
+
+TEST(DomElement, RemoveAttributeAlt) {
+    Document doc;
+    auto el = doc.create_element("img");
+    el->set_attribute("alt", "photo");
+    el->remove_attribute("alt");
+    EXPECT_FALSE(el->has_attribute("alt"));
+}
+
+TEST(DomElement, HasAttributeReadonlyV2) {
+    Document doc;
+    auto el = doc.create_element("input");
+    el->set_attribute("readonly", "");
+    EXPECT_TRUE(el->has_attribute("readonly"));
+}
+
+TEST(DomElement, SetAttributeMultipleValues) {
+    Document doc;
+    auto el = doc.create_element("div");
+    el->set_attribute("data-a", "1");
+    el->set_attribute("data-b", "2");
+    el->set_attribute("data-c", "3");
+    EXPECT_EQ(el->get_attribute("data-a"), "1");
+    EXPECT_EQ(el->get_attribute("data-b"), "2");
+    EXPECT_EQ(el->get_attribute("data-c"), "3");
+}

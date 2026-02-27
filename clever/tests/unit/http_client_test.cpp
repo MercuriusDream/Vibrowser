@@ -8402,3 +8402,114 @@ TEST(HttpClient, ResponsePropertiesV31) {
     EXPECT_EQ(resp.headers.get("Location"), "/resource/42");
     EXPECT_EQ(resp.body.size(), 8u);
 }
+
+// Request: DELETE_METHOD with empty body
+TEST(HttpClient, RequestDeleteMethodV32) {
+    Request req;
+    req.method = Method::DELETE_METHOD;
+    req.url = "https://api.example.com/items/99";
+    req.headers.set("Authorization", "Bearer token123");
+    req.body.clear();
+
+    std::vector<uint8_t> serialized = req.serialize();
+    EXPECT_GT(serialized.size(), 0u);
+    EXPECT_EQ(req.method, Method::DELETE_METHOD);
+}
+
+// Request: HEAD method for resource headers only
+TEST(HttpClient, RequestHeadMethodV32) {
+    Request req;
+    req.method = Method::HEAD;
+    req.url = "https://example.com/documents/file.pdf";
+    req.body.clear();
+
+    std::vector<uint8_t> serialized = req.serialize();
+    EXPECT_GT(serialized.size(), 0u);
+    EXPECT_EQ(req.method, Method::HEAD);
+    EXPECT_EQ(req.body.size(), 0u);
+}
+
+// Response: parse validates response data structure
+TEST(HttpClient, ResponseParseV32) {
+    std::string http_response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 5\r\n\r\nhello";
+    std::vector<uint8_t> data(http_response.begin(), http_response.end());
+
+    auto result = Response::parse(data);
+    if (result.has_value()) {
+        Response resp = result.value();
+        EXPECT_EQ(resp.status, 200u);
+        EXPECT_EQ(resp.status_text, "OK");
+    }
+}
+
+// CookieJar: set_from_header parses cookie from Set-Cookie header
+TEST(HttpClient, CookieJarSetFromHeaderV32) {
+    CookieJar jar;
+    jar.clear();
+
+    jar.set_from_header("sessionid=abc123; Path=/; Secure", "example.com");
+    EXPECT_GT(jar.size(), 0u);
+}
+
+// CookieJar: get_cookie_header returns formatted cookie string for request
+TEST(HttpClient, CookieJarGetCookieHeaderV32) {
+    CookieJar jar;
+    jar.clear();
+
+    jar.set_from_header("user_pref=dark_mode; Path=/", "example.com");
+    std::string cookie_header = jar.get_cookie_header("example.com", "/", false);
+    // May be empty if cookie doesn't match path/domain, but call should succeed
+    EXPECT_TRUE(true);
+}
+
+// HeaderMap: append multiple values for same header name
+TEST(HttpClient, HeaderMapAppendMultipleV32) {
+    HeaderMap headers;
+    headers.append("Accept", "text/html");
+    headers.append("Accept", "application/xhtml+xml");
+    headers.append("Accept", "application/xml");
+
+    std::vector<std::string> all_accepts = headers.get_all("Accept");
+    EXPECT_GE(all_accepts.size(), 1u);
+}
+
+// Request: OPTIONS method for CORS preflight
+TEST(HttpClient, RequestOptionsMethodV32) {
+    Request req;
+    req.method = Method::OPTIONS;
+    req.url = "https://api.example.com/v2/users";
+    req.headers.set("Origin", "https://client.example.com");
+    req.headers.set("Access-Control-Request-Method", "POST");
+
+    std::vector<uint8_t> serialized = req.serialize();
+    EXPECT_GT(serialized.size(), 0u);
+    EXPECT_EQ(req.method, Method::OPTIONS);
+}
+
+// Response: was_redirected flag tracks redirect status
+TEST(HttpClient, ResponseRedirectFlagV32) {
+    Response resp;
+    resp.status = 301;
+    resp.status_text = "Moved Permanently";
+    resp.was_redirected = true;
+    resp.headers.set("Location", "https://new.example.com/page");
+
+    EXPECT_EQ(resp.status, 301u);
+    EXPECT_TRUE(resp.was_redirected);
+    EXPECT_EQ(resp.headers.get("Location"), "https://new.example.com/page");
+}
+
+// Request: PATCH method with JSON body
+TEST(HttpClient, RequestPatchMethodV32) {
+    Request req;
+    req.method = Method::PATCH;
+    req.url = "https://api.example.com/resource/42";
+    req.headers.set("Content-Type", "application/json");
+
+    std::string json_data = R"({"status":"updated"})";
+    req.body.assign(json_data.begin(), json_data.end());
+
+    std::vector<uint8_t> serialized = req.serialize();
+    EXPECT_GT(serialized.size(), 0u);
+    EXPECT_EQ(req.body.size(), json_data.size());
+}

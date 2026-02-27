@@ -6866,3 +6866,94 @@ TEST(SerializerTest, StringAndBoolV28) {
     EXPECT_EQ(d.read_string(), "Cycle1347");
     EXPECT_EQ(d.read_bool(), false);
 }
+
+// Cycle 1348: V29 Tests
+
+TEST(SerializerTest, F64RoundTripV29) {
+    Serializer s;
+    s.write_f64(1.5);
+    Deserializer d(s.data());
+    EXPECT_DOUBLE_EQ(d.read_f64(), 1.5);
+}
+
+TEST(SerializerTest, BytesRoundTripV29) {
+    Serializer s;
+    std::vector<uint8_t> data = {0xAB, 0xCD, 0xEF, 0x12, 0x34};
+    s.write_bytes(data.data(), data.size());
+    Deserializer d(s.data());
+    auto result = d.read_bytes();
+    EXPECT_EQ(result, data);
+}
+
+TEST(SerializerTest, MixedU16AndI32V29) {
+    Serializer s;
+    s.write_u16(12345);
+    s.write_i32(-42000);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u16(), 12345u);
+    EXPECT_EQ(d.read_i32(), -42000);
+}
+
+TEST(SerializerTest, StringWithEmptyV29) {
+    Serializer s;
+    s.write_string("NotEmpty");
+    s.write_string("");
+    s.write_string("AlsoNotEmpty");
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "NotEmpty");
+    EXPECT_EQ(d.read_string(), "");
+    EXPECT_EQ(d.read_string(), "AlsoNotEmpty");
+}
+
+TEST(SerializerTest, SequentialBooleansV29) {
+    Serializer s;
+    s.write_bool(true);
+    s.write_bool(false);
+    s.write_bool(true);
+    s.write_bool(true);
+    s.write_bool(false);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_bool(), true);
+    EXPECT_EQ(d.read_bool(), false);
+    EXPECT_EQ(d.read_bool(), true);
+    EXPECT_EQ(d.read_bool(), true);
+    EXPECT_EQ(d.read_bool(), false);
+}
+
+TEST(SerializerTest, LargeU64AndNegativeI64V29) {
+    Serializer s;
+    s.write_u64(9876543210987654321ULL);
+    s.write_i64(-1234567890123456789LL);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u64(), 9876543210987654321ULL);
+    EXPECT_EQ(d.read_i64(), -1234567890123456789LL);
+}
+
+TEST(SerializerTest, ComplexMixedTypesV29) {
+    Serializer s;
+    s.write_u8(99);
+    s.write_string("TestData");
+    s.write_f64(2.71828);
+    s.write_bool(true);
+    s.write_u32(0xDEADBEEF);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u8(), 99u);
+    EXPECT_EQ(d.read_string(), "TestData");
+    EXPECT_DOUBLE_EQ(d.read_f64(), 2.71828);
+    EXPECT_EQ(d.read_bool(), true);
+    EXPECT_EQ(d.read_u32(), 0xDEADBEEFu);
+}
+
+TEST(SerializerTest, BytesWithSpecialValuesV29) {
+    Serializer s;
+    std::vector<uint8_t> data = {0x00, 0xFF, 0x80, 0x7F, 0xAA};
+    s.write_bytes(data.data(), data.size());
+    Deserializer d(s.data());
+    auto result = d.read_bytes();
+    EXPECT_EQ(result.size(), 5u);
+    EXPECT_EQ(result[0], 0x00);
+    EXPECT_EQ(result[1], 0xFF);
+    EXPECT_EQ(result[2], 0x80);
+    EXPECT_EQ(result[3], 0x7F);
+    EXPECT_EQ(result[4], 0xAA);
+}

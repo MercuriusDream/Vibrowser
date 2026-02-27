@@ -9344,3 +9344,44 @@ TEST(LayoutNodeProps, ContainerTypeDefaultV29) {
     LayoutNode n;
     EXPECT_EQ(n.container_type, 0);
 }
+
+// Cycle 1361: Layout node tests V30
+TEST(LayoutNodeProps, FlexGrowDefaultV30) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.flex_grow, 0.0f);
+}
+
+TEST(LayoutNodeProps, FlexShrinkDefaultV30) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.flex_shrink, 1.0f);
+}
+
+TEST(LayoutNodeProps, ScrollMarginTopDefaultV30) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.scroll_margin_top, 0.0f);
+}
+
+TEST(LayoutNodeProps, ScrollMarginRightDefaultV30) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.scroll_margin_right, 0.0f);
+}
+
+TEST(LayoutNodeProps, ScrollPaddingBottomDefaultV30) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.scroll_padding_bottom, 0.0f);
+}
+
+TEST(LayoutNodeProps, ScrollPaddingLeftDefaultV30) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.scroll_padding_left, 0.0f);
+}
+
+TEST(LayoutNodeProps, OrderDefaultV30) {
+    LayoutNode n;
+    EXPECT_EQ(n.order, 0);
+}
+
+TEST(LayoutNodeProps, ScrollSnapTypeDefaultV30) {
+    LayoutNode n;
+    EXPECT_EQ(n.scroll_snap_type, "");
+}

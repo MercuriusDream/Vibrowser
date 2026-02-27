@@ -5936,3 +5936,85 @@ TEST(URLParser, ComplexUrlAllComponentsV20) {
     EXPECT_EQ(url->query, "key=abc&token=xyz");
     EXPECT_EQ(url->fragment, "result");
 }
+
+TEST(URLParser, IPAddressURLV21) {
+    auto url = parse("http://192.168.1.1:8080/admin/dashboard");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "http");
+    EXPECT_EQ(url->host, "192.168.1.1");
+    ASSERT_TRUE(url->port.has_value());
+    EXPECT_EQ(url->port.value(), 8080);
+    EXPECT_EQ(url->path, "/admin/dashboard");
+    EXPECT_TRUE(url->query.empty());
+    EXPECT_TRUE(url->fragment.empty());
+}
+
+TEST(URLParser, PathResolutionDotDotV21) {
+    auto url = parse("https://example.com/a/b/c/../d");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "example.com");
+    EXPECT_EQ(url->path, "/a/b/d");
+    EXPECT_EQ(url->port, std::nullopt);
+}
+
+TEST(URLParser, UppercaseSchemesNormalizedV21) {
+    auto url = parse("HTTPS://EXAMPLE.COM/path");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "example.com");
+    EXPECT_EQ(url->path, "/path");
+}
+
+TEST(URLParser, TrailingSlashHandlingV21) {
+    auto url = parse("http://example.net:9090/api/");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "http");
+    EXPECT_EQ(url->host, "example.net");
+    ASSERT_TRUE(url->port.has_value());
+    EXPECT_EQ(url->port.value(), 9090);
+    EXPECT_EQ(url->path, "/api/");
+}
+
+TEST(URLParser, CustomPortHTTPSV21) {
+    auto url = parse("https://secure.example.com:9443/login?redirect=/home");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "secure.example.com");
+    ASSERT_TRUE(url->port.has_value());
+    EXPECT_EQ(url->port.value(), 9443);
+    EXPECT_EQ(url->path, "/login");
+    EXPECT_EQ(url->query, "redirect=/home");
+}
+
+TEST(URLParser, MultipleQueryParamsV21) {
+    auto url = parse("https://api.data.io/search?q=test&limit=10&offset=0&sort=desc");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "api.data.io");
+    EXPECT_EQ(url->path, "/search");
+    EXPECT_EQ(url->query, "q=test&limit=10&offset=0&sort=desc");
+    EXPECT_TRUE(url->fragment.empty());
+}
+
+TEST(URLParser, FragmentOnlyNoQueryV21) {
+    auto url = parse("http://docs.example.org/guide#section3");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "http");
+    EXPECT_EQ(url->host, "docs.example.org");
+    EXPECT_EQ(url->path, "/guide");
+    EXPECT_TRUE(url->query.empty());
+    EXPECT_EQ(url->fragment, "section3");
+}
+
+TEST(URLParser, SubdomainDeepPathV21) {
+    auto url = parse("https://cdn.assets.platform.io:8443/v2/public/images/thumbnails?format=webp#preview");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "cdn.assets.platform.io");
+    ASSERT_TRUE(url->port.has_value());
+    EXPECT_EQ(url->port.value(), 8443);
+    EXPECT_EQ(url->path, "/v2/public/images/thumbnails");
+    EXPECT_EQ(url->query, "format=webp");
+    EXPECT_EQ(url->fragment, "preview");
+}

@@ -7930,3 +7930,59 @@ TEST(TreeBuilder, AddressElementV17) {
     ASSERT_NE(el, nullptr);
     EXPECT_EQ(el->tag_name, "address");
 }
+
+TEST(TreeBuilder, ArticleElementV18) {
+    auto doc = clever::html::parse("<html><body><article><h2>Article Title</h2><p>Content</p></article></body></html>");
+    auto* el = doc->find_element("article");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "article");
+}
+
+TEST(TreeBuilder, AsideElementV18) {
+    auto doc = clever::html::parse("<html><body><aside><p>Sidebar content</p></aside></body></html>");
+    auto* el = doc->find_element("aside");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "aside");
+}
+
+TEST(TreeBuilder, DetailsElementV18) {
+    auto doc = clever::html::parse("<html><body><details><summary>Click to expand</summary><p>Details content</p></details></body></html>");
+    auto* el = doc->find_element("details");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "details");
+}
+
+TEST(TreeBuilder, SummaryElementV18) {
+    auto doc = clever::html::parse("<html><body><details><summary>Summary text</summary></details></body></html>");
+    auto* el = doc->find_element("summary");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "summary");
+}
+
+TEST(TreeBuilder, HeaderElementV18) {
+    auto doc = clever::html::parse("<html><body><header><h1>Page Title</h1></header></body></html>");
+    auto* el = doc->find_element("header");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "header");
+}
+
+TEST(TreeBuilder, FooterElementV18) {
+    auto doc = clever::html::parse("<html><body><footer><p>Copyright 2026</p></footer></body></html>");
+    auto* el = doc->find_element("footer");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "footer");
+}
+
+TEST(TreeBuilder, MainElementV18) {
+    auto doc = clever::html::parse("<html><body><main><p>Main content</p></main></body></html>");
+    auto* el = doc->find_element("main");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "main");
+}
+
+TEST(TreeBuilder, SectionElementV18) {
+    auto doc = clever::html::parse("<html><body><section><h2>Section Title</h2><p>Section content</p></section></body></html>");
+    auto* el = doc->find_element("section");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "section");
+}
