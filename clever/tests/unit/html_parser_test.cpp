@@ -5412,3 +5412,68 @@ TEST(TreeBuilder, BdoDirAttr) {
         if (attr.name == "dir" && attr.value == "rtl") found = true;
     EXPECT_TRUE(found);
 }
+
+TEST(TreeBuilder, RubyTagParsed) {
+    auto doc = clever::html::parse("<body><ruby>漢<rt>kan</rt></ruby></body>");
+    auto* el = doc->find_element("ruby");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "ruby");
+}
+
+TEST(TreeBuilder, RtTagParsed) {
+    auto doc = clever::html::parse("<body><ruby>漢<rt>kan</rt></ruby></body>");
+    auto* el = doc->find_element("rt");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "rt");
+}
+
+TEST(TreeBuilder, WbrTagParsed) {
+    auto doc = clever::html::parse("<body><p>longword<wbr>break</p></body>");
+    auto* el = doc->find_element("wbr");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "wbr");
+}
+
+TEST(TreeBuilder, DetailsTagParsed) {
+    auto doc = clever::html::parse("<body><details><summary>More</summary>Content</details></body>");
+    auto* el = doc->find_element("details");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "details");
+}
+
+TEST(TreeBuilder, DialogOpenAttr) {
+    auto doc = clever::html::parse("<body><dialog open>Hello</dialog></body>");
+    auto* el = doc->find_element("dialog");
+    ASSERT_NE(el, nullptr);
+    bool found = false;
+    for (const auto& attr : el->attributes)
+        if (attr.name == "open") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, MeterValueAttrV2) {
+    auto doc = clever::html::parse("<body><meter value=\"0.6\">60%</meter></body>");
+    auto* el = doc->find_element("meter");
+    ASSERT_NE(el, nullptr);
+    bool found = false;
+    for (const auto& attr : el->attributes)
+        if (attr.name == "value" && attr.value == "0.6") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, ProgressValueAttrV2) {
+    auto doc = clever::html::parse("<body><progress value=\"70\" max=\"100\"></progress></body>");
+    auto* el = doc->find_element("progress");
+    ASSERT_NE(el, nullptr);
+    bool found = false;
+    for (const auto& attr : el->attributes)
+        if (attr.name == "value" && attr.value == "70") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, FigcaptionTextParsed) {
+    auto doc = clever::html::parse("<body><figure><figcaption>Caption</figcaption></figure></body>");
+    auto* el = doc->find_element("figcaption");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "figcaption");
+}
