@@ -4259,3 +4259,90 @@ TEST(SerializerTest, StringWithNegativeSign) {
     Deserializer d(s.data());
     EXPECT_EQ(d.read_string(), "-1.5e-3");
 }
+
+TEST(SerializerTest, TwoF64NearZero) {
+    Serializer s;
+    s.write_f64(1e-300);
+    s.write_f64(-1e-300);
+    Deserializer d(s.data());
+    EXPECT_NEAR(d.read_f64(), 1e-300, 1e-310);
+    EXPECT_NEAR(d.read_f64(), -1e-300, 1e-310);
+}
+
+TEST(SerializerTest, TwoI32SumComponents) {
+    Serializer s;
+    s.write_i32(300);
+    s.write_i32(-100);
+    Deserializer d(s.data());
+    int a = d.read_i32();
+    int b = d.read_i32();
+    EXPECT_EQ(a + b, 200);
+}
+
+TEST(SerializerTest, ThreeBooleanSequence) {
+    Serializer s;
+    s.write_bool(true);
+    s.write_bool(false);
+    s.write_bool(true);
+    Deserializer d(s.data());
+    EXPECT_TRUE(d.read_bool());
+    EXPECT_FALSE(d.read_bool());
+    EXPECT_TRUE(d.read_bool());
+}
+
+TEST(SerializerTest, FourU8Distinct) {
+    Serializer s;
+    s.write_u8(1);
+    s.write_u8(2);
+    s.write_u8(3);
+    s.write_u8(4);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u8(), 1);
+    EXPECT_EQ(d.read_u8(), 2);
+    EXPECT_EQ(d.read_u8(), 3);
+    EXPECT_EQ(d.read_u8(), 4);
+}
+
+TEST(SerializerTest, BoolAndStringAndInt) {
+    Serializer s;
+    s.write_bool(true);
+    s.write_string("hello");
+    s.write_i32(42);
+    Deserializer d(s.data());
+    EXPECT_TRUE(d.read_bool());
+    EXPECT_EQ(d.read_string(), "hello");
+    EXPECT_EQ(d.read_i32(), 42);
+}
+
+TEST(SerializerTest, IntAndStringAndBool) {
+    Serializer s;
+    s.write_i32(-1);
+    s.write_string("world");
+    s.write_bool(false);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i32(), -1);
+    EXPECT_EQ(d.read_string(), "world");
+    EXPECT_FALSE(d.read_bool());
+}
+
+TEST(SerializerTest, StringThenU64ThenBool) {
+    Serializer s;
+    s.write_string("key");
+    s.write_u64(999ULL);
+    s.write_bool(true);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "key");
+    EXPECT_EQ(d.read_u64(), 999ULL);
+    EXPECT_TRUE(d.read_bool());
+}
+
+TEST(SerializerTest, F64ThenI32ThenString) {
+    Serializer s;
+    s.write_f64(2.718);
+    s.write_i32(100);
+    s.write_string("pi");
+    Deserializer d(s.data());
+    EXPECT_NEAR(d.read_f64(), 2.718, 1e-10);
+    EXPECT_EQ(d.read_i32(), 100);
+    EXPECT_EQ(d.read_string(), "pi");
+}
