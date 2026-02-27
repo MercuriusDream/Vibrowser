@@ -17865,3 +17865,191 @@ TEST(LayoutTest, FlexRowShrinkDistributesEquallyV96) {
     EXPECT_NEAR(wa, wb, 1.0f);
     EXPECT_NEAR(wa + wb, 300.0f, 1.0f);
 }
+
+// --- V97 Tests ---
+
+// Test that a block child with specified width and horizontal margins is positioned correctly
+TEST(LayoutTest, BlockChildMarginOffsetPositionV97) {
+    auto root = make_block("div");
+    auto child = make_block("div");
+    child->specified_width = 200.0f;
+    child->specified_height = 50.0f;
+    child->geometry.margin.left = 30.0f;
+    child->geometry.margin.top = 20.0f;
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 600.0f, 400.0f);
+
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.x, 30.0f);
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.y, 20.0f);
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.width, 200.0f);
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.height, 50.0f);
+}
+
+// Test flex container column direction distributes children vertically
+TEST(LayoutTest, FlexColumnChildrenStackVerticallyV97) {
+    auto root = make_flex("div");
+    root->specified_width = 400.0f;
+    root->specified_height = 300.0f;
+    root->flex_direction = 2; // Column
+
+    auto a = make_block("div");
+    a->specified_height = 80.0f;
+
+    auto b = make_block("div");
+    b->specified_height = 60.0f;
+
+    root->append_child(std::move(a));
+    root->append_child(std::move(b));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // Second child should be placed after the first
+    EXPECT_GE(root->children[1]->geometry.y, root->children[0]->geometry.y + 60.0f);
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.height, 80.0f);
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.height, 60.0f);
+}
+
+// Test that display none child does not contribute to parent height
+TEST(LayoutTest, DisplayNoneChildNoHeightContributionV97) {
+    auto root = make_block("div");
+
+    auto visible = make_block("div");
+    visible->specified_height = 40.0f;
+
+    auto hidden = make_block("div");
+    hidden->specified_height = 100.0f;
+    hidden->display = DisplayType::None;
+    hidden->mode = LayoutMode::None;
+
+    root->append_child(std::move(visible));
+    root->append_child(std::move(hidden));
+
+    LayoutEngine engine;
+    engine.compute(*root, 500.0f, 500.0f);
+
+    // Root height should only reflect the visible child
+    EXPECT_LE(root->geometry.height, 40.0f + 1.0f);
+}
+
+// Test nested blocks with padding propagation
+TEST(LayoutTest, NestedBlockPaddingReducesChildWidthV97) {
+    auto root = make_block("div");
+    root->geometry.padding.left = 25.0f;
+    root->geometry.padding.right = 25.0f;
+
+    auto child = make_block("div");
+    child->geometry.padding.left = 10.0f;
+    child->geometry.padding.right = 10.0f;
+
+    auto grandchild = make_block("div");
+    grandchild->specified_height = 30.0f;
+
+    child->append_child(std::move(grandchild));
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 600.0f, 400.0f);
+
+    // child width = 600 - 25 - 25 = 550
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.width, 550.0f);
+    // grandchild width = 550 - 10 - 10 = 530
+    EXPECT_FLOAT_EQ(root->children[0]->children[0]->geometry.width, 530.0f);
+}
+
+// Test flex row with flex_grow distributes remaining space
+TEST(LayoutTest, FlexRowGrowDistributesRemainingSpaceV97) {
+    auto root = make_flex("div");
+    root->specified_width = 500.0f;
+    root->specified_height = 60.0f;
+    root->flex_direction = 0; // Row
+
+    auto a = make_block("div");
+    a->specified_width = 100.0f;
+    a->flex_grow = 1.0f;
+
+    auto b = make_block("div");
+    b->specified_width = 100.0f;
+    b->flex_grow = 3.0f;
+
+    root->append_child(std::move(a));
+    root->append_child(std::move(b));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    float wa = root->children[0]->geometry.width;
+    float wb = root->children[1]->geometry.width;
+    // Remaining space = 500 - 200 = 300, split 1:3 => a gets 75, b gets 225
+    EXPECT_GT(wa, 100.0f);
+    EXPECT_GT(wb, 100.0f);
+    EXPECT_GT(wb, wa); // b should get more because higher flex_grow
+    EXPECT_NEAR(wa + wb, 500.0f, 1.0f);
+}
+
+// Test block element with border adds to total box dimensions
+TEST(LayoutTest, BlockBorderIncludedInLayoutV97) {
+    auto root = make_block("div");
+    root->geometry.border.left = 5.0f;
+    root->geometry.border.right = 5.0f;
+    root->geometry.border.top = 3.0f;
+    root->geometry.border.bottom = 3.0f;
+
+    auto child = make_block("div");
+    child->specified_height = 40.0f;
+
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 400.0f, 300.0f);
+
+    // Child width should be reduced by root's left + right border
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.width, 390.0f);
+    // Root height should include borders around child
+    EXPECT_NEAR(root->geometry.height, 3.0f + 40.0f + 3.0f, 1.0f);
+}
+
+// Test z_index and opacity are preserved through layout computation
+TEST(LayoutTest, ZIndexAndOpacityPreservedAfterLayoutV97) {
+    auto root = make_block("div");
+    root->z_index = 5;
+    root->opacity = 0.75f;
+    root->specified_width = 200.0f;
+    root->specified_height = 100.0f;
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_EQ(root->z_index, 5);
+    EXPECT_FLOAT_EQ(root->opacity, 0.75f);
+    EXPECT_FLOAT_EQ(root->geometry.width, 200.0f);
+    EXPECT_FLOAT_EQ(root->geometry.height, 100.0f);
+}
+
+// Test multiple block children stacked vertically with varying heights
+TEST(LayoutTest, MultipleBlockChildrenStackWithCorrectYOffsetsV97) {
+    auto root = make_block("div");
+
+    auto c1 = make_block("div");
+    c1->specified_height = 50.0f;
+
+    auto c2 = make_block("div");
+    c2->specified_height = 30.0f;
+
+    auto c3 = make_block("div");
+    c3->specified_height = 70.0f;
+
+    root->append_child(std::move(c1));
+    root->append_child(std::move(c2));
+    root->append_child(std::move(c3));
+
+    LayoutEngine engine;
+    engine.compute(*root, 500.0f, 500.0f);
+
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.y, 0.0f);
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.y, 50.0f);
+    EXPECT_FLOAT_EQ(root->children[2]->geometry.y, 80.0f);
+    EXPECT_NEAR(root->geometry.height, 150.0f, 1.0f);
+}

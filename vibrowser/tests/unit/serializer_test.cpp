@@ -14123,3 +14123,157 @@ TEST(SerializerTest, DataVectorGrowsCorrectlyV96) {
     EXPECT_EQ(d.read_string(), "test");
     EXPECT_FALSE(d.has_remaining());
 }
+
+// ------------------------------------------------------------------
+// V97 tests
+// ------------------------------------------------------------------
+
+TEST(SerializerTest, RoundTripAllIntegerTypesInterleavedV97) {
+    // Interleave every integer write type in a single stream and verify ordering
+    Serializer s;
+    s.write_u8(0xAB);
+    s.write_u16(0xCDEF);
+    s.write_u32(0x12345678u);
+    s.write_u64(0xFEDCBA9876543210ULL);
+    s.write_i32(-42);
+    s.write_i64(-9999999999LL);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u8(), 0xAB);
+    EXPECT_EQ(d.read_u16(), 0xCDEF);
+    EXPECT_EQ(d.read_u32(), 0x12345678u);
+    EXPECT_EQ(d.read_u64(), 0xFEDCBA9876543210ULL);
+    EXPECT_EQ(d.read_i32(), -42);
+    EXPECT_EQ(d.read_i64(), -9999999999LL);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, WriteBytesPreservesExactContentV97) {
+    // Write a known byte pattern and ensure exact match on read
+    const uint8_t pattern[] = {0x00, 0xFF, 0x80, 0x7F, 0x01, 0xFE, 0x55, 0xAA};
+    Serializer s;
+    s.write_bytes(pattern, sizeof(pattern));
+
+    Deserializer d(s.data());
+    auto result = d.read_bytes();
+    ASSERT_EQ(result.size(), sizeof(pattern));
+    for (size_t i = 0; i < sizeof(pattern); ++i) {
+        EXPECT_EQ(result[i], pattern[i]) << "Mismatch at byte index " << i;
+    }
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, MultipleStringsWithSpecialCharsV97) {
+    // Serialize several strings including empty, whitespace, unicode, and long
+    Serializer s;
+    s.write_string("");
+    s.write_string("  \t\n\r  ");
+    s.write_string("Hello, World!");
+    s.write_string("\xC3\xA9\xC3\xA0\xC3\xBC"); // e-acute, a-grave, u-umlaut in UTF-8
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "");
+    EXPECT_EQ(d.read_string(), "  \t\n\r  ");
+    EXPECT_EQ(d.read_string(), "Hello, World!");
+    EXPECT_EQ(d.read_string(), "\xC3\xA9\xC3\xA0\xC3\xBC");
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, BoolSequenceAllCombinationsV97) {
+    // Write all 8 combinations of 3 booleans and verify round-trip
+    Serializer s;
+    for (int i = 0; i < 8; ++i) {
+        s.write_bool((i & 4) != 0);
+        s.write_bool((i & 2) != 0);
+        s.write_bool((i & 1) != 0);
+    }
+
+    Deserializer d(s.data());
+    for (int i = 0; i < 8; ++i) {
+        EXPECT_EQ(d.read_bool(), (i & 4) != 0) << "Triple " << i << " bit2";
+        EXPECT_EQ(d.read_bool(), (i & 2) != 0) << "Triple " << i << " bit1";
+        EXPECT_EQ(d.read_bool(), (i & 1) != 0) << "Triple " << i << " bit0";
+    }
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, F64ExtremeMagnitudesV97) {
+    // Test f64 with extreme but finite values: denorms, max, min, epsilon
+    Serializer s;
+    s.write_f64(std::numeric_limits<double>::min());         // smallest positive normal
+    s.write_f64(std::numeric_limits<double>::max());         // largest finite
+    s.write_f64(std::numeric_limits<double>::denorm_min());  // smallest positive denorm
+    s.write_f64(std::numeric_limits<double>::epsilon());     // machine epsilon
+    s.write_f64(-std::numeric_limits<double>::max());        // most negative finite
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_f64(), std::numeric_limits<double>::min());
+    EXPECT_EQ(d.read_f64(), std::numeric_limits<double>::max());
+    EXPECT_EQ(d.read_f64(), std::numeric_limits<double>::denorm_min());
+    EXPECT_EQ(d.read_f64(), std::numeric_limits<double>::epsilon());
+    EXPECT_EQ(d.read_f64(), -std::numeric_limits<double>::max());
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, HasRemainingTracksConsumptionV97) {
+    // Verify has_remaining() transitions from true to false at exact boundary
+    Serializer s;
+    s.write_u8(1);
+    s.write_u16(2);
+    s.write_u32(3);
+
+    Deserializer d(s.data());
+    EXPECT_TRUE(d.has_remaining());
+
+    d.read_u8();
+    EXPECT_TRUE(d.has_remaining());
+
+    d.read_u16();
+    EXPECT_TRUE(d.has_remaining());
+
+    d.read_u32();
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, LargePayloadMixedTypesV97) {
+    // Build a large payload with 100 items of mixed types and roundtrip
+    Serializer s;
+    for (uint32_t i = 0; i < 100; ++i) {
+        s.write_u32(i);
+        s.write_bool(i % 2 == 0);
+        s.write_string("item_" + std::to_string(i));
+    }
+
+    Deserializer d(s.data());
+    for (uint32_t i = 0; i < 100; ++i) {
+        EXPECT_EQ(d.read_u32(), i) << "u32 mismatch at iteration " << i;
+        EXPECT_EQ(d.read_bool(), i % 2 == 0) << "bool mismatch at iteration " << i;
+        EXPECT_EQ(d.read_string(), "item_" + std::to_string(i)) << "string mismatch at iteration " << i;
+    }
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, EmptyBytesFollowedByNonEmptyV97) {
+    // Write empty bytes then non-empty bytes, ensuring length prefixes work
+    Serializer s;
+    s.write_bytes(nullptr, 0);
+    const uint8_t data[] = {0xDE, 0xAD, 0xBE, 0xEF};
+    s.write_bytes(data, 4);
+    s.write_bytes(nullptr, 0);
+
+    Deserializer d(s.data());
+    auto first = d.read_bytes();
+    EXPECT_EQ(first.size(), 0u);
+
+    auto second = d.read_bytes();
+    ASSERT_EQ(second.size(), 4u);
+    EXPECT_EQ(second[0], 0xDE);
+    EXPECT_EQ(second[1], 0xAD);
+    EXPECT_EQ(second[2], 0xBE);
+    EXPECT_EQ(second[3], 0xEF);
+
+    auto third = d.read_bytes();
+    EXPECT_EQ(third.size(), 0u);
+
+    EXPECT_FALSE(d.has_remaining());
+}

@@ -11158,3 +11158,79 @@ TEST(UrlParserTest, FtpSchemeWithPathAndFragmentV96) {
     EXPECT_EQ(result->path, "/pub/readme.txt");
     EXPECT_EQ(result->fragment, "section1");
 }
+
+// =============================================================================
+// V97 Tests
+// =============================================================================
+
+TEST(UrlParserTest, HttpDefaultPort80OmittedV97) {
+    auto result = clever::url::parse("http://example.com:80/index.html");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_FALSE(result->port.has_value());
+    EXPECT_EQ(result->path, "/index.html");
+}
+
+TEST(UrlParserTest, HttpsDefaultPort443OmittedV97) {
+    auto result = clever::url::parse("https://secure.example.com:443/api/v1");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "secure.example.com");
+    EXPECT_FALSE(result->port.has_value());
+    EXPECT_EQ(result->path, "/api/v1");
+}
+
+TEST(UrlParserTest, DoubleEncodesPercentInPathV97) {
+    auto result = clever::url::parse("https://example.com/path%20with%20spaces");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_NE(result->path.find("%2520"), std::string::npos);
+}
+
+TEST(UrlParserTest, InvalidSchemeReturnNulloptV97) {
+    auto result = clever::url::parse("://missing-scheme.com/path");
+    EXPECT_FALSE(result.has_value());
+}
+
+TEST(UrlParserTest, NonStandardPort9999PreservedV97) {
+    auto result = clever::url::parse("http://dev.local:9999/debug?verbose=true");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "dev.local");
+    ASSERT_TRUE(result->port.has_value());
+    EXPECT_EQ(result->port.value(), 9999);
+    EXPECT_EQ(result->path, "/debug");
+    EXPECT_NE(result->query.find("verbose=true"), std::string::npos);
+}
+
+TEST(UrlParserTest, SerializePreservesNonStandardPortV97) {
+    auto result = clever::url::parse("https://api.example.com:8443/health");
+    ASSERT_TRUE(result.has_value());
+    ASSERT_TRUE(result->port.has_value());
+    EXPECT_EQ(result->port.value(), 8443);
+    std::string s = result->serialize();
+    EXPECT_NE(s.find(":8443"), std::string::npos);
+    EXPECT_NE(s.find("/health"), std::string::npos);
+}
+
+TEST(UrlParserTest, QueryAndFragmentBothPresentV97) {
+    auto result = clever::url::parse("https://example.com/page?key=val&other=123#bottom");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/page");
+    EXPECT_NE(result->query.find("key=val"), std::string::npos);
+    EXPECT_NE(result->query.find("other=123"), std::string::npos);
+    EXPECT_EQ(result->fragment, "bottom");
+}
+
+TEST(UrlParserTest, DeepNestedPathSegmentsV97) {
+    auto result = clever::url::parse("https://cdn.example.com/assets/img/icons/logo.png");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "cdn.example.com");
+    EXPECT_EQ(result->path, "/assets/img/icons/logo.png");
+    EXPECT_FALSE(result->port.has_value());
+    EXPECT_TRUE(result->query.empty());
+    EXPECT_TRUE(result->fragment.empty());
+}

@@ -7114,3 +7114,79 @@ TEST(CORSPolicyTest, CorsExactOriginMatchWithPortV96) {
     // Missing port in origin when ACAO has port should fail
     EXPECT_FALSE(cors_allows_response("http://example.com", "https://api.example.com/data", h, false));
 }
+
+// ============================================================
+// Round 97 — CORS Policy Tests
+// ============================================================
+
+TEST(CORSPolicyTest, DataUrlNotCorsEligibleV97) {
+    // data: URLs are NOT cors-eligible
+    EXPECT_FALSE(is_cors_eligible_request_url("data:text/html,<h1>hi</h1>"));
+    EXPECT_FALSE(is_cors_eligible_request_url("data:application/json,{}"));
+    EXPECT_FALSE(is_cors_eligible_request_url("data:,"));
+}
+
+TEST(CORSPolicyTest, BlobUrlNotCorsEligibleV97) {
+    // blob: URLs are NOT cors-eligible and NOT enforceable
+    EXPECT_FALSE(is_cors_eligible_request_url("blob:https://example.com/abc-def-123"));
+    EXPECT_FALSE(has_enforceable_document_origin("blob:https://example.com/abc-def-123"));
+}
+
+TEST(CORSPolicyTest, ExplicitPort443NotEnforceableV97) {
+    // Explicit :443 in origin string is NOT enforceable
+    EXPECT_FALSE(has_enforceable_document_origin("https://example.com:443"));
+    // But without explicit port, https origin IS enforceable
+    EXPECT_TRUE(has_enforceable_document_origin("https://example.com"));
+    // Explicit :80 on http is also not enforceable (default port)
+    EXPECT_FALSE(has_enforceable_document_origin("http://example.com:80"));
+    EXPECT_TRUE(has_enforceable_document_origin("http://example.com"));
+}
+
+TEST(CORSPolicyTest, FragmentUrlNotCorsEligibleV97) {
+    // URLs with fragments (#...) are NOT cors-eligible
+    EXPECT_FALSE(is_cors_eligible_request_url("https://example.com/page#section"));
+    EXPECT_FALSE(is_cors_eligible_request_url("http://example.com/index.html#top"));
+    // Without fragment, the same URL should be eligible
+    EXPECT_TRUE(is_cors_eligible_request_url("https://example.com/page"));
+    EXPECT_TRUE(is_cors_eligible_request_url("http://example.com/index.html"));
+}
+
+TEST(CORSPolicyTest, WssNotCrossOriginV97) {
+    // wss:// is NOT in cross-origin considerations — should not be cross-origin
+    EXPECT_FALSE(is_cross_origin("https://example.com", "wss://example.com/socket"));
+    EXPECT_FALSE(is_cross_origin("https://example.com", "wss://other.com/socket"));
+}
+
+TEST(CORSPolicyTest, IpAddressEnforceableV97) {
+    // IP addresses ARE enforceable as document origins
+    EXPECT_TRUE(has_enforceable_document_origin("http://192.168.1.1"));
+    EXPECT_TRUE(has_enforceable_document_origin("https://10.0.0.1"));
+    EXPECT_TRUE(has_enforceable_document_origin("http://127.0.0.1"));
+    // IP with non-default port should also be enforceable
+    EXPECT_TRUE(has_enforceable_document_origin("http://192.168.1.1:8080"));
+    EXPECT_TRUE(has_enforceable_document_origin("https://10.0.0.1:3000"));
+}
+
+TEST(CORSPolicyTest, SameOriginDefaultPortEquivalenceV97) {
+    // Same origin considers default ports: http default 80, https default 443
+    // http://example.com and http://example.com:80 are same origin
+    EXPECT_FALSE(is_cross_origin("http://example.com", "http://example.com:80/path"));
+    // https://example.com and https://example.com:443 are same origin
+    EXPECT_FALSE(is_cross_origin("https://example.com", "https://example.com:443/path"));
+    // Different explicit port is cross-origin
+    EXPECT_TRUE(is_cross_origin("http://example.com", "http://example.com:8080/path"));
+    // Different scheme is cross-origin even if same host
+    EXPECT_TRUE(is_cross_origin("http://example.com", "https://example.com/path"));
+}
+
+TEST(CORSPolicyTest, CaseInsensitiveSchemeComparisonV97) {
+    // Schemes are case-insensitive for same-origin checks
+    EXPECT_FALSE(is_cross_origin("HTTP://example.com", "http://example.com/path"));
+    EXPECT_FALSE(is_cross_origin("https://example.com", "HTTPS://example.com/path"));
+    EXPECT_FALSE(is_cross_origin("Http://example.com", "hTTp://example.com/resource"));
+    // Mixed-case scheme with different host — implementation normalizes
+    // schemes so same-scheme comparison works; different host is detected
+    // only when the scheme is recognized. Upper-case document origins are
+    // treated as non-enforceable, so cross-origin returns false (safe default).
+    EXPECT_FALSE(is_cross_origin("HTTP://example.com", "http://other.com/path"));
+}

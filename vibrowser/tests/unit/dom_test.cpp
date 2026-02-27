@@ -15394,3 +15394,96 @@ TEST(DomTest, SiblingNavigationChainV96) {
     EXPECT_EQ(rawC->node_type(), NodeType::Element);
     EXPECT_EQ(rawB->text_content(), "separator");
 }
+
+// ---------------------------------------------------------------------------
+// V97 Round — 8 new tests
+// ---------------------------------------------------------------------------
+
+TEST(DomTest, ElementRemoveAttributeThenHasReturnsFalseV97) {
+    Element el("input");
+    el.set_attribute("type", "text");
+    EXPECT_TRUE(el.has_attribute("type"));
+    el.remove_attribute("type");
+    EXPECT_FALSE(el.has_attribute("type"));
+    EXPECT_EQ(el.attributes().size(), 0u);
+}
+
+TEST(DomTest, InsertBeforeFirstChildReordersV97) {
+    Element parent("ul");
+    auto li1 = std::make_unique<Element>("li");
+    auto li2 = std::make_unique<Element>("li");
+    auto* rawLi1 = li1.get();
+    auto* rawLi2 = li2.get();
+    parent.append_child(std::move(li1));
+    parent.insert_before(std::move(li2), rawLi1);
+    EXPECT_EQ(parent.first_child(), rawLi2);
+    EXPECT_EQ(rawLi2->next_sibling(), rawLi1);
+    EXPECT_EQ(parent.child_count(), 2u);
+}
+
+TEST(DomTest, CommentNodeDataAndTypeV97) {
+    Comment c("TODO: fix this later");
+    EXPECT_EQ(c.data(), "TODO: fix this later");
+    EXPECT_EQ(c.node_type(), NodeType::Comment);
+}
+
+TEST(DomTest, ClassListToggleAddsAndRemovesV97) {
+    Element el("div");
+    el.class_list().toggle("active");
+    EXPECT_TRUE(el.class_list().contains("active"));
+    el.class_list().toggle("active");
+    EXPECT_FALSE(el.class_list().contains("active"));
+}
+
+TEST(DomTest, RemoveChildUpdatesFirstAndLastV97) {
+    Element parent("div");
+    auto a = std::make_unique<Element>("span");
+    auto b = std::make_unique<Element>("span");
+    auto* rawA = a.get();
+    auto* rawB = b.get();
+    parent.append_child(std::move(a));
+    parent.append_child(std::move(b));
+    EXPECT_EQ(parent.child_count(), 2u);
+    parent.remove_child(*rawA);
+    EXPECT_EQ(parent.child_count(), 1u);
+    EXPECT_EQ(parent.first_child(), rawB);
+    EXPECT_EQ(parent.last_child(), rawB);
+}
+
+TEST(DomTest, TextNodeContentAndSiblingV97) {
+    Element parent("p");
+    auto t1 = std::make_unique<Text>("hello ");
+    auto t2 = std::make_unique<Text>("world");
+    auto* rawT1 = t1.get();
+    auto* rawT2 = t2.get();
+    parent.append_child(std::move(t1));
+    parent.append_child(std::move(t2));
+    EXPECT_EQ(rawT1->text_content(), "hello ");
+    EXPECT_EQ(rawT2->text_content(), "world");
+    EXPECT_EQ(rawT1->next_sibling(), rawT2);
+    EXPECT_EQ(rawT2->next_sibling(), nullptr);
+}
+
+TEST(DomTest, GetAttributeReturnsNulloptWhenMissingV97) {
+    Element el("div");
+    auto val = el.get_attribute("nonexistent");
+    EXPECT_FALSE(val.has_value());
+    el.set_attribute("data-x", "42");
+    auto val2 = el.get_attribute("data-x");
+    EXPECT_TRUE(val2.has_value());
+    EXPECT_EQ(val2.value(), "42");
+}
+
+TEST(DomTest, MultipleClassListOperationsV97) {
+    Element el("nav");
+    el.class_list().add("primary");
+    el.class_list().add("sticky");
+    el.class_list().add("dark-mode");
+    EXPECT_TRUE(el.class_list().contains("primary"));
+    EXPECT_TRUE(el.class_list().contains("sticky"));
+    EXPECT_TRUE(el.class_list().contains("dark-mode"));
+    el.class_list().remove("sticky");
+    EXPECT_FALSE(el.class_list().contains("sticky"));
+    EXPECT_TRUE(el.class_list().contains("primary"));
+    EXPECT_TRUE(el.class_list().contains("dark-mode"));
+}

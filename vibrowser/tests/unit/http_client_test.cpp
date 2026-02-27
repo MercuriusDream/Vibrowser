@@ -16521,3 +16521,143 @@ TEST(HttpClientTest, SerializeGetNonStandardPortInHostV96) {
     // Non-standard port MUST appear in Host header
     EXPECT_TRUE(s.find("Host: dev.example.com:9090\r\n") != std::string::npos);
 }
+
+// ===========================================================================
+// V97 Tests
+// ===========================================================================
+
+// 1. PUT request serialize includes body and correct method line
+TEST(HttpClientTest, SerializePutRequestWithBodyV97) {
+    Request req;
+    req.method = Method::PUT;
+    req.host = "api.example.com";
+    req.port = 443;
+    req.path = "/users/42";
+    req.use_tls = true;
+    req.headers.set("Content-Type", "application/json");
+    std::string body_str = R"({"name":"updated"})";
+    req.body.assign(body_str.begin(), body_str.end());
+
+    auto bytes = req.serialize();
+    std::string s(bytes.begin(), bytes.end());
+
+    // Method line
+    EXPECT_TRUE(s.find("PUT /users/42 HTTP/1.1\r\n") == 0);
+    // Host without default HTTPS port 443
+    EXPECT_TRUE(s.find("Host: api.example.com\r\n") != std::string::npos);
+    EXPECT_TRUE(s.find(":443") == std::string::npos);
+    // Custom header lowercased
+    EXPECT_TRUE(s.find("content-type: application/json\r\n") != std::string::npos);
+    // Body after double CRLF
+    auto body_pos = s.find("\r\n\r\n");
+    ASSERT_NE(body_pos, std::string::npos);
+    std::string body_part = s.substr(body_pos + 4);
+    EXPECT_EQ(body_part, R"({"name":"updated"})");
+}
+
+// 2. parse_url with multiple query parameters on custom HTTPS port
+TEST(HttpClientTest, ParseUrlQueryWithAmpersandsAndEqualsV97) {
+    Request req;
+    req.url = "https://search.example.com:9200/index?q=hello+world&limit=10&offset=20";
+    req.parse_url();
+
+    EXPECT_EQ(req.host, "search.example.com");
+    EXPECT_EQ(req.port, 9200);
+    EXPECT_EQ(req.path, "/index");
+    EXPECT_EQ(req.query, "q=hello+world&limit=10&offset=20");
+    EXPECT_TRUE(req.use_tls);
+}
+
+// 3. HeaderMap: remove then get returns nullopt
+TEST(HttpClientTest, HeaderMapRemoveThenGetReturnsNulloptV97) {
+    HeaderMap headers;
+    headers.set("X-Trace-Id", "abc-123");
+    EXPECT_TRUE(headers.has("X-Trace-Id"));
+
+    headers.remove("X-Trace-Id");
+    EXPECT_FALSE(headers.has("X-Trace-Id"));
+    EXPECT_FALSE(headers.get("X-Trace-Id").has_value());
+}
+
+// 4. CookieJar: secure cookie not sent over non-secure connection
+TEST(HttpClientTest, CookieJarSecureFlagBlocksInsecureV97) {
+    CookieJar jar;
+    jar.set_from_header("token=secret; Secure", "secure.example.com");
+
+    // Should be returned over secure connection
+    std::string secure = jar.get_cookie_header("secure.example.com", "/", true);
+    EXPECT_TRUE(secure.find("token=secret") != std::string::npos);
+
+    // Should NOT be returned over insecure connection
+    std::string insecure = jar.get_cookie_header("secure.example.com", "/", false);
+    EXPECT_TRUE(insecure.find("token=secret") == std::string::npos);
+}
+
+// 5. Request serialize with query string appended to path in request line
+TEST(HttpClientTest, SerializeGetWithQueryStringInRequestLineV97) {
+    Request req;
+    req.method = Method::GET;
+    req.host = "example.com";
+    req.port = 80;
+    req.path = "/search";
+    req.query = "q=browser&lang=en";
+
+    auto bytes = req.serialize();
+    std::string s(bytes.begin(), bytes.end());
+
+    // Request line should include path?query
+    EXPECT_TRUE(s.find("GET /search?q=browser&lang=en HTTP/1.1\r\n") == 0);
+    EXPECT_TRUE(s.find("Host: example.com\r\n") != std::string::npos);
+    // Standard port 80 omitted
+    EXPECT_TRUE(s.find(":80") == std::string::npos);
+}
+
+// 6. Response: set and read status, headers, and body together
+TEST(HttpClientTest, ResponseFieldsRoundTripV97) {
+    Response resp;
+    resp.status = 201;
+    resp.headers.set("Content-Type", "text/plain");
+    resp.headers.set("X-Custom", "value1");
+    std::string text = "Created successfully";
+    resp.body.assign(text.begin(), text.end());
+
+    EXPECT_EQ(resp.status, 201);
+    EXPECT_EQ(resp.headers.get("Content-Type").value(), "text/plain");
+    EXPECT_EQ(resp.headers.get("x-custom").value(), "value1");
+    EXPECT_EQ(resp.body_as_string(), "Created successfully");
+}
+
+// 7. CookieJar: multiple cookies for same domain returned together
+TEST(HttpClientTest, CookieJarMultipleCookiesSameDomainV97) {
+    CookieJar jar;
+    jar.set_from_header("a=1", "multi.example.com");
+    jar.set_from_header("b=2", "multi.example.com");
+    jar.set_from_header("c=3", "multi.example.com");
+
+    std::string cookies = jar.get_cookie_header("multi.example.com", "/", false);
+    // All three cookies should be present
+    EXPECT_TRUE(cookies.find("a=1") != std::string::npos);
+    EXPECT_TRUE(cookies.find("b=2") != std::string::npos);
+    EXPECT_TRUE(cookies.find("c=3") != std::string::npos);
+}
+
+// 8. HeaderMap: get_all returns multiple values when appended via set for different keys
+TEST(HttpClientTest, HeaderMapMultipleDistinctKeysV97) {
+    HeaderMap headers;
+    headers.set("Accept", "text/html");
+    headers.set("Accept-Language", "en-US");
+    headers.set("Accept-Encoding", "gzip");
+    headers.set("Cache-Control", "no-cache");
+
+    // All four distinct headers exist
+    EXPECT_EQ(headers.size(), 4u);
+    EXPECT_EQ(headers.get("accept").value(), "text/html");
+    EXPECT_EQ(headers.get("accept-language").value(), "en-US");
+    EXPECT_EQ(headers.get("accept-encoding").value(), "gzip");
+    EXPECT_EQ(headers.get("cache-control").value(), "no-cache");
+    // Verify has() for each
+    EXPECT_TRUE(headers.has("Accept"));
+    EXPECT_TRUE(headers.has("Accept-Language"));
+    EXPECT_TRUE(headers.has("Accept-Encoding"));
+    EXPECT_TRUE(headers.has("Cache-Control"));
+}

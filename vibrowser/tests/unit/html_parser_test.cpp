@@ -15503,3 +15503,174 @@ TEST(HtmlParserTest, SelectOptgroupOptionsV96) {
     EXPECT_EQ(get_attr_v63(opts1[0], "value"), "bmw");
     EXPECT_EQ(opts1[0]->text_content(), "BMW");
 }
+
+// ---------------------------------------------------------------------------
+// V97 Tests — 8 diverse HTML parsing tests
+// ---------------------------------------------------------------------------
+
+TEST(HtmlParserTest, DefinitionListDlDtDdV97) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<dl>"
+        "<dt>Term A</dt><dd>Definition A</dd>"
+        "<dt>Term B</dt><dd>Definition B1</dd><dd>Definition B2</dd>"
+        "</dl>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* dl = doc->find_element("dl");
+    ASSERT_NE(dl, nullptr);
+    auto dts = dl->find_all_elements("dt");
+    auto dds = dl->find_all_elements("dd");
+    ASSERT_EQ(dts.size(), 2u);
+    ASSERT_EQ(dds.size(), 3u);
+    EXPECT_EQ(dts[0]->text_content(), "Term A");
+    EXPECT_EQ(dts[1]->text_content(), "Term B");
+    EXPECT_EQ(dds[0]->text_content(), "Definition A");
+    EXPECT_EQ(dds[1]->text_content(), "Definition B1");
+    EXPECT_EQ(dds[2]->text_content(), "Definition B2");
+}
+
+TEST(HtmlParserTest, NestedTablesV97) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<table>"
+        "<tr><td>Outer Cell"
+        "<table><tr><td>Inner Cell</td></tr></table>"
+        "</td></tr>"
+        "</table>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto tables = doc->find_all_elements("table");
+    ASSERT_EQ(tables.size(), 2u);
+    // Outer table contains the inner table
+    auto inner_tables = tables[0]->find_all_elements("table");
+    ASSERT_EQ(inner_tables.size(), 1u);
+    // Inner table has one td
+    auto inner_tds = inner_tables[0]->find_all_elements("td");
+    ASSERT_GE(inner_tds.size(), 1u);
+    EXPECT_EQ(inner_tds[0]->text_content(), "Inner Cell");
+}
+
+TEST(HtmlParserTest, DataAttributesV97) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<div data-id=\"42\" data-role=\"admin\" data-active=\"true\">User</div>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* div = doc->find_element("div");
+    ASSERT_NE(div, nullptr);
+    EXPECT_EQ(get_attr_v63(div, "data-id"), "42");
+    EXPECT_EQ(get_attr_v63(div, "data-role"), "admin");
+    EXPECT_EQ(get_attr_v63(div, "data-active"), "true");
+    EXPECT_EQ(div->text_content(), "User");
+}
+
+TEST(HtmlParserTest, MultipleSiblingParagraphsAutoCloseV97) {
+    // <p> tags should auto-close when another <p> is encountered
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<p>First"
+        "<p>Second"
+        "<p>Third"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto paragraphs = doc->find_all_elements("p");
+    ASSERT_EQ(paragraphs.size(), 3u);
+    EXPECT_EQ(paragraphs[0]->text_content(), "First");
+    EXPECT_EQ(paragraphs[1]->text_content(), "Second");
+    EXPECT_EQ(paragraphs[2]->text_content(), "Third");
+    // Each <p> should be a sibling, not nested
+    auto* body = doc->find_element("body");
+    ASSERT_NE(body, nullptr);
+    int p_direct = 0;
+    for (auto& child : body->children) {
+        if (child->tag_name == "p") p_direct++;
+    }
+    EXPECT_EQ(p_direct, 3);
+}
+
+TEST(HtmlParserTest, ScriptTagPreservesContentV97) {
+    auto doc = clever::html::parse(
+        "<html><head>"
+        "<script>var x = 1 < 2 && 3 > 0; console.log(x);</script>"
+        "</head><body></body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* script = doc->find_element("script");
+    ASSERT_NE(script, nullptr);
+    std::string content = script->text_content();
+    // Script content should contain the raw text including < and >
+    EXPECT_NE(content.find("var x"), std::string::npos);
+    EXPECT_NE(content.find("< 2"), std::string::npos);
+    EXPECT_NE(content.find("> 0"), std::string::npos);
+}
+
+TEST(HtmlParserTest, AnchorWithMultipleAttributesV97) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<a href=\"https://example.com\" target=\"_blank\" rel=\"noopener noreferrer\" title=\"Example\">"
+        "Click Here</a>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* a = doc->find_element("a");
+    ASSERT_NE(a, nullptr);
+    EXPECT_EQ(get_attr_v63(a, "href"), "https://example.com");
+    EXPECT_EQ(get_attr_v63(a, "target"), "_blank");
+    EXPECT_EQ(get_attr_v63(a, "rel"), "noopener noreferrer");
+    EXPECT_EQ(get_attr_v63(a, "title"), "Example");
+    EXPECT_EQ(a->text_content(), "Click Here");
+}
+
+TEST(HtmlParserTest, EmptyDocumentV97) {
+    auto doc = clever::html::parse("");
+    ASSERT_NE(doc, nullptr);
+    // An empty document should still produce a root node
+    // The root should either be empty or have generated html/head/body
+    auto* html = doc->find_element("html");
+    if (html) {
+        auto* body = doc->find_element("body");
+        // If html is generated, body should also be generated
+        EXPECT_NE(body, nullptr);
+        // Body should have no meaningful text
+        if (body) {
+            EXPECT_TRUE(body->text_content().empty());
+        }
+    } else {
+        // Minimal root with no children is also valid
+        EXPECT_TRUE(doc->children.empty());
+    }
+}
+
+TEST(HtmlParserTest, FieldsetLegendFormElementsV97) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<form action=\"/submit\" method=\"post\">"
+        "<fieldset>"
+        "<legend>Personal Info</legend>"
+        "<label for=\"name\">Name:</label>"
+        "<input type=\"text\" id=\"name\" name=\"name\"/>"
+        "<label for=\"email\">Email:</label>"
+        "<input type=\"email\" id=\"email\" name=\"email\"/>"
+        "</fieldset>"
+        "</form>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* form = doc->find_element("form");
+    ASSERT_NE(form, nullptr);
+    EXPECT_EQ(get_attr_v63(form, "action"), "/submit");
+    EXPECT_EQ(get_attr_v63(form, "method"), "post");
+    auto* fieldset = doc->find_element("fieldset");
+    ASSERT_NE(fieldset, nullptr);
+    auto* legend = fieldset->find_element("legend");
+    ASSERT_NE(legend, nullptr);
+    EXPECT_EQ(legend->text_content(), "Personal Info");
+    auto labels = fieldset->find_all_elements("label");
+    ASSERT_EQ(labels.size(), 2u);
+    EXPECT_EQ(get_attr_v63(labels[0], "for"), "name");
+    EXPECT_EQ(get_attr_v63(labels[1], "for"), "email");
+    auto inputs = fieldset->find_all_elements("input");
+    ASSERT_EQ(inputs.size(), 2u);
+    EXPECT_EQ(get_attr_v63(inputs[0], "type"), "text");
+    EXPECT_EQ(get_attr_v63(inputs[0], "id"), "name");
+    EXPECT_EQ(get_attr_v63(inputs[1], "type"), "email");
+    EXPECT_EQ(get_attr_v63(inputs[1], "id"), "email");
+}
