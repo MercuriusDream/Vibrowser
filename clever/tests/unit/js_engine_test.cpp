@@ -14566,3 +14566,60 @@ TEST(JSEngine, DestructuringRename) {
     )");
     EXPECT_EQ(result, "Alice is 30");
 }
+
+// ---------------------------------------------------------------------------
+// Cycle 690 — bitwise operation tests
+// ---------------------------------------------------------------------------
+
+TEST(JSEngine, BitwiseAndOperation) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("5 & 3");
+    EXPECT_EQ(result, "1");
+}
+
+TEST(JSEngine, BitwiseOrOperation) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("5 | 3");
+    EXPECT_EQ(result, "7");
+}
+
+TEST(JSEngine, BitwiseXorOperation) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("5 ^ 3");
+    EXPECT_EQ(result, "6");
+}
+
+TEST(JSEngine, BitwiseNotOperation) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("~5");
+    EXPECT_EQ(result, "-6");
+}
+
+TEST(JSEngine, LeftShiftOperation) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("1 << 3");
+    EXPECT_EQ(result, "8");
+}
+
+TEST(JSEngine, RightShiftOperation) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("16 >> 2");
+    EXPECT_EQ(result, "4");
+}
+
+TEST(JSEngine, UnsignedRightShift) {
+    clever::js::JSEngine engine;
+    // -1 >>> 0 == 4294967295 (treats as unsigned 32-bit)
+    auto result = engine.evaluate("-1 >>> 0");
+    EXPECT_EQ(result, "4294967295");
+}
+
+TEST(JSEngine, BitwiseAndAssignment) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var x = 7;
+        x &= 5;
+        x
+    )");
+    EXPECT_EQ(result, "5");
+}
