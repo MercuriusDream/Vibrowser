@@ -17147,3 +17147,58 @@ TEST(JSEngine, DateGetTimezoneOffset) {
     auto result = engine.evaluate("typeof new Date().getTimezoneOffset()");
     EXPECT_EQ(result, "number");
 }
+
+// Cycle 939 — Date locale/JSON/parse/UTC setters
+TEST(JSEngine, DateToLocaleDateString) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("typeof new Date().toLocaleDateString()");
+    EXPECT_EQ(result, "string");
+}
+
+TEST(JSEngine, DateToLocaleTimeString) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("typeof new Date().toLocaleTimeString()");
+    EXPECT_EQ(result, "string");
+}
+
+TEST(JSEngine, DateToLocaleString) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("typeof new Date().toLocaleString()");
+    EXPECT_EQ(result, "string");
+}
+
+TEST(JSEngine, DateToJSON) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("typeof new Date().toJSON()");
+    EXPECT_EQ(result, "string");
+}
+
+TEST(JSEngine, DateValueOf) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("typeof new Date().valueOf()");
+    EXPECT_EQ(result, "number");
+}
+
+TEST(JSEngine, DateSetUTCFullYear) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "const d=new Date();"
+        "d.setUTCFullYear(2020);"
+        "d.getUTCFullYear()");
+    EXPECT_EQ(result, "2020");
+}
+
+TEST(JSEngine, DateSetUTCHours) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "const d=new Date();"
+        "d.setUTCHours(12);"
+        "d.getUTCHours()");
+    EXPECT_EQ(result, "12");
+}
+
+TEST(JSEngine, DateGetUTCDay) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("typeof new Date().getUTCDay()");
+    EXPECT_EQ(result, "number");
+}
