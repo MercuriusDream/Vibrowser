@@ -3088,3 +3088,69 @@ TEST(TreeBuilder, VideoElementIsParsed) {
     ASSERT_NE(video, nullptr);
     EXPECT_EQ(video->tag_name, "video");
 }
+
+TEST(TreeBuilder, InputRequiredAttribute) {
+    auto doc = clever::html::parse(R"(<input type="email" required>)");
+    auto* input = doc->find_element("input");
+    ASSERT_NE(input, nullptr);
+    bool found = false;
+    for (const auto& attr : input->attributes) {
+        if (attr.name == "required") found = true;
+    }
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, InputMinMaxAttributes) {
+    auto doc = clever::html::parse(R"(<input type="number" min="0" max="100">)");
+    auto* input = doc->find_element("input");
+    ASSERT_NE(input, nullptr);
+    bool has_min = false, has_max = false;
+    for (const auto& attr : input->attributes) {
+        if (attr.name == "min") has_min = true;
+        if (attr.name == "max") has_max = true;
+    }
+    EXPECT_TRUE(has_min && has_max);
+}
+
+TEST(TreeBuilder, AudioElementIsParsed) {
+    auto doc = clever::html::parse(R"(<audio src="song.mp3" controls></audio>)");
+    auto* audio = doc->find_element("audio");
+    ASSERT_NE(audio, nullptr);
+    EXPECT_EQ(audio->tag_name, "audio");
+}
+
+TEST(TreeBuilder, CanvasElementIsParsed) {
+    auto doc = clever::html::parse(R"(<canvas width="800" height="600"></canvas>)");
+    auto* canvas = doc->find_element("canvas");
+    ASSERT_NE(canvas, nullptr);
+    EXPECT_EQ(canvas->tag_name, "canvas");
+}
+
+TEST(TreeBuilder, IframeElementIsParsed) {
+    auto doc = clever::html::parse(R"(<iframe src="https://example.com" title="embed"></iframe>)");
+    auto* iframe = doc->find_element("iframe");
+    ASSERT_NE(iframe, nullptr);
+    EXPECT_EQ(iframe->tag_name, "iframe");
+}
+
+TEST(TreeBuilder, DetailsWithSummary) {
+    auto doc = clever::html::parse("<details><summary>Toggle</summary><p>Content</p></details>");
+    auto* details = doc->find_element("details");
+    ASSERT_NE(details, nullptr);
+    auto* summary = doc->find_element("summary");
+    ASSERT_NE(summary, nullptr);
+}
+
+TEST(TreeBuilder, DialogElementIsParsed) {
+    auto doc = clever::html::parse(R"(<dialog open><p>Modal content</p></dialog>)");
+    auto* dialog = doc->find_element("dialog");
+    ASSERT_NE(dialog, nullptr);
+    EXPECT_EQ(dialog->tag_name, "dialog");
+}
+
+TEST(TreeBuilder, ProgressElementIsParsed) {
+    auto doc = clever::html::parse(R"(<progress value="70" max="100"></progress>)");
+    auto* progress = doc->find_element("progress");
+    ASSERT_NE(progress, nullptr);
+    EXPECT_EQ(progress->tag_name, "progress");
+}
