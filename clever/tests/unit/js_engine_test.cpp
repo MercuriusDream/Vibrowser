@@ -14975,3 +14975,85 @@ TEST(JSEngine, LogicalOrAssignmentV2) {
     auto result = engine.evaluate("let x = 0; x ||= 42; x");
     EXPECT_EQ(result, "42");
 }
+
+TEST(JSEngine, TryCatchCapturesError) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        let msg = '';
+        try { throw new Error('oops'); }
+        catch (e) { msg = e.message; }
+        msg
+    )");
+    EXPECT_EQ(result, "oops");
+}
+
+TEST(JSEngine, TryCatchFinallyLogConcatenation) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        let log = '';
+        try { log += 'try'; throw 1; }
+        catch (e) { log += 'catch'; }
+        finally { log += 'finally'; }
+        log
+    )");
+    EXPECT_EQ(result, "trycatchfinally");
+}
+
+TEST(JSEngine, TypeErrorNullPropertyAccess) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        let caught = false;
+        try { null.property; }
+        catch (e) { caught = true; }
+        caught
+    )");
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, CustomErrorMessage) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        class AppError extends Error {
+            constructor(msg) { super(msg); this.name = 'AppError'; }
+        }
+        let e;
+        try { throw new AppError('bad input'); }
+        catch (err) { e = err.message; }
+        e
+    )");
+    EXPECT_EQ(result, "bad input");
+}
+
+TEST(JSEngine, WeakMapSetAndHas) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        const wm = new WeakMap();
+        const key = {};
+        wm.set(key, 42);
+        wm.has(key)
+    )");
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, WeakSetAddAndHas) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        const ws = new WeakSet();
+        const obj = {};
+        ws.add(obj);
+        ws.has(obj)
+    )");
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, ArrayBufferByteLength) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("new ArrayBuffer(16).byteLength");
+    EXPECT_EQ(result, "16");
+}
+
+TEST(JSEngine, Uint8ArrayLength) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("new Uint8Array(8).length");
+    EXPECT_EQ(result, "8");
+}
