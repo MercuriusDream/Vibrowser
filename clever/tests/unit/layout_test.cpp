@@ -9705,3 +9705,43 @@ TEST(LayoutNodeProps, ScrollPaddingBottomDefaultV38) {
     LayoutNode n;
     EXPECT_FLOAT_EQ(n.scroll_padding_bottom, 0.0f);
 }
+
+TEST(LayoutNodeProps, ScrollPaddingLeftDefaultV39) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.scroll_padding_left, 0.0f);
+}
+
+TEST(LayoutNodeProps, GeometryMarginLeftDefaultV39) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.geometry.margin.left, 0.0f);
+}
+
+TEST(LayoutNodeProps, GeometryMarginBottomDefaultV39) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.geometry.margin.bottom, 0.0f);
+}
+
+TEST(LayoutNodeProps, GeometryPaddingTopDefaultV39) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.geometry.padding.top, 0.0f);
+}
+
+TEST(LayoutNodeProps, GeometryPaddingRightDefaultV39) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.geometry.padding.right, 0.0f);
+}
+
+TEST(LayoutNodeProps, GeometryBorderTopDefaultV39) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.geometry.border.top, 0.0f);
+}
+
+TEST(LayoutNodeProps, GeometryBorderBottomDefaultV39) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.geometry.border.bottom, 0.0f);
+}
+
+TEST(LayoutNodeProps, GeometryBorderLeftDefaultV39) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.geometry.border.left, 0.0f);
+}

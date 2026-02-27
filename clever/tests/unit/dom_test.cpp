@@ -8019,3 +8019,66 @@ TEST(DomElement, ClassListContainsMultiple) {
     EXPECT_TRUE(el->class_list().contains("a"));
     EXPECT_TRUE(el->class_list().contains("b"));
 }
+
+TEST(DomElement, TagNameRubyV2) {
+    Document doc;
+    auto el = doc.create_element("ruby");
+    EXPECT_FALSE(el->tag_name().empty());
+    EXPECT_EQ(el->tag_name(), "ruby");
+}
+
+TEST(DomElement, TagNameRtV2) {
+    Document doc;
+    auto el = doc.create_element("rt");
+    EXPECT_FALSE(el->tag_name().empty());
+    EXPECT_EQ(el->tag_name(), "rt");
+}
+
+TEST(DomElement, SetAttributeTabindexNeg1) {
+    Document doc;
+    auto el = doc.create_element("button");
+    el->set_attribute("tabindex", "-1");
+    EXPECT_EQ(el->get_attribute("tabindex"), "-1");
+}
+
+TEST(DomElement, SetAttributeDataTestId) {
+    Document doc;
+    auto el = doc.create_element("div");
+    el->set_attribute("data-testid", "main");
+    EXPECT_EQ(el->get_attribute("data-testid"), "main");
+}
+
+TEST(DomElement, AppendThenCheckParentChildCount) {
+    Document doc;
+    auto el = doc.create_element("div");
+    auto child1 = doc.create_element("span");
+    auto child2 = doc.create_element("span");
+    el->append_child(std::move(child1));
+    el->append_child(std::move(child2));
+    EXPECT_EQ(el->child_count(), 2u);
+}
+
+TEST(DomElement, RemoveAttributeActionV3) {
+    Document doc;
+    auto el = doc.create_element("form");
+    el->set_attribute("action", "/submit");
+    EXPECT_TRUE(el->has_attribute("action"));
+    el->remove_attribute("action");
+    EXPECT_EQ(el->get_attribute("action"), std::nullopt);
+}
+
+TEST(DomElement, HasAttributeMultipleV3) {
+    Document doc;
+    auto el = doc.create_element("select");
+    el->set_attribute("multiple", "");
+    EXPECT_TRUE(el->has_attribute("multiple"));
+}
+
+TEST(DomElement, ClassListRemoveNonexistentV2) {
+    Document doc;
+    auto el = doc.create_element("span");
+    el->class_list().add("active");
+    el->class_list().remove("nonexistent");
+    EXPECT_TRUE(el->class_list().contains("active"));
+    EXPECT_FALSE(el->class_list().contains("nonexistent"));
+}

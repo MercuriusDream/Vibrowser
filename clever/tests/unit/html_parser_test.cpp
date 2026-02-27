@@ -8462,3 +8462,59 @@ TEST(TreeBuilder, TemplateElementV26) {
         EXPECT_EQ(el->tag_name, "template");
     }
 }
+
+TEST(TreeBuilder, AbbrElementV27) {
+    auto doc = clever::html::parse("<html><body><abbr title=\"HyperText Markup Language\">HTML</abbr></body></html>");
+    auto* el = doc->find_element("abbr");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "abbr");
+}
+
+TEST(TreeBuilder, AddressElementV27) {
+    auto doc = clever::html::parse("<html><body><address><p>123 Main Street</p><p>Springfield, USA</p></address></body></html>");
+    auto* el = doc->find_element("address");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "address");
+}
+
+TEST(TreeBuilder, BdoElementV27) {
+    auto doc = clever::html::parse("<html><body><bdo dir=\"rtl\">This text is right-to-left</bdo></body></html>");
+    auto* el = doc->find_element("bdo");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "bdo");
+}
+
+TEST(TreeBuilder, CiteElementV27) {
+    auto doc = clever::html::parse("<html><body><p>According to <cite>Wikipedia</cite>, the Earth is round.</p></body></html>");
+    auto* el = doc->find_element("cite");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "cite");
+}
+
+TEST(TreeBuilder, DfnElementV27) {
+    auto doc = clever::html::parse("<html><body><p><dfn>HTML</dfn> is the standard markup language for web pages.</p></body></html>");
+    auto* el = doc->find_element("dfn");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "dfn");
+}
+
+TEST(TreeBuilder, KbdElementV27) {
+    auto doc = clever::html::parse("<html><body><p>To save the file, press <kbd>Ctrl</kbd> + <kbd>S</kbd></p></body></html>");
+    auto* el = doc->find_element("kbd");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "kbd");
+}
+
+TEST(TreeBuilder, SampElementV27) {
+    auto doc = clever::html::parse("<html><body><p>The program output: <samp>File not found</samp></p></body></html>");
+    auto* el = doc->find_element("samp");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "samp");
+}
+
+TEST(TreeBuilder, VarElementV27) {
+    auto doc = clever::html::parse("<html><body><p>Let <var>x</var> be the number of users.</p></body></html>");
+    auto* el = doc->find_element("var");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "var");
+}

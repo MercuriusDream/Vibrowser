@@ -4203,3 +4203,49 @@ TEST(CORSPolicy, IsCrossOriginSubdomainCrossV47) {
     // Different subdomains (a.example.com vs b.example.com) are cross-origin
     EXPECT_TRUE(is_cross_origin("https://a.example.com", "https://b.example.com/api"));
 }
+
+// --- Cycle V48: 8 CORS tests ---
+
+TEST(CORSPolicy, HasEnforceableDocumentOriginPort9443V48) {
+    // Port 9443 is a custom port and should be enforceable
+    EXPECT_TRUE(has_enforceable_document_origin("https://example.com:9443"));
+}
+
+TEST(CORSPolicy, IsCorsEligibleRequestUrlHttpsWithQueryV48) {
+    // HTTPS URL with query string is CORS-eligible
+    EXPECT_TRUE(is_cors_eligible_request_url("https://api.example.com/data?key=value&id=123"));
+}
+
+TEST(CORSPolicy, IsCrossOriginSameSchemeHostPortNotCrossV48) {
+    // Same scheme, host, and port are NOT cross-origin
+    EXPECT_FALSE(is_cross_origin("https://api.example.com:443", "https://api.example.com:443/api/endpoint"));
+}
+
+TEST(CORSPolicy, ShouldAttachOriginHeaderEmptyReturnsFalseV48) {
+    // Empty string origin should return false
+    EXPECT_FALSE(should_attach_origin_header("", "https://api.example.com/endpoint"));
+}
+
+TEST(CORSPolicy, NormalizeOutgoingOriginHeaderPreservesNullV48) {
+    // normalize_outgoing_origin_header should preserve null origin
+    clever::net::HeaderMap headers;
+    normalize_outgoing_origin_header(headers, "null", "https://api.example.com/endpoint");
+    EXPECT_EQ(headers.get("origin"), "null");
+}
+
+TEST(CORSPolicy, CorsAllowsResponseMismatchedOriginFalseV48) {
+    // Different origin in ACAO header should not allow response
+    clever::net::HeaderMap resp_headers;
+    resp_headers.set("Access-Control-Allow-Origin", "https://different.example.com");
+    EXPECT_FALSE(cors_allows_response("https://trusted.example.com", "https://api.example.com/data", resp_headers, false));
+}
+
+TEST(CORSPolicy, HasEnforceableDocumentOriginJavascriptSchemeNotV48) {
+    // javascript: scheme is NOT enforceable for CORS
+    EXPECT_FALSE(has_enforceable_document_origin("javascript:void(0)"));
+}
+
+TEST(CORSPolicy, IsCrossOriginDifferentHostCrossV48) {
+    // Different hosts (a.com vs b.com) are cross-origin
+    EXPECT_TRUE(is_cross_origin("https://a.com", "https://b.com/api"));
+}

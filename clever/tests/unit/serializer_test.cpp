@@ -7850,3 +7850,91 @@ TEST(Serializer, AllTypesComprehensiveV37) {
     EXPECT_EQ(bytes[0], 0xABu);
     EXPECT_FALSE(d.has_remaining());
 }
+
+TEST(Serializer, RoundtripU16MaxV38) {
+    Serializer s;
+    s.write_u16(65535u);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u16(), 65535u);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(Serializer, RoundtripI32MinV38) {
+    Serializer s;
+    s.write_i32(INT32_MIN);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i32(), INT32_MIN);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(Serializer, RoundtripF64ZeroV38) {
+    Serializer s;
+    s.write_f64(0.0);
+
+    Deserializer d(s.data());
+    EXPECT_DOUBLE_EQ(d.read_f64(), 0.0);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(Serializer, RoundtripStringSpecialCharsV38) {
+    Serializer s;
+    s.write_string("hello\ttab\nnewline");
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "hello\ttab\nnewline");
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(Serializer, RoundtripBytes256V38) {
+    Serializer s;
+    uint8_t data[256];
+    for (int i = 0; i < 256; ++i) {
+        data[i] = static_cast<uint8_t>(i);
+    }
+    s.write_bytes(data, 256u);
+
+    Deserializer d(s.data());
+    auto result = d.read_bytes();
+    ASSERT_EQ(result.size(), 256u);
+    for (int i = 0; i < 256; ++i) {
+        EXPECT_EQ(result[i], static_cast<uint8_t>(i));
+    }
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(Serializer, RoundtripBoolTrueFalseAlternateV38) {
+    Serializer s;
+    s.write_bool(true);
+    s.write_bool(false);
+    s.write_bool(true);
+    s.write_bool(false);
+    s.write_bool(true);
+
+    Deserializer d(s.data());
+    EXPECT_TRUE(d.read_bool());
+    EXPECT_FALSE(d.read_bool());
+    EXPECT_TRUE(d.read_bool());
+    EXPECT_FALSE(d.read_bool());
+    EXPECT_TRUE(d.read_bool());
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(Serializer, RoundtripU32OneV38) {
+    Serializer s;
+    s.write_u32(1u);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u32(), 1u);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(Serializer, RoundtripI64PositiveLargeV38) {
+    Serializer s;
+    s.write_i64(999999999999LL);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i64(), 999999999999LL);
+    EXPECT_FALSE(d.has_remaining());
+}

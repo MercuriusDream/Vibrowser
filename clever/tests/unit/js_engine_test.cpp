@@ -20178,3 +20178,59 @@ TEST(JSEngine, StringSliceCycle1434) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "world");
 }
+
+TEST(JSEngine, ArrayReverseCycle1443) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("[1,2,3].reverse().join(\",\")");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "3,2,1");
+}
+
+TEST(JSEngine, ArraySortCycle1443) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("[3,1,2].sort().join(\",\")");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1,2,3");
+}
+
+TEST(JSEngine, StringConcatCycle1443) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("\"hello\".concat(\" \", \"world\")");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "hello world");
+}
+
+TEST(JSEngine, StringSearchCycle1443) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("\"hello world\".search(\"world\")");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "6");
+}
+
+TEST(JSEngine, StringMatchCycle1443) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("\"test123\".match(/\\d+/)[0]");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "123");
+}
+
+TEST(JSEngine, MathAbsCycle1443) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("Math.abs(-42)");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "42");
+}
+
+TEST(JSEngine, MathPowCycle1443) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("Math.pow(2, 10)");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1024");
+}
+
+TEST(JSEngine, MathSqrtCycle1443) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("Math.sqrt(144)");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "12");
+}

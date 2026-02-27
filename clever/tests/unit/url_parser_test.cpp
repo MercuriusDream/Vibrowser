@@ -6722,3 +6722,92 @@ TEST(URLParser, QueryWithHashInValueV29) {
     EXPECT_NE(url->query.find("color="), std::string::npos);
     EXPECT_EQ(url->fragment, "");
 }
+
+TEST(URLParser, WssSchemeV30) {
+    auto url = parse("wss://ws.example.com/socket");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "wss");
+    EXPECT_EQ(url->host, "ws.example.com");
+    EXPECT_EQ(url->port, std::nullopt);
+    EXPECT_EQ(url->path, "/socket");
+    EXPECT_EQ(url->query, "");
+    EXPECT_EQ(url->fragment, "");
+}
+
+TEST(URLParser, QueryEmptyValueV30) {
+    auto url = parse("https://a.com/p?key=");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "a.com");
+    EXPECT_EQ(url->port, std::nullopt);
+    EXPECT_EQ(url->path, "/p");
+    EXPECT_NE(url->query.find("key="), std::string::npos);
+    EXPECT_EQ(url->fragment, "");
+}
+
+TEST(URLParser, MultipleSlashesInPathV30) {
+    auto url = parse("https://a.com//a//b");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "a.com");
+    EXPECT_EQ(url->port, std::nullopt);
+    EXPECT_EQ(url->path, "//a//b");
+    EXPECT_EQ(url->query, "");
+    EXPECT_EQ(url->fragment, "");
+}
+
+TEST(URLParser, PortMaxV30) {
+    auto url = parse("http://a.com:65535/x");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "http");
+    EXPECT_EQ(url->host, "a.com");
+    ASSERT_TRUE(url->port.has_value());
+    EXPECT_EQ(url->port.value(), 65535);
+    EXPECT_EQ(url->path, "/x");
+    EXPECT_EQ(url->query, "");
+    EXPECT_EQ(url->fragment, "");
+}
+
+TEST(URLParser, SchemeOnlyV30) {
+    auto url = parse("https://example.com");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "example.com");
+    EXPECT_EQ(url->port, std::nullopt);
+    EXPECT_TRUE(url->path == "/" || url->path == "");
+    EXPECT_EQ(url->query, "");
+    EXPECT_EQ(url->fragment, "");
+}
+
+TEST(URLParser, PathWithDotsNotResolvedV30) {
+    auto url = parse("https://a.com/a/./b");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "a.com");
+    EXPECT_EQ(url->port, std::nullopt);
+    EXPECT_EQ(url->path, "/a/b");
+    EXPECT_EQ(url->query, "");
+    EXPECT_EQ(url->fragment, "");
+}
+
+TEST(URLParser, HttpsPort443ImplicitV30) {
+    auto url = parse("https://a.com/page");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "a.com");
+    EXPECT_EQ(url->port, std::nullopt);
+    EXPECT_EQ(url->path, "/page");
+    EXPECT_EQ(url->query, "");
+    EXPECT_EQ(url->fragment, "");
+}
+
+TEST(URLParser, HostWithHyphenV30) {
+    auto url = parse("https://my-site.example.com/page");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "my-site.example.com");
+    EXPECT_EQ(url->port, std::nullopt);
+    EXPECT_EQ(url->path, "/page");
+    EXPECT_EQ(url->query, "");
+    EXPECT_EQ(url->fragment, "");
+}

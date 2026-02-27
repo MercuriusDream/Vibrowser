@@ -9610,3 +9610,98 @@ TEST(HttpClient, ResponseParse202AcceptedV40) {
     ASSERT_TRUE(resp.has_value());
     EXPECT_EQ(resp->status, 202u);
 }
+
+TEST(HttpClient, HeaderMapCaseInsensitiveGetV41) {
+    using namespace clever::net;
+    HeaderMap map;
+    map.set("Content-Type", "application/json");
+
+    // Get with different case should work (case-insensitive)
+    auto value = map.get("content-type");
+    EXPECT_EQ(value, "application/json");
+}
+
+TEST(HttpClient, RequestSerializePutWithBodyV41) {
+    using namespace clever::net;
+    Request req;
+    req.method = Method::PUT;
+    req.url = "http://api.example.com/resource/42";
+    req.headers.set("Content-Type", "application/json");
+    req.body = std::vector<uint8_t>{'t', 'e', 's', 't'};
+
+    auto serialized = req.serialize();
+    EXPECT_GT(serialized.size(), 0u);
+
+    std::string serialized_str(serialized.begin(), serialized.end());
+    EXPECT_NE(serialized_str.find("PUT"), std::string::npos);
+}
+
+TEST(HttpClient, ResponseParse403ForbiddenV41) {
+    using namespace clever::net;
+    std::string raw_str = "HTTP/1.1 403 Forbidden\r\n"
+                          "\r\n";
+
+    std::vector<uint8_t> raw(raw_str.begin(), raw_str.end());
+    auto resp = Response::parse(raw);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 403u);
+}
+
+TEST(HttpClient, HeaderMapRemoveNonexistentV41) {
+    using namespace clever::net;
+    HeaderMap map;
+    map.set("Header-A", "value-a");
+
+    // Remove a key that doesn't exist - should not crash
+    map.remove("NonexistentHeader");
+
+    EXPECT_EQ(map.size(), 1u);
+    EXPECT_EQ(map.get("Header-A"), "value-a");
+}
+
+TEST(HttpClient, RequestGetMethodDefaultV41) {
+    using namespace clever::net;
+    Request req;
+
+    // New request should default to GET method
+    EXPECT_EQ(req.method, Method::GET);
+}
+
+TEST(HttpClient, CookieJarEmptyGetHeaderV41) {
+    using namespace clever::net;
+    CookieJar jar;
+    jar.clear();
+
+    // Empty jar should return empty string
+    auto header = jar.get_cookie_header("example.com", "/", false, true, false);
+    EXPECT_EQ(header, "");
+}
+
+TEST(HttpClient, HeaderMapIterateV41) {
+    using namespace clever::net;
+    HeaderMap map;
+    map.set("Header-1", "value-1");
+    map.set("Header-2", "value-2");
+    map.set("Header-3", "value-3");
+
+    int count = 0;
+    for (auto it = map.begin(); it != map.end(); ++it) {
+        count++;
+    }
+
+    EXPECT_EQ(count, static_cast<int>(map.size()));
+    EXPECT_EQ(map.size(), 3u);
+}
+
+TEST(HttpClient, ResponseParse500InternalServerV41) {
+    using namespace clever::net;
+    std::string raw_str = "HTTP/1.1 500 Internal Server Error\r\n"
+                          "\r\n";
+
+    std::vector<uint8_t> raw(raw_str.begin(), raw_str.end());
+    auto resp = Response::parse(raw);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 500u);
+}
