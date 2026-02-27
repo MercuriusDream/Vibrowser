@@ -4941,3 +4941,70 @@ TEST(ResponseTest, ContentLocationInResponsePath) {
     ASSERT_TRUE(val.has_value());
     EXPECT_EQ(*val, "/items/42");
 }
+
+// Cycle 935 — additional HTTP request headers and response features
+TEST(RequestTest, MethodToStringPatch) {
+    EXPECT_EQ(method_to_string(Method::PATCH), "PATCH");
+}
+
+TEST(RequestTest, MethodToStringOptions) {
+    EXPECT_EQ(method_to_string(Method::OPTIONS), "OPTIONS");
+}
+
+TEST(RequestTest, XPoweredByHeaderSet) {
+    Request req("https://example.com/");
+    req.headers.set("X-Powered-By", "PHP/8.2");
+    auto val = req.headers.get("x-powered-by");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_NE(val->find("PHP"), std::string::npos);
+}
+
+TEST(RequestTest, XRealIpHeaderSet) {
+    Request req("https://example.com/");
+    req.headers.set("X-Real-IP", "203.0.113.5");
+    auto val = req.headers.get("x-real-ip");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(*val, "203.0.113.5");
+}
+
+TEST(ResponseTest, XPoweredByInResponse) {
+    std::string raw =
+        "HTTP/1.1 200 OK\r\n"
+        "X-Powered-By: Express\r\n"
+        "Content-Length: 0\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    auto val = resp->headers.get("x-powered-by");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(*val, "Express");
+}
+
+TEST(ResponseTest, ProxyStatusInResponse) {
+    std::string raw =
+        "HTTP/1.1 502 Bad Gateway\r\n"
+        "Proxy-Status: proxy.example.com; error=connection_refused\r\n"
+        "Content-Length: 0\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    auto val = resp->headers.get("proxy-status");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_NE(val->find("connection_refused"), std::string::npos);
+}
+
+TEST(ResponseTest, EarlyHintsStatus) {
+    std::string raw = "HTTP/1.1 103 Early Hints\r\nLink: </style.css>; rel=preload\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 103);
+}
+
+TEST(RequestTest, AcceptVersionHeaderSet) {
+    Request req("https://api.example.com/v2/users");
+    req.headers.set("Accept-Version", "v2");
+    auto val = req.headers.get("accept-version");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(*val, "v2");
+}
