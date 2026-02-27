@@ -7268,3 +7268,82 @@ TEST(CORSPolicyTest, CorsResponseExactOriginWithCredentialsV98) {
     h3.set("Access-Control-Allow-Credentials", "true");
     EXPECT_FALSE(cors_allows_response("https://trusted.example.com", "https://api.server.com/data", h3, true));
 }
+
+// ===== V99 tests =====
+
+TEST(CORSPolicyTest, DataAndBlobSchemesNotCorsEligibleV99) {
+    // data: and blob: URLs are never CORS-eligible
+    EXPECT_FALSE(is_cors_eligible_request_url("data:text/html,<h1>hello</h1>"));
+    EXPECT_FALSE(is_cors_eligible_request_url("blob:https://example.com/abc-123-def"));
+    EXPECT_FALSE(is_cors_eligible_request_url("data:application/json;base64,eyJrZXkiOiJ2YWx1ZSJ9"));
+    EXPECT_FALSE(is_cors_eligible_request_url("blob:null/550e8400-e29b-41d4-a716-446655440000"));
+}
+
+TEST(CORSPolicyTest, ExplicitPort443NotEnforceableInOriginStringV99) {
+    // Origin strings with explicit :443 are not enforceable (port should be omitted for HTTPS)
+    EXPECT_FALSE(has_enforceable_document_origin("https://example.com:443"));
+    // Without explicit port, HTTPS origin is enforceable
+    EXPECT_TRUE(has_enforceable_document_origin("https://example.com"));
+    // Explicit :80 on HTTP is also not enforceable (default port should be omitted)
+    EXPECT_FALSE(has_enforceable_document_origin("http://example.com:80"));
+    EXPECT_TRUE(has_enforceable_document_origin("http://example.com"));
+}
+
+TEST(CORSPolicyTest, FragmentUrlsNotCorsEligibleV99) {
+    // URLs containing fragment identifiers are not CORS-eligible
+    EXPECT_FALSE(is_cors_eligible_request_url("https://example.com/page#section1"));
+    EXPECT_FALSE(is_cors_eligible_request_url("http://example.com/path?q=1#frag"));
+    // Same URL without fragment should be eligible
+    EXPECT_TRUE(is_cors_eligible_request_url("https://example.com/page"));
+    EXPECT_TRUE(is_cors_eligible_request_url("http://example.com/path?q=1"));
+}
+
+TEST(CORSPolicyTest, WssSchemeNotCrossOriginV99) {
+    // wss:// is not included in cross-origin considerations
+    EXPECT_FALSE(is_cross_origin("https://example.com", "wss://example.com/socket"));
+    EXPECT_FALSE(is_cross_origin("https://example.com", "wss://other.com/socket"));
+    // ws:// should also not be cross-origin
+    EXPECT_FALSE(is_cross_origin("https://example.com", "ws://example.com/socket"));
+}
+
+TEST(CORSPolicyTest, IpAddressOriginsAreEnforceableV99) {
+    // IP address origins (both IPv4 and IPv6) are enforceable
+    EXPECT_TRUE(has_enforceable_document_origin("https://192.168.1.1"));
+    EXPECT_TRUE(has_enforceable_document_origin("http://10.0.0.1"));
+    EXPECT_TRUE(has_enforceable_document_origin("https://127.0.0.1"));
+    // IP with non-default port should be enforceable
+    EXPECT_TRUE(has_enforceable_document_origin("https://192.168.1.1:8443"));
+    EXPECT_TRUE(has_enforceable_document_origin("http://10.0.0.1:3000"));
+}
+
+TEST(CORSPolicyTest, SchemeCaseInsensitiveSameOriginV99) {
+    // Request URLs with uppercase schemes are still matched case-insensitively
+    EXPECT_FALSE(is_cross_origin("https://example.com", "HTTPS://example.com/path"));
+    EXPECT_FALSE(is_cross_origin("https://example.com", "Https://example.com/api"));
+    // Document origins with non-lowercase schemes are not enforceable, so not cross-origin
+    EXPECT_FALSE(is_cross_origin("HTTP://example.com", "http://other.com/page"));
+    EXPECT_FALSE(is_cross_origin("HTTPS://example.com", "https://other.com/api"));
+    // Lowercase document origin with different host is properly cross-origin
+    EXPECT_TRUE(is_cross_origin("https://example.com", "https://other.com/api"));
+}
+
+TEST(CORSPolicyTest, DataBlobOriginsNotEnforceableV99) {
+    // data: and blob: origins are not enforceable
+    EXPECT_FALSE(has_enforceable_document_origin("data:text/html,test"));
+    EXPECT_FALSE(has_enforceable_document_origin("blob:https://example.com/uuid"));
+    // "null" origin (opaque) is also not enforceable
+    EXPECT_FALSE(has_enforceable_document_origin("null"));
+    EXPECT_FALSE(has_enforceable_document_origin(""));
+}
+
+TEST(CORSPolicyTest, CrossOriginWildcardAcaoRejectsCredentialedRequestV99) {
+    // Wildcard ACAO (*) must be rejected when credentials are requested
+    clever::net::HeaderMap h;
+    h.set("Access-Control-Allow-Origin", "*");
+    h.set("Access-Control-Allow-Credentials", "true");
+    EXPECT_FALSE(cors_allows_response("https://app.example.com", "https://api.other.com/data", h, true));
+    // Wildcard ACAO without credentials requested should succeed
+    clever::net::HeaderMap h2;
+    h2.set("Access-Control-Allow-Origin", "*");
+    EXPECT_TRUE(cors_allows_response("https://app.example.com", "https://api.other.com/data", h2, false));
+}

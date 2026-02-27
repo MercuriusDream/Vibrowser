@@ -11312,3 +11312,75 @@ TEST(UrlParserTest, EmptyPathQueryAndFragmentV98) {
     EXPECT_TRUE(result->query.empty());
     EXPECT_TRUE(result->fragment.empty());
 }
+
+// =============================================================================
+// V99 Tests
+// =============================================================================
+
+TEST(UrlParserTest, HttpDefaultPort80NormalizedToNulloptV99) {
+    auto result = clever::url::parse("http://example.com:80/index.html");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_FALSE(result->port.has_value());
+    EXPECT_EQ(result->path, "/index.html");
+}
+
+TEST(UrlParserTest, Ipv4AddressAsHostWithPortV99) {
+    auto result = clever::url::parse("http://192.168.1.100:3000/api/v2");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->host, "192.168.1.100");
+    ASSERT_TRUE(result->port.has_value());
+    EXPECT_EQ(result->port.value(), 3000);
+    EXPECT_EQ(result->path, "/api/v2");
+}
+
+TEST(UrlParserTest, DoubleEncodesPercentInQueryStringV99) {
+    auto result = clever::url::parse("https://search.example.com/find?q=hello%20world");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "search.example.com");
+    // %20 gets double-encoded to %2520
+    EXPECT_NE(result->query.find("%2520"), std::string::npos);
+}
+
+TEST(UrlParserTest, MissingSchemeReturnsNulloptV99) {
+    auto result = clever::url::parse("://no-scheme.example.com/page");
+    EXPECT_FALSE(result.has_value());
+}
+
+TEST(UrlParserTest, FtpSchemeNonStandardPortPreservedV99) {
+    auto result = clever::url::parse("ftp://files.example.org:2121/pub/docs/readme.txt");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "ftp");
+    EXPECT_EQ(result->host, "files.example.org");
+    ASSERT_TRUE(result->port.has_value());
+    EXPECT_EQ(result->port.value(), 2121);
+    EXPECT_EQ(result->path, "/pub/docs/readme.txt");
+}
+
+TEST(UrlParserTest, SerializePreservesFragmentAndQueryTogetherV99) {
+    auto result = clever::url::parse("https://example.com/page?key=val&foo=bar#section3");
+    ASSERT_TRUE(result.has_value());
+    std::string s = result->serialize();
+    EXPECT_NE(s.find("key=val"), std::string::npos);
+    EXPECT_NE(s.find("foo=bar"), std::string::npos);
+    EXPECT_NE(s.find("#section3"), std::string::npos);
+    EXPECT_NE(s.find("/page"), std::string::npos);
+}
+
+TEST(UrlParserTest, UppercaseHostNormalizedToLowercaseV99) {
+    auto result = clever::url::parse("https://WWW.EXAMPLE.COM/About");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->host, "www.example.com");
+    // Path case should be preserved
+    EXPECT_EQ(result->path, "/About");
+}
+
+TEST(UrlParserTest, DotDotSegmentsCollapseToRootV99) {
+    auto result = clever::url::parse("https://example.com/a/b/../../c/../d");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/d");
+}

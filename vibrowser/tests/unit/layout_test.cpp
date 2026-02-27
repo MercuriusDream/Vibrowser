@@ -18248,3 +18248,188 @@ TEST(LayoutTest, MinWidthClampsSpecifiedWidthUpwardV98) {
     // min_width should clamp width upward to 250
     EXPECT_GE(root->geometry.width, 250.0f);
 }
+
+// ==================== V99 Tests ====================
+
+// Test flex container with column direction distributes children vertically
+TEST(LayoutTest, FlexColumnChildrenStackVerticallyV99) {
+    auto root = make_flex("div");
+    root->flex_direction = 2; // column
+    root->specified_width = 400.0f;
+    root->specified_height = 300.0f;
+
+    auto c1 = make_block("div");
+    c1->specified_height = 80.0f;
+    auto c2 = make_block("div");
+    c2->specified_height = 60.0f;
+
+    root->append_child(std::move(c1));
+    root->append_child(std::move(c2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // Second child should be below the first
+    float y1 = root->children[0]->geometry.y;
+    float y2 = root->children[1]->geometry.y;
+    EXPECT_LT(y1, y2);
+    // Children should each get the container width
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.width, 400.0f);
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.width, 400.0f);
+}
+
+// Test block element with only padding (no margin/border) expands correctly
+TEST(LayoutTest, BlockPaddingOnlyExpandsHeightV99) {
+    auto root = make_block("div");
+    root->geometry.padding.top = 20.0f;
+    root->geometry.padding.bottom = 20.0f;
+    root->geometry.padding.left = 15.0f;
+    root->geometry.padding.right = 15.0f;
+
+    auto child = make_block("div");
+    child->specified_height = 100.0f;
+
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 500.0f, 400.0f);
+
+    // Child width = 500 - 15 - 15 = 470
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.width, 470.0f);
+    // Root height = padding_top + child_height + padding_bottom
+    EXPECT_NEAR(root->geometry.height, 20.0f + 100.0f + 20.0f, 1.0f);
+}
+
+// Test flex row distributes space according to flex_grow ratios
+TEST(LayoutTest, FlexRowGrowRatioDistributionV99) {
+    auto root = make_flex("div");
+    root->flex_direction = 0; // row
+    root->specified_width = 600.0f;
+    root->specified_height = 100.0f;
+
+    auto c1 = make_block("div");
+    c1->flex_grow = 1.0f;
+    auto c2 = make_block("div");
+    c2->flex_grow = 2.0f;
+    auto c3 = make_block("div");
+    c3->flex_grow = 3.0f;
+
+    root->append_child(std::move(c1));
+    root->append_child(std::move(c2));
+    root->append_child(std::move(c3));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    float w1 = root->children[0]->geometry.width;
+    float w2 = root->children[1]->geometry.width;
+    float w3 = root->children[2]->geometry.width;
+    // Total should be approximately the container width
+    EXPECT_NEAR(w1 + w2 + w3, 600.0f, 2.0f);
+    // w2 should be roughly 2x w1 and w3 roughly 3x w1
+    EXPECT_NEAR(w2, w1 * 2.0f, 2.0f);
+    EXPECT_NEAR(w3, w1 * 3.0f, 2.0f);
+}
+
+// Test z_index and opacity are preserved through layout computation
+TEST(LayoutTest, ZIndexAndOpacityPreservedAfterComputeV99) {
+    auto root = make_block("div");
+    root->specified_width = 200.0f;
+    root->specified_height = 200.0f;
+    root->z_index = 42;
+    root->opacity = 0.75f;
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_EQ(root->z_index, 42);
+    EXPECT_FLOAT_EQ(root->opacity, 0.75f);
+    EXPECT_FLOAT_EQ(root->geometry.width, 200.0f);
+    EXPECT_FLOAT_EQ(root->geometry.height, 200.0f);
+}
+
+// Test nested blocks: grandchild inherits available width from parent chain
+TEST(LayoutTest, NestedBlockGrandchildInheritsWidthV99) {
+    auto root = make_block("div");
+    root->geometry.padding.left = 20.0f;
+    root->geometry.padding.right = 20.0f;
+
+    auto mid = make_block("div");
+    mid->geometry.padding.left = 10.0f;
+    mid->geometry.padding.right = 10.0f;
+
+    auto inner = make_block("div");
+    inner->specified_height = 30.0f;
+
+    mid->append_child(std::move(inner));
+    root->append_child(std::move(mid));
+
+    LayoutEngine engine;
+    engine.compute(*root, 1000.0f, 800.0f);
+
+    // mid width = 1000 - 20 - 20 = 960
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.width, 960.0f);
+    // inner width = 960 - 10 - 10 = 940
+    EXPECT_FLOAT_EQ(root->children[0]->children[0]->geometry.width, 940.0f);
+}
+
+// Test max_width constrains a block that would otherwise fill viewport
+TEST(LayoutTest, MaxWidthConstrainsBlockToSmallerValueV99) {
+    auto root = make_block("div");
+    root->max_width = 300.0f;
+    root->specified_height = 50.0f;
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // max_width should cap the block width to 300 instead of 800
+    EXPECT_LE(root->geometry.width, 300.0f);
+}
+
+// Test text_content preserved and block with margin offsets child y position
+TEST(LayoutTest, BlockMarginOffsetsChildYPositionV99) {
+    auto root = make_block("div");
+
+    auto child = make_block("div");
+    child->geometry.margin.top = 25.0f;
+    child->specified_height = 40.0f;
+    child->text_content = "hello world";
+
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 600.0f, 400.0f);
+
+    // Child y should be offset by its top margin
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.y, 25.0f);
+    // text_content should be preserved
+    EXPECT_EQ(root->children[0]->text_content, "hello world");
+    // Root height should include margin + child height
+    EXPECT_NEAR(root->geometry.height, 25.0f + 40.0f, 1.0f);
+}
+
+// Test flex row with flex_shrink respects min_width floor
+TEST(LayoutTest, FlexShrinkRespectsMinWidthFloorV99) {
+    auto root = make_flex("div");
+    root->flex_direction = 0; // row
+    root->specified_width = 200.0f;
+    root->specified_height = 80.0f;
+
+    auto c1 = make_block("div");
+    c1->specified_width = 150.0f;
+    c1->flex_shrink = 1.0f;
+    c1->min_width = 120.0f;
+
+    auto c2 = make_block("div");
+    c2->specified_width = 150.0f;
+    c2->flex_shrink = 1.0f;
+
+    root->append_child(std::move(c1));
+    root->append_child(std::move(c2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // c1 should not shrink below its min_width of 120
+    EXPECT_GE(root->children[0]->geometry.width, 120.0f);
+}

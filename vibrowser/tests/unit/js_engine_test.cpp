@@ -27412,3 +27412,201 @@ TEST(JsEngineTest, LogicalAssignmentAndNumericSeparatorsV98) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "42|0|default|existing|2|0|1000000|65535");
 }
+
+// ============================================================================
+// V99 Tests
+// ============================================================================
+
+TEST(JsEngineTest, GeneratorFibonacciSequenceV99) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        function* fib() {
+            let a = 0, b = 1;
+            while (true) {
+                yield a;
+                [a, b] = [b, a + b];
+            }
+        }
+        var g = fib();
+        var out = [];
+        for (var i = 0; i < 10; i++) {
+            out.push(g.next().value);
+        }
+        out.join(",");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "0,1,1,2,3,5,8,13,21,34");
+}
+
+TEST(JsEngineTest, ReflectOwnKeysAndDefinePropertyV99) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var obj = { x: 1, y: 2 };
+        Reflect.defineProperty(obj, "z", { value: 3, enumerable: true, configurable: true });
+        var keys = Reflect.ownKeys(obj);
+        var has = Reflect.has(obj, "z");
+        var del = Reflect.deleteProperty(obj, "y");
+        var keysAfter = Reflect.ownKeys(obj);
+        keys.join(",") + "|" + has + "|" + del + "|" + keysAfter.join(",");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "x,y,z|true|true|x,z");
+}
+
+TEST(JsEngineTest, TypedArrayOperationsV99) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var buf = new ArrayBuffer(8);
+        var view = new DataView(buf);
+        view.setInt32(0, 12345, true);
+        view.setInt32(4, -9876, true);
+        var a = view.getInt32(0, true);
+        var b = view.getInt32(4, true);
+        var u8 = new Uint8Array(buf);
+        var len = u8.length;
+        var f32 = new Float32Array([1.5, 2.5, 3.5]);
+        var sum = f32.reduce(function(acc, v) { return acc + v; }, 0);
+        a + "|" + b + "|" + len + "|" + sum;
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "12345|-9876|8|7.5");
+}
+
+TEST(JsEngineTest, SymbolIteratorCustomObjectV99) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var range = {
+            from: 1,
+            to: 5,
+            [Symbol.iterator]() {
+                var cur = this.from;
+                var last = this.to;
+                return {
+                    next() {
+                        if (cur <= last) return { value: cur++, done: false };
+                        return { done: true };
+                    }
+                };
+            }
+        };
+        var collected = [];
+        for (var v of range) collected.push(v);
+        var spread = [...range];
+        collected.join(",") + "|" + spread.join(",");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1,2,3,4,5|1,2,3,4,5");
+}
+
+TEST(JsEngineTest, MapChainAndEntriesConversionV99) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var m = new Map();
+        m.set("a", 1).set("b", 2).set("c", 3);
+        var keys = [...m.keys()].join(",");
+        var vals = [...m.values()].join(",");
+        var entries = [...m.entries()].map(function(e) { return e[0] + "=" + e[1]; }).join(",");
+        m.delete("b");
+        var afterDel = m.size;
+        var fromEntries = Object.fromEntries(m);
+        keys + "|" + vals + "|" + entries + "|" + afterDel + "|" + fromEntries.a + "," + fromEntries.c;
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "a,b,c|1,2,3|a=1,b=2,c=3|2|1,3");
+}
+
+TEST(JsEngineTest, ProxyHandlerWithGetSetHasV99) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var log = [];
+        var target = { x: 10, y: 20 };
+        var handler = {
+            get: function(obj, prop) {
+                log.push("get:" + prop);
+                return prop in obj ? obj[prop] * 2 : -1;
+            },
+            set: function(obj, prop, val) {
+                log.push("set:" + prop);
+                obj[prop] = val + 100;
+                return true;
+            },
+            has: function(obj, prop) {
+                log.push("has:" + prop);
+                return prop in obj;
+            }
+        };
+        var p = new Proxy(target, handler);
+        var a = p.x;
+        p.z = 5;
+        var b = p.z;
+        var c = ("y" in p);
+        var d = ("w" in p);
+        a + "|" + b + "|" + c + "|" + d + "|" + log.join(",");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "20|210|true|false|get:x,set:z,get:z,has:y,has:w");
+}
+
+TEST(JsEngineTest, ClassInheritanceAndStaticMethodsV99) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        class Shape {
+            constructor(name) { this.name = name; }
+            static describe() { return "Shape class"; }
+            area() { return 0; }
+        }
+        class Circle extends Shape {
+            constructor(r) {
+                super("circle");
+                this.r = r;
+            }
+            area() { return Math.round(Math.PI * this.r * this.r * 100) / 100; }
+        }
+        class Rect extends Shape {
+            constructor(w, h) {
+                super("rect");
+                this.w = w;
+                this.h = h;
+            }
+            area() { return this.w * this.h; }
+        }
+        var c = new Circle(5);
+        var r = new Rect(3, 4);
+        var r1 = [];
+        r1.push(c.name);
+        r1.push(c.area());
+        r1.push(r.name);
+        r1.push(r.area());
+        r1.push(c instanceof Shape);
+        r1.push(c instanceof Circle);
+        r1.push(Shape.describe());
+        r1.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "circle|78.54|rect|12|true|true|Shape class");
+}
+
+TEST(JsEngineTest, RegExpExecAndGroupsV99) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var re = /(?<year>\d{4})-(?<month>\d{2})-(?<day>\d{2})/;
+        var m = re.exec("2025-12-31");
+        var year = m.groups.year;
+        var month = m.groups.month;
+        var day = m.groups.day;
+        var full = m[0];
+        var re2 = /(\w+)/g;
+        var words = [];
+        var match;
+        var str = "hello world foo";
+        while ((match = re2.exec(str)) !== null) {
+            words.push(match[1]);
+        }
+        var re3 = /^[a-z]+$/i;
+        var t1 = re3.test("Hello");
+        var t2 = re3.test("Hello123");
+        full + "|" + year + "|" + month + "|" + day + "|" + words.join(",") + "|" + t1 + "|" + t2;
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "2025-12-31|2025|12|31|hello,world,foo|true|false");
+}

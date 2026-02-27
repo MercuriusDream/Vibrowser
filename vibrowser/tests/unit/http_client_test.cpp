@@ -16794,3 +16794,169 @@ TEST(HttpClientTest, ResponseParse500WithBodyV98) {
     EXPECT_EQ(resp->body_as_string(), body_content);
     EXPECT_FALSE(resp->was_redirected);
 }
+
+// ===========================================================================
+// Round 99 — HttpClientTest V99 tests
+// ===========================================================================
+
+// 1. Request serialize GET with query string preserves full request line
+TEST(HttpClientTest, SerializeGetWithQueryStringPreservedV99) {
+    Request req;
+    req.method = Method::GET;
+    req.host = "search.example.com";
+    req.port = 80;
+    req.path = "/find";
+    req.query = "term=hello+world&page=3&limit=25";
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    EXPECT_TRUE(result.find("GET /find?term=hello+world&page=3&limit=25 HTTP/1.1\r\n") != std::string::npos);
+    // Port 80 omitted from Host header
+    EXPECT_TRUE(result.find("Host: search.example.com\r\n") != std::string::npos);
+    EXPECT_TRUE(result.find(":80") == std::string::npos);
+}
+
+// 2. Response::parse 301 redirect with Location header
+TEST(HttpClientTest, ResponseParse301WithLocationHeaderV99) {
+    std::string raw =
+        "HTTP/1.1 301 Moved Permanently\r\n"
+        "Location: https://new.example.com/page\r\n"
+        "Content-Length: 0\r\n"
+        "\r\n";
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 301);
+    EXPECT_EQ(resp->status_text, "Moved Permanently");
+    EXPECT_TRUE(resp->headers.has("location"));
+    EXPECT_EQ(resp->headers.get("location").value(), "https://new.example.com/page");
+    EXPECT_TRUE(resp->body_as_string().empty());
+}
+
+// 3. HeaderMap: multiple distinct keys coexist independently
+TEST(HttpClientTest, HeaderMapMultipleDistinctKeysCoexistV99) {
+    HeaderMap headers;
+    headers.set("Content-Type", "text/html");
+    headers.set("Accept-Language", "en-US");
+    headers.set("Cache-Control", "no-cache");
+    headers.set("X-Request-Id", "abc-123");
+
+    EXPECT_TRUE(headers.has("content-type"));
+    EXPECT_TRUE(headers.has("accept-language"));
+    EXPECT_TRUE(headers.has("cache-control"));
+    EXPECT_TRUE(headers.has("x-request-id"));
+
+    EXPECT_EQ(headers.get("content-type").value(), "text/html");
+    EXPECT_EQ(headers.get("accept-language").value(), "en-US");
+    EXPECT_EQ(headers.get("cache-control").value(), "no-cache");
+    EXPECT_EQ(headers.get("x-request-id").value(), "abc-123");
+
+    // Removing one key does not affect the others
+    headers.remove("cache-control");
+    EXPECT_FALSE(headers.has("cache-control"));
+    EXPECT_TRUE(headers.has("content-type"));
+    EXPECT_TRUE(headers.has("accept-language"));
+    EXPECT_TRUE(headers.has("x-request-id"));
+}
+
+// 4. CookieJar: cookies set on different paths are isolated
+TEST(HttpClientTest, CookieJarDifferentPathsIsolatedV99) {
+    CookieJar jar;
+    jar.set_from_header("token=alpha; Path=/app", "example.com");
+    jar.set_from_header("token=beta; Path=/admin", "example.com");
+
+    std::string app_cookies = jar.get_cookie_header("example.com", "/app", false);
+    std::string admin_cookies = jar.get_cookie_header("example.com", "/admin", false);
+
+    // /app path should see the alpha token
+    EXPECT_TRUE(app_cookies.find("token=alpha") != std::string::npos);
+    // /admin path should see the beta token
+    EXPECT_TRUE(admin_cookies.find("token=beta") != std::string::npos);
+}
+
+// 5. Request parse_url with query string containing multiple params
+TEST(HttpClientTest, ParseUrlWithEncodedQueryParamsV99) {
+    Request req;
+    req.url = "https://api.example.com:8443/search?q=foo+bar&lang=en&limit=50";
+    req.parse_url();
+
+    EXPECT_EQ(req.host, "api.example.com");
+    EXPECT_EQ(req.port, 8443);
+    EXPECT_EQ(req.path, "/search");
+    EXPECT_TRUE(req.use_tls);
+    EXPECT_EQ(req.query, "q=foo+bar&lang=en&limit=50");
+}
+
+// 6. Request serialize PUT with body and custom headers lowercase
+TEST(HttpClientTest, SerializePutWithBodyCustomHeadersLowercaseV99) {
+    Request req;
+    req.method = Method::PUT;
+    req.host = "api.example.com";
+    req.port = 443;
+    req.path = "/resource/42";
+    req.use_tls = true;
+
+    std::string body_str = R"({"name":"updated"})";
+    req.body.assign(body_str.begin(), body_str.end());
+    req.headers.set("Content-Type", "application/json");
+    req.headers.set("Authorization", "Bearer tok123");
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    // Request line
+    EXPECT_TRUE(result.find("PUT /resource/42 HTTP/1.1\r\n") != std::string::npos);
+    // Host without port 443
+    EXPECT_TRUE(result.find("Host: api.example.com\r\n") != std::string::npos);
+    EXPECT_TRUE(result.find(":443") == std::string::npos);
+    // Custom headers lowercased
+    EXPECT_TRUE(result.find("content-type: application/json\r\n") != std::string::npos);
+    EXPECT_TRUE(result.find("authorization: Bearer tok123\r\n") != std::string::npos);
+    // Body present
+    EXPECT_TRUE(result.find(body_str) != std::string::npos);
+}
+
+// 7. Response::parse 204 No Content (empty body, no Content-Length)
+TEST(HttpClientTest, ResponseParse204NoContentV99) {
+    std::string raw =
+        "HTTP/1.1 204 No Content\r\n"
+        "Server: nginx\r\n"
+        "\r\n";
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 204);
+    EXPECT_EQ(resp->status_text, "No Content");
+    EXPECT_TRUE(resp->body_as_string().empty());
+    EXPECT_EQ(resp->headers.get("server").value(), "nginx");
+}
+
+// 8. CookieJar: clearing then re-adding cookies works correctly
+TEST(HttpClientTest, CookieJarClearThenReAddWorksV99) {
+    CookieJar jar;
+    jar.set_from_header("session=old; Path=/", "example.com");
+    jar.set_from_header("pref=dark; Path=/", "example.com");
+    EXPECT_EQ(jar.size(), 2u);
+
+    jar.clear();
+    EXPECT_EQ(jar.size(), 0u);
+
+    // After clearing, get_cookie_header returns empty
+    std::string empty_cookies = jar.get_cookie_header("example.com", "/", false);
+    EXPECT_TRUE(empty_cookies.empty());
+
+    // Re-add a cookie after clear
+    jar.set_from_header("session=fresh; Path=/", "example.com");
+    EXPECT_EQ(jar.size(), 1u);
+
+    std::string cookies = jar.get_cookie_header("example.com", "/", false);
+    EXPECT_TRUE(cookies.find("session=fresh") != std::string::npos);
+    // Old cookie should not reappear
+    EXPECT_TRUE(cookies.find("session=old") == std::string::npos);
+    EXPECT_TRUE(cookies.find("pref=dark") == std::string::npos);
+}

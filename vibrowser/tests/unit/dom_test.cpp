@@ -15599,3 +15599,116 @@ TEST(DomTest, NodeTypeDistinguishesElementTextCommentV98) {
     EXPECT_EQ(txt.text_content(), "hello");
     EXPECT_EQ(cmt.data(), "note");
 }
+
+// ---------------------------------------------------------------------------
+// V99 Round Tests
+// ---------------------------------------------------------------------------
+
+TEST(DomTest, InsertBeforeAtBeginningV99) {
+    Element parent("ul");
+    auto li1 = std::make_unique<Element>("li");
+    auto* rawLi1 = li1.get();
+    parent.append_child(std::move(li1));
+
+    auto li0 = std::make_unique<Element>("li");
+    auto* rawLi0 = li0.get();
+    parent.insert_before(std::move(li0), rawLi1);
+
+    EXPECT_EQ(parent.first_child(), rawLi0);
+    EXPECT_EQ(rawLi0->next_sibling(), rawLi1);
+    EXPECT_EQ(parent.child_count(), 2u);
+}
+
+TEST(DomTest, RemoveAttributeClearsItV99) {
+    Element el("input");
+    el.set_attribute("type", "text");
+    EXPECT_TRUE(el.has_attribute("type"));
+    EXPECT_EQ(el.get_attribute("type").value(), "text");
+
+    el.remove_attribute("type");
+    EXPECT_FALSE(el.has_attribute("type"));
+    EXPECT_FALSE(el.get_attribute("type").has_value());
+}
+
+TEST(DomTest, ClassListToggleAddsAndRemovesV99) {
+    Element el("div");
+    EXPECT_FALSE(el.class_list().contains("active"));
+
+    el.class_list().toggle("active");
+    EXPECT_TRUE(el.class_list().contains("active"));
+
+    el.class_list().toggle("active");
+    EXPECT_FALSE(el.class_list().contains("active"));
+}
+
+TEST(DomTest, MultipleAttributesSizeTrackingV99) {
+    Element el("a");
+    EXPECT_EQ(el.attributes().size(), 0u);
+
+    el.set_attribute("href", "/home");
+    el.set_attribute("target", "_blank");
+    el.set_attribute("rel", "noopener");
+    EXPECT_EQ(el.attributes().size(), 3u);
+
+    el.remove_attribute("target");
+    EXPECT_EQ(el.attributes().size(), 2u);
+    EXPECT_TRUE(el.has_attribute("href"));
+    EXPECT_FALSE(el.has_attribute("target"));
+    EXPECT_TRUE(el.has_attribute("rel"));
+}
+
+TEST(DomTest, CommentNodeDataAndTypeV99) {
+    Comment c1("TODO: fix this");
+    EXPECT_EQ(c1.data(), "TODO: fix this");
+    EXPECT_EQ(c1.node_type(), NodeType::Comment);
+
+    Comment c2("");
+    EXPECT_EQ(c2.data(), "");
+    EXPECT_EQ(c2.node_type(), NodeType::Comment);
+}
+
+TEST(DomTest, ParentPointerAfterAppendChildV99) {
+    Element root("div");
+    auto span = std::make_unique<Element>("span");
+    auto* rawSpan = span.get();
+    root.append_child(std::move(span));
+
+    EXPECT_EQ(rawSpan->parent(), &root);
+    EXPECT_EQ(root.parent(), nullptr);
+}
+
+TEST(DomTest, RemoveChildUpdatesFirstLastChildV99) {
+    Element parent("div");
+    auto a = std::make_unique<Element>("a");
+    auto* rawA = a.get();
+    auto b = std::make_unique<Element>("b");
+    auto* rawB = b.get();
+    auto c = std::make_unique<Element>("c");
+    auto* rawC = c.get();
+    parent.append_child(std::move(a));
+    parent.append_child(std::move(b));
+    parent.append_child(std::move(c));
+
+    EXPECT_EQ(parent.first_child(), rawA);
+    EXPECT_EQ(parent.last_child(), rawC);
+
+    parent.remove_child(*rawA);
+    EXPECT_EQ(parent.first_child(), rawB);
+    EXPECT_EQ(parent.last_child(), rawC);
+    EXPECT_EQ(parent.child_count(), 2u);
+
+    parent.remove_child(*rawC);
+    EXPECT_EQ(parent.first_child(), rawB);
+    EXPECT_EQ(parent.last_child(), rawB);
+    EXPECT_EQ(parent.child_count(), 1u);
+}
+
+TEST(DomTest, SetAttributeOverwritesExistingValueV99) {
+    Element el("img");
+    el.set_attribute("src", "old.png");
+    EXPECT_EQ(el.get_attribute("src").value(), "old.png");
+
+    el.set_attribute("src", "new.png");
+    EXPECT_EQ(el.get_attribute("src").value(), "new.png");
+    EXPECT_EQ(el.attributes().size(), 1u);
+}

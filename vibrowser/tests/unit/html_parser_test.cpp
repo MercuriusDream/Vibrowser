@@ -15833,3 +15833,215 @@ TEST(HtmlParserTest, AnchorLinksWithHrefAndTargetV98) {
     EXPECT_EQ(get_attr_v63(links[2], "href"), "/contact");
     EXPECT_EQ(links[2]->text_content(), "Contact");
 }
+
+TEST(HtmlParserTest, NestedTablesWithCaptionV99) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<table>"
+        "<caption>Sales Report</caption>"
+        "<thead><tr><th>Product</th><th>Revenue</th></tr></thead>"
+        "<tbody>"
+        "<tr><td>Widget A</td><td>$1000</td></tr>"
+        "<tr><td>Widget B</td><td>$2500</td></tr>"
+        "</tbody>"
+        "</table>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* table = doc->find_element("table");
+    ASSERT_NE(table, nullptr);
+    auto* caption = table->find_element("caption");
+    ASSERT_NE(caption, nullptr);
+    EXPECT_EQ(caption->text_content(), "Sales Report");
+    auto ths = table->find_all_elements("th");
+    ASSERT_EQ(ths.size(), 2u);
+    EXPECT_EQ(ths[0]->text_content(), "Product");
+    EXPECT_EQ(ths[1]->text_content(), "Revenue");
+    auto tds = table->find_all_elements("td");
+    ASSERT_EQ(tds.size(), 4u);
+    EXPECT_EQ(tds[0]->text_content(), "Widget A");
+    EXPECT_EQ(tds[1]->text_content(), "$1000");
+    EXPECT_EQ(tds[2]->text_content(), "Widget B");
+    EXPECT_EQ(tds[3]->text_content(), "$2500");
+}
+
+TEST(HtmlParserTest, FieldsetWithLegendAndInputsV99) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<fieldset>"
+        "<legend>Login Credentials</legend>"
+        "<label>Username</label>"
+        "<input type=\"text\" name=\"user\" />"
+        "<label>Password</label>"
+        "<input type=\"password\" name=\"pass\" />"
+        "</fieldset>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* fieldset = doc->find_element("fieldset");
+    ASSERT_NE(fieldset, nullptr);
+    auto* legend = fieldset->find_element("legend");
+    ASSERT_NE(legend, nullptr);
+    EXPECT_EQ(legend->text_content(), "Login Credentials");
+    auto labels = fieldset->find_all_elements("label");
+    ASSERT_EQ(labels.size(), 2u);
+    EXPECT_EQ(labels[0]->text_content(), "Username");
+    EXPECT_EQ(labels[1]->text_content(), "Password");
+    auto inputs = fieldset->find_all_elements("input");
+    ASSERT_EQ(inputs.size(), 2u);
+    EXPECT_EQ(get_attr_v63(inputs[0], "type"), "text");
+    EXPECT_EQ(get_attr_v63(inputs[0], "name"), "user");
+    EXPECT_EQ(get_attr_v63(inputs[1], "type"), "password");
+    EXPECT_EQ(get_attr_v63(inputs[1], "name"), "pass");
+}
+
+TEST(HtmlParserTest, DetailsAndSummaryElementsV99) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<details>"
+        "<summary>Click to expand</summary>"
+        "<p>Hidden content revealed when details is open.</p>"
+        "</details>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* details = doc->find_element("details");
+    ASSERT_NE(details, nullptr);
+    auto* summary = details->find_element("summary");
+    ASSERT_NE(summary, nullptr);
+    EXPECT_EQ(summary->text_content(), "Click to expand");
+    auto* p = details->find_element("p");
+    ASSERT_NE(p, nullptr);
+    EXPECT_EQ(p->text_content(), "Hidden content revealed when details is open.");
+}
+
+TEST(HtmlParserTest, MultipleDataAttributesOnElementV99) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<div data-id=\"42\" data-role=\"admin\" data-active=\"true\" class=\"user-card\">"
+        "User Info"
+        "</div>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* div = doc->find_element("div");
+    ASSERT_NE(div, nullptr);
+    EXPECT_EQ(get_attr_v63(div, "data-id"), "42");
+    EXPECT_EQ(get_attr_v63(div, "data-role"), "admin");
+    EXPECT_EQ(get_attr_v63(div, "data-active"), "true");
+    EXPECT_EQ(get_attr_v63(div, "class"), "user-card");
+    EXPECT_EQ(div->text_content(), "User Info");
+}
+
+TEST(HtmlParserTest, OrderedListWithNestedUnorderedListV99) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<ol>"
+        "<li>First item"
+        "<ul><li>Sub A</li><li>Sub B</li></ul>"
+        "</li>"
+        "<li>Second item</li>"
+        "<li>Third item</li>"
+        "</ol>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* ol = doc->find_element("ol");
+    ASSERT_NE(ol, nullptr);
+    auto top_items = ol->find_all_elements("li");
+    // find_all_elements is recursive, so it finds all li including nested
+    ASSERT_GE(top_items.size(), 5u);
+    auto* ul = ol->find_element("ul");
+    ASSERT_NE(ul, nullptr);
+    auto sub_items = ul->find_all_elements("li");
+    ASSERT_EQ(sub_items.size(), 2u);
+    EXPECT_EQ(sub_items[0]->text_content(), "Sub A");
+    EXPECT_EQ(sub_items[1]->text_content(), "Sub B");
+}
+
+TEST(HtmlParserTest, EmptyElementsAndSelfClosingTagsV99) {
+    auto doc = clever::html::parse(
+        "<html><head>"
+        "<meta charset=\"utf-8\" />"
+        "<link rel=\"icon\" href=\"/favicon.ico\" />"
+        "</head><body>"
+        "<br/><hr/>"
+        "<img src=\"logo.png\" alt=\"Logo\" />"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* meta = doc->find_element("meta");
+    ASSERT_NE(meta, nullptr);
+    EXPECT_EQ(get_attr_v63(meta, "charset"), "utf-8");
+    auto* link = doc->find_element("link");
+    ASSERT_NE(link, nullptr);
+    EXPECT_EQ(get_attr_v63(link, "rel"), "icon");
+    EXPECT_EQ(get_attr_v63(link, "href"), "/favicon.ico");
+    auto* br = doc->find_element("br");
+    ASSERT_NE(br, nullptr);
+    auto* hr = doc->find_element("hr");
+    ASSERT_NE(hr, nullptr);
+    auto* img = doc->find_element("img");
+    ASSERT_NE(img, nullptr);
+    EXPECT_EQ(get_attr_v63(img, "src"), "logo.png");
+    EXPECT_EQ(get_attr_v63(img, "alt"), "Logo");
+}
+
+TEST(HtmlParserTest, SelectWithOptgroupAndOptionsV99) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<select name=\"cars\">"
+        "<optgroup label=\"Swedish Cars\">"
+        "<option value=\"volvo\">Volvo</option>"
+        "<option value=\"saab\">Saab</option>"
+        "</optgroup>"
+        "<optgroup label=\"German Cars\">"
+        "<option value=\"mercedes\">Mercedes</option>"
+        "<option value=\"audi\">Audi</option>"
+        "</optgroup>"
+        "</select>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* select = doc->find_element("select");
+    ASSERT_NE(select, nullptr);
+    EXPECT_EQ(get_attr_v63(select, "name"), "cars");
+    auto optgroups = select->find_all_elements("optgroup");
+    ASSERT_EQ(optgroups.size(), 2u);
+    EXPECT_EQ(get_attr_v63(optgroups[0], "label"), "Swedish Cars");
+    EXPECT_EQ(get_attr_v63(optgroups[1], "label"), "German Cars");
+    auto all_options = select->find_all_elements("option");
+    ASSERT_EQ(all_options.size(), 4u);
+    EXPECT_EQ(get_attr_v63(all_options[0], "value"), "volvo");
+    EXPECT_EQ(all_options[0]->text_content(), "Volvo");
+    EXPECT_EQ(get_attr_v63(all_options[2], "value"), "mercedes");
+    EXPECT_EQ(all_options[2]->text_content(), "Mercedes");
+    EXPECT_EQ(get_attr_v63(all_options[3], "value"), "audi");
+    EXPECT_EQ(all_options[3]->text_content(), "Audi");
+}
+
+TEST(HtmlParserTest, ArticleWithHeaderFooterAndSectionsV99) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<article>"
+        "<header><h1>Article Title</h1></header>"
+        "<section><p>Section one content.</p></section>"
+        "<section><p>Section two content.</p></section>"
+        "<footer><small>Copyright 2026</small></footer>"
+        "</article>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* article = doc->find_element("article");
+    ASSERT_NE(article, nullptr);
+    auto* header = article->find_element("header");
+    ASSERT_NE(header, nullptr);
+    auto* h1 = header->find_element("h1");
+    ASSERT_NE(h1, nullptr);
+    EXPECT_EQ(h1->text_content(), "Article Title");
+    auto sections = article->find_all_elements("section");
+    ASSERT_EQ(sections.size(), 2u);
+    auto* p1 = sections[0]->find_element("p");
+    ASSERT_NE(p1, nullptr);
+    EXPECT_EQ(p1->text_content(), "Section one content.");
+    auto* p2 = sections[1]->find_element("p");
+    ASSERT_NE(p2, nullptr);
+    EXPECT_EQ(p2->text_content(), "Section two content.");
+    auto* footer = article->find_element("footer");
+    ASSERT_NE(footer, nullptr);
+    auto* small = footer->find_element("small");
+    ASSERT_NE(small, nullptr);
+    EXPECT_EQ(small->text_content(), "Copyright 2026");
+}
