@@ -1470,3 +1470,42 @@ TEST(CORSPolicyTest, CORSRejectsStarWithCredentials) {
     headers.set("Access-Control-Allow-Origin", "*");
     EXPECT_FALSE(cors_allows_response("https://app.com", "https://api.com/data", headers, true));
 }
+
+// Cycle 842 — default ports, subdomain/apex mismatch, enforceable origins
+TEST(CORSPolicyTest, HttpExplicitPort80SameOriginAsNoPort) {
+    EXPECT_FALSE(is_cross_origin("http://example.com:80", "http://example.com/api"));
+}
+
+TEST(CORSPolicyTest, HttpsExplicitPort443SameOriginAsNoPort) {
+    EXPECT_FALSE(is_cross_origin("https://example.com:443", "https://example.com/api"));
+}
+
+TEST(CORSPolicyTest, CORSAllowsPortedOriginExactMatchInACAO) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "https://app.com:3000");
+    EXPECT_TRUE(cors_allows_response("https://app.com:3000", "https://api.com/data", headers, false));
+}
+
+TEST(CORSPolicyTest, CORSRejectsSubdomainACAOForApexDocOrigin) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "https://sub.example.com");
+    EXPECT_FALSE(cors_allows_response("https://example.com", "https://api.com/data", headers, false));
+}
+
+TEST(CORSPolicyTest, CORSRejectsApexACAOForSubdomainDocOrigin) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "https://example.com");
+    EXPECT_FALSE(cors_allows_response("https://sub.example.com", "https://api.com/data", headers, false));
+}
+
+TEST(CORSPolicyTest, HasEnforceableOriginHttpsSubdomain) {
+    EXPECT_TRUE(has_enforceable_document_origin("https://app.mysite.com"));
+}
+
+TEST(CORSPolicyTest, HasEnforceableOriginHttpWithDevPort) {
+    EXPECT_TRUE(has_enforceable_document_origin("http://localhost:8080"));
+}
+
+TEST(CORSPolicyTest, EligibleHttpsWithQueryNoFragment) {
+    EXPECT_TRUE(is_cors_eligible_request_url("https://api.example.com/search?q=foo&page=2"));
+}
