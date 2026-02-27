@@ -2302,3 +2302,81 @@ TEST(SerializerTest, MixedTypesLargeSequence) {
     EXPECT_DOUBLE_EQ(d.read_f64(), 1.23);
     EXPECT_EQ(d.read_u64(), 999999u);
 }
+
+TEST(SerializerTest, U16ZeroAndMaxRoundTrip) {
+    clever::ipc::Serializer s;
+    s.write_u16(0);
+    s.write_u16(65535);
+    clever::ipc::Deserializer d(s.data());
+    EXPECT_EQ(d.read_u16(), 0);
+    EXPECT_EQ(d.read_u16(), 65535);
+}
+
+TEST(SerializerTest, I64NegativeOneRoundTrip) {
+    clever::ipc::Serializer s;
+    s.write_i64(-1);
+    clever::ipc::Deserializer d(s.data());
+    EXPECT_EQ(d.read_i64(), -1);
+}
+
+TEST(SerializerTest, FourU8ValuesInOrder) {
+    clever::ipc::Serializer s;
+    s.write_u8(10);
+    s.write_u8(20);
+    s.write_u8(30);
+    s.write_u8(40);
+    clever::ipc::Deserializer d(s.data());
+    EXPECT_EQ(d.read_u8(), 10);
+    EXPECT_EQ(d.read_u8(), 20);
+    EXPECT_EQ(d.read_u8(), 30);
+    EXPECT_EQ(d.read_u8(), 40);
+}
+
+
+
+
+
+
+
+
+
+
+
+TEST(SerializerTest, EmptyStringSecondRoundTrip) {
+    clever::ipc::Serializer s;
+    s.write_string("");
+    clever::ipc::Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "");
+}
+
+TEST(SerializerTest, F64NegativeValueRoundTrip) {
+    clever::ipc::Serializer s;
+    s.write_f64(-3.14159);
+    clever::ipc::Deserializer d(s.data());
+    EXPECT_DOUBLE_EQ(d.read_f64(), -3.14159);
+}
+
+TEST(SerializerTest, U64ZeroRoundTrip) {
+    clever::ipc::Serializer s;
+    s.write_u64(0);
+    clever::ipc::Deserializer d(s.data());
+    EXPECT_EQ(d.read_u64(), 0u);
+}
+
+TEST(SerializerTest, TwoBoolsTrueTrue) {
+    clever::ipc::Serializer s;
+    s.write_bool(true);
+    s.write_bool(true);
+    clever::ipc::Deserializer d(s.data());
+    EXPECT_TRUE(d.read_bool());
+    EXPECT_TRUE(d.read_bool());
+}
+
+TEST(SerializerTest, I32PositiveAndNegativeSequence) {
+    clever::ipc::Serializer s;
+    s.write_i32(100);
+    s.write_i32(-100);
+    clever::ipc::Deserializer d(s.data());
+    EXPECT_EQ(d.read_i32(), 100);
+    EXPECT_EQ(d.read_i32(), -100);
+}
