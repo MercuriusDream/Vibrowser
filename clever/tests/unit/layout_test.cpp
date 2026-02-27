@@ -6577,3 +6577,44 @@ TEST(LayoutNodeProps, IsCanvasDefaultsFalseV2) {
     auto node = make_block("canvas");
     EXPECT_FALSE(node->is_canvas);
 }
+
+// Cycle 772 — Canvas, iframe, slot, SVG font field defaults
+TEST(LayoutNodeProps, CanvasWidthDefaultsToZero) {
+    auto node = make_block("canvas");
+    EXPECT_EQ(node->canvas_width, 0);
+}
+
+TEST(LayoutNodeProps, CanvasHeightDefaultsToZero) {
+    auto node = make_block("canvas");
+    EXPECT_EQ(node->canvas_height, 0);
+}
+
+TEST(LayoutNodeProps, IframeSrcDefaultsEmpty) {
+    auto node = make_block("iframe");
+    EXPECT_TRUE(node->iframe_src.empty());
+}
+
+TEST(LayoutNodeProps, IsNoscriptDefaultsFalse) {
+    auto node = make_block("noscript");
+    EXPECT_FALSE(node->is_noscript);
+}
+
+TEST(LayoutNodeProps, SlotNameDefaultsEmpty) {
+    auto node = make_block("slot");
+    EXPECT_TRUE(node->slot_name.empty());
+}
+
+TEST(LayoutNodeProps, SvgFontFamilyDefaultsEmpty) {
+    auto node = make_block("text");
+    EXPECT_TRUE(node->svg_font_family.empty());
+}
+
+TEST(LayoutNodeProps, SvgFontItalicDefaultsFalse) {
+    auto node = make_block("text");
+    EXPECT_FALSE(node->svg_font_italic);
+}
+
+TEST(LayoutNodeProps, SvgFillNoneDefaultsFalse) {
+    auto node = make_block("rect");
+    EXPECT_FALSE(node->svg_fill_none);
+}
