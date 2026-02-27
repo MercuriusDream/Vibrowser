@@ -3432,3 +3432,77 @@ TEST(SerializerTest, MixedI32U32InterleaveSign) {
         EXPECT_EQ(d.read_u32(), static_cast<uint32_t>((i + 1) * 2000));
     }
 }
+// Cycle 871 — boundary U64/I64, F64 infinity, U16+U32 mix, empty bytes distinct name, bool alternation, U32 extremes
+TEST(SerializerTest, U64MaxValueBoundary) {
+    Serializer s;
+    s.write_u64(UINT64_MAX);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u64(), UINT64_MAX);
+}
+
+TEST(SerializerTest, I64MinValueBoundary) {
+    Serializer s;
+    s.write_i64(INT64_MIN);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i64(), INT64_MIN);
+}
+
+TEST(SerializerTest, I64MaxValueBoundary) {
+    Serializer s;
+    s.write_i64(INT64_MAX);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i64(), INT64_MAX);
+}
+
+TEST(SerializerTest, F64PositiveInfinityRoundTrip) {
+    Serializer s;
+    s.write_f64(std::numeric_limits<double>::infinity());
+    Deserializer d(s.data());
+    double v1 = d.read_f64();
+    EXPECT_TRUE(std::isinf(v1));
+    EXPECT_GT(v1, 0.0);
+}
+
+TEST(SerializerTest, U16ThenU32ThenU16Sequence) {
+    Serializer s;
+    s.write_u16(0xABCD);
+    s.write_u32(0x12345678);
+    s.write_u16(0xEF01);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u16(), static_cast<uint16_t>(0xABCD));
+    EXPECT_EQ(d.read_u32(), static_cast<uint32_t>(0x12345678));
+    EXPECT_EQ(d.read_u16(), static_cast<uint16_t>(0xEF01));
+}
+
+TEST(SerializerTest, ZeroBytesLengthBlock) {
+    Serializer s;
+    const uint8_t* data = nullptr;
+    s.write_bytes(data, 0);
+    Deserializer d(s.data());
+    auto result = d.read_bytes();
+    EXPECT_EQ(result.size(), 0u);
+}
+
+TEST(SerializerTest, FiveBoolsAlternating) {
+    Serializer s;
+    for (int i = 0; i < 5; i++) {
+        s.write_bool(i % 2 == 0);
+    }
+    Deserializer d(s.data());
+    for (int i = 0; i < 5; i++) {
+        EXPECT_EQ(d.read_bool(), i % 2 == 0);
+    }
+}
+
+TEST(SerializerTest, U32ZeroAndMaxAlternating) {
+    Serializer s;
+    for (int i = 0; i < 6; i++) {
+        if (i % 2 == 0) s.write_u32(0);
+        else s.write_u32(UINT32_MAX);
+    }
+    Deserializer d(s.data());
+    for (int i = 0; i < 6; i++) {
+        uint32_t expected = (i % 2 == 0) ? 0u : UINT32_MAX;
+        EXPECT_EQ(d.read_u32(), expected);
+    }
+}
