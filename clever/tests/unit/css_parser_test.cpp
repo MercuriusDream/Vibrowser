@@ -9191,3 +9191,75 @@ TEST_F(CSSStylesheetTest, CaptionSideV37) {
         if (d.property == "caption-side") { found = true; break; }
     EXPECT_TRUE(found);
 }
+
+TEST_F(CSSStylesheetTest, WordBreakV38) {
+    auto ss = parse_stylesheet("p { word-break: break-all; }");
+    ASSERT_EQ(ss.rules.size(), 1);
+    bool found = false;
+    for (auto& d : ss.rules[0].declarations)
+        if (d.property == "word-break") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, OverflowWrapV38) {
+    auto ss = parse_stylesheet("p { overflow-wrap: break-word; }");
+    ASSERT_EQ(ss.rules.size(), 1);
+    bool found = false;
+    for (auto& d : ss.rules[0].declarations)
+        if (d.property == "overflow-wrap") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, HyphensV38) {
+    auto ss = parse_stylesheet("p { hyphens: auto; }");
+    ASSERT_EQ(ss.rules.size(), 1);
+    bool found = false;
+    for (auto& d : ss.rules[0].declarations)
+        if (d.property == "hyphens") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, WritingModeV38) {
+    auto ss = parse_stylesheet("div { writing-mode: vertical-rl; }");
+    ASSERT_EQ(ss.rules.size(), 1);
+    bool found = false;
+    for (auto& d : ss.rules[0].declarations)
+        if (d.property == "writing-mode") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, DirectionV38) {
+    auto ss = parse_stylesheet("div { direction: rtl; }");
+    ASSERT_EQ(ss.rules.size(), 1);
+    bool found = false;
+    for (auto& d : ss.rules[0].declarations)
+        if (d.property == "direction") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, UnicodeBidiV38) {
+    auto ss = parse_stylesheet("span { unicode-bidi: embed; }");
+    ASSERT_EQ(ss.rules.size(), 1);
+    bool found = false;
+    for (auto& d : ss.rules[0].declarations)
+        if (d.property == "unicode-bidi") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, TextAlignLastV38) {
+    auto ss = parse_stylesheet("p { text-align-last: justify; }");
+    ASSERT_EQ(ss.rules.size(), 1);
+    bool found = false;
+    for (auto& d : ss.rules[0].declarations)
+        if (d.property == "text-align-last") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, TabSizeV38) {
+    auto ss = parse_stylesheet("pre { tab-size: 4; }");
+    ASSERT_EQ(ss.rules.size(), 1);
+    bool found = false;
+    for (auto& d : ss.rules[0].declarations)
+        if (d.property == "tab-size") { found = true; break; }
+    EXPECT_TRUE(found);
+}

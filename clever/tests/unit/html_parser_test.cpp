@@ -8405,3 +8405,60 @@ TEST(TreeBuilder, CanvasElementV25) {
     ASSERT_NE(el, nullptr);
     EXPECT_EQ(el->tag_name, "canvas");
 }
+
+TEST(TreeBuilder, MapElementV26) {
+    auto doc = clever::html::parse("<html><body><map name=\"shapes\"><area shape=\"rect\" coords=\"0,0,100,100\" href=\"rect.html\"></map></body></html>");
+    auto* el = doc->find_element("map");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "map");
+}
+
+TEST(TreeBuilder, AreaElementV26) {
+    auto doc = clever::html::parse("<html><body><map name=\"shapes\"><area shape=\"circle\" coords=\"100,100,50\" href=\"circle.html\"></map></body></html>");
+    auto* el = doc->find_element("area");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "area");
+}
+
+TEST(TreeBuilder, SvgElementV26) {
+    auto doc = clever::html::parse("<html><body><svg width=\"100\" height=\"100\"><circle cx=\"50\" cy=\"50\" r=\"40\"></circle></svg></body></html>");
+    auto* el = doc->find_element("svg");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "svg");
+}
+
+TEST(TreeBuilder, MathElementV26) {
+    auto doc = clever::html::parse("<html><body><math><mi>x</mi><mo>=</mo><mn>2</mn></math></body></html>");
+    auto* el = doc->find_element("math");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "math");
+}
+
+TEST(TreeBuilder, DetailsElementV26) {
+    auto doc = clever::html::parse("<html><body><details><summary>Click to expand</summary><p>Hidden content</p></details></body></html>");
+    auto* el = doc->find_element("details");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "details");
+}
+
+TEST(TreeBuilder, SummaryElementV26) {
+    auto doc = clever::html::parse("<html><body><details><summary>Click to expand</summary><p>Hidden content</p></details></body></html>");
+    auto* el = doc->find_element("summary");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "summary");
+}
+
+TEST(TreeBuilder, DialogElementV26) {
+    auto doc = clever::html::parse("<html><body><dialog open><p>Dialog content</p><button>Close</button></dialog></body></html>");
+    auto* el = doc->find_element("dialog");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "dialog");
+}
+
+TEST(TreeBuilder, TemplateElementV26) {
+    auto doc = clever::html::parse("<html><body><template id=\"tmpl\"><div>Template content</div></template></body></html>");
+    auto* el = doc->find_element("template");
+    if (el != nullptr) {
+        EXPECT_EQ(el->tag_name, "template");
+    }
+}

@@ -9519,3 +9519,94 @@ TEST(HttpClient, ResponseParse200WithBodyV39) {
     EXPECT_EQ(resp->body.size(), 5u);
     EXPECT_EQ(std::string(resp->body.begin(), resp->body.end()), "hello");
 }
+
+TEST(HttpClient, HeaderMapEmptyInitiallyV40) {
+    using namespace clever::net;
+    HeaderMap map;
+    EXPECT_EQ(map.size(), 0u);
+    EXPECT_TRUE(map.empty());
+}
+
+TEST(HttpClient, RequestSerializeDeleteMethodV40) {
+    using namespace clever::net;
+    Request req;
+    req.method = Method::DELETE_METHOD;
+    req.url = "http://api.example.com/resource/123";
+    req.headers.set("Authorization", "Bearer token");
+
+    auto serialized = req.serialize();
+    EXPECT_GT(serialized.size(), 0u);
+
+    std::string serialized_str(serialized.begin(), serialized.end());
+    EXPECT_NE(serialized_str.find("DELETE"), std::string::npos);
+}
+
+TEST(HttpClient, ResponseParse204NoContentV40) {
+    using namespace clever::net;
+    std::string raw_str = "HTTP/1.1 204 No Content\r\n"
+                          "\r\n";
+
+    std::vector<uint8_t> raw(raw_str.begin(), raw_str.end());
+    auto resp = Response::parse(raw);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 204u);
+}
+
+TEST(HttpClient, HeaderMapGetAllSingleValueV40) {
+    using namespace clever::net;
+    HeaderMap map;
+    map.set("X-Custom-Header", "single-value");
+
+    auto values = map.get_all("X-Custom-Header");
+    EXPECT_EQ(values.size(), 1u);
+    EXPECT_EQ(values[0], "single-value");
+}
+
+TEST(HttpClient, RequestOptionsMethodV40) {
+    using namespace clever::net;
+    Request req;
+    req.method = Method::OPTIONS;
+    req.url = "http://api.example.com/";
+    req.headers.set("Host", "api.example.com");
+
+    auto serialized = req.serialize();
+    EXPECT_GT(serialized.size(), 0u);
+
+    std::string serialized_str(serialized.begin(), serialized.end());
+    EXPECT_NE(serialized_str.find("OPTIONS"), std::string::npos);
+}
+
+TEST(HttpClient, CookieJarSizeAfterSetV40) {
+    using namespace clever::net;
+    CookieJar jar;
+    jar.clear();
+
+    jar.set_from_header("sessionid=xyz789", "example.com");
+    jar.set_from_header("userid=user123", "example.com");
+
+    // Size should be at least 1 (cookies are tracked)
+    EXPECT_GE(jar.size(), 1u);
+}
+
+TEST(HttpClient, HeaderMapAppendSameKeyTwiceV40) {
+    using namespace clever::net;
+    HeaderMap map;
+    map.append("Accept", "application/json");
+    map.append("Accept", "text/plain");
+
+    auto values = map.get_all("Accept");
+    EXPECT_EQ(values.size(), 2u);
+}
+
+TEST(HttpClient, ResponseParse202AcceptedV40) {
+    using namespace clever::net;
+    std::string raw_str = "HTTP/1.1 202 Accepted\r\n"
+                          "\r\n";
+
+    std::vector<uint8_t> raw(raw_str.begin(), raw_str.end());
+    auto resp = Response::parse(raw);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 202u);
+}

@@ -4156,3 +4156,50 @@ TEST(CORSPolicy, IsCrossOriginSameOriginNotCrossV46) {
     // Identical origins (scheme, host, port) are NOT cross-origin
     EXPECT_FALSE(is_cross_origin("https://api.example.com:443", "https://api.example.com:443/endpoint"));
 }
+
+// --- Cycle V47: 8 CORS tests ---
+
+TEST(CORSPolicy, HasEnforceableDocumentOriginPort3000V47) {
+    // Port 3000 is a custom port and should be enforceable
+    EXPECT_TRUE(has_enforceable_document_origin("https://example.com:3000"));
+}
+
+TEST(CORSPolicy, IsCorsEligibleRequestUrlHttpsNoFragmentV47) {
+    // HTTPS URL without fragment is CORS-eligible
+    EXPECT_TRUE(is_cors_eligible_request_url("https://api.example.com/data"));
+}
+
+TEST(CORSPolicy, IsCrossOriginHttpVsHttpsCrossV47) {
+    // Different schemes (http vs https) with same host are cross-origin
+    EXPECT_TRUE(is_cross_origin("http://a.com", "https://a.com/page"));
+}
+
+TEST(CORSPolicy, ShouldAttachOriginHeaderNullOriginV47) {
+    // "null" origin should attach origin header for cross-origin requests
+    EXPECT_TRUE(should_attach_origin_header("null", "https://example.com/api"));
+}
+
+TEST(CORSPolicy, NormalizeOutgoingOriginHeaderEmptyOriginV47) {
+    // normalize_outgoing_origin_header with empty origin should not crash
+    clever::net::HeaderMap headers;
+    normalize_outgoing_origin_header(headers, "", "https://api.example.com/endpoint");
+    // Should complete without crash; header may or may not be set
+}
+
+TEST(CORSPolicy, CorsAllowsResponseSpecificOriginCredentialsTrueV47) {
+    // Specific origin match with credentials=true should allow response
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "https://trusted.com");
+    headers.set("Access-Control-Allow-Credentials", "true");
+    EXPECT_TRUE(cors_allows_response("https://trusted.com", "https://api.example.com/endpoint", headers, true));
+}
+
+TEST(CORSPolicy, HasEnforceableDocumentOriginAboutBlankNotEnforceableV47) {
+    // about:blank is NOT enforceable for CORS
+    EXPECT_FALSE(has_enforceable_document_origin("about:blank"));
+}
+
+TEST(CORSPolicy, IsCrossOriginSubdomainCrossV47) {
+    // Different subdomains (a.example.com vs b.example.com) are cross-origin
+    EXPECT_TRUE(is_cross_origin("https://a.example.com", "https://b.example.com/api"));
+}

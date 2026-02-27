@@ -6631,3 +6631,94 @@ TEST(URLParser, LongPathV28) {
     EXPECT_EQ(url->query, "");
     EXPECT_EQ(url->fragment, "");
 }
+
+TEST(URLParser, FtpSchemeV29) {
+    auto url = parse("ftp://files.example.com/pub");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "ftp");
+    EXPECT_EQ(url->host, "files.example.com");
+    EXPECT_EQ(url->path, "/pub");
+    EXPECT_EQ(url->query, "");
+    EXPECT_EQ(url->fragment, "");
+}
+
+TEST(URLParser, QueryMultipleParamsV29) {
+    auto url = parse("https://a.com/s?a=1&b=2&c=3");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "a.com");
+    EXPECT_EQ(url->port, std::nullopt);
+    EXPECT_EQ(url->path, "/s");
+    EXPECT_NE(url->query.find("a=1"), std::string::npos);
+    EXPECT_NE(url->query.find("b=2"), std::string::npos);
+    EXPECT_NE(url->query.find("c=3"), std::string::npos);
+    EXPECT_EQ(url->fragment, "");
+}
+
+TEST(URLParser, TrailingDotInHostV29) {
+    auto url = parse("https://example.com./path");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "example.com.");
+    EXPECT_EQ(url->port, std::nullopt);
+    EXPECT_EQ(url->path, "/path");
+    EXPECT_EQ(url->query, "");
+    EXPECT_EQ(url->fragment, "");
+}
+
+TEST(URLParser, PortZeroV29) {
+    auto url = parse("http://a.com:0/page");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "http");
+    EXPECT_EQ(url->host, "a.com");
+    ASSERT_TRUE(url->port.has_value());
+    EXPECT_EQ(url->port.value(), 0);
+    EXPECT_EQ(url->path, "/page");
+    EXPECT_EQ(url->query, "");
+    EXPECT_EQ(url->fragment, "");
+}
+
+TEST(URLParser, SingleCharPathV29) {
+    auto url = parse("https://a.com/x");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "a.com");
+    EXPECT_EQ(url->port, std::nullopt);
+    EXPECT_EQ(url->path, "/x");
+    EXPECT_EQ(url->query, "");
+    EXPECT_EQ(url->fragment, "");
+}
+
+TEST(URLParser, NoPathV29) {
+    auto url = parse("https://example.com");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "example.com");
+    EXPECT_EQ(url->port, std::nullopt);
+    EXPECT_TRUE(url->path == "/" || url->path == "");
+    EXPECT_EQ(url->query, "");
+    EXPECT_EQ(url->fragment, "");
+}
+
+TEST(URLParser, HttpPort8080V29) {
+    auto url = parse("http://a.com:8080/api");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "http");
+    EXPECT_EQ(url->host, "a.com");
+    ASSERT_TRUE(url->port.has_value());
+    EXPECT_EQ(url->port.value(), 8080);
+    EXPECT_EQ(url->path, "/api");
+    EXPECT_EQ(url->query, "");
+    EXPECT_EQ(url->fragment, "");
+}
+
+TEST(URLParser, QueryWithHashInValueV29) {
+    auto url = parse("https://a.com/page?color=%23red");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "a.com");
+    EXPECT_EQ(url->port, std::nullopt);
+    EXPECT_EQ(url->path, "/page");
+    EXPECT_NE(url->query.find("color="), std::string::npos);
+    EXPECT_EQ(url->fragment, "");
+}

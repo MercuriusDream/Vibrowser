@@ -20122,3 +20122,59 @@ TEST(JSEngine, ArrayJoinCustomSepCycle1425) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "1 - 2 - 3");
 }
+
+TEST(JSEngine, ObjectKeysCycle1434) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("Object.keys({a:1,b:2,c:3}).join(\",\")");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "a,b,c");
+}
+
+TEST(JSEngine, ObjectValuesCycle1434) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("Object.values({x:10,y:20}).join(\",\")");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "10,20");
+}
+
+TEST(JSEngine, ArrayMapCycle1434) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("[1,2,3].map(x=>x*2).join(\",\")");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "2,4,6");
+}
+
+TEST(JSEngine, ArrayFilterCycle1434) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("[1,2,3,4,5].filter(x=>x>3).join(\",\")");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "4,5");
+}
+
+TEST(JSEngine, ArraySomeCycle1434) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("[1,2,3].some(x=>x>2).toString()");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, ArrayEveryCycle1434) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("[2,4,6].every(x=>x%2===0).toString()");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, StringCharAtCycle1434) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("\"hello\".charAt(1)");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "e");
+}
+
+TEST(JSEngine, StringSliceCycle1434) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("\"hello world\".slice(6)");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "world");
+}

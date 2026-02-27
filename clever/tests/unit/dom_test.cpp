@@ -7957,3 +7957,65 @@ TEST(DomElement, ClassListToggleTwice) {
     el->class_list().toggle("x");
     EXPECT_FALSE(el->class_list().contains("x"));
 }
+
+TEST(DomElement, TagNameWbrV3) {
+    Document doc;
+    auto el = doc.create_element("wbr");
+    EXPECT_FALSE(el->tag_name().empty());
+}
+
+TEST(DomElement, TagNameBdi) {
+    Document doc;
+    auto el = doc.create_element("bdi");
+    EXPECT_FALSE(el->tag_name().empty());
+}
+
+TEST(DomElement, SetAttributeRoleV3) {
+    Document doc;
+    auto el = doc.create_element("div");
+    el->set_attribute("role", "button");
+    EXPECT_TRUE(el->has_attribute("role"));
+}
+
+TEST(DomElement, SetAttributeAriaHidden) {
+    Document doc;
+    auto el = doc.create_element("div");
+    el->set_attribute("aria-hidden", "true");
+    EXPECT_EQ(el->get_attribute("aria-hidden"), "true");
+}
+
+TEST(DomElement, MultipleAttributeSet) {
+    Document doc;
+    auto el = doc.create_element("div");
+    el->set_attribute("attr1", "value1");
+    el->set_attribute("attr2", "value2");
+    el->set_attribute("attr3", "value3");
+    el->set_attribute("attr4", "value4");
+    el->set_attribute("attr5", "value5");
+    EXPECT_GE(el->attributes().size(), 5u);
+}
+
+TEST(DomElement, RemoveAttributeDataValue) {
+    Document doc;
+    auto el = doc.create_element("div");
+    el->set_attribute("data-value", "test123");
+    EXPECT_EQ(el->get_attribute("data-value"), "test123");
+    el->remove_attribute("data-value");
+    EXPECT_EQ(el->get_attribute("data-value"), std::nullopt);
+}
+
+TEST(DomElement, HasAttributeDisabledV3) {
+    Document doc;
+    auto el = doc.create_element("button");
+    el->set_attribute("disabled", "");
+    EXPECT_TRUE(el->has_attribute("disabled"));
+}
+
+TEST(DomElement, ClassListContainsMultiple) {
+    Document doc;
+    auto el = doc.create_element("div");
+    el->class_list().add("a");
+    el->class_list().add("b");
+    EXPECT_TRUE(el->class_list().contains("a"));
+    EXPECT_TRUE(el->class_list().contains("b"));
+}

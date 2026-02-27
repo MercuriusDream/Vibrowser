@@ -7752,3 +7752,101 @@ TEST(Serializer, SequentialStringsV36) {
     EXPECT_EQ(d.read_string(), "third_string");
     EXPECT_FALSE(d.has_remaining());
 }
+
+TEST(Serializer, RoundtripU16ZeroV37) {
+    Serializer s;
+    s.write_u16(0u);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u16(), 0u);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(Serializer, RoundtripI32MaxV37) {
+    Serializer s;
+    s.write_i32(INT32_MAX);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i32(), INT32_MAX);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(Serializer, RoundtripF64PositiveInfinityV37) {
+    Serializer s;
+    s.write_f64(INFINITY);
+
+    Deserializer d(s.data());
+    double result = d.read_f64();
+    EXPECT_TRUE(std::isinf(result));
+    EXPECT_GT(result, 0.0);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(Serializer, RoundtripStringUnicodeV37) {
+    Serializer s;
+    s.write_string("héllo wörld");
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "héllo wörld");
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(Serializer, RoundtripBytesOneByteV37) {
+    Serializer s;
+    uint8_t byte = 0xFFu;
+    s.write_bytes(&byte, 1u);
+
+    Deserializer d(s.data());
+    auto result = d.read_bytes();
+    ASSERT_EQ(result.size(), 1u);
+    EXPECT_EQ(result[0], 0xFFu);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(Serializer, RoundtripU64ZeroV37) {
+    Serializer s;
+    s.write_u64(0u);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u64(), 0u);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(Serializer, RoundtripI64NegOneV37) {
+    Serializer s;
+    s.write_i64(-1LL);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i64(), -1LL);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(Serializer, AllTypesComprehensiveV37) {
+    Serializer s;
+    uint8_t test_byte = 0xABu;
+    s.write_u8(42u);
+    s.write_u16(12345u);
+    s.write_u32(987654321u);
+    s.write_u64(18446744073709551615ULL);
+    s.write_i32(-123456);
+    s.write_i64(-9223372036854775807LL);
+    s.write_f64(3.14159265359);
+    s.write_bool(true);
+    s.write_string("comprehensive_test");
+    s.write_bytes(&test_byte, 1u);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u8(), 42u);
+    EXPECT_EQ(d.read_u16(), 12345u);
+    EXPECT_EQ(d.read_u32(), 987654321u);
+    EXPECT_EQ(d.read_u64(), 18446744073709551615ULL);
+    EXPECT_EQ(d.read_i32(), -123456);
+    EXPECT_EQ(d.read_i64(), -9223372036854775807LL);
+    EXPECT_DOUBLE_EQ(d.read_f64(), 3.14159265359);
+    EXPECT_TRUE(d.read_bool());
+    EXPECT_EQ(d.read_string(), "comprehensive_test");
+    auto bytes = d.read_bytes();
+    ASSERT_EQ(bytes.size(), 1u);
+    EXPECT_EQ(bytes[0], 0xABu);
+    EXPECT_FALSE(d.has_remaining());
+}
