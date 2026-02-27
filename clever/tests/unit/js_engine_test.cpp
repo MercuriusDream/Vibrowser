@@ -14387,3 +14387,105 @@ TEST(JSEngine, MathLogBase) {
     auto result = engine.evaluate("Math.log(1)");
     EXPECT_EQ(result, "0");
 }
+
+// ============================================================================
+// Cycle 682: More JS engine tests
+// ============================================================================
+
+TEST(JSEngine, ForOfArraySum) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var sum = 0;
+        for (var x of [1, 2, 3, 4, 5]) { sum += x; }
+        sum
+    )");
+    EXPECT_EQ(result, "15");
+}
+
+TEST(JSEngine, ForInObjectKeys) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var obj = {a: 1, b: 2, c: 3};
+        var keys = [];
+        for (var k in obj) { keys.push(k); }
+        keys.length
+    )");
+    EXPECT_EQ(result, "3");
+}
+
+TEST(JSEngine, WhileLoopCount) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var i = 0, count = 0;
+        while (i < 10) { i++; count++; }
+        count
+    )");
+    EXPECT_EQ(result, "10");
+}
+
+TEST(JSEngine, DoWhileExecutesOnce) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var x = 0;
+        do { x++; } while (false);
+        x
+    )");
+    EXPECT_EQ(result, "1");
+}
+
+TEST(JSEngine, SwitchCaseMatch) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var x = 2;
+        var out = "";
+        switch (x) {
+            case 1: out = "one"; break;
+            case 2: out = "two"; break;
+            default: out = "other";
+        }
+        out
+    )");
+    EXPECT_EQ(result, "two");
+}
+
+TEST(JSEngine, SwitchDefaultCase) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var x = 99;
+        var out = "";
+        switch (x) {
+            case 1: out = "one"; break;
+            default: out = "other";
+        }
+        out
+    )");
+    EXPECT_EQ(result, "other");
+}
+
+TEST(JSEngine, LabeledBreak) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var result = 0;
+        outer: for (var i = 0; i < 3; i++) {
+            for (var j = 0; j < 3; j++) {
+                if (i === 1 && j === 1) break outer;
+                result++;
+            }
+        }
+        result
+    )");
+    EXPECT_EQ(result, "4");
+}
+
+TEST(JSEngine, ContinueSkipsIteration) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var sum = 0;
+        for (var i = 0; i < 5; i++) {
+            if (i === 2) continue;
+            sum += i;
+        }
+        sum
+    )");
+    EXPECT_EQ(result, "8");  // 0+1+3+4=8
+}
