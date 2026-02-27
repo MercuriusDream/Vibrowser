@@ -15941,3 +15941,52 @@ TEST(JSEngine, GeneratorNextWithArgument) {
         "const g = gen(); g.next(); g.next(5).value");
     EXPECT_EQ(result, "10");
 }
+
+// Cycle 805 — Async/await advanced patterns
+TEST(JSEngine, AsyncArrowFunctionType) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("typeof (async () => 42)");
+    EXPECT_EQ(result, "function");
+}
+
+TEST(JSEngine, AsyncFunctionReturnsPromiseV2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("typeof (async function() { return 1; })()");
+    EXPECT_EQ(result, "object");
+}
+
+TEST(JSEngine, PromiseResolveValueTypeNumber) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("typeof Promise.resolve(42)");
+    EXPECT_EQ(result, "object");
+}
+
+TEST(JSEngine, PromiseRejectValueTypeObject) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("typeof Promise.reject(new Error('e'))");
+    EXPECT_EQ(result, "object");
+}
+
+TEST(JSEngine, PromiseAllIsFunctionV2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("typeof Promise.all");
+    EXPECT_EQ(result, "function");
+}
+
+TEST(JSEngine, PromiseRaceIsObject) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("typeof Promise.race([Promise.resolve(1)])");
+    EXPECT_EQ(result, "object");
+}
+
+TEST(JSEngine, AsyncGeneratorType) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("async function* gen() { yield 1; } typeof gen");
+    EXPECT_EQ(result, "function");
+}
+
+TEST(JSEngine, PromiseChainType) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("typeof Promise.resolve(1).then(x => x).then(x => x * 2)");
+    EXPECT_EQ(result, "object");
+}
