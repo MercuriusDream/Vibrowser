@@ -3853,3 +3853,84 @@ TEST(TreeBuilder, ButtonTypeResetAttr) {
         if (attr.name == "type" && attr.value == "reset") found = true;
     EXPECT_TRUE(found);
 }
+
+// Cycle 826 — ARIA accessibility attributes
+TEST(TreeBuilder, AriaLabelAttr) {
+    auto doc = clever::html::parse(R"(<button aria-label="Close dialog">X</button>)");
+    auto* btn = doc->find_element("button");
+    ASSERT_NE(btn, nullptr);
+    bool found = false;
+    for (const auto& attr : btn->attributes)
+        if (attr.name == "aria-label" && attr.value == "Close dialog") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, AriaRoleAttr) {
+    auto doc = clever::html::parse(R"(<div role="navigation" aria-label="Main"></div>)");
+    auto* div = doc->find_element("div");
+    ASSERT_NE(div, nullptr);
+    bool found = false;
+    for (const auto& attr : div->attributes)
+        if (attr.name == "role" && attr.value == "navigation") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, AriaHiddenAttr) {
+    auto doc = clever::html::parse(R"(<span aria-hidden="true">decorative</span>)");
+    auto* span = doc->find_element("span");
+    ASSERT_NE(span, nullptr);
+    bool found = false;
+    for (const auto& attr : span->attributes)
+        if (attr.name == "aria-hidden" && attr.value == "true") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, AriaExpandedAttr) {
+    auto doc = clever::html::parse(R"(<button aria-expanded="false" aria-controls="menu">Toggle</button>)");
+    auto* btn = doc->find_element("button");
+    ASSERT_NE(btn, nullptr);
+    bool found = false;
+    for (const auto& attr : btn->attributes)
+        if (attr.name == "aria-expanded" && attr.value == "false") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, AriaDescribedByAttr) {
+    auto doc = clever::html::parse(R"(<input type="text" aria-describedby="hint" id="name">)");
+    auto* input = doc->find_element("input");
+    ASSERT_NE(input, nullptr);
+    bool found = false;
+    for (const auto& attr : input->attributes)
+        if (attr.name == "aria-describedby" && attr.value == "hint") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, AriaLiveAttr) {
+    auto doc = clever::html::parse(R"(<div aria-live="polite" role="status"></div>)");
+    auto* div = doc->find_element("div");
+    ASSERT_NE(div, nullptr);
+    bool found = false;
+    for (const auto& attr : div->attributes)
+        if (attr.name == "aria-live" && attr.value == "polite") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, AriaPressedAttr) {
+    auto doc = clever::html::parse(R"(<button aria-pressed="true">Bold</button>)");
+    auto* btn = doc->find_element("button");
+    ASSERT_NE(btn, nullptr);
+    bool found = false;
+    for (const auto& attr : btn->attributes)
+        if (attr.name == "aria-pressed" && attr.value == "true") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, AriaRequiredAttr) {
+    auto doc = clever::html::parse(R"(<input type="email" aria-required="true" name="email">)");
+    auto* input = doc->find_element("input");
+    ASSERT_NE(input, nullptr);
+    bool found = false;
+    for (const auto& attr : input->attributes)
+        if (attr.name == "aria-required" && attr.value == "true") found = true;
+    EXPECT_TRUE(found);
+}
