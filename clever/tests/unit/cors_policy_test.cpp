@@ -2185,3 +2185,39 @@ TEST(CORSPolicyTest, ACAOMatchesCrossOriginExact) {
     headers.set("access-control-allow-origin", "https://app.example.com");
     EXPECT_TRUE(cors_allows_response("https://app.example.com", "https://api.other.com/data", headers, false));
 }
+
+TEST(CORSPolicyTest, CorsEligibleHttpOnly) {
+    EXPECT_TRUE(is_cors_eligible_request_url("http://example.com/resource"));
+}
+
+TEST(CORSPolicyTest, NotCorsEligibleData) {
+    EXPECT_FALSE(is_cors_eligible_request_url("data:text/html,<h1>hi</h1>"));
+}
+
+TEST(CORSPolicyTest, SameOriginSubdirPath) {
+    EXPECT_FALSE(is_cross_origin("https://example.com", "https://example.com/subdir/page.html"));
+}
+
+TEST(CORSPolicyTest, CrossOriginSubdomain) {
+    EXPECT_TRUE(is_cross_origin("https://example.com", "https://api.example.com/data"));
+}
+
+TEST(CORSPolicyTest, ShouldAttachOriginHeaderCrossOrigin) {
+    EXPECT_TRUE(should_attach_origin_header("https://app.example.com", "https://api.other.com/data"));
+}
+
+TEST(CORSPolicyTest, ShouldNotAttachOriginHeaderSameOrigin) {
+    EXPECT_FALSE(should_attach_origin_header("https://example.com", "https://example.com/api"));
+}
+
+TEST(CORSPolicyTest, CorsAllowsResponseSpecificOriginMatch) {
+    clever::net::HeaderMap headers;
+    headers.set("access-control-allow-origin", "https://trusted.com");
+    EXPECT_TRUE(cors_allows_response("https://trusted.com", "https://api.other.com/", headers, false));
+}
+
+TEST(CORSPolicyTest, CorsBlocksResponseOriginMismatch) {
+    clever::net::HeaderMap headers;
+    headers.set("access-control-allow-origin", "https://trusted.com");
+    EXPECT_FALSE(cors_allows_response("https://other.com", "https://api.other.com/", headers, false));
+}
