@@ -5283,3 +5283,75 @@ TEST_F(CSSStylesheetTest, FillRuleDeclaration) {
         if (d.property == "fill-rule") { found = true; break; }
     EXPECT_TRUE(found);
 }
+
+TEST_F(CSSStylesheetTest, VectorEffectDeclaration) {
+    auto sheet = parse_stylesheet(".shape { vector-effect: non-scaling-stroke; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "vector-effect") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, TextAnchorDeclaration) {
+    auto sheet = parse_stylesheet("text { text-anchor: middle; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "text-anchor") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, MarkerStartDeclaration) {
+    auto sheet = parse_stylesheet("path { marker-start: url(#arrow); }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "marker-start") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, MarkerEndDeclaration) {
+    auto sheet = parse_stylesheet("path { marker-end: url(#dot); }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "marker-end") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, MarkerMidDeclaration) {
+    auto sheet = parse_stylesheet("polyline { marker-mid: url(#square); }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "marker-mid") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, ColorRenderingDeclaration) {
+    auto sheet = parse_stylesheet("canvas { color-rendering: optimizeSpeed; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "color-rendering") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, OutlineOffsetDeclaration) {
+    auto sheet = parse_stylesheet("a { outline-offset: 2px; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "outline-offset") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, FontSizeAdjustDeclaration) {
+    auto sheet = parse_stylesheet("p { font-size-adjust: 0.5; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "font-size-adjust") { found = true; break; }
+    EXPECT_TRUE(found);
+}
