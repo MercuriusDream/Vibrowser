@@ -17202,3 +17202,55 @@ TEST(JSEngine, DateGetUTCDay) {
     auto result = engine.evaluate("typeof new Date().getUTCDay()");
     EXPECT_EQ(result, "number");
 }
+
+// Cycle 948 — Date.parse, Date.UTC, new Date with arguments
+TEST(JSEngine, DateParseReturnsNumber) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("typeof Date.parse('2024-01-15')");
+    EXPECT_EQ(result, "number");
+}
+
+TEST(JSEngine, DateUTCReturnsNumber) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("typeof Date.UTC(2024, 0, 15)");
+    EXPECT_EQ(result, "number");
+}
+
+TEST(JSEngine, DateFromMillisReturnsDate) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("typeof new Date(0)");
+    EXPECT_EQ(result, "object");
+}
+
+TEST(JSEngine, DateFromMillisEpochYear) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("new Date(0).getFullYear()");
+    EXPECT_EQ(result, "1970");
+}
+
+TEST(JSEngine, DateFromStringReturnsDate) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("typeof new Date('2024-06-15')");
+    EXPECT_EQ(result, "object");
+}
+
+TEST(JSEngine, DateConstructorWithYearMonthDay) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("new Date(2024, 5, 15).getFullYear()");
+    EXPECT_EQ(result, "2024");
+}
+
+TEST(JSEngine, DateIsValidObject) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("new Date() instanceof Date");
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, DateGetMillisAfterSetTime) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "const d=new Date();"
+        "d.setTime(1000);"
+        "d.getTime()");
+    EXPECT_EQ(result, "1000");
+}
