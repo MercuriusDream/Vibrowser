@@ -2441,3 +2441,64 @@ TEST(URLParser, SameOriginAfterUppercaseInput) {
     ASSERT_TRUE(b.has_value());
     EXPECT_TRUE(clever::url::urls_same_origin(*a, *b));
 }
+
+// Cycle 853 — relative URL edge cases: dot-only, deep traversal, port edge cases, query normalization
+TEST(URLParser, RelativeSingleDotKeepsDirectory) {
+    auto base = parse("https://example.com/a/b/c");
+    ASSERT_TRUE(base.has_value());
+    auto result = parse(".", &base.value());
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->scheme, "https");
+}
+
+TEST(URLParser, RelativeDotSlashReplacesFilename) {
+    auto base = parse("https://example.com/dir/page.html");
+    ASSERT_TRUE(base.has_value());
+    auto result = parse("./other.html", &base.value());
+    ASSERT_TRUE(result.has_value());
+    EXPECT_NE(result->path.find("other.html"), std::string::npos);
+}
+
+TEST(URLParser, HttpPort443NotSameOriginAsHttpPort80) {
+    auto a = parse("http://host:443/");
+    auto b = parse("http://host:80/");
+    ASSERT_TRUE(a.has_value());
+    ASSERT_TRUE(b.has_value());
+    EXPECT_FALSE(urls_same_origin(*a, *b));
+}
+
+TEST(URLParser, HttpsWithNonDefaultPort8443SameOriginAsSelf) {
+    auto a = parse("https://api.example.com:8443/v1");
+    auto b = parse("https://api.example.com:8443/v2");
+    ASSERT_TRUE(a.has_value());
+    ASSERT_TRUE(b.has_value());
+    EXPECT_TRUE(urls_same_origin(*a, *b));
+}
+
+TEST(URLParser, QueryWithAmpersandAndEquals) {
+    auto url = parse("https://search.example.com/q?key1=val1&key2=val2&key3=val3");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_NE(url->query.find("key1=val1"), std::string::npos);
+    EXPECT_NE(url->query.find("key2=val2"), std::string::npos);
+    EXPECT_NE(url->query.find("key3=val3"), std::string::npos);
+}
+
+TEST(URLParser, FragmentWithHashInSerial) {
+    auto url = parse("https://docs.example.com/guide#section-2");
+    ASSERT_TRUE(url.has_value());
+    std::string s = url->serialize();
+    EXPECT_NE(s.find("#section-2"), std::string::npos);
+}
+
+TEST(URLParser, OriginHttpWithDefaultPort80OmitsPort) {
+    auto url = parse("http://example.com:80/page");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->origin(), "http://example.com");
+}
+
+TEST(URLParser, OriginHttpsWithNonDefaultPort8443IncludesPort) {
+    auto url = parse("https://example.com:8443/page");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->origin(), "https://example.com:8443");
+}
