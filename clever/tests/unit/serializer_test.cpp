@@ -2852,3 +2852,67 @@ TEST(SerializerTest, TwoBytesCallsOrderPreserved) {
     EXPECT_EQ(b1[0], 1);
     EXPECT_EQ(b2[0], 3);
 }
+
+// Cycle 790 — sequence stress, unicode string, alternating types
+TEST(SerializerTest, FiftyBoolsTrue) {
+    Serializer s;
+    for (int i = 0; i < 50; ++i) s.write_bool(true);
+    Deserializer d(s.data());
+    for (int i = 0; i < 50; ++i) EXPECT_TRUE(d.read_bool());
+}
+
+TEST(SerializerTest, FiftyU8Sequential) {
+    Serializer s;
+    for (uint8_t i = 0; i < 50; ++i) s.write_u8(i);
+    Deserializer d(s.data());
+    for (uint8_t i = 0; i < 50; ++i) EXPECT_EQ(d.read_u8(), i);
+}
+
+TEST(SerializerTest, TwentyF64Sequential) {
+    Serializer s;
+    for (int i = 0; i < 20; ++i) s.write_f64(static_cast<double>(i) * 1.5);
+    Deserializer d(s.data());
+    for (int i = 0; i < 20; ++i) EXPECT_DOUBLE_EQ(d.read_f64(), static_cast<double>(i) * 1.5);
+}
+
+TEST(SerializerTest, LargeStringRoundTrip) {
+    std::string large(1000, 'A');
+    Serializer s;
+    s.write_string(large);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), large);
+}
+
+TEST(SerializerTest, StringWithTabAndNewline) {
+    Serializer s;
+    s.write_string("line1\tvalue\nline2");
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "line1\tvalue\nline2");
+}
+
+TEST(SerializerTest, TenStringsRoundTrip) {
+    Serializer s;
+    for (int i = 0; i < 10; ++i) s.write_string("item" + std::to_string(i));
+    Deserializer d(s.data());
+    for (int i = 0; i < 10; ++i) EXPECT_EQ(d.read_string(), "item" + std::to_string(i));
+}
+
+TEST(SerializerTest, AlternatingBoolAndU8V2) {
+    Serializer s;
+    for (int i = 0; i < 10; ++i) {
+        s.write_bool(i % 2 == 0);
+        s.write_u8(static_cast<uint8_t>(i));
+    }
+    Deserializer d(s.data());
+    for (int i = 0; i < 10; ++i) {
+        EXPECT_EQ(d.read_bool(), i % 2 == 0);
+        EXPECT_EQ(d.read_u8(), static_cast<uint8_t>(i));
+    }
+}
+
+TEST(SerializerTest, ThirtyI32NegativeToPositive) {
+    Serializer s;
+    for (int i = -15; i < 15; ++i) s.write_i32(i);
+    Deserializer d(s.data());
+    for (int i = -15; i < 15; ++i) EXPECT_EQ(d.read_i32(), i);
+}
