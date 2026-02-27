@@ -12264,3 +12264,134 @@ TEST(PropertyCascadeTest, ApplyDeclarationBoxShadowMultipleV59) {
     EXPECT_FLOAT_EQ(style.box_shadows[0].blur, 8.0f);
     EXPECT_FLOAT_EQ(style.box_shadows[0].spread, 2.0f);
 }
+
+TEST(PropertyCascadeTest, ApplyDeclarationFontWeightV60) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.font_weight, 400);  // normal default
+
+    cascade.apply_declaration(style, make_decl("font-weight", "bold"), parent);
+    EXPECT_EQ(style.font_weight, 700);
+
+    cascade.apply_declaration(style, make_decl("font-weight", "900"), parent);
+    EXPECT_EQ(style.font_weight, 900);
+
+    cascade.apply_declaration(style, make_decl("font-weight", "600"), parent);
+    EXPECT_EQ(style.font_weight, 600);
+}
+
+TEST(PropertyCascadeTest, ApplyDeclarationFontStyleV60) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.font_style, FontStyle::Normal);  // normal default
+
+    cascade.apply_declaration(style, make_decl("font-style", "italic"), parent);
+    EXPECT_EQ(style.font_style, FontStyle::Italic);
+
+    cascade.apply_declaration(style, make_decl("font-style", "oblique"), parent);
+    EXPECT_EQ(style.font_style, FontStyle::Oblique);
+
+    cascade.apply_declaration(style, make_decl("font-style", "normal"), parent);
+    EXPECT_EQ(style.font_style, FontStyle::Normal);
+}
+
+TEST(PropertyCascadeTest, ApplyDeclarationTransformV60) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_TRUE(style.transforms.empty());  // default: no transforms
+
+    Declaration decl;
+    decl.property = "transform";
+    decl.values.push_back(make_token("translateX(50px)"));
+
+    cascade.apply_declaration(style, decl, parent);
+    ASSERT_EQ(style.transforms.size(), 1u);
+    EXPECT_EQ(style.transforms[0].type, TransformType::Translate);
+    EXPECT_FLOAT_EQ(style.transforms[0].x, 50.0f);
+}
+
+TEST(PropertyCascadeTest, ApplyDeclarationTransitionPropertyV60) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.transition_property, "all");  // default
+
+    cascade.apply_declaration(style, make_decl("transition-property", "opacity"), parent);
+    EXPECT_EQ(style.transition_property, "opacity");
+
+    cascade.apply_declaration(style, make_decl("transition-property", "transform"), parent);
+    EXPECT_EQ(style.transition_property, "transform");
+}
+
+TEST(PropertyCascadeTest, ApplyDeclarationFlexDirectionV60) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.flex_direction, FlexDirection::Row);  // row default
+
+    cascade.apply_declaration(style, make_decl("flex-direction", "column"), parent);
+    EXPECT_EQ(style.flex_direction, FlexDirection::Column);
+
+    cascade.apply_declaration(style, make_decl("flex-direction", "row-reverse"), parent);
+    EXPECT_EQ(style.flex_direction, FlexDirection::RowReverse);
+
+    cascade.apply_declaration(style, make_decl("flex-direction", "column-reverse"), parent);
+    EXPECT_EQ(style.flex_direction, FlexDirection::ColumnReverse);
+}
+
+TEST(PropertyCascadeTest, ApplyDeclarationGridTemplateColumnsV60) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_TRUE(style.grid_template_columns.empty());  // default: empty
+
+    cascade.apply_declaration(style, make_decl("grid-template-columns", "1fr 2fr"), parent);
+    EXPECT_EQ(style.grid_template_columns, "1fr 2fr");
+
+    cascade.apply_declaration(style, make_decl("grid-template-columns", "repeat(3,1fr)"), parent);
+    EXPECT_EQ(style.grid_template_columns, "repeat(3,1fr)");
+}
+
+TEST(PropertyCascadeTest, ApplyDeclarationTextDecorationV60) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.text_decoration, TextDecoration::None);  // none default
+
+    cascade.apply_declaration(style, make_decl("text-decoration", "underline"), parent);
+    EXPECT_EQ(style.text_decoration, TextDecoration::Underline);
+
+    cascade.apply_declaration(style, make_decl("text-decoration", "overline"), parent);
+    EXPECT_EQ(style.text_decoration, TextDecoration::Overline);
+
+    cascade.apply_declaration(style, make_decl("text-decoration", "line-through"), parent);
+    EXPECT_EQ(style.text_decoration, TextDecoration::LineThrough);
+}
+
+TEST(PropertyCascadeTest, ApplyDeclarationOpacityZIndexV60) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_FLOAT_EQ(style.opacity, 1.0f);  // default: fully opaque
+    EXPECT_EQ(style.z_index, 0);  // default: auto
+
+    cascade.apply_declaration(style, make_decl("opacity", "0.5"), parent);
+    EXPECT_FLOAT_EQ(style.opacity, 0.5f);
+
+    cascade.apply_declaration(style, make_decl("z-index", "42"), parent);
+    EXPECT_EQ(style.z_index, 42);
+
+    cascade.apply_declaration(style, make_decl("z-index", "-10"), parent);
+    EXPECT_EQ(style.z_index, -10);
+}

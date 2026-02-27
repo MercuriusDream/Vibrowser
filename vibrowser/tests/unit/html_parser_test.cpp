@@ -9630,3 +9630,158 @@ TEST(TreeBuilder, VideoWithSourceTracksV59) {
     EXPECT_EQ(sources.size(), 1u);
     EXPECT_EQ(tracks.size(), 1u);
 }
+
+TEST(TreeBuilder, DocTypeWithHtmlElementsV60) {
+    auto doc = parse("<!DOCTYPE html><html lang=\"en\"><head><title>Test</title></head><body><h1>Hello</h1></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* html = doc->find_element("html");
+    auto* head = doc->find_element("head");
+    auto* title = doc->find_element("title");
+    auto* body = doc->find_element("body");
+    auto* h1 = doc->find_element("h1");
+
+    ASSERT_NE(html, nullptr);
+    ASSERT_NE(head, nullptr);
+    ASSERT_NE(title, nullptr);
+    ASSERT_NE(body, nullptr);
+    ASSERT_NE(h1, nullptr);
+
+    EXPECT_EQ(title->text_content(), "Test");
+    EXPECT_EQ(h1->text_content(), "Hello");
+}
+
+TEST(TreeBuilder, SelfClosingTagsV60) {
+    auto doc = parse("<html><body><img src=\"image.png\" alt=\"test\"><br><hr><input type=\"checkbox\" checked><meta charset=\"utf-8\"></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto img = doc->find_all_elements("img");
+    auto br = doc->find_all_elements("br");
+    auto hr = doc->find_all_elements("hr");
+    auto input = doc->find_all_elements("input");
+    auto meta = doc->find_all_elements("meta");
+
+    EXPECT_EQ(img.size(), 1u);
+    EXPECT_EQ(br.size(), 1u);
+    EXPECT_EQ(hr.size(), 1u);
+    EXPECT_EQ(input.size(), 1u);
+    EXPECT_EQ(meta.size(), 1u);
+}
+
+TEST(TreeBuilder, MalformedHtmlRecoveryV60) {
+    auto doc = parse("<html><body><p>Paragraph<div>Div inside paragraph</div></p><p>Another</p></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto paragraphs = doc->find_all_elements("p");
+    auto divs = doc->find_all_elements("div");
+
+    ASSERT_GE(paragraphs.size(), 2u);
+    ASSERT_GE(divs.size(), 1u);
+
+    EXPECT_EQ(paragraphs[0]->text_content(), "Paragraph");
+    EXPECT_EQ(divs[0]->text_content(), "Div inside paragraph");
+}
+
+TEST(TreeBuilder, NestedTablesWithAttributesV60) {
+    auto doc = parse("<table border=\"1\"><tr><td>Cell 1<table><tr><td>Nested Cell</td></tr></table></td><td>Cell 2</td></tr></table>");
+    ASSERT_NE(doc, nullptr);
+
+    auto tables = doc->find_all_elements("table");
+    auto cells = doc->find_all_elements("td");
+    auto rows = doc->find_all_elements("tr");
+
+    ASSERT_EQ(tables.size(), 2u);
+    ASSERT_GE(cells.size(), 3u);
+    ASSERT_GE(rows.size(), 2u);
+
+    bool has_cell1 = false;
+    bool has_cell2 = false;
+    bool has_nested = false;
+
+    for (auto* cell : cells) {
+        std::string text = cell->text_content();
+        if (text.find("Cell 1") != std::string::npos) has_cell1 = true;
+        if (text == "Cell 2") has_cell2 = true;
+        if (text == "Nested Cell") has_nested = true;
+    }
+
+    EXPECT_TRUE(has_cell1);
+    EXPECT_TRUE(has_cell2);
+    EXPECT_TRUE(has_nested);
+}
+
+TEST(TreeBuilder, FormWithMultipleInputTypesV60) {
+    auto doc = parse("<form id=\"myform\" action=\"/submit\" method=\"POST\" enctype=\"multipart/form-data\"><input type=\"text\" name=\"username\" required><input type=\"email\" name=\"email\" placeholder=\"Enter email\"><textarea name=\"message\" rows=\"5\" cols=\"40\"></textarea><select name=\"country\"><option>USA</option><option>Canada</option></select><label>Agree <input type=\"checkbox\" name=\"agree\"></label></form>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* form = doc->find_element("form");
+    auto inputs = doc->find_all_elements("input");
+    auto* textarea = doc->find_element("textarea");
+    auto* select = doc->find_element("select");
+    auto options = doc->find_all_elements("option");
+    auto* label = doc->find_element("label");
+
+    ASSERT_NE(form, nullptr);
+    EXPECT_EQ(inputs.size(), 3u);
+    ASSERT_NE(textarea, nullptr);
+    ASSERT_NE(select, nullptr);
+    EXPECT_EQ(options.size(), 2u);
+    ASSERT_NE(label, nullptr);
+}
+
+TEST(TreeBuilder, AudioWithMultipleSourcesV60) {
+    auto doc = parse("<audio controls preload=\"metadata\"><source src=\"song.mp3\" type=\"audio/mpeg\"><source src=\"song.ogg\" type=\"audio/ogg\"></audio>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* audio = doc->find_element("audio");
+    auto sources = doc->find_all_elements("source");
+
+    ASSERT_NE(audio, nullptr);
+    EXPECT_EQ(sources.size(), 2u);
+
+    auto srcs = sources;
+    EXPECT_TRUE(srcs[0]->text_content().empty() || srcs[0]->text_content().find("mp3") == std::string::npos);
+    EXPECT_TRUE(srcs[1]->text_content().empty() || srcs[1]->text_content().find("ogg") == std::string::npos);
+}
+
+TEST(TreeBuilder, ScriptAndStyleElementsV60) {
+    auto doc = parse("<html><head><style>body { color: red; }</style></head><body><script>console.log('test');</script></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* style = doc->find_element("style");
+    auto* script = doc->find_element("script");
+
+    ASSERT_NE(style, nullptr);
+    ASSERT_NE(script, nullptr);
+
+    std::string style_text = style->text_content();
+    std::string script_text = script->text_content();
+
+    EXPECT_TRUE(style_text.find("color") != std::string::npos);
+    EXPECT_TRUE(script_text.find("console.log") != std::string::npos);
+}
+
+TEST(TreeBuilder, Html5SemanticElementsV60) {
+    auto doc = parse("<html><body><details open><summary>Click me</summary><p>Hidden content</p></details><aside>Sidebar</aside><main><article><header>Article Header</header><time datetime=\"2024-01-01\">January 1, 2024</time></article></main></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* details = doc->find_element("details");
+    auto* summary = doc->find_element("summary");
+    auto* aside = doc->find_element("aside");
+    auto* main = doc->find_element("main");
+    auto* article = doc->find_element("article");
+    auto* header = doc->find_element("header");
+    auto* time = doc->find_element("time");
+
+    ASSERT_NE(details, nullptr);
+    ASSERT_NE(summary, nullptr);
+    ASSERT_NE(aside, nullptr);
+    ASSERT_NE(main, nullptr);
+    ASSERT_NE(article, nullptr);
+    ASSERT_NE(header, nullptr);
+    ASSERT_NE(time, nullptr);
+
+    EXPECT_EQ(summary->text_content(), "Click me");
+    EXPECT_EQ(aside->text_content(), "Sidebar");
+    EXPECT_EQ(header->text_content(), "Article Header");
+}

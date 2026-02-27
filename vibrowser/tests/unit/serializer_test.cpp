@@ -8998,3 +8998,140 @@ TEST(SerializerTest, F64StringI64MixedV59) {
     EXPECT_EQ(d.read_i64(), -12345);
     EXPECT_FALSE(d.has_remaining());
 }
+
+TEST(SerializerTest, EmptyStringRoundTripV60) {
+    Serializer s;
+    s.write_string("");
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "");
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, AllZeroValuesV60) {
+    Serializer s;
+    s.write_u8(0);
+    s.write_u16(0);
+    s.write_u32(0);
+    s.write_u64(0);
+    s.write_i32(0);
+    s.write_i64(0);
+    s.write_f64(0.0);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u8(), uint8_t{0});
+    EXPECT_EQ(d.read_u16(), uint16_t{0});
+    EXPECT_EQ(d.read_u32(), uint32_t{0});
+    EXPECT_EQ(d.read_u64(), uint64_t{0});
+    EXPECT_EQ(d.read_i32(), int32_t{0});
+    EXPECT_EQ(d.read_i64(), int64_t{0});
+    EXPECT_DOUBLE_EQ(d.read_f64(), 0.0);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, BinaryDataWithNullBytesV60) {
+    Serializer s;
+    uint8_t binary_data[] = {0x00, 0xFF, 0x00, 0xAA, 0x55, 0x00};
+    s.write_bytes(binary_data, sizeof(binary_data));
+    Deserializer d(s.data());
+    auto result = d.read_bytes();
+    ASSERT_EQ(result.size(), sizeof(binary_data));
+    for (size_t i = 0; i < sizeof(binary_data); ++i) {
+        EXPECT_EQ(result[i], binary_data[i]);
+    }
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, StringWithUnicodeCharactersV60) {
+    Serializer s;
+    s.write_string("Hello 世界 مرحبا");
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "Hello 世界 مرحبا");
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, LargePayloadMultipleFieldsV60) {
+    Serializer s;
+    // Create a large binary payload
+    std::vector<uint8_t> large_data(10000);
+    for (size_t i = 0; i < large_data.size(); ++i) {
+        large_data[i] = static_cast<uint8_t>(i % 256);
+    }
+    s.write_u64(0x123456789ABCDEF0ULL);
+    s.write_bytes(large_data.data(), large_data.size());
+    s.write_string("end");
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u64(), uint64_t{0x123456789ABCDEF0ULL});
+    auto result = d.read_bytes();
+    ASSERT_EQ(result.size(), large_data.size());
+    for (size_t i = 0; i < large_data.size(); ++i) {
+        EXPECT_EQ(result[i], large_data[i]);
+    }
+    EXPECT_EQ(d.read_string(), "end");
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, IntegerBoundaryValuesV60) {
+    Serializer s;
+    s.write_u8(UINT8_MAX);
+    s.write_u16(UINT16_MAX);
+    s.write_u32(UINT32_MAX);
+    s.write_i32(INT32_MIN);
+    s.write_i32(INT32_MAX);
+    s.write_i64(INT64_MIN);
+    s.write_i64(INT64_MAX);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u8(), UINT8_MAX);
+    EXPECT_EQ(d.read_u16(), UINT16_MAX);
+    EXPECT_EQ(d.read_u32(), UINT32_MAX);
+    EXPECT_EQ(d.read_i32(), INT32_MIN);
+    EXPECT_EQ(d.read_i32(), INT32_MAX);
+    EXPECT_EQ(d.read_i64(), INT64_MIN);
+    EXPECT_EQ(d.read_i64(), INT64_MAX);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, FloatingPointEdgeCasesV60) {
+    Serializer s;
+    s.write_f64(0.0);
+    s.write_f64(-0.0);
+    s.write_f64(1e308);
+    s.write_f64(1e-308);
+    s.write_f64(3.14159265358979323846);
+
+    Deserializer d(s.data());
+    EXPECT_DOUBLE_EQ(d.read_f64(), 0.0);
+    EXPECT_DOUBLE_EQ(d.read_f64(), -0.0);
+    EXPECT_DOUBLE_EQ(d.read_f64(), 1e308);
+    EXPECT_DOUBLE_EQ(d.read_f64(), 1e-308);
+    EXPECT_DOUBLE_EQ(d.read_f64(), 3.14159265358979323846);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, ComplexMultiTypeSequenceV60) {
+    Serializer s;
+    s.write_u8(42);
+    s.write_string("test");
+    s.write_i32(-999);
+    s.write_f64(2.718);
+    s.write_u64(9876543210ULL);
+    uint8_t bytes[] = {0xAB, 0xCD, 0xEF};
+    s.write_bytes(bytes, sizeof(bytes));
+    s.write_i64(-1);
+    s.write_u16(65535);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u8(), uint8_t{42});
+    EXPECT_EQ(d.read_string(), "test");
+    EXPECT_EQ(d.read_i32(), int32_t{-999});
+    EXPECT_DOUBLE_EQ(d.read_f64(), 2.718);
+    EXPECT_EQ(d.read_u64(), uint64_t{9876543210ULL});
+    auto result = d.read_bytes();
+    ASSERT_EQ(result.size(), sizeof(bytes));
+    for (size_t i = 0; i < sizeof(bytes); ++i) {
+        EXPECT_EQ(result[i], bytes[i]);
+    }
+    EXPECT_EQ(d.read_i64(), int64_t{-1});
+    EXPECT_EQ(d.read_u16(), uint16_t{65535});
+    EXPECT_FALSE(d.has_remaining());
+}

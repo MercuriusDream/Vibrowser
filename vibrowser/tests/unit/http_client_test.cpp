@@ -10977,3 +10977,209 @@ TEST(RequestTest, ContentLengthWithBinaryBodyV59) {
     // Content-Length should be 8
     EXPECT_TRUE(result.find("Content-Length: 8\r\n") != std::string::npos);
 }
+
+// Test 1 (V60): POST body serialization with JSON payload
+TEST(RequestTest, PostBodyJsonSerializationV60) {
+    Request req;
+    req.method = Method::POST;
+    req.host = "api.example.com";
+    req.port = 80;
+    req.path = "/users";
+
+    std::string json_body = R"({"name":"John","age":30})";
+    req.body.assign(json_body.begin(), json_body.end());
+    req.headers.set("Content-Type", "application/json");
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    // Verify Content-Length matches JSON body
+    size_t expected_length = json_body.length();  // 21 bytes
+    std::string content_length_header = "Content-Length: " + std::to_string(expected_length) + "\r\n";
+    EXPECT_TRUE(result.find(content_length_header) != std::string::npos);
+
+    // Verify body appears after blank line
+    EXPECT_TRUE(result.find("\r\n\r\n{\"name\":\"John\",\"age\":30}") != std::string::npos);
+}
+
+// Test 2 (V60): PUT request with form-encoded body
+TEST(RequestTest, PutFormEncodedBodyV60) {
+    Request req;
+    req.method = Method::PUT;
+    req.host = "example.com";
+    req.port = 80;
+    req.path = "/api/resource/123";
+
+    std::string form_body = "username=admin&password=secret123&action=update";
+    req.body.assign(form_body.begin(), form_body.end());
+    req.headers.set("Content-Type", "application/x-www-form-urlencoded");
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    // Verify PUT method
+    EXPECT_TRUE(result.find("PUT /api/resource/123 HTTP/1.1\r\n") != std::string::npos);
+
+    // Verify Content-Length
+    EXPECT_TRUE(result.find("Content-Length: 47\r\n") != std::string::npos);
+
+    // Verify form data in body
+    EXPECT_TRUE(result.find("username=admin&password=secret123&action=update") != std::string::npos);
+}
+
+// Test 3 (V60): PATCH with JSON body and custom headers
+TEST(RequestTest, PatchJsonBodyWithCustomHeadersV60) {
+    Request req;
+    req.method = Method::PATCH;
+    req.host = "api.service.com";
+    req.port = 8080;
+    req.path = "/v1/items/456";
+
+    std::string patch_body = R"({"status":"active","priority":5})";
+    req.body.assign(patch_body.begin(), patch_body.end());
+    req.headers.set("Content-Type", "application/json");
+    req.headers.set("X-Request-ID", "req-789");
+    req.headers.set("Authorization", "Bearer token123xyz");
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    // Verify PATCH method
+    EXPECT_TRUE(result.find("PATCH /v1/items/456 HTTP/1.1\r\n") != std::string::npos);
+
+    // Verify Host with port
+    EXPECT_TRUE(result.find("Host: api.service.com:8080\r\n") != std::string::npos);
+
+    // Verify custom headers in lowercase
+    EXPECT_TRUE(result.find("x-request-id: req-789\r\n") != std::string::npos);
+    EXPECT_TRUE(result.find("authorization: Bearer token123xyz\r\n") != std::string::npos);
+
+    // Verify body
+    EXPECT_TRUE(result.find(patch_body) != std::string::npos);
+}
+
+// Test 4 (V60): Cookie header serialization and format
+TEST(RequestTest, CookieHeaderSerializationV60) {
+    Request req;
+    req.method = Method::GET;
+    req.host = "example.com";
+    req.port = 443;
+    req.use_tls = true;
+    req.path = "/dashboard";
+
+    // Add multiple cookie values
+    req.headers.set("Cookie", "sessionid=abc123def456; userid=user789; theme=dark");
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    // Verify Cookie header (note: lowercase 'c' in 'cookie')
+    EXPECT_TRUE(result.find("cookie: sessionid=abc123def456; userid=user789; theme=dark\r\n") != std::string::npos);
+
+    // Verify HTTPS (port 443 omitted from Host)
+    EXPECT_TRUE(result.find("Host: example.com\r\n") != std::string::npos);
+}
+
+// Test 5 (V60): Authentication header with base64 encoding representation
+TEST(RequestTest, AuthenticationHeaderFormattingV60) {
+    Request req;
+    req.method = Method::GET;
+    req.host = "secure.example.com";
+    req.port = 80;
+    req.path = "/protected";
+
+    // Add Authorization header (typically contains base64 encoded credentials)
+    req.headers.set("Authorization", "Basic dXNlcm5hbWU6cGFzc3dvcmQ=");
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    // Verify Authorization header is lowercase but preserves case of Bearer/Basic keyword
+    EXPECT_TRUE(result.find("authorization: Basic dXNlcm5hbWU6cGFzc3dvcmQ=\r\n") != std::string::npos);
+}
+
+// Test 6 (V60): Content-Negotiation with Accept and Accept-Encoding headers
+TEST(RequestTest, ContentNegotiationHeadersV60) {
+    Request req;
+    req.method = Method::GET;
+    req.host = "cdn.example.com";
+    req.port = 443;
+    req.use_tls = true;
+    req.path = "/resource.json";
+
+    req.headers.set("Accept", "application/json, application/xml;q=0.9, */*;q=0.8");
+    req.headers.set("Accept-Encoding", "gzip, deflate, br");
+    req.headers.set("Accept-Language", "en-US,en;q=0.9");
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    // Verify all Accept headers are lowercase
+    EXPECT_TRUE(result.find("accept: application/json, application/xml;q=0.9, */*;q=0.8\r\n") != std::string::npos);
+    EXPECT_TRUE(result.find("accept-encoding: gzip, deflate, br\r\n") != std::string::npos);
+    EXPECT_TRUE(result.find("accept-language: en-US,en;q=0.9\r\n") != std::string::npos);
+}
+
+// Test 7 (V60): Multipart form data body with boundary
+TEST(RequestTest, MultipartFormDataBodyV60) {
+    Request req;
+    req.method = Method::POST;
+    req.host = "upload.example.com";
+    req.port = 80;
+    req.path = "/upload";
+
+    // Simplified multipart boundary (real implementation would be more complex)
+    std::string boundary = "----WebKitFormBoundary7MA4YWxkTrZu0gW";
+    std::string multipart_body =
+        "------WebKitFormBoundary7MA4YWxkTrZu0gW\r\n"
+        "Content-Disposition: form-data; name=\"username\"\r\n\r\n"
+        "johndoe\r\n"
+        "------WebKitFormBoundary7MA4YWxkTrZu0gW--\r\n";
+
+    req.body.assign(multipart_body.begin(), multipart_body.end());
+
+    std::string content_type = "multipart/form-data; boundary=" + boundary;
+    req.headers.set("Content-Type", content_type);
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    // Verify POST method
+    EXPECT_TRUE(result.find("POST /upload HTTP/1.1\r\n") != std::string::npos);
+
+    // Verify Content-Type with boundary
+    EXPECT_TRUE(result.find(content_type) != std::string::npos);
+
+    // Verify Content-Length matches multipart body
+    EXPECT_TRUE(result.find("Content-Length: " + std::to_string(multipart_body.length()) + "\r\n") != std::string::npos);
+
+    // Verify boundary in body
+    EXPECT_TRUE(result.find("----WebKitFormBoundary7MA4YWxkTrZu0gW") != std::string::npos);
+}
+
+// Test 8 (V60): DELETE request with empty body and query parameters
+TEST(RequestTest, DeleteRequestWithQueryParamsV60) {
+    Request req;
+    req.method = Method::DELETE_METHOD;
+    req.host = "api.example.com";
+    req.port = 3000;
+    req.path = "/items";
+    req.query = "id=42&confirm=true";
+
+    // DELETE with no body
+    EXPECT_TRUE(req.body.empty());
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    // Verify DELETE method with query string
+    EXPECT_TRUE(result.find("DELETE /items?id=42&confirm=true HTTP/1.1\r\n") != std::string::npos);
+
+    // Verify Host with non-standard port
+    EXPECT_TRUE(result.find("Host: api.example.com:3000\r\n") != std::string::npos);
+
+    // Verify no Content-Length for DELETE with empty body
+    // (Some servers may or may not send it, but it's valid to omit)
+    // Just ensure there's a blank line indicating end of headers
+    EXPECT_TRUE(result.find("\r\n\r\n") != std::string::npos);
+}

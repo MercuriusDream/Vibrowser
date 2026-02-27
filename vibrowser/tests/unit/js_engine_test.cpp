@@ -21282,25 +21282,173 @@ TEST(JSEngine, PrivateFieldsCycle1528) {
     auto result = engine.evaluate(R"(
         class Counter {
             #count = 0;
-            
+
             increment() {
                 this.#count++;
                 return this.#count;
             }
-            
+
             getCount() {
                 return this.#count;
             }
         }
-        
+
         const counter = new Counter();
         const first = counter.increment();
         const second = counter.increment();
         const third = counter.getCount();
-        
+
         `${first}|${second}|${third}`
     )");
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "1|2|2");
+}
+
+// ============================================================================
+// ObjectDestructuringNestedCycle1537: Test nested object destructuring
+// ============================================================================
+TEST(JSEngine, ObjectDestructuringNestedCycle1537) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        const user = {
+            id: 1,
+            profile: {
+                name: 'Alice',
+                email: 'alice@example.com',
+                address: {
+                    city: 'New York',
+                    zip: '10001'
+                }
+            }
+        };
+
+        const { profile: { name, address: { city } } } = user;
+        `${name}|${city}`
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "Alice|New York");
+}
+
+// ============================================================================
+// ArrayDestructuringWithRestCycle1537: Test array destructuring with rest operator
+// ============================================================================
+TEST(JSEngine, ArrayDestructuringWithRestCycle1537) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        const numbers = [1, 2, 3, 4, 5];
+        const [first, second, ...rest] = numbers;
+        const sum = rest.reduce((a, b) => a + b, 0);
+        `${first}|${second}|${sum}`
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1|2|12");
+}
+
+// ============================================================================
+// SpreadOperatorArrayMergeCycle1537: Test spread operator with array concatenation
+// ============================================================================
+TEST(JSEngine, SpreadOperatorArrayMergeCycle1537) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        const arr1 = [1, 2, 3];
+        const arr2 = [4, 5, 6];
+        const arr3 = [7, 8];
+        const merged = [...arr1, ...arr2, ...arr3];
+        merged.length
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "8");
+}
+
+// ============================================================================
+// GeneratorFunctionWithYieldCycle1537: Test generator function with yield
+// ============================================================================
+TEST(JSEngine, GeneratorFunctionWithYieldCycle1537) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        function* countUp(max) {
+            let i = 0;
+            while (i < max) {
+                yield i;
+                i++;
+            }
+        }
+
+        const gen = countUp(3);
+        const val1 = gen.next().value;
+        const val2 = gen.next().value;
+        const val3 = gen.next().value;
+        const done = gen.next().done;
+        `${val1}|${val2}|${val3}|${done}`
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "0|1|2|true");
+}
+
+// ============================================================================
+// MapObjectOperationsCycle1537: Test Map object creation and operations
+// ============================================================================
+TEST(JSEngine, MapObjectOperationsCycle1537) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        const map = new Map();
+        map.set('key1', 'value1');
+        map.set('key2', 42);
+        map.set('key3', true);
+
+        const has1 = map.has('key1');
+        const has4 = map.has('key4');
+        const val2 = map.get('key2');
+        const size = map.size;
+
+        `${has1}|${has4}|${val2}|${size}`
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true|false|42|3");
+}
+
+// ============================================================================
+// SetObjectOperationsCycle1537: Test Set object with add, has, and delete
+// ============================================================================
+TEST(JSEngine, SetObjectOperationsCycle1537) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        const set = new Set();
+        set.add(1);
+        set.add(2);
+        set.add(3);
+        set.add(2); // duplicate
+
+        const has1 = set.has(1);
+        const has4 = set.has(4);
+        const size1 = set.size;
+        set.delete(2);
+        const size2 = set.size;
+
+        `${has1}|${has4}|${size1}|${size2}`
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true|false|3|2");
+}
+
+// ============================================================================
+// RegExpWithFlagsAndExecCycle1537: Test RegExp with global and case-insensitive flags
+// ============================================================================
+TEST(JSEngine, RegExpWithFlagsAndExecCycle1537) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        const regex = /hello/gi;
+        const text = 'Hello World, hello there, HELLO again';
+        const matches = text.match(regex);
+        const count = matches ? matches.length : 0;
+
+        const testRegex = /^[a-z]+@[a-z]+\.[a-z]+$/;
+        const email1 = testRegex.test('user@example.com');
+        const email2 = testRegex.test('invalid-email');
+
+        `${count}|${email1}|${email2}`
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "3|true|false");
 }
 

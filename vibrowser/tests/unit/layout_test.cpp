@@ -10742,3 +10742,191 @@ TEST(LayoutEngineTest, BlockWithAllConstraintsV59) {
     EXPECT_EQ(root->text_align, 1);
     EXPECT_EQ(root->background_color, 0xFFCCCCCCu);
 }
+
+// Test V60_001: Margin collapse between adjacent blocks
+TEST(LayoutEngineTest, MarginCollapseAdjacentBlocksV60) {
+    auto root = make_block("div");
+
+    auto child1 = make_block("div");
+    child1->specified_height = 50.0f;
+    child1->geometry.margin.bottom = 20.0f;
+
+    auto child2 = make_block("div");
+    child2->specified_height = 50.0f;
+    child2->geometry.margin.top = 30.0f;
+
+    root->append_child(std::move(child1));
+    root->append_child(std::move(child2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // Children should be positioned vertically
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.y, 0.0f);
+    EXPECT_GT(root->children[1]->geometry.y, 50.0f);  // Second child below first
+    EXPECT_EQ(root->children.size(), 2u);
+}
+
+// Test V60_002: Padding with border-box sizing
+TEST(LayoutEngineTest, PaddingWithBorderBoxSizingV60) {
+    auto root = make_block("div");
+    root->specified_width = 300.0f;
+    root->specified_height = 200.0f;
+    root->geometry.padding.left = 10.0f;
+    root->geometry.padding.right = 10.0f;
+    root->geometry.padding.top = 15.0f;
+    root->geometry.padding.bottom = 15.0f;
+    root->border_box = true;  // border-box sizing
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // With border-box, specified size includes padding
+    EXPECT_FLOAT_EQ(root->geometry.width, 300.0f);
+    EXPECT_FLOAT_EQ(root->geometry.height, 200.0f);
+    // Content area should be reduced by padding
+    EXPECT_TRUE(root->border_box);
+}
+
+// Test V60_003: Nested flex layout with flex-direction
+TEST(LayoutEngineTest, NestedFlexLayoutV60) {
+    auto root = make_flex("div");
+    root->specified_width = 600.0f;
+    root->specified_height = 400.0f;
+
+    auto flex_child1 = make_flex("div");
+    flex_child1->specified_width = 150.0f;
+    flex_child1->specified_height = 150.0f;
+
+    auto flex_child2 = make_flex("div");
+    flex_child2->specified_width = 150.0f;
+    flex_child2->specified_height = 150.0f;
+
+    auto grandchild = make_block("div");
+    grandchild->specified_width = 75.0f;
+    grandchild->specified_height = 75.0f;
+
+    flex_child2->append_child(std::move(grandchild));
+    root->append_child(std::move(flex_child1));
+    root->append_child(std::move(flex_child2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(root->geometry.width, 600.0f);
+    EXPECT_FLOAT_EQ(root->geometry.height, 400.0f);
+    EXPECT_EQ(root->children.size(), 2u);
+}
+
+// Test V60_004: Absolute positioning with offset constraints
+TEST(LayoutEngineTest, AbsolutePositioningWithOffsetsV60) {
+    auto root = make_block("div");
+    root->specified_width = 500.0f;
+    root->specified_height = 400.0f;
+    root->position_type = 1;  // relative
+
+    auto abs_child = make_block("div");
+    abs_child->specified_width = 100.0f;
+    abs_child->specified_height = 100.0f;
+    abs_child->position_type = 2;  // absolute
+    abs_child->pos_top = 50.0f;
+    abs_child->pos_left = 75.0f;
+
+    root->append_child(std::move(abs_child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // Absolute positioned child dimensions should be respected
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.width, 100.0f);
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.height, 100.0f);
+    EXPECT_GE(root->children[0]->geometry.x, 0.0f);
+    EXPECT_GE(root->children[0]->geometry.y, 0.0f);
+}
+
+// Test V60_005: Float clearing with clearfix
+TEST(LayoutEngineTest, FloatClearingV60) {
+    auto root = make_block("div");
+    root->specified_width = 400.0f;
+
+    auto floated = make_block("div");
+    floated->specified_width = 100.0f;
+    floated->specified_height = 100.0f;
+    floated->float_type = 1;  // left float
+
+    auto cleared = make_block("div");
+    cleared->specified_height = 50.0f;
+    cleared->clear_type = 1;  // clear left
+
+    root->append_child(std::move(floated));
+    root->append_child(std::move(cleared));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // Cleared element should be positioned below floated element
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.y, 0.0f);
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.y, 100.0f);
+}
+
+// Test V60_006: Inline layout with text wrapping
+TEST(LayoutEngineTest, InlineTextWrappingV60) {
+    auto root = make_block("div");
+    root->specified_width = 200.0f;
+
+    auto inline1 = make_inline("span");
+    auto text1 = make_text("This is ", 14.0f);
+    inline1->append_child(std::move(text1));
+
+    auto inline2 = make_inline("span");
+    auto text2 = make_text("wrapped text", 14.0f);
+    inline2->append_child(std::move(text2));
+
+    root->append_child(std::move(inline1));
+    root->append_child(std::move(inline2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(root->geometry.width, 200.0f);
+    EXPECT_EQ(root->children.size(), 2u);
+}
+
+// Test V60_007: Percentage-based dimensions with parent constraints
+TEST(LayoutEngineTest, PercentageBasedDimensionsV60) {
+    auto root = make_block("div");
+    root->specified_width = 400.0f;
+    root->specified_height = 300.0f;
+
+    auto child = make_block("div");
+    child->css_width = clever::css::Length::percent(50.0f);  // 50% of parent
+    child->css_height = clever::css::Length::percent(75.0f);  // 75% of parent
+
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // Child should be 50% of 400 = 200, 75% of 300 = 225
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.width, 200.0f);
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.height, 225.0f);
+}
+
+// Test V60_008: Max-width clamping with content expansion
+TEST(LayoutEngineTest, MaxWidthClampingV60) {
+    auto root = make_block("div");
+    root->specified_width = 600.0f;
+    root->max_width = 400.0f;
+
+    auto child = make_block("div");
+    child->specified_width = 300.0f;
+
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // Max-width should clamp the root to 400
+    EXPECT_FLOAT_EQ(root->geometry.width, 400.0f);
+    EXPECT_FLOAT_EQ(root->max_width, 400.0f);
+}

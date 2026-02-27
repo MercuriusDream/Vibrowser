@@ -9336,3 +9336,236 @@ TEST(DomElement, SetAttributeIdAndRetrieveV59) {
     auto attrs = elem->attributes();
     EXPECT_EQ(attrs.size(), 2u);
 }
+
+TEST(DomElement, AttributeOverwriteAndRetrieveV60) {
+    Document doc;
+    auto elem = doc.create_element("div");
+    elem->set_attribute("data-id", "first");
+    EXPECT_EQ(elem->get_attribute("data-id").value(), "first");
+
+    elem->set_attribute("data-id", "second");
+    EXPECT_EQ(elem->get_attribute("data-id").value(), "second");
+
+    // Ensure no duplicate attributes
+    auto attrs = elem->attributes();
+    EXPECT_EQ(attrs.size(), 1u);
+
+    elem->set_attribute("data-value", "test");
+    attrs = elem->attributes();
+    EXPECT_EQ(attrs.size(), 2u);
+}
+
+TEST(DomNode, ChildCountAndTraversalV60) {
+    Document doc;
+    auto parent = doc.create_element("ul");
+
+    EXPECT_EQ(parent->child_count(), 0u);
+    EXPECT_EQ(parent->first_child(), nullptr);
+    EXPECT_EQ(parent->last_child(), nullptr);
+
+    auto li1 = doc.create_element("li");
+    auto li2 = doc.create_element("li");
+    auto li3 = doc.create_element("li");
+
+    auto* li1_ptr = li1.get();
+    auto* li2_ptr = li2.get();
+    auto* li3_ptr = li3.get();
+
+    parent->append_child(std::move(li1));
+    parent->append_child(std::move(li2));
+    parent->append_child(std::move(li3));
+
+    EXPECT_EQ(parent->child_count(), 3u);
+    EXPECT_EQ(parent->first_child(), li1_ptr);
+    EXPECT_EQ(parent->last_child(), li3_ptr);
+
+    auto* second = li1_ptr->next_sibling();
+    EXPECT_EQ(second, li2_ptr);
+
+    auto* third = li2_ptr->next_sibling();
+    EXPECT_EQ(third, li3_ptr);
+    EXPECT_EQ(li3_ptr->next_sibling(), nullptr);
+}
+
+TEST(DomElement, ClassListToggleAndContainsV60) {
+    Document doc;
+    auto elem = doc.create_element("button");
+
+    // Initially empty
+    EXPECT_EQ(elem->class_list().length(), 0u);
+    EXPECT_FALSE(elem->class_list().contains("active"));
+
+    // Toggle to add
+    elem->class_list().toggle("active");
+    EXPECT_TRUE(elem->class_list().contains("active"));
+    EXPECT_EQ(elem->class_list().length(), 1u);
+
+    // Toggle to remove
+    elem->class_list().toggle("active");
+    EXPECT_FALSE(elem->class_list().contains("active"));
+    EXPECT_EQ(elem->class_list().length(), 0u);
+
+    // Add multiple and verify
+    elem->class_list().add("btn");
+    elem->class_list().add("primary");
+    EXPECT_TRUE(elem->class_list().contains("btn"));
+    EXPECT_TRUE(elem->class_list().contains("primary"));
+    EXPECT_EQ(elem->class_list().length(), 2u);
+}
+
+TEST(DomNode, InsertBeforeAndChildOrderV60) {
+    Document doc;
+    auto parent = doc.create_element("nav");
+    auto link1 = doc.create_element("a");
+    auto link2 = doc.create_element("a");
+    auto link3 = doc.create_element("a");
+
+    auto* link1_ptr = link1.get();
+    auto* link2_ptr = link2.get();
+    auto* link3_ptr = link3.get();
+
+    parent->append_child(std::move(link1));
+    parent->append_child(std::move(link3));
+
+    // Insert link2 between link1 and link3
+    parent->insert_before(std::move(link2), link3_ptr);
+
+    EXPECT_EQ(parent->child_count(), 3u);
+    EXPECT_EQ(parent->first_child(), link1_ptr);
+    EXPECT_EQ(link1_ptr->next_sibling(), link2_ptr);
+    EXPECT_EQ(link2_ptr->next_sibling(), link3_ptr);
+    EXPECT_EQ(parent->last_child(), link3_ptr);
+    EXPECT_EQ(link3_ptr->previous_sibling(), link2_ptr);
+}
+
+TEST(DomNode, TextContentAcrossMultipleNodesV60) {
+    Document doc;
+    auto paragraph = doc.create_element("p");
+    auto strong = doc.create_element("strong");
+    auto em = doc.create_element("em");
+
+    auto text1 = doc.create_text_node("This is ");
+    auto text2 = doc.create_text_node("important");
+    auto text3 = doc.create_text_node(" and ");
+    auto text4 = doc.create_text_node("emphasized");
+
+    auto* text1_ptr = text1.get();
+    auto* text2_ptr = text2.get();
+
+    strong->append_child(std::move(text2));
+    em->append_child(std::move(text4));
+
+    paragraph->append_child(std::move(text1));
+    paragraph->append_child(std::move(strong));
+    paragraph->append_child(std::move(text3));
+    paragraph->append_child(std::move(em));
+
+    auto full_text = paragraph->text_content();
+    EXPECT_EQ(full_text, "This is important and emphasized");
+
+    // Verify individual text nodes
+    auto* first_text = dynamic_cast<Text*>(text1_ptr);
+    ASSERT_NE(first_text, nullptr);
+    EXPECT_EQ(first_text->text_content(), "This is ");
+
+    auto* second_text = dynamic_cast<Text*>(text2_ptr);
+    ASSERT_NE(second_text, nullptr);
+    EXPECT_EQ(second_text->text_content(), "important");
+}
+
+TEST(DomElement, AttributeModificationAndAttributesVectorV60) {
+    Document doc;
+    auto form = doc.create_element("form");
+    form->set_attribute("method", "POST");
+    form->set_attribute("action", "/submit");
+    form->set_attribute("enctype", "multipart/form-data");
+
+    auto initial_attrs = form->attributes();
+    EXPECT_EQ(initial_attrs.size(), 3u);
+
+    // Modify an attribute
+    form->set_attribute("action", "/api/submit");
+    auto modified_attrs = form->attributes();
+    EXPECT_EQ(modified_attrs.size(), 3u);
+    EXPECT_EQ(form->get_attribute("action").value(), "/api/submit");
+
+    // Remove an attribute
+    form->remove_attribute("enctype");
+    auto final_attrs = form->attributes();
+    EXPECT_EQ(final_attrs.size(), 2u);
+    EXPECT_FALSE(form->has_attribute("enctype"));
+    EXPECT_TRUE(form->has_attribute("method"));
+    EXPECT_TRUE(form->has_attribute("action"));
+}
+
+TEST(DomNode, ComplexNestedTreeStructureV60) {
+    Document doc;
+    auto html = doc.create_element("html");
+    auto body = doc.create_element("body");
+    auto main_section = doc.create_element("main");
+    auto article = doc.create_element("article");
+    auto header = doc.create_element("header");
+    auto h1 = doc.create_element("h1");
+    auto content = doc.create_element("div");
+
+    auto* html_ptr = html.get();
+    auto* body_ptr = body.get();
+    auto* main_ptr = main_section.get();
+    auto* article_ptr = article.get();
+    auto* header_ptr = header.get();
+    auto* h1_ptr = h1.get();
+    auto* content_ptr = content.get();
+
+    // Build tree: html > body > main > [article > [header > h1], content]
+    html->append_child(std::move(body));
+    body_ptr->append_child(std::move(main_section));
+    main_ptr->append_child(std::move(article));
+    main_ptr->append_child(std::move(content));
+    article_ptr->append_child(std::move(header));
+    header_ptr->append_child(std::move(h1));
+
+    // Verify structure from root
+    EXPECT_EQ(html_ptr->first_child(), body_ptr);
+    EXPECT_EQ(body_ptr->first_child(), main_ptr);
+    EXPECT_EQ(main_ptr->first_child(), article_ptr);
+    EXPECT_EQ(main_ptr->last_child(), content_ptr);
+    EXPECT_EQ(article_ptr->first_child(), header_ptr);
+    EXPECT_EQ(header_ptr->first_child(), h1_ptr);
+
+    // Verify sibling relationships
+    EXPECT_EQ(article_ptr->next_sibling(), content_ptr);
+    EXPECT_EQ(content_ptr->previous_sibling(), article_ptr);
+}
+
+TEST(DomElement, ElementTagNameAndMultipleAttributesV60) {
+    Document doc;
+    auto input = doc.create_element("input");
+
+    EXPECT_EQ(input->tag_name(), "input");
+    EXPECT_EQ(input->node_type(), NodeType::Element);
+
+    input->set_attribute("type", "email");
+    input->set_attribute("name", "user_email");
+    input->set_attribute("required", "true");
+    input->set_attribute("placeholder", "Enter email");
+    input->set_attribute("aria-label", "Email input");
+
+    EXPECT_EQ(input->get_attribute("type").value(), "email");
+    EXPECT_EQ(input->get_attribute("name").value(), "user_email");
+    EXPECT_EQ(input->get_attribute("required").value(), "true");
+    EXPECT_EQ(input->get_attribute("placeholder").value(), "Enter email");
+    EXPECT_EQ(input->get_attribute("aria-label").value(), "Email input");
+
+    auto attrs = input->attributes();
+    EXPECT_EQ(attrs.size(), 5u);
+
+    // Verify iteration through attributes
+    int count = 0;
+    for (const auto& attr : attrs) {
+        if (attr.name == "type" || attr.name == "name" || attr.name == "required" ||
+            attr.name == "placeholder" || attr.name == "aria-label") {
+            count++;
+        }
+    }
+    EXPECT_EQ(count, 5);
+}

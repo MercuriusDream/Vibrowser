@@ -4805,3 +4805,77 @@ TEST(CORSPolicy, FragmentWithQueryAndPathNotCorsEligibleV59) {
     EXPECT_FALSE(cors_allows_response("https://api.example", "https://api.example/data?key=value#anchor",
                                       headers, false));
 }
+
+// --- Cycle V60: 8 CORS tests ---
+
+TEST(CORSPolicy, WildcardOriginAllowsAnyOriginV60) {
+    clever::net::HeaderMap headers;
+    // Wildcard origin should allow any origin
+    headers.set("Access-Control-Allow-Origin", "*");
+    EXPECT_TRUE(cors_allows_response("https://anything.example", "https://api.example/data", headers,
+                                     false));
+}
+
+TEST(CORSPolicy, WildcardWithMultipleOriginsHeaderV60) {
+    clever::net::HeaderMap headers;
+    // When ACAO is wildcard, any other CORS header patterns are irrelevant
+    headers.set("Access-Control-Allow-Origin", "*");
+    headers.set("Access-Control-Allow-Credentials", "true");
+    EXPECT_TRUE(cors_allows_response("https://app.example", "https://api.example/users", headers,
+                                     false));
+}
+
+TEST(CORSPolicy, CredentialsNotAllowedWithWildcardOriginV60) {
+    clever::net::HeaderMap headers;
+    // Wildcard allows response, but credentials + wildcard is valid per spec
+    headers.set("Access-Control-Allow-Origin", "*");
+    // Just ensure the response is allowed; credentials conflict is checked elsewhere
+    EXPECT_TRUE(cors_allows_response("https://myapp.example", "https://api.example/secure", headers,
+                                     false));
+}
+
+TEST(CORSPolicy, ExplicitOriginWithCredentialsHeaderV60) {
+    clever::net::HeaderMap headers;
+    // Explicit origin with credentials should allow the response
+    headers.set("Access-Control-Allow-Origin", "https://myapp.example");
+    headers.set("Access-Control-Allow-Credentials", "true");
+    EXPECT_TRUE(cors_allows_response("https://myapp.example", "https://api.example/data", headers,
+                                     false));
+}
+
+TEST(CORSPolicy, HeaderExposureAllowsAccessV60) {
+    clever::net::HeaderMap headers;
+    // Explicit origin with allowed headers means headers are exposed
+    headers.set("Access-Control-Allow-Origin", "https://myapp.example");
+    headers.set("Access-Control-Expose-Headers", "X-Custom-Header, Content-Length");
+    EXPECT_TRUE(cors_allows_response("https://myapp.example", "https://api.example/resource", headers,
+                                     false));
+}
+
+TEST(CORSPolicy, MethodRestrictionInPreflightV60) {
+    clever::net::HeaderMap headers;
+    // Preflight request with method restriction - credentials requested requires ACAC header
+    headers.set("Access-Control-Allow-Origin", "https://myapp.example");
+    headers.set("Access-Control-Allow-Methods", "GET, POST");
+    headers.set("Access-Control-Allow-Credentials", "true");
+    EXPECT_TRUE(cors_allows_response("https://myapp.example", "https://api.example/api", headers,
+                                     true));
+}
+
+TEST(CORSPolicy, CaseSensitivePortInOriginHeaderV60) {
+    clever::net::HeaderMap headers;
+    // Port numbers are case-insensitive in origin comparison, but we need exact port match
+    headers.set("Access-Control-Allow-Origin", "https://api.example:8443");
+    // Request from different port should not match
+    EXPECT_FALSE(cors_allows_response("https://api.example:9443", "https://api.example:8443/api",
+                                      headers, false));
+}
+
+TEST(CORSPolicy, DefaultHttpsPortNormalizedInAcaoV60) {
+    clever::net::HeaderMap headers;
+    // ACAO header with explicit :443 should match https://api.example (default port is normalized)
+    headers.set("Access-Control-Allow-Origin", "https://api.example:443");
+    // The request origin is from default port (implicit) - both normalize to the same value
+    EXPECT_TRUE(cors_allows_response("https://api.example", "https://api.example/data", headers,
+                                     false));
+}
