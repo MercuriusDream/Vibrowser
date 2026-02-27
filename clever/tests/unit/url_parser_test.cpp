@@ -2328,3 +2328,59 @@ TEST(URLParser, UpperCaseSchemeNormalized) {
     ASSERT_TRUE(url.has_value());
     EXPECT_EQ(url->scheme, "https");
 }
+
+// Cycle 834 — URL same-origin edge cases and more serialization
+TEST(URLParser, SameOriginDifferentPathIsSameOrigin) {
+    auto a = clever::url::parse("https://example.com/path1");
+    auto b = clever::url::parse("https://example.com/path2/deep");
+    ASSERT_TRUE(a.has_value() && b.has_value());
+    EXPECT_TRUE(clever::url::urls_same_origin(*a, *b));
+}
+
+TEST(URLParser, SameOriginDifferentQueryIsSameOrigin) {
+    auto a = clever::url::parse("https://example.com/page?a=1");
+    auto b = clever::url::parse("https://example.com/page?b=2");
+    ASSERT_TRUE(a.has_value() && b.has_value());
+    EXPECT_TRUE(clever::url::urls_same_origin(*a, *b));
+}
+
+TEST(URLParser, SameOriginDifferentFragmentIsSameOrigin) {
+    auto a = clever::url::parse("https://example.com/page#intro");
+    auto b = clever::url::parse("https://example.com/page#conclusion");
+    ASSERT_TRUE(a.has_value() && b.has_value());
+    EXPECT_TRUE(clever::url::urls_same_origin(*a, *b));
+}
+
+TEST(URLParser, HttpAndHttpsDifferentOrigin) {
+    auto a = clever::url::parse("http://example.com/page");
+    auto b = clever::url::parse("https://example.com/page");
+    ASSERT_TRUE(a.has_value() && b.has_value());
+    EXPECT_FALSE(clever::url::urls_same_origin(*a, *b));
+}
+
+TEST(URLParser, PortInSerializedUrl) {
+    auto url = clever::url::parse("https://api.example.com:8443/v2/endpoint");
+    ASSERT_TRUE(url.has_value());
+    auto serialized = url->serialize();
+    EXPECT_NE(serialized.find("8443"), std::string::npos);
+}
+
+TEST(URLParser, SerializePreservesFragment) {
+    auto url = clever::url::parse("https://example.com/page?q=test#section3");
+    ASSERT_TRUE(url.has_value());
+    auto serialized = url->serialize();
+    EXPECT_NE(serialized.find("section3"), std::string::npos);
+}
+
+TEST(URLParser, DeepApiPathStartsWithSlash) {
+    auto url = clever::url::parse("https://example.com/api/v1/users");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->path[0], '/');
+}
+
+TEST(URLParser, EmptyQueryAndFragmentAfterParse) {
+    auto url = clever::url::parse("https://example.com/clean");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_TRUE(url->query.empty());
+    EXPECT_TRUE(url->fragment.empty());
+}
