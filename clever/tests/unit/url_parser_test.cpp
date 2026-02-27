@@ -3280,3 +3280,52 @@ TEST(URLParser, QueryWithLangAndPageParams) {
     ASSERT_TRUE(url.has_value());
     EXPECT_FALSE(url->query.empty());
 }
+
+TEST(URLParser, PathWithPyExtension) {
+    auto url = parse("https://example.com/script.py");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->path, "/script.py");
+}
+
+TEST(URLParser, PathWithRbExtension) {
+    auto url = parse("https://example.com/app.rb");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->path, "/app.rb");
+}
+
+TEST(URLParser, PathWithGoExtension) {
+    auto url = parse("https://example.com/main.go");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->path, "/main.go");
+}
+
+TEST(URLParser, PathWithRsExtension) {
+    auto url = parse("https://example.com/lib.rs");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->path, "/lib.rs");
+}
+
+TEST(URLParser, PathWithCppExtension) {
+    auto url = parse("https://example.com/main.cpp");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->path, "/main.cpp");
+}
+
+TEST(URLParser, QueryWithSpaceEncoded) {
+    auto url = parse("https://example.com/search?q=hello%20world");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_FALSE(url->query.empty());
+}
+
+TEST(URLParser, PathWithPercentEncoded) {
+    auto url = parse("https://example.com/path%2Fto%2Fresource");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_FALSE(url->path.empty());
+}
+
+TEST(URLParser, Port65535Preserved) {
+    auto url = parse("http://example.com:65535/service");
+    ASSERT_TRUE(url.has_value());
+    ASSERT_TRUE(url->port.has_value());
+    EXPECT_EQ(*url->port, 65535);
+}
