@@ -4018,3 +4018,74 @@ TEST(ResponseTest, ResponseBodyJsonString) {
     ASSERT_TRUE(resp.has_value());
     EXPECT_EQ(resp->body_as_string(), "{\"ok\":true}");
 }
+
+// Cycle 824 — HTTP status codes 202/203/205/501/505 and security headers
+TEST(ResponseTest, Parse202Accepted) {
+    std::string raw = "HTTP/1.1 202 Accepted\r\nContent-Length: 0\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 202);
+}
+
+TEST(ResponseTest, Parse203NonAuthoritativeInformation) {
+    std::string raw = "HTTP/1.1 203 Non-Authoritative Information\r\nContent-Length: 0\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 203);
+}
+
+TEST(ResponseTest, Parse205ResetContent) {
+    std::string raw = "HTTP/1.1 205 Reset Content\r\nContent-Length: 0\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 205);
+}
+
+TEST(ResponseTest, Parse501NotImplemented) {
+    std::string raw = "HTTP/1.1 501 Not Implemented\r\nContent-Length: 0\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 501);
+}
+
+TEST(ResponseTest, Parse505HttpVersionNotSupported) {
+    std::string raw = "HTTP/1.1 505 HTTP Version Not Supported\r\nContent-Length: 0\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 505);
+}
+
+TEST(ResponseTest, ContentSecurityPolicyHeader) {
+    std::string raw = "HTTP/1.1 200 OK\r\nContent-Security-Policy: default-src 'self'\r\nContent-Length: 0\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    auto csp = resp->headers.get("Content-Security-Policy");
+    ASSERT_TRUE(csp.has_value());
+    EXPECT_NE(csp->find("default-src"), std::string::npos);
+}
+
+TEST(ResponseTest, StrictTransportSecurityHeader) {
+    std::string raw = "HTTP/1.1 200 OK\r\nStrict-Transport-Security: max-age=31536000; includeSubDomains\r\nContent-Length: 0\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    auto hsts = resp->headers.get("Strict-Transport-Security");
+    ASSERT_TRUE(hsts.has_value());
+    EXPECT_NE(hsts->find("max-age"), std::string::npos);
+}
+
+TEST(ResponseTest, ReferrerPolicyHeader) {
+    std::string raw = "HTTP/1.1 200 OK\r\nReferrer-Policy: no-referrer-when-downgrade\r\nContent-Length: 0\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    auto rp = resp->headers.get("Referrer-Policy");
+    ASSERT_TRUE(rp.has_value());
+    EXPECT_EQ(*rp, "no-referrer-when-downgrade");
+}
