@@ -2380,3 +2380,66 @@ TEST(SerializerTest, I32PositiveAndNegativeSequence) {
     EXPECT_EQ(d.read_i32(), 100);
     EXPECT_EQ(d.read_i32(), -100);
 }
+
+TEST(SerializerTest, U32MaxValueRoundTrip) {
+    clever::ipc::Serializer s;
+    s.write_u32(4294967295u);
+    clever::ipc::Deserializer d(s.data());
+    EXPECT_EQ(d.read_u32(), 4294967295u);
+}
+
+TEST(SerializerTest, I64MinValueRoundTrip) {
+    clever::ipc::Serializer s;
+    s.write_i64(std::numeric_limits<int64_t>::min());
+    clever::ipc::Deserializer d(s.data());
+    EXPECT_EQ(d.read_i64(), std::numeric_limits<int64_t>::min());
+}
+
+TEST(SerializerTest, LongStringThousandXsRoundTrip) {
+    clever::ipc::Serializer s;
+    std::string long_str(1000, 'x');
+    s.write_string(long_str);
+    clever::ipc::Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), long_str);
+}
+
+TEST(SerializerTest, U16FourValuesSequence) {
+    clever::ipc::Serializer s;
+    s.write_u16(100);
+    s.write_u16(200);
+    s.write_u16(300);
+    s.write_u16(400);
+    clever::ipc::Deserializer d(s.data());
+    EXPECT_EQ(d.read_u16(), 100);
+    EXPECT_EQ(d.read_u16(), 200);
+    EXPECT_EQ(d.read_u16(), 300);
+    EXPECT_EQ(d.read_u16(), 400);
+}
+
+TEST(SerializerTest, F64InfinityRoundTrip) {
+    clever::ipc::Serializer s;
+    s.write_f64(std::numeric_limits<double>::infinity());
+    clever::ipc::Deserializer d(s.data());
+    EXPECT_TRUE(std::isinf(d.read_f64()));
+}
+
+TEST(SerializerTest, StringWithMultipleWordsRoundTrip) {
+    clever::ipc::Serializer s;
+    s.write_string("hello world foo bar");
+    clever::ipc::Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "hello world foo bar");
+}
+
+TEST(SerializerTest, I32ZeroValueRoundTrip) {
+    clever::ipc::Serializer s;
+    s.write_i32(0);
+    clever::ipc::Deserializer d(s.data());
+    EXPECT_EQ(d.read_i32(), 0);
+}
+
+TEST(SerializerTest, TenBooleansAlternating) {
+    clever::ipc::Serializer s;
+    for (int i = 0; i < 10; ++i) s.write_bool(i % 2 == 0);
+    clever::ipc::Deserializer d(s.data());
+    for (int i = 0; i < 10; ++i) EXPECT_EQ(d.read_bool(), i % 2 == 0);
+}
