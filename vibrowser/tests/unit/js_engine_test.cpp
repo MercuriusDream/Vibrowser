@@ -27219,3 +27219,196 @@ TEST(JsEngineTest, ReflectOwnKeysAndDefinePropertyV97) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "a,b,c|3|true|true|false|false");
 }
+
+TEST(JsEngineTest, PrivateClassFieldsAndMethodsV98) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        class Counter {
+            #count = 0;
+            #step;
+            constructor(step) { this.#step = step; }
+            #advance() { this.#count += this.#step; }
+            tick() { this.#advance(); return this.#count; }
+            get value() { return this.#count; }
+        }
+        var c = new Counter(3);
+        var r = [];
+        r.push(c.tick());
+        r.push(c.tick());
+        r.push(c.tick());
+        r.push(c.value);
+        try { c["#count"]; r.push("no-error"); } catch(e) { r.push("caught"); }
+        r.join(",");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "3,6,9,9,no-error");
+}
+
+TEST(JsEngineTest, NullishCoalescingAndOptionalChainingV98) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var obj = { a: { b: { c: 42 } }, d: null, e: 0, f: "" };
+        var r = [];
+        r.push(obj.a?.b?.c);
+        r.push(obj.d?.x?.y ?? "default");
+        r.push(obj.z?.w ?? "missing");
+        r.push(obj.e ?? "fallback");
+        r.push(obj.f ?? "fallback");
+        r.push(null ?? undefined ?? "last");
+        r.push(obj.a?.b?.c?.toString());
+        var arr = [1, 2, 3];
+        r.push(arr?.[1]);
+        r.push(arr?.[99] ?? "nope");
+        r.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "42|default|missing|0||last|42|2|nope");
+}
+
+TEST(JsEngineTest, RegExpNamedGroupsAndLookbehindV98) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var re = /(?<year>\d{4})-(?<month>\d{2})-(?<day>\d{2})/;
+        var m = re.exec("2026-02-28");
+        var r = [];
+        r.push(m.groups.year);
+        r.push(m.groups.month);
+        r.push(m.groups.day);
+        var re2 = /(?<=\$)\d+/;
+        var m2 = re2.exec("price is $150");
+        r.push(m2[0]);
+        var re3 = /(?<!un)happy/;
+        r.push(re3.test("happy"));
+        r.push(re3.test("unhappy"));
+        var dotAll = /foo.bar/s;
+        r.push(dotAll.test("foo\nbar"));
+        r.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "2026|02|28|150|true|false|true");
+}
+
+TEST(JsEngineTest, ArrayFlatAndFlatMapWithEntriesV98) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var nested = [1, [2, 3], [4, [5, 6]], [[7]]];
+        var r = [];
+        r.push(nested.flat().join(","));
+        r.push(nested.flat(Infinity).join(","));
+        var words = ["hello world", "foo bar"];
+        r.push(words.flatMap(w => w.split(" ")).join(","));
+        var arr = [10, 20, 30];
+        var entries = [];
+        for (var [i, v] of arr.entries()) {
+            entries.push(i + ":" + v);
+        }
+        r.push(entries.join(","));
+        r.push(Array.from({length: 5}, (_, i) => i * i).join(","));
+        r.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1,2,3,4,5,6,7|1,2,3,4,5,6,7|hello,world,foo,bar|0:10,1:20,2:30|0,1,4,9,16");
+}
+
+TEST(JsEngineTest, IteratorProtocolAndForOfV98) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        class Range {
+            constructor(start, end) { this.start = start; this.end = end; }
+            [Symbol.iterator]() {
+                var current = this.start;
+                var end = this.end;
+                return {
+                    next() {
+                        if (current <= end) return { value: current++, done: false };
+                        return { done: true };
+                    }
+                };
+            }
+        }
+        var r = [];
+        for (var n of new Range(3, 7)) r.push(n);
+        var spread = [...new Range(1, 4)];
+        r.push(spread.join(","));
+        var [a, b, ...rest] = new Range(10, 15);
+        r.push(a);
+        r.push(b);
+        r.push(rest.join(","));
+        r.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "3|4|5|6|7|1,2,3,4|10|11|12,13,14,15");
+}
+
+TEST(JsEngineTest, ObjectFromEntriesAndGroupByV98) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var pairs = [["x", 1], ["y", 2], ["z", 3]];
+        var obj = Object.fromEntries(pairs);
+        var r = [];
+        r.push(obj.x + obj.y + obj.z);
+        var m = new Map([["a", 10], ["b", 20]]);
+        var obj2 = Object.fromEntries(m);
+        r.push(obj2.a + "," + obj2.b);
+        var roundTrip = Object.fromEntries(Object.entries({p: "hello", q: "world"}));
+        r.push(roundTrip.p + " " + roundTrip.q);
+        var desc = Object.getOwnPropertyDescriptors({get val() { return 99; }});
+        r.push(typeof desc.val.get);
+        r.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "6|10,20|hello world|function");
+}
+
+TEST(JsEngineTest, StringMethodsPadTrimAtV98) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var r = [];
+        r.push("5".padStart(3, "0"));
+        r.push("hi".padEnd(5, "."));
+        r.push("  space  ".trimStart());
+        r.push("  space  ".trimEnd());
+        r.push("hello".at(0));
+        r.push("hello".at(-1));
+        r.push("abc".repeat(3));
+        r.push("foobar".startsWith("foo"));
+        r.push("foobar".endsWith("bar"));
+        r.push("foobar".includes("oba"));
+        r.push("abcabc".replaceAll("bc", "XY"));
+        r.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "005|hi...|space  |  space|h|o|abcabcabc|true|true|true|aXYaXY");
+}
+
+TEST(JsEngineTest, LogicalAssignmentAndNumericSeparatorsV98) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var r = [];
+        var a = null;
+        a ??= 42;
+        r.push(a);
+        var b = 0;
+        b ??= 99;
+        r.push(b);
+        var c = "";
+        c ||= "default";
+        r.push(c);
+        var d = "existing";
+        d ||= "nope";
+        r.push(d);
+        var e = 1;
+        e &&= 2;
+        r.push(e);
+        var f = 0;
+        f &&= 2;
+        r.push(f);
+        var big = 1_000_000;
+        r.push(big);
+        var hex = 0xFF_FF;
+        r.push(hex);
+        r.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "42|0|default|existing|2|0|1000000|65535");
+}

@@ -7190,3 +7190,81 @@ TEST(CORSPolicyTest, CaseInsensitiveSchemeComparisonV97) {
     // treated as non-enforceable, so cross-origin returns false (safe default).
     EXPECT_FALSE(is_cross_origin("HTTP://example.com", "http://other.com/path"));
 }
+
+// ============================================================
+// Round 98 — CORS Policy Tests
+// ============================================================
+
+TEST(CORSPolicyTest, WsSchemeNotCorsEligibleV98) {
+    // ws:// (plain WebSocket) is not cors-eligible, similar to wss://
+    EXPECT_FALSE(is_cors_eligible_request_url("ws://example.com/socket"));
+    EXPECT_FALSE(is_cors_eligible_request_url("ws://localhost:8080/ws"));
+    // wss:// also not cors-eligible
+    EXPECT_FALSE(is_cors_eligible_request_url("wss://example.com/realtime"));
+}
+
+TEST(CORSPolicyTest, NullOriginNeverEnforceableV98) {
+    // "null" origin string (as sent by sandboxed iframes, data: URIs) is not enforceable
+    EXPECT_FALSE(has_enforceable_document_origin("null"));
+    // Variations that look like null but aren't valid
+    EXPECT_FALSE(has_enforceable_document_origin("Null"));
+    EXPECT_FALSE(has_enforceable_document_origin("NULL"));
+    EXPECT_FALSE(has_enforceable_document_origin(""));
+}
+
+TEST(CORSPolicyTest, CorsAllowsWildcardNonCredentialedV98) {
+    // Access-Control-Allow-Origin: * allows non-credentialed cross-origin
+    clever::net::HeaderMap h;
+    h.set("Access-Control-Allow-Origin", "*");
+    EXPECT_TRUE(cors_allows_response("https://app.example.com", "https://api.other.com/data", h, false));
+    // Wildcard must NOT allow credentialed requests
+    EXPECT_FALSE(cors_allows_response("https://app.example.com", "https://api.other.com/data", h, true));
+}
+
+TEST(CORSPolicyTest, CrossOriginSubdomainMismatchV98) {
+    // Subdomains are different origins even under same parent domain
+    EXPECT_TRUE(is_cross_origin("https://app.example.com", "https://api.example.com/endpoint"));
+    EXPECT_TRUE(is_cross_origin("https://www.example.com", "https://example.com/page"));
+    EXPECT_TRUE(is_cross_origin("https://a.b.example.com", "https://c.b.example.com/resource"));
+}
+
+TEST(CORSPolicyTest, FtpSchemeNotCorsEligibleV98) {
+    // ftp:// URLs should not be cors-eligible
+    EXPECT_FALSE(is_cors_eligible_request_url("ftp://files.example.com/data.csv"));
+    EXPECT_FALSE(is_cors_eligible_request_url("ftp://192.168.1.1/pub/readme.txt"));
+    // Also not enforceable as document origin
+    EXPECT_FALSE(has_enforceable_document_origin("ftp://files.example.com"));
+}
+
+TEST(CORSPolicyTest, NormalizeOriginHeaderCrossOriginSetsCorrectValueV98) {
+    // When making a cross-origin request, normalize should set Origin header to document origin
+    clever::net::HeaderMap headers;
+    normalize_outgoing_origin_header(headers, "https://myapp.example.com", "https://api.other.com/v1/data");
+    EXPECT_TRUE(headers.has("Origin"));
+    EXPECT_EQ(headers.get("Origin"), "https://myapp.example.com");
+}
+
+TEST(CORSPolicyTest, ShouldAttachOriginOnlyCrossOriginV98) {
+    // Origin header should be attached for cross-origin, not same-origin
+    EXPECT_TRUE(should_attach_origin_header("https://example.com", "https://api.other.com/data"));
+    EXPECT_FALSE(should_attach_origin_header("https://example.com", "https://example.com/path"));
+    // Different port is cross-origin — should attach
+    EXPECT_TRUE(should_attach_origin_header("http://example.com", "http://example.com:9090/api"));
+}
+
+TEST(CORSPolicyTest, CorsResponseExactOriginWithCredentialsV98) {
+    // Credentialed cross-origin requires exact origin match AND Access-Control-Allow-Credentials: true
+    clever::net::HeaderMap h;
+    h.set("Access-Control-Allow-Origin", "https://trusted.example.com");
+    h.set("Access-Control-Allow-Credentials", "true");
+    EXPECT_TRUE(cors_allows_response("https://trusted.example.com", "https://api.server.com/data", h, true));
+    // Exact origin but missing credentials header — should fail for credentialed request
+    clever::net::HeaderMap h2;
+    h2.set("Access-Control-Allow-Origin", "https://trusted.example.com");
+    EXPECT_FALSE(cors_allows_response("https://trusted.example.com", "https://api.server.com/data", h2, true));
+    // Wrong origin with credentials — should fail
+    clever::net::HeaderMap h3;
+    h3.set("Access-Control-Allow-Origin", "https://other.example.com");
+    h3.set("Access-Control-Allow-Credentials", "true");
+    EXPECT_FALSE(cors_allows_response("https://trusted.example.com", "https://api.server.com/data", h3, true));
+}

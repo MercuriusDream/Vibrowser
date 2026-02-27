@@ -16661,3 +16661,136 @@ TEST(HttpClientTest, HeaderMapMultipleDistinctKeysV97) {
     EXPECT_TRUE(headers.has("Accept-Encoding"));
     EXPECT_TRUE(headers.has("Cache-Control"));
 }
+
+// ===========================================================================
+// V98 Tests
+// ===========================================================================
+
+// 1. Request serialize with HTTPS default port omits port from Host header
+TEST(HttpClientTest, SerializeHttpsDefaultPortOmitsPortInHostV98) {
+    Request req;
+    req.method = Method::GET;
+    req.host = "secure.example.com";
+    req.port = 443;
+    req.path = "/api/v1";
+    req.use_tls = true;
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    // Port 443 should be omitted from Host header
+    EXPECT_TRUE(result.find("Host: secure.example.com\r\n") != std::string::npos);
+    EXPECT_TRUE(result.find("Host: secure.example.com:443") == std::string::npos);
+    EXPECT_TRUE(result.find("GET /api/v1 HTTP/1.1\r\n") != std::string::npos);
+}
+
+// 2. CookieJar: HttpOnly cookies are stored and retrievable
+TEST(HttpClientTest, CookieJarHttpOnlyFlagStoredV98) {
+    CookieJar jar;
+    jar.set_from_header("session=abc123; HttpOnly; Path=/", "app.example.com");
+
+    std::string cookies = jar.get_cookie_header("app.example.com", "/", false);
+    EXPECT_TRUE(cookies.find("session=abc123") != std::string::npos);
+    EXPECT_EQ(jar.size(), 1u);
+}
+
+// 3. Response::parse with multiple headers of the same name
+TEST(HttpClientTest, ResponseParseMultipleSetCookieHeadersV98) {
+    std::string raw =
+        "HTTP/1.1 200 OK\r\n"
+        "Set-Cookie: a=1\r\n"
+        "Set-Cookie: b=2\r\n"
+        "Content-Length: 2\r\n"
+        "\r\n"
+        "OK";
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 200);
+    EXPECT_EQ(resp->body_as_string(), "OK");
+
+    auto all_cookies = resp->headers.get_all("set-cookie");
+    EXPECT_EQ(all_cookies.size(), 2u);
+}
+
+// 4. Request parse_url with deeply nested path segments
+TEST(HttpClientTest, ParseUrlDeepNestedPathSegmentsV98) {
+    Request req;
+    req.url = "https://cdn.example.com:9443/a/b/c/d/e/f/resource.js";
+    req.parse_url();
+
+    EXPECT_EQ(req.host, "cdn.example.com");
+    EXPECT_EQ(req.port, 9443);
+    EXPECT_EQ(req.path, "/a/b/c/d/e/f/resource.js");
+    EXPECT_TRUE(req.use_tls);
+    EXPECT_TRUE(req.query.empty());
+}
+
+// 5. HeaderMap: append then set overwrites all appended values to one
+TEST(HttpClientTest, HeaderMapAppendThenSetOverwritesAllV98) {
+    HeaderMap headers;
+    headers.append("X-Custom", "val1");
+    headers.append("X-Custom", "val2");
+    headers.append("X-Custom", "val3");
+    EXPECT_EQ(headers.get_all("x-custom").size(), 3u);
+
+    // set() should replace ALL values with a single one
+    headers.set("X-Custom", "only");
+    EXPECT_EQ(headers.get_all("x-custom").size(), 1u);
+    EXPECT_EQ(headers.get("x-custom").value(), "only");
+}
+
+// 6. Request serialize POST with empty body does not include Content-Length: 0 issue
+TEST(HttpClientTest, SerializePostEmptyBodyContentLengthV98) {
+    Request req;
+    req.method = Method::POST;
+    req.host = "api.example.com";
+    req.port = 80;
+    req.path = "/submit";
+    // body is empty (default)
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    EXPECT_TRUE(result.find("POST /submit HTTP/1.1\r\n") != std::string::npos);
+    EXPECT_TRUE(result.find("Host: api.example.com\r\n") != std::string::npos);
+    // Ends with \r\n\r\n (empty body)
+    EXPECT_TRUE(result.find("\r\n\r\n") != std::string::npos);
+}
+
+// 7. CookieJar: SameSite=Strict cookie not sent on cross-site requests
+TEST(HttpClientTest, CookieJarSameSiteStrictCrossSiteBlockedV98) {
+    CookieJar jar;
+    jar.set_from_header("token=xyz; SameSite=Strict; Path=/", "strict.example.com");
+
+    // Same-site request should include the cookie
+    std::string same = jar.get_cookie_header("strict.example.com", "/", false, true, true);
+    EXPECT_TRUE(same.find("token=xyz") != std::string::npos);
+
+    // Cross-site request (is_same_site=false) should NOT include strict cookie
+    std::string cross = jar.get_cookie_header("strict.example.com", "/", false, false, false);
+    EXPECT_TRUE(cross.find("token=xyz") == std::string::npos);
+}
+
+// 8. Response::parse with 500 status and multi-line body
+TEST(HttpClientTest, ResponseParse500WithBodyV98) {
+    std::string body_content = "Internal Server Error\nPlease try again later.";
+    std::string raw =
+        "HTTP/1.1 500 Internal Server Error\r\n"
+        "Content-Type: text/plain\r\n"
+        "Content-Length: " + std::to_string(body_content.size()) + "\r\n"
+        "\r\n" +
+        body_content;
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 500);
+    EXPECT_EQ(resp->status_text, "Internal Server Error");
+    EXPECT_EQ(resp->headers.get("content-type").value(), "text/plain");
+    EXPECT_EQ(resp->body_as_string(), body_content);
+    EXPECT_FALSE(resp->was_redirected);
+}

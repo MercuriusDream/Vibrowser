@@ -11234,3 +11234,81 @@ TEST(UrlParserTest, DeepNestedPathSegmentsV97) {
     EXPECT_TRUE(result->query.empty());
     EXPECT_TRUE(result->fragment.empty());
 }
+
+// =============================================================================
+// V98 Tests
+// =============================================================================
+
+TEST(UrlParserTest, HttpDefaultPort80OmittedV98) {
+    auto result = clever::url::parse("http://example.org:80/index.html");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "example.org");
+    EXPECT_FALSE(result->port.has_value());
+    EXPECT_EQ(result->path, "/index.html");
+}
+
+TEST(UrlParserTest, HttpsDefaultPort443OmittedV98) {
+    auto result = clever::url::parse("https://secure.example.com:443/api/v2");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "secure.example.com");
+    EXPECT_FALSE(result->port.has_value());
+    EXPECT_EQ(result->path, "/api/v2");
+}
+
+TEST(UrlParserTest, NonStandardPortPreservedV98) {
+    auto result = clever::url::parse("http://localhost:3000/dashboard");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "localhost");
+    ASSERT_TRUE(result->port.has_value());
+    EXPECT_EQ(result->port.value(), 3000);
+    EXPECT_EQ(result->path, "/dashboard");
+}
+
+TEST(UrlParserTest, DoubleEncodesPercentInPathV98) {
+    auto result = clever::url::parse("https://example.com/path%20with%20spaces");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_NE(result->path.find("%2520"), std::string::npos);
+}
+
+TEST(UrlParserTest, FragmentContainingSpecialCharsV98) {
+    auto result = clever::url::parse("https://docs.example.com/page#section/2?not-a-query");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "docs.example.com");
+    EXPECT_EQ(result->path, "/page");
+    EXPECT_TRUE(result->query.empty());
+    EXPECT_EQ(result->fragment, "section/2?not-a-query");
+}
+
+TEST(UrlParserTest, InvalidUrlReturnsNulloptV98) {
+    auto result = clever::url::parse("not-a-valid-url");
+    EXPECT_FALSE(result.has_value());
+}
+
+TEST(UrlParserTest, SerializeRoundTripPreservesPortAndQueryV98) {
+    auto result = clever::url::parse("https://api.example.com:9090/search?q=hello&lang=en#top");
+    ASSERT_TRUE(result.has_value());
+    ASSERT_TRUE(result->port.has_value());
+    EXPECT_EQ(result->port.value(), 9090);
+    std::string s = result->serialize();
+    EXPECT_NE(s.find(":9090"), std::string::npos);
+    EXPECT_NE(s.find("/search"), std::string::npos);
+    EXPECT_NE(s.find("q=hello"), std::string::npos);
+    EXPECT_NE(s.find("lang=en"), std::string::npos);
+    EXPECT_NE(s.find("#top"), std::string::npos);
+}
+
+TEST(UrlParserTest, EmptyPathQueryAndFragmentV98) {
+    auto result = clever::url::parse("https://bare.example.com");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "bare.example.com");
+    EXPECT_FALSE(result->port.has_value());
+    EXPECT_TRUE(result->query.empty());
+    EXPECT_TRUE(result->fragment.empty());
+}
