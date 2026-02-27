@@ -4174,3 +4174,86 @@ TEST(TreeBuilder, SpanLangAttribute) {
         if (attr.name == "lang" && attr.value == "fr") found = true;
     EXPECT_TRUE(found);
 }
+
+
+// Cycle 866 — contenteditable, draggable, spellcheck, translate, rowspan, inputmode, enterkeyhint, details-open
+TEST(TreeBuilder, ContentEditableAttribute) {
+    auto doc = clever::html::parse("<body><div contenteditable=\"true\">editable</div></body>");
+    auto* div = doc->find_element("div");
+    ASSERT_NE(div, nullptr);
+    bool found = false;
+    for (const auto& attr : div->attributes)
+        if (attr.name == "contenteditable" && attr.value == "true") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, DraggableAttribute) {
+    auto doc = clever::html::parse("<body><img src=\"photo.jpg\" draggable=\"false\" alt=\"photo\"></body>");
+    auto* img = doc->find_element("img");
+    ASSERT_NE(img, nullptr);
+    bool found = false;
+    for (const auto& attr : img->attributes)
+        if (attr.name == "draggable" && attr.value == "false") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, SpellcheckAttribute) {
+    auto doc = clever::html::parse("<body><textarea spellcheck=\"false\"></textarea></body>");
+    auto* textarea = doc->find_element("textarea");
+    ASSERT_NE(textarea, nullptr);
+    bool found = false;
+    for (const auto& attr : textarea->attributes)
+        if (attr.name == "spellcheck" && attr.value == "false") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, TranslateAttribute) {
+    auto doc = clever::html::parse("<body><p translate=\"no\">Brand Name</p></body>");
+    auto* p = doc->find_element("p");
+    ASSERT_NE(p, nullptr);
+    bool found = false;
+    for (const auto& attr : p->attributes)
+        if (attr.name == "translate" && attr.value == "no") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, TableRowspanAttr) {
+    auto doc = clever::html::parse(
+        "<body><table><tr><td rowspan=\"2\">cell</td><td>b</td></tr><tr><td>c</td></tr></table></body>");
+    auto* td = doc->find_element("td");
+    ASSERT_NE(td, nullptr);
+    bool found = false;
+    for (const auto& attr : td->attributes)
+        if (attr.name == "rowspan" && attr.value == "2") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, InputInputmodeAttribute) {
+    auto doc = clever::html::parse("<body><input type=\"text\" inputmode=\"numeric\"></body>");
+    auto* input = doc->find_element("input");
+    ASSERT_NE(input, nullptr);
+    bool found = false;
+    for (const auto& attr : input->attributes)
+        if (attr.name == "inputmode" && attr.value == "numeric") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, InputEnterkeyhintAttribute) {
+    auto doc = clever::html::parse("<body><input type=\"search\" enterkeyhint=\"search\"></body>");
+    auto* input = doc->find_element("input");
+    ASSERT_NE(input, nullptr);
+    bool found = false;
+    for (const auto& attr : input->attributes)
+        if (attr.name == "enterkeyhint" && attr.value == "search") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, DetailsOpenAttribute) {
+    auto doc = clever::html::parse("<body><details open><summary>Info</summary><p>content</p></details></body>");
+    auto* details = doc->find_element("details");
+    ASSERT_NE(details, nullptr);
+    bool found = false;
+    for (const auto& attr : details->attributes)
+        if (attr.name == "open") found = true;
+    EXPECT_TRUE(found);
+}
