@@ -15255,3 +15255,168 @@ TEST(CSSStyleTest, DisplayFlexWithDirectionColumnAndGapV83) {
     EXPECT_EQ(style.flex_direction, FlexDirection::Column);
     EXPECT_FLOAT_EQ(style.gap.to_px(), 12.0f);
 }
+
+// ===========================================================================
+// V84 Tests
+// ===========================================================================
+
+TEST(CSSStyleTest, PositionRelativeWithOffsetsV84) {
+    // position: relative with top/right/bottom/left offsets
+    const std::string css = "div{position:relative;top:10px;right:20px;bottom:30px;left:40px;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.position, Position::Relative);
+    EXPECT_FLOAT_EQ(style.top.to_px(), 10.0f);
+    EXPECT_FLOAT_EQ(style.right_pos.to_px(), 20.0f);
+    EXPECT_FLOAT_EQ(style.bottom.to_px(), 30.0f);
+    EXPECT_FLOAT_EQ(style.left_pos.to_px(), 40.0f);
+}
+
+TEST(CSSStyleTest, VisibilityHiddenResolvedV84) {
+    // visibility: hidden via stylesheet resolution
+    const std::string css = "span{visibility:hidden;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "span";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.visibility, Visibility::Hidden);
+}
+
+TEST(CSSStyleTest, BorderShorthandSolidRedV84) {
+    // border shorthand: 3px solid red applied to all sides
+    const std::string css = "div{border:3px solid red;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_FLOAT_EQ(style.border_top.width.value, 3.0f);
+    EXPECT_EQ(style.border_top.style, BorderStyle::Solid);
+    EXPECT_EQ(style.border_top.color.r, 255);
+    EXPECT_EQ(style.border_top.color.g, 0);
+    EXPECT_EQ(style.border_top.color.b, 0);
+
+    EXPECT_FLOAT_EQ(style.border_bottom.width.value, 3.0f);
+    EXPECT_EQ(style.border_bottom.style, BorderStyle::Solid);
+
+    EXPECT_FLOAT_EQ(style.border_left.width.value, 3.0f);
+    EXPECT_EQ(style.border_left.style, BorderStyle::Solid);
+
+    EXPECT_FLOAT_EQ(style.border_right.width.value, 3.0f);
+    EXPECT_EQ(style.border_right.style, BorderStyle::Solid);
+}
+
+TEST(CSSStyleTest, WhiteSpacePreWrapResolvedV84) {
+    // white-space: pre-wrap via stylesheet
+    const std::string css = "pre{white-space:pre-wrap;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "pre";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.white_space, WhiteSpace::PreWrap);
+}
+
+TEST(CSSStyleTest, CursorPointerOnButtonV84) {
+    // cursor: pointer applied to a button element
+    const std::string css = "button{cursor:pointer;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "button";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.cursor, Cursor::Pointer);
+}
+
+TEST(CSSStyleTest, OverflowHiddenBothAxesV84) {
+    // overflow: hidden sets both overflow-x and overflow-y
+    const std::string css = "div{overflow:hidden;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.overflow_x, Overflow::Hidden);
+    EXPECT_EQ(style.overflow_y, Overflow::Hidden);
+}
+
+TEST(CSSStyleTest, BoxShadowInsetWithSpreadV84) {
+    // inset box-shadow with spread value
+    const std::string css = "div{box-shadow:inset 1px 2px 3px 4px black;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    ASSERT_EQ(style.box_shadows.size(), 1u);
+    EXPECT_TRUE(style.box_shadows[0].inset);
+    EXPECT_FLOAT_EQ(style.box_shadows[0].offset_x, 1.0f);
+    EXPECT_FLOAT_EQ(style.box_shadows[0].offset_y, 2.0f);
+    EXPECT_FLOAT_EQ(style.box_shadows[0].blur, 3.0f);
+    EXPECT_FLOAT_EQ(style.box_shadows[0].spread, 4.0f);
+}
+
+TEST(CSSStyleTest, OpacityAndPointerEventsNoneV84) {
+    // opacity and pointer-events: none together
+    const std::string css = "div{opacity:0.5;pointer-events:none;user-select:none;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_FLOAT_EQ(style.opacity, 0.5f);
+    EXPECT_EQ(style.pointer_events, PointerEvents::None);
+    EXPECT_EQ(style.user_select, UserSelect::None);
+}

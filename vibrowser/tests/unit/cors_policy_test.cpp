@@ -6182,3 +6182,49 @@ TEST(CORSPolicyTest, MismatchedAcaoRejectsResponseV83) {
     EXPECT_FALSE(
         cors_allows_response("https://app.example.com", "https://api.example.com/data", headers, false));
 }
+
+TEST(CORSPolicyTest, FragmentInUrlNotCorsEligibleV84) {
+    EXPECT_FALSE(is_cors_eligible_request_url("https://api.example.com/resource#section"));
+    EXPECT_FALSE(is_cors_eligible_request_url("http://api.example.com/page#top"));
+}
+
+TEST(CORSPolicyTest, WssSchemeNotCorsEligibleV84) {
+    EXPECT_FALSE(is_cors_eligible_request_url("wss://stream.example.com/ws"));
+    EXPECT_FALSE(is_cors_eligible_request_url("ws://stream.example.com/ws"));
+}
+
+TEST(CORSPolicyTest, HttpPort80NotEnforceableV84) {
+    EXPECT_FALSE(has_enforceable_document_origin("http://example.com:80"));
+}
+
+TEST(CORSPolicyTest, HttpsPort443AlsoNotEnforceableV84) {
+    EXPECT_FALSE(has_enforceable_document_origin("https://secure.example.com:443"));
+}
+
+TEST(CORSPolicyTest, WildcardAcaoWithCredentialsFlagRejectsV84) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "*");
+    headers.set("Access-Control-Allow-Credentials", "true");
+    EXPECT_FALSE(
+        cors_allows_response("https://myapp.example.com", "https://api.example.com/secret", headers, true));
+}
+
+TEST(CORSPolicyTest, SchemeCaseInsensitiveNotCrossOriginV84) {
+    EXPECT_FALSE(is_cross_origin("HTTP://example.com", "http://example.com/path"));
+    EXPECT_FALSE(is_cross_origin("Https://example.com", "https://example.com/data"));
+}
+
+TEST(CORSPolicyTest, OriginWithFragmentStrippedMatchesAcaoV84) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "https://app.example.com");
+    EXPECT_TRUE(
+        cors_allows_response("https://app.example.com", "https://api.example.com/data", headers, false));
+}
+
+TEST(CORSPolicyTest, SameOriginSkipsCorsNoHeadersNeededV84) {
+    clever::net::HeaderMap empty_headers;
+    EXPECT_TRUE(
+        cors_allows_response("https://app.example.com", "https://app.example.com/resource", empty_headers, false));
+    EXPECT_TRUE(
+        cors_allows_response("https://app.example.com", "https://app.example.com/other", empty_headers, true));
+}

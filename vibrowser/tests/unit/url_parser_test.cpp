@@ -10199,3 +10199,74 @@ TEST(UrlParserTest, InvalidSchemeReturnsNulloptV83) {
     auto result = clever::url::parse("://missing-scheme.com/path");
     EXPECT_FALSE(result.has_value());
 }
+
+// =============================================================================
+// V84 Tests
+// =============================================================================
+
+TEST(UrlParserTest, DotDotSegmentResolutionV84) {
+    auto result = clever::url::parse("https://example.com/a/b/../c");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/a/c");
+    EXPECT_EQ(result->port, std::nullopt);
+}
+
+TEST(UrlParserTest, DoubleEncodesPercentSequencesV84) {
+    auto result = clever::url::parse("https://example.com/hello%20world");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/hello%2520world");
+}
+
+TEST(UrlParserTest, EmptyPathDefaultsToSlashV84) {
+    auto result = clever::url::parse("https://example.com");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/");
+    EXPECT_EQ(result->port, std::nullopt);
+}
+
+TEST(UrlParserTest, QueryOnlyNoFragmentV84) {
+    auto result = clever::url::parse("https://example.com/search?q=hello&lang=en");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/search");
+    EXPECT_EQ(result->query, "q=hello&lang=en");
+    EXPECT_TRUE(result->fragment.empty());
+}
+
+TEST(UrlParserTest, FragmentOnlyNoQueryV84) {
+    auto result = clever::url::parse("https://example.com/page#section-2");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/page");
+    EXPECT_TRUE(result->query.empty());
+    EXPECT_EQ(result->fragment, "section-2");
+}
+
+TEST(UrlParserTest, HostLowercasedWithPortV84) {
+    auto result = clever::url::parse("http://MyHost.EXAMPLE.COM:3000/api");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "myhost.example.com");
+    ASSERT_TRUE(result->port.has_value());
+    EXPECT_EQ(result->port.value(), 3000);
+    EXPECT_EQ(result->path, "/api");
+}
+
+TEST(UrlParserTest, MultipleDotDotSegmentsV84) {
+    auto result = clever::url::parse("https://example.com/a/b/c/../../d");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/a/d");
+}
+
+TEST(UrlParserTest, CompletelyInvalidUrlReturnsNulloptV84) {
+    auto result = clever::url::parse("not-a-url-at-all");
+    EXPECT_FALSE(result.has_value());
+}

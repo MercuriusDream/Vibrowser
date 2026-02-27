@@ -13848,3 +13848,142 @@ TEST(DomTest, MixedChildrenElementsAndTextNodesV83) {
     // Verify span attribute
     EXPECT_EQ(span_ptr->get_attribute("class").value(), "highlight");
 }
+
+// ---------------------------------------------------------------------------
+// V84 tests
+// ---------------------------------------------------------------------------
+
+TEST(DomTest, InsertBeforeNullRefAppendsV84) {
+    auto parent = std::make_unique<Element>("div");
+    auto child1 = std::make_unique<Element>("span");
+    auto child2 = std::make_unique<Element>("em");
+    auto* c1 = child1.get();
+    auto* c2 = child2.get();
+
+    parent->append_child(std::move(child1));
+    // insert_before with nullptr ref should append at end
+    parent->insert_before(std::move(child2), nullptr);
+
+    EXPECT_EQ(parent->child_count(), 2u);
+    EXPECT_EQ(parent->first_child(), c1);
+    EXPECT_EQ(c1->next_sibling(), c2);
+    EXPECT_EQ(c2->next_sibling(), nullptr);
+}
+
+TEST(DomTest, RemoveChildUpdatesSiblingLinksV84) {
+    auto parent = std::make_unique<Element>("ul");
+    auto li1 = std::make_unique<Element>("li");
+    auto li2 = std::make_unique<Element>("li");
+    auto li3 = std::make_unique<Element>("li");
+    auto* p1 = li1.get();
+    auto* p3 = li3.get();
+
+    parent->append_child(std::move(li1));
+    parent->append_child(std::move(li2));
+    parent->append_child(std::move(li3));
+
+    EXPECT_EQ(parent->child_count(), 3u);
+
+    // Remove middle child — first and third should link
+    parent->remove_child(*parent->first_child()->next_sibling());
+
+    EXPECT_EQ(parent->child_count(), 2u);
+    EXPECT_EQ(parent->first_child(), p1);
+    EXPECT_EQ(p1->next_sibling(), p3);
+    EXPECT_EQ(p3->next_sibling(), nullptr);
+}
+
+TEST(DomTest, ClassListAddRemoveContainsV84) {
+    Element elem("div");
+    elem.class_list().add("alpha");
+    elem.class_list().add("beta");
+    elem.class_list().add("gamma");
+
+    EXPECT_TRUE(elem.class_list().contains("alpha"));
+    EXPECT_TRUE(elem.class_list().contains("beta"));
+    EXPECT_TRUE(elem.class_list().contains("gamma"));
+
+    elem.class_list().remove("beta");
+
+    EXPECT_TRUE(elem.class_list().contains("alpha"));
+    EXPECT_FALSE(elem.class_list().contains("beta"));
+    EXPECT_TRUE(elem.class_list().contains("gamma"));
+}
+
+TEST(DomTest, ClassListToggleAddsAndRemovesV84) {
+    Element elem("span");
+    EXPECT_FALSE(elem.class_list().contains("active"));
+
+    elem.class_list().toggle("active");
+    EXPECT_TRUE(elem.class_list().contains("active"));
+
+    elem.class_list().toggle("active");
+    EXPECT_FALSE(elem.class_list().contains("active"));
+}
+
+TEST(DomTest, SetAttributeIdAndRetrieveV84) {
+    Element elem("section");
+    elem.set_attribute("id", "main-content");
+    auto id_val = elem.get_attribute("id");
+    ASSERT_TRUE(id_val.has_value());
+    EXPECT_EQ(id_val.value(), "main-content");
+
+    // Overwrite id
+    elem.set_attribute("id", "sidebar");
+    EXPECT_EQ(elem.get_attribute("id").value(), "sidebar");
+}
+
+TEST(DomTest, TextNodeContentAndTypeV84) {
+    Text text_node("Hello, world!");
+    EXPECT_EQ(text_node.text_content(), "Hello, world!");
+    EXPECT_EQ(text_node.node_type(), NodeType::Text);
+
+    // Text node should have no children
+    EXPECT_EQ(text_node.child_count(), 0u);
+    EXPECT_EQ(text_node.first_child(), nullptr);
+}
+
+TEST(DomTest, DeepNestedParentChainV84) {
+    auto root = std::make_unique<Element>("div");
+    auto mid = std::make_unique<Element>("section");
+    auto leaf = std::make_unique<Element>("p");
+    auto* root_ptr = root.get();
+    auto* mid_ptr = mid.get();
+    auto* leaf_ptr = leaf.get();
+
+    mid->append_child(std::move(leaf));
+    root->append_child(std::move(mid));
+
+    // leaf's parent is mid, mid's parent is root
+    EXPECT_EQ(leaf_ptr->parent(), mid_ptr);
+    EXPECT_EQ(mid_ptr->parent(), root_ptr);
+    EXPECT_EQ(root_ptr->parent(), nullptr);
+
+    // Traverse from root to leaf
+    EXPECT_EQ(root_ptr->first_child(), mid_ptr);
+    EXPECT_EQ(mid_ptr->first_child(), leaf_ptr);
+    EXPECT_EQ(leaf_ptr->first_child(), nullptr);
+}
+
+TEST(DomTest, InsertBeforeMiddleChildV84) {
+    auto parent = std::make_unique<Element>("div");
+    auto a = std::make_unique<Element>("a");
+    auto b = std::make_unique<Element>("b");
+    auto c = std::make_unique<Element>("c");
+    auto* a_ptr = a.get();
+    auto* b_ptr = b.get();
+    auto* c_ptr = c.get();
+
+    parent->append_child(std::move(a));
+    parent->append_child(std::move(c));
+
+    // Insert b before c — order should be a, b, c
+    parent->insert_before(std::move(b), c_ptr);
+
+    EXPECT_EQ(parent->child_count(), 3u);
+    EXPECT_EQ(parent->first_child(), a_ptr);
+    EXPECT_EQ(a_ptr->next_sibling(), b_ptr);
+    EXPECT_EQ(b_ptr->next_sibling(), c_ptr);
+    EXPECT_EQ(c_ptr->next_sibling(), nullptr);
+    EXPECT_EQ(b_ptr->parent(), parent.get());
+}

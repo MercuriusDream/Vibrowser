@@ -14999,3 +14999,124 @@ TEST(HttpClientTest, RequestSerializePatchMethodWithCustomHeadersV83) {
     EXPECT_TRUE(result.find("x-request-id: req-999\r\n") != std::string::npos);
     EXPECT_TRUE(result.find("authorization: Bearer tok\r\n") != std::string::npos);
 }
+
+// ===========================================================================
+// V84 Tests
+// ===========================================================================
+
+TEST(HttpClientTest, HeaderMapAppendThenRemoveAllV84) {
+    // append() adds multiple values, remove() should clear all of them
+    HeaderMap hm;
+    hm.append("Via", "proxy-a");
+    hm.append("Via", "proxy-b");
+    hm.append("Via", "proxy-c");
+    EXPECT_EQ(hm.get_all("Via").size(), 3u);
+    EXPECT_TRUE(hm.has("Via"));
+
+    hm.remove("Via");
+    EXPECT_FALSE(hm.has("Via"));
+    EXPECT_EQ(hm.get_all("Via").size(), 0u);
+    EXPECT_FALSE(hm.get("Via").has_value());
+}
+
+TEST(HttpClientTest, HeaderMapSetAfterAppendReducesToOneV84) {
+    // set() after multiple append()s should collapse to exactly one value
+    HeaderMap hm;
+    hm.append("Accept-Encoding", "gzip");
+    hm.append("Accept-Encoding", "deflate");
+    hm.append("Accept-Encoding", "br");
+    EXPECT_EQ(hm.get_all("Accept-Encoding").size(), 3u);
+
+    hm.set("Accept-Encoding", "identity");
+    EXPECT_EQ(hm.get_all("Accept-Encoding").size(), 1u);
+    EXPECT_EQ(hm.get("Accept-Encoding").value(), "identity");
+}
+
+TEST(HttpClientTest, HeaderMapEmptyAndSizeTrackingV84) {
+    // empty() and size() should correctly reflect additions and removals
+    HeaderMap hm;
+    EXPECT_TRUE(hm.empty());
+    EXPECT_EQ(hm.size(), 0u);
+
+    hm.set("X-One", "1");
+    EXPECT_FALSE(hm.empty());
+    EXPECT_EQ(hm.size(), 1u);
+
+    hm.append("X-Two", "2a");
+    hm.append("X-Two", "2b");
+    EXPECT_EQ(hm.size(), 3u);
+
+    hm.remove("X-Two");
+    EXPECT_EQ(hm.size(), 1u);
+
+    hm.remove("X-One");
+    EXPECT_TRUE(hm.empty());
+    EXPECT_EQ(hm.size(), 0u);
+}
+
+TEST(HttpClientTest, RequestSerializeDeleteMethodPort443OmittedV84) {
+    // DELETE_METHOD on port 443: port should be omitted from Host header
+    Request req;
+    req.method = Method::DELETE_METHOD;
+    req.host = "api.service.io";
+    req.port = 443;
+    req.path = "/resources/77";
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    EXPECT_TRUE(result.find("DELETE /resources/77 HTTP/1.1\r\n") != std::string::npos);
+    EXPECT_TRUE(result.find("Host: api.service.io\r\n") != std::string::npos);
+    EXPECT_FALSE(result.find("Host: api.service.io:443") != std::string::npos);
+}
+
+TEST(HttpClientTest, RequestSerializeOptionsWithNonStandardPortV84) {
+    // OPTIONS on a non-standard port: port MUST appear in Host header
+    Request req;
+    req.method = Method::OPTIONS;
+    req.host = "internal.example.com";
+    req.port = 9090;
+    req.path = "/health";
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    EXPECT_TRUE(result.find("OPTIONS /health HTTP/1.1\r\n") != std::string::npos);
+    EXPECT_TRUE(result.find("Host: internal.example.com:9090\r\n") != std::string::npos);
+}
+
+TEST(HttpClientTest, ResponseBodyAsStringEmptyBodyV84) {
+    // body_as_string() on an empty body should return an empty string
+    Response resp;
+    resp.status = 204;
+    EXPECT_EQ(resp.body_as_string(), "");
+    EXPECT_TRUE(resp.body.empty());
+}
+
+TEST(HttpClientTest, CookieJarSetOverwritesSameNameSameDomainV84) {
+    // Setting a cookie with the same name on the same domain should overwrite
+    CookieJar jar;
+    jar.set_from_header("token=old", "example.com");
+    jar.set_from_header("token=new", "example.com");
+
+    std::string hdr = jar.get_cookie_header("example.com", "/", false);
+    EXPECT_TRUE(hdr.find("token=new") != std::string::npos);
+    EXPECT_FALSE(hdr.find("token=old") != std::string::npos);
+}
+
+TEST(HttpClientTest, CookieJarClearRemovesAllCookiesV84) {
+    // clear() should remove every cookie, size() should return 0
+    CookieJar jar;
+    jar.set_from_header("a=1", "one.com");
+    jar.set_from_header("b=2", "two.com");
+    jar.set_from_header("c=3", "three.com");
+    EXPECT_GE(jar.size(), 3u);
+
+    jar.clear();
+    EXPECT_EQ(jar.size(), 0u);
+
+    // After clear, no cookies should be returned for any domain
+    EXPECT_EQ(jar.get_cookie_header("one.com", "/", false), "");
+    EXPECT_EQ(jar.get_cookie_header("two.com", "/", false), "");
+    EXPECT_EQ(jar.get_cookie_header("three.com", "/", false), "");
+}

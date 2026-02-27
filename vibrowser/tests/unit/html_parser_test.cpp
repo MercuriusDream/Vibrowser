@@ -13124,3 +13124,223 @@ TEST(HtmlParserTest, FormWithLabeledInputsV83) {
     EXPECT_EQ(button->text_content(), "Go");
     EXPECT_EQ(get_attr_v63(button, "type"), "submit");
 }
+
+// ============================================================================
+// V84 Tests
+// ============================================================================
+
+// 1. Nested definition list with dt/dd pairs
+TEST(HtmlParserTest, NestedDefinitionListV84) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<dl>"
+        "<dt>Term A</dt><dd>Definition A</dd>"
+        "<dt>Term B</dt><dd>Definition B</dd>"
+        "</dl></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* dl = doc->find_element("dl");
+    ASSERT_NE(dl, nullptr);
+
+    auto dts = doc->find_all_elements("dt");
+    ASSERT_EQ(dts.size(), 2u);
+    EXPECT_EQ(dts[0]->text_content(), "Term A");
+    EXPECT_EQ(dts[1]->text_content(), "Term B");
+
+    auto dds = doc->find_all_elements("dd");
+    ASSERT_EQ(dds.size(), 2u);
+    EXPECT_EQ(dds[0]->text_content(), "Definition A");
+    EXPECT_EQ(dds[1]->text_content(), "Definition B");
+}
+
+// 2. Table with thead, tbody, tfoot and multiple rows
+TEST(HtmlParserTest, FullTableStructureV84) {
+    auto doc = clever::html::parse(
+        "<html><body><table>"
+        "<thead><tr><th>Name</th><th>Age</th></tr></thead>"
+        "<tbody><tr><td>Alice</td><td>30</td></tr>"
+        "<tr><td>Bob</td><td>25</td></tr></tbody>"
+        "<tfoot><tr><td colspan=\"2\">Total: 2</td></tr></tfoot>"
+        "</table></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* thead = doc->find_element("thead");
+    ASSERT_NE(thead, nullptr);
+    auto* tbody = doc->find_element("tbody");
+    ASSERT_NE(tbody, nullptr);
+    auto* tfoot = doc->find_element("tfoot");
+    ASSERT_NE(tfoot, nullptr);
+
+    auto ths = doc->find_all_elements("th");
+    ASSERT_EQ(ths.size(), 2u);
+    EXPECT_EQ(ths[0]->text_content(), "Name");
+    EXPECT_EQ(ths[1]->text_content(), "Age");
+
+    auto tds = doc->find_all_elements("td");
+    ASSERT_EQ(tds.size(), 5u);
+    EXPECT_EQ(tds[0]->text_content(), "Alice");
+    EXPECT_EQ(tds[1]->text_content(), "30");
+    EXPECT_EQ(tds[2]->text_content(), "Bob");
+    EXPECT_EQ(tds[3]->text_content(), "25");
+    EXPECT_EQ(tds[4]->text_content(), "Total: 2");
+    EXPECT_EQ(get_attr_v63(tds[4], "colspan"), "2");
+}
+
+// 3. Deeply nested div structure (5 levels)
+TEST(HtmlParserTest, DeeplyNestedDivsV84) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<div id=\"l1\"><div id=\"l2\"><div id=\"l3\">"
+        "<div id=\"l4\"><div id=\"l5\">Deep</div></div>"
+        "</div></div></div>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* l1 = doc->find_element("div");
+    ASSERT_NE(l1, nullptr);
+    EXPECT_EQ(get_attr_v63(l1, "id"), "l1");
+
+    // Navigate to the innermost div
+    auto divs = doc->find_all_elements("div");
+    ASSERT_EQ(divs.size(), 5u);
+    EXPECT_EQ(get_attr_v63(divs[0], "id"), "l1");
+    EXPECT_EQ(get_attr_v63(divs[4], "id"), "l5");
+    EXPECT_EQ(divs[4]->text_content(), "Deep");
+}
+
+// 4. Multiple sibling paragraphs with mixed inline elements
+TEST(HtmlParserTest, SiblingParagraphsWithInlineV84) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<p><strong>Bold</strong> text</p>"
+        "<p><em>Italic</em> text</p>"
+        "<p><code>Code</code> text</p>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto ps = doc->find_all_elements("p");
+    ASSERT_EQ(ps.size(), 3u);
+
+    auto* strong = doc->find_element("strong");
+    ASSERT_NE(strong, nullptr);
+    EXPECT_EQ(strong->text_content(), "Bold");
+
+    auto* em = doc->find_element("em");
+    ASSERT_NE(em, nullptr);
+    EXPECT_EQ(em->text_content(), "Italic");
+
+    auto* code = doc->find_element("code");
+    ASSERT_NE(code, nullptr);
+    EXPECT_EQ(code->text_content(), "Code");
+}
+
+// 5. Select element with optgroup and option
+TEST(HtmlParserTest, SelectWithOptgroupV84) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<select name=\"car\">"
+        "<optgroup label=\"Swedish\">"
+        "<option value=\"volvo\">Volvo</option>"
+        "<option value=\"saab\">Saab</option>"
+        "</optgroup>"
+        "<optgroup label=\"German\">"
+        "<option value=\"bmw\">BMW</option>"
+        "</optgroup>"
+        "</select></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* select = doc->find_element("select");
+    ASSERT_NE(select, nullptr);
+    EXPECT_EQ(get_attr_v63(select, "name"), "car");
+
+    auto optgroups = doc->find_all_elements("optgroup");
+    ASSERT_EQ(optgroups.size(), 2u);
+    EXPECT_EQ(get_attr_v63(optgroups[0], "label"), "Swedish");
+    EXPECT_EQ(get_attr_v63(optgroups[1], "label"), "German");
+
+    auto options = doc->find_all_elements("option");
+    ASSERT_EQ(options.size(), 3u);
+    EXPECT_EQ(get_attr_v63(options[0], "value"), "volvo");
+    EXPECT_EQ(options[0]->text_content(), "Volvo");
+    EXPECT_EQ(get_attr_v63(options[1], "value"), "saab");
+    EXPECT_EQ(options[1]->text_content(), "Saab");
+    EXPECT_EQ(get_attr_v63(options[2], "value"), "bmw");
+    EXPECT_EQ(options[2]->text_content(), "BMW");
+}
+
+// 6. Details/summary elements
+TEST(HtmlParserTest, DetailsSummaryElementsV84) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<details open>"
+        "<summary>Click to expand</summary>"
+        "<p>Hidden content here</p>"
+        "</details></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* details = doc->find_element("details");
+    ASSERT_NE(details, nullptr);
+    EXPECT_EQ(get_attr_v63(details, "open"), "");
+
+    auto* summary = doc->find_element("summary");
+    ASSERT_NE(summary, nullptr);
+    EXPECT_EQ(summary->text_content(), "Click to expand");
+
+    auto* p = doc->find_element("p");
+    ASSERT_NE(p, nullptr);
+    EXPECT_EQ(p->text_content(), "Hidden content here");
+}
+
+// 7. Anchor tags with various attributes
+TEST(HtmlParserTest, AnchorTagAttributesV84) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<a href=\"https://example.com\" target=\"_blank\" rel=\"noopener\">Link 1</a>"
+        "<a href=\"/about\" class=\"nav-link\">Link 2</a>"
+        "<a href=\"#section\" id=\"jump\">Link 3</a>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto anchors = doc->find_all_elements("a");
+    ASSERT_EQ(anchors.size(), 3u);
+
+    EXPECT_EQ(get_attr_v63(anchors[0], "href"), "https://example.com");
+    EXPECT_EQ(get_attr_v63(anchors[0], "target"), "_blank");
+    EXPECT_EQ(get_attr_v63(anchors[0], "rel"), "noopener");
+    EXPECT_EQ(anchors[0]->text_content(), "Link 1");
+
+    EXPECT_EQ(get_attr_v63(anchors[1], "href"), "/about");
+    EXPECT_EQ(get_attr_v63(anchors[1], "class"), "nav-link");
+    EXPECT_EQ(anchors[1]->text_content(), "Link 2");
+
+    EXPECT_EQ(get_attr_v63(anchors[2], "href"), "#section");
+    EXPECT_EQ(get_attr_v63(anchors[2], "id"), "jump");
+    EXPECT_EQ(anchors[2]->text_content(), "Link 3");
+}
+
+// 8. Mixed content with text nodes between elements
+TEST(HtmlParserTest, MixedContentTextNodesV84) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<div>Before <span>inside</span> after</div>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* div = doc->find_element("div");
+    ASSERT_NE(div, nullptr);
+
+    // The div should have children: text("Before "), span("inside"), text(" after")
+    ASSERT_GE(div->children.size(), 3u);
+
+    // First child: text node "Before "
+    EXPECT_EQ(div->children[0]->tag_name, "");
+    EXPECT_EQ(div->children[0]->text_content(), "Before ");
+
+    // Second child: span element
+    EXPECT_EQ(div->children[1]->tag_name, "span");
+    EXPECT_EQ(div->children[1]->text_content(), "inside");
+
+    // Third child: text node " after"
+    EXPECT_EQ(div->children[2]->tag_name, "");
+    EXPECT_EQ(div->children[2]->text_content(), " after");
+}
