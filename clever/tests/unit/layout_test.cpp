@@ -7512,3 +7512,43 @@ TEST(LayoutNodeProps, InitialLetterAlignDefaultsZero) {
     LayoutNode n;
     EXPECT_EQ(n.initial_letter_align, 0);
 }
+
+TEST(LayoutNodeProps, HyphensDefaultsManual) {
+    LayoutNode n;
+    EXPECT_EQ(n.hyphens, 1);
+}
+
+TEST(LayoutNodeProps, TextStrokeWidthDefaultsZero) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.text_stroke_width, 0.0f);
+}
+
+TEST(LayoutNodeProps, FontSynthesisDefaultsSeven) {
+    LayoutNode n;
+    EXPECT_EQ(n.font_synthesis, 7);
+}
+
+TEST(LayoutNodeProps, BackgroundClipDefaultsZero) {
+    LayoutNode n;
+    EXPECT_EQ(n.background_clip, 0);
+}
+
+TEST(LayoutNodeProps, BackgroundOriginDefaultsZero) {
+    LayoutNode n;
+    EXPECT_EQ(n.background_origin, 0);
+}
+
+TEST(LayoutNodeProps, BackgroundBlendModeDefaultsZero) {
+    LayoutNode n;
+    EXPECT_EQ(n.background_blend_mode, 0);
+}
+
+TEST(LayoutNodeProps, ScrollMarginBottomIsZeroV2) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.scroll_margin_bottom, 0.0f);
+}
+
+TEST(LayoutNodeProps, ScrollPaddingTopDefaultsZero) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.scroll_padding_top, 0.0f);
+}
