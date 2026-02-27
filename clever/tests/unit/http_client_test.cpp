@@ -3749,3 +3749,73 @@ TEST(HttpCacheTest, CacheLookupMissReturnsNullopt) {
     auto found = cache.lookup("http://example.com/miss");
     EXPECT_FALSE(found.has_value());
 }
+
+// Cycle 768 — HttpCache advanced operations
+TEST(HttpCacheTest, CacheCountAfterClear) {
+    auto& cache = clever::net::HttpCache::instance();
+    cache.clear();
+    clever::net::CacheEntry e;
+    e.url = "http://a.com/p1"; e.status = 200;
+    cache.store(e);
+    cache.clear();
+    EXPECT_EQ(cache.entry_count(), 0u);
+}
+
+TEST(HttpCacheTest, CacheOverwriteUpdatesBody) {
+    auto& cache = clever::net::HttpCache::instance();
+    cache.clear();
+    clever::net::CacheEntry e1;
+    e1.url = "http://example.com/overwrite"; e1.status = 200; e1.body = "v1";
+    cache.store(e1);
+    clever::net::CacheEntry e2;
+    e2.url = "http://example.com/overwrite"; e2.status = 200; e2.body = "v2";
+    cache.store(e2);
+    auto found = cache.lookup("http://example.com/overwrite");
+    ASSERT_TRUE(found.has_value());
+    EXPECT_EQ(found->body, "v2");
+    cache.clear();
+}
+
+TEST(HttpCacheTest, CacheTwoEntriesCountIsTwo) {
+    auto& cache = clever::net::HttpCache::instance();
+    cache.clear();
+    clever::net::CacheEntry e1, e2;
+    e1.url = "http://x.com/1"; e1.status = 200;
+    e2.url = "http://x.com/2"; e2.status = 200;
+    cache.store(e1); cache.store(e2);
+    EXPECT_EQ(cache.entry_count(), 2u);
+    cache.clear();
+}
+
+TEST(HttpCacheTest, CacheSetMaxBytes) {
+    auto& cache = clever::net::HttpCache::instance();
+    cache.clear();
+    cache.set_max_bytes(100 * 1024 * 1024);
+    // Just verify the method exists and doesn't crash
+    EXPECT_EQ(cache.entry_count(), 0u);
+    cache.set_max_bytes(clever::net::HttpCache::kDefaultMaxBytes);
+}
+
+TEST(CacheEntryTest, CacheEntryIsNotFreshWithZeroMaxAge) {
+    clever::net::CacheEntry e;
+    e.max_age_seconds = 0;
+    e.stored_at = std::chrono::steady_clock::now();
+    EXPECT_FALSE(e.is_fresh());
+}
+
+TEST(CacheEntryTest, CacheEntryApproxSizeIncludesBody) {
+    clever::net::CacheEntry e;
+    e.url = "http://example.com/size";
+    e.body = std::string(500, 'a');
+    EXPECT_GE(e.approx_size(), 500u);
+}
+
+TEST(CacheControlTest, MaxAgeZeroIsNotFresh) {
+    auto cc = clever::net::parse_cache_control("max-age=0");
+    EXPECT_EQ(cc.max_age, 0);
+}
+
+TEST(CacheControlTest, MaxAgeNegativeOneWhenAbsent) {
+    auto cc = clever::net::parse_cache_control("no-cache");
+    EXPECT_EQ(cc.max_age, -1);
+}
