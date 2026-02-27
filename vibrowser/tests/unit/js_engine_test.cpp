@@ -21452,3 +21452,197 @@ TEST(JSEngine, RegExpWithFlagsAndExecCycle1537) {
     EXPECT_EQ(result, "3|true|false");
 }
 
+// ============================================================================
+// TryCatchFinallyBlocksCycle1546: Test error handling with try/catch/finally
+// ============================================================================
+TEST(JSEngine, TryCatchFinallyBlocksCycle1546) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        let finallyExecuted = false;
+        let caughtError = '';
+        let result = 'initial';
+
+        try {
+            throw new Error('test error');
+        } catch (e) {
+            caughtError = e.message;
+            result = 'caught';
+        } finally {
+            finallyExecuted = true;
+            result = result + '_finally';
+        }
+
+        `${finallyExecuted}|${caughtError}|${result}`
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true|test error|caught_finally");
+}
+
+// ============================================================================
+// CustomErrorClassesCycle1546: Test custom error types and instanceof checks
+// ============================================================================
+TEST(JSEngine, CustomErrorClassesCycle1546) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        class ValidationError extends Error {
+            constructor(message) {
+                super(message);
+                this.name = 'ValidationError';
+            }
+        }
+
+        let errorType = '';
+        let errorMessage = '';
+
+        try {
+            throw new ValidationError('Invalid input');
+        } catch (e) {
+            errorType = e.name;
+            errorMessage = e.message;
+        }
+
+        `${errorType}|${errorMessage}`
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "ValidationError|Invalid input");
+}
+
+// ============================================================================
+// TypeofOperatorChecksCycle1546: Test typeof operator with various types
+// ============================================================================
+TEST(JSEngine, TypeofOperatorChecksCycle1546) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        const types = {
+            num: typeof 42,
+            str: typeof 'hello',
+            bool: typeof true,
+            obj: typeof {},
+            arr: typeof [],
+            nil: typeof null,
+            undef: typeof undefined,
+            func: typeof (() => {})
+        };
+
+        `${types.num}|${types.str}|${types.bool}|${types.obj}|${types.arr}|${types.nil}|${types.undef}|${types.func}`
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "number|string|boolean|object|object|object|undefined|function");
+}
+
+// ============================================================================
+// JSONEdgeCasesCycle1546: Test JSON parse/stringify with edge cases
+// ============================================================================
+TEST(JSEngine, JSONEdgeCasesCycle1546) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        const obj = {
+            name: 'test',
+            count: 42,
+            active: true,
+            tags: ['a', 'b', 'c'],
+            nested: { level: 2 },
+            nullVal: null
+        };
+
+        const jsonStr = JSON.stringify(obj);
+        const parsed = JSON.parse(jsonStr);
+        const name = parsed.name;
+        const count = parsed.count;
+        const tagsLen = parsed.tags.length;
+        const nestedLevel = parsed.nested.level;
+
+        `${name}|${count}|${tagsLen}|${nestedLevel}`
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "test|42|3|2");
+}
+
+// ============================================================================
+// DateObjectMethodsCycle1546: Test Date object creation and methods
+// ============================================================================
+TEST(JSEngine, DateObjectMethodsCycle1546) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        const date = new Date(2024, 0, 15, 10, 30, 45);
+        const year = date.getFullYear();
+        const month = date.getMonth();
+        const day = date.getDate();
+        const hour = date.getHours();
+        const minutes = date.getMinutes();
+        const seconds = date.getSeconds();
+
+        `${year}|${month}|${day}|${hour}|${minutes}|${seconds}`
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "2024|0|15|10|30|45");
+}
+
+// ============================================================================
+// MathFunctionsCycle1546: Test Math object methods
+// ============================================================================
+TEST(JSEngine, MathFunctionsCycle1546) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        const abs = Math.abs(-42);
+        const floor = Math.floor(3.7);
+        const ceil = Math.ceil(3.2);
+        const round = Math.round(3.5);
+        const max = Math.max(10, 20, 5, 35, 15);
+        const min = Math.min(10, 20, 5, 35, 15);
+        const sqrt = Math.sqrt(16);
+        const pow = Math.pow(2, 3);
+
+        `${abs}|${floor}|${ceil}|${round}|${max}|${min}|${sqrt}|${pow}`
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "42|3|4|4|35|5|4|8");
+}
+
+// ============================================================================
+// NumberMethodsCycle1546: Test Number object methods and properties
+// ============================================================================
+TEST(JSEngine, NumberMethodsCycle1546) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        const num = 42.56789;
+        const toFixed2 = num.toFixed(2);
+        const toPrecision5 = num.toPrecision(5);
+        const toExponential2 = num.toExponential(2);
+        const isInt = Number.isInteger(42);
+        const isIntFloat = Number.isInteger(42.5);
+        const isNaNVal = Number.isNaN(NaN);
+        const isSafe = Number.isSafeInteger(9007199254740991);
+
+        `${toFixed2}|${toPrecision5}|${toExponential2}|${isInt}|${isIntFloat}|${isNaNVal}|${isSafe}`
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "42.57|42.568|4.26e+1|true|false|true|true");
+}
+
+// ============================================================================
+// StringTemplateTagFunctionsCycle1546: Test template literal tag functions
+// ============================================================================
+TEST(JSEngine, StringTemplateTagFunctionsCycle1546) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        function highlight(strings, ...values) {
+            let result = '';
+            for (let i = 0; i < strings.length; i++) {
+                result += strings[i];
+                if (i < values.length) {
+                    result += '[' + values[i] + ']';
+                }
+            }
+            return result;
+        }
+
+        const name = 'Alice';
+        const age = 30;
+        const tagged = highlight`Name: ${name}, Age: ${age}`;
+        tagged
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "Name: [Alice], Age: [30]");
+}
+

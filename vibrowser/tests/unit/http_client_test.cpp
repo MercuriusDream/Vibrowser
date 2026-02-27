@@ -11183,3 +11183,216 @@ TEST(RequestTest, DeleteRequestWithQueryParamsV60) {
     // Just ensure there's a blank line indicating end of headers
     EXPECT_TRUE(result.find("\r\n\r\n") != std::string::npos);
 }
+
+// ===========================================================================
+// V61: New test suite for advanced HTTP scenarios
+// ===========================================================================
+
+// Test 1 (V61): Response parsing with complete status line and headers
+TEST(ResponseTest, ResponseStatusLineParsingV61) {
+    Response resp;
+
+    // Simulate a parsed response
+    resp.status = 200;
+    resp.status_text = "OK";
+    resp.url = "https://example.com/api/v1";
+    resp.was_redirected = false;
+
+    // Add response headers
+    resp.headers.set("Server", "nginx/1.19.0");
+    resp.headers.set("Date", "Wed, 28 Feb 2026 10:30:00 GMT");
+    resp.headers.set("Content-Type", "application/json; charset=utf-8");
+    resp.headers.set("Content-Length", "1024");
+
+    // Set response body
+    std::string json_body = R"({"status":"ok","data":{"id":1}})";
+    resp.body.assign(json_body.begin(), json_body.end());
+
+    // Verify response state
+    EXPECT_EQ(resp.status, 200u);
+    EXPECT_EQ(resp.status_text, "OK");
+    EXPECT_EQ(resp.headers.get("Content-Type").value(), "application/json; charset=utf-8");
+    EXPECT_EQ(resp.headers.get("Server").value(), "nginx/1.19.0");
+    EXPECT_EQ(resp.body.size(), json_body.length());
+    EXPECT_FALSE(resp.was_redirected);
+}
+
+// Test 2 (V61): Header folding with continuation lines
+TEST(RequestTest, HeaderFoldingWithContinuationV61) {
+    Request req;
+    req.method = Method::POST;
+    req.host = "api.example.com";
+    req.port = 443;
+    req.use_tls = true;
+    req.path = "/submit";
+
+    // Long header that may require folding in some HTTP/1.1 implementations
+    std::string long_accept = "text/html, application/xhtml+xml, application/xml;q=0.9, "
+                              "image/webp, image/apng, */*;q=0.8, application/signed-exchange;v=b3;q=0.9";
+    req.headers.set("Accept", long_accept);
+    req.headers.set("User-Agent", "TestBrowser/1.0 (V61 Test)");
+
+    std::string body = R"({"key":"value"})";
+    req.body.assign(body.begin(), body.end());
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    // Verify long header is preserved
+    EXPECT_TRUE(result.find(long_accept) != std::string::npos);
+    EXPECT_TRUE(result.find("POST /submit HTTP/1.1\r\n") != std::string::npos);
+    EXPECT_TRUE(result.find("Content-Length: " + std::to_string(body.length()) + "\r\n") != std::string::npos);
+}
+
+// Test 3 (V61): Transfer-Encoding chunked handling
+TEST(ResponseTest, TransferEncodingChunkedV61) {
+    Response resp;
+    resp.status = 200;
+    resp.status_text = "OK";
+    resp.url = "https://stream.example.com/data";
+
+    // Add Transfer-Encoding header
+    resp.headers.set("Transfer-Encoding", "chunked");
+    resp.headers.set("Content-Type", "application/json");
+    resp.headers.set("Date", "Wed, 28 Feb 2026 11:00:00 GMT");
+
+    // Simulate chunked body (in real scenario, this would be decoded)
+    std::vector<uint8_t> chunk_data = {
+        '2', '5', '\r', '\n',
+        '{', '"', 'c', 'h', 'u', 'n', 'k', '"', ':', '"', 'd', 'a', 't', 'a', '1', '"', '}',
+        '\r', '\n'
+    };
+    resp.body.assign(chunk_data.begin(), chunk_data.end());
+
+    EXPECT_EQ(resp.status, 200u);
+    EXPECT_EQ(resp.headers.get("Transfer-Encoding").value(), "chunked");
+    EXPECT_TRUE(resp.headers.has("Transfer-Encoding"));
+    EXPECT_GT(resp.body.size(), 0u);
+}
+
+// Test 4 (V61): Connection keep-alive and close handling
+TEST(RequestTest, ConnectionKeepAliveHeadersV61) {
+    Request req;
+    req.method = Method::GET;
+    req.host = "persistence.example.com";
+    req.port = 80;
+    req.path = "/resource";
+
+    // Add Connection header for keep-alive
+    req.headers.set("Connection", "keep-alive");
+    req.headers.set("Keep-Alive", "timeout=5, max=100");
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    // Verify Connection header keeps original capitalization
+    EXPECT_TRUE(result.find("Connection: keep-alive\r\n") != std::string::npos);
+    // Other custom headers are lowercase
+    EXPECT_TRUE(result.find("keep-alive: timeout=5, max=100\r\n") != std::string::npos);
+    EXPECT_TRUE(result.find("GET /resource HTTP/1.1\r\n") != std::string::npos);
+}
+
+// Test 5 (V61): Proxy-related headers (X-Forwarded-For, X-Forwarded-Proto)
+TEST(RequestTest, ProxyHeadersForwardingV61) {
+    Request req;
+    req.method = Method::POST;
+    req.host = "backend.internal.example.com";
+    req.port = 8080;
+    req.path = "/api/process";
+
+    // Add proxy forwarding headers
+    req.headers.set("X-Forwarded-For", "203.0.113.42, 198.51.100.178");
+    req.headers.set("X-Forwarded-Proto", "https");
+    req.headers.set("X-Forwarded-Host", "external.example.com");
+    req.headers.set("X-Real-IP", "203.0.113.42");
+
+    std::string json = R"({"action":"forward"})";
+    req.body.assign(json.begin(), json.end());
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    // Verify proxy headers are lowercase
+    EXPECT_TRUE(result.find("x-forwarded-for: 203.0.113.42, 198.51.100.178\r\n") != std::string::npos);
+    EXPECT_TRUE(result.find("x-forwarded-proto: https\r\n") != std::string::npos);
+    EXPECT_TRUE(result.find("x-forwarded-host: external.example.com\r\n") != std::string::npos);
+    EXPECT_TRUE(result.find("Host: backend.internal.example.com:8080\r\n") != std::string::npos);
+}
+
+// Test 6 (V61): Range request headers for partial content
+TEST(RequestTest, RangeRequestHeadersV61) {
+    Request req;
+    req.method = Method::GET;
+    req.host = "files.example.com";
+    req.port = 443;
+    req.use_tls = true;
+    req.path = "/large-file.bin";
+
+    // Add Range header for resumable downloads
+    req.headers.set("Range", "bytes=2048-4095");
+    req.headers.set("If-Range", "\"etag-file-xyz\"");
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    // Verify Range headers are properly formatted
+    EXPECT_TRUE(result.find("range: bytes=2048-4095\r\n") != std::string::npos);
+    EXPECT_TRUE(result.find("if-range: \"etag-file-xyz\"\r\n") != std::string::npos);
+    EXPECT_TRUE(result.find("Host: files.example.com\r\n") != std::string::npos);
+
+    // Verify no body for GET with Range
+    EXPECT_TRUE(req.body.empty());
+}
+
+// Test 7 (V61): Conditional request headers (If-Modified-Since, ETag)
+TEST(RequestTest, ConditionalRequestHeadersV61) {
+    Request req;
+    req.method = Method::GET;
+    req.host = "cache.example.com";
+    req.port = 443;
+    req.use_tls = true;
+    req.path = "/resource/v2";
+
+    // Add conditional headers
+    req.headers.set("If-Modified-Since", "Tue, 27 Feb 2026 14:00:00 GMT");
+    req.headers.set("If-None-Match", "W/\"123456789-abc\"");
+    req.headers.set("If-Unmodified-Since", "Tue, 27 Feb 2026 14:00:00 GMT");
+    req.headers.set("If-Match", "\"123456789-abc\"");
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    // Verify all conditional headers in lowercase
+    EXPECT_TRUE(result.find("if-modified-since: Tue, 27 Feb 2026 14:00:00 GMT\r\n") != std::string::npos);
+    EXPECT_TRUE(result.find("if-none-match: W/\"123456789-abc\"\r\n") != std::string::npos);
+    EXPECT_TRUE(result.find("if-unmodified-since: Tue, 27 Feb 2026 14:00:00 GMT\r\n") != std::string::npos);
+    EXPECT_TRUE(result.find("if-match: \"123456789-abc\"\r\n") != std::string::npos);
+}
+
+// Test 8 (V61): Response with 304 Not Modified and cache headers
+TEST(ResponseTest, Response304NotModifiedWithCacheHeadersV61) {
+    Response resp;
+    resp.status = 304;
+    resp.status_text = "Not Modified";
+    resp.url = "https://cache.example.com/resource";
+    resp.was_redirected = false;
+
+    // 304 responses should not have a body
+    EXPECT_TRUE(resp.body.empty());
+
+    // Add cache-related headers
+    resp.headers.set("Cache-Control", "public, max-age=3600");
+    resp.headers.set("ETag", "\"v2-87d1fcc6\"");
+    resp.headers.set("Date", "Wed, 28 Feb 2026 12:00:00 GMT");
+    resp.headers.set("Last-Modified", "Tue, 27 Feb 2026 10:00:00 GMT");
+    resp.headers.set("Vary", "Accept-Encoding");
+
+    // Verify response state
+    EXPECT_EQ(resp.status, 304u);
+    EXPECT_EQ(resp.status_text, "Not Modified");
+    EXPECT_EQ(resp.headers.get("Cache-Control").value(), "public, max-age=3600");
+    EXPECT_EQ(resp.headers.get("ETag").value(), "\"v2-87d1fcc6\"");
+    EXPECT_TRUE(resp.headers.has("Last-Modified"));
+    EXPECT_TRUE(resp.headers.has("Vary"));
+    EXPECT_EQ(resp.body.size(), 0u);
+}

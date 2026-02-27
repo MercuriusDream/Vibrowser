@@ -7681,3 +7681,94 @@ TEST(URLParser, FileURIWithSpecialCharsV60) {
     // Path should double-encode the %20 sequence
     EXPECT_EQ(result->path, "/home/user/My%2520Documents/file.txt");
 }
+
+// =============================================================================
+// Test V61-1: Blob URL parsing
+// =============================================================================
+TEST(URLParser, BlobURLV61) {
+    auto result = parse("blob:https://example.com/550e8400-e29b-41d4-a716-446655440000");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "blob");
+    EXPECT_TRUE(result->host.empty());
+    // Blob URLs store the entire origin as part of the path
+    EXPECT_EQ(result->path, "https://example.com/550e8400-e29b-41d4-a716-446655440000");
+}
+
+// =============================================================================
+// Test V61-2: JavaScript URL handling
+// =============================================================================
+TEST(URLParser, JavaScriptURLV61) {
+    auto result = parse("javascript:void(0)");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "javascript");
+    EXPECT_EQ(result->path, "void(0)");
+    EXPECT_TRUE(result->host.empty());
+    EXPECT_TRUE(result->query.empty());
+}
+
+// =============================================================================
+// Test V61-3: About:blank URL
+// =============================================================================
+TEST(URLParser, AboutBlankURLV61) {
+    auto result = parse("about:blank");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "about");
+    EXPECT_EQ(result->path, "blank");
+    EXPECT_TRUE(result->host.empty());
+    EXPECT_TRUE(result->query.empty());
+}
+
+// =============================================================================
+// Test V61-4: Empty string URL handling
+// =============================================================================
+TEST(URLParser, EmptyStringURLV61) {
+    auto result = parse("");
+    // Empty string should either fail or return a minimal/relative URL
+    EXPECT_FALSE(result.has_value());
+}
+
+// =============================================================================
+// Test V61-5: Whitespace in URL path segments (percent-encoded to %20, then double-encoded)
+// =============================================================================
+TEST(URLParser, WhitespaceInPathV61) {
+    auto result = parse("https://example.com/hello%20world/test");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "example.com");
+    // Double-encode: %20 becomes %2520
+    EXPECT_EQ(result->path, "/hello%2520world/test");
+}
+
+// =============================================================================
+// Test V61-6: Trailing dot in hostname
+// =============================================================================
+TEST(URLParser, TrailingDotHostnameV61) {
+    auto result = parse("https://example.com./path");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    // Host may or may not include the trailing dot depending on parsing rules
+    EXPECT_TRUE(result->host.find("example.com") != std::string::npos);
+    EXPECT_EQ(result->path, "/path");
+}
+
+// =============================================================================
+// Test V61-7: Protocol-relative URL with double slash (unsupported by parser)
+// =============================================================================
+TEST(URLParser, ProtocolRelativeURLV61) {
+    auto result = parse("//example.com/path");
+    // Protocol-relative URLs without a scheme are not parsed by this parser
+    // (they require a base URL to resolve). Parser returns nullopt.
+    EXPECT_FALSE(result.has_value());
+}
+
+// =============================================================================
+// Test V61-8: Unicode in path segments (UTF-8 encoded)
+// =============================================================================
+TEST(URLParser, UnicodePathSegmentV61) {
+    auto result = parse("https://example.com/café/menu");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "example.com");
+    // Path should contain the UTF-8 encoded unicode characters
+    EXPECT_TRUE(result->path.find("caf") != std::string::npos);
+}

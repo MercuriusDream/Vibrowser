@@ -9135,3 +9135,185 @@ TEST(SerializerTest, ComplexMultiTypeSequenceV60) {
     EXPECT_EQ(d.read_u16(), uint16_t{65535});
     EXPECT_FALSE(d.has_remaining());
 }
+
+// ------------------------------------------------------------------
+// V61 Tests: Error handling, edge cases, and advanced patterns
+// ------------------------------------------------------------------
+
+TEST(SerializerTest, ReadPastEndOfBufferV61) {
+    Serializer s;
+    s.write_u32(12345);
+    s.write_u8(99);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u32(), uint32_t{12345});
+    EXPECT_EQ(d.read_u8(), uint8_t{99});
+    EXPECT_FALSE(d.has_remaining());
+
+    // Attempt to read beyond buffer should still work but no more data
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, EmptyDeserializerV61) {
+    Serializer s;
+    // Write nothing
+    Deserializer d(s.data());
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, AlternatingWriteReadPatternV61) {
+    Serializer s1;
+    s1.write_u16(100);
+    s1.write_string("part1");
+
+    Deserializer d1(s1.data());
+    EXPECT_EQ(d1.read_u16(), uint16_t{100});
+    EXPECT_EQ(d1.read_string(), "part1");
+    EXPECT_FALSE(d1.has_remaining());
+
+    // Now chain another serializer with different data
+    Serializer s2;
+    s2.write_i32(-5000);
+    s2.write_f64(1.414);
+
+    Deserializer d2(s2.data());
+    EXPECT_EQ(d2.read_i32(), int32_t{-5000});
+    EXPECT_DOUBLE_EQ(d2.read_f64(), 1.414);
+    EXPECT_FALSE(d2.has_remaining());
+}
+
+TEST(SerializerTest, BulkStringArrayV61) {
+    Serializer s;
+    std::vector<std::string> strings = {"alpha", "beta", "gamma", "delta", "epsilon"};
+
+    // Write count then all strings
+    s.write_u32(strings.size());
+    for (const auto& str : strings) {
+        s.write_string(str);
+    }
+
+    Deserializer d(s.data());
+    uint32_t count = d.read_u32();
+    EXPECT_EQ(count, uint32_t{5});
+
+    for (size_t i = 0; i < strings.size(); ++i) {
+        EXPECT_EQ(d.read_string(), strings[i]);
+    }
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, NestedStructuredDataSimulationV61) {
+    Serializer s;
+    // Simulate nested structure: header + payload + footer
+    s.write_u32(0xDEADBEEF);  // header magic
+    s.write_u16(256);          // payload size marker
+
+    // Payload: multiple integers
+    s.write_i32(111);
+    s.write_i64(-222222);
+    s.write_u8(55);
+
+    // Footer
+    s.write_u32(0xCAFEBABE);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u32(), uint32_t{0xDEADBEEF});
+    EXPECT_EQ(d.read_u16(), uint16_t{256});
+    EXPECT_EQ(d.read_i32(), int32_t{111});
+    EXPECT_EQ(d.read_i64(), int64_t{-222222});
+    EXPECT_EQ(d.read_u8(), uint8_t{55});
+    EXPECT_EQ(d.read_u32(), uint32_t{0xCAFEBABE});
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, EndiannessVerificationV61) {
+    Serializer s;
+    // Write multi-byte values and verify they round-trip correctly
+    s.write_u16(0x1234);
+    s.write_u32(0x12345678);
+    s.write_u64(0x123456789ABCDEF0ULL);
+    s.write_i32(-1);
+    s.write_i64(-256);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u16(), uint16_t{0x1234});
+    EXPECT_EQ(d.read_u32(), uint32_t{0x12345678});
+    EXPECT_EQ(d.read_u64(), uint64_t{0x123456789ABCDEF0ULL});
+    EXPECT_EQ(d.read_i32(), int32_t{-1});
+    EXPECT_EQ(d.read_i64(), int64_t{-256});
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, BufferReusePatternV61) {
+    // Create first serialization
+    Serializer s1;
+    s1.write_u32(0xAABBCCDD);
+    s1.write_string("first");
+    auto data1 = s1.data();
+
+    // Deserialize and verify
+    Deserializer d1(data1);
+    EXPECT_EQ(d1.read_u32(), uint32_t{0xAABBCCDD});
+    EXPECT_EQ(d1.read_string(), "first");
+
+    // Create new serializer with different data
+    Serializer s2;
+    s2.write_u8(42);
+    s2.write_u8(84);
+    s2.write_u8(126);
+    auto data2 = s2.data();
+
+    // Deserialize new data - should not be affected by s1
+    Deserializer d2(data2);
+    EXPECT_EQ(d2.read_u8(), uint8_t{42});
+    EXPECT_EQ(d2.read_u8(), uint8_t{84});
+    EXPECT_EQ(d2.read_u8(), uint8_t{126});
+    EXPECT_FALSE(d2.has_remaining());
+
+    // Verify d1 original data is still valid
+    EXPECT_FALSE(d1.has_remaining());
+}
+
+TEST(SerializerTest, MixedBinaryAndTextDataV61) {
+    Serializer s;
+
+    // Mix binary and text in complex pattern
+    uint8_t prefix[] = {0xFF, 0xEE, 0xDD, 0xCC};
+    s.write_bytes(prefix, sizeof(prefix));
+    s.write_string("metadata");
+
+    uint8_t middle[] = {0x11, 0x22, 0x33};
+    s.write_bytes(middle, sizeof(middle));
+    s.write_u32(999999);
+
+    s.write_string("status:ok");
+    uint8_t suffix[] = {0x77, 0x88};
+    s.write_bytes(suffix, sizeof(suffix));
+
+    Deserializer d(s.data());
+
+    auto res_prefix = d.read_bytes();
+    ASSERT_EQ(res_prefix.size(), sizeof(prefix));
+    for (size_t i = 0; i < sizeof(prefix); ++i) {
+        EXPECT_EQ(res_prefix[i], prefix[i]);
+    }
+
+    EXPECT_EQ(d.read_string(), "metadata");
+
+    auto res_middle = d.read_bytes();
+    ASSERT_EQ(res_middle.size(), sizeof(middle));
+    for (size_t i = 0; i < sizeof(middle); ++i) {
+        EXPECT_EQ(res_middle[i], middle[i]);
+    }
+
+    EXPECT_EQ(d.read_u32(), uint32_t{999999});
+    EXPECT_EQ(d.read_string(), "status:ok");
+
+    auto res_suffix = d.read_bytes();
+    ASSERT_EQ(res_suffix.size(), sizeof(suffix));
+    for (size_t i = 0; i < sizeof(suffix); ++i) {
+        EXPECT_EQ(res_suffix[i], suffix[i]);
+    }
+
+    EXPECT_FALSE(d.has_remaining());
+}

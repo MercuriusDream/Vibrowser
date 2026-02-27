@@ -9569,3 +9569,325 @@ TEST(DomElement, ElementTagNameAndMultipleAttributesV60) {
     }
     EXPECT_EQ(count, 5);
 }
+
+// ---------------------------------------------------------------------------
+// V61 TESTS: Event bubbling, capture, custom events, DOM mutations
+// ---------------------------------------------------------------------------
+
+TEST(DomEvent, EventBubblingThroughMultipleLevelsV61) {
+    // Build tree: grandparent -> parent -> child
+    auto grandparent = std::make_unique<Element>("div");
+    auto parent = std::make_unique<Element>("section");
+    auto child = std::make_unique<Element>("button");
+
+    Node* gp_ptr = grandparent.get();
+    Node* p_ptr = parent.get();
+    Node* c_ptr = child.get();
+
+    parent->append_child(std::move(child));
+    grandparent->append_child(std::move(parent));
+
+    std::vector<std::string> bubble_log;
+
+    // Create event targets and listeners for bubbling
+    EventTarget gp_target;
+    gp_target.add_event_listener("click", [&](Event&) {
+        bubble_log.push_back("gp-bubble");
+    }, false);
+
+    EventTarget p_target;
+    p_target.add_event_listener("click", [&](Event&) {
+        bubble_log.push_back("p-bubble");
+    }, false);
+
+    EventTarget c_target;
+    c_target.add_event_listener("click", [&](Event&) {
+        bubble_log.push_back("c-target");
+    }, false);
+
+    // Simulate event dispatch: bubbling from child up
+    Event event("click");
+    event.target_ = c_ptr;
+    event.current_target_ = c_ptr;
+    event.phase_ = EventPhase::AtTarget;
+    c_target.dispatch_event(event, *c_ptr);
+
+    // Bubble through parent
+    if (!event.propagation_stopped() && event.bubbles()) {
+        event.phase_ = EventPhase::Bubbling;
+        event.current_target_ = p_ptr;
+        p_target.dispatch_event(event, *p_ptr);
+    }
+
+    // Bubble to grandparent
+    if (!event.propagation_stopped() && event.bubbles()) {
+        event.current_target_ = gp_ptr;
+        gp_target.dispatch_event(event, *gp_ptr);
+    }
+
+    EXPECT_EQ(bubble_log.size(), 3u);
+    EXPECT_EQ(bubble_log[0], "c-target");
+    EXPECT_EQ(bubble_log[1], "p-bubble");
+    EXPECT_EQ(bubble_log[2], "gp-bubble");
+}
+
+TEST(DomEvent, EventCapturePhaseStopsAtTargetV61) {
+    // Build tree: grandparent -> parent -> child
+    auto grandparent = std::make_unique<Element>("div");
+    auto parent = std::make_unique<Element>("section");
+    auto child = std::make_unique<Element>("button");
+
+    Node* gp_ptr = grandparent.get();
+    Node* p_ptr = parent.get();
+    Node* c_ptr = child.get();
+
+    parent->append_child(std::move(child));
+    grandparent->append_child(std::move(parent));
+
+    std::vector<std::string> capture_log;
+
+    EventTarget gp_target;
+    gp_target.add_event_listener("click", [&](Event& e) {
+        capture_log.push_back("gp-capture");
+        e.stop_propagation();
+    }, true);
+
+    EventTarget p_target;
+    p_target.add_event_listener("click", [&](Event&) {
+        capture_log.push_back("p-capture");
+    }, true);
+
+    EventTarget c_target;
+    c_target.add_event_listener("click", [&](Event&) {
+        capture_log.push_back("c-target");
+    }, false);
+
+    Event event("click");
+    event.target_ = c_ptr;
+
+    // Capture phase from grandparent
+    event.phase_ = EventPhase::Capturing;
+    event.current_target_ = gp_ptr;
+    gp_target.dispatch_event(event, *gp_ptr);
+
+    // Propagation stopped, parent's capture should not fire
+    if (!event.propagation_stopped()) {
+        event.current_target_ = p_ptr;
+        p_target.dispatch_event(event, *p_ptr);
+    }
+
+    // Target phase should still fire
+    if (!event.propagation_stopped()) {
+        event.phase_ = EventPhase::AtTarget;
+        event.current_target_ = c_ptr;
+        c_target.dispatch_event(event, *c_ptr);
+    }
+
+    EXPECT_EQ(capture_log.size(), 1u);
+    EXPECT_EQ(capture_log[0], "gp-capture");
+    EXPECT_TRUE(event.propagation_stopped());
+}
+
+TEST(DomEvent, CustomEventCreationAndDispatchV61) {
+    Event custom_event("my-custom-event", true, true);
+
+    EXPECT_EQ(custom_event.type(), "my-custom-event");
+    EXPECT_TRUE(custom_event.bubbles());
+    EXPECT_TRUE(custom_event.cancelable());
+    EXPECT_EQ(custom_event.phase(), EventPhase::None);
+
+    auto element = std::make_unique<Element>("div");
+    Node* elem_ptr = element.get();
+
+    std::vector<std::string> event_log;
+    EventTarget target;
+    target.add_event_listener("my-custom-event", [&](Event& e) {
+        event_log.push_back(e.type());
+    }, false);
+
+    custom_event.target_ = elem_ptr;
+    custom_event.current_target_ = elem_ptr;
+    custom_event.phase_ = EventPhase::AtTarget;
+    target.dispatch_event(custom_event, *elem_ptr);
+
+    ASSERT_EQ(event_log.size(), 1u);
+    EXPECT_EQ(event_log[0], "my-custom-event");
+}
+
+TEST(DomNode, InsertBeforeWithMultipleSiblingsV61) {
+    // Create a parent with initial children
+    auto parent = std::make_unique<Element>("ul");
+    auto li1 = std::make_unique<Element>("li");
+    auto li2 = std::make_unique<Element>("li");
+    auto li3 = std::make_unique<Element>("li");
+
+    Element* p1 = li1.get();
+    Element* p2 = li2.get();
+
+    parent->append_child(std::move(li1));
+    parent->append_child(std::move(li2));
+    parent->append_child(std::move(li3));
+
+    // Insert new element before middle child
+    auto new_li = std::make_unique<Element>("li");
+    Element* new_ptr = new_li.get();
+    parent->insert_before(std::move(new_li), p2);
+
+    EXPECT_EQ(parent->child_count(), 4u);
+    EXPECT_EQ(p1->next_sibling(), new_ptr);
+    EXPECT_EQ(new_ptr->next_sibling(), p2);
+    EXPECT_EQ(p2->previous_sibling(), new_ptr);
+    EXPECT_EQ(new_ptr->previous_sibling(), p1);
+}
+
+TEST(DomElement, ClassListToggleAndContainsV61) {
+    auto button = std::make_unique<Element>("button");
+
+    // Initially no classes
+    EXPECT_FALSE(button->class_list().contains("active"));
+    EXPECT_EQ(button->class_list().length(), 0u);
+
+    // Add a class
+    button->class_list().add("active");
+    EXPECT_TRUE(button->class_list().contains("active"));
+    EXPECT_EQ(button->class_list().length(), 1u);
+
+    // Toggle removes it
+    button->class_list().toggle("active");
+    EXPECT_FALSE(button->class_list().contains("active"));
+    EXPECT_EQ(button->class_list().length(), 0u);
+
+    // Toggle adds it back
+    button->class_list().toggle("active");
+    EXPECT_TRUE(button->class_list().contains("active"));
+    EXPECT_EQ(button->class_list().length(), 1u);
+
+    // Add multiple classes
+    button->class_list().add("disabled");
+    button->class_list().add("focus");
+    EXPECT_EQ(button->class_list().length(), 3u);
+    EXPECT_TRUE(button->class_list().contains("active"));
+    EXPECT_TRUE(button->class_list().contains("disabled"));
+    EXPECT_TRUE(button->class_list().contains("focus"));
+
+    // Remove one class
+    button->class_list().remove("disabled");
+    EXPECT_EQ(button->class_list().length(), 2u);
+    EXPECT_FALSE(button->class_list().contains("disabled"));
+}
+
+TEST(DomNode, ComplexTreeTraversalWithForEachChildV61) {
+    // Build complex tree structure
+    auto root = std::make_unique<Element>("div");
+    auto child1 = std::make_unique<Element>("section");
+    auto child2 = std::make_unique<Element>("article");
+    auto child3 = std::make_unique<Element>("aside");
+
+    Element* c1 = child1.get();
+
+    // Add grandchildren
+    auto gc1_1 = std::make_unique<Element>("span");
+    auto gc1_2 = std::make_unique<Element>("span");
+    Element* gc1_1_ptr = gc1_1.get();
+    [[maybe_unused]] Element* gc1_2_ptr = gc1_2.get();
+
+    c1->append_child(std::move(gc1_1));
+    c1->append_child(std::move(gc1_2));
+
+    root->append_child(std::move(child1));
+    root->append_child(std::move(child2));
+    root->append_child(std::move(child3));
+
+    // Test for_each_child on root
+    std::vector<std::string> tags;
+    root->for_each_child([&](Node& child) {
+        if (auto* elem = dynamic_cast<Element*>(&child)) {
+            tags.push_back(elem->tag_name());
+        }
+    });
+
+    EXPECT_EQ(tags.size(), 3u);
+    EXPECT_EQ(tags[0], "section");
+    EXPECT_EQ(tags[1], "article");
+    EXPECT_EQ(tags[2], "aside");
+
+    // Test for_each_child on child with grandchildren
+    std::vector<std::string> grandchild_tags;
+    c1->for_each_child([&](Node& child) {
+        if (auto* elem = dynamic_cast<Element*>(&child)) {
+            grandchild_tags.push_back(elem->tag_name());
+        }
+    });
+
+    EXPECT_EQ(grandchild_tags.size(), 2u);
+    EXPECT_EQ(grandchild_tags[0], "span");
+    EXPECT_EQ(grandchild_tags[1], "span");
+
+    // Verify first grandchild pointer is correct
+    EXPECT_EQ(c1->first_child(), gc1_1_ptr);
+}
+
+TEST(DomNode, RemoveChildAndRebuildTreeV61) {
+    auto parent = std::make_unique<Element>("div");
+    auto child1 = std::make_unique<Element>("p");
+    auto child2 = std::make_unique<Element>("p");
+    auto child3 = std::make_unique<Element>("p");
+
+    Element* c1 = child1.get();
+    Element* c2 = child2.get();
+    Element* c3 = child3.get();
+
+    parent->append_child(std::move(child1));
+    parent->append_child(std::move(child2));
+    parent->append_child(std::move(child3));
+
+    EXPECT_EQ(parent->child_count(), 3u);
+
+    // Remove middle child
+    auto removed = parent->remove_child(*c2);
+    EXPECT_EQ(parent->child_count(), 2u);
+    EXPECT_EQ(c1->next_sibling(), c3);
+    EXPECT_EQ(c3->previous_sibling(), c1);
+
+    // Re-insert the removed child at the end
+    Node* removed_ptr = removed.get();
+    parent->append_child(std::move(removed));
+
+    EXPECT_EQ(parent->child_count(), 3u);
+    EXPECT_EQ(c3->next_sibling(), removed_ptr);
+    EXPECT_EQ(removed_ptr->previous_sibling(), c3);
+    EXPECT_EQ(parent->last_child(), removed_ptr);
+}
+
+TEST(DomEvent, ImmediatePropagationStopsAllListenersV61) {
+    std::vector<std::string> execution_log;
+
+    EventTarget target;
+
+    // Register three listeners for same event type
+    target.add_event_listener("click", [&](Event& e) {
+        execution_log.push_back("first");
+        e.stop_immediate_propagation();
+    }, false);
+
+    target.add_event_listener("click", [&](Event&) {
+        execution_log.push_back("second");
+    }, false);
+
+    target.add_event_listener("click", [&](Event&) {
+        execution_log.push_back("third");
+    }, false);
+
+    auto element = std::make_unique<Element>("div");
+    Event event("click");
+    event.target_ = element.get();
+    event.current_target_ = element.get();
+    event.phase_ = EventPhase::AtTarget;
+
+    target.dispatch_event(event, *element);
+
+    // Only first listener should execute
+    EXPECT_EQ(execution_log.size(), 1u);
+    EXPECT_EQ(execution_log[0], "first");
+    EXPECT_TRUE(event.immediate_propagation_stopped());
+}

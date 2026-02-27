@@ -9785,3 +9785,137 @@ TEST(TreeBuilder, Html5SemanticElementsV60) {
     EXPECT_EQ(aside->text_content(), "Sidebar");
     EXPECT_EQ(header->text_content(), "Article Header");
 }
+
+// Test 1: SVG inline elements - testing SVG tags parsed as regular elements
+TEST(TreeBuilder, SVGInlineElementsV61) {
+    auto doc = parse("<html><body><svg width=\"100\" height=\"100\"><circle cx=\"50\" cy=\"50\" r=\"40\"></circle><rect x=\"10\" y=\"10\" width=\"30\" height=\"30\"></rect></svg></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* svg = doc->find_element("svg");
+    ASSERT_NE(svg, nullptr);
+
+    auto circles = doc->find_all_elements("circle");
+    auto rects = doc->find_all_elements("rect");
+
+    EXPECT_EQ(circles.size(), 1u);
+    EXPECT_EQ(rects.size(), 1u);
+}
+
+// Test 2: MathML parsing - testing MathML tags as elements
+TEST(TreeBuilder, MathMLElementsV61) {
+    auto doc = parse("<html><body><math><mrow><mi>x</mi><mo>=</mo><mn>2</mn></mrow></math></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* math = doc->find_element("math");
+    ASSERT_NE(math, nullptr);
+
+    auto mrows = doc->find_all_elements("mrow");
+    auto mis = doc->find_all_elements("mi");
+    auto mos = doc->find_all_elements("mo");
+    auto mns = doc->find_all_elements("mn");
+
+    EXPECT_EQ(mrows.size(), 1u);
+    EXPECT_EQ(mis.size(), 1u);
+    EXPECT_EQ(mos.size(), 1u);
+    EXPECT_EQ(mns.size(), 1u);
+}
+
+// Test 3: Template elements - testing HTML template tag parsing
+TEST(TreeBuilder, TemplateElementsV61) {
+    auto doc = parse("<html><body><div><template id=\"mytemplate\"><p>Template content</p><span>Nested span</span></template></div></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* template_elem = doc->find_element("template");
+    ASSERT_NE(template_elem, nullptr);
+
+    // Template should have child elements
+    auto ps = doc->find_all_elements("p");
+    auto spans = doc->find_all_elements("span");
+
+    EXPECT_EQ(ps.size(), 1u);
+    EXPECT_EQ(spans.size(), 1u);
+}
+
+// Test 4: Custom elements - testing hyphenated element names
+TEST(TreeBuilder, CustomElementsV61) {
+    auto doc = parse("<html><body><my-widget data-value=\"test\">Custom content<my-sub-component>Nested</my-sub-component></my-widget></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* custom = doc->find_element("my-widget");
+    ASSERT_NE(custom, nullptr);
+    EXPECT_EQ(custom->text_content(), "Custom contentNested");
+
+    auto* subcomp = doc->find_element("my-sub-component");
+    ASSERT_NE(subcomp, nullptr);
+    EXPECT_EQ(subcomp->text_content(), "Nested");
+}
+
+// Test 5: Web components with shadow DOM concept - testing slot elements
+TEST(TreeBuilder, SlotElementsV61) {
+    auto doc = parse("<html><body><web-component><slot name=\"header\">Default header</slot><slot name=\"content\">Default content</slot><p>Fallback paragraph</p></web-component></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* webcomp = doc->find_element("web-component");
+    ASSERT_NE(webcomp, nullptr);
+
+    auto slots = doc->find_all_elements("slot");
+    EXPECT_EQ(slots.size(), 2u);
+
+    auto ps = doc->find_all_elements("p");
+    EXPECT_EQ(ps.size(), 1u);
+    EXPECT_EQ(ps[0]->text_content(), "Fallback paragraph");
+}
+
+// Test 6: HTML entities in content - testing character references
+TEST(TreeBuilder, HTMLEntitiesV61) {
+    auto doc = parse("<html><body><p>Less than &lt; Greater than &gt; Ampersand &amp; Quote &quot; Apostrophe &apos;</p><p>Numeric &#65; Hex &#x41;</p></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto ps = doc->find_all_elements("p");
+    ASSERT_GE(ps.size(), 2u);
+
+    std::string first_text = ps[0]->text_content();
+    // Entities should be decoded in text content
+    EXPECT_NE(first_text.find("<"), std::string::npos);
+    EXPECT_NE(first_text.find(">"), std::string::npos);
+    EXPECT_NE(first_text.find("&"), std::string::npos);
+}
+
+// Test 7: Complex nesting with mixed content types
+TEST(TreeBuilder, ComplexMixedNestingV61) {
+    auto doc = parse("<html><body><main><article><header>Title</header><section><p>Para 1</p><p>Para 2</p></section><footer>Footer</footer></article><aside><nav><ul><li>Item 1</li><li>Item 2</li></ul></nav></aside></main></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* main = doc->find_element("main");
+    ASSERT_NE(main, nullptr);
+
+    auto articles = doc->find_all_elements("article");
+    auto sections = doc->find_all_elements("section");
+    auto ps = doc->find_all_elements("p");
+    auto lis = doc->find_all_elements("li");
+
+    EXPECT_EQ(articles.size(), 1u);
+    EXPECT_EQ(sections.size(), 1u);
+    EXPECT_EQ(ps.size(), 2u);
+    EXPECT_EQ(lis.size(), 2u);
+}
+
+// Test 8: Void elements and multiple self-closing tags
+TEST(TreeBuilder, VoidElementsAndSelfClosingV61) {
+    auto doc = parse("<html><body><img src=\"test.jpg\" alt=\"test\"/><br/><hr/><input type=\"text\" name=\"field\"/><link rel=\"stylesheet\" href=\"style.css\"><meta charset=\"UTF-8\"></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto imgs = doc->find_all_elements("img");
+    auto brs = doc->find_all_elements("br");
+    auto hrs = doc->find_all_elements("hr");
+    auto inputs = doc->find_all_elements("input");
+    auto links = doc->find_all_elements("link");
+    auto metas = doc->find_all_elements("meta");
+
+    EXPECT_EQ(imgs.size(), 1u);
+    EXPECT_EQ(brs.size(), 1u);
+    EXPECT_EQ(hrs.size(), 1u);
+    EXPECT_EQ(inputs.size(), 1u);
+    EXPECT_EQ(links.size(), 1u);
+    EXPECT_EQ(metas.size(), 1u);
+}

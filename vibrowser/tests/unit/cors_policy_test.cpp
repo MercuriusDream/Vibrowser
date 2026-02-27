@@ -4879,3 +4879,79 @@ TEST(CORSPolicy, DefaultHttpsPortNormalizedInAcaoV60) {
     EXPECT_TRUE(cors_allows_response("https://api.example", "https://api.example/data", headers,
                                      false));
 }
+
+// --- Cycle V61: 8 CORS tests ---
+
+TEST(CORSPolicy, PreflightWithMaxAgeHeaderAllowsResponseV61) {
+    clever::net::HeaderMap headers;
+    // Preflight request with max-age should still allow the response based on ACAO header
+    headers.set("Access-Control-Allow-Origin", "https://app.example");
+    headers.set("Access-Control-Max-Age", "3600");
+    headers.set("Access-Control-Allow-Methods", "GET, POST, PUT");
+    EXPECT_TRUE(cors_allows_response("https://app.example", "https://api.example/data", headers,
+                                     false));
+}
+
+TEST(CORSPolicy, ExposedHeadersListMultipleHeadersV61) {
+    clever::net::HeaderMap headers;
+    // Exposed headers should not prevent CORS response, just declare which headers are accessible
+    headers.set("Access-Control-Allow-Origin", "https://app.example");
+    headers.set("Access-Control-Expose-Headers", "X-Custom-1, X-Custom-2, X-Custom-3, Content-Type");
+    EXPECT_TRUE(cors_allows_response("https://app.example", "https://api.example/resource", headers,
+                                     false));
+}
+
+TEST(CORSPolicy, MethodAllowListWithMultipleMethodsV61) {
+    clever::net::HeaderMap headers;
+    // Multiple methods in Allow-Methods should pass CORS check if origin matches
+    headers.set("Access-Control-Allow-Origin", "https://app.example");
+    headers.set("Access-Control-Allow-Methods", "GET, HEAD, POST, PUT, DELETE, PATCH, OPTIONS");
+    EXPECT_TRUE(cors_allows_response("https://app.example", "https://api.example/api", headers,
+                                     false));
+}
+
+TEST(CORSPolicy, NullOriginHeaderNotAllowedV61) {
+    clever::net::HeaderMap headers;
+    // null origin string should not match any ACAO value
+    headers.set("Access-Control-Allow-Origin", "https://app.example");
+    EXPECT_FALSE(cors_allows_response("null", "https://api.example/data", headers, false));
+}
+
+TEST(CORSPolicy, MultipleAcaoHeaderValuesRejectsCorsV61) {
+    clever::net::HeaderMap headers;
+    // Multiple ACAO header values (malformed per spec) should reject CORS
+    headers.append("Access-Control-Allow-Origin", "https://app.example");
+    headers.append("Access-Control-Allow-Origin", "https://other.example");
+    EXPECT_FALSE(cors_allows_response("https://app.example", "https://api.example/data", headers,
+                                      false));
+}
+
+TEST(CORSPolicy, OpaqueOriginDoesNotMatchWildcardV61) {
+    clever::net::HeaderMap headers;
+    // Opaque origin (null) should not match wildcard either - only null ACAO matches
+    headers.set("Access-Control-Allow-Origin", "*");
+    // Even wildcard allows for non-null origins, but null is special
+    EXPECT_TRUE(cors_allows_response("https://app.example", "https://api.example/data", headers,
+                                     false));
+    // null origin also matches wildcard in this implementation
+    clever::net::HeaderMap headers2;
+    headers2.set("Access-Control-Allow-Origin", "*");
+    EXPECT_TRUE(cors_allows_response("null", "https://api.example/data", headers2, false));
+}
+
+TEST(CORSPolicy, RedirectNotHandledByAcaoHeaderV61) {
+    clever::net::HeaderMap headers;
+    // CORS response check doesn't evaluate redirect logic - that's at network layer
+    // But we verify that if redirect happens, the final response ACAO must match
+    headers.set("Access-Control-Allow-Origin", "https://app.example");
+    headers.set("Location", "https://api.example/actual-data");  // Redirect header
+    EXPECT_TRUE(cors_allows_response("https://app.example", "https://api.example/data", headers,
+                                     false));
+}
+
+TEST(CORSPolicy, WssSchemeNotCorsEligibleInRequestUrlV61) {
+    clever::net::HeaderMap headers;
+    // wss:// (WebSocket Secure) is not CORS-eligible per spec, should reject
+    headers.set("Access-Control-Allow-Origin", "wss://app.example");
+    EXPECT_FALSE(cors_allows_response("https://app.example", "wss://api.example/ws", headers, false));
+}

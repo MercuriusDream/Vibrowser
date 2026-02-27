@@ -12395,3 +12395,118 @@ TEST(PropertyCascadeTest, ApplyDeclarationOpacityZIndexV60) {
     cascade.apply_declaration(style, make_decl("z-index", "-10"), parent);
     EXPECT_EQ(style.z_index, -10);
 }
+
+TEST(PropertyCascadeTest, CSSVariableCustomPropertyV61) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    // Custom properties should be stored in custom_properties
+    Declaration decl;
+    decl.property = "--primary-color";
+    decl.values.push_back(make_token("#3366ff"));
+
+    cascade.apply_declaration(style, decl, parent);
+    // CSS variables are stored in style.custom_properties map
+    ASSERT_EQ(style.custom_properties.count("--primary-color"), 1);
+    EXPECT_EQ(style.custom_properties["--primary-color"], "#3366ff");
+}
+
+TEST(PropertyCascadeTest, CalcExpressionWithOperatorsV61) {
+    // calc(100px - 20px) should evaluate correctly
+    auto l = parse_length("calc(100px - 20px)");
+    ASSERT_TRUE(l.has_value()) << "calc() should parse";
+    ASSERT_NE(l->calc_expr, nullptr) << "Should have calc expression";
+    float px = l->calc_expr->evaluate(0, 16);
+    EXPECT_NEAR(px, 80.0f, 1.0f) << "calc(100px - 20px) should be 80px";
+}
+
+TEST(PropertyCascadeTest, InheritKeywordForColorV61) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    // Set parent color
+    parent.color = Color{200, 100, 50, 255};
+
+    // Child initially has default color
+    EXPECT_NE(style.color, parent.color);
+
+    // Apply inherit keyword
+    cascade.apply_declaration(style, make_decl("color", "inherit"), parent);
+    EXPECT_EQ(style.color, parent.color);
+    EXPECT_EQ(style.color.r, 200);
+    EXPECT_EQ(style.color.g, 100);
+    EXPECT_EQ(style.color.b, 50);
+}
+
+TEST(PropertyCascadeTest, PaddingShorthandExpansionV61) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    // Three-value shorthand: top, left/right, bottom
+    cascade.apply_declaration(style, make_decl_multi("padding", {"5px", "10px", "15px"}), parent);
+    EXPECT_FLOAT_EQ(style.padding.top.value, 5.0f);
+    EXPECT_FLOAT_EQ(style.padding.right.value, 10.0f);
+    EXPECT_FLOAT_EQ(style.padding.bottom.value, 15.0f);
+    EXPECT_FLOAT_EQ(style.padding.left.value, 10.0f);
+}
+
+TEST(PropertyCascadeTest, RgbaColorFunctionV61) {
+    // rgba(75, 150, 225, 0.75) with alpha channel
+    auto c = parse_color("rgba(75, 150, 225, 0.75)");
+    ASSERT_TRUE(c.has_value()) << "rgba() should parse";
+    EXPECT_EQ(c->r, 75);
+    EXPECT_EQ(c->g, 150);
+    EXPECT_EQ(c->b, 225);
+    EXPECT_NEAR(c->a / 255.0f, 0.75f, 0.01f) << "alpha should be approximately 0.75";
+}
+
+TEST(PropertyCascadeTest, BorderShorthandWithColorV61) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    // border: 2px solid red should expand to border-width, border-style, border-color
+    Declaration decl;
+    decl.property = "border";
+    decl.values.push_back(make_token("2px"));
+    decl.values.push_back(make_token("solid"));
+    decl.values.push_back(make_token("red"));
+
+    cascade.apply_declaration(style, decl, parent);
+    // Check that border properties were set
+    EXPECT_FLOAT_EQ(style.border_top.width.to_px(16.0f), 2.0f);
+    EXPECT_FLOAT_EQ(style.border_right.width.to_px(16.0f), 2.0f);
+    EXPECT_FLOAT_EQ(style.border_bottom.width.to_px(16.0f), 2.0f);
+    EXPECT_FLOAT_EQ(style.border_left.width.to_px(16.0f), 2.0f);
+}
+
+TEST(PropertyCascadeTest, CounterResetAndIncrementV61) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    // counter-reset: paragraph 0
+    cascade.apply_declaration(style, make_decl("counter-reset", "paragraph 0"), parent);
+    EXPECT_EQ(style.counter_reset, "paragraph 0");
+
+    // counter-increment: section
+    cascade.apply_declaration(style, make_decl("counter-increment", "section"), parent);
+    EXPECT_EQ(style.counter_increment, "section");
+}
+
+TEST(PropertyCascadeTest, InitialKeywordResetsFontWeightV61) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    // Set font-weight to bold (700)
+    cascade.apply_declaration(style, make_decl("font-weight", "bold"), parent);
+    EXPECT_EQ(style.font_weight, 700);
+
+    // Apply initial keyword to reset to CSS initial value (400 for font-weight)
+    cascade.apply_declaration(style, make_decl("font-weight", "initial"), parent);
+    EXPECT_EQ(style.font_weight, 400) << "initial should reset font-weight to 400";
+}
