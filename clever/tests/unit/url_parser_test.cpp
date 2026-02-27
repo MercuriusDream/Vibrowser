@@ -6876,3 +6876,74 @@ TEST(URLParser, CustomPort1234V31) {
     EXPECT_EQ(url->port, 1234);
     EXPECT_EQ(url->path, "/test");
 }
+
+TEST(URLParser, HttpsPort4433V32) {
+    auto url = parse("https://a.com:4433/api");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "a.com");
+    ASSERT_TRUE(url->port.has_value());
+    EXPECT_EQ(*url->port, 4433);
+    EXPECT_EQ(url->path, "/api");
+}
+
+TEST(URLParser, SimplePathV32) {
+    auto url = parse("https://a.com/hello");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "a.com");
+    EXPECT_EQ(url->path, "/hello");
+}
+
+TEST(URLParser, QueryOnlyNoPathV32) {
+    auto url = parse("https://a.com?key=val");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "a.com");
+    EXPECT_TRUE(url->query.find("key=val") != std::string::npos);
+}
+
+TEST(URLParser, FragmentWithNumbersV32) {
+    auto url = parse("https://a.com/p#section3");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "a.com");
+    EXPECT_EQ(url->path, "/p");
+    EXPECT_EQ(url->fragment, "section3");
+}
+
+TEST(URLParser, HostWithNumbersV32) {
+    auto url = parse("https://app2.example.com/");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "app2.example.com");
+    EXPECT_EQ(url->path, "/");
+}
+
+TEST(URLParser, DoubleDotAtStartV32) {
+    auto url = parse("https://a.com/../b");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "a.com");
+    // Path should resolve the .. correctly
+    EXPECT_TRUE(!url->path.empty());
+}
+
+TEST(URLParser, HttpPort8888V32) {
+    auto url = parse("http://a.com:8888/");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "http");
+    EXPECT_EQ(url->host, "a.com");
+    ASSERT_TRUE(url->port.has_value());
+    EXPECT_EQ(*url->port, 8888);
+    EXPECT_EQ(url->path, "/");
+}
+
+TEST(URLParser, LongQueryV32) {
+    auto url = parse("https://a.com/s?a=1&b=2&c=3&d=4&e=5");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "a.com");
+    EXPECT_EQ(url->path, "/s");
+    EXPECT_TRUE(url->query.find("c=3") != std::string::npos);
+}

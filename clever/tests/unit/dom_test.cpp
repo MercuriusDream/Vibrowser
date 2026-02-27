@@ -8082,3 +8082,73 @@ TEST(DomElement, ClassListRemoveNonexistentV2) {
     EXPECT_TRUE(el->class_list().contains("active"));
     EXPECT_FALSE(el->class_list().contains("nonexistent"));
 }
+
+TEST(DomElement, TagNameRbV2) {
+    Document doc;
+    auto el = doc.create_element("rb");
+    EXPECT_FALSE(el->tag_name().empty());
+    EXPECT_EQ(el->tag_name(), "rb");
+}
+
+TEST(DomElement, TagNameRtcV2) {
+    Document doc;
+    auto el = doc.create_element("rtc");
+    EXPECT_FALSE(el->tag_name().empty());
+    EXPECT_EQ(el->tag_name(), "rtc");
+}
+
+TEST(DomElement, SetAttributeAriaDescribedby) {
+    Document doc;
+    auto el = doc.create_element("input");
+    el->set_attribute("aria-describedby", "info");
+    EXPECT_EQ(el->get_attribute("aria-describedby"), "info");
+    EXPECT_TRUE(el->has_attribute("aria-describedby"));
+}
+
+TEST(DomElement, SetAttributeAutocompleteV2) {
+    Document doc;
+    auto el = doc.create_element("input");
+    el->set_attribute("autocomplete", "off");
+    EXPECT_EQ(el->get_attribute("autocomplete"), "off");
+    EXPECT_TRUE(el->has_attribute("autocomplete"));
+}
+
+TEST(DomElement, ForEachChildWithThreeChildrenV2) {
+    Document doc;
+    auto el = doc.create_element("div");
+    auto child1 = doc.create_element("span");
+    auto child2 = doc.create_element("span");
+    auto child3 = doc.create_element("span");
+    el->append_child(std::move(child1));
+    el->append_child(std::move(child2));
+    el->append_child(std::move(child3));
+    int count = 0;
+    el->for_each_child([&count](const auto&) { ++count; });
+    EXPECT_EQ(count, 3);
+}
+
+TEST(DomElement, RemoveAttributeMinlength) {
+    Document doc;
+    auto el = doc.create_element("input");
+    el->set_attribute("minlength", "5");
+    EXPECT_TRUE(el->has_attribute("minlength"));
+    el->remove_attribute("minlength");
+    EXPECT_EQ(el->get_attribute("minlength"), std::nullopt);
+}
+
+TEST(DomElement, HasAttributePattern) {
+    Document doc;
+    auto el = doc.create_element("input");
+    el->set_attribute("pattern", "[A-Z]+");
+    EXPECT_TRUE(el->has_attribute("pattern"));
+    EXPECT_EQ(el->get_attribute("pattern"), "[A-Z]+");
+}
+
+TEST(DomElement, ClassListToggleReturnVoid) {
+    Document doc;
+    auto el = doc.create_element("button");
+    el->class_list().toggle("active");
+    EXPECT_TRUE(el->class_list().contains("active"));
+    el->class_list().toggle("active");
+    EXPECT_FALSE(el->class_list().contains("active"));
+}

@@ -9790,3 +9790,59 @@ TEST(LayoutNodeProps, MaxHeightSetAndCheckV40) {
     n.max_height = 500.0f;
     EXPECT_FLOAT_EQ(n.max_height, 500.0f);
 }
+
+TEST(LayoutNodeProps, FlexShrinkSetV41) {
+    using namespace clever::layout;
+    LayoutNode n;
+    n.flex_shrink = 0.5f;
+    EXPECT_FLOAT_EQ(n.flex_shrink, 0.5f);
+}
+
+TEST(LayoutNodeProps, LineHeightSetV41) {
+    using namespace clever::layout;
+    LayoutNode n;
+    n.line_height = 1.5f;
+    EXPECT_FLOAT_EQ(n.line_height, 1.5f);
+}
+
+TEST(LayoutNodeProps, TransformOriginXSetV41) {
+    using namespace clever::layout;
+    LayoutNode n;
+    n.transform_origin_x = 25.0f;
+    EXPECT_FLOAT_EQ(n.transform_origin_x, 25.0f);
+}
+
+TEST(LayoutNodeProps, TransformOriginYSetV41) {
+    using namespace clever::layout;
+    LayoutNode n;
+    n.transform_origin_y = 75.0f;
+    EXPECT_FLOAT_EQ(n.transform_origin_y, 75.0f);
+}
+
+TEST(LayoutNodeProps, GeometryWidthSetV41) {
+    using namespace clever::layout;
+    LayoutNode n;
+    n.geometry.width = 300.0f;
+    EXPECT_FLOAT_EQ(n.geometry.width, 300.0f);
+}
+
+TEST(LayoutNodeProps, GeometryHeightSetV41) {
+    using namespace clever::layout;
+    LayoutNode n;
+    n.geometry.height = 200.0f;
+    EXPECT_FLOAT_EQ(n.geometry.height, 200.0f);
+}
+
+TEST(LayoutNodeProps, TagNameSetV41) {
+    using namespace clever::layout;
+    LayoutNode n;
+    n.tag_name = "section";
+    EXPECT_EQ(n.tag_name, "section");
+}
+
+TEST(LayoutNodeProps, MinHeightSetV41) {
+    using namespace clever::layout;
+    LayoutNode n;
+    n.min_height = 50.0f;
+    EXPECT_FLOAT_EQ(n.min_height, 50.0f);
+}

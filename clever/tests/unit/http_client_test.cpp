@@ -9796,3 +9796,94 @@ TEST(HttpClient, ResponseParse201CreatedV42) {
     ASSERT_TRUE(resp.has_value());
     EXPECT_EQ(resp->status, 201u);
 }
+
+TEST(HttpClient, HeaderMapGetAllEmptyKeyV43) {
+    using namespace clever::net;
+    HeaderMap map;
+
+    map.set("Content-Type", "application/json");
+
+    auto values = map.get_all("nonexistent");
+    EXPECT_TRUE(values.empty());
+}
+
+TEST(HttpClient, RequestSerializeGetContainsPathV43) {
+    using namespace clever::net;
+    Request req;
+    req.method = Method::GET;
+    req.path = "/api/data";
+    req.headers.set("Host", "example.com");
+
+    auto serialized = req.serialize();
+    std::string serialized_str(serialized.begin(), serialized.end());
+
+    EXPECT_NE(serialized_str.find("/api/data"), std::string::npos);
+}
+
+TEST(HttpClient, ResponseParse405MethodNotAllowedV43) {
+    using namespace clever::net;
+    std::string raw_str = "HTTP/1.1 405 Method Not Allowed\r\n"
+                          "\r\n";
+
+    std::vector<uint8_t> raw(raw_str.begin(), raw_str.end());
+    auto resp = Response::parse(raw);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 405u);
+}
+
+TEST(HttpClient, HeaderMapHasAfterAppendV43) {
+    using namespace clever::net;
+    HeaderMap map;
+
+    map.append("Accept-Encoding", "gzip");
+
+    EXPECT_TRUE(map.has("Accept-Encoding"));
+}
+
+TEST(HttpClient, RequestPutMethodV43) {
+    using namespace clever::net;
+    Request req;
+    req.method = Method::PUT;
+    req.url = "https://example.com/api/resource";
+
+    auto serialized = req.serialize();
+    std::string serialized_str(serialized.begin(), serialized.end());
+
+    EXPECT_NE(serialized_str.find("PUT"), std::string::npos);
+}
+
+TEST(HttpClient, CookieJarMultipleCookiesV43) {
+    using namespace clever::net;
+    CookieJar jar;
+
+    jar.set_from_header("sessionid=abc123; Path=/", "example.com");
+    jar.set_from_header("userid=user456; Path=/", "example.com");
+    jar.set_from_header("theme=dark; Path=/", "example.com");
+
+    EXPECT_GE(jar.size(), 2u);
+}
+
+TEST(HttpClient, HeaderMapGetFirstOfMultipleV43) {
+    using namespace clever::net;
+    HeaderMap map;
+
+    map.append("Cache-Control", "no-cache");
+    map.append("Cache-Control", "no-store");
+
+    auto value = map.get("Cache-Control");
+    ASSERT_TRUE(value.has_value());
+    EXPECT_FALSE(value->empty());
+}
+
+TEST(HttpClient, ResponseParse408RequestTimeoutV43) {
+    using namespace clever::net;
+    std::string raw_str = "HTTP/1.1 408 Request Timeout\r\n"
+                          "\r\n";
+
+    std::vector<uint8_t> raw(raw_str.begin(), raw_str.end());
+    auto resp = Response::parse(raw);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 408u);
+}

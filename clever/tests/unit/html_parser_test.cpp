@@ -8574,3 +8574,59 @@ TEST(TreeBuilder, SmallElementV28) {
     ASSERT_NE(el, nullptr);
     EXPECT_EQ(el->tag_name, "small");
 }
+
+TEST(TreeBuilder, InsElementV29) {
+    auto doc = clever::html::parse("<html><body><p>This is <ins>inserted</ins> text.</p></body></html>");
+    auto* el = doc->find_element("ins");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "ins");
+}
+
+TEST(TreeBuilder, SubElementV29) {
+    auto doc = clever::html::parse("<html><body><p>H<sub>2</sub>O is water.</p></body></html>");
+    auto* el = doc->find_element("sub");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "sub");
+}
+
+TEST(TreeBuilder, SupElementV29) {
+    auto doc = clever::html::parse("<html><body><p>E=mc<sup>2</sup></p></body></html>");
+    auto* el = doc->find_element("sup");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "sup");
+}
+
+TEST(TreeBuilder, MarkElementV29) {
+    auto doc = clever::html::parse("<html><body><p>This is <mark>highlighted</mark> text.</p></body></html>");
+    auto* el = doc->find_element("mark");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "mark");
+}
+
+TEST(TreeBuilder, QElementV29) {
+    auto doc = clever::html::parse("<html><body><p>He said <q>hello</q> to me.</p></body></html>");
+    auto* el = doc->find_element("q");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "q");
+}
+
+TEST(TreeBuilder, StrongElementV29) {
+    auto doc = clever::html::parse("<html><body><p>This is <strong>very important</strong> text.</p></body></html>");
+    auto* el = doc->find_element("strong");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "strong");
+}
+
+TEST(TreeBuilder, EmElementV29) {
+    auto doc = clever::html::parse("<html><body><p>This is <em>emphasized</em> text.</p></body></html>");
+    auto* el = doc->find_element("em");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "em");
+}
+
+TEST(TreeBuilder, SpanWithClassV29) {
+    auto doc = clever::html::parse("<html><body><p>This is <span class=\"test\">a span</span> element.</p></body></html>");
+    auto* el = doc->find_element("span");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "span");
+}

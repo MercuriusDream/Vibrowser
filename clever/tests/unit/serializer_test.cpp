@@ -8025,3 +8025,85 @@ TEST(Serializer, EmptySerializerHasNoRemainingV39) {
     Deserializer d(s.data());
     EXPECT_FALSE(d.has_remaining());
 }
+
+TEST(Serializer, RoundtripU16BoundaryV40) {
+    Serializer s;
+    s.write_u16(256);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u16(), 256);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(Serializer, RoundtripI32TenThousandV40) {
+    Serializer s;
+    s.write_i32(10000);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i32(), 10000);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(Serializer, RoundtripF64PiV40) {
+    Serializer s;
+    s.write_f64(3.14159265358979);
+
+    Deserializer d(s.data());
+    EXPECT_DOUBLE_EQ(d.read_f64(), 3.14159265358979);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(Serializer, RoundtripStringLongV40) {
+    Serializer s;
+    std::string long_str(5000, 'a');
+    s.write_string(long_str);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), long_str);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(Serializer, RoundtripBytesSingleZeroV40) {
+    Serializer s;
+    uint8_t byte = 0x00;
+    s.write_bytes(&byte, 1);
+
+    Deserializer d(s.data());
+    auto result = d.read_bytes();
+    EXPECT_EQ(result.size(), 1);
+    EXPECT_EQ(result[0], 0x00u);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(Serializer, RoundtripU32PowerOfTwoV40) {
+    Serializer s;
+    s.write_u32(1048576);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u32(), 1048576);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(Serializer, RoundtripI64MinusMillionV40) {
+    Serializer s;
+    s.write_i64(-1000000LL);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i64(), -1000000LL);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(Serializer, MultipleStringsAndBoolsV40) {
+    Serializer s;
+    s.write_string("hello");
+    s.write_bool(true);
+    s.write_string("world");
+    s.write_bool(false);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "hello");
+    EXPECT_TRUE(d.read_bool());
+    EXPECT_EQ(d.read_string(), "world");
+    EXPECT_FALSE(d.read_bool());
+    EXPECT_FALSE(d.has_remaining());
+}

@@ -20290,3 +20290,59 @@ TEST(JSEngine, MathCeilCycle1452) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "5");
 }
+
+TEST(JSEngine, ObjectEntriesCycle1461) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("Object.entries({a:1,b:2}).length");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "2");
+}
+
+TEST(JSEngine, ArrayFlatCycle1461) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("[1,[2,[3]]].flat(Infinity).join(\",\")");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1,2,3");
+}
+
+TEST(JSEngine, StringPadEndCycle1461) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("\"hi\".padEnd(5,\"!\")");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "hi!!!");
+}
+
+TEST(JSEngine, StringPadStartCycle1461) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("\"42\".padStart(5,\"0\")");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "00042");
+}
+
+TEST(JSEngine, NumberParseFloatCycle1461) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("parseFloat(\"3.14\")");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "3.14");
+}
+
+TEST(JSEngine, NumberParseIntCycle1461) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("parseInt(\"0xFF\",16)");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "255");
+}
+
+TEST(JSEngine, MathTruncCycle1461) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("Math.trunc(4.9)");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "4");
+}
+
+TEST(JSEngine, ArrayFromStringCycle1461) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("Array.from(\"abc\").join(\",\")");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "a,b,c");
+}
