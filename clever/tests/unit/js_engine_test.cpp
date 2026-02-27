@@ -15876,3 +15876,68 @@ TEST(JSEngine, ClassStaticField) {
         "class Config { static version = '1.0'; } Config.version");
     EXPECT_EQ(result, "1.0");
 }
+
+// Cycle 801 — Generator advanced: multiple yields, for-of, spread, fibonacci, throw
+TEST(JSEngine, GeneratorFourYields) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "function* gen() { yield 1; yield 2; yield 3; yield 4; }"
+        "const g = gen(); g.next().value + g.next().value + g.next().value + g.next().value");
+    EXPECT_EQ(result, "10");
+}
+
+TEST(JSEngine, GeneratorCompletedReturnsDone) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "function* gen() { yield 1; }"
+        "const g = gen(); g.next(); g.next().done");
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, GeneratorInForOf) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "function* range(n) { for (let i = 0; i < n; i++) yield i; }"
+        "let sum = 0; for (const v of range(5)) sum += v; sum");
+    EXPECT_EQ(result, "10");
+}
+
+TEST(JSEngine, ArrayFromGenerator) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "function* gen() { yield 'a'; yield 'b'; yield 'c'; }"
+        "Array.from(gen()).join('')");
+    EXPECT_EQ(result, "abc");
+}
+
+TEST(JSEngine, SpreadFromGenerator) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "function* nums() { yield 1; yield 2; yield 3; }"
+        "[...nums()].length");
+    EXPECT_EQ(result, "3");
+}
+
+TEST(JSEngine, GeneratorFibonacciSequence) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "function* fib() { let a=0,b=1; while(true) { yield a; [a,b]=[b,a+b]; } }"
+        "const g = fib(); [g.next().value,g.next().value,g.next().value,g.next().value,g.next().value].join(',')");
+    EXPECT_EQ(result, "0,1,1,2,3");
+}
+
+TEST(JSEngine, GeneratorReturnValueProp) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "function* gen() { yield 42; return 'done'; }"
+        "const g = gen(); g.next().value");
+    EXPECT_EQ(result, "42");
+}
+
+TEST(JSEngine, GeneratorNextWithArgument) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "function* gen() { const x = yield 1; yield x * 2; }"
+        "const g = gen(); g.next(); g.next(5).value");
+    EXPECT_EQ(result, "10");
+}
