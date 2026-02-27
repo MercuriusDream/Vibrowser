@@ -4502,3 +4502,74 @@ TEST(TreeBuilder, AnchorRelAttr) {
         if (attr.name == "rel" && attr.value == "noopener noreferrer") found = true;
     EXPECT_TRUE(found);
 }
+
+TEST(TreeBuilder, SectionElement) {
+    auto doc = clever::html::parse("<body><section>Content</section></body>");
+    auto* el = doc->find_element("section");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "section");
+}
+
+TEST(TreeBuilder, FigureElement) {
+    auto doc = clever::html::parse("<body><figure><img src=\"photo.jpg\"></figure></body>");
+    auto* el = doc->find_element("figure");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "figure");
+}
+
+TEST(TreeBuilder, FigcaptionElement) {
+    auto doc = clever::html::parse("<body><figure><figcaption>Caption</figcaption></figure></body>");
+    auto* el = doc->find_element("figcaption");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "figcaption");
+}
+
+TEST(TreeBuilder, LinkFavicon) {
+    auto doc = clever::html::parse("<head><link rel=\"icon\" href=\"favicon.ico\"></head><body></body>");
+    auto* el = doc->find_element("link");
+    ASSERT_NE(el, nullptr);
+    bool found = false;
+    for (const auto& attr : el->attributes)
+        if (attr.name == "rel" && attr.value == "icon") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, ScriptSrcAttr) {
+    auto doc = clever::html::parse("<body><script src=\"app.js\"></script></body>");
+    auto* el = doc->find_element("script");
+    ASSERT_NE(el, nullptr);
+    bool found = false;
+    for (const auto& attr : el->attributes)
+        if (attr.name == "src" && attr.value == "app.js") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, InputMinAttr) {
+    auto doc = clever::html::parse("<body><input type=\"number\" min=\"0\"></body>");
+    auto* el = doc->find_element("input");
+    ASSERT_NE(el, nullptr);
+    bool found = false;
+    for (const auto& attr : el->attributes)
+        if (attr.name == "min" && attr.value == "0") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, InputMaxAttr) {
+    auto doc = clever::html::parse("<body><input type=\"number\" max=\"100\"></body>");
+    auto* el = doc->find_element("input");
+    ASSERT_NE(el, nullptr);
+    bool found = false;
+    for (const auto& attr : el->attributes)
+        if (attr.name == "max" && attr.value == "100") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, InputPlaceholderAttr) {
+    auto doc = clever::html::parse("<body><input type=\"text\" placeholder=\"Enter name\"></body>");
+    auto* el = doc->find_element("input");
+    ASSERT_NE(el, nullptr);
+    bool found = false;
+    for (const auto& attr : el->attributes)
+        if (attr.name == "placeholder" && attr.value == "Enter name") found = true;
+    EXPECT_TRUE(found);
+}
