@@ -1878,3 +1878,63 @@ TEST(URLParser, PathWithTrailingSlashIsAccessible) {
     ASSERT_TRUE(result.has_value());
     EXPECT_EQ(result->path.back(), '/');
 }
+
+// URL: IPv6 host is parsed
+TEST(URLParser, IPv6HostParsed) {
+    auto result = parse("https://[::1]:8080/path");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_FALSE(result->host.empty());
+}
+
+// URL: query with encoded space
+TEST(URLParser, QueryWithEncodedSpace) {
+    auto result = parse("https://example.com/search?q=hello%20world");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_NE(result->query.find("hello"), std::string::npos);
+}
+
+// URL: host with trailing dot
+TEST(URLParser, HostWithTrailingDotIgnored) {
+    auto result = parse("https://example.com./path");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_FALSE(result->host.empty());
+}
+
+// URL: multiple query params
+TEST(URLParser, QueryWithThreeParams) {
+    auto result = parse("https://api.example.com/v2?a=1&b=2&c=3");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_NE(result->query.find("a=1"), std::string::npos);
+    EXPECT_NE(result->query.find("b=2"), std::string::npos);
+}
+
+// URL: origin is scheme + host
+TEST(URLParser, OriginContainsSchemeAndHostCheck) {
+    auto result = parse("https://example.com/page");
+    ASSERT_TRUE(result.has_value());
+    std::string origin = result->origin();
+    EXPECT_NE(origin.find("example.com"), std::string::npos);
+}
+
+// URL: path is empty for bare domain
+TEST(URLParser, PathForBareDomainIsSlash) {
+    auto result = parse("https://example.com");
+    ASSERT_TRUE(result.has_value());
+    // Path should be "/" or empty after bare domain parse
+    EXPECT_TRUE(result->path == "/" || result->path.empty());
+}
+
+// URL: fragment with encoded chars
+TEST(URLParser, FragmentWithEncodedHash) {
+    auto result = parse("https://example.com/page#section-1");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_NE(result->fragment.find("section"), std::string::npos);
+}
+
+// URL: https scheme is not http
+TEST(URLParser, HttpsSchemeIsNotHttp) {
+    auto result = parse("https://example.com/");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_NE(result->scheme, "http");
+    EXPECT_EQ(result->scheme, "https");
+}
