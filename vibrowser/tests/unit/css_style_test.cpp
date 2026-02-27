@@ -14422,3 +14422,122 @@ TEST(CSSStyleTest, LastDeclarationWinsV77) {
     cascade.apply_declaration(style, make_decl("display", "inline"), parent);
     EXPECT_EQ(style.display, Display::Inline);
 }
+
+TEST(CSSStyleTest, ParseDisplayNoneV78) {
+    const std::string css = "div{display:none;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.display, Display::None);
+}
+
+TEST(CSSStyleTest, ParsePositionAbsoluteV78) {
+    const std::string css = "div{position:absolute;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.position, Position::Absolute);
+}
+
+TEST(CSSStyleTest, ParseVisibilityHiddenV78) {
+    const std::string css = "div{visibility:hidden;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.visibility, Visibility::Hidden);
+}
+
+TEST(CSSStyleTest, DefaultComputedStyleIsInlineV78) {
+    ComputedStyle style;
+    EXPECT_EQ(style.display, Display::Inline);
+}
+
+TEST(CSSStyleTest, ParseColorRedV78) {
+    const std::string css = "p{color:red;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "p";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.color.r, 255);
+}
+
+TEST(CSSStyleTest, ParseBackgroundColorBlueV78) {
+    const std::string css = "p{background-color:blue;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "p";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.background_color.b, 255);
+}
+
+TEST(CSSStyleTest, ParseMarginShorthandV78) {
+    const std::string css = "div{margin:10px;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.margin.top.to_px(), 10.0f);
+}
+
+TEST(CSSStyleTest, InheritedFontSizeFromParentV78) {
+    const std::string css = "p{font-size:20px;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ComputedStyle parent;
+    parent.font_size = Length::px(20.0f);
+
+    ElementView child_elem;
+    child_elem.tag_name = "span";
+
+    auto child_style = resolver.resolve(child_elem, parent);
+
+    EXPECT_EQ(child_style.font_size.to_px(), 20.0f);
+}

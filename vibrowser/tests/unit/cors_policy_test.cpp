@@ -5943,3 +5943,47 @@ TEST(CORSPolicyTest, AboutBlankNotCorsEligibleV77) {
 TEST(CORSPolicyTest, SameOriginSamePortNotCrossOriginV77) {
     EXPECT_FALSE(is_cross_origin("https://example.com", "https://example.com/api/data"));
 }
+
+TEST(CORSPolicyTest, HttpsToHttpIsCrossOriginV78) {
+    EXPECT_TRUE(is_cross_origin("https://example.com", "http://example.com"));
+}
+
+TEST(CORSPolicyTest, DifferentPortIsCrossOriginV78) {
+    EXPECT_TRUE(is_cross_origin("https://example.com:8443", "https://example.com:9443"));
+}
+
+TEST(CORSPolicyTest, SameOriginDifferentPathNotCrossV78) {
+    EXPECT_FALSE(is_cross_origin("https://example.com/api/users", "https://example.com/api/posts"));
+}
+
+TEST(CORSPolicyTest, NullOriginMatchesAcaoNullV78) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "null");
+    EXPECT_TRUE(cors_allows_response("null", "https://api.example/data", headers, false));
+}
+
+TEST(CORSPolicyTest, AcaoMatchNoCredAllowsV78) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "https://app.example");
+    EXPECT_TRUE(
+        cors_allows_response("https://app.example", "https://api.example/data", headers, false));
+}
+
+TEST(CORSPolicyTest, WildcardNoCredAllowsV78) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "*");
+    EXPECT_TRUE(
+        cors_allows_response("https://client.example", "https://api.example/resource", headers, false));
+}
+
+TEST(CORSPolicyTest, WildcardWithCredRejectsV78) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "*");
+    headers.set("Access-Control-Allow-Credentials", "true");
+    EXPECT_FALSE(
+        cors_allows_response("https://client.example", "https://api.example/resource", headers, true));
+}
+
+TEST(CORSPolicyTest, JavascriptUrlNotCorsEligibleV78) {
+    EXPECT_FALSE(is_cors_eligible_request_url("javascript:alert('test')"));
+}

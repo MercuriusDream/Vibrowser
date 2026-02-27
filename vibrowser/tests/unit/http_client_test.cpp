@@ -14399,3 +14399,65 @@ TEST(HttpClientTest, CookieJarEmptyReturnsEmptyHeaderV77) {
 TEST(HttpClientTest, MethodPatchToStringV77) {
     EXPECT_EQ(method_to_string(Method::PATCH), "PATCH");
 }
+
+TEST(HttpClientTest, HeaderMapAppendMultiValueV78) {
+    HeaderMap headers;
+    headers.append("Accept", "application/json");
+    headers.append("Accept", "text/html");
+
+    // Verify both values are present via get_all
+    auto all = headers.get_all("Accept");
+    EXPECT_EQ(all.size(), 2u);
+    EXPECT_NE(std::find(all.begin(), all.end(), "application/json"), all.end());
+    EXPECT_NE(std::find(all.begin(), all.end(), "text/html"), all.end());
+}
+
+TEST(HttpClientTest, RequestMethodDefaultIsGetV78) {
+    Request req;
+    EXPECT_EQ(req.method, Method::GET);
+}
+
+TEST(HttpClientTest, ResponseBodyInitiallyEmptyV78) {
+    Response resp;
+    EXPECT_TRUE(resp.body.empty());
+    EXPECT_EQ(resp.body.size(), 0u);
+}
+
+TEST(HttpClientTest, CookieJarSizeIncreasesV78) {
+    CookieJar jar;
+    EXPECT_EQ(jar.size(), 0u);
+
+    jar.set_from_header("cookie1=abc; Path=/", "example.com");
+    EXPECT_EQ(jar.size(), 1u);
+
+    jar.set_from_header("cookie2=xyz; Path=/", "example.com");
+    EXPECT_EQ(jar.size(), 2u);
+
+    jar.set_from_header("cookie3=123; Path=/", "example.com");
+    EXPECT_EQ(jar.size(), 3u);
+}
+
+TEST(HttpClientTest, StringToMethodCaseInsensitiveV78) {
+    // string_to_method should handle case-insensitive input
+    Method m1 = string_to_method("post");
+    Method m2 = string_to_method("POST");
+    EXPECT_EQ(m1, m2);
+    EXPECT_EQ(m1, Method::POST);
+}
+
+TEST(HttpClientTest, HeaderMapHasReturnsFalseInitiallyV78) {
+    HeaderMap headers;
+    EXPECT_FALSE(headers.has("x-custom"));
+    EXPECT_FALSE(headers.has("X-Custom-Header"));
+    EXPECT_FALSE(headers.has("Content-Type"));
+}
+
+TEST(HttpClientTest, RequestUrlFieldStoredV78) {
+    Request req;
+    req.url = "https://example.com/path";
+    EXPECT_EQ(req.url, "https://example.com/path");
+}
+
+TEST(HttpClientTest, MethodDeleteToStringV78) {
+    EXPECT_EQ(method_to_string(Method::DELETE_METHOD), "DELETE");
+}

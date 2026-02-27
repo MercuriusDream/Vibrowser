@@ -12196,3 +12196,141 @@ TEST(HTMLParserTest, SpanWithClassAttributeV77) {
     EXPECT_EQ(get_attr_v63(span, "class"), "highlight");
     EXPECT_EQ(span->text_content(), "text");
 }
+
+TEST(HTMLParserTest, TableStructureTrTdV78) {
+    auto doc = clever::html::parse("<html><body><table><tr><td>Cell</td></tr></table></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* table = doc->find_element("table");
+    ASSERT_NE(table, nullptr);
+    EXPECT_EQ(table->tag_name, "table");
+
+    auto* tr = doc->find_element("tr");
+    ASSERT_NE(tr, nullptr);
+    EXPECT_EQ(tr->tag_name, "tr");
+    EXPECT_EQ(tr->parent, table);
+
+    auto* td = doc->find_element("td");
+    ASSERT_NE(td, nullptr);
+    EXPECT_EQ(td->tag_name, "td");
+    EXPECT_EQ(td->parent, tr);
+    EXPECT_EQ(td->text_content(), "Cell");
+}
+
+TEST(HTMLParserTest, SelectWithOptionsV78) {
+    auto doc = clever::html::parse("<html><body><select><option>Option 1</option><option>Option 2</option></select></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* select = doc->find_element("select");
+    ASSERT_NE(select, nullptr);
+    EXPECT_EQ(select->tag_name, "select");
+
+    auto options = doc->find_all_elements("option");
+    ASSERT_EQ(options.size(), 2u);
+
+    EXPECT_EQ(options[0]->tag_name, "option");
+    EXPECT_EQ(options[0]->text_content(), "Option 1");
+    EXPECT_EQ(options[0]->parent, select);
+
+    EXPECT_EQ(options[1]->tag_name, "option");
+    EXPECT_EQ(options[1]->text_content(), "Option 2");
+    EXPECT_EQ(options[1]->parent, select);
+}
+
+TEST(HTMLParserTest, DlDtDdDefinitionListV78) {
+    auto doc = clever::html::parse("<html><body><dl><dt>Term</dt><dd>Definition</dd></dl></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* dl = doc->find_element("dl");
+    ASSERT_NE(dl, nullptr);
+    EXPECT_EQ(dl->tag_name, "dl");
+
+    auto* dt = doc->find_element("dt");
+    ASSERT_NE(dt, nullptr);
+    EXPECT_EQ(dt->tag_name, "dt");
+    EXPECT_EQ(dt->parent, dl);
+    EXPECT_EQ(dt->text_content(), "Term");
+
+    auto* dd = doc->find_element("dd");
+    ASSERT_NE(dd, nullptr);
+    EXPECT_EQ(dd->tag_name, "dd");
+    EXPECT_EQ(dd->parent, dl);
+    EXPECT_EQ(dd->text_content(), "Definition");
+}
+
+TEST(HTMLParserTest, StrongEmphasisTagsV78) {
+    auto doc = clever::html::parse("<html><body><p><strong>Bold</strong> and <em>Italic</em></p></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* strong = doc->find_element("strong");
+    ASSERT_NE(strong, nullptr);
+    EXPECT_EQ(strong->tag_name, "strong");
+    EXPECT_EQ(strong->text_content(), "Bold");
+
+    auto* em = doc->find_element("em");
+    ASSERT_NE(em, nullptr);
+    EXPECT_EQ(em->tag_name, "em");
+    EXPECT_EQ(em->text_content(), "Italic");
+}
+
+TEST(HTMLParserTest, BlockquoteCiteAttributeV78) {
+    auto doc = clever::html::parse("<html><body><blockquote cite='https://example.com'>Quote text</blockquote></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* blockquote = doc->find_element("blockquote");
+    ASSERT_NE(blockquote, nullptr);
+    EXPECT_EQ(blockquote->tag_name, "blockquote");
+    EXPECT_EQ(get_attr_v63(blockquote, "cite"), "https://example.com");
+    EXPECT_EQ(blockquote->text_content(), "Quote text");
+}
+
+TEST(HTMLParserTest, PreformattedTextV78) {
+    auto doc = clever::html::parse("<html><body><pre>Line 1\nLine 2</pre></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* pre = doc->find_element("pre");
+    ASSERT_NE(pre, nullptr);
+    EXPECT_EQ(pre->tag_name, "pre");
+    std::string content = pre->text_content();
+    EXPECT_TRUE(content.find("Line 1") != std::string::npos);
+    EXPECT_TRUE(content.find("Line 2") != std::string::npos);
+}
+
+TEST(HTMLParserTest, NavWithLinksV78) {
+    auto doc = clever::html::parse("<html><body><nav><a href='/home'>Home</a><a href='/about'>About</a></nav></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* nav = doc->find_element("nav");
+    ASSERT_NE(nav, nullptr);
+    EXPECT_EQ(nav->tag_name, "nav");
+
+    auto links = doc->find_all_elements("a");
+    ASSERT_EQ(links.size(), 2u);
+
+    EXPECT_EQ(links[0]->tag_name, "a");
+    EXPECT_EQ(get_attr_v63(links[0], "href"), "/home");
+    EXPECT_EQ(links[0]->text_content(), "Home");
+    EXPECT_EQ(links[0]->parent, nav);
+
+    EXPECT_EQ(links[1]->tag_name, "a");
+    EXPECT_EQ(get_attr_v63(links[1], "href"), "/about");
+    EXPECT_EQ(links[1]->text_content(), "About");
+    EXPECT_EQ(links[1]->parent, nav);
+}
+
+TEST(HTMLParserTest, MainElementFoundV78) {
+    auto doc = clever::html::parse("<html><body><main><h1>Content</h1><p>Main content</p></main></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* main = doc->find_element("main");
+    ASSERT_NE(main, nullptr);
+    EXPECT_EQ(main->tag_name, "main");
+
+    auto* h1 = doc->find_element("h1");
+    ASSERT_NE(h1, nullptr);
+    EXPECT_EQ(h1->parent, main);
+
+    auto* p = doc->find_element("p");
+    ASSERT_NE(p, nullptr);
+    EXPECT_EQ(p->parent, main);
+}

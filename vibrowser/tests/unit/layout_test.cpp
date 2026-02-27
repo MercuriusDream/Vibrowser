@@ -14313,3 +14313,166 @@ TEST(LayoutEngineTest, BackgroundColorPreservedAfterLayoutV77) {
     ASSERT_EQ(root->children.size(), 1u);
     EXPECT_EQ(root->children[0]->background_color, 0xFF12345Fu);
 }
+
+// Test V78_001: three children stack vertically
+TEST(LayoutEngineTest, ThreeChildrenStackedYPositionsV78) {
+    auto root = make_block("div");
+    root->specified_width = 300.0f;
+    root->specified_height = 400.0f;
+
+    auto child1 = make_block("div");
+    child1->specified_width = 100.0f;
+    child1->specified_height = 50.0f;
+    root->append_child(std::move(child1));
+
+    auto child2 = make_block("div");
+    child2->specified_width = 100.0f;
+    child2->specified_height = 60.0f;
+    root->append_child(std::move(child2));
+
+    auto child3 = make_block("div");
+    child3->specified_width = 100.0f;
+    child3->specified_height = 70.0f;
+    root->append_child(std::move(child3));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    ASSERT_EQ(root->children.size(), 3u);
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.y, 0.0f);
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.y, 50.0f);
+    EXPECT_FLOAT_EQ(root->children[2]->geometry.y, 110.0f);
+}
+
+// Test V78_002: no specified_width defaults to viewport width
+TEST(LayoutEngineTest, WidthConstrainedByViewportV78) {
+    auto root = make_block("div");
+    // Do not set specified_width
+    root->specified_height = 100.0f;
+
+    LayoutEngine engine;
+    engine.compute(*root, 640.0f, 480.0f);
+
+    EXPECT_FLOAT_EQ(root->geometry.width, 640.0f);
+}
+
+// Test V78_003: sibling margins affect child y position stacking
+TEST(LayoutEngineTest, BorderTopIncreasesChildYOffsetV78) {
+    auto root = make_block("div");
+    root->specified_width = 300.0f;
+    root->specified_height = 300.0f;
+
+    auto child1 = make_block("div");
+    child1->specified_width = 100.0f;
+    child1->specified_height = 50.0f;
+    child1->geometry.margin.bottom = 20.0f;
+
+    auto child2 = make_block("div");
+    child2->specified_width = 100.0f;
+    child2->specified_height = 60.0f;
+
+    root->append_child(std::move(child1));
+    root->append_child(std::move(child2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    ASSERT_EQ(root->children.size(), 2u);
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.y, 0.0f);
+    EXPECT_GT(root->children[1]->geometry.y, 50.0f);
+}
+
+// Test V78_004: opacity is preserved after layout computation
+TEST(LayoutEngineTest, OpacityPreservedAfterLayoutV78) {
+    auto root = make_block("div");
+    root->specified_width = 300.0f;
+    root->specified_height = 150.0f;
+
+    auto child = make_block("div");
+    child->specified_width = 100.0f;
+    child->specified_height = 75.0f;
+    child->opacity = 0.5f;
+
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    ASSERT_EQ(root->children.size(), 1u);
+    EXPECT_FLOAT_EQ(root->children[0]->opacity, 0.5f);
+}
+
+// Test V78_005: z_index is preserved after layout computation
+TEST(LayoutEngineTest, ZIndexPreservedAfterLayoutV78) {
+    auto root = make_block("div");
+    root->specified_width = 300.0f;
+    root->specified_height = 150.0f;
+
+    auto child = make_block("div");
+    child->specified_width = 100.0f;
+    child->specified_height = 75.0f;
+    child->z_index = 10;
+
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    ASSERT_EQ(root->children.size(), 1u);
+    EXPECT_EQ(root->children[0]->z_index, 10);
+}
+
+// Test V78_006: flex_grow defaults to 0
+TEST(LayoutEngineTest, FlexGrowDefaultZeroV78) {
+    using namespace clever::layout;
+    auto root = make_block("div");
+    root->specified_width = 300.0f;
+    root->specified_height = 150.0f;
+
+    auto child = make_block("div");
+    child->specified_width = 100.0f;
+    child->specified_height = 75.0f;
+    // flex_grow not set, should default to 0
+    EXPECT_FLOAT_EQ(child->flex_grow, 0.0f);
+
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    ASSERT_EQ(root->children.size(), 1u);
+    EXPECT_FLOAT_EQ(root->children[0]->flex_grow, 0.0f);
+}
+
+// Test V78_007: child width matches parent specified width when not constrained
+TEST(LayoutEngineTest, ChildWidthMatchesParentSpecifiedV78) {
+    auto root = make_block("div");
+    root->specified_width = 400.0f;
+    root->specified_height = 200.0f;
+
+    auto child = make_block("div");
+    // child specified_width not set, should match parent
+    child->specified_height = 50.0f;
+
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    ASSERT_EQ(root->children.size(), 1u);
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.width, 400.0f);
+}
+
+// Test V78_008: empty root layout computes correctly
+TEST(LayoutEngineTest, EmptyRootLayoutV78) {
+    auto root = make_block("div");
+    root->specified_width = 300.0f;
+    root->specified_height = 200.0f;
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_EQ(root->children.size(), 0u);
+    EXPECT_FLOAT_EQ(root->geometry.width, 300.0f);
+    EXPECT_FLOAT_EQ(root->geometry.height, 200.0f);
+}

@@ -23924,3 +23924,66 @@ TEST(JSEngineTest, PromiseResolveThenV77) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "84");
 }
+
+TEST(JSEngineTest, ArrayMapDoublesV78) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("[1,2,3].map(x=>x*2).join('|')");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "2|4|6");
+}
+
+TEST(JSEngineTest, ArrayFilterEvensV78) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("[1,2,3,4].filter(x=>x%2===0).join('|')");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "2|4");
+}
+
+TEST(JSEngineTest, ArrayFindFirstV78) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("[5,12,8].find(x=>x>10).toString()");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "12");
+}
+
+TEST(JSEngineTest, StringRepeatV78) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("\"ab\".repeat(3)");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "ababab");
+}
+
+TEST(JSEngineTest, StringIncludesV78) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("\"hello world\".includes(\"world\").toString()");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngineTest, NumberIsIntegerV78) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("Number.isInteger(42).toString()");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngineTest, ObjectAssignMergeV78) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var result = Object.assign({a:1},{b:2});
+        [result.a.toString(), result.b.toString()].join('|')
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1|2");
+}
+
+TEST(JSEngineTest, ArrayEveryAndSomeV78) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var everyResult = [2,4,6].every(x=>x%2===0);
+        var someResult = [1,3,4].some(x=>x%2===0);
+        [everyResult.toString(), someResult.toString()].join('|')
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true|true");
+}

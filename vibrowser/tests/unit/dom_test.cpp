@@ -12914,3 +12914,84 @@ TEST(DOMTest, RemoveChildReturnsOwnershipV77) {
     EXPECT_EQ(removed.get(), child_ptr);
     EXPECT_EQ(parent.child_count(), 0u);
 }
+
+TEST(DOMTest, AppendTextAndElementChildrenMixedV78) {
+    clever::dom::Element parent("div");
+
+    auto text1 = std::make_unique<clever::dom::Text>("Hello ");
+    parent.append_child(std::move(text1));
+    EXPECT_EQ(parent.child_count(), 1u);
+
+    auto elem = std::make_unique<clever::dom::Element>("span");
+    parent.append_child(std::move(elem));
+    EXPECT_EQ(parent.child_count(), 2u);
+
+    auto text2 = std::make_unique<clever::dom::Text>(" World");
+    parent.append_child(std::move(text2));
+    EXPECT_EQ(parent.child_count(), 3u);
+}
+
+TEST(DOMTest, GetAttributeReturnsNulloptForMissingV78) {
+    clever::dom::Element element("div");
+
+    auto result = element.get_attribute("non-existent");
+    EXPECT_FALSE(result.has_value());
+}
+
+TEST(DOMTest, HasAttributeReturnsTrueAfterSetV78) {
+    clever::dom::Element element("div");
+
+    EXPECT_FALSE(element.has_attribute("data-test"));
+    element.set_attribute("data-test", "value");
+    EXPECT_TRUE(element.has_attribute("data-test"));
+}
+
+TEST(DOMTest, TextContentConcatenatesAllChildrenV78) {
+    clever::dom::Element parent("section");
+
+    parent.append_child(std::make_unique<clever::dom::Text>("First"));
+    auto inner = std::make_unique<clever::dom::Element>("strong");
+    inner->append_child(std::make_unique<clever::dom::Text>("Middle"));
+    parent.append_child(std::move(inner));
+    parent.append_child(std::make_unique<clever::dom::Text>("Last"));
+
+    std::string content = parent.text_content();
+    EXPECT_EQ(content, "FirstMiddleLast");
+}
+
+TEST(DOMTest, ClassListToggleAddsIfAbsentV78) {
+    clever::dom::Element element("div");
+
+    EXPECT_FALSE(element.class_list().contains("active"));
+    element.class_list().toggle("active");
+    EXPECT_TRUE(element.class_list().contains("active"));
+}
+
+TEST(DOMTest, ClassListToggleRemovesIfPresentV78) {
+    clever::dom::Element element("div");
+
+    element.class_list().add("active");
+    EXPECT_TRUE(element.class_list().contains("active"));
+    element.class_list().toggle("active");
+    EXPECT_FALSE(element.class_list().contains("active"));
+}
+
+TEST(DOMTest, FirstChildReturnsNullOnEmptyV78) {
+    clever::dom::Element element("div");
+
+    EXPECT_EQ(element.first_child(), nullptr);
+    element.append_child(std::make_unique<clever::dom::Element>("span"));
+    EXPECT_NE(element.first_child(), nullptr);
+}
+
+TEST(DOMTest, MultipleSetAttributesDifferentKeysV78) {
+    clever::dom::Element element("div");
+
+    element.set_attribute("id", "myid");
+    element.set_attribute("class", "btn primary");
+    element.set_attribute("data-value", "42");
+
+    EXPECT_EQ(element.get_attribute("id").value_or(""), "myid");
+    EXPECT_EQ(element.get_attribute("class").value_or(""), "btn primary");
+    EXPECT_EQ(element.get_attribute("data-value").value_or(""), "42");
+}

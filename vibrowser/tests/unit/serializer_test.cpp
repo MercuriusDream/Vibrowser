@@ -11455,3 +11455,101 @@ TEST(SerializerTest, HasRemainingFalseAfterFullReadV77) {
     EXPECT_EQ(reader.read_string(), "complete");
     EXPECT_FALSE(reader.has_remaining());
 }
+
+TEST(SerializerTest, RoundTripU16BoundaryV78) {
+    Serializer s;
+    s.write_u16(65535);
+
+    Deserializer reader(s.data());
+    EXPECT_EQ(reader.read_u16(), 65535u);
+    EXPECT_FALSE(reader.has_remaining());
+}
+
+TEST(SerializerTest, RoundTripU32ZeroV78) {
+    Serializer s;
+    s.write_u32(0);
+
+    Deserializer reader(s.data());
+    EXPECT_EQ(reader.read_u32(), 0u);
+    EXPECT_FALSE(reader.has_remaining());
+}
+
+TEST(SerializerTest, RoundTripLongStringV78) {
+    std::string long_string(1000, 'a');
+
+    Serializer s;
+    s.write_string(long_string);
+
+    Deserializer reader(s.data());
+    EXPECT_EQ(reader.read_string(), long_string);
+    EXPECT_FALSE(reader.has_remaining());
+}
+
+TEST(SerializerTest, MultipleByteBlobsSequentialV78) {
+    const uint8_t blob1[] = {1, 2, 3, 4, 5};
+    const uint8_t blob2[] = {10, 20, 30};
+    const uint8_t blob3[] = {100, 200, 255};
+
+    Serializer s;
+    s.write_bytes(blob1, 5);
+    s.write_bytes(blob2, 3);
+    s.write_bytes(blob3, 3);
+
+    Deserializer reader(s.data());
+    auto bytes1 = reader.read_bytes();
+    auto bytes2 = reader.read_bytes();
+    auto bytes3 = reader.read_bytes();
+
+    EXPECT_EQ(bytes1, std::vector<uint8_t>({1, 2, 3, 4, 5}));
+    EXPECT_EQ(bytes2, std::vector<uint8_t>({10, 20, 30}));
+    EXPECT_EQ(bytes3, std::vector<uint8_t>({100, 200, 255}));
+    EXPECT_FALSE(reader.has_remaining());
+}
+
+TEST(SerializerTest, F64InfinityRoundTripV78) {
+    Serializer s;
+    s.write_f64(std::numeric_limits<double>::infinity());
+
+    Deserializer reader(s.data());
+    double result = reader.read_f64();
+    EXPECT_TRUE(std::isinf(result) && result > 0);
+    EXPECT_FALSE(reader.has_remaining());
+}
+
+TEST(SerializerTest, F64NaNRoundTripV78) {
+    Serializer s;
+    s.write_f64(std::numeric_limits<double>::quiet_NaN());
+
+    Deserializer reader(s.data());
+    double result = reader.read_f64();
+    EXPECT_TRUE(std::isnan(result));
+    EXPECT_FALSE(reader.has_remaining());
+}
+
+TEST(SerializerTest, MixedTypesSequentialV78) {
+    Serializer s;
+    s.write_u8(42);
+    s.write_u16(1000u);
+    s.write_u32(100000u);
+    s.write_u64(0x0123456789ABCDEFull);
+    s.write_f64(3.14159);
+    s.write_string("test");
+
+    Deserializer reader(s.data());
+    EXPECT_EQ(reader.read_u8(), 42u);
+    EXPECT_EQ(reader.read_u16(), 1000u);
+    EXPECT_EQ(reader.read_u32(), 100000u);
+    EXPECT_EQ(reader.read_u64(), 0x0123456789ABCDEFull);
+    EXPECT_DOUBLE_EQ(reader.read_f64(), 3.14159);
+    EXPECT_EQ(reader.read_string(), "test");
+    EXPECT_FALSE(reader.has_remaining());
+}
+
+TEST(SerializerTest, RoundTripU64ZeroV78) {
+    Serializer s;
+    s.write_u64(0);
+
+    Deserializer reader(s.data());
+    EXPECT_EQ(reader.read_u64(), 0u);
+    EXPECT_FALSE(reader.has_remaining());
+}

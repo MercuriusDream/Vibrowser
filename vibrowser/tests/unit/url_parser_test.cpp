@@ -8098,6 +8098,108 @@ TEST(URLParser, DataOpaquePathQueryFragmentV63) {
 }
 
 // =============================================================================
+// Test V78-1: HTTP default port 80 normalized away
+// =============================================================================
+TEST(URLParserTest, HttpDefaultPort80NormalizedV78) {
+    auto result = parse("http://example.com:80/");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "example.com");
+    // Port 80 should be normalized away (default for http)
+    EXPECT_FALSE(result->port.has_value());
+    EXPECT_EQ(result->path, "/");
+}
+
+// =============================================================================
+// Test V78-2: Path '..' resolved correctly
+// =============================================================================
+TEST(URLParserTest, PathDotDotResolvedV78) {
+    auto result = parse("https://example.com/a/b/../c");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "example.com");
+    // Path segments with '..' should be resolved
+    EXPECT_EQ(result->path, "/a/c");
+}
+
+// =============================================================================
+// Test V78-3: Host lowercased in URL
+// =============================================================================
+TEST(URLParserTest, HostLowercasedV78) {
+    auto result = parse("https://EXAMPLE.COM/");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    // Host should be lowercased
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/");
+}
+
+// =============================================================================
+// Test V78-4: Host-only URL gets root path
+// =============================================================================
+TEST(URLParserTest, HostOnlyGetsRootPathV78) {
+    auto result = parse("https://example.com");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "example.com");
+    // Host-only URL should have path "/"
+    EXPECT_EQ(result->path, "/");
+}
+
+// =============================================================================
+// Test V78-5: Query with ampersand preserved
+// =============================================================================
+TEST(URLParserTest, QueryWithAmpersandV78) {
+    auto result = parse("https://x.com/?a=1&b=2");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "x.com");
+    EXPECT_EQ(result->path, "/");
+    // Query should preserve ampersand separator
+    EXPECT_EQ(result->query, "a=1&b=2");
+}
+
+// =============================================================================
+// Test V78-6: Fragment parsed correctly
+// =============================================================================
+TEST(URLParserTest, FragmentParsedV78) {
+    auto result = parse("https://x.com/p#sec1");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "x.com");
+    EXPECT_EQ(result->path, "/p");
+    // Fragment should be parsed and stored
+    EXPECT_EQ(result->fragment, "sec1");
+}
+
+// =============================================================================
+// Test V78-7: Scheme is case-insensitive
+// =============================================================================
+TEST(URLParserTest, SchemeIsCaseInsensitiveV78) {
+    auto result = parse("HTTPS://X.COM/");
+    ASSERT_TRUE(result.has_value());
+    // Scheme should be lowercased
+    EXPECT_EQ(result->scheme, "https");
+    // Host should be lowercased
+    EXPECT_EQ(result->host, "x.com");
+    EXPECT_EQ(result->path, "/");
+}
+
+// =============================================================================
+// Test V78-8: Empty path with query string
+// =============================================================================
+TEST(URLParserTest, EmptyPathWithQueryV78) {
+    auto result = parse("https://x.com?q=1");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "x.com");
+    // Empty path should default to "/"
+    EXPECT_EQ(result->path, "/");
+    // Query should be parsed
+    EXPECT_EQ(result->query, "q=1");
+}
+
+// =============================================================================
 // Test V63-6: Blob URL keeps nested URL in opaque path
 // =============================================================================
 TEST(URLParser, BlobOpaqueNestedURLV63) {
