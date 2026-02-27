@@ -2219,3 +2219,60 @@ TEST(URLParser, UsernameAndPasswordBoth) {
     EXPECT_EQ(url->username, "user");
     EXPECT_EQ(url->password, "pass");
 }
+
+TEST(URLParser, SerializeHttpsFullUrl) {
+    auto url = clever::url::parse("https://example.com/path/to/page");
+    ASSERT_TRUE(url.has_value());
+    auto s = url->serialize();
+    EXPECT_NE(s.find("https"), std::string::npos);
+    EXPECT_NE(s.find("example.com"), std::string::npos);
+}
+
+TEST(URLParser, SerializeOmitsDefaultHttpPort) {
+    auto url = clever::url::parse("http://example.com:80/page");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "http");
+    EXPECT_EQ(url->host, "example.com");
+}
+
+TEST(URLParser, OriginHttpScheme) {
+    auto url = clever::url::parse("http://example.com/index.html");
+    ASSERT_TRUE(url.has_value());
+    auto origin = url->origin();
+    EXPECT_NE(origin.find("http"), std::string::npos);
+}
+
+TEST(URLParser, OriginHttpsScheme) {
+    auto url = clever::url::parse("https://secure.example.com/api/v2");
+    ASSERT_TRUE(url.has_value());
+    auto origin = url->origin();
+    EXPECT_NE(origin.find("https"), std::string::npos);
+}
+
+TEST(URLParser, OriginIncludesHostAndPort) {
+    auto url = clever::url::parse("https://api.example.com:9000/endpoint");
+    ASSERT_TRUE(url.has_value());
+    auto origin = url->origin();
+    EXPECT_NE(origin.find("9000"), std::string::npos);
+}
+
+TEST(URLParser, SameOriginDifferentHostFalse) {
+    auto a = clever::url::parse("https://foo.com/path");
+    auto b = clever::url::parse("https://bar.com/path");
+    ASSERT_TRUE(a.has_value() && b.has_value());
+    EXPECT_FALSE(clever::url::urls_same_origin(*a, *b));
+}
+
+TEST(URLParser, SameOriginDifferentSchemeFalse) {
+    auto a = clever::url::parse("http://example.com/page");
+    auto b = clever::url::parse("https://example.com/page");
+    ASSERT_TRUE(a.has_value() && b.has_value());
+    EXPECT_FALSE(clever::url::urls_same_origin(*a, *b));
+}
+
+TEST(URLParser, SameOriginDifferentPortFalse) {
+    auto a = clever::url::parse("https://example.com:443/page");
+    auto b = clever::url::parse("https://example.com:8443/page");
+    ASSERT_TRUE(a.has_value() && b.has_value());
+    EXPECT_FALSE(clever::url::urls_same_origin(*a, *b));
+}
