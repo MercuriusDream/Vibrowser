@@ -18864,3 +18864,53 @@ TEST(JSEngine, ObjectHasOwnPropertyCycle1236) {
     auto result = engine.evaluate("var obj = {a: 1, b: 2}; Object.prototype.hasOwnProperty.call(obj, 'a').toString()");
     EXPECT_EQ(result, "true");
 }
+
+// Cycle 1245: JS engine tests
+
+TEST(JSEngine, AsyncAwaitBasicCycle1245) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("async function asyncFunc() { return 42; } typeof asyncFunc");
+    EXPECT_EQ(result, "function");
+}
+
+TEST(JSEngine, TemplateStringExpressionCycle1245) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var x = 10; `value is ${x * 2}`");
+    EXPECT_EQ(result, "value is 20");
+}
+
+TEST(JSEngine, SpreadOperatorArrayCycle1245) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var arr1 = [1, 2]; var arr2 = [...arr1, 3, 4]; arr2.length.toString()");
+    EXPECT_EQ(result, "4");
+}
+
+TEST(JSEngine, DestructuringArrayCycle1245) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var [a, b, c] = [10, 20, 30]; (a + b + c).toString()");
+    EXPECT_EQ(result, "60");
+}
+
+TEST(JSEngine, DestructuringObjectCycle1245) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var {x, y} = {x: 5, y: 15}; (x + y).toString()");
+    EXPECT_EQ(result, "20");
+}
+
+TEST(JSEngine, DefaultParametersCycle1245) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("function greet(name = 'World') { return name; } greet()");
+    EXPECT_EQ(result, "World");
+}
+
+TEST(JSEngine, RestParametersCycle1245) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("function sum(...nums) { var total = 0; for (var i = 0; i < nums.length; i++) { total += nums[i]; } return total; } sum(1, 2, 3, 4).toString()");
+    EXPECT_EQ(result, "10");
+}
+
+TEST(JSEngine, ClassDefinitionCycle1245) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("class Calculator { add(a, b) { return a + b; } } var calc = new Calculator(); calc.add(7, 8).toString()");
+    EXPECT_EQ(result, "15");
+}

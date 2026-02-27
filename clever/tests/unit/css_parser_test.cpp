@@ -7631,3 +7631,95 @@ TEST_F(CSSStylesheetTest, TapHighlightColorV16) {
         if (d.property == "-webkit-tap-highlight-color") found = true;
     EXPECT_TRUE(found);
 }
+
+// Cycle 1242: CSS parser tests V17
+
+TEST_F(CSSStylesheetTest, ContainIntrinsicWidthV17) {
+    auto sheet = parse_stylesheet(".container { contain-intrinsic-width: 500px; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "contain-intrinsic-width") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, ContainIntrinsicHeightV17) {
+    auto sheet = parse_stylesheet(".container { contain-intrinsic-height: 300px; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "contain-intrinsic-height") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, ContainmentV17) {
+    auto sheet = parse_stylesheet(".box { containment: layout; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "containment") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, FontVariationSettingsV17) {
+    auto sheet = parse_stylesheet(".text { font-variation-settings: 'wght' 700; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "font-variation-settings") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, InitialLetterV17) {
+    auto sheet = parse_stylesheet("p::first-letter { initial-letter: 3; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "initial-letter") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, LineHeightStepV17) {
+    auto sheet = parse_stylesheet("body { line-height-step: 2px; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "line-height-step") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, MarginBlockV17) {
+    auto sheet = parse_stylesheet(".box { margin-block: 10px; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "margin-block") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, MarginInlineV17) {
+    auto sheet = parse_stylesheet(".box { margin-inline: 15px; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "margin-inline") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, MaxInlineSizeV17) {
+    auto sheet = parse_stylesheet(".text { max-inline-size: 80ch; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "max-inline-size") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, MinBlockSizeV17) {
+    auto sheet = parse_stylesheet(".container { min-block-size: 200px; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "min-block-size") { found = true; break; }
+    EXPECT_TRUE(found);
+}

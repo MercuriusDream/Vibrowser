@@ -7181,3 +7181,62 @@ TEST(TreeBuilder, TimeElementV4) {
     ASSERT_NE(el, nullptr);
     EXPECT_EQ(el->tag_name, "time");
 }
+
+// Cycle 1243: HTML parser tests V5
+
+TEST(TreeBuilder, ArticleElementV5) {
+    auto doc = parse("<html><body><article><h2>News Article</h2><p>Article content</p></article></body></html>");
+    auto* el = doc->find_element("article");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "article");
+}
+
+TEST(TreeBuilder, AsideElementV5) {
+    auto doc = parse("<html><body><main><p>Main content</p><aside>Sidebar info</aside></main></body></html>");
+    auto* el = doc->find_element("aside");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "aside");
+}
+
+TEST(TreeBuilder, NavElementV5) {
+    auto doc = parse("<html><body><nav><ul><li><a href=\"/\">Home</a></li></ul></nav></body></html>");
+    auto* el = doc->find_element("nav");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "nav");
+}
+
+TEST(TreeBuilder, SectionElementV5) {
+    auto doc = parse("<html><body><section id=\"intro\"><h3>Introduction</h3></section></body></html>");
+    auto* el = doc->find_element("section");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "section");
+}
+
+TEST(TreeBuilder, HeaderElementV5) {
+    auto doc = parse("<html><body><header><nav>Navigation</nav></header></body></html>");
+    auto* el = doc->find_element("header");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "header");
+}
+
+TEST(TreeBuilder, FooterElementV5) {
+    auto doc = parse("<html><body><footer><p>Footer content</p></footer></body></html>");
+    auto* el = doc->find_element("footer");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "footer");
+}
+
+TEST(TreeBuilder, MarkElementV5) {
+    auto doc = parse("<html><body><p>Text with <mark>important</mark> section</p></body></html>");
+    auto* el = doc->find_element("mark");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "mark");
+    EXPECT_EQ(el->text_content(), "important");
+}
+
+TEST(TreeBuilder, TimeElementV5) {
+    auto doc = parse("<html><body><time datetime=\"2024-12-25\">Christmas 2024</time></body></html>");
+    auto* el = doc->find_element("time");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "time");
+}

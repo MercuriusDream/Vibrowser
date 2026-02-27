@@ -6673,3 +6673,61 @@ TEST(DomElement, HasAttributeDisabled) {
     el->set_attribute("disabled", "");
     EXPECT_TRUE(el->has_attribute("disabled"));
 }
+
+// Cycle 1237: DOM element tests — 10,000 TEST MILESTONE
+
+TEST(DomElement, TagNameSamp) {
+    Document doc;
+    auto el = doc.create_element("samp");
+    EXPECT_EQ(el->tag_name(), "samp");
+}
+
+TEST(DomElement, TagNameKbd) {
+    Document doc;
+    auto el = doc.create_element("kbd");
+    EXPECT_EQ(el->tag_name(), "kbd");
+}
+
+TEST(DomElement, SetAttributeAcceptV2) {
+    Document doc;
+    auto el = doc.create_element("input");
+    el->set_attribute("accept", "image/*");
+    EXPECT_EQ(el->get_attribute("accept"), "image/*");
+}
+
+TEST(DomElement, SetAttributeAutocomplete) {
+    Document doc;
+    auto el = doc.create_element("input");
+    el->set_attribute("autocomplete", "email");
+    EXPECT_EQ(el->get_attribute("autocomplete"), "email");
+}
+
+TEST(DomElement, ChildCountSeventy) {
+    Document doc;
+    auto parent = doc.create_element("ul");
+    for (int i = 0; i < 70; ++i) {
+        parent->append_child(doc.create_element("li"));
+    }
+    EXPECT_EQ(parent->child_count(), 70u);
+}
+
+TEST(DomElement, RemoveAttributeContenteditable) {
+    Document doc;
+    auto el = doc.create_element("div");
+    el->set_attribute("contenteditable", "true");
+    el->remove_attribute("contenteditable");
+    EXPECT_FALSE(el->has_attribute("contenteditable"));
+}
+
+TEST(DomElement, HasAttributeReadonly) {
+    Document doc;
+    auto el = doc.create_element("input");
+    el->set_attribute("readonly", "");
+    EXPECT_TRUE(el->has_attribute("readonly"));
+}
+
+TEST(DomElement, GetAttributeDefaultEmpty) {
+    Document doc;
+    auto el = doc.create_element("div");
+    EXPECT_FALSE(el->has_attribute("nonexistent"));
+}

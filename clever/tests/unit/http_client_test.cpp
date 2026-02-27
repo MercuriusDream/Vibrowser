@@ -7033,3 +7033,135 @@ TEST(HeaderMapTest, IterationWorksWithMultipleHeadersV18) {
     }
     EXPECT_EQ(count, 4u);
 }
+
+// ============================================================================
+// Cycle 1241: HTTP/Net tests V19
+// ============================================================================
+
+// Request: serialize returns vector<uint8_t> for POST request V19
+TEST(RequestTest, SerializeReturnsVectorUint8tForPostV19) {
+    Request req;
+    req.method = Method::POST;
+    req.host = "api.example.com";
+    req.port = 443;
+    req.path = "/submit";
+    req.use_tls = true;
+    req.headers.set("Content-Type", "application/json");
+    req.body = {0x7B, 0x7D};  // "{}"
+
+    auto bytes = req.serialize();
+    EXPECT_GT(bytes.size(), 0u);
+    EXPECT_EQ(bytes[0], 'P');  // First char of POST
+    std::string result(bytes.begin(), bytes.end());
+    EXPECT_NE(result.find("POST /submit HTTP/1.1\r\n"), std::string::npos);
+}
+
+// Response: body is vector<uint8_t> that handles binary data V19
+TEST(ResponseTest, BodyIsVectorUint8tForBinaryDataV19) {
+    std::string raw = "HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    data.push_back(0xFF);
+    data.push_back(0xFE);
+    data.push_back(0xFD);
+    data.push_back(0xFC);
+    data.push_back(0xFB);
+
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->body.size(), 5u);
+    EXPECT_EQ(resp->body[0], 0xFF);
+    EXPECT_EQ(resp->body[4], 0xFB);
+}
+
+// HeaderMap: set overwrites previous value V19
+TEST(HeaderMapTest, SetOverwritesPreviousValueV19) {
+    HeaderMap map;
+    map.set("X-Custom", "first");
+    EXPECT_EQ(map.get("X-Custom"), "first");
+
+    map.set("X-Custom", "second");
+    EXPECT_EQ(map.get("X-Custom"), "second");
+
+    auto all = map.get_all("X-Custom");
+    EXPECT_EQ(all.size(), 1u);
+    EXPECT_EQ(all[0], "second");
+}
+
+// CookieJar: get_cookie_header with domain, path, is_secure V19
+TEST(CookieJarTest, GetCookieHeaderWithDomainPathSecureV19) {
+    CookieJar jar;
+    jar.set_from_header("session=abc123", "api.example.com");
+    jar.set_from_header("secure_token=xyz; Secure", "api.example.com");
+
+    std::string insecure = jar.get_cookie_header("api.example.com", "/", false);
+    std::string secure = jar.get_cookie_header("api.example.com", "/", true);
+
+    EXPECT_NE(insecure.find("session=abc123"), std::string::npos);
+    EXPECT_EQ(insecure.find("secure_token"), std::string::npos);
+    EXPECT_NE(secure.find("session=abc123"), std::string::npos);
+    EXPECT_NE(secure.find("secure_token=xyz"), std::string::npos);
+}
+
+// CookieJar: set_from_header and size V19
+TEST(CookieJarTest, SetFromHeaderAndSizeV19) {
+    CookieJar jar;
+    EXPECT_EQ(jar.size(), 0u);
+
+    jar.set_from_header("cookie1=value1", "example.com");
+    EXPECT_EQ(jar.size(), 1u);
+
+    jar.set_from_header("cookie2=value2; Path=/admin", "example.com");
+    EXPECT_EQ(jar.size(), 2u);
+
+    jar.set_from_header("cookie3=value3; Domain=.example.com", "example.com");
+    EXPECT_EQ(jar.size(), 3u);
+}
+
+// CookieJar: clear empties all cookies V19
+TEST(CookieJarTest, ClearEmptiesAllCookiesV19) {
+    CookieJar jar;
+    jar.set_from_header("token=secret", "auth.example.com");
+    jar.set_from_header("session=xyz", "auth.example.com");
+    jar.set_from_header("pref=dark", "settings.example.com");
+    EXPECT_EQ(jar.size(), 3u);
+
+    jar.clear();
+    EXPECT_EQ(jar.size(), 0u);
+
+    std::string header = jar.get_cookie_header("auth.example.com", "/", false);
+    EXPECT_TRUE(header.empty());
+}
+
+// Method: PATCH enum is distinct from other methods V19
+TEST(MethodTest, PatchMethodEnumDistinctV19) {
+    Method patch = Method::PATCH;
+    Method get = Method::GET;
+    Method post = Method::POST;
+    Method put = Method::PUT;
+    Method delete_method = Method::DELETE_METHOD;
+    Method head = Method::HEAD;
+    Method options = Method::OPTIONS;
+
+    EXPECT_NE(patch, get);
+    EXPECT_NE(patch, post);
+    EXPECT_NE(patch, put);
+    EXPECT_NE(patch, delete_method);
+    EXPECT_NE(patch, head);
+    EXPECT_NE(patch, options);
+    EXPECT_EQ(patch, Method::PATCH);
+}
+
+// Request: serialize with empty body V19
+TEST(RequestTest, SerializeWithEmptyBodyV19) {
+    Request req;
+    req.method = Method::GET;
+    req.host = "example.com";
+    req.path = "/fetch";
+    req.body.clear();
+
+    auto bytes = req.serialize();
+    EXPECT_GT(bytes.size(), 0u);
+    std::string result(bytes.begin(), bytes.end());
+    EXPECT_NE(result.find("GET /fetch HTTP/1.1\r\n"), std::string::npos);
+    EXPECT_NE(result.find("Host: example.com\r\n"), std::string::npos);
+}

@@ -4884,3 +4884,86 @@ TEST(URLParser, UrlWithQueryFragmentAndPortV7) {
     EXPECT_NE(url->query.find("tab=analytics"), std::string::npos);
     EXPECT_EQ(url->fragment, "metrics");
 }
+
+// Cycle 1240: URL parser tests V8
+TEST(URLParser, SimpleHttpSchemeWithHostOnlyV8) {
+    auto url = parse("http://example.com");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "http");
+    EXPECT_EQ(url->host, "example.com");
+    EXPECT_EQ(url->path, "/");
+    EXPECT_TRUE(url->query.empty());
+    EXPECT_TRUE(url->fragment.empty());
+}
+
+TEST(URLParser, HttpsUrlWithMultiplePathSegmentsV8) {
+    auto url = parse("https://api.service.io/v1/users/123/profile");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "api.service.io");
+    EXPECT_EQ(url->path, "/v1/users/123/profile");
+    EXPECT_TRUE(url->query.empty());
+    EXPECT_TRUE(url->fragment.empty());
+}
+
+TEST(URLParser, UrlWithQueryStringOnlyV8) {
+    auto url = parse("https://example.net/search?q=test&filter=active");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "example.net");
+    EXPECT_EQ(url->path, "/search");
+    EXPECT_NE(url->query.find("q=test"), std::string::npos);
+    EXPECT_NE(url->query.find("filter=active"), std::string::npos);
+}
+
+TEST(URLParser, UrlWithFragmentOnlyV8) {
+    auto url = parse("http://docs.example.io/reference#section-api");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "http");
+    EXPECT_EQ(url->host, "docs.example.io");
+    EXPECT_EQ(url->path, "/reference");
+    EXPECT_TRUE(url->query.empty());
+    EXPECT_EQ(url->fragment, "section-api");
+}
+
+TEST(URLParser, LocalhostWithCustomPortV8) {
+    auto url = parse("http://127.0.0.1:8080/api/endpoint");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "http");
+    EXPECT_EQ(url->host, "127.0.0.1");
+    EXPECT_EQ(url->port, 8080);
+    EXPECT_EQ(url->path, "/api/endpoint");
+}
+
+TEST(URLParser, UrlWithCredentialsAndPathV8) {
+    auto url = parse("https://admin:secret123@internal.corp/admin/dashboard");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->username, "admin");
+    EXPECT_EQ(url->password, "secret123");
+    EXPECT_EQ(url->host, "internal.corp");
+    EXPECT_EQ(url->path, "/admin/dashboard");
+}
+
+TEST(URLParser, UrlWithComplexQueryAndFragmentV8) {
+    auto url = parse("https://platform.example.com/page?sort=name&limit=100&page=2#results");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "platform.example.com");
+    EXPECT_EQ(url->path, "/page");
+    EXPECT_NE(url->query.find("sort=name"), std::string::npos);
+    EXPECT_NE(url->query.find("limit=100"), std::string::npos);
+    EXPECT_NE(url->query.find("page=2"), std::string::npos);
+    EXPECT_EQ(url->fragment, "results");
+}
+
+TEST(URLParser, UrlWithIpv4HostAndMultipleSegmentsV8) {
+    auto url = parse("http://192.168.1.1:3000/api/v1/status/check");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "http");
+    EXPECT_EQ(url->host, "192.168.1.1");
+    EXPECT_EQ(url->port, 3000);
+    EXPECT_EQ(url->path, "/api/v1/status/check");
+    EXPECT_TRUE(url->query.empty());
+    EXPECT_TRUE(url->fragment.empty());
+}

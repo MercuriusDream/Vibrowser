@@ -8803,3 +8803,45 @@ TEST(LayoutNodeProps, MeterOptimumDefaultV16) {
     LayoutNode n;
     EXPECT_FLOAT_EQ(n.meter_optimum, 0.5f);
 }
+
+// Cycle 1244: LayoutNode property tests V17
+
+TEST(LayoutNodeProps, FontWeightDefaultV17) {
+    LayoutNode n;
+    EXPECT_EQ(n.font_weight, 400);
+}
+
+TEST(LayoutNodeProps, OpacityDefaultV17) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.opacity, 1.0f);
+}
+
+TEST(LayoutNodeProps, LetterSpacingDefaultV17) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.letter_spacing, 0.0f);
+}
+
+TEST(LayoutNodeProps, VisibilityHiddenDefaultV17) {
+    LayoutNode n;
+    EXPECT_FALSE(n.visibility_hidden);
+}
+
+TEST(LayoutNodeProps, SvgFillColorDefaultV17) {
+    LayoutNode n;
+    EXPECT_EQ(n.svg_fill_color, 0xFF000000u);
+}
+
+TEST(LayoutNodeProps, SvgStrokeColorDefaultV17) {
+    LayoutNode n;
+    EXPECT_EQ(n.svg_stroke_color, 0xFF000000u);
+}
+
+TEST(LayoutNodeProps, SvgFillOpacityDefaultV17) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.svg_fill_opacity, 1.0f);
+}
+
+TEST(LayoutNodeProps, SvgTransformScaleDefaultV17) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.svg_transform_sx, 1.0f);
+}

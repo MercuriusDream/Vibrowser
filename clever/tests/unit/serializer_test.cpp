@@ -6104,3 +6104,61 @@ TEST(SerializerTest, StringWithSpecialCharsV15) {
     Deserializer d(s.data());
     EXPECT_EQ("Hello@World#2026!", d.read_string());
 }
+
+// Cycle 1239: IPC serializer tests V16
+
+TEST(SerializerTest, U8BoundaryZeroV16) {
+    Serializer s;
+    s.write_u8(0);
+    Deserializer d(s.data());
+    EXPECT_EQ(0, d.read_u8());
+}
+
+TEST(SerializerTest, U16MidRangeV16) {
+    Serializer s;
+    s.write_u16(32768);
+    Deserializer d(s.data());
+    EXPECT_EQ(32768, d.read_u16());
+}
+
+TEST(SerializerTest, U32LowValueV16) {
+    Serializer s;
+    s.write_u32(256);
+    Deserializer d(s.data());
+    EXPECT_EQ(256U, d.read_u32());
+}
+
+TEST(SerializerTest, U64HighValueV16) {
+    Serializer s;
+    s.write_u64(13835058055282163712ULL);
+    Deserializer d(s.data());
+    EXPECT_EQ(13835058055282163712ULL, d.read_u64());
+}
+
+TEST(SerializerTest, I32PositiveMaxV16) {
+    Serializer s;
+    s.write_i32(2147483647);
+    Deserializer d(s.data());
+    EXPECT_EQ(2147483647, d.read_i32());
+}
+
+TEST(SerializerTest, I64NegativeValueV16) {
+    Serializer s;
+    s.write_i64(-4611686018427387904LL);
+    Deserializer d(s.data());
+    EXPECT_EQ(-4611686018427387904LL, d.read_i64());
+}
+
+TEST(SerializerTest, F64PiValueV16) {
+    Serializer s;
+    s.write_f64(3.141592653589793);
+    Deserializer d(s.data());
+    EXPECT_NEAR(3.141592653589793, d.read_f64(), 1e-15);
+}
+
+TEST(SerializerTest, StringEmptyV16) {
+    Serializer s;
+    s.write_string("");
+    Deserializer d(s.data());
+    EXPECT_EQ("", d.read_string());
+}
