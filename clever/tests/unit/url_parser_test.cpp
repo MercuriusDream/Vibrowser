@@ -2276,3 +2276,55 @@ TEST(URLParser, SameOriginDifferentPortFalse) {
     ASSERT_TRUE(a.has_value() && b.has_value());
     EXPECT_FALSE(clever::url::urls_same_origin(*a, *b));
 }
+
+// Cycle 823 — URL edge cases: percent encoding in query/fragment, duplicate keys, long paths, special chars
+TEST(URLParser, PercentEncodingInQuery) {
+    auto url = clever::url::parse("https://example.com/search?q=hello world&lang=en");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_NE(url->query.find("hello"), std::string::npos);
+}
+
+TEST(URLParser, PercentEncodingInFragment) {
+    auto url = clever::url::parse("https://example.com/page#section with spaces");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_FALSE(url->fragment.empty());
+}
+
+TEST(URLParser, QueryWithMultipleAmpersands) {
+    auto url = clever::url::parse("https://api.example.com/v1?a=1&b=2&c=3&d=4");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_NE(url->query.find("a=1"), std::string::npos);
+    EXPECT_NE(url->query.find("d=4"), std::string::npos);
+}
+
+TEST(URLParser, LongPathWithManySegments) {
+    auto url = clever::url::parse("https://example.com/a/b/c/d/e/f/g/h/index.html");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->host, "example.com");
+    EXPECT_NE(url->path.find("index.html"), std::string::npos);
+}
+
+TEST(URLParser, PortEightyOnHttp) {
+    auto url = clever::url::parse("http://example.com:80/path");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "http");
+    EXPECT_EQ(url->host, "example.com");
+}
+
+TEST(URLParser, QueryWithEqualsInValue) {
+    auto url = clever::url::parse("https://example.com/?token=abc=def");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_NE(url->query.find("token"), std::string::npos);
+}
+
+TEST(URLParser, HashOnlyFragment) {
+    auto url = clever::url::parse("https://example.com/page#");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->path, "/page");
+}
+
+TEST(URLParser, UpperCaseSchemeNormalized) {
+    auto url = clever::url::parse("HTTPS://Example.COM/Path");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+}
