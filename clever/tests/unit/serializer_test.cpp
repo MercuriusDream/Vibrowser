@@ -3176,3 +3176,88 @@ TEST(SerializerTest, FiftyI64NegativePowerOf2) {
     Deserializer d(s.data());
     for (int i = 0; i < 50; i++) EXPECT_EQ(d.read_i64(), -(1LL << i % 32));
 }
+
+// Cycle 843 — new serializer test sequences
+TEST(SerializerTest, ThirtyU16DecreasingSequence) {
+    Serializer s;
+    for (int i = 0; i < 30; i++) s.write_u16(static_cast<uint16_t>(30000 - i * 1000));
+    Deserializer d(s.data());
+    for (int i = 0; i < 30; i++) EXPECT_EQ(d.read_u16(), static_cast<uint16_t>(30000 - i * 1000));
+}
+
+TEST(SerializerTest, BytesSingleElementRoundTrip) {
+    Serializer s;
+    const uint8_t single[1] = {0xAB};
+    s.write_bytes(single, 1);
+    Deserializer d(s.data());
+    auto out = d.read_bytes();
+    ASSERT_EQ(out.size(), 1u);
+    EXPECT_EQ(out[0], 0xAB);
+}
+
+TEST(SerializerTest, TwentyI64AlternatingPosNeg) {
+    Serializer s;
+    for (int i = 0; i < 20; i++) s.write_i64(i % 2 == 0 ? 123456789LL : -123456789LL);
+    Deserializer d(s.data());
+    for (int i = 0; i < 20; i++) EXPECT_EQ(d.read_i64(), i % 2 == 0 ? 123456789LL : -123456789LL);
+}
+
+TEST(SerializerTest, F64PiMultiplesRoundTrip) {
+    Serializer s;
+    const double pi = 3.141592653589793;
+    for (int i = 1; i <= 5; i++) s.write_f64(pi * i);
+    Deserializer d(s.data());
+    for (int i = 1; i <= 5; i++) EXPECT_DOUBLE_EQ(d.read_f64(), pi * i);
+}
+
+TEST(SerializerTest, FiveStringsMixedContent) {
+    Serializer s;
+    s.write_string("");
+    s.write_string("x");
+    s.write_string("42");
+    s.write_string(" ");
+    s.write_string("!@#");
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "");
+    EXPECT_EQ(d.read_string(), "x");
+    EXPECT_EQ(d.read_string(), "42");
+    EXPECT_EQ(d.read_string(), " ");
+    EXPECT_EQ(d.read_string(), "!@#");
+}
+
+TEST(SerializerTest, StringBoolU16TripletPattern) {
+    Serializer s;
+    for (int i = 0; i < 5; i++) {
+        s.write_string("item");
+        s.write_bool(i % 2 == 0);
+        s.write_u16(static_cast<uint16_t>(i * 100));
+    }
+    Deserializer d(s.data());
+    for (int i = 0; i < 5; i++) {
+        EXPECT_EQ(d.read_string(), "item");
+        EXPECT_EQ(d.read_bool(), i % 2 == 0);
+        EXPECT_EQ(d.read_u16(), static_cast<uint16_t>(i * 100));
+    }
+}
+
+TEST(SerializerTest, U8SequenceAllSameValue77) {
+    Serializer s;
+    for (int i = 0; i < 30; i++) s.write_u8(77);
+    Deserializer d(s.data());
+    for (int i = 0; i < 30; i++) EXPECT_EQ(d.read_u8(), 77u);
+}
+
+TEST(SerializerTest, TwoBytesBlocksBackToBack) {
+    Serializer s;
+    const uint8_t a[] = {1, 2, 3};
+    const uint8_t b[] = {4, 5, 6, 7};
+    s.write_bytes(a, 3);
+    s.write_bytes(b, 4);
+    Deserializer d(s.data());
+    auto out_a = d.read_bytes();
+    auto out_b = d.read_bytes();
+    ASSERT_EQ(out_a.size(), 3u);
+    ASSERT_EQ(out_b.size(), 4u);
+    EXPECT_EQ(out_a[2], 3u);
+    EXPECT_EQ(out_b[3], 7u);
+}
