@@ -5073,3 +5073,38 @@ TEST(RequestTest, TEHeaderSet) {
     ASSERT_TRUE(val.has_value());
     EXPECT_EQ(*val, "trailers");
 }
+
+TEST(RequestTest, MethodToStringGet) {
+    EXPECT_EQ(method_to_string(Method::GET), "GET");
+}
+
+TEST(RequestTest, MethodToStringPost) {
+    EXPECT_EQ(method_to_string(Method::POST), "POST");
+}
+
+TEST(RequestTest, MethodToStringPut) {
+    EXPECT_EQ(method_to_string(Method::PUT), "PUT");
+}
+
+TEST(RequestTest, MethodToStringHead) {
+    EXPECT_EQ(method_to_string(Method::HEAD), "HEAD");
+}
+
+TEST(RequestTest, MethodToStringDeleteMethod) {
+    EXPECT_EQ(method_to_string(Method::DELETE_METHOD), "DELETE");
+}
+
+TEST(RequestTest, RequestDefaultMethodIsGet) {
+    Request req;
+    EXPECT_EQ(req.method, Method::GET);
+}
+
+TEST(RequestTest, RequestDefaultPortIsEighty) {
+    Request req;
+    EXPECT_EQ(req.port, 80);
+}
+
+TEST(RequestTest, RequestDefaultPathIsSlash) {
+    Request req;
+    EXPECT_EQ(req.path, "/");
+}
