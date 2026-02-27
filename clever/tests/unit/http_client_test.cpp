@@ -4235,3 +4235,68 @@ TEST(ResponseTest, Parse425TooEarly) {
     ASSERT_TRUE(resp.has_value());
     EXPECT_EQ(resp->status, 425);
 }
+
+// Cycle 854 — untested HTTP status codes: 300, 421, 407, 506, 508, 510, 511, 409 V2
+TEST(ResponseTest, Parse300MultipleChoices) {
+    std::string raw = "HTTP/1.1 300 Multiple Choices\r\nContent-Length: 0\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 300);
+}
+
+TEST(ResponseTest, Parse421MisdirectedRequest) {
+    std::string raw = "HTTP/1.1 421 Misdirected Request\r\nContent-Length: 0\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 421);
+}
+
+TEST(ResponseTest, Parse407ProxyAuthRequired) {
+    std::string raw = "HTTP/1.1 407 Proxy Authentication Required\r\nProxy-Authenticate: Basic realm=\"proxy\"\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 407);
+}
+
+TEST(ResponseTest, Parse506VariantAlsoNegotiates) {
+    std::string raw = "HTTP/1.1 506 Variant Also Negotiates\r\nContent-Length: 0\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 506);
+}
+
+TEST(ResponseTest, Parse508LoopDetected) {
+    std::string raw = "HTTP/1.1 508 Loop Detected\r\nContent-Length: 0\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 508);
+}
+
+TEST(ResponseTest, Parse510NotExtended) {
+    std::string raw = "HTTP/1.1 510 Not Extended\r\nContent-Length: 0\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 510);
+}
+
+TEST(ResponseTest, Parse511NetworkAuthRequired) {
+    std::string raw = "HTTP/1.1 511 Network Authentication Required\r\nContent-Length: 0\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 511);
+}
+
+TEST(ResponseTest, Parse305UseProxy) {
+    std::string raw = "HTTP/1.1 305 Use Proxy\r\nContent-Length: 0\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 305);
+}
