@@ -5008,3 +5008,68 @@ TEST(RequestTest, AcceptVersionHeaderSet) {
     ASSERT_TRUE(val.has_value());
     EXPECT_EQ(*val, "v2");
 }
+
+// Cycle 944 — Device memory hints, Pragma, TE, service-worker headers
+TEST(RequestTest, DeviceMemoryHeaderSet) {
+    Request req("https://example.com/");
+    req.headers.set("Device-Memory", "4");
+    auto val = req.headers.get("device-memory");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(*val, "4");
+}
+
+TEST(RequestTest, DownlinkSpeedHeaderSet) {
+    Request req("https://example.com/");
+    req.headers.set("Downlink", "10");
+    auto val = req.headers.get("downlink");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(*val, "10");
+}
+
+TEST(RequestTest, SaveDataHeaderSet) {
+    Request req("https://example.com/");
+    req.headers.set("Save-Data", "on");
+    auto val = req.headers.get("save-data");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(*val, "on");
+}
+
+TEST(RequestTest, ECTHeaderSet) {
+    Request req("https://example.com/");
+    req.headers.set("ECT", "4g");
+    auto val = req.headers.get("ect");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(*val, "4g");
+}
+
+TEST(RequestTest, RTTHeaderSet) {
+    Request req("https://example.com/");
+    req.headers.set("RTT", "100");
+    auto val = req.headers.get("rtt");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(*val, "100");
+}
+
+TEST(RequestTest, PragmaNoCache) {
+    Request req("https://example.com/");
+    req.headers.set("Pragma", "no-cache");
+    auto val = req.headers.get("pragma");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(*val, "no-cache");
+}
+
+TEST(RequestTest, ServiceWorkerNavigationPreload) {
+    Request req("https://example.com/page");
+    req.headers.set("Service-Worker-Navigation-Preload", "true");
+    auto val = req.headers.get("service-worker-navigation-preload");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(*val, "true");
+}
+
+TEST(RequestTest, TEHeaderSet) {
+    Request req("https://example.com/");
+    req.headers.set("TE", "trailers");
+    auto val = req.headers.get("te");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(*val, "trailers");
+}
