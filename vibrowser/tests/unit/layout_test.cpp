@@ -10598,3 +10598,147 @@ TEST(LayoutEngineTest, FontWeightAndSizePropertiesV58) {
     EXPECT_FLOAT_EQ(root->children[0]->font_size, 18.0f);
     EXPECT_EQ(root->children[0]->font_weight, 700);
 }
+
+// Test V59_001: Overflow property handling
+TEST(LayoutEngineTest, OverflowPropertyHandlingV59) {
+    auto root = make_block("div");
+    root->specified_width = 200.0f;
+    root->specified_height = 150.0f;
+    root->overflow = 1;  // overflow is int, not overflow_x/y
+
+    auto child = make_block("div");
+    child->specified_width = 300.0f;
+    child->specified_height = 200.0f;
+
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_EQ(root->overflow, 1);
+    EXPECT_FLOAT_EQ(root->geometry.width, 200.0f);
+    EXPECT_FLOAT_EQ(root->geometry.height, 150.0f);
+}
+
+// Test V59_002: Text alignment property
+TEST(LayoutEngineTest, TextAlignmentPropertyV59) {
+    auto root = make_block("div");
+    root->specified_width = 400.0f;
+    root->text_align = 2;  // text_align is int
+
+    auto text = make_text("Aligned text", 16.0f);
+    root->append_child(std::move(text));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_EQ(root->text_align, 2);
+}
+
+// Test V59_003: Background color ARGB format
+TEST(LayoutEngineTest, BackgroundColorARGBV59) {
+    auto root = make_block("div");
+    root->specified_width = 300.0f;
+    root->specified_height = 200.0f;
+    root->background_color = 0xFFFF8000;  // ARGB format: opaque orange
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_EQ(root->background_color, 0xFFFF8000u);
+}
+
+// Test V59_004: Text color ARGB format
+TEST(LayoutEngineTest, TextColorARGBV59) {
+    auto root = make_block("div");
+    root->color = 0xFF0000FF;  // ARGB format: opaque blue
+
+    auto text = make_text("Blue text", 14.0f);
+    root->append_child(std::move(text));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_EQ(root->color, 0xFF0000FFu);
+}
+
+// Test V59_005: Min-width clamps up from specified width
+TEST(LayoutEngineTest, MinWidthClampsUpV59) {
+    auto root = make_block("div");
+    root->specified_width = 100.0f;
+    root->min_width = 250.0f;
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // min_width should clamp up: specified=100, min=250, so width=250
+    EXPECT_FLOAT_EQ(root->geometry.width, 250.0f);
+}
+
+// Test V59_006: Multiple children with overflow container
+TEST(LayoutEngineTest, MultipleChildrenOverflowV59) {
+    auto root = make_block("div");
+    root->specified_width = 300.0f;
+    root->specified_height = 200.0f;
+    root->overflow = 1;
+
+    auto child1 = make_block("div");
+    child1->specified_width = 150.0f;
+    child1->specified_height = 100.0f;
+
+    auto child2 = make_block("div");
+    child2->specified_width = 150.0f;
+    child2->specified_height = 150.0f;
+
+    root->append_child(std::move(child1));
+    root->append_child(std::move(child2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(root->geometry.width, 300.0f);
+    EXPECT_FLOAT_EQ(root->geometry.height, 200.0f);
+    EXPECT_EQ(root->overflow, 1);
+}
+
+// Test V59_007: Text node with font properties
+TEST(LayoutEngineTest, TextNodeFontPropertiesV59) {
+    auto root = make_block("div");
+    root->specified_width = 400.0f;
+
+    auto text = make_text("Styled text", 20.0f);
+    text->font_weight = 600;
+    text->color = 0xFFFF0000;  // ARGB red
+
+    root->append_child(std::move(text));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(root->children[0]->font_size, 20.0f);
+    EXPECT_EQ(root->children[0]->font_weight, 600);
+    EXPECT_EQ(root->children[0]->color, 0xFFFF0000u);
+}
+
+// Test V59_008: Block with all constraint properties
+TEST(LayoutEngineTest, BlockWithAllConstraintsV59) {
+    auto root = make_block("div");
+    root->specified_width = 200.0f;
+    root->specified_height = 150.0f;
+    root->min_width = 180.0f;
+    root->max_width = 400.0f;
+    root->min_height = 120.0f;
+    root->max_height = 300.0f;
+    root->overflow = 1;
+    root->text_align = 1;
+    root->background_color = 0xFFCCCCCC;  // ARGB light gray
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(root->geometry.width, 200.0f);
+    EXPECT_FLOAT_EQ(root->geometry.height, 150.0f);
+    EXPECT_EQ(root->overflow, 1);
+    EXPECT_EQ(root->text_align, 1);
+    EXPECT_EQ(root->background_color, 0xFFCCCCCCu);
+}

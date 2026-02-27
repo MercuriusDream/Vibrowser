@@ -12142,3 +12142,125 @@ TEST(PropertyCascadeTest, ApplyDeclarationTextDecorationV58) {
     cascade.apply_declaration(style, decl, parent);
     EXPECT_EQ(style.text_decoration, TextDecoration::Underline);
 }
+
+TEST(PropertyCascadeTest, ApplyDeclarationBorderTopColorV59) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    Declaration decl;
+    decl.property = "border-top-color";
+    decl.values.push_back(make_token("rgb(200,50,75)"));
+
+    cascade.apply_declaration(style, decl, parent);
+    EXPECT_EQ(style.border_top.color.r, 200);
+    EXPECT_EQ(style.border_top.color.g, 50);
+    EXPECT_EQ(style.border_top.color.b, 75);
+}
+
+TEST(PropertyCascadeTest, ApplyDeclarationBorderRightColorV59) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    Declaration decl;
+    decl.property = "border-right-color";
+    decl.values.push_back(make_token("rgb(100,200,50)"));
+
+    cascade.apply_declaration(style, decl, parent);
+    EXPECT_EQ(style.border_right.color.r, 100);
+    EXPECT_EQ(style.border_right.color.g, 200);
+    EXPECT_EQ(style.border_right.color.b, 50);
+}
+
+TEST(PropertyCascadeTest, ApplyDeclarationBorderBottomColorV59) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    Declaration decl;
+    decl.property = "border-bottom-color";
+    decl.values.push_back(make_token("rgba(50,100,150,0.5)"));
+
+    cascade.apply_declaration(style, decl, parent);
+    EXPECT_EQ(style.border_bottom.color.r, 50);
+    EXPECT_EQ(style.border_bottom.color.g, 100);
+    EXPECT_EQ(style.border_bottom.color.b, 150);
+}
+
+TEST(PropertyCascadeTest, ApplyDeclarationBorderLeftColorV59) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    Declaration decl;
+    decl.property = "border-left-color";
+    decl.values.push_back(make_token("rgb(255,128,0)"));
+
+    cascade.apply_declaration(style, decl, parent);
+    EXPECT_EQ(style.border_left.color.r, 255);
+    EXPECT_EQ(style.border_left.color.g, 128);
+    EXPECT_EQ(style.border_left.color.b, 0);
+}
+
+TEST(PropertyCascadeTest, ApplyDeclarationBorderTopWidthV59) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    Declaration decl;
+    decl.property = "border-top-width";
+    decl.values.push_back(make_token("2.5px"));
+
+    cascade.apply_declaration(style, decl, parent);
+    EXPECT_FLOAT_EQ(style.border_top.width.to_px(16.0f), 2.5f);
+}
+
+TEST(PropertyCascadeTest, ApplyDeclarationTextStrokeWidthV59) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    Declaration decl;
+    decl.property = "-webkit-text-stroke-width";
+    decl.values.push_back(make_token("1.5px"));
+
+    cascade.apply_declaration(style, decl, parent);
+    EXPECT_FLOAT_EQ(style.text_stroke_width, 1.5f);
+}
+
+TEST(PropertyCascadeTest, ApplyDeclarationOutlineColorV59) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    Declaration decl;
+    decl.property = "outline-color";
+    decl.values.push_back(make_token("rgb(64,192,64)"));
+
+    cascade.apply_declaration(style, decl, parent);
+    EXPECT_EQ(style.outline_color.r, 64);
+    EXPECT_EQ(style.outline_color.g, 192);
+    EXPECT_EQ(style.outline_color.b, 64);
+}
+
+TEST(PropertyCascadeTest, ApplyDeclarationBoxShadowMultipleV59) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    Declaration decl;
+    decl.property = "box-shadow";
+    decl.values.push_back(make_token("3px"));
+    decl.values.push_back(make_token("4px"));
+    decl.values.push_back(make_token("8px"));
+    decl.values.push_back(make_token("2px"));
+    decl.values.push_back(make_token("rgb(200,100,50)"));
+
+    cascade.apply_declaration(style, decl, parent);
+    ASSERT_EQ(style.box_shadows.size(), 1u);
+    EXPECT_FLOAT_EQ(style.box_shadows[0].offset_x, 3.0f);
+    EXPECT_FLOAT_EQ(style.box_shadows[0].offset_y, 4.0f);
+    EXPECT_FLOAT_EQ(style.box_shadows[0].blur, 8.0f);
+    EXPECT_FLOAT_EQ(style.box_shadows[0].spread, 2.0f);
+}

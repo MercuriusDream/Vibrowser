@@ -10830,3 +10830,150 @@ TEST(HttpClient, ResponseParseWithStatusCodeRangesV58) {
     EXPECT_EQ(server_error_resp->status, 503);
     EXPECT_EQ(server_error_resp->status_text, "Service Unavailable");
 }
+
+// ===========================================================================
+// V59: Header Serialization and Port Handling Tests
+// ===========================================================================
+
+// Test 1: Headers serialize as lowercase in serialized output
+TEST(RequestTest, HeadersSerializeLowercaseV59) {
+    Request req;
+    req.method = Method::GET;
+    req.host = "example.com";
+    req.port = 80;
+    req.path = "/test";
+    req.headers.set("Content-Type", "application/json");
+    req.headers.set("X-Custom-Header", "value123");
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    // Custom headers should be serialized in lowercase
+    EXPECT_TRUE(result.find("content-type: application/json\r\n") != std::string::npos);
+    EXPECT_TRUE(result.find("x-custom-header: value123\r\n") != std::string::npos);
+}
+
+// Test 2: Host header preserves capitalization
+TEST(RequestTest, HostHeaderKeepsCapitalizationV59) {
+    Request req;
+    req.method = Method::GET;
+    req.host = "example.com";
+    req.port = 8080;
+    req.path = "/";
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    // Host header should keep "Host: " capitalization
+    EXPECT_TRUE(result.find("Host: example.com:8080\r\n") != std::string::npos);
+}
+
+// Test 3: Port 80 omitted from Host header for HTTP
+TEST(RequestTest, Port80OmittedFromHostHeaderV59) {
+    Request req;
+    req.method = Method::GET;
+    req.host = "example.com";
+    req.port = 80;
+    req.path = "/page";
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    // Port 80 should be omitted
+    EXPECT_TRUE(result.find("Host: example.com\r\n") != std::string::npos);
+    EXPECT_FALSE(result.find("Host: example.com:80") != std::string::npos);
+}
+
+// Test 4: Port 443 omitted from Host header for HTTPS
+TEST(RequestTest, Port443OmittedFromHostHeaderV59) {
+    Request req;
+    req.method = Method::GET;
+    req.host = "example.com";
+    req.port = 443;
+    req.use_tls = true;
+    req.path = "/secure";
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    // Port 443 should be omitted even though use_tls is true
+    EXPECT_TRUE(result.find("Host: example.com\r\n") != std::string::npos);
+    EXPECT_FALSE(result.find("Host: example.com:443") != std::string::npos);
+}
+
+// Test 5: Content-Length counts actual bytes correctly
+TEST(RequestTest, ContentLengthCountsActualBytesV59) {
+    Request req;
+    req.method = Method::POST;
+    req.host = "example.com";
+    req.port = 80;
+    req.path = "/api";
+
+    // Body with multi-byte UTF-8 characters
+    std::string body_str = "Hello";  // 5 bytes
+    req.body.assign(body_str.begin(), body_str.end());
+    req.headers.set("Content-Type", "text/plain");
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    // Content-Length should reflect actual byte count
+    EXPECT_TRUE(result.find("Content-Length: 5\r\n") != std::string::npos);
+    EXPECT_TRUE(result.find("\r\n\r\nHello") != std::string::npos);
+}
+
+// Test 6: Multiple custom headers all serialize in lowercase
+TEST(RequestTest, MultipleHeadersSerializeLowercaseV59) {
+    Request req;
+    req.method = Method::POST;
+    req.host = "example.com";
+    req.port = 80;
+    req.path = "/submit";
+
+    req.headers.set("Accept-Language", "en-US");
+    req.headers.set("Cache-Control", "no-cache");
+    req.headers.set("X-Request-ID", "12345");
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    // All headers should be lowercase
+    EXPECT_TRUE(result.find("accept-language: en-US\r\n") != std::string::npos);
+    EXPECT_TRUE(result.find("cache-control: no-cache\r\n") != std::string::npos);
+    EXPECT_TRUE(result.find("x-request-id: 12345\r\n") != std::string::npos);
+}
+
+// Test 7: Non-standard port included in Host header
+TEST(RequestTest, NonStandardPortIncludedInHostV59) {
+    Request req;
+    req.method = Method::GET;
+    req.host = "api.example.com";
+    req.port = 3000;
+    req.path = "/data";
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    // Non-standard port should be included
+    EXPECT_TRUE(result.find("Host: api.example.com:3000\r\n") != std::string::npos);
+}
+
+// Test 8: Content-Length with binary body (8-byte payload)
+TEST(RequestTest, ContentLengthWithBinaryBodyV59) {
+    Request req;
+    req.method = Method::POST;
+    req.host = "example.com";
+    req.port = 80;
+    req.path = "/binary";
+
+    // Create body with exactly 8 bytes
+    std::vector<uint8_t> binary_body = {0xDE, 0xAD, 0xBE, 0xEF, 0x01, 0x02, 0x03, 0x04};
+    req.body = binary_body;
+    req.headers.set("Content-Type", "application/octet-stream");
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    // Content-Length should be 8
+    EXPECT_TRUE(result.find("Content-Length: 8\r\n") != std::string::npos);
+}

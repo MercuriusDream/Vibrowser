@@ -9155,3 +9155,184 @@ TEST(DomNode, LastChildPointerV58) {
     ASSERT_NE(second_elem, nullptr);
     EXPECT_EQ(second_elem, child2_ptr);
 }
+
+TEST(DomElement, CreateElementWithAttributesV59) {
+    Document doc;
+    auto elem = doc.create_element("input");
+    elem->set_attribute("type", "text");
+    elem->set_attribute("placeholder", "Enter name");
+    elem->set_attribute("maxlength", "50");
+
+    EXPECT_TRUE(elem->has_attribute("type"));
+    EXPECT_TRUE(elem->has_attribute("placeholder"));
+    EXPECT_TRUE(elem->has_attribute("maxlength"));
+    EXPECT_EQ(elem->get_attribute("type").value(), "text");
+    EXPECT_EQ(elem->get_attribute("placeholder").value(), "Enter name");
+    EXPECT_EQ(elem->get_attribute("maxlength").value(), "50");
+    EXPECT_EQ(elem->attributes().size(), 3u);
+}
+
+TEST(DomNode, InsertBeforeMultipleNodesV59) {
+    Document doc;
+    auto parent = doc.create_element("ul");
+    auto item1 = doc.create_element("li");
+    auto item2 = doc.create_element("li");
+    auto item3 = doc.create_element("li");
+
+    auto* item1_ptr = item1.get();
+    parent->append_child(std::move(item1));
+
+    auto inserted_item3 = doc.create_element("li");
+    auto* item3_ptr = inserted_item3.get();
+    parent->insert_before(std::move(inserted_item3), item1_ptr);
+
+    auto inserted_item2 = doc.create_element("li");
+    auto* item2_inserted_ptr = inserted_item2.get();
+    parent->insert_before(std::move(inserted_item2), item1_ptr);
+
+    auto first_child = parent->first_child();
+    ASSERT_NE(first_child, nullptr);
+    EXPECT_EQ(first_child, item3_ptr);
+
+    auto second_child = first_child->next_sibling();
+    ASSERT_NE(second_child, nullptr);
+    EXPECT_EQ(second_child, item2_inserted_ptr);
+
+    auto third_child = second_child->next_sibling();
+    ASSERT_NE(third_child, nullptr);
+    EXPECT_EQ(third_child, item1_ptr);
+}
+
+TEST(DomElement, GetAttributeWithMultipleValuesV59) {
+    Document doc;
+    auto elem = doc.create_element("a");
+    elem->set_attribute("href", "https://example.com");
+    elem->set_attribute("title", "Visit Example");
+    elem->set_attribute("target", "_blank");
+    elem->set_attribute("rel", "noopener");
+
+    EXPECT_EQ(elem->get_attribute("href").value(), "https://example.com");
+    EXPECT_EQ(elem->get_attribute("title").value(), "Visit Example");
+    EXPECT_EQ(elem->get_attribute("target").value(), "_blank");
+    EXPECT_EQ(elem->get_attribute("rel").value(), "noopener");
+
+    auto attrs = elem->attributes();
+    EXPECT_EQ(attrs.size(), 4u);
+}
+
+TEST(DomElement, ClassListOperationsWithMultipleClassesV59) {
+    Document doc;
+    auto elem = doc.create_element("div");
+    elem->class_list().add("container");
+    elem->class_list().add("active");
+    elem->class_list().add("highlighted");
+
+    EXPECT_TRUE(elem->class_list().contains("container"));
+    EXPECT_TRUE(elem->class_list().contains("active"));
+    EXPECT_TRUE(elem->class_list().contains("highlighted"));
+
+    elem->class_list().remove("active");
+    EXPECT_FALSE(elem->class_list().contains("active"));
+    EXPECT_TRUE(elem->class_list().contains("container"));
+    EXPECT_TRUE(elem->class_list().contains("highlighted"));
+
+    auto class_str = elem->class_list().to_string();
+    EXPECT_NE(class_str.find("container"), std::string::npos);
+    EXPECT_NE(class_str.find("highlighted"), std::string::npos);
+}
+
+TEST(DomNode, TextNodeSiblingsV59) {
+    Document doc;
+    auto parent = doc.create_element("p");
+    auto text1 = doc.create_text_node("Hello ");
+    auto elem = doc.create_element("strong");
+    auto text2 = doc.create_text_node(" World");
+
+    auto* text1_ptr = text1.get();
+    auto* elem_ptr = elem.get();
+    auto* text2_ptr = text2.get();
+
+    parent->append_child(std::move(text1));
+    parent->append_child(std::move(elem));
+    parent->append_child(std::move(text2));
+
+    auto first = parent->first_child();
+    ASSERT_EQ(first, text1_ptr);
+    auto next = first->next_sibling();
+    ASSERT_EQ(next, elem_ptr);
+    auto last = next->next_sibling();
+    ASSERT_EQ(last, text2_ptr);
+    EXPECT_EQ(last->previous_sibling(), elem_ptr);
+}
+
+TEST(DomElement, RemoveMultipleAttributesV59) {
+    Document doc;
+    auto elem = doc.create_element("img");
+    elem->set_attribute("src", "image.jpg");
+    elem->set_attribute("alt", "An image");
+    elem->set_attribute("width", "100");
+    elem->set_attribute("height", "100");
+
+    EXPECT_EQ(elem->attributes().size(), 4u);
+
+    elem->remove_attribute("width");
+    EXPECT_EQ(elem->attributes().size(), 3u);
+    EXPECT_FALSE(elem->has_attribute("width"));
+
+    elem->remove_attribute("height");
+    EXPECT_EQ(elem->attributes().size(), 2u);
+    EXPECT_FALSE(elem->has_attribute("height"));
+
+    EXPECT_TRUE(elem->has_attribute("src"));
+    EXPECT_TRUE(elem->has_attribute("alt"));
+}
+
+TEST(DomNode, ComplexTreeTraversalV59) {
+    Document doc;
+    auto root = doc.create_element("div");
+    auto section = doc.create_element("section");
+    auto article1 = doc.create_element("article");
+    auto article2 = doc.create_element("article");
+    auto heading = doc.create_element("h2");
+
+    auto* section_ptr = section.get();
+    auto* article1_ptr = article1.get();
+    auto* article2_ptr = article2.get();
+    auto* heading_ptr = heading.get();
+
+    root->append_child(std::move(section));
+    section_ptr->append_child(std::move(article1));
+    section_ptr->append_child(std::move(article2));
+    article1_ptr->append_child(std::move(heading));
+
+    auto first_child_of_root = root->first_child();
+    EXPECT_EQ(first_child_of_root, section_ptr);
+
+    auto first_child_of_section = section_ptr->first_child();
+    EXPECT_EQ(first_child_of_section, article1_ptr);
+
+    auto next_article = first_child_of_section->next_sibling();
+    EXPECT_EQ(next_article, article2_ptr);
+
+    auto first_child_of_article1 = article1_ptr->first_child();
+    EXPECT_EQ(first_child_of_article1, heading_ptr);
+}
+
+TEST(DomElement, SetAttributeIdAndRetrieveV59) {
+    Document doc;
+    auto elem = doc.create_element("main");
+    elem->set_attribute("id", "main-content");
+    elem->set_attribute("role", "main");
+
+    EXPECT_TRUE(elem->has_attribute("id"));
+    EXPECT_EQ(elem->get_attribute("id").value(), "main-content");
+    EXPECT_TRUE(elem->has_attribute("role"));
+    EXPECT_EQ(elem->get_attribute("role").value(), "main");
+
+    // Verify the id() method reflects the attribute
+    EXPECT_EQ(elem->id(), "main-content");
+
+    // Verify attributes can be queried properly
+    auto attrs = elem->attributes();
+    EXPECT_EQ(attrs.size(), 2u);
+}

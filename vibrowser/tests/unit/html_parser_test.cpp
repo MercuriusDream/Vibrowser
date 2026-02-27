@@ -9508,3 +9508,125 @@ TEST(TreeBuilder, ComplexTableStructureV58) {
     EXPECT_EQ(ths[0]->text_content(), "Header1");
     EXPECT_EQ(ths[1]->text_content(), "Header2");
 }
+
+TEST(TreeBuilder, FormWithInputElementsV59) {
+    auto doc = parse("<form action=\"submit\" method=\"POST\"><input type=\"text\" name=\"username\"><input type=\"password\" name=\"pwd\"><button>Submit</button></form>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* form = doc->find_element("form");
+    ASSERT_NE(form, nullptr);
+
+    auto inputs = doc->find_all_elements("input");
+    auto* button = doc->find_element("button");
+
+    EXPECT_EQ(inputs.size(), 2u);
+    ASSERT_NE(button, nullptr);
+    EXPECT_EQ(button->text_content(), "Submit");
+}
+
+TEST(TreeBuilder, NavWithListItemsV59) {
+    auto doc = parse("<nav><ul><li><a href=\"/home\">Home</a></li><li><a href=\"/about\">About</a></li><li><a href=\"/contact\">Contact</a></li></ul></nav>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* nav = doc->find_element("nav");
+    ASSERT_NE(nav, nullptr);
+
+    auto lis = doc->find_all_elements("li");
+    auto links = doc->find_all_elements("a");
+
+    EXPECT_EQ(lis.size(), 3u);
+    EXPECT_EQ(links.size(), 3u);
+    EXPECT_EQ(links[0]->text_content(), "Home");
+    EXPECT_EQ(links[2]->text_content(), "Contact");
+}
+
+TEST(TreeBuilder, ArticleWithSectionHeaderFooterV59) {
+    auto doc = parse("<article><header><h1>Title</h1></header><section>Content here</section><footer>Footer info</footer></article>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* article = doc->find_element("article");
+    auto* header = doc->find_element("header");
+    auto* section = doc->find_element("section");
+    auto* footer = doc->find_element("footer");
+    auto* h1 = doc->find_element("h1");
+
+    ASSERT_NE(article, nullptr);
+    ASSERT_NE(header, nullptr);
+    ASSERT_NE(section, nullptr);
+    ASSERT_NE(footer, nullptr);
+    ASSERT_NE(h1, nullptr);
+
+    EXPECT_EQ(h1->text_content(), "Title");
+    EXPECT_EQ(section->text_content(), "Content here");
+    EXPECT_EQ(footer->text_content(), "Footer info");
+}
+
+TEST(TreeBuilder, NestedListsV59) {
+    auto doc = parse("<ul><li>Item1<ul><li>Nested1</li><li>Nested2</li></ul></li><li>Item2</li></ul>");
+    ASSERT_NE(doc, nullptr);
+
+    auto lis = doc->find_all_elements("li");
+    EXPECT_GE(lis.size(), 4u);
+
+    auto uls = doc->find_all_elements("ul");
+    EXPECT_EQ(uls.size(), 2u);
+}
+
+TEST(TreeBuilder, DataListWithOptionsV59) {
+    auto doc = parse("<select><option value=\"1\">Option One</option><option value=\"2\" selected>Option Two</option><option value=\"3\">Option Three</option></select>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* select = doc->find_element("select");
+    auto options = doc->find_all_elements("option");
+
+    ASSERT_NE(select, nullptr);
+    EXPECT_EQ(options.size(), 3u);
+
+    EXPECT_EQ(options[0]->text_content(), "Option One");
+    EXPECT_EQ(options[1]->text_content(), "Option Two");
+    EXPECT_EQ(options[2]->text_content(), "Option Three");
+}
+
+TEST(TreeBuilder, FigureWithCaptionV59) {
+    auto doc = parse("<figure><img src=\"image.jpg\" alt=\"Description\"><figcaption>Image caption text</figcaption></figure>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* figure = doc->find_element("figure");
+    auto* img = doc->find_element("img");
+    auto* figcaption = doc->find_element("figcaption");
+
+    ASSERT_NE(figure, nullptr);
+    ASSERT_NE(img, nullptr);
+    ASSERT_NE(figcaption, nullptr);
+
+    EXPECT_EQ(figcaption->text_content(), "Image caption text");
+}
+
+TEST(TreeBuilder, BlockquoteWithCitationV59) {
+    auto doc = parse("<blockquote cite=\"http://example.com\"><p>Quote text here</p><footer>Attribution info</footer></blockquote>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* blockquote = doc->find_element("blockquote");
+    auto* p = doc->find_element("p");
+    auto* footer = doc->find_element("footer");
+
+    ASSERT_NE(blockquote, nullptr);
+    ASSERT_NE(p, nullptr);
+    ASSERT_NE(footer, nullptr);
+
+    EXPECT_EQ(p->text_content(), "Quote text here");
+    EXPECT_EQ(footer->text_content(), "Attribution info");
+}
+
+TEST(TreeBuilder, VideoWithSourceTracksV59) {
+    auto doc = parse("<video width=\"320\" height=\"240\" controls><source src=\"video.mp4\" type=\"video/mp4\"><track src=\"subs.vtt\" kind=\"subtitles\" srclang=\"en\"></video>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* video = doc->find_element("video");
+    auto sources = doc->find_all_elements("source");
+    auto tracks = doc->find_all_elements("track");
+
+    ASSERT_NE(video, nullptr);
+    EXPECT_EQ(sources.size(), 1u);
+    EXPECT_EQ(tracks.size(), 1u);
+}

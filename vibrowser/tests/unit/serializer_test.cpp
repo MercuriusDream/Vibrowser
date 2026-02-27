@@ -8918,3 +8918,83 @@ TEST(SerializerTest, F64NegativeZeroV58) {
     EXPECT_DOUBLE_EQ(d.read_f64(), -0.0);
     EXPECT_FALSE(d.has_remaining());
 }
+
+TEST(SerializerTest, U64MaxValueV59) {
+    Serializer s;
+    s.write_u64(UINT64_MAX);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u64(), UINT64_MAX);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, I32NegativeMaxV59) {
+    Serializer s;
+    s.write_i32(INT32_MIN);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i32(), INT32_MIN);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, StringWithSpecialCharsV59) {
+    Serializer s;
+    s.write_string("hello\nworld\t!");
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "hello\nworld\t!");
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, F64VerySmallNumberV59) {
+    Serializer s;
+    s.write_f64(1.23456789e-100);
+    Deserializer d(s.data());
+    EXPECT_DOUBLE_EQ(d.read_f64(), 1.23456789e-100);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, BytesWithAllValuesV59) {
+    Serializer s;
+    uint8_t data[256];
+    for (int i = 0; i < 256; ++i) {
+        data[i] = static_cast<uint8_t>(i);
+    }
+    s.write_bytes(data, 256);
+    Deserializer d(s.data());
+    auto result = d.read_bytes();
+    ASSERT_EQ(result.size(), 256);
+    for (int i = 0; i < 256; ++i) {
+        EXPECT_EQ(result[i], static_cast<uint8_t>(i));
+    }
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, I64PositiveMaxV59) {
+    Serializer s;
+    s.write_i64(INT64_MAX);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i64(), INT64_MAX);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, U32U16U8SequenceV59) {
+    Serializer s;
+    s.write_u32(0xDEADBEEF);
+    s.write_u16(0xCAFE);
+    s.write_u8(0xFF);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u32(), uint32_t{0xDEADBEEF});
+    EXPECT_EQ(d.read_u16(), uint16_t{0xCAFE});
+    EXPECT_EQ(d.read_u8(), uint8_t{0xFF});
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, F64StringI64MixedV59) {
+    Serializer s;
+    s.write_f64(1.5);
+    s.write_string("mixed");
+    s.write_i64(-12345);
+    Deserializer d(s.data());
+    EXPECT_DOUBLE_EQ(d.read_f64(), 1.5);
+    EXPECT_EQ(d.read_string(), "mixed");
+    EXPECT_EQ(d.read_i64(), -12345);
+    EXPECT_FALSE(d.has_remaining());
+}

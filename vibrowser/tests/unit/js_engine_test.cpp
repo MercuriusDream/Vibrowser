@@ -21091,3 +21091,216 @@ TEST(JSEngine, TemplateStringWithExpressionsCycle1519) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "Hello, World!|5 + 3 = 8|nested: inner 5");
 }
+
+// ============================================================================
+// WeakMapMultipleKeysCycle1528: Test WeakMap with multiple object keys
+// ============================================================================
+TEST(JSEngine, WeakMapMultipleKeysCycle1528) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        const wm = new WeakMap();
+        const key1 = {id: 1};
+        const key2 = {id: 2};
+        const key3 = {id: 3};
+        
+        wm.set(key1, 'value1');
+        wm.set(key2, 'value2');
+        wm.set(key3, 'value3');
+        
+        const val1 = wm.get(key1);
+        const val2 = wm.get(key2);
+        const val3 = wm.get(key3);
+        
+        `${val1}|${val2}|${val3}`
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "value1|value2|value3");
+}
+
+// ============================================================================
+// WeakSetMultipleValuesCycle1528: Test WeakSet with multiple object values
+// ============================================================================
+TEST(JSEngine, WeakSetMultipleValuesCycle1528) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        const ws = new WeakSet();
+        const obj1 = {x: 1};
+        const obj2 = {x: 2};
+        const obj3 = {x: 3};
+        
+        ws.add(obj1);
+        ws.add(obj2);
+        ws.add(obj3);
+        
+        const has1 = ws.has(obj1);
+        const has2 = ws.has(obj2);
+        const has3 = ws.has(obj3);
+        const hasFake = ws.has({x: 4});
+        
+        `${has1}${has2}${has3}${hasFake}`
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "truetruetruefalse");
+}
+
+// ============================================================================
+// ForOfCustomIteratorCycle1528: Test for-of with custom iterable object
+// ============================================================================
+TEST(JSEngine, ForOfCustomIteratorCycle1528) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        const customIter = {
+            data: [10, 20, 30],
+            [Symbol.iterator]() {
+                let index = 0;
+                const data = this.data;
+                return {
+                    next: () => {
+                        if (index < data.length) {
+                            return { value: data[index++], done: false };
+                        }
+                        return { done: true };
+                    }
+                };
+            }
+        };
+        
+        let sum = 0;
+        for (const val of customIter) {
+            sum += val;
+        }
+        sum
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "60");
+}
+
+// ============================================================================
+// IteratorNextMethodCycle1528: Test iterator protocol with next() method
+// ============================================================================
+TEST(JSEngine, IteratorNextMethodCycle1528) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        const iter = {
+            count: 0,
+            next() {
+                this.count++;
+                if (this.count <= 3) {
+                    return { value: this.count * 10, done: false };
+                }
+                return { done: true };
+            }
+        };
+        
+        const val1 = iter.next().value;
+        const val2 = iter.next().value;
+        const val3 = iter.next().value;
+        const done = iter.next().done;
+        
+        `${val1}|${val2}|${val3}|${done}`
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "10|20|30|true");
+}
+
+// ============================================================================
+// PromiseRaceMultipleCycle1528: Test Promise.race with multiple promises
+// ============================================================================
+TEST(JSEngine, PromiseRaceMultipleCycle1528) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        const p1 = new Promise(resolve => { resolve(1); });
+        const p2 = new Promise(resolve => { resolve(2); });
+        const p3 = new Promise(resolve => { resolve(3); });
+        
+        const racePromise = Promise.race([p1, p2, p3]);
+        
+        typeof racePromise === 'object' && racePromise instanceof Promise
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true");
+}
+
+// ============================================================================
+// AsyncAwaitTryCatchCycle1528: Test async/await with try/catch error handling
+// ============================================================================
+TEST(JSEngine, AsyncAwaitTryCatchCycle1528) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        async function testAsync() {
+            try {
+                const val = await Promise.resolve(42);
+                return val;
+            } catch (e) {
+                return 'error';
+            }
+        }
+        
+        typeof testAsync() === 'object' && testAsync() instanceof Promise
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true");
+}
+
+// ============================================================================
+// ClassInheritanceSuperkeywordCycle1528: Test class inheritance with super keyword
+// ============================================================================
+TEST(JSEngine, ClassInheritanceSuperkeywordCycle1528) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        class Animal {
+            constructor(name) {
+                this.name = name;
+            }
+            speak() {
+                return `${this.name} makes sound`;
+            }
+        }
+        
+        class Dog extends Animal {
+            constructor(name, breed) {
+                super(name);
+                this.breed = breed;
+            }
+            speak() {
+                return super.speak() + ' - woof';
+            }
+        }
+        
+        const dog = new Dog('Rex', 'Labrador');
+        dog.speak()
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "Rex makes sound - woof");
+}
+
+// ============================================================================
+// PrivateFieldsCycle1528: Test class private fields access and modification
+// ============================================================================
+TEST(JSEngine, PrivateFieldsCycle1528) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        class Counter {
+            #count = 0;
+            
+            increment() {
+                this.#count++;
+                return this.#count;
+            }
+            
+            getCount() {
+                return this.#count;
+            }
+        }
+        
+        const counter = new Counter();
+        const first = counter.increment();
+        const second = counter.increment();
+        const third = counter.getCount();
+        
+        `${first}|${second}|${third}`
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1|2|2");
+}
+

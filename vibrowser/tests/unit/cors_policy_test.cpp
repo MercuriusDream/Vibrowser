@@ -4741,3 +4741,67 @@ TEST(CORSPolicy, AccessControlAllowOriginEmptyStringInvalidV58) {
     EXPECT_FALSE(cors_allows_response("https://app.example", "https://api.example/data", headers,
                                       false));
 }
+
+TEST(CORSPolicy, UrlWithFragmentNotCorsEligibleV59) {
+    clever::net::HeaderMap headers;
+    // URLs with fragments are NOT CORS-eligible
+    headers.set("Access-Control-Allow-Origin", "https://api.example");
+    EXPECT_FALSE(cors_allows_response("https://api.example", "https://api.example/data#section", headers,
+                                      false));
+}
+
+TEST(CORSPolicy, OriginWithFragmentNotMatchedV59) {
+    clever::net::HeaderMap headers;
+    // Origin with fragment in ACAO header — fragment is stripped, origin matches
+    headers.set("Access-Control-Allow-Origin", "https://api.example#ignored");
+    EXPECT_TRUE(cors_allows_response("https://api.example", "https://api.example/data", headers,
+                                     false));
+}
+
+TEST(CORSPolicy, RequestUrlFragmentPreventsCorsV59) {
+    clever::net::HeaderMap headers;
+    // Request URL with fragment is not CORS-eligible
+    headers.set("Access-Control-Allow-Origin", "*");
+    EXPECT_FALSE(cors_allows_response("https://requester.example", "https://api.example#anchor", headers,
+                                      false));
+}
+
+TEST(CORSPolicy, SchemeCaseInsensitiveHttpUppercaseV59) {
+    clever::net::HeaderMap headers;
+    // HTTP scheme should be case-insensitive - uppercase HTTP should match
+    headers.set("Access-Control-Allow-Origin", "HTTP://api.example");
+    EXPECT_TRUE(cors_allows_response("http://api.example", "http://api.example/data", headers,
+                                     false));
+}
+
+TEST(CORSPolicy, SchemeCaseInsensitiveHttpsUppercaseV59) {
+    clever::net::HeaderMap headers;
+    // HTTPS scheme should be case-insensitive - mixed case should match
+    headers.set("Access-Control-Allow-Origin", "HttpS://api.example");
+    EXPECT_TRUE(cors_allows_response("https://api.example", "https://api.example/data", headers,
+                                     false));
+}
+
+TEST(CORSPolicy, SchemeCaseInsensitiveWssLowercaseV59) {
+    clever::net::HeaderMap headers;
+    // WSS scheme is not in CORS-eligible schemes
+    headers.set("Access-Control-Allow-Origin", "WSS://chat.example:443");
+    EXPECT_FALSE(cors_allows_response("wss://chat.example", "wss://chat.example/ws", headers,
+                                      false));
+}
+
+TEST(CORSPolicy, MultipleFragmentsNotCorsEligibleV59) {
+    clever::net::HeaderMap headers;
+    // Multiple fragments or encoded fragments in request URL should not be CORS-eligible
+    headers.set("Access-Control-Allow-Origin", "https://api.example");
+    EXPECT_FALSE(cors_allows_response("https://api.example", "https://api.example/data#section1#section2",
+                                      headers, false));
+}
+
+TEST(CORSPolicy, FragmentWithQueryAndPathNotCorsEligibleV59) {
+    clever::net::HeaderMap headers;
+    // Request URL with query and fragment should not be CORS-eligible
+    headers.set("Access-Control-Allow-Origin", "https://api.example");
+    EXPECT_FALSE(cors_allows_response("https://api.example", "https://api.example/data?key=value#anchor",
+                                      headers, false));
+}

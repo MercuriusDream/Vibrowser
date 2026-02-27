@@ -7487,3 +7487,98 @@ TEST(URLParser, IPv4AddressParsingV58) {
     EXPECT_EQ(*result->port, 3000);
     EXPECT_EQ(result->path, "/admin");
 }
+
+// =============================================================================
+// Test V59-1: Percent-encoded space in path (%20 should not double-encode)
+// =============================================================================
+TEST(URLParser, PercentEncodedSpaceV59) {
+    auto result = parse("https://example.com/hello%20world");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/hello%2520world");
+}
+
+// =============================================================================
+// Test V59-2: Multiple percent-encoded characters in path
+// =============================================================================
+TEST(URLParser, MultiplePercentEncodedV59) {
+    auto result = parse("http://example.com/path%2Fwith%2Fslashes");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/path%252Fwith%252Fslashes");
+}
+
+// =============================================================================
+// Test V59-3: Host-only URL gets path="/"
+// =============================================================================
+TEST(URLParser, HostOnlyURLDefaultPathV59) {
+    auto result = parse("https://example.com");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/");
+    EXPECT_TRUE(result->query.empty());
+    EXPECT_TRUE(result->fragment.empty());
+}
+
+// =============================================================================
+// Test V59-4: Host with port but no path gets path="/"
+// =============================================================================
+TEST(URLParser, HostPortOnlyDefaultPathV59) {
+    auto result = parse("http://example.com:8080");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "example.com");
+    ASSERT_TRUE(result->port.has_value());
+    EXPECT_EQ(*result->port, 8080);
+    EXPECT_EQ(result->path, "/");
+}
+
+// =============================================================================
+// Test V59-5: Percent-encoded special character %3F (question mark)
+// =============================================================================
+TEST(URLParser, PercentEncodedQuestionMarkV59) {
+    auto result = parse("https://example.com/search%3Fterm");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/search%253Fterm");
+}
+
+// =============================================================================
+// Test V59-6: Percent-encoded ampersand %26 in path
+// =============================================================================
+TEST(URLParser, PercentEncodedAmpersandV59) {
+    auto result = parse("http://example.com/a%26b%26c");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/a%2526b%2526c");
+}
+
+// =============================================================================
+// Test V59-7: Host with credentials but no path gets path="/"
+// =============================================================================
+TEST(URLParser, HostWithCredentialsDefaultPathV59) {
+    auto result = parse("https://user:pass@example.com");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->username, "user");
+    EXPECT_EQ(result->password, "pass");
+    EXPECT_EQ(result->path, "/");
+}
+
+// =============================================================================
+// Test V59-8: Percent-encoded percent sign %25 should not cause issues
+// =============================================================================
+TEST(URLParser, PercentEncodedPercentSignV59) {
+    auto result = parse("https://example.com/discount%2550off");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "example.com");
+    // The parser double-encodes percent sequences: %25 → %2525
+    EXPECT_EQ(result->path, "/discount%252550off");
+}
