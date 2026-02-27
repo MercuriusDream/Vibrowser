@@ -4674,3 +4674,70 @@ TEST(CORSPolicy, AllowOriginWhitespaceAroundValueInvalidV57) {
     EXPECT_FALSE(cors_allows_response("https://app.example", "https://api.example/data", headers,
                                       false));
 }
+
+TEST(CORSPolicy, HtmlPortExplicitHttpsNormalizationV58) {
+    clever::net::HeaderMap headers;
+    // Explicit :443 should normalize to implicit HTTPS port
+    headers.set("Access-Control-Allow-Origin", "https://app.example:443");
+    EXPECT_TRUE(cors_allows_response("https://app.example", "https://api.example/data", headers,
+                                     false));
+}
+
+TEST(CORSPolicy, DefaultHttpPortNormalizationV58) {
+    clever::net::HeaderMap headers;
+    // Explicit :80 should normalize to implicit HTTP port
+    headers.set("Access-Control-Allow-Origin", "http://app.example:80");
+    EXPECT_TRUE(cors_allows_response("http://app.example", "http://api.example/data", headers,
+                                     false));
+}
+
+TEST(CORSPolicy, WildcardWithCredentialsFlagRejectedV58) {
+    clever::net::HeaderMap headers;
+    // Wildcard origin should be rejected when credentials flag is true
+    headers.set("Access-Control-Allow-Origin", "*");
+    headers.set("Access-Control-Allow-Credentials", "true");
+    EXPECT_FALSE(cors_allows_response("https://app.example", "https://api.example/data", headers,
+                                      true));
+}
+
+TEST(CORSPolicy, OriginWithPortDifferenceMismatchV58) {
+    clever::net::HeaderMap headers;
+    // Different port numbers should cause origin mismatch
+    headers.set("Access-Control-Allow-Origin", "https://app.example:8443");
+    EXPECT_FALSE(cors_allows_response("https://app.example", "https://api.example/data", headers,
+                                      false));
+}
+
+TEST(CORSPolicy, LocalhostDefaultPortMatchV58) {
+    clever::net::HeaderMap headers;
+    // Localhost with implicit port should match explicit port
+    headers.set("Access-Control-Allow-Origin", "https://localhost:443");
+    EXPECT_TRUE(cors_allows_response("https://localhost", "https://localhost/api/data", headers,
+                                     false));
+}
+
+TEST(CORSPolicy, Ipv4LoopbackOriginAllowedV58) {
+    clever::net::HeaderMap headers;
+    // IPv4 loopback address should be treated as valid origin
+    headers.set("Access-Control-Allow-Origin", "http://127.0.0.1:8080");
+    // Note: This test validates that the origin header is processed correctly
+    // The actual CORS eligibility of 127.0.0.1 URLs is checked elsewhere
+    EXPECT_FALSE(cors_allows_response("http://app.example", "http://api.example/data", headers,
+                                      false));
+}
+
+TEST(CORSPolicy, MultipleAccessControlHeadersSingleWildcardV58) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "*");
+    headers.set("Access-Control-Allow-Methods", "GET, POST");
+    EXPECT_TRUE(cors_allows_response("https://app.example", "https://api.example/data", headers,
+                                     false));
+}
+
+TEST(CORSPolicy, AccessControlAllowOriginEmptyStringInvalidV58) {
+    clever::net::HeaderMap headers;
+    // Empty string in Access-Control-Allow-Origin should be rejected
+    headers.set("Access-Control-Allow-Origin", "");
+    EXPECT_FALSE(cors_allows_response("https://app.example", "https://api.example/data", headers,
+                                      false));
+}

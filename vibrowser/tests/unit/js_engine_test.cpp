@@ -20935,3 +20935,159 @@ TEST(JSEngine, ErrorTypesCycle1510) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "Custom type error,true");
 }
+
+// ============================================================================
+// MapBasicOperationsCycle1519: Test Map data structure basic operations
+// ============================================================================
+TEST(JSEngine, MapBasicOperationsCycle1519) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        const map = new Map();
+        map.set('key1', 'value1');
+        map.set('key2', 42);
+        const has1 = map.has('key1');
+        const has3 = map.has('key3');
+        const val1 = map.get('key1');
+        const size = map.size;
+        `${has1},${has3},${val1},${size}`
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true,false,value1,2");
+}
+
+// ============================================================================
+// SetBasicOperationsCycle1519: Test Set data structure basic operations
+// ============================================================================
+TEST(JSEngine, SetBasicOperationsCycle1519) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        const set = new Set();
+        set.add(1);
+        set.add(2);
+        set.add(2);
+        const has1 = set.has(1);
+        const has3 = set.has(3);
+        const size = set.size;
+        set.delete(1);
+        const sizeAfter = set.size;
+        `${has1},${has3},${size},${sizeAfter}`
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true,false,2,1");
+}
+
+// ============================================================================
+// SymbolCreationAndPropertiesCycle1519: Test Symbol type and properties
+// ============================================================================
+TEST(JSEngine, SymbolCreationAndPropertiesCycle1519) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        const sym1 = Symbol('test');
+        const sym2 = Symbol('test');
+        const equal = sym1 === sym2;
+        const typeStr = typeof sym1;
+        const obj = {};
+        obj[sym1] = 'hidden';
+        const hasSymProp = sym1 in obj;
+        `${equal},${typeStr},${hasSymProp}`
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "false,symbol,true");
+}
+
+// ============================================================================
+// OptionalChainingOperatorCycle1519: Test optional chaining (?.) operator
+// ============================================================================
+TEST(JSEngine, OptionalChainingOperatorCycle1519) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        const obj = {a: {b: {c: 42}}};
+        const val1 = obj?.a?.b?.c;
+        const val2 = obj?.x?.y?.z;
+        const val3 = obj?.a?.b;
+        const val3c = val3?.c;
+        `${val1},${val2},${val3c}`
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "42,undefined,42");
+}
+
+// ============================================================================
+// NullishCoalescingOperatorCycle1519: Test nullish coalescing (??) operator
+// ============================================================================
+TEST(JSEngine, NullishCoalescingOperatorCycle1519) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        const a = null;
+        const b = undefined;
+        const c = 0;
+        const d = false;
+        const e = '';
+        const res1 = a ?? 'default';
+        const res2 = b ?? 'default';
+        const res3 = c ?? 'default';
+        const res4 = d ?? 'default';
+        const res5 = e ?? 'default';
+        `${res1},${res2},${res3},${res4},${res5}`
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "default,default,0,false,");
+}
+
+// ============================================================================
+// AsyncGeneratorFunctionsCycle1519: Test async generator function behavior
+// ============================================================================
+TEST(JSEngine, AsyncGeneratorFunctionsCycle1519) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        async function* asyncGen() {
+            yield 1;
+            yield 2;
+            yield 3;
+        }
+        const gen = asyncGen();
+        const typeOfGen = typeof gen;
+        const hasNext = typeof gen.next === 'function';
+        `${typeOfGen},${hasNext}`
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "object,true");
+}
+
+// ============================================================================
+// ProxyBasicHandlersCycle1519: Test Proxy object with basic handlers
+// ============================================================================
+TEST(JSEngine, ProxyBasicHandlersCycle1519) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        const target = {x: 10, y: 20};
+        const handler = {
+            get(obj, prop) {
+                return prop === 'x' ? obj[prop] * 2 : obj[prop];
+            }
+        };
+        const proxy = new Proxy(target, handler);
+        const proxyX = proxy.x;
+        const proxyY = proxy.y;
+        `${proxyX},${proxyY}`
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "20,20");
+}
+
+// ============================================================================
+// TemplateStringWithExpressionsCycle1519: Test template strings with expressions
+// ============================================================================
+TEST(JSEngine, TemplateStringWithExpressionsCycle1519) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        const name = 'World';
+        const count = 5;
+        const greeting = `Hello, ${name}!`;
+        const calc = `5 + 3 = ${5 + 3}`;
+        const nested = `nested: ${`inner ${count}`}`;
+        `${greeting}|${calc}|${nested}`
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "Hello, World!|5 + 3 = 8|nested: inner 5");
+}

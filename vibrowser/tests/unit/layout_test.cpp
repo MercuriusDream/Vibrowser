@@ -10439,3 +10439,162 @@ TEST(LayoutEngineTest, ComplexNestedLayoutWithVaryingDimensionsV57) {
     EXPECT_EQ(root->children.size(), 2);
     EXPECT_FLOAT_EQ(root->children[0]->specified_height, 100.0f);
 }
+
+// Test V58_001: Flex container with flex-grow distributes space
+TEST(LayoutEngineTest, FlexContainerFlexGrowDistributesSpaceV58) {
+    auto root = make_flex("div");
+    root->specified_width = 600.0f;
+    root->specified_height = 100.0f;
+
+    auto child1 = make_block("div");
+    child1->specified_width = 100.0f;
+    child1->flex_grow = 1.0f;
+
+    auto child2 = make_block("div");
+    child2->specified_width = 100.0f;
+    child2->flex_grow = 2.0f;
+
+    root->append_child(std::move(child1));
+    root->append_child(std::move(child2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // Available space = 600 - 100 - 100 = 400
+    // child1 gets 400 * (1/3) = 133.33, child2 gets 400 * (2/3) = 266.67
+    EXPECT_FLOAT_EQ(root->geometry.width, 600.0f);
+    EXPECT_EQ(root->children.size(), 2);
+    EXPECT_GT(root->children[1]->geometry.width, root->children[0]->geometry.width);
+}
+
+// Test V58_002: Overflow property clipping behavior
+TEST(LayoutEngineTest, OverflowPropertyClippingBehaviorV58) {
+    auto root = make_block("div");
+    root->specified_width = 300.0f;
+    root->specified_height = 150.0f;
+    root->overflow = 1; // overflow hidden (1 = hidden)
+
+    auto child = make_block("div");
+    child->specified_width = 400.0f;
+    child->specified_height = 200.0f;
+
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(root->geometry.width, 300.0f);
+    EXPECT_FLOAT_EQ(root->geometry.height, 150.0f);
+    EXPECT_EQ(root->overflow, 1);
+}
+
+// Test V58_003: Text-align center property
+TEST(LayoutEngineTest, TextAlignCenterPropertyV58) {
+    auto root = make_block("div");
+    root->specified_width = 400.0f;
+    root->text_align = 1; // 1 = center
+
+    auto text = make_text("Centered text");
+    root->append_child(std::move(text));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(root->geometry.width, 400.0f);
+    EXPECT_EQ(root->text_align, 1);
+}
+
+// Test V58_004: Z-index stacking context
+TEST(LayoutEngineTest, ZIndexStackingContextV58) {
+    auto root = make_block("div");
+    root->specified_width = 500.0f;
+    root->specified_height = 300.0f;
+
+    auto child1 = make_block("div");
+    child1->specified_width = 100.0f;
+    child1->specified_height = 100.0f;
+    child1->z_index = 1;
+
+    auto child2 = make_block("div");
+    child2->specified_width = 100.0f;
+    child2->specified_height = 100.0f;
+    child2->z_index = 5;
+
+    root->append_child(std::move(child1));
+    root->append_child(std::move(child2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_EQ(root->children[0]->z_index, 1);
+    EXPECT_EQ(root->children[1]->z_index, 5);
+}
+
+// Test V58_005: Border radius corners
+TEST(LayoutEngineTest, BorderRadiusCornerPropertiesV58) {
+    auto root = make_block("div");
+    root->specified_width = 200.0f;
+    root->specified_height = 200.0f;
+    root->border_radius_tl = 10.0f;
+    root->border_radius_tr = 15.0f;
+    root->border_radius_bl = 5.0f;
+    root->border_radius_br = 20.0f;
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(root->border_radius_tl, 10.0f);
+    EXPECT_FLOAT_EQ(root->border_radius_tr, 15.0f);
+    EXPECT_FLOAT_EQ(root->border_radius_bl, 5.0f);
+    EXPECT_FLOAT_EQ(root->border_radius_br, 20.0f);
+}
+
+// Test V58_006: Opacity and transparency
+TEST(LayoutEngineTest, OpacityAndTransparencyV58) {
+    auto root = make_block("div");
+    root->specified_width = 300.0f;
+    root->opacity = 0.75f;
+
+    auto child = make_block("div");
+    child->specified_width = 100.0f;
+    child->specified_height = 100.0f;
+    child->opacity = 0.5f;
+
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(root->opacity, 0.75f);
+    EXPECT_FLOAT_EQ(root->children[0]->opacity, 0.5f);
+}
+
+// Test V58_007: Min and max width constraints
+TEST(LayoutEngineTest, MinMaxWidthConstraintsV58) {
+    auto root = make_block("div");
+    root->specified_width = 150.0f;
+    root->min_width = 200.0f;
+    root->max_width = 500.0f;
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // min_width should clamp up: specified=150, min=200, so width=200
+    EXPECT_FLOAT_EQ(root->geometry.width, 200.0f);
+}
+
+// Test V58_008: Font weight and size properties
+TEST(LayoutEngineTest, FontWeightAndSizePropertiesV58) {
+    auto root = make_block("div");
+
+    auto text = make_text("Bold text", 18.0f);
+    text->font_weight = 700;
+
+    root->append_child(std::move(text));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(root->children[0]->font_size, 18.0f);
+    EXPECT_EQ(root->children[0]->font_weight, 700);
+}

@@ -12028,3 +12028,117 @@ TEST(PropertyCascadeTest, ApplyDeclarationBackgroundColorV57) {
     EXPECT_EQ(style.background_color.g, 128);
     EXPECT_EQ(style.background_color.b, 64);
 }
+
+TEST(PropertyCascadeTest, ApplyDeclarationBorderColorV58) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    Declaration decl;
+    decl.property = "border-color";
+    decl.values.push_back(make_token("rgba(100,150,200,0.8)"));
+
+    cascade.apply_declaration(style, decl, parent);
+    EXPECT_EQ(style.border_top.color.r, 100);
+    EXPECT_EQ(style.border_top.color.g, 150);
+    EXPECT_EQ(style.border_top.color.b, 200);
+}
+
+TEST(PropertyCascadeTest, ApplyDeclarationCursorV58) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    Declaration decl;
+    decl.property = "cursor";
+    decl.values.push_back(make_token("pointer"));
+
+    cascade.apply_declaration(style, decl, parent);
+    EXPECT_EQ(style.cursor, Cursor::Pointer);
+}
+
+TEST(PropertyCascadeTest, ApplyDeclarationVisibilityV58) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    Declaration decl;
+    decl.property = "visibility";
+    decl.values.push_back(make_token("hidden"));
+
+    cascade.apply_declaration(style, decl, parent);
+    EXPECT_EQ(style.visibility, Visibility::Hidden);
+}
+
+TEST(PropertyCascadeTest, ApplyDeclarationOpacityV58) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    Declaration decl;
+    decl.property = "opacity";
+    decl.values.push_back(make_token("0.5"));
+
+    cascade.apply_declaration(style, decl, parent);
+    EXPECT_FLOAT_EQ(style.opacity, 0.5f);
+}
+
+TEST(PropertyCascadeTest, ApplyDeclarationOutlineColorV58) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    Declaration decl;
+    decl.property = "outline-color";
+    decl.values.push_back(make_token("rgb(220,50,50)"));
+
+    cascade.apply_declaration(style, decl, parent);
+    EXPECT_EQ(style.outline_color.r, 220);
+    EXPECT_EQ(style.outline_color.g, 50);
+    EXPECT_EQ(style.outline_color.b, 50);
+}
+
+TEST(PropertyCascadeTest, ApplyDeclarationOutlineWidthV58) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    Declaration decl;
+    decl.property = "outline-width";
+    decl.values.push_back(make_token("3px"));
+
+    cascade.apply_declaration(style, decl, parent);
+    EXPECT_FLOAT_EQ(style.outline_width.to_px(16.0f), 3.0f);
+}
+
+TEST(PropertyCascadeTest, ApplyDeclarationBoxShadowV58) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    Declaration decl;
+    decl.property = "box-shadow";
+    decl.values.push_back(make_token("5px"));
+    decl.values.push_back(make_token("10px"));
+    decl.values.push_back(make_token("15px"));
+    decl.values.push_back(make_token("rgba(0,0,0,0.5)"));
+
+    cascade.apply_declaration(style, decl, parent);
+    ASSERT_EQ(style.box_shadows.size(), 1u);
+    EXPECT_FLOAT_EQ(style.box_shadows[0].offset_x, 5.0f);
+    EXPECT_FLOAT_EQ(style.box_shadows[0].offset_y, 10.0f);
+    EXPECT_FLOAT_EQ(style.box_shadows[0].blur, 15.0f);
+}
+
+TEST(PropertyCascadeTest, ApplyDeclarationTextDecorationV58) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    Declaration decl;
+    decl.property = "text-decoration";
+    decl.values.push_back(make_token("underline"));
+
+    cascade.apply_declaration(style, decl, parent);
+    EXPECT_EQ(style.text_decoration, TextDecoration::Underline);
+}

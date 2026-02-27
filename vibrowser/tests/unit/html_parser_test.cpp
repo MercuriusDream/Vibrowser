@@ -9378,3 +9378,133 @@ TEST(TreeBuilder, HtmlEntityDecodingInTextV57) {
     EXPECT_NE(content.find('>'), std::string::npos);
     EXPECT_NE(content.find('&'), std::string::npos);
 }
+
+// ---------------------------------------------------------------------------
+// V58 — Additional HTML parser coverage: whitespace handling, special chars,
+//       nested elements, optional tags, and attribute variations
+// ---------------------------------------------------------------------------
+
+TEST(TreeBuilder, ConsecutiveTextNodesV58) {
+    auto doc = parse("<div>Text1Text2Text3</div>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* div = doc->find_element("div");
+    ASSERT_NE(div, nullptr);
+
+    const std::string content = div->text_content();
+    EXPECT_EQ(content, "Text1Text2Text3");
+}
+
+TEST(TreeBuilder, NestedListsWithComplexStructureV58) {
+    auto doc = parse("<ul><li>Item1<ul><li>Nested1</li><li>Nested2</li></ul></li><li>Item2</li></ul>");
+    ASSERT_NE(doc, nullptr);
+
+    auto all_lis = doc->find_all_elements("li");
+    EXPECT_GE(all_lis.size(), 4u);
+
+    auto* item1 = all_lis[0];
+    ASSERT_NE(item1, nullptr);
+    EXPECT_EQ(item1->text_content().find("Item1"), 0u);
+}
+
+TEST(TreeBuilder, AttributeValueWithSpecialCharactersV58) {
+    auto doc = parse("<a href=\"http://example.com?param1=value1&param2=value2\" title=\"Click & Go\">Link</a>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* a = doc->find_element("a");
+    ASSERT_NE(a, nullptr);
+
+    std::string href_val, title_val;
+    for (const auto& attr : a->attributes) {
+        if (attr.name == "href") href_val = attr.value;
+        if (attr.name == "title") title_val = attr.value;
+    }
+
+    EXPECT_NE(href_val.find("param1"), std::string::npos);
+    EXPECT_NE(href_val.find("param2"), std::string::npos);
+    EXPECT_NE(title_val.find("&"), std::string::npos);
+}
+
+TEST(TreeBuilder, MultipleNestedDivsV58) {
+    auto doc = parse("<div><div><div><div>Deep</div></div></div></div>");
+    ASSERT_NE(doc, nullptr);
+
+    auto all_divs = doc->find_all_elements("div");
+    EXPECT_EQ(all_divs.size(), 4u);
+
+    auto* innermost = all_divs[3];
+    ASSERT_NE(innermost, nullptr);
+    EXPECT_EQ(innermost->text_content(), "Deep");
+}
+
+TEST(TreeBuilder, OptionalClosingTagsImplicitListItemsV58) {
+    auto doc = parse("<ol><li>First<li>Second<li>Third</ol>");
+    ASSERT_NE(doc, nullptr);
+
+    auto lis = doc->find_all_elements("li");
+    EXPECT_EQ(lis.size(), 3u);
+
+    EXPECT_EQ(lis[0]->text_content(), "First");
+    EXPECT_EQ(lis[1]->text_content(), "Second");
+    EXPECT_EQ(lis[2]->text_content(), "Third");
+}
+
+TEST(TreeBuilder, ParagraphWithMixedInlineElementsV58) {
+    auto doc = parse("<p>Normal <b>bold</b> <i>italic</i> <u>underline</u> <code>code</code> text</p>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* p = doc->find_element("p");
+    ASSERT_NE(p, nullptr);
+
+    auto* b = doc->find_element("b");
+    auto* i = doc->find_element("i");
+    auto* u = doc->find_element("u");
+    auto* code = doc->find_element("code");
+
+    ASSERT_NE(b, nullptr);
+    ASSERT_NE(i, nullptr);
+    ASSERT_NE(u, nullptr);
+    ASSERT_NE(code, nullptr);
+
+    EXPECT_EQ(b->text_content(), "bold");
+    EXPECT_EQ(i->text_content(), "italic");
+    EXPECT_EQ(u->text_content(), "underline");
+    EXPECT_EQ(code->text_content(), "code");
+}
+
+TEST(TreeBuilder, SingleQuotedAndDoubleQuotedAttributesV58) {
+    auto doc = parse("<div id='single-quote' class=\"double-quote\" data-value='mixed\"quotes'>Content</div>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* div = doc->find_element("div");
+    ASSERT_NE(div, nullptr);
+
+    std::string id_val, class_val;
+    for (const auto& attr : div->attributes) {
+        if (attr.name == "id") id_val = attr.value;
+        if (attr.name == "class") class_val = attr.value;
+    }
+
+    EXPECT_EQ(id_val, "single-quote");
+    EXPECT_EQ(class_val, "double-quote");
+}
+
+TEST(TreeBuilder, ComplexTableStructureV58) {
+    auto doc = parse("<table><thead><tr><th>Header1</th><th>Header2</th></tr></thead><tbody><tr><td>Data1</td><td>Data2</td></tr><tr><td>Data3</td><td>Data4</td></tr></tbody></table>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* table = doc->find_element("table");
+    auto* thead = doc->find_element("thead");
+    auto* tbody = doc->find_element("tbody");
+    auto ths = doc->find_all_elements("th");
+    auto tds = doc->find_all_elements("td");
+
+    ASSERT_NE(table, nullptr);
+    ASSERT_NE(thead, nullptr);
+    ASSERT_NE(tbody, nullptr);
+    EXPECT_EQ(ths.size(), 2u);
+    EXPECT_EQ(tds.size(), 4u);
+
+    EXPECT_EQ(ths[0]->text_content(), "Header1");
+    EXPECT_EQ(ths[1]->text_content(), "Header2");
+}

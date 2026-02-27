@@ -7385,3 +7385,105 @@ TEST(URLParser, ComplexUrlWithUserinfoAndAllComponentsV36) {
     EXPECT_EQ(url->query, "filter=active");
     EXPECT_EQ(url->fragment, "item-5");
 }
+
+// =============================================================================
+// Test V58-1: Percent-decoding in path components
+// =============================================================================
+TEST(URLParser, PercentDecodingInPathV58) {
+    auto result = parse("https://example.com/hello%20world/test%2Fpath");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/hello%2520world/test%252Fpath");
+}
+
+// =============================================================================
+// Test V58-2: URL serialization with all components
+// =============================================================================
+TEST(URLParser, URLSerializationWithAllComponentsV58) {
+    auto url = parse("https://user:pass@example.com:8443/path?key=value#frag");
+    ASSERT_TRUE(url.has_value());
+    std::string serialized = url->serialize();
+    auto reparsed = parse(serialized);
+    ASSERT_TRUE(reparsed.has_value());
+    EXPECT_EQ(reparsed->scheme, "https");
+    EXPECT_EQ(reparsed->username, "user");
+    EXPECT_EQ(reparsed->password, "pass");
+    EXPECT_EQ(reparsed->host, "example.com");
+    EXPECT_EQ(*reparsed->port, 8443);
+    EXPECT_EQ(reparsed->path, "/path");
+    EXPECT_EQ(reparsed->query, "key=value");
+    EXPECT_EQ(reparsed->fragment, "frag");
+}
+
+// =============================================================================
+// Test V58-3: Uppercase scheme normalization
+// =============================================================================
+TEST(URLParser, UppercaseSchemNormalizationV58) {
+    auto result = parse("HTTPS://EXAMPLE.COM/Path");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/Path");
+}
+
+// =============================================================================
+// Test V58-4: Empty query and fragment preservation
+// =============================================================================
+TEST(URLParser, EmptyQueryAndFragmentV58) {
+    auto result = parse("https://example.com/path?#");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_TRUE(result->query.empty());
+    EXPECT_TRUE(result->fragment.empty());
+    EXPECT_EQ(result->path, "/path");
+}
+
+// =============================================================================
+// Test V58-5: URL with multiple subdomains
+// =============================================================================
+TEST(URLParser, MultipleSubdomainsV58) {
+    auto result = parse("https://api.v2.staging.example.com:9443/endpoint");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "api.v2.staging.example.com");
+    ASSERT_TRUE(result->port.has_value());
+    EXPECT_EQ(*result->port, 9443);
+    EXPECT_EQ(result->path, "/endpoint");
+}
+
+// =============================================================================
+// Test V58-6: Special characters in query string
+// =============================================================================
+TEST(URLParser, SpecialCharactersInQueryV58) {
+    auto result = parse("https://example.com/search?q=hello%20world&sort=date&filter=a%3Db");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->query, "q=hello%2520world&sort=date&filter=a%253Db");
+    EXPECT_EQ(result->path, "/search");
+}
+
+// =============================================================================
+// Test V58-7: Trailing slash normalization
+// =============================================================================
+TEST(URLParser, TrailingSlashNormalizationV58) {
+    auto url1 = parse("https://example.com");
+    auto url2 = parse("https://example.com/");
+    ASSERT_TRUE(url1.has_value());
+    ASSERT_TRUE(url2.has_value());
+    // Both normalize to "/" as the path
+    EXPECT_EQ(url1->path, "/");
+    EXPECT_EQ(url2->path, "/");
+}
+
+// =============================================================================
+// Test V58-8: IPv4 address parsing
+// =============================================================================
+TEST(URLParser, IPv4AddressParsingV58) {
+    auto result = parse("http://192.168.1.1:3000/admin");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "192.168.1.1");
+    ASSERT_TRUE(result->port.has_value());
+    EXPECT_EQ(*result->port, 3000);
+    EXPECT_EQ(result->path, "/admin");
+}

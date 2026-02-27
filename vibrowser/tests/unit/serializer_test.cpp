@@ -8836,3 +8836,85 @@ TEST(SerializerTest, LargeBytesBufferV57) {
     }
     EXPECT_FALSE(d.has_remaining());
 }
+
+TEST(SerializerTest, I64PositiveMaxV58) {
+    Serializer s;
+    s.write_i64(INT64_MAX);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i64(), INT64_MAX);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, I64NegativeMinV58) {
+    Serializer s;
+    s.write_i64(INT64_MIN);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i64(), INT64_MIN);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, F64PiRoundTripV58) {
+    Serializer s;
+    s.write_f64(3.14159265358979);
+    Deserializer d(s.data());
+    EXPECT_DOUBLE_EQ(d.read_f64(), 3.14159265358979);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, BytesWithNullTerminatorV58) {
+    Serializer s;
+    const uint8_t data[] = {1, 2, 0, 3, 4};
+    s.write_bytes(data, sizeof(data));
+    Deserializer d(s.data());
+    auto result = d.read_bytes();
+    ASSERT_EQ(result.size(), 5);
+    EXPECT_EQ(result[0], 1);
+    EXPECT_EQ(result[1], 2);
+    EXPECT_EQ(result[2], 0);
+    EXPECT_EQ(result[3], 3);
+    EXPECT_EQ(result[4], 4);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, StringThenF64ThenI64V58) {
+    Serializer s;
+    s.write_string("test");
+    s.write_f64(2.718);
+    s.write_i64(-999);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "test");
+    EXPECT_DOUBLE_EQ(d.read_f64(), 2.718);
+    EXPECT_EQ(d.read_i64(), -999);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, U64ThenU32ThenU16ThenU8V58) {
+    Serializer s;
+    s.write_u64(0x123456789ABCDEF0);
+    s.write_u32(0x11223344);
+    s.write_u16(0x5566);
+    s.write_u8(0x77);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u64(), uint64_t{0x123456789ABCDEF0});
+    EXPECT_EQ(d.read_u32(), uint32_t{0x11223344});
+    EXPECT_EQ(d.read_u16(), uint16_t{0x5566});
+    EXPECT_EQ(d.read_u8(), uint8_t{0x77});
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, EmptyBytesBufferV58) {
+    Serializer s;
+    s.write_bytes(nullptr, 0);
+    Deserializer d(s.data());
+    auto result = d.read_bytes();
+    EXPECT_EQ(result.size(), 0);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, F64NegativeZeroV58) {
+    Serializer s;
+    s.write_f64(-0.0);
+    Deserializer d(s.data());
+    EXPECT_DOUBLE_EQ(d.read_f64(), -0.0);
+    EXPECT_FALSE(d.has_remaining());
+}

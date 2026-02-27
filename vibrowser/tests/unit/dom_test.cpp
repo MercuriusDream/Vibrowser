@@ -8985,3 +8985,173 @@ TEST(DomElement, RemoveAndReaddDifferentElementTypeV57) {
     ASSERT_NE(elem, nullptr);
     EXPECT_EQ(elem->tag_name(), "article");
 }
+
+// ---------------------------------------------------------------------------
+// V58 Suite: Additional DOM tests
+// ---------------------------------------------------------------------------
+
+TEST(DomNode, PreviousSiblingTraversalV58) {
+    Document doc;
+    auto parent = doc.create_element("div");
+    auto child1 = doc.create_element("p");
+    auto child2 = doc.create_element("span");
+    auto child3 = doc.create_element("em");
+
+    auto* c1 = child1.get();
+    auto* c2 = child2.get();
+    auto* c3 = child3.get();
+
+    parent->append_child(std::move(child1));
+    parent->append_child(std::move(child2));
+    parent->append_child(std::move(child3));
+
+    EXPECT_EQ(c3->previous_sibling(), c2);
+    EXPECT_EQ(c2->previous_sibling(), c1);
+    EXPECT_EQ(c1->previous_sibling(), nullptr);
+}
+
+TEST(DomElement, GetAttributeReturnsCorrectValueV58) {
+    Document doc;
+    auto elem = doc.create_element("input");
+    elem->set_attribute("type", "text");
+    elem->set_attribute("placeholder", "Enter your name");
+    elem->set_attribute("maxlength", "50");
+
+    auto type_attr = elem->get_attribute("type");
+    auto placeholder_attr = elem->get_attribute("placeholder");
+    auto maxlength_attr = elem->get_attribute("maxlength");
+
+    ASSERT_TRUE(type_attr.has_value());
+    ASSERT_TRUE(placeholder_attr.has_value());
+    ASSERT_TRUE(maxlength_attr.has_value());
+    EXPECT_EQ(type_attr.value(), "text");
+    EXPECT_EQ(placeholder_attr.value(), "Enter your name");
+    EXPECT_EQ(maxlength_attr.value(), "50");
+}
+
+TEST(DomElement, MultipleClassesOperationsV58) {
+    Document doc;
+    auto elem = doc.create_element("div");
+    elem->class_list().add("container");
+    elem->class_list().add("flex");
+    elem->class_list().add("active");
+
+    EXPECT_TRUE(elem->class_list().contains("container"));
+    EXPECT_TRUE(elem->class_list().contains("flex"));
+    EXPECT_TRUE(elem->class_list().contains("active"));
+    EXPECT_FALSE(elem->class_list().contains("hidden"));
+
+    elem->class_list().remove("flex");
+    EXPECT_FALSE(elem->class_list().contains("flex"));
+    EXPECT_TRUE(elem->class_list().contains("container"));
+}
+
+TEST(DomNode, InsertBeforeFirstChildV58) {
+    Document doc;
+    auto parent = doc.create_element("ul");
+    auto existing = doc.create_element("li");
+    auto new_item = doc.create_element("li");
+
+    auto* existing_ptr = existing.get();
+    parent->append_child(std::move(existing));
+    EXPECT_EQ(parent->child_count(), 1u);
+
+    auto* new_ptr = new_item.get();
+    parent->insert_before(std::move(new_item), existing_ptr);
+    EXPECT_EQ(parent->child_count(), 2u);
+
+    auto first = parent->first_child();
+    ASSERT_NE(first, nullptr);
+    auto first_elem = dynamic_cast<Element*>(first);
+    ASSERT_NE(first_elem, nullptr);
+    EXPECT_EQ(first_elem, new_ptr);
+}
+
+TEST(DomElement, AttributesVectorIterationV58) {
+    Document doc;
+    auto elem = doc.create_element("a");
+    elem->set_attribute("href", "https://example.com");
+    elem->set_attribute("title", "Example Site");
+    elem->set_attribute("target", "_blank");
+
+    auto attrs = elem->attributes();
+    EXPECT_EQ(attrs.size(), 3u);
+
+    int found_count = 0;
+    for (const auto& attr : attrs) {
+        if (attr.name == "href") {
+            EXPECT_EQ(attr.value, "https://example.com");
+            found_count++;
+        } else if (attr.name == "title") {
+            EXPECT_EQ(attr.value, "Example Site");
+            found_count++;
+        } else if (attr.name == "target") {
+            EXPECT_EQ(attr.value, "_blank");
+            found_count++;
+        }
+    }
+    EXPECT_EQ(found_count, 3);
+}
+
+TEST(DomNode, ForEachChildIterationV58) {
+    Document doc;
+    auto parent = doc.create_element("div");
+    auto text1 = doc.create_text_node("Hello ");
+    auto text2 = doc.create_text_node("World");
+    auto elem = doc.create_element("span");
+
+    parent->append_child(std::move(text1));
+    parent->append_child(std::move(elem));
+    parent->append_child(std::move(text2));
+
+    int iteration_count = 0;
+    parent->for_each_child([&iteration_count](Node& child) {
+        iteration_count++;
+    });
+
+    EXPECT_EQ(iteration_count, 3);
+}
+
+TEST(DomElement, RemoveAttributeAndVerifyV58) {
+    Document doc;
+    auto elem = doc.create_element("button");
+    elem->set_attribute("disabled", "true");
+    elem->set_attribute("class", "btn-primary");
+    elem->set_attribute("onclick", "handleClick()");
+
+    EXPECT_TRUE(elem->has_attribute("disabled"));
+    elem->remove_attribute("disabled");
+    EXPECT_FALSE(elem->has_attribute("disabled"));
+
+    EXPECT_TRUE(elem->has_attribute("class"));
+    EXPECT_TRUE(elem->has_attribute("onclick"));
+
+    auto attrs = elem->attributes();
+    EXPECT_EQ(attrs.size(), 2u);
+}
+
+TEST(DomNode, LastChildPointerV58) {
+    Document doc;
+    auto parent = doc.create_element("section");
+    auto child1 = doc.create_element("article");
+    auto child2 = doc.create_element("article");
+    auto child3 = doc.create_element("article");
+
+    auto* child2_ptr = child2.get();
+    auto* child3_ptr = child3.get();
+    parent->append_child(std::move(child1));
+    parent->append_child(std::move(child2));
+    parent->append_child(std::move(child3));
+
+    auto last = parent->last_child();
+    ASSERT_NE(last, nullptr);
+    auto last_elem = dynamic_cast<Element*>(last);
+    ASSERT_NE(last_elem, nullptr);
+    EXPECT_EQ(last_elem, child3_ptr);
+
+    auto second_to_last = last->previous_sibling();
+    ASSERT_NE(second_to_last, nullptr);
+    auto second_elem = dynamic_cast<Element*>(second_to_last);
+    ASSERT_NE(second_elem, nullptr);
+    EXPECT_EQ(second_elem, child2_ptr);
+}

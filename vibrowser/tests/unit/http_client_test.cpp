@@ -10658,3 +10658,175 @@ TEST(HttpClient, CookieJarDomainSeparationV57) {
     EXPECT_EQ(domain_b_cookies.find("session_a"), std::string::npos);
     EXPECT_EQ(domain_b_cookies.find("session_c"), std::string::npos);
 }
+
+// ===========================================================================
+// V58 Test Suite: Additional HTTP Client Tests
+// ===========================================================================
+
+TEST(HttpClient, HeaderMapEmptyInitializationV58) {
+    using namespace clever::net;
+    HeaderMap map;
+
+    EXPECT_TRUE(map.empty());
+    EXPECT_EQ(map.size(), 0u);
+    EXPECT_FALSE(map.get("Content-Type").has_value());
+    EXPECT_FALSE(map.has("Any-Header"));
+}
+
+TEST(HttpClient, RequestSerializeWithMultipleHeadersV58) {
+    using namespace clever::net;
+    Request req;
+    req.method = Method::POST;
+    req.host = "api.example.com";
+    req.port = 443;
+    req.path = "/v1/users";
+    req.headers.set("Content-Type", "application/json");
+    req.headers.set("Authorization", "Bearer token123");
+    req.headers.set("X-Custom-Header", "custom-value");
+
+    std::string body_str = R"({"name":"John"})";
+    req.body.assign(body_str.begin(), body_str.end());
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    // Verify request line
+    EXPECT_TRUE(result.find("POST /v1/users HTTP/1.1\r\n") != std::string::npos);
+    // Verify Host header (keeps original case)
+    // Port 443 is default for HTTPS and not included in Host header
+    EXPECT_TRUE(result.find("Host: api.example.com\r\n") != std::string::npos);
+    // Verify custom headers (normalized to lowercase)
+    EXPECT_TRUE(result.find("content-type: application/json\r\n") != std::string::npos);
+    EXPECT_TRUE(result.find("authorization: Bearer token123\r\n") != std::string::npos);
+    EXPECT_TRUE(result.find("x-custom-header: custom-value\r\n") != std::string::npos);
+    // Verify Content-Length was added
+    EXPECT_TRUE(result.find("Content-Length: 15\r\n") != std::string::npos);
+    // Verify body is present
+    EXPECT_TRUE(result.find("{\"name\":\"John\"}") != std::string::npos);
+}
+
+TEST(HttpClient, ResponseParseWith301RedirectV58) {
+    using namespace clever::net;
+    std::string raw =
+        "HTTP/1.1 301 Moved Permanently\r\n"
+        "Location: https://www.example.com/new-path\r\n"
+        "Content-Length: 0\r\n"
+        "\r\n";
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 301);
+    EXPECT_EQ(resp->status_text, "Moved Permanently");
+    EXPECT_TRUE(resp->headers.has("Location"));
+    EXPECT_EQ(resp->headers.get("Location").value(), "https://www.example.com/new-path");
+    EXPECT_TRUE(resp->body.empty());
+}
+
+TEST(HttpClient, RequestHeadMethodWithoutBodyV58) {
+    using namespace clever::net;
+    Request req;
+    req.method = Method::HEAD;
+    req.host = "example.com";
+    req.port = 80;
+    req.path = "/resource";
+    req.headers.set("Accept", "application/json");
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    // HEAD requests should have no body
+    EXPECT_TRUE(result.find("HEAD /resource HTTP/1.1\r\n") != std::string::npos);
+    EXPECT_TRUE(result.find("Host: example.com\r\n") != std::string::npos);
+    // Body section should be empty
+    EXPECT_TRUE(result.find("\r\n\r\n") != std::string::npos);
+    size_t body_start = result.find("\r\n\r\n") + 4;
+    EXPECT_EQ(body_start, result.length());
+}
+
+TEST(HttpClient, CookieJarPathSeparationV58) {
+    using namespace clever::net;
+    CookieJar jar;
+
+    jar.set_from_header("cookie1=value1; Path=/api", "example.com");
+    jar.set_from_header("cookie2=value2; Path=/", "example.com");
+    jar.set_from_header("cookie3=value3; Path=/admin", "example.com");
+
+    EXPECT_EQ(jar.size(), 3u);
+
+    // Get cookies for /api path - should include /api and / cookies
+    std::string api_cookies = jar.get_cookie_header("example.com", "/api", false);
+    EXPECT_NE(api_cookies.find("cookie1"), std::string::npos);
+    EXPECT_NE(api_cookies.find("cookie2"), std::string::npos);
+
+    // Get cookies for /admin path
+    std::string admin_cookies = jar.get_cookie_header("example.com", "/admin", false);
+    EXPECT_NE(admin_cookies.find("cookie3"), std::string::npos);
+}
+
+TEST(HttpClient, HeaderMapIterationCountV58) {
+    using namespace clever::net;
+    HeaderMap map;
+    map.set("Header1", "value1");
+    map.set("Header2", "value2");
+    map.set("Header3", "value3");
+    map.append("Header1", "value1-alt");
+
+    int count = 0;
+    for (auto it = map.begin(); it != map.end(); ++it) {
+        count++;
+    }
+
+    // We expect at least 3 unique headers
+    EXPECT_GE(count, 3);
+    EXPECT_FALSE(map.empty());
+}
+
+TEST(HttpClient, RequestPatchMethodWithBodyV58) {
+    using namespace clever::net;
+    Request req;
+    req.method = Method::PATCH;
+    req.host = "api.example.com";
+    req.port = 80;
+    req.path = "/users/123";
+    req.headers.set("Content-Type", "application/json");
+
+    std::string patch_data = R"({"email":"new@example.com"})";
+    req.body.assign(patch_data.begin(), patch_data.end());
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    EXPECT_TRUE(result.find("PATCH /users/123 HTTP/1.1\r\n") != std::string::npos);
+    EXPECT_TRUE(result.find("Host: api.example.com\r\n") != std::string::npos);
+    EXPECT_TRUE(result.find("Content-Length: 27\r\n") != std::string::npos);
+    EXPECT_TRUE(result.find("\r\n\r\n{\"email\":\"new@example.com\"}") != std::string::npos);
+}
+
+TEST(HttpClient, ResponseParseWithStatusCodeRangesV58) {
+    using namespace clever::net;
+    // Test 2xx success
+    std::string success_raw = "HTTP/1.1 201 Created\r\nContent-Length: 0\r\n\r\n";
+    std::vector<uint8_t> success_data(success_raw.begin(), success_raw.end());
+    auto success_resp = Response::parse(success_data);
+    ASSERT_TRUE(success_resp.has_value());
+    EXPECT_EQ(success_resp->status, 201);
+    EXPECT_EQ(success_resp->status_text, "Created");
+
+    // Test 4xx client error
+    std::string error_raw = "HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\n\r\n";
+    std::vector<uint8_t> error_data(error_raw.begin(), error_raw.end());
+    auto error_resp = Response::parse(error_data);
+    ASSERT_TRUE(error_resp.has_value());
+    EXPECT_EQ(error_resp->status, 400);
+    EXPECT_EQ(error_resp->status_text, "Bad Request");
+
+    // Test 5xx server error
+    std::string server_error_raw = "HTTP/1.1 503 Service Unavailable\r\nContent-Length: 0\r\n\r\n";
+    std::vector<uint8_t> server_error_data(server_error_raw.begin(), server_error_raw.end());
+    auto server_error_resp = Response::parse(server_error_data);
+    ASSERT_TRUE(server_error_resp.has_value());
+    EXPECT_EQ(server_error_resp->status, 503);
+    EXPECT_EQ(server_error_resp->status_text, "Service Unavailable");
+}
