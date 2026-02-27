@@ -6553,3 +6553,64 @@ TEST(DomElement, HasAttributeSpellcheck) {
     el->set_attribute("spellcheck", "true");
     EXPECT_TRUE(el->has_attribute("spellcheck"));
 }
+
+// --- Cycle 1219: 8 DOM tests --- THIS ROUND CROSSES 10K TESTS!
+
+TEST(DomElement, TagNameOption) {
+    Document doc;
+    auto el = doc.create_element("option");
+    EXPECT_EQ(el->tag_name(), "option");
+}
+
+TEST(DomElement, TagNameWbr) {
+    Document doc;
+    auto el = doc.create_element("wbr");
+    EXPECT_EQ(el->tag_name(), "wbr");
+}
+
+TEST(DomElement, SetAttributeMinlength) {
+    Document doc;
+    auto el = doc.create_element("input");
+    el->set_attribute("minlength", "5");
+    EXPECT_EQ(el->get_attribute("minlength"), "5");
+}
+
+TEST(DomElement, SetAttributeMaxlength) {
+    Document doc;
+    auto el = doc.create_element("input");
+    el->set_attribute("maxlength", "100");
+    EXPECT_EQ(el->get_attribute("maxlength"), "100");
+}
+
+TEST(DomElement, ChildCountFifty) {
+    Document doc;
+    auto parent = doc.create_element("div");
+    for (int i = 0; i < 50; ++i) {
+        parent->append_child(doc.create_element("span"));
+    }
+    EXPECT_EQ(parent->child_count(), 50u);
+}
+
+TEST(DomClassList, ClassListContainsTwelve) {
+    Document doc;
+    auto el = doc.create_element("div");
+    for (int i = 0; i < 12; ++i) {
+        el->class_list().add("c" + std::to_string(i));
+    }
+    EXPECT_EQ(el->class_list().length(), 12u);
+}
+
+TEST(DomElement, RemoveAttributeRole) {
+    Document doc;
+    auto el = doc.create_element("div");
+    el->set_attribute("role", "button");
+    el->remove_attribute("role");
+    EXPECT_FALSE(el->has_attribute("role"));
+}
+
+TEST(DomElement, HasAttributeNovalidate) {
+    Document doc;
+    auto el = doc.create_element("form");
+    el->set_attribute("novalidate", "");
+    EXPECT_TRUE(el->has_attribute("novalidate"));
+}

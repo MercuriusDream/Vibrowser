@@ -3106,3 +3106,35 @@ TEST(CORSPolicyTest, NotCorsEligibleUrlWithSpaceInPathV23) {
 TEST(CORSPolicyTest, EnforceableHttpsPortDifferentFrom443V23) {
     EXPECT_TRUE(has_enforceable_document_origin("https://example.com:9443"));
 }
+
+TEST(CORSPolicyTest, NotEnforceableBlobSchemeV24) {
+    EXPECT_FALSE(has_enforceable_document_origin("blob:https://example.com/uuid"));
+}
+
+TEST(CORSPolicyTest, NotEnforceableDataSchemeV24) {
+    EXPECT_FALSE(has_enforceable_document_origin("data:text/plain;base64,SGVsbG8="));
+}
+
+TEST(CORSPolicyTest, NotEnforceableFileSchemeV24) {
+    EXPECT_FALSE(has_enforceable_document_origin("file:///home/user/document.html"));
+}
+
+TEST(CORSPolicyTest, NotEnforceableNullOriginV24) {
+    EXPECT_FALSE(has_enforceable_document_origin("null"));
+}
+
+TEST(CORSPolicyTest, NotEnforceableHttpsExplicit443PortV24) {
+    EXPECT_FALSE(has_enforceable_document_origin("https://example.com:443"));
+}
+
+TEST(CORSPolicyTest, CorsEligibleHttpsWithFragmentRemovedV24) {
+    EXPECT_FALSE(is_cors_eligible_request_url("https://api.example.com/data#section"));
+}
+
+TEST(CORSPolicyTest, CrossOriginDifferentPortV24) {
+    EXPECT_TRUE(is_cross_origin("https://app.example.com:8443", "https://app.example.com:9443/api"));
+}
+
+TEST(CORSPolicyTest, ShouldAttachOriginHeaderDifferentPortV24) {
+    EXPECT_TRUE(should_attach_origin_header("https://app.example.com:8443", "https://app.example.com:9443/data"));
+}

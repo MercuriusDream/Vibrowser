@@ -8719,3 +8719,45 @@ TEST(LayoutNodeProps, MaskBorderDefaultEmptyV2) {
     LayoutNode n;
     EXPECT_EQ(n.mask_border, "");
 }
+
+// Cycle 1226: LayoutNode property default tests
+
+TEST(LayoutNodeProps, TextWrapDefaultV15) {
+    LayoutNode n;
+    EXPECT_EQ(n.text_wrap, 0);
+}
+
+TEST(LayoutNodeProps, ContainerTypeDefaultV15) {
+    LayoutNode n;
+    EXPECT_EQ(n.container_type, 0);
+}
+
+TEST(LayoutNodeProps, ContainerNameDefaultV15) {
+    LayoutNode n;
+    EXPECT_EQ(n.container_name, "");
+}
+
+TEST(LayoutNodeProps, AccentColorDefaultV15) {
+    LayoutNode n;
+    EXPECT_EQ(n.accent_color, 0u);
+}
+
+TEST(LayoutNodeProps, ColorSchemeDefaultV15) {
+    LayoutNode n;
+    EXPECT_EQ(n.color_scheme, 0);
+}
+
+TEST(LayoutNodeProps, OverscrollBehaviorDefaultV15) {
+    LayoutNode n;
+    EXPECT_EQ(n.overscroll_behavior, 0);
+}
+
+TEST(LayoutNodeProps, ScrollSnapTypeDefaultV15) {
+    LayoutNode n;
+    EXPECT_EQ(n.scroll_snap_type, "");
+}
+
+TEST(LayoutNodeProps, ScrollSnapAlignDefaultV15) {
+    LayoutNode n;
+    EXPECT_EQ(n.scroll_snap_align, "");
+}

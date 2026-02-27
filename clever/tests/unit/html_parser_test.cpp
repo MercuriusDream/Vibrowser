@@ -7064,3 +7064,61 @@ TEST(TreeBuilder, DivWithNestedSpanAndP) {
     }
     EXPECT_TRUE(has_div_id);
 }
+
+// Cycle 1225: HTML parser tests
+
+TEST(TreeBuilder, MeterElementV3) {
+    auto doc = parse("<html><body><meter value=\"0.6\" min=\"0\" max=\"1\"></meter></body></html>");
+    auto* el = doc->find_element("meter");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "meter");
+}
+
+TEST(TreeBuilder, ProgressElementV3) {
+    auto doc = parse("<html><body><progress value=\"70\" max=\"100\"></progress></body></html>");
+    auto* el = doc->find_element("progress");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "progress");
+}
+
+TEST(TreeBuilder, OutputElementV3) {
+    auto doc = parse("<html><body><output name=\"result\">42</output></body></html>");
+    auto* el = doc->find_element("output");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "output");
+}
+
+TEST(TreeBuilder, DatalistElementV3) {
+    auto doc = parse("<html><body><datalist id=\"colors\"><option value=\"red\"></option></datalist></body></html>");
+    auto* el = doc->find_element("datalist");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "datalist");
+}
+
+TEST(TreeBuilder, DetailsElementV3) {
+    auto doc = parse("<html><body><details><summary>Info</summary><p>Detail text</p></details></body></html>");
+    auto* el = doc->find_element("details");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "details");
+}
+
+TEST(TreeBuilder, DialogElementV3) {
+    auto doc = parse("<html><body><dialog open>Hello</dialog></body></html>");
+    auto* el = doc->find_element("dialog");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "dialog");
+}
+
+TEST(TreeBuilder, RubyElementWithRtV3) {
+    auto doc = parse("<html><body><ruby>漢<rt>かん</rt></ruby></body></html>");
+    auto* el = doc->find_element("ruby");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "ruby");
+}
+
+TEST(TreeBuilder, BdiElementV3) {
+    auto doc = parse("<html><body><bdi>مرحبا</bdi></body></html>");
+    auto* el = doc->find_element("bdi");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "bdi");
+}

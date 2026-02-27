@@ -18764,3 +18764,53 @@ TEST(JSEngine, OptionalChainingAccessCycle1218) {
     auto result = engine.evaluate("var obj = { a: { b: { c: 42 } } }; var result = obj?.a?.b?.c; result.toString()");
     EXPECT_EQ(result, "42");
 }
+
+// Cycle 1227: JS engine tests
+
+TEST(JSEngine, WeakRefCreationCycle1227) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var obj = {}; var ref = new WeakRef(obj); typeof ref");
+    EXPECT_EQ(result, "object");
+}
+
+TEST(JSEngine, FinalizationRegistryCycle1227) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var fr = new FinalizationRegistry(function(){}); typeof fr");
+    EXPECT_EQ(result, "object");
+}
+
+TEST(JSEngine, LogicalAssignmentOrCycle1227) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var a = null; a ||= 42; a.toString()");
+    EXPECT_EQ(result, "42");
+}
+
+TEST(JSEngine, LogicalAssignmentAndCycle1227) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var a = 1; a &&= 99; a.toString()");
+    EXPECT_EQ(result, "99");
+}
+
+TEST(JSEngine, LogicalAssignmentNullishCycle1227) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var a = undefined; a ??= 7; a.toString()");
+    EXPECT_EQ(result, "7");
+}
+
+TEST(JSEngine, NumericSeparatorCycle1227) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var n = 1_000_000; n.toString()");
+    EXPECT_EQ(result, "1000000");
+}
+
+TEST(JSEngine, PromiseAnyCycle1227) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("typeof Promise.any");
+    EXPECT_EQ(result, "function");
+}
+
+TEST(JSEngine, StringReplaceAllCycle1227) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("'aabbcc'.replaceAll('b', 'x')");
+    EXPECT_EQ(result, "aaxxcc");
+}

@@ -5990,3 +5990,59 @@ TEST(SerializerTest, U8LowByteV13) {
     Deserializer d(s.data());
     EXPECT_EQ(1, d.read_u8());
 }
+
+TEST(SerializerTest, U8MaxByteV14) {
+    Serializer s;
+    s.write_u8(255);
+    Deserializer d(s.data());
+    EXPECT_EQ(255, d.read_u8());
+}
+
+TEST(SerializerTest, U16MidRangeV14) {
+    Serializer s;
+    s.write_u16(32768);
+    Deserializer d(s.data());
+    EXPECT_EQ(32768, d.read_u16());
+}
+
+TEST(SerializerTest, U32HighValueV14) {
+    Serializer s;
+    s.write_u32(3000000000U);
+    Deserializer d(s.data());
+    EXPECT_EQ(3000000000U, d.read_u32());
+}
+
+TEST(SerializerTest, U64MidRangeV14) {
+    Serializer s;
+    s.write_u64(9223372036854775808ULL);
+    Deserializer d(s.data());
+    EXPECT_EQ(9223372036854775808ULL, d.read_u64());
+}
+
+TEST(SerializerTest, I32NegativeLargeV14) {
+    Serializer s;
+    s.write_i32(-2147483647);
+    Deserializer d(s.data());
+    EXPECT_EQ(-2147483647, d.read_i32());
+}
+
+TEST(SerializerTest, I64PositiveV14) {
+    Serializer s;
+    s.write_i64(4611686018427387904LL);
+    Deserializer d(s.data());
+    EXPECT_EQ(4611686018427387904LL, d.read_i64());
+}
+
+TEST(SerializerTest, F64NegativeValueV14) {
+    Serializer s;
+    s.write_f64(-271.828182845904523536);
+    Deserializer d(s.data());
+    EXPECT_NEAR(-271.828182845904523536, d.read_f64(), 1e-15);
+}
+
+TEST(SerializerTest, StringMixedCaseV14) {
+    Serializer s;
+    s.write_string("MixedCaseString");
+    Deserializer d(s.data());
+    EXPECT_EQ("MixedCaseString", d.read_string());
+}

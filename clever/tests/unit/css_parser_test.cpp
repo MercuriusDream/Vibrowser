@@ -7483,3 +7483,77 @@ TEST_F(CSSStylesheetTest, ScrollPaddingV14) {
         if (d.property == "scroll-padding") found = true;
     EXPECT_TRUE(found);
 }
+
+// Cycle 1224: CSS parser tests V15
+
+TEST_F(CSSStylesheetTest, TextWrapBalanceV15) {
+    auto sheet = parse_stylesheet("p { text-wrap: balance; }");
+    ASSERT_FALSE(sheet.rules.empty());
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "text-wrap") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, ContainerTypeV15) {
+    auto sheet = parse_stylesheet(".card { container-type: inline-size; }");
+    ASSERT_FALSE(sheet.rules.empty());
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "container-type") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, ContainerNameV15) {
+    auto sheet = parse_stylesheet(".sidebar { container-name: sidebar; }");
+    ASSERT_FALSE(sheet.rules.empty());
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "container-name") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, AccentColorV15) {
+    auto sheet = parse_stylesheet("input { accent-color: hotpink; }");
+    ASSERT_FALSE(sheet.rules.empty());
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "accent-color") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, ColorSchemeV15) {
+    auto sheet = parse_stylesheet(":root { color-scheme: light dark; }");
+    ASSERT_FALSE(sheet.rules.empty());
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "color-scheme") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, OverscrollBehaviorV15) {
+    auto sheet = parse_stylesheet("body { overscroll-behavior: contain; }");
+    ASSERT_FALSE(sheet.rules.empty());
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "overscroll-behavior") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, ScrollSnapTypeV15) {
+    auto sheet = parse_stylesheet(".scroll { scroll-snap-type: x mandatory; }");
+    ASSERT_FALSE(sheet.rules.empty());
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "scroll-snap-type") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, ScrollSnapAlignV15) {
+    auto sheet = parse_stylesheet(".item { scroll-snap-align: center; }");
+    ASSERT_FALSE(sheet.rules.empty());
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "scroll-snap-align") found = true;
+    EXPECT_TRUE(found);
+}

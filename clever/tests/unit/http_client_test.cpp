@@ -6841,3 +6841,98 @@ TEST(MethodTest, PatchMethodEnumV16) {
     Method post_method = Method::POST;
     EXPECT_NE(m, post_method);
 }
+
+// ============================================================================
+// Cycle 1223: More HTTP/Net tests
+// ============================================================================
+
+// HeaderMap: set() overwrites previous value V17
+TEST(HeaderMapTest, SetOverwritesPreviousValueV17) {
+    HeaderMap map;
+    map.set("Authorization", "Bearer token1");
+    EXPECT_EQ(map.get("Authorization").value(), "Bearer token1");
+    map.set("Authorization", "Bearer token2");
+    EXPECT_EQ(map.get("Authorization").value(), "Bearer token2");
+    EXPECT_EQ(map.size(), 1u);
+}
+
+// HeaderMap: has() returns correct boolean for existing/missing keys V17
+TEST(HeaderMapTest, HasReturnsCorrectBooleanV17) {
+    HeaderMap map;
+    map.set("X-Custom-Header", "value");
+    EXPECT_TRUE(map.has("X-Custom-Header"));
+    EXPECT_TRUE(map.has("x-custom-header"));
+    EXPECT_FALSE(map.has("X-Missing-Header"));
+}
+
+// HeaderMap: remove() deletes entries and size updates V17
+TEST(HeaderMapTest, RemoveDeletesEntriesV17) {
+    HeaderMap map;
+    map.set("Accept", "text/html");
+    map.set("User-Agent", "test");
+    EXPECT_EQ(map.size(), 2u);
+    map.remove("Accept");
+    EXPECT_EQ(map.size(), 1u);
+    EXPECT_FALSE(map.has("Accept"));
+    EXPECT_TRUE(map.has("User-Agent"));
+}
+
+// HeaderMap: get_all() returns all values for multi-valued header V17
+TEST(HeaderMapTest, GetAllReturnsMultiValuedHeaderV17) {
+    HeaderMap map;
+    map.set("Set-Cookie", "session=abc");
+    auto values = map.get_all("Set-Cookie");
+    EXPECT_GE(values.size(), 1u);
+}
+
+// Request: serialize() returns vector<uint8_t> for GET request V17
+TEST(RequestTest, SerializeReturnsVectorUint8tV17) {
+    Request req;
+    req.method = Method::GET;
+    req.host = "example.com";
+    req.path = "/api/test";
+    req.use_tls = false;
+    auto serialized = req.serialize();
+    EXPECT_FALSE(serialized.empty());
+    EXPECT_GT(serialized.size(), 0u);
+    std::string str(serialized.begin(), serialized.end());
+    EXPECT_NE(str.find("GET"), std::string::npos);
+}
+
+// Request: serialize() includes all request properties V17
+TEST(RequestTest, SerializeIncludesAllPropertiesV17) {
+    Request req;
+    req.method = Method::PUT;
+    req.host = "api.service.io";
+    req.path = "/v2/resource";
+    req.use_tls = true;
+    req.headers.set("Content-Type", "application/json");
+    req.headers.set("Accept", "application/json");
+    auto serialized = req.serialize();
+    std::string str(serialized.begin(), serialized.end());
+    EXPECT_NE(str.find("PUT"), std::string::npos);
+    EXPECT_NE(str.find("api.service.io"), std::string::npos);
+    EXPECT_NE(str.find("/v2/resource"), std::string::npos);
+}
+
+// Response: status and headers are accessible after parse V17
+TEST(ResponseTest, StatusAndHeadersAccessibleAfterParseV17) {
+    std::string raw = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nCache-Control: no-cache\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 200u);
+    EXPECT_TRUE(resp->headers.has("Content-Type"));
+    EXPECT_TRUE(resp->headers.has("Cache-Control"));
+    EXPECT_EQ(resp->headers.get("Content-Type").value(), "text/plain");
+}
+
+// CookieJar: set_from_header and get_cookie_header work correctly V17
+TEST(CookieJarTest, SetFromHeaderAndGetCookieHeaderV17) {
+    CookieJar jar;
+    jar.set_from_header("user_id=12345", "api.example.com");
+    jar.set_from_header("session=xyz", "api.example.com");
+    EXPECT_EQ(jar.size(), 2u);
+    auto cookie_header = jar.get_cookie_header("api.example.com", "/", false);
+    EXPECT_FALSE(cookie_header.empty());
+}

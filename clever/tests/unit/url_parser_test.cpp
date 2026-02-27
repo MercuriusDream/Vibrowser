@@ -4719,3 +4719,88 @@ TEST(URLParser, QueryWithEqualsInValueV4) {
     EXPECT_NE(url->query.find("formula"), std::string::npos);
     EXPECT_NE(url->query.find("mode=advanced"), std::string::npos);
 }
+
+// ============================================================================
+// Cycle 1222: More URL parser tests for simple components
+// ============================================================================
+
+// Cycle 1222: Test FTP scheme with numeric host and port
+TEST(URLParser, FtpSchemeWithNumericHostV5) {
+    auto url = parse("ftp://192.168.1.100:2121/files/archive");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "ftp");
+    EXPECT_EQ(url->host, "192.168.1.100");
+    EXPECT_EQ(url->port, 2121);
+    EXPECT_EQ(url->path, "/files/archive");
+}
+
+// Cycle 1222: Test WebSocket scheme with path and query
+TEST(URLParser, WebSocketSchemeWithPathQueryV5) {
+    auto url = parse("ws://socket.example.com/chat?room=lobby&user=alice");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "ws");
+    EXPECT_EQ(url->host, "socket.example.com");
+    EXPECT_EQ(url->path, "/chat");
+    EXPECT_NE(url->query.find("room=lobby"), std::string::npos);
+    EXPECT_NE(url->query.find("user=alice"), std::string::npos);
+}
+
+// Cycle 1222: Test HTTPS with numeric port and fragment
+TEST(URLParser, HttpsNumericPortWithFragmentV5) {
+    auto url = parse("https://api.service.io:4443/docs/reference#authentication");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "api.service.io");
+    EXPECT_EQ(url->port, 4443);
+    EXPECT_EQ(url->path, "/docs/reference");
+    EXPECT_EQ(url->fragment, "authentication");
+}
+
+// Cycle 1222: Test HTTP scheme with complex path segments
+TEST(URLParser, HttpComplexPathSegmentsV5) {
+    auto url = parse("http://legacy.internal.net:8080/v2/api/resources/items/search");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "http");
+    EXPECT_EQ(url->host, "legacy.internal.net");
+    EXPECT_EQ(url->port, 8080);
+    EXPECT_TRUE(url->path.find("/v2/api/resources/items/search") != std::string::npos);
+}
+
+// Cycle 1222: Test gopher scheme with simple path
+TEST(URLParser, GopherSchemeWithPathV6) {
+    auto url = parse("gopher://archive.example.org/0/index");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "gopher");
+    EXPECT_EQ(url->host, "archive.example.org");
+    EXPECT_EQ(url->path, "/0/index");
+}
+
+// Cycle 1222: Test file scheme with absolute path
+TEST(URLParser, FileSchemeAbsolutePathV6) {
+    auto url = parse("file:///var/www/html/index.html");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "file");
+    EXPECT_TRUE(url->path.find("index.html") != std::string::npos);
+}
+
+// Cycle 1222: Test HTTPS localhost with fragment and empty query
+TEST(URLParser, LocalhostHttpsFragmentOnlyV6) {
+    auto url = parse("https://localhost/admin/panel#dashboard");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "localhost");
+    EXPECT_EQ(url->path, "/admin/panel");
+    EXPECT_EQ(url->fragment, "dashboard");
+}
+
+// Cycle 1222: Test HTTPS with subdomain, port, path and query
+TEST(URLParser, SubdomainPortPathQueryV6) {
+    auto url = parse("https://test-api.staging.company.com:7000/v3/beta/features?enabled=true&beta=1");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "test-api.staging.company.com");
+    EXPECT_EQ(url->port, 7000);
+    EXPECT_EQ(url->path, "/v3/beta/features");
+    EXPECT_NE(url->query.find("enabled=true"), std::string::npos);
+    EXPECT_NE(url->query.find("beta=1"), std::string::npos);
+}
