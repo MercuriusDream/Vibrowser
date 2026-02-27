@@ -2505,3 +2505,78 @@ TEST(DomDocument, NodeTypeIsDocumentForNewDoc) {
     Document doc;
     EXPECT_EQ(doc.node_type(), NodeType::Document);
 }
+
+// ============================================================================
+// Cycle 684: More DOM tests
+// ============================================================================
+
+// Element: get_attribute for href returns link
+TEST(DomElement, GetAttributeHrefReturnsLink) {
+    Element elem("a");
+    elem.set_attribute("href", "https://example.com");
+    auto val = elem.get_attribute("href");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(val.value(), "https://example.com");
+}
+
+// Element: get_attribute for id returns id value
+TEST(DomElement, GetAttributeIdReturnsIdValue) {
+    Element elem("div");
+    elem.set_attribute("id", "main-content");
+    auto val = elem.get_attribute("id");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(val.value(), "main-content");
+}
+
+// Element: has_attribute true for multiple attrs
+TEST(DomElement, HasAttributeTrueForMultipleAttrs) {
+    Element elem("input");
+    elem.set_attribute("type", "email");
+    elem.set_attribute("required", "");
+    EXPECT_TRUE(elem.has_attribute("type"));
+    EXPECT_TRUE(elem.has_attribute("required"));
+}
+
+// Element: first li is first child of ul
+TEST(DomElement, FirstLiIsFirstChildOfUl) {
+    Element parent("ul");
+    auto first = std::make_unique<Element>("li");
+    Element* first_ptr = first.get();
+    parent.append_child(std::move(first));
+    parent.append_child(std::make_unique<Element>("li"));
+    EXPECT_EQ(parent.first_child(), first_ptr);
+}
+
+// ClassList: items contains added classes
+TEST(DomClassList, ItemsContainsAddedClasses) {
+    Element elem("div");
+    elem.class_list().add("foo");
+    elem.class_list().add("bar");
+    auto items = elem.class_list().items();
+    bool has_foo = false, has_bar = false;
+    for (auto& item : items) {
+        if (item == "foo") has_foo = true;
+        if (item == "bar") has_bar = true;
+    }
+    EXPECT_TRUE(has_foo);
+    EXPECT_TRUE(has_bar);
+}
+
+// Text: set_data changes content
+TEST(DomText, SetDataChangesContentDirectly) {
+    Text t("original");
+    t.set_data("modified");
+    EXPECT_EQ(t.data(), "modified");
+}
+
+// Element: tag_name is main for main element
+TEST(DomElement, TagNameIsMainForMainElement) {
+    Element elem("main");
+    EXPECT_EQ(elem.tag_name(), "main");
+}
+
+// Event: cancelable flag works
+TEST(DomEvent, CancelableFlagWorks) {
+    Event ev("click", true, true);
+    EXPECT_TRUE(ev.cancelable());
+}
