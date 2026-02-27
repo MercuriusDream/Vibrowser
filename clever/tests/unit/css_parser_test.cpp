@@ -3548,3 +3548,84 @@ TEST_F(CSSStylesheetTest, ListStyleTypeDeclaration) {
     }
     EXPECT_TRUE(found);
 }
+
+// Cycle 753 — typography and layout property declarations
+TEST_F(CSSStylesheetTest, TableLayoutDeclaration) {
+    auto sheet = parse_stylesheet("table { table-layout: fixed; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations) {
+        if (d.property == "table-layout") { found = true; break; }
+    }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, AppearanceDeclaration) {
+    auto sheet = parse_stylesheet("button { appearance: none; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations) {
+        if (d.property == "appearance") { found = true; break; }
+    }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, ImageRenderingDeclaration) {
+    auto sheet = parse_stylesheet("img { image-rendering: pixelated; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations) {
+        if (d.property == "image-rendering") { found = true; break; }
+    }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, WordBreakDeclaration) {
+    auto sheet = parse_stylesheet("p { word-break: break-all; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations) {
+        if (d.property == "word-break") { found = true; break; }
+    }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, OverflowWrapDeclaration) {
+    auto sheet = parse_stylesheet("p { overflow-wrap: break-word; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations) {
+        if (d.property == "overflow-wrap") { found = true; break; }
+    }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, TextIndentDeclaration) {
+    auto sheet = parse_stylesheet("p { text-indent: 2em; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations) {
+        if (d.property == "text-indent") { found = true; break; }
+    }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, HyphensDeclaration) {
+    auto sheet = parse_stylesheet("p { hyphens: auto; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations) {
+        if (d.property == "hyphens") { found = true; break; }
+    }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, TabSizeDeclaration) {
+    auto sheet = parse_stylesheet("pre { tab-size: 4; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations) {
+        if (d.property == "tab-size") { found = true; break; }
+    }
+    EXPECT_TRUE(found);
+}
