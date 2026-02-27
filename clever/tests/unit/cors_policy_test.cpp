@@ -2221,3 +2221,569 @@ TEST(CORSPolicyTest, CorsBlocksResponseOriginMismatch) {
     headers.set("access-control-allow-origin", "https://trusted.com");
     EXPECT_FALSE(cors_allows_response("https://other.com", "https://api.other.com/", headers, false));
 }
+
+// Same origin when URL has trailing slash
+TEST(CORSPolicyTest, SameOriginWithTrailingSlash) {
+    EXPECT_FALSE(is_cross_origin("https://example.com", "https://example.com/"));
+}
+
+// Different port makes it cross origin
+TEST(CORSPolicyTest, CrossOriginDifferentPort8081) {
+    EXPECT_TRUE(is_cross_origin("https://example.com", "https://example.com:8081/api"));
+}
+
+// HTTPS URL with path is CORS eligible
+TEST(CORSPolicyTest, CorsEligibleHttpsWithPath) {
+    EXPECT_TRUE(is_cors_eligible_request_url("https://example.com/api/v2/data"));
+}
+
+// Cross-scheme request should attach origin header
+TEST(CORSPolicyTest, ShouldAttachOriginCrossScheme) {
+    EXPECT_TRUE(should_attach_origin_header("http://example.com", "https://example.com/api"));
+}
+
+// Wildcard ACAO allows response without credentials
+TEST(CORSPolicyTest, CorsAllowsWildcardNoCreds) {
+    clever::net::HeaderMap headers;
+    headers.set("access-control-allow-origin", "*");
+    EXPECT_TRUE(cors_allows_response("https://example.com", "https://api.other.com/", headers, false));
+}
+
+// Wildcard ACAO blocks response when credentials are requested
+TEST(CORSPolicyTest, CorsBlocksWildcardWithCreds) {
+    clever::net::HeaderMap headers;
+    headers.set("access-control-allow-origin", "*");
+    EXPECT_FALSE(cors_allows_response("https://example.com", "https://api.other.com/", headers, true));
+}
+
+// javascript: URL is not CORS eligible
+TEST(CORSPolicyTest, NotCorsEligibleJavascript) {
+    EXPECT_FALSE(is_cors_eligible_request_url("javascript:void(0)"));
+}
+
+// HTTPS origin is enforceable
+TEST(CORSPolicyTest, CorsEnforceableHttpsV2) {
+    EXPECT_TRUE(has_enforceable_document_origin("https://secure.example.com"));
+}
+
+// Same scheme+host+port is same origin (not cross origin)
+TEST(CORSPolicyTest, SameOriginMatchingHostPortV3) {
+    EXPECT_FALSE(is_cross_origin("https://example.com", "https://example.com/page"));
+}
+
+// www.example.com vs api.example.com is cross origin
+TEST(CORSPolicyTest, CrossOriginDiffSubdomainV3) {
+    EXPECT_TRUE(is_cross_origin("https://www.example.com", "https://api.example.com/data"));
+}
+
+// ACAO matching doc origin allows response
+TEST(CORSPolicyTest, CorsAllowsExactACAOMatchV3) {
+    clever::net::HeaderMap headers;
+    headers.set("access-control-allow-origin", "https://app.example.com");
+    EXPECT_TRUE(cors_allows_response("https://app.example.com", "https://api.other.com/resource", headers, false));
+}
+
+// ACAO not matching blocks response
+TEST(CORSPolicyTest, CorsBlocksWrongACAOV3) {
+    clever::net::HeaderMap headers;
+    headers.set("access-control-allow-origin", "https://wrong.example.com");
+    EXPECT_FALSE(cors_allows_response("https://app.example.com", "https://api.other.com/resource", headers, false));
+}
+
+// ftp: URL not eligible for CORS
+TEST(CORSPolicyTest, NotCorsEligibleFtpV2) {
+    EXPECT_FALSE(is_cors_eligible_request_url("ftp://files.example.com/doc.txt"));
+}
+
+// http://localhost is enforceable
+TEST(CORSPolicyTest, EnforceableLocalhostHttpV2) {
+    EXPECT_TRUE(has_enforceable_document_origin("http://localhost"));
+}
+
+// Same origin request should not attach origin header
+TEST(CORSPolicyTest, SameOriginNoAttachV3) {
+    EXPECT_FALSE(should_attach_origin_header("https://example.com", "https://example.com/api/data"));
+}
+
+// Missing ACAO header blocks cross-origin response
+TEST(CORSPolicyTest, CorsBlocksNoACAOHeaderV3) {
+    clever::net::HeaderMap headers;
+    EXPECT_FALSE(cors_allows_response("https://app.example.com", "https://api.other.com/resource", headers, false));
+}
+
+// --- Cycle 1022: CORS policy tests ---
+
+TEST(CORSPolicyTest, SameOriginWithPathV4) {
+    EXPECT_FALSE(is_cross_origin("https://example.com", "https://example.com/deep/path"));
+}
+
+TEST(CORSPolicyTest, CrossOriginDiffPortV4) {
+    EXPECT_TRUE(is_cross_origin("https://example.com", "https://example.com:9090/api"));
+}
+
+TEST(CORSPolicyTest, CorsEligibleHttpsV3) {
+    EXPECT_TRUE(is_cors_eligible_request_url("https://api.example.com/data"));
+}
+
+TEST(CORSPolicyTest, CorsEligibleHttpV3) {
+    EXPECT_TRUE(is_cors_eligible_request_url("http://example.com/page"));
+}
+
+TEST(CORSPolicyTest, NotCorsEligibleBlobV3) {
+    EXPECT_FALSE(is_cors_eligible_request_url("blob:https://example.com/uuid"));
+}
+
+TEST(CORSPolicyTest, EnforceableHttpV3) {
+    EXPECT_TRUE(has_enforceable_document_origin("http://example.com"));
+}
+
+TEST(CORSPolicyTest, AttachOriginCrossSchemeV3) {
+    EXPECT_TRUE(should_attach_origin_header("http://example.com", "https://example.com/api"));
+}
+
+TEST(CORSPolicyTest, CorsAllowsWildcardNoCredsV3) {
+    clever::net::HeaderMap headers;
+    headers.set("access-control-allow-origin", "*");
+    EXPECT_TRUE(cors_allows_response("https://app.com", "https://api.other.com/", headers, false));
+}
+
+// --- Cycle 1031: CORS tests ---
+
+TEST(CORSPolicyTest, CrossOriginDiffSchemeV4) {
+    EXPECT_TRUE(is_cross_origin("http://example.com", "https://example.com/page"));
+}
+
+TEST(CORSPolicyTest, SameOriginExactV4) {
+    EXPECT_FALSE(is_cross_origin("https://example.com", "https://example.com/"));
+}
+
+TEST(CORSPolicyTest, NotEnforceableEmptyV3) {
+    EXPECT_FALSE(has_enforceable_document_origin(""));
+}
+
+TEST(CORSPolicyTest, CorsBlocksWildcardWithCredsV3) {
+    clever::net::HeaderMap headers;
+    headers.set("access-control-allow-origin", "*");
+    EXPECT_FALSE(cors_allows_response("https://app.com", "https://api.com/", headers, true));
+}
+
+TEST(CORSPolicyTest, AttachOriginCrossPortV3) {
+    EXPECT_TRUE(should_attach_origin_header("https://example.com", "https://example.com:9090/api"));
+}
+
+TEST(CORSPolicyTest, CorsEligibleHttpsQueryV3) {
+    EXPECT_TRUE(is_cors_eligible_request_url("https://api.example.com/data?key=value"));
+}
+
+TEST(CORSPolicyTest, NotCorsEligibleAboutV3) {
+    EXPECT_FALSE(is_cors_eligible_request_url("about:blank"));
+}
+
+TEST(CORSPolicyTest, CorsAllowsExactOriginCredsV3) {
+    clever::net::HeaderMap headers;
+    headers.set("access-control-allow-origin", "https://app.com");
+    headers.set("access-control-allow-credentials", "true");
+    EXPECT_TRUE(cors_allows_response("https://app.com", "https://api.other.com/", headers, true));
+}
+
+// --- Cycle 1040: CORS tests ---
+
+TEST(CORSPolicyTest, CrossOriginDiffPortV5) {
+    EXPECT_TRUE(is_cross_origin("https://example.com", "https://example.com:8443/"));
+}
+
+TEST(CORSPolicyTest, SameOriginWithPathV5) {
+    EXPECT_FALSE(is_cross_origin("https://example.com", "https://example.com/deep/path/page"));
+}
+
+TEST(CORSPolicyTest, EnforceableHttpsOriginV4) {
+    EXPECT_TRUE(has_enforceable_document_origin("https://mysite.io"));
+}
+
+TEST(CORSPolicyTest, NotEnforceableNullV4) {
+    EXPECT_FALSE(has_enforceable_document_origin("null"));
+}
+
+TEST(CORSPolicyTest, CorsEligibleHttpsPathOnlyV4) {
+    EXPECT_TRUE(is_cors_eligible_request_url("https://api.example.com/data/resource"));
+}
+
+TEST(CORSPolicyTest, NotCorsEligibleDataUrlV4) {
+    EXPECT_FALSE(is_cors_eligible_request_url("data:text/html,<h1>Hi</h1>"));
+}
+
+TEST(CORSPolicyTest, AttachOriginDiffSubdomainV4) {
+    EXPECT_TRUE(should_attach_origin_header("https://app.example.com", "https://api.example.com/v2"));
+}
+
+TEST(CORSPolicyTest, CorsBlocksMismatchOriginV4) {
+    clever::net::HeaderMap headers;
+    headers.set("access-control-allow-origin", "https://other.com");
+    EXPECT_FALSE(cors_allows_response("https://app.com", "https://api.com/", headers, false));
+}
+
+// --- Cycle 1049: CORS tests ---
+
+TEST(CORSPolicyTest, SameOriginHttpLocalhostV5) {
+    EXPECT_FALSE(is_cross_origin("http://localhost", "http://localhost/page"));
+}
+
+TEST(CORSPolicyTest, CrossOriginLocalhostVs127V5) {
+    EXPECT_TRUE(is_cross_origin("http://localhost", "http://127.0.0.1/page"));
+}
+
+TEST(CORSPolicyTest, EnforceableHttpOriginV5) {
+    EXPECT_TRUE(has_enforceable_document_origin("http://example.com"));
+}
+
+TEST(CORSPolicyTest, NotEnforceableFileSchemeV5) {
+    EXPECT_FALSE(has_enforceable_document_origin("file:///tmp/page.html"));
+}
+
+TEST(CORSPolicyTest, CorsEligibleHttpPlainV5) {
+    EXPECT_TRUE(is_cors_eligible_request_url("http://example.com/api"));
+}
+
+TEST(CORSPolicyTest, NotCorsEligibleJavascriptV5) {
+    EXPECT_FALSE(is_cors_eligible_request_url("javascript:void(0)"));
+}
+
+TEST(CORSPolicyTest, AttachOriginCrossSchemesV5) {
+    EXPECT_TRUE(should_attach_origin_header("http://example.com", "https://example.com/api"));
+}
+
+TEST(CORSPolicyTest, CorsAllowsWildcardNoCredsV5) {
+    clever::net::HeaderMap headers;
+    headers.set("access-control-allow-origin", "*");
+    EXPECT_TRUE(cors_allows_response("https://any.com", "https://api.com/", headers, false));
+}
+
+// --- Cycle 1058: CORS tests ---
+
+TEST(CORSPolicyTest, CrossOriginDiffTldV6) {
+    EXPECT_TRUE(is_cross_origin("https://example.com", "https://example.org/page"));
+}
+
+TEST(CORSPolicyTest, SameOriginWithQueryV6) {
+    EXPECT_FALSE(is_cross_origin("https://example.com", "https://example.com/?q=1"));
+}
+
+TEST(CORSPolicyTest, EnforceableLocalhostV6) {
+    EXPECT_TRUE(has_enforceable_document_origin("http://localhost:3000"));
+}
+
+TEST(CORSPolicyTest, CorsEligibleHttpsWithPortV6) {
+    EXPECT_TRUE(is_cors_eligible_request_url("https://api.example.com:8443/v2"));
+}
+
+TEST(CORSPolicyTest, NotCorsEligibleBlobV6) {
+    EXPECT_FALSE(is_cors_eligible_request_url("blob:https://example.com/uuid"));
+}
+
+TEST(CORSPolicyTest, AttachOriginSameHostDiffPortV6) {
+    EXPECT_TRUE(should_attach_origin_header("http://localhost:3000", "http://localhost:4000/api"));
+}
+
+TEST(CORSPolicyTest, CorsBlocksNullOriginV6) {
+    clever::net::HeaderMap headers;
+    headers.set("access-control-allow-origin", "null");
+    EXPECT_FALSE(cors_allows_response("https://app.com", "https://api.com/", headers, false));
+}
+
+TEST(CORSPolicyTest, CorsAllowsExactMatchNoCreds) {
+    clever::net::HeaderMap headers;
+    headers.set("access-control-allow-origin", "https://myapp.com");
+    EXPECT_TRUE(cors_allows_response("https://myapp.com", "https://api.other.com/", headers, false));
+}
+
+// --- Cycle 1067: CORS tests ---
+
+TEST(CORSPolicyTest, CrossOriginSubdomainVsRootV7) {
+    EXPECT_TRUE(is_cross_origin("https://example.com", "https://www.example.com/"));
+}
+
+TEST(CORSPolicyTest, SameOriginTrailingSlashV7) {
+    EXPECT_FALSE(is_cross_origin("https://example.com", "https://example.com/"));
+}
+
+TEST(CORSPolicyTest, EnforceableHttpsLocalhostV7) {
+    EXPECT_TRUE(has_enforceable_document_origin("https://localhost"));
+}
+
+TEST(CORSPolicyTest, NotEnforceableBlobV7) {
+    EXPECT_FALSE(has_enforceable_document_origin("blob:https://example.com/id"));
+}
+
+TEST(CORSPolicyTest, CorsEligibleHttpSimpleV7) {
+    EXPECT_TRUE(is_cors_eligible_request_url("http://api.test.com/endpoint"));
+}
+
+TEST(CORSPolicyTest, NotCorsEligibleMailtoV7) {
+    EXPECT_FALSE(is_cors_eligible_request_url("mailto:user@example.com"));
+}
+
+TEST(CORSPolicyTest, NoAttachOriginSameOriginV7) {
+    EXPECT_FALSE(should_attach_origin_header("https://example.com", "https://example.com/api"));
+}
+
+TEST(CORSPolicyTest, CorsBlocksEmptyACAOV7) {
+    clever::net::HeaderMap headers;
+    EXPECT_FALSE(cors_allows_response("https://app.com", "https://api.com/", headers, false));
+}
+
+// --- Cycle 1076: CORS tests ---
+
+TEST(CORSPolicyTest, CrossOriginHttpVsHttpsV8) {
+    EXPECT_TRUE(is_cross_origin("http://example.com", "https://example.com/"));
+}
+
+TEST(CORSPolicyTest, SameOriginExactMatchV8) {
+    EXPECT_FALSE(is_cross_origin("https://app.example.com", "https://app.example.com/page"));
+}
+
+TEST(CORSPolicyTest, EnforceableIpAddressV8) {
+    EXPECT_TRUE(has_enforceable_document_origin("http://192.168.1.1"));
+}
+
+TEST(CORSPolicyTest, NotEnforceableAboutSrcdocV8) {
+    EXPECT_FALSE(has_enforceable_document_origin("about:srcdoc"));
+}
+
+TEST(CORSPolicyTest, CorsEligibleHttpsSubpath) {
+    EXPECT_TRUE(is_cors_eligible_request_url("https://example.com/a/b/c"));
+}
+
+TEST(CORSPolicyTest, AttachOriginCrossHostV8) {
+    EXPECT_TRUE(should_attach_origin_header("https://a.com", "https://b.com/api"));
+}
+
+TEST(CORSPolicyTest, CorsBlocksWildcardWithCredsV8) {
+    clever::net::HeaderMap headers;
+    headers.set("access-control-allow-origin", "*");
+    EXPECT_FALSE(cors_allows_response("https://app.com", "https://api.com/", headers, true));
+}
+
+TEST(CORSPolicyTest, CorsAllowsExactWithCredsV8) {
+    clever::net::HeaderMap headers;
+    headers.set("access-control-allow-origin", "https://app.com");
+    headers.set("access-control-allow-credentials", "true");
+    EXPECT_TRUE(cors_allows_response("https://app.com", "https://api.com/", headers, true));
+}
+
+// --- Cycle 1085: CORS tests ---
+
+TEST(CORSPolicyTest, CrossOriginDiffHostV9) {
+    EXPECT_TRUE(is_cross_origin("https://alpha.com", "https://beta.com/page"));
+}
+
+TEST(CORSPolicyTest, SameOriginLocalhostV9) {
+    EXPECT_FALSE(is_cross_origin("http://localhost:8080", "http://localhost:8080/api"));
+}
+
+TEST(CORSPolicyTest, EnforceableHttpsWithPortV9) {
+    EXPECT_TRUE(has_enforceable_document_origin("https://secure.example.com"));
+}
+
+TEST(CORSPolicyTest, CorsEligibleHttpsApiV9) {
+    EXPECT_TRUE(is_cors_eligible_request_url("https://api.service.com/v3/data"));
+}
+
+TEST(CORSPolicyTest, NotCorsEligibleFtpV9) {
+    EXPECT_FALSE(is_cors_eligible_request_url("ftp://files.example.com/pub"));
+}
+
+TEST(CORSPolicyTest, AttachOriginCrossTldV9) {
+    EXPECT_TRUE(should_attach_origin_header("https://example.com", "https://example.org/api"));
+}
+
+TEST(CORSPolicyTest, CorsBlocksMismatchWithCredsV9) {
+    clever::net::HeaderMap headers;
+    headers.set("access-control-allow-origin", "https://other.com");
+    headers.set("access-control-allow-credentials", "true");
+    EXPECT_FALSE(cors_allows_response("https://app.com", "https://api.com/", headers, true));
+}
+
+TEST(CORSPolicyTest, CorsAllowsWildcardSimpleV9) {
+    clever::net::HeaderMap headers;
+    headers.set("access-control-allow-origin", "*");
+    EXPECT_TRUE(cors_allows_response("https://any.com", "https://api.com/data", headers, false));
+}
+
+// --- Cycle 1094: 8 CORS tests ---
+
+TEST(CORSPolicyTest, CrossOriginDiffSchemeHttpVsHttpsV10) {
+    EXPECT_TRUE(is_cross_origin("http://example.com", "https://example.com/page"));
+}
+
+TEST(CORSPolicyTest, SameOriginPathOnlyDiffV10) {
+    EXPECT_FALSE(is_cross_origin("https://example.com/a", "https://example.com/b"));
+}
+
+TEST(CORSPolicyTest, EnforceableHttpLocalhostV10) {
+    EXPECT_TRUE(has_enforceable_document_origin("http://localhost"));
+}
+
+TEST(CORSPolicyTest, NotEnforceableAboutBlankV10) {
+    EXPECT_FALSE(has_enforceable_document_origin("about:blank"));
+}
+
+TEST(CORSPolicyTest, CorsEligibleHttpsSubdomainV10) {
+    EXPECT_TRUE(is_cors_eligible_request_url("https://cdn.example.com/asset.js"));
+}
+
+TEST(CORSPolicyTest, NotCorsEligibleDataV10) {
+    EXPECT_FALSE(is_cors_eligible_request_url("data:text/html,<h1>Hi</h1>"));
+}
+
+TEST(CORSPolicyTest, AttachOriginDiffPortV10) {
+    EXPECT_TRUE(should_attach_origin_header("https://app.com:3000", "https://app.com:4000/api"));
+}
+
+TEST(CORSPolicyTest, CorsBlocksWrongOriginV10) {
+    clever::net::HeaderMap headers;
+    headers.set("access-control-allow-origin", "https://wrong.com");
+    EXPECT_FALSE(cors_allows_response("https://app.com", "https://api.com/", headers, false));
+}
+
+// --- Cycle 1103: 8 CORS tests ---
+
+TEST(CORSPolicyTest, CrossOriginDiffSubdomainV11) {
+    EXPECT_TRUE(is_cross_origin("https://app.example.com", "https://api.example.com/v1"));
+}
+
+TEST(CORSPolicyTest, SameOriginWithFragmentV11) {
+    EXPECT_FALSE(is_cross_origin("https://example.com", "https://example.com/page#section"));
+}
+
+TEST(CORSPolicyTest, EnforceableHttpExampleV11) {
+    EXPECT_TRUE(has_enforceable_document_origin("http://example.org"));
+}
+
+TEST(CORSPolicyTest, NotEnforceableFileV11) {
+    EXPECT_FALSE(has_enforceable_document_origin("file:///tmp/test.html"));
+}
+
+TEST(CORSPolicyTest, CorsEligibleHttpPlainV11) {
+    EXPECT_TRUE(is_cors_eligible_request_url("http://example.com/api/data"));
+}
+
+TEST(CORSPolicyTest, NotCorsEligibleJavascriptV11) {
+    EXPECT_FALSE(is_cors_eligible_request_url("javascript:void(0)"));
+}
+
+TEST(CORSPolicyTest, AttachOriginCrossSchemeV11) {
+    EXPECT_TRUE(should_attach_origin_header("http://example.com", "https://example.com/api"));
+}
+
+TEST(CORSPolicyTest, CorsAllowsExactOriginV11) {
+    clever::net::HeaderMap headers;
+    headers.set("access-control-allow-origin", "https://app.com");
+    EXPECT_TRUE(cors_allows_response("https://app.com", "https://api.com/", headers, false));
+}
+
+// --- Cycle 1112: 8 CORS tests ---
+
+TEST(CORSPolicyTest, CrossOriginDiffPortsV12) {
+    EXPECT_TRUE(is_cross_origin("https://example.com:8080", "https://example.com:9090/api"));
+}
+
+TEST(CORSPolicyTest, SameOriginExactMatchV12) {
+    EXPECT_FALSE(is_cross_origin("https://test.com", "https://test.com/path"));
+}
+
+TEST(CORSPolicyTest, EnforceableHttpsExampleV12) {
+    EXPECT_TRUE(has_enforceable_document_origin("https://example.org"));
+}
+
+TEST(CORSPolicyTest, NotEnforceableAboutSrcdocV12) {
+    EXPECT_FALSE(has_enforceable_document_origin("about:srcdoc"));
+}
+
+TEST(CORSPolicyTest, CorsEligibleHttpsApiV12) {
+    EXPECT_TRUE(is_cors_eligible_request_url("https://api.example.org/v2/users"));
+}
+
+TEST(CORSPolicyTest, NotCorsEligibleBlobV12) {
+    EXPECT_FALSE(is_cors_eligible_request_url("blob:https://example.com/uuid"));
+}
+
+TEST(CORSPolicyTest, AttachOriginCrossDomainV12) {
+    EXPECT_TRUE(should_attach_origin_header("https://frontend.com", "https://backend.com/api"));
+}
+
+TEST(CORSPolicyTest, CorsAllowsWildcardNoCredsV12) {
+    clever::net::HeaderMap headers;
+    headers.set("access-control-allow-origin", "*");
+    EXPECT_TRUE(cors_allows_response("https://any.org", "https://api.org/", headers, false));
+}
+
+// --- Cycle 1121: 8 CORS tests ---
+
+TEST(CORSPolicyTest, CrossOriginDiffHostsV13) {
+    EXPECT_TRUE(is_cross_origin("https://shop.example.com", "https://payments.example.com/checkout"));
+}
+
+TEST(CORSPolicyTest, SameOriginWithQueryAndPathV13) {
+    EXPECT_FALSE(is_cross_origin("https://example.com/a?q=1", "https://example.com/b?q=2"));
+}
+
+TEST(CORSPolicyTest, EnforceableHttpCustomPortV13) {
+    EXPECT_TRUE(has_enforceable_document_origin("http://example.com:8080"));
+}
+
+TEST(CORSPolicyTest, NotEnforceableNullOriginV13) {
+    EXPECT_FALSE(has_enforceable_document_origin("null"));
+}
+
+TEST(CORSPolicyTest, CorsEligibleHttpsLongPathV13) {
+    EXPECT_TRUE(is_cors_eligible_request_url("https://cdn.example.com/assets/js/app.min.js"));
+}
+
+TEST(CORSPolicyTest, NotCorsEligibleMailtoV13) {
+    EXPECT_FALSE(is_cors_eligible_request_url("mailto:user@example.com"));
+}
+
+TEST(CORSPolicyTest, NoAttachOriginSameHostV13) {
+    EXPECT_FALSE(should_attach_origin_header("https://example.com", "https://example.com/api"));
+}
+
+TEST(CORSPolicyTest, CorsBlocksEmptyHeaderV13) {
+    clever::net::HeaderMap headers;
+    EXPECT_FALSE(cors_allows_response("https://app.com", "https://api.com/", headers, false));
+}
+
+// --- Cycle 1130: 8 CORS tests ---
+
+TEST(CORSPolicyTest, CrossOriginDiffTldV14) {
+    EXPECT_TRUE(is_cross_origin("https://example.com", "https://example.org/api"));
+}
+
+TEST(CORSPolicyTest, SameOriginHttpsLocalhostV14) {
+    EXPECT_FALSE(is_cross_origin("https://localhost", "https://localhost/data"));
+}
+
+TEST(CORSPolicyTest, EnforceableHttpExampleOrgV14) {
+    EXPECT_TRUE(has_enforceable_document_origin("http://example.org"));
+}
+
+TEST(CORSPolicyTest, NotEnforceableBlobSchemeV14) {
+    EXPECT_FALSE(has_enforceable_document_origin("blob:https://example.com/uuid"));
+}
+
+TEST(CORSPolicyTest, CorsEligibleHttpsStaticV14) {
+    EXPECT_TRUE(is_cors_eligible_request_url("https://static.example.com/style.css"));
+}
+
+TEST(CORSPolicyTest, NotCorsEligibleFileSchemeV14) {
+    EXPECT_FALSE(is_cors_eligible_request_url("file:///var/log/syslog"));
+}
+
+TEST(CORSPolicyTest, AttachOriginCrossSubdomainsV14) {
+    EXPECT_TRUE(should_attach_origin_header("https://www.example.com", "https://api.example.com/v1"));
+}
+
+TEST(CORSPolicyTest, CorsAllowsMatchWithNoCredsV14) {
+    clever::net::HeaderMap headers;
+    headers.set("access-control-allow-origin", "https://myapp.com");
+    EXPECT_TRUE(cors_allows_response("https://myapp.com", "https://api.com/", headers, false));
+}

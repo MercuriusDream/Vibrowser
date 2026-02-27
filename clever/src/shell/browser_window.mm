@@ -14,6 +14,7 @@
 #include <clever/net/cookie_jar.h>
 #include <clever/url/url.h>
 
+#include <algorithm>
 #include <cstring>
 #include <functional>
 #include <set>
@@ -23,8 +24,21 @@
 
 static const CGFloat kToolbarHeight = 40.0;
 static const CGFloat kTabBarHeight = 28.0;
-static const CGFloat kButtonWidth = 32.0;
+static const CGFloat kNavButtonWidth = 34.0;
 static const CGFloat kButtonSpacing = 4.0;
+
+static NSString* const kBrowserAppName = @"Vibrowser";
+static NSString* const kBrowserFocusAttr = @"data-vibrowser-focus";
+static NSString* const kBrowserHoverAttr = @"data-vibrowser-hover";
+
+static NSImage* browser_symbol_image(NSString* system_name) {
+    if (@available(macOS 11.0, *)) {
+        NSImage* image = [NSImage imageWithSystemSymbolName:system_name
+                                       accessibilityDescription:nil];
+        if (image) return image;
+    }
+    return nil;
+}
 
 @interface AddressBarTextField : NSTextField
 @end
@@ -144,13 +158,21 @@ static NSString* normalized_tab_title(id title) {
 
 static constexpr const char kBrowserUserAgent[] =
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-    "AppleWebKit/537.36 (KHTML, like Gecko) Clever/0.7.0 Safari/537.36";
+    "AppleWebKit/537.36 (KHTML, like Gecko) Vibrowser/0.7.0 Safari/537.36";
 
 static std::string ascii_lower(std::string value) {
     for (char& c : value) {
         c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
     }
     return value;
+}
+
+static bool page_uses_hover_state(const std::string& html) {
+    if (html.empty()) return false;
+    std::string lower = ascii_lower(html);
+    return lower.find(":hover") != std::string::npos ||
+           lower.find("onmouseover=") != std::string::npos ||
+           lower.find("onmouseenter=") != std::string::npos;
 }
 
 static bool looks_like_duckduckgo_host(const std::string& host_lower) {
@@ -240,6 +262,49 @@ static void apply_browser_request_headers(clever::net::Request& req,
     req.headers.set("Accept-Encoding", "gzip, deflate");
 }
 
+static std::string escape_html_text(const std::string& input) {
+    std::string escaped;
+    escaped.reserve(input.size());
+    for (char ch : input) {
+        switch (ch) {
+            case '&': escaped += "&amp;"; break;
+            case '<': escaped += "&lt;"; break;
+            case '>': escaped += "&gt;"; break;
+            case '"': escaped += "&quot;"; break;
+            case '\'': escaped += "&#39;"; break;
+            default: escaped.push_back(ch); break;
+        }
+    }
+    return escaped;
+}
+
+static std::string build_shell_message_html(const std::string& page_title,
+                                            const std::string& heading,
+                                            const std::string& detail) {
+    const std::string safe_title = escape_html_text(page_title);
+    const std::string safe_heading = escape_html_text(heading);
+    const std::string safe_detail = escape_html_text(detail);
+    return "<!doctype html><html lang=\"en\"><head>"
+           "<meta charset=\"utf-8\">"
+           "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
+           "<title>" + safe_title + "</title>"
+           "<style>"
+           ":root{color-scheme:light dark;}"
+           "*{box-sizing:border-box;}"
+           "html,body{margin:0;padding:0;}"
+           "body{font-family:-apple-system,BlinkMacSystemFont,\"Segoe UI\",sans-serif;"
+           "line-height:1.5;background:#f3f6fb;color:#263445;display:flex;"
+           "align-items:center;justify-content:center;min-height:100vh;padding:24px;}"
+           ".card{width:min(680px,100%);background:#ffffff;border:1px solid #d8e1ec;"
+           "border-radius:12px;padding:20px 22px;"
+           "box-shadow:0 8px 24px rgba(31,47,70,0.12);}"
+           "h1{margin:0 0 10px;font-size:24px;line-height:1.25;color:#1f2b3a;}"
+           "p{margin:0;color:#4a5a6e;overflow-wrap:anywhere;}"
+           "@media (max-width:640px){body{padding:16px;}h1{font-size:21px;}.card{padding:16px;}}"
+           "</style></head><body><main class=\"card\"><h1>" + safe_heading +
+           "</h1><p>" + safe_detail + "</p></main></body></html>";
+}
+
 // =============================================================================
 // BrowserTab — per-tab state
 // =============================================================================
@@ -291,6 +356,8 @@ static void apply_browser_request_headers(clever::net::Request& req,
 @implementation BrowserWindowController {
     NSMutableArray<BrowserTab*>* _tabs;
     NSInteger _activeTabIndex;
+    NSView* _toolbarView;
+    NSView* _tabBarContainer;
     NSView* _contentArea;
     NSView* _findBar;
     NSTextField* _findField;
@@ -307,6 +374,7 @@ static void apply_browser_request_headers(clever::net::Request& req,
     NSTimer* _hoverTimer;
     clever::html::SimpleNode* _hoveredNode; // currently hovered DOM node
     float _lastHoverX, _lastHoverY; // last hover coordinates (buffer pixels)
+    BOOL _pageUsesHoverState;
 }
 
 - (instancetype)init {
@@ -314,7 +382,8 @@ static void apply_browser_request_headers(clever::net::Request& req,
     NSUInteger styleMask = NSWindowStyleMaskTitled |
                            NSWindowStyleMaskClosable |
                            NSWindowStyleMaskResizable |
-                           NSWindowStyleMaskMiniaturizable;
+                           NSWindowStyleMaskMiniaturizable |
+                           NSWindowStyleMaskFullSizeContentView;
 
     NSWindow* window = [[NSWindow alloc] initWithContentRect:frame
                                                   styleMask:styleMask
@@ -324,10 +393,16 @@ static void apply_browser_request_headers(clever::net::Request& req,
     if (self) {
         _tabs = [NSMutableArray new];
         _activeTabIndex = -1;
+        _pageUsesHoverState = NO;
         _bookmarks = [NSMutableArray new];
         [self loadBookmarks];
         [self setupUI];
-        [window setTitle:@"Clever Browser"];
+        window.titleVisibility = NSWindowTitleHidden;
+        window.titlebarAppearsTransparent = YES;
+        if ([window respondsToSelector:@selector(setToolbarStyle:)]) {
+            window.toolbarStyle = NSWindowToolbarStyleUnifiedCompact;
+        }
+        [window setTitle:kBrowserAppName];
         [window setMinSize:NSMakeSize(400, 300)];
 
         // Open on the built-in display (MacBook screen)
@@ -354,11 +429,47 @@ static void apply_browser_request_headers(clever::net::Request& req,
             selector:@selector(windowDidResize:)
             name:NSWindowDidResizeNotification
             object:window];
+        [[NSNotificationCenter defaultCenter] addObserver:self
+            selector:@selector(windowDidChangeBackingProperties:)
+            name:NSWindowDidChangeBackingPropertiesNotification
+            object:window];
 
         // Create first tab
         [self newTab];
     }
     return self;
+}
+
+- (void)dealloc {
+    [[NSNotificationCenter defaultCenter] removeObserver:self];
+}
+
+- (void)layoutChromeViews {
+    NSView* contentView = self.window.contentView;
+    if (!contentView || !_toolbarView || !_tabBarContainer || !_contentArea) return;
+
+    NSRect layoutRect = contentView.bounds;
+    if ([self.window respondsToSelector:@selector(contentLayoutRect)]) {
+        layoutRect = [contentView convertRect:self.window.contentLayoutRect fromView:nil];
+    }
+
+    const CGFloat width = contentView.bounds.size.width;
+    const CGFloat top = NSMaxY(layoutRect);
+    const CGFloat tabY = top - kTabBarHeight;
+    const CGFloat toolbarY = tabY - kToolbarHeight;
+
+    _tabBarContainer.frame = NSMakeRect(0, tabY, width, kTabBarHeight);
+    _toolbarView.frame = NSMakeRect(0, toolbarY, width, kToolbarHeight);
+
+    const CGFloat contentMinY = NSMinY(layoutRect);
+    const CGFloat contentHeight = std::max<CGFloat>(1.0, toolbarY - contentMinY);
+    _contentArea.frame = NSMakeRect(0, contentMinY, width, contentHeight);
+
+    if (_tabBarScrollView) {
+        NSRect scrollFrame = _tabBarScrollView.frame;
+        scrollFrame.size.width = std::max<CGFloat>(0.0, width - 34.0);
+        _tabBarScrollView.frame = scrollFrame;
+    }
 }
 
 - (void)setupUI {
@@ -367,52 +478,84 @@ static void apply_browser_request_headers(clever::net::Request& req,
     // --- Toolbar area ---
     // Use a plain NSView instead of NSBox to avoid hit-test and focus issues
     // with NSBox's content view layer on macOS 15.
-    NSView* toolbar = [[NSView alloc] initWithFrame:NSMakeRect(0,
-        contentView.bounds.size.height - kToolbarHeight,
+    _toolbarView = [[NSView alloc] initWithFrame:NSMakeRect(0,
+        contentView.bounds.size.height - kTabBarHeight - kToolbarHeight,
         contentView.bounds.size.width, kToolbarHeight)];
-    toolbar.autoresizingMask = NSViewWidthSizable | NSViewMinYMargin;
-    toolbar.wantsLayer = YES;
-    toolbar.layer.backgroundColor = [[NSColor windowBackgroundColor] CGColor];
+    _toolbarView.autoresizingMask = NSViewWidthSizable | NSViewMinYMargin;
+    _toolbarView.wantsLayer = YES;
+    _toolbarView.layer.backgroundColor = [[NSColor windowBackgroundColor] CGColor];
 
     CGFloat x = kButtonSpacing;
 
     // Back button
-    _backButton = [NSButton buttonWithTitle:@"<"
+    _backButton = [NSButton buttonWithTitle:@""
                                      target:self
                                      action:@selector(goBack:)];
-    _backButton.frame = NSMakeRect(x, 4, kButtonWidth, kToolbarHeight - 8);
-    _backButton.bezelStyle = NSBezelStyleTexturedRounded;
+    _backButton.frame = NSMakeRect(x, 4, kNavButtonWidth, kToolbarHeight - 8);
+    _backButton.bezelStyle = NSBezelStyleRounded;
+    _backButton.controlSize = NSControlSizeSmall;
+    _backButton.image = browser_symbol_image(@"chevron.left");
+    _backButton.imagePosition = NSImageOnly;
+    if (!_backButton.image) {
+        _backButton.title = @"<";
+        _backButton.imagePosition = NSNoImage;
+    }
+    _backButton.toolTip = @"Back";
     _backButton.enabled = NO;
-    [toolbar addSubview:_backButton];
-    x += kButtonWidth + kButtonSpacing;
+    [_toolbarView addSubview:_backButton];
+    x += kNavButtonWidth + kButtonSpacing;
 
     // Forward button
-    _forwardButton = [NSButton buttonWithTitle:@">"
+    _forwardButton = [NSButton buttonWithTitle:@""
                                         target:self
                                         action:@selector(goForward:)];
-    _forwardButton.frame = NSMakeRect(x, 4, kButtonWidth, kToolbarHeight - 8);
-    _forwardButton.bezelStyle = NSBezelStyleTexturedRounded;
+    _forwardButton.frame = NSMakeRect(x, 4, kNavButtonWidth, kToolbarHeight - 8);
+    _forwardButton.bezelStyle = NSBezelStyleRounded;
+    _forwardButton.controlSize = NSControlSizeSmall;
+    _forwardButton.image = browser_symbol_image(@"chevron.right");
+    _forwardButton.imagePosition = NSImageOnly;
+    if (!_forwardButton.image) {
+        _forwardButton.title = @">";
+        _forwardButton.imagePosition = NSNoImage;
+    }
+    _forwardButton.toolTip = @"Forward";
     _forwardButton.enabled = NO;
-    [toolbar addSubview:_forwardButton];
-    x += kButtonWidth + kButtonSpacing;
+    [_toolbarView addSubview:_forwardButton];
+    x += kNavButtonWidth + kButtonSpacing;
 
     // Reload button
-    _reloadButton = [NSButton buttonWithTitle:@"R"
+    _reloadButton = [NSButton buttonWithTitle:@""
                                        target:self
                                        action:@selector(reload:)];
-    _reloadButton.frame = NSMakeRect(x, 4, kButtonWidth, kToolbarHeight - 8);
-    _reloadButton.bezelStyle = NSBezelStyleTexturedRounded;
-    [toolbar addSubview:_reloadButton];
-    x += kButtonWidth + kButtonSpacing;
+    _reloadButton.frame = NSMakeRect(x, 4, kNavButtonWidth, kToolbarHeight - 8);
+    _reloadButton.bezelStyle = NSBezelStyleRounded;
+    _reloadButton.controlSize = NSControlSizeSmall;
+    _reloadButton.image = browser_symbol_image(@"arrow.clockwise");
+    _reloadButton.imagePosition = NSImageOnly;
+    if (!_reloadButton.image) {
+        _reloadButton.title = @"R";
+        _reloadButton.imagePosition = NSNoImage;
+    }
+    _reloadButton.toolTip = @"Reload";
+    [_toolbarView addSubview:_reloadButton];
+    x += kNavButtonWidth + kButtonSpacing;
 
     // Home button
-    _homeButton = [NSButton buttonWithTitle:@"H"
+    _homeButton = [NSButton buttonWithTitle:@""
                                      target:self
                                      action:@selector(goHome:)];
-    _homeButton.frame = NSMakeRect(x, 4, kButtonWidth, kToolbarHeight - 8);
-    _homeButton.bezelStyle = NSBezelStyleTexturedRounded;
-    [toolbar addSubview:_homeButton];
-    x += kButtonWidth + kButtonSpacing * 2;
+    _homeButton.frame = NSMakeRect(x, 4, kNavButtonWidth, kToolbarHeight - 8);
+    _homeButton.bezelStyle = NSBezelStyleRounded;
+    _homeButton.controlSize = NSControlSizeSmall;
+    _homeButton.image = browser_symbol_image(@"house");
+    _homeButton.imagePosition = NSImageOnly;
+    if (!_homeButton.image) {
+        _homeButton.title = @"H";
+        _homeButton.imagePosition = NSNoImage;
+    }
+    _homeButton.toolTip = @"Home";
+    [_toolbarView addSubview:_homeButton];
+    x += kNavButtonWidth + kButtonSpacing * 2;
 
     // Spinner
     _spinner = [[NSProgressIndicator alloc] initWithFrame:NSMakeRect(
@@ -420,25 +563,43 @@ static void apply_browser_request_headers(clever::net::Request& req,
     _spinner.style = NSProgressIndicatorStyleSpinning;
     _spinner.displayedWhenStopped = NO;
     _spinner.autoresizingMask = NSViewMinXMargin;
-    [toolbar addSubview:_spinner];
+    [_toolbarView addSubview:_spinner];
 
     // Address bar
-    CGFloat addressBarRight = contentView.bounds.size.width - 130;
-    CGFloat addressFieldWidth = addressBarRight - x - 82;
+    CGFloat addressBarRight = contentView.bounds.size.width - 106;
+    CGFloat addressFieldWidth = addressBarRight - x - 60;
     if (addressFieldWidth < 120) addressFieldWidth = 120;
-    NSButton* goButton = [NSButton buttonWithTitle:@"Go"
+    NSButton* goButton = [NSButton buttonWithTitle:@""
                                             target:self
-                                            action:@selector(goToAddressBar:)];
-    goButton.frame = NSMakeRect(addressBarRight + 8, 6, 34, kToolbarHeight - 12);
-    goButton.bezelStyle = NSBezelStyleTexturedRounded;
-    [toolbar addSubview:goButton];
+                                            action:@selector(addressBarSubmitted:)];
+    goButton.frame = NSMakeRect(addressBarRight + 8, 6, 28, kToolbarHeight - 12);
+    goButton.bezelStyle = NSBezelStyleRounded;
+    goButton.controlSize = NSControlSizeSmall;
+    goButton.image = browser_symbol_image(@"arrow.right.circle.fill");
+    goButton.imagePosition = NSImageOnly;
+    if (!goButton.image) {
+        goButton.title = @"Go";
+        goButton.imagePosition = NSNoImage;
+    }
+    goButton.autoresizingMask = NSViewMinXMargin;
+    goButton.toolTip = @"Open URL";
+    [_toolbarView addSubview:goButton];
 
-    NSButton* openModalButton = [NSButton buttonWithTitle:@"..."
+    NSButton* openModalButton = [NSButton buttonWithTitle:@""
                                                     target:self
                                                     action:@selector(openAddressBarModal)];
-    openModalButton.frame = NSMakeRect(addressBarRight + 46, 6, 34, kToolbarHeight - 12);
-    openModalButton.bezelStyle = NSBezelStyleTexturedRounded;
-    [toolbar addSubview:openModalButton];
+    openModalButton.frame = NSMakeRect(addressBarRight + 40, 6, 28, kToolbarHeight - 12);
+    openModalButton.bezelStyle = NSBezelStyleRounded;
+    openModalButton.controlSize = NSControlSizeSmall;
+    openModalButton.image = browser_symbol_image(@"ellipsis.circle");
+    openModalButton.imagePosition = NSImageOnly;
+    if (!openModalButton.image) {
+        openModalButton.title = @"...";
+        openModalButton.imagePosition = NSNoImage;
+    }
+    openModalButton.autoresizingMask = NSViewMinXMargin;
+    openModalButton.toolTip = @"Open URL in dialog";
+    [_toolbarView addSubview:openModalButton];
 
     // Address bar
     _addressBar = [[AddressBarTextField alloc] initWithFrame:NSMakeRect(
@@ -456,48 +617,68 @@ static void apply_browser_request_headers(clever::net::Request& req,
     _addressBar.backgroundColor = [NSColor textBackgroundColor];
     _addressBar.autoresizingMask = NSViewWidthSizable;
     _addressBar.focusRingType = NSFocusRingTypeExterior;
-    [toolbar addSubview:_addressBar];
+    [_toolbarView addSubview:_addressBar];
 
     // Add a subtle bottom border to the toolbar
     NSView* toolbarBorder = [[NSView alloc] initWithFrame:NSMakeRect(0, 0,
-        toolbar.bounds.size.width, 0.5)];
+        _toolbarView.bounds.size.width, 0.5)];
     toolbarBorder.wantsLayer = YES;
     toolbarBorder.layer.backgroundColor = [[NSColor separatorColor] CGColor];
     toolbarBorder.autoresizingMask = NSViewWidthSizable;
-    [toolbar addSubview:toolbarBorder];
+    [_toolbarView addSubview:toolbarBorder];
 
     // Set the address bar as the initial first responder so it's focused on window open
     [self.window setInitialFirstResponder:_addressBar];
 
-    [contentView addSubview:toolbar];
+    [contentView addSubview:_toolbarView];
 
     // --- Tab bar ---
-    CGFloat tabBarY = contentView.bounds.size.height - kToolbarHeight - kTabBarHeight;
-    NSView* tabBarContainer = [[NSView alloc] initWithFrame:NSMakeRect(0, tabBarY,
+    CGFloat tabBarY = contentView.bounds.size.height - kTabBarHeight;
+    _tabBarContainer = [[NSView alloc] initWithFrame:NSMakeRect(0, tabBarY,
         contentView.bounds.size.width, kTabBarHeight)];
-    tabBarContainer.autoresizingMask = NSViewWidthSizable | NSViewMinYMargin;
-    tabBarContainer.wantsLayer = YES;
-    tabBarContainer.layer.backgroundColor = [[NSColor controlBackgroundColor] CGColor];
+    _tabBarContainer.autoresizingMask = NSViewWidthSizable | NSViewMinYMargin;
+    _tabBarContainer.wantsLayer = YES;
+    _tabBarContainer.layer.backgroundColor = [[NSColor controlBackgroundColor] CGColor];
+
+    _tabBarScrollView = [[NSScrollView alloc] initWithFrame:NSMakeRect(
+        0, 0, contentView.bounds.size.width - 34, kTabBarHeight)];
+    _tabBarScrollView.autoresizingMask = NSViewWidthSizable;
+    _tabBarScrollView.hasHorizontalScroller = YES;
+    _tabBarScrollView.hasVerticalScroller = NO;
+    _tabBarScrollView.autohidesScrollers = YES;
+    _tabBarScrollView.borderType = NSNoBorder;
+    _tabBarScrollView.drawsBackground = NO;
+    _tabBarScrollView.scrollerStyle = NSScrollerStyleOverlay;
 
     _tabBar = [[NSStackView alloc] initWithFrame:NSMakeRect(0, 0,
-        contentView.bounds.size.width - 32, kTabBarHeight)];
+        contentView.bounds.size.width - 34, kTabBarHeight)];
     _tabBar.orientation = NSUserInterfaceLayoutOrientationHorizontal;
-    _tabBar.spacing = 1;
+    _tabBar.spacing = 4;
     _tabBar.alignment = NSLayoutAttributeCenterY;
-    _tabBar.autoresizingMask = NSViewWidthSizable;
-    [tabBarContainer addSubview:_tabBar];
+    _tabBar.edgeInsets = NSEdgeInsetsMake(2, 4, 2, 4);
+    _tabBar.detachesHiddenViews = YES;
+    _tabBar.autoresizingMask = NSViewNotSizable;
+    _tabBarScrollView.documentView = _tabBar;
+    [_tabBarContainer addSubview:_tabBarScrollView];
 
     // New tab button (+)
-    NSButton* newTabBtn = [NSButton buttonWithTitle:@"+"
+    NSButton* newTabBtn = [NSButton buttonWithTitle:@""
                                             target:self
                                             action:@selector(newTabAction:)];
-    newTabBtn.frame = NSMakeRect(contentView.bounds.size.width - 30, 2, 26, kTabBarHeight - 4);
-    newTabBtn.bezelStyle = NSBezelStyleTexturedRounded;
-    newTabBtn.font = [NSFont systemFontOfSize:14];
+    newTabBtn.frame = NSMakeRect(contentView.bounds.size.width - 30, 2, 28, kTabBarHeight - 4);
+    newTabBtn.bezelStyle = NSBezelStyleCircular;
+    newTabBtn.controlSize = NSControlSizeSmall;
+    newTabBtn.image = browser_symbol_image(@"plus");
+    newTabBtn.imagePosition = NSImageOnly;
+    if (!newTabBtn.image) {
+        newTabBtn.title = @"+";
+        newTabBtn.imagePosition = NSNoImage;
+    }
+    newTabBtn.toolTip = @"New tab";
     newTabBtn.autoresizingMask = NSViewMinXMargin;
-    [tabBarContainer addSubview:newTabBtn];
+    [_tabBarContainer addSubview:newTabBtn];
 
-    [contentView addSubview:tabBarContainer];
+    [contentView addSubview:_tabBarContainer];
 
     // --- Content area (holds the active tab's RenderView) ---
     _contentArea = [[NSView alloc] initWithFrame:NSMakeRect(0, 0,
@@ -505,6 +686,7 @@ static void apply_browser_request_headers(clever::net::Request& req,
         contentView.bounds.size.height - kToolbarHeight - kTabBarHeight)];
     _contentArea.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
     [contentView addSubview:_contentArea];
+    [self layoutChromeViews];
 
     // --- Progress bar (thin colored line at top of content area) ---
     static const CGFloat kProgressBarHeight = 3.0;
@@ -668,9 +850,9 @@ static void apply_browser_request_headers(clever::net::Request& req,
 
     // Update window title
     if (newTab.title.length > 0 && ![newTab.title isEqualToString:@"New Tab"]) {
-        self.window.title = [NSString stringWithFormat:@"%@ - Clever Browser", newTab.title];
+        self.window.title = [NSString stringWithFormat:@"%@ - %@", newTab.title, kBrowserAppName];
     } else {
-        self.window.title = @"Clever Browser";
+        self.window.title = kBrowserAppName;
     }
 
     [self updateNavButtons];
@@ -701,6 +883,7 @@ static void apply_browser_request_headers(clever::net::Request& req,
 }
 
 - (void)rebuildTabBar {
+    if (!_tabBar) return;
     // Remove all existing tab buttons
     for (NSView* view in [_tabBar.arrangedSubviews copy]) {
         [_tabBar removeArrangedSubview:view];
@@ -711,7 +894,7 @@ static void apply_browser_request_headers(clever::net::Request& req,
     for (NSInteger i = 0; i < (NSInteger)_tabs.count; i++) {
         BrowserTab* tab = _tabs[i];
 
-        NSView* tabView = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 160, kTabBarHeight - 4)];
+        NSView* tabView = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 180, kTabBarHeight - 4)];
 
         // Favicon image view (16x16, left side of tab)
         CGFloat faviconOffset = 0;
@@ -725,7 +908,7 @@ static void apply_browser_request_headers(clever::net::Request& req,
 
         // Tab title button
         NSString* title = normalized_tab_title(tab.title);
-        NSInteger maxLen = tab.faviconImage ? 14 : 18;
+        NSInteger maxLen = tab.faviconImage ? 16 : 20;
         if ((NSInteger)title.length > maxLen) {
             title = [[title substringToIndex:maxLen - 3] stringByAppendingString:@"..."];
         }
@@ -734,9 +917,12 @@ static void apply_browser_request_headers(clever::net::Request& req,
                                               target:self
                                               action:@selector(tabClicked:)];
         tabBtn.tag = i;
-        tabBtn.frame = NSMakeRect(faviconOffset, 0, 140 - faviconOffset, kTabBarHeight - 4);
-        tabBtn.bezelStyle = NSBezelStyleTexturedRounded;
-        tabBtn.font = [NSFont systemFontOfSize:11];
+        tabBtn.frame = NSMakeRect(faviconOffset, 0, 160 - faviconOffset, kTabBarHeight - 4);
+        tabBtn.buttonType = NSButtonTypeToggle;
+        tabBtn.bezelStyle = NSBezelStyleRecessed;
+        tabBtn.controlSize = NSControlSizeSmall;
+        tabBtn.font = [NSFont systemFontOfSize:11 weight:NSFontWeightMedium];
+        tabBtn.imagePosition = NSNoImage;
 
         if (i == _activeTabIndex) {
             tabBtn.state = NSControlStateValueOn;
@@ -746,17 +932,41 @@ static void apply_browser_request_headers(clever::net::Request& req,
 
         // Close button (x)
         if (_tabs.count > 1) {
-            NSButton* closeBtn = [NSButton buttonWithTitle:@"x"
+            NSButton* closeBtn = [NSButton buttonWithTitle:@""
                                                     target:self
                                                     action:@selector(closeTabClicked:)];
             closeBtn.tag = i;
-            closeBtn.frame = NSMakeRect(140, 2, 18, kTabBarHeight - 8);
-            closeBtn.bezelStyle = NSBezelStyleInline;
-            closeBtn.font = [NSFont systemFontOfSize:9];
+            closeBtn.frame = NSMakeRect(160, 2, 18, kTabBarHeight - 8);
+            closeBtn.bezelStyle = NSBezelStyleCircular;
+            closeBtn.controlSize = NSControlSizeMini;
+            closeBtn.image = browser_symbol_image(@"xmark");
+            closeBtn.imagePosition = NSImageOnly;
+            if (!closeBtn.image) {
+                closeBtn.title = @"x";
+                closeBtn.imagePosition = NSNoImage;
+            }
+            closeBtn.toolTip = @"Close tab";
             [tabView addSubview:closeBtn];
         }
 
         [_tabBar addArrangedSubview:tabView];
+    }
+
+    CGFloat totalWidth = 8.0;
+    NSArray<NSView*>* arranged = _tabBar.arrangedSubviews;
+    for (NSView* view in arranged) {
+        totalWidth += NSWidth(view.frame);
+    }
+    if (arranged.count > 1) {
+        totalWidth += _tabBar.spacing * (arranged.count - 1);
+    }
+    CGFloat viewportWidth = _tabBarScrollView ? _tabBarScrollView.contentSize.width : totalWidth;
+    CGFloat finalWidth = std::max(totalWidth, viewportWidth);
+    _tabBar.frame = NSMakeRect(0, 0, finalWidth, kTabBarHeight);
+
+    if (_activeTabIndex >= 0 && _activeTabIndex < (NSInteger)arranged.count) {
+        NSView* activeView = arranged[_activeTabIndex];
+        [_tabBar scrollRectToVisible:NSInsetRect(activeView.frame, -24.0, 0.0)];
     }
 }
 
@@ -880,18 +1090,27 @@ static void apply_browser_request_headers(clever::net::Request& req,
     [_addressBar setStringValue:url];
     tab.currentURL = url;
 
-    // Add to history
-    while ((NSInteger)tab.history.count > tab.historyIndex + 1) {
-        [tab.history removeLastObject];
+    // Add to history (skip duplicate consecutive entries)
+    BOOL shouldPushHistory = YES;
+    if (tab.historyIndex >= 0 && tab.historyIndex < (NSInteger)tab.history.count) {
+        NSString* currentHistoryEntry = tab.history[tab.historyIndex];
+        if ([currentHistoryEntry isEqualToString:url]) {
+            shouldPushHistory = NO;
+        }
     }
-    [tab.history addObject:url];
-    tab.historyIndex = tab.history.count - 1;
+    if (shouldPushHistory) {
+        while ((NSInteger)tab.history.count > tab.historyIndex + 1) {
+            [tab.history removeLastObject];
+        }
+        [tab.history addObject:url];
+        tab.historyIndex = tab.history.count - 1;
+    }
     [self updateNavButtons];
 
     // Fetch in background
     [_spinner startAnimation:nil];
     [self startProgressForNavigation];
-    self.window.title = @"Loading... - Clever Browser";
+    self.window.title = [NSString stringWithFormat:@"Loading... - %@", kBrowserAppName];
 
     std::string urlStr = std::string([url UTF8String]);
 
@@ -979,19 +1198,20 @@ static void apply_browser_request_headers(clever::net::Request& req,
         [self setProgress:0.7 animated:YES];
 
         if (!response || response->status >= 400) {
-            NSString* errorHTML;
+            std::string error_html;
             if (!response) {
-                errorHTML = [NSString stringWithFormat:
-                    @"<html><body><h1>Connection Failed</h1>"
-                    @"<p>Could not connect to %s</p></body></html>",
-                    urlStr.c_str()];
+                error_html = build_shell_message_html(
+                    "Connection Failed",
+                    "Connection Failed",
+                    "Could not connect to " + urlStr);
             } else {
-                errorHTML = [NSString stringWithFormat:
-                    @"<html><body><h1>Error %d</h1>"
-                    @"<p>%s</p></body></html>",
-                    response->status, response->status_text.c_str()];
+                const std::string status_heading = "Error " + std::to_string(response->status);
+                error_html = build_shell_message_html(
+                    status_heading,
+                    status_heading,
+                    response->status_text);
             }
-            [self renderHTML:errorHTML];
+            [self renderHTML:[NSString stringWithUTF8String:error_html.c_str()]];
             [self finishProgress];
             return;
         }
@@ -1029,6 +1249,7 @@ static void apply_browser_request_headers(clever::net::Request& req,
 - (void)doRender:(const std::string&)html {
     BrowserTab* tab = [self activeTab];
     if (!tab) return;
+    _pageUsesHoverState = page_uses_hover_state(html);
 
     NSRect bounds = tab.renderView.bounds;
     CGFloat scaleFactor = self.window.backingScaleFactor;
@@ -1204,10 +1425,10 @@ static void apply_browser_request_headers(clever::net::Request& req,
             if (tab.title.length == 0) {
                 tab.title = tab.currentURL.length > 0 ? tab.currentURL : @"New Tab";
             }
-            self.window.title = [NSString stringWithFormat:@"%@ - Clever Browser", tab.title];
+            self.window.title = [NSString stringWithFormat:@"%@ - %@", tab.title, kBrowserAppName];
         } else {
             tab.title = tab.currentURL.length > 0 ? tab.currentURL : @"New Tab";
-            self.window.title = @"Clever Browser";
+            self.window.title = kBrowserAppName;
         }
         [self rebuildTabBar];
 
@@ -1302,13 +1523,15 @@ static void apply_browser_request_headers(clever::net::Request& req,
             }
         }
     } else {
-        std::string errorHtml =
-            "<html><body><h1>Render Error</h1><p>" + result.error + "</p></body></html>";
-        auto fallback = clever::paint::render_html(errorHtml, width, height);
+        const std::string detail =
+            result.error.empty() ? "Unknown render failure." : result.error;
+        const std::string error_html =
+            build_shell_message_html("Render Error", "Render Error", detail);
+        auto fallback = clever::paint::render_html(error_html, width, height);
         if (fallback.success && fallback.renderer) {
             [tab.renderView updateWithRenderer:fallback.renderer.get()];
         }
-        self.window.title = @"Error - Clever Browser";
+        self.window.title = [NSString stringWithFormat:@"Error - %@", kBrowserAppName];
     }
 }
 
@@ -1326,6 +1549,7 @@ static void apply_browser_request_headers(clever::net::Request& req,
     std::string urlStr([url UTF8String]);
     [_spinner startAnimation:nil];
     [self startProgressForNavigation];
+    self.window.title = [NSString stringWithFormat:@"Loading... - %@", kBrowserAppName];
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
         [self fetchAndRender:urlStr];
     });
@@ -1345,6 +1569,7 @@ static void apply_browser_request_headers(clever::net::Request& req,
     std::string urlStr([url UTF8String]);
     [_spinner startAnimation:nil];
     [self startProgressForNavigation];
+    self.window.title = [NSString stringWithFormat:@"Loading... - %@", kBrowserAppName];
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
         [self fetchAndRender:urlStr];
     });
@@ -1372,13 +1597,30 @@ static void apply_browser_request_headers(clever::net::Request& req,
     BrowserTab* tab = [self activeTab];
     if (!tab) return;
 
-    if (![tab currentHTML].empty()) {
-        [self doRender:[tab currentHTML]];
-    } else if (tab.historyIndex >= 0) {
-        NSString* url = tab.history[tab.historyIndex];
+    NSString* url = tab.currentURL;
+    BOOL hasWebURL =
+        (url.length > 0) &&
+        ([url hasPrefix:@"http://"] || [url hasPrefix:@"https://"]);
+
+    if (hasWebURL) {
         std::string urlStr([url UTF8String]);
         [_spinner startAnimation:nil];
         [self startProgressForNavigation];
+        self.window.title = [NSString stringWithFormat:@"Loading... - %@", kBrowserAppName];
+        dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+            [self fetchAndRender:urlStr];
+        });
+        return;
+    }
+
+    if (![tab currentHTML].empty()) {
+        [self doRender:[tab currentHTML]];
+    } else if (tab.historyIndex >= 0) {
+        NSString* historyURL = tab.history[tab.historyIndex];
+        std::string urlStr([historyURL UTF8String]);
+        [_spinner startAnimation:nil];
+        [self startProgressForNavigation];
+        self.window.title = [NSString stringWithFormat:@"Loading... - %@", kBrowserAppName];
         dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
             [self fetchAndRender:urlStr];
         });
@@ -1387,6 +1629,7 @@ static void apply_browser_request_headers(clever::net::Request& req,
 
 - (void)windowDidResize:(NSNotification*)notification {
     (void)notification;
+    [self layoutChromeViews];
     // Debounce: wait until the user stops resizing (150ms) before re-rendering
     [_resizeTimer invalidate];
     _resizeTimer = [NSTimer scheduledTimerWithTimeInterval:0.15
@@ -1399,6 +1642,15 @@ static void apply_browser_request_headers(clever::net::Request& req,
 - (void)resizeTimerFired:(NSTimer*)timer {
     (void)timer;
     _resizeTimer = nil;
+    BrowserTab* tab = [self activeTab];
+    if (tab && ![tab currentHTML].empty()) {
+        [self doRender:[tab currentHTML]];
+    }
+}
+
+- (void)windowDidChangeBackingProperties:(NSNotification*)notification {
+    (void)notification;
+    [self layoutChromeViews];
     BrowserTab* tab = [self activeTab];
     if (tab && ![tab currentHTML].empty()) {
         [self doRender:[tab currentHTML]];
@@ -1527,11 +1779,17 @@ static void apply_browser_request_headers(clever::net::Request& req,
         i++;
     }
 
+    const std::string safe_title = escape_html_text(std::string([tab.title UTF8String]));
     std::string source_html =
-        "<html><head><title>Source: " + std::string([tab.title UTF8String]) + "</title>"
-        "<style>body { margin: 0; } pre { margin: 0; padding: 12px; font-size: 13px; "
-        "line-height: 1.4; background-color: #1e1e1e; color: #d4d4d4; "
-        "font-family: monospace; white-space: pre-wrap; word-wrap: break-word; }</style></head>"
+        "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">"
+        "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
+        "<title>Source: " + safe_title + "</title>"
+        "<style>:root{color-scheme:dark;}*{box-sizing:border-box;}html,body{margin:0;padding:0;}"
+        "body{background-color:#111827;color:#e5e7eb;-webkit-text-size-adjust:100%;}"
+        "pre{margin:0;min-height:100vh;padding:14px 16px;font-size:13px;line-height:1.5;"
+        "font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;"
+        "white-space:pre-wrap;overflow-wrap:anywhere;tab-size:2;}"
+        "@media (max-width:640px){pre{padding:12px;font-size:12px;}}</style></head>"
         "<body><pre>" + highlighted + "</pre></body></html>";
 
     [self newTab];
@@ -1678,7 +1936,7 @@ static void apply_browser_request_headers(clever::net::Request& req,
 
     [_spinner startAnimation:nil];
     [self startProgressForNavigation];
-    self.window.title = @"Loading... - Clever Browser";
+    self.window.title = [NSString stringWithFormat:@"Loading... - %@", kBrowserAppName];
 
     std::string actionUrl = action;
     std::string postBody = body;
@@ -1787,19 +2045,20 @@ static void apply_browser_request_headers(clever::net::Request& req,
         [self setProgress:0.7 animated:YES];
 
         if (!response || response->status >= 400) {
-            NSString* errorHTML;
+            std::string error_html;
             if (!response) {
-                errorHTML = [NSString stringWithFormat:
-                    @"<html><body><h1>Connection Failed</h1>"
-                    @"<p>Could not connect to %s</p></body></html>",
-                    urlStr.c_str()];
+                error_html = build_shell_message_html(
+                    "Connection Failed",
+                    "Connection Failed",
+                    "Could not connect to " + urlStr);
             } else {
-                errorHTML = [NSString stringWithFormat:
-                    @"<html><body><h1>Error %d</h1>"
-                    @"<p>%s</p></body></html>",
-                    response->status, response->status_text.c_str()];
+                const std::string status_heading = "Error " + std::to_string(response->status);
+                error_html = build_shell_message_html(
+                    status_heading,
+                    status_heading,
+                    response->status_text);
             }
-            [self renderHTML:errorHTML];
+            [self renderHTML:[NSString stringWithUTF8String:error_html.c_str()]];
             [self finishProgress];
             return;
         }
@@ -2305,12 +2564,12 @@ static void apply_browser_request_headers(clever::net::Request& req,
                 // Dispatch "blur" on previously focused element, "focus" on new one
                 auto* prevFocused = [tab focusedInputNode];
                 if (prevFocused && prevFocused != inputTarget) {
-                    remove_attr(prevFocused, "data-clever-focus");
+                    remove_attr(prevFocused, [kBrowserFocusAttr UTF8String]);
                     if (jsEngine)
                         clever::js::dispatch_event(jsEngine->context(), prevFocused, "blur");
                 }
                 [tab setFocusedInputNode:inputTarget];
-                set_attr(inputTarget, "data-clever-focus", "");
+                set_attr(inputTarget, [kBrowserFocusAttr UTF8String], "");
                 if (jsEngine) {
                     clever::js::dispatch_event(jsEngine->context(), inputTarget, "focus");
                 }
@@ -2431,7 +2690,7 @@ static void apply_browser_request_headers(clever::net::Request& req,
     }
 
     // Remove focus attribute and dispatch "change" and "blur" events via JS
-    remove_attr(inputNode, "data-clever-focus");
+    remove_attr(inputNode, [kBrowserFocusAttr UTF8String]);
     auto& jsEngine = [tab jsEngine];
     if (jsEngine) {
         clever::js::dispatch_event(jsEngine->context(), inputNode, "change");
@@ -2502,21 +2761,9 @@ static void apply_browser_request_headers(clever::net::Request& req,
     // If hover target hasn't changed, do nothing
     if (target == _hoveredNode) return;
 
-    // Remove ALL hover attributes from the DOM tree, then set new ones.
-    // This is necessary because after re-render, the DOM tree is rebuilt
-    // and old hover pointers become invalid.
-    std::function<void(clever::html::SimpleNode*)> clearHover;
-    clearHover = [&](clever::html::SimpleNode* n) {
-        remove_attr(n, "data-clever-hover");
-        for (auto& child : n->children) {
-            if (child->type == clever::html::SimpleNode::Element)
-                clearHover(child.get());
-        }
-    };
-    clearHover(domTree.get());
-
     // Dispatch JS mouse events for hover transitions
     auto& jsEngine = [tab jsEngine];
+    bool domModifiedByHover = false;
     if (jsEngine) {
         // mouseout/mouseleave on old target (if any — but pointer may be invalid after re-render)
         // mouseover/mouseenter on new target
@@ -2524,14 +2771,30 @@ static void apply_browser_request_headers(clever::net::Request& req,
             clever::js::dispatch_event(jsEngine->context(), target, "mouseover");
             clever::js::dispatch_event(jsEngine->context(), target, "mouseenter");
         }
+        domModifiedByHover = clever::js::dom_was_modified(jsEngine->context());
+    }
+
+    if (_pageUsesHoverState) {
+        // Remove ALL hover attributes from the DOM tree, then set new ones.
+        // This is necessary because after re-render, the DOM tree is rebuilt
+        // and old hover pointers become invalid.
+        std::function<void(clever::html::SimpleNode*)> clearHover;
+        clearHover = [&](clever::html::SimpleNode* n) {
+            remove_attr(n, [kBrowserHoverAttr UTF8String]);
+            for (auto& child : n->children) {
+                if (child->type == clever::html::SimpleNode::Element)
+                    clearHover(child.get());
+            }
+        };
+        clearHover(domTree.get());
     }
 
     // Set hover on new chain (element + all ancestors)
     _hoveredNode = target;
-    if (target) {
+    if (_pageUsesHoverState && target) {
         clever::html::SimpleNode* walk = target;
         while (walk) {
-            set_attr(walk, "data-clever-hover", "");
+            set_attr(walk, [kBrowserHoverAttr UTF8String], "");
             walk = walk->parent;
         }
     }
@@ -2540,10 +2803,14 @@ static void apply_browser_request_headers(clever::net::Request& req,
     _lastHoverX = x;
     _lastHoverY = y;
 
-    // Debounced re-render: schedule a re-render in 80ms
+    if (!_pageUsesHoverState && !domModifiedByHover) {
+        return;
+    }
+
+    // Debounced re-render: schedule a re-render in 140ms
     // Cancel any pending hover timer
     [_hoverTimer invalidate];
-    _hoverTimer = [NSTimer scheduledTimerWithTimeInterval:0.08
+    _hoverTimer = [NSTimer scheduledTimerWithTimeInterval:0.14
                                                    target:self
                                                  selector:@selector(hoverTimerFired:)
                                                  userInfo:nil
@@ -2810,7 +3077,7 @@ do_render:
 
 - (void)saveScreenshot {
     NSSavePanel* panel = [NSSavePanel savePanel];
-    panel.nameFieldStringValue = @"clever_screenshot.png";
+    panel.nameFieldStringValue = @"vibrowser_screenshot.png";
     panel.allowedContentTypes = @[[UTType typeWithIdentifier:@"public.png"]];
     panel.allowsOtherFileTypes = NO;
 
@@ -2905,13 +3172,20 @@ do_render:
 - (NSString*)bookmarksPlistPath {
     NSString* appSupport = [NSSearchPathForDirectoriesInDomains(
         NSApplicationSupportDirectory, NSUserDomainMask, YES) firstObject];
-    NSString* cleverDir = [appSupport stringByAppendingPathComponent:@"Clever"];
-    return [cleverDir stringByAppendingPathComponent:@"bookmarks.plist"];
+    NSString* vibrowserDir = [appSupport stringByAppendingPathComponent:@"Vibrowser"];
+    return [vibrowserDir stringByAppendingPathComponent:@"bookmarks.plist"];
 }
 
 - (void)loadBookmarks {
     NSString* path = [self bookmarksPlistPath];
     NSArray* saved = [NSArray arrayWithContentsOfFile:path];
+    if (!saved) {
+        NSString* appSupport = [NSSearchPathForDirectoriesInDomains(
+            NSApplicationSupportDirectory, NSUserDomainMask, YES) firstObject];
+        NSString* legacyPath = [[appSupport stringByAppendingPathComponent:@"Clever"]
+            stringByAppendingPathComponent:@"bookmarks.plist"];
+        saved = [NSArray arrayWithContentsOfFile:legacyPath];
+    }
     if (saved) {
         [_bookmarks removeAllObjects];
         for (NSDictionary* dict in saved) {
@@ -2920,6 +3194,7 @@ do_render:
                 [_bookmarks addObject:[dict mutableCopy]];
             }
         }
+        [self saveBookmarks];
     }
 }
 

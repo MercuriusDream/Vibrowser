@@ -23,7 +23,7 @@ static bool parse_an_plus_b(const std::string& arg, int& a, int& b) {
         // Just a number: b
         char* end = nullptr;
         long val = std::strtol(s.c_str(), &end, 10);
-        if (end == s.c_str()) return false;
+        if (end == s.c_str() || *end != '\0') return false;
         a = 0;
         b = static_cast<int>(val);
         return true;
@@ -40,7 +40,7 @@ static bool parse_an_plus_b(const std::string& arg, int& a, int& b) {
         std::string a_str = s.substr(0, n_pos);
         char* end = nullptr;
         long val = std::strtol(a_str.c_str(), &end, 10);
-        if (end == a_str.c_str()) return false;
+        if (end == a_str.c_str() || *end != '\0') return false;
         a = static_cast<int>(val);
     }
 
@@ -53,7 +53,7 @@ static bool parse_an_plus_b(const std::string& arg, int& a, int& b) {
     std::string b_str = s.substr(n_pos + 1);
     char* end = nullptr;
     long val = std::strtol(b_str.c_str(), &end, 10);
-    if (end == b_str.c_str()) return false;
+    if (end == b_str.c_str() || *end != '\0') return false;
     b = static_cast<int>(val);
     return true;
 }
@@ -384,8 +384,8 @@ bool SelectorMatcher::matches_simple(const ElementView& element, const SimpleSel
                 return true;
             } else if (name == "target") {
                 // :target matches element whose ID matches the URL fragment
-                // Without runtime URL context, match elements with id attribute (conservative)
-                return !element.id.empty();
+                // Without URL fragment context, fail closed to avoid broad false matches.
+                return false;
             } else if (name == "lang") {
                 // :lang(xx) matches element with matching lang attribute
                 std::string want = simple.argument;
@@ -408,7 +408,7 @@ bool SelectorMatcher::matches_simple(const ElementView& element, const SimpleSel
                     cur = cur->parent;
                 }
                 return false;
-            } else if (name == "any-link") {
+            } else if (name == "link" || name == "any-link") {
                 // :any-link matches <a>, <area>, <link> with href attribute
                 if (element.tag_name != "a" && element.tag_name != "area" && element.tag_name != "link") return false;
                 for (const auto& [n, v] : element.attributes) {
@@ -433,9 +433,9 @@ bool SelectorMatcher::matches_simple(const ElementView& element, const SimpleSel
                 // Without browser autofill state, always false
                 return false;
             } else if (name == "focus" || name == "focus-visible") {
-                // Check for data-clever-focus attribute set by the UI layer
+                // Check for data-vibrowser-focus attribute set by the UI layer
                 for (const auto& [n, v] : element.attributes) {
-                    if (n == "data-clever-focus") return true;
+                    if (n == "data-vibrowser-focus" || n == "data-clever-focus") return true;
                 }
                 return false;
             } else if (name == "focus-within") {
@@ -443,7 +443,7 @@ bool SelectorMatcher::matches_simple(const ElementView& element, const SimpleSel
                 struct FocusChecker {
                     static bool has_focus(const ElementView& n) {
                         for (const auto& [an, av] : n.attributes) {
-                            if (an == "data-clever-focus") return true;
+                            if (an == "data-vibrowser-focus" || an == "data-clever-focus") return true;
                         }
                         for (const auto* child : n.children) {
                             if (has_focus(*child)) return true;
@@ -453,13 +453,16 @@ bool SelectorMatcher::matches_simple(const ElementView& element, const SimpleSel
                 };
                 return FocusChecker::has_focus(element);
             } else if (name == "hover") {
-                // Check for data-clever-hover attribute set by the UI layer
+                // Check for data-vibrowser-hover attribute set by the UI layer
                 for (const auto& [n, v] : element.attributes) {
-                    if (n == "data-clever-hover") return true;
+                    if (n == "data-vibrowser-hover" || n == "data-clever-hover") return true;
                 }
                 return false;
-            } else if (name == "active" || name == "visited") {
-                // Active/visited pseudo-classes not yet tracked
+            } else if (name == "active") {
+                // Active pseudo-class not yet tracked.
+                return false;
+            } else if (name == "visited") {
+                // Privacy-preserving fallback until visited state is explicitly tracked.
                 return false;
             } else if (name == "indeterminate") {
                 // :indeterminate — matches checkbox/radio in indeterminate state
@@ -490,8 +493,8 @@ bool SelectorMatcher::matches_simple(const ElementView& element, const SimpleSel
         }
 
         case SimpleSelectorType::PseudoElement:
-            // Pseudo-elements are handled specially in layout, always match here
-            return true;
+            // Pseudo-elements should never match regular element nodes.
+            return false;
     }
 
     return false;

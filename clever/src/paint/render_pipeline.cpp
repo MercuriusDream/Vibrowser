@@ -5282,8 +5282,19 @@ uint32_t color_to_argb(const clever::css::Color& c) {
 std::string resolve_url(const std::string& href, const std::string& base_url) {
     if (href.empty()) return "";
 
-    // Already absolute
-    if (href.find("://") != std::string::npos) return href;
+    // Already absolute: scheme ":" prefix (e.g. https:, data:, about:, mailto:)
+    if (std::isalpha(static_cast<unsigned char>(href[0]))) {
+        size_t i = 1;
+        while (i < href.size()) {
+            const char c = href[i];
+            if (std::isalnum(static_cast<unsigned char>(c)) || c == '+' || c == '-' || c == '.') {
+                ++i;
+                continue;
+            }
+            break;
+        }
+        if (i < href.size() && href[i] == ':') return href;
+    }
 
     if (base_url.empty()) return href;
 
@@ -5319,7 +5330,8 @@ std::string resolve_url(const std::string& href, const std::string& base_url) {
 
 // Fetch a URL with redirect following (up to 5 hops)
 std::optional<clever::net::Response> fetch_with_redirects(
-    const std::string& url, const std::string& accept, int timeout_secs = 5) {
+    const std::string& url, const std::string& accept,
+    int timeout_secs = 5, std::string* final_url = nullptr) {
 
     clever::net::HttpClient client;
     client.set_timeout(std::chrono::seconds(timeout_secs));
@@ -5331,7 +5343,7 @@ std::optional<clever::net::Response> fetch_with_redirects(
         req.url = current_url;
         req.method = clever::net::Method::GET;
         req.parse_url();
-        req.headers.set("User-Agent", "Clever/0.1");
+        req.headers.set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Vibrowser/0.7.0 Safari/537.36");
         req.headers.set("Accept", accept);
         req.headers.set("Connection", "close");
 
@@ -5353,22 +5365,43 @@ std::optional<clever::net::Response> fetch_with_redirects(
             response->status == 303 || response->status == 307 ||
             response->status == 308) {
             auto location = response->headers.get("location");
-            if (!location || location->empty()) return response;
+            if (!location || location->empty()) {
+                if (final_url) *final_url = current_url;
+                return response;
+            }
             current_url = resolve_url(*location, current_url);
             continue;
         }
+        if (final_url) *final_url = current_url;
         return response;
     }
     return std::nullopt;
 }
 
 // Fetch a CSS stylesheet from a URL
-std::string fetch_css(const std::string& url) {
-    auto response = fetch_with_redirects(url, "text/css, */*", 5);
-    if (response && response->status < 400) {
-        return response->body_as_string();
+std::string fetch_css(const std::string& url, std::string* final_url = nullptr) {
+    auto response = fetch_with_redirects(url, "text/css, */*", 5, final_url);
+    if (!response || response->status >= 400) {
+        return "";
     }
-    return "";
+
+    const std::string body = response->body_as_string();
+    auto content_type = response->headers.get("content-type");
+    if (content_type.has_value()) {
+        const std::string ct = to_lower(*content_type);
+        if (ct.find("text/css") == std::string::npos &&
+            ct.find("application/x-css") == std::string::npos &&
+            ct.find("text/plain") == std::string::npos) {
+            return "";
+        }
+    }
+
+    const std::string probe = to_lower(trim(body.substr(0, std::min<size_t>(body.size(), 256))));
+    if (probe.rfind("<!doctype html", 0) == 0 || probe.rfind("<html", 0) == 0) {
+        return "";
+    }
+
+    return body;
 }
 
 
@@ -5445,9 +5478,21 @@ DecodedImage decode_image_native(const uint8_t* data, size_t length) {
 // In-memory image cache: avoids re-fetching/decoding images on hover re-renders.
 // Keyed by URL. Max ~64MB of decoded pixel data. LRU eviction when full.
 static std::unordered_map<std::string, DecodedImage> s_image_cache;
-static std::vector<std::string> s_image_cache_order; // insertion order for LRU
+static std::vector<std::string> s_image_cache_order;
 static size_t s_image_cache_bytes = 0;
 static constexpr size_t IMAGE_CACHE_MAX_BYTES = 64 * 1024 * 1024; // 64MB
+
+static void image_cache_remove_from_order(const std::string& url) {
+    auto order_it = std::find(s_image_cache_order.begin(), s_image_cache_order.end(), url);
+    if (order_it != s_image_cache_order.end()) {
+        s_image_cache_order.erase(order_it);
+    }
+}
+
+static void image_cache_touch(const std::string& url) {
+    image_cache_remove_from_order(url);
+    s_image_cache_order.push_back(url);
+}
 
 static void image_cache_evict() {
     while (s_image_cache_bytes > IMAGE_CACHE_MAX_BYTES && !s_image_cache_order.empty()) {
@@ -5463,6 +5508,24 @@ static void image_cache_evict() {
     }
 }
 
+static void image_cache_store(const std::string& url, const DecodedImage& image) {
+    auto existing = s_image_cache.find(url);
+    if (existing != s_image_cache.end()) {
+        if (existing->second.pixels) {
+            s_image_cache_bytes -= existing->second.pixels->size();
+        }
+        s_image_cache.erase(existing);
+        image_cache_remove_from_order(url);
+    }
+
+    s_image_cache[url] = image;
+    if (image.pixels) {
+        s_image_cache_bytes += image.pixels->size();
+    }
+    s_image_cache_order.push_back(url);
+    image_cache_evict();
+}
+
 DecodedImage fetch_and_decode_image(const std::string& url) {
     DecodedImage result;
     if (url.empty()) return result;
@@ -5470,6 +5533,7 @@ DecodedImage fetch_and_decode_image(const std::string& url) {
     // Check cache first
     auto cache_it = s_image_cache.find(url);
     if (cache_it != s_image_cache.end()) {
+        image_cache_touch(url);
         return cache_it->second;
     }
 
@@ -5484,10 +5548,7 @@ DecodedImage fetch_and_decode_image(const std::string& url) {
     result = decode_image_native(
         reinterpret_cast<const uint8_t*>(body.data()), body.size());
     if (result.pixels) {
-        s_image_cache_bytes += result.pixels->size();
-        s_image_cache[url] = result;
-        s_image_cache_order.push_back(url);
-        image_cache_evict();
+        image_cache_store(url, result);
         return result;
     }
 #endif
@@ -5508,10 +5569,7 @@ DecodedImage fetch_and_decode_image(const std::string& url) {
     stbi_image_free(data);
 
     // Cache the decoded result
-    s_image_cache_bytes += result.pixels->size();
-    s_image_cache[url] = result;
-    s_image_cache_order.push_back(url);
-    image_cache_evict();
+    image_cache_store(url, result);
 
     return result;
 }
@@ -5520,12 +5578,40 @@ DecodedImage fetch_and_decode_image(const std::string& url) {
 std::vector<std::string> extract_link_stylesheets(
     const clever::html::SimpleNode& node, const std::string& base_url) {
     std::vector<std::string> urls;
-    if (node.type == clever::html::SimpleNode::Element &&
-        to_lower(node.tag_name) == "link") {
-        std::string rel = to_lower(get_attr(node, "rel"));
-        std::string href = get_attr(node, "href");
-        if (rel == "stylesheet" && !href.empty()) {
-            urls.push_back(resolve_url(href, base_url));
+    if (node.type == clever::html::SimpleNode::Element) {
+        const std::string tag = to_lower(node.tag_name);
+
+        // With JS enabled, <noscript> fallback styles must not be applied.
+        if (tag == "noscript" || tag == "template") {
+            return urls;
+        }
+
+        if (tag == "link") {
+            const std::string rel_raw = to_lower(get_attr(node, "rel"));
+            const std::string href = trim(get_attr(node, "href"));
+            const std::string type = to_lower(trim(get_attr(node, "type")));
+            const std::string media = to_lower(trim(get_attr(node, "media")));
+            const bool disabled = has_attr(node, "disabled");
+
+            bool has_stylesheet = false;
+            bool has_alternate = false;
+            std::istringstream rel_tokens(rel_raw);
+            std::string token;
+            while (rel_tokens >> token) {
+                if (token == "stylesheet") has_stylesheet = true;
+                if (token == "alternate") has_alternate = true;
+            }
+
+            // Treat rel as a token list, skip alternate/disabled sheets.
+            if (has_stylesheet && !has_alternate && !disabled &&
+                (type.empty() || type == "text/css") &&
+                (media.empty() || media == "all" || media == "screen") &&
+                !href.empty()) {
+                std::string resolved = resolve_url(href, base_url);
+                if (!resolved.empty()) {
+                    urls.push_back(std::move(resolved));
+                }
+            }
         }
     }
     for (auto& child : node.children) {
@@ -5540,10 +5626,24 @@ std::vector<std::string> extract_link_stylesheets(
 // Collect CSS text from all <style> elements in the document
 std::string extract_style_content(const clever::html::SimpleNode& node) {
     std::string css;
-    if (node.type == clever::html::SimpleNode::Element &&
-        to_lower(node.tag_name) == "style") {
-        css += node.text_content();
-        css += "\n";
+    if (node.type == clever::html::SimpleNode::Element) {
+        const std::string tag = to_lower(node.tag_name);
+
+        // With JS enabled, <noscript> fallback styles must not be applied.
+        if (tag == "noscript" || tag == "template") {
+            return css;
+        }
+
+        if (tag == "style") {
+            const std::string type = to_lower(trim(get_attr(node, "type")));
+            const std::string media = to_lower(trim(get_attr(node, "media")));
+            const bool css_type = type.empty() || type == "text/css";
+            const bool media_matches = media.empty() || media == "all" || media == "screen";
+            if (css_type && media_matches) {
+                css += node.text_content();
+                css += "\n";
+            }
+        }
     }
     for (auto& child : node.children) {
         css += extract_style_content(*child);
@@ -10997,20 +11097,25 @@ void process_css_imports(clever::css::StyleSheet& sheet,
                          const std::string& base_url,
                          int viewport_width, int viewport_height,
                          int depth = 0) {
-    static constexpr int kMaxImportDepth = 3;
+    static constexpr int kMaxImportDepth = 8;
     if (depth >= kMaxImportDepth || sheet.imports.empty()) return;
 
     // Collect rules from all @import sheets (in order)
     std::vector<clever::css::StyleRule> imported_rules;
     for (auto& imp : sheet.imports) {
         if (imp.url.empty()) continue;
+        if (!imp.media.empty() &&
+            !evaluate_media_query(imp.media, viewport_width, viewport_height)) {
+            continue;
+        }
         std::string resolved = resolve_url(imp.url, base_url);
-        std::string css = fetch_css(resolved);
+        std::string fetched_url = resolved;
+        std::string css = fetch_css(resolved, &fetched_url);
         if (css.empty()) continue;
 
         auto imported_sheet = clever::css::parse_stylesheet(css);
         // Recurse into the imported sheet's own @imports
-        process_css_imports(imported_sheet, resolved,
+        process_css_imports(imported_sheet, fetched_url,
                             viewport_width, viewport_height, depth + 1);
         // Flatten media/supports queries in the imported sheet
         flatten_media_queries(imported_sheet, viewport_width, viewport_height);
@@ -11221,7 +11326,7 @@ RenderResult render_html(const std::string& html, const std::string& base_url,
         if (!base_nodes.empty()) {
             for (const auto& attr : base_nodes[0]->attributes) {
                 if (attr.name == "href" && !attr.value.empty()) {
-                    effective_base_url = attr.value;
+                    effective_base_url = resolve_url(attr.value, base_url);
                     break;
                 }
             }
@@ -11272,11 +11377,12 @@ RenderResult render_html(const std::string& html, const std::string& base_url,
         std::vector<clever::css::StyleSheet> external_sheets;
         auto link_urls = extract_link_stylesheets(*doc, effective_base_url);
         for (auto& url : link_urls) {
-            std::string css = fetch_css(url);
+            std::string fetched_url = url;
+            std::string css = fetch_css(url, &fetched_url);
             if (!css.empty()) {
                 external_sheets.push_back(clever::css::parse_stylesheet(css));
                 // Fetch and merge @import rules from the external stylesheet
-                process_css_imports(external_sheets.back(), url,
+                process_css_imports(external_sheets.back(), fetched_url,
                                     viewport_width, viewport_height);
                 // Evaluate @media/@supports queries and promote matching rules
                 flatten_media_queries(external_sheets.back(), viewport_width, viewport_height);

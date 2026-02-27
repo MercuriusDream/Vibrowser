@@ -80,3 +80,9 @@ dataclaw_conversations.jsonl
 
 # Images (Outputs)
 *.ppm
+
+clever/build/
+clever/cache/
+clever/cmake_install.cmake
+build_vibrowser/
+.cache

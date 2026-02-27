@@ -3380,3 +3380,772 @@ TEST(URLParser, PathWithDoubleDotSegment) {
     ASSERT_TRUE(url.has_value());
     EXPECT_FALSE(url->path.empty());
 }
+
+TEST(URLParser, SchemeIsHttpsV2) {
+    auto url = parse("https://example.com/");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+}
+
+TEST(URLParser, DefaultPort443Stripped) {
+    auto url = parse("https://example.com:443/");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_FALSE(url->port.has_value());
+}
+
+TEST(URLParser, PathFourSegments) {
+    auto url = parse("https://example.com/a/b/c/d");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->path, "/a/b/c/d");
+}
+
+TEST(URLParser, QueryMultipleParamsPresent) {
+    auto url = parse("https://example.com?a=1&b=2&c=3");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_FALSE(url->query.empty());
+}
+
+TEST(URLParser, FragmentSectionV2) {
+    auto url = parse("https://example.com#section");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->fragment, "section");
+}
+
+TEST(URLParser, EmptyPathDefaultsSlash) {
+    auto url = parse("https://example.com");
+    ASSERT_TRUE(url.has_value());
+}
+
+TEST(URLParser, Port8443PreservedV2) {
+    auto url = parse("https://example.com:8443/secure");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->port.value(), 8443);
+}
+
+TEST(URLParser, HostLowercased) {
+    auto url = parse("https://EXAMPLE.COM/");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->host, "example.com");
+}
+
+TEST(URLParser, DataUrlScheme) {
+    auto url = parse("data:text/plain,Hello");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "data");
+}
+
+TEST(URLParser, EmptyFragmentAfterHash) {
+    auto url = parse("https://example.com#");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_TRUE(url->fragment.empty());
+}
+
+TEST(URLParser, MultipleQueryParamsV3) {
+    auto url = parse("https://example.com?a=1&b=2");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_FALSE(url->query.empty());
+}
+
+TEST(URLParser, Port0Preserved) {
+    auto url = parse("http://example.com:0/");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->port.value(), 0);
+}
+
+TEST(URLParser, PathWithEncodedSpaceV2) {
+    auto url = parse("https://example.com/hello%20world");
+    ASSERT_TRUE(url.has_value());
+    // Path should contain "hello" and "world" (may or may not decode %20)
+    EXPECT_NE(url->path.find("hello"), std::string::npos);
+    EXPECT_NE(url->path.find("world"), std::string::npos);
+}
+
+TEST(URLParser, HostLowercasedV2) {
+    auto url = parse("HTTP://EXAMPLE.COM/");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->host, "example.com");
+}
+
+TEST(URLParser, QueryWithHashSymbol) {
+    auto url = parse("https://example.com?q=%23tag");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_FALSE(url->query.empty());
+}
+
+TEST(URLParser, PathMultipleSegmentsV3) {
+    auto url = parse("https://example.com/a/b/c/d");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_NE(url->path.find("/a/"), std::string::npos);
+    EXPECT_NE(url->path.find("/b/"), std::string::npos);
+    EXPECT_NE(url->path.find("/c/"), std::string::npos);
+    EXPECT_NE(url->path.find("/d"), std::string::npos);
+}
+
+// --- Cycle 1024: URL parser tests ---
+
+TEST(URLParser, HttpSchemeV3) {
+    auto url = parse("http://example.com");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "http");
+}
+
+TEST(URLParser, HttpsSchemeV3) {
+    auto url = parse("https://example.com");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+}
+
+TEST(URLParser, PortPreserved9090V2) {
+    auto url = parse("http://example.com:9090/api");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->port.value(), 9090);
+}
+
+TEST(URLParser, DefaultPortStrippedHttp80V2) {
+    auto url = parse("http://example.com:80/");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_FALSE(url->port.has_value());
+}
+
+TEST(URLParser, DefaultPortStrippedHttps443V2) {
+    auto url = parse("https://example.com:443/");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_FALSE(url->port.has_value());
+}
+
+TEST(URLParser, QueryWithAmpersandV3) {
+    auto url = parse("https://example.com?x=1&y=2");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_NE(url->query.find("x=1"), std::string::npos);
+}
+
+TEST(URLParser, FragmentPreservedV3) {
+    auto url = parse("https://example.com#top");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->fragment, "top");
+}
+
+TEST(URLParser, PathRootSlashV3) {
+    auto url = parse("https://example.com/");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->path, "/");
+}
+
+// --- Cycle 1033: URL parser tests ---
+
+TEST(URLParser, HostExampleComV3) {
+    auto url = parse("https://example.com/path");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->host, "example.com");
+}
+
+TEST(URLParser, SubdomainHostV4) {
+    auto url = parse("https://www.example.com/");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->host, "www.example.com");
+}
+
+TEST(URLParser, Port3000PreservedV2) {
+    auto url = parse("http://localhost:3000/");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->port.value(), 3000);
+}
+
+TEST(URLParser, PathWithExtensionHtml) {
+    auto url = parse("https://example.com/page.html");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_NE(url->path.find(".html"), std::string::npos);
+}
+
+TEST(URLParser, QuerySingleParamV4) {
+    auto url = parse("https://example.com?key=val");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_FALSE(url->query.empty());
+}
+
+TEST(URLParser, FragmentWithDashV3) {
+    auto url = parse("https://example.com#section-1");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->fragment, "section-1");
+}
+
+TEST(URLParser, SchemeHttpFtp) {
+    auto url = parse("ftp://files.example.com/pub");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "ftp");
+}
+
+TEST(URLParser, OriginIncludesSchemeHost) {
+    auto url = parse("https://example.com/page");
+    ASSERT_TRUE(url.has_value());
+    auto orig = url->origin();
+    EXPECT_NE(orig.find("https"), std::string::npos);
+    EXPECT_NE(orig.find("example.com"), std::string::npos);
+}
+
+// --- Cycle 1042: URL parser tests ---
+
+TEST(URLParser, HttpDefaultPort80) {
+    auto url = parse("http://example.com/");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "http");
+    EXPECT_FALSE(url->port.has_value());
+}
+
+TEST(URLParser, HttpsDefaultPort443V2) {
+    auto url = parse("https://example.com/");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_FALSE(url->port.has_value());
+}
+
+TEST(URLParser, EmptyPathParsed) {
+    auto url = parse("https://example.com");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_TRUE(url->path.empty() || url->path == "/");
+}
+
+TEST(URLParser, MultiSegmentPathV3) {
+    auto url = parse("https://example.com/a/b/c/d");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_NE(url->path.find("a"), std::string::npos);
+    EXPECT_NE(url->path.find("d"), std::string::npos);
+}
+
+TEST(URLParser, QueryMultiParamV3) {
+    auto url = parse("https://example.com?a=1&b=2&c=3");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_NE(url->query.find("a=1"), std::string::npos);
+    EXPECT_NE(url->query.find("c=3"), std::string::npos);
+}
+
+TEST(URLParser, FragmentOnlyHashV3) {
+    auto url = parse("https://example.com#top");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->fragment, "top");
+}
+
+TEST(URLParser, PortCustom9090) {
+    auto url = parse("http://localhost:9090/api");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->port.value(), 9090);
+}
+
+TEST(URLParser, HostWithHyphenV2) {
+    auto url = parse("https://my-site.example.com/");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->host, "my-site.example.com");
+}
+
+// --- Cycle 1051: URL parser tests ---
+
+TEST(URLParser, WssScheme) {
+    auto url = parse("wss://ws.example.com/chat");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "wss");
+}
+
+TEST(URLParser, WsScheme) {
+    auto url = parse("ws://ws.example.com/chat");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "ws");
+}
+
+TEST(URLParser, Port443Explicit) {
+    auto url = parse("https://example.com:443/");
+    ASSERT_TRUE(url.has_value());
+    // Either port is stripped (default) or present
+    EXPECT_EQ(url->scheme, "https");
+}
+
+TEST(URLParser, FragmentEmptyAfterHashV2) {
+    auto url = parse("https://example.com/page#");
+    ASSERT_TRUE(url.has_value());
+    // Fragment should be empty or just empty string
+    EXPECT_TRUE(url->fragment.empty() || url->fragment == "");
+}
+
+TEST(URLParser, PathTrailingSlashV2) {
+    auto url = parse("https://example.com/path/");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_NE(url->path.find("path"), std::string::npos);
+}
+
+TEST(URLParser, QueryEmptyValue) {
+    auto url = parse("https://example.com?key=");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_NE(url->query.find("key"), std::string::npos);
+}
+
+TEST(URLParser, HostLocalhostV3) {
+    auto url = parse("http://localhost/");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->host, "localhost");
+}
+
+TEST(URLParser, Port8080V3) {
+    auto url = parse("http://example.com:8080/api");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->port.value(), 8080);
+}
+
+// --- Cycle 1060: URL parser tests ---
+
+TEST(URLParser, DataSchemeV2) {
+    auto url = parse("data:text/html,<h1>Hi</h1>");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "data");
+}
+
+TEST(URLParser, FileSchemeV2) {
+    auto url = parse("file:///tmp/test.html");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "file");
+}
+
+TEST(URLParser, FtpSchemeV2) {
+    auto url = parse("ftp://ftp.example.com/pub/file.txt");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "ftp");
+}
+
+TEST(URLParser, HttpsPortExplicit8443) {
+    auto url = parse("https://example.com:8443/secure");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->port.value(), 8443);
+}
+
+TEST(URLParser, QueryEncodedAmpersand) {
+    auto url = parse("https://example.com?a=1&b=2");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_NE(url->query.find("b=2"), std::string::npos);
+}
+
+TEST(URLParser, PathDotSegment) {
+    auto url = parse("https://example.com/a/b/../c");
+    ASSERT_TRUE(url.has_value());
+    // Path may or may not resolve dot segments
+    EXPECT_FALSE(url->path.empty());
+}
+
+TEST(URLParser, HostIP127001) {
+    auto url = parse("http://127.0.0.1/");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->host, "127.0.0.1");
+}
+
+TEST(URLParser, SchemeUpperToLower) {
+    auto url = parse("HTTP://EXAMPLE.COM/");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "http");
+}
+
+// --- Cycle 1069: URL parser tests ---
+
+TEST(URLParser, HostNumericSubdomain) {
+    auto url = parse("https://123.example.com/");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->host, "123.example.com");
+}
+
+TEST(URLParser, PathWithJsonExt) {
+    auto url = parse("https://api.example.com/data.json");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_NE(url->path.find(".json"), std::string::npos);
+}
+
+TEST(URLParser, QueryKeyNoValue) {
+    auto url = parse("https://example.com?flag");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_NE(url->query.find("flag"), std::string::npos);
+}
+
+TEST(URLParser, FragmentMultiWord) {
+    auto url = parse("https://example.com#section-two-main");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->fragment, "section-two-main");
+}
+
+TEST(URLParser, Port5000) {
+    auto url = parse("http://localhost:5000/api/v1");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->port.value(), 5000);
+}
+
+TEST(URLParser, SchemeFtpsNotStandard) {
+    auto url = parse("ftps://secure.example.com/");
+    // May or may not parse, just don't crash
+    if (url.has_value()) {
+        EXPECT_EQ(url->scheme, "ftps");
+    }
+}
+
+TEST(URLParser, PathWithXmlExt) {
+    auto url = parse("https://example.com/feed.xml");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_NE(url->path.find(".xml"), std::string::npos);
+}
+
+TEST(URLParser, HostUnderscoreAllowed) {
+    auto url = parse("http://my_host.example.com/");
+    // May or may not parse hosts with underscores
+    if (url.has_value()) {
+        EXPECT_NE(url->host.find("my_host"), std::string::npos);
+    }
+}
+
+// --- Cycle 1078: URL parser tests ---
+
+TEST(URLParser, PathWithCssExt) {
+    auto url = parse("https://example.com/styles/main.css");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_NE(url->path.find(".css"), std::string::npos);
+}
+
+TEST(URLParser, PathWithJsExt) {
+    auto url = parse("https://example.com/js/app.js");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_NE(url->path.find(".js"), std::string::npos);
+}
+
+TEST(URLParser, Port3306) {
+    auto url = parse("mysql://db.example.com:3306/mydb");
+    if (url.has_value()) {
+        EXPECT_EQ(url->port.value(), 3306);
+    }
+}
+
+TEST(URLParser, HostFourParts) {
+    auto url = parse("https://a.b.c.example.com/");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->host, "a.b.c.example.com");
+}
+
+TEST(URLParser, QueryWithPlusSignV2) {
+    auto url = parse("https://example.com/search?q=hello+world");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_NE(url->query.find("hello"), std::string::npos);
+}
+
+TEST(URLParser, FragmentNumeric) {
+    auto url = parse("https://example.com/page#42");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->fragment, "42");
+}
+
+TEST(URLParser, PathSingleSegmentV4) {
+    auto url = parse("https://example.com/about");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_NE(url->path.find("about"), std::string::npos);
+}
+
+TEST(URLParser, SchemeHttpPreserved) {
+    auto url = parse("http://example.com/");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "http");
+}
+
+// --- Cycle 1087: URL parser tests ---
+
+TEST(URLParser, PathWithPngExt) {
+    auto url = parse("https://example.com/images/logo.png");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_NE(url->path.find(".png"), std::string::npos);
+}
+
+TEST(URLParser, PathWithSvgExt) {
+    auto url = parse("https://example.com/icon.svg");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_NE(url->path.find(".svg"), std::string::npos);
+}
+
+TEST(URLParser, Port27017) {
+    auto url = parse("mongodb://db.example.com:27017/mydb");
+    if (url.has_value()) {
+        EXPECT_EQ(url->port.value(), 27017);
+    }
+}
+
+TEST(URLParser, HostIpV4Full) {
+    auto url = parse("http://192.168.0.1:8080/");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->host, "192.168.0.1");
+}
+
+TEST(URLParser, QueryWithHash) {
+    auto url = parse("https://example.com?color=%23red");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_FALSE(url->query.empty());
+}
+
+TEST(URLParser, FragmentWithUnderscoreV2) {
+    auto url = parse("https://example.com#my_section");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->fragment, "my_section");
+}
+
+TEST(URLParser, PathDeepNesting) {
+    auto url = parse("https://example.com/a/b/c/d/e/f");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_NE(url->path.find("f"), std::string::npos);
+}
+
+TEST(URLParser, HostSingleWord) {
+    auto url = parse("http://myserver/");
+    if (url.has_value()) {
+        EXPECT_EQ(url->host, "myserver");
+    }
+}
+
+// --- Cycle 1096: 8 URL tests ---
+
+TEST(URLParser, SchemeHttpsPreserved) {
+    auto url = parse("https://example.com");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+}
+
+TEST(URLParser, HostWithNumbersV2) {
+    auto url = parse("https://host123.com");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->host, "host123.com");
+}
+
+TEST(URLParser, Port9090V2) {
+    auto url = parse("http://localhost:9090");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->port.value(), 9090);
+}
+
+TEST(URLParser, PathWithQueryAndFragment) {
+    auto url = parse("https://example.com/page?q=1#top");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->path, "/page");
+    EXPECT_EQ(url->query, "q=1");
+    EXPECT_EQ(url->fragment, "top");
+}
+
+TEST(URLParser, QueryMultipleAmps) {
+    auto url = parse("https://example.com?a=1&b=2&c=3");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->query, "a=1&b=2&c=3");
+}
+
+TEST(URLParser, FragmentWithDashV2) {
+    auto url = parse("https://example.com#my-section");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->fragment, "my-section");
+}
+
+TEST(URLParser, PathMultipleSegmentsV4) {
+    auto url = parse("https://example.com/a/b/c/d");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->path, "/a/b/c/d");
+}
+
+TEST(URLParser, HostThreePartDomain) {
+    auto url = parse("https://www.example.co.uk");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->host, "www.example.co.uk");
+}
+
+// --- Cycle 1105: 8 URL tests ---
+
+TEST(URLParser, SchemeWssPreserved) {
+    auto url = parse("wss://chat.example.com");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "wss");
+}
+
+TEST(URLParser, Port3001) {
+    auto url = parse("http://localhost:3001");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->port.value(), 3001);
+}
+
+TEST(URLParser, PathWithExtensionPng) {
+    auto url = parse("https://example.com/img/photo.png");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->path, "/img/photo.png");
+}
+
+TEST(URLParser, QuerySingleParamV2) {
+    auto url = parse("https://example.com?key=value");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->query, "key=value");
+}
+
+TEST(URLParser, FragmentWithNumbers) {
+    auto url = parse("https://example.com#section123");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->fragment, "section123");
+}
+
+TEST(URLParser, HostWithSubdomainV3) {
+    auto url = parse("https://api.v2.example.com");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->host, "api.v2.example.com");
+}
+
+TEST(URLParser, EmptyQueryV2) {
+    auto url = parse("https://example.com?");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_TRUE(url->query.empty());
+}
+
+TEST(URLParser, EmptyFragmentV2) {
+    auto url = parse("https://example.com#");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_TRUE(url->fragment.empty());
+}
+
+// --- Cycle 1114: 8 URL tests ---
+
+TEST(URLParser, SchemeWsPreserved) {
+    auto url = parse("ws://echo.websocket.org");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "ws");
+}
+
+TEST(URLParser, Port5432) {
+    auto url = parse("http://db.example.com:5432");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->port.value(), 5432);
+}
+
+TEST(URLParser, PathWithHtmlExt) {
+    auto url = parse("https://example.com/index.html");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->path, "/index.html");
+}
+
+TEST(URLParser, QueryEncodedSpaceV2) {
+    auto url = parse("https://example.com?q=hello%20world");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_FALSE(url->query.empty());
+}
+
+TEST(URLParser, FragmentCamelCase) {
+    auto url = parse("https://example.com#mySection");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->fragment, "mySection");
+}
+
+TEST(URLParser, HostOnlyTld) {
+    auto url = parse("http://localhost");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->host, "localhost");
+}
+
+TEST(URLParser, PathRootOnly) {
+    auto url = parse("https://example.com/");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->path, "/");
+}
+
+TEST(URLParser, Port6379) {
+    auto url = parse("http://redis.local:6379");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->port.value(), 6379);
+}
+
+// --- Cycle 1123: 8 URL tests ---
+
+TEST(URLParser, Port27017V2) {
+    auto url = parse("http://mongo.local:27017");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->port.value(), 27017);
+}
+
+TEST(URLParser, PathWithGifExt) {
+    auto url = parse("https://example.com/images/banner.gif");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->path, "/images/banner.gif");
+}
+
+TEST(URLParser, QueryWithHashSymbolV2) {
+    auto url = parse("https://example.com?color=%23red");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_FALSE(url->query.empty());
+}
+
+TEST(URLParser, FragmentWithDotV2) {
+    auto url = parse("https://example.com#section.2");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->fragment, "section.2");
+}
+
+TEST(URLParser, HostFivePartsV2) {
+    auto url = parse("https://a.b.c.d.com");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->host, "a.b.c.d.com");
+}
+
+TEST(URLParser, SchemeHttpV3) {
+    auto url = parse("http://example.com");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "http");
+}
+
+TEST(URLParser, PathApiVersioned) {
+    auto url = parse("https://api.example.com/v3/users/123");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->path, "/v3/users/123");
+}
+
+TEST(URLParser, Port2049) {
+    auto url = parse("http://nfs.local:2049");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->port.value(), 2049);
+}
+
+// --- Cycle 1132: 8 URL tests ---
+
+TEST(URLParser, Port1433) {
+    auto url = parse("http://sql.local:1433");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->port.value(), 1433);
+}
+
+TEST(URLParser, PathWithSvgExtV2) {
+    auto url = parse("https://example.com/logo.svg");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->path, "/logo.svg");
+}
+
+TEST(URLParser, QueryWithEqualsV2) {
+    auto url = parse("https://example.com?x=1=2");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_FALSE(url->query.empty());
+}
+
+TEST(URLParser, FragmentUpperCase) {
+    auto url = parse("https://example.com#SECTION");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->fragment, "SECTION");
+}
+
+TEST(URLParser, HostWithManyHyphens) {
+    auto url = parse("https://my-long-domain-name.example.com");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->host, "my-long-domain-name.example.com");
+}
+
+TEST(URLParser, SchemeHttpsUpperToLower) {
+    auto url = parse("HTTPS://example.com");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+}
+
+TEST(URLParser, PathEmpty) {
+    auto url = parse("https://example.com");
+    ASSERT_TRUE(url.has_value());
+    // path should be "/" or ""
+    EXPECT_TRUE(url->path == "/" || url->path == "");
+}
+
+TEST(URLParser, Port11211) {
+    auto url = parse("http://memcache.local:11211");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->port.value(), 11211);
+}

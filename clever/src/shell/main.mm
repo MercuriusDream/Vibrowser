@@ -3,111 +3,221 @@
 #include <string>
 
 // -----------------------------------------------------------
-// CleverAppDelegate — manages the application lifecycle
+// VibrowserAppDelegate — manages the application lifecycle
 // -----------------------------------------------------------
-@interface CleverAppDelegate : NSObject <NSApplicationDelegate>
+@interface VibrowserAppDelegate : NSObject <NSApplicationDelegate>
 @property (nonatomic, strong) BrowserWindowController* browserController;
 @end
 
 // Global welcome HTML so both main and browser_window can access it
 std::string getWelcomeHTML() {
-    return std::string([@"<html><head><title>Welcome to Clever</title><style>"
-        @"body { font-family: sans-serif; margin: 0; color: #333; }"
-        @".hero { background: linear-gradient(135deg, #667eea, #764ba2); color: white; padding: 40px 30px; }"
-        @".hero h1 { color: white; font-size: 28px; }"
-        @".hero p { color: white; opacity: 0.9; }"
-        @".content { padding: 20px 30px; }"
-        @"h2 { color: #2c3e50; }"
-        @".features { display: flex; gap: 15px; margin: 20px 0; flex-wrap: wrap; }"
-        @".card { background-color: #f8f9fa; padding: 15px; flex-grow: 1; border-radius: 8px; "
-        @"  box-shadow: 2px 2px 8px #ccc; min-width: 180px; }"
-        @".card h3 { color: #2980b9; }"
-        @".stats { display: flex; gap: 20px; margin: 20px 0; flex-wrap: wrap; }"
-        @".stat { text-align: center; padding: 12px 20px; background: linear-gradient(180deg, #f8f9fa, #e9ecef); "
-        @"  border-radius: 8px; min-width: 100px; }"
-        @".stat-num { font-size: 24px; font-weight: bold; color: #2c3e50; }"
-        @".stat-label { font-size: 11px; color: #7f8c8d; }"
-        @".badge { background: linear-gradient(90deg, #27ae60, #2ecc71); color: white; padding: 3px 10px; border-radius: 12px; }"
-        @".new-tag { background: linear-gradient(90deg, #e74c3c, #e67e22); color: white; padding: 2px 8px; border-radius: 8px; }"
-        @".links { margin: 15px 0; padding: 15px; background-color: #f0f4f8; border-radius: 8px; }"
-        @".links a { margin-right: 20px; }"
-        @".shortcuts { margin: 15px 0; }"
-        @".shortcuts table { width: 100%; }"
-        @".shortcuts td { padding: 4px 8px; }"
-        @".shortcuts th { padding: 4px 8px; text-align: left; color: #2c3e50; }"
-        @"kbd { background-color: #e9ecef; padding: 2px 6px; border-radius: 4px; font-size: 12px; }"
-        @".footer { color: #7f8c8d; margin-top: 20px; padding: 15px 0; text-align: center; }"
-        @"</style></head><body>"
-        @"<div class=\"hero\">"
-        @"<h1>Clever Browser v0.7.0</h1>"
-        @"<p>A complete browser engine built from scratch in C++20. "
-        @"<span class=\"badge\">3300+ tests</span></p>"
-        @"</div>"
-        @"<div class=\"content\">"
-        @"<div class=\"stats\">"
-        @"<div class=\"stat\"><div class=\"stat-num\">3300+</div><div class=\"stat-label\">Tests</div></div>"
-        @"<div class=\"stat\"><div class=\"stat-num\">12</div><div class=\"stat-label\">Libraries</div></div>"
-        @"<div class=\"stat\"><div class=\"stat-num\">2400+</div><div class=\"stat-label\">Features</div></div>"
-        @"<div class=\"stat\"><div class=\"stat-num\">0</div><div class=\"stat-label\">Warnings</div></div>"
-        @"</div>"
-        @"<div class=\"stats\">"
-        @"<div class=\"stat\"><div class=\"stat-num\">95%</div><div class=\"stat-label\">HTML</div></div>"
-        @"<div class=\"stat\"><div class=\"stat-num\">100%</div><div class=\"stat-label\">CSS</div></div>"
-        @"<div class=\"stat\"><div class=\"stat-num\">89%</div><div class=\"stat-label\">Web APIs</div></div>"
-        @"</div>"
-        @"<h2>Engine Capabilities</h2>"
-        @"<div class=\"features\">"
-        @"<div class=\"card\"><h3>HTML5</h3><p>Tokenizer, tree builder, &amp;entities;, forms, "
-        @"tables, &lt;progress&gt;, &lt;meter&gt;, &lt;details&gt;</p></div>"
-        @"<div class=\"card\"><h3>CSS3</h3><p>Cascade, selectors, calc(), var(), "
-        @"gradients, transforms, float, grid, media queries</p></div>"
-        @"<div class=\"card\"><h3>Layout</h3><p>Block, inline, flex-wrap, float, "
-        @"grid, columns, tables, margin collapsing</p></div>"
-        @"<div class=\"card\"><h3>SVG</h3><p>Shapes, paths, text, tspan, gradients, "
-        @"viewBox, transforms, fill/stroke, dasharray</p></div>"
-        @"<div class=\"card\"><h3>Rendering</h3><p>CoreText <strong>bold</strong>/<em>italic</em>, "
-        @"filters, blend modes, clip-path, WebP/HEIC images</p></div>"
-        @"<div class=\"card\"><h3>Interactivity</h3><p>:hover/:focus transitions, "
-        @"text input, form controls, #anchor scroll</p></div>"
-        @"</div>"
-        @"<h2>Try It Out</h2>"
-        @"<div class=\"links\">"
-        @"<p><strong>Click a link to navigate:</strong></p>"
-        @"<a href=\"http://example.com\">Example.com</a>"
-        @"<a href=\"https://info.cern.ch\">First Website Ever</a>"
-        @"<a href=\"http://motherfuckingwebsite.com\">MF Website</a>"
-        @"</div>"
-        @"<div class=\"shortcuts\">"
-        @"<h2>Keyboard Shortcuts</h2>"
-        @"<table>"
-        @"<tr><th>Shortcut</th><th>Action</th></tr>"
-        @"<tr><td><kbd>Cmd+L</kbd></td><td>Focus address bar</td></tr>"
-        @"<tr><td><kbd>Cmd+T</kbd></td><td>New tab</td></tr>"
-        @"<tr><td><kbd>Cmd+W</kbd></td><td>Close tab</td></tr>"
-        @"<tr><td><kbd>Cmd+1</kbd>-<kbd>8</kbd></td><td>Switch to tab N</td></tr>"
-        @"<tr><td><kbd>Cmd+9</kbd></td><td>Switch to last tab</td></tr>"
-        @"<tr><td><kbd>Cmd+Shift+]</kbd></td><td>Next tab</td></tr>"
-        @"<tr><td><kbd>Cmd+Shift+[</kbd></td><td>Previous tab</td></tr>"
-        @"<tr><td><kbd>Cmd+R</kbd></td><td>Reload page</td></tr>"
-        @"<tr><td><kbd>Cmd+[</kbd></td><td>Back</td></tr>"
-        @"<tr><td><kbd>Cmd+]</kbd></td><td>Forward</td></tr>"
-        @"<tr><td><kbd>Cmd+F</kbd></td><td>Find in page</td></tr>"
-        @"<tr><td><kbd>Cmd+U</kbd></td><td>View source</td></tr>"
-        @"<tr><td><kbd>Cmd+C</kbd></td><td>Copy selected text</td></tr>"
-        @"<tr><td><kbd>Cmd++</kbd></td><td>Zoom in</td></tr>"
-        @"<tr><td><kbd>Cmd+-</kbd></td><td>Zoom out</td></tr>"
-        @"<tr><td><kbd>Cmd+0</kbd></td><td>Actual size</td></tr>"
-        @"<tr><td><kbd>Cmd+S</kbd></td><td>Save screenshot</td></tr>"
-        @"<tr><td><kbd>Cmd+P</kbd></td><td>Print / Save as PDF</td></tr>"
-        @"<tr><td><kbd>Cmd+D</kbd></td><td>Add bookmark</td></tr>"
-        @"</table>"
-        @"</div>"
-        @"<div class=\"footer\"><p>Clever Browser &mdash; built with the Clever Engine</p></div>"
-        @"</div>"
-        @"</body></html>" UTF8String]);
+    return R"(<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Welcome to Vibrowser</title>
+  <style>
+    :root {
+      --ink: #2f3742;
+      --ink-muted: #67707d;
+      --surface: #ffffff;
+      --surface-2: #f5f7fa;
+      --border: #d8e0ea;
+      --accent: #1d5fd0;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: var(--ink);
+      background: var(--surface);
+      line-height: 1.45;
+      -webkit-font-smoothing: antialiased;
+      text-rendering: optimizeLegibility;
+    }
+    .hero {
+      background: linear-gradient(135deg, #5f74dd, #6f46ab);
+      color: #fff;
+      padding: 36px 24px;
+    }
+    .hero-inner, .content-inner {
+      width: min(1080px, 100%);
+      margin: 0 auto;
+    }
+    .hero h1 {
+      margin: 0 0 10px;
+      font-size: 30px;
+      line-height: 1.2;
+    }
+    .hero p { margin: 0; color: rgba(255, 255, 255, 0.96); }
+    .content { padding: 20px 24px 28px; }
+    h2 {
+      margin: 20px 0 12px;
+      color: #213043;
+      font-size: 22px;
+      line-height: 1.25;
+    }
+    .features {
+      display: flex;
+      gap: 14px;
+      margin: 16px 0 20px;
+      flex-wrap: wrap;
+    }
+    .card {
+      flex: 1 1 220px;
+      min-width: 0;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      padding: 14px;
+      border-radius: 10px;
+      box-shadow: 0 1px 4px rgba(30, 42, 60, 0.12);
+    }
+    .card h3 { margin: 0 0 6px; color: #1f6199; font-size: 18px; }
+    .card p { margin: 0; overflow-wrap: anywhere; }
+    .stats {
+      display: flex;
+      gap: 12px;
+      margin: 16px 0;
+      flex-wrap: wrap;
+    }
+    .stat {
+      text-align: center;
+      padding: 10px 14px;
+      background: linear-gradient(180deg, #f8f9fa, #e9edf1);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      min-width: 110px;
+      flex: 1 1 110px;
+    }
+    .stat-num { font-size: 24px; font-weight: 700; color: #2a3340; line-height: 1.2; }
+    .stat-label { font-size: 12px; color: var(--ink-muted); }
+    .badge {
+      display: inline-block;
+      background: linear-gradient(90deg, #248950, #2db867);
+      color: #fff;
+      padding: 3px 9px;
+      border-radius: 12px;
+      font-size: 12px;
+      line-height: 1.2;
+      vertical-align: middle;
+    }
+    .links {
+      margin: 14px 0;
+      padding: 14px;
+      background: #edf3fa;
+      border: 1px solid #d3deeb;
+      border-radius: 10px;
+    }
+    .links p { margin: 0 0 8px; }
+    .links a {
+      display: inline-block;
+      margin: 0 18px 8px 0;
+      color: var(--accent);
+      text-decoration: underline;
+      overflow-wrap: anywhere;
+    }
+    .shortcuts { margin: 15px 0; overflow-x: auto; }
+    .shortcuts table { width: 100%; border-collapse: collapse; min-width: 420px; }
+    .shortcuts td, .shortcuts th { padding: 6px 8px; text-align: left; border-bottom: 1px solid #e3e8ef; }
+    .shortcuts td:first-child, .shortcuts th:first-child { white-space: nowrap; }
+    .shortcuts th { color: #2a3a4d; }
+    kbd {
+      background: #eef2f6;
+      border: 1px solid #cfd7e2;
+      border-bottom-width: 2px;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 12px;
+      font-family: ui-monospace, Menlo, Consolas, monospace;
+    }
+    .footer {
+      color: var(--ink-muted);
+      margin-top: 22px;
+      padding: 14px 0 4px;
+      text-align: center;
+      border-top: 1px solid #e6ebf1;
+    }
+    .footer p { margin: 0; }
+    @media (max-width: 640px) {
+      .hero { padding: 28px 16px; }
+      .content { padding: 16px; }
+      .hero h1 { font-size: 24px; }
+      h2 { font-size: 20px; }
+      .links a { margin-right: 12px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="hero">
+    <div class="hero-inner">
+      <h1>Vibrowser v0.7.0</h1>
+      <p>A complete browser engine built from scratch in C++20. <span class="badge">3300+ tests</span></p>
+    </div>
+  </div>
+  <div class="content">
+    <div class="content-inner">
+      <div class="stats">
+        <div class="stat"><div class="stat-num">3300+</div><div class="stat-label">Tests</div></div>
+        <div class="stat"><div class="stat-num">12</div><div class="stat-label">Libraries</div></div>
+        <div class="stat"><div class="stat-num">2400+</div><div class="stat-label">Features</div></div>
+        <div class="stat"><div class="stat-num">0</div><div class="stat-label">Warnings</div></div>
+      </div>
+      <div class="stats">
+        <div class="stat"><div class="stat-num">95%</div><div class="stat-label">HTML</div></div>
+        <div class="stat"><div class="stat-num">100%</div><div class="stat-label">CSS</div></div>
+        <div class="stat"><div class="stat-num">89%</div><div class="stat-label">Web APIs</div></div>
+      </div>
+      <h2>Engine Capabilities</h2>
+      <div class="features">
+        <div class="card"><h3>HTML5</h3><p>Tokenizer, tree builder, &amp;entities;, forms, tables, &lt;progress&gt;, &lt;meter&gt;, &lt;details&gt;</p></div>
+        <div class="card"><h3>CSS3</h3><p>Cascade, selectors, calc(), var(), gradients, transforms, float, grid, media queries</p></div>
+        <div class="card"><h3>Layout</h3><p>Block, inline, flex-wrap, float, grid, columns, tables, margin collapsing</p></div>
+        <div class="card"><h3>SVG</h3><p>Shapes, paths, text, tspan, gradients, viewBox, transforms, fill/stroke, dasharray</p></div>
+        <div class="card"><h3>Rendering</h3><p>CoreText <strong>bold</strong>/<em>italic</em>, filters, blend modes, clip-path, WebP/HEIC images</p></div>
+        <div class="card"><h3>Interactivity</h3><p>:hover/:focus transitions, text input, form controls, #anchor scroll</p></div>
+      </div>
+      <h2>Try It Out</h2>
+      <div class="links">
+        <p><strong>Click a link to navigate:</strong></p>
+        <a href="http://example.com">Example.com</a>
+        <a href="https://info.cern.ch">First Website Ever</a>
+        <a href="http://motherfuckingwebsite.com">MF Website</a>
+      </div>
+      <div class="shortcuts">
+        <h2>Keyboard Shortcuts</h2>
+        <table>
+          <tr><th>Shortcut</th><th>Action</th></tr>
+          <tr><td><kbd>Cmd+L</kbd></td><td>Focus address bar</td></tr>
+          <tr><td><kbd>Cmd+T</kbd></td><td>New tab</td></tr>
+          <tr><td><kbd>Cmd+W</kbd></td><td>Close tab</td></tr>
+          <tr><td><kbd>Cmd+1</kbd>-<kbd>8</kbd></td><td>Switch to tab N</td></tr>
+          <tr><td><kbd>Cmd+9</kbd></td><td>Switch to last tab</td></tr>
+          <tr><td><kbd>Cmd+Shift+]</kbd></td><td>Next tab</td></tr>
+          <tr><td><kbd>Cmd+Shift+[</kbd></td><td>Previous tab</td></tr>
+          <tr><td><kbd>Cmd+R</kbd></td><td>Reload page</td></tr>
+          <tr><td><kbd>Cmd+[</kbd></td><td>Back</td></tr>
+          <tr><td><kbd>Cmd+]</kbd></td><td>Forward</td></tr>
+          <tr><td><kbd>Cmd+F</kbd></td><td>Find in page</td></tr>
+          <tr><td><kbd>Cmd+U</kbd></td><td>View source</td></tr>
+          <tr><td><kbd>Cmd+C</kbd></td><td>Copy selected text</td></tr>
+          <tr><td><kbd>Cmd++</kbd></td><td>Zoom in</td></tr>
+          <tr><td><kbd>Cmd+-</kbd></td><td>Zoom out</td></tr>
+          <tr><td><kbd>Cmd+0</kbd></td><td>Actual size</td></tr>
+          <tr><td><kbd>Cmd+S</kbd></td><td>Save screenshot</td></tr>
+          <tr><td><kbd>Cmd+P</kbd></td><td>Print / Save as PDF</td></tr>
+          <tr><td><kbd>Cmd+D</kbd></td><td>Add bookmark</td></tr>
+        </table>
+      </div>
+      <div class="footer"><p>Vibrowser &mdash; built with the Vibrowser Engine</p></div>
+    </div>
+  </div>
+</body>
+</html>
+)";
 }
 
-@implementation CleverAppDelegate
+@implementation VibrowserAppDelegate
 
 - (void)applicationDidFinishLaunching:(NSNotification*)notification {
     (void)notification;
@@ -136,12 +246,12 @@ std::string getWelcomeHTML() {
 
     // App menu
     NSMenuItem* appMenuItem = [[NSMenuItem alloc] init];
-    NSMenu* appMenu = [[NSMenu alloc] initWithTitle:@"Clever"];
-    [appMenu addItemWithTitle:@"About Clever Browser"
+    NSMenu* appMenu = [[NSMenu alloc] initWithTitle:@"Vibrowser"];
+    [appMenu addItemWithTitle:@"About Vibrowser"
                        action:@selector(orderFrontStandardAboutPanel:)
                 keyEquivalent:@""];
     [appMenu addItem:[NSMenuItem separatorItem]];
-    [appMenu addItemWithTitle:@"Quit Clever Browser"
+    [appMenu addItemWithTitle:@"Quit Vibrowser"
                        action:@selector(terminate:)
                 keyEquivalent:@"q"];
     appMenuItem.submenu = appMenu;
@@ -338,7 +448,7 @@ std::string getWelcomeHTML() {
 
 - (void)focusAddressBar:(id)sender {
     (void)sender;
-    [_browserController openAddressBarModal];
+    [_browserController focusAddressBarAndSelectAll];
 }
 
 - (void)openAddressModal:(id)sender {
@@ -472,7 +582,7 @@ int main(int argc, const char* argv[]) {
         NSApplication* app = [NSApplication sharedApplication];
         [app setActivationPolicy:NSApplicationActivationPolicyRegular];
 
-        CleverAppDelegate* delegate = [[CleverAppDelegate alloc] init];
+        VibrowserAppDelegate* delegate = [[VibrowserAppDelegate alloc] init];
         [app setDelegate:delegate];
 
         [app activateIgnoringOtherApps:YES];

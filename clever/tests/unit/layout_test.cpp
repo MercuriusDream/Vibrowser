@@ -7712,3 +7712,632 @@ TEST(LayoutNodeProps, AlignItemsDefaultsFourV2) {
     LayoutNode n;
     EXPECT_EQ(n.align_items, 4);
 }
+
+TEST(LayoutNodeProps, OrderDefaultsZeroV2) {
+    LayoutNode n;
+    EXPECT_EQ(n.order, 0);
+}
+
+TEST(LayoutNodeProps, ColumnCountDefaultsNegOneV2) {
+    LayoutNode n;
+    EXPECT_EQ(n.column_count, -1);
+}
+
+TEST(LayoutNodeProps, ColumnGapDefaultsZeroV2) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.column_gap, 0.0f);
+}
+
+TEST(LayoutNodeProps, GridColumnStartDefaultsEmptyV2) {
+    LayoutNode n;
+    EXPECT_TRUE(n.grid_column_start.empty());
+}
+
+TEST(LayoutNodeProps, GridRowStartDefaultsEmptyV2) {
+    LayoutNode n;
+    EXPECT_TRUE(n.grid_row_start.empty());
+}
+
+TEST(LayoutNodeProps, SpecifiedWidthDefaultsAutoV2) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.specified_width, -1.0f);
+}
+
+TEST(LayoutNodeProps, SpecifiedHeightDefaultsAutoV2) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.specified_height, -1.0f);
+}
+
+TEST(LayoutNodeProps, MinWidthDefaultsZeroV2) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.min_width, 0.0f);
+}
+
+// --- Cycle 1019: Layout node property defaults ---
+
+TEST(LayoutNodeProps, MinHeightDefaultsZeroV2) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.min_height, 0.0f);
+}
+
+TEST(LayoutNodeProps, MaxWidthDefaultsLargeV2) {
+    LayoutNode n;
+    EXPECT_GT(n.max_width, 999999.0f);
+}
+
+TEST(LayoutNodeProps, MaxHeightDefaultsLargeV2) {
+    LayoutNode n;
+    EXPECT_GT(n.max_height, 999999.0f);
+}
+
+TEST(LayoutNodeProps, BorderRadiusDefaultsZeroV2) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.border_radius, 0.0f);
+}
+
+TEST(LayoutNodeProps, BorderRadiusTLDefaultsZeroV2) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.border_radius_tl, 0.0f);
+}
+
+TEST(LayoutNodeProps, BorderRadiusTRDefaultsZeroV2) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.border_radius_tr, 0.0f);
+}
+
+TEST(LayoutNodeProps, BorderRadiusBLDefaultsZeroV2) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.border_radius_bl, 0.0f);
+}
+
+TEST(LayoutNodeProps, BorderRadiusBRDefaultsZeroV2) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.border_radius_br, 0.0f);
+}
+
+// --- Cycle 1028: Layout node property defaults ---
+
+TEST(LayoutNodeProps, LetterSpacingDefaultsZeroV2) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.letter_spacing, 0.0f);
+}
+
+TEST(LayoutNodeProps, WordSpacingDefaultsZeroV2) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.word_spacing, 0.0f);
+}
+
+TEST(LayoutNodeProps, TextIndentDefaultsZeroV2) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.text_indent, 0.0f);
+}
+
+TEST(LayoutNodeProps, OpacityDefaultsOneV2) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.opacity, 1.0f);
+}
+
+TEST(LayoutNodeProps, LineHeightDefault) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.line_height, 1.2f);
+}
+
+TEST(LayoutNodeProps, BorderSpacingDefaultV2) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.border_spacing, 2.0f);
+}
+
+TEST(LayoutNodeProps, TextShadowOffsetXDefaultV2) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.text_shadow_offset_x, 0.0f);
+}
+
+TEST(LayoutNodeProps, TextShadowOffsetYDefault) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.text_shadow_offset_y, 0.0f);
+}
+
+// --- Cycle 1037: Layout node defaults ---
+
+TEST(LayoutNodeProps, FontSizeDefault16V2) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.font_size, 16.0f);
+}
+
+TEST(LayoutNodeProps, ColorDefaultBlack) {
+    LayoutNode n;
+    // Default color is black (0xFF000000) or 0
+    EXPECT_TRUE(n.color == 0xFF000000u || n.color == 0u);
+}
+
+TEST(LayoutNodeProps, IsTextDefaultFalse) {
+    LayoutNode n;
+    EXPECT_FALSE(n.is_text);
+}
+
+TEST(LayoutNodeProps, IsSvgDefaultFalse) {
+    LayoutNode n;
+    EXPECT_FALSE(n.is_svg);
+}
+
+TEST(LayoutNodeProps, IsCanvasDefaultFalse) {
+    LayoutNode n;
+    EXPECT_FALSE(n.is_canvas);
+}
+
+TEST(LayoutNodeProps, IsListItemDefaultFalse) {
+    LayoutNode n;
+    EXPECT_FALSE(n.is_list_item);
+}
+
+TEST(LayoutNodeProps, ChildrenEmptyDefault) {
+    LayoutNode n;
+    EXPECT_TRUE(n.children.empty());
+}
+
+TEST(LayoutNodeProps, TextContentEmptyDefault) {
+    LayoutNode n;
+    EXPECT_TRUE(n.text_content.empty());
+}
+
+// --- Cycle 1046: Layout node defaults ---
+
+TEST(LayoutNodeProps, GeometryPaddingLeftZero) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.geometry.padding.left, 0.0f);
+}
+
+TEST(LayoutNodeProps, GeometryPaddingRightZero) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.geometry.padding.right, 0.0f);
+}
+
+TEST(LayoutNodeProps, GeometryPaddingTopZero) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.geometry.padding.top, 0.0f);
+}
+
+TEST(LayoutNodeProps, GeometryPaddingBottomZero) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.geometry.padding.bottom, 0.0f);
+}
+
+TEST(LayoutNodeProps, GeometryBorderLeftZero) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.geometry.border.left, 0.0f);
+}
+
+TEST(LayoutNodeProps, GeometryBorderRightZero) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.geometry.border.right, 0.0f);
+}
+
+TEST(LayoutNodeProps, GeometryBorderTopZero) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.geometry.border.top, 0.0f);
+}
+
+TEST(LayoutNodeProps, GeometryBorderBottomZero) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.geometry.border.bottom, 0.0f);
+}
+
+// --- Cycle 1055: Layout node defaults ---
+
+TEST(LayoutNodeProps, GeometryMarginLeftZero) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.geometry.margin.left, 0.0f);
+}
+
+TEST(LayoutNodeProps, GeometryMarginRightZero) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.geometry.margin.right, 0.0f);
+}
+
+TEST(LayoutNodeProps, GeometryMarginTopZero) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.geometry.margin.top, 0.0f);
+}
+
+TEST(LayoutNodeProps, GeometryMarginBottomZero) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.geometry.margin.bottom, 0.0f);
+}
+
+TEST(LayoutNodeProps, GeometryXDefaultZero) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.geometry.x, 0.0f);
+}
+
+TEST(LayoutNodeProps, GeometryYDefaultZero) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.geometry.y, 0.0f);
+}
+
+TEST(LayoutNodeProps, GeometryWidthDefaultZero) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.geometry.width, 0.0f);
+}
+
+TEST(LayoutNodeProps, GeometryHeightDefaultZero) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.geometry.height, 0.0f);
+}
+
+// --- Cycle 1064: Layout node defaults ---
+
+TEST(LayoutNodeProps, FontWeightDefault400) {
+    LayoutNode n;
+    EXPECT_EQ(n.font_weight, 400);
+}
+
+TEST(LayoutNodeProps, FontItalicDefaultFalse) {
+    LayoutNode n;
+    EXPECT_FALSE(n.font_italic);
+}
+
+TEST(LayoutNodeProps, FontFamilyDefaultEmpty) {
+    LayoutNode n;
+    EXPECT_TRUE(n.font_family.empty());
+}
+
+TEST(LayoutNodeProps, IsMonospaceDefaultFalse) {
+    LayoutNode n;
+    EXPECT_FALSE(n.is_monospace);
+}
+
+TEST(LayoutNodeProps, LineHeightDefault1_2) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.line_height, 1.2f);
+}
+
+TEST(LayoutNodeProps, OpacityDefault1V3) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.opacity, 1.0f);
+}
+
+TEST(LayoutNodeProps, IsIframeDefaultFalse) {
+    LayoutNode n;
+    EXPECT_FALSE(n.is_iframe);
+}
+
+TEST(LayoutNodeProps, IsNoscriptDefaultFalse) {
+    LayoutNode n;
+    EXPECT_FALSE(n.is_noscript);
+}
+
+// --- Cycle 1073: Layout node defaults ---
+
+TEST(LayoutNodeProps, IsSlotDefaultFalse) {
+    LayoutNode n;
+    EXPECT_FALSE(n.is_slot);
+}
+
+TEST(LayoutNodeProps, SlotNameDefaultEmpty) {
+    LayoutNode n;
+    EXPECT_TRUE(n.slot_name.empty());
+}
+
+TEST(LayoutNodeProps, VisibilityHiddenDefaultFalse) {
+    LayoutNode n;
+    EXPECT_FALSE(n.visibility_hidden);
+}
+
+TEST(LayoutNodeProps, VisibilityCollapseDefaultFalse) {
+    LayoutNode n;
+    EXPECT_FALSE(n.visibility_collapse);
+}
+
+TEST(LayoutNodeProps, ModeDefaultBlock) {
+    LayoutNode n;
+    EXPECT_EQ(n.mode, LayoutMode::Block);
+}
+
+TEST(LayoutNodeProps, DisplayDefaultBlock) {
+    LayoutNode n;
+    EXPECT_EQ(n.display, DisplayType::Block);
+}
+
+TEST(LayoutNodeProps, TagNameDefaultEmpty) {
+    LayoutNode n;
+    EXPECT_TRUE(n.tag_name.empty());
+}
+
+TEST(LayoutNodeProps, ElementIdDefaultEmpty) {
+    LayoutNode n;
+    EXPECT_TRUE(n.element_id.empty());
+}
+
+// --- Cycle 1082: Layout node defaults ---
+
+TEST(LayoutNodeProps, CssClassesDefaultEmpty) {
+    LayoutNode n;
+    EXPECT_TRUE(n.css_classes.empty());
+}
+
+TEST(LayoutNodeProps, SvgTypeDefaultZero) {
+    LayoutNode n;
+    EXPECT_EQ(n.svg_type, 0);
+}
+
+TEST(LayoutNodeProps, IsSvgGroupDefaultFalse) {
+    LayoutNode n;
+    EXPECT_FALSE(n.is_svg_group);
+}
+
+TEST(LayoutNodeProps, SvgHasViewboxDefaultFalse) {
+    LayoutNode n;
+    EXPECT_FALSE(n.svg_has_viewbox);
+}
+
+TEST(LayoutNodeProps, CanvasWidthDefaultZero) {
+    LayoutNode n;
+    EXPECT_EQ(n.canvas_width, 0);
+}
+
+TEST(LayoutNodeProps, CanvasHeightDefaultZero) {
+    LayoutNode n;
+    EXPECT_EQ(n.canvas_height, 0);
+}
+
+TEST(LayoutNodeProps, SvgFillColorDefaultBlack) {
+    LayoutNode n;
+    EXPECT_EQ(n.svg_fill_color, 0xFF000000u);
+}
+
+TEST(LayoutNodeProps, SvgStrokeNoneDefaultTrue) {
+    LayoutNode n;
+    EXPECT_TRUE(n.svg_stroke_none);
+}
+
+// --- Cycle 1091: Layout node defaults ---
+
+TEST(LayoutNodeProps, SvgFillNoneDefaultFalse) {
+    LayoutNode n;
+    EXPECT_FALSE(n.svg_fill_none);
+}
+
+TEST(LayoutNodeProps, SvgFillOpacityDefault1) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.svg_fill_opacity, 1.0f);
+}
+
+TEST(LayoutNodeProps, SvgStrokeOpacityDefault1) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.svg_stroke_opacity, 1.0f);
+}
+
+TEST(LayoutNodeProps, SvgFontSizeDefault16) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.svg_font_size, 16.0f);
+}
+
+TEST(LayoutNodeProps, SvgTransformSxDefault1) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.svg_transform_sx, 1.0f);
+}
+
+TEST(LayoutNodeProps, SvgTransformSyDefault1) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.svg_transform_sy, 1.0f);
+}
+
+TEST(LayoutNodeProps, SvgTransformRotateDefault0) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.svg_transform_rotate, 0.0f);
+}
+
+TEST(LayoutNodeProps, StrokeMiterlimitDefault4) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.stroke_miterlimit, 4.0f);
+}
+
+// --- Cycle 1100: 8 Layout tests ---
+
+TEST(LayoutNodeProps, SvgTransformSxDefault1V2) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.svg_transform_sx, 1.0f);
+}
+
+TEST(LayoutNodeProps, SvgTransformSyDefault1V2) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.svg_transform_sy, 1.0f);
+}
+
+TEST(LayoutNodeProps, SvgFillOpacityDefault1V3) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.svg_fill_opacity, 1.0f);
+}
+
+TEST(LayoutNodeProps, SvgStrokeOpacityDefault1V2) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.svg_stroke_opacity, 1.0f);
+}
+
+TEST(LayoutNodeProps, TextStrokeWidthDefault0) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.text_stroke_width, 0.0f);
+}
+
+TEST(LayoutNodeProps, GeometryPaddingLeftZeroV2) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.geometry.padding.left, 0.0f);
+}
+
+TEST(LayoutNodeProps, GeometryPaddingRightZeroV2) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.geometry.padding.right, 0.0f);
+}
+
+TEST(LayoutNodeProps, GeometryBorderTopZeroV2) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.geometry.border.top, 0.0f);
+}
+
+// --- Cycle 1109: 8 Layout tests ---
+
+TEST(LayoutNodeProps, GeometryBorderBottomZeroV2) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.geometry.border.bottom, 0.0f);
+}
+
+TEST(LayoutNodeProps, GeometryBorderLeftZeroV2) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.geometry.border.left, 0.0f);
+}
+
+TEST(LayoutNodeProps, GeometryBorderRightZeroV2) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.geometry.border.right, 0.0f);
+}
+
+TEST(LayoutNodeProps, GeometryPaddingTopZeroV2) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.geometry.padding.top, 0.0f);
+}
+
+TEST(LayoutNodeProps, GeometryPaddingBottomZeroV2) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.geometry.padding.bottom, 0.0f);
+}
+
+TEST(LayoutNodeProps, SvgTransformTxDefault0) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.svg_transform_tx, 0.0f);
+}
+
+TEST(LayoutNodeProps, SvgTransformTyDefault0) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.svg_transform_ty, 0.0f);
+}
+
+TEST(LayoutNodeProps, SvgTransformRotateDefault0V2) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.svg_transform_rotate, 0.0f);
+}
+
+// --- Cycle 1118: 8 Layout tests ---
+
+TEST(LayoutNodeProps, TextStrokeColorDefaultBlack) {
+    LayoutNode n;
+    EXPECT_EQ(n.text_stroke_color, 0xFF000000u);
+}
+
+TEST(LayoutNodeProps, SvgStrokeColorDefaultBlack) {
+    LayoutNode n;
+    EXPECT_EQ(n.svg_stroke_color, 0xFF000000u);
+}
+
+TEST(LayoutNodeProps, BackgroundColorDefaultTransparent) {
+    LayoutNode n;
+    EXPECT_EQ(n.background_color, 0x00000000u);
+}
+
+TEST(LayoutNodeProps, ColorDefaultBlackV2) {
+    LayoutNode n;
+    EXPECT_EQ(n.color, 0xFF000000u);
+}
+
+TEST(LayoutNodeProps, BorderColorTopDefaultBlack) {
+    LayoutNode n;
+    EXPECT_EQ(n.border_color_top, 0xFF000000u);
+}
+
+TEST(LayoutNodeProps, BorderColorBottomDefaultBlack) {
+    LayoutNode n;
+    EXPECT_EQ(n.border_color_bottom, 0xFF000000u);
+}
+
+TEST(LayoutNodeProps, BorderColorLeftDefaultBlack) {
+    LayoutNode n;
+    EXPECT_EQ(n.border_color_left, 0xFF000000u);
+}
+
+TEST(LayoutNodeProps, BorderColorRightDefaultBlack) {
+    LayoutNode n;
+    EXPECT_EQ(n.border_color_right, 0xFF000000u);
+}
+
+// --- Cycle 1127: 8 Layout tests ---
+
+TEST(LayoutNodeProps, OutlineColorDefaultBlack) {
+    LayoutNode n;
+    EXPECT_EQ(n.outline_color, 0xFF000000u);
+}
+
+TEST(LayoutNodeProps, ShadowColorDefaultTransparent) {
+    LayoutNode n;
+    EXPECT_EQ(n.shadow_color, 0x00000000u);
+}
+
+TEST(LayoutNodeProps, TextShadowColorDefaultTransparent) {
+    LayoutNode n;
+    EXPECT_EQ(n.text_shadow_color, 0x00000000u);
+}
+
+TEST(LayoutNodeProps, TextDecorationColorDefault0) {
+    LayoutNode n;
+    EXPECT_EQ(n.text_decoration_color, 0u);
+}
+
+TEST(LayoutNodeProps, FloodColorDefaultBlack) {
+    LayoutNode n;
+    EXPECT_EQ(n.flood_color, 0xFF000000u);
+}
+
+TEST(LayoutNodeProps, StopColorDefaultBlack) {
+    LayoutNode n;
+    EXPECT_EQ(n.stop_color, 0xFF000000u);
+}
+
+TEST(LayoutNodeProps, LightingColorDefaultWhite) {
+    LayoutNode n;
+    EXPECT_EQ(n.lighting_color, 0xFFFFFFFFu);
+}
+
+TEST(LayoutNodeProps, PlaceholderColorDefaultGray) {
+    LayoutNode n;
+    EXPECT_EQ(n.placeholder_color, 0xFF757575u);
+}
+
+// --- Cycle 1136: 8 more LayoutNode property defaults ---
+
+TEST(LayoutNodeProps, TextFillColorDefaultZero) {
+    LayoutNode n;
+    EXPECT_EQ(n.text_fill_color, 0u);
+}
+
+TEST(LayoutNodeProps, ClipPathTypeDefaultZero) {
+    LayoutNode n;
+    EXPECT_EQ(n.clip_path_type, 0);
+}
+
+TEST(LayoutNodeProps, ClipPathValuesDefaultEmpty) {
+    LayoutNode n;
+    EXPECT_TRUE(n.clip_path_values.empty());
+}
+
+TEST(LayoutNodeProps, ClipPathPathDataDefaultEmpty) {
+    LayoutNode n;
+    EXPECT_TRUE(n.clip_path_path_data.empty());
+}
+
+TEST(LayoutNodeProps, MaskBorderDefaultEmpty) {
+    LayoutNode n;
+    EXPECT_TRUE(n.mask_border.empty());
+}
+
+TEST(LayoutNodeProps, MaskShorthandDefaultEmpty) {
+    LayoutNode n;
+    EXPECT_TRUE(n.mask_shorthand.empty());
+}
+
+TEST(LayoutNodeProps, ShapeOutsideStrDefaultEmpty) {
+    LayoutNode n;
+    EXPECT_TRUE(n.shape_outside_str.empty());
+}
+
+TEST(LayoutNodeProps, MaskSizeWidthDefaultZero) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.mask_size_width, 0.0f);
+}

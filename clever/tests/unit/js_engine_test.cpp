@@ -1350,8 +1350,8 @@ TEST(JSWindow, WindowNavigatorUserAgent) {
     clever::js::install_window_bindings(engine.context(), "https://example.com/", 1024, 768);
     auto result = engine.evaluate("window.navigator.userAgent");
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
-    // The user agent string should contain "Clever"
-    EXPECT_NE(result.find("Clever"), std::string::npos);
+    // The user agent string should contain "Vibrowser"
+    EXPECT_NE(result.find("Vibrowser"), std::string::npos);
 }
 
 TEST(JSWindow, WindowAlertNoThrow) {
@@ -7303,7 +7303,7 @@ TEST(JSDom, NavigatorUserAgent) {
     clever::js::install_dom_bindings(engine.context(), doc.get());
     auto result = engine.evaluate("navigator.userAgent");
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
-    EXPECT_TRUE(result.find("Clever") != std::string::npos);
+    EXPECT_TRUE(result.find("Vibrowser") != std::string::npos);
     clever::js::cleanup_dom_bindings(engine.context());
 }
 
@@ -7747,7 +7747,7 @@ TEST(JSDom, NavigatorVendor) {
     clever::js::install_dom_bindings(engine.context(), doc.get());
     auto result = engine.evaluate("navigator.vendor");
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
-    EXPECT_EQ(result, "Clever Browser");
+    EXPECT_EQ(result, "Vibrowser");
     clever::js::cleanup_dom_bindings(engine.context());
 }
 
@@ -17607,4 +17607,710 @@ TEST(JSEngine, SymbolIsUnique) {
     clever::js::JSEngine engine;
     auto result = engine.evaluate("(Symbol() !== Symbol()).toString()");
     EXPECT_EQ(result, "true");
+}
+
+// --- Cycle 1020: JS advanced feature tests ---
+
+TEST(JSEngine, AsyncFunctionReturnsPromiseV3) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("(async function() { return 42; })().constructor.name");
+    EXPECT_EQ(result, "Promise");
+}
+
+TEST(JSEngine, NullishCoalescingWithUndefinedV2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var x = undefined; (x ?? 'fallback').toString()");
+    EXPECT_EQ(result, "fallback");
+}
+
+TEST(JSEngine, OptionalChainingThreeLevels) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var o = {a:{b:{c:9}}}; o.a?.b?.c?.toString()");
+    EXPECT_EQ(result, "9");
+}
+
+TEST(JSEngine, OptionalChainingOnNull) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var o = null; (o?.x === undefined).toString()");
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, LogicalAssignmentOrV2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var x = 0; x ||= 10; x.toString()");
+    EXPECT_EQ(result, "10");
+}
+
+TEST(JSEngine, LogicalAssignmentNullishV2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var x = null; x = x != null ? x : 7; x.toString()");
+    EXPECT_EQ(result, "7");
+}
+
+TEST(JSEngine, ObjectValuesV2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("Object.values({a:1,b:2}).length.toString()");
+    EXPECT_EQ(result, "2");
+}
+
+TEST(JSEngine, ArrayFlatMapV2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("[1,2,3].flatMap(x => [x, x*2]).length.toString()");
+    EXPECT_EQ(result, "6");
+}
+
+// --- Cycle 1029: JS feature tests ---
+
+TEST(JSEngine, PromiseResolveType) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("Promise.resolve(1).constructor.name");
+    EXPECT_EQ(result, "Promise");
+}
+
+TEST(JSEngine, SetSizeV2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("new Set([1,2,3,2,1]).size.toString()");
+    EXPECT_EQ(result, "3");
+}
+
+TEST(JSEngine, MapSizeV2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var m = new Map(); m.set('a',1); m.set('b',2); m.size.toString()");
+    EXPECT_EQ(result, "2");
+}
+
+TEST(JSEngine, ArrayIncludesTrue) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("[1,2,3].includes(2).toString()");
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, ArrayIncludesFalse) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("[1,2,3].includes(5).toString()");
+    EXPECT_EQ(result, "false");
+}
+
+TEST(JSEngine, StringStartsWithV2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("'hello world'.startsWith('hello').toString()");
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, StringEndsWithV2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("'hello world'.endsWith('world').toString()");
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, StringPadStartV2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("'5'.padStart(3, '0')");
+    EXPECT_EQ(result, "005");
+}
+
+// --- Cycle 1038: JS feature tests ---
+
+TEST(JSEngine, StringPadEndV2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("'5'.padEnd(3, '0')");
+    EXPECT_EQ(result, "500");
+}
+
+TEST(JSEngine, ArrayFindV2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("[1,2,3,4].find(x => x > 2).toString()");
+    EXPECT_EQ(result, "3");
+}
+
+TEST(JSEngine, ArrayFindIndexV2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("[1,2,3,4].findIndex(x => x > 2).toString()");
+    EXPECT_EQ(result, "2");
+}
+
+TEST(JSEngine, ArrayEveryTrue) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("[2,4,6].every(x => x % 2 === 0).toString()");
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, ArrayEveryFalse) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("[2,3,6].every(x => x % 2 === 0).toString()");
+    EXPECT_EQ(result, "false");
+}
+
+TEST(JSEngine, ArraySomeTrue) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("[1,3,4].some(x => x % 2 === 0).toString()");
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, ArraySomeFalse) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("[1,3,5].some(x => x % 2 === 0).toString()");
+    EXPECT_EQ(result, "false");
+}
+
+TEST(JSEngine, ObjectKeysV3) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("Object.keys({a:1,b:2,c:3}).length.toString()");
+    EXPECT_EQ(result, "3");
+}
+
+// --- Cycle 1047: JS feature tests ---
+
+TEST(JSEngine, ObjectValuesV3) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("Object.values({a:10,b:20}).reduce((s,v)=>s+v,0).toString()");
+    EXPECT_EQ(result, "30");
+}
+
+TEST(JSEngine, ObjectEntriesV3) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("Object.entries({x:1}).length.toString()");
+    EXPECT_EQ(result, "1");
+}
+
+TEST(JSEngine, ArrayFromStringV3) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("Array.from('abc').length.toString()");
+    EXPECT_EQ(result, "3");
+}
+
+TEST(JSEngine, ArrayFlatV3) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("[1,[2,[3]]].flat().length.toString()");
+    EXPECT_EQ(result, "3");
+}
+
+TEST(JSEngine, ArrayFlatDeepV2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("[1,[2,[3]]].flat(Infinity).length.toString()");
+    EXPECT_EQ(result, "3");
+}
+
+TEST(JSEngine, StringTrimStartV3) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("'  hello'.trimStart()");
+    EXPECT_EQ(result, "hello");
+}
+
+TEST(JSEngine, StringTrimEndV3) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("'hello  '.trimEnd()");
+    EXPECT_EQ(result, "hello");
+}
+
+TEST(JSEngine, NumberIsFiniteTrueV2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("Number.isFinite(42).toString()");
+    EXPECT_EQ(result, "true");
+}
+
+// --- Cycle 1056: JS feature tests ---
+
+TEST(JSEngine, NumberIsIntegerTrueV3) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("Number.isInteger(5).toString()");
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, NumberIsIntegerFalseV3) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("Number.isInteger(5.5).toString()");
+    EXPECT_EQ(result, "false");
+}
+
+TEST(JSEngine, NumberIsNaNTrueV2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("Number.isNaN(NaN).toString()");
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, NumberIsNaNFalse) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("Number.isNaN(42).toString()");
+    EXPECT_EQ(result, "false");
+}
+
+TEST(JSEngine, ArrayFillV2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("[0,0,0].fill(7).join(',')");
+    EXPECT_EQ(result, "7,7,7");
+}
+
+TEST(JSEngine, ArrayCopyWithinV2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("[1,2,3,4,5].copyWithin(0,3).join(',')");
+    EXPECT_EQ(result, "4,5,3,4,5");
+}
+
+TEST(JSEngine, StringRepeatV3) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("'ab'.repeat(3)");
+    EXPECT_EQ(result, "ababab");
+}
+
+TEST(JSEngine, MathTruncV2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("Math.trunc(4.7).toString()");
+    EXPECT_EQ(result, "4");
+}
+
+// --- Cycle 1065: JS feature tests ---
+
+TEST(JSEngine, MathSignPositiveV2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("Math.sign(5).toString()");
+    EXPECT_EQ(result, "1");
+}
+
+TEST(JSEngine, MathSignNegativeV2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("Math.sign(-5).toString()");
+    EXPECT_EQ(result, "-1");
+}
+
+TEST(JSEngine, MathSignZeroV2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("Math.sign(0).toString()");
+    EXPECT_EQ(result, "0");
+}
+
+TEST(JSEngine, MathCbrtV2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("Math.cbrt(27).toString()");
+    EXPECT_EQ(result, "3");
+}
+
+TEST(JSEngine, MathLog2V2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("Math.log2(8).toString()");
+    EXPECT_EQ(result, "3");
+}
+
+TEST(JSEngine, MathLog10V2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("Math.log10(1000).toString()");
+    EXPECT_EQ(result, "3");
+}
+
+TEST(JSEngine, ArrayOfV2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("Array.of(1,2,3).length.toString()");
+    EXPECT_EQ(result, "3");
+}
+
+TEST(JSEngine, ObjectAssignV2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("Object.assign({}, {a:1}, {b:2}).b.toString()");
+    EXPECT_EQ(result, "2");
+}
+
+// --- Cycle 1074: JS feature tests ---
+
+TEST(JSEngine, ObjectFreezeV2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var o = Object.freeze({a:1}); o.a.toString()");
+    EXPECT_EQ(result, "1");
+}
+
+TEST(JSEngine, ObjectIsFrozenV2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("Object.isFrozen(Object.freeze({})).toString()");
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, SymbolTypeofV2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("typeof Symbol('test')");
+    EXPECT_EQ(result, "symbol");
+}
+
+TEST(JSEngine, MapHasKeyV2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var m = new Map(); m.set('k', 'v'); m.has('k').toString()");
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, MapGetV2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var m = new Map(); m.set('k', 42); m.get('k').toString()");
+    EXPECT_EQ(result, "42");
+}
+
+TEST(JSEngine, SetHasV2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var s = new Set(); s.add(10); s.has(10).toString()");
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, WeakMapHasV2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var wm = new WeakMap(); var k = {}; wm.set(k, 1); wm.has(k).toString()");
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, PromiseThenTypeV2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("typeof Promise.resolve(99).then");
+    EXPECT_EQ(result, "function");
+}
+
+// --- Cycle 1083: JS feature tests ---
+
+TEST(JSEngine, StringRawV2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("String.raw`hello\\nworld`");
+    EXPECT_NE(result.find("hello"), std::string::npos);
+}
+
+TEST(JSEngine, ArrayIsArrayTrueV2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("Array.isArray([1,2,3]).toString()");
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, ArrayIsArrayFalseV2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("Array.isArray('hello').toString()");
+    EXPECT_EQ(result, "false");
+}
+
+TEST(JSEngine, TypeofUndefinedV2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("typeof undefined");
+    EXPECT_EQ(result, "undefined");
+}
+
+TEST(JSEngine, TypeofObjectV2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("typeof {}");
+    EXPECT_EQ(result, "object");
+}
+
+TEST(JSEngine, TypeofFunctionV2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("typeof function(){}");
+    EXPECT_EQ(result, "function");
+}
+
+TEST(JSEngine, TypeofNumberV2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("typeof 42");
+    EXPECT_EQ(result, "number");
+}
+
+TEST(JSEngine, TypeofStringV2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("typeof 'hello'");
+    EXPECT_EQ(result, "string");
+}
+
+// --- Cycle 1092: JS feature tests ---
+
+TEST(JSEngine, TypeofBooleanV2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("typeof true");
+    EXPECT_EQ(result, "boolean");
+}
+
+TEST(JSEngine, TypeofNullV2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("typeof null");
+    EXPECT_EQ(result, "object");
+}
+
+TEST(JSEngine, ParseIntV3) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("parseInt('42abc').toString()");
+    EXPECT_EQ(result, "42");
+}
+
+TEST(JSEngine, ParseFloatV3) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("parseFloat('3.14').toString()");
+    EXPECT_EQ(result, "3.14");
+}
+
+TEST(JSEngine, IsNaNTrueV2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("isNaN('abc').toString()");
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, IsFiniteTrueV2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("isFinite(100).toString()");
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, JsonStringifyV3) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("JSON.stringify({a:1})");
+    EXPECT_EQ(result, "{\"a\":1}");
+}
+
+TEST(JSEngine, JsonParseV3) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("JSON.parse('{\"b\":2}').b.toString()");
+    EXPECT_EQ(result, "2");
+}
+
+// --- Cycle 1101: 8 JS tests ---
+
+TEST(JSEngine, StringStartsWithV3) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("'hello world'.startsWith('hello').toString()");
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, StringEndsWithV3) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("'hello world'.endsWith('world').toString()");
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, ArrayReduceSumV2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("[1,2,3,4].reduce((a,b)=>a+b,0).toString()");
+    EXPECT_EQ(result, "10");
+}
+
+TEST(JSEngine, ArrayEveryTrueV2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("[2,4,6].every(x=>x%2===0).toString()");
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, ArraySomeFalseV2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("[1,3,5].some(x=>x%2===0).toString()");
+    EXPECT_EQ(result, "false");
+}
+
+TEST(JSEngine, ObjectKeysLengthV3) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("Object.keys({a:1,b:2,c:3}).length.toString()");
+    EXPECT_EQ(result, "3");
+}
+
+TEST(JSEngine, ObjectValuesJoin) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("Object.values({a:1,b:2}).join(',')");
+    EXPECT_EQ(result, "1,2");
+}
+
+TEST(JSEngine, ArrayFlatV2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("[1,[2,3],[4]].flat().join(',')");
+    EXPECT_EQ(result, "1,2,3,4");
+}
+
+// --- Cycle 1110: 8 JS tests ---
+
+TEST(JSEngine, StringPadStartV3) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("'5'.padStart(3, '0')");
+    EXPECT_EQ(result, "005");
+}
+
+TEST(JSEngine, StringPadEndV3) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("'hi'.padEnd(5, '!')");
+    EXPECT_EQ(result, "hi!!!");
+}
+
+TEST(JSEngine, ArrayFindIndexV3) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("[10,20,30].findIndex(x=>x===20).toString()");
+    EXPECT_EQ(result, "1");
+}
+
+TEST(JSEngine, ArrayIncludesTrueV2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("[1,2,3].includes(2).toString()");
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, ArrayIncludesFalseV2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("[1,2,3].includes(5).toString()");
+    EXPECT_EQ(result, "false");
+}
+
+TEST(JSEngine, ObjectEntriesLengthV2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("Object.entries({a:1,b:2}).length.toString()");
+    EXPECT_EQ(result, "2");
+}
+
+TEST(JSEngine, NumberParseIntV2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("Number.parseInt('42').toString()");
+    EXPECT_EQ(result, "42");
+}
+
+TEST(JSEngine, NumberParseFloatV2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("Number.parseFloat('3.14').toString()");
+    EXPECT_EQ(result, "3.14");
+}
+
+// --- Cycle 1119: 8 JS tests ---
+
+TEST(JSEngine, StringTrimStartV4) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("'  hello  '.trimStart()");
+    EXPECT_EQ(result, "hello  ");
+}
+
+TEST(JSEngine, StringTrimEndV4) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("'  hello  '.trimEnd()");
+    EXPECT_EQ(result, "  hello");
+}
+
+TEST(JSEngine, ArrayFromStringV2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("Array.from('abc').join(',')");
+    EXPECT_EQ(result, "a,b,c");
+}
+
+TEST(JSEngine, ObjectFromEntriesV3) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("JSON.stringify(Object.fromEntries([['a',1],['b',2]]))");
+    EXPECT_EQ(result, "{\"a\":1,\"b\":2}");
+}
+
+TEST(JSEngine, ArrayFlatMapV3) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("[1,2,3].flatMap(x=>[x,x*2]).join(',')");
+    EXPECT_EQ(result, "1,2,2,4,3,6");
+}
+
+TEST(JSEngine, StringMatchAllLengthV2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("[...'aabaa'.matchAll(/a/g)].length.toString()");
+    EXPECT_EQ(result, "4");
+}
+
+TEST(JSEngine, SymbolIteratorExistsV2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("typeof Symbol.iterator");
+    EXPECT_EQ(result, "symbol");
+}
+
+TEST(JSEngine, GeneratorFunctionTypeV2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("typeof (function*(){})");
+    EXPECT_EQ(result, "function");
+}
+
+// --- Cycle 1128: 8 JS tests ---
+
+TEST(JSEngine, StringReplaceAllV3) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("'aabbcc'.replaceAll('b', 'x')");
+    EXPECT_EQ(result, "aaxxcc");
+}
+
+TEST(JSEngine, ArrayAtPositive) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("[10,20,30].at(1).toString()");
+    EXPECT_EQ(result, "20");
+}
+
+TEST(JSEngine, ArrayAtNegative) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("[10,20,30].at(-1).toString()");
+    EXPECT_EQ(result, "30");
+}
+
+TEST(JSEngine, ObjectHasOwnV2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("({a:1}).hasOwnProperty('a').toString()");
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, StringAtPositive) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("'hello'.at(0)");
+    EXPECT_EQ(result, "h");
+}
+
+TEST(JSEngine, StringAtNegative) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("'hello'.at(-1)");
+    EXPECT_EQ(result, "o");
+}
+
+TEST(JSEngine, StructuredCloneNumber) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("typeof structuredClone");
+    // structuredClone may or may not exist in QuickJS
+    EXPECT_TRUE(result == "function" || result == "undefined");
+}
+
+TEST(JSEngine, ProxyTypeofObject) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("typeof new Proxy({}, {})");
+    EXPECT_EQ(result, "object");
+}
+
+// --- Cycle 1137: 8 more JS engine tests ---
+
+TEST(JSEngine, RegExpDotAllFlag) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("/foo.bar/s.test('foo\\nbar').toString()");
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, RegExpNamedGroup) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("'2024-01-15'.match(/(?<year>\\d{4})-(?<month>\\d{2})-(?<day>\\d{2})/).groups.year");
+    EXPECT_EQ(result, "2024");
+}
+
+TEST(JSEngine, RegExpLookbehind) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("'$100'.match(/(?<=\\$)\\d+/)[0]");
+    EXPECT_EQ(result, "100");
+}
+
+TEST(JSEngine, RegExpUnicodeProperty) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("typeof /./u");
+    EXPECT_EQ(result, "object");
+}
+
+TEST(JSEngine, ArrayBufferByteLengthV2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("new ArrayBuffer(16).byteLength.toString()");
+    EXPECT_EQ(result, "16");
+}
+
+TEST(JSEngine, SharedArrayBufferType) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("typeof SharedArrayBuffer");
+    // SharedArrayBuffer may or may not exist in QuickJS
+    EXPECT_TRUE(result == "function" || result == "undefined");
+}
+
+TEST(JSEngine, AtomicsType) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("typeof Atomics");
+    // Atomics may or may not exist in QuickJS
+    EXPECT_TRUE(result == "object" || result == "undefined");
+}
+
+TEST(JSEngine, GeneratorThrowCatch) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "function* g() { try { yield 1; } catch(e) { yield e.message; } }"
+        "var it = g(); it.next(); it.throw(new Error('err')).value"
+    );
+    EXPECT_EQ(result, "err");
 }

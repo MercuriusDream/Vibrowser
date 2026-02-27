@@ -1717,7 +1717,7 @@ void install_window_bindings(JSContext* ctx, const std::string& url,
     // ---- window.navigator ----
     JSValue navigator = JS_NewObject(ctx);
     JS_SetPropertyStr(ctx, navigator, "userAgent",
-        JS_NewString(ctx, "Clever/0.5"));
+        JS_NewString(ctx, "Vibrowser/0.7.0"));
     JS_SetPropertyStr(ctx, navigator, "language",
         JS_NewString(ctx, "en-US"));
     // navigator.languages = ["en-US", "en"]
@@ -1730,7 +1730,7 @@ void install_window_bindings(JSContext* ctx, const std::string& url,
     JS_SetPropertyStr(ctx, navigator, "platform",
         JS_NewString(ctx, "MacIntel"));
     JS_SetPropertyStr(ctx, navigator, "vendor",
-        JS_NewString(ctx, "Clever"));
+        JS_NewString(ctx, "Vibrowser"));
     JS_SetPropertyStr(ctx, navigator, "onLine", JS_TRUE);
     JS_SetPropertyStr(ctx, navigator, "cookieEnabled", JS_TRUE);
     JS_SetPropertyStr(ctx, navigator, "hardwareConcurrency",

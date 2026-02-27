@@ -5477,3 +5477,874 @@ TEST(TreeBuilder, FigcaptionTextParsed) {
     ASSERT_NE(el, nullptr);
     EXPECT_EQ(el->tag_name, "figcaption");
 }
+
+TEST(TreeBuilder, NavElementParsedV2) {
+    auto doc = clever::html::parse("<body><nav>Links</nav></body>");
+    auto* el = doc->find_element("nav");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "nav");
+}
+
+TEST(TreeBuilder, HeaderElementParsedV2) {
+    auto doc = clever::html::parse("<body><header>Title</header></body>");
+    auto* el = doc->find_element("header");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "header");
+}
+
+TEST(TreeBuilder, FooterElementParsedV2) {
+    auto doc = clever::html::parse("<body><footer>Copyright</footer></body>");
+    auto* el = doc->find_element("footer");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "footer");
+}
+
+TEST(TreeBuilder, AsideElementParsedV2) {
+    auto doc = clever::html::parse("<body><aside>Sidebar</aside></body>");
+    auto* el = doc->find_element("aside");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "aside");
+}
+
+TEST(TreeBuilder, MainElementParsedV2) {
+    auto doc = clever::html::parse("<body><main>Content</main></body>");
+    auto* el = doc->find_element("main");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "main");
+}
+
+TEST(TreeBuilder, ArticleElementParsedV2) {
+    auto doc = clever::html::parse("<body><article>Post</article></body>");
+    auto* el = doc->find_element("article");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "article");
+}
+
+TEST(TreeBuilder, TimeElementDatetimeV2) {
+    auto doc = clever::html::parse("<body><time datetime=\"2024-01-01\">NY</time></body>");
+    auto* el = doc->find_element("time");
+    ASSERT_NE(el, nullptr);
+    bool found = false;
+    for (const auto& attr : el->attributes)
+        if (attr.name == "datetime" && attr.value == "2024-01-01") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, SummaryElementParsedV2) {
+    auto doc = clever::html::parse("<body><details><summary>More</summary>Content</details></body>");
+    auto* el = doc->find_element("summary");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "summary");
+}
+
+// --- Cycle 1018: HTML element parsing tests ---
+
+TEST(TreeBuilder, NavElementParsedV3) {
+    auto doc = clever::html::parse("<body><nav>Menu</nav></body>");
+    auto* el = doc->find_element("nav");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "nav");
+}
+
+TEST(TreeBuilder, AsideElementParsedV3) {
+    auto doc = clever::html::parse("<body><aside>Sidebar</aside></body>");
+    auto* el = doc->find_element("aside");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "aside");
+}
+
+TEST(TreeBuilder, HeaderElementParsedV3) {
+    auto doc = clever::html::parse("<body><header>Top</header></body>");
+    auto* el = doc->find_element("header");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "header");
+}
+
+TEST(TreeBuilder, FooterElementParsedV3) {
+    auto doc = clever::html::parse("<body><footer>Bottom</footer></body>");
+    auto* el = doc->find_element("footer");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "footer");
+}
+
+TEST(TreeBuilder, DialogElementParsedV2) {
+    auto doc = clever::html::parse("<body><dialog>Popup</dialog></body>");
+    auto* el = doc->find_element("dialog");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "dialog");
+}
+
+TEST(TreeBuilder, TemplateElementParsedV2) {
+    auto doc = clever::html::parse("<body><template>Hidden</template></body>");
+    auto* el = doc->find_element("template");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "template");
+}
+
+TEST(TreeBuilder, WbrElementParsedV2) {
+    auto doc = clever::html::parse("<body><p>Long<wbr>Word</p></body>");
+    auto* el = doc->find_element("wbr");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "wbr");
+}
+
+TEST(TreeBuilder, RubyElementParsedV2) {
+    auto doc = clever::html::parse("<body><ruby>漢<rt>かん</rt></ruby></body>");
+    auto* el = doc->find_element("ruby");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "ruby");
+}
+
+// --- Cycle 1027: HTML element tests ---
+
+TEST(TreeBuilder, RtElementParsedV2) {
+    auto doc = clever::html::parse("<body><ruby>字<rt>ji</rt></ruby></body>");
+    auto* el = doc->find_element("rt");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "rt");
+}
+
+TEST(TreeBuilder, PreElementParsedV2) {
+    auto doc = clever::html::parse("<body><pre>code here</pre></body>");
+    auto* el = doc->find_element("pre");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "pre");
+}
+
+TEST(TreeBuilder, CodeElementParsedV2) {
+    auto doc = clever::html::parse("<body><code>x = 1</code></body>");
+    auto* el = doc->find_element("code");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "code");
+}
+
+TEST(TreeBuilder, BlockquoteElementParsedV2) {
+    auto doc = clever::html::parse("<body><blockquote>Quote</blockquote></body>");
+    auto* el = doc->find_element("blockquote");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "blockquote");
+}
+
+TEST(TreeBuilder, HrElementParsedV2) {
+    auto doc = clever::html::parse("<body><hr></body>");
+    auto* el = doc->find_element("hr");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "hr");
+}
+
+TEST(TreeBuilder, BrElementParsedV2) {
+    auto doc = clever::html::parse("<body>Line<br>Break</body>");
+    auto* el = doc->find_element("br");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "br");
+}
+
+TEST(TreeBuilder, DlElementParsed) {
+    auto doc = clever::html::parse("<body><dl><dt>Term</dt><dd>Def</dd></dl></body>");
+    auto* el = doc->find_element("dl");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "dl");
+}
+
+TEST(TreeBuilder, DtElementParsed) {
+    auto doc = clever::html::parse("<body><dl><dt>Term</dt><dd>Def</dd></dl></body>");
+    auto* el = doc->find_element("dt");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "dt");
+}
+
+// --- Cycle 1036: HTML element tests ---
+
+TEST(TreeBuilder, DdElementParsed) {
+    auto doc = clever::html::parse("<body><dl><dt>T</dt><dd>D</dd></dl></body>");
+    auto* el = doc->find_element("dd");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "dd");
+}
+
+TEST(TreeBuilder, AddressElementParsed) {
+    auto doc = clever::html::parse("<body><address>Contact info</address></body>");
+    auto* el = doc->find_element("address");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "address");
+}
+
+TEST(TreeBuilder, CanvasElementParsed) {
+    auto doc = clever::html::parse("<body><canvas>Fallback</canvas></body>");
+    auto* el = doc->find_element("canvas");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "canvas");
+}
+
+TEST(TreeBuilder, NoScriptElementParsed) {
+    auto doc = clever::html::parse("<body><noscript>No JS</noscript></body>");
+    auto* el = doc->find_element("noscript");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "noscript");
+}
+
+TEST(TreeBuilder, StrongElementParsedV3) {
+    auto doc = clever::html::parse("<body><strong>Bold</strong></body>");
+    auto* el = doc->find_element("strong");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "strong");
+}
+
+TEST(TreeBuilder, EmElementParsedV3) {
+    auto doc = clever::html::parse("<body><em>Italic</em></body>");
+    auto* el = doc->find_element("em");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "em");
+}
+
+TEST(TreeBuilder, AbbrElementParsedV3) {
+    auto doc = clever::html::parse("<body><abbr title=\"HyperText\">HTML</abbr></body>");
+    auto* el = doc->find_element("abbr");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "abbr");
+}
+
+TEST(TreeBuilder, QElementParsed) {
+    auto doc = clever::html::parse("<body><q>Inline quote</q></body>");
+    auto* el = doc->find_element("q");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "q");
+}
+
+// --- Cycle 1045: HTML element tests ---
+
+TEST(TreeBuilder, CiteElementParsed) {
+    auto doc = clever::html::parse("<body><cite>Book Title</cite></body>");
+    auto* el = doc->find_element("cite");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "cite");
+}
+
+TEST(TreeBuilder, CodeElementParsedV3) {
+    auto doc = clever::html::parse("<body><code>x = 1</code></body>");
+    auto* el = doc->find_element("code");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "code");
+}
+
+TEST(TreeBuilder, KbdElementParsed) {
+    auto doc = clever::html::parse("<body><kbd>Ctrl+C</kbd></body>");
+    auto* el = doc->find_element("kbd");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "kbd");
+}
+
+TEST(TreeBuilder, SampElementParsed) {
+    auto doc = clever::html::parse("<body><samp>Output</samp></body>");
+    auto* el = doc->find_element("samp");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "samp");
+}
+
+TEST(TreeBuilder, VarElementParsed) {
+    auto doc = clever::html::parse("<body><var>x</var></body>");
+    auto* el = doc->find_element("var");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "var");
+}
+
+TEST(TreeBuilder, SubElementParsed) {
+    auto doc = clever::html::parse("<body><sub>2</sub></body>");
+    auto* el = doc->find_element("sub");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "sub");
+}
+
+TEST(TreeBuilder, SupElementParsed) {
+    auto doc = clever::html::parse("<body><sup>2</sup></body>");
+    auto* el = doc->find_element("sup");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "sup");
+}
+
+TEST(TreeBuilder, SmallElementParsed) {
+    auto doc = clever::html::parse("<body><small>Fine print</small></body>");
+    auto* el = doc->find_element("small");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "small");
+}
+
+// --- Cycle 1054: HTML element tests ---
+
+TEST(TreeBuilder, DelElementParsedV2) {
+    auto doc = clever::html::parse("<body><del>Removed</del></body>");
+    auto* el = doc->find_element("del");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "del");
+}
+
+TEST(TreeBuilder, InsElementParsedV2) {
+    auto doc = clever::html::parse("<body><ins>Added</ins></body>");
+    auto* el = doc->find_element("ins");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "ins");
+}
+
+TEST(TreeBuilder, BdiElementParsed) {
+    auto doc = clever::html::parse("<body><bdi>RTL text</bdi></body>");
+    auto* el = doc->find_element("bdi");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "bdi");
+}
+
+TEST(TreeBuilder, BdoElementParsedV2) {
+    auto doc = clever::html::parse("<body><bdo dir=\"rtl\">Reversed</bdo></body>");
+    auto* el = doc->find_element("bdo");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "bdo");
+}
+
+TEST(TreeBuilder, MeterElementParsedV2) {
+    auto doc = clever::html::parse("<body><meter value=\"0.6\">60%</meter></body>");
+    auto* el = doc->find_element("meter");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "meter");
+}
+
+TEST(TreeBuilder, ProgressElementParsedV2) {
+    auto doc = clever::html::parse("<body><progress value=\"70\" max=\"100\">70%</progress></body>");
+    auto* el = doc->find_element("progress");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "progress");
+}
+
+TEST(TreeBuilder, DetailsElementParsed) {
+    auto doc = clever::html::parse("<body><details><summary>Info</summary>Content</details></body>");
+    auto* el = doc->find_element("details");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "details");
+}
+
+TEST(TreeBuilder, SummaryElementParsedV3) {
+    auto doc = clever::html::parse("<body><details><summary>Info</summary>Content</details></body>");
+    auto* el = doc->find_element("summary");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "summary");
+}
+
+// --- Cycle 1063: HTML element tests ---
+
+TEST(TreeBuilder, FigureElementParsed) {
+    auto doc = clever::html::parse("<body><figure><img/></figure></body>");
+    auto* el = doc->find_element("figure");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "figure");
+}
+
+TEST(TreeBuilder, FigcaptionElementParsed) {
+    auto doc = clever::html::parse("<body><figure><figcaption>Caption</figcaption></figure></body>");
+    auto* el = doc->find_element("figcaption");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "figcaption");
+}
+
+TEST(TreeBuilder, MainElementParsedV3) {
+    auto doc = clever::html::parse("<body><main>Content</main></body>");
+    auto* el = doc->find_element("main");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "main");
+}
+
+TEST(TreeBuilder, TimeElementParsedV2) {
+    auto doc = clever::html::parse("<body><time datetime=\"2026-01-01\">New Year</time></body>");
+    auto* el = doc->find_element("time");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "time");
+}
+
+TEST(TreeBuilder, MarkElementParsedV2) {
+    auto doc = clever::html::parse("<body><mark>Highlighted</mark></body>");
+    auto* el = doc->find_element("mark");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "mark");
+}
+
+TEST(TreeBuilder, DataElementParsedV2) {
+    auto doc = clever::html::parse("<body><data value=\"42\">Forty-two</data></body>");
+    auto* el = doc->find_element("data");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "data");
+}
+
+TEST(TreeBuilder, WbrElementParsedV3) {
+    auto doc = clever::html::parse("<body>Long<wbr>Word</body>");
+    auto* el = doc->find_element("wbr");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "wbr");
+}
+
+TEST(TreeBuilder, RubyElementParsedV3) {
+    auto doc = clever::html::parse("<body><ruby>漢<rt>kan</rt></ruby></body>");
+    auto* el = doc->find_element("ruby");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "ruby");
+}
+
+// --- Cycle 1072: HTML element tests ---
+
+TEST(TreeBuilder, RtElementParsedV3) {
+    auto doc = clever::html::parse("<body><ruby>漢<rt>kan</rt></ruby></body>");
+    auto* el = doc->find_element("rt");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "rt");
+}
+
+TEST(TreeBuilder, PictureElementParsed) {
+    auto doc = clever::html::parse("<body><picture><img/></picture></body>");
+    auto* el = doc->find_element("picture");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "picture");
+}
+
+TEST(TreeBuilder, SourceElementParsed) {
+    auto doc = clever::html::parse("<body><picture><source/><img/></picture></body>");
+    auto* el = doc->find_element("source");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "source");
+}
+
+TEST(TreeBuilder, OutputElementParsedV2) {
+    auto doc = clever::html::parse("<body><output>Result</output></body>");
+    auto* el = doc->find_element("output");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "output");
+}
+
+TEST(TreeBuilder, FieldsetElementParsedV2) {
+    auto doc = clever::html::parse("<body><fieldset><legend>Title</legend></fieldset></body>");
+    auto* el = doc->find_element("fieldset");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "fieldset");
+}
+
+TEST(TreeBuilder, LegendElementParsedV2) {
+    auto doc = clever::html::parse("<body><fieldset><legend>Title</legend></fieldset></body>");
+    auto* el = doc->find_element("legend");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "legend");
+}
+
+TEST(TreeBuilder, OptgroupElementParsed) {
+    auto doc = clever::html::parse("<body><select><optgroup label=\"g\"><option>A</option></optgroup></select></body>");
+    auto* el = doc->find_element("optgroup");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "optgroup");
+}
+
+TEST(TreeBuilder, DatalistElementParsed) {
+    auto doc = clever::html::parse("<body><datalist id=\"d\"><option>A</option></datalist></body>");
+    auto* el = doc->find_element("datalist");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "datalist");
+}
+
+// --- Cycle 1081: HTML element tests ---
+
+TEST(TreeBuilder, ColElementParsed) {
+    auto doc = clever::html::parse("<body><table><colgroup><col/></colgroup></table></body>");
+    auto* el = doc->find_element("col");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "col");
+}
+
+TEST(TreeBuilder, ColgroupElementParsed) {
+    auto doc = clever::html::parse("<body><table><colgroup><col/></colgroup></table></body>");
+    auto* el = doc->find_element("colgroup");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "colgroup");
+}
+
+TEST(TreeBuilder, TheadElementParsed) {
+    auto doc = clever::html::parse("<body><table><thead><tr><th>H</th></tr></thead></table></body>");
+    auto* el = doc->find_element("thead");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "thead");
+}
+
+TEST(TreeBuilder, TbodyElementParsed) {
+    auto doc = clever::html::parse("<body><table><tbody><tr><td>D</td></tr></tbody></table></body>");
+    auto* el = doc->find_element("tbody");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "tbody");
+}
+
+TEST(TreeBuilder, TfootElementParsed) {
+    auto doc = clever::html::parse("<body><table><tfoot><tr><td>F</td></tr></tfoot></table></body>");
+    auto* el = doc->find_element("tfoot");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "tfoot");
+}
+
+TEST(TreeBuilder, CaptionElementParsed) {
+    auto doc = clever::html::parse("<body><table><caption>Title</caption></table></body>");
+    auto* el = doc->find_element("caption");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "caption");
+}
+
+TEST(TreeBuilder, IframeElementParsedV2) {
+    auto doc = clever::html::parse("<body><iframe src=\"about:blank\"></iframe></body>");
+    auto* el = doc->find_element("iframe");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "iframe");
+}
+
+TEST(TreeBuilder, ObjectElementParsed) {
+    auto doc = clever::html::parse("<body><object data=\"test.swf\"></object></body>");
+    auto* el = doc->find_element("object");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "object");
+}
+
+// --- Cycle 1090: HTML element tests ---
+
+TEST(TreeBuilder, ParamElementParsed) {
+    auto doc = clever::html::parse("<body><object><param name=\"movie\" value=\"test.swf\"/></object></body>");
+    auto* el = doc->find_element("param");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "param");
+}
+
+TEST(TreeBuilder, MapElementParsedV2) {
+    auto doc = clever::html::parse("<body><map name=\"m\"><area href=\"#\"/></map></body>");
+    auto* el = doc->find_element("map");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "map");
+}
+
+TEST(TreeBuilder, AreaElementParsedV2) {
+    auto doc = clever::html::parse("<body><map><area href=\"#\"/></map></body>");
+    auto* el = doc->find_element("area");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "area");
+}
+
+TEST(TreeBuilder, SpanElementParsedV3) {
+    auto doc = clever::html::parse("<body><span>Text</span></body>");
+    auto* el = doc->find_element("span");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "span");
+}
+
+TEST(TreeBuilder, IElementParsed) {
+    auto doc = clever::html::parse("<body><i>Italic</i></body>");
+    auto* el = doc->find_element("i");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "i");
+}
+
+TEST(TreeBuilder, BElementParsed) {
+    auto doc = clever::html::parse("<body><b>Bold</b></body>");
+    auto* el = doc->find_element("b");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "b");
+}
+
+TEST(TreeBuilder, UElementParsed) {
+    auto doc = clever::html::parse("<body><u>Underline</u></body>");
+    auto* el = doc->find_element("u");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "u");
+}
+
+TEST(TreeBuilder, SElementParsed) {
+    auto doc = clever::html::parse("<body><s>Strikethrough</s></body>");
+    auto* el = doc->find_element("s");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "s");
+}
+
+// --- Cycle 1099: 8 HTML tests ---
+
+TEST(TreeBuilder, SmallElementParsedV2) {
+    auto doc = clever::html::parse("<body><small>Fine print</small></body>");
+    auto* el = doc->find_element("small");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "small");
+}
+
+TEST(TreeBuilder, BigElementParsed) {
+    auto doc = clever::html::parse("<body><big>Large</big></body>");
+    auto* el = doc->find_element("big");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "big");
+}
+
+TEST(TreeBuilder, SubElementParsedV2) {
+    auto doc = clever::html::parse("<body><sub>subscript</sub></body>");
+    auto* el = doc->find_element("sub");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "sub");
+}
+
+TEST(TreeBuilder, SupElementParsedV2) {
+    auto doc = clever::html::parse("<body><sup>superscript</sup></body>");
+    auto* el = doc->find_element("sup");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "sup");
+}
+
+TEST(TreeBuilder, CiteElementParsedV2) {
+    auto doc = clever::html::parse("<body><cite>Citation</cite></body>");
+    auto* el = doc->find_element("cite");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "cite");
+}
+
+TEST(TreeBuilder, VarElementParsedV2) {
+    auto doc = clever::html::parse("<body><var>x</var></body>");
+    auto* el = doc->find_element("var");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "var");
+}
+
+TEST(TreeBuilder, SampElementParsedV2) {
+    auto doc = clever::html::parse("<body><samp>output</samp></body>");
+    auto* el = doc->find_element("samp");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "samp");
+}
+
+TEST(TreeBuilder, KbdElementParsedV2) {
+    auto doc = clever::html::parse("<body><kbd>Ctrl+C</kbd></body>");
+    auto* el = doc->find_element("kbd");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "kbd");
+}
+
+// --- Cycle 1108: 8 HTML tests ---
+
+TEST(TreeBuilder, AbbrElementParsed) {
+    auto doc = clever::html::parse("<body><abbr>HTML</abbr></body>");
+    auto* el = doc->find_element("abbr");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "abbr");
+}
+
+TEST(TreeBuilder, DfnElementParsed) {
+    auto doc = clever::html::parse("<body><dfn>Definition</dfn></body>");
+    auto* el = doc->find_element("dfn");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "dfn");
+}
+
+TEST(TreeBuilder, QElementParsedV2) {
+    auto doc = clever::html::parse("<body><q>Quote</q></body>");
+    auto* el = doc->find_element("q");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "q");
+}
+
+TEST(TreeBuilder, TtElementParsed) {
+    auto doc = clever::html::parse("<body><tt>Teletype</tt></body>");
+    auto* el = doc->find_element("tt");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "tt");
+}
+
+TEST(TreeBuilder, CenterElementParsed) {
+    auto doc = clever::html::parse("<body><center>Centered</center></body>");
+    auto* el = doc->find_element("center");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "center");
+}
+
+TEST(TreeBuilder, FontElementParsed) {
+    auto doc = clever::html::parse("<body><font>Styled</font></body>");
+    auto* el = doc->find_element("font");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "font");
+}
+
+TEST(TreeBuilder, StrikeElementParsed) {
+    auto doc = clever::html::parse("<body><strike>Struck</strike></body>");
+    auto* el = doc->find_element("strike");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "strike");
+}
+
+TEST(TreeBuilder, UElementParsedV2) {
+    auto doc = clever::html::parse("<body><u>Underline</u></body>");
+    auto* el = doc->find_element("u");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "u");
+}
+
+// --- Cycle 1117: 8 HTML tests ---
+
+TEST(TreeBuilder, MapElementParsed) {
+    auto doc = clever::html::parse("<body><map name=\"test\">map</map></body>");
+    auto* el = doc->find_element("map");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "map");
+}
+
+TEST(TreeBuilder, AreaElementParsed) {
+    auto doc = clever::html::parse("<body><map><area></map></body>");
+    auto* el = doc->find_element("area");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "area");
+}
+
+TEST(TreeBuilder, TrackElementParsed) {
+    auto doc = clever::html::parse("<body><video><track></video></body>");
+    auto* el = doc->find_element("track");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "track");
+}
+
+TEST(TreeBuilder, EmbedElementParsed) {
+    auto doc = clever::html::parse("<body><embed></body>");
+    auto* el = doc->find_element("embed");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "embed");
+}
+
+TEST(TreeBuilder, ParamElementParsedV2) {
+    auto doc = clever::html::parse("<body><object><param></object></body>");
+    auto* el = doc->find_element("param");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "param");
+}
+
+TEST(TreeBuilder, NoscriptElementParsed) {
+    auto doc = clever::html::parse("<body><noscript>No JS</noscript></body>");
+    auto* el = doc->find_element("noscript");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "noscript");
+}
+
+TEST(TreeBuilder, TemplateElementParsed) {
+    auto doc = clever::html::parse("<body><template>Content</template></body>");
+    auto* el = doc->find_element("template");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "template");
+}
+
+TEST(TreeBuilder, SlotElementParsed) {
+    auto doc = clever::html::parse("<body><slot>Fallback</slot></body>");
+    auto* el = doc->find_element("slot");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "slot");
+}
+
+// --- Cycle 1126: 8 HTML tests ---
+
+TEST(TreeBuilder, MenuElementParsed) {
+    auto doc = clever::html::parse("<body><menu>Items</menu></body>");
+    auto* el = doc->find_element("menu");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "menu");
+}
+
+TEST(TreeBuilder, DialogElementParsed) {
+    auto doc = clever::html::parse("<body><dialog>Modal</dialog></body>");
+    auto* el = doc->find_element("dialog");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "dialog");
+}
+
+TEST(TreeBuilder, CanvasElementParsedV2) {
+    auto doc = clever::html::parse("<body><canvas>Fallback</canvas></body>");
+    auto* el = doc->find_element("canvas");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "canvas");
+}
+
+TEST(TreeBuilder, MathElementParsed) {
+    auto doc = clever::html::parse("<body><math>x</math></body>");
+    auto* el = doc->find_element("math");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "math");
+}
+
+TEST(TreeBuilder, SvgElementParsed) {
+    auto doc = clever::html::parse("<body><svg></svg></body>");
+    auto* el = doc->find_element("svg");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "svg");
+}
+
+TEST(TreeBuilder, BaseElementParsed) {
+    auto doc = clever::html::parse("<head><base></head><body></body>");
+    auto* el = doc->find_element("base");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "base");
+}
+
+TEST(TreeBuilder, WbrElementParsedV4) {
+    auto doc = clever::html::parse("<body><wbr></body>");
+    auto* el = doc->find_element("wbr");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "wbr");
+}
+
+TEST(TreeBuilder, HrElementParsedV3) {
+    auto doc = clever::html::parse("<body><hr></body>");
+    auto* el = doc->find_element("hr");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "hr");
+}
+
+// --- Cycle 1135: 8 HTML tests ---
+
+TEST(TreeBuilder, NobrElementParsed) {
+    auto doc = clever::html::parse("<body><nobr>NoBreak</nobr></body>");
+    auto* el = doc->find_element("nobr");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "nobr");
+}
+
+TEST(TreeBuilder, RbElementParsed) {
+    auto doc = clever::html::parse("<body><ruby><rb>Base</rb></ruby></body>");
+    auto* el = doc->find_element("rb");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "rb");
+}
+
+TEST(TreeBuilder, RtcElementParsed) {
+    auto doc = clever::html::parse("<body><ruby><rtc>Annotation</rtc></ruby></body>");
+    auto* el = doc->find_element("rtc");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "rtc");
+}
+
+TEST(TreeBuilder, RpElementParsedV2) {
+    auto doc = clever::html::parse("<body><ruby><rp>(</rp></ruby></body>");
+    auto* el = doc->find_element("rp");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "rp");
+}
+
+TEST(TreeBuilder, AcronymElementParsed) {
+    auto doc = clever::html::parse("<body><acronym>HTML</acronym></body>");
+    auto* el = doc->find_element("acronym");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "acronym");
+}
+
+TEST(TreeBuilder, MarqueeElementParsed) {
+    auto doc = clever::html::parse("<body><marquee>Scroll</marquee></body>");
+    auto* el = doc->find_element("marquee");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "marquee");
+}
+
+TEST(TreeBuilder, FramesetNotInBody) {
+    auto doc = clever::html::parse("<body><div>Content</div></body>");
+    auto* body = doc->find_element("body");
+    ASSERT_NE(body, nullptr);
+    EXPECT_EQ(body->tag_name, "body");
+}
+
+TEST(TreeBuilder, HeadElementExistsV2) {
+    auto doc = clever::html::parse("<html><head></head><body></body></html>");
+    auto* head = doc->find_element("head");
+    ASSERT_NE(head, nullptr);
+    EXPECT_EQ(head->tag_name, "head");
+}

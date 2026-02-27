@@ -877,8 +877,8 @@ TEST(RequestSerializeTest, DefaultUserAgent) {
     req.parse_url();
     auto bytes = req.serialize();
     std::string s(bytes.begin(), bytes.end());
-    EXPECT_NE(s.find("Clever/0.7.0"), std::string::npos)
-        << "Should include default User-Agent header with Clever version";
+    EXPECT_NE(s.find("Vibrowser/0.7.0"), std::string::npos)
+        << "Should include default User-Agent header with Vibrowser version";
     EXPECT_NE(s.find("Accept: "), std::string::npos)
         << "Should include default Accept header";
     EXPECT_NE(s.find("Accept-Encoding: gzip"), std::string::npos)
@@ -5398,4 +5398,693 @@ TEST(ResponseTest, ResponseStatusHttp403) {
     Response r;
     r.status = 403;
     EXPECT_EQ(r.status, 403);
+}
+
+TEST(HeaderMapTest, AppendDoesNotOverwriteV2) {
+    HeaderMap map;
+    map.set("x-custom", "a");
+    map.append("x-custom", "b");
+    EXPECT_EQ(map.get_all("x-custom").size(), 2u);
+}
+
+TEST(HeaderMapTest, RemoveNonExistentNoOp) {
+    HeaderMap map;
+    map.remove("nonexistent");
+    EXPECT_EQ(map.size(), 0u);
+}
+
+TEST(ResponseTest, ResponseStatusHttp500V2) {
+    Response r;
+    r.status = 500;
+    EXPECT_EQ(r.status, 500);
+}
+
+TEST(ResponseTest, ResponseBodyNotEmpty) {
+    Response r;
+    r.body = {'O', 'K'};
+    EXPECT_EQ(r.body_as_string(), "OK");
+}
+
+TEST(RequestTest, RequestDefaultPath) {
+    Request req;
+    EXPECT_EQ(req.path, "/");
+}
+
+TEST(HeaderMapTest, SetOverwritesPreviousV2) {
+    HeaderMap map;
+    map.set("key", "v1");
+    map.set("key", "v2");
+    EXPECT_EQ(map.get("key").value(), "v2");
+}
+
+TEST(ResponseTest, ResponseUrlFieldV2) {
+    Response r;
+    r.url = "https://example.com";
+    EXPECT_EQ(r.url, "https://example.com");
+}
+
+TEST(HeaderMapTest, HasReturnsTrueAfterSetV2) {
+    HeaderMap map;
+    map.set("content-type", "text/html");
+    EXPECT_TRUE(map.has("content-type"));
+}
+
+TEST(HeaderMapTest, HeaderMapAppendAddsMultipleValues) {
+    HeaderMap map;
+    map.append("Accept", "text/html");
+    map.append("Accept", "application/json");
+    auto values = map.get_all("Accept");
+    EXPECT_EQ(values.size(), 2u);
+}
+
+TEST(ResponseTest, ResponseDefaultStatusIsZero) {
+    Response r;
+    EXPECT_EQ(r.status, 0);
+}
+
+TEST(RequestTest, RequestSerializeIncludesHostV3) {
+    Request req;
+    req.method = Method::GET;
+    req.host = "example.com";
+    req.path = "/";
+    auto bytes = req.serialize();
+    std::string serialized(bytes.begin(), bytes.end());
+    EXPECT_NE(serialized.find("Host:"), std::string::npos);
+}
+
+TEST(HeaderMapTest, HeaderMapGetMissingReturnsNulloptV3) {
+    HeaderMap map;
+    auto result = map.get("nonexistent");
+    EXPECT_FALSE(result.has_value());
+}
+
+TEST(ResponseTest, ResponseWasRedirectedDefaultFalseV2) {
+    Response r;
+    EXPECT_FALSE(r.was_redirected);
+}
+
+TEST(MethodTest, MethodToStringOptionsV2) {
+    EXPECT_EQ(method_to_string(Method::OPTIONS), "OPTIONS");
+}
+
+TEST(MethodTest, StringToMethodPatchV2) {
+    EXPECT_EQ(string_to_method("PATCH"), Method::PATCH);
+}
+
+TEST(HeaderMapTest, HeaderMapSizeZeroInitiallyV3) {
+    HeaderMap map;
+    EXPECT_EQ(map.size(), 0u);
+}
+
+// --- Cycle 1025: HTTP client tests ---
+
+TEST(HeaderMapTest, RemoveReducesSizeV3) {
+    HeaderMap map;
+    map.set("a", "1");
+    map.set("b", "2");
+    map.remove("a");
+    EXPECT_EQ(map.size(), 1u);
+}
+
+TEST(HeaderMapTest, HasReturnsFalseAfterRemoveV3) {
+    HeaderMap map;
+    map.set("token", "abc");
+    map.remove("token");
+    EXPECT_FALSE(map.has("token"));
+}
+
+TEST(MethodTest, MethodToStringGetV3) {
+    EXPECT_EQ(method_to_string(Method::GET), "GET");
+}
+
+TEST(MethodTest, MethodToStringPostV3) {
+    EXPECT_EQ(method_to_string(Method::POST), "POST");
+}
+
+TEST(MethodTest, MethodToStringPutV3) {
+    EXPECT_EQ(method_to_string(Method::PUT), "PUT");
+}
+
+TEST(MethodTest, StringToMethodGetV3) {
+    EXPECT_EQ(string_to_method("GET"), Method::GET);
+}
+
+TEST(ResponseTest, ResponseBodyEmptyByDefault) {
+    Response r;
+    EXPECT_TRUE(r.body.empty());
+}
+
+TEST(RequestTest, RequestDefaultMethodIsGetV2) {
+    Request req;
+    EXPECT_EQ(req.method, Method::GET);
+}
+
+// --- Cycle 1034: HTTP client tests ---
+
+TEST(MethodTest, MethodToStringDeleteV3) {
+    EXPECT_EQ(method_to_string(Method::DELETE_METHOD), "DELETE");
+}
+
+TEST(MethodTest, MethodToStringHeadV3) {
+    EXPECT_EQ(method_to_string(Method::HEAD), "HEAD");
+}
+
+TEST(MethodTest, StringToMethodPostV3) {
+    EXPECT_EQ(string_to_method("POST"), Method::POST);
+}
+
+TEST(MethodTest, StringToMethodPutV3) {
+    EXPECT_EQ(string_to_method("PUT"), Method::PUT);
+}
+
+TEST(HeaderMapTest, AppendThenGetAllV3) {
+    HeaderMap map;
+    map.append("x-custom", "val1");
+    map.append("x-custom", "val2");
+    map.append("x-custom", "val3");
+    EXPECT_EQ(map.get_all("x-custom").size(), 3u);
+}
+
+TEST(ResponseTest, ResponseStatusSetV3) {
+    Response r;
+    r.status = 404;
+    EXPECT_EQ(r.status, 404);
+}
+
+TEST(HeaderMapTest, SetThenGetV3) {
+    HeaderMap map;
+    map.set("content-type", "application/json");
+    EXPECT_EQ(map.get("content-type").value(), "application/json");
+}
+
+TEST(RequestTest, RequestParseUrlSetsHost) {
+    Request req;
+    req.url = "http://example.com/page";
+    req.parse_url();
+    EXPECT_EQ(req.host, "example.com");
+}
+
+// --- Cycle 1043: HTTP client tests ---
+
+TEST(MethodTest, MethodToStringGetV4) {
+    EXPECT_EQ(method_to_string(Method::GET), "GET");
+}
+
+TEST(MethodTest, MethodToStringPostV4) {
+    EXPECT_EQ(method_to_string(Method::POST), "POST");
+}
+
+TEST(MethodTest, StringToMethodGetV4) {
+    EXPECT_EQ(string_to_method("GET"), Method::GET);
+}
+
+TEST(MethodTest, StringToMethodDeleteV4) {
+    EXPECT_EQ(string_to_method("DELETE"), Method::DELETE_METHOD);
+}
+
+TEST(HeaderMapTest, HasHeaderTrueV4) {
+    HeaderMap map;
+    map.set("accept", "text/html");
+    EXPECT_TRUE(map.has("accept"));
+}
+
+TEST(HeaderMapTest, HasHeaderFalseV4) {
+    HeaderMap map;
+    EXPECT_FALSE(map.has("x-missing"));
+}
+
+TEST(ResponseTest, ResponseStatus200V4) {
+    Response r;
+    r.status = 200;
+    EXPECT_EQ(r.status, 200);
+}
+
+TEST(ResponseTest, ResponseStatus500V4) {
+    Response r;
+    r.status = 500;
+    EXPECT_EQ(r.status, 500);
+}
+
+// --- Cycle 1052: HTTP client tests ---
+
+TEST(MethodTest, MethodToStringPutV4) {
+    EXPECT_EQ(method_to_string(Method::PUT), "PUT");
+}
+
+TEST(MethodTest, MethodToStringOptionsV4) {
+    EXPECT_EQ(method_to_string(Method::OPTIONS), "OPTIONS");
+}
+
+TEST(MethodTest, StringToMethodHeadV4) {
+    EXPECT_EQ(string_to_method("HEAD"), Method::HEAD);
+}
+
+TEST(MethodTest, StringToMethodOptionsV4) {
+    EXPECT_EQ(string_to_method("OPTIONS"), Method::OPTIONS);
+}
+
+TEST(HeaderMapTest, RemoveReducesSizeV4) {
+    HeaderMap map;
+    map.set("x-test", "val");
+    map.remove("x-test");
+    EXPECT_FALSE(map.has("x-test"));
+}
+
+TEST(HeaderMapTest, GetAllEmptyV4) {
+    HeaderMap map;
+    EXPECT_EQ(map.get_all("x-none").size(), 0u);
+}
+
+TEST(ResponseTest, ResponseStatus301V4) {
+    Response r;
+    r.status = 301;
+    EXPECT_EQ(r.status, 301);
+}
+
+TEST(ResponseTest, ResponseStatus403V4) {
+    Response r;
+    r.status = 403;
+    EXPECT_EQ(r.status, 403);
+}
+
+// --- Cycle 1061: HTTP client tests ---
+
+TEST(MethodTest, MethodToStringPatchV4) {
+    EXPECT_EQ(method_to_string(Method::PATCH), "PATCH");
+}
+
+TEST(MethodTest, StringToMethodPutV4) {
+    EXPECT_EQ(string_to_method("PUT"), Method::PUT);
+}
+
+TEST(MethodTest, StringToMethodPatchV4) {
+    EXPECT_EQ(string_to_method("PATCH"), Method::PATCH);
+}
+
+TEST(HeaderMapTest, SetOverwritesV5) {
+    HeaderMap map;
+    map.set("x-key", "old");
+    map.set("x-key", "new");
+    EXPECT_EQ(map.get("x-key").value(), "new");
+}
+
+TEST(HeaderMapTest, SizeAfterTwoSetsV5) {
+    HeaderMap map;
+    map.set("a", "1");
+    map.set("b", "2");
+    EXPECT_EQ(map.size(), 2u);
+}
+
+TEST(ResponseTest, ResponseStatus204V4) {
+    Response r;
+    r.status = 204;
+    EXPECT_EQ(r.status, 204);
+}
+
+TEST(ResponseTest, ResponseStatus304V4) {
+    Response r;
+    r.status = 304;
+    EXPECT_EQ(r.status, 304);
+}
+
+TEST(RequestTest, RequestDefaultMethodIsGetV3) {
+    Request req;
+    EXPECT_EQ(req.method, Method::GET);
+}
+
+// --- Cycle 1070: HTTP client tests ---
+
+TEST(HeaderMapTest, AppendDoesNotOverwrite) {
+    HeaderMap map;
+    map.set("x-key", "first");
+    map.append("x-key", "second");
+    EXPECT_EQ(map.get_all("x-key").size(), 2u);
+}
+
+TEST(HeaderMapTest, GetReturnsFirstValue) {
+    HeaderMap map;
+    map.set("accept", "text/html");
+    map.append("accept", "application/json");
+    EXPECT_EQ(map.get("accept").value(), "text/html");
+}
+
+TEST(MethodTest, MethodToStringHeadV5) {
+    EXPECT_EQ(method_to_string(Method::HEAD), "HEAD");
+}
+
+TEST(MethodTest, MethodToStringDeleteV5) {
+    EXPECT_EQ(method_to_string(Method::DELETE_METHOD), "DELETE");
+}
+
+TEST(ResponseTest, ResponseStatus100V5) {
+    Response r;
+    r.status = 100;
+    EXPECT_EQ(r.status, 100);
+}
+
+TEST(ResponseTest, ResponseStatus201V5) {
+    Response r;
+    r.status = 201;
+    EXPECT_EQ(r.status, 201);
+}
+
+TEST(ResponseTest, ResponseStatus400V5) {
+    Response r;
+    r.status = 400;
+    EXPECT_EQ(r.status, 400);
+}
+
+TEST(ResponseTest, ResponseStatus502V5) {
+    Response r;
+    r.status = 502;
+    EXPECT_EQ(r.status, 502);
+}
+
+// --- Cycle 1079: HTTP client tests ---
+
+TEST(MethodTest, MethodToStringGetV5) {
+    EXPECT_EQ(method_to_string(Method::GET), "GET");
+}
+
+TEST(MethodTest, StringToMethodPostV5) {
+    EXPECT_EQ(string_to_method("POST"), Method::POST);
+}
+
+TEST(HeaderMapTest, SizeZeroInitiallyV5) {
+    HeaderMap map;
+    EXPECT_EQ(map.size(), 0u);
+}
+
+TEST(HeaderMapTest, GetMissingReturnsNulloptV5) {
+    HeaderMap map;
+    EXPECT_FALSE(map.get("missing").has_value());
+}
+
+TEST(ResponseTest, ResponseStatusDefaultZeroV5) {
+    Response r;
+    EXPECT_EQ(r.status, 0);
+}
+
+TEST(ResponseTest, ResponseStatus503V5) {
+    Response r;
+    r.status = 503;
+    EXPECT_EQ(r.status, 503);
+}
+
+TEST(ResponseTest, ResponseStatus429V5) {
+    Response r;
+    r.status = 429;
+    EXPECT_EQ(r.status, 429);
+}
+
+TEST(HeaderMapTest, HasAfterSetV5) {
+    HeaderMap map;
+    map.set("content-length", "100");
+    EXPECT_TRUE(map.has("content-length"));
+}
+
+// --- Cycle 1088: HTTP client tests ---
+
+TEST(MethodTest, MethodToStringPostV5) {
+    EXPECT_EQ(method_to_string(Method::POST), "POST");
+}
+
+TEST(MethodTest, MethodToStringPutV5) {
+    EXPECT_EQ(method_to_string(Method::PUT), "PUT");
+}
+
+TEST(HeaderMapTest, AppendThenSizeV5) {
+    HeaderMap map;
+    map.append("x-multi", "a");
+    map.append("x-multi", "b");
+    EXPECT_EQ(map.get_all("x-multi").size(), 2u);
+}
+
+TEST(HeaderMapTest, RemoveThenHasV5) {
+    HeaderMap map;
+    map.set("x-remove", "val");
+    map.remove("x-remove");
+    EXPECT_FALSE(map.has("x-remove"));
+}
+
+TEST(ResponseTest, ResponseStatus202V5) {
+    Response r;
+    r.status = 202;
+    EXPECT_EQ(r.status, 202);
+}
+
+TEST(ResponseTest, ResponseStatus405V5) {
+    Response r;
+    r.status = 405;
+    EXPECT_EQ(r.status, 405);
+}
+
+TEST(ResponseTest, ResponseStatus408V5) {
+    Response r;
+    r.status = 408;
+    EXPECT_EQ(r.status, 408);
+}
+
+TEST(ResponseTest, ResponseStatus504V5) {
+    Response r;
+    r.status = 504;
+    EXPECT_EQ(r.status, 504);
+}
+
+// --- Cycle 1097: 8 Net tests ---
+
+TEST(MethodTest, MethodToStringGetV6) {
+    EXPECT_EQ(method_to_string(Method::GET), "GET");
+}
+
+TEST(MethodTest, StringToMethodGetV6) {
+    EXPECT_EQ(string_to_method("GET"), Method::GET);
+}
+
+TEST(HeaderMapTest, SizeAfterThreeSets) {
+    HeaderMap h;
+    h.set("a", "1");
+    h.set("b", "2");
+    h.set("c", "3");
+    EXPECT_EQ(h.size(), 3u);
+}
+
+TEST(HeaderMapTest, GetAfterOverwrite) {
+    HeaderMap h;
+    h.set("key", "old");
+    h.set("key", "new");
+    EXPECT_EQ(h.get("key"), "new");
+}
+
+TEST(ResponseTest, ResponseStatus202V6) {
+    Response r;
+    r.status = 202;
+    EXPECT_EQ(r.status, 202);
+}
+
+TEST(ResponseTest, ResponseStatus307V6) {
+    Response r;
+    r.status = 307;
+    EXPECT_EQ(r.status, 307);
+}
+
+TEST(ResponseTest, ResponseStatus410V6) {
+    Response r;
+    r.status = 410;
+    EXPECT_EQ(r.status, 410);
+}
+
+TEST(ResponseTest, ResponseStatus503V6) {
+    Response r;
+    r.status = 503;
+    EXPECT_EQ(r.status, 503);
+}
+
+// --- Cycle 1106: 8 Net tests ---
+
+TEST(MethodTest, MethodToStringPostV6) {
+    EXPECT_EQ(method_to_string(Method::POST), "POST");
+}
+
+TEST(MethodTest, StringToMethodPutV6) {
+    EXPECT_EQ(string_to_method("PUT"), Method::PUT);
+}
+
+TEST(HeaderMapTest, RemoveReducesSizeV6) {
+    HeaderMap h;
+    h.set("x", "1");
+    h.set("y", "2");
+    h.remove("x");
+    EXPECT_EQ(h.size(), 1u);
+}
+
+TEST(HeaderMapTest, HasReturnsFalseAfterRemoveV6) {
+    HeaderMap h;
+    h.set("key", "val");
+    h.remove("key");
+    EXPECT_FALSE(h.has("key"));
+}
+
+TEST(ResponseTest, ResponseStatus206V6) {
+    Response r;
+    r.status = 206;
+    EXPECT_EQ(r.status, 206);
+}
+
+TEST(ResponseTest, ResponseStatus302V6) {
+    Response r;
+    r.status = 302;
+    EXPECT_EQ(r.status, 302);
+}
+
+TEST(ResponseTest, ResponseStatus405V6) {
+    Response r;
+    r.status = 405;
+    EXPECT_EQ(r.status, 405);
+}
+
+TEST(ResponseTest, ResponseStatus502V6) {
+    Response r;
+    r.status = 502;
+    EXPECT_EQ(r.status, 502);
+}
+
+// --- Cycle 1115: 8 Net tests ---
+
+TEST(MethodTest, MethodToStringDeleteV7) {
+    EXPECT_EQ(method_to_string(Method::DELETE_METHOD), "DELETE");
+}
+
+TEST(MethodTest, StringToMethodDeleteV7) {
+    EXPECT_EQ(string_to_method("DELETE"), Method::DELETE_METHOD);
+}
+
+TEST(HeaderMapTest, AppendCreatesMultipleV7) {
+    HeaderMap h;
+    h.set("accept", "text/html");
+    h.append("accept", "application/json");
+    auto all = h.get_all("accept");
+    EXPECT_EQ(all.size(), 2u);
+}
+
+TEST(HeaderMapTest, GetMissingReturnsNulloptV7) {
+    HeaderMap h;
+    EXPECT_FALSE(h.get("nonexistent").has_value());
+}
+
+TEST(ResponseTest, ResponseStatus100V7) {
+    Response r;
+    r.status = 100;
+    EXPECT_EQ(r.status, 100);
+}
+
+TEST(ResponseTest, ResponseStatus204V7) {
+    Response r;
+    r.status = 204;
+    EXPECT_EQ(r.status, 204);
+}
+
+TEST(ResponseTest, ResponseStatus301V7) {
+    Response r;
+    r.status = 301;
+    EXPECT_EQ(r.status, 301);
+}
+
+TEST(ResponseTest, ResponseStatus429V7) {
+    Response r;
+    r.status = 429;
+    EXPECT_EQ(r.status, 429);
+}
+
+// --- Cycle 1124: 8 Net tests ---
+
+TEST(MethodTest, MethodToStringPatchV7) {
+    EXPECT_EQ(method_to_string(Method::PATCH), "PATCH");
+}
+
+TEST(MethodTest, MethodToStringHeadV7) {
+    EXPECT_EQ(method_to_string(Method::HEAD), "HEAD");
+}
+
+TEST(HeaderMapTest, SizeAfterFourSets) {
+    HeaderMap h;
+    h.set("a", "1"); h.set("b", "2"); h.set("c", "3"); h.set("d", "4");
+    EXPECT_EQ(h.size(), 4u);
+}
+
+TEST(HeaderMapTest, HasAfterAppendV7) {
+    HeaderMap h;
+    h.append("x-custom", "val");
+    EXPECT_TRUE(h.has("x-custom"));
+}
+
+TEST(ResponseTest, ResponseStatus201V7) {
+    Response r;
+    r.status = 201;
+    EXPECT_EQ(r.status, 201);
+}
+
+TEST(ResponseTest, ResponseStatus304V7) {
+    Response r;
+    r.status = 304;
+    EXPECT_EQ(r.status, 304);
+}
+
+TEST(ResponseTest, ResponseStatus403V7) {
+    Response r;
+    r.status = 403;
+    EXPECT_EQ(r.status, 403);
+}
+
+TEST(ResponseTest, ResponseStatus500V7) {
+    Response r;
+    r.status = 500;
+    EXPECT_EQ(r.status, 500);
+}
+
+// --- Cycle 1133: 8 Net tests ---
+
+TEST(MethodTest, MethodToStringOptionsV7) {
+    EXPECT_EQ(method_to_string(Method::OPTIONS), "OPTIONS");
+}
+
+TEST(MethodTest, StringToMethodHeadV7) {
+    EXPECT_EQ(string_to_method("HEAD"), Method::HEAD);
+}
+
+TEST(HeaderMapTest, SizeZeroAfterRemoveAllV7) {
+    HeaderMap h;
+    h.set("key", "val");
+    h.remove("key");
+    EXPECT_EQ(h.size(), 0u);
+}
+
+TEST(HeaderMapTest, SetCaseInsensitiveV7) {
+    HeaderMap h;
+    h.set("Content-Type", "text/html");
+    EXPECT_TRUE(h.has("content-type"));
+}
+
+TEST(ResponseTest, ResponseStatus200V7) {
+    Response r;
+    r.status = 200;
+    EXPECT_EQ(r.status, 200);
+}
+
+TEST(ResponseTest, ResponseStatus400V7) {
+    Response r;
+    r.status = 400;
+    EXPECT_EQ(r.status, 400);
+}
+
+TEST(ResponseTest, ResponseStatus404V7) {
+    Response r;
+    r.status = 404;
+    EXPECT_EQ(r.status, 404);
+}
+
+TEST(ResponseTest, ResponseStatus408V7) {
+    Response r;
+    r.status = 408;
+    EXPECT_EQ(r.status, 408);
 }

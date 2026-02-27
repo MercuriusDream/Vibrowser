@@ -5714,3 +5714,1111 @@ TEST_F(CSSStylesheetTest, ContainerNameDeclarationV2) {
         if (d.property == "container-name") { found = true; break; }
     EXPECT_TRUE(found);
 }
+
+TEST_F(CSSStylesheetTest, AspectRatioDeclarationV2) {
+    auto sheet = parse_stylesheet(".box { aspect-ratio: 16/9; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "aspect-ratio") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, ObjectFitDeclarationV2) {
+    auto sheet = parse_stylesheet("img { object-fit: cover; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "object-fit") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, ObjectPositionDeclarationV2) {
+    auto sheet = parse_stylesheet("img { object-position: center top; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "object-position") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, OverflowXDeclarationV2) {
+    auto sheet = parse_stylesheet(".scroll { overflow-x: auto; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "overflow-x") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, OverflowYDeclarationV2) {
+    auto sheet = parse_stylesheet(".scroll { overflow-y: hidden; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "overflow-y") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, ScrollBehaviorDeclarationV3) {
+    auto sheet = parse_stylesheet("html { scroll-behavior: smooth; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "scroll-behavior") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, UserSelectDeclarationV2) {
+    auto sheet = parse_stylesheet(".no-select { user-select: none; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "user-select") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, PointerEventsDeclarationV3) {
+    auto sheet = parse_stylesheet(".overlay { pointer-events: none; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "pointer-events") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+// --- Cycle 1017: CSS property declaration tests ---
+
+TEST_F(CSSStylesheetTest, ClipPathDeclarationV3) {
+    auto sheet = parse_stylesheet(".clip { clip-path: circle(50%); }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "clip-path") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, MixBlendModeDeclarationV3) {
+    auto sheet = parse_stylesheet(".blend { mix-blend-mode: multiply; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "mix-blend-mode") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, ObjectFitDeclarationV3) {
+    auto sheet = parse_stylesheet("img { object-fit: cover; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "object-fit") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, AspectRatioDeclarationV3) {
+    auto sheet = parse_stylesheet(".box { aspect-ratio: 16 / 9; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "aspect-ratio") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, ContainDeclarationV3) {
+    auto sheet = parse_stylesheet(".widget { contain: layout paint; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "contain") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, ImageRenderingDeclarationV3) {
+    auto sheet = parse_stylesheet("img { image-rendering: pixelated; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "image-rendering") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, IsolationDeclarationV3) {
+    auto sheet = parse_stylesheet(".layer { isolation: isolate; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "isolation") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, ContentVisibilityDeclarationV3) {
+    auto sheet = parse_stylesheet(".offscreen { content-visibility: auto; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "content-visibility") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+// --- Cycle 1026: CSS property tests ---
+
+TEST_F(CSSStylesheetTest, WillChangeDeclarationV3) {
+    auto sheet = parse_stylesheet(".anim { will-change: transform; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "will-change") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, CursorDeclarationV3) {
+    auto sheet = parse_stylesheet(".link { cursor: pointer; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "cursor") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, OverflowXDeclarationV3) {
+    auto sheet = parse_stylesheet(".box { overflow-x: hidden; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "overflow-x") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, OverflowYDeclarationV3) {
+    auto sheet = parse_stylesheet(".box { overflow-y: scroll; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "overflow-y") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, VisibilityDeclarationV3) {
+    auto sheet = parse_stylesheet(".hidden { visibility: hidden; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "visibility") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, WhiteSpaceDeclarationV3) {
+    auto sheet = parse_stylesheet("pre { white-space: pre-wrap; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "white-space") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, WordBreakDeclarationV3) {
+    auto sheet = parse_stylesheet(".wrap { word-break: break-all; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "word-break") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, TextOverflowDeclarationV3) {
+    auto sheet = parse_stylesheet(".trunc { text-overflow: ellipsis; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "text-overflow") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+// --- Cycle 1035: CSS property tests ---
+
+TEST_F(CSSStylesheetTest, ZIndexDeclarationV3) {
+    auto sheet = parse_stylesheet(".modal { z-index: 1000; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "z-index") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, PositionDeclarationV3) {
+    auto sheet = parse_stylesheet(".fixed { position: fixed; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "position") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, TopDeclarationV3) {
+    auto sheet = parse_stylesheet(".abs { top: 10px; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "top") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, LeftDeclarationV3) {
+    auto sheet = parse_stylesheet(".abs { left: 20px; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "left") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, BottomDeclarationV3) {
+    auto sheet = parse_stylesheet(".abs { bottom: 0; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "bottom") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, RightDeclarationV3) {
+    auto sheet = parse_stylesheet(".abs { right: 0; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "right") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, TransformDeclarationV3) {
+    auto sheet = parse_stylesheet(".rot { transform: rotate(45deg); }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "transform") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, TransitionDeclarationV3) {
+    auto sheet = parse_stylesheet(".fade { transition: opacity 0.3s ease; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "transition") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+// --- Cycle 1044: CSS property tests ---
+
+TEST_F(CSSStylesheetTest, CursorPointerDeclarationV4) {
+    auto sheet = parse_stylesheet(".btn { cursor: pointer; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "cursor") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, OverflowHiddenDeclarationV4) {
+    auto sheet = parse_stylesheet(".clip { overflow: hidden; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "overflow") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, VisibilityDeclarationV4) {
+    auto sheet = parse_stylesheet(".hidden { visibility: hidden; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "visibility") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, PointerEventsDeclarationV4) {
+    auto sheet = parse_stylesheet(".noclick { pointer-events: none; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "pointer-events") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, WhiteSpaceDeclarationV4) {
+    auto sheet = parse_stylesheet("pre { white-space: pre-wrap; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "white-space") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, WordBreakDeclarationV4) {
+    auto sheet = parse_stylesheet(".wrap { word-break: break-all; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "word-break") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, OutlineDeclarationV4) {
+    auto sheet = parse_stylesheet(":focus { outline: 2px solid blue; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "outline") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, BoxShadowDeclarationV4) {
+    auto sheet = parse_stylesheet(".card { box-shadow: 0 2px 4px rgba(0,0,0,0.1); }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "box-shadow") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+// --- Cycle 1053: CSS property tests ---
+
+TEST_F(CSSStylesheetTest, TextTransformDeclarationV4) {
+    auto sheet = parse_stylesheet(".upper { text-transform: uppercase; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "text-transform") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, LetterSpacingDeclarationV4) {
+    auto sheet = parse_stylesheet(".spaced { letter-spacing: 2px; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "letter-spacing") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, TextShadowDeclarationV4) {
+    auto sheet = parse_stylesheet(".shadow { text-shadow: 1px 1px 2px black; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "text-shadow") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, ListStyleTypeDeclarationV4) {
+    auto sheet = parse_stylesheet("ul { list-style-type: disc; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "list-style-type") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, BackgroundSizeDeclarationV4) {
+    auto sheet = parse_stylesheet(".bg { background-size: cover; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "background-size") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, BackgroundPositionDeclarationV4) {
+    auto sheet = parse_stylesheet(".bg { background-position: center; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "background-position") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, BackgroundRepeatDeclarationV4) {
+    auto sheet = parse_stylesheet(".bg { background-repeat: no-repeat; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "background-repeat") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, BorderRadiusDeclarationV4) {
+    auto sheet = parse_stylesheet(".round { border-radius: 8px; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "border-radius") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+// --- Cycle 1062: CSS property tests ---
+
+TEST_F(CSSStylesheetTest, MinWidthDeclarationV4) {
+    auto sheet = parse_stylesheet(".box { min-width: 100px; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "min-width") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, MaxWidthDeclarationV4) {
+    auto sheet = parse_stylesheet(".box { max-width: 500px; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "max-width") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, MinHeightDeclarationV4) {
+    auto sheet = parse_stylesheet(".box { min-height: 50px; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "min-height") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, MaxHeightDeclarationV4) {
+    auto sheet = parse_stylesheet(".box { max-height: 800px; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "max-height") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, FlexDirectionDeclarationV4) {
+    auto sheet = parse_stylesheet(".flex { flex-direction: column; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "flex-direction") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, FlexWrapDeclarationV4) {
+    auto sheet = parse_stylesheet(".flex { flex-wrap: wrap; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "flex-wrap") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, JustifyContentDeclarationV4) {
+    auto sheet = parse_stylesheet(".flex { justify-content: center; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "justify-content") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, AlignItemsDeclarationV4) {
+    auto sheet = parse_stylesheet(".flex { align-items: stretch; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "align-items") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+// --- Cycle 1071: CSS property tests ---
+
+TEST_F(CSSStylesheetTest, GapDeclarationV4) {
+    auto sheet = parse_stylesheet(".grid { gap: 10px; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "gap") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, GridTemplateColumnsV4) {
+    auto sheet = parse_stylesheet(".grid { grid-template-columns: 1fr 1fr; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "grid-template-columns") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, GridTemplateRowsV4) {
+    auto sheet = parse_stylesheet(".grid { grid-template-rows: auto 1fr; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "grid-template-rows") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, AlignSelfDeclarationV4) {
+    auto sheet = parse_stylesheet(".item { align-self: center; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "align-self") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, FlexGrowDeclarationV4) {
+    auto sheet = parse_stylesheet(".item { flex-grow: 1; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "flex-grow") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, FlexShrinkDeclarationV4) {
+    auto sheet = parse_stylesheet(".item { flex-shrink: 0; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "flex-shrink") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, FlexBasisDeclarationV4) {
+    auto sheet = parse_stylesheet(".item { flex-basis: 200px; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "flex-basis") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, OrderDeclarationV4) {
+    auto sheet = parse_stylesheet(".item { order: 2; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "order") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+// --- Cycle 1080: CSS property tests ---
+
+TEST_F(CSSStylesheetTest, TextDecorationDeclarationV4) {
+    auto sheet = parse_stylesheet("a { text-decoration: underline; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "text-decoration") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, LineHeightDeclarationV4) {
+    auto sheet = parse_stylesheet("p { line-height: 1.5; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "line-height") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, FontFamilyDeclarationV4) {
+    auto sheet = parse_stylesheet("body { font-family: sans-serif; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "font-family") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, FontWeightDeclarationV4) {
+    auto sheet = parse_stylesheet("b { font-weight: bold; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "font-weight") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, FontStyleDeclarationV4) {
+    auto sheet = parse_stylesheet("em { font-style: italic; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "font-style") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, TextAlignDeclarationV4) {
+    auto sheet = parse_stylesheet(".center { text-align: center; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "text-align") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, FloatDeclarationV4) {
+    auto sheet = parse_stylesheet(".left { float: left; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "float") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, ClearDeclarationV4) {
+    auto sheet = parse_stylesheet(".clear { clear: both; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "clear") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+// --- Cycle 1089: CSS property tests ---
+
+TEST_F(CSSStylesheetTest, ZIndexDeclarationV4) {
+    auto sheet = parse_stylesheet(".modal { z-index: 1000; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "z-index") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, PositionAbsoluteV4) {
+    auto sheet = parse_stylesheet(".abs { position: absolute; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "position") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, TopDeclarationV4) {
+    auto sheet = parse_stylesheet(".pos { top: 10px; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "top") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, LeftDeclarationV4) {
+    auto sheet = parse_stylesheet(".pos { left: 20px; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "left") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, RightDeclarationV4) {
+    auto sheet = parse_stylesheet(".pos { right: 0; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "right") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, BottomDeclarationV4) {
+    auto sheet = parse_stylesheet(".pos { bottom: 5px; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "bottom") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, OverflowXDeclarationV4) {
+    auto sheet = parse_stylesheet(".scroll { overflow-x: auto; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "overflow-x") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, OverflowYDeclarationV4) {
+    auto sheet = parse_stylesheet(".scroll { overflow-y: scroll; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "overflow-y") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+// --- Cycle 1098: 8 CSS tests ---
+
+TEST_F(CSSStylesheetTest, TransitionDeclarationV5) {
+    auto sheet = parse_stylesheet(".anim { transition: all 0.3s ease; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "transition") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, AnimationDeclarationV5) {
+    auto sheet = parse_stylesheet(".spin { animation: rotate 1s infinite; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "animation") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, TransformDeclarationV5) {
+    auto sheet = parse_stylesheet(".moved { transform: translateX(10px); }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "transform") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, BoxShadowDeclarationV5) {
+    auto sheet = parse_stylesheet(".card { box-shadow: 0 2px 4px rgba(0,0,0,0.1); }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "box-shadow") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, OutlineDeclarationV5) {
+    auto sheet = parse_stylesheet(".focus { outline: 2px solid blue; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "outline") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, WhiteSpaceDeclarationV5) {
+    auto sheet = parse_stylesheet(".pre { white-space: pre-wrap; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "white-space") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, WordBreakDeclarationV2) {
+    auto sheet = parse_stylesheet(".wrap { word-break: break-all; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "word-break") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, OverflowWrapDeclarationV2) {
+    auto sheet = parse_stylesheet(".wrap { overflow-wrap: break-word; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "overflow-wrap") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+// --- Cycle 1107: 8 CSS tests ---
+
+TEST_F(CSSStylesheetTest, PointerEventsDeclarationV5) {
+    auto sheet = parse_stylesheet(".no-click { pointer-events: none; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "pointer-events") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, UserSelectDeclarationV3) {
+    auto sheet = parse_stylesheet(".no-select { user-select: none; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "user-select") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, ObjectFitDeclarationV4) {
+    auto sheet = parse_stylesheet("img { object-fit: cover; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "object-fit") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, ObjectPositionDeclarationV3) {
+    auto sheet = parse_stylesheet("img { object-position: center; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "object-position") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, ResizeDeclarationV2) {
+    auto sheet = parse_stylesheet("textarea { resize: vertical; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "resize") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, AppearanceDeclarationV3) {
+    auto sheet = parse_stylesheet("input { appearance: none; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "appearance") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, ContentDeclarationV3) {
+    auto sheet = parse_stylesheet(".after::after { content: ''; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "content") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, ClipPathDeclarationV4) {
+    auto sheet = parse_stylesheet(".clip { clip-path: circle(50%); }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "clip-path") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+// --- Cycle 1116: 8 CSS tests ---
+
+TEST_F(CSSStylesheetTest, FilterDeclarationV5) {
+    auto sheet = parse_stylesheet(".blur { filter: blur(5px); }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "filter") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, BackdropFilterDeclarationV2) {
+    auto sheet = parse_stylesheet(".glass { backdrop-filter: blur(10px); }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "backdrop-filter") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, MixBlendModeDeclarationV2) {
+    auto sheet = parse_stylesheet(".blend { mix-blend-mode: multiply; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "mix-blend-mode") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, IsolationDeclarationV2) {
+    auto sheet = parse_stylesheet(".iso { isolation: isolate; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "isolation") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, WillChangeDeclarationV2) {
+    auto sheet = parse_stylesheet(".opt { will-change: transform; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "will-change") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, ContainDeclarationV4) {
+    auto sheet = parse_stylesheet(".box { contain: layout; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "contain") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, ScrollBehaviorDeclarationV2) {
+    auto sheet = parse_stylesheet("html { scroll-behavior: smooth; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "scroll-behavior") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, OverscrollBehaviorDeclarationV2) {
+    auto sheet = parse_stylesheet("body { overscroll-behavior: contain; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "overscroll-behavior") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+// --- Cycle 1125: 8 CSS tests ---
+
+TEST_F(CSSStylesheetTest, TouchActionDeclarationV2) {
+    auto sheet = parse_stylesheet(".drag { touch-action: pan-y; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "touch-action") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, CaretColorDeclarationV2) {
+    auto sheet = parse_stylesheet("input { caret-color: red; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "caret-color") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, AccentColorDeclarationV3) {
+    auto sheet = parse_stylesheet("input { accent-color: blue; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "accent-color") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, TabSizeDeclarationV6) {
+    auto sheet = parse_stylesheet("pre { tab-size: 4; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "tab-size") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, HyphensDeclarationV2) {
+    auto sheet = parse_stylesheet("p { hyphens: auto; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "hyphens") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, WritingModeDeclarationV2) {
+    auto sheet = parse_stylesheet(".vertical { writing-mode: vertical-rl; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "writing-mode") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, DirectionDeclarationV2) {
+    auto sheet = parse_stylesheet(".rtl { direction: rtl; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "direction") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, UnicodeBidiDeclarationV2) {
+    auto sheet = parse_stylesheet(".bidi { unicode-bidi: embed; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "unicode-bidi") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+// --- Cycle 1134: 8 CSS tests ---
+
+TEST_F(CSSStylesheetTest, AspectRatioDeclarationV5) {
+    auto sheet = parse_stylesheet(".box { aspect-ratio: 16 / 9; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "aspect-ratio") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, PlaceItemsDeclarationV2) {
+    auto sheet = parse_stylesheet(".grid { place-items: center; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "place-items") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, PlaceContentDeclarationV2) {
+    auto sheet = parse_stylesheet(".grid { place-content: center; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "place-content") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, PlaceSelfDeclarationV2) {
+    auto sheet = parse_stylesheet(".item { place-self: center; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "place-self") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, ColumnCountDeclarationV5) {
+    auto sheet = parse_stylesheet(".multi { column-count: 3; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "column-count") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, ColumnGapDeclarationV5) {
+    auto sheet = parse_stylesheet(".multi { column-gap: 20px; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "column-gap") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, RowGapDeclarationV2) {
+    auto sheet = parse_stylesheet(".grid { row-gap: 10px; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "row-gap") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, InsetDeclarationV5) {
+    auto sheet = parse_stylesheet(".abs { inset: 0; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "inset") { found = true; break; }
+    EXPECT_TRUE(found);
+}

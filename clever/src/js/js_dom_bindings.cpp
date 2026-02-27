@@ -9837,11 +9837,11 @@ void install_dom_bindings(JSContext* ctx,
     {
         JSValue nav = JS_NewObject(ctx);
         JS_SetPropertyStr(ctx, nav, "userAgent",
-            JS_NewString(ctx, "Clever/0.5.5 (Macintosh; like Gecko)"));
+            JS_NewString(ctx, "Vibrowser/0.7.0 (Macintosh; like Gecko)"));
         JS_SetPropertyStr(ctx, nav, "appName",
-            JS_NewString(ctx, "Clever"));
+            JS_NewString(ctx, "Vibrowser"));
         JS_SetPropertyStr(ctx, nav, "appVersion",
-            JS_NewString(ctx, "0.5.5"));
+            JS_NewString(ctx, "0.7.0"));
         JS_SetPropertyStr(ctx, nav, "platform",
             JS_NewString(ctx, "MacIntel"));
         JS_SetPropertyStr(ctx, nav, "language",
@@ -9855,7 +9855,7 @@ void install_dom_bindings(JSContext* ctx,
         JS_SetPropertyStr(ctx, nav, "hardwareConcurrency", JS_NewInt32(ctx, 4));
         JS_SetPropertyStr(ctx, nav, "maxTouchPoints", JS_NewInt32(ctx, 0));
         JS_SetPropertyStr(ctx, nav, "vendor",
-            JS_NewString(ctx, "Clever Browser"));
+            JS_NewString(ctx, "Vibrowser"));
         JS_SetPropertyStr(ctx, nav, "vendorSub", JS_NewString(ctx, ""));
         JS_SetPropertyStr(ctx, nav, "product",
             JS_NewString(ctx, "Gecko"));
@@ -11765,7 +11765,7 @@ function WebGLRenderingContext(canvas) {
 var p = WebGLRenderingContext.prototype;
 p.getExtension=function(n){return null;};
 p.getSupportedExtensions=function(){return[];};
-p.getParameter=function(pp){if(pp===7938)return'WebGL 1.0';if(pp===7936)return'Clever';if(pp===7937)return'Clever WebGL';return 0;};
+p.getParameter=function(pp){if(pp===7938)return'WebGL 1.0';if(pp===7936)return'Vibrowser';if(pp===7937)return'Vibrowser WebGL';return 0;};
 p.getShaderPrecisionFormat=function(s,pp){return{rangeMin:127,rangeMax:127,precision:23};};
 p.createShader=function(t){return{_type:t,_id:++this._id};};
 p.shaderSource=function(s,src){if(s)s._source=src;};

@@ -1118,9 +1118,11 @@ void SoftwareRenderer::draw_image(const Rect& dest, const ImageData& image, int 
 
     for (int dy = dy0; dy < dy1; dy++) {
         float sy = (dy - dest.y) * scale_y;
+        sy = std::clamp(sy, 0.0f, static_cast<float>(image.height - 1));
 
         for (int dx = dx0; dx < dx1; dx++) {
             float sx = (dx - dest.x) * scale_x;
+            sx = std::clamp(sx, 0.0f, static_cast<float>(image.width - 1));
 
             if (nearest) {
                 // Nearest-neighbor: snap to closest source pixel

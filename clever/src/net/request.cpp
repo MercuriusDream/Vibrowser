@@ -126,7 +126,7 @@ std::vector<uint8_t> Request::serialize() const {
 
     // Default User-Agent
     if (!headers.has("user-agent")) {
-        oss << "User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Clever/0.7.0 Safari/537.36\r\n";
+        oss << "User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Vibrowser/0.7.0 Safari/537.36\r\n";
     }
 
     // Default Accept

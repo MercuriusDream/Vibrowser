@@ -1,4 +1,4 @@
-# Clever Browser — macOS Shell Application
+# Vibrowser — macOS Shell Application
 # Objective-C++ for AppKit integration
 
 add_executable(clever_browser
@@ -12,10 +12,10 @@ target_compile_options(clever_browser PRIVATE -fobjc-arc)
 set_target_properties(clever_browser PROPERTIES
     LINKER_LANGUAGE CXX
     MACOSX_BUNDLE TRUE
-    MACOSX_BUNDLE_BUNDLE_NAME "Clever Browser"
+    MACOSX_BUNDLE_BUNDLE_NAME "Vibrowser"
     MACOSX_BUNDLE_BUNDLE_VERSION "${PROJECT_VERSION}"
     MACOSX_BUNDLE_SHORT_VERSION_STRING "${PROJECT_VERSION}"
-    MACOSX_BUNDLE_GUI_IDENTIFIER "com.clever.browser"
+    MACOSX_BUNDLE_GUI_IDENTIFIER "com.vibrowser.browser"
     MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/Info.plist.in"
 )
 

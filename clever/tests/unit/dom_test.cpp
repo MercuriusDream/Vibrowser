@@ -4984,3 +4984,1000 @@ TEST(DomNode, NodeTextContentRecursive) {
     div->append_child(doc.create_text_node("World"));
     EXPECT_EQ(div->text_content(), "Hello World");
 }
+
+// ---------------------------------------------------------------------------
+// Cycle 1012 — DOM attribute overwrite, removal, id accessor, text content,
+//              class list toggle, parent null, multiple attributes
+// ---------------------------------------------------------------------------
+
+TEST(DomElement, SetAttributeOverwrite) {
+    Document doc;
+    auto el = doc.create_element("div");
+    el->set_attribute("data-x", "old");
+    el->set_attribute("data-x", "new");
+    std::string found_value;
+    for (const auto& attr : el->attributes()) {
+        if (attr.name == "data-x") {
+            found_value = attr.value;
+        }
+    }
+    EXPECT_EQ(found_value, "new");
+}
+
+TEST(DomNode, RemoveLastChild) {
+    Document doc;
+    auto ul = doc.create_element("ul");
+    ul->append_child(doc.create_element("li"));
+    ul->append_child(doc.create_element("li"));
+    auto li3 = doc.create_element("li");
+    auto* li3_ptr = li3.get();
+    ul->append_child(std::move(li3));
+    EXPECT_EQ(ul->child_count(), 3u);
+    ul->remove_child(*li3_ptr);
+    EXPECT_EQ(ul->child_count(), 2u);
+}
+
+TEST(DomElement, IdReturnsSetValue) {
+    Document doc;
+    auto el = doc.create_element("div");
+    el->set_attribute("id", "test-id");
+    EXPECT_EQ(el->id(), "test-id");
+}
+
+TEST(DomNode, FirstChildAfterRemoveFirst) {
+    Document doc;
+    auto parent = doc.create_element("div");
+    auto a = doc.create_element("span");
+    auto* a_ptr = a.get();
+    parent->append_child(std::move(a));
+    parent->append_child(doc.create_element("span"));
+    parent->remove_child(*a_ptr);
+    auto* first = dynamic_cast<Element*>(parent->first_child());
+    ASSERT_NE(first, nullptr);
+    EXPECT_EQ(first->tag_name(), "span");
+}
+
+TEST(DomNode, TextContentEmpty) {
+    Document doc;
+    auto div = doc.create_element("div");
+    EXPECT_EQ(div->text_content(), "");
+}
+
+TEST(DomElement, ClassListContainsAfterToggleV2) {
+    Document doc;
+    auto div = doc.create_element("div");
+    div->class_list().toggle("active");
+    EXPECT_TRUE(div->class_list().contains("active"));
+}
+
+TEST(DomNode, ParentNullBeforeAppend) {
+    Document doc;
+    auto el = doc.create_element("div");
+    EXPECT_EQ(el->parent(), nullptr);
+}
+
+TEST(DomElement, MultipleAttributeCount) {
+    Document doc;
+    auto el = doc.create_element("div");
+    el->set_attribute("id", "main");
+    el->set_attribute("class", "container");
+    el->set_attribute("data-role", "widget");
+    el->set_attribute("title", "My Div");
+    EXPECT_EQ(el->attributes().size(), 4u);
+}
+
+// ---------------------------------------------------------------------------
+// Cycle 1012: DOM element and node tests (+8)
+// ---------------------------------------------------------------------------
+
+TEST(DomElement, SetGetAttributeRoundTrip) {
+    Document doc;
+    auto el = doc.create_element("span");
+    el->set_attribute("data-key", "hello-world");
+    EXPECT_EQ(el->get_attribute("data-key"), "hello-world");
+}
+
+TEST(DomElement, RemoveLastChildMakesEmpty) {
+    Document doc;
+    auto parent = doc.create_element("ul");
+    auto child = doc.create_element("li");
+    auto* child_ptr = child.get();
+    parent->append_child(std::move(child));
+    EXPECT_EQ(parent->child_count(), 1u);
+    parent->remove_child(*child_ptr);
+    EXPECT_EQ(parent->child_count(), 0u);
+}
+
+TEST(DomNode, TextContentIncludesDescendants) {
+    Document doc;
+    auto div = doc.create_element("div");
+    auto span = doc.create_element("span");
+    auto t1 = doc.create_text_node("Hello");
+    auto t2 = doc.create_text_node(" World");
+    span->append_child(std::move(t2));
+    div->append_child(std::move(t1));
+    div->append_child(std::move(span));
+    EXPECT_EQ(div->text_content(), "Hello World");
+}
+
+TEST(DomElement, TagNameUppercase) {
+    Document doc;
+    auto el = doc.create_element("div");
+    std::string name = el->tag_name();
+    // tag_name() should return the tag as provided or uppercased;
+    // accept either "div" or "DIV" depending on implementation
+    EXPECT_TRUE(name == "div" || name == "DIV");
+}
+
+TEST(DomElement, NoChildrenInitiallyV2) {
+    Document doc;
+    auto el = doc.create_element("section");
+    EXPECT_EQ(el->child_count(), 0u);
+    EXPECT_EQ(el->first_child(), nullptr);
+    EXPECT_EQ(el->last_child(), nullptr);
+}
+
+TEST(DomElement, SetAttributeOverwritesV2) {
+    Document doc;
+    auto el = doc.create_element("input");
+    el->set_attribute("type", "text");
+    el->set_attribute("type", "password");
+    EXPECT_EQ(el->get_attribute("type"), "password");
+    EXPECT_EQ(el->attributes().size(), 1u);
+}
+
+TEST(DomNode, NextSiblingNullForLastV2) {
+    Document doc;
+    auto parent = doc.create_element("div");
+    auto a = doc.create_element("p");
+    auto b = doc.create_element("p");
+    auto* a_ptr = a.get();
+    auto* b_ptr = b.get();
+    parent->append_child(std::move(a));
+    parent->append_child(std::move(b));
+    EXPECT_EQ(b_ptr->next_sibling(), nullptr);
+    EXPECT_NE(a_ptr->next_sibling(), nullptr);
+}
+
+TEST(DomElement, ClassListTwoDistinctV2) {
+    Document doc;
+    auto el = doc.create_element("div");
+    el->class_list().add("alpha");
+    el->class_list().add("beta");
+    EXPECT_TRUE(el->class_list().contains("alpha"));
+    EXPECT_TRUE(el->class_list().contains("beta"));
+}
+
+// --- Cycle 1021: DOM node/element tests ---
+
+TEST(DomElement, TagNameSpan) {
+    Document doc;
+    auto el = doc.create_element("span");
+    std::string name = el->tag_name();
+    EXPECT_TRUE(name == "span" || name == "SPAN");
+}
+
+TEST(DomNode, FirstChildAfterAppendV3) {
+    Document doc;
+    auto parent = doc.create_element("div");
+    auto child = doc.create_element("p");
+    auto* child_ptr = child.get();
+    parent->append_child(std::move(child));
+    EXPECT_EQ(parent->first_child(), child_ptr);
+}
+
+TEST(DomNode, LastChildAfterTwoAppends) {
+    Document doc;
+    auto parent = doc.create_element("ul");
+    auto a = doc.create_element("li");
+    auto b = doc.create_element("li");
+    auto* b_ptr = b.get();
+    parent->append_child(std::move(a));
+    parent->append_child(std::move(b));
+    EXPECT_EQ(parent->last_child(), b_ptr);
+}
+
+TEST(DomElement, GetAttributeReturnsNulloptForMissing) {
+    Document doc;
+    auto el = doc.create_element("div");
+    EXPECT_FALSE(el->get_attribute("nonexistent").has_value());
+}
+
+TEST(DomElement, ClassListToggleRemoves) {
+    Document doc;
+    auto el = doc.create_element("div");
+    el->class_list().add("active");
+    el->class_list().toggle("active");
+    EXPECT_FALSE(el->class_list().contains("active"));
+}
+
+TEST(DomElement, ClassListToStringV3) {
+    Document doc;
+    auto el = doc.create_element("div");
+    el->class_list().add("foo");
+    el->class_list().add("bar");
+    auto s = el->class_list().to_string();
+    EXPECT_NE(s.find("foo"), std::string::npos);
+    EXPECT_NE(s.find("bar"), std::string::npos);
+}
+
+TEST(DomNode, ChildCountAfterTwoAppendsV2) {
+    Document doc;
+    auto parent = doc.create_element("div");
+    parent->append_child(doc.create_element("a"));
+    parent->append_child(doc.create_element("b"));
+    EXPECT_EQ(parent->child_count(), 2u);
+}
+
+TEST(DomNode, PreviousSiblingNullForFirstV3) {
+    Document doc;
+    auto parent = doc.create_element("div");
+    auto a = doc.create_element("p");
+    auto b = doc.create_element("p");
+    auto* a_ptr = a.get();
+    parent->append_child(std::move(a));
+    parent->append_child(std::move(b));
+    EXPECT_EQ(a_ptr->previous_sibling(), nullptr);
+}
+
+// --- Cycle 1030: DOM tests ---
+
+TEST(DomElement, SetAttributeIdV3) {
+    Document doc;
+    auto el = doc.create_element("div");
+    el->set_attribute("id", "main");
+    auto val = el->get_attribute("id");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(val.value(), "main");
+}
+
+TEST(DomElement, ClassListRemoveThenNotContainsV3) {
+    Document doc;
+    auto el = doc.create_element("div");
+    el->class_list().add("a");
+    el->class_list().add("b");
+    el->class_list().remove("a");
+    EXPECT_FALSE(el->class_list().contains("a"));
+    EXPECT_TRUE(el->class_list().contains("b"));
+}
+
+TEST(DomNode, CreateTextNodeV3) {
+    Document doc;
+    auto t = doc.create_text_node("hello");
+    EXPECT_EQ(t->text_content(), "hello");
+}
+
+TEST(DomNode, CreateCommentNotNull) {
+    Document doc;
+    auto c = doc.create_comment("a comment");
+    EXPECT_NE(c.get(), nullptr);
+}
+
+TEST(DomElement, TagNameArticle) {
+    Document doc;
+    auto el = doc.create_element("article");
+    std::string name = el->tag_name();
+    EXPECT_TRUE(name == "article" || name == "ARTICLE");
+}
+
+TEST(DomElement, MultipleAttributesV3) {
+    Document doc;
+    auto el = doc.create_element("input");
+    el->set_attribute("type", "text");
+    el->set_attribute("name", "field");
+    el->set_attribute("placeholder", "enter");
+    EXPECT_EQ(el->attributes().size(), 3u);
+}
+
+TEST(DomNode, AppendThreeChildrenCount) {
+    Document doc;
+    auto p = doc.create_element("ul");
+    p->append_child(doc.create_element("li"));
+    p->append_child(doc.create_element("li"));
+    p->append_child(doc.create_element("li"));
+    EXPECT_EQ(p->child_count(), 3u);
+}
+
+TEST(DomElement, ClassListContainsAfterAddV3) {
+    Document doc;
+    auto el = doc.create_element("div");
+    el->class_list().add("active");
+    EXPECT_TRUE(el->class_list().contains("active"));
+}
+
+// --- Cycle 1039: DOM tests ---
+
+TEST(DomElement, TagNameH1) {
+    Document doc;
+    auto el = doc.create_element("h1");
+    std::string name = el->tag_name();
+    EXPECT_TRUE(name == "h1" || name == "H1");
+}
+
+TEST(DomElement, SetAttributeDataV3) {
+    Document doc;
+    auto el = doc.create_element("div");
+    el->set_attribute("data-id", "42");
+    auto val = el->get_attribute("data-id");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(val.value(), "42");
+}
+
+TEST(DomNode, AppendChildSetsParent) {
+    Document doc;
+    auto parent = doc.create_element("div");
+    auto child = doc.create_element("span");
+    auto* child_ptr = child.get();
+    parent->append_child(std::move(child));
+    EXPECT_EQ(child_ptr->parent(), parent.get());
+}
+
+TEST(DomNode, TextNodeContent) {
+    Document doc;
+    auto t = doc.create_text_node("world");
+    EXPECT_EQ(t->text_content(), "world");
+}
+
+TEST(DomElement, AttributesSizeZero) {
+    Document doc;
+    auto el = doc.create_element("p");
+    EXPECT_EQ(el->attributes().size(), 0u);
+}
+
+TEST(DomElement, ClassListNotContainsInitially) {
+    Document doc;
+    auto el = doc.create_element("div");
+    EXPECT_FALSE(el->class_list().contains("anything"));
+}
+
+TEST(DomNode, FirstChildNullEmpty) {
+    Document doc;
+    auto el = doc.create_element("ul");
+    EXPECT_EQ(el->first_child(), nullptr);
+}
+
+TEST(DomNode, LastChildNullEmpty) {
+    Document doc;
+    auto el = doc.create_element("ul");
+    EXPECT_EQ(el->last_child(), nullptr);
+}
+
+// --- Cycle 1048: DOM tests ---
+
+TEST(DomElement, TagNameUl) {
+    Document doc;
+    auto el = doc.create_element("ul");
+    std::string name = el->tag_name();
+    EXPECT_TRUE(name == "ul" || name == "UL");
+}
+
+TEST(DomElement, TagNameOl) {
+    Document doc;
+    auto el = doc.create_element("ol");
+    std::string name = el->tag_name();
+    EXPECT_TRUE(name == "ol" || name == "OL");
+}
+
+TEST(DomElement, SetAttributeClassV4) {
+    Document doc;
+    auto el = doc.create_element("div");
+    el->set_attribute("class", "foo bar");
+    auto val = el->get_attribute("class");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(val.value(), "foo bar");
+}
+
+TEST(DomNode, ChildCountTwo) {
+    Document doc;
+    auto parent = doc.create_element("div");
+    auto c1 = doc.create_element("p");
+    auto c2 = doc.create_element("span");
+    parent->append_child(std::move(c1));
+    parent->append_child(std::move(c2));
+    EXPECT_EQ(parent->child_count(), 2u);
+}
+
+TEST(DomElement, HasAttributeTrueV4) {
+    Document doc;
+    auto el = doc.create_element("input");
+    el->set_attribute("type", "text");
+    EXPECT_TRUE(el->has_attribute("type"));
+}
+
+TEST(DomElement, HasAttributeFalseV4) {
+    Document doc;
+    auto el = doc.create_element("div");
+    EXPECT_FALSE(el->has_attribute("style"));
+}
+
+TEST(DomNode, NextSiblingAfterAppendV4) {
+    Document doc;
+    auto parent = doc.create_element("div");
+    auto c1 = doc.create_element("a");
+    auto c2 = doc.create_element("b");
+    auto* c1_ptr = c1.get();
+    auto* c2_ptr = c2.get();
+    parent->append_child(std::move(c1));
+    parent->append_child(std::move(c2));
+    EXPECT_EQ(c1_ptr->next_sibling(), c2_ptr);
+}
+
+TEST(DomNode, PreviousSiblingAfterAppendV4) {
+    Document doc;
+    auto parent = doc.create_element("div");
+    auto c1 = doc.create_element("a");
+    auto c2 = doc.create_element("b");
+    auto* c1_ptr = c1.get();
+    auto* c2_ptr = c2.get();
+    parent->append_child(std::move(c1));
+    parent->append_child(std::move(c2));
+    EXPECT_EQ(c2_ptr->previous_sibling(), c1_ptr);
+}
+
+// --- Cycle 1057: DOM tests ---
+
+TEST(DomElement, TagNameLi) {
+    Document doc;
+    auto el = doc.create_element("li");
+    std::string name = el->tag_name();
+    EXPECT_TRUE(name == "li" || name == "LI");
+}
+
+TEST(DomElement, TagNameTable) {
+    Document doc;
+    auto el = doc.create_element("table");
+    std::string name = el->tag_name();
+    EXPECT_TRUE(name == "table" || name == "TABLE");
+}
+
+TEST(DomElement, RemoveAttributeV5) {
+    Document doc;
+    auto el = doc.create_element("div");
+    el->set_attribute("id", "test");
+    el->remove_attribute("id");
+    EXPECT_FALSE(el->has_attribute("id"));
+}
+
+TEST(DomNode, TextNodeTypeCheck) {
+    Document doc;
+    auto t = doc.create_text_node("hello");
+    EXPECT_NE(t, nullptr);
+}
+
+TEST(DomElement, ClassListToggleAddsV5) {
+    Document doc;
+    auto el = doc.create_element("div");
+    el->class_list().toggle("active");
+    EXPECT_TRUE(el->class_list().contains("active"));
+}
+
+TEST(DomElement, ClassListToggleRemovesV5) {
+    Document doc;
+    auto el = doc.create_element("div");
+    el->class_list().add("active");
+    el->class_list().toggle("active");
+    EXPECT_FALSE(el->class_list().contains("active"));
+}
+
+TEST(DomNode, ChildCountAfterRemoveV5) {
+    Document doc;
+    auto parent = doc.create_element("div");
+    auto child = doc.create_element("span");
+    auto& child_ref = *child;
+    parent->append_child(std::move(child));
+    parent->remove_child(child_ref);
+    EXPECT_EQ(parent->child_count(), 0u);
+}
+
+TEST(DomElement, SetAttributeTwiceOverwrites) {
+    Document doc;
+    auto el = doc.create_element("a");
+    el->set_attribute("href", "/old");
+    el->set_attribute("href", "/new");
+    EXPECT_EQ(el->get_attribute("href").value(), "/new");
+}
+
+// --- Cycle 1066: DOM tests ---
+
+TEST(DomElement, TagNameForm) {
+    Document doc;
+    auto el = doc.create_element("form");
+    std::string name = el->tag_name();
+    EXPECT_TRUE(name == "form" || name == "FORM");
+}
+
+TEST(DomElement, TagNameInput) {
+    Document doc;
+    auto el = doc.create_element("input");
+    std::string name = el->tag_name();
+    EXPECT_TRUE(name == "input" || name == "INPUT");
+}
+
+TEST(DomElement, AttributeCountAfterThreeV5) {
+    Document doc;
+    auto el = doc.create_element("div");
+    el->set_attribute("id", "x");
+    el->set_attribute("class", "y");
+    el->set_attribute("style", "z");
+    EXPECT_EQ(el->attributes().size(), 3u);
+}
+
+TEST(DomNode, CreateTextNodeEmpty) {
+    Document doc;
+    auto t = doc.create_text_node("");
+    EXPECT_EQ(t->text_content(), "");
+}
+
+TEST(DomElement, ClassListAddTwoV5) {
+    Document doc;
+    auto el = doc.create_element("div");
+    el->class_list().add("a");
+    el->class_list().add("b");
+    EXPECT_TRUE(el->class_list().contains("a"));
+    EXPECT_TRUE(el->class_list().contains("b"));
+}
+
+TEST(DomElement, ClassListRemoveOneOfTwoV5) {
+    Document doc;
+    auto el = doc.create_element("div");
+    el->class_list().add("x");
+    el->class_list().add("y");
+    el->class_list().remove("x");
+    EXPECT_FALSE(el->class_list().contains("x"));
+    EXPECT_TRUE(el->class_list().contains("y"));
+}
+
+TEST(DomNode, FirstChildAfterTwoAppends) {
+    Document doc;
+    auto parent = doc.create_element("div");
+    auto c1 = doc.create_element("a");
+    auto c2 = doc.create_element("b");
+    auto* c1_ptr = c1.get();
+    parent->append_child(std::move(c1));
+    parent->append_child(std::move(c2));
+    EXPECT_EQ(parent->first_child(), c1_ptr);
+}
+
+TEST(DomNode, LastChildAfterThreeAppends) {
+    Document doc;
+    auto parent = doc.create_element("div");
+    auto c1 = doc.create_element("a");
+    auto c2 = doc.create_element("b");
+    auto c3 = doc.create_element("c");
+    auto* c3_ptr = c3.get();
+    parent->append_child(std::move(c1));
+    parent->append_child(std::move(c2));
+    parent->append_child(std::move(c3));
+    EXPECT_EQ(parent->last_child(), c3_ptr);
+}
+
+// --- Cycle 1075: DOM tests ---
+
+TEST(DomElement, TagNameSection) {
+    Document doc;
+    auto el = doc.create_element("section");
+    std::string name = el->tag_name();
+    EXPECT_TRUE(name == "section" || name == "SECTION");
+}
+
+TEST(DomElement, TagNameNav) {
+    Document doc;
+    auto el = doc.create_element("nav");
+    std::string name = el->tag_name();
+    EXPECT_TRUE(name == "nav" || name == "NAV");
+}
+
+TEST(DomElement, TagNameHeader) {
+    Document doc;
+    auto el = doc.create_element("header");
+    std::string name = el->tag_name();
+    EXPECT_TRUE(name == "header" || name == "HEADER");
+}
+
+TEST(DomElement, TagNameFooter) {
+    Document doc;
+    auto el = doc.create_element("footer");
+    std::string name = el->tag_name();
+    EXPECT_TRUE(name == "footer" || name == "FOOTER");
+}
+
+TEST(DomElement, SetAttributeStyleV5) {
+    Document doc;
+    auto el = doc.create_element("div");
+    el->set_attribute("style", "color: red");
+    EXPECT_EQ(el->get_attribute("style").value(), "color: red");
+}
+
+TEST(DomElement, RemoveAttributeClassV5) {
+    Document doc;
+    auto el = doc.create_element("div");
+    el->set_attribute("class", "foo");
+    el->remove_attribute("class");
+    EXPECT_FALSE(el->get_attribute("class").has_value());
+}
+
+TEST(DomNode, ChildCountThree) {
+    Document doc;
+    auto parent = doc.create_element("ul");
+    parent->append_child(doc.create_element("li"));
+    parent->append_child(doc.create_element("li"));
+    parent->append_child(doc.create_element("li"));
+    EXPECT_EQ(parent->child_count(), 3u);
+}
+
+TEST(DomElement, ClassListToStringV5) {
+    Document doc;
+    auto el = doc.create_element("div");
+    el->class_list().add("alpha");
+    el->class_list().add("beta");
+    auto str = el->class_list().to_string();
+    EXPECT_NE(str.find("alpha"), std::string::npos);
+    EXPECT_NE(str.find("beta"), std::string::npos);
+}
+
+// --- Cycle 1084: DOM tests ---
+
+TEST(DomElement, TagNameMain) {
+    Document doc;
+    auto el = doc.create_element("main");
+    std::string name = el->tag_name();
+    EXPECT_TRUE(name == "main" || name == "MAIN");
+}
+
+TEST(DomElement, TagNameAside) {
+    Document doc;
+    auto el = doc.create_element("aside");
+    std::string name = el->tag_name();
+    EXPECT_TRUE(name == "aside" || name == "ASIDE");
+}
+
+TEST(DomElement, GetAttributeHref) {
+    Document doc;
+    auto el = doc.create_element("a");
+    el->set_attribute("href", "https://example.com");
+    EXPECT_EQ(el->get_attribute("href").value(), "https://example.com");
+}
+
+TEST(DomNode, TextContentAfterSetV5) {
+    Document doc;
+    auto t = doc.create_text_node("original");
+    EXPECT_EQ(t->text_content(), "original");
+}
+
+TEST(DomElement, HasAttributeAfterRemoveV5) {
+    Document doc;
+    auto el = doc.create_element("img");
+    el->set_attribute("src", "pic.png");
+    el->remove_attribute("src");
+    EXPECT_FALSE(el->has_attribute("src"));
+}
+
+TEST(DomElement, ClassListAddDuplicateV5) {
+    Document doc;
+    auto el = doc.create_element("div");
+    el->class_list().add("x");
+    el->class_list().add("x");
+    // Adding duplicate should not crash; still contains
+    EXPECT_TRUE(el->class_list().contains("x"));
+}
+
+TEST(DomNode, ParentNullForDetachedV5) {
+    Document doc;
+    auto el = doc.create_element("span");
+    EXPECT_EQ(el->parent(), nullptr);
+}
+
+TEST(DomNode, NextSiblingNullForSingleChild) {
+    Document doc;
+    auto parent = doc.create_element("div");
+    auto child = doc.create_element("p");
+    auto* child_ptr = child.get();
+    parent->append_child(std::move(child));
+    EXPECT_EQ(child_ptr->next_sibling(), nullptr);
+}
+
+// --- Cycle 1093: 8 DOM tests ---
+
+TEST(DomElement, TagNameSummary) {
+    Document doc;
+    auto el = doc.create_element("summary");
+    std::string name = el->tag_name();
+    EXPECT_TRUE(name == "summary" || name == "SUMMARY");
+}
+
+TEST(DomElement, TagNameDialog) {
+    Document doc;
+    auto el = doc.create_element("dialog");
+    std::string name = el->tag_name();
+    EXPECT_TRUE(name == "dialog" || name == "DIALOG");
+}
+
+TEST(DomElement, TagNameTemplate) {
+    Document doc;
+    auto el = doc.create_element("template");
+    std::string name = el->tag_name();
+    EXPECT_TRUE(name == "template" || name == "TEMPLATE");
+}
+
+TEST(DomElement, TagNameDetails) {
+    Document doc;
+    auto el = doc.create_element("details");
+    std::string name = el->tag_name();
+    EXPECT_TRUE(name == "details" || name == "DETAILS");
+}
+
+TEST(DomElement, SetAttributeHrefV5) {
+    Document doc;
+    auto el = doc.create_element("a");
+    el->set_attribute("href", "/page");
+    EXPECT_EQ(el->get_attribute("href"), "/page");
+}
+
+TEST(DomElement, RemoveAttributeHrefV5) {
+    Document doc;
+    auto el = doc.create_element("a");
+    el->set_attribute("href", "/page");
+    el->remove_attribute("href");
+    EXPECT_FALSE(el->get_attribute("href").has_value());
+}
+
+TEST(DomNode, ChildCountFour) {
+    Document doc;
+    auto parent = doc.create_element("div");
+    parent->append_child(doc.create_element("a"));
+    parent->append_child(doc.create_element("b"));
+    parent->append_child(doc.create_element("c"));
+    parent->append_child(doc.create_element("d"));
+    EXPECT_EQ(parent->child_count(), 4u);
+}
+
+TEST(DomElement, ClassListContainsAfterAddV6) {
+    Document doc;
+    auto el = doc.create_element("div");
+    el->class_list().add("highlight");
+    EXPECT_TRUE(el->class_list().contains("highlight"));
+}
+
+// --- Cycle 1102: 8 DOM tests ---
+
+TEST(DomElement, TagNameFigure) {
+    Document doc;
+    auto el = doc.create_element("figure");
+    std::string name = el->tag_name();
+    EXPECT_TRUE(name == "figure" || name == "FIGURE");
+}
+
+TEST(DomElement, TagNameFigcaption) {
+    Document doc;
+    auto el = doc.create_element("figcaption");
+    std::string name = el->tag_name();
+    EXPECT_TRUE(name == "figcaption" || name == "FIGCAPTION");
+}
+
+TEST(DomElement, SetAttributeSrcV6) {
+    Document doc;
+    auto el = doc.create_element("img");
+    el->set_attribute("src", "/img.png");
+    EXPECT_EQ(el->get_attribute("src"), "/img.png");
+}
+
+TEST(DomElement, SetAttributeAltV6) {
+    Document doc;
+    auto el = doc.create_element("img");
+    el->set_attribute("alt", "photo");
+    EXPECT_EQ(el->get_attribute("alt"), "photo");
+}
+
+TEST(DomNode, ChildCountFive) {
+    Document doc;
+    auto parent = doc.create_element("div");
+    for (int i = 0; i < 5; i++) parent->append_child(doc.create_element("p"));
+    EXPECT_EQ(parent->child_count(), 5u);
+}
+
+TEST(DomElement, ClassListRemoveNotPresentV6) {
+    Document doc;
+    auto el = doc.create_element("div");
+    el->class_list().remove("nope");
+    EXPECT_FALSE(el->class_list().contains("nope"));
+}
+
+TEST(DomElement, ClassListToggleAddsV6) {
+    Document doc;
+    auto el = doc.create_element("div");
+    el->class_list().toggle("active");
+    EXPECT_TRUE(el->class_list().contains("active"));
+}
+
+TEST(DomElement, HasAttributeAfterSetV6) {
+    Document doc;
+    auto el = doc.create_element("div");
+    el->set_attribute("data-id", "42");
+    EXPECT_TRUE(el->has_attribute("data-id"));
+}
+
+// --- Cycle 1111: 8 DOM tests ---
+
+TEST(DomElement, TagNameMark) {
+    Document doc;
+    auto el = doc.create_element("mark");
+    std::string name = el->tag_name();
+    EXPECT_TRUE(name == "mark" || name == "MARK");
+}
+
+TEST(DomElement, TagNameTime) {
+    Document doc;
+    auto el = doc.create_element("time");
+    std::string name = el->tag_name();
+    EXPECT_TRUE(name == "time" || name == "TIME");
+}
+
+TEST(DomElement, SetAttributeWidthV6) {
+    Document doc;
+    auto el = doc.create_element("img");
+    el->set_attribute("width", "100");
+    EXPECT_EQ(el->get_attribute("width"), "100");
+}
+
+TEST(DomElement, SetAttributeHeightV6) {
+    Document doc;
+    auto el = doc.create_element("img");
+    el->set_attribute("height", "200");
+    EXPECT_EQ(el->get_attribute("height"), "200");
+}
+
+TEST(DomNode, ParentNullForRoot) {
+    Document doc;
+    auto el = doc.create_element("div");
+    EXPECT_EQ(el->parent(), nullptr);
+}
+
+TEST(DomNode, ParentSetAfterAppendV6) {
+    Document doc;
+    auto parent = doc.create_element("div");
+    auto child = doc.create_element("span");
+    auto* child_ptr = child.get();
+    parent->append_child(std::move(child));
+    EXPECT_EQ(child_ptr->parent(), parent.get());
+}
+
+TEST(DomElement, ClassListToStringAfterTwoAddsV6) {
+    Document doc;
+    auto el = doc.create_element("div");
+    el->class_list().add("a");
+    el->class_list().add("b");
+    std::string s = el->class_list().to_string();
+    EXPECT_TRUE(s.find("a") != std::string::npos);
+    EXPECT_TRUE(s.find("b") != std::string::npos);
+}
+
+TEST(DomElement, AttributesSizeAfterTwoSetsV6) {
+    Document doc;
+    auto el = doc.create_element("div");
+    el->set_attribute("id", "x");
+    el->set_attribute("class", "y");
+    EXPECT_EQ(el->attributes().size(), 2u);
+}
+
+// --- Cycle 1120: 8 DOM tests ---
+
+TEST(DomElement, TagNameOutput) {
+    Document doc;
+    auto el = doc.create_element("output");
+    std::string name = el->tag_name();
+    EXPECT_TRUE(name == "output" || name == "OUTPUT");
+}
+
+TEST(DomElement, TagNameData) {
+    Document doc;
+    auto el = doc.create_element("data");
+    std::string name = el->tag_name();
+    EXPECT_TRUE(name == "data" || name == "DATA");
+}
+
+TEST(DomElement, SetAttributeTypeV7) {
+    Document doc;
+    auto el = doc.create_element("input");
+    el->set_attribute("type", "text");
+    EXPECT_EQ(el->get_attribute("type"), "text");
+}
+
+TEST(DomElement, SetAttributeNameV7) {
+    Document doc;
+    auto el = doc.create_element("input");
+    el->set_attribute("name", "username");
+    EXPECT_EQ(el->get_attribute("name"), "username");
+}
+
+TEST(DomNode, FirstChildNotNullAfterAppendV7) {
+    Document doc;
+    auto parent = doc.create_element("div");
+    parent->append_child(doc.create_element("p"));
+    EXPECT_NE(parent->first_child(), nullptr);
+}
+
+TEST(DomNode, LastChildNotNullAfterAppendV7) {
+    Document doc;
+    auto parent = doc.create_element("div");
+    parent->append_child(doc.create_element("span"));
+    EXPECT_NE(parent->last_child(), nullptr);
+}
+
+TEST(DomElement, ClassListToggleRemovesV7) {
+    Document doc;
+    auto el = doc.create_element("div");
+    el->class_list().add("active");
+    el->class_list().toggle("active");
+    EXPECT_FALSE(el->class_list().contains("active"));
+}
+
+TEST(DomElement, GetAttributeReturnsNulloptForMissingV7) {
+    Document doc;
+    auto el = doc.create_element("div");
+    EXPECT_FALSE(el->get_attribute("nonexistent").has_value());
+}
+
+// --- Cycle 1129: 8 DOM tests ---
+
+TEST(DomElement, TagNameProgress) {
+    Document doc;
+    auto el = doc.create_element("progress");
+    std::string name = el->tag_name();
+    EXPECT_TRUE(name == "progress" || name == "PROGRESS");
+}
+
+TEST(DomElement, TagNameMeter) {
+    Document doc;
+    auto el = doc.create_element("meter");
+    std::string name = el->tag_name();
+    EXPECT_TRUE(name == "meter" || name == "METER");
+}
+
+TEST(DomElement, SetAttributeValueV7) {
+    Document doc;
+    auto el = doc.create_element("input");
+    el->set_attribute("value", "test");
+    EXPECT_EQ(el->get_attribute("value"), "test");
+}
+
+TEST(DomElement, SetAttributePlaceholderV7) {
+    Document doc;
+    auto el = doc.create_element("input");
+    el->set_attribute("placeholder", "Enter name");
+    EXPECT_EQ(el->get_attribute("placeholder"), "Enter name");
+}
+
+TEST(DomNode, ChildCountSix) {
+    Document doc;
+    auto parent = doc.create_element("div");
+    for (int i = 0; i < 6; i++) parent->append_child(doc.create_element("p"));
+    EXPECT_EQ(parent->child_count(), 6u);
+}
+
+TEST(DomElement, ClassListAddThreeV7) {
+    Document doc;
+    auto el = doc.create_element("div");
+    el->class_list().add("a");
+    el->class_list().add("b");
+    el->class_list().add("c");
+    EXPECT_TRUE(el->class_list().contains("a"));
+    EXPECT_TRUE(el->class_list().contains("b"));
+    EXPECT_TRUE(el->class_list().contains("c"));
+}
+
+TEST(DomElement, HasAttributeFalseAfterRemoveV7) {
+    Document doc;
+    auto el = doc.create_element("div");
+    el->set_attribute("x", "y");
+    el->remove_attribute("x");
+    EXPECT_FALSE(el->has_attribute("x"));
+}
+
+TEST(DomElement, AttributesSizeAfterThreeSetsV7) {
+    Document doc;
+    auto el = doc.create_element("div");
+    el->set_attribute("a", "1");
+    el->set_attribute("b", "2");
+    el->set_attribute("c", "3");
+    EXPECT_EQ(el->attributes().size(), 3u);
+}

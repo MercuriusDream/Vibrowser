@@ -4535,3 +4535,925 @@ TEST(SerializerTest, I32ThenU32ThenI64) {
     EXPECT_EQ(d.read_u32(), 200u);
     EXPECT_EQ(d.read_i64(), -300LL);
 }
+
+TEST(SerializerTest, U8ZeroRoundTripV2) {
+    Serializer s;
+    s.write_u8(0);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u8(), 0);
+}
+
+TEST(SerializerTest, U64ZeroRoundTripV3) {
+    Serializer s;
+    s.write_u64(0);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u64(), 0u);
+}
+
+TEST(SerializerTest, StringWithNewlineV2) {
+    Serializer s;
+    s.write_string("line1\nline2");
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "line1\nline2");
+}
+
+TEST(SerializerTest, F64ZeroRoundTripV2) {
+    Serializer s;
+    s.write_f64(0.0);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_f64(), 0.0);
+}
+
+TEST(SerializerTest, ThreeStringsSequential) {
+    Serializer s;
+    s.write_string("alpha");
+    s.write_string("beta");
+    s.write_string("gamma");
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "alpha");
+    EXPECT_EQ(d.read_string(), "beta");
+    EXPECT_EQ(d.read_string(), "gamma");
+}
+
+TEST(SerializerTest, I32MaxValueV2) {
+    Serializer s;
+    s.write_i32(2147483647);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i32(), 2147483647);
+}
+
+TEST(SerializerTest, BoolStringBoolPattern) {
+    Serializer s;
+    s.write_bool(true);
+    s.write_string("middle");
+    s.write_bool(false);
+    Deserializer d(s.data());
+    EXPECT_TRUE(d.read_bool());
+    EXPECT_EQ(d.read_string(), "middle");
+    EXPECT_FALSE(d.read_bool());
+}
+
+TEST(SerializerTest, U16ThenU32ThenU64) {
+    Serializer s;
+    s.write_u16(100);
+    s.write_u32(200);
+    s.write_u64(300);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u16(), 100);
+    EXPECT_EQ(d.read_u32(), 200u);
+    EXPECT_EQ(d.read_u64(), 300u);
+}
+
+TEST(SerializerTest, ThreeBoolsRoundTrip) {
+    Serializer s;
+    s.write_bool(true);
+    s.write_bool(false);
+    s.write_bool(true);
+    Deserializer d(s.data());
+    EXPECT_TRUE(d.read_bool());
+    EXPECT_FALSE(d.read_bool());
+    EXPECT_TRUE(d.read_bool());
+}
+
+TEST(SerializerTest, StringWithEmojiCharacters) {
+    Serializer s;
+    s.write_string("hello 🌍");
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "hello 🌍");
+}
+
+TEST(SerializerTest, I64ZeroRoundTripV2) {
+    Serializer s;
+    s.write_i64(0);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i64(), 0);
+}
+
+TEST(SerializerTest, U8StringU8Pattern) {
+    Serializer s;
+    s.write_u8(10);
+    s.write_string("mid");
+    s.write_u8(20);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u8(), 10);
+    EXPECT_EQ(d.read_string(), "mid");
+    EXPECT_EQ(d.read_u8(), 20);
+}
+
+TEST(SerializerTest, F64NegativeInfinity) {
+    Serializer s;
+    s.write_f64(-std::numeric_limits<double>::infinity());
+    Deserializer d(s.data());
+    double val = d.read_f64();
+    EXPECT_TRUE(std::isinf(val));
+    EXPECT_TRUE(val < 0);
+}
+
+TEST(SerializerTest, TwoDifferentStrings) {
+    Serializer s;
+    s.write_string("alpha");
+    s.write_string("beta");
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "alpha");
+    EXPECT_EQ(d.read_string(), "beta");
+}
+
+TEST(SerializerTest, U32ZeroAndOne) {
+    Serializer s;
+    s.write_u32(0);
+    s.write_u32(1);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u32(), 0u);
+    EXPECT_EQ(d.read_u32(), 1u);
+}
+
+TEST(SerializerTest, I32F64StringMixedPattern) {
+    Serializer s;
+    s.write_i32(42);
+    s.write_f64(3.14);
+    s.write_string("end");
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i32(), 42);
+    EXPECT_DOUBLE_EQ(d.read_f64(), 3.14);
+    EXPECT_EQ(d.read_string(), "end");
+}
+
+// --- Cycle 1023: IPC serializer tests ---
+
+TEST(SerializerTest, U64MaxValueV2) {
+    Serializer s;
+    s.write_u64(UINT64_MAX);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u64(), UINT64_MAX);
+}
+
+TEST(SerializerTest, I32NegativeOneRoundTrip) {
+    Serializer s;
+    s.write_i32(-1);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i32(), -1);
+}
+
+TEST(SerializerTest, EmptyStringRoundTripV2) {
+    Serializer s;
+    s.write_string("");
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "");
+}
+
+TEST(SerializerTest, BoolTrueRoundTripV2) {
+    Serializer s;
+    s.write_bool(true);
+    Deserializer d(s.data());
+    EXPECT_TRUE(d.read_bool());
+}
+
+TEST(SerializerTest, BoolFalseRoundTripV2) {
+    Serializer s;
+    s.write_bool(false);
+    Deserializer d(s.data());
+    EXPECT_FALSE(d.read_bool());
+}
+
+TEST(SerializerTest, F64PiRoundTripV2) {
+    Serializer s;
+    s.write_f64(3.14159265358979);
+    Deserializer d(s.data());
+    EXPECT_DOUBLE_EQ(d.read_f64(), 3.14159265358979);
+}
+
+TEST(SerializerTest, U16MaxValueV2) {
+    Serializer s;
+    s.write_u16(65535);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u16(), 65535);
+}
+
+TEST(SerializerTest, StringThenBoolThenI64Pattern) {
+    Serializer s;
+    s.write_string("start");
+    s.write_bool(true);
+    s.write_i64(-999);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "start");
+    EXPECT_TRUE(d.read_bool());
+    EXPECT_EQ(d.read_i64(), -999);
+}
+
+// --- Cycle 1032: IPC serializer tests ---
+
+TEST(SerializerTest, FourU8Sequential) {
+    Serializer s;
+    s.write_u8(10); s.write_u8(20); s.write_u8(30); s.write_u8(40);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u8(), 10); EXPECT_EQ(d.read_u8(), 20);
+    EXPECT_EQ(d.read_u8(), 30); EXPECT_EQ(d.read_u8(), 40);
+}
+
+TEST(SerializerTest, I64MinValueV2) {
+    Serializer s;
+    s.write_i64(INT64_MIN);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i64(), INT64_MIN);
+}
+
+TEST(SerializerTest, F64ZeroRoundTripV3) {
+    Serializer s;
+    s.write_f64(0.0);
+    Deserializer d(s.data());
+    EXPECT_DOUBLE_EQ(d.read_f64(), 0.0);
+}
+
+TEST(SerializerTest, U32AllBitsSet) {
+    Serializer s;
+    s.write_u32(UINT32_MAX);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u32(), UINT32_MAX);
+}
+
+TEST(SerializerTest, StringWithNewlineV3) {
+    Serializer s;
+    s.write_string("line1\nline2");
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "line1\nline2");
+}
+
+TEST(SerializerTest, ThreeStringsSequentialV2) {
+    Serializer s;
+    s.write_string("a"); s.write_string("bb"); s.write_string("ccc");
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "a");
+    EXPECT_EQ(d.read_string(), "bb");
+    EXPECT_EQ(d.read_string(), "ccc");
+}
+
+TEST(SerializerTest, I32PositiveAndNegative) {
+    Serializer s;
+    s.write_i32(100); s.write_i32(-100);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i32(), 100); EXPECT_EQ(d.read_i32(), -100);
+}
+
+TEST(SerializerTest, BoolU8BoolU8Pattern) {
+    Serializer s;
+    s.write_bool(true); s.write_u8(255);
+    s.write_bool(false); s.write_u8(0);
+    Deserializer d(s.data());
+    EXPECT_TRUE(d.read_bool()); EXPECT_EQ(d.read_u8(), 255);
+    EXPECT_FALSE(d.read_bool()); EXPECT_EQ(d.read_u8(), 0);
+}
+
+// --- Cycle 1041: IPC serializer tests ---
+
+TEST(SerializerTest, U16MaxRoundTrip) {
+    Serializer s;
+    s.write_u16(UINT16_MAX);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u16(), UINT16_MAX);
+}
+
+TEST(SerializerTest, U16ZeroRoundTrip) {
+    Serializer s;
+    s.write_u16(0);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u16(), 0);
+}
+
+TEST(SerializerTest, F64NegativeRoundTripV4) {
+    Serializer s;
+    s.write_f64(-123.456);
+    Deserializer d(s.data());
+    EXPECT_DOUBLE_EQ(d.read_f64(), -123.456);
+}
+
+TEST(SerializerTest, I32MaxRoundTripV2) {
+    Serializer s;
+    s.write_i32(INT32_MAX);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i32(), INT32_MAX);
+}
+
+TEST(SerializerTest, I32MinRoundTripV2) {
+    Serializer s;
+    s.write_i32(INT32_MIN);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i32(), INT32_MIN);
+}
+
+TEST(SerializerTest, BytesEmptyRoundTripV3) {
+    Serializer s;
+    std::vector<uint8_t> empty;
+    s.write_bytes(empty.data(), empty.size());
+    Deserializer d(s.data());
+    EXPECT_TRUE(d.read_bytes().empty());
+}
+
+TEST(SerializerTest, StringEmptyRoundTripV4) {
+    Serializer s;
+    s.write_string("");
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "");
+}
+
+TEST(SerializerTest, U64ThenBoolSequence) {
+    Serializer s;
+    s.write_u64(999999); s.write_bool(true);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u64(), 999999u);
+    EXPECT_TRUE(d.read_bool());
+}
+
+// --- Cycle 1050: IPC serializer tests ---
+
+TEST(SerializerTest, U8ZeroRoundTripV3) {
+    Serializer s;
+    s.write_u8(0);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u8(), 0);
+}
+
+TEST(SerializerTest, U8MaxRoundTripV2) {
+    Serializer s;
+    s.write_u8(255);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u8(), 255);
+}
+
+TEST(SerializerTest, U16MidRoundTrip) {
+    Serializer s;
+    s.write_u16(32768);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u16(), 32768);
+}
+
+TEST(SerializerTest, I64PositiveRoundTripV2) {
+    Serializer s;
+    s.write_i64(1234567890LL);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i64(), 1234567890LL);
+}
+
+TEST(SerializerTest, F64LargeRoundTrip) {
+    Serializer s;
+    s.write_f64(1e18);
+    Deserializer d(s.data());
+    EXPECT_DOUBLE_EQ(d.read_f64(), 1e18);
+}
+
+TEST(SerializerTest, StringUnicodeRoundTripV2) {
+    Serializer s;
+    s.write_string("Hello\xC3\xA9");
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "Hello\xC3\xA9");
+}
+
+TEST(SerializerTest, BoolFalseThenTrueV2) {
+    Serializer s;
+    s.write_bool(false); s.write_bool(true);
+    Deserializer d(s.data());
+    EXPECT_FALSE(d.read_bool());
+    EXPECT_TRUE(d.read_bool());
+}
+
+TEST(SerializerTest, U32MidRoundTrip) {
+    Serializer s;
+    s.write_u32(2147483648u);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u32(), 2147483648u);
+}
+
+// --- Cycle 1059: IPC serializer tests ---
+
+TEST(SerializerTest, I64NegOneRoundTrip) {
+    Serializer s;
+    s.write_i64(-1);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i64(), -1);
+}
+
+TEST(SerializerTest, F64SmallRoundTrip) {
+    Serializer s;
+    s.write_f64(0.001);
+    Deserializer d(s.data());
+    EXPECT_DOUBLE_EQ(d.read_f64(), 0.001);
+}
+
+TEST(SerializerTest, U16OneRoundTrip) {
+    Serializer s;
+    s.write_u16(1);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u16(), 1);
+}
+
+TEST(SerializerTest, StringLongRoundTrip) {
+    Serializer s;
+    std::string longstr(1000, 'x');
+    s.write_string(longstr);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), longstr);
+}
+
+TEST(SerializerTest, I32OneRoundTrip) {
+    Serializer s;
+    s.write_i32(1);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i32(), 1);
+}
+
+TEST(SerializerTest, U64OneRoundTrip) {
+    Serializer s;
+    s.write_u64(1);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u64(), 1u);
+}
+
+TEST(SerializerTest, BoolTrueThenStringV2) {
+    Serializer s;
+    s.write_bool(true); s.write_string("yes");
+    Deserializer d(s.data());
+    EXPECT_TRUE(d.read_bool());
+    EXPECT_EQ(d.read_string(), "yes");
+}
+
+TEST(SerializerTest, U32ThenI32Sequence) {
+    Serializer s;
+    s.write_u32(100); s.write_i32(-50);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u32(), 100u);
+    EXPECT_EQ(d.read_i32(), -50);
+}
+
+// --- Cycle 1068: IPC serializer tests ---
+
+TEST(SerializerTest, F64InfinityRoundTripV2) {
+    Serializer s;
+    s.write_f64(std::numeric_limits<double>::infinity());
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_f64(), std::numeric_limits<double>::infinity());
+}
+
+TEST(SerializerTest, I64MaxRoundTripV2) {
+    Serializer s;
+    s.write_i64(INT64_MAX);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i64(), INT64_MAX);
+}
+
+TEST(SerializerTest, U32OneRoundTrip) {
+    Serializer s;
+    s.write_u32(1);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u32(), 1u);
+}
+
+TEST(SerializerTest, StringWithTabV3) {
+    Serializer s;
+    s.write_string("a\tb");
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "a\tb");
+}
+
+TEST(SerializerTest, U16ThenU16Sequence) {
+    Serializer s;
+    s.write_u16(100); s.write_u16(200);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u16(), 100);
+    EXPECT_EQ(d.read_u16(), 200);
+}
+
+TEST(SerializerTest, I32NegMaxRoundTrip) {
+    Serializer s;
+    s.write_i32(-2147483647);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i32(), -2147483647);
+}
+
+TEST(SerializerTest, F64TinyRoundTrip) {
+    Serializer s;
+    s.write_f64(1e-15);
+    Deserializer d(s.data());
+    EXPECT_DOUBLE_EQ(d.read_f64(), 1e-15);
+}
+
+TEST(SerializerTest, BoolStringBoolPatternV2) {
+    Serializer s;
+    s.write_bool(true); s.write_string("mid"); s.write_bool(false);
+    Deserializer d(s.data());
+    EXPECT_TRUE(d.read_bool());
+    EXPECT_EQ(d.read_string(), "mid");
+    EXPECT_FALSE(d.read_bool());
+}
+
+// --- Cycle 1077: IPC serializer tests ---
+
+TEST(SerializerTest, U64MaxRoundTripV3) {
+    Serializer s;
+    s.write_u64(UINT64_MAX);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u64(), UINT64_MAX);
+}
+
+TEST(SerializerTest, F64NegZeroRoundTrip) {
+    Serializer s;
+    s.write_f64(-0.0);
+    Deserializer d(s.data());
+    EXPECT_DOUBLE_EQ(d.read_f64(), -0.0);
+}
+
+TEST(SerializerTest, I32ZeroRoundTripV2) {
+    Serializer s;
+    s.write_i32(0);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i32(), 0);
+}
+
+TEST(SerializerTest, StringSingleCharV2) {
+    Serializer s;
+    s.write_string("x");
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "x");
+}
+
+TEST(SerializerTest, U8ThenU16ThenU32) {
+    Serializer s;
+    s.write_u8(1); s.write_u16(2); s.write_u32(3);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u8(), 1);
+    EXPECT_EQ(d.read_u16(), 2);
+    EXPECT_EQ(d.read_u32(), 3u);
+}
+
+TEST(SerializerTest, I64ZeroRoundTripV3) {
+    Serializer s;
+    s.write_i64(0);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i64(), 0);
+}
+
+TEST(SerializerTest, F64EulerRoundTrip) {
+    Serializer s;
+    s.write_f64(2.718281828);
+    Deserializer d(s.data());
+    EXPECT_DOUBLE_EQ(d.read_f64(), 2.718281828);
+}
+
+TEST(SerializerTest, StringSpacesOnly) {
+    Serializer s;
+    s.write_string("   ");
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "   ");
+}
+
+// --- Cycle 1086: IPC serializer tests ---
+
+TEST(SerializerTest, F64PiRoundTripV3) {
+    Serializer s;
+    s.write_f64(3.14159265358979);
+    Deserializer d(s.data());
+    EXPECT_DOUBLE_EQ(d.read_f64(), 3.14159265358979);
+}
+
+TEST(SerializerTest, U16TwoFiftySix) {
+    Serializer s;
+    s.write_u16(256);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u16(), 256);
+}
+
+TEST(SerializerTest, I64NegMillionRoundTrip) {
+    Serializer s;
+    s.write_i64(-1000000LL);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i64(), -1000000LL);
+}
+
+TEST(SerializerTest, StringWithSlashes) {
+    Serializer s;
+    s.write_string("/a/b/c");
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "/a/b/c");
+}
+
+TEST(SerializerTest, U32TenThousand) {
+    Serializer s;
+    s.write_u32(10000);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u32(), 10000u);
+}
+
+TEST(SerializerTest, I32NegOneV2) {
+    Serializer s;
+    s.write_i32(-1);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i32(), -1);
+}
+
+TEST(SerializerTest, BoolTrueTrueFalse) {
+    Serializer s;
+    s.write_bool(true); s.write_bool(true); s.write_bool(false);
+    Deserializer d(s.data());
+    EXPECT_TRUE(d.read_bool());
+    EXPECT_TRUE(d.read_bool());
+    EXPECT_FALSE(d.read_bool());
+}
+
+TEST(SerializerTest, U8HundredRoundTrip) {
+    Serializer s;
+    s.write_u8(100);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u8(), 100);
+}
+
+// --- Cycle 1095: 8 IPC tests ---
+
+TEST(SerializerTest, U16FiveHundredRoundTrip) {
+    Serializer s;
+    s.write_u16(500);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u16(), 500);
+}
+
+TEST(SerializerTest, I32NegHundredRoundTrip) {
+    Serializer s;
+    s.write_i32(-100);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i32(), -100);
+}
+
+TEST(SerializerTest, U64TenThousandRoundTrip) {
+    Serializer s;
+    s.write_u64(10000);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u64(), 10000);
+}
+
+TEST(SerializerTest, F64PiRoundTripV4) {
+    Serializer s;
+    s.write_f64(3.14159);
+    Deserializer d(s.data());
+    EXPECT_DOUBLE_EQ(d.read_f64(), 3.14159);
+}
+
+TEST(SerializerTest, I64NegMillionRoundTripV2) {
+    Serializer s;
+    s.write_i64(-1000000);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i64(), -1000000);
+}
+
+TEST(SerializerTest, StringHelloWorldRoundTrip) {
+    Serializer s;
+    s.write_string("Hello, World!");
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "Hello, World!");
+}
+
+TEST(SerializerTest, BoolTrueThenFalseV3) {
+    Serializer s;
+    s.write_bool(true);
+    s.write_bool(false);
+    Deserializer d(s.data());
+    EXPECT_TRUE(d.read_bool());
+    EXPECT_FALSE(d.read_bool());
+}
+
+TEST(SerializerTest, U32ThousandRoundTripV2) {
+    Serializer s;
+    s.write_u32(1000);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u32(), 1000);
+}
+
+// --- Cycle 1104: 8 IPC tests ---
+
+TEST(SerializerTest, U8FiftyRoundTrip) {
+    Serializer s;
+    s.write_u8(50);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u8(), 50);
+}
+
+TEST(SerializerTest, I32PositiveTenRoundTrip) {
+    Serializer s;
+    s.write_i32(10);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i32(), 10);
+}
+
+TEST(SerializerTest, U64BillionRoundTrip) {
+    Serializer s;
+    s.write_u64(1000000000ULL);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u64(), 1000000000ULL);
+}
+
+TEST(SerializerTest, F64NegPiRoundTripV2) {
+    Serializer s;
+    s.write_f64(-3.14159);
+    Deserializer d(s.data());
+    EXPECT_DOUBLE_EQ(d.read_f64(), -3.14159);
+}
+
+TEST(SerializerTest, I64BillionRoundTrip) {
+    Serializer s;
+    s.write_i64(1000000000LL);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i64(), 1000000000LL);
+}
+
+TEST(SerializerTest, StringWithNewlineV4) {
+    Serializer s;
+    s.write_string("line1\nline2");
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "line1\nline2");
+}
+
+TEST(SerializerTest, U16TwoFiftyFiveRoundTrip) {
+    Serializer s;
+    s.write_u16(255);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u16(), 255);
+}
+
+TEST(SerializerTest, BoolFalseThenTrueV3) {
+    Serializer s;
+    s.write_bool(false);
+    s.write_bool(true);
+    Deserializer d(s.data());
+    EXPECT_FALSE(d.read_bool());
+    EXPECT_TRUE(d.read_bool());
+}
+
+// --- Cycle 1113: 8 IPC tests ---
+
+TEST(SerializerTest, U8TwoHundredRoundTrip) {
+    Serializer s;
+    s.write_u8(200);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u8(), 200);
+}
+
+TEST(SerializerTest, U16TenThousandRoundTrip) {
+    Serializer s;
+    s.write_u16(10000);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u16(), 10000);
+}
+
+TEST(SerializerTest, I32NegOneThousandRoundTrip) {
+    Serializer s;
+    s.write_i32(-1000);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i32(), -1000);
+}
+
+TEST(SerializerTest, U64HundredMillionRoundTrip) {
+    Serializer s;
+    s.write_u64(100000000ULL);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u64(), 100000000ULL);
+}
+
+TEST(SerializerTest, F64SqrtTwoRoundTripV2) {
+    Serializer s;
+    s.write_f64(1.41421356);
+    Deserializer d(s.data());
+    EXPECT_DOUBLE_EQ(d.read_f64(), 1.41421356);
+}
+
+TEST(SerializerTest, StringWithQuotesRoundTrip) {
+    Serializer s;
+    s.write_string("He said \"hello\"");
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "He said \"hello\"");
+}
+
+TEST(SerializerTest, I64MinusOneBillionRoundTrip) {
+    Serializer s;
+    s.write_i64(-1000000000LL);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i64(), -1000000000LL);
+}
+
+TEST(SerializerTest, U32FiveMillionRoundTrip) {
+    Serializer s;
+    s.write_u32(5000000);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u32(), 5000000);
+}
+
+// --- Cycle 1122: 8 IPC tests ---
+
+TEST(SerializerTest, U8OneRoundTripV4) {
+    Serializer s;
+    s.write_u8(1);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u8(), 1);
+}
+
+TEST(SerializerTest, U16ThousandRoundTrip) {
+    Serializer s;
+    s.write_u16(1000);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u16(), 1000);
+}
+
+TEST(SerializerTest, I32FiftyRoundTrip) {
+    Serializer s;
+    s.write_i32(50);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i32(), 50);
+}
+
+TEST(SerializerTest, U64TrillionRoundTrip) {
+    Serializer s;
+    s.write_u64(1000000000000ULL);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u64(), 1000000000000ULL);
+}
+
+TEST(SerializerTest, F64EpsilonRoundTrip) {
+    Serializer s;
+    s.write_f64(0.000001);
+    Deserializer d(s.data());
+    EXPECT_DOUBLE_EQ(d.read_f64(), 0.000001);
+}
+
+TEST(SerializerTest, StringWithSlashRoundTrip) {
+    Serializer s;
+    s.write_string("path/to/file");
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "path/to/file");
+}
+
+TEST(SerializerTest, I64TenBillionRoundTrip) {
+    Serializer s;
+    s.write_i64(10000000000LL);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i64(), 10000000000LL);
+}
+
+TEST(SerializerTest, U32HundredRoundTripV2) {
+    Serializer s;
+    s.write_u32(100);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u32(), 100);
+}
+
+// --- Cycle 1131: 8 IPC tests ---
+
+TEST(SerializerTest, U8TwentyFiveRoundTrip) {
+    Serializer s;
+    s.write_u8(25);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u8(), 25);
+}
+
+TEST(SerializerTest, U16FiveThousandRoundTrip) {
+    Serializer s;
+    s.write_u16(5000);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u16(), 5000);
+}
+
+TEST(SerializerTest, I32NegTenRoundTrip) {
+    Serializer s;
+    s.write_i32(-10);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i32(), -10);
+}
+
+TEST(SerializerTest, U64TenMillionRoundTrip) {
+    Serializer s;
+    s.write_u64(10000000ULL);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u64(), 10000000ULL);
+}
+
+TEST(SerializerTest, F64GoldenRatioRoundTrip) {
+    Serializer s;
+    s.write_f64(1.6180339887);
+    Deserializer d(s.data());
+    EXPECT_DOUBLE_EQ(d.read_f64(), 1.6180339887);
+}
+
+TEST(SerializerTest, StringWithBackslashRoundTrip) {
+    Serializer s;
+    s.write_string("C:\\Users\\test");
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "C:\\Users\\test");
+}
+
+TEST(SerializerTest, I64NegTenBillionRoundTrip) {
+    Serializer s;
+    s.write_i64(-10000000000LL);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i64(), -10000000000LL);
+}
+
+TEST(SerializerTest, BoolTrueAloneV4) {
+    Serializer s;
+    s.write_bool(true);
+    Deserializer d(s.data());
+    EXPECT_TRUE(d.read_bool());
+}
