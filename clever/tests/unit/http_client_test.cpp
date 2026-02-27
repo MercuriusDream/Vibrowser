@@ -3305,3 +3305,95 @@ TEST(RequestTest, RefererHeaderSet) {
     ASSERT_TRUE(val.has_value());
     EXPECT_EQ(val.value(), "https://example.com/page");
 }
+
+// Response: parse 301 Moved Permanently
+TEST(ResponseTest, Parse301MovedPermanentlyWithLocation) {
+    std::string raw =
+        "HTTP/1.1 301 Moved Permanently\r\n"
+        "Location: https://www.example.com/\r\n"
+        "Content-Length: 0\r\n"
+        "\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 301);
+}
+
+// Response: parse 302 Found
+TEST(ResponseTest, Parse302FoundWithLocation) {
+    std::string raw =
+        "HTTP/1.1 302 Found\r\n"
+        "Location: /login\r\n"
+        "Content-Length: 0\r\n"
+        "\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 302);
+}
+
+// Response: parse 303 See Other
+TEST(ResponseTest, Parse303SeeOther) {
+    std::string raw =
+        "HTTP/1.1 303 See Other\r\n"
+        "Location: /result\r\n"
+        "Content-Length: 0\r\n"
+        "\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 303);
+}
+
+// Response: parse 307 Temporary Redirect
+TEST(ResponseTest, Parse307TemporaryRedirectV2) {
+    std::string raw =
+        "HTTP/1.1 307 Temporary Redirect\r\n"
+        "Location: /temp\r\n"
+        "Content-Length: 0\r\n"
+        "\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 307);
+}
+
+// Response: parse 308 Permanent Redirect
+TEST(ResponseTest, Parse308PermanentRedirectV2) {
+    std::string raw =
+        "HTTP/1.1 308 Permanent Redirect\r\n"
+        "Location: /new\r\n"
+        "Content-Length: 0\r\n"
+        "\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 308);
+}
+
+// Request: Accept header can be set
+TEST(RequestTest, AcceptHeaderSet) {
+    Request req;
+    req.headers.set("Accept", "application/json");
+    auto val = req.headers.get("Accept");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(val.value(), "application/json");
+}
+
+// Request: Origin header can be set
+TEST(RequestTest, OriginHeaderSet) {
+    Request req;
+    req.headers.set("Origin", "https://example.com");
+    auto val = req.headers.get("Origin");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(val.value(), "https://example.com");
+}
+
+// Request: Connection header can be set
+TEST(RequestTest, ConnectionHeaderSet) {
+    Request req;
+    req.headers.set("Connection", "keep-alive");
+    auto val = req.headers.get("Connection");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(val.value(), "keep-alive");
+}
