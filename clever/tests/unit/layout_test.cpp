@@ -9465,3 +9465,43 @@ TEST(LayoutNodeProps, OrderDefaultV32) {
     LayoutNode n;
     EXPECT_EQ(n.order, 0);
 }
+
+TEST(LayoutNodeProps, GapDefaultV33) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.gap, 0.0f);
+}
+
+TEST(LayoutNodeProps, ScrollMarginRightDefaultV33) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.scroll_margin_right, 0.0f);
+}
+
+TEST(LayoutNodeProps, ScrollMarginBottomDefaultV33) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.scroll_margin_bottom, 0.0f);
+}
+
+TEST(LayoutNodeProps, ScrollMarginLeftDefaultV33) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.scroll_margin_left, 0.0f);
+}
+
+TEST(LayoutNodeProps, ScrollPaddingTopDefaultV33) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.scroll_padding_top, 0.0f);
+}
+
+TEST(LayoutNodeProps, ScrollPaddingRightDefaultV33) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.scroll_padding_right, 0.0f);
+}
+
+TEST(LayoutNodeProps, TextWrapDefaultV33) {
+    LayoutNode n;
+    EXPECT_EQ(n.text_wrap, 0);
+}
+
+TEST(LayoutNodeProps, ContainerTypeDefaultV33) {
+    LayoutNode n;
+    EXPECT_EQ(n.container_type, 0);
+}

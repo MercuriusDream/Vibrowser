@@ -7137,3 +7137,131 @@ TEST(SerializerTest, InterleavedI64BoolBytesV31) {
     EXPECT_EQ(d.read_i64(), -1LL);
     EXPECT_EQ(d.read_bool(), false);
 }
+
+// ============================================================================
+// Cycle 1012: Eight diverse serializer tests with V32 suffix
+// ============================================================================
+
+TEST(SerializerTest, U8U16U32U64SequenceV32) {
+    Serializer s;
+    s.write_u8(42u);
+    s.write_u16(1000u);
+    s.write_u32(100000u);
+    s.write_u64(10000000000ULL);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u8(), 42u);
+    EXPECT_EQ(d.read_u16(), 1000u);
+    EXPECT_EQ(d.read_u32(), 100000u);
+    EXPECT_EQ(d.read_u64(), 10000000000ULL);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, SignedI32I64ExtremesV32) {
+    Serializer s;
+    int32_t min_i32 = std::numeric_limits<int32_t>::min();
+    int32_t max_i32 = std::numeric_limits<int32_t>::max();
+    int64_t min_i64 = std::numeric_limits<int64_t>::min();
+    int64_t max_i64 = std::numeric_limits<int64_t>::max();
+    s.write_i32(min_i32);
+    s.write_i32(max_i32);
+    s.write_i64(min_i64);
+    s.write_i64(max_i64);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i32(), min_i32);
+    EXPECT_EQ(d.read_i32(), max_i32);
+    EXPECT_EQ(d.read_i64(), min_i64);
+    EXPECT_EQ(d.read_i64(), max_i64);
+}
+
+TEST(SerializerTest, Float64PrecisionMultipleValuesV32) {
+    Serializer s;
+    double pi = 3.14159265358979323846;
+    double e = 2.71828182845904523536;
+    double sqrt2 = 1.41421356237309504880;
+    s.write_f64(pi);
+    s.write_f64(e);
+    s.write_f64(sqrt2);
+    Deserializer d(s.data());
+    EXPECT_DOUBLE_EQ(d.read_f64(), pi);
+    EXPECT_DOUBLE_EQ(d.read_f64(), e);
+    EXPECT_DOUBLE_EQ(d.read_f64(), sqrt2);
+}
+
+TEST(SerializerTest, BoolAlternatingPatternV32) {
+    Serializer s;
+    bool pattern[] = {true, false, true, false, true, true, false};
+    for (bool b : pattern) {
+        s.write_bool(b);
+    }
+    Deserializer d(s.data());
+    for (bool expected : pattern) {
+        EXPECT_EQ(d.read_bool(), expected);
+    }
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, BytesWithMixedPatternV32) {
+    Serializer s;
+    uint8_t pattern[16] = {0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
+                           0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F};
+    s.write_bytes(pattern, 16);
+    Deserializer d(s.data());
+    auto result = d.read_bytes();
+    ASSERT_EQ(result.size(), 16u);
+    for (int i = 0; i < 16; ++i) {
+        EXPECT_EQ(result[i], i);
+    }
+}
+
+TEST(SerializerTest, StringEmptyAndLongV32) {
+    Serializer s;
+    std::string empty = "";
+    std::string long_str = "The serializer test suite validates correct serialization and deserialization of various data types.";
+    s.write_string(empty);
+    s.write_string(long_str);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), empty);
+    EXPECT_EQ(d.read_string(), long_str);
+}
+
+TEST(SerializerTest, ComplexMixedDataStreamV32) {
+    Serializer s;
+    s.write_u16(65535u);
+    s.write_bool(true);
+    s.write_i32(-42);
+    s.write_string("mixed");
+    s.write_f64(99.99);
+    uint8_t bytes[4] = {0xDE, 0xAD, 0xBE, 0xEF};
+    s.write_bytes(bytes, 4);
+    s.write_u64(18446744073709551615ULL);
+    s.write_i64(-1000000000000LL);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u16(), 65535u);
+    EXPECT_TRUE(d.read_bool());
+    EXPECT_EQ(d.read_i32(), -42);
+    EXPECT_EQ(d.read_string(), "mixed");
+    EXPECT_DOUBLE_EQ(d.read_f64(), 99.99);
+    auto read_bytes = d.read_bytes();
+    ASSERT_EQ(read_bytes.size(), 4u);
+    EXPECT_EQ(read_bytes[0], 0xDE);
+    EXPECT_EQ(read_bytes[1], 0xAD);
+    EXPECT_EQ(read_bytes[2], 0xBE);
+    EXPECT_EQ(read_bytes[3], 0xEF);
+    EXPECT_EQ(d.read_u64(), 18446744073709551615ULL);
+    EXPECT_EQ(d.read_i64(), -1000000000000LL);
+}
+
+TEST(SerializerTest, SpecialCharacterStringsV32) {
+    Serializer s;
+    std::string with_null_bytes = "hello\x00world";
+    std::string with_special = "tab\there\nnewline\rcarriage";
+    std::string unicode = "café naïve résumé";
+    s.write_string(with_null_bytes);
+    s.write_string(with_special);
+    s.write_string(unicode);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), with_null_bytes);
+    EXPECT_EQ(d.read_string(), with_special);
+    EXPECT_EQ(d.read_string(), unicode);
+}

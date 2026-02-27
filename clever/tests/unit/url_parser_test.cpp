@@ -6179,3 +6179,91 @@ TEST(URLParser, RootPathWithQueryAndFragmentV23) {
     EXPECT_EQ(url->fragment, "content");
     EXPECT_EQ(url->port, std::nullopt);
 }
+
+TEST(URLParser, HTTPDefaultPortNormalizedAwayV24) {
+    auto url = parse("http://example.com:80/index.html");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "http");
+    EXPECT_EQ(url->host, "example.com");
+    EXPECT_EQ(url->port, std::nullopt);
+    EXPECT_EQ(url->path, "/index.html");
+    EXPECT_EQ(url->query, "");
+    EXPECT_EQ(url->fragment, "");
+}
+
+TEST(URLParser, SubdomainWithDeepPathV24) {
+    auto url = parse("https://api.v2.service.example.org/v1/users/profile/settings");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "api.v2.service.example.org");
+    EXPECT_EQ(url->path, "/v1/users/profile/settings");
+    EXPECT_EQ(url->port, std::nullopt);
+    EXPECT_EQ(url->query, "");
+    EXPECT_EQ(url->fragment, "");
+}
+
+TEST(URLParser, URLWithOnlyFragmentV24) {
+    auto url = parse("https://docs.example.io/guide#section-3");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "docs.example.io");
+    EXPECT_EQ(url->path, "/guide");
+    EXPECT_EQ(url->query, "");
+    EXPECT_EQ(url->fragment, "section-3");
+    EXPECT_EQ(url->port, std::nullopt);
+}
+
+TEST(URLParser, ComplexQueryStringV24) {
+    auto url = parse("http://search.example.net/results?q=test+query&limit=50&offset=0&sort=relevance");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "http");
+    EXPECT_EQ(url->host, "search.example.net");
+    EXPECT_EQ(url->path, "/results");
+    EXPECT_EQ(url->query, "q=test+query&limit=50&offset=0&sort=relevance");
+    EXPECT_EQ(url->port, std::nullopt);
+    EXPECT_EQ(url->fragment, "");
+}
+
+TEST(URLParser, PathWithTrailingSlashAndQueryV24) {
+    auto url = parse("https://shop.example.com/products/?category=electronics&brand=acme");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "shop.example.com");
+    EXPECT_EQ(url->path, "/products/");
+    EXPECT_EQ(url->query, "category=electronics&brand=acme");
+    EXPECT_EQ(url->port, std::nullopt);
+    EXPECT_EQ(url->fragment, "");
+}
+
+TEST(URLParser, PathResolutionWithConsecutiveDotsV24) {
+    auto url = parse("http://cdn.example.co/assets/styles/../../vendor/fonts/arial.ttf");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "http");
+    EXPECT_EQ(url->host, "cdn.example.co");
+    EXPECT_EQ(url->path, "/vendor/fonts/arial.ttf");
+    EXPECT_EQ(url->port, std::nullopt);
+}
+
+TEST(URLParser, CustomPortWithComplexPathAndQueryFragmentV24) {
+    auto url = parse("https://backend.app.local:5000/api/v3/data/export?format=json&verbose=true#results");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "backend.app.local");
+    ASSERT_TRUE(url->port.has_value());
+    EXPECT_EQ(url->port.value(), 5000);
+    EXPECT_EQ(url->path, "/api/v3/data/export");
+    EXPECT_EQ(url->query, "format=json&verbose=true");
+    EXPECT_EQ(url->fragment, "results");
+}
+
+TEST(URLParser, LoopbackWithCustomPortV24) {
+    auto url = parse("http://127.0.0.1:3000/dev/debug/logs?level=info");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "http");
+    EXPECT_EQ(url->host, "127.0.0.1");
+    ASSERT_TRUE(url->port.has_value());
+    EXPECT_EQ(url->port.value(), 3000);
+    EXPECT_EQ(url->path, "/dev/debug/logs");
+    EXPECT_EQ(url->query, "level=info");
+    EXPECT_EQ(url->fragment, "");
+}

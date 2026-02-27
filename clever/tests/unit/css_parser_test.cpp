@@ -8824,4 +8824,76 @@ TEST_F(CSSStylesheetTest, GridTemplateRowsV32) {
     EXPECT_TRUE(found);
 }
 
-// Cycle 1350
+// Cycle 1350: 8 flex property tests V33
+
+TEST_F(CSSStylesheetTest, FlexDirectionV33) {
+    auto ss = parse_stylesheet("div { flex-direction: row; }");
+    ASSERT_EQ(ss.rules.size(), 1);
+    bool found = false;
+    for (auto& d : ss.rules[0].declarations)
+        if (d.property == "flex-direction") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, FlexWrapV33) {
+    auto ss = parse_stylesheet("div { flex-wrap: wrap; }");
+    ASSERT_EQ(ss.rules.size(), 1);
+    bool found = false;
+    for (auto& d : ss.rules[0].declarations)
+        if (d.property == "flex-wrap") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, JustifyContentV33) {
+    auto ss = parse_stylesheet("div { justify-content: center; }");
+    ASSERT_EQ(ss.rules.size(), 1);
+    bool found = false;
+    for (auto& d : ss.rules[0].declarations)
+        if (d.property == "justify-content") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, AlignItemsV33) {
+    auto ss = parse_stylesheet("div { align-items: flex-start; }");
+    ASSERT_EQ(ss.rules.size(), 1);
+    bool found = false;
+    for (auto& d : ss.rules[0].declarations)
+        if (d.property == "align-items") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, AlignSelfV33) {
+    auto ss = parse_stylesheet("div { align-self: stretch; }");
+    ASSERT_EQ(ss.rules.size(), 1);
+    bool found = false;
+    for (auto& d : ss.rules[0].declarations)
+        if (d.property == "align-self") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, AlignContentV33) {
+    auto ss = parse_stylesheet("div { align-content: space-between; }");
+    ASSERT_EQ(ss.rules.size(), 1);
+    bool found = false;
+    for (auto& d : ss.rules[0].declarations)
+        if (d.property == "align-content") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, FlexBasisV33) {
+    auto ss = parse_stylesheet("div { flex-basis: 200px; }");
+    ASSERT_EQ(ss.rules.size(), 1);
+    bool found = false;
+    for (auto& d : ss.rules[0].declarations)
+        if (d.property == "flex-basis") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, FlexFlowV33) {
+    auto ss = parse_stylesheet("div { flex-flow: row wrap; }");
+    ASSERT_EQ(ss.rules.size(), 1);
+    bool found = false;
+    for (auto& d : ss.rules[0].declarations)
+        if (d.property == "flex-flow") { found = true; break; }
+    EXPECT_TRUE(found);
+}

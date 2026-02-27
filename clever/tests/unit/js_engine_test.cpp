@@ -19774,3 +19774,78 @@ TEST(JSEngine, TaggedTemplateLiteralCycle1380) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "5");
 }
+
+// Cycle 1389 — Intl basics, JSON.stringify replacer, structuredClone, Error types, typeof, instanceof, void, comma
+TEST(JSEngine, ObjectFreezeCycle1389) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "const obj = Object.freeze({a: 1, b: 2}); obj.a = 99; obj.a.toString()");
+    EXPECT_EQ(result, "1");
+}
+
+TEST(JSEngine, JSONStringifyWithReplacerCycle1389) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "const obj = {a: 1, b: 2, c: 3}; "
+        "JSON.stringify(obj, ['a', 'c'])");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "{\"a\":1,\"c\":3}");
+}
+
+TEST(JSEngine, JSONDeepCopyCycle1389) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "const original = {x: {y: [1, 2, 3]}}; "
+        "const cloned = JSON.parse(JSON.stringify(original)); "
+        "cloned.x.y[0] = 99; "
+        "original.x.y[0].toString()");
+    EXPECT_EQ(result, "1");
+}
+
+TEST(JSEngine, ErrorTypesCycle1389) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "const e = new TypeError('bad type'); "
+        "e instanceof TypeError && e instanceof Error");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, TypeofOperatorCycle1389) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "const results = [typeof 42, typeof 'str', typeof true, typeof undefined, typeof null, typeof {}]; "
+        "results.join(',')");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "number,string,boolean,undefined,object,object");
+}
+
+TEST(JSEngine, InstanceofOperatorCycle1389) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "const arr = [1, 2]; "
+        "const obj = {}; "
+        "(arr instanceof Array) && (obj instanceof Object) && !(arr instanceof Object)");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "false");
+}
+
+TEST(JSEngine, VoidOperatorCycle1389) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "const x = 42; "
+        "const y = void(x + 1); "
+        "typeof y");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "undefined");
+}
+
+TEST(JSEngine, CommaOperatorCycle1389) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "let a = 1; "
+        "let b = (a++, a++, a++); "
+        "b");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "3");
+}

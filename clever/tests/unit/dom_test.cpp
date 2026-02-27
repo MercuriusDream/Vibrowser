@@ -7641,3 +7641,62 @@ TEST(DomElement, GetAttributeReturnsNulloptForMissingV2) {
     auto el = doc.create_element("div");
     EXPECT_EQ(el->get_attribute("nonexistent"), std::nullopt);
 }
+
+TEST(DomElement, TagNameEm) {
+    Document doc;
+    auto el = doc.create_element("em");
+    EXPECT_FALSE(el->tag_name().empty());
+}
+
+TEST(DomElement, TagNameSmall) {
+    Document doc;
+    auto el = doc.create_element("small");
+    EXPECT_FALSE(el->tag_name().empty());
+}
+
+TEST(DomElement, SetAttributeDataJson) {
+    Document doc;
+    auto el = doc.create_element("div");
+    el->set_attribute("data-config", "{\"key\":\"value\"}");
+    EXPECT_EQ(el->get_attribute("data-config"), "{\"key\":\"value\"}");
+}
+
+TEST(DomElement, SetAttributePlaceholder) {
+    Document doc;
+    auto el = doc.create_element("input");
+    el->set_attribute("placeholder", "Enter text...");
+    EXPECT_EQ(el->get_attribute("placeholder"), "Enter text...");
+}
+
+TEST(DomElement, AppendAndCountSiblings) {
+    Document doc;
+    auto parent = doc.create_element("div");
+    parent->append_child(doc.create_element("p"));
+    parent->append_child(doc.create_element("span"));
+    parent->append_child(doc.create_element("a"));
+    int count = 0;
+    parent->for_each_child([&](const Node&) { ++count; });
+    EXPECT_EQ(count, 3);
+}
+
+TEST(DomElement, RemoveAttributeDataIdV2) {
+    Document doc;
+    auto el = doc.create_element("div");
+    el->set_attribute("data-id", "123");
+    el->remove_attribute("data-id");
+    EXPECT_EQ(el->get_attribute("data-id"), std::nullopt);
+}
+
+TEST(DomElement, HasAttributeHiddenV3) {
+    Document doc;
+    auto el = doc.create_element("div");
+    el->set_attribute("hidden", "");
+    EXPECT_TRUE(el->has_attribute("hidden"));
+}
+
+TEST(DomElement, SetAttributeSpecialChars) {
+    Document doc;
+    auto el = doc.create_element("div");
+    el->set_attribute("data-text", "Hello <World> & \"Friends\"");
+    EXPECT_EQ(el->get_attribute("data-text"), "Hello <World> & \"Friends\"");
+}

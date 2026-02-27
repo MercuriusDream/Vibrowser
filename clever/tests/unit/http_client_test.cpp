@@ -8753,3 +8753,174 @@ TEST(HttpClient, HeaderMapMultipleValuesV34) {
     auto all_lower = map.get_all("set-cookie");
     EXPECT_EQ(all_lower.size(), 3u);
 }
+
+// Request: POST with binary body containing null bytes
+TEST(HttpClient, RequestPostBinaryBodyV35) {
+    Request req;
+    req.method = Method::POST;
+    req.url = "https://api.example.com/upload";
+    req.headers.set("Content-Type", "application/octet-stream");
+    req.headers.set("Content-Length", "256");
+
+    // Create binary body with null bytes
+    std::vector<uint8_t> binary_data;
+    for (int i = 0; i < 256; ++i) {
+        binary_data.push_back(static_cast<uint8_t>(i));
+    }
+    req.body = binary_data;
+
+    EXPECT_EQ(req.method, Method::POST);
+    EXPECT_EQ(req.body.size(), 256u);
+    EXPECT_EQ(req.body[0], 0u);
+    EXPECT_EQ(req.body[255], 255u);
+    std::vector<uint8_t> serialized = req.serialize();
+    EXPECT_GT(serialized.size(), 256u);
+}
+
+// Response: 500 Server Error with detailed error JSON
+TEST(HttpClient, Response500ErrorWithJsonV35) {
+    Response resp;
+    resp.status = 500;
+    resp.status_text = "Internal Server Error";
+    resp.url = "https://api.example.com/process";
+    resp.was_redirected = false;
+
+    std::string error_json = R"({"error":"Database connection failed","code":5001,"timestamp":"2025-02-27T10:30:45Z"})";
+    resp.body.assign(error_json.begin(), error_json.end());
+    resp.headers.set("Content-Type", "application/json");
+    resp.headers.set("Retry-After", "60");
+
+    EXPECT_EQ(resp.status, 500u);
+    EXPECT_FALSE(resp.was_redirected);
+    EXPECT_EQ(resp.body.size(), error_json.length());
+    EXPECT_EQ(resp.body_as_string(), error_json);
+    EXPECT_TRUE(resp.headers.has("Retry-After"));
+}
+
+// HeaderMap: Complex header manipulation with append, set, and remove
+TEST(HttpClient, HeaderMapComplexOperationsV35) {
+    HeaderMap map;
+
+    // Add initial headers
+    map.set("Host", "example.com");
+    map.append("Accept", "text/html");
+    map.append("Accept", "application/json");
+    map.append("Accept", "application/xml");
+
+    EXPECT_EQ(map.size(), 4u);
+    EXPECT_EQ(map.get_all("Accept").size(), 3u);
+
+    // Replace Accept header with single value
+    map.set("Accept", "application/json");
+    EXPECT_EQ(map.size(), 2u);
+    auto accepts = map.get_all("Accept");
+    EXPECT_EQ(accepts.size(), 1u);
+    EXPECT_EQ(accepts[0], "application/json");
+
+    // Remove Host
+    map.remove("Host");
+    EXPECT_FALSE(map.has("Host"));
+    EXPECT_EQ(map.size(), 1u);
+}
+
+// CookieJar: Multiple cookies with different domains and secure flags
+TEST(HttpClient, CookieJarMultiDomainSecureV35) {
+    CookieJar jar;
+    jar.clear();
+
+    // Add cookies for different domains
+    jar.set_from_header("session=xyz789; Path=/; Secure; HttpOnly", "example.com");
+    jar.set_from_header("tracking=abc123; Path=/; SameSite=Lax", "example.com");
+    jar.set_from_header("admin=secure456; Path=/admin; Secure; HttpOnly", "admin.example.com");
+
+    size_t total = jar.size();
+    EXPECT_GE(total, 2u);
+
+    // Get cookie header for HTTPS request to example.com
+    std::string cookies = jar.get_cookie_header("example.com", "/", true);
+    EXPECT_GT(cookies.length(), 0u);
+}
+
+// Request: GET with custom headers and URL with fragment
+TEST(HttpClient, RequestGetWithHeadersAndFragmentV35) {
+    Request req;
+    req.method = Method::GET;
+    req.url = "https://docs.example.com/api#section-2";
+    req.headers.set("Accept", "application/json");
+    req.headers.set("Accept-Language", "en-US,en;q=0.9");
+    req.headers.set("User-Agent", "CustomBrowser/2.0");
+    req.headers.set("Authorization", "Bearer token-xyz");
+    req.parse_url();
+
+    EXPECT_EQ(req.method, Method::GET);
+    EXPECT_EQ(req.host, "docs.example.com");
+    EXPECT_TRUE(req.use_tls);
+    EXPECT_EQ(req.port, 443u);
+    EXPECT_EQ(req.headers.get_all("Accept-Language").size(), 1u);
+    EXPECT_TRUE(req.headers.has("Authorization"));
+}
+
+// Response: 201 Created with Location header and minimal body
+TEST(HttpClient, Response201CreatedWithLocationV35) {
+    Response resp;
+    resp.status = 201;
+    resp.status_text = "Created";
+    resp.url = "https://api.example.com/items";
+    resp.was_redirected = false;
+
+    std::string body = R"({"id":789,"created_at":"2025-02-27T10:35:00Z"})";
+    resp.body.assign(body.begin(), body.end());
+    resp.headers.set("Content-Type", "application/json");
+    resp.headers.set("Location", "https://api.example.com/items/789");
+
+    EXPECT_EQ(resp.status, 201u);
+    EXPECT_EQ(resp.headers.get("Location").value(), "https://api.example.com/items/789");
+    EXPECT_GT(resp.body.size(), 0u);
+    EXPECT_FALSE(resp.was_redirected);
+}
+
+// HeaderMap: Size and iteration consistency check
+TEST(HttpClient, HeaderMapSizeIterationConsistencyV35) {
+    HeaderMap map;
+
+    // Add various headers with different multiplicities
+    map.set("Content-Type", "text/html");
+    map.append("Set-Cookie", "cookie1=value1");
+    map.append("Set-Cookie", "cookie2=value2");
+    map.append("Set-Cookie", "cookie3=value3");
+    map.set("Authorization", "Bearer token");
+    map.append("Accept-Encoding", "gzip");
+    map.append("Accept-Encoding", "deflate");
+
+    size_t header_count = map.size();
+    EXPECT_EQ(header_count, 7u);
+
+    // Verify iteration count matches size
+    size_t iter_count = 0;
+    for (auto it = map.begin(); it != map.end(); ++it) {
+        ++iter_count;
+    }
+    EXPECT_EQ(iter_count, header_count);
+    EXPECT_FALSE(map.empty());
+}
+
+// Request: PATCH method with partial update JSON and conditional headers
+TEST(HttpClient, RequestPatchPartialUpdateV35) {
+    Request req;
+    req.method = Method::PATCH;
+    req.url = "https://api.example.com/users/12345";
+    req.headers.set("Content-Type", "application/json");
+    req.headers.set("If-Match", "\"etag-12345\"");
+    req.headers.set("X-Request-ID", "patch-req-001");
+
+    std::string json_patch = R"({"email":"newemail@example.com","status":"active"})";
+    req.body.assign(json_patch.begin(), json_patch.end());
+
+    EXPECT_EQ(req.method, Method::PATCH);
+    EXPECT_EQ(req.body.size(), json_patch.length());
+    EXPECT_TRUE(req.headers.has("If-Match"));
+    EXPECT_EQ(req.headers.get("X-Request-ID").value(), "patch-req-001");
+
+    std::vector<uint8_t> serialized = req.serialize();
+    EXPECT_GT(serialized.size(), 0u);
+}

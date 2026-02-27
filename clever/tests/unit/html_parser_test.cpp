@@ -8120,3 +8120,64 @@ TEST(TreeBuilder, AbbrElementV20) {
     EXPECT_EQ(el->tag_name, "abbr");
     EXPECT_EQ(el->text_content(), "HTML");
 }
+
+TEST(TreeBuilder, MarkElementV21) {
+    auto doc = clever::html::parse("<html><body><p><mark>highlighted</mark></p></body></html>");
+    auto* el = doc->find_element("mark");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "mark");
+    EXPECT_EQ(el->text_content(), "highlighted");
+}
+
+TEST(TreeBuilder, TimeElementV21) {
+    auto doc = clever::html::parse("<html><body><p><time datetime=\"2026-02-27\">Feb 27, 2026</time></p></body></html>");
+    auto* el = doc->find_element("time");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "time");
+    EXPECT_EQ(el->text_content(), "Feb 27, 2026");
+}
+
+TEST(TreeBuilder, DataElementV21) {
+    auto doc = clever::html::parse("<html><body><p><data value=\"12345\">Product ID</data></p></body></html>");
+    auto* el = doc->find_element("data");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "data");
+    EXPECT_EQ(el->text_content(), "Product ID");
+}
+
+TEST(TreeBuilder, OutputElementV21) {
+    auto doc = clever::html::parse("<html><body><form><output name=\"result\">0</output></form></body></html>");
+    auto* el = doc->find_element("output");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "output");
+    EXPECT_EQ(el->text_content(), "0");
+}
+
+TEST(TreeBuilder, ProgressElementV21) {
+    auto doc = clever::html::parse("<html><body><progress max=\"100\" value=\"70\"></progress></body></html>");
+    auto* el = doc->find_element("progress");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "progress");
+}
+
+TEST(TreeBuilder, MeterElementV21) {
+    auto doc = clever::html::parse("<html><body><meter low=\"3\" high=\"7\" max=\"10\" value=\"6\"></meter></body></html>");
+    auto* el = doc->find_element("meter");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "meter");
+}
+
+TEST(TreeBuilder, FieldsetElementV21) {
+    auto doc = clever::html::parse("<html><body><form><fieldset><legend>Contact</legend></fieldset></form></body></html>");
+    auto* el = doc->find_element("fieldset");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "fieldset");
+}
+
+TEST(TreeBuilder, LegendElementV21) {
+    auto doc = clever::html::parse("<html><body><form><fieldset><legend>Address</legend></fieldset></form></body></html>");
+    auto* el = doc->find_element("legend");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "legend");
+    EXPECT_EQ(el->text_content(), "Address");
+}
