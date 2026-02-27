@@ -3601,3 +3601,74 @@ TEST(DomEventTarget, DispatchReturnsTrue) {
     bool result = target.dispatch_event(ev, *elem);
     EXPECT_TRUE(result);
 }
+
+TEST(DomElement, SetDataAttribute) {
+    Document doc;
+    auto elem = doc.create_element("div");
+    elem->set_attribute("data-id", "42");
+    auto val = elem->get_attribute("data-id");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(*val, "42");
+}
+
+TEST(DomElement, SetMultipleDataAttributes) {
+    Document doc;
+    auto elem = doc.create_element("article");
+    elem->set_attribute("data-author", "Alice");
+    elem->set_attribute("data-category", "tech");
+    EXPECT_EQ(*elem->get_attribute("data-author"), "Alice");
+    EXPECT_EQ(*elem->get_attribute("data-category"), "tech");
+}
+
+TEST(DomElement, DataAttributeHasAttributeTrue) {
+    Document doc;
+    auto elem = doc.create_element("span");
+    elem->set_attribute("data-visible", "true");
+    EXPECT_TRUE(elem->has_attribute("data-visible"));
+}
+
+TEST(DomElement, RemoveDataAttribute) {
+    Document doc;
+    auto elem = doc.create_element("p");
+    elem->set_attribute("data-temp", "123");
+    elem->remove_attribute("data-temp");
+    EXPECT_FALSE(elem->has_attribute("data-temp"));
+}
+
+TEST(DomElement, DataAttributeOverwrite) {
+    Document doc;
+    auto elem = doc.create_element("div");
+    elem->set_attribute("data-count", "1");
+    elem->set_attribute("data-count", "2");
+    EXPECT_EQ(*elem->get_attribute("data-count"), "2");
+}
+
+TEST(DomElement, DataAttributeEmptyValue) {
+    Document doc;
+    auto elem = doc.create_element("div");
+    elem->set_attribute("data-flag", "");
+    auto val = elem->get_attribute("data-flag");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(*val, "");
+}
+
+TEST(DomElement, ThreeDataAttributesAllPresent) {
+    Document doc;
+    auto elem = doc.create_element("li");
+    elem->set_attribute("data-a", "1");
+    elem->set_attribute("data-b", "2");
+    elem->set_attribute("data-c", "3");
+    EXPECT_TRUE(elem->has_attribute("data-a"));
+    EXPECT_TRUE(elem->has_attribute("data-b"));
+    EXPECT_TRUE(elem->has_attribute("data-c"));
+}
+
+TEST(DomElement, DataAttributeInAttributesList) {
+    Document doc;
+    auto elem = doc.create_element("div");
+    elem->set_attribute("data-role", "button");
+    bool found = false;
+    for (const auto& attr : elem->attributes())
+        if (attr.name == "data-role") found = true;
+    EXPECT_TRUE(found);
+}
