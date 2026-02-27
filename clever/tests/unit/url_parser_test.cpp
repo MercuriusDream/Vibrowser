@@ -1938,3 +1938,65 @@ TEST(URLParser, HttpsSchemeIsNotHttp) {
     EXPECT_NE(result->scheme, "http");
     EXPECT_EQ(result->scheme, "https");
 }
+
+// URL: two URLs with same host are same origin
+TEST(URLParser, SameHostSameOrigin) {
+    auto a = parse("https://example.com/path1");
+    auto b = parse("https://example.com/path2");
+    ASSERT_TRUE(a.has_value() && b.has_value());
+    EXPECT_EQ(a->host, b->host);
+}
+
+// URL: two URLs with different hosts differ
+TEST(URLParser, DifferentHostsDiffer) {
+    auto a = parse("https://example.com/");
+    auto b = parse("https://other.com/");
+    ASSERT_TRUE(a.has_value() && b.has_value());
+    EXPECT_NE(a->host, b->host);
+}
+
+// URL: port 443 may be stripped for https
+TEST(URLParser, Port443MayBeStrippedForHttps) {
+    auto result = parse("https://example.com:443/path");
+    ASSERT_TRUE(result.has_value());
+    // Port 443 is default for https; may be empty or "443"
+    EXPECT_TRUE(!result->port.has_value() || result->port.value() == 443);
+}
+
+// URL: path starts with slash
+TEST(URLParser, PathToPageStartsWithSlash) {
+    auto result = parse("https://example.com/path/to/page");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->path[0], '/');
+}
+
+// URL: query starts without question mark in query field
+TEST(URLParser, QueryFieldExcludesQuestionMark) {
+    auto result = parse("https://example.com/?q=test");
+    ASSERT_TRUE(result.has_value());
+    // query field typically doesn't include the '?'
+    EXPECT_EQ(result->query.find("?"), std::string::npos);
+}
+
+// URL: fragment field excludes hash character
+TEST(URLParser, FragmentFieldExcludesHash) {
+    auto result = parse("https://example.com/page#section");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->fragment.find("#"), std::string::npos);
+}
+
+// URL: serialize includes scheme and host
+TEST(URLParser, SerializeIncludesSchemeAndHost) {
+    auto result = parse("https://example.com/path");
+    ASSERT_TRUE(result.has_value());
+    std::string serialized = result->serialize();
+    EXPECT_NE(serialized.find("https"), std::string::npos);
+    EXPECT_NE(serialized.find("example.com"), std::string::npos);
+}
+
+// URL: empty username when no credentials
+TEST(URLParser, UsernameEmptyWithNoCredentials) {
+    auto result = parse("https://example.com/path");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_TRUE(result->username.empty());
+}
