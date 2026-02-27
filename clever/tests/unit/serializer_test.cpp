@@ -4346,3 +4346,61 @@ TEST(SerializerTest, F64ThenI32ThenString) {
     EXPECT_EQ(d.read_i32(), 100);
     EXPECT_EQ(d.read_string(), "pi");
 }
+
+TEST(SerializerTest, StringWithTabV2) {
+    Serializer s;
+    s.write_string("col1\tcol2");
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "col1\tcol2");
+}
+
+TEST(SerializerTest, StringWithCarriageReturn) {
+    Serializer s;
+    s.write_string("line\r\n");
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "line\r\n");
+}
+
+TEST(SerializerTest, StringWithBackslashV2) {
+    Serializer s;
+    s.write_string("C:\\Users\\test");
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "C:\\Users\\test");
+}
+
+TEST(SerializerTest, EmptyStringThenInt) {
+    Serializer s;
+    s.write_string("");
+    s.write_i32(42);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "");
+    EXPECT_EQ(d.read_i32(), 42);
+}
+
+TEST(SerializerTest, I32MaxRoundTrip) {
+    Serializer s;
+    s.write_i32(2147483647);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i32(), 2147483647);
+}
+
+TEST(SerializerTest, I32MinRoundTrip) {
+    Serializer s;
+    s.write_i32(-2147483647 - 1);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i32(), -2147483647 - 1);
+}
+
+TEST(SerializerTest, U64MaxRoundTrip) {
+    Serializer s;
+    s.write_u64(18446744073709551615ULL);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u64(), 18446744073709551615ULL);
+}
+
+TEST(SerializerTest, I64MaxRoundTrip) {
+    Serializer s;
+    s.write_i64(9223372036854775807LL);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i64(), 9223372036854775807LL);
+}
