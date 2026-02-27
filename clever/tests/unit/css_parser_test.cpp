@@ -9479,3 +9479,75 @@ TEST_F(CSSStylesheetTest, UserSelectV41) {
         if (d.property == "user-select") { found = true; break; }
     EXPECT_TRUE(found);
 }
+
+TEST_F(CSSStylesheetTest, OverflowXV42) {
+    auto ss = parse_stylesheet("div { overflow-x: scroll; }");
+    ASSERT_EQ(ss.rules.size(), 1);
+    bool found = false;
+    for (auto& d : ss.rules[0].declarations)
+        if (d.property == "overflow-x") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, OverflowYV42) {
+    auto ss = parse_stylesheet("div { overflow-y: hidden; }");
+    ASSERT_EQ(ss.rules.size(), 1);
+    bool found = false;
+    for (auto& d : ss.rules[0].declarations)
+        if (d.property == "overflow-y") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, TextOverflowV42) {
+    auto ss = parse_stylesheet("div { text-overflow: ellipsis; }");
+    ASSERT_EQ(ss.rules.size(), 1);
+    bool found = false;
+    for (auto& d : ss.rules[0].declarations)
+        if (d.property == "text-overflow") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, WhiteSpaceV42) {
+    auto ss = parse_stylesheet("div { white-space: nowrap; }");
+    ASSERT_EQ(ss.rules.size(), 1);
+    bool found = false;
+    for (auto& d : ss.rules[0].declarations)
+        if (d.property == "white-space") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, WordBreakV42) {
+    auto ss = parse_stylesheet("div { word-break: break-all; }");
+    ASSERT_EQ(ss.rules.size(), 1);
+    bool found = false;
+    for (auto& d : ss.rules[0].declarations)
+        if (d.property == "word-break") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, WordSpacingV42) {
+    auto ss = parse_stylesheet("div { word-spacing: 0.5em; }");
+    ASSERT_EQ(ss.rules.size(), 1);
+    bool found = false;
+    for (auto& d : ss.rules[0].declarations)
+        if (d.property == "word-spacing") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, LetterSpacingV42) {
+    auto ss = parse_stylesheet("div { letter-spacing: 2px; }");
+    ASSERT_EQ(ss.rules.size(), 1);
+    bool found = false;
+    for (auto& d : ss.rules[0].declarations)
+        if (d.property == "letter-spacing") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, TextIndentV42) {
+    auto ss = parse_stylesheet("div { text-indent: 1.5em; }");
+    ASSERT_EQ(ss.rules.size(), 1);
+    bool found = false;
+    for (auto& d : ss.rules[0].declarations)
+        if (d.property == "text-indent") { found = true; break; }
+    EXPECT_TRUE(found);
+}

@@ -6947,3 +6947,70 @@ TEST(URLParser, LongQueryV32) {
     EXPECT_EQ(url->path, "/s");
     EXPECT_TRUE(url->query.find("c=3") != std::string::npos);
 }
+
+TEST(URLParser, PathWithTrailingSlashV33) {
+    auto url = parse("https://example.com/api/v1/");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "example.com");
+    EXPECT_EQ(url->path, "/api/v1/");
+}
+
+TEST(URLParser, QueryWithMultipleParametersV33) {
+    auto url = parse("https://search.com/results?q=test&page=1&sort=date");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "search.com");
+    EXPECT_EQ(url->query, "q=test&page=1&sort=date");
+    EXPECT_EQ(url->path, "/results");
+}
+
+TEST(URLParser, FragmentWithColonV33) {
+    auto url = parse("https://docs.com/guide#section:subsection");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "docs.com");
+    EXPECT_EQ(url->fragment, "section:subsection");
+}
+
+TEST(URLParser, PortZeroIsParsedV33) {
+    auto url = parse("http://example.com:0/path");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->port, 0);
+}
+
+TEST(URLParser, FtpSchemeWithDefaultPortV33) {
+    auto url = parse("ftp://ftp.example.com/files");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "ftp");
+    EXPECT_EQ(url->host, "ftp.example.com");
+    EXPECT_EQ(url->path, "/files");
+}
+
+TEST(URLParser, PathWithDoubleSlashV33) {
+    auto url = parse("https://cdn.example.com/content//assets/file.js");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "cdn.example.com");
+    EXPECT_EQ(url->path, "/content//assets/file.js");
+}
+
+TEST(URLParser, PercentEncodingDoubleEncodedV33) {
+    auto url = parse("https://example.com/search?q=hello%20world");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "example.com");
+    EXPECT_EQ(url->query, "q=hello%2520world");
+}
+
+TEST(URLParser, CompleteURLAllComponentsV33) {
+    auto url = parse("https://user:pass@secure.example.com:8443/api/data?id=123&key=val#results");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "secure.example.com");
+    ASSERT_TRUE(url->port.has_value());
+    EXPECT_EQ(*url->port, 8443);
+    EXPECT_EQ(url->path, "/api/data");
+    EXPECT_TRUE(url->query.find("id=123") != std::string::npos);
+    EXPECT_EQ(url->fragment, "results");
+}

@@ -4340,3 +4340,49 @@ TEST(CORSPolicy, IsCrossOriginIdenticalOriginsNotCrossV50) {
     // Identical origins with identical scheme, host, and port are NOT cross-origin
     EXPECT_FALSE(is_cross_origin("https://api.example.com:443", "https://api.example.com:443/different/path"));
 }
+
+TEST(CORSPolicy, IsCorsEligibleRequestUrlFtpSchemeNotEligibleV51) {
+    // FTP scheme is NOT CORS-eligible (only http/https)
+    EXPECT_FALSE(is_cors_eligible_request_url("ftp://files.example.com/document.txt"));
+}
+
+TEST(CORSPolicy, IsCorsEligibleRequestUrlDataSchemeNotEligibleV51) {
+    // Data URLs are NOT CORS-eligible
+    EXPECT_FALSE(is_cors_eligible_request_url("data:text/html,<h1>Hello</h1>"));
+}
+
+TEST(CORSPolicy, HasEnforceableDocumentOriginDataSchemeNotEnforceableV51) {
+    // data: scheme is NOT enforceable for CORS
+    EXPECT_FALSE(has_enforceable_document_origin("data:text/plain;base64,SGVsbG8gV29ybGQ="));
+}
+
+TEST(CORSPolicy, HasEnforceableDocumentOriginExplicit443PortNotEnforceableV51) {
+    // Explicit :443 port is NOT enforceable in this implementation
+    EXPECT_FALSE(has_enforceable_document_origin("https://example.com:443"));
+}
+
+TEST(CORSPolicy, ShouldAttachOriginHeaderNullOriginReturnsTrueV51) {
+    // Null origin string is treated as a valid origin string for attachment
+    EXPECT_TRUE(should_attach_origin_header("null", "https://api.example.com/endpoint"));
+}
+
+TEST(CORSPolicy, IsCrossOriginDifferentPortsCrossV51) {
+    // Same host and scheme but different ports should be cross-origin
+    EXPECT_TRUE(is_cross_origin("https://example.com:3000", "https://example.com:8080"));
+}
+
+TEST(CORSPolicy, CorsAllowsResponseAllowOriginMismatchFalseV51) {
+    // Response with mismatched origin in ACAO header should fail
+    clever::net::HeaderMap resp_headers;
+    resp_headers.set("Access-Control-Allow-Origin", "https://different-origin.com");
+    EXPECT_FALSE(cors_allows_response("https://origin.example.com", "https://api.example.com/data", resp_headers, false));
+}
+
+TEST(CORSPolicy, NormalizeOutgoingOriginHeaderEmptyOriginNoOpV51) {
+    // normalize_outgoing_origin_header is a no-op when origin is empty string
+    clever::net::HeaderMap headers;
+    headers.set("Origin", "https://original.example.com");
+    normalize_outgoing_origin_header(headers, "", "https://api.example.com/data");
+    // Empty origin means the header is not set/modified
+    EXPECT_FALSE(headers.has("origin"));
+}

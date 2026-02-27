@@ -9887,3 +9887,115 @@ TEST(HttpClient, ResponseParse408RequestTimeoutV43) {
     ASSERT_TRUE(resp.has_value());
     EXPECT_EQ(resp->status, 408u);
 }
+
+TEST(HttpClient, HeaderMapSetOverwritesPreviousValueV44) {
+    using namespace clever::net;
+    HeaderMap map;
+
+    map.set("X-Custom-Header", "first");
+    map.set("X-Custom-Header", "second");
+
+    auto value = map.get("X-Custom-Header");
+    ASSERT_TRUE(value.has_value());
+    EXPECT_EQ(value.value(), "second");
+}
+
+TEST(HttpClient, HeaderMapAppendPreservesMultipleValuesV44) {
+    using namespace clever::net;
+    HeaderMap map;
+
+    map.append("Set-Cookie", "session=abc");
+    map.append("Set-Cookie", "theme=dark");
+    map.append("Set-Cookie", "lang=en");
+
+    auto values = map.get_all("Set-Cookie");
+    EXPECT_EQ(values.size(), 3u);
+}
+
+TEST(HttpClient, HeaderMapRemoveDeletesEntireKeyV44) {
+    using namespace clever::net;
+    HeaderMap map;
+
+    map.set("Authorization", "Bearer token123");
+    map.append("Authorization", "Bearer token456");
+
+    map.remove("Authorization");
+
+    EXPECT_FALSE(map.has("Authorization"));
+    auto values = map.get_all("Authorization");
+    EXPECT_TRUE(values.empty());
+}
+
+TEST(HttpClient, HeaderMapSizeReflectsAllHeadersV44) {
+    using namespace clever::net;
+    HeaderMap map;
+
+    map.set("Content-Type", "application/json");
+    map.set("Content-Length", "256");
+    map.set("Cache-Control", "max-age=3600");
+    map.set("X-Custom", "value");
+
+    EXPECT_EQ(map.size(), 4u);
+}
+
+TEST(HttpClient, RequestDeleteMethodSerializationV44) {
+    using namespace clever::net;
+    Request req;
+    req.method = Method::DELETE_METHOD;
+    req.path = "/api/resource/123";
+    req.headers.set("Host", "api.example.com");
+
+    auto serialized = req.serialize();
+    std::string serialized_str(serialized.begin(), serialized.end());
+
+    EXPECT_NE(serialized_str.find("DELETE"), std::string::npos);
+    EXPECT_NE(serialized_str.find("/api/resource/123"), std::string::npos);
+}
+
+TEST(HttpClient, ResponseParseWithBodyContentV44) {
+    using namespace clever::net;
+    std::string raw_str = "HTTP/1.1 200 OK\r\n"
+                          "Content-Type: text/plain\r\n"
+                          "Content-Length: 13\r\n"
+                          "\r\n"
+                          "Hello, World!";
+
+    std::vector<uint8_t> raw(raw_str.begin(), raw_str.end());
+    auto resp = Response::parse(raw);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 200u);
+    EXPECT_EQ(resp->body.size(), 13u);
+    EXPECT_EQ(std::string(resp->body.begin(), resp->body.end()), "Hello, World!");
+}
+
+TEST(HttpClient, CookieJarGetCookieHeaderForPathV44) {
+    using namespace clever::net;
+    CookieJar jar;
+
+    jar.set_from_header("user_pref=dark; Path=/", "secure.example.com");
+    jar.set_from_header("session_id=xyz; Path=/", "secure.example.com");
+
+    // Verify we stored cookies
+    EXPECT_GE(jar.size(), 2u);
+
+    // Retrieve cookie header for the domain and path
+    auto cookie_header = jar.get_cookie_header("secure.example.com", "/", false);
+    EXPECT_TRUE(cookie_header.find("user_pref") != std::string::npos ||
+                cookie_header.find("session_id") != std::string::npos);
+}
+
+TEST(HttpClient, RequestPatchMethodWithHeadersV44) {
+    using namespace clever::net;
+    Request req;
+    req.method = Method::PATCH;
+    req.path = "/api/user/profile";
+    req.headers.set("Host", "api.example.com");
+    req.headers.set("Content-Type", "application/json");
+
+    auto serialized = req.serialize();
+    std::string serialized_str(serialized.begin(), serialized.end());
+
+    EXPECT_NE(serialized_str.find("PATCH"), std::string::npos);
+    EXPECT_NE(serialized_str.find("content-type"), std::string::npos);
+}

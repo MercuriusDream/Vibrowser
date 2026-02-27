@@ -9846,3 +9846,59 @@ TEST(LayoutNodeProps, MinHeightSetV41) {
     n.min_height = 50.0f;
     EXPECT_FLOAT_EQ(n.min_height, 50.0f);
 }
+
+TEST(LayoutNodeProps, MaxWidthSetV42) {
+    using namespace clever::layout;
+    LayoutNode n;
+    n.max_width = 800.0f;
+    EXPECT_FLOAT_EQ(n.max_width, 800.0f);
+}
+
+TEST(LayoutNodeProps, TextIndentSetV42) {
+    using namespace clever::layout;
+    LayoutNode n;
+    n.text_indent = 2.0f;
+    EXPECT_FLOAT_EQ(n.text_indent, 2.0f);
+}
+
+TEST(LayoutNodeProps, BorderRadiusTLSetV42) {
+    using namespace clever::layout;
+    LayoutNode n;
+    n.border_radius_tl = 8.0f;
+    EXPECT_FLOAT_EQ(n.border_radius_tl, 8.0f);
+}
+
+TEST(LayoutNodeProps, BorderRadiusBLSetV42) {
+    using namespace clever::layout;
+    LayoutNode n;
+    n.border_radius_bl = 16.0f;
+    EXPECT_FLOAT_EQ(n.border_radius_bl, 16.0f);
+}
+
+TEST(LayoutNodeProps, OrderSetV42) {
+    using namespace clever::layout;
+    LayoutNode n;
+    n.order = 3;
+    EXPECT_EQ(n.order, 3);
+}
+
+TEST(LayoutNodeProps, ColumnCountSetV42) {
+    using namespace clever::layout;
+    LayoutNode n;
+    n.column_count = 2;
+    EXPECT_EQ(n.column_count, 2);
+}
+
+TEST(LayoutNodeProps, TextContentSetV42) {
+    using namespace clever::layout;
+    LayoutNode n;
+    n.text_content = "Hello World";
+    EXPECT_EQ(n.text_content, "Hello World");
+}
+
+TEST(LayoutNodeProps, ElementIdSetV42) {
+    using namespace clever::layout;
+    LayoutNode n;
+    n.element_id = "main-container";
+    EXPECT_EQ(n.element_id, "main-container");
+}

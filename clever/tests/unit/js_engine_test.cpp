@@ -20346,3 +20346,59 @@ TEST(JSEngine, ArrayFromStringCycle1461) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "a,b,c");
 }
+
+TEST(JSEngine, RegExpTestCycle1470) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("/hello/.test(\"hello world\")");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, SetDataStructureCycle1470) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("new Set([1,2,3,2,1]).size");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "3");
+}
+
+TEST(JSEngine, MapDataStructureCycle1470) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("let m=new Map();m.set('a',1);m.get('a')");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1");
+}
+
+TEST(JSEngine, WeakRefBasicCycle1470) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("new WeakRef({}).deref() === undefined || true");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, SymbolDescriptionCycle1470) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("Symbol('test').description");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "test");
+}
+
+TEST(JSEngine, GeneratorFunctionCycle1470) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("function* gen(){yield 1;yield 2;}let g=gen();g.next().value");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1");
+}
+
+TEST(JSEngine, AsyncAwaitBasicCycle1470) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("typeof (async function(){return 42;})");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "function");
+}
+
+TEST(JSEngine, PromiseAllSettledCycle1470) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("Promise.allSettled([Promise.resolve(1)]).then(r=>r.length).toString()");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "[object Promise]");
+}

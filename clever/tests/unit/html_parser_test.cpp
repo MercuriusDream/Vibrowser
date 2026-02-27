@@ -8630,3 +8630,59 @@ TEST(TreeBuilder, SpanWithClassV29) {
     ASSERT_NE(el, nullptr);
     EXPECT_EQ(el->tag_name, "span");
 }
+
+TEST(TreeBuilder, CiteElementV30) {
+    auto doc = clever::html::parse("<html><body><p>The book <cite>The Great Gatsby</cite> is a classic.</p></body></html>");
+    auto* el = doc->find_element("cite");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "cite");
+}
+
+TEST(TreeBuilder, DfnElementV30) {
+    auto doc = clever::html::parse("<html><body><p><dfn>HTML</dfn> is a markup language.</p></body></html>");
+    auto* el = doc->find_element("dfn");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "dfn");
+}
+
+TEST(TreeBuilder, KbdElementV30) {
+    auto doc = clever::html::parse("<html><body><p>Press <kbd>Ctrl+C</kbd> to copy.</p></body></html>");
+    auto* el = doc->find_element("kbd");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "kbd");
+}
+
+TEST(TreeBuilder, SampElementV30) {
+    auto doc = clever::html::parse("<html><body><p>The program output: <samp>Hello World</samp></p></body></html>");
+    auto* el = doc->find_element("samp");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "samp");
+}
+
+TEST(TreeBuilder, VarElementV30) {
+    auto doc = clever::html::parse("<html><body><p>Let <var>x</var> be the unknown value.</p></body></html>");
+    auto* el = doc->find_element("var");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "var");
+}
+
+TEST(TreeBuilder, WbrElementV30) {
+    auto doc = clever::html::parse("<html><body><p>word1<wbr>word2</p></body></html>");
+    auto* el = doc->find_element("wbr");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "wbr");
+}
+
+TEST(TreeBuilder, BdiElementV30) {
+    auto doc = clever::html::parse("<html><body><p>User <bdi>مرحبا</bdi> said hello.</p></body></html>");
+    auto* el = doc->find_element("bdi");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "bdi");
+}
+
+TEST(TreeBuilder, BdoElementV30) {
+    auto doc = clever::html::parse("<html><body><p>The text <bdo dir=\"rtl\">reversed</bdo> is right-to-left.</p></body></html>");
+    auto* el = doc->find_element("bdo");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "bdo");
+}

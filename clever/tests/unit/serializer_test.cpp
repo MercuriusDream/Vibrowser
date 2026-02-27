@@ -8107,3 +8107,130 @@ TEST(Serializer, MultipleStringsAndBoolsV40) {
     EXPECT_FALSE(d.read_bool());
     EXPECT_FALSE(d.has_remaining());
 }
+
+TEST(Serializer, RoundtripU8ZeroAndMaxV41) {
+    Serializer s;
+    s.write_u8(0);
+    s.write_u8(255);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u8(), 0u);
+    EXPECT_EQ(d.read_u8(), 255u);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(Serializer, RoundtripI32RangeV41) {
+    Serializer s;
+    s.write_i32(INT32_MIN);
+    s.write_i32(-1);
+    s.write_i32(0);
+    s.write_i32(1);
+    s.write_i32(INT32_MAX);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i32(), INT32_MIN);
+    EXPECT_EQ(d.read_i32(), -1);
+    EXPECT_EQ(d.read_i32(), 0);
+    EXPECT_EQ(d.read_i32(), 1);
+    EXPECT_EQ(d.read_i32(), INT32_MAX);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(Serializer, RoundtripF64ValuesV41) {
+    Serializer s;
+    s.write_f64(0.0);
+    s.write_f64(-1.5);
+    s.write_f64(1.5);
+    s.write_f64(3.14159);
+
+    Deserializer d(s.data());
+    EXPECT_DOUBLE_EQ(d.read_f64(), 0.0);
+    EXPECT_DOUBLE_EQ(d.read_f64(), -1.5);
+    EXPECT_DOUBLE_EQ(d.read_f64(), 1.5);
+    EXPECT_DOUBLE_EQ(d.read_f64(), 3.14159);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(Serializer, RoundtripEmptyStringV41) {
+    Serializer s;
+    s.write_string("");
+    s.write_string("test");
+    s.write_string("");
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "");
+    EXPECT_EQ(d.read_string(), "test");
+    EXPECT_EQ(d.read_string(), "");
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(Serializer, RoundtripByteArrayV41) {
+    Serializer s;
+    uint8_t data[] = {0x01, 0x02, 0x03, 0x04, 0x05};
+    s.write_bytes(data, 5);
+
+    Deserializer d(s.data());
+    auto result = d.read_bytes();
+    EXPECT_EQ(result.size(), 5);
+    EXPECT_EQ(result[0], 0x01u);
+    EXPECT_EQ(result[1], 0x02u);
+    EXPECT_EQ(result[2], 0x03u);
+    EXPECT_EQ(result[3], 0x04u);
+    EXPECT_EQ(result[4], 0x05u);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(Serializer, RoundtripAllIntegerTypesV41) {
+    Serializer s;
+    s.write_u8(100);
+    s.write_u16(30000);
+    s.write_u32(2000000000u);
+    s.write_u64(9000000000000000000ull);
+    s.write_i32(-1500000000);
+    s.write_i64(-8000000000000000000ll);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u8(), 100u);
+    EXPECT_EQ(d.read_u16(), 30000u);
+    EXPECT_EQ(d.read_u32(), 2000000000u);
+    EXPECT_EQ(d.read_u64(), 9000000000000000000ull);
+    EXPECT_EQ(d.read_i32(), -1500000000);
+    EXPECT_EQ(d.read_i64(), -8000000000000000000ll);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(Serializer, RoundtripComplexMixedDataV41) {
+    Serializer s;
+    s.write_u32(42);
+    s.write_string("mixed");
+    s.write_bool(true);
+    s.write_f64(2.71828);
+    uint8_t bytes[] = {0xAA, 0xBB};
+    s.write_bytes(bytes, 2);
+    s.write_i64(-999);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u32(), 42u);
+    EXPECT_EQ(d.read_string(), "mixed");
+    EXPECT_TRUE(d.read_bool());
+    EXPECT_DOUBLE_EQ(d.read_f64(), 2.71828);
+    auto result = d.read_bytes();
+    EXPECT_EQ(result.size(), 2);
+    EXPECT_EQ(result[0], 0xAAu);
+    EXPECT_EQ(result[1], 0xBBu);
+    EXPECT_EQ(d.read_i64(), -999ll);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(Serializer, RoundtripU64LargeValueV41) {
+    Serializer s;
+    s.write_u64(18446744073709551615ull);
+    s.write_u64(0ull);
+    s.write_u64(1099511627776ull);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u64(), 18446744073709551615ull);
+    EXPECT_EQ(d.read_u64(), 0ull);
+    EXPECT_EQ(d.read_u64(), 1099511627776ull);
+    EXPECT_FALSE(d.has_remaining());
+}

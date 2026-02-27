@@ -8152,3 +8152,90 @@ TEST(DomElement, ClassListToggleReturnVoid) {
     el->class_list().toggle("active");
     EXPECT_FALSE(el->class_list().contains("active"));
 }
+
+// ---------------------------------------------------------------------------
+// Cycle 1399 — New DOM element tests (8 tests)
+// ---------------------------------------------------------------------------
+
+TEST(DomElement, TagNameMenuV2) {
+    Document doc;
+    auto el = doc.create_element("menu");
+    EXPECT_EQ(el->tag_name(), "menu");
+    EXPECT_NE(el, nullptr);
+}
+
+TEST(DomElement, SetAttributeAriaRole) {
+    Document doc;
+    auto el = doc.create_element("div");
+    el->set_attribute("role", "menuitem");
+    EXPECT_TRUE(el->has_attribute("role"));
+    EXPECT_EQ(el->get_attribute("role"), "menuitem");
+}
+
+TEST(DomElement, RemoveAttributeAriaLabelV2) {
+    Document doc;
+    auto el = doc.create_element("button");
+    el->set_attribute("aria-label", "Close dialog");
+    EXPECT_TRUE(el->has_attribute("aria-label"));
+    el->remove_attribute("aria-label");
+    EXPECT_FALSE(el->has_attribute("aria-label"));
+}
+
+TEST(DomElement, HasAttributeAriaRequired) {
+    Document doc;
+    auto el = doc.create_element("input");
+    el->set_attribute("aria-required", "true");
+    EXPECT_TRUE(el->has_attribute("aria-required"));
+    EXPECT_EQ(el->get_attribute("aria-required"), "true");
+}
+
+TEST(DomElement, ForEachChildWithFiveElements) {
+    Document doc;
+    auto parent = doc.create_element("div");
+    for (int i = 0; i < 5; i++) {
+        auto child = doc.create_element("span");
+        parent->append_child(std::move(child));
+    }
+    EXPECT_EQ(parent->child_count(), 5u);
+    int count = 0;
+    parent->for_each_child([&](const Node& child) {
+        EXPECT_EQ(child.node_type(), NodeType::Element);
+        count++;
+    });
+    EXPECT_EQ(count, 5);
+}
+
+TEST(DomElement, ClassListAddMultipleClasses) {
+    Document doc;
+    auto el = doc.create_element("div");
+    el->class_list().add("primary");
+    el->class_list().add("secondary");
+    el->class_list().add("tertiary");
+    EXPECT_TRUE(el->class_list().contains("primary"));
+    EXPECT_TRUE(el->class_list().contains("secondary"));
+    EXPECT_TRUE(el->class_list().contains("tertiary"));
+}
+
+TEST(DomElement, SetAttributeAriaHiddenV2) {
+    Document doc;
+    auto el = doc.create_element("div");
+    el->set_attribute("aria-hidden", "true");
+    EXPECT_TRUE(el->has_attribute("aria-hidden"));
+    EXPECT_EQ(el->get_attribute("aria-hidden"), "true");
+    el->set_attribute("aria-hidden", "false");
+    EXPECT_EQ(el->get_attribute("aria-hidden"), "false");
+}
+
+TEST(DomElement, ParentElementTraversal) {
+    Document doc;
+    auto parent = doc.create_element("div");
+    auto child = doc.create_element("span");
+    auto* child_ptr = child.get();
+    parent->append_child(std::move(child));
+    EXPECT_NE(child_ptr->parent(), nullptr);
+    EXPECT_EQ(child_ptr->parent()->node_type(), NodeType::Element);
+    // Cast parent to Element to check tag name
+    auto* parent_el = dynamic_cast<Element*>(child_ptr->parent());
+    EXPECT_NE(parent_el, nullptr);
+    EXPECT_EQ(parent_el->tag_name(), "div");
+}
