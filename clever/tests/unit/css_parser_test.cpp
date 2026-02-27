@@ -6822,3 +6822,75 @@ TEST_F(CSSStylesheetTest, InsetDeclarationV5) {
         if (d.property == "inset") { found = true; break; }
     EXPECT_TRUE(found);
 }
+
+TEST_F(CSSStylesheetTest, TextIndentV6) {
+    auto sheet = parse_stylesheet("p { text-indent: 2em; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "text-indent") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, VerticalAlignV6) {
+    auto sheet = parse_stylesheet("span { vertical-align: middle; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "vertical-align") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, WhiteSpaceV6) {
+    auto sheet = parse_stylesheet("pre { white-space: nowrap; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "white-space") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, WordSpacingV6) {
+    auto sheet = parse_stylesheet("p { word-spacing: 4px; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "word-spacing") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, LetterSpacingV6) {
+    auto sheet = parse_stylesheet("h1 { letter-spacing: 0.05em; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "letter-spacing") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, LineHeightV6) {
+    auto sheet = parse_stylesheet("body { line-height: 1.5; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "line-height") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, TextAlignV6) {
+    auto sheet = parse_stylesheet("div { text-align: center; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "text-align") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, TextDecorationV6) {
+    auto sheet = parse_stylesheet("a { text-decoration: underline; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "text-decoration") { found = true; break; }
+    EXPECT_TRUE(found);
+}

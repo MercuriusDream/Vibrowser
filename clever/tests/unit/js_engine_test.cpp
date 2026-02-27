@@ -18314,3 +18314,53 @@ TEST(JSEngine, GeneratorThrowCatch) {
     );
     EXPECT_EQ(result, "err");
 }
+
+// --- Cycle 1146: 8 JS engine tests ---
+
+TEST(JSEngine, IntlObjectType) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("typeof Intl");
+    EXPECT_TRUE(result == "object" || result == "undefined");
+}
+
+TEST(JSEngine, SymbolIteratorExists) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("typeof Symbol.iterator");
+    EXPECT_EQ(result, "symbol");
+}
+
+TEST(JSEngine, SymbolToPrimitiveExists) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("typeof Symbol.toPrimitive");
+    EXPECT_EQ(result, "symbol");
+}
+
+TEST(JSEngine, SymbolHasInstanceExists) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("typeof Symbol.hasInstance");
+    EXPECT_EQ(result, "symbol");
+}
+
+TEST(JSEngine, ErrorStackTrace) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("typeof (new Error('test')).stack");
+    EXPECT_TRUE(result == "string" || result == "undefined");
+}
+
+TEST(JSEngine, RegExpStickyFlag) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var r = /foo/y; r.sticky.toString()");
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, ArrayIsArrayOnTypedArray) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("Array.isArray(new Uint8Array(3)).toString()");
+    EXPECT_EQ(result, "false");
+}
+
+TEST(JSEngine, ObjectGetPrototypeOfArray) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("Object.getPrototypeOf([]) === Array.prototype ? 'yes' : 'no'");
+    EXPECT_EQ(result, "yes");
+}

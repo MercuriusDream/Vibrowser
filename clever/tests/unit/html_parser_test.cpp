@@ -6348,3 +6348,69 @@ TEST(TreeBuilder, HeadElementExistsV2) {
     ASSERT_NE(head, nullptr);
     EXPECT_EQ(head->tag_name, "head");
 }
+
+TEST(TreeBuilder, XmpElementParsed) {
+    auto doc = clever::html::parse("<body><xmp>Preformatted</xmp></body>");
+    auto* el = doc->find_element("xmp");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "xmp");
+}
+
+TEST(TreeBuilder, ListingElementParsed) {
+    auto doc = clever::html::parse("<body><listing>Code listing</listing></body>");
+    auto* el = doc->find_element("listing");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "listing");
+}
+
+TEST(TreeBuilder, PlaintextElementParsed) {
+    auto doc = clever::html::parse("<body><plaintext>Plain text content</plaintext></body>");
+    auto* el = doc->find_element("plaintext");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "plaintext");
+}
+
+TEST(TreeBuilder, IsindexNotInBody) {
+    auto doc = clever::html::parse("<body><div>Content</div></body>");
+    auto* el = doc->find_element("isindex");
+    EXPECT_EQ(el, nullptr);
+    auto* body = doc->find_element("body");
+    ASSERT_NE(body, nullptr);
+    EXPECT_EQ(body->tag_name, "body");
+}
+
+TEST(TreeBuilder, BgsoundNotInBody) {
+    auto doc = clever::html::parse("<body><div>Content</div></body>");
+    auto* el = doc->find_element("bgsound");
+    EXPECT_EQ(el, nullptr);
+    auto* body = doc->find_element("body");
+    ASSERT_NE(body, nullptr);
+    EXPECT_EQ(body->tag_name, "body");
+}
+
+TEST(TreeBuilder, KeygenNotParsed) {
+    auto doc = clever::html::parse("<body><div>Content</div></body>");
+    auto* el = doc->find_element("keygen");
+    EXPECT_EQ(el, nullptr);
+    auto* body = doc->find_element("body");
+    ASSERT_NE(body, nullptr);
+    EXPECT_EQ(body->tag_name, "body");
+}
+
+TEST(TreeBuilder, BasefontNotInBody) {
+    auto doc = clever::html::parse("<body><div>Content</div></body>");
+    auto* el = doc->find_element("basefont");
+    EXPECT_EQ(el, nullptr);
+    auto* body = doc->find_element("body");
+    ASSERT_NE(body, nullptr);
+    EXPECT_EQ(body->tag_name, "body");
+}
+
+TEST(TreeBuilder, NextidNotInBody) {
+    auto doc = clever::html::parse("<body><div>Content</div></body>");
+    auto* el = doc->find_element("nextid");
+    EXPECT_EQ(el, nullptr);
+    auto* body = doc->find_element("body");
+    ASSERT_NE(body, nullptr);
+    EXPECT_EQ(body->tag_name, "body");
+}

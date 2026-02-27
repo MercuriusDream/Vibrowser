@@ -8341,3 +8341,45 @@ TEST(LayoutNodeProps, MaskSizeWidthDefaultZero) {
     LayoutNode n;
     EXPECT_FLOAT_EQ(n.mask_size_width, 0.0f);
 }
+
+// --- Cycle 1145: 8 Layout node property defaults ---
+
+TEST(LayoutNodeProps, MaskSizeHeightDefaultZero) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.mask_size_height, 0.0f);
+}
+
+TEST(LayoutNodeProps, MaskPositionDefaultsPercentV2) {
+    LayoutNode n;
+    EXPECT_EQ(n.mask_position, "0% 0%");
+}
+
+TEST(LayoutNodeProps, ScrollSnapStopDefaultsZeroV2) {
+    LayoutNode n;
+    EXPECT_EQ(n.scroll_snap_stop, 0);
+}
+
+TEST(LayoutNodeProps, ContentVisibilityDefaultsToZeroV2) {
+    LayoutNode n;
+    EXPECT_EQ(n.content_visibility, 0);
+}
+
+TEST(LayoutNodeProps, ClipPathPathDataDefaultEmptyV2) {
+    LayoutNode n;
+    EXPECT_TRUE(n.clip_path_path_data.empty());
+}
+
+TEST(LayoutNodeProps, MaskImageDefaultsEmptyV2) {
+    LayoutNode n;
+    EXPECT_TRUE(n.mask_image.empty());
+}
+
+TEST(LayoutNodeProps, ShapeOutsideValuesDefaultsEmptyV2) {
+    LayoutNode n;
+    EXPECT_TRUE(n.shape_outside_values.empty());
+}
+
+TEST(LayoutNodeProps, MaskRepeatDefaultsZeroV2) {
+    LayoutNode n;
+    EXPECT_EQ(n.mask_repeat, 0);
+}

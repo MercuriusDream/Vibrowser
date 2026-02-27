@@ -6088,3 +6088,56 @@ TEST(ResponseTest, ResponseStatus408V7) {
     r.status = 408;
     EXPECT_EQ(r.status, 408);
 }
+
+// ---------------------------------------------------------------------------
+// V8 tests
+// ---------------------------------------------------------------------------
+
+TEST(MethodTest, MethodToStringPatchV8) {
+    EXPECT_EQ(method_to_string(Method::PATCH), "PATCH");
+}
+
+TEST(MethodTest, StringToMethodOptionsV8) {
+    EXPECT_EQ(string_to_method("OPTIONS"), Method::OPTIONS);
+}
+
+TEST(HeaderMapTest, SizeAfterThreeSetsV8) {
+    HeaderMap h;
+    h.set("A", "1");
+    h.set("B", "2");
+    h.set("C", "3");
+    EXPECT_EQ(h.size(), 3u);
+}
+
+TEST(HeaderMapTest, RemoveThenHasReturnsFalseV8) {
+    HeaderMap h;
+    h.set("X-Token", "abc");
+    h.remove("X-Token");
+    EXPECT_FALSE(h.has("X-Token"));
+}
+
+TEST(ResponseTest, ResponseStatus201V8) {
+    Response r;
+    r.status = 201;
+    EXPECT_EQ(r.status, 201);
+}
+
+TEST(ResponseTest, ResponseStatus503V8) {
+    Response r;
+    r.status = 503;
+    EXPECT_EQ(r.status, 503);
+}
+
+TEST(ResponseTest, ResponseStatus302V8) {
+    Response r;
+    r.status = 302;
+    EXPECT_EQ(r.status, 302);
+}
+
+TEST(HeaderMapTest, AppendThenGetAllCountV8) {
+    HeaderMap h;
+    h.append("Accept", "text/html");
+    h.append("Accept", "application/json");
+    h.append("Accept", "text/plain");
+    EXPECT_EQ(h.get_all("Accept").size(), 3u);
+}

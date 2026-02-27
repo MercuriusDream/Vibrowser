@@ -5981,3 +5981,68 @@ TEST(DomElement, AttributesSizeAfterThreeSetsV7) {
     el->set_attribute("c", "3");
     EXPECT_EQ(el->attributes().size(), 3u);
 }
+
+// --- Cycle 1138: 8 DOM tests ---
+
+TEST(DomElement, TagNamePicture) {
+    Document doc;
+    auto el = doc.create_element("picture");
+    std::string name = el->tag_name();
+    EXPECT_TRUE(name == "picture" || name == "PICTURE");
+}
+
+TEST(DomElement, TagNameSource) {
+    Document doc;
+    auto el = doc.create_element("source");
+    std::string name = el->tag_name();
+    EXPECT_TRUE(name == "source" || name == "SOURCE");
+}
+
+TEST(DomElement, SetAttributeMin) {
+    Document doc;
+    auto el = doc.create_element("input");
+    el->set_attribute("min", "0");
+    EXPECT_EQ(el->get_attribute("min").value(), "0");
+}
+
+TEST(DomElement, SetAttributeMax) {
+    Document doc;
+    auto el = doc.create_element("input");
+    el->set_attribute("max", "100");
+    EXPECT_EQ(el->get_attribute("max").value(), "100");
+}
+
+TEST(DomElement, ChildCountSeven) {
+    Document doc;
+    auto parent = doc.create_element("div");
+    for (int i = 0; i < 7; ++i)
+        parent->append_child(doc.create_element("span"));
+    EXPECT_EQ(parent->child_count(), 7u);
+}
+
+TEST(DomElement, ClassListAddFour) {
+    Document doc;
+    auto el = doc.create_element("div");
+    el->class_list().add("a");
+    el->class_list().add("b");
+    el->class_list().add("c");
+    el->class_list().add("d");
+    EXPECT_TRUE(el->class_list().contains("d"));
+}
+
+TEST(DomElement, HasAttributeTrueAfterSet) {
+    Document doc;
+    auto el = doc.create_element("div");
+    el->set_attribute("role", "button");
+    EXPECT_TRUE(el->has_attribute("role"));
+}
+
+TEST(DomElement, AttributesSizeFour) {
+    Document doc;
+    auto el = doc.create_element("div");
+    el->set_attribute("a", "1");
+    el->set_attribute("b", "2");
+    el->set_attribute("c", "3");
+    el->set_attribute("d", "4");
+    EXPECT_EQ(el->attributes().size(), 4u);
+}

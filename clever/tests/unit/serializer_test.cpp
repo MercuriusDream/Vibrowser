@@ -5457,3 +5457,59 @@ TEST(SerializerTest, BoolTrueAloneV4) {
     Deserializer d(s.data());
     EXPECT_TRUE(d.read_bool());
 }
+
+TEST(SerializerTest, U8FiftyV5) {
+    Serializer s;
+    s.write_u8(50);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u8(), 50);
+}
+
+TEST(SerializerTest, U16TenThousandV5) {
+    Serializer s;
+    s.write_u16(10000);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u16(), 10000);
+}
+
+TEST(SerializerTest, I32NegHundredV5) {
+    Serializer s;
+    s.write_i32(-100);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i32(), -100);
+}
+
+TEST(SerializerTest, U64BillionV5) {
+    Serializer s;
+    s.write_u64(1000000000ULL);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u64(), 1000000000ULL);
+}
+
+TEST(SerializerTest, F64NegGoldenRatioV5) {
+    Serializer s;
+    s.write_f64(-1.618033988749);
+    Deserializer d(s.data());
+    EXPECT_DOUBLE_EQ(d.read_f64(), -1.618033988749);
+}
+
+TEST(SerializerTest, StringWithQuoteV5) {
+    Serializer s;
+    s.write_string("He said \"hello\"");
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "He said \"hello\"");
+}
+
+TEST(SerializerTest, I64PositiveBillionV5) {
+    Serializer s;
+    s.write_i64(1000000000LL);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i64(), 1000000000LL);
+}
+
+TEST(SerializerTest, BoolFalseAloneV5) {
+    Serializer s;
+    s.write_bool(false);
+    Deserializer d(s.data());
+    EXPECT_FALSE(d.read_bool());
+}

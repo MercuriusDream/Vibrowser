@@ -4149,3 +4149,58 @@ TEST(URLParser, Port11211) {
     ASSERT_TRUE(url.has_value());
     EXPECT_EQ(url->port.value(), 11211);
 }
+
+// --- Cycle 1133: 8 URL tests ---
+
+TEST(URLParser, Port2049V2) {
+    auto url = parse("nfs://storage.local:2049/exports");
+    ASSERT_TRUE(url.has_value());
+    ASSERT_TRUE(url->port.has_value());
+    EXPECT_EQ(url->port.value(), 2049u);
+    EXPECT_EQ(url->host, "storage.local");
+}
+
+TEST(URLParser, PathWithWasmExt) {
+    auto url = parse("https://cdn.example.com/app/module.wasm");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->path, "/app/module.wasm");
+}
+
+TEST(URLParser, QueryWithPipe) {
+    auto url = parse("https://example.com/search?q=a%7Cb");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_FALSE(url->query.empty());
+}
+
+TEST(URLParser, FragmentWithDots) {
+    auto url = parse("https://docs.example.com/page#section.1.2");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->fragment, "section.1.2");
+}
+
+TEST(URLParser, HostWithPort6443) {
+    auto url = parse("https://k8s.example.com:6443/api/v1");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->host, "k8s.example.com");
+    ASSERT_TRUE(url->port.has_value());
+    EXPECT_EQ(url->port.value(), 6443u);
+}
+
+TEST(URLParser, SchemeHttpPreservedV2) {
+    auto url = parse("http://plain.example.com/page");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "http");
+}
+
+TEST(URLParser, PathDepthFive) {
+    auto url = parse("https://example.com/a/b/c/d/e");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->path, "/a/b/c/d/e");
+}
+
+TEST(URLParser, Port27018) {
+    auto url = parse("http://mongo-secondary.local:27018/admin");
+    ASSERT_TRUE(url.has_value());
+    ASSERT_TRUE(url->port.has_value());
+    EXPECT_EQ(url->port.value(), 27018u);
+}
