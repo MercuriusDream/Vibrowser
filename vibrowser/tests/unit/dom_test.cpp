@@ -14138,3 +14138,147 @@ TEST(DomTest, GetAttributeReturnsNulloptWhenMissingV85) {
     EXPECT_EQ(elem.get_attribute("id").value(), "main");
     EXPECT_FALSE(elem.get_attribute("class").has_value());
 }
+
+// ---------------------------------------------------------------------------
+// V86 Tests
+// ---------------------------------------------------------------------------
+
+TEST(DomTest, ElementSetAndGetMultipleAttributesV86) {
+    Element elem("input");
+    elem.set_attribute("type", "text");
+    elem.set_attribute("name", "username");
+    elem.set_attribute("placeholder", "Enter name");
+
+    EXPECT_TRUE(elem.get_attribute("type").has_value());
+    EXPECT_EQ(elem.get_attribute("type").value(), "text");
+    EXPECT_TRUE(elem.get_attribute("name").has_value());
+    EXPECT_EQ(elem.get_attribute("name").value(), "username");
+    EXPECT_TRUE(elem.get_attribute("placeholder").has_value());
+    EXPECT_EQ(elem.get_attribute("placeholder").value(), "Enter name");
+
+    // Overwrite an existing attribute
+    elem.set_attribute("type", "password");
+    EXPECT_EQ(elem.get_attribute("type").value(), "password");
+}
+
+TEST(DomTest, TextNodeTextContentV86) {
+    Text text_node("Hello, world!");
+    EXPECT_EQ(text_node.text_content(), "Hello, world!");
+    EXPECT_EQ(text_node.node_type(), NodeType::Text);
+
+    Text empty_text("");
+    EXPECT_EQ(empty_text.text_content(), "");
+}
+
+TEST(DomTest, CommentSetDataV86) {
+    Comment comment("initial data");
+    EXPECT_EQ(comment.data(), "initial data");
+    EXPECT_EQ(comment.node_type(), NodeType::Comment);
+
+    comment.set_data("updated data");
+    EXPECT_EQ(comment.data(), "updated data");
+
+    comment.set_data("");
+    EXPECT_EQ(comment.data(), "");
+}
+
+TEST(DomTest, ClassListAddRemoveContainsV86) {
+    Element elem("div");
+
+    elem.class_list().add("alpha");
+    elem.class_list().add("beta");
+    elem.class_list().add("gamma");
+
+    EXPECT_TRUE(elem.class_list().contains("alpha"));
+    EXPECT_TRUE(elem.class_list().contains("beta"));
+    EXPECT_TRUE(elem.class_list().contains("gamma"));
+    EXPECT_FALSE(elem.class_list().contains("delta"));
+
+    elem.class_list().remove("beta");
+    EXPECT_FALSE(elem.class_list().contains("beta"));
+    EXPECT_TRUE(elem.class_list().contains("alpha"));
+    EXPECT_TRUE(elem.class_list().contains("gamma"));
+}
+
+TEST(DomTest, InsertBeforeMiddleChildV86) {
+    auto parent = std::make_unique<Element>("ul");
+    auto first_li = std::make_unique<Element>("li");
+    auto third_li = std::make_unique<Element>("li");
+    auto* first_ptr = first_li.get();
+    auto* third_ptr = third_li.get();
+
+    parent->append_child(std::move(first_li));
+    parent->append_child(std::move(third_li));
+    EXPECT_EQ(parent->child_count(), 2u);
+
+    // Insert a new node before the third_ptr (second child)
+    auto second_li = std::make_unique<Element>("li");
+    auto* second_ptr = second_li.get();
+    parent->insert_before(std::move(second_li), third_ptr);
+
+    EXPECT_EQ(parent->child_count(), 3u);
+    EXPECT_EQ(parent->first_child(), first_ptr);
+    EXPECT_EQ(first_ptr->next_sibling(), second_ptr);
+    EXPECT_EQ(second_ptr->next_sibling(), third_ptr);
+}
+
+TEST(DomTest, RemoveChildUpdatesTreeV86) {
+    auto parent = std::make_unique<Element>("div");
+    auto child1 = std::make_unique<Element>("span");
+    auto child2 = std::make_unique<Element>("p");
+    auto* child1_ptr = child1.get();
+    auto* child2_ptr = child2.get();
+
+    parent->append_child(std::move(child1));
+    parent->append_child(std::move(child2));
+    EXPECT_EQ(parent->child_count(), 2u);
+
+    // Remove first child — dereference the raw pointer
+    parent->remove_child(*child1_ptr);
+    EXPECT_EQ(parent->child_count(), 1u);
+    EXPECT_EQ(parent->first_child(), child2_ptr);
+}
+
+TEST(DomTest, NextSiblingTraversalV86) {
+    auto parent = std::make_unique<Element>("ol");
+    auto c1 = std::make_unique<Element>("li");
+    auto c2 = std::make_unique<Text>("text node");
+    auto c3 = std::make_unique<Comment>("a comment");
+    auto* c1_ptr = c1.get();
+    auto* c2_ptr = c2.get();
+    auto* c3_ptr = c3.get();
+
+    parent->append_child(std::move(c1));
+    parent->append_child(std::move(c2));
+    parent->append_child(std::move(c3));
+
+    // Traverse using next_sibling
+    auto* current = parent->first_child();
+    EXPECT_EQ(current, c1_ptr);
+    current = current->next_sibling();
+    EXPECT_EQ(current, c2_ptr);
+    current = current->next_sibling();
+    EXPECT_EQ(current, c3_ptr);
+    current = current->next_sibling();
+    EXPECT_EQ(current, nullptr);
+}
+
+TEST(DomTest, ParentPointerAfterAppendV86) {
+    auto parent = std::make_unique<Element>("section");
+    auto child_elem = std::make_unique<Element>("article");
+    auto child_text = std::make_unique<Text>("some text");
+    auto* parent_ptr = parent.get();
+    auto* elem_ptr = child_elem.get();
+    auto* text_ptr = child_text.get();
+
+    // Before appending, parent should be null
+    EXPECT_EQ(elem_ptr->parent(), nullptr);
+    EXPECT_EQ(text_ptr->parent(), nullptr);
+
+    parent->append_child(std::move(child_elem));
+    parent->append_child(std::move(child_text));
+
+    // After appending, parent pointer should be set
+    EXPECT_EQ(elem_ptr->parent(), parent_ptr);
+    EXPECT_EQ(text_ptr->parent(), parent_ptr);
+}

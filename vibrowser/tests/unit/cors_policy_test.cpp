@@ -6277,3 +6277,78 @@ TEST(CORSPolicyTest, MismatchedOriginInAcaoRejectsV85) {
     EXPECT_FALSE(
         cors_allows_response("https://attacker.example.com", "https://api.example.com/secret", headers, true));
 }
+
+TEST(CORSPolicyTest, FragmentUrlNotCorsEligibleV86) {
+    // URLs with fragments are NOT cors-eligible
+    EXPECT_FALSE(is_cors_eligible_request_url("https://api.example.com/data#section"));
+    EXPECT_FALSE(is_cors_eligible_request_url("https://api.example.com/page#top"));
+    EXPECT_FALSE(is_cors_eligible_request_url("http://example.com/path#frag"));
+    // Without fragment should be eligible
+    EXPECT_TRUE(is_cors_eligible_request_url("https://api.example.com/data"));
+}
+
+TEST(CORSPolicyTest, WssSchemeNotCorsEligibleV86) {
+    // wss:// is NOT cors-eligible
+    EXPECT_FALSE(is_cors_eligible_request_url("wss://ws.example.com/socket"));
+    EXPECT_FALSE(is_cors_eligible_request_url("wss://example.com:8443/ws"));
+    // ws:// also not eligible
+    EXPECT_FALSE(is_cors_eligible_request_url("ws://example.com/ws"));
+    // https should be eligible
+    EXPECT_TRUE(is_cors_eligible_request_url("https://example.com/api"));
+}
+
+TEST(CORSPolicyTest, ExplicitPort443NotEnforceableV86) {
+    // :443 explicitly in origin is NOT enforceable
+    EXPECT_FALSE(has_enforceable_document_origin("https://app.example.com:443"));
+    // :80 explicitly is also NOT enforceable
+    EXPECT_FALSE(has_enforceable_document_origin("http://app.example.com:80"));
+    // Without explicit default port should be enforceable
+    EXPECT_TRUE(has_enforceable_document_origin("https://app.example.com"));
+    EXPECT_TRUE(has_enforceable_document_origin("http://app.example.com"));
+}
+
+TEST(CORSPolicyTest, WildcardAcaoWithCredentialsRejectsV86) {
+    // Wildcard ACAO + credentials = REJECT
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "*");
+    headers.set("Access-Control-Allow-Credentials", "true");
+    EXPECT_FALSE(
+        cors_allows_response("https://app.example.com", "https://api.example.com/data", headers, true));
+}
+
+TEST(CORSPolicyTest, WildcardAcaoWithoutCredentialsAllowsV86) {
+    // Wildcard ACAO without credentials should be allowed
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "*");
+    EXPECT_TRUE(
+        cors_allows_response("https://app.example.com", "https://api.example.com/public", headers, false));
+}
+
+TEST(CORSPolicyTest, OriginWithFragmentNotMatchingAcaoV86) {
+    // Origin containing a fragment does not match clean ACAO — fragment is part of the string
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "https://app.example.com");
+    EXPECT_FALSE(
+        cors_allows_response("https://app.example.com#somefrag", "https://api.example.com/data", headers, false));
+    // Exact match without fragment still works
+    EXPECT_TRUE(
+        cors_allows_response("https://app.example.com", "https://api.example.com/data", headers, false));
+}
+
+TEST(CORSPolicyTest, CrossOriginSchemesCaseInsensitiveV86) {
+    // Schemes are case-insensitive for cross-origin checks
+    EXPECT_FALSE(is_cross_origin("https://app.example.com", "HTTPS://app.example.com/path"));
+    EXPECT_FALSE(is_cross_origin("HTTP://app.example.com", "http://app.example.com/page"));
+    EXPECT_FALSE(is_cross_origin("Https://app.example.com", "https://app.example.com/api"));
+}
+
+TEST(CORSPolicyTest, ShouldAttachOriginForCrossOriginRequestV86) {
+    // Cross-origin requests should attach an origin header
+    EXPECT_TRUE(should_attach_origin_header("https://app.example.com", "https://api.other.com/data"));
+    // Same-origin should not attach origin header
+    EXPECT_FALSE(should_attach_origin_header("https://app.example.com", "https://app.example.com/path"));
+    // Empty origin should not attach
+    EXPECT_FALSE(should_attach_origin_header("", "https://api.example.com/data"));
+    // "null" origin still attaches (opaque origin sends Origin: null)
+    EXPECT_TRUE(should_attach_origin_header("null", "https://api.example.com/data"));
+}

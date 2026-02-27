@@ -10342,3 +10342,79 @@ TEST(UrlParserTest, SerializeReconstructsUrlCorrectlyV85) {
     EXPECT_NE(serialized.find("key=abc"), std::string::npos);
     EXPECT_NE(serialized.find("ref"), std::string::npos);
 }
+
+// =============================================================================
+// V86 Tests
+// =============================================================================
+
+TEST(UrlParserTest, TrailingDotInHostPreservedV86) {
+    auto result = clever::url::parse("https://example.com./page");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "example.com.");
+    EXPECT_EQ(result->path, "/page");
+    EXPECT_EQ(result->port, std::nullopt);
+}
+
+TEST(UrlParserTest, MultipleConsecutiveDotDotSegmentsClampToRootV86) {
+    auto result = clever::url::parse("https://example.com/a/b/c/../../../..");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/");
+}
+
+TEST(UrlParserTest, PercentEncodedSlashDoubleEncodedV86) {
+    auto result = clever::url::parse("https://example.com/path%2Fmore");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_NE(result->path.find("%252F"), std::string::npos);
+}
+
+TEST(UrlParserTest, QueryContainsHashLiteralEncodedV86) {
+    auto result = clever::url::parse("https://example.com/search?q=a%23b#sec");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/search");
+    EXPECT_NE(result->query.find("a%2523b"), std::string::npos);
+    EXPECT_EQ(result->fragment, "sec");
+}
+
+TEST(UrlParserTest, FtpDefaultPort21NormalizedAwayV86) {
+    auto result = clever::url::parse("ftp://files.example.com:21/pub/readme.txt");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "ftp");
+    EXPECT_EQ(result->host, "files.example.com");
+    EXPECT_EQ(result->port, std::nullopt);
+    EXPECT_EQ(result->path, "/pub/readme.txt");
+}
+
+TEST(UrlParserTest, PortZeroPreservedAsExplicitV86) {
+    auto result = clever::url::parse("http://example.com:0/test");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "example.com");
+    ASSERT_TRUE(result->port.has_value());
+    EXPECT_EQ(result->port.value(), 0);
+    EXPECT_EQ(result->path, "/test");
+}
+
+TEST(UrlParserTest, HostWithUpperAndDigitsLowercasedV86) {
+    auto result = clever::url::parse("https://API-Server42.Example.COM:8443/v2/status");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "api-server42.example.com");
+    ASSERT_TRUE(result->port.has_value());
+    EXPECT_EQ(result->port.value(), 8443);
+    EXPECT_EQ(result->path, "/v2/status");
+}
+
+TEST(UrlParserTest, SingleDotSegmentRemovedFromPathV86) {
+    auto result = clever::url::parse("https://example.com/a/./b/./c");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/a/b/c");
+}

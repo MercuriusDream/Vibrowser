@@ -15597,3 +15597,169 @@ TEST(CSSStyleTest, InheritColorFromParentStyleV85) {
     EXPECT_EQ(style.background_color.g, 255);
     EXPECT_EQ(style.background_color.b, 0);
 }
+
+// V86 Tests
+// ===========================================================================
+
+TEST(CSSStyleTest, PositionFixedWithZIndexV86) {
+    // position: fixed with z-index and top/left offsets
+    const std::string css = "nav{position:fixed;top:0px;left:0px;z-index:100;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "nav";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.position, Position::Fixed);
+    EXPECT_FLOAT_EQ(style.top.to_px(), 0.0f);
+    EXPECT_FLOAT_EQ(style.left_pos.to_px(), 0.0f);
+    EXPECT_EQ(style.z_index, 100);
+}
+
+TEST(CSSStyleTest, MarginAutoHorizontalCenteringV86) {
+    // margin-left and margin-right set to auto for horizontal centering
+    const std::string css = "div{margin-top:10px;margin-right:auto;margin-bottom:10px;margin-left:auto;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_FLOAT_EQ(style.margin.top.to_px(), 10.0f);
+    EXPECT_TRUE(style.margin.right.is_auto());
+    EXPECT_FLOAT_EQ(style.margin.bottom.to_px(), 10.0f);
+    EXPECT_TRUE(style.margin.left.is_auto());
+}
+
+TEST(CSSStyleTest, BorderLeftDottedWithColorV86) {
+    // Set border-left via individual longhand properties
+    const std::string css = "p{border-left-width:5px;border-left-style:dotted;border-left-color:green;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "p";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_FLOAT_EQ(style.border_left.width.value, 5.0f);
+    EXPECT_EQ(style.border_left.style, BorderStyle::Dotted);
+    EXPECT_EQ(style.border_left.color.r, 0);
+    EXPECT_EQ(style.border_left.color.g, 128);
+    EXPECT_EQ(style.border_left.color.b, 0);
+
+    // Other borders remain at default (none)
+    EXPECT_EQ(style.border_top.style, BorderStyle::None);
+    EXPECT_EQ(style.border_right.style, BorderStyle::None);
+}
+
+TEST(CSSStyleTest, PaddingShorthandTwoValuesV86) {
+    // padding shorthand with two values: vertical horizontal
+    const std::string css = "section{padding:12px 24px;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "section";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_FLOAT_EQ(style.padding.top.to_px(), 12.0f);
+    EXPECT_FLOAT_EQ(style.padding.right.to_px(), 24.0f);
+    EXPECT_FLOAT_EQ(style.padding.bottom.to_px(), 12.0f);
+    EXPECT_FLOAT_EQ(style.padding.left.to_px(), 24.0f);
+}
+
+TEST(CSSStyleTest, VisibilityHiddenWithCursorPointerV86) {
+    // visibility: hidden and cursor: pointer together
+    const std::string css = "a{visibility:hidden;cursor:pointer;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "a";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.visibility, Visibility::Hidden);
+    EXPECT_EQ(style.cursor, Cursor::Pointer);
+}
+
+TEST(CSSStyleTest, WhiteSpacePreWrapWithTextAlignCenterV86) {
+    // white-space: pre-wrap combined with text-align: center
+    const std::string css = "pre{white-space:pre-wrap;text-align:center;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "pre";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.white_space, WhiteSpace::PreWrap);
+    EXPECT_EQ(style.text_align, TextAlign::Center);
+}
+
+TEST(CSSStyleTest, IdSelectorResolvesStyleV86) {
+    // Selector by ID should match and resolve properties
+    const std::string css = "#main{display:block;background-color:navy;opacity:0.8;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+    elem.id = "main";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.display, Display::Block);
+    EXPECT_FLOAT_EQ(style.opacity, 0.8f);
+    EXPECT_EQ(style.background_color.r, 0);
+    EXPECT_EQ(style.background_color.g, 0);
+    EXPECT_EQ(style.background_color.b, 128);
+}
+
+TEST(CSSStyleTest, ClassSelectorWithPositionOffsetsV86) {
+    // Class selector sets position: relative with right and bottom offsets
+    const std::string css = ".box{position:relative;right:15px;bottom:25px;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+    elem.classes = {"box"};
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.position, Position::Relative);
+    EXPECT_FLOAT_EQ(style.right_pos.to_px(), 15.0f);
+    EXPECT_FLOAT_EQ(style.bottom.to_px(), 25.0f);
+}

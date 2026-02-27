@@ -13620,3 +13620,240 @@ TEST(HtmlParserTest, MultipleDataAndAriaAttributesV85) {
     EXPECT_EQ(get_attr_v63(div, "class"), "dashboard-widget");
     EXPECT_EQ(div->text_content(), "Chart Content");
 }
+
+// ============================================================================
+// V86 Tests
+// ============================================================================
+
+// 1. Nested lists with mixed ordered and unordered elements
+TEST(HtmlParserTest, NestedMixedListsV86) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<ul><li>Fruit<ol><li>Apple</li><li>Banana</li></ol></li>"
+        "<li>Vegetable</li></ul>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* ul = doc->find_element("ul");
+    ASSERT_NE(ul, nullptr);
+
+    auto lis = ul->find_all_elements("li");
+    // Top-level li + nested li = 4 total
+    ASSERT_GE(lis.size(), 3u);
+
+    auto* ol = ul->find_element("ol");
+    ASSERT_NE(ol, nullptr);
+
+    auto nested_lis = ol->find_all_elements("li");
+    ASSERT_EQ(nested_lis.size(), 2u);
+    EXPECT_EQ(nested_lis[0]->text_content(), "Apple");
+    EXPECT_EQ(nested_lis[1]->text_content(), "Banana");
+}
+
+// 2. Definition list (dl/dt/dd) structure
+TEST(HtmlParserTest, DefinitionListStructureV86) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<dl>"
+        "<dt>HTML</dt><dd>HyperText Markup Language</dd>"
+        "<dt>CSS</dt><dd>Cascading Style Sheets</dd>"
+        "</dl>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* dl = doc->find_element("dl");
+    ASSERT_NE(dl, nullptr);
+
+    auto dts = dl->find_all_elements("dt");
+    auto dds = dl->find_all_elements("dd");
+    ASSERT_EQ(dts.size(), 2u);
+    ASSERT_EQ(dds.size(), 2u);
+
+    EXPECT_EQ(dts[0]->text_content(), "HTML");
+    EXPECT_EQ(dds[0]->text_content(), "HyperText Markup Language");
+    EXPECT_EQ(dts[1]->text_content(), "CSS");
+    EXPECT_EQ(dds[1]->text_content(), "Cascading Style Sheets");
+}
+
+// 3. Table with thead, tbody, tfoot
+TEST(HtmlParserTest, FullTableStructureV86) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<table>"
+        "<thead><tr><th>Name</th><th>Age</th></tr></thead>"
+        "<tbody><tr><td>Alice</td><td>30</td></tr>"
+        "<tr><td>Bob</td><td>25</td></tr></tbody>"
+        "<tfoot><tr><td colspan=\"2\">Total: 2</td></tr></tfoot>"
+        "</table>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* table = doc->find_element("table");
+    ASSERT_NE(table, nullptr);
+
+    auto* thead = table->find_element("thead");
+    ASSERT_NE(thead, nullptr);
+    auto ths = thead->find_all_elements("th");
+    ASSERT_EQ(ths.size(), 2u);
+    EXPECT_EQ(ths[0]->text_content(), "Name");
+    EXPECT_EQ(ths[1]->text_content(), "Age");
+
+    auto* tbody = table->find_element("tbody");
+    ASSERT_NE(tbody, nullptr);
+    auto tds = tbody->find_all_elements("td");
+    ASSERT_EQ(tds.size(), 4u);
+    EXPECT_EQ(tds[0]->text_content(), "Alice");
+    EXPECT_EQ(tds[3]->text_content(), "25");
+
+    auto* tfoot = table->find_element("tfoot");
+    ASSERT_NE(tfoot, nullptr);
+    auto* footer_td = tfoot->find_element("td");
+    ASSERT_NE(footer_td, nullptr);
+    EXPECT_EQ(get_attr_v63(footer_td, "colspan"), "2");
+    EXPECT_EQ(footer_td->text_content(), "Total: 2");
+}
+
+// 4. Multiple void elements in sequence (br, hr, img, input)
+TEST(HtmlParserTest, MultipleVoidElementsInSequenceV86) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<p>Line one<br>Line two<br>Line three</p>"
+        "<hr>"
+        "<img src=\"photo.jpg\" alt=\"Photo\">"
+        "<input type=\"email\" placeholder=\"Enter email\">"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* p = doc->find_element("p");
+    ASSERT_NE(p, nullptr);
+    auto brs = p->find_all_elements("br");
+    EXPECT_EQ(brs.size(), 2u);
+
+    auto* hr = doc->find_element("hr");
+    ASSERT_NE(hr, nullptr);
+    EXPECT_TRUE(hr->children.empty());
+
+    auto* img = doc->find_element("img");
+    ASSERT_NE(img, nullptr);
+    EXPECT_EQ(get_attr_v63(img, "src"), "photo.jpg");
+    EXPECT_EQ(get_attr_v63(img, "alt"), "Photo");
+
+    auto* input = doc->find_element("input");
+    ASSERT_NE(input, nullptr);
+    EXPECT_EQ(get_attr_v63(input, "type"), "email");
+    EXPECT_EQ(get_attr_v63(input, "placeholder"), "Enter email");
+}
+
+// 5. Deeply nested divs preserve hierarchy
+TEST(HtmlParserTest, DeeplyNestedDivHierarchyV86) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<div id=\"l1\"><div id=\"l2\"><div id=\"l3\">"
+        "<div id=\"l4\"><span>Deep</span></div>"
+        "</div></div></div>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* l1 = doc->find_element("div");
+    ASSERT_NE(l1, nullptr);
+    EXPECT_EQ(get_attr_v63(l1, "id"), "l1");
+
+    // l1 should contain l2 as a child div
+    auto* l2 = l1->find_element("div");
+    ASSERT_NE(l2, nullptr);
+    EXPECT_EQ(get_attr_v63(l2, "id"), "l2");
+
+    auto* l3 = l2->find_element("div");
+    ASSERT_NE(l3, nullptr);
+    EXPECT_EQ(get_attr_v63(l3, "id"), "l3");
+
+    auto* l4 = l3->find_element("div");
+    ASSERT_NE(l4, nullptr);
+    EXPECT_EQ(get_attr_v63(l4, "id"), "l4");
+
+    auto* span = l4->find_element("span");
+    ASSERT_NE(span, nullptr);
+    EXPECT_EQ(span->text_content(), "Deep");
+}
+
+// 6. Comment nodes among sibling elements
+TEST(HtmlParserTest, CommentNodesBetweenElementsV86) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<!-- header comment -->"
+        "<h1>Title</h1>"
+        "<!-- nav comment -->"
+        "<nav>Links</nav>"
+        "<!-- footer comment -->"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* h1 = doc->find_element("h1");
+    ASSERT_NE(h1, nullptr);
+    EXPECT_EQ(h1->text_content(), "Title");
+
+    auto* nav = doc->find_element("nav");
+    ASSERT_NE(nav, nullptr);
+    EXPECT_EQ(nav->text_content(), "Links");
+
+    // Check that comment nodes exist in the body's children
+    auto* body = doc->find_element("body");
+    ASSERT_NE(body, nullptr);
+    int comment_count = 0;
+    for (auto& child : body->children) {
+        if (child->type == clever::html::SimpleNode::Comment) {
+            comment_count++;
+        }
+    }
+    EXPECT_GE(comment_count, 2);
+}
+
+// 7. Attributes with special characters (quotes, ampersands)
+TEST(HtmlParserTest, AttributesWithSpecialCharsV86) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<a href=\"/search?q=hello&amp;lang=en\" title=\"Click &amp; Go\">Link</a>"
+        "<div data-json='{\"key\":\"val\"}'></div>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* a = doc->find_element("a");
+    ASSERT_NE(a, nullptr);
+    EXPECT_EQ(a->text_content(), "Link");
+    // The parser should decode &amp; to &
+    std::string href = get_attr_v63(a, "href");
+    EXPECT_FALSE(href.empty());
+    // Verify the href contains expected path structure
+    EXPECT_NE(href.find("/search?q=hello"), std::string::npos);
+
+    std::string title = get_attr_v63(a, "title");
+    EXPECT_FALSE(title.empty());
+
+    auto* div = doc->find_element("div");
+    ASSERT_NE(div, nullptr);
+    std::string json_attr = get_attr_v63(div, "data-json");
+    EXPECT_FALSE(json_attr.empty());
+    EXPECT_NE(json_attr.find("key"), std::string::npos);
+}
+
+// 8. Whitespace-only text nodes between block elements
+TEST(HtmlParserTest, WhitespaceTextNodesBetweenBlocksV86) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<div>First</div>  \n  <div>Second</div>  \n  <div>Third</div>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* body = doc->find_element("body");
+    ASSERT_NE(body, nullptr);
+
+    auto divs = body->find_all_elements("div");
+    ASSERT_EQ(divs.size(), 3u);
+    EXPECT_EQ(divs[0]->text_content(), "First");
+    EXPECT_EQ(divs[1]->text_content(), "Second");
+    EXPECT_EQ(divs[2]->text_content(), "Third");
+
+    // Body should have more than 3 children due to whitespace text nodes
+    // (or exactly 3 if parser strips inter-element whitespace - either is valid)
+    EXPECT_GE(body->children.size(), 3u);
+}

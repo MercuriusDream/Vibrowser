@@ -15252,3 +15252,132 @@ TEST(HttpClientTest, CookieJarMultipleCookiesDifferentDomainsV85) {
     EXPECT_TRUE(beta_hdr.find("sid=xyz") != std::string::npos);
     EXPECT_FALSE(beta_hdr.find("lang=en") != std::string::npos);
 }
+
+// ===========================================================================
+// V86 Tests
+// ===========================================================================
+
+TEST(HttpClientTest, HeaderMapGetAllReturnsAllAppendedValuesV86) {
+    // get_all should return every value appended under the same key
+    HeaderMap map;
+    map.append("Accept", "text/html");
+    map.append("Accept", "application/json");
+    map.append("Accept", "text/plain");
+
+    auto values = map.get_all("Accept");
+    EXPECT_EQ(values.size(), 3u);
+    EXPECT_EQ(values[0], "text/html");
+    EXPECT_EQ(values[1], "application/json");
+    EXPECT_EQ(values[2], "text/plain");
+}
+
+TEST(HttpClientTest, HeaderMapSetOverwritesAllAppendedValuesV86) {
+    // set after multiple appends should collapse to a single value
+    HeaderMap map;
+    map.append("X-Custom", "first");
+    map.append("X-Custom", "second");
+    map.append("X-Custom", "third");
+    EXPECT_EQ(map.get_all("X-Custom").size(), 3u);
+
+    map.set("X-Custom", "only");
+    EXPECT_EQ(map.get_all("X-Custom").size(), 1u);
+    EXPECT_EQ(map.get("X-Custom").value(), "only");
+}
+
+TEST(HttpClientTest, RequestSerializeGetWithDefaultPort80OmittedV86) {
+    // Port 80 should be omitted from the Host header for HTTP
+    Request req;
+    req.method = Method::GET;
+    req.host = "example.com";
+    req.port = 80;
+    req.path = "/index.html";
+
+    auto raw = req.serialize();
+    std::string result(raw.begin(), raw.end());
+
+    EXPECT_TRUE(result.find("GET /index.html HTTP/1.1\r\n") != std::string::npos);
+    EXPECT_TRUE(result.find("Host: example.com\r\n") != std::string::npos);
+    // Port 80 must NOT appear in Host header
+    EXPECT_FALSE(result.find("Host: example.com:80\r\n") != std::string::npos);
+}
+
+TEST(HttpClientTest, RequestSerializePostWithBodyAndCustomHeadersV86) {
+    // POST with body should include Content-Length and custom headers lowercase
+    Request req;
+    req.method = Method::POST;
+    req.host = "api.test.com";
+    req.port = 8080;
+    req.path = "/submit";
+    req.headers.set("X-Request-Id", "abc-123");
+    std::string body_str = "key=value&foo=bar";
+    req.body.assign(body_str.begin(), body_str.end());
+
+    auto raw = req.serialize();
+    std::string result(raw.begin(), raw.end());
+
+    EXPECT_TRUE(result.find("POST /submit HTTP/1.1\r\n") != std::string::npos);
+    EXPECT_TRUE(result.find("Host: api.test.com:8080\r\n") != std::string::npos);
+    EXPECT_TRUE(result.find("x-request-id: abc-123\r\n") != std::string::npos);
+    EXPECT_TRUE(result.find(body_str) != std::string::npos);
+}
+
+TEST(HttpClientTest, ResponseBodyAsStringWithEmptyBodyReturnsEmptyV86) {
+    // body_as_string on a fresh response with no body data returns empty string
+    Response resp;
+    resp.status = 204;
+
+    std::string result = resp.body_as_string();
+    EXPECT_TRUE(result.empty());
+    EXPECT_EQ(result.size(), 0u);
+}
+
+TEST(HttpClientTest, CookieJarClearThenSizeIsZeroV86) {
+    // After clear(), size should be 0 and get_cookie_header should return empty
+    CookieJar jar;
+    jar.set_from_header("session=tok1", "example.com");
+    jar.set_from_header("lang=en", "example.com");
+    jar.set_from_header("pref=dark", "other.com");
+    EXPECT_EQ(jar.size(), 3u);
+
+    jar.clear();
+    EXPECT_EQ(jar.size(), 0u);
+
+    std::string hdr = jar.get_cookie_header("example.com", "/", false);
+    EXPECT_TRUE(hdr.empty());
+}
+
+TEST(HttpClientTest, HeaderMapEmptyAfterRemovingAllKeysV86) {
+    // Removing every key should leave the map empty
+    HeaderMap map;
+    map.set("A", "1");
+    map.set("B", "2");
+    map.set("C", "3");
+    EXPECT_EQ(map.size(), 3u);
+    EXPECT_FALSE(map.empty());
+
+    map.remove("A");
+    map.remove("B");
+    map.remove("C");
+    EXPECT_EQ(map.size(), 0u);
+    EXPECT_TRUE(map.empty());
+    EXPECT_FALSE(map.has("A"));
+    EXPECT_FALSE(map.has("B"));
+    EXPECT_FALSE(map.has("C"));
+}
+
+TEST(HttpClientTest, CookieJarSecureCookieNotReturnedForInsecureRequestV86) {
+    // A secure cookie should only be returned when is_secure=true
+    CookieJar jar;
+    jar.set_from_header("token=secret; Secure", "secure.example.com");
+    jar.set_from_header("public=yes", "secure.example.com");
+
+    // Insecure request should NOT include the Secure cookie
+    std::string insecure_hdr = jar.get_cookie_header("secure.example.com", "/", false);
+    EXPECT_FALSE(insecure_hdr.find("token=secret") != std::string::npos);
+    EXPECT_TRUE(insecure_hdr.find("public=yes") != std::string::npos);
+
+    // Secure request should include both cookies
+    std::string secure_hdr = jar.get_cookie_header("secure.example.com", "/", true);
+    EXPECT_TRUE(secure_hdr.find("token=secret") != std::string::npos);
+    EXPECT_TRUE(secure_hdr.find("public=yes") != std::string::npos);
+}

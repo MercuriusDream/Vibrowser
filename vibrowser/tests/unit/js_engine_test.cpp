@@ -24732,3 +24732,236 @@ TEST(JsEngineTest, ErrorCauseAndAggregateErrorV85) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "inner-reason|multiple errors,3,e1,e3");
 }
+
+// ============================================================================
+// V86 Tests — Advanced JS engine capabilities
+// ============================================================================
+
+TEST(JsEngineTest, WeakRefAndFinalizationRegistryV86) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var target = {name: "weak-target"};
+        var wr = new WeakRef(target);
+        var derefName = wr.deref().name;
+        var registry = new FinalizationRegistry(function(held) {});
+        registry.register(target, "clean-token");
+        var registryType = typeof registry.register;
+        derefName + "|" + registryType;
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "weak-target|function");
+}
+
+TEST(JsEngineTest, IteratorProtocolAndGeneratorV86) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        function* fibonacci() {
+            var a = 0, b = 1;
+            while (true) {
+                yield a;
+                var tmp = a;
+                a = b;
+                b = tmp + b;
+            }
+        }
+        var gen = fibonacci();
+        var nums = [];
+        for (var i = 0; i < 8; i++) {
+            nums.push(gen.next().value);
+        }
+        var customIterable = {
+            [Symbol.iterator]() {
+                var count = 0;
+                return {
+                    next() {
+                        count++;
+                        if (count <= 3) return {value: count * 10, done: false};
+                        return {value: undefined, done: true};
+                    }
+                };
+            }
+        };
+        var custom = [];
+        for (var v of customIterable) custom.push(v);
+        nums.join(",") + "|" + custom.join(",");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "0,1,1,2,3,5,8,13|10,20,30");
+}
+
+TEST(JsEngineTest, ProxyWithMultipleTrapsV86) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var log = [];
+        var target = {x: 1, y: 2, z: 3};
+        var proxy = new Proxy(target, {
+            get(obj, prop) {
+                log.push("get:" + String(prop));
+                return obj[prop];
+            },
+            set(obj, prop, val) {
+                log.push("set:" + String(prop));
+                obj[prop] = val;
+                return true;
+            },
+            has(obj, prop) {
+                log.push("has:" + String(prop));
+                return prop in obj;
+            },
+            deleteProperty(obj, prop) {
+                log.push("del:" + String(prop));
+                delete obj[prop];
+                return true;
+            }
+        });
+        proxy.x;
+        proxy.w = 99;
+        "z" in proxy;
+        delete proxy.y;
+        var keys = Object.keys(target).sort().join(",");
+        log.join(";") + "|" + keys;
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "get:x;set:w;has:z;del:y|w,x,z");
+}
+
+TEST(JsEngineTest, RecursiveClosuresAndIIFEV86) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var counter = (function() {
+            var count = 0;
+            return {
+                inc: function() { count++; },
+                dec: function() { count--; },
+                get: function() { return count; }
+            };
+        })();
+        counter.inc();
+        counter.inc();
+        counter.inc();
+        counter.dec();
+        var closureVal = counter.get();
+
+        function makeAdder(x) {
+            return function(y) {
+                return function(z) {
+                    return x + y + z;
+                };
+            };
+        }
+        var tripleAdd = makeAdder(10)(20)(30);
+
+        var factorial = function f(n) {
+            return n <= 1 ? 1 : n * f(n - 1);
+        };
+        var fact8 = factorial(8);
+
+        closureVal + "|" + tripleAdd + "|" + fact8;
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "2|60|40320");
+}
+
+TEST(JsEngineTest, TaggedTemplateLiteralsV86) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        function highlight(strings) {
+            var values = [];
+            for (var i = 1; i < arguments.length; i++) values.push(arguments[i]);
+            var result = "";
+            for (var i = 0; i < strings.length; i++) {
+                result += strings[i];
+                if (i < values.length) result += "[" + values[i] + "]";
+            }
+            return result;
+        }
+        var name = "world";
+        var count = 42;
+        var tagged = highlight`hello ${name} you have ${count} items`;
+        var rawCheck = String.raw`line1\nline2\ttab`;
+        tagged + "|" + rawCheck;
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "hello [world] you have [42] items|line1\\nline2\\ttab");
+}
+
+TEST(JsEngineTest, SymbolSpeciesAndToPrimitiveV86) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var obj = {
+            [Symbol.toPrimitive](hint) {
+                if (hint === "number") return 42;
+                if (hint === "string") return "forty-two";
+                return true;
+            }
+        };
+        var numResult = +obj;
+        var strResult = `${obj}`;
+        var boolResult = obj + "";
+        var results = [];
+        results.push(numResult);
+        results.push(strResult);
+        results.push(boolResult);
+
+        class SpecialArray extends Array {
+            static get [Symbol.species]() { return Array; }
+        }
+        var sa = new SpecialArray(1, 2, 3);
+        var mapped = sa.map(function(x) { return x * 2; });
+        results.push(mapped instanceof SpecialArray);
+        results.push(mapped instanceof Array);
+        results.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "42|forty-two|true|false|true");
+}
+
+TEST(JsEngineTest, DestructuringWithDefaultsAndRestV86) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var [a, b = 99, ...rest] = [10, undefined, 30, 40, 50];
+        var arrPart = a + "," + b + "," + rest.join(",");
+
+        var {x, y: aliasY, z: aliasZ = "default-z", ...objRest} = {x: 1, y: 2, w: 8, q: 9};
+        var objPart = x + "," + aliasY + "," + aliasZ + "," + Object.keys(objRest).sort().join(",");
+
+        function compute({base = 0, multiplier = 1} = {}) {
+            return base * multiplier;
+        }
+        var fnPart = compute({base: 5, multiplier: 3}) + "," + compute({base: 7}) + "," + compute();
+
+        arrPart + "|" + objPart + "|" + fnPart;
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "10,99,30,40,50|1,2,default-z,q,w|15,7,0");
+}
+
+TEST(JsEngineTest, OptionalChainingAndNullishCoalescingV86) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var obj = {a: {b: {c: 42}}, arr: [10, 20, 30], fn: function(x) { return x * 2; }};
+        var results = [];
+        results.push(String(obj.a.b.c));
+        results.push(String(obj.a?.b?.c));
+        results.push(String(obj.a?.missing?.deep));
+        results.push(String(obj.x?.y?.z));
+        results.push(String(obj.arr?.[1]));
+        results.push(String(obj.arr?.[5]));
+        results.push(String(obj.fn?.(7)));
+        results.push(String(obj.noFn?.(3)));
+        results.push(String(null ?? "fallback1"));
+        results.push(String(undefined ?? "fallback2"));
+        results.push(String(0 ?? "not-this"));
+        results.push(String("" ?? "not-this-either"));
+        results.push(String(false ?? "nope"));
+        var x = null;
+        x ??= 55;
+        var y = 0;
+        y ??= 99;
+        results.push(String(x));
+        results.push(String(y));
+        results.join(",");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "42,42,undefined,undefined,20,undefined,14,undefined,fallback1,fallback2,0,,false,55,0");
+}

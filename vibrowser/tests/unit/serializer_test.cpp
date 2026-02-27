@@ -12529,3 +12529,147 @@ TEST(SerializerTest, InterleavedTypesRoundTripV85) {
     EXPECT_EQ(d.read_string(), "end");
     EXPECT_FALSE(d.has_remaining());
 }
+
+// ------------------------------------------------------------------
+// V86 tests
+// ------------------------------------------------------------------
+
+TEST(SerializerTest, U8BoundaryValuesV86) {
+    Serializer s;
+    s.write_u8(0);
+    s.write_u8(1);
+    s.write_u8(127);
+    s.write_u8(128);
+    s.write_u8(254);
+    s.write_u8(255);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u8(), 0u);
+    EXPECT_EQ(d.read_u8(), 1u);
+    EXPECT_EQ(d.read_u8(), 127u);
+    EXPECT_EQ(d.read_u8(), 128u);
+    EXPECT_EQ(d.read_u8(), 254u);
+    EXPECT_EQ(d.read_u8(), 255u);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, U16PowersOfTwoV86) {
+    Serializer s;
+    for (int i = 0; i < 16; ++i) {
+        s.write_u16(static_cast<uint16_t>(1u << i));
+    }
+
+    Deserializer d(s.data());
+    for (int i = 0; i < 16; ++i) {
+        EXPECT_EQ(d.read_u16(), static_cast<uint16_t>(1u << i));
+    }
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, U32MaxAndZeroV86) {
+    Serializer s;
+    s.write_u32(0u);
+    s.write_u32(1u);
+    s.write_u32(0x7FFFFFFFu);
+    s.write_u32(0x80000000u);
+    s.write_u32(0xFFFFFFFFu);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u32(), 0u);
+    EXPECT_EQ(d.read_u32(), 1u);
+    EXPECT_EQ(d.read_u32(), 0x7FFFFFFFu);
+    EXPECT_EQ(d.read_u32(), 0x80000000u);
+    EXPECT_EQ(d.read_u32(), 0xFFFFFFFFu);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, F64SpecialValuesV86) {
+    Serializer s;
+    s.write_f64(0.0);
+    s.write_f64(-0.0);
+    s.write_f64(std::numeric_limits<double>::infinity());
+    s.write_f64(-std::numeric_limits<double>::infinity());
+    s.write_f64(std::numeric_limits<double>::min());
+    s.write_f64(std::numeric_limits<double>::max());
+
+    Deserializer d(s.data());
+    EXPECT_DOUBLE_EQ(d.read_f64(), 0.0);
+    double neg_zero = d.read_f64();
+    EXPECT_DOUBLE_EQ(neg_zero, 0.0);
+    EXPECT_TRUE(std::signbit(neg_zero));
+    EXPECT_EQ(d.read_f64(), std::numeric_limits<double>::infinity());
+    EXPECT_EQ(d.read_f64(), -std::numeric_limits<double>::infinity());
+    EXPECT_DOUBLE_EQ(d.read_f64(), std::numeric_limits<double>::min());
+    EXPECT_DOUBLE_EQ(d.read_f64(), std::numeric_limits<double>::max());
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, EmptyStringAndBytesV86) {
+    Serializer s;
+    s.write_string("");
+    std::vector<uint8_t> empty_buf;
+    s.write_bytes(empty_buf.data(), 0);
+    s.write_string("");
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "");
+    auto rb = d.read_bytes();
+    EXPECT_EQ(rb.size(), 0u);
+    EXPECT_EQ(d.read_string(), "");
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, LargeBytesBlobV86) {
+    Serializer s;
+    std::vector<uint8_t> big(4096);
+    for (size_t i = 0; i < big.size(); ++i) {
+        big[i] = static_cast<uint8_t>(i & 0xFF);
+    }
+    s.write_bytes(big.data(), big.size());
+
+    Deserializer d(s.data());
+    auto rb = d.read_bytes();
+    ASSERT_EQ(rb.size(), 4096u);
+    for (size_t i = 0; i < 4096; ++i) {
+        EXPECT_EQ(rb[i], static_cast<uint8_t>(i & 0xFF));
+    }
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, U64HighBitsV86) {
+    Serializer s;
+    s.write_u64(0uLL);
+    s.write_u64(1uLL);
+    s.write_u64(0x00000000FFFFFFFFuLL);
+    s.write_u64(0xFFFFFFFF00000000uLL);
+    s.write_u64(0xFFFFFFFFFFFFFFFFuLL);
+    s.write_u64(0x8000000000000000uLL);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u64(), 0uLL);
+    EXPECT_EQ(d.read_u64(), 1uLL);
+    EXPECT_EQ(d.read_u64(), 0x00000000FFFFFFFFuLL);
+    EXPECT_EQ(d.read_u64(), 0xFFFFFFFF00000000uLL);
+    EXPECT_EQ(d.read_u64(), 0xFFFFFFFFFFFFFFFFuLL);
+    EXPECT_EQ(d.read_u64(), 0x8000000000000000uLL);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, MultipleStringsWithSpecialCharsV86) {
+    Serializer s;
+    s.write_string("hello world");
+    s.write_string("tab\there");
+    s.write_string("newline\nhere");
+    s.write_string("null\0gone");  // only up to null in C++ string literal
+    s.write_string(std::string("embedded\0null", 13));
+    s.write_string("unicode: \xC3\xA9\xC3\xA0\xC3\xBC");
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "hello world");
+    EXPECT_EQ(d.read_string(), "tab\there");
+    EXPECT_EQ(d.read_string(), "newline\nhere");
+    EXPECT_EQ(d.read_string(), std::string("null"));
+    EXPECT_EQ(d.read_string(), std::string("embedded\0null", 13));
+    EXPECT_EQ(d.read_string(), "unicode: \xC3\xA9\xC3\xA0\xC3\xBC");
+    EXPECT_FALSE(d.has_remaining());
+}
