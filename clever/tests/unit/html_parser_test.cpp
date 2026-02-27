@@ -3631,3 +3631,62 @@ TEST(TreeBuilder, InputTypePasswordV2) {
         if (attr.name == "type" && attr.value == "password") found = true;
     EXPECT_TRUE(found);
 }
+
+TEST(TreeBuilder, TbodyElement) {
+    auto doc = clever::html::parse(R"(<table><tbody><tr><td>A</td></tr></tbody></table>)");
+    auto* tbody = doc->find_element("tbody");
+    ASSERT_NE(tbody, nullptr);
+    EXPECT_EQ(tbody->tag_name, "tbody");
+}
+
+TEST(TreeBuilder, TheadElement) {
+    auto doc = clever::html::parse(R"(<table><thead><tr><th>Header</th></tr></thead></table>)");
+    auto* thead = doc->find_element("thead");
+    ASSERT_NE(thead, nullptr);
+    EXPECT_EQ(thead->tag_name, "thead");
+}
+
+TEST(TreeBuilder, TfootElement) {
+    auto doc = clever::html::parse(R"(<table><tfoot><tr><td>Footer</td></tr></tfoot></table>)");
+    auto* tfoot = doc->find_element("tfoot");
+    ASSERT_NE(tfoot, nullptr);
+    EXPECT_EQ(tfoot->tag_name, "tfoot");
+}
+
+TEST(TreeBuilder, TrElement) {
+    auto doc = clever::html::parse(R"(<table><tr><td>Cell</td></tr></table>)");
+    auto* tr = doc->find_element("tr");
+    ASSERT_NE(tr, nullptr);
+    EXPECT_EQ(tr->tag_name, "tr");
+}
+
+TEST(TreeBuilder, TdElement) {
+    auto doc = clever::html::parse(R"(<table><tr><td>Data</td></tr></table>)");
+    auto* td = doc->find_element("td");
+    ASSERT_NE(td, nullptr);
+    EXPECT_EQ(td->tag_name, "td");
+}
+
+TEST(TreeBuilder, ThElement) {
+    auto doc = clever::html::parse(R"(<table><tr><th scope="col">Column</th></tr></table>)");
+    auto* th = doc->find_element("th");
+    ASSERT_NE(th, nullptr);
+    EXPECT_EQ(th->tag_name, "th");
+}
+
+TEST(TreeBuilder, TableColspanAttr) {
+    auto doc = clever::html::parse(R"(<table><tr><td colspan="2">Wide</td></tr></table>)");
+    auto* td = doc->find_element("td");
+    ASSERT_NE(td, nullptr);
+    bool found = false;
+    for (const auto& attr : td->attributes)
+        if (attr.name == "colspan" && attr.value == "2") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, TableCaptionElement) {
+    auto doc = clever::html::parse(R"(<table><caption>My Table</caption><tr><td>A</td></tr></table>)");
+    auto* caption = doc->find_element("caption");
+    ASSERT_NE(caption, nullptr);
+    EXPECT_EQ(caption->tag_name, "caption");
+}
