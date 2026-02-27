@@ -5211,3 +5211,75 @@ TEST_F(CSSStylesheetTest, DominantBaselineDeclaration) {
         if (d.property == "dominant-baseline") { found = true; break; }
     EXPECT_TRUE(found);
 }
+
+TEST_F(CSSStylesheetTest, ShapeRenderingDeclaration) {
+    auto sheet = parse_stylesheet(".icon { shape-rendering: geometricPrecision; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "shape-rendering") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, ColorInterpolationDeclaration) {
+    auto sheet = parse_stylesheet(".grad { color-interpolation: linearRGB; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "color-interpolation") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, FloodColorDeclaration) {
+    auto sheet = parse_stylesheet("feFlood { flood-color: red; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "flood-color") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, FloodOpacityDeclaration) {
+    auto sheet = parse_stylesheet("feFlood { flood-opacity: 0.5; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "flood-opacity") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, StopColorDeclaration) {
+    auto sheet = parse_stylesheet("stop { stop-color: blue; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "stop-color") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, StopOpacityDeclaration) {
+    auto sheet = parse_stylesheet("stop { stop-opacity: 1; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "stop-opacity") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, ClipRuleDeclaration) {
+    auto sheet = parse_stylesheet(".shape { clip-rule: evenodd; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "clip-rule") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, FillRuleDeclaration) {
+    auto sheet = parse_stylesheet(".path { fill-rule: nonzero; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "fill-rule") { found = true; break; }
+    EXPECT_TRUE(found);
+}
