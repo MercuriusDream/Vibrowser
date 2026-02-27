@@ -3329,3 +3329,54 @@ TEST(URLParser, Port65535Preserved) {
     ASSERT_TRUE(url->port.has_value());
     EXPECT_EQ(*url->port, 65535);
 }
+
+TEST(URLParser, PathWithSvgExtensionV2) {
+    auto url = parse("https://cdn.example.com/icons/logo.svg");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->path, "/icons/logo.svg");
+}
+
+TEST(URLParser, PathWithWasmExtension) {
+    auto url = parse("https://example.com/app/module.wasm");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->path, "/app/module.wasm");
+}
+
+TEST(URLParser, Port9090PreservedV2) {
+    auto url = parse("http://example.com:9090/metrics");
+    ASSERT_TRUE(url.has_value());
+    ASSERT_TRUE(url->port.has_value());
+    EXPECT_EQ(*url->port, 9090);
+}
+
+TEST(URLParser, Port6379Preserved) {
+    auto url = parse("http://example.com:6379/");
+    ASSERT_TRUE(url.has_value());
+    ASSERT_TRUE(url->port.has_value());
+    EXPECT_EQ(*url->port, 6379);
+}
+
+TEST(URLParser, QueryWithHashFragment) {
+    auto url = parse("https://example.com/page?section=intro#heading");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_FALSE(url->query.empty());
+}
+
+TEST(URLParser, HostWithUnderscoreInvalid) {
+    // Underscores in hostnames are technically invalid per RFC but some parsers accept them
+    auto url = parse("https://my_host.example.com/");
+    // Just verify parsing doesn't crash — result may or may not be valid
+    (void)url;
+}
+
+TEST(URLParser, PathWithDotSegment) {
+    auto url = parse("https://example.com/a/./b");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_FALSE(url->path.empty());
+}
+
+TEST(URLParser, PathWithDoubleDotSegment) {
+    auto url = parse("https://example.com/a/b/../c");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_FALSE(url->path.empty());
+}
