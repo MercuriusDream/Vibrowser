@@ -1387,3 +1387,46 @@ TEST(CORSPolicyTest, RejectsResponseNoACAOHeader) {
     EXPECT_FALSE(clever::js::cors::cors_allows_response(
         "https://example.com", "https://api.other.com/data", headers, false));
 }
+
+TEST(CORSPolicyTest, CORSAllowsExactOriginHeader) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "https://example.com");
+    EXPECT_TRUE(cors_allows_response("https://example.com", "https://api.other.com/data", headers, false));
+}
+
+TEST(CORSPolicyTest, CORSRejectsWrongOriginHeader) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "https://wrong.com");
+    EXPECT_FALSE(cors_allows_response("https://example.com", "https://api.other.com/data", headers, false));
+}
+
+TEST(CORSPolicyTest, ShouldAttachOriginCrossOriginHttps) {
+    EXPECT_TRUE(should_attach_origin_header("https://foo.com", "https://bar.com/api"));
+}
+
+TEST(CORSPolicyTest, ShouldNotAttachOriginSameSchemeHost) {
+    EXPECT_FALSE(should_attach_origin_header("https://example.com", "https://example.com/path"));
+}
+
+TEST(CORSPolicyTest, NormalizeAddsMissingOrigin) {
+    clever::net::HeaderMap headers;
+    normalize_outgoing_origin_header(headers, "https://app.example.com", "https://api.other.com/endpoint");
+    auto val = headers.get("Origin");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(*val, "https://app.example.com");
+}
+
+TEST(CORSPolicyTest, CORSAllowsWithCredentialsExactOrigin) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "https://trusted.com");
+    headers.set("Access-Control-Allow-Credentials", "true");
+    EXPECT_TRUE(cors_allows_response("https://trusted.com", "https://api.service.com/data", headers, true));
+}
+
+TEST(CORSPolicyTest, CrossOriginDifferentPortNumber) {
+    EXPECT_TRUE(is_cross_origin("https://example.com:8080", "https://example.com:8443/api"));
+}
+
+TEST(CORSPolicyTest, HttpEligibleUrlIsTrue) {
+    EXPECT_TRUE(is_cors_eligible_request_url("http://api.example.com/endpoint"));
+}
