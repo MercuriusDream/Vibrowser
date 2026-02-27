@@ -16743,3 +16743,86 @@ TEST(JSEngine, TypedArraySetMethod) {
         "a[2]");
     EXPECT_EQ(result, "9");
 }
+
+// Cycle 886 — DataView set operations
+
+TEST(JSEngine, DataViewSetUint8RoundTrip) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "const b=new ArrayBuffer(2);"
+        "const v=new DataView(b);"
+        "v.setUint8(0,200);"
+        "v.getUint8(0)");
+    EXPECT_EQ(result, "200");
+}
+
+TEST(JSEngine, DataViewSetInt8NegativeRoundTrip) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "const b=new ArrayBuffer(1);"
+        "const v=new DataView(b);"
+        "v.setInt8(0,-100);"
+        "v.getInt8(0)");
+    EXPECT_EQ(result, "-100");
+}
+
+TEST(JSEngine, DataViewSetUint16LittleEndian) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "const b=new ArrayBuffer(2);"
+        "const v=new DataView(b);"
+        "v.setUint16(0,1000,true);"
+        "v.getUint16(0,true)");
+    EXPECT_EQ(result, "1000");
+}
+
+TEST(JSEngine, DataViewSetInt16BigEndian) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "const b=new ArrayBuffer(2);"
+        "const v=new DataView(b);"
+        "v.setInt16(0,-500,false);"
+        "v.getInt16(0,false)");
+    EXPECT_EQ(result, "-500");
+}
+
+TEST(JSEngine, DataViewSetUint32RoundTrip) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "const b=new ArrayBuffer(4);"
+        "const v=new DataView(b);"
+        "v.setUint32(0,4000000000,false);"
+        "v.getUint32(0,false)");
+    EXPECT_EQ(result, "4000000000");
+}
+
+TEST(JSEngine, DataViewSetInt32NegativeRoundTrip) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "const b=new ArrayBuffer(4);"
+        "const v=new DataView(b);"
+        "v.setInt32(0,-2147483648,false);"
+        "v.getInt32(0,false)");
+    EXPECT_EQ(result, "-2147483648");
+}
+
+TEST(JSEngine, DataViewSetFloat32RoundTrip) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "const b=new ArrayBuffer(4);"
+        "const v=new DataView(b);"
+        "v.setFloat32(0,1.5,false);"
+        "v.getFloat32(0,false)");
+    EXPECT_EQ(result, "1.5");
+}
+
+TEST(JSEngine, DataViewTwoValuesInBuffer) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "const b=new ArrayBuffer(4);"
+        "const v=new DataView(b);"
+        "v.setUint16(0,300,false);"
+        "v.setUint16(2,400,false);"
+        "v.getUint16(0,false)+v.getUint16(2,false)");
+    EXPECT_EQ(result, "700");
+}
