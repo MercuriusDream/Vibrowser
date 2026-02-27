@@ -6860,3 +6860,44 @@ TEST(LayoutNodeProps, GridAreaDefaultsEmpty) {
     LayoutNode n;
     EXPECT_EQ(n.grid_area, "");
 }
+
+// Cycle 828 — LayoutNode defaults: overflow variants, list-style, column fill/rule, scroll-snap-stop
+TEST(LayoutNodeProps, OverflowAnchorDefaultsZero) {
+    LayoutNode n;
+    EXPECT_EQ(n.overflow_anchor, 0);
+}
+
+TEST(LayoutNodeProps, OverflowBlockDefaultsZero) {
+    LayoutNode n;
+    EXPECT_EQ(n.overflow_block, 0);
+}
+
+TEST(LayoutNodeProps, OverflowInlineDefaultsZero) {
+    LayoutNode n;
+    EXPECT_EQ(n.overflow_inline, 0);
+}
+
+TEST(LayoutNodeProps, BoxDecorationBreakDefaultsZero) {
+    LayoutNode n;
+    EXPECT_EQ(n.box_decoration_break, 0);
+}
+
+TEST(LayoutNodeProps, ListStylePositionDefaultsZero) {
+    LayoutNode n;
+    EXPECT_EQ(n.list_style_position, 0);
+}
+
+TEST(LayoutNodeProps, ColumnFillDefaultsZero) {
+    LayoutNode n;
+    EXPECT_EQ(n.column_fill, 0);
+}
+
+TEST(LayoutNodeProps, ColumnRuleStyleDefaultsZero) {
+    LayoutNode n;
+    EXPECT_EQ(n.column_rule_style, 0);
+}
+
+TEST(LayoutNodeProps, ScrollSnapStopDefaultsZero) {
+    LayoutNode n;
+    EXPECT_EQ(n.scroll_snap_stop, 0);
+}
