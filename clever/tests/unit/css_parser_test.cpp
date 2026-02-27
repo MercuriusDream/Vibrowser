@@ -5355,3 +5355,75 @@ TEST_F(CSSStylesheetTest, FontSizeAdjustDeclaration) {
         if (d.property == "font-size-adjust") { found = true; break; }
     EXPECT_TRUE(found);
 }
+
+TEST_F(CSSStylesheetTest, BaselineShiftDeclaration) {
+    auto sheet = parse_stylesheet("sup { baseline-shift: super; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "baseline-shift") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, LightingColorDeclaration) {
+    auto sheet = parse_stylesheet("fePointLight { lighting-color: white; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "lighting-color") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, FontVariantEastAsianDeclaration) {
+    auto sheet = parse_stylesheet("p { font-variant-east-asian: ruby; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "font-variant-east-asian") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, FontVariantPositionDeclaration) {
+    auto sheet = parse_stylesheet("sub { font-variant-position: sub; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "font-variant-position") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, FontPaletteDeclaration) {
+    auto sheet = parse_stylesheet(".brand { font-palette: dark; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "font-palette") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, FontLanguageOverrideDeclaration) {
+    auto sheet = parse_stylesheet("p { font-language-override: TRK; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "font-language-override") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, TextDecorationSkipInkDeclaration) {
+    auto sheet = parse_stylesheet("a { text-decoration-skip-ink: auto; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "text-decoration-skip-ink") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, FontSynthesisWeightDeclaration) {
+    auto sheet = parse_stylesheet("body { font-synthesis-weight: none; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "font-synthesis-weight") { found = true; break; }
+    EXPECT_TRUE(found);
+}
