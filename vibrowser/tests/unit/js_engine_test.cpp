@@ -26602,3 +26602,246 @@ TEST(JsEngineTest, ObjectEntriesFromEntriesAssignV94) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "a:1,b:2,c:3|10,20,30|10,2,3|2,3,10");
 }
+
+// ============================================================================
+// V95 Tests
+// ============================================================================
+
+TEST(JsEngineTest, GeneratorFunctionProtocolV95) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var results = [];
+        function* range(start, end, step) {
+            for (var i = start; i < end; i += step) {
+                yield i;
+            }
+        }
+        var gen = range(0, 15, 3);
+        var vals = [];
+        var item;
+        while (!(item = gen.next()).done) {
+            vals.push(item.value);
+        }
+        results.push(vals.join(","));
+        function* fibonacci() {
+            var a = 0, b = 1;
+            while (true) {
+                yield a;
+                var tmp = a;
+                a = b;
+                b = tmp + b;
+            }
+        }
+        var fib = fibonacci();
+        var fibs = [];
+        for (var i = 0; i < 8; i++) {
+            fibs.push(fib.next().value);
+        }
+        results.push(fibs.join(","));
+        results.push(typeof gen[Symbol.iterator]);
+        results.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "0,3,6,9,12|0,1,1,2,3,5,8,13|function");
+}
+
+TEST(JsEngineTest, ProxyHandlerTrapsV95) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var results = [];
+        var log = [];
+        var target = {x: 10, y: 20};
+        var handler = {
+            get: function(obj, prop) {
+                log.push("get:" + prop);
+                return prop in obj ? obj[prop] * 2 : -1;
+            },
+            set: function(obj, prop, value) {
+                log.push("set:" + prop);
+                obj[prop] = value + 100;
+                return true;
+            },
+            has: function(obj, prop) {
+                log.push("has:" + prop);
+                return prop === "x";
+            }
+        };
+        var p = new Proxy(target, handler);
+        results.push(p.x);
+        results.push(p.y);
+        results.push(p.z);
+        p.w = 5;
+        results.push(target.w);
+        results.push("x" in p);
+        results.push("y" in p);
+        results.push(log.join(","));
+        results.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "20|40|-1|105|true|false|get:x,get:y,get:z,set:w,has:x,has:y");
+}
+
+TEST(JsEngineTest, AsyncAwaitWithPromiseChainingV95) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var results = [];
+        function delay(val) {
+            return Promise.resolve(val);
+        }
+        // Test that async returns a promise (object)
+        async function compute() {
+            var a = await delay(10);
+            var b = await delay(20);
+            return a + b;
+        }
+        var p = compute();
+        results.push(typeof p);
+        results.push(p instanceof Promise);
+        results.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "object|true");
+}
+
+TEST(JsEngineTest, WeakRefAndFinalizationConceptsV95) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var results = [];
+        var strong = {name: "alive"};
+        var wr = new WeakRef(strong);
+        results.push(wr.deref().name);
+        results.push(wr.deref() === strong);
+        var ws = new WeakSet();
+        var obj1 = {id: 1};
+        var obj2 = {id: 2};
+        ws.add(obj1);
+        ws.add(obj2);
+        results.push(ws.has(obj1));
+        results.push(ws.has({id: 3}));
+        ws.delete(obj1);
+        results.push(ws.has(obj1));
+        var wm = new WeakMap();
+        var key1 = {};
+        wm.set(key1, "data");
+        results.push(wm.get(key1));
+        results.push(wm.has(key1));
+        results.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "alive|true|true|false|false|data|true");
+}
+
+TEST(JsEngineTest, SymbolSpeciesAndDescriptionV95) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var results = [];
+        var s1 = Symbol("mySymbol");
+        results.push(s1.description);
+        results.push(typeof s1);
+        results.push(s1.toString());
+        var s2 = Symbol.for("shared");
+        var s3 = Symbol.for("shared");
+        results.push(s2 === s3);
+        results.push(Symbol.keyFor(s2));
+        var obj = {};
+        obj[s1] = 42;
+        results.push(obj[s1]);
+        results.push(Object.keys(obj).length);
+        results.push(Object.getOwnPropertySymbols(obj).length);
+        results.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "mySymbol|symbol|Symbol(mySymbol)|true|shared|42|0|1");
+}
+
+TEST(JsEngineTest, ReflectApiOperationsV95) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var results = [];
+        var obj = {a: 1, b: 2};
+        results.push(Reflect.has(obj, "a"));
+        results.push(Reflect.has(obj, "c"));
+        Reflect.set(obj, "c", 3);
+        results.push(obj.c);
+        results.push(Reflect.get(obj, "b"));
+        results.push(Reflect.ownKeys(obj).join(","));
+        Reflect.deleteProperty(obj, "a");
+        results.push(Reflect.ownKeys(obj).join(","));
+        Reflect.defineProperty(obj, "d", {value: 99, enumerable: true});
+        results.push(obj.d);
+        var desc = Reflect.getOwnPropertyDescriptor(obj, "d");
+        results.push(desc.value + "," + desc.enumerable);
+        results.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true|false|3|2|a,b,c|b,c|99|99,true");
+}
+
+TEST(JsEngineTest, TaggedTemplateLiteralsV95) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var results = [];
+        function tag(strings, ...values) {
+            var out = "";
+            for (var i = 0; i < strings.length; i++) {
+                out += strings[i];
+                if (i < values.length) out += "[" + values[i] + "]";
+            }
+            return out;
+        }
+        var name = "world";
+        var num = 42;
+        results.push(tag`hello ${name}, the answer is ${num}!`);
+        function upper(strings, ...vals) {
+            return strings.reduce(function(acc, s, i) {
+                return acc + s + (i < vals.length ? String(vals[i]).toUpperCase() : "");
+            }, "");
+        }
+        var fruit = "apple";
+        results.push(upper`I like ${fruit} and ${fruit + "s"}`);
+        results.push(String.raw`line1\nline2\ttab`);
+        results.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "hello [world], the answer is [42]!|I like APPLE and APPLES|line1\\nline2\\ttab");
+}
+
+TEST(JsEngineTest, IteratorProtocolCustomIterableV95) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var results = [];
+        var countdown = {
+            from: 5,
+            [Symbol.iterator]: function() {
+                var current = this.from;
+                return {
+                    next: function() {
+                        if (current > 0) {
+                            return {value: current--, done: false};
+                        }
+                        return {done: true};
+                    }
+                };
+            }
+        };
+        var vals = [];
+        for (var v of countdown) {
+            vals.push(v);
+        }
+        results.push(vals.join(","));
+        results.push([...countdown].join(","));
+        var [a, b, ...rest] = countdown;
+        results.push(a);
+        results.push(b);
+        results.push(rest.join(","));
+        var m = new Map();
+        m.set("x", 1);
+        m.set("y", 2);
+        var keys = [];
+        for (var [k] of m) { keys.push(k); }
+        results.push(keys.join(","));
+        results.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "5,4,3,2,1|5,4,3,2,1|5|4|3,2,1|x,y");
+}

@@ -17484,3 +17484,193 @@ TEST(LayoutTest, FontSizeDeterminesTextNodeHeightV94) {
     EXPECT_GT(t1_ptr->geometry.height, 0.0f);
     EXPECT_GT(t2_ptr->geometry.height, t1_ptr->geometry.height);
 }
+
+// Test V95_001: flex row distributes width proportionally via flex_grow
+TEST(LayoutTest, FlexRowGrowDistributionV95) {
+    auto root = make_flex("div");
+    root->specified_width = 600.0f;
+    root->specified_height = 100.0f;
+    root->flex_direction = 0; // Row
+
+    auto a = make_block("div");
+    a->flex_grow = 1.0f;
+    auto b = make_block("div");
+    b->flex_grow = 2.0f;
+
+    root->append_child(std::move(a));
+    root->append_child(std::move(b));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    float wa = root->children[0]->geometry.width;
+    float wb = root->children[1]->geometry.width;
+    // b should get roughly twice the width of a
+    EXPECT_GT(wb, wa);
+    EXPECT_NEAR(wa + wb, 600.0f, 1.0f);
+}
+
+// Test V95_002: nested block margin collapsing between siblings
+TEST(LayoutTest, SiblingMarginTopBottomStackV95) {
+    auto root = make_block("div");
+    root->specified_width = 400.0f;
+
+    auto c1 = make_block("div");
+    c1->specified_height = 40.0f;
+    c1->geometry.margin.bottom = 20.0f;
+
+    auto c2 = make_block("div");
+    c2->specified_height = 40.0f;
+    c2->geometry.margin.top = 15.0f;
+
+    root->append_child(std::move(c1));
+    root->append_child(std::move(c2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    float y2 = root->children[1]->geometry.y;
+    // Second child starts at or after first child bottom + some margin
+    EXPECT_GE(y2, 40.0f);
+}
+
+// Test V95_003: z_index and opacity do not change geometry
+TEST(LayoutTest, ZIndexOpacityNoGeometryEffectV95) {
+    auto root = make_block("div");
+    root->specified_width = 200.0f;
+
+    auto c1 = make_block("div");
+    c1->specified_height = 60.0f;
+    c1->z_index = 10;
+    c1->opacity = 0.5f;
+
+    auto c2 = make_block("div");
+    c2->specified_height = 60.0f;
+    c2->z_index = -5;
+    c2->opacity = 0.0f;
+
+    root->append_child(std::move(c1));
+    root->append_child(std::move(c2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.y, 0.0f);
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.height, 60.0f);
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.y, 60.0f);
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.height, 60.0f);
+    EXPECT_FLOAT_EQ(root->geometry.height, 120.0f);
+}
+
+// Test V95_004: flex column stacks children vertically
+TEST(LayoutTest, FlexColumnStacksVerticallyV95) {
+    auto root = make_flex("div");
+    root->specified_width = 300.0f;
+    root->flex_direction = 2; // Column
+
+    auto a = make_block("div");
+    a->specified_height = 50.0f;
+    auto b = make_block("div");
+    b->specified_height = 70.0f;
+
+    root->append_child(std::move(a));
+    root->append_child(std::move(b));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    float ya = root->children[0]->geometry.y;
+    float yb = root->children[1]->geometry.y;
+    EXPECT_FLOAT_EQ(ya, 0.0f);
+    EXPECT_GE(yb, 50.0f);
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.height, 50.0f);
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.height, 70.0f);
+}
+
+// Test V95_005: padding increases parent height around children
+TEST(LayoutTest, PaddingIncreasesParentHeightV95) {
+    auto root = make_block("div");
+    root->specified_width = 400.0f;
+    root->geometry.padding.top = 25.0f;
+    root->geometry.padding.bottom = 25.0f;
+
+    auto child = make_block("div");
+    child->specified_height = 100.0f;
+
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // Parent height should be at least child + top/bottom padding
+    EXPECT_GE(root->geometry.height, 150.0f);
+}
+
+// Test V95_006: border adds to box around content
+TEST(LayoutTest, BorderAddsToBoxSizeV95) {
+    auto root = make_block("div");
+    root->specified_width = 500.0f;
+    root->geometry.border.left = 5.0f;
+    root->geometry.border.right = 5.0f;
+    root->geometry.border.top = 5.0f;
+    root->geometry.border.bottom = 5.0f;
+
+    auto child = make_block("div");
+    child->specified_height = 80.0f;
+
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // Child width should be reduced by left+right border
+    float cw = root->children[0]->geometry.width;
+    EXPECT_LE(cw, 500.0f);
+    // Parent height should include top+bottom border + child height
+    EXPECT_GE(root->geometry.height, 90.0f);
+}
+
+// Test V95_007: text node inside block contributes to parent height
+TEST(LayoutTest, TextNodeContributesToParentHeightV95) {
+    auto root = make_block("div");
+    root->specified_width = 300.0f;
+
+    auto txt = make_text("Some text content", 16.0f);
+    auto* txt_ptr = txt.get();
+    root->append_child(std::move(txt));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_GT(txt_ptr->geometry.height, 0.0f);
+    EXPECT_GT(root->geometry.height, 0.0f);
+    EXPECT_GE(root->geometry.height, txt_ptr->geometry.height);
+}
+
+// Test V95_008: flex_shrink with fixed-width children shrinks when overflow
+TEST(LayoutTest, FlexShrinkReducesOverflowChildrenV95) {
+    auto root = make_flex("div");
+    root->specified_width = 200.0f;
+    root->specified_height = 100.0f;
+    root->flex_direction = 0; // Row
+
+    auto a = make_block("div");
+    a->specified_width = 150.0f;
+    a->flex_shrink = 1.0f;
+    auto b = make_block("div");
+    b->specified_width = 150.0f;
+    b->flex_shrink = 1.0f;
+
+    root->append_child(std::move(a));
+    root->append_child(std::move(b));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    float wa = root->children[0]->geometry.width;
+    float wb = root->children[1]->geometry.width;
+    // Both should shrink below their specified 150
+    EXPECT_LT(wa, 150.0f);
+    EXPECT_LT(wb, 150.0f);
+    EXPECT_NEAR(wa + wb, 200.0f, 1.0f);
+}

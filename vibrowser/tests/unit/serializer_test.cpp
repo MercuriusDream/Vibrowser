@@ -13801,3 +13801,154 @@ TEST(SerializerTest, AllTypesKitchenSinkV94) {
     EXPECT_EQ(d.read_u8(), 0);
     EXPECT_FALSE(d.has_remaining());
 }
+
+// ------------------------------------------------------------------
+// V95 tests
+// ------------------------------------------------------------------
+
+TEST(SerializerTest, U64FibonacciSequenceV95) {
+    Serializer s;
+    uint64_t a = 0, b = 1;
+    std::vector<uint64_t> fibs;
+    for (int i = 0; i < 20; ++i) {
+        fibs.push_back(a);
+        s.write_u64(a);
+        uint64_t next = a + b;
+        a = b;
+        b = next;
+    }
+
+    Deserializer d(s.data());
+    for (int i = 0; i < 20; ++i) {
+        EXPECT_EQ(d.read_u64(), fibs[i]);
+    }
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, F64SpecialValuesCollectionV95) {
+    Serializer s;
+    s.write_f64(std::numeric_limits<double>::infinity());
+    s.write_f64(-std::numeric_limits<double>::infinity());
+    s.write_f64(std::numeric_limits<double>::denorm_min());
+    s.write_f64(std::numeric_limits<double>::max());
+    s.write_f64(std::numeric_limits<double>::lowest());
+    s.write_f64(std::numeric_limits<double>::epsilon());
+
+    Deserializer d(s.data());
+    EXPECT_DOUBLE_EQ(d.read_f64(), std::numeric_limits<double>::infinity());
+    EXPECT_DOUBLE_EQ(d.read_f64(), -std::numeric_limits<double>::infinity());
+    EXPECT_DOUBLE_EQ(d.read_f64(), std::numeric_limits<double>::denorm_min());
+    EXPECT_DOUBLE_EQ(d.read_f64(), std::numeric_limits<double>::max());
+    EXPECT_DOUBLE_EQ(d.read_f64(), std::numeric_limits<double>::lowest());
+    EXPECT_DOUBLE_EQ(d.read_f64(), std::numeric_limits<double>::epsilon());
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, BytesBinaryPatternV95) {
+    Serializer s;
+    // Write a 256-byte block containing every byte value 0x00..0xFF
+    std::vector<uint8_t> all_bytes(256);
+    std::iota(all_bytes.begin(), all_bytes.end(), 0);
+    s.write_bytes(all_bytes.data(), all_bytes.size());
+
+    Deserializer d(s.data());
+    auto result = d.read_bytes();
+    ASSERT_EQ(result.size(), 256u);
+    for (int i = 0; i < 256; ++i) {
+        EXPECT_EQ(result[i], static_cast<uint8_t>(i));
+    }
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, StringWithEmbeddedNullsV95) {
+    Serializer s;
+    std::string with_nulls("abc\0def\0ghi", 11);
+    s.write_string(with_nulls);
+
+    Deserializer d(s.data());
+    std::string out = d.read_string();
+    EXPECT_EQ(out.size(), 11u);
+    EXPECT_EQ(out, with_nulls);
+    EXPECT_EQ(out[3], '\0');
+    EXPECT_EQ(out[7], '\0');
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, InterleavedU8AndU32V95) {
+    Serializer s;
+    for (uint32_t i = 0; i < 50; ++i) {
+        s.write_u8(static_cast<uint8_t>(i & 0xFF));
+        s.write_u32(i * 1000u);
+    }
+
+    Deserializer d(s.data());
+    for (uint32_t i = 0; i < 50; ++i) {
+        EXPECT_EQ(d.read_u8(), static_cast<uint8_t>(i & 0xFF));
+        EXPECT_EQ(d.read_u32(), i * 1000u);
+    }
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, U16AllBitPatternsV95) {
+    Serializer s;
+    // Write specific u16 bit patterns: 0, max, alternating bits, etc.
+    s.write_u16(0x0000);
+    s.write_u16(0xFFFF);
+    s.write_u16(0xAAAA);
+    s.write_u16(0x5555);
+    s.write_u16(0x00FF);
+    s.write_u16(0xFF00);
+    s.write_u16(0x0F0F);
+    s.write_u16(0xF0F0);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u16(), 0x0000);
+    EXPECT_EQ(d.read_u16(), 0xFFFF);
+    EXPECT_EQ(d.read_u16(), 0xAAAA);
+    EXPECT_EQ(d.read_u16(), 0x5555);
+    EXPECT_EQ(d.read_u16(), 0x00FF);
+    EXPECT_EQ(d.read_u16(), 0xFF00);
+    EXPECT_EQ(d.read_u16(), 0x0F0F);
+    EXPECT_EQ(d.read_u16(), 0xF0F0);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, MultipleEmptyBytesBlocksV95) {
+    Serializer s;
+    // Write several zero-length byte blocks interleaved with data
+    s.write_bytes(nullptr, 0);
+    s.write_u32(0xCAFEBABEu);
+    s.write_bytes(nullptr, 0);
+    s.write_string("marker");
+    s.write_bytes(nullptr, 0);
+
+    Deserializer d(s.data());
+    auto b1 = d.read_bytes();
+    EXPECT_EQ(b1.size(), 0u);
+    EXPECT_EQ(d.read_u32(), 0xCAFEBABEu);
+    auto b2 = d.read_bytes();
+    EXPECT_EQ(b2.size(), 0u);
+    EXPECT_EQ(d.read_string(), "marker");
+    auto b3 = d.read_bytes();
+    EXPECT_EQ(b3.size(), 0u);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, LargeStringRoundTripV95) {
+    Serializer s;
+    // Build a 10000-char string with a repeating pattern
+    std::string large;
+    large.reserve(10000);
+    for (int i = 0; i < 10000; ++i) {
+        large.push_back(static_cast<char>('A' + (i % 26)));
+    }
+    s.write_string(large);
+    s.write_u8(0xFE);
+
+    Deserializer d(s.data());
+    std::string out = d.read_string();
+    EXPECT_EQ(out.size(), 10000u);
+    EXPECT_EQ(out, large);
+    EXPECT_EQ(d.read_u8(), 0xFE);
+    EXPECT_FALSE(d.has_remaining());
+}

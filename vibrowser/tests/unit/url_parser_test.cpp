@@ -11003,3 +11003,88 @@ TEST(UrlParserTest, SerializeOmitsDefaultPort443V94) {
     EXPECT_NE(s.find("/dashboard"), std::string::npos);
     EXPECT_NE(s.find("view=monthly"), std::string::npos);
 }
+
+// =============================================================================
+// V95 Tests
+// =============================================================================
+
+TEST(UrlParserTest, FtpSchemeWithPortAndPathV95) {
+    auto result = clever::url::parse("ftp://files.example.org:2121/pub/release/notes.txt");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "ftp");
+    EXPECT_EQ(result->host, "files.example.org");
+    ASSERT_TRUE(result->port.has_value());
+    EXPECT_EQ(result->port.value(), 2121);
+    EXPECT_EQ(result->path, "/pub/release/notes.txt");
+    EXPECT_TRUE(result->query.empty());
+    EXPECT_TRUE(result->fragment.empty());
+}
+
+TEST(UrlParserTest, DoubleEncodedPlusSignInPathV95) {
+    auto result = clever::url::parse("https://example.com/a%2Bb");
+    ASSERT_TRUE(result.has_value());
+    // %2B gets double-encoded to %252B
+    EXPECT_NE(result->path.find("%252B"), std::string::npos);
+}
+
+TEST(UrlParserTest, HttpsPort443NulloptSerializeCleanV95) {
+    auto result = clever::url::parse("https://secure.example.com:443/api/v2/users");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "secure.example.com");
+    EXPECT_EQ(result->port, std::nullopt);
+    std::string s = result->serialize();
+    EXPECT_EQ(s.find(":443"), std::string::npos);
+    EXPECT_NE(s.find("/api/v2/users"), std::string::npos);
+}
+
+TEST(UrlParserTest, EmptyPathQueryAndFragmentAllPresentV95) {
+    auto result = clever::url::parse("https://example.com?key=val#sec");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->port, std::nullopt);
+    EXPECT_NE(result->query.find("key=val"), std::string::npos);
+    EXPECT_EQ(result->fragment, "sec");
+}
+
+TEST(UrlParserTest, SerializeRoundTripNonDefaultPortV95) {
+    auto result = clever::url::parse("http://app.example.com:3000/login?next=/dashboard");
+    ASSERT_TRUE(result.has_value());
+    ASSERT_TRUE(result->port.has_value());
+    EXPECT_EQ(result->port.value(), 3000);
+    std::string s = result->serialize();
+    EXPECT_NE(s.find(":3000"), std::string::npos);
+    EXPECT_NE(s.find("/login"), std::string::npos);
+    EXPECT_NE(s.find("next="), std::string::npos);
+}
+
+TEST(UrlParserTest, LongSubdomainChainV95) {
+    auto result = clever::url::parse("https://a.b.c.d.e.example.com/deep");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "a.b.c.d.e.example.com");
+    EXPECT_EQ(result->path, "/deep");
+    EXPECT_EQ(result->port, std::nullopt);
+}
+
+TEST(UrlParserTest, DoubleEncodedSpaceInFragmentV95) {
+    auto result = clever::url::parse("https://example.com/page#section%20two");
+    ASSERT_TRUE(result.has_value());
+    // %20 in fragment gets double-encoded to %2520
+    EXPECT_NE(result->fragment.find("%2520"), std::string::npos);
+}
+
+TEST(UrlParserTest, HttpPort80OmittedFromSerializeV95) {
+    auto result = clever::url::parse("http://www.example.com:80/index.html?lang=en#top");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "www.example.com");
+    EXPECT_EQ(result->port, std::nullopt);
+    EXPECT_EQ(result->path, "/index.html");
+    EXPECT_EQ(result->fragment, "top");
+    std::string s = result->serialize();
+    EXPECT_EQ(s.find(":80"), std::string::npos);
+    EXPECT_NE(s.find("www.example.com"), std::string::npos);
+    EXPECT_NE(s.find("lang=en"), std::string::npos);
+}

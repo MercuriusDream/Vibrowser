@@ -6949,3 +6949,84 @@ TEST(CORSPolicyTest, ShouldAttachOriginSubdomainCrossOriginV94) {
     // Same full origin should NOT attach
     EXPECT_FALSE(should_attach_origin_header("https://app.example.com", "https://app.example.com/api"));
 }
+
+TEST(CORSPolicyTest, FragmentUrlsNotCorsEligibleV95) {
+    // URLs with fragments are NOT cors-eligible
+    EXPECT_FALSE(is_cors_eligible_request_url("https://example.com/page#section1"));
+    EXPECT_FALSE(is_cors_eligible_request_url("http://example.com/api#anchor"));
+    EXPECT_FALSE(is_cors_eligible_request_url("https://example.com/#top"));
+    // Same URLs without fragments ARE eligible
+    EXPECT_TRUE(is_cors_eligible_request_url("https://example.com/page"));
+    EXPECT_TRUE(is_cors_eligible_request_url("http://example.com/api"));
+}
+
+TEST(CORSPolicyTest, WssSchemeNotCorsEligibleV95) {
+    // wss:// is NOT cors-eligible, just like ws://
+    EXPECT_FALSE(is_cors_eligible_request_url("wss://secure-socket.example.com/ws"));
+    EXPECT_FALSE(is_cors_eligible_request_url("wss://example.com:8443/live"));
+    EXPECT_FALSE(is_cors_eligible_request_url("ws://example.com/chat"));
+    // https equivalent is eligible
+    EXPECT_TRUE(is_cors_eligible_request_url("https://secure-socket.example.com/ws"));
+}
+
+TEST(CORSPolicyTest, DataBlobOriginsNeverEnforceableV95) {
+    // data: with various MIME types are never enforceable
+    EXPECT_FALSE(has_enforceable_document_origin("data:text/html,<h1>Hi</h1>"));
+    EXPECT_FALSE(has_enforceable_document_origin("data:text/plain;base64,SGVsbG8="));
+    // blob: with nested origins are also not enforceable
+    EXPECT_FALSE(has_enforceable_document_origin("blob:https://cdn.example.com/file-uuid"));
+    EXPECT_FALSE(has_enforceable_document_origin("blob:http://localhost:3000/uuid"));
+}
+
+TEST(CORSPolicyTest, LoopbackIPOriginsEnforceableV95) {
+    // Loopback and private IPs with valid schemes are enforceable
+    EXPECT_TRUE(has_enforceable_document_origin("https://127.0.0.1"));
+    EXPECT_TRUE(has_enforceable_document_origin("http://127.0.0.1:8080"));
+    EXPECT_TRUE(has_enforceable_document_origin("https://10.255.255.254"));
+    EXPECT_TRUE(has_enforceable_document_origin("http://192.168.0.1:443"));
+    // But ftp:// scheme with IP is NOT enforceable
+    EXPECT_FALSE(has_enforceable_document_origin("ftp://192.168.0.1"));
+}
+
+TEST(CORSPolicyTest, CrossOriginSchemeDifferenceV95) {
+    // http vs https on same host is cross-origin
+    EXPECT_TRUE(is_cross_origin("http://example.com", "https://example.com/path"));
+    EXPECT_TRUE(is_cross_origin("https://example.com", "http://example.com/path"));
+    // Same scheme, same host is same-origin
+    EXPECT_FALSE(is_cross_origin("http://example.com", "http://example.com/other"));
+    EXPECT_FALSE(is_cross_origin("https://example.com", "https://example.com/other"));
+}
+
+TEST(CORSPolicyTest, CorsAllowsOriginWithFragmentStrippedV95) {
+    // Origin in ACAO header that originally had a fragment -- fragment gets stripped,
+    // so "https://app.example.com" should still match
+    clever::net::HeaderMap h;
+    h.set("Access-Control-Allow-Origin", "https://app.example.com");
+    // Same-origin request should be allowed (fragment in request URL is irrelevant to CORS matching)
+    EXPECT_TRUE(cors_allows_response("https://app.example.com", "https://api.example.com/data", h, false));
+    // Mismatched origin should be rejected
+    EXPECT_FALSE(cors_allows_response("https://other.example.com", "https://api.example.com/data", h, false));
+}
+
+TEST(CORSPolicyTest, ShouldAttachOriginForCrossSchemeV95) {
+    // Cross-scheme requests should attach origin header
+    EXPECT_TRUE(should_attach_origin_header("http://example.com", "https://example.com/api"));
+    EXPECT_TRUE(should_attach_origin_header("https://example.com", "http://example.com/api"));
+    // Same-origin should NOT attach
+    EXPECT_FALSE(should_attach_origin_header("https://example.com", "https://example.com/path"));
+    // Null/empty origin with any target -- empty origin never attaches (no cross-origin check)
+    EXPECT_FALSE(should_attach_origin_header("", "https://example.com/api"));
+}
+
+TEST(CORSPolicyTest, CorsResponseCaseInsensitiveSchemeV95) {
+    // Schemes are case-insensitive, so HTTPS origin should match https ACAO
+    clever::net::HeaderMap h;
+    h.set("Access-Control-Allow-Origin", "https://app.example.com");
+    // Standard lowercase origin should match
+    EXPECT_TRUE(cors_allows_response("https://app.example.com", "https://api.example.com/data", h, false));
+    // Wildcard with no credentials always succeeds regardless of scheme casing
+    clever::net::HeaderMap hw;
+    hw.set("Access-Control-Allow-Origin", "*");
+    EXPECT_TRUE(cors_allows_response("https://app.example.com", "https://api.example.com/data", hw, false));
+    EXPECT_TRUE(cors_allows_response("http://app.example.com", "https://api.example.com/data", hw, false));
+}

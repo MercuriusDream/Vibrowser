@@ -16272,3 +16272,105 @@ TEST(HttpClientTest, RequestSerializePostDefaultPort80OmittedV94) {
     EXPECT_TRUE(s.find(":80") == std::string::npos);
     EXPECT_TRUE(s.find("field=value") != std::string::npos);
 }
+
+// ===========================================================================
+// V95 Tests
+// ===========================================================================
+
+TEST(HttpClientTest, HeaderMapSetOverwritePreservesOnlyLatestV95) {
+    HeaderMap headers;
+    headers.set("Authorization", "Bearer old-token");
+    headers.set("Authorization", "Bearer new-token");
+    EXPECT_EQ(headers.size(), 1u);
+    EXPECT_EQ(headers.get("Authorization").value(), "Bearer new-token");
+    EXPECT_EQ(headers.get("authorization").value(), "Bearer new-token");
+}
+
+TEST(HttpClientTest, RequestSerializeHeadMethodNoBodyV95) {
+    Request req;
+    req.method = Method::HEAD;
+    req.host = "example.org";
+    req.port = 80;
+    req.path = "/status";
+    req.use_tls = false;
+    auto bytes = req.serialize();
+    std::string s(bytes.begin(), bytes.end());
+    EXPECT_TRUE(s.find("HEAD /status HTTP/1.1\r\n") == 0);
+    EXPECT_TRUE(s.find("Host: example.org\r\n") != std::string::npos);
+    EXPECT_TRUE(s.find(":80") == std::string::npos);
+}
+
+TEST(HttpClientTest, ResponseBodyAsStringConversionV95) {
+    Response resp;
+    resp.status = 200;
+    resp.status_text = "OK";
+    std::string payload = "Hello, World!";
+    resp.body = std::vector<uint8_t>(payload.begin(), payload.end());
+    EXPECT_EQ(resp.body_as_string(), "Hello, World!");
+    EXPECT_EQ(resp.body.size(), 13u);
+}
+
+TEST(HttpClientTest, HeaderMapHasCaseInsensitiveLookupV95) {
+    HeaderMap headers;
+    headers.set("X-Request-Id", "abc-123");
+    EXPECT_TRUE(headers.has("X-Request-Id"));
+    EXPECT_TRUE(headers.has("x-request-id"));
+    EXPECT_TRUE(headers.has("X-REQUEST-ID"));
+    EXPECT_FALSE(headers.has("X-Request-Idd"));
+}
+
+TEST(HttpClientTest, RequestSerializeCustomHeaderLowercaseV95) {
+    Request req;
+    req.method = Method::GET;
+    req.host = "api.example.com";
+    req.port = 8080;
+    req.path = "/data";
+    req.use_tls = false;
+    req.headers.set("X-Custom-Token", "secret123");
+    auto bytes = req.serialize();
+    std::string s(bytes.begin(), bytes.end());
+    EXPECT_TRUE(s.find("x-custom-token: secret123\r\n") != std::string::npos);
+    EXPECT_TRUE(s.find("Host: api.example.com:8080\r\n") != std::string::npos);
+}
+
+TEST(HttpClientTest, CookieJarSecureFlagFilteringV95) {
+    CookieJar jar;
+    jar.set_from_header("token=secret; Secure", "secure.example.com");
+    std::string secure_cookies = jar.get_cookie_header("secure.example.com", "/", true);
+    std::string insecure_cookies = jar.get_cookie_header("secure.example.com", "/", false);
+    EXPECT_TRUE(secure_cookies.find("token=secret") != std::string::npos);
+    EXPECT_TRUE(insecure_cookies.find("token=secret") == std::string::npos);
+}
+
+TEST(HttpClientTest, RequestSerializePutWithBinaryBodyV95) {
+    Request req;
+    req.method = Method::PUT;
+    req.host = "upload.example.com";
+    req.port = 443;
+    req.path = "/file";
+    req.use_tls = true;
+    req.body = {0x00, 0x01, 0x02, 0xFF, 0xFE};
+    auto bytes = req.serialize();
+    std::string s(bytes.begin(), bytes.end());
+    EXPECT_TRUE(s.find("PUT /file HTTP/1.1\r\n") == 0);
+    EXPECT_TRUE(s.find("Host: upload.example.com\r\n") != std::string::npos);
+    EXPECT_TRUE(s.find(":443") == std::string::npos);
+    // Body bytes should appear after the header section
+    auto body_pos = s.find("\r\n\r\n");
+    ASSERT_NE(body_pos, std::string::npos);
+    std::string body_part = s.substr(body_pos + 4);
+    EXPECT_EQ(body_part.size(), 5u);
+}
+
+TEST(HttpClientTest, HeaderMapRemoveThenReAddV95) {
+    HeaderMap headers;
+    headers.set("Cache-Control", "no-cache");
+    EXPECT_TRUE(headers.has("Cache-Control"));
+    headers.remove("Cache-Control");
+    EXPECT_FALSE(headers.has("Cache-Control"));
+    EXPECT_TRUE(headers.empty());
+    headers.set("Cache-Control", "max-age=3600");
+    EXPECT_TRUE(headers.has("cache-control"));
+    EXPECT_EQ(headers.get("Cache-Control").value(), "max-age=3600");
+    EXPECT_EQ(headers.size(), 1u);
+}

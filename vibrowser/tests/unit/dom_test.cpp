@@ -15176,3 +15176,96 @@ TEST(DomTest, ParentAndSiblingPointersAfterInsertV94) {
     EXPECT_EQ(a_ptr->previous_sibling(), nullptr);
     EXPECT_EQ(c_ptr->next_sibling(), nullptr);
 }
+
+// ---------------------------------------------------------------------------
+// V95 Tests
+// ---------------------------------------------------------------------------
+
+TEST(DomTest, RemoveChildUpdatesLinksV95) {
+    Element parent("ul");
+    auto li1 = std::make_unique<Element>("li");
+    auto* li1_ptr = li1.get();
+    parent.append_child(std::move(li1));
+    auto li2 = std::make_unique<Element>("li");
+    auto* li2_ptr = li2.get();
+    parent.append_child(std::move(li2));
+    auto li3 = std::make_unique<Element>("li");
+    auto* li3_ptr = li3.get();
+    parent.append_child(std::move(li3));
+    EXPECT_EQ(parent.child_count(), 3u);
+    parent.remove_child(*li2_ptr);
+    EXPECT_EQ(parent.child_count(), 2u);
+    EXPECT_EQ(li1_ptr->next_sibling(), li3_ptr);
+    EXPECT_EQ(li3_ptr->previous_sibling(), li1_ptr);
+    EXPECT_EQ(parent.first_child(), li1_ptr);
+    EXPECT_EQ(parent.last_child(), li3_ptr);
+}
+
+TEST(DomTest, ClassListToggleTwiceRestoresV95) {
+    Element el("div");
+    el.class_list().add("active");
+    EXPECT_TRUE(el.class_list().contains("active"));
+    el.class_list().toggle("active");
+    EXPECT_FALSE(el.class_list().contains("active"));
+    el.class_list().toggle("active");
+    EXPECT_TRUE(el.class_list().contains("active"));
+}
+
+TEST(DomTest, CommentNodeDataAccessV95) {
+    Comment c("this is a comment");
+    EXPECT_EQ(c.node_type(), NodeType::Comment);
+    EXPECT_EQ(c.data(), "this is a comment");
+}
+
+TEST(DomTest, NestedElementTextContentV95) {
+    Element div("div");
+    div.set_attribute("id", "wrap");
+    auto p = std::make_unique<Element>("p");
+    p->append_child(std::make_unique<Text>("hello"));
+    auto* raw_p = p.get();
+    div.append_child(std::move(p));
+    EXPECT_EQ(div.child_count(), 1u);
+    EXPECT_EQ(raw_p->text_content(), "hello");
+    EXPECT_EQ(div.text_content(), "hello");
+}
+
+TEST(DomTest, HasAttributeReturnsFalseAfterRemoveV95) {
+    Element el("input");
+    el.set_attribute("required", "");
+    EXPECT_TRUE(el.has_attribute("required"));
+    el.remove_attribute("required");
+    EXPECT_FALSE(el.has_attribute("required"));
+    EXPECT_EQ(el.attributes().size(), 0u);
+}
+
+TEST(DomTest, AppendChildSetsParentV95) {
+    Element parent("section");
+    auto child = std::make_unique<Element>("article");
+    auto* raw = child.get();
+    parent.append_child(std::move(child));
+    EXPECT_EQ(raw->parent(), &parent);
+    EXPECT_EQ(parent.first_child(), raw);
+    EXPECT_EQ(parent.child_count(), 1u);
+}
+
+TEST(DomTest, MultipleTextChildrenConcatV95) {
+    Element div("div");
+    div.append_child(std::make_unique<Text>("A"));
+    div.append_child(std::make_unique<Element>("br"));
+    div.append_child(std::make_unique<Text>("B"));
+    EXPECT_EQ(div.child_count(), 3u);
+    EXPECT_EQ(div.text_content(), "AB");
+}
+
+TEST(DomTest, SetAttributeViaIdThenGetV95) {
+    Element el("span");
+    el.set_attribute("id", "main-title");
+    el.set_attribute("data-x", "42");
+    EXPECT_EQ(el.get_attribute("id").value(), "main-title");
+    EXPECT_EQ(el.get_attribute("data-x").value(), "42");
+    EXPECT_EQ(el.attributes().size(), 2u);
+    el.class_list().add("big");
+    el.class_list().add("red");
+    EXPECT_TRUE(el.class_list().contains("big"));
+    EXPECT_TRUE(el.class_list().contains("red"));
+}

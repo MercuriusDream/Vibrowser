@@ -15104,3 +15104,194 @@ TEST(HtmlParserTest, FormSelectOptionsV94) {
     EXPECT_EQ(get_attr_v63(opts[2], "value"), "b");
     EXPECT_EQ(opts[2]->text_content(), "Blue");
 }
+
+// ============================================================================
+// V95 Tests
+// ============================================================================
+
+// 1. Parse a definition list (dl/dt/dd)
+TEST(HtmlParserTest, DefinitionListV95) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<dl>"
+        "<dt>HTML</dt><dd>HyperText Markup Language</dd>"
+        "<dt>CSS</dt><dd>Cascading Style Sheets</dd>"
+        "</dl>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* dl = doc->find_element("dl");
+    ASSERT_NE(dl, nullptr);
+    auto dts = dl->find_all_elements("dt");
+    auto dds = dl->find_all_elements("dd");
+    ASSERT_EQ(dts.size(), 2u);
+    ASSERT_EQ(dds.size(), 2u);
+    EXPECT_EQ(dts[0]->text_content(), "HTML");
+    EXPECT_EQ(dts[1]->text_content(), "CSS");
+    EXPECT_EQ(dds[0]->text_content(), "HyperText Markup Language");
+    EXPECT_EQ(dds[1]->text_content(), "Cascading Style Sheets");
+}
+
+// 2. Parse figure with figcaption and img
+TEST(HtmlParserTest, FigureWithFigcaptionV95) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<figure>"
+        "<img src=\"photo.jpg\" alt=\"A photo\">"
+        "<figcaption>Photo caption here</figcaption>"
+        "</figure>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* fig = doc->find_element("figure");
+    ASSERT_NE(fig, nullptr);
+    auto* img = fig->find_element("img");
+    ASSERT_NE(img, nullptr);
+    EXPECT_EQ(get_attr_v63(img, "src"), "photo.jpg");
+    EXPECT_EQ(get_attr_v63(img, "alt"), "A photo");
+    auto* cap = fig->find_element("figcaption");
+    ASSERT_NE(cap, nullptr);
+    EXPECT_EQ(cap->text_content(), "Photo caption here");
+}
+
+// 3. Parse details/summary element
+TEST(HtmlParserTest, DetailsSummaryV95) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<details>"
+        "<summary>Click to expand</summary>"
+        "<p>Hidden content revealed.</p>"
+        "</details>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* details = doc->find_element("details");
+    ASSERT_NE(details, nullptr);
+    auto* summary = details->find_element("summary");
+    ASSERT_NE(summary, nullptr);
+    EXPECT_EQ(summary->text_content(), "Click to expand");
+    auto* p = details->find_element("p");
+    ASSERT_NE(p, nullptr);
+    EXPECT_EQ(p->text_content(), "Hidden content revealed.");
+}
+
+// 4. Parse table with thead, tbody, and tfoot
+TEST(HtmlParserTest, TableTheadTbodyTfootV95) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<table>"
+        "<thead><tr><th>Name</th><th>Score</th></tr></thead>"
+        "<tbody><tr><td>Alice</td><td>95</td></tr>"
+        "<tr><td>Bob</td><td>82</td></tr></tbody>"
+        "<tfoot><tr><td>Total</td><td>177</td></tr></tfoot>"
+        "</table>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* table = doc->find_element("table");
+    ASSERT_NE(table, nullptr);
+    auto* thead = table->find_element("thead");
+    ASSERT_NE(thead, nullptr);
+    auto ths = thead->find_all_elements("th");
+    ASSERT_EQ(ths.size(), 2u);
+    EXPECT_EQ(ths[0]->text_content(), "Name");
+    EXPECT_EQ(ths[1]->text_content(), "Score");
+    auto* tbody = table->find_element("tbody");
+    ASSERT_NE(tbody, nullptr);
+    auto tds = tbody->find_all_elements("td");
+    ASSERT_GE(tds.size(), 4u);
+    auto* tfoot = table->find_element("tfoot");
+    ASSERT_NE(tfoot, nullptr);
+    auto foot_tds = tfoot->find_all_elements("td");
+    ASSERT_EQ(foot_tds.size(), 2u);
+    EXPECT_EQ(foot_tds[0]->text_content(), "Total");
+    EXPECT_EQ(foot_tds[1]->text_content(), "177");
+}
+
+// 5. Parse multiple data attributes on a single element
+TEST(HtmlParserTest, MultipleDataAttributesV95) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<div data-id=\"42\" data-role=\"admin\" data-active=\"true\">User</div>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* div = doc->find_element("div");
+    ASSERT_NE(div, nullptr);
+    EXPECT_EQ(get_attr_v63(div, "data-id"), "42");
+    EXPECT_EQ(get_attr_v63(div, "data-role"), "admin");
+    EXPECT_EQ(get_attr_v63(div, "data-active"), "true");
+    EXPECT_EQ(div->text_content(), "User");
+}
+
+// 6. Parse nested section elements with headings
+TEST(HtmlParserTest, NestedSectionsWithHeadingsV95) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<section>"
+        "<h1>Chapter One</h1>"
+        "<section>"
+        "<h2>Section 1.1</h2>"
+        "<p>Paragraph in subsection.</p>"
+        "</section>"
+        "</section>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* outer = doc->find_element("section");
+    ASSERT_NE(outer, nullptr);
+    auto* h1 = outer->find_element("h1");
+    ASSERT_NE(h1, nullptr);
+    EXPECT_EQ(h1->text_content(), "Chapter One");
+    auto inner_sections = outer->find_all_elements("section");
+    ASSERT_GE(inner_sections.size(), 1u);
+    auto* h2 = inner_sections[0]->find_element("h2");
+    ASSERT_NE(h2, nullptr);
+    EXPECT_EQ(h2->text_content(), "Section 1.1");
+    auto* p = inner_sections[0]->find_element("p");
+    ASSERT_NE(p, nullptr);
+    EXPECT_EQ(p->text_content(), "Paragraph in subsection.");
+}
+
+// 7. Parse nav with anchor links
+TEST(HtmlParserTest, NavWithAnchorLinksV95) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<nav>"
+        "<a href=\"/home\">Home</a>"
+        "<a href=\"/about\">About</a>"
+        "<a href=\"/contact\">Contact</a>"
+        "</nav>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* nav = doc->find_element("nav");
+    ASSERT_NE(nav, nullptr);
+    auto links = nav->find_all_elements("a");
+    ASSERT_EQ(links.size(), 3u);
+    EXPECT_EQ(get_attr_v63(links[0], "href"), "/home");
+    EXPECT_EQ(links[0]->text_content(), "Home");
+    EXPECT_EQ(get_attr_v63(links[1], "href"), "/about");
+    EXPECT_EQ(links[1]->text_content(), "About");
+    EXPECT_EQ(get_attr_v63(links[2], "href"), "/contact");
+    EXPECT_EQ(links[2]->text_content(), "Contact");
+}
+
+// 8. Parse fieldset with legend and mixed inputs
+TEST(HtmlParserTest, FieldsetLegendInputsV95) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<fieldset>"
+        "<legend>Personal Info</legend>"
+        "<input type=\"text\" name=\"fname\" value=\"Jane\">"
+        "<input type=\"email\" name=\"email\" value=\"j@e.co\">"
+        "</fieldset>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* fs = doc->find_element("fieldset");
+    ASSERT_NE(fs, nullptr);
+    auto* legend = fs->find_element("legend");
+    ASSERT_NE(legend, nullptr);
+    EXPECT_EQ(legend->text_content(), "Personal Info");
+    auto inputs = fs->find_all_elements("input");
+    ASSERT_EQ(inputs.size(), 2u);
+    EXPECT_EQ(get_attr_v63(inputs[0], "type"), "text");
+    EXPECT_EQ(get_attr_v63(inputs[0], "name"), "fname");
+    EXPECT_EQ(get_attr_v63(inputs[0], "value"), "Jane");
+    EXPECT_EQ(get_attr_v63(inputs[1], "type"), "email");
+    EXPECT_EQ(get_attr_v63(inputs[1], "name"), "email");
+    EXPECT_EQ(get_attr_v63(inputs[1], "value"), "j@e.co");
+}
