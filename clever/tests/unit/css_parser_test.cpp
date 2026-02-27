@@ -3372,3 +3372,91 @@ TEST_F(CSSStylesheetTest, PlaceItemsDeclaration) {
     }
     EXPECT_TRUE(found);
 }
+
+// Stylesheet: transition-property declaration
+TEST_F(CSSStylesheetTest, TransitionPropertyDeclaration) {
+    auto sheet = parse_stylesheet(".box { transition-property: all; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations) {
+        if (d.property == "transition-property") { found = true; break; }
+    }
+    EXPECT_TRUE(found);
+}
+
+// Stylesheet: transition-timing-function declaration
+TEST_F(CSSStylesheetTest, TransitionTimingFunctionDeclaration) {
+    auto sheet = parse_stylesheet("a { transition-timing-function: ease-in-out; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations) {
+        if (d.property == "transition-timing-function") { found = true; break; }
+    }
+    EXPECT_TRUE(found);
+}
+
+// Stylesheet: filter declaration
+TEST_F(CSSStylesheetTest, FilterDeclaration) {
+    auto sheet = parse_stylesheet(".blur { filter: blur(4px); }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations) {
+        if (d.property == "filter") { found = true; break; }
+    }
+    EXPECT_TRUE(found);
+}
+
+// Stylesheet: backdrop-filter declaration
+TEST_F(CSSStylesheetTest, BackdropFilterDeclaration) {
+    auto sheet = parse_stylesheet(".glass { backdrop-filter: blur(10px); }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations) {
+        if (d.property == "backdrop-filter") { found = true; break; }
+    }
+    EXPECT_TRUE(found);
+}
+
+// Stylesheet: transform declaration
+TEST_F(CSSStylesheetTest, TransformDeclaration) {
+    auto sheet = parse_stylesheet(".rotate { transform: rotate(45deg); }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations) {
+        if (d.property == "transform") { found = true; break; }
+    }
+    EXPECT_TRUE(found);
+}
+
+// Stylesheet: transform-origin declaration
+TEST_F(CSSStylesheetTest, TransformOriginDeclaration) {
+    auto sheet = parse_stylesheet(".box { transform-origin: center center; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations) {
+        if (d.property == "transform-origin") { found = true; break; }
+    }
+    EXPECT_TRUE(found);
+}
+
+// Stylesheet: clip-path declaration
+TEST_F(CSSStylesheetTest, ClipPathDeclaration) {
+    auto sheet = parse_stylesheet(".circle { clip-path: circle(50%); }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations) {
+        if (d.property == "clip-path") { found = true; break; }
+    }
+    EXPECT_TRUE(found);
+}
+
+// Stylesheet: mask-image declaration
+TEST_F(CSSStylesheetTest, MaskImageDeclaration) {
+    auto sheet = parse_stylesheet(".masked { mask-image: linear-gradient(black, transparent); }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations) {
+        if (d.property == "mask-image") { found = true; break; }
+    }
+    EXPECT_TRUE(found);
+}
