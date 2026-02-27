@@ -1961,3 +1961,40 @@ TEST(CORSPolicyTest, ACAOWithPortMismatchBlocks) {
     headers.set("access-control-allow-origin", "https://example.com:8080");
     EXPECT_FALSE(cors_allows_response("https://example.com:9090", "https://api.example.com/data", headers, false));
 }
+
+// Cycle 950 — CORS: multiple origin checks, loopback, longer origin strings
+TEST(CORSPolicyTest, EnforceableHttpLocalhost) {
+    EXPECT_TRUE(has_enforceable_document_origin("http://localhost"));
+}
+
+TEST(CORSPolicyTest, EnforceableHttpLoopback) {
+    EXPECT_TRUE(has_enforceable_document_origin("http://127.0.0.1"));
+}
+
+TEST(CORSPolicyTest, EnforceableHttpsApiSubdomain) {
+    EXPECT_TRUE(has_enforceable_document_origin("https://api.service.example.com"));
+}
+
+TEST(CORSPolicyTest, CorsEligibleWithPortInUrl) {
+    EXPECT_TRUE(is_cors_eligible_request_url("https://example.com:9000/resource"));
+}
+
+TEST(CORSPolicyTest, CrossOriginPortOneThousand) {
+    EXPECT_TRUE(is_cross_origin("https://example.com", "https://example.com:1000/path"));
+}
+
+TEST(CORSPolicyTest, SameSchemeHostAndPortSameOrigin) {
+    EXPECT_FALSE(is_cross_origin("https://api.example.com:443", "https://api.example.com:443/data"));
+}
+
+TEST(CORSPolicyTest, ACAOWildcardBlocks403CredentialedResponse) {
+    clever::net::HeaderMap headers;
+    headers.set("access-control-allow-origin", "*");
+    EXPECT_FALSE(cors_allows_response("https://app.example.com", "https://cdn.example.com/data.json", headers, true));
+}
+
+TEST(CORSPolicyTest, ACAOWildcardAllows200Response) {
+    clever::net::HeaderMap headers;
+    headers.set("access-control-allow-origin", "*");
+    EXPECT_TRUE(cors_allows_response("https://app.example.com", "https://cdn.example.com/data.json", headers, false));
+}
