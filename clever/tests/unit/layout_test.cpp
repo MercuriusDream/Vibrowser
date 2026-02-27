@@ -6351,3 +6351,51 @@ TEST(LayoutNodeProps, OutlineOffsetDefaultsToZero) {
     auto node = make_block("a");
     EXPECT_FLOAT_EQ(node->outline_offset, 0.0f);
 }
+
+// Layout: background_color defaults to transparent (0x00000000)
+TEST(LayoutNodeProps, BackgroundColorDefaultsTransparent) {
+    auto node = make_block("div");
+    EXPECT_EQ(node->background_color, 0x00000000u);
+}
+
+// Layout: text_decoration defaults to 0
+TEST(LayoutNodeProps, TextDecorationDefaultsToZero) {
+    auto node = make_block("p");
+    EXPECT_EQ(node->text_decoration, 0);
+}
+
+// Layout: text_decoration_bits defaults to 0
+TEST(LayoutNodeProps, TextDecorationBitsDefaultsToZero) {
+    auto node = make_block("p");
+    EXPECT_EQ(node->text_decoration_bits, 0);
+}
+
+// Layout: text_decoration_style defaults to 0 (solid)
+TEST(LayoutNodeProps, TextDecorationStyleDefaultsToZero) {
+    auto node = make_block("p");
+    EXPECT_EQ(node->text_decoration_style, 0);
+}
+
+// Layout: text_decoration_thickness defaults to 0 (auto)
+TEST(LayoutNodeProps, TextDecorationThicknessDefaultsToZero) {
+    auto node = make_block("p");
+    EXPECT_FLOAT_EQ(node->text_decoration_thickness, 0.0f);
+}
+
+// Layout: background_size defaults to 0 (auto)
+TEST(LayoutNodeProps, BackgroundSizeDefaultsToZero) {
+    auto node = make_block("div");
+    EXPECT_EQ(node->background_size, 0);
+}
+
+// Layout: background_repeat defaults to 0 (repeat)
+TEST(LayoutNodeProps, BackgroundRepeatDefaultsToZero) {
+    auto node = make_block("div");
+    EXPECT_EQ(node->background_repeat, 0);
+}
+
+// Layout: pointer_events defaults to 0
+TEST(LayoutNodeProps, PointerEventsDefaultsToZero) {
+    auto node = make_block("div");
+    EXPECT_EQ(node->pointer_events, 0);
+}
