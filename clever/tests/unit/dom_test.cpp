@@ -7523,3 +7523,63 @@ TEST(DomElement, SetAttributeMultipleValues) {
     EXPECT_EQ(el->get_attribute("data-b"), "2");
     EXPECT_EQ(el->get_attribute("data-c"), "3");
 }
+
+TEST(DomElement, TagNameButton) {
+    Document doc;
+    auto el = doc.create_element("button");
+    EXPECT_FALSE(el->tag_name().empty());
+}
+
+TEST(DomElement, TagNamePre) {
+    Document doc;
+    auto el = doc.create_element("pre");
+    EXPECT_FALSE(el->tag_name().empty());
+}
+
+TEST(DomElement, SetAttributeForV2) {
+    Document doc;
+    auto el = doc.create_element("label");
+    el->set_attribute("for", "input-1");
+    EXPECT_EQ(el->get_attribute("for"), "input-1");
+}
+
+TEST(DomElement, SetAttributeTargetV2) {
+    Document doc;
+    auto el = doc.create_element("a");
+    el->set_attribute("target", "_blank");
+    EXPECT_EQ(el->get_attribute("target"), "_blank");
+}
+
+TEST(DomElement, ChildCount5000) {
+    Document doc;
+    auto parent = doc.create_element("ul");
+    for (int i = 0; i < 5000; ++i) {
+        parent->append_child(doc.create_element("li"));
+    }
+    int count = 0;
+    parent->for_each_child([&](const Node&) { ++count; });
+    EXPECT_EQ(count, 5000);
+}
+
+TEST(DomElement, RemoveAttributeRoleV2) {
+    Document doc;
+    auto el = doc.create_element("div");
+    el->set_attribute("role", "navigation");
+    el->remove_attribute("role");
+    EXPECT_FALSE(el->has_attribute("role"));
+}
+
+TEST(DomElement, HasAttributeRequiredV2) {
+    Document doc;
+    auto el = doc.create_element("input");
+    el->set_attribute("required", "");
+    EXPECT_TRUE(el->has_attribute("required"));
+}
+
+TEST(DomElement, SetAttributeOverwriteV4) {
+    Document doc;
+    auto el = doc.create_element("div");
+    el->set_attribute("data-x", "old");
+    el->set_attribute("data-x", "new");
+    EXPECT_EQ(el->get_attribute("data-x"), "new");
+}

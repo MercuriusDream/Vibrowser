@@ -3770,3 +3770,63 @@ TEST(CORSPolicy, CORSRejectsWildcardWithCredentialsRequiredV39) {
     EXPECT_FALSE(cors_allows_response("https://client.example.com", "https://api.example.com/data", resp_headers, true));
     EXPECT_TRUE(cors_allows_response("https://client.example.com", "https://api.example.com/data", resp_headers, false));
 }
+
+TEST(CORSPolicy, HasEnforceableDocumentOriginV40) {
+    EXPECT_TRUE(has_enforceable_document_origin("http://localhost"));
+    EXPECT_TRUE(has_enforceable_document_origin("https://example.com"));
+    EXPECT_TRUE(has_enforceable_document_origin("http://sub.domain.example.org"));
+    EXPECT_FALSE(has_enforceable_document_origin("http://localhost:80"));
+    EXPECT_FALSE(has_enforceable_document_origin("https://example.com:443"));
+    EXPECT_FALSE(has_enforceable_document_origin(""));
+    EXPECT_FALSE(has_enforceable_document_origin("null"));
+    EXPECT_FALSE(has_enforceable_document_origin("invalid scheme://example.com"));
+}
+
+TEST(CORSPolicy, IsCrossOriginSchemeVariationV40) {
+    EXPECT_TRUE(is_cross_origin("http://app.example.com", "https://app.example.com/data"));
+    EXPECT_TRUE(is_cross_origin("https://app.example.com", "https://other.example.com/data"));
+    EXPECT_FALSE(is_cross_origin("http://app.example.com", "http://app.example.com/path/to/resource"));
+    EXPECT_TRUE(is_cross_origin("https://sub.example.com", "https://example.com/data"));
+}
+
+TEST(CORSPolicy, IsCORSEligibleRequestUrlPortV40) {
+    EXPECT_TRUE(is_cors_eligible_request_url("http://api.example.com:8080/data"));
+    EXPECT_TRUE(is_cors_eligible_request_url("https://api.example.com:8443/data"));
+    EXPECT_TRUE(is_cors_eligible_request_url("http://api.example.com/data"));
+    EXPECT_TRUE(is_cors_eligible_request_url("https://api.example.com/data"));
+    EXPECT_FALSE(is_cors_eligible_request_url("ftp://api.example.com/data"));
+    EXPECT_FALSE(is_cors_eligible_request_url("https://api.example.com/data#fragment"));
+}
+
+TEST(CORSPolicy, ShouldAttachOriginHeaderCrossOriginV40) {
+    EXPECT_TRUE(should_attach_origin_header("https://app.example.com", "https://api.example.com/data"));
+    EXPECT_FALSE(should_attach_origin_header("https://app.example.com", "https://app.example.com/data"));
+    EXPECT_TRUE(should_attach_origin_header("http://localhost:3000", "http://localhost:8080/api"));
+    EXPECT_FALSE(should_attach_origin_header("", "https://api.example.com/data"));
+    EXPECT_TRUE(should_attach_origin_header("null", "https://api.example.com/data"));
+}
+
+TEST(CORSPolicy, NormalizeOutgoingOriginHeaderValidV40) {
+    clever::net::HeaderMap headers;
+    normalize_outgoing_origin_header(headers, "https://trusted.example.com", "https://api.example.com/endpoint");
+    EXPECT_TRUE(headers.has("origin"));
+    EXPECT_EQ(headers.get("origin"), "https://trusted.example.com");
+}
+
+TEST(CORSPolicy, NormalizeOutgoingOriginHeaderSameOriginNoHeaderV40) {
+    clever::net::HeaderMap headers;
+    normalize_outgoing_origin_header(headers, "https://app.example.com", "https://app.example.com/api");
+    EXPECT_FALSE(headers.has("origin"));
+}
+
+TEST(CORSPolicy, CORSAllowsResponseMissingHeadersV40) {
+    clever::net::HeaderMap resp_headers;
+    EXPECT_FALSE(cors_allows_response("https://client.example.com", "https://api.example.com/data", resp_headers, false));
+}
+
+TEST(CORSPolicy, CORSAllowsResponseWildcardOriginV40) {
+    clever::net::HeaderMap resp_headers;
+    resp_headers.set("Access-Control-Allow-Origin", "*");
+    EXPECT_TRUE(cors_allows_response("https://any.example.com", "https://api.example.com/data", resp_headers, false));
+    EXPECT_TRUE(cors_allows_response("null", "https://api.example.com/data", resp_headers, false));
+}

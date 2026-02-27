@@ -19562,3 +19562,114 @@ TEST(JSEngine, ArraySomeMethodCycle1362) {
     auto result = engine.evaluate("const arr = [1, 2, 3, 4]; arr.some(x => x > 3).toString()");
     EXPECT_EQ(result, "true");
 }
+
+// Cycle 1371 - Advanced ES6+ Features
+
+TEST(JSEngine, MapSetOperationsCycle1371) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        const map = new Map();
+        map.set('a', 1);
+        map.set('b', 2);
+        map.get('a') + map.get('b')
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "3");
+}
+
+TEST(JSEngine, SetCollectionCycle1371) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        const set = new Set();
+        set.add(1);
+        set.add(2);
+        set.add(2);
+        set.size
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "2");
+}
+
+TEST(JSEngine, SymbolPrimitiveCycle1371) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        const sym1 = Symbol('id');
+        const sym2 = Symbol('id');
+        (sym1 === sym2).toString()
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "false");
+}
+
+TEST(JSEngine, GeneratorFunctionCycle1371) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        function* gen() {
+            yield 1;
+            yield 2;
+            yield 3;
+        }
+        const g = gen();
+        const a = g.next().value;
+        const b = g.next().value;
+        a + b
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "3");
+}
+
+TEST(JSEngine, ProxyInterceptionCycle1371) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        const target = { value: 10 };
+        const handler = {
+            get(obj, prop) {
+                return obj[prop] * 2;
+            }
+        };
+        const proxy = new Proxy(target, handler);
+        proxy.value
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "20");
+}
+
+TEST(JSEngine, Uint8ArrayTypedArrayCycle1371) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        const arr = new Uint8Array(4);
+        arr[0] = 255;
+        arr[1] = 128;
+        arr[2] = 64;
+        arr[3] = 32;
+        arr[0] + arr[1]
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "383");
+}
+
+TEST(JSEngine, Float64ArrayTypedArrayCycle1371) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        const arr = new Float64Array(3);
+        arr[0] = 1.5;
+        arr[1] = 2.5;
+        arr[2] = 3.0;
+        (arr[0] + arr[1] + arr[2]).toFixed(1)
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "7.0");
+}
+
+TEST(JSEngine, ArrayBufferAndDataViewCycle1371) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        const buf = new ArrayBuffer(4);
+        const view = new DataView(buf);
+        view.setUint8(0, 255);
+        view.setUint8(1, 128);
+        view.getUint8(0) + view.getUint8(1)
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "383");
+}

@@ -6957,3 +6957,108 @@ TEST(SerializerTest, BytesWithSpecialValuesV29) {
     EXPECT_EQ(result[3], 0x7F);
     EXPECT_EQ(result[4], 0xAA);
 }
+
+TEST(SerializerTest, SingleU8MaxValueV30) {
+    Serializer s;
+    s.write_u8(255);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u8(), 255u);
+}
+
+TEST(SerializerTest, U16BoundaryValuesV30) {
+    Serializer s;
+    s.write_u16(0);
+    s.write_u16(32768);
+    s.write_u16(65535);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u16(), 0u);
+    EXPECT_EQ(d.read_u16(), 32768u);
+    EXPECT_EQ(d.read_u16(), 65535u);
+}
+
+TEST(SerializerTest, SignedIntegerSequenceV30) {
+    Serializer s;
+    s.write_i32(0);
+    s.write_i32(-1);
+    s.write_i32(2147483647);
+    s.write_i32(-2147483648);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i32(), 0);
+    EXPECT_EQ(d.read_i32(), -1);
+    EXPECT_EQ(d.read_i32(), 2147483647);
+    EXPECT_EQ(d.read_i32(), -2147483648);
+}
+
+TEST(SerializerTest, FloatingPointPrecisionV30) {
+    Serializer s;
+    double values[] = {0.0, -0.0, 1.5, -1.5, 99999.123456789};
+    for (double val : values) s.write_f64(val);
+    Deserializer d(s.data());
+    for (double val : values) EXPECT_DOUBLE_EQ(d.read_f64(), val);
+}
+
+TEST(SerializerTest, MixedBytesAndStringsV30) {
+    Serializer s;
+    std::vector<uint8_t> bytes = {0x12, 0x34, 0x56, 0x78};
+    s.write_string("Start");
+    s.write_bytes(bytes.data(), bytes.size());
+    s.write_string("End");
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "Start");
+    auto result = d.read_bytes();
+    EXPECT_EQ(result.size(), 4u);
+    EXPECT_EQ(result[0], 0x12);
+    EXPECT_EQ(result[1], 0x34);
+    EXPECT_EQ(result[2], 0x56);
+    EXPECT_EQ(result[3], 0x78);
+    EXPECT_EQ(d.read_string(), "End");
+}
+
+TEST(SerializerTest, AlternatingBooleanPatternV30) {
+    Serializer s;
+    for (int i = 0; i < 10; ++i) {
+        s.write_bool(i % 2 == 0);
+    }
+    Deserializer d(s.data());
+    for (int i = 0; i < 10; ++i) {
+        EXPECT_EQ(d.read_bool(), i % 2 == 0);
+    }
+}
+
+TEST(SerializerTest, LargeByteBufferV30) {
+    Serializer s;
+    std::vector<uint8_t> large_bytes(256);
+    for (size_t i = 0; i < large_bytes.size(); ++i) {
+        large_bytes[i] = static_cast<uint8_t>(i);
+    }
+    s.write_bytes(large_bytes.data(), large_bytes.size());
+    Deserializer d(s.data());
+    auto result = d.read_bytes();
+    EXPECT_EQ(result.size(), 256u);
+    for (size_t i = 0; i < result.size(); ++i) {
+        EXPECT_EQ(result[i], static_cast<uint8_t>(i));
+    }
+}
+
+TEST(SerializerTest, ComplexMultiTypeSequenceV30) {
+    Serializer s;
+    s.write_u8(10);
+    s.write_i64(-999999999999LL);
+    s.write_string("Intermediate");
+    s.write_f64(123.456);
+    s.write_u32(0xCAFEBABE);
+    s.write_bool(false);
+    std::vector<uint8_t> bytes = {0xDE, 0xAD};
+    s.write_bytes(bytes.data(), bytes.size());
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u8(), 10u);
+    EXPECT_EQ(d.read_i64(), -999999999999LL);
+    EXPECT_EQ(d.read_string(), "Intermediate");
+    EXPECT_DOUBLE_EQ(d.read_f64(), 123.456);
+    EXPECT_EQ(d.read_u32(), 0xCAFEBABEu);
+    EXPECT_EQ(d.read_bool(), false);
+    auto result = d.read_bytes();
+    EXPECT_EQ(result.size(), 2u);
+    EXPECT_EQ(result[0], 0xDE);
+    EXPECT_EQ(result[1], 0xAD);
+}

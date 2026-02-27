@@ -7986,3 +7986,73 @@ TEST(TreeBuilder, SectionElementV18) {
     ASSERT_NE(el, nullptr);
     EXPECT_EQ(el->tag_name, "section");
 }
+
+TEST(TreeBuilder, BlockquoteElementV19) {
+    auto doc = clever::html::parse("<html><body><blockquote cite=\"https://example.com\">This is a quote</blockquote></body></html>");
+    auto* el = doc->find_element("blockquote");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "blockquote");
+    EXPECT_EQ(el->text_content(), "This is a quote");
+}
+
+TEST(TreeBuilder, PreElementV19) {
+    auto doc = clever::html::parse("<html><body><pre>  Preformatted\n  text with\n  spacing</pre></body></html>");
+    auto* el = doc->find_element("pre");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "pre");
+}
+
+TEST(TreeBuilder, CodeElementV19) {
+    auto doc = clever::html::parse("<html><body><code>const x = 42;</code></body></html>");
+    auto* el = doc->find_element("code");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "code");
+    EXPECT_EQ(el->text_content(), "const x = 42;");
+}
+
+TEST(TreeBuilder, TableElementV19) {
+    auto doc = clever::html::parse("<html><body><table><tr><td>Cell 1</td><td>Cell 2</td></tr></table></body></html>");
+    auto* el = doc->find_element("table");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "table");
+    auto* tr = doc->find_element("tr");
+    ASSERT_NE(tr, nullptr);
+    EXPECT_EQ(tr->tag_name, "tr");
+}
+
+TEST(TreeBuilder, UnorderedListV19) {
+    auto doc = clever::html::parse("<html><body><ul><li>Apple</li><li>Banana</li><li>Cherry</li></ul></body></html>");
+    auto* ul = doc->find_element("ul");
+    ASSERT_NE(ul, nullptr);
+    EXPECT_EQ(ul->tag_name, "ul");
+    auto lis = doc->find_all_elements("li");
+    ASSERT_EQ(lis.size(), 3u);
+    EXPECT_EQ(lis[0]->text_content(), "Apple");
+}
+
+TEST(TreeBuilder, DescriptionListV19) {
+    auto doc = clever::html::parse("<html><body><dl><dt>Term</dt><dd>Definition</dd><dt>Another</dt><dd>Another def</dd></dl></body></html>");
+    auto* dl = doc->find_element("dl");
+    ASSERT_NE(dl, nullptr);
+    EXPECT_EQ(dl->tag_name, "dl");
+    auto* dt = doc->find_element("dt");
+    ASSERT_NE(dt, nullptr);
+    EXPECT_EQ(dt->tag_name, "dt");
+    auto* dd = doc->find_element("dd");
+    ASSERT_NE(dd, nullptr);
+    EXPECT_EQ(dd->tag_name, "dd");
+}
+
+TEST(TreeBuilder, HorizontalRuleElementV19) {
+    auto doc = clever::html::parse("<html><body><p>Above</p><hr><p>Below</p></body></html>");
+    auto* hr = doc->find_element("hr");
+    ASSERT_NE(hr, nullptr);
+    EXPECT_EQ(hr->tag_name, "hr");
+}
+
+TEST(TreeBuilder, ImageElementV19) {
+    auto doc = clever::html::parse("<html><body><img src=\"photo.jpg\" alt=\"A photo\" width=\"200\" height=\"150\"></body></html>");
+    auto* img = doc->find_element("img");
+    ASSERT_NE(img, nullptr);
+    EXPECT_EQ(img->tag_name, "img");
+}

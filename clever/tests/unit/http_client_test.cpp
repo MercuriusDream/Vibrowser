@@ -8513,3 +8513,123 @@ TEST(HttpClient, RequestPatchMethodV32) {
     EXPECT_GT(serialized.size(), 0u);
     EXPECT_EQ(req.body.size(), json_data.size());
 }
+
+// ===========================================================================
+// V33 Tests - Additional Coverage
+// ===========================================================================
+
+// HeaderMap: remove function deletes a header completely
+TEST(HttpClient, HeaderMapRemoveHeaderV33) {
+    HeaderMap map;
+    map.set("Authorization", "Bearer token123");
+    map.set("Content-Type", "application/json");
+
+    EXPECT_TRUE(map.has("Authorization"));
+    map.remove("Authorization");
+    EXPECT_FALSE(map.has("Authorization"));
+    EXPECT_TRUE(map.has("Content-Type"));
+}
+
+// Request: POST with form-encoded body
+TEST(HttpClient, RequestPostFormBodyV33) {
+    Request req;
+    req.method = Method::POST;
+    req.url = "https://example.com/login";
+    req.headers.set("Content-Type", "application/x-www-form-urlencoded");
+
+    std::string form_data = "username=admin&password=secret123";
+    req.body.assign(form_data.begin(), form_data.end());
+
+    std::vector<uint8_t> serialized = req.serialize();
+    EXPECT_GT(serialized.size(), 0u);
+    EXPECT_EQ(req.method, Method::POST);
+    EXPECT_EQ(req.body.size(), form_data.length());
+}
+
+// Response: body_as_string converts vector to string
+TEST(HttpClient, ResponseBodyAsStringV33) {
+    Response resp;
+    resp.status = 200;
+    resp.status_text = "OK";
+
+    std::string expected = "Hello, World!";
+    resp.body.assign(expected.begin(), expected.end());
+
+    std::string body_str = resp.body_as_string();
+    EXPECT_EQ(body_str, expected);
+    EXPECT_EQ(body_str.length(), expected.length());
+}
+
+// CookieJar: multiple cookies for same domain
+TEST(HttpClient, CookieJarMultipleCookiesSameDomainV33) {
+    CookieJar jar;
+    jar.clear();
+
+    jar.set_from_header("session=abc123; Path=/; Secure", "example.com");
+    jar.set_from_header("user=john_doe; Path=/; Secure", "example.com");
+    jar.set_from_header("lang=en; Path=/", "example.com");
+
+    size_t count = jar.size();
+    EXPECT_GE(count, 1u);
+}
+
+// Request: URL parsing with query parameters
+TEST(HttpClient, RequestUrlParsingWithQueryV33) {
+    Request req;
+    req.url = "https://api.example.com/search?q=test&limit=10&offset=20";
+    req.parse_url();
+
+    EXPECT_EQ(req.host, "api.example.com");
+    EXPECT_TRUE(req.use_tls);
+    EXPECT_EQ(req.port, 443u);
+    EXPECT_FALSE(req.query.empty());
+}
+
+// HeaderMap: empty map operations
+TEST(HttpClient, HeaderMapEmptyMapV33) {
+    HeaderMap map;
+
+    EXPECT_EQ(map.size(), 0u);
+    EXPECT_TRUE(map.empty());
+    EXPECT_FALSE(map.has("Any-Header"));
+
+    auto result = map.get("Missing");
+    EXPECT_FALSE(result.has_value());
+
+    auto all = map.get_all("Missing");
+    EXPECT_TRUE(all.empty());
+}
+
+// Response: redirect status with Location header
+TEST(HttpClient, ResponseRedirectWith302StatusV33) {
+    Response resp;
+    resp.status = 302;
+    resp.status_text = "Found";
+    resp.was_redirected = true;
+    resp.url = "https://example.com/old-page";
+    resp.headers.set("Location", "https://example.com/new-page");
+    resp.headers.set("Cache-Control", "no-cache");
+
+    EXPECT_EQ(resp.status, 302u);
+    EXPECT_TRUE(resp.was_redirected);
+    EXPECT_TRUE(resp.headers.has("Location"));
+    EXPECT_EQ(resp.headers.get("Location").value(), "https://example.com/new-page");
+}
+
+// Request: PUT method with JSON body and custom headers
+TEST(HttpClient, RequestPutMethodWithJsonV33) {
+    Request req;
+    req.method = Method::PUT;
+    req.url = "https://api.example.com/items/555";
+    req.headers.set("Content-Type", "application/json");
+    req.headers.set("X-API-Key", "secret-key-12345");
+    req.headers.set("User-Agent", "CustomBrowser/1.0");
+
+    std::string json = R"({"name":"Updated Item","value":99})";
+    req.body.assign(json.begin(), json.end());
+
+    std::vector<uint8_t> serialized = req.serialize();
+    EXPECT_GT(serialized.size(), 0u);
+    EXPECT_EQ(req.method, Method::PUT);
+    EXPECT_TRUE(req.headers.has("X-API-Key"));
+}

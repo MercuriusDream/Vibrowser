@@ -9385,3 +9385,43 @@ TEST(LayoutNodeProps, ScrollSnapTypeDefaultV30) {
     LayoutNode n;
     EXPECT_EQ(n.scroll_snap_type, "");
 }
+
+TEST(LayoutNodeProps, BorderRadiusTLDefaultV31) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.border_radius_tl, 0.0f);
+}
+
+TEST(LayoutNodeProps, BorderRadiusTRDefaultV31) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.border_radius_tr, 0.0f);
+}
+
+TEST(LayoutNodeProps, BorderRadiusBLDefaultV31) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.border_radius_bl, 0.0f);
+}
+
+TEST(LayoutNodeProps, BorderRadiusBRDefaultV31) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.border_radius_br, 0.0f);
+}
+
+TEST(LayoutNodeProps, LineHeightDefaultV31) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.line_height, 1.2f);
+}
+
+TEST(LayoutNodeProps, OpacityDefaultV31) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.opacity, 1.0f);
+}
+
+TEST(LayoutNodeProps, ContainerNameDefaultV31) {
+    LayoutNode n;
+    EXPECT_EQ(n.container_name, "");
+}
+
+TEST(LayoutNodeProps, ScrollSnapAlignDefaultV31) {
+    LayoutNode n;
+    EXPECT_EQ(n.scroll_snap_align, "");
+}

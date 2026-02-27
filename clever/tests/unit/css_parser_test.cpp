@@ -8678,4 +8678,76 @@ TEST_F(CSSStylesheetTest, TextOverflowV30) {
     EXPECT_TRUE(found);
 }
 
+TEST_F(CSSStylesheetTest, OutlineV31) {
+    auto ss = parse_stylesheet("button { outline: 2px solid red; }");
+    ASSERT_EQ(ss.rules.size(), 1);
+    bool found = false;
+    for (auto& d : ss.rules[0].declarations)
+        if (d.property == "outline") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, ListStyleV31) {
+    auto ss = parse_stylesheet("ul { list-style: square inside; }");
+    ASSERT_EQ(ss.rules.size(), 1);
+    bool found = false;
+    for (auto& d : ss.rules[0].declarations)
+        if (d.property == "list-style") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, CursorV31) {
+    auto ss = parse_stylesheet("a { cursor: pointer; }");
+    ASSERT_EQ(ss.rules.size(), 1);
+    bool found = false;
+    for (auto& d : ss.rules[0].declarations)
+        if (d.property == "cursor") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, PointerEventsV31) {
+    auto ss = parse_stylesheet("div { pointer-events: none; }");
+    ASSERT_EQ(ss.rules.size(), 1);
+    bool found = false;
+    for (auto& d : ss.rules[0].declarations)
+        if (d.property == "pointer-events") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, ResizeV31) {
+    auto ss = parse_stylesheet("textarea { resize: vertical; }");
+    ASSERT_EQ(ss.rules.size(), 1);
+    bool found = false;
+    for (auto& d : ss.rules[0].declarations)
+        if (d.property == "resize") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, ClipPathV31) {
+    auto ss = parse_stylesheet("img { clip-path: circle(50%); }");
+    ASSERT_EQ(ss.rules.size(), 1);
+    bool found = false;
+    for (auto& d : ss.rules[0].declarations)
+        if (d.property == "clip-path") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, ObjectFitV31) {
+    auto ss = parse_stylesheet("img { object-fit: cover; }");
+    ASSERT_EQ(ss.rules.size(), 1);
+    bool found = false;
+    for (auto& d : ss.rules[0].declarations)
+        if (d.property == "object-fit") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, ObjectPositionV31) {
+    auto ss = parse_stylesheet("img { object-position: center bottom; }");
+    ASSERT_EQ(ss.rules.size(), 1);
+    bool found = false;
+    for (auto& d : ss.rules[0].declarations)
+        if (d.property == "object-position") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
 // Cycle 1350
