@@ -1561,3 +1561,38 @@ TEST(CORSPolicyTest, ShouldAttachOriginHeaderNullDocCrossOrigin) {
 TEST(CORSPolicyTest, ShouldNotAttachOriginHeaderInvalidDocOrigin) {
     EXPECT_FALSE(should_attach_origin_header("file:///index.html", "https://api.example/data"));
 }
+
+// Cycle 860 — IPv6 origins, IP address origins, CORS with IP hosts
+TEST(CORSPolicyTest, IPv6UrlIsEligible) {
+    EXPECT_TRUE(is_cors_eligible_request_url("https://[::1]/api/data"));
+}
+
+TEST(CORSPolicyTest, IPv6UrlWithPortIsEligible) {
+    EXPECT_TRUE(is_cors_eligible_request_url("http://[::1]:8080/path"));
+}
+
+TEST(CORSPolicyTest, IPv4UrlIsEligible) {
+    EXPECT_TRUE(is_cors_eligible_request_url("https://192.168.1.1/api"));
+}
+
+TEST(CORSPolicyTest, HasEnforceableIPv6Origin) {
+    EXPECT_TRUE(has_enforceable_document_origin("http://[::1]:3000"));
+}
+
+TEST(CORSPolicyTest, IPv6SameOriginNotCrossOrigin) {
+    EXPECT_FALSE(is_cross_origin("http://[::1]:8080", "http://[::1]:8080/api"));
+}
+
+TEST(CORSPolicyTest, IPv6DifferentPortIsCrossOrigin) {
+    EXPECT_TRUE(is_cross_origin("http://[::1]:3000", "http://[::1]:4000/api"));
+}
+
+TEST(CORSPolicyTest, CORSAllowsResponseIPv6WildcardNoCredentials) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "*");
+    EXPECT_TRUE(cors_allows_response("http://[::1]:3000", "http://[::1]:4000/api", headers, false));
+}
+
+TEST(CORSPolicyTest, ShouldAttachOriginIPv6CrossOrigin) {
+    EXPECT_TRUE(should_attach_origin_header("http://[::1]:3000", "http://[::1]:4000/api"));
+}
