@@ -3031,3 +3031,53 @@ TEST(URLParser, Port8000Preserved) {
     ASSERT_TRUE(url->port.has_value());
     EXPECT_EQ(*url->port, 8000);
 }
+
+TEST(URLParser, Port5000Preserved) {
+    auto url = parse("http://localhost:5000/dashboard");
+    ASSERT_TRUE(url.has_value());
+    ASSERT_TRUE(url->port.has_value());
+    EXPECT_EQ(*url->port, 5000);
+}
+
+TEST(URLParser, Port7000Preserved) {
+    auto url = parse("http://localhost:7000/");
+    ASSERT_TRUE(url.has_value());
+    ASSERT_TRUE(url->port.has_value());
+    EXPECT_EQ(*url->port, 7000);
+}
+
+TEST(URLParser, PathWithCssExtension) {
+    auto url = parse("https://example.com/styles/main.css");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->path, "/styles/main.css");
+}
+
+TEST(URLParser, PathWithXmlExtension) {
+    auto url = parse("https://api.example.com/feed.xml");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->path, "/feed.xml");
+}
+
+TEST(URLParser, PathWithTxtExtension) {
+    auto url = parse("https://example.com/readme.txt");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->path, "/readme.txt");
+}
+
+TEST(URLParser, PathThreeSegmentDepth) {
+    auto url = parse("https://example.com/a/b/c");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->path, "/a/b/c");
+}
+
+TEST(URLParser, PathFourSegmentDepth) {
+    auto url = parse("https://example.com/a/b/c/d");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->path, "/a/b/c/d");
+}
+
+TEST(URLParser, HostIsIpv4Like) {
+    auto url = parse("http://192.168.1.100/config");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->host, "192.168.1.100");
+}
