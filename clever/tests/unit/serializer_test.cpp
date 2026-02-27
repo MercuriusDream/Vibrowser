@@ -3749,3 +3749,81 @@ TEST(SerializerTest, LargeU16SequenceOfFifty) {
         EXPECT_EQ(d.read_u16(), static_cast<uint16_t>(i * 100));
     }
 }
+
+TEST(SerializerTest, StringWithComma) {
+    Serializer s;
+    s.write_string("hello, world");
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "hello, world");
+}
+
+TEST(SerializerTest, TwoEmptyStrings) {
+    Serializer s;
+    s.write_string("");
+    s.write_string("");
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "");
+    EXPECT_EQ(d.read_string(), "");
+}
+
+TEST(SerializerTest, F64NegPiRoundTrip) {
+    Serializer s;
+    s.write_f64(-3.14159265358979);
+    Deserializer d(s.data());
+    EXPECT_DOUBLE_EQ(d.read_f64(), -3.14159265358979);
+}
+
+TEST(SerializerTest, F64NegativeRoundTrip) {
+    Serializer s;
+    s.write_f64(-2.718281828459045);
+    Deserializer d(s.data());
+    EXPECT_DOUBLE_EQ(d.read_f64(), -2.718281828459045);
+}
+
+TEST(SerializerTest, AlternatingStringAndBool) {
+    Serializer s;
+    s.write_string("yes");
+    s.write_bool(true);
+    s.write_string("no");
+    s.write_bool(false);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "yes");
+    EXPECT_EQ(d.read_bool(), true);
+    EXPECT_EQ(d.read_string(), "no");
+    EXPECT_EQ(d.read_bool(), false);
+}
+
+TEST(SerializerTest, IntThenEmptyString) {
+    Serializer s;
+    s.write_i32(42);
+    s.write_string("");
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i32(), 42);
+    EXPECT_EQ(d.read_string(), "");
+}
+
+TEST(SerializerTest, ZeroU8Sequence) {
+    Serializer s;
+    for (int i = 0; i < 10; i++) {
+        s.write_u8(0);
+    }
+    Deserializer d(s.data());
+    for (int i = 0; i < 10; i++) {
+        EXPECT_EQ(d.read_u8(), 0u);
+    }
+}
+
+TEST(SerializerTest, FiveU16DistinctValues) {
+    Serializer s;
+    s.write_u16(0);
+    s.write_u16(255);
+    s.write_u16(1000);
+    s.write_u16(32767);
+    s.write_u16(65535);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u16(), uint16_t{0});
+    EXPECT_EQ(d.read_u16(), uint16_t{255});
+    EXPECT_EQ(d.read_u16(), uint16_t{1000});
+    EXPECT_EQ(d.read_u16(), uint16_t{32767});
+    EXPECT_EQ(d.read_u16(), uint16_t{65535});
+}
