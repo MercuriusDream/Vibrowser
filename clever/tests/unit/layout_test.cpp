@@ -6942,3 +6942,43 @@ TEST(LayoutNodeProps, TextUnderlineOffsetDefaultsZero) {
     LayoutNode n;
     EXPECT_FLOAT_EQ(n.text_underline_offset, 0.0f);
 }
+
+TEST(LayoutNodeProps, TabSizeDefaultsFour) {
+    LayoutNode n;
+    EXPECT_EQ(n.tab_size, 4);
+}
+
+TEST(LayoutNodeProps, TextAlignLastDefaultsZero) {
+    LayoutNode n;
+    EXPECT_EQ(n.text_align_last, 0);
+}
+
+TEST(LayoutNodeProps, TextDirectionDefaultsZero) {
+    LayoutNode n;
+    EXPECT_EQ(n.direction, 0);
+}
+
+TEST(LayoutNodeProps, LineClampDefaultsMinusOne) {
+    LayoutNode n;
+    EXPECT_EQ(n.line_clamp, -1);
+}
+
+TEST(LayoutNodeProps, WritingModeDefaultsZero) {
+    LayoutNode n;
+    EXPECT_EQ(n.writing_mode, 0);
+}
+
+TEST(LayoutNodeProps, AppearanceDefaultsZero) {
+    LayoutNode n;
+    EXPECT_EQ(n.appearance, 0);
+}
+
+TEST(LayoutNodeProps, TouchActionDefaultsZero) {
+    LayoutNode n;
+    EXPECT_EQ(n.touch_action, 0);
+}
+
+TEST(LayoutNodeProps, WillChangeDefaultsEmpty) {
+    LayoutNode n;
+    EXPECT_EQ(n.will_change, "");
+}
