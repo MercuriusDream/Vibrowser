@@ -4653,3 +4653,83 @@ TEST(TreeBuilder, ThScopeAttr) {
         if (attr.name == "scope" && attr.value == "col") found = true;
     EXPECT_TRUE(found);
 }
+
+TEST(TreeBuilder, MetaHttpEquiv) {
+    auto doc = clever::html::parse("<head><meta http-equiv=\"refresh\" content=\"5\"></head><body></body>");
+    auto* el = doc->find_element("meta");
+    ASSERT_NE(el, nullptr);
+    bool found = false;
+    for (const auto& attr : el->attributes)
+        if (attr.name == "http-equiv" && attr.value == "refresh") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, ImgAltAttr) {
+    auto doc = clever::html::parse("<body><img src=\"photo.jpg\" alt=\"A photo\"></body>");
+    auto* el = doc->find_element("img");
+    ASSERT_NE(el, nullptr);
+    bool found = false;
+    for (const auto& attr : el->attributes)
+        if (attr.name == "alt" && attr.value == "A photo") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, ImgCrossoriginAttr) {
+    auto doc = clever::html::parse("<body><img src=\"image.jpg\" crossorigin=\"anonymous\"></body>");
+    auto* el = doc->find_element("img");
+    ASSERT_NE(el, nullptr);
+    bool found = false;
+    for (const auto& attr : el->attributes)
+        if (attr.name == "crossorigin") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, IframeHeightAttr) {
+    auto doc = clever::html::parse("<body><iframe src=\"embed.html\" height=\"400\"></iframe></body>");
+    auto* el = doc->find_element("iframe");
+    ASSERT_NE(el, nullptr);
+    bool found = false;
+    for (const auto& attr : el->attributes)
+        if (attr.name == "height" && attr.value == "400") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, IframeNameAttr) {
+    auto doc = clever::html::parse("<body><iframe name=\"myframe\"></iframe></body>");
+    auto* el = doc->find_element("iframe");
+    ASSERT_NE(el, nullptr);
+    bool found = false;
+    for (const auto& attr : el->attributes)
+        if (attr.name == "name" && attr.value == "myframe") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, FormMethodGetAttr) {
+    auto doc = clever::html::parse("<body><form method=\"get\" action=\"/search\"></form></body>");
+    auto* el = doc->find_element("form");
+    ASSERT_NE(el, nullptr);
+    bool found = false;
+    for (const auto& attr : el->attributes)
+        if (attr.name == "method" && attr.value == "get") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, FormMethodPostAttr) {
+    auto doc = clever::html::parse("<body><form method=\"post\" action=\"/submit\"></form></body>");
+    auto* el = doc->find_element("form");
+    ASSERT_NE(el, nullptr);
+    bool found = false;
+    for (const auto& attr : el->attributes)
+        if (attr.name == "method" && attr.value == "post") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, FormTargetAttr) {
+    auto doc = clever::html::parse("<body><form target=\"_blank\"></form></body>");
+    auto* el = doc->find_element("form");
+    ASSERT_NE(el, nullptr);
+    bool found = false;
+    for (const auto& attr : el->attributes)
+        if (attr.name == "target" && attr.value == "_blank") found = true;
+    EXPECT_TRUE(found);
+}
