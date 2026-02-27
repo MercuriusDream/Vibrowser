@@ -5206,3 +5206,43 @@ TEST(HeaderMapTest, HeaderMapSetOverwritesV2) {
     ASSERT_TRUE(val.has_value());
     EXPECT_EQ(*val, "v2");
 }
+
+TEST(RequestTest, StringToMethodDeleteParsed) {
+    EXPECT_EQ(string_to_method("DELETE"), Method::DELETE_METHOD);
+}
+
+TEST(RequestTest, StringToMethodOptionsParsed) {
+    EXPECT_EQ(string_to_method("OPTIONS"), Method::OPTIONS);
+}
+
+TEST(RequestTest, StringToMethodPatchParsed) {
+    EXPECT_EQ(string_to_method("PATCH"), Method::PATCH);
+}
+
+TEST(ResponseTest, ResponseDefaultStatusZero) {
+    Response r;
+    EXPECT_EQ(r.status, 0u);
+}
+
+TEST(ResponseTest, ResponseDefaultWasRedirectedFalse) {
+    Response r;
+    EXPECT_FALSE(r.was_redirected);
+}
+
+TEST(ResponseTest, ResponseDefaultUrlIsEmpty) {
+    Response r;
+    EXPECT_TRUE(r.url.empty());
+}
+
+TEST(HeaderMapTest, HeaderMapEmptyAfterConstruct) {
+    HeaderMap map;
+    EXPECT_TRUE(map.empty());
+}
+
+TEST(HeaderMapTest, HeaderMapAppendAddsSecondValue) {
+    HeaderMap map;
+    map.append("x-multi", "first");
+    map.append("x-multi", "second");
+    auto all = map.get_all("x-multi");
+    EXPECT_EQ(all.size(), 2u);
+}
