@@ -15057,3 +15057,57 @@ TEST(JSEngine, Uint8ArrayLength) {
     auto result = engine.evaluate("new Uint8Array(8).length");
     EXPECT_EQ(result, "8");
 }
+
+TEST(JSEngine, JSONParseBasicObject) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(JSON.parse('{"a":1,"b":2}').a)");
+    EXPECT_EQ(result, "1");
+}
+
+TEST(JSEngine, JSONStringifyObject) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(JSON.stringify({x:1}))");
+    EXPECT_NE(result.find("x"), std::string::npos);
+    EXPECT_NE(result.find("1"), std::string::npos);
+}
+
+TEST(JSEngine, JSONParseArray) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(JSON.parse('[10,20,30]')[1])");
+    EXPECT_EQ(result, "20");
+}
+
+TEST(JSEngine, JSONRoundTrip) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        const obj = {name: "Alice", age: 30};
+        const json = JSON.stringify(obj);
+        const parsed = JSON.parse(json);
+        parsed.name
+    )");
+    EXPECT_EQ(result, "Alice");
+}
+
+TEST(JSEngine, DateGetFullYear) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("new Date(2024, 0, 15).getFullYear()");
+    EXPECT_EQ(result, "2024");
+}
+
+TEST(JSEngine, DateGetMonth) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("new Date(2024, 5, 1).getMonth()");
+    EXPECT_EQ(result, "5");
+}
+
+TEST(JSEngine, DateGetDate) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("new Date(2024, 0, 25).getDate()");
+    EXPECT_EQ(result, "25");
+}
+
+TEST(JSEngine, JSONParseNull) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("JSON.parse('null')");
+    EXPECT_EQ(result, "null");
+}
