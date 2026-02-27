@@ -14623,3 +14623,59 @@ TEST(JSEngine, BitwiseAndAssignment) {
     )");
     EXPECT_EQ(result, "5");
 }
+
+// ---------------------------------------------------------------------------
+// Cycle 698 — Math constants and trig functions
+// ---------------------------------------------------------------------------
+
+TEST(JSEngine, ExponentOperator) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("2 ** 10");
+    EXPECT_EQ(result, "1024");
+}
+
+TEST(JSEngine, MathPIConstant) {
+    clever::js::JSEngine engine;
+    // Math.PI ≈ 3.14159...
+    auto result = engine.evaluate("Math.PI > 3 && Math.PI < 4");
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, MathEConstant) {
+    clever::js::JSEngine engine;
+    // Math.E ≈ 2.71828...
+    auto result = engine.evaluate("Math.E > 2 && Math.E < 3");
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, MathSinZero) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("Math.sin(0)");
+    EXPECT_EQ(result, "0");
+}
+
+TEST(JSEngine, MathCosZero) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("Math.cos(0)");
+    EXPECT_EQ(result, "1");
+}
+
+TEST(JSEngine, MathExpZero) {
+    clever::js::JSEngine engine;
+    // Math.exp(0) = e^0 = 1
+    auto result = engine.evaluate("Math.exp(0)");
+    EXPECT_EQ(result, "1");
+}
+
+TEST(JSEngine, MathAtan2OneOne) {
+    clever::js::JSEngine engine;
+    // Math.atan2(1, 1) = pi/4 ≈ 0.785...
+    auto result = engine.evaluate("Math.atan2(1, 1) > 0.7 && Math.atan2(1, 1) < 0.9");
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, MathCbrtOfEight) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("Math.cbrt(8)");
+    EXPECT_EQ(result, "2");
+}
