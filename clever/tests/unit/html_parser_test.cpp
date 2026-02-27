@@ -6414,3 +6414,61 @@ TEST(TreeBuilder, NextidNotInBody) {
     ASSERT_NE(body, nullptr);
     EXPECT_EQ(body->tag_name, "body");
 }
+
+// --- Cycle 1153: 8 HTML tests ---
+
+TEST(TreeBuilder, DivWithTextContent) {
+    auto doc = clever::html::parse("<body><div>Hello</div></body>");
+    auto* el = doc->find_element("div");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "div");
+}
+
+TEST(TreeBuilder, ParagraphWithTextContent) {
+    auto doc = clever::html::parse("<body><p>This is a paragraph</p></body>");
+    auto* el = doc->find_element("p");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "p");
+}
+
+TEST(TreeBuilder, SpanInsideDivV2) {
+    auto doc = clever::html::parse("<body><div><span>nested span</span></div></body>");
+    auto* el = doc->find_element("span");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "span");
+}
+
+TEST(TreeBuilder, StrongWithText) {
+    auto doc = clever::html::parse("<body><strong>Bold text</strong></body>");
+    auto* el = doc->find_element("strong");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "strong");
+}
+
+TEST(TreeBuilder, EmWithText) {
+    auto doc = clever::html::parse("<body><em>Emphasized text</em></body>");
+    auto* el = doc->find_element("em");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "em");
+}
+
+TEST(TreeBuilder, AnchorWithHrefV2) {
+    auto doc = clever::html::parse("<body><a href=\"https://example.com\">Link</a></body>");
+    auto* el = doc->find_element("a");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "a");
+}
+
+TEST(TreeBuilder, ImageWithSrc) {
+    auto doc = clever::html::parse("<body><img src=\"image.png\"></body>");
+    auto* el = doc->find_element("img");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "img");
+}
+
+TEST(TreeBuilder, ListWithItems) {
+    auto doc = clever::html::parse("<body><ul><li>Item 1</li><li>Item 2</li></ul></body>");
+    auto* el = doc->find_element("ul");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "ul");
+}

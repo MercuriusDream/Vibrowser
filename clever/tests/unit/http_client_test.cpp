@@ -6141,3 +6141,53 @@ TEST(HeaderMapTest, AppendThenGetAllCountV8) {
     h.append("Accept", "text/plain");
     EXPECT_EQ(h.get_all("Accept").size(), 3u);
 }
+
+// --- Cycle 1151: 8 Net tests ---
+
+TEST(MethodTest, MethodToStringGetV9) {
+    EXPECT_EQ(method_to_string(Method::GET), "GET");
+}
+
+TEST(MethodTest, StringToMethodDeleteV9) {
+    EXPECT_EQ(string_to_method("DELETE"), Method::DELETE_METHOD);
+}
+
+TEST(HeaderMapTest, SizeAfterFourSetsV9) {
+    HeaderMap h;
+    h.set("K1", "V1");
+    h.set("K2", "V2");
+    h.set("K3", "V3");
+    h.set("K4", "V4");
+    EXPECT_EQ(h.size(), 4u);
+}
+
+TEST(HeaderMapTest, GetAllReturnsSingleV9) {
+    HeaderMap h;
+    h.set("X-Custom", "value");
+    auto vals = h.get_all("X-Custom");
+    EXPECT_EQ(vals.size(), 1u);
+}
+
+TEST(ResponseTest, ResponseStatus204V9) {
+    Response r;
+    r.status = 204;
+    EXPECT_EQ(r.status, 204);
+}
+
+TEST(ResponseTest, ResponseStatus301V9) {
+    Response r;
+    r.status = 301;
+    EXPECT_EQ(r.status, 301);
+}
+
+TEST(ResponseTest, ResponseStatus500V9) {
+    Response r;
+    r.status = 500;
+    EXPECT_EQ(r.status, 500);
+}
+
+TEST(HeaderMapTest, HasAfterAppendV9) {
+    HeaderMap h;
+    h.append("Authorization", "Bearer token");
+    EXPECT_TRUE(h.has("Authorization"));
+}

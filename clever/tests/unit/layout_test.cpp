@@ -8383,3 +8383,45 @@ TEST(LayoutNodeProps, MaskRepeatDefaultsZeroV2) {
     LayoutNode n;
     EXPECT_EQ(n.mask_repeat, 0);
 }
+
+// --- Cycle 1154: 8 Layout tests ---
+
+TEST(LayoutNodeProps, MaskSizeDefaultsZeroV2) {
+    LayoutNode n;
+    EXPECT_EQ(n.mask_size, 0);
+}
+
+TEST(LayoutNodeProps, MaskClipDefaultsZeroV2) {
+    LayoutNode n;
+    EXPECT_EQ(n.mask_clip, 0);
+}
+
+TEST(LayoutNodeProps, MaskOriginDefaultsZeroV2) {
+    LayoutNode n;
+    EXPECT_EQ(n.mask_origin, 0);
+}
+
+TEST(LayoutNodeProps, MaskCompositeDefaultsZeroV2) {
+    LayoutNode n;
+    EXPECT_EQ(n.mask_composite, 0);
+}
+
+TEST(LayoutNodeProps, MaskModeDefaultsZeroV2) {
+    LayoutNode n;
+    EXPECT_EQ(n.mask_mode, 0);
+}
+
+TEST(LayoutNodeProps, ScrollSnapTypeDefaultsEmptyV2) {
+    LayoutNode n;
+    EXPECT_TRUE(n.scroll_snap_type.empty());
+}
+
+TEST(LayoutNodeProps, ScrollSnapAlignDefaultsEmptyV2) {
+    LayoutNode n;
+    EXPECT_TRUE(n.scroll_snap_align.empty());
+}
+
+TEST(LayoutNodeProps, WillChangeDefaultsEmptyV2) {
+    LayoutNode n;
+    EXPECT_TRUE(n.will_change.empty());
+}

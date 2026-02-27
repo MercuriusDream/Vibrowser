@@ -2498,6 +2498,66 @@ TEST(SerializerTest, U64MaxUint64RoundTrip) {
     EXPECT_EQ(d.read_u64(), std::numeric_limits<uint64_t>::max());
 }
 
+// --- Cycle 1149: 8 IPC tests ---
+
+TEST(SerializerTest, U8HundredV6) {
+    Serializer s;
+    s.write_u8(100u);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u8(), 100u);
+}
+
+TEST(SerializerTest, U16ThirtyThousandV6) {
+    Serializer s;
+    s.write_u16(30000u);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u16(), 30000u);
+}
+
+TEST(SerializerTest, I32NegThousandV6) {
+    Serializer s;
+    s.write_i32(-1000);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i32(), -1000);
+}
+
+TEST(SerializerTest, U64TrillionV6) {
+    Serializer s;
+    s.write_u64(1000000000000ULL);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u64(), 1000000000000ULL);
+}
+
+TEST(SerializerTest, F64SqrtThreeV6) {
+    Serializer s;
+    s.write_f64(1.7320508075689);
+    Deserializer d(s.data());
+    EXPECT_DOUBLE_EQ(d.read_f64(), 1.7320508075689);
+}
+
+TEST(SerializerTest, StringWithNewlineV6) {
+    Serializer s;
+    s.write_string("line1\nline2");
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "line1\nline2");
+}
+
+TEST(SerializerTest, I64NegBillionV6) {
+    Serializer s;
+    s.write_i64(-1000000000LL);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i64(), -1000000000LL);
+}
+
+TEST(SerializerTest, BoolTrueThenFalseV6) {
+    Serializer s;
+    s.write_bool(true);
+    s.write_bool(false);
+    Deserializer d(s.data());
+    EXPECT_TRUE(d.read_bool());
+    EXPECT_FALSE(d.read_bool());
+}
+
 TEST(SerializerTest, I32MaxInt32RoundTrip) {
     clever::ipc::Serializer s;
     s.write_i32(std::numeric_limits<int32_t>::max());

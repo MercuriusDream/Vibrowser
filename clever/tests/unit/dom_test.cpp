@@ -6046,3 +6046,69 @@ TEST(DomElement, AttributesSizeFour) {
     el->set_attribute("d", "4");
     EXPECT_EQ(el->attributes().size(), 4u);
 }
+
+// --- Cycle 1147: 8 DOM tests ---
+
+TEST(DomElement, TagNameSlot) {
+    Document doc;
+    auto el = doc.create_element("slot");
+    std::string name = el->tag_name();
+    EXPECT_TRUE(name == "slot" || name == "SLOT");
+}
+
+TEST(DomElement, TagNameVideo) {
+    Document doc;
+    auto el = doc.create_element("video");
+    std::string name = el->tag_name();
+    EXPECT_TRUE(name == "video" || name == "VIDEO");
+}
+
+TEST(DomElement, SetAttributeAction) {
+    Document doc;
+    auto el = doc.create_element("form");
+    el->set_attribute("action", "/submit");
+    EXPECT_EQ(el->get_attribute("action").value(), "/submit");
+}
+
+TEST(DomElement, SetAttributeMethod) {
+    Document doc;
+    auto el = doc.create_element("form");
+    el->set_attribute("method", "post");
+    EXPECT_EQ(el->get_attribute("method").value(), "post");
+}
+
+TEST(DomElement, ChildCountEight) {
+    Document doc;
+    auto parent = doc.create_element("ul");
+    for (int i = 0; i < 8; ++i)
+        parent->append_child(doc.create_element("li"));
+    EXPECT_EQ(parent->child_count(), 8u);
+}
+
+TEST(DomElement, ClassListRemoveTwo) {
+    Document doc;
+    auto el = doc.create_element("div");
+    el->class_list().add("a");
+    el->class_list().add("b");
+    el->class_list().add("c");
+    el->class_list().remove("a");
+    el->class_list().remove("b");
+    EXPECT_TRUE(el->class_list().contains("c"));
+    EXPECT_FALSE(el->class_list().contains("a"));
+}
+
+TEST(DomElement, GetAttributeAfterOverwriteV2) {
+    Document doc;
+    auto el = doc.create_element("div");
+    el->set_attribute("data-x", "old");
+    el->set_attribute("data-x", "new");
+    EXPECT_EQ(el->get_attribute("data-x").value(), "new");
+}
+
+TEST(DomElement, AttributesSizeFive) {
+    Document doc;
+    auto el = doc.create_element("div");
+    for (int i = 0; i < 5; ++i)
+        el->set_attribute("attr" + std::to_string(i), "v");
+    EXPECT_EQ(el->attributes().size(), 5u);
+}

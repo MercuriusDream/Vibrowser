@@ -6894,3 +6894,77 @@ TEST_F(CSSStylesheetTest, TextDecorationV6) {
         if (d.property == "text-decoration") { found = true; break; }
     EXPECT_TRUE(found);
 }
+
+// --- Cycle 1152: 8 CSS tests ---
+
+TEST_F(CSSStylesheetTest, DisplayV7) {
+    auto sheet = parse_stylesheet("div { display: flex; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "display") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, PositionV7) {
+    auto sheet = parse_stylesheet("div { position: absolute; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "position") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, OverflowV7) {
+    auto sheet = parse_stylesheet("div { overflow: hidden; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "overflow") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, ZIndexV7) {
+    auto sheet = parse_stylesheet("div { z-index: 10; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "z-index") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, OpacityV7) {
+    auto sheet = parse_stylesheet("div { opacity: 0.5; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "opacity") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, CursorV7) {
+    auto sheet = parse_stylesheet("div { cursor: pointer; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "cursor") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, VisibilityV7) {
+    auto sheet = parse_stylesheet("div { visibility: hidden; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "visibility") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, FloatV7) {
+    auto sheet = parse_stylesheet("div { float: left; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "float") { found = true; break; }
+    EXPECT_TRUE(found);
+}

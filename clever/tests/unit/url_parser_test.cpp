@@ -4204,3 +4204,57 @@ TEST(URLParser, Port27018) {
     ASSERT_TRUE(url->port.has_value());
     EXPECT_EQ(url->port.value(), 27018u);
 }
+
+// --- Cycle 1150: 8 URL tests ---
+
+TEST(URLParser, Port5672) {
+    auto url = parse("amqp://rabbitmq.local:5672/");
+    ASSERT_TRUE(url.has_value());
+    ASSERT_TRUE(url->port.has_value());
+    EXPECT_EQ(url->port.value(), 5672u);
+}
+
+TEST(URLParser, PathWithYamlExt) {
+    auto url = parse("https://config.example.com/config/app.yaml");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->path, "/config/app.yaml");
+}
+
+TEST(URLParser, QueryWithUnderscore) {
+    auto url = parse("https://example.com/search?q=foo_bar");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_FALSE(url->query.empty());
+}
+
+TEST(URLParser, FragmentWithNumbersV2) {
+    auto url = parse("https://example.com/docs#section123");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->fragment, "section123");
+}
+
+TEST(URLParser, HostWithPort9200) {
+    auto url = parse("https://elastic.local:9200/api/v1");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->host, "elastic.local");
+    ASSERT_TRUE(url->port.has_value());
+    EXPECT_EQ(url->port.value(), 9200u);
+}
+
+TEST(URLParser, SchemeHttpsPreservedV3) {
+    auto url = parse("https://secure.example.com/page");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+}
+
+TEST(URLParser, PathDepthSix) {
+    auto url = parse("https://example.com/a/b/c/d/e/f");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->path, "/a/b/c/d/e/f");
+}
+
+TEST(URLParser, Port15672) {
+    auto url = parse("http://rabbit-mgmt.local:15672/api/overview");
+    ASSERT_TRUE(url.has_value());
+    ASSERT_TRUE(url->port.has_value());
+    EXPECT_EQ(url->port.value(), 15672u);
+}

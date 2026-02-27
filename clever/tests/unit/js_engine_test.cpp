@@ -18364,3 +18364,53 @@ TEST(JSEngine, ObjectGetPrototypeOfArray) {
     auto result = engine.evaluate("Object.getPrototypeOf([]) === Array.prototype ? 'yes' : 'no'");
     EXPECT_EQ(result, "yes");
 }
+
+// --- Cycle 1155: 8 JS tests ---
+
+TEST(JSEngine, MapForEachCount) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var m = new Map([['a', 1], ['b', 2]]); var count = 0; m.forEach(() => count++); count.toString()");
+    EXPECT_EQ(result, "2");
+}
+
+TEST(JSEngine, SetForEachCount) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var s = new Set([1, 2, 3]); var count = 0; s.forEach(() => count++); count.toString()");
+    EXPECT_EQ(result, "3");
+}
+
+TEST(JSEngine, WeakRefDerefV2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var obj = {}; var wr = new WeakRef(obj); typeof wr.deref()");
+    EXPECT_TRUE(result == "object" || result == "undefined");
+}
+
+TEST(JSEngine, PromiseFinallyType) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("typeof Promise.prototype.finally");
+    EXPECT_EQ(result, "function");
+}
+
+TEST(JSEngine, ArrayFromIterator) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var iter = [1, 2, 3][Symbol.iterator](); Array.from(iter).length.toString()");
+    EXPECT_EQ(result, "3");
+}
+
+TEST(JSEngine, ObjectKeysOnArray) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("Object.keys([10, 20, 30]).length.toString()");
+    EXPECT_EQ(result, "3");
+}
+
+TEST(JSEngine, StringRawTagFunction) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("typeof String.raw");
+    EXPECT_EQ(result, "function");
+}
+
+TEST(JSEngine, NumberToFixedV2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("(3.14159).toFixed(2)");
+    EXPECT_EQ(result, "3.14");
+}
