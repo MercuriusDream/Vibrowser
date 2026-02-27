@@ -4733,3 +4733,76 @@ TEST(TreeBuilder, FormTargetAttr) {
         if (attr.name == "target" && attr.value == "_blank") found = true;
     EXPECT_TRUE(found);
 }
+
+// Cycle 928 — additional HTML element and attribute coverage
+TEST(TreeBuilder, FieldsetElementParsed) {
+    auto doc = clever::html::parse("<body><fieldset><legend>Group</legend></fieldset></body>");
+    auto* el = doc->find_element("fieldset");
+    EXPECT_NE(el, nullptr);
+}
+
+TEST(TreeBuilder, LegendElementParsed) {
+    auto doc = clever::html::parse("<body><fieldset><legend>Title</legend></fieldset></body>");
+    auto* el = doc->find_element("legend");
+    EXPECT_NE(el, nullptr);
+}
+
+TEST(TreeBuilder, SelectMultipleAttr) {
+    auto doc = clever::html::parse("<body><select multiple name=\"opts\"></select></body>");
+    auto* el = doc->find_element("select");
+    ASSERT_NE(el, nullptr);
+    bool found_multiple = false;
+    for (const auto& attr : el->attributes)
+        if (attr.name == "multiple") found_multiple = true;
+    EXPECT_TRUE(found_multiple);
+}
+
+TEST(TreeBuilder, TextareaNameAttr) {
+    auto doc = clever::html::parse("<body><textarea name=\"message\"></textarea></body>");
+    auto* el = doc->find_element("textarea");
+    ASSERT_NE(el, nullptr);
+    bool found = false;
+    for (const auto& attr : el->attributes)
+        if (attr.name == "name" && attr.value == "message") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, TextareaPlaceholderAttr) {
+    auto doc = clever::html::parse("<body><textarea placeholder=\"Enter text\"></textarea></body>");
+    auto* el = doc->find_element("textarea");
+    ASSERT_NE(el, nullptr);
+    bool found = false;
+    for (const auto& attr : el->attributes)
+        if (attr.name == "placeholder") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, TextareaDisabledAttr) {
+    auto doc = clever::html::parse("<body><textarea disabled></textarea></body>");
+    auto* el = doc->find_element("textarea");
+    ASSERT_NE(el, nullptr);
+    bool found_disabled = false;
+    for (const auto& attr : el->attributes)
+        if (attr.name == "disabled") found_disabled = true;
+    EXPECT_TRUE(found_disabled);
+}
+
+TEST(TreeBuilder, ButtonNameAttr) {
+    auto doc = clever::html::parse("<body><button name=\"submit-btn\">Go</button></body>");
+    auto* el = doc->find_element("button");
+    ASSERT_NE(el, nullptr);
+    bool found = false;
+    for (const auto& attr : el->attributes)
+        if (attr.name == "name" && attr.value == "submit-btn") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, ButtonValueAttr) {
+    auto doc = clever::html::parse("<body><button value=\"confirm\">OK</button></body>");
+    auto* el = doc->find_element("button");
+    ASSERT_NE(el, nullptr);
+    bool found = false;
+    for (const auto& attr : el->attributes)
+        if (attr.name == "value" && attr.value == "confirm") found = true;
+    EXPECT_TRUE(found);
+}
