@@ -3261,3 +3261,97 @@ TEST(SerializerTest, TwoBytesBlocksBackToBack) {
     EXPECT_EQ(out_a[2], 3u);
     EXPECT_EQ(out_b[3], 7u);
 }
+
+// Cycle 852 — ascending types, alternating patterns, space string, three bytes blocks
+TEST(SerializerTest, AscendingWidthTypesU8ToU64) {
+    Serializer s;
+    s.write_u8(0xAB);
+    s.write_u16(0xCDEF);
+    s.write_u32(0x12345678);
+    s.write_u64(0xFEDCBA9876543210ULL);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u8(), static_cast<uint8_t>(0xAB));
+    EXPECT_EQ(d.read_u16(), static_cast<uint16_t>(0xCDEF));
+    EXPECT_EQ(d.read_u32(), static_cast<uint32_t>(0x12345678));
+    EXPECT_EQ(d.read_u64(), static_cast<uint64_t>(0xFEDCBA9876543210ULL));
+}
+
+TEST(SerializerTest, DescendingWidthTypesU64ToU8) {
+    Serializer s;
+    s.write_u64(0x0102030405060708ULL);
+    s.write_u32(0xDEAD1234);
+    s.write_u16(0xBEEF);
+    s.write_u8(0x42);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u64(), static_cast<uint64_t>(0x0102030405060708ULL));
+    EXPECT_EQ(d.read_u32(), static_cast<uint32_t>(0xDEAD1234));
+    EXPECT_EQ(d.read_u16(), static_cast<uint16_t>(0xBEEF));
+    EXPECT_EQ(d.read_u8(), static_cast<uint8_t>(0x42));
+}
+
+TEST(SerializerTest, SpaceOnlyStringRoundTrip) {
+    Serializer s;
+    s.write_string("   ");
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "   ");
+}
+
+TEST(SerializerTest, I32ThenF64RoundTrip) {
+    Serializer s;
+    s.write_i32(-999999);
+    s.write_f64(2.718281828459045);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i32(), -999999);
+    EXPECT_DOUBLE_EQ(d.read_f64(), 2.718281828459045);
+}
+
+TEST(SerializerTest, ThreeBytesBlocksInSequence) {
+    Serializer s;
+    const uint8_t a[] = {0xAA};
+    const uint8_t b[] = {0xBB, 0xCC};
+    const uint8_t c[] = {0xDD, 0xEE, 0xFF};
+    s.write_bytes(a, 1);
+    s.write_bytes(b, 2);
+    s.write_bytes(c, 3);
+    Deserializer d(s.data());
+    auto ra = d.read_bytes();
+    auto rb = d.read_bytes();
+    auto rc = d.read_bytes();
+    ASSERT_EQ(ra.size(), 1u); EXPECT_EQ(ra[0], 0xAAu);
+    ASSERT_EQ(rb.size(), 2u); EXPECT_EQ(rb[1], 0xCCu);
+    ASSERT_EQ(rc.size(), 3u); EXPECT_EQ(rc[2], 0xFFu);
+}
+
+TEST(SerializerTest, AlternatingU32ZeroAndMax) {
+    Serializer s;
+    for (int i = 0; i < 5; i++) {
+        s.write_u32(0);
+        s.write_u32(0xFFFFFFFF);
+    }
+    Deserializer d(s.data());
+    for (int i = 0; i < 5; i++) {
+        EXPECT_EQ(d.read_u32(), 0u);
+        EXPECT_EQ(d.read_u32(), 0xFFFFFFFFu);
+    }
+}
+
+TEST(SerializerTest, BoolStringAlternation) {
+    Serializer s;
+    const std::string words[] = {"alpha", "beta", "gamma"};
+    for (int i = 0; i < 3; i++) {
+        s.write_bool(i % 2 == 0);
+        s.write_string(words[i]);
+    }
+    Deserializer d(s.data());
+    for (int i = 0; i < 3; i++) {
+        EXPECT_EQ(d.read_bool(), i % 2 == 0);
+        EXPECT_EQ(d.read_string(), words[i]);
+    }
+}
+
+TEST(SerializerTest, TenOddU64Values) {
+    Serializer s;
+    for (int i = 0; i < 10; i++) s.write_u64(static_cast<uint64_t>(i * 2 + 1));
+    Deserializer d(s.data());
+    for (int i = 0; i < 10; i++) EXPECT_EQ(d.read_u64(), static_cast<uint64_t>(i * 2 + 1));
+}
