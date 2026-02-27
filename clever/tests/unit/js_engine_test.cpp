@@ -17032,3 +17032,60 @@ TEST(JSEngine, DateGetDay) {
     auto result = engine.evaluate("typeof new Date().getDay()");
     EXPECT_EQ(result, "number");
 }
+
+TEST(JSEngine, DateSetFullYear) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "const d=new Date();"
+        "d.setFullYear(2000);"
+        "d.getFullYear()");
+    EXPECT_EQ(result, "2000");
+}
+
+TEST(JSEngine, DateSetMonth) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "const d=new Date();"
+        "d.setMonth(0);"
+        "d.getMonth()");
+    EXPECT_EQ(result, "0");
+}
+
+TEST(JSEngine, DateSetDate) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "const d=new Date();"
+        "d.setDate(15);"
+        "d.getDate()");
+    EXPECT_EQ(result, "15");
+}
+
+TEST(JSEngine, DateToDateString) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("typeof new Date().toDateString()");
+    EXPECT_EQ(result, "string");
+}
+
+TEST(JSEngine, DateToUTCString) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("typeof new Date().toUTCString()");
+    EXPECT_EQ(result, "string");
+}
+
+TEST(JSEngine, DateGetUTCFullYear) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("typeof new Date().getUTCFullYear()");
+    EXPECT_EQ(result, "number");
+}
+
+TEST(JSEngine, DateGetUTCMonth) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("typeof new Date().getUTCMonth()");
+    EXPECT_EQ(result, "number");
+}
+
+TEST(JSEngine, DateGetUTCHours) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("typeof new Date().getUTCHours()");
+    EXPECT_EQ(result, "number");
+}
