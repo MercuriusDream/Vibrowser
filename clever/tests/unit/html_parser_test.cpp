@@ -4017,3 +4017,76 @@ TEST(TreeBuilder, PictureSourceType) {
         if (attr.name == "type" && attr.value == "image/webp") found = true;
     EXPECT_TRUE(found);
 }
+
+// Cycle 848 — more HTML elements and attributes
+TEST(TreeBuilder, BdoElementWithDir) {
+    auto doc = clever::html::parse("<body><bdo dir=\"rtl\">text</bdo></body>");
+    auto* bdo = doc->find_element("bdo");
+    ASSERT_NE(bdo, nullptr);
+    bool found = false;
+    for (const auto& attr : bdo->attributes)
+        if (attr.name == "dir" && attr.value == "rtl") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, DfnElementWithTitle) {
+    auto doc = clever::html::parse("<body><dfn title=\"HyperText\">HTML</dfn></body>");
+    auto* dfn = doc->find_element("dfn");
+    ASSERT_NE(dfn, nullptr);
+}
+
+TEST(TreeBuilder, DataElementWithValue) {
+    auto doc = clever::html::parse("<body><data value=\"123\">one-two-three</data></body>");
+    auto* data = doc->find_element("data");
+    ASSERT_NE(data, nullptr);
+    bool found = false;
+    for (const auto& attr : data->attributes)
+        if (attr.name == "value" && attr.value == "123") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, SElementStrikethrough) {
+    auto doc = clever::html::parse("<body><s>old price</s></body>");
+    auto* s = doc->find_element("s");
+    ASSERT_NE(s, nullptr);
+}
+
+TEST(TreeBuilder, InputTypeSubmitValue) {
+    auto doc = clever::html::parse("<body><input type=\"submit\" value=\"Go\"></body>");
+    auto* input = doc->find_element("input");
+    ASSERT_NE(input, nullptr);
+    bool found = false;
+    for (const auto& attr : input->attributes)
+        if (attr.name == "value" && attr.value == "Go") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, InputTypeMonth) {
+    auto doc = clever::html::parse("<body><input type=\"month\" name=\"birthday\"></body>");
+    auto* input = doc->find_element("input");
+    ASSERT_NE(input, nullptr);
+    bool found = false;
+    for (const auto& attr : input->attributes)
+        if (attr.name == "type" && attr.value == "month") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, MetaRobotsNoindex) {
+    auto doc = clever::html::parse("<head><meta name=\"robots\" content=\"noindex\"></head>");
+    auto* meta = doc->find_element("meta");
+    ASSERT_NE(meta, nullptr);
+    bool found = false;
+    for (const auto& attr : meta->attributes)
+        if (attr.name == "content" && attr.value == "noindex") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, LinkRelPreconnect) {
+    auto doc = clever::html::parse("<head><link rel=\"preconnect\" href=\"https://cdn.example.com\"></head>");
+    auto* link = doc->find_element("link");
+    ASSERT_NE(link, nullptr);
+    bool found = false;
+    for (const auto& attr : link->attributes)
+        if (attr.name == "rel" && attr.value == "preconnect") found = true;
+    EXPECT_TRUE(found);
+}
