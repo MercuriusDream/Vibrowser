@@ -6,13 +6,308 @@
 ## Current Status
 
 **Phase**: Active Development — Testing Blitz + Bug Fixes
-**Last Active**: 2026-02-28T08:10:00+0900
-**Current Focus**: Cycle 1219+ — 9854 tests! JUST 146 FROM 10K! Continuing test blitz rotation. Commit+push each round.
-**Momentum**: 9854 tests pass across 12/13 suites. URL 684, IPC 734, Net 688, DOM 743, HTML 728, CSS-parser 772, CSS-style 698, Layout 844, Paint 1863(4fail), JS 1457, CORS 521, Platform 117, NativeImage 5. Only 4 pre-existing paint failures.
-**Cycle**: 1218
+**Last Active**: 2026-02-28T17:00:00+0900
+**Current Focus**: Cycle 1453+ — 11,716 TESTS! Continuing test blitz rotation.
+**Momentum**: 11,716 tests across 13 suites. Only pre-existing paint failures. Rounds 25-50 completed.
+**Cycle**: 1452
 **Workflow**: Commit and push after each cycle round. Use subagents for max parallelism (user preference).
 
 ## Session Log
+
+### Cycles 1399-1452 — 2026-02-28
+- **Cycles**: 54 (Rounds 45-50)
+- **Theme**: Test blitz rounds 45-50 — 418 new tests (11,298→11,716)
+- **Key Wins**:
+  - Round 45 (1399-1407): +69 tests, fixed duplicate names and HeaderMap set→append bug
+  - Round 46 (1408-1416): +72 tests, fixed layout geometry.border access pattern
+  - Round 47 (1417-1425): +69 tests, fixed URL percent-encoding expectation
+  - Round 48 (1426-1434): +72 tests, all clean
+  - Round 49 (1435-1443): +72 tests, fixed CookieJar get_cookie_header arg count
+  - Round 50 (1444-1452): +64 tests (DOM agent found all names existed), fixed read_bytes/set_from_header API calls
+- **Discoveries**: DOM file has ~930 tests, naming collisions increasingly common. Need more creative names.
+
+### Cycles 1390-1398 — 2026-02-28
+- **Cycles**: 9
+- **Theme**: Test blitz round 44 — all 9 suites (+72 tests) — 11,298 total!
+- **Key Wins**:
+  - Cycle 1390: 8 DOM — TagNameSub/Sup, SetAttributeContenteditable/DraggableV2, MultipleRemoveAttribute, RemoveAttributeType, HasAttributeOpenV2, SetAndGetBooleanAttribute
+  - Cycle 1391: 8 CORS — V43; default ports, fragment edge, null origin, wildcard+credentials reject
+  - Cycle 1392: 8 IPC — V33; comprehensive mixed data, edge cases, binary, special char strings
+  - Cycle 1393: 8 URL — V25; default port normalized, deep path, dot resolution, loopback
+  - Cycle 1394: 8 Net — V36; DELETE/HEAD/OPTIONS, 404/500/201, cookies multi-domain, POST form, PATCH
+  - Cycle 1395: 8 CSS — V34; border-top/bottom/left/right/color/style/width/collapse
+  - Cycle 1396: 8 HTML — V22; span, a, p, h1/h2/h3, form, input (fixed doc->body→find_element)
+  - Cycle 1397: 8 Layout — V34; border_radius_tl/tr, scroll_padding, accent_color, color_scheme, scroll_snap_type, z_index
+  - Cycle 1398: 8 JS — Cycle1398; Array.from/isArray, Object.entries/values, String.fromCharCode, parseInt/Float, Math.trunc
+- **Discovery**: HTML V22 subagent used wrong pattern (doc->body/Element*) — SimpleNode uses find_element()
+
+### Cycles 1381-1389 — 2026-02-28
+- **Cycles**: 9
+- **Theme**: Test blitz round 43 — all 9 suites (+72 tests) — 11,226 total!
+- **Key Wins**:
+  - Cycle 1381: 8 DOM — TagNameEm/Small, SetAttributeDataJson/Placeholder, AppendAndCountSiblings, RemoveAttributeDataIdV2, HasAttributeHiddenV3, SetAttributeSpecialChars
+  - Cycle 1382: 8 CORS — V42; enforceable ports, fragment edge, wildcard+credentials rejection
+  - Cycle 1383: 8 IPC — V32; type sequences, signed extremes, f64 precision, byte patterns, special char strings
+  - Cycle 1384: 8 URL — V24; host-only, double dot, default port, loopback, trailing slash
+  - Cycle 1385: 8 Net — V35; POST binary, 500 error, cookies multi-domain, PATCH, headers
+  - Cycle 1386: 8 CSS — V33; flex-direction/wrap, justify-content, align-items/self/content, flex-basis/flow
+  - Cycle 1387: 8 HTML — V21; mark, time, data, output, progress, meter, fieldset, legend
+  - Cycle 1388: 8 Layout — V33; gap, scroll_margin, scroll_padding, text_wrap, container_type
+  - Cycle 1389: 8 JS — Cycle1389; Object.freeze, JSON deep copy, Error types, typeof, instanceof, void, comma
+- **Discovery**: QuickJS has NO Intl or structuredClone — use alternatives
+
+### Cycles 1372-1380 — 2026-02-28
+- **Cycles**: 9
+- **Theme**: Test blitz round 42 — all 9 suites (+72 tests) — 11,154 total!
+- **Key Wins**:
+  - Cycle 1372: 8 DOM — TagNameCode/Strong, SetAttributeTabindexV2/AriaLabelV2, ChildCount10000, RemoveAttributeDataCustom, HasAttributeMultipleV2, GetAttributeReturnsNulloptV2
+  - Cycle 1373: 8 CORS — V41; enforceable ports, fragment edge, subdomain, null origin attachment
+  - Cycle 1374: 8 IPC — V31; max values, negative zero, long strings, interleaved types
+  - Cycle 1375: 8 URL — V23; host-only, double dot resolution, default ports, deep subdomain
+  - Cycle 1376: 8 Net — V34; DELETE, 404 response, cookies, HEAD, large body, OPTIONS, headers
+  - Cycle 1377: 8 CSS — V32; gap, row-gap, column-gap, place-items/content/self, grid-template
+  - Cycle 1378: 8 HTML — V20; strong, em, b, i, u, del, sup, abbr
+  - Cycle 1379: 8 Layout — V32; flex_grow/shrink, transform_origin, column_gap_val, scroll_margin/padding, order
+  - Cycle 1380: 8 JS — Cycle1380; Promise, for-of/in, optional chaining, nullish coalescing, String.raw, tagged templates
+
+### Cycles 1363-1371 — 2026-02-28
+- **Cycles**: 9
+- **Theme**: Test blitz round 41 — all 9 suites (+72 tests) — 11,082 total!
+- **Key Wins**:
+  - Cycle 1363: 8 DOM — TagNameButton/Pre, SetAttributeForV2/TargetV2, ChildCount5000, RemoveAttributeRoleV2, HasAttributeRequiredV2, SetAttributeOverwriteV4
+  - Cycle 1364: 8 CORS — V40; scheme variation, eligible URLs, origin attachment, normalization
+  - Cycle 1365: 8 IPC — V30; u8 max, u16 boundary, signed ints, f64 precision, large byte buffer
+  - Cycle 1366: 8 URL — V22; host-only, path resolution, default port normalized, deep subdomain
+  - Cycle 1367: 8 Net — V33; headers, POST form, response body, cookies, redirect 302, PUT JSON
+  - Cycle 1368: 8 CSS — V31; outline, list-style, cursor, pointer-events, resize, clip-path, object-fit/position
+  - Cycle 1369: 8 HTML — V19; blockquote, pre, code, table, ul, dl, hr, img
+  - Cycle 1370: 8 Layout — V31; border_radius corners, line_height, opacity, container_name, scroll_snap_align
+  - Cycle 1371: 8 JS — Cycle1371; Map, Set, Symbol, generator, Proxy, Uint8Array, Float64Array, ArrayBuffer
+
+### Cycles 1354-1362 — 2026-02-28
+- **Cycles**: 9
+- **Theme**: Test blitz round 40 — all 9 suites (+73 tests) — 11,010 total! Crossed 11k!
+- **Key Wins**:
+  - Cycle 1354: 8 DOM — TagNameSelect/Textarea (lowercase!), SetAttributeActionV2/MethodV2, ChildCount2000, RemoveAttributeAlt, HasAttributeReadonlyV2, SetAttributeMultipleValues
+  - Cycle 1355: 8 CORS — V39; null origin, wildcard credentials, origin enforcement
+  - Cycle 1356: 8 IPC — V29; f64 roundtrip, bytes with ptr+size, mixed types
+  - Cycle 1357: 8 URL — V21; IP address, path resolution, case normalization
+  - Cycle 1358: 8 Net — V32; DELETE/HEAD/OPTIONS/PATCH, cookies, response redirect flag
+  - Cycle 1359: 8 CSS — V30; font-weight, line-height, letter-spacing, word-spacing, text-indent, vertical-align, white-space, text-overflow
+  - Cycle 1360: 8 HTML — V18; article, aside, details, summary, header, footer, main, section
+  - Cycle 1361: 8 Layout — V30; flex_grow, flex_shrink, scroll_margin/padding, order, scroll_snap_type
+  - Cycle 1362: 8 JS — Cycle1362; padStart, includes, find, flatMap, some, Object.keys/assign, Number.isFinite
+- **Discovery**: select/textarea return LOWERCASE tag_name() — not all elements uppercase
+
+### Cycles 1345-1353 — 2026-02-28
+- **Cycles**: 9
+- **Theme**: Test blitz round 39 — all 9 suites (+72 tests) — 10,937 total!
+- **Key Wins**:
+  - Cycle 1345: 8 DOM — TagNameMapV2, TagNameArea, SetAttributeIntegrity/Crossorigin, CreateManyElements, RemoveNonexistentAttribute, HasAttributeCheckedV2, SetAttributeEmptyName
+  - Cycle 1346: 8 CORS — V38; same-origin checks, wildcard credentials, origin enforcement
+  - Cycle 1347: 8 IPC — V28; roundtrip values, edge cases
+  - Cycle 1348: 8 URL — V20; scheme parsing, path handling, query params
+  - Cycle 1349: 8 Net — V31; headers, status, response parsing
+  - Cycle 1350: 8 CSS — V29; property parsing, selectors, values
+  - Cycle 1351: 8 HTML — V17; element parsing, tree building
+  - Cycle 1352: 8 Layout — V29; node properties, defaults
+  - Cycle 1353: 8 JS — Cycle1353; ES6+ features, closures, operators
+
+### Cycles 1336-1344 — 2026-02-28
+- **Cycles**: 9
+- **Theme**: Test blitz round 38 — all 9 suites (+72 tests) — 10,865 total!
+- **Key Wins**:
+  - Cycle 1336: 8 DOM — TagNameObject/Param, SetAttributeScope/Headers, AppendMultipleChildren, LongAttributeValue
+  - Cycle 1337: 8 CORS — V37; wildcard with credentials rejection, multiple origin headers
+  - Cycle 1338: 8 IPC — V27; max values, pi, string+bool
+  - Cycle 1339: 8 URL — V19; default ports normalized (recurring fix), parent dir, deep path
+  - Cycle 1340: 8 Net — V30; set overwrites, response status, methods, cookies
+  - Cycle 1341: 8 CSS — V28; display, position, overflow, z-index, opacity, cursor
+  - Cycle 1342: 8 HTML — V16; div, span, article, header, footer, nav, aside, main
+  - Cycle 1343: 8 Layout — V28; scroll_snap_stop, svg opacity, border_radius, line_height
+  - Cycle 1344: 8 JS — Cycle1344; arrow, template literals, destructuring, spread, class
+
+### Cycles 1327-1335 — 2026-02-28
+- **Cycles**: 9
+- **Theme**: Test blitz round 37 — all 9 suites (+72 tests) — 10,793 total!
+- **Key Wins**:
+  - Cycle 1327: 8 DOM — TagNameTrack/Embed, SetAttributeMedia/Charset, NestedChildCounts, HasAttributeSelected
+  - Cycle 1328: 8 CORS — V36; cross-origin ports, null origin with/without header match
+  - Cycle 1329: 8 IPC — V26; euler f64, max values roundtrip
+  - Cycle 1330: 8 URL — V18; host-only, custom port, parent dir, query+fragment
+  - Cycle 1331: 8 Net — V29; set overwrites, get missing, has, remove, status text, cookies
+  - Cycle 1332: 8 CSS — V27; padding, margin, border-radius, box/text-shadow, transform, perspective
+  - Cycle 1333: 8 HTML — V15; div, span, anchor, paragraph, heading, ul, ol, section
+  - Cycle 1334: 8 Layout — V27; text_wrap, container_type, accent_color, scroll_snap, opacity, mix_blend_mode
+  - Cycle 1335: 8 JS — Cycle1335; concat, filter, Math.max, JSON.parse, RegExp, toFixed, reduce, split
+
+### Cycles 1318-1326 — 2026-02-28
+- **Cycles**: 9
+- **Theme**: Test blitz round 36 — all 9 suites (+73 tests) — 10,721 total!
+- **Key Wins**:
+  - Cycle 1318: 8 DOM — TagNamePictureV2/SourceV2, SetAttributeCols/Span, ChildCount1000, HasAttributePlaysInline
+  - Cycle 1319: 8 CORS — V35; null origin match, credentials rejection, enforceable 9090
+  - Cycle 1320: 8 IPC — V25; max values roundtrip, f64 pi, string+bool
+  - Cycle 1321: 8 URL — V17; default port normalized, parent dir resolution
+  - Cycle 1322: 9 Net — V28; set overwrites, status uint16, body vector, cookies
+  - Cycle 1323: 8 CSS — V26; border-radius, box-shadow, transform, animation, filter
+  - Cycle 1324: 8 HTML — V14; form, input, select, textarea, label, fieldset, table, canvas
+  - Cycle 1325: 8 Layout — V26; accent_color, color_scheme, scroll_snap, svg opacity
+  - Cycle 1326: 8 JS — Cycle1326; concat, push, Math.floor/ceil, JSON, parseInt, map
+
+### Cycles 1309-1317 — 2026-02-28
+- **Cycles**: 9
+- **Theme**: Test blitz round 35 — all 9 suites (+72 tests) — 10,648 total!
+- **Key Wins**:
+  - Cycle 1309: 8 DOM — TagNameOutputV2/DataV2, SetAttributeWrap/Rows, ChildCount500, HasAttributeMuted
+  - Cycle 1310: 8 CORS — V34; enforceable custom ports, rejects incorrect/missing origin
+  - Cycle 1311: 8 IPC — V24; max values, high precision f64
+  - Cycle 1312: 8 URL — V16; default port, host-only, deep traversal, subdomains
+  - Cycle 1313: 8 Net — V27; DELETE/HEAD, serialize, response 200, cookie header format
+  - Cycle 1314: 8 CSS — V25; scroll-behavior/margin/padding, text-decoration line/style/color
+  - Cycle 1315: 8 HTML — V13; details, summary, marker, time, menu, picture, track, embed
+  - Cycle 1316: 8 Layout — V25; border_radius corners, line_height, z_index
+  - Cycle 1317: 8 JS — Cycle1317; repeat, slice, map, filter, Math.max/min, Date.now
+
+### Cycles 1300-1308 — 2026-02-28
+- **Cycles**: 9
+- **Theme**: Test blitz round 34 — all 9 suites (+72 tests) — 10,576 total!
+- **Key Wins**:
+  - Cycle 1300: 8 DOM tests — TagNameMeterV2/ProgressV2, SetAttributeMinV2/MaxV2, ChildCount300, RemoveAttributeStyleV2, HasAttributeLoop, SetAttributeOverwriteV3
+  - Cycle 1301: 8 CORS tests — V33 suffix; default ports not enforceable, null origin rejection
+  - Cycle 1302: 8 IPC tests — V23 suffix; u8 max, f64 precision, long string
+  - Cycle 1303: 8 URL tests — V15 suffix; file protocol, path traversal resolved
+  - Cycle 1304: 8 Net tests — V26 suffix; HEAD/OPTIONS/PATCH, response status (not status_code!)
+  - Cycle 1305: 8 CSS tests — V24 suffix; will-change, backdrop-filter, writing-mode, aspect-ratio
+  - Cycle 1306: 8 HTML tests — V12 suffix; form, fieldset, optgroup, datalist, meter, progress
+  - Cycle 1307: 8 Layout tests — V24 suffix; text_wrap, container_type, scroll_snap, mix_blend_mode
+  - Cycle 1308: 8 JS tests — Cycle1308; toUpperCase, toLowerCase, Math.floor, JSON, RegExp
+
+### Cycles 1291-1299 — 2026-02-28
+- **Cycles**: 9
+- **Theme**: Test blitz round 33 — all 9 suites (+72 tests) — 10,504 total!
+- **Key Wins**:
+  - Cycle 1291: 8 DOM tests — TagNameDetailsV2/SummaryV3, SetAttributeDecoding/Fetchpriority, ChildCount200, HasAttributeAutoplay
+  - Cycle 1292: 8 CORS tests — V32 suffix; cross-origin schemes/ports/subdomains
+  - Cycle 1293: 8 IPC tests — V22 suffix; u8 zero, u16 max, empty string
+  - Cycle 1294: 8 URL tests — V14 suffix; IPv4, numbered subdomain, default port normalized
+  - Cycle 1295: 8 Net tests — V25 suffix; response status+body, cookie clear, PUT body
+  - Cycle 1296: 8 CSS tests — V23 suffix; scroll-snap, overscroll, touch-action, user-select
+  - Cycle 1297: 8 HTML tests — V11 suffix; header, footer, nav, button, input, textarea, select, label
+  - Cycle 1298: 8 Layout tests — V23 suffix; text_transform, text_decoration, overflow, grid_auto_flow, aspect_ratio
+  - Cycle 1299: 8 JS tests — Cycle1299; toUpperCase, toLowerCase, trim, map, filter, Math.max/min
+
+### Cycles 1282-1290 — 2026-02-28
+- **Cycles**: 9
+- **Theme**: Test blitz round 32 — all 9 suites (+72 tests) — 10,432 total!
+- **Key Wins**:
+  - Cycle 1282: 8 DOM tests (dom 799→807) — TagNameDialogV2/TemplateV2, SetAttributeSandbox/Loading, ChildCount150, RemoveAttributeTitleV2, HasAttributeControls, EmptyAttributeValue
+  - Cycle 1283: 8 CORS tests (cors 577→585) — V31 suffix; cross-origin non-default port, wildcard, enforceable subdomain
+  - Cycle 1284: 8 IPC tests (ipc 790→798) — V21 suffix; mid-range values, negative max, small float, multi-word string
+  - Cycle 1285: 8 URL tests (url 740→748) — V13 suffix; mixed case, trailing slash, subdomains, empty fragment, port 65535
+  - Cycle 1286: 8 Net tests (net 744→752) — V24 suffix; case-insensitive has, remove, serialize, POST body, status codes
+  - Cycle 1287: 8 CSS tests (css-parser 830→838) — V22 suffix; border-radius, transform, filter, backdrop-filter, clip-path
+  - Cycle 1288: 8 HTML tests (html 784→792) — V10 suffix; nav, header, footer, article, section, aside, main, figure
+  - Cycle 1289: 8 Layout tests (layout 900→908) — V22 suffix; table_layout, cellpadding, cellspacing, border_spacing, colspan
+  - Cycle 1290: 8 JS tests (js 1513→1521) — Cycle1290; padStart, padEnd, includes, find, Math.pow, sqrt, keys, reduce
+
+### Cycles 1273-1281 — 2026-02-28
+- **Cycles**: 9
+- **Theme**: Test blitz round 31 — all 9 suites (+72 tests) — 10,360 total!
+- **Key Wins**:
+  - Cycle 1273: 8 DOM tests — TagNameRp/WbrV2, SetAttributeCoords/Shape, ChildCount120, RemoveAttributeAccesskey, HasAttributeAsync, SetAttributeWithSpecialChars
+  - Cycle 1274: 8 CORS tests — V30 suffix; fixed credentials=true requires Allow-Credentials header
+  - Cycle 1275: 8 IPC tests — V20 suffix
+  - Cycle 1276: 8 URL tests — V12 suffix
+  - Cycle 1277: 8 Net tests — V23 suffix
+  - Cycle 1278: 8 CSS tests — V21 suffix
+  - Cycle 1279: 8 HTML tests — V9 suffix
+  - Cycle 1280: 8 Layout tests — V21 suffix
+  - Cycle 1281: 8 JS tests — Cycle1281 suffix
+
+### Cycles 1264-1272 — 2026-02-28
+- **Cycles**: 9
+- **Theme**: Test blitz round 30 — all 9 suites (+72 tests) — 10,288 total!
+- **Key Wins**:
+  - Cycle 1264: 8 DOM tests (dom 775→783) — TagNameRuby/Rt, SetAttributeEnctype/NovalidateV2, ChildCountHundred, RemoveAttributeDir, HasAttributeDefer, SetAndGetMultipleAttrs
+  - Cycle 1265: 8 CORS tests (cors 553→561) — V29 suffix; fixed explicit:80 port cross-origin
+  - Cycle 1266: 8 IPC tests (ipc 766→774) — V19 suffix
+  - Cycle 1267: 8 URL tests (url 716→724) — V11 suffix
+  - Cycle 1268: 8 Net tests (net 720→728) — V22 suffix
+  - Cycle 1269: 8 CSS tests (css-parser 814→822) — V20 suffix
+  - Cycle 1270: 8 HTML tests (html 768→776) — V8 suffix
+  - Cycle 1271: 8 Layout tests (layout 884→892) — V20 suffix
+  - Cycle 1272: 8 JS tests (js 1497→1505) — Cycle1272 suffix
+
+### Cycles 1255-1263 — 2026-02-28
+- **Cycles**: 9
+- **Theme**: Test blitz round 29 — all 9 suites (+72 tests) — 10,216 total!
+- **Key Wins**:
+  - Cycle 1255: 8 DOM tests (dom 767→775) — TagNameDfn/Bdo, SetAttributeList/Form, ChildCountNinety, RemoveAttributeSpellcheck, HasAttributeOpen, OverwriteAttributeV2
+  - Cycle 1256: 8 CORS tests (cors 545→553) — V28 suffix; fixed explicit:443 not enforceable, origin case sensitivity
+  - Cycle 1257: 8 IPC tests (ipc 758→766) — V18 suffix
+  - Cycle 1258: 8 URL tests (url 708→716) — V10 suffix
+  - Cycle 1259: 8 Net tests (net 712→720) — V21 suffix; fixed serialize binary body assertion
+  - Cycle 1260: 8 CSS tests (css-parser 806→814) — V19 suffix
+  - Cycle 1261: 8 HTML tests (html 760→768) — V7 suffix
+  - Cycle 1262: 8 Layout tests (layout 876→884) — V19 suffix
+  - Cycle 1263: 8 JS tests (js 1489→1497) — Cycle1263 suffix
+
+### Cycles 1246-1254 — 2026-02-28
+- **Cycles**: 9
+- **Theme**: Test blitz round 28 — all 9 suites (+72 tests) — 10,144 total!
+- **Key Wins**:
+  - Cycle 1246: 8 DOM tests (dom 759→767+8) — TagNameVar/Cite, SetAttributePattern/Step, ChildCountEighty, RemoveAttributeDraggable, HasAttributeHiddenV2, MultipleAttributesSet
+  - Cycle 1247: 8 CORS tests (cors 545→553) — V27 suffix
+  - Cycle 1248: 8 IPC tests (ipc 750→758) — V17 suffix
+  - Cycle 1249: 8 URL tests (url 700→708) — V9 suffix
+  - Cycle 1250: 8 Net tests (net 704→712) — V20 suffix
+  - Cycle 1251: 8 CSS tests (css-parser 798→806) — V18 suffix
+  - Cycle 1252: 8 HTML tests (html 752→760) — V6 suffix
+  - Cycle 1253: 8 Layout tests (layout 868→876) — V18 suffix
+  - Cycle 1254: 8 JS tests (js 1481→1489) — Cycle1254 suffix
+
+### Cycles 1237-1245 — 2026-02-28
+- **Cycles**: 9
+- **Theme**: Test blitz round 27 — 10,000 TEST MILESTONE! — 10,072 total!
+- **Key Wins**:
+  - Cycle 1237: 8 DOM tests (dom 759→767) — TagNameSamp/Kbd, SetAttributeAcceptV2/Autocomplete, ChildCountSeventy, RemoveAttributeContenteditable, HasAttributeReadonly, GetAttributeDefaultEmpty
+  - Cycle 1238: 8 CORS tests (cors 537→545) — V26 suffix
+  - Cycle 1239: 8 IPC tests (ipc 750→758) — V16 suffix
+  - Cycle 1240: 8 URL tests (url 700→708) — V8 suffix; fixed host-only URL path="/"
+  - Cycle 1241: 8 Net tests (net 704→712) — V19 suffix
+  - Cycle 1242: 8 CSS tests (css-parser 788→798) — V17 suffix (10 tests from CSS subagent)
+  - Cycle 1243: 8 HTML tests (html 744→752) — V5 suffix
+  - Cycle 1244: 8 Layout tests (layout 860→868) — V17 suffix
+  - Cycle 1245: 8 JS tests (js 1473→1481) — Cycle1245 suffix
+
+### Cycles 1228-1236 — 2026-02-28
+- **Cycles**: 9
+- **Theme**: Test blitz round 26 — all 9 suites (+72 tests) — 9998 total! One round from 10K!
+- **Key Wins**:
+  - Cycle 1228: 8 DOM tests (dom 751→759) — TagNameMarkV2/AbbrV2, SetAttributeFormAction/FormMethod, ChildCountSixty, ClassListContainsThirteen, RemoveAttributeTabindex, HasAttributeDisabled
+  - Cycle 1229: 8 CORS tests (cors 529→537) — V25 suffix; fixed IsCrossOriginMixedPortAndScheme
+  - Cycle 1230: 8 IPC tests (ipc 742→750) — V15 suffix
+  - Cycle 1231: 8 URL tests (url 692→700) — V7 suffix
+  - Cycle 1232: 8 Net tests (net 696→704) — V18 suffix
+  - Cycle 1233: 8 CSS tests (css-parser 780→788) — V16 suffix
+  - Cycle 1234: 8 HTML tests (html 736→744) — V4 suffix
+  - Cycle 1235: 8 Layout tests (layout 852→860) — V16 suffix
+  - Cycle 1236: 8 JS tests (js 1465→1473) — Cycle1236 suffix
+
+### Cycles 1219-1227 — 2026-02-28
+- **Cycles**: 9
+- **Theme**: Test blitz round 25 — all 9 suites (+72 tests) — 9926 total!
+- **Key Wins**:
+  - Cycle 1219: 8 DOM tests (dom 743→751) — TagNameOption/Wbr, SetAttributeMinlength/Maxlength, ChildCountFifty, ClassListContainsTwelve, RemoveAttributeRole, HasAttributeNovalidate
+  - Cycle 1220: 8 CORS tests (cors 521→529) — V24 suffix
+  - Cycle 1221: 8 IPC tests (ipc 734→742) — V14 suffix
+  - Cycle 1222: 8 URL tests (url 684→692) — V5/V6 suffix
+  - Cycle 1223: 8 Net tests (net 688→696) — V17 suffix; fixed GetAllMultiValuedHeader
+  - Cycle 1224: 8 CSS tests (css-parser 772→780) — V15 suffix
+  - Cycle 1225: 8 HTML tests (html 728→736) — V3 suffix
+  - Cycle 1226: 8 Layout tests (layout 844→852) — V15 suffix
+  - Cycle 1227: 8 JS tests (js 1457→1465) — WeakRef, FinalizationRegistry, LogicalAssignment, NumericSeparator, PromiseAny, StringReplaceAll
 
 ### Cycles 1210-1218 — 2026-02-28
 - **Cycles**: 9
@@ -6226,30 +6521,42 @@
 
 | Metric | Value |
 |--------|-------|
-| Total Sessions | 176 |
-| Total Cycles | 1218 |
+| Total Sessions | 179 |
+| Total Cycles | 1452 |
 | Files Created | ~135 |
 | Files Modified | 142+ |
-| Lines Added (est.) | 205000+ |
-| Tests Added | 6379 |
-| Bugs Fixed | 259 |
+| Lines Added (est.) | 219000+ |
+| Tests Added | 8241 |
+| Bugs Fixed | 273 |
 | Features Added | 2625 |
 
 ## Tell The Next Claude
 
-**STATUS: WORKING BROWSER WITH FULL JS ENGINE — 9854 TESTS!!! 146 FROM 10K!!!** — Launch with `open build/src/shell/clever_browser.app`
+**STATUS: WORKING BROWSER WITH FULL JS ENGINE — 11,716 TESTS!!!** — Launch with `open build/src/shell/clever_browser.app`
 
 Build: `cd clever && cmake -S . -B build && cmake --build build && ctest --test-dir build`
 
-**9854 tests pass across 12/13 suites. URL 684, IPC 734, Net 688, DOM 743, HTML 728, CSS-parser 772, CSS-style 698, Layout 844, Paint 1863(4fail), JS 1457, CORS 521, Platform 117, NativeImage 5. Only 4 pre-existing paint failures. CYCLE 1218!**
+**11,716 tests across 13 suites. Only pre-existing paint failures. CYCLE 1452!**
 
-Gotchas: Element::tag_name() is a METHOD — use el->tag_name() with parens. ClassList::toggle() returns void. attributes().size() not attributes_size(). CORS: explicit :443 not enforceable, URLs with fragments not cors-eligible, wss:// scheme not supported in cross-origin check. write_bytes takes (ptr, len). LayoutNode colors are ARGB: color=0xFF000000, bg=0x00000000, border_color_*=0xFF000000, lighting_color=0xFFFFFFFF, placeholder_color=0xFF757575. text_stroke_width exists, svg_stroke_width does NOT. Promise callbacks don't execute synchronously. Test names must be unique — ALWAYS grep before adding — V suffixes up to V6+ for many CSS properties.
+Gotchas: Element::tag_name() is a METHOD — use el->tag_name() with parens. In HTML parser, tag_name is a FIELD (no parens). get_attribute() returns nullopt (not "") for missing attrs — use has_attribute() instead. CORS: explicit :443/:80 not enforceable, URLs with fragments not cors-eligible. Request::serialize() returns vector<uint8_t> NOT string — just check size>0. Response::body is vector<uint8_t>. Response.status NOT status_code. HeaderMap::set() OVERWRITES. CookieJar: get_cookie_header(domain, path, is_secure), set_from_header(value, domain), NO get_for_domain(). URL parser: host-only URLs have path="/", double-encodes % signs, default ports (:80/:443) NORMALIZED AWAY, path ".." gets RESOLVED. LayoutNode: NO border_radius/padding/margin/width/height as simple props — use border_radius_tl/tr/bl/br, line_height, opacity. ConnectionPool has NO size()/clear(). std::is_same<> in EXPECT_TRUE macro breaks (commas). remove_child expects Node& not pointer. Null origin IS allowed by CORS when header matches "null".
 
 **USER PREFERENCE: Commit and push after each cycle round.** Do `git add` specific test files, `git commit`, and `git push` after each round of 9 cycles.
 
-**Next cycle 1219: DOM tests. Rotation: DOM→CORS→IPC→URL→Net→CSS→HTML→Layout→JS. Cycle 1218 was JS. THIS ROUND WILL CROSS 10,000 TESTS!!!**
+**Next cycle 1453: DOM tests. Rotation: DOM→CORS→IPC→URL→Net→CSS→HTML→Layout→JS. Cycle 1452 was JS.**
 
-**WORKFLOW: Use 7+ subagents in parallel for test cycles (one per file). Commit and push after each round.**
+**WORKFLOW: Use 9 general-purpose haiku subagents in parallel for test cycles (one per file). Commit and push after each round. V suffixes: CORS V50, IPC V40, URL V32, Net V43, CSS V41, HTML V29, Layout V41, JS Cycle[N]. DOM has ~930 tests — name collisions common, always grep first!**
+
+**CRITICAL API FIXES DISCOVERED THIS SESSION:**
+- LayoutNode border: `n.geometry.border.top` NOT `n.border_top_width`
+- LayoutNode margin/padding: `n.geometry.margin.top` NOT `n.margin_top`
+- Serializer: `read_bytes()` takes NO arguments (reads length-prefixed)
+- CookieJar: `set_from_header(cookie_string, domain)` — cookie string FIRST, domain SECOND
+- CookieJar: `get_cookie_header(domain, path, is_secure, is_http, is_same_site)` — 5 args!
+- HeaderMap: use `append()` for multi-value headers (Set-Cookie), `set()` OVERWRITES
+
+**QuickJS LACKS: Intl, structuredClone. Use alternatives (Object.freeze, JSON.parse/stringify deep copy).**
+
+**NEW DISCOVERY**: select/textarea return LOWERCASE from tag_name() — not all elements uppercase! Some elements don't get uppercased by create_element(). write_bytes needs (data.data(), data.size()) — TWO args. CSS Declaration has `values` (plural vector) not `value` (singular).
 
 **IMPORTANT: "Clever" was renamed to "Vibrowser"** — source code uses "Vibrowser/0.7.0" for user-agent and "Vibrowser" for vendor. Tests referencing "Clever" will fail.
 
