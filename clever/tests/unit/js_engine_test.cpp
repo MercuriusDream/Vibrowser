@@ -15763,3 +15763,52 @@ TEST(JSEngine, BigIntSubtract) {
     auto result = engine.evaluate("(1000n - 1n).toString()");
     EXPECT_EQ(result, "999");
 }
+
+// Cycle 794 — Map/Set advanced operations
+TEST(JSEngine, MapClearSetsZeroSize) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("const m = new Map(); m.set('a',1); m.set('b',2); m.clear(); m.size");
+    EXPECT_EQ(result, "0");
+}
+
+TEST(JSEngine, SetClearSetsZeroSize) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("const s = new Set([1,2,3]); s.clear(); s.size");
+    EXPECT_EQ(result, "0");
+}
+
+TEST(JSEngine, MapHasReturnsTrueAfterSet) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("const m = new Map(); m.set('key', 42); m.has('key')");
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, MapHasReturnsFalseForMissing) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("const m = new Map(); m.has('missing')");
+    EXPECT_EQ(result, "false");
+}
+
+TEST(JSEngine, SetHasReturnsTrueAfterAdd) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("const s = new Set(); s.add(99); s.has(99)");
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, MapFromArrayOfPairs) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("const m = new Map([['x',10],['y',20]]); m.get('y')");
+    EXPECT_EQ(result, "20");
+}
+
+TEST(JSEngine, SetFromArrayDeduplicates) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("const s = new Set([1,2,2,3,3,3]); s.size");
+    EXPECT_EQ(result, "3");
+}
+
+TEST(JSEngine, MapGetReturnsUndefinedForMissing) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("const m = new Map(); typeof m.get('nope')");
+    EXPECT_EQ(result, "undefined");
+}
