@@ -2614,3 +2614,58 @@ TEST(URLParser, IPv4DifferentOctetNotSameOrigin) {
     ASSERT_TRUE(b.has_value());
     EXPECT_FALSE(urls_same_origin(*a, *b));
 }
+
+
+
+// Cycle 881 — URL: deep path, IPv6 with/without port, hyphen path, empty path on https, query empty value
+TEST(URLParser, DeepNestedSixSegmentPath) {
+    auto url = parse("https://example.com/a/b/c/d/e/f");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->path, "/a/b/c/d/e/f");
+}
+
+TEST(URLParser, QueryEmptyValueAfterEquals) {
+    auto url = parse("https://example.com/search?key=");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->query, "key=");
+}
+
+TEST(URLParser, FourLevelSubdomainHost) {
+    auto url = parse("https://a.b.c.d.example.com/");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->host, "a.b.c.d.example.com");
+}
+
+TEST(URLParser, IPv6Port9000) {
+    auto url = parse("http://[::1]:9000/");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->host, "[::1]");
+    ASSERT_TRUE(url->port.has_value());
+    EXPECT_EQ(url->port.value(), 9000);
+}
+
+TEST(URLParser, IPv6WithNoPortHasNullPort) {
+    auto url = parse("https://[::1]/api");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->host, "[::1]");
+    EXPECT_FALSE(url->port.has_value());
+}
+
+TEST(URLParser, PathWithMultipleHyphens) {
+    auto url = parse("https://example.com/my-long-path/sub-section");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->path, "/my-long-path/sub-section");
+}
+
+TEST(URLParser, HttpsNoPathDefaultsToSlash) {
+    auto url = parse("https://example.com/");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->path, "/");
+}
+
+TEST(URLParser, FragmentWithSpaceEncoded) {
+    auto url = parse("https://example.com/page#section%201");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_NE(url->fragment.find("section"), std::string::npos);
+}
