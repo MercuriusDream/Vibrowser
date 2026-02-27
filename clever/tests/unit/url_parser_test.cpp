@@ -3130,3 +3130,53 @@ TEST(URLParser, PathWithTwoExtensions) {
     ASSERT_TRUE(url.has_value());
     EXPECT_EQ(url->path, "/archive.tar.gz");
 }
+
+TEST(URLParser, Port6000Preserved) {
+    auto url = parse("http://localhost:6000/monitor");
+    ASSERT_TRUE(url.has_value());
+    ASSERT_TRUE(url->port.has_value());
+    EXPECT_EQ(*url->port, 6000);
+}
+
+TEST(URLParser, Port11000Preserved) {
+    auto url = parse("http://localhost:11000/ws");
+    ASSERT_TRUE(url.has_value());
+    ASSERT_TRUE(url->port.has_value());
+    EXPECT_EQ(*url->port, 11000);
+}
+
+TEST(URLParser, PathWithMp4Extension) {
+    auto url = parse("https://cdn.example.com/videos/intro.mp4");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->path, "/videos/intro.mp4");
+}
+
+TEST(URLParser, PathWithOggExtension) {
+    auto url = parse("https://cdn.example.com/audio/sound.ogg");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->path, "/audio/sound.ogg");
+}
+
+TEST(URLParser, PathWithWoffExtension) {
+    auto url = parse("https://fonts.example.com/font.woff");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->path, "/font.woff");
+}
+
+TEST(URLParser, PathWithZipExtension) {
+    auto url = parse("https://downloads.example.com/package.zip");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->path, "/package.zip");
+}
+
+TEST(URLParser, HostFourPartSubdomain) {
+    auto url = parse("https://a.b.c.example.com/");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->host, "a.b.c.example.com");
+}
+
+TEST(URLParser, QueryKeyOnlyNoValue) {
+    auto url = parse("https://example.com/?flag");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_FALSE(url->query.empty());
+}
