@@ -15558,3 +15558,51 @@ TEST(JSEngine, StringToUpperCaseResult) {
     auto result = engine.evaluate("'world'.toUpperCase()");
     EXPECT_EQ(result, "WORLD");
 }
+
+TEST(JSEngine, ArrayLastIndexOf) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("[1, 2, 3, 2, 1].lastIndexOf(2)");
+    EXPECT_EQ(result, "3");
+}
+
+TEST(JSEngine, ArrayFillPartial) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("[1, 2, 3, 4, 5].fill(0, 1, 3).join(',')");
+    EXPECT_EQ(result, "1,0,0,4,5");
+}
+
+TEST(JSEngine, ArraySliceNegativeIndex) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("[10, 20, 30, 40].slice(-2).join(',')");
+    EXPECT_EQ(result, "30,40");
+}
+
+TEST(JSEngine, ArraySpliceRemovesElement) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("const a = [1,2,3,4]; a.splice(1,1); a.join(',')");
+    EXPECT_EQ(result, "1,3,4");
+}
+
+TEST(JSEngine, ArrayShiftRemovesFirst) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("const a = [1,2,3]; a.shift(); a.join(',')");
+    EXPECT_EQ(result, "2,3");
+}
+
+TEST(JSEngine, ArrayUnshiftAddsToFront) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("const a = [2,3]; a.unshift(1); a.join(',')");
+    EXPECT_EQ(result, "1,2,3");
+}
+
+TEST(JSEngine, ArrayCopyWithinNegative) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("[1, 2, 3, 4, 5].copyWithin(-2).join(',')");
+    EXPECT_EQ(result, "1,2,3,1,2");
+}
+
+TEST(JSEngine, ArrayToSplicedReturnsNew) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("const a = [1,2,3]; const b = a.toSpliced(1,1); a.length + ',' + b.length");
+    EXPECT_EQ(result, "3,2");
+}
