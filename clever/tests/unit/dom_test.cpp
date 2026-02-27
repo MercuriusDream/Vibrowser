@@ -3373,3 +3373,56 @@ TEST(DomComment, CommentTextContentIsEmpty) {
     // comment text content should be empty (not exposed to layout)
     EXPECT_TRUE(c.text_content().empty());
 }
+
+TEST(DomClassList, ClassListRemoveReducesLength) {
+    ClassList cl;
+    cl.add("foo");
+    cl.add("bar");
+    cl.remove("foo");
+    EXPECT_EQ(cl.length(), 1u);
+}
+
+TEST(DomClassList, ClassListRemoveContainsFalse) {
+    ClassList cl;
+    cl.add("active");
+    cl.remove("active");
+    EXPECT_FALSE(cl.contains("active"));
+}
+
+TEST(DomClassList, ClassListToggleAdds) {
+    ClassList cl;
+    cl.toggle("open");
+    EXPECT_TRUE(cl.contains("open"));
+}
+
+TEST(DomClassList, ClassListToggleRemoves) {
+    ClassList cl;
+    cl.add("open");
+    cl.toggle("open");
+    EXPECT_FALSE(cl.contains("open"));
+}
+
+TEST(DomClassList, ClassListLengthAfterThreeAdds) {
+    ClassList cl;
+    cl.add("a");
+    cl.add("b");
+    cl.add("c");
+    EXPECT_EQ(cl.length(), 3u);
+}
+
+TEST(DomClassList, ClassListEmptyInitially) {
+    ClassList cl;
+    EXPECT_EQ(cl.length(), 0u);
+}
+
+TEST(DomClassList, ClassListAddDuplicateNoGrow) {
+    ClassList cl;
+    cl.add("x");
+    cl.add("x");
+    EXPECT_EQ(cl.length(), 1u);
+}
+
+TEST(DomClassList, ClassListContainsReturnsFalseEmpty) {
+    ClassList cl;
+    EXPECT_FALSE(cl.contains("anything"));
+}
