@@ -4848,3 +4848,75 @@ TEST_F(CSSStylesheetTest, GridAutoColumnsDeclaration) {
         if (d.property == "grid-auto-columns") { found = true; break; }
     EXPECT_TRUE(found);
 }
+
+TEST_F(CSSStylesheetTest, ContainSizeDeclaration) {
+    auto sheet = parse_stylesheet(".box { contain: size; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "contain") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, ContainLayoutDeclaration) {
+    auto sheet = parse_stylesheet(".panel { contain: layout; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "contain") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, OverscrollBehaviorXDeclaration) {
+    auto sheet = parse_stylesheet(".scroll { overscroll-behavior-x: none; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "overscroll-behavior-x") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, OverscrollBehaviorYDeclaration) {
+    auto sheet = parse_stylesheet(".modal { overscroll-behavior-y: contain; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "overscroll-behavior-y") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, ScrollbarGutterDeclaration) {
+    auto sheet = parse_stylesheet(".list { scrollbar-gutter: stable; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "scrollbar-gutter") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, ColorSchemeMultiValueDeclaration) {
+    auto sheet = parse_stylesheet(":root { color-scheme: light dark; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "color-scheme") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, HyphensAutoDeclaration) {
+    auto sheet = parse_stylesheet("p { hyphens: auto; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "hyphens") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, WordBreakBreakAllDeclaration) {
+    auto sheet = parse_stylesheet(".long-word { word-break: break-all; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "word-break") { found = true; break; }
+    EXPECT_TRUE(found);
+}
