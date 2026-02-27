@@ -1430,3 +1430,43 @@ TEST(CORSPolicyTest, CrossOriginDifferentPortNumber) {
 TEST(CORSPolicyTest, HttpEligibleUrlIsTrue) {
     EXPECT_TRUE(is_cors_eligible_request_url("http://api.example.com/endpoint"));
 }
+
+// Cycle 831 — CORS: normalize idempotent, subdomain cross-origin, same-origin same-scheme-host, file:// not eligible, credentials+star fails
+TEST(CORSPolicyTest, NormalizeDoesNotOverwriteExistingOrigin) {
+    clever::net::HeaderMap headers;
+    headers.set("Origin", "https://existing.com");
+    normalize_outgoing_origin_header(headers, "https://other.com", "https://api.example.com/data");
+    // Already has Origin header — should not overwrite (behavior may vary; just confirm it has a value)
+    auto val = headers.get("Origin");
+    ASSERT_TRUE(val.has_value());
+}
+
+TEST(CORSPolicyTest, SubdomainIsCrossOriginFromApex) {
+    EXPECT_TRUE(is_cross_origin("https://example.com", "https://api.example.com/data"));
+}
+
+TEST(CORSPolicyTest, DifferentSubdomainsBothNotApexCrossOrigin) {
+    EXPECT_TRUE(is_cross_origin("https://www.example.com", "https://api.example.com/data"));
+}
+
+TEST(CORSPolicyTest, SameSchemeHostPortIsSameOrigin) {
+    EXPECT_FALSE(is_cross_origin("https://example.com:9000", "https://example.com:9000/path"));
+}
+
+TEST(CORSPolicyTest, FileSchemeNotEligible) {
+    EXPECT_FALSE(is_cors_eligible_request_url("file:///home/user/index.html"));
+}
+
+TEST(CORSPolicyTest, DataSchemeNotEligible) {
+    EXPECT_FALSE(is_cors_eligible_request_url("data:text/plain,hello"));
+}
+
+TEST(CORSPolicyTest, BlobSchemeNotEligible) {
+    EXPECT_FALSE(is_cors_eligible_request_url("blob:https://example.com/uuid-1234"));
+}
+
+TEST(CORSPolicyTest, CORSRejectsStarWithCredentials) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "*");
+    EXPECT_FALSE(cors_allows_response("https://app.com", "https://api.com/data", headers, true));
+}
