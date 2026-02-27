@@ -4207,3 +4207,68 @@ TEST(DomElement, MultipleAttributeValuesDistinct) {
     EXPECT_TRUE(found_placeholder);
     EXPECT_TRUE(found_required);
 }
+
+// Cycle 895 — DOM event tests
+
+TEST(DomEvent, TargetNullInitially) {
+    Event evt("click");
+    EXPECT_EQ(evt.target(), nullptr);
+}
+
+TEST(DomEvent, BubblesCanBeSetFalse) {
+    Event evt("click", false, true);
+    EXPECT_FALSE(evt.bubbles());
+}
+
+TEST(DomEvent, CancelableCanBeSetFalse) {
+    Event evt("click", true, false);
+    EXPECT_FALSE(evt.cancelable());
+}
+
+TEST(DomEvent, DefaultNotPreventedOnNonCancelable) {
+    Event evt("click", true, false);
+    evt.prevent_default();
+    EXPECT_FALSE(evt.default_prevented());
+}
+
+TEST(DomEvent, EventDispatchFiresListener) {
+    Element node("div");
+    EventTarget et;
+    int count = 0;
+    et.add_event_listener("click", [&](Event&) { ++count; });
+    Event evt("click");
+    et.dispatch_event(evt, node);
+    EXPECT_EQ(count, 1);
+}
+
+TEST(DomEvent, EventDispatchDoesNotFireWrongType) {
+    Element node("div");
+    EventTarget et;
+    int count = 0;
+    et.add_event_listener("click", [&](Event&) { ++count; });
+    Event evt("mouseover");
+    et.dispatch_event(evt, node);
+    EXPECT_EQ(count, 0);
+}
+
+TEST(DomEvent, RemoveAllListenersSilencesType) {
+    Element node("button");
+    EventTarget et;
+    int count = 0;
+    et.add_event_listener("click", [&](Event&) { ++count; });
+    et.remove_all_listeners("click");
+    Event evt("click");
+    et.dispatch_event(evt, node);
+    EXPECT_EQ(count, 0);
+}
+
+TEST(DomEvent, MultipleListenersAllFiredOnDispatch) {
+    Element node("div");
+    EventTarget et;
+    int total = 0;
+    et.add_event_listener("focus", [&](Event&) { total += 1; });
+    et.add_event_listener("focus", [&](Event&) { total += 10; });
+    Event evt("focus");
+    et.dispatch_event(evt, node);
+    EXPECT_EQ(total, 11);
+}
