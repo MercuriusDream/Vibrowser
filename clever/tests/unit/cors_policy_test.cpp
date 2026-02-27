@@ -1644,3 +1644,43 @@ TEST(CORSPolicyTest, CORSWildcardRejectsCredentialsRequest) {
     headers.set("Access-Control-Allow-Credentials", "true");
     EXPECT_FALSE(cors_allows_response("https://app.example", "https://api.example/data", headers, true));
 }
+
+// Cycle 879 — CORS policy edge cases: port 80/443 default handling, long hostname, numeric-only hostname
+TEST(CORSPolicyTest, HttpPort80IsSameAsNoPort) {
+    EXPECT_FALSE(is_cross_origin("http://example.com:80", "http://example.com/path"));
+}
+
+TEST(CORSPolicyTest, HttpsPort443IsSameAsNoPort) {
+    EXPECT_FALSE(is_cross_origin("https://example.com:443", "https://example.com/path"));
+}
+
+TEST(CORSPolicyTest, HttpPortDifferentFrom443) {
+    EXPECT_TRUE(is_cross_origin("http://example.com", "http://example.com:443/path"));
+}
+
+TEST(CORSPolicyTest, LongSubdomainOriginIsEnforceable) {
+    EXPECT_TRUE(has_enforceable_document_origin(
+        "https://very-long-subdomain-name-here.sub.example.com"));
+}
+
+TEST(CORSPolicyTest, NumericOnlyHostnameIsNotValid) {
+    EXPECT_FALSE(is_cors_eligible_request_url("https://12345/path"));
+}
+
+TEST(CORSPolicyTest, CORSAllowsNullOriginWithNullACAO) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "null");
+    EXPECT_TRUE(cors_allows_response("null", "https://api.example.com/data", headers, false));
+}
+
+TEST(CORSPolicyTest, ACAOWildcardNotAllowedForNullOriginWithCredentials) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "*");
+    EXPECT_FALSE(cors_allows_response("null", "https://api.example.com/data", headers, true));
+}
+
+TEST(CORSPolicyTest, NormalizeDoesNotAttachOriginForSameOriginNullDoc) {
+    clever::net::HeaderMap headers;
+    normalize_outgoing_origin_header(headers, "null", "null");
+    EXPECT_FALSE(headers.get("Origin").has_value());
+}
