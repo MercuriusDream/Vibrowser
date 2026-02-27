@@ -6255,3 +6255,51 @@ TEST(LayoutNodeProps, GridTemplateColumnsDefaultsEmpty) {
     auto node = make_block("div");
     EXPECT_TRUE(node->grid_template_columns.empty());
 }
+
+// Layout: svg_transform_tx defaults to 0
+TEST(LayoutNodeProps, SvgTransformTxDefaultsToZero) {
+    auto node = make_block("rect");
+    EXPECT_FLOAT_EQ(node->svg_transform_tx, 0.0f);
+}
+
+// Layout: svg_transform_ty defaults to 0
+TEST(LayoutNodeProps, SvgTransformTyDefaultsToZero) {
+    auto node = make_block("rect");
+    EXPECT_FLOAT_EQ(node->svg_transform_ty, 0.0f);
+}
+
+// Layout: svg_transform_sx defaults to 1
+TEST(LayoutNodeProps, SvgTransformSxDefaultsToOne) {
+    auto node = make_block("rect");
+    EXPECT_FLOAT_EQ(node->svg_transform_sx, 1.0f);
+}
+
+// Layout: svg_transform_sy defaults to 1
+TEST(LayoutNodeProps, SvgTransformSyDefaultsToOne) {
+    auto node = make_block("rect");
+    EXPECT_FLOAT_EQ(node->svg_transform_sy, 1.0f);
+}
+
+// Layout: svg_transform_rotate defaults to 0
+TEST(LayoutNodeProps, SvgTransformRotateDefaultsToZero) {
+    auto node = make_block("circle");
+    EXPECT_FLOAT_EQ(node->svg_transform_rotate, 0.0f);
+}
+
+// Layout: svg_fill_opacity defaults to 1.0
+TEST(LayoutNodeProps, SvgFillOpacityDefaultsToOne) {
+    auto node = make_block("path");
+    EXPECT_FLOAT_EQ(node->svg_fill_opacity, 1.0f);
+}
+
+// Layout: svg_stroke_opacity defaults to 1.0
+TEST(LayoutNodeProps, SvgStrokeOpacityDefaultsToOne) {
+    auto node = make_block("path");
+    EXPECT_FLOAT_EQ(node->svg_stroke_opacity, 1.0f);
+}
+
+// Layout: svg_stroke_none defaults to true (no stroke by default)
+TEST(LayoutNodeProps, SvgStrokeNoneDefaultsTrue) {
+    auto node = make_block("line");
+    EXPECT_TRUE(node->svg_stroke_none);
+}
