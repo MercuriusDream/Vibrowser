@@ -7672,3 +7672,43 @@ TEST(LayoutNodeProps, OverflowIndicatorRightDefaultsFalse) {
     LayoutNode n;
     EXPECT_FALSE(n.overflow_indicator_right);
 }
+
+TEST(LayoutNodeProps, OpacityDefaultsOne) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.opacity, 1.0f);
+}
+
+TEST(LayoutNodeProps, ZIndexDefaultsZeroV2) {
+    LayoutNode n;
+    EXPECT_EQ(n.z_index, 0);
+}
+
+TEST(LayoutNodeProps, FlexGrowDefaultsZero) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.flex_grow, 0.0f);
+}
+
+TEST(LayoutNodeProps, FlexShrinkDefaultsOne) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.flex_shrink, 1.0f);
+}
+
+TEST(LayoutNodeProps, FlexDirectionDefaultsZero) {
+    LayoutNode n;
+    EXPECT_EQ(n.flex_direction, 0);
+}
+
+TEST(LayoutNodeProps, FlexWrapDefaultsZero) {
+    LayoutNode n;
+    EXPECT_EQ(n.flex_wrap, 0);
+}
+
+TEST(LayoutNodeProps, JustifyContentDefaultsZero) {
+    LayoutNode n;
+    EXPECT_EQ(n.justify_content, 0);
+}
+
+TEST(LayoutNodeProps, AlignItemsDefaultsFourV2) {
+    LayoutNode n;
+    EXPECT_EQ(n.align_items, 4);
+}
