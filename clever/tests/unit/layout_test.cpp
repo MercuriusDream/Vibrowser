@@ -6699,3 +6699,43 @@ TEST(LayoutNodeProps, CssScaleDefaultsNone) {
     LayoutNode n;
     EXPECT_EQ(n.css_scale, "none");
 }
+
+TEST(LayoutNodeProps, CssTranslateDefaultsNone) {
+    LayoutNode n;
+    EXPECT_EQ(n.css_translate, "none");
+}
+
+TEST(LayoutNodeProps, TransformOriginXDefaultsFifty) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.transform_origin_x, 50.0f);
+}
+
+TEST(LayoutNodeProps, TransformOriginYDefaultsFifty) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.transform_origin_y, 50.0f);
+}
+
+TEST(LayoutNodeProps, PerspectiveOriginXDefaultsFifty) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.perspective_origin_x, 50.0f);
+}
+
+TEST(LayoutNodeProps, PerspectiveOriginYDefaultsFifty) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.perspective_origin_y, 50.0f);
+}
+
+TEST(LayoutNodeProps, OffsetPathDefaultsNone) {
+    LayoutNode n;
+    EXPECT_EQ(n.offset_path, "none");
+}
+
+TEST(LayoutNodeProps, OffsetDistanceDefaultsToZero) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.offset_distance, 0.0f);
+}
+
+TEST(LayoutNodeProps, OffsetAnchorDefaultsAuto) {
+    LayoutNode n;
+    EXPECT_EQ(n.offset_anchor, "auto");
+}
