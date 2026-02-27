@@ -4672,3 +4672,58 @@ TEST(DomNode, DirtyAllContainsStyle) {
     elem.mark_dirty(DirtyFlags::All);
     EXPECT_NE(elem.dirty_flags() & DirtyFlags::Style, DirtyFlags::None);
 }
+
+TEST(DomNode, DirtyAllContainsPaint) {
+    Element elem("div");
+    elem.mark_dirty(DirtyFlags::All);
+    EXPECT_NE(elem.dirty_flags() & DirtyFlags::Paint, DirtyFlags::None);
+}
+
+TEST(DomNode, MarkDirtyLayoutNotPaint) {
+    Element elem("div");
+    elem.mark_dirty(DirtyFlags::Layout);
+    EXPECT_NE(elem.dirty_flags() & DirtyFlags::Layout, DirtyFlags::None);
+    EXPECT_EQ(elem.dirty_flags() & DirtyFlags::Paint, DirtyFlags::None);
+}
+
+TEST(DomNode, NodePrevSiblingNullForFirst) {
+    Document doc;
+    auto parent = doc.create_element("ul");
+    auto& li = parent->append_child(doc.create_element("li"));
+    EXPECT_EQ(li.previous_sibling(), nullptr);
+}
+
+TEST(DomNode, NodeNextSiblingNullForLast) {
+    Document doc;
+    auto parent = doc.create_element("ul");
+    parent->append_child(doc.create_element("li"));
+    auto& li2 = parent->append_child(doc.create_element("li"));
+    EXPECT_EQ(li2.next_sibling(), nullptr);
+}
+
+TEST(DomNode, NodeParentNullForDetached) {
+    Document doc;
+    auto elem = doc.create_element("div");
+    EXPECT_EQ(elem->parent(), nullptr);
+}
+
+TEST(DomDocument, DocumentCreateElementTagName) {
+    Document doc;
+    auto elem = doc.create_element("section");
+    ASSERT_NE(elem, nullptr);
+    EXPECT_EQ(elem->tag_name(), "section");
+}
+
+TEST(DomDocument, DocumentCreateTextNodeData) {
+    Document doc;
+    auto text = doc.create_text_node("hello world");
+    ASSERT_NE(text, nullptr);
+    EXPECT_EQ(text->data(), "hello world");
+}
+
+TEST(DomDocument, DocumentCreateCommentData) {
+    Document doc;
+    auto comment = doc.create_comment("test comment");
+    ASSERT_NE(comment, nullptr);
+    EXPECT_EQ(comment->data(), "test comment");
+}
