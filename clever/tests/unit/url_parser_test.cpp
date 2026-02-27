@@ -2169,3 +2169,53 @@ TEST(URLParser, MultipleQueryParamsOrder) {
     EXPECT_NE(result->query.find("z=26"), std::string::npos);
     EXPECT_NE(result->query.find("a=1"), std::string::npos);
 }
+
+TEST(URLParser, SubdomainHostParsed) {
+    auto url = clever::url::parse("https://api.example.com/v1");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->host, "api.example.com");
+}
+
+TEST(URLParser, ThreeLevelSubdomain) {
+    auto url = clever::url::parse("https://cdn.static.example.com/img.png");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->host, "cdn.static.example.com");
+}
+
+TEST(URLParser, NumericHostIP) {
+    auto url = clever::url::parse("http://192.168.1.1/admin");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->host, "192.168.1.1");
+}
+
+TEST(URLParser, LocalhostWithPortQuery) {
+    auto url = clever::url::parse("http://localhost:3000/api?key=abc");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->query, "key=abc");
+}
+
+TEST(URLParser, QueryKeyWithEmptyValue) {
+    auto url = clever::url::parse("https://example.com/search?q=");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->query, "q=");
+}
+
+TEST(URLParser, PathWithColonSegment) {
+    auto url = clever::url::parse("https://example.com/ref:main/file.js");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_NE(url->path.find("ref"), std::string::npos);
+}
+
+TEST(URLParser, QueryAndFragmentBothPresent) {
+    auto url = clever::url::parse("https://example.com/page?name=foo#section2");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->query, "name=foo");
+    EXPECT_EQ(url->fragment, "section2");
+}
+
+TEST(URLParser, UsernameAndPasswordBoth) {
+    auto url = clever::url::parse("ftp://user:pass@ftp.example.com/file.txt");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->username, "user");
+    EXPECT_EQ(url->password, "pass");
+}
