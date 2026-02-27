@@ -3018,3 +3018,77 @@ TEST(DomNode, ChildCountAfterRemoveIsCorrect) {
     parent.remove_child(*c2_ptr);
     EXPECT_EQ(parent.child_count(), 1u);
 }
+
+TEST(DomNode, ClearDirtyResetsFlags) {
+    Element div("div");
+    div.mark_dirty(DirtyFlags::All);
+    div.clear_dirty();
+    EXPECT_EQ(div.dirty_flags(), DirtyFlags::None);
+}
+
+TEST(DomNode, MarkDirtyLayoutNotStyle) {
+    Element p("p");
+    p.mark_dirty(DirtyFlags::Layout);
+    EXPECT_EQ(p.dirty_flags() & DirtyFlags::Style, DirtyFlags::None);
+    EXPECT_NE(p.dirty_flags() & DirtyFlags::Layout, DirtyFlags::None);
+}
+
+TEST(DomNode, MarkDirtyAllIncludesPaint) {
+    Element span("span");
+    span.mark_dirty(DirtyFlags::All);
+    EXPECT_NE(span.dirty_flags() & DirtyFlags::Paint, DirtyFlags::None);
+}
+
+TEST(DomNode, ForEachChildVisitsAllChildren) {
+    Element parent("div");
+    int count = 0;
+    parent.append_child(std::make_unique<Element>("span"));
+    parent.append_child(std::make_unique<Element>("p"));
+    parent.append_child(std::make_unique<Element>("a"));
+    parent.for_each_child([&](const Node& child) { ++count; });
+    EXPECT_EQ(count, 3);
+}
+
+TEST(DomNode, InsertBeforeThreeChildren) {
+    Element parent("ul");
+    auto li1 = std::make_unique<Element>("li");
+    auto li2 = std::make_unique<Element>("li");
+    auto li3 = std::make_unique<Element>("li");
+    Element* li1_ptr = li1.get();
+    Element* li2_ptr = li2.get();
+    Element* li3_ptr = li3.get();
+    parent.append_child(std::move(li1));
+    parent.append_child(std::move(li3));
+    parent.insert_before(std::move(li2), li3_ptr);
+    EXPECT_EQ(parent.first_child(), li1_ptr);
+    EXPECT_EQ(li1_ptr->next_sibling(), li2_ptr);
+    EXPECT_EQ(li2_ptr->next_sibling(), li3_ptr);
+}
+
+TEST(DomNode, TextContentWithNestedText) {
+    Element outer("div");
+    auto inner = std::make_unique<Element>("p");
+    inner->append_child(std::make_unique<Text>("inner text"));
+    outer.append_child(std::move(inner));
+    std::string content = outer.text_content();
+    EXPECT_NE(content.find("inner"), std::string::npos);
+}
+
+TEST(DomNode, MarkDirtyStyleAndPaintCombined) {
+    Element h1("h1");
+    h1.mark_dirty(DirtyFlags::Style | DirtyFlags::Paint);
+    EXPECT_NE(h1.dirty_flags() & DirtyFlags::Style, DirtyFlags::None);
+    EXPECT_NE(h1.dirty_flags() & DirtyFlags::Paint, DirtyFlags::None);
+    EXPECT_EQ(h1.dirty_flags() & DirtyFlags::Layout, DirtyFlags::None);
+}
+
+TEST(DomNode, RemoveChildReturnsAndOrphansNode) {
+    Element parent("section");
+    auto child = std::make_unique<Element>("div");
+    Element* child_ptr = child.get();
+    parent.append_child(std::move(child));
+    auto removed = parent.remove_child(*child_ptr);
+    ASSERT_NE(removed, nullptr);
+    EXPECT_EQ(removed.get(), child_ptr);
+    EXPECT_EQ(parent.child_count(), 0u);
+}
