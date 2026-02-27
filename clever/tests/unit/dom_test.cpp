@@ -6431,3 +6431,64 @@ TEST(DomElement, HasAttributeMultiple) {
     el->set_attribute("multiple", "");
     EXPECT_TRUE(el->has_attribute("multiple"));
 }
+
+// --- Cycle 1201: 8 DOM tests ---
+
+TEST(DomElement, TagNameTfoot) {
+    Document doc;
+    auto el = doc.create_element("tfoot");
+    EXPECT_EQ(el->tag_name(), "tfoot");
+}
+
+TEST(DomElement, TagNameOptgroup) {
+    Document doc;
+    auto el = doc.create_element("optgroup");
+    EXPECT_EQ(el->tag_name(), "optgroup");
+}
+
+TEST(DomElement, SetAttributeContentEditable) {
+    Document doc;
+    auto el = doc.create_element("div");
+    el->set_attribute("contenteditable", "true");
+    EXPECT_EQ(el->get_attribute("contenteditable"), "true");
+}
+
+TEST(DomElement, SetAttributeDraggable) {
+    Document doc;
+    auto el = doc.create_element("div");
+    el->set_attribute("draggable", "true");
+    EXPECT_EQ(el->get_attribute("draggable"), "true");
+}
+
+TEST(DomElement, ChildCountTwenty) {
+    Document doc;
+    auto parent = doc.create_element("div");
+    for (int i = 0; i < 20; ++i) {
+        parent->append_child(doc.create_element("span"));
+    }
+    EXPECT_EQ(parent->child_count(), 20u);
+}
+
+TEST(DomClassList, ClassListAddEight) {
+    Document doc;
+    auto el = doc.create_element("div");
+    for (int i = 0; i < 8; ++i) {
+        el->class_list().add("cls" + std::to_string(i));
+    }
+    EXPECT_EQ(el->class_list().length(), 8u);
+}
+
+TEST(DomElement, RemoveAttributeHref) {
+    Document doc;
+    auto el = doc.create_element("a");
+    el->set_attribute("href", "https://example.com");
+    el->remove_attribute("href");
+    EXPECT_FALSE(el->has_attribute("href"));
+}
+
+TEST(DomElement, HasAttributeAutofocus) {
+    Document doc;
+    auto el = doc.create_element("input");
+    el->set_attribute("autofocus", "");
+    EXPECT_TRUE(el->has_attribute("autofocus"));
+}

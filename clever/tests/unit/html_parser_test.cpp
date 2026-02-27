@@ -6863,3 +6863,86 @@ TEST(TreeBuilder, AutofocusInputField) {
     }
     EXPECT_TRUE(has_autofocus && has_placeholder);
 }
+
+// ============================================================================
+// Cycle 1207: Additional HTML parser tests
+// ============================================================================
+
+TEST(TreeBuilder, TimeElementWithDatetimeV2) {
+    auto doc = clever::html::parse("<time datetime=\"2026-02-27T15:30:00Z\">February 27, 2026</time>");
+    auto* el = doc->find_element("time");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "time");
+    bool has_datetime = false;
+    for (const auto& attr : el->attributes) {
+        if (attr.name == "datetime" && attr.value == "2026-02-27T15:30:00Z") has_datetime = true;
+    }
+    EXPECT_TRUE(has_datetime);
+}
+
+TEST(TreeBuilder, MarkHighlightElement) {
+    auto doc = clever::html::parse("<p>This text contains <mark>highlighted content</mark> within.</p>");
+    auto* el = doc->find_element("mark");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "mark");
+}
+
+TEST(TreeBuilder, SmallTextElement) {
+    auto doc = clever::html::parse("<p>Regular text <small>with smaller text</small> at end.</p>");
+    auto* el = doc->find_element("small");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "small");
+}
+
+TEST(TreeBuilder, OutputFormElement) {
+    auto doc = clever::html::parse("<output name=\"result\" form=\"calc\">0</output>");
+    auto* el = doc->find_element("output");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "output");
+    bool has_name = false, has_form = false;
+    for (const auto& attr : el->attributes) {
+        if (attr.name == "name" && attr.value == "result") has_name = true;
+        if (attr.name == "form" && attr.value == "calc") has_form = true;
+    }
+    EXPECT_TRUE(has_name && has_form);
+}
+
+TEST(TreeBuilder, MenuElementStructure) {
+    auto doc = clever::html::parse("<menu><li><button>Option 1</button></li><li><button>Option 2</button></li></menu>");
+    auto* el = doc->find_element("menu");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "menu");
+    auto* btn = doc->find_element("button");
+    ASSERT_NE(btn, nullptr);
+    EXPECT_EQ(btn->tag_name, "button");
+}
+
+TEST(TreeBuilder, SectionWithHeadingV2) {
+    auto doc = clever::html::parse("<section><h2>Chapter Title</h2><p>Content goes here.</p></section>");
+    auto* el = doc->find_element("section");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "section");
+    auto* h2 = doc->find_element("h2");
+    ASSERT_NE(h2, nullptr);
+    EXPECT_EQ(h2->tag_name, "h2");
+}
+
+TEST(TreeBuilder, HeaderFooterLayout) {
+    auto doc = clever::html::parse("<header><h1>Site Title</h1><nav>Menu</nav></header><footer><p>Copyright 2026</p></footer>");
+    auto* hdr = doc->find_element("header");
+    ASSERT_NE(hdr, nullptr);
+    EXPECT_EQ(hdr->tag_name, "header");
+    auto* ftr = doc->find_element("footer");
+    ASSERT_NE(ftr, nullptr);
+    EXPECT_EQ(ftr->tag_name, "footer");
+}
+
+TEST(TreeBuilder, DetailsSummaryInteractive) {
+    auto doc = clever::html::parse("<details><summary>Click to expand</summary><p>Hidden content here</p></details>");
+    auto* det = doc->find_element("details");
+    ASSERT_NE(det, nullptr);
+    EXPECT_EQ(det->tag_name, "details");
+    auto* sum = doc->find_element("summary");
+    ASSERT_NE(sum, nullptr);
+    EXPECT_EQ(sum->tag_name, "summary");
+}

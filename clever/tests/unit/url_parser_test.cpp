@@ -4554,3 +4554,79 @@ TEST(URLParser, AllSpecialCharsPercentHandlingV2) {
     EXPECT_EQ(url->path, "/data/mixed");
     EXPECT_NE(url->query.find("q=test"), std::string::npos);
 }
+
+// Cycle 1204: Test simple port parsing and preservation
+TEST(URLParser, PortPreservation11211V3) {
+    auto url = parse("http://memcached.local:11211/cache");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "http");
+    EXPECT_EQ(url->host, "memcached.local");
+    EXPECT_EQ(url->port, 11211);
+    EXPECT_EQ(url->path, "/cache");
+}
+
+// Cycle 1204: Test path with multiple trailing segments
+TEST(URLParser, DeepPathSegmentsV3) {
+    auto url = parse("https://api.service.com/v1/users/profile/settings");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "api.service.com");
+    EXPECT_EQ(url->path, "/v1/users/profile/settings");
+}
+
+// Cycle 1204: Test query with numeric values and dashes
+TEST(URLParser, QueryNumericWithDashesV3) {
+    auto url = parse("https://example.org/search?id=42&ref=item-001");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->host, "example.org");
+    EXPECT_EQ(url->path, "/search");
+    EXPECT_NE(url->query.find("id=42"), std::string::npos);
+    EXPECT_NE(url->query.find("ref=item-001"), std::string::npos);
+}
+
+// Cycle 1204: Test fragment with underscores and hyphens
+TEST(URLParser, FragmentWithMixedCharacterV3) {
+    auto url = parse("https://docs.example.net/guide#section-2_subsection");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "docs.example.net");
+    EXPECT_EQ(url->fragment, "section-2_subsection");
+}
+
+// Cycle 1204: Test host with numeric IP and non-standard port
+TEST(URLParser, NumericHostWithCustomPortV3) {
+    auto url = parse("http://192.168.1.1:8080/admin");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "http");
+    EXPECT_EQ(url->host, "192.168.1.1");
+    EXPECT_EQ(url->port, 8080);
+    EXPECT_EQ(url->path, "/admin");
+}
+
+// Cycle 1204: Test complex query with dots and equals
+TEST(URLParser, QueryWithDotsAndEqualsV3) {
+    auto url = parse("https://example.com/api?filter.status=active&limit=10");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->path, "/api");
+    EXPECT_NE(url->query.find("filter.status"), std::string::npos);
+    EXPECT_NE(url->query.find("limit=10"), std::string::npos);
+}
+
+// Cycle 1204: Test path with dot segments and query
+TEST(URLParser, PathWithDotSegmentAndQueryV3) {
+    auto url = parse("https://cdn.example.io/assets/../images/icon.png?v=2");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "cdn.example.io");
+    EXPECT_NE(url->query.find("v=2"), std::string::npos);
+}
+
+// Cycle 1204: Test subdomain with path and port
+TEST(URLParser, SubdomainWithPortAndPathV3) {
+    auto url = parse("https://staging.api.example.com:9443/data/export");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "staging.api.example.com");
+    EXPECT_EQ(url->port, 9443);
+    EXPECT_EQ(url->path, "/data/export");
+}

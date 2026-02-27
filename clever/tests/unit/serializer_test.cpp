@@ -5876,3 +5876,59 @@ TEST(SerializerTest, BoolAlternatingSequenceV11) {
     EXPECT_FALSE(d.read_bool());
     EXPECT_TRUE(d.read_bool());
 }
+
+TEST(SerializerTest, U8MidRangeV12) {
+    Serializer s;
+    s.write_u8(128);
+    Deserializer d(s.data());
+    EXPECT_EQ(128, d.read_u8());
+}
+
+TEST(SerializerTest, U16BoundaryV12) {
+    Serializer s;
+    s.write_u16(65535);
+    Deserializer d(s.data());
+    EXPECT_EQ(65535, d.read_u16());
+}
+
+TEST(SerializerTest, U32MidRangeV12) {
+    Serializer s;
+    s.write_u32(2147483648U);
+    Deserializer d(s.data());
+    EXPECT_EQ(2147483648U, d.read_u32());
+}
+
+TEST(SerializerTest, I32NegativeSmallV12) {
+    Serializer s;
+    s.write_i32(-256);
+    Deserializer d(s.data());
+    EXPECT_EQ(-256, d.read_i32());
+}
+
+TEST(SerializerTest, I64PositiveLargeV12) {
+    Serializer s;
+    s.write_i64(9223372036854775807LL);
+    Deserializer d(s.data());
+    EXPECT_EQ(9223372036854775807LL, d.read_i64());
+}
+
+TEST(SerializerTest, F64SmallValueV12) {
+    Serializer s;
+    s.write_f64(0.00001);
+    Deserializer d(s.data());
+    EXPECT_DOUBLE_EQ(0.00001, d.read_f64());
+}
+
+TEST(SerializerTest, StringEmptyV12) {
+    Serializer s;
+    s.write_string("");
+    Deserializer d(s.data());
+    EXPECT_EQ("", d.read_string());
+}
+
+TEST(SerializerTest, BoolSingleTrueV12) {
+    Serializer s;
+    s.write_bool(true);
+    Deserializer d(s.data());
+    EXPECT_TRUE(d.read_bool());
+}

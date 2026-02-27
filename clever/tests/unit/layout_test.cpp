@@ -8635,3 +8635,45 @@ TEST(LayoutNodeProps, SvgUseXDefaultZero) {
     LayoutNode n;
     EXPECT_FLOAT_EQ(n.svg_use_x, 0.0f);
 }
+
+// Cycle 1208: Layout node property defaults for SVG markers, font palette, and CSS properties
+
+TEST(LayoutNodeProps, MarkerStartDefaultsEmpty) {
+    LayoutNode n;
+    EXPECT_EQ(n.marker_start, "");
+}
+
+TEST(LayoutNodeProps, MarkerMidDefaultsEmpty) {
+    LayoutNode n;
+    EXPECT_EQ(n.marker_mid, "");
+}
+
+TEST(LayoutNodeProps, MarkerEndDefaultsEmpty) {
+    LayoutNode n;
+    EXPECT_EQ(n.marker_end, "");
+}
+
+TEST(LayoutNodeProps, MarkerShorthandDefaultsEmpty) {
+    LayoutNode n;
+    EXPECT_EQ(n.marker_shorthand, "");
+}
+
+TEST(LayoutNodeProps, FontPaletteDefaultsNormal) {
+    LayoutNode n;
+    EXPECT_EQ(n.font_palette, "normal");
+}
+
+TEST(LayoutNodeProps, OffsetDefaultsEmpty) {
+    LayoutNode n;
+    EXPECT_EQ(n.offset, "");
+}
+
+TEST(LayoutNodeProps, CssAllDefaultsEmpty) {
+    LayoutNode n;
+    EXPECT_EQ(n.css_all, "");
+}
+
+TEST(LayoutNodeProps, AnimationRangeDefaultsNormal) {
+    LayoutNode n;
+    EXPECT_EQ(n.animation_range, "normal");
+}

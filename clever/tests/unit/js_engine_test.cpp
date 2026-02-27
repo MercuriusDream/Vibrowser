@@ -18664,3 +18664,53 @@ TEST(JSEngine, ClosureCaptureVariableCycle1200) {
     auto result = engine.evaluate("var outer = 50; function makeFunc() { var inner = 30; return function() { return outer + inner; }; } makeFunc()().toString()");
     EXPECT_EQ(result, "80");
 }
+
+// --- Cycle 1209: 8 JS tests ---
+
+TEST(JSEngine, SpreadOperatorObjectV2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var obj1 = { a: 1, b: 2 }; var obj2 = { ...obj1, c: 3 }; obj2.a.toString()");
+    EXPECT_EQ(result, "1");
+}
+
+TEST(JSEngine, DestructuringNestedArrayV2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var [a, [b, c]] = [1, [2, 3]]; (a + b + c).toString()");
+    EXPECT_EQ(result, "6");
+}
+
+TEST(JSEngine, ArrowFunctionChainCycle1209) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("[1, 2, 3, 4].map(x => x * 2).filter(x => x > 3).reduce((a, b) => a + b).toString()");
+    EXPECT_EQ(result, "18");
+}
+
+TEST(JSEngine, TemplateLiteralInterpolationCycle1209) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var name = 'World'; var msg = `Hello, ${name}!`; msg");
+    EXPECT_EQ(result, "Hello, World!");
+}
+
+TEST(JSEngine, PromiseChainV4) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("typeof Promise.resolve(42).then(x => x * 2)");
+    EXPECT_EQ(result, "object");
+}
+
+TEST(JSEngine, DefaultParameterComplexCycle1209) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("function calc(a = 5, b = a * 2) { return a + b; } calc().toString()");
+    EXPECT_EQ(result, "15");
+}
+
+TEST(JSEngine, SymbolWellKnownIteratorV4) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var obj = { [Symbol.iterator]: function* () { yield 10; yield 20; } }; [...obj].join(',')");
+    EXPECT_EQ(result, "10,20");
+}
+
+TEST(JSEngine, ProxyHandlerGetSetCycle1209) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var target = { x: 5 }; var proxy = new Proxy(target, { get: (t, p) => t[p] * 2, set: (t, p, v) => { t[p] = v; return true; } }); proxy.x.toString()");
+    EXPECT_EQ(result, "10");
+}

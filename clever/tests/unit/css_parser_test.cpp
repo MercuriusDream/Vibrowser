@@ -7337,3 +7337,77 @@ TEST_F(CSSStylesheetTest, AlignItemsV12) {
         if (d.property == "align-items") found = true;
     EXPECT_TRUE(found);
 }
+
+// --- Cycle 1206: 8 CSS tests ---
+
+TEST_F(CSSStylesheetTest, FlexDirectionV13) {
+    auto sheet = parse_stylesheet(".flex { flex-direction: column; }");
+    ASSERT_FALSE(sheet.rules.empty());
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "flex-direction") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, FlexWrapV13) {
+    auto sheet = parse_stylesheet(".flex { flex-wrap: wrap; }");
+    ASSERT_FALSE(sheet.rules.empty());
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "flex-wrap") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, AlignSelfV13) {
+    auto sheet = parse_stylesheet(".item { align-self: flex-end; }");
+    ASSERT_FALSE(sheet.rules.empty());
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "align-self") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, JustifySelfV13) {
+    auto sheet = parse_stylesheet(".item { justify-self: start; }");
+    ASSERT_FALSE(sheet.rules.empty());
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "justify-self") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, TransformV13) {
+    auto sheet = parse_stylesheet(".box { transform: rotate(45deg); }");
+    ASSERT_FALSE(sheet.rules.empty());
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "transform") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, TransformOriginV13) {
+    auto sheet = parse_stylesheet(".box { transform-origin: center top; }");
+    ASSERT_FALSE(sheet.rules.empty());
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "transform-origin") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, PerspectiveV13) {
+    auto sheet = parse_stylesheet(".scene { perspective: 1000px; }");
+    ASSERT_FALSE(sheet.rules.empty());
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "perspective") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, BackfaceVisibilityV13) {
+    auto sheet = parse_stylesheet(".card { backface-visibility: hidden; }");
+    ASSERT_FALSE(sheet.rules.empty());
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "backface-visibility") found = true;
+    EXPECT_TRUE(found);
+}

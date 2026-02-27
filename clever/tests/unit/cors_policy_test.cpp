@@ -3035,3 +3035,39 @@ TEST(CORSPolicyTest, CorsAllowsResponseWithACAOCredentialsV21) {
     resp_headers.set("Access-Control-Allow-Credentials", "true");
     EXPECT_TRUE(cors_allows_response("https://webapp.domain.org", "https://backend.domain.org/api/user", resp_headers, true));
 }
+
+TEST(CORSPolicyTest, NotEnforceableHttpsExplicit443PortV22) {
+    EXPECT_FALSE(has_enforceable_document_origin("https://example.com:443"));
+}
+
+TEST(CORSPolicyTest, EnforceableHttpsCustomPort8443V22) {
+    EXPECT_TRUE(has_enforceable_document_origin("https://example.com:8443"));
+}
+
+TEST(CORSPolicyTest, NotEnforceableDataUrlSchemeV22) {
+    EXPECT_FALSE(has_enforceable_document_origin("data:text/html,<html></html>"));
+}
+
+TEST(CORSPolicyTest, CorsEligibleHttpWithPortV22) {
+    EXPECT_TRUE(is_cors_eligible_request_url("http://api.example.com:8080/data"));
+}
+
+TEST(CORSPolicyTest, SameOriginHttpsExactMatchV22) {
+    EXPECT_FALSE(is_cross_origin("https://app.example.com", "https://app.example.com/api"));
+}
+
+TEST(CORSPolicyTest, ShouldAttachOriginHeaderHttpToHttpsV22) {
+    EXPECT_TRUE(should_attach_origin_header("http://web.example.com", "https://api.example.com/endpoint"));
+}
+
+TEST(CORSPolicyTest, CorsAllowsResponseACAOSpecificOriginV22) {
+    clever::net::HeaderMap resp_headers;
+    resp_headers.set("Access-Control-Allow-Origin", "https://client.example.org");
+    resp_headers.set("Access-Control-Allow-Credentials", "false");
+    EXPECT_TRUE(cors_allows_response("https://client.example.org", "https://server.example.org/api", resp_headers, false));
+}
+
+TEST(CORSPolicyTest, CorsAllowsResponseNoACAOHeaderV22) {
+    clever::net::HeaderMap resp_headers;
+    EXPECT_FALSE(cors_allows_response("https://origin.example.com", "https://other.example.com/data", resp_headers, false));
+}
