@@ -6536,3 +6536,44 @@ TEST(LayoutNodeProps, SvgTextDyDefaultsToZero) {
     auto node = make_block("text");
     EXPECT_FLOAT_EQ(node->svg_text_dy, 0.0f);
 }
+
+// Cycle 763 — SVG fill/clip/rendering and stop/flood field defaults
+TEST(LayoutNodeProps, FillRuleDefaultsToZero) {
+    auto node = make_block("path");
+    EXPECT_EQ(node->fill_rule, 0);
+}
+
+TEST(LayoutNodeProps, ClipRuleDefaultsToZero) {
+    auto node = make_block("clipPath");
+    EXPECT_EQ(node->clip_rule, 0);
+}
+
+TEST(LayoutNodeProps, ShapeRenderingDefaultsToZero) {
+    auto node = make_block("circle");
+    EXPECT_EQ(node->shape_rendering, 0);
+}
+
+TEST(LayoutNodeProps, VectorEffectDefaultsToZero) {
+    auto node = make_block("rect");
+    EXPECT_EQ(node->vector_effect, 0);
+}
+
+TEST(LayoutNodeProps, StopOpacityDefaultsToOne) {
+    auto node = make_block("stop");
+    EXPECT_FLOAT_EQ(node->stop_opacity, 1.0f);
+}
+
+TEST(LayoutNodeProps, FloodOpacityDefaultsToOne) {
+    auto node = make_block("feFlood");
+    EXPECT_FLOAT_EQ(node->flood_opacity, 1.0f);
+}
+
+TEST(LayoutNodeProps, VisibilityCollapseDefaultsFalse) {
+    auto node = make_block("tr");
+    EXPECT_FALSE(node->visibility_collapse);
+}
+
+TEST(LayoutNodeProps, IsCanvasDefaultsFalseV2) {
+    auto node = make_block("canvas");
+    EXPECT_FALSE(node->is_canvas);
+}
