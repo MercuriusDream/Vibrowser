@@ -4793,3 +4793,56 @@ TEST(DomComment, CommentNodeTypeIsCommentV3) {
     auto comment = doc.create_comment("some comment");
     EXPECT_EQ(comment->node_type(), NodeType::Comment);
 }
+
+TEST(DomNode, ForEachChildCountsFour) {
+    Document doc;
+    auto div = doc.create_element("div");
+    div->append_child(doc.create_element("p"));
+    div->append_child(doc.create_element("p"));
+    div->append_child(doc.create_element("p"));
+    div->append_child(doc.create_element("p"));
+    int count = 0;
+    div->for_each_child([&](const Node&) { ++count; });
+    EXPECT_EQ(count, 4);
+}
+
+TEST(DomDocument, DocumentBodyNullWhenEmpty) {
+    Document doc;
+    EXPECT_EQ(doc.body(), nullptr);
+}
+
+TEST(DomDocument, DocumentHeadNullWhenEmpty) {
+    Document doc;
+    EXPECT_EQ(doc.head(), nullptr);
+}
+
+TEST(DomDocument, DocumentNodeTypeIsDocumentV3) {
+    Document doc;
+    EXPECT_EQ(doc.node_type(), NodeType::Document);
+}
+
+TEST(DomDocument, DocumentChildCountZeroInitially) {
+    Document doc;
+    EXPECT_EQ(doc.child_count(), 0u);
+}
+
+TEST(DomElement, ElementAttributesEmptyInitially) {
+    Document doc;
+    auto div = doc.create_element("div");
+    EXPECT_TRUE(div->attributes().empty());
+}
+
+TEST(DomElement, ElementHasAttrFalseBeforeSet) {
+    Document doc;
+    auto span = doc.create_element("span");
+    EXPECT_FALSE(span->has_attribute("class"));
+}
+
+TEST(DomElement, ElementRemoveAttrReducesCount) {
+    Document doc;
+    auto el = doc.create_element("a");
+    el->set_attribute("href", "http://example.com");
+    el->set_attribute("target", "_blank");
+    el->remove_attribute("href");
+    EXPECT_EQ(el->attributes().size(), 1u);
+}
