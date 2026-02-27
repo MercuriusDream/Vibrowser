@@ -27784,3 +27784,154 @@ TEST(JsEngineTest, ReflectOwnKeysAndDefinePropertyV100) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "x,y|42|true|200|false|42|true");
 }
+
+// ============================================================================
+// V101 Tests
+// ============================================================================
+
+// Test: for...of iteration over a Map with destructured entries
+TEST(JsEngineTest, ForOfMapDestructuringV101) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var m = new Map();
+        m.set("a", 1);
+        m.set("b", 2);
+        m.set("c", 3);
+        var parts = [];
+        for (var [k, v] of m) {
+            parts.push(k + "=" + v);
+        }
+        parts.join(",");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "a=1,b=2,c=3");
+}
+
+// Test: computed property names in object literals
+TEST(JsEngineTest, ComputedPropertyNamesV101) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var prefix = "item";
+        var obj = {
+            [prefix + "_one"]: 10,
+            [prefix + "_two"]: 20,
+            [Symbol.toPrimitive]: function(hint) { return "custom"; }
+        };
+        obj.item_one + "|" + obj.item_two + "|" + (obj + "");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "10|20|custom");
+}
+
+// Test: Array.from with a mapping function and Set deduplication
+TEST(JsEngineTest, ArrayFromWithMapFunctionV101) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var s = new Set([3, 1, 4, 1, 5, 9, 2, 6, 5]);
+        var doubled = Array.from(s, function(x) { return x * 2; });
+        doubled.sort(function(a, b) { return a - b; }).join(",");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "2,4,6,8,10,12,18");
+}
+
+// Test: class inheritance with super calls and method override
+TEST(JsEngineTest, ClassInheritanceSuperCallV101) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        class Animal {
+            constructor(name) { this.name = name; }
+            speak() { return this.name + " makes a noise"; }
+        }
+        class Dog extends Animal {
+            constructor(name, breed) {
+                super(name);
+                this.breed = breed;
+            }
+            speak() { return this.name + " barks"; }
+            info() { return super.speak() + " but " + this.speak() + " [" + this.breed + "]"; }
+        }
+        var d = new Dog("Rex", "Labrador");
+        var isDog = d instanceof Dog;
+        var isAnimal = d instanceof Animal;
+        d.info() + "|" + isDog + "|" + isAnimal;
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "Rex makes a noise but Rex barks [Labrador]|true|true");
+}
+
+// Test: TypedArray operations (Uint8Array) with subarray and reduce
+TEST(JsEngineTest, TypedArrayUint8OperationsV101) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var buf = new ArrayBuffer(8);
+        var view = new Uint8Array(buf);
+        for (var i = 0; i < 8; i++) view[i] = (i + 1) * 10;
+        var sub = view.subarray(2, 6);
+        var sum = sub.reduce(function(acc, val) { return acc + val; }, 0);
+        var len = sub.length;
+        var first = sub[0];
+        var last = sub[sub.length - 1];
+        sum + "|" + len + "|" + first + "|" + last;
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "180|4|30|60");
+}
+
+// Test: RegExp named capture groups and matchAll
+TEST(JsEngineTest, RegExpNamedCaptureGroupsV101) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var re = /(?<year>\d{4})-(?<month>\d{2})-(?<day>\d{2})/g;
+        var str = "Dates: 2025-03-15 and 2026-12-01";
+        var matches = [];
+        var m;
+        while ((m = re.exec(str)) !== null) {
+            matches.push(m.groups.year + "/" + m.groups.month + "/" + m.groups.day);
+        }
+        matches.join(", ");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "2025/03/15, 2026/12/01");
+}
+
+// Test: generator function with return value and done flag tracking
+TEST(JsEngineTest, GeneratorReturnAndDoneStateV101) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        function* countdown(start) {
+            for (var i = start; i > 0; i--) {
+                yield i;
+            }
+            return "liftoff";
+        }
+        var gen = countdown(3);
+        var steps = [];
+        var r;
+        do {
+            r = gen.next();
+            steps.push(r.value + ":" + r.done);
+        } while (!r.done);
+        steps.join(",");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "3:false,2:false,1:false,liftoff:true");
+}
+
+// Test: Object.entries, Object.fromEntries roundtrip with transformation
+TEST(JsEngineTest, ObjectEntriesFromEntriesRoundtripV101) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var original = { x: 1, y: 2, z: 3 };
+        var entries = Object.entries(original);
+        var transformed = entries.map(function(pair) {
+            return [pair[0].toUpperCase(), pair[1] * 100];
+        });
+        var result = Object.fromEntries(transformed);
+        var keys = Object.keys(result).sort().join(",");
+        var vals = Object.values(result).sort(function(a, b) { return a - b; }).join(",");
+        keys + "|" + vals;
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "X,Y,Z|100,200,300");
+}

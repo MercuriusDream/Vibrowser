@@ -18621,3 +18621,248 @@ TEST(LayoutTest, SpecifiedWidthSmallerThanViewportIsRespectedV100) {
     EXPECT_FLOAT_EQ(root->children[0]->geometry.width, 320.0f);
     EXPECT_FLOAT_EQ(root->geometry.height, 240.0f);
 }
+
+// ---------- V101 Tests ----------
+
+// Test that flex row distributes flex_grow proportionally among children
+TEST(LayoutTest, FlexRowGrowDistributionProportionalV101) {
+    auto root = make_flex("div");
+    root->flex_direction = 0; // row
+    root->specified_width = 600.0f;
+    root->specified_height = 100.0f;
+
+    auto child_a = make_block("div");
+    child_a->flex_grow = 1.0f;
+    child_a->specified_height = 50.0f;
+
+    auto child_b = make_block("div");
+    child_b->flex_grow = 2.0f;
+    child_b->specified_height = 50.0f;
+
+    auto* pa = child_a.get();
+    auto* pb = child_b.get();
+    root->append_child(std::move(child_a));
+    root->append_child(std::move(child_b));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // Child B should get roughly twice the width of child A
+    float wa = pa->geometry.width;
+    float wb = pb->geometry.width;
+    EXPECT_GT(wa, 0.0f);
+    EXPECT_GT(wb, 0.0f);
+    EXPECT_NEAR(wb / wa, 2.0f, 0.5f);
+    EXPECT_NEAR(wa + wb, 600.0f, 2.0f);
+}
+
+// Test that nested block children stack vertically and accumulate height
+TEST(LayoutTest, NestedBlockChildrenStackVerticallyV101) {
+    auto root = make_block("div");
+    root->specified_width = 400.0f;
+
+    auto c1 = make_block("div");
+    c1->specified_height = 30.0f;
+    auto c2 = make_block("div");
+    c2->specified_height = 50.0f;
+    auto c3 = make_block("div");
+    c3->specified_height = 20.0f;
+
+    auto* p1 = c1.get();
+    auto* p2 = c2.get();
+    auto* p3 = c3.get();
+
+    root->append_child(std::move(c1));
+    root->append_child(std::move(c2));
+    root->append_child(std::move(c3));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // All children should fill parent width
+    EXPECT_FLOAT_EQ(p1->geometry.width, 400.0f);
+    EXPECT_FLOAT_EQ(p2->geometry.width, 400.0f);
+    EXPECT_FLOAT_EQ(p3->geometry.width, 400.0f);
+
+    // Children should be stacked: y of c2 >= y of c1 + height of c1
+    EXPECT_GE(p2->geometry.y, p1->geometry.y + p1->geometry.height - 1.0f);
+    EXPECT_GE(p3->geometry.y, p2->geometry.y + p2->geometry.height - 1.0f);
+
+    // Root height should encompass all children
+    EXPECT_GE(root->geometry.height, 30.0f + 50.0f + 20.0f - 1.0f);
+}
+
+// Test that margin adds spacing around a block element
+TEST(LayoutTest, MarginAddsSpacingAroundBlockV101) {
+    auto root = make_block("div");
+    root->specified_width = 500.0f;
+
+    auto child = make_block("div");
+    child->specified_height = 80.0f;
+    child->geometry.margin.top = 20.0f;
+    child->geometry.margin.left = 30.0f;
+    child->geometry.margin.right = 30.0f;
+
+    auto* pc = child.get();
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // Child width = parent_width - margin_left - margin_right = 500 - 30 - 30 = 440
+    EXPECT_NEAR(pc->geometry.width, 440.0f, 2.0f);
+    // Child should be offset by margin
+    EXPECT_GE(pc->geometry.y, 19.0f); // at least margin.top
+}
+
+// Test flex column direction stacks children vertically
+TEST(LayoutTest, FlexColumnDirectionStacksChildrenVerticallyV101) {
+    auto root = make_flex("div");
+    root->flex_direction = 2; // column
+    root->specified_width = 300.0f;
+    root->specified_height = 400.0f;
+
+    auto c1 = make_block("div");
+    c1->specified_height = 60.0f;
+    auto c2 = make_block("div");
+    c2->specified_height = 80.0f;
+
+    auto* p1 = c1.get();
+    auto* p2 = c2.get();
+    root->append_child(std::move(c1));
+    root->append_child(std::move(c2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // In column flex, children stack vertically
+    EXPECT_GE(p2->geometry.y, p1->geometry.y + p1->geometry.height - 1.0f);
+    // Both children should have width matching or near parent width
+    EXPECT_NEAR(p1->geometry.width, 300.0f, 2.0f);
+    EXPECT_NEAR(p2->geometry.width, 300.0f, 2.0f);
+}
+
+// Test that z_index is stored and retrievable on layout nodes
+TEST(LayoutTest, ZIndexStoredOnLayoutNodeV101) {
+    auto root = make_block("div");
+    root->specified_width = 200.0f;
+    root->specified_height = 200.0f;
+    root->z_index = 10;
+
+    auto child = make_block("div");
+    child->specified_height = 50.0f;
+    child->z_index = 5;
+
+    auto* pc = child.get();
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_EQ(root->z_index, 10);
+    EXPECT_EQ(pc->z_index, 5);
+    // Layout should still work normally
+    EXPECT_FLOAT_EQ(root->geometry.width, 200.0f);
+    EXPECT_FLOAT_EQ(pc->geometry.width, 200.0f);
+}
+
+// Test opacity property is preserved through layout computation
+TEST(LayoutTest, OpacityPreservedAfterLayoutV101) {
+    auto root = make_block("div");
+    root->specified_width = 300.0f;
+    root->specified_height = 150.0f;
+    root->opacity = 0.5f;
+
+    auto child = make_block("div");
+    child->specified_height = 40.0f;
+    child->opacity = 0.75f;
+
+    auto* pc = child.get();
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(root->opacity, 0.5f);
+    EXPECT_FLOAT_EQ(pc->opacity, 0.75f);
+    // Child fills parent width
+    EXPECT_FLOAT_EQ(pc->geometry.width, 300.0f);
+}
+
+// Test border sizing adds to total box dimensions via margin_box_width
+TEST(LayoutTest, BorderBoxDimensionsViaGeometryHelpersV101) {
+    auto root = make_block("div");
+    root->specified_width = 200.0f;
+    root->specified_height = 100.0f;
+    root->geometry.border.top = 5.0f;
+    root->geometry.border.bottom = 5.0f;
+    root->geometry.border.left = 10.0f;
+    root->geometry.border.right = 10.0f;
+    root->geometry.padding.top = 8.0f;
+    root->geometry.padding.bottom = 8.0f;
+    root->geometry.padding.left = 12.0f;
+    root->geometry.padding.right = 12.0f;
+    root->geometry.margin.top = 4.0f;
+    root->geometry.margin.left = 6.0f;
+    root->geometry.margin.right = 6.0f;
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    float bw = root->geometry.border_box_width();
+    // border_box_width = border.left + padding.left + width + padding.right + border.right
+    EXPECT_NEAR(bw, 10.0f + 12.0f + root->geometry.width + 12.0f + 10.0f, 1.0f);
+
+    float bh = root->geometry.border_box_height();
+    // border_box_height = border.top + padding.top + height + padding.bottom + border.bottom
+    EXPECT_NEAR(bh, 5.0f + 8.0f + root->geometry.height + 8.0f + 5.0f, 1.0f);
+
+    float mbw = root->geometry.margin_box_width();
+    // margin_box_width = margin.left + border_box_width + margin.right
+    EXPECT_NEAR(mbw, 6.0f + bw + 6.0f, 1.0f);
+}
+
+// Test flex row with gap spacing between children
+TEST(LayoutTest, FlexRowWithGapSpacingBetweenChildrenV101) {
+    auto root = make_flex("div");
+    root->flex_direction = 0; // row
+    root->specified_width = 500.0f;
+    root->specified_height = 80.0f;
+    root->gap = 20.0f;           // row-gap
+    root->column_gap_val = 20.0f; // column-gap (gap shorthand sets both)
+
+    auto c1 = make_block("div");
+    c1->specified_width = 100.0f;
+    c1->specified_height = 40.0f;
+
+    auto c2 = make_block("div");
+    c2->specified_width = 100.0f;
+    c2->specified_height = 40.0f;
+
+    auto c3 = make_block("div");
+    c3->specified_width = 100.0f;
+    c3->specified_height = 40.0f;
+
+    auto* p1 = c1.get();
+    auto* p2 = c2.get();
+    auto* p3 = c3.get();
+
+    root->append_child(std::move(c1));
+    root->append_child(std::move(c2));
+    root->append_child(std::move(c3));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // In a row, children should have horizontal spacing between them
+    float gap12 = p2->geometry.x - (p1->geometry.x + p1->geometry.width);
+    float gap23 = p3->geometry.x - (p2->geometry.x + p2->geometry.width);
+
+    // Gaps should be approximately the gap value (20px)
+    EXPECT_NEAR(gap12, 20.0f, 5.0f);
+    EXPECT_NEAR(gap23, 20.0f, 5.0f);
+
+    // Children should be positioned left to right
+    EXPECT_LT(p1->geometry.x, p2->geometry.x);
+    EXPECT_LT(p2->geometry.x, p3->geometry.x);
+}

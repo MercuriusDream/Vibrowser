@@ -17113,3 +17113,163 @@ TEST(HttpClientTest, ParseUrlHttpsQueryNonStandardPortV100) {
     EXPECT_FALSE(req.query.empty());
     EXPECT_TRUE(req.query.find("limit=50") != std::string::npos);
 }
+
+// ===========================================================================
+// V101 Tests
+// ===========================================================================
+
+// 1. Request serialize GET with multiple custom headers all lowercased
+TEST(HttpClientTest, SerializeGetMultipleCustomHeadersAllLowercaseV101) {
+    Request req;
+    req.method = Method::GET;
+    req.host = "cdn.example.com";
+    req.port = 80;
+    req.path = "/assets/style.css";
+
+    req.headers.set("X-Request-Id", "abc-123");
+    req.headers.set("Accept-Language", "en-US");
+    req.headers.set("Cache-Control", "no-cache");
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    // Request line correct
+    EXPECT_TRUE(result.find("GET /assets/style.css HTTP/1.1\r\n") != std::string::npos);
+    // Host header present, port 80 omitted
+    EXPECT_TRUE(result.find("Host: cdn.example.com\r\n") != std::string::npos);
+    EXPECT_TRUE(result.find(":80") == std::string::npos);
+    // Custom headers should be lowercase
+    EXPECT_TRUE(result.find("x-request-id: abc-123\r\n") != std::string::npos);
+    EXPECT_TRUE(result.find("accept-language: en-US\r\n") != std::string::npos);
+    EXPECT_TRUE(result.find("cache-control: no-cache\r\n") != std::string::npos);
+}
+
+// 2. Response::parse handles 302 redirect with Location header
+TEST(HttpClientTest, ResponseParse302RedirectWithLocationV101) {
+    std::string raw =
+        "HTTP/1.1 302 Found\r\n"
+        "Location: https://www.example.com/new-page\r\n"
+        "Content-Length: 0\r\n"
+        "\r\n";
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 302);
+    EXPECT_EQ(resp->status_text, "Found");
+    EXPECT_TRUE(resp->body_as_string().empty());
+    EXPECT_EQ(resp->headers.get("location").value(), "https://www.example.com/new-page");
+}
+
+// 3. HeaderMap iteration covers all entries including appended duplicates
+TEST(HttpClientTest, HeaderMapIterationCoversAllEntriesV101) {
+    HeaderMap map;
+    map.set("Content-Type", "text/html");
+    map.append("Accept", "text/html");
+    map.append("Accept", "application/json");
+    map.set("X-Custom", "value1");
+
+    // Count entries via iteration
+    int count = 0;
+    bool found_content_type = false;
+    int accept_count = 0;
+    for (auto it = map.begin(); it != map.end(); ++it) {
+        count++;
+        if (it->first == "content-type") found_content_type = true;
+        if (it->first == "accept") accept_count++;
+    }
+
+    EXPECT_EQ(count, 4);  // 1 content-type + 2 accept + 1 x-custom
+    EXPECT_TRUE(found_content_type);
+    EXPECT_EQ(accept_count, 2);
+}
+
+// 4. CookieJar SameSite=Lax allows top-level GET navigation cross-site
+TEST(HttpClientTest, CookieJarSameSiteLaxAllowsTopLevelNavV101) {
+    CookieJar jar;
+    jar.set_from_header("token=abc; Path=/; SameSite=Lax", "example.com");
+    EXPECT_EQ(jar.size(), 1u);
+
+    // Top-level navigation (is_same_site=false, is_top_level_nav=true) should allow Lax cookie
+    std::string cookies = jar.get_cookie_header("example.com", "/", false, false, true);
+    EXPECT_TRUE(cookies.find("token=abc") != std::string::npos);
+
+    // Cross-site sub-request (is_same_site=false, is_top_level_nav=false) should block Lax cookie
+    std::string sub_cookies = jar.get_cookie_header("example.com", "/", false, false, false);
+    EXPECT_TRUE(sub_cookies.find("token=abc") == std::string::npos);
+}
+
+// 5. ParseUrl with path-only URL defaults to HTTP and root host empty
+TEST(HttpClientTest, ParseUrlFragmentStrippedFromPathV101) {
+    Request req;
+    req.url = "http://example.com/page#section2";
+    req.parse_url();
+
+    EXPECT_EQ(req.host, "example.com");
+    EXPECT_EQ(req.port, 80);
+    // Fragment should not appear in path
+    EXPECT_TRUE(req.path.find("#") == std::string::npos);
+    EXPECT_FALSE(req.use_tls);
+}
+
+// 6. Request serialize PUT with non-standard port included in Host header
+TEST(HttpClientTest, SerializePutNonStandardPortInHostHeaderV101) {
+    Request req;
+    req.method = Method::PUT;
+    req.host = "storage.example.net";
+    req.port = 8080;
+    req.path = "/files/upload";
+    req.use_tls = false;
+    std::string body_str = R"({"filename":"report.pdf"})";
+    req.body.assign(body_str.begin(), body_str.end());
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    EXPECT_TRUE(result.find("PUT /files/upload HTTP/1.1\r\n") != std::string::npos);
+    // Non-standard port should appear in Host
+    EXPECT_TRUE(result.find("Host: storage.example.net:8080\r\n") != std::string::npos);
+    // Content-Length matches body
+    std::string expected_cl = "Content-Length: " + std::to_string(body_str.size()) + "\r\n";
+    EXPECT_TRUE(result.find(expected_cl) != std::string::npos);
+    // Body present
+    EXPECT_TRUE(result.find(body_str) != std::string::npos);
+}
+
+// 7. Response::parse handles 500 Internal Server Error with JSON body
+TEST(HttpClientTest, ResponseParse500WithJsonErrorBodyV101) {
+    std::string body_content = R"({"error":"internal","message":"something broke"})";
+    std::string raw =
+        "HTTP/1.1 500 Internal Server Error\r\n"
+        "Content-Type: application/json\r\n"
+        "Content-Length: " + std::to_string(body_content.size()) + "\r\n"
+        "\r\n" + body_content;
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 500);
+    EXPECT_EQ(resp->status_text, "Internal Server Error");
+    EXPECT_EQ(resp->body_as_string(), body_content);
+    EXPECT_EQ(resp->headers.get("content-type").value(), "application/json");
+}
+
+// 8. CookieJar secure cookie is returned only when is_secure is true
+TEST(HttpClientTest, CookieJarSecureCookieReturnedOnlyOnSecureConnectionV101) {
+    CookieJar jar;
+    jar.set_from_header("sid=xyz789; Path=/; Secure", "secure.example.com");
+    jar.set_from_header("pref=dark; Path=/", "secure.example.com");
+    EXPECT_EQ(jar.size(), 2u);
+
+    // Insecure request: should only get the non-secure cookie
+    std::string insecure = jar.get_cookie_header("secure.example.com", "/", false);
+    EXPECT_TRUE(insecure.find("sid=xyz789") == std::string::npos);
+    EXPECT_TRUE(insecure.find("pref=dark") != std::string::npos);
+
+    // Secure request: should get both cookies
+    std::string secure = jar.get_cookie_header("secure.example.com", "/", true);
+    EXPECT_TRUE(secure.find("sid=xyz789") != std::string::npos);
+    EXPECT_TRUE(secure.find("pref=dark") != std::string::npos);
+}

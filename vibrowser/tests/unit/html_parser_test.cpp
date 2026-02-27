@@ -16196,3 +16196,194 @@ TEST(HtmlParserTest, DataAttributesOnElementV100) {
     EXPECT_EQ(get_attr_v63(span, "data-tooltip"), "Hello world");
     EXPECT_EQ(span->text_content(), "Hover me");
 }
+
+// ---------------------------------------------------------------------------
+// V101 tests — diverse HTML parsing scenarios
+// ---------------------------------------------------------------------------
+
+TEST(HtmlParserTest, NestedListStructureV101) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<ul>"
+        "<li>First</li>"
+        "<li>Second</li>"
+        "<li>Third</li>"
+        "</ul>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* ul = doc->find_element("ul");
+    ASSERT_NE(ul, nullptr);
+    EXPECT_EQ(ul->tag_name, "ul");
+    auto items = doc->find_all_elements("li");
+    ASSERT_EQ(items.size(), 3u);
+    EXPECT_EQ(items[0]->text_content(), "First");
+    EXPECT_EQ(items[1]->text_content(), "Second");
+    EXPECT_EQ(items[2]->text_content(), "Third");
+}
+
+TEST(HtmlParserTest, TableWithRowsAndCellsV101) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<table>"
+        "<tr><th>Name</th><th>Age</th></tr>"
+        "<tr><td>Alice</td><td>30</td></tr>"
+        "<tr><td>Bob</td><td>25</td></tr>"
+        "</table>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto rows = doc->find_all_elements("tr");
+    ASSERT_EQ(rows.size(), 3u);
+    auto headers = doc->find_all_elements("th");
+    ASSERT_EQ(headers.size(), 2u);
+    EXPECT_EQ(headers[0]->text_content(), "Name");
+    EXPECT_EQ(headers[1]->text_content(), "Age");
+    auto cells = doc->find_all_elements("td");
+    ASSERT_EQ(cells.size(), 4u);
+    EXPECT_EQ(cells[0]->text_content(), "Alice");
+    EXPECT_EQ(cells[1]->text_content(), "30");
+    EXPECT_EQ(cells[2]->text_content(), "Bob");
+    EXPECT_EQ(cells[3]->text_content(), "25");
+}
+
+TEST(HtmlParserTest, FormWithMultipleInputTypesV101) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<form action=\"/submit\" method=\"post\">"
+        "<input type=\"email\" name=\"email\" placeholder=\"you@example.com\"/>"
+        "<input type=\"hidden\" name=\"token\" value=\"abc123\"/>"
+        "<textarea name=\"message\">Hello</textarea>"
+        "<button type=\"submit\">Send</button>"
+        "</form>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* form = doc->find_element("form");
+    ASSERT_NE(form, nullptr);
+    EXPECT_EQ(get_attr_v63(form, "action"), "/submit");
+    EXPECT_EQ(get_attr_v63(form, "method"), "post");
+    auto inputs = doc->find_all_elements("input");
+    ASSERT_EQ(inputs.size(), 2u);
+    EXPECT_EQ(get_attr_v63(inputs[0], "type"), "email");
+    EXPECT_EQ(get_attr_v63(inputs[0], "placeholder"), "you@example.com");
+    EXPECT_EQ(get_attr_v63(inputs[1], "type"), "hidden");
+    EXPECT_EQ(get_attr_v63(inputs[1], "value"), "abc123");
+    auto* textarea = doc->find_element("textarea");
+    ASSERT_NE(textarea, nullptr);
+    EXPECT_EQ(get_attr_v63(textarea, "name"), "message");
+    EXPECT_EQ(textarea->text_content(), "Hello");
+    auto* button = doc->find_element("button");
+    ASSERT_NE(button, nullptr);
+    EXPECT_EQ(get_attr_v63(button, "type"), "submit");
+    EXPECT_EQ(button->text_content(), "Send");
+}
+
+TEST(HtmlParserTest, DeeplyNestedDivHierarchyV101) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<div class=\"l1\">"
+        "<div class=\"l2\">"
+        "<div class=\"l3\">"
+        "<div class=\"l4\">"
+        "<p>Deep text</p>"
+        "</div></div></div></div>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto divs = doc->find_all_elements("div");
+    ASSERT_EQ(divs.size(), 4u);
+    EXPECT_EQ(get_attr_v63(divs[0], "class"), "l1");
+    EXPECT_EQ(get_attr_v63(divs[1], "class"), "l2");
+    EXPECT_EQ(get_attr_v63(divs[2], "class"), "l3");
+    EXPECT_EQ(get_attr_v63(divs[3], "class"), "l4");
+    auto* p = doc->find_element("p");
+    ASSERT_NE(p, nullptr);
+    EXPECT_EQ(p->text_content(), "Deep text");
+}
+
+TEST(HtmlParserTest, EmptyAndVoidElementsV101) {
+    auto doc = clever::html::parse(
+        "<html><head></head><body>"
+        "<br/><hr/>"
+        "<div></div>"
+        "<span></span>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* br = doc->find_element("br");
+    ASSERT_NE(br, nullptr);
+    EXPECT_EQ(br->tag_name, "br");
+    EXPECT_TRUE(br->children.empty());
+    auto* hr = doc->find_element("hr");
+    ASSERT_NE(hr, nullptr);
+    EXPECT_EQ(hr->tag_name, "hr");
+    EXPECT_TRUE(hr->children.empty());
+    auto* div = doc->find_element("div");
+    ASSERT_NE(div, nullptr);
+    EXPECT_TRUE(div->children.empty());
+    auto* span = doc->find_element("span");
+    ASSERT_NE(span, nullptr);
+    EXPECT_TRUE(span->children.empty());
+}
+
+TEST(HtmlParserTest, InlineElementsMixedWithTextV101) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<p>Hello <strong>bold</strong> and <em>italic</em> world</p>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* p = doc->find_element("p");
+    ASSERT_NE(p, nullptr);
+    auto* strong = doc->find_element("strong");
+    ASSERT_NE(strong, nullptr);
+    EXPECT_EQ(strong->text_content(), "bold");
+    auto* em = doc->find_element("em");
+    ASSERT_NE(em, nullptr);
+    EXPECT_EQ(em->text_content(), "italic");
+    // The full text content of p should contain all inline text
+    std::string full = p->text_content();
+    EXPECT_NE(full.find("Hello"), std::string::npos);
+    EXPECT_NE(full.find("bold"), std::string::npos);
+    EXPECT_NE(full.find("italic"), std::string::npos);
+    EXPECT_NE(full.find("world"), std::string::npos);
+}
+
+TEST(HtmlParserTest, MultipleAttributesOnSingleElementV101) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<a href=\"https://test.org\" target=\"_self\" rel=\"nofollow\" "
+        "title=\"Test Link\" class=\"primary\" id=\"main-link\">Click</a>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* a = doc->find_element("a");
+    ASSERT_NE(a, nullptr);
+    EXPECT_EQ(get_attr_v63(a, "href"), "https://test.org");
+    EXPECT_EQ(get_attr_v63(a, "target"), "_self");
+    EXPECT_EQ(get_attr_v63(a, "rel"), "nofollow");
+    EXPECT_EQ(get_attr_v63(a, "title"), "Test Link");
+    EXPECT_EQ(get_attr_v63(a, "class"), "primary");
+    EXPECT_EQ(get_attr_v63(a, "id"), "main-link");
+    EXPECT_EQ(a->text_content(), "Click");
+    EXPECT_EQ(a->attributes.size(), 6u);
+}
+
+TEST(HtmlParserTest, DefinitionListWithTermsAndDescriptionsV101) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<dl>"
+        "<dt>HTML</dt><dd>HyperText Markup Language</dd>"
+        "<dt>CSS</dt><dd>Cascading Style Sheets</dd>"
+        "<dt>JS</dt><dd>JavaScript</dd>"
+        "</dl>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* dl = doc->find_element("dl");
+    ASSERT_NE(dl, nullptr);
+    EXPECT_EQ(dl->tag_name, "dl");
+    auto terms = doc->find_all_elements("dt");
+    ASSERT_EQ(terms.size(), 3u);
+    EXPECT_EQ(terms[0]->text_content(), "HTML");
+    EXPECT_EQ(terms[1]->text_content(), "CSS");
+    EXPECT_EQ(terms[2]->text_content(), "JS");
+    auto descs = doc->find_all_elements("dd");
+    ASSERT_EQ(descs.size(), 3u);
+    EXPECT_EQ(descs[0]->text_content(), "HyperText Markup Language");
+    EXPECT_EQ(descs[1]->text_content(), "Cascading Style Sheets");
+    EXPECT_EQ(descs[2]->text_content(), "JavaScript");
+}

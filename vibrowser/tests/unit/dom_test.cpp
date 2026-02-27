@@ -15842,3 +15842,114 @@ TEST(DomTest, RemoveChildFromMiddleUpdatesLinksV100) {
     EXPECT_EQ(parent.last_child(), rawC);
     EXPECT_EQ(rawA->next_sibling(), rawC);
 }
+
+TEST(DomTest, AttributeOverwritePreservesCountV101) {
+    Element el("input");
+    el.set_attribute("type", "text");
+    el.set_attribute("name", "username");
+    EXPECT_EQ(el.attributes().size(), 2u);
+    el.set_attribute("type", "password");
+    EXPECT_EQ(el.attributes().size(), 2u);
+    EXPECT_EQ(el.get_attribute("type").value(), "password");
+    EXPECT_EQ(el.get_attribute("name").value(), "username");
+}
+
+TEST(DomTest, RemoveAttributeOnNonexistentIsNoOpV101) {
+    Element el("div");
+    el.set_attribute("id", "main");
+    EXPECT_EQ(el.attributes().size(), 1u);
+    el.remove_attribute("class");
+    EXPECT_EQ(el.attributes().size(), 1u);
+    EXPECT_TRUE(el.has_attribute("id"));
+    EXPECT_FALSE(el.has_attribute("class"));
+}
+
+TEST(DomTest, ParentBecomesNullAfterRemoveChildV101) {
+    Element parent("ul");
+    auto li = std::make_unique<Element>("li");
+    Element* li_ptr = li.get();
+    parent.append_child(std::move(li));
+    EXPECT_EQ(li_ptr->parent(), &parent);
+    auto removed = parent.remove_child(*li_ptr);
+    EXPECT_NE(removed, nullptr);
+    EXPECT_EQ(li_ptr->parent(), nullptr);
+    EXPECT_EQ(parent.child_count(), 0u);
+}
+
+TEST(DomTest, TextContentAcrossNestedElementsV101) {
+    Element div("div");
+    div.append_child(std::make_unique<Text>("Hello "));
+    auto span = std::make_unique<Element>("span");
+    span->append_child(std::make_unique<Text>("World"));
+    div.append_child(std::move(span));
+    div.append_child(std::make_unique<Text>("!"));
+    EXPECT_EQ(div.text_content(), "Hello World!");
+}
+
+TEST(DomTest, InsertBeforeFirstChildUpdatesFirstChildV101) {
+    Element parent("ol");
+    auto existing = std::make_unique<Element>("li");
+    Element* existing_ptr = existing.get();
+    parent.append_child(std::move(existing));
+
+    auto new_first = std::make_unique<Element>("li");
+    Element* new_first_ptr = new_first.get();
+    parent.insert_before(std::move(new_first), existing_ptr);
+
+    EXPECT_EQ(parent.first_child(), new_first_ptr);
+    EXPECT_EQ(new_first_ptr->next_sibling(), existing_ptr);
+    EXPECT_EQ(parent.child_count(), 2u);
+}
+
+TEST(DomTest, ClassListToggleAddsWhenAbsentRemovesWhenPresentV101) {
+    Element el("div");
+    EXPECT_FALSE(el.class_list().contains("highlight"));
+    el.class_list().toggle("highlight");
+    EXPECT_TRUE(el.class_list().contains("highlight"));
+    el.class_list().toggle("highlight");
+    EXPECT_FALSE(el.class_list().contains("highlight"));
+    el.class_list().toggle("highlight");
+    EXPECT_TRUE(el.class_list().contains("highlight"));
+}
+
+TEST(DomTest, MixedNodeTypesAsChildrenV101) {
+    Element parent("article");
+    auto text = std::make_unique<Text>("Paragraph text");
+    auto comment = std::make_unique<Comment>("editorial note");
+    auto child_el = std::make_unique<Element>("footer");
+    Text* text_ptr = text.get();
+    Comment* comment_ptr = comment.get();
+    Element* child_el_ptr = child_el.get();
+    parent.append_child(std::move(text));
+    parent.append_child(std::move(comment));
+    parent.append_child(std::move(child_el));
+
+    EXPECT_EQ(parent.child_count(), 3u);
+    EXPECT_EQ(parent.first_child(), text_ptr);
+    EXPECT_EQ(parent.last_child(), child_el_ptr);
+    EXPECT_EQ(text_ptr->node_type(), NodeType::Text);
+    EXPECT_EQ(comment_ptr->node_type(), NodeType::Comment);
+    EXPECT_EQ(child_el_ptr->node_type(), NodeType::Element);
+    EXPECT_EQ(comment_ptr->data(), "editorial note");
+    EXPECT_EQ(text_ptr->next_sibling(), comment_ptr);
+    EXPECT_EQ(comment_ptr->next_sibling(), child_el_ptr);
+}
+
+TEST(DomTest, RemoveLastChildLeavesFirstChildIntactV101) {
+    Element parent("div");
+    auto a = std::make_unique<Element>("a");
+    auto b = std::make_unique<Element>("b");
+    auto c = std::make_unique<Element>("c");
+    Element* a_ptr = a.get();
+    Element* b_ptr = b.get();
+    Element* c_ptr = c.get();
+    parent.append_child(std::move(a));
+    parent.append_child(std::move(b));
+    parent.append_child(std::move(c));
+
+    parent.remove_child(*c_ptr);
+    EXPECT_EQ(parent.child_count(), 2u);
+    EXPECT_EQ(parent.first_child(), a_ptr);
+    EXPECT_EQ(parent.last_child(), b_ptr);
+    EXPECT_EQ(b_ptr->next_sibling(), nullptr);
+}
