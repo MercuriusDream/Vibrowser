@@ -14509,3 +14509,128 @@ TEST(HtmlParserTest, AnchorWithMultipleAttributesV90) {
     EXPECT_TRUE(found_href);
     EXPECT_TRUE(found_target);
 }
+
+// --- V91 tests ---
+
+// 1. Parse definition list structure (dl, dt, dd)
+TEST(HtmlParserTest, DefinitionListStructureV91) {
+    auto doc = clever::html::parse(
+        "<html><body><dl><dt>Term</dt><dd>Definition</dd></dl></body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* dl = doc->find_element("dl");
+    ASSERT_NE(dl, nullptr);
+    auto* dt = dl->find_element("dt");
+    ASSERT_NE(dt, nullptr);
+    EXPECT_EQ(dt->text_content(), "Term");
+    auto* dd = dl->find_element("dd");
+    ASSERT_NE(dd, nullptr);
+    EXPECT_EQ(dd->text_content(), "Definition");
+}
+
+// 2. Parse table with caption and multiple rows
+TEST(HtmlParserTest, TableWithCaptionAndRowsV91) {
+    auto doc = clever::html::parse(
+        "<html><body><table><caption>Stats</caption>"
+        "<tr><th>Name</th><th>Score</th></tr>"
+        "<tr><td>Alice</td><td>95</td></tr></table></body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* caption = doc->find_element("caption");
+    ASSERT_NE(caption, nullptr);
+    EXPECT_EQ(caption->text_content(), "Stats");
+    auto tds = doc->find_all_elements("td");
+    ASSERT_EQ(tds.size(), 2u);
+    EXPECT_EQ(tds[0]->text_content(), "Alice");
+    EXPECT_EQ(tds[1]->text_content(), "95");
+}
+
+// 3. Parse multiple sibling paragraphs inside article
+TEST(HtmlParserTest, MultipleSiblingParagraphsInArticleV91) {
+    auto doc = clever::html::parse(
+        "<html><body><article><p>First</p><p>Second</p><p>Third</p></article></body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* article = doc->find_element("article");
+    ASSERT_NE(article, nullptr);
+    auto ps = article->find_all_elements("p");
+    ASSERT_EQ(ps.size(), 3u);
+    EXPECT_EQ(ps[0]->text_content(), "First");
+    EXPECT_EQ(ps[1]->text_content(), "Second");
+    EXPECT_EQ(ps[2]->text_content(), "Third");
+}
+
+// 4. Parse image with all attributes using helper
+TEST(HtmlParserTest, ImageWithMultipleAttributesV91) {
+    auto doc = clever::html::parse(
+        "<html><body><img src=\"photo.jpg\" alt=\"A photo\" width=\"640\" height=\"480\"></body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* img = doc->find_element("img");
+    ASSERT_NE(img, nullptr);
+    EXPECT_EQ(get_attr_v63(img, "src"), "photo.jpg");
+    EXPECT_EQ(get_attr_v63(img, "alt"), "A photo");
+    EXPECT_EQ(get_attr_v63(img, "width"), "640");
+    EXPECT_EQ(get_attr_v63(img, "height"), "480");
+    EXPECT_EQ(img->children.size(), 0u);
+}
+
+// 5. Parse nested ordered list inside unordered list
+TEST(HtmlParserTest, NestedListsOlInsideUlV91) {
+    auto doc = clever::html::parse(
+        "<html><body><ul><li>Item A</li><li><ol><li>Sub 1</li><li>Sub 2</li></ol></li></ul></body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* ul = doc->find_element("ul");
+    ASSERT_NE(ul, nullptr);
+    auto* ol = ul->find_element("ol");
+    ASSERT_NE(ol, nullptr);
+    auto olis = ol->find_all_elements("li");
+    ASSERT_EQ(olis.size(), 2u);
+    EXPECT_EQ(olis[0]->text_content(), "Sub 1");
+    EXPECT_EQ(olis[1]->text_content(), "Sub 2");
+}
+
+// 6. Parse figure with figcaption
+TEST(HtmlParserTest, FigureWithFigcaptionV91) {
+    auto doc = clever::html::parse(
+        "<html><body><figure><img src=\"chart.png\" alt=\"Chart\">"
+        "<figcaption>Figure 1: Revenue</figcaption></figure></body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* figure = doc->find_element("figure");
+    ASSERT_NE(figure, nullptr);
+    auto* img = figure->find_element("img");
+    ASSERT_NE(img, nullptr);
+    EXPECT_EQ(get_attr_v63(img, "src"), "chart.png");
+    auto* figcaption = figure->find_element("figcaption");
+    ASSERT_NE(figcaption, nullptr);
+    EXPECT_EQ(figcaption->text_content(), "Figure 1: Revenue");
+}
+
+// 7. Parse details and summary elements
+TEST(HtmlParserTest, DetailsAndSummaryElementsV91) {
+    auto doc = clever::html::parse(
+        "<html><body><details><summary>Click me</summary><p>Hidden content</p></details></body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* details = doc->find_element("details");
+    ASSERT_NE(details, nullptr);
+    auto* summary = details->find_element("summary");
+    ASSERT_NE(summary, nullptr);
+    EXPECT_EQ(summary->text_content(), "Click me");
+    auto* p = details->find_element("p");
+    ASSERT_NE(p, nullptr);
+    EXPECT_EQ(p->text_content(), "Hidden content");
+}
+
+// 8. Parse section with header containing multiple heading levels
+TEST(HtmlParserTest, SectionWithMultipleHeadingsV91) {
+    auto doc = clever::html::parse(
+        "<html><body><section><h1>Main Title</h1><h2>Subtitle</h2><h3>Sub-subtitle</h3></section></body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* section = doc->find_element("section");
+    ASSERT_NE(section, nullptr);
+    auto* h1 = section->find_element("h1");
+    ASSERT_NE(h1, nullptr);
+    EXPECT_EQ(h1->text_content(), "Main Title");
+    auto* h2 = section->find_element("h2");
+    ASSERT_NE(h2, nullptr);
+    EXPECT_EQ(h2->text_content(), "Subtitle");
+    auto* h3 = section->find_element("h3");
+    ASSERT_NE(h3, nullptr);
+    EXPECT_EQ(h3->text_content(), "Sub-subtitle");
+}

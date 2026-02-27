@@ -6635,3 +6635,98 @@ TEST(CORSPolicyTest, CorsAllowsExactOriginMatchNoCredsV90) {
     h2.set("Access-Control-Allow-Origin", "*");
     EXPECT_TRUE(cors_allows_response("https://dashboard.example.com", "https://api.example.com/stats", h2, false));
 }
+
+TEST(CORSPolicyTest, FragmentUrlNotCorsEligibleV91) {
+    // URLs with fragments (#frag) are NOT cors-eligible
+    EXPECT_FALSE(is_cors_eligible_request_url("https://example.com/page#section1"));
+    EXPECT_FALSE(is_cors_eligible_request_url("http://example.com/doc#top"));
+    EXPECT_FALSE(is_cors_eligible_request_url("https://cdn.example.com/asset.js#hash"));
+    // Without fragment, should be eligible
+    EXPECT_TRUE(is_cors_eligible_request_url("https://example.com/page"));
+    EXPECT_TRUE(is_cors_eligible_request_url("http://example.com/doc"));
+}
+
+TEST(CORSPolicyTest, WssSchemeNotCorsEligibleV91) {
+    // wss:// is NOT cors-eligible
+    EXPECT_FALSE(is_cors_eligible_request_url("wss://socket.example.com/feed"));
+    EXPECT_FALSE(is_cors_eligible_request_url("wss://realtime.example.com:8443/stream"));
+    // ws:// is also not cors-eligible
+    EXPECT_FALSE(is_cors_eligible_request_url("ws://socket.example.com/feed"));
+    // http/https ARE eligible (no fragment)
+    EXPECT_TRUE(is_cors_eligible_request_url("https://api.example.com/data"));
+    EXPECT_TRUE(is_cors_eligible_request_url("http://api.example.com/data"));
+}
+
+TEST(CORSPolicyTest, ExplicitDefaultPortNotEnforceableVariantsV91) {
+    // Explicit :443 on https is NOT enforceable
+    EXPECT_FALSE(has_enforceable_document_origin("https://login.example.com:443"));
+    // Explicit :80 on http is NOT enforceable
+    EXPECT_FALSE(has_enforceable_document_origin("http://web.example.com:80"));
+    // Non-default port on https IS enforceable
+    EXPECT_TRUE(has_enforceable_document_origin("https://login.example.com:8443"));
+    // Non-default port on http IS enforceable
+    EXPECT_TRUE(has_enforceable_document_origin("http://web.example.com:8080"));
+    // No explicit port at all IS enforceable
+    EXPECT_TRUE(has_enforceable_document_origin("https://login.example.com"));
+    EXPECT_TRUE(has_enforceable_document_origin("http://web.example.com"));
+}
+
+TEST(CORSPolicyTest, CrossOriginDifferentPortsV91) {
+    // Different ports = cross-origin
+    EXPECT_TRUE(is_cross_origin("https://app.example.com:3000", "https://app.example.com:4000"));
+    EXPECT_TRUE(is_cross_origin("http://localhost:8080", "http://localhost:9090"));
+    // Same host+port+scheme = NOT cross-origin
+    EXPECT_FALSE(is_cross_origin("https://app.example.com:3000", "https://app.example.com:3000/page"));
+    EXPECT_FALSE(is_cross_origin("http://localhost:8080", "http://localhost:8080/api"));
+}
+
+TEST(CORSPolicyTest, WildcardAcaoWithCredsVariantsV91) {
+    // Wildcard ACAO + credentials=true -> reject
+    clever::net::HeaderMap h;
+    h.set("Access-Control-Allow-Origin", "*");
+    h.set("Access-Control-Allow-Credentials", "true");
+    EXPECT_FALSE(cors_allows_response("https://origin.example.com", "https://target.example.com/resource", h, true));
+    // Same wildcard ACAO + credentials=false -> allow
+    EXPECT_TRUE(cors_allows_response("https://origin.example.com", "https://target.example.com/resource", h, false));
+    // Exact origin match + credentials=true -> allow
+    clever::net::HeaderMap h2;
+    h2.set("Access-Control-Allow-Origin", "https://origin.example.com");
+    h2.set("Access-Control-Allow-Credentials", "true");
+    EXPECT_TRUE(cors_allows_response("https://origin.example.com", "https://target.example.com/resource", h2, true));
+}
+
+TEST(CORSPolicyTest, ShouldAttachOriginHeaderVariousV91) {
+    // Cross-origin should attach
+    EXPECT_TRUE(should_attach_origin_header("https://a.example.com", "https://b.example.com/api"));
+    // Different scheme should attach
+    EXPECT_TRUE(should_attach_origin_header("http://a.example.com", "https://a.example.com/api"));
+    // Different port should attach
+    EXPECT_TRUE(should_attach_origin_header("https://a.example.com:3000", "https://a.example.com:4000/api"));
+    // Same origin should NOT attach
+    EXPECT_FALSE(should_attach_origin_header("https://same.example.com", "https://same.example.com/path"));
+    // Null origin always attaches
+    EXPECT_TRUE(should_attach_origin_header("null", "https://any.example.com/data"));
+}
+
+TEST(CORSPolicyTest, CorsAllowsResponseOriginMismatchV91) {
+    // ACAO does not match requesting origin -> reject
+    clever::net::HeaderMap h;
+    h.set("Access-Control-Allow-Origin", "https://allowed.example.com");
+    EXPECT_FALSE(cors_allows_response("https://notallowed.example.com", "https://api.example.com/data", h, false));
+    EXPECT_FALSE(cors_allows_response("https://notallowed.example.com", "https://api.example.com/data", h, true));
+    // Exact match -> allow
+    EXPECT_TRUE(cors_allows_response("https://allowed.example.com", "https://api.example.com/data", h, false));
+}
+
+TEST(CORSPolicyTest, DataAndBlobSchemesNotEnforceableV91) {
+    // data: URLs are not enforceable
+    EXPECT_FALSE(has_enforceable_document_origin("data:text/html,<h1>Hello</h1>"));
+    // blob: URLs are not enforceable
+    EXPECT_FALSE(has_enforceable_document_origin("blob:https://example.com/uuid-1234"));
+    // about: URLs are not enforceable
+    EXPECT_FALSE(has_enforceable_document_origin("about:blank"));
+    // Regular https is enforceable (origin format, no path)
+    EXPECT_TRUE(has_enforceable_document_origin("https://example.com"));
+    // Regular http is enforceable (origin format, no path)
+    EXPECT_TRUE(has_enforceable_document_origin("http://example.com"));
+}

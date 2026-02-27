@@ -15870,3 +15870,105 @@ TEST(HttpClientTest, ResponseHeadersMultipleFieldsV90) {
     EXPECT_EQ(resp.headers.get("X-Request-Id").value(), "req-12345");
     EXPECT_FALSE(resp.headers.has("X-Missing"));
 }
+
+TEST(HttpClientTest, HeaderMapRemoveAndSizeV91) {
+    HeaderMap h;
+    h.set("A", "1");
+    h.set("B", "2");
+    h.set("C", "3");
+    EXPECT_EQ(h.size(), 3u);
+    h.remove("B");
+    EXPECT_EQ(h.size(), 2u);
+    EXPECT_FALSE(h.has("B"));
+    EXPECT_TRUE(h.has("A"));
+    EXPECT_TRUE(h.has("C"));
+}
+
+TEST(HttpClientTest, HeaderMapEmptyAfterRemovalsV91) {
+    HeaderMap h;
+    EXPECT_TRUE(h.empty());
+    h.set("X-Token", "abc");
+    EXPECT_FALSE(h.empty());
+    h.remove("X-Token");
+    EXPECT_TRUE(h.empty());
+    EXPECT_EQ(h.size(), 0u);
+}
+
+TEST(HttpClientTest, RequestSerializePostWithBodyV91) {
+    Request req;
+    req.method = Method::POST;
+    req.host = "api.example.com";
+    req.port = 443;
+    req.path = "/submit";
+    req.use_tls = true;
+    std::string payload = "{\"key\":\"val\"}";
+    req.body.assign(payload.begin(), payload.end());
+    req.headers.set("Content-Type", "application/json");
+
+    auto bytes = req.serialize();
+    std::string serialized(bytes.begin(), bytes.end());
+    EXPECT_TRUE(serialized.find("POST /submit HTTP/1.1\r\n") == 0);
+    EXPECT_TRUE(serialized.find("Host: api.example.com\r\n") != std::string::npos);
+    EXPECT_TRUE(serialized.find("{\"key\":\"val\"}") != std::string::npos);
+}
+
+TEST(HttpClientTest, RequestSerializePutMethodV91) {
+    Request req;
+    req.method = Method::PUT;
+    req.host = "store.example.org";
+    req.port = 8080;
+    req.path = "/items/42";
+    req.use_tls = false;
+    req.headers.set("Accept", "application/json");
+
+    auto bytes = req.serialize();
+    std::string serialized(bytes.begin(), bytes.end());
+    EXPECT_TRUE(serialized.find("PUT /items/42 HTTP/1.1\r\n") == 0);
+    EXPECT_TRUE(serialized.find("Host: store.example.org:8080\r\n") != std::string::npos);
+}
+
+TEST(HttpClientTest, ResponseBodyAsStringV91) {
+    Response resp;
+    resp.status = 200;
+    resp.status_text = "OK";
+    std::string text = "Hello, World!";
+    resp.body.assign(text.begin(), text.end());
+    EXPECT_EQ(resp.body_as_string(), "Hello, World!");
+    EXPECT_EQ(resp.body.size(), 13u);
+}
+
+TEST(HttpClientTest, ResponseEmptyBodyAsStringV91) {
+    Response resp;
+    resp.status = 204;
+    resp.status_text = "No Content";
+    EXPECT_TRUE(resp.body.empty());
+    EXPECT_EQ(resp.body_as_string(), "");
+}
+
+TEST(HttpClientTest, CookieJarSecureFlagFilteringV91) {
+    CookieJar jar;
+    jar.set_from_header("token=secret; Secure", "secure.example.com");
+    jar.set_from_header("pref=dark", "secure.example.com");
+
+    std::string secure_cookies = jar.get_cookie_header("secure.example.com", "/", true);
+    std::string insecure_cookies = jar.get_cookie_header("secure.example.com", "/", false);
+
+    EXPECT_TRUE(secure_cookies.find("token=secret") != std::string::npos);
+    EXPECT_TRUE(secure_cookies.find("pref=dark") != std::string::npos);
+    EXPECT_TRUE(insecure_cookies.find("pref=dark") != std::string::npos);
+}
+
+TEST(HttpClientTest, RequestSerializeHeadMethodNoBodyV91) {
+    Request req;
+    req.method = Method::HEAD;
+    req.host = "cdn.example.com";
+    req.port = 80;
+    req.path = "/assets/logo.png";
+    req.use_tls = false;
+
+    auto bytes = req.serialize();
+    std::string serialized(bytes.begin(), bytes.end());
+    EXPECT_TRUE(serialized.find("HEAD /assets/logo.png HTTP/1.1\r\n") == 0);
+    EXPECT_TRUE(serialized.find("Host: cdn.example.com\r\n") != std::string::npos);
+    EXPECT_TRUE(req.body.empty());
+}

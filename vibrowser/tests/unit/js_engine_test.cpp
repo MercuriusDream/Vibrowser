@@ -25709,3 +25709,203 @@ TEST(JsEngineTest, TryCatchFinallyErrorTypesV90) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "true,true,true,true,out of range,true");
 }
+
+TEST(JsEngineTest, WeakMapAndWeakSetBasicsV91) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var results = [];
+        var wm = new WeakMap();
+        var obj1 = {};
+        var obj2 = {};
+        wm.set(obj1, 42);
+        wm.set(obj2, "hello");
+        results.push(wm.has(obj1));
+        results.push(wm.get(obj1));
+        results.push(wm.get(obj2));
+        wm.delete(obj1);
+        results.push(wm.has(obj1));
+        var ws = new WeakSet();
+        var obj3 = {};
+        ws.add(obj3);
+        results.push(ws.has(obj3));
+        ws.delete(obj3);
+        results.push(ws.has(obj3));
+        results.join(",");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true,42,hello,false,true,false");
+}
+
+TEST(JsEngineTest, GeneratorFunctionProtocolV91) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var results = [];
+        function* range(start, end) {
+            for (var i = start; i < end; i++) {
+                yield i;
+            }
+        }
+        var gen = range(3, 7);
+        var item = gen.next();
+        while (!item.done) {
+            results.push(item.value);
+            item = gen.next();
+        }
+        function* fib() {
+            var a = 0, b = 1;
+            while (true) {
+                yield a;
+                var tmp = a;
+                a = b;
+                b = tmp + b;
+            }
+        }
+        var f = fib();
+        for (var i = 0; i < 8; i++) {
+            results.push(f.next().value);
+        }
+        results.join(",");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "3,4,5,6,0,1,1,2,3,5,8,13");
+}
+
+TEST(JsEngineTest, SymbolIteratorCustomV91) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var results = [];
+        var iterable = {};
+        iterable[Symbol.iterator] = function() {
+            var n = 0;
+            return {
+                next: function() {
+                    n++;
+                    if (n <= 4) return { value: n * n, done: false };
+                    return { value: undefined, done: true };
+                }
+            };
+        };
+        var collected = [];
+        for (var v of iterable) {
+            collected.push(v);
+        }
+        results.push(JSON.stringify(collected));
+        results.push(Array.from(iterable).length);
+        var spread = [...iterable];
+        results.push(JSON.stringify(spread));
+        results.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "[1,4,9,16]|4|[1,4,9,16]");
+}
+
+TEST(JsEngineTest, StringPadAndRepeatMethodsV91) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var results = [];
+        results.push("5".padStart(3, "0"));
+        results.push("hi".padEnd(6, "!."));
+        results.push("abc".repeat(3));
+        results.push("hello".startsWith("hel"));
+        results.push("hello".endsWith("llo"));
+        results.push("hello".includes("ell"));
+        results.push("  trim  ".trim());
+        results.push("  trim  ".trimStart());
+        results.push("  trim  ".trimEnd());
+        results.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "005|hi!.!.|abcabcabc|true|true|true|trim|trim  |  trim");
+}
+
+TEST(JsEngineTest, ObjectEntriesFromEntriesAssignV91) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var results = [];
+        var obj = { a: 1, b: 2, c: 3 };
+        var entries = Object.entries(obj);
+        results.push(JSON.stringify(entries));
+        var rebuilt = Object.fromEntries(entries);
+        results.push(JSON.stringify(rebuilt));
+        var target = { x: 10 };
+        var merged = Object.assign(target, { y: 20 }, { z: 30 });
+        results.push(merged.x);
+        results.push(merged.y);
+        results.push(merged.z);
+        results.push(merged === target);
+        results.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "[[\"a\",1],[\"b\",2],[\"c\",3]]|{\"a\":1,\"b\":2,\"c\":3}|10|20|30|true");
+}
+
+TEST(JsEngineTest, ArrayReduceAndReduceRightV91) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var results = [];
+        var nums = [1, 2, 3, 4, 5];
+        var sum = nums.reduce(function(acc, v) { return acc + v; }, 0);
+        results.push(sum);
+        var product = nums.reduce(function(acc, v) { return acc * v; }, 1);
+        results.push(product);
+        var words = ["a", "b", "c", "d"];
+        var leftConcat = words.reduce(function(acc, w) { return acc + w; });
+        var rightConcat = words.reduceRight(function(acc, w) { return acc + w; });
+        results.push(leftConcat);
+        results.push(rightConcat);
+        var nested = [[1, 2], [3, 4], [5]];
+        var flat = nested.reduce(function(acc, arr) { return acc.concat(arr); }, []);
+        results.push(JSON.stringify(flat));
+        results.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "15|120|abcd|dcba|[1,2,3,4,5]");
+}
+
+TEST(JsEngineTest, MapChainAndIterationV91) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var results = [];
+        var m = new Map();
+        m.set("x", 10);
+        m.set("y", 20);
+        m.set("z", 30);
+        results.push(m.size);
+        results.push(m.get("y"));
+        results.push(m.has("z"));
+        var keys = [];
+        var vals = [];
+        m.forEach(function(v, k) { keys.push(k); vals.push(v); });
+        results.push(keys.join(","));
+        results.push(vals.join(","));
+        m.delete("y");
+        results.push(m.size);
+        results.push(m.has("y"));
+        var arr = Array.from(m);
+        results.push(JSON.stringify(arr));
+        results.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "3|20|true|x,y,z|10,20,30|2|false|[[\"x\",10],[\"z\",30]]");
+}
+
+TEST(JsEngineTest, NumberMethodsAndParsingV91) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var results = [];
+        results.push(Number.isInteger(42));
+        results.push(Number.isInteger(42.5));
+        results.push(Number.isFinite(1/0));
+        results.push(Number.isFinite(99));
+        results.push(Number.isNaN(NaN));
+        results.push(Number.isNaN(42));
+        results.push(Number.parseFloat("3.14abc"));
+        results.push(Number.parseInt("0xFF", 16));
+        results.push((1234.5678).toFixed(2));
+        results.push((0.00123).toExponential(2));
+        results.push((1234).toString(16));
+        results.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true|false|false|true|true|false|3.14|255|1234.57|1.23e-3|4d2");
+}

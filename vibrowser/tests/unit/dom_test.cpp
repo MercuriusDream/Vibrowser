@@ -14766,3 +14766,95 @@ TEST(DomTest, FirstLastChildAfterRemovalsV90) {
     EXPECT_EQ(parent.last_child(), c_ptr);
     EXPECT_EQ(parent.child_count(), 2u);
 }
+
+TEST(DomTest, InsertBeforeUpdatesAllSiblingLinksV91) {
+    Element parent("ul");
+    auto li1 = std::make_unique<Element>("li");
+    auto* li1_ptr = li1.get();
+    auto li3 = std::make_unique<Element>("li");
+    auto* li3_ptr = li3.get();
+    parent.append_child(std::move(li1));
+    parent.append_child(std::move(li3));
+    auto li2 = std::make_unique<Element>("li");
+    auto* li2_ptr = li2.get();
+    parent.insert_before(std::move(li2), li3_ptr);
+    EXPECT_EQ(parent.child_count(), 3u);
+    EXPECT_EQ(li1_ptr->next_sibling(), li2_ptr);
+    EXPECT_EQ(li2_ptr->previous_sibling(), li1_ptr);
+    EXPECT_EQ(li2_ptr->next_sibling(), li3_ptr);
+    EXPECT_EQ(li3_ptr->previous_sibling(), li2_ptr);
+}
+
+TEST(DomTest, ClassListToggleTwiceRestoresV91) {
+    Element el("div");
+    EXPECT_FALSE(el.class_list().contains("active"));
+    el.class_list().toggle("active");
+    EXPECT_TRUE(el.class_list().contains("active"));
+    el.class_list().toggle("active");
+    EXPECT_FALSE(el.class_list().contains("active"));
+}
+
+TEST(DomTest, DocumentCreateElementReturnsUniquePtrsV91) {
+    Document doc;
+    auto el1 = doc.create_element("section");
+    auto el2 = doc.create_element("article");
+    EXPECT_EQ(el1->tag_name(), "section");
+    EXPECT_EQ(el2->tag_name(), "article");
+    EXPECT_NE(el1.get(), el2.get());
+}
+
+TEST(DomTest, RemoveAttributeThenHasAttributeV91) {
+    Element el("input");
+    el.set_attribute("type", "text");
+    el.set_attribute("name", "username");
+    EXPECT_TRUE(el.has_attribute("type"));
+    el.remove_attribute("type");
+    EXPECT_FALSE(el.has_attribute("type"));
+    EXPECT_TRUE(el.has_attribute("name"));
+    EXPECT_EQ(el.attributes().size(), 1u);
+}
+
+TEST(DomTest, TextNodeParentSetOnAppendV91) {
+    Element div("div");
+    auto txt = std::make_unique<Text>("hello");
+    auto* txt_ptr = txt.get();
+    div.append_child(std::move(txt));
+    EXPECT_EQ(txt_ptr->parent(), &div);
+    EXPECT_EQ(div.child_count(), 1u);
+    EXPECT_EQ(div.text_content(), "hello");
+}
+
+TEST(DomTest, CommentNodeDoesNotAffectTextContentV91) {
+    Element div("div");
+    div.append_child(std::make_unique<Text>("visible"));
+    div.append_child(std::make_unique<Comment>("hidden comment"));
+    div.append_child(std::make_unique<Text>(" text"));
+    EXPECT_EQ(div.text_content(), "visible text");
+}
+
+TEST(DomTest, InsertBeforeNullAppendsToEndV91) {
+    Element parent("div");
+    auto a = std::make_unique<Element>("span");
+    auto* a_ptr = a.get();
+    parent.append_child(std::move(a));
+    auto b = std::make_unique<Element>("p");
+    auto* b_ptr = b.get();
+    parent.insert_before(std::move(b), nullptr);
+    EXPECT_EQ(parent.child_count(), 2u);
+    EXPECT_EQ(parent.last_child(), b_ptr);
+    EXPECT_EQ(a_ptr->next_sibling(), b_ptr);
+    EXPECT_EQ(b_ptr->previous_sibling(), a_ptr);
+}
+
+TEST(DomTest, SetAttributeIdThenGetElementByIdV91) {
+    Document doc;
+    auto div = doc.create_element("div");
+    auto* div_ptr = div.get();
+    div_ptr->set_attribute("id", "main-content");
+    doc.register_id("main-content", div_ptr);
+    doc.append_child(std::move(div));
+    auto* found = doc.get_element_by_id("main-content");
+    EXPECT_EQ(found, div_ptr);
+    EXPECT_EQ(found->tag_name(), "div");
+    EXPECT_EQ(found->get_attribute("id").value(), "main-content");
+}

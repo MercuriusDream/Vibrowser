@@ -16374,3 +16374,165 @@ TEST(CSSStyleTest, WhiteSpacePreLineWithTextAlignCenterV90) {
     EXPECT_FLOAT_EQ(style.font_size.value, 14.0f);
     EXPECT_EQ(style.font_weight, 700);
 }
+
+TEST(CSSStyleTest, FlexContainerWithGrowShrinkV91) {
+    const std::string css = ".row{display:flex;flex-grow:3;flex-shrink:0.5;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+    elem.classes = {"row"};
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.display, Display::Flex);
+    EXPECT_FLOAT_EQ(style.flex_grow, 3.0f);
+    EXPECT_FLOAT_EQ(style.flex_shrink, 0.5f);
+}
+
+TEST(CSSStyleTest, StickyPositionWithZIndexV91) {
+    const std::string css = "nav{position:sticky;z-index:50;opacity:0.95;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "nav";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.position, Position::Sticky);
+    EXPECT_EQ(style.z_index, 50);
+    EXPECT_FLOAT_EQ(style.opacity, 0.95f);
+}
+
+TEST(CSSStyleTest, VisibilityHiddenWithPointerEventsNoneV91) {
+    const std::string css = ".ghost{visibility:hidden;pointer-events:none;user-select:none;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+    elem.classes = {"ghost"};
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.visibility, Visibility::Hidden);
+    EXPECT_EQ(style.pointer_events, PointerEvents::None);
+    EXPECT_EQ(style.user_select, UserSelect::None);
+}
+
+TEST(CSSStyleTest, CursorPointerWithColorAndBgV91) {
+    const std::string css = ".btn{cursor:pointer;color:white;background-color:blue;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "button";
+    elem.classes = {"btn"};
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.cursor, Cursor::Pointer);
+    EXPECT_EQ(style.color, (Color{255, 255, 255, 255}));
+    EXPECT_EQ(style.background_color.b, 255);
+    EXPECT_EQ(style.background_color.a, 255);
+}
+
+TEST(CSSStyleTest, GridDisplayWithVerticalAlignMiddleV91) {
+    const std::string css = ".grid-cell{display:grid;vertical-align:middle;text-align:right;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+    elem.classes = {"grid-cell"};
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.display, Display::Grid);
+    EXPECT_EQ(style.vertical_align, VerticalAlign::Middle);
+    EXPECT_EQ(style.text_align, TextAlign::Right);
+}
+
+TEST(CSSStyleTest, AbsolutePositionWithAllBordersV91) {
+    const std::string css = "#modal{position:absolute;border-top-width:2px;border-right-width:2px;border-bottom-width:2px;border-left-width:2px;border-top-style:solid;border-right-style:solid;border-bottom-style:solid;border-left-style:solid;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+    elem.id = "modal";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.position, Position::Absolute);
+    EXPECT_FLOAT_EQ(style.border_top.width.to_px(), 2.0f);
+    EXPECT_FLOAT_EQ(style.border_right.width.to_px(), 2.0f);
+    EXPECT_FLOAT_EQ(style.border_bottom.width.to_px(), 2.0f);
+    EXPECT_FLOAT_EQ(style.border_left.width.to_px(), 2.0f);
+    EXPECT_EQ(style.border_top.style, BorderStyle::Solid);
+    EXPECT_EQ(style.border_left.style, BorderStyle::Solid);
+}
+
+TEST(CSSStyleTest, WhiteSpaceNoWrapWithLineHeightV91) {
+    const std::string css = ".truncate{white-space:nowrap;line-height:1.5;font-size:18px;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "span";
+    elem.classes = {"truncate"};
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.white_space, WhiteSpace::NoWrap);
+    EXPECT_FLOAT_EQ(style.font_size.value, 18.0f);
+    EXPECT_FLOAT_EQ(style.line_height.value, 27.0f);
+}
+
+TEST(CSSStyleTest, MarginPaddingAsymmetricWithDisplayNoneV91) {
+    const std::string css = ".hidden-box{display:none;margin:10px 20px 30px 40px;padding:5px 15px 25px 35px;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+    elem.classes = {"hidden-box"};
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.display, Display::None);
+    EXPECT_FLOAT_EQ(style.margin.top.to_px(), 10.0f);
+    EXPECT_FLOAT_EQ(style.margin.right.to_px(), 20.0f);
+    EXPECT_FLOAT_EQ(style.margin.bottom.to_px(), 30.0f);
+    EXPECT_FLOAT_EQ(style.margin.left.to_px(), 40.0f);
+    EXPECT_FLOAT_EQ(style.padding.top.to_px(), 5.0f);
+    EXPECT_FLOAT_EQ(style.padding.right.to_px(), 15.0f);
+    EXPECT_FLOAT_EQ(style.padding.bottom.to_px(), 25.0f);
+    EXPECT_FLOAT_EQ(style.padding.left.to_px(), 35.0f);
+}
