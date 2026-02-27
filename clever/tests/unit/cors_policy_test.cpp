@@ -1845,3 +1845,40 @@ TEST(CORSPolicyTest, NotEnforceableEmptyOrigin) {
 TEST(CORSPolicyTest, HttpAndHttpsSameHostCrossOrigin) {
     EXPECT_TRUE(is_cross_origin("http://example.com", "https://example.com/path"));
 }
+
+// Cycle 923 — additional CORS policy coverage
+TEST(CORSPolicyTest, ACAOExplicitOriginAllowsMatchWithoutCredentials) {
+    clever::net::HeaderMap headers;
+    headers.set("access-control-allow-origin", "https://app.example.com");
+    EXPECT_TRUE(cors_allows_response("https://app.example.com", "https://api.example.com/data", headers, false));
+}
+
+TEST(CORSPolicyTest, ACAOMismatchedSubdomainBlocks) {
+    clever::net::HeaderMap headers;
+    headers.set("access-control-allow-origin", "https://app.example.com");
+    EXPECT_FALSE(cors_allows_response("https://other.example.com", "https://api.example.com/data", headers, false));
+}
+
+TEST(CORSPolicyTest, EnforceableFtpOriginIsFalse) {
+    EXPECT_FALSE(has_enforceable_document_origin("ftp://files.example.com"));
+}
+
+TEST(CORSPolicyTest, NullStringDocOriginIsNotCorsEligible) {
+    EXPECT_FALSE(has_enforceable_document_origin("null"));
+}
+
+TEST(CORSPolicyTest, HttpsSchemeIsCorsEligible) {
+    EXPECT_TRUE(is_cors_eligible_request_url("https://cdn.example.com/script.js"));
+}
+
+TEST(CORSPolicyTest, HttpSchemeIsCorsEligible) {
+    EXPECT_TRUE(is_cors_eligible_request_url("http://api.example.com/data"));
+}
+
+TEST(CORSPolicyTest, DifferentPortSameSchemeSameHost) {
+    EXPECT_TRUE(is_cross_origin("https://example.com:8443", "https://example.com/path"));
+}
+
+TEST(CORSPolicyTest, SameOriginExactMatchNotCrossOrigin) {
+    EXPECT_FALSE(is_cross_origin("https://example.com", "https://example.com/resource"));
+}
