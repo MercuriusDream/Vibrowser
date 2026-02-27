@@ -3212,3 +3212,96 @@ TEST(ResponseTest, ParseXFrameOptionsHeader) {
     auto xfo = resp->headers.get("X-Frame-Options");
     EXPECT_TRUE(xfo.has_value());
 }
+
+// ---------------------------------------------------------------------------
+// Cycle 706 — 8 additional HTTP tests (status codes and headers)
+// ---------------------------------------------------------------------------
+
+// Response: 206 Partial Content
+TEST(ResponseTest, Parse206PartialContent) {
+    std::string raw =
+        "HTTP/1.1 206 Partial Content\r\n"
+        "Content-Range: bytes 0-99/1000\r\n"
+        "Content-Length: 100\r\n"
+        "\r\n";
+    raw.append(100, 'x');
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 206);
+}
+
+// Response: 409 Conflict
+TEST(ResponseTest, Parse409Conflict) {
+    std::string raw =
+        "HTTP/1.1 409 Conflict\r\n"
+        "Content-Length: 0\r\n"
+        "\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 409);
+}
+
+// Response: 410 Gone
+TEST(ResponseTest, Parse410Gone) {
+    std::string raw =
+        "HTTP/1.1 410 Gone\r\n"
+        "Content-Length: 0\r\n"
+        "\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 410);
+}
+
+// Response: 415 Unsupported Media Type
+TEST(ResponseTest, Parse415UnsupportedMediaType) {
+    std::string raw =
+        "HTTP/1.1 415 Unsupported Media Type\r\n"
+        "Content-Length: 0\r\n"
+        "\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 415);
+}
+
+// Response: 451 Unavailable For Legal Reasons
+TEST(ResponseTest, Parse451UnavailableForLegalReasons) {
+    std::string raw =
+        "HTTP/1.1 451 Unavailable For Legal Reasons\r\n"
+        "Content-Length: 0\r\n"
+        "\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 451);
+}
+
+// Request: Content-Disposition header can be set
+TEST(RequestTest, ContentDispositionHeaderSet) {
+    Request req;
+    req.headers.set("Content-Disposition", "form-data; name=\"file\"");
+    auto val = req.headers.get("Content-Disposition");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(val.value(), "form-data; name=\"file\"");
+}
+
+// Request: Cache-Control header can be set in request
+TEST(RequestTest, CacheControlHeaderInRequest) {
+    Request req;
+    req.headers.set("Cache-Control", "no-cache");
+    auto val = req.headers.get("Cache-Control");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(val.value(), "no-cache");
+}
+
+// Request: Referer header can be set
+TEST(RequestTest, RefererHeaderSet) {
+    Request req;
+    req.headers.set("Referer", "https://example.com/page");
+    auto val = req.headers.get("Referer");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(val.value(), "https://example.com/page");
+}
