@@ -800,7 +800,15 @@ std::string resolve_content_value(
                     counter_name = args.substr(0, comma);
                     counter_style = args.substr(comma + 1);
                 } else {
-                    counter_name = args;
+                    // CSS parser may normalize function args as space-separated tokens
+                    // (e.g. "counter(item lower-alpha)" instead of "counter(item, lower-alpha)").
+                    auto parts = split_whitespace(args);
+                    if (!parts.empty()) {
+                        counter_name = parts[0];
+                        if (parts.size() > 1) counter_style = parts[1];
+                    } else {
+                        counter_name = args;
+                    }
                 }
                 // Trim whitespace
                 auto trim_ws = [](std::string& s) {
@@ -9628,6 +9636,35 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
             list_style = "decimal";
             is_ordered = true;
         }
+
+        auto list_style_from_computed = [](clever::css::ListStyleType t) -> std::string {
+            switch (t) {
+                case clever::css::ListStyleType::Disc: return "disc";
+                case clever::css::ListStyleType::Circle: return "circle";
+                case clever::css::ListStyleType::Square: return "square";
+                case clever::css::ListStyleType::Decimal: return "decimal";
+                case clever::css::ListStyleType::DecimalLeadingZero: return "decimal-leading-zero";
+                case clever::css::ListStyleType::LowerRoman: return "lower-roman";
+                case clever::css::ListStyleType::UpperRoman: return "upper-roman";
+                case clever::css::ListStyleType::LowerAlpha: return "lower-alpha";
+                case clever::css::ListStyleType::UpperAlpha: return "upper-alpha";
+                case clever::css::ListStyleType::None: return "none";
+                case clever::css::ListStyleType::LowerGreek: return "lower-greek";
+                case clever::css::ListStyleType::LowerLatin: return "lower-latin";
+                case clever::css::ListStyleType::UpperLatin: return "upper-latin";
+                default: return "";
+            }
+        };
+
+        // Respect cascaded parent list-style-type (stylesheet rules), but preserve
+        // legacy ordered-list fallback when it resolves to disc.
+        {
+            std::string cascaded = list_style_from_computed(parent_style.list_style_type);
+            if (!cascaded.empty() && !(is_ordered && cascaded == "disc")) {
+                list_style = cascaded;
+            }
+        }
+
         // Check for list-style-type in inline style of parent
         if (node.parent) {
             std::string parent_style_attr = get_attr(*node.parent, "style");
@@ -10524,18 +10561,55 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
         if (marker_style) {
             uint32_t mk_color = color_to_argb(marker_style->color);
             float mk_fs = marker_style->font_size.to_px(font_size);
-            // Set marker styling on the element itself if it's a list item
-            if (layout_node->is_list_item) {
-                if (mk_color != 0) layout_node->marker_color = mk_color;
-                if (mk_fs > 0) layout_node->marker_font_size = mk_fs;
-            }
-            // Propagate marker styling to children that are list items
+            auto is_generated_marker_text = [](const clever::layout::LayoutNode& n) {
+                if (!n.is_text) return false;
+                const auto& txt = n.text_content;
+                if (txt.empty()) return false;
+                if (txt[0] == '\xE2') return true; // bullet/circle/square UTF-8 markers
+                return txt.size() >= 2 && txt.back() == ' ' &&
+                       (std::isdigit(static_cast<unsigned char>(txt[0])) ||
+                        std::isalpha(static_cast<unsigned char>(txt[0])));
+            };
+            auto apply_marker_style_to_list_item = [&](clever::layout::LayoutNode& n) {
+                if (!n.is_list_item) return;
+                if (mk_color != 0) n.marker_color = mk_color;
+                if (mk_fs > 0) n.marker_font_size = mk_fs;
+
+                // Inside markers are emitted as inline text children during list-item
+                // construction; sync them with ::marker styles resolved later here.
+                if (n.list_style_position == 1 &&
+                    !n.children.empty() &&
+                    is_generated_marker_text(*n.children[0])) {
+                    if (mk_color != 0) n.children[0]->color = mk_color;
+                    if (mk_fs > 0) n.children[0]->font_size = mk_fs;
+                    return;
+                }
+
+                // Outside markers are painted by paint_list_marker(). Add a zero-width
+                // leading marker placeholder so ::marker text style is still represented
+                // in the layout tree without causing duplicate visible markers.
+                if (n.list_style_position == 0 && (mk_color != 0 || mk_fs > 0)) {
+                    bool has_marker_text_child =
+                        !n.children.empty() && is_generated_marker_text(*n.children[0]);
+                    if (!has_marker_text_child) {
+                        auto marker_placeholder = std::make_unique<clever::layout::LayoutNode>();
+                        marker_placeholder->is_text = true;
+                        marker_placeholder->text_content = "";
+                        marker_placeholder->mode = clever::layout::LayoutMode::Inline;
+                        marker_placeholder->display = clever::layout::DisplayType::Inline;
+                        marker_placeholder->color = (mk_color != 0) ? mk_color : n.color;
+                        marker_placeholder->font_size = (mk_fs > 0) ? mk_fs : n.font_size;
+                        n.children.insert(n.children.begin(), std::move(marker_placeholder));
+                    }
+                }
+            };
+
+            apply_marker_style_to_list_item(*layout_node);
+
+            // Propagate marker styling to descendant list items
             std::function<void(clever::layout::LayoutNode&)> propagate_marker =
                 [&](clever::layout::LayoutNode& n) {
-                if (n.is_list_item) {
-                    if (mk_color != 0) n.marker_color = mk_color;
-                    if (mk_fs > 0) n.marker_font_size = mk_fs;
-                }
+                apply_marker_style_to_list_item(n);
                 for (auto& child : n.children) {
                     propagate_marker(*child);
                 }
@@ -10687,12 +10761,9 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
         layout_node->mode = clever::layout::LayoutMode::Block;
         layout_node->display = clever::layout::DisplayType::Block;
     }
-    // <ul>/<ol>/<menu> default styles: padding-left 40px, top/bottom margin 16px
-    if (tag_lower == "ul" || tag_lower == "ol" || tag_lower == "menu") {
-        if (layout_node->geometry.padding.left == 0) layout_node->geometry.padding.left = 40;
-        if (layout_node->geometry.margin.top == 0) layout_node->geometry.margin.top = 16;
-        if (layout_node->geometry.margin.bottom == 0) layout_node->geometry.margin.bottom = 16;
-    }
+    // List defaults are provided by the UA stylesheet. Avoid post-cascade
+    // fallback here so explicit zero values (e.g. margin: 0; padding: 0;)
+    // are not overwritten.
     // <h1>-<h6> default styles: bold + appropriate sizes
     if (tag_lower == "h1" || tag_lower == "h2" || tag_lower == "h3" ||
         tag_lower == "h4" || tag_lower == "h5" || tag_lower == "h6") {
