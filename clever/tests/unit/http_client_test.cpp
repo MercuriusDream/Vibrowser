@@ -4745,3 +4745,109 @@ TEST(RequestTest, XRequestIdHeaderSet) {
     ASSERT_TRUE(val.has_value());
     EXPECT_EQ(*val, "abc-123-def-456");
 }
+
+// Cycle 917 — HTTP headers: Content-Encoding variants, Link preload/prefetch, Expires, Accept-Patch
+
+TEST(ResponseTest, ContentEncodingGzip) {
+    std::string raw =
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Encoding: gzip\r\n"
+        "Content-Length: 0\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    auto val = resp->headers.get("content-encoding");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(*val, "gzip");
+}
+
+TEST(ResponseTest, ContentEncodingBrotli) {
+    std::string raw =
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Encoding: br\r\n"
+        "Content-Length: 0\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    auto val = resp->headers.get("content-encoding");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(*val, "br");
+}
+
+TEST(ResponseTest, ContentEncodingDeflate) {
+    std::string raw =
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Encoding: deflate\r\n"
+        "Content-Length: 0\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    auto val = resp->headers.get("content-encoding");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(*val, "deflate");
+}
+
+TEST(ResponseTest, ContentEncodingZstd) {
+    std::string raw =
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Encoding: zstd\r\n"
+        "Content-Length: 0\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    auto val = resp->headers.get("content-encoding");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(*val, "zstd");
+}
+
+TEST(ResponseTest, LinkHeaderPreload) {
+    std::string raw =
+        "HTTP/1.1 200 OK\r\n"
+        "Link: </style.css>; rel=preload; as=style\r\n"
+        "Content-Length: 0\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    auto val = resp->headers.get("link");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_NE(val->find("preload"), std::string::npos);
+}
+
+TEST(ResponseTest, LinkHeaderPrefetch) {
+    std::string raw =
+        "HTTP/1.1 200 OK\r\n"
+        "Link: </next-page>; rel=prefetch\r\n"
+        "Content-Length: 0\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    auto val = resp->headers.get("link");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_NE(val->find("prefetch"), std::string::npos);
+}
+
+TEST(ResponseTest, ExpiresInResponse) {
+    std::string raw =
+        "HTTP/1.1 200 OK\r\n"
+        "Expires: Thu, 01 Jan 2026 00:00:00 GMT\r\n"
+        "Content-Length: 0\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    auto val = resp->headers.get("expires");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_NE(val->find("2026"), std::string::npos);
+}
+
+TEST(ResponseTest, AcceptPatchInResponse) {
+    std::string raw =
+        "HTTP/1.1 200 OK\r\n"
+        "Accept-Patch: application/json-patch+json\r\n"
+        "Content-Length: 0\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    auto val = resp->headers.get("accept-patch");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_NE(val->find("json"), std::string::npos);
+}
