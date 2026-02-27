@@ -16098,3 +16098,59 @@ TEST(JSEngine, TemplateLiteralObjectProperty) {
     auto result = engine.evaluate("const obj = {name:'Alice', age:30}; `${obj.name} is ${obj.age}`");
     EXPECT_EQ(result, "Alice is 30");
 }
+
+// Cycle 817 — Regex advanced: named groups, lookahead, lookbehind, dotAll, sticky, flags, matchAll
+TEST(JSEngine, RegexNamedCaptureGroup) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "const m = '2024-02-15'.match(/(?<year>\\d{4})-(?<month>\\d{2})-(?<day>\\d{2})/);"
+        "m.groups.year + '/' + m.groups.month + '/' + m.groups.day");
+    EXPECT_EQ(result, "2024/02/15");
+}
+
+TEST(JSEngine, RegexPositiveLookahead) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "'100px 200em 300rem'.match(/\\d+(?=px)/g).join(',')");
+    EXPECT_EQ(result, "100");
+}
+
+TEST(JSEngine, RegexNegativeLookahead) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "'fooX barY fooZ'.replace(/foo(?!X)/g, 'baz')");
+    EXPECT_EQ(result, "fooX barY bazZ");
+}
+
+TEST(JSEngine, RegexPositiveLookbehind) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "'$100 €200 £300'.match(/(?<=\\$)\\d+/g).join(',')");
+    EXPECT_EQ(result, "100");
+}
+
+TEST(JSEngine, RegexNegativeLookbehind) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "'a1 $2 b3'.match(/(?<!\\$)\\d/g).join(',')");
+    EXPECT_EQ(result, "1,3");
+}
+
+TEST(JSEngine, RegexDotAllFlag) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "/foo.bar/s.test('foo\\nbar')");
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, RegexSourceProperty) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("/hello\\d+/gi.source");
+    EXPECT_EQ(result, "hello\\d+");
+}
+
+TEST(JSEngine, RegexFlagsProperty) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("/abc/gi.flags");
+    EXPECT_EQ(result, "gi");
+}
