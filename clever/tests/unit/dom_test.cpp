@@ -4727,3 +4727,69 @@ TEST(DomDocument, DocumentCreateCommentData) {
     ASSERT_NE(comment, nullptr);
     EXPECT_EQ(comment->data(), "test comment");
 }
+
+TEST(DomDocument, DocumentNodeTypeIsDocumentV2) {
+    Document doc;
+    EXPECT_EQ(doc.node_type(), NodeType::Document);
+}
+
+TEST(DomDocument, DocumentChildCountAfterAppend) {
+    Document doc;
+    doc.append_child(doc.create_element("html"));
+    EXPECT_EQ(doc.child_count(), 1u);
+}
+
+TEST(DomElement, ElementChildCountAfterTwoAppends) {
+    Document doc;
+    auto div = doc.create_element("div");
+    div->append_child(doc.create_element("p"));
+    div->append_child(doc.create_element("span"));
+    EXPECT_EQ(div->child_count(), 2u);
+}
+
+TEST(DomElement, ElementFirstChildTagName) {
+    Document doc;
+    auto div = doc.create_element("div");
+    div->append_child(doc.create_element("p"));
+    div->append_child(doc.create_element("span"));
+    auto* first = div->first_child();
+    ASSERT_NE(first, nullptr);
+    auto* elem = dynamic_cast<Element*>(first);
+    ASSERT_NE(elem, nullptr);
+    EXPECT_EQ(elem->tag_name(), "p");
+}
+
+TEST(DomElement, ElementLastChildTagName) {
+    Document doc;
+    auto div = doc.create_element("div");
+    div->append_child(doc.create_element("h1"));
+    div->append_child(doc.create_element("h2"));
+    auto* last = div->last_child();
+    ASSERT_NE(last, nullptr);
+    auto* elem = dynamic_cast<Element*>(last);
+    ASSERT_NE(elem, nullptr);
+    EXPECT_EQ(elem->tag_name(), "h2");
+}
+
+TEST(DomNode, ForEachChildCountsThree) {
+    Document doc;
+    auto ul = doc.create_element("ul");
+    ul->append_child(doc.create_element("li"));
+    ul->append_child(doc.create_element("li"));
+    ul->append_child(doc.create_element("li"));
+    int count = 0;
+    ul->for_each_child([&](const Node&) { ++count; });
+    EXPECT_EQ(count, 3);
+}
+
+TEST(DomText, TextNodeTypeIsTextV2) {
+    Document doc;
+    auto text = doc.create_text_node("hello");
+    EXPECT_EQ(text->node_type(), NodeType::Text);
+}
+
+TEST(DomComment, CommentNodeTypeIsCommentV3) {
+    Document doc;
+    auto comment = doc.create_comment("some comment");
+    EXPECT_EQ(comment->node_type(), NodeType::Comment);
+}
