@@ -2068,3 +2068,40 @@ TEST(CORSPolicyTest, NotCorsEligibleDataUri) {
 TEST(CORSPolicyTest, AttachOriginForCrossOriginHttps) {
     EXPECT_TRUE(should_attach_origin_header("https://app.example.com", "https://api.other.com/data"));
 }
+
+TEST(CORSPolicyTest, ACAOEmptyStringBlocks) {
+    clever::net::HeaderMap headers;
+    headers.set("access-control-allow-origin", "");
+    EXPECT_FALSE(cors_allows_response("https://app.example.com", "https://api.example.com/data", headers, false));
+}
+
+TEST(CORSPolicyTest, CorsEligibleHttpsHighPort) {
+    EXPECT_TRUE(is_cors_eligible_request_url("https://api.example.com:9443/data"));
+}
+
+TEST(CORSPolicyTest, CorsEligibleHttpLowPort) {
+    EXPECT_TRUE(is_cors_eligible_request_url("http://example.com:8080/page"));
+}
+
+TEST(CORSPolicyTest, CrossOriginHttpVsHttpsSameHost) {
+    EXPECT_TRUE(is_cross_origin("http://example.com", "https://example.com/secure"));
+}
+
+TEST(CORSPolicyTest, CrossOriginSameHostDifferentPath) {
+    // Different paths don't matter — only scheme+host+port
+    EXPECT_FALSE(is_cross_origin("https://example.com", "https://example.com/different/path"));
+}
+
+TEST(CORSPolicyTest, SameOriginWithDefaultHttpPort80) {
+    EXPECT_FALSE(is_cross_origin("http://example.com:80", "http://example.com/path"));
+}
+
+TEST(CORSPolicyTest, EnforceableHttpsGovDomain) {
+    EXPECT_TRUE(has_enforceable_document_origin("https://agency.gov"));
+}
+
+TEST(CORSPolicyTest, ACAONullStringBlocks) {
+    clever::net::HeaderMap headers;
+    headers.set("access-control-allow-origin", "null");
+    EXPECT_FALSE(cors_allows_response("https://app.example.com", "https://api.example.com/data", headers, false));
+}
