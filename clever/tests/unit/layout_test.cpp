@@ -6447,3 +6447,51 @@ TEST(LayoutNodeProps, ColumnCountDefaultsNegativeOne) {
     auto node = make_block("div");
     EXPECT_EQ(node->column_count, -1);
 }
+
+// Layout: svg_stroke_dashoffset defaults to 0
+TEST(LayoutNodeProps, SvgStrokeDashoffsetDefaultsToZero) {
+    auto node = make_block("path");
+    EXPECT_FLOAT_EQ(node->svg_stroke_dashoffset, 0.0f);
+}
+
+// Layout: svg_stroke_linecap defaults to 0 (butt)
+TEST(LayoutNodeProps, SvgStrokeLinecapDefaultsToZero) {
+    auto node = make_block("line");
+    EXPECT_EQ(node->svg_stroke_linecap, 0);
+}
+
+// Layout: svg_stroke_linejoin defaults to 0 (miter)
+TEST(LayoutNodeProps, SvgStrokeLinejoinDefaultsToZero) {
+    auto node = make_block("polyline");
+    EXPECT_EQ(node->svg_stroke_linejoin, 0);
+}
+
+// Layout: stroke_miterlimit defaults to 4.0
+TEST(LayoutNodeProps, StrokeMiterlimitDefaultsToFour) {
+    auto node = make_block("polygon");
+    EXPECT_FLOAT_EQ(node->stroke_miterlimit, 4.0f);
+}
+
+// Layout: svg_stroke_dasharray defaults to empty
+TEST(LayoutNodeProps, SvgStrokeDasharrayDefaultsEmpty) {
+    auto node = make_block("rect");
+    EXPECT_TRUE(node->svg_stroke_dasharray.empty());
+}
+
+// Layout: svg_text_x defaults to 0
+TEST(LayoutNodeProps, SvgTextXDefaultsToZero) {
+    auto node = make_block("text");
+    EXPECT_FLOAT_EQ(node->svg_text_x, 0.0f);
+}
+
+// Layout: svg_font_size defaults to 16
+TEST(LayoutNodeProps, SvgFontSizeDefaultsSixteen) {
+    auto node = make_block("text");
+    EXPECT_FLOAT_EQ(node->svg_font_size, 16.0f);
+}
+
+// Layout: svg_use_x defaults to 0
+TEST(LayoutNodeProps, SvgUseXDefaultsToZero) {
+    auto node = make_block("use");
+    EXPECT_FLOAT_EQ(node->svg_use_x, 0.0f);
+}
