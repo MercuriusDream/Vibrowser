@@ -15990,3 +15990,62 @@ TEST(JSEngine, PromiseChainType) {
     auto result = engine.evaluate("typeof Promise.resolve(1).then(x => x).then(x => x * 2)");
     EXPECT_EQ(result, "object");
 }
+
+// Cycle 809 — Proxy/Reflect advanced
+TEST(JSEngine, ProxyHasTrap) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "const p = new Proxy({x:1}, { has(t, k) { return k === 'x'; } }); 'x' in p");
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, ProxyGetTrapDefault) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "const p = new Proxy({val: 42}, {}); p.val");
+    EXPECT_EQ(result, "42");
+}
+
+TEST(JSEngine, ProxySetTrapModifiesValue) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "const obj = {};"
+        "const p = new Proxy(obj, { set(t, k, v) { t[k] = v * 2; return true; } });"
+        "p.x = 5; obj.x");
+    EXPECT_EQ(result, "10");
+}
+
+TEST(JSEngine, ReflectDeletePropertyTrue) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "const obj = { a: 1, b: 2 }; Reflect.deleteProperty(obj, 'a')");
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, ReflectSetValue) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "const obj = {}; Reflect.set(obj, 'x', 99); obj.x");
+    EXPECT_EQ(result, "99");
+}
+
+TEST(JSEngine, ReflectOwnKeysCount) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "Reflect.ownKeys({a:1, b:2, c:3}).length");
+    EXPECT_EQ(result, "3");
+}
+
+TEST(JSEngine, ReflectGetPrototypeOfObject) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "typeof Reflect.getPrototypeOf({})");
+    EXPECT_EQ(result, "object");
+}
+
+TEST(JSEngine, ReflectIsExtensibleTrue) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "Reflect.isExtensible({})");
+    EXPECT_EQ(result, "true");
+}
