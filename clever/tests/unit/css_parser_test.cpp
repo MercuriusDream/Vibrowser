@@ -8167,3 +8167,76 @@ TEST_F(CSSStylesheetTest, WebkitAppearanceV23) {
         if (d.property == "-webkit-appearance") { found = true; break; }
     EXPECT_TRUE(found);
 }
+
+// Cycle 1305: CSS parser tests
+TEST_F(CSSStylesheetTest, WillChangeV24) {
+    auto sheet = parse_stylesheet(".transition { will-change: transform; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "will-change") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, BackdropFilterV24) {
+    auto sheet = parse_stylesheet(".blur { backdrop-filter: blur(10px); }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "backdrop-filter") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, ScrollBehaviorV24) {
+    auto sheet = parse_stylesheet("html { scroll-behavior: smooth; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "scroll-behavior") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, WritingModeV24) {
+    auto sheet = parse_stylesheet(".vertical { writing-mode: vertical-rl; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "writing-mode") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, TextOrientationV24) {
+    auto sheet = parse_stylesheet(".mixed { text-orientation: mixed; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "text-orientation") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, ASpectRatioV24) {
+    auto sheet = parse_stylesheet("img { aspect-ratio: 16 / 9; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "aspect-ratio") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, ContainmentV24) {
+    auto sheet = parse_stylesheet(".container { contain: layout style paint; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "contain") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, ContentVisibilityV24) {
+    auto sheet = parse_stylesheet(".hidden { content-visibility: auto; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "content-visibility") { found = true; break; }
+    EXPECT_TRUE(found);
+}

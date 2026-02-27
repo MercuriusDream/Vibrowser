@@ -7097,3 +7097,63 @@ TEST(DomElement, AttributeCountAfterMultipleSets) {
     EXPECT_TRUE(el->has_attribute("id"));
     EXPECT_TRUE(el->has_attribute("data-y"));
 }
+
+// Cycle 1300: DOM element tests
+
+TEST(DomElement, TagNameMeterV2) {
+    Document doc;
+    auto el = doc.create_element("meter");
+    EXPECT_EQ(el->tag_name(), "meter");
+}
+
+TEST(DomElement, TagNameProgressV2) {
+    Document doc;
+    auto el = doc.create_element("progress");
+    EXPECT_EQ(el->tag_name(), "progress");
+}
+
+TEST(DomElement, SetAttributeMinV2) {
+    Document doc;
+    auto el = doc.create_element("input");
+    el->set_attribute("min", "0");
+    EXPECT_EQ(el->get_attribute("min"), "0");
+}
+
+TEST(DomElement, SetAttributeMaxV2) {
+    Document doc;
+    auto el = doc.create_element("input");
+    el->set_attribute("max", "100");
+    EXPECT_EQ(el->get_attribute("max"), "100");
+}
+
+TEST(DomElement, ChildCountThreeHundred) {
+    Document doc;
+    auto parent = doc.create_element("ul");
+    for (int i = 0; i < 300; ++i) {
+        parent->append_child(doc.create_element("li"));
+    }
+    EXPECT_EQ(parent->child_count(), 300u);
+}
+
+TEST(DomElement, RemoveAttributeStyleV2) {
+    Document doc;
+    auto el = doc.create_element("div");
+    el->set_attribute("style", "color:red");
+    el->remove_attribute("style");
+    EXPECT_FALSE(el->has_attribute("style"));
+}
+
+TEST(DomElement, HasAttributeLoop) {
+    Document doc;
+    auto el = doc.create_element("video");
+    el->set_attribute("loop", "");
+    EXPECT_TRUE(el->has_attribute("loop"));
+}
+
+TEST(DomElement, SetAttributeOverwriteV3) {
+    Document doc;
+    auto el = doc.create_element("div");
+    el->set_attribute("id", "first");
+    el->set_attribute("id", "second");
+    EXPECT_EQ(el->get_attribute("id"), "second");
+}

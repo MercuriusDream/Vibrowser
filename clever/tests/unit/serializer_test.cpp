@@ -6509,3 +6509,62 @@ TEST(SerializerTest, StringEmptyValueV22) {
     Deserializer d(s.data());
     EXPECT_EQ("", d.read_string());
 }
+
+// Cycle 1302: Serializer tests
+
+TEST(SerializerTest, U8MaxValueV23) {
+    Serializer s;
+    s.write_u8(255);
+    Deserializer d(s.data());
+    EXPECT_EQ(255, d.read_u8());
+}
+
+TEST(SerializerTest, U16LargeValueV23) {
+    Serializer s;
+    s.write_u16(65000);
+    Deserializer d(s.data());
+    EXPECT_EQ(65000, d.read_u16());
+}
+
+TEST(SerializerTest, U32MidValueV23) {
+    Serializer s;
+    s.write_u32(2147483647);
+    Deserializer d(s.data());
+    EXPECT_EQ(2147483647, d.read_u32());
+}
+
+TEST(SerializerTest, I32LargeNegativeV23) {
+    Serializer s;
+    s.write_i32(-2147483647);
+    Deserializer d(s.data());
+    EXPECT_EQ(-2147483647, d.read_i32());
+}
+
+TEST(SerializerTest, I64LargePositiveV23) {
+    Serializer s;
+    s.write_i64(9223372036854775807LL);
+    Deserializer d(s.data());
+    EXPECT_EQ(9223372036854775807LL, d.read_i64());
+}
+
+TEST(SerializerTest, F64PrecisionValueV23) {
+    Serializer s;
+    s.write_f64(3.14159265359);
+    Deserializer d(s.data());
+    EXPECT_DOUBLE_EQ(3.14159265359, d.read_f64());
+}
+
+TEST(SerializerTest, StringLongValueV23) {
+    Serializer s;
+    std::string long_str = "The quick brown fox jumps over the lazy dog";
+    s.write_string(long_str);
+    Deserializer d(s.data());
+    EXPECT_EQ(long_str, d.read_string());
+}
+
+TEST(SerializerTest, BoolTrueValueV23) {
+    Serializer s;
+    s.write_bool(true);
+    Deserializer d(s.data());
+    EXPECT_EQ(true, d.read_bool());
+}

@@ -3442,3 +3442,40 @@ TEST(CORSPolicy, CORSRejectsWildcardWithMismatchedOriginV32) {
 TEST(CORSPolicy, ShouldAttachOriginHeaderSameSiteV32) {
     EXPECT_FALSE(should_attach_origin_header("https://app.example:8080", "https://app.example:8080/api"));
 }
+
+// Cycle 1301: CORS policy tests
+TEST(CORSPolicy, IsCrossOriginDifferentDomainsV33) {
+    EXPECT_TRUE(is_cross_origin("https://example.com", "https://different.com"));
+}
+
+TEST(CORSPolicy, HasEnforceableOriginWithHttpPortV33) {
+    EXPECT_FALSE(has_enforceable_document_origin("http://localhost:80"));
+}
+
+TEST(CORSPolicy, HasEnforceableOriginWithHttpsPortV33) {
+    EXPECT_FALSE(has_enforceable_document_origin("https://localhost:443"));
+}
+
+TEST(CORSPolicy, IsCorsEligibleWithNonDefaultPortV33) {
+    EXPECT_TRUE(is_cors_eligible_request_url("https://api.example.com:8443/data"));
+}
+
+TEST(CORSPolicy, ShouldAttachOriginHeaderCrossOriginV33) {
+    EXPECT_TRUE(should_attach_origin_header("https://app.example:8080", "https://api.example:9090/endpoint"));
+}
+
+TEST(CORSPolicy, CORSAllowsWildcardOriginV33) {
+    clever::net::HeaderMap resp_headers;
+    resp_headers.set("Access-Control-Allow-Origin", "*");
+    EXPECT_TRUE(cors_allows_response("https://client.example", "https://server.example:8443/data", resp_headers, false));
+}
+
+TEST(CORSPolicy, CORSRejectsNullOriginV33) {
+    clever::net::HeaderMap resp_headers;
+    resp_headers.set("Access-Control-Allow-Origin", "https://specific.example");
+    EXPECT_FALSE(cors_allows_response("null", "https://specific.example:8443/api", resp_headers, false));
+}
+
+TEST(CORSPolicy, IsCrossOriginSameSchemeV33) {
+    EXPECT_FALSE(is_cross_origin("https://api.example:8443", "https://api.example:8443/path"));
+}

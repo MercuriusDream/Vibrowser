@@ -7840,3 +7840,104 @@ TEST(HttpClient, HeaderMapCaseInsensitiveRemoveV25) {
     EXPECT_FALSE(map.get("x-custom-header").has_value());
     EXPECT_TRUE(map.get("X-Another").has_value());
 }
+
+// Cycle 1304: HTTP client tests
+
+// HeaderMap: multiple headers with same name via overwrite pattern
+TEST(HttpClient, HeaderMapMultipleValuesOverwriteV26) {
+    HeaderMap map;
+    map.set("Accept", "text/html");
+    map.set("Accept", "application/json");
+
+    auto val = map.get("Accept");
+    EXPECT_TRUE(val.has_value());
+    EXPECT_EQ(val.value(), "application/json");
+}
+
+// Request: HEAD method without body
+TEST(HttpClient, RequestHeadMethodNoBodyV26) {
+    Request req;
+    req.method = Method::HEAD;
+    req.url = "https://example.com/resource";
+    req.headers.set("User-Agent", "TestAgent/1.0");
+
+    EXPECT_EQ(req.method, Method::HEAD);
+    EXPECT_EQ(req.body.size(), 0u);
+    EXPECT_TRUE(req.headers.has("User-Agent"));
+}
+
+// Response: status 200 with body content
+TEST(HttpClient, ResponseSuccessStatusWithBodyV26) {
+    Response resp;
+    resp.status = 200;
+    resp.status_text = "OK";
+    std::string content = "Hello World";
+    resp.body = std::vector<uint8_t>(content.begin(), content.end());
+
+    EXPECT_EQ(resp.status, 200);
+    EXPECT_EQ(resp.status_text, "OK");
+    EXPECT_EQ(resp.body.size(), 11u);
+}
+
+// CookieJar: get_cookie_header returns formatted header string
+TEST(HttpClient, CookieJarGetHeaderFormatV26) {
+    CookieJar jar;
+    jar.set_from_header("sessionId=abc123def456", "example.com");
+
+    std::string header = jar.get_cookie_header("example.com", "/", false);
+    EXPECT_FALSE(header.empty());
+    EXPECT_GT(header.size(), 0u);
+}
+
+// Request: OPTIONS method with headers
+TEST(HttpClient, RequestOptionsMethodV26) {
+    Request req;
+    req.method = Method::OPTIONS;
+    req.url = "https://api.example.com/v1/resource";
+    req.headers.set("Origin", "https://example.com");
+    req.headers.set("Access-Control-Request-Method", "POST");
+
+    EXPECT_EQ(req.method, Method::OPTIONS);
+    EXPECT_TRUE(req.headers.has("Origin"));
+    EXPECT_TRUE(req.headers.has("access-control-request-method"));
+}
+
+// HeaderMap: size reflects number of distinct headers
+TEST(HttpClient, HeaderMapSizeAccuracyV26) {
+    HeaderMap map;
+    map.set("Content-Type", "application/json");
+    map.set("Content-Length", "256");
+    map.set("Cache-Control", "no-cache");
+
+    EXPECT_EQ(map.size(), 3u);
+
+    map.remove("Content-Length");
+    EXPECT_EQ(map.size(), 2u);
+}
+
+// Request: PATCH method with JSON body
+TEST(HttpClient, RequestPatchMethodWithBodyV26) {
+    Request req;
+    req.method = Method::PATCH;
+    req.url = "https://api.example.com/users/123";
+    req.headers.set("Content-Type", "application/json");
+    std::string json = R"({"status":"active"})";
+    req.body = std::vector<uint8_t>(json.begin(), json.end());
+
+    EXPECT_EQ(req.method, Method::PATCH);
+    EXPECT_EQ(req.body.size(), json.size());
+    EXPECT_TRUE(req.headers.has("Content-Type"));
+}
+
+// Response: error status with error text
+TEST(HttpClient, ResponseErrorStatusV26) {
+    Response resp;
+    resp.status = 503;
+    resp.status_text = "Service Unavailable";
+    std::string error = "Service temporarily offline";
+    resp.body = std::vector<uint8_t>(error.begin(), error.end());
+
+    EXPECT_EQ(resp.status, 503);
+    EXPECT_EQ(resp.status_text, "Service Unavailable");
+    EXPECT_GT(resp.body.size(), 0u);
+}

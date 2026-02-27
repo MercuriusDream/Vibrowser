@@ -19214,3 +19214,53 @@ TEST(JSEngine, ObjectValuesCycle1299) {
     auto result = engine.evaluate("var obj = {x: 10, y: 20, z: 30}; var vals = Object.values(obj); vals.length.toString()");
     EXPECT_EQ(result, "3");
 }
+
+// Cycle 1308: JS engine tests
+
+TEST(JSEngine, StringToUpperCaseCycle1308) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("'hello world'.toUpperCase()");
+    EXPECT_EQ(result, "HELLO WORLD");
+}
+
+TEST(JSEngine, StringToLowerCaseCycle1308) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("'HELLO WORLD'.toLowerCase()");
+    EXPECT_EQ(result, "hello world");
+}
+
+TEST(JSEngine, StringTrimCycle1308) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("'  test string  '.trim()");
+    EXPECT_EQ(result, "test string");
+}
+
+TEST(JSEngine, ArrayReduceCycle1308) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var arr = [1, 2, 3, 4]; var sum = arr.reduce((a, b) => a + b, 0); sum.toString()");
+    EXPECT_EQ(result, "10");
+}
+
+TEST(JSEngine, MathFloorCycle1308) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var result = Math.floor(4.9); result.toString()");
+    EXPECT_EQ(result, "4");
+}
+
+TEST(JSEngine, JSONParseStringifyCycle1308) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var obj = {a: 1, b: 2}; var json = JSON.stringify(obj); var parsed = JSON.parse(json); parsed.a.toString()");
+    EXPECT_EQ(result, "1");
+}
+
+TEST(JSEngine, RegExpTestCycle1308) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var regex = /test/i; regex.test('TEST') ? 'true' : 'false'");
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, ArrayIncludesCycle1308) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var arr = [1, 2, 3, 4, 5]; arr.includes(3) ? 'true' : 'false'");
+    EXPECT_EQ(result, "true");
+}

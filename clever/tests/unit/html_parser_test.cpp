@@ -7587,3 +7587,60 @@ TEST(TreeBuilder, LabelElementV11) {
     ASSERT_NE(el, nullptr);
     EXPECT_EQ(el->tag_name, "label");
 }
+
+// Cycle 1306: HTML parser tests
+TEST(TreeBuilder, FormElementV12) {
+    auto doc = clever::html::parse("<form method=\"POST\" action=\"/submit\"><input type=\"text\" name=\"username\" /></form>");
+    auto* el = doc->find_element("form");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "form");
+}
+
+TEST(TreeBuilder, FieldsetElementV12) {
+    auto doc = clever::html::parse("<fieldset><legend>Personal Info</legend><input type=\"text\" /></fieldset>");
+    auto* el = doc->find_element("fieldset");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "fieldset");
+}
+
+TEST(TreeBuilder, OptgroupElementV12) {
+    auto doc = clever::html::parse("<select><optgroup label=\"Group1\"><option>Item1</option></optgroup></select>");
+    auto* el = doc->find_element("optgroup");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "optgroup");
+}
+
+TEST(TreeBuilder, DatalistElementV12) {
+    auto doc = clever::html::parse("<input list=\"fruits\" /><datalist id=\"fruits\"><option value=\"Apple\"></option></datalist>");
+    auto* el = doc->find_element("datalist");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "datalist");
+}
+
+TEST(TreeBuilder, KeygenElementV12) {
+    auto doc = clever::html::parse("<keygen name=\"security\" challenge=\"challenge_string\" />");
+    auto* el = doc->find_element("keygen");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "keygen");
+}
+
+TEST(TreeBuilder, OutputElementV12) {
+    auto doc = clever::html::parse("<output name=\"result\" for=\"a b\">0</output>");
+    auto* el = doc->find_element("output");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "output");
+}
+
+TEST(TreeBuilder, MeterElementV12) {
+    auto doc = clever::html::parse("<meter value=\"6\" min=\"0\" max=\"10\"></meter>");
+    auto* el = doc->find_element("meter");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "meter");
+}
+
+TEST(TreeBuilder, ProgressElementV12) {
+    auto doc = clever::html::parse("<progress value=\"70\" max=\"100\"></progress>");
+    auto* el = doc->find_element("progress");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "progress");
+}

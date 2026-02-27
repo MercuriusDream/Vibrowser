@@ -9095,3 +9095,44 @@ TEST(LayoutNodeProps, StopOpacityDefaultV23) {
     LayoutNode n;
     EXPECT_FLOAT_EQ(n.stop_opacity, 1.0f);
 }
+
+// Cycle 1307: Layout node tests
+TEST(LayoutNodeProps, TextWrapDefaultV24) {
+    LayoutNode n;
+    EXPECT_EQ(n.text_wrap, 0);
+}
+
+TEST(LayoutNodeProps, ContainerTypeDefaultV24) {
+    LayoutNode n;
+    EXPECT_EQ(n.container_type, 0);
+}
+
+TEST(LayoutNodeProps, AccentColorDefaultV24) {
+    LayoutNode n;
+    EXPECT_EQ(n.accent_color, 0u);
+}
+
+TEST(LayoutNodeProps, ColorSchemeDefaultV24) {
+    LayoutNode n;
+    EXPECT_EQ(n.color_scheme, 0);
+}
+
+TEST(LayoutNodeProps, ScrollSnapTypeDefaultV24) {
+    LayoutNode n;
+    EXPECT_EQ(n.scroll_snap_type, "");
+}
+
+TEST(LayoutNodeProps, ScrollSnapAlignDefaultV24) {
+    LayoutNode n;
+    EXPECT_EQ(n.scroll_snap_align, "");
+}
+
+TEST(LayoutNodeProps, OpacityDefaultV24) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.opacity, 1.0f);
+}
+
+TEST(LayoutNodeProps, MixBlendModeDefaultV24) {
+    LayoutNode n;
+    EXPECT_EQ(n.mix_blend_mode, 0);
+}
