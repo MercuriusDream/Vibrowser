@@ -4968,3 +4968,82 @@ TEST(TreeBuilder, FormNameAttr) {
         if (attr.name == "name" && attr.value == "loginForm") found = true;
     EXPECT_TRUE(found);
 }
+TEST(TreeBuilder, FormActionAttr) {
+    auto doc = clever::html::parse("<body><form action=\"/submit\"></form></body>");
+    auto* el = doc->find_element("form");
+    ASSERT_NE(el, nullptr);
+    bool found = false;
+    for (const auto& attr : el->attributes)
+        if (attr.name == "action" && attr.value == "/submit") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, FormMethodAttr) {
+    auto doc = clever::html::parse("<body><form method=\"post\"></form></body>");
+    auto* el = doc->find_element("form");
+    ASSERT_NE(el, nullptr);
+    bool found = false;
+    for (const auto& attr : el->attributes)
+        if (attr.name == "method" && attr.value == "post") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, MeterMaxAttr) {
+    auto doc = clever::html::parse("<body><meter max=\"100\"></meter></body>");
+    auto* el = doc->find_element("meter");
+    ASSERT_NE(el, nullptr);
+    bool found = false;
+    for (const auto& attr : el->attributes)
+        if (attr.name == "max" && attr.value == "100") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, MeterValueAttr) {
+    auto doc = clever::html::parse("<body><meter value=\"40\"></meter></body>");
+    auto* el = doc->find_element("meter");
+    ASSERT_NE(el, nullptr);
+    bool found = false;
+    for (const auto& attr : el->attributes)
+        if (attr.name == "value" && attr.value == "40") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, MeterOptimumAttr) {
+    auto doc = clever::html::parse("<body><meter optimum=\"70\"></meter></body>");
+    auto* el = doc->find_element("meter");
+    ASSERT_NE(el, nullptr);
+    bool found = false;
+    for (const auto& attr : el->attributes)
+        if (attr.name == "optimum" && attr.value == "70") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, MeterLowAttr) {
+    auto doc = clever::html::parse("<body><meter low=\"20\"></meter></body>");
+    auto* el = doc->find_element("meter");
+    ASSERT_NE(el, nullptr);
+    bool found = false;
+    for (const auto& attr : el->attributes)
+        if (attr.name == "low" && attr.value == "20") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, MeterHighAttr) {
+    auto doc = clever::html::parse("<body><meter high=\"80\"></meter></body>");
+    auto* el = doc->find_element("meter");
+    ASSERT_NE(el, nullptr);
+    bool found = false;
+    for (const auto& attr : el->attributes)
+        if (attr.name == "high" && attr.value == "80") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, AudioAutoplayAttr) {
+    auto doc = clever::html::parse("<body><audio autoplay src=\"/audio.mp3\"></audio></body>");
+    auto* el = doc->find_element("audio");
+    ASSERT_NE(el, nullptr);
+    bool found = false;
+    for (const auto& attr : el->attributes)
+        if (attr.name == "autoplay") found = true;
+    EXPECT_TRUE(found);
+}
