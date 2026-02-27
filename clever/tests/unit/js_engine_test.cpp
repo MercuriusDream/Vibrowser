@@ -15666,3 +15666,51 @@ TEST(JSEngine, ObjectSpreadOverrides) {
     auto result = engine.evaluate("const base={a:1,b:2}; const o={...base, b:99}; o.b");
     EXPECT_EQ(result, "99");
 }
+
+TEST(JSEngine, NumberToPrecision) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("(123.456).toPrecision(5)");
+    EXPECT_EQ(result, "123.46");
+}
+
+TEST(JSEngine, NumberToExponential) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("(12345).toExponential(2)");
+    EXPECT_EQ(result, "1.23e+4");
+}
+
+TEST(JSEngine, NumberEpsilonIsSmall) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("Number.EPSILON < 0.001");
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, MathClz32) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("Math.clz32(1)");
+    EXPECT_EQ(result, "31");
+}
+
+TEST(JSEngine, MathImul) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("Math.imul(3, 4)");
+    EXPECT_EQ(result, "12");
+}
+
+TEST(JSEngine, MathFRound) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("typeof Math.fround(5.5)");
+    EXPECT_EQ(result, "number");
+}
+
+TEST(JSEngine, BigIntAdd) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("(1n + 2n).toString()");
+    EXPECT_EQ(result, "3");
+}
+
+TEST(JSEngine, BigIntCompare) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("10n > 5n");
+    EXPECT_EQ(result, "true");
+}
