@@ -14812,3 +14812,51 @@ TEST(JSEngine, ArrayFindIndexReturnsIndex) {
     auto result = engine.evaluate("[10, 20, 30].findIndex(x => x === 20)");
     EXPECT_EQ(result, "1");
 }
+
+TEST(JSEngine, ArrayEveryAllEvenV2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("[2, 4, 6].every(x => x % 2 === 0)");
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, ArraySomeFindsOdd) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("[1, 2, 3].some(x => x % 2 === 1)");
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, ArrayFromStringCharsV2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("Array.from('abc').join('')");
+    EXPECT_EQ(result, "abc");
+}
+
+TEST(JSEngine, ArrayIsArrayTrue) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("Array.isArray([1,2,3])");
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, ObjectAssignMergePropertyB) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("Object.assign({a:1}, {b:2}).b");
+    EXPECT_EQ(result, "2");
+}
+
+TEST(JSEngine, ObjectKeysLengthThreeV2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("Object.keys({x:1,y:2,z:3}).length");
+    EXPECT_EQ(result, "3");
+}
+
+TEST(JSEngine, NumberIsIntegerTrueV2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("Number.isInteger(42)");
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, NumberIsFiniteTrue) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("Number.isFinite(3.14)");
+    EXPECT_EQ(result, "true");
+}
