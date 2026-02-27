@@ -4558,3 +4558,109 @@ TEST(ResponseTest, AccessControlMaxAgeInResponse) {
     ASSERT_TRUE(val.has_value());
     EXPECT_EQ(*val, "86400");
 }
+
+// Cycle 899 — HTTP response headers: Timing-Allow-Origin, Server-Timing, Report-To, Clear-Site-Data, Content-Location, Allow, Origin-Agent-Cluster, Content-Disposition
+
+TEST(ResponseTest, TimingAllowOriginInResponse) {
+    std::string raw =
+        "HTTP/1.1 200 OK\r\n"
+        "Timing-Allow-Origin: *\r\n"
+        "Content-Length: 0\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    auto val = resp->headers.get("timing-allow-origin");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(*val, "*");
+}
+
+TEST(ResponseTest, ServerTimingInResponse) {
+    std::string raw =
+        "HTTP/1.1 200 OK\r\n"
+        "Server-Timing: db;dur=53,app;dur=47.2\r\n"
+        "Content-Length: 0\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    auto val = resp->headers.get("server-timing");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_NE(val->find("db"), std::string::npos);
+}
+
+TEST(ResponseTest, ReportToInResponse) {
+    std::string raw =
+        "HTTP/1.1 200 OK\r\n"
+        "Report-To: {\"group\":\"default\",\"max_age\":86400}\r\n"
+        "Content-Length: 0\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    auto val = resp->headers.get("report-to");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_NE(val->find("default"), std::string::npos);
+}
+
+TEST(ResponseTest, ClearSiteDataInResponse) {
+    std::string raw =
+        "HTTP/1.1 200 OK\r\n"
+        "Clear-Site-Data: \"cache\"\r\n"
+        "Content-Length: 0\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    auto val = resp->headers.get("clear-site-data");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_NE(val->find("cache"), std::string::npos);
+}
+
+TEST(ResponseTest, ContentLocationInResponse) {
+    std::string raw =
+        "HTTP/1.1 201 Created\r\n"
+        "Content-Location: /documents/foo.json\r\n"
+        "Content-Length: 0\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    auto val = resp->headers.get("content-location");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(*val, "/documents/foo.json");
+}
+
+TEST(ResponseTest, AllowMethodsInResponse) {
+    std::string raw =
+        "HTTP/1.1 405 Method Not Allowed\r\n"
+        "Allow: GET, HEAD, POST\r\n"
+        "Content-Length: 0\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    auto val = resp->headers.get("allow");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_NE(val->find("GET"), std::string::npos);
+}
+
+TEST(ResponseTest, OriginAgentClusterInResponse) {
+    std::string raw =
+        "HTTP/1.1 200 OK\r\n"
+        "Origin-Agent-Cluster: ?1\r\n"
+        "Content-Length: 0\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    auto val = resp->headers.get("origin-agent-cluster");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(*val, "?1");
+}
+
+TEST(ResponseTest, ContentDispositionAttachment) {
+    std::string raw =
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Disposition: attachment; filename=\"report.pdf\"\r\n"
+        "Content-Length: 0\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    auto val = resp->headers.get("content-disposition");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_NE(val->find("attachment"), std::string::npos);
+}
