@@ -3678,3 +3678,76 @@ TEST_F(CSSStylesheetTest, PseudoClassEnabled) {
     ASSERT_EQ(sheet.rules.size(), 1u);
     EXPECT_NE(sheet.rules[0].selector_text.find("enabled"), std::string::npos);
 }
+
+// Cycle 771 — scroll, accent, caret, isolation, paint declarations
+TEST_F(CSSStylesheetTest, ScrollbarWidthDeclaration) {
+    auto sheet = parse_stylesheet("body { scrollbar-width: thin; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "scrollbar-width") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, AccentColorDeclaration) {
+    auto sheet = parse_stylesheet("input { accent-color: blue; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "accent-color") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, CaretColorDeclaration) {
+    auto sheet = parse_stylesheet("textarea { caret-color: red; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "caret-color") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, IsolationDeclaration) {
+    auto sheet = parse_stylesheet(".stacking { isolation: isolate; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "isolation") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, MixBlendModeDeclaration) {
+    auto sheet = parse_stylesheet(".layer { mix-blend-mode: multiply; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "mix-blend-mode") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, PaintOrderDeclaration) {
+    auto sheet = parse_stylesheet("text { paint-order: stroke fill; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "paint-order") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, OverscrollBehaviorDeclaration) {
+    auto sheet = parse_stylesheet("body { overscroll-behavior: contain; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "overscroll-behavior") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, ShapeOutsideDeclaration) {
+    auto sheet = parse_stylesheet(".float { shape-outside: circle(50%); }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "shape-outside") { found = true; break; }
+    EXPECT_TRUE(found);
+}
