@@ -12154,3 +12154,179 @@ TEST(DOMTest, NodeContainsCheckFindsAncestorRelationshipV71) {
     EXPECT_FALSE(node_contains(*button_ptr, *section_ptr));
     EXPECT_FALSE(node_contains(*aside_ptr, *button_ptr));
 }
+
+TEST(DOMTest, ElementTagNameUppercaseV72) {
+    auto tag_name_uppercase = [](const Element& element) -> std::string {
+        std::string upper = element.tag_name();
+        for (char& ch : upper) {
+            if (ch >= 'a' && ch <= 'z') {
+                ch = static_cast<char>(ch - ('a' - 'A'));
+            }
+        }
+        return upper;
+    };
+
+    Element element("main");
+    EXPECT_EQ(tag_name_uppercase(element), "MAIN");
+}
+
+TEST(DOMTest, NodeTypeConstantsMatchDomSpecValuesV72) {
+    auto dom_node_type_constant = [](NodeType type) -> int {
+        switch (type) {
+            case NodeType::Element:
+                return 1;
+            case NodeType::Text:
+                return 3;
+            case NodeType::Comment:
+                return 8;
+            case NodeType::Document:
+                return 9;
+            default:
+                return -1;
+        }
+    };
+
+    Element element("div");
+    Text text("hello");
+    Comment comment("note");
+    Document document;
+
+    EXPECT_EQ(dom_node_type_constant(element.node_type()), 1);
+    EXPECT_EQ(dom_node_type_constant(text.node_type()), 3);
+    EXPECT_EQ(dom_node_type_constant(comment.node_type()), 8);
+    EXPECT_EQ(dom_node_type_constant(document.node_type()), 9);
+}
+
+TEST(DOMTest, ReplaceChildrenClearsAndSetsNewNodesV72) {
+    auto replace_children = [](Node& parent, std::vector<std::unique_ptr<Node>> children)
+        -> std::vector<std::unique_ptr<Node>> {
+        std::vector<std::unique_ptr<Node>> removed_children;
+        while (parent.first_child() != nullptr) {
+            removed_children.push_back(parent.remove_child(*parent.first_child()));
+        }
+        for (auto& child : children) {
+            parent.append_child(std::move(child));
+        }
+        return removed_children;
+    };
+
+    Element parent("div");
+    auto old_a = std::make_unique<Element>("old-a");
+    auto old_b = std::make_unique<Element>("old-b");
+    Element* old_a_ptr = old_a.get();
+    Element* old_b_ptr = old_b.get();
+    parent.append_child(std::move(old_a));
+    parent.append_child(std::move(old_b));
+
+    auto new_first = std::make_unique<Element>("new-first");
+    auto new_second = std::make_unique<Element>("new-second");
+    Element* new_first_ptr = new_first.get();
+    Element* new_second_ptr = new_second.get();
+    std::vector<std::unique_ptr<Node>> replacements;
+    replacements.push_back(std::move(new_first));
+    replacements.push_back(std::move(new_second));
+
+    auto removed = replace_children(parent, std::move(replacements));
+
+    ASSERT_EQ(removed.size(), 2u);
+    EXPECT_EQ(removed[0].get(), old_a_ptr);
+    EXPECT_EQ(removed[1].get(), old_b_ptr);
+    EXPECT_EQ(removed[0]->parent(), nullptr);
+    EXPECT_EQ(removed[1]->parent(), nullptr);
+    EXPECT_EQ(parent.child_count(), 2u);
+    EXPECT_EQ(parent.first_child(), new_first_ptr);
+    EXPECT_EQ(new_first_ptr->next_sibling(), new_second_ptr);
+    EXPECT_EQ(parent.last_child(), new_second_ptr);
+}
+
+TEST(DOMTest, ElementToggleAttributePresenceV72) {
+    auto toggle_attribute = [](Element& element, const std::string& name) -> bool {
+        if (element.has_attribute(name)) {
+            element.remove_attribute(name);
+            return false;
+        }
+        element.set_attribute(name, "");
+        return true;
+    };
+
+    Element element("button");
+    EXPECT_FALSE(element.has_attribute("disabled"));
+    EXPECT_TRUE(toggle_attribute(element, "disabled"));
+    EXPECT_TRUE(element.has_attribute("disabled"));
+    EXPECT_FALSE(toggle_attribute(element, "disabled"));
+    EXPECT_FALSE(element.has_attribute("disabled"));
+}
+
+TEST(DOMTest, ClassListAddAndContainsV72) {
+    Element element("div");
+    element.class_list().add("card");
+    element.class_list().add("active");
+
+    EXPECT_TRUE(element.class_list().contains("card"));
+    EXPECT_TRUE(element.class_list().contains("active"));
+    EXPECT_FALSE(element.class_list().contains("hidden"));
+}
+
+TEST(DOMTest, ClassListRemoveV72) {
+    Element element("div");
+    element.class_list().add("alpha");
+    element.class_list().add("beta");
+
+    element.class_list().remove("alpha");
+
+    EXPECT_FALSE(element.class_list().contains("alpha"));
+    EXPECT_TRUE(element.class_list().contains("beta"));
+}
+
+TEST(DOMTest, PrependChildInsertsAtBeginningV72) {
+    auto prepend_child = [](Node& parent, std::unique_ptr<Node> child) -> Node* {
+        Node* inserted = child.get();
+        parent.insert_before(std::move(child), parent.first_child());
+        return inserted;
+    };
+
+    Element parent("ul");
+    auto existing_first = std::make_unique<Element>("first");
+    auto existing_second = std::make_unique<Element>("second");
+    Element* existing_first_ptr = existing_first.get();
+    Element* existing_second_ptr = existing_second.get();
+    parent.append_child(std::move(existing_first));
+    parent.append_child(std::move(existing_second));
+
+    Node* prepended = prepend_child(parent, std::make_unique<Element>("prepended"));
+
+    ASSERT_NE(prepended, nullptr);
+    EXPECT_EQ(parent.child_count(), 3u);
+    EXPECT_EQ(parent.first_child(), prepended);
+    EXPECT_EQ(prepended->next_sibling(), existing_first_ptr);
+    EXPECT_EQ(existing_first_ptr->next_sibling(), existing_second_ptr);
+}
+
+TEST(DOMTest, AppendMultipleChildrenOrderPreservedV72) {
+    auto append_children = [](Node& parent, std::vector<std::unique_ptr<Node>> children) {
+        for (auto& child : children) {
+            parent.append_child(std::move(child));
+        }
+    };
+
+    Element parent("ol");
+    auto first = std::make_unique<Element>("one");
+    auto second = std::make_unique<Element>("two");
+    auto third = std::make_unique<Element>("three");
+    Element* first_ptr = first.get();
+    Element* second_ptr = second.get();
+    Element* third_ptr = third.get();
+
+    std::vector<std::unique_ptr<Node>> children;
+    children.push_back(std::move(first));
+    children.push_back(std::move(second));
+    children.push_back(std::move(third));
+
+    append_children(parent, std::move(children));
+
+    EXPECT_EQ(parent.child_count(), 3u);
+    EXPECT_EQ(parent.first_child(), first_ptr);
+    EXPECT_EQ(first_ptr->next_sibling(), second_ptr);
+    EXPECT_EQ(second_ptr->next_sibling(), third_ptr);
+    EXPECT_EQ(parent.last_child(), third_ptr);
+}

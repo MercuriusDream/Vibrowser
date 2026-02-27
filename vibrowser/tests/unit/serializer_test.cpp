@@ -10756,3 +10756,120 @@ TEST(SerializerTest, BytesAllFFThroughoutV71) {
     EXPECT_EQ(d.read_bytes(), bytes);
     EXPECT_FALSE(d.has_remaining());
 }
+
+TEST(SerializerTest, WriteReadU32MaxAndMinV72) {
+    Serializer s;
+    s.write_u32(std::numeric_limits<uint32_t>::max());
+    s.write_u32(std::numeric_limits<uint32_t>::min());
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u32(), std::numeric_limits<uint32_t>::max());
+    EXPECT_EQ(d.read_u32(), std::numeric_limits<uint32_t>::min());
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, WriteReadStringWithSpecialHtmlCharsV72) {
+    const std::string text = "<div class=\"msg\">Tom & Jerry 'say' \"hi\"</div>";
+    Serializer s;
+    s.write_string(text);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), text);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, WriteReadBoolSequenceTrueFalseTrueV72) {
+    Serializer s;
+    s.write_bool(true);
+    s.write_bool(false);
+    s.write_bool(true);
+
+    Deserializer d(s.data());
+    EXPECT_TRUE(d.read_bool());
+    EXPECT_FALSE(d.read_bool());
+    EXPECT_TRUE(d.read_bool());
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, WriteReadBytesWithRepeatingPatternV72) {
+    std::vector<uint8_t> bytes(256);
+    for (size_t i = 0; i < bytes.size(); ++i) {
+        switch (i % 4u) {
+            case 0:
+                bytes[i] = 0xAAu;
+                break;
+            case 1:
+                bytes[i] = 0x55u;
+                break;
+            case 2:
+                bytes[i] = 0x00u;
+                break;
+            default:
+                bytes[i] = 0xFFu;
+                break;
+        }
+    }
+
+    Serializer s;
+    s.write_bytes(bytes.data(), bytes.size());
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_bytes(), bytes);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, WriteReadU32SequenceZeroToNineV72) {
+    Serializer s;
+    for (uint32_t i = 0; i < 10u; ++i) {
+        s.write_u32(i);
+    }
+
+    Deserializer d(s.data());
+    for (uint32_t i = 0; i < 10u; ++i) {
+        EXPECT_EQ(d.read_u32(), i);
+    }
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, WriteReadStringThenBoolThenU32MixedV72) {
+    const std::string text = "mix<&>\"value\"";
+    const bool flag = false;
+    const uint32_t number = 42424242u;
+
+    Serializer s;
+    s.write_string(text);
+    s.write_bool(flag);
+    s.write_u32(number);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), text);
+    EXPECT_EQ(d.read_bool(), flag);
+    EXPECT_EQ(d.read_u32(), number);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, WriteReadEmptyThenNonEmptyStringV72) {
+    const std::string second = "after-empty";
+    Serializer s;
+    s.write_string("");
+    s.write_string(second);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "");
+    EXPECT_EQ(d.read_string(), second);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, DeserializerFromRawBufferV72) {
+    Serializer s;
+    s.write_u32(0xDEADBEEFu);
+    s.write_bool(true);
+    s.write_string("raw-buffer");
+
+    const auto& raw = s.data();
+    Deserializer d(raw.data(), raw.size());
+    EXPECT_EQ(d.read_u32(), 0xDEADBEEFu);
+    EXPECT_TRUE(d.read_bool());
+    EXPECT_EQ(d.read_string(), "raw-buffer");
+    EXPECT_FALSE(d.has_remaining());
+}

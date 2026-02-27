@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <sstream>
 #include <string>
+#include <type_traits>
 #include <vector>
 
 using namespace clever::net;
@@ -13495,4 +13496,214 @@ TEST(RequestTest, HostAutoFromHostFieldV71) {
     std::string serialized(bytes.begin(), bytes.end());
 
     EXPECT_NE(serialized.find("Host: autohost.example.com\r\n"), std::string::npos);
+}
+
+// ---------------------------------------------------------------------------
+// Cycle 72: requested Request/Response/HeaderMap coverage additions
+// ---------------------------------------------------------------------------
+
+TEST(RequestTest, DefaultMethodIsGetV72) {
+    Request req;
+    EXPECT_EQ(req.method, Method::GET);
+}
+
+TEST(RequestTest, MethodPostSerializesRequestLineV72) {
+    Request req;
+    req.method = Method::POST;
+    req.host = "post.example.com";
+    req.port = 80;
+    req.path = "/submit";
+
+    auto bytes = req.serialize();
+    std::string serialized(bytes.begin(), bytes.end());
+
+    EXPECT_NE(serialized.find("POST /submit HTTP/1.1\r\n"), std::string::npos);
+}
+
+TEST(ResponseTest, Parse200OkV72) {
+    const std::string raw =
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Length: 2\r\n"
+        "\r\n"
+        "OK";
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 200u);
+    EXPECT_EQ(resp->status_text, "OK");
+}
+
+TEST(ResponseTest, Parse302FoundV72) {
+    const std::string raw =
+        "HTTP/1.1 302 Found\r\n"
+        "Location: /next\r\n"
+        "Content-Length: 0\r\n"
+        "\r\n";
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 302u);
+    EXPECT_EQ(resp->status_text, "Found");
+    ASSERT_TRUE(resp->headers.get("location").has_value());
+    EXPECT_EQ(resp->headers.get("location").value(), "/next");
+}
+
+TEST(HeaderMapTest, SetThenHasV72) {
+    HeaderMap map;
+    map.set("X-Token", "abc");
+    EXPECT_TRUE(map.has("x-token"));
+    EXPECT_TRUE(map.has("X-Token"));
+}
+
+TEST(HeaderMapTest, AppendCreatesListV72) {
+    HeaderMap map;
+    map.append("Set-Cookie", "a=1");
+    map.append("Set-Cookie", "b=2");
+
+    auto values = map.get_all("set-cookie");
+    EXPECT_EQ(values.size(), 2u);
+}
+
+TEST(HeaderMapTest, SerializeFormatViaRequestV72) {
+    Request req;
+    req.method = Method::GET;
+    req.host = "fmt.example.com";
+    req.port = 80;
+    req.path = "/";
+    req.headers.set("X-Test", "v72");
+
+    auto bytes = req.serialize();
+    std::string serialized(bytes.begin(), bytes.end());
+
+    EXPECT_NE(serialized.find("x-test: v72\r\n"), std::string::npos);
+}
+
+TEST(RequestTest, SerializePathWithQueryV72) {
+    Request req;
+    req.method = Method::GET;
+    req.host = "search.example.com";
+    req.port = 80;
+    req.path = "/search";
+    req.query = "q=vibrowser&page=2";
+
+    auto bytes = req.serialize();
+    std::string serialized(bytes.begin(), bytes.end());
+
+    EXPECT_NE(serialized.find("GET /search?q=vibrowser&page=2 HTTP/1.1\r\n"), std::string::npos);
+}
+
+TEST(ResponseTest, BodyVectorUint8PreservedV72) {
+    const std::string headers =
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Length: 4\r\n"
+        "\r\n";
+    std::vector<uint8_t> data(headers.begin(), headers.end());
+    const std::vector<uint8_t> expected = {0x00, 0x41, 0xFF, 0x42};
+    data.insert(data.end(), expected.begin(), expected.end());
+
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->body, expected);
+}
+
+TEST(RequestTest, BodyVectorUint8SerializedV72) {
+    Request req;
+    req.method = Method::POST;
+    req.host = "upload.example.com";
+    req.port = 80;
+    req.path = "/upload";
+    req.body = {0x01, 0x00, 0xFE, 0x7F};
+
+    auto bytes = req.serialize();
+
+    ASSERT_GE(bytes.size(), req.body.size());
+    EXPECT_TRUE(std::equal(req.body.begin(), req.body.end(),
+                           bytes.end() - static_cast<std::ptrdiff_t>(req.body.size())));
+    std::string serialized(bytes.begin(), bytes.end());
+    EXPECT_NE(serialized.find("Content-Length: 4\r\n"), std::string::npos);
+}
+
+TEST(HeaderMapTest, GetAllCountV72) {
+    HeaderMap map;
+    map.append("Accept", "text/html");
+    map.append("Accept", "application/json");
+    map.append("Accept", "*/*");
+
+    EXPECT_EQ(map.get_all("accept").size(), 3u);
+}
+
+TEST(ResponseTest, ExtractsStatusAndTextV72) {
+    const std::string raw =
+        "HTTP/1.1 418 I'm a teapot\r\n"
+        "Content-Length: 0\r\n"
+        "\r\n";
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 418u);
+    EXPECT_EQ(resp->status_text, "I'm a teapot");
+}
+
+TEST(RequestTest, HostFieldUsedForHostHeaderV72) {
+    Request req;
+    req.method = Method::GET;
+    req.host = "api.example.com";
+    req.port = 8080;
+    req.path = "/";
+    req.headers.set("Host", "override.invalid");
+
+    auto bytes = req.serialize();
+    std::string serialized(bytes.begin(), bytes.end());
+
+    EXPECT_NE(serialized.find("Host: api.example.com:8080\r\n"), std::string::npos);
+    EXPECT_EQ(serialized.find("override.invalid"), std::string::npos);
+}
+
+TEST(RequestTest, PostFormDataBodyV72) {
+    Request req;
+    req.method = Method::POST;
+    req.host = "form.example.com";
+    req.port = 80;
+    req.path = "/submit";
+    req.headers.set("Content-Type", "application/x-www-form-urlencoded");
+    const std::string form = "a=1&b=two";
+    req.body.assign(form.begin(), form.end());
+
+    auto bytes = req.serialize();
+    std::string serialized(bytes.begin(), bytes.end());
+
+    EXPECT_NE(serialized.find("POST /submit HTTP/1.1\r\n"), std::string::npos);
+    EXPECT_NE(serialized.find("content-type: application/x-www-form-urlencoded\r\n"), std::string::npos);
+    EXPECT_NE(serialized.find("Content-Length: 9\r\n"), std::string::npos);
+    EXPECT_EQ(serialized.substr(serialized.size() - form.size()), form);
+}
+
+TEST(ResponseTest, ParseHeadersLowercaseLookupV72) {
+    const std::string raw =
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Type: text/plain\r\n"
+        "X-Custom-Header: V72\r\n"
+        "Content-Length: 2\r\n"
+        "\r\n"
+        "ok";
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value());
+    ASSERT_TRUE(resp->headers.get("content-type").has_value());
+    ASSERT_TRUE(resp->headers.get("x-custom-header").has_value());
+    EXPECT_EQ(resp->headers.get("content-type").value(), "text/plain");
+    EXPECT_EQ(resp->headers.get("x-custom-header").value(), "V72");
+}
+
+TEST(HeaderMapTest, RemoveReturnTypeIsVoidV72) {
+    using RemoveSignature = void (HeaderMap::*)(const std::string&);
+    EXPECT_TRUE((std::is_same_v<decltype(&HeaderMap::remove), RemoveSignature>));
 }

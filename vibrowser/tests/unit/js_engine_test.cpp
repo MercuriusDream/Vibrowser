@@ -23256,3 +23256,131 @@ TEST(JSEngineTest, SetHasMethodChecksMembershipV71) {
     EXPECT_TRUE(result.success) << engine.last_error();
     EXPECT_EQ(result.value, "true|false|2");
 }
+
+TEST(JSEngineTest, NullishCoalescingOperatorDefaultsV72) {
+    clever::js::JSEngine engine;
+    const std::string js = R"(
+        var definedZero = 0;
+        var definedEmpty = '';
+        var nullValue = null;
+        var undefinedValue;
+
+        var withZero = definedZero ?? 5;
+        var withEmpty = definedEmpty ?? 'fallback';
+        var withNull = nullValue ?? 'fallback';
+        var withUndefined = undefinedValue ?? 'fallback';
+
+        [withZero.toString(), withEmpty, withNull, withUndefined].join('|')
+    )";
+    auto result = EvalResultV66{false, ""};
+    result.value = engine.evaluate(js);
+    result.success = !engine.has_error();
+    EXPECT_TRUE(result.success) << engine.last_error();
+    EXPECT_EQ(result.value, "0||fallback|fallback");
+}
+
+TEST(JSEngineTest, OptionalChainingOnNullReturnsUndefinedV72) {
+    clever::js::JSEngine engine;
+    const std::string js = R"(
+        var nullable = null;
+        var nested = nullable?.profile?.name;
+        var callResult = nullable?.doThing?.();
+        var present = ({ profile: { name: 'Ada' } })?.profile?.name;
+        [(nested === undefined).toString(), (callResult === undefined).toString(), present].join('|')
+    )";
+    auto result = EvalResultV66{false, ""};
+    result.value = engine.evaluate(js);
+    result.success = !engine.has_error();
+    EXPECT_TRUE(result.success) << engine.last_error();
+    EXPECT_EQ(result.value, "true|true|Ada");
+}
+
+TEST(JSEngineTest, ArrayPrototypeIncludesMatchesExpectedValuesV72) {
+    clever::js::JSEngine engine;
+    const std::string js = R"(
+        var base = [1, 2, 3];
+        var hasTwo = base.includes(2);
+        var hasFour = base.includes(4);
+        var hasNaN = [NaN].includes(NaN);
+        [hasTwo.toString(), hasFour.toString(), hasNaN.toString()].join('|')
+    )";
+    auto result = EvalResultV66{false, ""};
+    result.value = engine.evaluate(js);
+    result.success = !engine.has_error();
+    EXPECT_TRUE(result.success) << engine.last_error();
+    EXPECT_EQ(result.value, "true|false|true");
+}
+
+TEST(JSEngineTest, StringPrototypePadStartPadsLeftSideV72) {
+    clever::js::JSEngine engine;
+    const std::string js = R"(
+        var a = '7'.padStart(3, '0');
+        var b = 'V72'.padStart(5, '_');
+        var c = 'long'.padStart(2, '0');
+        [a, b, c].join('|')
+    )";
+    auto result = EvalResultV66{false, ""};
+    result.value = engine.evaluate(js);
+    result.success = !engine.has_error();
+    EXPECT_TRUE(result.success) << engine.last_error();
+    EXPECT_EQ(result.value, "007|__V72|long");
+}
+
+TEST(JSEngineTest, StringPrototypeTrimStartRemovesLeadingWhitespaceV72) {
+    clever::js::JSEngine engine;
+    const std::string js = R"(
+        var trimmed = '   V72  '.trimStart();
+        var normalized = trimmed.replace(/ /g, '_');
+        [normalized, trimmed.length.toString(), trimmed.startsWith('V72').toString()].join('|')
+    )";
+    auto result = EvalResultV66{false, ""};
+    result.value = engine.evaluate(js);
+    result.success = !engine.has_error();
+    EXPECT_TRUE(result.success) << engine.last_error();
+    EXPECT_EQ(result.value, "V72__|5|true");
+}
+
+TEST(JSEngineTest, ObjectValuesReturnsEnumerableValuesV72) {
+    clever::js::JSEngine engine;
+    const std::string js = R"(
+        var obj = { alpha: 1, beta: 2, gamma: 3 };
+        var values = Object.values(obj);
+        [values.join(','), values.length.toString(), values[1].toString()].join('|')
+    )";
+    auto result = EvalResultV66{false, ""};
+    result.value = engine.evaluate(js);
+    result.success = !engine.has_error();
+    EXPECT_TRUE(result.success) << engine.last_error();
+    EXPECT_EQ(result.value, "1,2,3|3|2");
+}
+
+TEST(JSEngineTest, ObjectEntriesLengthMatchesPropertyCountV72) {
+    clever::js::JSEngine engine;
+    const std::string js = R"(
+        var obj = { one: 1, two: 2, three: 3, four: 4 };
+        var entries = Object.entries(obj);
+        var first = entries[0][0] + ':' + entries[0][1].toString();
+        var last = entries[entries.length - 1][0] + ':' + entries[entries.length - 1][1].toString();
+        [entries.length.toString(), first, last].join('|')
+    )";
+    auto result = EvalResultV66{false, ""};
+    result.value = engine.evaluate(js);
+    result.success = !engine.has_error();
+    EXPECT_TRUE(result.success) << engine.last_error();
+    EXPECT_EQ(result.value, "4|one:1|four:4");
+}
+
+TEST(JSEngineTest, ArrayPrototypeEveryChecksPredicateAcrossItemsV72) {
+    clever::js::JSEngine engine;
+    const std::string js = R"(
+        var allEven = [2, 4, 6].every(function(v) { return v % 2 === 0; });
+        var mixed = [2, 3, 6].every(function(v) { return v % 2 === 0; });
+        var empty = [].every(function() { return false; });
+        [allEven.toString(), mixed.toString(), empty.toString()].join('|')
+    )";
+    auto result = EvalResultV66{false, ""};
+    result.value = engine.evaluate(js);
+    result.success = !engine.has_error();
+    EXPECT_TRUE(result.success) << engine.last_error();
+    EXPECT_EQ(result.value, "true|false|true");
+}

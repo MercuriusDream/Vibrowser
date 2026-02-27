@@ -13243,3 +13243,162 @@ TEST(LayoutEngineTest, MarginBottomOnLastChildV71) {
     EXPECT_FLOAT_EQ(root->children[0]->geometry.y, 0.0f);
     EXPECT_FLOAT_EQ(root->geometry.height, 38.0f);
 }
+
+// Test V72_001: root auto width equals viewport width
+TEST(LayoutEngineTest, RootAutoWidthEqualsViewportV72) {
+    auto root = make_block("div");
+
+    LayoutEngine engine;
+    const float vw = 913.0f;
+    const float vh = 540.0f;
+    engine.compute(*root, vw, vh);
+
+    EXPECT_FLOAT_EQ(root->geometry.width, vw);
+}
+
+// Test V72_002: child block inherits parent content width in normal flow
+TEST(LayoutEngineTest, ChildInheritsParentWidthV72) {
+    auto root = make_block("div");
+    root->specified_width = 420.0f;
+
+    auto child = make_block("div");
+    child->specified_height = 18.0f;
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    const float vw = 1000.0f;
+    const float vh = 600.0f;
+    engine.compute(*root, vw, vh);
+
+    ASSERT_EQ(root->children.size(), 1u);
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.width, 420.0f);
+}
+
+// Test V72_003: two children stack vertically with accumulated y offsets
+TEST(LayoutEngineTest, TwoChildrenVerticalStackingV72) {
+    auto root = make_block("div");
+    root->specified_width = 360.0f;
+
+    auto first = make_block("div");
+    first->specified_height = 40.0f;
+    auto second = make_block("div");
+    second->specified_height = 25.0f;
+    root->append_child(std::move(first));
+    root->append_child(std::move(second));
+
+    LayoutEngine engine;
+    const float vw = 900.0f;
+    const float vh = 700.0f;
+    engine.compute(*root, vw, vh);
+
+    ASSERT_EQ(root->children.size(), 2u);
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.y, 0.0f);
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.y, 40.0f);
+    EXPECT_FLOAT_EQ(root->geometry.height, 65.0f);
+}
+
+// Test V72_004: inline-block width comes from specified_width
+TEST(LayoutEngineTest, InlineBlockUsesSpecifiedWidthV72) {
+    auto root = make_block("div");
+    root->specified_width = 500.0f;
+
+    auto inline_block = make_block("span");
+    inline_block->mode = LayoutMode::InlineBlock;
+    inline_block->display = DisplayType::InlineBlock;
+    inline_block->specified_width = 123.0f;
+    inline_block->specified_height = 20.0f;
+    root->append_child(std::move(inline_block));
+
+    LayoutEngine engine;
+    const float vw = 800.0f;
+    const float vh = 600.0f;
+    engine.compute(*root, vw, vh);
+
+    ASSERT_EQ(root->children.size(), 1u);
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.width, 123.0f);
+}
+
+// Test V72_005: text node produces measurable (>0) height
+TEST(LayoutEngineTest, TextNodeProducesMeasurableHeightV72) {
+    auto root = make_block("div");
+    auto text = make_text("V72 text node", 18.0f);
+    root->append_child(std::move(text));
+
+    LayoutEngine engine;
+    const float vw = 600.0f;
+    const float vh = 300.0f;
+    engine.compute(*root, vw, vh);
+
+    ASSERT_EQ(root->children.size(), 1u);
+    EXPECT_GT(root->children[0]->geometry.height, 0.0f);
+    EXPECT_GT(root->geometry.height, 0.0f);
+}
+
+// Test V72_006: horizontal auto margins center a fixed-width child block
+TEST(LayoutEngineTest, MarginAutoCentersBlockV72) {
+    auto root = make_block("div");
+    root->specified_width = 500.0f;
+
+    auto child = make_block("div");
+    child->specified_width = 200.0f;
+    child->specified_height = 24.0f;
+    child->geometry.margin.left = -1.0f;
+    child->geometry.margin.right = -1.0f;
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    const float vw = 900.0f;
+    const float vh = 500.0f;
+    engine.compute(*root, vw, vh);
+
+    ASSERT_EQ(root->children.size(), 1u);
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.margin.left, 150.0f);
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.margin.right, 150.0f);
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.x, 150.0f);
+}
+
+// Test V72_007: padding increases border-box size but not content width
+TEST(LayoutEngineTest, PaddingIncreasesBoxNotContentWidthV72) {
+    auto root = make_block("div");
+    root->specified_width = 500.0f;
+
+    auto child = make_block("div");
+    child->specified_width = 180.0f;
+    child->specified_height = 20.0f;
+    child->geometry.padding.left = 10.0f;
+    child->geometry.padding.right = 30.0f;
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    const float vw = 1000.0f;
+    const float vh = 600.0f;
+    engine.compute(*root, vw, vh);
+
+    ASSERT_EQ(root->children.size(), 1u);
+    const auto& g = root->children[0]->geometry;
+    EXPECT_FLOAT_EQ(g.width, 180.0f);
+    EXPECT_FLOAT_EQ(g.border_box_width(), 220.0f);
+}
+
+// Test V72_008: specified height overrides content-driven flow height
+TEST(LayoutEngineTest, SpecifiedHeightOverridesFlowHeightV72) {
+    auto root = make_block("div");
+    root->specified_width = 400.0f;
+    root->specified_height = 75.0f;
+
+    auto first = make_block("div");
+    first->specified_height = 40.0f;
+    auto second = make_block("div");
+    second->specified_height = 60.0f;
+    root->append_child(std::move(first));
+    root->append_child(std::move(second));
+
+    LayoutEngine engine;
+    const float vw = 800.0f;
+    const float vh = 600.0f;
+    engine.compute(*root, vw, vh);
+
+    ASSERT_EQ(root->children.size(), 2u);
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.y, 40.0f);
+    EXPECT_FLOAT_EQ(root->geometry.height, 75.0f);
+}

@@ -13712,3 +13712,137 @@ TEST(PropertyCascadeTest, ResolverTransitionDurationValueV71) {
 
     EXPECT_NEAR(style.transition_duration, 0.25f, 0.001f);
 }
+
+TEST(PropertyCascadeTest, ResolverColorWhiteHexV72) {
+    const std::string css = "div { color: #ffffff; }";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.color, Color::white());
+}
+
+TEST(PropertyCascadeTest, ResolverBackgroundColorTransparentAlphaZeroV72) {
+    const std::string css = "div { background-color: transparent; }";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.background_color.a, 0);
+}
+
+TEST(PropertyCascadeTest, ResolverFontWeightNormalResolvesTo400V72) {
+    const std::string css = "div { font-weight: 700; font-weight: normal; }";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.font_weight, 400);
+}
+
+TEST(PropertyCascadeTest, ResolverMarginZeroResetsAllSidesV72) {
+    const std::string css = "div { margin: 10px 20px 30px 40px; margin: 0; }";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_FLOAT_EQ(style.margin.top.to_px(), 0.0f);
+    EXPECT_FLOAT_EQ(style.margin.right.to_px(), 0.0f);
+    EXPECT_FLOAT_EQ(style.margin.bottom.to_px(), 0.0f);
+    EXPECT_FLOAT_EQ(style.margin.left.to_px(), 0.0f);
+}
+
+TEST(PropertyCascadeTest, ResolverPaddingZeroResetsAllSidesV72) {
+    const std::string css = "div { padding: 8px 6px 4px 2px; padding: 0; }";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_FLOAT_EQ(style.padding.top.to_px(), 0.0f);
+    EXPECT_FLOAT_EQ(style.padding.right.to_px(), 0.0f);
+    EXPECT_FLOAT_EQ(style.padding.bottom.to_px(), 0.0f);
+    EXPECT_FLOAT_EQ(style.padding.left.to_px(), 0.0f);
+}
+
+TEST(PropertyCascadeTest, ResolverBorderCollapseCollapseValueV72) {
+    const std::string css = "table { border-collapse: collapse; }";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "table";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_TRUE(style.border_collapse);
+}
+
+TEST(PropertyCascadeTest, ResolverTableLayoutFixedValueV72) {
+    const std::string css = "table { table-layout: fixed; }";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "table";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.table_layout, 1);
+}
+
+TEST(PropertyCascadeTest, ResolverListStylePositionInsideValueV72) {
+    const std::string css = "ul { list-style-position: inside; }";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "ul";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.list_style_position, ListStylePosition::Inside);
+}

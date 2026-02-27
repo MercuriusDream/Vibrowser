@@ -5605,3 +5605,67 @@ TEST(CORSPolicyTest, VaryOriginHeaderSemanticsV71) {
     EXPECT_FALSE(
         cors_allows_response("https://app.example", "https://api.example/data", blocked, false));
 }
+
+TEST(CORSPolicyTest, GetWithAuthorizationHeaderNotSimpleV72) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Request-Method", "GET");
+    headers.set("Access-Control-Request-Headers", "Authorization");
+    headers.set("Access-Control-Allow-Methods", "GET, OPTIONS");
+    headers.set("Access-Control-Allow-Headers", "Authorization");
+    EXPECT_FALSE(cors_allows_response("https://app.example",
+                                      "https://api.example/preflight",
+                                      headers,
+                                      false));
+}
+
+TEST(CORSPolicyTest, PostWithContentTypeMultipartFormDataIsSimpleV72) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "https://app.example");
+    headers.set("Access-Control-Request-Method", "POST");
+    headers.set("Content-Type", "multipart/form-data");
+    EXPECT_TRUE(
+        cors_allows_response("https://app.example", "https://api.example/upload", headers, false));
+}
+
+TEST(CORSPolicyTest, AcaoWithPortNumberExactMatchV72) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "https://app.example:8443");
+    EXPECT_TRUE(cors_allows_response("https://app.example:8443",
+                                     "https://api.example:9443/data",
+                                     headers,
+                                     false));
+}
+
+TEST(CORSPolicyTest, OriginIncludesSchemeInComparisonV72) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "app.example");
+    EXPECT_FALSE(
+        cors_allows_response("https://app.example", "https://api.example/data", headers, false));
+}
+
+TEST(CORSPolicyTest, HttpVsHttpsDifferentOriginsV72) {
+    EXPECT_TRUE(is_cross_origin("http://app.example", "https://app.example/resource"));
+}
+
+TEST(CORSPolicyTest, SameHostDifferentPortDifferentOriginV72) {
+    EXPECT_TRUE(is_cross_origin("https://app.example:3000", "https://app.example:4000/data"));
+}
+
+TEST(CORSPolicyTest, AcaoEmptyStringRejectsV72) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "");
+    EXPECT_FALSE(
+        cors_allows_response("https://app.example", "https://api.example/data", headers, false));
+}
+
+TEST(CORSPolicyTest, PreflightResponseMustIncludeAcaoV72) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Methods", "PUT, OPTIONS");
+    headers.set("Access-Control-Allow-Headers", "Authorization, Content-Type");
+    headers.set("Access-Control-Request-Method", "PUT");
+    headers.set(":status", "204");
+    EXPECT_FALSE(cors_allows_response("https://app.example",
+                                      "https://api.example/preflight",
+                                      headers,
+                                      false));
+}

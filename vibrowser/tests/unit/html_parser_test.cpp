@@ -11424,3 +11424,161 @@ TEST(HTMLParserTest, MultipleParagraphsInBodyV71) {
     EXPECT_EQ(paragraphs[1]->text_content(), "Second");
     EXPECT_EQ(paragraphs[2]->text_content(), "Third");
 }
+
+TEST(HTMLParserTest, HeadingsH1ThroughH6V72) {
+    auto doc = clever::html::parse(
+        "<h1>Heading 1</h1><h2>Heading 2</h2><h3>Heading 3</h3>"
+        "<h4>Heading 4</h4><h5>Heading 5</h5><h6>Heading 6</h6>");
+    ASSERT_NE(doc, nullptr);
+
+    auto h1 = doc->find_all_elements("h1");
+    auto h2 = doc->find_all_elements("h2");
+    auto h3 = doc->find_all_elements("h3");
+    auto h4 = doc->find_all_elements("h4");
+    auto h5 = doc->find_all_elements("h5");
+    auto h6 = doc->find_all_elements("h6");
+    ASSERT_EQ(h1.size(), 1u);
+    ASSERT_EQ(h2.size(), 1u);
+    ASSERT_EQ(h3.size(), 1u);
+    ASSERT_EQ(h4.size(), 1u);
+    ASSERT_EQ(h5.size(), 1u);
+    ASSERT_EQ(h6.size(), 1u);
+    EXPECT_EQ(h1[0]->tag_name, "h1");
+    EXPECT_EQ(h2[0]->tag_name, "h2");
+    EXPECT_EQ(h3[0]->tag_name, "h3");
+    EXPECT_EQ(h4[0]->tag_name, "h4");
+    EXPECT_EQ(h5[0]->tag_name, "h5");
+    EXPECT_EQ(h6[0]->tag_name, "h6");
+    EXPECT_EQ(h1[0]->text_content(), "Heading 1");
+    EXPECT_EQ(h2[0]->text_content(), "Heading 2");
+    EXPECT_EQ(h3[0]->text_content(), "Heading 3");
+    EXPECT_EQ(h4[0]->text_content(), "Heading 4");
+    EXPECT_EQ(h5[0]->text_content(), "Heading 5");
+    EXPECT_EQ(h6[0]->text_content(), "Heading 6");
+}
+
+TEST(HTMLParserTest, ParagraphWithClassAttributeV72) {
+    auto doc = clever::html::parse("<p class='lead'>Paragraph copy</p>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* paragraph = doc->find_element("p");
+    ASSERT_NE(paragraph, nullptr);
+    EXPECT_EQ(paragraph->tag_name, "p");
+    EXPECT_EQ(get_attr_v63(paragraph, "class"), "lead");
+    EXPECT_EQ(paragraph->text_content(), "Paragraph copy");
+}
+
+TEST(HTMLParserTest, DivWithMultipleChildrenV72) {
+    auto doc = clever::html::parse("<div><span>One</span><span>Two</span><p>Three</p></div>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* div = doc->find_element("div");
+    auto spans = doc->find_all_elements("span");
+    auto* paragraph = doc->find_element("p");
+    ASSERT_NE(div, nullptr);
+    ASSERT_EQ(spans.size(), 2u);
+    ASSERT_NE(paragraph, nullptr);
+    ASSERT_GE(div->children.size(), 3u);
+
+    EXPECT_EQ(div->tag_name, "div");
+    EXPECT_EQ(div->children[0]->tag_name, "span");
+    EXPECT_EQ(div->children[1]->tag_name, "span");
+    EXPECT_EQ(div->children[2]->tag_name, "p");
+    EXPECT_EQ(spans[0]->parent, div);
+    EXPECT_EQ(spans[1]->parent, div);
+    EXPECT_EQ(paragraph->parent, div);
+    EXPECT_EQ(spans[0]->text_content(), "One");
+    EXPECT_EQ(spans[1]->text_content(), "Two");
+    EXPECT_EQ(paragraph->text_content(), "Three");
+}
+
+TEST(HTMLParserTest, UnorderedListThreeItemsV72) {
+    auto doc = clever::html::parse("<ul><li>First</li><li>Second</li><li>Third</li></ul>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* ul = doc->find_element("ul");
+    auto items = doc->find_all_elements("li");
+    ASSERT_NE(ul, nullptr);
+    ASSERT_EQ(items.size(), 3u);
+    EXPECT_EQ(ul->tag_name, "ul");
+    EXPECT_EQ(items[0]->tag_name, "li");
+    EXPECT_EQ(items[1]->tag_name, "li");
+    EXPECT_EQ(items[2]->tag_name, "li");
+    EXPECT_EQ(items[0]->parent, ul);
+    EXPECT_EQ(items[1]->parent, ul);
+    EXPECT_EQ(items[2]->parent, ul);
+    EXPECT_EQ(items[0]->text_content(), "First");
+    EXPECT_EQ(items[1]->text_content(), "Second");
+    EXPECT_EQ(items[2]->text_content(), "Third");
+}
+
+TEST(HTMLParserTest, TableWithTheadAndTbodyV72) {
+    auto doc = clever::html::parse(
+        "<table><thead><tr><th>Name</th></tr></thead>"
+        "<tbody><tr><td>Ada</td></tr><tr><td>Linus</td></tr></tbody></table>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* table = doc->find_element("table");
+    auto* thead = doc->find_element("thead");
+    auto* tbody = doc->find_element("tbody");
+    auto rows = doc->find_all_elements("tr");
+    auto ths = doc->find_all_elements("th");
+    auto tds = doc->find_all_elements("td");
+    ASSERT_NE(table, nullptr);
+    ASSERT_NE(thead, nullptr);
+    ASSERT_NE(tbody, nullptr);
+    ASSERT_EQ(rows.size(), 3u);
+    ASSERT_EQ(ths.size(), 1u);
+    ASSERT_EQ(tds.size(), 2u);
+
+    EXPECT_EQ(table->tag_name, "table");
+    EXPECT_EQ(thead->tag_name, "thead");
+    EXPECT_EQ(tbody->tag_name, "tbody");
+    EXPECT_EQ(thead->parent, table);
+    EXPECT_EQ(tbody->parent, table);
+    EXPECT_EQ(ths[0]->text_content(), "Name");
+    EXPECT_EQ(tds[0]->text_content(), "Ada");
+    EXPECT_EQ(tds[1]->text_content(), "Linus");
+}
+
+TEST(HTMLParserTest, InputTypesTextAndPasswordV72) {
+    auto doc = clever::html::parse(
+        "<form><input type='text' name='username'><input type='password' name='password'></form>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* form = doc->find_element("form");
+    auto inputs = doc->find_all_elements("input");
+    ASSERT_NE(form, nullptr);
+    ASSERT_EQ(inputs.size(), 2u);
+    EXPECT_EQ(inputs[0]->tag_name, "input");
+    EXPECT_EQ(inputs[1]->tag_name, "input");
+    EXPECT_EQ(inputs[0]->parent, form);
+    EXPECT_EQ(inputs[1]->parent, form);
+    EXPECT_EQ(get_attr_v63(inputs[0], "type"), "text");
+    EXPECT_EQ(get_attr_v63(inputs[1], "type"), "password");
+}
+
+TEST(HTMLParserTest, LabelWithForAttributeV72) {
+    auto doc = clever::html::parse("<label for='email'>Email</label><input id='email' type='text'>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* label = doc->find_element("label");
+    auto* input = doc->find_element("input");
+    ASSERT_NE(label, nullptr);
+    ASSERT_NE(input, nullptr);
+    EXPECT_EQ(label->tag_name, "label");
+    EXPECT_EQ(input->tag_name, "input");
+    EXPECT_EQ(get_attr_v63(label, "for"), "email");
+    EXPECT_EQ(get_attr_v63(input, "id"), "email");
+    EXPECT_EQ(label->text_content(), "Email");
+}
+
+TEST(HTMLParserTest, TextareaWithDefaultTextV72) {
+    auto doc = clever::html::parse("<textarea>Default text value</textarea>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* textarea = doc->find_element("textarea");
+    ASSERT_NE(textarea, nullptr);
+    EXPECT_EQ(textarea->tag_name, "textarea");
+    EXPECT_EQ(textarea->text_content(), "Default text value");
+}
