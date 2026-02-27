@@ -17273,3 +17273,154 @@ TEST(HttpClientTest, CookieJarSecureCookieReturnedOnlyOnSecureConnectionV101) {
     EXPECT_TRUE(secure.find("sid=xyz789") != std::string::npos);
     EXPECT_TRUE(secure.find("pref=dark") != std::string::npos);
 }
+
+// ============================================================================
+// Cycle V102: 8 New HTTP/Net Tests
+// ============================================================================
+
+// 1. parse_url with deeply nested path and multiple query parameters
+TEST(HttpClientTest, ParseUrlDeepPathWithMultipleQueryParamsV102) {
+    Request req;
+    req.url = "https://api.example.com:9443/v2/users/42/posts/99/comments?sort=newest&limit=25&offset=100";
+    req.parse_url();
+
+    EXPECT_EQ(req.host, "api.example.com");
+    EXPECT_EQ(req.port, 9443);
+    EXPECT_EQ(req.path, "/v2/users/42/posts/99/comments");
+    EXPECT_EQ(req.query, "sort=newest&limit=25&offset=100");
+    EXPECT_TRUE(req.use_tls);
+}
+
+// 2. Response::parse handles 204 No Content with empty body
+TEST(HttpClientTest, ResponseParse204NoContentEmptyBodyV102) {
+    std::string raw =
+        "HTTP/1.1 204 No Content\r\n"
+        "Server: nginx/1.24.0\r\n"
+        "Content-Length: 0\r\n"
+        "\r\n";
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 204);
+    EXPECT_EQ(resp->status_text, "No Content");
+    EXPECT_TRUE(resp->body_as_string().empty());
+    EXPECT_EQ(resp->headers.get("server").value(), "nginx/1.24.0");
+}
+
+// 3. HeaderMap set overwrites all prior append values
+TEST(HttpClientTest, HeaderMapSetOverwritesAllAppendedValuesV102) {
+    HeaderMap headers;
+    headers.append("X-Custom", "first");
+    headers.append("X-Custom", "second");
+    headers.append("X-Custom", "third");
+    EXPECT_EQ(headers.get_all("x-custom").size(), 3u);
+
+    // set() should replace all three with a single value
+    headers.set("X-Custom", "only-one");
+    EXPECT_EQ(headers.get_all("x-custom").size(), 1u);
+    EXPECT_EQ(headers.get("x-custom").value(), "only-one");
+}
+
+// 4. Request serialization with non-standard port includes port in Host header
+TEST(HttpClientTest, SerializeRequestNonStandardPortInHostHeaderV102) {
+    Request req;
+    req.method = Method::GET;
+    req.host = "cdn.example.com";
+    req.port = 3000;
+    req.use_tls = false;
+    req.path = "/assets/bundle.js";
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    // Non-standard port must appear in Host header
+    EXPECT_TRUE(result.find("Host: cdn.example.com:3000\r\n") != std::string::npos);
+    EXPECT_TRUE(result.find("GET /assets/bundle.js HTTP/1.1\r\n") != std::string::npos);
+}
+
+// 5. Response::parse handles 301 redirect with Location header
+TEST(HttpClientTest, ResponseParse301RedirectWithLocationV102) {
+    std::string raw =
+        "HTTP/1.1 301 Moved Permanently\r\n"
+        "Location: https://www.example.com/new-path\r\n"
+        "Content-Length: 0\r\n"
+        "\r\n";
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 301);
+    EXPECT_EQ(resp->status_text, "Moved Permanently");
+    ASSERT_TRUE(resp->headers.get("location").has_value());
+    EXPECT_EQ(resp->headers.get("location").value(), "https://www.example.com/new-path");
+}
+
+// 6. CookieJar path-scoped cookies: narrower path cookie not sent on parent path
+TEST(HttpClientTest, CookieJarPathScopingNarrowNotSentOnParentV102) {
+    CookieJar jar;
+    jar.set_from_header("root=yes; Path=/", "scope.example.com");
+    jar.set_from_header("admin=secret; Path=/admin", "scope.example.com");
+    EXPECT_EQ(jar.size(), 2u);
+
+    // Request to "/" should only get the root-scoped cookie
+    std::string root_cookies = jar.get_cookie_header("scope.example.com", "/", false);
+    EXPECT_TRUE(root_cookies.find("root=yes") != std::string::npos);
+    EXPECT_TRUE(root_cookies.find("admin=secret") == std::string::npos);
+
+    // Request to "/admin/dashboard" should get both cookies
+    std::string admin_cookies = jar.get_cookie_header("scope.example.com", "/admin/dashboard", false);
+    EXPECT_TRUE(admin_cookies.find("root=yes") != std::string::npos);
+    EXPECT_TRUE(admin_cookies.find("admin=secret") != std::string::npos);
+}
+
+// 7. PUT request with Content-Type header serializes header lowercase
+TEST(HttpClientTest, PutRequestContentTypeHeaderLowercaseInSerializeV102) {
+    Request req;
+    req.method = Method::PUT;
+    req.host = "files.example.com";
+    req.port = 443;
+    req.use_tls = true;
+    req.path = "/upload/photo.jpg";
+    req.headers.set("Content-Type", "image/jpeg");
+    req.headers.set("Content-Length", "4096");
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    // Custom headers must be lowercase
+    EXPECT_TRUE(result.find("content-type: image/jpeg\r\n") != std::string::npos);
+    EXPECT_TRUE(result.find("content-length: 4096\r\n") != std::string::npos);
+    // Host must keep capitalization and omit default port 443
+    EXPECT_TRUE(result.find("Host: files.example.com\r\n") != std::string::npos);
+    // Method must be PUT
+    EXPECT_TRUE(result.find("PUT /upload/photo.jpg HTTP/1.1\r\n") != std::string::npos);
+}
+
+// 8. Response::parse handles multiple Set-Cookie headers preserved individually
+TEST(HttpClientTest, ResponseParseMultipleSetCookieHeadersPreservedV102) {
+    std::string raw =
+        "HTTP/1.1 200 OK\r\n"
+        "Set-Cookie: token=abc; Path=/; HttpOnly\r\n"
+        "Set-Cookie: theme=light; Path=/\r\n"
+        "Set-Cookie: lang=en; Path=/; Secure\r\n"
+        "Content-Length: 2\r\n"
+        "\r\n"
+        "OK";
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 200);
+    EXPECT_EQ(resp->body_as_string(), "OK");
+
+    // All three Set-Cookie headers must be individually preserved via get_all
+    auto cookies = resp->headers.get_all("set-cookie");
+    EXPECT_EQ(cookies.size(), 3u);
+    EXPECT_TRUE(std::find(cookies.begin(), cookies.end(), "token=abc; Path=/; HttpOnly") != cookies.end());
+    EXPECT_TRUE(std::find(cookies.begin(), cookies.end(), "theme=light; Path=/") != cookies.end());
+    EXPECT_TRUE(std::find(cookies.begin(), cookies.end(), "lang=en; Path=/; Secure") != cookies.end());
+}

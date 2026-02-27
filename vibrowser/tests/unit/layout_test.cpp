@@ -18866,3 +18866,218 @@ TEST(LayoutTest, FlexRowWithGapSpacingBetweenChildrenV101) {
     EXPECT_LT(p1->geometry.x, p2->geometry.x);
     EXPECT_LT(p2->geometry.x, p3->geometry.x);
 }
+
+// --- V102 tests ---
+
+// Test: Flex column container distributes children vertically with correct positions
+TEST(LayoutTest, FlexColumnChildrenStackVerticallyV102) {
+    auto root = make_flex("div");
+    root->flex_direction = 2; // column
+    root->specified_width = 400.0f;
+
+    auto c1 = make_block("div");
+    c1->specified_height = 60.0f;
+    auto c2 = make_block("div");
+    c2->specified_height = 80.0f;
+    auto c3 = make_block("div");
+    c3->specified_height = 50.0f;
+
+    auto* p1 = c1.get();
+    auto* p2 = c2.get();
+    auto* p3 = c3.get();
+
+    root->append_child(std::move(c1));
+    root->append_child(std::move(c2));
+    root->append_child(std::move(c3));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // Children should be stacked vertically: each starts after previous ends
+    EXPECT_GE(p2->geometry.y, p1->geometry.y + p1->geometry.height - 1.0f);
+    EXPECT_GE(p3->geometry.y, p2->geometry.y + p2->geometry.height - 1.0f);
+    // Root height should encompass all children
+    EXPECT_GE(root->geometry.height, 60.0f + 80.0f + 50.0f - 1.0f);
+}
+
+// Test: Block node with padding reduces child content width and adds to height
+TEST(LayoutTest, BlockPaddingOffsetsChildContentV102) {
+    auto root = make_block("div");
+    root->specified_width = 500.0f;
+    root->geometry.padding.top = 20.0f;
+    root->geometry.padding.left = 30.0f;
+    root->geometry.padding.right = 30.0f;
+    root->geometry.padding.bottom = 20.0f;
+
+    auto child = make_block("div");
+    child->specified_height = 100.0f;
+    auto* cp = child.get();
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // Root width should be the specified width
+    EXPECT_FLOAT_EQ(root->geometry.width, 500.0f);
+    // Child width should be reduced by left+right padding
+    EXPECT_FLOAT_EQ(cp->geometry.width, 500.0f - 30.0f - 30.0f);
+    // Root height should include top padding + child height + bottom padding
+    EXPECT_FLOAT_EQ(root->geometry.height, 20.0f + 100.0f + 20.0f);
+    // Child height is preserved
+    EXPECT_FLOAT_EQ(cp->geometry.height, 100.0f);
+}
+
+// Test: Flex row with flex_grow distributes remaining space proportionally
+TEST(LayoutTest, FlexRowGrowDistributesSpaceV102) {
+    auto root = make_flex("div");
+    root->flex_direction = 0; // row
+    root->specified_width = 600.0f;
+
+    auto c1 = make_block("div");
+    c1->flex_grow = 1.0f;
+    c1->specified_height = 50.0f;
+    auto c2 = make_block("div");
+    c2->flex_grow = 2.0f;
+    c2->specified_height = 50.0f;
+
+    auto* p1 = c1.get();
+    auto* p2 = c2.get();
+
+    root->append_child(std::move(c1));
+    root->append_child(std::move(c2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 600.0f, 400.0f);
+
+    // Both children should have positive widths
+    EXPECT_GT(p1->geometry.width, 0.0f);
+    EXPECT_GT(p2->geometry.width, 0.0f);
+    // Second child (grow=2) should be wider than first (grow=1)
+    EXPECT_GT(p2->geometry.width, p1->geometry.width);
+    // Total widths should approximately fill the container
+    EXPECT_NEAR(p1->geometry.width + p2->geometry.width, 600.0f, 5.0f);
+}
+
+// Test: Nested block nodes with margins - outer margin offsets correctly
+TEST(LayoutTest, NestedBlockMarginAccumulationV102) {
+    auto root = make_block("div");
+    root->specified_width = 800.0f;
+
+    auto outer = make_block("div");
+    outer->geometry.margin.top = 10.0f;
+    outer->geometry.margin.left = 20.0f;
+
+    auto inner = make_block("div");
+    inner->geometry.margin.top = 5.0f;
+    inner->geometry.margin.left = 15.0f;
+    inner->specified_height = 40.0f;
+
+    auto* outerp = outer.get();
+    auto* innerp = inner.get();
+
+    outer->append_child(std::move(inner));
+    root->append_child(std::move(outer));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // Outer should be offset by its own margin
+    EXPECT_FLOAT_EQ(outerp->geometry.y, 10.0f);
+    EXPECT_FLOAT_EQ(outerp->geometry.x, 20.0f);
+    // Inner should have a margin offset from its own margin
+    EXPECT_FLOAT_EQ(innerp->geometry.y, 5.0f);
+    EXPECT_FLOAT_EQ(innerp->geometry.x, 15.0f);
+    // Inner should retain its specified height
+    EXPECT_FLOAT_EQ(innerp->geometry.height, 40.0f);
+}
+
+// Test: InlineBlock respects specified dimensions inside a block parent
+TEST(LayoutTest, InlineBlockRespectsSpecifiedDimensionsV102) {
+    auto root = make_block("div");
+    root->specified_width = 600.0f;
+
+    auto ib = std::make_unique<LayoutNode>();
+    ib->tag_name = "span";
+    ib->mode = LayoutMode::InlineBlock;
+    ib->display = DisplayType::InlineBlock;
+    ib->specified_width = 200.0f;
+    ib->specified_height = 100.0f;
+    auto* ibp = ib.get();
+
+    root->append_child(std::move(ib));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // InlineBlock should respect its specified width and height
+    EXPECT_FLOAT_EQ(ibp->geometry.width, 200.0f);
+    EXPECT_FLOAT_EQ(ibp->geometry.height, 100.0f);
+}
+
+// Test: Block node with border reduces child width and adds to total height
+TEST(LayoutTest, BlockBorderContributesToBoxSizeV102) {
+    auto root = make_block("div");
+    root->specified_width = 400.0f;
+    root->geometry.border.top = 5.0f;
+    root->geometry.border.bottom = 5.0f;
+    root->geometry.border.left = 10.0f;
+    root->geometry.border.right = 10.0f;
+
+    auto child = make_block("div");
+    child->specified_height = 80.0f;
+    auto* cp = child.get();
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // Root width should be its specified width
+    EXPECT_FLOAT_EQ(root->geometry.width, 400.0f);
+    // Child width should be reduced by left+right border
+    EXPECT_FLOAT_EQ(cp->geometry.width, 400.0f - 10.0f - 10.0f);
+    // Child height preserved
+    EXPECT_FLOAT_EQ(cp->geometry.height, 80.0f);
+    // Root height should include top border + child + bottom border
+    EXPECT_FLOAT_EQ(root->geometry.height, 5.0f + 80.0f + 5.0f);
+}
+
+// Test: Node properties for z_index and opacity are stored and retrievable
+TEST(LayoutTest, ZIndexAndOpacityStoredCorrectlyV102) {
+    auto node = make_block("div");
+    node->z_index = 42;
+    node->opacity = 0.75f;
+    node->background_color = 0xFF00FF00u;
+    node->color = 0xFF0000FFu;
+    node->font_size = 24.0f;
+
+    EXPECT_EQ(node->z_index, 42);
+    EXPECT_FLOAT_EQ(node->opacity, 0.75f);
+    EXPECT_EQ(node->background_color, 0xFF00FF00u);
+    EXPECT_EQ(node->color, 0xFF0000FFu);
+    EXPECT_FLOAT_EQ(node->font_size, 24.0f);
+}
+
+// Test: DisplayType::None node should not contribute to parent height
+TEST(LayoutTest, DisplayNoneDoesNotContributeToHeightV102) {
+    auto root = make_block("div");
+    root->specified_width = 500.0f;
+
+    auto visible = make_block("div");
+    visible->specified_height = 60.0f;
+
+    auto hidden = make_block("div");
+    hidden->display = DisplayType::None;
+    hidden->specified_height = 200.0f;
+
+    auto* vp = visible.get();
+
+    root->append_child(std::move(visible));
+    root->append_child(std::move(hidden));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // Root height should only reflect the visible child, not the display:none child
+    EXPECT_FLOAT_EQ(root->geometry.height, 60.0f);
+    EXPECT_FLOAT_EQ(vp->geometry.height, 60.0f);
+}

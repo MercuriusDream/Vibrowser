@@ -16387,3 +16387,211 @@ TEST(HtmlParserTest, DefinitionListWithTermsAndDescriptionsV101) {
     EXPECT_EQ(descs[1]->text_content(), "Cascading Style Sheets");
     EXPECT_EQ(descs[2]->text_content(), "JavaScript");
 }
+
+// ============================================================================
+// V102 Tests
+// ============================================================================
+
+TEST(HtmlParserTest, NestedTablesWithCaptionAndHeaderV102) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<table>"
+        "<caption>Sales Report</caption>"
+        "<thead><tr><th>Region</th><th>Q1</th><th>Q2</th></tr></thead>"
+        "<tbody>"
+        "<tr><td>North</td><td>100</td><td>150</td></tr>"
+        "<tr><td>South</td><td>200</td><td>250</td></tr>"
+        "</tbody>"
+        "</table>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* table = doc->find_element("table");
+    ASSERT_NE(table, nullptr);
+    auto* caption = doc->find_element("caption");
+    ASSERT_NE(caption, nullptr);
+    EXPECT_EQ(caption->text_content(), "Sales Report");
+    auto ths = doc->find_all_elements("th");
+    ASSERT_EQ(ths.size(), 3u);
+    EXPECT_EQ(ths[0]->text_content(), "Region");
+    EXPECT_EQ(ths[1]->text_content(), "Q1");
+    EXPECT_EQ(ths[2]->text_content(), "Q2");
+    auto tds = doc->find_all_elements("td");
+    ASSERT_EQ(tds.size(), 6u);
+    EXPECT_EQ(tds[0]->text_content(), "North");
+    EXPECT_EQ(tds[3]->text_content(), "South");
+    EXPECT_EQ(tds[5]->text_content(), "250");
+}
+
+TEST(HtmlParserTest, FieldsetWithLegendAndMultipleInputsV102) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<fieldset>"
+        "<legend>Personal Info</legend>"
+        "<label>Name</label><input type=\"text\" name=\"username\" placeholder=\"Enter name\"/>"
+        "<label>Email</label><input type=\"email\" name=\"useremail\" required/>"
+        "</fieldset>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* fieldset = doc->find_element("fieldset");
+    ASSERT_NE(fieldset, nullptr);
+    auto* legend = doc->find_element("legend");
+    ASSERT_NE(legend, nullptr);
+    EXPECT_EQ(legend->text_content(), "Personal Info");
+    auto labels = doc->find_all_elements("label");
+    ASSERT_EQ(labels.size(), 2u);
+    EXPECT_EQ(labels[0]->text_content(), "Name");
+    EXPECT_EQ(labels[1]->text_content(), "Email");
+    auto inputs = doc->find_all_elements("input");
+    ASSERT_EQ(inputs.size(), 2u);
+    EXPECT_EQ(get_attr_v63(inputs[0], "type"), "text");
+    EXPECT_EQ(get_attr_v63(inputs[0], "name"), "username");
+    EXPECT_EQ(get_attr_v63(inputs[0], "placeholder"), "Enter name");
+    EXPECT_EQ(get_attr_v63(inputs[1], "type"), "email");
+    EXPECT_EQ(get_attr_v63(inputs[1], "name"), "useremail");
+}
+
+TEST(HtmlParserTest, DetailsAndSummaryElementsV102) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<details>"
+        "<summary>Click to expand</summary>"
+        "<p>Hidden content revealed on click.</p>"
+        "</details>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* details = doc->find_element("details");
+    ASSERT_NE(details, nullptr);
+    EXPECT_EQ(details->tag_name, "details");
+    auto* summary = doc->find_element("summary");
+    ASSERT_NE(summary, nullptr);
+    EXPECT_EQ(summary->text_content(), "Click to expand");
+    auto* p = doc->find_element("p");
+    ASSERT_NE(p, nullptr);
+    EXPECT_EQ(p->text_content(), "Hidden content revealed on click.");
+}
+
+TEST(HtmlParserTest, FigureWithFigcaptionAndImageV102) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<figure>"
+        "<img src=\"/photos/sunset.jpg\" alt=\"Sunset over mountains\" width=\"800\" height=\"600\"/>"
+        "<figcaption>A beautiful sunset over the mountain range.</figcaption>"
+        "</figure>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* figure = doc->find_element("figure");
+    ASSERT_NE(figure, nullptr);
+    auto* img = doc->find_element("img");
+    ASSERT_NE(img, nullptr);
+    EXPECT_EQ(get_attr_v63(img, "src"), "/photos/sunset.jpg");
+    EXPECT_EQ(get_attr_v63(img, "alt"), "Sunset over mountains");
+    EXPECT_EQ(get_attr_v63(img, "width"), "800");
+    EXPECT_EQ(get_attr_v63(img, "height"), "600");
+    auto* figcaption = doc->find_element("figcaption");
+    ASSERT_NE(figcaption, nullptr);
+    EXPECT_EQ(figcaption->text_content(), "A beautiful sunset over the mountain range.");
+}
+
+TEST(HtmlParserTest, AudioElementWithMultipleSourcesV102) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<audio controls>"
+        "<source src=\"song.ogg\" type=\"audio/ogg\"/>"
+        "<source src=\"song.mp3\" type=\"audio/mpeg\"/>"
+        "Your browser does not support audio."
+        "</audio>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* audio = doc->find_element("audio");
+    ASSERT_NE(audio, nullptr);
+    EXPECT_EQ(audio->tag_name, "audio");
+    auto sources = doc->find_all_elements("source");
+    ASSERT_EQ(sources.size(), 2u);
+    EXPECT_EQ(get_attr_v63(sources[0], "src"), "song.ogg");
+    EXPECT_EQ(get_attr_v63(sources[0], "type"), "audio/ogg");
+    EXPECT_EQ(get_attr_v63(sources[1], "src"), "song.mp3");
+    EXPECT_EQ(get_attr_v63(sources[1], "type"), "audio/mpeg");
+}
+
+TEST(HtmlParserTest, ProgressAndMeterElementsWithAttributesV102) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<progress value=\"70\" max=\"100\">70%</progress>"
+        "<meter min=\"0\" max=\"10\" value=\"7\" low=\"3\" high=\"8\" optimum=\"5\">7 out of 10</meter>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* progress = doc->find_element("progress");
+    ASSERT_NE(progress, nullptr);
+    EXPECT_EQ(get_attr_v63(progress, "value"), "70");
+    EXPECT_EQ(get_attr_v63(progress, "max"), "100");
+    EXPECT_EQ(progress->text_content(), "70%");
+    auto* meter = doc->find_element("meter");
+    ASSERT_NE(meter, nullptr);
+    EXPECT_EQ(get_attr_v63(meter, "min"), "0");
+    EXPECT_EQ(get_attr_v63(meter, "max"), "10");
+    EXPECT_EQ(get_attr_v63(meter, "value"), "7");
+    EXPECT_EQ(get_attr_v63(meter, "low"), "3");
+    EXPECT_EQ(get_attr_v63(meter, "high"), "8");
+    EXPECT_EQ(get_attr_v63(meter, "optimum"), "5");
+    EXPECT_EQ(meter->text_content(), "7 out of 10");
+}
+
+TEST(HtmlParserTest, NestedArticlesWithHeaderFooterAndTimeV102) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<article>"
+        "<header><h1>Main Article</h1></header>"
+        "<p>Introductory paragraph.</p>"
+        "<article>"
+        "<header><h2>Sub-article</h2></header>"
+        "<time datetime=\"2026-02-28\">Feb 28, 2026</time>"
+        "<p>Nested content here.</p>"
+        "</article>"
+        "<footer>Author: Jane Doe</footer>"
+        "</article>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto articles = doc->find_all_elements("article");
+    ASSERT_EQ(articles.size(), 2u);
+    auto* h1 = doc->find_element("h1");
+    ASSERT_NE(h1, nullptr);
+    EXPECT_EQ(h1->text_content(), "Main Article");
+    auto* h2 = doc->find_element("h2");
+    ASSERT_NE(h2, nullptr);
+    EXPECT_EQ(h2->text_content(), "Sub-article");
+    auto* time_el = doc->find_element("time");
+    ASSERT_NE(time_el, nullptr);
+    EXPECT_EQ(get_attr_v63(time_el, "datetime"), "2026-02-28");
+    EXPECT_EQ(time_el->text_content(), "Feb 28, 2026");
+    auto* footer = doc->find_element("footer");
+    ASSERT_NE(footer, nullptr);
+    EXPECT_EQ(footer->text_content(), "Author: Jane Doe");
+}
+
+TEST(HtmlParserTest, DataListWithOptionsAndAssociatedInputV102) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<input list=\"browsers\" name=\"browser\" type=\"text\"/>"
+        "<datalist id=\"browsers\">"
+        "<option value=\"Chrome\"/>"
+        "<option value=\"Firefox\"/>"
+        "<option value=\"Safari\"/>"
+        "<option value=\"Edge\"/>"
+        "</datalist>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* input = doc->find_element("input");
+    ASSERT_NE(input, nullptr);
+    EXPECT_EQ(get_attr_v63(input, "list"), "browsers");
+    EXPECT_EQ(get_attr_v63(input, "name"), "browser");
+    EXPECT_EQ(get_attr_v63(input, "type"), "text");
+    auto* datalist = doc->find_element("datalist");
+    ASSERT_NE(datalist, nullptr);
+    EXPECT_EQ(get_attr_v63(datalist, "id"), "browsers");
+    auto options = doc->find_all_elements("option");
+    ASSERT_EQ(options.size(), 4u);
+    EXPECT_EQ(get_attr_v63(options[0], "value"), "Chrome");
+    EXPECT_EQ(get_attr_v63(options[1], "value"), "Firefox");
+    EXPECT_EQ(get_attr_v63(options[2], "value"), "Safari");
+    EXPECT_EQ(get_attr_v63(options[3], "value"), "Edge");
+}

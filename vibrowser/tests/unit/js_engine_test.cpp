@@ -27935,3 +27935,173 @@ TEST(JsEngineTest, ObjectEntriesFromEntriesRoundtripV101) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "X,Y,Z|100,200,300");
 }
+
+// Test: WeakRef and FinalizationRegistry creation (synchronous check only)
+TEST(JsEngineTest, WeakRefCreationAndDerefV102) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var obj = { name: "target" };
+        var wr = new WeakRef(obj);
+        var derefed = wr.deref();
+        var alive = derefed !== undefined;
+        var sameName = derefed.name === "target";
+        alive + "|" + sameName;
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true|true");
+}
+
+// Test: Proxy with get/set traps logging property accesses
+TEST(JsEngineTest, ProxyGetSetTrapsV102) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var log = [];
+        var handler = {
+            get: function(target, prop) {
+                log.push("get:" + prop);
+                return target[prop];
+            },
+            set: function(target, prop, value) {
+                log.push("set:" + prop + "=" + value);
+                target[prop] = value;
+                return true;
+            }
+        };
+        var obj = { x: 10 };
+        var p = new Proxy(obj, handler);
+        p.y = 20;
+        var sum = p.x + p.y;
+        log.join(",") + "|" + sum;
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "set:y=20,get:x,get:y|30");
+}
+
+// Test: Reflect.ownKeys includes symbols and string keys in order
+TEST(JsEngineTest, ReflectOwnKeysWithSymbolV102) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var sym = Symbol("myKey");
+        var obj = {};
+        obj.alpha = 1;
+        obj[sym] = 2;
+        obj.beta = 3;
+        var keys = Reflect.ownKeys(obj);
+        var types = keys.map(function(k) { return typeof k; });
+        types.join(",");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "string,string,symbol");
+}
+
+// Test: Map preserves insertion order and supports chaining
+TEST(JsEngineTest, MapInsertionOrderAndChainingV102) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var m = new Map();
+        m.set("c", 3).set("a", 1).set("b", 2);
+        var entries = [];
+        m.forEach(function(v, k) { entries.push(k + "=" + v); });
+        var hasA = m.has("a");
+        m.delete("a");
+        var hasAAfter = m.has("a");
+        entries.join(",") + "|" + m.size + "|" + hasA + "|" + hasAAfter;
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "c=3,a=1,b=2|2|true|false");
+}
+
+// Test: Tagged template literal function processes strings and values
+TEST(JsEngineTest, TaggedTemplateLiteralV102) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        function tag(strings, ...values) {
+            var result = "";
+            for (var i = 0; i < strings.length; i++) {
+                result += strings[i];
+                if (i < values.length) {
+                    result += "[" + values[i] + "]";
+                }
+            }
+            return result;
+        }
+        var name = "world";
+        var num = 42;
+        tag`hello ${name} the answer is ${num} end`;
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "hello [world] the answer is [42] end");
+}
+
+// Test: Symbol.iterator custom iterable with for-of
+TEST(JsEngineTest, CustomIterableWithSymbolIteratorV102) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var range = {
+            from: 1,
+            to: 5,
+            [Symbol.iterator]: function() {
+                var current = this.from;
+                var last = this.to;
+                return {
+                    next: function() {
+                        if (current <= last) {
+                            return { value: current++, done: false };
+                        }
+                        return { done: true };
+                    }
+                };
+            }
+        };
+        var collected = [];
+        for (var val of range) {
+            collected.push(val * val);
+        }
+        collected.join(",");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1,4,9,16,25");
+}
+
+// Test: Destructuring with default values and rest in nested patterns
+TEST(JsEngineTest, NestedDestructuringWithDefaultsAndRestV102) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var data = { a: [10, 20, 30, 40], b: { c: 99 } };
+        var { a: [first, second, ...remaining], b: { c, d = "default" } } = data;
+        [first, second, remaining.join("+"), c, d].join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "10|20|30+40|99|default");
+}
+
+// Test: Error subclass with custom properties preserved through catch
+TEST(JsEngineTest, CustomErrorSubclassPropertiesV102) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        class AppError extends Error {
+            constructor(message, code, details) {
+                super(message);
+                this.name = "AppError";
+                this.code = code;
+                this.details = details;
+            }
+        }
+        var output;
+        try {
+            throw new AppError("not found", 404, { path: "/api" });
+        } catch (e) {
+            output = [
+                e instanceof Error,
+                e instanceof AppError,
+                e.name,
+                e.message,
+                e.code,
+                e.details.path
+            ].join("|");
+        }
+        output;
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true|true|AppError|not found|404|/api");
+}

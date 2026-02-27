@@ -15953,3 +15953,122 @@ TEST(DomTest, RemoveLastChildLeavesFirstChildIntactV101) {
     EXPECT_EQ(parent.last_child(), b_ptr);
     EXPECT_EQ(b_ptr->next_sibling(), nullptr);
 }
+
+// ---------------------------------------------------------------------------
+// V102 Tests
+// ---------------------------------------------------------------------------
+
+TEST(DomTest, InsertBeforeFirstChildShiftsAllSiblingsV102) {
+    Element parent("ul");
+    auto li1 = std::make_unique<Element>("li");
+    auto li2 = std::make_unique<Element>("li");
+    Element* li1_ptr = li1.get();
+    Element* li2_ptr = li2.get();
+    parent.append_child(std::move(li1));
+    parent.append_child(std::move(li2));
+
+    auto li0 = std::make_unique<Element>("li");
+    Element* li0_ptr = li0.get();
+    parent.insert_before(std::move(li0), li1_ptr);
+
+    EXPECT_EQ(parent.child_count(), 3u);
+    EXPECT_EQ(parent.first_child(), li0_ptr);
+    EXPECT_EQ(li0_ptr->next_sibling(), li1_ptr);
+    EXPECT_EQ(li1_ptr->next_sibling(), li2_ptr);
+    EXPECT_EQ(parent.last_child(), li2_ptr);
+}
+
+TEST(DomTest, ToggleClassTwiceRestoredToOriginalStateV102) {
+    Element elem("div");
+    elem.class_list().add("active");
+    EXPECT_TRUE(elem.class_list().contains("active"));
+
+    elem.class_list().toggle("active");
+    EXPECT_FALSE(elem.class_list().contains("active"));
+
+    elem.class_list().toggle("active");
+    EXPECT_TRUE(elem.class_list().contains("active"));
+}
+
+TEST(DomTest, SetAttributeOverwritesPreviousValueV102) {
+    Element elem("input");
+    elem.set_attribute("type", "text");
+    EXPECT_EQ(elem.get_attribute("type").value(), "text");
+
+    elem.set_attribute("type", "password");
+    EXPECT_EQ(elem.get_attribute("type").value(), "password");
+    EXPECT_EQ(elem.attributes().size(), 1u);
+}
+
+TEST(DomTest, TextNodeContentAndTypeCorrectV102) {
+    Text text_node("Hello, world!");
+    EXPECT_EQ(text_node.text_content(), "Hello, world!");
+    EXPECT_EQ(text_node.node_type(), NodeType::Text);
+    EXPECT_EQ(text_node.parent(), nullptr);
+}
+
+TEST(DomTest, CommentDataAndNodeTypeV102) {
+    Comment comment("TODO: fix this later");
+    EXPECT_EQ(comment.data(), "TODO: fix this later");
+    EXPECT_EQ(comment.node_type(), NodeType::Comment);
+}
+
+TEST(DomTest, RemoveMiddleChildPreservesSiblingLinksV102) {
+    Element parent("div");
+    auto a = std::make_unique<Element>("span");
+    auto b = std::make_unique<Element>("em");
+    auto c = std::make_unique<Element>("strong");
+    Element* a_ptr = a.get();
+    Element* b_ptr = b.get();
+    Element* c_ptr = c.get();
+    parent.append_child(std::move(a));
+    parent.append_child(std::move(b));
+    parent.append_child(std::move(c));
+
+    parent.remove_child(*b_ptr);
+    EXPECT_EQ(parent.child_count(), 2u);
+    EXPECT_EQ(parent.first_child(), a_ptr);
+    EXPECT_EQ(parent.last_child(), c_ptr);
+    EXPECT_EQ(a_ptr->next_sibling(), c_ptr);
+    EXPECT_EQ(c_ptr->next_sibling(), nullptr);
+}
+
+TEST(DomTest, RemoveAttributeMakesHasAttributeFalseV102) {
+    Element elem("a");
+    elem.set_attribute("href", "https://example.com");
+    elem.set_attribute("target", "_blank");
+    EXPECT_TRUE(elem.has_attribute("href"));
+    EXPECT_TRUE(elem.has_attribute("target"));
+
+    elem.remove_attribute("href");
+    EXPECT_FALSE(elem.has_attribute("href"));
+    EXPECT_FALSE(elem.get_attribute("href").has_value());
+    EXPECT_TRUE(elem.has_attribute("target"));
+    EXPECT_EQ(elem.attributes().size(), 1u);
+}
+
+TEST(DomTest, MixedChildTypesParentAndSiblingLinksV102) {
+    Element parent("article");
+    auto text = std::make_unique<Text>("paragraph text");
+    auto child_el = std::make_unique<Element>("img");
+    auto comment = std::make_unique<Comment>("image caption");
+    Text* text_ptr = text.get();
+    Element* child_el_ptr = child_el.get();
+    Comment* comment_ptr = comment.get();
+    parent.append_child(std::move(text));
+    parent.append_child(std::move(child_el));
+    parent.append_child(std::move(comment));
+
+    EXPECT_EQ(parent.child_count(), 3u);
+    EXPECT_EQ(text_ptr->parent(), &parent);
+    EXPECT_EQ(child_el_ptr->parent(), &parent);
+    EXPECT_EQ(comment_ptr->parent(), &parent);
+    EXPECT_EQ(parent.first_child(), text_ptr);
+    EXPECT_EQ(parent.last_child(), comment_ptr);
+    EXPECT_EQ(text_ptr->next_sibling(), child_el_ptr);
+    EXPECT_EQ(child_el_ptr->next_sibling(), comment_ptr);
+    EXPECT_EQ(comment_ptr->next_sibling(), nullptr);
+    EXPECT_EQ(text_ptr->text_content(), "paragraph text");
+    EXPECT_EQ(child_el_ptr->tag_name(), "img");
+    EXPECT_EQ(comment_ptr->data(), "image caption");
+}
