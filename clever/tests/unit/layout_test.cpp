@@ -7105,3 +7105,45 @@ TEST(LayoutNodeProps, MixBlendModeZeroIsNormal) {
     // 0 = normal blend mode
     EXPECT_EQ(n.mix_blend_mode, 0);
 }
+
+// Cycle 885 — LayoutNode property defaults
+
+TEST(LayoutNodeProps, OutlineColorDefaultsBlack) {
+    LayoutNode n;
+    EXPECT_EQ(n.outline_color, 0xFF000000u);
+}
+
+TEST(LayoutNodeProps, ListStyleTypeDefaultsZero) {
+    LayoutNode n;
+    EXPECT_EQ(n.list_style_type, 0);
+}
+
+TEST(LayoutNodeProps, ListStyleImageDefaultsEmpty) {
+    LayoutNode n;
+    EXPECT_TRUE(n.list_style_image.empty());
+}
+
+TEST(LayoutNodeProps, TransitionDelayDefaultsZero) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.transition_delay, 0.0f);
+}
+
+TEST(LayoutNodeProps, TextEmphasisStyleDefaultsNone) {
+    LayoutNode n;
+    EXPECT_EQ(n.text_emphasis_style, "none");
+}
+
+TEST(LayoutNodeProps, TextEmphasisColorDefaultsZero) {
+    LayoutNode n;
+    EXPECT_EQ(n.text_emphasis_color, 0u);
+}
+
+TEST(LayoutNodeProps, BorderImageSliceDefaultsHundred) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.border_image_slice, 100.0f);
+}
+
+TEST(LayoutNodeProps, BorderImageOutsetDefaultsZero) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.border_image_outset, 0.0f);
+}
