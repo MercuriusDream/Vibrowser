@@ -4272,3 +4272,44 @@ TEST(DomEvent, MultipleListenersAllFiredOnDispatch) {
     et.dispatch_event(evt, node);
     EXPECT_EQ(total, 11);
 }
+
+TEST(DomEvent, EventTypeMatchesString) {
+    Event evt("input");
+    EXPECT_EQ(evt.type(), "input");
+}
+
+TEST(DomEvent, EventTypeChangeEvent) {
+    Event evt("change");
+    EXPECT_EQ(evt.type(), "change");
+}
+
+TEST(DomEvent, EventDefaultNotPreventedInitially) {
+    Event evt("click", true, true);
+    EXPECT_FALSE(evt.default_prevented());
+}
+
+TEST(DomEvent, EventDefaultPreventedOnCancelable) {
+    Event evt("click", true, true);
+    evt.prevent_default();
+    EXPECT_TRUE(evt.default_prevented());
+}
+
+TEST(DomEvent, EventBubblesIsTrue) {
+    Event evt("click", true, false);
+    EXPECT_TRUE(evt.bubbles());
+}
+
+TEST(DomEvent, EventBubblesIsFalse) {
+    Event evt("click", false, false);
+    EXPECT_FALSE(evt.bubbles());
+}
+
+TEST(DomEvent, EventCancelableIsTrue) {
+    Event evt("click", true, true);
+    EXPECT_TRUE(evt.cancelable());
+}
+
+TEST(DomEvent, EventCancelableIsFalse) {
+    Event evt("click", true, false);
+    EXPECT_FALSE(evt.cancelable());
+}
