@@ -10105,3 +10105,83 @@ TEST(LayoutNodeProps, OpacityZIndexOrderAndTextStrokeAssignmentsV44) {
     EXPECT_EQ(n.order, -3);
     EXPECT_FLOAT_EQ(n.text_stroke_width, 1.5f);
 }
+
+TEST(LayoutNodeProps, GeometryMarginSidesAssignmentV55) {
+    using namespace clever::layout;
+    LayoutNode n;
+    n.geometry.margin.top = 1.5f;
+    n.geometry.margin.right = 2.5f;
+    n.geometry.margin.bottom = 3.5f;
+    n.geometry.margin.left = 4.5f;
+    EXPECT_FLOAT_EQ(n.geometry.margin.top, 1.5f);
+    EXPECT_FLOAT_EQ(n.geometry.margin.right, 2.5f);
+    EXPECT_FLOAT_EQ(n.geometry.margin.bottom, 3.5f);
+    EXPECT_FLOAT_EQ(n.geometry.margin.left, 4.5f);
+}
+
+TEST(LayoutNodeProps, GeometryPaddingSidesAssignmentV55) {
+    using namespace clever::layout;
+    LayoutNode n;
+    n.geometry.padding.top = 5.0f;
+    n.geometry.padding.right = 6.0f;
+    n.geometry.padding.bottom = 7.0f;
+    n.geometry.padding.left = 8.0f;
+    EXPECT_FLOAT_EQ(n.geometry.padding.top, 5.0f);
+    EXPECT_FLOAT_EQ(n.geometry.padding.right, 6.0f);
+    EXPECT_FLOAT_EQ(n.geometry.padding.bottom, 7.0f);
+    EXPECT_FLOAT_EQ(n.geometry.padding.left, 8.0f);
+}
+
+TEST(LayoutNodeProps, GeometryBorderSidesAssignmentV55) {
+    using namespace clever::layout;
+    LayoutNode n;
+    n.geometry.border.top = 0.5f;
+    n.geometry.border.right = 1.5f;
+    n.geometry.border.bottom = 2.5f;
+    n.geometry.border.left = 3.5f;
+    EXPECT_FLOAT_EQ(n.geometry.border.top, 0.5f);
+    EXPECT_FLOAT_EQ(n.geometry.border.right, 1.5f);
+    EXPECT_FLOAT_EQ(n.geometry.border.bottom, 2.5f);
+    EXPECT_FLOAT_EQ(n.geometry.border.left, 3.5f);
+}
+
+TEST(LayoutNodeProps, DisplayAssignmentValuesV55) {
+    using namespace clever::layout;
+    LayoutNode n;
+    n.display = DisplayType::Block;
+    EXPECT_EQ(n.display, DisplayType::Block);
+    n.display = DisplayType::Inline;
+    EXPECT_EQ(n.display, DisplayType::Inline);
+    n.display = DisplayType::Flex;
+    EXPECT_EQ(n.display, DisplayType::Flex);
+    n.display = DisplayType::None;
+    EXPECT_EQ(n.display, DisplayType::None);
+}
+
+TEST(LayoutNodeProps, FlexGrowAssignmentV55) {
+    using namespace clever::layout;
+    LayoutNode n;
+    n.flex_grow = 1.75f;
+    EXPECT_FLOAT_EQ(n.flex_grow, 1.75f);
+}
+
+TEST(LayoutNodeProps, FlexShrinkAssignmentV55) {
+    using namespace clever::layout;
+    LayoutNode n;
+    n.flex_shrink = 0.35f;
+    EXPECT_FLOAT_EQ(n.flex_shrink, 0.35f);
+}
+
+TEST(LayoutNodeProps, OpacityAssignmentV55) {
+    using namespace clever::layout;
+    LayoutNode n;
+    n.opacity = 0.65f;
+    EXPECT_FLOAT_EQ(n.opacity, 0.65f);
+}
+
+TEST(LayoutNodeProps, ZIndexAssignmentV55) {
+    using namespace clever::layout;
+    LayoutNode n;
+    n.z_index = 123;
+    EXPECT_EQ(n.z_index, 123);
+}

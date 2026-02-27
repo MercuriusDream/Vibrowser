@@ -10249,3 +10249,110 @@ TEST(HttpClient, RequestSerializeReturnsVectorWithBodyBytesV46) {
     EXPECT_NE(text.find("Content-Length: 3"), std::string::npos);
     EXPECT_NE(text.find("ABC"), std::string::npos);
 }
+
+// ============================================================================
+// Cycle X: HTTP/Net tests V55
+// ============================================================================
+
+TEST(HttpClient, RequestParseUrlHttpsWithQueryV55) {
+    Request req;
+    req.url = "https://api.example.com/search/items?q=book&sort=asc";
+    req.parse_url();
+
+    EXPECT_EQ(req.host, "api.example.com");
+    EXPECT_EQ(req.port, 443);
+    EXPECT_TRUE(req.use_tls);
+    EXPECT_EQ(req.path, "/search/items");
+    EXPECT_EQ(req.query, "q=book&sort=asc");
+}
+
+TEST(HttpClient, RequestSerializePostIncludesPathAndContentLengthV55) {
+    Request req;
+    req.method = Method::POST;
+    req.host = "example.com";
+    req.path = "/submit";
+    req.body = std::vector<uint8_t>{'o', 'k'};
+    req.headers.set("Content-Type", "text/plain");
+
+    auto raw = req.serialize();
+    std::string text(raw.begin(), raw.end());
+
+    EXPECT_NE(text.find("POST /submit HTTP/1.1"), std::string::npos);
+    EXPECT_NE(text.find("Host: example.com"), std::string::npos);
+    EXPECT_NE(text.find("Content-Length: 2"), std::string::npos);
+}
+
+TEST(HttpClient, ResponseParsePopulatesStatusFieldV55) {
+    std::string raw_str =
+        "HTTP/1.1 418 I'm a teapot\r\n"
+        "Content-Length: 0\r\n"
+        "\r\n";
+    std::vector<uint8_t> raw(raw_str.begin(), raw_str.end());
+
+    auto resp = Response::parse(raw);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 418u);
+    EXPECT_EQ(resp->status_text, "I'm a teapot");
+}
+
+TEST(HttpClient, ResponseBodyAsStringFromParsedBodyV55) {
+    std::string raw_str =
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Length: 5\r\n"
+        "\r\n"
+        "hello";
+    std::vector<uint8_t> raw(raw_str.begin(), raw_str.end());
+
+    auto resp = Response::parse(raw);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 200u);
+    EXPECT_EQ(resp->body_as_string(), "hello");
+}
+
+TEST(HttpClient, HeaderMapSetOverwritesExistingValueV55) {
+    HeaderMap headers;
+    headers.set("Accept", "text/html");
+    headers.set("Accept", "application/json");
+
+    ASSERT_TRUE(headers.get("accept").has_value());
+    EXPECT_EQ(headers.get("Accept").value(), "application/json");
+    EXPECT_EQ(headers.get_all("ACCEPT").size(), 1u);
+}
+
+TEST(HttpClient, HeaderMapAppendPreservesMultipleValuesV55) {
+    HeaderMap headers;
+    headers.append("Set-Cookie", "a=1");
+    headers.append("Set-Cookie", "b=2");
+    headers.append("set-cookie", "c=3");
+
+    auto values = headers.get_all("Set-Cookie");
+    EXPECT_EQ(values.size(), 3u);
+    EXPECT_TRUE(std::find(values.begin(), values.end(), "a=1") != values.end());
+    EXPECT_TRUE(std::find(values.begin(), values.end(), "b=2") != values.end());
+    EXPECT_TRUE(std::find(values.begin(), values.end(), "c=3") != values.end());
+}
+
+TEST(HttpClient, CookieJarSecureCookieOnlySentOnSecureRequestsV55) {
+    CookieJar jar;
+    jar.set_from_header("sid=plain; Path=/", "example.com");
+    jar.set_from_header("auth=secure; Path=/; Secure", "example.com");
+
+    std::string insecure = jar.get_cookie_header("example.com", "/", false);
+    std::string secure = jar.get_cookie_header("example.com", "/", true);
+
+    EXPECT_NE(insecure.find("sid=plain"), std::string::npos);
+    EXPECT_EQ(insecure.find("auth=secure"), std::string::npos);
+    EXPECT_NE(secure.find("sid=plain"), std::string::npos);
+    EXPECT_NE(secure.find("auth=secure"), std::string::npos);
+}
+
+TEST(HttpClient, CookieJarPathScopedCookieMatchingV55) {
+    CookieJar jar;
+    jar.set_from_header("api_token=xyz; Path=/api", "example.com");
+
+    std::string api_path = jar.get_cookie_header("example.com", "/api/v1/users", false);
+    std::string other_path = jar.get_cookie_header("example.com", "/static", false);
+
+    EXPECT_NE(api_path.find("api_token=xyz"), std::string::npos);
+    EXPECT_EQ(other_path.find("api_token=xyz"), std::string::npos);
+}

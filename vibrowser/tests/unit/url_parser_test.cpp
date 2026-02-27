@@ -1479,6 +1479,77 @@ TEST(URLParser, FragmentStringAccessible) {
 }
 
 // ============================================================================
+// Cycle V55: Targeted URL parsing regression tests
+// ============================================================================
+
+TEST(URLParser, RelativeResolutionParentV55) {
+    auto base = parse("https://example.com/a/b/c/index.html");
+    ASSERT_TRUE(base.has_value());
+
+    auto result = parse("../img/logo.png", &base.value());
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/a/b/img/logo.png");
+}
+
+TEST(URLParser, RelativeResolutionQueryOnlyV55) {
+    auto base = parse("https://example.com/catalog/items?page=1");
+    ASSERT_TRUE(base.has_value());
+
+    auto result = parse("?page=2&sort=asc", &base.value());
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->path, "/catalog/items");
+    EXPECT_EQ(result->query, "page=2&sort=asc");
+}
+
+TEST(URLParser, RelativeResolutionFragmentOnlyV55) {
+    auto base = parse("https://example.com/docs/intro?lang=en");
+    ASSERT_TRUE(base.has_value());
+
+    auto result = parse("#install", &base.value());
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->path, "/docs/intro");
+    EXPECT_EQ(result->query, "lang=en");
+    EXPECT_EQ(result->fragment, "install");
+}
+
+TEST(URLParser, SchemeNormalizationLowercaseV55) {
+    auto result = parse("HtTpS://example.com/path");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "example.com");
+}
+
+TEST(URLParser, HostNormalizationLowercaseV55) {
+    auto result = parse("https://MiXeD.ExAmPlE.CoM/resource");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->host, "mixed.example.com");
+    EXPECT_EQ(result->path, "/resource");
+}
+
+TEST(URLParser, PathResolutionDotSegmentsV55) {
+    auto result = parse("https://example.com/a/./b/../../c/./d");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->path, "/c/d");
+}
+
+TEST(URLParser, PortNormalizationDefaultHttpsV55) {
+    auto result = parse("https://example.com:443/account");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->port, std::nullopt);
+    EXPECT_EQ(result->serialize(), "https://example.com/account");
+}
+
+TEST(URLParser, PortNormalizationNonDefaultPreservedV55) {
+    auto result = parse("https://example.com:8443/account");
+    ASSERT_TRUE(result.has_value());
+    ASSERT_TRUE(result->port.has_value());
+    EXPECT_EQ(result->port.value(), 8443);
+    EXPECT_EQ(result->serialize(), "https://example.com:8443/account");
+}
+
+// ============================================================================
 // Cycle 647: More URL parser tests
 // ============================================================================
 

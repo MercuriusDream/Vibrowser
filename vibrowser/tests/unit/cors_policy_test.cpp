@@ -4481,3 +4481,74 @@ TEST(CORSPolicy, IsCorsEligibleRequestUrlFragmentRejectedV53) {
     // URLs with fragments are not CORS-eligible
     EXPECT_FALSE(is_cors_eligible_request_url("https://api.example.com/data#frag"));
 }
+
+// --- Cycle V55: CORS origin validation, preflight and header policy tests ---
+
+TEST(CORSPolicy, CorsOriginValidationRejectsAllowOriginWithPathV55) {
+    clever::net::HeaderMap resp_headers;
+    resp_headers.set("Access-Control-Allow-Origin", "https://app.example/path");
+    EXPECT_FALSE(cors_allows_response("https://app.example",
+                                      "https://api.example/data",
+                                      resp_headers, false));
+}
+
+TEST(CORSPolicy, CorsOriginValidationAllowsCanonicalOriginMatchV55) {
+    clever::net::HeaderMap resp_headers;
+    resp_headers.set("Access-Control-Allow-Origin", "HTTPS://APP.EXAMPLE:443");
+    EXPECT_TRUE(cors_allows_response("https://app.example",
+                                     "https://api.example/data",
+                                     resp_headers, false));
+}
+
+TEST(CORSPolicy, PreflightChecksAllowMethodsHeaderDoesNotBypassAcaoValidationV55) {
+    clever::net::HeaderMap resp_headers;
+    resp_headers.set("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+    EXPECT_FALSE(cors_allows_response("https://app.example",
+                                      "https://api.example/preflight",
+                                      resp_headers, false));
+}
+
+TEST(CORSPolicy, PreflightChecksSucceedWithoutAllowMethodsWhenAcaoMatchesV55) {
+    clever::net::HeaderMap resp_headers;
+    resp_headers.set("Access-Control-Allow-Origin", "https://app.example");
+    EXPECT_TRUE(cors_allows_response("https://app.example",
+                                     "https://api.example/preflight",
+                                     resp_headers, false));
+}
+
+TEST(CORSPolicy, AllowedHeadersWildcardDoesNotPermitMissingAcaoV55) {
+    clever::net::HeaderMap resp_headers;
+    resp_headers.set("Access-Control-Allow-Headers", "*");
+    EXPECT_FALSE(cors_allows_response("https://app.example",
+                                      "https://api.example/data",
+                                      resp_headers, false));
+}
+
+TEST(CORSPolicy, AllowedHeadersListDoesNotOverrideCredentialRulesV55) {
+    clever::net::HeaderMap resp_headers;
+    resp_headers.set("Access-Control-Allow-Origin", "https://app.example");
+    resp_headers.set("Access-Control-Allow-Headers", "X-Token, Content-Type");
+    EXPECT_FALSE(cors_allows_response("https://app.example",
+                                      "https://api.example/data",
+                                      resp_headers, true));
+}
+
+TEST(CORSPolicy, ExposedHeadersDoNotBypassOriginMismatchV55) {
+    clever::net::HeaderMap resp_headers;
+    resp_headers.set("Access-Control-Allow-Origin", "https://other.example");
+    resp_headers.set("Access-Control-Expose-Headers", "X-Request-Id, X-Trace-Id");
+    EXPECT_FALSE(cors_allows_response("https://app.example",
+                                      "https://api.example/data",
+                                      resp_headers, false));
+}
+
+TEST(CORSPolicy, CredentialsRejectWildcardEvenWithAllowAndExposeHeadersV55) {
+    clever::net::HeaderMap resp_headers;
+    resp_headers.set("Access-Control-Allow-Origin", "*");
+    resp_headers.set("Access-Control-Allow-Credentials", "true");
+    resp_headers.set("Access-Control-Allow-Headers", "Authorization");
+    resp_headers.set("Access-Control-Expose-Headers", "X-Session");
+    EXPECT_FALSE(cors_allows_response("https://app.example",
+                                      "https://api.example/data",
+                                      resp_headers, true));
+}

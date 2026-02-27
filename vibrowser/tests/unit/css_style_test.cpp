@@ -11706,3 +11706,114 @@ TEST(PropertyCascadeTest, TextTransformAndWhiteSpaceV43) {
     cascade.apply_declaration(style, make_decl("white-space", "pre-wrap"), parent);
     EXPECT_EQ(style.white_space, WhiteSpace::PreWrap);
 }
+
+// ---------------------------------------------------------------------------
+// V55 Test Suite — apply_declaration coverage for requested CSS properties
+// ---------------------------------------------------------------------------
+
+TEST(PropertyCascadeTest, ApplyDeclarationColorV55) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    Declaration decl;
+    decl.property = "color";
+    decl.values.push_back(make_token("#123456"));
+
+    cascade.apply_declaration(style, decl, parent);
+    EXPECT_EQ(style.color, (Color{0x12, 0x34, 0x56, 255}));
+}
+
+TEST(PropertyCascadeTest, ApplyDeclarationBackgroundV55) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    Declaration decl;
+    decl.property = "background";
+    decl.values.push_back(make_token("blue"));
+
+    cascade.apply_declaration(style, decl, parent);
+    EXPECT_EQ(style.background_color, (Color{0, 0, 255, 255}));
+}
+
+TEST(PropertyCascadeTest, ApplyDeclarationFontSizeV55) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    Declaration decl;
+    decl.property = "font-size";
+    decl.values.push_back(make_token("18px"));
+
+    cascade.apply_declaration(style, decl, parent);
+    EXPECT_FLOAT_EQ(style.font_size.value, 18.0f);
+    EXPECT_EQ(style.font_size.unit, Length::Unit::Px);
+}
+
+TEST(PropertyCascadeTest, ApplyDeclarationDisplayV55) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    Declaration decl;
+    decl.property = "display";
+    decl.values.push_back(make_token("flex"));
+
+    cascade.apply_declaration(style, decl, parent);
+    EXPECT_EQ(style.display, Display::Flex);
+}
+
+TEST(PropertyCascadeTest, ApplyDeclarationPositionV55) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    Declaration decl;
+    decl.property = "position";
+    decl.values.push_back(make_token("absolute"));
+
+    cascade.apply_declaration(style, decl, parent);
+    EXPECT_EQ(style.position, Position::Absolute);
+}
+
+TEST(PropertyCascadeTest, ApplyDeclarationZIndexV55) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    Declaration decl;
+    decl.property = "z-index";
+    decl.values.push_back(make_token("77"));
+
+    cascade.apply_declaration(style, decl, parent);
+    EXPECT_EQ(style.z_index, 77);
+}
+
+TEST(PropertyCascadeTest, ApplyDeclarationOpacityV55) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    Declaration decl;
+    decl.property = "opacity";
+    decl.values.push_back(make_token("0.25"));
+
+    cascade.apply_declaration(style, decl, parent);
+    EXPECT_FLOAT_EQ(style.opacity, 0.25f);
+}
+
+TEST(PropertyCascadeTest, ApplyDeclarationOverflowV55) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    Declaration decl;
+    decl.property = "overflow";
+    decl.values.push_back(make_token("hidden"));
+    decl.values.push_back(make_token("scroll"));
+
+    cascade.apply_declaration(style, decl, parent);
+    EXPECT_EQ(style.overflow_x, Overflow::Hidden);
+    EXPECT_EQ(style.overflow_y, Overflow::Scroll);
+}

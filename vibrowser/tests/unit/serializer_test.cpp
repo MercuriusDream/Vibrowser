@@ -8488,3 +8488,81 @@ TEST(Serializer, RoundtripLargeBytesPatternV43) {
     EXPECT_TRUE(d.read_bool());
     EXPECT_FALSE(d.has_remaining());
 }
+
+TEST(Serializer, RoundtripU8V55) {
+    Serializer s;
+    s.write_u8(55);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u8(), 55u);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(Serializer, RoundtripU16V55) {
+    Serializer s;
+    s.write_u16(5500);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u16(), 5500u);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(Serializer, RoundtripU32V55) {
+    Serializer s;
+    s.write_u32(550000u);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u32(), 550000u);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(Serializer, RoundtripU64V55) {
+    Serializer s;
+    s.write_u64(55000000000ull);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u64(), 55000000000ull);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(Serializer, RoundtripStringV55) {
+    Serializer s;
+    s.write_string("serializer-v55");
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "serializer-v55");
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(Serializer, RoundtripBytesV55) {
+    Serializer s;
+    uint8_t input[] = {0x55, 0x00, 0xAA, 0xFF};
+    s.write_bytes(input, sizeof(input));
+
+    Deserializer d(s.data());
+    auto output = d.read_bytes();
+    ASSERT_EQ(output.size(), sizeof(input));
+    EXPECT_EQ(output[0], 0x55u);
+    EXPECT_EQ(output[1], 0x00u);
+    EXPECT_EQ(output[2], 0xAAu);
+    EXPECT_EQ(output[3], 0xFFu);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(Serializer, RoundtripBoolV55) {
+    Serializer s;
+    s.write_bool(true);
+
+    Deserializer d(s.data());
+    EXPECT_TRUE(d.read_bool());
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(Serializer, RoundtripF64V55) {
+    Serializer s;
+    s.write_f64(55.55);
+
+    Deserializer d(s.data());
+    EXPECT_DOUBLE_EQ(d.read_f64(), 55.55);
+    EXPECT_FALSE(d.has_remaining());
+}

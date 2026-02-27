@@ -8902,3 +8902,169 @@ TEST(TreeBuilder, FigureAndFigcaptionTextV32) {
     ASSERT_NE(figcaption, nullptr);
     EXPECT_EQ(figcaption->text_content(), "Main hero image");
 }
+
+// ---------------------------------------------------------------------------
+// V55 — HTML parser coverage: nested elements, attributes, self-closing tags,
+//       comments, text content, doctype
+// ---------------------------------------------------------------------------
+
+TEST(TreeBuilder, NestedElementsParentChainV55) {
+    auto doc = parse("<html><body><section><article><h2>Title</h2><p>Body</p></article></section></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* section = doc->find_element("section");
+    auto* article = doc->find_element("article");
+    auto* h2 = doc->find_element("h2");
+    auto* p = doc->find_element("p");
+    ASSERT_NE(section, nullptr);
+    ASSERT_NE(article, nullptr);
+    ASSERT_NE(h2, nullptr);
+    ASSERT_NE(p, nullptr);
+
+    EXPECT_EQ(section->tag_name, "section");
+    EXPECT_EQ(article->tag_name, "article");
+    EXPECT_EQ(h2->tag_name, "h2");
+    EXPECT_EQ(p->tag_name, "p");
+    EXPECT_EQ(article->parent, section);
+    EXPECT_EQ(h2->parent, article);
+    EXPECT_EQ(p->parent, article);
+}
+
+TEST(TreeBuilder, AttributesIdClassAndDataV55) {
+    auto doc = parse("<div id=\"root\" class=\"page primary\" data-role=\"main\">x</div>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* div = doc->find_element("div");
+    ASSERT_NE(div, nullptr);
+    EXPECT_EQ(div->tag_name, "div");
+
+    std::string id_value;
+    std::string class_value;
+    std::string role_value;
+    for (const auto& attr : div->attributes) {
+        if (attr.name == "id") id_value = attr.value;
+        if (attr.name == "class") class_value = attr.value;
+        if (attr.name == "data-role") role_value = attr.value;
+    }
+
+    EXPECT_EQ(id_value, "root");
+    EXPECT_EQ(class_value, "page primary");
+    EXPECT_EQ(role_value, "main");
+}
+
+TEST(TreeBuilder, SelfClosingTagsCreateLeafNodesV55) {
+    auto doc = parse("<html><body><br/><img src=\"hero.png\" alt=\"hero\"/><input type=\"text\"/></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* br = doc->find_element("br");
+    auto* img = doc->find_element("img");
+    auto* input = doc->find_element("input");
+    ASSERT_NE(br, nullptr);
+    ASSERT_NE(img, nullptr);
+    ASSERT_NE(input, nullptr);
+
+    EXPECT_EQ(br->tag_name, "br");
+    EXPECT_EQ(img->tag_name, "img");
+    EXPECT_EQ(input->tag_name, "input");
+    EXPECT_TRUE(br->children.empty());
+    EXPECT_TRUE(img->children.empty());
+    EXPECT_TRUE(input->children.empty());
+}
+
+TEST(TreeBuilder, CommentInsideBodyPreservedV55) {
+    auto doc = parse("<html><body>alpha<!-- note -->beta</body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* body = doc->find_element("body");
+    ASSERT_NE(body, nullptr);
+    EXPECT_EQ(body->tag_name, "body");
+    const std::string body_text = body->text_content();
+    EXPECT_NE(body_text.find("alpha"), std::string::npos);
+    EXPECT_NE(body_text.find("note"), std::string::npos);
+    EXPECT_NE(body_text.find("beta"), std::string::npos);
+
+    bool found_comment = false;
+    for (const auto& child : body->children) {
+        if (child->type == SimpleNode::Comment) {
+            found_comment = true;
+            EXPECT_EQ(child->data, " note ");
+        }
+    }
+    EXPECT_TRUE(found_comment);
+}
+
+TEST(TreeBuilder, TextContentAcrossNestedInlineElementsV55) {
+    auto doc = parse("<p>Hello <span>brave <em>new</em></span> world!</p>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* p = doc->find_element("p");
+    auto* span = doc->find_element("span");
+    auto* em = doc->find_element("em");
+    ASSERT_NE(p, nullptr);
+    ASSERT_NE(span, nullptr);
+    ASSERT_NE(em, nullptr);
+
+    EXPECT_EQ(p->tag_name, "p");
+    EXPECT_EQ(span->tag_name, "span");
+    EXPECT_EQ(em->tag_name, "em");
+    EXPECT_EQ(p->text_content(), "Hello brave new world!");
+}
+
+TEST(TreeBuilder, DoctypeHtmlNodePresentV55) {
+    auto doc = parse("<!DOCTYPE html><html><body><p>x</p></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    bool found_doctype = false;
+    for (const auto& child : doc->children) {
+        if (child->type == SimpleNode::DocumentType) {
+            found_doctype = true;
+            EXPECT_EQ(child->doctype_name, "html");
+        }
+    }
+    EXPECT_TRUE(found_doctype);
+}
+
+TEST(TreeBuilder, NestedListParentRelationshipV55) {
+    auto doc = parse("<ul><li>Outer<ul><li>Inner</li></ul></li></ul>");
+    ASSERT_NE(doc, nullptr);
+
+    auto lists = doc->find_all_elements("ul");
+    auto items = doc->find_all_elements("li");
+    ASSERT_EQ(lists.size(), 2u);
+    ASSERT_EQ(items.size(), 2u);
+
+    auto* inner_list = lists[1];
+    auto* inner_item = items[1];
+    ASSERT_NE(inner_list, nullptr);
+    ASSERT_NE(inner_item, nullptr);
+    EXPECT_EQ(inner_list->tag_name, "ul");
+    EXPECT_EQ(inner_item->tag_name, "li");
+    EXPECT_EQ(inner_item->parent, inner_list);
+    ASSERT_NE(inner_list->parent, nullptr);
+    EXPECT_EQ(inner_list->parent->tag_name, "li");
+}
+
+TEST(TreeBuilder, AttributesWithMixedQuotingStylesV55) {
+    auto doc = parse("<input type='search' name=query placeholder=\"Find\" disabled>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* input = doc->find_element("input");
+    ASSERT_NE(input, nullptr);
+    EXPECT_EQ(input->tag_name, "input");
+
+    std::string type_value;
+    std::string name_value;
+    std::string placeholder_value;
+    bool has_disabled = false;
+    for (const auto& attr : input->attributes) {
+        if (attr.name == "type") type_value = attr.value;
+        if (attr.name == "name") name_value = attr.value;
+        if (attr.name == "placeholder") placeholder_value = attr.value;
+        if (attr.name == "disabled") has_disabled = true;
+    }
+
+    EXPECT_EQ(type_value, "search");
+    EXPECT_EQ(name_value, "query");
+    EXPECT_EQ(placeholder_value, "Find");
+    EXPECT_TRUE(has_disabled);
+}

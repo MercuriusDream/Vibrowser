@@ -20596,3 +20596,96 @@ TEST(JSEngine, WeakMapWithSymbolDataCycle1488) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "130");
 }
+
+// Cycle 1497 — Promise, async/await, Map/Set, destructuring, template literals,
+// Symbol, Proxy, generators
+TEST(JSEngine, PromiseConstructorCycle1497) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("Promise.resolve(123).constructor.name");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "Promise");
+}
+
+TEST(JSEngine, AsyncAwaitIifeCycle1497) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        (async function() {
+            const v = await Promise.resolve(7);
+            return v * 6;
+        })()
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "[object Promise]");
+}
+
+TEST(JSEngine, MapSetCombinedCycle1497) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        const m = new Map([['a', 1], ['b', 2]]);
+        const s = new Set([1, 2, 2, 3]);
+        `${m.get('b')}:${s.size}`
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "2:3");
+}
+
+TEST(JSEngine, DestructuringObjectAndArrayCycle1497) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        const {x, y = 5} = {x: 4};
+        const [a, , c = 9] = [1, 2];
+        `${x + y}:${a + c}`
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "9:10");
+}
+
+TEST(JSEngine, TemplateLiteralInterpolationCycle1497) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        const who = 'browser';
+        `hello ${who.toUpperCase()} ${10 + 5}`
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "hello BROWSER 15");
+}
+
+TEST(JSEngine, SymbolForAndKeyForCycle1497) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        const s = Symbol.for('cycle1497.key');
+        Symbol.keyFor(s)
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "cycle1497.key");
+}
+
+TEST(JSEngine, ProxyGetSetTrapsCycle1497) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        const target = { value: 2 };
+        const proxy = new Proxy(target, {
+            get(t, k) { return k === 'value' ? t[k] * 10 : t[k]; },
+            set(t, k, v) { t[k] = v + 1; return true; }
+        });
+        proxy.value = 4;
+        `${proxy.value}:${target.value}`
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "50:5");
+}
+
+TEST(JSEngine, GeneratorSequenceCycle1497) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        function* seq() {
+            yield 3;
+            yield 4;
+            return 5;
+        }
+        const it = seq();
+        `${it.next().value},${it.next().value},${it.next().done},${it.next().value}`
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "3,4,true,undefined");
+}

@@ -8537,3 +8537,126 @@ TEST(DomElement, IdOperationsReflectAttributeLifecycleAndTagNormalizationR54) {
     EXPECT_EQ(el->id(), "");
     EXPECT_FALSE(el->has_attribute("id"));
 }
+
+TEST(DomElement, TagNameAndIdReflectSetAndGetAttributeV55) {
+    Document doc;
+    auto el = doc.create_element("section");
+
+    EXPECT_EQ(el->tag_name(), "section");
+    EXPECT_EQ(el->id(), "");
+
+    el->set_attribute("id", "hero-v55");
+    auto id_attr = el->get_attribute("id");
+    ASSERT_TRUE(id_attr.has_value());
+    EXPECT_EQ(id_attr.value(), "hero-v55");
+    EXPECT_EQ(el->id(), "hero-v55");
+}
+
+TEST(DomNode, AppendChildThenRemoveChildUpdatesTreeAndTagNameV55) {
+    Document doc;
+    auto parent = doc.create_element("div");
+    auto child = doc.create_element("span");
+    auto* child_ptr = child.get();
+
+    EXPECT_EQ(child_ptr->tag_name(), "span");
+    parent->append_child(std::move(child));
+    EXPECT_EQ(parent->child_count(), 1u);
+
+    auto removed = parent->remove_child(*child_ptr);
+    EXPECT_NE(removed, nullptr);
+    EXPECT_EQ(removed->node_type(), NodeType::Element);
+    EXPECT_EQ(parent->child_count(), 0u);
+}
+
+TEST(DomElement, ClassListMutationsKeepUnrelatedAttributesV55) {
+    Document doc;
+    auto el = doc.create_element("article");
+
+    el->set_attribute("data-kind", "card");
+    el->class_list().add("selected");
+    el->class_list().toggle("hidden");
+    el->class_list().remove("selected");
+
+    auto attr = el->get_attribute("data-kind");
+    ASSERT_TRUE(attr.has_value());
+    EXPECT_EQ(attr.value(), "card");
+    EXPECT_TRUE(el->class_list().contains("hidden"));
+    EXPECT_FALSE(el->class_list().contains("selected"));
+}
+
+TEST(DomElement, TextContentConcatenatesAfterAppendChildOperationsV55) {
+    Document doc;
+    auto parent = doc.create_element("p");
+    auto first = doc.create_text_node("hello");
+    auto second = doc.create_text_node(" world");
+
+    parent->append_child(std::move(first));
+    parent->append_child(std::move(second));
+
+    EXPECT_EQ(parent->text_content(), "hello world");
+}
+
+TEST(DomNode, RemoveChildShrinksTextContentV55) {
+    Document doc;
+    auto parent = doc.create_element("div");
+    auto keep = doc.create_text_node("A");
+    auto remove = doc.create_text_node("B");
+    auto* remove_ptr = remove.get();
+
+    parent->append_child(std::move(keep));
+    parent->append_child(std::move(remove));
+    EXPECT_EQ(parent->text_content(), "AB");
+
+    auto removed = parent->remove_child(*remove_ptr);
+    EXPECT_NE(removed, nullptr);
+    EXPECT_EQ(parent->text_content(), "A");
+}
+
+TEST(DomElement, IdTracksAttributeOverwriteAndRemovalV55) {
+    Document doc;
+    auto el = doc.create_element("main");
+
+    el->set_attribute("id", "stage-one");
+    EXPECT_EQ(el->id(), "stage-one");
+
+    el->set_attribute("id", "stage-two");
+    auto id_attr = el->get_attribute("id");
+    ASSERT_TRUE(id_attr.has_value());
+    EXPECT_EQ(id_attr.value(), "stage-two");
+    EXPECT_EQ(el->id(), "stage-two");
+
+    el->remove_attribute("id");
+    EXPECT_EQ(el->id(), "");
+    EXPECT_FALSE(el->get_attribute("id").has_value());
+}
+
+TEST(DomNode, RemoveChildThenReappendRestoresTextContentV55) {
+    Document doc;
+    auto parent = doc.create_element("div");
+    auto text = doc.create_text_node("x");
+    auto* text_ptr = text.get();
+
+    parent->append_child(std::move(text));
+    EXPECT_EQ(parent->text_content(), "x");
+
+    auto removed = parent->remove_child(*text_ptr);
+    EXPECT_EQ(parent->text_content(), "");
+
+    parent->append_child(std::move(removed));
+    EXPECT_EQ(parent->text_content(), "x");
+}
+
+TEST(DomElement, NestedElementsTagNameAndTextContentRoundTripV55) {
+    Document doc;
+    auto outer = doc.create_element("ul");
+    auto inner = doc.create_element("li");
+    auto text = doc.create_text_node("item");
+    auto* inner_ptr = inner.get();
+
+    inner->append_child(std::move(text));
+    outer->append_child(std::move(inner));
+
+    EXPECT_EQ(outer->tag_name(), "ul");
+    EXPECT_EQ(inner_ptr->tag_name(), "li");
+    EXPECT_EQ(outer->text_content(), "item");
+}
