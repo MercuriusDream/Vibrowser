@@ -3899,3 +3899,74 @@ TEST(SerializerTest, StringThenI32) {
     EXPECT_EQ(d.read_string(), "answer");
     EXPECT_EQ(d.read_i32(), 42);
 }
+
+// Cycle 924 — additional serializer coverage
+TEST(SerializerTest, F64OnePointFiveRoundTrip) {
+    Serializer s;
+    s.write_f64(1.5);
+    Deserializer d(s.data());
+    EXPECT_DOUBLE_EQ(d.read_f64(), 1.5);
+}
+
+TEST(SerializerTest, F64NegTwoRoundTrip) {
+    Serializer s;
+    s.write_f64(-2.0);
+    Deserializer d(s.data());
+    EXPECT_DOUBLE_EQ(d.read_f64(), -2.0);
+}
+
+TEST(SerializerTest, U8ThenBoolRoundTrip) {
+    Serializer s;
+    s.write_u8(200);
+    s.write_bool(false);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u8(), uint8_t{200});
+    EXPECT_FALSE(d.read_bool());
+}
+
+TEST(SerializerTest, BoolThenU8RoundTrip) {
+    Serializer s;
+    s.write_bool(true);
+    s.write_u8(77);
+    Deserializer d(s.data());
+    EXPECT_TRUE(d.read_bool());
+    EXPECT_EQ(d.read_u8(), uint8_t{77});
+}
+
+TEST(SerializerTest, FourStringsInOrder) {
+    Serializer s;
+    s.write_string("alpha");
+    s.write_string("beta");
+    s.write_string("gamma");
+    s.write_string("delta");
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "alpha");
+    EXPECT_EQ(d.read_string(), "beta");
+    EXPECT_EQ(d.read_string(), "gamma");
+    EXPECT_EQ(d.read_string(), "delta");
+}
+
+TEST(SerializerTest, U32HundredRoundTrip) {
+    Serializer s;
+    s.write_u32(100);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u32(), uint32_t{100});
+}
+
+TEST(SerializerTest, StringAndU32Sequence) {
+    Serializer s;
+    s.write_string("value");
+    s.write_u32(999);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "value");
+    EXPECT_EQ(d.read_u32(), uint32_t{999});
+}
+
+TEST(SerializerTest, U32AndStringSequence) {
+    Serializer s;
+    s.write_u32(42);
+    s.write_string("hello");
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u32(), uint32_t{42});
+    EXPECT_EQ(d.read_string(), "hello");
+}
