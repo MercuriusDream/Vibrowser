@@ -1596,3 +1596,51 @@ TEST(CORSPolicyTest, CORSAllowsResponseIPv6WildcardNoCredentials) {
 TEST(CORSPolicyTest, ShouldAttachOriginIPv6CrossOrigin) {
     EXPECT_TRUE(should_attach_origin_header("http://[::1]:3000", "http://[::1]:4000/api"));
 }
+
+
+// Cycle 870 — normalize header with null origin, scheme mismatch, ACAO whitespace, credential edge cases
+TEST(CORSPolicyTest, NormalizeRemovesOriginForSameOriginRequest) {
+    clever::net::HeaderMap headers;
+    headers.set("Origin", "https://example.com");
+    normalize_outgoing_origin_header(headers, "https://example.com", "https://example.com/api");
+    EXPECT_FALSE(headers.get("Origin").has_value());
+}
+
+TEST(CORSPolicyTest, NormalizeAddsOriginForNullDocCrossOrigin) {
+    clever::net::HeaderMap headers;
+    normalize_outgoing_origin_header(headers, "null", "https://api.example.com/data");
+    auto val = headers.get("Origin");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(val.value(), "null");
+}
+
+TEST(CORSPolicyTest, HttpVsHttpsSchemeIsCrossOrigin) {
+    EXPECT_TRUE(is_cross_origin("http://example.com", "https://example.com/path"));
+}
+
+TEST(CORSPolicyTest, HttpsVsHttpSchemeIsCrossOrigin) {
+    EXPECT_TRUE(is_cross_origin("https://example.com", "http://example.com/path"));
+}
+
+TEST(CORSPolicyTest, CORSRejectsACAOWithTrailingSpace) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "https://app.example ");
+    EXPECT_FALSE(cors_allows_response("https://app.example", "https://api.example/data", headers, false));
+}
+
+TEST(CORSPolicyTest, CORSAllowsWithExactOriginNoCredentials) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "https://client.example");
+    EXPECT_TRUE(cors_allows_response("https://client.example", "https://server.example/api", headers, false));
+}
+
+TEST(CORSPolicyTest, BackslashUrlNotCorsEligible) {
+    EXPECT_FALSE(is_cors_eligible_request_url("https://example.com\\path"));
+}
+
+TEST(CORSPolicyTest, CORSWildcardRejectsCredentialsRequest) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "*");
+    headers.set("Access-Control-Allow-Credentials", "true");
+    EXPECT_FALSE(cors_allows_response("https://app.example", "https://api.example/data", headers, true));
+}
