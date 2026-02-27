@@ -4492,3 +4492,64 @@ TEST(DomClassList, ClassListContainsAfterAdd) {
     EXPECT_TRUE(cl.contains("highlight"));
     EXPECT_FALSE(cl.contains("other"));
 }
+
+// Cycle 940 — ClassList to_string, attribute vector, has_attribute edge cases
+TEST(DomClassList, ClassListToStringWithTwo) {
+    ClassList cl;
+    cl.add("foo");
+    cl.add("bar");
+    auto str = cl.to_string();
+    EXPECT_NE(str.find("foo"), std::string::npos);
+    EXPECT_NE(str.find("bar"), std::string::npos);
+}
+
+TEST(DomClassList, ClassListToStringEmpty) {
+    ClassList cl;
+    EXPECT_EQ(cl.to_string(), "");
+}
+
+TEST(DomClassList, ClassListContainsAfterRemove) {
+    ClassList cl;
+    cl.add("active");
+    cl.remove("active");
+    EXPECT_FALSE(cl.contains("active"));
+}
+
+TEST(DomClassList, ClassListAfterToggleTwice) {
+    ClassList cl;
+    cl.toggle("visible");
+    cl.toggle("visible");
+    EXPECT_FALSE(cl.contains("visible"));
+}
+
+TEST(DomElement, ElementHasTwoAttrs) {
+    Element elem("input");
+    elem.set_attribute("type", "text");
+    elem.set_attribute("name", "username");
+    EXPECT_TRUE(elem.has_attribute("type"));
+    EXPECT_TRUE(elem.has_attribute("name"));
+}
+
+TEST(DomElement, ElementAttrConstRef) {
+    Element elem("a");
+    elem.set_attribute("href", "https://example.com");
+    const auto& attrs = elem.attributes();
+    ASSERT_EQ(attrs.size(), 1u);
+    EXPECT_EQ(attrs[0].name, "href");
+    EXPECT_EQ(attrs[0].value, "https://example.com");
+}
+
+TEST(DomElement, ElementThreeAttrsPresent) {
+    Element elem("form");
+    elem.set_attribute("action", "/submit");
+    elem.set_attribute("method", "post");
+    elem.set_attribute("enctype", "multipart/form-data");
+    EXPECT_TRUE(elem.has_attribute("action"));
+    EXPECT_TRUE(elem.has_attribute("method"));
+    EXPECT_TRUE(elem.has_attribute("enctype"));
+}
+
+TEST(DomElement, ElementNsEmptyDefault) {
+    Element elem("p");
+    EXPECT_EQ(elem.namespace_uri(), "");
+}
