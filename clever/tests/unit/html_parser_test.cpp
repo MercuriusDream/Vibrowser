@@ -4257,3 +4257,84 @@ TEST(TreeBuilder, DetailsOpenAttribute) {
         if (attr.name == "open") found = true;
     EXPECT_TRUE(found);
 }
+
+// Cycle 875 — media element attributes: video autoplay/controls/loop, audio preload, iframe sandbox/allow, object data/type, canvas role
+TEST(TreeBuilder, VideoAutoplayAttr) {
+    auto doc = clever::html::parse("<body><video autoplay src=\"movie.mp4\"></video></body>");
+    auto* video = doc->find_element("video");
+    ASSERT_NE(video, nullptr);
+    bool found = false;
+    for (const auto& attr : video->attributes)
+        if (attr.name == "autoplay") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, VideoControlsAttr) {
+    auto doc = clever::html::parse("<body><video controls src=\"movie.mp4\"></video></body>");
+    auto* video = doc->find_element("video");
+    ASSERT_NE(video, nullptr);
+    bool found = false;
+    for (const auto& attr : video->attributes)
+        if (attr.name == "controls") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, VideoLoopAttr) {
+    auto doc = clever::html::parse("<body><video loop src=\"intro.mp4\"></video></body>");
+    auto* video = doc->find_element("video");
+    ASSERT_NE(video, nullptr);
+    bool found = false;
+    for (const auto& attr : video->attributes)
+        if (attr.name == "loop") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, AudioPreloadNoneAttr) {
+    auto doc = clever::html::parse("<body><audio preload=\"none\" src=\"sound.mp3\"></audio></body>");
+    auto* audio = doc->find_element("audio");
+    ASSERT_NE(audio, nullptr);
+    bool found = false;
+    for (const auto& attr : audio->attributes)
+        if (attr.name == "preload" && attr.value == "none") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, IframeSandboxAttr) {
+    auto doc = clever::html::parse("<body><iframe sandbox=\"allow-scripts\" src=\"frame.html\"></iframe></body>");
+    auto* iframe = doc->find_element("iframe");
+    ASSERT_NE(iframe, nullptr);
+    bool found = false;
+    for (const auto& attr : iframe->attributes)
+        if (attr.name == "sandbox" && attr.value == "allow-scripts") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, IframeAllowAttr) {
+    auto doc = clever::html::parse("<body><iframe allow=\"fullscreen\" src=\"player.html\"></iframe></body>");
+    auto* iframe = doc->find_element("iframe");
+    ASSERT_NE(iframe, nullptr);
+    bool found = false;
+    for (const auto& attr : iframe->attributes)
+        if (attr.name == "allow" && attr.value == "fullscreen") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, ObjectDataAttr) {
+    auto doc = clever::html::parse("<body><object data=\"file.pdf\" type=\"application/pdf\"></object></body>");
+    auto* obj = doc->find_element("object");
+    ASSERT_NE(obj, nullptr);
+    bool found = false;
+    for (const auto& attr : obj->attributes)
+        if (attr.name == "data" && attr.value == "file.pdf") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, ObjectTypeAttr) {
+    auto doc = clever::html::parse("<body><object data=\"plugin.swf\" type=\"application/x-shockwave-flash\"></object></body>");
+    auto* obj = doc->find_element("object");
+    ASSERT_NE(obj, nullptr);
+    bool found = false;
+    for (const auto& attr : obj->attributes)
+        if (attr.name == "type" && attr.value == "application/x-shockwave-flash") found = true;
+    EXPECT_TRUE(found);
+}
