@@ -3690,3 +3690,85 @@ TEST(TreeBuilder, TableCaptionElement) {
     ASSERT_NE(caption, nullptr);
     EXPECT_EQ(caption->tag_name, "caption");
 }
+
+TEST(TreeBuilder, AudioSrcAttr) {
+    auto doc = clever::html::parse(R"(<audio src="podcast.mp3" controls></audio>)");
+    auto* audio = doc->find_element("audio");
+    ASSERT_NE(audio, nullptr);
+    bool found = false;
+    for (const auto& attr : audio->attributes)
+        if (attr.name == "src" && attr.value == "podcast.mp3") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, AudioControlsAttr) {
+    auto doc = clever::html::parse(R"(<audio controls loop><source src="a.mp3"></audio>)");
+    auto* audio = doc->find_element("audio");
+    ASSERT_NE(audio, nullptr);
+    bool found = false;
+    for (const auto& attr : audio->attributes)
+        if (attr.name == "controls") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, VideoSrcAttr) {
+    auto doc = clever::html::parse(R"(<video src="movie.mp4" width="640" height="480"></video>)");
+    auto* video = doc->find_element("video");
+    ASSERT_NE(video, nullptr);
+    bool found = false;
+    for (const auto& attr : video->attributes)
+        if (attr.name == "src" && attr.value == "movie.mp4") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, VideoWidthHeightAttrs) {
+    auto doc = clever::html::parse(R"(<video width="1280" height="720"></video>)");
+    auto* video = doc->find_element("video");
+    ASSERT_NE(video, nullptr);
+    bool found_w = false, found_h = false;
+    for (const auto& attr : video->attributes) {
+        if (attr.name == "width" && attr.value == "1280") found_w = true;
+        if (attr.name == "height" && attr.value == "720") found_h = true;
+    }
+    EXPECT_TRUE(found_w && found_h);
+}
+
+TEST(TreeBuilder, VideoMutedAttr) {
+    auto doc = clever::html::parse(R"(<video muted autoplay></video>)");
+    auto* video = doc->find_element("video");
+    ASSERT_NE(video, nullptr);
+    bool found = false;
+    for (const auto& attr : video->attributes)
+        if (attr.name == "muted") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, VideoPosterAttr) {
+    auto doc = clever::html::parse(R"(<video poster="thumbnail.jpg" controls></video>)");
+    auto* video = doc->find_element("video");
+    ASSERT_NE(video, nullptr);
+    bool found = false;
+    for (const auto& attr : video->attributes)
+        if (attr.name == "poster" && attr.value == "thumbnail.jpg") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, VideoPreloadAttr) {
+    auto doc = clever::html::parse(R"(<video preload="metadata"></video>)");
+    auto* video = doc->find_element("video");
+    ASSERT_NE(video, nullptr);
+    bool found = false;
+    for (const auto& attr : video->attributes)
+        if (attr.name == "preload" && attr.value == "metadata") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, AudioLoopAttr) {
+    auto doc = clever::html::parse(R"(<audio loop autoplay src="bg.mp3"></audio>)");
+    auto* audio = doc->find_element("audio");
+    ASSERT_NE(audio, nullptr);
+    bool found = false;
+    for (const auto& attr : audio->attributes)
+        if (attr.name == "loop") found = true;
+    EXPECT_TRUE(found);
+}
