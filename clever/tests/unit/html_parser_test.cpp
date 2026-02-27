@@ -4420,3 +4420,85 @@ TEST(TreeBuilder, ButtonTypeButtonAttr) {
         if (attr.name == "type" && attr.value == "button") found = true;
     EXPECT_TRUE(found);
 }
+
+// Cycle 892 — HTML attribute tests
+
+TEST(TreeBuilder, SelectDisabledAttr) {
+    auto doc = clever::html::parse("<body><select disabled></select></body>");
+    auto* sel = doc->find_element("select");
+    ASSERT_NE(sel, nullptr);
+    bool found = false;
+    for (const auto& attr : sel->attributes)
+        if (attr.name == "disabled") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, SelectRequiredAttr) {
+    auto doc = clever::html::parse("<body><select required></select></body>");
+    auto* sel = doc->find_element("select");
+    ASSERT_NE(sel, nullptr);
+    bool found = false;
+    for (const auto& attr : sel->attributes)
+        if (attr.name == "required") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, FormNoValidateAttr) {
+    auto doc = clever::html::parse("<body><form novalidate></form></body>");
+    auto* frm = doc->find_element("form");
+    ASSERT_NE(frm, nullptr);
+    bool found = false;
+    for (const auto& attr : frm->attributes)
+        if (attr.name == "novalidate") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, InputNameAttr) {
+    auto doc = clever::html::parse("<body><input name=\"username\"></body>");
+    auto* inp = doc->find_element("input");
+    ASSERT_NE(inp, nullptr);
+    bool found = false;
+    for (const auto& attr : inp->attributes)
+        if (attr.name == "name" && attr.value == "username") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, InputValueAttr) {
+    auto doc = clever::html::parse("<body><input value=\"default\"></body>");
+    auto* inp = doc->find_element("input");
+    ASSERT_NE(inp, nullptr);
+    bool found = false;
+    for (const auto& attr : inp->attributes)
+        if (attr.name == "value" && attr.value == "default") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, InputTypeSearch) {
+    auto doc = clever::html::parse("<body><input type=\"search\" placeholder=\"Search...\"></body>");
+    auto* inp = doc->find_element("input");
+    ASSERT_NE(inp, nullptr);
+    bool found = false;
+    for (const auto& attr : inp->attributes)
+        if (attr.name == "type" && attr.value == "search") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, AnchorTargetAttr) {
+    auto doc = clever::html::parse("<body><a href=\"https://example.com\" target=\"_blank\">link</a></body>");
+    auto* a = doc->find_element("a");
+    ASSERT_NE(a, nullptr);
+    bool found = false;
+    for (const auto& attr : a->attributes)
+        if (attr.name == "target" && attr.value == "_blank") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, AnchorRelAttr) {
+    auto doc = clever::html::parse("<body><a href=\"https://example.com\" rel=\"noopener noreferrer\">link</a></body>");
+    auto* a = doc->find_element("a");
+    ASSERT_NE(a, nullptr);
+    bool found = false;
+    for (const auto& attr : a->attributes)
+        if (attr.name == "rel" && attr.value == "noopener noreferrer") found = true;
+    EXPECT_TRUE(found);
+}
