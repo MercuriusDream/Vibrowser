@@ -2753,3 +2753,102 @@ TEST(SerializerTest, MixedLargeAndSmallInts) {
     EXPECT_EQ(d.read_u64(), std::numeric_limits<uint64_t>::max());
     EXPECT_EQ(d.read_u8(), 2);
 }
+
+// Cycle 784 — IPC bytes read/write operations
+TEST(SerializerTest, BytesAfterU32RoundTrip) {
+    clever::ipc::Serializer s;
+    s.write_u32(12345);
+    uint8_t data[] = {10, 20, 30};
+    s.write_bytes(data, 3);
+    clever::ipc::Deserializer d(s.data());
+    EXPECT_EQ(d.read_u32(), 12345u);
+    auto bytes = d.read_bytes();
+    ASSERT_EQ(bytes.size(), 3u);
+    EXPECT_EQ(bytes[0], 10);
+    EXPECT_EQ(bytes[2], 30);
+}
+
+TEST(SerializerTest, BytesAfterStringRoundTrip) {
+    clever::ipc::Serializer s;
+    s.write_string("header");
+    uint8_t data[] = {1, 2, 3, 4, 5};
+    s.write_bytes(data, 5);
+    clever::ipc::Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "header");
+    auto bytes = d.read_bytes();
+    EXPECT_EQ(bytes.size(), 5u);
+    EXPECT_EQ(bytes[4], 5);
+}
+
+TEST(SerializerTest, BytesThenBoolRoundTrip) {
+    clever::ipc::Serializer s;
+    uint8_t data[] = {0xFF, 0x00};
+    s.write_bytes(data, 2);
+    s.write_bool(true);
+    clever::ipc::Deserializer d(s.data());
+    auto bytes = d.read_bytes();
+    ASSERT_EQ(bytes.size(), 2u);
+    EXPECT_EQ(bytes[0], 0xFF);
+    EXPECT_EQ(bytes[1], 0x00);
+    EXPECT_TRUE(d.read_bool());
+}
+
+TEST(SerializerTest, BytesThenU64RoundTrip) {
+    clever::ipc::Serializer s;
+    uint8_t data[] = {42};
+    s.write_bytes(data, 1);
+    s.write_u64(9999999ull);
+    clever::ipc::Deserializer d(s.data());
+    auto bytes = d.read_bytes();
+    ASSERT_EQ(bytes.size(), 1u);
+    EXPECT_EQ(bytes[0], 42);
+    EXPECT_EQ(d.read_u64(), 9999999ull);
+}
+
+TEST(SerializerTest, HundredBytesLength) {
+    clever::ipc::Serializer s;
+    std::vector<uint8_t> data(100, 42);
+    s.write_bytes(data.data(), data.size());
+    clever::ipc::Deserializer d(s.data());
+    auto bytes = d.read_bytes();
+    EXPECT_EQ(bytes.size(), 100u);
+    EXPECT_EQ(bytes[99], 42);
+}
+
+TEST(SerializerTest, SequentialByteValues) {
+    clever::ipc::Serializer s;
+    uint8_t data[4] = {10, 20, 30, 40};
+    s.write_bytes(data, 4);
+    clever::ipc::Deserializer d(s.data());
+    auto bytes = d.read_bytes();
+    ASSERT_EQ(bytes.size(), 4u);
+    EXPECT_EQ(bytes[0], 10);
+    EXPECT_EQ(bytes[1], 20);
+    EXPECT_EQ(bytes[2], 30);
+    EXPECT_EQ(bytes[3], 40);
+}
+
+TEST(SerializerTest, BytesMaxValue) {
+    clever::ipc::Serializer s;
+    uint8_t data[] = {255, 254, 253};
+    s.write_bytes(data, 3);
+    clever::ipc::Deserializer d(s.data());
+    auto bytes = d.read_bytes();
+    ASSERT_EQ(bytes.size(), 3u);
+    EXPECT_EQ(bytes[0], 255);
+    EXPECT_EQ(bytes[1], 254);
+    EXPECT_EQ(bytes[2], 253);
+}
+
+TEST(SerializerTest, TwoBytesCallsOrderPreserved) {
+    clever::ipc::Serializer s;
+    uint8_t d1[] = {1, 2};
+    uint8_t d2[] = {3, 4};
+    s.write_bytes(d1, 2);
+    s.write_bytes(d2, 2);
+    clever::ipc::Deserializer d(s.data());
+    auto b1 = d.read_bytes();
+    auto b2 = d.read_bytes();
+    EXPECT_EQ(b1[0], 1);
+    EXPECT_EQ(b2[0], 3);
+}
