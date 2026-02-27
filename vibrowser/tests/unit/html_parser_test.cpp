@@ -14765,3 +14765,164 @@ TEST(HtmlParserTest, FooterWithAddressElementV92) {
     ASSERT_NE(small, nullptr);
     EXPECT_EQ(small->text_content(), "Copyright 2026");
 }
+
+// ============================================================================
+// V93 Tests
+// ============================================================================
+
+// 1. Parse definition list with dt and dd
+TEST(HtmlParserTest, DefinitionListDtDdV93) {
+    auto doc = clever::html::parse(
+        "<html><body><dl><dt>Term1</dt><dd>Def1</dd>"
+        "<dt>Term2</dt><dd>Def2</dd></dl></body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* dl = doc->find_element("dl");
+    ASSERT_NE(dl, nullptr);
+    auto dts = dl->find_all_elements("dt");
+    auto dds = dl->find_all_elements("dd");
+    ASSERT_EQ(dts.size(), 2u);
+    ASSERT_EQ(dds.size(), 2u);
+    EXPECT_EQ(dts[0]->text_content(), "Term1");
+    EXPECT_EQ(dts[1]->text_content(), "Term2");
+    EXPECT_EQ(dds[0]->text_content(), "Def1");
+    EXPECT_EQ(dds[1]->text_content(), "Def2");
+}
+
+// 2. Parse figure with figcaption and img
+TEST(HtmlParserTest, FigureWithFigcaptionAndImgV93) {
+    auto doc = clever::html::parse(
+        "<html><body><figure>"
+        "<img src=\"photo.jpg\" alt=\"A photo\">"
+        "<figcaption>Caption text</figcaption>"
+        "</figure></body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* figure = doc->find_element("figure");
+    ASSERT_NE(figure, nullptr);
+    auto* img = figure->find_element("img");
+    ASSERT_NE(img, nullptr);
+    EXPECT_EQ(get_attr_v63(img, "src"), "photo.jpg");
+    EXPECT_EQ(get_attr_v63(img, "alt"), "A photo");
+    auto* figcaption = figure->find_element("figcaption");
+    ASSERT_NE(figcaption, nullptr);
+    EXPECT_EQ(figcaption->text_content(), "Caption text");
+}
+
+// 3. Parse details and summary elements
+TEST(HtmlParserTest, DetailsWithSummaryV93) {
+    auto doc = clever::html::parse(
+        "<html><body><details open=\"open\">"
+        "<summary>Click to expand</summary>"
+        "<p>Hidden content revealed</p>"
+        "</details></body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* details = doc->find_element("details");
+    ASSERT_NE(details, nullptr);
+    EXPECT_EQ(get_attr_v63(details, "open"), "open");
+    auto* summary = details->find_element("summary");
+    ASSERT_NE(summary, nullptr);
+    EXPECT_EQ(summary->text_content(), "Click to expand");
+    auto* p = details->find_element("p");
+    ASSERT_NE(p, nullptr);
+    EXPECT_EQ(p->text_content(), "Hidden content revealed");
+}
+
+// 4. Parse table with thead, tbody, tfoot
+TEST(HtmlParserTest, TableTheadTbodyTfootV93) {
+    auto doc = clever::html::parse(
+        "<html><body><table>"
+        "<thead><tr><th>Header</th></tr></thead>"
+        "<tbody><tr><td>Cell</td></tr></tbody>"
+        "<tfoot><tr><td>Footer</td></tr></tfoot>"
+        "</table></body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* table = doc->find_element("table");
+    ASSERT_NE(table, nullptr);
+    auto* thead = table->find_element("thead");
+    ASSERT_NE(thead, nullptr);
+    auto* th = thead->find_element("th");
+    ASSERT_NE(th, nullptr);
+    EXPECT_EQ(th->text_content(), "Header");
+    auto* tbody = table->find_element("tbody");
+    ASSERT_NE(tbody, nullptr);
+    auto* td = tbody->find_element("td");
+    ASSERT_NE(td, nullptr);
+    EXPECT_EQ(td->text_content(), "Cell");
+    auto* tfoot = table->find_element("tfoot");
+    ASSERT_NE(tfoot, nullptr);
+    auto* ftd = tfoot->find_element("td");
+    ASSERT_NE(ftd, nullptr);
+    EXPECT_EQ(ftd->text_content(), "Footer");
+}
+
+// 5. Parse multiple sibling paragraphs preserving order
+TEST(HtmlParserTest, MultipleSiblingParagraphsOrderV93) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<p>First</p><p>Second</p><p>Third</p><p>Fourth</p>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto paras = doc->find_all_elements("p");
+    ASSERT_EQ(paras.size(), 4u);
+    EXPECT_EQ(paras[0]->text_content(), "First");
+    EXPECT_EQ(paras[1]->text_content(), "Second");
+    EXPECT_EQ(paras[2]->text_content(), "Third");
+    EXPECT_EQ(paras[3]->text_content(), "Fourth");
+}
+
+// 6. Parse link element with rel and href attributes
+TEST(HtmlParserTest, LinkElementRelHrefV93) {
+    auto doc = clever::html::parse(
+        "<html><head>"
+        "<link rel=\"stylesheet\" href=\"style.css\">"
+        "<link rel=\"icon\" href=\"favicon.ico\">"
+        "</head><body></body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto links = doc->find_all_elements("link");
+    ASSERT_EQ(links.size(), 2u);
+    EXPECT_EQ(get_attr_v63(links[0], "rel"), "stylesheet");
+    EXPECT_EQ(get_attr_v63(links[0], "href"), "style.css");
+    EXPECT_EQ(get_attr_v63(links[1], "rel"), "icon");
+    EXPECT_EQ(get_attr_v63(links[1], "href"), "favicon.ico");
+}
+
+// 7. Parse deeply nested structure (5 levels)
+TEST(HtmlParserTest, DeeplyNestedFiveLevelsV93) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<div><section><article><aside><mark>Deep</mark></aside></article></section></div>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* div = doc->find_element("div");
+    ASSERT_NE(div, nullptr);
+    auto* section = div->find_element("section");
+    ASSERT_NE(section, nullptr);
+    auto* article = section->find_element("article");
+    ASSERT_NE(article, nullptr);
+    auto* aside = article->find_element("aside");
+    ASSERT_NE(aside, nullptr);
+    auto* mark = aside->find_element("mark");
+    ASSERT_NE(mark, nullptr);
+    EXPECT_EQ(mark->text_content(), "Deep");
+}
+
+// 8. Parse mixed inline elements with text nodes
+TEST(HtmlParserTest, MixedInlineElementsTextNodesV93) {
+    auto doc = clever::html::parse(
+        "<html><body><p>"
+        "<strong>Bold</strong> and <em>italic</em> and <code>code</code>"
+        "</p></body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* p = doc->find_element("p");
+    ASSERT_NE(p, nullptr);
+    auto* strong = p->find_element("strong");
+    ASSERT_NE(strong, nullptr);
+    EXPECT_EQ(strong->text_content(), "Bold");
+    auto* em = p->find_element("em");
+    ASSERT_NE(em, nullptr);
+    EXPECT_EQ(em->text_content(), "italic");
+    auto* code = p->find_element("code");
+    ASSERT_NE(code, nullptr);
+    EXPECT_EQ(code->text_content(), "code");
+    // Verify the p has children including text nodes between inline elements
+    ASSERT_GE(p->children.size(), 5u);
+}

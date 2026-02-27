@@ -16692,3 +16692,167 @@ TEST(CSSStyleTest, VerticalAlignMiddleWithDisplayInlineBlockV92) {
     EXPECT_EQ(style.color.b, 0x00);
     EXPECT_EQ(style.color.a, 255);
 }
+
+TEST(CSSStyleTest, FlexGrowShrinkWithDisplayFlexV93) {
+    const std::string css = ".item{display:flex;flex-grow:2;flex-shrink:0.5;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+    elem.classes = {"item"};
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.display, Display::Flex);
+    EXPECT_FLOAT_EQ(style.flex_grow, 2.0f);
+    EXPECT_FLOAT_EQ(style.flex_shrink, 0.5f);
+}
+
+TEST(CSSStyleTest, ZIndexWithPositionAbsoluteV93) {
+    const std::string css = ".overlay{position:absolute;z-index:999;opacity:0.8;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+    elem.classes = {"overlay"};
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.position, Position::Absolute);
+    EXPECT_EQ(style.z_index, 999);
+    EXPECT_FLOAT_EQ(style.opacity, 0.8f);
+}
+
+TEST(CSSStyleTest, WhiteSpaceNoWrapWithCursorPointerV93) {
+    const std::string css = ".label{white-space:nowrap;cursor:pointer;font-weight:700;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "span";
+    elem.classes = {"label"};
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.white_space, WhiteSpace::NoWrap);
+    EXPECT_EQ(style.cursor, Cursor::Pointer);
+    EXPECT_EQ(style.font_weight, 700);
+}
+
+TEST(CSSStyleTest, MarginShorthandAllSidesV93) {
+    const std::string css = ".box{margin:10px 20px 30px 40px;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+    elem.classes = {"box"};
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_FLOAT_EQ(style.margin.top.to_px(), 10.0f);
+    EXPECT_FLOAT_EQ(style.margin.right.to_px(), 20.0f);
+    EXPECT_FLOAT_EQ(style.margin.bottom.to_px(), 30.0f);
+    EXPECT_FLOAT_EQ(style.margin.left.to_px(), 40.0f);
+}
+
+TEST(CSSStyleTest, BorderTopWidthStyleColorV93) {
+    const std::string css = ".panel{border-top-width:3px;border-top-style:solid;border-top-color:#0000ff;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+    elem.classes = {"panel"};
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_FLOAT_EQ(style.border_top.width.to_px(), 3.0f);
+    EXPECT_EQ(style.border_top.style, BorderStyle::Solid);
+    EXPECT_EQ(style.border_top.color.r, 0x00);
+    EXPECT_EQ(style.border_top.color.g, 0x00);
+    EXPECT_EQ(style.border_top.color.b, 0xFF);
+    EXPECT_EQ(style.border_top.color.a, 255);
+}
+
+TEST(CSSStyleTest, UserSelectNoneWithVisibilityHiddenV93) {
+    const std::string css = ".hidden-selectable{user-select:none;visibility:hidden;font-size:18px;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "p";
+    elem.classes = {"hidden-selectable"};
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.user_select, UserSelect::None);
+    EXPECT_EQ(style.visibility, Visibility::Hidden);
+    EXPECT_FLOAT_EQ(style.font_size.to_px(), 18.0f);
+}
+
+TEST(CSSStyleTest, TextAlignCenterWithLineHeightV93) {
+    const std::string css = ".content{text-align:center;line-height:1.5;color:#333333;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+    elem.classes = {"content"};
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.text_align, TextAlign::Center);
+    EXPECT_FLOAT_EQ(style.line_height_unitless, 1.5f);
+    EXPECT_EQ(style.color.r, 0x33);
+    EXPECT_EQ(style.color.g, 0x33);
+    EXPECT_EQ(style.color.b, 0x33);
+}
+
+TEST(CSSStyleTest, PositionRelativeWithPaddingAndColorV93) {
+    const std::string css = ".badge{position:relative;padding:4px 8px;background-color:#e91e63;display:inline-block;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "span";
+    elem.classes = {"badge"};
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.position, Position::Relative);
+    EXPECT_FLOAT_EQ(style.padding.top.to_px(), 4.0f);
+    EXPECT_FLOAT_EQ(style.padding.right.to_px(), 8.0f);
+    EXPECT_FLOAT_EQ(style.padding.bottom.to_px(), 4.0f);
+    EXPECT_FLOAT_EQ(style.padding.left.to_px(), 8.0f);
+    EXPECT_EQ(style.background_color.r, 0xE9);
+    EXPECT_EQ(style.background_color.g, 0x1E);
+    EXPECT_EQ(style.background_color.b, 0x63);
+    EXPECT_EQ(style.display, Display::InlineBlock);
+}

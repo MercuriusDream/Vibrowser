@@ -26117,3 +26117,259 @@ TEST(JsEngineTest, ObjectEntriesFromEntriesAndAssignV92) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "[[\"a\",1],[\"b\",2],[\"c\",3]]|[[\"a\",2],[\"b\",4],[\"c\",6]]|[[\"x\",10],[\"y\",2],[\"z\",3]]|a,b,c|1,2,3");
 }
+
+TEST(JsEngineTest, WeakMapAndWeakSetBasicsV93) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var results = [];
+        var wm = new WeakMap();
+        var obj1 = {id: 1};
+        var obj2 = {id: 2};
+        wm.set(obj1, "alpha");
+        wm.set(obj2, "beta");
+        results.push(wm.has(obj1));
+        results.push(wm.get(obj1));
+        results.push(wm.get(obj2));
+        wm.delete(obj1);
+        results.push(wm.has(obj1));
+        var ws = new WeakSet();
+        var obj3 = {id: 3};
+        ws.add(obj3);
+        results.push(ws.has(obj3));
+        ws.delete(obj3);
+        results.push(ws.has(obj3));
+        results.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true|alpha|beta|false|true|false");
+}
+
+TEST(JsEngineTest, GeneratorFunctionProtocolV93) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var results = [];
+        function* range(start, end, step) {
+            for (var i = start; i < end; i += step) {
+                yield i;
+            }
+        }
+        var gen = range(0, 10, 3);
+        var item;
+        while (!(item = gen.next()).done) {
+            results.push(item.value);
+        }
+        function* fibonacci() {
+            var a = 0, b = 1;
+            while (true) {
+                yield a;
+                var tmp = a;
+                a = b;
+                b = tmp + b;
+            }
+        }
+        var fib = fibonacci();
+        for (var i = 0; i < 8; i++) {
+            results.push(fib.next().value);
+        }
+        results.join(",");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "0,3,6,9,0,1,1,2,3,5,8,13");
+}
+
+TEST(JsEngineTest, ArrayBufferAndTypedArrayV93) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var results = [];
+        var buf = new ArrayBuffer(16);
+        results.push(buf.byteLength);
+        var u8 = new Uint8Array(buf, 0, 4);
+        u8[0] = 10; u8[1] = 20; u8[2] = 30; u8[3] = 40;
+        results.push(Array.from(u8).join("-"));
+        var i32 = new Int32Array(buf, 4, 2);
+        i32[0] = -100;
+        i32[1] = 999;
+        results.push(i32[0] + "," + i32[1]);
+        var f64 = new Float64Array([1.5, 2.5, 3.5]);
+        results.push(f64.length);
+        results.push(f64[0] + f64[1] + f64[2]);
+        var sliced = buf.slice(0, 4);
+        var u8s = new Uint8Array(sliced);
+        results.push(Array.from(u8s).join("-"));
+        results.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "16|10-20-30-40|-100,999|3|7.5|10-20-30-40");
+}
+
+TEST(JsEngineTest, ProxyWithMultipleTrapsV93) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var results = [];
+        var log = [];
+        var target = {x: 1, y: 2};
+        var handler = {
+            get: function(obj, prop) {
+                log.push("get:" + prop);
+                return prop in obj ? obj[prop] * 10 : undefined;
+            },
+            set: function(obj, prop, value) {
+                log.push("set:" + prop);
+                obj[prop] = value + 100;
+                return true;
+            },
+            has: function(obj, prop) {
+                log.push("has:" + prop);
+                return prop in obj;
+            },
+            deleteProperty: function(obj, prop) {
+                log.push("del:" + prop);
+                delete obj[prop];
+                return true;
+            }
+        };
+        var p = new Proxy(target, handler);
+        results.push(p.x);
+        p.z = 5;
+        results.push(target.z);
+        results.push("z" in p);
+        delete p.y;
+        results.push("y" in target);
+        results.push(log.join(","));
+        results.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "10|105|true|false|get:x,set:z,has:z,del:y");
+}
+
+TEST(JsEngineTest, SymbolIteratorCustomIterableV93) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var results = [];
+        var range = {
+            from: 1,
+            to: 5,
+            [Symbol.iterator]: function() {
+                var current = this.from;
+                var last = this.to;
+                return {
+                    next: function() {
+                        if (current <= last) {
+                            return {value: current++, done: false};
+                        }
+                        return {done: true};
+                    }
+                };
+            }
+        };
+        var collected = [];
+        for (var val of range) {
+            collected.push(val);
+        }
+        results.push(collected.join(","));
+        results.push(Array.from(range).join(","));
+        var [a, b, ...rest] = range;
+        results.push(a + ":" + b + ":" + rest.join(","));
+        results.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1,2,3,4,5|1,2,3,4,5|1:2:3,4,5");
+}
+
+TEST(JsEngineTest, ErrorTypesAndStackV93) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var results = [];
+        var errors = [
+            function() { null.prop; },
+            function() { undeclaredVar; },
+            function() { eval("{"); },
+            function() { decodeURIComponent("%"); },
+            function() { (1).toFixed(200); }
+        ];
+        var names = [];
+        for (var i = 0; i < errors.length; i++) {
+            try {
+                errors[i]();
+                names.push("none");
+            } catch(e) {
+                names.push(e.constructor.name);
+            }
+        }
+        results.push(names.join(","));
+        try {
+            throw new RangeError("custom msg");
+        } catch(e) {
+            results.push(e instanceof RangeError);
+            results.push(e instanceof Error);
+            results.push(e.message);
+        }
+        results.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "TypeError,ReferenceError,SyntaxError,URIError,RangeError|true|true|custom msg");
+}
+
+TEST(JsEngineTest, AsyncAwaitWithPromiseChainingV93) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var results = [];
+        function delay(val) {
+            return Promise.resolve(val);
+        }
+        async function compute() {
+            var a = await delay(10);
+            var b = await delay(20);
+            var c = await Promise.all([delay(1), delay(2), delay(3)]);
+            return a + b + c.reduce(function(s, v) { return s + v; }, 0);
+        }
+        var p = compute();
+        results.push(typeof p.then);
+        async function tryCatchAsync() {
+            try {
+                await Promise.reject("fail");
+                return "unreachable";
+            } catch(e) {
+                return "caught:" + e;
+            }
+        }
+        var p2 = tryCatchAsync();
+        results.push(typeof p2);
+        async function sequential() {
+            var arr = [];
+            for (var i = 0; i < 3; i++) {
+                arr.push(await delay(i * i));
+            }
+            return arr.join(",");
+        }
+        results.push(typeof sequential());
+        results.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "function|object|object");
+}
+
+TEST(JsEngineTest, RegExpAdvancedFeaturesV93) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var results = [];
+        var re1 = /(\d{4})-(\d{2})-(\d{2})/;
+        var m = "date: 2025-12-31 end".match(re1);
+        results.push(m[1] + "/" + m[2] + "/" + m[3]);
+        var re2 = /\b\w+/g;
+        var words = "hello world foo bar".match(re2);
+        results.push(words.length + ":" + words.join(","));
+        var replaced = "aabBccDD".replace(/([a-z])([A-Z])/g, function(_, lo, hi) {
+            return hi.toLowerCase() + lo.toUpperCase();
+        });
+        results.push(replaced);
+        var re3 = /^(.+)\1$/;
+        results.push(re3.test("abcabc"));
+        results.push(re3.test("abcdef"));
+        var split = "one::two:::three".split(/:+/);
+        results.push(split.join(","));
+        results.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "2025/12/31|4:hello,world,foo,bar|aabBcdCD|true|false|one,two,three");
+}

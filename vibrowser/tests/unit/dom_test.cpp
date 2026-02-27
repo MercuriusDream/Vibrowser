@@ -14961,3 +14961,109 @@ TEST(DomTest, DocumentCreateMultipleElementTypesV92) {
     EXPECT_EQ(div_ptr->child_count(), 2u);
     EXPECT_EQ(div_ptr->first_child(), span_ptr);
 }
+
+TEST(DomTest, RemoveChildUpdatesParentAndSiblingsV93) {
+    Element parent("div");
+    auto a = std::make_unique<Element>("span");
+    auto* a_ptr = a.get();
+    parent.append_child(std::move(a));
+    auto b = std::make_unique<Element>("em");
+    auto* b_ptr = b.get();
+    parent.append_child(std::move(b));
+    auto c = std::make_unique<Element>("p");
+    auto* c_ptr = c.get();
+    parent.append_child(std::move(c));
+    EXPECT_EQ(parent.child_count(), 3u);
+    parent.remove_child(*b_ptr);
+    EXPECT_EQ(parent.child_count(), 2u);
+    EXPECT_EQ(a_ptr->next_sibling(), c_ptr);
+    EXPECT_EQ(c_ptr->previous_sibling(), a_ptr);
+}
+
+TEST(DomTest, ClassListAddRemoveContainsV93) {
+    Element el("div");
+    el.class_list().add("alpha");
+    el.class_list().add("beta");
+    EXPECT_TRUE(el.class_list().contains("alpha"));
+    EXPECT_TRUE(el.class_list().contains("beta"));
+    el.class_list().remove("alpha");
+    EXPECT_FALSE(el.class_list().contains("alpha"));
+    EXPECT_TRUE(el.class_list().contains("beta"));
+}
+
+TEST(DomTest, ClassListToggleAddsAndRemovesV93) {
+    Element el("span");
+    EXPECT_FALSE(el.class_list().contains("active"));
+    el.class_list().toggle("active");
+    EXPECT_TRUE(el.class_list().contains("active"));
+    el.class_list().toggle("active");
+    EXPECT_FALSE(el.class_list().contains("active"));
+}
+
+TEST(DomTest, GetAttributeReturnsNulloptForMissingV93) {
+    Element el("p");
+    EXPECT_FALSE(el.get_attribute("nonexistent").has_value());
+    EXPECT_FALSE(el.has_attribute("nonexistent"));
+    el.set_attribute("data-x", "123");
+    EXPECT_TRUE(el.has_attribute("data-x"));
+    EXPECT_EQ(el.get_attribute("data-x").value(), "123");
+}
+
+TEST(DomTest, RemoveAttributeRemovesOnlyTargetV93) {
+    Element el("a");
+    el.set_attribute("href", "/page");
+    el.set_attribute("title", "Page");
+    el.set_attribute("class", "link");
+    EXPECT_EQ(el.attributes().size(), 3u);
+    el.remove_attribute("title");
+    EXPECT_EQ(el.attributes().size(), 2u);
+    EXPECT_FALSE(el.has_attribute("title"));
+    EXPECT_TRUE(el.has_attribute("href"));
+    EXPECT_TRUE(el.has_attribute("class"));
+}
+
+TEST(DomTest, InsertBeforeMiddleChildV93) {
+    Element parent("div");
+    auto first = std::make_unique<Element>("span");
+    auto* first_ptr = first.get();
+    parent.append_child(std::move(first));
+    auto third = std::make_unique<Element>("p");
+    auto* third_ptr = third.get();
+    parent.append_child(std::move(third));
+    auto second = std::make_unique<Element>("em");
+    auto* second_ptr = second.get();
+    parent.insert_before(std::move(second), third_ptr);
+    EXPECT_EQ(parent.child_count(), 3u);
+    EXPECT_EQ(first_ptr->next_sibling(), second_ptr);
+    EXPECT_EQ(second_ptr->next_sibling(), third_ptr);
+    EXPECT_EQ(third_ptr->previous_sibling(), second_ptr);
+}
+
+TEST(DomTest, TextAndCommentAsChildrenV93) {
+    Element div("div");
+    div.append_child(std::make_unique<Text>("Hello"));
+    div.append_child(std::make_unique<Comment>("a comment"));
+    div.append_child(std::make_unique<Text>(" World"));
+    EXPECT_EQ(div.child_count(), 3u);
+    EXPECT_EQ(div.text_content(), "Hello World");
+}
+
+TEST(DomTest, SetAttributeIdAndVerifyTreeStructureV93) {
+    Element parent("div");
+    parent.set_attribute("id", "main");
+    parent.set_attribute("class", "container");
+    auto child1 = std::make_unique<Element>("span");
+    child1->set_attribute("id", "s1");
+    auto* c1 = child1.get();
+    parent.append_child(std::move(child1));
+    auto child2 = std::make_unique<Element>("p");
+    child2->set_attribute("id", "s2");
+    auto* c2 = child2.get();
+    parent.append_child(std::move(child2));
+    EXPECT_EQ(parent.get_attribute("id").value(), "main");
+    EXPECT_EQ(parent.child_count(), 2u);
+    EXPECT_EQ(parent.first_child(), c1);
+    EXPECT_EQ(parent.last_child(), c2);
+    EXPECT_EQ(static_cast<Element*>(c1)->get_attribute("id").value(), "s1");
+    EXPECT_EQ(static_cast<Element*>(c2)->get_attribute("id").value(), "s2");
+}
