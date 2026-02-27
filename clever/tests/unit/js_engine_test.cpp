@@ -17368,3 +17368,51 @@ TEST(JSEngine, DateGetTimeIsNumber) {
     auto result = engine.evaluate("typeof new Date().getTime()");
     EXPECT_EQ(result, "number");
 }
+
+TEST(JSEngine, ParseIntDecimal) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("parseInt('42')");
+    EXPECT_EQ(result, "42");
+}
+
+TEST(JSEngine, ParseIntNegative) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("parseInt('-100')");
+    EXPECT_EQ(result, "-100");
+}
+
+TEST(JSEngine, ParseIntWithRadix10) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("parseInt('255', 10)");
+    EXPECT_EQ(result, "255");
+}
+
+TEST(JSEngine, ParseIntBinaryRadix) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("parseInt('1010', 2)");
+    EXPECT_EQ(result, "10");
+}
+
+TEST(JSEngine, ParseIntOctalRadix) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("parseInt('17', 8)");
+    EXPECT_EQ(result, "15");
+}
+
+TEST(JSEngine, ParseFloatPositive) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("parseFloat('3.14')");
+    EXPECT_EQ(result, "3.14");
+}
+
+TEST(JSEngine, ParseFloatNegative) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("parseFloat('-2.71828')");
+    EXPECT_EQ(result, "-2.71828");
+}
+
+TEST(JSEngine, ParseIntEmptyStringIsNaN) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("isNaN(parseInt(''))");
+    EXPECT_EQ(result, "true");
+}
