@@ -3873,3 +3873,75 @@ TEST_F(CSSStylesheetTest, RoundFunctionDeclaration) {
         if (d.property == "width") { found = true; break; }
     EXPECT_TRUE(found);
 }
+
+TEST_F(CSSStylesheetTest, PlaceContentDeclaration) {
+    auto sheet = parse_stylesheet(".grid { place-content: center space-between; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "place-content") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, PlaceSelfDeclaration) {
+    auto sheet = parse_stylesheet(".item { place-self: end stretch; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "place-self") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, OrderDeclaration) {
+    auto sheet = parse_stylesheet(".flex-item { order: 3; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "order") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, ObjectFitDeclaration) {
+    auto sheet = parse_stylesheet("img { object-fit: cover; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "object-fit") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, ObjectPositionDeclaration) {
+    auto sheet = parse_stylesheet("img { object-position: 50% top; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "object-position") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, ContentVisibilityDeclaration) {
+    auto sheet = parse_stylesheet(".section { content-visibility: auto; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "content-visibility") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, ContainDeclaration) {
+    auto sheet = parse_stylesheet(".widget { contain: layout paint; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "contain") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, ScrollPaddingDeclaration) {
+    auto sheet = parse_stylesheet(".scroll { scroll-padding: 20px; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "scroll-padding") { found = true; break; }
+    EXPECT_TRUE(found);
+}
