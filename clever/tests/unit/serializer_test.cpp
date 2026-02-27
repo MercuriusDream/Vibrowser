@@ -2138,3 +2138,79 @@ TEST(SerializerTest, StringWithSpacesPreserved) {
     Deserializer d(s.data());
     EXPECT_EQ(d.read_string(), "hello world from vibrowser");
 }
+
+// ---------------------------------------------------------------------------
+// Cycle 694 — 8 additional serializer tests (f64 and mixed-type sequences)
+// ---------------------------------------------------------------------------
+
+TEST(SerializerTest, TwoF64ValuesInSequence) {
+    Serializer s;
+    s.write_f64(1.234);
+    s.write_f64(5.678);
+    Deserializer d(s.data());
+    EXPECT_DOUBLE_EQ(d.read_f64(), 1.234);
+    EXPECT_DOUBLE_EQ(d.read_f64(), 5.678);
+}
+
+TEST(SerializerTest, F64WithU32Interleaved) {
+    Serializer s;
+    s.write_f64(3.14);
+    s.write_u32(42u);
+    Deserializer d(s.data());
+    EXPECT_DOUBLE_EQ(d.read_f64(), 3.14);
+    EXPECT_EQ(d.read_u32(), 42u);
+}
+
+TEST(SerializerTest, F64PiRoundTrip) {
+    const double pi = 3.14159265358979323846;
+    Serializer s;
+    s.write_f64(pi);
+    Deserializer d(s.data());
+    EXPECT_DOUBLE_EQ(d.read_f64(), pi);
+}
+
+TEST(SerializerTest, F64SmallEpsilonRoundTrip) {
+    const double eps = 1e-15;
+    Serializer s;
+    s.write_f64(eps);
+    Deserializer d(s.data());
+    EXPECT_DOUBLE_EQ(d.read_f64(), eps);
+}
+
+TEST(SerializerTest, F64LargeExponentRoundTrip) {
+    const double val = 1.0e15;
+    Serializer s;
+    s.write_f64(val);
+    Deserializer d(s.data());
+    EXPECT_DOUBLE_EQ(d.read_f64(), val);
+}
+
+TEST(SerializerTest, StringThenF64RoundTrip) {
+    Serializer s;
+    s.write_string("hello");
+    s.write_f64(2.718281828);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "hello");
+    EXPECT_DOUBLE_EQ(d.read_f64(), 2.718281828);
+}
+
+TEST(SerializerTest, F64ThenBoolSequence) {
+    Serializer s;
+    s.write_f64(0.5);
+    s.write_bool(true);
+    Deserializer d(s.data());
+    EXPECT_DOUBLE_EQ(d.read_f64(), 0.5);
+    EXPECT_TRUE(d.read_bool());
+}
+
+TEST(SerializerTest, ThreeF64ValuesInOrder) {
+    Serializer s;
+    s.write_f64(-1.0);
+    s.write_f64(0.0);
+    s.write_f64(1.0);
+    Deserializer d(s.data());
+    EXPECT_DOUBLE_EQ(d.read_f64(), -1.0);
+    EXPECT_DOUBLE_EQ(d.read_f64(), 0.0);
+    EXPECT_DOUBLE_EQ(d.read_f64(), 1.0);
+    EXPECT_FALSE(d.has_remaining());
+}
