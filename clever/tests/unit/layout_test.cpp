@@ -7063,3 +7063,45 @@ TEST(LayoutNodeProps, QuotesDefaultsEmpty) {
     LayoutNode n;
     EXPECT_EQ(n.quotes, "");
 }
+
+// Cycle 876 — LayoutNodeProps: column_rule_color, column_width, counter_increment, counter_reset, page_break_after, page_break_inside, column_gap_val, column_fill_balance
+TEST(LayoutNodeProps, ColumnRuleColorDefaultsBlack) {
+    LayoutNode n;
+    EXPECT_EQ(n.column_rule_color, 0xFF000000u);
+}
+
+TEST(LayoutNodeProps, ColumnWidthDefaultsMinusOne) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.column_width, -1.0f);
+}
+
+TEST(LayoutNodeProps, CounterIncrementDefaultsEmpty) {
+    LayoutNode n;
+    EXPECT_EQ(n.counter_increment, "");
+}
+
+TEST(LayoutNodeProps, CounterResetDefaultsEmpty) {
+    LayoutNode n;
+    EXPECT_EQ(n.counter_reset, "");
+}
+
+TEST(LayoutNodeProps, PageBreakAfterDefaultsZero) {
+    LayoutNode n;
+    EXPECT_EQ(n.page_break_after, 0);
+}
+
+TEST(LayoutNodeProps, PageBreakInsideDefaultsZero) {
+    LayoutNode n;
+    EXPECT_EQ(n.page_break_inside, 0);
+}
+
+TEST(LayoutNodeProps, ColumnGapValDefaultsZero) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.column_gap_val, 0.0f);
+}
+
+TEST(LayoutNodeProps, MixBlendModeZeroIsNormal) {
+    LayoutNode n;
+    // 0 = normal blend mode
+    EXPECT_EQ(n.mix_blend_mode, 0);
+}
