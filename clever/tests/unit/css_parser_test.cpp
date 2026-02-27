@@ -3329,6 +3329,85 @@ TEST_F(CSSSelectorTest, AttributeSelectorIncludesWidget) {
     EXPECT_TRUE(found);
 }
 
+// Cycle 847 — pseudo-class selectors
+TEST_F(CSSSelectorTest, PseudoClassRoot) {
+    auto list = parse_selector_list(":root");
+    ASSERT_EQ(list.selectors.size(), 1u);
+    const auto& compound = list.selectors[0].parts[0].compound;
+    ASSERT_GE(compound.simple_selectors.size(), 1u);
+    EXPECT_EQ(compound.simple_selectors[0].type, SimpleSelectorType::PseudoClass);
+    EXPECT_EQ(compound.simple_selectors[0].value, "root");
+}
+
+TEST_F(CSSSelectorTest, PseudoClassEmpty) {
+    auto list = parse_selector_list("p:empty");
+    ASSERT_EQ(list.selectors.size(), 1u);
+    const auto& compound = list.selectors[0].parts[0].compound;
+    bool found = false;
+    for (const auto& ss : compound.simple_selectors)
+        if (ss.type == SimpleSelectorType::PseudoClass && ss.value == "empty") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSSelectorTest, PseudoClassEnabled) {
+    auto list = parse_selector_list("input:enabled");
+    ASSERT_EQ(list.selectors.size(), 1u);
+    const auto& compound = list.selectors[0].parts[0].compound;
+    bool found = false;
+    for (const auto& ss : compound.simple_selectors)
+        if (ss.type == SimpleSelectorType::PseudoClass && ss.value == "enabled") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSSelectorTest, PseudoClassRequired) {
+    auto list = parse_selector_list("input:required");
+    ASSERT_EQ(list.selectors.size(), 1u);
+    const auto& compound = list.selectors[0].parts[0].compound;
+    bool found = false;
+    for (const auto& ss : compound.simple_selectors)
+        if (ss.type == SimpleSelectorType::PseudoClass && ss.value == "required") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSSelectorTest, PseudoClassValid) {
+    auto list = parse_selector_list("form:valid");
+    ASSERT_EQ(list.selectors.size(), 1u);
+    const auto& compound = list.selectors[0].parts[0].compound;
+    bool found = false;
+    for (const auto& ss : compound.simple_selectors)
+        if (ss.type == SimpleSelectorType::PseudoClass && ss.value == "valid") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSSelectorTest, PseudoClassInvalid) {
+    auto list = parse_selector_list("input:invalid");
+    ASSERT_EQ(list.selectors.size(), 1u);
+    const auto& compound = list.selectors[0].parts[0].compound;
+    bool found = false;
+    for (const auto& ss : compound.simple_selectors)
+        if (ss.type == SimpleSelectorType::PseudoClass && ss.value == "invalid") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSSelectorTest, PseudoClassAnyLink) {
+    auto list = parse_selector_list(":any-link");
+    ASSERT_EQ(list.selectors.size(), 1u);
+    const auto& compound = list.selectors[0].parts[0].compound;
+    ASSERT_GE(compound.simple_selectors.size(), 1u);
+    EXPECT_EQ(compound.simple_selectors[0].type, SimpleSelectorType::PseudoClass);
+    EXPECT_EQ(compound.simple_selectors[0].value, "any-link");
+}
+
+TEST_F(CSSSelectorTest, PseudoClassFocusVisible) {
+    auto list = parse_selector_list("button:focus-visible");
+    ASSERT_EQ(list.selectors.size(), 1u);
+    const auto& compound = list.selectors[0].parts[0].compound;
+    bool found = false;
+    for (const auto& ss : compound.simple_selectors)
+        if (ss.type == SimpleSelectorType::PseudoClass && ss.value == "focus-visible") found = true;
+    EXPECT_TRUE(found);
+}
+
 // Stylesheet: gap declaration
 TEST_F(CSSStylesheetTest, GapDeclaration) {
     auto sheet = parse_stylesheet(".grid { gap: 16px; }");
