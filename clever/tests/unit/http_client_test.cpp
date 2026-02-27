@@ -5144,3 +5144,65 @@ TEST(RequestTest, StringToMethodPutParsed) {
 TEST(RequestTest, StringToMethodHeadParsed) {
     EXPECT_EQ(string_to_method("HEAD"), Method::HEAD);
 }
+
+TEST(HeaderMapTest, HeaderMapSetLowercase) {
+    HeaderMap map;
+    map.set("content-type", "text/plain");
+    auto val = map.get("content-type");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(*val, "text/plain");
+}
+
+TEST(HeaderMapTest, HeaderMapGetAnyCase) {
+    HeaderMap map;
+    map.set("X-Custom-Header", "custom-value");
+    auto lower = map.get("x-custom-header");
+    auto upper = map.get("X-CUSTOM-HEADER");
+    ASSERT_TRUE(lower.has_value());
+    ASSERT_TRUE(upper.has_value());
+    EXPECT_EQ(*lower, *upper);
+}
+
+TEST(HeaderMapTest, HeaderMapSizeAfterTwoSets) {
+    HeaderMap map;
+    map.set("header-a", "value-a");
+    map.set("header-b", "value-b");
+    EXPECT_EQ(map.size(), 2u);
+}
+
+TEST(HeaderMapTest, HeaderMapHasAfterSet) {
+    HeaderMap map;
+    map.set("x-token", "abc123");
+    EXPECT_TRUE(map.has("x-token"));
+}
+
+TEST(HeaderMapTest, HeaderMapHasAfterRemove) {
+    HeaderMap map;
+    map.set("x-temp", "temp");
+    map.remove("x-temp");
+    EXPECT_FALSE(map.has("x-temp"));
+}
+
+TEST(HeaderMapTest, HeaderMapSizeAfterRemove) {
+    HeaderMap map;
+    map.set("h1", "v1");
+    map.set("h2", "v2");
+    map.remove("h1");
+    EXPECT_EQ(map.size(), 1u);
+}
+
+TEST(HeaderMapTest, HeaderMapGetAllSingleValue) {
+    HeaderMap map;
+    map.set("x-single", "only-one");
+    auto all = map.get_all("x-single");
+    EXPECT_EQ(all.size(), 1u);
+}
+
+TEST(HeaderMapTest, HeaderMapSetOverwritesV2) {
+    HeaderMap map;
+    map.set("x-version", "v1");
+    map.set("x-version", "v2");
+    auto val = map.get("x-version");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(*val, "v2");
+}
