@@ -13185,3 +13185,142 @@ TEST(PropertyCascadeTest, ResolverFloatLeftV67) {
 
     EXPECT_EQ(style.float_val, Float::Left);
 }
+
+TEST(PropertyCascadeTest, ResolverFontSizePxValueV68) {
+    const std::string css = "div { font-size: 18px; }";
+    const std::string tag = "div";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = tag;
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_FLOAT_EQ(style.font_size.to_px(), 18.0f);
+}
+
+TEST(PropertyCascadeTest, ResolverFontFamilyStringValueV68) {
+    const std::string css = "p { font-family: \"Times New Roman\"; }";
+    const std::string tag = "p";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = tag;
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.font_family, "Times New Roman");
+}
+
+TEST(PropertyCascadeTest, ResolverBackgroundColorHexColorV68) {
+    const std::string css = "section { background-color: #00ff88; }";
+    const std::string tag = "section";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = tag;
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.background_color.r, 0);
+    EXPECT_EQ(style.background_color.g, 255);
+    EXPECT_EQ(style.background_color.b, 136);
+    EXPECT_EQ(style.background_color.a, 255);
+}
+
+TEST(PropertyCascadeTest, ResolverBorderTopWidthPxValueV68) {
+    const std::string css = "div { border-top-width: 4px; }";
+    const std::string tag = "div";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = tag;
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_FLOAT_EQ(style.border_top.width.to_px(), 4.0f);
+}
+
+TEST(PropertyCascadeTest, ResolverBorderTopStyleSolidEnumV68) {
+    const std::string css = "div { border-top-style: solid; }";
+    const std::string tag = "div";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = tag;
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.border_top.style, BorderStyle::Solid);
+}
+
+TEST(PropertyCascadeTest, ResolverBorderTopColorNamedColorV68) {
+    const std::string css = "div { border-top-color: red; }";
+    const std::string tag = "div";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = tag;
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.border_top.color, (Color{255, 0, 0, 255}));
+}
+
+TEST(PropertyCascadeTest, ResolverTextDecorationUnderlineV68) {
+    const std::string css = "span { text-decoration: underline; }";
+    const std::string tag = "span";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = tag;
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.text_decoration, TextDecoration::Underline);
+}
+
+TEST(PropertyCascadeTest, ResolverMinWidthPxValueV68) {
+    const std::string css = "div { min-width: 120px; }";
+    const std::string tag = "div";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = tag;
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_FLOAT_EQ(style.min_width.to_px(), 120.0f);
+}

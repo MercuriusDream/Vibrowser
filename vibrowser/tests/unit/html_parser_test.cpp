@@ -10907,3 +10907,128 @@ TEST(HTMLParserTest, DivWithInlineStyleAttributeV67) {
     EXPECT_EQ(get_attr_v63(div, "style"), "color: red; font-weight: bold;");
     EXPECT_EQ(div->text_content(), "Styled text");
 }
+
+TEST(HTMLParserTest, ParagraphWithInlineSpanV68) {
+    auto doc = clever::html::parse("<p>Hello <span>world</span>!</p>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* paragraph = doc->find_element("p");
+    auto* span = doc->find_element("span");
+    ASSERT_NE(paragraph, nullptr);
+    ASSERT_NE(span, nullptr);
+
+    EXPECT_EQ(paragraph->tag_name, "p");
+    EXPECT_EQ(span->tag_name, "span");
+    EXPECT_EQ(span->parent, paragraph);
+    EXPECT_EQ(span->text_content(), "world");
+    EXPECT_EQ(paragraph->text_content(), "Hello world!");
+}
+
+TEST(HTMLParserTest, BlockquoteWithCitationV68) {
+    auto doc = clever::html::parse("<blockquote cite='https://example.com/source'>Quoted text</blockquote>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* blockquote = doc->find_element("blockquote");
+    ASSERT_NE(blockquote, nullptr);
+    EXPECT_EQ(blockquote->tag_name, "blockquote");
+    EXPECT_EQ(get_attr_v63(blockquote, "cite"), "https://example.com/source");
+    EXPECT_EQ(blockquote->text_content(), "Quoted text");
+}
+
+TEST(HTMLParserTest, DetailsAndSummaryElementsV68) {
+    auto doc = clever::html::parse("<details open><summary>More info</summary><p>Details body</p></details>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* details = doc->find_element("details");
+    auto* summary = doc->find_element("summary");
+    auto* paragraph = doc->find_element("p");
+    ASSERT_NE(details, nullptr);
+    ASSERT_NE(summary, nullptr);
+    ASSERT_NE(paragraph, nullptr);
+
+    EXPECT_EQ(details->tag_name, "details");
+    EXPECT_EQ(summary->tag_name, "summary");
+    EXPECT_EQ(summary->parent, details);
+    EXPECT_EQ(paragraph->parent, details);
+    EXPECT_EQ(summary->text_content(), "More info");
+    EXPECT_EQ(paragraph->text_content(), "Details body");
+    EXPECT_EQ(get_attr_v63(details, "open"), "");
+}
+
+TEST(HTMLParserTest, DefinitionListDtDdV68) {
+    auto doc = clever::html::parse("<dl><dt>API</dt><dd>Application Programming Interface</dd></dl>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* dl = doc->find_element("dl");
+    auto* dt = doc->find_element("dt");
+    auto* dd = doc->find_element("dd");
+    ASSERT_NE(dl, nullptr);
+    ASSERT_NE(dt, nullptr);
+    ASSERT_NE(dd, nullptr);
+
+    EXPECT_EQ(dl->tag_name, "dl");
+    EXPECT_EQ(dt->tag_name, "dt");
+    EXPECT_EQ(dd->tag_name, "dd");
+    EXPECT_EQ(dt->parent, dl);
+    EXPECT_EQ(dd->parent, dl);
+    EXPECT_EQ(dt->text_content(), "API");
+    EXPECT_EQ(dd->text_content(), "Application Programming Interface");
+}
+
+TEST(HTMLParserTest, FigureAndFigcaptionV68) {
+    auto doc = clever::html::parse("<figure><img src='cat.png' alt='Cat'><figcaption>Cat photo</figcaption></figure>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* figure = doc->find_element("figure");
+    auto* figcaption = doc->find_element("figcaption");
+    auto* img = doc->find_element("img");
+    ASSERT_NE(figure, nullptr);
+    ASSERT_NE(figcaption, nullptr);
+    ASSERT_NE(img, nullptr);
+
+    EXPECT_EQ(figure->tag_name, "figure");
+    EXPECT_EQ(figcaption->tag_name, "figcaption");
+    EXPECT_EQ(img->tag_name, "img");
+    EXPECT_EQ(figcaption->parent, figure);
+    EXPECT_EQ(img->parent, figure);
+    EXPECT_EQ(get_attr_v63(img, "src"), "cat.png");
+    EXPECT_EQ(get_attr_v63(img, "alt"), "Cat");
+    EXPECT_EQ(figcaption->text_content(), "Cat photo");
+}
+
+TEST(HTMLParserTest, AbbrWithTitleAttributeV68) {
+    auto doc = clever::html::parse("<p>Use <abbr title='HyperText Markup Language'>HTML</abbr> syntax.</p>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* abbr = doc->find_element("abbr");
+    ASSERT_NE(abbr, nullptr);
+    EXPECT_EQ(abbr->tag_name, "abbr");
+    EXPECT_EQ(get_attr_v63(abbr, "title"), "HyperText Markup Language");
+    EXPECT_EQ(abbr->text_content(), "HTML");
+}
+
+TEST(HTMLParserTest, TimeElementWithDatetimeAttributeV68) {
+    auto doc = clever::html::parse("<time datetime='2026-02-27T12:30:00Z'>February 27, 2026</time>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* time = doc->find_element("time");
+    ASSERT_NE(time, nullptr);
+    EXPECT_EQ(time->tag_name, "time");
+    EXPECT_EQ(get_attr_v63(time, "datetime"), "2026-02-27T12:30:00Z");
+    EXPECT_EQ(time->text_content(), "February 27, 2026");
+}
+
+TEST(HTMLParserTest, MarkElementHighlightV68) {
+    auto doc = clever::html::parse("<p>Read the <mark>important</mark> part.</p>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* paragraph = doc->find_element("p");
+    auto* mark = doc->find_element("mark");
+    ASSERT_NE(paragraph, nullptr);
+    ASSERT_NE(mark, nullptr);
+
+    EXPECT_EQ(mark->tag_name, "mark");
+    EXPECT_EQ(mark->parent, paragraph);
+    EXPECT_EQ(mark->text_content(), "important");
+    EXPECT_EQ(paragraph->text_content(), "Read the important part.");
+}

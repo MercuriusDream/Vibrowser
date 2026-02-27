@@ -11218,3 +11218,263 @@ TEST(DOMTest, EventListenerAddAndRemovalSemanticsByTypeV67) {
     EXPECT_TRUE(target.dispatch_event(input_event, node));
     EXPECT_EQ(input_count, 1);
 }
+
+TEST(DOMTest, ElementCreationWithNamespaceUriPreservesUriV68) {
+    Element html_div("div");
+    Element svg_circle("circle", "http://www.w3.org/2000/svg");
+
+    EXPECT_EQ(html_div.tag_name(), "div");
+    EXPECT_EQ(html_div.namespace_uri(), "");
+    EXPECT_EQ(svg_circle.tag_name(), "circle");
+    EXPECT_EQ(svg_circle.namespace_uri(), "http://www.w3.org/2000/svg");
+    EXPECT_EQ(svg_circle.node_type(), NodeType::Element);
+}
+
+TEST(DOMTest, DeepClonePreservesAttributesAcrossDescendantsV68) {
+    auto source = std::make_unique<Element>("svg", "http://www.w3.org/2000/svg");
+    source->set_attribute("id", "icon");
+    source->set_attribute("viewBox", "0 0 10 10");
+
+    auto group = std::make_unique<Element>("g");
+    Element* group_ptr = group.get();
+    group->set_attribute("class", "accent");
+    group->set_attribute("data-layer", "1");
+
+    auto leaf = std::make_unique<Element>("path");
+    leaf->set_attribute("d", "M0 0L10 10");
+    group->append_child(std::move(leaf));
+    source->append_child(std::move(group));
+
+    std::function<std::unique_ptr<Node>(const Node*)> deep_clone =
+        [&](const Node* node) -> std::unique_ptr<Node> {
+            switch (node->node_type()) {
+            case NodeType::Element: {
+                const auto* element = static_cast<const Element*>(node);
+                auto clone = std::make_unique<Element>(element->tag_name(), element->namespace_uri());
+                for (const auto& attr : element->attributes()) {
+                    clone->set_attribute(attr.name, attr.value);
+                }
+                for (const Node* child = node->first_child(); child != nullptr; child = child->next_sibling()) {
+                    clone->append_child(deep_clone(child));
+                }
+                return clone;
+            }
+            case NodeType::Text:
+                return std::make_unique<Text>(static_cast<const Text*>(node)->data());
+            case NodeType::Comment:
+                return std::make_unique<Comment>(static_cast<const Comment*>(node)->data());
+            case NodeType::Document: {
+                auto clone = std::make_unique<Document>();
+                for (const Node* child = node->first_child(); child != nullptr; child = child->next_sibling()) {
+                    clone->append_child(deep_clone(child));
+                }
+                return clone;
+            }
+            default:
+                return nullptr;
+            }
+        };
+
+    auto cloned_node = deep_clone(source.get());
+    auto* cloned_root = static_cast<Element*>(cloned_node.get());
+    ASSERT_NE(cloned_root, nullptr);
+    ASSERT_NE(cloned_root, source.get());
+
+    auto* cloned_group = static_cast<Element*>(cloned_root->first_child());
+    ASSERT_NE(cloned_group, nullptr);
+    auto* cloned_leaf = static_cast<Element*>(cloned_group->first_child());
+    ASSERT_NE(cloned_leaf, nullptr);
+
+    EXPECT_EQ(cloned_root->get_attribute("id"), "icon");
+    EXPECT_EQ(cloned_root->get_attribute("viewBox"), "0 0 10 10");
+    EXPECT_EQ(cloned_group->get_attribute("class"), "accent");
+    EXPECT_EQ(cloned_group->get_attribute("data-layer"), "1");
+    EXPECT_EQ(cloned_leaf->get_attribute("d"), "M0 0L10 10");
+
+    source->set_attribute("id", "changed");
+    group_ptr->set_attribute("class", "mutated");
+    EXPECT_EQ(cloned_root->get_attribute("id"), "icon");
+    EXPECT_EQ(cloned_group->get_attribute("class"), "accent");
+}
+
+TEST(DOMTest, RemoveAllChildrenUtilityDetachesEveryChildV68) {
+    auto remove_all_children = [](Node& node) {
+        std::vector<std::unique_ptr<Node>> removed;
+        while (node.first_child() != nullptr) {
+            removed.push_back(node.remove_child(*node.first_child()));
+        }
+        return removed;
+    };
+
+    Element parent("div");
+    auto a = std::make_unique<Element>("a");
+    auto b = std::make_unique<Text>("b");
+    auto c = std::make_unique<Comment>("c");
+
+    Node* a_ptr = a.get();
+    Node* b_ptr = b.get();
+    Node* c_ptr = c.get();
+
+    parent.append_child(std::move(a));
+    parent.append_child(std::move(b));
+    parent.append_child(std::move(c));
+    ASSERT_EQ(parent.child_count(), 3u);
+
+    auto removed = remove_all_children(parent);
+    ASSERT_EQ(removed.size(), 3u);
+    EXPECT_EQ(removed[0].get(), a_ptr);
+    EXPECT_EQ(removed[1].get(), b_ptr);
+    EXPECT_EQ(removed[2].get(), c_ptr);
+    EXPECT_EQ(parent.child_count(), 0u);
+    EXPECT_EQ(parent.first_child(), nullptr);
+    EXPECT_EQ(parent.last_child(), nullptr);
+
+    for (const auto& node : removed) {
+        EXPECT_EQ(node->parent(), nullptr);
+        EXPECT_EQ(node->previous_sibling(), nullptr);
+        EXPECT_EQ(node->next_sibling(), nullptr);
+    }
+}
+
+TEST(DOMTest, ChildElementCountDiffersFromChildNodeCountV68) {
+    auto child_element_count = [](const Node& node) {
+        size_t count = 0;
+        for (Node* child = node.first_child(); child != nullptr; child = child->next_sibling()) {
+            if (child->node_type() == NodeType::Element) {
+                ++count;
+            }
+        }
+        return count;
+    };
+
+    Element parent("div");
+    parent.append_child(std::make_unique<Text>("leading"));
+    parent.append_child(std::make_unique<Element>("span"));
+    parent.append_child(std::make_unique<Comment>("meta"));
+    parent.append_child(std::make_unique<Text>("trailing"));
+    parent.append_child(std::make_unique<Element>("strong"));
+
+    EXPECT_EQ(parent.child_count(), 5u);
+    EXPECT_EQ(child_element_count(parent), 2u);
+}
+
+TEST(DOMTest, LivingNodeListLikeQueryUpdatesAfterMutationsV68) {
+    Element root("root");
+
+    auto first_div = std::make_unique<Element>("div");
+    Element* first_div_ptr = first_div.get();
+    root.append_child(std::move(first_div));
+    root.append_child(std::make_unique<Element>("span"));
+
+    auto list_by_tag = [](Node& start, const std::string& tag_name) {
+        std::vector<Element*> result;
+        std::function<void(Node&)> visit = [&](Node& node) {
+            if (node.node_type() == NodeType::Element) {
+                auto* element = static_cast<Element*>(&node);
+                if (element->tag_name() == tag_name) {
+                    result.push_back(element);
+                }
+            }
+            for (Node* child = node.first_child(); child != nullptr; child = child->next_sibling()) {
+                visit(*child);
+            }
+        };
+        visit(start);
+        return result;
+    };
+
+    auto initial = list_by_tag(root, "div");
+    ASSERT_EQ(initial.size(), 1u);
+    EXPECT_EQ(initial[0], first_div_ptr);
+
+    auto second_div = std::make_unique<Element>("div");
+    Element* second_div_ptr = second_div.get();
+    root.append_child(std::move(second_div));
+
+    auto after_append = list_by_tag(root, "div");
+    ASSERT_EQ(after_append.size(), 2u);
+    EXPECT_EQ(after_append[0], first_div_ptr);
+    EXPECT_EQ(after_append[1], second_div_ptr);
+
+    auto removed = root.remove_child(*first_div_ptr);
+    EXPECT_NE(removed, nullptr);
+    auto after_remove = list_by_tag(root, "div");
+    ASSERT_EQ(after_remove.size(), 1u);
+    EXPECT_EQ(after_remove[0], second_div_ptr);
+}
+
+TEST(DOMTest, ParentElementVsParentNodeBehaviorV68) {
+    auto parent_element = [](const Node& node) -> Element* {
+        Node* parent = node.parent();
+        if (parent != nullptr && parent->node_type() == NodeType::Element) {
+            return static_cast<Element*>(parent);
+        }
+        return nullptr;
+    };
+
+    Document doc;
+    auto html = std::make_unique<Element>("html");
+    Element* html_ptr = html.get();
+    auto text = std::make_unique<Text>("leaf");
+    Text* text_ptr = text.get();
+    html->append_child(std::move(text));
+
+    EXPECT_EQ(text_ptr->parent(), html_ptr);
+    EXPECT_EQ(parent_element(*text_ptr), html_ptr);
+
+    doc.append_child(std::move(html));
+    EXPECT_EQ(html_ptr->parent(), &doc);
+    EXPECT_EQ(parent_element(*html_ptr), nullptr);
+    EXPECT_EQ(doc.parent(), nullptr);
+    EXPECT_EQ(parent_element(doc), nullptr);
+}
+
+TEST(DOMTest, ElementMatchesTagSelectorByTagNameV68) {
+    auto matches_tag_selector = [](const Element& element, const std::string& selector) {
+        return !selector.empty() && selector[0] != '#' && selector[0] != '.'
+            && element.tag_name() == selector;
+    };
+
+    Element button("button");
+    Element input("input");
+
+    EXPECT_TRUE(matches_tag_selector(button, "button"));
+    EXPECT_FALSE(matches_tag_selector(button, "Button"));
+    EXPECT_FALSE(matches_tag_selector(button, "#button"));
+    EXPECT_FALSE(matches_tag_selector(button, ".button"));
+    EXPECT_FALSE(matches_tag_selector(input, "button"));
+}
+
+TEST(DOMTest, WhitespaceOnlyTextNodesArePreservedAsTextNodesV68) {
+    auto child_element_count = [](const Node& node) {
+        size_t count = 0;
+        for (Node* child = node.first_child(); child != nullptr; child = child->next_sibling()) {
+            if (child->node_type() == NodeType::Element) {
+                ++count;
+            }
+        }
+        return count;
+    };
+
+    Element root("div");
+    auto leading_ws = std::make_unique<Text>("\n  \t");
+    Text* leading_ws_ptr = leading_ws.get();
+    auto span = std::make_unique<Element>("span");
+    span->append_child(std::make_unique<Text>("X"));
+    auto trailing_ws = std::make_unique<Text>("  ");
+    Text* trailing_ws_ptr = trailing_ws.get();
+
+    root.append_child(std::move(leading_ws));
+    root.append_child(std::move(span));
+    root.append_child(std::move(trailing_ws));
+
+    ASSERT_EQ(root.child_count(), 3u);
+    EXPECT_EQ(child_element_count(root), 1u);
+    ASSERT_NE(root.first_child(), nullptr);
+    ASSERT_NE(root.last_child(), nullptr);
+    EXPECT_EQ(root.first_child()->node_type(), NodeType::Text);
+    EXPECT_EQ(root.last_child()->node_type(), NodeType::Text);
+    EXPECT_EQ(leading_ws_ptr->data(), "\n  \t");
+    EXPECT_EQ(trailing_ws_ptr->data(), "  ");
+    EXPECT_EQ(root.text_content(), "\n  \tX  ");
+}

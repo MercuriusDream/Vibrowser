@@ -10318,3 +10318,158 @@ TEST(SerializerTest, MultipleStringsConcatenatedCorrectlyV67) {
     EXPECT_EQ(combined, "alpha-omega");
     EXPECT_FALSE(d.has_remaining());
 }
+
+TEST(SerializerTest, MultipleStringsInSequenceV68) {
+    Serializer s;
+    const std::vector<std::string> values = {
+        "",
+        "alpha",
+        "beta gamma",
+        "delta-123",
+        "last"
+    };
+
+    for (const auto& value : values) {
+        s.write_string(value);
+    }
+
+    Deserializer d(s.data());
+    for (const auto& expected : values) {
+        EXPECT_EQ(d.read_string(), expected);
+    }
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, BoolThenU32ThenStringPatternV68) {
+    Serializer s;
+    for (uint32_t i = 0; i < 20; ++i) {
+        s.write_bool((i % 2u) == 0u);
+        s.write_u32(1000u + i);
+        s.write_string("pattern-" + std::to_string(i));
+    }
+
+    Deserializer d(s.data());
+    for (uint32_t i = 0; i < 20; ++i) {
+        EXPECT_EQ(d.read_bool(), (i % 2u) == 0u);
+        EXPECT_EQ(d.read_u32(), 1000u + i);
+        EXPECT_EQ(d.read_string(), "pattern-" + std::to_string(i));
+    }
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, SingleByteWriteReadV68) {
+    Serializer s;
+    s.write_u8(0xA5u);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u8(), 0xA5u);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, NegativeNumberAsU32WrapsAroundV68) {
+    Serializer s;
+    const uint32_t wrapped = static_cast<uint32_t>(-42);
+    s.write_u32(wrapped);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u32(), wrapped);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, WriteBytesPreservesNullBytesV68) {
+    Serializer s;
+    const std::vector<uint8_t> bytes = {0x41, 0x00, 0x42, 0x00, 0x43, 0x00};
+    s.write_bytes(bytes.data(), bytes.size());
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_bytes(), bytes);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, DeserializerCopyConstructorPreservesReadPositionV68) {
+    Serializer s;
+    s.write_u32(11u);
+    s.write_u32(22u);
+    s.write_u32(33u);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u32(), 11u);
+
+    Deserializer copied(d);
+    EXPECT_EQ(d.read_u32(), 22u);
+    EXPECT_EQ(copied.read_u32(), 22u);
+    EXPECT_EQ(d.read_u32(), 33u);
+    EXPECT_EQ(copied.read_u32(), 33u);
+    EXPECT_FALSE(d.has_remaining());
+    EXPECT_FALSE(copied.has_remaining());
+}
+
+TEST(SerializerTest, VeryLongString5000CharsV68) {
+    std::string long_str(5000, 'a');
+    for (size_t i = 0; i < long_str.size(); ++i) {
+        long_str[i] = static_cast<char>('a' + (i % 26));
+    }
+
+    Serializer s;
+    s.write_string(long_str);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), long_str);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, MixedTypeStress50OperationsV68) {
+    Serializer s;
+    for (uint32_t i = 0; i < 50; ++i) {
+        switch (i % 5u) {
+            case 0:
+                s.write_u32(7000u + i);
+                break;
+            case 1:
+                s.write_i64(-static_cast<int64_t>(i) * 1234);
+                break;
+            case 2:
+                s.write_bool((i % 2u) == 0u);
+                break;
+            case 3:
+                s.write_string("mix-" + std::to_string(i));
+                break;
+            default: {
+                const std::vector<uint8_t> bytes = {
+                    static_cast<uint8_t>(i & 0xFFu),
+                    0x00,
+                    static_cast<uint8_t>((i * 3u) & 0xFFu)
+                };
+                s.write_bytes(bytes.data(), bytes.size());
+                break;
+            }
+        }
+    }
+
+    Deserializer d(s.data());
+    for (uint32_t i = 0; i < 50; ++i) {
+        switch (i % 5u) {
+            case 0:
+                EXPECT_EQ(d.read_u32(), 7000u + i);
+                break;
+            case 1:
+                EXPECT_EQ(d.read_i64(), -static_cast<int64_t>(i) * 1234);
+                break;
+            case 2:
+                EXPECT_EQ(d.read_bool(), (i % 2u) == 0u);
+                break;
+            case 3:
+                EXPECT_EQ(d.read_string(), "mix-" + std::to_string(i));
+                break;
+            default: {
+                const auto bytes = d.read_bytes();
+                ASSERT_EQ(bytes.size(), 3u);
+                EXPECT_EQ(bytes[0], static_cast<uint8_t>(i & 0xFFu));
+                EXPECT_EQ(bytes[1], 0x00u);
+                EXPECT_EQ(bytes[2], static_cast<uint8_t>((i * 3u) & 0xFFu));
+                break;
+            }
+        }
+    }
+    EXPECT_FALSE(d.has_remaining());
+}

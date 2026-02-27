@@ -22628,3 +22628,130 @@ TEST(JSEngineTest, TryCatchExposesErrorMessageV67) {
     EXPECT_TRUE(result.success) << engine.last_error();
     EXPECT_EQ(result.value, "Error|boom message V67|true");
 }
+
+TEST(JSEngineTest, ArrowFunctionExpressionBasicV68) {
+    clever::js::JSEngine engine;
+    const std::string js_string = R"(
+        var multiply = (a, b) => a * b;
+        var format = value => 'mul=' + value.toString();
+        format(multiply(6, 7))
+    )";
+    auto result = EvaluateWithStatusV66(engine, js_string);
+    EXPECT_TRUE(result.success) << engine.last_error();
+    EXPECT_EQ(result.value, "mul=42");
+}
+
+TEST(JSEngineTest, ClassConstructorAndMethodInvocationV68) {
+    clever::js::JSEngine engine;
+    const std::string js_string = R"(
+        class Counter {
+            constructor(start) {
+                this.current = start;
+            }
+            inc() {
+                this.current += 1;
+                return this.current;
+            }
+        }
+        var c = new Counter(9);
+        [c.current.toString(), c.inc().toString(), c.inc().toString()].join('|')
+    )";
+    auto result = EvaluateWithStatusV66(engine, js_string);
+    EXPECT_TRUE(result.success) << engine.last_error();
+    EXPECT_EQ(result.value, "9|10|11");
+}
+
+TEST(JSEngineTest, GeneratorFunctionYieldSequenceV68) {
+    clever::js::JSEngine engine;
+    const std::string js_string = R"(
+        function* makeSequence() {
+            yield 3;
+            yield 5;
+            yield 8;
+        }
+        var it = makeSequence();
+        [it.next().value, it.next().value, it.next().value].join(',')
+    )";
+    auto result = EvaluateWithStatusV66(engine, js_string);
+    EXPECT_TRUE(result.success) << engine.last_error();
+    EXPECT_EQ(result.value, "3,5,8");
+}
+
+TEST(JSEngineTest, AsyncFunctionBasicResolutionV68) {
+    clever::js::JSEngine engine;
+    const std::string js_string = R"(
+        var asyncResultV68 = 'pending';
+        async function addAsync(a, b) {
+            return a + b;
+        }
+        addAsync(20, 22).then(function(value) {
+            asyncResultV68 = value.toString();
+        });
+        'scheduled'
+    )";
+    auto setup = EvaluateWithStatusV66(engine, js_string);
+    EXPECT_TRUE(setup.success) << engine.last_error();
+    EXPECT_EQ(setup.value, "scheduled");
+
+    clever::js::flush_fetch_promise_jobs(engine.context());
+
+    auto result = EvaluateWithStatusV66(engine, "asyncResultV68");
+    EXPECT_TRUE(result.success) << engine.last_error();
+    EXPECT_EQ(result.value, "42");
+}
+
+TEST(JSEngineTest, ForOfLoopArrayAccumulationV68) {
+    clever::js::JSEngine engine;
+    const std::string js_string = R"(
+        var values = [2, 4, 6, 8];
+        var sum = 0;
+        for (var value of values) {
+            sum += value;
+        }
+        sum.toString()
+    )";
+    auto result = EvaluateWithStatusV66(engine, js_string);
+    EXPECT_TRUE(result.success) << engine.last_error();
+    EXPECT_EQ(result.value, "20");
+}
+
+TEST(JSEngineTest, TemplateLiteralInterpolationOutputV68) {
+    clever::js::JSEngine engine;
+    const std::string js_string = R"(
+        var name = 'QuickJS';
+        var version = 68;
+        `engine:${name}|v=${version}|next=${version + 1}`
+    )";
+    auto result = EvaluateWithStatusV66(engine, js_string);
+    EXPECT_TRUE(result.success) << engine.last_error();
+    EXPECT_EQ(result.value, "engine:QuickJS|v=68|next=69");
+}
+
+TEST(JSEngineTest, ComputedPropertyNamesLookupV68) {
+    clever::js::JSEngine engine;
+    const std::string js_string = R"(
+        var field = 'score';
+        var suffix = 2;
+        var obj = {
+            [field]: 41,
+            ['bonus' + suffix]: 1
+        };
+        (obj.score + obj.bonus2).toString() + '|' + Object.keys(obj).sort().join(',')
+    )";
+    auto result = EvaluateWithStatusV66(engine, js_string);
+    EXPECT_TRUE(result.success) << engine.last_error();
+    EXPECT_EQ(result.value, "42|bonus2,score");
+}
+
+TEST(JSEngineTest, DefaultParameterValuesFallbackV68) {
+    clever::js::JSEngine engine;
+    const std::string js_string = R"(
+        function greet(name = 'guest', punctuation = '!') {
+            return 'hello ' + name + punctuation;
+        }
+        [greet(), greet('Ada', '?'), greet(undefined, '.')].join('|')
+    )";
+    auto result = EvaluateWithStatusV66(engine, js_string);
+    EXPECT_TRUE(result.success) << engine.last_error();
+    EXPECT_EQ(result.value, "hello guest!|hello Ada?|hello guest.");
+}

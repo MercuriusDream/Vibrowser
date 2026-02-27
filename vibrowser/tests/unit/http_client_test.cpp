@@ -12606,3 +12606,245 @@ TEST(HeaderMapTest, SizeTracksAddAndRemoveV67) {
     map.remove("B");
     EXPECT_EQ(map.size(), 0u);
 }
+
+// ---------------------------------------------------------------------------
+// Cycle 68: requested HTTP client coverage additions
+// ---------------------------------------------------------------------------
+
+TEST(ResponseTest, Parse200OkWithJsonBodyV68) {
+    const std::string body = R"({"ok":true,"id":7})";
+    const std::string raw =
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Type: application/json\r\n"
+        "Content-Length: " + std::to_string(body.size()) + "\r\n"
+        "\r\n" + body;
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 200u);
+    EXPECT_EQ(resp->status_text, "OK");
+    ASSERT_TRUE(resp->headers.get("content-type").has_value());
+    EXPECT_EQ(resp->headers.get("content-type").value(), "application/json");
+    EXPECT_EQ(resp->body_as_string(), body);
+}
+
+TEST(ResponseTest, Parse201CreatedResponseV68) {
+    std::string raw =
+        "HTTP/1.1 201 Created\r\n"
+        "Location: /resources/42\r\n"
+        "Content-Length: 0\r\n"
+        "\r\n";
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 201u);
+    EXPECT_EQ(resp->status_text, "Created");
+}
+
+TEST(ResponseTest, Parse304NotModifiedEmptyBodyV68) {
+    std::string raw =
+        "HTTP/1.1 304 Not Modified\r\n"
+        "ETag: \"abc123\"\r\n"
+        "Content-Length: 0\r\n"
+        "\r\n";
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 304u);
+    EXPECT_EQ(resp->status_text, "Not Modified");
+    EXPECT_TRUE(resp->body.empty());
+}
+
+TEST(RequestTest, SerializeRequestWithEncodedPathV68) {
+    Request req;
+    req.method = Method::GET;
+    req.host = "example.com";
+    req.port = 80;
+    req.path = "/files/My%20Document%20(1).pdf";
+
+    auto bytes = req.serialize();
+    std::string serialized(bytes.begin(), bytes.end());
+
+    EXPECT_NE(serialized.find("GET /files/My%20Document%20(1).pdf HTTP/1.1\r\n"), std::string::npos);
+}
+
+TEST(HeaderMapTest, GetAllReturnsVectorWithValuesV68) {
+    HeaderMap map;
+    map.append("Set-Cookie", "sid=abc");
+    map.append("set-cookie", "pref=dark");
+
+    std::vector<std::string> values = map.get_all("SET-COOKIE");
+    EXPECT_EQ(values.size(), 2u);
+    EXPECT_TRUE(std::find(values.begin(), values.end(), "sid=abc") != values.end());
+    EXPECT_TRUE(std::find(values.begin(), values.end(), "pref=dark") != values.end());
+}
+
+TEST(HeaderMapTest, SerializeLowercaseOutputViaRequestV68) {
+    Request req;
+    req.method = Method::GET;
+    req.host = "example.com";
+    req.port = 80;
+    req.path = "/";
+    req.headers.set("X-CUSTOM-HEADER", "Value123");
+
+    auto bytes = req.serialize();
+    std::string serialized(bytes.begin(), bytes.end());
+
+    EXPECT_NE(serialized.find("x-custom-header: Value123\r\n"), std::string::npos);
+    EXPECT_EQ(serialized.find("X-CUSTOM-HEADER: Value123\r\n"), std::string::npos);
+}
+
+TEST(RequestTest, GetRequestBodyEmptyInSerializationV68) {
+    Request req;
+    req.method = Method::GET;
+    req.host = "example.com";
+    req.port = 80;
+    req.path = "/status";
+
+    auto bytes = req.serialize();
+    std::string serialized(bytes.begin(), bytes.end());
+
+    EXPECT_EQ(serialized.find("Content-Length:"), std::string::npos);
+    ASSERT_GE(serialized.size(), 4u);
+    EXPECT_EQ(serialized.substr(serialized.size() - 4), "\r\n\r\n");
+}
+
+TEST(RequestTest, PostFormUrlEncodedBodySerializationV68) {
+    Request req;
+    req.method = Method::POST;
+    req.host = "api.example.com";
+    req.port = 80;
+    req.path = "/submit";
+    req.headers.set("Content-Type", "application/x-www-form-urlencoded");
+
+    const std::string body = "name=alice&city=seoul";
+    req.body.assign(body.begin(), body.end());
+
+    auto bytes = req.serialize();
+    std::string serialized(bytes.begin(), bytes.end());
+
+    EXPECT_NE(serialized.find("POST /submit HTTP/1.1\r\n"), std::string::npos);
+    EXPECT_NE(serialized.find("content-type: application/x-www-form-urlencoded\r\n"), std::string::npos);
+    EXPECT_NE(serialized.find("Content-Length: " + std::to_string(body.size()) + "\r\n"), std::string::npos);
+    EXPECT_NE(serialized.find("\r\n\r\n" + body), std::string::npos);
+}
+
+TEST(ResponseTest, ExtractContentTypeHeaderV68) {
+    std::string raw =
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Type: text/html; charset=utf-8\r\n"
+        "Content-Length: 0\r\n"
+        "\r\n";
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value());
+    ASSERT_TRUE(resp->headers.get("content-type").has_value());
+    EXPECT_EQ(resp->headers.get("content-type").value(), "text/html; charset=utf-8");
+}
+
+TEST(ResponseTest, DateHeaderHttpFormatExtractionV68) {
+    std::string raw =
+        "HTTP/1.1 200 OK\r\n"
+        "Date: Tue, 15 Nov 1994 08:12:31 GMT\r\n"
+        "Content-Length: 0\r\n"
+        "\r\n";
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value());
+    ASSERT_TRUE(resp->headers.get("date").has_value());
+    EXPECT_EQ(resp->headers.get("date").value(), "Tue, 15 Nov 1994 08:12:31 GMT");
+}
+
+TEST(RequestTest, HeadRequestSerializeHasNoBodyV68) {
+    Request req;
+    req.method = Method::HEAD;
+    req.host = "example.com";
+    req.port = 80;
+    req.path = "/metadata";
+
+    auto bytes = req.serialize();
+    std::string serialized(bytes.begin(), bytes.end());
+
+    EXPECT_NE(serialized.find("HEAD /metadata HTTP/1.1\r\n"), std::string::npos);
+    EXPECT_EQ(serialized.find("Content-Length:"), std::string::npos);
+    ASSERT_GE(serialized.size(), 4u);
+    EXPECT_EQ(serialized.substr(serialized.size() - 4), "\r\n\r\n");
+}
+
+TEST(RequestTest, SerializeRequestPathWithSpecialCharsV68) {
+    Request req;
+    req.method = Method::GET;
+    req.host = "example.com";
+    req.port = 80;
+    req.path = "/api/~user/!$&'()*+,;=:@-._";
+
+    auto bytes = req.serialize();
+    std::string serialized(bytes.begin(), bytes.end());
+
+    EXPECT_NE(serialized.find("GET /api/~user/!$&'()*+,;=:@-._ HTTP/1.1\r\n"), std::string::npos);
+}
+
+TEST(RequestTest, EmptyHostValidationInSerializedRequestV68) {
+    Request req;
+    req.method = Method::GET;
+    req.host = "";
+    req.port = 80;
+    req.path = "/";
+
+    auto bytes = req.serialize();
+    std::string serialized(bytes.begin(), bytes.end());
+
+    EXPECT_NE(serialized.find("GET / HTTP/1.1\r\n"), std::string::npos);
+    EXPECT_NE(serialized.find("Host: \r\n"), std::string::npos);
+}
+
+TEST(RequestTest, HostHeaderOmitsPort80V68) {
+    Request req;
+    req.method = Method::GET;
+    req.host = "example.com";
+    req.port = 80;
+    req.path = "/";
+
+    auto bytes = req.serialize();
+    std::string serialized(bytes.begin(), bytes.end());
+
+    EXPECT_NE(serialized.find("Host: example.com\r\n"), std::string::npos);
+    EXPECT_EQ(serialized.find("Host: example.com:80\r\n"), std::string::npos);
+}
+
+TEST(RequestTest, HostHeaderIncludesPort8080V68) {
+    Request req;
+    req.method = Method::GET;
+    req.host = "example.com";
+    req.port = 8080;
+    req.path = "/";
+
+    auto bytes = req.serialize();
+    std::string serialized(bytes.begin(), bytes.end());
+
+    EXPECT_NE(serialized.find("Host: example.com:8080\r\n"), std::string::npos);
+}
+
+TEST(ResponseTest, ParseStatusLineWithExtraWhitespaceV68) {
+    std::string raw =
+        "HTTP/1.1 200   OK\r\n"
+        "Content-Length: 0\r\n"
+        "\r\n";
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 200u);
+    EXPECT_EQ(resp->status_text, "  OK");
+}

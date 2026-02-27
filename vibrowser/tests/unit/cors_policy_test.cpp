@@ -5334,3 +5334,62 @@ TEST(CORSPolicyTest, MultipleAcaoValuesCommaSeparatedRejectedV67) {
     EXPECT_FALSE(
         cors_allows_response("https://app.example", "https://api.example/data", headers, false));
 }
+
+TEST(CORSPolicyTest, PreflightResponseStatus204AllowedWithMatchingAcaoV68) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "https://app.example");
+    headers.set("Access-Control-Allow-Methods", "PUT, OPTIONS");
+    headers.set("Access-Control-Allow-Headers", "X-Custom-Token");
+    headers.set(":status", "204");
+    EXPECT_TRUE(cors_allows_response("https://app.example", "https://api.example/preflight",
+                                     headers, false));
+}
+
+TEST(CORSPolicyTest, AcaoRequiresExactOriginNotSubstringV68) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "https://app.example.evil");
+    EXPECT_FALSE(
+        cors_allows_response("https://app.example", "https://api.example/data", headers, false));
+}
+
+TEST(CORSPolicyTest, HttpToHttpsIsCrossOriginV68) {
+    EXPECT_TRUE(is_cross_origin("http://app.example", "https://app.example/resource"));
+}
+
+TEST(CORSPolicyTest, SameOriginSamePortSameSchemePassesV68) {
+    clever::net::HeaderMap headers;
+    EXPECT_FALSE(is_cross_origin("https://app.example:8443", "https://app.example:8443/data"));
+    EXPECT_TRUE(cors_allows_response("https://app.example:8443", "https://app.example:8443/data",
+                                     headers, false));
+}
+
+TEST(CORSPolicyTest, AcaoWithSpaceSeparatedMultipleValuesRejectedV68) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "https://app.example https://other.example");
+    EXPECT_FALSE(
+        cors_allows_response("https://app.example", "https://api.example/data", headers, false));
+}
+
+TEST(CORSPolicyTest, CredentialsModeOmitIgnoresAcacV68) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "https://app.example");
+    headers.set("Access-Control-Allow-Credentials", "false");
+    EXPECT_TRUE(
+        cors_allows_response("https://app.example", "https://api.example/data", headers, false));
+}
+
+TEST(CORSPolicyTest, OriginWithUserinfoIsNotAcceptedAsAcaoV68) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "https://user:pass@app.example");
+    EXPECT_FALSE(
+        cors_allows_response("https://app.example", "https://api.example/data", headers, false));
+}
+
+TEST(CORSPolicyTest, AccessControlRequestMethodDoesNotBypassAcaoValidationV68) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "https://other.example");
+    headers.set("Access-Control-Request-Method", "DELETE");
+    headers.set("Access-Control-Allow-Methods", "DELETE, OPTIONS");
+    EXPECT_FALSE(
+        cors_allows_response("https://app.example", "https://api.example/data", headers, false));
+}

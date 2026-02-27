@@ -12636,3 +12636,152 @@ TEST(LayoutEngineTest, ViewportWidthConstrainsRootV67) {
     EXPECT_FLOAT_EQ(root->geometry.width, 900.0f);
     EXPECT_FLOAT_EQ(root->children[0]->geometry.width, 900.0f);
 }
+
+// Test V68_001: empty root block uses viewport width and zero height
+TEST(LayoutEngineTest, EmptyRootBlockDimensionsV68) {
+    auto root = make_block("div");
+
+    LayoutEngine engine;
+    engine.compute(*root, 640.0f, 480.0f);
+
+    EXPECT_FLOAT_EQ(root->geometry.width, 640.0f);
+    EXPECT_FLOAT_EQ(root->geometry.height, 0.0f);
+}
+
+// Test V68_002: single child fills parent width in normal block flow
+TEST(LayoutEngineTest, SingleChildFillsParentWidthV68) {
+    auto root = make_block("div");
+    root->specified_width = 420.0f;
+
+    auto child = make_block("section");
+    child->specified_height = 24.0f;
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 900.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(root->geometry.width, 420.0f);
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.width, 420.0f);
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.y, 0.0f);
+}
+
+// Test V68_003: nested three-level blocks resolve widths through content boxes
+TEST(LayoutEngineTest, NestedThreeLevelBlockV68) {
+    auto root = make_block("div");
+    root->specified_width = 500.0f;
+
+    auto parent = make_block("div");
+    parent->geometry.padding.left = 10.0f;
+    parent->geometry.padding.right = 10.0f;
+
+    auto child = make_block("div");
+    child->specified_height = 30.0f;
+    parent->append_child(std::move(child));
+    root->append_child(std::move(parent));
+
+    LayoutEngine engine;
+    engine.compute(*root, 900.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.width, 500.0f);
+    EXPECT_FLOAT_EQ(root->children[0]->children[0]->geometry.width, 480.0f);
+    EXPECT_FLOAT_EQ(root->geometry.height, 30.0f);
+}
+
+// Test V68_004: top margin on first child offsets its y position
+TEST(LayoutEngineTest, MarginTopOnFirstChildV68) {
+    auto root = make_block("div");
+    root->specified_width = 300.0f;
+
+    auto first = make_block("div");
+    first->specified_height = 40.0f;
+    first->geometry.margin.top = 12.0f;
+
+    auto second = make_block("div");
+    second->specified_height = 20.0f;
+
+    root->append_child(std::move(first));
+    root->append_child(std::move(second));
+
+    LayoutEngine engine;
+    engine.compute(*root, 500.0f, 400.0f);
+
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.y, 12.0f);
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.y, 52.0f);
+    EXPECT_FLOAT_EQ(root->geometry.height, 72.0f);
+}
+
+// Test V68_005: parent padding increases computed parent height
+TEST(LayoutEngineTest, PaddingIncreasesParentHeightV68) {
+    auto root = make_block("div");
+    root->specified_width = 320.0f;
+    root->geometry.padding.top = 8.0f;
+    root->geometry.padding.bottom = 14.0f;
+
+    auto child = make_block("div");
+    child->specified_height = 50.0f;
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 640.0f, 480.0f);
+
+    EXPECT_FLOAT_EQ(root->geometry.height, 72.0f);
+}
+
+// Test V68_006: two equal-width block children stack vertically
+TEST(LayoutEngineTest, TwoEqualWidthChildrenStackV68) {
+    auto root = make_block("div");
+    root->specified_width = 360.0f;
+
+    auto first = make_block("div");
+    first->specified_width = 180.0f;
+    first->specified_height = 25.0f;
+
+    auto second = make_block("div");
+    second->specified_width = 180.0f;
+    second->specified_height = 35.0f;
+
+    root->append_child(std::move(first));
+    root->append_child(std::move(second));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.width, 180.0f);
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.width, 180.0f);
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.y, 0.0f);
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.y, 25.0f);
+    EXPECT_FLOAT_EQ(root->geometry.height, 60.0f);
+}
+
+// Test V68_007: specified height larger than content is preserved
+TEST(LayoutEngineTest, SpecifiedHeightLargerThanContentV68) {
+    auto root = make_block("div");
+    root->specified_width = 400.0f;
+    root->specified_height = 120.0f;
+
+    auto text = make_text("small text", 16.0f);
+    root->append_child(std::move(text));
+
+    LayoutEngine engine;
+    engine.compute(*root, 900.0f, 700.0f);
+
+    EXPECT_FLOAT_EQ(root->geometry.height, 120.0f);
+    EXPECT_LT(root->children[0]->geometry.height, root->geometry.height);
+}
+
+// Test V68_008: min-width clamps width and prevents shrinking below threshold
+TEST(LayoutEngineTest, MinWidthPreventsShrinkingBelowThresholdV68) {
+    auto root = make_block("div");
+    root->specified_width = 90.0f;
+    root->min_width = 150.0f;
+
+    auto child = make_block("div");
+    child->specified_height = 20.0f;
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 500.0f, 400.0f);
+
+    EXPECT_FLOAT_EQ(root->geometry.width, 150.0f);
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.width, 150.0f);
+}
