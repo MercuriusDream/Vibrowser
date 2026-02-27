@@ -6495,3 +6495,44 @@ TEST(LayoutNodeProps, SvgUseXDefaultsToZero) {
     auto node = make_block("use");
     EXPECT_FLOAT_EQ(node->svg_use_x, 0.0f);
 }
+
+// Cycle 756 — SVG layout field defaults
+TEST(LayoutNodeProps, SvgUseYDefaultsToZero) {
+    auto node = make_block("use");
+    EXPECT_FLOAT_EQ(node->svg_use_y, 0.0f);
+}
+
+TEST(LayoutNodeProps, SvgTextYDefaultsToZero) {
+    auto node = make_block("text");
+    EXPECT_FLOAT_EQ(node->svg_text_y, 0.0f);
+}
+
+TEST(LayoutNodeProps, SvgFontWeightDefaultsFourHundred) {
+    auto node = make_block("text");
+    EXPECT_EQ(node->svg_font_weight, 400);
+}
+
+TEST(LayoutNodeProps, SvgPathDDefaultsEmpty) {
+    auto node = make_block("path");
+    EXPECT_TRUE(node->svg_path_d.empty());
+}
+
+TEST(LayoutNodeProps, SvgUseHrefDefaultsEmpty) {
+    auto node = make_block("use");
+    EXPECT_TRUE(node->svg_use_href.empty());
+}
+
+TEST(LayoutNodeProps, SvgTextContentDefaultsEmpty) {
+    auto node = make_block("text");
+    EXPECT_TRUE(node->svg_text_content.empty());
+}
+
+TEST(LayoutNodeProps, SvgTextDxDefaultsToZero) {
+    auto node = make_block("text");
+    EXPECT_FLOAT_EQ(node->svg_text_dx, 0.0f);
+}
+
+TEST(LayoutNodeProps, SvgTextDyDefaultsToZero) {
+    auto node = make_block("text");
+    EXPECT_FLOAT_EQ(node->svg_text_dy, 0.0f);
+}
