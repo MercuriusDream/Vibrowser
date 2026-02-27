@@ -4664,3 +4664,84 @@ TEST(ResponseTest, ContentDispositionAttachment) {
     ASSERT_TRUE(val.has_value());
     EXPECT_NE(val->find("attachment"), std::string::npos);
 }
+
+// Cycle 908 — HTTP headers: WWW-Authenticate, Proxy-Authenticate, Via, X-Forwarded-Host/Proto, traceparent, baggage, X-Request-Id
+
+TEST(ResponseTest, WWWAuthenticateHeaderInResponse) {
+    std::string raw =
+        "HTTP/1.1 401 Unauthorized\r\n"
+        "WWW-Authenticate: Bearer realm=\"api\"\r\n"
+        "Content-Length: 0\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    auto val = resp->headers.get("www-authenticate");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_NE(val->find("Bearer"), std::string::npos);
+}
+
+TEST(ResponseTest, ProxyAuthenticateHeaderInResponse) {
+    std::string raw =
+        "HTTP/1.1 407 Proxy Authentication Required\r\n"
+        "Proxy-Authenticate: Basic realm=\"corporate-proxy\"\r\n"
+        "Content-Length: 0\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    auto val = resp->headers.get("proxy-authenticate");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_NE(val->find("Basic"), std::string::npos);
+}
+
+TEST(ResponseTest, ViaHeaderInResponse) {
+    std::string raw =
+        "HTTP/1.1 200 OK\r\n"
+        "Via: 1.1 proxy.example.com\r\n"
+        "Content-Length: 0\r\n\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    auto val = resp->headers.get("via");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_NE(val->find("proxy.example.com"), std::string::npos);
+}
+
+TEST(RequestTest, XForwardedHostHeaderSet) {
+    Request req;
+    req.headers.set("X-Forwarded-Host", "original.example.com");
+    auto val = req.headers.get("X-Forwarded-Host");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(*val, "original.example.com");
+}
+
+TEST(RequestTest, XForwardedProtoHeaderSet) {
+    Request req;
+    req.headers.set("X-Forwarded-Proto", "https");
+    auto val = req.headers.get("X-Forwarded-Proto");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(*val, "https");
+}
+
+TEST(RequestTest, TraceParentHeaderSet) {
+    Request req;
+    req.headers.set("traceparent", "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01");
+    auto val = req.headers.get("traceparent");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_NE(val->find("0af7651916cd43dd"), std::string::npos);
+}
+
+TEST(RequestTest, BaggageHeaderSet) {
+    Request req;
+    req.headers.set("baggage", "userId=alice,serverNode=DF28");
+    auto val = req.headers.get("baggage");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_NE(val->find("alice"), std::string::npos);
+}
+
+TEST(RequestTest, XRequestIdHeaderSet) {
+    Request req;
+    req.headers.set("X-Request-Id", "abc-123-def-456");
+    auto val = req.headers.get("X-Request-Id");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(*val, "abc-123-def-456");
+}
