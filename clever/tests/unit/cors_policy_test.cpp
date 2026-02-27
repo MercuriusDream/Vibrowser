@@ -1124,3 +1124,54 @@ TEST(CORSPolicyTest, ShouldNotAttachOriginSameOriginWithPort) {
     EXPECT_FALSE(should_attach_origin_header("https://example.com:8443",
                                              "https://example.com:8443/api"));
 }
+
+// CORS: is_cross_origin for different subdomains
+TEST(CORSPolicyTest, IsCrossOriginDifferentSubdomains) {
+    EXPECT_TRUE(is_cross_origin("https://app.example.com",
+                                 "https://api.example.com/data"));
+}
+
+// CORS: cors_allows_response with wildcard ACAO
+TEST(CORSPolicyTest, CORSAllowsWildcardACAO) {
+    clever::net::HeaderMap resp_headers;
+    resp_headers.set("Access-Control-Allow-Origin", "*");
+    EXPECT_TRUE(cors_allows_response("https://example.com",
+                                     "https://api.other.com/data",
+                                     resp_headers, false));
+}
+
+// CORS: cors_allows_response wildcard denies with credentials
+TEST(CORSPolicyTest, CORSWildcardDeniesCredentials) {
+    clever::net::HeaderMap resp_headers;
+    resp_headers.set("Access-Control-Allow-Origin", "*");
+    EXPECT_FALSE(cors_allows_response("https://example.com",
+                                      "https://api.other.com/data",
+                                      resp_headers, true));
+}
+
+// CORS: should attach Origin for cross-origin with different scheme
+TEST(CORSPolicyTest, ShouldAttachOriginForHttpToHttpsCross) {
+    EXPECT_TRUE(should_attach_origin_header("http://example.com",
+                                             "https://example.com/api"));
+}
+
+// CORS: eligible URL with wss scheme
+TEST(CORSPolicyTest, CORSEligibleURLWssScheme) {
+    EXPECT_FALSE(is_cors_eligible_request_url("wss://ws.example.com/socket"));
+}
+
+// CORS: not cross origin for identical http origins
+TEST(CORSPolicyTest, IdenticalHttpOriginsNotCrossOrigin) {
+    EXPECT_FALSE(is_cross_origin("http://example.com",
+                                  "http://example.com/page"));
+}
+
+// CORS: has_enforceable_document_origin false for empty
+TEST(CORSPolicyTest, EmptyOriginNotEnforceable) {
+    EXPECT_FALSE(has_enforceable_document_origin(""));
+}
+
+// CORS: has_enforceable_document_origin false for null string
+TEST(CORSPolicyTest, NullStringOriginNotEnforceable) {
+    EXPECT_FALSE(has_enforceable_document_origin("null"));
+}
