@@ -16691,3 +16691,55 @@ TEST(JSEngine, DataViewFloat64RoundTrip) {
         "v.getFloat64(0,false).toFixed(5)");
     EXPECT_EQ(result, "3.14159");
 }
+
+// Cycle 877 — TypedArray: Int16Array, Uint32Array, Float32Array, Int8Array max, Uint8Array overflow, TypedArray.from, TypedArray length, TypedArray set
+TEST(JSEngine, Int16ArrayValue) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("new Int16Array([-1000])[0]");
+    EXPECT_EQ(result, "-1000");
+}
+
+TEST(JSEngine, Uint32ArrayMaxValue) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("new Uint32Array([4294967295])[0]");
+    EXPECT_EQ(result, "4294967295");
+}
+
+TEST(JSEngine, Float32ArrayValue) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("new Float32Array([3.14])[0].toFixed(2)");
+    EXPECT_EQ(result, "3.14");
+}
+
+TEST(JSEngine, Int8ArrayMaxValue) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("new Int8Array([127])[0]");
+    EXPECT_EQ(result, "127");
+}
+
+TEST(JSEngine, Uint8ArrayOverflowWraps) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("new Uint8Array([256])[0]");
+    EXPECT_EQ(result, "0");
+}
+
+TEST(JSEngine, TypedArrayFromArray) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("Uint8Array.from([10,20,30])[1]");
+    EXPECT_EQ(result, "20");
+}
+
+TEST(JSEngine, TypedArrayLengthProp) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("new Float64Array(5).length");
+    EXPECT_EQ(result, "5");
+}
+
+TEST(JSEngine, TypedArraySetMethod) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "const a=new Uint8Array(3);"
+        "a.set([7,8,9]);"
+        "a[2]");
+    EXPECT_EQ(result, "9");
+}
