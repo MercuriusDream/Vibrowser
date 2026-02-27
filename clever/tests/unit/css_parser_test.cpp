@@ -4776,3 +4776,75 @@ TEST_F(CSSStylesheetTest, BorderImageRepeatDeclaration) {
         if (d.property == "border-image-repeat") { found = true; break; }
     EXPECT_TRUE(found);
 }
+
+TEST_F(CSSStylesheetTest, BackfaceVisibilityDeclaration) {
+    auto sheet = parse_stylesheet(".card { backface-visibility: hidden; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "backface-visibility") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, PerspectivePixelValueDeclaration) {
+    auto sheet = parse_stylesheet(".scene { perspective: 500px; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "perspective") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, BackgroundBlendModeDeclaration) {
+    auto sheet = parse_stylesheet(".layer { background-blend-mode: multiply; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "background-blend-mode") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, ResizeBothValueDeclaration) {
+    auto sheet = parse_stylesheet("textarea { resize: both; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "resize") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, AppearanceNoneValueDeclaration) {
+    auto sheet = parse_stylesheet("button { appearance: none; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "appearance") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, TouchActionDeclaration) {
+    auto sheet = parse_stylesheet(".slider { touch-action: pan-y; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "touch-action") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, GridAutoRowsDeclaration) {
+    auto sheet = parse_stylesheet(".grid { grid-auto-rows: 200px; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "grid-auto-rows") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, GridAutoColumnsDeclaration) {
+    auto sheet = parse_stylesheet(".grid { grid-auto-columns: 1fr; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "grid-auto-columns") { found = true; break; }
+    EXPECT_TRUE(found);
+}
