@@ -6,12 +6,79 @@
 ## Current Status
 
 **Phase**: Active Development — Testing Blitz across ALL suites
-**Last Active**: 2026-02-28T09:30:00+0900
-**Current Focus**: Cycle 908+
-**Momentum**: 9 suites GREEN, ZERO failures! CSS 484, HTML 440, Layout 556, JS 1177, DOM 463, CORS 241, IPC 454, URL 404, Net 400. 907 cycles done!
-**Cycle**: 907
+**Last Active**: 2026-02-28T16:00:00+0900
+**Current Focus**: Cycle 961+ (URL next)
+**Momentum**: 9 suites GREEN, ZERO failures! CSS 532, HTML 488, Layout 604, JS 1225, DOM 511, CORS 289, IPC 494 (serializer 416), URL 444, Net 448. 960 cycles done!
+**Cycle**: 960
 
 ## Session Log
+
+### Cycles 952-960 — 2026-02-28
+- **Cycles**: 9
+- **Theme**: URL ports/path extensions, Net method_to_string/Request defaults, CSS SVG properties, HTML form/meter/audio, Layout math/ruby/shape, JS Date UTC setters, DOM DirtyFlags, CORS subdomain/blob/file/ACAO, IPC string punctuation
+- **Key Wins**:
+  - Cycle 951: IPC @/#/?/* strings, I32 ±million, F64 0.1, U64 million (ipc 400→408)
+  - Cycle 952: URL port 5000/7000, CSS/XML/TXT extensions, path depth 3/4, IPv4 host (url 436→444)
+  - Cycle 953: Net method_to_string GET/POST/PUT/HEAD/DELETE, Request default method/port/path (net 440→448)
+  - Cycle 954: CSS SVG shape-rendering, color-interpolation, flood-color/opacity, stop-color/opacity, clip-rule, fill-rule (css 524→532)
+  - Cycle 955: HTML form action/method, meter max/value/optimum/low/high, audio autoplay (html 480→488)
+  - Cycle 956: Layout hanging-punctuation, math-style/depth, ruby-align/overhang, shape-margin/image-threshold, text-size-adjust (layout 596→604)
+  - Cycle 957: JS Date setUTCMinutes/Seconds/Milliseconds/Date/Month, setMilliseconds, getHours/getMinutes type (js 1217→1225)
+  - Cycle 958: DOM DirtyFlags clear-after-mark×3, none-initially, style-only, paint-only, all-contains-layout/style (dom 503→511)
+  - Cycle 959: CORS cross-origin subdomain/root, same-origin https, not-eligible file/blob, eligible https, ACAO exact/mismatch (cors 281→289)
+  - Cycle 960: IPC string semicolon/paren/angle-brackets/exclamation/caret/pipe/tilde/ampersand (ipc 408→416)
+
+### Cycles 932-948 — 2026-02-28
+- **Cycles**: 17
+- **Theme**: CORS ACAC/port variants, IPC F64/string/int values, URL fragment/query/port, Net Device-Memory/ECT/RTT/SaveData/Pragma/TE, CSS align/justify/flex-flow/SVG/font-variant, HTML input types/iframe/table attrs, Layout animation-timeline/transform/print-color, JS Date.parse/UTC/constructors/setTime, DOM ClassList/attr vector/sibling/toggle
+- **Key Wins**:
+  - Cycle 932: CORS ACAC true/false, port 8080/8443, URL eligibility with path/query, origin attach (cors 257→265)
+  - Cycle 933: IPC F64 sqrt2/euler, 4xF64, backslash path, I64/U64 values (ipc 470→478)
+  - Cycle 934: URL path numbers, IPv4 host, fragment underscore, query equals, port 1 (url 420→428)
+  - Cycle 935: Net TRACE/CONNECT→method_to_string, X-Powered-By, X-Real-IP, Proxy-Status, EarlyHints 103 (net 424→432)
+  - Cycle 936: CSS font-variant-numeric/ligatures/caps, font-optical-sizing, text-emphasis-style/color, text-rendering, print-color-adjust (css 508→516)
+  - Cycle 937: HTML input type url/checkbox/radio/datetime-local, link media, meta og:image/url, script nomodule (html 464→472)
+  - Cycle 938: Layout container-name empty, contain-intrinsic-height, overscroll-y, offset-rotate/position, margin-trim, column-gap-val, gap (layout 580→588)
+  - Cycle 939: JS Date toLocale/toJSON/valueOf/setUTCFullYear/setUTCHours/getUTCDay (js 1201→1209)
+  - Cycle 940: DOM ClassList to_string/contains/remove, toggle twice, 2-3 attrs, const attr ref, ns empty (dom 487→495)
+  - Cycle 941: CORS ACAC missing blocks credentialed, HTTP+HTTPS diff host cross-origin, same-scheme diff host, doc origin null/empty/file, ACAO port match/mismatch (cors 265→273)
+  - Cycle 942: IPC string with dash/dot/percent/URL path, I32 -100/-1000, U32 1000, I64 1000 (ipc 478→486)
+  - Cycle 943: URL fragment dot/dash/number, query dash/dot, path /v2/users/me, ports 4000/8000 (url 428→436)
+  - Cycle 944: Net Device-Memory, Downlink, Save-Data, ECT, RTT, Pragma no-cache, Service-Worker-Navigation-Preload, TE trailers (net 432→440)
+  - Cycle 945: CSS align/justify-content, flex-flow, stroke-linecap/linejoin, fill/stroke-opacity, dominant-baseline (css 516→524)
+  - Cycle 946: HTML table border/summary, td rowspan, anchor hreflang/ping, iframe srcdoc/loading, form name (html 472→480)
+  - Cycle 947: Layout animation-timeline auto, forced/print-color-adjust, transform-style/box, transform-origin x/y 50%, shape-outside-values empty (layout 588→596); fixed 2 dup names
+  - Cycle 948: JS Date.parse/UTC/fromMillis/epochYear/fromString/constructorWithArgs/instanceof/setTime (js 1209→1217)
+
+### Cycles 922-931 — 2026-02-28
+- **Cycles**: 10
+- **Theme**: DOM Text/sibling/id, CORS ACAO/eligibility, IPC F64/bool/string, URL query/fragment/port, Net NEL/Reporting-Endpoints/Sec-Fetch/Alt-Used/Priority, CSS columns/orphans/widows/font-stretch, HTML fieldset/select-multiple/textarea/button, Layout scroll-margin/overscroll/contain-intrinsic/container, JS Date UTC getters/setHours/Seconds/getTimezoneOffset
+- **Key Wins**:
+  - Cycle 922: DOM Text set_data, sibling chain, id(), TextContentFromChild (dom 471→479)
+  - Cycle 923: CORS ACAO matching, cross-origin port, FTP not enforceable, null doc origin (cors 249→257)
+  - Cycle 924: IPC F64 1.5/-2.0, U8+bool sequences, 4 strings, U32+string (ipc 462→470)
+  - Cycle 925: URL query two params, fragment, port non-standard/high, 3-level subdomain, query+fragment (url 412→420)
+  - Cycle 926: Net NEL, Reporting-Endpoints, Sec-Fetch-User, Sec-CH-UA, Alt-Used, Priority response/request (net 416→424)
+  - Cycle 927: CSS column-count/width/span, orphans, widows, column-rule-style/color, font-stretch (css 500→508)
+  - Cycle 928: HTML fieldset/legend, select-multiple, textarea name/placeholder/disabled, button name/value (html 456→464); fixed has_attribute→iterate
+  - Cycle 929: Layout scroll-margin-right, scroll-padding-right/bottom/left, overscroll-behavior/x, contain-intrinsic-width, container-type (layout 572→580)
+  - Cycle 930: JS Date getUTCMinutes/Seconds/Milliseconds/Date, setHours/Minutes/Seconds, getTimezoneOffset (js 1193→1201)
+  - Cycle 931: DOM sibling prev chain, text data after set/empty, attr removal, ClassList clear/contains (dom 479→487)
+
+### Cycles 908-917 — 2026-02-28
+- **Cycles**: 10
+- **Theme**: Test blitz round 2 — Net HTTP headers (WWW-Auth/Via/X-Fwd/traceparent/baggage/Content-Encoding/Link-preload/Expires), CSS (contain/overscroll/scrollbar-gutter/color-scheme/hyphens/word-break), HTML (option/optgroup/meter/progress/td-th attrs), Layout defaults (white-space-pre/nowrap/collapse, align-self, z-index, grid-column/row), JS Date methods, DOM Element attrs/first-last-child, CORS subdomain/enforceable, IPC string content, URL domain parts/segments
+- **Key Wins**:
+  - Cycle 908: Net WWW-Auth/Proxy-Auth/Via/X-Forwarded-Host/Proto/traceparent/baggage/X-Request-Id (net 400→408)
+  - Cycle 909: CSS contain/overscroll-behavior-x/y/scrollbar-gutter/color-scheme/hyphens/word-break (css 484→492)
+  - Cycle 910: HTML option/optgroup/meter/progress/td/th attributes (html 440→448)
+  - Cycle 911: Layout white-space-pre/nowrap/collapse, align-self, z-index, grid-column-start/end, grid-row-start (layout 556→564)
+  - Cycle 912: JS Date getHours/Minutes/Seconds/Ms/Time/toISOString/now/getDay (js 1177→1185)
+  - Cycle 913: DOM Element tagname/attrs/childcount, first/last-child; fixed tag_name() is method not field (dom 463→471)
+  - Cycle 914: CORS www-subdomain/api-subdomain cross-origin, empty ACAO, null-doc-attach, enforceable http/https/empty (cors 241→249)
+  - Cycle 915: IPC string with colon/equals/brackets, u8-u16-u32 sequences, i32-string combinations (ipc 454→462)
+  - Cycle 916: URL hostname parts, port preservation, 3/4/5-segment paths, no-query/no-fragment (url 404→412)
+  - Cycle 917: Net Content-Encoding gzip/br/deflate/zstd, Link preload/prefetch, Expires, Accept-Patch (net 408→416)
 
 ### Cycles 891-907 — 2026-02-28
 - **Cycles**: 17
@@ -5772,12 +5839,12 @@
 
 | Metric | Value |
 |--------|-------|
-| Total Sessions | 170 |
-| Total Cycles | 858 |
+| Total Sessions | 172 |
+| Total Cycles | 960 |
 | Files Created | ~135 |
 | Files Modified | 115+ |
-| Lines Added (est.) | 180000+ |
-| Tests Added | 4027 |
+| Lines Added (est.) | 181500+ |
+| Tests Added | 4315 |
 | Bugs Fixed | 233 |
 | Features Added | 2589 |
 
@@ -5787,7 +5854,18 @@
 
 Build: `cd clever && cmake -S . -B build && cmake --build build && ctest --test-dir build`
 
-**3808+ tests, 13 suites green, 12 libraries (QuickJS!), 1 macOS app, ZERO warnings. v0.7.0. CYCLE 445! 2589+ FEATURES! 231 BUGS FIXED! ANTHROPIC.COM LOADS!**
+**4315+ tests, 9 unit suites GREEN (CSS 532, HTML 488, Layout 604, JS 1225, DOM 511, CORS 289, IPC 494, URL 444, Net 448), ZERO failures. CYCLE 960! From 3808 in session start.**
+
+**Next cycle 961: URL tests (url_parser_test.cpp at 397). Rotation: URL→Net→CSS→HTML→Layout→JS→DOM→CORS→IPC. All builds clean.**
+
+**API facts confirmed:**
+- CSS `@media` nested rules NOT supported in parse_stylesheet — use plain selectors
+- HTML `SimpleNode*` has `attributes` vector but NO `has_attribute()` method — iterate manually
+- `EventTarget` is separate class, NOT inherited by Element — `EventTarget t; t.add_event_listener(); t.dispatch_event(evt, *node);`
+- `remove_all_listeners(type)` — no per-listener removal
+- HTTP Method enum: GET/POST/PUT/DELETE_METHOD/HEAD/OPTIONS/PATCH only (no Trace/Connect)
+- `Response::status` (not `status_code`)
+- Serializer: write_f64/read_f64 (no f32), write_u16/read_u16 (no i16)
 
 **Current implementation vs full browser comparison**:
 - Current implementation: robust single-process browser shell with full JS engine integration, broad DOM/CSS/Fetch coverage, and hardened HTTP/1.x/CORS/CSP policy enforcement.

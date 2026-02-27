@@ -3081,3 +3081,52 @@ TEST(URLParser, HostIsIpv4Like) {
     ASSERT_TRUE(url.has_value());
     EXPECT_EQ(url->host, "192.168.1.100");
 }
+
+TEST(URLParser, PathWithPngExtension) {
+    auto url = parse("https://example.com/images/logo.png");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->path, "/images/logo.png");
+}
+
+TEST(URLParser, PathWithSvgExtension) {
+    auto url = parse("https://example.com/icons/arrow.svg");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->path, "/icons/arrow.svg");
+}
+
+TEST(URLParser, PathWithPdfExtension) {
+    auto url = parse("https://example.com/docs/report.pdf");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->path, "/docs/report.pdf");
+}
+
+TEST(URLParser, PathWithJsExtension) {
+    auto url = parse("https://cdn.example.com/js/bundle.js");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->path, "/js/bundle.js");
+}
+
+TEST(URLParser, QueryWithEquals) {
+    auto url = parse("https://example.com/search?q=hello%3Dworld");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_FALSE(url->query.empty());
+}
+
+TEST(URLParser, Port9090Preserved) {
+    auto url = parse("http://localhost:9090/metrics");
+    ASSERT_TRUE(url.has_value());
+    ASSERT_TRUE(url->port.has_value());
+    EXPECT_EQ(*url->port, 9090);
+}
+
+TEST(URLParser, HostWithDoubleHyphen) {
+    auto url = parse("https://my--host.example.com/page");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->host, "my--host.example.com");
+}
+
+TEST(URLParser, PathWithTwoExtensions) {
+    auto url = parse("https://example.com/archive.tar.gz");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->path, "/archive.tar.gz");
+}
