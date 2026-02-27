@@ -1772,3 +1772,42 @@ TEST(CORSPolicyTest, IPAddressOriginIsEnforceable) {
 TEST(CORSPolicyTest, IPAddressIsCorsEligibleRequestUrl) {
     EXPECT_TRUE(is_cors_eligible_request_url("http://10.0.0.1/api/data"));
 }
+
+TEST(CORSPolicyTest, SubpathUrlIsCorsEligible) {
+    EXPECT_TRUE(is_cors_eligible_request_url("https://example.com/api/v1/data"));
+}
+
+TEST(CORSPolicyTest, PortMismatchIsCrossOrigin) {
+    EXPECT_TRUE(is_cross_origin("https://example.com", "https://example.com:8080/data"));
+}
+
+TEST(CORSPolicyTest, SchemeMismatchIsCrossOrigin) {
+    EXPECT_TRUE(is_cross_origin("http://example.com", "https://example.com/data"));
+}
+
+TEST(CORSPolicyTest, HostMismatchIsCrossOrigin) {
+    EXPECT_TRUE(is_cross_origin("https://example.com", "https://api.example.com/data"));
+}
+
+TEST(CORSPolicyTest, ACAOWrongOriginDenies) {
+    clever::net::HeaderMap headers;
+    headers.set("access-control-allow-origin", "https://other.example.com");
+    EXPECT_FALSE(cors_allows_response("https://app.example.com", "https://api.example.com/data", headers, false));
+}
+
+TEST(CORSPolicyTest, CorsAllowsWhenACAOMatchesOrigin) {
+    clever::net::HeaderMap headers;
+    headers.set("access-control-allow-origin", "https://app.example.com");
+    EXPECT_TRUE(cors_allows_response("https://app.example.com", "https://api.example.com/data", headers, false));
+}
+
+TEST(CORSPolicyTest, ACAOExactMatchWithCredentialsAllowed) {
+    clever::net::HeaderMap headers;
+    headers.set("access-control-allow-origin", "https://app.example.com");
+    headers.set("access-control-allow-credentials", "true");
+    EXPECT_TRUE(cors_allows_response("https://app.example.com", "https://api.example.com/data", headers, true));
+}
+
+TEST(CORSPolicyTest, HttpsQueryStringUrlIsCorsEligible) {
+    EXPECT_TRUE(is_cors_eligible_request_url("https://example.com/search?q=hello&page=2"));
+}
