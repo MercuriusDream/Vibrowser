@@ -1237,3 +1237,56 @@ TEST(CORSPolicyTest, NormalizeOutgoingOriginHeaderReplaces) {
 TEST(CORSPolicyTest, EmptyStringNotValidOriginForCORS) {
     EXPECT_FALSE(has_enforceable_document_origin(""));
 }
+
+// CORS: cors_allows_response with ACAC and credentials
+TEST(CORSPolicyTest, CORSAllowsResponseWithACAC) {
+    clever::net::HeaderMap resp_headers;
+    resp_headers.set("Access-Control-Allow-Origin", "https://example.com");
+    resp_headers.set("Access-Control-Allow-Credentials", "true");
+    EXPECT_TRUE(cors_allows_response("https://example.com",
+                                     "https://api.other.com/data",
+                                     resp_headers, true));
+}
+
+// CORS: has_enforceable_origin for ftp scheme is false
+TEST(CORSPolicyTest, FtpSchemeNotEnforceable) {
+    EXPECT_FALSE(has_enforceable_document_origin("ftp://ftp.example.com"));
+}
+
+// CORS: should_attach_origin for same scheme different port
+TEST(CORSPolicyTest, ShouldAttachOriginSchemeMatchDiffPort) {
+    EXPECT_TRUE(should_attach_origin_header("https://example.com:8443",
+                                             "https://example.com:9443/api"));
+}
+
+// CORS: is_cross_origin port 80 vs 8080 is cross-origin
+TEST(CORSPolicyTest, IsCrossOriginPort80vs8080) {
+    EXPECT_TRUE(is_cross_origin("http://example.com",
+                                 "http://example.com:8080/api"));
+}
+
+// CORS: is_cross_origin same host same port false
+TEST(CORSPolicyTest, IsCrossOriginSameHostPortFalse) {
+    EXPECT_FALSE(is_cross_origin("https://api.example.com:8443",
+                                  "https://api.example.com:8443/resource"));
+}
+
+// CORS: cors_allows_response no ACAO header fails
+TEST(CORSPolicyTest, CORSNoACAOHeaderFails) {
+    clever::net::HeaderMap resp_headers;
+    // No Access-Control-Allow-Origin
+    EXPECT_FALSE(cors_allows_response("https://example.com",
+                                      "https://api.other.com/data",
+                                      resp_headers, false));
+}
+
+// CORS: has_enforceable_origin for about:blank is false
+TEST(CORSPolicyTest, AboutBlankNotEnforceable) {
+    EXPECT_FALSE(has_enforceable_document_origin("about:blank"));
+}
+
+// CORS: should not attach origin for same-origin http
+TEST(CORSPolicyTest, ShouldNotAttachOriginSameOriginHttp) {
+    EXPECT_FALSE(should_attach_origin_header("http://example.com",
+                                              "http://example.com/page"));
+}
