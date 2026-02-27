@@ -11139,3 +11139,191 @@ TEST(LayoutEngineTest, TextOverflowEllipsisV61) {
     EXPECT_EQ(root->overflow, 1);
     EXPECT_EQ(root->text_overflow, 1);
 }
+
+// Test V62_001: Nested block width inheritance
+TEST(LayoutEngineTest, NestedBlockWidthInheritanceV62) {
+    // Verify nested block tree structure with append_child
+    auto root = make_block("div");
+    root->specified_width = 600.0f;
+    root->specified_height = 400.0f;
+
+    auto parent = make_block("section");
+    parent->specified_width = 500.0f;
+    parent->specified_height = 300.0f;
+
+    auto child = make_block("p");
+    child->specified_width = 200.0f;
+    child->specified_height = 100.0f;
+
+    parent->append_child(std::move(child));
+    root->append_child(std::move(parent));
+
+    // Verify tree structure
+    EXPECT_EQ(root->children.size(), 1u);
+    EXPECT_EQ(root->children[0]->children.size(), 1u);
+    EXPECT_FLOAT_EQ(root->specified_width, 600.0f);
+    EXPECT_FLOAT_EQ(root->children[0]->specified_width, 500.0f);
+    EXPECT_FLOAT_EQ(root->children[0]->children[0]->specified_width, 200.0f);
+}
+
+// Test V62_002: Auto height computation for block element
+TEST(LayoutEngineTest, AutoHeightComputationV62) {
+    auto root = make_block("div");
+    root->specified_width = 400.0f;
+    root->specified_height = -1.0f;  // auto height
+
+    auto child1 = make_block("div");
+    child1->specified_width = 300.0f;
+    child1->specified_height = 80.0f;
+
+    auto child2 = make_block("div");
+    child2->specified_width = 300.0f;
+    child2->specified_height = 120.0f;
+
+    root->append_child(std::move(child1));
+    root->append_child(std::move(child2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 400.0f, 600.0f);
+
+    // Root height should be sum of children
+    EXPECT_FLOAT_EQ(root->geometry.height, 200.0f);
+}
+
+// Test V62_003: Fixed position elements
+TEST(LayoutEngineTest, FixedPositionElementsV62) {
+    auto root = make_block("div");
+    root->specified_width = 800.0f;
+    root->specified_height = 600.0f;
+
+    auto fixed = make_block("div");
+    fixed->specified_width = 100.0f;
+    fixed->specified_height = 100.0f;
+    fixed->position_type = 3;  // fixed
+    fixed->geometry.x = 50.0f;
+    fixed->geometry.y = 50.0f;
+
+    auto normal = make_block("div");
+    normal->specified_width = 200.0f;
+    normal->specified_height = 200.0f;
+
+    root->append_child(std::move(fixed));
+    root->append_child(std::move(normal));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // Fixed element should retain its position
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.width, 100.0f);
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.height, 100.0f);
+    EXPECT_EQ(root->children[0]->position_type, 3);
+}
+
+// Test V62_004: Relative position offsets
+TEST(LayoutEngineTest, RelativePositionOffsetsV62) {
+    auto root = make_block("div");
+    root->specified_width = 600.0f;
+    root->specified_height = 400.0f;
+
+    auto relative = make_block("div");
+    relative->specified_width = 150.0f;
+    relative->specified_height = 150.0f;
+    relative->position_type = 1;  // relative
+    relative->geometry.margin.left = 20.0f;
+    relative->geometry.margin.top = 30.0f;
+
+    root->append_child(std::move(relative));
+
+    LayoutEngine engine;
+    engine.compute(*root, 600.0f, 400.0f);
+
+    // Relative element should apply margin offsets
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.width, 150.0f);
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.height, 150.0f);
+    EXPECT_EQ(root->children[0]->position_type, 1);
+}
+
+// Test V62_005: Max-height clamping
+TEST(LayoutEngineTest, MaxHeightClampingV62) {
+    auto root = make_block("div");
+    root->specified_width = 400.0f;
+    root->specified_height = 500.0f;
+
+    auto child = make_block("div");
+    child->specified_width = 300.0f;
+    child->specified_height = 350.0f;
+    child->max_height = 200.0f;  // Clamp max height
+
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 400.0f, 500.0f);
+
+    // Child height should be clamped to max_height
+    EXPECT_LE(root->children[0]->geometry.height, 200.0f);
+}
+
+// Test V62_006: Border width contribution
+TEST(LayoutEngineTest, BorderWidthContributionV62) {
+    auto root = make_block("div");
+    root->specified_width = 400.0f;
+    root->specified_height = 300.0f;
+
+    auto child = make_block("div");
+    child->specified_width = 200.0f;
+    child->specified_height = 150.0f;
+    child->geometry.border.top = 5.0f;
+    child->geometry.border.right = 5.0f;
+    child->geometry.border.bottom = 5.0f;
+    child->geometry.border.left = 5.0f;
+
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 400.0f, 300.0f);
+
+    // Border should be included in box model
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.width, 200.0f);
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.height, 150.0f);
+}
+
+// Test V62_007: Specified vs computed dimensions
+TEST(LayoutEngineTest, SpecifiedVsComputedDimensionsV62) {
+    auto root = make_block("div");
+    root->specified_width = 500.0f;
+    root->specified_height = 400.0f;
+
+    auto child = make_block("div");
+    child->specified_width = 250.0f;  // specified
+    child->specified_height = 150.0f;  // specified
+
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 500.0f, 400.0f);
+
+    // Computed dimensions should match specified dimensions
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.width, 250.0f);
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.height, 150.0f);
+    EXPECT_FLOAT_EQ(root->children[0]->specified_width, 250.0f);
+    EXPECT_FLOAT_EQ(root->children[0]->specified_height, 150.0f);
+}
+
+// Test V62_008: Empty block layout
+TEST(LayoutEngineTest, EmptyBlockLayoutV62) {
+    auto root = make_block("div");
+    root->specified_width = 400.0f;
+    root->specified_height = -1.0f;  // auto height
+
+    auto emptyChild = make_block("div");
+    emptyChild->specified_width = 300.0f;
+    emptyChild->specified_height = -1.0f;  // auto height, no children
+
+    root->append_child(std::move(emptyChild));
+
+    LayoutEngine engine;
+    engine.compute(*root, 400.0f, 600.0f);
+
+    // Empty block with auto height should collapse to 0
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.height, 0.0f);
+}

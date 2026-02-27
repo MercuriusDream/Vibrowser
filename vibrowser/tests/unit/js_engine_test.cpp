@@ -21646,3 +21646,184 @@ TEST(JSEngine, StringTemplateTagFunctionsCycle1546) {
     EXPECT_EQ(result, "Name: [Alice], Age: [30]");
 }
 
+// ============================================================================
+// ClosureScopeChainsCycle1555: Test closure scope chains and variable capture
+// ============================================================================
+TEST(JSEngine, ClosureScopeChainsCycle1555) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        function outer(x) {
+            return function middle(y) {
+                return function inner(z) {
+                    return x + y + z;
+                };
+            };
+        }
+
+        const add = outer(10)(20)(30);
+        add
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "60");
+}
+
+// ============================================================================
+// IIFEPatternsCycle1555: Test immediately invoked function expressions
+// ============================================================================
+TEST(JSEngine, IIFEPatternsCycle1555) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        const result = (function(a, b) {
+            const local = a * b;
+            return local + 5;
+        })(3, 4);
+
+        result
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "17");
+}
+
+// ============================================================================
+// PrototypeChainsCycle1555: Test prototype chain inheritance
+// ============================================================================
+TEST(JSEngine, PrototypeChainsCycle1555) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        function Animal(name) {
+            this.name = name;
+        }
+        Animal.prototype.speak = function() {
+            return 'Animal: ' + this.name;
+        };
+
+        function Dog(name) {
+            Animal.call(this, name);
+        }
+        Dog.prototype = Object.create(Animal.prototype);
+        Dog.prototype.speak = function() {
+            return 'Dog: ' + this.name;
+        };
+
+        const dog = new Dog('Buddy');
+        dog.speak()
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "Dog: Buddy");
+}
+
+// ============================================================================
+// ObjectCreateCycle1555: Test Object.create for prototype-based inheritance
+// ============================================================================
+TEST(JSEngine, ObjectCreateCycle1555) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        const parent = {
+            greet() { return 'Hello from ' + this.name; }
+        };
+
+        const child = Object.create(parent);
+        child.name = 'Child';
+
+        const result1 = child.greet();
+        const result2 = child.hasOwnProperty('greet');
+        const result3 = parent.hasOwnProperty('greet');
+
+        result1 + '|' + result2 + '|' + result3
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "Hello from Child|false|true");
+}
+
+// ============================================================================
+// PropertyDescriptorsCycle1555: Test property descriptor access and enumeration
+// ============================================================================
+TEST(JSEngine, PropertyDescriptorsCycle1555) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        const obj = { x: 10, y: 20 };
+
+        const keys = Object.keys(obj);
+        const entries = Object.entries(obj);
+
+        let keyStr = '';
+        for (let k of keys) {
+            keyStr += k + ',';
+        }
+
+        let entryStr = '';
+        for (let [k, v] of entries) {
+            entryStr += k + ':' + v + ',';
+        }
+
+        keyStr + '|' + entryStr
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "x,y,|x:10,y:20,");
+}
+
+// ============================================================================
+// GetterSetterDefinitionsCycle1555: Test getter and setter methods
+// ============================================================================
+TEST(JSEngine, GetterSetterDefinitionsCycle1555) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        const obj = {
+            _value: 0,
+            get value() {
+                return this._value;
+            },
+            set value(v) {
+                this._value = v * 2;
+            }
+        };
+
+        obj.value = 5;
+        const result1 = obj.value;
+        const result2 = obj._value;
+
+        result1 + '|' + result2
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "10|10");
+}
+
+// ============================================================================
+// ArraySortingWithComparatorCycle1555: Test array sorting with custom comparators
+// ============================================================================
+TEST(JSEngine, ArraySortingWithComparatorCycle1555) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        const arr = [3, 1, 4, 1, 5, 9, 2, 6];
+
+        const ascending = arr.slice().sort((a, b) => a - b);
+        const descending = arr.slice().sort((a, b) => b - a);
+
+        const ascStr = ascending.join(',');
+        const descStr = descending.join(',');
+
+        ascStr + '|' + descStr
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1,1,2,3,4,5,6,9|9,6,5,4,3,2,1,1");
+}
+
+// ============================================================================
+// StringManipulationChainsCycle1555: Test chained string method calls
+// ============================================================================
+TEST(JSEngine, StringManipulationChainsCycle1555) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        const str = '  hello world  ';
+
+        const result1 = str.trim();
+        const result2 = str.trim().toUpperCase();
+        const result3 = str.trim().toUpperCase().replace('WORLD', 'JS');
+        const result4 = str.trim().split(' ').reverse().join('-');
+
+        result1 + '|' + result2 + '|' + result3 + '|' + result4
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "hello world|HELLO WORLD|HELLO JS|world-hello");
+}
+

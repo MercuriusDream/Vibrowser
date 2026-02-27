@@ -9919,3 +9919,158 @@ TEST(TreeBuilder, VoidElementsAndSelfClosingV61) {
     EXPECT_EQ(links.size(), 1u);
     EXPECT_EQ(metas.size(), 1u);
 }
+
+// Test 1: Deeply nested lists (5+ levels)
+TEST(TreeBuilder, DeeplyNestedListsV62) {
+    auto doc = parse("<html><body><ul><li>Level 1<ul><li>Level 2<ul><li>Level 3<ul><li>Level 4<ul><li>Level 5<ul><li>Level 6</li></ul></li></ul></li></ul></li></ul></li></ul></li></ul></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto uls = doc->find_all_elements("ul");
+    auto lis = doc->find_all_elements("li");
+
+    // Should have 6 ul elements (one for each level)
+    EXPECT_EQ(uls.size(), 6u);
+    // Should have 6 li elements (one for each level)
+    EXPECT_EQ(lis.size(), 6u);
+
+    // Verify deepest level content
+    auto deepest = doc->find_element("li");
+    ASSERT_NE(deepest, nullptr);
+    std::string text = deepest->text_content();
+    EXPECT_TRUE(text.find("Level 1") != std::string::npos);
+}
+
+// Test 2: Table with caption, thead, tbody, tfoot
+TEST(TreeBuilder, CompleteTableStructureV62) {
+    auto doc = parse("<html><body><table><caption>Sales Data</caption><thead><tr><th>Quarter</th><th>Revenue</th></tr></thead><tbody><tr><td>Q1</td><td>$1M</td></tr><tr><td>Q2</td><td>$2M</td></tr></tbody><tfoot><tr><td>Total</td><td>$3M</td></tr></tfoot></table></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* table = doc->find_element("table");
+    ASSERT_NE(table, nullptr);
+
+    auto* caption = doc->find_element("caption");
+    ASSERT_NE(caption, nullptr);
+    EXPECT_EQ(caption->text_content(), "Sales Data");
+
+    auto* thead = doc->find_element("thead");
+    auto* tbody = doc->find_element("tbody");
+    auto* tfoot = doc->find_element("tfoot");
+
+    ASSERT_NE(thead, nullptr);
+    ASSERT_NE(tbody, nullptr);
+    ASSERT_NE(tfoot, nullptr);
+
+    auto header_cells = thead->find_all_elements("th");
+    auto body_rows = tbody->find_all_elements("tr");
+    auto footer_rows = tfoot->find_all_elements("tr");
+
+    EXPECT_EQ(header_cells.size(), 2u);
+    EXPECT_EQ(body_rows.size(), 2u);
+    EXPECT_EQ(footer_rows.size(), 1u);
+}
+
+// Test 3: Definition lists (dl/dt/dd)
+TEST(TreeBuilder, DefinitionListsV62) {
+    auto doc = parse("<html><body><dl><dt>HTML</dt><dd>Hypertext Markup Language</dd><dt>CSS</dt><dd>Cascading Style Sheets</dd><dt>JavaScript</dt><dd>Programming language for web</dd></dl></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* dl = doc->find_element("dl");
+    ASSERT_NE(dl, nullptr);
+
+    auto dts = doc->find_all_elements("dt");
+    auto dds = doc->find_all_elements("dd");
+
+    EXPECT_EQ(dts.size(), 3u);
+    EXPECT_EQ(dds.size(), 3u);
+
+    EXPECT_EQ(dts[0]->text_content(), "HTML");
+    EXPECT_EQ(dds[0]->text_content(), "Hypertext Markup Language");
+    EXPECT_EQ(dts[1]->text_content(), "CSS");
+    EXPECT_EQ(dts[2]->text_content(), "JavaScript");
+}
+
+// Test 4: Ruby annotations (ruby/rt/rp)
+TEST(TreeBuilder, RubyAnnotationsV62) {
+    auto doc = parse("<html><body><p>The word <ruby>日本<rt>にほん</rt></ruby> means Japan.</p><p><ruby>東京<rp>(</rp><rt>とうきょう</rt><rp>)</rp></ruby> is Tokyo.</p></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto rubies = doc->find_all_elements("ruby");
+    auto rts = doc->find_all_elements("rt");
+    auto rps = doc->find_all_elements("rp");
+
+    EXPECT_EQ(rubies.size(), 2u);
+    EXPECT_EQ(rts.size(), 2u);
+    EXPECT_EQ(rps.size(), 2u);
+
+    std::string text = doc->text_content();
+    EXPECT_TRUE(text.find("Japan") != std::string::npos);
+    EXPECT_TRUE(text.find("Tokyo") != std::string::npos);
+}
+
+// Test 5: Dialog element
+TEST(TreeBuilder, DialogElementV62) {
+    auto doc = parse("<html><body><dialog id=\"confirm\" open><form method=\"dialog\"><p>Are you sure?</p><button value=\"yes\">Yes</button><button value=\"no\">No</button></form></dialog></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* dialog = doc->find_element("dialog");
+    ASSERT_NE(dialog, nullptr);
+
+    auto* form = dialog->find_element("form");
+    ASSERT_NE(form, nullptr);
+
+    auto buttons = dialog->find_all_elements("button");
+    EXPECT_EQ(buttons.size(), 2u);
+
+    std::string dialog_text = dialog->text_content();
+    EXPECT_TRUE(dialog_text.find("Are you sure") != std::string::npos);
+}
+
+// Test 6: Meter element
+TEST(TreeBuilder, MeterElementV62) {
+    auto doc = parse("<html><body><p>Disk usage: <meter value=\"6\" min=\"0\" max=\"10\">6 out of 10</meter></p><p>Temperature: <meter low=\"15\" high=\"30\" value=\"24\">Normal</meter></p></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto meters = doc->find_all_elements("meter");
+    EXPECT_EQ(meters.size(), 2u);
+
+    ASSERT_GE(meters.size(), 1u);
+    std::string meter_text = meters[0]->text_content();
+    EXPECT_TRUE(meter_text.find("6") != std::string::npos || meter_text.find("out of 10") != std::string::npos);
+}
+
+// Test 7: Progress element
+TEST(TreeBuilder, ProgressElementV62) {
+    auto doc = parse("<html><body><p>Download: <progress value=\"25\" max=\"100\">25%</progress></p><p>Installation: <progress id=\"install\" max=\"200\"><span>50</span>/<span>200</span></progress></p></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto progresses = doc->find_all_elements("progress");
+    EXPECT_EQ(progresses.size(), 2u);
+
+    auto spans = doc->find_all_elements("span");
+    EXPECT_EQ(spans.size(), 2u);
+
+    std::string doc_text = doc->text_content();
+    EXPECT_TRUE(doc_text.find("Download") != std::string::npos);
+    EXPECT_TRUE(doc_text.find("Installation") != std::string::npos);
+}
+
+// Test 8: Details and summary with nested content
+TEST(TreeBuilder, DetailsAndSummaryV62) {
+    auto doc = parse("<html><body><details open id=\"details1\"><summary>Installation Instructions</summary><ol><li>Download the file</li><li>Extract the archive</li><li>Run the installer</li></ol></details><details id=\"details2\"><summary>FAQ</summary><p>Question 1: How to use?</p><p>Answer: Read the manual.</p></details></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto details_elems = doc->find_all_elements("details");
+    EXPECT_EQ(details_elems.size(), 2u);
+
+    auto summaries = doc->find_all_elements("summary");
+    EXPECT_EQ(summaries.size(), 2u);
+
+    EXPECT_EQ(summaries[0]->text_content(), "Installation Instructions");
+    EXPECT_EQ(summaries[1]->text_content(), "FAQ");
+
+    auto lis = doc->find_all_elements("li");
+    EXPECT_EQ(lis.size(), 3u);
+
+    auto ps = doc->find_all_elements("p");
+    EXPECT_EQ(ps.size(), 2u);
+}

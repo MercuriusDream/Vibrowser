@@ -7772,3 +7772,107 @@ TEST(URLParser, UnicodePathSegmentV61) {
     // Path should contain the UTF-8 encoded unicode characters
     EXPECT_TRUE(result->path.find("caf") != std::string::npos);
 }
+
+// =============================================================================
+// Test V62-1: URL with @ symbol in path (not authentication)
+// =============================================================================
+TEST(URLParser, AtSymbolInPathV62) {
+    auto result = parse("https://example.com/user@domain/profile");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/user@domain/profile");
+    EXPECT_TRUE(result->username.empty());
+    EXPECT_TRUE(result->password.empty());
+}
+
+// =============================================================================
+// Test V62-2: URL with multiple query parameters
+// =============================================================================
+TEST(URLParser, MultipleQueryParametersV62) {
+    auto result = parse("https://example.com/search?q=test&sort=asc&limit=10&offset=5");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/search");
+    EXPECT_EQ(result->query, "q=test&sort=asc&limit=10&offset=5");
+    EXPECT_TRUE(result->fragment.empty());
+}
+
+// =============================================================================
+// Test V62-3: URL with empty query string (? present but no query value)
+// =============================================================================
+TEST(URLParser, EmptyQueryStringV62) {
+    auto result = parse("https://example.com/path?");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/path");
+    EXPECT_TRUE(result->query.empty());
+    EXPECT_TRUE(result->fragment.empty());
+}
+
+// =============================================================================
+// Test V62-4: URL with hash-only fragment (# present but no fragment value)
+// =============================================================================
+TEST(URLParser, EmptyFragmentV62) {
+    auto result = parse("https://example.com/page#");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/page");
+    EXPECT_TRUE(result->query.empty());
+    EXPECT_TRUE(result->fragment.empty());
+}
+
+// =============================================================================
+// Test V62-5: URL with port 0 (edge case)
+// =============================================================================
+TEST(URLParser, PortZeroV62) {
+    auto result = parse("http://example.com:0/path");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "example.com");
+    ASSERT_TRUE(result->port.has_value());
+    EXPECT_EQ(result->port.value(), 0);
+    EXPECT_EQ(result->path, "/path");
+}
+
+// =============================================================================
+// Test V62-6: URL with extremely long path
+// =============================================================================
+TEST(URLParser, ExtremelyLongPathV62) {
+    std::string longPath = "/segment";
+    for (int i = 0; i < 50; ++i) {
+        longPath += "/subsegment";
+    }
+    std::string url = "https://example.com" + longPath;
+    auto result = parse(url);
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, longPath);
+}
+
+// =============================================================================
+// Test V62-7: URL with spaces in path (should be percent-encoded)
+// =============================================================================
+TEST(URLParser, SpacesInPathV62) {
+    auto result = parse("https://example.com/hello world/test file");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "example.com");
+    // Spaces should be encoded as %20, then double-encoded to %2520
+    EXPECT_EQ(result->path, "/hello%20world/test%20file");
+}
+
+// =============================================================================
+// Test V62-8: Scheme-only URL (no authority, no path)
+// =============================================================================
+TEST(URLParser, SchemeOnlyURLV62) {
+    auto result = parse("file://");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "file");
+    EXPECT_TRUE(result->host.empty());
+    EXPECT_EQ(result->path, "/");
+}

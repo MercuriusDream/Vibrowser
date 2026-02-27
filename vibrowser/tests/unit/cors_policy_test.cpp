@@ -4955,3 +4955,66 @@ TEST(CORSPolicy, WssSchemeNotCorsEligibleInRequestUrlV61) {
     headers.set("Access-Control-Allow-Origin", "wss://app.example");
     EXPECT_FALSE(cors_allows_response("https://app.example", "wss://api.example/ws", headers, false));
 }
+
+// --- NEW CORS TESTS V62 ---
+
+TEST(CORSPolicy, SameOriginRequestNoOriginHeaderNeededV62) {
+    clever::net::HeaderMap headers;
+    // Same-origin requests should pass CORS even without Access-Control headers
+    // is_cross_origin returns false for same origin, cors_allows_response may auto-allow
+    headers.set("Content-Type", "application/json");
+    // Same origin: https://app.example to https://app.example/api
+    EXPECT_TRUE(cors_allows_response("https://app.example", "https://app.example/api", headers, false));
+}
+
+TEST(CORSPolicy, PortMismatchEdgeCaseHttpDefaultPortV62) {
+    clever::net::HeaderMap headers;
+    // Port 80 default for http, 443 default for https
+    // Explicit :443 in https is not enforceable per spec notes
+    headers.set("Access-Control-Allow-Origin", "https://app.example:443");
+    // Should match https://app.example (443 implicit)
+    EXPECT_TRUE(cors_allows_response("https://app.example", "https://api.example/data", headers, false));
+}
+
+TEST(CORSPolicy, TrailingSlashInAcaoOriginV62) {
+    clever::net::HeaderMap headers;
+    // Origins should not have trailing slashes; ACAO with slash should not match
+    headers.set("Access-Control-Allow-Origin", "https://app.example/");
+    EXPECT_FALSE(cors_allows_response("https://app.example", "https://api.example/", headers, false));
+}
+
+TEST(CORSPolicy, EmptyAcaoHeaderBlocksCorsV62) {
+    clever::net::HeaderMap headers;
+    // Empty ACAO value should not allow any origin
+    headers.set("Access-Control-Allow-Origin", "");
+    EXPECT_FALSE(cors_allows_response("https://app.example", "https://api.example/", headers, false));
+}
+
+TEST(CORSPolicy, LocalhostWithoutPortCrossOriginV62) {
+    clever::net::HeaderMap headers;
+    // localhost and 127.0.0.1 are different origins (different hosts)
+    headers.set("Access-Control-Allow-Origin", "http://127.0.0.1");
+    EXPECT_FALSE(cors_allows_response("http://localhost", "http://127.0.0.1/", headers, false));
+}
+
+TEST(CORSPolicy, IpBasedOriginWithWildcardAcaoV62) {
+    clever::net::HeaderMap headers;
+    // IP-based origins with wildcard ACAO should allow
+    headers.set("Access-Control-Allow-Origin", "*");
+    EXPECT_TRUE(cors_allows_response("http://192.168.1.1", "http://10.0.0.1/", headers, false));
+}
+
+TEST(CORSPolicy, SubdomainMismatchBlocksCorsV62) {
+    clever::net::HeaderMap headers;
+    // Subdomain mismatch: www.example.com vs example.com are different origins
+    headers.set("Access-Control-Allow-Origin", "https://example.com");
+    EXPECT_FALSE(cors_allows_response("https://www.example.com", "https://api.example.com/", headers, false));
+}
+
+TEST(CORSPolicy, DataUrlOriginFragmentAcaoHeaderV62) {
+    clever::net::HeaderMap headers;
+    // Fragment in ACAO header is NOT stripped — treated as literal string
+    headers.set("Access-Control-Allow-Origin", "https://app.example#section");
+    // Does NOT match because ACAO value includes fragment
+    EXPECT_FALSE(cors_allows_response("https://app.example", "https://api.example/data", headers, false));
+}

@@ -9891,3 +9891,148 @@ TEST(DomEvent, ImmediatePropagationStopsAllListenersV61) {
     EXPECT_EQ(execution_log[0], "first");
     EXPECT_TRUE(event.immediate_propagation_stopped());
 }
+
+// ---------------------------------------------------------------------------
+// V62 Tests: Node type checks, document methods, element matching, attributes
+// ---------------------------------------------------------------------------
+
+TEST(DomNode, NodeTypeCheckingV62) {
+    Element elem("div");
+    Text text("hello");
+    Comment comment("note");
+    Document doc;
+
+    EXPECT_EQ(elem.node_type(), NodeType::Element);
+    EXPECT_EQ(text.node_type(), NodeType::Text);
+    EXPECT_EQ(comment.node_type(), NodeType::Comment);
+    EXPECT_EQ(doc.node_type(), NodeType::Document);
+}
+
+TEST(DomDocument, CreateElementAndSetIdV62) {
+    Document doc;
+    auto elem = doc.create_element("input");
+    elem->set_attribute("id", "myInput");
+    Element* elem_ptr = elem.get();
+
+    EXPECT_EQ(elem->get_attribute("id"), "myInput");
+
+    // Register the element in the document's id map
+    doc.register_id("myInput", elem_ptr);
+
+    Element* found = doc.get_element_by_id("myInput");
+    EXPECT_EQ(found, elem_ptr);
+}
+
+TEST(DomElement, AttributeIterationV62) {
+    Element elem("form");
+    elem.set_attribute("action", "/submit");
+    elem.set_attribute("method", "POST");
+    elem.set_attribute("enctype", "multipart/form-data");
+
+    const auto& attrs = elem.attributes();
+    EXPECT_EQ(attrs.size(), 3u);
+
+    std::vector<std::string> names;
+    for (const auto& attr : attrs) {
+        names.push_back(attr.name);
+    }
+    EXPECT_TRUE(std::find(names.begin(), names.end(), "action") != names.end());
+    EXPECT_TRUE(std::find(names.begin(), names.end(), "method") != names.end());
+    EXPECT_TRUE(std::find(names.begin(), names.end(), "enctype") != names.end());
+}
+
+TEST(DomElement, MultipleAttributeRemovalV62) {
+    Element elem("button");
+    elem.set_attribute("disabled", "");
+    elem.set_attribute("aria-label", "Submit");
+    elem.set_attribute("data-id", "123");
+
+    EXPECT_TRUE(elem.has_attribute("disabled"));
+    EXPECT_TRUE(elem.has_attribute("aria-label"));
+    EXPECT_TRUE(elem.has_attribute("data-id"));
+
+    elem.remove_attribute("aria-label");
+    EXPECT_FALSE(elem.has_attribute("aria-label"));
+    EXPECT_TRUE(elem.has_attribute("disabled"));
+    EXPECT_TRUE(elem.has_attribute("data-id"));
+}
+
+TEST(DomNode, DeepParentChildRelationshipV62) {
+    auto root = std::make_unique<Element>("div");
+    auto child = std::make_unique<Element>("p");
+    auto grandchild = std::make_unique<Text>("nested text");
+
+    Element* child_ptr = static_cast<Element*>(child.get());
+    Text* grandchild_ptr = static_cast<Text*>(grandchild.get());
+
+    child_ptr->append_child(std::move(grandchild));
+    root->append_child(std::move(child));
+
+    EXPECT_EQ(grandchild_ptr->parent(), child_ptr);
+    EXPECT_EQ(child_ptr->parent(), root.get());
+    EXPECT_EQ(root->parent(), nullptr);
+}
+
+TEST(DomNode, TextNodeSplitWithSiblingsV62) {
+    auto parent = std::make_unique<Element>("span");
+    auto text1 = std::make_unique<Text>("hello");
+    auto text2 = std::make_unique<Text>(" ");
+    auto text3 = std::make_unique<Text>("world");
+
+    Text* t1 = static_cast<Text*>(text1.get());
+    Text* t2 = static_cast<Text*>(text2.get());
+    Text* t3 = static_cast<Text*>(text3.get());
+
+    parent->append_child(std::move(text1));
+    parent->append_child(std::move(text2));
+    parent->append_child(std::move(text3));
+
+    EXPECT_EQ(parent->child_count(), 3u);
+    EXPECT_EQ(t1->next_sibling(), t2);
+    EXPECT_EQ(t2->next_sibling(), t3);
+    EXPECT_EQ(t3->previous_sibling(), t2);
+    EXPECT_EQ(t2->previous_sibling(), t1);
+
+    std::string combined = parent->text_content();
+    EXPECT_EQ(combined, "hello world");
+}
+
+TEST(DomElement, WhitespaceHandlingInAttributesV62) {
+    Element elem("div");
+    elem.set_attribute("class", "  foo  bar  baz  ");
+    elem.set_attribute("title", "   long title   ");
+
+    EXPECT_EQ(elem.get_attribute("class"), "  foo  bar  baz  ");
+    EXPECT_EQ(elem.get_attribute("title"), "   long title   ");
+
+    const auto& attrs = elem.attributes();
+    EXPECT_EQ(attrs.size(), 2u);
+    for (const auto& attr : attrs) {
+        if (attr.name == "class") {
+            EXPECT_EQ(attr.value, "  foo  bar  baz  ");
+        } else if (attr.name == "title") {
+            EXPECT_EQ(attr.value, "   long title   ");
+        }
+    }
+}
+
+TEST(DomNode, InsertBeforeIntegrityV62) {
+    auto parent = std::make_unique<Element>("ul");
+    auto item1 = std::make_unique<Element>("li");
+    auto item2 = std::make_unique<Element>("li");
+    auto item3 = std::make_unique<Element>("li");
+
+    Element* i1 = static_cast<Element*>(item1.get());
+    Element* i2 = static_cast<Element*>(item2.get());
+    Element* i3 = static_cast<Element*>(item3.get());
+
+    parent->append_child(std::move(item1));
+    parent->append_child(std::move(item3));
+    parent->insert_before(std::move(item2), i3);
+
+    EXPECT_EQ(parent->child_count(), 3u);
+    EXPECT_EQ(i1->next_sibling(), i2);
+    EXPECT_EQ(i2->next_sibling(), i3);
+    EXPECT_EQ(i2->previous_sibling(), i1);
+    EXPECT_EQ(i3->previous_sibling(), i2);
+}

@@ -11396,3 +11396,168 @@ TEST(ResponseTest, Response304NotModifiedWithCacheHeadersV61) {
     EXPECT_TRUE(resp.headers.has("Vary"));
     EXPECT_EQ(resp.body.size(), 0u);
 }
+
+// ============================================================================
+// Cycle V62: 8 New HTTP Request Tests
+// ============================================================================
+
+// Test 1 (V62): OPTIONS request serialization
+TEST(RequestTest, OptionsRequestSerializationV62) {
+    Request req;
+    req.method = Method::OPTIONS;
+    req.host = "api.example.com";
+    req.port = 80;
+    req.use_tls = false;
+    req.path = "/resource";
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    // Verify OPTIONS method in request line
+    EXPECT_TRUE(result.find("OPTIONS /resource HTTP/1.1\r\n") != std::string::npos);
+    // Verify Host header (standard port 80 omitted)
+    EXPECT_TRUE(result.find("Host: api.example.com\r\n") != std::string::npos);
+}
+
+// Test 2 (V62): HEAD request handling
+TEST(RequestTest, HeadRequestHandlingV62) {
+    Request req;
+    req.method = Method::HEAD;
+    req.host = "httpbin.org";
+    req.port = 443;
+    req.use_tls = true;
+    req.path = "/headers";
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    // Verify HEAD method in request line
+    EXPECT_TRUE(result.find("HEAD /headers HTTP/1.1\r\n") != std::string::npos);
+    // Verify Host header (port 443 omitted for HTTPS)
+    EXPECT_TRUE(result.find("Host: httpbin.org\r\n") != std::string::npos);
+    // HEAD requests should have no body
+    EXPECT_TRUE(req.body.empty());
+}
+
+// Test 3 (V62): Empty body POST request
+TEST(RequestTest, EmptyBodyPostRequestV62) {
+    Request req;
+    req.method = Method::POST;
+    req.host = "api.example.com";
+    req.port = 80;
+    req.path = "/submit";
+    // Empty body
+    req.body.clear();
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    // Verify POST method
+    EXPECT_TRUE(result.find("POST /submit HTTP/1.1\r\n") != std::string::npos);
+    // Verify Host header present
+    EXPECT_TRUE(result.find("api.example.com") != std::string::npos);
+    // Body should be empty (no body content after headers)
+    EXPECT_TRUE(req.body.empty());
+}
+
+// Test 4 (V62): Binary body PUT request
+TEST(RequestTest, BinaryBodyPutRequestV62) {
+    Request req;
+    req.method = Method::PUT;
+    req.host = "storage.example.com";
+    req.port = 8080;
+    req.use_tls = false;
+    req.path = "/data/file.bin";
+
+    // Add binary body with null bytes
+    uint8_t binary_data[] = {0x00, 0x01, 0x02, 0xFF, 0xFE, 0xFD};
+    req.body.assign(binary_data, binary_data + sizeof(binary_data));
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    // Verify PUT method
+    EXPECT_TRUE(result.find("PUT /data/file.bin HTTP/1.1\r\n") != std::string::npos);
+    // Verify host is present
+    EXPECT_TRUE(result.find("storage.example.com") != std::string::npos);
+    // Verify body size
+    EXPECT_EQ(req.body.size(), 6u);
+}
+
+// Test 5 (V62): Request with multiple cookies
+TEST(RequestTest, RequestWithMultipleCookiesV62) {
+    Request req;
+    req.method = Method::GET;
+    req.host = "app.example.com";
+    req.port = 443;
+    req.use_tls = true;
+    req.path = "/dashboard";
+
+    // Add multiple Cookie headers (appended)
+    req.headers.append("Cookie", "session_id=abc123");
+    req.headers.append("Cookie", "user_pref=dark_mode");
+    req.headers.append("Cookie", "tracking=xyz789");
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    // Verify GET method
+    EXPECT_TRUE(result.find("GET /dashboard HTTP/1.1\r\n") != std::string::npos);
+    // Verify all cookies are in lowercase header name
+    EXPECT_TRUE(result.find("cookie: session_id=abc123\r\n") != std::string::npos);
+    EXPECT_TRUE(result.find("cookie: user_pref=dark_mode\r\n") != std::string::npos);
+    EXPECT_TRUE(result.find("cookie: tracking=xyz789\r\n") != std::string::npos);
+}
+
+// Test 6 (V62): Accept-Encoding header in request
+TEST(RequestTest, AcceptEncodingHeaderV62) {
+    Request req;
+    req.method = Method::GET;
+    req.host = "compressed.example.com";
+    req.port = 80;
+    req.path = "/data";
+
+    req.headers.set("Accept-Encoding", "gzip, deflate, br");
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    // Verify Accept-Encoding header is in lowercase
+    EXPECT_TRUE(result.find("accept-encoding: gzip, deflate, br\r\n") != std::string::npos);
+}
+
+// Test 7 (V62): User-Agent header serialization
+TEST(RequestTest, UserAgentHeaderSerializationV62) {
+    Request req;
+    req.method = Method::GET;
+    req.host = "browser.example.com";
+    req.port = 443;
+    req.use_tls = true;
+    req.path = "/";
+
+    req.headers.set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36");
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    // Verify User-Agent header is in lowercase
+    EXPECT_TRUE(result.find("user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36\r\n") != std::string::npos);
+}
+
+// Test 8 (V62): URL with query string in request line
+TEST(RequestTest, UrlWithQueryStringInRequestLineV62) {
+    Request req;
+    req.method = Method::GET;
+    req.host = "search.example.com";
+    req.port = 80;
+    req.path = "/search";
+    req.query = "q=test&page=2&sort=relevance";
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    // Verify request line includes full path with query string
+    EXPECT_TRUE(result.find("GET /search?q=test&page=2&sort=relevance HTTP/1.1\r\n") != std::string::npos);
+    // Verify Host header
+    EXPECT_TRUE(result.find("Host: search.example.com\r\n") != std::string::npos);
+}

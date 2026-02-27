@@ -9317,3 +9317,229 @@ TEST(SerializerTest, MixedBinaryAndTextDataV61) {
 
     EXPECT_FALSE(d.has_remaining());
 }
+
+TEST(SerializerTest, RepeatedSameValueWritesV62) {
+    // Test writing the same value multiple times in sequence
+    Serializer s;
+    const uint32_t repeated_value = 0x12345678;
+    for (int i = 0; i < 10; ++i) {
+        s.write_u32(repeated_value);
+    }
+
+    Deserializer d(s.data());
+    for (int i = 0; i < 10; ++i) {
+        EXPECT_EQ(d.read_u32(), repeated_value);
+    }
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, IncrementalBufferGrowthV62) {
+    // Test that buffer grows correctly as data is appended
+    Serializer s;
+
+    // First write: single u8
+    s.write_u8(1);
+    size_t size1 = s.data().size();
+
+    // Second write: u16
+    s.write_u16(256);
+    size_t size2 = s.data().size();
+    EXPECT_GT(size2, size1);
+
+    // Third write: u64
+    s.write_u64(0x123456789ABCDEF0ULL);
+    size_t size3 = s.data().size();
+    EXPECT_GT(size3, size2);
+
+    // Verify the data is intact
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u8(), uint8_t{1});
+    EXPECT_EQ(d.read_u16(), uint16_t{256});
+    EXPECT_EQ(d.read_u64(), uint64_t{0x123456789ABCDEF0ULL});
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, StringLengthLimitsV62) {
+    // Test string serialization with various lengths
+    Serializer s;
+
+    std::string empty_str = "";
+    std::string short_str = "hi";
+    std::string medium_str = "medium length string test";
+    std::string long_str(1000, 'x');  // 1000 character string
+
+    s.write_string(empty_str);
+    s.write_string(short_str);
+    s.write_string(medium_str);
+    s.write_string(long_str);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), empty_str);
+    EXPECT_EQ(d.read_string(), short_str);
+    EXPECT_EQ(d.read_string(), medium_str);
+    EXPECT_EQ(d.read_string(), long_str);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, FloatingPointNaNInfinityV62) {
+    // Test special floating point values: NaN and infinity
+    Serializer s;
+
+    double nan_val = std::nan("");
+    double pos_inf = std::numeric_limits<double>::infinity();
+    double neg_inf = -std::numeric_limits<double>::infinity();
+    double normal_val = 3.14159265359;
+
+    s.write_f64(nan_val);
+    s.write_f64(pos_inf);
+    s.write_f64(neg_inf);
+    s.write_f64(normal_val);
+
+    Deserializer d(s.data());
+    double read_nan = d.read_f64();
+    double read_pos_inf = d.read_f64();
+    double read_neg_inf = d.read_f64();
+    double read_normal = d.read_f64();
+
+    EXPECT_TRUE(std::isnan(read_nan));
+    EXPECT_TRUE(std::isinf(read_pos_inf) && read_pos_inf > 0);
+    EXPECT_TRUE(std::isinf(read_neg_inf) && read_neg_inf < 0);
+    EXPECT_DOUBLE_EQ(read_normal, normal_val);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, SequentialReadOrderValidationV62) {
+    // Test that data is read back in the exact order it was written
+    Serializer s;
+
+    // Write in specific order
+    s.write_u8(11);
+    s.write_u16(222);
+    s.write_u32(3333);
+    s.write_i32(-4444);
+    s.write_u64(55555);
+    s.write_i64(-66666);
+    s.write_string("test");
+    s.write_f64(7.777);
+
+    Deserializer d(s.data());
+
+    // Read in exact same order
+    EXPECT_EQ(d.read_u8(), uint8_t{11});
+    EXPECT_EQ(d.read_u16(), uint16_t{222});
+    EXPECT_EQ(d.read_u32(), uint32_t{3333});
+    EXPECT_EQ(d.read_i32(), int32_t{-4444});
+    EXPECT_EQ(d.read_u64(), uint64_t{55555});
+    EXPECT_EQ(d.read_i64(), int64_t{-66666});
+    EXPECT_EQ(d.read_string(), "test");
+    EXPECT_DOUBLE_EQ(d.read_f64(), 7.777);
+
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, WriteSkipPatternV62) {
+    // Test write-then-skip pattern with partial reads
+    Serializer s;
+
+    // Write data with markers
+    s.write_u32(0xAAAAAAAA);  // marker 1
+    s.write_u32(0x11111111);
+    s.write_u32(0x22222222);
+    s.write_u32(0xBBBBBBBB);  // marker 2
+    s.write_u32(0x33333333);
+    s.write_u32(0xCCCCCCCC);  // marker 3
+
+    Deserializer d(s.data());
+
+    // Read first marker and skip next two values
+    EXPECT_EQ(d.read_u32(), uint32_t{0xAAAAAAAA});
+    d.read_u32();  // skip
+    d.read_u32();  // skip
+
+    // Read second marker
+    EXPECT_EQ(d.read_u32(), uint32_t{0xBBBBBBBB});
+    d.read_u32();  // skip
+
+    // Read final marker
+    EXPECT_EQ(d.read_u32(), uint32_t{0xCCCCCCCC});
+
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, PartialBufferReadsV62) {
+    // Test reading partial data from a larger buffer
+    Serializer s;
+
+    uint8_t data_block1[] = {0x10, 0x20, 0x30, 0x40, 0x50};
+    uint8_t data_block2[] = {0xAA, 0xBB, 0xCC};
+    uint8_t data_block3[] = {0xFF, 0xEE, 0xDD, 0xCC, 0xBB, 0xAA};
+
+    s.write_bytes(data_block1, sizeof(data_block1));
+    s.write_bytes(data_block2, sizeof(data_block2));
+    s.write_bytes(data_block3, sizeof(data_block3));
+
+    Deserializer d(s.data());
+
+    auto read_block1 = d.read_bytes();
+    ASSERT_EQ(read_block1.size(), sizeof(data_block1));
+    for (size_t i = 0; i < sizeof(data_block1); ++i) {
+        EXPECT_EQ(read_block1[i], data_block1[i]);
+    }
+
+    auto read_block2 = d.read_bytes();
+    ASSERT_EQ(read_block2.size(), sizeof(data_block2));
+    for (size_t i = 0; i < sizeof(data_block2); ++i) {
+        EXPECT_EQ(read_block2[i], data_block2[i]);
+    }
+
+    auto read_block3 = d.read_bytes();
+    ASSERT_EQ(read_block3.size(), sizeof(data_block3));
+    for (size_t i = 0; i < sizeof(data_block3); ++i) {
+        EXPECT_EQ(read_block3[i], data_block3[i]);
+    }
+
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, BufferSizeVerificationV62) {
+    // Test verification of buffer sizes after writes
+    Serializer s;
+
+    // Track sizes after each write operation
+    size_t initial_size = s.data().size();
+    EXPECT_EQ(initial_size, size_t{0});
+
+    s.write_u8(1);
+    size_t after_u8 = s.data().size();
+    EXPECT_EQ(after_u8, size_t{1});
+
+    s.write_u16(2);
+    size_t after_u16 = s.data().size();
+    EXPECT_EQ(after_u16, size_t{3});
+
+    s.write_u32(3);
+    size_t after_u32 = s.data().size();
+    EXPECT_EQ(after_u32, size_t{7});
+
+    s.write_u64(4);
+    size_t after_u64 = s.data().size();
+    EXPECT_EQ(after_u64, size_t{15});
+
+    s.write_i32(-5);
+    size_t after_i32 = s.data().size();
+    EXPECT_EQ(after_i32, size_t{19});
+
+    s.write_i64(-6);
+    size_t after_i64 = s.data().size();
+    EXPECT_EQ(after_i64, size_t{27});
+
+    // Verify all data is intact
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u8(), uint8_t{1});
+    EXPECT_EQ(d.read_u16(), uint16_t{2});
+    EXPECT_EQ(d.read_u32(), uint32_t{3});
+    EXPECT_EQ(d.read_u64(), uint64_t{4});
+    EXPECT_EQ(d.read_i32(), int32_t{-5});
+    EXPECT_EQ(d.read_i64(), int64_t{-6});
+    EXPECT_FALSE(d.has_remaining());
+}

@@ -12510,3 +12510,106 @@ TEST(PropertyCascadeTest, InitialKeywordResetsFontWeightV61) {
     cascade.apply_declaration(style, make_decl("font-weight", "initial"), parent);
     EXPECT_EQ(style.font_weight, 400) << "initial should reset font-weight to 400";
 }
+
+TEST(PropertyCascadeTest, VisibilityPropertyHiddenV62) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("visibility", "hidden"), parent);
+    EXPECT_EQ(style.visibility, Visibility::Hidden);
+
+    cascade.apply_declaration(style, make_decl("visibility", "visible"), parent);
+    EXPECT_EQ(style.visibility, Visibility::Visible);
+}
+
+TEST(PropertyCascadeTest, CursorPropertyPointerV62) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("cursor", "pointer"), parent);
+    EXPECT_EQ(style.cursor, Cursor::Pointer);
+
+    cascade.apply_declaration(style, make_decl("cursor", "default"), parent);
+    EXPECT_EQ(style.cursor, Cursor::Default);
+}
+
+TEST(PropertyCascadeTest, PointerEventsNoneV62) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("pointer-events", "none"), parent);
+    EXPECT_EQ(style.pointer_events, PointerEvents::None);
+
+    cascade.apply_declaration(style, make_decl("pointer-events", "auto"), parent);
+    EXPECT_EQ(style.pointer_events, PointerEvents::Auto);
+}
+
+TEST(PropertyCascadeTest, UserSelectNoneV62) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("user-select", "none"), parent);
+    EXPECT_EQ(style.user_select, UserSelect::None);
+
+    cascade.apply_declaration(style, make_decl("user-select", "text"), parent);
+    EXPECT_EQ(style.user_select, UserSelect::Text);
+}
+
+TEST(PropertyCascadeTest, WordSpacingLengthV62) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("word-spacing", "2px"), parent);
+    EXPECT_FLOAT_EQ(style.word_spacing.to_px(16.0f), 2.0f);
+}
+
+TEST(PropertyCascadeTest, LetterSpacingLengthV62) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("letter-spacing", "3px"), parent);
+    EXPECT_FLOAT_EQ(style.letter_spacing.to_px(16.0f), 3.0f);
+}
+
+TEST(PropertyCascadeTest, VerticalAlignPropertyV62) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("vertical-align", "middle"), parent);
+    EXPECT_EQ(style.vertical_align, VerticalAlign::Middle);
+
+    cascade.apply_declaration(style, make_decl("vertical-align", "baseline"), parent);
+    EXPECT_EQ(style.vertical_align, VerticalAlign::Baseline);
+
+    cascade.apply_declaration(style, make_decl("vertical-align", "top"), parent);
+    EXPECT_EQ(style.vertical_align, VerticalAlign::Top);
+}
+
+TEST(PropertyCascadeTest, WhiteSpacePropertyV62) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    // white-space: nowrap prevents line wrapping
+    cascade.apply_declaration(style, make_decl("white-space", "nowrap"), parent);
+    EXPECT_EQ(style.white_space, WhiteSpace::NoWrap) << "white-space should be 'nowrap'";
+
+    // white-space: pre preserves whitespace
+    cascade.apply_declaration(style, make_decl("white-space", "pre"), parent);
+    EXPECT_EQ(style.white_space, WhiteSpace::Pre) << "white-space should be 'pre'";
+
+    // white-space: pre-wrap preserves whitespace and wraps
+    cascade.apply_declaration(style, make_decl("white-space", "pre-wrap"), parent);
+    EXPECT_EQ(style.white_space, WhiteSpace::PreWrap) << "white-space should be 'pre-wrap'";
+
+    // white-space: normal (default)
+    cascade.apply_declaration(style, make_decl("white-space", "normal"), parent);
+    EXPECT_EQ(style.white_space, WhiteSpace::Normal) << "white-space should be 'normal'";
+}
