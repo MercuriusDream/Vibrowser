@@ -4806,3 +4806,84 @@ TEST(TreeBuilder, ButtonValueAttr) {
         if (attr.name == "value" && attr.value == "confirm") found = true;
     EXPECT_TRUE(found);
 }
+
+// Cycle 937 — input type variants, link attributes, meta OG tags
+TEST(TreeBuilder, InputTypeUrlAttr) {
+    auto doc = clever::html::parse("<body><input type=\"url\" name=\"website\"></body>");
+    auto* el = doc->find_element("input");
+    ASSERT_NE(el, nullptr);
+    bool found = false;
+    for (const auto& attr : el->attributes)
+        if (attr.name == "type" && attr.value == "url") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, InputTypeCheckboxAttr) {
+    auto doc = clever::html::parse("<body><input type=\"checkbox\" name=\"agree\"></body>");
+    auto* el = doc->find_element("input");
+    ASSERT_NE(el, nullptr);
+    bool found = false;
+    for (const auto& attr : el->attributes)
+        if (attr.name == "type" && attr.value == "checkbox") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, InputTypeRadioAttr) {
+    auto doc = clever::html::parse("<body><input type=\"radio\" name=\"choice\"></body>");
+    auto* el = doc->find_element("input");
+    ASSERT_NE(el, nullptr);
+    bool found = false;
+    for (const auto& attr : el->attributes)
+        if (attr.name == "type" && attr.value == "radio") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, InputTypeDatetimeLocalAttr) {
+    auto doc = clever::html::parse("<body><input type=\"datetime-local\"></body>");
+    auto* el = doc->find_element("input");
+    ASSERT_NE(el, nullptr);
+    bool found = false;
+    for (const auto& attr : el->attributes)
+        if (attr.name == "type" && attr.value == "datetime-local") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, LinkMediaAttr) {
+    auto doc = clever::html::parse("<head><link rel=\"stylesheet\" href=\"print.css\" media=\"print\"></head>");
+    auto* el = doc->find_element("link");
+    ASSERT_NE(el, nullptr);
+    bool found = false;
+    for (const auto& attr : el->attributes)
+        if (attr.name == "media" && attr.value == "print") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, MetaOgImageContent) {
+    auto doc = clever::html::parse("<head><meta property=\"og:image\" content=\"https://example.com/img.png\"></head>");
+    auto* el = doc->find_element("meta");
+    ASSERT_NE(el, nullptr);
+    bool found = false;
+    for (const auto& attr : el->attributes)
+        if (attr.name == "property" && attr.value == "og:image") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, MetaOgUrlContent) {
+    auto doc = clever::html::parse("<head><meta property=\"og:url\" content=\"https://example.com/\"></head>");
+    auto* el = doc->find_element("meta");
+    ASSERT_NE(el, nullptr);
+    bool found = false;
+    for (const auto& attr : el->attributes)
+        if (attr.name == "property" && attr.value == "og:url") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, ScriptNoModuleAttr) {
+    auto doc = clever::html::parse("<head><script nomodule src=\"fallback.js\"></script></head>");
+    auto* el = doc->find_element("script");
+    ASSERT_NE(el, nullptr);
+    bool found = false;
+    for (const auto& attr : el->attributes)
+        if (attr.name == "nomodule") found = true;
+    EXPECT_TRUE(found);
+}
