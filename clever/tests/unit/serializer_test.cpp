@@ -2443,3 +2443,75 @@ TEST(SerializerTest, TenBooleansAlternating) {
     clever::ipc::Deserializer d(s.data());
     for (int i = 0; i < 10; ++i) EXPECT_EQ(d.read_bool(), i % 2 == 0);
 }
+
+TEST(SerializerTest, TwentyU8ValuesInOrder) {
+    clever::ipc::Serializer s;
+    for (uint8_t i = 0; i < 20; ++i) s.write_u8(i);
+    clever::ipc::Deserializer d(s.data());
+    for (uint8_t i = 0; i < 20; ++i) EXPECT_EQ(d.read_u8(), i);
+}
+
+TEST(SerializerTest, StringWithChineseChars) {
+    clever::ipc::Serializer s;
+    s.write_string("Hello \xE4\xB8\xAD\xE6\x96\x87");  // "Hello 中文" in UTF-8
+    clever::ipc::Deserializer d(s.data());
+    auto str = d.read_string();
+    EXPECT_FALSE(str.empty());
+    EXPECT_EQ(str[0], 'H');
+}
+
+TEST(SerializerTest, AlternatingI32Values) {
+    clever::ipc::Serializer s;
+    s.write_i32(1);
+    s.write_i32(-1);
+    s.write_i32(2);
+    s.write_i32(-2);
+    clever::ipc::Deserializer d(s.data());
+    EXPECT_EQ(d.read_i32(), 1);
+    EXPECT_EQ(d.read_i32(), -1);
+    EXPECT_EQ(d.read_i32(), 2);
+    EXPECT_EQ(d.read_i32(), -2);
+}
+
+TEST(SerializerTest, F64ZeroRoundTrip) {
+    clever::ipc::Serializer s;
+    s.write_f64(0.0);
+    clever::ipc::Deserializer d(s.data());
+    EXPECT_DOUBLE_EQ(d.read_f64(), 0.0);
+}
+
+TEST(SerializerTest, MultipleStringsThenU32) {
+    clever::ipc::Serializer s;
+    s.write_string("alpha");
+    s.write_string("beta");
+    s.write_u32(99);
+    clever::ipc::Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "alpha");
+    EXPECT_EQ(d.read_string(), "beta");
+    EXPECT_EQ(d.read_u32(), 99u);
+}
+
+TEST(SerializerTest, U64MaxUint64RoundTrip) {
+    clever::ipc::Serializer s;
+    s.write_u64(std::numeric_limits<uint64_t>::max());
+    clever::ipc::Deserializer d(s.data());
+    EXPECT_EQ(d.read_u64(), std::numeric_limits<uint64_t>::max());
+}
+
+TEST(SerializerTest, I32MaxInt32RoundTrip) {
+    clever::ipc::Serializer s;
+    s.write_i32(std::numeric_limits<int32_t>::max());
+    clever::ipc::Deserializer d(s.data());
+    EXPECT_EQ(d.read_i32(), std::numeric_limits<int32_t>::max());
+}
+
+TEST(SerializerTest, BoolTrueAfterFalseSeries) {
+    clever::ipc::Serializer s;
+    s.write_bool(false);
+    s.write_bool(false);
+    s.write_bool(true);
+    clever::ipc::Deserializer d(s.data());
+    EXPECT_FALSE(d.read_bool());
+    EXPECT_FALSE(d.read_bool());
+    EXPECT_TRUE(d.read_bool());
+}
