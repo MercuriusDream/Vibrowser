@@ -3103,3 +3103,76 @@ TEST(SerializerTest, TwentyBoolsTrueThenFalse) {
     for (int i = 0; i < 10; i++) EXPECT_TRUE(d.read_bool());
     for (int i = 0; i < 10; i++) EXPECT_FALSE(d.read_bool());
 }
+
+// Cycle 833 — Mixed-type longer sequences
+TEST(SerializerTest, EightyU8WithMaxValues) {
+    Serializer s;
+    for (int i = 0; i < 80; i++) s.write_u8(i % 2 == 0 ? 0u : 255u);
+    Deserializer d(s.data());
+    for (int i = 0; i < 80; i++) EXPECT_EQ(d.read_u8(), i % 2 == 0 ? 0u : 255u);
+}
+
+TEST(SerializerTest, SixtyStringsTenCharsEach) {
+    Serializer s;
+    for (int i = 0; i < 60; i++) {
+        std::string str(10, static_cast<char>('a' + (i % 26)));
+        s.write_string(str);
+    }
+    Deserializer d(s.data());
+    for (int i = 0; i < 60; i++) {
+        std::string expected(10, static_cast<char>('a' + (i % 26)));
+        EXPECT_EQ(d.read_string(), expected);
+    }
+}
+
+TEST(SerializerTest, HundredF64ValuesIncreasing) {
+    Serializer s;
+    for (int i = 0; i < 100; i++) s.write_f64(i * 0.1);
+    Deserializer d(s.data());
+    for (int i = 0; i < 100; i++) EXPECT_NEAR(d.read_f64(), i * 0.1, 1e-9);
+}
+
+TEST(SerializerTest, U32AndI32Interleaved) {
+    Serializer s;
+    for (int i = 0; i < 20; i++) {
+        s.write_u32(static_cast<uint32_t>(i * 1000));
+        s.write_i32(-i);
+    }
+    Deserializer d(s.data());
+    for (int i = 0; i < 20; i++) {
+        EXPECT_EQ(d.read_u32(), static_cast<uint32_t>(i * 1000));
+        EXPECT_EQ(d.read_i32(), -i);
+    }
+}
+
+TEST(SerializerTest, StringLengthOneByte) {
+    Serializer s;
+    s.write_string("A");
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "A");
+}
+
+TEST(SerializerTest, StringLengthTwoBytes) {
+    Serializer s;
+    s.write_string("AB");
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "AB");
+}
+
+TEST(SerializerTest, U64ThenStringThenBool) {
+    Serializer s;
+    s.write_u64(9999999999ULL);
+    s.write_string("hello");
+    s.write_bool(true);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u64(), 9999999999ULL);
+    EXPECT_EQ(d.read_string(), "hello");
+    EXPECT_TRUE(d.read_bool());
+}
+
+TEST(SerializerTest, FiftyI64NegativePowerOf2) {
+    Serializer s;
+    for (int i = 0; i < 50; i++) s.write_i64(-(1LL << i % 32));
+    Deserializer d(s.data());
+    for (int i = 0; i < 50; i++) EXPECT_EQ(d.read_i64(), -(1LL << i % 32));
+}
