@@ -4133,3 +4133,76 @@ TEST_F(CSSStylesheetTest, FlexWrapDeclaration) {
         if (d.property == "flex-wrap") { found = true; break; }
     EXPECT_TRUE(found);
 }
+
+// Cycle 819 — CSS overflow-x/y, text-shadow, cursor, scroll-snap, column-rule, column-fill, grid-row/column
+TEST_F(CSSStylesheetTest, OverflowXDeclaration) {
+    auto sheet = parse_stylesheet(".box { overflow-x: scroll; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "overflow-x") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, OverflowYDeclaration) {
+    auto sheet = parse_stylesheet(".box { overflow-y: auto; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "overflow-y") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, TextShadowDeclaration) {
+    auto sheet = parse_stylesheet("h1 { text-shadow: 1px 1px 2px rgba(0,0,0,0.5); }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "text-shadow") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, CursorDeclaration) {
+    auto sheet = parse_stylesheet("a { cursor: pointer; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "cursor") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, ScrollSnapTypeDeclaration) {
+    auto sheet = parse_stylesheet(".container { scroll-snap-type: x mandatory; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "scroll-snap-type") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, ScrollSnapAlignDeclaration) {
+    auto sheet = parse_stylesheet(".item { scroll-snap-align: start; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "scroll-snap-align") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, ColumnRuleWidthDeclaration) {
+    auto sheet = parse_stylesheet(".text { column-rule-width: 2px; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "column-rule-width") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, ColumnFillDeclaration) {
+    auto sheet = parse_stylesheet(".cols { column-fill: balance; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "column-fill") { found = true; break; }
+    EXPECT_TRUE(found);
+}
