@@ -16279,3 +16279,60 @@ TEST(JSEngine, ObjectEntriesReduceToSum) {
         "Object.entries(scores).reduce((sum,[,v]) => sum + v, 0)");
     EXPECT_EQ(result, "255");
 }
+
+// Cycle 832 — Map/Set iterator methods: keys, values, entries, has-after-delete, size-after-delete, object keys, spread
+TEST(JSEngine, MapKeysMethod) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "const m = new Map([['a',1],['b',2],['c',3]]); [...m.keys()].join(',')");
+    EXPECT_EQ(result, "a,b,c");
+}
+
+TEST(JSEngine, MapValuesMethod) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "const m = new Map([['x',10],['y',20],['z',30]]); [...m.values()].join(',')");
+    EXPECT_EQ(result, "10,20,30");
+}
+
+TEST(JSEngine, MapEntriesMethod) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "const m = new Map([['k','v']]); const [[key,val]] = m.entries(); key + '=' + val");
+    EXPECT_EQ(result, "k=v");
+}
+
+TEST(JSEngine, MapHasAfterDelete) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "const m = new Map(); m.set('key', 1); m.delete('key'); m.has('key')");
+    EXPECT_EQ(result, "false");
+}
+
+TEST(JSEngine, MapSizeAfterDelete) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "const m = new Map([['a',1],['b',2],['c',3]]); m.delete('b'); m.size");
+    EXPECT_EQ(result, "2");
+}
+
+TEST(JSEngine, SetValuesMethod) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "const s = new Set([10,20,30]); [...s.values()].join(',')");
+    EXPECT_EQ(result, "10,20,30");
+}
+
+TEST(JSEngine, SetHasAfterDelete) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "const s = new Set([1,2,3]); s.delete(2); s.has(2)");
+    EXPECT_EQ(result, "false");
+}
+
+TEST(JSEngine, SetSizeAfterDelete) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(
+        "const s = new Set([1,2,3,4,5]); s.delete(3); s.size");
+    EXPECT_EQ(result, "4");
+}
