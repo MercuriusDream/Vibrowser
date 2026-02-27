@@ -6306,3 +6306,64 @@ TEST(DomElement, HasAttributeChecked) {
     el->set_attribute("checked", "");
     EXPECT_TRUE(el->has_attribute("checked"));
 }
+
+// --- Cycle 1183: 8 DOM tests ---
+
+TEST(DomElement, TagNameThead) {
+    Document doc;
+    auto el = doc.create_element("thead");
+    EXPECT_EQ(el->tag_name(), "thead");
+}
+
+TEST(DomElement, TagNameTbody) {
+    Document doc;
+    auto el = doc.create_element("tbody");
+    EXPECT_EQ(el->tag_name(), "tbody");
+}
+
+TEST(DomElement, SetAttributeAriaLabel) {
+    Document doc;
+    auto el = doc.create_element("button");
+    el->set_attribute("aria-label", "Close");
+    EXPECT_EQ(el->get_attribute("aria-label"), "Close");
+}
+
+TEST(DomElement, SetAttributeDataCustom) {
+    Document doc;
+    auto el = doc.create_element("div");
+    el->set_attribute("data-id", "42");
+    EXPECT_EQ(el->get_attribute("data-id"), "42");
+}
+
+TEST(DomElement, ChildCountTwelve) {
+    Document doc;
+    auto parent = doc.create_element("div");
+    for (int i = 0; i < 12; ++i) {
+        parent->append_child(doc.create_element("p"));
+    }
+    EXPECT_EQ(parent->child_count(), 12u);
+}
+
+TEST(DomClassList, ClassListContainsSix) {
+    Document doc;
+    auto el = doc.create_element("div");
+    for (int i = 0; i < 6; ++i) {
+        el->class_list().add("c" + std::to_string(i));
+    }
+    EXPECT_EQ(el->class_list().length(), 6u);
+}
+
+TEST(DomElement, RemoveAttributeDataId) {
+    Document doc;
+    auto el = doc.create_element("div");
+    el->set_attribute("data-id", "1");
+    el->remove_attribute("data-id");
+    EXPECT_FALSE(el->has_attribute("data-id"));
+}
+
+TEST(DomElement, HasAttributeRequired) {
+    Document doc;
+    auto el = doc.create_element("input");
+    el->set_attribute("required", "");
+    EXPECT_TRUE(el->has_attribute("required"));
+}

@@ -4428,3 +4428,64 @@ TEST(URLParser, DifferentSchemesDifferentDefaultPorts) {
     ASSERT_TRUE(ftp_url.has_value());
     EXPECT_FALSE(urls_same_origin(*http_url, *ftp_url));
 }
+
+// ============================================================================
+// Cycle 1186: Additional URL parser tests
+// ============================================================================
+
+TEST(URLParser, PortWithLeadingZeros) {
+    auto url = parse("https://server.local:08080/api");
+    ASSERT_TRUE(url.has_value());
+    // Port should parse the numeric value
+    ASSERT_TRUE(url->port.has_value());
+    EXPECT_EQ(url->port.value(), 8080u);
+}
+
+TEST(URLParser, PathWithConsecutiveSlashes) {
+    auto url = parse("https://example.com/path///to///resource");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_FALSE(url->path.empty());
+    EXPECT_NE(url->path.find("path"), std::string::npos);
+}
+
+TEST(URLParser, QueryWithPercentEncodedAmpersand) {
+    auto url = parse("https://example.com/search?filter=a%26b&mode=strict");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_FALSE(url->query.empty());
+    EXPECT_NE(url->query.find("mode"), std::string::npos);
+}
+
+TEST(URLParser, FragmentWithSpecialURLChars) {
+    auto url = parse("https://docs.example.com/guide#intro?params=false&details=true");
+    ASSERT_TRUE(url.has_value());
+    // Fragment should contain everything after #
+    EXPECT_NE(url->fragment.find("intro"), std::string::npos);
+}
+
+TEST(URLParser, HostWithTrailingDot) {
+    auto url = parse("https://example.com./path");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_FALSE(url->host.empty());
+    // Host handling for FQDN with trailing dot
+}
+
+TEST(URLParser, PathWithHexEncodedChars) {
+    auto url = parse("https://api.example.com/data/%2Fencoded%2Fpath");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_FALSE(url->path.empty());
+    EXPECT_NE(url->path.find("data"), std::string::npos);
+}
+
+TEST(URLParser, QueryMultipleValuesEmptyParam) {
+    auto url = parse("https://example.com/?a=1&b=&c=3&d=");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_NE(url->query.find("b="), std::string::npos);
+    EXPECT_NE(url->query.find("d="), std::string::npos);
+}
+
+TEST(URLParser, SchemeWithPlusCharacter) {
+    auto url = parse("svn+ssh://repo.local/project");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "svn+ssh");
+    EXPECT_EQ(url->host, "repo.local");
+}

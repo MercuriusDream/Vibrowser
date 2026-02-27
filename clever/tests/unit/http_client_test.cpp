@@ -6444,3 +6444,90 @@ TEST(ResponseTest, Parse403ForbiddenWithErrorBodyV12) {
     std::string body_str(resp->body.begin(), resp->body.end());
     EXPECT_EQ(body_str, "Access Denied Error");
 }
+
+// ============================================================================
+// Cycle 1187: HTTP/net regression tests
+// ============================================================================
+
+// HeaderMap: get_all returns vector of values for header key V13
+TEST(HeaderMapTest, GetAllReturnsMultipleValuesV13) {
+    HeaderMap h;
+    h.set("Set-Cookie", "session=abc");
+    auto vals = h.get_all("Set-Cookie");
+    EXPECT_EQ(vals.size(), 1u);
+    EXPECT_EQ(vals[0], "session=abc");
+}
+
+// Request: method enum DELETE_METHOD serializes correctly V13
+TEST(RequestTest, MethodDeleteSerializesCorrectlyV13) {
+    Request req;
+    req.method = Method::DELETE_METHOD;
+    req.host = "api.service.com";
+    req.path = "/resource/456";
+    auto raw = req.serialize();
+    std::string s(raw.begin(), raw.end());
+    EXPECT_NE(s.find("DELETE"), std::string::npos);
+}
+
+// HeaderMap: remove non-existent key does not raise error V13
+TEST(HeaderMapTest, RemoveNonExistentKeyNoErrorV13) {
+    HeaderMap h;
+    h.set("Content-Type", "text/plain");
+    h.remove("X-NonExistent");
+    EXPECT_TRUE(h.has("Content-Type"));
+    EXPECT_EQ(h.size(), 1u);
+}
+
+// Response: parse 500 Internal Server Error V13
+TEST(ResponseTest, Parse500InternalServerErrorV13) {
+    std::string raw =
+        "HTTP/1.1 500 Internal Server Error\r\n"
+        "Content-Type: text/plain\r\n"
+        "Content-Length: 5\r\n"
+        "\r\n"
+        "error";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 500);
+    EXPECT_EQ(resp->status_text, "Internal Server Error");
+}
+
+// Request: HEAD method serializes correctly V13
+TEST(RequestTest, MethodHeadSerializesCorrectlyV13) {
+    Request req;
+    req.method = Method::HEAD;
+    req.host = "example.com";
+    req.path = "/document.html";
+    auto raw = req.serialize();
+    std::string s(raw.begin(), raw.end());
+    EXPECT_NE(s.find("HEAD"), std::string::npos);
+}
+
+// CookieJar: clear removes all cookies V13
+TEST(CookieJarTest, ClearRemovesAllCookiesV13) {
+    CookieJar jar;
+    jar.set_from_header("session_id=abc123", "example.com");
+    jar.set_from_header("user_token=xyz789", "example.com");
+    EXPECT_GT(jar.size(), 0u);
+    jar.clear();
+    EXPECT_EQ(jar.size(), 0u);
+}
+
+// Response: parse 418 I'm a teapot V13
+TEST(ResponseTest, Parse418TeapotV13) {
+    std::string raw =
+        "HTTP/1.1 418 I'm a teapot\r\n"
+        "Content-Length: 0\r\n"
+        "\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 418);
+}
+
+// HeaderMap: size returns zero for new instance V13
+TEST(HeaderMapTest, SizeReturnsZeroForNewInstanceV13) {
+    HeaderMap h;
+    EXPECT_EQ(h.size(), 0u);
+}

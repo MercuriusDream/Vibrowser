@@ -6681,3 +6681,87 @@ TEST(TreeBuilder, LinkIconAttr) {
     }
     EXPECT_TRUE(has_rel && has_href && has_type);
 }
+
+TEST(TreeBuilder, DataListElement) {
+    auto doc = clever::html::parse(R"(<datalist id="colors"><option value="red">Red</option><option value="blue">Blue</option></datalist>)");
+    auto* el = doc->find_element("datalist");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "datalist");
+    bool found_id = false;
+    for (const auto& attr : el->attributes) {
+        if (attr.name == "id") found_id = true;
+    }
+    EXPECT_TRUE(found_id);
+}
+
+TEST(TreeBuilder, ContentEditable) {
+    auto doc = clever::html::parse(R"(<div contenteditable="true">Editable content</div>)");
+    auto* el = doc->find_element("div");
+    ASSERT_NE(el, nullptr);
+    bool found_contenteditable = false;
+    for (const auto& attr : el->attributes) {
+        if (attr.name == "contenteditable") found_contenteditable = true;
+    }
+    EXPECT_TRUE(found_contenteditable);
+}
+
+TEST(TreeBuilder, DragDropAttributes) {
+    auto doc = clever::html::parse("<div draggable=\"true\" ondrop=\"handleDrop()\">Drag me</div>");
+    auto* el = doc->find_element("div");
+    ASSERT_NE(el, nullptr);
+    bool has_draggable = false, has_ondrop = false;
+    for (const auto& attr : el->attributes) {
+        if (attr.name == "draggable") has_draggable = true;
+        if (attr.name == "ondrop") has_ondrop = true;
+    }
+    EXPECT_TRUE(has_draggable && has_ondrop);
+}
+
+TEST(TreeBuilder, SpellcheckAttributeV2) {
+    auto doc = clever::html::parse(R"(<input type="text" spellcheck="false" placeholder="No spell check">)");
+    auto* el = doc->find_element("input");
+    ASSERT_NE(el, nullptr);
+    bool has_spellcheck = false, has_placeholder = false;
+    for (const auto& attr : el->attributes) {
+        if (attr.name == "spellcheck") has_spellcheck = true;
+        if (attr.name == "placeholder") has_placeholder = true;
+    }
+    EXPECT_TRUE(has_spellcheck && has_placeholder);
+}
+
+TEST(TreeBuilder, AccesskeyBinding) {
+    auto doc = clever::html::parse(R"(<button accesskey="s">Save</button>)");
+    auto* el = doc->find_element("button");
+    ASSERT_NE(el, nullptr);
+    bool found_accesskey = false;
+    for (const auto& attr : el->attributes) {
+        if (attr.name == "accesskey") found_accesskey = true;
+    }
+    EXPECT_TRUE(found_accesskey);
+}
+
+TEST(TreeBuilder, ArticleSemanticTag) {
+    auto doc = clever::html::parse(R"(<article><h1>Article Title</h1><p>Content</p></article>)");
+    auto* el = doc->find_element("article");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "article");
+}
+
+TEST(TreeBuilder, AsideSemanticElement) {
+    auto doc = clever::html::parse(R"(<aside role="complementary"><h3>Related Links</h3></aside>)");
+    auto* el = doc->find_element("aside");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "aside");
+    bool found_role = false;
+    for (const auto& attr : el->attributes) {
+        if (attr.name == "role") found_role = true;
+    }
+    EXPECT_TRUE(found_role);
+}
+
+TEST(TreeBuilder, FigcaptionInFigure) {
+    auto doc = clever::html::parse(R"(<figure><img src="image.jpg" alt="Image"><figcaption>Image caption</figcaption></figure>)");
+    auto* el = doc->find_element("figcaption");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "figcaption");
+}

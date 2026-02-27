@@ -18564,3 +18564,53 @@ TEST(JSEngine, DateToISOStringV2) {
     auto result = engine.evaluate("var d = new Date('2024-01-15T00:00:00Z'); d.toISOString().substring(0, 10)");
     EXPECT_EQ(result, "2024-01-15");
 }
+
+// --- Cycle 1191: 8 JS tests ---
+
+TEST(JSEngine, ForOfWithStringV2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var str = 'abc'; var result = ''; for (var c of str) result += c; result");
+    EXPECT_EQ(result, "abc");
+}
+
+TEST(JSEngine, ExponentiationOperator) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("(2 ** 8).toString()");
+    EXPECT_EQ(result, "256");
+}
+
+TEST(JSEngine, LogicalANDShortCircuit) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var x = 0; false && (x = 10); x.toString()");
+    EXPECT_EQ(result, "0");
+}
+
+TEST(JSEngine, StringReplaceAllOccurrences) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("'hello hello'.replaceAll('hello', 'hi')");
+    EXPECT_EQ(result, "hi hi");
+}
+
+TEST(JSEngine, ArrayIncludesCycle1191) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("[10, 20, 30, 40].includes(25).toString()");
+    EXPECT_EQ(result, "false");
+}
+
+TEST(JSEngine, ObjectFromEntriesCycle1191) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var entries = [['x', 1], ['y', 2]]; Object.fromEntries(entries).x.toString()");
+    EXPECT_EQ(result, "1");
+}
+
+TEST(JSEngine, ArraySortNumericCycle1191) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("[3, 1, 4, 1, 5].sort((a, b) => a - b).join(',')");
+    EXPECT_EQ(result, "1,1,3,4,5");
+}
+
+TEST(JSEngine, StringTrimCycle1191) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("'  hello world  '.trim()");
+    EXPECT_EQ(result, "hello world");
+}

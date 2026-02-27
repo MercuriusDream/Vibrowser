@@ -2966,3 +2966,37 @@ TEST(CORSPolicyTest, ShouldAttachOriginCrossOriginV19) {
 TEST(CORSPolicyTest, NotEnforceableDataUrlV19) {
     EXPECT_FALSE(has_enforceable_document_origin("data:text/html,<h1>Test</h1>"));
 }
+
+TEST(CORSPolicyTest, EnforceableOriginHttpsExplicitPortV20) {
+    EXPECT_FALSE(has_enforceable_document_origin("https://example.com:443"));
+}
+
+TEST(CORSPolicyTest, CorsEligibleHttpLocalPortV20) {
+    EXPECT_TRUE(is_cors_eligible_request_url("http://localhost:8080/api"));
+}
+
+TEST(CORSPolicyTest, NotCorsEligibleBlobUrlV20) {
+    EXPECT_FALSE(is_cors_eligible_request_url("blob:https://example.com/550e8400"));
+}
+
+TEST(CORSPolicyTest, CrossOriginDifferentHostV20) {
+    EXPECT_TRUE(is_cross_origin("https://app.example.com", "https://other.domain.com/data"));
+}
+
+TEST(CORSPolicyTest, SameOriginHttpsSubdomainWithPathV20) {
+    EXPECT_FALSE(is_cross_origin("https://api.example.com/v1", "https://api.example.com/v2/users"));
+}
+
+TEST(CORSPolicyTest, AttachOriginDifferentSchemeHttpV20) {
+    EXPECT_TRUE(should_attach_origin_header("http://secure.example.com", "https://api.other.com/endpoint"));
+}
+
+TEST(CORSPolicyTest, CorsAllowsResponseACAOMismatchV20) {
+    clever::net::HeaderMap resp_headers;
+    resp_headers.set("Access-Control-Allow-Origin", "https://allowed.com");
+    EXPECT_FALSE(cors_allows_response("https://denied.com", "https://api.service.com/data", resp_headers, false));
+}
+
+TEST(CORSPolicyTest, NotEnforceableBlobUrlOriginV20) {
+    EXPECT_FALSE(has_enforceable_document_origin("blob:https://myapp.com/123"));
+}

@@ -8551,3 +8551,45 @@ TEST(LayoutNodeProps, ScrollbarGutterDefaultsZero) {
     LayoutNode n;
     EXPECT_EQ(n.scrollbar_gutter, 0);
 }
+
+// Cycle 1190 — 8 Layout tests for transition timing, animation steps, text decoration skip, and border image gradient properties
+
+TEST(LayoutNodeProps, TransitionTimingDefaultsZero) {
+    LayoutNode n;
+    EXPECT_EQ(n.transition_timing, 0);
+}
+
+TEST(LayoutNodeProps, TransitionStepsCountDefaultsOne) {
+    LayoutNode n;
+    EXPECT_EQ(n.transition_steps_count, 1);
+}
+
+TEST(LayoutNodeProps, AnimationTimingDefaultsZero) {
+    LayoutNode n;
+    EXPECT_EQ(n.animation_timing, 0);
+}
+
+TEST(LayoutNodeProps, AnimationStepsCountDefaultsOne) {
+    LayoutNode n;
+    EXPECT_EQ(n.animation_steps_count, 1);
+}
+
+TEST(LayoutNodeProps, TextDecorationSkipInkDefaultsZero) {
+    LayoutNode n;
+    EXPECT_EQ(n.text_decoration_skip_ink, 0);
+}
+
+TEST(LayoutNodeProps, TextDecorationSkipDefaultsZero) {
+    LayoutNode n;
+    EXPECT_EQ(n.text_decoration_skip, 0);
+}
+
+TEST(LayoutNodeProps, BorderImageGradientTypeDefaultsZero) {
+    LayoutNode n;
+    EXPECT_EQ(n.border_image_gradient_type, 0);
+}
+
+TEST(LayoutNodeProps, BorderImageGradientAngleDefaultsZero) {
+    LayoutNode n;
+    EXPECT_EQ(n.border_image_gradient_angle, 0.0f);
+}

@@ -5758,3 +5758,60 @@ TEST(SerializerTest, U8MinMaxSequenceV9) {
     EXPECT_EQ(d.read_u8(), 255);
     EXPECT_EQ(d.read_u8(), 128);
 }
+
+// Cycle 1185 — Additional serializer tests V10
+TEST(SerializerTest, U8OneTwentyV10) {
+    Serializer s;
+    s.write_u8(120);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u8(), 120);
+}
+
+TEST(SerializerTest, U16MaxMinusOneV10) {
+    Serializer s;
+    s.write_u16(65534);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u16(), 65534);
+}
+
+TEST(SerializerTest, U32LargeValueV10) {
+    Serializer s;
+    s.write_u32(4000000000u);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u32(), 4000000000u);
+}
+
+TEST(SerializerTest, I32NegMaxV10) {
+    Serializer s;
+    s.write_i32(-2147483648);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i32(), -2147483648);
+}
+
+TEST(SerializerTest, I64ZeroV10) {
+    Serializer s;
+    s.write_i64(0LL);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i64(), 0LL);
+}
+
+TEST(SerializerTest, F64PiV10) {
+    Serializer s;
+    s.write_f64(3.141592653589793);
+    Deserializer d(s.data());
+    EXPECT_NEAR(d.read_f64(), 3.141592653589793, 1e-15);
+}
+
+TEST(SerializerTest, StringLongV10) {
+    Serializer s;
+    s.write_string("The quick brown fox jumps over the lazy dog");
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "The quick brown fox jumps over the lazy dog");
+}
+
+TEST(SerializerTest, BoolFalseOnlyV10) {
+    Serializer s;
+    s.write_bool(false);
+    Deserializer d(s.data());
+    EXPECT_FALSE(d.read_bool());
+}

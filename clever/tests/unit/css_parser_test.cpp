@@ -7191,3 +7191,75 @@ TEST_F(CSSStylesheetTest, MixBlendModeV10) {
         if (d.property == "mix-blend-mode") found = true;
     EXPECT_TRUE(found);
 }
+
+TEST_F(CSSStylesheetTest, LetterSpacingV11) {
+    auto sheet = parse_stylesheet("p { letter-spacing: 0.15em; }");
+    ASSERT_FALSE(sheet.rules.empty());
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "letter-spacing") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, LineHeightV11) {
+    auto sheet = parse_stylesheet("div { line-height: 1.5; }");
+    ASSERT_FALSE(sheet.rules.empty());
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "line-height") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, TextDecorationV11) {
+    auto sheet = parse_stylesheet("a { text-decoration: underline; }");
+    ASSERT_FALSE(sheet.rules.empty());
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "text-decoration") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, TextTransformV11) {
+    auto sheet = parse_stylesheet("h1 { text-transform: uppercase; }");
+    ASSERT_FALSE(sheet.rules.empty());
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "text-transform") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, WordSpacingV11) {
+    auto sheet = parse_stylesheet("span { word-spacing: 0.2em; }");
+    ASSERT_FALSE(sheet.rules.empty());
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "word-spacing") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, TextIndentV11) {
+    auto sheet = parse_stylesheet("p { text-indent: 2em; }");
+    ASSERT_FALSE(sheet.rules.empty());
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "text-indent") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, WhiteSpaceV11) {
+    auto sheet = parse_stylesheet("pre { white-space: pre-wrap; }");
+    ASSERT_FALSE(sheet.rules.empty());
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "white-space") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, WordBreakV11) {
+    auto sheet = parse_stylesheet("div { word-break: break-word; }");
+    ASSERT_FALSE(sheet.rules.empty());
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "word-break") found = true;
+    EXPECT_TRUE(found);
+}
