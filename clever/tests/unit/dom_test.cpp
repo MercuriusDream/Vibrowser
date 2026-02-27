@@ -4553,3 +4553,70 @@ TEST(DomElement, ElementNsEmptyDefault) {
     Element elem("p");
     EXPECT_EQ(elem.namespace_uri(), "");
 }
+
+// Cycle 949 — Comment edge cases, EventTarget empty dispatch, large document structure
+TEST(DomComment, CommentEmptyData) {
+    Comment c("");
+    EXPECT_EQ(c.data(), "");
+}
+
+TEST(DomComment, CommentLongText) {
+    std::string long_text(1000, 'x');
+    Comment c(long_text);
+    EXPECT_EQ(c.data().size(), 1000u);
+}
+
+TEST(DomComment, CommentWithHtmlContent) {
+    Comment c("<strong>bold</strong>");
+    EXPECT_EQ(c.data(), "<strong>bold</strong>");
+}
+
+TEST(DomComment, CommentNodeUpdateData) {
+    Comment c("original");
+    c.set_data("modified");
+    EXPECT_EQ(c.data(), "modified");
+}
+
+TEST(DomEventTarget, EventTargetNoListenersFiresNoErrors) {
+    Document doc;
+    auto elem = doc.create_element("div");
+    EventTarget target;
+    Event evt("click");
+    // Dispatching with no listeners should not crash
+    EXPECT_NO_THROW(target.dispatch_event(evt, *elem));
+}
+
+TEST(DomEventTarget, TwoListenersSameTypeBothFired) {
+    Document doc;
+    auto elem = doc.create_element("p");
+    int count = 0;
+    EventTarget target;
+    target.add_event_listener("input", [&](Event&) { ++count; });
+    target.add_event_listener("input", [&](Event&) { ++count; });
+    Event evt("input");
+    target.dispatch_event(evt, *elem);
+    EXPECT_EQ(count, 2);
+}
+
+TEST(DomEventTarget, ListenerForDifferentTypeNotFired) {
+    Document doc;
+    auto elem = doc.create_element("button");
+    bool fired = false;
+    EventTarget target;
+    target.add_event_listener("mousedown", [&](Event&) { fired = true; });
+    Event evt("click");
+    target.dispatch_event(evt, *elem);
+    EXPECT_FALSE(fired);
+}
+
+TEST(DomEventTarget, RemoveAllListenersPreventsDispatch) {
+    Document doc;
+    auto elem = doc.create_element("input");
+    bool fired = false;
+    EventTarget target;
+    target.add_event_listener("change", [&](Event&) { fired = true; });
+    target.remove_all_listeners("change");
+    Event evt("change");
+    target.dispatch_event(evt, *elem);
+    EXPECT_FALSE(fired);
+}
