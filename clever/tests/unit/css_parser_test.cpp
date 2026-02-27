@@ -3800,3 +3800,76 @@ TEST_F(CSSStylesheetTest, PseudoClassReadOnly) {
     ASSERT_EQ(sheet.rules.size(), 1u);
     EXPECT_NE(sheet.rules[0].selector_text.find("read-only"), std::string::npos);
 }
+
+// Cycle 783 — CSS custom property, var(), and modern function declarations
+TEST_F(CSSStylesheetTest, VarFunctionInDeclaration) {
+    auto sheet = parse_stylesheet(".theme { color: var(--primary-color); }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "color") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, CustomPropertyDashDash) {
+    auto sheet = parse_stylesheet(":root { --brand-color: #ff6600; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "--brand-color") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, ContainerTypeDeclaration) {
+    auto sheet = parse_stylesheet(".sidebar { container-type: inline-size; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "container-type") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, ContainerNameDeclaration) {
+    auto sheet = parse_stylesheet(".sidebar { container-name: sidebar; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "container-name") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, InlineStyleFontSize) {
+    auto sheet = parse_stylesheet("p { font-size: clamp(1rem, 2vw, 2rem); }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "font-size") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, MinFunctionDeclaration) {
+    auto sheet = parse_stylesheet("img { width: min(100%, 500px); }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "width") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, MaxFunctionDeclaration) {
+    auto sheet = parse_stylesheet("p { padding: max(1em, 4vw); }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "padding") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, RoundFunctionDeclaration) {
+    auto sheet = parse_stylesheet(".box { width: round(var(--size), 10px); }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "width") { found = true; break; }
+    EXPECT_TRUE(found);
+}
