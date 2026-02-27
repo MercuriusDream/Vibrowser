@@ -3582,3 +3582,97 @@ TEST(RequestTest, ContentEncodingHeaderSet) {
     ASSERT_TRUE(val.has_value());
     EXPECT_EQ(val.value(), "gzip");
 }
+
+// Response: parse JSON content type
+TEST(ResponseTest, ParseJsonContentType) {
+    std::string raw =
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Type: application/json; charset=utf-8\r\n"
+        "Content-Length: 15\r\n"
+        "\r\n"
+        "{\"status\":\"ok\"}";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    auto ct = resp->headers.get("Content-Type");
+    ASSERT_TRUE(ct.has_value());
+    EXPECT_NE(ct.value().find("json"), std::string::npos);
+}
+
+// Response: body content accessible
+TEST(ResponseTest, BodyContentAccessible) {
+    std::string raw =
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Length: 5\r\n"
+        "\r\n"
+        "hello";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->body_as_string(), "hello");
+}
+
+// Response: multiple response headers parsed
+TEST(ResponseTest, MultipleResponseHeaders) {
+    std::string raw =
+        "HTTP/1.1 200 OK\r\n"
+        "X-Header-One: value1\r\n"
+        "X-Header-Two: value2\r\n"
+        "Content-Length: 0\r\n"
+        "\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_TRUE(resp->headers.get("X-Header-One").has_value());
+    EXPECT_TRUE(resp->headers.get("X-Header-Two").has_value());
+}
+
+// Response: parse 404 Not Found with body
+TEST(ResponseTest, Parse404WithBody) {
+    std::string raw =
+        "HTTP/1.1 404 Not Found\r\n"
+        "Content-Length: 9\r\n"
+        "\r\n"
+        "Not found";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 404);
+    EXPECT_EQ(resp->body_as_string(), "Not found");
+}
+
+// Request: X-CSRF-Token header
+TEST(RequestTest, XCSRFTokenHeaderSet) {
+    Request req;
+    req.headers.set("X-CSRF-Token", "token123");
+    auto val = req.headers.get("X-CSRF-Token");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(val.value(), "token123");
+}
+
+// Request: User-Agent header
+TEST(RequestTest, UserAgentHeaderSet) {
+    Request req;
+    req.headers.set("User-Agent", "Mozilla/5.0");
+    auto val = req.headers.get("User-Agent");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_NE(val.value().find("Mozilla"), std::string::npos);
+}
+
+// Request: X-Forwarded-For header
+TEST(RequestTest, XForwardedForHeaderSet) {
+    Request req;
+    req.headers.set("X-Forwarded-For", "192.168.1.1");
+    auto val = req.headers.get("X-Forwarded-For");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(val.value(), "192.168.1.1");
+}
+
+// Request: Host header can be set
+TEST(RequestTest, HostHeaderSet) {
+    Request req;
+    req.headers.set("Host", "api.example.com");
+    auto val = req.headers.get("Host");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(val.value(), "api.example.com");
+}
