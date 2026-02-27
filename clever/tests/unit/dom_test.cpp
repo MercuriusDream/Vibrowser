@@ -3165,3 +3165,67 @@ TEST(DomNode, ChildrenCountAfterInsertBeforeMiddle) {
     parent.insert_before(std::move(li2), li3_ptr);
     EXPECT_EQ(parent.child_count(), 3u);
 }
+
+// Cycle 755 — Element attribute and ClassList edge cases
+TEST(DomNode, AttributeNameAccessible) {
+    Element el("div");
+    el.set_attribute("role", "button");
+    const auto& attrs = el.attributes();
+    ASSERT_EQ(attrs.size(), 1u);
+    EXPECT_EQ(attrs[0].name, "role");
+}
+
+TEST(DomNode, AttributeValueAccessible) {
+    Element el("input");
+    el.set_attribute("type", "checkbox");
+    const auto& attrs = el.attributes();
+    ASSERT_EQ(attrs.size(), 1u);
+    EXPECT_EQ(attrs[0].value, "checkbox");
+}
+
+TEST(DomNode, ClassListItemsVectorNotEmpty) {
+    Element el("div");
+    el.class_list().add("foo");
+    el.class_list().add("bar");
+    EXPECT_EQ(el.class_list().items().size(), 2u);
+}
+
+TEST(DomNode, ClassListItemsContainsAdded) {
+    Element el("span");
+    el.class_list().add("active");
+    const auto& items = el.class_list().items();
+    EXPECT_NE(std::find(items.begin(), items.end(), "active"), items.end());
+}
+
+TEST(DomNode, NamespaceUriDefaultEmpty) {
+    Element el("div");
+    EXPECT_EQ(el.namespace_uri(), "");
+}
+
+TEST(DomNode, NamespaceUriCustom) {
+    Element el("svg", "http://www.w3.org/2000/svg");
+    EXPECT_EQ(el.namespace_uri(), "http://www.w3.org/2000/svg");
+}
+
+TEST(DomNode, IdAttributeSetsIdField) {
+    Element el("div");
+    el.set_attribute("id", "hero");
+    EXPECT_EQ(el.id(), "hero");
+}
+
+TEST(DomNode, ThreeChildrenInsertBeforeOrderCorrect) {
+    Element parent("ul");
+    auto a = std::make_unique<Element>("li");
+    auto b = std::make_unique<Element>("li");
+    auto c = std::make_unique<Element>("li");
+    a->set_attribute("id", "a");
+    b->set_attribute("id", "b");
+    c->set_attribute("id", "c");
+    Element* c_ptr = c.get();
+    parent.append_child(std::move(a));
+    parent.append_child(std::move(c));
+    parent.insert_before(std::move(b), c_ptr);
+    // order: a, b, c — b was inserted before c
+    EXPECT_EQ(parent.child_count(), 3u);
+    EXPECT_EQ(dynamic_cast<const Element*>(parent.first_child())->id(), "a");
+}
