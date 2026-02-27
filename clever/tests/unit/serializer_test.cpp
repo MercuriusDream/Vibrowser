@@ -2068,3 +2068,73 @@ TEST(SerializerTest, ThreeU64ValuesRoundTrip) {
     EXPECT_EQ(d.read_u64(), b);
     EXPECT_EQ(d.read_u64(), c);
 }
+
+// ============================================================================
+// Cycle 688: More serializer tests
+// ============================================================================
+
+TEST(SerializerTest, AlternatingBoolAndU8) {
+    Serializer s;
+    s.write_bool(true);
+    s.write_u8(10u);
+    s.write_bool(false);
+    s.write_u8(20u);
+    Deserializer d(s.data());
+    EXPECT_TRUE(d.read_bool());
+    EXPECT_EQ(d.read_u8(), 10u);
+    EXPECT_FALSE(d.read_bool());
+    EXPECT_EQ(d.read_u8(), 20u);
+}
+
+TEST(SerializerTest, I64PositiveMillionRoundTrip) {
+    Serializer s;
+    s.write_i64(1000000LL);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i64(), 1000000LL);
+}
+
+TEST(SerializerTest, StringWithNewline) {
+    Serializer s;
+    s.write_string("line1\nline2");
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "line1\nline2");
+}
+
+TEST(SerializerTest, StringWithTab) {
+    Serializer s;
+    s.write_string("col1\tcol2");
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "col1\tcol2");
+}
+
+TEST(SerializerTest, ZeroU8WritesAndReads) {
+    Serializer s;
+    s.write_u8(0u);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u8(), 0u);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, U32FollowedByString) {
+    Serializer s;
+    s.write_u32(999u);
+    s.write_string("test");
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u32(), 999u);
+    EXPECT_EQ(d.read_string(), "test");
+}
+
+TEST(SerializerTest, FiveI32ValuesInSequence) {
+    Serializer s;
+    for (int i = 1; i <= 5; i++) s.write_i32(i * 10);
+    Deserializer d(s.data());
+    for (int i = 1; i <= 5; i++) EXPECT_EQ(d.read_i32(), i * 10);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, StringWithSpacesPreserved) {
+    Serializer s;
+    s.write_string("hello world from vibrowser");
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "hello world from vibrowser");
+}
