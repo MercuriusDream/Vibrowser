@@ -4338,3 +4338,85 @@ TEST(TreeBuilder, ObjectTypeAttr) {
         if (attr.name == "type" && attr.value == "application/x-shockwave-flash") found = true;
     EXPECT_TRUE(found);
 }
+
+// Cycle 884 — HTML attribute tests
+
+TEST(TreeBuilder, TextareaRowsAttr) {
+    auto doc = clever::html::parse("<body><textarea rows=\"8\"></textarea></body>");
+    auto* ta = doc->find_element("textarea");
+    ASSERT_NE(ta, nullptr);
+    bool found = false;
+    for (const auto& attr : ta->attributes)
+        if (attr.name == "rows" && attr.value == "8") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, TextareaColsAttr) {
+    auto doc = clever::html::parse("<body><textarea cols=\"40\"></textarea></body>");
+    auto* ta = doc->find_element("textarea");
+    ASSERT_NE(ta, nullptr);
+    bool found = false;
+    for (const auto& attr : ta->attributes)
+        if (attr.name == "cols" && attr.value == "40") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, TextareaMaxlengthAttr) {
+    auto doc = clever::html::parse("<body><textarea maxlength=\"200\"></textarea></body>");
+    auto* ta = doc->find_element("textarea");
+    ASSERT_NE(ta, nullptr);
+    bool found = false;
+    for (const auto& attr : ta->attributes)
+        if (attr.name == "maxlength" && attr.value == "200") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, InputCheckedAttr) {
+    auto doc = clever::html::parse("<body><input type=\"checkbox\" checked></body>");
+    auto* inp = doc->find_element("input");
+    ASSERT_NE(inp, nullptr);
+    bool found = false;
+    for (const auto& attr : inp->attributes)
+        if (attr.name == "checked") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, InputMultipleAttr) {
+    auto doc = clever::html::parse("<body><input type=\"file\" multiple></body>");
+    auto* inp = doc->find_element("input");
+    ASSERT_NE(inp, nullptr);
+    bool found = false;
+    for (const auto& attr : inp->attributes)
+        if (attr.name == "multiple") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, InputStepAttr) {
+    auto doc = clever::html::parse("<body><input type=\"number\" step=\"0.5\"></body>");
+    auto* inp = doc->find_element("input");
+    ASSERT_NE(inp, nullptr);
+    bool found = false;
+    for (const auto& attr : inp->attributes)
+        if (attr.name == "step" && attr.value == "0.5") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, FieldsetDisabledAttr) {
+    auto doc = clever::html::parse("<body><fieldset disabled><legend>Disabled</legend></fieldset></body>");
+    auto* fs = doc->find_element("fieldset");
+    ASSERT_NE(fs, nullptr);
+    bool found = false;
+    for (const auto& attr : fs->attributes)
+        if (attr.name == "disabled") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, ButtonTypeButtonAttr) {
+    auto doc = clever::html::parse("<body><button type=\"button\">Click</button></body>");
+    auto* btn = doc->find_element("button");
+    ASSERT_NE(btn, nullptr);
+    bool found = false;
+    for (const auto& attr : btn->attributes)
+        if (attr.name == "type" && attr.value == "button") found = true;
+    EXPECT_TRUE(found);
+}
