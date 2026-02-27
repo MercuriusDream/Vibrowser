@@ -16072,3 +16072,141 @@ TEST(DomTest, MixedChildTypesParentAndSiblingLinksV102) {
     EXPECT_EQ(child_el_ptr->tag_name(), "img");
     EXPECT_EQ(comment_ptr->data(), "image caption");
 }
+
+// ---------------------------------------------------------------------------
+// V103 Tests
+// ---------------------------------------------------------------------------
+
+TEST(DomTest, InsertBeforeFirstChildReordersV103) {
+    Element parent("ul");
+    auto li1 = std::make_unique<Element>("li");
+    Element* li1_ptr = li1.get();
+    parent.append_child(std::move(li1));
+
+    auto li0 = std::make_unique<Element>("li");
+    Element* li0_ptr = li0.get();
+    parent.insert_before(std::move(li0), li1_ptr);
+
+    EXPECT_EQ(parent.child_count(), 2u);
+    EXPECT_EQ(parent.first_child(), li0_ptr);
+    EXPECT_EQ(parent.last_child(), li1_ptr);
+    EXPECT_EQ(li0_ptr->next_sibling(), li1_ptr);
+    EXPECT_EQ(li1_ptr->next_sibling(), nullptr);
+    EXPECT_EQ(li0_ptr->parent(), &parent);
+}
+
+TEST(DomTest, RemoveChildUpdatesLinksV103) {
+    Element parent("div");
+    auto a = std::make_unique<Element>("span");
+    auto b = std::make_unique<Element>("em");
+    Element* a_ptr = a.get();
+    Element* b_ptr = b.get();
+    parent.append_child(std::move(a));
+    parent.append_child(std::move(b));
+    EXPECT_EQ(parent.child_count(), 2u);
+
+    parent.remove_child(*a_ptr);
+    EXPECT_EQ(parent.child_count(), 1u);
+    EXPECT_EQ(parent.first_child(), b_ptr);
+    EXPECT_EQ(parent.last_child(), b_ptr);
+    EXPECT_EQ(b_ptr->next_sibling(), nullptr);
+}
+
+TEST(DomTest, AttributeSetGetRemoveCycleV103) {
+    Element el("input");
+    EXPECT_FALSE(el.has_attribute("type"));
+    EXPECT_FALSE(el.get_attribute("type").has_value());
+
+    el.set_attribute("type", "text");
+    EXPECT_TRUE(el.has_attribute("type"));
+    EXPECT_EQ(el.get_attribute("type").value(), "text");
+    EXPECT_EQ(el.attributes().size(), 1u);
+
+    el.set_attribute("type", "password");
+    EXPECT_EQ(el.get_attribute("type").value(), "password");
+    EXPECT_EQ(el.attributes().size(), 1u);
+
+    el.remove_attribute("type");
+    EXPECT_FALSE(el.has_attribute("type"));
+    EXPECT_EQ(el.attributes().size(), 0u);
+}
+
+TEST(DomTest, ClassListAddRemoveContainsToggleV103) {
+    Element el("div");
+    el.class_list().add("active");
+    el.class_list().add("visible");
+    EXPECT_TRUE(el.class_list().contains("active"));
+    EXPECT_TRUE(el.class_list().contains("visible"));
+    EXPECT_FALSE(el.class_list().contains("hidden"));
+
+    el.class_list().toggle("active");
+    EXPECT_FALSE(el.class_list().contains("active"));
+    el.class_list().toggle("active");
+    EXPECT_TRUE(el.class_list().contains("active"));
+
+    el.class_list().remove("visible");
+    EXPECT_FALSE(el.class_list().contains("visible"));
+}
+
+TEST(DomTest, TextNodeContentAndTypeV103) {
+    Text txt("hello world");
+    EXPECT_EQ(txt.text_content(), "hello world");
+    EXPECT_EQ(txt.node_type(), NodeType::Text);
+    EXPECT_EQ(txt.child_count(), 0u);
+    EXPECT_EQ(txt.first_child(), nullptr);
+}
+
+TEST(DomTest, CommentNodeDataAndTypeV103) {
+    Comment c("TODO: fix later");
+    EXPECT_EQ(c.data(), "TODO: fix later");
+    EXPECT_EQ(c.node_type(), NodeType::Comment);
+    EXPECT_EQ(c.child_count(), 0u);
+    EXPECT_EQ(c.parent(), nullptr);
+}
+
+TEST(DomTest, MultipleAttributesIndependentV103) {
+    Element el("a");
+    el.set_attribute("href", "https://example.com");
+    el.set_attribute("target", "_blank");
+    el.set_attribute("id", "link1");
+    EXPECT_EQ(el.attributes().size(), 3u);
+    EXPECT_EQ(el.get_attribute("href").value(), "https://example.com");
+    EXPECT_EQ(el.get_attribute("target").value(), "_blank");
+    EXPECT_EQ(el.get_attribute("id").value(), "link1");
+
+    el.remove_attribute("target");
+    EXPECT_EQ(el.attributes().size(), 2u);
+    EXPECT_TRUE(el.has_attribute("href"));
+    EXPECT_TRUE(el.has_attribute("id"));
+    EXPECT_FALSE(el.has_attribute("target"));
+}
+
+TEST(DomTest, DeepNestingParentChainV103) {
+    Element root("html");
+    auto body_up = std::make_unique<Element>("body");
+    Element* body_ptr = body_up.get();
+    auto div_up = std::make_unique<Element>("div");
+    Element* div_ptr = div_up.get();
+    auto span_up = std::make_unique<Element>("span");
+    Element* span_ptr = span_up.get();
+    auto txt_up = std::make_unique<Text>("deep text");
+    Text* txt_ptr = txt_up.get();
+
+    span_ptr->append_child(std::move(txt_up));
+    div_ptr->append_child(std::move(span_up));
+    body_ptr->append_child(std::move(div_up));
+    root.append_child(std::move(body_up));
+
+    EXPECT_EQ(txt_ptr->parent(), span_ptr);
+    EXPECT_EQ(span_ptr->parent(), div_ptr);
+    EXPECT_EQ(div_ptr->parent(), body_ptr);
+    EXPECT_EQ(body_ptr->parent(), &root);
+    EXPECT_EQ(root.parent(), nullptr);
+
+    EXPECT_EQ(root.child_count(), 1u);
+    EXPECT_EQ(body_ptr->child_count(), 1u);
+    EXPECT_EQ(div_ptr->child_count(), 1u);
+    EXPECT_EQ(span_ptr->child_count(), 1u);
+    EXPECT_EQ(txt_ptr->text_content(), "deep text");
+    EXPECT_EQ(span_ptr->tag_name(), "span");
+}

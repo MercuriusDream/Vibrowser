@@ -15078,3 +15078,162 @@ TEST(SerializerTest, InterleavedTypesProtocolMessageV102) {
     EXPECT_EQ(tag_result[5], 0xFE);
     EXPECT_FALSE(d.has_remaining());
 }
+
+// ------------------------------------------------------------------
+// V103 tests
+// ------------------------------------------------------------------
+
+TEST(SerializerTest, U64MaxBoundaryRoundTripV103) {
+    Serializer s;
+    s.write_u64(0u);
+    s.write_u64(1u);
+    s.write_u64(UINT64_MAX);
+    s.write_u64(UINT64_MAX - 1u);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u64(), 0u);
+    EXPECT_EQ(d.read_u64(), 1u);
+    EXPECT_EQ(d.read_u64(), UINT64_MAX);
+    EXPECT_EQ(d.read_u64(), UINT64_MAX - 1u);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, I32NegativePositiveAlternatingV103) {
+    Serializer s;
+    s.write_i32(INT32_MIN);
+    s.write_i32(INT32_MAX);
+    s.write_i32(-1);
+    s.write_i32(0);
+    s.write_i32(1);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i32(), INT32_MIN);
+    EXPECT_EQ(d.read_i32(), INT32_MAX);
+    EXPECT_EQ(d.read_i32(), -1);
+    EXPECT_EQ(d.read_i32(), 0);
+    EXPECT_EQ(d.read_i32(), 1);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, F64SpecialValuesV103) {
+    Serializer s;
+    s.write_f64(0.0);
+    s.write_f64(-0.0);
+    s.write_f64(std::numeric_limits<double>::infinity());
+    s.write_f64(-std::numeric_limits<double>::infinity());
+    s.write_f64(std::numeric_limits<double>::min());
+    s.write_f64(std::numeric_limits<double>::max());
+
+    Deserializer d(s.data());
+    EXPECT_DOUBLE_EQ(d.read_f64(), 0.0);
+    double neg_zero = d.read_f64();
+    EXPECT_DOUBLE_EQ(neg_zero, 0.0);
+    EXPECT_TRUE(std::signbit(neg_zero));
+    EXPECT_EQ(d.read_f64(), std::numeric_limits<double>::infinity());
+    EXPECT_EQ(d.read_f64(), -std::numeric_limits<double>::infinity());
+    EXPECT_DOUBLE_EQ(d.read_f64(), std::numeric_limits<double>::min());
+    EXPECT_DOUBLE_EQ(d.read_f64(), std::numeric_limits<double>::max());
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, EmptyStringAndBytesV103) {
+    Serializer s;
+    s.write_string("");
+    s.write_bytes(nullptr, 0);
+    s.write_string("");
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "");
+    auto b = d.read_bytes();
+    EXPECT_EQ(b.size(), 0u);
+    EXPECT_EQ(d.read_string(), "");
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, BoolSequencePatternV103) {
+    Serializer s;
+    s.write_bool(true);
+    s.write_bool(false);
+    s.write_bool(true);
+    s.write_bool(true);
+    s.write_bool(false);
+    s.write_bool(false);
+    s.write_bool(true);
+    s.write_bool(false);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_bool(), true);
+    EXPECT_EQ(d.read_bool(), false);
+    EXPECT_EQ(d.read_bool(), true);
+    EXPECT_EQ(d.read_bool(), true);
+    EXPECT_EQ(d.read_bool(), false);
+    EXPECT_EQ(d.read_bool(), false);
+    EXPECT_EQ(d.read_bool(), true);
+    EXPECT_EQ(d.read_bool(), false);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, LargeBytesBlobV103) {
+    Serializer s;
+    std::vector<uint8_t> blob(1024);
+    std::iota(blob.begin(), blob.end(), static_cast<uint8_t>(0));
+    s.write_bytes(blob.data(), blob.size());
+
+    Deserializer d(s.data());
+    auto result = d.read_bytes();
+    ASSERT_EQ(result.size(), 1024u);
+    for (size_t i = 0; i < 1024; ++i) {
+        EXPECT_EQ(result[i], static_cast<uint8_t>(i & 0xFF));
+    }
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, U16EndianConsistencyV103) {
+    Serializer s;
+    s.write_u16(0x0000);
+    s.write_u16(0x00FF);
+    s.write_u16(0xFF00);
+    s.write_u16(0xFFFF);
+    s.write_u16(0xABCD);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u16(), 0x0000);
+    EXPECT_EQ(d.read_u16(), 0x00FF);
+    EXPECT_EQ(d.read_u16(), 0xFF00);
+    EXPECT_EQ(d.read_u16(), 0xFFFF);
+    EXPECT_EQ(d.read_u16(), 0xABCD);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, MixedTypesComplexMessageV103) {
+    Serializer s;
+    // Simulate a complex protocol message
+    s.write_u8(0x01);                          // version
+    s.write_u32(42u);                          // request id
+    s.write_i64(-9999999999LL);                // timestamp
+    s.write_bool(true);                        // compressed flag
+    s.write_string("application/json");        // content type
+    s.write_f64(1.23e-15);                     // precision
+    uint8_t checksum[] = {0x01, 0x02, 0x03};
+    s.write_bytes(checksum, 3);                // checksum
+    s.write_u16(8080);                         // port
+    s.write_i32(-256);                         // offset
+    s.write_string("end");                     // terminator
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u8(), 0x01u);
+    EXPECT_EQ(d.read_u32(), 42u);
+    EXPECT_EQ(d.read_i64(), -9999999999LL);
+    EXPECT_EQ(d.read_bool(), true);
+    EXPECT_EQ(d.read_string(), "application/json");
+    EXPECT_DOUBLE_EQ(d.read_f64(), 1.23e-15);
+    auto cksum = d.read_bytes();
+    ASSERT_EQ(cksum.size(), 3u);
+    EXPECT_EQ(cksum[0], 0x01);
+    EXPECT_EQ(cksum[1], 0x02);
+    EXPECT_EQ(cksum[2], 0x03);
+    EXPECT_EQ(d.read_u16(), 8080);
+    EXPECT_EQ(d.read_i32(), -256);
+    EXPECT_EQ(d.read_string(), "end");
+    EXPECT_FALSE(d.has_remaining());
+}

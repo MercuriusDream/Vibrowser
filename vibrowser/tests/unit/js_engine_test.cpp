@@ -28105,3 +28105,170 @@ TEST(JsEngineTest, CustomErrorSubclassPropertiesV102) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "true|true|AppError|not found|404|/api");
 }
+
+// Test: Generator function with yield and return value
+TEST(JsEngineTest, GeneratorFibonacciSequenceV103) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        function* fib() {
+            var a = 0, b = 1;
+            while (true) {
+                yield a;
+                [a, b] = [b, a + b];
+            }
+        }
+        var gen = fib();
+        var nums = [];
+        for (var i = 0; i < 10; i++) nums.push(gen.next().value);
+        nums.join(",");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "0,1,1,2,3,5,8,13,21,34");
+}
+
+// Test: Proxy with has trap and Reflect.has
+TEST(JsEngineTest, ProxyHasTrapWithReflectV103) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var secret = { _hidden: 42, visible: 100 };
+        var proxy = new Proxy(secret, {
+            has: function(target, prop) {
+                if (prop.startsWith("_")) return false;
+                return Reflect.has(target, prop);
+            }
+        });
+        [
+            "visible" in proxy,
+            "_hidden" in proxy,
+            proxy._hidden,
+            proxy.visible
+        ].join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true|false|42|100");
+}
+
+// Test: Symbol.toPrimitive controls type coercion
+TEST(JsEngineTest, SymbolToPrimitiveCoercionV103) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var obj = {
+            [Symbol.toPrimitive]: function(hint) {
+                if (hint === "number") return 42;
+                if (hint === "string") return "hello";
+                return true;
+            }
+        };
+        [+obj, `${obj}`, obj + ""].join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "42|hello|true");
+}
+
+// Test: WeakMap for private data pattern
+TEST(JsEngineTest, WeakMapPrivateDataPatternV103) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var privates = new WeakMap();
+        function Person(name, age) {
+            this.name = name;
+            privates.set(this, { age: age });
+        }
+        Person.prototype.getAge = function() { return privates.get(this).age; };
+        Person.prototype.birthday = function() { privates.get(this).age++; };
+
+        var p = new Person("Alice", 30);
+        var before = p.getAge();
+        p.birthday();
+        p.birthday();
+        var after = p.getAge();
+        [p.name, before, after, typeof p.age].join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "Alice|30|32|undefined");
+}
+
+// Test: TypedArray sort, map, reduce with DataView interop
+TEST(JsEngineTest, TypedArrayOperationsAndDataViewV103) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var buf = new ArrayBuffer(8);
+        var view = new DataView(buf);
+        view.setInt16(0, 300, true);
+        view.setInt16(2, 100, true);
+        view.setInt16(4, 500, true);
+        view.setInt16(6, 200, true);
+        var arr = new Int16Array(buf);
+        var sorted = Array.from(arr).sort(function(a, b) { return a - b; });
+        var sum = sorted.reduce(function(acc, v) { return acc + v; }, 0);
+        [sorted.join(","), sum, arr.byteLength].join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "100,200,300,500|1100|8");
+}
+
+// Test: RegExp named capture groups and matchAll
+TEST(JsEngineTest, RegExpNamedCaptureGroupsV103) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var text = "2024-01-15 and 2023-12-25";
+        var re = /(?<year>\d{4})-(?<month>\d{2})-(?<day>\d{2})/g;
+        var matches = [];
+        var m;
+        while ((m = re.exec(text)) !== null) {
+            matches.push(m.groups.year + "/" + m.groups.month + "/" + m.groups.day);
+        }
+        matches.join(", ");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "2024/01/15, 2023/12/25");
+}
+
+// Test: Set operations (union, intersection, difference) via iteration
+TEST(JsEngineTest, SetUnionIntersectionDifferenceV103) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var a = new Set([1, 2, 3, 4, 5]);
+        var b = new Set([3, 4, 5, 6, 7]);
+        var union = new Set([...a, ...b]);
+        var intersection = new Set([...a].filter(function(x) { return b.has(x); }));
+        var difference = new Set([...a].filter(function(x) { return !b.has(x); }));
+        [
+            Array.from(union).sort(function(x,y){return x-y}).join(","),
+            Array.from(intersection).sort(function(x,y){return x-y}).join(","),
+            Array.from(difference).sort(function(x,y){return x-y}).join(",")
+        ].join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1,2,3,4,5,6,7|3,4,5|1,2");
+}
+
+// Test: Recursive class hierarchy with super and method override
+TEST(JsEngineTest, ClassInheritanceChainWithSuperV103) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        class Shape {
+            constructor(type) { this.type = type; }
+            describe() { return this.type; }
+        }
+        class Polygon extends Shape {
+            constructor(sides) { super("polygon"); this.sides = sides; }
+            describe() { return super.describe() + ":" + this.sides + "sides"; }
+        }
+        class RegularPolygon extends Polygon {
+            constructor(sides, sideLen) { super(sides); this.sideLen = sideLen; }
+            perimeter() { return this.sides * this.sideLen; }
+            describe() { return super.describe() + ":len" + this.sideLen; }
+        }
+        var hex = new RegularPolygon(6, 5);
+        [
+            hex instanceof Shape,
+            hex instanceof Polygon,
+            hex instanceof RegularPolygon,
+            hex.describe(),
+            hex.perimeter()
+        ].join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true|true|true|polygon:6sides:len5|30");
+}

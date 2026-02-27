@@ -16595,3 +16595,226 @@ TEST(HtmlParserTest, DataListWithOptionsAndAssociatedInputV102) {
     EXPECT_EQ(get_attr_v63(options[2], "value"), "Safari");
     EXPECT_EQ(get_attr_v63(options[3], "value"), "Edge");
 }
+
+TEST(HtmlParserTest, NavWithUnorderedListLinksV103) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<nav>"
+        "<ul>"
+        "<li><a href=\"/home\">Home</a></li>"
+        "<li><a href=\"/about\">About</a></li>"
+        "<li><a href=\"/contact\">Contact</a></li>"
+        "</ul>"
+        "</nav>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* nav = doc->find_element("nav");
+    ASSERT_NE(nav, nullptr);
+    auto* ul = doc->find_element("ul");
+    ASSERT_NE(ul, nullptr);
+    auto lis = doc->find_all_elements("li");
+    ASSERT_EQ(lis.size(), 3u);
+    auto anchors = doc->find_all_elements("a");
+    ASSERT_EQ(anchors.size(), 3u);
+    EXPECT_EQ(get_attr_v63(anchors[0], "href"), "/home");
+    EXPECT_EQ(anchors[0]->text_content(), "Home");
+    EXPECT_EQ(get_attr_v63(anchors[1], "href"), "/about");
+    EXPECT_EQ(anchors[1]->text_content(), "About");
+    EXPECT_EQ(get_attr_v63(anchors[2], "href"), "/contact");
+    EXPECT_EQ(anchors[2]->text_content(), "Contact");
+}
+
+TEST(HtmlParserTest, VideoElementWithSourcesAndTrackV103) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<video controls width=\"640\" height=\"360\">"
+        "<source src=\"movie.mp4\" type=\"video/mp4\"/>"
+        "<source src=\"movie.webm\" type=\"video/webm\"/>"
+        "<track kind=\"subtitles\" src=\"subs_en.vtt\" srclang=\"en\" label=\"English\"/>"
+        "</video>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* video = doc->find_element("video");
+    ASSERT_NE(video, nullptr);
+    EXPECT_EQ(get_attr_v63(video, "width"), "640");
+    EXPECT_EQ(get_attr_v63(video, "height"), "360");
+    auto sources = doc->find_all_elements("source");
+    ASSERT_EQ(sources.size(), 2u);
+    EXPECT_EQ(get_attr_v63(sources[0], "src"), "movie.mp4");
+    EXPECT_EQ(get_attr_v63(sources[0], "type"), "video/mp4");
+    EXPECT_EQ(get_attr_v63(sources[1], "src"), "movie.webm");
+    auto* track = doc->find_element("track");
+    ASSERT_NE(track, nullptr);
+    EXPECT_EQ(get_attr_v63(track, "kind"), "subtitles");
+    EXPECT_EQ(get_attr_v63(track, "srclang"), "en");
+    EXPECT_EQ(get_attr_v63(track, "label"), "English");
+}
+
+TEST(HtmlParserTest, DescriptionListWithMultipleTermsAndDescV103) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<dl>"
+        "<dt>HTML</dt><dd>HyperText Markup Language</dd>"
+        "<dt>CSS</dt><dd>Cascading Style Sheets</dd>"
+        "<dt>JS</dt><dd>JavaScript</dd>"
+        "</dl>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* dl = doc->find_element("dl");
+    ASSERT_NE(dl, nullptr);
+    auto dts = doc->find_all_elements("dt");
+    ASSERT_EQ(dts.size(), 3u);
+    auto dds = doc->find_all_elements("dd");
+    ASSERT_EQ(dds.size(), 3u);
+    EXPECT_EQ(dts[0]->text_content(), "HTML");
+    EXPECT_EQ(dds[0]->text_content(), "HyperText Markup Language");
+    EXPECT_EQ(dts[1]->text_content(), "CSS");
+    EXPECT_EQ(dds[1]->text_content(), "Cascading Style Sheets");
+    EXPECT_EQ(dts[2]->text_content(), "JS");
+    EXPECT_EQ(dds[2]->text_content(), "JavaScript");
+}
+
+TEST(HtmlParserTest, TableWithColGroupAndFooterV103) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<table>"
+        "<colgroup><col span=\"2\"/><col/></colgroup>"
+        "<thead><tr><th>Item</th><th>Qty</th><th>Price</th></tr></thead>"
+        "<tbody><tr><td>Apple</td><td>5</td><td>$1.50</td></tr></tbody>"
+        "<tfoot><tr><td colspan=\"2\">Total</td><td>$7.50</td></tr></tfoot>"
+        "</table>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* table = doc->find_element("table");
+    ASSERT_NE(table, nullptr);
+    auto* colgroup = doc->find_element("colgroup");
+    ASSERT_NE(colgroup, nullptr);
+    auto cols = doc->find_all_elements("col");
+    ASSERT_GE(cols.size(), 1u);
+    EXPECT_EQ(get_attr_v63(cols[0], "span"), "2");
+    auto* tfoot = doc->find_element("tfoot");
+    ASSERT_NE(tfoot, nullptr);
+    auto tds = doc->find_all_elements("td");
+    ASSERT_GE(tds.size(), 5u);
+    EXPECT_EQ(tds[0]->text_content(), "Apple");
+    EXPECT_EQ(tds[3]->text_content(), "Total");
+    EXPECT_EQ(tds[4]->text_content(), "$7.50");
+}
+
+TEST(HtmlParserTest, PictureElementWithMultipleSourcesV103) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<picture>"
+        "<source media=\"(min-width: 800px)\" srcset=\"large.jpg\"/>"
+        "<source media=\"(min-width: 400px)\" srcset=\"medium.jpg\"/>"
+        "<img src=\"small.jpg\" alt=\"Responsive image\"/>"
+        "</picture>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* picture = doc->find_element("picture");
+    ASSERT_NE(picture, nullptr);
+    auto sources = doc->find_all_elements("source");
+    ASSERT_EQ(sources.size(), 2u);
+    EXPECT_EQ(get_attr_v63(sources[0], "media"), "(min-width: 800px)");
+    EXPECT_EQ(get_attr_v63(sources[0], "srcset"), "large.jpg");
+    EXPECT_EQ(get_attr_v63(sources[1], "srcset"), "medium.jpg");
+    auto* img = doc->find_element("img");
+    ASSERT_NE(img, nullptr);
+    EXPECT_EQ(get_attr_v63(img, "src"), "small.jpg");
+    EXPECT_EQ(get_attr_v63(img, "alt"), "Responsive image");
+}
+
+TEST(HtmlParserTest, FormWithTextareaAndSelectGroupV103) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<form action=\"/submit\" method=\"post\">"
+        "<textarea name=\"message\" rows=\"5\" cols=\"40\">Default text</textarea>"
+        "<select name=\"priority\">"
+        "<optgroup label=\"Urgency\">"
+        "<option value=\"low\">Low</option>"
+        "<option value=\"high\">High</option>"
+        "</optgroup>"
+        "</select>"
+        "<button type=\"submit\">Send</button>"
+        "</form>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* form = doc->find_element("form");
+    ASSERT_NE(form, nullptr);
+    EXPECT_EQ(get_attr_v63(form, "action"), "/submit");
+    EXPECT_EQ(get_attr_v63(form, "method"), "post");
+    auto* textarea = doc->find_element("textarea");
+    ASSERT_NE(textarea, nullptr);
+    EXPECT_EQ(get_attr_v63(textarea, "name"), "message");
+    EXPECT_EQ(get_attr_v63(textarea, "rows"), "5");
+    EXPECT_EQ(textarea->text_content(), "Default text");
+    auto* optgroup = doc->find_element("optgroup");
+    ASSERT_NE(optgroup, nullptr);
+    EXPECT_EQ(get_attr_v63(optgroup, "label"), "Urgency");
+    auto options = doc->find_all_elements("option");
+    ASSERT_EQ(options.size(), 2u);
+    EXPECT_EQ(get_attr_v63(options[0], "value"), "low");
+    EXPECT_EQ(options[1]->text_content(), "High");
+    auto* button = doc->find_element("button");
+    ASSERT_NE(button, nullptr);
+    EXPECT_EQ(button->text_content(), "Send");
+}
+
+TEST(HtmlParserTest, SectionWithHeadingsAndParagraphsV103) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<section>"
+        "<h1>Main Title</h1>"
+        "<p>Intro paragraph.</p>"
+        "<h2>Subsection</h2>"
+        "<p>Details here.</p>"
+        "<h3>Sub-subsection</h3>"
+        "<p>More details.</p>"
+        "</section>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* section = doc->find_element("section");
+    ASSERT_NE(section, nullptr);
+    auto* h1 = doc->find_element("h1");
+    ASSERT_NE(h1, nullptr);
+    EXPECT_EQ(h1->text_content(), "Main Title");
+    auto* h2 = doc->find_element("h2");
+    ASSERT_NE(h2, nullptr);
+    EXPECT_EQ(h2->text_content(), "Subsection");
+    auto* h3 = doc->find_element("h3");
+    ASSERT_NE(h3, nullptr);
+    EXPECT_EQ(h3->text_content(), "Sub-subsection");
+    auto paragraphs = doc->find_all_elements("p");
+    ASSERT_EQ(paragraphs.size(), 3u);
+    EXPECT_EQ(paragraphs[0]->text_content(), "Intro paragraph.");
+    EXPECT_EQ(paragraphs[1]->text_content(), "Details here.");
+    EXPECT_EQ(paragraphs[2]->text_content(), "More details.");
+}
+
+TEST(HtmlParserTest, MapWithAreaElementsV103) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<img src=\"workspace.png\" usemap=\"#workmap\" alt=\"Workspace\"/>"
+        "<map name=\"workmap\">"
+        "<area shape=\"rect\" coords=\"34,44,270,350\" alt=\"Computer\" href=\"computer.htm\"/>"
+        "<area shape=\"circle\" coords=\"337,300,44\" alt=\"Coffee\" href=\"coffee.htm\"/>"
+        "<area shape=\"poly\" coords=\"0,0,50,50,100,0\" alt=\"Triangle\" href=\"triangle.htm\"/>"
+        "</map>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* img = doc->find_element("img");
+    ASSERT_NE(img, nullptr);
+    EXPECT_EQ(get_attr_v63(img, "usemap"), "#workmap");
+    auto* map = doc->find_element("map");
+    ASSERT_NE(map, nullptr);
+    EXPECT_EQ(get_attr_v63(map, "name"), "workmap");
+    auto areas = doc->find_all_elements("area");
+    ASSERT_EQ(areas.size(), 3u);
+    EXPECT_EQ(get_attr_v63(areas[0], "shape"), "rect");
+    EXPECT_EQ(get_attr_v63(areas[0], "alt"), "Computer");
+    EXPECT_EQ(get_attr_v63(areas[0], "href"), "computer.htm");
+    EXPECT_EQ(get_attr_v63(areas[1], "shape"), "circle");
+    EXPECT_EQ(get_attr_v63(areas[1], "coords"), "337,300,44");
+    EXPECT_EQ(get_attr_v63(areas[2], "shape"), "poly");
+    EXPECT_EQ(get_attr_v63(areas[2], "href"), "triangle.htm");
+}

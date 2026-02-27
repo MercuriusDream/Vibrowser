@@ -19081,3 +19081,168 @@ TEST(LayoutTest, DisplayNoneDoesNotContributeToHeightV102) {
     EXPECT_FLOAT_EQ(root->geometry.height, 60.0f);
     EXPECT_FLOAT_EQ(vp->geometry.height, 60.0f);
 }
+
+// Test: Flex row distributes space proportionally via flex_grow
+TEST(LayoutTest, FlexRowGrowDistributionV103) {
+    auto root = make_flex("div");
+    root->specified_width = 600.0f;
+    root->flex_direction = 0; // row
+
+    auto c1 = make_block("div");
+    c1->flex_grow = 1.0f;
+    auto c2 = make_block("div");
+    c2->flex_grow = 2.0f;
+
+    auto* p1 = c1.get();
+    auto* p2 = c2.get();
+
+    root->append_child(std::move(c1));
+    root->append_child(std::move(c2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 600.0f, 400.0f);
+
+    // Child1 gets 1/3, child2 gets 2/3 of 600
+    EXPECT_FLOAT_EQ(p1->geometry.width, 200.0f);
+    EXPECT_FLOAT_EQ(p2->geometry.width, 400.0f);
+}
+
+// Test: Block child margin collapses into layout y positioning
+TEST(LayoutTest, BlockChildTopMarginOffsetsYV103) {
+    auto root = make_block("div");
+    root->specified_width = 500.0f;
+
+    auto child = make_block("div");
+    child->specified_height = 40.0f;
+    child->geometry.margin.top = 25.0f;
+
+    auto* cp = child.get();
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 500.0f, 400.0f);
+
+    EXPECT_FLOAT_EQ(cp->geometry.y, 25.0f);
+    EXPECT_FLOAT_EQ(root->geometry.height, 25.0f + 40.0f);
+}
+
+// Test: Nested block padding reduces child available width
+TEST(LayoutTest, NestedBlockPaddingReducesChildWidthV103) {
+    auto root = make_block("div");
+    root->specified_width = 400.0f;
+    root->geometry.padding.left = 30.0f;
+    root->geometry.padding.right = 30.0f;
+
+    auto child = make_block("div");
+    auto* cp = child.get();
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 400.0f, 300.0f);
+
+    // Child width should be parent width minus left+right padding
+    EXPECT_FLOAT_EQ(cp->geometry.width, 400.0f - 30.0f - 30.0f);
+}
+
+// Test: Flex column stacks children vertically with correct y offsets
+TEST(LayoutTest, FlexColumnStacksChildrenVerticallyV103) {
+    auto root = make_flex("div");
+    root->specified_width = 300.0f;
+    root->flex_direction = 2; // column
+
+    auto c1 = make_block("div");
+    c1->specified_height = 50.0f;
+    auto c2 = make_block("div");
+    c2->specified_height = 70.0f;
+
+    auto* p1 = c1.get();
+    auto* p2 = c2.get();
+
+    root->append_child(std::move(c1));
+    root->append_child(std::move(c2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 300.0f, 400.0f);
+
+    EXPECT_FLOAT_EQ(p1->geometry.y, 0.0f);
+    EXPECT_FLOAT_EQ(p2->geometry.y, 50.0f);
+    EXPECT_FLOAT_EQ(root->geometry.height, 120.0f);
+}
+
+// Test: Opacity and z_index are stored correctly and survive layout
+TEST(LayoutTest, OpacityAndZIndexSurviveLayoutV103) {
+    auto root = make_block("div");
+    root->specified_width = 200.0f;
+    root->specified_height = 100.0f;
+    root->opacity = 0.5f;
+    root->z_index = 10;
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(root->opacity, 0.5f);
+    EXPECT_EQ(root->z_index, 10);
+    EXPECT_FLOAT_EQ(root->geometry.width, 200.0f);
+    EXPECT_FLOAT_EQ(root->geometry.height, 100.0f);
+}
+
+// Test: Block with border reduces content area for children
+TEST(LayoutTest, BlockBorderReducesContentAreaV103) {
+    auto root = make_block("div");
+    root->specified_width = 500.0f;
+    root->geometry.border.left = 5.0f;
+    root->geometry.border.right = 5.0f;
+    root->geometry.border.top = 10.0f;
+    root->geometry.border.bottom = 10.0f;
+
+    auto child = make_block("div");
+    child->specified_height = 80.0f;
+    auto* cp = child.get();
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 500.0f, 400.0f);
+
+    // Child width = parent width - left border - right border
+    EXPECT_FLOAT_EQ(cp->geometry.width, 500.0f - 5.0f - 5.0f);
+    // Root height = top border + child height + bottom border
+    EXPECT_FLOAT_EQ(root->geometry.height, 10.0f + 80.0f + 10.0f);
+    // Root width stays at specified
+    EXPECT_FLOAT_EQ(root->geometry.width, 500.0f);
+}
+
+// Test: Text content and font_size on a text node with layout
+TEST(LayoutTest, TextNodeFontSizeAndContentV103) {
+    auto root = make_block("div");
+    root->specified_width = 400.0f;
+
+    auto text = make_text("Hello World", 20.0f);
+    auto* tp = text.get();
+    root->append_child(std::move(text));
+
+    LayoutEngine engine;
+    engine.compute(*root, 400.0f, 300.0f);
+
+    EXPECT_EQ(tp->text_content, "Hello World");
+    EXPECT_FLOAT_EQ(tp->font_size, 20.0f);
+    // Text node should have some computed width and height
+    EXPECT_GT(tp->geometry.width, 0.0f);
+    EXPECT_GT(tp->geometry.height, 0.0f);
+}
+
+// Test: Background and foreground color on a block node survive layout
+TEST(LayoutTest, BackgroundAndForegroundColorOnBlockV103) {
+    auto root = make_block("section");
+    root->specified_width = 300.0f;
+    root->specified_height = 150.0f;
+    root->background_color = 0xFFFF8800u;
+    root->color = 0xFF112233u;
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_EQ(root->background_color, 0xFFFF8800u);
+    EXPECT_EQ(root->color, 0xFF112233u);
+    EXPECT_FLOAT_EQ(root->geometry.width, 300.0f);
+    EXPECT_FLOAT_EQ(root->geometry.height, 150.0f);
+}

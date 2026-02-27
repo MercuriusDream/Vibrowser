@@ -17424,3 +17424,154 @@ TEST(HttpClientTest, ResponseParseMultipleSetCookieHeadersPreservedV102) {
     EXPECT_TRUE(std::find(cookies.begin(), cookies.end(), "theme=light; Path=/") != cookies.end());
     EXPECT_TRUE(std::find(cookies.begin(), cookies.end(), "lang=en; Path=/; Secure") != cookies.end());
 }
+
+// ===========================================================================
+// V103 Tests
+// ===========================================================================
+
+// 1. parse_url with query string and HTTPS sets all fields correctly
+TEST(HttpClientTest, ParseUrlHttpsWithQueryAllFieldsV103) {
+    Request req;
+    req.url = "https://api.example.org:9443/v2/search?lang=en&limit=50";
+    req.parse_url();
+
+    EXPECT_EQ(req.host, "api.example.org");
+    EXPECT_EQ(req.port, 9443);
+    EXPECT_EQ(req.path, "/v2/search");
+    EXPECT_EQ(req.query, "lang=en&limit=50");
+    EXPECT_TRUE(req.use_tls);
+}
+
+// 2. Serialize HEAD request omits body and uses correct method line
+TEST(HttpClientTest, SerializeHeadRequestOmitsBodyV103) {
+    Request req;
+    req.method = Method::HEAD;
+    req.host = "status.example.com";
+    req.port = 80;
+    req.use_tls = false;
+    req.path = "/healthcheck";
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    EXPECT_TRUE(result.find("HEAD /healthcheck HTTP/1.1\r\n") != std::string::npos);
+    // Host header with default port 80 should omit port
+    EXPECT_TRUE(result.find("Host: status.example.com\r\n") != std::string::npos);
+    // Connection header keeps capitalization
+    EXPECT_TRUE(result.find("Connection: ") != std::string::npos);
+}
+
+// 3. Response::parse with 500 status and body
+TEST(HttpClientTest, ResponseParse500InternalServerErrorV103) {
+    std::string raw =
+        "HTTP/1.1 500 Internal Server Error\r\n"
+        "Content-Type: text/plain\r\n"
+        "Content-Length: 17\r\n"
+        "\r\n"
+        "something failed!";
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 500);
+    EXPECT_EQ(resp->status_text, "Internal Server Error");
+    EXPECT_EQ(resp->body_as_string(), "something failed!");
+    ASSERT_TRUE(resp->headers.get("content-type").has_value());
+    EXPECT_EQ(resp->headers.get("content-type").value(), "text/plain");
+}
+
+// 4. HeaderMap append preserves insertion order and get returns first value
+TEST(HttpClientTest, HeaderMapAppendGetReturnsFirstValueV103) {
+    HeaderMap hdr;
+    hdr.append("Via", "proxy-a");
+    hdr.append("Via", "proxy-b");
+    hdr.append("Via", "proxy-c");
+
+    // get() returns the first value
+    ASSERT_TRUE(hdr.get("via").has_value());
+    // get_all should return all three
+    auto all = hdr.get_all("via");
+    EXPECT_EQ(all.size(), 3u);
+    // has() should be true
+    EXPECT_TRUE(hdr.has("VIA"));
+}
+
+// 5. CookieJar secure cookies not sent over non-secure connection
+TEST(HttpClientTest, CookieJarSecureCookieNotSentOverHttpV103) {
+    CookieJar jar;
+    jar.set_from_header("session=xyz123; Path=/; Secure", "secure.example.com");
+    jar.set_from_header("pref=dark; Path=/", "secure.example.com");
+    EXPECT_EQ(jar.size(), 2u);
+
+    // Non-secure request should NOT include the Secure cookie
+    std::string insecure_cookies = jar.get_cookie_header("secure.example.com", "/", false);
+    EXPECT_TRUE(insecure_cookies.find("pref=dark") != std::string::npos);
+    EXPECT_TRUE(insecure_cookies.find("session=xyz123") == std::string::npos);
+
+    // Secure request should include both
+    std::string secure_cookies = jar.get_cookie_header("secure.example.com", "/", true);
+    EXPECT_TRUE(secure_cookies.find("session=xyz123") != std::string::npos);
+    EXPECT_TRUE(secure_cookies.find("pref=dark") != std::string::npos);
+}
+
+// 6. Request serialization with POST body includes Content-Length
+TEST(HttpClientTest, PostRequestSerializationIncludesContentLengthV103) {
+    Request req;
+    req.method = Method::POST;
+    req.host = "api.example.com";
+    req.port = 443;
+    req.use_tls = true;
+    req.path = "/submit";
+    req.headers.set("Content-Type", "application/json");
+    std::string body_str = R"({"key":"value"})";
+    req.body.assign(body_str.begin(), body_str.end());
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    EXPECT_TRUE(result.find("POST /submit HTTP/1.1\r\n") != std::string::npos);
+    // Host omits default port 443 for HTTPS
+    EXPECT_TRUE(result.find("Host: api.example.com\r\n") != std::string::npos);
+    // Custom header lowercase
+    EXPECT_TRUE(result.find("content-type: application/json\r\n") != std::string::npos);
+    // Body should be present at the end after double CRLF
+    EXPECT_TRUE(result.find(R"({"key":"value"})") != std::string::npos);
+}
+
+// 7. HeaderMap remove makes has return false and get return nullopt
+TEST(HttpClientTest, HeaderMapRemoveThenGetReturnsNulloptV103) {
+    HeaderMap hdr;
+    hdr.set("Authorization", "Bearer token123");
+    hdr.set("Accept", "text/html");
+    EXPECT_TRUE(hdr.has("authorization"));
+
+    hdr.remove("Authorization");
+    EXPECT_FALSE(hdr.has("authorization"));
+    EXPECT_FALSE(hdr.get("authorization").has_value());
+    // Accept should still be there
+    EXPECT_TRUE(hdr.has("accept"));
+    EXPECT_EQ(hdr.get("accept").value(), "text/html");
+}
+
+// 8. Response::parse handles 304 Not Modified with no body
+TEST(HttpClientTest, ResponseParse304NotModifiedNoBodyV103) {
+    std::string raw =
+        "HTTP/1.1 304 Not Modified\r\n"
+        "ETag: \"abc123\"\r\n"
+        "Cache-Control: max-age=3600\r\n"
+        "Content-Length: 0\r\n"
+        "\r\n";
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 304);
+    EXPECT_EQ(resp->status_text, "Not Modified");
+    EXPECT_TRUE(resp->body_as_string().empty());
+    ASSERT_TRUE(resp->headers.get("etag").has_value());
+    EXPECT_EQ(resp->headers.get("etag").value(), "\"abc123\"");
+    ASSERT_TRUE(resp->headers.get("cache-control").has_value());
+    EXPECT_EQ(resp->headers.get("cache-control").value(), "max-age=3600");
+}
