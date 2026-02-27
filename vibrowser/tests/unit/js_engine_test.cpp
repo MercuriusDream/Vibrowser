@@ -20794,3 +20794,144 @@ TEST(JSEngine, ObjectEntriesValuesKeysCycle1500) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "3,60,3");
 }
+
+// ============================================================================
+// TemplateLiteralsCycle1510: Test template literal expressions and interpolation
+// ============================================================================
+TEST(JSEngine, TemplateLiteralsCycle1510) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        const name = "World";
+        const count = 42;
+        const nested = { value: 99 };
+        `Hello ${name}! Count: ${count}, Nested: ${nested.value}`
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "Hello World! Count: 42, Nested: 99");
+}
+
+// ============================================================================
+// DestructuringAssignmentCycle1510: Test object and array destructuring
+// ============================================================================
+TEST(JSEngine, DestructuringAssignmentCycle1510) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        const obj = {a: 1, b: 2, c: 3};
+        const {a, b} = obj;
+        const arr = [10, 20, 30];
+        const [x, , z] = arr;
+        `${a},${b},${x},${z}`
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1,2,10,30");
+}
+
+// ============================================================================
+// SpreadOperatorCycle1510: Test spread operator in arrays and function calls
+// ============================================================================
+TEST(JSEngine, SpreadOperatorCycle1510) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        const arr1 = [1, 2, 3];
+        const arr2 = [4, 5, 6];
+        const combined = [...arr1, ...arr2];
+        const sum = combined.reduce((a, b) => a + b, 0);
+        const max = Math.max(...arr1);
+        `${sum},${max}`
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "21,3");
+}
+
+// ============================================================================
+// RegExpMatchesCycle1510: Test regular expression matching and methods
+// ============================================================================
+TEST(JSEngine, RegExpMatchesCycle1510) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        const str = "hello123world456";
+        const matches = str.match(/\d+/g);
+        const test = /^hello/.test(str);
+        const replaced = str.replace(/\d+/g, "X");
+        `${matches.length},${test},${replaced.includes("X")}`
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "2,true,true");
+}
+
+// ============================================================================
+// DateObjectCycle1510: Test Date object creation and methods
+// ============================================================================
+TEST(JSEngine, DateObjectCycle1510) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        const now = new Date();
+        const timestamp = now.getTime();
+        const year = now.getFullYear();
+        const isDate = now instanceof Date;
+        `${typeof timestamp},${year > 2000},${isDate}`
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "number,true,true");
+}
+
+// ============================================================================
+// ArrayMethodsCycle1510: Test Array.from, flat, flatMap, and includes
+// ============================================================================
+TEST(JSEngine, ArrayMethodsCycle1510) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        const arr = [1, [2, 3], [4, [5, 6]]];
+        const flattened = arr.flat(2);
+        const mapped = [1, 2, 3].flatMap(x => [x, x * 2]);
+        const fromStr = Array.from("abc");
+        const includes3 = flattened.includes(3);
+        `${flattened.length},${mapped.length},${fromStr.join("")},${includes3}`
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "6,6,abc,true");
+}
+
+// ============================================================================
+// JSONParseStringifyCycle1510: Test JSON.parse and JSON.stringify
+// ============================================================================
+TEST(JSEngine, JSONParseStringifyCycle1510) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        const obj = {name: "test", items: [1, 2, 3], nested: {value: 42}};
+        const jsonStr = JSON.stringify(obj);
+        const parsed = JSON.parse(jsonStr);
+        const matches = parsed.name === obj.name &&
+                        parsed.nested.value === obj.nested.value;
+        const lines = JSON.stringify(obj, null, 2).split('\n').length;
+        `${typeof jsonStr},${matches},${lines > 1}`
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "string,true,true");
+}
+
+// ============================================================================
+// ErrorTypesCycle1510: Test various error types and try-catch handling
+// ============================================================================
+TEST(JSEngine, ErrorTypesCycle1510) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        let caught = "";
+        try {
+            throw new TypeError("Custom type error");
+        } catch (e) {
+            caught = e.message;
+        }
+
+        let refError = "";
+        try {
+            undefined_var.method();
+        } catch (e) {
+            refError = e.constructor.name;
+        }
+
+        `${caught},${refError === "ReferenceError" || refError === "TypeError"}`
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "Custom type error,true");
+}

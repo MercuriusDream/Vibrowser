@@ -8818,3 +8818,170 @@ TEST(DomNode, ChildRemovalAndReinsertionV56) {
     parent->append_child(std::move(removed));
     EXPECT_EQ(parent->child_count(), 3u);
 }
+
+TEST(DomElement, SetIdAndGetAttributeReflectionV57) {
+    Document doc;
+    auto elem = doc.create_element("div");
+
+    elem->set_attribute("id", "container");
+    EXPECT_EQ(elem->id(), "container");
+
+    auto id_attr = elem->get_attribute("id");
+    ASSERT_TRUE(id_attr.has_value());
+    EXPECT_EQ(id_attr.value(), "container");
+
+    EXPECT_TRUE(elem->has_attribute("id"));
+}
+
+TEST(DomElement, ClassListAddRemoveAndContainsV57) {
+    Document doc;
+    auto elem = doc.create_element("p");
+
+    EXPECT_FALSE(elem->class_list().contains("active"));
+
+    elem->class_list().add("active");
+    EXPECT_TRUE(elem->class_list().contains("active"));
+
+    elem->class_list().add("highlight");
+    EXPECT_TRUE(elem->class_list().contains("highlight"));
+
+    elem->class_list().remove("active");
+    EXPECT_FALSE(elem->class_list().contains("active"));
+    EXPECT_TRUE(elem->class_list().contains("highlight"));
+}
+
+TEST(DomNode, TextNodeWithParentAndSiblingsV57) {
+    Document doc;
+    auto parent = doc.create_element("div");
+    auto text1 = doc.create_text_node("Hello ");
+    auto elem = doc.create_element("span");
+    auto text2 = doc.create_text_node(" World");
+
+    parent->append_child(std::move(text1));
+    parent->append_child(std::move(elem));
+    parent->append_child(std::move(text2));
+
+    EXPECT_EQ(parent->child_count(), 3u);
+    auto first = parent->first_child();
+    ASSERT_NE(first, nullptr);
+    EXPECT_EQ(first->text_content(), "Hello ");
+
+    auto last = parent->last_child();
+    ASSERT_NE(last, nullptr);
+    EXPECT_EQ(last->text_content(), " World");
+}
+
+TEST(DomElement, NextAndPreviousSiblingTraversalV57) {
+    Document doc;
+    auto parent = doc.create_element("ul");
+    auto item1 = doc.create_element("li");
+    auto item2 = doc.create_element("li");
+    auto item3 = doc.create_element("li");
+    auto* item2_ptr = item2.get();
+
+    parent->append_child(std::move(item1));
+    parent->append_child(std::move(item2));
+    parent->append_child(std::move(item3));
+
+    EXPECT_EQ(item2_ptr->next_sibling(), parent->last_child());
+    auto prev = item2_ptr->previous_sibling();
+    ASSERT_NE(prev, nullptr);
+    EXPECT_EQ(prev->node_type(), NodeType::Element);
+}
+
+TEST(DomElement, MultipleAttributesIterationV57) {
+    Document doc;
+    auto elem = doc.create_element("img");
+
+    elem->set_attribute("src", "image.png");
+    elem->set_attribute("alt", "Image");
+    elem->set_attribute("width", "100");
+    elem->set_attribute("height", "100");
+
+    auto attrs = elem->attributes();
+    EXPECT_EQ(attrs.size(), 4u);
+
+    bool found_src = false;
+    bool found_alt = false;
+    for (const auto& attr : attrs) {
+        if (attr.name == "src") {
+            EXPECT_EQ(attr.value, "image.png");
+            found_src = true;
+        }
+        if (attr.name == "alt") {
+            EXPECT_EQ(attr.value, "Image");
+            found_alt = true;
+        }
+    }
+    EXPECT_TRUE(found_src);
+    EXPECT_TRUE(found_alt);
+}
+
+TEST(DomNode, InsertBeforeWithMultipleChildrenV57) {
+    Document doc;
+    auto parent = doc.create_element("div");
+    auto child1 = doc.create_element("span");
+    auto child2 = doc.create_element("span");
+    auto new_child = doc.create_element("em");
+    auto* child1_ptr = child1.get();
+
+    parent->append_child(std::move(child1));
+    parent->append_child(std::move(child2));
+
+    EXPECT_EQ(parent->child_count(), 2u);
+
+    parent->insert_before(std::move(new_child), child1_ptr);
+    EXPECT_EQ(parent->child_count(), 3u);
+
+    auto first = parent->first_child();
+    ASSERT_NE(first, nullptr);
+    EXPECT_EQ(first->node_type(), NodeType::Element);
+}
+
+TEST(DomNode, ForEachChildIterationWithTextAndElementsV57) {
+    Document doc;
+    auto parent = doc.create_element("article");
+    auto text1 = doc.create_text_node("Start ");
+    auto elem = doc.create_element("strong");
+    auto text2 = doc.create_text_node(" End");
+
+    parent->append_child(std::move(text1));
+    parent->append_child(std::move(elem));
+    parent->append_child(std::move(text2));
+
+    int element_count = 0;
+    int text_count = 0;
+    parent->for_each_child([&](Node& child) {
+        if (child.node_type() == NodeType::Element) {
+            element_count++;
+        } else if (child.node_type() == NodeType::Text) {
+            text_count++;
+        }
+    });
+
+    EXPECT_EQ(element_count, 1);
+    EXPECT_EQ(text_count, 2);
+}
+
+TEST(DomElement, RemoveAndReaddDifferentElementTypeV57) {
+    Document doc;
+    auto parent = doc.create_element("section");
+    auto old_elem = doc.create_element("div");
+    auto new_elem = doc.create_element("article");
+    auto* old_ptr = old_elem.get();
+
+    parent->append_child(std::move(old_elem));
+    EXPECT_EQ(parent->child_count(), 1u);
+
+    parent->remove_child(*old_ptr);
+    EXPECT_EQ(parent->child_count(), 0u);
+
+    parent->append_child(std::move(new_elem));
+    EXPECT_EQ(parent->child_count(), 1u);
+
+    auto child = parent->first_child();
+    ASSERT_NE(child, nullptr);
+    auto elem = dynamic_cast<Element*>(child);
+    ASSERT_NE(elem, nullptr);
+    EXPECT_EQ(elem->tag_name(), "article");
+}

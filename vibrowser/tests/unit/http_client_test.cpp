@@ -10488,3 +10488,173 @@ TEST(HttpClient, ResponseBodyAsStringFromBinaryDataV56) {
     EXPECT_EQ(resp.body.size(), text_body.size());
     EXPECT_EQ(resp.status, 200u);
 }
+
+TEST(HttpClient, HeaderMapAppendAndIterateV57) {
+    using namespace clever::net;
+    HeaderMap headers;
+
+    headers.append("Accept-Language", "en-US");
+    headers.append("Accept-Language", "en;q=0.9");
+    headers.append("Accept-Language", "fr;q=0.8");
+
+    auto all_values = headers.get_all("accept-language");
+    EXPECT_EQ(all_values.size(), 3u);
+    EXPECT_TRUE(headers.has("Accept-Language"));
+
+    int count = 0;
+    for (const auto& pair : headers) {
+        if (pair.first == "accept-language") {
+            count++;
+        }
+    }
+    EXPECT_EQ(count, 3);
+}
+
+TEST(HttpClient, RequestSerializeWithAllMethodsV57) {
+    using namespace clever::net;
+
+    // Test POST
+    Request post_req;
+    post_req.method = Method::POST;
+    post_req.host = "api.test.com";
+    post_req.path = "/create";
+    post_req.headers.set("content-type", "application/json");
+    post_req.body = std::vector<uint8_t>{'t', 'e', 's', 't'};
+
+    auto post_serialized = post_req.serialize();
+    std::string post_str(post_serialized.begin(), post_serialized.end());
+    EXPECT_NE(post_str.find("POST /create HTTP/1.1"), std::string::npos);
+    EXPECT_NE(post_str.find("content-type: application/json"), std::string::npos);
+
+    // Test PATCH
+    Request patch_req;
+    patch_req.method = Method::PATCH;
+    patch_req.host = "api.test.com";
+    patch_req.path = "/update/1";
+    patch_req.body = std::vector<uint8_t>{'d', 'a', 't', 'a'};
+
+    auto patch_serialized = patch_req.serialize();
+    std::string patch_str(patch_serialized.begin(), patch_serialized.end());
+    EXPECT_NE(patch_str.find("PATCH /update/1 HTTP/1.1"), std::string::npos);
+}
+
+TEST(HttpClient, ResponseBodyEmptyButValidV57) {
+    using namespace clever::net;
+    Response resp;
+    resp.status = 204;
+    resp.status_text = "No Content";
+    resp.headers.set("content-type", "application/json");
+
+    EXPECT_EQ(resp.body.size(), 0u);
+    EXPECT_TRUE(resp.body_as_string().empty());
+    EXPECT_EQ(resp.status, 204u);
+    EXPECT_TRUE(resp.headers.has("Content-Type"));
+}
+
+TEST(HttpClient, CookieJarPathScopingAccuracyV57) {
+    using namespace clever::net;
+    CookieJar jar;
+
+    jar.set_from_header("api_token=abc123; Path=/api/v1", "example.com");
+    jar.set_from_header("admin_token=xyz789; Path=/admin", "example.com");
+    jar.set_from_header("root_token=qwerty; Path=/", "example.com");
+
+    // Request to /api/v1/users should get api_token and root_token
+    std::string api_cookies = jar.get_cookie_header("example.com", "/api/v1/users", false);
+    EXPECT_NE(api_cookies.find("api_token"), std::string::npos);
+    EXPECT_NE(api_cookies.find("root_token"), std::string::npos);
+    EXPECT_EQ(api_cookies.find("admin_token"), std::string::npos);
+
+    // Request to /admin should get admin_token and root_token
+    std::string admin_cookies = jar.get_cookie_header("example.com", "/admin", false);
+    EXPECT_NE(admin_cookies.find("admin_token"), std::string::npos);
+    EXPECT_NE(admin_cookies.find("root_token"), std::string::npos);
+    EXPECT_EQ(admin_cookies.find("api_token"), std::string::npos);
+}
+
+TEST(HttpClient, HeaderMapSizeWithOperationsV57) {
+    using namespace clever::net;
+    HeaderMap headers;
+
+    EXPECT_EQ(headers.size(), 0u);
+    EXPECT_TRUE(headers.empty());
+
+    headers.set("Authorization", "Bearer token");
+    EXPECT_EQ(headers.size(), 1u);
+    EXPECT_FALSE(headers.empty());
+
+    headers.set("Accept", "application/json");
+    EXPECT_EQ(headers.size(), 2u);
+
+    headers.append("Accept", "text/plain");
+    EXPECT_EQ(headers.size(), 3u);
+
+    headers.remove("Accept");
+    EXPECT_EQ(headers.size(), 1u);
+}
+
+TEST(HttpClient, RequestUrlParsingAndSerializationV57) {
+    using namespace clever::net;
+    Request req;
+    req.method = Method::GET;
+    req.host = "example.com";
+    req.port = 443;
+    req.path = "/search";
+    req.query = "q=browser&lang=cpp";
+    req.headers.set("user-agent", "vibrowser/1.0");
+
+    auto serialized = req.serialize();
+    std::string ser_str(serialized.begin(), serialized.end());
+
+    EXPECT_NE(ser_str.find("GET /search?q=browser&lang=cpp HTTP/1.1"), std::string::npos);
+    EXPECT_NE(ser_str.find("user-agent: vibrowser/1.0"), std::string::npos);
+    EXPECT_NE(ser_str.find("Host: example.com"), std::string::npos);
+}
+
+TEST(HttpClient, ResponseStatusRangesAndCategoriesV57) {
+    using namespace clever::net;
+
+    // Success response (2xx)
+    Response success_resp;
+    success_resp.status = 200;
+    success_resp.status_text = "OK";
+    EXPECT_GE(success_resp.status, 200u);
+    EXPECT_LT(success_resp.status, 300u);
+
+    // Redirect response (3xx)
+    Response redirect_resp;
+    redirect_resp.status = 301;
+    redirect_resp.status_text = "Moved Permanently";
+    redirect_resp.headers.set("location", "https://newdomain.com/page");
+    EXPECT_GE(redirect_resp.status, 300u);
+    EXPECT_LT(redirect_resp.status, 400u);
+    EXPECT_TRUE(redirect_resp.headers.has("Location"));
+
+    // Client error response (4xx)
+    Response client_error_resp;
+    client_error_resp.status = 404;
+    client_error_resp.status_text = "Not Found";
+    EXPECT_GE(client_error_resp.status, 400u);
+    EXPECT_LT(client_error_resp.status, 500u);
+}
+
+TEST(HttpClient, CookieJarDomainSeparationV57) {
+    using namespace clever::net;
+    CookieJar jar;
+
+    jar.set_from_header("session_a=cookie1; Path=/", "domain-a.com");
+    jar.set_from_header("session_b=cookie2; Path=/", "domain-b.com");
+    jar.set_from_header("session_c=cookie3; Path=/", "domain-c.com");
+
+    EXPECT_EQ(jar.size(), 3u);
+
+    // Verify domain-a.com only gets its own cookie
+    std::string domain_a_cookies = jar.get_cookie_header("domain-a.com", "/", false);
+    EXPECT_NE(domain_a_cookies.find("session_a"), std::string::npos);
+
+    // Verify domain-b.com only gets its own cookie
+    std::string domain_b_cookies = jar.get_cookie_header("domain-b.com", "/", false);
+    EXPECT_NE(domain_b_cookies.find("session_b"), std::string::npos);
+    EXPECT_EQ(domain_b_cookies.find("session_a"), std::string::npos);
+    EXPECT_EQ(domain_b_cookies.find("session_c"), std::string::npos);
+}

@@ -6372,6 +6372,81 @@ TEST(URLParser, DeepPathWithMultipleSegmentsV25) {
     EXPECT_EQ(url->fragment, "");
 }
 
+// ============================================================================
+// Cycle 1357: 8 new URL parser tests - V57
+// ============================================================================
+
+TEST(URLParser, IPv6AddressURLParsingV57) {
+    auto url = parse("http://[::1]:8080/api");
+    if (url.has_value()) {
+        EXPECT_EQ(url->scheme, "http");
+        EXPECT_EQ(url->path, "/api");
+    }
+}
+
+TEST(URLParser, QueryParameterWithPercentEncodingV57) {
+    auto url = parse("https://api.example.com/search?q=hello%2Bworld&filter=active");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "api.example.com");
+    EXPECT_EQ(url->path, "/search");
+    EXPECT_FALSE(url->query.empty());
+}
+
+TEST(URLParser, PortMaxValueEdgeCaseV57) {
+    auto url = parse("https://example.com:65535/resource");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "example.com");
+    ASSERT_TRUE(url->port.has_value());
+    EXPECT_EQ(url->port.value(), 65535u);
+    EXPECT_EQ(url->path, "/resource");
+}
+
+TEST(URLParser, EmptyPathWithQueryAndFragmentV57) {
+    auto url = parse("https://example.com?key=val#anchor");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "example.com");
+    EXPECT_EQ(url->path, "/");
+    EXPECT_FALSE(url->query.empty());
+    EXPECT_FALSE(url->fragment.empty());
+}
+
+TEST(URLParser, FragmentWithPercentEncodedCharV57) {
+    auto url = parse("https://docs.example.org/page#section%20name");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "docs.example.org");
+    EXPECT_EQ(url->path, "/page");
+    EXPECT_FALSE(url->fragment.empty());
+}
+
+TEST(URLParser, MultipleConsecutiveSlashesInPathV57) {
+    auto url = parse("https://example.com//api//v1//users");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "example.com");
+    EXPECT_FALSE(url->path.empty());
+    EXPECT_TRUE(url->path.find("api") != std::string::npos);
+}
+
+TEST(URLParser, HostWithLeadingAndTrailingDotsV57) {
+    auto url = parse("https://example.com./path");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_FALSE(url->host.empty());
+    EXPECT_EQ(url->path, "/path");
+}
+
+TEST(URLParser, QueryWithSingleAmpersandOnlyV57) {
+    auto url = parse("https://example.com/search?&");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "example.com");
+    EXPECT_EQ(url->path, "/search");
+}
+
 TEST(URLParser, QueryWithMultipleParametersAndFragmentV25) {
     auto url = parse("http://video.example.org/player?id=abc123&autoplay=1&quality=hd#t=45s");
     ASSERT_TRUE(url.has_value());

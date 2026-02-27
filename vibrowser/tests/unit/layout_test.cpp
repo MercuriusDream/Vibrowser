@@ -10243,3 +10243,199 @@ TEST(LayoutNodeProps, OrderAssignmentV56) {
     n.order = 42;
     EXPECT_EQ(n.order, 42);
 }
+
+// V57 Tests - Layout computation and complex scenarios
+
+// Test 1: Flex container with multiple flex items
+TEST(LayoutEngineTest, FlexContainerWithMultipleItemsV57) {
+    auto root = make_flex("div");
+    root->specified_width = 400.0f;
+    root->specified_height = 200.0f;
+
+    auto item1 = make_flex("div");
+    item1->flex_grow = 1.0f;
+    item1->geometry.padding.left = 5.0f;
+    item1->geometry.padding.right = 5.0f;
+
+    auto item2 = make_flex("div");
+    item2->flex_grow = 2.0f;
+    item2->geometry.padding.left = 5.0f;
+    item2->geometry.padding.right = 5.0f;
+
+    root->append_child(std::move(item1));
+    root->append_child(std::move(item2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 400.0f, 200.0f);
+
+    EXPECT_FLOAT_EQ(root->geometry.width, 400.0f);
+    EXPECT_FLOAT_EQ(root->geometry.height, 200.0f);
+    EXPECT_EQ(root->children.size(), 2);
+}
+
+// Test 2: Nested block elements with combined margins
+TEST(LayoutEngineTest, NestedBlocksWithCombinedMarginsV57) {
+    auto root = make_block("div");
+    auto parent = make_block("section");
+    auto child = make_block("article");
+
+    parent->geometry.margin.top = 10.0f;
+    parent->geometry.margin.left = 20.0f;
+    child->specified_height = 100.0f;
+    child->geometry.margin.top = 15.0f;
+    child->geometry.margin.left = 25.0f;
+
+    parent->append_child(std::move(child));
+    root->append_child(std::move(parent));
+
+    LayoutEngine engine;
+    engine.compute(*root, 600.0f, 800.0f);
+
+    auto& p = *root->children[0];
+    auto& c = *p.children[0];
+
+    EXPECT_FLOAT_EQ(p.geometry.x, 20.0f);
+    EXPECT_FLOAT_EQ(p.geometry.y, 10.0f);
+    EXPECT_FLOAT_EQ(c.geometry.x, 25.0f);
+    EXPECT_FLOAT_EQ(c.geometry.y, 15.0f);
+}
+
+// Test 3: Block element with min/max width constraints
+TEST(LayoutEngineTest, BlockWithMinMaxWidthConstraintsV57) {
+    auto root = make_block("div");
+    auto child = make_block("div");
+
+    child->min_width = 100.0f;
+    child->max_width = 300.0f;
+    child->specified_width = 400.0f;
+
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_LE(root->children[0]->geometry.width, 300.0f);
+    EXPECT_GE(root->children[0]->geometry.width, 100.0f);
+}
+
+// Test 4: Text node with font size and alignment
+TEST(LayoutEngineTest, TextNodeWithFontSizeAndAlignmentV57) {
+    auto root = make_block("div");
+    root->specified_width = 500.0f;
+    root->text_align = 1;  // center
+
+    auto text = make_text("Hello World", 24.0f);
+
+    root->append_child(std::move(text));
+
+    LayoutEngine engine;
+    engine.compute(*root, 500.0f, 400.0f);
+
+    auto& t = *root->children[0];
+    EXPECT_FLOAT_EQ(t.font_size, 24.0f);
+    EXPECT_EQ(root->text_align, 1);
+}
+
+// Test 5: Block with padding and border combined
+TEST(LayoutEngineTest, BlockWithPaddingAndBorderCombinedV57) {
+    auto root = make_block("div");
+    root->geometry.padding.left = 15.0f;
+    root->geometry.padding.right = 15.0f;
+    root->geometry.padding.top = 10.0f;
+    root->geometry.padding.bottom = 10.0f;
+    root->geometry.border.left = 3.0f;
+    root->geometry.border.right = 3.0f;
+    root->geometry.border.top = 3.0f;
+    root->geometry.border.bottom = 3.0f;
+
+    auto child = make_block("div");
+    child->specified_height = 80.0f;
+
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 600.0f, 500.0f);
+
+    EXPECT_FLOAT_EQ(root->geometry.width, 600.0f);
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.width, 600.0f - 30.0f - 6.0f);
+}
+
+// Test 6: Block element with Z-index and opacity
+TEST(LayoutEngineTest, BlockWithZIndexAndOpacityV57) {
+    auto root = make_block("div");
+    auto elem1 = make_block("div");
+    auto elem2 = make_block("div");
+
+    elem1->z_index = 10;
+    elem1->opacity = 0.8f;
+    elem2->z_index = 20;
+    elem2->opacity = 0.5f;
+
+    root->append_child(std::move(elem1));
+    root->append_child(std::move(elem2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 600.0f, 400.0f);
+
+    EXPECT_EQ(root->children[0]->z_index, 10);
+    EXPECT_FLOAT_EQ(root->children[0]->opacity, 0.8f);
+    EXPECT_EQ(root->children[1]->z_index, 20);
+    EXPECT_FLOAT_EQ(root->children[1]->opacity, 0.5f);
+}
+
+// Test 7: Inline elements with text content
+TEST(LayoutEngineTest, InlineElementsWithTextContentV57) {
+    auto root = make_block("div");
+    auto span1 = make_inline("span");
+    auto span2 = make_inline("span");
+
+    auto text1 = make_text("First ");
+    auto text2 = make_text("Second");
+
+    span1->append_child(std::move(text1));
+    span2->append_child(std::move(text2));
+    root->append_child(std::move(span1));
+    root->append_child(std::move(span2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_EQ(root->children.size(), 2);
+    EXPECT_EQ(root->children[0]->mode, LayoutMode::Inline);
+    EXPECT_EQ(root->children[1]->mode, LayoutMode::Inline);
+}
+
+// Test 8: Complex layout with multiple nested blocks and varying dimensions
+TEST(LayoutEngineTest, ComplexNestedLayoutWithVaryingDimensionsV57) {
+    auto root = make_block("div");
+    root->specified_width = 800.0f;
+    root->specified_height = 600.0f;
+
+    auto header = make_block("header");
+    header->specified_height = 100.0f;
+    header->geometry.margin.bottom = 10.0f;
+
+    auto content = make_block("main");
+    content->geometry.padding.left = 20.0f;
+    content->geometry.padding.right = 20.0f;
+
+    auto sidebar = make_block("aside");
+    sidebar->specified_width = 200.0f;
+    sidebar->geometry.margin.right = 10.0f;
+
+    auto article = make_block("article");
+    article->flex_grow = 1.0f;
+
+    content->append_child(std::move(sidebar));
+    content->append_child(std::move(article));
+    root->append_child(std::move(header));
+    root->append_child(std::move(content));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(root->geometry.width, 800.0f);
+    EXPECT_FLOAT_EQ(root->geometry.height, 600.0f);
+    EXPECT_EQ(root->children.size(), 2);
+    EXPECT_FLOAT_EQ(root->children[0]->specified_height, 100.0f);
+}

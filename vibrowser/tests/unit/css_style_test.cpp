@@ -11921,3 +11921,110 @@ TEST(PropertyCascadeTest, ApplyDeclarationTextAlignV56) {
     cascade.apply_declaration(style, decl, parent);
     EXPECT_EQ(style.text_align, TextAlign::Center);
 }
+
+TEST(PropertyCascadeTest, ApplyDeclarationBorderRadiusV57) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    Declaration decl;
+    decl.property = "border-radius";
+    decl.values.push_back(make_token("15px"));
+
+    cascade.apply_declaration(style, decl, parent);
+    EXPECT_FLOAT_EQ(style.border_radius, 15.0f);
+}
+
+TEST(PropertyCascadeTest, ApplyDeclarationLineHeightV57) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    Declaration decl;
+    decl.property = "line-height";
+    decl.values.push_back(make_token("1.5"));
+
+    cascade.apply_declaration(style, decl, parent);
+    EXPECT_FLOAT_EQ(style.line_height.value, 24.0f);  // 1.5 * default 16px
+}
+
+TEST(PropertyCascadeTest, ApplyDeclarationTextStrokeWidthV57) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    Declaration decl;
+    decl.property = "-webkit-text-stroke-width";
+    decl.values.push_back(make_token("2px"));
+
+    cascade.apply_declaration(style, decl, parent);
+    EXPECT_FLOAT_EQ(style.text_stroke_width, 2.0f);
+}
+
+TEST(PropertyCascadeTest, ApplyDeclarationWordSpacingV57) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    Declaration decl;
+    decl.property = "word-spacing";
+    decl.values.push_back(make_token("0.5em"));
+
+    cascade.apply_declaration(style, decl, parent);
+    EXPECT_FLOAT_EQ(style.word_spacing.to_px(16.0f), 8.0f);
+}
+
+TEST(PropertyCascadeTest, ApplyDeclarationLetterSpacingV57) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    Declaration decl;
+    decl.property = "letter-spacing";
+    decl.values.push_back(make_token("2px"));
+
+    cascade.apply_declaration(style, decl, parent);
+    EXPECT_FLOAT_EQ(style.letter_spacing.value, 2.0f);
+}
+
+TEST(PropertyCascadeTest, ApplyDeclarationZIndexV57) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    Declaration decl;
+    decl.property = "z-index";
+    decl.values.push_back(make_token("100"));
+
+    cascade.apply_declaration(style, decl, parent);
+    EXPECT_EQ(style.z_index, 100);
+}
+
+TEST(PropertyCascadeTest, ApplyDeclarationTransformV57) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    Declaration decl;
+    decl.property = "transform";
+    decl.values.push_back(make_token("rotate(45deg)"));
+
+    cascade.apply_declaration(style, decl, parent);
+    ASSERT_EQ(style.transforms.size(), 1u);
+    EXPECT_EQ(style.transforms[0].type, TransformType::Rotate);
+}
+
+TEST(PropertyCascadeTest, ApplyDeclarationBackgroundColorV57) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    Declaration decl;
+    decl.property = "background-color";
+    decl.values.push_back(make_token("rgb(255,128,64)"));
+
+    cascade.apply_declaration(style, decl, parent);
+    EXPECT_EQ(style.background_color.r, 255);
+    EXPECT_EQ(style.background_color.g, 128);
+    EXPECT_EQ(style.background_color.b, 64);
+}

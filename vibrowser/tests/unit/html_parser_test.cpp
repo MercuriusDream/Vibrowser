@@ -9256,3 +9256,125 @@ TEST(TreeBuilder, EmptyAndWhitespaceTextNodesPreservationV34) {
     const std::string div_text = div->text_content();
     EXPECT_NE(div_text.find("inner"), std::string::npos);
 }
+
+// ---------------------------------------------------------------------------
+// V57 — Additional HTML parser coverage: edge cases, empty tags, nesting,
+//       malformed HTML, text normalization, special tags
+// ---------------------------------------------------------------------------
+
+TEST(TreeBuilder, CompletelyEmptyDocumentV57) {
+    auto doc = parse("");
+    ASSERT_NE(doc, nullptr);
+    EXPECT_EQ(doc->type, SimpleNode::Document);
+    // Should auto-generate html, head, body even with empty input
+    auto* html = doc->find_element("html");
+    ASSERT_NE(html, nullptr);
+}
+
+TEST(TreeBuilder, OnlyWhitespaceDocumentV57) {
+    auto doc = parse("   \n\t\n   ");
+    ASSERT_NE(doc, nullptr);
+    auto* html = doc->find_element("html");
+    ASSERT_NE(html, nullptr);
+    auto* body = doc->find_element("body");
+    ASSERT_NE(body, nullptr);
+}
+
+TEST(TreeBuilder, DeeplyNestedInlineElementsV57) {
+    auto doc = parse("<p><span><em><strong><u>Deep</u></strong></em></span></p>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* p = doc->find_element("p");
+    auto* span = doc->find_element("span");
+    auto* em = doc->find_element("em");
+    auto* strong = doc->find_element("strong");
+    auto* u = doc->find_element("u");
+
+    ASSERT_NE(p, nullptr);
+    ASSERT_NE(span, nullptr);
+    ASSERT_NE(em, nullptr);
+    ASSERT_NE(strong, nullptr);
+    ASSERT_NE(u, nullptr);
+
+    EXPECT_EQ(u->text_content(), "Deep");
+    EXPECT_EQ(u->parent, strong);
+    EXPECT_EQ(strong->parent, em);
+    EXPECT_EQ(em->parent, span);
+}
+
+TEST(TreeBuilder, MissingClosingTagsImplicitClosureV57) {
+    auto doc = parse("<div><p>First<p>Second<p>Third</div>");
+    ASSERT_NE(doc, nullptr);
+
+    auto ps = doc->find_all_elements("p");
+    EXPECT_GE(ps.size(), 3u);
+    EXPECT_EQ(ps[0]->text_content(), "First");
+    EXPECT_EQ(ps[1]->text_content(), "Second");
+    EXPECT_EQ(ps[2]->text_content(), "Third");
+}
+
+TEST(TreeBuilder, VoidElementsWithoutSlashV57) {
+    auto doc = parse("<div><br><hr><img><input><meta></div>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* br = doc->find_element("br");
+    auto* hr = doc->find_element("hr");
+    auto* img = doc->find_element("img");
+    auto* input = doc->find_element("input");
+    auto* meta = doc->find_element("meta");
+
+    ASSERT_NE(br, nullptr);
+    ASSERT_NE(hr, nullptr);
+    ASSERT_NE(img, nullptr);
+    ASSERT_NE(input, nullptr);
+    ASSERT_NE(meta, nullptr);
+
+    EXPECT_EQ(br->children.size(), 0u);
+    EXPECT_EQ(hr->children.size(), 0u);
+}
+
+TEST(TreeBuilder, MixedCaseTagNamesV57) {
+    auto doc = parse("<DIV><SPAN>Mixed</SPAN></DIV>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* div = doc->find_element("div");
+    auto* span = doc->find_element("span");
+    ASSERT_NE(div, nullptr);
+    ASSERT_NE(span, nullptr);
+
+    EXPECT_EQ(div->tag_name, "div");
+    EXPECT_EQ(span->tag_name, "span");
+    EXPECT_EQ(span->text_content(), "Mixed");
+}
+
+TEST(TreeBuilder, AttributesWithoutQuotesV57) {
+    auto doc = parse("<div id=test-id class=primary data-value=123>Content</div>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* div = doc->find_element("div");
+    ASSERT_NE(div, nullptr);
+
+    std::string id_val, class_val, data_val;
+    for (const auto& attr : div->attributes) {
+        if (attr.name == "id") id_val = attr.value;
+        if (attr.name == "class") class_val = attr.value;
+        if (attr.name == "data-value") data_val = attr.value;
+    }
+
+    EXPECT_EQ(id_val, "test-id");
+    EXPECT_EQ(class_val, "primary");
+    EXPECT_EQ(data_val, "123");
+}
+
+TEST(TreeBuilder, HtmlEntityDecodingInTextV57) {
+    auto doc = parse("<p>&lt; &gt; &amp; &quot; &apos;</p>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* p = doc->find_element("p");
+    ASSERT_NE(p, nullptr);
+
+    const std::string content = p->text_content();
+    EXPECT_NE(content.find('<'), std::string::npos);
+    EXPECT_NE(content.find('>'), std::string::npos);
+    EXPECT_NE(content.find('&'), std::string::npos);
+}
