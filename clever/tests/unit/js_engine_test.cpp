@@ -17320,3 +17320,51 @@ TEST(JSEngine, DateGetMinutesReturnsNumber) {
     auto result = engine.evaluate("typeof new Date().getMinutes()");
     EXPECT_EQ(result, "number");
 }
+
+TEST(JSEngine, DateToTimeString) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("typeof new Date().toTimeString()");
+    EXPECT_EQ(result, "string");
+}
+
+TEST(JSEngine, DateGetSecondsIsNumber) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("typeof new Date().getSeconds()");
+    EXPECT_EQ(result, "number");
+}
+
+TEST(JSEngine, DateGetMillisecondsIsNumber) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("typeof new Date().getMilliseconds()");
+    EXPECT_EQ(result, "number");
+}
+
+TEST(JSEngine, DateGetDayIsNumber) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("typeof new Date().getDay()");
+    EXPECT_EQ(result, "number");
+}
+
+TEST(JSEngine, DateGetDateIsNumber) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("typeof new Date().getDate()");
+    EXPECT_EQ(result, "number");
+}
+
+TEST(JSEngine, DateGetMonthIsNumber) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("typeof new Date().getMonth()");
+    EXPECT_EQ(result, "number");
+}
+
+TEST(JSEngine, DateGetFullYearIsNumber) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("typeof new Date().getFullYear()");
+    EXPECT_EQ(result, "number");
+}
+
+TEST(JSEngine, DateGetTimeIsNumber) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("typeof new Date().getTime()");
+    EXPECT_EQ(result, "number");
+}
