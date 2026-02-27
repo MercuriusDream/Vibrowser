@@ -7552,3 +7552,43 @@ TEST(LayoutNodeProps, ScrollPaddingTopDefaultsZero) {
     LayoutNode n;
     EXPECT_FLOAT_EQ(n.scroll_padding_top, 0.0f);
 }
+
+TEST(LayoutNodeProps, MaskCompositeDefaultsZero) {
+    LayoutNode n;
+    EXPECT_EQ(n.mask_composite, 0);
+}
+
+TEST(LayoutNodeProps, MaskOriginDefaultsZero) {
+    LayoutNode n;
+    EXPECT_EQ(n.mask_origin, 0);
+}
+
+TEST(LayoutNodeProps, MaskClipDefaultsZero) {
+    LayoutNode n;
+    EXPECT_EQ(n.mask_clip, 0);
+}
+
+TEST(LayoutNodeProps, BorderImageRepeatDefaultsZero) {
+    LayoutNode n;
+    EXPECT_EQ(n.border_image_repeat, 0);
+}
+
+TEST(LayoutNodeProps, BorderImageSliceFillDefaultsFalse) {
+    LayoutNode n;
+    EXPECT_FALSE(n.border_image_slice_fill);
+}
+
+TEST(LayoutNodeProps, PageBreakBeforeDefaultsZero) {
+    LayoutNode n;
+    EXPECT_EQ(n.page_break_before, 0);
+}
+
+TEST(LayoutNodeProps, ColumnRuleWidthIsZeroV2) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.column_rule_width, 0.0f);
+}
+
+TEST(LayoutNodeProps, ColumnRuleStyleIsZeroV2) {
+    LayoutNode n;
+    EXPECT_EQ(n.column_rule_style, 0);
+}
