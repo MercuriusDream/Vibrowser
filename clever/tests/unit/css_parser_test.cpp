@@ -7263,3 +7263,77 @@ TEST_F(CSSStylesheetTest, WordBreakV11) {
         if (d.property == "word-break") found = true;
     EXPECT_TRUE(found);
 }
+
+// --- Cycle 1197: 8 CSS tests ---
+
+TEST_F(CSSStylesheetTest, CursorV12) {
+    auto sheet = parse_stylesheet("button { cursor: pointer; }");
+    ASSERT_FALSE(sheet.rules.empty());
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "cursor") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, BorderV12) {
+    auto sheet = parse_stylesheet("div { border: 1px solid black; }");
+    ASSERT_FALSE(sheet.rules.empty());
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "border") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, BorderRadiusV12) {
+    auto sheet = parse_stylesheet("div { border-radius: 8px; }");
+    ASSERT_FALSE(sheet.rules.empty());
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "border-radius") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, PaddingV12) {
+    auto sheet = parse_stylesheet("p { padding: 10px 20px; }");
+    ASSERT_FALSE(sheet.rules.empty());
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "padding") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, MarginV12) {
+    auto sheet = parse_stylesheet("div { margin: 15px auto; }");
+    ASSERT_FALSE(sheet.rules.empty());
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "margin") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, GapV12) {
+    auto sheet = parse_stylesheet(".grid { gap: 20px 15px; }");
+    ASSERT_FALSE(sheet.rules.empty());
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "gap") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, JustifyContentV12) {
+    auto sheet = parse_stylesheet(".flex { justify-content: space-between; }");
+    ASSERT_FALSE(sheet.rules.empty());
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "justify-content") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, AlignItemsV12) {
+    auto sheet = parse_stylesheet(".flex { align-items: center; }");
+    ASSERT_FALSE(sheet.rules.empty());
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "align-items") found = true;
+    EXPECT_TRUE(found);
+}

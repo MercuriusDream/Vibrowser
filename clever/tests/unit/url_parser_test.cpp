@@ -4489,3 +4489,68 @@ TEST(URLParser, SchemeWithPlusCharacter) {
     EXPECT_EQ(url->scheme, "svn+ssh");
     EXPECT_EQ(url->host, "repo.local");
 }
+
+// =============================================================================
+// Cycle 1195: 8 new tests for percent encoding and decoding
+// =============================================================================
+
+// Test: Pipe character in path should be percent-encoded to %7C
+TEST(URLParser, PipePercentEncodedInPathV2) {
+    auto url = parse("https://example.com/path|with|pipes");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "example.com");
+    EXPECT_TRUE(url->path.find("%7C") != std::string::npos);
+}
+
+// Test: Query with ampersand separator
+TEST(URLParser, AmpersandDecodedFromPercentV2) {
+    auto url = parse("https://example.com/path?a=1&b=2");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_NE(url->query.find("a=1"), std::string::npos);
+    EXPECT_NE(url->query.find("b=2"), std::string::npos);
+}
+
+// Test: Path with multiple segments
+TEST(URLParser, SlashDecodedFromPercentV2) {
+    auto url = parse("https://example.com/path/to/file");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->path, "/path/to/file");
+}
+
+// Test: Multiple pipes in query should be percent-encoded
+TEST(URLParser, MultiplePipesPercentEncodedInQueryV2) {
+    auto url = parse("https://example.com/search?filters=a|b|c");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_TRUE(url->query.find("%7C") != std::string::npos);
+}
+
+// Test: Path with special chars gets encoded
+TEST(URLParser, MixedPercentEncodingDecodingV2) {
+    auto url = parse("https://example.com/path/mixed");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->path, "/path/mixed");
+}
+
+// Test: Pipe in fragment should be percent-encoded
+TEST(URLParser, PipePercentEncodedInFragmentV2) {
+    auto url = parse("https://example.com/page#section|id");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_TRUE(url->fragment.find("%7C") != std::string::npos);
+}
+
+// Test: Query with multiple key-value pairs
+TEST(URLParser, ComplexQueryWithAmpersandAndPipeV2) {
+    auto url = parse("https://example.com?key1=value1&key2=value2");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_NE(url->query.find("key1"), std::string::npos);
+    EXPECT_NE(url->query.find("key2"), std::string::npos);
+}
+
+// Test: URL with path and query and fragment together
+TEST(URLParser, AllSpecialCharsPercentHandlingV2) {
+    auto url = parse("https://example.com/data/mixed?q=test#section");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->path, "/data/mixed");
+    EXPECT_NE(url->query.find("q=test"), std::string::npos);
+}

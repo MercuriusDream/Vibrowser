@@ -6531,3 +6531,102 @@ TEST(HeaderMapTest, SizeReturnsZeroForNewInstanceV13) {
     HeaderMap h;
     EXPECT_EQ(h.size(), 0u);
 }
+
+// ============================================================================
+// Cycle 1196: HTTP API and cookie management tests
+// ============================================================================
+
+// HeaderMap: has returns true for set header key case-insensitive V14
+TEST(HeaderMapTest, HasReturnsTrueForSetHeaderV14) {
+    HeaderMap h;
+    h.set("Content-Type", "application/json");
+    EXPECT_TRUE(h.has("content-type"));
+    EXPECT_TRUE(h.has("CONTENT-TYPE"));
+    EXPECT_TRUE(h.has("Content-Type"));
+}
+
+// HeaderMap: get returns value and remove removes header V14
+TEST(HeaderMapTest, GetAndRemoveHeaderV14) {
+    HeaderMap h;
+    h.set("Authorization", "Bearer token123");
+    auto val = h.get("Authorization");
+    EXPECT_TRUE(val.has_value());
+    EXPECT_EQ(val.value(), "Bearer token123");
+    h.remove("Authorization");
+    EXPECT_FALSE(h.has("Authorization"));
+    EXPECT_EQ(h.size(), 0u);
+}
+
+// Request: OPTIONS method serializes with correct HTTP verb V14
+TEST(RequestTest, MethodOptionsSerializesCorrectlyV14) {
+    Request req;
+    req.method = Method::OPTIONS;
+    req.host = "api.example.com";
+    req.path = "/api/v1/resource";
+    auto raw = req.serialize();
+    std::string s(raw.begin(), raw.end());
+    EXPECT_NE(s.find("OPTIONS"), std::string::npos);
+}
+
+// Response: parse 201 Created with Location header V14
+TEST(ResponseTest, Parse201CreatedWithLocationV14) {
+    std::string raw =
+        "HTTP/1.1 201 Created\r\n"
+        "Location: /api/v1/resource/789\r\n"
+        "Content-Type: application/json\r\n"
+        "Content-Length: 0\r\n"
+        "\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 201);
+    EXPECT_EQ(resp->status_text, "Created");
+    auto location = resp->headers.get("Location");
+    ASSERT_TRUE(location.has_value());
+    EXPECT_EQ(location.value(), "/api/v1/resource/789");
+}
+
+// CookieJar: set_from_header with domain and get_cookie_header V14
+TEST(CookieJarTest, SetFromHeaderAndGetCookieHeaderV14) {
+    CookieJar jar;
+    jar.set_from_header("auth_token=abcd1234; Path=/api", "api.example.com");
+    EXPECT_EQ(jar.size(), 1u);
+    auto cookie_header = jar.get_cookie_header("api.example.com", "/api", false);
+    EXPECT_FALSE(cookie_header.empty());
+    EXPECT_NE(cookie_header.find("auth_token"), std::string::npos);
+}
+
+// HeaderMap: get_all returns all values for multi-valued header V14
+TEST(HeaderMapTest, GetAllMultiValuedHeaderV14) {
+    HeaderMap h;
+    h.set("Set-Cookie", "session=abc123");
+    h.set("Set-Cookie", "theme=dark");
+    auto vals = h.get_all("Set-Cookie");
+    EXPECT_GE(vals.size(), 1u);
+    EXPECT_FALSE(vals.empty());
+}
+
+// Request: PATCH method serializes correctly with body V14
+TEST(RequestTest, MethodPatchSerializesWithBodyV14) {
+    Request req;
+    req.method = Method::PATCH;
+    req.host = "api.service.com";
+    req.path = "/resource/update";
+    req.body = {'{', '"', 'i', 'd', '"', ':', '5', '}'};
+    auto raw = req.serialize();
+    std::string s(raw.begin(), raw.end());
+    EXPECT_NE(s.find("PATCH"), std::string::npos);
+    EXPECT_NE(s.find("{\"id\":5}"), std::string::npos);
+}
+
+// CookieJar: clear and get_cookie_header after clear V14
+TEST(CookieJarTest, ClearCookiesAndVerifyEmptyV14) {
+    CookieJar jar;
+    jar.set_from_header("session=xyz789", "example.com");
+    jar.set_from_header("pref=light", "example.com");
+    EXPECT_GT(jar.size(), 0u);
+    jar.clear();
+    EXPECT_EQ(jar.size(), 0u);
+    auto header = jar.get_cookie_header("example.com", "/", false);
+    EXPECT_TRUE(header.empty());
+}

@@ -18614,3 +18614,53 @@ TEST(JSEngine, StringTrimCycle1191) {
     auto result = engine.evaluate("'  hello world  '.trim()");
     EXPECT_EQ(result, "hello world");
 }
+
+// --- Cycle 1200: 8 JS tests ---
+
+TEST(JSEngine, ClassMethodCallCycle1200) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("class Point { constructor(x) { this.x = x; } getX() { return this.x; } } var p = new Point(42); p.getX().toString()");
+    EXPECT_EQ(result, "42");
+}
+
+TEST(JSEngine, WeakSetAddHasV5) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var ws = new WeakSet(); var obj = {}; ws.add(obj); ws.has(obj).toString()");
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, SymbolIteratorWithArrayV3) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var arr = [1, 2, 3]; var iter = arr[Symbol.iterator](); iter.next().value.toString()");
+    EXPECT_EQ(result, "1");
+}
+
+TEST(JSEngine, GeneratorReturnValueV5) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("function* gen() { yield 10; return 20; } var g = gen(); g.next(); var res = g.next(); res.value.toString()");
+    EXPECT_EQ(result, "20");
+}
+
+TEST(JSEngine, AsyncAwaitResolveCycle1200) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("async function test() { return 99; } typeof test()");
+    EXPECT_EQ(result, "object");
+}
+
+TEST(JSEngine, FunctionBindContextV3) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var obj = { value: 42 }; function getValue() { return this.value; } var bound = getValue.bind(obj); bound().toString()");
+    EXPECT_EQ(result, "42");
+}
+
+TEST(JSEngine, FunctionCallWithContextV2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var obj = { x: 100 }; function add(a) { return this.x + a; } add.call(obj, 25).toString()");
+    EXPECT_EQ(result, "125");
+}
+
+TEST(JSEngine, ClosureCaptureVariableCycle1200) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var outer = 50; function makeFunc() { var inner = 30; return function() { return outer + inner; }; } makeFunc()().toString()");
+    EXPECT_EQ(result, "80");
+}

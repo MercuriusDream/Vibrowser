@@ -8593,3 +8593,45 @@ TEST(LayoutNodeProps, BorderImageGradientAngleDefaultsZero) {
     LayoutNode n;
     EXPECT_EQ(n.border_image_gradient_angle, 0.0f);
 }
+
+// --- Cycle 1199: 8 Layout tests for SVG rendering and image positioning properties ---
+
+TEST(LayoutNodeProps, SvgViewboxYDefaultZero) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.svg_viewbox_y, 0.0f);
+}
+
+TEST(LayoutNodeProps, RenderedImgXDefaultZero) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.rendered_img_x, 0.0f);
+}
+
+TEST(LayoutNodeProps, RenderedImgYDefaultZero) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.rendered_img_y, 0.0f);
+}
+
+TEST(LayoutNodeProps, RenderedImgWDefaultZero) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.rendered_img_w, 0.0f);
+}
+
+TEST(LayoutNodeProps, RenderedImgHDefaultZero) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.rendered_img_h, 0.0f);
+}
+
+TEST(LayoutNodeProps, SvgTextDxDefaultZero) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.svg_text_dx, 0.0f);
+}
+
+TEST(LayoutNodeProps, SvgTextDyDefaultZero) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.svg_text_dy, 0.0f);
+}
+
+TEST(LayoutNodeProps, SvgUseXDefaultZero) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.svg_use_x, 0.0f);
+}

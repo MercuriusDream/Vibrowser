@@ -6765,3 +6765,101 @@ TEST(TreeBuilder, FigcaptionInFigure) {
     ASSERT_NE(el, nullptr);
     EXPECT_EQ(el->tag_name, "figcaption");
 }
+
+// ============================================================================
+// Cycle 1198: Additional HTML parser tests
+// ============================================================================
+
+TEST(TreeBuilder, RelElementLink) {
+    auto doc = clever::html::parse("<link rel=\"stylesheet\" href=\"styles.css\">");
+    auto* el = doc->find_element("link");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "link");
+    bool has_rel = false, has_href = false;
+    for (const auto& attr : el->attributes) {
+        if (attr.name == "rel" && attr.value == "stylesheet") has_rel = true;
+        if (attr.name == "href" && attr.value == "styles.css") has_href = true;
+    }
+    EXPECT_TRUE(has_rel && has_href);
+}
+
+TEST(TreeBuilder, RelElementIcon) {
+    auto doc = clever::html::parse("<link rel=\"icon\" href=\"favicon.png\" type=\"image/png\">");
+    auto* el = doc->find_element("link");
+    ASSERT_NE(el, nullptr);
+    bool has_rel = false, has_type = false;
+    for (const auto& attr : el->attributes) {
+        if (attr.name == "rel" && attr.value == "icon") has_rel = true;
+        if (attr.name == "type" && attr.value == "image/png") has_type = true;
+    }
+    EXPECT_TRUE(has_rel && has_type);
+}
+
+TEST(TreeBuilder, HrefLangAttribute) {
+    auto doc = clever::html::parse("<a href=\"https://example.com\" hreflang=\"en\">English Version</a>");
+    auto* el = doc->find_element("a");
+    ASSERT_NE(el, nullptr);
+    bool has_hreflang = false;
+    for (const auto& attr : el->attributes) {
+        if (attr.name == "hreflang" && attr.value == "en") has_hreflang = true;
+    }
+    EXPECT_TRUE(has_hreflang);
+}
+
+TEST(TreeBuilder, PingAttributeTracking) {
+    auto doc = clever::html::parse("<a href=\"/page\" ping=\"http://tracker.com/ping\">Link</a>");
+    auto* el = doc->find_element("a");
+    ASSERT_NE(el, nullptr);
+    bool has_ping = false;
+    for (const auto& attr : el->attributes) {
+        if (attr.name == "ping" && attr.value == "http://tracker.com/ping") has_ping = true;
+    }
+    EXPECT_TRUE(has_ping);
+}
+
+TEST(TreeBuilder, TypeAttributeJs) {
+    auto doc = clever::html::parse("<script type=\"application/javascript\" src=\"app.js\"></script>");
+    auto* el = doc->find_element("script");
+    ASSERT_NE(el, nullptr);
+    bool has_type = false, has_src = false;
+    for (const auto& attr : el->attributes) {
+        if (attr.name == "type" && attr.value == "application/javascript") has_type = true;
+        if (attr.name == "src" && attr.value == "app.js") has_src = true;
+    }
+    EXPECT_TRUE(has_type && has_src);
+}
+
+TEST(TreeBuilder, DeferAsyncScript) {
+    auto doc = clever::html::parse("<script src=\"script.js\" defer async></script>");
+    auto* el = doc->find_element("script");
+    ASSERT_NE(el, nullptr);
+    bool has_defer = false, has_async = false;
+    for (const auto& attr : el->attributes) {
+        if (attr.name == "defer") has_defer = true;
+        if (attr.name == "async") has_async = true;
+    }
+    EXPECT_TRUE(has_defer && has_async);
+}
+
+TEST(TreeBuilder, CrossoriginAttribute) {
+    auto doc = clever::html::parse("<img src=\"image.jpg\" alt=\"Photo\" crossorigin=\"anonymous\">");
+    auto* el = doc->find_element("img");
+    ASSERT_NE(el, nullptr);
+    bool has_crossorigin = false;
+    for (const auto& attr : el->attributes) {
+        if (attr.name == "crossorigin" && attr.value == "anonymous") has_crossorigin = true;
+    }
+    EXPECT_TRUE(has_crossorigin);
+}
+
+TEST(TreeBuilder, AutofocusInputField) {
+    auto doc = clever::html::parse("<input type=\"email\" placeholder=\"Enter email\" autofocus>");
+    auto* el = doc->find_element("input");
+    ASSERT_NE(el, nullptr);
+    bool has_autofocus = false, has_placeholder = false;
+    for (const auto& attr : el->attributes) {
+        if (attr.name == "autofocus") has_autofocus = true;
+        if (attr.name == "placeholder" && attr.value == "Enter email") has_placeholder = true;
+    }
+    EXPECT_TRUE(has_autofocus && has_placeholder);
+}

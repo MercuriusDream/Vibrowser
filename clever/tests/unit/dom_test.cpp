@@ -6367,3 +6367,67 @@ TEST(DomElement, HasAttributeRequired) {
     el->set_attribute("required", "");
     EXPECT_TRUE(el->has_attribute("required"));
 }
+
+// --- Cycle 1192: 8 DOM tests ---
+
+TEST(DomElement, TagNameColgroup) {
+    Document doc;
+    auto el = doc.create_element("colgroup");
+    EXPECT_EQ(el->tag_name(), "colgroup");
+}
+
+TEST(DomElement, TagNameCol) {
+    Document doc;
+    auto el = doc.create_element("col");
+    EXPECT_EQ(el->tag_name(), "col");
+}
+
+TEST(DomElement, SetAttributeDataValue) {
+    Document doc;
+    auto el = doc.create_element("div");
+    el->set_attribute("data-value", "hello");
+    EXPECT_EQ(el->get_attribute("data-value"), "hello");
+}
+
+TEST(DomElement, SetAttributeRole) {
+    Document doc;
+    auto el = doc.create_element("nav");
+    el->set_attribute("role", "navigation");
+    EXPECT_EQ(el->get_attribute("role"), "navigation");
+}
+
+TEST(DomElement, ChildCountFifteen) {
+    Document doc;
+    auto parent = doc.create_element("div");
+    for (int i = 0; i < 15; ++i) {
+        parent->append_child(doc.create_element("span"));
+    }
+    EXPECT_EQ(parent->child_count(), 15u);
+}
+
+TEST(DomClassList, ClassListToggleThree) {
+    Document doc;
+    auto el = doc.create_element("div");
+    el->class_list().add("x");
+    el->class_list().add("y");
+    el->class_list().add("z");
+    el->class_list().toggle("x");
+    el->class_list().toggle("y");
+    el->class_list().toggle("z");
+    EXPECT_EQ(el->class_list().length(), 0u);
+}
+
+TEST(DomElement, RemoveAttributeTitle) {
+    Document doc;
+    auto el = doc.create_element("div");
+    el->set_attribute("title", "tooltip");
+    el->remove_attribute("title");
+    EXPECT_FALSE(el->has_attribute("title"));
+}
+
+TEST(DomElement, HasAttributeMultiple) {
+    Document doc;
+    auto el = doc.create_element("select");
+    el->set_attribute("multiple", "");
+    EXPECT_TRUE(el->has_attribute("multiple"));
+}

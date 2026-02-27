@@ -5815,3 +5815,64 @@ TEST(SerializerTest, BoolFalseOnlyV10) {
     Deserializer d(s.data());
     EXPECT_FALSE(d.read_bool());
 }
+
+// Cycle 1194 — Additional serializer tests V11
+TEST(SerializerTest, U8MaxValueV11) {
+    Serializer s;
+    s.write_u8(255);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u8(), 255);
+}
+
+TEST(SerializerTest, U16MidRangeV11) {
+    Serializer s;
+    s.write_u16(32768);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u16(), 32768);
+}
+
+TEST(SerializerTest, U32MaxV11) {
+    Serializer s;
+    s.write_u32(4294967295u);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u32(), 4294967295u);
+}
+
+TEST(SerializerTest, I32NegativeHalfMilV11) {
+    Serializer s;
+    s.write_i32(-500000);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i32(), -500000);
+}
+
+TEST(SerializerTest, I64LargeNegativeV11) {
+    Serializer s;
+    s.write_i64(-9223372036854775807LL);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i64(), -9223372036854775807LL);
+}
+
+TEST(SerializerTest, F64LargeValueV11) {
+    Serializer s;
+    s.write_f64(999999.999999);
+    Deserializer d(s.data());
+    EXPECT_NEAR(d.read_f64(), 999999.999999, 1e-6);
+}
+
+TEST(SerializerTest, StringSpecialCharsV11) {
+    Serializer s;
+    s.write_string("Hello\nWorld\t!");
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "Hello\nWorld\t!");
+}
+
+TEST(SerializerTest, BoolAlternatingSequenceV11) {
+    Serializer s;
+    s.write_bool(true);
+    s.write_bool(false);
+    s.write_bool(true);
+    Deserializer d(s.data());
+    EXPECT_TRUE(d.read_bool());
+    EXPECT_FALSE(d.read_bool());
+    EXPECT_TRUE(d.read_bool());
+}

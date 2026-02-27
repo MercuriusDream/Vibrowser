@@ -3000,3 +3000,38 @@ TEST(CORSPolicyTest, CorsAllowsResponseACAOMismatchV20) {
 TEST(CORSPolicyTest, NotEnforceableBlobUrlOriginV20) {
     EXPECT_FALSE(has_enforceable_document_origin("blob:https://myapp.com/123"));
 }
+
+TEST(CORSPolicyTest, EnforceableHttpsNoPortV21) {
+    EXPECT_TRUE(has_enforceable_document_origin("https://secure.domain.io"));
+}
+
+TEST(CORSPolicyTest, NotEnforceableFileSchemeV21) {
+    EXPECT_FALSE(has_enforceable_document_origin("file:///home/user/page.html"));
+}
+
+TEST(CORSPolicyTest, NotEnforceableNullOriginV21) {
+    EXPECT_FALSE(has_enforceable_document_origin("null"));
+}
+
+TEST(CORSPolicyTest, CorsEligibleHttpsWithPathV21) {
+    EXPECT_TRUE(is_cors_eligible_request_url("https://api.service.net/v2/data/resource"));
+}
+
+TEST(CORSPolicyTest, NotCorsEligibleDataUrlV21) {
+    EXPECT_FALSE(is_cors_eligible_request_url("data:application/json,{\"test\":true}"));
+}
+
+TEST(CORSPolicyTest, CrossOriginSubdomainV21) {
+    EXPECT_TRUE(is_cross_origin("https://app.example.com", "https://cdn.example.com/image.png"));
+}
+
+TEST(CORSPolicyTest, ShouldAttachOriginForCrossOriginHttpsV21) {
+    EXPECT_TRUE(should_attach_origin_header("https://myapp.example.net", "https://api.other.net/endpoint"));
+}
+
+TEST(CORSPolicyTest, CorsAllowsResponseWithACAOCredentialsV21) {
+    clever::net::HeaderMap resp_headers;
+    resp_headers.set("Access-Control-Allow-Origin", "https://webapp.domain.org");
+    resp_headers.set("Access-Control-Allow-Credentials", "true");
+    EXPECT_TRUE(cors_allows_response("https://webapp.domain.org", "https://backend.domain.org/api/user", resp_headers, true));
+}
