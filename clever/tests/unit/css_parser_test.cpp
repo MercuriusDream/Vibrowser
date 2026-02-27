@@ -3945,3 +3945,73 @@ TEST_F(CSSStylesheetTest, ScrollPaddingDeclaration) {
         if (d.property == "scroll-padding") { found = true; break; }
     EXPECT_TRUE(found);
 }
+
+TEST_F(CSSStylesheetTest, AnimationDelayDeclaration) {
+    auto sheet = parse_stylesheet(".elem { animation-delay: 0.5s; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "animation-delay") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, AnimationFillModeDeclaration) {
+    auto sheet = parse_stylesheet(".elem { animation-fill-mode: forwards; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "animation-fill-mode") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, AnimationIterationCountDeclaration) {
+    auto sheet = parse_stylesheet(".spin { animation-iteration-count: infinite; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "animation-iteration-count") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, AnimationDirectionDeclaration) {
+    auto sheet = parse_stylesheet(".elem { animation-direction: alternate; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "animation-direction") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, AnimationPlayStateDeclaration) {
+    auto sheet = parse_stylesheet(".paused { animation-play-state: paused; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "animation-play-state") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, AnimationTimingFunctionDeclaration) {
+    auto sheet = parse_stylesheet(".ease { animation-timing-function: ease-in-out; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "animation-timing-function") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, TransitionDelayDeclaration) {
+    auto sheet = parse_stylesheet("a { transition-delay: 200ms; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "transition-delay") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, KeyframesRuleInStylesheet) {
+    auto sheet = parse_stylesheet("@keyframes slide { from { transform: translateX(0); } to { transform: translateX(100px); } }");
+    EXPECT_EQ(sheet.keyframes.size(), 1u);
+    if (sheet.keyframes.size() > 0)
+        EXPECT_EQ(sheet.keyframes[0].name, "slide");
+}
