@@ -3271,3 +3271,61 @@ TEST(DomEvent, ImmediatePropagationNotStoppedInitially) {
     Event ev("change");
     EXPECT_FALSE(ev.immediate_propagation_stopped());
 }
+
+// Cycle 773 — Document API edge cases
+TEST(DomDocument, DocumentBodyNullInitially) {
+    Document doc;
+    EXPECT_EQ(doc.body(), nullptr);
+}
+
+TEST(DomDocument, DocumentHeadNullInitially) {
+    Document doc;
+    EXPECT_EQ(doc.head(), nullptr);
+}
+
+TEST(DomDocument, DocumentElementNullInitially) {
+    Document doc;
+    EXPECT_EQ(doc.document_element(), nullptr);
+}
+
+TEST(DomDocument, RegisterMultipleIdsDistinct) {
+    Document doc;
+    auto e1 = doc.create_element("div");
+    auto e2 = doc.create_element("span");
+    Element* p1 = e1.get();
+    Element* p2 = e2.get();
+    doc.register_id("x", p1);
+    doc.register_id("y", p2);
+    EXPECT_EQ(doc.get_element_by_id("x"), p1);
+    EXPECT_EQ(doc.get_element_by_id("y"), p2);
+}
+
+TEST(DomDocument, UnregisterKeepsOtherIds) {
+    Document doc;
+    auto e1 = doc.create_element("p");
+    auto e2 = doc.create_element("h1");
+    doc.register_id("keep", e1.get());
+    doc.register_id("remove", e2.get());
+    doc.unregister_id("remove");
+    EXPECT_NE(doc.get_element_by_id("keep"), nullptr);
+    EXPECT_EQ(doc.get_element_by_id("remove"), nullptr);
+}
+
+TEST(DomDocument, CreateTwoElementsDifferentTags) {
+    Document doc;
+    auto div = doc.create_element("div");
+    auto span = doc.create_element("span");
+    EXPECT_EQ(div->tag_name(), "div");
+    EXPECT_EQ(span->tag_name(), "span");
+}
+
+TEST(DomDocument, CreateCommentDataStored) {
+    Document doc;
+    auto comment = doc.create_comment("hello comment");
+    EXPECT_EQ(comment->data(), "hello comment");
+}
+
+TEST(DomDocument, DocumentNodeTypeIsDocument) {
+    Document doc;
+    EXPECT_EQ(doc.node_type(), NodeType::Document);
+}
