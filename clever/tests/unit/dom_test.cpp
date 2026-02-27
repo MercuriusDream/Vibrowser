@@ -3229,3 +3229,45 @@ TEST(DomNode, ThreeChildrenInsertBeforeOrderCorrect) {
     EXPECT_EQ(parent.child_count(), 3u);
     EXPECT_EQ(dynamic_cast<const Element*>(parent.first_child())->id(), "a");
 }
+
+// Cycle 765 — Event phase and target accessor tests
+TEST(DomEvent, EventPhaseInitiallyNone) {
+    Event ev("click");
+    EXPECT_EQ(ev.phase(), EventPhase::None);
+}
+
+TEST(DomEvent, EventTargetInitiallyNull) {
+    Event ev("keydown");
+    EXPECT_EQ(ev.target(), nullptr);
+}
+
+TEST(DomEvent, EventCurrentTargetInitiallyNull) {
+    Event ev("mouseover");
+    EXPECT_EQ(ev.current_target(), nullptr);
+}
+
+TEST(DomEvent, EventBubblesDefaultTrue) {
+    Event ev("click");
+    EXPECT_TRUE(ev.bubbles());
+}
+
+TEST(DomEvent, EventCancelableDefaultTrue) {
+    Event ev("click");
+    EXPECT_TRUE(ev.cancelable());
+}
+
+TEST(DomEvent, EventNonBubblingNonCancelable) {
+    Event ev("focus", false, false);
+    EXPECT_FALSE(ev.bubbles());
+    EXPECT_FALSE(ev.cancelable());
+}
+
+TEST(DomEvent, PropagationNotStoppedInitially) {
+    Event ev("input");
+    EXPECT_FALSE(ev.propagation_stopped());
+}
+
+TEST(DomEvent, ImmediatePropagationNotStoppedInitially) {
+    Event ev("change");
+    EXPECT_FALSE(ev.immediate_propagation_stopped());
+}
