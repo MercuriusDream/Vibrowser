@@ -15714,3 +15714,52 @@ TEST(JSEngine, BigIntCompare) {
     auto result = engine.evaluate("10n > 5n");
     EXPECT_EQ(result, "true");
 }
+
+// Cycle 786 — Error cause, AggregateError, Number.isSafeInteger, Math.expm1/log1p, BigInt ops
+TEST(JSEngine, ErrorCause) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("const e = new Error('outer', { cause: new Error('inner') }); e.message");
+    EXPECT_EQ(result, "outer");
+}
+
+TEST(JSEngine, AggregateErrorType) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("typeof new AggregateError([new Error('a'), new Error('b')], 'All failed')");
+    EXPECT_EQ(result, "object");
+}
+
+TEST(JSEngine, NumberIsSafeIntegerTrue) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("Number.isSafeInteger(9007199254740991)");
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, NumberIsSafeIntegerFalse) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("Number.isSafeInteger(9007199254740992)");
+    EXPECT_EQ(result, "false");
+}
+
+TEST(JSEngine, MathExpm1Zero) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("Math.expm1(0)");
+    EXPECT_EQ(result, "0");
+}
+
+TEST(JSEngine, MathLog1pZero) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("Math.log1p(0)");
+    EXPECT_EQ(result, "0");
+}
+
+TEST(JSEngine, BigIntMultiply) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("(100n * 200n).toString()");
+    EXPECT_EQ(result, "20000");
+}
+
+TEST(JSEngine, BigIntSubtract) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("(1000n - 1n).toString()");
+    EXPECT_EQ(result, "999");
+}
