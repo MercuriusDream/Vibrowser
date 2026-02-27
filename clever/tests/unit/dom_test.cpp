@@ -2800,3 +2800,62 @@ TEST(DomNode, LastChildNullOnEmptyElement) {
     Element ol("ol");
     EXPECT_EQ(ol.last_child(), nullptr);
 }
+
+TEST(DomNode, SetAttributeOverwritesPrevious) {
+    Element div("div");
+    div.set_attribute("id", "first");
+    div.set_attribute("id", "second");
+    EXPECT_EQ(div.get_attribute("id").value(), "second");
+}
+
+TEST(DomNode, TwoAttributesCount) {
+    Element a("a");
+    a.set_attribute("href", "https://example.com");
+    a.set_attribute("target", "_blank");
+    EXPECT_EQ(a.attributes().size(), 2u);
+}
+
+TEST(DomNode, AppendChildSetsParentPointer) {
+    Element outer("div");
+    auto inner = std::make_unique<Element>("span");
+    Element* inner_ptr = inner.get();
+    outer.append_child(std::move(inner));
+    EXPECT_EQ(inner_ptr->parent(), &outer);
+}
+
+TEST(DomNode, NodeTypeElementIsElement) {
+    Element em("em");
+    EXPECT_EQ(em.node_type(), NodeType::Element);
+}
+
+TEST(DomNode, NodeTypeTextIsText) {
+    Text t("hello");
+    EXPECT_EQ(t.node_type(), NodeType::Text);
+}
+
+TEST(DomNode, ChildAtIndexZeroIsFirstChild) {
+    Element ul("ul");
+    auto li1 = std::make_unique<Element>("li");
+    auto li2 = std::make_unique<Element>("li");
+    Element* li1_ptr = li1.get();
+    ul.append_child(std::move(li1));
+    ul.append_child(std::move(li2));
+    EXPECT_EQ(ul.first_child(), li1_ptr);
+}
+
+TEST(DomNode, LastChildIsThirdAppended) {
+    Element ul("ul");
+    auto li1 = std::make_unique<Element>("li");
+    auto li2 = std::make_unique<Element>("li");
+    Element* li2_ptr = li2.get();
+    ul.append_child(std::move(li1));
+    ul.append_child(std::move(li2));
+    EXPECT_EQ(ul.last_child(), li2_ptr);
+}
+
+TEST(DomNode, TextContentOnSpanMatchesContent) {
+    Element span("span");
+    auto txt = std::make_unique<Text>("hello world");
+    span.append_child(std::move(txt));
+    EXPECT_NE(span.text_content().find("hello"), std::string::npos);
+}
