@@ -17560,3 +17560,51 @@ TEST(JSEngine, ShorthandMethod) {
     auto result = engine.evaluate("({double(x) { return x * 2; }}).double(7).toString()");
     EXPECT_EQ(result, "14");
 }
+
+TEST(JSEngine, ArrayDestructure) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var [a, b] = [10, 20]; (a + b).toString()");
+    EXPECT_EQ(result, "30");
+}
+
+TEST(JSEngine, ObjectDestructure) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var {x, y} = {x: 3, y: 7}; (x + y).toString()");
+    EXPECT_EQ(result, "10");
+}
+
+TEST(JSEngine, DefaultParamValue) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("(function(x = 5) { return x; })().toString()");
+    EXPECT_EQ(result, "5");
+}
+
+TEST(JSEngine, RestParams) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("(function(...args) { return args.length; })(1, 2, 3).toString()");
+    EXPECT_EQ(result, "3");
+}
+
+TEST(JSEngine, SpreadIntoArray) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var a = [1, 2]; var b = [...a, 3]; b.length.toString()");
+    EXPECT_EQ(result, "3");
+}
+
+TEST(JSEngine, ForOfArrayV2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var sum = 0; for (var v of [1,2,3]) sum += v; sum.toString()");
+    EXPECT_EQ(result, "6");
+}
+
+TEST(JSEngine, GeneratorBasic) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("function* g() { yield 1; yield 2; } var it = g(); it.next().value.toString()");
+    EXPECT_EQ(result, "1");
+}
+
+TEST(JSEngine, SymbolIsUnique) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("(Symbol() !== Symbol()).toString()");
+    EXPECT_EQ(result, "true");
+}
