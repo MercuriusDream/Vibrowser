@@ -4702,3 +4702,77 @@ TEST_F(CSSStylesheetTest, FontSynthesisDeclaration) {
         if (d.property == "font-synthesis") { found = true; break; }
     EXPECT_TRUE(found);
 }
+
+// Cycle 891 — CSS declaration tests
+
+TEST_F(CSSStylesheetTest, VerticalAlignDeclaration) {
+    auto sheet = parse_stylesheet("td { vertical-align: middle; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "vertical-align") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, FloatDeclaration) {
+    auto sheet = parse_stylesheet("img { float: left; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "float") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, AlignSelfDeclaration) {
+    auto sheet = parse_stylesheet(".item { align-self: flex-end; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "align-self") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, JustifySelfDeclaration) {
+    auto sheet = parse_stylesheet(".item { justify-self: center; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "justify-self") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, FlexDirectionDeclaration) {
+    auto sheet = parse_stylesheet(".container { flex-direction: column; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "flex-direction") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, FlexBasisDeclaration) {
+    auto sheet = parse_stylesheet(".item { flex-basis: 200px; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "flex-basis") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, GridAreaDeclaration) {
+    auto sheet = parse_stylesheet(".item { grid-area: header; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "grid-area") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, BorderImageRepeatDeclaration) {
+    auto sheet = parse_stylesheet(".box { border-image-repeat: round; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "border-image-repeat") { found = true; break; }
+    EXPECT_TRUE(found);
+}
