@@ -4015,3 +4015,49 @@ TEST_F(CSSStylesheetTest, KeyframesRuleInStylesheet) {
     if (sheet.keyframes.size() > 0)
         EXPECT_EQ(sheet.keyframes[0].name, "slide");
 }
+
+TEST(CSSParserTest, SupportsOrCondition) {
+    auto sheet = parse_stylesheet("@supports (display: grid) or (display: flex) { .box { display: grid; } }");
+    EXPECT_GE(sheet.supports_rules.size(), 1u);
+}
+
+TEST(CSSParserTest, SupportsAndCondition) {
+    auto sheet = parse_stylesheet("@supports (display: grid) and (gap: 0) { .grid { gap: 10px; } }");
+    EXPECT_GE(sheet.supports_rules.size(), 1u);
+}
+
+TEST(CSSParserTest, PropertyRuleInheritsField) {
+    auto sheet = parse_stylesheet("@property --my-color { syntax: '<color>'; inherits: true; initial-value: red; }");
+    ASSERT_GE(sheet.property_rules.size(), 1u);
+    EXPECT_EQ(sheet.property_rules[0].name, "--my-color");
+}
+
+TEST(CSSParserTest, PropertyRuleSyntaxField) {
+    auto sheet = parse_stylesheet("@property --size { syntax: '<length>'; inherits: false; initial-value: 0px; }");
+    ASSERT_GE(sheet.property_rules.size(), 1u);
+    EXPECT_EQ(sheet.property_rules[0].syntax, "<length>");
+}
+
+TEST(CSSParserTest, PropertyRuleInitialValue) {
+    auto sheet = parse_stylesheet("@property --ratio { syntax: '<number>'; inherits: false; initial-value: 1; }");
+    ASSERT_GE(sheet.property_rules.size(), 1u);
+    EXPECT_EQ(sheet.property_rules[0].initial_value, "1");
+}
+
+TEST(CSSParserTest, FontFaceWeightField) {
+    auto sheet = parse_stylesheet("@font-face { font-family: 'MyFont'; src: url('font.woff2'); font-weight: 700; }");
+    ASSERT_GE(sheet.font_faces.size(), 1u);
+    EXPECT_EQ(sheet.font_faces[0].font_weight, "700");
+}
+
+TEST(CSSParserTest, FontFaceStyleField) {
+    auto sheet = parse_stylesheet("@font-face { font-family: 'ItalicFont'; src: url('italic.woff2'); font-style: italic; }");
+    ASSERT_GE(sheet.font_faces.size(), 1u);
+    EXPECT_EQ(sheet.font_faces[0].font_style, "italic");
+}
+
+TEST(CSSParserTest, FontFaceUnicodeRange) {
+    auto sheet = parse_stylesheet("@font-face { font-family: 'Latin'; src: url('latin.woff2'); unicode-range: U+0000-00FF; }");
+    ASSERT_GE(sheet.font_faces.size(), 1u);
+    EXPECT_FALSE(sheet.font_faces[0].unicode_range.empty());
+}
