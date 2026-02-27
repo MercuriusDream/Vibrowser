@@ -3751,3 +3751,52 @@ TEST_F(CSSStylesheetTest, ShapeOutsideDeclaration) {
         if (d.property == "shape-outside") { found = true; break; }
     EXPECT_TRUE(found);
 }
+
+// Cycle 778 — CSS form-state and layout pseudo-class declarations
+TEST_F(CSSStylesheetTest, PseudoClassRequired) {
+    auto sheet = parse_stylesheet("input:required { border-color: red; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    EXPECT_NE(sheet.rules[0].selector_text.find("required"), std::string::npos);
+}
+
+TEST_F(CSSStylesheetTest, PseudoClassOptional) {
+    auto sheet = parse_stylesheet("input:optional { border-color: gray; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    EXPECT_NE(sheet.rules[0].selector_text.find("optional"), std::string::npos);
+}
+
+TEST_F(CSSStylesheetTest, PseudoClassValid) {
+    auto sheet = parse_stylesheet("input:valid { outline: 2px solid green; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    EXPECT_NE(sheet.rules[0].selector_text.find("valid"), std::string::npos);
+}
+
+TEST_F(CSSStylesheetTest, PseudoClassInvalid) {
+    auto sheet = parse_stylesheet("input:invalid { outline: 2px solid red; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    EXPECT_NE(sheet.rules[0].selector_text.find("invalid"), std::string::npos);
+}
+
+TEST_F(CSSStylesheetTest, PseudoClassFocusVisible) {
+    auto sheet = parse_stylesheet("button:focus-visible { outline: 3px solid blue; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    EXPECT_NE(sheet.rules[0].selector_text.find("focus-visible"), std::string::npos);
+}
+
+TEST_F(CSSStylesheetTest, PseudoClassFocusWithin) {
+    auto sheet = parse_stylesheet("form:focus-within { background: #eef; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    EXPECT_NE(sheet.rules[0].selector_text.find("focus-within"), std::string::npos);
+}
+
+TEST_F(CSSStylesheetTest, PseudoClassPlaceholderShown) {
+    auto sheet = parse_stylesheet("input:placeholder-shown { border: 1px dashed; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    EXPECT_NE(sheet.rules[0].selector_text.find("placeholder-shown"), std::string::npos);
+}
+
+TEST_F(CSSStylesheetTest, PseudoClassReadOnly) {
+    auto sheet = parse_stylesheet("input:read-only { background: #eee; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    EXPECT_NE(sheet.rules[0].selector_text.find("read-only"), std::string::npos);
+}
