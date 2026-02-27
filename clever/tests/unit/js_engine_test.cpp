@@ -15285,3 +15285,56 @@ TEST(JSEngine, MathSignPositive) {
     auto result = engine.evaluate("Math.sign(42)");
     EXPECT_EQ(result, "1");
 }
+
+TEST(JSEngine, RegExpExecReturnsMatch) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(/(\d+)/.exec('abc 123')[1])");
+    EXPECT_EQ(result, "123");
+}
+
+TEST(JSEngine, RegExpGlobalFlag) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"('aabbcc'.match(/a/g).length)");
+    EXPECT_EQ(result, "2");
+}
+
+TEST(JSEngine, StringMatchAllDigits) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"([...'test123'.matchAll(/\d/g)].length)");
+    EXPECT_EQ(result, "3");
+}
+
+TEST(JSEngine, StringReplaceAllAtoX) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("'abcabc'.replaceAll('a', 'X')");
+    EXPECT_EQ(result, "XbcXbc");
+}
+
+TEST(JSEngine, StringAtNegativeIndex) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("'hello'.at(-1)");
+    EXPECT_EQ(result, "o");
+}
+
+TEST(JSEngine, ArrayAtLastElement) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("[1, 2, 3, 4].at(-1)");
+    EXPECT_EQ(result, "4");
+}
+
+TEST(JSEngine, ObjectFromEntriesAB) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("Object.fromEntries([['a', 1], ['b', 2]]).b");
+    EXPECT_EQ(result, "2");
+}
+
+TEST(JSEngine, ArrayGroupByLike) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        const nums = [1, 2, 3, 4, 5];
+        const evens = nums.filter(n => n % 2 === 0);
+        const odds = nums.filter(n => n % 2 !== 0);
+        evens.length + '-' + odds.length
+    )");
+    EXPECT_EQ(result, "2-3");
+}
