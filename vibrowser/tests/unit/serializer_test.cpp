@@ -11553,3 +11553,83 @@ TEST(SerializerTest, RoundTripU64ZeroV78) {
     EXPECT_EQ(reader.read_u64(), 0u);
     EXPECT_FALSE(reader.has_remaining());
 }
+
+TEST(SerializerTest, U8SequenceAllValuesV79) {
+    Serializer s;
+    s.write_u8(0);
+    s.write_u8(127);
+    s.write_u8(255);
+
+    Deserializer reader(s.data());
+    EXPECT_EQ(reader.read_u8(), 0u);
+    EXPECT_EQ(reader.read_u8(), 127u);
+    EXPECT_EQ(reader.read_u8(), 255u);
+    EXPECT_FALSE(reader.has_remaining());
+}
+
+TEST(SerializerTest, U32MaxValueV79) {
+    Serializer s;
+    s.write_u32(UINT32_MAX);
+
+    Deserializer reader(s.data());
+    EXPECT_EQ(reader.read_u32(), UINT32_MAX);
+    EXPECT_FALSE(reader.has_remaining());
+}
+
+TEST(SerializerTest, StringWithSpacesV79) {
+    Serializer s;
+    s.write_string("hello world");
+
+    Deserializer reader(s.data());
+    EXPECT_EQ(reader.read_string(), "hello world");
+    EXPECT_FALSE(reader.has_remaining());
+}
+
+TEST(SerializerTest, BytesWithPatternV79) {
+    Serializer s;
+    std::vector<uint8_t> pattern = {0xDE, 0xAD, 0xBE, 0xEF};
+    s.write_bytes(pattern.data(), pattern.size());
+
+    Deserializer reader(s.data());
+    auto result = reader.read_bytes();
+    EXPECT_EQ(result.size(), 4u);
+    EXPECT_EQ(result[0], 0xDEu);
+    EXPECT_EQ(result[1], 0xADu);
+    EXPECT_EQ(result[2], 0xBEu);
+    EXPECT_EQ(result[3], 0xEFu);
+    EXPECT_FALSE(reader.has_remaining());
+}
+
+TEST(SerializerTest, F64PiV79) {
+    Serializer s;
+    s.write_f64(3.14159265358979);
+
+    Deserializer reader(s.data());
+    EXPECT_DOUBLE_EQ(reader.read_f64(), 3.14159265358979);
+    EXPECT_FALSE(reader.has_remaining());
+}
+
+TEST(SerializerTest, EmptySerializerDataV79) {
+    Serializer s;
+    EXPECT_TRUE(s.data().empty());
+}
+
+TEST(SerializerTest, TwoStringsBackToBackV79) {
+    Serializer s;
+    s.write_string("first");
+    s.write_string("second");
+
+    Deserializer reader(s.data());
+    EXPECT_EQ(reader.read_string(), "first");
+    EXPECT_EQ(reader.read_string(), "second");
+    EXPECT_FALSE(reader.has_remaining());
+}
+
+TEST(SerializerTest, U16AllOnesV79) {
+    Serializer s;
+    s.write_u16(0xFFFF);
+
+    Deserializer reader(s.data());
+    EXPECT_EQ(reader.read_u16(), 0xFFFFu);
+    EXPECT_FALSE(reader.has_remaining());
+}

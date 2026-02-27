@@ -14476,3 +14476,150 @@ TEST(LayoutEngineTest, EmptyRootLayoutV78) {
     EXPECT_FLOAT_EQ(root->geometry.width, 300.0f);
     EXPECT_FLOAT_EQ(root->geometry.height, 200.0f);
 }
+
+// Test V79_001: single child geometry width matches parent specified width
+TEST(LayoutEngineTest, SingleChildGeometryMatchesParentWidthV79) {
+    auto root = make_block("div");
+    root->specified_width = 640.0f;
+    root->specified_height = 400.0f;
+
+    auto child = make_block("p");
+    child->specified_height = 30.0f;
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    ASSERT_EQ(root->children.size(), 1u);
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.width, 640.0f);
+}
+
+// Test V79_002: four children stack vertically, each at sum of previous heights
+TEST(LayoutEngineTest, FourChildrenYStackV79) {
+    auto root = make_block("div");
+    root->specified_width = 500.0f;
+    root->specified_height = 400.0f;
+
+    float heights[] = {25.0f, 35.0f, 45.0f, 55.0f};
+    for (int i = 0; i < 4; ++i) {
+        auto child = make_block("div");
+        child->specified_height = heights[i];
+        root->append_child(std::move(child));
+    }
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    ASSERT_EQ(root->children.size(), 4u);
+    float expected_y = 0.0f;
+    for (int i = 0; i < 4; ++i) {
+        EXPECT_FLOAT_EQ(root->children[i]->geometry.y, expected_y)
+            << "child " << i << " y mismatch";
+        expected_y += heights[i];
+    }
+}
+
+// Test V79_003: order property is preserved after layout compute
+TEST(LayoutEngineTest, OrderPropertyPreservedV79) {
+    auto root = make_block("div");
+    root->specified_width = 400.0f;
+    root->specified_height = 200.0f;
+
+    auto child = make_block("div");
+    child->specified_height = 50.0f;
+    child->order = 5;
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    ASSERT_EQ(root->children.size(), 1u);
+    EXPECT_EQ(root->children[0]->order, 5);
+}
+
+// Test V79_004: tag_name is preserved after layout compute
+TEST(LayoutEngineTest, TagNamePreservedAfterLayoutV79) {
+    auto root = make_block("section");
+    root->specified_width = 300.0f;
+    root->specified_height = 200.0f;
+
+    auto child = make_block("article");
+    child->specified_height = 40.0f;
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_EQ(root->tag_name, "section");
+    ASSERT_EQ(root->children.size(), 1u);
+    EXPECT_EQ(root->children[0]->tag_name, "article");
+}
+
+// Test V79_005: color property is preserved after layout compute
+TEST(LayoutEngineTest, ColorPropertyPreservedV79) {
+    auto root = make_block("div");
+    root->specified_width = 400.0f;
+    root->specified_height = 200.0f;
+    root->color = 0xFF00FF00u;
+
+    auto child = make_block("span");
+    child->specified_height = 30.0f;
+    child->color = 0xFFFF0000u;
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_EQ(root->color, 0xFF00FF00u);
+    ASSERT_EQ(root->children.size(), 1u);
+    EXPECT_EQ(root->children[0]->color, 0xFFFF0000u);
+}
+
+// Test V79_006: a child's own padding does not affect its y position among siblings
+TEST(LayoutEngineTest, ChildPaddingDoesNotAffectSiblingYV79) {
+    auto root = make_block("div");
+    root->specified_width = 600.0f;
+    root->specified_height = 400.0f;
+
+    auto child1 = make_block("div");
+    child1->specified_height = 50.0f;
+    root->append_child(std::move(child1));
+
+    auto child2 = make_block("div");
+    child2->specified_height = 50.0f;
+    child2->geometry.padding.top = 15.0f;
+    child2->geometry.padding.bottom = 15.0f;
+    root->append_child(std::move(child2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    ASSERT_EQ(root->children.size(), 2u);
+    // child2 y based on child1 height only; child2's own padding is internal
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.y, 50.0f);
+}
+
+// Test V79_007: root with specified width produces matching geometry width
+TEST(LayoutEngineTest, RootWithSpecifiedWidthV79) {
+    auto root = make_block("div");
+    root->specified_width = 500.0f;
+    root->specified_height = 300.0f;
+
+    LayoutEngine engine;
+    engine.compute(*root, 1024.0f, 768.0f);
+
+    EXPECT_FLOAT_EQ(root->geometry.width, 500.0f);
+}
+
+// Test V79_008: max_width clamps specified_width down
+TEST(LayoutEngineTest, MaxWidthClampsV79) {
+    auto root = make_block("div");
+    root->specified_width = 1000.0f;
+    root->specified_height = 200.0f;
+    root->max_width = 600.0f;
+
+    LayoutEngine engine;
+    engine.compute(*root, 1200.0f, 800.0f);
+
+    EXPECT_FLOAT_EQ(root->geometry.width, 600.0f);
+}

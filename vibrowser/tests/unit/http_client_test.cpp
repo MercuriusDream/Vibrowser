@@ -14461,3 +14461,60 @@ TEST(HttpClientTest, RequestUrlFieldStoredV78) {
 TEST(HttpClientTest, MethodDeleteToStringV78) {
     EXPECT_EQ(method_to_string(Method::DELETE_METHOD), "DELETE");
 }
+
+// ===========================================================================
+// V79 Tests
+// ===========================================================================
+
+TEST(HttpClientTest, HeaderMapGetReturnsNulloptEmptyV79) {
+    HeaderMap headers;
+    auto result = headers.get("X-Nonexistent");
+    EXPECT_FALSE(result.has_value());
+    EXPECT_EQ(result, std::nullopt);
+}
+
+TEST(HttpClientTest, RequestParseUrlSetsPathV79) {
+    Request req;
+    req.url = "https://example.com/api/v1";
+    req.parse_url();
+    EXPECT_EQ(req.path, "/api/v1");
+}
+
+TEST(HttpClientTest, ResponseStatusCanBeSetV79) {
+    Response resp;
+    resp.status = 404;
+    EXPECT_EQ(resp.status, 404);
+}
+
+TEST(HttpClientTest, CookieJarPathSpecificV79) {
+    CookieJar jar;
+    jar.set_from_header("session=abc123; Path=/admin", "example.com");
+    // Cookie should be returned for matching path
+    std::string cookie = jar.get_cookie_header("example.com", "/admin", false);
+    EXPECT_FALSE(cookie.empty());
+    EXPECT_NE(cookie.find("session=abc123"), std::string::npos);
+}
+
+TEST(HttpClientTest, MethodHeadToStringV79) {
+    EXPECT_EQ(method_to_string(Method::HEAD), "HEAD");
+}
+
+TEST(HttpClientTest, MethodOptionsToStringV79) {
+    EXPECT_EQ(method_to_string(Method::OPTIONS), "OPTIONS");
+}
+
+TEST(HttpClientTest, HeaderMapRemoveNonexistentNoErrorV79) {
+    HeaderMap headers;
+    // Removing a key that doesn't exist should not throw or crash
+    headers.remove("X-Does-Not-Exist");
+    EXPECT_FALSE(headers.has("X-Does-Not-Exist"));
+}
+
+TEST(HttpClientTest, RequestBodyCanBeSetV79) {
+    Request req;
+    std::vector<uint8_t> body_data = {0x48, 0x65, 0x6C, 0x6C, 0x6F}; // "Hello"
+    req.body = body_data;
+    EXPECT_EQ(req.body.size(), 5u);
+    EXPECT_EQ(req.body[0], 0x48);
+    EXPECT_EQ(req.body[4], 0x6F);
+}

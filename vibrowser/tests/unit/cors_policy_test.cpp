@@ -5987,3 +5987,38 @@ TEST(CORSPolicyTest, WildcardWithCredRejectsV78) {
 TEST(CORSPolicyTest, JavascriptUrlNotCorsEligibleV78) {
     EXPECT_FALSE(is_cors_eligible_request_url("javascript:alert('test')"));
 }
+
+TEST(CORSPolicyTest, SubdomainIsCrossOriginV79) {
+    EXPECT_TRUE(is_cross_origin("https://a.example.com", "https://b.example.com/path"));
+}
+
+TEST(CORSPolicyTest, SameSchemeHostPortNotCrossV79) {
+    EXPECT_FALSE(is_cross_origin("https://app.example.com", "https://app.example.com/resource"));
+}
+
+TEST(CORSPolicyTest, HttpsPort443NormalizedNotEnforceableV79) {
+    EXPECT_FALSE(has_enforceable_document_origin("https://x.com:443"));
+}
+
+TEST(CORSPolicyTest, AcaoWildcardNoCredAllowsV79) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "*");
+    EXPECT_TRUE(
+        cors_allows_response("https://app.example.com", "https://api.example.com/data", headers, false));
+}
+
+TEST(CORSPolicyTest, EmptyOriginNotEnforceableV79) {
+    EXPECT_FALSE(has_enforceable_document_origin(""));
+}
+
+TEST(CORSPolicyTest, ShouldAttachOriginCrossOriginV79) {
+    EXPECT_TRUE(should_attach_origin_header("https://app.example.com", "https://api.example.com/data"));
+}
+
+TEST(CORSPolicyTest, ShouldNotAttachOriginSameOriginV79) {
+    EXPECT_FALSE(should_attach_origin_header("https://app.example.com", "https://app.example.com/page"));
+}
+
+TEST(CORSPolicyTest, FtpUrlNotCorsEligibleV79) {
+    EXPECT_FALSE(is_cors_eligible_request_url("ftp://files.example.com/report.csv"));
+}

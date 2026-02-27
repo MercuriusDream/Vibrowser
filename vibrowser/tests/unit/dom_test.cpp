@@ -12995,3 +12995,108 @@ TEST(DOMTest, MultipleSetAttributesDifferentKeysV78) {
     EXPECT_EQ(element.get_attribute("class").value_or(""), "btn primary");
     EXPECT_EQ(element.get_attribute("data-value").value_or(""), "42");
 }
+
+// ---------------------------------------------------------------------------
+// V79 Tests
+// ---------------------------------------------------------------------------
+
+TEST(DOMTest, DeepNestingFiveLevelsV79) {
+    clever::dom::Element root("div");
+    auto l1 = std::make_unique<clever::dom::Element>("section");
+    auto l2 = std::make_unique<clever::dom::Element>("article");
+    auto l3 = std::make_unique<clever::dom::Element>("nav");
+    auto l4 = std::make_unique<clever::dom::Element>("span");
+
+    clever::dom::Element* l1_ptr = l1.get();
+    clever::dom::Element* l2_ptr = l2.get();
+    clever::dom::Element* l3_ptr = l3.get();
+    clever::dom::Element* l4_ptr = l4.get();
+
+    l3_ptr->append_child(std::move(l4));
+    l2_ptr->append_child(std::move(l3));
+    l1_ptr->append_child(std::move(l2));
+    root.append_child(std::move(l1));
+
+    // Verify parent chain from innermost to root
+    EXPECT_EQ(l4_ptr->parent(), static_cast<clever::dom::Node*>(l3_ptr));
+    EXPECT_EQ(l3_ptr->parent(), static_cast<clever::dom::Node*>(l2_ptr));
+    EXPECT_EQ(l2_ptr->parent(), static_cast<clever::dom::Node*>(l1_ptr));
+    EXPECT_EQ(l1_ptr->parent(), static_cast<clever::dom::Node*>(&root));
+    EXPECT_EQ(root.parent(), nullptr);
+}
+
+TEST(DOMTest, TextContentEmptyElementV79) {
+    clever::dom::Element element("p");
+
+    // Element with no children should return empty string for text_content
+    EXPECT_EQ(element.text_content(), "");
+}
+
+TEST(DOMTest, CommentNodeTypeCheckV79) {
+    clever::dom::Comment comment("This is a comment");
+
+    EXPECT_EQ(comment.node_type(), clever::dom::NodeType::Comment);
+}
+
+TEST(DOMTest, SetAttributeEmptyStringV79) {
+    clever::dom::Element element("div");
+
+    element.set_attribute("data", "");
+    ASSERT_TRUE(element.has_attribute("data"));
+    auto val = element.get_attribute("data");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(val.value(), "");
+}
+
+TEST(DOMTest, ClassListContainsAfterMultipleAddsV79) {
+    clever::dom::Element element("div");
+
+    element.class_list().add("highlight");
+    element.class_list().add("highlight");  // add same class twice
+
+    EXPECT_TRUE(element.class_list().contains("highlight"));
+}
+
+TEST(DOMTest, RemoveChildFromMiddleV79) {
+    clever::dom::Element parent("ul");
+    auto c1 = std::make_unique<clever::dom::Element>("li");
+    auto c2 = std::make_unique<clever::dom::Element>("li");
+    auto c3 = std::make_unique<clever::dom::Element>("li");
+
+    clever::dom::Element* c2_ptr = c2.get();
+
+    parent.append_child(std::move(c1));
+    parent.append_child(std::move(c2));
+    parent.append_child(std::move(c3));
+
+    EXPECT_EQ(parent.child_count(), 3u);
+
+    parent.remove_child(*c2_ptr);
+
+    EXPECT_EQ(parent.child_count(), 2u);
+}
+
+TEST(DOMTest, LastChildReturnsCorrectNodeV79) {
+    clever::dom::Element parent("div");
+    auto first = std::make_unique<clever::dom::Element>("span");
+    auto second = std::make_unique<clever::dom::Element>("em");
+    auto third = std::make_unique<clever::dom::Element>("strong");
+
+    clever::dom::Node* third_ptr = third.get();
+
+    parent.append_child(std::move(first));
+    parent.append_child(std::move(second));
+    parent.append_child(std::move(third));
+
+    EXPECT_EQ(parent.last_child(), third_ptr);
+}
+
+TEST(DOMTest, ElementTagNameVariousTagsV79) {
+    clever::dom::Element section("section");
+    clever::dom::Element article("article");
+    clever::dom::Element aside("aside");
+
+    EXPECT_EQ(section.tag_name(), "section");
+    EXPECT_EQ(article.tag_name(), "article");
+    EXPECT_EQ(aside.tag_name(), "aside");
+}

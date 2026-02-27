@@ -12334,3 +12334,118 @@ TEST(HTMLParserTest, MainElementFoundV78) {
     ASSERT_NE(p, nullptr);
     EXPECT_EQ(p->parent, main);
 }
+
+// ---------------------------------------------------------------------------
+// Round 79 — HTMLParserTest V79 tests
+// ---------------------------------------------------------------------------
+
+TEST(HTMLParserTest, OrderedListOlLiV79) {
+    auto doc = clever::html::parse("<html><body><ol><li>First</li><li>Second</li><li>Third</li></ol></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* ol = doc->find_element("ol");
+    ASSERT_NE(ol, nullptr);
+    EXPECT_EQ(ol->tag_name, "ol");
+
+    auto items = doc->find_all_elements("li");
+    ASSERT_EQ(items.size(), 3u);
+    EXPECT_EQ(items[0]->text_content(), "First");
+    EXPECT_EQ(items[1]->text_content(), "Second");
+    EXPECT_EQ(items[2]->text_content(), "Third");
+    EXPECT_EQ(items[0]->parent, ol);
+    EXPECT_EQ(items[1]->parent, ol);
+    EXPECT_EQ(items[2]->parent, ol);
+}
+
+TEST(HTMLParserTest, DivWithIdAndClassV79) {
+    auto doc = clever::html::parse("<html><body><div id=\"main\" class=\"container wide\">Content</div></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* div = doc->find_element("div");
+    ASSERT_NE(div, nullptr);
+    EXPECT_EQ(div->tag_name, "div");
+    EXPECT_EQ(get_attr_v63(div, "id"), "main");
+    EXPECT_EQ(get_attr_v63(div, "class"), "container wide");
+    EXPECT_EQ(div->text_content(), "Content");
+}
+
+TEST(HTMLParserTest, NestedSpansV79) {
+    auto doc = clever::html::parse("<html><body><span>outer<span>inner</span></span></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto spans = doc->find_all_elements("span");
+    ASSERT_EQ(spans.size(), 2u);
+
+    // The inner span's parent should be the outer span
+    auto* outer = spans[0];
+    auto* inner = spans[1];
+    EXPECT_EQ(outer->tag_name, "span");
+    EXPECT_EQ(inner->tag_name, "span");
+    EXPECT_EQ(inner->parent, outer);
+    EXPECT_NE(inner->text_content().find("inner"), std::string::npos);
+}
+
+TEST(HTMLParserTest, EmptyParagraphV79) {
+    auto doc = clever::html::parse("<html><body><p></p></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* p = doc->find_element("p");
+    ASSERT_NE(p, nullptr);
+    EXPECT_EQ(p->tag_name, "p");
+    EXPECT_EQ(p->text_content(), "");
+}
+
+TEST(HTMLParserTest, HrVoidElementV79) {
+    auto doc = clever::html::parse("<html><body><hr></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* hr = doc->find_element("hr");
+    ASSERT_NE(hr, nullptr);
+    EXPECT_EQ(hr->tag_name, "hr");
+    EXPECT_TRUE(hr->children.empty());
+}
+
+TEST(HTMLParserTest, LabelWithForAttributeV79) {
+    auto doc = clever::html::parse("<html><body><label for=\"email\">Email</label></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* label = doc->find_element("label");
+    ASSERT_NE(label, nullptr);
+    EXPECT_EQ(label->tag_name, "label");
+    EXPECT_EQ(get_attr_v63(label, "for"), "email");
+    EXPECT_EQ(label->text_content(), "Email");
+}
+
+TEST(HTMLParserTest, MultipleCommentNodesV79) {
+    auto doc = clever::html::parse("<html><body><!--a--><!--b--></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* body = doc->find_element("body");
+    ASSERT_NE(body, nullptr);
+
+    int comment_count = 0;
+    std::vector<std::string> comment_data;
+    for (const auto& child : body->children) {
+        if (child->type == clever::html::SimpleNode::Comment) {
+            comment_count++;
+            comment_data.push_back(child->data);
+        }
+    }
+    EXPECT_GE(comment_count, 2);
+    EXPECT_NE(std::find(comment_data.begin(), comment_data.end(), "a"), comment_data.end());
+    EXPECT_NE(std::find(comment_data.begin(), comment_data.end(), "b"), comment_data.end());
+}
+
+TEST(HTMLParserTest, FooterElementFoundV79) {
+    auto doc = clever::html::parse("<html><body><footer>Copyright 2026</footer></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* footer = doc->find_element("footer");
+    ASSERT_NE(footer, nullptr);
+    EXPECT_EQ(footer->tag_name, "footer");
+    EXPECT_EQ(footer->text_content(), "Copyright 2026");
+
+    auto* body = doc->find_element("body");
+    ASSERT_NE(body, nullptr);
+    EXPECT_EQ(footer->parent, body);
+}

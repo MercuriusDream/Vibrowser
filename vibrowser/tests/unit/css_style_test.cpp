@@ -14541,3 +14541,111 @@ TEST(CSSStyleTest, InheritedFontSizeFromParentV78) {
 
     EXPECT_EQ(child_style.font_size.to_px(), 20.0f);
 }
+
+TEST(CSSStyleTest, ParseDisplayInlineBlockV79) {
+    const std::string css = "div{display:inline-block;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.display, Display::InlineBlock);
+}
+
+TEST(CSSStyleTest, ParsePositionRelativeV79) {
+    const std::string css = "div{position:relative;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.position, Position::Relative);
+}
+
+TEST(CSSStyleTest, ParsePositionFixedV79) {
+    const std::string css = "span{position:fixed;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "span";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.position, Position::Fixed);
+}
+
+TEST(CSSStyleTest, DefaultPositionIsStaticV79) {
+    ComputedStyle style;
+
+    EXPECT_EQ(style.position, Position::Static);
+}
+
+TEST(CSSStyleTest, DefaultVisibilityIsVisibleV79) {
+    ComputedStyle style;
+
+    EXPECT_EQ(style.visibility, Visibility::Visible);
+}
+
+TEST(CSSStyleTest, ParseCursorPointerV79) {
+    const std::string css = "a{cursor:pointer;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "a";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.cursor, Cursor::Pointer);
+}
+
+TEST(CSSStyleTest, ParseDisplayListItemV79) {
+    const std::string css = "li{display:list-item;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "li";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.display, Display::ListItem);
+}
+
+TEST(CSSStyleTest, ParseDisplayTableV79) {
+    const std::string css = "table{display:table;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "table";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.display, Display::Table);
+}

@@ -23987,3 +23987,59 @@ TEST(JSEngineTest, ArrayEveryAndSomeV78) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "true|true");
 }
+
+TEST(JSEngineTest, ArraySortNumericV79) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("[3,1,2].sort((a,b)=>a-b).join('|')");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1|2|3");
+}
+
+TEST(JSEngineTest, ArrayReverseV79) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("[1,2,3].reverse().join('|')");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "3|2|1");
+}
+
+TEST(JSEngineTest, StringTrimV79) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("'  hello  '.trim()");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "hello");
+}
+
+TEST(JSEngineTest, StringStartsWithV79) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("'hello'.startsWith('hel').toString()");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngineTest, StringEndsWithV79) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("'hello'.endsWith('llo').toString()");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngineTest, MathMaxMinV79) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("Math.max(1,5,3)+'|'+Math.min(1,5,3)");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "5|1");
+}
+
+TEST(JSEngineTest, ArrayFlatV79) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("[1,[2,[3]]].flat(Infinity).join('|')");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1|2|3");
+}
+
+TEST(JSEngineTest, ObjectEntriesV79) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("Object.entries({a:1,b:2}).map(e=>e.join(':')).join('|')");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "a:1|b:2");
+}
