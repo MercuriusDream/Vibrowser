@@ -3096,3 +3096,91 @@ TEST_F(CSSStylesheetTest, AspectRatioDeclaration) {
     }
     EXPECT_TRUE(found);
 }
+
+// Stylesheet: animation-name declaration
+TEST_F(CSSStylesheetTest, AnimationNameDeclaration) {
+    auto sheet = parse_stylesheet(".anim { animation-name: slide; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations) {
+        if (d.property == "animation-name") { found = true; break; }
+    }
+    EXPECT_TRUE(found);
+}
+
+// Stylesheet: animation-duration declaration
+TEST_F(CSSStylesheetTest, AnimationDurationDeclaration) {
+    auto sheet = parse_stylesheet(".anim { animation-duration: 0.5s; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations) {
+        if (d.property == "animation-duration") { found = true; break; }
+    }
+    EXPECT_TRUE(found);
+}
+
+// Stylesheet: transition-duration declaration
+TEST_F(CSSStylesheetTest, TransitionDurationDeclaration) {
+    auto sheet = parse_stylesheet("a { transition-duration: 200ms; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations) {
+        if (d.property == "transition-duration") { found = true; break; }
+    }
+    EXPECT_TRUE(found);
+}
+
+// Stylesheet: grid-column declaration
+TEST_F(CSSStylesheetTest, GridColumnDeclaration) {
+    auto sheet = parse_stylesheet(".cell { grid-column: 1 / 3; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations) {
+        if (d.property == "grid-column") { found = true; break; }
+    }
+    EXPECT_TRUE(found);
+}
+
+// Stylesheet: grid-row declaration
+TEST_F(CSSStylesheetTest, GridRowDeclaration) {
+    auto sheet = parse_stylesheet(".cell { grid-row: 2 / 4; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations) {
+        if (d.property == "grid-row") { found = true; break; }
+    }
+    EXPECT_TRUE(found);
+}
+
+// Stylesheet: will-change declaration
+TEST_F(CSSStylesheetTest, WillChangeDeclaration) {
+    auto sheet = parse_stylesheet(".box { will-change: transform; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations) {
+        if (d.property == "will-change") { found = true; break; }
+    }
+    EXPECT_TRUE(found);
+}
+
+// Stylesheet: scroll-behavior declaration
+TEST_F(CSSStylesheetTest, ScrollBehaviorDeclaration) {
+    auto sheet = parse_stylesheet("html { scroll-behavior: smooth; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations) {
+        if (d.property == "scroll-behavior") { found = true; break; }
+    }
+    EXPECT_TRUE(found);
+}
+
+// Stylesheet: pointer-events declaration
+TEST_F(CSSStylesheetTest, PointerEventsDeclaration) {
+    auto sheet = parse_stylesheet(".overlay { pointer-events: none; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations) {
+        if (d.property == "pointer-events") { found = true; break; }
+    }
+    EXPECT_TRUE(found);
+}
