@@ -4300,3 +4300,68 @@ TEST(ResponseTest, Parse305UseProxy) {
     ASSERT_TRUE(resp.has_value());
     EXPECT_EQ(resp->status, 305);
 }
+
+// Cycle 863 — conditional request headers: If-Modified-Since, If-Unmodified-Since, If-Range, Upgrade-Insecure-Requests, Accept-Charset, Max-Forwards, Expect, Forwarded
+TEST(RequestTest, IfModifiedSinceHeaderSet) {
+    Request req;
+    req.headers.set("If-Modified-Since", "Wed, 21 Oct 2015 07:28:00 GMT");
+    auto val = req.headers.get("If-Modified-Since");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(*val, "Wed, 21 Oct 2015 07:28:00 GMT");
+}
+
+TEST(RequestTest, IfUnmodifiedSinceHeaderSet) {
+    Request req;
+    req.headers.set("If-Unmodified-Since", "Thu, 01 Jan 2015 00:00:00 GMT");
+    auto val = req.headers.get("If-Unmodified-Since");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(*val, "Thu, 01 Jan 2015 00:00:00 GMT");
+}
+
+TEST(RequestTest, IfMatchHeaderSet) {
+    Request req;
+    req.headers.set("If-Match", "\"etag123\", \"etag456\"");
+    auto val = req.headers.get("If-Match");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_NE(val->find("etag123"), std::string::npos);
+}
+
+TEST(RequestTest, IfRangeHeaderSet) {
+    Request req;
+    req.headers.set("If-Range", "\"abc-etag\"");
+    auto val = req.headers.get("If-Range");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(*val, "\"abc-etag\"");
+}
+
+TEST(RequestTest, UpgradeInsecureRequestsHeaderSet) {
+    Request req;
+    req.headers.set("Upgrade-Insecure-Requests", "1");
+    auto val = req.headers.get("Upgrade-Insecure-Requests");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(*val, "1");
+}
+
+TEST(RequestTest, AcceptCharsetHeaderSet) {
+    Request req;
+    req.headers.set("Accept-Charset", "utf-8, iso-8859-1;q=0.5");
+    auto val = req.headers.get("Accept-Charset");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_NE(val->find("utf-8"), std::string::npos);
+}
+
+TEST(RequestTest, MaxForwardsHeaderSet) {
+    Request req;
+    req.headers.set("Max-Forwards", "10");
+    auto val = req.headers.get("Max-Forwards");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(*val, "10");
+}
+
+TEST(RequestTest, ExpectContinueHeaderSet) {
+    Request req;
+    req.headers.set("Expect", "100-continue");
+    auto val = req.headers.get("Expect");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(*val, "100-continue");
+}
