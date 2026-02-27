@@ -11588,3 +11588,121 @@ TEST(PropertyCascadeTest, BreakInsideAvoidV42) {
     cascade.apply_declaration(style, make_decl("break-inside", "avoid-column"), parent);
     EXPECT_EQ(style.break_inside, 3);
 }
+
+TEST(PropertyCascadeTest, VisibilityCollapseInheritVisibleV43) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    parent.visibility = Visibility::Hidden;
+
+    cascade.apply_declaration(style, make_decl("visibility", "collapse"), parent);
+    EXPECT_EQ(style.visibility, Visibility::Collapse);
+
+    cascade.apply_declaration(style, make_decl("visibility", "inherit"), parent);
+    EXPECT_EQ(style.visibility, Visibility::Hidden);
+
+    cascade.apply_declaration(style, make_decl("visibility", "visible"), parent);
+    EXPECT_EQ(style.visibility, Visibility::Visible);
+}
+
+TEST(PropertyCascadeTest, TransformReplacedByNoneV43) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("transform", "translate(12px, 8px)"), parent);
+    ASSERT_EQ(style.transforms.size(), 1u);
+    EXPECT_EQ(style.transforms[0].type, TransformType::Translate);
+    EXPECT_FLOAT_EQ(style.transforms[0].x, 12.0f);
+    EXPECT_FLOAT_EQ(style.transforms[0].y, 8.0f);
+
+    cascade.apply_declaration(style, make_decl("transform", "none"), parent);
+    EXPECT_TRUE(style.transforms.empty());
+}
+
+TEST(PropertyCascadeTest, AnimationShorthandMillisecondsV43) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("animation", "spin 250ms linear 100ms 3"), parent);
+    EXPECT_EQ(style.animation_name, "spin");
+    EXPECT_NEAR(style.animation_duration, 0.25f, 0.001f);
+    EXPECT_EQ(style.animation_timing, 1);
+    EXPECT_NEAR(style.animation_delay, 0.1f, 0.001f);
+    EXPECT_FLOAT_EQ(style.animation_iteration_count, 3.0f);
+}
+
+TEST(PropertyCascadeTest, FilterMultiThenSingleV43) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("filter", "grayscale(0.5) blur(2px)"), parent);
+    ASSERT_EQ(style.filters.size(), 2u);
+    EXPECT_EQ(style.filters[0].first, 1);
+    EXPECT_EQ(style.filters[1].first, 9);
+    EXPECT_FLOAT_EQ(style.filters[1].second, 2.0f);
+
+    cascade.apply_declaration(style, make_decl("filter", "brightness(1.2)"), parent);
+    ASSERT_EQ(style.filters.size(), 1u);
+    EXPECT_EQ(style.filters[0].first, 3);
+    EXPECT_NEAR(style.filters[0].second, 1.2f, 0.01f);
+}
+
+TEST(PropertyCascadeTest, GridAutoFlowDenseVariantsV43) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("grid-auto-flow", "dense"), parent);
+    EXPECT_EQ(style.grid_auto_flow, 2);
+
+    cascade.apply_declaration(style, make_decl("grid-auto-flow", "column dense"), parent);
+    EXPECT_EQ(style.grid_auto_flow, 3);
+
+    cascade.apply_declaration(style, make_decl("grid-auto-flow", "row"), parent);
+    EXPECT_EQ(style.grid_auto_flow, 0);
+}
+
+TEST(PropertyCascadeTest, FlexFlowAndBasisV43) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("flex-flow", "column-reverse wrap"), parent);
+    EXPECT_EQ(style.flex_direction, FlexDirection::ColumnReverse);
+    EXPECT_EQ(style.flex_wrap, FlexWrap::Wrap);
+
+    cascade.apply_declaration(style, make_decl("flex-basis", "42px"), parent);
+    EXPECT_FALSE(style.flex_basis.is_auto());
+    EXPECT_FLOAT_EQ(style.flex_basis.to_px(), 42.0f);
+}
+
+TEST(PropertyCascadeTest, TextDecorationLineStyleColorV43) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("text-decoration-line", "underline"), parent);
+    EXPECT_EQ(style.text_decoration, TextDecoration::Underline);
+
+    cascade.apply_declaration(style, make_decl("text-decoration-style", "dotted"), parent);
+    EXPECT_EQ(style.text_decoration_style, TextDecorationStyle::Dotted);
+
+    cascade.apply_declaration(style, make_decl("text-decoration-color", "blue"), parent);
+    EXPECT_EQ(style.text_decoration_color, (Color{0, 0, 255, 255}));
+}
+
+TEST(PropertyCascadeTest, TextTransformAndWhiteSpaceV43) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("text-transform", "uppercase"), parent);
+    EXPECT_EQ(style.text_transform, TextTransform::Uppercase);
+
+    cascade.apply_declaration(style, make_decl("white-space", "pre-wrap"), parent);
+    EXPECT_EQ(style.white_space, WhiteSpace::PreWrap);
+}

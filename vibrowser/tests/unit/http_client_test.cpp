@@ -10126,3 +10126,126 @@ TEST(HttpClient, RequestSerializePutWithBinaryBodyV45) {
     std::string serialized_str(serialized.begin(), serialized.end());
     EXPECT_NE(serialized_str.find("PUT"), std::string::npos);
 }
+
+// ============================================================================
+// Cycle X: HTTP/Net tests V46
+// ============================================================================
+
+TEST(HttpClient, RequestFieldsCanBeBuiltFromMethodUrlAndPathV46) {
+    using namespace clever::net;
+    Request req;
+    req.method = Method::GET;
+    req.url = "https://example.com/";
+    req.path = "/";
+
+    EXPECT_EQ(req.method, Method::GET);
+    EXPECT_EQ(req.url, "https://example.com/");
+    EXPECT_EQ(req.path, "/");
+}
+
+TEST(HttpClient, RequestSerializeIncludesRequestLineAndHostV46) {
+    using namespace clever::net;
+    Request req;
+    req.method = Method::GET;
+    req.url = "https://example.com/api?q=1";
+    req.host = "example.com";
+    req.path = "/api";
+    req.query = "q=1";
+
+    auto raw = req.serialize();
+    std::string text(raw.begin(), raw.end());
+
+    EXPECT_NE(text.find("GET /api?q=1 HTTP/1.1"), std::string::npos);
+    EXPECT_NE(text.find("Host: example.com"), std::string::npos);
+}
+
+TEST(HttpClient, HeaderMapSetOverwritesExistingValueV46) {
+    using namespace clever::net;
+    HeaderMap headers;
+
+    headers.set("Content-Type", "text/plain");
+    headers.set("Content-Type", "application/json");
+
+    ASSERT_TRUE(headers.get("Content-Type").has_value());
+    EXPECT_EQ(headers.get("content-type").value(), "application/json");
+    EXPECT_EQ(headers.get_all("CONTENT-TYPE").size(), 1u);
+}
+
+TEST(HttpClient, HeaderMapAppendHasAndGetAllWorkTogetherV46) {
+    using namespace clever::net;
+    HeaderMap headers;
+
+    headers.append("Set-Cookie", "a=1");
+    headers.append("Set-Cookie", "b=2");
+
+    EXPECT_TRUE(headers.has("set-cookie"));
+    auto values = headers.get_all("Set-Cookie");
+    EXPECT_EQ(values.size(), 2u);
+    EXPECT_TRUE(headers.get("Set-Cookie").has_value());
+}
+
+TEST(HttpClient, HeaderMapRemoveClearsPresenceAndValueV46) {
+    using namespace clever::net;
+    HeaderMap headers;
+
+    headers.set("X-Trace-Id", "abc");
+    EXPECT_TRUE(headers.has("x-trace-id"));
+
+    headers.remove("X-Trace-Id");
+
+    EXPECT_FALSE(headers.has("X-Trace-Id"));
+    EXPECT_FALSE(headers.get("x-trace-id").has_value());
+    EXPECT_TRUE(headers.get_all("x-trace-id").empty());
+}
+
+TEST(HttpClient, CookieJarGetCookieHeaderHonorsSecureFlagV46) {
+    using namespace clever::net;
+    CookieJar jar;
+
+    jar.set_from_header("sid=plain; Path=/", "example.com");
+    jar.set_from_header("auth=secure; Path=/; Secure", "example.com");
+
+    std::string insecure = jar.get_cookie_header("example.com", "/", false, true, true);
+    std::string secure = jar.get_cookie_header("example.com", "/", true, true, true);
+
+    EXPECT_NE(insecure.find("sid=plain"), std::string::npos);
+    EXPECT_EQ(insecure.find("auth=secure"), std::string::npos);
+    EXPECT_NE(secure.find("sid=plain"), std::string::npos);
+    EXPECT_NE(secure.find("auth=secure"), std::string::npos);
+}
+
+TEST(HttpClient, ResponsePropertiesStatusHeadersBodyAndRedirectV46) {
+    using namespace clever::net;
+    Response resp;
+
+    resp.status = 302;
+    resp.status_text = "Found";
+    resp.headers.set("Location", "https://example.com/new");
+    resp.body = std::vector<uint8_t>{'o', 'k'};
+    resp.was_redirected = true;
+
+    EXPECT_EQ(resp.status, 302u);
+    EXPECT_EQ(resp.status_text, "Found");
+    ASSERT_TRUE(resp.headers.get("location").has_value());
+    EXPECT_EQ(resp.headers.get("Location").value(), "https://example.com/new");
+    EXPECT_EQ(resp.body_as_string(), "ok");
+    EXPECT_TRUE(resp.was_redirected);
+}
+
+TEST(HttpClient, RequestSerializeReturnsVectorWithBodyBytesV46) {
+    using namespace clever::net;
+    Request req;
+    req.method = Method::POST;
+    req.url = "https://example.com/upload";
+    req.host = "example.com";
+    req.path = "/upload";
+    req.body = std::vector<uint8_t>{0x41, 0x42, 0x43};
+
+    auto raw = req.serialize();
+    std::string text(raw.begin(), raw.end());
+
+    EXPECT_GT(raw.size(), req.body.size());
+    EXPECT_NE(text.find("POST /upload HTTP/1.1"), std::string::npos);
+    EXPECT_NE(text.find("Content-Length: 3"), std::string::npos);
+    EXPECT_NE(text.find("ABC"), std::string::npos);
+}

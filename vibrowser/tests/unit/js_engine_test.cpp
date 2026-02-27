@@ -20488,3 +20488,111 @@ TEST(JSEngine, StringMatchAllCycle1479) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "2");
 }
+
+TEST(JSEngine, DestructuringRestDefaultsCycle1488) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        const { a, b = 5, ...rest } = { a: 2, c: 7, d: 9 };
+        `${a}:${b}:${Object.keys(rest).sort().join(',')}:${rest.c + rest.d}`
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "2:5:c,d:16");
+}
+
+TEST(JSEngine, TemplateLiteralExpressionCycle1488) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        const n = 7;
+        `v${n * n}-${[1, 2].map(x => x + n).join(':')}`
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "v49-8:9");
+}
+
+TEST(JSEngine, ClassInheritanceSuperCallCycle1488) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        class Base {
+            constructor(x) { this.x = x; }
+            value() { return this.x; }
+        }
+        class Derived extends Base {
+            value() { return super.value() * 2; }
+        }
+        new Derived(21).value()
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "42");
+}
+
+TEST(JSEngine, ProxyOwnKeysTrapCycle1488) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        const target = { a: 1, b: 2, c: 3 };
+        const proxy = new Proxy(target, {
+            ownKeys() { return ['c', 'a']; },
+            getOwnPropertyDescriptor(t, k) {
+                return { enumerable: true, configurable: true, value: t[k] };
+            }
+        });
+        Object.keys(proxy).join(',')
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "c,a");
+}
+
+TEST(JSEngine, MapNaNAndObjectKeysCycle1488) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        const map = new Map();
+        const obj = {};
+        map.set(NaN, 'n');
+        map.set(obj, 'o');
+        map.get(Number('not-a-number')) + map.get(obj)
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "no");
+}
+
+TEST(JSEngine, SetSpreadOrderCycle1488) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        [...new Set([3, 1, 3, 2, 1])].join('-')
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "3-1-2");
+}
+
+TEST(JSEngine, GeneratorThrowCatchResumesCycle1488) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        function* gen() {
+            try {
+                yield 1;
+                yield 2;
+            } catch(e) {
+                yield e.message;
+            }
+        }
+        const it = gen();
+        const first = it.next().value;
+        const second = it.throw(new Error('stop')).value;
+        `${first},${second},${it.next().done}`
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1,stop,true");
+}
+
+TEST(JSEngine, WeakMapWithSymbolDataCycle1488) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        const wm = new WeakMap();
+        const key = {};
+        const tag = Symbol('tag');
+        key[tag] = 7;
+        wm.set(key, 123);
+        wm.get(key) + key[tag]
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "130");
+}

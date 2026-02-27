@@ -8767,3 +8767,138 @@ TEST(TreeBuilder, AsideWithNavElementV31) {
     auto* link = doc->find_element("a");
     ASSERT_NE(link, nullptr);
 }
+
+TEST(TreeBuilder, SectionArticleParagraphTextV32) {
+    auto doc = clever::html::parse("<html><body><section><article><p>Hello parser</p></article></section></body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* body = doc->find_element("body");
+    ASSERT_NE(body, nullptr);
+    auto* section = doc->find_element("section");
+    ASSERT_NE(section, nullptr);
+    auto* article = doc->find_element("article");
+    ASSERT_NE(article, nullptr);
+    auto* p = doc->find_element("p");
+    ASSERT_NE(p, nullptr);
+    EXPECT_EQ(p->text_content(), "Hello parser");
+}
+
+TEST(TreeBuilder, DeepNestedInlineElementsV32) {
+    auto doc = clever::html::parse("<html><body><div><p>alpha <span>beta <em>gamma</em></span></p></div></body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* body = doc->find_element("body");
+    ASSERT_NE(body, nullptr);
+    auto* div = doc->find_element("div");
+    ASSERT_NE(div, nullptr);
+    auto* span = doc->find_element("span");
+    ASSERT_NE(span, nullptr);
+    auto* em = doc->find_element("em");
+    ASSERT_NE(em, nullptr);
+    EXPECT_EQ(em->text_content(), "gamma");
+}
+
+TEST(TreeBuilder, AnchorAttributesByNameV32) {
+    auto doc = clever::html::parse("<html><body><a href=\"/docs\" target=\"_blank\" rel=\"noopener\">Docs</a></body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* body = doc->find_element("body");
+    ASSERT_NE(body, nullptr);
+    auto* a = doc->find_element("a");
+    ASSERT_NE(a, nullptr);
+
+    bool found_href = false;
+    bool found_target = false;
+    bool found_rel = false;
+    for (const auto& attr : a->attributes) {
+        if (attr.name == "href" && attr.value == "/docs") found_href = true;
+        if (attr.name == "target" && attr.value == "_blank") found_target = true;
+        if (attr.name == "rel" && attr.value == "noopener") found_rel = true;
+    }
+    EXPECT_TRUE(found_href);
+    EXPECT_TRUE(found_target);
+    EXPECT_TRUE(found_rel);
+}
+
+TEST(TreeBuilder, InputAttributesByNameV32) {
+    auto doc = clever::html::parse("<html><body><form><input type=\"text\" name=\"q\" value=\"hello\" placeholder=\"Search\"></form></body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* body = doc->find_element("body");
+    ASSERT_NE(body, nullptr);
+    auto* input = doc->find_element("input");
+    ASSERT_NE(input, nullptr);
+
+    bool found_type = false;
+    bool found_name = false;
+    bool found_value = false;
+    bool found_placeholder = false;
+    for (const auto& attr : input->attributes) {
+        if (attr.name == "type" && attr.value == "text") found_type = true;
+        if (attr.name == "name" && attr.value == "q") found_name = true;
+        if (attr.name == "value" && attr.value == "hello") found_value = true;
+        if (attr.name == "placeholder" && attr.value == "Search") found_placeholder = true;
+    }
+    EXPECT_TRUE(found_type);
+    EXPECT_TRUE(found_name);
+    EXPECT_TRUE(found_value);
+    EXPECT_TRUE(found_placeholder);
+}
+
+TEST(TreeBuilder, UnorderedListThreeItemsV32) {
+    auto doc = clever::html::parse("<html><body><ul><li>One</li><li>Two</li><li>Three</li></ul></body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* body = doc->find_element("body");
+    ASSERT_NE(body, nullptr);
+    auto* ul = doc->find_element("ul");
+    ASSERT_NE(ul, nullptr);
+    auto lis = doc->find_all_elements("li");
+    ASSERT_EQ(lis.size(), 3u);
+    EXPECT_EQ(lis[0]->text_content(), "One");
+    EXPECT_EQ(lis[1]->text_content(), "Two");
+    EXPECT_EQ(lis[2]->text_content(), "Three");
+}
+
+TEST(TreeBuilder, TableCellNestingAndTextV32) {
+    auto doc = clever::html::parse("<html><body><table><tbody><tr><td>Cell A</td><td>Cell B</td></tr></tbody></table></body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* body = doc->find_element("body");
+    ASSERT_NE(body, nullptr);
+    auto* table = doc->find_element("table");
+    ASSERT_NE(table, nullptr);
+    auto* tbody = doc->find_element("tbody");
+    ASSERT_NE(tbody, nullptr);
+    auto* tr = doc->find_element("tr");
+    ASSERT_NE(tr, nullptr);
+    auto tds = doc->find_all_elements("td");
+    ASSERT_EQ(tds.size(), 2u);
+    EXPECT_EQ(tds[0]->text_content(), "Cell A");
+    EXPECT_EQ(tds[1]->text_content(), "Cell B");
+}
+
+TEST(TreeBuilder, ParagraphMixedInlineTextContentV32) {
+    auto doc = clever::html::parse("<html><body><p>alpha <strong>beta</strong> gamma <em>delta</em></p></body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* body = doc->find_element("body");
+    ASSERT_NE(body, nullptr);
+    auto* p = doc->find_element("p");
+    ASSERT_NE(p, nullptr);
+    auto* strong = doc->find_element("strong");
+    ASSERT_NE(strong, nullptr);
+    auto* em = doc->find_element("em");
+    ASSERT_NE(em, nullptr);
+    EXPECT_NE(p->text_content().find("alpha"), std::string::npos);
+    EXPECT_NE(p->text_content().find("beta"), std::string::npos);
+    EXPECT_NE(p->text_content().find("gamma"), std::string::npos);
+    EXPECT_NE(p->text_content().find("delta"), std::string::npos);
+}
+
+TEST(TreeBuilder, FigureAndFigcaptionTextV32) {
+    auto doc = clever::html::parse("<html><body><figure><img src=\"hero.png\" alt=\"hero\"><figcaption>Main hero image</figcaption></figure></body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* body = doc->find_element("body");
+    ASSERT_NE(body, nullptr);
+    auto* figure = doc->find_element("figure");
+    ASSERT_NE(figure, nullptr);
+    auto* img = doc->find_element("img");
+    ASSERT_NE(img, nullptr);
+    auto* figcaption = doc->find_element("figcaption");
+    ASSERT_NE(figcaption, nullptr);
+    EXPECT_EQ(figcaption->text_content(), "Main hero image");
+}

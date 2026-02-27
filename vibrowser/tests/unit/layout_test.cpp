@@ -10008,3 +10008,100 @@ TEST(LayoutNodeProps, OpacityZIndexAndOrderPropertiesV43) {
     EXPECT_EQ(n.z_index, 42);
     EXPECT_EQ(n.order, 7);
 }
+
+TEST(LayoutNodeProps, DisplayDefaultBlockV44) {
+    using namespace clever::layout;
+    LayoutNode n;
+    EXPECT_EQ(n.display, clever::layout::DisplayType::Block);
+}
+
+TEST(LayoutNodeProps, PositionAndOverflowDefaultsV44) {
+    using namespace clever::layout;
+    LayoutNode n;
+    EXPECT_EQ(n.position_type, 0);
+    EXPECT_EQ(n.overflow, 0);
+}
+
+TEST(LayoutNodeProps, MaxDimensionsDefaultUnlimitedV44) {
+    using namespace clever::layout;
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.max_width, 1e9f);
+    EXPECT_FLOAT_EQ(n.max_height, 1e9f);
+}
+
+TEST(LayoutNodeProps, PositionTypeAssignmentValuesV44) {
+    using namespace clever::layout;
+    LayoutNode n;
+    n.position_type = 1;
+    EXPECT_EQ(n.position_type, 1);
+    n.position_type = 2;
+    EXPECT_EQ(n.position_type, 2);
+    n.position_type = 3;
+    EXPECT_EQ(n.position_type, 3);
+    n.position_type = 4;
+    EXPECT_EQ(n.position_type, 4);
+}
+
+TEST(LayoutNodeProps, GeometryMarginPaddingBorderAssignmentsV44) {
+    using namespace clever::layout;
+    LayoutNode n;
+    n.geometry.margin.top = 1.0f;
+    n.geometry.margin.right = 2.0f;
+    n.geometry.margin.bottom = 3.0f;
+    n.geometry.margin.left = 4.0f;
+    n.geometry.padding.top = 5.0f;
+    n.geometry.padding.right = 6.0f;
+    n.geometry.padding.bottom = 7.0f;
+    n.geometry.padding.left = 8.0f;
+    n.geometry.border.top = 9.0f;
+    n.geometry.border.right = 10.0f;
+    n.geometry.border.bottom = 11.0f;
+    n.geometry.border.left = 12.0f;
+    EXPECT_FLOAT_EQ(n.geometry.margin.top, 1.0f);
+    EXPECT_FLOAT_EQ(n.geometry.margin.right, 2.0f);
+    EXPECT_FLOAT_EQ(n.geometry.margin.bottom, 3.0f);
+    EXPECT_FLOAT_EQ(n.geometry.margin.left, 4.0f);
+    EXPECT_FLOAT_EQ(n.geometry.padding.top, 5.0f);
+    EXPECT_FLOAT_EQ(n.geometry.padding.right, 6.0f);
+    EXPECT_FLOAT_EQ(n.geometry.padding.bottom, 7.0f);
+    EXPECT_FLOAT_EQ(n.geometry.padding.left, 8.0f);
+    EXPECT_FLOAT_EQ(n.geometry.border.top, 9.0f);
+    EXPECT_FLOAT_EQ(n.geometry.border.right, 10.0f);
+    EXPECT_FLOAT_EQ(n.geometry.border.bottom, 11.0f);
+    EXPECT_FLOAT_EQ(n.geometry.border.left, 12.0f);
+}
+
+TEST(LayoutNodeProps, FlexGrowShrinkAssignmentsV44) {
+    using namespace clever::layout;
+    LayoutNode n;
+    n.flex_grow = 2.25f;
+    n.flex_shrink = 0.25f;
+    EXPECT_FLOAT_EQ(n.flex_grow, 2.25f);
+    EXPECT_FLOAT_EQ(n.flex_shrink, 0.25f);
+}
+
+TEST(LayoutNodeProps, ScrollMarginsAssignmentsV44) {
+    using namespace clever::layout;
+    LayoutNode n;
+    n.scroll_margin_top = 13.0f;
+    n.scroll_margin_right = 14.0f;
+    n.scroll_margin_bottom = 15.0f;
+    n.scroll_margin_left = 16.0f;
+    EXPECT_FLOAT_EQ(n.scroll_margin_top, 13.0f);
+    EXPECT_FLOAT_EQ(n.scroll_margin_right, 14.0f);
+    EXPECT_FLOAT_EQ(n.scroll_margin_bottom, 15.0f);
+    EXPECT_FLOAT_EQ(n.scroll_margin_left, 16.0f);
+}
+
+TEST(LayoutNodeProps, OpacityZIndexOrderAndTextStrokeAssignmentsV44) {
+    using namespace clever::layout;
+    LayoutNode n;
+    n.opacity = 0.5f;
+    n.z_index = 100;
+    n.order = -3;
+    n.text_stroke_width = 1.5f;
+    EXPECT_FLOAT_EQ(n.opacity, 0.5f);
+    EXPECT_EQ(n.z_index, 100);
+    EXPECT_EQ(n.order, -3);
+    EXPECT_FLOAT_EQ(n.text_stroke_width, 1.5f);
+}

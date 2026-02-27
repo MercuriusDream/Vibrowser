@@ -8350,3 +8350,141 @@ TEST(Serializer, RoundtripU32BoundaryValuesV42) {
     EXPECT_EQ(d.read_u32(), 4294967295u);
     EXPECT_FALSE(d.has_remaining());
 }
+
+TEST(Serializer, RoundtripU8BoundaryValuesV43) {
+    Serializer s;
+    s.write_u8(0);
+    s.write_u8(1);
+    s.write_u8(255);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u8(), 0u);
+    EXPECT_EQ(d.read_u8(), 1u);
+    EXPECT_EQ(d.read_u8(), 255u);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(Serializer, RoundtripU16U32U64BoundaryValuesV43) {
+    Serializer s;
+    s.write_u16(0);
+    s.write_u16(65535);
+    s.write_u32(0);
+    s.write_u32(4294967295u);
+    s.write_u64(0ull);
+    s.write_u64(18446744073709551615ull);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u16(), 0u);
+    EXPECT_EQ(d.read_u16(), 65535u);
+    EXPECT_EQ(d.read_u32(), 0u);
+    EXPECT_EQ(d.read_u32(), 4294967295u);
+    EXPECT_EQ(d.read_u64(), 0ull);
+    EXPECT_EQ(d.read_u64(), 18446744073709551615ull);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(Serializer, RoundtripF64BoundaryValuesV43) {
+    Serializer s;
+    s.write_f64(0.0);
+    s.write_f64(-0.0);
+    s.write_f64(std::numeric_limits<double>::lowest());
+    s.write_f64(std::numeric_limits<double>::max());
+    s.write_f64(std::numeric_limits<double>::min());
+
+    Deserializer d(s.data());
+    EXPECT_DOUBLE_EQ(d.read_f64(), 0.0);
+    EXPECT_DOUBLE_EQ(d.read_f64(), -0.0);
+    EXPECT_DOUBLE_EQ(d.read_f64(), std::numeric_limits<double>::lowest());
+    EXPECT_DOUBLE_EQ(d.read_f64(), std::numeric_limits<double>::max());
+    EXPECT_DOUBLE_EQ(d.read_f64(), std::numeric_limits<double>::min());
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(Serializer, RoundtripBoolSequenceV43) {
+    Serializer s;
+    s.write_bool(false);
+    s.write_bool(true);
+    s.write_bool(true);
+    s.write_bool(false);
+    s.write_bool(false);
+
+    Deserializer d(s.data());
+    EXPECT_FALSE(d.read_bool());
+    EXPECT_TRUE(d.read_bool());
+    EXPECT_TRUE(d.read_bool());
+    EXPECT_FALSE(d.read_bool());
+    EXPECT_FALSE(d.read_bool());
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(Serializer, RoundtripMixedSequenceWithBytesV43) {
+    Serializer s;
+    s.write_u32(42);
+    s.write_string("alpha");
+    s.write_bool(true);
+    s.write_f64(3.141592653589793);
+    uint8_t payload[] = {0x00, 0x7F, 0x80, 0xFF};
+    s.write_bytes(payload, 4);
+    s.write_u16(65535);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u32(), 42u);
+    EXPECT_EQ(d.read_string(), "alpha");
+    EXPECT_TRUE(d.read_bool());
+    EXPECT_DOUBLE_EQ(d.read_f64(), 3.141592653589793);
+    auto bytes = d.read_bytes();
+    EXPECT_EQ(bytes.size(), 4u);
+    EXPECT_EQ(bytes[0], 0x00u);
+    EXPECT_EQ(bytes[1], 0x7Fu);
+    EXPECT_EQ(bytes[2], 0x80u);
+    EXPECT_EQ(bytes[3], 0xFFu);
+    EXPECT_EQ(d.read_u16(), 65535u);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(Serializer, RoundtripEmptyStringAndEmptyBytesV43) {
+    Serializer s;
+    s.write_string("");
+    s.write_bytes(nullptr, 0);
+    s.write_u8(9);
+    s.write_string("");
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "");
+    auto bytes = d.read_bytes();
+    EXPECT_TRUE(bytes.empty());
+    EXPECT_EQ(d.read_u8(), 9u);
+    EXPECT_EQ(d.read_string(), "");
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(Serializer, RoundtripLargeStringV43) {
+    Serializer s;
+    std::string large(8192, 'z');
+    s.write_string(large);
+    s.write_u32(123456789u);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), large);
+    EXPECT_EQ(d.read_u32(), 123456789u);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(Serializer, RoundtripLargeBytesPatternV43) {
+    Serializer s;
+    std::vector<uint8_t> large(1024);
+    for (size_t i = 0; i < large.size(); ++i) {
+        large[i] = static_cast<uint8_t>(i % 251);
+    }
+    s.write_bytes(large.data(), large.size());
+    s.write_bool(true);
+
+    Deserializer d(s.data());
+    auto out = d.read_bytes();
+    EXPECT_EQ(out.size(), large.size());
+    for (size_t i = 0; i < out.size(); ++i) {
+        EXPECT_EQ(out[i], static_cast<uint8_t>(i % 251));
+    }
+    EXPECT_TRUE(d.read_bool());
+    EXPECT_FALSE(d.has_remaining());
+}

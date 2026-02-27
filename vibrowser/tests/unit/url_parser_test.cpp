@@ -7085,3 +7085,73 @@ TEST(URLParser, MailtoSchemeWithoutSlashesV34) {
     ASSERT_TRUE(url.has_value());
     EXPECT_EQ(url->scheme, "mailto");
 }
+
+TEST(URLParser, HttpsDefaultPortNormalizedAwayV35) {
+    auto url = parse("https://example.com:443/login");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "example.com");
+    EXPECT_FALSE(url->port.has_value());
+    EXPECT_EQ(url->path, "/login");
+}
+
+TEST(URLParser, HttpsNonDefaultPortPreservedV35) {
+    auto url = parse("https://example.com:444/login");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "example.com");
+    ASSERT_TRUE(url->port.has_value());
+    EXPECT_EQ(*url->port, 444);
+    EXPECT_EQ(url->path, "/login");
+}
+
+TEST(URLParser, DotDotResolutionAcrossSegmentsV35) {
+    auto url = parse("https://example.com/a/b/../../c/d/../e");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "example.com");
+    EXPECT_EQ(url->path, "/c/e");
+}
+
+TEST(URLParser, QueryAndFragmentSplitV35) {
+    auto url = parse("https://example.com/search?q=browser&lang=en#results");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "example.com");
+    EXPECT_EQ(url->path, "/search");
+    EXPECT_EQ(url->query, "q=browser&lang=en");
+    EXPECT_EQ(url->fragment, "results");
+}
+
+TEST(URLParser, SubdomainWithHyphenAndCountryTldV35) {
+    auto url = parse("https://cdn-2.assets.example.co.uk/v1/file.js");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "cdn-2.assets.example.co.uk");
+    EXPECT_EQ(url->path, "/v1/file.js");
+}
+
+TEST(URLParser, HostOnlyWithQueryGetsSlashPathV35) {
+    auto url = parse("https://example.com?x=1&y=2");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "example.com");
+    EXPECT_EQ(url->path, "/");
+    EXPECT_EQ(url->query, "x=1&y=2");
+}
+
+TEST(URLParser, HostOnlyWithFragmentGetsSlashPathV35) {
+    auto url = parse("https://example.com#overview");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "example.com");
+    EXPECT_EQ(url->path, "/");
+    EXPECT_EQ(url->fragment, "overview");
+}
+
+TEST(URLParser, FileSchemeAbsolutePathV35) {
+    auto url = parse("file:///Users/test/docs/readme.txt");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "file");
+    EXPECT_EQ(url->path, "/Users/test/docs/readme.txt");
+}

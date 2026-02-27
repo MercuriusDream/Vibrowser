@@ -8384,3 +8384,156 @@ TEST(DomElement, ClassListRemoveMultipleAndReAddRound53) {
     EXPECT_TRUE(el->class_list().contains("focused"));
     EXPECT_FALSE(el->class_list().contains("valid"));
 }
+
+// ---------------------------------------------------------------------------
+// Cycle R54 — Additional DOM unit tests (8 tests)
+// ---------------------------------------------------------------------------
+
+TEST(DomElement, AttributeValueEdgeCasesEmptyWhitespaceAndSymbolsR54) {
+    Document doc;
+    auto el = doc.create_element("div");
+
+    el->set_attribute("data-empty", "");
+    el->set_attribute("data-space", "  spaced  ");
+    el->set_attribute("data-symbols", "!@#$%^&*()[]{}|;:,.<>?/~`");
+
+    EXPECT_TRUE(el->has_attribute("data-empty"));
+    EXPECT_TRUE(el->has_attribute("data-space"));
+    EXPECT_TRUE(el->has_attribute("data-symbols"));
+    EXPECT_EQ(el->get_attribute("data-empty"), "");
+    EXPECT_EQ(el->get_attribute("data-space"), "  spaced  ");
+    EXPECT_EQ(el->get_attribute("data-symbols"), "!@#$%^&*()[]{}|;:,.<>?/~`");
+    EXPECT_EQ(el->attributes().size(), 3u);
+}
+
+TEST(DomElement, AttributeOverwriteAndRemoveAdjustsMapStateR54) {
+    Document doc;
+    auto el = doc.create_element("section");
+
+    el->set_attribute("data-mode", "draft");
+    el->set_attribute("data-mode", "published");
+    EXPECT_EQ(el->get_attribute("data-mode"), "published");
+    EXPECT_EQ(el->attributes().size(), 1u);
+
+    el->remove_attribute("data-mode");
+    EXPECT_FALSE(el->has_attribute("data-mode"));
+    EXPECT_EQ(el->get_attribute("data-mode"), std::nullopt);
+    EXPECT_EQ(el->attributes().size(), 0u);
+}
+
+TEST(DomElement, ClassListAddRemoveContainsAndToggleSequenceR54) {
+    Document doc;
+    auto el = doc.create_element("article");
+
+    el->class_list().add("card");
+    el->class_list().add("selected");
+    EXPECT_TRUE(el->class_list().contains("card"));
+    EXPECT_TRUE(el->class_list().contains("selected"));
+
+    el->class_list().remove("card");
+    EXPECT_FALSE(el->class_list().contains("card"));
+    EXPECT_TRUE(el->class_list().contains("selected"));
+
+    el->class_list().toggle("selected");
+    EXPECT_FALSE(el->class_list().contains("selected"));
+    el->class_list().toggle("selected");
+    EXPECT_TRUE(el->class_list().contains("selected"));
+}
+
+TEST(DomElement, ClassListToggleNonexistentClassAddsWithoutAffectingOthersR54) {
+    Document doc;
+    auto el = doc.create_element("div");
+
+    el->class_list().add("base");
+    el->class_list().toggle("interactive");
+    EXPECT_TRUE(el->class_list().contains("base"));
+    EXPECT_TRUE(el->class_list().contains("interactive"));
+
+    el->class_list().remove("interactive");
+    EXPECT_TRUE(el->class_list().contains("base"));
+    EXPECT_FALSE(el->class_list().contains("interactive"));
+}
+
+TEST(DomNode, TreeTraversalFirstLastAndPreviousSiblingR54) {
+    Document doc;
+    auto parent = doc.create_element("ul");
+    auto a = doc.create_element("li");
+    auto b = doc.create_element("li");
+    auto c = doc.create_element("li");
+
+    auto* a_ptr = a.get();
+    auto* b_ptr = b.get();
+    auto* c_ptr = c.get();
+
+    parent->append_child(std::move(a));
+    parent->append_child(std::move(b));
+    parent->append_child(std::move(c));
+
+    EXPECT_EQ(parent->child_count(), 3u);
+    EXPECT_EQ(parent->first_child(), a_ptr);
+    EXPECT_EQ(parent->last_child(), c_ptr);
+    EXPECT_EQ(c_ptr->previous_sibling(), b_ptr);
+    EXPECT_EQ(b_ptr->previous_sibling(), a_ptr);
+    EXPECT_EQ(a_ptr->previous_sibling(), nullptr);
+}
+
+TEST(DomNode, ChildManipulationRemoveMiddleChildRewiresEndsR54) {
+    Document doc;
+    auto parent = doc.create_element("div");
+    auto first = doc.create_element("span");
+    auto middle = doc.create_element("span");
+    auto last = doc.create_element("span");
+
+    auto* first_ptr = first.get();
+    auto* middle_ptr = middle.get();
+    auto* last_ptr = last.get();
+
+    parent->append_child(std::move(first));
+    parent->append_child(std::move(middle));
+    parent->append_child(std::move(last));
+
+    auto removed = parent->remove_child(*middle_ptr);
+    EXPECT_NE(removed, nullptr);
+    EXPECT_EQ(parent->child_count(), 2u);
+    EXPECT_EQ(parent->first_child(), first_ptr);
+    EXPECT_EQ(parent->last_child(), last_ptr);
+    EXPECT_EQ(last_ptr->previous_sibling(), first_ptr);
+}
+
+TEST(DomNode, NodeTypeChecksForElementTextAndCommentR54) {
+    Document doc;
+    auto container = doc.create_element("div");
+    auto text = doc.create_text_node("hello");
+    auto comment = doc.create_comment("note");
+
+    auto* text_ptr = text.get();
+    auto* comment_ptr = comment.get();
+
+    container->append_child(std::move(text));
+    container->append_child(std::move(comment));
+
+    EXPECT_EQ(container->node_type(), NodeType::Element);
+    EXPECT_EQ(text_ptr->node_type(), NodeType::Text);
+    EXPECT_EQ(comment_ptr->node_type(), NodeType::Comment);
+    EXPECT_EQ(container->child_count(), 2u);
+}
+
+TEST(DomElement, IdOperationsReflectAttributeLifecycleAndTagNormalizationR54) {
+    Document doc;
+    auto el = doc.create_element("header");
+
+    EXPECT_EQ(el->tag_name(), "header");
+    EXPECT_EQ(el->id(), "");
+
+    el->set_attribute("id", "hero");
+    EXPECT_EQ(el->id(), "hero");
+    EXPECT_EQ(el->get_attribute("id"), "hero");
+
+    el->set_attribute("id", "hero-main");
+    EXPECT_EQ(el->id(), "hero-main");
+    EXPECT_EQ(el->attributes().size(), 1u);
+
+    el->remove_attribute("id");
+    EXPECT_EQ(el->id(), "");
+    EXPECT_FALSE(el->has_attribute("id"));
+}

@@ -4436,3 +4436,48 @@ TEST(CORSPolicy, ShouldAttachOriginHeaderDifferentPortsV52) {
     // Different ports trigger cross-origin, should attach Origin header
     EXPECT_TRUE(should_attach_origin_header("https://app.example.com:3000", "https://app.example.com:8080/api"));
 }
+
+TEST(CORSPolicy, IsCrossOriginCustomPortsDifferentV53) {
+    // Same scheme+host with different custom ports should be cross-origin
+    EXPECT_TRUE(is_cross_origin("https://example.com:3000", "https://example.com:3001/api"));
+}
+
+TEST(CORSPolicy, IsCrossOriginSubdomainDifferenceV53) {
+    // Different subdomains are different origins
+    EXPECT_TRUE(is_cross_origin("https://app.example.com", "https://api.example.com/resource"));
+}
+
+TEST(CORSPolicy, IsCrossOriginSameSchemeHostPortV53) {
+    // Same scheme+host+port should be same-origin
+    EXPECT_FALSE(is_cross_origin("https://example.com:8443/path", "https://example.com:8443/other"));
+}
+
+TEST(CORSPolicy, IsCrossOriginNormalizesDefaultHttpsPortV53) {
+    // :443 default port should normalize away and remain same-origin
+    EXPECT_FALSE(is_cross_origin("https://example.com", "https://example.com:443/secure"));
+}
+
+TEST(CORSPolicy, ShouldAttachOriginHeaderNullOriginEdgeCaseV53) {
+    // Null document origin is treated as cross-origin and should attach Origin header
+    EXPECT_TRUE(should_attach_origin_header("null", "https://api.example.com/data"));
+}
+
+TEST(CORSPolicy, CorsAllowsResponseNullOriginHeaderValueV53) {
+    // Null origin should be allowed only when ACAO is exactly "null"
+    clever::net::HeaderMap resp_headers;
+    resp_headers.set("Access-Control-Allow-Origin", "null");
+    EXPECT_TRUE(cors_allows_response("null", "https://api.example.com/data", resp_headers, false));
+}
+
+TEST(CORSPolicy, CorsAllowsResponseWildcardWithCredentialsRejectedV53) {
+    // Wildcard ACAO combined with credentials must be rejected
+    clever::net::HeaderMap resp_headers;
+    resp_headers.set("Access-Control-Allow-Origin", "*");
+    resp_headers.set("Access-Control-Allow-Credentials", "true");
+    EXPECT_FALSE(cors_allows_response("https://origin.example.com", "https://api.example.com/data", resp_headers, true));
+}
+
+TEST(CORSPolicy, IsCorsEligibleRequestUrlFragmentRejectedV53) {
+    // URLs with fragments are not CORS-eligible
+    EXPECT_FALSE(is_cors_eligible_request_url("https://api.example.com/data#frag"));
+}
