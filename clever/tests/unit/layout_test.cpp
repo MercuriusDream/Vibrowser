@@ -7432,3 +7432,43 @@ TEST(LayoutNodeProps, ShapeOutsideValuesDefaultsEmpty) {
     LayoutNode n;
     EXPECT_TRUE(n.shape_outside_values.empty());
 }
+
+TEST(LayoutNodeProps, HangingPunctuationDefaultsZero) {
+    LayoutNode n;
+    EXPECT_EQ(n.hanging_punctuation, 0);
+}
+
+TEST(LayoutNodeProps, MathStyleDefaultsZero) {
+    LayoutNode n;
+    EXPECT_EQ(n.math_style, 0);
+}
+
+TEST(LayoutNodeProps, MathDepthDefaultsZero) {
+    LayoutNode n;
+    EXPECT_EQ(n.math_depth, 0);
+}
+
+TEST(LayoutNodeProps, RubyAlignDefaultsZero) {
+    LayoutNode n;
+    EXPECT_EQ(n.ruby_align, 0);
+}
+
+TEST(LayoutNodeProps, RubyOverhangDefaultsZero) {
+    LayoutNode n;
+    EXPECT_EQ(n.ruby_overhang, 0);
+}
+
+TEST(LayoutNodeProps, ShapeMarginDefaultsZero) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.shape_margin, 0.0f);
+}
+
+TEST(LayoutNodeProps, ShapeImageThresholdDefaultsZero) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.shape_image_threshold, 0.0f);
+}
+
+TEST(LayoutNodeProps, TextSizeAdjustDefaultsAuto) {
+    LayoutNode n;
+    EXPECT_EQ(n.text_size_adjust, "auto");
+}
