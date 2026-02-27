@@ -3676,3 +3676,76 @@ TEST(RequestTest, HostHeaderSet) {
     ASSERT_TRUE(val.has_value());
     EXPECT_EQ(val.value(), "api.example.com");
 }
+
+// Cycle 758 — HttpCache API and no-store/private directives
+TEST(CacheControlTest, NoStoreDirectiveParsed) {
+    auto cc = clever::net::parse_cache_control("no-store");
+    EXPECT_TRUE(cc.no_store);
+}
+
+TEST(CacheControlTest, PrivateDirectiveParsed) {
+    auto cc = clever::net::parse_cache_control("private");
+    EXPECT_TRUE(cc.is_private);
+}
+
+TEST(CacheControlTest, PublicDirectiveParsed) {
+    auto cc = clever::net::parse_cache_control("public");
+    EXPECT_TRUE(cc.is_public);
+}
+
+TEST(HttpCacheTest, CacheEntryCountAfterStore) {
+    auto& cache = clever::net::HttpCache::instance();
+    cache.clear();
+    clever::net::CacheEntry entry;
+    entry.url = "http://example.com/count";
+    entry.status = 200;
+    entry.body = "hello";
+    cache.store(entry);
+    EXPECT_EQ(cache.entry_count(), 1u);
+    cache.clear();
+}
+
+TEST(HttpCacheTest, CacheTotalSizeAfterStore) {
+    auto& cache = clever::net::HttpCache::instance();
+    cache.clear();
+    clever::net::CacheEntry entry;
+    entry.url = "http://example.com/size";
+    entry.status = 200;
+    entry.body = std::string(1000, 'x');
+    cache.store(entry);
+    EXPECT_GT(cache.total_size(), 0u);
+    cache.clear();
+}
+
+TEST(HttpCacheTest, CacheRemovesEntry) {
+    auto& cache = clever::net::HttpCache::instance();
+    cache.clear();
+    clever::net::CacheEntry entry;
+    entry.url = "http://example.com/remove";
+    entry.status = 200;
+    cache.store(entry);
+    cache.remove("http://example.com/remove");
+    EXPECT_EQ(cache.entry_count(), 0u);
+}
+
+TEST(HttpCacheTest, CacheLookupHitAfterStore) {
+    auto& cache = clever::net::HttpCache::instance();
+    cache.clear();
+    clever::net::CacheEntry entry;
+    entry.url = "http://example.com/hit";
+    entry.status = 200;
+    entry.body = "cached";
+    entry.max_age_seconds = 3600;
+    cache.store(entry);
+    auto found = cache.lookup("http://example.com/hit");
+    ASSERT_TRUE(found.has_value());
+    EXPECT_EQ(found->body, "cached");
+    cache.clear();
+}
+
+TEST(HttpCacheTest, CacheLookupMissReturnsNullopt) {
+    auto& cache = clever::net::HttpCache::instance();
+    cache.clear();
+    auto found = cache.lookup("http://example.com/miss");
+    EXPECT_FALSE(found.has_value());
+}
