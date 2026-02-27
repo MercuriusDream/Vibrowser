@@ -15295,3 +15295,211 @@ TEST(HtmlParserTest, FieldsetLegendInputsV95) {
     EXPECT_EQ(get_attr_v63(inputs[1], "name"), "email");
     EXPECT_EQ(get_attr_v63(inputs[1], "value"), "j@e.co");
 }
+
+// ============================================================================
+// V96 Tests
+// ============================================================================
+
+// 1. Parse a definition list with dt/dd pairs
+TEST(HtmlParserTest, DefinitionListDtDdPairsV96) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<dl>"
+        "<dt>HTML</dt><dd>HyperText Markup Language</dd>"
+        "<dt>CSS</dt><dd>Cascading Style Sheets</dd>"
+        "<dt>JS</dt><dd>JavaScript</dd>"
+        "</dl>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* dl = doc->find_element("dl");
+    ASSERT_NE(dl, nullptr);
+    auto dts = dl->find_all_elements("dt");
+    auto dds = dl->find_all_elements("dd");
+    ASSERT_EQ(dts.size(), 3u);
+    ASSERT_EQ(dds.size(), 3u);
+    EXPECT_EQ(dts[0]->text_content(), "HTML");
+    EXPECT_EQ(dds[0]->text_content(), "HyperText Markup Language");
+    EXPECT_EQ(dts[1]->text_content(), "CSS");
+    EXPECT_EQ(dds[1]->text_content(), "Cascading Style Sheets");
+    EXPECT_EQ(dts[2]->text_content(), "JS");
+    EXPECT_EQ(dds[2]->text_content(), "JavaScript");
+}
+
+// 2. Parse a table with thead, tbody, and tfoot
+TEST(HtmlParserTest, TableTheadTbodyTfootV96) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<table>"
+        "<thead><tr><th>Name</th><th>Age</th></tr></thead>"
+        "<tbody><tr><td>Alice</td><td>30</td></tr>"
+        "<tr><td>Bob</td><td>25</td></tr></tbody>"
+        "<tfoot><tr><td colspan=\"2\">Total: 2</td></tr></tfoot>"
+        "</table>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* thead = doc->find_element("thead");
+    ASSERT_NE(thead, nullptr);
+    auto ths = thead->find_all_elements("th");
+    ASSERT_EQ(ths.size(), 2u);
+    EXPECT_EQ(ths[0]->text_content(), "Name");
+    EXPECT_EQ(ths[1]->text_content(), "Age");
+    auto* tbody = doc->find_element("tbody");
+    ASSERT_NE(tbody, nullptr);
+    auto tds = tbody->find_all_elements("td");
+    ASSERT_EQ(tds.size(), 4u);
+    EXPECT_EQ(tds[0]->text_content(), "Alice");
+    EXPECT_EQ(tds[3]->text_content(), "25");
+    auto* tfoot = doc->find_element("tfoot");
+    ASSERT_NE(tfoot, nullptr);
+    auto foot_td = tfoot->find_element("td");
+    ASSERT_NE(foot_td, nullptr);
+    EXPECT_EQ(foot_td->text_content(), "Total: 2");
+    EXPECT_EQ(get_attr_v63(foot_td, "colspan"), "2");
+}
+
+// 3. Parse nested blockquote with paragraph and cite
+TEST(HtmlParserTest, NestedBlockquoteCiteV96) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<blockquote>"
+        "<p>To be or not to be, that is the question.</p>"
+        "<cite>William Shakespeare</cite>"
+        "</blockquote>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* bq = doc->find_element("blockquote");
+    ASSERT_NE(bq, nullptr);
+    auto* p = bq->find_element("p");
+    ASSERT_NE(p, nullptr);
+    EXPECT_EQ(p->text_content(), "To be or not to be, that is the question.");
+    auto* cite = bq->find_element("cite");
+    ASSERT_NE(cite, nullptr);
+    EXPECT_EQ(cite->text_content(), "William Shakespeare");
+}
+
+// 4. Parse details/summary elements
+TEST(HtmlParserTest, DetailsSummaryElementsV96) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<details>"
+        "<summary>Click to expand</summary>"
+        "<p>Hidden content revealed after click.</p>"
+        "</details>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* details = doc->find_element("details");
+    ASSERT_NE(details, nullptr);
+    auto* summary = details->find_element("summary");
+    ASSERT_NE(summary, nullptr);
+    EXPECT_EQ(summary->text_content(), "Click to expand");
+    auto* p = details->find_element("p");
+    ASSERT_NE(p, nullptr);
+    EXPECT_EQ(p->text_content(), "Hidden content revealed after click.");
+}
+
+// 5. Parse multiple data attributes on a single element
+TEST(HtmlParserTest, MultipleDataAttributesV96) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<div data-id=\"42\" data-role=\"admin\" data-active=\"true\" class=\"user-card\">User</div>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto divs = doc->find_all_elements("div");
+    // Find the div with data-id attribute
+    clever::html::SimpleNode* target = nullptr;
+    for (auto* d : divs) {
+        if (!get_attr_v63(d, "data-id").empty()) {
+            target = d;
+            break;
+        }
+    }
+    ASSERT_NE(target, nullptr);
+    EXPECT_EQ(get_attr_v63(target, "data-id"), "42");
+    EXPECT_EQ(get_attr_v63(target, "data-role"), "admin");
+    EXPECT_EQ(get_attr_v63(target, "data-active"), "true");
+    EXPECT_EQ(get_attr_v63(target, "class"), "user-card");
+    EXPECT_EQ(target->text_content(), "User");
+}
+
+// 6. Parse figure with figcaption and img
+TEST(HtmlParserTest, FigureWithFigcaptionImgV96) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<figure>"
+        "<img src=\"photo.jpg\" alt=\"A sunset\">"
+        "<figcaption>Sunset over the mountains</figcaption>"
+        "</figure>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* figure = doc->find_element("figure");
+    ASSERT_NE(figure, nullptr);
+    auto* img = figure->find_element("img");
+    ASSERT_NE(img, nullptr);
+    EXPECT_EQ(get_attr_v63(img, "src"), "photo.jpg");
+    EXPECT_EQ(get_attr_v63(img, "alt"), "A sunset");
+    auto* caption = figure->find_element("figcaption");
+    ASSERT_NE(caption, nullptr);
+    EXPECT_EQ(caption->text_content(), "Sunset over the mountains");
+}
+
+// 7. Parse deeply nested structure (article > section > div > span)
+TEST(HtmlParserTest, DeeplyNestedArticleSectionDivSpanV96) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<article>"
+        "<section>"
+        "<div>"
+        "<span>Deep leaf text</span>"
+        "</div>"
+        "</section>"
+        "</article>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* article = doc->find_element("article");
+    ASSERT_NE(article, nullptr);
+    auto* section = article->find_element("section");
+    ASSERT_NE(section, nullptr);
+    auto* div = section->find_element("div");
+    ASSERT_NE(div, nullptr);
+    auto* span = div->find_element("span");
+    ASSERT_NE(span, nullptr);
+    EXPECT_EQ(span->text_content(), "Deep leaf text");
+    // Also verify find_element works transitively from the root
+    auto* span_from_root = doc->find_element("span");
+    ASSERT_NE(span_from_root, nullptr);
+    EXPECT_EQ(span_from_root->text_content(), "Deep leaf text");
+}
+
+// 8. Parse select element with optgroup and options
+TEST(HtmlParserTest, SelectOptgroupOptionsV96) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<select name=\"car\">"
+        "<optgroup label=\"Swedish Cars\">"
+        "<option value=\"volvo\">Volvo</option>"
+        "<option value=\"saab\">Saab</option>"
+        "</optgroup>"
+        "<optgroup label=\"German Cars\">"
+        "<option value=\"bmw\">BMW</option>"
+        "</optgroup>"
+        "</select>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* sel = doc->find_element("select");
+    ASSERT_NE(sel, nullptr);
+    EXPECT_EQ(get_attr_v63(sel, "name"), "car");
+    auto optgroups = sel->find_all_elements("optgroup");
+    ASSERT_EQ(optgroups.size(), 2u);
+    EXPECT_EQ(get_attr_v63(optgroups[0], "label"), "Swedish Cars");
+    EXPECT_EQ(get_attr_v63(optgroups[1], "label"), "German Cars");
+    auto opts0 = optgroups[0]->find_all_elements("option");
+    ASSERT_EQ(opts0.size(), 2u);
+    EXPECT_EQ(get_attr_v63(opts0[0], "value"), "volvo");
+    EXPECT_EQ(opts0[0]->text_content(), "Volvo");
+    EXPECT_EQ(get_attr_v63(opts0[1], "value"), "saab");
+    EXPECT_EQ(opts0[1]->text_content(), "Saab");
+    auto opts1 = optgroups[1]->find_all_elements("option");
+    ASSERT_EQ(opts1.size(), 1u);
+    EXPECT_EQ(get_attr_v63(opts1[0], "value"), "bmw");
+    EXPECT_EQ(opts1[0]->text_content(), "BMW");
+}

@@ -26845,3 +26845,215 @@ TEST(JsEngineTest, IteratorProtocolCustomIterableV95) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "5,4,3,2,1|5,4,3,2,1|5|4|3,2,1|x,y");
 }
+
+// ============================================================================
+// V96 Tests
+// ============================================================================
+
+TEST(JsEngineTest, DataViewReadWriteV96) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var buf = new ArrayBuffer(16);
+        var view = new DataView(buf);
+        view.setInt32(0, 305419896, false);
+        view.setFloat64(4, 3.14, true);
+        view.setUint16(12, 65535, false);
+        var results = [];
+        results.push(view.getInt32(0, false));
+        results.push(view.getFloat64(4, true).toFixed(2));
+        results.push(view.getUint16(12, false));
+        results.push(view.byteLength);
+        results.join(",");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "305419896,3.14,65535,16");
+}
+
+TEST(JsEngineTest, ClassStaticMethodsAndGettersV96) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        class Counter {
+            static #count = 0;
+            #value;
+            constructor(v) { this.#value = v; Counter.#count++; }
+            get value() { return this.#value; }
+            set value(v) { this.#value = v; }
+            static get total() { return Counter.#count; }
+            static reset() { Counter.#count = 0; }
+        }
+        var a = new Counter(10);
+        var b = new Counter(20);
+        var c = new Counter(30);
+        var results = [];
+        results.push(Counter.total);
+        results.push(a.value);
+        a.value = 99;
+        results.push(a.value);
+        Counter.reset();
+        results.push(Counter.total);
+        results.join(",");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "3,10,99,0");
+}
+
+TEST(JsEngineTest, RegExpExecAndGroupsV96) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var re = /(?<year>\d{4})-(?<month>\d{2})-(?<day>\d{2})/;
+        var m = re.exec("Date: 2026-02-28 is today");
+        var results = [];
+        results.push(m[0]);
+        results.push(m.groups.year);
+        results.push(m.groups.month);
+        results.push(m.groups.day);
+        results.push(m.index);
+        var re2 = /\b\w+/g;
+        var words = [];
+        var match;
+        while ((match = re2.exec("hello world foo")) !== null) {
+            words.push(match[0]);
+        }
+        results.push(words.join("+"));
+        results.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "2026-02-28|2026|02|28|6|hello+world+foo");
+}
+
+TEST(JsEngineTest, GeneratorDelegationWithReturnValuesV96) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        function* inner() {
+            yield "a";
+            yield "b";
+            return "inner_done";
+        }
+        function* outer() {
+            var r = yield* inner();
+            yield r;
+            yield "c";
+        }
+        var results = [];
+        var gen = outer();
+        var step;
+        while (!(step = gen.next()).done) {
+            results.push(step.value);
+        }
+        results.join(",");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "a,b,inner_done,c");
+}
+
+TEST(JsEngineTest, ProxyRevocableAndTrapInteractionV96) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var log = [];
+        var target = { x: 1, y: 2, z: 3 };
+        var { proxy, revoke } = Proxy.revocable(target, {
+            get(t, prop) {
+                log.push("get:" + String(prop));
+                return t[prop];
+            },
+            has(t, prop) {
+                log.push("has:" + String(prop));
+                return prop in t;
+            }
+        });
+        var results = [];
+        results.push(proxy.x);
+        results.push("y" in proxy);
+        results.push(proxy.z);
+        revoke();
+        try {
+            proxy.x;
+            results.push("no_error");
+        } catch(e) {
+            results.push("revoked");
+        }
+        results.push(log.join(";"));
+        results.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1|true|3|revoked|get:x;has:y;get:z");
+}
+
+TEST(JsEngineTest, TypedArrayMethodsAndSliceV96) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var arr = new Int32Array([50, 10, 30, 20, 40]);
+        var sorted = new Int32Array(arr);
+        sorted.sort();
+        var results = [];
+        results.push(Array.from(sorted).join(","));
+        results.push(arr.byteLength);
+        results.push(arr.BYTES_PER_ELEMENT);
+        var sliced = arr.slice(1, 4);
+        results.push(Array.from(sliced).join(","));
+        var mapped = arr.map(x => x * 2);
+        results.push(Array.from(mapped).join(","));
+        var filtered = arr.filter(x => x > 25);
+        results.push(Array.from(filtered).join(","));
+        results.push(arr.findIndex(x => x === 30));
+        results.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "10,20,30,40,50|20|4|10,30,20|100,20,60,40,80|50,30,40|2");
+}
+
+TEST(JsEngineTest, MapMethodChainingAndConversionV96) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var m = new Map([["a", 1], ["b", 2], ["c", 3], ["d", 4]]);
+        var results = [];
+        results.push(m.size);
+        results.push(m.has("c"));
+        m.delete("b");
+        results.push(m.size);
+        var keys = [];
+        var vals = [];
+        m.forEach(function(v, k) { keys.push(k); vals.push(v); });
+        results.push(keys.join(","));
+        results.push(vals.join(","));
+        var entries = Array.from(m.entries()).map(function(e) { return e[0] + "=" + e[1]; });
+        results.push(entries.join(";"));
+        var m2 = new Map(m);
+        m2.set("e", 5);
+        results.push(m2.size);
+        results.push(m.size);
+        results.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "4|true|3|a,c,d|1,3,4|a=1;c=3;d=4|4|3");
+}
+
+TEST(JsEngineTest, ErrorSubclassesAndCustomErrorV96) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        class AppError extends Error {
+            constructor(msg, code) {
+                super(msg);
+                this.name = "AppError";
+                this.code = code;
+            }
+        }
+        var results = [];
+        try { null.prop; } catch(e) { results.push(e instanceof TypeError); }
+        try { eval("}{"); } catch(e) { results.push(e instanceof SyntaxError); }
+        try { undeclared_var; } catch(e) { results.push(e instanceof ReferenceError); }
+        try { decodeURIComponent("%"); } catch(e) { results.push(e instanceof URIError); }
+        try {
+            throw new AppError("custom failure", 42);
+        } catch(e) {
+            results.push(e instanceof AppError);
+            results.push(e instanceof Error);
+            results.push(e.name);
+            results.push(e.message);
+            results.push(e.code);
+        }
+        results.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true|true|true|true|true|true|AppError|custom failure|42");
+}

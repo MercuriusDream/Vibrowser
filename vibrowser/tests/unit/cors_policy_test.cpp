@@ -7030,3 +7030,87 @@ TEST(CORSPolicyTest, CorsResponseCaseInsensitiveSchemeV95) {
     EXPECT_TRUE(cors_allows_response("https://app.example.com", "https://api.example.com/data", hw, false));
     EXPECT_TRUE(cors_allows_response("http://app.example.com", "https://api.example.com/data", hw, false));
 }
+
+// ===== V96 Tests =====
+
+TEST(CORSPolicyTest, DataAndBlobUrlsNotCorsEligibleV96) {
+    // data: and blob: URLs are NOT cors eligible
+    EXPECT_FALSE(is_cors_eligible_request_url("data:text/html,<h1>Hello</h1>"));
+    EXPECT_FALSE(is_cors_eligible_request_url("data:application/json,{}"));
+    EXPECT_FALSE(is_cors_eligible_request_url("blob:https://example.com/uuid-1234"));
+    EXPECT_FALSE(is_cors_eligible_request_url("blob:null/some-resource"));
+    // Standard http/https should be eligible
+    EXPECT_TRUE(is_cors_eligible_request_url("https://api.example.com/resource"));
+    EXPECT_TRUE(is_cors_eligible_request_url("http://api.example.com/resource"));
+}
+
+TEST(CORSPolicyTest, DataAndBlobOriginsNotEnforceableV96) {
+    // data: and blob: origins are NOT enforceable
+    EXPECT_FALSE(has_enforceable_document_origin("data:text/html,Hello"));
+    EXPECT_FALSE(has_enforceable_document_origin("blob:https://example.com/uuid"));
+    // Explicit :443 in origin is NOT enforceable
+    EXPECT_FALSE(has_enforceable_document_origin("https://example.com:443"));
+    // But http with explicit non-default port is enforceable
+    EXPECT_TRUE(has_enforceable_document_origin("http://example.com:8080"));
+    EXPECT_TRUE(has_enforceable_document_origin("https://example.com"));
+}
+
+TEST(CORSPolicyTest, WssNotCrossOriginV96) {
+    // wss:// is NOT in cross-origin considerations
+    EXPECT_FALSE(is_cross_origin("https://example.com", "wss://example.com/socket"));
+    EXPECT_FALSE(is_cross_origin("https://example.com", "wss://other.example.com/socket"));
+    EXPECT_FALSE(is_cross_origin("http://example.com", "wss://example.com/chat"));
+}
+
+TEST(CORSPolicyTest, FragmentInRequestUrlNotCorsEligibleV96) {
+    // Fragments (#...) are NOT cors-eligible parts -- URLs with fragments are not cors eligible
+    EXPECT_FALSE(is_cors_eligible_request_url("https://api.example.com/data#section1"));
+    EXPECT_FALSE(is_cors_eligible_request_url("http://api.example.com/data#frag"));
+    // Fragments cause is_cross_origin to not trigger (not in cross-origin considerations)
+    EXPECT_FALSE(is_cross_origin("https://app.example.com", "https://api.other.com/data#frag"));
+    // Same-origin with fragment is also false
+    EXPECT_FALSE(is_cross_origin("https://app.example.com", "https://app.example.com/path#anchor"));
+}
+
+TEST(CORSPolicyTest, IpAddressOriginsEnforceableV96) {
+    // IP addresses ARE enforceable as origins
+    EXPECT_TRUE(has_enforceable_document_origin("https://192.168.1.1"));
+    EXPECT_TRUE(has_enforceable_document_origin("http://10.0.0.1:3000"));
+    EXPECT_TRUE(has_enforceable_document_origin("https://172.16.0.1"));
+    // IPv4 loopback
+    EXPECT_TRUE(has_enforceable_document_origin("http://127.0.0.1:9090"));
+    // ftp with IP is NOT enforceable (unsupported scheme)
+    EXPECT_FALSE(has_enforceable_document_origin("ftp://10.0.0.1"));
+}
+
+TEST(CORSPolicyTest, CorsWildcardDeniedWithCredentialsV96) {
+    // Wildcard ACAO with credentials_requested=true should be denied
+    clever::net::HeaderMap h;
+    h.set("Access-Control-Allow-Origin", "*");
+    EXPECT_FALSE(cors_allows_response("https://app.example.com", "https://api.example.com/data", h, true));
+    // But wildcard without credentials is fine
+    EXPECT_TRUE(cors_allows_response("https://app.example.com", "https://api.example.com/data", h, false));
+}
+
+TEST(CORSPolicyTest, NormalizeOriginHeaderForCrossOriginV96) {
+    // When cross-origin, normalize_outgoing_origin_header should set Origin header
+    clever::net::HeaderMap headers;
+    normalize_outgoing_origin_header(headers, "https://app.example.com", "https://api.other.com/data");
+    // Should have an Origin header after normalization
+    EXPECT_TRUE(headers.has("Origin"));
+    // Same-origin should NOT add Origin header
+    clever::net::HeaderMap same_headers;
+    normalize_outgoing_origin_header(same_headers, "https://app.example.com", "https://app.example.com/path");
+    EXPECT_FALSE(same_headers.has("Origin"));
+}
+
+TEST(CORSPolicyTest, CorsExactOriginMatchWithPortV96) {
+    // Exact origin match with non-default port
+    clever::net::HeaderMap h;
+    h.set("Access-Control-Allow-Origin", "http://example.com:8080");
+    EXPECT_TRUE(cors_allows_response("http://example.com:8080", "https://api.example.com/data", h, false));
+    // Mismatched port should fail
+    EXPECT_FALSE(cors_allows_response("http://example.com:9090", "https://api.example.com/data", h, false));
+    // Missing port in origin when ACAO has port should fail
+    EXPECT_FALSE(cors_allows_response("http://example.com", "https://api.example.com/data", h, false));
+}

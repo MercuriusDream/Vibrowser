@@ -15269,3 +15269,128 @@ TEST(DomTest, SetAttributeViaIdThenGetV95) {
     EXPECT_TRUE(el.class_list().contains("big"));
     EXPECT_TRUE(el.class_list().contains("red"));
 }
+
+// ---------------------------------------------------------------------------
+// Round 96 tests
+// ---------------------------------------------------------------------------
+
+TEST(DomTest, RemoveChildUpdatesFirstAndLastChildV96) {
+    Element parent("ul");
+    auto li1 = std::make_unique<Element>("li");
+    auto li2 = std::make_unique<Element>("li");
+    auto li3 = std::make_unique<Element>("li");
+    auto* raw1 = li1.get();
+    auto* raw2 = li2.get();
+    auto* raw3 = li3.get();
+    parent.append_child(std::move(li1));
+    parent.append_child(std::move(li2));
+    parent.append_child(std::move(li3));
+    EXPECT_EQ(parent.child_count(), 3u);
+    EXPECT_EQ(parent.first_child(), raw1);
+    EXPECT_EQ(parent.last_child(), raw3);
+    parent.remove_child(*raw1);
+    EXPECT_EQ(parent.child_count(), 2u);
+    EXPECT_EQ(parent.first_child(), raw2);
+    EXPECT_EQ(parent.last_child(), raw3);
+    parent.remove_child(*raw3);
+    EXPECT_EQ(parent.child_count(), 1u);
+    EXPECT_EQ(parent.first_child(), raw2);
+    EXPECT_EQ(parent.last_child(), raw2);
+}
+
+TEST(DomTest, InsertBeforeAtMiddlePositionV96) {
+    Element parent("div");
+    auto first = std::make_unique<Element>("span");
+    auto third = std::make_unique<Element>("p");
+    auto* rawFirst = first.get();
+    auto* rawThird = third.get();
+    parent.append_child(std::move(first));
+    parent.append_child(std::move(third));
+    auto second = std::make_unique<Element>("em");
+    auto* rawSecond = second.get();
+    parent.insert_before(std::move(second), rawThird);
+    EXPECT_EQ(parent.child_count(), 3u);
+    EXPECT_EQ(parent.first_child(), rawFirst);
+    EXPECT_EQ(rawFirst->next_sibling(), rawSecond);
+    EXPECT_EQ(rawSecond->next_sibling(), rawThird);
+    EXPECT_EQ(rawSecond->parent(), &parent);
+}
+
+TEST(DomTest, CommentNodeDataAndTypeV96) {
+    Comment c("This is a comment with <special> & chars");
+    EXPECT_EQ(c.node_type(), NodeType::Comment);
+    EXPECT_EQ(c.data(), "This is a comment with <special> & chars");
+    Comment empty("");
+    EXPECT_EQ(empty.data(), "");
+}
+
+TEST(DomTest, ClassListToggleAddsAndRemovesV96) {
+    Element el("div");
+    EXPECT_FALSE(el.class_list().contains("active"));
+    el.class_list().toggle("active");
+    EXPECT_TRUE(el.class_list().contains("active"));
+    el.class_list().toggle("active");
+    EXPECT_FALSE(el.class_list().contains("active"));
+    el.class_list().toggle("active");
+    el.class_list().toggle("hidden");
+    EXPECT_TRUE(el.class_list().contains("active"));
+    EXPECT_TRUE(el.class_list().contains("hidden"));
+}
+
+TEST(DomTest, AttributeOverwritePreservesCountV96) {
+    Element el("input");
+    el.set_attribute("type", "text");
+    el.set_attribute("value", "hello");
+    EXPECT_EQ(el.attributes().size(), 2u);
+    el.set_attribute("type", "password");
+    EXPECT_EQ(el.attributes().size(), 2u);
+    EXPECT_EQ(el.get_attribute("type").value(), "password");
+    EXPECT_EQ(el.get_attribute("value").value(), "hello");
+}
+
+TEST(DomTest, TextContentAcrossNestedChildrenV96) {
+    Element outer("div");
+    auto inner = std::make_unique<Element>("span");
+    auto* rawInner = inner.get();
+    rawInner->append_child(std::make_unique<Text>("Hello "));
+    outer.append_child(std::move(inner));
+    outer.append_child(std::make_unique<Text>("World"));
+    EXPECT_EQ(outer.text_content(), "Hello World");
+    EXPECT_EQ(outer.child_count(), 2u);
+}
+
+TEST(DomTest, RemoveAttributeThenHasAttributeV96) {
+    Element el("a");
+    el.set_attribute("href", "https://example.com");
+    el.set_attribute("target", "_blank");
+    el.set_attribute("rel", "noopener");
+    EXPECT_EQ(el.attributes().size(), 3u);
+    el.remove_attribute("target");
+    EXPECT_FALSE(el.has_attribute("target"));
+    EXPECT_FALSE(el.get_attribute("target").has_value());
+    EXPECT_EQ(el.attributes().size(), 2u);
+    EXPECT_TRUE(el.has_attribute("href"));
+    EXPECT_TRUE(el.has_attribute("rel"));
+    el.remove_attribute("nonexistent");
+    EXPECT_EQ(el.attributes().size(), 2u);
+}
+
+TEST(DomTest, SiblingNavigationChainV96) {
+    Element parent("nav");
+    auto a = std::make_unique<Element>("a");
+    auto b = std::make_unique<Text>("separator");
+    auto c = std::make_unique<Element>("a");
+    auto* rawA = a.get();
+    auto* rawB = b.get();
+    auto* rawC = c.get();
+    parent.append_child(std::move(a));
+    parent.append_child(std::move(b));
+    parent.append_child(std::move(c));
+    EXPECT_EQ(rawA->next_sibling(), rawB);
+    EXPECT_EQ(rawB->next_sibling(), rawC);
+    EXPECT_EQ(rawC->next_sibling(), nullptr);
+    EXPECT_EQ(rawA->node_type(), NodeType::Element);
+    EXPECT_EQ(rawB->node_type(), NodeType::Text);
+    EXPECT_EQ(rawC->node_type(), NodeType::Element);
+    EXPECT_EQ(rawB->text_content(), "separator");
+}

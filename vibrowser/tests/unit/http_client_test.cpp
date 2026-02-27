@@ -16374,3 +16374,150 @@ TEST(HttpClientTest, HeaderMapRemoveThenReAddV95) {
     EXPECT_EQ(headers.get("Cache-Control").value(), "max-age=3600");
     EXPECT_EQ(headers.size(), 1u);
 }
+
+// ============================================================================
+// Cycle V96: HTTP client / net layer tests
+// ============================================================================
+
+// 1. Serialize a HEAD request — no body, correct method line
+TEST(HttpClientTest, SerializeHeadRequestNoBodyV96) {
+    Request req;
+    req.method = Method::HEAD;
+    req.host = "status.example.com";
+    req.port = 80;
+    req.path = "/health";
+
+    auto bytes = req.serialize();
+    std::string s(bytes.begin(), bytes.end());
+
+    EXPECT_TRUE(s.find("HEAD /health HTTP/1.1\r\n") == 0);
+    EXPECT_TRUE(s.find("Host: status.example.com\r\n") != std::string::npos);
+    // HEAD must not include port 80
+    EXPECT_TRUE(s.find(":80") == std::string::npos);
+    // Body section should be empty (just header terminator, nothing after)
+    auto body_pos = s.find("\r\n\r\n");
+    ASSERT_NE(body_pos, std::string::npos);
+    std::string body_part = s.substr(body_pos + 4);
+    EXPECT_TRUE(body_part.empty());
+}
+
+// 2. parse_url correctly extracts HTTPS with explicit non-standard port
+TEST(HttpClientTest, ParseUrlHttpsNonStandardPortV96) {
+    Request req;
+    req.url = "https://secure.example.com:8443/api/v2/resource?limit=50";
+    req.parse_url();
+
+    EXPECT_EQ(req.host, "secure.example.com");
+    EXPECT_EQ(req.port, 8443);
+    EXPECT_EQ(req.path, "/api/v2/resource");
+    EXPECT_EQ(req.query, "limit=50");
+    EXPECT_TRUE(req.use_tls);
+}
+
+// 3. HeaderMap overwrite — setting same key twice keeps latest value, size stays 1
+TEST(HttpClientTest, HeaderMapOverwriteSameKeyV96) {
+    HeaderMap headers;
+    headers.set("Authorization", "Bearer old-token");
+    headers.set("Authorization", "Bearer new-token");
+
+    EXPECT_EQ(headers.size(), 1u);
+    EXPECT_EQ(headers.get("authorization").value(), "Bearer new-token");
+    // Case variant should also return the updated value
+    EXPECT_EQ(headers.get("AUTHORIZATION").value(), "Bearer new-token");
+}
+
+// 4. CookieJar: domain cookie NOT sent to sibling subdomain
+TEST(HttpClientTest, CookieJarDomainSiblingIsolationV96) {
+    CookieJar jar;
+    // Set cookie scoped to app.example.com
+    jar.set_from_header("sess=abc; Domain=app.example.com", "app.example.com");
+
+    // Should be returned for app.example.com
+    std::string app_cookies = jar.get_cookie_header("app.example.com", "/", false);
+    EXPECT_TRUE(app_cookies.find("sess=abc") != std::string::npos);
+
+    // Should NOT be returned for api.example.com (sibling subdomain)
+    std::string api_cookies = jar.get_cookie_header("api.example.com", "/", false);
+    EXPECT_TRUE(api_cookies.find("sess=abc") == std::string::npos);
+}
+
+// 5. Response: status defaults to 0 and body starts empty
+TEST(HttpClientTest, ResponseDefaultStateV96) {
+    Response resp;
+    EXPECT_EQ(resp.status, 0);
+    EXPECT_TRUE(resp.body.empty());
+    EXPECT_EQ(resp.body_as_string(), "");
+}
+
+// 6. Serialize POST with multiple custom headers — all lowercased, Host/Connection stay capitalized
+TEST(HttpClientTest, SerializePostMultipleCustomHeadersV96) {
+    Request req;
+    req.method = Method::POST;
+    req.host = "api.example.com";
+    req.port = 443;
+    req.path = "/submit";
+    req.use_tls = true;
+    req.headers.set("Content-Type", "application/json");
+    req.headers.set("X-Request-Id", "req-42");
+    req.headers.set("Accept-Language", "en-US");
+    std::string body_str = R"({"data":true})";
+    req.body.assign(body_str.begin(), body_str.end());
+
+    auto bytes = req.serialize();
+    std::string s(bytes.begin(), bytes.end());
+
+    EXPECT_TRUE(s.find("POST /submit HTTP/1.1\r\n") == 0);
+    // Host without :443 (default HTTPS port)
+    EXPECT_TRUE(s.find("Host: api.example.com\r\n") != std::string::npos);
+    EXPECT_TRUE(s.find(":443") == std::string::npos);
+    // Connection header capitalized
+    EXPECT_TRUE(s.find("Connection: keep-alive\r\n") != std::string::npos);
+    // Custom headers lowercased
+    EXPECT_TRUE(s.find("content-type: application/json\r\n") != std::string::npos);
+    EXPECT_TRUE(s.find("x-request-id: req-42\r\n") != std::string::npos);
+    EXPECT_TRUE(s.find("accept-language: en-US\r\n") != std::string::npos);
+    // Body present after header terminator
+    auto body_pos = s.find("\r\n\r\n");
+    ASSERT_NE(body_pos, std::string::npos);
+    std::string body_part = s.substr(body_pos + 4);
+    EXPECT_EQ(body_part, R"({"data":true})");
+}
+
+// 7. CookieJar: path-scoped cookie NOT accessible at parent path
+TEST(HttpClientTest, CookieJarPathScopeParentNotAccessibleV96) {
+    CookieJar jar;
+    jar.set_from_header("deep=val; Path=/a/b/c", "example.com");
+
+    // Accessible at the exact path
+    std::string exact = jar.get_cookie_header("example.com", "/a/b/c", false);
+    EXPECT_TRUE(exact.find("deep=val") != std::string::npos);
+
+    // Accessible at a child of the path
+    std::string child = jar.get_cookie_header("example.com", "/a/b/c/d", false);
+    EXPECT_TRUE(child.find("deep=val") != std::string::npos);
+
+    // NOT accessible at the parent path
+    std::string parent = jar.get_cookie_header("example.com", "/a/b", false);
+    EXPECT_TRUE(parent.find("deep=val") == std::string::npos);
+
+    // NOT accessible at root
+    std::string root = jar.get_cookie_header("example.com", "/", false);
+    EXPECT_TRUE(root.find("deep=val") == std::string::npos);
+}
+
+// 8. Serialize GET with non-standard port — port appears in Host header
+TEST(HttpClientTest, SerializeGetNonStandardPortInHostV96) {
+    Request req;
+    req.method = Method::GET;
+    req.host = "dev.example.com";
+    req.port = 9090;
+    req.path = "/debug";
+    req.use_tls = false;
+
+    auto bytes = req.serialize();
+    std::string s(bytes.begin(), bytes.end());
+
+    EXPECT_TRUE(s.find("GET /debug HTTP/1.1\r\n") == 0);
+    // Non-standard port MUST appear in Host header
+    EXPECT_TRUE(s.find("Host: dev.example.com:9090\r\n") != std::string::npos);
+}

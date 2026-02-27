@@ -17221,3 +17221,192 @@ TEST(CSSStyleTest, DisplayInlineWithLineHeightPxAndBorderLeftV95) {
     EXPECT_EQ(style.color.b, 0x32);
     EXPECT_FLOAT_EQ(style.font_size.to_px(), 13.0f);
 }
+
+TEST(CSSStyleTest, FlexColumnWithAlignItemsCenterAndGapV96) {
+    const std::string css = ".stack{display:flex;flex-direction:column;align-items:center;gap:12px;padding-top:20px;padding-bottom:20px;padding-left:16px;padding-right:16px;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+    elem.classes = {"stack"};
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.display, Display::Flex);
+    EXPECT_EQ(style.flex_direction, FlexDirection::Column);
+    EXPECT_EQ(style.align_items, AlignItems::Center);
+    EXPECT_FLOAT_EQ(style.gap.to_px(), 12.0f);
+    EXPECT_FLOAT_EQ(style.padding.top.to_px(), 20.0f);
+    EXPECT_FLOAT_EQ(style.padding.bottom.to_px(), 20.0f);
+    EXPECT_FLOAT_EQ(style.padding.left.to_px(), 16.0f);
+    EXPECT_FLOAT_EQ(style.padding.right.to_px(), 16.0f);
+}
+
+TEST(CSSStyleTest, OverflowHiddenWithBorderRadiusAndBoxSizingV96) {
+    const std::string css = ".card-img{overflow-x:hidden;overflow-y:hidden;border-radius:8px;box-sizing:border-box;width:300px;height:200px;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+    elem.classes = {"card-img"};
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.overflow_x, Overflow::Hidden);
+    EXPECT_EQ(style.overflow_y, Overflow::Hidden);
+    EXPECT_FLOAT_EQ(style.border_radius, 8.0f);
+    EXPECT_EQ(style.box_sizing, BoxSizing::BorderBox);
+    EXPECT_FLOAT_EQ(style.width.to_px(), 300.0f);
+    EXPECT_FLOAT_EQ(style.height.to_px(), 200.0f);
+}
+
+TEST(CSSStyleTest, TextDecorationUnderlineWithLetterSpacingAndTransformV96) {
+    const std::string css = ".fancy-link{text-decoration:underline;letter-spacing:2px;text-transform:uppercase;color:#1565c0;font-size:14px;font-style:italic;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "a";
+    elem.classes = {"fancy-link"};
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.text_decoration, TextDecoration::Underline);
+    EXPECT_FLOAT_EQ(style.letter_spacing.to_px(14.0f), 2.0f);
+    EXPECT_EQ(style.text_transform, TextTransform::Uppercase);
+    EXPECT_EQ(style.color.r, 0x15);
+    EXPECT_EQ(style.color.g, 0x65);
+    EXPECT_EQ(style.color.b, 0xc0);
+    EXPECT_FLOAT_EQ(style.font_size.to_px(), 14.0f);
+    EXPECT_EQ(style.font_style, FontStyle::Italic);
+}
+
+TEST(CSSStyleTest, FixedPositionWithTopLeftZIndexAndBgColorV96) {
+    const std::string css = "#navbar{position:fixed;top:0px;left_pos:0px;z-index:100;background-color:#263238;}";
+    // Note: CSS uses 'left' property, mapped to left_pos in ComputedStyle
+    const std::string css_actual = "#navbar{position:fixed;top:0px;left:0px;z-index:100;background-color:#263238;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css_actual);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "nav";
+    elem.id = "navbar";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.position, Position::Fixed);
+    EXPECT_FLOAT_EQ(style.top.to_px(), 0.0f);
+    EXPECT_FLOAT_EQ(style.left_pos.to_px(), 0.0f);
+    EXPECT_EQ(style.z_index, 100);
+    EXPECT_EQ(style.background_color.r, 0x26);
+    EXPECT_EQ(style.background_color.g, 0x32);
+    EXPECT_EQ(style.background_color.b, 0x38);
+}
+
+TEST(CSSStyleTest, OutlineStyleWithWidthAndColorAndOffsetV96) {
+    const std::string css = ".focus-ring{outline-width:3px;outline-style:solid;outline-color:#ff6f00;outline-offset:2px;border-radius:4px;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "button";
+    elem.classes = {"focus-ring"};
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_FLOAT_EQ(style.outline_width.to_px(), 3.0f);
+    EXPECT_EQ(style.outline_style, BorderStyle::Solid);
+    EXPECT_EQ(style.outline_color.r, 0xff);
+    EXPECT_EQ(style.outline_color.g, 0x6f);
+    EXPECT_EQ(style.outline_color.b, 0x00);
+    EXPECT_FLOAT_EQ(style.outline_offset.to_px(), 2.0f);
+    EXPECT_FLOAT_EQ(style.border_radius, 4.0f);
+}
+
+TEST(CSSStyleTest, DisplayNoneWithVisibilityHiddenAndCursorPointerV96) {
+    const std::string css = ".hidden-btn{display:none;visibility:hidden;cursor:pointer;margin-top:8px;margin-bottom:8px;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+    elem.classes = {"hidden-btn"};
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.display, Display::None);
+    EXPECT_EQ(style.visibility, Visibility::Hidden);
+    EXPECT_EQ(style.cursor, Cursor::Pointer);
+    EXPECT_FLOAT_EQ(style.margin.top.to_px(), 8.0f);
+    EXPECT_FLOAT_EQ(style.margin.bottom.to_px(), 8.0f);
+}
+
+TEST(CSSStyleTest, BorderBottomDottedWithTextAlignCenterAndWordSpacingV96) {
+    const std::string css = ".subtitle{border-bottom-width:2px;border-bottom-style:dotted;border-bottom-color:#b0bec5;text-align:center;word-spacing:4px;font-size:18px;line-height:28px;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "h2";
+    elem.classes = {"subtitle"};
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_FLOAT_EQ(style.border_bottom.width.to_px(), 2.0f);
+    EXPECT_EQ(style.border_bottom.style, BorderStyle::Dotted);
+    EXPECT_EQ(style.border_bottom.color.r, 0xb0);
+    EXPECT_EQ(style.border_bottom.color.g, 0xbe);
+    EXPECT_EQ(style.border_bottom.color.b, 0xc5);
+    EXPECT_EQ(style.text_align, TextAlign::Center);
+    EXPECT_FLOAT_EQ(style.word_spacing.to_px(18.0f), 4.0f);
+    EXPECT_FLOAT_EQ(style.font_size.to_px(), 18.0f);
+    EXPECT_FLOAT_EQ(style.line_height.to_px(), 28.0f);
+}
+
+TEST(CSSStyleTest, InlineFlexWithJustifySpaceBetweenAndMinWidthV96) {
+    const std::string css = ".pill{display:inline-flex;justify-content:space-between;min-width:120px;padding-left:12px;padding-right:12px;background-color:#e8f5e9;font-size:12px;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "span";
+    elem.classes = {"pill"};
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.display, Display::InlineFlex);
+    EXPECT_EQ(style.justify_content, JustifyContent::SpaceBetween);
+    EXPECT_FLOAT_EQ(style.min_width.to_px(), 120.0f);
+    EXPECT_FLOAT_EQ(style.padding.left.to_px(), 12.0f);
+    EXPECT_FLOAT_EQ(style.padding.right.to_px(), 12.0f);
+    EXPECT_EQ(style.background_color.r, 0xe8);
+    EXPECT_EQ(style.background_color.g, 0xf5);
+    EXPECT_EQ(style.background_color.b, 0xe9);
+    EXPECT_FLOAT_EQ(style.font_size.to_px(), 12.0f);
+}

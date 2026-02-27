@@ -17674,3 +17674,194 @@ TEST(LayoutTest, FlexShrinkReducesOverflowChildrenV95) {
     EXPECT_LT(wb, 150.0f);
     EXPECT_NEAR(wa + wb, 200.0f, 1.0f);
 }
+
+// Test V96_001: flex row with mixed fixed-width and grow children
+TEST(LayoutTest, FlexRowMixedFixedAndGrowChildrenV96) {
+    auto root = make_flex("div");
+    root->specified_width = 600.0f;
+    root->specified_height = 100.0f;
+    root->flex_direction = 0; // Row
+
+    auto fixed = make_block("div");
+    fixed->specified_width = 200.0f;
+    fixed->flex_grow = 0.0f;
+
+    auto grow = make_block("div");
+    grow->flex_grow = 1.0f;
+
+    root->append_child(std::move(fixed));
+    root->append_child(std::move(grow));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    float wf = root->children[0]->geometry.width;
+    float wg = root->children[1]->geometry.width;
+    EXPECT_FLOAT_EQ(wf, 200.0f);
+    EXPECT_NEAR(wg, 400.0f, 1.0f);
+    EXPECT_NEAR(wf + wg, 600.0f, 1.0f);
+}
+
+// Test V96_002: block child width reduced by parent margin
+TEST(LayoutTest, BlockChildWidthReducedByParentMarginV96) {
+    auto root = make_block("div");
+    root->specified_width = 500.0f;
+    root->geometry.padding.left = 20.0f;
+    root->geometry.padding.right = 20.0f;
+
+    auto child = make_block("div");
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    float cw = root->children[0]->geometry.width;
+    EXPECT_NEAR(cw, 460.0f, 1.0f);
+}
+
+// Test V96_003: flex column with three children distributes grow proportionally
+TEST(LayoutTest, FlexColumnThreeChildrenGrowProportionalV96) {
+    auto root = make_flex("div");
+    root->specified_width = 300.0f;
+    root->specified_height = 600.0f;
+    root->flex_direction = 2; // Column
+
+    auto a = make_block("div");
+    a->flex_grow = 1.0f;
+    auto b = make_block("div");
+    b->flex_grow = 2.0f;
+    auto c = make_block("div");
+    c->flex_grow = 3.0f;
+
+    root->append_child(std::move(a));
+    root->append_child(std::move(b));
+    root->append_child(std::move(c));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    float ha = root->children[0]->geometry.height;
+    float hb = root->children[1]->geometry.height;
+    float hc = root->children[2]->geometry.height;
+    // All grow children should receive space proportional to their grow factor
+    float total = ha + hb + hc;
+    EXPECT_GT(total, 0.0f);
+    EXPECT_LE(total, 600.0f + 1.0f);
+    EXPECT_GT(hb, ha);
+    EXPECT_GT(hc, hb);
+}
+
+// Test V96_004: display none child does not affect sibling positions
+TEST(LayoutTest, DisplayNoneChildDoesNotAffectSiblingV96) {
+    auto root = make_block("div");
+    root->specified_width = 400.0f;
+
+    auto hidden = make_block("div");
+    hidden->specified_height = 100.0f;
+    hidden->display = DisplayType::None;
+
+    auto visible = make_block("div");
+    visible->specified_height = 50.0f;
+
+    root->append_child(std::move(hidden));
+    root->append_child(std::move(visible));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // The visible child should be at y=0 since hidden is display:none
+    float vy = root->children[1]->geometry.y;
+    EXPECT_FLOAT_EQ(vy, 0.0f);
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.height, 50.0f);
+}
+
+// Test V96_005: border and padding combined shrink child content area
+TEST(LayoutTest, BorderPaddingCombinedShrinkChildV96) {
+    auto root = make_block("div");
+    root->specified_width = 400.0f;
+    root->geometry.padding.left = 15.0f;
+    root->geometry.padding.right = 15.0f;
+    root->geometry.border.left = 5.0f;
+    root->geometry.border.right = 5.0f;
+
+    auto child = make_block("div");
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    float cw = root->children[0]->geometry.width;
+    // Child should be 400 - 15 - 15 - 5 - 5 = 360
+    EXPECT_NEAR(cw, 360.0f, 1.0f);
+}
+
+// Test V96_006: background color and opacity preserved after layout compute
+TEST(LayoutTest, BackgroundColorOpacityPreservedV96) {
+    auto root = make_block("div");
+    root->specified_width = 200.0f;
+    root->specified_height = 100.0f;
+    root->background_color = 0xFF336699u;
+    root->opacity = 0.75f;
+    root->color = 0xFFFFFFFFu;
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_EQ(root->background_color, 0xFF336699u);
+    EXPECT_FLOAT_EQ(root->opacity, 0.75f);
+    EXPECT_EQ(root->color, 0xFFFFFFFFu);
+    EXPECT_FLOAT_EQ(root->geometry.width, 200.0f);
+    EXPECT_FLOAT_EQ(root->geometry.height, 100.0f);
+}
+
+// Test V96_007: nested blocks propagate width through two levels
+TEST(LayoutTest, NestedBlocksTwoLevelWidthPropagationV96) {
+    auto root = make_block("div");
+    root->specified_width = 500.0f;
+
+    auto mid = make_block("div");
+    auto inner = make_block("div");
+
+    auto* mid_ptr = mid.get();
+    auto* inner_ptr = inner.get();
+
+    mid->append_child(std::move(inner));
+    root->append_child(std::move(mid));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(root->geometry.width, 500.0f);
+    EXPECT_FLOAT_EQ(mid_ptr->geometry.width, 500.0f);
+    EXPECT_FLOAT_EQ(inner_ptr->geometry.width, 500.0f);
+}
+
+// Test V96_008: flex row with flex_shrink distributes shrinkage equally
+TEST(LayoutTest, FlexRowShrinkDistributesEquallyV96) {
+    auto root = make_flex("div");
+    root->specified_width = 300.0f;
+    root->specified_height = 80.0f;
+    root->flex_direction = 0; // Row
+
+    auto a = make_block("div");
+    a->specified_width = 200.0f;
+    a->flex_shrink = 1.0f;
+
+    auto b = make_block("div");
+    b->specified_width = 200.0f;
+    b->flex_shrink = 1.0f;
+
+    root->append_child(std::move(a));
+    root->append_child(std::move(b));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    float wa = root->children[0]->geometry.width;
+    float wb = root->children[1]->geometry.width;
+    // Both should shrink equally from 200 to fit in 300 total
+    EXPECT_LT(wa, 200.0f);
+    EXPECT_LT(wb, 200.0f);
+    EXPECT_NEAR(wa, wb, 1.0f);
+    EXPECT_NEAR(wa + wb, 300.0f, 1.0f);
+}

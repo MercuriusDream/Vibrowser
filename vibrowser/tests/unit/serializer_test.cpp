@@ -13952,3 +13952,174 @@ TEST(SerializerTest, LargeStringRoundTripV95) {
     EXPECT_EQ(d.read_u8(), 0xFE);
     EXPECT_FALSE(d.has_remaining());
 }
+
+// ------------------------------------------------------------------
+// V96 Tests
+// ------------------------------------------------------------------
+
+TEST(SerializerTest, AllIntegerTypesInterleavedV96) {
+    // Serialize every integer type in sequence and verify round-trip
+    Serializer s;
+    s.write_u8(0xAB);
+    s.write_u16(0x1234);
+    s.write_u32(0xDEADBEEFu);
+    s.write_u64(0x0102030405060708ULL);
+    s.write_i32(-99999);
+    s.write_i64(-8888888888LL);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u8(), 0xAB);
+    EXPECT_EQ(d.read_u16(), 0x1234);
+    EXPECT_EQ(d.read_u32(), 0xDEADBEEFu);
+    EXPECT_EQ(d.read_u64(), 0x0102030405060708ULL);
+    EXPECT_EQ(d.read_i32(), -99999);
+    EXPECT_EQ(d.read_i64(), -8888888888LL);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, F64SpecialValuesRoundTripV96) {
+    // Verify that special floating-point values survive serialization
+    Serializer s;
+    s.write_f64(std::numeric_limits<double>::infinity());
+    s.write_f64(-std::numeric_limits<double>::infinity());
+    s.write_f64(std::numeric_limits<double>::quiet_NaN());
+    s.write_f64(-0.0);
+    s.write_f64(std::numeric_limits<double>::denorm_min());
+
+    Deserializer d(s.data());
+    double pos_inf = d.read_f64();
+    EXPECT_TRUE(std::isinf(pos_inf) && pos_inf > 0);
+    double neg_inf = d.read_f64();
+    EXPECT_TRUE(std::isinf(neg_inf) && neg_inf < 0);
+    double nan_val = d.read_f64();
+    EXPECT_TRUE(std::isnan(nan_val));
+    double neg_zero = d.read_f64();
+    EXPECT_EQ(neg_zero, 0.0);
+    EXPECT_TRUE(std::signbit(neg_zero));
+    double denorm = d.read_f64();
+    EXPECT_EQ(denorm, std::numeric_limits<double>::denorm_min());
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, BoolSequenceAllPatternsV96) {
+    // Write alternating and repeated bool patterns
+    Serializer s;
+    s.write_bool(true);
+    s.write_bool(false);
+    s.write_bool(true);
+    s.write_bool(true);
+    s.write_bool(false);
+    s.write_bool(false);
+    s.write_bool(true);
+    s.write_bool(false);
+
+    Deserializer d(s.data());
+    EXPECT_TRUE(d.read_bool());
+    EXPECT_FALSE(d.read_bool());
+    EXPECT_TRUE(d.read_bool());
+    EXPECT_TRUE(d.read_bool());
+    EXPECT_FALSE(d.read_bool());
+    EXPECT_FALSE(d.read_bool());
+    EXPECT_TRUE(d.read_bool());
+    EXPECT_FALSE(d.read_bool());
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, BytesBinaryPayloadRoundTripV96) {
+    // Write a non-trivial binary payload and verify byte-for-byte equality
+    std::vector<uint8_t> payload(256);
+    for (int i = 0; i < 256; ++i) {
+        payload[i] = static_cast<uint8_t>(i);
+    }
+    Serializer s;
+    s.write_bytes(payload.data(), payload.size());
+
+    Deserializer d(s.data());
+    auto result = d.read_bytes();
+    ASSERT_EQ(result.size(), 256u);
+    for (int i = 0; i < 256; ++i) {
+        EXPECT_EQ(result[i], static_cast<uint8_t>(i));
+    }
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, StringWithEmbeddedNullBytesV96) {
+    // Strings containing embedded null characters should round-trip correctly
+    std::string with_nulls("hello\0world\0end", 15);
+    ASSERT_EQ(with_nulls.size(), 15u);
+
+    Serializer s;
+    s.write_string(with_nulls);
+
+    Deserializer d(s.data());
+    std::string out = d.read_string();
+    EXPECT_EQ(out.size(), 15u);
+    EXPECT_EQ(out, with_nulls);
+    EXPECT_EQ(out[5], '\0');
+    EXPECT_EQ(out[11], '\0');
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, I32I64BoundaryValuesV96) {
+    // Test minimum and maximum values for signed integer types
+    Serializer s;
+    s.write_i32(std::numeric_limits<int32_t>::min());
+    s.write_i32(std::numeric_limits<int32_t>::max());
+    s.write_i32(0);
+    s.write_i64(std::numeric_limits<int64_t>::min());
+    s.write_i64(std::numeric_limits<int64_t>::max());
+    s.write_i64(0);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i32(), std::numeric_limits<int32_t>::min());
+    EXPECT_EQ(d.read_i32(), std::numeric_limits<int32_t>::max());
+    EXPECT_EQ(d.read_i32(), 0);
+    EXPECT_EQ(d.read_i64(), std::numeric_limits<int64_t>::min());
+    EXPECT_EQ(d.read_i64(), std::numeric_limits<int64_t>::max());
+    EXPECT_EQ(d.read_i64(), 0);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, MultipleStringsConcatenatedV96) {
+    // Serialize many strings and confirm each deserializes independently
+    Serializer s;
+    std::vector<std::string> strings = {
+        "", "a", "ab", "abc", "Hello, World!",
+        std::string(500, 'X'), "unicode: \xC3\xA9\xC3\xA0\xC3\xBC"
+    };
+    for (const auto& str : strings) {
+        s.write_string(str);
+    }
+
+    Deserializer d(s.data());
+    for (const auto& expected : strings) {
+        std::string actual = d.read_string();
+        EXPECT_EQ(actual, expected);
+    }
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, DataVectorGrowsCorrectlyV96) {
+    // Verify the data() vector contains bytes and grows as writes accumulate
+    Serializer s;
+    EXPECT_EQ(s.data().size(), 0u);
+
+    s.write_u8(42);
+    size_t after_u8 = s.data().size();
+    EXPECT_GE(after_u8, 1u);
+
+    s.write_u32(0x12345678u);
+    size_t after_u32 = s.data().size();
+    EXPECT_GT(after_u32, after_u8);
+
+    s.write_string("test");
+    size_t after_str = s.data().size();
+    EXPECT_GT(after_str, after_u32);
+
+    // Deserialize to confirm correctness despite incremental growth
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u8(), 42);
+    EXPECT_EQ(d.read_u32(), 0x12345678u);
+    EXPECT_EQ(d.read_string(), "test");
+    EXPECT_FALSE(d.has_remaining());
+}
