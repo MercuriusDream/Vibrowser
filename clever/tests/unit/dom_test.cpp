@@ -3949,7 +3949,7 @@ TEST(DomNode, FirstChildPrevSiblingIsNull) {
     EXPECT_EQ(parent.first_child()->previous_sibling(), nullptr);
 }
 
-TEST(DomNode, LastChildNextSiblingIsNull) {
+TEST(DomNode, LastChildOfTwoHasNoNextSibling) {
     Element parent("div");
     parent.append_child(std::make_unique<Element>("span"));
     parent.append_child(std::make_unique<Element>("p"));
@@ -4369,4 +4369,63 @@ TEST(DomNode, NodeLastChildTag) {
     auto* last = dynamic_cast<Element*>(parent.last_child());
     ASSERT_NE(last, nullptr);
     EXPECT_EQ(last->tag_name(), "strong");
+}
+
+// Cycle 922 — Text set_data, id accessor, sibling chain, parent pointer, text_content from child
+TEST(DomText, TextSetDataUpdatesValue) {
+    Text t("initial");
+    t.set_data("updated");
+    EXPECT_EQ(t.data(), "updated");
+}
+
+TEST(DomText, TextNodeInitialData) {
+    Text t("hello world");
+    EXPECT_EQ(t.data(), "hello world");
+}
+
+TEST(DomNode, ThreeChildSiblingChain) {
+    Element parent("ol");
+    parent.append_child(std::make_unique<Element>("li"));
+    parent.append_child(std::make_unique<Element>("li"));
+    parent.append_child(std::make_unique<Element>("li"));
+    EXPECT_EQ(parent.child_count(), 3u);
+    auto* first = parent.first_child();
+    ASSERT_NE(first, nullptr);
+    auto* second = first->next_sibling();
+    ASSERT_NE(second, nullptr);
+    auto* third = second->next_sibling();
+    ASSERT_NE(third, nullptr);
+    EXPECT_EQ(third->next_sibling(), nullptr);
+}
+
+TEST(DomNode, TwoLiChildrenLastHasNoNextSibling) {
+    Element parent("ul");
+    parent.append_child(std::make_unique<Element>("li"));
+    parent.append_child(std::make_unique<Element>("li"));
+    auto* last = parent.last_child();
+    ASSERT_NE(last, nullptr);
+    EXPECT_EQ(last->next_sibling(), nullptr);
+}
+
+TEST(DomElement, ElementIdAfterSetAttr) {
+    Element elem("div");
+    elem.set_attribute("id", "main");
+    EXPECT_EQ(elem.id(), "main");
+}
+
+TEST(DomElement, ElementIdEmptyInitially) {
+    Element elem("span");
+    EXPECT_EQ(elem.id(), "");
+}
+
+TEST(DomNode, ChildParentIsParentNode) {
+    Element parent("section");
+    Node& child = parent.append_child(std::make_unique<Element>("p"));
+    EXPECT_EQ(child.parent(), &parent);
+}
+
+TEST(DomElement, TextContentFromTextChild) {
+    Element parent("p");
+    parent.append_child(std::make_unique<Text>("visible"));
+    EXPECT_EQ(parent.text_content(), "visible");
 }
