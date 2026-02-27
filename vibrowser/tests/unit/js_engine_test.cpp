@@ -22314,3 +22314,165 @@ TEST(JSEngineTest, ProxyGetSetHandlersV65) {
     )");
     EXPECT_EQ(result, "13|8");
 }
+
+namespace {
+struct EvalResultV66 {
+    bool success;
+    std::string value;
+};
+
+EvalResultV66 EvaluateWithStatusV66(clever::js::JSEngine& engine, const std::string& js_code_string) {
+    auto value = engine.evaluate(js_code_string);
+    return EvalResultV66{!engine.has_error(), value};
+}
+} // namespace
+
+TEST(JSEngineTest, MapAndSetIterationV66) {
+    clever::js::JSEngine engine;
+    auto result = EvaluateWithStatusV66(engine, R"(
+        var map = new Map([['x', 1], ['y', 2], ['z', 3]]);
+        var mapPairs = [];
+        for (var entry of map) {
+            mapPairs.push(entry[0] + entry[1].toString());
+        }
+
+        var set = new Set(['a', 'b', 'a', 'c']);
+        var setValues = [];
+        for (var value of set) {
+            setValues.push(value);
+        }
+
+        mapPairs.join(',') + '|' + setValues.join(',')
+    )");
+    EXPECT_TRUE(result.success) << engine.last_error();
+    EXPECT_EQ(result.value, "x1,y2,z3|a,b,c");
+}
+
+TEST(JSEngineTest, DestructuringArrayAndObjectAssignmentV66) {
+    clever::js::JSEngine engine;
+    auto result = EvaluateWithStatusV66(engine, R"(
+        var arr = [10, 20, 30];
+        var first, second, rest;
+        [first, second, ...rest] = arr;
+
+        var obj = { name: 'ada', age: 36, city: 'seoul' };
+        var name, age;
+        ({ name, age } = obj);
+
+        [first.toString(), second.toString(), rest.join('-'), name, age.toString()].join('|')
+    )");
+    EXPECT_TRUE(result.success) << engine.last_error();
+    EXPECT_EQ(result.value, "10|20|30|ada|36");
+}
+
+TEST(JSEngineTest, SpreadOperatorFunctionCallsV66) {
+    clever::js::JSEngine engine;
+    auto result = EvaluateWithStatusV66(engine, R"(
+        function sum4(a, b, c, d) {
+            return a + b + c + d;
+        }
+
+        function label(prefix) {
+            var parts = [];
+            for (var i = 1; i < arguments.length; ++i) {
+                parts.push(arguments[i].toString());
+            }
+            return prefix + ':' + parts.join(',');
+        }
+
+        var nums = [1, 2, 3];
+        var total = sum4(...nums, 4);
+        var tagged = label('n', ...nums);
+        tagged + '|' + total.toString()
+    )");
+    EXPECT_TRUE(result.success) << engine.last_error();
+    EXPECT_EQ(result.value, "n:1,2,3|10");
+}
+
+TEST(JSEngineTest, StringIncludesStartsWithEndsWithV66) {
+    clever::js::JSEngine engine;
+    auto result = EvaluateWithStatusV66(engine, R"(
+        var text = 'quickjs-browser';
+        [
+            text.includes('js').toString(),
+            text.startsWith('quick').toString(),
+            text.endsWith('browser').toString(),
+            text.includes('nope').toString()
+        ].join('|')
+    )");
+    EXPECT_TRUE(result.success) << engine.last_error();
+    EXPECT_EQ(result.value, "true|true|true|false");
+}
+
+TEST(JSEngineTest, ArrayFindAndFindIndexV66) {
+    clever::js::JSEngine engine;
+    auto result = EvaluateWithStatusV66(engine, R"(
+        var nums = [5, 12, 8, 130, 44];
+        var found = nums.find(function(v) { return v > 10; });
+        var foundIndex = nums.findIndex(function(v) { return v > 13; });
+        var missingIndex = nums.findIndex(function(v) { return v === 999; });
+        [found.toString(), foundIndex.toString(), missingIndex.toString()].join('|')
+    )");
+    EXPECT_TRUE(result.success) << engine.last_error();
+    EXPECT_EQ(result.value, "12|3|-1");
+}
+
+TEST(JSEngineTest, NumberIsFiniteIsNaNIsIntegerV66) {
+    clever::js::JSEngine engine;
+    auto result = EvaluateWithStatusV66(engine, R"(
+        [
+            Number.isFinite(10).toString(),
+            Number.isFinite(Infinity).toString(),
+            Number.isNaN(NaN).toString(),
+            Number.isNaN('NaN').toString(),
+            Number.isInteger(3).toString(),
+            Number.isInteger(3.14).toString()
+        ].join('|')
+    )");
+    EXPECT_TRUE(result.success) << engine.last_error();
+    EXPECT_EQ(result.value, "true|false|true|false|true|false");
+}
+
+TEST(JSEngineTest, ObjectAssignMergeBehaviorV66) {
+    clever::js::JSEngine engine;
+    auto result = EvaluateWithStatusV66(engine, R"(
+        var target = { a: 1, shared: 'old' };
+        var src1 = { b: 2, shared: 'new' };
+        var src2 = { c: 3 };
+        var merged = Object.assign({}, target, src1, src2);
+        [
+            merged.a.toString(),
+            merged.b.toString(),
+            merged.c.toString(),
+            merged.shared,
+            (target.shared === 'old').toString()
+        ].join('|')
+    )");
+    EXPECT_TRUE(result.success) << engine.last_error();
+    EXPECT_EQ(result.value, "1|2|3|new|true");
+}
+
+TEST(JSEngineTest, PromiseAllMultiplePromisesV66) {
+    clever::js::JSEngine engine;
+    auto setup = EvaluateWithStatusV66(engine, R"(
+        var promiseAllResultV66 = 'pending';
+        var p1 = Promise.resolve(2);
+        var p2 = new Promise(function(resolve) { resolve(3); });
+        var p3 = Promise.resolve(5);
+
+        Promise.all([p1, p2, p3]).then(function(values) {
+            var total = values[0] + values[1] + values[2];
+            promiseAllResultV66 = values.join(',') + '|' + total.toString();
+        });
+
+        'scheduled'
+    )");
+    EXPECT_TRUE(setup.success) << engine.last_error();
+    EXPECT_EQ(setup.value, "scheduled");
+
+    clever::js::flush_fetch_promise_jobs(engine.context());
+
+    auto result = EvaluateWithStatusV66(engine, "promiseAllResultV66");
+    EXPECT_TRUE(result.success) << engine.last_error();
+    EXPECT_EQ(result.value, "2,3,5|10");
+}

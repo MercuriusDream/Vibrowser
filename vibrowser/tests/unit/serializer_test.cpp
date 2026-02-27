@@ -10090,3 +10090,139 @@ TEST(SerializerTest, MixedStringBytesU32SequenceRoundTripV65) {
     EXPECT_EQ(d.read_u32(), uint32_t{200u});
     EXPECT_FALSE(d.has_remaining());
 }
+
+TEST(SerializerTest, Int64ValuesRoundTripV66) {
+    Serializer s;
+    const std::vector<int64_t> values = {
+        std::numeric_limits<int64_t>::min(),
+        -1234567890123456789LL,
+        -1,
+        0,
+        1,
+        1234567890123456789LL,
+        std::numeric_limits<int64_t>::max()
+    };
+
+    for (int64_t value : values) {
+        s.write_i64(value);
+    }
+
+    Deserializer d(s.data());
+    for (int64_t expected : values) {
+        EXPECT_EQ(d.read_i64(), expected);
+    }
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, FloatValuesRoundTripV66) {
+    Serializer s;
+    const std::vector<float> values = {
+        0.0f,
+        -0.5f,
+        1.25f,
+        -9876.5f,
+        std::numeric_limits<float>::max()
+    };
+
+    for (float value : values) {
+        s.write_f64(static_cast<double>(value));
+    }
+
+    Deserializer d(s.data());
+    for (float expected : values) {
+        EXPECT_FLOAT_EQ(static_cast<float>(d.read_f64()), expected);
+    }
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, EmptyStringFollowedByNonEmptyRoundTripV66) {
+    Serializer s;
+    s.write_string("");
+    s.write_string("hello-v66");
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "");
+    EXPECT_EQ(d.read_string(), "hello-v66");
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, InterleavedWritesDifferentTypesStressV66) {
+    Serializer s;
+
+    for (uint32_t i = 0; i < 200; ++i) {
+        s.write_u32(i);
+        s.write_i64(-static_cast<int64_t>(i) * 1111);
+        s.write_f64(static_cast<double>(i) * 0.125);
+        s.write_bool((i % 2) == 0);
+        s.write_string("msg-" + std::to_string(i));
+        const std::vector<uint8_t> one = {static_cast<uint8_t>(i & 0xFFu)};
+        s.write_bytes(one.data(), one.size());
+    }
+
+    Deserializer d(s.data());
+    for (uint32_t i = 0; i < 200; ++i) {
+        EXPECT_EQ(d.read_u32(), i);
+        EXPECT_EQ(d.read_i64(), -static_cast<int64_t>(i) * 1111);
+        EXPECT_DOUBLE_EQ(d.read_f64(), static_cast<double>(i) * 0.125);
+        EXPECT_EQ(d.read_bool(), (i % 2) == 0);
+        EXPECT_EQ(d.read_string(), "msg-" + std::to_string(i));
+        const auto bytes = d.read_bytes();
+        ASSERT_EQ(bytes.size(), 1u);
+        EXPECT_EQ(bytes[0], static_cast<uint8_t>(i & 0xFFu));
+    }
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, ReadPastEndReturnsErrorV66) {
+    Serializer s;
+    s.write_u32(123456u);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u32(), 123456u);
+    EXPECT_THROW(d.read_u8(), std::runtime_error);
+}
+
+TEST(SerializerTest, VeryLargeBufferRoundTrip10000BytesV66) {
+    Serializer s;
+    std::vector<uint8_t> big(10000);
+    for (size_t i = 0; i < big.size(); ++i) {
+        big[i] = static_cast<uint8_t>(i % 251);
+    }
+
+    s.write_bytes(big.data(), big.size());
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_bytes(), big);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, BoolStringU32PatternRepeatedManyTimesV66) {
+    Serializer s;
+
+    for (uint32_t i = 0; i < 300; ++i) {
+        s.write_bool((i % 3) == 0);
+        s.write_string("item-" + std::to_string(i));
+        s.write_u32(100000u + i);
+    }
+
+    Deserializer d(s.data());
+    for (uint32_t i = 0; i < 300; ++i) {
+        EXPECT_EQ(d.read_bool(), (i % 3) == 0);
+        EXPECT_EQ(d.read_string(), "item-" + std::to_string(i));
+        EXPECT_EQ(d.read_u32(), 100000u + i);
+    }
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, WriteBytesExactOneBytePayloadV66) {
+    Serializer s;
+    const uint8_t byte = 0xAB;
+
+    s.write_bytes(&byte, 1);
+
+    Deserializer d(s.data());
+    const auto result = d.read_bytes();
+    ASSERT_EQ(result.size(), 1u);
+    EXPECT_EQ(result[0], byte);
+    EXPECT_FALSE(d.has_remaining());
+}

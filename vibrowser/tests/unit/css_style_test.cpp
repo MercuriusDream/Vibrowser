@@ -12927,3 +12927,124 @@ TEST(PropertyCascadeTest, LetterSpacingParsesPixelValueV65) {
 
     EXPECT_FLOAT_EQ(style.letter_spacing.to_px(16.0f), 2.0f);
 }
+
+TEST(PropertyCascadeTest, FontWeightBoldResolvesTo700V66) {
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet("p { font-weight: bold; }");
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "p";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.font_weight, 700);
+}
+
+TEST(PropertyCascadeTest, FontStyleItalicParsesV66) {
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet("em { font-style: italic; }");
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "em";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.font_style, FontStyle::Italic);
+}
+
+TEST(PropertyCascadeTest, ColorRedResolvesToRgb255000V66) {
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet("span { color: red; }");
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "span";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.color.r, 255);
+    EXPECT_EQ(style.color.g, 0);
+    EXPECT_EQ(style.color.b, 0);
+    EXPECT_EQ(style.color.a, 255);
+}
+
+TEST(PropertyCascadeTest, MarginShorthandFourValueParsesV66) {
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet("div { margin: 1px 2px 3px 4px; }");
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_FLOAT_EQ(style.margin.top.value, 1.0f);
+    EXPECT_FLOAT_EQ(style.margin.right.value, 2.0f);
+    EXPECT_FLOAT_EQ(style.margin.bottom.value, 3.0f);
+    EXPECT_FLOAT_EQ(style.margin.left.value, 4.0f);
+}
+
+TEST(PropertyCascadeTest, PaddingShorthandTwoValueParsesV66) {
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet("div { padding: 6px 9px; }");
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_FLOAT_EQ(style.padding.top.to_px(16.0f), 6.0f);
+    EXPECT_FLOAT_EQ(style.padding.right.to_px(16.0f), 9.0f);
+    EXPECT_FLOAT_EQ(style.padding.bottom.to_px(16.0f), 6.0f);
+    EXPECT_FLOAT_EQ(style.padding.left.to_px(16.0f), 9.0f);
+}
+
+TEST(PropertyCascadeTest, BorderRadiusSingleValueParsesV66) {
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet("div { border-radius: 14px; }");
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_FLOAT_EQ(style.border_radius, 14.0f);
+}
+
+TEST(PropertyCascadeTest, WordSpacingPixelValueParsesV66) {
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet("p { word-spacing: 5px; }");
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "p";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_FLOAT_EQ(style.word_spacing.to_px(16.0f), 5.0f);
+}
+
+TEST(PropertyCascadeTest, CursorPointerEnumValueParsesV66) {
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet("a { cursor: pointer; }");
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "a";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.cursor, Cursor::Pointer);
+}

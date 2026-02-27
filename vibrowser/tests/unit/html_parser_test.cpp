@@ -10651,3 +10651,154 @@ TEST(HtmlParserTest, EmptyBodyHasNoChildrenOrTextV65) {
     EXPECT_TRUE(body->children.empty());
     EXPECT_TRUE(body->text_content().empty());
 }
+
+TEST(HTMLParserTest, SelfClosingBrHrImgTagsV66) {
+    auto doc = clever::html::parse("<body>start<br><hr><img src='hero.png' alt='hero'>end</body>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* body = doc->find_element("body");
+    auto* br = doc->find_element("br");
+    auto* hr = doc->find_element("hr");
+    auto* img = doc->find_element("img");
+    ASSERT_NE(body, nullptr);
+    ASSERT_NE(br, nullptr);
+    ASSERT_NE(hr, nullptr);
+    ASSERT_NE(img, nullptr);
+
+    EXPECT_EQ(br->tag_name, "br");
+    EXPECT_EQ(hr->tag_name, "hr");
+    EXPECT_EQ(img->tag_name, "img");
+    EXPECT_TRUE(br->children.empty());
+    EXPECT_TRUE(hr->children.empty());
+    EXPECT_TRUE(img->children.empty());
+    EXPECT_EQ(img->parent, body);
+    EXPECT_EQ(get_attr_v63(img, "src"), "hero.png");
+    EXPECT_EQ(get_attr_v63(img, "alt"), "hero");
+}
+
+TEST(HTMLParserTest, NestedDivStructureDepthV66) {
+    auto doc = clever::html::parse(
+        "<body>"
+        "<div id='d1'><div id='d2'><div id='d3'><div id='d4'><div id='d5'>deep</div></div></div></div></div>"
+        "</body>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* body = doc->find_element("body");
+    ASSERT_NE(body, nullptr);
+
+    auto divs = doc->find_all_elements("div");
+    ASSERT_EQ(divs.size(), 5u);
+
+    const clever::html::SimpleNode* d1 = nullptr;
+    const clever::html::SimpleNode* d2 = nullptr;
+    const clever::html::SimpleNode* d3 = nullptr;
+    const clever::html::SimpleNode* d4 = nullptr;
+    const clever::html::SimpleNode* d5 = nullptr;
+    for (const auto* div : divs) {
+        const std::string id = get_attr_v63(div, "id");
+        if (id == "d1") d1 = div;
+        if (id == "d2") d2 = div;
+        if (id == "d3") d3 = div;
+        if (id == "d4") d4 = div;
+        if (id == "d5") d5 = div;
+    }
+
+    ASSERT_NE(d1, nullptr);
+    ASSERT_NE(d2, nullptr);
+    ASSERT_NE(d3, nullptr);
+    ASSERT_NE(d4, nullptr);
+    ASSERT_NE(d5, nullptr);
+    EXPECT_EQ(d1->parent, body);
+    EXPECT_EQ(d2->parent, d1);
+    EXPECT_EQ(d3->parent, d2);
+    EXPECT_EQ(d4->parent, d3);
+    EXPECT_EQ(d5->parent, d4);
+    EXPECT_EQ(d5->text_content(), "deep");
+}
+
+TEST(HTMLParserTest, AttributeWithEmptyValueV66) {
+    auto doc = clever::html::parse("<div data-empty=\"\" title='present'>x</div>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* div = doc->find_element("div");
+    ASSERT_NE(div, nullptr);
+    EXPECT_EQ(div->tag_name, "div");
+    EXPECT_EQ(get_attr_v63(div, "data-empty"), "");
+    EXPECT_EQ(get_attr_v63(div, "title"), "present");
+}
+
+TEST(HTMLParserTest, BooleanAttributesDisabledAndCheckedV66) {
+    auto doc = clever::html::parse("<input type='checkbox' disabled checked>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* input = doc->find_element("input");
+    ASSERT_NE(input, nullptr);
+
+    bool has_disabled = false;
+    bool has_checked = false;
+    for (const auto& attr : input->attributes) {
+        if (attr.name == "disabled") has_disabled = true;
+        if (attr.name == "checked") has_checked = true;
+    }
+    EXPECT_TRUE(has_disabled);
+    EXPECT_TRUE(has_checked);
+    EXPECT_EQ(get_attr_v63(input, "type"), "checkbox");
+}
+
+TEST(HTMLParserTest, MultipleClassesInClassAttributeV66) {
+    auto doc = clever::html::parse("<div class='card primary selected'>content</div>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* div = doc->find_element("div");
+    ASSERT_NE(div, nullptr);
+
+    const std::string cls = get_attr_v63(div, "class");
+    EXPECT_EQ(cls, "card primary selected");
+    EXPECT_NE(cls.find("card"), std::string::npos);
+    EXPECT_NE(cls.find("primary"), std::string::npos);
+    EXPECT_NE(cls.find("selected"), std::string::npos);
+}
+
+TEST(HTMLParserTest, DataCustomAttributesV66) {
+    auto doc = clever::html::parse("<section data-user-id='42' data-role='admin' data-active='true'></section>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* section = doc->find_element("section");
+    ASSERT_NE(section, nullptr);
+    EXPECT_EQ(section->tag_name, "section");
+    EXPECT_EQ(get_attr_v63(section, "data-user-id"), "42");
+    EXPECT_EQ(get_attr_v63(section, "data-role"), "admin");
+    EXPECT_EQ(get_attr_v63(section, "data-active"), "true");
+}
+
+TEST(HTMLParserTest, DoctypeParsingV66) {
+    auto doc = clever::html::parse("<!DOCTYPE html><html><body><p>ok</p></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    bool found_doctype = false;
+    for (const auto& child : doc->children) {
+        if (child->type == clever::html::SimpleNode::DocumentType) {
+            found_doctype = true;
+            EXPECT_EQ(child->doctype_name, "html");
+        }
+    }
+    EXPECT_TRUE(found_doctype);
+}
+
+TEST(HTMLParserTest, CommentNodesInTreeV66) {
+    auto doc = clever::html::parse("<body>left<!-- note -->right</body>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* body = doc->find_element("body");
+    ASSERT_NE(body, nullptr);
+
+    bool found_comment = false;
+    for (const auto& child : body->children) {
+        if (child->type == clever::html::SimpleNode::Comment) {
+            found_comment = true;
+            EXPECT_TRUE(child->tag_name.empty());
+            EXPECT_EQ(child->data, " note ");
+        }
+    }
+    EXPECT_TRUE(found_comment);
+}

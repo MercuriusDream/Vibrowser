@@ -12126,3 +12126,246 @@ TEST(ResponseTest, ParseHeaderWithColonsInValueV65) {
     ASSERT_TRUE(value.has_value());
     EXPECT_EQ(*value, "https://example.com:8443/path:segment");
 }
+
+// ===========================================================================
+// V66: 16 new HTTP client/request/response tests
+// ===========================================================================
+
+TEST(RequestTest, PatchMethodSerializesRequestLineAndBodyLengthV66) {
+    Request req;
+    req.method = Method::PATCH;
+    req.host = "api.example.com";
+    req.path = "/v1/items/42";
+    req.body = {'{', '}', '\n'};
+
+    auto bytes = req.serialize();
+    std::string serialized(bytes.begin(), bytes.end());
+
+    EXPECT_TRUE(serialized.find("PATCH /v1/items/42 HTTP/1.1\r\n") != std::string::npos);
+    EXPECT_TRUE(serialized.find("Content-Length: 3\r\n") != std::string::npos);
+}
+
+TEST(RequestTest, PutLargeBodySetsContentLengthAndPreservesPayloadV66) {
+    Request req;
+    req.method = Method::PUT;
+    req.host = "upload.example.com";
+    req.path = "/bulk";
+    req.body.assign(65536, static_cast<uint8_t>('A'));
+    req.body[0] = static_cast<uint8_t>('B');
+    req.body[req.body.size() - 1] = static_cast<uint8_t>('C');
+
+    auto bytes = req.serialize();
+    std::string serialized(bytes.begin(), bytes.end());
+
+    EXPECT_TRUE(serialized.find("PUT /bulk HTTP/1.1\r\n") != std::string::npos);
+    EXPECT_TRUE(serialized.find("Content-Length: 65536\r\n") != std::string::npos);
+    ASSERT_GE(bytes.size(), req.body.size());
+    EXPECT_EQ(bytes[bytes.size() - req.body.size()], static_cast<uint8_t>('B'));
+    EXPECT_EQ(bytes.back(), static_cast<uint8_t>('C'));
+}
+
+TEST(HeaderMapTest, HeaderCaseNormalizationAcrossOperationsV66) {
+    HeaderMap headers;
+    headers.set("X-CuStOm-HeAdEr", "v1");
+
+    ASSERT_TRUE(headers.get("x-custom-header").has_value());
+    EXPECT_EQ(headers.get("X-CUSTOM-HEADER").value(), "v1");
+    EXPECT_TRUE(headers.has("x-custom-header"));
+    EXPECT_TRUE(headers.has("X-CUSTOM-HEADER"));
+
+    headers.remove("x-CuStoM-HEader");
+    EXPECT_FALSE(headers.has("x-custom-header"));
+    EXPECT_FALSE(headers.get("X-CUSTOM-HEADER").has_value());
+}
+
+TEST(HeaderMapTest, AppendStoresMultipleSameNameHeadersV66) {
+    HeaderMap headers;
+    headers.append("Set-Cookie", "sid=abc");
+    headers.append("set-cookie", "theme=dark");
+    headers.append("SET-COOKIE", "lang=en");
+
+    auto values = headers.get_all("set-cookie");
+    ASSERT_EQ(values.size(), 3u);
+    EXPECT_TRUE(std::find(values.begin(), values.end(), "sid=abc") != values.end());
+    EXPECT_TRUE(std::find(values.begin(), values.end(), "theme=dark") != values.end());
+    EXPECT_TRUE(std::find(values.begin(), values.end(), "lang=en") != values.end());
+}
+
+TEST(RequestTest, EmptyBodyPostSerializesWithoutContentLengthV66) {
+    Request req;
+    req.method = Method::POST;
+    req.host = "example.com";
+    req.path = "/submit";
+
+    auto bytes = req.serialize();
+    std::string serialized(bytes.begin(), bytes.end());
+
+    EXPECT_TRUE(serialized.find("POST /submit HTTP/1.1\r\n") != std::string::npos);
+    EXPECT_TRUE(serialized.find("Content-Length:") == std::string::npos);
+    EXPECT_TRUE(serialized.find("\r\n\r\n") != std::string::npos);
+}
+
+TEST(RequestTest, SerializeAddsConnectionKeepAliveByDefaultV66) {
+    Request req;
+    req.method = Method::GET;
+    req.host = "example.com";
+    req.path = "/";
+
+    auto bytes = req.serialize();
+    std::string serialized(bytes.begin(), bytes.end());
+
+    EXPECT_TRUE(serialized.find("Connection: keep-alive\r\n") != std::string::npos);
+}
+
+TEST(ResponseTest, ParseTransferEncodingChunkedResponseV66) {
+    std::string raw =
+        "HTTP/1.1 200 OK\r\n"
+        "Transfer-Encoding: chunked\r\n"
+        "\r\n"
+        "4\r\n"
+        "Wiki\r\n"
+        "5\r\n"
+        "pedia\r\n"
+        "0\r\n"
+        "\r\n";
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 200u);
+    ASSERT_TRUE(resp->headers.get("transfer-encoding").has_value());
+    EXPECT_EQ(resp->headers.get("transfer-encoding").value(), "chunked");
+    EXPECT_EQ(resp->body_as_string(), "Wikipedia");
+}
+
+TEST(ResponseTest, Parse204NoContentResponseV66) {
+    std::string raw =
+        "HTTP/1.1 204 No Content\r\n"
+        "Date: Fri, 27 Feb 2026 12:00:00 GMT\r\n"
+        "\r\n";
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 204u);
+    EXPECT_TRUE(resp->body.empty());
+}
+
+TEST(ResponseTest, Parse100ContinueStatusCodeV66) {
+    std::string raw =
+        "HTTP/1.1 100 Continue\r\n"
+        "\r\n";
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 100u);
+}
+
+TEST(RequestTest, SerializeIncludesDefaultAcceptEncodingHeaderV66) {
+    Request req;
+    req.method = Method::GET;
+    req.host = "example.com";
+    req.path = "/";
+
+    auto bytes = req.serialize();
+    std::string serialized(bytes.begin(), bytes.end());
+
+    EXPECT_TRUE(serialized.find("Accept-Encoding: gzip, deflate\r\n") != std::string::npos);
+}
+
+TEST(ResponseTest, ParseRedirectExtractsLocationHeaderV66) {
+    std::string raw =
+        "HTTP/1.1 302 Found\r\n"
+        "Location: https://example.com/new-path\r\n"
+        "Content-Length: 0\r\n"
+        "\r\n";
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 302u);
+    ASSERT_TRUE(resp->headers.get("location").has_value());
+    EXPECT_EQ(resp->headers.get("location").value(), "https://example.com/new-path");
+}
+
+TEST(RequestTest, CookieHeaderRoundTripInSerializedRequestV66) {
+    Request req;
+    req.method = Method::GET;
+    req.host = "example.com";
+    req.path = "/profile";
+    req.headers.set("Cookie", "sid=abc123; theme=dark");
+
+    auto bytes = req.serialize();
+    std::string serialized(bytes.begin(), bytes.end());
+
+    EXPECT_TRUE(serialized.find("cookie: sid=abc123; theme=dark\r\n") != std::string::npos);
+}
+
+TEST(ResponseTest, ParseResponseWithNoHeadersV66) {
+    std::string raw =
+        "HTTP/1.1 200 OK\r\n"
+        "\r\n"
+        "Hello";
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 200u);
+    EXPECT_TRUE(resp->headers.empty());
+    EXPECT_EQ(resp->body_as_string(), "Hello");
+}
+
+TEST(ResponseTest, ParsePreservesBinaryBodyDataV66) {
+    std::string header =
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Length: 6\r\n"
+        "\r\n";
+    std::vector<uint8_t> raw(header.begin(), header.end());
+    std::vector<uint8_t> payload = {
+        0x00, 0xFF, 0x10, 0x7F, static_cast<uint8_t>('\r'), static_cast<uint8_t>('\n')
+    };
+    raw.insert(raw.end(), payload.begin(), payload.end());
+
+    auto resp = Response::parse(raw);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 200u);
+    EXPECT_EQ(resp->body.size(), payload.size());
+    EXPECT_EQ(resp->body, payload);
+}
+
+TEST(ResponseTest, ParseSingleHeaderValuePreservedV66) {
+    std::string raw =
+        "HTTP/1.1 200 OK\r\n"
+        "X-Trace: abc\r\n"
+        "Content-Length: 0\r\n"
+        "\r\n";
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value());
+    ASSERT_TRUE(resp->headers.get("x-trace").has_value());
+    EXPECT_EQ(resp->headers.get("x-trace").value(), "abc");
+}
+
+TEST(RequestTest, HostHeaderAutoGeneratedFromRequestFieldsV66) {
+    Request req;
+    req.method = Method::GET;
+    req.host = "service.example.com";
+    req.port = 8081;
+    req.path = "/healthz";
+    req.headers.set("Host", "malicious.example.com");
+
+    auto bytes = req.serialize();
+    std::string serialized(bytes.begin(), bytes.end());
+
+    EXPECT_TRUE(serialized.find("Host: service.example.com:8081\r\n") != std::string::npos);
+    EXPECT_TRUE(serialized.find("host: malicious.example.com\r\n") == std::string::npos);
+}

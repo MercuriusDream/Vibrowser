@@ -10675,3 +10675,314 @@ TEST(DomNode, ChildCountingUsesChildrenVectorAcrossMutationsV65) {
     EXPECT_EQ(root.first_child(), middle_ptr);
     EXPECT_EQ(root.last_child(), middle_ptr);
 }
+
+TEST(DOMTest, DeepTreeRecursiveChildTraversalV66) {
+    Element root("root");
+
+    auto section = std::make_unique<Element>("section");
+    section->append_child(std::make_unique<Text>("alpha"));
+
+    auto article = std::make_unique<Element>("article");
+    auto aside = std::make_unique<Element>("aside");
+    aside->append_child(std::make_unique<Comment>("meta"));
+    article->append_child(std::move(aside));
+
+    root.append_child(std::move(section));
+    root.append_child(std::move(article));
+    root.append_child(std::make_unique<Text>("omega"));
+
+    std::vector<NodeType> preorder_types;
+    auto walk = [&](auto&& self, const Node& node) -> void {
+        for (Node* child = node.first_child(); child != nullptr; child = child->next_sibling()) {
+            preorder_types.push_back(child->node_type());
+            self(self, *child);
+        }
+    };
+    walk(walk, root);
+
+    ASSERT_EQ(preorder_types.size(), 6u);
+    EXPECT_EQ(preorder_types[0], NodeType::Element);
+    EXPECT_EQ(preorder_types[1], NodeType::Text);
+    EXPECT_EQ(preorder_types[2], NodeType::Element);
+    EXPECT_EQ(preorder_types[3], NodeType::Element);
+    EXPECT_EQ(preorder_types[4], NodeType::Comment);
+    EXPECT_EQ(preorder_types[5], NodeType::Text);
+    EXPECT_EQ(root.text_content(), "alphaomega");
+}
+
+TEST(DOMTest, ReplaceChildSemanticsMaintainOrderAndParentLinksV66) {
+    auto parent = std::make_unique<Element>("div");
+    auto first = std::make_unique<Element>("first");
+    auto middle = std::make_unique<Element>("middle");
+    auto last = std::make_unique<Element>("last");
+
+    Element* first_ptr = first.get();
+    Element* middle_ptr = middle.get();
+    Element* last_ptr = last.get();
+
+    parent->append_child(std::move(first));
+    parent->append_child(std::move(middle));
+    parent->append_child(std::move(last));
+
+    auto replacement = std::make_unique<Element>("replacement");
+    Element* replacement_ptr = replacement.get();
+    Node* reference_after_removed = middle_ptr->next_sibling();
+
+    auto removed = parent->remove_child(*middle_ptr);
+    parent->insert_before(std::move(replacement), reference_after_removed);
+
+    EXPECT_EQ(removed.get(), middle_ptr);
+    EXPECT_EQ(removed->parent(), nullptr);
+    EXPECT_EQ(parent->child_count(), 3u);
+    EXPECT_EQ(parent->first_child(), first_ptr);
+    EXPECT_EQ(first_ptr->next_sibling(), replacement_ptr);
+    EXPECT_EQ(replacement_ptr->previous_sibling(), first_ptr);
+    EXPECT_EQ(replacement_ptr->next_sibling(), last_ptr);
+    EXPECT_EQ(last_ptr->previous_sibling(), replacement_ptr);
+    EXPECT_EQ(parent->last_child(), last_ptr);
+}
+
+TEST(DOMTest, InsertBeforeAtBeginningMiddleAndEndV66) {
+    auto parent = std::make_unique<Element>("list");
+
+    auto item_a = std::make_unique<Element>("a");
+    auto item_c = std::make_unique<Element>("c");
+    Element* a_ptr = item_a.get();
+    Element* c_ptr = item_c.get();
+
+    parent->append_child(std::move(item_a));
+    parent->append_child(std::move(item_c));
+
+    auto item_b = std::make_unique<Element>("b");
+    Element* b_ptr = item_b.get();
+    parent->insert_before(std::move(item_b), c_ptr);
+
+    auto item_start = std::make_unique<Element>("start");
+    Element* start_ptr = item_start.get();
+    parent->insert_before(std::move(item_start), a_ptr);
+
+    auto item_end = std::make_unique<Element>("end");
+    Element* end_ptr = item_end.get();
+    parent->insert_before(std::move(item_end), nullptr);
+
+    ASSERT_EQ(parent->child_count(), 5u);
+    EXPECT_EQ(parent->first_child(), start_ptr);
+    EXPECT_EQ(parent->last_child(), end_ptr);
+    EXPECT_EQ(start_ptr->next_sibling(), a_ptr);
+    EXPECT_EQ(a_ptr->next_sibling(), b_ptr);
+    EXPECT_EQ(b_ptr->next_sibling(), c_ptr);
+    EXPECT_EQ(c_ptr->next_sibling(), end_ptr);
+    EXPECT_EQ(end_ptr->previous_sibling(), c_ptr);
+}
+
+TEST(DOMTest, DocumentFragmentAppendMovesChildrenToParentV66) {
+    class FragmentNode final : public Node {
+    public:
+        FragmentNode() : Node(NodeType::DocumentFragment) {}
+    };
+
+    auto fragment = std::make_unique<FragmentNode>();
+    auto li = std::make_unique<Element>("li");
+    auto text = std::make_unique<Text>("item");
+    auto comment = std::make_unique<Comment>("meta");
+
+    Element* li_ptr = li.get();
+    Text* text_ptr = text.get();
+    Comment* comment_ptr = comment.get();
+
+    fragment->append_child(std::move(li));
+    fragment->append_child(std::move(text));
+    fragment->append_child(std::move(comment));
+
+    Element parent("ul");
+    while (fragment->first_child() != nullptr) {
+        Node* child = fragment->first_child();
+        parent.append_child(fragment->remove_child(*child));
+    }
+
+    EXPECT_EQ(fragment->child_count(), 0u);
+    ASSERT_EQ(parent.child_count(), 3u);
+    EXPECT_EQ(parent.first_child(), li_ptr);
+    EXPECT_EQ(li_ptr->next_sibling(), text_ptr);
+    EXPECT_EQ(text_ptr->next_sibling(), comment_ptr);
+    EXPECT_EQ(parent.last_child(), comment_ptr);
+    EXPECT_EQ(li_ptr->parent(), &parent);
+    EXPECT_EQ(text_ptr->parent(), &parent);
+    EXPECT_EQ(comment_ptr->parent(), &parent);
+}
+
+TEST(DOMTest, NodeValueSemanticsForTextAndCommentNodesV66) {
+    Text text("hello");
+    Comment comment("world");
+    Element element("div");
+
+    EXPECT_EQ(text.data(), "hello");
+    EXPECT_EQ(comment.data(), "world");
+    EXPECT_EQ(element.text_content(), "");
+
+    text.set_data("HELLO");
+    comment.set_data("WORLD");
+
+    EXPECT_EQ(text.data(), "HELLO");
+    EXPECT_EQ(comment.data(), "WORLD");
+}
+
+TEST(DOMTest, HasChildNodesEdgeCasesAcrossMutationsV66) {
+    auto has_child_nodes = [](const Node& node) {
+        return node.first_child() != nullptr;
+    };
+
+    Document doc;
+    Element parent("div");
+    EXPECT_FALSE(has_child_nodes(doc));
+    EXPECT_FALSE(has_child_nodes(parent));
+
+    auto child_for_doc = std::make_unique<Element>("html");
+    Element* child_for_doc_ptr = child_for_doc.get();
+    doc.append_child(std::move(child_for_doc));
+    EXPECT_TRUE(has_child_nodes(doc));
+
+    auto removed_from_doc = doc.remove_child(*child_for_doc_ptr);
+    EXPECT_NE(removed_from_doc, nullptr);
+    EXPECT_FALSE(has_child_nodes(doc));
+
+    auto text = std::make_unique<Text>("x");
+    Text* text_ptr = text.get();
+    parent.append_child(std::move(text));
+    EXPECT_TRUE(has_child_nodes(parent));
+
+    auto removed_from_parent = parent.remove_child(*text_ptr);
+    EXPECT_NE(removed_from_parent, nullptr);
+    EXPECT_FALSE(has_child_nodes(parent));
+}
+
+TEST(DOMTest, NormalizeMergesAdjacentTextNodesV66) {
+    auto normalize = [&](auto&& self, Node& node) -> void {
+        Node* child = node.first_child();
+        while (child != nullptr) {
+            Node* next = child->next_sibling();
+            if (child->node_type() == NodeType::Text) {
+                auto* text = static_cast<Text*>(child);
+                while (next != nullptr && next->node_type() == NodeType::Text) {
+                    auto* next_text = static_cast<Text*>(next);
+                    text->set_data(text->data() + next_text->data());
+                    Node* after_next = next->next_sibling();
+                    node.remove_child(*next);
+                    next = after_next;
+                }
+                if (text->data().empty()) {
+                    Node* after_empty = text->next_sibling();
+                    node.remove_child(*text);
+                    child = after_empty;
+                    continue;
+                }
+            } else {
+                self(self, *child);
+            }
+            child = next;
+        }
+    };
+
+    Element root("div");
+    root.append_child(std::make_unique<Text>("Hello"));
+    root.append_child(std::make_unique<Text>(" "));
+    root.append_child(std::make_unique<Text>("World"));
+    root.append_child(std::make_unique<Comment>("!"));
+    root.append_child(std::make_unique<Text>(""));
+
+    auto span = std::make_unique<Element>("span");
+    span->append_child(std::make_unique<Text>("A"));
+    span->append_child(std::make_unique<Text>(""));
+    span->append_child(std::make_unique<Text>("B"));
+    Element* span_ptr = span.get();
+    root.append_child(std::move(span));
+
+    normalize(normalize, root);
+
+    ASSERT_EQ(root.child_count(), 3u);
+    ASSERT_NE(root.first_child(), nullptr);
+    ASSERT_EQ(root.first_child()->node_type(), NodeType::Text);
+    EXPECT_EQ(static_cast<Text*>(root.first_child())->data(), "Hello World");
+    EXPECT_EQ(root.first_child()->next_sibling()->node_type(), NodeType::Comment);
+    EXPECT_EQ(root.last_child(), span_ptr);
+    EXPECT_EQ(root.text_content(), "Hello WorldAB");
+    ASSERT_EQ(span_ptr->child_count(), 1u);
+    ASSERT_NE(span_ptr->first_child(), nullptr);
+    EXPECT_EQ(static_cast<Text*>(span_ptr->first_child())->data(), "AB");
+}
+
+TEST(DOMTest, CompareDocumentPositionBasicsV66) {
+    constexpr unsigned kDisconnected = 0x01;
+    constexpr unsigned kPreceding = 0x02;
+    constexpr unsigned kFollowing = 0x04;
+    constexpr unsigned kContains = 0x08;
+    constexpr unsigned kContainedBy = 0x10;
+
+    auto compare_document_position = [&](const Node& a, const Node& b) -> unsigned {
+        if (&a == &b) {
+            return 0;
+        }
+
+        std::vector<const Node*> path_a;
+        std::vector<const Node*> path_b;
+        for (const Node* n = &a; n != nullptr; n = n->parent()) {
+            path_a.insert(path_a.begin(), n);
+        }
+        for (const Node* n = &b; n != nullptr; n = n->parent()) {
+            path_b.insert(path_b.begin(), n);
+        }
+
+        if (path_a.front() != path_b.front()) {
+            return kDisconnected;
+        }
+
+        for (const Node* n = &b; n != nullptr; n = n->parent()) {
+            if (n == &a) {
+                return kContains | kPreceding;
+            }
+        }
+        for (const Node* n = &a; n != nullptr; n = n->parent()) {
+            if (n == &b) {
+                return kContainedBy | kFollowing;
+            }
+        }
+
+        size_t i = 0;
+        while (i < path_a.size() && i < path_b.size() && path_a[i] == path_b[i]) {
+            ++i;
+        }
+
+        const Node* branch_a = path_a[i];
+        const Node* branch_b = path_b[i];
+        for (const Node* n = branch_a->previous_sibling(); n != nullptr; n = n->previous_sibling()) {
+            if (n == branch_b) {
+                return kFollowing;
+            }
+        }
+        return kPreceding;
+    };
+
+    auto root = std::make_unique<Element>("root");
+    auto left = std::make_unique<Element>("left");
+    auto right = std::make_unique<Element>("right");
+    auto leaf = std::make_unique<Element>("leaf");
+
+    Element* left_ptr = left.get();
+    Element* right_ptr = right.get();
+    Element* leaf_ptr = leaf.get();
+
+    left->append_child(std::move(leaf));
+    root->append_child(std::move(left));
+    root->append_child(std::move(right));
+
+    Element disconnected("outside");
+
+    EXPECT_EQ(compare_document_position(*root, *left_ptr), kContains | kPreceding);
+    EXPECT_EQ(compare_document_position(*left_ptr, *root), kContainedBy | kFollowing);
+    EXPECT_EQ(compare_document_position(*left_ptr, *right_ptr), kPreceding);
+    EXPECT_EQ(compare_document_position(*right_ptr, *left_ptr), kFollowing);
+    EXPECT_EQ(compare_document_position(*left_ptr, *leaf_ptr), kContains | kPreceding);
+    EXPECT_EQ(compare_document_position(*leaf_ptr, *left_ptr), kContainedBy | kFollowing);
+    EXPECT_EQ(compare_document_position(*left_ptr, *left_ptr), 0u);
+    EXPECT_EQ(compare_document_position(*root, disconnected), kDisconnected);
+}

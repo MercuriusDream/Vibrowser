@@ -2079,6 +2079,150 @@ TEST(URLParser, LocalhostHostParsed) {
     EXPECT_EQ(result->host, "localhost");
 }
 
+// =============================================================================
+// V66: targeted URL parser coverage
+// =============================================================================
+
+TEST(URLParserTest, IPv6BracketAddressWithPortV66) {
+    auto result = parse("http://[2001:db8::1]:8080/ipv6");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->host, "[2001:db8::1]");
+    ASSERT_TRUE(result->port.has_value());
+    EXPECT_EQ(result->port.value(), 8080);
+    EXPECT_EQ(result->path, "/ipv6");
+}
+
+TEST(URLParserTest, PortNumberExtractionFromAuthorityV66) {
+    auto result = parse("https://example.com:8443/path");
+    ASSERT_TRUE(result.has_value());
+    ASSERT_TRUE(result->port.has_value());
+    EXPECT_EQ(result->port.value(), 8443);
+    EXPECT_EQ(result->host, "example.com");
+}
+
+TEST(URLParserTest, FragmentDoubleEncodesPercentSequenceV66) {
+    auto result = parse("https://example.com/path#frag%20here");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->fragment, "frag%2520here");
+}
+
+TEST(URLParserTest, UsernamePasswordInAuthorityV66) {
+    auto result = parse("https://alice:secret@example.com/private");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->username, "alice");
+    EXPECT_EQ(result->password, "secret");
+    EXPECT_EQ(result->host, "example.com");
+}
+
+TEST(URLParserTest, RelativeResolutionDoubleEncodesPercentInPathV66) {
+    auto base = parse("https://example.com/dir/index.html");
+    ASSERT_TRUE(base.has_value());
+
+    auto result = parse("asset%20v66.png", &base.value());
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/dir/asset%2520v66.png");
+}
+
+TEST(URLParserTest, SchemeRelativeUrlUsesBaseSchemeV66) {
+    auto base = parse("https://base.example.com/start");
+    ASSERT_TRUE(base.has_value());
+
+    auto result = parse("//cdn.example.com/lib.js", &base.value());
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "cdn.example.com");
+    EXPECT_EQ(result->path, "/lib.js");
+}
+
+TEST(URLParserTest, EmptyPathSegmentsArePreservedV66) {
+    auto result = parse("https://example.com/a//b/");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->path, "/a//b/");
+}
+
+TEST(URLParserTest, TrailingDotInHostnamePreservedV66) {
+    auto result = parse("https://example.com./");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->host, "example.com.");
+}
+
+TEST(URLParserTest, VeryLongUrlPathParsesV66) {
+    std::string long_segment(1200, 'a');
+    std::string input = "https://example.com/" + long_segment;
+    auto result = parse(input);
+    ASSERT_TRUE(result.has_value());
+    ASSERT_FALSE(result->path.empty());
+    EXPECT_EQ(result->path.size(), long_segment.size() + 1);
+}
+
+TEST(URLParserTest, PunycodeAcceptedAndUnicodeIdnRejectedV66) {
+    auto puny = parse("https://XN--BCHER-KVA.example/");
+    ASSERT_TRUE(puny.has_value());
+    EXPECT_EQ(puny->host, "xn--bcher-kva.example");
+
+    auto unicode = parse("https://bücher.example/");
+    EXPECT_FALSE(unicode.has_value());
+}
+
+TEST(URLParserTest, MissingSchemeDefaultsToBaseForRelativeV66) {
+    auto base = parse("https://example.com/dir/page.html");
+    ASSERT_TRUE(base.has_value());
+
+    auto result = parse("next/page", &base.value());
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/dir/next/page");
+}
+
+TEST(URLParserTest, QueryOnlyRelativeKeepsBasePathAndDoubleEncodesPercentV66) {
+    auto base = parse("https://example.com/dir/page");
+    ASSERT_TRUE(base.has_value());
+
+    auto result = parse("?q=%20", &base.value());
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->path, "/dir/page");
+    EXPECT_EQ(result->query, "q=%2520");
+}
+
+TEST(URLParserTest, HashOnlyRelativeKeepsBaseQueryAndDoubleEncodesPercentV66) {
+    auto base = parse("https://example.com/dir/page?q=1");
+    ASSERT_TRUE(base.has_value());
+
+    auto result = parse("#frag%20v66", &base.value());
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->path, "/dir/page");
+    EXPECT_EQ(result->query, "q=1");
+    EXPECT_EQ(result->fragment, "frag%2520v66");
+}
+
+TEST(URLParserTest, MultipleConsecutiveSlashesInPathPreservedV66) {
+    auto result = parse("https://example.com///a////b");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->path, "///a////b");
+}
+
+TEST(URLParserTest, FileSchemeUrlParsesAndDoubleEncodesPercentPathV66) {
+    auto result = parse("file:///tmp/My%20Doc.txt");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "file");
+    EXPECT_TRUE(result->host.empty());
+    EXPECT_EQ(result->path, "/tmp/My%2520Doc.txt");
+}
+
+TEST(URLParserTest, WhitespaceTrimmedAndBackslashSchemeSeparatorRejectedV66) {
+    auto trimmed = parse("  \t\nhttps://Example.com/ok%20path  \r\n");
+    ASSERT_TRUE(trimmed.has_value());
+    EXPECT_EQ(trimmed->scheme, "https");
+    EXPECT_EQ(trimmed->host, "example.com");
+    EXPECT_EQ(trimmed->path, "/ok%2520path");
+
+    auto backslash = parse("https:\\\\example.com\\bad");
+    EXPECT_FALSE(backslash.has_value());
+}
+
 // URL: port 3000 is stored as numeric
 TEST(URLParser, Port3000IsNumeric) {
     auto result = parse("http://localhost:3000/app");
