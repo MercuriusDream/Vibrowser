@@ -4313,3 +4313,60 @@ TEST(DomEvent, EventCancelableIsFalse) {
     Event evt("click", true, false);
     EXPECT_FALSE(evt.cancelable());
 }
+
+TEST(DomElement, ElementTagNameIs) {
+    Element elem("article");
+    EXPECT_EQ(elem.tag_name(), "article");
+}
+
+TEST(DomElement, ElementWithNoChildren) {
+    Element elem("p");
+    EXPECT_EQ(elem.child_count(), 0u);
+}
+
+TEST(DomElement, ElementSetIdAttr) {
+    Element elem("section");
+    elem.set_attribute("id", "hero");
+    EXPECT_TRUE(elem.has_attribute("id"));
+}
+
+TEST(DomElement, ElementGetIdAttr) {
+    Element elem("header");
+    elem.set_attribute("id", "main-header");
+    auto val = elem.get_attribute("id");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(*val, "main-header");
+}
+
+TEST(DomElement, AttributeOverwriteValue) {
+    Element elem("div");
+    elem.set_attribute("class", "old");
+    elem.set_attribute("class", "new");
+    auto val = elem.get_attribute("class");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(*val, "new");
+}
+
+TEST(DomElement, ChildCountAfterAppend) {
+    Element parent("ul");
+    parent.append_child(std::make_unique<Element>("li"));
+    EXPECT_EQ(parent.child_count(), 1u);
+}
+
+TEST(DomNode, NodeFirstChildTag) {
+    Element parent("nav");
+    parent.append_child(std::make_unique<Element>("a"));
+    parent.append_child(std::make_unique<Element>("button"));
+    auto* first = dynamic_cast<Element*>(parent.first_child());
+    ASSERT_NE(first, nullptr);
+    EXPECT_EQ(first->tag_name(), "a");
+}
+
+TEST(DomNode, NodeLastChildTag) {
+    Element parent("div");
+    parent.append_child(std::make_unique<Element>("span"));
+    parent.append_child(std::make_unique<Element>("strong"));
+    auto* last = dynamic_cast<Element*>(parent.last_child());
+    ASSERT_NE(last, nullptr);
+    EXPECT_EQ(last->tag_name(), "strong");
+}
