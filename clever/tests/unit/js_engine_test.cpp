@@ -16984,3 +16984,51 @@ TEST(JSEngine, WeakMapGetValueAfterSet) {
         "m.get(k)");
     EXPECT_EQ(result, "hello");
 }
+
+TEST(JSEngine, DateGetHours) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("typeof new Date().getHours()");
+    EXPECT_EQ(result, "number");
+}
+
+TEST(JSEngine, DateGetMinutes) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("typeof new Date().getMinutes()");
+    EXPECT_EQ(result, "number");
+}
+
+TEST(JSEngine, DateGetSeconds) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("typeof new Date().getSeconds()");
+    EXPECT_EQ(result, "number");
+}
+
+TEST(JSEngine, DateGetMilliseconds) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("typeof new Date().getMilliseconds()");
+    EXPECT_EQ(result, "number");
+}
+
+TEST(JSEngine, DateGetTime) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("typeof new Date().getTime()");
+    EXPECT_EQ(result, "number");
+}
+
+TEST(JSEngine, DateToISOString) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("typeof new Date().toISOString()");
+    EXPECT_EQ(result, "string");
+}
+
+TEST(JSEngine, DateNow) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("typeof Date.now()");
+    EXPECT_EQ(result, "number");
+}
+
+TEST(JSEngine, DateGetDay) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("typeof new Date().getDay()");
+    EXPECT_EQ(result, "number");
+}
