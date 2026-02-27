@@ -7797,3 +7797,77 @@ TEST_F(CSSStylesheetTest, SnapAlignV18) {
         if (d.property == "snap-align") { found = true; break; }
     EXPECT_TRUE(found);
 }
+
+// Cycle 1260: CSS parser tests V19
+
+TEST_F(CSSStylesheetTest, HyphensV19) {
+    auto sheet = parse_stylesheet(".text { hyphens: auto; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "hyphens") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, HyphenateCharacterV19) {
+    auto sheet = parse_stylesheet(".text { hyphenate-character: '-'; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "hyphenate-character") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, HyphenateLimitCharsV19) {
+    auto sheet = parse_stylesheet(".text { hyphenate-limit-chars: 5 2 2; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "hyphenate-limit-chars") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, ImageOrientationV19) {
+    auto sheet = parse_stylesheet("img { image-orientation: from-image; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "image-orientation") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, ImageRenderingV19) {
+    auto sheet = parse_stylesheet("img { image-rendering: pixelated; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "image-rendering") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, InitialLetterV19) {
+    auto sheet = parse_stylesheet(".intro { initial-letter: 3; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "initial-letter") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, LineHeightStepV19) {
+    auto sheet = parse_stylesheet(".paragraph { line-height-step: 1.5rem; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "line-height-step") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, PaintOrderV19) {
+    auto sheet = parse_stylesheet("text { paint-order: stroke fill; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "paint-order") { found = true; break; }
+    EXPECT_TRUE(found);
+}

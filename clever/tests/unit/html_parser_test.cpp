@@ -7297,3 +7297,61 @@ TEST(TreeBuilder, TimeElementV6) {
     ASSERT_NE(el, nullptr);
     EXPECT_EQ(el->tag_name, "time");
 }
+
+// Cycle 1261: HTML parser tests V7
+
+TEST(TreeBuilder, ArticleElementV7) {
+    auto doc = clever::html::parse("<article><h1>News Title</h1><p>Article content</p></article>");
+    auto* el = doc->find_element("article");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "article");
+}
+
+TEST(TreeBuilder, FigureElementV7) {
+    auto doc = clever::html::parse("<figure><img src=\"diagram.png\" /><figcaption>Diagram</figcaption></figure>");
+    auto* el = doc->find_element("figure");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "figure");
+}
+
+TEST(TreeBuilder, FigcaptionElementV7) {
+    auto doc = clever::html::parse("<figure><img src=\"photo.jpg\" /><figcaption>A beautiful photo</figcaption></figure>");
+    auto* el = doc->find_element("figcaption");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "figcaption");
+}
+
+TEST(TreeBuilder, DetailsSummaryElementV7) {
+    auto doc = clever::html::parse("<details><summary>More Info</summary><p>Hidden content</p></details>");
+    auto* el = doc->find_element("details");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "details");
+}
+
+TEST(TreeBuilder, SummaryElementV7) {
+    auto doc = clever::html::parse("<details><summary>Click to expand</summary><p>Content here</p></details>");
+    auto* el = doc->find_element("summary");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "summary");
+}
+
+TEST(TreeBuilder, DataElementV7) {
+    auto doc = clever::html::parse("<p>Product price: <data value=\"50\">$50</data></p>");
+    auto* el = doc->find_element("data");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "data");
+}
+
+TEST(TreeBuilder, WbrElementV7) {
+    auto doc = clever::html::parse("<p>A very long word<wbr />that breaks</p>");
+    auto* el = doc->find_element("wbr");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "wbr");
+}
+
+TEST(TreeBuilder, CodeElementV7) {
+    auto doc = clever::html::parse("<p>Use the <code>printf</code> function</p>");
+    auto* el = doc->find_element("code");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "code");
+}

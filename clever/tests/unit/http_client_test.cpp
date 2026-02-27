@@ -7293,3 +7293,168 @@ TEST(ResponseTest, BodyAsStringConvertsCorrectlyV20) {
     EXPECT_EQ(result, expected_text);
     EXPECT_EQ(result.length(), 13u);
 }
+
+// ============================================================================
+// Cycle 1259: HTTP/Net tests V21
+// ============================================================================
+
+// HeaderMap: set() overwrites previous value multiple times V21
+TEST(HeaderMapTest, SetOverwritesMultipleTimesV21) {
+    HeaderMap map;
+    map.set("X-Custom", "value1");
+    EXPECT_EQ(map.get("X-Custom").value(), "value1");
+    EXPECT_EQ(map.size(), 1u);
+
+    map.set("X-Custom", "value2");
+    EXPECT_EQ(map.get("X-Custom").value(), "value2");
+    EXPECT_EQ(map.size(), 1u);
+
+    map.set("X-Custom", "value3");
+    EXPECT_EQ(map.get("X-Custom").value(), "value3");
+    EXPECT_EQ(map.get_all("X-Custom").size(), 1u);
+    EXPECT_EQ(map.size(), 1u);
+}
+
+// Request: serialize() returns vector<uint8_t> with binary body V21
+TEST(RequestTest, SerializeReturnsVectorUint8WithBinaryV21) {
+    Request req;
+    req.method = Method::POST;
+    req.host = "api.test.com";
+    req.port = 443;
+    req.path = "/data";
+    req.use_tls = true;
+    req.headers.set("Content-Type", "application/octet-stream");
+    req.headers.set("Content-Length", "5");
+
+    // Binary data with null bytes
+    std::vector<uint8_t> binary_body = {0x00, 0x01, 0x02, 0xFF, 0xFE};
+    req.body = binary_body;
+
+    auto serialized = req.serialize();
+    EXPECT_GT(serialized.size(), 0u);
+
+    // Verify it's vector<uint8_t>
+    static_assert(std::is_same_v<decltype(serialized), std::vector<uint8_t>>);
+
+    // Just verify serialization produced output
+    EXPECT_GT(serialized.size(), 5u);
+}
+
+// Response: body is vector<uint8_t> containing binary data V21
+TEST(ResponseTest, BodyAsVectorUint8WithBinaryDataV21) {
+    Response resp;
+    resp.status = 200;
+    resp.status_text = "OK";
+
+    // Binary data including null bytes
+    std::vector<uint8_t> binary_body = {0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A};  // PNG header
+    resp.body = binary_body;
+
+    EXPECT_EQ(resp.body.size(), 8u);
+    EXPECT_EQ(resp.body[0], 0x89);
+    EXPECT_EQ(resp.body[1], 0x50);
+    EXPECT_EQ(resp.body[7], 0x0A);
+
+    // Verify type
+    static_assert(std::is_same_v<decltype(resp.body), std::vector<uint8_t>>);
+}
+
+// CookieJar: get_cookie_header with domain, path, is_secure parameters V21
+TEST(CookieJarTest, GetCookieHeaderWithAllParametersV21) {
+    CookieJar jar;
+    jar.set_from_header("auth=token123; Path=/api; Secure", "api.example.com");
+    jar.set_from_header("ui_pref=dark; Path=/", "api.example.com");
+
+    // HTTPS request to /api should include both cookies
+    std::string header_https = jar.get_cookie_header("api.example.com", "/api", true);
+    EXPECT_FALSE(header_https.empty());
+    EXPECT_NE(header_https.find("auth=token123"), std::string::npos);
+
+    // HTTP request to /api should NOT include secure cookie
+    std::string header_http = jar.get_cookie_header("api.example.com", "/api", false);
+    EXPECT_EQ(header_http.find("auth=token123"), std::string::npos);
+}
+
+// CookieJar: set_from_header and size() interaction V21
+TEST(CookieJarTest, SetFromHeaderAndSizeInteractionV21) {
+    CookieJar jar;
+    EXPECT_EQ(jar.size(), 0u);
+
+    jar.set_from_header("session=abc", "example.com");
+    EXPECT_EQ(jar.size(), 1u);
+
+    jar.set_from_header("id=def", "example.com");
+    EXPECT_EQ(jar.size(), 2u);
+
+    jar.set_from_header("token=ghi; Domain=.example.com; Path=/admin", "example.com");
+    EXPECT_EQ(jar.size(), 3u);
+}
+
+// CookieJar: clear() empties all cookies V21
+TEST(CookieJarTest, ClearEmptiesAllCookiesV21) {
+    CookieJar jar;
+    jar.set_from_header("cookie1=val1", "example.com");
+    jar.set_from_header("cookie2=val2", "example.com");
+    jar.set_from_header("cookie3=val3", "test.org");
+
+    EXPECT_EQ(jar.size(), 3u);
+
+    jar.clear();
+    EXPECT_EQ(jar.size(), 0u);
+
+    // Verify no cookies are returned after clear
+    std::string header = jar.get_cookie_header("example.com", "/", false);
+    EXPECT_TRUE(header.empty());
+}
+
+// Method enum: all values are distinct V21
+TEST(MethodTest, AllMethodValuesDistinctV21) {
+    Method methods[] = {
+        Method::GET,
+        Method::POST,
+        Method::PUT,
+        Method::DELETE_METHOD,
+        Method::HEAD,
+        Method::OPTIONS,
+        Method::PATCH
+    };
+
+    // Verify each method is unique by checking no duplicates exist
+    for (size_t i = 0; i < 7; ++i) {
+        for (size_t j = i + 1; j < 7; ++j) {
+            EXPECT_NE(static_cast<int>(methods[i]), static_cast<int>(methods[j]));
+        }
+    }
+}
+
+// Request and Response: complete transaction V21
+TEST(RequestResponseTest, CompleteTransactionV21) {
+    Request req;
+    req.method = Method::GET;
+    req.host = "api.example.com";
+    req.port = 443;
+    req.path = "/users";
+    req.use_tls = true;
+    req.headers.set("Accept", "application/json");
+
+    // Serialize request
+    auto req_bytes = req.serialize();
+    EXPECT_GT(req_bytes.size(), 0u);
+    EXPECT_EQ(req_bytes.size(), static_cast<size_t>(
+        std::count_if(req_bytes.begin(), req_bytes.end(),
+                      [](uint8_t b) { return true; })
+    ));
+
+    // Create response
+    Response resp;
+    resp.status = 200;
+    resp.status_text = "OK";
+    resp.headers.set("Content-Type", "application/json");
+
+    std::string json = "{\"users\": []}";
+    resp.body = std::vector<uint8_t>(json.begin(), json.end());
+
+    EXPECT_EQ(resp.status, 200u);
+    EXPECT_EQ(resp.body.size(), json.length());
+    EXPECT_EQ(resp.body_as_string(), json);
+}

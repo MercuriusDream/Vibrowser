@@ -8887,3 +8887,45 @@ TEST(LayoutNodeProps, OverflowInlineDefaultV18) {
     LayoutNode n;
     EXPECT_EQ(n.overflow_inline, 0);
 }
+
+// Cycle 1262: LayoutNode property tests V19
+
+TEST(LayoutNodeProps, FlexGrowDefaultV19) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.flex_grow, 0.0f);
+}
+
+TEST(LayoutNodeProps, FlexShrinkDefaultV19) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.flex_shrink, 1.0f);
+}
+
+TEST(LayoutNodeProps, FlexBasisDefaultV19) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.flex_basis, -1.0f);
+}
+
+TEST(LayoutNodeProps, FlexDirectionDefaultV19) {
+    LayoutNode n;
+    EXPECT_EQ(n.flex_direction, 0);
+}
+
+TEST(LayoutNodeProps, GapDefaultV19) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.gap, 0.0f);
+}
+
+TEST(LayoutNodeProps, OrderDefaultV19) {
+    LayoutNode n;
+    EXPECT_EQ(n.order, 0);
+}
+
+TEST(LayoutNodeProps, AspectRatioDefaultV19) {
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.aspect_ratio, 0.0f);
+}
+
+TEST(LayoutNodeProps, BackgroundColorDefaultV19) {
+    LayoutNode n;
+    EXPECT_EQ(n.background_color, 0x00000000u);
+}

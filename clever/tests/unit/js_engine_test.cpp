@@ -18964,3 +18964,53 @@ TEST(JSEngine, GeneratorFunctionCycle1254) {
     auto result = engine.evaluate("function* gen() { yield 5; yield 10; } var g = gen(); g.next().value.toString()");
     EXPECT_EQ(result, "5");
 }
+
+// Cycle 1263: JS engine tests
+
+TEST(JSEngine, AsyncFunctionReturnValueCycle1263) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("async function asyncTest() { return 'completed'; } asyncTest().constructor.name");
+    EXPECT_EQ(result, "Promise");
+}
+
+TEST(JSEngine, ObjectMethodShorthandCycle1263) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var obj = { x: 100, getValue() { return this.x; } }; obj.getValue().toString()");
+    EXPECT_EQ(result, "100");
+}
+
+TEST(JSEngine, ComputedPropertyNameAccessCycle1263) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var key = 'myProp'; var obj = {[key]: 42}; obj.myProp.toString()");
+    EXPECT_EQ(result, "42");
+}
+
+TEST(JSEngine, StringTemplateWithExpressionsCycle1263) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var a = 5, b = 10; var result = `Sum: ${a + b}, Product: ${a * b}`; result");
+    EXPECT_EQ(result, "Sum: 15, Product: 50");
+}
+
+TEST(JSEngine, ArrayFlattenMethodCycle1263) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var nested = [1, [2, [3, 4]]]; var flat = nested.flat(2); flat.length.toString()");
+    EXPECT_EQ(result, "4");
+}
+
+TEST(JSEngine, ObjectEntriesIterationCycle1263) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var obj = {a: 1, b: 2, c: 3}; var entries = Object.entries(obj); entries.length.toString()");
+    EXPECT_EQ(result, "3");
+}
+
+TEST(JSEngine, StringIncludesMethodCycle1263) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var str = 'hello world'; str.includes('world').toString()");
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, ArrayEveryMethodCycle1263) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var arr = [2, 4, 6, 8]; var allEven = arr.every(function(n) { return n % 2 == 0; }); allEven.toString()");
+    EXPECT_EQ(result, "true");
+}

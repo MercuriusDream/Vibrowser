@@ -5044,3 +5044,82 @@ TEST(URLParser, SameOriginCheckMultipleUrlsV9) {
     ASSERT_TRUE(url2.has_value());
     EXPECT_TRUE(urls_same_origin(*url1, *url2));
 }
+
+// Cycle 1258: URL parser tests V10
+
+TEST(URLParser, SimpleHttpUrlWithPathV10) {
+    auto url = parse("http://example.com/resource");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "http");
+    EXPECT_EQ(url->host, "example.com");
+    EXPECT_EQ(url->path, "/resource");
+    EXPECT_TRUE(url->query.empty());
+    EXPECT_TRUE(url->fragment.empty());
+}
+
+TEST(URLParser, UrlWithMultipleQueryParametersV10) {
+    auto url = parse("https://service.example.com/api?key=value&foo=bar&baz=qux");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "service.example.com");
+    EXPECT_EQ(url->path, "/api");
+    EXPECT_NE(url->query.find("key=value"), std::string::npos);
+    EXPECT_NE(url->query.find("foo=bar"), std::string::npos);
+    EXPECT_NE(url->query.find("baz=qux"), std::string::npos);
+}
+
+TEST(URLParser, UrlWithComplexFragmentV10) {
+    auto url = parse("https://docs.example.io/guide#section-api-methods");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "docs.example.io");
+    EXPECT_EQ(url->path, "/guide");
+    EXPECT_EQ(url->fragment, "section-api-methods");
+}
+
+TEST(URLParser, UrlWithCustomPortAndPathV10) {
+    auto url = parse("http://internal.dev:9000/app/dashboard");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "http");
+    EXPECT_EQ(url->host, "internal.dev");
+    EXPECT_EQ(url->port, 9000);
+    EXPECT_EQ(url->path, "/app/dashboard");
+}
+
+TEST(URLParser, HostOnlyUrlWithTrailingSlashV10) {
+    auto url = parse("https://cdn.example.org/");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "cdn.example.org");
+    EXPECT_EQ(url->path, "/");
+}
+
+TEST(URLParser, UrlWithDeepPathSegmentsV10) {
+    auto url = parse("http://api.service.net/v1/users/123/posts/456");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "http");
+    EXPECT_EQ(url->host, "api.service.net");
+    EXPECT_EQ(url->path, "/v1/users/123/posts/456");
+}
+
+TEST(URLParser, FtpUrlWithCompleteComponentsV10) {
+    auto url = parse("ftp://admin:secret@storage.example.com:2121/archive/data");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "ftp");
+    EXPECT_EQ(url->username, "admin");
+    EXPECT_EQ(url->password, "secret");
+    EXPECT_EQ(url->host, "storage.example.com");
+    EXPECT_EQ(url->port, 2121);
+    EXPECT_EQ(url->path, "/archive/data");
+}
+
+TEST(URLParser, UrlWithNumericSubdomainAndQueryV10) {
+    auto url = parse("https://api.v3.example.com/search?q=test&limit=50#results");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "api.v3.example.com");
+    EXPECT_EQ(url->path, "/search");
+    EXPECT_NE(url->query.find("q=test"), std::string::npos);
+    EXPECT_NE(url->query.find("limit=50"), std::string::npos);
+    EXPECT_EQ(url->fragment, "results");
+}

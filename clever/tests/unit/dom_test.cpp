@@ -6794,3 +6794,63 @@ TEST(DomElement, MultipleAttributesSet) {
     EXPECT_TRUE(el->has_attribute("name"));
     EXPECT_TRUE(el->has_attribute("required"));
 }
+
+// Cycle 1255: DOM element tests
+
+TEST(DomElement, TagNameDfn) {
+    Document doc;
+    auto el = doc.create_element("dfn");
+    EXPECT_EQ(el->tag_name(), "dfn");
+}
+
+TEST(DomElement, TagNameBdo) {
+    Document doc;
+    auto el = doc.create_element("bdo");
+    EXPECT_EQ(el->tag_name(), "bdo");
+}
+
+TEST(DomElement, SetAttributeList) {
+    Document doc;
+    auto el = doc.create_element("input");
+    el->set_attribute("list", "suggestions");
+    EXPECT_EQ(el->get_attribute("list"), "suggestions");
+}
+
+TEST(DomElement, SetAttributeForm) {
+    Document doc;
+    auto el = doc.create_element("input");
+    el->set_attribute("form", "myform");
+    EXPECT_EQ(el->get_attribute("form"), "myform");
+}
+
+TEST(DomElement, ChildCountNinety) {
+    Document doc;
+    auto parent = doc.create_element("div");
+    for (int i = 0; i < 90; ++i) {
+        parent->append_child(doc.create_element("span"));
+    }
+    EXPECT_EQ(parent->child_count(), 90u);
+}
+
+TEST(DomElement, RemoveAttributeSpellcheck) {
+    Document doc;
+    auto el = doc.create_element("div");
+    el->set_attribute("spellcheck", "true");
+    el->remove_attribute("spellcheck");
+    EXPECT_FALSE(el->has_attribute("spellcheck"));
+}
+
+TEST(DomElement, HasAttributeOpen) {
+    Document doc;
+    auto el = doc.create_element("details");
+    el->set_attribute("open", "");
+    EXPECT_TRUE(el->has_attribute("open"));
+}
+
+TEST(DomElement, OverwriteAttributeV2) {
+    Document doc;
+    auto el = doc.create_element("div");
+    el->set_attribute("id", "first");
+    el->set_attribute("id", "second");
+    EXPECT_EQ(el->get_attribute("id"), "second");
+}
