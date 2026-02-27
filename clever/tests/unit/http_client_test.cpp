@@ -5246,3 +5246,51 @@ TEST(HeaderMapTest, HeaderMapAppendAddsSecondValue) {
     auto all = map.get_all("x-multi");
     EXPECT_EQ(all.size(), 2u);
 }
+
+TEST(ResponseTest, ResponseBodyAsString) {
+    Response r;
+    r.body = {'H', 'e', 'l', 'l', 'o'};
+    EXPECT_EQ(r.body_as_string(), "Hello");
+}
+
+TEST(ResponseTest, ResponseBodyEmpty) {
+    Response r;
+    EXPECT_TRUE(r.body_as_string().empty());
+}
+
+TEST(ResponseTest, ResponseStatusHttp200) {
+    Response r;
+    r.status = 200;
+    EXPECT_EQ(r.status, 200u);
+}
+
+TEST(ResponseTest, ResponseStatusHttp404) {
+    Response r;
+    r.status = 404;
+    EXPECT_EQ(r.status, 404u);
+}
+
+TEST(ResponseTest, ResponseWasRedirectedSet) {
+    Response r;
+    r.was_redirected = true;
+    EXPECT_TRUE(r.was_redirected);
+}
+
+TEST(ResponseTest, ResponseUrlSet) {
+    Response r;
+    r.url = "https://example.com/page";
+    EXPECT_EQ(r.url, "https://example.com/page");
+}
+
+TEST(CookieJarTest, CookieJarSizeAfterSet) {
+    CookieJar jar;
+    jar.set_from_header("session=abc123; Path=/", "example.com");
+    EXPECT_EQ(jar.size(), 1u);
+}
+
+TEST(CookieJarTest, CookieJarEmptyAfterClear) {
+    CookieJar jar;
+    jar.set_from_header("token=xyz; Path=/", "example.com");
+    jar.clear();
+    EXPECT_EQ(jar.size(), 0u);
+}
