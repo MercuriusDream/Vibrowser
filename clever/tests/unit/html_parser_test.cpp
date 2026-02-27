@@ -2763,3 +2763,103 @@ TEST(TreeBuilder, TwoSiblingParagraphs) {
     ASSERT_NE(p, nullptr);
     EXPECT_NE(p->text_content().find("First"), std::string::npos);
 }
+
+// ---------------------------------------------------------------------------
+// Cycle 691 — 8 additional HTML tests (input types and form attributes)
+// ---------------------------------------------------------------------------
+
+TEST(TreeBuilder, InputTypeNumber) {
+    auto doc = parse(R"(<body><input type="number" min="0" max="100"></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* input = doc->find_element("input");
+    ASSERT_NE(input, nullptr);
+    bool found_type = false;
+    for (auto& attr : input->attributes) {
+        if (attr.name == "type" && attr.value == "number") { found_type = true; break; }
+    }
+    EXPECT_TRUE(found_type);
+}
+
+TEST(TreeBuilder, InputTypeRange) {
+    auto doc = parse(R"(<body><input type="range" min="0" max="100" step="5"></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* input = doc->find_element("input");
+    ASSERT_NE(input, nullptr);
+    bool found_step = false;
+    for (auto& attr : input->attributes) {
+        if (attr.name == "step" && attr.value == "5") { found_step = true; break; }
+    }
+    EXPECT_TRUE(found_step);
+}
+
+TEST(TreeBuilder, InputTypeDate) {
+    auto doc = parse(R"(<body><input type="date" value="2024-01-15"></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* input = doc->find_element("input");
+    ASSERT_NE(input, nullptr);
+    bool found_value = false;
+    for (auto& attr : input->attributes) {
+        if (attr.name == "value" && attr.value == "2024-01-15") { found_value = true; break; }
+    }
+    EXPECT_TRUE(found_value);
+}
+
+TEST(TreeBuilder, InputTypeTel) {
+    auto doc = parse(R"(<body><input type="tel" placeholder="+1-123-456-7890"></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* input = doc->find_element("input");
+    ASSERT_NE(input, nullptr);
+    bool found = false;
+    for (auto& attr : input->attributes) {
+        if (attr.name == "type" && attr.value == "tel") { found = true; break; }
+    }
+    EXPECT_TRUE(found);
+}
+
+TEST(TreeBuilder, OrderedListWithStart) {
+    auto doc = parse(R"(<body><ol start="5"><li>Item A</li><li>Item B</li></ol></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* ol = doc->find_element("ol");
+    ASSERT_NE(ol, nullptr);
+    bool has_start = false;
+    for (auto& attr : ol->attributes) {
+        if (attr.name == "start" && attr.value == "5") { has_start = true; break; }
+    }
+    EXPECT_TRUE(has_start);
+}
+
+TEST(TreeBuilder, BlockquoteWithCiteAttr) {
+    auto doc = parse(R"(<body><blockquote cite="https://example.com">A quote.</blockquote></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* bq = doc->find_element("blockquote");
+    ASSERT_NE(bq, nullptr);
+    bool has_cite = false;
+    for (auto& attr : bq->attributes) {
+        if (attr.name == "cite") { has_cite = true; break; }
+    }
+    EXPECT_TRUE(has_cite);
+}
+
+TEST(TreeBuilder, InputTypeFile) {
+    auto doc = parse(R"(<body><input type="file" accept=".pdf,.doc"></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* input = doc->find_element("input");
+    ASSERT_NE(input, nullptr);
+    bool found_type = false;
+    for (auto& attr : input->attributes) {
+        if (attr.name == "type" && attr.value == "file") { found_type = true; break; }
+    }
+    EXPECT_TRUE(found_type);
+}
+
+TEST(TreeBuilder, OlReversedAttribute) {
+    auto doc = parse(R"(<body><ol reversed><li>Three</li><li>Two</li><li>One</li></ol></body>)");
+    ASSERT_NE(doc, nullptr);
+    auto* ol = doc->find_element("ol");
+    ASSERT_NE(ol, nullptr);
+    bool has_reversed = false;
+    for (auto& attr : ol->attributes) {
+        if (attr.name == "reversed") { has_reversed = true; break; }
+    }
+    EXPECT_TRUE(has_reversed);
+}
