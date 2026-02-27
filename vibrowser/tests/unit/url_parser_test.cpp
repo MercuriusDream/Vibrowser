@@ -10567,3 +10567,85 @@ TEST(UrlParserTest, SerializeIncludesAllComponentsV88) {
     EXPECT_NE(serialized.find("format=json"), std::string::npos);
     EXPECT_NE(serialized.find("resp"), std::string::npos);
 }
+
+// =============================================================================
+// V89 Tests
+// =============================================================================
+
+TEST(UrlParserTest, NonDefaultPort8443ParsedCorrectlyV89) {
+    auto result = clever::url::parse("https://secure.example.com:8443/dashboard");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "secure.example.com");
+    ASSERT_TRUE(result->port.has_value());
+    EXPECT_EQ(result->port.value(), 8443);
+    EXPECT_EQ(result->path, "/dashboard");
+}
+
+TEST(UrlParserTest, EmptyPathDefaultsToSlashV89) {
+    auto result = clever::url::parse("http://bare.example.com");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "bare.example.com");
+    EXPECT_EQ(result->path, "/");
+    EXPECT_TRUE(result->query.empty());
+    EXPECT_TRUE(result->fragment.empty());
+}
+
+TEST(UrlParserTest, QueryOnlyNoFragmentV89) {
+    auto result = clever::url::parse("https://search.example.com/find?term=hello&limit=50");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->host, "search.example.com");
+    EXPECT_EQ(result->path, "/find");
+    EXPECT_NE(result->query.find("term=hello"), std::string::npos);
+    EXPECT_NE(result->query.find("limit=50"), std::string::npos);
+    EXPECT_TRUE(result->fragment.empty());
+}
+
+TEST(UrlParserTest, FragmentOnlyNoQueryV89) {
+    auto result = clever::url::parse("https://docs.example.com/manual#chapter-7");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->host, "docs.example.com");
+    EXPECT_EQ(result->path, "/manual");
+    EXPECT_TRUE(result->query.empty());
+    EXPECT_EQ(result->fragment, "chapter-7");
+}
+
+TEST(UrlParserTest, FtpSchemeNonDefaultPortV89) {
+    auto result = clever::url::parse("ftp://files.example.com:2121/pub/data.tar.gz");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "ftp");
+    EXPECT_EQ(result->host, "files.example.com");
+    ASSERT_TRUE(result->port.has_value());
+    EXPECT_EQ(result->port.value(), 2121);
+    EXPECT_EQ(result->path, "/pub/data.tar.gz");
+}
+
+TEST(UrlParserTest, SerializeRoundTripWithPortV89) {
+    auto result = clever::url::parse("http://app.example.com:3000/api/v1?key=abc123#section");
+    ASSERT_TRUE(result.has_value());
+    std::string serialized = result->serialize();
+    EXPECT_NE(serialized.find("http"), std::string::npos);
+    EXPECT_NE(serialized.find("app.example.com"), std::string::npos);
+    EXPECT_NE(serialized.find("3000"), std::string::npos);
+    EXPECT_NE(serialized.find("/api/v1"), std::string::npos);
+    EXPECT_NE(serialized.find("key=abc123"), std::string::npos);
+    EXPECT_NE(serialized.find("section"), std::string::npos);
+}
+
+TEST(UrlParserTest, UserinfoInUrlV89) {
+    auto result = clever::url::parse("https://admin:secret@private.example.com/settings");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "private.example.com");
+    EXPECT_EQ(result->username, "admin");
+    EXPECT_EQ(result->password, "secret");
+    EXPECT_EQ(result->path, "/settings");
+}
+
+TEST(UrlParserTest, DoubleEncodedPercentInPathV89) {
+    auto result = clever::url::parse("https://cdn.example.com/files/my%20doc.pdf");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->host, "cdn.example.com");
+    EXPECT_NE(result->path.find("%2520"), std::string::npos);
+}

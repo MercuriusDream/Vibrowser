@@ -16383,3 +16383,115 @@ TEST(LayoutTest, FlexRowSingleGrowChildAbsorbsSpaceV88) {
     EXPECT_FLOAT_EQ(pg->geometry.x, 120.0f);
     EXPECT_FLOAT_EQ(pf2->geometry.x, 720.0f);
 }
+
+// Test V89_001: make_block sets display to Block
+TEST(LayoutTest, BlockNodeDisplayIsBlockV89) {
+    auto node = make_block("div");
+    EXPECT_EQ(node->display, DisplayType::Block);
+    EXPECT_EQ(node->tag_name, "div");
+}
+
+// Test V89_002: flex node with direction Column
+TEST(LayoutTest, FlexColumnDirectionV89) {
+    auto root = make_flex("div");
+    root->specified_width = 400.0f;
+    root->specified_height = 400.0f;
+    root->flex_direction = 2; // Column
+
+    auto c1 = make_block("div");
+    c1->specified_width = 200.0f;
+    c1->specified_height = 100.0f;
+    auto* pc1 = c1.get();
+    root->append_child(std::move(c1));
+
+    auto c2 = make_block("div");
+    c2->specified_width = 200.0f;
+    c2->specified_height = 100.0f;
+    auto* pc2 = c2.get();
+    root->append_child(std::move(c2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // Column direction: children stack vertically
+    EXPECT_FLOAT_EQ(pc1->geometry.y, 0.0f);
+    EXPECT_FLOAT_EQ(pc2->geometry.y, 100.0f);
+}
+
+// Test V89_003: set geometry margins on all four sides
+TEST(LayoutTest, GeometryMarginsAllSidesV89) {
+    auto node = make_block("div");
+    node->geometry.margin.top = 10.0f;
+    node->geometry.margin.right = 20.0f;
+    node->geometry.margin.bottom = 30.0f;
+    node->geometry.margin.left = 40.0f;
+
+    EXPECT_FLOAT_EQ(node->geometry.margin.top, 10.0f);
+    EXPECT_FLOAT_EQ(node->geometry.margin.right, 20.0f);
+    EXPECT_FLOAT_EQ(node->geometry.margin.bottom, 30.0f);
+    EXPECT_FLOAT_EQ(node->geometry.margin.left, 40.0f);
+}
+
+// Test V89_004: nested nodes parent > child, verify children size
+TEST(LayoutTest, NestedNodesChildCountV89) {
+    auto parent = make_block("div");
+    EXPECT_EQ(parent->children.size(), 0u);
+
+    auto c1 = make_block("span");
+    auto c2 = make_block("p");
+    auto c3 = make_block("a");
+    parent->append_child(std::move(c1));
+    parent->append_child(std::move(c2));
+    parent->append_child(std::move(c3));
+
+    EXPECT_EQ(parent->children.size(), 3u);
+    EXPECT_EQ(parent->children[0]->tag_name, "span");
+    EXPECT_EQ(parent->children[1]->tag_name, "p");
+    EXPECT_EQ(parent->children[2]->tag_name, "a");
+}
+
+// Test V89_005: set background color and verify
+TEST(LayoutTest, BackgroundColorArgbV89) {
+    auto node = make_block("div");
+    node->background_color = 0xFF00FF00u; // green
+    EXPECT_EQ(node->background_color, 0xFF00FF00u);
+
+    node->background_color = 0x800000FFu; // semi-transparent blue
+    EXPECT_EQ(node->background_color, 0x800000FFu);
+}
+
+// Test V89_006: set opacity and verify
+TEST(LayoutTest, OpacitySettingV89) {
+    auto node = make_block("div");
+    node->opacity = 0.5f;
+    EXPECT_FLOAT_EQ(node->opacity, 0.5f);
+
+    node->opacity = 0.0f;
+    EXPECT_FLOAT_EQ(node->opacity, 0.0f);
+
+    node->opacity = 1.0f;
+    EXPECT_FLOAT_EQ(node->opacity, 1.0f);
+}
+
+// Test V89_007: node with specified width and height after layout
+TEST(LayoutTest, SpecifiedWidthHeightAfterLayoutV89) {
+    auto root = make_block("div");
+    root->specified_width = 320.0f;
+    root->specified_height = 240.0f;
+
+    LayoutEngine engine;
+    engine.compute(*root, 1024.0f, 768.0f);
+
+    EXPECT_FLOAT_EQ(root->geometry.width, 320.0f);
+    EXPECT_FLOAT_EQ(root->geometry.height, 240.0f);
+}
+
+// Test V89_008: set position_type to absolute and overflow to hidden
+TEST(LayoutTest, PositionAbsoluteAndOverflowHiddenV89) {
+    auto node = make_block("div");
+    node->position_type = 2; // absolute
+    node->overflow = 1; // hidden
+
+    EXPECT_EQ(node->position_type, 2);
+    EXPECT_EQ(node->overflow, 1);
+}

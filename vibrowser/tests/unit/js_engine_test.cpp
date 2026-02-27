@@ -25384,3 +25384,145 @@ TEST(JsEngineTest, PromiseAllSettledAndRaceV88) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "function,function,function,function,true,true,true,all failed,1");
 }
+
+TEST(JsEngineTest, ArrayMapAndFilterV89) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var arr = [1, 2, 3, 4, 5, 6, 7, 8];
+        var mapped = arr.map(function(x) { return x * x; });
+        var filtered = mapped.filter(function(x) { return x > 10; });
+        JSON.stringify(filtered);
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "[16,25,36,49,64]");
+}
+
+TEST(JsEngineTest, TemplateLiteralsV89) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var name = "world";
+        var num = 42;
+        var s = `Hello ${name}, the answer is ${num + 0}!`;
+        s;
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "Hello world, the answer is 42!");
+}
+
+TEST(JsEngineTest, MapSetAndGetV89) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var results = [];
+        var m = new Map();
+        m.set("a", 1);
+        m.set("b", 2);
+        m.set("c", 3);
+        results.push(m.size);
+        results.push(m.get("b"));
+        results.push(m.has("c"));
+        results.push(m.has("d"));
+        m.delete("a");
+        results.push(m.size);
+        results.join(",");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "3,2,true,false,2");
+}
+
+TEST(JsEngineTest, SetSizeAndHasV89) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var results = [];
+        var s = new Set([1, 2, 3, 2, 1]);
+        results.push(s.size);
+        results.push(s.has(2));
+        results.push(s.has(99));
+        s.add(4);
+        results.push(s.size);
+        s.delete(1);
+        results.push(s.size);
+        results.push(s.has(1));
+        results.join(",");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "3,true,false,4,3,false");
+}
+
+TEST(JsEngineTest, RegExpTestAndMatchV89) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var results = [];
+        var re = /^hello\s\w+$/i;
+        results.push(re.test("Hello World"));
+        results.push(re.test("goodbye"));
+        var m = "abc123def456".match(/\d+/g);
+        results.push(JSON.stringify(m));
+        results.push("foobar".replace(/oo/, "ee"));
+        results.join(",");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true,false,[\"123\",\"456\"],feebar");
+}
+
+TEST(JsEngineTest, StringIncludesStartsWithEndsWithV89) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var results = [];
+        var s = "Hello, World!";
+        results.push(s.includes("World"));
+        results.push(s.includes("world"));
+        results.push(s.startsWith("Hello"));
+        results.push(s.startsWith("World"));
+        results.push(s.endsWith("!"));
+        results.push(s.endsWith("World"));
+        results.push(s.indexOf("World"));
+        results.join(",");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true,false,true,false,true,false,7");
+}
+
+TEST(JsEngineTest, MathMaxWithSpreadV89) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var results = [];
+        var nums = [3, 7, 2, 9, 1, 5];
+        results.push(Math.max(...nums));
+        results.push(Math.min(...nums));
+        results.push(Math.abs(-42));
+        results.push(Math.floor(3.7));
+        results.push(Math.ceil(3.2));
+        results.push(Math.round(3.5));
+        results.join(",");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "9,1,42,3,4,4");
+}
+
+TEST(JsEngineTest, ArrowFunctionWithClosureV89) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var results = [];
+        var makeCounter = function() {
+            var count = 0;
+            return {
+                inc: () => ++count,
+                dec: () => --count,
+                val: () => count
+            };
+        };
+        var c = makeCounter();
+        c.inc(); c.inc(); c.inc();
+        results.push(c.val());
+        c.dec();
+        results.push(c.val());
+        var c2 = makeCounter();
+        results.push(c2.val());
+        c2.inc();
+        results.push(c2.val());
+        results.push(c.val());
+        results.join(",");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "3,2,0,1,2");
+}

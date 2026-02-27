@@ -12958,3 +12958,140 @@ TEST(SerializerTest, InterleavedTypesComplexV88) {
     EXPECT_EQ(d.read_u8(), 0);
     EXPECT_FALSE(d.has_remaining());
 }
+
+TEST(SerializerTest, RoundTripU8MaxMinV89) {
+    Serializer s;
+    s.write_u8(0);
+    s.write_u8(1);
+    s.write_u8(127);
+    s.write_u8(128);
+    s.write_u8(255);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u8(), 0);
+    EXPECT_EQ(d.read_u8(), 1);
+    EXPECT_EQ(d.read_u8(), 127);
+    EXPECT_EQ(d.read_u8(), 128);
+    EXPECT_EQ(d.read_u8(), 255);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, RoundTripU16MaxV89) {
+    Serializer s;
+    s.write_u16(0);
+    s.write_u16(1);
+    s.write_u16(256);
+    s.write_u16(32767);
+    s.write_u16(65535);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u16(), 0);
+    EXPECT_EQ(d.read_u16(), 1);
+    EXPECT_EQ(d.read_u16(), 256);
+    EXPECT_EQ(d.read_u16(), 32767);
+    EXPECT_EQ(d.read_u16(), 65535);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, RoundTripU32MaxV89) {
+    Serializer s;
+    s.write_u32(0u);
+    s.write_u32(1u);
+    s.write_u32(65536u);
+    s.write_u32(2147483647u);
+    s.write_u32(4294967295u);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u32(), 0u);
+    EXPECT_EQ(d.read_u32(), 1u);
+    EXPECT_EQ(d.read_u32(), 65536u);
+    EXPECT_EQ(d.read_u32(), 2147483647u);
+    EXPECT_EQ(d.read_u32(), 4294967295u);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, RoundTripU64MaxValueV89) {
+    Serializer s;
+    s.write_u64(0uLL);
+    s.write_u64(UINT64_MAX);
+    s.write_u64(0x0102030405060708uLL);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u64(), 0uLL);
+    EXPECT_EQ(d.read_u64(), UINT64_MAX);
+    EXPECT_EQ(d.read_u64(), 0x0102030405060708uLL);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, MultipleStringsSequenceV89) {
+    Serializer s;
+    s.write_string("alpha");
+    s.write_string("beta");
+    s.write_string("");
+    s.write_string("gamma delta");
+    s.write_string("epsilon");
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "alpha");
+    EXPECT_EQ(d.read_string(), "beta");
+    EXPECT_EQ(d.read_string(), "");
+    EXPECT_EQ(d.read_string(), "gamma delta");
+    EXPECT_EQ(d.read_string(), "epsilon");
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, EmptyBytesRoundTripV89) {
+    Serializer s;
+    s.write_bytes(nullptr, 0);
+
+    Deserializer d(s.data());
+    auto bytes = d.read_bytes();
+    EXPECT_EQ(bytes.size(), 0u);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, F64NegativeAndZeroV89) {
+    Serializer s;
+    s.write_f64(0.0);
+    s.write_f64(-0.0);
+    s.write_f64(-1.0);
+    s.write_f64(-999999.123456);
+    s.write_f64(-1e-300);
+
+    Deserializer d(s.data());
+    EXPECT_DOUBLE_EQ(d.read_f64(), 0.0);
+    double neg_zero = d.read_f64();
+    EXPECT_DOUBLE_EQ(neg_zero, 0.0);
+    EXPECT_TRUE(std::signbit(neg_zero));
+    EXPECT_DOUBLE_EQ(d.read_f64(), -1.0);
+    EXPECT_DOUBLE_EQ(d.read_f64(), -999999.123456);
+    EXPECT_DOUBLE_EQ(d.read_f64(), -1e-300);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, MixedTypesSequenceV89) {
+    Serializer s;
+    s.write_u8(42);
+    s.write_string("hello world");
+    s.write_u32(123456789u);
+    s.write_f64(3.14159265358979);
+    s.write_u16(9999);
+    s.write_bytes(reinterpret_cast<const uint8_t*>("abc"), 3);
+    s.write_u64(0xDEADBEEFCAFEuLL);
+    s.write_string("end");
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u8(), 42);
+    EXPECT_EQ(d.read_string(), "hello world");
+    EXPECT_EQ(d.read_u32(), 123456789u);
+    EXPECT_DOUBLE_EQ(d.read_f64(), 3.14159265358979);
+    EXPECT_EQ(d.read_u16(), 9999);
+    auto bytes = d.read_bytes();
+    EXPECT_EQ(bytes.size(), 3u);
+    EXPECT_EQ(bytes[0], 'a');
+    EXPECT_EQ(bytes[1], 'b');
+    EXPECT_EQ(bytes[2], 'c');
+    EXPECT_EQ(d.read_u64(), 0xDEADBEEFCAFEuLL);
+    EXPECT_EQ(d.read_string(), "end");
+    EXPECT_FALSE(d.has_remaining());
+}

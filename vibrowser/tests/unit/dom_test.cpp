@@ -14570,3 +14570,96 @@ TEST(DomTest, ParentPointerAfterAppendV88) {
     EXPECT_EQ(child1_ptr->next_sibling(), child2_ptr);
     EXPECT_EQ(child2_ptr->next_sibling(), nullptr);
 }
+
+TEST(DomTest, MultipleAttributesMapSizeV89) {
+    Element el("div");
+    el.set_attribute("id", "main");
+    el.set_attribute("class", "container");
+    el.set_attribute("data-x", "42");
+    el.set_attribute("role", "banner");
+    EXPECT_EQ(el.attributes().size(), 4u);
+    EXPECT_TRUE(el.has_attribute("id"));
+    EXPECT_TRUE(el.has_attribute("class"));
+    EXPECT_TRUE(el.has_attribute("data-x"));
+    EXPECT_TRUE(el.has_attribute("role"));
+    EXPECT_EQ(el.get_attribute("data-x").value(), "42");
+}
+
+TEST(DomTest, ClassListToggleTwiceRestoresV89) {
+    Element el("span");
+    EXPECT_FALSE(el.class_list().contains("active"));
+    el.class_list().toggle("active");
+    EXPECT_TRUE(el.class_list().contains("active"));
+    el.class_list().toggle("active");
+    EXPECT_FALSE(el.class_list().contains("active"));
+}
+
+TEST(DomTest, DocumentCreateElementAppendV89) {
+    Document doc;
+    auto div = doc.create_element("div");
+    auto* div_ptr = div.get();
+    div_ptr->set_attribute("id", "root");
+    Element container("body");
+    container.append_child(std::move(div));
+    EXPECT_EQ(container.child_count(), 1u);
+    EXPECT_EQ(static_cast<Element*>(container.first_child())->get_attribute("id").value(), "root");
+}
+
+TEST(DomTest, RemoveChildDecreasesCountV89) {
+    Element parent("ul");
+    auto li1 = std::make_unique<Element>("li");
+    auto* li1_ptr = li1.get();
+    auto li2 = std::make_unique<Element>("li");
+    parent.append_child(std::move(li1));
+    parent.append_child(std::move(li2));
+    EXPECT_EQ(parent.child_count(), 2u);
+    parent.remove_child(*li1_ptr);
+    EXPECT_EQ(parent.child_count(), 1u);
+}
+
+TEST(DomTest, InsertBeforeNullAppendsV89) {
+    Element parent("div");
+    auto first = std::make_unique<Element>("p");
+    auto* first_ptr = first.get();
+    parent.append_child(std::move(first));
+    auto second = std::make_unique<Element>("span");
+    auto* second_ptr = second.get();
+    parent.insert_before(std::move(second), nullptr);
+    EXPECT_EQ(parent.child_count(), 2u);
+    EXPECT_EQ(parent.last_child(), second_ptr);
+    EXPECT_EQ(first_ptr->next_sibling(), second_ptr);
+}
+
+TEST(DomTest, TextNodeParentAfterAppendV89) {
+    Element div("div");
+    auto txt = std::make_unique<Text>("hello world");
+    auto* txt_ptr = txt.get();
+    EXPECT_EQ(txt_ptr->parent(), nullptr);
+    div.append_child(std::move(txt));
+    EXPECT_EQ(txt_ptr->parent(), &div);
+    EXPECT_EQ(txt_ptr->text_content(), "hello world");
+    EXPECT_EQ(div.text_content(), "hello world");
+}
+
+TEST(DomTest, CommentNodeChildCountV89) {
+    Element div("div");
+    auto comment = std::make_unique<Comment>("a comment");
+    div.append_child(std::move(comment));
+    auto txt = std::make_unique<Text>("visible");
+    div.append_child(std::move(txt));
+    EXPECT_EQ(div.child_count(), 2u);
+}
+
+TEST(DomTest, GrandchildParentChainV89) {
+    Element root("div");
+    auto child = std::make_unique<Element>("section");
+    auto* child_ptr = child.get();
+    auto grandchild = std::make_unique<Element>("p");
+    auto* gc_ptr = grandchild.get();
+    child_ptr->append_child(std::move(grandchild));
+    root.append_child(std::move(child));
+    EXPECT_EQ(gc_ptr->parent(), child_ptr);
+    EXPECT_EQ(gc_ptr->parent()->parent(), &root);
+    EXPECT_EQ(root.child_count(), 1u);
+    EXPECT_EQ(child_ptr->child_count(), 1u);
+}

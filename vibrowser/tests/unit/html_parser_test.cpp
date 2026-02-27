@@ -14264,3 +14264,127 @@ TEST(HtmlParserTest, InlineStyleAttributePreservedV88) {
     EXPECT_NE(div_style.find("margin: 0 auto"), std::string::npos);
     EXPECT_EQ(div->text_content(), "Centered");
 }
+
+// ---------------------------------------------------------------------------
+// V89 – 8 additional HTML parser tests
+// ---------------------------------------------------------------------------
+
+// 1. Parse simple paragraph, verify body > p > text structure
+TEST(HtmlParserTest, ParagraphTextStructureV89) {
+    auto doc = clever::html::parse("<html><body><p>Hello World</p></body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* p = doc->find_element("p");
+    ASSERT_NE(p, nullptr);
+    EXPECT_EQ(p->tag_name, "p");
+    ASSERT_FALSE(p->children.empty());
+    EXPECT_EQ(p->children[0]->tag_name, "");
+    EXPECT_EQ(p->children[0]->text_content(), "Hello World");
+}
+
+// 2. Parse nested divs, verify depth
+TEST(HtmlParserTest, NestedDivsDepthV89) {
+    auto doc = clever::html::parse(
+        "<html><body><div><div><div>Deep</div></div></div></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    // html > body > div > div > div > text
+    auto* body = doc->find_element("body");
+    ASSERT_NE(body, nullptr);
+    auto* d1 = body->find_element("div");
+    ASSERT_NE(d1, nullptr);
+    EXPECT_EQ(d1->tag_name, "div");
+    auto* d2 = d1->find_element("div");
+    ASSERT_NE(d2, nullptr);
+    auto* d3 = d2->find_element("div");
+    ASSERT_NE(d3, nullptr);
+    EXPECT_EQ(d3->text_content(), "Deep");
+}
+
+// 3. Parse element with multiple attributes
+TEST(HtmlParserTest, MultipleAttributesOnElementV89) {
+    auto doc = clever::html::parse(
+        "<html><body><input type=\"email\" name=\"user\" placeholder=\"Enter email\" required></body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* input = doc->find_element("input");
+    ASSERT_NE(input, nullptr);
+    EXPECT_EQ(get_attr_v63(input, "type"), "email");
+    EXPECT_EQ(get_attr_v63(input, "name"), "user");
+    EXPECT_EQ(get_attr_v63(input, "placeholder"), "Enter email");
+}
+
+// 4. Parse self-closing br tag
+TEST(HtmlParserTest, SelfClosingBrTagV89) {
+    auto doc = clever::html::parse(
+        "<html><body><p>Line1<br>Line2</p></body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* p = doc->find_element("p");
+    ASSERT_NE(p, nullptr);
+    // p should have children: text("Line1"), br, text("Line2")
+    ASSERT_GE(p->children.size(), 3u);
+    EXPECT_EQ(p->children[0]->text_content(), "Line1");
+    EXPECT_EQ(p->children[1]->tag_name, "br");
+    EXPECT_TRUE(p->children[1]->children.empty());
+    EXPECT_EQ(p->children[2]->text_content(), "Line2");
+}
+
+// 5. Parse text with named entities
+TEST(HtmlParserTest, NamedEntitiesInTextV89) {
+    auto doc = clever::html::parse(
+        "<html><body><p>A &amp; B &lt; C &gt; D</p></body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* p = doc->find_element("p");
+    ASSERT_NE(p, nullptr);
+    std::string text = p->text_content();
+    EXPECT_NE(text.find("&"), std::string::npos);
+    EXPECT_NE(text.find("<"), std::string::npos);
+    EXPECT_NE(text.find(">"), std::string::npos);
+}
+
+// 6. Parse list structure (ul > li)
+TEST(HtmlParserTest, UnorderedListStructureV89) {
+    auto doc = clever::html::parse(
+        "<html><body><ul><li>Apple</li><li>Banana</li><li>Cherry</li></ul></body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* ul = doc->find_element("ul");
+    ASSERT_NE(ul, nullptr);
+    auto lis = ul->find_all_elements("li");
+    ASSERT_EQ(lis.size(), 3u);
+    EXPECT_EQ(lis[0]->text_content(), "Apple");
+    EXPECT_EQ(lis[1]->text_content(), "Banana");
+    EXPECT_EQ(lis[2]->text_content(), "Cherry");
+}
+
+// 7. Parse heading tags (h1 through h3)
+TEST(HtmlParserTest, HeadingTagsH1H2H3V89) {
+    auto doc = clever::html::parse(
+        "<html><body><h1>Title</h1><h2>Subtitle</h2><h3>Section</h3></body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* h1 = doc->find_element("h1");
+    ASSERT_NE(h1, nullptr);
+    EXPECT_EQ(h1->text_content(), "Title");
+
+    auto* h2 = doc->find_element("h2");
+    ASSERT_NE(h2, nullptr);
+    EXPECT_EQ(h2->text_content(), "Subtitle");
+
+    auto* h3 = doc->find_element("h3");
+    ASSERT_NE(h3, nullptr);
+    EXPECT_EQ(h3->text_content(), "Section");
+}
+
+// 8. Parse mixed text and element children
+TEST(HtmlParserTest, MixedTextAndElementChildrenV89) {
+    auto doc = clever::html::parse(
+        "<html><body><p>Hello <strong>bold</strong> world</p></body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* p = doc->find_element("p");
+    ASSERT_NE(p, nullptr);
+    // p should contain: text("Hello "), strong, text(" world")
+    ASSERT_GE(p->children.size(), 3u);
+    EXPECT_EQ(p->children[0]->tag_name, "");
+    EXPECT_EQ(p->children[0]->text_content(), "Hello ");
+    EXPECT_EQ(p->children[1]->tag_name, "strong");
+    EXPECT_EQ(p->children[1]->text_content(), "bold");
+    EXPECT_EQ(p->children[2]->tag_name, "");
+    EXPECT_EQ(p->children[2]->text_content(), " world");
+}

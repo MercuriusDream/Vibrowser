@@ -6489,3 +6489,72 @@ TEST(CORSPolicyTest, ShouldAttachOriginNullOriginV88) {
     // Empty origin should not attach
     EXPECT_FALSE(should_attach_origin_header("", "https://api.example.com/data"));
 }
+
+TEST(CORSPolicyTest, SameOriginDifferentPathsNotCrossOriginV89) {
+    // Same scheme+host+port with different paths are NOT cross-origin
+    EXPECT_FALSE(is_cross_origin("https://app.example.com", "https://app.example.com/foo/bar"));
+    EXPECT_FALSE(is_cross_origin("https://app.example.com", "https://app.example.com/another/path?q=1"));
+    EXPECT_FALSE(is_cross_origin("http://site.test", "http://site.test/page"));
+}
+
+TEST(CORSPolicyTest, DifferentPortsAreCrossOriginV89) {
+    // Different ports make two URLs cross-origin even with same scheme and host
+    EXPECT_TRUE(is_cross_origin("https://app.example.com:3000", "https://app.example.com:4000/api"));
+    EXPECT_TRUE(is_cross_origin("http://localhost:8080", "http://localhost:9090/data"));
+    // Same explicit port is NOT cross-origin
+    EXPECT_FALSE(is_cross_origin("https://app.example.com:3000", "https://app.example.com:3000/api"));
+}
+
+TEST(CORSPolicyTest, FtpUrlNotCorsEligibleV89) {
+    // ftp: URLs are NOT CORS-eligible (only http/https)
+    EXPECT_FALSE(is_cors_eligible_request_url("ftp://files.example.com/readme.txt"));
+    EXPECT_FALSE(is_cors_eligible_request_url("ftp://ftp.example.com:21/pub/data"));
+}
+
+TEST(CORSPolicyTest, WssUrlNotCorsEligibleV89) {
+    // wss:// (WebSocket Secure) is NOT CORS-eligible
+    EXPECT_FALSE(is_cors_eligible_request_url("wss://ws.example.com/socket"));
+    EXPECT_FALSE(is_cors_eligible_request_url("ws://ws.example.com/socket"));
+}
+
+TEST(CORSPolicyTest, CorsAllowsExactOriginMatchV89) {
+    // CORS allows response when ACAO exactly matches the document origin
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "https://app.example.com");
+    EXPECT_TRUE(
+        cors_allows_response("https://app.example.com", "https://api.example.com/resource", headers, false));
+    // Mismatched origin should reject
+    headers.set("Access-Control-Allow-Origin", "https://other.example.com");
+    EXPECT_FALSE(
+        cors_allows_response("https://app.example.com", "https://api.example.com/resource", headers, false));
+}
+
+TEST(CORSPolicyTest, CorsRejectsWildcardWithCredentialsV89) {
+    // Wildcard "*" ACAO with credentials requested must REJECT
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "*");
+    headers.set("Access-Control-Allow-Credentials", "true");
+    EXPECT_FALSE(
+        cors_allows_response("https://app.example.com", "https://api.example.com/data", headers, true));
+    // Without credentials, wildcard should allow
+    EXPECT_TRUE(
+        cors_allows_response("https://app.example.com", "https://api.example.com/data", headers, false));
+}
+
+TEST(CORSPolicyTest, HttpDefaultPort80NotEnforceableV89) {
+    // Explicit :80 on http is NOT enforceable (default port must be omitted)
+    EXPECT_FALSE(has_enforceable_document_origin("http://app.example.com:80"));
+    // Explicit :443 on https is NOT enforceable
+    EXPECT_FALSE(has_enforceable_document_origin("https://app.example.com:443"));
+    // Non-default explicit port IS enforceable
+    EXPECT_TRUE(has_enforceable_document_origin("https://app.example.com:8443"));
+    EXPECT_TRUE(has_enforceable_document_origin("http://app.example.com:8080"));
+}
+
+TEST(CORSPolicyTest, NullOriginAttachesHeaderCrossOriginV89) {
+    // "null" origin should attach origin header for cross-origin requests
+    EXPECT_TRUE(should_attach_origin_header("null", "https://api.example.com/data"));
+    EXPECT_TRUE(should_attach_origin_header("null", "http://other.example.com/endpoint"));
+    // Empty origin should NOT attach
+    EXPECT_FALSE(should_attach_origin_header("", "https://api.example.com/data"));
+}

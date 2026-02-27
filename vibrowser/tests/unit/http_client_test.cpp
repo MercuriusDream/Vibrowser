@@ -15648,3 +15648,107 @@ TEST(HttpClientTest, CookieJarClearThenSetNewCookieV88) {
     std::string old_cookies = jar.get_cookie_header("old.example.com", "/", false);
     EXPECT_TRUE(old_cookies.empty());
 }
+
+TEST(HttpClientTest, HeaderMapRemoveAndVerifyHasReturnsFalseV89) {
+    HeaderMap h;
+    h.set("X-Auth", "bearer-token");
+    h.set("X-Trace", "trace-id-999");
+    EXPECT_TRUE(h.has("X-Auth"));
+    EXPECT_EQ(h.size(), 2u);
+
+    h.remove("X-Auth");
+    EXPECT_FALSE(h.has("X-Auth"));
+    EXPECT_EQ(h.get("X-Auth"), std::nullopt);
+    EXPECT_EQ(h.size(), 1u);
+    EXPECT_TRUE(h.has("X-Trace"));
+}
+
+TEST(HttpClientTest, HeaderMapRemoveAllOneByOneUntilEmptyV89) {
+    HeaderMap h;
+    h.set("Accept", "text/html");
+    h.set("Accept-Language", "en-US");
+    h.set("Cache-Control", "no-cache");
+    EXPECT_EQ(h.size(), 3u);
+    EXPECT_FALSE(h.empty());
+
+    h.remove("Accept");
+    h.remove("Accept-Language");
+    h.remove("Cache-Control");
+    EXPECT_EQ(h.size(), 0u);
+    EXPECT_TRUE(h.empty());
+    EXPECT_FALSE(h.has("Accept"));
+    EXPECT_FALSE(h.has("Accept-Language"));
+    EXPECT_FALSE(h.has("Cache-Control"));
+}
+
+TEST(HttpClientTest, RequestSerializeWithCustomPortV89) {
+    Request req;
+    req.method = Method::GET;
+    req.host = "api.example.com";
+    req.port = 9090;
+    req.path = "/health";
+    req.headers.set("Accept", "application/json");
+
+    auto raw = req.serialize();
+    std::string serialized(raw.begin(), raw.end());
+
+    EXPECT_TRUE(serialized.find("GET /health HTTP/1.1\r\n") == 0);
+    EXPECT_TRUE(serialized.find("Host: api.example.com:9090\r\n") != std::string::npos);
+    EXPECT_TRUE(serialized.find("accept: application/json\r\n") != std::string::npos);
+}
+
+TEST(HttpClientTest, ResponseStatusAndStatusTextTogetherV89) {
+    Response resp;
+    resp.status = 404;
+    resp.status_text = "Not Found";
+    resp.headers.set("Content-Type", "text/plain");
+
+    EXPECT_EQ(resp.status, 404);
+    EXPECT_EQ(resp.status_text, "Not Found");
+    EXPECT_EQ(resp.headers.get("Content-Type").value(), "text/plain");
+}
+
+TEST(HttpClientTest, ResponseBodyAsStringWithUtf8ContentV89) {
+    Response resp;
+    resp.status = 200;
+    std::string utf8_body = "Hello, \xC3\xA9\xC3\xA0\xC3\xBC \xE4\xB8\x96\xE7\x95\x8C";
+    resp.body = std::vector<uint8_t>(utf8_body.begin(), utf8_body.end());
+
+    EXPECT_EQ(resp.body_as_string(), utf8_body);
+    EXPECT_EQ(resp.body.size(), utf8_body.size());
+}
+
+TEST(HttpClientTest, CookieJarMultipleCookiesSameDomainV89) {
+    CookieJar jar;
+    jar.set_from_header("user=alice", "shop.example.com");
+    jar.set_from_header("cart=3items", "shop.example.com");
+    jar.set_from_header("lang=en", "shop.example.com");
+
+    EXPECT_EQ(jar.size(), 3u);
+
+    std::string cookies = jar.get_cookie_header("shop.example.com", "/", false);
+    EXPECT_TRUE(cookies.find("user=alice") != std::string::npos);
+    EXPECT_TRUE(cookies.find("cart=3items") != std::string::npos);
+    EXPECT_TRUE(cookies.find("lang=en") != std::string::npos);
+}
+
+TEST(HttpClientTest, CookieJarSecureCookieNotSentOnInsecureV89) {
+    CookieJar jar;
+    jar.set_from_header("token=secret123; Secure", "secure.example.com");
+
+    std::string insecure = jar.get_cookie_header("secure.example.com", "/", false);
+    EXPECT_TRUE(insecure.find("token=secret123") == std::string::npos);
+
+    std::string secure = jar.get_cookie_header("secure.example.com", "/", true);
+    EXPECT_TRUE(secure.find("token=secret123") != std::string::npos);
+}
+
+TEST(HttpClientTest, HeaderMapSetOverwritesExistingValueV89) {
+    HeaderMap h;
+    h.set("Authorization", "Basic old-creds");
+    EXPECT_EQ(h.get("Authorization").value(), "Basic old-creds");
+
+    h.set("Authorization", "Bearer new-token");
+    EXPECT_EQ(h.get("Authorization").value(), "Bearer new-token");
+    EXPECT_EQ(h.size(), 1u);
+}

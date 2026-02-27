@@ -16095,3 +16095,133 @@ TEST(CSSStyleTest, BorderBottomDottedWithMarginShorthandThreeValuesV88) {
     EXPECT_FLOAT_EQ(style.margin.bottom.to_px(), 24.0f);
     EXPECT_FLOAT_EQ(style.margin.left.to_px(), 16.0f);
 }
+
+TEST(CSSStyleTest, DefaultComputedStyleDisplayIsInlineV89) {
+    ComputedStyle style;
+    EXPECT_EQ(style.display, Display::Inline);
+}
+
+TEST(CSSStyleTest, VisibilityHiddenViaResolverV89) {
+    const std::string css = ".hidden{visibility:hidden;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "span";
+    elem.classes = {"hidden"};
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.visibility, Visibility::Hidden);
+}
+
+TEST(CSSStyleTest, CursorPointerOnAnchorV89) {
+    const std::string css = "a{cursor:pointer;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "a";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.cursor, Cursor::Pointer);
+}
+
+TEST(CSSStyleTest, MarginAllFourSidesDistinctV89) {
+    const std::string css = "div{margin-top:5px;margin-right:10px;margin-bottom:15px;margin-left:20px;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_FLOAT_EQ(style.margin.top.to_px(), 5.0f);
+    EXPECT_FLOAT_EQ(style.margin.right.to_px(), 10.0f);
+    EXPECT_FLOAT_EQ(style.margin.bottom.to_px(), 15.0f);
+    EXPECT_FLOAT_EQ(style.margin.left.to_px(), 20.0f);
+}
+
+TEST(CSSStyleTest, BorderTopWidthAndColorRedV89) {
+    const std::string css = "h1{border-top-width:3px;border-top-style:solid;border-top-color:red;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "h1";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_FLOAT_EQ(style.border_top.width.to_px(), 3.0f);
+    EXPECT_EQ(style.border_top.style, BorderStyle::Solid);
+    EXPECT_EQ(style.border_top.color.r, 255);
+    EXPECT_EQ(style.border_top.color.g, 0);
+    EXPECT_EQ(style.border_top.color.b, 0);
+}
+
+TEST(CSSStyleTest, PositionStickyWithTopOffsetV89) {
+    const std::string css = "nav{position:sticky;top:10px;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "nav";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.position, Position::Sticky);
+    EXPECT_FLOAT_EQ(style.top.to_px(), 10.0f);
+}
+
+TEST(CSSStyleTest, TextAlignJustifyWithWhiteSpacePreWrapV89) {
+    const std::string css = "p{text-align:justify;white-space:pre-wrap;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "p";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.text_align, TextAlign::Justify);
+    EXPECT_EQ(style.white_space, WhiteSpace::PreWrap);
+}
+
+TEST(CSSStyleTest, FlexGrowShrinkAndOpacityV89) {
+    const std::string css = ".item{flex-grow:2;flex-shrink:0.5;opacity:0.8;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+    elem.classes = {"item"};
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_FLOAT_EQ(style.flex_grow, 2.0f);
+    EXPECT_FLOAT_EQ(style.flex_shrink, 0.5f);
+    EXPECT_FLOAT_EQ(style.opacity, 0.8f);
+}
