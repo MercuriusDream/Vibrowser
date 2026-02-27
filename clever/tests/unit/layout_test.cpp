@@ -7592,3 +7592,43 @@ TEST(LayoutNodeProps, ColumnRuleStyleIsZeroV2) {
     LayoutNode n;
     EXPECT_EQ(n.column_rule_style, 0);
 }
+
+TEST(LayoutNodeProps, TextJustifyDefaultsZero) {
+    LayoutNode n;
+    EXPECT_EQ(n.text_justify, 0);
+}
+
+TEST(LayoutNodeProps, CounterSetDefaultsEmpty) {
+    LayoutNode n;
+    EXPECT_TRUE(n.counter_set.empty());
+}
+
+TEST(LayoutNodeProps, IsBdiDefaultsFalse) {
+    LayoutNode n;
+    EXPECT_FALSE(n.is_bdi);
+}
+
+TEST(LayoutNodeProps, UnicodeBidiDefaultsZero) {
+    LayoutNode n;
+    EXPECT_EQ(n.unicode_bidi, 0);
+}
+
+TEST(LayoutNodeProps, TextCombineUprightDefaultsZero) {
+    LayoutNode n;
+    EXPECT_EQ(n.text_combine_upright, 0);
+}
+
+TEST(LayoutNodeProps, TextOrientationDefaultsZero) {
+    LayoutNode n;
+    EXPECT_EQ(n.text_orientation, 0);
+}
+
+TEST(LayoutNodeProps, DirectionDefaultsZero) {
+    LayoutNode n;
+    EXPECT_EQ(n.direction, 0);
+}
+
+TEST(LayoutNodeProps, MarqueDirectionDefaultsZero) {
+    LayoutNode n;
+    EXPECT_EQ(n.marquee_direction, 0);
+}
