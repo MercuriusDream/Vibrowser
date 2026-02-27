@@ -3118,3 +3118,97 @@ TEST(RequestTest, HeadMethodCanBeSet) {
     req.method = Method::HEAD;
     EXPECT_EQ(req.method, Method::HEAD);
 }
+
+// ---------------------------------------------------------------------------
+// Cycle 696 — 8 additional HTTP client tests
+// ---------------------------------------------------------------------------
+
+// Request: Authorization header can be set
+TEST(RequestTest, AuthorizationHeaderCanBeSet) {
+    Request req;
+    req.headers.set("Authorization", "Bearer my-token-123");
+    auto val = req.headers.get("Authorization");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(val.value(), "Bearer my-token-123");
+}
+
+// Request: Accept-Language header can be set
+TEST(RequestTest, AcceptLanguageHeaderSet) {
+    Request req;
+    req.headers.set("Accept-Language", "en-US,en;q=0.9");
+    auto val = req.headers.get("Accept-Language");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(val.value(), "en-US,en;q=0.9");
+}
+
+// Request: If-None-Match header can be set with ETag
+TEST(RequestTest, IfNoneMatchHeaderSet) {
+    Request req;
+    req.headers.set("If-None-Match", "\"abc123\"");
+    auto val = req.headers.get("If-None-Match");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(val.value(), "\"abc123\"");
+}
+
+// Request: Content-Type application/json can be set
+TEST(RequestTest, ContentTypeJsonForPost) {
+    Request req;
+    req.method = Method::POST;
+    req.headers.set("Content-Type", "application/json");
+    auto val = req.headers.get("Content-Type");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(val.value(), "application/json");
+}
+
+// Response: Last-Modified header is accessible after parse
+TEST(ResponseTest, ParseLastModifiedHeader) {
+    std::string raw =
+        "HTTP/1.1 200 OK\r\n"
+        "Last-Modified: Wed, 21 Oct 2015 07:28:00 GMT\r\n"
+        "Content-Length: 4\r\n"
+        "\r\n"
+        "data";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    auto lm = resp->headers.get("Last-Modified");
+    EXPECT_TRUE(lm.has_value());
+}
+
+// Request: Range header can be set
+TEST(RequestTest, RangeRequestHeaderSet) {
+    Request req;
+    req.headers.set("Range", "bytes=0-1023");
+    auto val = req.headers.get("Range");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(val.value(), "bytes=0-1023");
+}
+
+// Response: X-Content-Type-Options header is accessible
+TEST(ResponseTest, ParseXContentTypeOptions) {
+    std::string raw =
+        "HTTP/1.1 200 OK\r\n"
+        "X-Content-Type-Options: nosniff\r\n"
+        "Content-Length: 2\r\n"
+        "\r\n"
+        "ok";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    auto xcto = resp->headers.get("X-Content-Type-Options");
+    EXPECT_TRUE(xcto.has_value());
+}
+
+// Response: X-Frame-Options header is accessible after parse
+TEST(ResponseTest, ParseXFrameOptionsHeader) {
+    std::string raw =
+        "HTTP/1.1 200 OK\r\n"
+        "X-Frame-Options: DENY\r\n"
+        "Content-Length: 0\r\n"
+        "\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    auto xfo = resp->headers.get("X-Frame-Options");
+    EXPECT_TRUE(xfo.has_value());
+}
