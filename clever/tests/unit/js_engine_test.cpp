@@ -18714,3 +18714,53 @@ TEST(JSEngine, ProxyHandlerGetSetCycle1209) {
     auto result = engine.evaluate("var target = { x: 5 }; var proxy = new Proxy(target, { get: (t, p) => t[p] * 2, set: (t, p, v) => { t[p] = v; return true; } }); proxy.x.toString()");
     EXPECT_EQ(result, "10");
 }
+
+// --- Cycle 1218: 8 JS tests ---
+
+TEST(JSEngine, RestParametersSumCycle1218) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("function sum(...nums) { return nums.reduce((a, b) => a + b, 0); } sum(1, 2, 3, 4, 5).toString()");
+    EXPECT_EQ(result, "15");
+}
+
+TEST(JSEngine, ObjectAssignMergeCycle1218) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var obj1 = { a: 1 }; var obj2 = { b: 2 }; var obj3 = { c: 3 }; var merged = Object.assign({}, obj1, obj2, obj3); merged.b.toString()");
+    EXPECT_EQ(result, "2");
+}
+
+TEST(JSEngine, DestructuringFunctionParamsCycle1218) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("function greet({ name, age = 18 }) { return name + ':' + age; } greet({ name: 'Alice', age: 25 })");
+    EXPECT_EQ(result, "Alice:25");
+}
+
+TEST(JSEngine, ComputedPropertyNameCycle1218) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var key = 'dynKey'; var obj = { [key]: 42, ['static']: 100 }; obj.dynKey.toString()");
+    EXPECT_EQ(result, "42");
+}
+
+TEST(JSEngine, ArrayFindLastV6) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("[1, 2, 3, 4, 5].findLast(x => x > 2).toString()");
+    EXPECT_EQ(result, "5");
+}
+
+TEST(JSEngine, StringReplaceAllMultipleCycle1218) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("'aaa'.replaceAll('a', 'b')");
+    EXPECT_EQ(result, "bbb");
+}
+
+TEST(JSEngine, PromiseAllSettledV2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("typeof Promise.allSettled([Promise.resolve(1), Promise.reject('err')])");
+    EXPECT_EQ(result, "object");
+}
+
+TEST(JSEngine, OptionalChainingAccessCycle1218) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate("var obj = { a: { b: { c: 42 } } }; var result = obj?.a?.b?.c; result.toString()");
+    EXPECT_EQ(result, "42");
+}

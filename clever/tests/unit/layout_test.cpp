@@ -8677,3 +8677,45 @@ TEST(LayoutNodeProps, AnimationRangeDefaultsNormal) {
     LayoutNode n;
     EXPECT_EQ(n.animation_range, "normal");
 }
+
+// Cycle 1217: 8 Layout tests for additional property defaults
+
+TEST(LayoutNodeProps, ColorInterpolationDefaultsZero) {
+    LayoutNode n;
+    EXPECT_EQ(n.color_interpolation, 0);
+}
+
+TEST(LayoutNodeProps, OffsetPathDefaultsNoneV2) {
+    LayoutNode n;
+    EXPECT_EQ(n.offset_path, "none");
+}
+
+TEST(LayoutNodeProps, OffsetRotateDefaultsAutoV2) {
+    LayoutNode n;
+    EXPECT_EQ(n.offset_rotate, "auto");
+}
+
+TEST(LayoutNodeProps, OffsetAnchorDefaultsAutoV2) {
+    LayoutNode n;
+    EXPECT_EQ(n.offset_anchor, "auto");
+}
+
+TEST(LayoutNodeProps, OffsetPositionDefaultsNormalV2) {
+    LayoutNode n;
+    EXPECT_EQ(n.offset_position, "normal");
+}
+
+TEST(LayoutNodeProps, TransitionBehaviorDefaultsZero) {
+    LayoutNode n;
+    EXPECT_EQ(n.transition_behavior, 0);
+}
+
+TEST(LayoutNodeProps, MaskShorthandDefaultEmptyV2) {
+    LayoutNode n;
+    EXPECT_EQ(n.mask_shorthand, "");
+}
+
+TEST(LayoutNodeProps, MaskBorderDefaultEmptyV2) {
+    LayoutNode n;
+    EXPECT_EQ(n.mask_border, "");
+}

@@ -7411,3 +7411,75 @@ TEST_F(CSSStylesheetTest, BackfaceVisibilityV13) {
         if (d.property == "backface-visibility") found = true;
     EXPECT_TRUE(found);
 }
+
+TEST_F(CSSStylesheetTest, ClipPathV14) {
+    auto sheet = parse_stylesheet(".clip { clip-path: circle(50%); }");
+    ASSERT_FALSE(sheet.rules.empty());
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "clip-path") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, MaskImageV14) {
+    auto sheet = parse_stylesheet(".masked { mask-image: url(mask.svg); }");
+    ASSERT_FALSE(sheet.rules.empty());
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "mask-image") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, ShapeOutsideV14) {
+    auto sheet = parse_stylesheet(".float { shape-outside: polygon(0 0, 100% 0, 100% 100%); }");
+    ASSERT_FALSE(sheet.rules.empty());
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "shape-outside") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, ScrollBehaviorV14) {
+    auto sheet = parse_stylesheet("html { scroll-behavior: smooth; }");
+    ASSERT_FALSE(sheet.rules.empty());
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "scroll-behavior") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, OverflowAnchorV14) {
+    auto sheet = parse_stylesheet(".content { overflow-anchor: auto; }");
+    ASSERT_FALSE(sheet.rules.empty());
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "overflow-anchor") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, MaskSizeV14) {
+    auto sheet = parse_stylesheet(".masked { mask-size: cover; }");
+    ASSERT_FALSE(sheet.rules.empty());
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "mask-size") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, ScrollMarginV14) {
+    auto sheet = parse_stylesheet(".snap { scroll-margin: 20px; }");
+    ASSERT_FALSE(sheet.rules.empty());
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "scroll-margin") found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, ScrollPaddingV14) {
+    auto sheet = parse_stylesheet(".container { scroll-padding: 10px; }");
+    ASSERT_FALSE(sheet.rules.empty());
+    bool found = false;
+    for (auto& d : sheet.rules[0].declarations)
+        if (d.property == "scroll-padding") found = true;
+    EXPECT_TRUE(found);
+}

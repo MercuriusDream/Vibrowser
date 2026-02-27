@@ -4630,3 +4630,92 @@ TEST(URLParser, SubdomainWithPortAndPathV3) {
     EXPECT_EQ(url->port, 9443);
     EXPECT_EQ(url->path, "/data/export");
 }
+
+// ============================================================================
+// Cycle 1213: More URL parser tests for simple components
+// ============================================================================
+
+// Cycle 1213: Test custom port with simple path
+TEST(URLParser, CustomPortWithSimplePathV4) {
+    auto url = parse("http://localhost:5000/api");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "http");
+    EXPECT_EQ(url->host, "localhost");
+    EXPECT_EQ(url->port, 5000);
+    EXPECT_EQ(url->path, "/api");
+}
+
+// Cycle 1213: Test deep nested path with query parameters
+TEST(URLParser, DeepNestedPathWithQueryV4) {
+    auto url = parse("https://app.example.org/users/admin/settings/profile?tab=personal");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "app.example.org");
+    EXPECT_TRUE(url->path.find("/users/admin/settings/profile") != std::string::npos);
+    EXPECT_NE(url->query.find("tab=personal"), std::string::npos);
+}
+
+// Cycle 1213: Test port with zero-padded value
+TEST(URLParser, PortZeroPaddedV4) {
+    auto url = parse("https://service.example.com:08080/endpoint");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "service.example.com");
+    if (url->port.has_value()) {
+        EXPECT_EQ(url->port.value(), 8080);
+    }
+    EXPECT_EQ(url->path, "/endpoint");
+}
+
+// Cycle 1213: Test query with multiple ampersands
+TEST(URLParser, QueryMultipleAmpersandsV4) {
+    auto url = parse("https://search.example.net/find?q=test&limit=20&offset=0&sort=date");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "search.example.net");
+    EXPECT_EQ(url->path, "/find");
+    EXPECT_NE(url->query.find("q=test"), std::string::npos);
+    EXPECT_NE(url->query.find("limit=20"), std::string::npos);
+    EXPECT_NE(url->query.find("offset=0"), std::string::npos);
+}
+
+// Cycle 1213: Test fragment with multiple segments
+TEST(URLParser, FragmentMultipleSegmentsV4) {
+    auto url = parse("https://docs.example.io/manual#chapter3-section2-topic");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "docs.example.io");
+    EXPECT_EQ(url->path, "/manual");
+    EXPECT_EQ(url->fragment, "chapter3-section2-topic");
+}
+
+// Cycle 1213: Test host with many subdomains
+TEST(URLParser, HostWithManySubdomainsV4) {
+    auto url = parse("https://a.b.c.d.example.company.net:3000/resource");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "a.b.c.d.example.company.net");
+    EXPECT_EQ(url->port, 3000);
+    EXPECT_EQ(url->path, "/resource");
+}
+
+// Cycle 1213: Test path with trailing slashes
+TEST(URLParser, PathWithTrailingSlashesV4) {
+    auto url = parse("http://web.example.com:8000/app/v1/users/");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "http");
+    EXPECT_EQ(url->host, "web.example.com");
+    EXPECT_EQ(url->port, 8000);
+    EXPECT_TRUE(url->path.find("/app/v1/users/") != std::string::npos);
+}
+
+// Cycle 1213: Test query with equals in value
+TEST(URLParser, QueryWithEqualsInValueV4) {
+    auto url = parse("https://data.example.edu/process?formula=a+b=c&mode=advanced");
+    ASSERT_TRUE(url.has_value());
+    EXPECT_EQ(url->scheme, "https");
+    EXPECT_EQ(url->host, "data.example.edu");
+    EXPECT_EQ(url->path, "/process");
+    EXPECT_NE(url->query.find("formula"), std::string::npos);
+    EXPECT_NE(url->query.find("mode=advanced"), std::string::npos);
+}

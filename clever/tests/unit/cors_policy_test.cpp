@@ -3071,3 +3071,38 @@ TEST(CORSPolicyTest, CorsAllowsResponseNoACAOHeaderV22) {
     clever::net::HeaderMap resp_headers;
     EXPECT_FALSE(cors_allows_response("https://origin.example.com", "https://other.example.com/data", resp_headers, false));
 }
+
+TEST(CORSPolicyTest, NotEnforceableBlobOriginV23) {
+    EXPECT_FALSE(has_enforceable_document_origin("blob:https://app.example/12345"));
+}
+
+TEST(CORSPolicyTest, NotEnforceableNullStringOriginV23) {
+    EXPECT_FALSE(has_enforceable_document_origin("null"));
+}
+
+TEST(CORSPolicyTest, CorsEligibleHttpsWithQueryParamV23) {
+    EXPECT_TRUE(is_cors_eligible_request_url("https://api.example.com/data?key=value"));
+}
+
+TEST(CORSPolicyTest, CrossOriginSchemeMismatchHttpHttpsV23) {
+    EXPECT_TRUE(is_cross_origin("http://app.example.com", "https://app.example.com/api"));
+}
+
+TEST(CORSPolicyTest, ShouldAttachOriginHeaderForDifferentSubdomainV23) {
+    EXPECT_TRUE(should_attach_origin_header("https://app.example.com", "https://api.example.com/data"));
+}
+
+TEST(CORSPolicyTest, CorsAllowsResponseACAOWildcardNoCredentialsV23) {
+    clever::net::HeaderMap resp_headers;
+    resp_headers.set("Access-Control-Allow-Origin", "*");
+    resp_headers.set("Access-Control-Allow-Credentials", "false");
+    EXPECT_TRUE(cors_allows_response("https://origin.example.com", "https://api.example.com/endpoint", resp_headers, false));
+}
+
+TEST(CORSPolicyTest, NotCorsEligibleUrlWithSpaceInPathV23) {
+    EXPECT_FALSE(is_cors_eligible_request_url("https://api.example.com/path with space"));
+}
+
+TEST(CORSPolicyTest, EnforceableHttpsPortDifferentFrom443V23) {
+    EXPECT_TRUE(has_enforceable_document_origin("https://example.com:9443"));
+}

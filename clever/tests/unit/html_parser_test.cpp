@@ -6946,3 +6946,121 @@ TEST(TreeBuilder, DetailsSummaryInteractive) {
     ASSERT_NE(sum, nullptr);
     EXPECT_EQ(sum->tag_name, "summary");
 }
+
+// ============================================================================
+// Cycle 1216: Additional HTML parser tests
+// ============================================================================
+
+TEST(TreeBuilder, ProgressWithMinMaxAttrs) {
+    auto doc = clever::html::parse("<progress min=\"0\" max=\"100\" value=\"45\"></progress>");
+    auto* el = doc->find_element("progress");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "progress");
+    bool has_min = false, has_max = false, has_value = false;
+    for (const auto& attr : el->attributes) {
+        if (attr.name == "min" && attr.value == "0") has_min = true;
+        if (attr.name == "max" && attr.value == "100") has_max = true;
+        if (attr.name == "value" && attr.value == "45") has_value = true;
+    }
+    EXPECT_TRUE(has_min && has_max && has_value);
+}
+
+TEST(TreeBuilder, MetaPropertyOgAttr) {
+    auto doc = clever::html::parse("<head><meta property=\"og:type\" content=\"website\"></head><body></body>");
+    auto* el = doc->find_element("meta");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "meta");
+    bool has_property = false, has_content = false;
+    for (const auto& attr : el->attributes) {
+        if (attr.name == "property" && attr.value == "og:type") has_property = true;
+        if (attr.name == "content" && attr.value == "website") has_content = true;
+    }
+    EXPECT_TRUE(has_property && has_content);
+}
+
+TEST(TreeBuilder, InputTypeWeekV3) {
+    auto doc = clever::html::parse("<input type=\"week\" name=\"meeting-week\" value=\"2026-W10\">");
+    auto* el = doc->find_element("input");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "input");
+    bool has_type = false, has_name = false, has_value = false;
+    for (const auto& attr : el->attributes) {
+        if (attr.name == "type" && attr.value == "week") has_type = true;
+        if (attr.name == "name" && attr.value == "meeting-week") has_name = true;
+        if (attr.name == "value" && attr.value == "2026-W10") has_value = true;
+    }
+    EXPECT_TRUE(has_type && has_name && has_value);
+}
+
+TEST(TreeBuilder, TextareaPlaceholderV2) {
+    auto doc = clever::html::parse("<textarea id=\"msg\" placeholder=\"Type your message here\" rows=\"5\" cols=\"40\"></textarea>");
+    auto* el = doc->find_element("textarea");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name, "textarea");
+    bool has_id = false, has_placeholder = false, has_rows = false, has_cols = false;
+    for (const auto& attr : el->attributes) {
+        if (attr.name == "id" && attr.value == "msg") has_id = true;
+        if (attr.name == "placeholder" && attr.value == "Type your message here") has_placeholder = true;
+        if (attr.name == "rows" && attr.value == "5") has_rows = true;
+        if (attr.name == "cols" && attr.value == "40") has_cols = true;
+    }
+    EXPECT_TRUE(has_id && has_placeholder && has_rows && has_cols);
+}
+
+TEST(TreeBuilder, SelectOptgroupElementV2) {
+    auto doc = clever::html::parse("<select><optgroup label=\"Fruits\"><option>Apple</option><option>Orange</option></optgroup><optgroup label=\"Veggies\"><option>Carrot</option></optgroup></select>");
+    auto* sel = doc->find_element("select");
+    ASSERT_NE(sel, nullptr);
+    EXPECT_EQ(sel->tag_name, "select");
+    auto* optg = doc->find_element("optgroup");
+    ASSERT_NE(optg, nullptr);
+    EXPECT_EQ(optg->tag_name, "optgroup");
+    bool has_label = false;
+    for (const auto& attr : optg->attributes) {
+        if (attr.name == "label" && attr.value == "Fruits") has_label = true;
+    }
+    EXPECT_TRUE(has_label);
+}
+
+TEST(TreeBuilder, TableHeaderScopeRowAttr) {
+    auto doc = clever::html::parse("<table><thead><tr><th scope=\"col\">Name</th><th scope=\"col\">Age</th></tr></thead></table>");
+    auto* th = doc->find_element("th");
+    ASSERT_NE(th, nullptr);
+    EXPECT_EQ(th->tag_name, "th");
+    bool has_scope = false;
+    for (const auto& attr : th->attributes) {
+        if (attr.name == "scope" && attr.value == "col") has_scope = true;
+    }
+    EXPECT_TRUE(has_scope);
+}
+
+TEST(TreeBuilder, ParagraphWithStrongAndEm) {
+    auto doc = clever::html::parse("<p>This is <strong>important</strong> and <em>emphasized</em> text.</p>");
+    auto* p = doc->find_element("p");
+    ASSERT_NE(p, nullptr);
+    EXPECT_EQ(p->tag_name, "p");
+    auto* strong = doc->find_element("strong");
+    ASSERT_NE(strong, nullptr);
+    EXPECT_EQ(strong->tag_name, "strong");
+    auto* em = doc->find_element("em");
+    ASSERT_NE(em, nullptr);
+    EXPECT_EQ(em->tag_name, "em");
+}
+
+TEST(TreeBuilder, DivWithNestedSpanAndP) {
+    auto doc = clever::html::parse("<div id=\"container\"><span class=\"highlight\">Highlighted</span><p>Paragraph content here</p></div>");
+    auto* div = doc->find_element("div");
+    ASSERT_NE(div, nullptr);
+    EXPECT_EQ(div->tag_name, "div");
+    auto* span = doc->find_element("span");
+    ASSERT_NE(span, nullptr);
+    EXPECT_EQ(span->tag_name, "span");
+    auto* p = doc->find_element("p");
+    ASSERT_NE(p, nullptr);
+    EXPECT_EQ(p->tag_name, "p");
+    bool has_div_id = false;
+    for (const auto& attr : div->attributes) {
+        if (attr.name == "id" && attr.value == "container") has_div_id = true;
+    }
+    EXPECT_TRUE(has_div_id);
+}

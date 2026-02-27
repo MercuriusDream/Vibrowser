@@ -6736,3 +6736,108 @@ TEST(RequestTest, GetMethodWithCustomHeadersV15) {
     auto raw = req.serialize();
     EXPECT_GT(raw.size(), 0u);
 }
+
+// HeaderMap: set overwrites previous value and get_all returns single value V16
+TEST(HeaderMapTest, SetOverwritesSingleValueV16) {
+    HeaderMap headers;
+    headers.set("Content-Type", "text/plain");
+    headers.set("Content-Type", "application/json");
+    auto value = headers.get("Content-Type");
+    EXPECT_TRUE(value.has_value());
+    EXPECT_EQ(value.value(), "application/json");
+    auto all_values = headers.get_all("Content-Type");
+    EXPECT_EQ(all_values.size(), 1u);
+    EXPECT_EQ(all_values[0], "application/json");
+}
+
+// HeaderMap: remove on non-existent key is safe and size unchanged V16
+TEST(HeaderMapTest, RemoveNonexistentKeySafeV16) {
+    HeaderMap headers;
+    headers.set("Host", "example.com");
+    headers.set("Accept", "text/html");
+    size_t initial_size = headers.size();
+    headers.remove("NonExistentKey");
+    EXPECT_EQ(headers.size(), initial_size);
+    EXPECT_TRUE(headers.has("Host"));
+    EXPECT_TRUE(headers.has("Accept"));
+}
+
+// Request: DELETE_METHOD with headers and body serialization V16
+TEST(RequestTest, DeleteMethodWithHeadersAndBodyV16) {
+    Request req;
+    req.method = Method::DELETE_METHOD;
+    req.host = "api.example.com";
+    req.path = "/users/123";
+    req.headers.set("X-API-Key", "secret_key_456");
+    req.headers.set("Content-Type", "application/json");
+    req.use_tls = true;
+    EXPECT_EQ(req.method, Method::DELETE_METHOD);
+    EXPECT_TRUE(req.headers.has("X-API-Key"));
+    auto raw = req.serialize();
+    EXPECT_GT(raw.size(), 0u);
+}
+
+// Request: HEAD method with minimal headers V16
+TEST(RequestTest, HeadMethodWithMinimalHeadersV16) {
+    Request req;
+    req.method = Method::HEAD;
+    req.host = "cdn.example.com";
+    req.path = "/assets/image.png";
+    req.headers.set("Host", "cdn.example.com");
+    EXPECT_EQ(req.method, Method::HEAD);
+    EXPECT_TRUE(req.headers.has("Host"));
+    auto raw = req.serialize();
+    EXPECT_GT(raw.size(), 0u);
+}
+
+// Response: status code and multiple header types V16
+TEST(ResponseTest, StatusAndMultipleHeaderTypesV16) {
+    Response resp;
+    resp.status = 201;
+    resp.headers.set("Location", "/resource/456");
+    resp.headers.set("ETag", "\"abc123def\"");
+    resp.headers.set("Cache-Control", "max-age=3600");
+    EXPECT_EQ(resp.status, 201u);
+    EXPECT_TRUE(resp.headers.has("Location"));
+    EXPECT_EQ(resp.headers.get("ETag").value(), "\"abc123def\"");
+    EXPECT_EQ(resp.headers.get("Cache-Control").value(), "max-age=3600");
+}
+
+// CookieJar: clear removes all cookies and size returns zero V16
+TEST(CookieJarTest, ClearRemovesAllCookiesV16) {
+    CookieJar jar;
+    jar.set_from_header("session=xyz789", "example.com");
+    jar.set_from_header("tracking=abc123", "example.com");
+    jar.set_from_header("prefs=dark", "other.org");
+    EXPECT_EQ(jar.size(), 3u);
+    jar.clear();
+    EXPECT_EQ(jar.size(), 0u);
+    auto header = jar.get_cookie_header("example.com", "/", false);
+    EXPECT_TRUE(header.empty());
+}
+
+// Request: POST method with multiple content-related headers V16
+TEST(RequestTest, PostMethodWithContentHeadersV16) {
+    Request req;
+    req.method = Method::POST;
+    req.host = "api.service.com";
+    req.path = "/v1/submit";
+    req.headers.set("Content-Type", "application/x-www-form-urlencoded");
+    req.headers.set("Content-Length", "256");
+    req.headers.set("Accept-Encoding", "gzip, deflate");
+    EXPECT_EQ(req.method, Method::POST);
+    EXPECT_TRUE(req.headers.has("Content-Type"));
+    EXPECT_EQ(req.headers.get("Content-Length").value(), "256");
+    EXPECT_TRUE(req.headers.has("Accept-Encoding"));
+}
+
+// Method: PATCH method enum and string conversion V16
+TEST(MethodTest, PatchMethodEnumV16) {
+    Method m = Method::PATCH;
+    EXPECT_EQ(m, Method::PATCH);
+    // Verify enum comparison works
+    Method get_method = Method::GET;
+    EXPECT_NE(m, get_method);
+    Method post_method = Method::POST;
+    EXPECT_NE(m, post_method);
+}

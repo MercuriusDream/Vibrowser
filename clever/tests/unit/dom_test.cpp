@@ -6492,3 +6492,64 @@ TEST(DomElement, HasAttributeAutofocus) {
     el->set_attribute("autofocus", "");
     EXPECT_TRUE(el->has_attribute("autofocus"));
 }
+
+// --- Cycle 1210: 8 DOM tests ---
+
+TEST(DomElement, TagNameDatalist) {
+    Document doc;
+    auto el = doc.create_element("datalist");
+    EXPECT_EQ(el->tag_name(), "datalist");
+}
+
+TEST(DomElement, TagNameSummaryV2) {
+    Document doc;
+    auto el = doc.create_element("summary");
+    EXPECT_EQ(el->tag_name(), "summary");
+}
+
+TEST(DomElement, SetAttributeFor) {
+    Document doc;
+    auto el = doc.create_element("label");
+    el->set_attribute("for", "username");
+    EXPECT_EQ(el->get_attribute("for"), "username");
+}
+
+TEST(DomElement, SetAttributeAccept) {
+    Document doc;
+    auto el = doc.create_element("input");
+    el->set_attribute("accept", "image/*");
+    EXPECT_EQ(el->get_attribute("accept"), "image/*");
+}
+
+TEST(DomElement, ChildCountThirty) {
+    Document doc;
+    auto parent = doc.create_element("div");
+    for (int i = 0; i < 30; ++i) {
+        parent->append_child(doc.create_element("span"));
+    }
+    EXPECT_EQ(parent->child_count(), 30u);
+}
+
+TEST(DomClassList, ClassListContainsTen) {
+    Document doc;
+    auto el = doc.create_element("div");
+    for (int i = 0; i < 10; ++i) {
+        el->class_list().add("item" + std::to_string(i));
+    }
+    EXPECT_EQ(el->class_list().length(), 10u);
+}
+
+TEST(DomElement, RemoveAttributeAriaLabel) {
+    Document doc;
+    auto el = doc.create_element("button");
+    el->set_attribute("aria-label", "Submit");
+    el->remove_attribute("aria-label");
+    EXPECT_FALSE(el->has_attribute("aria-label"));
+}
+
+TEST(DomElement, HasAttributeSpellcheck) {
+    Document doc;
+    auto el = doc.create_element("input");
+    el->set_attribute("spellcheck", "true");
+    EXPECT_TRUE(el->has_attribute("spellcheck"));
+}
