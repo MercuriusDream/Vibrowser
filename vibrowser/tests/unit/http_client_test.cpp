@@ -14875,3 +14875,127 @@ TEST(HttpClientTest, CookieJarOverwritesSameCookieNameV82) {
     EXPECT_TRUE(header.find("token=new") != std::string::npos);
     EXPECT_FALSE(header.find("token=old") != std::string::npos);
 }
+
+// ===========================================================================
+// V83 Tests
+// ===========================================================================
+
+TEST(HttpClientTest, HeaderMapAppendCreatesMultipleValuesV83) {
+    // append() should add a second value for the same key, not overwrite
+    HeaderMap hm;
+    hm.set("Accept", "text/html");
+    hm.append("Accept", "application/json");
+
+    auto all = hm.get_all("Accept");
+    EXPECT_EQ(all.size(), 2u);
+    EXPECT_EQ(all[0], "text/html");
+    EXPECT_EQ(all[1], "application/json");
+    // get() should return the first value
+    EXPECT_EQ(hm.get("Accept").value(), "text/html");
+}
+
+TEST(HttpClientTest, HeaderMapRemoveDeletesAllValuesV83) {
+    // remove() should delete every value for the given key
+    HeaderMap hm;
+    hm.set("X-Debug", "1");
+    hm.append("X-Debug", "2");
+    EXPECT_EQ(hm.get_all("X-Debug").size(), 2u);
+
+    hm.remove("X-Debug");
+    EXPECT_FALSE(hm.has("X-Debug"));
+    EXPECT_EQ(hm.size(), 0u);
+    EXPECT_TRUE(hm.empty());
+}
+
+TEST(HttpClientTest, RequestSerializeOmitsPort443ForHttpsV83) {
+    // Port 443 should be omitted from the Host header in serialized output
+    Request req;
+    req.method = Method::GET;
+    req.host = "secure.example.com";
+    req.port = 443;
+    req.path = "/api/v1";
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    EXPECT_TRUE(result.find("Host: secure.example.com\r\n") != std::string::npos);
+    EXPECT_FALSE(result.find("Host: secure.example.com:443") != std::string::npos);
+}
+
+TEST(HttpClientTest, RequestSerializeIncludesNonStandardPortV83) {
+    // A non-standard port (e.g. 8443) must appear in the Host header
+    Request req;
+    req.method = Method::POST;
+    req.host = "api.internal.io";
+    req.port = 8443;
+    req.path = "/submit";
+    req.body = std::vector<uint8_t>{'d', 'a', 't', 'a'};
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    EXPECT_TRUE(result.find("Host: api.internal.io:8443\r\n") != std::string::npos);
+    EXPECT_TRUE(result.find("POST /submit HTTP/1.1\r\n") != std::string::npos);
+}
+
+TEST(HttpClientTest, ResponseBodyAsStringConvertsCorrectlyV83) {
+    // body_as_string() should faithfully convert the byte vector to a string
+    Response resp;
+    resp.status = 200;
+    std::string payload = "Hello, World!";
+    resp.body = std::vector<uint8_t>(payload.begin(), payload.end());
+
+    EXPECT_EQ(resp.body_as_string(), "Hello, World!");
+    EXPECT_EQ(resp.status, 200);
+}
+
+TEST(HttpClientTest, HeaderMapSetOverwritesPreviousValueV83) {
+    // set() should replace any existing values for the key
+    HeaderMap hm;
+    hm.set("Content-Type", "text/plain");
+    hm.append("Content-Type", "text/html");
+    EXPECT_EQ(hm.get_all("Content-Type").size(), 2u);
+
+    // set() overwrites all previous values
+    hm.set("Content-Type", "application/json");
+    EXPECT_EQ(hm.get_all("Content-Type").size(), 1u);
+    EXPECT_EQ(hm.get("Content-Type").value(), "application/json");
+}
+
+TEST(HttpClientTest, CookieJarMultipleCookiesDifferentDomainsV83) {
+    // Cookies from different domains should be independent
+    CookieJar jar;
+    jar.set_from_header("sid=abc123", "alpha.com");
+    jar.set_from_header("sid=xyz789", "beta.com");
+    EXPECT_EQ(jar.size(), 2u);
+
+    std::string alpha_hdr = jar.get_cookie_header("alpha.com", "/", false);
+    std::string beta_hdr = jar.get_cookie_header("beta.com", "/", false);
+
+    EXPECT_TRUE(alpha_hdr.find("sid=abc123") != std::string::npos);
+    EXPECT_FALSE(alpha_hdr.find("sid=xyz789") != std::string::npos);
+    EXPECT_TRUE(beta_hdr.find("sid=xyz789") != std::string::npos);
+    EXPECT_FALSE(beta_hdr.find("sid=abc123") != std::string::npos);
+}
+
+TEST(HttpClientTest, RequestSerializePatchMethodWithCustomHeadersV83) {
+    // PATCH with custom headers: custom headers should be lowercase in output
+    Request req;
+    req.method = Method::PATCH;
+    req.host = "api.example.com";
+    req.port = 80;
+    req.path = "/users/42";
+    req.headers.set("X-Request-Id", "req-999");
+    req.headers.set("Authorization", "Bearer tok");
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    EXPECT_TRUE(result.find("PATCH /users/42 HTTP/1.1\r\n") != std::string::npos);
+    // Port 80 omitted from Host
+    EXPECT_TRUE(result.find("Host: api.example.com\r\n") != std::string::npos);
+    EXPECT_FALSE(result.find("Host: api.example.com:80") != std::string::npos);
+    // Custom headers are lowercased
+    EXPECT_TRUE(result.find("x-request-id: req-999\r\n") != std::string::npos);
+    EXPECT_TRUE(result.find("authorization: Bearer tok\r\n") != std::string::npos);
+}

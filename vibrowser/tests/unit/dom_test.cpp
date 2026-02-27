@@ -13642,3 +13642,209 @@ TEST(DomTest, DocumentCreateAndAdoptElementsV82) {
     // doc node type
     EXPECT_EQ(doc->node_type(), NodeType::Document);
 }
+
+// ---------------------------------------------------------------------------
+// V83 Tests
+// ---------------------------------------------------------------------------
+
+TEST(DomTest, ElementSetAndGetMultipleAttributesV83) {
+    auto el = std::make_unique<Element>("section");
+    el->set_attribute("id", "main");
+    el->set_attribute("class", "container wide");
+    el->set_attribute("data-index", "42");
+    el->set_attribute("hidden", "");
+
+    EXPECT_EQ(el->get_attribute("id").value(), "main");
+    EXPECT_EQ(el->get_attribute("class").value(), "container wide");
+    EXPECT_EQ(el->get_attribute("data-index").value(), "42");
+    EXPECT_EQ(el->get_attribute("hidden").value(), "");
+    EXPECT_FALSE(el->get_attribute("nonexistent").has_value());
+    EXPECT_EQ(el->attributes().size(), 4u);
+}
+
+TEST(DomTest, ElementOverwriteAttributeValueV83) {
+    auto el = std::make_unique<Element>("input");
+    el->set_attribute("type", "text");
+    EXPECT_EQ(el->get_attribute("type").value(), "text");
+
+    el->set_attribute("type", "password");
+    EXPECT_EQ(el->get_attribute("type").value(), "password");
+    // Overwriting should not increase attribute count
+    EXPECT_EQ(el->attributes().size(), 1u);
+}
+
+TEST(DomTest, ClassListAddRemoveContainsToggleV83) {
+    auto el = std::make_unique<Element>("div");
+    el->class_list().add("alpha");
+    el->class_list().add("beta");
+    el->class_list().add("gamma");
+
+    EXPECT_TRUE(el->class_list().contains("alpha"));
+    EXPECT_TRUE(el->class_list().contains("beta"));
+    EXPECT_TRUE(el->class_list().contains("gamma"));
+    EXPECT_FALSE(el->class_list().contains("delta"));
+
+    el->class_list().remove("beta");
+    EXPECT_FALSE(el->class_list().contains("beta"));
+    EXPECT_TRUE(el->class_list().contains("alpha"));
+    EXPECT_TRUE(el->class_list().contains("gamma"));
+
+    // toggle removes if present
+    el->class_list().toggle("alpha");
+    EXPECT_FALSE(el->class_list().contains("alpha"));
+
+    // toggle adds if absent
+    el->class_list().toggle("delta");
+    EXPECT_TRUE(el->class_list().contains("delta"));
+}
+
+TEST(DomTest, InsertBeforeAtVariousPositionsV83) {
+    auto parent = std::make_unique<Element>("ul");
+    auto li1 = std::make_unique<Element>("li");
+    auto li2 = std::make_unique<Element>("li");
+    auto li3 = std::make_unique<Element>("li");
+
+    li1->set_attribute("id", "first");
+    li2->set_attribute("id", "second");
+    li3->set_attribute("id", "third");
+
+    auto* li1_ptr = li1.get();
+    auto* li2_ptr = li2.get();
+    auto* li3_ptr = li3.get();
+
+    // Append li1, then li3
+    parent->append_child(std::move(li1));
+    parent->append_child(std::move(li3));
+    EXPECT_EQ(parent->child_count(), 2u);
+
+    // Insert li2 before li3 (between li1 and li3)
+    parent->insert_before(std::move(li2), li3_ptr);
+    EXPECT_EQ(parent->child_count(), 3u);
+
+    // Verify order: li1 -> li2 -> li3
+    EXPECT_EQ(parent->first_child(), li1_ptr);
+    EXPECT_EQ(li1_ptr->next_sibling(), li2_ptr);
+    EXPECT_EQ(li2_ptr->next_sibling(), li3_ptr);
+    EXPECT_EQ(li3_ptr->next_sibling(), nullptr);
+}
+
+TEST(DomTest, RemoveChildUpdatesTreeStructureV83) {
+    auto parent = std::make_unique<Element>("div");
+    auto a = std::make_unique<Element>("span");
+    auto b = std::make_unique<Element>("span");
+    auto c = std::make_unique<Element>("span");
+
+    a->set_attribute("id", "a");
+    b->set_attribute("id", "b");
+    c->set_attribute("id", "c");
+
+    auto* a_ptr = a.get();
+    auto* b_ptr = b.get();
+    auto* c_ptr = c.get();
+
+    parent->append_child(std::move(a));
+    parent->append_child(std::move(b));
+    parent->append_child(std::move(c));
+    EXPECT_EQ(parent->child_count(), 3u);
+
+    // Remove middle child
+    parent->remove_child(*b_ptr);
+    EXPECT_EQ(parent->child_count(), 2u);
+    EXPECT_EQ(parent->first_child(), a_ptr);
+    EXPECT_EQ(a_ptr->next_sibling(), c_ptr);
+    EXPECT_EQ(c_ptr->next_sibling(), nullptr);
+
+    // Remove first child
+    parent->remove_child(*a_ptr);
+    EXPECT_EQ(parent->child_count(), 1u);
+    EXPECT_EQ(parent->first_child(), c_ptr);
+}
+
+TEST(DomTest, TextNodeContentAndParentLinkV83) {
+    auto div = std::make_unique<Element>("div");
+    auto txt = std::make_unique<Text>("Hello, world!");
+
+    auto* txt_ptr = txt.get();
+
+    EXPECT_EQ(txt_ptr->text_content(), "Hello, world!");
+    EXPECT_EQ(txt_ptr->node_type(), NodeType::Text);
+    EXPECT_EQ(txt_ptr->parent(), nullptr);
+
+    div->append_child(std::move(txt));
+    EXPECT_EQ(txt_ptr->parent(), div.get());
+    EXPECT_EQ(div->child_count(), 1u);
+    EXPECT_EQ(div->first_child(), txt_ptr);
+    EXPECT_EQ(div->text_content(), "Hello, world!");
+}
+
+TEST(DomTest, NestedElementTreeTraversalV83) {
+    auto root = std::make_unique<Element>("div");
+    auto child1 = std::make_unique<Element>("p");
+    auto child2 = std::make_unique<Element>("p");
+    auto grandchild = std::make_unique<Element>("strong");
+    auto text = std::make_unique<Text>("bold text");
+
+    auto* root_ptr = root.get();
+    auto* child1_ptr = child1.get();
+    auto* child2_ptr = child2.get();
+    auto* grandchild_ptr = grandchild.get();
+    auto* text_ptr = text.get();
+
+    grandchild->append_child(std::move(text));
+    child1->append_child(std::move(grandchild));
+    root->append_child(std::move(child1));
+    root->append_child(std::move(child2));
+
+    // Root has 2 children
+    EXPECT_EQ(root_ptr->child_count(), 2u);
+    EXPECT_EQ(root_ptr->first_child(), child1_ptr);
+    EXPECT_EQ(child1_ptr->next_sibling(), child2_ptr);
+
+    // child1 has one child: grandchild
+    EXPECT_EQ(child1_ptr->child_count(), 1u);
+    EXPECT_EQ(child1_ptr->first_child(), grandchild_ptr);
+
+    // grandchild has text
+    EXPECT_EQ(grandchild_ptr->child_count(), 1u);
+    EXPECT_EQ(grandchild_ptr->first_child(), text_ptr);
+    EXPECT_EQ(text_ptr->text_content(), "bold text");
+
+    // Parent pointers
+    EXPECT_EQ(child1_ptr->parent(), root_ptr);
+    EXPECT_EQ(child2_ptr->parent(), root_ptr);
+    EXPECT_EQ(grandchild_ptr->parent(), child1_ptr);
+    EXPECT_EQ(text_ptr->parent(), grandchild_ptr);
+}
+
+TEST(DomTest, MixedChildrenElementsAndTextNodesV83) {
+    auto div = std::make_unique<Element>("div");
+    auto span = std::make_unique<Element>("span");
+    auto text1 = std::make_unique<Text>("before ");
+    auto text2 = std::make_unique<Text>(" after");
+
+    auto* text1_ptr = text1.get();
+    auto* span_ptr = span.get();
+    auto* text2_ptr = text2.get();
+
+    span->set_attribute("class", "highlight");
+
+    div->append_child(std::move(text1));
+    div->append_child(std::move(span));
+    div->append_child(std::move(text2));
+
+    EXPECT_EQ(div->child_count(), 3u);
+
+    // Verify order: text1 -> span -> text2
+    EXPECT_EQ(div->first_child(), text1_ptr);
+    EXPECT_EQ(text1_ptr->next_sibling(), span_ptr);
+    EXPECT_EQ(span_ptr->next_sibling(), text2_ptr);
+    EXPECT_EQ(text2_ptr->next_sibling(), nullptr);
+
+    // Verify types
+    EXPECT_EQ(text1_ptr->node_type(), NodeType::Text);
+    EXPECT_EQ(span_ptr->node_type(), NodeType::Element);
+    EXPECT_EQ(text2_ptr->node_type(), NodeType::Text);
+
+    // Verify span attribute
+    EXPECT_EQ(span_ptr->get_attribute("class").value(), "highlight");
+}

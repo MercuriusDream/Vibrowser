@@ -10127,3 +10127,75 @@ TEST(URLParserTest, DoubleDotAtRootClampsV82) {
     EXPECT_EQ(result->host, "example.com");
     EXPECT_EQ(result->path, "/stay");
 }
+
+// =============================================================================
+// V83 Tests
+// =============================================================================
+
+TEST(UrlParserTest, QueryOnlyNoPathV83) {
+    auto result = clever::url::parse("https://example.com?search=hello");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->query, "search=hello");
+    EXPECT_EQ(result->port, std::nullopt);
+}
+
+TEST(UrlParserTest, FragmentOnlyNoPathNoQueryV83) {
+    auto result = clever::url::parse("https://example.com#section");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->fragment, "section");
+    EXPECT_EQ(result->query, "");
+}
+
+TEST(UrlParserTest, DoubleDotResolutionMidPathV83) {
+    auto result = clever::url::parse("https://example.com/a/b/../c/d");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/a/c/d");
+}
+
+TEST(UrlParserTest, PercentEncodingDoubleEncodesV83) {
+    auto result = clever::url::parse("https://example.com/hello%20world");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/hello%2520world");
+}
+
+TEST(UrlParserTest, DefaultPortHttpsNormalizedAwayV83) {
+    auto result = clever::url::parse("https://example.com:443/secure");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->port, std::nullopt);
+    EXPECT_EQ(result->path, "/secure");
+    EXPECT_EQ(result->serialize(), "https://example.com/secure");
+}
+
+TEST(UrlParserTest, NonDefaultPortPreservedInSerializeV83) {
+    auto result = clever::url::parse("http://example.com:9090/api/v1");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "example.com");
+    ASSERT_TRUE(result->port.has_value());
+    EXPECT_EQ(result->port.value(), 9090);
+    EXPECT_EQ(result->path, "/api/v1");
+    EXPECT_EQ(result->serialize(), "http://example.com:9090/api/v1");
+}
+
+TEST(UrlParserTest, HostCaseNormalizationMixedV83) {
+    auto result = clever::url::parse("https://WwW.ExAmPlE.CoM/CaseSensitivePath");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "www.example.com");
+    EXPECT_EQ(result->path, "/CaseSensitivePath");
+}
+
+TEST(UrlParserTest, InvalidSchemeReturnsNulloptV83) {
+    auto result = clever::url::parse("://missing-scheme.com/path");
+    EXPECT_FALSE(result.has_value());
+}

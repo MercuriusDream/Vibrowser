@@ -15095,3 +15095,163 @@ TEST(CSSStyleTest, BackgroundColorAndTextAlignCenterV82) {
     EXPECT_EQ(style.background_color.a, 255);
     EXPECT_EQ(style.text_align, TextAlign::Center);
 }
+
+// ===========================================================================
+// V83 Tests
+// ===========================================================================
+
+TEST(CSSStyleTest, WhiteSpacePreWrapWithWordBreakV83) {
+    // white-space: pre-wrap combined with word-break: break-all
+    const std::string css = "pre{white-space:pre-wrap;word-break:break-all;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "pre";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.white_space, WhiteSpace::PreWrap);
+    EXPECT_EQ(style.word_break, 1);  // 1=break-all
+}
+
+TEST(CSSStyleTest, BorderLeftLonghandPropertiesV83) {
+    // border-left-width, border-left-style, border-left-color as longhands
+    const std::string css = "div{border-left-width:3px;border-left-style:dashed;border-left-color:blue;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_FLOAT_EQ(style.border_left.width.to_px(), 3.0f);
+    EXPECT_EQ(style.border_left.style, BorderStyle::Dashed);
+    EXPECT_EQ(style.border_left.color.r, 0);
+    EXPECT_EQ(style.border_left.color.g, 0);
+    EXPECT_EQ(style.border_left.color.b, 255);
+    EXPECT_EQ(style.border_left.color.a, 255);
+}
+
+TEST(CSSStyleTest, WidthPercentAndHeightPxV83) {
+    // width: 50% and height: 200px
+    const std::string css = "section{width:50%;height:200px;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "section";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_FLOAT_EQ(style.width.value, 50.0f);
+    EXPECT_EQ(style.width.unit, Length::Unit::Percent);
+    EXPECT_FLOAT_EQ(style.height.to_px(), 200.0f);
+}
+
+TEST(CSSStyleTest, PaddingShorthandFourValuesV83) {
+    // padding: 10px 20px 30px 40px (top right bottom left)
+    const std::string css = "div{padding:10px 20px 30px 40px;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_FLOAT_EQ(style.padding.top.to_px(), 10.0f);
+    EXPECT_FLOAT_EQ(style.padding.right.to_px(), 20.0f);
+    EXPECT_FLOAT_EQ(style.padding.bottom.to_px(), 30.0f);
+    EXPECT_FLOAT_EQ(style.padding.left.to_px(), 40.0f);
+}
+
+TEST(CSSStyleTest, PositionAbsoluteWithTopAndRightOffsetsV83) {
+    // position: absolute with top and right offsets
+    const std::string css = "span{position:absolute;top:15px;right:25px;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "span";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.position, Position::Absolute);
+    EXPECT_FLOAT_EQ(style.top.to_px(), 15.0f);
+    EXPECT_FLOAT_EQ(style.right_pos.to_px(), 25.0f);
+}
+
+TEST(CSSStyleTest, MarginAutoHorizontalCenteringV83) {
+    // margin: 0 auto (top/bottom 0, left/right auto)
+    const std::string css = "div{margin:0px auto;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_FLOAT_EQ(style.margin.top.to_px(), 0.0f);
+    EXPECT_FLOAT_EQ(style.margin.bottom.to_px(), 0.0f);
+    EXPECT_TRUE(style.margin.left.is_auto());
+    EXPECT_TRUE(style.margin.right.is_auto());
+}
+
+TEST(CSSStyleTest, FontWeightBoldAndFontSizeEmV83) {
+    // font-weight: bold (700) and font-size: 1.5em
+    const std::string css = "p{font-weight:bold;font-size:1.5em;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "p";
+
+    ComputedStyle parent;
+    // parent uses default font-size of 16px
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.font_weight, 700);
+    EXPECT_FLOAT_EQ(style.font_size.to_px(16.0f), 24.0f);
+}
+
+TEST(CSSStyleTest, DisplayFlexWithDirectionColumnAndGapV83) {
+    // display: flex with flex-direction: column and gap: 12px
+    const std::string css = "div{display:flex;flex-direction:column;gap:12px;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.display, Display::Flex);
+    EXPECT_EQ(style.flex_direction, FlexDirection::Column);
+    EXPECT_FLOAT_EQ(style.gap.to_px(), 12.0f);
+}
