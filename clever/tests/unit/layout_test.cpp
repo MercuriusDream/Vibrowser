@@ -7022,3 +7022,44 @@ TEST(LayoutNodeProps, BreakBeforeDefaultsZero) {
     LayoutNode n;
     EXPECT_EQ(n.break_before, 0);
 }
+
+// Cycle 867 — break_after, break_inside, isolation, pointer_events, column_count, orphans, widows, quotes
+TEST(LayoutNodeProps, BreakAfterDefaultsZero) {
+    LayoutNode n;
+    EXPECT_EQ(n.break_after, 0);
+}
+
+TEST(LayoutNodeProps, BreakInsideDefaultsZero) {
+    LayoutNode n;
+    EXPECT_EQ(n.break_inside, 0);
+}
+
+TEST(LayoutNodeProps, IsolationDefaultsZero) {
+    LayoutNode n;
+    EXPECT_EQ(n.isolation, 0);
+}
+
+TEST(LayoutNodeProps, PointerEventsDefaultsZero) {
+    LayoutNode n;
+    EXPECT_EQ(n.pointer_events, 0);
+}
+
+TEST(LayoutNodeProps, ColumnCountDefaultsMinusOne) {
+    LayoutNode n;
+    EXPECT_EQ(n.column_count, -1);
+}
+
+TEST(LayoutNodeProps, OrphansDefaultsTwo) {
+    LayoutNode n;
+    EXPECT_EQ(n.orphans, 2);
+}
+
+TEST(LayoutNodeProps, WidowsDefaultsTwo) {
+    LayoutNode n;
+    EXPECT_EQ(n.widows, 2);
+}
+
+TEST(LayoutNodeProps, QuotesDefaultsEmpty) {
+    LayoutNode n;
+    EXPECT_EQ(n.quotes, "");
+}
