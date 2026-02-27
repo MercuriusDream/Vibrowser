@@ -2589,3 +2589,70 @@ TEST(SerializerTest, I64PositiveMaxRoundTrip) {
     clever::ipc::Deserializer d(s.data());
     EXPECT_EQ(d.read_i64(), std::numeric_limits<int64_t>::max());
 }
+
+// Cycle 757 — IPC serializer edge cases
+TEST(SerializerTest, F64NegInfinityRoundTrip) {
+    clever::ipc::Serializer s;
+    s.write_f64(-std::numeric_limits<double>::infinity());
+    clever::ipc::Deserializer d(s.data());
+    EXPECT_EQ(d.read_f64(), -std::numeric_limits<double>::infinity());
+}
+
+TEST(SerializerTest, I32MinValueRoundTrip) {
+    clever::ipc::Serializer s;
+    s.write_i32(std::numeric_limits<int32_t>::min());
+    clever::ipc::Deserializer d(s.data());
+    EXPECT_EQ(d.read_i32(), std::numeric_limits<int32_t>::min());
+}
+
+TEST(SerializerTest, U64OneAndMaxSequence) {
+    clever::ipc::Serializer s;
+    s.write_u64(1u);
+    s.write_u64(std::numeric_limits<uint64_t>::max());
+    clever::ipc::Deserializer d(s.data());
+    EXPECT_EQ(d.read_u64(), 1u);
+    EXPECT_EQ(d.read_u64(), std::numeric_limits<uint64_t>::max());
+}
+
+TEST(SerializerTest, U8ThenI32Sequence) {
+    clever::ipc::Serializer s;
+    s.write_u8(42);
+    s.write_i32(-1000);
+    clever::ipc::Deserializer d(s.data());
+    EXPECT_EQ(d.read_u8(), 42);
+    EXPECT_EQ(d.read_i32(), -1000);
+}
+
+TEST(SerializerTest, StringThenU16Sequence) {
+    clever::ipc::Serializer s;
+    s.write_string("hello");
+    s.write_u16(999);
+    clever::ipc::Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "hello");
+    EXPECT_EQ(d.read_u16(), 999u);
+}
+
+TEST(SerializerTest, BoolAfterStringRoundTrip) {
+    clever::ipc::Serializer s;
+    s.write_string("test");
+    s.write_bool(true);
+    clever::ipc::Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "test");
+    EXPECT_TRUE(d.read_bool());
+}
+
+TEST(SerializerTest, FiveI32NegativeValues) {
+    clever::ipc::Serializer s;
+    for (int i = -1; i >= -5; --i) s.write_i32(i);
+    clever::ipc::Deserializer d(s.data());
+    for (int i = -1; i >= -5; --i) EXPECT_EQ(d.read_i32(), i);
+}
+
+TEST(SerializerTest, TwoStringsPreserveContents) {
+    clever::ipc::Serializer s;
+    s.write_string("alpha");
+    s.write_string("beta");
+    clever::ipc::Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "alpha");
+    EXPECT_EQ(d.read_string(), "beta");
+}
