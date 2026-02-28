@@ -17285,3 +17285,158 @@ TEST(SerializerTest, MultipleStringsWithVaryingLengthsV115) {
     }
     EXPECT_FALSE(d.has_remaining());
 }
+
+// ------------------------------------------------------------------
+// V116 tests
+// ------------------------------------------------------------------
+
+TEST(SerializerTest, RoundTripU16PowersOfTwoV116) {
+    Serializer s;
+    std::vector<uint16_t> values = {1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384, 32768};
+    for (auto v : values) {
+        s.write_u16(v);
+    }
+    Deserializer d(s.data());
+    for (auto expected : values) {
+        EXPECT_EQ(d.read_u16(), expected);
+    }
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, RoundTripU32BitPatternsV116) {
+    Serializer s;
+    // Alternating bit patterns
+    s.write_u32(0xAAAAAAAA);
+    s.write_u32(0x55555555);
+    s.write_u32(0xF0F0F0F0);
+    s.write_u32(0x0F0F0F0F);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u32(), 0xAAAAAAAAu);
+    EXPECT_EQ(d.read_u32(), 0x55555555u);
+    EXPECT_EQ(d.read_u32(), 0xF0F0F0F0u);
+    EXPECT_EQ(d.read_u32(), 0x0F0F0F0Fu);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, RoundTripF64SubnormalsV116) {
+    Serializer s;
+    double smallest_subnormal = std::numeric_limits<double>::denorm_min();
+    double max_val = std::numeric_limits<double>::max();
+    double lowest_val = std::numeric_limits<double>::lowest();
+    s.write_f64(smallest_subnormal);
+    s.write_f64(max_val);
+    s.write_f64(lowest_val);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_f64(), smallest_subnormal);
+    EXPECT_EQ(d.read_f64(), max_val);
+    EXPECT_EQ(d.read_f64(), lowest_val);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, RoundTripBytesAllByteValuesV116) {
+    // Serialize a buffer containing every byte value 0x00..0xFF
+    Serializer s;
+    std::vector<uint8_t> all_bytes(256);
+    for (int i = 0; i < 256; ++i) {
+        all_bytes[i] = static_cast<uint8_t>(i);
+    }
+    s.write_bytes(all_bytes.data(), all_bytes.size());
+    Deserializer d(s.data());
+    auto result = d.read_bytes();
+    EXPECT_EQ(result.size(), 256u);
+    for (int i = 0; i < 256; ++i) {
+        EXPECT_EQ(result[i], static_cast<uint8_t>(i));
+    }
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, RoundTripStringWithOnlyNullBytesV116) {
+    // String composed entirely of NUL characters
+    Serializer s;
+    std::string nul_str(10, '\0');
+    s.write_string(nul_str);
+    Deserializer d(s.data());
+    std::string result = d.read_string();
+    EXPECT_EQ(result.size(), 10u);
+    for (size_t i = 0; i < result.size(); ++i) {
+        EXPECT_EQ(result[i], '\0');
+    }
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, InterleavedTypesComplexV116) {
+    // Write a complex interleaving: bool, u8, string, f64, u64, bytes, u16, u32
+    Serializer s;
+    s.write_bool(true);
+    s.write_u8(0xAB);
+    s.write_string("interleaved");
+    s.write_f64(2.718281828);
+    s.write_u64(0xDEADBEEFCAFEBABEULL);
+    uint8_t payload[] = {10, 20, 30};
+    s.write_bytes(payload, 3);
+    s.write_u16(9999);
+    s.write_u32(123456789);
+
+    Deserializer d(s.data());
+    EXPECT_TRUE(d.read_bool());
+    EXPECT_EQ(d.read_u8(), 0xAB);
+    EXPECT_EQ(d.read_string(), "interleaved");
+    EXPECT_DOUBLE_EQ(d.read_f64(), 2.718281828);
+    EXPECT_EQ(d.read_u64(), 0xDEADBEEFCAFEBABEULL);
+    auto bytes = d.read_bytes();
+    EXPECT_EQ(bytes[0], 10);
+    EXPECT_EQ(bytes[1], 20);
+    EXPECT_EQ(bytes[2], 30);
+    EXPECT_EQ(d.read_u16(), 9999);
+    EXPECT_EQ(d.read_u32(), 123456789u);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, RoundTripU64CornerCasesV116) {
+    Serializer s;
+    s.write_u64(0);
+    s.write_u64(1);
+    s.write_u64(0x00000000FFFFFFFFull);  // max u32 as u64
+    s.write_u64(0x0000000100000000ull);  // one above max u32
+    s.write_u64(0x7FFFFFFFFFFFFFFFull);  // max signed i64
+    s.write_u64(0xFFFFFFFFFFFFFFFFull);  // max u64
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u64(), 0u);
+    EXPECT_EQ(d.read_u64(), 1u);
+    EXPECT_EQ(d.read_u64(), 0x00000000FFFFFFFFull);
+    EXPECT_EQ(d.read_u64(), 0x0000000100000000ull);
+    EXPECT_EQ(d.read_u64(), 0x7FFFFFFFFFFFFFFFull);
+    EXPECT_EQ(d.read_u64(), 0xFFFFFFFFFFFFFFFFull);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, DataVectorGrowsCorrectlyV116) {
+    // Verify that data() vector grows as we add fields
+    Serializer s;
+    size_t prev_size = s.data().size();
+    EXPECT_EQ(prev_size, 0u);
+
+    s.write_u8(42);
+    EXPECT_GT(s.data().size(), prev_size);
+    prev_size = s.data().size();
+
+    s.write_u32(100);
+    EXPECT_GT(s.data().size(), prev_size);
+    prev_size = s.data().size();
+
+    s.write_string("hello");
+    EXPECT_GT(s.data().size(), prev_size);
+    prev_size = s.data().size();
+
+    s.write_bool(false);
+    EXPECT_GT(s.data().size(), prev_size);
+
+    // Verify we can still deserialize everything correctly
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u8(), 42);
+    EXPECT_EQ(d.read_u32(), 100u);
+    EXPECT_EQ(d.read_string(), "hello");
+    EXPECT_FALSE(d.read_bool());
+    EXPECT_FALSE(d.has_remaining());
+}

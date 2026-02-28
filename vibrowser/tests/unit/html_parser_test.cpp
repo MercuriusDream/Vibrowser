@@ -18791,3 +18791,150 @@ TEST(HtmlParserTest, DeepNestingStressV115) {
     auto divs = doc->find_all_elements("div");
     EXPECT_EQ(divs.size(), static_cast<size_t>(depth));
 }
+
+// ============================================================================
+// V116 Tests
+// ============================================================================
+
+TEST(HtmlParserTest, TableStructureV116) {
+    auto doc = clever::html::parse(
+        "<table>"
+        "<thead><tr><th>Name</th><th>Age</th></tr></thead>"
+        "<tbody><tr><td>Alice</td><td>30</td></tr>"
+        "<tr><td>Bob</td><td>25</td></tr></tbody>"
+        "</table>");
+    ASSERT_NE(doc, nullptr);
+    auto* table = doc->find_element("table");
+    ASSERT_NE(table, nullptr);
+    auto ths = doc->find_all_elements("th");
+    ASSERT_EQ(ths.size(), 2u);
+    EXPECT_EQ(ths[0]->text_content(), "Name");
+    EXPECT_EQ(ths[1]->text_content(), "Age");
+    auto tds = doc->find_all_elements("td");
+    ASSERT_EQ(tds.size(), 4u);
+    EXPECT_EQ(tds[0]->text_content(), "Alice");
+    EXPECT_EQ(tds[1]->text_content(), "30");
+    EXPECT_EQ(tds[2]->text_content(), "Bob");
+    EXPECT_EQ(tds[3]->text_content(), "25");
+}
+
+TEST(HtmlParserTest, MultipleDataAttributesV116) {
+    auto doc = clever::html::parse(
+        "<div data-id=\"42\" data-role=\"admin\" data-active=\"true\">User</div>");
+    ASSERT_NE(doc, nullptr);
+    auto* div = doc->find_element("div");
+    ASSERT_NE(div, nullptr);
+    EXPECT_EQ(get_attr_v63(div, "data-id"), "42");
+    EXPECT_EQ(get_attr_v63(div, "data-role"), "admin");
+    EXPECT_EQ(get_attr_v63(div, "data-active"), "true");
+    EXPECT_EQ(div->text_content(), "User");
+}
+
+TEST(HtmlParserTest, NestedListsV116) {
+    auto doc = clever::html::parse(
+        "<ul>"
+        "<li>Item1"
+        "  <ul><li>Sub1</li><li>Sub2</li></ul>"
+        "</li>"
+        "<li>Item2</li>"
+        "</ul>");
+    ASSERT_NE(doc, nullptr);
+    auto lis = doc->find_all_elements("li");
+    ASSERT_GE(lis.size(), 4u);
+    auto uls = doc->find_all_elements("ul");
+    ASSERT_GE(uls.size(), 2u);
+    auto* inner_ul = uls[1];
+    auto inner_lis = inner_ul->find_all_elements("li");
+    ASSERT_EQ(inner_lis.size(), 2u);
+    EXPECT_EQ(inner_lis[0]->text_content(), "Sub1");
+    EXPECT_EQ(inner_lis[1]->text_content(), "Sub2");
+}
+
+TEST(HtmlParserTest, PreformattedTextPreservesContentV116) {
+    auto doc = clever::html::parse(
+        "<pre>  line1\n  line2\n  line3</pre>");
+    ASSERT_NE(doc, nullptr);
+    auto* pre = doc->find_element("pre");
+    ASSERT_NE(pre, nullptr);
+    std::string content = pre->text_content();
+    EXPECT_NE(content.find("line1"), std::string::npos);
+    EXPECT_NE(content.find("line2"), std::string::npos);
+    EXPECT_NE(content.find("line3"), std::string::npos);
+}
+
+TEST(HtmlParserTest, AnchorWithHrefAndTargetV116) {
+    auto doc = clever::html::parse(
+        "<a href=\"https://example.com\" target=\"_blank\" rel=\"noopener\">Click</a>");
+    ASSERT_NE(doc, nullptr);
+    auto* a = doc->find_element("a");
+    ASSERT_NE(a, nullptr);
+    EXPECT_EQ(get_attr_v63(a, "href"), "https://example.com");
+    EXPECT_EQ(get_attr_v63(a, "target"), "_blank");
+    EXPECT_EQ(get_attr_v63(a, "rel"), "noopener");
+    EXPECT_EQ(a->text_content(), "Click");
+}
+
+TEST(HtmlParserTest, SelectWithOptionGroupsV116) {
+    auto doc = clever::html::parse(
+        "<select name=\"car\">"
+        "<optgroup label=\"Swedish Cars\">"
+        "<option value=\"volvo\">Volvo</option>"
+        "<option value=\"saab\">Saab</option>"
+        "</optgroup>"
+        "<optgroup label=\"German Cars\">"
+        "<option value=\"bmw\">BMW</option>"
+        "</optgroup>"
+        "</select>");
+    ASSERT_NE(doc, nullptr);
+    auto* sel = doc->find_element("select");
+    ASSERT_NE(sel, nullptr);
+    EXPECT_EQ(get_attr_v63(sel, "name"), "car");
+    auto optgroups = doc->find_all_elements("optgroup");
+    ASSERT_EQ(optgroups.size(), 2u);
+    EXPECT_EQ(get_attr_v63(optgroups[0], "label"), "Swedish Cars");
+    EXPECT_EQ(get_attr_v63(optgroups[1], "label"), "German Cars");
+    auto options = doc->find_all_elements("option");
+    ASSERT_EQ(options.size(), 3u);
+    EXPECT_EQ(get_attr_v63(options[0], "value"), "volvo");
+    EXPECT_EQ(options[0]->text_content(), "Volvo");
+    EXPECT_EQ(get_attr_v63(options[2], "value"), "bmw");
+    EXPECT_EQ(options[2]->text_content(), "BMW");
+}
+
+TEST(HtmlParserTest, FieldsetWithLegendV116) {
+    auto doc = clever::html::parse(
+        "<fieldset>"
+        "<legend>Personal Info</legend>"
+        "<label>Name: <input type=\"text\" name=\"username\"></label>"
+        "</fieldset>");
+    ASSERT_NE(doc, nullptr);
+    auto* fieldset = doc->find_element("fieldset");
+    ASSERT_NE(fieldset, nullptr);
+    auto* legend = doc->find_element("legend");
+    ASSERT_NE(legend, nullptr);
+    EXPECT_EQ(legend->text_content(), "Personal Info");
+    auto* input = doc->find_element("input");
+    ASSERT_NE(input, nullptr);
+    EXPECT_EQ(get_attr_v63(input, "type"), "text");
+    EXPECT_EQ(get_attr_v63(input, "name"), "username");
+}
+
+TEST(HtmlParserTest, SiblingParagraphsAutoCloseV116) {
+    auto doc = clever::html::parse(
+        "<div>"
+        "<p>First paragraph"
+        "<p>Second paragraph"
+        "<p>Third paragraph"
+        "</div>");
+    ASSERT_NE(doc, nullptr);
+    auto ps = doc->find_all_elements("p");
+    ASSERT_EQ(ps.size(), 3u);
+    EXPECT_NE(ps[0]->text_content().find("First"), std::string::npos);
+    EXPECT_NE(ps[1]->text_content().find("Second"), std::string::npos);
+    EXPECT_NE(ps[2]->text_content().find("Third"), std::string::npos);
+    auto* div = doc->find_element("div");
+    ASSERT_NE(div, nullptr);
+    std::string all = div->text_content();
+    EXPECT_NE(all.find("First"), std::string::npos);
+    EXPECT_NE(all.find("Third"), std::string::npos);
+}

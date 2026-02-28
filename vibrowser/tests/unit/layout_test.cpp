@@ -21517,3 +21517,180 @@ TEST(LayoutEngineTest, MarginBoxWidthCalculationV115) {
     EXPECT_FLOAT_EQ(root->geometry.margin_box_width(), 360.0f);
     EXPECT_FLOAT_EQ(root->geometry.border_box_width(), 340.0f);
 }
+
+// V116-1: Flex column with flex_grow distributes vertical space
+TEST(LayoutEngineTest, FlexColumnGrowDistributesVerticalSpaceV116) {
+    auto root = make_flex("div");
+    root->flex_direction = 2; // Column
+    root->specified_width = 400.0f;
+    root->specified_height = 300.0f;
+
+    auto c1 = make_block("div");
+    c1->flex_grow = 1.0f;
+    auto* p1 = c1.get();
+    root->append_child(std::move(c1));
+
+    auto c2 = make_block("div");
+    c2->flex_grow = 3.0f;
+    auto* p2 = c2.get();
+    root->append_child(std::move(c2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // Both children should have positive height
+    EXPECT_GT(p1->geometry.height, 0.0f);
+    EXPECT_GT(p2->geometry.height, 0.0f);
+    // p2 should get roughly 3x the height of p1
+    EXPECT_NEAR(p2->geometry.height, p1->geometry.height * 3.0f, 2.0f);
+}
+
+// V116-2: max_height clamps a block's computed height
+TEST(LayoutEngineTest, MaxHeightClampsBlockHeightV116) {
+    auto root = make_block("div");
+    root->specified_width = 400.0f;
+    root->specified_height = 500.0f;
+    root->max_height = 200.0f;
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_LE(root->geometry.height, 200.0f);
+}
+
+// V116-3: Padding contributes to margin_box_height
+TEST(LayoutEngineTest, PaddingContributesToMarginBoxHeightV116) {
+    auto root = make_block("div");
+    root->specified_width = 200.0f;
+    root->specified_height = 100.0f;
+    root->geometry.padding.top = 20.0f;
+    root->geometry.padding.bottom = 20.0f;
+    root->geometry.margin.top = 5.0f;
+    root->geometry.margin.bottom = 5.0f;
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // margin_box_height = 5 + 0(border) + 20 + 100 + 20 + 0(border) + 5 = 150
+    EXPECT_FLOAT_EQ(root->geometry.margin_box_height(), 150.0f);
+}
+
+// V116-4: border_box sizing preserves geometry.width as specified_width
+TEST(LayoutEngineTest, BorderBoxSizingPreservesGeometryWidthV116) {
+    auto root = make_block("div");
+    root->specified_width = 400.0f;
+
+    auto child = make_block("div");
+    child->border_box = true;
+    child->specified_width = 200.0f;
+    child->geometry.border.left = 10.0f;
+    child->geometry.border.right = 10.0f;
+    child->geometry.padding.left = 15.0f;
+    child->geometry.padding.right = 15.0f;
+    auto* cp = child.get();
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // In this engine, geometry.width stores specified_width directly
+    EXPECT_FLOAT_EQ(cp->geometry.width, 200.0f);
+    // border_box_width = border + padding + width + padding + border = 10+15+200+15+10 = 250
+    EXPECT_FLOAT_EQ(cp->geometry.border_box_width(), 250.0f);
+}
+
+// V116-5: Flex shrink reduces oversized children proportionally
+TEST(LayoutEngineTest, FlexShrinkReducesOversizedChildrenV116) {
+    auto root = make_flex("div");
+    root->flex_direction = 0; // Row
+    root->specified_width = 300.0f;
+
+    auto c1 = make_block("div");
+    c1->specified_width = 200.0f;
+    c1->specified_height = 50.0f;
+    c1->flex_shrink = 1.0f;
+    auto* p1 = c1.get();
+    root->append_child(std::move(c1));
+
+    auto c2 = make_block("div");
+    c2->specified_width = 200.0f;
+    c2->specified_height = 50.0f;
+    c2->flex_shrink = 1.0f;
+    auto* p2 = c2.get();
+    root->append_child(std::move(c2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // Both items should shrink since 200+200=400 > 300 container
+    EXPECT_LT(p1->geometry.width, 200.0f);
+    EXPECT_LT(p2->geometry.width, 200.0f);
+    // They have equal flex_shrink so should be the same width
+    EXPECT_NEAR(p1->geometry.width, p2->geometry.width, 1.0f);
+}
+
+// V116-6: Multiple block children stack vertically without overlap
+TEST(LayoutEngineTest, MultipleBlockChildrenStackVerticallyV116) {
+    auto root = make_block("div");
+    root->specified_width = 500.0f;
+
+    auto c1 = make_block("div");
+    c1->specified_height = 80.0f;
+    auto* p1 = c1.get();
+    root->append_child(std::move(c1));
+
+    auto c2 = make_block("div");
+    c2->specified_height = 60.0f;
+    auto* p2 = c2.get();
+    root->append_child(std::move(c2));
+
+    auto c3 = make_block("div");
+    c3->specified_height = 40.0f;
+    auto* p3 = c3.get();
+    root->append_child(std::move(c3));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // Each child should be positioned below the previous
+    EXPECT_FLOAT_EQ(p1->geometry.y, 0.0f);
+    EXPECT_GE(p2->geometry.y, 80.0f);
+    EXPECT_GE(p3->geometry.y, 140.0f);
+    // Root height should encompass all children
+    EXPECT_GE(root->geometry.height, 180.0f);
+}
+
+// V116-7: min_width clamps specified_width upward
+TEST(LayoutEngineTest, MinWidthClampsSpecifiedWidthUpwardV116) {
+    auto root = make_block("div");
+    root->specified_width = 100.0f;
+    root->min_width = 250.0f;
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // min_width should clamp the width upward to at least 250
+    EXPECT_GE(root->geometry.width, 250.0f);
+}
+
+// V116-8: Flex basis overrides specified_width for flex items
+TEST(LayoutEngineTest, FlexBasisOverridesSpecifiedWidthV116) {
+    auto root = make_flex("div");
+    root->flex_direction = 0; // Row
+    root->specified_width = 600.0f;
+
+    auto child = make_block("div");
+    child->specified_width = 200.0f;
+    child->flex_basis = 100.0f;
+    child->flex_grow = 0.0f;
+    child->flex_shrink = 0.0f;
+    child->specified_height = 50.0f;
+    auto* cp = child.get();
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // With flex_basis=100, no grow, no shrink, width should be 100 (basis overrides specified)
+    EXPECT_FLOAT_EQ(cp->geometry.width, 100.0f);
+}

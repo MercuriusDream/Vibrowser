@@ -21646,3 +21646,191 @@ TEST(ComputedStyleTest, VisualEnumCombinationsV115) {
     EXPECT_EQ(s.visibility, Visibility::Collapse);
     EXPECT_EQ(s.overflow_x, Overflow::Auto);
 }
+
+// ---------------------------------------------------------------------------
+// V116 Tests
+// ---------------------------------------------------------------------------
+
+TEST(CSSStyleTest, ParseBorderTopColorViaResolverV116) {
+    // border-top-color should go into border_top.color (no border_color field)
+    const std::string css = "div{border-top-color:#00ff00;border-top-style:solid;border-top-width:1px;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.border_top.color, (Color{0, 255, 0, 255}));
+    EXPECT_EQ(style.border_top.style, BorderStyle::Solid);
+    EXPECT_FLOAT_EQ(style.border_top.width.to_px(), 1.0f);
+}
+
+TEST(ComputedStyleTest, OutlineWidthIsLengthV116) {
+    // outline_width is Length type that uses .to_px()
+    ComputedStyle s;
+    EXPECT_FLOAT_EQ(s.outline_width.to_px(), 0.0f);
+
+    s.outline_width = Length::px(5.0f);
+    EXPECT_FLOAT_EQ(s.outline_width.to_px(), 5.0f);
+
+    // em-based outline width relative to a 20px font size
+    s.outline_width = Length::em(0.25f);
+    EXPECT_FLOAT_EQ(s.outline_width.to_px(20.0f), 5.0f);
+
+    // outline offset also Length
+    s.outline_offset = Length::px(3.0f);
+    EXPECT_FLOAT_EQ(s.outline_offset.to_px(), 3.0f);
+}
+
+TEST(ComputedStyleTest, TextShadowMultipleEntriesV116) {
+    ComputedStyle s;
+    EXPECT_TRUE(s.text_shadows.empty());
+
+    ComputedStyle::TextShadowEntry ts1;
+    ts1.offset_x = 1.0f;
+    ts1.offset_y = 2.0f;
+    ts1.blur = 3.0f;
+    ts1.color = {128, 128, 128, 255};
+    s.text_shadows.push_back(ts1);
+
+    ComputedStyle::TextShadowEntry ts2;
+    ts2.offset_x = -1.0f;
+    ts2.offset_y = -2.0f;
+    ts2.blur = 0.0f;
+    ts2.color = {255, 0, 0, 128};
+    s.text_shadows.push_back(ts2);
+
+    EXPECT_EQ(s.text_shadows.size(), 2u);
+    EXPECT_FLOAT_EQ(s.text_shadows[0].offset_x, 1.0f);
+    EXPECT_FLOAT_EQ(s.text_shadows[0].blur, 3.0f);
+    EXPECT_EQ(s.text_shadows[0].color.r, 128);
+
+    EXPECT_FLOAT_EQ(s.text_shadows[1].offset_x, -1.0f);
+    EXPECT_FLOAT_EQ(s.text_shadows[1].blur, 0.0f);
+    EXPECT_EQ(s.text_shadows[1].color.a, 128);
+}
+
+TEST(ComputedStyleTest, FlexboxShorthandPropertiesV116) {
+    ComputedStyle s;
+    // Default flexbox values
+    EXPECT_EQ(s.flex_direction, FlexDirection::Row);
+    EXPECT_EQ(s.flex_wrap, FlexWrap::NoWrap);
+    EXPECT_FLOAT_EQ(s.flex_grow, 0.0f);
+    EXPECT_FLOAT_EQ(s.flex_shrink, 1.0f);
+    EXPECT_TRUE(s.flex_basis.is_auto());
+
+    // Set to column-reverse wrap with flex: 2 0 100px equivalent
+    s.flex_direction = FlexDirection::ColumnReverse;
+    s.flex_wrap = FlexWrap::WrapReverse;
+    s.flex_grow = 2.0f;
+    s.flex_shrink = 0.0f;
+    s.flex_basis = Length::px(100.0f);
+
+    EXPECT_EQ(s.flex_direction, FlexDirection::ColumnReverse);
+    EXPECT_EQ(s.flex_wrap, FlexWrap::WrapReverse);
+    EXPECT_FLOAT_EQ(s.flex_grow, 2.0f);
+    EXPECT_FLOAT_EQ(s.flex_shrink, 0.0f);
+    EXPECT_FLOAT_EQ(s.flex_basis.to_px(), 100.0f);
+}
+
+TEST(CSSStyleTest, ParsePositionFixedWithZIndexV116) {
+    const std::string css = "nav{position:fixed;z-index:999;top:0px;left:0px;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "nav";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.position, Position::Fixed);
+    EXPECT_EQ(style.z_index, 999);
+    EXPECT_FLOAT_EQ(style.top.to_px(), 0.0f);
+    EXPECT_FLOAT_EQ(style.left_pos.to_px(), 0.0f);
+}
+
+TEST(ComputedStyleTest, BorderEdgeIndependenceV116) {
+    // Each border edge is independent — setting one must not affect others
+    ComputedStyle s;
+
+    s.border_top.width = Length::px(1.0f);
+    s.border_top.style = BorderStyle::Solid;
+    s.border_top.color = {255, 0, 0, 255};
+
+    s.border_right.width = Length::px(2.0f);
+    s.border_right.style = BorderStyle::Dashed;
+    s.border_right.color = {0, 255, 0, 255};
+
+    s.border_bottom.width = Length::px(3.0f);
+    s.border_bottom.style = BorderStyle::Dotted;
+    s.border_bottom.color = {0, 0, 255, 255};
+
+    s.border_left.width = Length::px(4.0f);
+    s.border_left.style = BorderStyle::Double;
+    s.border_left.color = {255, 255, 0, 255};
+
+    // Verify each edge retained its values
+    EXPECT_FLOAT_EQ(s.border_top.width.to_px(), 1.0f);
+    EXPECT_EQ(s.border_top.style, BorderStyle::Solid);
+    EXPECT_EQ(s.border_top.color.r, 255);
+    EXPECT_EQ(s.border_top.color.g, 0);
+
+    EXPECT_FLOAT_EQ(s.border_right.width.to_px(), 2.0f);
+    EXPECT_EQ(s.border_right.style, BorderStyle::Dashed);
+    EXPECT_EQ(s.border_right.color.g, 255);
+
+    EXPECT_FLOAT_EQ(s.border_bottom.width.to_px(), 3.0f);
+    EXPECT_EQ(s.border_bottom.style, BorderStyle::Dotted);
+    EXPECT_EQ(s.border_bottom.color.b, 255);
+
+    EXPECT_FLOAT_EQ(s.border_left.width.to_px(), 4.0f);
+    EXPECT_EQ(s.border_left.style, BorderStyle::Double);
+    EXPECT_EQ(s.border_left.color.r, 255);
+    EXPECT_EQ(s.border_left.color.g, 255);
+}
+
+TEST(ComputedStyleTest, LengthViewportUnitsV116) {
+    // Test vw, vh, vmin, vmax unit conversions
+    Length::set_viewport(1200.0f, 800.0f);
+
+    Length vw10 = Length::vw(10.0f);
+    EXPECT_FLOAT_EQ(vw10.to_px(), 120.0f); // 10% of 1200
+
+    Length vh25 = Length::vh(25.0f);
+    EXPECT_FLOAT_EQ(vh25.to_px(), 200.0f); // 25% of 800
+
+    Length vmin50 = Length::vmin(50.0f);
+    EXPECT_FLOAT_EQ(vmin50.to_px(), 400.0f); // 50% of min(1200,800) = 50% of 800
+
+    Length vmax50 = Length::vmax(50.0f);
+    EXPECT_FLOAT_EQ(vmax50.to_px(), 600.0f); // 50% of max(1200,800) = 50% of 1200
+
+    // Restore default viewport
+    Length::set_viewport(800.0f, 600.0f);
+}
+
+TEST(CSSStyleTest, ParseOverflowHiddenBothAxesV116) {
+    const std::string css = "div{overflow:hidden;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    // overflow shorthand sets both axes
+    EXPECT_EQ(style.overflow_x, Overflow::Hidden);
+    EXPECT_EQ(style.overflow_y, Overflow::Hidden);
+}

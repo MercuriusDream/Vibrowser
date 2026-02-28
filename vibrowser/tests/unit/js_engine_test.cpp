@@ -31079,3 +31079,167 @@ TEST(JsEngineTest, OptionalChainingAndNullishCoalescingV115) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "42||2|10||default|fallback|0|last");
 }
+
+// V116-1: String.prototype.padStart/padEnd with truncation and multi-char fill
+TEST(JsEngineTest, StringPadStartEndMultiCharFillV116) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var r = [];
+        r.push("7".padStart(4, "0"));
+        r.push("abc".padStart(8, "xyz"));
+        r.push("hello".padEnd(10, "!."));
+        r.push("long".padStart(2));
+        r.push("".padEnd(5, "ab"));
+        r.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "0007|xyzxyabc|hello!.!.!|long|ababa");
+}
+
+// V116-2: Array.prototype.at with various index types and edge cases
+TEST(JsEngineTest, ArrayAtEdgeCasesV116) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var arr = [10, 20, 30, 40, 50];
+        var r = [];
+        r.push(arr.at(0));
+        r.push(arr.at(-1));
+        r.push(arr.at(-5));
+        r.push(arr.at(4));
+        r.push(String(arr.at(5)));
+        r.push(String(arr.at(-6)));
+        r.push(String([].at(0)));
+        r.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "10|50|10|50|undefined|undefined|undefined");
+}
+
+// V116-3: Object.fromEntries with Map input and transformations
+TEST(JsEngineTest, ObjectFromEntriesWithMapV116) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var m = new Map();
+        m.set("x", 100);
+        m.set("y", 200);
+        m.set("z", 300);
+        var obj = Object.fromEntries(m);
+        var r = [];
+        r.push(obj.x);
+        r.push(obj.y);
+        r.push(obj.z);
+        var swapped = Object.fromEntries(
+            Object.entries(obj).map(function(e) { return [e[0], e[1] * 2]; })
+        );
+        r.push(swapped.x);
+        r.push(swapped.y);
+        r.push(swapped.z);
+        r.join(",");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "100,200,300,200,400,600");
+}
+
+// V116-4: Logical assignment operators (&&=, ||=, ??=) comprehensive
+TEST(JsEngineTest, LogicalAssignmentComprehensiveV116) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var r = [];
+        var a = 1; a &&= 99; r.push(a);
+        var b = 0; b &&= 99; r.push(b);
+        var c = null; c &&= 99; r.push(String(c));
+        var d = 0; d ||= 42; r.push(d);
+        var e = 1; e ||= 42; r.push(e);
+        var f = ""; f ||= "default"; r.push(f);
+        var g = null; g ??= "filled"; r.push(g);
+        var h = 0; h ??= "filled"; r.push(h);
+        var i = undefined; i ??= "set"; r.push(i);
+        var j = false; j ??= "no"; r.push(j);
+        r.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "99|0|null|42|1|default|filled|0|set|false");
+}
+
+// V116-5: String.prototype.at with negative indices
+TEST(JsEngineTest, StringAtNegativeIndicesV116) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var s = "abcdef";
+        var r = [];
+        r.push(s.at(0));
+        r.push(s.at(2));
+        r.push(s.at(-1));
+        r.push(s.at(-3));
+        r.push(s.at(-6));
+        r.push(String(s.at(6)));
+        r.push(String(s.at(-7)));
+        r.push(String("".at(0)));
+        r.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "a|c|f|d|a|undefined|undefined|undefined");
+}
+
+// V116-6: Array.flat with various depths and flatMap filtering
+TEST(JsEngineTest, ArrayFlatDepthAndFlatMapFilterV116) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var r = [];
+        r.push(JSON.stringify([1, [2, [3, [4]]]].flat()));
+        r.push(JSON.stringify([1, [2, [3, [4]]]].flat(2)));
+        r.push(JSON.stringify([1, [2, [3, [4]]]].flat(Infinity)));
+        r.push([[1, 2], [3], [], [4, 5]].flat().length);
+        var evens = [1, 2, 3, 4, 5, 6].flatMap(function(x) {
+            return x % 2 === 0 ? [x] : [];
+        });
+        r.push(evens.join(","));
+        var expanded = ["hello world", "foo bar"].flatMap(function(s) {
+            return s.split(" ");
+        });
+        r.push(expanded.join(","));
+        r.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "[1,2,[3,[4]]]|[1,2,3,[4]]|[1,2,3,4]|5|2,4,6|hello,world,foo,bar");
+}
+
+// V116-7: globalThis identity and property assignment
+TEST(JsEngineTest, GlobalThisIdentityAndPropertiesV116) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var r = [];
+        r.push(typeof globalThis);
+        r.push(globalThis === globalThis.globalThis);
+        globalThis.__v116_val = 42;
+        r.push(globalThis.__v116_val);
+        r.push(__v116_val);
+        r.push(globalThis.Math === Math);
+        r.push(globalThis.Array === Array);
+        r.push(globalThis.JSON === JSON);
+        delete globalThis.__v116_val;
+        r.push(typeof __v116_val);
+        r.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "object|true|42|42|true|true|true|undefined");
+}
+
+// V116-8: String trimStart/trimEnd with various whitespace types
+TEST(JsEngineTest, StringTrimStartEndVariousWhitespaceV116) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var r = [];
+        r.push("  hello  ".trim());
+        r.push("  hello  ".trimStart());
+        r.push("  hello  ".trimEnd());
+        r.push("\t\n hello \n\t".trim());
+        r.push("\t\nhello".trimStart());
+        r.push("hello\t\n".trimEnd());
+        r.push("   ".trim().length);
+        r.push("nowhitespace".trim());
+        r.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "hello|hello  |  hello|hello|hello|hello|0|nowhitespace");
+}

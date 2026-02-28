@@ -19618,3 +19618,165 @@ TEST(HeaderMapTest, RemoveThenHasAndGetConsistentV115) {
     EXPECT_TRUE(map.has("Accept"));
     EXPECT_EQ(map.get("accept").value(), "application/json");
 }
+
+// ===========================================================================
+// V116 Tests
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// 1. HeaderMap: empty() returns true initially, false after set
+// ---------------------------------------------------------------------------
+TEST(HeaderMapTest, EmptyTrueInitiallyFalseAfterSetV116) {
+    HeaderMap map;
+    EXPECT_TRUE(map.empty());
+    EXPECT_EQ(map.size(), 0u);
+
+    map.set("X-Token", "abc");
+    EXPECT_FALSE(map.empty());
+    EXPECT_EQ(map.size(), 1u);
+
+    map.remove("X-Token");
+    EXPECT_TRUE(map.empty());
+    EXPECT_EQ(map.size(), 0u);
+}
+
+// ---------------------------------------------------------------------------
+// 2. HeaderMap: iteration covers all entries including appended duplicates
+// ---------------------------------------------------------------------------
+TEST(HeaderMapTest, IterationCoversAllEntriesV116) {
+    HeaderMap map;
+    map.set("Host", "example.com");
+    map.append("Accept", "text/html");
+    map.append("Accept", "application/json");
+
+    int count = 0;
+    bool found_host = false;
+    int accept_count = 0;
+    for (auto it = map.begin(); it != map.end(); ++it) {
+        ++count;
+        if (it->first == "host") found_host = true;
+        if (it->first == "accept") ++accept_count;
+    }
+    EXPECT_EQ(count, 3);
+    EXPECT_TRUE(found_host);
+    EXPECT_EQ(accept_count, 2);
+}
+
+// ---------------------------------------------------------------------------
+// 3. Request: parse_url with explicit non-standard port
+// ---------------------------------------------------------------------------
+TEST(RequestTest, ParseUrlExplicitNonStandardPortV116) {
+    Request req;
+    req.url = "http://myhost.local:8080/api/v2/data?limit=50";
+    req.parse_url();
+
+    EXPECT_EQ(req.host, "myhost.local");
+    EXPECT_EQ(req.port, 8080);
+    EXPECT_EQ(req.path, "/api/v2/data");
+    EXPECT_EQ(req.query, "limit=50");
+    EXPECT_FALSE(req.use_tls);
+}
+
+// ---------------------------------------------------------------------------
+// 4. Request: serialize GET omits port 80 from Host header
+// ---------------------------------------------------------------------------
+TEST(RequestTest, SerializeGetOmitsPort80V116) {
+    Request req;
+    req.method = Method::GET;
+    req.host = "www.example.org";
+    req.port = 80;
+    req.path = "/index.html";
+    req.use_tls = false;
+
+    auto bytes = req.serialize();
+    std::string raw(bytes.begin(), bytes.end());
+
+    EXPECT_NE(raw.find("GET /index.html HTTP/1.1\r\n"), std::string::npos);
+    // Port 80 should be omitted from Host
+    EXPECT_NE(raw.find("Host: www.example.org\r\n"), std::string::npos);
+    EXPECT_EQ(raw.find("Host: www.example.org:80"), std::string::npos);
+}
+
+// ---------------------------------------------------------------------------
+// 5. Request: serialize with non-standard port includes port in Host
+// ---------------------------------------------------------------------------
+TEST(RequestTest, SerializeWithNonStandardPortInHostV116) {
+    Request req;
+    req.method = Method::GET;
+    req.host = "internal.dev";
+    req.port = 9090;
+    req.path = "/healthcheck";
+    req.use_tls = false;
+
+    auto bytes = req.serialize();
+    std::string raw(bytes.begin(), bytes.end());
+
+    EXPECT_NE(raw.find("Host: internal.dev:9090\r\n"), std::string::npos);
+}
+
+// ---------------------------------------------------------------------------
+// 6. Response: parse 404 Not Found with body
+// ---------------------------------------------------------------------------
+TEST(ResponseTest, Parse404NotFoundWithBodyV116) {
+    std::string raw =
+        "HTTP/1.1 404 Not Found\r\n"
+        "Content-Length: 9\r\n"
+        "Content-Type: text/plain\r\n"
+        "\r\n"
+        "not found";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 404);
+    EXPECT_EQ(resp->status_text, "Not Found");
+    EXPECT_EQ(resp->body_as_string(), "not found");
+    EXPECT_EQ(resp->body.size(), 9u);
+}
+
+// ---------------------------------------------------------------------------
+// 7. Request: serialize PUT with custom headers lowercase
+// ---------------------------------------------------------------------------
+TEST(RequestTest, SerializePutCustomHeadersLowercaseV116) {
+    Request req;
+    req.method = Method::PUT;
+    req.host = "api.store.io";
+    req.port = 443;
+    req.path = "/items/42";
+    req.use_tls = true;
+    req.headers.set("X-Request-Id", "req-999");
+    req.headers.set("Authorization", "Bearer secret");
+    std::string payload = "updated";
+    req.body.assign(payload.begin(), payload.end());
+
+    auto bytes = req.serialize();
+    std::string raw(bytes.begin(), bytes.end());
+
+    EXPECT_NE(raw.find("PUT /items/42 HTTP/1.1\r\n"), std::string::npos);
+    // Host omits port 443 for HTTPS
+    EXPECT_NE(raw.find("Host: api.store.io\r\n"), std::string::npos);
+    EXPECT_EQ(raw.find("Host: api.store.io:443"), std::string::npos);
+    // Custom headers serialized lowercase
+    EXPECT_NE(raw.find("x-request-id: req-999\r\n"), std::string::npos);
+    EXPECT_NE(raw.find("authorization: Bearer secret\r\n"), std::string::npos);
+}
+
+// ---------------------------------------------------------------------------
+// 8. Response: parse 301 redirect with Location header
+// ---------------------------------------------------------------------------
+TEST(ResponseTest, Parse301RedirectWithLocationV116) {
+    std::string raw =
+        "HTTP/1.1 301 Moved Permanently\r\n"
+        "Location: https://www.newsite.com/\r\n"
+        "Content-Length: 0\r\n"
+        "\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 301);
+    EXPECT_EQ(resp->status_text, "Moved Permanently");
+    EXPECT_TRUE(resp->headers.has("Location"));
+    EXPECT_EQ(resp->headers.get("location").value(), "https://www.newsite.com/");
+    EXPECT_EQ(resp->body.size(), 0u);
+}

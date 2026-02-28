@@ -12682,3 +12682,79 @@ TEST(UrlParserTest, FragmentOnlyNoQueryParsedV115) {
     EXPECT_EQ(result->fragment, "section-5");
     EXPECT_EQ(result->port, std::nullopt);
 }
+
+// =============================================================================
+// V116 Tests
+// =============================================================================
+
+TEST(UrlParserTest, FtpDefaultPortNormalizedToNulloptV116) {
+    auto result = parse("ftp://files.example.com:21/pub/readme.txt");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "ftp");
+    EXPECT_EQ(result->host, "files.example.com");
+    EXPECT_EQ(result->port, std::nullopt);
+    EXPECT_EQ(result->path, "/pub/readme.txt");
+}
+
+TEST(UrlParserTest, NonDefaultPortPreservedV116) {
+    auto result = parse("https://api.example.com:8443/v2/data");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "api.example.com");
+    EXPECT_EQ(result->port, 8443);
+    EXPECT_EQ(result->path, "/v2/data");
+}
+
+TEST(UrlParserTest, PercentEncodedPathDoubleEncodesV116) {
+    auto result = parse("https://example.com/hello%20world");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "example.com");
+    // %20 gets double-encoded to %2520
+    EXPECT_EQ(result->path, "/hello%2520world");
+}
+
+TEST(UrlParserTest, SerializeReconstructsFullUrlV116) {
+    auto result = parse("http://user:pass@host.example.com:9090/resource?k=v#top");
+    ASSERT_TRUE(result.has_value());
+    std::string s = result->serialize();
+    EXPECT_EQ(s, "http://user:pass@host.example.com:9090/resource?k=v#top");
+}
+
+TEST(UrlParserTest, UsernameWithoutPasswordParsedV116) {
+    auto result = parse("https://admin@dashboard.example.com/panel");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->username, "admin");
+    EXPECT_TRUE(result->password.empty());
+    EXPECT_EQ(result->host, "dashboard.example.com");
+    EXPECT_EQ(result->path, "/panel");
+}
+
+TEST(UrlParserTest, HttpDefaultPortNormalizedV116) {
+    auto result = parse("http://www.example.com:80/index.html");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "www.example.com");
+    EXPECT_EQ(result->port, std::nullopt);
+    EXPECT_EQ(result->path, "/index.html");
+}
+
+TEST(UrlParserTest, QueryWithPercentEncodedDoubleEncodesV116) {
+    auto result = parse("https://search.example.com/?term=hello%26world");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "search.example.com");
+    EXPECT_EQ(result->path, "/");
+    // %26 gets double-encoded to %2526
+    EXPECT_EQ(result->query, "term=hello%2526world");
+}
+
+TEST(UrlParserTest, FragmentWithPercentEncodedDoubleEncodesV116) {
+    auto result = parse("https://example.com/page#sec%23tion");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/page");
+    // %23 gets double-encoded to %2523
+    EXPECT_EQ(result->fragment, "sec%2523tion");
+}

@@ -17776,3 +17776,128 @@ TEST(DomTest, RemoveMiddleChildFixesSiblingPointersV115) {
     EXPECT_EQ(removed->next_sibling(), nullptr);
     EXPECT_EQ(removed->previous_sibling(), nullptr);
 }
+
+// ---------------------------------------------------------------------------
+// V116 Tests
+// ---------------------------------------------------------------------------
+
+// 1. insert_before with nullptr reference appends to end (like append_child)
+TEST(DomTest, InsertBeforeNullRefAppendsV116) {
+    Element parent("ul");
+    parent.append_child(std::make_unique<Element>("li"));
+    // insert_before with nullptr reference should append at end
+    Node& inserted = parent.insert_before(std::make_unique<Element>("span"), nullptr);
+    EXPECT_EQ(parent.child_count(), 2u);
+    // The inserted node should be the last child
+    EXPECT_EQ(parent.last_child(), &inserted);
+    auto* el = static_cast<Element*>(&inserted);
+    EXPECT_EQ(el->tag_name(), "span");
+}
+
+// 2. Document factory methods produce correct node types
+TEST(DomTest, DocumentFactoryMethodsNodeTypesV116) {
+    Document doc;
+    auto elem = doc.create_element("article");
+    auto txt = doc.create_text_node("hello");
+    auto cmt = doc.create_comment("note");
+
+    EXPECT_EQ(elem->node_type(), NodeType::Element);
+    EXPECT_EQ(elem->tag_name(), "article");
+    EXPECT_EQ(txt->node_type(), NodeType::Text);
+    EXPECT_EQ(txt->data(), "hello");
+    EXPECT_EQ(cmt->node_type(), NodeType::Comment);
+    EXPECT_EQ(cmt->data(), "note");
+}
+
+// 3. ClassList toggle adds if absent, removes if present
+TEST(DomTest, ClassListToggleAddsAndRemovesV116) {
+    Element elem("div");
+    // Initially empty
+    EXPECT_FALSE(elem.class_list().contains("active"));
+    EXPECT_EQ(elem.class_list().length(), 0u);
+
+    // toggle adds when absent
+    elem.class_list().toggle("active");
+    EXPECT_TRUE(elem.class_list().contains("active"));
+    EXPECT_EQ(elem.class_list().length(), 1u);
+
+    // toggle removes when present
+    elem.class_list().toggle("active");
+    EXPECT_FALSE(elem.class_list().contains("active"));
+    EXPECT_EQ(elem.class_list().length(), 0u);
+}
+
+// 4. Removed child's parent becomes null
+TEST(DomTest, RemovedChildParentIsNullV116) {
+    Element parent("div");
+    auto child = std::make_unique<Element>("p");
+    Node* child_ptr = &parent.append_child(std::move(child));
+    EXPECT_EQ(child_ptr->parent(), &parent);
+
+    auto removed = parent.remove_child(*child_ptr);
+    EXPECT_EQ(removed->parent(), nullptr);
+    EXPECT_EQ(parent.child_count(), 0u);
+}
+
+// 5. text_content recursively concatenates all descendant text nodes
+TEST(DomTest, TextContentRecursesDeepTreeV116) {
+    Element root("div");
+    auto span = std::make_unique<Element>("span");
+    span->append_child(std::make_unique<Text>("hello"));
+    auto em = std::make_unique<Element>("em");
+    em->append_child(std::make_unique<Text>(" world"));
+    span->append_child(std::move(em));
+    root.append_child(std::move(span));
+    root.append_child(std::make_unique<Text>("!"));
+
+    EXPECT_EQ(root.text_content(), "hello world!");
+}
+
+// 6. Comment set_data updates the data
+TEST(DomTest, CommentSetDataUpdatesValueV116) {
+    Comment cmt("initial");
+    EXPECT_EQ(cmt.data(), "initial");
+    cmt.set_data("updated");
+    EXPECT_EQ(cmt.data(), "updated");
+}
+
+// 7. first_child and last_child reflect tree structure
+TEST(DomTest, FirstChildLastChildReflectStructureV116) {
+    Element parent("nav");
+    EXPECT_EQ(parent.first_child(), nullptr);
+    EXPECT_EQ(parent.last_child(), nullptr);
+
+    auto a = std::make_unique<Element>("a");
+    Node* a_ptr = &parent.append_child(std::move(a));
+    // Single child is both first and last
+    EXPECT_EQ(parent.first_child(), a_ptr);
+    EXPECT_EQ(parent.last_child(), a_ptr);
+
+    auto b = std::make_unique<Element>("b");
+    Node* b_ptr = &parent.append_child(std::move(b));
+    // first=a, last=b
+    EXPECT_EQ(parent.first_child(), a_ptr);
+    EXPECT_EQ(parent.last_child(), b_ptr);
+
+    auto c = std::make_unique<Element>("c");
+    Node* c_ptr = &parent.append_child(std::move(c));
+    EXPECT_EQ(parent.first_child(), a_ptr);
+    EXPECT_EQ(parent.last_child(), c_ptr);
+}
+
+// 8. DirtyFlags clear_dirty resets all flags to None
+TEST(DomTest, ClearDirtyResetsAllFlagsV116) {
+    Element elem("div");
+    // Mark multiple dirty flags
+    elem.mark_dirty(DirtyFlags::Style | DirtyFlags::Layout | DirtyFlags::Paint);
+    EXPECT_NE(elem.dirty_flags(), DirtyFlags::None);
+
+    elem.clear_dirty();
+    EXPECT_EQ(elem.dirty_flags(), DirtyFlags::None);
+    // Mark just one, verify it sets, then clear again
+    elem.mark_dirty(DirtyFlags::Paint);
+    EXPECT_EQ(static_cast<uint8_t>(elem.dirty_flags() & DirtyFlags::Paint),
+              static_cast<uint8_t>(DirtyFlags::Paint));
+    elem.clear_dirty();
+    EXPECT_EQ(elem.dirty_flags(), DirtyFlags::None);
+}
