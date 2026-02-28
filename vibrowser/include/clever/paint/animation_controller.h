@@ -56,6 +56,11 @@ struct AnimationInstance {
     float iteration_count = 1.0f; // -1 = infinite
     int current_iteration = 0;
     bool is_transition = false;   // true for CSS transitions, false for animations
+
+    // Type flags for interpolation
+    bool has_float = false;
+    bool has_color = false;
+    bool has_transform = false;
 };
 
 // Manages CSS Animations and Transitions runtime
@@ -119,7 +124,7 @@ private:
     void interpolate_animation(AnimationInstance& anim, double current_time_ms);
 
     // Internal: Find keyframe bounds for current progress
-    void find_keyframe_range(const std::vector<clever::css::KeyframeStep>& steps,
+    void find_keyframe_range(const std::vector<clever::css::KeyframeStop>& steps,
                              float progress,
                              size_t& out_from_idx,
                              size_t& out_to_idx,

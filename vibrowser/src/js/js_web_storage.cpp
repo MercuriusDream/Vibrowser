@@ -29,6 +29,9 @@ struct StorageState {
 // Per-context session storage (cleared when context is destroyed)
 static std::map<uintptr_t, std::map<std::string, std::string>> session_storage;
 
+// Storage class ID for opaque data
+static JSClassID storage_class_id = 0;
+
 // =========================================================================
 // File I/O helpers for localStorage persistence
 // =========================================================================
@@ -174,7 +177,7 @@ static void save_storage_to_file(const std::string& origin,
 
 static JSValue storage_get_item(JSContext* ctx, JSValueConst this_val,
                                 int argc, JSValueConst* argv) {
-    auto* state = static_cast<StorageState*>(JS_GetOpaque(this_val, 0));
+    auto* state = static_cast<StorageState*>(JS_GetOpaque(this_val, storage_class_id));
     if (!state) {
         return JS_NULL;
     }
@@ -201,7 +204,7 @@ static JSValue storage_get_item(JSContext* ctx, JSValueConst this_val,
 
 static JSValue storage_set_item(JSContext* ctx, JSValueConst this_val,
                                 int argc, JSValueConst* argv) {
-    auto* state = static_cast<StorageState*>(JS_GetOpaque(this_val, 0));
+    auto* state = static_cast<StorageState*>(JS_GetOpaque(this_val, storage_class_id));
     if (!state) {
         return JS_UNDEFINED;
     }
@@ -235,7 +238,7 @@ static JSValue storage_set_item(JSContext* ctx, JSValueConst this_val,
 
 static JSValue storage_remove_item(JSContext* ctx, JSValueConst this_val,
                                    int argc, JSValueConst* argv) {
-    auto* state = static_cast<StorageState*>(JS_GetOpaque(this_val, 0));
+    auto* state = static_cast<StorageState*>(JS_GetOpaque(this_val, storage_class_id));
     if (!state) {
         return JS_UNDEFINED;
     }
@@ -267,7 +270,7 @@ static JSValue storage_clear(JSContext* ctx, JSValueConst this_val,
     (void)argv;
     (void)ctx;
 
-    auto* state = static_cast<StorageState*>(JS_GetOpaque(this_val, 0));
+    auto* state = static_cast<StorageState*>(JS_GetOpaque(this_val, storage_class_id));
     if (!state) {
         return JS_UNDEFINED;
     }
@@ -283,7 +286,7 @@ static JSValue storage_clear(JSContext* ctx, JSValueConst this_val,
 
 static JSValue storage_key(JSContext* ctx, JSValueConst this_val,
                            int argc, JSValueConst* argv) {
-    auto* state = static_cast<StorageState*>(JS_GetOpaque(this_val, 0));
+    auto* state = static_cast<StorageState*>(JS_GetOpaque(this_val, storage_class_id));
     if (!state) {
         return JS_NULL;
     }
@@ -311,7 +314,7 @@ static JSValue storage_get_length(JSContext* ctx, JSValueConst this_val,
     (void)argc;
     (void)argv;
 
-    auto* state = static_cast<StorageState*>(JS_GetOpaque(this_val, 0));
+    auto* state = static_cast<StorageState*>(JS_GetOpaque(this_val, storage_class_id));
     if (!state) {
         return JS_NewInt32(ctx, 0);
     }
@@ -320,9 +323,15 @@ static JSValue storage_get_length(JSContext* ctx, JSValueConst this_val,
 }
 
 static void storage_finalizer(JSRuntime* /*rt*/, JSValue val) {
-    auto* state = static_cast<StorageState*>(JS_GetOpaque(val, 0));
+    auto* state = static_cast<StorageState*>(JS_GetOpaque(val, storage_class_id));
     if (state) delete state;
 }
+
+static JSClassDef storage_class_def = {
+    "Storage",
+    storage_finalizer,
+    nullptr, nullptr, nullptr
+};
 
 // =========================================================================
 // Helper to create a storage object
@@ -330,7 +339,11 @@ static void storage_finalizer(JSRuntime* /*rt*/, JSValue val) {
 
 static JSValue create_storage_object(JSContext* ctx, const std::string& origin,
                                      bool is_local_storage) {
-    JSValue storage = JS_NewObject(ctx);
+    // Register the Storage class if not already done
+    if (storage_class_id == 0) {
+        JS_NewClassID(&storage_class_id);
+        JS_NewClass(JS_GetRuntime(ctx), storage_class_id, &storage_class_def);
+    }
 
     auto* state = new StorageState();
     state->origin = origin;
@@ -341,7 +354,8 @@ static JSValue create_storage_object(JSContext* ctx, const std::string& origin,
         load_storage_from_file(origin, state->data);
     }
 
-    // Store opaque pointer (simplified: using class ID 0 since we don't register a class)
+    // Create object with the Storage class and store opaque pointer
+    JSValue storage = JS_NewObjectClass(ctx, storage_class_id);
     JS_SetOpaque(storage, state);
 
     // Add methods

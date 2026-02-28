@@ -2,6 +2,7 @@
 #include <clever/layout/box.h>
 #include <cmath>
 #include <algorithm>
+#include <set>
 
 namespace clever::paint {
 
@@ -158,7 +159,7 @@ float AnimationController::apply_timing_function(const AnimationInstance& anim, 
     }
 }
 
-void AnimationController::find_keyframe_range(const std::vector<clever::css::KeyframeStep>& steps,
+void AnimationController::find_keyframe_range(const std::vector<clever::css::KeyframeStop>& steps,
                                              float progress,
                                              size_t& out_from_idx,
                                              size_t& out_to_idx,
@@ -234,7 +235,7 @@ void AnimationController::start_animation(clever::layout::LayoutNode* element,
                                          const std::string& animation_name,
                                          const clever::css::KeyframesDefinition& keyframes,
                                          const clever::css::ComputedStyle& style) {
-    if (!element || keyframes.steps.empty()) {
+    if (!element || keyframes.rules.empty()) {
         return;
     }
 
@@ -242,8 +243,8 @@ void AnimationController::start_animation(clever::layout::LayoutNode* element,
     std::set<std::string> properties_to_animate;
 
     // Collect all properties mentioned in keyframes
-    for (const auto& step : keyframes.steps) {
-        for (const auto& prop_pair : step.properties) {
+    for (const auto& step : keyframes.rules) {
+        for (const auto& prop_pair : step.declarations) {
             properties_to_animate.insert(prop_pair.first);
         }
     }
@@ -269,20 +270,22 @@ void AnimationController::start_animation(clever::layout::LayoutNode* element,
         anim.is_transition = false;
 
         // Extract initial and final values
-        if (keyframes.steps.size() >= 2) {
-            const auto& first_step = keyframes.steps.front();
-            const auto& last_step = keyframes.steps.back();
+        if (keyframes.rules.size() >= 2) {
+            const auto& first_step = keyframes.rules.front();
+            const auto& last_step = keyframes.rules.back();
 
             float dummy_f = 0;
             clever::css::Color dummy_c;
             clever::css::Transform dummy_t;
 
             // Try to extract from keyframe styles
-            auto prop_it_first = first_step.properties.find(property);
-            auto prop_it_last = last_step.properties.find(property);
+            auto prop_it_first = std::find_if(first_step.declarations.begin(), first_step.declarations.end(),
+                                             [&property](const auto& p) { return p.first == property; });
+            auto prop_it_last = std::find_if(last_step.declarations.begin(), last_step.declarations.end(),
+                                            [&property](const auto& p) { return p.first == property; });
 
-            if (prop_it_first != first_step.properties.end() &&
-                prop_it_last != last_step.properties.end()) {
+            if (prop_it_first != first_step.declarations.end() &&
+                prop_it_last != last_step.declarations.end()) {
                 // For now, just mark as float (simplified)
                 anim.from_value = 0.0f;
                 anim.to_value = 1.0f;
