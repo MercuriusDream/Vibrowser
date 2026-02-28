@@ -29304,3 +29304,166 @@ TEST(HttpClient, CookieJarMultipleDomainsIsolatedV168) {
     EXPECT_EQ(headerB.find("alpha168"), std::string::npos)
         << "Domain B should NOT have domain A's cookie, got: " << headerB;
 }
+
+// ===========================================================================
+// Round 169 Net Tests
+// ===========================================================================
+
+// 1. GET /search?q=test with query in path
+TEST(HttpClient, RequestSerializeGetWithQueryStringV169) {
+    Request req;
+    req.method = Method::GET;
+    req.host = "search169.example.com";
+    req.port = 80;
+    req.path = "/search";
+    req.query = "q=test&lang=en";
+
+    auto bytes = req.serialize();
+    std::string s(bytes.begin(), bytes.end());
+
+    EXPECT_NE(s.find("GET /search?q=test&lang=en HTTP/1.1\r\n"), std::string::npos)
+        << "Request line should contain path with query string, got: " << s;
+    EXPECT_NE(s.find("Host: search169.example.com\r\n"), std::string::npos)
+        << "Host header should be present (port 80 omitted), got: " << s;
+    EXPECT_NE(s.find("Connection: close\r\n"), std::string::npos)
+        << "Connection header should be close, got: " << s;
+}
+
+// 2. 404 Not Found with body
+TEST(HttpClient, ResponseParse404NotFoundV169) {
+    std::string raw =
+        "HTTP/1.1 404 Not Found\r\n"
+        "Content-Type: text/html\r\n"
+        "Content-Length: 23\r\n"
+        "\r\n"
+        "<h1>Page Not Found</h1>";
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value()) << "404 response should parse successfully";
+    EXPECT_EQ(resp->status, 404u);
+    EXPECT_EQ(resp->status_text, "Not Found");
+    EXPECT_EQ(resp->body_as_string(), "<h1>Page Not Found</h1>");
+    ASSERT_TRUE(resp->headers.has("Content-Type"));
+    EXPECT_EQ(resp->headers.get("Content-Type").value(), "text/html");
+}
+
+// 3. Empty pool acquire returns -1
+TEST(HttpClient, ConnectionPoolEmptyAcquireReturnsNegOneV169) {
+    ConnectionPool pool;
+    int fd = pool.acquire("empty169.example.com", 443);
+    EXPECT_EQ(fd, -1)
+        << "Acquiring from empty pool should return -1, got: " << fd;
+    EXPECT_EQ(pool.count("empty169.example.com", 443), 0u)
+        << "Count should remain 0 for empty pool";
+}
+
+// 4. CookieJar Path=/api matches /api exactly
+TEST(HttpClient, CookieJarPathMatchingExactV169) {
+    CookieJar jar;
+    jar.set_from_header("token169=exactpath; Path=/api", "pathtest169.example.com");
+
+    // Exact path should match
+    std::string header = jar.get_cookie_header("pathtest169.example.com", "/api", false);
+    EXPECT_NE(header.find("token169=exactpath"), std::string::npos)
+        << "Cookie should be returned for exact path /api, got: " << header;
+
+    // Sub-path should also match
+    std::string header2 = jar.get_cookie_header("pathtest169.example.com", "/api/v2/data", false);
+    EXPECT_NE(header2.find("token169=exactpath"), std::string::npos)
+        << "Cookie should be returned for sub-path /api/v2/data, got: " << header2;
+
+    // Different path should NOT match
+    std::string header3 = jar.get_cookie_header("pathtest169.example.com", "/other", false);
+    EXPECT_EQ(header3.find("token169"), std::string::npos)
+        << "Cookie should NOT be returned for /other, got: " << header3;
+}
+
+// 5. HeaderMap set header, has() returns true
+TEST(HttpClient, HeaderMapHasReturnsTrueV169) {
+    HeaderMap map;
+    map.set("X-Custom-169", "somevalue");
+
+    EXPECT_TRUE(map.has("X-Custom-169"))
+        << "has() should return true for exact case";
+    EXPECT_TRUE(map.has("x-custom-169"))
+        << "has() should return true for lowercase";
+    EXPECT_TRUE(map.has("X-CUSTOM-169"))
+        << "has() should return true for uppercase";
+    EXPECT_FALSE(map.has("X-Missing-169"))
+        << "has() should return false for missing key";
+}
+
+// 6. POST with empty body serializes correctly
+TEST(HttpClient, RequestSerializePostEmptyBodyV169) {
+    Request req;
+    req.method = Method::POST;
+    req.host = "post169.example.com";
+    req.port = 443;
+    req.path = "/submit";
+    // body is empty by default
+
+    auto bytes = req.serialize();
+    std::string s(bytes.begin(), bytes.end());
+
+    EXPECT_NE(s.find("POST /submit HTTP/1.1\r\n"), std::string::npos)
+        << "Request line should be POST, got: " << s;
+    EXPECT_NE(s.find("Host: post169.example.com\r\n"), std::string::npos)
+        << "Host should omit port 443, got: " << s;
+    EXPECT_NE(s.find("Connection: close\r\n"), std::string::npos)
+        << "Connection header should be close, got: " << s;
+    // Ends with blank line (no body content after headers)
+    EXPECT_NE(s.find("\r\n\r\n"), std::string::npos)
+        << "Request should end with blank line, got: " << s;
+    // After the header terminator, there should be no body content
+    auto pos = s.find("\r\n\r\n");
+    EXPECT_EQ(s.substr(pos + 4).size(), 0u)
+        << "No body content should follow headers for empty POST";
+}
+
+// 7. 500 Internal Server Error response parsing
+TEST(HttpClient, ResponseParse500InternalServerErrorV169) {
+    std::string raw =
+        "HTTP/1.1 500 Internal Server Error\r\n"
+        "Content-Type: text/plain\r\n"
+        "Content-Length: 21\r\n"
+        "\r\n"
+        "Internal Server Error";
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value()) << "500 response should parse successfully";
+    EXPECT_EQ(resp->status, 500u);
+    EXPECT_EQ(resp->status_text, "Internal Server Error");
+    EXPECT_EQ(resp->body_as_string(), "Internal Server Error");
+    ASSERT_TRUE(resp->headers.has("Content-Type"));
+    EXPECT_EQ(resp->headers.get("Content-Type").value(), "text/plain");
+}
+
+// 8. CookieJar: cookie with Max-Age=0 not returned
+TEST(HttpClient, CookieJarExpiredCookieNotReturnedV169) {
+    CookieJar jar;
+
+    // Set a cookie with Max-Age=0 (immediately expired)
+    jar.set_from_header("expired169=gone; Max-Age=0", "expire169.example.com");
+    std::string header = jar.get_cookie_header("expire169.example.com", "/", false);
+    EXPECT_EQ(header.find("expired169"), std::string::npos)
+        << "Cookie with Max-Age=0 should not be returned, got: " << header;
+
+    // Also test with past Expires date
+    jar.set_from_header("oldcookie169=stale; Expires=Thu, 01 Jan 2020 00:00:00 GMT",
+                        "expire169.example.com");
+    std::string header2 = jar.get_cookie_header("expire169.example.com", "/", false);
+    EXPECT_EQ(header2.find("oldcookie169"), std::string::npos)
+        << "Cookie with past Expires should not be returned, got: " << header2;
+
+    // A valid cookie on same domain should still work
+    jar.set_from_header("valid169=fresh", "expire169.example.com");
+    std::string header3 = jar.get_cookie_header("expire169.example.com", "/", false);
+    EXPECT_NE(header3.find("valid169=fresh"), std::string::npos)
+        << "Valid cookie should still be returned, got: " << header3;
+    EXPECT_EQ(header3.find("expired169"), std::string::npos)
+        << "Expired cookie should still not appear, got: " << header3;
+}

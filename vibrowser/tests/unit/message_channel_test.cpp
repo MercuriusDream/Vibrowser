@@ -3067,3 +3067,51 @@ TEST(MessageChannelTest, MessageChannelV168_2_HandlerReceivesCorrectPayloadV168)
     EXPECT_EQ(captured_payload[1], 0x22);
     EXPECT_EQ(captured_payload[2], 0x33);
 }
+
+TEST(MessageChannelTest, MessageChannelV169_1_MultipleHandlersSameTypeLastWinsV169) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel ch(std::move(pa));
+
+    int first_called = 0;
+    int second_called = 0;
+
+    ch.on(10, [&](const Message& m) {
+        first_called++;
+    });
+
+    // Register again on the same type — last handler should win
+    ch.on(10, [&](const Message& m) {
+        second_called++;
+    });
+
+    Message msg;
+    msg.type = 10;
+    msg.request_id = 0;
+    msg.payload = {0x01};
+    ch.dispatch(msg);
+
+    EXPECT_EQ(first_called, 0);
+    EXPECT_EQ(second_called, 1);
+}
+
+TEST(MessageChannelTest, MessageChannelV169_2_ZeroLengthPayloadV169) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel ch(std::move(pa));
+
+    bool handler_called = false;
+    std::vector<uint8_t> captured_payload;
+
+    ch.on(5, [&](const Message& m) {
+        handler_called = true;
+        captured_payload = m.payload;
+    });
+
+    Message msg;
+    msg.type = 5;
+    msg.request_id = 0;
+    msg.payload = {};
+    ch.dispatch(msg);
+
+    EXPECT_TRUE(handler_called);
+    EXPECT_EQ(captured_payload.size(), 0u);
+}

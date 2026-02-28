@@ -30534,3 +30534,134 @@ TEST(LayoutNodeProps, FlexShrinkDefaultOneV168) {
     auto node = make_block("div");
     EXPECT_FLOAT_EQ(node->flex_shrink, 1.0f);
 }
+
+// ===========================================================================
+// Round 169 Layout Tests
+// ===========================================================================
+
+// V169_1: flex row with gap=10, 2 children 50px each, verify positions account for gap
+TEST(LayoutEngineTest, LayoutV169_1) {
+    auto root = make_flex("div");
+    root->flex_direction = 0; // row
+    root->gap = 10.0f;
+    root->column_gap_val = 10.0f;
+
+    auto child1 = make_block("div");
+    child1->specified_width = 50.0f;
+    child1->specified_height = 30.0f;
+
+    auto child2 = make_block("div");
+    child2->specified_width = 50.0f;
+    child2->specified_height = 30.0f;
+
+    root->append_child(std::move(child1));
+    root->append_child(std::move(child2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.x, 0.0f);
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.x, 60.0f); // 50 + 10 gap
+}
+
+// V169_2: block with 3 children different heights, verify cumulative y positions
+TEST(LayoutEngineTest, LayoutV169_2) {
+    auto root = make_block("div");
+
+    auto c1 = make_block("div");
+    c1->specified_height = 40.0f;
+    auto c2 = make_block("div");
+    c2->specified_height = 60.0f;
+    auto c3 = make_block("div");
+    c3->specified_height = 25.0f;
+
+    root->append_child(std::move(c1));
+    root->append_child(std::move(c2));
+    root->append_child(std::move(c3));
+
+    LayoutEngine engine;
+    engine.compute(*root, 600.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.y, 0.0f);
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.y, 40.0f);
+    EXPECT_FLOAT_EQ(root->children[2]->geometry.y, 100.0f); // 40 + 60
+    EXPECT_FLOAT_EQ(root->geometry.height, 125.0f);          // 40 + 60 + 25
+}
+
+// V169_3: max_width clamps larger specified_width down
+TEST(LayoutEngineTest, LayoutV169_3) {
+    auto root = make_block("div");
+    root->specified_width = 500.0f;
+    root->max_width = 300.0f;
+    root->specified_height = 40.0f;
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(root->geometry.width, 300.0f);
+}
+
+// V169_4: flex child with flex-basis gets that width
+TEST(LayoutEngineTest, LayoutV169_4) {
+    auto root = make_flex("div");
+    root->flex_direction = 0; // row
+
+    auto child = make_block("div");
+    child->flex_basis = 150.0f;
+    child->specified_height = 30.0f;
+
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.width, 150.0f);
+}
+
+// V169_5: single block child gets parent width
+TEST(LayoutEngineTest, LayoutV169_5) {
+    auto root = make_block("div");
+    root->specified_width = 400.0f;
+
+    auto child = make_block("div");
+    child->specified_height = 20.0f;
+
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.width, 400.0f);
+}
+
+// V169_6: flex column, children stacked vertically
+TEST(LayoutEngineTest, LayoutV169_6) {
+    auto root = make_flex("div");
+    root->flex_direction = 2; // column
+
+    auto c1 = make_block("div");
+    c1->specified_height = 50.0f;
+    auto c2 = make_block("div");
+    c2->specified_height = 70.0f;
+
+    root->append_child(std::move(c1));
+    root->append_child(std::move(c2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 400.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.y, 0.0f);
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.y, 50.0f);
+}
+
+// V169_7: default display is DisplayType::Block
+TEST(LayoutNodeProps, DisplayDefaultBlockV169) {
+    auto node = std::make_unique<LayoutNode>();
+    EXPECT_EQ(node->display, DisplayType::Block);
+}
+
+// V169_8: default specified_width is -1 (auto)
+TEST(LayoutNodeProps, SpecifiedWidthDefaultAutoV169) {
+    auto node = std::make_unique<LayoutNode>();
+    EXPECT_FLOAT_EQ(node->specified_width, -1.0f);
+}

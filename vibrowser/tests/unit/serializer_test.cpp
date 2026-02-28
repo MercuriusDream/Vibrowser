@@ -21675,3 +21675,41 @@ TEST(SerializerTest, SerializerV168_3_U32ZeroAndMaxRoundTrip) {
     EXPECT_EQ(d.read_u32(), UINT32_MAX);
     EXPECT_FALSE(d.has_remaining());
 }
+
+TEST(SerializerTest, SerializerV169_1_F64NegativeInfinityRoundTrip) {
+    Serializer s;
+    s.write_f64(-INFINITY);
+
+    Deserializer d(s.data());
+    double val = d.read_f64();
+    EXPECT_EQ(val, -INFINITY);
+    EXPECT_TRUE(std::isinf(val));
+    EXPECT_LT(val, 0.0);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, SerializerV169_2_MultipleStringsRoundTrip) {
+    Serializer s;
+    s.write_string("hello");
+    s.write_string("world");
+    s.write_string("vibrowser");
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "hello");
+    EXPECT_EQ(d.read_string(), "world");
+    EXPECT_EQ(d.read_string(), "vibrowser");
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, SerializerV169_3_U32SequentialValuesRoundTrip) {
+    Serializer s;
+    for (uint32_t i = 0; i < 10; ++i) {
+        s.write_u32(i);
+    }
+
+    Deserializer d(s.data());
+    for (uint32_t i = 0; i < 10; ++i) {
+        EXPECT_EQ(d.read_u32(), i);
+    }
+    EXPECT_FALSE(d.has_remaining());
+}

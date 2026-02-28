@@ -38523,3 +38523,97 @@ TEST(JSEngine, JsV168_8) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "0,1,2,3,4");
 }
+
+// ===========================================================================
+// Round 169 JS Engine Tests
+// ===========================================================================
+
+// V169_1: Array.indexOf returns index or -1
+TEST(JSEngine, JsV169_1) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var arr = [10, 20, 30, 40];
+        "" + arr.indexOf(30) + "," + arr.indexOf(99);
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "2,-1");
+}
+
+// V169_2: String.split splits string
+TEST(JSEngine, JsV169_2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var parts = "a-b-c".split("-");
+        "" + parts.length + "," + parts[0] + "," + parts[2];
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "3,a,c");
+}
+
+// V169_3: Array.join joins with separator
+TEST(JSEngine, JsV169_3) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var arr = ["hello", "world", "test"];
+        arr.join(" | ");
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "hello | world | test");
+}
+
+// V169_4: Math.max and Math.min
+TEST(JSEngine, JsV169_4) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        "" + Math.max(3, 7, 1, 9, 2) + "," + Math.min(3, 7, 1, 9, 2);
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "9,1");
+}
+
+// V169_5: Array.every and Array.some
+TEST(JSEngine, JsV169_5) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var arr = [2, 4, 6, 8];
+        var allEven = arr.every(function(x) { return x % 2 === 0; });
+        var someGtFive = arr.some(function(x) { return x > 5; });
+        "" + allEven + "," + someGtFive;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true,true");
+}
+
+// V169_6: String.repeat
+TEST(JSEngine, JsV169_6) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        "abc".repeat(3);
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "abcabcabc");
+}
+
+// V169_7: Array.flat flattens nested array
+TEST(JSEngine, JsV169_7) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var arr = [1, [2, 3], [4, [5]]];
+        "" + arr.flat();
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1,2,3,4,5");
+}
+
+// V169_8: nullish coalescing operator ??
+TEST(JSEngine, JsV169_8) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var a = null;
+        var b = undefined;
+        var c = 42;
+        "" + (a ?? "fallback") + "," + (b ?? "default") + "," + (c ?? "nope");
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "fallback,default,42");
+}

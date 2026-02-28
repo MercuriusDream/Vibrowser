@@ -13285,3 +13285,50 @@ TEST(CORSPolicyTest, CorsV168_7_NullOriginNotEnforceable) {
 TEST(CORSPolicyTest, CorsV168_8_CrossOriginDifferentPortNumbers) {
     EXPECT_TRUE(is_cross_origin("http://app.example:8080", "http://app.example:9090/api"));
 }
+
+// ---------------------------------------------------------------------------
+// Round 169 CORS tests
+// ---------------------------------------------------------------------------
+
+// 1. https scheme is enforceable
+TEST(CORSPolicyTest, CorsV169_1_HttpsEnforceableBasic) {
+    EXPECT_TRUE(has_enforceable_document_origin("https://secure.example.com"));
+}
+
+// 2. data: scheme is not enforceable
+TEST(CORSPolicyTest, CorsV169_2_DataSchemeNotEnforceable) {
+    EXPECT_FALSE(has_enforceable_document_origin("data:text/html,hello"));
+}
+
+// 3. Different subdomains are cross-origin
+TEST(CORSPolicyTest, CorsV169_3_CrossOriginSubdomainDifference) {
+    EXPECT_TRUE(is_cross_origin("https://sub1.example.com", "https://sub2.example.com/page"));
+}
+
+// 4. Same origin with different paths are still same-origin
+TEST(CORSPolicyTest, CorsV169_4_SameOriginWithPathDifference) {
+    EXPECT_FALSE(is_cross_origin("https://app.example.com", "https://app.example.com/other/path"));
+}
+
+// 5. ACAO wildcard allows response when no credentials
+TEST(CORSPolicyTest, CorsV169_5_AcaoWildcardAllowsWithoutCreds) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "*");
+    EXPECT_TRUE(cors_allows_response("https://app.example", "https://api.example/data",
+                                     headers, false));
+}
+
+// 6. Different hosts means should_attach_origin is true
+TEST(CORSPolicyTest, CorsV169_6_ShouldAttachOriginCrossOriginTrue) {
+    EXPECT_TRUE(should_attach_origin_header("https://app.example", "https://api.other.example/data"));
+}
+
+// 7. blob: scheme is not enforceable
+TEST(CORSPolicyTest, CorsV169_7_BlobSchemeNotEnforceable) {
+    EXPECT_FALSE(has_enforceable_document_origin("blob:http://example.com/some-uuid"));
+}
+
+// 8. IPv4 address with port is enforceable
+TEST(CORSPolicyTest, CorsV169_8_IPv4AddressEnforceable) {
+    EXPECT_TRUE(has_enforceable_document_origin("http://192.168.1.1:8080"));
+}

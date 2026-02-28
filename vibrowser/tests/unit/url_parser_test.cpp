@@ -15927,3 +15927,46 @@ TEST(UrlParserTest, UrlV168_4_UserInfoNotSupported) {
     EXPECT_EQ(result->password, "pass");
     EXPECT_EQ(result->path, "/path");
 }
+
+// =============================================================================
+// Round 169 URL parser tests
+// =============================================================================
+
+TEST(UrlParserTest, UrlV169_1_TrailingSlashPreservedInPath) {
+    // A URL with a trailing slash in the path should preserve it
+    auto result = parse("http://example.com/dir/");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/dir/");
+    EXPECT_EQ(result->port, std::nullopt);
+}
+
+TEST(UrlParserTest, UrlV169_2_EmptyQueryPreserved) {
+    // A '?' at end of URL with no content should yield empty query string
+    auto result = parse("http://example.com/path?");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/path");
+    EXPECT_EQ(result->query, "");
+}
+
+TEST(UrlParserTest, UrlV169_3_EmptyFragmentPreserved) {
+    // A '#' at end of URL with no content should yield empty fragment string
+    auto result = parse("http://example.com/path#");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/path");
+    EXPECT_EQ(result->fragment, "");
+}
+
+TEST(UrlParserTest, UrlV169_4_MultipleDotSegments) {
+    // Three consecutive dot-dot segments should collapse back to root level
+    auto result = parse("http://example.com/a/b/c/../../../d");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/d");
+}

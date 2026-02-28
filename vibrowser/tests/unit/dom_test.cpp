@@ -24785,3 +24785,74 @@ TEST(DomNode, ParentNullForRootNodeV168) {
     Element elem("html");
     EXPECT_EQ(elem.parent(), nullptr);
 }
+
+// ---------------------------------------------------------------------------
+// Round 169 DOM tests
+// ---------------------------------------------------------------------------
+
+// 1. first_child is nullptr when element has no children
+TEST(DomNode, FirstChildNullWhenEmptyV169) {
+    Element elem("section");
+    EXPECT_EQ(elem.first_child(), nullptr);
+}
+
+// 2. get_attribute returns empty optional for missing attribute
+TEST(DomElement, GetAttributeReturnsEmptyForMissingV169) {
+    Element elem("div");
+    auto val = elem.get_attribute("data-nonexistent");
+    EXPECT_FALSE(val.has_value());
+}
+
+// 3. get_element_by_id returns nullptr for unregistered id
+TEST(DomDocument, GetElementByIdNullForUnregisteredV169) {
+    Document doc;
+    EXPECT_EQ(doc.get_element_by_id("no-such-id"), nullptr);
+}
+
+// 4. Event bubbling and cancelable flags
+TEST(DomEvent, BubblingEventFlagsV169) {
+    Event ev("click", true, false);
+    EXPECT_EQ(ev.type(), "click");
+    EXPECT_TRUE(ev.bubbles());
+    EXPECT_FALSE(ev.cancelable());
+}
+
+// 5. Append two children and verify ordering
+TEST(DomNode, AppendTwoChildrenVerifyOrderV169) {
+    auto parent = std::make_unique<Element>("ul");
+    auto a = std::make_unique<Element>("li");
+    auto b = std::make_unique<Element>("li");
+    Element* a_ptr = a.get();
+    Element* b_ptr = b.get();
+    parent->append_child(std::move(a));
+    parent->append_child(std::move(b));
+    EXPECT_EQ(parent->first_child(), a_ptr);
+    EXPECT_EQ(parent->last_child(), b_ptr);
+    EXPECT_EQ(a_ptr->next_sibling(), b_ptr);
+}
+
+// 6. Element tag_name is correct
+TEST(DomElement, TagNameCorrectV169) {
+    Element elem("article");
+    EXPECT_EQ(elem.tag_name(), "article");
+}
+
+// 7. mark_dirty with Paint only sets Paint, not Style or Layout
+TEST(DomNode, DirtyFlagPaintOnlyV169) {
+    Element elem("div");
+    elem.clear_dirty();
+    EXPECT_EQ(elem.dirty_flags(), DirtyFlags::None);
+    elem.mark_dirty(DirtyFlags::Paint);
+    EXPECT_NE(static_cast<uint8_t>(elem.dirty_flags() & DirtyFlags::Paint), 0);
+    EXPECT_EQ(static_cast<uint8_t>(elem.dirty_flags() & DirtyFlags::Style), 0);
+    EXPECT_EQ(static_cast<uint8_t>(elem.dirty_flags() & DirtyFlags::Layout), 0);
+}
+
+// 8. clear_dirty resets all flags to None
+TEST(DomNode, ClearDirtyResetsAllV169) {
+    Element elem("div");
+    elem.mark_dirty(DirtyFlags::All);
+    EXPECT_NE(elem.dirty_flags(), DirtyFlags::None);
+    elem.clear_dirty();
+    EXPECT_EQ(elem.dirty_flags(), DirtyFlags::None);
+}

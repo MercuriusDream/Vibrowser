@@ -26564,3 +26564,39 @@ TEST(PropertyCascadeTest, OverflowHiddenAppliedV168) {
     EXPECT_EQ(style.overflow_x, Overflow::Hidden);
     EXPECT_EQ(style.overflow_y, Overflow::Hidden);
 }
+
+TEST(CSSStyleTest, CssV169_1_PositionAbsoluteApplied) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("position", "absolute"), parent);
+    EXPECT_EQ(style.position, Position::Absolute);
+}
+
+TEST(CSSStyleTest, CssV169_2_VisibilityHiddenApplied) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("visibility", "hidden"), parent);
+    EXPECT_EQ(style.visibility, Visibility::Hidden);
+}
+
+TEST(PropertyCascadeTest, CursorPointerAppliedV169) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("cursor", "pointer"), parent);
+    EXPECT_EQ(style.cursor, Cursor::Pointer);
+}
+
+TEST(PropertyCascadeTest, UserSelectNoneAppliedV169) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("user-select", "none"), parent);
+    EXPECT_EQ(style.user_select, UserSelect::None);
+}

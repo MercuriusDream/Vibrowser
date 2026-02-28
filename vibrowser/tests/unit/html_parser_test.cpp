@@ -26466,3 +26466,119 @@ TEST(HtmlParserTest, HtmlV168_8) {
     EXPECT_EQ(dd->tag_name, "dd");
     EXPECT_EQ(dd->text_content(), "Definition");
 }
+
+TEST(HtmlParserTest, HtmlV169_1) {
+    // <mark> element with highlighted text
+    auto doc = clever::html::parse(
+        "<html><body><mark>highlighted</mark></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* mark = doc->find_element("mark");
+    ASSERT_NE(mark, nullptr);
+    EXPECT_EQ(mark->tag_name, "mark");
+    EXPECT_EQ(mark->text_content(), "highlighted");
+}
+
+TEST(HtmlParserTest, HtmlV169_2) {
+    // <small> element
+    auto doc = clever::html::parse(
+        "<html><body><small>fine print</small></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* small = doc->find_element("small");
+    ASSERT_NE(small, nullptr);
+    EXPECT_EQ(small->tag_name, "small");
+    EXPECT_EQ(small->text_content(), "fine print");
+}
+
+TEST(HtmlParserTest, HtmlV169_3) {
+    // <strong> with <em> nested
+    auto doc = clever::html::parse(
+        "<html><body><strong><em>bold italic</em></strong></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* strong = doc->find_element("strong");
+    ASSERT_NE(strong, nullptr);
+    EXPECT_EQ(strong->tag_name, "strong");
+
+    auto* em = doc->find_element("em");
+    ASSERT_NE(em, nullptr);
+    EXPECT_EQ(em->tag_name, "em");
+    EXPECT_EQ(em->text_content(), "bold italic");
+}
+
+TEST(HtmlParserTest, HtmlV169_4) {
+    // <sub> subscript element
+    auto doc = clever::html::parse(
+        "<html><body><p>H<sub>2</sub>O</p></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* sub = doc->find_element("sub");
+    ASSERT_NE(sub, nullptr);
+    EXPECT_EQ(sub->tag_name, "sub");
+    EXPECT_EQ(sub->text_content(), "2");
+}
+
+TEST(HtmlParserTest, HtmlV169_5) {
+    // <sup> superscript element
+    auto doc = clever::html::parse(
+        "<html><body><p>x<sup>2</sup></p></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* sup = doc->find_element("sup");
+    ASSERT_NE(sup, nullptr);
+    EXPECT_EQ(sup->tag_name, "sup");
+    EXPECT_EQ(sup->text_content(), "2");
+}
+
+TEST(HtmlParserTest, HtmlV169_6) {
+    // <a href="..."> anchor with href
+    auto doc = clever::html::parse(
+        "<html><body><a href=\"https://example.com\">link</a></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* a = doc->find_element("a");
+    ASSERT_NE(a, nullptr);
+    EXPECT_EQ(a->tag_name, "a");
+    EXPECT_EQ(a->text_content(), "link");
+
+    std::string href_val;
+    for (const auto& attr : a->attributes) {
+        if (attr.name == "href") href_val = attr.value;
+    }
+    EXPECT_EQ(href_val, "https://example.com");
+}
+
+TEST(HtmlParserTest, HtmlV169_7) {
+    // <img src="..." alt="..."> self-closing with attributes
+    auto doc = clever::html::parse(
+        "<html><body><img src=\"photo.jpg\" alt=\"A photo\"></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* img = doc->find_element("img");
+    ASSERT_NE(img, nullptr);
+    EXPECT_EQ(img->tag_name, "img");
+
+    std::string src_val, alt_val;
+    for (const auto& attr : img->attributes) {
+        if (attr.name == "src") src_val = attr.value;
+        if (attr.name == "alt") alt_val = attr.value;
+    }
+    EXPECT_EQ(src_val, "photo.jpg");
+    EXPECT_EQ(alt_val, "A photo");
+}
+
+TEST(HtmlParserTest, HtmlV169_8) {
+    // <br> within paragraph
+    auto doc = clever::html::parse(
+        "<html><body><p>line1<br>line2</p></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* br = doc->find_element("br");
+    ASSERT_NE(br, nullptr);
+    EXPECT_EQ(br->tag_name, "br");
+
+    auto* p = doc->find_element("p");
+    ASSERT_NE(p, nullptr);
+    EXPECT_EQ(p->tag_name, "p");
+}

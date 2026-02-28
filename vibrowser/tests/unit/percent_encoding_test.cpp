@@ -1853,3 +1853,39 @@ TEST(IsURLCodePoint, AsciiLettersValidV168) {
         EXPECT_TRUE(is_url_code_point(ch));
     }
 }
+
+// =============================================================================
+// Round 169 percent encoding tests
+// =============================================================================
+
+TEST(PercentEncoding, HashEncodesCorrectlyV169) {
+    // '#' character should be percent-encoded as %23
+    EXPECT_EQ(percent_encode("#"), "%23");
+    // Hash within a string should also be encoded
+    EXPECT_EQ(percent_encode("a#b"), "a%23b");
+    // Multiple hashes
+    EXPECT_EQ(percent_encode("##"), "%23%23");
+}
+
+TEST(PercentDecoding, LowercaseHexDecodesV169) {
+    // Lowercase hex %2f should decode the same as uppercase %2F (both to '/')
+    EXPECT_EQ(percent_decode("%2f"), "/");
+    EXPECT_EQ(percent_decode("%2F"), "/");
+    EXPECT_EQ(percent_decode("%2f"), percent_decode("%2F"));
+    // Mixed case in a longer string
+    EXPECT_EQ(percent_decode("a%2fb%2Fc"), "a/b/c");
+}
+
+TEST(PercentEncoding, TildeNotEncodedV169) {
+    // Tilde '~' is an unreserved character and should pass through unchanged
+    EXPECT_EQ(percent_encode("~"), "~");
+    EXPECT_EQ(percent_encode("~user"), "~user");
+    EXPECT_EQ(percent_encode("/home/~admin"), "/home/~admin");
+}
+
+TEST(IsURLCodePoint, DigitsValidV169) {
+    // All ASCII digits 0-9 should be valid URL code points
+    for (char32_t ch = U'0'; ch <= U'9'; ++ch) {
+        EXPECT_TRUE(is_url_code_point(ch));
+    }
+}

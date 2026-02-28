@@ -11752,3 +11752,59 @@ TEST_F(CSSStylesheetTest, FlexDirectionDeclarationV168) {
     }
     EXPECT_TRUE(found) << "flex-direction declaration not found";
 }
+
+TEST_F(CSSStylesheetTest, ColumnGapDeclarationV169) {
+    auto ss = parse_stylesheet("div { column-gap: 20px; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "column-gap") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "20px");
+        }
+    }
+    EXPECT_TRUE(found) << "column-gap declaration not found";
+}
+
+TEST_F(CSSStylesheetTest, RowGapDeclarationV169) {
+    auto ss = parse_stylesheet("div { row-gap: 15px; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "row-gap") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "15px");
+        }
+    }
+    EXPECT_TRUE(found) << "row-gap declaration not found";
+}
+
+TEST_F(CSSStylesheetTest, AlignItemsDeclarationV169) {
+    auto ss = parse_stylesheet("div { align-items: center; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "align-items") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "center");
+        }
+    }
+    EXPECT_TRUE(found) << "align-items declaration not found";
+}
+
+TEST_F(CSSStylesheetTest, JustifyContentDeclarationV169) {
+    auto ss = parse_stylesheet("div { justify-content: space-between; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "justify-content") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "space-between");
+        }
+    }
+    EXPECT_TRUE(found) << "justify-content declaration not found";
+}
