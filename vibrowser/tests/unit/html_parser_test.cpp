@@ -24446,3 +24446,165 @@ TEST(HtmlParserTest, HtmlV154_8) {
     }
     EXPECT_TRUE(found_for) << "for attribute not found on label";
 }
+
+// === V155 HTML Parser Tests ===
+
+TEST(HtmlParserTest, HtmlV155_1) {
+    // textarea with content
+    auto doc = clever::html::parse(
+        "<html><body><textarea name=\"msg\">Hello World</textarea></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* textarea = doc->find_element("textarea");
+    ASSERT_NE(textarea, nullptr);
+    EXPECT_EQ(textarea->tag_name, "textarea");
+
+    bool found_name = false;
+    for (const auto& attr : textarea->attributes) {
+        if (attr.name == "name") {
+            found_name = true;
+            EXPECT_EQ(attr.value, "msg");
+        }
+    }
+    EXPECT_TRUE(found_name) << "name attribute not found on textarea";
+}
+
+TEST(HtmlParserTest, HtmlV155_2) {
+    // select with options
+    auto doc = clever::html::parse(
+        "<html><body><select name=\"color\">"
+        "<option value=\"r\">Red</option>"
+        "<option value=\"g\">Green</option>"
+        "</select></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* select = doc->find_element("select");
+    ASSERT_NE(select, nullptr);
+    EXPECT_EQ(select->tag_name, "select");
+
+    auto options = doc->find_all_elements("option");
+    ASSERT_GE(options.size(), 2u);
+    EXPECT_EQ(options[0]->tag_name, "option");
+    EXPECT_EQ(options[0]->text_content(), "Red");
+    EXPECT_EQ(options[1]->text_content(), "Green");
+}
+
+TEST(HtmlParserTest, HtmlV155_3) {
+    // button with type
+    auto doc = clever::html::parse(
+        "<html><body><button type=\"submit\">Click Me</button></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* button = doc->find_element("button");
+    ASSERT_NE(button, nullptr);
+    EXPECT_EQ(button->tag_name, "button");
+    EXPECT_EQ(button->text_content(), "Click Me");
+
+    bool found_type = false;
+    for (const auto& attr : button->attributes) {
+        if (attr.name == "type") {
+            found_type = true;
+            EXPECT_EQ(attr.value, "submit");
+        }
+    }
+    EXPECT_TRUE(found_type) << "type attribute not found on button";
+}
+
+TEST(HtmlParserTest, HtmlV155_4) {
+    // fieldset with legend
+    auto doc = clever::html::parse(
+        "<html><body><fieldset><legend>Personal Info</legend>"
+        "<input type=\"text\"></fieldset></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* fieldset = doc->find_element("fieldset");
+    ASSERT_NE(fieldset, nullptr);
+    EXPECT_EQ(fieldset->tag_name, "fieldset");
+
+    auto* legend = doc->find_element("legend");
+    ASSERT_NE(legend, nullptr);
+    EXPECT_EQ(legend->tag_name, "legend");
+    EXPECT_EQ(legend->text_content(), "Personal Info");
+}
+
+TEST(HtmlParserTest, HtmlV155_5) {
+    // datalist with options
+    auto doc = clever::html::parse(
+        "<html><body><datalist id=\"fruits\">"
+        "<option value=\"Apple\"></option>"
+        "<option value=\"Banana\"></option>"
+        "</datalist></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* datalist = doc->find_element("datalist");
+    ASSERT_NE(datalist, nullptr);
+    EXPECT_EQ(datalist->tag_name, "datalist");
+
+    bool found_id = false;
+    for (const auto& attr : datalist->attributes) {
+        if (attr.name == "id") {
+            found_id = true;
+            EXPECT_EQ(attr.value, "fruits");
+        }
+    }
+    EXPECT_TRUE(found_id) << "id attribute not found on datalist";
+}
+
+TEST(HtmlParserTest, HtmlV155_6) {
+    // details with summary
+    auto doc = clever::html::parse(
+        "<html><body><details><summary>More Info</summary>"
+        "<p>Hidden content</p></details></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* details = doc->find_element("details");
+    ASSERT_NE(details, nullptr);
+    EXPECT_EQ(details->tag_name, "details");
+
+    auto* summary = doc->find_element("summary");
+    ASSERT_NE(summary, nullptr);
+    EXPECT_EQ(summary->tag_name, "summary");
+    EXPECT_EQ(summary->text_content(), "More Info");
+}
+
+TEST(HtmlParserTest, HtmlV155_7) {
+    // dialog element
+    auto doc = clever::html::parse(
+        "<html><body><dialog open=\"true\">Dialog Content</dialog></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* dialog = doc->find_element("dialog");
+    ASSERT_NE(dialog, nullptr);
+    EXPECT_EQ(dialog->tag_name, "dialog");
+    EXPECT_EQ(dialog->text_content(), "Dialog Content");
+
+    bool found_open = false;
+    for (const auto& attr : dialog->attributes) {
+        if (attr.name == "open") {
+            found_open = true;
+            EXPECT_EQ(attr.value, "true");
+        }
+    }
+    EXPECT_TRUE(found_open) << "open attribute not found on dialog";
+}
+
+TEST(HtmlParserTest, HtmlV155_8) {
+    // template element
+    auto doc = clever::html::parse(
+        "<html><body><template id=\"card-tmpl\">"
+        "<div class=\"card\">Template</div></template></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* tmpl = doc->find_element("template");
+    ASSERT_NE(tmpl, nullptr);
+    EXPECT_EQ(tmpl->tag_name, "template");
+
+    bool found_id = false;
+    for (const auto& attr : tmpl->attributes) {
+        if (attr.name == "id") {
+            found_id = true;
+            EXPECT_EQ(attr.value, "card-tmpl");
+        }
+    }
+    EXPECT_TRUE(found_id) << "id attribute not found on template";
+}

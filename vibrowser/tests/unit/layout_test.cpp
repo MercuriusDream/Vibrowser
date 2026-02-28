@@ -28517,3 +28517,159 @@ TEST(LayoutNodeProps, ColorDefaultBlackV154) {
     auto node = make_block("div");
     EXPECT_TRUE(node->color == 0xFF000000u || node->color == 0u);
 }
+
+// V155_1: flex justify-content center with three children
+TEST(LayoutEngineTest, LayoutV155_1) {
+    auto root = make_flex("div");
+    root->justify_content = 2; // center
+
+    auto child1 = make_block("div");
+    child1->specified_width = 80.0f;
+    child1->specified_height = 40.0f;
+
+    auto child2 = make_block("div");
+    child2->specified_width = 60.0f;
+    child2->specified_height = 40.0f;
+
+    auto child3 = make_block("div");
+    child3->specified_width = 60.0f;
+    child3->specified_height = 40.0f;
+
+    root->append_child(std::move(child1));
+    root->append_child(std::move(child2));
+    root->append_child(std::move(child3));
+
+    LayoutEngine engine;
+    engine.compute(*root, 600.0f, 400.0f);
+
+    // Total children width = 80 + 60 + 60 = 200, remaining = 400, offset = 200
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.x, 200.0f);
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.x, 280.0f);
+    EXPECT_FLOAT_EQ(root->children[2]->geometry.x, 340.0f);
+}
+
+// V155_2: grid 2 columns, 3 rows (6 children)
+TEST(GridLayout, GridTwoByThreeV155) {
+    auto root = make_grid();
+    root->grid_template_columns = "150px 150px";
+    root->grid_template_rows = "50px 50px 50px";
+    root->specified_width = 300.0f;
+
+    for (int i = 0; i < 6; i++) {
+        auto child = make_block("div");
+        child->specified_height = 50.0f;
+        root->append_child(std::move(child));
+    }
+
+    LayoutEngine engine;
+    engine.compute(*root, 300.0f, 600.0f);
+
+    // Row 0: children 0, 1
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.x, 0.0f);
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.width, 150.0f);
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.x, 150.0f);
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.width, 150.0f);
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.y, root->children[1]->geometry.y);
+
+    // Row 1: children 2, 3 — y should be >= 50
+    EXPECT_GE(root->children[2]->geometry.y, 50.0f);
+    EXPECT_FLOAT_EQ(root->children[2]->geometry.x, 0.0f);
+    EXPECT_FLOAT_EQ(root->children[3]->geometry.x, 150.0f);
+
+    // Row 2: children 4, 5 — y should be >= 100
+    EXPECT_GE(root->children[4]->geometry.y, 100.0f);
+    EXPECT_FLOAT_EQ(root->children[4]->geometry.x, 0.0f);
+    EXPECT_FLOAT_EQ(root->children[5]->geometry.x, 150.0f);
+}
+
+// V155_3: flex-grow 0 uses natural (specified) size
+TEST(LayoutEngineTest, LayoutV155_3) {
+    auto root = make_flex("div");
+    root->flex_direction = 0; // row
+
+    auto child = make_block("div");
+    child->specified_width = 120.0f;
+    child->specified_height = 40.0f;
+    child->flex_grow = 0;
+
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 500.0f, 400.0f);
+
+    // Child should keep its specified width, not grow to fill container
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.width, 120.0f);
+}
+
+// V155_4: padding-top included in total height
+TEST(LayoutEngineTest, LayoutV155_4) {
+    auto root = make_block("div");
+    root->geometry.padding.top = 25.0f;
+    root->geometry.padding.bottom = 15.0f;
+
+    auto child = make_block("div");
+    child->specified_height = 40.0f;
+
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // Root height should include padding: top(25) + child(40) + bottom(15) = 80
+    EXPECT_FLOAT_EQ(root->geometry.height, 80.0f);
+}
+
+// V155_5: border-bottom included in total height
+TEST(LayoutEngineTest, LayoutV155_5) {
+    auto root = make_block("div");
+    root->geometry.border.top = 3.0f;
+    root->geometry.border.bottom = 7.0f;
+
+    auto child = make_block("div");
+    child->specified_height = 60.0f;
+
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 600.0f, 600.0f);
+
+    // Root height = border.top + child_height + border.bottom = 3 + 60 + 7 = 70
+    EXPECT_FLOAT_EQ(root->geometry.height, 70.0f);
+}
+
+// V155_6: flex column with align-items center
+TEST(LayoutEngineTest, LayoutV155_6) {
+    auto root = make_flex("div");
+    root->flex_direction = 2; // column
+    root->align_items = 2; // center
+
+    auto child = make_block("div");
+    child->specified_width = 200.0f;
+    child->specified_height = 50.0f;
+
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 600.0f, 400.0f);
+
+    // Child should be centered horizontally: (600 - 200) / 2 = 200
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.x, 200.0f);
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.width, 200.0f);
+}
+
+// V155_7: specified_height sets exact height
+TEST(LayoutEngineTest, LayoutV155_7) {
+    auto root = make_block("div");
+    root->specified_height = 350.0f;
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(root->geometry.height, 350.0f);
+}
+
+// V155_8: opacity defaults to 1.0f
+TEST(LayoutNodeProps, OpacityDefaultOneV155) {
+    auto node = make_block("div");
+    EXPECT_FLOAT_EQ(node->opacity, 1.0f);
+}

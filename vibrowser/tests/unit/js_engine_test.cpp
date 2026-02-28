@@ -37057,3 +37057,116 @@ TEST(JSEngine, JsV154_8) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "{\"a\":1,\"c\":3}");
 }
+
+// V155_1: Symbol.iterator protocol
+TEST(JSEngine, JsV155_1) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var obj = {};
+        obj[Symbol.iterator] = function() {
+            var i = 0;
+            return {
+                next: function() {
+                    i++;
+                    if (i <= 3) return {value: i, done: false};
+                    return {done: true};
+                }
+            };
+        };
+        var vals = [];
+        for (var v of obj) { vals.push(v); }
+        vals.join(',');
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1,2,3");
+}
+
+// V155_2: Array.flatMap
+TEST(JSEngine, JsV155_2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var arr = [1, 2, 3];
+        arr.flatMap(function(x) { return [x, x * 2]; }).join(',');
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1,2,2,4,3,6");
+}
+
+// V155_3: String.padStart and padEnd
+TEST(JSEngine, JsV155_3) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var a = '5'.padStart(3, '0');
+        var b = 'hi'.padEnd(5, '.');
+        a + '|' + b;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "005|hi...");
+}
+
+// V155_4: Object.is comparison
+TEST(JSEngine, JsV155_4) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var a = Object.is(NaN, NaN);
+        var b = Object.is(0, -0);
+        var c = Object.is(42, 42);
+        String(a) + ',' + String(b) + ',' + String(c);
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true,false,true");
+}
+
+// V155_5: Number.MAX_SAFE_INTEGER and MIN_SAFE_INTEGER
+TEST(JSEngine, JsV155_5) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var max = Number.MAX_SAFE_INTEGER;
+        var min = Number.MIN_SAFE_INTEGER;
+        String(max === 9007199254740991) + ',' + String(min === -9007199254740991);
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true,true");
+}
+
+// V155_6: arrow function this binding
+TEST(JSEngine, JsV155_6) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var obj = {
+            value: 10,
+            getValueArrow: function() {
+                var arrow = () => this.value;
+                return arrow();
+            }
+        };
+        String(obj.getValueArrow());
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "10");
+}
+
+// V155_7: default parameter values
+TEST(JSEngine, JsV155_7) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        function greet(name, greeting) {
+            if (greeting === undefined) greeting = 'Hello';
+            return greeting + ' ' + name;
+        }
+        greet('World') + '|' + greet('World', 'Hi');
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "Hello World|Hi World");
+}
+
+// V155_8: Array.of creates array from arguments
+TEST(JSEngine, JsV155_8) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var arr = Array.of(1, 2, 3, 4, 5);
+        arr.length + ',' + arr.join('-');
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "5,1-2-3-4-5");
+}

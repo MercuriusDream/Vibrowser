@@ -2056,3 +2056,80 @@ TEST(MessagePipeTest, MessagePipeV154_3_128KBMessage) {
     EXPECT_EQ(received->size(), 128u * 1024u);
     EXPECT_EQ(*received, data);
 }
+
+// ------------------------------------------------------------------
+// Round 155 — MessagePipe tests
+// ------------------------------------------------------------------
+
+TEST(MessagePipeTest, MessagePipeV155_1_CloseSenderThenReceiveGetsNullopt) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    // Send one message then close
+    std::vector<uint8_t> data = {0xAA, 0xBB};
+    ASSERT_TRUE(a.send(data));
+    a.close();
+
+    // First receive should get the queued message
+    auto received = b.receive();
+    ASSERT_TRUE(received.has_value());
+    EXPECT_EQ(*received, data);
+
+    // Second receive after sender closed should return nullopt
+    auto empty = b.receive();
+    EXPECT_FALSE(empty.has_value());
+}
+
+TEST(MessagePipeTest, MessagePipeV155_2_TwoByteMessages) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    for (uint8_t i = 0; i < 20; ++i) {
+        std::vector<uint8_t> data = {i, static_cast<uint8_t>(i + 100)};
+        ASSERT_TRUE(a.send(data));
+    }
+
+    for (uint8_t i = 0; i < 20; ++i) {
+        auto received = b.receive();
+        ASSERT_TRUE(received.has_value());
+        ASSERT_EQ(received->size(), 2u);
+        EXPECT_EQ((*received)[0], i);
+        EXPECT_EQ((*received)[1], static_cast<uint8_t>(i + 100));
+    }
+}
+
+TEST(MessagePipeTest, MessagePipeV155_3_PipeUsableAfterPartialRead) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    // Send 6 messages
+    for (uint8_t i = 0; i < 6; ++i) {
+        std::vector<uint8_t> data = {i};
+        ASSERT_TRUE(a.send(data));
+    }
+
+    // Read first 3
+    for (uint8_t i = 0; i < 3; ++i) {
+        auto received = b.receive();
+        ASSERT_TRUE(received.has_value());
+        ASSERT_EQ(received->size(), 1u);
+        EXPECT_EQ((*received)[0], i);
+    }
+
+    // Send 2 more messages after partial read
+    for (uint8_t i = 10; i < 12; ++i) {
+        std::vector<uint8_t> data = {i};
+        ASSERT_TRUE(a.send(data));
+    }
+
+    // Read remaining 3 original + 2 new
+    for (uint8_t i = 3; i < 6; ++i) {
+        auto received = b.receive();
+        ASSERT_TRUE(received.has_value());
+        ASSERT_EQ(received->size(), 1u);
+        EXPECT_EQ((*received)[0], i);
+    }
+    for (uint8_t i = 10; i < 12; ++i) {
+        auto received = b.receive();
+        ASSERT_TRUE(received.has_value());
+        ASSERT_EQ(received->size(), 1u);
+        EXPECT_EQ((*received)[0], i);
+    }
+}

@@ -23183,3 +23183,121 @@ TEST(DomElement, RemoveAllAttributesOneByOneV154) {
     elem.remove_attribute("title");
     EXPECT_EQ(elem.attributes().size(), 0u);
 }
+
+// ---------------------------------------------------------------------------
+// V155 Round 155 DOM tests
+// ---------------------------------------------------------------------------
+
+// 1. Shallow clone (new element with same tag) does not clone children
+TEST(DomNode, CloneShallowDoesNotCloneChildrenV155) {
+    auto original = std::make_unique<Element>("div");
+    original->append_child(std::make_unique<Element>("span"));
+    original->append_child(std::make_unique<Element>("p"));
+    EXPECT_EQ(original->child_count(), 2u);
+    // A shallow "clone" — new element with same tag has zero children
+    Element shallow(original->tag_name());
+    EXPECT_EQ(shallow.child_count(), 0u);
+    EXPECT_EQ(shallow.tag_name(), "div");
+}
+
+// 2. data-* attributes set and retrieved
+TEST(DomElement, DatasetAttributeAccessV155) {
+    Element elem("section");
+    elem.set_attribute("data-user-id", "42");
+    elem.set_attribute("data-role", "admin");
+    elem.set_attribute("data-active", "true");
+    ASSERT_TRUE(elem.has_attribute("data-user-id"));
+    ASSERT_TRUE(elem.has_attribute("data-role"));
+    ASSERT_TRUE(elem.has_attribute("data-active"));
+    EXPECT_EQ(elem.get_attribute("data-user-id").value(), "42");
+    EXPECT_EQ(elem.get_attribute("data-role").value(), "admin");
+    EXPECT_EQ(elem.get_attribute("data-active").value(), "true");
+    EXPECT_EQ(elem.attributes().size(), 3u);
+}
+
+// 3. Create comment node with correct content
+TEST(DomDocument, CreateCommentNodeV155) {
+    Document doc;
+    auto comment = doc.create_comment("This is a comment");
+    ASSERT_NE(comment, nullptr);
+    EXPECT_EQ(comment->data(), "This is a comment");
+    EXPECT_EQ(comment->node_type(), NodeType::Comment);
+}
+
+// 4. Bubbling event starts at target phase
+TEST(DomEvent, BubblingEventPhaseAtTargetV155) {
+    Event event("click", /*bubbles=*/true, /*cancelable=*/true);
+    EXPECT_EQ(event.phase(), EventPhase::None);
+    // Manually set phase to AtTarget, as the dispatch mechanism does
+    event.phase_ = EventPhase::AtTarget;
+    EXPECT_EQ(event.phase(), EventPhase::AtTarget);
+    // Confirm it still bubbles
+    EXPECT_TRUE(event.bubbles());
+}
+
+// 5. Verify sibling pointers after insert_before
+TEST(DomNode, SiblingPointersAfterInsertBeforeV155) {
+    auto parent = std::make_unique<Element>("ul");
+    auto first = std::make_unique<Element>("li");
+    auto third = std::make_unique<Element>("li");
+    Element* first_ptr = first.get();
+    Element* third_ptr = third.get();
+    parent->append_child(std::move(first));
+    parent->append_child(std::move(third));
+
+    auto middle = std::make_unique<Element>("li");
+    Element* middle_ptr = middle.get();
+    parent->insert_before(std::move(middle), third_ptr);
+
+    EXPECT_EQ(first_ptr->next_sibling(), middle_ptr);
+    EXPECT_EQ(middle_ptr->previous_sibling(), first_ptr);
+    EXPECT_EQ(middle_ptr->next_sibling(), third_ptr);
+    EXPECT_EQ(third_ptr->previous_sibling(), middle_ptr);
+    EXPECT_EQ(first_ptr->previous_sibling(), nullptr);
+    EXPECT_EQ(third_ptr->next_sibling(), nullptr);
+}
+
+// 6. Add 3 unique classes, all present
+TEST(DomElement, ClassListAddMultipleUniqueV155) {
+    Element elem("div");
+    elem.class_list().add("alpha");
+    elem.class_list().add("beta");
+    elem.class_list().add("gamma");
+    EXPECT_TRUE(elem.class_list().contains("alpha"));
+    EXPECT_TRUE(elem.class_list().contains("beta"));
+    EXPECT_TRUE(elem.class_list().contains("gamma"));
+    EXPECT_EQ(elem.class_list().length(), 3u);
+}
+
+// 7. 3 levels deep, verify child counts at each level
+TEST(DomNode, DeepNestedChildCountV155) {
+    auto root = std::make_unique<Element>("div");
+    auto level1 = std::make_unique<Element>("section");
+    auto level2 = std::make_unique<Element>("article");
+    auto level3a = std::make_unique<Element>("p");
+    auto level3b = std::make_unique<Element>("p");
+
+    Element* l1_ptr = level1.get();
+    Element* l2_ptr = level2.get();
+
+    level2->append_child(std::move(level3a));
+    level2->append_child(std::move(level3b));
+    level1->append_child(std::move(level2));
+    root->append_child(std::move(level1));
+
+    EXPECT_EQ(root->child_count(), 1u);
+    EXPECT_EQ(l1_ptr->child_count(), 1u);
+    EXPECT_EQ(l2_ptr->child_count(), 2u);
+}
+
+// 8. Attribute value with quotes and angles
+TEST(DomElement, AttributeValueWithSpecialCharsV155) {
+    Element elem("input");
+    elem.set_attribute("data-json", "{\"key\":\"value\"}");
+    elem.set_attribute("data-html", "<b>bold</b>");
+    elem.set_attribute("data-mixed", "a'b\"c<d>e");
+    EXPECT_EQ(elem.get_attribute("data-json").value(), "{\"key\":\"value\"}");
+    EXPECT_EQ(elem.get_attribute("data-html").value(), "<b>bold</b>");
+    EXPECT_EQ(elem.get_attribute("data-mixed").value(), "a'b\"c<d>e");
+    EXPECT_EQ(elem.attributes().size(), 3u);
+}

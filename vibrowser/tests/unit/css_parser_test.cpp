@@ -10953,3 +10953,61 @@ TEST_F(CSSStylesheetTest, ContentVisibilityDeclarationV154) {
     }
     EXPECT_TRUE(found) << "content-visibility declaration not found";
 }
+
+// === V155 CSS Parser Tests ===
+
+TEST_F(CSSStylesheetTest, AppearanceNoneDeclarationV155) {
+    auto ss = parse_stylesheet("button { appearance: none; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "appearance") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "none");
+        }
+    }
+    EXPECT_TRUE(found) << "appearance declaration not found";
+}
+
+TEST_F(CSSStylesheetTest, ScrollBehaviorSmoothDeclarationV155) {
+    auto ss = parse_stylesheet("html { scroll-behavior: smooth; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "scroll-behavior") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "smooth");
+        }
+    }
+    EXPECT_TRUE(found) << "scroll-behavior declaration not found";
+}
+
+TEST_F(CSSStylesheetTest, TextOverflowEllipsisDeclarationV155) {
+    auto ss = parse_stylesheet(".truncate { text-overflow: ellipsis; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "text-overflow") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "ellipsis");
+        }
+    }
+    EXPECT_TRUE(found) << "text-overflow declaration not found";
+}
+
+TEST_F(CSSStylesheetTest, WhiteSpaceNowrapDeclarationV155) {
+    auto ss = parse_stylesheet(".nowrap { white-space: nowrap; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "white-space") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "nowrap");
+        }
+    }
+    EXPECT_TRUE(found) << "white-space declaration not found";
+}

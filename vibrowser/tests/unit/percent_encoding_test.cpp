@@ -1340,3 +1340,50 @@ TEST(IsURLCodePoint, PlusAndCommaValidV154) {
     EXPECT_EQ(percent_encode("+"), "+");
     EXPECT_EQ(percent_encode(","), ",");
 }
+
+// =============================================================================
+// V155 Percent Encoding Tests
+// =============================================================================
+
+TEST(PercentEncoding, PipeEncodedV155) {
+    // '|' (U+007C) is not a valid URL code point and should be percent-encoded
+    EXPECT_EQ(percent_encode("|"), "%7C");
+    // Pipe embedded in a string
+    EXPECT_EQ(percent_encode("a|b"), "a%7Cb");
+    // Decoding should round-trip
+    EXPECT_EQ(percent_decode("%7C"), "|");
+}
+
+TEST(PercentDecoding, ConsecutiveEncodedCharsV155) {
+    // A sequence of consecutive percent-encoded characters should all decode correctly
+    // %48='H', %65='e', %6C='l', %6C='l', %6F='o'
+    EXPECT_EQ(percent_decode("%48%65%6C%6C%6F"), "Hello");
+    // Lowercase hex should also work
+    EXPECT_EQ(percent_decode("%48%65%6c%6c%6f"), "Hello");
+    // Mixed case in hex digits
+    EXPECT_EQ(percent_decode("%48%65%6C%6c%6F"), "Hello");
+}
+
+TEST(PercentEncoding, BackslashEncodedV155) {
+    // '\' (U+005C) is not a valid URL code point and should be percent-encoded
+    EXPECT_EQ(percent_encode("\\"), "%5C");
+    // Backslash in a path-like context
+    EXPECT_EQ(percent_encode("dir\\file"), "dir%5Cfile");
+    // Decoding should round-trip
+    EXPECT_EQ(percent_decode("%5C"), "\\");
+}
+
+TEST(IsURLCodePoint, SingleQuoteAndParensValidV155) {
+    // '\'' (U+0027) is a valid URL code point
+    EXPECT_TRUE(is_url_code_point(static_cast<char32_t>('\'')));
+    // '(' (U+0028) is a valid URL code point
+    EXPECT_TRUE(is_url_code_point(static_cast<char32_t>('(')));
+    // ')' (U+0029) is a valid URL code point
+    EXPECT_TRUE(is_url_code_point(static_cast<char32_t>(')')));
+    // These characters should not be encoded by the default encode set
+    EXPECT_EQ(percent_encode("'"), "'");
+    EXPECT_EQ(percent_encode("("), "(");
+    EXPECT_EQ(percent_encode(")"), ")");
+    // Combined in a string
+    EXPECT_EQ(percent_encode("func('x')"), "func('x')");
+}

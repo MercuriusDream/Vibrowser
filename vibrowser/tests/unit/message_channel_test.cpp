@@ -2286,3 +2286,52 @@ TEST(MessageChannelTest, MessageChannelV154_2_ReplaceHandlerForSameType) {
     EXPECT_FALSE(old_called);
     EXPECT_TRUE(new_called);
 }
+
+// ------------------------------------------------------------------
+// Round 155 — MessageChannel tests
+// ------------------------------------------------------------------
+
+TEST(MessageChannelTest, MessageChannelV155_1_SequentialDispatchesSameType) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel ch(std::move(pa));
+
+    int call_count = 0;
+    uint32_t last_req_id = 0;
+
+    ch.on(20, [&](const Message& m) {
+        ++call_count;
+        last_req_id = m.request_id;
+    });
+
+    for (uint32_t i = 1; i <= 10; ++i) {
+        Message msg;
+        msg.type = 20;
+        msg.request_id = i;
+        ch.dispatch(msg);
+    }
+
+    EXPECT_EQ(call_count, 10);
+    EXPECT_EQ(last_req_id, 10u);
+}
+
+TEST(MessageChannelTest, MessageChannelV155_2_LargeTypeId) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel ch(std::move(pa));
+
+    bool handler_called = false;
+    uint32_t received_type = 0;
+
+    ch.on(65535, [&](const Message& m) {
+        handler_called = true;
+        received_type = m.type;
+    });
+
+    Message msg;
+    msg.type = 65535;
+    msg.request_id = 1;
+    msg.payload = {0x01, 0x02};
+    ch.dispatch(msg);
+
+    EXPECT_TRUE(handler_called);
+    EXPECT_EQ(received_type, 65535u);
+}

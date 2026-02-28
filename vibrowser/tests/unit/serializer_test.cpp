@@ -21020,3 +21020,51 @@ TEST(SerializerTest, SerializerV154_3_MultipleBoolsAllTrueRoundTrip) {
     }
     EXPECT_FALSE(d.has_remaining());
 }
+
+// ------------------------------------------------------------------
+// Round 155 — Serializer tests
+// ------------------------------------------------------------------
+
+TEST(SerializerTest, SerializerV155_1_I32NegativeValuesRoundTrip) {
+    Serializer s;
+    s.write_i32(-1);
+    s.write_i32(-100);
+    s.write_i32(std::numeric_limits<int32_t>::min());
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i32(), -1);
+    EXPECT_EQ(d.read_i32(), -100);
+    EXPECT_EQ(d.read_i32(), std::numeric_limits<int32_t>::min());
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, SerializerV155_2_BytesExactly1024RoundTrip) {
+    std::vector<uint8_t> bytes(1024);
+    std::iota(bytes.begin(), bytes.end(), static_cast<uint8_t>(0));
+
+    Serializer s;
+    s.write_bytes(bytes.data(), bytes.size());
+
+    Deserializer d(s.data());
+    auto result = d.read_bytes();
+    EXPECT_EQ(result.size(), 1024u);
+    EXPECT_EQ(result, bytes);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, SerializerV155_3_StringThenBoolThenU64Sequence) {
+    Serializer s;
+    s.write_string("alpha");
+    s.write_bool(true);
+    s.write_u64(9999999999ULL);
+    s.write_string("beta");
+    s.write_bool(false);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "alpha");
+    EXPECT_TRUE(d.read_bool());
+    EXPECT_EQ(d.read_u64(), 9999999999ULL);
+    EXPECT_EQ(d.read_string(), "beta");
+    EXPECT_FALSE(d.read_bool());
+    EXPECT_FALSE(d.has_remaining());
+}

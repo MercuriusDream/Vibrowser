@@ -25981,3 +25981,50 @@ TEST(CSSStyleTest, CssV154_4_ZIndexPositiveAndNegative) {
     cascade.apply_declaration(style, make_decl("z-index", "-5"), parent);
     EXPECT_EQ(style.z_index, -5);
 }
+
+// === V155 CSS Style Tests ===
+
+TEST(PropertyCascadeTest, AppearanceNoneAppliedV155) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.appearance, 0);  // default: auto
+    cascade.apply_declaration(style, make_decl("appearance", "none"), parent);
+    EXPECT_EQ(style.appearance, 1);  // none = 1
+}
+
+TEST(CSSStyleTest, CssV155_2_OverflowHiddenBothAxes) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.overflow_x, Overflow::Visible);
+    EXPECT_EQ(style.overflow_y, Overflow::Visible);
+
+    cascade.apply_declaration(style, make_decl("overflow", "hidden"), parent);
+    EXPECT_EQ(style.overflow_x, Overflow::Hidden);
+    EXPECT_EQ(style.overflow_y, Overflow::Hidden);
+}
+
+TEST(PropertyCascadeTest, ScrollBehaviorAppliedV155) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.scroll_behavior, 0);  // default: auto
+    cascade.apply_declaration(style, make_decl("scroll-behavior", "smooth"), parent);
+    EXPECT_EQ(style.scroll_behavior, 1);  // smooth = 1
+}
+
+TEST(CSSStyleTest, CssV155_4_TextDecorationUnderlineColor) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("text-decoration", "underline"), parent);
+    EXPECT_EQ(style.text_decoration, TextDecoration::Underline);
+
+    cascade.apply_declaration(style, make_decl("text-decoration-color", "red"), parent);
+    EXPECT_EQ(style.text_decoration_color, (Color{255, 0, 0, 255}));
+}

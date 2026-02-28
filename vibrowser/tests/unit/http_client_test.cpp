@@ -26561,3 +26561,193 @@ TEST(HttpClient, CookieJarRootPathAlwaysMatchesV154) {
     EXPECT_NE(r4.find("root_tok=v154"), std::string::npos)
         << "Root-path cookie should match /search?q=test, got: " << r4;
 }
+
+// ===========================================================================
+// Round 155 — http_client tests
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// 1. Request serialize includes Accept header
+// ---------------------------------------------------------------------------
+TEST(HttpClient, RequestSerializeAcceptHeaderV155) {
+    Request req;
+    req.method = Method::GET;
+    req.host = "api.v155.test";
+    req.port = 80;
+    req.path = "/data";
+    req.headers.set("Accept", "application/json");
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    EXPECT_NE(result.find("GET /data HTTP/1.1\r\n"), std::string::npos)
+        << "Request line missing in serialized output";
+    EXPECT_NE(result.find("Host: api.v155.test\r\n"), std::string::npos)
+        << "Host header missing";
+    // Custom headers are stored lowercase
+    EXPECT_NE(result.find("accept: application/json\r\n"), std::string::npos)
+        << "Accept header missing or not lowercase, got: " << result;
+    EXPECT_NE(result.find("Connection: close\r\n"), std::string::npos)
+        << "Connection header missing";
+}
+
+// ---------------------------------------------------------------------------
+// 2. Response parse 503 Service Unavailable
+// ---------------------------------------------------------------------------
+TEST(HttpClient, ResponseParse503ServiceUnavailableV155) {
+    std::string raw_str =
+        "HTTP/1.1 503 Service Unavailable\r\n"
+        "Content-Length: 11\r\n"
+        "Retry-After: 120\r\n"
+        "\r\n"
+        "unavailable";
+
+    std::vector<uint8_t> raw(raw_str.begin(), raw_str.end());
+    auto resp = Response::parse(raw);
+
+    ASSERT_TRUE(resp.has_value()) << "Failed to parse 503 response";
+    EXPECT_EQ(resp->status, 503);
+    EXPECT_EQ(resp->status_text, "Service Unavailable");
+
+    std::string body(resp->body.begin(), resp->body.end());
+    EXPECT_EQ(body, "unavailable");
+
+    auto retry = resp->headers.get("Retry-After");
+    ASSERT_TRUE(retry.has_value()) << "Retry-After header should be present";
+    EXPECT_EQ(*retry, "120");
+}
+
+// ---------------------------------------------------------------------------
+// 3. ConnectionPool: multiple releases to same host, acquire all 3
+// ---------------------------------------------------------------------------
+TEST(HttpClient, ConnectionPoolMultipleReleaseSameHostV155) {
+    ConnectionPool pool;
+
+    pool.release("multi.v155.test", 8080, 100);
+    pool.release("multi.v155.test", 8080, 200);
+    pool.release("multi.v155.test", 8080, 300);
+
+    EXPECT_EQ(pool.count("multi.v155.test", 8080), 3u)
+        << "Pool should contain 3 connections for same host:port";
+
+    // Acquire all 3 (LIFO order)
+    int fd1 = pool.acquire("multi.v155.test", 8080);
+    int fd2 = pool.acquire("multi.v155.test", 8080);
+    int fd3 = pool.acquire("multi.v155.test", 8080);
+
+    EXPECT_EQ(fd1, 300);
+    EXPECT_EQ(fd2, 200);
+    EXPECT_EQ(fd3, 100);
+
+    // Pool should now be empty for this host
+    EXPECT_EQ(pool.count("multi.v155.test", 8080), 0u);
+    EXPECT_EQ(pool.acquire("multi.v155.test", 8080), -1);
+}
+
+// ---------------------------------------------------------------------------
+// 4. CookieJar: cookie value handling with semicolons
+// ---------------------------------------------------------------------------
+TEST(HttpClient, CookieJarCookieWithSemicolonInValueV155) {
+    CookieJar jar;
+    // The cookie value ends at the first semicolon per RFC 6265;
+    // "data=hello" is the name=value, "; Path=/" is an attribute
+    jar.set_from_header("data=hello; Path=/", "semi.v155.test");
+
+    std::string header = jar.get_cookie_header("semi.v155.test", "/", false);
+    EXPECT_NE(header.find("data=hello"), std::string::npos)
+        << "Cookie value should be 'hello', got: " << header;
+
+    // The "; Path=/" should be treated as attribute, not part of value
+    EXPECT_EQ(header.find("Path"), std::string::npos)
+        << "Path attribute should not appear in cookie header value";
+}
+
+// ---------------------------------------------------------------------------
+// 5. HeaderMap: get_all with single value returns vector of 1
+// ---------------------------------------------------------------------------
+TEST(HttpClient, HeaderMapGetAllSingleValueV155) {
+    HeaderMap map;
+    map.set("X-Single-V155", "only-one");
+
+    auto all = map.get_all("X-Single-V155");
+    EXPECT_EQ(all.size(), 1u)
+        << "get_all for a key with one value should return vector of size 1";
+    EXPECT_EQ(all[0], "only-one");
+
+    // Also verify case-insensitive lookup
+    auto all_lower = map.get_all("x-single-v155");
+    EXPECT_EQ(all_lower.size(), 1u);
+    EXPECT_EQ(all_lower[0], "only-one");
+}
+
+// ---------------------------------------------------------------------------
+// 6. Request serialize includes User-Agent header
+// ---------------------------------------------------------------------------
+TEST(HttpClient, RequestSerializeUserAgentV155) {
+    Request req;
+    req.method = Method::GET;
+    req.host = "ua.v155.test";
+    req.port = 80;
+    req.path = "/page";
+    req.headers.set("User-Agent", "ViBrowser/1.0");
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    EXPECT_NE(result.find("GET /page HTTP/1.1\r\n"), std::string::npos)
+        << "Request line missing";
+    EXPECT_NE(result.find("Host: ua.v155.test\r\n"), std::string::npos)
+        << "Host header missing";
+    // Custom headers lowercase
+    EXPECT_NE(result.find("user-agent: ViBrowser/1.0\r\n"), std::string::npos)
+        << "User-Agent header missing or not lowercase in output, got: " << result;
+}
+
+// ---------------------------------------------------------------------------
+// 7. Response parse without Content-Length header
+// ---------------------------------------------------------------------------
+TEST(HttpClient, ResponseParseNoContentLengthV155) {
+    // Response with no Content-Length — body extends to end of data
+    std::string raw_str =
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Type: text/plain\r\n"
+        "\r\n"
+        "body without length";
+
+    std::vector<uint8_t> raw(raw_str.begin(), raw_str.end());
+    auto resp = Response::parse(raw);
+
+    ASSERT_TRUE(resp.has_value())
+        << "Should parse response even without Content-Length";
+    EXPECT_EQ(resp->status, 200);
+
+    std::string body(resp->body.begin(), resp->body.end());
+    EXPECT_EQ(body, "body without length")
+        << "Body should contain all data after headers when no Content-Length";
+}
+
+// ---------------------------------------------------------------------------
+// 8. CookieJar: same name, different paths stored independently
+// ---------------------------------------------------------------------------
+TEST(HttpClient, CookieJarMultipleCookiesSameNameDiffPathV155) {
+    CookieJar jar;
+    jar.set_from_header("tok=api_val; Path=/api", "paths.v155.test");
+    jar.set_from_header("tok=root_val; Path=/", "paths.v155.test");
+
+    // Request to /api should see the /api-path cookie
+    std::string api_hdr = jar.get_cookie_header("paths.v155.test", "/api", false);
+    EXPECT_NE(api_hdr.find("tok="), std::string::npos)
+        << "Cookie should be present for /api path, got: " << api_hdr;
+
+    // Request to / should see the root-path cookie
+    std::string root_hdr = jar.get_cookie_header("paths.v155.test", "/", false);
+    EXPECT_NE(root_hdr.find("tok="), std::string::npos)
+        << "Cookie should be present for / path, got: " << root_hdr;
+
+    // Request to /other should see only root-path cookie
+    std::string other_hdr = jar.get_cookie_header("paths.v155.test", "/other", false);
+    EXPECT_NE(other_hdr.find("tok=root_val"), std::string::npos)
+        << "Only root-path cookie should match /other, got: " << other_hdr;
+    EXPECT_EQ(other_hdr.find("api_val"), std::string::npos)
+        << "/api-path cookie should NOT match /other, got: " << other_hdr;
+}

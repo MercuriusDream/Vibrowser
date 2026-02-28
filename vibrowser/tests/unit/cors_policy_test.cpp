@@ -12566,3 +12566,50 @@ TEST(CORSPolicyTest, CorsV154_7_SameOriginHTTPPort80) {
 TEST(CORSPolicyTest, CorsV154_8_CrossOriginHTTPvsHTTPS) {
     EXPECT_TRUE(is_cross_origin("http://x.com", "https://x.com/page"));
 }
+
+// ---------------------------------------------------------------------------
+// V155 Round 155 CORS tests
+// ---------------------------------------------------------------------------
+
+// 1. http://localhost is enforceable
+TEST(CORSPolicyTest, CorsV155_1_LocalhostEnforceable) {
+    EXPECT_TRUE(has_enforceable_document_origin("http://localhost"));
+}
+
+// 2. Paths don't affect origin comparison — same origin even with trailing slash
+TEST(CORSPolicyTest, CorsV155_2_SameOriginWithTrailingSlashInPath) {
+    EXPECT_FALSE(is_cross_origin("https://example.com", "https://example.com/"));
+}
+
+// 3. blob: scheme is not enforceable
+TEST(CORSPolicyTest, CorsV155_3_BlobSchemeNotEnforceable) {
+    EXPECT_FALSE(has_enforceable_document_origin("blob:https://example.com/some-guid"));
+}
+
+// 4. http port 80 vs https port 443 are cross-origin (different schemes)
+TEST(CORSPolicyTest, CorsV155_4_CrossOriginPort80vs443) {
+    EXPECT_TRUE(is_cross_origin("http://example.com", "https://example.com/page"));
+}
+
+// 5. ACAO wildcard with credentials=true fails
+TEST(CORSPolicyTest, CorsV155_5_ACAOWildcardBlocksCredentials) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "*");
+    EXPECT_FALSE(cors_allows_response("https://app.example", "https://api.example/data",
+                                       headers, true));
+}
+
+// 6. Non-standard port origin is enforceable
+TEST(CORSPolicyTest, CorsV155_6_NonStandardPortEnforceable) {
+    EXPECT_TRUE(has_enforceable_document_origin("http://example.com:8080"));
+}
+
+// 7. Same IPv4 address + same port is same-origin
+TEST(CORSPolicyTest, CorsV155_7_SameOriginIPv4SamePort) {
+    EXPECT_FALSE(is_cross_origin("http://192.168.1.1:3000", "http://192.168.1.1:3000/api"));
+}
+
+// 8. Same IPv4 address with different port is cross-origin
+TEST(CORSPolicyTest, CorsV155_8_CrossOriginIPv4DifferentPort) {
+    EXPECT_TRUE(is_cross_origin("http://192.168.1.1:3000", "http://192.168.1.1:4000/api"));
+}

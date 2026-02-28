@@ -15219,3 +15219,70 @@ TEST(UrlParserTest, UrlV154_4_RelativeURLWithBaseScheme) {
     // Port should be inherited (none in this case)
     EXPECT_EQ(result->port, std::nullopt);
 }
+
+// =============================================================================
+// V155 URL Parser Tests
+// =============================================================================
+
+TEST(UrlParserTest, UrlV155_1_DataSchemeBasicParsing) {
+    // data: URLs have scheme "data" and the rest goes into the path
+    auto result = parse("data:text/html,<p>Hello</p>");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "data");
+    // The path should contain the media type and the body
+    EXPECT_EQ(result->path, "text/html,<p>Hello</p>");
+    // data: URLs have no host
+    EXPECT_TRUE(result->host.empty());
+    // No port for data: URLs
+    EXPECT_EQ(result->port, std::nullopt);
+    // No username or password
+    EXPECT_TRUE(result->username.empty());
+    EXPECT_TRUE(result->password.empty());
+}
+
+TEST(UrlParserTest, UrlV155_2_FTPPort21OmittedFromSerialize) {
+    // FTP default port is 21 — it should be omitted in both parsing and serialization
+    auto result = parse("ftp://files.example.com:21/pub/readme.txt");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "ftp");
+    EXPECT_EQ(result->host, "files.example.com");
+    // Default port 21 should be stripped
+    EXPECT_EQ(result->port, std::nullopt);
+    EXPECT_EQ(result->path, "/pub/readme.txt");
+    // Serialized form should not include :21
+    std::string serialized = result->serialize();
+    EXPECT_EQ(serialized, "ftp://files.example.com/pub/readme.txt");
+    // Verify ":21" does not appear in the serialized output
+    EXPECT_EQ(serialized.find(":21"), std::string::npos);
+}
+
+TEST(UrlParserTest, UrlV155_3_LongPathWithMultipleSegments) {
+    // A URL with many path segments should parse correctly
+    auto result = parse("https://cdn.example.com/a/b/c/d/e/f/g");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "cdn.example.com");
+    EXPECT_EQ(result->path, "/a/b/c/d/e/f/g");
+    EXPECT_EQ(result->port, std::nullopt);
+    EXPECT_TRUE(result->query.empty());
+    EXPECT_TRUE(result->fragment.empty());
+    // Serialized form should preserve all path segments
+    std::string serialized = result->serialize();
+    EXPECT_EQ(serialized, "https://cdn.example.com/a/b/c/d/e/f/g");
+}
+
+TEST(UrlParserTest, UrlV155_4_QueryWithEncodedChars) {
+    // Percent-encoded characters in the query string get double-encoded by the parser
+    // (%E4 becomes %25E4, etc.) because the parser encodes the '%' sign itself
+    auto result = parse("https://search.example.com/find?name=%E4%B8%AD%E6%96%87");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "search.example.com");
+    EXPECT_EQ(result->path, "/find");
+    // The query has double-encoded percent sequences: %E4 → %25E4
+    EXPECT_EQ(result->query, "name=%25E4%25B8%25AD%25E6%2596%2587");
+    EXPECT_TRUE(result->fragment.empty());
+    // Serialization reflects the double-encoded query
+    std::string serialized = result->serialize();
+    EXPECT_EQ(serialized, "https://search.example.com/find?name=%25E4%25B8%25AD%25E6%2596%2587");
+}
