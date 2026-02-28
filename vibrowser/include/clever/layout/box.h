@@ -1064,6 +1064,11 @@ struct LayoutNode {
     // Back-pointer to source DOM node (SimpleNode*) for JS geometry queries
     void* dom_node = nullptr;
 
+    // True for synthetic anonymous block boxes created by the layout engine
+    // to wrap consecutive inline children inside a mixed block/inline container.
+    // Anonymous blocks have no tag_name and transparent background (CSS 2.1 §9.2.1.1).
+    bool is_anonymous = false;
+
     // Tree
     LayoutNode* parent = nullptr;
     std::vector<std::unique_ptr<LayoutNode>> children;

@@ -519,7 +519,7 @@ void LayoutEngine::layout_block(LayoutNode& node, float containing_width) {
     float children_height = 0;
 
     if (has_inline_children && !has_block_children) {
-        // Inline formatting context
+        // Pure inline formatting context
         position_inline_children(node, content_w);
         // Compute children height from inline layout
         for (auto& child : node.children) {
@@ -528,8 +528,29 @@ void LayoutEngine::layout_block(LayoutNode& node, float containing_width) {
             float bottom = child->geometry.y + child->geometry.margin_box_height();
             if (bottom > children_height) children_height = bottom;
         }
+    } else if (has_inline_children && has_block_children) {
+        // CSS 2.1 §9.2.1.1: Mixed block/inline content.
+        // Wrap consecutive inline children into anonymous block boxes so that
+        // each inline run gets its own inline formatting context, and block
+        // children remain in the normal block flow.
+        wrap_anonymous_blocks(node);
+        // After wrapping, all in-flow children are block-level.
+        position_block_children(node);
+        for (auto& child : node.children) {
+            if (child->display == DisplayType::None || child->mode == LayoutMode::None) continue;
+            if (child->position_type == 2 || child->position_type == 3) continue;
+            if (child->float_type != 0) {
+                if (node.establishes_bfc) {
+                    float float_bottom = child->geometry.y + child->geometry.border_box_height()
+                                         + child->geometry.margin.bottom;
+                    children_height = std::max(children_height, float_bottom);
+                }
+                continue;
+            }
+            children_height += child->geometry.margin_box_height();
+        }
     } else {
-        // Block formatting context
+        // Pure block formatting context (no inline children)
         position_block_children(node);
         for (auto& child : node.children) {
             if (child->display == DisplayType::None || child->mode == LayoutMode::None) continue;
@@ -2696,6 +2717,71 @@ void LayoutEngine::flex_layout(LayoutNode& node, float containing_width) {
 
     // Position absolute/fixed children
     position_absolute_children(node);
+}
+
+void LayoutEngine::wrap_anonymous_blocks(LayoutNode& node) {
+    // CSS 2.1 §9.2.1.1: When a block container has both block-level and
+    // inline-level children, wrap consecutive runs of inline children into
+    // anonymous block boxes so that the parent ends up with only block-level
+    // children.
+    std::vector<std::unique_ptr<LayoutNode>> new_children;
+    std::vector<std::unique_ptr<LayoutNode>> inline_run;
+
+    auto flush_inline_run = [&]() {
+        if (inline_run.empty()) return;
+        auto anon = std::make_unique<LayoutNode>();
+        anon->is_anonymous = true;
+        anon->mode = LayoutMode::Block;
+        anon->display = DisplayType::Block;
+        anon->parent = &node;
+        // Inherit text properties from parent
+        anon->text_align = node.text_align;
+        anon->font_size = node.font_size;
+        anon->font_family = node.font_family;
+        anon->font_weight = node.font_weight;
+        anon->font_italic = node.font_italic;
+        anon->color = node.color;
+        anon->line_height = node.line_height;
+        anon->letter_spacing = node.letter_spacing;
+        anon->word_spacing = node.word_spacing;
+        anon->white_space = node.white_space;
+        anon->direction = node.direction;
+        // Move all inline children into the anonymous block
+        for (auto& ic : inline_run) {
+            ic->parent = anon.get();
+            anon->children.push_back(std::move(ic));
+        }
+        inline_run.clear();
+        new_children.push_back(std::move(anon));
+    };
+
+    for (auto& child : node.children) {
+        if (child->display == DisplayType::None || child->mode == LayoutMode::None) {
+            // Preserve hidden children in-place
+            new_children.push_back(std::move(child));
+            continue;
+        }
+        if (child->position_type == 2 || child->position_type == 3) {
+            // Absolutely-positioned children are out of flow; keep in-place
+            new_children.push_back(std::move(child));
+            continue;
+        }
+        bool inline_like = child->is_text
+            || child->mode == LayoutMode::Inline
+            || child->mode == LayoutMode::InlineBlock
+            || child->display == DisplayType::Inline
+            || child->display == DisplayType::InlineBlock
+            || child->display == DisplayType::InlineFlex
+            || child->display == DisplayType::InlineGrid;
+        if (inline_like) {
+            inline_run.push_back(std::move(child));
+        } else {
+            flush_inline_run();
+            new_children.push_back(std::move(child));
+        }
+    }
+    flush_inline_run();
+    node.children = std::move(new_children);
 }
 
 void LayoutEngine::apply_positioning(LayoutNode& node) {

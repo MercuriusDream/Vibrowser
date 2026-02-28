@@ -11538,12 +11538,39 @@ static void apply_style_to_layout_node(
     // Font size
     node.font_size = style.font_size.to_px(16.0f);
 
-    // Grid template
+    // CSS Grid properties (container)
     if (!style.grid_template_columns.empty())
         node.grid_template_columns = style.grid_template_columns;
     if (!style.grid_template_rows.empty())
         node.grid_template_rows = style.grid_template_rows;
-    node.grid_auto_flow = style.grid_auto_flow;
+    if (!style.grid_template_areas.empty())
+        node.grid_template_areas = style.grid_template_areas;
+    if (!style.grid_auto_rows.empty())
+        node.grid_auto_rows = style.grid_auto_rows;
+    if (!style.grid_auto_columns.empty())
+        node.grid_auto_columns = style.grid_auto_columns;
+    node.grid_auto_flow  = style.grid_auto_flow;
+    node.justify_items   = style.justify_items;
+    node.align_content   = style.align_content;
+    // CSS Grid properties (item placement)
+    if (!style.grid_column.empty())
+        node.grid_column = style.grid_column;
+    if (!style.grid_row.empty())
+        node.grid_row = style.grid_row;
+    if (!style.grid_column_start.empty())
+        node.grid_column_start = style.grid_column_start;
+    if (!style.grid_column_end.empty())
+        node.grid_column_end = style.grid_column_end;
+    if (!style.grid_row_start.empty())
+        node.grid_row_start = style.grid_row_start;
+    if (!style.grid_row_end.empty())
+        node.grid_row_end = style.grid_row_end;
+    if (!style.grid_area.empty())
+        node.grid_area = style.grid_area;
+    // justify_self / align_self are also used by grid item placement
+    node.justify_self    = style.justify_self;
+    if (style.align_self != -1)
+        node.align_self  = style.align_self;
 
     // Display mode
     switch (style.display) {

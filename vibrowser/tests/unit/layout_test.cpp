@@ -11795,9 +11795,15 @@ TEST(LayoutEngineTest, DisplayModesInlineBlockAndNoneBehaviorV63) {
 
     EXPECT_FLOAT_EQ(root->children[1]->geometry.width, 0.0f);
     EXPECT_FLOAT_EQ(root->children[1]->geometry.height, 0.0f);
-    EXPECT_FLOAT_EQ(root->children[2]->geometry.width, 90.0f);
-    EXPECT_FLOAT_EQ(root->children[2]->geometry.height, 30.0f);
-    EXPECT_EQ(root->children[3]->display, DisplayType::Inline);
+    // After anonymous block wrapping (CSS 2.1 §9.2.1.1), inline-block and
+    // inline children are wrapped in an anonymous block at children[2].
+    // The inline-block is at children[2]->children[0].
+    ASSERT_GE(root->children.size(), 3u);
+    auto& anon_block = root->children[2];
+    ASSERT_GE(anon_block->children.size(), 2u);
+    EXPECT_FLOAT_EQ(anon_block->children[0]->geometry.width, 90.0f);
+    EXPECT_FLOAT_EQ(anon_block->children[0]->geometry.height, 30.0f);
+    EXPECT_EQ(anon_block->children[1]->display, DisplayType::Inline);
 }
 
 // Test V63_006: Relative positioning applies top/left offsets

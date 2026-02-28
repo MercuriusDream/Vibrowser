@@ -45,6 +45,11 @@ private:
     // Position absolute/fixed children after normal flow
     void position_absolute_children(LayoutNode& node);
 
+    // CSS 2.1 §9.2.1.1: wrap consecutive inline children of a mixed
+    // block/inline container into anonymous block boxes so that the parent
+    // only has block-level children and can use position_block_children.
+    void wrap_anonymous_blocks(LayoutNode& node);
+
     // Helper: measure a string's pixel width using real fonts or fallback
     float measure_text(const std::string& text, float font_size, const std::string& font_family,
                        int font_weight, bool is_italic, float letter_spacing) const;
