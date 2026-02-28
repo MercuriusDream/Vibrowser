@@ -26723,3 +26723,110 @@ TEST(HtmlParserTest, HtmlV170_8) {
     EXPECT_EQ(td->tag_name, "td");
     EXPECT_EQ(td->text_content(), "cell1");
 }
+
+TEST(HtmlParserTest, HtmlV171_1) {
+    // <time datetime="..."> element
+    auto doc = clever::html::parse(
+        "<html><body><time datetime=\"2026-02-28\">February 28</time></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* time_el = doc->find_element("time");
+    ASSERT_NE(time_el, nullptr);
+    EXPECT_EQ(time_el->tag_name, "time");
+    EXPECT_EQ(time_el->text_content(), "February 28");
+    ASSERT_GE(time_el->attributes.size(), 1u);
+    EXPECT_EQ(time_el->attributes[0].name, "datetime");
+    EXPECT_EQ(time_el->attributes[0].value, "2026-02-28");
+}
+
+TEST(HtmlParserTest, HtmlV171_2) {
+    // <address> element
+    auto doc = clever::html::parse(
+        "<html><body><address>123 Main Street</address></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* addr = doc->find_element("address");
+    ASSERT_NE(addr, nullptr);
+    EXPECT_EQ(addr->tag_name, "address");
+    EXPECT_EQ(addr->text_content(), "123 Main Street");
+}
+
+TEST(HtmlParserTest, HtmlV171_3) {
+    // <var> element
+    auto doc = clever::html::parse(
+        "<html><body><p>The variable <var>x</var> is important.</p></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* var_el = doc->find_element("var");
+    ASSERT_NE(var_el, nullptr);
+    EXPECT_EQ(var_el->tag_name, "var");
+    EXPECT_EQ(var_el->text_content(), "x");
+}
+
+TEST(HtmlParserTest, HtmlV171_4) {
+    // <kbd> keyboard input element
+    auto doc = clever::html::parse(
+        "<html><body><p>Press <kbd>Ctrl+C</kbd> to copy.</p></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* kbd = doc->find_element("kbd");
+    ASSERT_NE(kbd, nullptr);
+    EXPECT_EQ(kbd->tag_name, "kbd");
+    EXPECT_EQ(kbd->text_content(), "Ctrl+C");
+}
+
+TEST(HtmlParserTest, HtmlV171_5) {
+    // <samp> sample output element
+    auto doc = clever::html::parse(
+        "<html><body><p>Output: <samp>Hello World</samp></p></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* samp = doc->find_element("samp");
+    ASSERT_NE(samp, nullptr);
+    EXPECT_EQ(samp->tag_name, "samp");
+    EXPECT_EQ(samp->text_content(), "Hello World");
+}
+
+TEST(HtmlParserTest, HtmlV171_6) {
+    // <ruby><rt> ruby annotation
+    auto doc = clever::html::parse(
+        "<html><body><ruby>漢<rt>kan</rt></ruby></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* ruby = doc->find_element("ruby");
+    ASSERT_NE(ruby, nullptr);
+    EXPECT_EQ(ruby->tag_name, "ruby");
+
+    auto* rt = doc->find_element("rt");
+    ASSERT_NE(rt, nullptr);
+    EXPECT_EQ(rt->tag_name, "rt");
+    EXPECT_EQ(rt->text_content(), "kan");
+}
+
+TEST(HtmlParserTest, HtmlV171_7) {
+    // <wbr> word break opportunity
+    auto doc = clever::html::parse(
+        "<html><body><p>super<wbr>cali<wbr>fragilistic</p></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* wbr = doc->find_element("wbr");
+    ASSERT_NE(wbr, nullptr);
+    EXPECT_EQ(wbr->tag_name, "wbr");
+}
+
+TEST(HtmlParserTest, HtmlV171_8) {
+    // <div> with data-* attribute
+    auto doc = clever::html::parse(
+        "<html><body><div data-id=\"42\" data-role=\"panel\">content</div></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* div = doc->find_element("div");
+    ASSERT_NE(div, nullptr);
+    EXPECT_EQ(div->tag_name, "div");
+    EXPECT_EQ(div->text_content(), "content");
+    ASSERT_GE(div->attributes.size(), 2u);
+    EXPECT_EQ(div->attributes[0].name, "data-id");
+    EXPECT_EQ(div->attributes[0].value, "42");
+    EXPECT_EQ(div->attributes[1].name, "data-role");
+    EXPECT_EQ(div->attributes[1].value, "panel");
+}

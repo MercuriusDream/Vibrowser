@@ -13380,3 +13380,52 @@ TEST(CORSPolicyTest, CorsV170_7_HttpPort8080Enforceable) {
 TEST(CORSPolicyTest, CorsV170_8_SameOriginExplicitPort443) {
     EXPECT_FALSE(is_cross_origin("https://host.example:443", "https://host.example/page"));
 }
+
+// ---------------------------------------------------------------------------
+// Round 171 CORS tests
+// ---------------------------------------------------------------------------
+
+// 1. javascript: scheme is not enforceable
+TEST(CORSPolicyTest, CorsV171_1_JavascriptSchemeNotEnforceable) {
+    EXPECT_FALSE(has_enforceable_document_origin("javascript:void(0)"));
+}
+
+// 2. Identical URLs are same-origin
+TEST(CORSPolicyTest, CorsV171_2_SameOriginIdenticalUrls) {
+    EXPECT_FALSE(is_cross_origin("https://app.example", "https://app.example/page"));
+}
+
+// 3. Same scheme+port, different host is cross-origin
+TEST(CORSPolicyTest, CorsV171_3_CrossOriginDiffHostSameSchemePort) {
+    EXPECT_TRUE(is_cross_origin("https://alpha.example", "https://beta.example/page"));
+}
+
+// 4. ACAO exact + credentials=true is allowed
+TEST(CORSPolicyTest, CorsV171_4_AcaoWithCredentialsTrueExactMatch) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "https://app.example");
+    headers.set("Access-Control-Allow-Credentials", "true");
+    EXPECT_TRUE(cors_allows_response("https://app.example", "https://api.example/data",
+                                     headers, true));
+}
+
+// 5. Same host, different ports means should attach origin
+TEST(CORSPolicyTest, CorsV171_5_ShouldAttachOriginDiffPort) {
+    EXPECT_TRUE(should_attach_origin_header("https://app.example:3000",
+                                            "https://app.example:4000/page"));
+}
+
+// 6. mailto: scheme is not enforceable
+TEST(CORSPolicyTest, CorsV171_6_MailtoSchemeNotEnforceable) {
+    EXPECT_FALSE(has_enforceable_document_origin("mailto:user@example.com"));
+}
+
+// 7. https://host:8443 is enforceable
+TEST(CORSPolicyTest, CorsV171_7_HttpsPort8443Enforceable) {
+    EXPECT_TRUE(has_enforceable_document_origin("https://host.example:8443"));
+}
+
+// 8. Different IPs are cross-origin
+TEST(CORSPolicyTest, CorsV171_8_CrossOriginIPv4DiffAddress) {
+    EXPECT_TRUE(is_cross_origin("http://192.168.1.1", "http://192.168.1.2/page"));
+}

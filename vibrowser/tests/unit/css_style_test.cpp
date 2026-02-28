@@ -26636,3 +26636,42 @@ TEST(PropertyCascadeTest, MarginTopAppliedV170) {
     cascade.apply_declaration(style, make_decl("margin-top", "10px"), parent);
     EXPECT_FLOAT_EQ(style.margin.top.to_px(), 10.0f);
 }
+
+TEST(CSSStyleTest, CssV171_1_PaddingTopApplied) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("padding-top", "15px"), parent);
+    EXPECT_FLOAT_EQ(style.padding.top.to_px(), 15.0f);
+}
+
+TEST(CSSStyleTest, CssV171_2_BorderWidthApplied) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("border-width", "2px"), parent);
+    EXPECT_FLOAT_EQ(style.border_top.width.to_px(), 2.0f);
+    EXPECT_FLOAT_EQ(style.border_right.width.to_px(), 2.0f);
+    EXPECT_FLOAT_EQ(style.border_bottom.width.to_px(), 2.0f);
+    EXPECT_FLOAT_EQ(style.border_left.width.to_px(), 2.0f);
+}
+
+TEST(PropertyCascadeTest, PositionRelativeAppliedV171) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("position", "relative"), parent);
+    EXPECT_EQ(style.position, Position::Relative);
+}
+
+TEST(PropertyCascadeTest, DisplayInlineBlockAppliedV171) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("display", "inline-block"), parent);
+    EXPECT_EQ(style.display, Display::InlineBlock);
+}

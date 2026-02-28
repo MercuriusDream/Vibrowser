@@ -38715,3 +38715,96 @@ TEST(JSEngine, JsV170_8) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "true,false,2");
 }
+
+// V171_1: Array.find returns first match
+TEST(JSEngine, JsV171_1) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var arr = [5, 12, 8, 130, 44];
+        "" + arr.find(function(x) { return x > 10; });
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "12");
+}
+
+// V171_2: String.padStart and padEnd
+TEST(JSEngine, JsV171_2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var a = "5".padStart(3, "0");
+        var b = "hi".padEnd(5, "!");
+        a + "," + b;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "005,hi!!!");
+}
+
+// V171_3: Object.freeze prevents mutation
+TEST(JSEngine, JsV171_3) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var obj = {x: 1, y: 2};
+        Object.freeze(obj);
+        obj.x = 99;
+        "" + obj.x;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1");
+}
+
+// V171_4: Array.from creates array from iterable
+TEST(JSEngine, JsV171_4) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var arr = Array.from("hello");
+        arr.length + "," + arr[0] + "," + arr[4];
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "5,h,o");
+}
+
+// V171_5: typeof operator results
+TEST(JSEngine, JsV171_5) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        typeof 42 + "," + typeof "abc" + "," + typeof true + "," + typeof undefined;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "number,string,boolean,undefined");
+}
+
+// V171_6: optional chaining ?. operator
+TEST(JSEngine, JsV171_6) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var obj = {a: {b: 42}};
+        var v1 = obj?.a?.b;
+        var v2 = obj?.c?.d;
+        "" + v1 + "," + v2;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "42,undefined");
+}
+
+// V171_7: Array.fill fills with value
+TEST(JSEngine, JsV171_7) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var arr = [1, 2, 3, 4, 5];
+        arr.fill(0, 1, 4);
+        arr.join(",");
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1,0,0,0,5");
+}
+
+// V171_8: String.charAt returns character
+TEST(JSEngine, JsV171_8) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var s = "vibrowser";
+        s.charAt(0) + "," + s.charAt(2) + "," + s.charAt(8);
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "v,b,r");
+}

@@ -16009,3 +16009,39 @@ TEST(UrlParserTest, UrlV170_4_HostIsCaseInsensitive) {
     EXPECT_EQ(result->host, "example.com");
     EXPECT_EQ(result->path, "/path");
 }
+
+TEST(UrlParserTest, UrlV171_1_HttpsWithNonDefaultPort) {
+    // HTTPS with non-default port 9443 should preserve the port value
+    auto result = parse("https://host:9443/secure");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "host");
+    ASSERT_TRUE(result->port.has_value());
+    EXPECT_EQ(result->port.value(), 9443);
+    EXPECT_EQ(result->path, "/secure");
+}
+
+TEST(UrlParserTest, UrlV171_2_PathWithSpacesEncoded) {
+    // Path with percent-encoded spaces; parser double-encodes %20 to %2520
+    auto result = parse("http://host/path%20with%20spaces");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "host");
+    EXPECT_EQ(result->path, "/path%2520with%2520spaces");
+}
+
+TEST(UrlParserTest, UrlV171_3_EmptyHostNotAllowed) {
+    // Triple-slash creates an empty host; parser succeeds but host is empty
+    auto result = parse("http:///no-host-here");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_TRUE(result->host.empty());
+    EXPECT_EQ(result->path, "/no-host-here");
+}
+
+TEST(UrlParserTest, UrlV171_4_SerializeRoundTrip) {
+    // Parse then serialize a simple URL; output should match the input exactly
+    std::string input = "https://example.com/path?key=val#sec";
+    auto result = parse(input);
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->serialize(), input);
+}

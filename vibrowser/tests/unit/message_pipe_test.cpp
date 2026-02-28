@@ -3042,3 +3042,68 @@ TEST(MessagePipeTest, MessagePipeV170_3_ReceiveAfterCloseReturnsNulloptV170) {
     auto received = b.receive();
     EXPECT_FALSE(received.has_value());
 }
+
+// ------------------------------------------------------------------
+// V171 MessagePipe tests
+// ------------------------------------------------------------------
+
+TEST(MessagePipeTest, MessagePipeV171_1_HundredBytesV171) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    std::vector<uint8_t> payload(100);
+    for (size_t i = 0; i < 100; ++i) {
+        payload[i] = static_cast<uint8_t>(i);
+    }
+    ASSERT_TRUE(a.send(payload));
+    a.close();
+
+    auto received = b.receive();
+    ASSERT_TRUE(received.has_value());
+    ASSERT_EQ(received->size(), 100u);
+    for (size_t i = 0; i < 100; ++i) {
+        EXPECT_EQ((*received)[i], static_cast<uint8_t>(i));
+    }
+}
+
+TEST(MessagePipeTest, MessagePipeV171_2_TwoMessagesDiffSizeV171) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    std::vector<uint8_t> msg10(10, 0xAA);
+    std::vector<uint8_t> msg20(20, 0xBB);
+
+    ASSERT_TRUE(a.send(msg10));
+    ASSERT_TRUE(a.send(msg20));
+    a.close();
+
+    auto r1 = b.receive();
+    ASSERT_TRUE(r1.has_value());
+    ASSERT_EQ(r1->size(), 10u);
+    for (auto byte : *r1) {
+        EXPECT_EQ(byte, 0xAA);
+    }
+
+    auto r2 = b.receive();
+    ASSERT_TRUE(r2.has_value());
+    ASSERT_EQ(r2->size(), 20u);
+    for (auto byte : *r2) {
+        EXPECT_EQ(byte, 0xBB);
+    }
+
+    auto end = b.receive();
+    EXPECT_FALSE(end.has_value());
+}
+
+TEST(MessagePipeTest, MessagePipeV171_3_CreatePairBothEndUsableV171) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    std::vector<uint8_t> data_ab = {0x01, 0x02, 0x03};
+    ASSERT_TRUE(a.send(data_ab));
+    a.close();
+
+    auto received = b.receive();
+    ASSERT_TRUE(received.has_value());
+    EXPECT_EQ(received->size(), 3u);
+    EXPECT_EQ((*received)[0], 0x01);
+    EXPECT_EQ((*received)[1], 0x02);
+    EXPECT_EQ((*received)[2], 0x03);
+}

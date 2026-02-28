@@ -21753,3 +21753,40 @@ TEST(SerializerTest, SerializerV170_3_MixedTypesRoundTrip) {
     EXPECT_DOUBLE_EQ(d.read_f64(), 3.14);
     EXPECT_FALSE(d.has_remaining());
 }
+
+// ------------------------------------------------------------------
+// V171 Serializer tests
+// ------------------------------------------------------------------
+
+TEST(SerializerTest, SerializerV171_1_F64ZeroRoundTrip) {
+    Serializer s;
+    s.write_f64(0.0);
+
+    Deserializer d(s.data());
+    double val = d.read_f64();
+    EXPECT_DOUBLE_EQ(val, 0.0);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, SerializerV171_2_LongStringRoundTrip) {
+    std::string long_str(10000, 'A');
+    Serializer s;
+    s.write_string(long_str);
+
+    Deserializer d(s.data());
+    std::string result = d.read_string();
+    EXPECT_EQ(result.size(), 10000u);
+    EXPECT_EQ(result, long_str);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, SerializerV171_3_BoolFalseFalseRoundTrip) {
+    Serializer s;
+    s.write_bool(false);
+    s.write_bool(false);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_bool(), false);
+    EXPECT_EQ(d.read_bool(), false);
+    EXPECT_FALSE(d.has_remaining());
+}

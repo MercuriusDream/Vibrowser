@@ -24935,3 +24935,83 @@ TEST(DomNode, NodeTypeIsElementV170) {
     Element elem("div");
     EXPECT_EQ(elem.node_type(), NodeType::Element);
 }
+
+// ---------------------------------------------------------------------------
+// Round 171 DOM tests
+// ---------------------------------------------------------------------------
+
+// 1. Last child's next_sibling is nullptr
+TEST(DomNode, NextSiblingNullForLastChildV171) {
+    Element parent("ul");
+    auto a = std::make_unique<Element>("li");
+    auto b = std::make_unique<Element>("li");
+    [[maybe_unused]] Element* a_ptr = a.get();
+    Element* b_ptr = b.get();
+    parent.append_child(std::move(a));
+    parent.append_child(std::move(b));
+    EXPECT_EQ(b_ptr->next_sibling(), nullptr);
+}
+
+// 2. set_attribute then remove_attribute, verify has_attribute false
+TEST(DomElement, RemoveAttributeV171) {
+    Element elem("div");
+    elem.set_attribute("data-value", "42");
+    EXPECT_TRUE(elem.has_attribute("data-value"));
+    elem.remove_attribute("data-value");
+    EXPECT_FALSE(elem.has_attribute("data-value"));
+}
+
+// 3. register_id, verify get_element_by_id returns correct element
+TEST(DomDocument, RegisterIdAndRetrieveV171) {
+    Document doc;
+    auto elem = std::make_unique<Element>("section");
+    Element* elem_ptr = elem.get();
+    doc.append_child(std::move(elem));
+    doc.register_id("main-section", elem_ptr);
+    EXPECT_EQ(doc.get_element_by_id("main-section"), elem_ptr);
+}
+
+// 4. cancelable event, call prevent_default, verify default_prevented
+TEST(DomEvent, PreventDefaultSetsFlagV171) {
+    Event evt("click", true, true);
+    EXPECT_FALSE(evt.default_prevented());
+    evt.prevent_default();
+    EXPECT_TRUE(evt.default_prevented());
+}
+
+// 5. First child's prev_sibling is nullptr
+TEST(DomNode, PrevSiblingNullForFirstChildV171) {
+    Element parent("ol");
+    auto a = std::make_unique<Element>("li");
+    auto b = std::make_unique<Element>("li");
+    Element* a_ptr = a.get();
+    [[maybe_unused]] Element* b_ptr = b.get();
+    parent.append_child(std::move(a));
+    parent.append_child(std::move(b));
+    EXPECT_EQ(a_ptr->previous_sibling(), nullptr);
+}
+
+// 6. toggle("new-class") on empty, verify contains true
+TEST(DomElement, ClassListToggleAddsV171) {
+    Element elem("div");
+    elem.class_list().toggle("new-class");
+    EXPECT_TRUE(elem.class_list().contains("new-class"));
+}
+
+// 7. mark Style then Layout, both set, Paint not
+TEST(DomNode, DirtyFlagStyleAndLayoutV171) {
+    Element elem("div");
+    elem.clear_dirty();
+    EXPECT_EQ(elem.dirty_flags(), DirtyFlags::None);
+    elem.mark_dirty(DirtyFlags::Style);
+    elem.mark_dirty(DirtyFlags::Layout);
+    EXPECT_NE(static_cast<uint8_t>(elem.dirty_flags() & DirtyFlags::Style), 0);
+    EXPECT_NE(static_cast<uint8_t>(elem.dirty_flags() & DirtyFlags::Layout), 0);
+    EXPECT_EQ(static_cast<uint8_t>(elem.dirty_flags() & DirtyFlags::Paint), 0);
+}
+
+// 8. Text("hello"), verify data()=="hello"
+TEST(DomText, DataAccessorV171) {
+    Text text("hello");
+    EXPECT_EQ(text.data(), "hello");
+}

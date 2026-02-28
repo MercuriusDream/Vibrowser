@@ -3184,3 +3184,54 @@ TEST(MessageChannelTest, MessageChannelV170_2_LargePayload8KBV170) {
         EXPECT_EQ(captured_payload[i], static_cast<uint8_t>(i & 0xFF));
     }
 }
+
+// ------------------------------------------------------------------
+// V171 MessageChannel tests
+// ------------------------------------------------------------------
+
+TEST(MessageChannelTest, MessageChannelV171_1_DispatchCountAccurateV171) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel ch(std::move(pa));
+
+    int count = 0;
+    ch.on(5, [&](const Message& m) {
+        ++count;
+    });
+
+    for (int i = 0; i < 10; ++i) {
+        Message msg;
+        msg.type = 5;
+        msg.request_id = static_cast<uint32_t>(i);
+        msg.payload = {};
+        ch.dispatch(msg);
+    }
+
+    EXPECT_EQ(count, 10);
+}
+
+TEST(MessageChannelTest, MessageChannelV171_2_PayloadIntegrityV171) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel ch(std::move(pa));
+
+    std::vector<uint8_t> captured;
+    ch.on(42, [&](const Message& m) {
+        captured = m.payload;
+    });
+
+    std::vector<uint8_t> pattern = {0xDE, 0xAD, 0xBE, 0xEF, 0xCA, 0xFE, 0xBA, 0xBE};
+    Message msg;
+    msg.type = 42;
+    msg.request_id = 99;
+    msg.payload = pattern;
+    ch.dispatch(msg);
+
+    ASSERT_EQ(captured.size(), 8u);
+    EXPECT_EQ(captured[0], 0xDE);
+    EXPECT_EQ(captured[1], 0xAD);
+    EXPECT_EQ(captured[2], 0xBE);
+    EXPECT_EQ(captured[3], 0xEF);
+    EXPECT_EQ(captured[4], 0xCA);
+    EXPECT_EQ(captured[5], 0xFE);
+    EXPECT_EQ(captured[6], 0xBA);
+    EXPECT_EQ(captured[7], 0xBE);
+}

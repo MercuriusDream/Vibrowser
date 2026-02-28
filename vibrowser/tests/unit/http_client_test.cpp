@@ -29688,3 +29688,215 @@ TEST(HttpClient, CookieJarOverwriteSameNameDomainPathV170) {
     }
     EXPECT_EQ(count, 1u) << "Should have exactly one theme170 cookie, got: " << h2;
 }
+
+// ===========================================================================
+// V171 Test Suite: 8 new Net tests
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// 1. Request serialize GET with multiple custom headers
+// ---------------------------------------------------------------------------
+TEST(HttpClient, RequestSerializeGetWithMultipleHeadersV171) {
+    Request req;
+    req.method = Method::GET;
+    req.host = "example.com";
+    req.port = 80;
+    req.path = "/data";
+    req.headers.set("X-Request-ID", "abc-171");
+    req.headers.set("Accept-Language", "en-US");
+    req.headers.set("X-Custom-Tag", "v171-test");
+
+    auto serialized = req.serialize();
+    std::string s(serialized.begin(), serialized.end());
+
+    // Request line
+    EXPECT_NE(s.find("GET /data HTTP/1.1"), std::string::npos);
+    // Host header with caps (port 80 omitted)
+    EXPECT_NE(s.find("Host: example.com"), std::string::npos);
+    // Connection: close with caps
+    EXPECT_NE(s.find("Connection: close"), std::string::npos);
+    // Custom headers are lowercase
+    EXPECT_NE(s.find("x-request-id: abc-171"), std::string::npos);
+    EXPECT_NE(s.find("accept-language: en-US"), std::string::npos);
+    EXPECT_NE(s.find("x-custom-tag: v171-test"), std::string::npos);
+}
+
+// ---------------------------------------------------------------------------
+// 2. Response parse 200 OK with empty header value preserved
+// ---------------------------------------------------------------------------
+TEST(HttpClient, ResponseParse200OkWithEmptyHeaderValueV171) {
+    std::string raw_str =
+        "HTTP/1.1 200 OK\r\n"
+        "X-Empty-V171: \r\n"
+        "X-Filled-V171: has-value\r\n"
+        "Content-Length: 4\r\n"
+        "\r\n"
+        "test";
+
+    std::vector<uint8_t> raw(raw_str.begin(), raw_str.end());
+    auto resp = Response::parse(raw);
+
+    ASSERT_TRUE(resp.has_value()) << "Should parse response with empty header value";
+    EXPECT_EQ(resp->status, 200u);
+
+    // Empty header value should be preserved (empty string)
+    auto empty_val = resp->headers.get("X-Empty-V171");
+    ASSERT_TRUE(empty_val.has_value())
+        << "X-Empty-V171 should be present even with empty value";
+    EXPECT_EQ(*empty_val, "");
+
+    // Filled header should have its value
+    auto filled_val = resp->headers.get("X-Filled-V171");
+    ASSERT_TRUE(filled_val.has_value());
+    EXPECT_EQ(*filled_val, "has-value");
+
+    // Body
+    std::string body(resp->body.begin(), resp->body.end());
+    EXPECT_EQ(body, "test");
+}
+
+// ---------------------------------------------------------------------------
+// 3. ConnectionPool: release sockets for 2 different hosts, acquire from each
+// ---------------------------------------------------------------------------
+TEST(HttpClient, ConnectionPoolReleaseMultipleHostsV171) {
+    ConnectionPool pool;
+
+    pool.release("alpha171.com", 80, 171);
+    pool.release("beta171.com", 443, 172);
+
+    EXPECT_EQ(pool.count("alpha171.com", 80), 1u);
+    EXPECT_EQ(pool.count("beta171.com", 443), 1u);
+
+    // Acquire from each host
+    int fd1 = pool.acquire("alpha171.com", 80);
+    EXPECT_EQ(fd1, 171);
+
+    int fd2 = pool.acquire("beta171.com", 443);
+    EXPECT_EQ(fd2, 172);
+
+    // Both pools should now be empty
+    EXPECT_EQ(pool.acquire("alpha171.com", 80), -1);
+    EXPECT_EQ(pool.acquire("beta171.com", 443), -1);
+}
+
+// ---------------------------------------------------------------------------
+// 4. CookieJar: SameSite=Lax attribute
+// ---------------------------------------------------------------------------
+TEST(HttpClient, CookieJarSameSiteLaxAttributeV171) {
+    CookieJar jar;
+    jar.set_from_header("session171=active; SameSite=Lax", "example171.com");
+
+    // Same-site request — should be sent
+    std::string same_site = jar.get_cookie_header("example171.com", "/", false,
+                                                   /*is_same_site=*/true,
+                                                   /*is_top_level_nav=*/false);
+    EXPECT_NE(same_site.find("session171=active"), std::string::npos)
+        << "SameSite=Lax cookie should be sent on same-site requests";
+
+    // Cross-site top-level navigation — Lax should be sent
+    std::string cross_nav = jar.get_cookie_header("example171.com", "/", false,
+                                                   /*is_same_site=*/false,
+                                                   /*is_top_level_nav=*/true);
+    EXPECT_NE(cross_nav.find("session171=active"), std::string::npos)
+        << "SameSite=Lax cookie should be sent on cross-site top-level navigation";
+
+    // Cross-site non-navigation — Lax should NOT be sent
+    std::string cross_xhr = jar.get_cookie_header("example171.com", "/", false,
+                                                   /*is_same_site=*/false,
+                                                   /*is_top_level_nav=*/false);
+    EXPECT_TRUE(cross_xhr.empty())
+        << "SameSite=Lax cookie should NOT be sent on cross-site non-navigation requests";
+}
+
+// ---------------------------------------------------------------------------
+// 5. HeaderMap: remove nonexistent key is a no-op
+// ---------------------------------------------------------------------------
+TEST(HttpClient, HeaderMapRemoveNonexistentNoopV171) {
+    HeaderMap map;
+    map.set("Keep-V171", "value171");
+    EXPECT_EQ(map.size(), 1u);
+
+    // Remove a key that doesn't exist — should not throw or crash
+    map.remove("NonexistentKey-V171");
+
+    // Original key unaffected
+    EXPECT_EQ(map.size(), 1u);
+    EXPECT_TRUE(map.has("Keep-V171"));
+    EXPECT_EQ(map.get("Keep-V171").value(), "value171");
+}
+
+// ---------------------------------------------------------------------------
+// 6. Request serialize POST with application/json content-type
+// ---------------------------------------------------------------------------
+TEST(HttpClient, RequestSerializePostWithContentTypeV171) {
+    Request req;
+    req.method = Method::POST;
+    req.host = "api.example.com";
+    req.port = 80;
+    req.path = "/v2/items";
+    req.headers.set("Content-Type", "application/json");
+
+    std::string json_body = R"({"name":"widget171","count":42})";
+    req.body.assign(json_body.begin(), json_body.end());
+
+    auto serialized = req.serialize();
+    std::string s(serialized.begin(), serialized.end());
+
+    // Request line
+    EXPECT_NE(s.find("POST /v2/items HTTP/1.1"), std::string::npos);
+    // Host header (port 80 omitted)
+    EXPECT_NE(s.find("Host: api.example.com"), std::string::npos);
+    // Connection: close
+    EXPECT_NE(s.find("Connection: close"), std::string::npos);
+    // Custom header lowercase
+    EXPECT_NE(s.find("content-type: application/json"), std::string::npos);
+    // Body present
+    EXPECT_NE(s.find(R"({"name":"widget171","count":42})"), std::string::npos);
+}
+
+// ---------------------------------------------------------------------------
+// 7. Response parse 302 Found with Location header
+// ---------------------------------------------------------------------------
+TEST(HttpClient, ResponseParse302FoundV171) {
+    std::string raw_str =
+        "HTTP/1.1 302 Found\r\n"
+        "Location: https://example171.com/redirected\r\n"
+        "Content-Length: 0\r\n"
+        "\r\n";
+
+    std::vector<uint8_t> raw(raw_str.begin(), raw_str.end());
+    auto resp = Response::parse(raw);
+
+    ASSERT_TRUE(resp.has_value()) << "Should parse 302 Found response";
+    EXPECT_EQ(resp->status, 302u);
+
+    auto location = resp->headers.get("Location");
+    ASSERT_TRUE(location.has_value()) << "Location header should be present";
+    EXPECT_EQ(*location, "https://example171.com/redirected");
+
+    // Body should be empty
+    EXPECT_TRUE(resp->body.empty());
+}
+
+// ---------------------------------------------------------------------------
+// 8. CookieJar: Path=/app matches /app/settings but not /application
+// ---------------------------------------------------------------------------
+TEST(HttpClient, CookieJarPathPrefixMatchV171) {
+    CookieJar jar;
+    jar.set_from_header("apptoken171=secret; Path=/app", "example171.com");
+
+    // /app/settings should match Path=/app
+    std::string sub_path = jar.get_cookie_header("example171.com", "/app/settings", false);
+    EXPECT_NE(sub_path.find("apptoken171=secret"), std::string::npos)
+        << "Path=/app should match /app/settings";
+
+    // /app itself should match
+    std::string exact_path = jar.get_cookie_header("example171.com", "/app", false);
+    EXPECT_NE(exact_path.find("apptoken171=secret"), std::string::npos)
+        << "Path=/app should match /app exactly";
+
+    // /other should NOT match Path=/app
+    std::string wrong_path = jar.get_cookie_header("example171.com", "/other", false);
+    EXPECT_EQ(wrong_path.find("apptoken171=secret"), std::string::npos)
+        << "Path=/app should NOT match /other";
+}

@@ -1915,3 +1915,29 @@ TEST(IsURLCodePoint, ExclamationMarkValidV170) {
     // '!' (U+0021) is a valid URL code point
     EXPECT_TRUE(is_url_code_point(U'!'));
 }
+
+TEST(PercentEncoding, AmpersandNotEncodedV171) {
+    // '&' is a sub-delimiter and valid URL code point; it passes through unchanged
+    EXPECT_EQ(percent_encode("&"), "&");
+    EXPECT_EQ(percent_encode("a&b"), "a&b");
+    EXPECT_EQ(percent_encode("x&y&z"), "x&y&z");
+}
+
+TEST(PercentDecoding, PartialPercentSequencePreservedV171) {
+    // Incomplete percent sequence "%4" (only one hex digit) should be preserved as-is
+    EXPECT_EQ(percent_decode("%4"), "%4");
+    EXPECT_EQ(percent_decode("abc%4"), "abc%4");
+    EXPECT_EQ(percent_decode("%4xyz"), "%4xyz");
+}
+
+TEST(PercentEncoding, PeriodNotEncodedV171) {
+    // Period '.' is an unreserved character and should pass through unchanged
+    EXPECT_EQ(percent_encode("."), ".");
+    EXPECT_EQ(percent_encode("file.txt"), "file.txt");
+    EXPECT_EQ(percent_encode("a.b.c"), "a.b.c");
+}
+
+TEST(IsURLCodePoint, AsteriskValidV171) {
+    // '*' (U+002A) is a valid URL code point
+    EXPECT_TRUE(is_url_code_point(U'*'));
+}

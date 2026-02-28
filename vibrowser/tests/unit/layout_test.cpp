@@ -30791,3 +30791,138 @@ TEST(LayoutNodeProps, ColorDefaultBlackV170) {
     auto node = std::make_unique<LayoutNode>();
     EXPECT_EQ(node->color, 0xFF000000u);
 }
+
+// V171_1: flex row with 4 equal children, each gets 1/4 width
+TEST(LayoutEngineTest, LayoutV171_1) {
+    auto root = make_flex("div");
+    root->flex_direction = 0; // row
+
+    for (int i = 0; i < 4; ++i) {
+        auto child = make_block("div");
+        child->specified_height = 40.0f;
+        child->flex_grow = 1.0f;
+        root->append_child(std::move(child));
+    }
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    for (int i = 0; i < 4; ++i) {
+        EXPECT_FLOAT_EQ(root->children[i]->geometry.width, 200.0f);
+    }
+}
+
+// V171_2: block with margin, verify child y not affected by parent margin
+TEST(LayoutEngineTest, LayoutV171_2) {
+    auto root = make_block("div");
+    root->geometry.margin.top = 30.0f;
+    root->geometry.margin.left = 20.0f;
+
+    auto child = make_block("div");
+    child->specified_height = 50.0f;
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // Child y is relative to parent content area, so 0
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.y, 0.0f);
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.x, 0.0f);
+}
+
+// V171_3: flex child with flex-shrink, verify shrink behavior
+TEST(LayoutEngineTest, LayoutV171_3) {
+    auto root = make_flex("div");
+    root->flex_direction = 0; // row
+
+    auto child1 = make_block("div");
+    child1->specified_width = 600.0f;
+    child1->specified_height = 40.0f;
+    child1->flex_shrink = 1.0f;
+
+    auto child2 = make_block("div");
+    child2->specified_width = 600.0f;
+    child2->specified_height = 40.0f;
+    child2->flex_shrink = 3.0f;
+
+    root->append_child(std::move(child1));
+    root->append_child(std::move(child2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // Overflow = 1200 - 800 = 400. Shrink ratio 1:3 => child1 shrinks 100, child2 shrinks 300
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.width, 500.0f);
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.width, 300.0f);
+}
+
+// V171_4: block parent 200px with single child 200px, child matches parent
+TEST(LayoutEngineTest, LayoutV171_4) {
+    auto root = make_block("div");
+    root->specified_width = 200.0f;
+    root->specified_height = 100.0f;
+
+    auto child = make_block("div");
+    child->specified_width = 200.0f;
+    child->specified_height = 100.0f;
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.width, 200.0f);
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.height, 100.0f);
+}
+
+// V171_5: flex row with specified heights on children, heights preserved
+TEST(LayoutEngineTest, LayoutV171_5) {
+    auto root = make_flex("div");
+    root->flex_direction = 0; // row
+
+    auto child1 = make_block("div");
+    child1->specified_width = 100.0f;
+    child1->specified_height = 60.0f;
+
+    auto child2 = make_block("div");
+    child2->specified_width = 100.0f;
+    child2->specified_height = 90.0f;
+
+    root->append_child(std::move(child1));
+    root->append_child(std::move(child2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.height, 60.0f);
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.height, 90.0f);
+}
+
+// V171_6: block with 5 children 20px each, total height 100
+TEST(LayoutEngineTest, LayoutV171_6) {
+    auto root = make_block("div");
+
+    for (int i = 0; i < 5; ++i) {
+        auto child = make_block("div");
+        child->specified_height = 20.0f;
+        root->append_child(std::move(child));
+    }
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(root->geometry.height, 100.0f);
+    // Last child at y=80
+    EXPECT_FLOAT_EQ(root->children[4]->geometry.y, 80.0f);
+}
+
+// V171_7: default opacity is 1.0f
+TEST(LayoutNodeProps, OpacityDefaultOneV171) {
+    auto node = std::make_unique<LayoutNode>();
+    EXPECT_FLOAT_EQ(node->opacity, 1.0f);
+}
+
+// V171_8: default z_index is 0
+TEST(LayoutNodeProps, ZIndexDefaultZeroV171) {
+    auto node = std::make_unique<LayoutNode>();
+    EXPECT_EQ(node->z_index, 0);
+}

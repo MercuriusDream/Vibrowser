@@ -11864,3 +11864,59 @@ TEST_F(CSSStylesheetTest, TextIndentDeclarationV170) {
     }
     EXPECT_TRUE(found) << "text-indent declaration not found";
 }
+
+TEST_F(CSSStylesheetTest, WhiteSpaceDeclarationV171) {
+    auto ss = parse_stylesheet("p { white-space: nowrap; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "white-space") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "nowrap");
+        }
+    }
+    EXPECT_TRUE(found) << "white-space declaration not found";
+}
+
+TEST_F(CSSStylesheetTest, TextOverflowDeclarationV171) {
+    auto ss = parse_stylesheet("div { text-overflow: ellipsis; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "text-overflow") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "ellipsis");
+        }
+    }
+    EXPECT_TRUE(found) << "text-overflow declaration not found";
+}
+
+TEST_F(CSSStylesheetTest, OverflowXDeclarationV171) {
+    auto ss = parse_stylesheet("div { overflow-x: hidden; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "overflow-x") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "hidden");
+        }
+    }
+    EXPECT_TRUE(found) << "overflow-x declaration not found";
+}
+
+TEST_F(CSSStylesheetTest, OverflowYDeclarationV171) {
+    auto ss = parse_stylesheet("div { overflow-y: scroll; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "overflow-y") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "scroll");
+        }
+    }
+    EXPECT_TRUE(found) << "overflow-y declaration not found";
+}
