@@ -14048,3 +14048,57 @@ TEST(UrlParserTest, UrlV132_4_BlobSchemeParseOriginIsNull) {
     EXPECT_FALSE(result->is_special());
     EXPECT_EQ(result->path, "https://example.com/550e8400-e29b-41d4-a716-446655440000");
 }
+
+// =============================================================================
+// Round 133 URL tests
+// =============================================================================
+
+TEST(UrlParserTest, UrlV133_1_WssPort443NormalizedSameOriginAsImplicit) {
+    // wss://example.com:443/path should normalize port 443 away (default for wss)
+    // and be same-origin as wss://example.com/path
+    auto a = parse("wss://example.com:443/path");
+    ASSERT_TRUE(a.has_value());
+    EXPECT_EQ(a->scheme, "wss");
+    EXPECT_EQ(a->host, "example.com");
+    EXPECT_EQ(a->port, std::nullopt);
+
+    auto b = parse("wss://example.com/path");
+    ASSERT_TRUE(b.has_value());
+    EXPECT_EQ(b->scheme, "wss");
+    EXPECT_EQ(b->host, "example.com");
+    EXPECT_EQ(b->port, std::nullopt);
+
+    EXPECT_TRUE(urls_same_origin(*a, *b));
+}
+
+TEST(UrlParserTest, UrlV133_2_DotDotFromSingleSegmentCollapsesToRoot) {
+    // ".." relative to "http://example.com/only" should collapse path to "/"
+    auto base = parse("http://example.com/only");
+    ASSERT_TRUE(base.has_value());
+    auto resolved = parse("..", &*base);
+    ASSERT_TRUE(resolved.has_value());
+    EXPECT_EQ(resolved->scheme, "http");
+    EXPECT_EQ(resolved->host, "example.com");
+    EXPECT_EQ(resolved->path, "/");
+}
+
+TEST(UrlParserTest, UrlV133_3_MailtoNotSpecialOriginNull) {
+    // mailto: URLs are not special and have a null origin
+    auto result = parse("mailto:user@example.com");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "mailto");
+    EXPECT_FALSE(result->is_special());
+    EXPECT_EQ(result->origin(), "null");
+}
+
+TEST(UrlParserTest, UrlV133_4_RelativeQueryOnlyUpdatesQuery) {
+    // "?newquery" relative to base should update only the query, preserving path
+    auto base = parse("https://example.com/page?old");
+    ASSERT_TRUE(base.has_value());
+    auto resolved = parse("?newquery", &*base);
+    ASSERT_TRUE(resolved.has_value());
+    EXPECT_EQ(resolved->scheme, "https");
+    EXPECT_EQ(resolved->host, "example.com");
+    EXPECT_EQ(resolved->path, "/page");
+    EXPECT_EQ(resolved->query, "newquery");
+}

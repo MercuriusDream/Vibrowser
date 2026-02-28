@@ -9753,3 +9753,29 @@ TEST_F(CSSStylesheetTest, CommaSeparatedSelectorsParsingV132) {
     ASSERT_GE(ss.rules.size(), 1u);
     SUCCEED();
 }
+
+// --- Round 133 (V133) ---
+
+TEST_F(CSSStylesheetTest, MediaRuleNestedParsingV133) {
+    auto ss = parse_stylesheet("@media (min-width: 768px) { .c { width: 100%; } }");
+    // @media at-rule with nested rule — parser should not crash
+    SUCCEED();
+}
+
+TEST_F(CSSStylesheetTest, CharsetRuleParsingV133) {
+    auto ss = parse_stylesheet("@charset \"UTF-8\"; body { color: black; }");
+    // @charset at-rule — parser should not crash
+    SUCCEED();
+}
+
+TEST_F(CSSStylesheetTest, NamespaceRuleParsingV133) {
+    auto ss = parse_stylesheet("@namespace svg url(http://www.w3.org/2000/svg);");
+    // @namespace at-rule — parser should not crash
+    SUCCEED();
+}
+
+TEST_F(CSSStylesheetTest, MultipleAtRulesSequenceV133) {
+    auto ss = parse_stylesheet("@import url('a.css'); @media print { p { display: none; } }");
+    // Multiple at-rules in sequence — parser should not crash
+    SUCCEED();
+}

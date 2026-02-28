@@ -34793,3 +34793,77 @@ TEST(JSEngine, JsV132_8) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "1,2,3");
 }
+
+// --- Round 133 (V133) ---
+
+TEST(JSEngine, JsV133_1) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        "5".padStart(3, "0");
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "005");
+}
+
+TEST(JSEngine, JsV133_2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        "5".padEnd(3, "0");
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "500");
+}
+
+TEST(JSEngine, JsV133_3) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        Object.keys({a:1,b:2,c:3}).length;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "3");
+}
+
+TEST(JSEngine, JsV133_4) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        Object.values({x:10,y:20}).reduce((a,b)=>a+b,0);
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "30");
+}
+
+TEST(JSEngine, JsV133_5) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        [1,2,3].every(n=>n>0) + " " + [1,2,3].every(n=>n>2);
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true false");
+}
+
+TEST(JSEngine, JsV133_6) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        [1,2,3].some(n=>n>2) + " " + [1,2,3].some(n=>n>10);
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true false");
+}
+
+TEST(JSEngine, JsV133_7) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        Math.trunc(4.7) + " " + Math.trunc(-4.7) + " " + Math.sign(-5) + " " + Math.sign(5);
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "4 -4 -1 1");
+}
+
+TEST(JSEngine, JsV133_8) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        new Set([1,2,3,2,1]).size;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "3");
+}

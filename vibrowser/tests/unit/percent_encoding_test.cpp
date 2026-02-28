@@ -469,3 +469,48 @@ TEST(IsURLCodePoint, BoundaryUnicodeCodePointsV132) {
     // 0x10FFFE is a noncharacter, not a URL code point
     EXPECT_FALSE(is_url_code_point(U'\U0010FFFE'));
 }
+
+// =============================================================================
+// Round 133 Percent Encoding tests
+// =============================================================================
+
+TEST(PercentEncoding, PercentEncodingV133_1_EncodeNonUrlSafePrintableAscii) {
+    // Characters <>{}\|^` should all be percent-encoded
+    std::string input = "<>{}\x5C|^`";  // \x5C is backslash
+    std::string encoded = percent_encode(input);
+    EXPECT_NE(encoded.find("%3C"), std::string::npos);  // <
+    EXPECT_NE(encoded.find("%3E"), std::string::npos);  // >
+    EXPECT_NE(encoded.find("%7B"), std::string::npos);  // {
+    EXPECT_NE(encoded.find("%7D"), std::string::npos);  // }
+    EXPECT_NE(encoded.find("%5C"), std::string::npos);  // backslash
+    EXPECT_NE(encoded.find("%7C"), std::string::npos);  // |
+    EXPECT_NE(encoded.find("%5E"), std::string::npos);  // ^
+    EXPECT_NE(encoded.find("%60"), std::string::npos);  // `
+    // None of the original characters should remain unencoded
+    EXPECT_EQ(encoded.find('<'), std::string::npos);
+    EXPECT_EQ(encoded.find('>'), std::string::npos);
+    EXPECT_EQ(encoded.find('{'), std::string::npos);
+    EXPECT_EQ(encoded.find('}'), std::string::npos);
+}
+
+TEST(PercentDecoding, PercentEncodingV133_2_SingleLayerDecodeNoDoubleDecoding) {
+    // Decoding "%25" yields "%" — so "a%25b" → "a%b", not "ab"
+    std::string result = percent_decode("a%25b");
+    EXPECT_EQ(result, "a%b");
+}
+
+TEST(IsURLCodePoint, PercentEncodingV133_3_CurlyBraceNotUrlCodePoint) {
+    // Curly braces are not URL code points
+    EXPECT_FALSE(is_url_code_point(U'{'));
+    EXPECT_FALSE(is_url_code_point(U'}'));
+    // Exclamation mark is a URL code point
+    EXPECT_TRUE(is_url_code_point(U'!'));
+}
+
+TEST(PercentDecoding, PercentEncodingV133_4_DecodeMixedCaseHexDigits) {
+    // Both lowercase and uppercase hex digits should decode correctly
+    std::string lower = percent_decode("%2f");
+    std::string upper = percent_decode("%2F");
+    EXPECT_EQ(lower, "/");
+    EXPECT_EQ(upper, "/");
+}

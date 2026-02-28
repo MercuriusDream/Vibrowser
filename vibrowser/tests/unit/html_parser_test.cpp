@@ -21970,3 +21970,87 @@ TEST(HtmlParserTest, HtmlV132_8) {
     EXPECT_EQ(get_attr_v63(data, "value"), "42");
     EXPECT_EQ(data->text_content(), "Forty-two");
 }
+
+// --- Round 133 (V133) ---
+
+TEST(HtmlParserTest, HtmlV133_1) {
+    auto doc = clever::html::parse("<html><body><abbr title=\"HTML\">HTML</abbr></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* abbr = doc->find_element("abbr");
+    ASSERT_NE(abbr, nullptr);
+    EXPECT_EQ(abbr->tag_name, "abbr");
+    EXPECT_EQ(get_attr_v63(abbr, "title"), "HTML");
+    EXPECT_EQ(abbr->text_content(), "HTML");
+}
+
+TEST(HtmlParserTest, HtmlV133_2) {
+    auto doc = clever::html::parse("<html><body><cite>Book Title</cite></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* cite = doc->find_element("cite");
+    ASSERT_NE(cite, nullptr);
+    EXPECT_EQ(cite->tag_name, "cite");
+    EXPECT_EQ(cite->text_content(), "Book Title");
+}
+
+TEST(HtmlParserTest, HtmlV133_3) {
+    auto doc = clever::html::parse("<html><body><dfn>API</dfn></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* dfn = doc->find_element("dfn");
+    ASSERT_NE(dfn, nullptr);
+    EXPECT_EQ(dfn->tag_name, "dfn");
+    EXPECT_EQ(dfn->text_content(), "API");
+}
+
+TEST(HtmlParserTest, HtmlV133_4) {
+    auto doc = clever::html::parse("<html><body><samp>Error output</samp></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* samp = doc->find_element("samp");
+    ASSERT_NE(samp, nullptr);
+    EXPECT_EQ(samp->tag_name, "samp");
+    EXPECT_EQ(samp->text_content(), "Error output");
+}
+
+TEST(HtmlParserTest, HtmlV133_5) {
+    auto doc = clever::html::parse("<html><body><var>x</var></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* var_el = doc->find_element("var");
+    ASSERT_NE(var_el, nullptr);
+    EXPECT_EQ(var_el->tag_name, "var");
+    EXPECT_EQ(var_el->text_content(), "x");
+}
+
+TEST(HtmlParserTest, HtmlV133_6) {
+    auto doc = clever::html::parse("<html><body><time datetime=\"2026-01-01\">New Year</time></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* time_el = doc->find_element("time");
+    ASSERT_NE(time_el, nullptr);
+    EXPECT_EQ(time_el->tag_name, "time");
+    EXPECT_EQ(get_attr_v63(time_el, "datetime"), "2026-01-01");
+    EXPECT_EQ(time_el->text_content(), "New Year");
+}
+
+TEST(HtmlParserTest, HtmlV133_7) {
+    auto doc = clever::html::parse("<html><body><ins>added text</ins></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* ins = doc->find_element("ins");
+    ASSERT_NE(ins, nullptr);
+    EXPECT_EQ(ins->tag_name, "ins");
+    EXPECT_EQ(ins->text_content(), "added text");
+}
+
+TEST(HtmlParserTest, HtmlV133_8) {
+    auto doc = clever::html::parse("<html><body><del>removed text</del></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* del_el = doc->find_element("del");
+    ASSERT_NE(del_el, nullptr);
+    EXPECT_EQ(del_el->tag_name, "del");
+    EXPECT_EQ(del_el->text_content(), "removed text");
+}

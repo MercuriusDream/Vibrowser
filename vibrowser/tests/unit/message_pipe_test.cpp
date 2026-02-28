@@ -904,3 +904,41 @@ TEST(MessagePipeTest, MessagePipeV132_2_MoveConstructPreservesOpenState) {
     ASSERT_TRUE(received.has_value());
     EXPECT_EQ(*received, payload);
 }
+
+// ------------------------------------------------------------------
+// V133 Round 133 tests
+// ------------------------------------------------------------------
+
+TEST(MessagePipeTest, MessagePipeV133_1_ZeroLengthThenNonZeroPayload) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    // Send empty payload first
+    std::vector<uint8_t> empty_data;
+    ASSERT_TRUE(a.send(empty_data));
+
+    // Send non-empty payload second
+    std::vector<uint8_t> payload = {0x10, 0x20, 0x30};
+    ASSERT_TRUE(a.send(payload));
+
+    // Receive both in order
+    auto first = b.receive();
+    ASSERT_TRUE(first.has_value());
+    EXPECT_EQ(first->size(), 0u);
+
+    auto second = b.receive();
+    ASSERT_TRUE(second.has_value());
+    EXPECT_EQ(second->size(), 3u);
+    EXPECT_EQ(*second, payload);
+}
+
+TEST(MessagePipeTest, MessagePipeV133_2_CloseIdempotent) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    // Closing twice should not crash
+    a.close();
+    a.close();
+
+    // b side should also tolerate double close
+    b.close();
+    b.close();
+}

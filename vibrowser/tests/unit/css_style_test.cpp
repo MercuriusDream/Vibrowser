@@ -25053,3 +25053,42 @@ TEST(PropertyCascadeTest, AnimationCompositionReplaceV132) {
     cascade.apply_declaration(style, make_decl("animation-composition", "replace"), parent);
     SUCCEED();
 }
+
+// --- Round 133 (V133) ---
+
+TEST(PropertyCascadeTest, FontPaletteNormalV133) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("font-palette", "normal"), parent);
+    SUCCEED();
+}
+
+TEST(PropertyCascadeTest, OffsetPathNoneV133) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("offset-path", "none"), parent);
+    SUCCEED();
+}
+
+TEST(PropertyCascadeTest, MaskModeAlphaV133) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("mask-mode", "alpha"), parent);
+    SUCCEED();
+}
+
+TEST(PropertyCascadeTest, BoxDecorationBreakSliceV133) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("box-decoration-break", "slice"), parent);
+    EXPECT_EQ(style.box_decoration_break, 0);
+    SUCCEED();
+}

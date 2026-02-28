@@ -22578,3 +22578,213 @@ TEST(HttpClient, CookieJarThreeDomainStrictIsolationV132) {
     EXPECT_EQ(gamma_hdr.find("alpha=1"), std::string::npos);
     EXPECT_EQ(gamma_hdr.find("beta=2"), std::string::npos);
 }
+
+// ===========================================================================
+// Round 133 (V133) — Net/HTTP Tests
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// 1. Request: serialize PATCH with JSON body and non-standard port
+// ---------------------------------------------------------------------------
+TEST(HttpClient, RequestSerializePATCHWithJsonBodyV133) {
+    Request req;
+    req.method = Method::PATCH;
+    req.url = "https://api.example.com:8443/update";
+    req.parse_url();
+
+    EXPECT_EQ(req.host, "api.example.com");
+    EXPECT_EQ(req.port, 8443);
+    EXPECT_EQ(req.path, "/update");
+    EXPECT_TRUE(req.use_tls);
+
+    std::string body_str = R"({"status":"active","count":42})";
+    req.body.assign(body_str.begin(), body_str.end());
+    req.headers.set("Content-Type", "application/json");
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    // Request line must be PATCH
+    EXPECT_NE(result.find("PATCH /update HTTP/1.1\r\n"), std::string::npos);
+    // Non-standard port 8443 must appear in Host header
+    EXPECT_NE(result.find("Host: api.example.com:8443\r\n"), std::string::npos);
+    // Content-Type header (custom headers stored lowercase)
+    EXPECT_NE(result.find("content-type: application/json\r\n"), std::string::npos);
+    // Content-Length auto-added
+    EXPECT_NE(result.find("Content-Length: 30\r\n"), std::string::npos);
+    // Connection: close
+    EXPECT_NE(result.find("Connection: close\r\n"), std::string::npos);
+    // Body at end
+    EXPECT_NE(result.find("\r\n\r\n{\"status\":\"active\",\"count\":42}"), std::string::npos);
+}
+
+// ---------------------------------------------------------------------------
+// 2. Response: parse 206 Partial Content with Content-Range
+// ---------------------------------------------------------------------------
+TEST(HttpClient, ResponseParse206PartialContentV133) {
+    // Build a 500-byte body
+    std::string body_500(500, 'X');
+
+    std::string raw =
+        "HTTP/1.1 206 Partial Content\r\n"
+        "Content-Range: bytes 0-499/10000\r\n"
+        "Content-Length: 500\r\n"
+        "Content-Type: application/octet-stream\r\n"
+        "\r\n" + body_500;
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 206);
+    EXPECT_EQ(resp->status_text, "Partial Content");
+    EXPECT_EQ(resp->headers.get("content-range").value(), "bytes 0-499/10000");
+    EXPECT_EQ(resp->headers.get("content-type").value(), "application/octet-stream");
+    EXPECT_EQ(resp->body.size(), 500u);
+    EXPECT_EQ(resp->body_as_string(), body_500);
+}
+
+// ---------------------------------------------------------------------------
+// 3. HeaderMap: set overwrites all previous appended values
+// ---------------------------------------------------------------------------
+TEST(HttpClient, HeaderMapSetOverwritesPreviousAppendsV133) {
+    HeaderMap map;
+
+    // Append three values for the same key
+    map.append("X-Custom", "alpha");
+    map.append("X-Custom", "beta");
+    map.append("X-Custom", "gamma");
+    EXPECT_EQ(map.get_all("x-custom").size(), 3u);
+
+    // set() should replace all three with a single value
+    map.set("X-Custom", "delta");
+    auto all = map.get_all("x-custom");
+    EXPECT_EQ(all.size(), 1u);
+    EXPECT_EQ(map.get("x-custom").value(), "delta");
+
+    // Verify the old values are gone
+    EXPECT_TRUE(std::find(all.begin(), all.end(), "alpha") == all.end());
+    EXPECT_TRUE(std::find(all.begin(), all.end(), "beta") == all.end());
+    EXPECT_TRUE(std::find(all.begin(), all.end(), "gamma") == all.end());
+}
+
+// ---------------------------------------------------------------------------
+// 4. ConnectionPool: max_per_host=2 evicts oldest, LIFO acquire
+// ---------------------------------------------------------------------------
+TEST(HttpClient, ConnectionPoolMaxPerHost2EvictsOldestV133) {
+    ConnectionPool pool(2);  // max 2 connections per host
+
+    // Release 3 file descriptors for the same host
+    pool.release("pool.v133.test", 443, 100);
+    pool.release("pool.v133.test", 443, 200);
+    pool.release("pool.v133.test", 443, 300);
+
+    // Only 2 should remain (oldest evicted)
+    EXPECT_EQ(pool.count("pool.v133.test", 443), 2u);
+
+    // LIFO: most recent first
+    int fd1 = pool.acquire("pool.v133.test", 443);
+    EXPECT_EQ(fd1, 300);
+    int fd2 = pool.acquire("pool.v133.test", 443);
+    EXPECT_EQ(fd2, 200);
+
+    // Pool now empty for this host
+    int fd3 = pool.acquire("pool.v133.test", 443);
+    EXPECT_EQ(fd3, -1);
+}
+
+// ---------------------------------------------------------------------------
+// 5. CookieJar: SameSite=None with Secure flag
+// ---------------------------------------------------------------------------
+TEST(HttpClient, CookieJarSameSiteNoneWithSecureV133) {
+    CookieJar jar;
+    jar.set_from_header("session=abc123; SameSite=None; Secure; Path=/", "secure.v133.test");
+
+    EXPECT_EQ(jar.size(), 1u);
+
+    // Secure cookie should NOT be sent over non-secure connection
+    std::string insecure_hdr = jar.get_cookie_header("secure.v133.test", "/", false);
+    EXPECT_TRUE(insecure_hdr.empty());
+
+    // Secure cookie SHOULD be sent over secure connection
+    std::string secure_hdr = jar.get_cookie_header("secure.v133.test", "/", true);
+    EXPECT_NE(secure_hdr.find("session=abc123"), std::string::npos);
+}
+
+// ---------------------------------------------------------------------------
+// 6. Request: parse_url with deep path and query string
+// ---------------------------------------------------------------------------
+TEST(HttpClient, RequestParseUrlDeepPathWithQueryV133) {
+    Request req;
+    req.url = "https://deep.test/a/b/c?x=1&y=2";
+    req.parse_url();
+
+    EXPECT_EQ(req.host, "deep.test");
+    EXPECT_EQ(req.port, 443);
+    EXPECT_EQ(req.path, "/a/b/c");
+    EXPECT_EQ(req.query, "x=1&y=2");
+    EXPECT_TRUE(req.use_tls);
+}
+
+// ---------------------------------------------------------------------------
+// 7. Response: parse with multiple Set-Cookie headers
+// ---------------------------------------------------------------------------
+TEST(HttpClient, ResponseParseMultipleSetCookieHeadersV133) {
+    std::string raw =
+        "HTTP/1.1 200 OK\r\n"
+        "Set-Cookie: sid=aaa; Path=/; HttpOnly\r\n"
+        "Set-Cookie: theme=dark; Path=/\r\n"
+        "Set-Cookie: lang=en; Path=/; Secure\r\n"
+        "Content-Length: 2\r\n"
+        "\r\n"
+        "OK";
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 200);
+
+    auto cookies = resp->headers.get_all("set-cookie");
+    EXPECT_EQ(cookies.size(), 3u);
+
+    // Verify all three cookie values are present
+    bool found_sid = false, found_theme = false, found_lang = false;
+    for (const auto& c : cookies) {
+        if (c.find("sid=aaa") != std::string::npos) found_sid = true;
+        if (c.find("theme=dark") != std::string::npos) found_theme = true;
+        if (c.find("lang=en") != std::string::npos) found_lang = true;
+    }
+    EXPECT_TRUE(found_sid);
+    EXPECT_TRUE(found_theme);
+    EXPECT_TRUE(found_lang);
+
+    EXPECT_EQ(resp->body_as_string(), "OK");
+}
+
+// ---------------------------------------------------------------------------
+// 8. CookieJar: clear and repopulate
+// ---------------------------------------------------------------------------
+TEST(HttpClient, CookieJarClearAndRepopulateV133) {
+    CookieJar jar;
+
+    // Populate with 2 cookies
+    jar.set_from_header("a=1; Path=/", "clear.v133.test");
+    jar.set_from_header("b=2; Path=/", "clear.v133.test");
+    EXPECT_EQ(jar.size(), 2u);
+
+    // Clear all cookies
+    jar.clear();
+    EXPECT_EQ(jar.size(), 0u);
+
+    // Verify no cookies returned
+    std::string empty_hdr = jar.get_cookie_header("clear.v133.test", "/", false);
+    EXPECT_TRUE(empty_hdr.empty());
+
+    // Repopulate with 1 cookie
+    jar.set_from_header("c=3; Path=/", "clear.v133.test");
+    EXPECT_EQ(jar.size(), 1u);
+
+    std::string repop_hdr = jar.get_cookie_header("clear.v133.test", "/", false);
+    EXPECT_NE(repop_hdr.find("c=3"), std::string::npos);
+}

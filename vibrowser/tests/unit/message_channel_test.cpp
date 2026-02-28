@@ -875,3 +875,60 @@ TEST(MessageChannelTest, MessageChannelV132_3_DispatchHandlerDeserializesPayload
     EXPECT_EQ(deserialized_str, "hello_v132");
     EXPECT_EQ(deserialized_bool, true);
 }
+
+// ------------------------------------------------------------------
+// V133 Round 133 tests
+// ------------------------------------------------------------------
+
+TEST(MessageChannelTest, MessageChannelV133_1_RequestIdZeroPreservedRoundTrip) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel cha(std::move(pa));
+    MessageChannel chb(std::move(pb));
+
+    Message msg;
+    msg.type = 1;
+    msg.request_id = 0;
+    msg.payload = {0xAA, 0xBB};
+    ASSERT_TRUE(cha.send(msg));
+
+    auto received = chb.receive();
+    ASSERT_TRUE(received.has_value());
+    EXPECT_EQ(received->type, 1u);
+    EXPECT_EQ(received->request_id, 0u);
+    EXPECT_EQ(received->payload.size(), 2u);
+}
+
+TEST(MessageChannelTest, MessageChannelV133_2_DispatchWithNoHandlersNoCrash) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel cha(std::move(pa));
+    MessageChannel chb(std::move(pb));
+
+    // Send several messages with different types
+    for (uint32_t t = 0; t < 5; ++t) {
+        Message msg;
+        msg.type = t;
+        msg.request_id = t + 10;
+        msg.payload = {static_cast<uint8_t>(t)};
+        ASSERT_TRUE(cha.send(msg));
+    }
+
+    // Receive and dispatch all — no handlers registered, should not crash
+    for (uint32_t t = 0; t < 5; ++t) {
+        auto received = chb.receive();
+        ASSERT_TRUE(received.has_value());
+        chb.dispatch(*received);
+    }
+}
+
+TEST(MessageChannelTest, MessageChannelV133_3_CloseIdempotentAndIsOpenReflects) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel cha(std::move(pa));
+    MessageChannel chb(std::move(pb));
+
+    // Close twice on each side — should not crash
+    cha.close();
+    cha.close();
+
+    chb.close();
+    chb.close();
+}

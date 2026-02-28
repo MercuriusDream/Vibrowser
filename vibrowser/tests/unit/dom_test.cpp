@@ -20222,3 +20222,110 @@ TEST(DomNode, RemoveMiddleChildUpdatesSiblingPointersV132) {
     EXPECT_EQ(a_ptr->next_sibling(), c_ptr);
     EXPECT_EQ(c_ptr->previous_sibling(), a_ptr);
 }
+
+// ---------------------------------------------------------------------------
+// Round 133 — 8 DOM tests (V133)
+// ---------------------------------------------------------------------------
+
+TEST(DomNode, AppendChildReparentsFromPreviousParentV133) {
+    auto parent_a = std::make_unique<Element>("div");
+    auto parent_b = std::make_unique<Element>("section");
+    auto child = std::make_unique<Element>("span");
+    Element* child_ptr = child.get();
+
+    parent_a->append_child(std::move(child));
+    EXPECT_EQ(parent_a->child_count(), 1u);
+    EXPECT_EQ(child_ptr->parent(), parent_a.get());
+
+    // Reparent: move child from A to B
+    auto removed = parent_a->remove_child(*child_ptr);
+    parent_b->append_child(std::move(removed));
+
+    EXPECT_EQ(parent_a->child_count(), 0u);
+    EXPECT_EQ(parent_b->child_count(), 1u);
+    EXPECT_EQ(child_ptr->parent(), parent_b.get());
+}
+
+TEST(DomElement, RemoveAttributeAndVerifyGoneV133) {
+    Element elem("div");
+    elem.set_attribute("data-x", "1");
+    ASSERT_TRUE(elem.has_attribute("data-x"));
+    ASSERT_TRUE(elem.get_attribute("data-x").has_value());
+
+    elem.remove_attribute("data-x");
+
+    EXPECT_FALSE(elem.get_attribute("data-x").has_value());
+    EXPECT_FALSE(elem.has_attribute("data-x"));
+}
+
+TEST(DomEvent, ConstructorDefaultsAllFlagsV133) {
+    Event ev("test", true, true);
+
+    EXPECT_EQ(ev.type(), "test");
+    EXPECT_TRUE(ev.bubbles());
+    EXPECT_TRUE(ev.cancelable());
+    EXPECT_FALSE(ev.propagation_stopped());
+    EXPECT_FALSE(ev.immediate_propagation_stopped());
+    EXPECT_FALSE(ev.default_prevented());
+}
+
+TEST(DomDocument, EmptyDocumentReturnsNullForBodyAndHeadV133) {
+    Document doc;
+    EXPECT_EQ(doc.body(), nullptr);
+    EXPECT_EQ(doc.head(), nullptr);
+}
+
+TEST(DomNode, InsertBeforeNullRefAppendsAsLastChildV133) {
+    auto parent = std::make_unique<Element>("ul");
+    auto first = std::make_unique<Element>("li");
+    Element* first_ptr = first.get();
+    parent->append_child(std::move(first));
+
+    auto second = std::make_unique<Element>("li");
+    Element* second_ptr = second.get();
+    parent->insert_before(std::move(second), nullptr);
+
+    EXPECT_EQ(parent->child_count(), 2u);
+    EXPECT_EQ(parent->last_child(), second_ptr);
+    EXPECT_EQ(second_ptr->previous_sibling(), first_ptr);
+}
+
+TEST(DomClassList, ItemsPreservesInsertionOrderV133) {
+    Element elem("div");
+    elem.class_list().add("alpha");
+    elem.class_list().add("beta");
+    elem.class_list().add("gamma");
+    elem.class_list().add("delta");
+
+    const auto& items = elem.class_list().items();
+    ASSERT_EQ(elem.class_list().length(), 4u);
+    EXPECT_EQ(items[0], "alpha");
+    EXPECT_EQ(items[1], "beta");
+    EXPECT_EQ(items[2], "gamma");
+    EXPECT_EQ(items[3], "delta");
+}
+
+TEST(DomNode, RemoveChildReturnsPtrWithAccessibleDataV133) {
+    auto parent = std::make_unique<Element>("div");
+    auto text = std::make_unique<Text>("hello world");
+    Text* text_ptr = text.get();
+    parent->append_child(std::move(text));
+    ASSERT_EQ(parent->child_count(), 1u);
+
+    auto removed = parent->remove_child(*text_ptr);
+
+    ASSERT_NE(removed, nullptr);
+    EXPECT_EQ(parent->child_count(), 0u);
+    EXPECT_EQ(removed->parent(), nullptr);
+    // The returned unique_ptr still holds valid data
+    auto* as_text = static_cast<Text*>(removed.get());
+    EXPECT_EQ(as_text->data(), "hello world");
+}
+
+TEST(DomComment, SetDataUpdatesValueV133) {
+    Comment c("old");
+    EXPECT_EQ(c.data(), "old");
+
+    c.set_data("new");
+    EXPECT_EQ(c.data(), "new");
+}

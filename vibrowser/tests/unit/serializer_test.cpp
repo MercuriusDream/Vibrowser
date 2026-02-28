@@ -19825,3 +19825,55 @@ TEST(SerializerTest, SerializerV132_3_LongStringRoundTrip) {
     EXPECT_EQ(result, long_str);
     EXPECT_FALSE(d.has_remaining());
 }
+
+// ------------------------------------------------------------------
+// V133 Round 133 tests
+// ------------------------------------------------------------------
+
+TEST(SerializerTest, SerializerV133_1_DataSizeMatchesFixedWidthWriteSum) {
+    Serializer s;
+    s.write_u8(1);       // 1 byte
+    s.write_u16(2);      // 2 bytes
+    s.write_u32(3);      // 4 bytes
+    s.write_u64(4);      // 8 bytes
+    s.write_i32(5);      // 4 bytes
+    s.write_i64(6);      // 8 bytes
+    s.write_f64(7.0);    // 8 bytes
+    s.write_bool(true);  // 1 byte
+    // Total = 1+2+4+8+4+8+8+1 = 36
+
+    EXPECT_EQ(s.data().size(), 36u);
+}
+
+TEST(SerializerTest, SerializerV133_2_StringWithEmbeddedNulRoundTrip) {
+    // Build a string with embedded NUL bytes
+    std::string original = "hel";
+    original.push_back('\0');
+    original += "lo";
+    original.push_back('\0');
+    original += "world";
+    // "hel\0lo\0world" — 12 characters total
+
+    ASSERT_EQ(original.size(), 12u);
+
+    Serializer s;
+    s.write_string(original);
+
+    Deserializer d(s.data());
+    auto result = d.read_string();
+    EXPECT_EQ(result.size(), original.size());
+    EXPECT_EQ(result, original);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, SerializerV133_3_HasRemainingTransitionsAfterFullRead) {
+    Serializer s;
+    s.write_u32(0xDEADBEEF);
+
+    Deserializer d(s.data());
+    EXPECT_TRUE(d.has_remaining());
+
+    uint32_t val = d.read_u32();
+    EXPECT_EQ(val, 0xDEADBEEFu);
+    EXPECT_FALSE(d.has_remaining());
+}

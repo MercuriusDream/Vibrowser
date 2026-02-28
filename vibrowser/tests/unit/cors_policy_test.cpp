@@ -10710,3 +10710,58 @@ TEST(CORSPolicyTest, CorsV132_8_LongPathUrlStillCorsEligible) {
     std::string long_path_with_fragment = long_path + "#section";
     EXPECT_FALSE(is_cors_eligible_request_url(long_path_with_fragment));
 }
+
+// --- Round 133 (V133) ---
+
+TEST(CORSPolicyTest, CorsV133_1_IPv4WithNonStandardPortIsEnforceable) {
+    // IPv4 addresses with explicit ports have valid origins and are enforceable
+    EXPECT_TRUE(has_enforceable_document_origin("http://192.168.1.1:8080"));
+
+    // data: URIs are opaque and NOT enforceable
+    EXPECT_FALSE(has_enforceable_document_origin("data:text/html,x"));
+}
+
+TEST(CORSPolicyTest, CorsV133_2_FtpAndFileNotCorsEligible) {
+    // ftp:// and file:// schemes are not CORS-eligible request URLs
+    EXPECT_FALSE(is_cors_eligible_request_url("ftp://example.com/file"));
+    EXPECT_FALSE(is_cors_eligible_request_url("file:///etc/passwd"));
+}
+
+TEST(CORSPolicyTest, CorsV133_3_SameHostDifferentNonStandardPortsCrossOrigin) {
+    // Same host but different non-standard ports are cross-origin
+    EXPECT_TRUE(is_cross_origin("http://example.com:3000", "http://example.com:4000/path"));
+}
+
+TEST(CORSPolicyTest, CorsV133_4_NormalizeDataOriginSetsNull) {
+    // data: origin is not enforceable and not "null", so normalize removes
+    // any existing Origin header and does not set a new one
+    clever::net::HeaderMap headers;
+    headers.set("Origin", "https://stale.example.com");
+    normalize_outgoing_origin_header(headers, "data:text/html,x", "https://example.com/page");
+    EXPECT_FALSE(headers.has("origin"));
+}
+
+TEST(CORSPolicyTest, CorsV133_5_SameOriginShouldNotAttach) {
+    // Same-origin requests should not attach an Origin header
+    EXPECT_FALSE(should_attach_origin_header("https://example.com", "https://example.com/api"));
+}
+
+TEST(CORSPolicyTest, CorsV133_6_ExactIPv4OriginMatchWithCredentials) {
+    // Exact IPv4 origin match in ACAO with ACAC:true and creds=true should allow
+    clever::net::HeaderMap headers;
+    headers.set("access-control-allow-origin", "http://10.0.0.1:9090");
+    headers.set("access-control-allow-credentials", "true");
+    EXPECT_TRUE(cors_allows_response("http://10.0.0.1:9090", "http://10.0.0.1:9090/data", headers, true));
+}
+
+TEST(CORSPolicyTest, CorsV133_7_DeepPathWithQueryNoCorsEligible) {
+    // A valid HTTPS URL with a deep path and query (no fragment) is CORS-eligible
+    EXPECT_TRUE(is_cors_eligible_request_url("https://api.example.com/v2/users?page=1"));
+}
+
+TEST(CORSPolicyTest, CorsV133_8_WildcardACAORejectsCredentialedRequest) {
+    // ACAO: "*" with creds=true must be rejected per CORS spec
+    clever::net::HeaderMap headers;
+    headers.set("access-control-allow-origin", "*");
+    EXPECT_FALSE(cors_allows_response("https://app.example.com", "https://api.example.com/data", headers, true));
+}

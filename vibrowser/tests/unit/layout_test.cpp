@@ -25181,3 +25181,146 @@ TEST(LayoutNodeProps, VisibilityCollapseDefaultV132) {
     // Default display should be Block
     EXPECT_EQ(n->display, DisplayType::Block);
 }
+
+// --- Round 133 (V133) ---
+
+TEST(LayoutEngineTest, LayoutV133_1) {
+    auto root = make_block();
+    root->specified_width = 400.0f;
+
+    auto child = make_block();
+    child->display = DisplayType::InlineBlock;
+    child->specified_width = 100.0f;
+    child->specified_height = 50.0f;
+    auto* cp = child.get();
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 400.0f, 600.0f);
+
+    EXPECT_GE(cp->geometry.width, 0.0f);
+    EXPECT_GE(cp->geometry.height, 0.0f);
+}
+
+TEST(LayoutEngineTest, LayoutV133_2) {
+    auto root = make_flex();
+    root->specified_width = 400.0f;
+    root->specified_height = 200.0f;
+    root->justify_content = 2; // center
+
+    auto child = make_block();
+    child->specified_width = 100.0f;
+    child->specified_height = 50.0f;
+    auto* cp = child.get();
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 400.0f, 600.0f);
+
+    EXPECT_GT(cp->geometry.x, 0.0f);
+}
+
+TEST(LayoutEngineTest, LayoutV133_3) {
+    auto root = make_block();
+    root->specified_width = 400.0f;
+
+    auto c1 = make_block();
+    c1->specified_height = 30.0f;
+    root->append_child(std::move(c1));
+
+    auto c2 = make_block();
+    c2->specified_height = 30.0f;
+    c2->geometry.margin.top = 20.0f;
+    auto* c2p = c2.get();
+    root->append_child(std::move(c2));
+
+    auto c3 = make_block();
+    c3->specified_height = 30.0f;
+    root->append_child(std::move(c3));
+
+    LayoutEngine engine;
+    engine.compute(*root, 400.0f, 600.0f);
+
+    EXPECT_GE(c2p->geometry.y, 30.0f);
+}
+
+TEST(LayoutEngineTest, LayoutV133_4) {
+    auto root = make_flex();
+    root->specified_width = 400.0f;
+    root->specified_height = 200.0f;
+    root->flex_direction = 1; // column
+    root->align_items = 2;   // center
+
+    auto child = make_block();
+    child->specified_width = 100.0f;
+    child->specified_height = 50.0f;
+    auto* cp = child.get();
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 400.0f, 600.0f);
+
+    // Flex column with align_items center — verify no crash
+    EXPECT_GE(cp->geometry.width, 0.0f);
+}
+
+TEST(LayoutEngineTest, LayoutV133_5) {
+    auto root = make_block();
+    root->specified_width = 400.0f;
+
+    auto child = make_block();
+    child->display = DisplayType::Table;
+    child->specified_width = 200.0f;
+    child->specified_height = 100.0f;
+    auto* cp = child.get();
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 400.0f, 600.0f);
+
+    EXPECT_GE(cp->geometry.width, 0.0f);
+}
+
+TEST(LayoutEngineTest, LayoutV133_6) {
+    auto root = make_block();
+    root->specified_width = 400.0f;
+
+    auto child = make_block();
+    child->specified_width = 200.0f;
+    child->specified_height = 100.0f;
+    child->border_box = true; // border-box
+    child->geometry.padding.left = 20.0f;
+    child->geometry.padding.right = 20.0f;
+    child->geometry.border.left = 5.0f;
+    child->geometry.border.right = 5.0f;
+    auto* cp = child.get();
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 400.0f, 600.0f);
+
+    // In border-box, total width should not exceed specified width
+    EXPECT_LE(cp->geometry.width, 200.0f + 1.0f);
+}
+
+TEST(LayoutEngineTest, LayoutV133_7) {
+    auto root = make_block();
+    root->specified_width = 400.0f;
+
+    auto child = make_block();
+    child->display = DisplayType::ListItem;
+    child->specified_height = 30.0f;
+    auto* cp = child.get();
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 400.0f, 600.0f);
+
+    EXPECT_GE(cp->geometry.width, 0.0f);
+}
+
+TEST(LayoutNodeProps, GridDefaultsV133) {
+    auto n = make_block();
+    // Default display type is Block
+    EXPECT_EQ(n->display, DisplayType::Block);
+}
