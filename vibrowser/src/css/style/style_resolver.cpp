@@ -1,4 +1,5 @@
 #include <clever/css/style/style_resolver.h>
+#include <clever/layout/box.h>
 #include <algorithm>
 #include <cctype>
 #include <cstdlib>
@@ -518,7 +519,7 @@ void PropertyCascade::apply_declaration(
         if (prop == "overflow") { style.overflow_x = Overflow::Visible; style.overflow_y = Overflow::Visible; return; }
         if (prop == "overflow-x") { style.overflow_x = Overflow::Visible; return; }
         if (prop == "overflow-y") { style.overflow_y = Overflow::Visible; return; }
-        if (prop == "z-index") { style.z_index = 0; return; }
+        if (prop == "z-index") { style.z_index = clever::layout::Z_INDEX_AUTO; return; }
         // Sizing
         if (prop == "width") { style.width = Length::auto_val(); return; }
         if (prop == "height") { style.height = Length::auto_val(); return; }
@@ -575,15 +576,66 @@ void PropertyCascade::apply_declaration(
     // Handle 'unset' keyword — inherited properties get inherit, others get initial.
     // Exclude 'all' shorthand which has its own handler that stores the value.
     if (value_lower == "unset" && prop != "all") {
-        // For this engine, 'unset' on naturally inherited properties is effectively
-        // a no-op (since they're already inherited at cascade start), and on
-        // non-inherited properties it acts like 'initial'.
+        const bool is_inherited =
+            prop == "color" ||
+            prop == "font-family" ||
+            prop == "font-size" ||
+            prop == "font-weight" ||
+            prop == "font-style" ||
+            prop == "line-height" ||
+            prop == "text-align" ||
+            prop == "text-align-last" ||
+            prop == "text-transform" ||
+            prop == "text-indent" ||
+            prop == "white-space" ||
+            prop == "letter-spacing" ||
+            prop == "word-spacing" ||
+            prop == "word-break" ||
+            prop == "overflow-wrap" || prop == "word-wrap" ||
+            prop == "text-wrap" || prop == "text-wrap-mode" ||
+            prop == "direction" ||
+            prop == "tab-size" ||
+            prop == "hyphens" ||
+            prop == "visibility" ||
+            prop == "cursor" ||
+            prop == "list-style-type" ||
+            prop == "list-style-position" ||
+            prop == "list-style-image" ||
+            prop == "font-variant" ||
+            prop == "font-variant-caps" ||
+            prop == "font-variant-numeric" ||
+            prop == "font-kerning" ||
+            prop == "text-rendering" ||
+            prop == "orphans" ||
+            prop == "widows" ||
+            prop == "quotes";
+
+        Declaration keyword_decl = decl;
+        keyword_decl.values.clear();
+        keyword_decl.values.push_back(ComponentValue{
+            ComponentValue::Token,
+            is_inherited ? "inherit" : "initial",
+            0,
+            "",
+            {}
+        });
+        apply_declaration(style, keyword_decl, parent);
         return;
     }
 
     // Also handle 'revert' (exclude 'all' shorthand)
     if (value_lower == "revert" && prop != "all") {
         // revert: use the UA stylesheet default. For simplicity, treat as unset.
+        Declaration unset_decl = decl;
+        unset_decl.values.clear();
+        unset_decl.values.push_back(ComponentValue{
+            ComponentValue::Token,
+            "unset",
+            0,
+            "",
+            {}
+        });
+        apply_declaration(style, unset_decl, parent);
         return;
     }
 
@@ -1488,9 +1540,13 @@ void PropertyCascade::apply_declaration(
         return;
     }
     if (prop == "z-index") {
-        try {
-            style.z_index = std::stoi(value_str);
-        } catch (...) {}
+        if (value_lower == "auto") {
+            style.z_index = clever::layout::Z_INDEX_AUTO;
+        } else {
+            try {
+                style.z_index = std::stoi(value_str);
+            } catch (...) {}
+        }
         return;
     }
 
@@ -6218,9 +6274,17 @@ ComputedStyle StyleResolver::resolve(
         result.font_size = tag_defaults.font_size;
     }
 
-    // Now cascade the matched CSS rules on top
-    if (!matched_rules.empty()) {
-        // Build prioritized declarations and apply
+    // Parse inline style declarations from style="" attribute
+    std::vector<Declaration> inline_decls;
+    for (const auto& attr : element.attributes) {
+        if (to_lower(attr.first) == "style") {
+            inline_decls = parse_declaration_block(attr.second);
+            break;
+        }
+    }
+
+    // Cascade matched stylesheet rules + inline declarations
+    if (!matched_rules.empty() || !inline_decls.empty()) {
         struct PrioritizedDecl {
             const Declaration* decl;
             Specificity specificity;
@@ -6228,10 +6292,27 @@ ComputedStyle StyleResolver::resolve(
             bool important;
             bool in_layer;
             size_t layer_order;
+            bool is_user_agent;
+            bool is_inline;
         };
 
         std::vector<PrioritizedDecl> all_decls;
+        all_decls.reserve(matched_rules.size() * 4 + inline_decls.size());
+
+        // First stylesheet is the UA sheet in our render pipeline.
+        const StyleRule* ua_begin = nullptr;
+        const StyleRule* ua_end = nullptr;
+        if (!stylesheets_.empty() && !stylesheets_.front().rules.empty()) {
+            ua_begin = stylesheets_.front().rules.data();
+            ua_end = ua_begin + stylesheets_.front().rules.size();
+        }
+
+        auto is_user_agent_rule = [ua_begin, ua_end](const StyleRule* rule) {
+            return ua_begin != nullptr && rule >= ua_begin && rule < ua_end;
+        };
+
         for (const auto& matched : matched_rules) {
+            const bool is_user_agent = is_user_agent_rule(matched.rule);
             for (const auto& decl : matched.rule->declarations) {
                 all_decls.push_back({
                     &decl,
@@ -6239,25 +6320,66 @@ ComputedStyle StyleResolver::resolve(
                     matched.source_order,
                     decl.important,
                     matched.rule->in_layer,
-                    matched.rule->layer_order
+                    matched.rule->layer_order,
+                    is_user_agent,
+                    false
                 });
             }
         }
 
+        // Inline styles are author-origin declarations with top specificity.
+        // Keep them in their own cascade tier so inline normal beats all rule
+        // normal declarations, and inline !important beats author !important.
+        const Specificity inline_specificity{1000000, 0, 0};
+        for (size_t i = 0; i < inline_decls.size(); ++i) {
+            const auto& decl = inline_decls[i];
+            all_decls.push_back({
+                &decl,
+                inline_specificity,
+                i,
+                decl.important,
+                false,
+                0,
+                false,
+                true
+            });
+        }
+
         std::stable_sort(all_decls.begin(), all_decls.end(),
             [](const PrioritizedDecl& a, const PrioritizedDecl& b) {
-                if (a.important != b.important) return !a.important;
-                if (a.important) {
-                    if (a.in_layer != b.in_layer) return !a.in_layer;
-                    if (a.in_layer && b.in_layer && a.layer_order != b.layer_order) {
-                        return a.layer_order > b.layer_order;
-                    }
-                } else {
-                    if (a.in_layer != b.in_layer) return a.in_layer;
-                    if (a.in_layer && b.in_layer && a.layer_order != b.layer_order) {
-                        return a.layer_order < b.layer_order;
+                auto tier = [](const PrioritizedDecl& pd) {
+                    if (pd.is_user_agent) return pd.important ? 5 : 0;
+                    if (pd.is_inline) return pd.important ? 4 : 2;
+                    return pd.important ? 3 : 1; // author stylesheet
+                };
+
+                // Sort so that "winning" declarations come LAST.
+                // Tier order (low -> high):
+                // UA normal < author normal < inline normal <
+                // author !important < inline !important < UA !important.
+                const int tier_a = tier(a);
+                const int tier_b = tier(b);
+                if (tier_a != tier_b) {
+                    return tier_a < tier_b;
+                }
+
+                // @layer ordering applies only to stylesheet declarations.
+                if (!a.is_inline && !b.is_inline) {
+                    if (a.important) {
+                        // Important: layered > unlayered, earlier layers win.
+                        if (a.in_layer != b.in_layer) return !a.in_layer;
+                        if (a.in_layer && b.in_layer && a.layer_order != b.layer_order) {
+                            return a.layer_order > b.layer_order;
+                        }
+                    } else {
+                        // Normal: unlayered > layered, later layers win.
+                        if (a.in_layer != b.in_layer) return a.in_layer;
+                        if (a.in_layer && b.in_layer && a.layer_order != b.layer_order) {
+                            return a.layer_order < b.layer_order;
+                        }
                     }
                 }
+
                 if (!(a.specificity == b.specificity)) return a.specificity < b.specificity;
                 return a.source_order < b.source_order;
             });

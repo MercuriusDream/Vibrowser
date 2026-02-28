@@ -3,6 +3,7 @@
 #include <clever/css/style/style_resolver.h>
 #include <clever/css/parser/selector.h>
 #include <clever/css/parser/stylesheet.h>
+#include <clever/layout/box.h>
 #include <gtest/gtest.h>
 #include <cmath>
 
@@ -11341,7 +11342,7 @@ TEST(PropertyCascadeTest, InitialKeywordResets) {
     EXPECT_FLOAT_EQ(style.opacity, 1.0f);
 
     cascade.apply_declaration(style, make_decl("z-index", "initial"), parent);
-    EXPECT_EQ(style.z_index, 0);
+    EXPECT_EQ(style.z_index, clever::layout::Z_INDEX_AUTO);
 
     cascade.apply_declaration(style, make_decl("flex-direction", "initial"), parent);
     EXPECT_EQ(style.flex_direction, FlexDirection::Row);
@@ -11449,17 +11450,24 @@ TEST(PropertyCascadeTest, UnsetAndRevertAreNoOps) {
     // Set some specific values
     style.opacity = 0.7f;
     style.z_index = 5;
+    style.color = Color::transparent();
 
-    // unset on non-all is a no-op for non-inherited props in this engine
+    // unset on non-inherited property acts like initial
     cascade.apply_declaration(style, make_decl("opacity", "unset"), parent);
-    EXPECT_FLOAT_EQ(style.opacity, 0.7f);  // unchanged
+    EXPECT_FLOAT_EQ(style.opacity, 1.0f);  // reset to initial value
 
     cascade.apply_declaration(style, make_decl("z-index", "unset"), parent);
-    EXPECT_EQ(style.z_index, 5);  // unchanged
+    EXPECT_EQ(style.z_index, clever::layout::Z_INDEX_AUTO);  // reset to initial value (auto)
 
-    // revert is also treated as no-op
+    // unset on inherited property acts like inherit
+    parent.color = Color::black();
+    cascade.apply_declaration(style, make_decl("color", "unset"), parent);
+    EXPECT_EQ(style.color, parent.color);  // inherited from parent
+
+    // revert is treated as unset (fallback behavior)
+    style.opacity = 0.7f;
     cascade.apply_declaration(style, make_decl("opacity", "revert"), parent);
-    EXPECT_FLOAT_EQ(style.opacity, 0.7f);  // unchanged
+    EXPECT_FLOAT_EQ(style.opacity, 1.0f);  // reset to initial value like unset
 }
 
 // ---------------------------------------------------------------------------
