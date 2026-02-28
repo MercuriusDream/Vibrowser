@@ -85,6 +85,23 @@ std::string collapse_whitespace(const std::string& text, int white_space, bool w
     return text;
 }
 
+// Helper to apply min/max width and height constraints to element dimensions
+inline void apply_min_max_constraints(LayoutNode& node) {
+    // Clamp width to min/max bounds
+    if (node.geometry.width < 0) node.geometry.width = 0;
+    node.geometry.width = std::max(node.geometry.width, node.min_width);
+    if (node.max_width < std::numeric_limits<float>::max()) {
+        node.geometry.width = std::min(node.geometry.width, node.max_width);
+    }
+
+    // Clamp height to min/max bounds
+    if (node.geometry.height < 0) node.geometry.height = 0;
+    node.geometry.height = std::max(node.geometry.height, node.min_height);
+    if (node.max_height < std::numeric_limits<float>::max()) {
+        node.geometry.height = std::min(node.geometry.height, node.max_height);
+    }
+}
+
 } // namespace
 
 // ---------------------------------------------------------------------------
@@ -992,6 +1009,7 @@ void LayoutEngine::layout_inline(LayoutNode& node, float containing_width) {
             node.geometry.width = text_width;
             node.geometry.height = single_line_height;
         }
+        apply_min_max_constraints(node);
         return;
     }
 
@@ -1012,6 +1030,7 @@ void LayoutEngine::layout_inline(LayoutNode& node, float containing_width) {
             if (child->display == DisplayType::None || child->mode == LayoutMode::None)
                 continue;
             layout_inline(*child, containing_width);
+            apply_min_max_constraints(*child);
             child->geometry.x = total_w;
             child->geometry.y = 0;
             total_w += child->geometry.margin_box_width();
@@ -1020,6 +1039,8 @@ void LayoutEngine::layout_inline(LayoutNode& node, float containing_width) {
         if (node.geometry.width <= 0) node.geometry.width = total_w;
         if (node.geometry.height <= 0) node.geometry.height = max_h;
     }
+
+    apply_min_max_constraints(node);
 }
 
 void LayoutEngine::layout_flex(LayoutNode& node, float containing_width) {
@@ -1880,6 +1901,8 @@ void LayoutEngine::position_inline_children(LayoutNode& node, float containing_w
         // for word-breaking purposes). This suppresses both word-boundary and
         // character-level breaking.
         bool keep_all = (child->word_break == 2);
+        bool overflow_wrap_break_word = (child->overflow_wrap == 1 && !can_break_word);
+        bool overflow_wrap_anywhere = (child->overflow_wrap == 2 && !can_break_word);
 
         // Determine if wrapping is suppressed by white-space on the parent node.
         // white_space: 0=normal (wrap), 1=nowrap (no wrap), 2=pre (no wrap),
@@ -1977,7 +2000,22 @@ void LayoutEngine::position_inline_children(LayoutNode& node, float containing_w
                 float lc = cursor_x;
                 for (size_t wi = 0; wi < words.size(); wi++) {
                     float word_w = static_cast<float>(words[wi].length()) * char_w;
-                    if (word_w > w && words[wi].length() > 1) {
+                    bool split_for_overflow_wrap = false;
+                    if (overflow_wrap_break_word && word_w > w) {
+                        split_for_overflow_wrap = true;
+                    }
+                    if (overflow_wrap_anywhere && (lc + word_w > w && lc > 0)) {
+                        split_for_overflow_wrap = true;
+                    }
+                    if (split_for_overflow_wrap && words[wi].length() > 1) {
+                        float avail = w - lc;
+                        int cf = std::max(1, static_cast<int>(avail / char_w));
+                        int rem = static_cast<int>(words[wi].length()) - cf;
+                        int cpf = std::max(1, static_cast<int>(w / char_w));
+                        if (rem > 0) lines += (rem + cpf - 1) / cpf;
+                        int llc = rem % cpf;
+                        lc = (llc == 0 && rem > 0) ? w : static_cast<float>(llc) * char_w;
+                    } else if (word_w > w && words[wi].length() > 1) {
                         float avail = w - lc;
                         int cf = std::max(1, static_cast<int>(avail / char_w));
                         int rem = static_cast<int>(words[wi].length()) - cf;
@@ -3001,6 +3039,9 @@ void LayoutEngine::position_absolute_children(LayoutNode& node) {
                 layout_block(child, child.geometry.width);
                 break;
         }
+
+        // Apply min/max constraints to positioned element
+        apply_min_max_constraints(child);
 
         if (child.pos_left_set) {
             child.geometry.x = child.pos_left - ox;
@@ -4393,6 +4434,9 @@ void LayoutEngine::layout_table(LayoutNode& node, float containing_width) {
             }
 
             cell->geometry.width = cell_w;
+            // Apply min/max constraints to cell width
+            apply_min_max_constraints(*cell);
+            cell_w = cell->geometry.width;
             cell->geometry.x = cursor_x;
 
             // Layout cell contents
@@ -4474,6 +4518,8 @@ void LayoutEngine::layout_table(LayoutNode& node, float containing_width) {
                     + cell->geometry.border.top + cell->geometry.border.bottom;
             }
             cell->geometry.height = ch;
+            // Apply min/max constraints to cell height
+            apply_min_max_constraints(*cell);
 
             // Only count non-rowspan cells toward row height (rowspan cells span multiple rows)
             if (cell->rowspan <= 1) {
@@ -4536,6 +4582,8 @@ void LayoutEngine::layout_table(LayoutNode& node, float containing_width) {
         if (total_spanned_h > rsi.cell->geometry.height) {
             rsi.cell->geometry.height = total_spanned_h;
         }
+        // Apply min/max constraints after rowspan height extension
+        apply_min_max_constraints(*rsi.cell);
     }
 
     // Add vertical edge spacing after last row

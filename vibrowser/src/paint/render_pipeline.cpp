@@ -826,190 +826,227 @@ std::string resolve_content_value(
     const std::string& content_raw,
     const std::string& attr_name,
     const clever::html::SimpleNode& node) {
+    static constexpr const char* kLeftDoubleQuote = "\xE2\x80\x9C";  // U+201C
+    static constexpr const char* kRightDoubleQuote = "\xE2\x80\x9D"; // U+201D
 
-    // Handle attr() sentinel
+    // Handle sentinels emitted by style_resolver.cpp.
     if (content_raw == "\x01""ATTR" && !attr_name.empty()) {
         return get_attr(node, attr_name);
     }
-
-    // Handle open-quote / close-quote
-    if (content_raw == "open-quote") return "\xE2\x80\x9C"; // U+201C left double quotation mark
-    if (content_raw == "close-quote") return "\xE2\x80\x9D"; // U+201D right double quotation mark
-    if (content_raw == "no-open-quote" || content_raw == "no-close-quote") return "";
-
-    // Check if it contains counter()/counters()/attr() functions
-    if (content_raw.find("counter(") == std::string::npos &&
-        content_raw.find("counters(") == std::string::npos &&
-        content_raw.find("attr(") == std::string::npos) {
-        return content_raw; // plain text, return as-is
+    if (content_raw.rfind("\x01URL:", 0) == 0) {
+        return "[image placeholder]";
     }
 
-    // Parse concatenated content value: e.g. counter(item) ". "
-    // Walk through the value, resolving functions
+    const std::string content_trim = trim(content_raw);
+    const std::string content_lower = to_lower(content_trim);
+    if (content_trim.empty() || content_lower == "none" || content_lower == "normal") return "";
+
+    // style_resolver stores open/close quote as literal UTF-8 chars for single-token values.
+    if (content_raw == kLeftDoubleQuote || content_raw == kRightDoubleQuote) return content_raw;
+    if (content_lower == "open-quote") return kLeftDoubleQuote;
+    if (content_lower == "close-quote") return kRightDoubleQuote;
+    if (content_lower == "no-open-quote" || content_lower == "no-close-quote") return "";
+
+    // Fast-path for plain literal content.
+    auto has_single_quoted_token = [&]() -> bool {
+        for (size_t idx = 0; idx < content_raw.size(); idx++) {
+            if (content_raw[idx] != '\'') continue;
+            bool boundary = (idx == 0 ||
+                             std::isspace(static_cast<unsigned char>(content_raw[idx - 1])) ||
+                             content_raw[idx - 1] == '(' ||
+                             content_raw[idx - 1] == ',');
+            if (!boundary) continue;
+            if (content_raw.find('\'', idx + 1) != std::string::npos) return true;
+        }
+        return false;
+    };
+
+    const bool requires_token_parse =
+        content_raw.find("counter(") != std::string::npos ||
+        content_raw.find("counters(") != std::string::npos ||
+        content_raw.find("attr(") != std::string::npos ||
+        content_raw.find("url(") != std::string::npos ||
+        content_raw.find("open-quote") != std::string::npos ||
+        content_raw.find("close-quote") != std::string::npos ||
+        content_raw.find('"') != std::string::npos ||
+        has_single_quoted_token();
+    if (!requires_token_parse) return content_raw;
+
+    auto find_matching_paren = [&](size_t open_pos) -> size_t {
+        if (open_pos >= content_raw.size() || content_raw[open_pos] != '(') return std::string::npos;
+        int depth = 0;
+        bool in_single = false;
+        bool in_double = false;
+        for (size_t pos = open_pos; pos < content_raw.size(); pos++) {
+            char ch = content_raw[pos];
+            if (ch == '"' && !in_single) {
+                in_double = !in_double;
+                continue;
+            }
+            if (ch == '\'' && !in_double) {
+                in_single = !in_single;
+                continue;
+            }
+            if (in_single || in_double) continue;
+            if (ch == '(') {
+                depth++;
+            } else if (ch == ')') {
+                depth--;
+                if (depth == 0) return pos;
+            }
+        }
+        return std::string::npos;
+    };
+
     std::string result;
     size_t i = 0;
-    size_t len = content_raw.size();
+    while (i < content_raw.size()) {
+        while (i < content_raw.size() &&
+               std::isspace(static_cast<unsigned char>(content_raw[i]))) i++;
+        if (i >= content_raw.size()) break;
 
-    while (i < len) {
-        // Skip whitespace between tokens (but NOT inside strings)
-        // Check for counters(...) — must check BEFORE counter() since "counters(" starts with "counter("
-        if (i + 9 <= len && content_raw.substr(i, 9) == "counters(") {
-            size_t start = i + 9;
-            size_t end = content_raw.find(')', start);
-            if (end != std::string::npos) {
-                std::string args = content_raw.substr(start, end - start);
-                // counters(name, separator) or counters(name, separator, style)
-                // Since CSS tokenizer may strip commas, handle both comma and space separators
-                std::string counter_name, separator = ".";
-                auto comma = args.find(',');
-                if (comma != std::string::npos) {
-                    counter_name = args.substr(0, comma);
-                    std::string rest = args.substr(comma + 1);
-                    // Strip quotes from separator
-                    auto qstart = rest.find('"');
-                    auto qend = rest.rfind('"');
-                    if (qstart != std::string::npos && qend > qstart)
-                        separator = rest.substr(qstart + 1, qend - qstart - 1);
-                    else {
-                        qstart = rest.find('\'');
-                        qend = rest.rfind('\'');
-                        if (qstart != std::string::npos && qend > qstart)
-                            separator = rest.substr(qstart + 1, qend - qstart - 1);
-                    }
-                } else {
-                    // Space-separated fallback from tokenizer
-                    auto parts = split_whitespace(args);
-                    if (!parts.empty()) counter_name = parts[0];
-                    if (parts.size() > 1) {
-                        std::string sep = parts[1];
-                        if ((sep.front() == '"' && sep.back() == '"') || (sep.front() == '\'' && sep.back() == '\''))
-                            separator = sep.substr(1, sep.size() - 2);
-                    }
-                }
-                auto trim_ws = [](std::string& s) {
-                    auto ns = s.find_first_not_of(" \t");
-                    auto ne = s.find_last_not_of(" \t");
-                    if (ns != std::string::npos) s = s.substr(ns, ne - ns + 1);
-                    else s.clear();
-                };
-                trim_ws(counter_name);
-                // For now, counters() with flat counter returns same as counter()
-                // (proper nesting would need scope stack)
-                int val = css_counters[counter_name];
-                result += std::to_string(val);
-                i = end + 1;
-                continue;
-            }
-        }
-        // Check for counter(...)
-        if (i + 8 <= len && content_raw.substr(i, 8) == "counter(") {
-            size_t start = i + 8;
-            size_t end = content_raw.find(')', start);
-            if (end != std::string::npos) {
-                std::string args = content_raw.substr(start, end - start);
-                // Split by comma: counter(name) or counter(name, style)
-                std::string counter_name;
-                std::string counter_style = "decimal";
-                auto comma = args.find(',');
-                if (comma != std::string::npos) {
-                    counter_name = args.substr(0, comma);
-                    counter_style = args.substr(comma + 1);
-                } else {
-                    // CSS parser may normalize function args as space-separated tokens
-                    // (e.g. "counter(item lower-alpha)" instead of "counter(item, lower-alpha)").
-                    auto parts = split_whitespace(args);
-                    if (!parts.empty()) {
-                        counter_name = parts[0];
-                        if (parts.size() > 1) counter_style = parts[1];
-                    } else {
-                        counter_name = args;
-                    }
-                }
-                // Trim whitespace
-                auto trim_ws = [](std::string& s) {
-                    auto ns = s.find_first_not_of(" \t");
-                    auto ne = s.find_last_not_of(" \t");
-                    if (ns != std::string::npos) s = s.substr(ns, ne - ns + 1);
-                    else s.clear();
-                };
-                trim_ws(counter_name);
-                trim_ws(counter_style);
-
-                int val = css_counters[counter_name];
-                // Format based on list-style-type
-                if (counter_style == "lower-alpha" || counter_style == "lower-latin") {
-                    if (val >= 1 && val <= 26)
-                        result += static_cast<char>('a' + val - 1);
-                    else
-                        result += std::to_string(val);
-                } else if (counter_style == "upper-alpha" || counter_style == "upper-latin") {
-                    if (val >= 1 && val <= 26)
-                        result += static_cast<char>('A' + val - 1);
-                    else
-                        result += std::to_string(val);
-                } else if (counter_style == "lower-roman") {
-                    // Simple roman numeral conversion
-                    std::string roman;
-                    int v = val;
-                    const int vals[] = {1000, 900, 500, 400, 100, 90, 50, 40, 10, 9, 5, 4, 1};
-                    const char* syms[] = {"m","cm","d","cd","c","xc","l","xl","x","ix","v","iv","i"};
-                    for (int ri = 0; ri < 13 && v > 0; ri++) {
-                        while (v >= vals[ri]) { roman += syms[ri]; v -= vals[ri]; }
-                    }
-                    result += roman.empty() ? std::to_string(val) : roman;
-                } else if (counter_style == "upper-roman") {
-                    std::string roman;
-                    int v = val;
-                    const int vals[] = {1000, 900, 500, 400, 100, 90, 50, 40, 10, 9, 5, 4, 1};
-                    const char* syms[] = {"M","CM","D","CD","C","XC","L","XL","X","IX","V","IV","I"};
-                    for (int ri = 0; ri < 13 && v > 0; ri++) {
-                        while (v >= vals[ri]) { roman += syms[ri]; v -= vals[ri]; }
-                    }
-                    result += roman.empty() ? std::to_string(val) : roman;
-                } else {
-                    // decimal (default)
-                    result += std::to_string(val);
-                }
-                i = end + 1;
-                continue;
-            }
-        }
-
-        // Check for attr(...)
-        if (i + 5 <= len && content_raw.substr(i, 5) == "attr(") {
-            size_t start = i + 5;
-            size_t end = content_raw.find(')', start);
-            if (end != std::string::npos) {
-                std::string a_name = content_raw.substr(start, end - start);
-                auto ns = a_name.find_first_not_of(" \t");
-                auto ne = a_name.find_last_not_of(" \t");
-                if (ns != std::string::npos)
-                    a_name = a_name.substr(ns, ne - ns + 1);
-                result += get_attr(node, a_name);
-                i = end + 1;
-                continue;
-            }
-        }
-
-        // Check for quoted string: "..." or '...'
+        // String token ("..." / '...').
         if (content_raw[i] == '"' || content_raw[i] == '\'') {
             char quote = content_raw[i];
-            i++; // skip opening quote
-            while (i < len && content_raw[i] != quote) {
-                result += content_raw[i];
-                i++;
+            size_t close = i + 1;
+            bool escaped = false;
+            while (close < content_raw.size()) {
+                char ch = content_raw[close];
+                if (!escaped && ch == quote) break;
+                if (!escaped && ch == '\\') escaped = true;
+                else escaped = false;
+                close++;
             }
-            if (i < len) i++; // skip closing quote
+            if (close >= content_raw.size()) {
+                // Unmatched quote in literal text: keep char as-is.
+                result += content_raw[i++];
+                continue;
+            }
+            for (size_t pos = i + 1; pos < close; pos++) {
+                if (content_raw[pos] == '\\' && pos + 1 < close) {
+                    pos++;
+                }
+                result += content_raw[pos];
+            }
+            i = close + 1;
             continue;
         }
 
-        // Skip whitespace between tokens
-        if (content_raw[i] == ' ' || content_raw[i] == '\t') {
-            i++;
+        // Identifier or function token.
+        if (std::isalpha(static_cast<unsigned char>(content_raw[i])) ||
+            content_raw[i] == '_' || content_raw[i] == '-') {
+            const size_t ident_start = i;
+            while (i < content_raw.size()) {
+                char ch = content_raw[i];
+                if (std::isalnum(static_cast<unsigned char>(ch)) || ch == '-' || ch == '_' || ch == ':') {
+                    i++;
+                } else {
+                    break;
+                }
+            }
+            const std::string ident = content_raw.substr(ident_start, i - ident_start);
+            const std::string ident_lower = to_lower(ident);
+
+            if (i < content_raw.size() && content_raw[i] == '(') {
+                const size_t open = i;
+                const size_t close = find_matching_paren(open);
+                if (close == std::string::npos) {
+                    // Malformed function token; treat identifier text literally.
+                    result += ident;
+                    continue;
+                }
+                const std::string args = content_raw.substr(open + 1, close - open - 1);
+                i = close + 1;
+
+                if (ident_lower == "counters") {
+                    std::string counter_name;
+                    std::string separator = ".";
+                    std::string counter_style = "decimal";
+                    auto arg_parts = split_css_function_args(args);
+                    if (arg_parts.size() >= 2) {
+                        counter_name = arg_parts[0];
+                        separator = arg_parts[1];
+                        if (arg_parts.size() >= 3) counter_style = arg_parts[2];
+                    } else {
+                        auto parts = split_whitespace(args);
+                        if (!parts.empty()) counter_name = parts[0];
+                        if (parts.size() > 1) separator = parts[1];
+                        if (parts.size() > 2) counter_style = parts[2];
+                    }
+                    counter_name = trim(counter_name);
+                    separator = strip_matching_quotes(separator);
+                    auto style_type = parse_counter_list_style_type(counter_style);
+
+                    auto scope_it = css_counter_scopes.find(counter_name);
+                    if (scope_it != css_counter_scopes.end() && !scope_it->second.empty()) {
+                        for (size_t idx = 0; idx < scope_it->second.size(); idx++) {
+                            if (idx > 0) result += separator;
+                            result += format_css_counter_value(scope_it->second[idx], style_type);
+                        }
+                    } else {
+                        result += format_css_counter_value(get_css_counter_value(counter_name), style_type);
+                    }
+                    continue;
+                }
+
+                if (ident_lower == "counter") {
+                    std::string counter_name;
+                    std::string counter_style = "decimal";
+                    auto arg_parts = split_css_function_args(args);
+                    if (arg_parts.size() >= 2) {
+                        counter_name = arg_parts[0];
+                        counter_style = arg_parts[1];
+                    } else if (arg_parts.size() == 1) {
+                        counter_name = arg_parts[0];
+                    } else {
+                        auto parts = split_whitespace(args);
+                        if (!parts.empty()) {
+                            counter_name = parts[0];
+                            if (parts.size() > 1) counter_style = parts[1];
+                        } else {
+                            counter_name = args;
+                        }
+                    }
+                    counter_name = trim(counter_name);
+                    auto style_type = parse_counter_list_style_type(counter_style);
+                    result += format_css_counter_value(get_css_counter_value(counter_name), style_type);
+                    continue;
+                }
+
+                if (ident_lower == "attr") {
+                    std::string a_name = trim(args);
+                    auto comma = a_name.find(',');
+                    if (comma != std::string::npos) a_name = trim(a_name.substr(0, comma));
+                    auto ws = a_name.find_first_of(" \t\n\r");
+                    if (ws != std::string::npos) a_name = a_name.substr(0, ws);
+                    result += get_attr(node, a_name);
+                    continue;
+                }
+
+                if (ident_lower == "url") {
+                    result += "[image placeholder]";
+                    continue;
+                }
+
+                // Unknown function for now: ignore.
+                continue;
+            }
+
+            if (ident_lower == "open-quote") {
+                result += kLeftDoubleQuote;
+            } else if (ident_lower == "close-quote") {
+                result += kRightDoubleQuote;
+            } else if (ident_lower == "no-open-quote" || ident_lower == "no-close-quote" ||
+                       ident_lower == "none" || ident_lower == "normal") {
+                // Produces no text.
+            } else {
+                // Literal fallback token.
+                result += ident;
+            }
             continue;
         }
 
-        // Regular character (shouldn't happen in well-formed content, but pass through)
+        // Fallback character passthrough.
         result += content_raw[i];
         i++;
     }
