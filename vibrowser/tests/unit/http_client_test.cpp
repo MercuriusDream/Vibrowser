@@ -23885,3 +23885,175 @@ TEST(HttpClient, ConnectionPoolDifferentHostsIndependentV139) {
     EXPECT_EQ(pool.acquire("v139a.example.com", 80), -1);
     EXPECT_EQ(pool.acquire("v139b.example.com", 80), -1);
 }
+
+// ===========================================================================
+// V140 Tests
+// ===========================================================================
+
+// 1. Request serialize with default "/" path
+TEST(HttpClient, RequestSerializeGetDefaultPathSlashV140) {
+    Request req;
+    req.method = Method::GET;
+    req.host = "v140default.example.com";
+    req.port = 80;
+    req.path = "/";
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    // Path "/" produces "GET / HTTP/1.1"
+    EXPECT_NE(result.find("GET / HTTP/1.1\r\n"), std::string::npos);
+    // Port 80 omitted from Host header
+    EXPECT_NE(result.find("Host: v140default.example.com\r\n"), std::string::npos);
+    EXPECT_EQ(result.find("Host: v140default.example.com:80\r\n"), std::string::npos);
+    // Connection: close present
+    EXPECT_NE(result.find("Connection: close\r\n"), std::string::npos);
+    // Ends with double CRLF
+    EXPECT_NE(result.find("\r\n\r\n"), std::string::npos);
+}
+
+// 2. Response parse 200 with Content-Length: 0 and empty body
+TEST(HttpClient, ResponseParse200WithEmptyBodyV140) {
+    std::string raw =
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Length: 0\r\n"
+        "\r\n";
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 200);
+    EXPECT_EQ(resp->status_text, "OK");
+    EXPECT_EQ(resp->headers.get("content-length").value(), "0");
+    EXPECT_TRUE(resp->body.empty());
+    EXPECT_EQ(resp->body.size(), 0u);
+    EXPECT_EQ(resp->body_as_string(), "");
+}
+
+// 3. CookieJar with no cookies set returns empty string
+TEST(HttpClient, CookieJarNoCookiesReturnsEmptyStringV140) {
+    CookieJar jar;
+
+    std::string hdr = jar.get_cookie_header("v140nocookie.example.com", "/", false);
+    EXPECT_EQ(hdr, "");
+
+    // Also check a different path
+    std::string hdr2 = jar.get_cookie_header("v140nocookie.example.com", "/api", false);
+    EXPECT_EQ(hdr2, "");
+
+    // Secure flag variant
+    std::string hdr3 = jar.get_cookie_header("v140nocookie.example.com", "/", true);
+    EXPECT_EQ(hdr3, "");
+}
+
+// 4. HeaderMap get on non-existent key returns nullopt
+TEST(HttpClient, HeaderMapGetNonExistentReturnsNulloptV140) {
+    HeaderMap map;
+
+    // Completely empty map
+    EXPECT_FALSE(map.get("missing").has_value());
+    EXPECT_EQ(map.get("missing"), std::nullopt);
+
+    // After setting a different key, "missing" still returns nullopt
+    map.set("Content-Type", "text/plain");
+    EXPECT_FALSE(map.get("missing").has_value());
+    EXPECT_EQ(map.get("X-Nonexistent-V140"), std::nullopt);
+
+    // The key we set is still accessible
+    EXPECT_TRUE(map.get("Content-Type").has_value());
+    EXPECT_EQ(map.get("content-type").value(), "text/plain");
+}
+
+// 5. Request serialize with multiple custom headers all lowercase
+TEST(HttpClient, RequestSerializeMultipleCustomHeadersV140) {
+    Request req;
+    req.method = Method::POST;
+    req.host = "v140headers.example.com";
+    req.port = 443;
+    req.path = "/api/v140";
+    req.headers.set("X-Custom-One", "value-one-v140");
+    req.headers.set("X-Custom-Two", "value-two-v140");
+    req.headers.set("X-Custom-Three", "value-three-v140");
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    // Request line
+    EXPECT_NE(result.find("POST /api/v140 HTTP/1.1\r\n"), std::string::npos);
+    // Port 443 omitted from Host header
+    EXPECT_NE(result.find("Host: v140headers.example.com\r\n"), std::string::npos);
+    EXPECT_EQ(result.find("Host: v140headers.example.com:443\r\n"), std::string::npos);
+    // Connection: close present
+    EXPECT_NE(result.find("Connection: close\r\n"), std::string::npos);
+    // All three custom headers serialized in lowercase
+    EXPECT_NE(result.find("x-custom-one: value-one-v140\r\n"), std::string::npos);
+    EXPECT_NE(result.find("x-custom-two: value-two-v140\r\n"), std::string::npos);
+    EXPECT_NE(result.find("x-custom-three: value-three-v140\r\n"), std::string::npos);
+}
+
+// 6. Response parse 503 Service Unavailable
+TEST(HttpClient, ResponseParse503ServiceUnavailableV140) {
+    std::string raw =
+        "HTTP/1.1 503 Service Unavailable\r\n"
+        "Content-Length: 19\r\n"
+        "Retry-After: 120\r\n"
+        "\r\n"
+        "Service Unavailable";
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 503);
+    EXPECT_EQ(resp->status_text, "Service Unavailable");
+    EXPECT_EQ(resp->headers.get("content-length").value(), "19");
+    EXPECT_EQ(resp->headers.get("retry-after").value(), "120");
+    EXPECT_EQ(resp->body.size(), 19u);
+    EXPECT_EQ(resp->body_as_string(), "Service Unavailable");
+}
+
+// 7. CookieJar with cookie names containing dashes and underscores
+TEST(HttpClient, CookieJarCookieNameWithSpecialCharsV140) {
+    CookieJar jar;
+
+    jar.set_from_header("my-session_id=abc140", "v140special.example.com");
+    jar.set_from_header("x_csrf-token=def140", "v140special.example.com");
+
+    std::string hdr = jar.get_cookie_header("v140special.example.com", "/", false);
+
+    // Both cookies with special-char names should be present
+    EXPECT_NE(hdr.find("my-session_id=abc140"), std::string::npos);
+    EXPECT_NE(hdr.find("x_csrf-token=def140"), std::string::npos);
+
+    // Ensure the cookie names are intact (not mangled)
+    EXPECT_EQ(hdr.find("mysession"), std::string::npos);  // dashes not stripped
+    EXPECT_EQ(hdr.find("xcsrf"), std::string::npos);       // dashes/underscores not stripped
+}
+
+// 8. ConnectionPool empty after acquiring all released connections
+TEST(HttpClient, ConnectionPoolEmptyAfterAcquireAllV140) {
+    ConnectionPool pool;
+
+    // Release 2 connections
+    pool.release("v140pool.example.com", 80, 14001);
+    pool.release("v140pool.example.com", 80, 14002);
+    EXPECT_EQ(pool.count("v140pool.example.com", 80), 2u);
+
+    // Acquire first
+    int fd1 = pool.acquire("v140pool.example.com", 80);
+    EXPECT_NE(fd1, -1);
+    EXPECT_EQ(pool.count("v140pool.example.com", 80), 1u);
+
+    // Acquire second
+    int fd2 = pool.acquire("v140pool.example.com", 80);
+    EXPECT_NE(fd2, -1);
+    EXPECT_EQ(pool.count("v140pool.example.com", 80), 0u);
+
+    // Both fds should be the ones we released (order may be LIFO)
+    EXPECT_TRUE((fd1 == 14001 && fd2 == 14002) || (fd1 == 14002 && fd2 == 14001));
+
+    // Pool is now empty -- acquire returns -1
+    EXPECT_EQ(pool.acquire("v140pool.example.com", 80), -1);
+    EXPECT_EQ(pool.count("v140pool.example.com", 80), 0u);
+}

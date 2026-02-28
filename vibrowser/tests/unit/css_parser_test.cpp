@@ -10093,3 +10093,61 @@ TEST_F(CSSStylesheetTest, HyphensAutoDeclarationV139) {
     }
     EXPECT_TRUE(found) << "hyphens declaration not found";
 }
+
+// === V140 CSS Parser Tests ===
+
+TEST_F(CSSStylesheetTest, TabSizeDeclarationV140) {
+    auto ss = parse_stylesheet("pre { tab-size: 4; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "tab-size") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "4");
+        }
+    }
+    EXPECT_TRUE(found) << "tab-size declaration not found";
+}
+
+TEST_F(CSSStylesheetTest, WordBreakDeclarationV140) {
+    auto ss = parse_stylesheet("p { word-break: break-all; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "word-break") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "break-all");
+        }
+    }
+    EXPECT_TRUE(found) << "word-break declaration not found";
+}
+
+TEST_F(CSSStylesheetTest, LineClampDeclarationV140) {
+    auto ss = parse_stylesheet(".text { -webkit-line-clamp: 3; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "-webkit-line-clamp") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "3");
+        }
+    }
+    EXPECT_TRUE(found) << "-webkit-line-clamp declaration not found";
+}
+
+TEST_F(CSSStylesheetTest, TextShadowDeclarationV140) {
+    auto ss = parse_stylesheet("h1 { text-shadow: 2px 2px 4px black; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "text-shadow") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "2px");
+        }
+    }
+    EXPECT_TRUE(found) << "text-shadow declaration not found";
+}

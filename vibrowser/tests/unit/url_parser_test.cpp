@@ -14529,3 +14529,53 @@ TEST(UrlParserTest, UrlV139_4_SerializeProducesCanonicalForm) {
     EXPECT_EQ(result3->path, result2->path);
     EXPECT_EQ(result3->serialize(), result2->serialize());
 }
+
+// =============================================================================
+// V140 Tests
+// =============================================================================
+
+TEST(UrlParserTest, UrlV140_1_JavascriptUrlScheme) {
+    // javascript: is an opaque scheme — path holds the body, no host/port
+    auto result = parse("javascript:void(0)");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "javascript");
+    EXPECT_EQ(result->path, "void(0)");
+    EXPECT_TRUE(result->host.empty());
+    EXPECT_EQ(result->port, std::nullopt);
+    EXPECT_TRUE(result->query.empty());
+    EXPECT_TRUE(result->fragment.empty());
+}
+
+TEST(UrlParserTest, UrlV140_2_HttpPortOneNonDefault) {
+    // Port 1 is a valid non-default port for http — must be preserved
+    auto result = parse("http://x:1/");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "x");
+    ASSERT_TRUE(result->port.has_value());
+    EXPECT_EQ(result->port.value(), 1);
+    EXPECT_EQ(result->path, "/");
+}
+
+TEST(UrlParserTest, UrlV140_3_QueryWithEncodedChars) {
+    // URL parser double-encodes percent sequences: %20 → %2520
+    auto result = parse("http://example.com/?key=%20value");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/");
+    EXPECT_EQ(result->query, "key=%2520value");
+    EXPECT_EQ(result->port, std::nullopt);
+}
+
+TEST(UrlParserTest, UrlV140_4_FragmentWithSpecialChars) {
+    // Fragment may contain / and ? — they are not delimiters inside fragments
+    auto result = parse("http://example.com/#section/sub?param");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/");
+    EXPECT_TRUE(result->query.empty());
+    EXPECT_EQ(result->fragment, "section/sub?param");
+    EXPECT_EQ(result->port, std::nullopt);
+}

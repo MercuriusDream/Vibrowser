@@ -21456,3 +21456,94 @@ TEST(DomElement, GetAttributeAfterOverwriteV139) {
     // Should still be only one attribute entry, not two
     EXPECT_EQ(elem.attributes().size(), 1u);
 }
+
+// ---------------------------------------------------------------------------
+// Cycle V140 — 8 DOM tests
+// ---------------------------------------------------------------------------
+
+// 1. Removing the last child updates last_child pointer
+TEST(DomNode, LastChildUpdatesOnRemoveLastV140) {
+    auto parent = std::make_unique<Element>("ul");
+    auto a = std::make_unique<Element>("li");
+    auto b = std::make_unique<Element>("li");
+    auto c = std::make_unique<Element>("li");
+
+    Element* a_ptr = a.get();
+    Element* b_ptr = b.get();
+    Element* c_ptr = c.get();
+
+    parent->append_child(std::move(a));
+    parent->append_child(std::move(b));
+    parent->append_child(std::move(c));
+
+    EXPECT_EQ(parent->last_child(), c_ptr);
+
+    auto removed = parent->remove_child(*c_ptr);
+    EXPECT_EQ(parent->last_child(), b_ptr);
+}
+
+// 2. Toggle class off then on again — round-trip
+TEST(DomElement, MultipleClassToggleRoundTripV140) {
+    Element elem("span");
+    elem.class_list().add("x");
+    EXPECT_TRUE(elem.class_list().contains("x"));
+
+    elem.class_list().toggle("x");  // off
+    EXPECT_FALSE(elem.class_list().contains("x"));
+
+    elem.class_list().toggle("x");  // on again
+    EXPECT_TRUE(elem.class_list().contains("x"));
+}
+
+// 3. Document::create_element returns non-null with correct tag
+TEST(DomDocument, CreateElementReturnsNonNullV140) {
+    Document doc;
+    auto elem = doc.create_element("section");
+    ASSERT_NE(elem, nullptr);
+    EXPECT_EQ(elem->tag_name(), "section");
+}
+
+// 4. Freshly constructed Event has default_prevented()==false
+TEST(DomEvent, DefaultNotPreventedInitiallyV140) {
+    Event ev("click");
+    EXPECT_FALSE(ev.default_prevented());
+}
+
+// 5. A newly created element has zero children
+TEST(DomNode, ChildCountZeroOnNewElementV140) {
+    Element elem("article");
+    EXPECT_EQ(elem.child_count(), 0u);
+    EXPECT_EQ(elem.first_child(), nullptr);
+    EXPECT_EQ(elem.last_child(), nullptr);
+}
+
+// 6. "Class" and "class" are treated as different attribute names
+TEST(DomElement, SetAttributeSameNameDifferentCaseV140) {
+    Element elem("div");
+    elem.set_attribute("Class", "upper");
+    elem.set_attribute("class", "lower");
+
+    EXPECT_EQ(elem.attributes().size(), 2u);
+
+    auto upper = elem.get_attribute("Class");
+    auto lower = elem.get_attribute("class");
+    ASSERT_TRUE(upper.has_value());
+    ASSERT_TRUE(lower.has_value());
+    EXPECT_EQ(upper.value(), "upper");
+    EXPECT_EQ(lower.value(), "lower");
+}
+
+// 7. A fresh element's text_content is empty string
+TEST(DomNode, TextContentEmptyOnNewElementV140) {
+    Element elem("p");
+    EXPECT_EQ(elem.text_content(), "");
+}
+
+// 8. has_attribute returns false on a fresh element
+TEST(DomElement, HasAttributeFalseOnFreshElementV140) {
+    Element elem("div");
+    EXPECT_FALSE(elem.has_attribute("anything"));
+    EXPECT_FALSE(elem.has_attribute("id"));
+    EXPECT_FALSE(elem.has_attribute("class"));
+    EXPECT_FALSE(elem.has_attribute("style"));
+}

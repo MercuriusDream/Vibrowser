@@ -1190,3 +1190,42 @@ TEST(MessagePipeTest, MessagePipeV139_2_SendMaxSizeMessage) {
     EXPECT_EQ(received->size(), msg_size);
     EXPECT_EQ(*received, big_msg);
 }
+
+// ------------------------------------------------------------------
+// V140: Create pair — both ends are open
+// ------------------------------------------------------------------
+
+TEST(MessagePipeTest, MessagePipeV140_1_CreatePairBothEndsOpen) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    EXPECT_TRUE(a.is_open());
+    EXPECT_TRUE(b.is_open());
+}
+
+// ------------------------------------------------------------------
+// V140: Receive after multiple sends — order preserved
+// ------------------------------------------------------------------
+
+TEST(MessagePipeTest, MessagePipeV140_2_ReceiveAfterMultipleSends) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    std::vector<uint8_t> msg1 = {0x01, 0x02};
+    std::vector<uint8_t> msg2 = {0x03, 0x04};
+    std::vector<uint8_t> msg3 = {0x05, 0x06};
+
+    ASSERT_TRUE(a.send(msg1));
+    ASSERT_TRUE(a.send(msg2));
+    ASSERT_TRUE(a.send(msg3));
+
+    auto r1 = b.receive();
+    ASSERT_TRUE(r1.has_value());
+    EXPECT_EQ(*r1, msg1);
+
+    auto r2 = b.receive();
+    ASSERT_TRUE(r2.has_value());
+    EXPECT_EQ(*r2, msg2);
+
+    auto r3 = b.receive();
+    ASSERT_TRUE(r3.has_value());
+    EXPECT_EQ(*r3, msg3);
+}

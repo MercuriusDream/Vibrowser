@@ -22609,3 +22609,106 @@ TEST(HtmlParserTest, HtmlV139_8) {
     EXPECT_EQ(caption_el->tag_name, "caption");
     EXPECT_NE(caption_el->text_content().find("My Table"), std::string::npos);
 }
+
+// === V140 HTML Parser Tests ===
+
+TEST(HtmlParserTest, HtmlV140_1) {
+    // link element in head
+    auto doc = clever::html::parse("<html><head><link rel=\"stylesheet\" href=\"style.css\"></head><body></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* link_el = doc->find_element("link");
+    ASSERT_NE(link_el, nullptr);
+    EXPECT_EQ(link_el->tag_name, "link");
+    bool has_rel = false;
+    for (const auto& attr : link_el->attributes) {
+        if (attr.name == "rel" && attr.value == "stylesheet") has_rel = true;
+    }
+    EXPECT_TRUE(has_rel);
+}
+
+TEST(HtmlParserTest, HtmlV140_2) {
+    // meta element with charset
+    auto doc = clever::html::parse("<html><head><meta charset=\"utf-8\"></head><body></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* meta_el = doc->find_element("meta");
+    ASSERT_NE(meta_el, nullptr);
+    EXPECT_EQ(meta_el->tag_name, "meta");
+    bool has_charset = false;
+    for (const auto& attr : meta_el->attributes) {
+        if (attr.name == "charset" && attr.value == "utf-8") has_charset = true;
+    }
+    EXPECT_TRUE(has_charset);
+}
+
+TEST(HtmlParserTest, HtmlV140_3) {
+    // style element in head
+    auto doc = clever::html::parse("<html><head><style>body { color: red; }</style></head><body></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* style_el = doc->find_element("style");
+    ASSERT_NE(style_el, nullptr);
+    EXPECT_EQ(style_el->tag_name, "style");
+}
+
+TEST(HtmlParserTest, HtmlV140_4) {
+    // script element in body
+    auto doc = clever::html::parse("<html><body><script>var x = 1;</script></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* script_el = doc->find_element("script");
+    ASSERT_NE(script_el, nullptr);
+    EXPECT_EQ(script_el->tag_name, "script");
+}
+
+TEST(HtmlParserTest, HtmlV140_5) {
+    // base element with href
+    auto doc = clever::html::parse("<html><head><base href=\"https://example.com/\"></head><body></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* base_el = doc->find_element("base");
+    ASSERT_NE(base_el, nullptr);
+    EXPECT_EQ(base_el->tag_name, "base");
+    bool has_href = false;
+    for (const auto& attr : base_el->attributes) {
+        if (attr.name == "href" && attr.value == "https://example.com/") has_href = true;
+    }
+    EXPECT_TRUE(has_href);
+}
+
+TEST(HtmlParserTest, HtmlV140_6) {
+    // head element exists
+    auto doc = clever::html::parse("<html><head><title>Test</title></head><body></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* head_el = doc->find_element("head");
+    ASSERT_NE(head_el, nullptr);
+    EXPECT_EQ(head_el->tag_name, "head");
+}
+
+TEST(HtmlParserTest, HtmlV140_7) {
+    // title element with text
+    auto doc = clever::html::parse("<html><head><title>My Page</title></head><body></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* title_el = doc->find_element("title");
+    ASSERT_NE(title_el, nullptr);
+    EXPECT_EQ(title_el->tag_name, "title");
+    EXPECT_NE(title_el->text_content().find("My Page"), std::string::npos);
+}
+
+TEST(HtmlParserTest, HtmlV140_8) {
+    // form element with action and method
+    auto doc = clever::html::parse("<html><body><form action=\"/submit\" method=\"post\"><input type=\"text\"></form></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* form_el = doc->find_element("form");
+    ASSERT_NE(form_el, nullptr);
+    EXPECT_EQ(form_el->tag_name, "form");
+    bool has_action = false;
+    for (const auto& attr : form_el->attributes) {
+        if (attr.name == "action" && attr.value == "/submit") has_action = true;
+    }
+    EXPECT_TRUE(has_action);
+}

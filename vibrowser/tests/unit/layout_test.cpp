@@ -26250,3 +26250,134 @@ TEST(LayoutNodeProps, SpecifiedWidthDefaultNegativeV139) {
     EXPECT_FLOAT_EQ(n->specified_width, -1.0f);
     EXPECT_FLOAT_EQ(n->specified_height, -1.0f);
 }
+
+// === V140 Layout Tests ===
+
+TEST(LayoutEngineTest, LayoutV140_1) {
+    // Flex container with no children has zero height
+    auto root = make_flex("div");
+    root->specified_width = 400.0f;
+    root->flex_direction = 0; // row
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(root->geometry.width, 400.0f);
+    EXPECT_FLOAT_EQ(root->geometry.height, 0.0f);
+}
+
+TEST(LayoutEngineTest, LayoutV140_2) {
+    // Block with single child — child fills parent width
+    auto root = make_block("div");
+    root->specified_width = 600.0f;
+    auto child = make_block("p");
+    child->specified_height = 40.0f;
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.width, 600.0f);
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.height, 40.0f);
+}
+
+TEST(LayoutEngineTest, LayoutV140_3) {
+    // Flex column with flex-grow distributes space
+    auto root = make_flex("div");
+    root->flex_direction = 2; // column
+    root->specified_height = 300.0f;
+
+    auto child1 = make_block("div");
+    child1->flex_grow = 1.0f;
+    child1->display = DisplayType::Block;
+    auto child2 = make_block("div");
+    child2->flex_grow = 2.0f;
+    child2->display = DisplayType::Block;
+
+    root->append_child(std::move(child1));
+    root->append_child(std::move(child2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_NEAR(root->children[0]->geometry.height, 100.0f, 1.0f);
+    EXPECT_NEAR(root->children[1]->geometry.height, 200.0f, 1.0f);
+}
+
+TEST(LayoutEngineTest, LayoutV140_4) {
+    // Block margin-top on first child offsets it
+    auto root = make_block("div");
+    auto child = make_block("p");
+    child->specified_height = 50.0f;
+    child->geometry.margin.top = 20.0f;
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.y, 20.0f);
+}
+
+TEST(LayoutEngineTest, LayoutV140_5) {
+    // Flex row gap between items
+    auto root = make_flex("div");
+    root->flex_direction = 0; // row
+    root->gap = 10.0f;           // row-gap
+    root->column_gap_val = 10.0f; // column-gap (gap shorthand sets both)
+
+    auto child1 = make_block("div");
+    child1->specified_width = 100.0f;
+    child1->specified_height = 50.0f;
+    auto child2 = make_block("div");
+    child2->specified_width = 100.0f;
+    child2->specified_height = 50.0f;
+
+    root->append_child(std::move(child1));
+    root->append_child(std::move(child2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.x, 0.0f);
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.x, 110.0f);
+}
+
+TEST(LayoutEngineTest, LayoutV140_6) {
+    // Specified height overrides auto height
+    auto root = make_block("div");
+    root->specified_height = 250.0f;
+    auto child = make_block("div");
+    child->specified_height = 50.0f;
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(root->geometry.height, 250.0f);
+}
+
+TEST(LayoutEngineTest, LayoutV140_7) {
+    // Multiple blocks total height is sum of children
+    auto root = make_block("div");
+    auto c1 = make_block("div");
+    c1->specified_height = 30.0f;
+    auto c2 = make_block("div");
+    c2->specified_height = 40.0f;
+    auto c3 = make_block("div");
+    c3->specified_height = 50.0f;
+
+    root->append_child(std::move(c1));
+    root->append_child(std::move(c2));
+    root->append_child(std::move(c3));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(root->geometry.height, 120.0f);
+}
+
+TEST(LayoutNodeProps, DisplayDefaultBlockV140) {
+    auto n = make_block();
+    EXPECT_EQ(n->display, DisplayType::Block);
+    EXPECT_EQ(n->mode, LayoutMode::Block);
+}

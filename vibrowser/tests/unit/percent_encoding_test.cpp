@@ -832,3 +832,48 @@ TEST(IsURLCodePoint, AsteriskIsCodePointV139) {
     EXPECT_EQ(percent_decode("%2A"), "*");
     EXPECT_EQ(percent_decode("%2a"), "*");
 }
+
+// =============================================================================
+// V140 Tests
+// =============================================================================
+
+TEST(PercentEncoding, PipeCharEncodedV140) {
+    // '|' (U+007C) is not unreserved and not a sub-delimiter — must be encoded
+    EXPECT_EQ(percent_encode("|"), "%7C");
+    EXPECT_EQ(percent_encode("a|b|c"), "a%7Cb%7Cc");
+    // Decoding %7C recovers '|'
+    EXPECT_EQ(percent_decode("%7C"), "|");
+    EXPECT_EQ(percent_decode("%7c"), "|");
+}
+
+TEST(PercentDecoding, LowercaseHexDecodesV140) {
+    // Lowercase hex digits %6a must decode to 'j' (U+006A)
+    EXPECT_EQ(percent_decode("%6a"), "j");
+    // Uppercase equivalent also decodes to 'j'
+    EXPECT_EQ(percent_decode("%6A"), "j");
+    // Mixed case in a longer string
+    EXPECT_EQ(percent_decode("%6a%75%6d%70"), "jump");
+}
+
+TEST(PercentEncoding, ColonNotEncodedV140) {
+    // ':' is a sub-delimiter / path character — NOT encoded by default
+    EXPECT_EQ(percent_encode(":"), ":");
+    EXPECT_EQ(percent_encode("time:12:30"), "time:12:30");
+    // With encode_path_chars=true, ':' SHOULD be encoded
+    EXPECT_EQ(percent_encode(":", true), "%3A");
+    // Decoding %3A recovers ':'
+    EXPECT_EQ(percent_decode("%3A"), ":");
+}
+
+TEST(IsURLCodePoint, EqualsSignIsCodePointV140) {
+    // '=' (U+003D) is a valid URL code point per the WHATWG URL spec
+    EXPECT_TRUE(is_url_code_point('='));
+    // '=' is a sub-delimiter, so NOT encoded by default
+    EXPECT_EQ(percent_encode("="), "=");
+    EXPECT_EQ(percent_encode("key=value"), "key=value");
+    // With encode_path_chars=true, '=' SHOULD be encoded
+    EXPECT_EQ(percent_encode("=", true), "%3D");
+    // Decoding %3D should give back '='
+    EXPECT_EQ(percent_decode("%3D"), "=");
+    EXPECT_EQ(percent_decode("%3d"), "=");
+}

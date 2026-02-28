@@ -25343,3 +25343,42 @@ TEST(CSSStyleTest, CssV139_4_PositionRelativeV139) {
     cascade.apply_declaration(style, make_decl("position", "relative"), parent);
     EXPECT_EQ(style.position, Position::Relative);
 }
+
+// === V140 CSS Style Tests ===
+
+TEST(CSSStyleTest, CssV140_1_DisplayNoneV140) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("display", "none"), parent);
+    EXPECT_EQ(style.display, Display::None);
+}
+
+TEST(PropertyCascadeTest, OverflowVisibleV140) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("overflow", "visible"), parent);
+    EXPECT_EQ(style.overflow_x, Overflow::Visible);
+    EXPECT_EQ(style.overflow_y, Overflow::Visible);
+}
+
+TEST(CSSStyleTest, CssV140_3_FontFamilySansSerifV140) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("font-family", "sans-serif"), parent);
+    EXPECT_EQ(style.font_family, "sans-serif");
+}
+
+TEST(CSSStyleTest, CssV140_4_LineHeightNumericV140) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("line-height", "1.5"), parent);
+    EXPECT_FLOAT_EQ(style.line_height_unitless, 1.5f);
+}

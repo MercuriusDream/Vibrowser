@@ -35460,3 +35460,99 @@ TEST(JSEngine, JsV139_8) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "9,1");
 }
+
+// === V140 JS Engine Tests ===
+
+TEST(JSEngine, JsV140_1) {
+    // Array.prototype.filter
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var arr = [1, 2, 3, 4, 5, 6];
+        var evens = arr.filter(function(x) { return x % 2 === 0; });
+        evens.join(',');
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "2,4,6");
+}
+
+TEST(JSEngine, JsV140_2) {
+    // String.prototype.charAt
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var s = 'hello';
+        s.charAt(0) + s.charAt(4);
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "ho");
+}
+
+TEST(JSEngine, JsV140_3) {
+    // Object.create with prototype
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var proto = { greet: function() { return 'hi'; } };
+        var obj = Object.create(proto);
+        obj.greet();
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "hi");
+}
+
+TEST(JSEngine, JsV140_4) {
+    // Array.prototype.map
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var arr = [1, 2, 3];
+        var doubled = arr.map(function(x) { return x * 2; });
+        doubled.join(',');
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "2,4,6");
+}
+
+TEST(JSEngine, JsV140_5) {
+    // JSON.parse
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var obj = JSON.parse('{"name":"test","value":42}');
+        obj.name + ':' + obj.value;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "test:42");
+}
+
+TEST(JSEngine, JsV140_6) {
+    // String.prototype.slice
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var s = 'hello world';
+        s.slice(6);
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "world");
+}
+
+TEST(JSEngine, JsV140_7) {
+    // Array.prototype.every
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var arr = [2, 4, 6, 8];
+        var allEven = arr.every(function(x) { return x % 2 === 0; });
+        String(allEven);
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true");
+}
+
+TEST(JSEngine, JsV140_8) {
+    // Math.floor/ceil/round
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var f = Math.floor(3.7);
+        var c = Math.ceil(3.2);
+        var r = Math.round(3.5);
+        f + ',' + c + ',' + r;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "3,4,4");
+}

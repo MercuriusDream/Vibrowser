@@ -1463,3 +1463,90 @@ TEST(MessageChannelTest, MessageChannelV139_3_SendReceiveRapidSuccession) {
         EXPECT_EQ(received->payload[1], static_cast<uint8_t>(i + 100));
     }
 }
+
+// ------------------------------------------------------------------
+// V140: Handler fires only on correct type (10, 20, 30)
+// ------------------------------------------------------------------
+
+TEST(MessageChannelTest, MessageChannelV140_1_HandlerFiresOnCorrectType) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel ch(std::move(pa));
+
+    int handler10_count = 0;
+    int handler20_count = 0;
+    int handler30_count = 0;
+
+    ch.on(10, [&](const Message&) { handler10_count++; });
+    ch.on(20, [&](const Message&) { handler20_count++; });
+    ch.on(30, [&](const Message&) { handler30_count++; });
+
+    // Dispatch type 20 only
+    Message msg;
+    msg.type = 20;
+    msg.request_id = 0;
+    ch.dispatch(msg);
+
+    EXPECT_EQ(handler10_count, 0);
+    EXPECT_EQ(handler20_count, 1);
+    EXPECT_EQ(handler30_count, 0);
+
+    // Dispatch type 10 twice
+    msg.type = 10;
+    ch.dispatch(msg);
+    ch.dispatch(msg);
+
+    EXPECT_EQ(handler10_count, 2);
+    EXPECT_EQ(handler20_count, 1);
+    EXPECT_EQ(handler30_count, 0);
+}
+
+// ------------------------------------------------------------------
+// V140: Empty payload handler still fires
+// ------------------------------------------------------------------
+
+TEST(MessageChannelTest, MessageChannelV140_2_PayloadSizeZeroHandlerFires) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel ch(std::move(pa));
+
+    bool handler_called = false;
+    size_t payload_size = 999;
+
+    ch.on(42, [&](const Message& m) {
+        handler_called = true;
+        payload_size = m.payload.size();
+    });
+
+    Message msg;
+    msg.type = 42;
+    msg.request_id = 0;
+    // payload intentionally left empty
+    ch.dispatch(msg);
+
+    EXPECT_TRUE(handler_called);
+    EXPECT_EQ(payload_size, 0u);
+}
+
+// ------------------------------------------------------------------
+// V140: Request ID preserved across channel send/receive
+// ------------------------------------------------------------------
+
+TEST(MessageChannelTest, MessageChannelV140_3_RequestIdPreservedAcrossChannel) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel sender(std::move(pa));
+    MessageChannel receiver(std::move(pb));
+
+    Message msg;
+    msg.type = 1;
+    msg.request_id = 12345;
+    msg.payload = {0xAA, 0xBB};
+
+    ASSERT_TRUE(sender.send(msg));
+
+    auto received = receiver.receive();
+    ASSERT_TRUE(received.has_value());
+    EXPECT_EQ(received->request_id, 12345u);
+    EXPECT_EQ(received->type, 1u);
+    EXPECT_EQ(received->payload.size(), 2u);
+    EXPECT_EQ(received->payload[0], 0xAA);
+    EXPECT_EQ(received->payload[1], 0xBB);
+}

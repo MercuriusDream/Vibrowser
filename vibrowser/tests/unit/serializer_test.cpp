@@ -20206,3 +20206,60 @@ TEST(SerializerTest, SerializerV139_3_BoolFalseThenTruePattern) {
     }
     EXPECT_FALSE(d.has_remaining());
 }
+
+// ------------------------------------------------------------------
+// V140: U32 powers of two round-trip (1, 2, 4, ..., 2^31)
+// ------------------------------------------------------------------
+
+TEST(SerializerTest, SerializerV140_1_U32PowersOfTwoRoundTrip) {
+    Serializer s;
+    // Write powers of two: 1, 2, 4, 8, ..., 2^31 = 32 values
+    for (int exp = 0; exp <= 31; ++exp) {
+        s.write_u32(static_cast<uint32_t>(1u << exp));
+    }
+
+    Deserializer d(s.data());
+    for (int exp = 0; exp <= 31; ++exp) {
+        uint32_t expected = static_cast<uint32_t>(1u << exp);
+        EXPECT_EQ(d.read_u32(), expected) << "Mismatch at 2^" << exp;
+    }
+    EXPECT_FALSE(d.has_remaining());
+}
+
+// ------------------------------------------------------------------
+// V140: Multiple empty strings in a row (5 consecutive)
+// ------------------------------------------------------------------
+
+TEST(SerializerTest, SerializerV140_2_MultipleEmptyStrings) {
+    Serializer s;
+    for (int i = 0; i < 5; ++i) {
+        s.write_string("");
+    }
+
+    Deserializer d(s.data());
+    for (int i = 0; i < 5; ++i) {
+        std::string result = d.read_string();
+        EXPECT_TRUE(result.empty()) << "String " << i << " should be empty, got: " << result;
+    }
+    EXPECT_FALSE(d.has_remaining());
+}
+
+// ------------------------------------------------------------------
+// V140: Byte sequence of 256 bytes all 0xFF
+// ------------------------------------------------------------------
+
+TEST(SerializerTest, SerializerV140_3_ByteSequenceFFPattern) {
+    constexpr size_t len = 256;
+    std::vector<uint8_t> pattern(len, 0xFF);
+
+    Serializer s;
+    s.write_bytes(pattern.data(), pattern.size());
+
+    Deserializer d(s.data());
+    auto result = d.read_bytes();
+    ASSERT_EQ(result.size(), len);
+    for (size_t i = 0; i < len; ++i) {
+        EXPECT_EQ(result[i], 0xFF) << "Byte at index " << i << " should be 0xFF";
+    }
+    EXPECT_FALSE(d.has_remaining());
+}
