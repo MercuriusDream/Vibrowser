@@ -15123,3 +15123,37 @@ TEST(UrlParserTest, UrlV152_4_UnknownSchemeAccepted) {
     EXPECT_EQ(result->path, "/settings");
     EXPECT_FALSE(result->is_special());
 }
+
+// =============================================================================
+// V153 URL Parser Tests
+// =============================================================================
+
+TEST(UrlParserTest, UrlV153_1_SchemeIsCaseInsensitive) {
+    // Schemes should be lowercased during parsing per the URL standard
+    auto result = parse("HTTP://EXAMPLE.COM/path");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+}
+
+TEST(UrlParserTest, UrlV153_2_EmptyQueryPreserved) {
+    // A trailing '?' with no query content should produce an empty query string
+    auto result = parse("http://example.com?");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->query, "");
+}
+
+TEST(UrlParserTest, UrlV153_3_PathSegmentsWithDots) {
+    // Double-dot segments should be resolved: /a/b/../c → /a/c
+    auto result = parse("http://example.com/a/b/../c");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->path, "/a/c");
+}
+
+TEST(UrlParserTest, UrlV153_4_HostnameLowercased) {
+    // Hostnames should be lowercased during parsing
+    auto result = parse("HTTP://EXAMPLE.COM/path");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->host, "example.com");
+}

@@ -28183,3 +28183,175 @@ TEST(LayoutNodeProps, FontSizeDefaultV152) {
     auto node = make_block("div");
     EXPECT_FLOAT_EQ(node->font_size, 16.0f);
 }
+
+// V153_1: flex justify-content flex-end
+TEST(LayoutEngineTest, LayoutV153_1) {
+    auto root = make_flex("div");
+    root->flex_direction = 0; // row
+    root->justify_content = 1; // flex-end
+    root->specified_width = 500.0f;
+    root->specified_height = 80.0f;
+
+    auto c1 = make_block("div");
+    c1->specified_width = 70.0f;
+    c1->specified_height = 40.0f;
+    c1->flex_grow = 0;
+    c1->flex_shrink = 0;
+
+    auto c2 = make_block("div");
+    c2->specified_width = 90.0f;
+    c2->specified_height = 40.0f;
+    c2->flex_grow = 0;
+    c2->flex_shrink = 0;
+
+    root->append_child(std::move(c1));
+    root->append_child(std::move(c2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 500.0f, 400.0f);
+
+    ASSERT_GE(root->children.size(), 2u);
+    // Total item width = 160, free = 340; flex-end: first at 340, second at 410
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.x, 340.0f);
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.x, 410.0f);
+}
+
+// V153_2: grid with gap between cells
+TEST(GridLayout, GridGapBetweenCellsV153) {
+    auto root = make_grid();
+    root->grid_template_columns = "80px 80px";
+    root->column_gap_val = 15.0f;
+    root->specified_width = 175.0f;
+
+    auto child1 = make_block("div");
+    child1->specified_height = 45.0f;
+    auto child2 = make_block("div");
+    child2->specified_height = 45.0f;
+
+    root->append_child(std::move(child1));
+    root->append_child(std::move(child2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 175.0f, 600.0f);
+
+    // Second child should be at x = 80 + 15 = 95
+    EXPECT_NEAR(root->children[1]->geometry.x, 95.0f, 1.0f);
+}
+
+// V153_3: two children equal flex-grow
+TEST(LayoutEngineTest, LayoutV153_3) {
+    auto root = make_flex("div");
+
+    auto c1 = make_block("div");
+    c1->specified_width = 100.0f;
+    c1->specified_height = 40.0f;
+    c1->flex_grow = 1.0f;
+
+    auto c2 = make_block("div");
+    c2->specified_width = 100.0f;
+    c2->specified_height = 40.0f;
+    c2->flex_grow = 1.0f;
+
+    root->append_child(std::move(c1));
+    root->append_child(std::move(c2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 600.0f, 400.0f);
+
+    // Remaining = 600 - 200 = 400. Equal grow => 200 each
+    // child1 = 100+200 = 300, child2 = 100+200 = 300
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.width, 300.0f);
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.width, 300.0f);
+}
+
+// V153_4: margin-top on first child
+TEST(LayoutEngineTest, LayoutV153_4) {
+    auto root = make_block("div");
+    auto child = make_block("div");
+    child->specified_height = 60.0f;
+    child->geometry.margin.top = 25.0f;
+
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    auto& c = *root->children[0];
+    EXPECT_FLOAT_EQ(c.geometry.y, 25.0f);
+    EXPECT_FLOAT_EQ(root->geometry.height, 25.0f + 60.0f);
+}
+
+// V153_5: padding-left offsets content
+TEST(LayoutEngineTest, LayoutV153_5) {
+    auto root = make_block("div");
+    root->geometry.padding.left = 35.0f;
+
+    auto child = make_block("div");
+    child->specified_height = 40.0f;
+
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // Child width = 800 - 35 (padding-left) = 765
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.width, 765.0f);
+}
+
+// V153_6: border-width all sides
+TEST(LayoutEngineTest, LayoutV153_6) {
+    auto root = make_block("div");
+    root->geometry.border.left = 3.0f;
+    root->geometry.border.right = 3.0f;
+    root->geometry.border.top = 3.0f;
+    root->geometry.border.bottom = 3.0f;
+
+    auto child = make_block("div");
+    child->specified_height = 50.0f;
+
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // Child width = 800 - 6 = 794
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.width, 794.0f);
+    // Root height = 3 + 50 + 3 = 56
+    EXPECT_FLOAT_EQ(root->geometry.height, 56.0f);
+}
+
+// V153_7: flex column with gap
+TEST(LayoutEngineTest, LayoutV153_7) {
+    auto root = make_flex("div");
+    root->flex_direction = 2; // column
+    root->gap = 15.0f;
+
+    auto c1 = make_block("div");
+    c1->specified_width = 100.0f;
+    c1->specified_height = 30.0f;
+
+    auto c2 = make_block("div");
+    c2->specified_width = 100.0f;
+    c2->specified_height = 30.0f;
+
+    auto c3 = make_block("div");
+    c3->specified_width = 100.0f;
+    c3->specified_height = 30.0f;
+
+    root->append_child(std::move(c1));
+    root->append_child(std::move(c2));
+    root->append_child(std::move(c3));
+
+    LayoutEngine engine;
+    engine.compute(*root, 600.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.y, 0.0f);
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.y, 45.0f);  // 30 + 15
+    EXPECT_FLOAT_EQ(root->children[2]->geometry.y, 90.0f);  // 45 + 30 + 15
+}
+
+// V153_8: background_color defaults to transparent (0)
+TEST(LayoutNodeProps, BackgroundColorDefaultTransparentV153) {
+    auto node = make_block("div");
+    EXPECT_EQ(node->background_color, 0x00000000u);
+}

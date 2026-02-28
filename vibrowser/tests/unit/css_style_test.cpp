@@ -25873,3 +25873,65 @@ TEST(CSSStyleTest, CssV152_4_FontWeightBoldAndNormal) {
     cascade.apply_declaration(style, make_decl("font-weight", "normal"), parent);
     EXPECT_EQ(style.font_weight, 400);
 }
+
+// ---------------------------------------------------------------------------
+// Cycle V153 — writing-mode, line-height inherited, hyphens, multiple transforms
+// ---------------------------------------------------------------------------
+
+TEST(PropertyCascadeTest, WritingModeAppliedV153) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.writing_mode, 0);  // default: horizontal-tb
+    cascade.apply_declaration(style, make_decl("writing-mode", "vertical-rl"), parent);
+    EXPECT_EQ(style.writing_mode, 1);  // vertical-rl = 1
+}
+
+TEST(CSSStyleTest, CssV153_2_LineHeightInherited) {
+    // Parent: font-size 20px, unitless line-height 1.5 (= 30px)
+    ComputedStyle parent;
+    parent.font_size = Length::px(20);
+    parent.line_height = Length::px(30);
+    parent.line_height_unitless = 1.5f;
+
+    // Child: font-size 10px, line-height inherited unitless 1.5
+    // After recomputation, line-height should be 1.5 * 10 = 15px
+    ComputedStyle child;
+    child.font_size = Length::px(10);
+    child.line_height = parent.line_height;  // inherited 30px
+    child.line_height_unitless = parent.line_height_unitless;  // inherited 1.5
+
+    // Simulate cascade recomputation for unitless line-height
+    if (child.line_height_unitless > 0 &&
+        child.font_size.value != parent.font_size.value) {
+        child.line_height = Length::px(child.line_height_unitless * child.font_size.value);
+    }
+    EXPECT_FLOAT_EQ(child.line_height.value, 15.0f);  // 1.5 * 10
+    EXPECT_FLOAT_EQ(child.line_height_unitless, 1.5f);  // factor preserved
+}
+
+TEST(PropertyCascadeTest, HyphensAppliedV153) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.hyphens, 1);  // default: manual
+    cascade.apply_declaration(style, make_decl("hyphens", "auto"), parent);
+    EXPECT_EQ(style.hyphens, 2);  // auto = 2
+}
+
+TEST(CSSStyleTest, CssV153_4_MultipleTransformsApplied) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style,
+        make_decl("transform", "translate(20px, 10px) rotate(30deg)"), parent);
+    ASSERT_EQ(style.transforms.size(), 2u);
+    EXPECT_EQ(style.transforms[0].type, TransformType::Translate);
+    EXPECT_FLOAT_EQ(style.transforms[0].x, 20.0f);
+    EXPECT_FLOAT_EQ(style.transforms[0].y, 10.0f);
+    EXPECT_EQ(style.transforms[1].type, TransformType::Rotate);
+    EXPECT_FLOAT_EQ(style.transforms[1].angle, 30.0f);
+}

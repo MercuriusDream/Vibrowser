@@ -20932,3 +20932,52 @@ TEST(SerializerTest, SerializerV152_3_BytesWithAllPossibleValues) {
     }
     EXPECT_FALSE(d.has_remaining());
 }
+
+// ------------------------------------------------------------------
+// Round 153 — Serializer tests
+// ------------------------------------------------------------------
+
+TEST(SerializerTest, SerializerV153_1_BoolFalseOnlySequence) {
+    Serializer s;
+    for (int i = 0; i < 10; ++i) {
+        s.write_bool(false);
+    }
+
+    Deserializer d(s.data());
+    for (int i = 0; i < 10; ++i) {
+        EXPECT_FALSE(d.read_bool());
+    }
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, SerializerV153_2_U8AllBoundaryValues) {
+    Serializer s;
+    s.write_u8(0);
+    s.write_u8(1);
+    s.write_u8(127);
+    s.write_u8(128);
+    s.write_u8(254);
+    s.write_u8(255);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u8(), 0);
+    EXPECT_EQ(d.read_u8(), 1);
+    EXPECT_EQ(d.read_u8(), 127);
+    EXPECT_EQ(d.read_u8(), 128);
+    EXPECT_EQ(d.read_u8(), 254);
+    EXPECT_EQ(d.read_u8(), 255);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, SerializerV153_3_EmptyBytesFollowedByString) {
+    Serializer s;
+    s.write_bytes(nullptr, 0);
+    s.write_string("after_empty");
+
+    Deserializer d(s.data());
+    auto bytes = d.read_bytes();
+    EXPECT_TRUE(bytes.empty());
+    std::string str = d.read_string();
+    EXPECT_EQ(str, "after_empty");
+    EXPECT_FALSE(d.has_remaining());
+}

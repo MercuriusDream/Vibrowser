@@ -10835,3 +10835,63 @@ TEST_F(CSSStylesheetTest, IsolationIsolateDeclarationV152) {
     }
     EXPECT_TRUE(found) << "isolation declaration not found";
 }
+
+// ---------------------------------------------------------------------------
+// Cycle V153 — writing-mode, hyphens auto, tab-size, caret-color
+// ---------------------------------------------------------------------------
+
+TEST_F(CSSStylesheetTest, WritingModeDeclarationV153) {
+    auto ss = parse_stylesheet(".vertical { writing-mode: vertical-rl; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "writing-mode") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "vertical-rl");
+        }
+    }
+    EXPECT_TRUE(found) << "writing-mode declaration not found";
+}
+
+TEST_F(CSSStylesheetTest, HyphensAutoDeclarationV153) {
+    auto ss = parse_stylesheet("p { hyphens: auto; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "hyphens") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "auto");
+        }
+    }
+    EXPECT_TRUE(found) << "hyphens declaration not found";
+}
+
+TEST_F(CSSStylesheetTest, TabSizeDeclarationV153) {
+    auto ss = parse_stylesheet("pre { tab-size: 8; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "tab-size") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "8");
+        }
+    }
+    EXPECT_TRUE(found) << "tab-size declaration not found";
+}
+
+TEST_F(CSSStylesheetTest, CaretColorDeclarationV153) {
+    auto ss = parse_stylesheet("input { caret-color: blue; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "caret-color") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "blue");
+        }
+    }
+    EXPECT_TRUE(found) << "caret-color declaration not found";
+}

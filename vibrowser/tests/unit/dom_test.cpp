@@ -23028,3 +23028,73 @@ TEST(DomElement, InnerTextReturnsDirectTextContentV152) {
 
     EXPECT_EQ(inner_text(root), "Hello beautiful world!");
 }
+
+// ---------------------------------------------------------------------------
+// Round 153 — DOM tests
+// ---------------------------------------------------------------------------
+
+// 1. New element has first_child()==nullptr
+TEST(DomNode, FirstChildNullWhenEmptyV153) {
+    Element elem("div");
+    EXPECT_EQ(elem.first_child(), nullptr);
+}
+
+// 2. tag_name() returns correct value for various elements
+TEST(DomElement, TagNameReturnsCorrectValueV153) {
+    Element div("div");
+    EXPECT_EQ(div.tag_name(), "div");
+
+    Element span("span");
+    EXPECT_EQ(span.tag_name(), "span");
+
+    Element article("article");
+    EXPECT_EQ(article.tag_name(), "article");
+}
+
+// 3. Document node_type is NodeType::Document
+TEST(DomDocument, NodeTypeIsDocumentV153) {
+    Document doc;
+    EXPECT_EQ(doc.node_type(), NodeType::Document);
+}
+
+// 4. Cancelable event can be prevented
+TEST(DomEvent, CancelableEventCanBePreventedV153) {
+    Event evt("click", true, true);  // bubbles=true, cancelable=true
+    EXPECT_FALSE(evt.default_prevented());
+    evt.prevent_default();
+    EXPECT_TRUE(evt.default_prevented());
+}
+
+// 5. Detached node has parent()==nullptr
+TEST(DomNode, ParentNodeNullForRootV153) {
+    Element elem("section");
+    EXPECT_EQ(elem.parent(), nullptr);
+}
+
+// 6. Removing a class that doesn't exist is a no-op
+TEST(DomElement, ClassListRemoveNonExistentNoopV153) {
+    Element elem("div");
+    elem.class_list().add("alpha");
+    elem.class_list().add("beta");
+    elem.class_list().remove("gamma");
+    // Should still have original classes and no crash
+    EXPECT_TRUE(elem.class_list().contains("alpha"));
+    EXPECT_TRUE(elem.class_list().contains("beta"));
+    EXPECT_FALSE(elem.class_list().contains("gamma"));
+}
+
+// 7. New element has last_child()==nullptr
+TEST(DomNode, LastChildNullWhenEmptyV153) {
+    Element elem("span");
+    EXPECT_EQ(elem.last_child(), nullptr);
+}
+
+// 8. set_attribute with empty value is allowed
+TEST(DomElement, SetAttributeEmptyValueAllowedV153) {
+    Element elem("input");
+    elem.set_attribute("data-x", "");
+    ASSERT_TRUE(elem.has_attribute("data-x"));
+    auto val = elem.get_attribute("data-x");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(val.value(), "");
+}

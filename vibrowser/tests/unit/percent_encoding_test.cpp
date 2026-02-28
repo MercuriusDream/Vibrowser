@@ -1267,3 +1267,32 @@ TEST(IsURLCodePoint, PeriodAndExclamationValidV152) {
     EXPECT_TRUE(is_url_code_point(static_cast<char32_t>('.')));
     EXPECT_TRUE(is_url_code_point(static_cast<char32_t>('!')));
 }
+
+// =============================================================================
+// V153 Percent Encoding Tests
+// =============================================================================
+
+TEST(PercentEncoding, EqualsSignEncodedV153) {
+    // The '=' character is a path char: not encoded by default, encoded with encode_path_chars=true
+    EXPECT_EQ(percent_encode("="), "=");
+    EXPECT_EQ(percent_encode("=", true), "%3D");
+    EXPECT_EQ(percent_encode("key=value", true), "key%3Dvalue");
+}
+
+TEST(PercentDecoding, DoubleEncodedDecodesOnceV153) {
+    // Double-encoded %2520 should decode once to %20 (not to a space)
+    EXPECT_EQ(percent_decode("%2520"), "%20");
+}
+
+TEST(PercentEncoding, AtSignEncodedV153) {
+    // The '@' character is a path char: not encoded by default, encoded with encode_path_chars=true
+    EXPECT_EQ(percent_encode("@"), "@");
+    EXPECT_EQ(percent_encode("@", true), "%40");
+    EXPECT_EQ(percent_encode("user@host", true), "user%40host");
+}
+
+TEST(IsURLCodePoint, DollarAndAsteriskValidV153) {
+    // '$' and '*' are valid URL code points
+    EXPECT_TRUE(is_url_code_point(static_cast<char32_t>('$')));
+    EXPECT_TRUE(is_url_code_point(static_cast<char32_t>('*')));
+}

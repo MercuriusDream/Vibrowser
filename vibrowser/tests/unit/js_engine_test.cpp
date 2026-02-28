@@ -36848,3 +36848,108 @@ TEST(JSEngine, JsV152_8) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "hello,true,false");
 }
+
+// V153_1: Promise.reject catch handling
+TEST(JSEngine, JsV153_1) {
+    clever::js::JSEngine engine;
+    clever::js::install_fetch_bindings(engine.context());
+    engine.evaluate(R"JS(
+        var out = '';
+        Promise.reject('oops').catch(function(e) { out = 'caught:' + e; });
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    clever::js::flush_fetch_promise_jobs(engine.context());
+    auto result = engine.evaluate("out");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "caught:oops");
+}
+
+// V153_2: Array.every and Array.some
+TEST(JSEngine, JsV153_2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var arr = [2, 4, 6, 8];
+        var allEven = arr.every(function(x) { return x % 2 === 0; });
+        var someGreater = arr.some(function(x) { return x > 5; });
+        '' + allEven + ',' + someGreater;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true,true");
+}
+
+// V153_3: String.repeat
+TEST(JSEngine, JsV153_3) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        'ab'.repeat(3);
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "ababab");
+}
+
+// V153_4: Object.values returns values array
+TEST(JSEngine, JsV153_4) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var obj = {a: 10, b: 20, c: 30};
+        var vals = Object.values(obj);
+        '' + vals.join(',');
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "10,20,30");
+}
+
+// V153_5: Array.fill
+TEST(JSEngine, JsV153_5) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var arr = [1, 2, 3, 4, 5];
+        arr.fill(0, 1, 4);
+        '' + arr.join(',');
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1,0,0,0,5");
+}
+
+// V153_6: template literal with expressions
+TEST(JSEngine, JsV153_6) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var name = 'World';
+        var num = 42;
+        `Hello ${name}, the answer is ${num}`;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "Hello World, the answer is 42");
+}
+
+// V153_7: destructuring assignment
+TEST(JSEngine, JsV153_7) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var [a, b, c] = [10, 20, 30];
+        '' + a + ',' + b + ',' + c;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "10,20,30");
+}
+
+// V153_8: Set operations (add, has, delete, size)
+TEST(JSEngine, JsV153_8) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var s = new Set();
+        s.add(1);
+        s.add(2);
+        s.add(3);
+        s.add(2); // duplicate
+        var sz1 = s.size;
+        var has2 = s.has(2);
+        s.delete(2);
+        var has2after = s.has(2);
+        var sz2 = s.size;
+        '' + sz1 + ',' + has2 + ',' + has2after + ',' + sz2;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "3,true,false,2");
+}

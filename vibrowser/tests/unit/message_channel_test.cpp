@@ -2175,3 +2175,68 @@ TEST(MessageChannelTest, MessageChannelV152_2_TwoChannelsIndependent) {
     ASSERT_EQ(recv2->payload.size(), 1u);
     EXPECT_EQ(recv2->payload[0], 0xBB);
 }
+
+// ------------------------------------------------------------------
+// Round 153 — MessageChannel tests
+// ------------------------------------------------------------------
+
+TEST(MessageChannelTest, MessageChannelV153_1_MultipleTypesRegisteredSimultaneously) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel ch(std::move(pa));
+
+    int count_type10 = 0;
+    int count_type20 = 0;
+    int count_type30 = 0;
+    int count_type40 = 0;
+    int count_type50 = 0;
+
+    ch.on(10, [&](const Message&) { ++count_type10; });
+    ch.on(20, [&](const Message&) { ++count_type20; });
+    ch.on(30, [&](const Message&) { ++count_type30; });
+    ch.on(40, [&](const Message&) { ++count_type40; });
+    ch.on(50, [&](const Message&) { ++count_type50; });
+
+    // Dispatch messages of different types
+    Message m10; m10.type = 10; m10.request_id = 1;
+    Message m20; m20.type = 20; m20.request_id = 2;
+    Message m30; m30.type = 30; m30.request_id = 3;
+    Message m40; m40.type = 40; m40.request_id = 4;
+    Message m50; m50.type = 50; m50.request_id = 5;
+
+    ch.dispatch(m10);
+    ch.dispatch(m20);
+    ch.dispatch(m30);
+    ch.dispatch(m40);
+    ch.dispatch(m50);
+
+    EXPECT_EQ(count_type10, 1);
+    EXPECT_EQ(count_type20, 1);
+    EXPECT_EQ(count_type30, 1);
+    EXPECT_EQ(count_type40, 1);
+    EXPECT_EQ(count_type50, 1);
+}
+
+TEST(MessageChannelTest, MessageChannelV153_2_ChannelDestructionSafe) {
+    auto [pa, pb] = MessagePipe::create_pair();
+
+    {
+        MessageChannel ch(std::move(pa));
+
+        Message msg;
+        msg.type = 1;
+        msg.request_id = 1;
+        msg.payload = {0x01, 0x02};
+        ASSERT_TRUE(ch.send(msg));
+        // ch destroyed here at end of scope
+    }
+
+    // pb pipe is still valid — receive the message that was sent before destruction
+    MessageChannel receiver(std::move(pb));
+    auto received = receiver.receive();
+    ASSERT_TRUE(received.has_value());
+    EXPECT_EQ(received->type, 1u);
+    EXPECT_EQ(received->request_id, 1u);
+    ASSERT_EQ(received->payload.size(), 2u);
+    EXPECT_EQ(received->payload[0], 0x01);
+    EXPECT_EQ(received->payload[1], 0x02);
+}

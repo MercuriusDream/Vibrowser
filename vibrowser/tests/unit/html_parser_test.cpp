@@ -24152,3 +24152,146 @@ TEST(HtmlParserTest, HtmlV152_8) {
     EXPECT_EQ(sup->tag_name, "sup");
     EXPECT_EQ(sup->text_content(), "2");
 }
+
+// ---------------------------------------------------------------------------
+// Cycle V153 — s, u, span multi-attr, nested divs, p+inline, ul, ol, table
+// ---------------------------------------------------------------------------
+
+TEST(HtmlParserTest, HtmlV153_1) {
+    // s (strikethrough) element
+    auto doc = clever::html::parse("<html><body><s>deleted text</s></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* s = doc->find_element("s");
+    ASSERT_NE(s, nullptr);
+    EXPECT_EQ(s->tag_name, "s");
+    EXPECT_EQ(s->text_content(), "deleted text");
+}
+
+TEST(HtmlParserTest, HtmlV153_2) {
+    // u (underline) element
+    auto doc = clever::html::parse("<html><body><u>underlined text</u></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* u = doc->find_element("u");
+    ASSERT_NE(u, nullptr);
+    EXPECT_EQ(u->tag_name, "u");
+    EXPECT_EQ(u->text_content(), "underlined text");
+}
+
+TEST(HtmlParserTest, HtmlV153_3) {
+    // span with multiple attributes
+    auto doc = clever::html::parse(
+        "<html><body><span id=\"myspan\" class=\"highlight\" data-value=\"42\">content</span></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* span = doc->find_element("span");
+    ASSERT_NE(span, nullptr);
+    EXPECT_EQ(span->tag_name, "span");
+    EXPECT_EQ(span->text_content(), "content");
+
+    bool found_id = false, found_class = false, found_data = false;
+    for (const auto& attr : span->attributes) {
+        if (attr.name == "id") { found_id = true; EXPECT_EQ(attr.value, "myspan"); }
+        if (attr.name == "class") { found_class = true; EXPECT_EQ(attr.value, "highlight"); }
+        if (attr.name == "data-value") { found_data = true; EXPECT_EQ(attr.value, "42"); }
+    }
+    EXPECT_TRUE(found_id) << "id attribute not found on span";
+    EXPECT_TRUE(found_class) << "class attribute not found on span";
+    EXPECT_TRUE(found_data) << "data-value attribute not found on span";
+}
+
+TEST(HtmlParserTest, HtmlV153_4) {
+    // div with nested divs
+    auto doc = clever::html::parse(
+        "<html><body><div><div>inner1</div><div>inner2</div></div></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto divs = doc->find_all_elements("div");
+    ASSERT_GE(divs.size(), 3u);
+    // Outer div should contain both inner divs
+    EXPECT_EQ(divs[0]->tag_name, "div");
+    EXPECT_EQ(divs[1]->tag_name, "div");
+    EXPECT_EQ(divs[1]->text_content(), "inner1");
+    EXPECT_EQ(divs[2]->tag_name, "div");
+    EXPECT_EQ(divs[2]->text_content(), "inner2");
+}
+
+TEST(HtmlParserTest, HtmlV153_5) {
+    // p with inline elements
+    auto doc = clever::html::parse(
+        "<html><body><p>Hello <strong>world</strong> and <em>universe</em></p></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* strong = doc->find_element("strong");
+    ASSERT_NE(strong, nullptr);
+    EXPECT_EQ(strong->text_content(), "world");
+
+    auto* em = doc->find_element("em");
+    ASSERT_NE(em, nullptr);
+    EXPECT_EQ(em->text_content(), "universe");
+}
+
+TEST(HtmlParserTest, HtmlV153_6) {
+    // ul with multiple li
+    auto doc = clever::html::parse(
+        "<html><body><ul><li>Alpha</li><li>Beta</li><li>Gamma</li></ul></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* ul = doc->find_element("ul");
+    ASSERT_NE(ul, nullptr);
+    EXPECT_EQ(ul->tag_name, "ul");
+
+    auto lis = doc->find_all_elements("li");
+    ASSERT_EQ(lis.size(), 3u);
+    EXPECT_EQ(lis[0]->text_content(), "Alpha");
+    EXPECT_EQ(lis[1]->text_content(), "Beta");
+    EXPECT_EQ(lis[2]->text_content(), "Gamma");
+}
+
+TEST(HtmlParserTest, HtmlV153_7) {
+    // ol with start attribute
+    auto doc = clever::html::parse(
+        "<html><body><ol start=\"5\"><li>Five</li><li>Six</li></ol></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* ol = doc->find_element("ol");
+    ASSERT_NE(ol, nullptr);
+    EXPECT_EQ(ol->tag_name, "ol");
+
+    bool found_start = false;
+    for (const auto& attr : ol->attributes) {
+        if (attr.name == "start") {
+            found_start = true;
+            EXPECT_EQ(attr.value, "5");
+        }
+    }
+    EXPECT_TRUE(found_start) << "start attribute not found on ol";
+
+    auto lis = doc->find_all_elements("li");
+    ASSERT_EQ(lis.size(), 2u);
+    EXPECT_EQ(lis[0]->text_content(), "Five");
+    EXPECT_EQ(lis[1]->text_content(), "Six");
+}
+
+TEST(HtmlParserTest, HtmlV153_8) {
+    // table with multiple rows
+    auto doc = clever::html::parse(
+        "<html><body><table><tbody><tr><td>R1C1</td><td>R1C2</td></tr>"
+        "<tr><td>R2C1</td><td>R2C2</td></tr></tbody></table></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* table = doc->find_element("table");
+    ASSERT_NE(table, nullptr);
+    EXPECT_EQ(table->tag_name, "table");
+
+    auto rows = doc->find_all_elements("tr");
+    ASSERT_EQ(rows.size(), 2u);
+
+    auto cells = doc->find_all_elements("td");
+    ASSERT_EQ(cells.size(), 4u);
+    EXPECT_EQ(cells[0]->text_content(), "R1C1");
+    EXPECT_EQ(cells[1]->text_content(), "R1C2");
+    EXPECT_EQ(cells[2]->text_content(), "R2C1");
+    EXPECT_EQ(cells[3]->text_content(), "R2C2");
+}

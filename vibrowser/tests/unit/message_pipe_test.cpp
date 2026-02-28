@@ -1954,3 +1954,63 @@ TEST(MessagePipeTest, MessagePipeV152_3_DifferentSizedMessages) {
         EXPECT_EQ(recv->back(), static_cast<uint8_t>(sz & 0xFF));
     }
 }
+
+// ------------------------------------------------------------------
+// Round 153 — MessagePipe tests
+// ------------------------------------------------------------------
+
+TEST(MessagePipeTest, MessagePipeV153_1_ReceiveBlocksUntilSend) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    std::vector<uint8_t> data = {0x42, 0x43, 0x44, 0x45};
+    ASSERT_TRUE(a.send(data));
+
+    auto received = b.receive();
+    ASSERT_TRUE(received.has_value());
+    EXPECT_EQ(received->size(), 4u);
+    EXPECT_EQ((*received)[0], 0x42);
+    EXPECT_EQ((*received)[1], 0x43);
+    EXPECT_EQ((*received)[2], 0x44);
+    EXPECT_EQ((*received)[3], 0x45);
+}
+
+TEST(MessagePipeTest, MessagePipeV153_2_BothEndsClosed) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    a.close();
+    b.close();
+    EXPECT_FALSE(a.is_open());
+    EXPECT_FALSE(b.is_open());
+
+    // After both ends closed, send and receive should fail gracefully
+    std::vector<uint8_t> data = {1, 2, 3};
+    EXPECT_FALSE(a.send(data));
+    EXPECT_FALSE(b.send(data));
+    auto recv_a = a.receive();
+    EXPECT_FALSE(recv_a.has_value());
+    auto recv_b = b.receive();
+    EXPECT_FALSE(recv_b.has_value());
+}
+
+TEST(MessagePipeTest, MessagePipeV153_3_BinaryDataWithZeroes) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    // Create data with many zero bytes interspersed
+    std::vector<uint8_t> data(64, 0x00);
+    data[0] = 0xFF;
+    data[10] = 0xAB;
+    data[31] = 0xCD;
+    data[63] = 0xEF;
+
+    ASSERT_TRUE(a.send(data));
+
+    auto received = b.receive();
+    ASSERT_TRUE(received.has_value());
+    ASSERT_EQ(received->size(), 64u);
+    EXPECT_EQ((*received)[0], 0xFF);
+    EXPECT_EQ((*received)[1], 0x00);
+    EXPECT_EQ((*received)[10], 0xAB);
+    EXPECT_EQ((*received)[31], 0xCD);
+    EXPECT_EQ((*received)[32], 0x00);
+    EXPECT_EQ((*received)[63], 0xEF);
+}

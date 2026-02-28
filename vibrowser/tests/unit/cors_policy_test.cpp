@@ -12464,3 +12464,58 @@ TEST(CORSPolicyTest, CorsV152_8_ACAOMatchIsCaseSensitiveForHost) {
     EXPECT_FALSE(cors_allows_response("https://example.com",
                                        "https://api.example.com/data", headers, false));
 }
+
+// ---------------------------------------------------------------------------
+// Round 153 — CORS tests
+// ---------------------------------------------------------------------------
+
+// 1. IPv4 loopback is enforceable
+TEST(CORSPolicyTest, CorsV153_1_IPv4LoopbackEnforceable) {
+    EXPECT_TRUE(has_enforceable_document_origin("http://127.0.0.1"));
+    EXPECT_TRUE(has_enforceable_document_origin("https://127.0.0.1"));
+}
+
+// 2. Exact origin match with ACAO succeeds
+TEST(CORSPolicyTest, CorsV153_2_ACAOExactMatchSucceeds) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "https://app.example.com");
+    EXPECT_TRUE(cors_allows_response("https://app.example.com",
+                                      "https://api.example.com/data", headers, false));
+}
+
+// 3. data: scheme is not enforceable
+TEST(CORSPolicyTest, CorsV153_3_DataSchemeNotEnforceable) {
+    EXPECT_FALSE(has_enforceable_document_origin("data:text/html,<h1>hi</h1>"));
+    EXPECT_FALSE(has_enforceable_document_origin("data:application/json,{}"));
+}
+
+// 4. Same host different scheme is cross-origin
+TEST(CORSPolicyTest, CorsV153_4_CrossOriginSameHostDifferentScheme) {
+    EXPECT_TRUE(is_cross_origin("http://example.com", "https://example.com/page"));
+    EXPECT_TRUE(is_cross_origin("https://example.com", "http://example.com/page"));
+}
+
+// 5. Identical URLs are same-origin
+TEST(CORSPolicyTest, CorsV153_5_SameOriginSameHostSameSchemePort) {
+    EXPECT_FALSE(is_cross_origin("https://example.com", "https://example.com/any/path"));
+    EXPECT_FALSE(is_cross_origin("http://localhost", "http://localhost/foo"));
+}
+
+// 6. ACAO wildcard allows uncredentialed requests
+TEST(CORSPolicyTest, CorsV153_6_ACAOWildcardAllowsWithoutCreds) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "*");
+    EXPECT_TRUE(cors_allows_response("https://app.example.com",
+                                      "https://api.example.com/data", headers, false));
+}
+
+// 7. Empty string origin is not enforceable
+TEST(CORSPolicyTest, CorsV153_7_EmptyOriginNotEnforceable) {
+    EXPECT_FALSE(has_enforceable_document_origin(""));
+}
+
+// 8. Port mismatch is cross-origin
+TEST(CORSPolicyTest, CorsV153_8_PortMismatchCrossOrigin) {
+    EXPECT_TRUE(is_cross_origin("http://a.com:8080", "http://a.com:9090/path"));
+    EXPECT_TRUE(is_cross_origin("https://a.com:4430", "https://a.com:8443/path"));
+}

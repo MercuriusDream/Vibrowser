@@ -26119,3 +26119,214 @@ TEST(HttpClient, CookieJarEmptyPathMatchesAllV152) {
     EXPECT_NE(h4.find("session=v152token"), std::string::npos)
         << "Cookie without Path should match /settings/profile, got: " << h4;
 }
+
+// ===========================================================================
+// Round 153 Tests
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// 1. Request — minimal GET, verify request line and headers
+// ---------------------------------------------------------------------------
+TEST(HttpClient, RequestSerializeGetBasicV153) {
+    Request req;
+    req.method = Method::GET;
+    req.host = "basic.v153.test";
+    req.port = 443;
+    req.path = "/index.html";
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    // Request line
+    EXPECT_NE(result.find("GET /index.html HTTP/1.1\r\n"), std::string::npos)
+        << "GET request line missing, got: " << result;
+    // Host header — port 443 should be omitted
+    EXPECT_NE(result.find("Host: basic.v153.test\r\n"), std::string::npos)
+        << "Host header wrong (port 443 should be omitted), got: " << result;
+    // Connection: close
+    EXPECT_NE(result.find("Connection: close\r\n"), std::string::npos)
+        << "Connection header missing, got: " << result;
+    // Should NOT contain port 443 in Host
+    EXPECT_EQ(result.find("Host: basic.v153.test:443\r\n"), std::string::npos)
+        << "Host header should NOT include :443 for standard HTTPS port, got: " << result;
+}
+
+// ---------------------------------------------------------------------------
+// 2. Response — 200 OK with JSON body
+// ---------------------------------------------------------------------------
+TEST(HttpClient, ResponseParse200OKWithJsonBodyV153) {
+    std::string json_body = "{\"status\":\"ok\",\"count\":153}";
+    std::string raw_str =
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Type: application/json\r\n"
+        "Content-Length: " + std::to_string(json_body.size()) + "\r\n"
+        "\r\n" + json_body;
+    std::vector<uint8_t> raw(raw_str.begin(), raw_str.end());
+    auto resp = Response::parse(raw);
+    ASSERT_TRUE(resp.has_value())
+        << "Failed to parse 200 OK response with JSON body";
+    EXPECT_EQ(resp->status, 200);
+
+    // Content-Type header
+    auto ct = resp->headers.get("Content-Type");
+    ASSERT_TRUE(ct.has_value()) << "Content-Type header not found";
+    EXPECT_EQ(ct.value(), "application/json")
+        << "Content-Type should be application/json, got: " << ct.value();
+
+    // Body matches JSON
+    std::string body_str(resp->body.begin(), resp->body.end());
+    EXPECT_EQ(body_str, json_body)
+        << "Body mismatch, got: " << body_str;
+}
+
+// ---------------------------------------------------------------------------
+// 3. ConnectionPool — release 3, acquire 3 back
+// ---------------------------------------------------------------------------
+TEST(HttpClient, ConnectionPoolReleaseAndAcquireMultipleV153) {
+    ConnectionPool pool;
+
+    // Release 3 connections to the same host:port
+    pool.release("multi.v153.test", 8080, 100);
+    pool.release("multi.v153.test", 8080, 200);
+    pool.release("multi.v153.test", 8080, 300);
+
+    EXPECT_EQ(pool.count("multi.v153.test", 8080), 3u)
+        << "Pool should have 3 connections after 3 releases";
+
+    // Acquire all 3 back
+    int fd1 = pool.acquire("multi.v153.test", 8080);
+    EXPECT_GE(fd1, 0) << "First acquire should return a valid fd";
+    int fd2 = pool.acquire("multi.v153.test", 8080);
+    EXPECT_GE(fd2, 0) << "Second acquire should return a valid fd";
+    int fd3 = pool.acquire("multi.v153.test", 8080);
+    EXPECT_GE(fd3, 0) << "Third acquire should return a valid fd";
+
+    // All 3 original fds should have been returned (in some order)
+    std::vector<int> acquired = {fd1, fd2, fd3};
+    std::sort(acquired.begin(), acquired.end());
+    EXPECT_EQ(acquired[0], 100);
+    EXPECT_EQ(acquired[1], 200);
+    EXPECT_EQ(acquired[2], 300);
+
+    // Pool should now be empty
+    int fd4 = pool.acquire("multi.v153.test", 8080);
+    EXPECT_EQ(fd4, -1)
+        << "Pool should be empty after acquiring all 3, got: " << fd4;
+}
+
+// ---------------------------------------------------------------------------
+// 4. CookieJar — 3 cookies on same domain
+// ---------------------------------------------------------------------------
+TEST(HttpClient, CookieJarSameDomainMultipleCookiesV153) {
+    CookieJar jar;
+    jar.set_from_header("alpha=one153", "cookies.v153.test");
+    jar.set_from_header("beta=two153", "cookies.v153.test");
+    jar.set_from_header("gamma=three153", "cookies.v153.test");
+
+    std::string header = jar.get_cookie_header("cookies.v153.test", "/", false);
+
+    // All 3 cookies should appear in the header
+    EXPECT_NE(header.find("alpha=one153"), std::string::npos)
+        << "alpha cookie missing, got: " << header;
+    EXPECT_NE(header.find("beta=two153"), std::string::npos)
+        << "beta cookie missing, got: " << header;
+    EXPECT_NE(header.find("gamma=three153"), std::string::npos)
+        << "gamma cookie missing, got: " << header;
+}
+
+// ---------------------------------------------------------------------------
+// 5. HeaderMap — set same key twice, second value wins
+// ---------------------------------------------------------------------------
+TEST(HttpClient, HeaderMapSetOverwritesPreviousV153) {
+    HeaderMap map;
+    map.set("X-Custom-V153", "first-value");
+    map.set("X-Custom-V153", "second-value");
+
+    // get() should return only the second value
+    auto val = map.get("X-Custom-V153");
+    ASSERT_TRUE(val.has_value()) << "X-Custom-V153 should exist after set()";
+    EXPECT_EQ(val.value(), "second-value")
+        << "Second set() should overwrite first, got: " << val.value();
+
+    // get_all should return exactly 1 entry
+    auto all = map.get_all("X-Custom-V153");
+    EXPECT_EQ(all.size(), 1u)
+        << "set() should replace, not append — expected 1 entry, got " << all.size();
+}
+
+// ---------------------------------------------------------------------------
+// 6. Request — POST with no body, Content-Length: 0
+// ---------------------------------------------------------------------------
+TEST(HttpClient, RequestSerializePostEmptyBodyV153) {
+    Request req;
+    req.method = Method::POST;
+    req.host = "empty.v153.test";
+    req.port = 80;
+    req.path = "/submit";
+    // body intentionally left empty
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    // Request line
+    EXPECT_NE(result.find("POST /submit HTTP/1.1\r\n"), std::string::npos)
+        << "POST request line missing, got: " << result;
+    // Host header — port 80 omitted
+    EXPECT_NE(result.find("Host: empty.v153.test\r\n"), std::string::npos)
+        << "Host header wrong, got: " << result;
+    // Connection: close
+    EXPECT_NE(result.find("Connection: close\r\n"), std::string::npos)
+        << "Connection header missing, got: " << result;
+}
+
+// ---------------------------------------------------------------------------
+// 7. Response — 404 Not Found parsing
+// ---------------------------------------------------------------------------
+TEST(HttpClient, ResponseParse404NotFoundV153) {
+    std::string body_404 = "Page not found v153";
+    std::string raw_str =
+        "HTTP/1.1 404 Not Found\r\n"
+        "Content-Type: text/plain\r\n"
+        "Content-Length: " + std::to_string(body_404.size()) + "\r\n"
+        "\r\n" + body_404;
+    std::vector<uint8_t> raw(raw_str.begin(), raw_str.end());
+    auto resp = Response::parse(raw);
+    ASSERT_TRUE(resp.has_value())
+        << "Failed to parse 404 Not Found response";
+    EXPECT_EQ(resp->status, 404);
+
+    // Content-Type header
+    auto ct = resp->headers.get("Content-Type");
+    ASSERT_TRUE(ct.has_value()) << "Content-Type header not found in 404";
+    EXPECT_EQ(ct.value(), "text/plain")
+        << "Content-Type should be text/plain, got: " << ct.value();
+
+    // Body matches
+    std::string body_str(resp->body.begin(), resp->body.end());
+    EXPECT_EQ(body_str, body_404)
+        << "Body mismatch for 404, got: " << body_str;
+}
+
+// ---------------------------------------------------------------------------
+// 8. CookieJar — domain matching is case-insensitive
+// ---------------------------------------------------------------------------
+TEST(HttpClient, CookieJarDomainCaseInsensitiveV153) {
+    CookieJar jar;
+    // Set cookie with mixed-case domain
+    jar.set_from_header("session=casetest153", "CaseTest.V153.Test");
+
+    // Retrieve with lowercase
+    std::string h1 = jar.get_cookie_header("casetest.v153.test", "/", false);
+    EXPECT_NE(h1.find("session=casetest153"), std::string::npos)
+        << "Cookie should match lowercase domain, got: " << h1;
+
+    // Retrieve with uppercase
+    std::string h2 = jar.get_cookie_header("CASETEST.V153.TEST", "/", false);
+    EXPECT_NE(h2.find("session=casetest153"), std::string::npos)
+        << "Cookie should match uppercase domain, got: " << h2;
+
+    // Retrieve with exact original casing
+    std::string h3 = jar.get_cookie_header("CaseTest.V153.Test", "/", false);
+    EXPECT_NE(h3.find("session=casetest153"), std::string::npos)
+        << "Cookie should match original-case domain, got: " << h3;
+}
