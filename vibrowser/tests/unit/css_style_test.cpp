@@ -25574,3 +25574,41 @@ TEST(CSSStyleTest, CssV145_4_OverflowHiddenXYApplied) {
     EXPECT_EQ(style.overflow_x, Overflow::Hidden);
     EXPECT_EQ(style.overflow_y, Overflow::Hidden);
 }
+
+// === V146 CSS Style Tests ===
+
+TEST(CSSStyleTest, CssV146_1_DisplayListItemApplied) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("display", "list-item"), parent);
+    EXPECT_EQ(style.display, Display::ListItem);
+}
+
+TEST(CSSStyleTest, CssV146_2_PositionRelativeApplied) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("position", "relative"), parent);
+    EXPECT_EQ(style.position, Position::Relative);
+}
+
+TEST(PropertyCascadeTest, FontWeightBoldV146) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("font-weight", "bold"), parent);
+    EXPECT_EQ(style.font_weight, 700);
+}
+
+TEST(CSSStyleTest, CssV146_4_PositionFixedApplied) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("position", "fixed"), parent);
+    EXPECT_EQ(style.position, Position::Fixed);
+}

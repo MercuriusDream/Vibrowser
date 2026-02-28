@@ -11988,3 +11988,79 @@ TEST(CORSPolicyTest, CorsV145_7_WssSchemeNotCorsEligible) {
 TEST(CORSPolicyTest, CorsV145_8_HttpUrlCorsEligible) {
     EXPECT_TRUE(is_cors_eligible_request_url("http://example.com/api/data"));
 }
+
+// ---------------------------------------------------------------------------
+// Round 146 — 8 CORS tests
+// ---------------------------------------------------------------------------
+
+// 1. Same-origin HTTP URLs with different paths
+TEST(CORSPolicyTest, CorsV146_1_SameOriginHttpWithPath) {
+    EXPECT_FALSE(is_cross_origin("http://example.com",
+                                  "http://example.com/path/to/resource"));
+    EXPECT_FALSE(is_cross_origin("http://example.com",
+                                  "http://example.com/other/path"));
+}
+
+// 2. Cross-origin for different TLDs (.com vs .org)
+TEST(CORSPolicyTest, CorsV146_2_CrossOriginDifferentTLDs) {
+    EXPECT_TRUE(is_cross_origin("http://example.com",
+                                 "http://example.org/data"));
+    EXPECT_TRUE(is_cross_origin("https://site.com",
+                                 "https://site.org/api"));
+}
+
+// 3. ACAO exact match for HTTP with port 8080
+TEST(CORSPolicyTest, CorsV146_3_ACAOExactMatchHttpPort8080) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "http://api.com:8080");
+    EXPECT_TRUE(
+        cors_allows_response("http://api.com:8080",
+                              "http://cdn.com/resource", headers, false));
+    // Different port should not match
+    clever::net::HeaderMap headers2;
+    headers2.set("Access-Control-Allow-Origin", "http://api.com:9090");
+    EXPECT_FALSE(
+        cors_allows_response("http://api.com:8080",
+                              "http://cdn.com/resource", headers2, false));
+}
+
+// 4. HTTPS URL with path is CORS eligible
+TEST(CORSPolicyTest, CorsV146_4_CorsEligibleHttpsWithPath) {
+    EXPECT_TRUE(is_cors_eligible_request_url("https://example.com/api/v2"));
+    EXPECT_TRUE(is_cors_eligible_request_url("https://example.com/api/v2?key=value"));
+}
+
+// 5. javascript: scheme is NOT enforceable
+TEST(CORSPolicyTest, CorsV146_5_NotEnforceableJavascriptScheme) {
+    EXPECT_FALSE(has_enforceable_document_origin("javascript:void(0)"));
+    EXPECT_FALSE(has_enforceable_document_origin("javascript:alert(1)"));
+}
+
+// 6. Same-origin loopback IPv4 on same port
+TEST(CORSPolicyTest, CorsV146_6_SameOriginLoopbackIPv4) {
+    EXPECT_FALSE(is_cross_origin("http://127.0.0.1:3000",
+                                  "http://127.0.0.1:3000/api/data"));
+    // Different port on loopback IS cross-origin
+    EXPECT_TRUE(is_cross_origin("http://127.0.0.1:3000",
+                                 "http://127.0.0.1:4000/api/data"));
+}
+
+// 7. ACAO wildcard "*" allows any origin without credentials
+TEST(CORSPolicyTest, CorsV146_7_ACAOWildcardAllowsAnyOriginNoCreds) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "*");
+    EXPECT_TRUE(
+        cors_allows_response("https://any-origin.com",
+                              "https://api.example.com/data", headers, false));
+    EXPECT_TRUE(
+        cors_allows_response("http://localhost:8080",
+                              "https://api.example.com/data", headers, false));
+}
+
+// 8. Cross-origin for different subdomains
+TEST(CORSPolicyTest, CorsV146_8_CrossOriginDifferentSubdomains) {
+    EXPECT_TRUE(is_cross_origin("http://www.example.com",
+                                 "http://api.example.com/data"));
+    EXPECT_TRUE(is_cross_origin("https://app.example.com",
+                                 "https://cdn.example.com/assets/img.png"));
+}

@@ -20568,3 +20568,57 @@ TEST(SerializerTest, SerializerV145_3_StringWithNullBytesRoundTrip) {
     EXPECT_EQ(result[11], '\0');
     EXPECT_FALSE(d.has_remaining());
 }
+
+// ------------------------------------------------------------------
+// V146: Repeated U32 writes round-trip
+// ------------------------------------------------------------------
+
+TEST(SerializerTest, SerializerV146_1_RepeatedU32WritesRoundTrip) {
+    Serializer s;
+    for (int i = 0; i < 10; ++i) {
+        s.write_u32(0xDEADBEEF);
+    }
+
+    Deserializer d(s.data());
+    for (int i = 0; i < 10; ++i) {
+        EXPECT_EQ(d.read_u32(), 0xDEADBEEFu) << "Mismatch at iteration " << i;
+    }
+    EXPECT_FALSE(d.has_remaining());
+}
+
+// ------------------------------------------------------------------
+// V146: Empty serializer reader safe
+// ------------------------------------------------------------------
+
+TEST(SerializerTest, SerializerV146_2_EmptySerializerReaderSafe) {
+    Serializer s;
+    // Don't write anything — just create a reader from the empty data
+    Deserializer d(s.data());
+    // The reader should report no remaining data and not crash
+    EXPECT_FALSE(d.has_remaining());
+}
+
+// ------------------------------------------------------------------
+// V146: Alternating types round-trip
+// ------------------------------------------------------------------
+
+TEST(SerializerTest, SerializerV146_3_AlternatingTypesRoundTrip) {
+    Serializer s;
+    s.write_u8(42);
+    s.write_string("hello");
+    s.write_u32(0xCAFEBABE);
+    s.write_bool(true);
+    s.write_f64(2.71828);
+    s.write_string("world");
+    s.write_u16(9999);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u8(), 42u);
+    EXPECT_EQ(d.read_string(), "hello");
+    EXPECT_EQ(d.read_u32(), 0xCAFEBABEu);
+    EXPECT_EQ(d.read_bool(), true);
+    EXPECT_DOUBLE_EQ(d.read_f64(), 2.71828);
+    EXPECT_EQ(d.read_string(), "world");
+    EXPECT_EQ(d.read_u16(), 9999u);
+    EXPECT_FALSE(d.has_remaining());
+}

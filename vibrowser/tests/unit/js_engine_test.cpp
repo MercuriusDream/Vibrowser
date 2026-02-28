@@ -36084,3 +36084,116 @@ TEST(JSEngine, JsV145_8) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "00042|42...|42");
 }
+
+// V146: Array.find and findIndex
+TEST(JSEngine, JsV146_1) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var arr = [10, 20, 30, 40, 50];
+        var found = arr.find(function(x) { return x > 25; });
+        var idx = arr.findIndex(function(x) { return x > 25; });
+        var notFound = arr.find(function(x) { return x > 100; });
+        String(found) + ',' + String(idx) + ',' + String(notFound);
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "30,2,undefined");
+}
+
+// V146: String.slice with positive and negative indices
+TEST(JSEngine, JsV146_2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var s = 'Hello World';
+        var a = s.slice(0, 5);
+        var b = s.slice(-5);
+        var c = s.slice(6, -1);
+        a + '|' + b + '|' + c;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "Hello|World|Worl");
+}
+
+// V146: Math.abs and Math.sqrt
+TEST(JSEngine, JsV146_3) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var a = Math.abs(-7);
+        var b = Math.abs(3);
+        var c = Math.sqrt(16);
+        var d = Math.sqrt(0);
+        a + ',' + b + ',' + c + ',' + d;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "7,3,4,0");
+}
+
+// V146: Array.fill
+TEST(JSEngine, JsV146_4) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var arr = [1, 2, 3, 4, 5];
+        arr.fill(0, 1, 3);
+        var r1 = arr.join(',');
+        var arr2 = [1, 2, 3];
+        arr2.fill(9);
+        var r2 = arr2.join(',');
+        r1 + '|' + r2;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1,0,0,4,5|9,9,9");
+}
+
+// V146: String.match with regex
+TEST(JSEngine, JsV146_5) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var s = 'abc123def456';
+        var m = s.match(/\d+/g);
+        m.join(',');
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "123,456");
+}
+
+// V146: Number.isFinite and Number.isNaN
+TEST(JSEngine, JsV146_6) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var a = Number.isFinite(42);
+        var b = Number.isFinite(Infinity);
+        var c = Number.isFinite(NaN);
+        var d = Number.isNaN(NaN);
+        var e = Number.isNaN(42);
+        var f = Number.isNaN('hello');
+        String(a) + ',' + String(b) + ',' + String(c) + ',' + String(d) + ',' + String(e) + ',' + String(f);
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true,false,false,true,false,false");
+}
+
+// V146: Array.reduce with accumulator
+TEST(JSEngine, JsV146_7) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var arr = [1, 2, 3, 4, 5];
+        var sum = arr.reduce(function(acc, x) { return acc + x; }, 0);
+        var product = arr.reduce(function(acc, x) { return acc * x; }, 1);
+        sum + ',' + product;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "15,120");
+}
+
+// V146: spread operator with arrays
+TEST(JSEngine, JsV146_8) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var a = [1, 2, 3];
+        var b = [4, 5, 6];
+        var c = [...a, ...b];
+        var d = [0, ...a, 99];
+        c.join(',') + '|' + d.join(',');
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1,2,3,4,5,6|0,1,2,3,99");
+}

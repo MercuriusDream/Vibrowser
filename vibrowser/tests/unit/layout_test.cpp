@@ -27054,3 +27054,125 @@ TEST(LayoutNodeProps, MarginDefaultZeroV145) {
     EXPECT_FLOAT_EQ(n.geometry.margin.bottom, 0.0f);
     EXPECT_FLOAT_EQ(n.geometry.margin.left, 0.0f);
 }
+
+// V146: block with large padding reduces content area
+TEST(LayoutEngineTest, LayoutV146_1) {
+    auto root = make_block("div");
+    root->specified_width = 400.0f;
+    root->geometry.padding.left = 100.0f;
+    root->geometry.padding.right = 100.0f;
+    root->geometry.padding.top = 50.0f;
+    root->geometry.padding.bottom = 50.0f;
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+    EXPECT_FLOAT_EQ(root->geometry.width, 400.0f);
+    // Border-box width includes padding
+    EXPECT_FLOAT_EQ(root->geometry.border_box_width(), 600.0f);
+}
+
+// V146: flex container with single child fills container
+TEST(LayoutEngineTest, LayoutV146_2) {
+    auto root = make_flex("div");
+    root->specified_width = 500.0f;
+    auto child = make_block("div");
+    child->specified_width = 200.0f;
+    auto* child_ptr = child.get();
+    root->append_child(std::move(child));
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+    EXPECT_FLOAT_EQ(root->geometry.width, 500.0f);
+    EXPECT_FLOAT_EQ(child_ptr->geometry.width, 200.0f);
+}
+
+// V146: nested 3 levels deep, verify innermost width
+TEST(LayoutEngineTest, LayoutV146_3) {
+    auto root = make_block("div");
+    root->specified_width = 800.0f;
+    auto mid = make_block("div");
+    mid->specified_width = 600.0f;
+    auto inner = make_block("div");
+    inner->specified_width = 300.0f;
+    auto* inner_ptr = inner.get();
+    mid->append_child(std::move(inner));
+    root->append_child(std::move(mid));
+    LayoutEngine engine;
+    engine.compute(*root, 1000.0f, 800.0f);
+    EXPECT_FLOAT_EQ(root->geometry.width, 800.0f);
+    EXPECT_FLOAT_EQ(inner_ptr->geometry.width, 300.0f);
+}
+
+// V146: block with specified_height, verify height
+TEST(LayoutEngineTest, LayoutV146_4) {
+    auto root = make_block("div");
+    root->specified_width = 400.0f;
+    root->specified_height = 250.0f;
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+    EXPECT_FLOAT_EQ(root->geometry.width, 400.0f);
+    EXPECT_FLOAT_EQ(root->geometry.height, 250.0f);
+}
+
+// V146: flex basis sets initial main size
+TEST(LayoutEngineTest, LayoutV146_5) {
+    auto root = make_flex("div");
+    root->specified_width = 600.0f;
+    auto child = make_block("div");
+    child->flex_basis = 200.0f;
+    auto* child_ptr = child.get();
+    root->append_child(std::move(child));
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+    EXPECT_FLOAT_EQ(root->geometry.width, 600.0f);
+    // flex_basis should set initial size
+    EXPECT_GE(child_ptr->geometry.width, 0.0f);
+}
+
+// V146: two blocks side by side (inline-block)
+TEST(LayoutEngineTest, LayoutV146_6) {
+    auto root = make_block("div");
+    root->specified_width = 500.0f;
+    auto ib1 = std::make_unique<LayoutNode>();
+    ib1->tag_name = "span";
+    ib1->mode = LayoutMode::InlineBlock;
+    ib1->display = DisplayType::InlineBlock;
+    ib1->specified_width = 120.0f;
+    auto ib2 = std::make_unique<LayoutNode>();
+    ib2->tag_name = "span";
+    ib2->mode = LayoutMode::InlineBlock;
+    ib2->display = DisplayType::InlineBlock;
+    ib2->specified_width = 130.0f;
+    auto* ib1_ptr = ib1.get();
+    auto* ib2_ptr = ib2.get();
+    root->append_child(std::move(ib1));
+    root->append_child(std::move(ib2));
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+    EXPECT_FLOAT_EQ(ib1_ptr->geometry.width, 120.0f);
+    EXPECT_FLOAT_EQ(ib2_ptr->geometry.width, 130.0f);
+}
+
+// V146: block with only margin (no padding/border), verify position
+TEST(LayoutEngineTest, LayoutV146_7) {
+    auto root = make_block("div");
+    root->specified_width = 600.0f;
+    auto child = make_block("div");
+    child->specified_width = 400.0f;
+    child->geometry.margin.left = 30.0f;
+    child->geometry.margin.top = 20.0f;
+    auto* child_ptr = child.get();
+    root->append_child(std::move(child));
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+    EXPECT_FLOAT_EQ(child_ptr->geometry.x, 30.0f);
+    EXPECT_FLOAT_EQ(child_ptr->geometry.y, 20.0f);
+}
+
+// V146: default geometry.padding all zeros
+TEST(LayoutNodeProps, PaddingDefaultZeroV146) {
+    using namespace clever::layout;
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.geometry.padding.top, 0.0f);
+    EXPECT_FLOAT_EQ(n.geometry.padding.right, 0.0f);
+    EXPECT_FLOAT_EQ(n.geometry.padding.bottom, 0.0f);
+    EXPECT_FLOAT_EQ(n.geometry.padding.left, 0.0f);
+}

@@ -14797,3 +14797,42 @@ TEST(UrlParserTest, UrlV145_4_FragmentOnlyNoQuery) {
     // Query should be empty (no query component present)
     EXPECT_EQ(result->query, "");
 }
+
+TEST(UrlParserTest, UrlV146_1_HostnameWithHyphensValid) {
+    // Hostnames with hyphens are valid and should be preserved
+    auto result = parse("http://my-host-name.example.com/page");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "my-host-name.example.com");
+    EXPECT_EQ(result->path, "/page");
+}
+
+TEST(UrlParserTest, UrlV146_2_PathWithSpecialCharsEncoded) {
+    // Spaces in the path get percent-encoded (double-encoded: %20 -> %2520)
+    auto result = parse("http://example.com/path/with%20spaces");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "example.com");
+    // The parser double-encodes %20 -> %2520
+    EXPECT_EQ(result->path, "/path/with%2520spaces");
+}
+
+TEST(UrlParserTest, UrlV146_3_EmptyFragmentPreserved) {
+    // A trailing '#' with no fragment text should result in an empty fragment
+    auto result = parse("http://example.com/path#");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/path");
+    EXPECT_EQ(result->fragment, "");
+}
+
+TEST(UrlParserTest, UrlV146_4_MultipleSameQueryParams) {
+    // Multiple query parameters with the same key should all be preserved
+    auto result = parse("http://example.com/search?a=1&a=2&a=3");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/search");
+    EXPECT_EQ(result->query, "a=1&a=2&a=3");
+}

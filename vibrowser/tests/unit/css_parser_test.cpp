@@ -10441,3 +10441,57 @@ TEST_F(CSSStylesheetTest, TextIndentDeclarationV145) {
     }
     EXPECT_TRUE(found) << "text-indent declaration not found";
 }
+
+// === V146 CSS Parser Tests ===
+
+TEST_F(CSSStylesheetTest, BoxShadowDeclarationV146) {
+    auto ss = parse_stylesheet("div { box-shadow: 2px 4px 8px rgba(0,0,0,0.5); }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "box-shadow") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+        }
+    }
+    EXPECT_TRUE(found) << "box-shadow declaration not found";
+}
+
+TEST_F(CSSStylesheetTest, TransitionDeclarationV146) {
+    auto ss = parse_stylesheet("a { transition: all 0.3s ease; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "transition") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+        }
+    }
+    EXPECT_TRUE(found) << "transition declaration not found";
+}
+
+TEST_F(CSSStylesheetTest, AnimationDeclarationV146) {
+    auto ss = parse_stylesheet("div { animation: spin 1s infinite; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "animation") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+        }
+    }
+    EXPECT_TRUE(found) << "animation declaration not found";
+}
+
+TEST_F(CSSStylesheetTest, TransformDeclarationV146) {
+    auto ss = parse_stylesheet("img { transform: rotate(45deg); }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "transform") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+        }
+    }
+    EXPECT_TRUE(found) << "transform declaration not found";
+}

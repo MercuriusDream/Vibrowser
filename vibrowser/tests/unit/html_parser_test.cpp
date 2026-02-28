@@ -23292,3 +23292,107 @@ TEST(HtmlParserTest, HtmlV145_8) {
     }
     EXPECT_TRUE(found_action) << "action attribute not found on form";
 }
+
+// === V146 HTML Parser Tests ===
+
+TEST(HtmlParserTest, HtmlV146_1) {
+    // p element with text
+    auto doc = clever::html::parse("<html><body><p>Hello World</p></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* p = doc->find_element("p");
+    ASSERT_NE(p, nullptr);
+    EXPECT_EQ(p->tag_name, "p");
+    EXPECT_EQ(p->text_content(), "Hello World");
+}
+
+TEST(HtmlParserTest, HtmlV146_2) {
+    // div with nested span
+    auto doc = clever::html::parse("<html><body><div><span>Inner</span></div></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* div = doc->find_element("div");
+    ASSERT_NE(div, nullptr);
+    EXPECT_EQ(div->tag_name, "div");
+
+    auto* span = doc->find_element("span");
+    ASSERT_NE(span, nullptr);
+    EXPECT_EQ(span->tag_name, "span");
+    EXPECT_EQ(span->text_content(), "Inner");
+}
+
+TEST(HtmlParserTest, HtmlV146_3) {
+    // b and i elements
+    auto doc = clever::html::parse("<html><body><b>Bold</b><i>Italic</i></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* b = doc->find_element("b");
+    ASSERT_NE(b, nullptr);
+    EXPECT_EQ(b->tag_name, "b");
+    EXPECT_EQ(b->text_content(), "Bold");
+
+    auto* i = doc->find_element("i");
+    ASSERT_NE(i, nullptr);
+    EXPECT_EQ(i->tag_name, "i");
+    EXPECT_EQ(i->text_content(), "Italic");
+}
+
+TEST(HtmlParserTest, HtmlV146_4) {
+    // pre element with whitespace
+    auto doc = clever::html::parse("<html><body><pre>Preformatted</pre></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* pre = doc->find_element("pre");
+    ASSERT_NE(pre, nullptr);
+    EXPECT_EQ(pre->tag_name, "pre");
+    EXPECT_EQ(pre->text_content(), "Preformatted");
+}
+
+TEST(HtmlParserTest, HtmlV146_5) {
+    // blockquote element
+    auto doc = clever::html::parse("<html><body><blockquote>Quoted text</blockquote></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* bq = doc->find_element("blockquote");
+    ASSERT_NE(bq, nullptr);
+    EXPECT_EQ(bq->tag_name, "blockquote");
+    EXPECT_EQ(bq->text_content(), "Quoted text");
+}
+
+TEST(HtmlParserTest, HtmlV146_6) {
+    // code element
+    auto doc = clever::html::parse("<html><body><code>x = 42</code></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* code = doc->find_element("code");
+    ASSERT_NE(code, nullptr);
+    EXPECT_EQ(code->tag_name, "code");
+    EXPECT_EQ(code->text_content(), "x = 42");
+}
+
+TEST(HtmlParserTest, HtmlV146_7) {
+    // sup and sub elements
+    auto doc = clever::html::parse("<html><body><sup>Up</sup><sub>Down</sub></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* sup = doc->find_element("sup");
+    ASSERT_NE(sup, nullptr);
+    EXPECT_EQ(sup->tag_name, "sup");
+    EXPECT_EQ(sup->text_content(), "Up");
+
+    auto* sub = doc->find_element("sub");
+    ASSERT_NE(sub, nullptr);
+    EXPECT_EQ(sub->tag_name, "sub");
+    EXPECT_EQ(sub->text_content(), "Down");
+}
+
+TEST(HtmlParserTest, HtmlV146_8) {
+    // mark element
+    auto doc = clever::html::parse("<html><body><mark>Highlighted</mark></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* mark = doc->find_element("mark");
+    ASSERT_NE(mark, nullptr);
+    EXPECT_EQ(mark->tag_name, "mark");
+    EXPECT_EQ(mark->text_content(), "Highlighted");
+}

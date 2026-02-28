@@ -1048,3 +1048,32 @@ TEST(IsURLCodePoint, ForwardSlashAndQuestionMarkV145) {
     EXPECT_TRUE(is_url_code_point(U'@'));
     EXPECT_TRUE(is_url_code_point(U'&'));
 }
+
+TEST(PercentEncoding, CurlyBracesEncodedV146) {
+    // '{' and '}' are NOT valid URL code points and must be percent-encoded
+    EXPECT_EQ(percent_encode("{"), "%7B");
+    EXPECT_EQ(percent_encode("}"), "%7D");
+    EXPECT_EQ(percent_encode("{key}"), "%7Bkey%7D");
+}
+
+TEST(PercentDecoding, MixedEncodedAndPlainV146) {
+    // Mix of percent-encoded and plain characters should decode correctly
+    EXPECT_EQ(percent_decode("hello%20world%21"), "hello world!");
+    EXPECT_EQ(percent_decode("abc%2Fdef"), "abc/def");
+    EXPECT_EQ(percent_decode("no%20problem%3F"), "no problem?");
+}
+
+TEST(PercentEncoding, PipeEncodedV146) {
+    // '|' (pipe) is NOT a valid URL code point and must be percent-encoded
+    EXPECT_EQ(percent_encode("|"), "%7C");
+    EXPECT_EQ(percent_encode("a|b|c"), "a%7Cb%7Cc");
+}
+
+TEST(IsURLCodePoint, SemicolonAndCommaAreCodePointsV146) {
+    // ';' and ',' are valid URL code points
+    EXPECT_TRUE(is_url_code_point(U';'));
+    EXPECT_TRUE(is_url_code_point(U','));
+    // Also verify they are not encoded by percent_encode
+    EXPECT_EQ(percent_encode(";"), ";");
+    EXPECT_EQ(percent_encode(","), ",");
+}

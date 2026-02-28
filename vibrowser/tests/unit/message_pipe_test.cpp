@@ -1552,3 +1552,57 @@ TEST(MessagePipeTest, MessagePipeV145_3_ReceiveBeforeSendReturnsNulloptV145) {
     auto received = b.receive();
     EXPECT_FALSE(received.has_value());
 }
+
+// ------------------------------------------------------------------
+// V146: Payload boundary — exactly 255 bytes
+// ------------------------------------------------------------------
+
+TEST(MessagePipeTest, MessagePipeV146_1_PayloadBoundary255BytesV146) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    std::vector<uint8_t> payload(255);
+    for (size_t i = 0; i < payload.size(); ++i) {
+        payload[i] = static_cast<uint8_t>(i & 0xFF);
+    }
+
+    ASSERT_TRUE(a.send(payload));
+
+    auto received = b.receive();
+    ASSERT_TRUE(received.has_value());
+    ASSERT_EQ(received->size(), 255u);
+    EXPECT_EQ(*received, payload);
+}
+
+// ------------------------------------------------------------------
+// V146: Payload boundary — exactly 256 bytes
+// ------------------------------------------------------------------
+
+TEST(MessagePipeTest, MessagePipeV146_2_PayloadBoundary256BytesV146) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    std::vector<uint8_t> payload(256);
+    for (size_t i = 0; i < payload.size(); ++i) {
+        payload[i] = static_cast<uint8_t>(i & 0xFF);
+    }
+
+    ASSERT_TRUE(a.send(payload));
+
+    auto received = b.receive();
+    ASSERT_TRUE(received.has_value());
+    ASSERT_EQ(received->size(), 256u);
+    EXPECT_EQ(*received, payload);
+}
+
+// ------------------------------------------------------------------
+// V146: Empty pipe receive returns nullopt
+// ------------------------------------------------------------------
+
+TEST(MessagePipeTest, MessagePipeV146_3_EmptyPipeReceiveIsNulloptV146) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    // Close sender so receiver sees EOF (no data ever sent)
+    a.close();
+
+    auto received = b.receive();
+    EXPECT_FALSE(received.has_value());
+}

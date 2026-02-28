@@ -24779,3 +24779,141 @@ TEST(HttpClient, CookieJarRootPathMatchesAllV145) {
     EXPECT_NE(h3.find("root145=rootval"), std::string::npos)
         << "Path=/ should match /, got: " << h3;
 }
+
+// ===========================================================================
+// V146 Tests
+// ===========================================================================
+
+// 1. POST with Content-Type: application/json — custom header appears in serialized output
+TEST(HttpClient, RequestSerializeWithCustomContentTypeV146) {
+    Request req;
+    req.method = Method::POST;
+    req.host = "v146ct.example.com";
+    req.port = 443;
+    req.path = "/api/data";
+    req.headers.set("Content-Type", "application/json");
+
+    auto bytes = req.serialize();
+    std::string raw(bytes.begin(), bytes.end());
+
+    // Custom headers are lowercased in serialize
+    EXPECT_NE(raw.find("content-type: application/json\r\n"), std::string::npos)
+        << "Content-Type header should appear in serialized request, got: " << raw;
+    EXPECT_NE(raw.find("POST /api/data"), std::string::npos)
+        << "Method and path should be POST /api/data, got: " << raw;
+    // Port 443 should be omitted from Host
+    EXPECT_NE(raw.find("Host: v146ct.example.com\r\n"), std::string::npos)
+        << "Port 443 should be omitted from Host header, got: " << raw;
+}
+
+// 2. Response with 503 Service Unavailable
+TEST(HttpClient, ResponseParse503ServiceUnavailableV146) {
+    std::string raw =
+        "HTTP/1.1 503 Service Unavailable\r\n"
+        "Content-Length: 11\r\n"
+        "\r\n"
+        "Unavailable";
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 503);
+    EXPECT_EQ(resp->status_text, "Service Unavailable");
+    EXPECT_EQ(resp->body_as_string(), "Unavailable");
+}
+
+// 3. HeaderMap: set then append same key — get_all returns 2 entries
+TEST(HttpClient, HeaderMapAppendDoesNotOverwriteV146) {
+    HeaderMap map;
+    map.set("X-Multi146", "first");
+    map.append("X-Multi146", "second");
+
+    auto all = map.get_all("X-Multi146");
+    ASSERT_EQ(all.size(), 2u);
+    EXPECT_EQ(all[0], "first");
+    EXPECT_EQ(all[1], "second");
+
+    // get() should return the first value
+    EXPECT_EQ(map.get("X-Multi146").value(), "first");
+}
+
+// 4. CookieJar: cookie for sub.example.com not sent to example.com (parent)
+TEST(HttpClient, CookieJarSubdomainNotMatchingParentV146) {
+    CookieJar jar;
+    // Set cookie specifically for sub.example.com (no Domain attribute = host-only)
+    jar.set_from_header("sub146=subval; Path=/", "sub.v146parent.example.com");
+
+    // Should be present for sub.v146parent.example.com
+    std::string sub_h = jar.get_cookie_header("sub.v146parent.example.com", "/", false);
+    EXPECT_NE(sub_h.find("sub146=subval"), std::string::npos)
+        << "Cookie should be sent to sub.v146parent.example.com, got: " << sub_h;
+
+    // Should NOT be sent to parent v146parent.example.com
+    std::string parent_h = jar.get_cookie_header("v146parent.example.com", "/", false);
+    EXPECT_EQ(parent_h.find("sub146=subval"), std::string::npos)
+        << "Host-only cookie for subdomain should NOT be sent to parent, got: " << parent_h;
+}
+
+// 5. Accept header appears in serialized request output
+TEST(HttpClient, RequestSerializeAcceptHeaderV146) {
+    Request req;
+    req.method = Method::GET;
+    req.host = "v146accept.example.com";
+    req.port = 80;
+    req.path = "/page";
+    req.headers.set("Accept", "text/html");
+
+    auto bytes = req.serialize();
+    std::string raw(bytes.begin(), bytes.end());
+
+    EXPECT_NE(raw.find("accept: text/html\r\n"), std::string::npos)
+        << "Accept header should appear in serialized request, got: " << raw;
+    // Port 80 omitted from Host
+    EXPECT_NE(raw.find("Host: v146accept.example.com\r\n"), std::string::npos)
+        << "Port 80 should be omitted from Host header, got: " << raw;
+}
+
+// 6. Response with custom reason phrase — verify status_text
+TEST(HttpClient, ResponseParseWithReasonPhraseV146) {
+    std::string raw =
+        "HTTP/1.1 200 All Good\r\n"
+        "Content-Length: 2\r\n"
+        "\r\n"
+        "OK";
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 200);
+    EXPECT_EQ(resp->status_text, "All Good");
+    EXPECT_EQ(resp->body_as_string(), "OK");
+}
+
+// 7. HeaderMap: get_all on nonexistent key returns empty vector
+TEST(HttpClient, HeaderMapGetAllEmptyForMissingKeyV146) {
+    HeaderMap map;
+    map.set("X-Present146", "here");
+
+    auto all = map.get_all("X-Missing146");
+    EXPECT_TRUE(all.empty())
+        << "get_all on a missing key should return empty vector, got size: " << all.size();
+}
+
+// 8. CookieJar: domain matching is case-insensitive
+TEST(HttpClient, CookieJarDomainCaseInsensitiveV146) {
+    CookieJar jar;
+    jar.set_from_header("case146=val; Domain=v146case.example.com; Path=/",
+                        "v146case.example.com");
+
+    // Uppercase domain should still match
+    std::string h1 = jar.get_cookie_header("V146CASE.EXAMPLE.COM", "/", false);
+    EXPECT_NE(h1.find("case146=val"), std::string::npos)
+        << "Cookie domain matching should be case-insensitive, got: " << h1;
+
+    // Mixed case should also match
+    std::string h2 = jar.get_cookie_header("V146Case.Example.Com", "/", false);
+    EXPECT_NE(h2.find("case146=val"), std::string::npos)
+        << "Cookie domain matching should be case-insensitive (mixed), got: " << h2;
+}

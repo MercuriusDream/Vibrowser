@@ -1816,3 +1816,56 @@ TEST(MessageChannelTest, MessageChannelV145_2_RemoveHandlerStopsDispatch) {
     ch.dispatch(msg);
     EXPECT_EQ(call_count, 1); // still 1, original handler not called
 }
+
+// ------------------------------------------------------------------
+// V146: Sequential dispatch calls — handler fires each time
+// ------------------------------------------------------------------
+
+TEST(MessageChannelTest, MessageChannelV146_1_SequentialDispatchCallsV146) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel ch(std::move(pa));
+
+    int call_count = 0;
+
+    ch.on(50, [&](const Message& /*m*/) {
+        ++call_count;
+    });
+
+    // Dispatch 3 times, each with a single message
+    for (int i = 0; i < 3; ++i) {
+        Message msg;
+        msg.type = 50;
+        msg.request_id = static_cast<uint32_t>(i);
+        msg.payload = {static_cast<uint8_t>(i)};
+        ch.dispatch(msg);
+    }
+
+    EXPECT_EQ(call_count, 3);
+}
+
+// ------------------------------------------------------------------
+// V146: Zero type ID handler fires correctly
+// ------------------------------------------------------------------
+
+TEST(MessageChannelTest, MessageChannelV146_2_ZeroTypeIdHandlerV146) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel ch(std::move(pa));
+
+    bool handler_called = false;
+    uint32_t received_type = 999;
+
+    ch.on(0, [&](const Message& m) {
+        handler_called = true;
+        received_type = m.type;
+    });
+
+    Message msg;
+    msg.type = 0;
+    msg.request_id = 1;
+    msg.payload = {0xAA};
+
+    ch.dispatch(msg);
+
+    EXPECT_TRUE(handler_called);
+    EXPECT_EQ(received_type, 0u);
+}

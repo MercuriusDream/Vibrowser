@@ -22072,3 +22072,129 @@ TEST(DomElement, SetAndGetMultipleDifferentAttributesV145) {
     EXPECT_EQ(elem.attributes().size(), 3u);
     EXPECT_FALSE(elem.has_attribute("data-y"));
 }
+
+// ---------------------------------------------------------------------------
+// Round 146 — 8 DOM tests
+// ---------------------------------------------------------------------------
+
+// 1. first_child is nullptr after removing all children
+TEST(DomNode, FirstChildAfterRemoveAllChildrenV146) {
+    auto parent = std::make_unique<Element>("div");
+    auto c1 = std::make_unique<Element>("span");
+    auto c2 = std::make_unique<Element>("p");
+    auto c3 = std::make_unique<Element>("em");
+
+    Node* c1_ptr = c1.get();
+    Node* c2_ptr = c2.get();
+    Node* c3_ptr = c3.get();
+
+    parent->append_child(std::move(c1));
+    parent->append_child(std::move(c2));
+    parent->append_child(std::move(c3));
+    ASSERT_EQ(parent->child_count(), 3u);
+
+    parent->remove_child(*c1_ptr);
+    parent->remove_child(*c2_ptr);
+    parent->remove_child(*c3_ptr);
+
+    EXPECT_EQ(parent->first_child(), nullptr);
+    EXPECT_EQ(parent->child_count(), 0u);
+}
+
+// 2. Tag name case is preserved as passed to constructor
+TEST(DomElement, TagNameCasePreservedV146) {
+    Element upper("DIV");
+    EXPECT_EQ(upper.tag_name(), "DIV");
+
+    Element lower("div");
+    EXPECT_EQ(lower.tag_name(), "div");
+
+    Element mixed("Section");
+    EXPECT_EQ(mixed.tag_name(), "Section");
+}
+
+// 3. get_element_by_id returns the correct element for each id
+TEST(DomDocument, GetElementByIdReturnsCorrectElementV146) {
+    Document doc;
+    auto body = std::make_unique<Element>("body");
+    auto div1 = std::make_unique<Element>("div");
+    auto div2 = std::make_unique<Element>("div");
+
+    div1->set_attribute("id", "first");
+    div2->set_attribute("id", "second");
+
+    Element* div1_ptr = div1.get();
+    Element* div2_ptr = div2.get();
+
+    doc.register_id("first", div1_ptr);
+    doc.register_id("second", div2_ptr);
+
+    body->append_child(std::move(div1));
+    body->append_child(std::move(div2));
+    doc.append_child(std::move(body));
+
+    EXPECT_EQ(doc.get_element_by_id("first"), div1_ptr);
+    EXPECT_EQ(doc.get_element_by_id("second"), div2_ptr);
+    EXPECT_EQ(doc.get_element_by_id("nonexistent"), nullptr);
+}
+
+// 4. Event type string is preserved exactly
+TEST(DomEvent, TypeStringPreservedV146) {
+    Event ev("custom-event", false, true);
+    EXPECT_EQ(ev.type(), "custom-event");
+    EXPECT_FALSE(ev.bubbles());
+    EXPECT_TRUE(ev.cancelable());
+}
+
+// 5. Newly created element has child_count of zero
+TEST(DomNode, ChildCountZeroAfterCreationV146) {
+    Element elem("article");
+    EXPECT_EQ(elem.child_count(), 0u);
+    EXPECT_EQ(elem.first_child(), nullptr);
+    EXPECT_EQ(elem.last_child(), nullptr);
+}
+
+// 6. ClassList add multiple then remove all results in length 0
+TEST(DomElement, ClassListAddMultipleThenClearV146) {
+    Element elem("div");
+    auto& cl = elem.class_list();
+
+    cl.add("alpha");
+    cl.add("beta");
+    cl.add("gamma");
+    ASSERT_EQ(cl.length(), 3u);
+
+    cl.remove("alpha");
+    cl.remove("beta");
+    cl.remove("gamma");
+
+    EXPECT_EQ(cl.length(), 0u);
+    EXPECT_FALSE(cl.contains("alpha"));
+    EXPECT_FALSE(cl.contains("beta"));
+    EXPECT_FALSE(cl.contains("gamma"));
+}
+
+// 7. text_content traverses deeply nested tree
+TEST(DomNode, DeepNestingTextContentV146) {
+    auto root = std::make_unique<Element>("div");
+    auto mid = std::make_unique<Element>("div");
+    auto inner = std::make_unique<Element>("div");
+    auto txt = std::make_unique<Text>("deep-text");
+
+    inner->append_child(std::move(txt));
+    mid->append_child(std::move(inner));
+    root->append_child(std::move(mid));
+
+    EXPECT_EQ(root->text_content(), "deep-text");
+}
+
+// 8. has_attribute returns false after remove_attribute
+TEST(DomElement, HasAttributeReturnsFalseAfterRemoveV146) {
+    Element elem("div");
+    elem.set_attribute("data-custom", "value");
+    ASSERT_TRUE(elem.has_attribute("data-custom"));
+
+    elem.remove_attribute("data-custom");
+    EXPECT_FALSE(elem.has_attribute("data-custom"));
+    EXPECT_EQ(elem.attributes().size(), 0u);
+}
