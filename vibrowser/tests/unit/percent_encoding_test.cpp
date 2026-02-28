@@ -2235,3 +2235,39 @@ TEST(IsURLCodePoint, PlusAndCommaValidityV180) {
     // Tab (U+0009) is NOT a valid URL code point
     EXPECT_FALSE(is_url_code_point(U'\t'));
 }
+
+// =============================================================================
+// Cycle V181 — Percent encoding tests
+// =============================================================================
+TEST(PercentEncoding, BackslashEncodedV181) {
+    // '\' (U+005C) should be percent-encoded as %5C
+    EXPECT_EQ(percent_encode("\\"), "%5C");
+    EXPECT_EQ(percent_encode("path\\to\\file"), "path%5Cto%5Cfile");
+}
+
+TEST(PercentDecoding, RoundTripWithCurlyBracesAndPipeV181) {
+    // Encoding and then decoding curly braces and pipe should return original
+    std::string original = "{key|value}";
+    std::string encoded = percent_encode(original);
+    std::string decoded = percent_decode(encoded);
+    EXPECT_EQ(decoded, original);
+}
+
+TEST(PercentEncoding, DoubleEncodesPercentEncodedAmpersandV181) {
+    // A string containing %26 (encoded '&') should have its % double-encoded to %25
+    EXPECT_EQ(percent_encode("%26"), "%2526");
+    EXPECT_EQ(percent_encode("a%26b%26c"), "a%2526b%2526c");
+}
+
+TEST(IsURLCodePoint, ExclamationAndAsteriskValidityV181) {
+    // '!' (U+0021) is a valid URL code point
+    EXPECT_TRUE(is_url_code_point(U'!'));
+    // '*' (U+002A) is a valid URL code point
+    EXPECT_TRUE(is_url_code_point(U'*'));
+    // '(' (U+0028) is a valid URL code point
+    EXPECT_TRUE(is_url_code_point(U'('));
+    // DEL (U+007F) is NOT a valid URL code point
+    EXPECT_FALSE(is_url_code_point(U'\x7F'));
+    // NUL (U+0000) is NOT a valid URL code point
+    EXPECT_FALSE(is_url_code_point(U'\0'));
+}

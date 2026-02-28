@@ -16458,3 +16458,53 @@ TEST(UrlParserTest, UrlV180_4_UserInfoParsedCorrectly) {
     EXPECT_EQ(result->port.value(), 9090);
     EXPECT_EQ(result->path, "/dashboard");
 }
+
+// =============================================================================
+// Cycle V181 — URL parser tests
+// =============================================================================
+TEST(UrlParserTest, UrlV181_1_DefaultPort443OmittedInHttpsSerialize) {
+    // Port 443 is the default for HTTPS and should be omitted during serialization
+    auto result = parse("https://secure.example.com:443/login");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "secure.example.com");
+    EXPECT_EQ(result->path, "/login");
+    std::string serialized = result->serialize();
+    // Default port 443 should be omitted from serialized output
+    EXPECT_EQ(serialized.find(":443"), std::string::npos);
+    EXPECT_NE(serialized.find("secure.example.com/login"), std::string::npos);
+}
+
+TEST(UrlParserTest, UrlV181_2_PercentEncodedSpaceInPathDoubleEncoded) {
+    // %20 (encoded space) in the path gets double-encoded by the parser: %20 -> %2520
+    auto result = parse("http://example.com/hello%20world");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "example.com");
+    // Parser double-encodes percent sequences: %20 becomes %2520
+    EXPECT_NE(result->path.find("%2520"), std::string::npos);
+}
+
+TEST(UrlParserTest, UrlV181_3_NonDefaultPortPreservedInSerialize) {
+    // Non-default port (not 80 for HTTP, not 443 for HTTPS) must be preserved
+    auto result = parse("https://api.example.com:8443/v2/resource");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "api.example.com");
+    ASSERT_TRUE(result->port.has_value());
+    EXPECT_EQ(result->port.value(), 8443);
+    EXPECT_EQ(result->path, "/v2/resource");
+    std::string serialized = result->serialize();
+    // Non-default port 8443 must appear in serialized form
+    EXPECT_NE(serialized.find(":8443"), std::string::npos);
+}
+
+TEST(UrlParserTest, UrlV181_4_EmptyPathAndQueryFragment) {
+    // URL with empty path but with query and fragment
+    auto result = parse("http://example.com?search=term#results");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->query, "search=term");
+    EXPECT_EQ(result->fragment, "results");
+}

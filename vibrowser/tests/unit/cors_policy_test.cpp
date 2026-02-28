@@ -13868,3 +13868,54 @@ TEST(CORSPolicyTest, CorsV180_8_NormalizeNoOriginSameOrigin) {
     normalize_outgoing_origin_header(headers, "https://app.example", "https://app.example/page");
     EXPECT_FALSE(headers.has("origin"));
 }
+
+// ---------------------------------------------------------------------------
+// Round 181 — CORS tests
+// ---------------------------------------------------------------------------
+
+// 1. IPv6 loopback origin is enforceable (IP addresses are enforceable)
+TEST(CORSPolicyTest, CorsV181_1_Ipv6LoopbackEnforceable) {
+    EXPECT_TRUE(has_enforceable_document_origin("https://[::1]"));
+}
+
+// 2. javascript: scheme origin is NOT enforceable
+TEST(CORSPolicyTest, CorsV181_2_JavascriptSchemeNotEnforceable) {
+    EXPECT_FALSE(has_enforceable_document_origin("javascript:void(0)"));
+}
+
+// 3. Cross-origin: different schemes http vs https
+TEST(CORSPolicyTest, CorsV181_3_CrossOriginDifferentSchemes) {
+    EXPECT_TRUE(is_cross_origin("http://app.example", "https://app.example/page"));
+}
+
+// 4. ACAO exact match allows response
+TEST(CORSPolicyTest, CorsV181_4_AcaoExactMatchAllows) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "https://app.example");
+    EXPECT_TRUE(cors_allows_response("https://app.example", "https://api.example/data", headers, false));
+}
+
+// 5. ACAO exact match denies credentialed response without Allow-Credentials
+TEST(CORSPolicyTest, CorsV181_5_AcaoExactMatchDeniesCredsWithoutFlag) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "https://app.example");
+    EXPECT_FALSE(cors_allows_response("https://app.example", "https://api.example/data", headers, true));
+}
+
+// 6. ws: URL is NOT CORS eligible
+TEST(CORSPolicyTest, CorsV181_6_WsNotCorsEligible) {
+    EXPECT_FALSE(is_cors_eligible_request_url("ws://chat.example/socket"));
+}
+
+// 7. Should attach origin header for cross-scheme request
+TEST(CORSPolicyTest, CorsV181_7_AttachOriginCrossScheme) {
+    EXPECT_TRUE(should_attach_origin_header("http://app.example",
+                                            "https://app.example/api"));
+}
+
+// 8. Normalize sets origin header for cross-origin request
+TEST(CORSPolicyTest, CorsV181_8_NormalizeSetsOriginCrossOrigin) {
+    clever::net::HeaderMap headers;
+    normalize_outgoing_origin_header(headers, "https://frontend.example", "https://backend.example/api");
+    EXPECT_TRUE(headers.has("origin"));
+}

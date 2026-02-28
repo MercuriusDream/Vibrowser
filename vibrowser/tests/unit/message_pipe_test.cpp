@@ -3686,3 +3686,56 @@ TEST(MessagePipeTest, MessagePipeV180_3_AlternatingBidirectionalMessages) {
         EXPECT_EQ(*rb, msg_b);
     }
 }
+
+// ------------------------------------------------------------------
+// Round 181 – MessagePipe
+// ------------------------------------------------------------------
+
+TEST(MessagePipeTest, MessagePipeV181_1_SendEmptyPayload) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    // Sending an empty payload should succeed and round-trip
+    std::vector<uint8_t> empty_data;
+    ASSERT_TRUE(a.send(empty_data));
+
+    auto received = b.receive();
+    ASSERT_TRUE(received.has_value());
+    EXPECT_TRUE(received->empty());
+    EXPECT_EQ(received->size(), 0u);
+}
+
+TEST(MessagePipeTest, MessagePipeV181_2_MultipleMessagesQueuedBeforeReceive) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    // Queue 5 messages before any receive call
+    for (int i = 0; i < 5; ++i) {
+        std::vector<uint8_t> msg = {static_cast<uint8_t>(i * 10), static_cast<uint8_t>(i * 10 + 1)};
+        ASSERT_TRUE(a.send(msg));
+    }
+
+    // Receive all 5 in order
+    for (int i = 0; i < 5; ++i) {
+        auto received = b.receive();
+        ASSERT_TRUE(received.has_value());
+        EXPECT_EQ(received->size(), 2u);
+        EXPECT_EQ((*received)[0], static_cast<uint8_t>(i * 10));
+        EXPECT_EQ((*received)[1], static_cast<uint8_t>(i * 10 + 1));
+    }
+}
+
+TEST(MessagePipeTest, MessagePipeV181_3_SendSingleByteManyTimes) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    // Send 20 single-byte messages and verify each arrives correctly
+    for (int i = 0; i < 20; ++i) {
+        std::vector<uint8_t> single = {static_cast<uint8_t>(i)};
+        ASSERT_TRUE(a.send(single));
+    }
+
+    for (int i = 0; i < 20; ++i) {
+        auto received = b.receive();
+        ASSERT_TRUE(received.has_value());
+        ASSERT_EQ(received->size(), 1u);
+        EXPECT_EQ((*received)[0], static_cast<uint8_t>(i));
+    }
+}

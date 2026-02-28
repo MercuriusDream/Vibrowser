@@ -1,0 +1,7 @@
+file(GLOB CSS_PARSER_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/*.cpp")
+if(CSS_PARSER_SOURCES)
+    add_library(vibrowser_css_parser STATIC ${CSS_PARSER_SOURCES})
+else()
+    add_library(vibrowser_css_parser STATIC empty.cpp)
+endif()
+target_include_directories(vibrowser_css_parser PUBLIC ${CMAKE_SOURCE_DIR}/include)

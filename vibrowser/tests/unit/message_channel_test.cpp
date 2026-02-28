@@ -3781,3 +3781,62 @@ TEST(MessageChannelTest, MessageChannelV180_2_MultipleHandlersSameTypeLastWins) 
     // If both are called, that's also a valid implementation — just verify dispatch works
     EXPECT_GE(first_handler_calls + second_handler_calls, 1);
 }
+
+// ------------------------------------------------------------------
+// Round 181 – MessageChannel
+// ------------------------------------------------------------------
+
+TEST(MessageChannelTest, MessageChannelV181_1_DispatchMultipleTypesToSeparateHandlers) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel ch(std::move(pa));
+
+    int type_10_count = 0;
+    int type_20_count = 0;
+    int type_30_count = 0;
+
+    ch.on(10, [&](const Message& msg) { type_10_count++; });
+    ch.on(20, [&](const Message& msg) { type_20_count++; });
+    ch.on(30, [&](const Message& msg) { type_30_count++; });
+
+    // Dispatch messages of varying types
+    for (int i = 0; i < 3; ++i) {
+        Message m10; m10.type = 10; m10.request_id = i; m10.payload = {0x0A};
+        ch.dispatch(m10);
+    }
+    for (int i = 0; i < 5; ++i) {
+        Message m20; m20.type = 20; m20.request_id = i; m20.payload = {0x14};
+        ch.dispatch(m20);
+    }
+    Message m30; m30.type = 30; m30.request_id = 0; m30.payload = {0x1E};
+    ch.dispatch(m30);
+
+    EXPECT_EQ(type_10_count, 3);
+    EXPECT_EQ(type_20_count, 5);
+    EXPECT_EQ(type_30_count, 1);
+}
+
+TEST(MessageChannelTest, MessageChannelV181_2_HandlerReceivesCorrectPayload) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel ch(std::move(pa));
+
+    std::vector<uint8_t> captured_payload;
+    uint32_t captured_request_id = 0;
+
+    ch.on(55, [&](const Message& msg) {
+        captured_payload = msg.payload;
+        captured_request_id = msg.request_id;
+    });
+
+    Message msg;
+    msg.type = 55;
+    msg.request_id = 181;
+    msg.payload = {0xCA, 0xFE, 0xBA, 0xBE, 0x01, 0x81};
+    ch.dispatch(msg);
+
+    EXPECT_EQ(captured_request_id, 181u);
+    ASSERT_EQ(captured_payload.size(), 6u);
+    EXPECT_EQ(captured_payload[0], 0xCA);
+    EXPECT_EQ(captured_payload[1], 0xFE);
+    EXPECT_EQ(captured_payload[4], 0x01);
+    EXPECT_EQ(captured_payload[5], 0x81);
+}

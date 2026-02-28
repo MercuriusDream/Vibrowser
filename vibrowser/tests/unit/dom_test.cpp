@@ -25825,3 +25825,99 @@ TEST(DomDocument, CreateElementTagAndTypeV180) {
     EXPECT_EQ(elem->tag_name(), "article");
     EXPECT_EQ(elem->node_type(), NodeType::Element);
 }
+
+// ---------------------------------------------------------------------------
+// Round 181 — DOM tests
+// ---------------------------------------------------------------------------
+
+// 1. Element remove_attribute removes existing attribute
+TEST(DomElement, RemoveAttributeClearsV181) {
+    Element elem("div");
+    elem.set_attribute("data-value", "42");
+    EXPECT_TRUE(elem.has_attribute("data-value"));
+    elem.remove_attribute("data-value");
+    EXPECT_FALSE(elem.has_attribute("data-value"));
+}
+
+// 2. ClassList toggle adds class when absent and removes when present
+TEST(DomElement, ClassListToggleV181) {
+    Element elem("span");
+    elem.class_list().toggle("highlight");
+    EXPECT_TRUE(elem.class_list().contains("highlight"));
+    elem.class_list().toggle("highlight");
+    EXPECT_FALSE(elem.class_list().contains("highlight"));
+}
+
+// 3. DirtyFlags mark All sets every flag
+TEST(DomNode, MarkAllSetsEveryFlagV181) {
+    Element elem("div");
+    elem.mark_dirty(DirtyFlags::All);
+    EXPECT_NE(elem.dirty_flags() & DirtyFlags::Style, DirtyFlags::None);
+    EXPECT_NE(elem.dirty_flags() & DirtyFlags::Layout, DirtyFlags::None);
+    EXPECT_NE(elem.dirty_flags() & DirtyFlags::Paint, DirtyFlags::None);
+}
+
+// 4. Text node set_data changes text content
+TEST(DomText, SetDataChangesContentV181) {
+    Text text_node("original");
+    EXPECT_EQ(text_node.data(), "original");
+    text_node.set_data("modified");
+    EXPECT_EQ(text_node.data(), "modified");
+    EXPECT_EQ(text_node.node_type(), NodeType::Text);
+}
+
+// 5. append_child then first_child and last_child are correct
+TEST(DomNode, FirstChildLastChildV181) {
+    auto parent = std::make_unique<Element>("div");
+    auto a = std::make_unique<Element>("p");
+    auto* a_ptr = a.get();
+    parent->append_child(std::move(a));
+
+    auto b = std::make_unique<Element>("span");
+    auto* b_ptr = b.get();
+    parent->append_child(std::move(b));
+
+    EXPECT_EQ(parent->first_child(), a_ptr);
+    EXPECT_EQ(parent->last_child(), b_ptr);
+    EXPECT_EQ(parent->child_count(), 2u);
+}
+
+// 6. insert_before at head of child list
+TEST(DomNode, InsertBeforeAtHeadV181) {
+    auto parent = std::make_unique<Element>("ol");
+    auto existing = std::make_unique<Element>("li");
+    auto* existing_ptr = existing.get();
+    parent->append_child(std::move(existing));
+
+    auto new_first = std::make_unique<Element>("li");
+    auto* new_first_ptr = new_first.get();
+    parent->insert_before(std::move(new_first), existing_ptr);
+
+    EXPECT_EQ(parent->first_child(), new_first_ptr);
+    EXPECT_EQ(new_first_ptr->next_sibling(), existing_ptr);
+    EXPECT_EQ(parent->child_count(), 2u);
+}
+
+// 7. Element attributes size tracks additions and removals
+TEST(DomElement, AttributesSizeTracksV181) {
+    Element elem("img");
+    EXPECT_EQ(elem.attributes().size(), 0u);
+    elem.set_attribute("src", "image.png");
+    elem.set_attribute("alt", "photo");
+    EXPECT_EQ(elem.attributes().size(), 2u);
+    elem.remove_attribute("alt");
+    EXPECT_EQ(elem.attributes().size(), 1u);
+}
+
+// 8. DirtyFlags mark Style then Layout independently
+TEST(DomNode, MarkStyleThenLayoutIndependentV181) {
+    Element elem("section");
+    elem.mark_dirty(DirtyFlags::Style);
+    EXPECT_NE(elem.dirty_flags() & DirtyFlags::Style, DirtyFlags::None);
+    EXPECT_EQ(elem.dirty_flags() & DirtyFlags::Layout, DirtyFlags::None);
+    elem.mark_dirty(DirtyFlags::Layout);
+    EXPECT_NE(elem.dirty_flags() & DirtyFlags::Style, DirtyFlags::None);
+    EXPECT_NE(elem.dirty_flags() & DirtyFlags::Layout, DirtyFlags::None);
+    elem.clear_dirty();
+    EXPECT_EQ(elem.dirty_flags(), DirtyFlags::None);
+}

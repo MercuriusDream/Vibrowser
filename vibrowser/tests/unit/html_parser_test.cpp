@@ -27777,3 +27777,119 @@ TEST(HtmlParserTest, HtmlV180_8) {
     ASSERT_NE(small, nullptr);
     EXPECT_EQ(small->tag_name, "small");
 }
+
+// ---------------------------------------------------------------------------
+// Cycle V181 — 8 HTML parser tests
+// ---------------------------------------------------------------------------
+
+TEST(HtmlParserTest, HtmlV181_1) {
+    auto doc = clever::html::parse("<section><article><h2>Blog Post</h2><p>Content here</p></article></section>");
+    ASSERT_NE(doc, nullptr);
+    auto* section = doc->find_element("section");
+    ASSERT_NE(section, nullptr);
+    EXPECT_EQ(section->tag_name, "section");
+    auto* article = doc->find_element("article");
+    ASSERT_NE(article, nullptr);
+    EXPECT_EQ(article->tag_name, "article");
+    auto* h2 = doc->find_element("h2");
+    ASSERT_NE(h2, nullptr);
+    EXPECT_EQ(h2->text_content(), "Blog Post");
+}
+
+TEST(HtmlParserTest, HtmlV181_2) {
+    auto doc = clever::html::parse("<nav><ul><li>Home</li><li>About</li><li>Contact</li></ul></nav>");
+    ASSERT_NE(doc, nullptr);
+    auto* nav = doc->find_element("nav");
+    ASSERT_NE(nav, nullptr);
+    EXPECT_EQ(nav->tag_name, "nav");
+    auto* ul = doc->find_element("ul");
+    ASSERT_NE(ul, nullptr);
+    EXPECT_EQ(ul->tag_name, "ul");
+    auto* li = doc->find_element("li");
+    ASSERT_NE(li, nullptr);
+    EXPECT_EQ(li->text_content(), "Home");
+}
+
+TEST(HtmlParserTest, HtmlV181_3) {
+    auto doc = clever::html::parse("<form action=\"/submit\" method=\"post\"><input type=\"text\" name=\"user\"/></form>");
+    ASSERT_NE(doc, nullptr);
+    auto* form = doc->find_element("form");
+    ASSERT_NE(form, nullptr);
+    EXPECT_EQ(form->tag_name, "form");
+    ASSERT_GE(form->attributes.size(), 2u);
+    EXPECT_EQ(form->attributes[0].name, "action");
+    EXPECT_EQ(form->attributes[0].value, "/submit");
+    EXPECT_EQ(form->attributes[1].name, "method");
+    EXPECT_EQ(form->attributes[1].value, "post");
+}
+
+TEST(HtmlParserTest, HtmlV181_4) {
+    auto doc = clever::html::parse("<div class=\"wrapper\"><span id=\"tag\">Hello</span></div>");
+    ASSERT_NE(doc, nullptr);
+    auto* div = doc->find_element("div");
+    ASSERT_NE(div, nullptr);
+    EXPECT_EQ(div->attributes[0].name, "class");
+    EXPECT_EQ(div->attributes[0].value, "wrapper");
+    auto* span = doc->find_element("span");
+    ASSERT_NE(span, nullptr);
+    EXPECT_EQ(span->attributes[0].name, "id");
+    EXPECT_EQ(span->attributes[0].value, "tag");
+    EXPECT_EQ(span->text_content(), "Hello");
+}
+
+TEST(HtmlParserTest, HtmlV181_5) {
+    auto doc = clever::html::parse("<main><aside>Sidebar</aside><p>Main content</p></main>");
+    ASSERT_NE(doc, nullptr);
+    auto* main_el = doc->find_element("main");
+    ASSERT_NE(main_el, nullptr);
+    EXPECT_EQ(main_el->tag_name, "main");
+    auto* aside = doc->find_element("aside");
+    ASSERT_NE(aside, nullptr);
+    EXPECT_EQ(aside->text_content(), "Sidebar");
+    auto* p = doc->find_element("p");
+    ASSERT_NE(p, nullptr);
+    EXPECT_EQ(p->text_content(), "Main content");
+}
+
+TEST(HtmlParserTest, HtmlV181_6) {
+    auto doc = clever::html::parse("<dl><dt>Term</dt><dd>Definition</dd></dl>");
+    ASSERT_NE(doc, nullptr);
+    auto* dl = doc->find_element("dl");
+    ASSERT_NE(dl, nullptr);
+    EXPECT_EQ(dl->tag_name, "dl");
+    auto* dt = doc->find_element("dt");
+    ASSERT_NE(dt, nullptr);
+    EXPECT_EQ(dt->text_content(), "Term");
+    auto* dd = doc->find_element("dd");
+    ASSERT_NE(dd, nullptr);
+    EXPECT_EQ(dd->text_content(), "Definition");
+}
+
+TEST(HtmlParserTest, HtmlV181_7) {
+    auto doc = clever::html::parse("<figure><img src=\"photo.jpg\" alt=\"Photo\"/><figcaption>A photo</figcaption></figure>");
+    ASSERT_NE(doc, nullptr);
+    auto* figure = doc->find_element("figure");
+    ASSERT_NE(figure, nullptr);
+    EXPECT_EQ(figure->tag_name, "figure");
+    auto* img = doc->find_element("img");
+    ASSERT_NE(img, nullptr);
+    EXPECT_EQ(img->attributes[0].name, "src");
+    EXPECT_EQ(img->attributes[0].value, "photo.jpg");
+    auto* figcaption = doc->find_element("figcaption");
+    ASSERT_NE(figcaption, nullptr);
+    EXPECT_EQ(figcaption->text_content(), "A photo");
+}
+
+TEST(HtmlParserTest, HtmlV181_8) {
+    auto doc = clever::html::parse("<blockquote cite=\"https://example.com\"><p>Famous quote</p></blockquote>");
+    ASSERT_NE(doc, nullptr);
+    auto* bq = doc->find_element("blockquote");
+    ASSERT_NE(bq, nullptr);
+    EXPECT_EQ(bq->tag_name, "blockquote");
+    ASSERT_GE(bq->attributes.size(), 1u);
+    EXPECT_EQ(bq->attributes[0].name, "cite");
+    EXPECT_EQ(bq->attributes[0].value, "https://example.com");
+    auto* p = doc->find_element("p");
+    ASSERT_NE(p, nullptr);
+    EXPECT_EQ(p->text_content(), "Famous quote");
+}

@@ -307,7 +307,7 @@ TEST(RequestTest, SerializeGetRequest) {
     // Check Host header is present
     EXPECT_TRUE(result.find("Host: example.com\r\n") != std::string::npos);
     // Check Connection header
-    EXPECT_TRUE(result.find("Connection: close\r\n") != std::string::npos);
+    EXPECT_TRUE(result.find("Connection: keep-alive\r\n") != std::string::npos);
     // Check custom header (stored lowercase)
     EXPECT_TRUE(result.find("accept: text/html\r\n") != std::string::npos);
     // Check ends with empty line
@@ -1044,8 +1044,8 @@ TEST(RequestTest, DefaultConnectionKeepAlive) {
     req.parse_url();
     auto bytes = req.serialize();
     std::string s(bytes.begin(), bytes.end());
-    EXPECT_NE(s.find("Connection: close"), std::string::npos)
-        << "Default Connection should be close";
+    EXPECT_NE(s.find("Connection: keep-alive"), std::string::npos)
+        << "Default Connection should be keep-alive";
 }
 
 TEST(RequestTest, DefaultAcceptEncodingHeader) {
@@ -11307,7 +11307,7 @@ TEST(RequestTest, ConnectionKeepAliveHeadersV61) {
     std::string result(bytes.begin(), bytes.end());
 
     // Verify Connection header keeps original capitalization
-    EXPECT_TRUE(result.find("Connection: close\r\n") != std::string::npos);
+    EXPECT_TRUE(result.find("Connection: keep-alive\r\n") != std::string::npos);
     // Other custom headers are lowercase
     EXPECT_TRUE(result.find("keep-alive: timeout=5, max=100\r\n") != std::string::npos);
     EXPECT_TRUE(result.find("GET /resource HTTP/1.1\r\n") != std::string::npos);
@@ -11626,7 +11626,7 @@ TEST(RequestTest, SerializeHostConnectionCapsAndCustomLowercaseV63) {
     std::string serialized(bytes.begin(), bytes.end());
 
     EXPECT_TRUE(serialized.find("Host: api.example.com\r\n") != std::string::npos);
-    EXPECT_TRUE(serialized.find("Connection: close\r\n") != std::string::npos);
+    EXPECT_TRUE(serialized.find("Connection: keep-alive\r\n") != std::string::npos);
     EXPECT_TRUE(serialized.find("x-trace-id: trace-123\r\n") != std::string::npos);
     EXPECT_TRUE(serialized.find("cookie: sid=abc123\r\n") != std::string::npos);
     EXPECT_TRUE(serialized.find("X-Trace-Id: trace-123\r\n") == std::string::npos);
@@ -12235,7 +12235,7 @@ TEST(RequestTest, SerializeAddsConnectionKeepAliveByDefaultV66) {
     auto bytes = req.serialize();
     std::string serialized(bytes.begin(), bytes.end());
 
-    EXPECT_TRUE(serialized.find("Connection: close\r\n") != std::string::npos);
+    EXPECT_TRUE(serialized.find("Connection: keep-alive\r\n") != std::string::npos);
 }
 
 TEST(ResponseTest, ParseTransferEncodingChunkedResponseV66) {
@@ -14741,7 +14741,7 @@ TEST(HttpClientTest, RequestSerializeHeadMethodNoBodyV81) {
     // Port 80 should be omitted from Host
     EXPECT_FALSE(result.find("Host: example.com:80") != std::string::npos);
     // Connection header should be present
-    EXPECT_TRUE(result.find("Connection: close\r\n") != std::string::npos);
+    EXPECT_TRUE(result.find("Connection: keep-alive\r\n") != std::string::npos);
 }
 
 TEST(HttpClientTest, CookieJarClearRemovesAllCookiesV81) {
@@ -14869,7 +14869,7 @@ TEST(HttpClientTest, RequestSerializeDeleteMethodCustomPortV82) {
 
     EXPECT_TRUE(result.find("DELETE /index/doc/1 HTTP/1.1\r\n") != std::string::npos);
     EXPECT_TRUE(result.find("Host: db.internal.net:9200\r\n") != std::string::npos);
-    EXPECT_TRUE(result.find("Connection: close\r\n") != std::string::npos);
+    EXPECT_TRUE(result.find("Connection: keep-alive\r\n") != std::string::npos);
 }
 
 TEST(HttpClientTest, HeaderMapGetNonexistentReturnsNulloptV82) {
@@ -16491,7 +16491,7 @@ TEST(HttpClientTest, SerializePostMultipleCustomHeadersV96) {
     EXPECT_TRUE(s.find("Host: api.example.com\r\n") != std::string::npos);
     EXPECT_TRUE(s.find(":443") == std::string::npos);
     // Connection header capitalized
-    EXPECT_TRUE(s.find("Connection: close\r\n") != std::string::npos);
+    EXPECT_TRUE(s.find("Connection: keep-alive\r\n") != std::string::npos);
     // Custom headers lowercased
     EXPECT_TRUE(s.find("content-type: application/json\r\n") != std::string::npos);
     EXPECT_TRUE(s.find("x-request-id: req-42\r\n") != std::string::npos);
@@ -17732,7 +17732,7 @@ TEST(HttpClientTest, HeadRequestSerializeOmitsBodyV104) {
     EXPECT_TRUE(result.find("Host: example.com\r\n") != std::string::npos);
     EXPECT_TRUE(result.find("Host: example.com:80") == std::string::npos);
     // Connection header always present
-    EXPECT_TRUE(result.find("Connection: close\r\n") != std::string::npos);
+    EXPECT_TRUE(result.find("Connection: keep-alive\r\n") != std::string::npos);
     // Custom header lowercase
     EXPECT_TRUE(result.find("accept: */*\r\n") != std::string::npos);
 }
@@ -17759,7 +17759,7 @@ TEST(HttpClientTest, SerializeMultipleCustomHeadersLowercaseV104) {
     EXPECT_TRUE(result.find("x-request-id: req-9876\r\n") != std::string::npos);
     // Host and Connection keep their original capitalization
     EXPECT_TRUE(result.find("Host:") != std::string::npos);
-    EXPECT_TRUE(result.find("Connection: close") != std::string::npos);
+    EXPECT_TRUE(result.find("Connection: keep-alive") != std::string::npos);
 }
 
 // 8. Response parse chunked with multiple chunks and trailing headers ignored
@@ -17834,7 +17834,7 @@ TEST(RequestTest, SerializeHeadRequestOmitsBodyV105) {
     // Host header present without port (port 80 omitted)
     EXPECT_TRUE(result.find("Host: example.org\r\n") != std::string::npos);
     // Connection header present
-    EXPECT_TRUE(result.find("Connection: close\r\n") != std::string::npos);
+    EXPECT_TRUE(result.find("Connection: keep-alive\r\n") != std::string::npos);
     // Ends with \r\n\r\n and nothing after for HEAD with no body
     size_t end_pos = result.find("\r\n\r\n");
     ASSERT_NE(end_pos, std::string::npos);
@@ -18103,7 +18103,7 @@ TEST(RequestTest, SerializeHeadOmitsBodyV106) {
     // Host: with port 80 omitted
     EXPECT_TRUE(result.find("Host: example.com\r\n") != std::string::npos);
     // Connection header present
-    EXPECT_TRUE(result.find("Connection: close\r\n") != std::string::npos);
+    EXPECT_TRUE(result.find("Connection: keep-alive\r\n") != std::string::npos);
 }
 
 // ---------------------------------------------------------------------------
@@ -18291,7 +18291,7 @@ TEST(RequestTest, SerializeHeadMethodNoBodyV107) {
 
     EXPECT_TRUE(result.find("HEAD /assets/style.css HTTP/1.1\r\n") != std::string::npos);
     EXPECT_TRUE(result.find("Host: cdn.example.com\r\n") != std::string::npos);
-    EXPECT_TRUE(result.find("Connection: close\r\n") != std::string::npos);
+    EXPECT_TRUE(result.find("Connection: keep-alive\r\n") != std::string::npos);
     // HEAD should have no body and no Content-Length
     EXPECT_TRUE(result.find("Content-Length") == std::string::npos);
     // Ends with header terminator only
@@ -18608,7 +18608,7 @@ TEST(RequestTest, SerializeHeadMethodNoBodyV109) {
 
     EXPECT_NE(result.find("HEAD /status HTTP/1.1\r\n"), std::string::npos);
     EXPECT_NE(result.find("Host: example.com\r\n"), std::string::npos);
-    EXPECT_NE(result.find("Connection: close\r\n"), std::string::npos);
+    EXPECT_NE(result.find("Connection: keep-alive\r\n"), std::string::npos);
     // Ends with double CRLF and nothing after
     auto pos = result.find("\r\n\r\n");
     ASSERT_NE(pos, std::string::npos);
@@ -18683,7 +18683,7 @@ TEST(RequestTest, SerializeMultipleCustomHeadersLowercasedV109) {
     EXPECT_NE(result.find("POST /v2/submit HTTP/1.1\r\n"), std::string::npos);
     // Host and Connection keep caps
     EXPECT_NE(result.find("Host: api.example.com\r\n"), std::string::npos);
-    EXPECT_NE(result.find("Connection: close\r\n"), std::string::npos);
+    EXPECT_NE(result.find("Connection: keep-alive\r\n"), std::string::npos);
     // All custom headers lowercased
     EXPECT_NE(result.find("content-type: application/x-www-form-urlencoded\r\n"), std::string::npos);
     EXPECT_NE(result.find("authorization: Bearer tok123\r\n"), std::string::npos);
@@ -18840,7 +18840,7 @@ TEST(RequestTest, SerializeGetOmitsPort80FromHostV110) {
     EXPECT_NE(result.find("Host: www.example.org\r\n"), std::string::npos);
     EXPECT_EQ(result.find("Host: www.example.org:80"), std::string::npos);
     // Connection keep-alive capitalized
-    EXPECT_NE(result.find("Connection: close\r\n"), std::string::npos);
+    EXPECT_NE(result.find("Connection: keep-alive\r\n"), std::string::npos);
     // Custom header lowercased
     EXPECT_NE(result.find("accept-language: en-US\r\n"), std::string::npos);
 }
@@ -18983,7 +18983,7 @@ TEST(RequestTest, SerializePutNonStandardPortInHostV111) {
     EXPECT_NE(result.find("Host: data.example.io:9090\r\n"), std::string::npos);
     // Custom header lowercased
     EXPECT_NE(result.find("x-request-id: abc-123\r\n"), std::string::npos);
-    EXPECT_NE(result.find("Connection: close\r\n"), std::string::npos);
+    EXPECT_NE(result.find("Connection: keep-alive\r\n"), std::string::npos);
 }
 
 // ===========================================================================
@@ -19096,7 +19096,7 @@ TEST(RequestTest, SerializeCustomHeadersLowercasedV112) {
     EXPECT_NE(result.find("content-type: multipart/form-data\r\n"), std::string::npos);
     // Host and Connection keep capitalization
     EXPECT_NE(result.find("Host: upload.example.com\r\n"), std::string::npos);
-    EXPECT_NE(result.find("Connection: close\r\n"), std::string::npos);
+    EXPECT_NE(result.find("Connection: keep-alive\r\n"), std::string::npos);
 }
 
 // ---------------------------------------------------------------------------
@@ -20156,7 +20156,7 @@ TEST(RequestTest, SerializePutQueryPort443OmittedV118) {
     // Should NOT contain ":443" in Host
     EXPECT_EQ(result.find("Host: store.example.com:443"), std::string::npos);
     // Connection keep-alive
-    EXPECT_NE(result.find("Connection: close\r\n"), std::string::npos);
+    EXPECT_NE(result.find("Connection: keep-alive\r\n"), std::string::npos);
     // Body present
     EXPECT_NE(result.find(R"({"price":29.99})"), std::string::npos);
 }
@@ -20238,7 +20238,7 @@ TEST(RequestTest, SerializeGetNonStandardPort9090V119) {
     EXPECT_NE(result.find("GET /health HTTP/1.1\r\n"), std::string::npos);
     // Non-standard port MUST appear in Host header
     EXPECT_NE(result.find("Host: internal.example.com:9090\r\n"), std::string::npos);
-    EXPECT_NE(result.find("Connection: close\r\n"), std::string::npos);
+    EXPECT_NE(result.find("Connection: keep-alive\r\n"), std::string::npos);
 }
 
 // ---------------------------------------------------------------------------
@@ -20325,7 +20325,7 @@ TEST(RequestTest, SerializePostCustomHeadersLowercaseV119) {
     EXPECT_NE(result.find("Host: api.widgets.io\r\n"), std::string::npos);
     EXPECT_EQ(result.find("Host: api.widgets.io:443"), std::string::npos);
     // Connection keeps capitalization
-    EXPECT_NE(result.find("Connection: close\r\n"), std::string::npos);
+    EXPECT_NE(result.find("Connection: keep-alive\r\n"), std::string::npos);
     // Custom headers are lowercase
     EXPECT_NE(result.find("authorization: Bearer tok_v119\r\n"), std::string::npos);
     EXPECT_NE(result.find("x-idempotency-key: idem-777\r\n"), std::string::npos);
@@ -20408,7 +20408,7 @@ TEST(RequestTest, SerializeGetWithQueryAndCustomHeaderV120) {
     EXPECT_EQ(result.find("Host: data.example.io:443"), std::string::npos);
     // Custom header lowercased
     EXPECT_NE(result.find("x-api-key: key_v120_secret\r\n"), std::string::npos);
-    EXPECT_NE(result.find("Connection: close\r\n"), std::string::npos);
+    EXPECT_NE(result.find("Connection: keep-alive\r\n"), std::string::npos);
 }
 
 // ---------------------------------------------------------------------------
@@ -20471,7 +20471,7 @@ TEST(RequestTest, SerializePutNonStandardPort8443V120) {
     EXPECT_NE(result.find("PUT /resource/99 HTTP/1.1\r\n"), std::string::npos);
     // Non-standard port 8443 MUST appear in Host
     EXPECT_NE(result.find("Host: staging.example.com:8443\r\n"), std::string::npos);
-    EXPECT_NE(result.find("Connection: close\r\n"), std::string::npos);
+    EXPECT_NE(result.find("Connection: keep-alive\r\n"), std::string::npos);
     // Custom header lowercased
     EXPECT_NE(result.find("content-type: text/plain\r\n"), std::string::npos);
     // Content-Length matches body
@@ -20525,7 +20525,7 @@ TEST(RequestTest, SerializeMultipleCustomHeadersAllLowercaseV121) {
 
     // Host and Connection keep their canonical caps
     EXPECT_NE(result.find("Host: api.example.com\r\n"), std::string::npos);
-    EXPECT_NE(result.find("Connection: close\r\n"), std::string::npos);
+    EXPECT_NE(result.find("Connection: keep-alive\r\n"), std::string::npos);
     // Port 443 with HTTPS is standard, so omitted from Host
     EXPECT_EQ(result.find("api.example.com:443"), std::string::npos);
     // All custom headers must be lowercased
@@ -20734,7 +20734,7 @@ TEST(RequestTest, SerializePutEmptyBodyContentLengthZeroV122) {
     EXPECT_NE(result.find("Host: api.v122.test\r\n"), std::string::npos);
     EXPECT_EQ(result.find("api.v122.test:443"), std::string::npos);
     // Connection header present
-    EXPECT_NE(result.find("Connection: close\r\n"), std::string::npos);
+    EXPECT_NE(result.find("Connection: keep-alive\r\n"), std::string::npos);
 }
 
 // ---------------------------------------------------------------------------
@@ -22110,7 +22110,7 @@ TEST(HttpClient, ConnectionPoolSameHostDifferentPortIsolationV130) {
     EXPECT_EQ(pool.acquire("host", 443), -1);
 }
 
-TEST(HttpClient, RequestSerializeEmitsConnectionCloseInBytesV130) {
+TEST(HttpClient, RequestSerializeEmitsConnectionKeepAliveInBytesV130) {
     Request req;
     req.method = Method::GET;
     req.url = "http://example.com/page";
@@ -22119,8 +22119,8 @@ TEST(HttpClient, RequestSerializeEmitsConnectionCloseInBytesV130) {
     auto bytes = req.serialize();
     std::string s(bytes.begin(), bytes.end());
 
-    EXPECT_NE(s.find("Connection: close\r\n"), std::string::npos);
-    EXPECT_EQ(s.find("keep-alive"), std::string::npos);
+    EXPECT_NE(s.find("Connection: keep-alive\r\n"), std::string::npos);
+    EXPECT_EQ(s.find("Connection: close"), std::string::npos);
 }
 
 TEST(HttpClient, CookieJarSameNameDifferentPathsCoexistV130) {
@@ -22396,8 +22396,8 @@ TEST(HttpClient, RequestSerializePOSTWithQueryStringV132) {
     EXPECT_NE(result.find("Host: api.example.com\r\n"), std::string::npos);
     // Content-Length matches body
     EXPECT_NE(result.find("Content-Length: 16\r\n"), std::string::npos);
-    // Connection: close
-    EXPECT_NE(result.find("Connection: close\r\n"), std::string::npos);
+    // Connection: keep-alive
+    EXPECT_NE(result.find("Connection: keep-alive\r\n"), std::string::npos);
     // Custom header lowercase
     EXPECT_NE(result.find("content-type: application/json\r\n"), std::string::npos);
     // Body present after blank line
@@ -22546,8 +22546,8 @@ TEST(HttpClient, RequestSerializeOPTIONSWithCORSHeadersV132) {
     EXPECT_NE(result.find("access-control-request-method: POST\r\n"), std::string::npos);
     EXPECT_NE(result.find("access-control-request-headers: Content-Type, Authorization\r\n"),
               std::string::npos);
-    // Connection: close
-    EXPECT_NE(result.find("Connection: close\r\n"), std::string::npos);
+    // Connection: keep-alive
+    EXPECT_NE(result.find("Connection: keep-alive\r\n"), std::string::npos);
 }
 
 TEST(HttpClient, CookieJarThreeDomainStrictIsolationV132) {
@@ -22612,8 +22612,8 @@ TEST(HttpClient, RequestSerializePATCHWithJsonBodyV133) {
     EXPECT_NE(result.find("content-type: application/json\r\n"), std::string::npos);
     // Content-Length auto-added
     EXPECT_NE(result.find("Content-Length: 30\r\n"), std::string::npos);
-    // Connection: close
-    EXPECT_NE(result.find("Connection: close\r\n"), std::string::npos);
+    // Connection: keep-alive
+    EXPECT_NE(result.find("Connection: keep-alive\r\n"), std::string::npos);
     // Body at end
     EXPECT_NE(result.find("\r\n\r\n{\"status\":\"active\",\"count\":42}"), std::string::npos);
 }
@@ -22993,8 +22993,8 @@ TEST(HttpClient, RequestSerializePostWithBodyV135) {
     EXPECT_NE(result.find(expected_cl), std::string::npos);
     // Body appears after blank line
     EXPECT_NE(result.find("\r\n\r\n" + body_str), std::string::npos);
-    // Connection: close
-    EXPECT_NE(result.find("Connection: close\r\n"), std::string::npos);
+    // Connection: keep-alive
+    EXPECT_NE(result.find("Connection: keep-alive\r\n"), std::string::npos);
 }
 
 // ---------------------------------------------------------------------------
@@ -23074,8 +23074,8 @@ TEST(HttpClient, RequestSerializeCustomUserAgentV135) {
     EXPECT_NE(result.find("user-agent: ViBrowser/1.0-V135\r\n"), std::string::npos);
     // Port 80 should be omitted from Host
     EXPECT_NE(result.find("Host: ua.v135.test\r\n"), std::string::npos);
-    // Connection: close must still be present
-    EXPECT_NE(result.find("Connection: close\r\n"), std::string::npos);
+    // Connection: keep-alive must still be present
+    EXPECT_NE(result.find("Connection: keep-alive\r\n"), std::string::npos);
 }
 
 // ---------------------------------------------------------------------------
@@ -23149,7 +23149,7 @@ TEST(HttpClient, ConnectionPoolAcquireFromEmptyReturnsNulloptV135) {
 // V136 Test Suite: 8 new tests for HttpClient
 // ===========================================================================
 
-// 1. PUT request serializes correctly with method, path, host, and Connection: close
+// 1. PUT request serializes correctly with method, path, host, and Connection: keep-alive
 TEST(HttpClient, RequestSerializePutMethodV136) {
     Request req;
     req.method = Method::PUT;
@@ -23168,8 +23168,8 @@ TEST(HttpClient, RequestSerializePutMethodV136) {
     // Port 443 should be omitted from Host header
     EXPECT_NE(result.find("Host: api.v136.example.com\r\n"), std::string::npos);
     EXPECT_EQ(result.find("Host: api.v136.example.com:443"), std::string::npos);
-    // Connection: close with capital C
-    EXPECT_NE(result.find("Connection: close\r\n"), std::string::npos);
+    // Connection: keep-alive with capital C
+    EXPECT_NE(result.find("Connection: keep-alive\r\n"), std::string::npos);
     // Custom header stored lowercase
     EXPECT_NE(result.find("content-type: application/json\r\n"), std::string::npos);
     // Body should appear after blank line
@@ -23245,8 +23245,8 @@ TEST(HttpClient, RequestSerializeEmptyPathDefaultsToRootV136) {
     // Port 80 omitted from Host
     EXPECT_NE(result.find("Host: root.v136.example.com\r\n"), std::string::npos);
     EXPECT_EQ(result.find("Host: root.v136.example.com:80"), std::string::npos);
-    // Connection: close
-    EXPECT_NE(result.find("Connection: close\r\n"), std::string::npos);
+    // Connection: keep-alive
+    EXPECT_NE(result.find("Connection: keep-alive\r\n"), std::string::npos);
 }
 
 // 6. Response with headers but empty body
@@ -23342,8 +23342,8 @@ TEST(HttpClient, RequestSerializeWithQueryStringV137) {
     EXPECT_NE(result.find("GET /search?q=test&lang=en&page=3 HTTP/1.1\r\n"), std::string::npos);
     // Host header omits :80 for standard port
     EXPECT_NE(result.find("Host: search.v137example.com\r\n"), std::string::npos);
-    // Connection: close is always present
-    EXPECT_NE(result.find("Connection: close\r\n"), std::string::npos);
+    // Connection: keep-alive is always present
+    EXPECT_NE(result.find("Connection: keep-alive\r\n"), std::string::npos);
     // Custom header stored lowercase
     EXPECT_NE(result.find("accept: text/html\r\n"), std::string::npos);
     // Terminates with blank line
@@ -23420,7 +23420,7 @@ TEST(HttpClient, RequestSerializeHostHeaderWithNonStandardPortV137) {
     // Request line
     EXPECT_NE(result.find("GET /status HTTP/1.1\r\n"), std::string::npos);
     // Connection header
-    EXPECT_NE(result.find("Connection: close\r\n"), std::string::npos);
+    EXPECT_NE(result.find("Connection: keep-alive\r\n"), std::string::npos);
 
     // Also check that port 443 (standard HTTPS) is omitted
     Request req2;
@@ -23619,8 +23619,8 @@ TEST(HttpClient, RequestSerializeMethodCaseV138) {
 
     // Request line must start with uppercase GET
     EXPECT_NE(raw.find("GET /check HTTP/1.1\r\n"), std::string::npos);
-    // Connection: close must be present
-    EXPECT_NE(raw.find("Connection: close\r\n"), std::string::npos);
+    // Connection: keep-alive must be present
+    EXPECT_NE(raw.find("Connection: keep-alive\r\n"), std::string::npos);
     // Port 80 should be omitted from Host header
     EXPECT_NE(raw.find("Host: v138method.example.com\r\n"), std::string::npos);
     EXPECT_EQ(raw.find("Host: v138method.example.com:80"), std::string::npos);
@@ -23725,8 +23725,8 @@ TEST(HttpClient, RequestSerializeHeadMethodV139) {
     EXPECT_NE(result.find("HEAD /status HTTP/1.1\r\n"), std::string::npos);
     // Host header without port (port 80 omitted)
     EXPECT_NE(result.find("Host: v139head.example.com\r\n"), std::string::npos);
-    // Connection: close
-    EXPECT_NE(result.find("Connection: close\r\n"), std::string::npos);
+    // Connection: keep-alive
+    EXPECT_NE(result.find("Connection: keep-alive\r\n"), std::string::npos);
     // Custom headers lowercase
     EXPECT_NE(result.find("accept: text/html\r\n"), std::string::npos);
     // Body should be empty for HEAD
@@ -23906,8 +23906,8 @@ TEST(HttpClient, RequestSerializeGetDefaultPathSlashV140) {
     // Port 80 omitted from Host header
     EXPECT_NE(result.find("Host: v140default.example.com\r\n"), std::string::npos);
     EXPECT_EQ(result.find("Host: v140default.example.com:80\r\n"), std::string::npos);
-    // Connection: close present
-    EXPECT_NE(result.find("Connection: close\r\n"), std::string::npos);
+    // Connection: keep-alive present
+    EXPECT_NE(result.find("Connection: keep-alive\r\n"), std::string::npos);
     // Ends with double CRLF
     EXPECT_NE(result.find("\r\n\r\n"), std::string::npos);
 }
@@ -23984,8 +23984,8 @@ TEST(HttpClient, RequestSerializeMultipleCustomHeadersV140) {
     // Port 443 omitted from Host header
     EXPECT_NE(result.find("Host: v140headers.example.com\r\n"), std::string::npos);
     EXPECT_EQ(result.find("Host: v140headers.example.com:443\r\n"), std::string::npos);
-    // Connection: close present
-    EXPECT_NE(result.find("Connection: close\r\n"), std::string::npos);
+    // Connection: keep-alive present
+    EXPECT_NE(result.find("Connection: keep-alive\r\n"), std::string::npos);
     // All three custom headers serialized in lowercase
     EXPECT_NE(result.find("x-custom-one: value-one-v140\r\n"), std::string::npos);
     EXPECT_NE(result.find("x-custom-two: value-two-v140\r\n"), std::string::npos);
@@ -24076,7 +24076,7 @@ TEST(HttpClient, RequestSerializeGetWithQueryParamsV141) {
 
     EXPECT_NE(result.find("GET /search?q=test HTTP/1.1\r\n"), std::string::npos);
     EXPECT_NE(result.find("Host: search.example.com\r\n"), std::string::npos);
-    EXPECT_NE(result.find("Connection: close\r\n"), std::string::npos);
+    EXPECT_NE(result.find("Connection: keep-alive\r\n"), std::string::npos);
     EXPECT_NE(result.find("\r\n\r\n"), std::string::npos);
 }
 
@@ -24217,7 +24217,7 @@ TEST(HttpClient, RequestSerializePutMethodV142) {
 
     EXPECT_NE(result.find("PUT /api/data HTTP/1.1\r\n"), std::string::npos);
     EXPECT_NE(result.find("Host: api.example.com\r\n"), std::string::npos);
-    EXPECT_NE(result.find("Connection: close\r\n"), std::string::npos);
+    EXPECT_NE(result.find("Connection: keep-alive\r\n"), std::string::npos);
     EXPECT_NE(result.find("Content-Length: 12\r\n"), std::string::npos);
     EXPECT_NE(result.find("\r\n\r\nupdated=true"), std::string::npos);
 }
@@ -24293,7 +24293,7 @@ TEST(HttpClient, RequestSerializeHeadMethodV142) {
 
     EXPECT_NE(result.find("HEAD / HTTP/1.1\r\n"), std::string::npos);
     EXPECT_NE(result.find("Host: headtest142.example.com\r\n"), std::string::npos);
-    EXPECT_NE(result.find("Connection: close\r\n"), std::string::npos);
+    EXPECT_NE(result.find("Connection: keep-alive\r\n"), std::string::npos);
 }
 
 // 6. Parse 204 No Content response
@@ -24358,7 +24358,7 @@ TEST(HttpClient, RequestSerializeMultipleCustomHeadersV143) {
 
     // Host and Connection keep capitalization
     EXPECT_NE(result.find("Host: multiheader143.example.com\r\n"), std::string::npos);
-    EXPECT_NE(result.find("Connection: close\r\n"), std::string::npos);
+    EXPECT_NE(result.find("Connection: keep-alive\r\n"), std::string::npos);
 
     // Custom headers serialized in lowercase
     EXPECT_NE(result.find("x-request-id: abc-143\r\n"), std::string::npos)
@@ -24943,8 +24943,8 @@ TEST(HttpClient, RequestSerializeWithAuthorizationBearerV147) {
     // Port 443 omitted from Host
     EXPECT_NE(raw.find("Host: v147auth.example.com\r\n"), std::string::npos)
         << "Port 443 should be omitted from Host header, got: " << raw;
-    // Connection: close
-    EXPECT_NE(raw.find("Connection: close\r\n"), std::string::npos)
+    // Connection: keep-alive
+    EXPECT_NE(raw.find("Connection: keep-alive\r\n"), std::string::npos)
         << "Connection header should be present, got: " << raw;
 }
 
@@ -25121,7 +25121,7 @@ TEST(HttpClient, RequestSerializeWithCookieHeaderV148) {
     EXPECT_NE(result.find("Host: shop.example.com\r\n"), std::string::npos);
     EXPECT_NE(result.find("cookie: session=abc123\r\n"), std::string::npos)
         << "Cookie header should appear (lowercase) in serialized request, got:\n" << result;
-    EXPECT_NE(result.find("Connection: close\r\n"), std::string::npos);
+    EXPECT_NE(result.find("Connection: keep-alive\r\n"), std::string::npos);
 }
 
 // ---------------------------------------------------------------------------
@@ -25216,7 +25216,7 @@ TEST(HttpClient, RequestSerializeGetWithPathV148) {
         << "Host header should omit port 443, got:\n" << result;
     EXPECT_EQ(result.find("Host: api.example.com:443"), std::string::npos)
         << "Port 443 should NOT appear in Host header";
-    EXPECT_NE(result.find("Connection: close\r\n"), std::string::npos);
+    EXPECT_NE(result.find("Connection: keep-alive\r\n"), std::string::npos);
 }
 
 // ---------------------------------------------------------------------------
@@ -25377,7 +25377,7 @@ TEST(HttpClient, RequestSerializePostEmptyBodyV149) {
         << "Request line missing, got: " << s;
     EXPECT_NE(s.find("Host: submit149.example.com\r\n"), std::string::npos)
         << "Host header missing, got: " << s;
-    EXPECT_NE(s.find("Connection: close\r\n"), std::string::npos)
+    EXPECT_NE(s.find("Connection: keep-alive\r\n"), std::string::npos)
         << "Connection header missing, got: " << s;
     // With empty body, no Content-Length header should be present
     EXPECT_EQ(s.find("Content-Length"), std::string::npos)
@@ -25484,8 +25484,8 @@ TEST(HttpClient, RequestSerializePostWithBodyV150) {
     // Body appears after blank line
     EXPECT_NE(result.find("\r\n\r\n" + body_str), std::string::npos)
         << "Body not found after header terminator, got: " << result;
-    // Connection: close
-    EXPECT_NE(result.find("Connection: close\r\n"), std::string::npos)
+    // Connection: keep-alive
+    EXPECT_NE(result.find("Connection: keep-alive\r\n"), std::string::npos)
         << "Connection header missing, got: " << result;
 }
 
@@ -25595,8 +25595,8 @@ TEST(HttpClient, RequestSerializeHeadMethodV150) {
     // Host header — port 80 should be omitted
     EXPECT_NE(result.find("Host: head.v150.test\r\n"), std::string::npos)
         << "Host header wrong, got: " << result;
-    // Connection: close
-    EXPECT_NE(result.find("Connection: close\r\n"), std::string::npos)
+    // Connection: keep-alive
+    EXPECT_NE(result.find("Connection: keep-alive\r\n"), std::string::npos)
         << "Connection header missing, got: " << result;
     // No body for HEAD
     auto pos = result.rfind("\r\n\r\n");
@@ -25681,8 +25681,8 @@ TEST(HttpClient, RequestSerializePutWithBodyV151) {
     // Host header — port 443 should be omitted
     EXPECT_NE(result.find("Host: api.v151.test\r\n"), std::string::npos)
         << "Host header wrong for port 443, got: " << result;
-    // Connection: close
-    EXPECT_NE(result.find("Connection: close\r\n"), std::string::npos)
+    // Connection: keep-alive
+    EXPECT_NE(result.find("Connection: keep-alive\r\n"), std::string::npos)
         << "Connection header missing, got: " << result;
     // Content-Length should be auto-added matching body size
     std::string cl_header = "Content-Length: " + std::to_string(body_str.size()) + "\r\n";
@@ -25837,8 +25837,8 @@ TEST(HttpClient, RequestSerializeWithQueryStringV151) {
     // Host header — port 80 omitted
     EXPECT_NE(result.find("Host: search.v151.test\r\n"), std::string::npos)
         << "Host header wrong, got: " << result;
-    // Connection: close
-    EXPECT_NE(result.find("Connection: close\r\n"), std::string::npos)
+    // Connection: keep-alive
+    EXPECT_NE(result.find("Connection: keep-alive\r\n"), std::string::npos)
         << "Connection header missing, got: " << result;
 }
 
@@ -25924,8 +25924,8 @@ TEST(HttpClient, RequestSerializeMultipleCustomHeadersV152) {
     // Host header — port 80 omitted
     EXPECT_NE(result.find("Host: headers.v152.test\r\n"), std::string::npos)
         << "Host header wrong, got: " << result;
-    // Connection: close
-    EXPECT_NE(result.find("Connection: close\r\n"), std::string::npos)
+    // Connection: keep-alive
+    EXPECT_NE(result.find("Connection: keep-alive\r\n"), std::string::npos)
         << "Connection header missing, got: " << result;
     // Custom headers stored lowercase
     EXPECT_NE(result.find("x-api-key: key152abc\r\n"), std::string::npos)
@@ -26052,8 +26052,8 @@ TEST(HttpClient, RequestSerializeHostPortNonStandardV152) {
     // Non-standard port 9090 must appear in Host header
     EXPECT_NE(result.find("Host: api.v152.test:9090\r\n"), std::string::npos)
         << "Host header should include non-standard port 9090, got: " << result;
-    // Connection: close
-    EXPECT_NE(result.find("Connection: close\r\n"), std::string::npos)
+    // Connection: keep-alive
+    EXPECT_NE(result.find("Connection: keep-alive\r\n"), std::string::npos)
         << "Connection header missing, got: " << result;
     // Body present
     EXPECT_NE(result.find(body_str), std::string::npos)
@@ -26143,8 +26143,8 @@ TEST(HttpClient, RequestSerializeGetBasicV153) {
     // Host header — port 443 should be omitted
     EXPECT_NE(result.find("Host: basic.v153.test\r\n"), std::string::npos)
         << "Host header wrong (port 443 should be omitted), got: " << result;
-    // Connection: close
-    EXPECT_NE(result.find("Connection: close\r\n"), std::string::npos)
+    // Connection: keep-alive
+    EXPECT_NE(result.find("Connection: keep-alive\r\n"), std::string::npos)
         << "Connection header missing, got: " << result;
     // Should NOT contain port 443 in Host
     EXPECT_EQ(result.find("Host: basic.v153.test:443\r\n"), std::string::npos)
@@ -26274,8 +26274,8 @@ TEST(HttpClient, RequestSerializePostEmptyBodyV153) {
     // Host header — port 80 omitted
     EXPECT_NE(result.find("Host: empty.v153.test\r\n"), std::string::npos)
         << "Host header wrong, got: " << result;
-    // Connection: close
-    EXPECT_NE(result.find("Connection: close\r\n"), std::string::npos)
+    // Connection: keep-alive
+    EXPECT_NE(result.find("Connection: keep-alive\r\n"), std::string::npos)
         << "Connection header missing, got: " << result;
 }
 
@@ -26587,7 +26587,7 @@ TEST(HttpClient, RequestSerializeAcceptHeaderV155) {
     // Custom headers are stored lowercase
     EXPECT_NE(result.find("accept: application/json\r\n"), std::string::npos)
         << "Accept header missing or not lowercase, got: " << result;
-    EXPECT_NE(result.find("Connection: close\r\n"), std::string::npos)
+    EXPECT_NE(result.find("Connection: keep-alive\r\n"), std::string::npos)
         << "Connection header missing";
 }
 
@@ -26779,7 +26779,7 @@ TEST(HttpClient, RequestSerializeAuthorizationBearerV156) {
     // Custom headers are stored lowercase in output
     EXPECT_NE(result.find("authorization: Bearer eyJhbGciOiJIUzI1NiJ9.payload.sig\r\n"), std::string::npos)
         << "Authorization Bearer header missing or not lowercase, got: " << result;
-    EXPECT_NE(result.find("Connection: close\r\n"), std::string::npos)
+    EXPECT_NE(result.find("Connection: keep-alive\r\n"), std::string::npos)
         << "Connection header missing";
 }
 
@@ -26909,7 +26909,7 @@ TEST(HttpClient, RequestSerializePathOnlyV156) {
     // Port 80 should be omitted from Host header
     EXPECT_NE(result.find("Host: pathonly.v156.test\r\n"), std::string::npos)
         << "Host header missing or incorrectly includes port 80";
-    EXPECT_NE(result.find("Connection: close\r\n"), std::string::npos)
+    EXPECT_NE(result.find("Connection: keep-alive\r\n"), std::string::npos)
         << "Connection header missing";
     // Path should NOT contain a '?' since there is no query
     auto request_line_pos = result.find("POST /submit/form");
@@ -26999,7 +26999,7 @@ TEST(HttpClient, RequestSerializeIfModifiedSinceV157) {
     // Port 80 omitted from Host
     EXPECT_NE(s.find("Host: cache.v157.test\r\n"), std::string::npos)
         << "Host header missing, got: " << s;
-    EXPECT_NE(s.find("Connection: close\r\n"), std::string::npos)
+    EXPECT_NE(s.find("Connection: keep-alive\r\n"), std::string::npos)
         << "Connection header missing, got: " << s;
 }
 
@@ -27130,7 +27130,7 @@ TEST(HttpClient, RequestSerializeWithEmptyPathV157) {
         << "Host header wrong or includes port 443, got: " << s;
     EXPECT_EQ(s.find("Host: emptypath.v157.test:443"), std::string::npos)
         << "Port 443 should be omitted from Host header";
-    EXPECT_NE(s.find("Connection: close\r\n"), std::string::npos)
+    EXPECT_NE(s.find("Connection: keep-alive\r\n"), std::string::npos)
         << "Connection header missing";
 }
 
@@ -27216,7 +27216,7 @@ TEST(HttpClient, RequestSerializeRefererHeaderV158) {
     EXPECT_NE(result.find("referer: https://www.v158referer.example.com/origin\r\n"), std::string::npos)
         << "Referer header missing or wrong case, got: " << result;
     // Connection close
-    EXPECT_NE(result.find("Connection: close\r\n"), std::string::npos)
+    EXPECT_NE(result.find("Connection: keep-alive\r\n"), std::string::npos)
         << "Connection header missing, got: " << result;
 }
 
@@ -27479,7 +27479,7 @@ TEST(HttpClient, RequestSerializeCacheControlHeaderV159) {
     EXPECT_NE(result.find("cache-control: no-cache\r\n"), std::string::npos)
         << "Cache-Control header missing or wrong case, got: " << result;
     // Connection close
-    EXPECT_NE(result.find("Connection: close\r\n"), std::string::npos)
+    EXPECT_NE(result.find("Connection: keep-alive\r\n"), std::string::npos)
         << "Connection header missing, got: " << result;
 }
 
@@ -27591,7 +27591,7 @@ TEST(HttpClient, RequestSerializeGetWithAcceptEncodingV159) {
     EXPECT_NE(result.find("accept-encoding: gzip, deflate\r\n"), std::string::npos)
         << "Accept-Encoding header missing or wrong case, got: " << result;
     // Connection close
-    EXPECT_NE(result.find("Connection: close\r\n"), std::string::npos)
+    EXPECT_NE(result.find("Connection: keep-alive\r\n"), std::string::npos)
         << "Connection header missing, got: " << result;
 }
 
@@ -27669,8 +27669,8 @@ TEST(HttpClient, RequestSerializeWithQueryStringV160) {
         << "Request line should include path?query, got:\n" << result;
     EXPECT_NE(result.find("Host: search160.example.com\r\n"), std::string::npos)
         << "Host header should be present without port for port 80, got:\n" << result;
-    EXPECT_NE(result.find("Connection: close\r\n"), std::string::npos)
-        << "Connection: close header expected, got:\n" << result;
+    EXPECT_NE(result.find("Connection: keep-alive\r\n"), std::string::npos)
+        << "Connection: keep-alive header expected, got:\n" << result;
     EXPECT_NE(result.find("accept: text/html\r\n"), std::string::npos)
         << "Custom Accept header should be lowercase, got:\n" << result;
 }
@@ -27858,7 +27858,7 @@ TEST(HttpClient, RequestSerializeHeadMethodV161) {
     EXPECT_NE(result.find("Host: headtest161.example.com\r\n"), std::string::npos)
         << "Host header wrong, got:\n" << result;
     // Connection close
-    EXPECT_NE(result.find("Connection: close\r\n"), std::string::npos)
+    EXPECT_NE(result.find("Connection: keep-alive\r\n"), std::string::npos)
         << "Connection header expected, got:\n" << result;
     // HEAD has no body so no Content-Length expected
     EXPECT_EQ(result.find("Content-Length"), std::string::npos)
@@ -28073,7 +28073,7 @@ TEST(HttpClient, RequestSerializeGetWithCustomHeadersV162) {
         << "Request line missing, got: " << result;
     EXPECT_NE(result.find("Host: api162.example.com\r\n"), std::string::npos)
         << "Host header missing, got: " << result;
-    EXPECT_NE(result.find("Connection: close\r\n"), std::string::npos)
+    EXPECT_NE(result.find("Connection: keep-alive\r\n"), std::string::npos)
         << "Connection header missing, got: " << result;
     // Custom headers are stored lowercase in serialize output
     EXPECT_NE(result.find("x-custom-header: custom-value-162\r\n"), std::string::npos)
@@ -28201,7 +28201,7 @@ TEST(HttpClient, RequestSerializeGetPort443OmittedV162) {
         << "Host should NOT contain :443, got: " << result;
     EXPECT_NE(result.find("GET /secure-path HTTP/1.1\r\n"), std::string::npos)
         << "Request line missing, got: " << result;
-    EXPECT_NE(result.find("Connection: close\r\n"), std::string::npos)
+    EXPECT_NE(result.find("Connection: keep-alive\r\n"), std::string::npos)
         << "Connection header missing, got: " << result;
 }
 
@@ -28273,7 +28273,7 @@ TEST(HttpClient, RequestSerializeGetWithPathAndQueryV163) {
         << "Request line should contain path with query, got: " << result;
     EXPECT_NE(result.find("Host: api163.example.com\r\n"), std::string::npos)
         << "Host header missing, got: " << result;
-    EXPECT_NE(result.find("Connection: close\r\n"), std::string::npos)
+    EXPECT_NE(result.find("Connection: keep-alive\r\n"), std::string::npos)
         << "Connection header missing, got: " << result;
 }
 
@@ -28507,7 +28507,7 @@ TEST(HttpClient, RequestSerializeGetMinimalV164) {
         << "Request line should be GET / HTTP/1.1, got: " << result;
     EXPECT_NE(result.find("Host: minimal164.example.com\r\n"), std::string::npos)
         << "Host header should be present without port 80, got: " << result;
-    EXPECT_NE(result.find("Connection: close\r\n"), std::string::npos)
+    EXPECT_NE(result.find("Connection: keep-alive\r\n"), std::string::npos)
         << "Connection header should be close, got: " << result;
     EXPECT_NE(result.find("\r\n\r\n"), std::string::npos)
         << "Request should end with blank line, got: " << result;
@@ -28585,7 +28585,7 @@ TEST(HttpClient, RequestSerializeGetPort8080InHostV164) {
         << "Request line should include path, got: " << result;
     EXPECT_NE(result.find("Host: port164.example.com:8080\r\n"), std::string::npos)
         << "Host header should include non-standard port 8080, got: " << result;
-    EXPECT_NE(result.find("Connection: close\r\n"), std::string::npos)
+    EXPECT_NE(result.find("Connection: keep-alive\r\n"), std::string::npos)
         << "Connection header should be close, got: " << result;
 }
 
@@ -28645,7 +28645,7 @@ TEST(HttpClient, RequestSerializeGetWithAcceptJsonV165) {
         << "Port 443 should be omitted from Host header, got: " << result;
     EXPECT_NE(result.find("accept: application/json\r\n"), std::string::npos)
         << "Accept header should appear lowercase in serialized output, got: " << result;
-    EXPECT_NE(result.find("Connection: close\r\n"), std::string::npos)
+    EXPECT_NE(result.find("Connection: keep-alive\r\n"), std::string::npos)
         << "Connection header should be present, got: " << result;
 }
 
@@ -28723,7 +28723,7 @@ TEST(HttpClient, RequestSerializePostEmptyBodyV165) {
         << "Request line should contain POST, got: " << result;
     EXPECT_NE(result.find("Host: post165.example.com\r\n"), std::string::npos)
         << "Port 80 should be omitted from Host header, got: " << result;
-    EXPECT_NE(result.find("Connection: close\r\n"), std::string::npos)
+    EXPECT_NE(result.find("Connection: keep-alive\r\n"), std::string::npos)
         << "Connection header should be present, got: " << result;
     // With no body assigned, serializer omits Content-Length
     EXPECT_EQ(result.find("Content-Length"), std::string::npos)
@@ -28782,8 +28782,8 @@ TEST(HttpClient, RequestSerializeHeadNoBodyV166) {
         << "Request line should start with HEAD method, got: " << result;
     EXPECT_NE(result.find("Host: head166.example.com\r\n"), std::string::npos)
         << "Port 443 should be omitted from Host header, got: " << result;
-    EXPECT_NE(result.find("Connection: close\r\n"), std::string::npos)
-        << "Connection: close header should be present, got: " << result;
+    EXPECT_NE(result.find("Connection: keep-alive\r\n"), std::string::npos)
+        << "Connection: keep-alive header should be present, got: " << result;
     EXPECT_EQ(result.find("Content-Length"), std::string::npos)
         << "HEAD request should not include Content-Length, got: " << result;
 }
@@ -28894,8 +28894,8 @@ TEST(HttpClient, RequestSerializeGetNonStandardPort3000V166) {
         << "Request line should contain GET method and path, got: " << result;
     EXPECT_NE(result.find("Host: dev166.example.com:3000\r\n"), std::string::npos)
         << "Non-standard port 3000 should appear in Host header, got: " << result;
-    EXPECT_NE(result.find("Connection: close\r\n"), std::string::npos)
-        << "Connection: close header should be present, got: " << result;
+    EXPECT_NE(result.find("Connection: keep-alive\r\n"), std::string::npos)
+        << "Connection: keep-alive header should be present, got: " << result;
 }
 
 // 7. 503 Service Unavailable response parses correctly
@@ -28954,8 +28954,8 @@ TEST(HttpClient, RequestSerializeGetAcceptAllV167) {
     // Custom Accept header stored lowercase
     EXPECT_NE(result.find("accept: */*\r\n"), std::string::npos)
         << "Custom Accept: */* header should appear (lowercase), got: " << result;
-    EXPECT_NE(result.find("Connection: close\r\n"), std::string::npos)
-        << "Connection: close should be present, got: " << result;
+    EXPECT_NE(result.find("Connection: keep-alive\r\n"), std::string::npos)
+        << "Connection: keep-alive should be present, got: " << result;
 }
 
 // 2. Response parse 200 with application/xml body
@@ -29068,8 +29068,8 @@ TEST(HttpClient, RequestSerializePostJsonWithCustomHeaderV167) {
     // Port 80 omitted from Host
     EXPECT_NE(result.find("Host: api167.example.com\r\n"), std::string::npos)
         << "Host header should omit port 80, got: " << result;
-    EXPECT_NE(result.find("Connection: close\r\n"), std::string::npos)
-        << "Connection: close should be present, got: " << result;
+    EXPECT_NE(result.find("Connection: keep-alive\r\n"), std::string::npos)
+        << "Connection: keep-alive should be present, got: " << result;
     // Custom headers lowercase
     EXPECT_NE(result.find("content-type: application/json\r\n"), std::string::npos)
         << "Custom Content-Type should be lowercase, got: " << result;
@@ -29151,7 +29151,7 @@ TEST(HttpClient, RequestSerializeHeadMethodV168) {
         << "Host header should be present without port 80, got: " << s;
 
     // Connection header
-    EXPECT_NE(s.find("Connection: close\r\n"), std::string::npos)
+    EXPECT_NE(s.find("Connection: keep-alive\r\n"), std::string::npos)
         << "Connection header should be 'close', got: " << s;
 
     // HEAD requests should not have a body
@@ -29325,7 +29325,7 @@ TEST(HttpClient, RequestSerializeGetWithQueryStringV169) {
         << "Request line should contain path with query string, got: " << s;
     EXPECT_NE(s.find("Host: search169.example.com\r\n"), std::string::npos)
         << "Host header should be present (port 80 omitted), got: " << s;
-    EXPECT_NE(s.find("Connection: close\r\n"), std::string::npos)
+    EXPECT_NE(s.find("Connection: keep-alive\r\n"), std::string::npos)
         << "Connection header should be close, got: " << s;
 }
 
@@ -29411,7 +29411,7 @@ TEST(HttpClient, RequestSerializePostEmptyBodyV169) {
         << "Request line should be POST, got: " << s;
     EXPECT_NE(s.find("Host: post169.example.com\r\n"), std::string::npos)
         << "Host should omit port 443, got: " << s;
-    EXPECT_NE(s.find("Connection: close\r\n"), std::string::npos)
+    EXPECT_NE(s.find("Connection: keep-alive\r\n"), std::string::npos)
         << "Connection header should be close, got: " << s;
     // Ends with blank line (no body content after headers)
     EXPECT_NE(s.find("\r\n\r\n"), std::string::npos)
@@ -29490,7 +29490,7 @@ TEST(HttpClient, RequestSerializeGetWithCustomHostPortV170) {
     EXPECT_NE(serialized.find("GET /v170/status HTTP/1.1\r\n"), std::string::npos)
         << "Request line should be GET /v170/status HTTP/1.1";
     // Connection header
-    EXPECT_NE(serialized.find("Connection: close\r\n"), std::string::npos)
+    EXPECT_NE(serialized.find("Connection: keep-alive\r\n"), std::string::npos)
         << "Connection header should be present";
 }
 
@@ -29713,8 +29713,8 @@ TEST(HttpClient, RequestSerializeGetWithMultipleHeadersV171) {
     EXPECT_NE(s.find("GET /data HTTP/1.1"), std::string::npos);
     // Host header with caps (port 80 omitted)
     EXPECT_NE(s.find("Host: example.com"), std::string::npos);
-    // Connection: close with caps
-    EXPECT_NE(s.find("Connection: close"), std::string::npos);
+    // Connection: keep-alive with caps
+    EXPECT_NE(s.find("Connection: keep-alive"), std::string::npos);
     // Custom headers are lowercase
     EXPECT_NE(s.find("x-request-id: abc-171"), std::string::npos);
     EXPECT_NE(s.find("accept-language: en-US"), std::string::npos);
@@ -29846,8 +29846,8 @@ TEST(HttpClient, RequestSerializePostWithContentTypeV171) {
     EXPECT_NE(s.find("POST /v2/items HTTP/1.1"), std::string::npos);
     // Host header (port 80 omitted)
     EXPECT_NE(s.find("Host: api.example.com"), std::string::npos);
-    // Connection: close
-    EXPECT_NE(s.find("Connection: close"), std::string::npos);
+    // Connection: keep-alive
+    EXPECT_NE(s.find("Connection: keep-alive"), std::string::npos);
     // Custom header lowercase
     EXPECT_NE(s.find("content-type: application/json"), std::string::npos);
     // Body present
@@ -29924,8 +29924,8 @@ TEST(HttpClient, RequestSerializeGetWithAcceptHeaderV172) {
     EXPECT_NE(s.find("GET /v1/resources HTTP/1.1"), std::string::npos);
     // Host header (port 443 omitted for TLS)
     EXPECT_NE(s.find("Host: api172.example.com"), std::string::npos);
-    // Connection: close (capitalized)
-    EXPECT_NE(s.find("Connection: close"), std::string::npos);
+    // Connection: keep-alive (capitalized)
+    EXPECT_NE(s.find("Connection: keep-alive"), std::string::npos);
     // Custom header lowercase
     EXPECT_NE(s.find("accept: application/json"), std::string::npos);
 }
@@ -30051,8 +30051,8 @@ TEST(HttpClient, RequestSerializePostLargeBodyV172) {
     EXPECT_NE(s.find("POST /upload HTTP/1.1"), std::string::npos);
     // Host header (port 80 omitted)
     EXPECT_NE(s.find("Host: upload172.example.com"), std::string::npos);
-    // Connection: close
-    EXPECT_NE(s.find("Connection: close"), std::string::npos);
+    // Connection: keep-alive
+    EXPECT_NE(s.find("Connection: keep-alive"), std::string::npos);
     // Content-Length should be 1000
     EXPECT_NE(s.find("Content-Length: 1000"), std::string::npos);
     // Body should contain the 1000 X's
@@ -30129,8 +30129,8 @@ TEST(HttpClient, RequestSerializeGetNoCustomHeadersV173) {
     // Host without port 80
     EXPECT_TRUE(result.find("Host: plain.v173.test\r\n") != std::string::npos);
     EXPECT_TRUE(result.find("Host: plain.v173.test:80") == std::string::npos);
-    // Connection: close present
-    EXPECT_TRUE(result.find("Connection: close\r\n") != std::string::npos);
+    // Connection: keep-alive present
+    EXPECT_TRUE(result.find("Connection: keep-alive\r\n") != std::string::npos);
     // No custom headers like x-... should appear
     EXPECT_TRUE(result.find("x-") == std::string::npos)
         << "No custom headers expected, got: " << result;
@@ -30230,8 +30230,8 @@ TEST(HttpClient, RequestSerializePutEmptyBodyV173) {
     // Port 443 omitted from Host
     EXPECT_TRUE(result.find("Host: empty.v173.test\r\n") != std::string::npos);
     EXPECT_TRUE(result.find("Host: empty.v173.test:443") == std::string::npos);
-    // Connection: close
-    EXPECT_TRUE(result.find("Connection: close\r\n") != std::string::npos);
+    // Connection: keep-alive
+    EXPECT_TRUE(result.find("Connection: keep-alive\r\n") != std::string::npos);
 }
 
 // ---------------------------------------------------------------------------
@@ -30300,8 +30300,8 @@ TEST(HttpClient, RequestSerializeGetWithIfModifiedSinceV174) {
         << "Host header should omit port 80, got: " << s;
     EXPECT_EQ(s.find("Host: cache174.example.com:80"), std::string::npos)
         << "Port 80 should not appear in Host, got: " << s;
-    // Connection: close (capitalized)
-    EXPECT_NE(s.find("Connection: close\r\n"), std::string::npos)
+    // Connection: keep-alive (capitalized)
+    EXPECT_NE(s.find("Connection: keep-alive\r\n"), std::string::npos)
         << "Connection header should be present, got: " << s;
     // Custom header lowercase
     EXPECT_NE(s.find("if-modified-since: Wed, 25 Feb 2026 10:00:00 GMT"), std::string::npos)
@@ -30414,8 +30414,8 @@ TEST(HttpClient, RequestSerializeHeadWithAcceptV174) {
         << "Host should omit port 443, got: " << s;
     EXPECT_EQ(s.find("Host: head174.example.com:443"), std::string::npos)
         << "Port 443 should not appear in Host, got: " << s;
-    // Connection: close
-    EXPECT_NE(s.find("Connection: close\r\n"), std::string::npos)
+    // Connection: keep-alive
+    EXPECT_NE(s.find("Connection: keep-alive\r\n"), std::string::npos)
         << "Connection header should be present, got: " << s;
     // Custom header lowercase
     EXPECT_NE(s.find("accept: text/html"), std::string::npos)
@@ -30493,7 +30493,7 @@ TEST(HttpClient, RequestSerializeGetWithCacheControlV175) {
         << "Request line missing, got: " << raw;
     EXPECT_NE(raw.find("Host: v175cache.example.com"), std::string::npos)
         << "Host header missing, got: " << raw;
-    EXPECT_NE(raw.find("Connection: close"), std::string::npos)
+    EXPECT_NE(raw.find("Connection: keep-alive"), std::string::npos)
         << "Connection header missing, got: " << raw;
     // Custom headers are lowercase
     EXPECT_NE(raw.find("cache-control: no-cache"), std::string::npos)
@@ -30612,7 +30612,7 @@ TEST(HttpClient, RequestSerializePostFormEncodedV175) {
         << "Request line missing, got: " << raw;
     EXPECT_NE(raw.find("Host: v175form.example.com"), std::string::npos)
         << "Host header missing, got: " << raw;
-    EXPECT_NE(raw.find("Connection: close"), std::string::npos)
+    EXPECT_NE(raw.find("Connection: keep-alive"), std::string::npos)
         << "Connection header missing, got: " << raw;
     // Custom headers lowercase
     EXPECT_NE(raw.find("content-type: application/x-www-form-urlencoded"), std::string::npos)
@@ -30696,7 +30696,7 @@ TEST(HttpClient, RequestSerializePostWithCustomContentTypeV176) {
     // Custom headers are lowercase in serialization
     EXPECT_NE(s.find("content-type: application/json\r\n"), std::string::npos)
         << "Custom content-type header should be lowercase, got: " << s;
-    EXPECT_NE(s.find("Connection: close\r\n"), std::string::npos)
+    EXPECT_NE(s.find("Connection: keep-alive\r\n"), std::string::npos)
         << "Connection header should be 'close', got: " << s;
     // Body should appear after blank line
     EXPECT_NE(s.find("\r\n{\"key\":\"v176\"}"), std::string::npos)
@@ -30906,8 +30906,8 @@ TEST(HttpClient, RequestSerializeHeadNonStandardPortV177) {
     EXPECT_NE(raw.find("Host: cdn.v177.example.com:8080\r\n"), std::string::npos)
         << "Non-standard port 8080 should be in Host header, got: " << raw;
     // Connection close
-    EXPECT_NE(raw.find("Connection: close\r\n"), std::string::npos)
-        << "Should have Connection: close, got: " << raw;
+    EXPECT_NE(raw.find("Connection: keep-alive\r\n"), std::string::npos)
+        << "Should have Connection: keep-alive, got: " << raw;
 }
 
 // ---------------------------------------------------------------------------
@@ -31087,8 +31087,8 @@ TEST(HttpClient, RequestSerializePostWithBodyV178) {
         << "Should start with POST request line";
     EXPECT_NE(raw.find("Host: v178-api.example.com\r\n"), std::string::npos)
         << "Host header should omit port 80";
-    EXPECT_NE(raw.find("Connection: close\r\n"), std::string::npos)
-        << "Should include Connection: close";
+    EXPECT_NE(raw.find("Connection: keep-alive\r\n"), std::string::npos)
+        << "Should include Connection: keep-alive";
     EXPECT_NE(raw.find("content-type: application/x-www-form-urlencoded"), std::string::npos)
         << "Custom headers should be lowercase";
     // Body should appear after double CRLF
@@ -31232,8 +31232,8 @@ TEST(HttpClient, RequestSerializeHeadCustomPortV178) {
         << "Should use HEAD method";
     EXPECT_NE(raw.find("Host: v178-head.example.com:9090\r\n"), std::string::npos)
         << "Non-standard port should appear in Host header";
-    EXPECT_NE(raw.find("Connection: close\r\n"), std::string::npos)
-        << "Should include Connection: close";
+    EXPECT_NE(raw.find("Connection: keep-alive\r\n"), std::string::npos)
+        << "Should include Connection: keep-alive";
     // HEAD requests have no body, so nothing after \r\n\r\n
     auto end_of_headers = raw.find("\r\n\r\n");
     ASSERT_NE(end_of_headers, std::string::npos);
@@ -31265,8 +31265,8 @@ TEST(HttpClient, RequestSerializePostBodyContentLengthV179) {
     // Port 443 should be omitted from Host header
     EXPECT_NE(raw.find("Host: v179-post.example.com\r\n"), std::string::npos)
         << "Port 443 should be omitted from Host header, got: " << raw;
-    EXPECT_NE(raw.find("Connection: close\r\n"), std::string::npos)
-        << "Should include Connection: close";
+    EXPECT_NE(raw.find("Connection: keep-alive\r\n"), std::string::npos)
+        << "Should include Connection: keep-alive";
     EXPECT_NE(raw.find("Content-Length: 5\r\n"), std::string::npos)
         << "Should include Content-Length for body, got: " << raw;
 }
@@ -31394,7 +31394,7 @@ TEST(HttpClient, RequestSerializeCustomHeadersLowercaseV179) {
     EXPECT_NE(raw.find("Host: v179-custom.example.com\r\n"), std::string::npos)
         << "Port 80 should be omitted from Host, got: " << raw;
     // Host and Connection keep capitalization
-    EXPECT_NE(raw.find("Connection: close\r\n"), std::string::npos)
+    EXPECT_NE(raw.find("Connection: keep-alive\r\n"), std::string::npos)
         << "Connection should keep capitalization";
 }
 
@@ -31498,9 +31498,9 @@ TEST(HttpClient, RequestSerializePutNonStandardPortV180) {
     // Non-standard port 8080 should appear in Host header
     EXPECT_NE(raw.find("Host: v180-put.example.com:8080\r\n"), std::string::npos)
         << "Non-standard port should appear in Host, got: " << raw;
-    // Connection: close should be present
-    EXPECT_NE(raw.find("Connection: close\r\n"), std::string::npos)
-        << "Connection: close should be present";
+    // Connection: keep-alive should be present
+    EXPECT_NE(raw.find("Connection: keep-alive\r\n"), std::string::npos)
+        << "Connection: keep-alive should be present";
 }
 
 // ---------------------------------------------------------------------------
@@ -31589,4 +31589,204 @@ TEST(HttpClient, ResponseParseMultipleSetCookiesV180) {
     EXPECT_TRUE(found_id) << "Should find id180 cookie";
     EXPECT_TRUE(found_session) << "Should find session180 cookie";
     EXPECT_EQ(resp->body_as_string(), "hello");
+}
+
+// ===========================================================================
+// Round 181 Tests
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// 1. Request: serialize GET with multiple custom headers lowercased
+// ---------------------------------------------------------------------------
+TEST(HttpClient, RequestSerializeGetMultipleCustomHeadersV181) {
+    Request req;
+    req.method = Method::GET;
+    req.host = "v181-headers.example.com";
+    req.port = 80;
+    req.path = "/api/data";
+    req.headers.set("X-Request-Id", "req181");
+    req.headers.set("Authorization", "Bearer token181");
+    req.headers.set("Accept-Language", "en-US");
+
+    auto bytes = req.serialize();
+    std::string raw(bytes.begin(), bytes.end());
+
+    // Request line
+    EXPECT_EQ(raw.substr(0, 3), "GET")
+        << "Should start with GET";
+    EXPECT_NE(raw.find("GET /api/data HTTP/1.1\r\n"), std::string::npos)
+        << "Request line should have correct path";
+    // Custom headers lowercased
+    EXPECT_NE(raw.find("x-request-id: req181\r\n"), std::string::npos)
+        << "X-Request-Id should be lowercased, got: " << raw;
+    EXPECT_NE(raw.find("authorization: Bearer token181\r\n"), std::string::npos)
+        << "Authorization should be lowercased, got: " << raw;
+    EXPECT_NE(raw.find("accept-language: en-US\r\n"), std::string::npos)
+        << "Accept-Language should be lowercased, got: " << raw;
+    // Port 80 omitted from Host
+    EXPECT_NE(raw.find("Host: v181-headers.example.com\r\n"), std::string::npos)
+        << "Port 80 should be omitted from Host";
+    EXPECT_EQ(raw.find(":80"), std::string::npos)
+        << "Port 80 should not appear anywhere";
+}
+
+// ---------------------------------------------------------------------------
+// 2. Request: serialize HEAD with non-standard port shows port in Host
+// ---------------------------------------------------------------------------
+TEST(HttpClient, RequestSerializeHeadPort9090V181) {
+    Request req;
+    req.method = Method::HEAD;
+    req.host = "v181-head.example.com";
+    req.port = 9090;
+    req.path = "/status";
+
+    auto bytes = req.serialize();
+    std::string raw(bytes.begin(), bytes.end());
+
+    EXPECT_EQ(raw.substr(0, 4), "HEAD")
+        << "Should start with HEAD";
+    EXPECT_NE(raw.find("HEAD /status HTTP/1.1\r\n"), std::string::npos)
+        << "Request line should be correct";
+    // Non-standard port should appear in Host
+    EXPECT_NE(raw.find("Host: v181-head.example.com:9090\r\n"), std::string::npos)
+        << "Port 9090 should appear in Host, got: " << raw;
+    EXPECT_NE(raw.find("Connection: keep-alive\r\n"), std::string::npos)
+        << "Connection: keep-alive should be present";
+}
+
+// ---------------------------------------------------------------------------
+// 3. Request: serialize PUT with body and Content-Type
+// ---------------------------------------------------------------------------
+TEST(HttpClient, RequestSerializePutWithJsonBodyV181) {
+    Request req;
+    req.method = Method::PUT;
+    req.host = "v181-put.example.com";
+    req.port = 443;
+    req.path = "/resources/181";
+    std::string body_str = R"({"key":"value181"})";
+    req.body.assign(body_str.begin(), body_str.end());
+    req.headers.set("Content-Type", "application/json");
+
+    auto bytes = req.serialize();
+    std::string raw(bytes.begin(), bytes.end());
+
+    EXPECT_EQ(raw.substr(0, 3), "PUT")
+        << "Should start with PUT";
+    // Port 443 omitted
+    EXPECT_NE(raw.find("Host: v181-put.example.com\r\n"), std::string::npos)
+        << "Port 443 should be omitted from Host";
+    EXPECT_EQ(raw.find(":443"), std::string::npos)
+        << "Port 443 should not appear";
+    // Content-Type lowercased
+    EXPECT_NE(raw.find("content-type: application/json\r\n"), std::string::npos)
+        << "Content-Type should be lowercased";
+    // Body at end
+    EXPECT_NE(raw.find(R"({"key":"value181"})"), std::string::npos)
+        << "JSON body should be present";
+}
+
+// ---------------------------------------------------------------------------
+// 4. Response: parse 204 No Content response
+// ---------------------------------------------------------------------------
+TEST(HttpClient, ResponseParse204NoContentV181) {
+    std::string raw_resp =
+        "HTTP/1.1 204 No Content\r\n"
+        "X-V181-Info: empty\r\n"
+        "\r\n";
+    std::vector<uint8_t> data(raw_resp.begin(), raw_resp.end());
+
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value()) << "Should parse valid 204 response";
+    EXPECT_EQ(resp->status, 204u);
+    EXPECT_EQ(resp->status_text, "No Content");
+    EXPECT_TRUE(resp->body_as_string().empty())
+        << "204 response should have empty body";
+    auto info = resp->headers.get("x-v181-info");
+    ASSERT_TRUE(info.has_value());
+    EXPECT_EQ(info.value(), "empty");
+}
+
+// ---------------------------------------------------------------------------
+// 5. Response: parse 500 Internal Server Error with body
+// ---------------------------------------------------------------------------
+TEST(HttpClient, ResponseParse500WithBodyV181) {
+    std::string raw_resp =
+        "HTTP/1.1 500 Internal Server Error\r\n"
+        "Content-Type: text/plain\r\n"
+        "Content-Length: 19\r\n"
+        "\r\n"
+        "error occurred v181";
+    std::vector<uint8_t> data(raw_resp.begin(), raw_resp.end());
+
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value()) << "Should parse valid 500 response";
+    EXPECT_EQ(resp->status, 500u);
+    EXPECT_EQ(resp->status_text, "Internal Server Error");
+    EXPECT_EQ(resp->body_as_string(), "error occurred v181");
+    auto ct = resp->headers.get("content-type");
+    ASSERT_TRUE(ct.has_value());
+    EXPECT_EQ(ct.value(), "text/plain");
+}
+
+// ---------------------------------------------------------------------------
+// 6. CookieJar: cookie set on parent path not visible on sibling path
+// ---------------------------------------------------------------------------
+TEST(HttpClient, CookieJarPathIsolationV181) {
+    CookieJar jar;
+    jar.set_from_header("sess181=abc; Path=/admin", "v181-path.example.com");
+
+    // Should be visible under /admin
+    std::string admin_hdr = jar.get_cookie_header("v181-path.example.com", "/admin/dashboard", false);
+    EXPECT_NE(admin_hdr.find("sess181=abc"), std::string::npos)
+        << "Cookie should be visible under /admin, got: " << admin_hdr;
+
+    // Should NOT be visible under /user (sibling path)
+    std::string user_hdr = jar.get_cookie_header("v181-path.example.com", "/user/profile", false);
+    EXPECT_EQ(user_hdr.find("sess181=abc"), std::string::npos)
+        << "Cookie scoped to /admin should not be visible at /user, got: " << user_hdr;
+}
+
+// ---------------------------------------------------------------------------
+// 7. ConnectionPool: separate hosts do not interfere
+// ---------------------------------------------------------------------------
+TEST(HttpClient, ConnectionPoolSeparateHostsV181) {
+    ConnectionPool pool(2);
+
+    pool.release("v181-alpha.example.com", 443, 100);
+    pool.release("v181-beta.example.com", 443, 200);
+
+    // Each host should have its own connection
+    EXPECT_EQ(pool.count("v181-alpha.example.com", 443), 1u);
+    EXPECT_EQ(pool.count("v181-beta.example.com", 443), 1u);
+
+    // Acquiring from alpha should not affect beta
+    int fd_alpha = pool.acquire("v181-alpha.example.com", 443);
+    EXPECT_EQ(fd_alpha, 100);
+    EXPECT_EQ(pool.count("v181-alpha.example.com", 443), 0u);
+    EXPECT_EQ(pool.count("v181-beta.example.com", 443), 1u)
+        << "Beta pool should still have 1 connection";
+
+    int fd_beta = pool.acquire("v181-beta.example.com", 443);
+    EXPECT_EQ(fd_beta, 200);
+    EXPECT_EQ(pool.count("v181-beta.example.com", 443), 0u);
+}
+
+// ---------------------------------------------------------------------------
+// 8. HeaderMap: has() returns true for existing and false for missing
+// ---------------------------------------------------------------------------
+TEST(HttpClient, HeaderMapHasExistingAndMissingV181) {
+    HeaderMap headers;
+    headers.set("X-V181-Present", "yes");
+    headers.set("Content-Type", "text/html");
+
+    EXPECT_TRUE(headers.has("X-V181-Present"))
+        << "has() should return true for existing header";
+    EXPECT_TRUE(headers.has("x-v181-present"))
+        << "has() should be case-insensitive";
+    EXPECT_TRUE(headers.has("CONTENT-TYPE"))
+        << "has() should be case-insensitive for Content-Type";
+    EXPECT_FALSE(headers.has("X-V181-Missing"))
+        << "has() should return false for missing header";
+    EXPECT_FALSE(headers.has("Authorization"))
+        << "has() should return false for absent Authorization";
 }

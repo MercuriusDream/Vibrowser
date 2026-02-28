@@ -1,0 +1,9 @@
+{
+  "name": "clever-engine",
+  "version": "0.1.0",
+  "description": "Vibrowser — a C++20 browser engine",
+  "dependencies": [
+    "icu",
+    "gtest"
+  ]
+}

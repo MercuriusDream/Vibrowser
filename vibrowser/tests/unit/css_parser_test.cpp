@@ -12343,3 +12343,43 @@ TEST_F(CSSStylesheetTest, VisibilityHiddenDeclarationV180) {
     ASSERT_GE(sheet.rules[0].declarations[0].values.size(), 1u);
     EXPECT_EQ(sheet.rules[0].declarations[0].values[0].value, "hidden");
 }
+
+// ---------------------------------------------------------------------------
+// Cycle V181 — float, clear, text-decoration, flex-wrap declarations
+// ---------------------------------------------------------------------------
+
+TEST_F(CSSStylesheetTest, FloatRightDeclarationV181) {
+    auto sheet = parse_stylesheet("img { float: right; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    ASSERT_EQ(sheet.rules[0].declarations.size(), 1u);
+    EXPECT_EQ(sheet.rules[0].declarations[0].property, "float");
+    ASSERT_GE(sheet.rules[0].declarations[0].values.size(), 1u);
+    EXPECT_EQ(sheet.rules[0].declarations[0].values[0].value, "right");
+}
+
+TEST_F(CSSStylesheetTest, ClearLeftDeclarationV181) {
+    auto sheet = parse_stylesheet("div { clear: left; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    ASSERT_EQ(sheet.rules[0].declarations.size(), 1u);
+    EXPECT_EQ(sheet.rules[0].declarations[0].property, "clear");
+    ASSERT_GE(sheet.rules[0].declarations[0].values.size(), 1u);
+    EXPECT_EQ(sheet.rules[0].declarations[0].values[0].value, "left");
+}
+
+TEST_F(CSSStylesheetTest, TextDecorationOverlineDeclarationV181) {
+    auto sheet = parse_stylesheet("a { text-decoration: overline; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    ASSERT_EQ(sheet.rules[0].declarations.size(), 1u);
+    EXPECT_EQ(sheet.rules[0].declarations[0].property, "text-decoration");
+    ASSERT_GE(sheet.rules[0].declarations[0].values.size(), 1u);
+    EXPECT_EQ(sheet.rules[0].declarations[0].values[0].value, "overline");
+}
+
+TEST_F(CSSStylesheetTest, FlexWrapReverseDeclarationV181) {
+    auto sheet = parse_stylesheet(".row { flex-wrap: wrap-reverse; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    ASSERT_EQ(sheet.rules[0].declarations.size(), 1u);
+    EXPECT_EQ(sheet.rules[0].declarations[0].property, "flex-wrap");
+    ASSERT_GE(sheet.rules[0].declarations[0].values.size(), 1u);
+    EXPECT_EQ(sheet.rules[0].declarations[0].values[0].value, "wrap-reverse");
+}

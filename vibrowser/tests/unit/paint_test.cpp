@@ -36887,6 +36887,15 @@ TEST(RenderResultTest, FaviconRelativeHref) {
     EXPECT_EQ(result.favicon_url, "http://example.com/page/images/favicon.png");
 }
 
+TEST(RenderResultTest, FaviconRelativeHrefDotSegmentsNormalizedV128) {
+    std::string html = "<html><head>"
+        "<link rel=\"icon\" href=\"../assets/../favicon.ico?x=1#top\">"
+        "</head><body>Hello</body></html>";
+    auto result = render_html(html, "http://example.com/a/b/index.html", 400, 300);
+    EXPECT_TRUE(result.success);
+    EXPECT_EQ(result.favicon_url, "http://example.com/a/favicon.ico?x=1#top");
+}
+
 // =============================================================================
 // Form submission tests
 // =============================================================================
@@ -37034,6 +37043,85 @@ TEST(FormSubmissionTest, PostFormActionResolved) {
     auto& form = result.forms[0];
     EXPECT_EQ(form.action, "http://example.com/api/submit")
         << "Form action should be resolved to absolute URL";
+}
+
+TEST(FormSubmissionTest, PostFormActionDotSegmentsNormalizedV128) {
+    std::string html =
+        "<html><body>"
+        "<form action='../api/./submit?x=1#done' method='post'>"
+        "<input type='text' name='data' value='test'>"
+        "<input type='submit' value='Send'>"
+        "</form>"
+        "</body></html>";
+    auto result = render_html(html, "http://example.com/app/forms/index.html", 400, 300);
+    ASSERT_TRUE(result.success) << "Error: " << result.error;
+    ASSERT_GE(result.forms.size(), 1u);
+    EXPECT_EQ(result.forms[0].action, "http://example.com/app/api/submit?x=1#done");
+}
+
+TEST(FormSubmissionTest, GetFormActionQueryOnlyReferenceV128) {
+    std::string html =
+        "<html><body>"
+        "<form action='?tab=images' method='get'>"
+        "<input type='text' name='q' value='kittens'>"
+        "<input type='submit' value='Search'>"
+        "</form>"
+        "</body></html>";
+    auto result = render_html(html, "http://example.com/search/index.html?old=1#frag", 400, 300);
+    ASSERT_TRUE(result.success) << "Error: " << result.error;
+    ASSERT_GE(result.forms.size(), 1u);
+    EXPECT_EQ(result.forms[0].action, "http://example.com/search/index.html?tab=images");
+}
+
+TEST(PaintRegression, GoogleBasicTablePercentCellsLayoutV129) {
+    std::string html =
+        "<html><body>"
+        "<center>"
+        "<form action='/search' name='f'>"
+        "<table cellpadding='0' cellspacing='0'>"
+        "<tr valign='top'>"
+        "<td width='25%'>&nbsp;</td>"
+        "<td align='center' nowrap=''>"
+        "<input class='lst' style='width:496px' name='q' size='57'>"
+        "</td>"
+        "<td width='25%' align='left' nowrap=''>"
+        "<a href='/advanced_search'>Advanced</a>"
+        "</td>"
+        "</tr>"
+        "</table>"
+        "</form>"
+        "</center>"
+        "</body></html>";
+
+    auto result = render_html(html, "http://example.com/?gbv=1", 1000, 400);
+    ASSERT_TRUE(result.success) << "Error: " << result.error;
+    ASSERT_TRUE(result.root);
+
+    const clever::layout::LayoutNode* target_row = nullptr;
+    std::function<void(const clever::layout::LayoutNode&)> find_row =
+        [&](const clever::layout::LayoutNode& n) {
+        if (target_row) return;
+        if (n.tag_name == "tr") {
+            target_row = &n;
+            return;
+        }
+        for (const auto& c : n.children) {
+            find_row(*c);
+        }
+    };
+    find_row(*result.root);
+
+    ASSERT_NE(target_row, nullptr) << "Expected to find a table row";
+    ASSERT_EQ(target_row->children.size(), 3u) << "Expected three cells in the row";
+
+    float left_w = target_row->children[0]->geometry.width;
+    float mid_w = target_row->children[1]->geometry.width;
+    float right_w = target_row->children[2]->geometry.width;
+
+    EXPECT_GT(left_w, 200.0f);
+    EXPECT_GT(right_w, 200.0f);
+    EXPECT_GT(mid_w, 450.0f)
+        << "Middle cell should keep enough width for the search input";
 }
 
 // Test form with checkbox and radio fields
@@ -37565,6 +37653,56 @@ TEST(RenderPipeline, MultipleScriptsExecuteInOrder) {
     EXPECT_TRUE(result.success);
     ASSERT_FALSE(result.js_console_output.empty());
     EXPECT_NE(result.js_console_output[0].find("3"), std::string::npos);
+}
+
+TEST(RenderPipeline, DynamicallyInsertedInlineScriptExecutesV128) {
+    auto result = render_html(R"HTML(
+        <html><body>
+        <script>
+            var s = document.createElement('script');
+            s.textContent = "document.body.appendChild(document.createTextNode('DYNAMIC_SCRIPT_OK'))";
+            document.body.appendChild(s);
+        </script>
+        </body></html>
+    )HTML");
+    EXPECT_TRUE(result.success);
+    bool found_dynamic_text = false;
+    for (const auto& cmd : result.text_commands) {
+        if (cmd.text.find("DYNAMIC_SCRIPT_OK") != std::string::npos) {
+            found_dynamic_text = true;
+            break;
+        }
+    }
+    EXPECT_TRUE(found_dynamic_text)
+        << "Inline scripts inserted by script should execute in the same render pass";
+}
+
+TEST(RenderPipeline, InertSubtreeScriptsDoNotExecuteV128) {
+    auto result = render_html(R"(
+        <html><body>
+        <template>
+            <script>document.body.appendChild(document.createTextNode('TEMPLATE_RAN'));</script>
+        </template>
+        <noscript>
+            <script>document.body.appendChild(document.createTextNode('NOSCRIPT_RAN'));</script>
+        </noscript>
+        <script>document.body.appendChild(document.createTextNode('MAIN_RAN'));</script>
+        </body></html>
+    )");
+    EXPECT_TRUE(result.success);
+
+    bool saw_template = false;
+    bool saw_noscript = false;
+    bool saw_main = false;
+    for (const auto& cmd : result.text_commands) {
+        if (cmd.text.find("TEMPLATE_RAN") != std::string::npos) saw_template = true;
+        if (cmd.text.find("NOSCRIPT_RAN") != std::string::npos) saw_noscript = true;
+        if (cmd.text.find("MAIN_RAN") != std::string::npos) saw_main = true;
+    }
+
+    EXPECT_FALSE(saw_template) << "Scripts inside <template> must be inert";
+    EXPECT_FALSE(saw_noscript) << "Scripts inside <noscript> must be inert with JS enabled";
+    EXPECT_TRUE(saw_main) << "Regular scripts should still execute";
 }
 
 // ============================================================================

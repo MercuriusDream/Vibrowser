@@ -22262,3 +22262,64 @@ TEST(SerializerTest, SerializerV180_3_LargeBytesBlockPreservesContent) {
     EXPECT_EQ(d.read_u32(), 0xCAFEu);
     EXPECT_FALSE(d.has_remaining());
 }
+
+// ------------------------------------------------------------------
+// Round 181 – Serializer
+// ------------------------------------------------------------------
+
+TEST(SerializerTest, SerializerV181_1_ZeroLengthBytesRoundTrip) {
+    // Write a zero-length byte block and verify it round-trips as empty
+    Serializer s;
+    std::vector<uint8_t> empty_block;
+    s.write_bytes(empty_block.data(), empty_block.size());
+    s.write_u8(0xFF);  // sentinel after empty block
+
+    Deserializer d(s.data());
+    auto rb = d.read_bytes();
+    EXPECT_EQ(rb.size(), 0u);
+    EXPECT_TRUE(rb.empty());
+    EXPECT_EQ(d.read_u8(), 0xFF);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, SerializerV181_2_ManyU16ValuesSequentialRoundTrip) {
+    // Write a sequence of u16 values covering low, mid, and high ranges
+    Serializer s;
+    std::vector<uint16_t> values;
+    for (int i = 0; i < 50; ++i) {
+        uint16_t val = static_cast<uint16_t>((i * 1301 + 17) % 65536);
+        values.push_back(val);
+        s.write_u16(val);
+    }
+
+    Deserializer d(s.data());
+    for (int i = 0; i < 50; ++i) {
+        EXPECT_EQ(d.read_u16(), values[i]);
+    }
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, SerializerV181_3_MixedStringAndBytesInterleaved) {
+    // Interleave strings and raw byte blocks to verify ordering
+    Serializer s;
+    s.write_string("hello_v181");
+    uint8_t raw[] = {0x01, 0x02, 0x03, 0x04, 0x05};
+    s.write_bytes(raw, 5);
+    s.write_string("");
+    uint8_t raw2[] = {0xFF};
+    s.write_bytes(raw2, 1);
+    s.write_string("goodbye_v181");
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "hello_v181");
+    auto b1 = d.read_bytes();
+    EXPECT_EQ(b1.size(), 5u);
+    EXPECT_EQ(b1[0], 0x01);
+    EXPECT_EQ(b1[4], 0x05);
+    EXPECT_EQ(d.read_string(), "");
+    auto b2 = d.read_bytes();
+    EXPECT_EQ(b2.size(), 1u);
+    EXPECT_EQ(b2[0], 0xFF);
+    EXPECT_EQ(d.read_string(), "goodbye_v181");
+    EXPECT_FALSE(d.has_remaining());
+}

@@ -1,0 +1,486 @@
+#include <clever/js/cors_policy.h>
+
+#include <clever/url/url.h>
+
+#include <arpa/inet.h>
+
+#include <algorithm>
+#include <cctype>
+#include <optional>
+#include <string>
+
+namespace clever::js::cors {
+namespace {
+
+bool has_surrounding_ascii_whitespace(std::string_view value) {
+    if (value.empty()) {
+        return false;
+    }
+    return std::isspace(static_cast<unsigned char>(value.front())) != 0 ||
+           std::isspace(static_cast<unsigned char>(value.back())) != 0;
+}
+
+std::string to_lower_ascii(std::string value) {
+    std::transform(value.begin(), value.end(), value.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    return value;
+}
+
+bool has_invalid_header_octet(std::string_view value) {
+    for (unsigned char ch : value) {
+        if (ch <= 0x1f || ch == 0x7f || ch > 0x7e) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool has_invalid_request_url_octet(std::string_view value) {
+    for (unsigned char ch : value) {
+        if (ch <= 0x1f || ch == 0x7f || ch > 0x7e) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool has_valid_serialized_origin_host(std::string_view host) {
+    if (host.empty()) {
+        return false;
+    }
+
+    if (host.front() == '[' || host.back() == ']') {
+        if (host.size() < 2 || host.front() != '[' || host.back() != ']') {
+            return false;
+        }
+        const std::string literal(host.substr(1, host.size() - 2));
+        if (literal.empty()) {
+            return false;
+        }
+        in6_addr ipv6_addr {};
+        return inet_pton(AF_INET6, literal.c_str(), &ipv6_addr) == 1;
+    }
+
+    if (host.size() > 253 || host.front() == '.' || host.back() == '.') {
+        return false;
+    }
+
+    bool all_digits = true;
+    bool dotted_decimal_candidate = true;
+    int dot_count = 0;
+    for (unsigned char ch : host) {
+        if (ch == '.') {
+            all_digits = false;
+            ++dot_count;
+            continue;
+        }
+        if (std::isdigit(ch) == 0) {
+            all_digits = false;
+            dotted_decimal_candidate = false;
+            break;
+        }
+    }
+    if (all_digits) {
+        return false;
+    }
+    {
+        std::size_t label_start = 0;
+        while (label_start <= host.size()) {
+            const std::size_t dot_pos = host.find('.', label_start);
+            const std::size_t label_end =
+                (dot_pos == std::string_view::npos) ? host.size() : dot_pos;
+            const std::size_t label_len = label_end - label_start;
+            if (label_len >= 3 && host[label_start] == '0' && host[label_start + 1] == 'x') {
+                bool all_hex_digits = true;
+                for (std::size_t i = label_start + 2; i < label_end; ++i) {
+                    const unsigned char ch = static_cast<unsigned char>(host[i]);
+                    if (std::isxdigit(ch) == 0) {
+                        all_hex_digits = false;
+                        break;
+                    }
+                }
+                if (all_hex_digits) {
+                    return false;
+                }
+            }
+            if (dot_pos == std::string_view::npos) {
+                break;
+            }
+            label_start = dot_pos + 1;
+        }
+    }
+    if (dotted_decimal_candidate) {
+        if (dot_count != 3) {
+            return false;
+        }
+        std::size_t octet_start = 0;
+        while (octet_start <= host.size()) {
+            const std::size_t dot_pos = host.find('.', octet_start);
+            const std::size_t octet_end =
+                (dot_pos == std::string_view::npos) ? host.size() : dot_pos;
+            const std::size_t octet_len = octet_end - octet_start;
+            if (octet_len == 0 || octet_len > 3) {
+                return false;
+            }
+            if (octet_len > 1 && host[octet_start] == '0') {
+                return false;
+            }
+            int octet_value = 0;
+            for (std::size_t i = octet_start; i < octet_end; ++i) {
+                octet_value =
+                    (octet_value * 10) + (static_cast<int>(host[i]) - static_cast<int>('0'));
+            }
+            if (octet_value > 255) {
+                return false;
+            }
+            if (dot_pos == std::string_view::npos) {
+                break;
+            }
+            octet_start = dot_pos + 1;
+        }
+        in_addr ipv4_addr {};
+        if (inet_pton(AF_INET, std::string(host).c_str(), &ipv4_addr) != 1) {
+            return false;
+        }
+    }
+
+    std::size_t label_start = 0;
+    while (label_start <= host.size()) {
+        const std::size_t dot_pos = host.find('.', label_start);
+        const std::size_t label_end = (dot_pos == std::string_view::npos) ? host.size() : dot_pos;
+        if (label_end == label_start) {
+            return false;
+        }
+        if (label_end - label_start > 63) {
+            return false;
+        }
+
+        const unsigned char first = static_cast<unsigned char>(host[label_start]);
+        const unsigned char last = static_cast<unsigned char>(host[label_end - 1]);
+        if (std::isalnum(first) == 0 || std::isalnum(last) == 0) {
+            return false;
+        }
+
+        for (std::size_t i = label_start; i < label_end; ++i) {
+            const unsigned char ch = static_cast<unsigned char>(host[i]);
+            if (std::isalnum(ch) == 0 && ch != '-') {
+                return false;
+            }
+        }
+
+        if (dot_pos == std::string_view::npos) {
+            break;
+        }
+        label_start = dot_pos + 1;
+    }
+
+    return true;
+}
+
+bool has_strict_authority_port_syntax(std::string_view authority) {
+    if (authority.empty()) {
+        return false;
+    }
+
+    std::size_t host_end = authority.size();
+    std::size_t port_start = std::string::npos;
+
+    if (authority.front() == '[') {
+        const std::size_t closing = authority.find(']');
+        if (closing == std::string::npos) {
+            return false;
+        }
+        host_end = closing + 1;
+        if (host_end < authority.size()) {
+            if (authority[host_end] != ':') {
+                return false;
+            }
+            port_start = host_end + 1;
+        }
+    } else {
+        const std::size_t first_colon = authority.find(':');
+        if (first_colon != std::string::npos) {
+            if (authority.find(':', first_colon + 1) != std::string::npos) {
+                return false;
+            }
+            host_end = first_colon;
+            port_start = first_colon + 1;
+        }
+    }
+
+    if (host_end == 0) {
+        return false;
+    }
+
+    if (port_start == std::string::npos) {
+        return true;
+    }
+    if (port_start >= authority.size()) {
+        return false;
+    }
+
+    for (std::size_t i = port_start; i < authority.size(); ++i) {
+        if (!std::isdigit(static_cast<unsigned char>(authority[i]))) {
+            return false;
+        }
+    }
+    return true;
+}
+
+std::optional<clever::url::URL> parse_httpish_url(std::string_view input) {
+    if (input.empty() || has_surrounding_ascii_whitespace(input) ||
+        has_invalid_request_url_octet(input)) {
+        return std::nullopt;
+    }
+    if (input.find('\\') != std::string_view::npos) {
+        return std::nullopt;
+    }
+    for (unsigned char ch : input) {
+        if (std::isspace(ch) != 0) {
+            return std::nullopt;
+        }
+    }
+    for (std::size_t i = 0; i < input.size(); ++i) {
+        if (input[i] != '%') {
+            continue;
+        }
+        if (i + 2 >= input.size()) {
+            return std::nullopt;
+        }
+        const unsigned char high = static_cast<unsigned char>(input[i + 1]);
+        const unsigned char low = static_cast<unsigned char>(input[i + 2]);
+        if (!std::isxdigit(high) || !std::isxdigit(low)) {
+            return std::nullopt;
+        }
+        const unsigned int high_nibble =
+            std::isdigit(high) ? (high - '0')
+                               : static_cast<unsigned int>(std::tolower(high) - 'a' + 10);
+        const unsigned int low_nibble =
+            std::isdigit(low) ? (low - '0')
+                              : static_cast<unsigned int>(std::tolower(low) - 'a' + 10);
+        const unsigned int decoded = (high_nibble << 4U) | low_nibble;
+        if (decoded <= 0x1f || decoded == 0x20 || decoded == 0x7f || decoded > 0x7e ||
+            decoded == '\\') {
+            return std::nullopt;
+        }
+    }
+
+    const std::size_t scheme_end = input.find("://");
+    if (scheme_end == std::string::npos || scheme_end + 3 >= input.size()) {
+        return std::nullopt;
+    }
+    const std::size_t authority_start = scheme_end + 3;
+    const std::size_t authority_end = input.find_first_of("/?#", authority_start);
+    const std::string_view authority = input.substr(
+        authority_start,
+        authority_end == std::string::npos ? std::string_view::npos : authority_end - authority_start);
+    if (authority.find('%') != std::string_view::npos) {
+        return std::nullopt;
+    }
+    if (authority.find('@') != std::string_view::npos) {
+        return std::nullopt;
+    }
+    if (!has_strict_authority_port_syntax(authority)) {
+        return std::nullopt;
+    }
+
+    auto parsed = clever::url::parse(input);
+    if (!parsed.has_value()) {
+        return std::nullopt;
+    }
+
+    if (parsed->scheme != "http" && parsed->scheme != "https") {
+        return std::nullopt;
+    }
+    if (parsed->host.empty() || !parsed->username.empty() || !parsed->password.empty() ||
+        !parsed->fragment.empty()) {
+        return std::nullopt;
+    }
+    if (!has_valid_serialized_origin_host(parsed->host)) {
+        return std::nullopt;
+    }
+
+    return parsed;
+}
+
+bool is_serialized_http_origin(std::string_view origin) {
+    if (has_invalid_header_octet(origin)) {
+        return false;
+    }
+
+    auto parsed = parse_httpish_url(origin);
+    if (!parsed.has_value()) {
+        return false;
+    }
+
+    return parsed->origin() == origin;
+}
+
+std::optional<std::string> parse_canonical_serialized_origin(std::string_view input) {
+    if (input.empty() || has_surrounding_ascii_whitespace(input)) {
+        return std::nullopt;
+    }
+    std::string canonical_input(input);
+    if (has_invalid_header_octet(canonical_input)) {
+        return std::nullopt;
+    }
+
+    if (canonical_input == "null") {
+        return std::string("null");
+    }
+
+    const std::size_t scheme_end = canonical_input.find("://");
+    if (scheme_end == std::string::npos || scheme_end + 3 >= canonical_input.size()) {
+        return std::nullopt;
+    }
+    if (canonical_input.find_first_of("/?#", scheme_end + 3) != std::string::npos) {
+        return std::nullopt;
+    }
+    if (canonical_input.find('@', scheme_end + 3) != std::string::npos) {
+        return std::nullopt;
+    }
+    if (!has_strict_authority_port_syntax(canonical_input.substr(scheme_end + 3))) {
+        return std::nullopt;
+    }
+
+    auto parsed = parse_httpish_url(to_lower_ascii(canonical_input));
+    if (!parsed.has_value() || parsed->host.empty()) {
+        return std::nullopt;
+    }
+
+    std::string origin = parsed->scheme + "://" + parsed->host;
+    if (parsed->port.has_value()) {
+        const uint16_t default_port = parsed->scheme == "https" ? 443 : 80;
+        if (parsed->port.value() != default_port) {
+            origin += ":" + std::to_string(parsed->port.value());
+        }
+    }
+    return origin;
+}
+
+bool canonical_origins_match(std::string_view left, std::string_view right) {
+    auto left_origin = parse_canonical_serialized_origin(left);
+    if (!left_origin.has_value()) {
+        return false;
+    }
+
+    auto right_origin = parse_canonical_serialized_origin(right);
+    if (!right_origin.has_value()) {
+        return false;
+    }
+
+    return left_origin.value() == right_origin.value();
+}
+
+bool is_invalid_document_origin(std::string_view document_origin) {
+    if (document_origin.empty() || document_origin == "null") {
+        return false;
+    }
+    return !is_serialized_http_origin(document_origin);
+}
+
+bool is_null_document_origin(std::string_view document_origin) {
+    return document_origin == "null";
+}
+
+} // namespace
+
+bool has_enforceable_document_origin(std::string_view document_origin) {
+    return is_serialized_http_origin(document_origin);
+}
+
+bool is_cors_eligible_request_url(std::string_view request_url) {
+    return parse_httpish_url(request_url).has_value();
+}
+
+bool is_cross_origin(std::string_view document_origin, std::string_view request_url) {
+    auto request = parse_httpish_url(request_url);
+    if (!request.has_value()) {
+        return false;
+    }
+
+    if (is_null_document_origin(document_origin)) {
+        return true;
+    }
+
+    if (!has_enforceable_document_origin(document_origin)) {
+        return false;
+    }
+
+    return request->origin() != document_origin;
+}
+
+bool should_attach_origin_header(std::string_view document_origin, std::string_view request_url) {
+    return (has_enforceable_document_origin(document_origin) ||
+            is_null_document_origin(document_origin)) &&
+           is_cross_origin(document_origin, request_url);
+}
+
+void normalize_outgoing_origin_header(clever::net::HeaderMap& request_headers,
+                                      std::string_view document_origin,
+                                      std::string_view request_url) {
+    request_headers.remove("origin");
+    if (should_attach_origin_header(document_origin, request_url)) {
+        request_headers.set("Origin", std::string(document_origin));
+    }
+}
+
+bool cors_allows_response(std::string_view document_origin,
+                          std::string_view request_url,
+                          const clever::net::HeaderMap& response_headers,
+                          bool credentials_requested) {
+    if (document_origin.empty() || is_invalid_document_origin(document_origin)) {
+        return false;
+    }
+
+    if ((has_enforceable_document_origin(document_origin) ||
+         is_null_document_origin(document_origin)) &&
+        !is_cors_eligible_request_url(request_url)) {
+        return false;
+    }
+
+    if (!is_cross_origin(document_origin, request_url)) {
+        return true;
+    }
+
+    auto acao_values = response_headers.get_all("access-control-allow-origin");
+    if (acao_values.size() != 1) {
+        return false;
+    }
+
+    const std::string& acao = acao_values.front();
+    if (acao.empty() || has_surrounding_ascii_whitespace(acao)) {
+        return false;
+    }
+    if (has_invalid_header_octet(acao)) {
+        return false;
+    }
+    if (acao.find(',') != std::string::npos) {
+        return false;
+    }
+
+    const std::string expected_origin =
+        is_null_document_origin(document_origin) ? "null" : std::string(document_origin);
+
+    if (!credentials_requested) {
+        return acao == "*" || canonical_origins_match(acao, expected_origin);
+    }
+
+    if (!canonical_origins_match(acao, expected_origin)) {
+        return false;
+    }
+
+    auto acac_values = response_headers.get_all("access-control-allow-credentials");
+    if (acac_values.size() != 1) {
+        return false;
+    }
+
+    const std::string& acac = acac_values.front();
+    if (acac.empty() || has_surrounding_ascii_whitespace(acac) ||
+        has_invalid_header_octet(acac)) {
+        return false;
+    }
+    return acac == "true";
+}
+
+} // namespace clever::js::cors

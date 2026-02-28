@@ -39759,3 +39759,95 @@ TEST(JSEngine, JsV180_8) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "true|false|true|false");
 }
+
+// V181_1: Array.prototype.reduce accumulates values
+TEST(JSEngine, JsV181_1) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var arr = [1, 2, 3, 4, 5];
+        arr.reduce(function(acc, x) { return acc + x; }, 0).toString();
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "15");
+}
+
+// V181_2: String.prototype.repeat creates repeated strings
+TEST(JSEngine, JsV181_2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        'ab'.repeat(3);
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "ababab");
+}
+
+// V181_3: Map stores and retrieves key-value pairs
+TEST(JSEngine, JsV181_3) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var m = new Map();
+        m.set('x', 10);
+        m.set('y', 20);
+        m.get('x').toString() + '|' + m.get('y').toString() + '|' + m.size.toString();
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "10|20|2");
+}
+
+// V181_4: Set tracks unique values
+TEST(JSEngine, JsV181_4) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var s = new Set();
+        s.add(1); s.add(2); s.add(2); s.add(3);
+        s.size.toString() + '|' + s.has(2).toString() + '|' + s.has(4).toString();
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "3|true|false");
+}
+
+// V181_5: Array.from converts iterable to array
+TEST(JSEngine, JsV181_5) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var s = new Set([5, 10, 15]);
+        var arr = Array.from(s);
+        arr.join(',');
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "5,10,15");
+}
+
+// V181_6: Object.keys returns own enumerable property names
+TEST(JSEngine, JsV181_6) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var obj = {c: 3, a: 1, b: 2};
+        Object.keys(obj).sort().join(',');
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "a,b,c");
+}
+
+// V181_7: template literals with expressions
+TEST(JSEngine, JsV181_7) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var x = 5;
+        var y = 10;
+        `${x} + ${y} = ${x + y}`;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "5 + 10 = 15");
+}
+
+// V181_8: Array.prototype.findIndex returns correct index
+TEST(JSEngine, JsV181_8) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var arr = [10, 20, 30, 40, 50];
+        arr.findIndex(function(x) { return x > 25; }).toString();
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "2");
+}

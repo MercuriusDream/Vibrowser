@@ -121,9 +121,9 @@ std::vector<uint8_t> Request::serialize() const {
     }
     oss << "\r\n";
 
-    // Connection: close — we don't reuse connections, and keep-alive causes
-    // the TLS read loop to hang waiting for more data after the response body.
-    oss << "Connection: close\r\n";
+    // Connection: keep-alive — reuse connections via ConnectionPool for plain HTTP.
+    // TLS connections are still closed after each request (SecureTransport state).
+    oss << "Connection: keep-alive\r\n";
 
     // Default User-Agent
     if (!headers.has("user-agent")) {

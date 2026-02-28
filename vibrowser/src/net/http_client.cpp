@@ -208,6 +208,11 @@ Response HttpClient::response_from_cache(const CacheEntry& entry) {
 HttpClient::HttpClient() = default;
 HttpClient::~HttpClient() = default;
 
+ConnectionPool& HttpClient::connection_pool() {
+    static ConnectionPool pool(6);
+    return pool;
+}
+
 void HttpClient::set_timeout(std::chrono::milliseconds timeout) {
     timeout_ = timeout;
 }
@@ -404,16 +409,16 @@ std::optional<std::vector<uint8_t>> HttpClient::recv_response(int fd) {
 }
 
 std::optional<Response> HttpClient::do_request(const Request& request) {
-    int fd = connect_to(request.host, request.port);
-    if (fd < 0) {
-        return std::nullopt;
-    }
-
     // Serialize the HTTP request bytes
     auto data = request.serialize();
 
     if (request.use_tls) {
-        // ---- TLS path ----
+        // ---- TLS path (no connection pooling) ----
+        int fd = connect_to(request.host, request.port);
+        if (fd < 0) {
+            return std::nullopt;
+        }
+
         TlsSocket tls;
         if (!tls.connect(request.host, request.port, fd)) {
             ::close(fd);
@@ -548,20 +553,83 @@ std::optional<Response> HttpClient::do_request(const Request& request) {
         return Response::parse(buffer);
 
     } else {
-        // ---- Plain HTTP path (existing logic) ----
+        // ---- Plain HTTP path with keep-alive connection pooling ----
+        auto& pool = connection_pool();
+
+        // Try to reuse a pooled connection first
+        int fd = pool.acquire(request.host, request.port);
+        bool reused = (fd >= 0);
+
+        if (!reused) {
+            fd = connect_to(request.host, request.port);
+            if (fd < 0) {
+                return std::nullopt;
+            }
+        }
+
         if (!send_all(fd, data.data(), data.size())) {
+            ::close(fd);
+            // If we reused a stale connection, retry with a fresh one
+            if (reused) {
+                fd = connect_to(request.host, request.port);
+                if (fd < 0) return std::nullopt;
+                if (!send_all(fd, data.data(), data.size())) {
+                    ::close(fd);
+                    return std::nullopt;
+                }
+            } else {
+                return std::nullopt;
+            }
+        }
+
+        auto raw = recv_response(fd);
+
+        if (!raw.has_value()) {
+            ::close(fd);
+            // If we reused a stale connection, retry with a fresh one
+            if (reused) {
+                fd = connect_to(request.host, request.port);
+                if (fd < 0) return std::nullopt;
+                if (!send_all(fd, data.data(), data.size())) {
+                    ::close(fd);
+                    return std::nullopt;
+                }
+                raw = recv_response(fd);
+                if (!raw.has_value()) {
+                    ::close(fd);
+                    return std::nullopt;
+                }
+            } else {
+                return std::nullopt;
+            }
+        }
+
+        auto resp = Response::parse(*raw);
+        if (!resp.has_value()) {
             ::close(fd);
             return std::nullopt;
         }
 
-        auto raw = recv_response(fd);
-        ::close(fd);
-
-        if (!raw.has_value()) {
-            return std::nullopt;
+        // Check if the server wants to close the connection
+        auto conn_header = resp->headers.get("connection");
+        bool server_wants_close = false;
+        if (conn_header.has_value()) {
+            std::string lower_val = *conn_header;
+            std::transform(lower_val.begin(), lower_val.end(), lower_val.begin(),
+                           [](unsigned char c) { return std::tolower(c); });
+            if (lower_val == "close") {
+                server_wants_close = true;
+            }
         }
 
-        return Response::parse(*raw);
+        if (server_wants_close) {
+            ::close(fd);
+        } else {
+            // Return connection to pool for reuse
+            pool.release(request.host, request.port, fd);
+        }
+
+        return resp;
     }
 }
 

@@ -27024,3 +27024,43 @@ TEST(PropertyCascadeTest, DirectionRtlAppliedV180) {
     cascade.apply_declaration(style, make_decl("direction", "rtl"), parent);
     EXPECT_EQ(style.direction, Direction::Rtl);
 }
+
+// ---------------------------------------------------------------------------
+// Cycle V181 — float right, clear left, text-decoration overline, flex-wrap wrap
+// ---------------------------------------------------------------------------
+
+TEST(PropertyCascadeTest, FloatRightAppliedV181) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("float", "right"), parent);
+    EXPECT_EQ(style.float_val, Float::Right);
+}
+
+TEST(PropertyCascadeTest, ClearLeftAppliedV181) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("clear", "left"), parent);
+    EXPECT_EQ(style.clear, Clear::Left);
+}
+
+TEST(PropertyCascadeTest, TextDecorationOverlineAppliedV181) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("text-decoration", "overline"), parent);
+    EXPECT_EQ(style.text_decoration, TextDecoration::Overline);
+}
+
+TEST(PropertyCascadeTest, FlexWrapWrapAppliedV181) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("flex-wrap", "wrap"), parent);
+    EXPECT_EQ(style.flex_wrap, FlexWrap::Wrap);
+}

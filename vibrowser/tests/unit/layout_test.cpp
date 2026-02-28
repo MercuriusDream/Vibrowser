@@ -32052,3 +32052,129 @@ TEST(LayoutEngineTest, MinWidthClampsUpwardV180) {
 
     EXPECT_FLOAT_EQ(root->geometry.width, 200.0f);
 }
+
+// V181_1: block child inherits parent width when unspecified
+TEST(LayoutEngineTest, BlockChildInheritsParentWidthV181) {
+    auto root = make_block("div");
+    root->specified_width = 500.0f;
+
+    auto child = make_block("p");
+    child->specified_height = 30.0f;
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.width, 500.0f);
+}
+
+// V181_2: margin geometry values preserved after layout
+TEST(LayoutNodeProps, MarginOffsetsChildPositionV181) {
+    auto root = make_block("div");
+    root->specified_width = 400.0f;
+
+    auto child = make_block("div");
+    child->specified_height = 50.0f;
+    child->geometry.margin.top = 15.0f;
+    child->geometry.margin.left = 25.0f;
+    auto* cp = child.get();
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(cp->geometry.margin.top, 15.0f);
+    EXPECT_FLOAT_EQ(cp->geometry.margin.left, 25.0f);
+}
+
+// V181_3: two block children each get full container width
+TEST(LayoutEngineTest, TwoBlockChildrenFullWidthV181) {
+    auto root = make_block("div");
+    root->specified_width = 320.0f;
+
+    auto c1 = make_block("div");
+    c1->specified_height = 20.0f;
+    auto c2 = make_block("div");
+    c2->specified_height = 30.0f;
+
+    root->append_child(std::move(c1));
+    root->append_child(std::move(c2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.width, 320.0f);
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.width, 320.0f);
+}
+
+// V181_4: border geometry values are preserved after layout
+TEST(LayoutNodeProps, BorderValuesPreservedV181) {
+    auto root = make_block("div");
+    root->specified_width = 200.0f;
+    root->specified_height = 100.0f;
+    root->geometry.border.top = 3.0f;
+    root->geometry.border.right = 5.0f;
+    root->geometry.border.bottom = 3.0f;
+    root->geometry.border.left = 5.0f;
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(root->geometry.border.top, 3.0f);
+    EXPECT_FLOAT_EQ(root->geometry.border.right, 5.0f);
+    EXPECT_FLOAT_EQ(root->geometry.border.bottom, 3.0f);
+    EXPECT_FLOAT_EQ(root->geometry.border.left, 5.0f);
+}
+
+// V181_5: root with no children has zero auto-height
+TEST(LayoutEngineTest, EmptyRootZeroAutoHeightV181) {
+    auto root = make_block("div");
+    root->specified_width = 300.0f;
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(root->geometry.height, 0.0f);
+}
+
+// V181_6: color defaults to black (opaque)
+TEST(LayoutNodeProps, ColorDefaultBlackV181) {
+    auto node = make_block("span");
+    EXPECT_EQ(node->color, 0xFF000000u);
+}
+
+// V181_7: three children stacking heights sum correctly
+TEST(LayoutEngineTest, ThreeChildrenHeightSumV181) {
+    auto root = make_block("div");
+    root->specified_width = 400.0f;
+
+    auto c1 = make_block("div");
+    c1->specified_height = 25.0f;
+    auto c2 = make_block("div");
+    c2->specified_height = 35.0f;
+    auto c3 = make_block("div");
+    c3->specified_height = 45.0f;
+
+    root->append_child(std::move(c1));
+    root->append_child(std::move(c2));
+    root->append_child(std::move(c3));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(root->geometry.height, 105.0f);
+    EXPECT_FLOAT_EQ(root->children[2]->geometry.y, 60.0f);
+}
+
+// V181_8: specified_height is respected
+TEST(LayoutEngineTest, SpecifiedHeightRespectedV181) {
+    auto root = make_block("div");
+    root->specified_width = 200.0f;
+    root->specified_height = 150.0f;
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(root->geometry.width, 200.0f);
+    EXPECT_FLOAT_EQ(root->geometry.height, 150.0f);
+}
