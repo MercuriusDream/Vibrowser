@@ -21694,3 +21694,181 @@ TEST(LayoutEngineTest, FlexBasisOverridesSpecifiedWidthV116) {
     // With flex_basis=100, no grow, no shrink, width should be 100 (basis overrides specified)
     EXPECT_FLOAT_EQ(cp->geometry.width, 100.0f);
 }
+
+// V117-1: Block child inherits parent width minus horizontal padding
+TEST(LayoutEngineTest, BlockChildInheritsParentWidthMinusPaddingV117) {
+    auto root = make_block("div");
+    root->specified_width = 400.0f;
+    root->geometry.padding.left = 20.0f;
+    root->geometry.padding.right = 30.0f;
+
+    auto child = make_block("div");
+    auto* cp = child.get();
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // Child should fill parent content area: 400 - 20 - 30 = 350
+    EXPECT_FLOAT_EQ(cp->geometry.width, 350.0f);
+}
+
+// V117-2: Flex container column direction stacks children vertically
+TEST(LayoutEngineTest, FlexColumnStacksChildrenVerticallyV117) {
+    auto root = make_flex("div");
+    root->flex_direction = 2; // Column
+    root->specified_width = 300.0f;
+
+    auto c1 = make_block("div");
+    c1->specified_height = 50.0f;
+    auto* p1 = c1.get();
+    root->append_child(std::move(c1));
+
+    auto c2 = make_block("div");
+    c2->specified_height = 70.0f;
+    auto* p2 = c2.get();
+    root->append_child(std::move(c2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // Second child should be placed below the first
+    EXPECT_FLOAT_EQ(p1->geometry.y, 0.0f);
+    EXPECT_GE(p2->geometry.y, 50.0f);
+}
+
+// V117-3: max_height constrains element height
+TEST(LayoutEngineTest, MaxHeightConstrainsElementHeightV117) {
+    auto root = make_block("div");
+    root->specified_width = 200.0f;
+    root->specified_height = 500.0f;
+    root->max_height = 150.0f;
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // Height should be clamped to max_height
+    EXPECT_LE(root->geometry.height, 150.0f);
+}
+
+// V117-4: Border-box sizing includes border in specified width
+TEST(LayoutEngineTest, BorderBoxIncludesBorderInWidthV117) {
+    auto root = make_block("div");
+    root->specified_width = 200.0f;
+    root->border_box = true;
+    root->geometry.border.left = 5.0f;
+    root->geometry.border.right = 5.0f;
+    root->geometry.padding.left = 10.0f;
+    root->geometry.padding.right = 10.0f;
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // With border-box, total outer width = specified_width = 200
+    EXPECT_FLOAT_EQ(root->geometry.width, 200.0f);
+}
+
+// V117-5: Flex grow distributes remaining space proportionally
+TEST(LayoutEngineTest, FlexGrowDistributesSpaceProportionallyV117) {
+    auto root = make_flex("div");
+    root->flex_direction = 0; // Row
+    root->specified_width = 600.0f;
+
+    auto c1 = make_block("div");
+    c1->flex_grow = 1.0f;
+    c1->flex_shrink = 0.0f;
+    c1->flex_basis = 0.0f;
+    c1->specified_height = 40.0f;
+    auto* p1 = c1.get();
+    root->append_child(std::move(c1));
+
+    auto c2 = make_block("div");
+    c2->flex_grow = 2.0f;
+    c2->flex_shrink = 0.0f;
+    c2->flex_basis = 0.0f;
+    c2->specified_height = 40.0f;
+    auto* p2 = c2.get();
+    root->append_child(std::move(c2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // c1 gets 1/3 = 200, c2 gets 2/3 = 400
+    EXPECT_NEAR(p1->geometry.width, 200.0f, 1.0f);
+    EXPECT_NEAR(p2->geometry.width, 400.0f, 1.0f);
+}
+
+// V117-6: Margin top pushes block child down from parent top
+TEST(LayoutEngineTest, MarginTopPushesBlockChildDownV117) {
+    auto root = make_block("div");
+    root->specified_width = 400.0f;
+
+    auto child = make_block("div");
+    child->geometry.margin.top = 25.0f;
+    child->specified_height = 60.0f;
+    auto* cp = child.get();
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // Child y position should reflect its top margin
+    EXPECT_GE(cp->geometry.y, 25.0f);
+}
+
+// V117-7: Nested block children accumulate y positions
+TEST(LayoutEngineTest, NestedBlockChildrenAccumulateYV117) {
+    auto root = make_block("div");
+    root->specified_width = 500.0f;
+
+    auto c1 = make_block("div");
+    c1->specified_height = 100.0f;
+    auto* p1 = c1.get();
+    root->append_child(std::move(c1));
+
+    auto c2 = make_block("div");
+    c2->specified_height = 100.0f;
+    auto* p2 = c2.get();
+    root->append_child(std::move(c2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // c2 should start at or after y=100
+    EXPECT_FLOAT_EQ(p1->geometry.y, 0.0f);
+    EXPECT_GE(p2->geometry.y, 100.0f);
+    // Root should be tall enough for both
+    EXPECT_GE(root->geometry.height, 200.0f);
+}
+
+// V117-8: Flex shrink reduces items when total exceeds container
+TEST(LayoutEngineTest, FlexShrinkReducesOverflowingItemsV117) {
+    auto root = make_flex("div");
+    root->flex_direction = 0; // Row
+    root->specified_width = 300.0f;
+
+    auto c1 = make_block("div");
+    c1->flex_basis = 200.0f;
+    c1->flex_grow = 0.0f;
+    c1->flex_shrink = 1.0f;
+    c1->specified_height = 40.0f;
+    auto* p1 = c1.get();
+    root->append_child(std::move(c1));
+
+    auto c2 = make_block("div");
+    c2->flex_basis = 200.0f;
+    c2->flex_grow = 0.0f;
+    c2->flex_shrink = 1.0f;
+    c2->specified_height = 40.0f;
+    auto* p2 = c2.get();
+    root->append_child(std::move(c2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // Both items should shrink; combined width should not exceed container
+    EXPECT_LE(p1->geometry.width + p2->geometry.width, 300.0f + 1.0f);
+    // Each should be less than its basis of 200
+    EXPECT_LT(p1->geometry.width, 200.0f);
+    EXPECT_LT(p2->geometry.width, 200.0f);
+}

@@ -31243,3 +31243,205 @@ TEST(JsEngineTest, StringTrimStartEndVariousWhitespaceV116) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "hello|hello  |  hello|hello|hello|hello|0|nowhitespace");
 }
+
+// ============================================================================
+// V117: JS language feature tests
+// ============================================================================
+
+TEST(JSEngine, ClassPrivateLikePatternWithClosureV117) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        const Counter = (function() {
+            const instances = new WeakMap();
+            class Counter {
+                constructor(start) {
+                    instances.set(this, { count: start || 0 });
+                }
+                increment() {
+                    instances.get(this).count++;
+                    return this;
+                }
+                value() {
+                    return instances.get(this).count;
+                }
+            }
+            return Counter;
+        })();
+        const c = new Counter(10);
+        c.increment().increment().increment();
+        c.value();
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "13");
+}
+
+TEST(JSEngine, ClassGetterSetterWithValidationV117) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        class Temperature {
+            constructor(celsius) { this._celsius = celsius; }
+            get fahrenheit() { return this._celsius * 9 / 5 + 32; }
+            set fahrenheit(f) { this._celsius = (f - 32) * 5 / 9; }
+            get celsius() { return this._celsius; }
+        }
+        const t = new Temperature(100);
+        const r = [t.fahrenheit];
+        t.fahrenheit = 32;
+        r.push(t.celsius);
+        t.fahrenheit = 212;
+        r.push(t.celsius);
+        r.join(",");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "212,0,100");
+}
+
+TEST(JSEngine, SymbolIteratorFibonacciV117) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        const fib = {
+            [Symbol.iterator]() {
+                let a = 0, b = 1, count = 0;
+                return {
+                    next() {
+                        if (count++ >= 8) return { done: true };
+                        const val = a;
+                        [a, b] = [b, a + b];
+                        return { value: val, done: false };
+                    }
+                };
+            }
+        };
+        [...fib].join(",");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "0,1,1,2,3,5,8,13");
+}
+
+TEST(JSEngine, TaggedTemplateWithTransformV117) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        function upper(strings, ...values) {
+            let out = "";
+            strings.forEach((s, i) => {
+                out += s;
+                if (i < values.length) out += String(values[i]).toUpperCase();
+            });
+            return out;
+        }
+        const name = "world";
+        const count = 42;
+        upper`hello ${name}, you have ${count} items`;
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "hello WORLD, you have 42 items");
+}
+
+TEST(JSEngine, RestSpreadInVariousContextsV117) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        // Rest in function params
+        function first(a, ...rest) { return rest.length; }
+        const r = [first(1,2,3,4,5)];
+
+        // Spread in array literal
+        const a = [1,2];
+        const b = [0, ...a, 3];
+        r.push(b.join(":"));
+
+        // Spread in function call
+        function sum(x,y,z) { return x+y+z; }
+        r.push(sum(...[10,20,30]));
+
+        // Object spread
+        const o1 = {a:1, b:2};
+        const o2 = {...o1, c:3, b:99};
+        r.push(o2.a + "," + o2.b + "," + o2.c);
+
+        r.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "4|0:1:2:3|60|1,99,3");
+}
+
+TEST(JSEngine, DestructuringAssignmentPatternsV117) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        // Nested array destructuring with defaults
+        const [a, [b, c = 99], ...rest] = [1, [2], 3, 4, 5];
+        const r = [a, b, c, rest.join(":")];
+
+        // Object destructuring with rename and default
+        const { x: px, y: py = 10, z: pz = 20 } = { x: 5, z: 15 };
+        r.push(px, py, pz);
+
+        // Destructuring in for-of
+        const pairs = [[1,"a"],[2,"b"],[3,"c"]];
+        let keys = [];
+        for (const [k, v] of pairs) { keys.push(k + v); }
+        r.push(keys.join(","));
+
+        r.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1|2|99|3:4:5|5|10|15|1a,2b,3c");
+}
+
+TEST(JSEngine, ComputedPropertyNamesAdvancedV117) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        const prefix = "data";
+        const idx = 2;
+        const obj = {
+            [prefix + "_" + idx]: "val2",
+            [prefix + "_" + (idx+1)]: "val3",
+            [`${prefix}_count`]: 2,
+            [Symbol.toPrimitive](hint) {
+                if (hint === "string") return "MyObj";
+                return 42;
+            }
+        };
+        const r = [obj.data_2, obj.data_3, obj.data_count];
+        r.push(+obj);
+        r.push(`${obj}`);
+
+        // Computed methods in class
+        const method = "greet";
+        class C {
+            [method](name) { return "hi " + name; }
+        }
+        r.push(new C().greet("JS"));
+        r.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "val2|val3|2|42|MyObj|hi JS");
+}
+
+TEST(JSEngine, ClassStaticAndInheritanceChainV117) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        class Shape {
+            constructor(name) { this.name = name; }
+            static create(name) { return new this(name); }
+            describe() { return this.name + ":" + this.area(); }
+        }
+        class Circle extends Shape {
+            constructor(r) { super("circle"); this.r = r; }
+            area() { return Math.round(Math.PI * this.r * this.r); }
+            static unit() { return Circle.create(1); }
+        }
+        class Rect extends Shape {
+            constructor(w, h) { super("rect"); this.w = w; this.h = h; }
+            area() { return this.w * this.h; }
+        }
+        const r = [];
+        r.push(Circle.unit().describe());
+        r.push(new Circle(10).describe());
+        r.push(new Rect(3,4).describe());
+        r.push(new Rect(3,4) instanceof Shape);
+        r.push(Circle.unit() instanceof Circle);
+        r.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "circle:3|circle:314|rect:12|true|true");
+}

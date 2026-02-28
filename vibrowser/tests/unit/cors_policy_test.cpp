@@ -8926,3 +8926,117 @@ TEST(CorsPolicyTest, CrossOriginSchemeComparisonCaseInsensitiveV116) {
     EXPECT_TRUE(is_cross_origin("https://www.example.com", "https://api.example.com/data"));
     EXPECT_TRUE(is_cross_origin("https://app.example.com", "https://example.com/data"));
 }
+
+TEST(CorsPolicyTest, NormalizeOriginHeaderCrossOriginSetsCorrectValueV117) {
+    // When document origin is enforceable and request is cross-origin,
+    // normalize should set Origin header to the document origin
+    clever::net::HeaderMap headers;
+    normalize_outgoing_origin_header(headers, "https://app.example.com",
+                                     "https://api.different.com/endpoint");
+    EXPECT_TRUE(headers.has("origin"));
+    EXPECT_EQ(headers.get("origin"), "https://app.example.com");
+
+    // Should overwrite any existing spoofed Origin header
+    clever::net::HeaderMap headers2;
+    headers2.set("Origin", "https://evil.com");
+    normalize_outgoing_origin_header(headers2, "https://legit.example.com",
+                                     "https://api.different.com/data");
+    EXPECT_EQ(headers2.get("origin"), "https://legit.example.com");
+}
+
+TEST(CorsPolicyTest, WsSchemeUrlsNotCorsEligibleV117) {
+    // WebSocket URLs (ws:// and wss://) should NOT be CORS-eligible request URLs
+    EXPECT_FALSE(is_cors_eligible_request_url("ws://api.example.com/socket"));
+    EXPECT_FALSE(is_cors_eligible_request_url("wss://api.example.com/socket"));
+    EXPECT_FALSE(is_cors_eligible_request_url("ws://localhost:8080/ws"));
+    EXPECT_FALSE(is_cors_eligible_request_url("wss://secure.example.com:443/ws"));
+}
+
+TEST(CorsPolicyTest, CorsAllowsExactOriginMatchWithCredentialsV117) {
+    // Exact ACAO match with credentials requested should succeed
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "https://app.example.com");
+    headers.set("Access-Control-Allow-Credentials", "true");
+    EXPECT_TRUE(cors_allows_response("https://app.example.com",
+                                     "https://api.example.com/data",
+                                     headers, true));
+
+    // Exact ACAO match but missing Allow-Credentials header should fail with credentials
+    clever::net::HeaderMap headers_no_cred;
+    headers_no_cred.set("Access-Control-Allow-Origin", "https://app.example.com");
+    EXPECT_FALSE(cors_allows_response("https://app.example.com",
+                                      "https://api.example.com/data",
+                                      headers_no_cred, true));
+}
+
+TEST(CorsPolicyTest, IPAddressCrossOriginDetectionV117) {
+    // Different IP addresses are cross-origin
+    EXPECT_TRUE(is_cross_origin("https://192.168.1.1", "https://192.168.1.2/data"));
+    EXPECT_TRUE(is_cross_origin("https://10.0.0.1", "https://10.0.0.2/api"));
+    // Same IP address, same scheme — NOT cross-origin
+    EXPECT_FALSE(is_cross_origin("https://127.0.0.1", "https://127.0.0.1/data"));
+    EXPECT_FALSE(is_cross_origin("http://192.168.1.100", "http://192.168.1.100/api"));
+    // Same IP different scheme IS cross-origin
+    EXPECT_TRUE(is_cross_origin("http://192.168.1.1", "https://192.168.1.1/data"));
+}
+
+TEST(CorsPolicyTest, ShouldAttachOriginForIPAddressCrossOriginV117) {
+    // IP address origins are enforceable, so cross-origin IP requests should attach origin
+    EXPECT_TRUE(should_attach_origin_header("https://192.168.1.1",
+                                            "https://192.168.1.2/data"));
+    EXPECT_TRUE(should_attach_origin_header("http://10.0.0.1",
+                                            "http://10.0.0.2/api"));
+    // Same IP same scheme — not cross-origin, so no attachment
+    EXPECT_FALSE(should_attach_origin_header("https://127.0.0.1",
+                                             "https://127.0.0.1/path"));
+}
+
+TEST(CorsPolicyTest, NonDefaultPortOriginEnforceableAndCrossOriginV117) {
+    // Origins with non-default ports are enforceable
+    EXPECT_TRUE(has_enforceable_document_origin("https://app.example.com:8443"));
+    EXPECT_TRUE(has_enforceable_document_origin("http://app.example.com:3000"));
+    // Same host different port is cross-origin
+    EXPECT_TRUE(is_cross_origin("https://app.example.com:8443",
+                                "https://app.example.com:9443/data"));
+    // Same host same non-default port is NOT cross-origin
+    EXPECT_FALSE(is_cross_origin("http://app.example.com:3000",
+                                 "http://app.example.com:3000/api"));
+}
+
+TEST(CorsPolicyTest, NormalizeSameOriginRemovesExistingOriginHeaderV117) {
+    // For same-origin requests, normalize should remove any existing Origin header
+    clever::net::HeaderMap headers;
+    headers.set("Origin", "https://app.example.com");
+    normalize_outgoing_origin_header(headers, "https://app.example.com",
+                                     "https://app.example.com/api/data");
+    EXPECT_FALSE(headers.has("origin"));
+
+    // Without pre-existing header, same-origin should still not add one
+    clever::net::HeaderMap headers2;
+    normalize_outgoing_origin_header(headers2, "https://app.example.com",
+                                     "https://app.example.com/other/path");
+    EXPECT_FALSE(headers2.has("origin"));
+}
+
+TEST(CorsPolicyTest, CorsResponseRejectsOriginMismatchInACAOV117) {
+    // ACAO value that doesn't match the document origin should fail
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "https://other.example.com");
+    EXPECT_FALSE(cors_allows_response("https://app.example.com",
+                                      "https://api.example.com/data",
+                                      headers, false));
+
+    // ACAO with trailing slash should not match
+    clever::net::HeaderMap headers2;
+    headers2.set("Access-Control-Allow-Origin", "https://app.example.com/");
+    EXPECT_FALSE(cors_allows_response("https://app.example.com",
+                                      "https://api.example.com/data",
+                                      headers2, false));
+
+    // ACAO with port mismatch should not match
+    clever::net::HeaderMap headers3;
+    headers3.set("Access-Control-Allow-Origin", "https://app.example.com:8080");
+    EXPECT_FALSE(cors_allows_response("https://app.example.com",
+                                      "https://api.example.com/data",
+                                      headers3, false));
+}

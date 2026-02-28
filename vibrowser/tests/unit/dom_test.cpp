@@ -17901,3 +17901,119 @@ TEST(DomTest, ClearDirtyResetsAllFlagsV116) {
     elem.clear_dirty();
     EXPECT_EQ(elem.dirty_flags(), DirtyFlags::None);
 }
+
+// ---------------------------------------------------------------------------
+// V117 tests
+// ---------------------------------------------------------------------------
+
+// 1. insert_before with null reference appends to end
+TEST(DomTest, InsertBeforeNullRefAppendsV117) {
+    Element parent("div");
+    auto a = std::make_unique<Element>("a");
+    Node* a_ptr = a.get();
+    parent.append_child(std::move(a));
+
+    auto b = std::make_unique<Element>("b");
+    Node* b_ptr = b.get();
+    parent.insert_before(std::move(b), nullptr);
+
+    EXPECT_EQ(parent.child_count(), 2u);
+    EXPECT_EQ(parent.first_child(), a_ptr);
+    EXPECT_EQ(parent.last_child(), b_ptr);
+}
+
+// 2. for_each_child visits children in insertion order
+TEST(DomTest, ForEachChildVisitsInOrderV117) {
+    Element parent("ul");
+    parent.append_child(std::make_unique<Element>("li"));
+    parent.append_child(std::make_unique<Text>("hello"));
+    parent.append_child(std::make_unique<Comment>("note"));
+
+    std::vector<NodeType> types;
+    parent.for_each_child([&](const Node& n) {
+        types.push_back(n.node_type());
+    });
+    ASSERT_EQ(types.size(), 3u);
+    EXPECT_EQ(types[0], NodeType::Element);
+    EXPECT_EQ(types[1], NodeType::Text);
+    EXPECT_EQ(types[2], NodeType::Comment);
+}
+
+// 3. remove_child returns unique_ptr and orphans the node
+TEST(DomTest, RemoveChildOrphansAndReturnsV117) {
+    Element parent("div");
+    auto child = std::make_unique<Element>("span");
+    Node* child_ptr = child.get();
+    parent.append_child(std::move(child));
+    EXPECT_EQ(child_ptr->parent(), &parent);
+
+    auto removed = parent.remove_child(*child_ptr);
+    EXPECT_NE(removed, nullptr);
+    EXPECT_EQ(removed.get(), child_ptr);
+    EXPECT_EQ(child_ptr->parent(), nullptr);
+    EXPECT_EQ(parent.child_count(), 0u);
+}
+
+// 4. Document factory: create_element sets correct tag and node type
+TEST(DomTest, DocumentCreateElementTagAndTypeV117) {
+    Document doc;
+    auto elem = doc.create_element("article");
+    EXPECT_EQ(elem->tag_name(), "article");
+    EXPECT_EQ(elem->node_type(), NodeType::Element);
+    EXPECT_EQ(elem->child_count(), 0u);
+}
+
+// 5. Sibling pointers null for single child
+TEST(DomTest, SingleChildSiblingsAreNullV117) {
+    Element parent("div");
+    auto child = std::make_unique<Element>("p");
+    Node* child_ptr = child.get();
+    parent.append_child(std::move(child));
+
+    EXPECT_EQ(child_ptr->next_sibling(), nullptr);
+    EXPECT_EQ(child_ptr->previous_sibling(), nullptr);
+    EXPECT_EQ(parent.first_child(), child_ptr);
+    EXPECT_EQ(parent.last_child(), child_ptr);
+}
+
+// 6. mark_dirty propagates to parent
+TEST(DomTest, MarkDirtyPropagatesToParentV117) {
+    Element parent("div");
+    auto child = std::make_unique<Element>("span");
+    Node* child_ptr = child.get();
+    parent.append_child(std::move(child));
+
+    parent.clear_dirty();
+    child_ptr->mark_dirty(DirtyFlags::Layout);
+
+    // Child has Layout set
+    EXPECT_EQ(static_cast<uint8_t>(child_ptr->dirty_flags() & DirtyFlags::Layout),
+              static_cast<uint8_t>(DirtyFlags::Layout));
+    // Parent should also be dirty (propagation)
+    EXPECT_NE(parent.dirty_flags(), DirtyFlags::None);
+}
+
+// 7. Text node: set_data updates both data() and text_content()
+TEST(DomTest, TextSetDataReflectsInContentV117) {
+    Text txt("original");
+    EXPECT_EQ(txt.data(), "original");
+    EXPECT_EQ(txt.text_content(), "original");
+
+    txt.set_data("updated");
+    EXPECT_EQ(txt.data(), "updated");
+    EXPECT_EQ(txt.text_content(), "updated");
+}
+
+// 8. Element set_attribute("id",...) updates id() accessor
+TEST(DomTest, SetAttributeIdUpdatesAccessorV117) {
+    Element elem("div");
+    EXPECT_EQ(elem.id(), "");
+    elem.set_attribute("id", "main-content");
+    EXPECT_EQ(elem.id(), "main-content");
+
+    // Overwrite id
+    elem.set_attribute("id", "sidebar");
+    EXPECT_EQ(elem.id(), "sidebar");
+    EXPECT_TRUE(elem.has_attribute("id"));
+    EXPECT_EQ(elem.get_attribute("id").value(), "sidebar");
+}

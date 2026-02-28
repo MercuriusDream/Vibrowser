@@ -18938,3 +18938,162 @@ TEST(HtmlParserTest, SiblingParagraphsAutoCloseV116) {
     EXPECT_NE(all.find("First"), std::string::npos);
     EXPECT_NE(all.find("Third"), std::string::npos);
 }
+
+// ---------------------------------------------------------------------------
+// V117 Tests — advanced HTML parsing: nesting, attributes, void elements,
+//              text recovery, whitespace handling, and structural edge cases
+// ---------------------------------------------------------------------------
+
+TEST(HtmlParserTest, NestedListsPreserveStructureV117) {
+    auto doc = clever::html::parse(
+        "<ul>"
+        "  <li>Item 1"
+        "    <ul>"
+        "      <li>Sub A</li>"
+        "      <li>Sub B</li>"
+        "    </ul>"
+        "  </li>"
+        "  <li>Item 2</li>"
+        "</ul>");
+    ASSERT_NE(doc, nullptr);
+    auto uls = doc->find_all_elements("ul");
+    ASSERT_GE(uls.size(), 2u);
+    auto outer_lis = uls[0]->find_all_elements("li");
+    ASSERT_GE(outer_lis.size(), 2u);
+    auto inner_lis = uls[1]->find_all_elements("li");
+    ASSERT_EQ(inner_lis.size(), 2u);
+    EXPECT_NE(inner_lis[0]->text_content().find("Sub A"), std::string::npos);
+    EXPECT_NE(inner_lis[1]->text_content().find("Sub B"), std::string::npos);
+}
+
+TEST(HtmlParserTest, MultipleVoidElementsInSequenceV117) {
+    auto doc = clever::html::parse(
+        "<div>"
+        "<br><hr><br>"
+        "<input type=\"text\">"
+        "<img src=\"a.png\">"
+        "</div>");
+    ASSERT_NE(doc, nullptr);
+    auto brs = doc->find_all_elements("br");
+    ASSERT_EQ(brs.size(), 2u);
+    auto hrs = doc->find_all_elements("hr");
+    ASSERT_EQ(hrs.size(), 1u);
+    auto* input = doc->find_element("input");
+    ASSERT_NE(input, nullptr);
+    EXPECT_EQ(get_attr_v63(input, "type"), "text");
+    auto* img = doc->find_element("img");
+    ASSERT_NE(img, nullptr);
+    EXPECT_EQ(get_attr_v63(img, "src"), "a.png");
+}
+
+TEST(HtmlParserTest, TableStructureWithHeaderAndBodyV117) {
+    auto doc = clever::html::parse(
+        "<table>"
+        "  <thead><tr><th>Name</th><th>Age</th></tr></thead>"
+        "  <tbody>"
+        "    <tr><td>Alice</td><td>30</td></tr>"
+        "    <tr><td>Bob</td><td>25</td></tr>"
+        "  </tbody>"
+        "</table>");
+    ASSERT_NE(doc, nullptr);
+    auto ths = doc->find_all_elements("th");
+    ASSERT_EQ(ths.size(), 2u);
+    EXPECT_NE(ths[0]->text_content().find("Name"), std::string::npos);
+    EXPECT_NE(ths[1]->text_content().find("Age"), std::string::npos);
+    auto tds = doc->find_all_elements("td");
+    ASSERT_EQ(tds.size(), 4u);
+    EXPECT_NE(tds[0]->text_content().find("Alice"), std::string::npos);
+    EXPECT_NE(tds[3]->text_content().find("25"), std::string::npos);
+}
+
+TEST(HtmlParserTest, DataAttributesPreservedV117) {
+    auto doc = clever::html::parse(
+        "<div data-id=\"42\" data-role=\"admin\" data-active=\"true\">"
+        "  <span data-tooltip=\"hover me\">text</span>"
+        "</div>");
+    ASSERT_NE(doc, nullptr);
+    auto* div = doc->find_element("div");
+    ASSERT_NE(div, nullptr);
+    EXPECT_EQ(get_attr_v63(div, "data-id"), "42");
+    EXPECT_EQ(get_attr_v63(div, "data-role"), "admin");
+    EXPECT_EQ(get_attr_v63(div, "data-active"), "true");
+    auto* span = doc->find_element("span");
+    ASSERT_NE(span, nullptr);
+    EXPECT_EQ(get_attr_v63(span, "data-tooltip"), "hover me");
+    EXPECT_NE(span->text_content().find("text"), std::string::npos);
+}
+
+TEST(HtmlParserTest, ScriptTagDoesNotCreateFalseElementsV117) {
+    auto doc = clever::html::parse(
+        "<html><head>"
+        "<script>var x = 'hello world';</script>"
+        "</head><body><p>Real content</p></body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* script = doc->find_element("script");
+    ASSERT_NE(script, nullptr);
+    EXPECT_EQ(script->tag_name, "script");
+    // The script element should exist in the tree
+    auto* p = doc->find_element("p");
+    ASSERT_NE(p, nullptr);
+    EXPECT_NE(p->text_content().find("Real content"), std::string::npos);
+    // Verify head and body structure
+    auto* head = doc->find_element("head");
+    ASSERT_NE(head, nullptr);
+    auto* body = doc->find_element("body");
+    ASSERT_NE(body, nullptr);
+    // Script should not spawn extra body or div elements
+    auto bodies = doc->find_all_elements("body");
+    EXPECT_EQ(bodies.size(), 1u);
+}
+
+TEST(HtmlParserTest, DeeplyNestedDivsRecoveryV117) {
+    auto doc = clever::html::parse(
+        "<div><div><div><div><div>"
+        "<span>Deep</span>"
+        "</div></div></div></div></div>");
+    ASSERT_NE(doc, nullptr);
+    auto* span = doc->find_element("span");
+    ASSERT_NE(span, nullptr);
+    EXPECT_NE(span->text_content().find("Deep"), std::string::npos);
+    auto divs = doc->find_all_elements("div");
+    ASSERT_EQ(divs.size(), 5u);
+}
+
+TEST(HtmlParserTest, MixedInlineAndBlockElementsV117) {
+    auto doc = clever::html::parse(
+        "<div>"
+        "  <strong>Bold</strong> and <em>italic</em> text"
+        "  <p>A paragraph with <a href=\"#\">a link</a></p>"
+        "  <span>inline <b>bold span</b></span>"
+        "</div>");
+    ASSERT_NE(doc, nullptr);
+    auto* strong = doc->find_element("strong");
+    ASSERT_NE(strong, nullptr);
+    EXPECT_NE(strong->text_content().find("Bold"), std::string::npos);
+    auto* em = doc->find_element("em");
+    ASSERT_NE(em, nullptr);
+    EXPECT_NE(em->text_content().find("italic"), std::string::npos);
+    auto* a = doc->find_element("a");
+    ASSERT_NE(a, nullptr);
+    EXPECT_EQ(get_attr_v63(a, "href"), "#");
+    EXPECT_NE(a->text_content().find("a link"), std::string::npos);
+    auto* b = doc->find_element("b");
+    ASSERT_NE(b, nullptr);
+    EXPECT_NE(b->text_content().find("bold span"), std::string::npos);
+}
+
+TEST(HtmlParserTest, EmptyDocumentAndWhitespaceOnlyV117) {
+    auto doc1 = clever::html::parse("");
+    ASSERT_NE(doc1, nullptr);
+    // Empty document should still produce a root node
+    auto spans1 = doc1->find_all_elements("span");
+    EXPECT_EQ(spans1.size(), 0u);
+
+    auto doc2 = clever::html::parse("   \n\t  \n  ");
+    ASSERT_NE(doc2, nullptr);
+    // Whitespace-only should not produce any element children
+    auto divs2 = doc2->find_all_elements("div");
+    EXPECT_EQ(divs2.size(), 0u);
+    auto ps2 = doc2->find_all_elements("p");
+    EXPECT_EQ(ps2.size(), 0u);
+}

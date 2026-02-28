@@ -21834,3 +21834,159 @@ TEST(CSSStyleTest, ParseOverflowHiddenBothAxesV116) {
     EXPECT_EQ(style.overflow_x, Overflow::Hidden);
     EXPECT_EQ(style.overflow_y, Overflow::Hidden);
 }
+
+// ---------------------------------------------------------------------------
+// V117 Tests
+// ---------------------------------------------------------------------------
+
+TEST(ComputedStyleTest, FlexShorthandParsesGrowShrinkBasisV117) {
+    // flex: 2 1 100px should set grow=2, shrink=1, basis=100px
+    const std::string css = "div{display:flex;} .item{flex:2 1 100px;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+    elem.classes = {"item"};
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_FLOAT_EQ(style.flex_grow, 2.0f);
+    EXPECT_FLOAT_EQ(style.flex_shrink, 1.0f);
+    EXPECT_FLOAT_EQ(style.flex_basis.to_px(), 100.0f);
+}
+
+TEST(ComputedStyleTest, BorderTopPropertiesIndividualV117) {
+    // Test setting individual border-top properties via CSS
+    const std::string css = "div{border-top-width:3px; border-top-style:dashed; border-top-color:rgb(0,128,255);}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_FLOAT_EQ(style.border_top.width.to_px(), 3.0f);
+    EXPECT_EQ(style.border_top.style, BorderStyle::Dashed);
+    EXPECT_EQ(style.border_top.color.r, 0);
+    EXPECT_EQ(style.border_top.color.g, 128);
+    EXPECT_EQ(style.border_top.color.b, 255);
+}
+
+TEST(ComputedStyleTest, OutlineWidthIsLengthTypeV117) {
+    // outline_width is a Length; verify to_px() conversion
+    ComputedStyle s;
+    s.outline_width = Length::px(4.0f);
+    s.outline_style = BorderStyle::Solid;
+    s.outline_color = Color{255, 0, 0, 255};
+
+    EXPECT_FLOAT_EQ(s.outline_width.to_px(), 4.0f);
+    EXPECT_EQ(s.outline_style, BorderStyle::Solid);
+    EXPECT_EQ(s.outline_color.r, 255);
+    EXPECT_EQ(s.outline_color.a, 255);
+}
+
+TEST(ComputedStyleTest, LetterWordSpacingAreLengthV117) {
+    // letter_spacing and word_spacing are Length type, use to_px(font_size)
+    ComputedStyle s;
+    s.letter_spacing = Length::em(0.1f);
+    s.word_spacing = Length::px(5.0f);
+    s.font_size = Length::px(20.0f);
+
+    float fs = s.font_size.to_px();
+    // 0.1em at 20px font = 2px
+    EXPECT_FLOAT_EQ(s.letter_spacing.to_px(fs), 2.0f);
+    // 5px is just 5px regardless of font
+    EXPECT_FLOAT_EQ(s.word_spacing.to_px(), 5.0f);
+}
+
+TEST(ComputedStyleTest, BoxShadowEntryBlurFieldV117) {
+    // BoxShadowEntry uses .blur, NOT .blur_radius
+    ComputedStyle s;
+    ComputedStyle::BoxShadowEntry shadow;
+    shadow.offset_x = 2.0f;
+    shadow.offset_y = 4.0f;
+    shadow.blur = 8.0f;
+    shadow.spread = 1.0f;
+    shadow.color = Color{0, 0, 0, 128};
+    shadow.inset = false;
+    s.box_shadows.push_back(shadow);
+
+    ASSERT_EQ(s.box_shadows.size(), 1u);
+    EXPECT_FLOAT_EQ(s.box_shadows[0].offset_x, 2.0f);
+    EXPECT_FLOAT_EQ(s.box_shadows[0].offset_y, 4.0f);
+    EXPECT_FLOAT_EQ(s.box_shadows[0].blur, 8.0f);
+    EXPECT_FLOAT_EQ(s.box_shadows[0].spread, 1.0f);
+    EXPECT_EQ(s.box_shadows[0].color.a, 128);
+    EXPECT_FALSE(s.box_shadows[0].inset);
+}
+
+TEST(CSSStyleTest, ParseVisibilityHiddenEnumV117) {
+    // visibility: hidden maps to Visibility::Hidden enum
+    const std::string css = "span{visibility:hidden;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "span";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.visibility, Visibility::Hidden);
+}
+
+TEST(CSSStyleTest, ParseCursorPointerAndUserSelectNoneV117) {
+    // cursor: pointer and user-select: none are enum values
+    const std::string css = "a{cursor:pointer; user-select:none;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "a";
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.cursor, Cursor::Pointer);
+    EXPECT_EQ(style.user_select, UserSelect::None);
+}
+
+TEST(ComputedStyleTest, TextShadowEntryMultipleV117) {
+    // Verify multiple text-shadow entries can be stored
+    ComputedStyle s;
+    ComputedStyle::TextShadowEntry ts1;
+    ts1.offset_x = 1.0f;
+    ts1.offset_y = 1.0f;
+    ts1.blur = 3.0f;
+    ts1.color = Color{255, 0, 0, 255};
+
+    ComputedStyle::TextShadowEntry ts2;
+    ts2.offset_x = -1.0f;
+    ts2.offset_y = -1.0f;
+    ts2.blur = 5.0f;
+    ts2.color = Color{0, 0, 255, 200};
+
+    s.text_shadows.push_back(ts1);
+    s.text_shadows.push_back(ts2);
+
+    ASSERT_EQ(s.text_shadows.size(), 2u);
+    EXPECT_FLOAT_EQ(s.text_shadows[0].offset_x, 1.0f);
+    EXPECT_FLOAT_EQ(s.text_shadows[0].blur, 3.0f);
+    EXPECT_EQ(s.text_shadows[0].color.r, 255);
+    EXPECT_FLOAT_EQ(s.text_shadows[1].offset_x, -1.0f);
+    EXPECT_FLOAT_EQ(s.text_shadows[1].blur, 5.0f);
+    EXPECT_EQ(s.text_shadows[1].color.b, 255);
+    EXPECT_EQ(s.text_shadows[1].color.a, 200);
+}

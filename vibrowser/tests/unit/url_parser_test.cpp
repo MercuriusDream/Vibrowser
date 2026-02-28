@@ -12758,3 +12758,83 @@ TEST(UrlParserTest, FragmentWithPercentEncodedDoubleEncodesV116) {
     // %23 gets double-encoded to %2523
     EXPECT_EQ(result->fragment, "sec%2523tion");
 }
+
+TEST(UrlParserTest, HttpsSchemeDefaultPort443NormalizedV117) {
+    auto result = parse("https://secure.example.org:443/login?redirect=/home");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "secure.example.org");
+    EXPECT_EQ(result->port, std::nullopt);
+    EXPECT_EQ(result->path, "/login");
+    EXPECT_EQ(result->query, "redirect=/home");
+}
+
+TEST(UrlParserTest, FtpWithCredentialsAndDeepPathV117) {
+    auto result = parse("ftp://uploader:s3cret@ftp.archive.org/pub/data/2025/report.csv");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "ftp");
+    EXPECT_EQ(result->username, "uploader");
+    EXPECT_EQ(result->password, "s3cret");
+    EXPECT_EQ(result->host, "ftp.archive.org");
+    EXPECT_EQ(result->port, std::nullopt);
+    EXPECT_EQ(result->path, "/pub/data/2025/report.csv");
+}
+
+TEST(UrlParserTest, NonDefaultPortWithQueryNoFragmentV117) {
+    auto result = parse("http://internal.corp.net:3000/api/v1/users?active=true");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "internal.corp.net");
+    EXPECT_EQ(result->port, 3000);
+    EXPECT_EQ(result->path, "/api/v1/users");
+    EXPECT_EQ(result->query, "active=true");
+    EXPECT_TRUE(result->fragment.empty());
+}
+
+TEST(UrlParserTest, PercentEncodedSlashInPathDoubleEncodesV117) {
+    auto result = parse("https://cdn.example.com/files%2Farchive%2Fdata.zip");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "cdn.example.com");
+    // %2F gets double-encoded to %252F
+    EXPECT_EQ(result->path, "/files%252Farchive%252Fdata.zip");
+}
+
+TEST(UrlParserTest, SerializeWithUsernamePasswordAndPortV117) {
+    auto result = parse("http://admin:hunter2@monitoring.example.com:9200/cluster/health");
+    ASSERT_TRUE(result.has_value());
+    std::string s = result->serialize();
+    EXPECT_EQ(s, "http://admin:hunter2@monitoring.example.com:9200/cluster/health");
+}
+
+TEST(UrlParserTest, FragmentOnlyNoQueryAllFieldsParsedV117) {
+    auto result = parse("https://docs.example.com/guide/intro#getting-started");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "docs.example.com");
+    EXPECT_EQ(result->port, std::nullopt);
+    EXPECT_EQ(result->path, "/guide/intro");
+    EXPECT_TRUE(result->query.empty());
+    EXPECT_EQ(result->fragment, "getting-started");
+    EXPECT_TRUE(result->username.empty());
+    EXPECT_TRUE(result->password.empty());
+}
+
+TEST(UrlParserTest, MultiplePercentEncodedInQueryDoubleEncodesV117) {
+    auto result = parse("https://search.example.com/find?q=a%3Db%26c%3Dd");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "search.example.com");
+    EXPECT_EQ(result->path, "/find");
+    // Each percent sequence gets double-encoded: %3D→%253D, %26→%2526
+    EXPECT_EQ(result->query, "q=a%253Db%2526c%253Dd");
+}
+
+TEST(UrlParserTest, HttpPortOnePreservedNotDefaultV117) {
+    auto result = parse("http://edge.example.com:1/status");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "edge.example.com");
+    EXPECT_EQ(result->port, 1);
+    EXPECT_EQ(result->path, "/status");
+}

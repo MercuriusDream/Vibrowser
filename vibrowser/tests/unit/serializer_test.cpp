@@ -17440,3 +17440,156 @@ TEST(SerializerTest, DataVectorGrowsCorrectlyV116) {
     EXPECT_FALSE(d.read_bool());
     EXPECT_FALSE(d.has_remaining());
 }
+
+// ------------------------------------------------------------------
+// V117 tests
+// ------------------------------------------------------------------
+
+TEST(SerializerTest, RoundTripU16AllBytePatternsV117) {
+    // Verify that u16 preserves every byte pattern across the two bytes
+    Serializer s;
+    s.write_u16(0x00FF);
+    s.write_u16(0xFF00);
+    s.write_u16(0x0F0F);
+    s.write_u16(0xF0F0);
+    s.write_u16(0xAAAA);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u16(), 0x00FFu);
+    EXPECT_EQ(d.read_u16(), 0xFF00u);
+    EXPECT_EQ(d.read_u16(), 0x0F0Fu);
+    EXPECT_EQ(d.read_u16(), 0xF0F0u);
+    EXPECT_EQ(d.read_u16(), 0xAAAAu);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, WriteBytesAndReadBytesInterleavedV117) {
+    // Write raw bytes interleaved with typed values; verify correct deserialization
+    Serializer s;
+    uint8_t blob1[] = {0xDE, 0xAD};
+    uint8_t blob2[] = {0xBE, 0xEF, 0xCA, 0xFE};
+
+    s.write_bytes(blob1, 2);
+    s.write_u32(12345);
+    s.write_bytes(blob2, 4);
+    s.write_string("mid");
+
+    Deserializer d(s.data());
+    auto r1 = d.read_bytes();
+    EXPECT_EQ(r1.size(), 2u);
+    EXPECT_EQ(r1[0], 0xDE);
+    EXPECT_EQ(r1[1], 0xAD);
+
+    EXPECT_EQ(d.read_u32(), 12345u);
+
+    auto r2 = d.read_bytes();
+    EXPECT_EQ(r2.size(), 4u);
+    EXPECT_EQ(r2[0], 0xBE);
+    EXPECT_EQ(r2[1], 0xEF);
+    EXPECT_EQ(r2[2], 0xCA);
+    EXPECT_EQ(r2[3], 0xFE);
+
+    EXPECT_EQ(d.read_string(), "mid");
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, RoundTripF64SubnormalAndTinyV117) {
+    // Verify subnormal (denormalized) and very small normal float64 values
+    Serializer s;
+    double subnormal = std::numeric_limits<double>::denorm_min();
+    double tiny_normal = std::numeric_limits<double>::min();  // smallest normal
+    double neg_subnormal = -subnormal;
+
+    s.write_f64(subnormal);
+    s.write_f64(tiny_normal);
+    s.write_f64(neg_subnormal);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_f64(), subnormal);
+    EXPECT_EQ(d.read_f64(), tiny_normal);
+    EXPECT_EQ(d.read_f64(), neg_subnormal);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, MultipleBoolsAlternatingV117) {
+    // Stress-test bool serialization with an alternating pattern of 16 bools
+    Serializer s;
+    for (int i = 0; i < 16; ++i) {
+        s.write_bool(i % 2 == 0);
+    }
+
+    Deserializer d(s.data());
+    for (int i = 0; i < 16; ++i) {
+        EXPECT_EQ(d.read_bool(), (i % 2 == 0)) << "Mismatch at index " << i;
+    }
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, RoundTripU32PowersOfTwoV117) {
+    // Serialize all powers of two that fit in u32
+    Serializer s;
+    for (int bit = 0; bit < 32; ++bit) {
+        s.write_u32(1u << bit);
+    }
+
+    Deserializer d(s.data());
+    for (int bit = 0; bit < 32; ++bit) {
+        EXPECT_EQ(d.read_u32(), 1u << bit) << "Failed at bit " << bit;
+    }
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, EmptyStringFollowedByNonEmptyV117) {
+    // Verify that an empty string does not corrupt subsequent reads
+    Serializer s;
+    s.write_string("");
+    s.write_string("after_empty");
+    s.write_string("");
+    s.write_string("");
+    s.write_string("final");
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "");
+    EXPECT_EQ(d.read_string(), "after_empty");
+    EXPECT_EQ(d.read_string(), "");
+    EXPECT_EQ(d.read_string(), "");
+    EXPECT_EQ(d.read_string(), "final");
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, WriteBytesEmptyInterleavedV117) {
+    // write_bytes with zero length between typed values
+    Serializer s;
+    s.write_u8(0xAB);
+    s.write_bytes(nullptr, 0);  // write zero-length bytes (length-prefixed empty)
+    s.write_u8(0xCD);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u8(), 0xAB);
+    auto empty_result = d.read_bytes();
+    EXPECT_TRUE(empty_result.empty());
+    EXPECT_EQ(d.read_u8(), 0xCD);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, RoundTripU64U8U16MixedSequenceV117) {
+    // Mix different integer widths to verify alignment-independent serialization
+    Serializer s;
+    s.write_u8(0x11);
+    s.write_u64(0x2222222222222222ull);
+    s.write_u16(0x3333);
+    s.write_u8(0x44);
+    s.write_u16(0x5555);
+    s.write_u64(0x6666666666666666ull);
+    s.write_u32(0x77777777u);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u8(), 0x11);
+    EXPECT_EQ(d.read_u64(), 0x2222222222222222ull);
+    EXPECT_EQ(d.read_u16(), 0x3333u);
+    EXPECT_EQ(d.read_u8(), 0x44);
+    EXPECT_EQ(d.read_u16(), 0x5555u);
+    EXPECT_EQ(d.read_u64(), 0x6666666666666666ull);
+    EXPECT_EQ(d.read_u32(), 0x77777777u);
+    EXPECT_FALSE(d.has_remaining());
+}

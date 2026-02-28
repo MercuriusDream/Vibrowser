@@ -19780,3 +19780,177 @@ TEST(ResponseTest, Parse301RedirectWithLocationV116) {
     EXPECT_EQ(resp->headers.get("location").value(), "https://www.newsite.com/");
     EXPECT_EQ(resp->body.size(), 0u);
 }
+
+// ===========================================================================
+// V117 Tests
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// 1. HeaderMap: append creates multiple values retrievable via get_all
+// ---------------------------------------------------------------------------
+TEST(HeaderMapTest, AppendCreatesMultipleValuesV117) {
+    HeaderMap map;
+    map.append("Set-Cookie", "a=1");
+    map.append("Set-Cookie", "b=2");
+    map.append("Set-Cookie", "c=3");
+
+    auto all = map.get_all("set-cookie");
+    EXPECT_EQ(all.size(), 3u);
+
+    // get() returns one of the values (first inserted)
+    auto single = map.get("Set-Cookie");
+    ASSERT_TRUE(single.has_value());
+
+    // has() still true
+    EXPECT_TRUE(map.has("SET-COOKIE"));
+    // size counts each entry individually
+    EXPECT_EQ(map.size(), 3u);
+}
+
+// ---------------------------------------------------------------------------
+// 2. Request: parse_url extracts query string separately
+// ---------------------------------------------------------------------------
+TEST(RequestTest, ParseUrlExtractsQueryStringV117) {
+    Request req;
+    req.url = "https://search.example.com/results?q=hello+world&page=2";
+    req.parse_url();
+
+    EXPECT_EQ(req.host, "search.example.com");
+    EXPECT_EQ(req.path, "/results");
+    EXPECT_EQ(req.query, "q=hello+world&page=2");
+    EXPECT_EQ(req.port, 443);
+    EXPECT_TRUE(req.use_tls);
+}
+
+// ---------------------------------------------------------------------------
+// 3. Request: serialize POST with Content-Length matching body size
+// ---------------------------------------------------------------------------
+TEST(RequestTest, SerializePostContentLengthMatchesBodyV117) {
+    Request req;
+    req.method = Method::POST;
+    req.host = "api.example.com";
+    req.port = 443;
+    req.path = "/data";
+    req.use_tls = true;
+    std::string payload = R"({"key":"value"})";
+    req.body.assign(payload.begin(), payload.end());
+    req.headers.set("Content-Type", "application/json");
+
+    auto bytes = req.serialize();
+    std::string raw(bytes.begin(), bytes.end());
+
+    EXPECT_NE(raw.find("POST /data HTTP/1.1\r\n"), std::string::npos);
+    EXPECT_NE(raw.find("Host: api.example.com\r\n"), std::string::npos);
+    // Port 443 for HTTPS must be omitted from Host
+    EXPECT_EQ(raw.find("Host: api.example.com:443"), std::string::npos);
+    // Custom header serialized lowercase
+    EXPECT_NE(raw.find("content-type: application/json\r\n"), std::string::npos);
+    // Body appears at the end
+    EXPECT_NE(raw.find(payload), std::string::npos);
+}
+
+// ---------------------------------------------------------------------------
+// 4. Response: parse 200 with multiple headers including Set-Cookie
+// ---------------------------------------------------------------------------
+TEST(ResponseTest, Parse200WithMultipleSetCookieV117) {
+    std::string raw =
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Type: text/html\r\n"
+        "Set-Cookie: session=abc123\r\n"
+        "Set-Cookie: lang=en\r\n"
+        "Content-Length: 6\r\n"
+        "\r\n"
+        "<html>";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 200);
+    EXPECT_EQ(resp->body_as_string(), "<html>");
+
+    auto cookies = resp->headers.get_all("set-cookie");
+    EXPECT_EQ(cookies.size(), 2u);
+    EXPECT_TRUE(resp->headers.has("content-type"));
+    EXPECT_EQ(resp->headers.get("content-type").value(), "text/html");
+}
+
+// ---------------------------------------------------------------------------
+// 5. Request: serialize HEAD omits body even if body is set
+// ---------------------------------------------------------------------------
+TEST(RequestTest, SerializeHeadOmitsBodyV117) {
+    Request req;
+    req.method = Method::HEAD;
+    req.host = "cdn.example.com";
+    req.port = 80;
+    req.path = "/asset.js";
+    req.use_tls = false;
+    std::string payload = "this should not appear";
+    req.body.assign(payload.begin(), payload.end());
+
+    auto bytes = req.serialize();
+    std::string raw(bytes.begin(), bytes.end());
+
+    EXPECT_NE(raw.find("HEAD /asset.js HTTP/1.1\r\n"), std::string::npos);
+    EXPECT_NE(raw.find("Host: cdn.example.com\r\n"), std::string::npos);
+    // Port 80 for HTTP must be omitted from Host
+    EXPECT_EQ(raw.find("Host: cdn.example.com:80"), std::string::npos);
+}
+
+// ---------------------------------------------------------------------------
+// 6. Response: parse 204 No Content has empty body
+// ---------------------------------------------------------------------------
+TEST(ResponseTest, Parse204NoContentEmptyBodyV117) {
+    std::string raw =
+        "HTTP/1.1 204 No Content\r\n"
+        "X-Request-Id: xyz-789\r\n"
+        "\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 204);
+    EXPECT_EQ(resp->status_text, "No Content");
+    EXPECT_TRUE(resp->body.empty());
+    EXPECT_EQ(resp->body_as_string(), "");
+    EXPECT_EQ(resp->headers.get("x-request-id").value(), "xyz-789");
+}
+
+// ---------------------------------------------------------------------------
+// 7. HeaderMap: remove then re-set same key works
+// ---------------------------------------------------------------------------
+TEST(HeaderMapTest, RemoveThenResetSameKeyWorksV117) {
+    HeaderMap map;
+    map.set("Authorization", "Bearer old-token");
+    EXPECT_TRUE(map.has("authorization"));
+
+    map.remove("authorization");
+    EXPECT_FALSE(map.has("authorization"));
+    EXPECT_EQ(map.get("authorization"), std::nullopt);
+
+    map.set("Authorization", "Bearer new-token");
+    EXPECT_TRUE(map.has("authorization"));
+    EXPECT_EQ(map.get("authorization").value(), "Bearer new-token");
+    EXPECT_EQ(map.size(), 1u);
+}
+
+// ---------------------------------------------------------------------------
+// 8. Request: parse_url with HTTP and explicit port 8080
+// ---------------------------------------------------------------------------
+TEST(RequestTest, ParseUrlHttpWithExplicitPort8080V117) {
+    Request req;
+    req.url = "http://localhost:8080/api/v1/users";
+    req.parse_url();
+
+    EXPECT_EQ(req.host, "localhost");
+    EXPECT_EQ(req.port, 8080);
+    EXPECT_EQ(req.path, "/api/v1/users");
+    EXPECT_FALSE(req.use_tls);
+
+    // Serialize and verify non-standard port appears in Host header
+    req.method = Method::GET;
+    auto bytes = req.serialize();
+    std::string raw(bytes.begin(), bytes.end());
+
+    EXPECT_NE(raw.find("Host: localhost:8080\r\n"), std::string::npos);
+    EXPECT_NE(raw.find("GET /api/v1/users HTTP/1.1\r\n"), std::string::npos);
+}
