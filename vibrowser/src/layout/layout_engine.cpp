@@ -51,6 +51,9 @@ static float measure_intrinsic_width(const LayoutNode& node, bool max_content,
                                       const TextMeasureFn* measurer, int depth = 0) {
     if (depth > 256) return 0;
     float width = 0;
+    if (node.specified_width >= 0) {
+        width = std::max(width, node.specified_width);
+    }
     if (node.is_text && !node.text_content.empty()) {
         if (max_content) {
             // max-content: no wrapping, full text width
@@ -864,16 +867,43 @@ void LayoutEngine::layout_flex(LayoutNode& node, float containing_width) {
         node.geometry.padding.bottom = node.css_padding_bottom->to_px(containing_width);
     if (node.css_padding_left.has_value())
         node.geometry.padding.left = node.css_padding_left->to_px(containing_width);
-    // Clear auto margins for flex containers (block-level flex uses auto margin centering)
-    if (node.geometry.margin.left < 0) node.geometry.margin.left = 0;
-    if (node.geometry.margin.right < 0) node.geometry.margin.right = 0;
-
-    // Compute width (non-root)
+    // Compute width FIRST (resolves css_width percentage) — needed before auto margins
     if (node.parent != nullptr) {
         node.geometry.width = compute_width(node, containing_width);
     }
 
-    flex_layout(node, node.geometry.width);
+    // Resolve auto margins for centering (AFTER width is resolved) — same as layout_block
+    bool auto_left = (node.geometry.margin.left < 0);
+    bool auto_right = (node.geometry.margin.right < 0);
+    if (auto_left || auto_right) {
+        float remaining = containing_width - node.geometry.width;
+        if (!auto_left) remaining -= node.geometry.margin.left;
+        if (!auto_right) remaining -= node.geometry.margin.right;
+        if (remaining < 0) remaining = 0;
+        if (auto_left && auto_right) {
+            node.geometry.margin.left = remaining / 2.0f;
+            node.geometry.margin.right = remaining / 2.0f;
+        } else if (auto_left) {
+            node.geometry.margin.left = remaining;
+        } else {
+            node.geometry.margin.right = remaining;
+        }
+    } else {
+        if (node.geometry.margin.left < 0) node.geometry.margin.left = 0;
+        if (node.geometry.margin.right < 0) node.geometry.margin.right = 0;
+    }
+
+    // Set x from left margin (same as layout_block)
+    if (node.parent != nullptr) {
+        node.geometry.x = node.geometry.margin.left;
+    }
+
+    // Use content width (not border-box) for flex layout — padding/border handled by painter offset
+    float content_w = node.geometry.width
+        - node.geometry.padding.left - node.geometry.padding.right
+        - node.geometry.border.left - node.geometry.border.right;
+    if (content_w < 0) content_w = 0;
+    flex_layout(node, content_w);
 }
 
 void LayoutEngine::layout_children(LayoutNode& node) {
@@ -1934,7 +1964,26 @@ void LayoutEngine::flex_layout(LayoutNode& node, float containing_width) {
     // The CSS "gap" shorthand sets both node.gap (row-gap) and node.column_gap_val (column-gap).
     float main_gap = is_row ? node.column_gap_val : node.gap;
 
-    float main_size = containing_width;
+    if (node.css_height.has_value()) {
+        float cb_height = viewport_height_;
+        if (node.parent && node.parent->specified_height >= 0) {
+            cb_height = node.parent->specified_height;
+        }
+        node.specified_height = node.css_height->to_px(cb_height);
+    }
+
+    // Main-axis sizing:
+    // - row/row-reverse: main axis is width, always definite from containing width.
+    // - column/column-reverse: main axis is height and may be indefinite (auto).
+    float main_size = 0.0f;
+    bool has_definite_main_size = false;
+    if (is_row) {
+        main_size = containing_width;
+        has_definite_main_size = true;
+    } else if (node.specified_height >= 0) {
+        main_size = node.specified_height;
+        has_definite_main_size = true;
+    }
 
     // Collect flex items
     struct FlexItem {
@@ -1957,11 +2006,23 @@ void LayoutEngine::flex_layout(LayoutNode& node, float containing_width) {
         if (child->css_width.has_value()) {
             child->specified_width = child->css_width->to_px(containing_width);
         }
+        if (child->css_height.has_value()) {
+            float cb_height = has_definite_main_size ? main_size : viewport_height_;
+            child->specified_height = child->css_height->to_px(cb_height);
+        }
         if (child->css_min_width.has_value()) {
             child->min_width = child->css_min_width->to_px(containing_width);
         }
         if (child->css_max_width.has_value()) {
             child->max_width = child->css_max_width->to_px(containing_width);
+        }
+        if (child->css_min_height.has_value()) {
+            float cb_height = has_definite_main_size ? main_size : viewport_height_;
+            child->min_height = child->css_min_height->to_px(cb_height);
+        }
+        if (child->css_max_height.has_value()) {
+            float cb_height = has_definite_main_size ? main_size : viewport_height_;
+            child->max_height = child->css_max_height->to_px(cb_height);
         }
         // Resolve deferred percentage margins/padding for flex items
         if (child->css_margin_top.has_value())
@@ -1980,19 +2041,24 @@ void LayoutEngine::flex_layout(LayoutNode& node, float containing_width) {
             child->geometry.padding.bottom = child->css_padding_bottom->to_px(containing_width);
         if (child->css_padding_left.has_value())
             child->geometry.padding.left = child->css_padding_left->to_px(containing_width);
-        // Clear auto margins for flex items (flex uses justify/align instead)
-        if (child->geometry.margin.left < 0) child->geometry.margin.left = 0;
-        if (child->geometry.margin.right < 0) child->geometry.margin.right = 0;
+        // Note: auto margins on flex items (sentinel -1) are preserved here.
+        // They are resolved later in the justify-content phase, per CSS Flexbox spec 8.1.
 
         float basis;
         if (child->flex_basis >= 0) {
             basis = child->flex_basis;
-        } else if (is_row && child->specified_width >= 0) {
-            basis = child->specified_width;
-        } else if (!is_row && child->specified_height >= 0) {
-            basis = child->specified_height;
         } else {
-            basis = 0;
+            // flex-basis:auto -> use the item's main-size property when definite.
+            // If no definite main size is available yet, fall back to current
+            // measured geometry in that axis before using 0.
+            if (is_row && child->specified_width >= 0) {
+                basis = child->specified_width;
+            } else if (!is_row && child->specified_height >= 0) {
+                basis = child->specified_height;
+            } else {
+                basis = is_row ? child->geometry.width : child->geometry.height;
+                if (basis < 0) basis = 0;
+            }
         }
 
         items.push_back({child.get(), basis});
@@ -2029,7 +2095,7 @@ void LayoutEngine::flex_layout(LayoutNode& node, float containing_width) {
     };
     std::vector<FlexLine> lines;
 
-    if (node.flex_wrap != 0 && !items.empty()) {
+    if (node.flex_wrap != 0 && !items.empty() && has_definite_main_size) {
         // Wrap mode: start new line when items exceed main_size
         FlexLine current_line;
         current_line.start = 0;
@@ -2074,10 +2140,13 @@ void LayoutEngine::flex_layout(LayoutNode& node, float containing_width) {
             line_total_basis += items[i].basis;
         }
 
-        float remaining = main_size - line_total_basis - line_total_gap;
+        float remaining = 0.0f;
+        if (has_definite_main_size) {
+            remaining = main_size - line_total_basis - line_total_gap;
+        }
 
         // Flex grow / shrink within this line
-        if (remaining > 0) {
+        if (has_definite_main_size && remaining > 0) {
             float total_grow = 0;
             for (size_t i = line.start; i < line.end; i++) {
                 total_grow += items[i].child->flex_grow;
@@ -2087,7 +2156,7 @@ void LayoutEngine::flex_layout(LayoutNode& node, float containing_width) {
                     items[i].basis += (items[i].child->flex_grow / total_grow) * remaining;
                 }
             }
-        } else if (remaining < 0 && node.flex_wrap == 0) {
+        } else if (has_definite_main_size && remaining < 0 && node.flex_wrap == 0) {
             float total_shrink_weighted = 0;
             for (size_t i = line.start; i < line.end; i++) {
                 total_shrink_weighted += items[i].child->flex_shrink * items[i].basis;
@@ -2103,16 +2172,28 @@ void LayoutEngine::flex_layout(LayoutNode& node, float containing_width) {
         }
 
         // Apply min/max on each item in this line
-        // Resolve deferred percentage min/max-width for flex items
+        // Resolve deferred min/max constraints in the main axis.
         for (size_t i = line.start; i < line.end; i++) {
-            if (items[i].child->css_min_width.has_value()) {
-                items[i].child->min_width = items[i].child->css_min_width->to_px(main_size);
+            if (is_row) {
+                if (items[i].child->css_min_width.has_value()) {
+                    items[i].child->min_width = items[i].child->css_min_width->to_px(containing_width);
+                }
+                if (items[i].child->css_max_width.has_value()) {
+                    items[i].child->max_width = items[i].child->css_max_width->to_px(containing_width);
+                }
+                items[i].basis = std::max(items[i].basis, items[i].child->min_width);
+                items[i].basis = std::min(items[i].basis, items[i].child->max_width);
+            } else {
+                float cb_height = has_definite_main_size ? main_size : viewport_height_;
+                if (items[i].child->css_min_height.has_value()) {
+                    items[i].child->min_height = items[i].child->css_min_height->to_px(cb_height);
+                }
+                if (items[i].child->css_max_height.has_value()) {
+                    items[i].child->max_height = items[i].child->css_max_height->to_px(cb_height);
+                }
+                items[i].basis = std::max(items[i].basis, items[i].child->min_height);
+                items[i].basis = std::min(items[i].basis, items[i].child->max_height);
             }
-            if (items[i].child->css_max_width.has_value()) {
-                items[i].child->max_width = items[i].child->css_max_width->to_px(main_size);
-            }
-            items[i].basis = std::max(items[i].basis, items[i].child->min_width);
-            items[i].basis = std::min(items[i].basis, items[i].child->max_width);
         }
 
         // Compute total used main size for this line
@@ -2121,11 +2202,57 @@ void LayoutEngine::flex_layout(LayoutNode& node, float containing_width) {
             total_used += items[i].basis;
         }
 
+        // Per CSS Flexbox spec 8.1: auto margins on main axis absorb free space
+        // BEFORE justify-content is applied
+        float remaining_space = has_definite_main_size ? (main_size - total_used) : 0.0f;
+        if (remaining_space < 0) remaining_space = 0;
+
+        if (remaining_space > 0) {
+            // Count auto margins on the main axis
+            int auto_margin_count = 0;
+            for (size_t i = line.start; i < line.end; i++) {
+                auto* child = items[i].child;
+                if (is_row) {
+                    if (child->geometry.margin.left < 0) auto_margin_count++;
+                    if (child->geometry.margin.right < 0) auto_margin_count++;
+                } else {
+                    if (child->geometry.margin.top < 0) auto_margin_count++;
+                    if (child->geometry.margin.bottom < 0) auto_margin_count++;
+                }
+            }
+            if (auto_margin_count > 0) {
+                float per_auto = remaining_space / static_cast<float>(auto_margin_count);
+                for (size_t i = line.start; i < line.end; i++) {
+                    auto* child = items[i].child;
+                    if (is_row) {
+                        if (child->geometry.margin.left < 0) child->geometry.margin.left = per_auto;
+                        if (child->geometry.margin.right < 0) child->geometry.margin.right = per_auto;
+                    } else {
+                        if (child->geometry.margin.top < 0) child->geometry.margin.top = per_auto;
+                        if (child->geometry.margin.bottom < 0) child->geometry.margin.bottom = per_auto;
+                    }
+                }
+                remaining_space = 0; // auto margins consumed all free space
+            }
+        }
+
+        // Zero out only MAIN-axis auto margins that weren't resolved above.
+        // Cross-axis auto margins (top/bottom in row, left/right in column)
+        // are handled later in the cross-axis positioning phase.
+        for (size_t i = line.start; i < line.end; i++) {
+            auto* child = items[i].child;
+            if (is_row) {
+                if (child->geometry.margin.left < 0) child->geometry.margin.left = 0;
+                if (child->geometry.margin.right < 0) child->geometry.margin.right = 0;
+            } else {
+                if (child->geometry.margin.top < 0) child->geometry.margin.top = 0;
+                if (child->geometry.margin.bottom < 0) child->geometry.margin.bottom = 0;
+            }
+        }
+
         // Justify-content for this line
         float cursor_main = 0;
         float gap_between = main_gap;
-        float remaining_space = main_size - total_used;
-        if (remaining_space < 0) remaining_space = 0;
 
         switch (node.justify_content) {
             case 0: cursor_main = 0; break;
@@ -3103,6 +3230,20 @@ void LayoutEngine::layout_table(LayoutNode& node, float containing_width) {
         for (char c : tag) t += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
         return t == "caption";
     };
+    auto is_table_row = [](const std::string& tag) {
+        if (tag.size() != 2) return false;
+        std::string t;
+        t.reserve(tag.size());
+        for (char c : tag) t += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        return t == "tr";
+    };
+    auto is_table_cell = [](const std::string& tag) {
+        if (tag.size() != 2) return false;
+        std::string t;
+        t.reserve(tag.size());
+        for (char c : tag) t += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        return t == "td" || t == "th";
+    };
     for (auto& child : node.children) {
         if (child->display == DisplayType::None || child->mode == LayoutMode::None) {
             child->geometry.width = 0;
@@ -3123,14 +3264,18 @@ void LayoutEngine::layout_table(LayoutNode& node, float containing_width) {
                     continue;
                 }
                 if (grandchild->position_type == 2 || grandchild->position_type == 3) continue;
-                rows.push_back(grandchild.get());
+                if (is_table_row(grandchild->tag_name)) {
+                    rows.push_back(grandchild.get());
+                }
             }
             // Zero out the section wrapper dimensions (it's transparent)
             child->geometry.width = 0;
             child->geometry.height = 0;
             continue;
         }
-        rows.push_back(child.get());
+        if (is_table_row(child->tag_name)) {
+            rows.push_back(child.get());
+        }
     }
 
     // ---- Layout captions with caption_side=top before the table rows ----
@@ -3162,18 +3307,65 @@ void LayoutEngine::layout_table(LayoutNode& node, float containing_width) {
         return;
     }
 
-    // Determine column count from first row (accounting for colspan)
+    // Determine column count across ALL rows (including rowspan occupancy).
+    // Relying only on the first row undercounts columns on pages that start
+    // with a short/header row, which can collapse later cells to zero width.
     LayoutNode* first_row = rows[0];
     std::vector<LayoutNode*> first_row_cells;
     for (auto& cell : first_row->children) {
         if (cell->display == DisplayType::None || cell->mode == LayoutMode::None) continue;
         if (cell->position_type == 2 || cell->position_type == 3) continue;
+        if (!is_table_cell(cell->tag_name)) continue;
         first_row_cells.push_back(cell.get());
     }
 
     int num_cols = 0;
-    for (auto* cell : first_row_cells) {
-        num_cols += cell->colspan;
+    std::vector<std::vector<uint8_t>> scan_occupancy;
+    for (size_t ri = 0; ri < rows.size(); ri++) {
+        if (scan_occupancy.size() <= ri) {
+            scan_occupancy.resize(ri + 1);
+        }
+        if (scan_occupancy[ri].size() < static_cast<size_t>(num_cols)) {
+            scan_occupancy[ri].resize(static_cast<size_t>(num_cols), 0);
+        }
+
+        int col_idx = 0;
+        for (auto& cell : rows[ri]->children) {
+            if (cell->display == DisplayType::None || cell->mode == LayoutMode::None) continue;
+            if (cell->position_type == 2 || cell->position_type == 3) continue;
+            if (!is_table_cell(cell->tag_name)) continue;
+
+            while (col_idx < num_cols &&
+                   scan_occupancy[ri][static_cast<size_t>(col_idx)] != 0) {
+                col_idx++;
+            }
+
+            int cspan = std::max(1, cell->colspan);
+            int rspan = std::max(1, cell->rowspan);
+            int needed_cols = col_idx + cspan;
+            if (needed_cols > num_cols) {
+                num_cols = needed_cols;
+                for (auto& occ_row : scan_occupancy) {
+                    occ_row.resize(static_cast<size_t>(num_cols), 0);
+                }
+            }
+
+            if (rspan > 1) {
+                for (int dr = 1; dr < rspan; dr++) {
+                    size_t rr = ri + static_cast<size_t>(dr);
+                    if (scan_occupancy.size() <= rr) {
+                        scan_occupancy.resize(rr + 1);
+                    }
+                    if (scan_occupancy[rr].size() < static_cast<size_t>(num_cols)) {
+                        scan_occupancy[rr].resize(static_cast<size_t>(num_cols), 0);
+                    }
+                    for (int dc = 0; dc < cspan && (col_idx + dc) < num_cols; dc++) {
+                        scan_occupancy[rr][static_cast<size_t>(col_idx + dc)] = 1;
+                    }
+                }
+            }
+            col_idx += cspan;
+        }
     }
     if (num_cols == 0) num_cols = 1;
 
@@ -3195,6 +3387,8 @@ void LayoutEngine::layout_table(LayoutNode& node, float containing_width) {
 
     bool is_fixed_layout = (node.table_layout == 1);
 
+    const TextMeasureFn* intrinsic_measurer = text_measurer_ ? &text_measurer_ : nullptr;
+
     if (is_fixed_layout) {
         // ---- Fixed table layout (CSS 2.1 Section 17.5.2.1) ----
         // Column widths are determined from the first row only.
@@ -3202,10 +3396,17 @@ void LayoutEngine::layout_table(LayoutNode& node, float containing_width) {
         for (auto* cell : first_row_cells) {
             int span = cell->colspan;
             if (col_idx >= num_cols) break;
-            if (cell->specified_width >= 0 && span == 1) {
-                col_widths[static_cast<size_t>(col_idx)] = cell->specified_width;
-            } else if (cell->specified_width >= 0 && span > 1) {
-                float per_col = cell->specified_width / static_cast<float>(span);
+            float width_hint = -1.0f;
+            if (cell->specified_width >= 0) {
+                width_hint = cell->specified_width;
+            } else if (cell->css_width.has_value()) {
+                width_hint = cell->css_width->to_px(available_for_cols);
+            }
+
+            if (width_hint >= 0 && span == 1) {
+                col_widths[static_cast<size_t>(col_idx)] = width_hint;
+            } else if (width_hint >= 0 && span > 1) {
+                float per_col = width_hint / static_cast<float>(span);
                 for (int s = 0; s < span && (col_idx + s) < num_cols; s++) {
                     col_widths[static_cast<size_t>(col_idx + s)] = per_col;
                 }
@@ -3214,21 +3415,32 @@ void LayoutEngine::layout_table(LayoutNode& node, float containing_width) {
         }
     } else {
         // ---- Auto table layout (CSS 2.1 Section 17.5.2.2) ----
-        // Scan ALL rows: use the maximum specified_width per column.
+        // Scan ALL rows: use maximum explicit/intrinsic width per column.
         for (auto* row : rows) {
             int col_idx = 0;
             for (auto& cell : row->children) {
                 if (cell->display == DisplayType::None || cell->mode == LayoutMode::None) continue;
                 if (cell->position_type == 2 || cell->position_type == 3) continue;
+                if (!is_table_cell(cell->tag_name)) continue;
                 int span = cell->colspan;
                 if (span < 1) span = 1;
-                if (cell->specified_width >= 0 && span == 1 && col_idx < num_cols) {
+
+                float width_hint = -1.0f;
+                if (cell->specified_width >= 0) {
+                    width_hint = cell->specified_width;
+                } else if (cell->css_width.has_value()) {
+                    width_hint = cell->css_width->to_px(available_for_cols);
+                } else {
+                    width_hint = measure_intrinsic_width(*cell, true, intrinsic_measurer);
+                }
+
+                if (width_hint > 0 && span == 1 && col_idx < num_cols) {
                     float cur = col_widths[static_cast<size_t>(col_idx)];
-                    if (cur < 0 || cell->specified_width > cur) {
-                        col_widths[static_cast<size_t>(col_idx)] = cell->specified_width;
+                    if (cur < 0 || width_hint > cur) {
+                        col_widths[static_cast<size_t>(col_idx)] = width_hint;
                     }
-                } else if (cell->specified_width >= 0 && span > 1) {
-                    float per_col = cell->specified_width / static_cast<float>(span);
+                } else if (width_hint > 0 && span > 1) {
+                    float per_col = width_hint / static_cast<float>(span);
                     for (int s = 0; s < span && (col_idx + s) < num_cols; s++) {
                         float cur = col_widths[static_cast<size_t>(col_idx + s)];
                         if (cur < 0 || per_col > cur) {
@@ -3345,6 +3557,7 @@ void LayoutEngine::layout_table(LayoutNode& node, float containing_width) {
                 continue;
             }
             if (cell->position_type == 2 || cell->position_type == 3) continue;
+            if (!is_table_cell(cell->tag_name)) continue;
             cells.push_back(cell.get());
         }
 

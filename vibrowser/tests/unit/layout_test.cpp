@@ -23330,11 +23330,11 @@ TEST(LayoutEngineTest, FlexRowMixedFixedGrowWithContainerPaddingV123) {
     LayoutEngine engine;
     engine.compute(*root, 500.0f, 600.0f);
 
-    // The flex layout distributes based on container specified_width (500)
-    // Fixed child takes 100, growing child gets 500 - 100 = 400
+    // The flex layout distributes based on content width = 500 - 25 - 25 = 450
+    // Fixed child takes 100, growing child gets 450 - 100 = 350
     EXPECT_FLOAT_EQ(fp->geometry.width, 100.0f);
-    EXPECT_NEAR(gp->geometry.width, 400.0f, 2.0f)
-        << "Growing child should fill remaining flex space after fixed sibling";
+    EXPECT_NEAR(gp->geometry.width, 350.0f, 2.0f)
+        << "Growing child should fill remaining flex content area after fixed sibling";
     // The growing child x should start right after the fixed child
     EXPECT_NEAR(gp->geometry.x, 100.0f, 2.0f)
         << "Growing child should start after fixed sibling";
