@@ -412,7 +412,7 @@ struct ComputedStyle {
 
     // CSS Filters: {type, value}
     // type: 1=grayscale, 2=sepia, 3=brightness, 4=contrast, 5=invert,
-    //       6=saturate, 7=opacity-filter, 8=hue-rotate, 9=blur
+    //       6=saturate, 7=opacity-filter, 8=hue-rotate, 9=blur, 10=drop-shadow
     std::vector<std::pair<int, float>> filters;
 
     // CSS Backdrop Filters: same format as filters, applied to backdrop behind element
