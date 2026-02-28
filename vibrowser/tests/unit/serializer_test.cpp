@@ -18378,3 +18378,271 @@ TEST(SerializerTest, RemainingTracksMultipleTypeConsumptionV122) {
     EXPECT_EQ(d.remaining(), 0u);
     EXPECT_FALSE(d.has_remaining());
 }
+
+TEST(SerializerTest, I32I64SignedBoundaryInterleavedV123) {
+    // Interleave i32 and i64 signed boundary values to test sign extension
+    // correctness when reading adjacent signed types of different widths.
+    Serializer s;
+    s.write_i32(std::numeric_limits<int32_t>::min());
+    s.write_i64(std::numeric_limits<int64_t>::max());
+    s.write_i32(std::numeric_limits<int32_t>::max());
+    s.write_i64(std::numeric_limits<int64_t>::min());
+    s.write_i32(-1);
+    s.write_i64(-1);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i32(), std::numeric_limits<int32_t>::min());
+    EXPECT_EQ(d.read_i64(), std::numeric_limits<int64_t>::max());
+    EXPECT_EQ(d.read_i32(), std::numeric_limits<int32_t>::max());
+    EXPECT_EQ(d.read_i64(), std::numeric_limits<int64_t>::min());
+    EXPECT_EQ(d.read_i32(), -1);
+    EXPECT_EQ(d.read_i64(), -1LL);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, BytesFibonacciLengthsRoundTripV123) {
+    // Serialize byte arrays whose lengths follow the Fibonacci sequence
+    // (1, 1, 2, 3, 5, 8, 13, 21). Each array is filled with a rotating
+    // byte value derived from the length. Tests variable-length prefix handling.
+    Serializer s;
+    std::vector<size_t> fib_lengths = {1, 1, 2, 3, 5, 8, 13, 21};
+    for (size_t len : fib_lengths) {
+        std::vector<uint8_t> payload(len);
+        for (size_t j = 0; j < len; ++j) {
+            payload[j] = static_cast<uint8_t>((len * 37 + j * 13) & 0xFF);
+        }
+        s.write_bytes(payload.data(), payload.size());
+    }
+
+    Deserializer d(s.data());
+    for (size_t len : fib_lengths) {
+        auto result = d.read_bytes();
+        EXPECT_EQ(result.size(), len);
+        for (size_t j = 0; j < len; ++j) {
+            uint8_t expected = static_cast<uint8_t>((len * 37 + j * 13) & 0xFF);
+            EXPECT_EQ(result[j], expected) << "Mismatch at fib length " << len << " index " << j;
+        }
+    }
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, DeserializerFromRawPointerSubrangeV123) {
+    // Serialize a full message, then deserialize only a subrange by constructing
+    // a Deserializer from a raw pointer + size pointing into the middle of the
+    // buffer. This tests partial buffer deserialization.
+    Serializer s;
+    s.write_u32(0xDEADBEEF);  // 4 bytes - we'll skip this
+    s.write_u16(0x1234);       // 2 bytes - target start
+    s.write_u64(0xCAFEBABE00000001ULL); // 8 bytes
+    s.write_bool(true);        // 1 byte
+
+    const auto& buf = s.data();
+    // Skip the first u32 (4 bytes), deserialize only the u16+u64+bool (11 bytes)
+    const uint8_t* sub_ptr = buf.data() + 4;
+    size_t sub_size = buf.size() - 4;
+
+    Deserializer d(sub_ptr, sub_size);
+    EXPECT_EQ(d.remaining(), 11u);
+    EXPECT_EQ(d.read_u16(), 0x1234);
+    EXPECT_EQ(d.read_u64(), 0xCAFEBABE00000001ULL);
+    EXPECT_EQ(d.read_bool(), true);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, StringEncodingStressMultiByteUtf8V123) {
+    // Test strings containing 1-byte, 2-byte, 3-byte, and 4-byte UTF-8 sequences
+    // in a single string, plus verify the exact data().size() overhead.
+    std::string mixed_utf8;
+    mixed_utf8 += 'A';                     // 1 byte: U+0041
+    mixed_utf8 += "\xC3\xA9";             // 2 bytes: U+00E9 (e-acute)
+    mixed_utf8 += "\xE4\xB8\xAD";         // 3 bytes: U+4E2D (Chinese character)
+    mixed_utf8 += "\xF0\x9F\x98\x80";     // 4 bytes: U+1F600 (grinning face)
+
+    EXPECT_EQ(mixed_utf8.size(), 10u);  // 1+2+3+4 = 10 raw bytes
+
+    Serializer s;
+    s.write_string(mixed_utf8);
+
+    // String is length-prefixed with u32 (4 bytes) + 10 content bytes = 14
+    EXPECT_EQ(s.data().size(), 14u);
+
+    Deserializer d(s.data());
+    std::string result = d.read_string();
+    EXPECT_EQ(result, mixed_utf8);
+    EXPECT_EQ(result.size(), 10u);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, F64SpecialBitPatternsNaNPayloadsV123) {
+    // Different NaN payloads should survive serialization. IEEE 754 allows
+    // many NaN bit patterns; verify the serializer preserves them bit-exactly.
+    Serializer s;
+    double quiet_nan = std::numeric_limits<double>::quiet_NaN();
+    double pos_inf = std::numeric_limits<double>::infinity();
+    double neg_inf = -std::numeric_limits<double>::infinity();
+    double denorm_min = std::numeric_limits<double>::denorm_min();
+    double neg_denorm_min = -std::numeric_limits<double>::denorm_min();
+
+    s.write_f64(quiet_nan);
+    s.write_f64(pos_inf);
+    s.write_f64(neg_inf);
+    s.write_f64(denorm_min);
+    s.write_f64(neg_denorm_min);
+
+    Deserializer d(s.data());
+    double r_nan = d.read_f64();
+    EXPECT_TRUE(std::isnan(r_nan));
+
+    double r_pos_inf = d.read_f64();
+    EXPECT_TRUE(std::isinf(r_pos_inf));
+    EXPECT_GT(r_pos_inf, 0.0);
+
+    double r_neg_inf = d.read_f64();
+    EXPECT_TRUE(std::isinf(r_neg_inf));
+    EXPECT_LT(r_neg_inf, 0.0);
+
+    // Denormalized min should survive exactly
+    double r_denorm = d.read_f64();
+    uint64_t expected_bits, actual_bits;
+    std::memcpy(&expected_bits, &denorm_min, 8);
+    std::memcpy(&actual_bits, &r_denorm, 8);
+    EXPECT_EQ(actual_bits, expected_bits);
+
+    double r_neg_denorm = d.read_f64();
+    std::memcpy(&expected_bits, &neg_denorm_min, 8);
+    std::memcpy(&actual_bits, &r_neg_denorm, 8);
+    EXPECT_EQ(actual_bits, expected_bits);
+
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, CascadingTakeDataChainV123) {
+    // Create a chain: Serializer A -> take_data -> Deserializer -> read partial ->
+    // Serializer B -> take_data -> Deserializer -> verify. Tests that take_data
+    // produces a valid standalone buffer that can be independently deserialized.
+    Serializer a;
+    a.write_u32(100);
+    a.write_string("chain-link-1");
+    a.write_u64(200);
+    a.write_string("chain-link-2");
+
+    auto buf_a = a.take_data();
+    EXPECT_TRUE(a.data().empty());
+
+    Deserializer d_a(buf_a);
+    uint32_t v1 = d_a.read_u32();
+    std::string s1 = d_a.read_string();
+
+    // Repackage into Serializer B with additional data
+    Serializer b;
+    b.write_u32(v1 * 10);  // 1000
+    b.write_string(s1 + "-forwarded");
+    b.write_bool(false);
+
+    auto buf_b = b.take_data();
+    Deserializer d_b(buf_b);
+    EXPECT_EQ(d_b.read_u32(), 1000u);
+    EXPECT_EQ(d_b.read_string(), "chain-link-1-forwarded");
+    EXPECT_EQ(d_b.read_bool(), false);
+    EXPECT_FALSE(d_b.has_remaining());
+
+    // Original deserializer d_a should still have remaining data
+    EXPECT_TRUE(d_a.has_remaining());
+    EXPECT_EQ(d_a.read_u64(), 200u);
+    EXPECT_EQ(d_a.read_string(), "chain-link-2");
+    EXPECT_FALSE(d_a.has_remaining());
+}
+
+TEST(SerializerTest, AllZeroBytesVsAllOneBytesV123) {
+    // Serialize two byte arrays of equal length: one all-zeros, one all-0xFF.
+    // Then verify they deserialize as distinct and correct. This catches
+    // potential issues with zero-fill or memset shortcuts in the implementation.
+    const size_t len = 128;
+    std::vector<uint8_t> zeros(len, 0x00);
+    std::vector<uint8_t> ones(len, 0xFF);
+
+    Serializer s;
+    s.write_bytes(zeros.data(), zeros.size());
+    s.write_bytes(ones.data(), ones.size());
+    s.write_bytes(zeros.data(), zeros.size());
+
+    Deserializer d(s.data());
+    auto r_zeros1 = d.read_bytes();
+    auto r_ones = d.read_bytes();
+    auto r_zeros2 = d.read_bytes();
+
+    EXPECT_EQ(r_zeros1.size(), len);
+    EXPECT_EQ(r_ones.size(), len);
+    EXPECT_EQ(r_zeros2.size(), len);
+
+    for (size_t i = 0; i < len; ++i) {
+        EXPECT_EQ(r_zeros1[i], 0x00) << "zeros1 mismatch at " << i;
+        EXPECT_EQ(r_ones[i], 0xFF) << "ones mismatch at " << i;
+        EXPECT_EQ(r_zeros2[i], 0x00) << "zeros2 mismatch at " << i;
+    }
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, FullProtocolMessageSimulationV123) {
+    // Simulate a realistic IPC message: header (u8 version, u16 type, u32 id),
+    // a variable-length body with typed fields, and a u32 checksum-like footer.
+    // This exercises the serializer in a real-world usage pattern.
+    Serializer s;
+
+    // Header
+    uint8_t version = 2;
+    uint16_t msg_type = 0x0042;
+    uint32_t msg_id = 12345678u;
+    s.write_u8(version);
+    s.write_u16(msg_type);
+    s.write_u32(msg_id);
+
+    // Body: field count, then typed fields
+    uint32_t field_count = 4;
+    s.write_u32(field_count);
+    // Field 1: string key-value
+    s.write_string("url");
+    s.write_string("https://example.com/path?q=test&lang=en");
+    // Field 2: numeric
+    s.write_string("status");
+    s.write_u32(200);
+    // Field 3: boolean
+    s.write_string("cached");
+    s.write_bool(true);
+    // Field 4: binary payload
+    s.write_string("body");
+    std::vector<uint8_t> body_data = {0x3C, 0x68, 0x74, 0x6D, 0x6C, 0x3E};  // "<html>"
+    s.write_bytes(body_data.data(), body_data.size());
+
+    // Footer: simple XOR "checksum" of the version, type, and id
+    uint32_t checksum = version ^ msg_type ^ msg_id;
+    s.write_u32(checksum);
+
+    // Now deserialize and verify the entire message
+    Deserializer d(s.data());
+
+    EXPECT_EQ(d.read_u8(), version);
+    EXPECT_EQ(d.read_u16(), msg_type);
+    EXPECT_EQ(d.read_u32(), msg_id);
+
+    EXPECT_EQ(d.read_u32(), field_count);
+
+    EXPECT_EQ(d.read_string(), "url");
+    EXPECT_EQ(d.read_string(), "https://example.com/path?q=test&lang=en");
+
+    EXPECT_EQ(d.read_string(), "status");
+    EXPECT_EQ(d.read_u32(), 200u);
+
+    EXPECT_EQ(d.read_string(), "cached");
+    EXPECT_EQ(d.read_bool(), true);
+
+    EXPECT_EQ(d.read_string(), "body");
+    auto payload = d.read_bytes();
+    EXPECT_EQ(payload.size(), 6u);
+    EXPECT_EQ(payload[0], 0x3C);
+    EXPECT_EQ(payload[4], 0x6C);
+    EXPECT_EQ(payload[5], 0x3E);
+
+    EXPECT_EQ(d.read_u32(), checksum);
+    EXPECT_FALSE(d.has_remaining());
+}

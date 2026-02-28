@@ -18785,3 +18785,235 @@ TEST(DomElement, IdShortcutTracksAttributeChangesV122) {
     EXPECT_EQ(elem.id(), "");
     EXPECT_FALSE(elem.has_attribute("id"));
 }
+
+// ============================================================================
+// V123: 8 new DOM tests
+// ============================================================================
+
+// 1. Building a deep tree and verifying text_content() aggregates across all depths
+TEST(DomNode, TextContentFourLevelDeepTreeV123) {
+    Element root("div");
+    auto level1 = std::make_unique<Element>("section");
+    auto level2 = std::make_unique<Element>("article");
+    auto level3 = std::make_unique<Element>("p");
+
+    level3->append_child(std::make_unique<Text>("deep "));
+    level2->append_child(std::make_unique<Text>("middle "));
+    auto* l3_raw = level3.get();
+    level2->append_child(std::move(level3));
+    l3_raw->append_child(std::make_unique<Text>("leaf"));
+    auto* l2_raw = level2.get();
+    level1->append_child(std::move(level2));
+    level1->append_child(std::make_unique<Text>(" top-sibling"));
+    root.append_child(std::make_unique<Text>("root-start "));
+    root.append_child(std::move(level1));
+
+    // text_content should recursively concatenate: "root-start middle deep leaf top-sibling"
+    std::string tc = root.text_content();
+    EXPECT_NE(tc.find("root-start"), std::string::npos);
+    EXPECT_NE(tc.find("middle"), std::string::npos);
+    EXPECT_NE(tc.find("deep"), std::string::npos);
+    EXPECT_NE(tc.find("leaf"), std::string::npos);
+    EXPECT_NE(tc.find("top-sibling"), std::string::npos);
+
+    // "root-start" should come before "middle"
+    EXPECT_LT(tc.find("root-start"), tc.find("middle"));
+    // "middle" should come before "deep"
+    EXPECT_LT(tc.find("middle"), tc.find("deep"));
+}
+
+// 2. insert_before between two siblings and verify full sibling chain integrity
+TEST(DomNode, InsertBetweenTwoSiblingsFullChainV123) {
+    Element parent("ul");
+    auto first = std::make_unique<Element>("li");
+    auto third = std::make_unique<Element>("li");
+    auto* first_raw = first.get();
+    auto* third_raw = third.get();
+
+    parent.append_child(std::move(first));
+    parent.append_child(std::move(third));
+
+    EXPECT_EQ(first_raw->next_sibling(), third_raw);
+    EXPECT_EQ(third_raw->previous_sibling(), first_raw);
+
+    // Insert second between first and third
+    auto second = std::make_unique<Element>("li");
+    auto* second_raw = second.get();
+    parent.insert_before(std::move(second), third_raw);
+
+    EXPECT_EQ(parent.child_count(), 3u);
+    // Chain: first -> second -> third
+    EXPECT_EQ(first_raw->next_sibling(), second_raw);
+    EXPECT_EQ(second_raw->previous_sibling(), first_raw);
+    EXPECT_EQ(second_raw->next_sibling(), third_raw);
+    EXPECT_EQ(third_raw->previous_sibling(), second_raw);
+    // Boundary checks
+    EXPECT_EQ(first_raw->previous_sibling(), nullptr);
+    EXPECT_EQ(third_raw->next_sibling(), nullptr);
+    // Parent pointers
+    EXPECT_EQ(second_raw->parent(), &parent);
+    EXPECT_EQ(parent.first_child(), first_raw);
+    EXPECT_EQ(parent.last_child(), third_raw);
+}
+
+// 3. Document factory + get_element_by_id after register/unregister cycle
+TEST(DomDocument, IdMapRegisterUnregisterCycleV123) {
+    Document doc;
+    auto elem = doc.create_element("div");
+    auto* raw = elem.get();
+    raw->set_attribute("id", "alpha");
+    doc.register_id("alpha", raw);
+    doc.append_child(std::move(elem));
+
+    // Lookup succeeds
+    EXPECT_EQ(doc.get_element_by_id("alpha"), raw);
+
+    // Unregister and verify gone
+    doc.unregister_id("alpha");
+    EXPECT_EQ(doc.get_element_by_id("alpha"), nullptr);
+
+    // Re-register with new id
+    raw->set_attribute("id", "beta");
+    doc.register_id("beta", raw);
+    EXPECT_EQ(doc.get_element_by_id("beta"), raw);
+    EXPECT_EQ(doc.get_element_by_id("alpha"), nullptr);
+}
+
+// 4. ClassList: to_string produces space-separated list, stable after multiple toggles
+TEST(DomClassList, ToStringStableAfterToggleRoundTripsV123) {
+    Element elem("div");
+    auto& cl = elem.class_list();
+
+    cl.add("red");
+    cl.add("green");
+    cl.add("blue");
+    EXPECT_EQ(cl.to_string(), "red green blue");
+
+    // Toggle off green, toggle on yellow
+    cl.toggle("green");
+    cl.toggle("yellow");
+    EXPECT_FALSE(cl.contains("green"));
+    EXPECT_TRUE(cl.contains("yellow"));
+
+    std::string s = cl.to_string();
+    // "red" and "blue" and "yellow" must be present, "green" must not
+    EXPECT_NE(s.find("red"), std::string::npos);
+    EXPECT_NE(s.find("blue"), std::string::npos);
+    EXPECT_NE(s.find("yellow"), std::string::npos);
+    EXPECT_EQ(s.find("green"), std::string::npos);
+    EXPECT_EQ(cl.length(), 3u);
+
+    // Toggle all off
+    cl.toggle("red");
+    cl.toggle("blue");
+    cl.toggle("yellow");
+    EXPECT_EQ(cl.length(), 0u);
+    EXPECT_EQ(cl.to_string(), "");
+}
+
+// 5. Removing a child from the middle of five children and verifying the chain
+TEST(DomNode, RemoveMiddleOfFiveChildrenChainV123) {
+    Element parent("div");
+    std::vector<Node*> kids;
+
+    for (int i = 0; i < 5; i++) {
+        auto child = std::make_unique<Element>("span");
+        kids.push_back(child.get());
+        parent.append_child(std::move(child));
+    }
+
+    EXPECT_EQ(parent.child_count(), 5u);
+
+    // Remove child at index 2 (middle)
+    parent.remove_child(*kids[2]);
+    EXPECT_EQ(parent.child_count(), 4u);
+
+    // kids[1] now links to kids[3]
+    EXPECT_EQ(kids[1]->next_sibling(), kids[3]);
+    EXPECT_EQ(kids[3]->previous_sibling(), kids[1]);
+
+    // First and last unchanged
+    EXPECT_EQ(parent.first_child(), kids[0]);
+    EXPECT_EQ(parent.last_child(), kids[4]);
+
+    // Full chain: 0 -> 1 -> 3 -> 4
+    EXPECT_EQ(kids[0]->next_sibling(), kids[1]);
+    EXPECT_EQ(kids[3]->next_sibling(), kids[4]);
+    EXPECT_EQ(kids[4]->previous_sibling(), kids[3]);
+    EXPECT_EQ(kids[0]->previous_sibling(), nullptr);
+    EXPECT_EQ(kids[4]->next_sibling(), nullptr);
+}
+
+// 6. DirtyFlags: marking Style+Layout combined, clearing, then marking Paint only
+TEST(DomNode, DirtyFlagsCombinedClearThenPaintOnlyV123) {
+    Element elem("div");
+    EXPECT_EQ(elem.dirty_flags(), DirtyFlags::None);
+
+    // Mark Style | Layout
+    elem.mark_dirty(DirtyFlags::Style | DirtyFlags::Layout);
+    EXPECT_NE(elem.dirty_flags() & DirtyFlags::Style, DirtyFlags::None);
+    EXPECT_NE(elem.dirty_flags() & DirtyFlags::Layout, DirtyFlags::None);
+    // Paint should NOT be set
+    EXPECT_EQ(elem.dirty_flags() & DirtyFlags::Paint, DirtyFlags::None);
+
+    // Clear all
+    elem.clear_dirty();
+    EXPECT_EQ(elem.dirty_flags(), DirtyFlags::None);
+
+    // Mark only Paint
+    elem.mark_dirty(DirtyFlags::Paint);
+    EXPECT_NE(elem.dirty_flags() & DirtyFlags::Paint, DirtyFlags::None);
+    EXPECT_EQ(elem.dirty_flags() & DirtyFlags::Style, DirtyFlags::None);
+    EXPECT_EQ(elem.dirty_flags() & DirtyFlags::Layout, DirtyFlags::None);
+}
+
+// 7. for_each_child collects node types from a mixed tree (Element + Text + Comment)
+TEST(DomNode, ForEachChildMixedNodeTypesV123) {
+    Element parent("div");
+    parent.append_child(std::make_unique<Element>("span"));
+    parent.append_child(std::make_unique<Text>("hello"));
+    parent.append_child(std::make_unique<Comment>("a comment"));
+    parent.append_child(std::make_unique<Element>("p"));
+
+    std::vector<NodeType> types;
+    parent.for_each_child([&](const Node& child) {
+        types.push_back(child.node_type());
+    });
+
+    ASSERT_EQ(types.size(), 4u);
+    EXPECT_EQ(types[0], NodeType::Element);
+    EXPECT_EQ(types[1], NodeType::Text);
+    EXPECT_EQ(types[2], NodeType::Comment);
+    EXPECT_EQ(types[3], NodeType::Element);
+}
+
+// 8. Attribute ordering is preserved after set, overwrite, remove, and re-add
+TEST(DomElement, AttributeOrderPreservedAfterRemoveAndReaddV123) {
+    Element elem("input");
+    elem.set_attribute("type", "text");
+    elem.set_attribute("name", "username");
+    elem.set_attribute("placeholder", "Enter name");
+    EXPECT_EQ(elem.attributes().size(), 3u);
+
+    // Remove the middle attribute
+    elem.remove_attribute("name");
+    EXPECT_EQ(elem.attributes().size(), 2u);
+    EXPECT_EQ(elem.attributes()[0].name, "type");
+    EXPECT_EQ(elem.attributes()[1].name, "placeholder");
+
+    // Re-add "name" — should go to end
+    elem.set_attribute("name", "email");
+    EXPECT_EQ(elem.attributes().size(), 3u);
+    EXPECT_EQ(elem.attributes()[0].name, "type");
+    EXPECT_EQ(elem.attributes()[0].value, "text");
+    EXPECT_EQ(elem.attributes()[1].name, "placeholder");
+    EXPECT_EQ(elem.attributes()[1].value, "Enter name");
+    EXPECT_EQ(elem.attributes()[2].name, "name");
+    EXPECT_EQ(elem.attributes()[2].value, "email");
+
+    // Overwrite first attribute — same position, new value
+    elem.set_attribute("type", "email");
+    EXPECT_EQ(elem.attributes()[0].name, "type");
+    EXPECT_EQ(elem.attributes()[0].value, "email");
+    EXPECT_EQ(elem.attributes().size(), 3u);
+}

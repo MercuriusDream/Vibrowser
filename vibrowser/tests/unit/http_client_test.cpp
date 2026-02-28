@@ -20927,3 +20927,250 @@ TEST(RequestTest, ParseUrlDeepPathWithFragmentIgnoredV122) {
     // Fragment should not appear in query
     EXPECT_EQ(req2.query.find("section-3"), std::string::npos);
 }
+
+// ===========================================================================
+// V123 Tests
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// 1. Request: serialize a POST with query string AND body together ensures
+//    the request line includes the query while Content-Length matches only body
+// ---------------------------------------------------------------------------
+TEST(RequestTest, SerializePostWithQueryAndBodyV123) {
+    Request req;
+    req.method = Method::POST;
+    req.host = "api.v123.test";
+    req.port = 443;
+    req.path = "/submit";
+    req.query = "token=abc&retry=1";
+    req.use_tls = true;
+
+    std::string body_str = R"({"action":"upload","count":7})";
+    req.body.assign(body_str.begin(), body_str.end());
+    req.headers.set("Content-Type", "application/json");
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    // Request line must combine path and query
+    EXPECT_NE(result.find("POST /submit?token=abc&retry=1 HTTP/1.1\r\n"), std::string::npos);
+    // Host must omit port 443 (standard HTTPS port)
+    EXPECT_NE(result.find("Host: api.v123.test\r\n"), std::string::npos);
+    EXPECT_EQ(result.find("Host: api.v123.test:443"), std::string::npos);
+    // Content-Length reflects body size (29 bytes), not query size
+    std::string cl = "Content-Length: " + std::to_string(body_str.size()) + "\r\n";
+    EXPECT_NE(result.find(cl), std::string::npos);
+    // Body appears after the blank line
+    EXPECT_NE(result.find("\r\n\r\n" + body_str), std::string::npos);
+}
+
+// ---------------------------------------------------------------------------
+// 2. Response::parse with multiple Set-Cookie headers: verify get_all
+//    returns each cookie value in order and get returns the first one
+// ---------------------------------------------------------------------------
+TEST(ResponseTest, ParseMultipleSetCookieHeadersV123) {
+    std::string raw =
+        "HTTP/1.1 200 OK\r\n"
+        "Set-Cookie: sid=aaa111; Path=/; HttpOnly\r\n"
+        "Set-Cookie: theme=dark; Path=/; Max-Age=86400\r\n"
+        "Set-Cookie: lang=en-US; Path=/prefs\r\n"
+        "Content-Length: 2\r\n"
+        "\r\n"
+        "OK";
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 200);
+
+    // All three Set-Cookie headers should be accessible
+    auto cookies = resp->headers.get_all("Set-Cookie");
+    EXPECT_EQ(cookies.size(), 3u);
+
+    // get() returns the first value
+    auto first = resp->headers.get("set-cookie");
+    ASSERT_TRUE(first.has_value());
+    EXPECT_NE(first->find("sid=aaa111"), std::string::npos);
+
+    // Check each cookie appears somewhere in the list
+    bool found_theme = false, found_lang = false;
+    for (const auto& c : cookies) {
+        if (c.find("theme=dark") != std::string::npos) found_theme = true;
+        if (c.find("lang=en-US") != std::string::npos) found_lang = true;
+    }
+    EXPECT_TRUE(found_theme);
+    EXPECT_TRUE(found_lang);
+}
+
+// ---------------------------------------------------------------------------
+// 3. CookieJar: same-name cookie replacement — setting a cookie with the
+//    same name/domain/path replaces the old value instead of duplicating
+// ---------------------------------------------------------------------------
+TEST(CookieJarTest, SameNameCookieReplacementNotDuplicatedV123) {
+    CookieJar jar;
+    jar.set_from_header("session=old_token; Path=/", "auth.v123.test");
+    jar.set_from_header("session=new_token; Path=/", "auth.v123.test");
+
+    // Should have exactly 1 cookie, not 2
+    std::string header = jar.get_cookie_header("auth.v123.test", "/", false);
+    EXPECT_NE(header.find("session=new_token"), std::string::npos);
+    // Old value should not appear
+    EXPECT_EQ(header.find("session=old_token"), std::string::npos);
+}
+
+// ---------------------------------------------------------------------------
+// 4. HttpCache: store same URL twice with different body sizes — verify
+//    entry_count stays at 1 and total_size adjusts to the new body size,
+//    plus lookup reflects the updated content
+// ---------------------------------------------------------------------------
+TEST(HttpCacheTest, StoreUpdatesSameSizeAndContentV123) {
+    auto& cache = HttpCache::instance();
+    cache.clear();
+
+    CacheEntry e1;
+    e1.url = "http://v123.test/resizable";
+    e1.body = std::string(200, 'X');
+    e1.status = 200;
+    e1.etag = "\"v1\"";
+    e1.stored_at = std::chrono::steady_clock::now();
+
+    cache.store(e1);
+    EXPECT_EQ(cache.entry_count(), 1u);
+    size_t size_after_first = cache.total_size();
+
+    // Update same URL with a larger body
+    CacheEntry e2;
+    e2.url = "http://v123.test/resizable";
+    e2.body = std::string(800, 'Y');
+    e2.status = 200;
+    e2.etag = "\"v2\"";
+    e2.stored_at = std::chrono::steady_clock::now();
+
+    cache.store(e2);
+    EXPECT_EQ(cache.entry_count(), 1u);  // still 1 entry
+    size_t size_after_second = cache.total_size();
+
+    // Total size should have grown by ~600 bytes (800 - 200 body diff)
+    EXPECT_GT(size_after_second, size_after_first);
+
+    // Lookup should return the updated entry
+    auto hit = cache.lookup("http://v123.test/resizable");
+    ASSERT_TRUE(hit.has_value());
+    EXPECT_EQ(hit->body, std::string(800, 'Y'));
+    EXPECT_EQ(hit->etag, "\"v2\"");
+
+    // Cleanup
+    cache.clear();
+}
+
+// ---------------------------------------------------------------------------
+// 5. HeaderMap: append then remove then re-append — verify remove clears
+//    all values and a subsequent append starts fresh with count = 1
+// ---------------------------------------------------------------------------
+TEST(HeaderMapTest, RemoveThenReappendStartsFreshV123) {
+    HeaderMap map;
+    map.append("X-Trace-Id", "trace-001");
+    map.append("X-Trace-Id", "trace-002");
+    map.append("X-Trace-Id", "trace-003");
+    EXPECT_EQ(map.get_all("x-trace-id").size(), 3u);
+
+    map.remove("X-Trace-Id");
+    EXPECT_FALSE(map.has("x-trace-id"));
+    EXPECT_EQ(map.get_all("x-trace-id").size(), 0u);
+
+    // Re-append a single value — should not resurrect old entries
+    map.append("x-trace-id", "trace-new");
+    EXPECT_EQ(map.get_all("x-trace-id").size(), 1u);
+    EXPECT_EQ(map.get("X-TRACE-ID").value(), "trace-new");
+}
+
+// ---------------------------------------------------------------------------
+// 6. ConnectionPool: releasing the same fd twice to the same host:port
+//    should result in two entries (pool doesn't deduplicate fd values)
+// ---------------------------------------------------------------------------
+TEST(ConnectionPoolTest, DuplicateFdReleasedTwiceV123) {
+    ConnectionPool pool(8);
+
+    // Simulate releasing fd=42 twice (e.g., a bug or legitimate reuse)
+    pool.release("dup.v123.test", 9090, 42);
+    pool.release("dup.v123.test", 9090, 42);
+
+    EXPECT_EQ(pool.count("dup.v123.test", 9090), 2u);
+
+    // First acquire gets one copy
+    int fd1 = pool.acquire("dup.v123.test", 9090);
+    EXPECT_EQ(fd1, 42);
+    EXPECT_EQ(pool.count("dup.v123.test", 9090), 1u);
+
+    // Second acquire gets the other copy
+    int fd2 = pool.acquire("dup.v123.test", 9090);
+    EXPECT_EQ(fd2, 42);
+    EXPECT_EQ(pool.count("dup.v123.test", 9090), 0u);
+
+    // Third acquire: pool is now empty
+    EXPECT_EQ(pool.acquire("dup.v123.test", 9090), -1);
+}
+
+// ---------------------------------------------------------------------------
+// 7. Response::parse with chunked transfer encoding containing a zero-length
+//    chunk in the middle (edge case: "0\r\n\r\n" as terminator after data)
+//    and verify body_as_string reconstructs the full payload correctly
+// ---------------------------------------------------------------------------
+TEST(ResponseTest, ParseChunkedResponseWithHexUppercaseChunkSizesV123) {
+    // Use uppercase hex in chunk sizes (legal per HTTP spec)
+    std::string raw =
+        "HTTP/1.1 200 OK\r\n"
+        "Transfer-Encoding: chunked\r\n"
+        "\r\n"
+        "A\r\n"          // 0xA = 10 bytes
+        "0123456789\r\n"
+        "5\r\n"           // 5 bytes
+        "ABCDE\r\n"
+        "0\r\n"           // terminator
+        "\r\n";
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 200);
+    EXPECT_EQ(resp->body_as_string(), "0123456789ABCDE");
+    EXPECT_EQ(resp->body.size(), 15u);
+}
+
+// ---------------------------------------------------------------------------
+// 8. CacheControl + should_cache_response: a 200 response with
+//    no-cache + max-age should be storable (no-cache means "revalidate before
+//    use", NOT "don't store"), but no-store should block storage entirely
+// ---------------------------------------------------------------------------
+TEST(ShouldCacheResponseTest, NoCacheAllowsStorageButNoStoreBlocksV123) {
+    Response resp;
+    resp.status = 200;
+
+    // no-cache with max-age: storable (no-cache only means must revalidate)
+    CacheControl cc_no_cache;
+    cc_no_cache.no_cache = true;
+    cc_no_cache.max_age = 3600;
+    EXPECT_TRUE(should_cache_response(resp, cc_no_cache));
+
+    // no-store: NOT storable, regardless of max-age
+    CacheControl cc_no_store;
+    cc_no_store.no_store = true;
+    cc_no_store.max_age = 3600;
+    EXPECT_FALSE(should_cache_response(resp, cc_no_store));
+
+    // Both no-cache and no-store: no-store wins, NOT storable
+    CacheControl cc_both;
+    cc_both.no_cache = true;
+    cc_both.no_store = true;
+    cc_both.max_age = 7200;
+    EXPECT_FALSE(should_cache_response(resp, cc_both));
+
+    // Verify the parsed version matches: "no-cache, max-age=600"
+    auto parsed = parse_cache_control("no-cache, max-age=600");
+    EXPECT_TRUE(parsed.no_cache);
+    EXPECT_FALSE(parsed.no_store);
+    EXPECT_EQ(parsed.max_age, 600);
+    EXPECT_TRUE(should_cache_response(resp, parsed));
+}

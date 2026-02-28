@@ -20111,3 +20111,283 @@ TEST(HtmlParserTest, AudioSourceTrackElementsV122) {
     std::string audio_text = audio->text_content();
     EXPECT_NE(audio_text.find("browser does not support audio"), std::string::npos);
 }
+
+// ---------------------------------------------------------------------------
+// V123 tests
+// ---------------------------------------------------------------------------
+
+TEST(HtmlParserTest, FieldsetLegendGroupingV123) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<fieldset>"
+        "<legend>Personal Info</legend>"
+        "<label>Name: <input type=\"text\" name=\"name\"></label>"
+        "<label>Email: <input type=\"email\" name=\"email\"></label>"
+        "</fieldset>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* fieldset = doc->find_element("fieldset");
+    ASSERT_NE(fieldset, nullptr);
+
+    auto* legend = doc->find_element("legend");
+    ASSERT_NE(legend, nullptr);
+    EXPECT_EQ(legend->text_content(), "Personal Info");
+    // legend should be a child of fieldset
+    EXPECT_EQ(legend->parent, fieldset);
+
+    auto labels = doc->find_all_elements("label");
+    ASSERT_EQ(labels.size(), 2u);
+    EXPECT_NE(labels[0]->text_content().find("Name:"), std::string::npos);
+    EXPECT_NE(labels[1]->text_content().find("Email:"), std::string::npos);
+
+    auto inputs = doc->find_all_elements("input");
+    ASSERT_EQ(inputs.size(), 2u);
+    EXPECT_EQ(get_attr_v63(inputs[0], "type"), "text");
+    EXPECT_EQ(get_attr_v63(inputs[1], "type"), "email");
+    // Inputs are void — no children
+    EXPECT_TRUE(inputs[0]->children.empty());
+    EXPECT_TRUE(inputs[1]->children.empty());
+}
+
+TEST(HtmlParserTest, RubyAnnotationElementsV123) {
+    // Ruby annotation is used for East Asian typography
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<ruby>"
+        "漢<rp>(</rp><rt>kan</rt><rp>)</rp>"
+        "字<rp>(</rp><rt>ji</rt><rp>)</rp>"
+        "</ruby>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* ruby = doc->find_element("ruby");
+    ASSERT_NE(ruby, nullptr);
+
+    auto rts = doc->find_all_elements("rt");
+    ASSERT_EQ(rts.size(), 2u);
+    EXPECT_EQ(rts[0]->text_content(), "kan");
+    EXPECT_EQ(rts[1]->text_content(), "ji");
+
+    auto rps = doc->find_all_elements("rp");
+    ASSERT_EQ(rps.size(), 4u);
+    EXPECT_EQ(rps[0]->text_content(), "(");
+    EXPECT_EQ(rps[1]->text_content(), ")");
+
+    // The full ruby text_content should contain the base characters
+    std::string ruby_text = ruby->text_content();
+    EXPECT_NE(ruby_text.find("漢"), std::string::npos);
+    EXPECT_NE(ruby_text.find("字"), std::string::npos);
+}
+
+TEST(HtmlParserTest, OutputElementWithForAttributeV123) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<form oninput=\"result.value=parseInt(a.value)+parseInt(b.value)\">"
+        "<input type=\"range\" id=\"a\" value=\"50\"> + "
+        "<input type=\"number\" id=\"b\" value=\"25\"> = "
+        "<output name=\"result\" for=\"a b\">75</output>"
+        "</form>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* output = doc->find_element("output");
+    ASSERT_NE(output, nullptr);
+    EXPECT_EQ(output->tag_name, "output");
+    EXPECT_EQ(get_attr_v63(output, "name"), "result");
+    EXPECT_EQ(get_attr_v63(output, "for"), "a b");
+    EXPECT_EQ(output->text_content(), "75");
+
+    auto* form = doc->find_element("form");
+    ASSERT_NE(form, nullptr);
+    EXPECT_EQ(get_attr_v63(form, "oninput"),
+              "result.value=parseInt(a.value)+parseInt(b.value)");
+
+    // form text_content should contain the " + " and " = " connectors
+    std::string form_text = form->text_content();
+    EXPECT_NE(form_text.find("+"), std::string::npos);
+    EXPECT_NE(form_text.find("="), std::string::npos);
+}
+
+TEST(HtmlParserTest, NestedBlockquotesWithCitationsV123) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<blockquote cite=\"https://example.com/speech\">"
+        "<p>To be or not to be, that is the question.</p>"
+        "<blockquote cite=\"https://example.com/reply\">"
+        "<p>Indeed it is.</p>"
+        "</blockquote>"
+        "<footer><cite>Hamlet</cite>, Act 3, Scene 1</footer>"
+        "</blockquote>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto bqs = doc->find_all_elements("blockquote");
+    ASSERT_EQ(bqs.size(), 2u);
+
+    // Outer blockquote
+    EXPECT_EQ(get_attr_v63(bqs[0], "cite"), "https://example.com/speech");
+    // Inner blockquote should be nested inside outer
+    EXPECT_EQ(get_attr_v63(bqs[1], "cite"), "https://example.com/reply");
+    EXPECT_EQ(bqs[1]->parent, bqs[0]);
+
+    auto* cite_el = doc->find_element("cite");
+    ASSERT_NE(cite_el, nullptr);
+    EXPECT_EQ(cite_el->text_content(), "Hamlet");
+
+    auto* footer = doc->find_element("footer");
+    ASSERT_NE(footer, nullptr);
+    std::string footer_text = footer->text_content();
+    EXPECT_NE(footer_text.find("Act 3, Scene 1"), std::string::npos);
+}
+
+TEST(HtmlParserTest, WbrAndSmallInlineElementsV123) {
+    // wbr is a void element indicating a word-break opportunity
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<p>Supercali<wbr>fragilistic<wbr>expialidocious</p>"
+        "<p><small>Fine print: <abbr title=\"Terms of Service\">ToS</abbr> apply.</small></p>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto wbrs = doc->find_all_elements("wbr");
+    ASSERT_EQ(wbrs.size(), 2u);
+    // wbr is void — no children
+    EXPECT_TRUE(wbrs[0]->children.empty());
+    EXPECT_TRUE(wbrs[1]->children.empty());
+
+    auto paragraphs = doc->find_all_elements("p");
+    ASSERT_GE(paragraphs.size(), 2u);
+    // First paragraph contains the long word fragments
+    std::string p1_text = paragraphs[0]->text_content();
+    EXPECT_NE(p1_text.find("Supercali"), std::string::npos);
+    EXPECT_NE(p1_text.find("expialidocious"), std::string::npos);
+
+    auto* small = doc->find_element("small");
+    ASSERT_NE(small, nullptr);
+    EXPECT_NE(small->text_content().find("Fine print:"), std::string::npos);
+
+    auto* abbr = doc->find_element("abbr");
+    ASSERT_NE(abbr, nullptr);
+    EXPECT_EQ(get_attr_v63(abbr, "title"), "Terms of Service");
+    EXPECT_EQ(abbr->text_content(), "ToS");
+}
+
+TEST(HtmlParserTest, MultipleScriptsPreserveOrderAndRawContentV123) {
+    auto doc = clever::html::parse(
+        "<html><head>"
+        "<script type=\"application/json\">{\"key\": \"<value>\"}</script>"
+        "<script src=\"app.js\" defer></script>"
+        "</head><body>"
+        "<script>if (a < b && c > d) { alert('ok'); }</script>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto scripts = doc->find_all_elements("script");
+    ASSERT_EQ(scripts.size(), 3u);
+
+    // First script: inline JSON with angle brackets preserved
+    EXPECT_EQ(get_attr_v63(scripts[0], "type"), "application/json");
+    std::string json_text = scripts[0]->text_content();
+    EXPECT_NE(json_text.find("\"<value>\""), std::string::npos);
+    EXPECT_NE(json_text.find("\"key\""), std::string::npos);
+
+    // Second script: external with defer boolean attribute, no body
+    EXPECT_EQ(get_attr_v63(scripts[1], "src"), "app.js");
+    // defer is a boolean attribute — should exist in attributes
+    bool has_defer = false;
+    for (const auto& a : scripts[1]->attributes) {
+        if (a.name == "defer") { has_defer = true; break; }
+    }
+    EXPECT_TRUE(has_defer);
+
+    // Third script: raw content with operators not treated as tags
+    std::string inline_text = scripts[2]->text_content();
+    EXPECT_NE(inline_text.find("a < b"), std::string::npos);
+    EXPECT_NE(inline_text.find("c > d"), std::string::npos);
+    EXPECT_NE(inline_text.find("alert('ok')"), std::string::npos);
+}
+
+TEST(HtmlParserTest, TableWithTheadTbodyTfootSectionsV123) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<table>"
+        "<caption>Quarterly Results</caption>"
+        "<thead><tr><th>Q1</th><th>Q2</th><th>Q3</th><th>Q4</th></tr></thead>"
+        "<tfoot><tr><td>Total</td><td colspan=\"3\">200</td></tr></tfoot>"
+        "<tbody>"
+        "<tr><td>50</td><td>60</td><td>40</td><td>50</td></tr>"
+        "</tbody>"
+        "</table>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* caption = doc->find_element("caption");
+    ASSERT_NE(caption, nullptr);
+    EXPECT_EQ(caption->text_content(), "Quarterly Results");
+
+    auto* thead = doc->find_element("thead");
+    ASSERT_NE(thead, nullptr);
+    auto ths = doc->find_all_elements("th");
+    ASSERT_EQ(ths.size(), 4u);
+    EXPECT_EQ(ths[0]->text_content(), "Q1");
+    EXPECT_EQ(ths[3]->text_content(), "Q4");
+
+    auto* tfoot = doc->find_element("tfoot");
+    ASSERT_NE(tfoot, nullptr);
+
+    auto* tbody = doc->find_element("tbody");
+    ASSERT_NE(tbody, nullptr);
+
+    // tfoot has a td with colspan
+    auto tds = tfoot->find_all_elements("td");
+    ASSERT_GE(tds.size(), 2u);
+    EXPECT_EQ(tds[0]->text_content(), "Total");
+    EXPECT_EQ(get_attr_v63(tds[1], "colspan"), "3");
+    EXPECT_EQ(tds[1]->text_content(), "200");
+
+    // tbody row should have 4 data cells
+    auto tbody_tds = tbody->find_all_elements("td");
+    ASSERT_EQ(tbody_tds.size(), 4u);
+    EXPECT_EQ(tbody_tds[0]->text_content(), "50");
+    EXPECT_EQ(tbody_tds[2]->text_content(), "40");
+}
+
+TEST(HtmlParserTest, AdjacentTextNodesMergeAndWhitespaceV123) {
+    // When parser sees adjacent text fragments they should be accessible
+    // via text_content even if separated by comments
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<div>Hello<!-- hidden -->World"
+        "<!-- another comment --> and more</div>"
+        "<pre>  spaced   out  \n  lines  </pre>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* div = doc->find_element("div");
+    ASSERT_NE(div, nullptr);
+    std::string div_text = div->text_content();
+    // text_content should return all text nodes concatenated
+    EXPECT_NE(div_text.find("Hello"), std::string::npos);
+    EXPECT_NE(div_text.find("World"), std::string::npos);
+    EXPECT_NE(div_text.find("and more"), std::string::npos);
+
+    // This parser's text_content() includes comment data in the output
+    EXPECT_NE(div_text.find("hidden"), std::string::npos);
+    EXPECT_NE(div_text.find("another comment"), std::string::npos);
+
+    // Verify comments are stored as Comment-type children in the tree
+    int comment_count = 0;
+    for (const auto& child : div->children) {
+        if (child->type == clever::html::SimpleNode::Comment) {
+            comment_count++;
+        }
+    }
+    EXPECT_EQ(comment_count, 2);
+
+    // pre element should preserve whitespace in its text_content
+    auto* pre = doc->find_element("pre");
+    ASSERT_NE(pre, nullptr);
+    std::string pre_text = pre->text_content();
+    EXPECT_NE(pre_text.find("  spaced   out  "), std::string::npos);
+}

@@ -23411,3 +23411,394 @@ TEST(ComputedStyleTest, PagedMediaAndFragmentationV122) {
     EXPECT_EQ(s2.widows, 1);
     EXPECT_NE(s2.orphans, s.orphans);
 }
+
+TEST(ComputedStyleTest, CustomPropertiesCRUDAndIsolationV123) {
+    // Test that CSS custom properties (variables) behave like an independent
+    // map per ComputedStyle instance: insert, read, update, delete, and
+    // verify isolation between two style objects.
+    ComputedStyle s1;
+    ComputedStyle s2;
+
+    // Both start empty
+    EXPECT_TRUE(s1.custom_properties.empty());
+    EXPECT_TRUE(s2.custom_properties.empty());
+
+    // Insert several variables into s1
+    s1.custom_properties["--color-primary"] = "#ff6600";
+    s1.custom_properties["--spacing-unit"] = "8px";
+    s1.custom_properties["--font-stack"] = "Inter, Helvetica, sans-serif";
+    EXPECT_EQ(s1.custom_properties.size(), 3u);
+
+    // s2 remains unaffected
+    EXPECT_TRUE(s2.custom_properties.empty());
+
+    // Read back
+    EXPECT_EQ(s1.custom_properties.at("--color-primary"), "#ff6600");
+    EXPECT_EQ(s1.custom_properties.at("--spacing-unit"), "8px");
+
+    // Update a variable
+    s1.custom_properties["--color-primary"] = "hsl(210, 100%, 50%)";
+    EXPECT_EQ(s1.custom_properties.at("--color-primary"), "hsl(210, 100%, 50%)");
+    EXPECT_EQ(s1.custom_properties.size(), 3u); // no extra entry
+
+    // Delete a variable
+    s1.custom_properties.erase("--spacing-unit");
+    EXPECT_EQ(s1.custom_properties.size(), 2u);
+    EXPECT_EQ(s1.custom_properties.count("--spacing-unit"), 0u);
+
+    // Insert into s2 and confirm both coexist independently
+    s2.custom_properties["--color-primary"] = "rebeccapurple";
+    EXPECT_NE(s1.custom_properties.at("--color-primary"),
+              s2.custom_properties.at("--color-primary"));
+}
+
+TEST(ComputedStyleTest, GridLayoutComprehensiveConfigV123) {
+    // Simulate a complex CSS Grid layout configuration with template areas,
+    // named lines, auto-flow, and individual item placement—verifying every
+    // grid-related property round-trips correctly.
+    ComputedStyle grid;
+
+    // Container setup
+    grid.display = Display::Grid;
+    grid.grid_template_columns = "repeat(3, 1fr)";
+    grid.grid_template_rows = "auto minmax(100px, 1fr) auto";
+    grid.grid_template_areas = "\"header header header\" \"sidebar main aside\" \"footer footer footer\"";
+    grid.grid_auto_flow = 3; // column dense
+    grid.grid_auto_rows = "minmax(50px, auto)";
+    grid.grid_auto_columns = "200px";
+    grid.justify_items = 2;  // center
+    grid.align_content = 4;  // space-between
+    grid.gap = Length::px(16);
+
+    EXPECT_EQ(grid.display, Display::Grid);
+    EXPECT_EQ(grid.grid_template_columns, "repeat(3, 1fr)");
+    EXPECT_EQ(grid.grid_template_rows, "auto minmax(100px, 1fr) auto");
+    EXPECT_NE(grid.grid_template_areas.find("sidebar main aside"), std::string::npos);
+    EXPECT_EQ(grid.grid_auto_flow, 3);
+    EXPECT_EQ(grid.grid_auto_rows, "minmax(50px, auto)");
+    EXPECT_EQ(grid.grid_auto_columns, "200px");
+    EXPECT_EQ(grid.justify_items, 2);
+    EXPECT_EQ(grid.align_content, 4);
+    EXPECT_FLOAT_EQ(grid.gap.to_px(), 16.0f);
+
+    // Item placement using both shorthand and longhand
+    ComputedStyle item;
+    item.grid_area = "main";
+    item.grid_column = "2 / 3";
+    item.grid_row = "2 / 3";
+    item.grid_column_start = "2";
+    item.grid_column_end = "3";
+    item.grid_row_start = "2";
+    item.grid_row_end = "3";
+
+    EXPECT_EQ(item.grid_area, "main");
+    EXPECT_EQ(item.grid_column, "2 / 3");
+    EXPECT_EQ(item.grid_row, "2 / 3");
+    EXPECT_EQ(item.grid_column_start, "2");
+    EXPECT_EQ(item.grid_column_end, "3");
+    EXPECT_EQ(item.grid_row_start, "2");
+    EXPECT_EQ(item.grid_row_end, "3");
+}
+
+TEST(ComputedStyleTest, ClipPathPolygonAndShapeOutsideInterplayV123) {
+    // Build a triangular clip-path polygon and an elliptical shape-outside,
+    // verifying the value vectors store coordinates correctly and that the
+    // two features remain independent on the same ComputedStyle.
+    ComputedStyle s;
+
+    // Default: no clipping, no shape
+    EXPECT_EQ(s.clip_path_type, 0);
+    EXPECT_TRUE(s.clip_path_values.empty());
+    EXPECT_EQ(s.shape_outside_type, 0);
+    EXPECT_TRUE(s.shape_outside_values.empty());
+
+    // Triangular polygon clip path: (50, 0), (100, 100), (0, 100)
+    s.clip_path_type = 4; // polygon
+    s.clip_path_values = {50.0f, 0.0f, 100.0f, 100.0f, 0.0f, 100.0f};
+    EXPECT_EQ(s.clip_path_type, 4);
+    EXPECT_EQ(s.clip_path_values.size(), 6u);
+    // Verify first vertex
+    EXPECT_FLOAT_EQ(s.clip_path_values[0], 50.0f);
+    EXPECT_FLOAT_EQ(s.clip_path_values[1], 0.0f);
+    // Verify last vertex
+    EXPECT_FLOAT_EQ(s.clip_path_values[4], 0.0f);
+    EXPECT_FLOAT_EQ(s.clip_path_values[5], 100.0f);
+
+    // Elliptical shape-outside with rx=80, ry=60
+    s.shape_outside_type = 2; // ellipse
+    s.shape_outside_values = {80.0f, 60.0f};
+    s.shape_margin = 12.5f;
+    s.shape_image_threshold = 0.7f;
+    EXPECT_EQ(s.shape_outside_type, 2);
+    EXPECT_EQ(s.shape_outside_values.size(), 2u);
+    EXPECT_FLOAT_EQ(s.shape_outside_values[0], 80.0f);
+    EXPECT_FLOAT_EQ(s.shape_outside_values[1], 60.0f);
+    EXPECT_FLOAT_EQ(s.shape_margin, 12.5f);
+    EXPECT_FLOAT_EQ(s.shape_image_threshold, 0.7f);
+
+    // Clip path and shape outside are stored in independent fields
+    EXPECT_NE(s.clip_path_type, s.shape_outside_type);
+    EXPECT_NE(s.clip_path_values.size(), s.shape_outside_values.size());
+}
+
+TEST(ComputedStyleTest, TransformChainMatrixAndOriginV123) {
+    // Apply a sequence of transforms: translate, rotate, scale, then a raw
+    // matrix—verifying the vector stores each entry with correct parameters,
+    // and that transform-origin is independently configurable.
+    ComputedStyle s;
+
+    // Defaults
+    EXPECT_TRUE(s.transforms.empty());
+    EXPECT_FLOAT_EQ(s.transform_origin_x, 50.0f);
+    EXPECT_FLOAT_EQ(s.transform_origin_y, 50.0f);
+    EXPECT_EQ(s.transform_style, 0); // flat
+
+    // Build a transform chain
+    Transform t1;
+    t1.type = TransformType::Translate;
+    t1.x = -50.0f;
+    t1.y = 25.0f;
+
+    Transform t2;
+    t2.type = TransformType::Rotate;
+    t2.angle = 45.0f;
+
+    Transform t3;
+    t3.type = TransformType::Scale;
+    t3.x = 2.0f;
+    t3.y = 0.5f;
+
+    Transform t4;
+    t4.type = TransformType::Matrix;
+    t4.m[0] = 0.866f; t4.m[1] = 0.5f;
+    t4.m[2] = -0.5f;  t4.m[3] = 0.866f;
+    t4.m[4] = 10.0f;  t4.m[5] = 20.0f;
+
+    s.transforms = {t1, t2, t3, t4};
+    EXPECT_EQ(s.transforms.size(), 4u);
+
+    // Verify each entry
+    EXPECT_EQ(s.transforms[0].type, TransformType::Translate);
+    EXPECT_FLOAT_EQ(s.transforms[0].x, -50.0f);
+    EXPECT_FLOAT_EQ(s.transforms[0].y, 25.0f);
+
+    EXPECT_EQ(s.transforms[1].type, TransformType::Rotate);
+    EXPECT_FLOAT_EQ(s.transforms[1].angle, 45.0f);
+
+    EXPECT_EQ(s.transforms[2].type, TransformType::Scale);
+    EXPECT_FLOAT_EQ(s.transforms[2].x, 2.0f);
+    EXPECT_FLOAT_EQ(s.transforms[2].y, 0.5f);
+
+    EXPECT_EQ(s.transforms[3].type, TransformType::Matrix);
+    EXPECT_FLOAT_EQ(s.transforms[3].m[4], 10.0f);
+    EXPECT_FLOAT_EQ(s.transforms[3].m[5], 20.0f);
+
+    // Set origin to top-left and preserve-3d
+    s.transform_origin_x = 0.0f;
+    s.transform_origin_y = 0.0f;
+    s.transform_style = 1; // preserve-3d
+    s.perspective = 800.0f;
+    s.perspective_origin_x = 25.0f;
+    s.perspective_origin_y = 75.0f;
+
+    EXPECT_FLOAT_EQ(s.transform_origin_x, 0.0f);
+    EXPECT_EQ(s.transform_style, 1);
+    EXPECT_FLOAT_EQ(s.perspective, 800.0f);
+    EXPECT_FLOAT_EQ(s.perspective_origin_x, 25.0f);
+    EXPECT_FLOAT_EQ(s.perspective_origin_y, 75.0f);
+}
+
+TEST(ComputedStyleTest, FilterAndBackdropFilterChainsV123) {
+    // Apply multiple CSS filters in sequence (grayscale, brightness, blur,
+    // hue-rotate) and backdrop filters (blur, saturate, invert), verifying
+    // that both vectors store independent chains and that the drop-shadow
+    // filter params coexist correctly.
+    ComputedStyle s;
+
+    EXPECT_TRUE(s.filters.empty());
+    EXPECT_TRUE(s.backdrop_filters.empty());
+
+    // filters: grayscale(0.5) brightness(1.2) blur(3px) hue-rotate(90deg)
+    s.filters.push_back({1, 0.5f});  // grayscale
+    s.filters.push_back({3, 1.2f});  // brightness
+    s.filters.push_back({9, 3.0f});  // blur
+    s.filters.push_back({8, 90.0f}); // hue-rotate
+    EXPECT_EQ(s.filters.size(), 4u);
+    EXPECT_EQ(s.filters[0].first, 1); // grayscale type
+    EXPECT_FLOAT_EQ(s.filters[0].second, 0.5f);
+    EXPECT_EQ(s.filters[2].first, 9); // blur type
+    EXPECT_FLOAT_EQ(s.filters[2].second, 3.0f);
+    EXPECT_EQ(s.filters[3].first, 8); // hue-rotate type
+    EXPECT_FLOAT_EQ(s.filters[3].second, 90.0f);
+
+    // backdrop-filter: blur(10px) saturate(2.0) invert(1.0)
+    s.backdrop_filters.push_back({9, 10.0f}); // blur
+    s.backdrop_filters.push_back({6, 2.0f});  // saturate
+    s.backdrop_filters.push_back({5, 1.0f});  // invert
+    EXPECT_EQ(s.backdrop_filters.size(), 3u);
+    EXPECT_EQ(s.backdrop_filters[0].first, 9);
+    EXPECT_FLOAT_EQ(s.backdrop_filters[0].second, 10.0f);
+
+    // The two filter chains are fully independent
+    EXPECT_NE(s.filters.size(), s.backdrop_filters.size());
+
+    // Drop shadow params stored separately
+    s.drop_shadow_ox = 4.0f;
+    s.drop_shadow_oy = 4.0f;
+    s.drop_shadow_color = 0x80000000;
+    EXPECT_FLOAT_EQ(s.drop_shadow_ox, 4.0f);
+    EXPECT_FLOAT_EQ(s.drop_shadow_oy, 4.0f);
+    EXPECT_EQ(s.drop_shadow_color, 0x80000000u);
+}
+
+TEST(ComputedStyleTest, MultiColumnLayoutWithRuleAndFillV123) {
+    // Simulate a newspaper-style multi-column layout: explicit column count
+    // and width, a visible column rule, column fill, and column span. Verify
+    // that all column-related properties work together without interference.
+    ComputedStyle s;
+
+    // Defaults
+    EXPECT_EQ(s.column_count, -1);            // auto
+    EXPECT_TRUE(s.column_width.is_auto());
+    EXPECT_FLOAT_EQ(s.column_gap_val.to_px(), 0.0f);
+    EXPECT_FLOAT_EQ(s.column_rule_width, 0.0f);
+    EXPECT_EQ(s.column_rule_style, 0);        // none
+    EXPECT_EQ(s.column_fill, 0);              // balance
+    EXPECT_EQ(s.column_span, 0);              // none
+
+    // Configure 3-column layout with 250px columns and 24px gap
+    s.column_count = 3;
+    s.column_width = Length::px(250);
+    s.column_gap_val = Length::px(24);
+    EXPECT_EQ(s.column_count, 3);
+    EXPECT_FLOAT_EQ(s.column_width.to_px(), 250.0f);
+    EXPECT_FLOAT_EQ(s.column_gap_val.to_px(), 24.0f);
+
+    // Visible rule: 2px dashed dark gray
+    s.column_rule_width = 2.0f;
+    s.column_rule_style = 2; // dashed
+    s.column_rule_color = Color{80, 80, 80, 255};
+    EXPECT_FLOAT_EQ(s.column_rule_width, 2.0f);
+    EXPECT_EQ(s.column_rule_style, 2);
+    EXPECT_EQ(s.column_rule_color.r, 80);
+    EXPECT_EQ(s.column_rule_color.g, 80);
+    EXPECT_EQ(s.column_rule_color.a, 255);
+
+    // Column fill auto (don't balance, just fill sequentially)
+    s.column_fill = 1; // auto
+    EXPECT_EQ(s.column_fill, 1);
+
+    // A heading that spans all columns
+    ComputedStyle heading;
+    heading.column_span = 1; // all
+    EXPECT_EQ(heading.column_span, 1);
+
+    // Verify parent column properties are unaffected by heading
+    EXPECT_EQ(s.column_span, 0);
+    EXPECT_EQ(s.column_count, 3);
+
+    // Reset to auto column count
+    s.column_count = -1;
+    EXPECT_EQ(s.column_count, -1);
+}
+
+TEST(ComputedStyleTest, LengthRemChAndLhConversionsV123) {
+    // Test rem, ch, and lh Length units resolve correctly given
+    // different root font sizes, and that they compose with calc()
+    // expressions using mixed unit types.
+    float root_fs = 20.0f;
+    float parent_fs = 32.0f;
+    float lh_val = 1.5f * parent_fs; // line-height context = 48
+
+    // rem: relative to root font size
+    Length rem2 = Length::rem(2.5f);
+    EXPECT_FLOAT_EQ(rem2.to_px(parent_fs, root_fs), 50.0f); // 2.5 * 20
+
+    // ch: 1ch ≈ 0.6 * font-size, so ch uses parent_value * 0.6
+    Length ch3 = Length::ch(3.0f);
+    EXPECT_FLOAT_EQ(ch3.to_px(parent_fs, root_fs), 3.0f * parent_fs * 0.6f);
+
+    // lh: relative to line-height
+    Length lh1 = Length::lh(1.0f);
+    EXPECT_FLOAT_EQ(lh1.to_px(parent_fs, root_fs, lh_val), lh_val);
+
+    Length lh_half = Length::lh(0.5f);
+    EXPECT_FLOAT_EQ(lh_half.to_px(parent_fs, root_fs, lh_val), 24.0f);
+
+    // calc(2rem + 10px) = 2*20 + 10 = 50
+    auto rem_node = CalcExpr::make_value(Length::rem(2));
+    auto px_node = CalcExpr::make_value(Length::px(10));
+    auto sum_expr = CalcExpr::make_binary(CalcExpr::Op::Add, rem_node, px_node);
+    EXPECT_FLOAT_EQ(sum_expr->evaluate(0, root_fs), 50.0f);
+
+    // calc(max(1rem, 30px)) with root=20 => max(20, 30) = 30
+    auto rem1 = CalcExpr::make_value(Length::rem(1));
+    auto px30 = CalcExpr::make_value(Length::px(30));
+    auto max_expr = CalcExpr::make_binary(CalcExpr::Op::Max, rem1, px30);
+    EXPECT_FLOAT_EQ(max_expr->evaluate(0, root_fs), 30.0f);
+
+    // calc(min(1rem, 30px)) with root=20 => min(20, 30) = 20
+    auto min_expr = CalcExpr::make_binary(CalcExpr::Op::Min,
+        CalcExpr::make_value(Length::rem(1)),
+        CalcExpr::make_value(Length::px(30)));
+    EXPECT_FLOAT_EQ(min_expr->evaluate(0, root_fs), 20.0f);
+}
+
+TEST(ComputedStyleTest, TextShadowMultipleEntriesAndBoxShadowInsetMixV123) {
+    // Build a ComputedStyle with multiple text-shadows and a mix of inset
+    // and outset box-shadows, verifying independent storage, correct field
+    // access via .blur (not .blur_radius), and the inset flag.
+    ComputedStyle s;
+
+    EXPECT_TRUE(s.text_shadows.empty());
+    EXPECT_TRUE(s.box_shadows.empty());
+
+    // Three text shadows (layered neon glow effect)
+    ComputedStyle::TextShadowEntry ts1{0, 0, 10.0f, {0, 255, 255, 200}};
+    ComputedStyle::TextShadowEntry ts2{0, 0, 20.0f, {255, 0, 255, 150}};
+    ComputedStyle::TextShadowEntry ts3{2.0f, 2.0f, 4.0f, {0, 0, 0, 100}};
+    s.text_shadows = {ts1, ts2, ts3};
+    EXPECT_EQ(s.text_shadows.size(), 3u);
+    // First shadow: pure glow (no offset, blur=10)
+    EXPECT_FLOAT_EQ(s.text_shadows[0].offset_x, 0.0f);
+    EXPECT_FLOAT_EQ(s.text_shadows[0].blur, 10.0f);
+    EXPECT_EQ(s.text_shadows[0].color.g, 255);
+    // Third shadow: offset shadow
+    EXPECT_FLOAT_EQ(s.text_shadows[2].offset_x, 2.0f);
+    EXPECT_FLOAT_EQ(s.text_shadows[2].offset_y, 2.0f);
+    EXPECT_FLOAT_EQ(s.text_shadows[2].blur, 4.0f);
+
+    // Two box shadows: one outset elevation, one inset for depth
+    ComputedStyle::BoxShadowEntry bs_outer;
+    bs_outer.offset_x = 0;
+    bs_outer.offset_y = 8.0f;
+    bs_outer.blur = 24.0f;
+    bs_outer.spread = -4.0f;
+    bs_outer.color = {0, 0, 0, 60};
+    bs_outer.inset = false;
+
+    ComputedStyle::BoxShadowEntry bs_inner;
+    bs_inner.offset_x = 0;
+    bs_inner.offset_y = 0;
+    bs_inner.blur = 12.0f;
+    bs_inner.spread = 0;
+    bs_inner.color = {255, 255, 255, 30};
+    bs_inner.inset = true;
+
+    s.box_shadows = {bs_outer, bs_inner};
+    EXPECT_EQ(s.box_shadows.size(), 2u);
+    // Outset shadow
+    EXPECT_FALSE(s.box_shadows[0].inset);
+    EXPECT_FLOAT_EQ(s.box_shadows[0].blur, 24.0f);
+    EXPECT_FLOAT_EQ(s.box_shadows[0].spread, -4.0f);
+    EXPECT_EQ(s.box_shadows[0].color.a, 60);
+    // Inset shadow
+    EXPECT_TRUE(s.box_shadows[1].inset);
+    EXPECT_FLOAT_EQ(s.box_shadows[1].blur, 12.0f);
+    EXPECT_EQ(s.box_shadows[1].color.a, 30);
+
+    // Text shadows and box shadows are completely independent
+    s.text_shadows.clear();
+    EXPECT_TRUE(s.text_shadows.empty());
+    EXPECT_EQ(s.box_shadows.size(), 2u); // box shadows untouched
+}

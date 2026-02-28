@@ -13261,3 +13261,145 @@ TEST(UrlParserTest, SerializeRoundTripsForComplexUrlWithAllComponentsV122) {
     EXPECT_EQ(reparsed->query, result->query);
     EXPECT_EQ(reparsed->fragment, result->fragment);
 }
+
+TEST(UrlParserTest, SerializeIdempotencyAfterDoubleRoundTripV123) {
+    // Parse a complex URL, serialize it, re-parse and serialize again.
+    // The two serialized forms must be identical (idempotency after first normalization).
+    auto first = parse("http://admin:s3cr3t@api.example.com:9090/v2/users/42?fields=name,email&limit=10#profile");
+    ASSERT_TRUE(first.has_value());
+    std::string serial1 = first->serialize();
+    auto second = parse(serial1);
+    ASSERT_TRUE(second.has_value());
+    std::string serial2 = second->serialize();
+    EXPECT_EQ(serial1, serial2);
+    // Also verify individual fields survived two round trips
+    EXPECT_EQ(second->scheme, "http");
+    EXPECT_EQ(second->username, "admin");
+    EXPECT_EQ(second->password, "s3cr3t");
+    EXPECT_EQ(second->host, "api.example.com");
+    EXPECT_EQ(second->port, 9090);
+    EXPECT_EQ(second->path, "/v2/users/42");
+    EXPECT_EQ(second->fragment, "profile");
+}
+
+TEST(UrlParserTest, BlobUrlOriginIsNullV123) {
+    // blob: is a non-special scheme, so its origin() should return "null"
+    // even though the path embeds what looks like an https origin
+    auto result = parse("blob:https://secure.example.com/abcd-1234-efgh-5678");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "blob");
+    EXPECT_EQ(result->origin(), "null");
+    EXPECT_FALSE(result->is_special());
+    // The embedded URL is just the opaque path, not parsed as a nested URL
+    EXPECT_EQ(result->path, "https://secure.example.com/abcd-1234-efgh-5678");
+}
+
+TEST(UrlParserTest, AllSixSpecialSchemesReturnIsSpecialV123) {
+    // The URL spec defines exactly these schemes as "special":
+    // http, https, ftp, ws, wss, and file
+    auto http = parse("http://a.com/");
+    auto https = parse("https://a.com/");
+    auto ftp = parse("ftp://a.com/");
+    auto ws = parse("ws://a.com/");
+    auto wss = parse("wss://a.com/");
+    auto file = parse("file:///tmp/x");
+    ASSERT_TRUE(http.has_value());
+    ASSERT_TRUE(https.has_value());
+    ASSERT_TRUE(ftp.has_value());
+    ASSERT_TRUE(ws.has_value());
+    ASSERT_TRUE(wss.has_value());
+    ASSERT_TRUE(file.has_value());
+    EXPECT_TRUE(http->is_special());
+    EXPECT_TRUE(https->is_special());
+    EXPECT_TRUE(ftp->is_special());
+    EXPECT_TRUE(ws->is_special());
+    EXPECT_TRUE(wss->is_special());
+    EXPECT_TRUE(file->is_special());
+    // Verify a non-special scheme for contrast
+    auto custom = parse("myapp://host/path");
+    ASSERT_TRUE(custom.has_value());
+    EXPECT_FALSE(custom->is_special());
+}
+
+TEST(UrlParserTest, ComplexInterleavedDotSegmentNormalizationV123) {
+    // Mix of single-dot (current dir) and double-dot (parent dir) segments
+    // interleaved with real path segments should resolve correctly
+    auto result = parse("https://example.com/a/b/c/./d/../e/./f/../../g");
+    ASSERT_TRUE(result.has_value());
+    // a/b/c/. => a/b/c, /d => a/b/c/d, /.. => a/b/c, /e => a/b/c/e
+    // /. => a/b/c/e, /f => a/b/c/e/f, /.. => a/b/c/e, /.. => a/b/c, /g => a/b/c/g
+    EXPECT_EQ(result->path, "/a/b/c/g");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->scheme, "https");
+}
+
+TEST(UrlParserTest, RelativeResolutionInheritsBasePortAndCredentialsV123) {
+    // When resolving a relative URL against a base that has credentials and a
+    // non-default port, the result should inherit those components
+    auto base = parse("http://deploy:token123@ci.internal.io:8443/builds/latest/artifacts");
+    ASSERT_TRUE(base.has_value());
+    auto resolved = parse("../logs/output.txt", &*base);
+    ASSERT_TRUE(resolved.has_value());
+    EXPECT_EQ(resolved->scheme, "http");
+    EXPECT_EQ(resolved->username, "deploy");
+    EXPECT_EQ(resolved->password, "token123");
+    EXPECT_EQ(resolved->host, "ci.internal.io");
+    EXPECT_EQ(resolved->port, 8443);
+    EXPECT_EQ(resolved->path, "/builds/logs/output.txt");
+}
+
+TEST(UrlParserTest, CustomSchemeSerializePreservesOpaquePathQueryFragmentV123) {
+    // Non-special (custom) scheme URLs should serialize with opaque path,
+    // query and fragment preserved exactly
+    auto result = parse("custom://data.svc.local/resource/item?format=xml&pretty=true#section-3");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "custom");
+    EXPECT_EQ(result->host, "data.svc.local");
+    EXPECT_EQ(result->path, "/resource/item");
+    EXPECT_EQ(result->query, "format=xml&pretty=true");
+    EXPECT_EQ(result->fragment, "section-3");
+    EXPECT_FALSE(result->is_special());
+    EXPECT_EQ(result->origin(), "null");
+    std::string serialized = result->serialize();
+    EXPECT_EQ(serialized, "custom://data.svc.local/resource/item?format=xml&pretty=true#section-3");
+}
+
+TEST(UrlParserTest, WsAndWssDefaultPortsDifferAndCrossSchemeOriginsDifferV123) {
+    // ws has default port 80, wss has default port 443
+    // Using default ports should normalize to nullopt
+    auto ws_default = parse("ws://chat.example.com:80/room");
+    auto wss_default = parse("wss://chat.example.com:443/room");
+    ASSERT_TRUE(ws_default.has_value());
+    ASSERT_TRUE(wss_default.has_value());
+    // Default ports are stripped
+    EXPECT_EQ(ws_default->port, std::nullopt);
+    EXPECT_EQ(wss_default->port, std::nullopt);
+    // But using the other scheme's default port is NOT default and IS preserved
+    auto ws_on_443 = parse("ws://chat.example.com:443/room");
+    auto wss_on_80 = parse("wss://chat.example.com:80/room");
+    ASSERT_TRUE(ws_on_443.has_value());
+    ASSERT_TRUE(wss_on_80.has_value());
+    EXPECT_EQ(ws_on_443->port, 443);
+    EXPECT_EQ(wss_on_80->port, 80);
+    // Origins must all differ: different scheme or different port
+    EXPECT_NE(ws_default->origin(), wss_default->origin());
+    EXPECT_NE(ws_default->origin(), ws_on_443->origin());
+    EXPECT_NE(wss_default->origin(), wss_on_80->origin());
+}
+
+TEST(UrlParserTest, DoubleEncodedPercentInPathQueryAndFragmentSimultaneouslyV123) {
+    // Percent sequences in path, query, AND fragment all get double-encoded independently
+    auto result = parse("https://example.com/dir%2Fsub?search=%3Dvalue#ref%23anchor");
+    ASSERT_TRUE(result.has_value());
+    // Path: %2F -> %252F (double-encoded, not treated as slash)
+    EXPECT_EQ(result->path, "/dir%252Fsub");
+    // Query: %3D -> %253D (double-encoded, not treated as equals)
+    EXPECT_EQ(result->query, "search=%253Dvalue");
+    // Fragment: %23 -> %2523 (double-encoded, not treated as hash)
+    EXPECT_EQ(result->fragment, "ref%2523anchor");
+    // Verify serialize captures all three double-encoded components
+    std::string serialized = result->serialize();
+    EXPECT_NE(serialized.find("%252F"), std::string::npos);
+    EXPECT_NE(serialized.find("%253D"), std::string::npos);
+    EXPECT_NE(serialized.find("%2523"), std::string::npos);
+}
