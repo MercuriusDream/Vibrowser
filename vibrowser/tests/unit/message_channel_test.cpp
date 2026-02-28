@@ -2058,3 +2058,53 @@ TEST(MessageChannelTest, MessageChannelV150_2_SameTypeMultiplePayloads) {
         EXPECT_EQ(payloads_seen[i][1], static_cast<uint8_t>(i + 10));
     }
 }
+
+// ------------------------------------------------------------------
+// Round 151 tests
+// ------------------------------------------------------------------
+
+TEST(MessageChannelTest, MessageChannelV151_1_RemoveHandlerStopsDispatch) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel ch(std::move(pa));
+
+    int call_count = 0;
+    ch.on(10, [&](const Message&) {
+        call_count++;
+    });
+
+    // Dispatch once — handler should be called
+    Message msg;
+    msg.type = 10;
+    msg.request_id = 1;
+    ch.dispatch(msg);
+    EXPECT_EQ(call_count, 1);
+
+    // Replace handler with a no-op to effectively remove it
+    ch.on(10, [](const Message&) {
+        // intentionally empty — replaces old handler
+    });
+
+    // Dispatch again — old handler should NOT be called
+    msg.request_id = 2;
+    ch.dispatch(msg);
+    EXPECT_EQ(call_count, 1);  // still 1, not incremented
+}
+
+TEST(MessageChannelTest, MessageChannelV151_2_HandlerReceivesCorrectPayloadSize) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel ch(std::move(pa));
+
+    size_t received_size = 0;
+    ch.on(20, [&](const Message& m) {
+        received_size = m.payload.size();
+    });
+
+    // Send message with known payload size
+    Message msg;
+    msg.type = 20;
+    msg.request_id = 0;
+    msg.payload = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A};
+    ch.dispatch(msg);
+
+    EXPECT_EQ(received_size, 10u);
+}

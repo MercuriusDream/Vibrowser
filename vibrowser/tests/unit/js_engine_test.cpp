@@ -36617,3 +36617,125 @@ TEST(JSEngine, JsV150_8) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "1,2,true,false");
 }
+
+// ============================================================================
+// Cycle V151 JS Engine Tests
+// ============================================================================
+
+// V151_1: Promise.race returns first resolved
+TEST(JSEngine, JsV151_1) {
+    clever::js::JSEngine engine;
+    clever::js::install_fetch_bindings(engine.context());
+    engine.evaluate(R"JS(
+        var output = '';
+        Promise.race([
+            new Promise(function(r) { r('first'); }),
+            new Promise(function(r) { r('second'); })
+        ]).then(function(val) { output = val; });
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    clever::js::flush_fetch_promise_jobs(engine.context());
+    auto result = engine.evaluate("output");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "first");
+}
+
+// V151_2: Array.reduce with initial value
+TEST(JSEngine, JsV151_2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var arr = [1, 2, 3, 4, 5];
+        var sum = arr.reduce(function(acc, val) { return acc + val; }, 10);
+        '' + sum;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "25");
+}
+
+// V151_3: String.split with limit parameter
+TEST(JSEngine, JsV151_3) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var parts = 'a,b,c,d,e'.split(',', 3);
+        parts.join('|');
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "a|b|c");
+}
+
+// V151_4: Object.keys returns own enumerable keys
+TEST(JSEngine, JsV151_4) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var obj = { x: 1, y: 2, z: 3 };
+        Object.keys(obj).join(',');
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "x,y,z");
+}
+
+// V151_5: RegExp.test returns boolean
+TEST(JSEngine, JsV151_5) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var re = /^hello/;
+        var t1 = re.test('hello world');
+        var t2 = re.test('world hello');
+        '' + t1 + ',' + t2;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true,false");
+}
+
+// V151_6: try/catch/finally execution order
+TEST(JSEngine, JsV151_6) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var log = '';
+        try {
+            log += 'try,';
+            throw new Error('oops');
+        } catch (e) {
+            log += 'catch,';
+        } finally {
+            log += 'finally';
+        }
+        log;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "try,catch,finally");
+}
+
+// V151_7: for...of iteration over array
+TEST(JSEngine, JsV151_7) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var arr = [10, 20, 30];
+        var sum = 0;
+        for (var v of arr) {
+            sum += v;
+        }
+        '' + sum;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "60");
+}
+
+// V151_8: class inheritance with super call
+TEST(JSEngine, JsV151_8) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        class Animal {
+            constructor(name) { this.name = name; }
+            speak() { return this.name + ' makes a sound'; }
+        }
+        class Dog extends Animal {
+            constructor(name) { super(name); }
+            speak() { return this.name + ' barks'; }
+        }
+        var d = new Dog('Rex');
+        d.speak() + ',' + (d instanceof Animal);
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "Rex barks,true");
+}

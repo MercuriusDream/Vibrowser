@@ -20826,3 +20826,51 @@ TEST(SerializerTest, SerializerV150_3_MaxU64RoundTrip) {
     EXPECT_EQ(d.read_u64(), 0u);
     EXPECT_FALSE(d.has_remaining());
 }
+
+// ------------------------------------------------------------------
+// Round 151 tests
+// ------------------------------------------------------------------
+
+TEST(SerializerTest, SerializerV151_1_MixedTypesComplexSequence) {
+    Serializer s;
+    s.write_u8(42);
+    s.write_u16(12345);
+    s.write_u32(0xDEADBEEF);
+    s.write_u64(0x0102030405060708ULL);
+    s.write_bool(true);
+    s.write_bool(false);
+    s.write_string("mixed-types-test");
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u8(), 42);
+    EXPECT_EQ(d.read_u16(), 12345);
+    EXPECT_EQ(d.read_u32(), 0xDEADBEEFu);
+    EXPECT_EQ(d.read_u64(), 0x0102030405060708ULL);
+    EXPECT_TRUE(d.read_bool());
+    EXPECT_FALSE(d.read_bool());
+    EXPECT_EQ(d.read_string(), "mixed-types-test");
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, SerializerV151_2_ZeroLengthBytesRoundTrip) {
+    Serializer s;
+    s.write_bytes(nullptr, 0);
+
+    Deserializer d(s.data());
+    auto bytes = d.read_bytes();
+    EXPECT_TRUE(bytes.empty());
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, SerializerV151_3_RepeatedStringsSameValue) {
+    Serializer s;
+    for (int i = 0; i < 20; ++i) {
+        s.write_string("hello");
+    }
+
+    Deserializer d(s.data());
+    for (int i = 0; i < 20; ++i) {
+        EXPECT_EQ(d.read_string(), "hello");
+    }
+    EXPECT_FALSE(d.has_remaining());
+}

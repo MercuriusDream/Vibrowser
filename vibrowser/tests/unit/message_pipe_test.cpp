@@ -1833,3 +1833,63 @@ TEST(MessagePipeTest, MessagePipeV150_3_LargeMessageFragmentation) {
     EXPECT_EQ((*received)[250], static_cast<uint8_t>(250));
     EXPECT_EQ((*received)[251], static_cast<uint8_t>(0));
 }
+
+// ------------------------------------------------------------------
+// Round 151 tests
+// ------------------------------------------------------------------
+
+TEST(MessagePipeTest, MessagePipeV151_1_ReceiverClosedSenderDetects) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    // Send a message first, then close receiver end
+    std::vector<uint8_t> data = {0xAA, 0xBB, 0xCC};
+    ASSERT_TRUE(a.send(data));
+
+    // Close receiver end (b)
+    b.close();
+    EXPECT_FALSE(b.is_open());
+
+    // Receiver cannot receive after close
+    auto recv = b.receive();
+    EXPECT_FALSE(recv.has_value());
+
+    // Sender is still open even though receiver closed
+    EXPECT_TRUE(a.is_open());
+}
+
+TEST(MessagePipeTest, MessagePipeV151_2_AlternatingDirectionMessages) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    for (uint8_t i = 0; i < 6; ++i) {
+        std::vector<uint8_t> msg = {i};
+        if (i % 2 == 0) {
+            ASSERT_TRUE(a.send(msg));
+            auto recv = b.receive();
+            ASSERT_TRUE(recv.has_value());
+            EXPECT_EQ(recv->size(), 1u);
+            EXPECT_EQ((*recv)[0], i);
+        } else {
+            ASSERT_TRUE(b.send(msg));
+            auto recv = a.receive();
+            ASSERT_TRUE(recv.has_value());
+            EXPECT_EQ(recv->size(), 1u);
+            EXPECT_EQ((*recv)[0], i);
+        }
+    }
+}
+
+TEST(MessagePipeTest, MessagePipeV151_3_SingleByteMessages) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    for (uint8_t i = 0; i < 10; ++i) {
+        std::vector<uint8_t> msg = {i};
+        ASSERT_TRUE(a.send(msg));
+    }
+
+    for (uint8_t i = 0; i < 10; ++i) {
+        auto recv = b.receive();
+        ASSERT_TRUE(recv.has_value());
+        ASSERT_EQ(recv->size(), 1u);
+        EXPECT_EQ((*recv)[0], i);
+    }
+}

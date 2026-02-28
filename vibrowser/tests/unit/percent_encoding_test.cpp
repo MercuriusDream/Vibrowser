@@ -1206,3 +1206,33 @@ TEST(IsURLCodePoint, ASCIIAlphaNumericAllTrueV150) {
         EXPECT_TRUE(is_url_code_point(static_cast<char32_t>(c)));
     }
 }
+
+// =============================================================================
+// V151 Percent Encoding Tests
+// =============================================================================
+
+TEST(PercentEncoding, HashEncodedV151) {
+    // The '#' character must be percent-encoded as %23
+    EXPECT_EQ(percent_encode("#"), "%23");
+    EXPECT_EQ(percent_encode("foo#bar"), "foo%23bar");
+}
+
+TEST(PercentDecoding, IncompletePercentSequencePreservedV151) {
+    // An incomplete percent sequence like %2 (missing second hex digit)
+    // should be preserved as-is in the output
+    EXPECT_EQ(percent_decode("%2"), "%2");
+    EXPECT_EQ(percent_decode("abc%2"), "abc%2");
+}
+
+TEST(PercentEncoding, TildeNotEncodedV151) {
+    // Tilde '~' is an unreserved character and should pass through unencoded
+    EXPECT_EQ(percent_encode("~"), "~");
+    EXPECT_EQ(percent_encode("~user"), "~user");
+    EXPECT_EQ(percent_encode("/home/~user"), "/home/~user");
+}
+
+TEST(IsURLCodePoint, HyphenAndUnderscoreValidV151) {
+    // Hyphen '-' and underscore '_' are valid URL code points
+    EXPECT_TRUE(is_url_code_point(static_cast<char32_t>('-')));
+    EXPECT_TRUE(is_url_code_point(static_cast<char32_t>('_')));
+}

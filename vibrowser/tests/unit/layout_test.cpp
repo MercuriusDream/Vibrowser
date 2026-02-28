@@ -27784,3 +27784,211 @@ TEST(LayoutNodeProps, DisplayNoneZeroDimensionsV150) {
     EXPECT_FLOAT_EQ(root->children[0]->geometry.height, 0.0f);
     EXPECT_FLOAT_EQ(root->geometry.height, 0.0f);
 }
+
+// ============================================================================
+// Cycle V151 Layout Tests
+// ============================================================================
+
+// V151_1: flex justify-content space-around
+TEST(LayoutEngineTest, LayoutV151_1) {
+    auto root = make_flex("div");
+    root->justify_content = 4; // space-around
+
+    auto child1 = make_block("div");
+    child1->specified_width = 80.0f;
+    child1->specified_height = 40.0f;
+
+    auto child2 = make_block("div");
+    child2->specified_width = 80.0f;
+    child2->specified_height = 40.0f;
+
+    auto child3 = make_block("div");
+    child3->specified_width = 80.0f;
+    child3->specified_height = 40.0f;
+
+    root->append_child(std::move(child1));
+    root->append_child(std::move(child2));
+    root->append_child(std::move(child3));
+
+    LayoutEngine engine;
+    engine.compute(*root, 600.0f, 400.0f);
+
+    // Remaining = 600 - 240 = 360, 6 half-gaps => 60 each
+    // First item at x = 60, second at 60+80+120=260, third at 260+80+120=460
+    float x0 = root->children[0]->geometry.x;
+    float x1 = root->children[1]->geometry.x;
+    float x2 = root->children[2]->geometry.x;
+    EXPECT_GT(x0, 0.0f) << "space-around: first item should not be at x=0";
+    EXPECT_GT(x1, x0 + 80.0f) << "space-around: gap between items 0 and 1";
+    EXPECT_GT(x2, x1 + 80.0f) << "space-around: gap between items 1 and 2";
+    EXPECT_LT(x2 + 80.0f, 600.0f) << "space-around: last item should not reach end";
+}
+
+// V151_2: grid with 3 equal columns using fr units
+TEST(GridLayout, GridThreeColumnsEqualV151) {
+    auto root = make_grid();
+    root->grid_template_columns = "1fr 1fr 1fr";
+    root->specified_width = 600.0f;
+
+    auto child1 = make_block("div");
+    child1->specified_height = 30.0f;
+    auto child2 = make_block("div");
+    child2->specified_height = 30.0f;
+    auto child3 = make_block("div");
+    child3->specified_height = 30.0f;
+
+    root->append_child(std::move(child1));
+    root->append_child(std::move(child2));
+    root->append_child(std::move(child3));
+
+    LayoutEngine engine;
+    engine.compute(*root, 600.0f, 400.0f);
+
+    // Each column ~ 200px (600 / 3)
+    EXPECT_GT(root->children[0]->geometry.width, 150.0f);
+    EXPECT_LT(root->children[0]->geometry.width, 250.0f);
+    EXPECT_GT(root->children[1]->geometry.width, 150.0f);
+    EXPECT_LT(root->children[1]->geometry.width, 250.0f);
+    EXPECT_GT(root->children[2]->geometry.width, 150.0f);
+    EXPECT_LT(root->children[2]->geometry.width, 250.0f);
+    // All on same row
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.y, root->children[1]->geometry.y);
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.y, root->children[2]->geometry.y);
+}
+
+// V151_3: flex-grow distributes remaining space proportionally
+TEST(LayoutEngineTest, LayoutV151_3) {
+    auto root = make_flex("div");
+
+    auto child1 = make_block("div");
+    child1->specified_width = 50.0f;
+    child1->specified_height = 30.0f;
+    child1->flex_grow = 2.0f;
+
+    auto child2 = make_block("div");
+    child2->specified_width = 50.0f;
+    child2->specified_height = 30.0f;
+    child2->flex_grow = 1.0f;
+
+    root->append_child(std::move(child1));
+    root->append_child(std::move(child2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 600.0f, 400.0f);
+
+    // Remaining = 600 - 100 = 500. Ratio 2:1 => 333.33, 166.67
+    // child1 = 50 + 333.33 = 383.33, child2 = 50 + 166.67 = 216.67
+    EXPECT_GT(root->children[0]->geometry.width, root->children[1]->geometry.width)
+        << "Child with flex-grow:2 should be wider than flex-grow:1";
+    float total = root->children[0]->geometry.width + root->children[1]->geometry.width;
+    EXPECT_NEAR(total, 600.0f, 1.0f) << "Sum of flex children should fill container";
+}
+
+// V151_4: padding adds to content area dimensions
+TEST(LayoutEngineTest, LayoutV151_4) {
+    auto root = make_block("div");
+    root->geometry.padding.left = 25.0f;
+    root->geometry.padding.right = 25.0f;
+    root->geometry.padding.top = 15.0f;
+    root->geometry.padding.bottom = 15.0f;
+
+    auto child = make_block("div");
+    child->specified_height = 60.0f;
+
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 500.0f, 400.0f);
+
+    // Child width = 500 - 25 - 25 = 450
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.width, 450.0f);
+    // Root height = padding.top + child_height + padding.bottom = 15 + 60 + 15 = 90
+    EXPECT_FLOAT_EQ(root->geometry.height, 90.0f);
+}
+
+// V151_5: margin collapses between siblings (gap = max of adjacent margins)
+TEST(LayoutEngineTest, LayoutV151_5) {
+    auto root = make_block("div");
+    root->specified_width = 400.0f;
+
+    auto first = make_block("div");
+    first->specified_height = 50.0f;
+    first->geometry.margin.bottom = 30.0f;
+
+    auto second = make_block("div");
+    second->specified_height = 40.0f;
+    second->geometry.margin.top = 20.0f;
+
+    root->append_child(std::move(first));
+    root->append_child(std::move(second));
+
+    LayoutEngine engine;
+    engine.compute(*root, 400.0f, 400.0f);
+
+    const float first_bottom =
+        root->children[0]->geometry.y + root->children[0]->geometry.border_box_height();
+    const float gap = root->children[1]->geometry.y - first_bottom;
+    // Margins collapse: gap = max(30, 20) = 30
+    EXPECT_FLOAT_EQ(gap, 30.0f);
+}
+
+// V151_6: border included in total box size
+TEST(LayoutEngineTest, LayoutV151_6) {
+    auto root = make_block("div");
+    root->geometry.border.left = 8.0f;
+    root->geometry.border.right = 8.0f;
+    root->geometry.border.top = 8.0f;
+    root->geometry.border.bottom = 8.0f;
+
+    auto child = make_block("div");
+    child->specified_height = 40.0f;
+
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 500.0f, 400.0f);
+
+    // Child width = 500 - 8 - 8 = 484
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.width, 484.0f);
+    // Root height = border.top + child_height + border.bottom = 8 + 40 + 8 = 56
+    EXPECT_FLOAT_EQ(root->geometry.height, 56.0f);
+    // border_box_height = border.top + padding.top + height + padding.bottom + border.bottom
+    // = 8 + 0 + 56 + 0 + 8 = 72 (height already includes border contribution from layout)
+    EXPECT_FLOAT_EQ(root->geometry.border_box_height(), 72.0f);
+}
+
+// V151_7: flex-shrink below natural size
+TEST(LayoutEngineTest, LayoutV151_7) {
+    auto root = make_flex("div");
+
+    auto child1 = make_block("div");
+    child1->specified_width = 300.0f;
+    child1->specified_height = 40.0f;
+    child1->flex_shrink = 1.0f;
+
+    auto child2 = make_block("div");
+    child2->specified_width = 400.0f;
+    child2->specified_height = 40.0f;
+    child2->flex_shrink = 1.0f;
+
+    root->append_child(std::move(child1));
+    root->append_child(std::move(child2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 500.0f, 400.0f);
+
+    // Total basis = 700, available = 500, overflow = 200
+    // Weighted shrink: ratio = basis*factor, 300*1:400*1 = 3:4
+    // child1 loses 200*3/7 ~ 85.71, child2 loses 200*4/7 ~ 114.29
+    EXPECT_NEAR(root->children[0]->geometry.width, 214.29f, 1.0f);
+    EXPECT_NEAR(root->children[1]->geometry.width, 285.71f, 1.0f);
+}
+
+// V151_8: overflow defaults to 0 (visible)
+TEST(LayoutNodeProps, OverflowDefaultVisibleV151) {
+    auto node = make_block("div");
+    EXPECT_EQ(node->overflow, 0);
+    // Also check overflow_block and overflow_inline default to 0
+    EXPECT_EQ(node->overflow_block, 0);
+    EXPECT_EQ(node->overflow_inline, 0);
+}

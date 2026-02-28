@@ -10718,3 +10718,58 @@ TEST_F(CSSStylesheetTest, ColorSchemeDeclarationV150) {
     }
     EXPECT_TRUE(found) << "color-scheme declaration not found";
 }
+
+TEST_F(CSSStylesheetTest, AspectRatioDeclarationV151) {
+    auto ss = parse_stylesheet("img { aspect-ratio: 16/9; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "aspect-ratio") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+        }
+    }
+    EXPECT_TRUE(found) << "aspect-ratio declaration not found";
+}
+
+TEST_F(CSSStylesheetTest, GapShorthandDeclarationV151) {
+    auto ss = parse_stylesheet(".grid { gap: 20px; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "gap") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "20px");
+        }
+    }
+    EXPECT_TRUE(found) << "gap declaration not found";
+}
+
+TEST_F(CSSStylesheetTest, PlaceItemsCenterDeclarationV151) {
+    auto ss = parse_stylesheet(".flex { place-items: center; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "place-items") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "center");
+        }
+    }
+    EXPECT_TRUE(found) << "place-items declaration not found";
+}
+
+TEST_F(CSSStylesheetTest, OverscrollBehaviorContainDeclarationV151) {
+    auto ss = parse_stylesheet("body { overscroll-behavior: contain; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "overscroll-behavior") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "contain");
+        }
+    }
+    EXPECT_TRUE(found) << "overscroll-behavior declaration not found";
+}

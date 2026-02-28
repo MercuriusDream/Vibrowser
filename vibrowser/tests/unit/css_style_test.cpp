@@ -25772,3 +25772,56 @@ TEST(CSSStyleTest, CssV150_4_BorderRadiusAllCornersSet) {
     EXPECT_FLOAT_EQ(style.border_radius_bl, 10.0f);
     EXPECT_FLOAT_EQ(style.border_radius_br, 10.0f);
 }
+
+TEST(PropertyCascadeTest, GapShorthandAppliedV151) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("gap", "20px"), parent);
+    EXPECT_FLOAT_EQ(style.gap.to_px(), 20.0f);
+    EXPECT_FLOAT_EQ(style.column_gap_val.to_px(), 20.0f);
+}
+
+TEST(CSSStyleTest, CssV151_2_TextAlignCenterInherited) {
+    PropertyCascade cascade;
+    ComputedStyle parent;
+    ComputedStyle parent_parent;
+
+    // Set text-align: center on parent
+    cascade.apply_declaration(parent, make_decl("text-align", "center"), parent_parent);
+    EXPECT_EQ(parent.text_align, TextAlign::Center);
+
+    // Child should inherit text-align from parent via resolver
+    StyleResolver resolver;
+    StyleSheet sheet;
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "span";
+
+    auto result = resolver.resolve(elem, parent);
+    EXPECT_EQ(result.text_align, TextAlign::Center);
+}
+
+TEST(PropertyCascadeTest, PlaceItemsAppliedV151) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("place-items", "center"), parent);
+    EXPECT_EQ(style.align_items, AlignItems::Center);
+    EXPECT_EQ(style.justify_items, 2);
+}
+
+TEST(CSSStyleTest, CssV151_4_MarginAutoAllSides) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("margin", "auto"), parent);
+    EXPECT_TRUE(style.margin.top.is_auto());
+    EXPECT_TRUE(style.margin.right.is_auto());
+    EXPECT_TRUE(style.margin.bottom.is_auto());
+    EXPECT_TRUE(style.margin.left.is_auto());
+}

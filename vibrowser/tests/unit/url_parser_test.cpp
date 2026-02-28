@@ -15028,3 +15028,53 @@ TEST(UrlParserTest, UrlV150_4_TrailingDotInHostname) {
     EXPECT_FALSE(result->host.empty());
     EXPECT_EQ(result->path, "/path");
 }
+
+// =============================================================================
+// V151 URL Parser Tests
+// =============================================================================
+
+TEST(UrlParserTest, UrlV151_1_HashOnlyFragment) {
+    // URL with # and fragment only (no query) — fragment should be "top"
+    auto result = parse("http://example.com#top");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->fragment, "top");
+    EXPECT_TRUE(result->query.empty());
+}
+
+TEST(UrlParserTest, UrlV151_2_PortZeroIsValid) {
+    // Port 0 is a valid port number and should be parsed
+    auto result = parse("http://example.com:0/path");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "example.com");
+    ASSERT_TRUE(result->port.has_value());
+    EXPECT_EQ(result->port.value(), 0);
+    EXPECT_EQ(result->path, "/path");
+}
+
+TEST(UrlParserTest, UrlV151_3_MultipleSchemePrefixes) {
+    // https://, http://, and ftp:// should all be recognized as valid schemes
+    auto r1 = parse("https://example.com/a");
+    ASSERT_TRUE(r1.has_value());
+    EXPECT_EQ(r1->scheme, "https");
+
+    auto r2 = parse("http://example.com/b");
+    ASSERT_TRUE(r2.has_value());
+    EXPECT_EQ(r2->scheme, "http");
+
+    auto r3 = parse("ftp://example.com/c");
+    ASSERT_TRUE(r3.has_value());
+    EXPECT_EQ(r3->scheme, "ftp");
+}
+
+TEST(UrlParserTest, UrlV151_4_PathWithSpacesEncoded) {
+    // Spaces in path should be percent-encoded by the parser
+    auto result = parse("http://example.com/path with spaces");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "example.com");
+    // Path should contain encoded spaces (%20 or %2520 depending on double-encoding)
+    EXPECT_NE(result->path.find("%"), std::string::npos);
+}

@@ -25653,3 +25653,247 @@ TEST(HttpClient, CookieJarSecureCookieOnlyOnHTTPSV150) {
     EXPECT_NE(secure.find("prefs=dark"), std::string::npos)
         << "Non-secure cookie should also be present on HTTPS request, got: " << secure;
 }
+
+// ===========================================================================
+// Round 151 — HttpClient Tests
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// 1. Request — PUT with body, Content-Length present
+// ---------------------------------------------------------------------------
+TEST(HttpClient, RequestSerializePutWithBodyV151) {
+    Request req;
+    req.method = Method::PUT;
+    req.host = "api.v151.test";
+    req.port = 443;
+    req.path = "/resources/42";
+
+    std::string body_str = R"({"name":"updated","active":true})";
+    req.body.assign(body_str.begin(), body_str.end());
+    req.headers.set("Content-Type", "application/json");
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    // Request line must start with PUT
+    EXPECT_NE(result.find("PUT /resources/42 HTTP/1.1\r\n"), std::string::npos)
+        << "PUT request line missing, got: " << result;
+    // Host header — port 443 should be omitted
+    EXPECT_NE(result.find("Host: api.v151.test\r\n"), std::string::npos)
+        << "Host header wrong for port 443, got: " << result;
+    // Connection: close
+    EXPECT_NE(result.find("Connection: close\r\n"), std::string::npos)
+        << "Connection header missing, got: " << result;
+    // Content-Length should be auto-added matching body size
+    std::string cl_header = "Content-Length: " + std::to_string(body_str.size()) + "\r\n";
+    EXPECT_NE(result.find(cl_header), std::string::npos)
+        << "Content-Length header missing or wrong, expected: " << cl_header
+        << " got: " << result;
+    // Body should appear after the blank line
+    EXPECT_NE(result.find("\r\n\r\n" + body_str), std::string::npos)
+        << "Body not found after header terminator, got: " << result;
+}
+
+// ---------------------------------------------------------------------------
+// 2. Response — 204 No Content, empty body
+// ---------------------------------------------------------------------------
+TEST(HttpClient, ResponseParse204NoContentV151) {
+    std::string raw_str =
+        "HTTP/1.1 204 No Content\r\n"
+        "X-Request-Id: v151-abc\r\n"
+        "\r\n";
+    std::vector<uint8_t> raw(raw_str.begin(), raw_str.end());
+    auto resp = Response::parse(raw);
+    ASSERT_TRUE(resp.has_value())
+        << "Failed to parse 204 No Content response";
+    EXPECT_EQ(resp->status, 204);
+
+    // Body must be empty for 204
+    EXPECT_TRUE(resp->body.empty())
+        << "204 response should have empty body, size=" << resp->body.size();
+
+    // Custom header should be preserved
+    auto xrid = resp->headers.get("X-Request-Id");
+    ASSERT_TRUE(xrid.has_value()) << "X-Request-Id header not found";
+    EXPECT_EQ(xrid.value(), "v151-abc");
+}
+
+// ---------------------------------------------------------------------------
+// 3. ConnectionPool — multiple hosts, verify isolation
+// ---------------------------------------------------------------------------
+TEST(HttpClient, ConnectionPoolMaxHostsLimitV151) {
+    ConnectionPool pool;
+
+    // Release connections to 3 different host:port combinations
+    pool.release("alpha.v151.test", 80, 100);
+    pool.release("beta.v151.test", 80, 200);
+    pool.release("gamma.v151.test", 443, 300);
+
+    // Each host:port should have exactly 1 connection
+    EXPECT_EQ(pool.count("alpha.v151.test", 80), 1u);
+    EXPECT_EQ(pool.count("beta.v151.test", 80), 1u);
+    EXPECT_EQ(pool.count("gamma.v151.test", 443), 1u);
+
+    // Acquiring from one host should NOT affect other hosts
+    int fd_alpha = pool.acquire("alpha.v151.test", 80);
+    EXPECT_EQ(fd_alpha, 100);
+    EXPECT_EQ(pool.count("alpha.v151.test", 80), 0u);
+
+    // Other hosts remain untouched
+    EXPECT_EQ(pool.count("beta.v151.test", 80), 1u);
+    EXPECT_EQ(pool.count("gamma.v151.test", 443), 1u);
+
+    // Acquiring from beta
+    int fd_beta = pool.acquire("beta.v151.test", 80);
+    EXPECT_EQ(fd_beta, 200);
+
+    // gamma still has its connection
+    EXPECT_EQ(pool.count("gamma.v151.test", 443), 1u);
+    int fd_gamma = pool.acquire("gamma.v151.test", 443);
+    EXPECT_EQ(fd_gamma, 300);
+
+    // All pools now empty
+    EXPECT_EQ(pool.acquire("alpha.v151.test", 80), -1);
+    EXPECT_EQ(pool.acquire("beta.v151.test", 80), -1);
+    EXPECT_EQ(pool.acquire("gamma.v151.test", 443), -1);
+}
+
+// ---------------------------------------------------------------------------
+// 4. CookieJar — cookies set on domain A not visible on domain B
+// ---------------------------------------------------------------------------
+TEST(HttpClient, CookieJarMultipleDomainsIsolatedV151) {
+    CookieJar jar;
+
+    jar.set_from_header("token=aaa; Path=/", "domainA.v151.test");
+    jar.set_from_header("sid=bbb; Path=/", "domainB.v151.test");
+
+    // Domain A should only see its own cookie
+    std::string hdrA = jar.get_cookie_header("domainA.v151.test", "/", false);
+    EXPECT_NE(hdrA.find("token=aaa"), std::string::npos)
+        << "Domain A cookie missing, got: " << hdrA;
+    EXPECT_EQ(hdrA.find("sid=bbb"), std::string::npos)
+        << "Domain B cookie leaked to domain A, got: " << hdrA;
+
+    // Domain B should only see its own cookie
+    std::string hdrB = jar.get_cookie_header("domainB.v151.test", "/", false);
+    EXPECT_NE(hdrB.find("sid=bbb"), std::string::npos)
+        << "Domain B cookie missing, got: " << hdrB;
+    EXPECT_EQ(hdrB.find("token=aaa"), std::string::npos)
+        << "Domain A cookie leaked to domain B, got: " << hdrB;
+
+    // A completely unrelated domain should see nothing
+    std::string hdrC = jar.get_cookie_header("other.v151.test", "/", false);
+    EXPECT_TRUE(hdrC.empty())
+        << "Unrelated domain should get no cookies, got: " << hdrC;
+}
+
+// ---------------------------------------------------------------------------
+// 5. HeaderMap — append 4 values for same key, get_all returns all 4
+// ---------------------------------------------------------------------------
+TEST(HttpClient, HeaderMapAppendSameKeyMultipleTimesV151) {
+    HeaderMap map;
+    map.append("X-Multi-V151", "val1");
+    map.append("X-Multi-V151", "val2");
+    map.append("x-multi-v151", "val3");
+    map.append("X-MULTI-V151", "val4");
+
+    auto all = map.get_all("X-Multi-V151");
+    EXPECT_EQ(all.size(), 4u)
+        << "Expected 4 values for appended key, got " << all.size();
+
+    // Verify all 4 values are present
+    EXPECT_TRUE(std::find(all.begin(), all.end(), "val1") != all.end())
+        << "val1 missing from get_all";
+    EXPECT_TRUE(std::find(all.begin(), all.end(), "val2") != all.end())
+        << "val2 missing from get_all";
+    EXPECT_TRUE(std::find(all.begin(), all.end(), "val3") != all.end())
+        << "val3 missing from get_all";
+    EXPECT_TRUE(std::find(all.begin(), all.end(), "val4") != all.end())
+        << "val4 missing from get_all";
+
+    // get() should return one of them (first set)
+    auto single = map.get("X-Multi-V151");
+    ASSERT_TRUE(single.has_value())
+        << "get() should return a value when key exists";
+}
+
+// ---------------------------------------------------------------------------
+// 6. Request — GET with query string in path
+// ---------------------------------------------------------------------------
+TEST(HttpClient, RequestSerializeWithQueryStringV151) {
+    Request req;
+    req.method = Method::GET;
+    req.host = "search.v151.test";
+    req.port = 80;
+    req.path = "/results";
+    req.query = "q=vibrowser&page=3&lang=en";
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    // Request line must include path?query
+    EXPECT_NE(result.find("GET /results?q=vibrowser&page=3&lang=en HTTP/1.1\r\n"), std::string::npos)
+        << "GET request line with query string wrong, got: " << result;
+    // Host header — port 80 omitted
+    EXPECT_NE(result.find("Host: search.v151.test\r\n"), std::string::npos)
+        << "Host header wrong, got: " << result;
+    // Connection: close
+    EXPECT_NE(result.find("Connection: close\r\n"), std::string::npos)
+        << "Connection header missing, got: " << result;
+}
+
+// ---------------------------------------------------------------------------
+// 7. Response — 500 Internal Server Error parsing
+// ---------------------------------------------------------------------------
+TEST(HttpClient, ResponseParse500InternalServerErrorV151) {
+    std::string raw_str =
+        "HTTP/1.1 500 Internal Server Error\r\n"
+        "Content-Type: text/plain\r\n"
+        "Content-Length: 21\r\n"
+        "\r\n"
+        "Something went wrong!";
+    std::vector<uint8_t> raw(raw_str.begin(), raw_str.end());
+    auto resp = Response::parse(raw);
+    ASSERT_TRUE(resp.has_value())
+        << "Failed to parse 500 Internal Server Error response";
+    EXPECT_EQ(resp->status, 500);
+
+    // Content-Type header preserved
+    auto ct = resp->headers.get("Content-Type");
+    ASSERT_TRUE(ct.has_value()) << "Content-Type header not found";
+    EXPECT_EQ(ct.value(), "text/plain");
+
+    // Body should match
+    std::string body(resp->body.begin(), resp->body.end());
+    EXPECT_EQ(body, "Something went wrong!")
+        << "Body mismatch for 500 response, got: " << body;
+}
+
+// ---------------------------------------------------------------------------
+// 8. CookieJar — /api matches /api/v2 but not /application
+// ---------------------------------------------------------------------------
+TEST(HttpClient, CookieJarPathPrefixMatchV151) {
+    CookieJar jar;
+    jar.set_from_header("apikey=secret151; Path=/api", "paths.v151.test");
+
+    // /api/v2 is a sub-path of /api — should match
+    std::string h1 = jar.get_cookie_header("paths.v151.test", "/api/v2", false);
+    EXPECT_NE(h1.find("apikey=secret151"), std::string::npos)
+        << "/api/v2 should match Path=/api, got: " << h1;
+
+    // /api itself should match
+    std::string h2 = jar.get_cookie_header("paths.v151.test", "/api", false);
+    EXPECT_NE(h2.find("apikey=secret151"), std::string::npos)
+        << "/api should match Path=/api, got: " << h2;
+
+    // /application should NOT match — it shares prefix but /api is not a
+    // proper path prefix of /application (missing / separator)
+    std::string h3 = jar.get_cookie_header("paths.v151.test", "/application", false);
+    EXPECT_EQ(h3.find("apikey=secret151"), std::string::npos)
+        << "/application should NOT match Path=/api, got: " << h3;
+
+    // /other should NOT match
+    std::string h4 = jar.get_cookie_header("paths.v151.test", "/other", false);
+    EXPECT_EQ(h4.find("apikey=secret151"), std::string::npos)
+        << "/other should NOT match Path=/api, got: " << h4;
+}

@@ -12320,3 +12320,81 @@ TEST(CORSPolicyTest, CorsV150_8_ACAONullStringRejectsAll) {
     EXPECT_FALSE(cors_allows_response("http://localhost",
                                        "https://api.example.com/data", headers, false));
 }
+
+// ---------------------------------------------------------------------------
+// Round 151 – CORS tests
+// ---------------------------------------------------------------------------
+
+// 1. Same scheme+host but different paths are same origin
+TEST(CORSPolicyTest, CorsV151_1_SameSchemeHostDifferentPathSameOrigin) {
+    EXPECT_FALSE(is_cross_origin("https://app.example.com", "https://app.example.com/path1"));
+    EXPECT_FALSE(is_cross_origin("https://app.example.com", "https://app.example.com/path2/sub"));
+    EXPECT_FALSE(is_cross_origin("https://app.example.com", "https://app.example.com/"));
+    EXPECT_FALSE(is_cross_origin("http://site.test", "http://site.test/a/b/c"));
+}
+
+// 2. ACAO wildcard "*" allows cross-origin without credentials
+TEST(CORSPolicyTest, CorsV151_2_ACAOWildcardWithExplicitOriginRejects) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "*");
+    // Wildcard should allow without credentials
+    EXPECT_TRUE(cors_allows_response("https://app.example.com",
+                                      "https://api.example.com/data", headers, false));
+    // Wildcard with credentials requested should fail
+    EXPECT_FALSE(cors_allows_response("https://app.example.com",
+                                       "https://api.example.com/data", headers, true));
+}
+
+// 3. https://example.com is enforceable (default 443 port)
+TEST(CORSPolicyTest, CorsV151_3_HTTPSDefaultPort443Enforceable) {
+    EXPECT_TRUE(has_enforceable_document_origin("https://example.com"));
+    // Explicit :443 is NOT enforceable per project rules
+    EXPECT_FALSE(has_enforceable_document_origin("https://example.com:443"));
+}
+
+// 4. Subdomain vs apex domain are cross-origin
+TEST(CORSPolicyTest, CorsV151_4_CrossOriginSubdomainVsApex) {
+    EXPECT_TRUE(is_cross_origin("https://example.com", "https://sub.example.com/api"));
+    EXPECT_TRUE(is_cross_origin("https://sub.example.com", "https://example.com/page"));
+    EXPECT_TRUE(is_cross_origin("https://a.example.com", "https://b.example.com/data"));
+}
+
+// 5. POST to different origin should attach origin header
+TEST(CORSPolicyTest, CorsV151_5_ShouldAttachOriginOnPOSTCrossOrigin) {
+    // Cross-origin with eligible URL → should attach
+    EXPECT_TRUE(should_attach_origin_header("https://app.example.com",
+                                             "https://api.other.com/submit"));
+    // Same origin → should NOT attach
+    EXPECT_FALSE(should_attach_origin_header("https://app.example.com",
+                                              "https://app.example.com/submit"));
+}
+
+// 6. blob: URL is not CORS eligible
+TEST(CORSPolicyTest, CorsV151_6_BlobSchemeNotCorsEligible) {
+    EXPECT_FALSE(is_cors_eligible_request_url("blob:https://example.com/uuid-here"));
+    EXPECT_FALSE(is_cors_eligible_request_url("blob:null"));
+    EXPECT_FALSE(is_cors_eligible_request_url("blob:"));
+}
+
+// 7. Query string and fragment don't affect origin comparison
+TEST(CORSPolicyTest, CorsV151_7_SameOriginWithQueryAndFragment) {
+    // Same host with query → same origin
+    EXPECT_FALSE(is_cross_origin("https://app.example.com",
+                                  "https://app.example.com/path?foo=bar"));
+    // Same host with different paths+query → same origin
+    EXPECT_FALSE(is_cross_origin("https://app.example.com",
+                                  "https://app.example.com/other?x=1&y=2"));
+}
+
+// 8. ACAO exact match requires scheme to be present
+TEST(CORSPolicyTest, CorsV151_8_ACAOExactMatchRequiresScheme) {
+    clever::net::HeaderMap headers;
+    // ACAO with scheme-less value should not match an origin with scheme
+    headers.set("Access-Control-Allow-Origin", "app.example.com");
+    EXPECT_FALSE(cors_allows_response("https://app.example.com",
+                                       "https://api.example.com/data", headers, false));
+    // Proper scheme match should work
+    headers.set("Access-Control-Allow-Origin", "https://app.example.com");
+    EXPECT_TRUE(cors_allows_response("https://app.example.com",
+                                      "https://api.example.com/data", headers, false));
+}

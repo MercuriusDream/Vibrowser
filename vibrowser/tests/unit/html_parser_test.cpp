@@ -23927,3 +23927,107 @@ TEST(HtmlParserTest, HtmlV150_8) {
     ASSERT_NE(img, nullptr);
     EXPECT_EQ(img->tag_name, "img");
 }
+
+TEST(HtmlParserTest, HtmlV151_1) {
+    // abbr with title attribute
+    auto doc = clever::html::parse("<html><body><abbr title=\"HyperText Markup Language\">HTML</abbr></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* abbr = doc->find_element("abbr");
+    ASSERT_NE(abbr, nullptr);
+    EXPECT_EQ(abbr->tag_name, "abbr");
+    EXPECT_EQ(abbr->text_content(), "HTML");
+    bool found_title = false;
+    for (const auto& attr : abbr->attributes) {
+        if (attr.name == "title") {
+            found_title = true;
+            EXPECT_EQ(attr.value, "HyperText Markup Language");
+        }
+    }
+    EXPECT_TRUE(found_title) << "title attribute not found on abbr";
+}
+
+TEST(HtmlParserTest, HtmlV151_2) {
+    // cite element
+    auto doc = clever::html::parse("<html><body><cite>The Great Gatsby</cite></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* cite = doc->find_element("cite");
+    ASSERT_NE(cite, nullptr);
+    EXPECT_EQ(cite->tag_name, "cite");
+    EXPECT_EQ(cite->text_content(), "The Great Gatsby");
+}
+
+TEST(HtmlParserTest, HtmlV151_3) {
+    // kbd element
+    auto doc = clever::html::parse("<html><body><kbd>Ctrl+C</kbd></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* kbd = doc->find_element("kbd");
+    ASSERT_NE(kbd, nullptr);
+    EXPECT_EQ(kbd->tag_name, "kbd");
+    EXPECT_EQ(kbd->text_content(), "Ctrl+C");
+}
+
+TEST(HtmlParserTest, HtmlV151_4) {
+    // samp element
+    auto doc = clever::html::parse("<html><body><samp>Error 404</samp></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* samp = doc->find_element("samp");
+    ASSERT_NE(samp, nullptr);
+    EXPECT_EQ(samp->tag_name, "samp");
+    EXPECT_EQ(samp->text_content(), "Error 404");
+}
+
+TEST(HtmlParserTest, HtmlV151_5) {
+    // var element
+    auto doc = clever::html::parse("<html><body><var>x</var></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* var_elem = doc->find_element("var");
+    ASSERT_NE(var_elem, nullptr);
+    EXPECT_EQ(var_elem->tag_name, "var");
+    EXPECT_EQ(var_elem->text_content(), "x");
+}
+
+TEST(HtmlParserTest, HtmlV151_6) {
+    // q with cite attribute
+    auto doc = clever::html::parse("<html><body><q cite=\"https://example.com\">A quote</q></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* q = doc->find_element("q");
+    ASSERT_NE(q, nullptr);
+    EXPECT_EQ(q->tag_name, "q");
+    EXPECT_EQ(q->text_content(), "A quote");
+    bool found_cite = false;
+    for (const auto& attr : q->attributes) {
+        if (attr.name == "cite") {
+            found_cite = true;
+            EXPECT_EQ(attr.value, "https://example.com");
+        }
+    }
+    EXPECT_TRUE(found_cite) << "cite attribute not found on q";
+}
+
+TEST(HtmlParserTest, HtmlV151_7) {
+    // dfn element
+    auto doc = clever::html::parse("<html><body><dfn>Definition term</dfn></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* dfn = doc->find_element("dfn");
+    ASSERT_NE(dfn, nullptr);
+    EXPECT_EQ(dfn->tag_name, "dfn");
+    EXPECT_EQ(dfn->text_content(), "Definition term");
+}
+
+TEST(HtmlParserTest, HtmlV151_8) {
+    // address element
+    auto doc = clever::html::parse("<html><body><address>123 Main St</address></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* address = doc->find_element("address");
+    ASSERT_NE(address, nullptr);
+    EXPECT_EQ(address->tag_name, "address");
+    EXPECT_EQ(address->text_content(), "123 Main St");
+}

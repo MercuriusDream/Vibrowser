@@ -22731,3 +22731,164 @@ TEST(DomElement, ToggleClassOnOffSequenceV150) {
     cl.toggle("x");
     EXPECT_TRUE(cl.contains("x"));
 }
+
+// ---------------------------------------------------------------------------
+// Round 151 – DOM tests
+// ---------------------------------------------------------------------------
+
+// 1. Append child that already has a parent moves it to the new parent
+TEST(DomNode, AppendChildMovesToNewParentV151) {
+    auto parent1 = std::make_unique<Element>("div");
+    auto parent2 = std::make_unique<Element>("section");
+    auto child = std::make_unique<Element>("span");
+    Element* child_ptr = child.get();
+
+    parent1->append_child(std::move(child));
+    EXPECT_EQ(parent1->child_count(), 1u);
+    EXPECT_EQ(child_ptr->parent(), parent1.get());
+
+    // Moving child to parent2 should remove it from parent1
+    auto reclaimed = parent1->remove_child(*child_ptr);
+    parent2->append_child(std::move(reclaimed));
+    EXPECT_EQ(parent1->child_count(), 0u);
+    EXPECT_EQ(parent2->child_count(), 1u);
+    EXPECT_EQ(child_ptr->parent(), parent2.get());
+}
+
+// 2. get_attribute on nonexistent attribute returns nullopt (empty)
+TEST(DomElement, GetAttributeReturnsEmptyForMissingV151) {
+    Element elem("div");
+    auto val = elem.get_attribute("data-missing");
+    EXPECT_FALSE(val.has_value());
+    auto val2 = elem.get_attribute("nonexistent");
+    EXPECT_FALSE(val2.has_value());
+    auto val3 = elem.get_attribute("");
+    EXPECT_FALSE(val3.has_value());
+}
+
+// 3. Document get_element_by_id returns each of multiple registered elements
+TEST(DomDocument, GetElementsByIdReturnsMultipleV151) {
+    Document doc;
+    auto d1 = std::make_unique<Element>("div");
+    auto d2 = std::make_unique<Element>("div");
+    auto d3 = std::make_unique<Element>("div");
+    Element* p1 = d1.get();
+    Element* p2 = d2.get();
+    Element* p3 = d3.get();
+
+    d1->set_attribute("id", "alpha");
+    d2->set_attribute("id", "beta");
+    d3->set_attribute("id", "gamma");
+
+    doc.register_id("alpha", p1);
+    doc.register_id("beta", p2);
+    doc.register_id("gamma", p3);
+
+    doc.append_child(std::move(d1));
+    doc.append_child(std::move(d2));
+    doc.append_child(std::move(d3));
+
+    EXPECT_EQ(doc.get_element_by_id("alpha"), p1);
+    EXPECT_EQ(doc.get_element_by_id("beta"), p2);
+    EXPECT_EQ(doc.get_element_by_id("gamma"), p3);
+}
+
+// 4. New Event has default_prevented() == false
+TEST(DomEvent, DefaultNotPreventedInitiallyV151) {
+    Event evt("click");
+    EXPECT_FALSE(evt.default_prevented());
+    EXPECT_FALSE(evt.propagation_stopped());
+    EXPECT_FALSE(evt.immediate_propagation_stopped());
+    EXPECT_EQ(evt.type(), "click");
+    EXPECT_EQ(evt.phase(), EventPhase::None);
+}
+
+// 5. Traverse 4 children forward via next_sibling
+TEST(DomNode, NextSiblingChainTraversalV151) {
+    auto parent = std::make_unique<Element>("ul");
+    auto c1 = std::make_unique<Element>("li");
+    auto c2 = std::make_unique<Element>("li");
+    auto c3 = std::make_unique<Element>("li");
+    auto c4 = std::make_unique<Element>("li");
+    Element* p1 = c1.get();
+    Element* p2 = c2.get();
+    Element* p3 = c3.get();
+    Element* p4 = c4.get();
+
+    parent->append_child(std::move(c1));
+    parent->append_child(std::move(c2));
+    parent->append_child(std::move(c3));
+    parent->append_child(std::move(c4));
+
+    // Forward traversal
+    Node* cur = parent->first_child();
+    EXPECT_EQ(cur, p1);
+    cur = cur->next_sibling();
+    EXPECT_EQ(cur, p2);
+    cur = cur->next_sibling();
+    EXPECT_EQ(cur, p3);
+    cur = cur->next_sibling();
+    EXPECT_EQ(cur, p4);
+    cur = cur->next_sibling();
+    EXPECT_EQ(cur, nullptr);
+}
+
+// 6. Set 5 different attributes, all retrievable
+TEST(DomElement, SetMultipleAttributesV151) {
+    Element elem("input");
+    elem.set_attribute("type", "text");
+    elem.set_attribute("name", "username");
+    elem.set_attribute("placeholder", "Enter name");
+    elem.set_attribute("maxlength", "50");
+    elem.set_attribute("data-custom", "value");
+
+    EXPECT_EQ(elem.attributes().size(), 5u);
+    EXPECT_EQ(elem.get_attribute("type").value(), "text");
+    EXPECT_EQ(elem.get_attribute("name").value(), "username");
+    EXPECT_EQ(elem.get_attribute("placeholder").value(), "Enter name");
+    EXPECT_EQ(elem.get_attribute("maxlength").value(), "50");
+    EXPECT_EQ(elem.get_attribute("data-custom").value(), "value");
+}
+
+// 7. Traverse 4 children backward via previous_sibling
+TEST(DomNode, PreviousSiblingChainTraversalV151) {
+    auto parent = std::make_unique<Element>("ol");
+    auto c1 = std::make_unique<Element>("li");
+    auto c2 = std::make_unique<Element>("li");
+    auto c3 = std::make_unique<Element>("li");
+    auto c4 = std::make_unique<Element>("li");
+    Element* p1 = c1.get();
+    Element* p2 = c2.get();
+    Element* p3 = c3.get();
+    Element* p4 = c4.get();
+
+    parent->append_child(std::move(c1));
+    parent->append_child(std::move(c2));
+    parent->append_child(std::move(c3));
+    parent->append_child(std::move(c4));
+
+    // Backward traversal from last_child
+    Node* cur = parent->last_child();
+    EXPECT_EQ(cur, p4);
+    cur = cur->previous_sibling();
+    EXPECT_EQ(cur, p3);
+    cur = cur->previous_sibling();
+    EXPECT_EQ(cur, p2);
+    cur = cur->previous_sibling();
+    EXPECT_EQ(cur, p1);
+    cur = cur->previous_sibling();
+    EXPECT_EQ(cur, nullptr);
+}
+
+// 8. ClassList contains returns false for absent class
+TEST(DomElement, ClassListContainsReturnsFalseForAbsentV151) {
+    Element elem("div");
+    EXPECT_FALSE(elem.class_list().contains("nonexistent"));
+    EXPECT_FALSE(elem.class_list().contains("some-class"));
+
+    // Add a class then check a different one is still absent
+    elem.class_list().add("present");
+    EXPECT_TRUE(elem.class_list().contains("present"));
+    EXPECT_FALSE(elem.class_list().contains("absent"));
+    EXPECT_FALSE(elem.class_list().contains("nonexistent"));
+}
