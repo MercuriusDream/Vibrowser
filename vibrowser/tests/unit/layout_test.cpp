@@ -31554,3 +31554,134 @@ TEST(LayoutNodeProps, GeometryDefaultZeroV176) {
     EXPECT_FLOAT_EQ(node->geometry.width, 0.0f);
     EXPECT_FLOAT_EQ(node->geometry.height, 0.0f);
 }
+
+// V177_1: flex row — three children placed horizontally with correct x offsets
+TEST(LayoutEngineTest, FlexRowThreeChildrenPositionsV177) {
+    auto root = make_flex("div");
+    root->specified_width = 600.0f;
+    root->flex_direction = 0; // row
+
+    auto c1 = make_block("div");
+    c1->specified_width = 100.0f;
+    c1->specified_height = 50.0f;
+    auto c2 = make_block("div");
+    c2->specified_width = 150.0f;
+    c2->specified_height = 50.0f;
+    auto c3 = make_block("div");
+    c3->specified_width = 200.0f;
+    c3->specified_height = 50.0f;
+
+    root->append_child(std::move(c1));
+    root->append_child(std::move(c2));
+    root->append_child(std::move(c3));
+
+    LayoutEngine engine;
+    engine.compute(*root, 600.0f, 400.0f);
+
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.x, 0.0f);
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.x, 100.0f);
+    EXPECT_FLOAT_EQ(root->children[2]->geometry.x, 250.0f);
+}
+
+// V177_2: flex column — children stack vertically with correct y offsets
+TEST(LayoutEngineTest, FlexColumnStackChildrenV177) {
+    auto root = make_flex("div");
+    root->specified_width = 300.0f;
+    root->flex_direction = 2; // column
+
+    auto c1 = make_block("div");
+    c1->specified_height = 80.0f;
+    auto c2 = make_block("div");
+    c2->specified_height = 120.0f;
+
+    root->append_child(std::move(c1));
+    root->append_child(std::move(c2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 300.0f, 500.0f);
+
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.y, 0.0f);
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.y, 80.0f);
+}
+
+// V177_3: block stacking — three children with varying heights
+TEST(LayoutEngineTest, BlockStackingThreeChildrenV177) {
+    auto root = make_block("div");
+
+    auto c1 = make_block("div");
+    c1->specified_height = 30.0f;
+    auto c2 = make_block("div");
+    c2->specified_height = 70.0f;
+    auto c3 = make_block("div");
+    c3->specified_height = 50.0f;
+
+    root->append_child(std::move(c1));
+    root->append_child(std::move(c2));
+    root->append_child(std::move(c3));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.y, 0.0f);
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.y, 30.0f);
+    EXPECT_FLOAT_EQ(root->children[2]->geometry.y, 100.0f);
+}
+
+// V177_4: max_height constrains node height
+TEST(LayoutEngineTest, MaxHeightClampsV177) {
+    auto root = make_block("div");
+    root->specified_width = 200.0f;
+    root->specified_height = 500.0f;
+    root->max_height = 200.0f;
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(root->geometry.height, 200.0f);
+}
+
+// V177_5: min_width clamps specified_width upward
+TEST(LayoutEngineTest, MinWidthClampsUpV177) {
+    auto root = make_block("div");
+    root->specified_width = 100.0f;
+    root->min_width = 350.0f;
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(root->geometry.width, 350.0f);
+}
+
+// V177_6: default padding is zero on all sides
+TEST(LayoutNodeProps, PaddingDefaultZeroV177) {
+    auto node = std::make_unique<LayoutNode>();
+    EXPECT_FLOAT_EQ(node->geometry.padding.top, 0.0f);
+    EXPECT_FLOAT_EQ(node->geometry.padding.right, 0.0f);
+    EXPECT_FLOAT_EQ(node->geometry.padding.bottom, 0.0f);
+    EXPECT_FLOAT_EQ(node->geometry.padding.left, 0.0f);
+}
+
+// V177_7: default margin is zero on all sides
+TEST(LayoutNodeProps, MarginDefaultZeroV177) {
+    auto node = std::make_unique<LayoutNode>();
+    EXPECT_FLOAT_EQ(node->geometry.margin.top, 0.0f);
+    EXPECT_FLOAT_EQ(node->geometry.margin.right, 0.0f);
+    EXPECT_FLOAT_EQ(node->geometry.margin.bottom, 0.0f);
+    EXPECT_FLOAT_EQ(node->geometry.margin.left, 0.0f);
+}
+
+// V177_8: block child inherits container width
+TEST(LayoutEngineTest, BlockChildInheritsContainerWidthV177) {
+    auto root = make_block("div");
+    root->specified_width = 400.0f;
+
+    auto child = make_block("div");
+    child->specified_height = 50.0f;
+
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 400.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.width, 400.0f);
+}

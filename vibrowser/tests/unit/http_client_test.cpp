@@ -30851,3 +30851,214 @@ TEST(HttpClient, CookieJarPathScopingV176) {
     EXPECT_EQ(root.find("deep176=val"), std::string::npos)
         << "Cookie with Path=/app/settings should NOT be visible on /, got: " << root;
 }
+
+// ===========================================================================
+// Round 177 – Net Tests (V177)
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// 1. Request serialization: POST with custom headers and body
+// ---------------------------------------------------------------------------
+TEST(HttpClient, RequestSerializePostWithBodyV177) {
+    Request req;
+    req.method = Method::POST;
+    req.host = "api.v177.example.com";
+    req.port = 443;
+    req.path = "/data";
+    req.use_tls = true;
+    req.headers.set("content-type", "application/json");
+    std::string body_str = R"({"key":"v177"})";
+    req.body.assign(body_str.begin(), body_str.end());
+
+    auto bytes = req.serialize();
+    std::string raw(bytes.begin(), bytes.end());
+
+    // Method and path
+    EXPECT_NE(raw.find("POST /data HTTP/1.1\r\n"), std::string::npos)
+        << "Should start with POST request line, got: " << raw;
+    // Port 443 should be omitted from Host header
+    EXPECT_NE(raw.find("Host: api.v177.example.com\r\n"), std::string::npos)
+        << "Port 443 should be omitted from Host, got: " << raw;
+    // Custom header should be lowercase
+    EXPECT_NE(raw.find("content-type: application/json\r\n"), std::string::npos)
+        << "Custom headers should be lowercase, got: " << raw;
+    // Body should be present
+    EXPECT_NE(raw.find(R"({"key":"v177"})"), std::string::npos)
+        << "Body should be present in serialized request, got: " << raw;
+}
+
+// ---------------------------------------------------------------------------
+// 2. Request serialization: HEAD method with non-standard port
+// ---------------------------------------------------------------------------
+TEST(HttpClient, RequestSerializeHeadNonStandardPortV177) {
+    Request req;
+    req.method = Method::HEAD;
+    req.host = "cdn.v177.example.com";
+    req.port = 8080;
+    req.path = "/status";
+
+    auto bytes = req.serialize();
+    std::string raw(bytes.begin(), bytes.end());
+
+    EXPECT_NE(raw.find("HEAD /status HTTP/1.1\r\n"), std::string::npos)
+        << "Should use HEAD method, got: " << raw;
+    // Non-standard port should appear in Host header
+    EXPECT_NE(raw.find("Host: cdn.v177.example.com:8080\r\n"), std::string::npos)
+        << "Non-standard port 8080 should be in Host header, got: " << raw;
+    // Connection close
+    EXPECT_NE(raw.find("Connection: close\r\n"), std::string::npos)
+        << "Should have Connection: close, got: " << raw;
+}
+
+// ---------------------------------------------------------------------------
+// 3. Response parsing: 404 status with body
+// ---------------------------------------------------------------------------
+TEST(HttpClient, ResponseParse404WithBodyV177) {
+    std::string raw =
+        "HTTP/1.1 404 Not Found\r\n"
+        "Content-Type: text/html\r\n"
+        "Content-Length: 18\r\n"
+        "\r\n"
+        "<h1>Not Found</h1>";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value()) << "Should parse 404 response";
+    EXPECT_EQ(resp->status, 404);
+    EXPECT_EQ(resp->status_text, "Not Found");
+    EXPECT_EQ(resp->headers.get("content-type").value(), "text/html");
+    EXPECT_EQ(resp->body_as_string(), "<h1>Not Found</h1>");
+}
+
+// ---------------------------------------------------------------------------
+// 4. Response parsing: 301 redirect with Location header
+// ---------------------------------------------------------------------------
+TEST(HttpClient, ResponseParse301RedirectV177) {
+    std::string raw =
+        "HTTP/1.1 301 Moved Permanently\r\n"
+        "Location: https://v177.example.com/new-path\r\n"
+        "Content-Length: 0\r\n"
+        "\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value()) << "Should parse 301 response";
+    EXPECT_EQ(resp->status, 301);
+    EXPECT_EQ(resp->status_text, "Moved Permanently");
+    EXPECT_EQ(resp->headers.get("location").value(), "https://v177.example.com/new-path");
+    EXPECT_TRUE(resp->body_as_string().empty())
+        << "301 with Content-Length: 0 should have empty body";
+}
+
+// ---------------------------------------------------------------------------
+// 5. ConnectionPool: acquire returns -1 when empty, then works after release
+// ---------------------------------------------------------------------------
+TEST(HttpClient, ConnectionPoolAcquireAndReleaseV177) {
+    ConnectionPool pool(2);
+
+    // Acquire from empty pool returns -1
+    EXPECT_EQ(pool.acquire("v177.example.com", 443), -1)
+        << "Acquire from empty pool should return -1";
+    EXPECT_EQ(pool.count("v177.example.com", 443), 0u)
+        << "Empty pool should have count 0";
+
+    // Release a connection, then acquire it back
+    pool.release("v177.example.com", 443, 42);
+    EXPECT_EQ(pool.count("v177.example.com", 443), 1u)
+        << "Pool should have 1 connection after release";
+
+    int fd = pool.acquire("v177.example.com", 443);
+    EXPECT_EQ(fd, 42) << "Should acquire the released fd";
+    EXPECT_EQ(pool.count("v177.example.com", 443), 0u)
+        << "Pool should be empty after acquire";
+}
+
+// ---------------------------------------------------------------------------
+// 6. ConnectionPool: max_per_host limit evicts oldest connections
+// ---------------------------------------------------------------------------
+TEST(HttpClient, ConnectionPoolMaxPerHostLimitV177) {
+    ConnectionPool pool(2);
+
+    // Fill to max capacity
+    pool.release("v177.example.com", 80, 10);
+    pool.release("v177.example.com", 80, 20);
+    EXPECT_EQ(pool.count("v177.example.com", 80), 2u);
+
+    // Release a third — should evict oldest (10)
+    pool.release("v177.example.com", 80, 30);
+    EXPECT_LE(pool.count("v177.example.com", 80), 2u)
+        << "Pool should not exceed max_per_host=2";
+
+    // Verify connections are available
+    int fd1 = pool.acquire("v177.example.com", 80);
+    int fd2 = pool.acquire("v177.example.com", 80);
+    EXPECT_NE(fd1, -1);
+    EXPECT_NE(fd2, -1);
+
+    // Pool should now be empty
+    EXPECT_EQ(pool.acquire("v177.example.com", 80), -1);
+}
+
+// ---------------------------------------------------------------------------
+// 7. CookieJar: subdomain cookie matching
+// ---------------------------------------------------------------------------
+TEST(HttpClient, CookieJarSubdomainMatchingV177) {
+    CookieJar jar;
+    // Set a cookie on the parent domain
+    jar.set_from_header("sid177=abc123; Path=/; Domain=.v177.example.com", "www.v177.example.com");
+
+    // Should be visible on exact match subdomain
+    std::string www = jar.get_cookie_header("www.v177.example.com", "/", false);
+    EXPECT_NE(www.find("sid177=abc123"), std::string::npos)
+        << "Cookie should match www.v177.example.com, got: " << www;
+
+    // Should be visible on other subdomain
+    std::string api = jar.get_cookie_header("api.v177.example.com", "/", false);
+    EXPECT_NE(api.find("sid177=abc123"), std::string::npos)
+        << "Cookie with Domain=.v177.example.com should match api.v177.example.com, got: " << api;
+
+    // Should be visible on parent domain
+    std::string parent = jar.get_cookie_header("v177.example.com", "/", false);
+    EXPECT_NE(parent.find("sid177=abc123"), std::string::npos)
+        << "Cookie should match parent v177.example.com, got: " << parent;
+
+    // Should NOT match unrelated domain
+    std::string unrelated = jar.get_cookie_header("other.example.com", "/", false);
+    EXPECT_EQ(unrelated.find("sid177=abc123"), std::string::npos)
+        << "Cookie should NOT match other.example.com, got: " << unrelated;
+}
+
+// ---------------------------------------------------------------------------
+// 8. HeaderMap: iteration covers all appended entries
+// ---------------------------------------------------------------------------
+TEST(HttpClient, HeaderMapIterationCoversAllEntriesV177) {
+    HeaderMap headers;
+    headers.set("X-V177-Single", "only");
+    headers.append("X-V177-Multi", "a");
+    headers.append("X-V177-Multi", "b");
+    headers.set("X-V177-Other", "z");
+
+    // Count entries via iteration
+    size_t count = 0;
+    bool found_single = false;
+    bool found_multi_a = false;
+    bool found_multi_b = false;
+    bool found_other = false;
+
+    for (auto it = headers.begin(); it != headers.end(); ++it) {
+        count++;
+        if (it->second == "only") found_single = true;
+        if (it->second == "a") found_multi_a = true;
+        if (it->second == "b") found_multi_b = true;
+        if (it->second == "z") found_other = true;
+    }
+
+    EXPECT_EQ(count, 4u) << "Should iterate over 4 entries total";
+    EXPECT_TRUE(found_single) << "Should find X-V177-Single=only";
+    EXPECT_TRUE(found_multi_a) << "Should find X-V177-Multi=a";
+    EXPECT_TRUE(found_multi_b) << "Should find X-V177-Multi=b";
+    EXPECT_TRUE(found_other) << "Should find X-V177-Other=z";
+
+    // size() should match iteration count
+    EXPECT_EQ(headers.size(), 4u) << "size() should agree with iteration count";
+}

@@ -27343,3 +27343,110 @@ TEST(HtmlParserTest, HtmlV176_8) {
     EXPECT_GE(strong->children.size(), 2u);
     EXPECT_EQ(strong->text_content(), "bold italic");
 }
+
+// ---------------------------------------------------------------------------
+// Cycle V177 — various HTML parsing tests
+// ---------------------------------------------------------------------------
+
+TEST(HtmlParserTest, HtmlV177_1) {
+    auto doc = clever::html::parse("<nav><a href=\"/home\">Home</a></nav>");
+    ASSERT_NE(doc, nullptr);
+    auto* nav = doc->find_element("nav");
+    ASSERT_NE(nav, nullptr);
+    EXPECT_EQ(nav->tag_name, "nav");
+    ASSERT_GE(nav->children.size(), 1u);
+    auto* a = doc->find_element("a");
+    ASSERT_NE(a, nullptr);
+    EXPECT_EQ(a->tag_name, "a");
+    ASSERT_GE(a->attributes.size(), 1u);
+    EXPECT_EQ(a->attributes[0].name, "href");
+    EXPECT_EQ(a->attributes[0].value, "/home");
+    EXPECT_EQ(a->text_content(), "Home");
+}
+
+TEST(HtmlParserTest, HtmlV177_2) {
+    auto doc = clever::html::parse("<table><tr><td>cell</td></tr></table>");
+    ASSERT_NE(doc, nullptr);
+    auto* table = doc->find_element("table");
+    ASSERT_NE(table, nullptr);
+    EXPECT_EQ(table->tag_name, "table");
+    auto* td = doc->find_element("td");
+    ASSERT_NE(td, nullptr);
+    EXPECT_EQ(td->tag_name, "td");
+    EXPECT_EQ(td->text_content(), "cell");
+}
+
+TEST(HtmlParserTest, HtmlV177_3) {
+    auto doc = clever::html::parse("<footer><small>copyright</small></footer>");
+    ASSERT_NE(doc, nullptr);
+    auto* footer = doc->find_element("footer");
+    ASSERT_NE(footer, nullptr);
+    EXPECT_EQ(footer->tag_name, "footer");
+    auto* small = doc->find_element("small");
+    ASSERT_NE(small, nullptr);
+    EXPECT_EQ(small->text_content(), "copyright");
+}
+
+TEST(HtmlParserTest, HtmlV177_4) {
+    auto doc = clever::html::parse("<img src=\"pic.jpg\" alt=\"photo\">");
+    ASSERT_NE(doc, nullptr);
+    auto* img = doc->find_element("img");
+    ASSERT_NE(img, nullptr);
+    EXPECT_EQ(img->tag_name, "img");
+    ASSERT_GE(img->attributes.size(), 2u);
+    EXPECT_EQ(img->attributes[0].name, "src");
+    EXPECT_EQ(img->attributes[0].value, "pic.jpg");
+    EXPECT_EQ(img->attributes[1].name, "alt");
+    EXPECT_EQ(img->attributes[1].value, "photo");
+    EXPECT_TRUE(img->children.empty());
+}
+
+TEST(HtmlParserTest, HtmlV177_5) {
+    auto doc = clever::html::parse("<header><h2>Subtitle</h2></header>");
+    ASSERT_NE(doc, nullptr);
+    auto* header = doc->find_element("header");
+    ASSERT_NE(header, nullptr);
+    EXPECT_EQ(header->tag_name, "header");
+    auto* h2 = doc->find_element("h2");
+    ASSERT_NE(h2, nullptr);
+    EXPECT_EQ(h2->tag_name, "h2");
+    EXPECT_EQ(h2->text_content(), "Subtitle");
+}
+
+TEST(HtmlParserTest, HtmlV177_6) {
+    auto doc = clever::html::parse("<dl><dt>term</dt><dd>definition</dd></dl>");
+    ASSERT_NE(doc, nullptr);
+    auto* dl = doc->find_element("dl");
+    ASSERT_NE(dl, nullptr);
+    EXPECT_EQ(dl->tag_name, "dl");
+    auto* dt = doc->find_element("dt");
+    ASSERT_NE(dt, nullptr);
+    EXPECT_EQ(dt->text_content(), "term");
+    auto* dd = doc->find_element("dd");
+    ASSERT_NE(dd, nullptr);
+    EXPECT_EQ(dd->text_content(), "definition");
+}
+
+TEST(HtmlParserTest, HtmlV177_7) {
+    auto doc = clever::html::parse("<main><div>content</div></main>");
+    ASSERT_NE(doc, nullptr);
+    auto* main_el = doc->find_element("main");
+    ASSERT_NE(main_el, nullptr);
+    EXPECT_EQ(main_el->tag_name, "main");
+    ASSERT_GE(main_el->children.size(), 1u);
+    EXPECT_EQ(main_el->children[0]->tag_name, "div");
+    EXPECT_EQ(main_el->children[0]->text_content(), "content");
+}
+
+TEST(HtmlParserTest, HtmlV177_8) {
+    auto doc = clever::html::parse("<aside><p>sidebar</p></aside>");
+    ASSERT_NE(doc, nullptr);
+    auto* aside = doc->find_element("aside");
+    ASSERT_NE(aside, nullptr);
+    EXPECT_EQ(aside->tag_name, "aside");
+    ASSERT_GE(aside->children.size(), 1u);
+    auto* p = doc->find_element("p");
+    ASSERT_NE(p, nullptr);
+    EXPECT_EQ(p->tag_name, "p");
+    EXPECT_EQ(p->text_content(), "sidebar");
+}

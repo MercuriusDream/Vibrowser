@@ -2087,3 +2087,40 @@ TEST(IsURLCodePoint, SpaceInvalidV176) {
     // Newline (U+000A) is also invalid
     EXPECT_FALSE(is_url_code_point(U'\n'));
 }
+
+// =============================================================================
+// Cycle V177 — Percent encoding tests
+// =============================================================================
+TEST(PercentEncoding, PipeCharEncodedV177) {
+    // '|' (U+007C) should be percent-encoded as %7C
+    EXPECT_EQ(percent_encode("|"), "%7C");
+    EXPECT_EQ(percent_encode("a|b"), "a%7Cb");
+    EXPECT_EQ(percent_encode("||"), "%7C%7C");
+}
+
+TEST(PercentDecoding, RoundTripWithBracketsV177) {
+    // Encoding and then decoding brackets should return original
+    std::string original = "[data]{value}";
+    std::string encoded = percent_encode(original);
+    std::string decoded = percent_decode(encoded);
+    EXPECT_EQ(decoded, original);
+}
+
+TEST(PercentEncoding, GraveAccentEncodedV177) {
+    // '`' (U+0060) should be percent-encoded as %60
+    EXPECT_EQ(percent_encode("`"), "%60");
+    EXPECT_EQ(percent_encode("a`b"), "a%60b");
+    EXPECT_EQ(percent_encode("``"), "%60%60");
+}
+
+TEST(IsURLCodePoint, DigitsAndLettersValidV177) {
+    // ASCII digits 0-9 are valid URL code points
+    EXPECT_TRUE(is_url_code_point(U'0'));
+    EXPECT_TRUE(is_url_code_point(U'9'));
+    // ASCII uppercase letters are valid
+    EXPECT_TRUE(is_url_code_point(U'A'));
+    EXPECT_TRUE(is_url_code_point(U'Z'));
+    // ASCII lowercase letters are valid
+    EXPECT_TRUE(is_url_code_point(U'a'));
+    EXPECT_TRUE(is_url_code_point(U'z'));
+}

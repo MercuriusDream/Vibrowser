@@ -3516,3 +3516,75 @@ TEST(MessageChannelTest, MessageChannelV176_2_PayloadInspectionV176) {
     EXPECT_EQ(captured_payload[3], 0xEF);
     EXPECT_EQ(captured_payload[5], 0xFE);
 }
+
+// ------------------------------------------------------------------
+// V177 MessageChannel tests
+// ------------------------------------------------------------------
+
+TEST(MessageChannelTest, MessageChannelV177_1_BidirectionalSendReceiveV177) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel chan_a(std::move(pa));
+    MessageChannel chan_b(std::move(pb));
+
+    Message msg_to_b;
+    msg_to_b.type = 10;
+    msg_to_b.request_id = 100;
+    msg_to_b.payload = {0x01, 0x02, 0x03};
+
+    Message msg_to_a;
+    msg_to_a.type = 20;
+    msg_to_a.request_id = 200;
+    msg_to_a.payload = {0x04, 0x05};
+
+    ASSERT_TRUE(chan_a.send(msg_to_b));
+    ASSERT_TRUE(chan_b.send(msg_to_a));
+
+    auto recv_b = chan_b.receive();
+    ASSERT_TRUE(recv_b.has_value());
+    EXPECT_EQ(recv_b->type, 10u);
+    EXPECT_EQ(recv_b->request_id, 100u);
+    EXPECT_EQ(recv_b->payload.size(), 3u);
+    EXPECT_EQ(recv_b->payload[0], 0x01);
+
+    auto recv_a = chan_a.receive();
+    ASSERT_TRUE(recv_a.has_value());
+    EXPECT_EQ(recv_a->type, 20u);
+    EXPECT_EQ(recv_a->request_id, 200u);
+    EXPECT_EQ(recv_a->payload.size(), 2u);
+    EXPECT_EQ(recv_a->payload[1], 0x05);
+}
+
+TEST(MessageChannelTest, MessageChannelV177_2_DispatchMultipleTypesWithPayloadV177) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel ch(std::move(pa));
+
+    std::vector<uint8_t> payload_100;
+    std::vector<uint8_t> payload_200;
+    int count_100 = 0, count_200 = 0;
+
+    ch.on(100, [&](const Message& msg) {
+        count_100++;
+        payload_100 = msg.payload;
+    });
+    ch.on(200, [&](const Message& msg) {
+        count_200++;
+        payload_200 = msg.payload;
+    });
+
+    for (int i = 0; i < 4; ++i) {
+        Message msg;
+        msg.type = (i % 2 == 0) ? 100 : 200;
+        msg.request_id = static_cast<uint32_t>(i);
+        msg.payload = {static_cast<uint8_t>(i * 10), static_cast<uint8_t>(i * 10 + 1)};
+        ch.dispatch(msg);
+    }
+
+    EXPECT_EQ(count_100, 2);
+    EXPECT_EQ(count_200, 2);
+    EXPECT_EQ(payload_100.size(), 2u);
+    EXPECT_EQ(payload_100[0], 20);
+    EXPECT_EQ(payload_100[1], 21);
+    EXPECT_EQ(payload_200.size(), 2u);
+    EXPECT_EQ(payload_200[0], 30);
+    EXPECT_EQ(payload_200[1], 31);
+}

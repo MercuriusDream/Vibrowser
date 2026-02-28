@@ -3423,3 +3423,66 @@ TEST(MessagePipeTest, MessagePipeV176_3_MultiMessageThenCloseV176) {
     auto end = b.receive();
     EXPECT_FALSE(end.has_value());
 }
+
+// ------------------------------------------------------------------
+// V177 MessagePipe tests
+// ------------------------------------------------------------------
+
+TEST(MessagePipeTest, MessagePipeV177_1_LargePayloadRoundTripV177) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    std::vector<uint8_t> large(4096);
+    for (size_t i = 0; i < large.size(); ++i) {
+        large[i] = static_cast<uint8_t>((i * 7 + 13) % 256);
+    }
+
+    ASSERT_TRUE(a.send(large));
+
+    auto received = b.receive();
+    ASSERT_TRUE(received.has_value());
+    EXPECT_EQ(received->size(), 4096u);
+    EXPECT_EQ(*received, large);
+}
+
+TEST(MessagePipeTest, MessagePipeV177_2_CloseBeforeReceiveV177) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    std::vector<uint8_t> msg1 = {0xAA, 0xBB};
+    std::vector<uint8_t> msg2 = {0xCC, 0xDD, 0xEE};
+    ASSERT_TRUE(a.send(msg1));
+    ASSERT_TRUE(a.send(msg2));
+    a.close();
+
+    auto r1 = b.receive();
+    ASSERT_TRUE(r1.has_value());
+    EXPECT_EQ(*r1, msg1);
+
+    auto r2 = b.receive();
+    ASSERT_TRUE(r2.has_value());
+    EXPECT_EQ(*r2, msg2);
+
+    auto r3 = b.receive();
+    EXPECT_FALSE(r3.has_value());
+
+    auto r4 = b.receive();
+    EXPECT_FALSE(r4.has_value());
+}
+
+TEST(MessagePipeTest, MessagePipeV177_3_EmptyMessageSendReceiveV177) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    std::vector<uint8_t> empty_msg;
+    ASSERT_TRUE(a.send(empty_msg));
+
+    std::vector<uint8_t> nonempty = {0x42};
+    ASSERT_TRUE(a.send(nonempty));
+
+    auto r1 = b.receive();
+    ASSERT_TRUE(r1.has_value());
+    EXPECT_TRUE(r1->empty());
+
+    auto r2 = b.receive();
+    ASSERT_TRUE(r2.has_value());
+    EXPECT_EQ(r2->size(), 1u);
+    EXPECT_EQ((*r2)[0], 0x42);
+}

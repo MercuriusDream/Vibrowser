@@ -25453,3 +25453,110 @@ TEST(DomNode, FirstChildUpdatesAfterInsertBeforeAtHeadV176) {
     EXPECT_EQ(new_first_ptr->next_sibling(), existing_ptr);
     EXPECT_EQ(existing_ptr->previous_sibling(), new_first_ptr);
 }
+
+// ---------------------------------------------------------------------------
+// Round 177 — DOM tests
+// ---------------------------------------------------------------------------
+
+// 1. Sibling pointers correct after appending three children
+TEST(DomNode, SiblingPointersAfterThreeAppendsV177) {
+    auto parent = std::make_unique<Element>("ul");
+    auto a = std::make_unique<Element>("li");
+    auto b = std::make_unique<Element>("li");
+    auto c = std::make_unique<Element>("li");
+    auto* a_ptr = a.get();
+    auto* b_ptr = b.get();
+    auto* c_ptr = c.get();
+    parent->append_child(std::move(a));
+    parent->append_child(std::move(b));
+    parent->append_child(std::move(c));
+    EXPECT_EQ(a_ptr->previous_sibling(), nullptr);
+    EXPECT_EQ(a_ptr->next_sibling(), b_ptr);
+    EXPECT_EQ(b_ptr->previous_sibling(), a_ptr);
+    EXPECT_EQ(b_ptr->next_sibling(), c_ptr);
+    EXPECT_EQ(c_ptr->previous_sibling(), b_ptr);
+    EXPECT_EQ(c_ptr->next_sibling(), nullptr);
+}
+
+// 2. Setting and retrieving multiple attributes
+TEST(DomElement, MultipleAttributesSetAndRetrieveV177) {
+    Element elem("img");
+    elem.set_attribute("src", "logo.png");
+    elem.set_attribute("alt", "Logo");
+    elem.set_attribute("width", "200");
+    EXPECT_EQ(elem.attributes().size(), 3u);
+    EXPECT_EQ(elem.get_attribute("src").value(), "logo.png");
+    EXPECT_EQ(elem.get_attribute("alt").value(), "Logo");
+    EXPECT_EQ(elem.get_attribute("width").value(), "200");
+}
+
+// 3. Document create_element and append then retrieve by ID
+TEST(DomDocument, CreateElementAndFindByIdV177) {
+    Document doc;
+    auto elem = doc.create_element("article");
+    auto* elem_ptr = elem.get();
+    elem_ptr->set_attribute("id", "content");
+    doc.register_id("content", elem_ptr);
+    doc.append_child(std::move(elem));
+    auto* found = doc.get_element_by_id("content");
+    EXPECT_EQ(found, elem_ptr);
+    EXPECT_EQ(found->tag_name(), "article");
+}
+
+// 4. Event type and stop_propagation
+TEST(DomEvent, StopPropagationFlagV177) {
+    Event event("mousedown");
+    EXPECT_EQ(event.type(), "mousedown");
+    EXPECT_FALSE(event.propagation_stopped());
+    event.stop_propagation();
+    EXPECT_TRUE(event.propagation_stopped());
+}
+
+// 5. text_content concatenates text from multiple children
+TEST(DomNode, TextContentFromMultipleChildrenV177) {
+    auto parent = std::make_unique<Element>("p");
+    auto t1 = std::make_unique<Text>("Hello ");
+    auto bold = std::make_unique<Element>("b");
+    auto t2 = std::make_unique<Text>("world");
+    bold->append_child(std::move(t2));
+    parent->append_child(std::move(t1));
+    parent->append_child(std::move(bold));
+    EXPECT_EQ(parent->text_content(), "Hello world");
+}
+
+// 6. ClassList toggle adds when absent removes when present
+TEST(DomElement, ClassListToggleBehaviorV177) {
+    Element elem("div");
+    EXPECT_FALSE(elem.class_list().contains("visible"));
+    elem.class_list().toggle("visible");
+    EXPECT_TRUE(elem.class_list().contains("visible"));
+    elem.class_list().toggle("visible");
+    EXPECT_FALSE(elem.class_list().contains("visible"));
+}
+
+// 7. DirtyFlags All sets all flags then clear resets
+TEST(DomNode, DirtyFlagAllThenClearV177) {
+    Element elem("section");
+    elem.mark_dirty(DirtyFlags::All);
+    EXPECT_NE(elem.dirty_flags() & DirtyFlags::Style, DirtyFlags::None);
+    EXPECT_NE(elem.dirty_flags() & DirtyFlags::Layout, DirtyFlags::None);
+    EXPECT_NE(elem.dirty_flags() & DirtyFlags::Paint, DirtyFlags::None);
+    elem.clear_dirty();
+    EXPECT_EQ(elem.dirty_flags(), DirtyFlags::None);
+}
+
+// 8. Child pointers update after removing last child
+TEST(DomNode, LastChildUpdateAfterRemoveLastV177) {
+    auto parent = std::make_unique<Element>("div");
+    auto a = std::make_unique<Element>("p");
+    auto b = std::make_unique<Element>("p");
+    auto* a_ptr = a.get();
+    auto* b_ptr = b.get();
+    parent->append_child(std::move(a));
+    parent->append_child(std::move(b));
+    EXPECT_EQ(parent->last_child(), b_ptr);
+    parent->remove_child(*b_ptr);
+    EXPECT_EQ(parent->last_child(), a_ptr);
+    EXPECT_EQ(parent->first_child(), a_ptr);
+    EXPECT_EQ(a_ptr->next_sibling(), nullptr);
+}

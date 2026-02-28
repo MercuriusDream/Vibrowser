@@ -21997,3 +21997,72 @@ TEST(SerializerTest, SerializerV176_3_StringThenBytesRoundTrip) {
     EXPECT_EQ(d.read_string(), "end");
     EXPECT_FALSE(d.has_remaining());
 }
+
+// ------------------------------------------------------------------
+// V177 Serializer tests
+// ------------------------------------------------------------------
+
+TEST(SerializerTest, SerializerV177_1_F64SpecialValuesRoundTrip) {
+    Serializer s;
+    s.write_f64(0.0);
+    s.write_f64(-0.0);
+    s.write_f64(std::numeric_limits<double>::infinity());
+    s.write_f64(-std::numeric_limits<double>::infinity());
+    s.write_f64(std::numeric_limits<double>::max());
+    s.write_f64(std::numeric_limits<double>::min());
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_f64(), 0.0);
+    double neg_zero = d.read_f64();
+    EXPECT_EQ(neg_zero, 0.0);
+    EXPECT_TRUE(std::signbit(neg_zero));
+    EXPECT_EQ(d.read_f64(), std::numeric_limits<double>::infinity());
+    EXPECT_EQ(d.read_f64(), -std::numeric_limits<double>::infinity());
+    EXPECT_EQ(d.read_f64(), std::numeric_limits<double>::max());
+    EXPECT_EQ(d.read_f64(), std::numeric_limits<double>::min());
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, SerializerV177_2_BoolSequenceRoundTrip) {
+    Serializer s;
+    s.write_bool(true);
+    s.write_bool(false);
+    s.write_bool(false);
+    s.write_bool(true);
+    s.write_bool(true);
+    s.write_bool(false);
+    s.write_bool(true);
+    s.write_bool(false);
+
+    Deserializer d(s.data());
+    EXPECT_TRUE(d.read_bool());
+    EXPECT_FALSE(d.read_bool());
+    EXPECT_FALSE(d.read_bool());
+    EXPECT_TRUE(d.read_bool());
+    EXPECT_TRUE(d.read_bool());
+    EXPECT_FALSE(d.read_bool());
+    EXPECT_TRUE(d.read_bool());
+    EXPECT_FALSE(d.read_bool());
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, SerializerV177_3_MixedU32I64StringBytesRoundTrip) {
+    Serializer s;
+    s.write_u32(42);
+    s.write_i64(-9999999999LL);
+    s.write_string("V177 mixed test");
+    std::vector<uint8_t> blob = {0x10, 0x20, 0x30, 0x40, 0x50, 0x60};
+    s.write_bytes(blob.data(), blob.size());
+    s.write_u32(0xCAFEBABE);
+    s.write_bool(true);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u32(), 42u);
+    EXPECT_EQ(d.read_i64(), -9999999999LL);
+    EXPECT_EQ(d.read_string(), "V177 mixed test");
+    auto read_blob = d.read_bytes();
+    EXPECT_EQ(read_blob, blob);
+    EXPECT_EQ(d.read_u32(), 0xCAFEBABEu);
+    EXPECT_TRUE(d.read_bool());
+    EXPECT_FALSE(d.has_remaining());
+}

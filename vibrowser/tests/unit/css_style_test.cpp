@@ -26864,3 +26864,43 @@ TEST(PropertyCascadeTest, PositionRelativeAppliedV176) {
     cascade.apply_declaration(style, make_decl("position", "relative"), parent);
     EXPECT_EQ(style.position, Position::Relative);
 }
+
+// ---------------------------------------------------------------------------
+// Cycle V177 — display none, position absolute, user-select none, pointer-events none
+// ---------------------------------------------------------------------------
+
+TEST(PropertyCascadeTest, DisplayNoneAppliedV177) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("display", "none"), parent);
+    EXPECT_EQ(style.display, Display::None);
+}
+
+TEST(PropertyCascadeTest, PositionAbsoluteAppliedV177) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("position", "absolute"), parent);
+    EXPECT_EQ(style.position, Position::Absolute);
+}
+
+TEST(PropertyCascadeTest, UserSelectNoneAppliedV177) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("user-select", "none"), parent);
+    EXPECT_EQ(style.user_select, UserSelect::None);
+}
+
+TEST(PropertyCascadeTest, PointerEventsNoneAppliedV177) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("pointer-events", "none"), parent);
+    EXPECT_EQ(style.pointer_events, PointerEvents::None);
+}

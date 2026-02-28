@@ -12176,3 +12176,47 @@ TEST_F(CSSStylesheetTest, LeftOffsetDeclarationV176) {
     EXPECT_EQ(sheet.rules[0].declarations[0].values[0].numeric_value, 40.0);
     EXPECT_EQ(sheet.rules[0].declarations[0].values[0].unit, "px");
 }
+
+// ---------------------------------------------------------------------------
+// Cycle V177 — column-gap, row-gap, flex-basis, outline-offset declarations
+// ---------------------------------------------------------------------------
+
+TEST_F(CSSStylesheetTest, ColumnGapDeclarationV177) {
+    auto sheet = parse_stylesheet("div { column-gap: 16px; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    ASSERT_EQ(sheet.rules[0].declarations.size(), 1u);
+    EXPECT_EQ(sheet.rules[0].declarations[0].property, "column-gap");
+    ASSERT_GE(sheet.rules[0].declarations[0].values.size(), 1u);
+    EXPECT_EQ(sheet.rules[0].declarations[0].values[0].numeric_value, 16.0);
+    EXPECT_EQ(sheet.rules[0].declarations[0].values[0].unit, "px");
+}
+
+TEST_F(CSSStylesheetTest, RowGapDeclarationV177) {
+    auto sheet = parse_stylesheet("ul { row-gap: 8px; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    ASSERT_EQ(sheet.rules[0].declarations.size(), 1u);
+    EXPECT_EQ(sheet.rules[0].declarations[0].property, "row-gap");
+    ASSERT_GE(sheet.rules[0].declarations[0].values.size(), 1u);
+    EXPECT_EQ(sheet.rules[0].declarations[0].values[0].numeric_value, 8.0);
+    EXPECT_EQ(sheet.rules[0].declarations[0].values[0].unit, "px");
+}
+
+TEST_F(CSSStylesheetTest, FlexBasisDeclarationV177) {
+    auto sheet = parse_stylesheet("span { flex-basis: 200px; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    ASSERT_EQ(sheet.rules[0].declarations.size(), 1u);
+    EXPECT_EQ(sheet.rules[0].declarations[0].property, "flex-basis");
+    ASSERT_GE(sheet.rules[0].declarations[0].values.size(), 1u);
+    EXPECT_EQ(sheet.rules[0].declarations[0].values[0].numeric_value, 200.0);
+    EXPECT_EQ(sheet.rules[0].declarations[0].values[0].unit, "px");
+}
+
+TEST_F(CSSStylesheetTest, OutlineOffsetDeclarationV177) {
+    auto sheet = parse_stylesheet("a { outline-offset: 3px; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    ASSERT_EQ(sheet.rules[0].declarations.size(), 1u);
+    EXPECT_EQ(sheet.rules[0].declarations[0].property, "outline-offset");
+    ASSERT_GE(sheet.rules[0].declarations[0].values.size(), 1u);
+    EXPECT_EQ(sheet.rules[0].declarations[0].values[0].numeric_value, 3.0);
+    EXPECT_EQ(sheet.rules[0].declarations[0].values[0].unit, "px");
+}

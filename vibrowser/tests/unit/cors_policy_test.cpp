@@ -13670,3 +13670,53 @@ TEST(CORSPolicyTest, CorsV176_7_NormalizeSetsCrossOriginHeader) {
 TEST(CORSPolicyTest, CorsV176_8_Ipv6AddressEnforceable) {
     EXPECT_TRUE(has_enforceable_document_origin("http://[::1]"));
 }
+
+// ---------------------------------------------------------------------------
+// Round 177 — CORS tests
+// ---------------------------------------------------------------------------
+
+// 1. javascript: scheme is not enforceable
+TEST(CORSPolicyTest, CorsV177_1_JavascriptSchemeNotEnforceable) {
+    EXPECT_FALSE(has_enforceable_document_origin("javascript:void(0)"));
+}
+
+// 2. Same origin same scheme and host but different path
+TEST(CORSPolicyTest, CorsV177_2_SameOriginDiffPath) {
+    EXPECT_FALSE(is_cross_origin("https://site.example", "https://site.example/other/page"));
+}
+
+// 3. ACAO mismatch blocks response
+TEST(CORSPolicyTest, CorsV177_3_AcaoMismatchBlocks) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "https://other.example");
+    EXPECT_FALSE(cors_allows_response("https://app.example", "https://api.example/data", headers, false));
+}
+
+// 4. Should attach origin for cross-origin request with different port
+TEST(CORSPolicyTest, CorsV177_4_ShouldAttachOriginDiffPort) {
+    EXPECT_TRUE(should_attach_origin_header("http://host.example:3000",
+                                            "http://host.example:4000/api"));
+}
+
+// 5. Trailing slash in origin does not make it enforceable
+TEST(CORSPolicyTest, CorsV177_5_TrailingSlashNotEnforceable) {
+    EXPECT_FALSE(has_enforceable_document_origin("https://app.example/"));
+}
+
+// 6. http URL is CORS eligible
+TEST(CORSPolicyTest, CorsV177_6_HttpUrlIsCorsEligible) {
+    EXPECT_TRUE(is_cors_eligible_request_url("http://api.example/v1/data"));
+}
+
+// 7. Normalize removes origin header for same-origin
+TEST(CORSPolicyTest, CorsV177_7_NormalizeRemovesOriginForSameOrigin) {
+    clever::net::HeaderMap headers;
+    headers.set("Origin", "https://app.example");
+    normalize_outgoing_origin_header(headers, "https://app.example", "https://app.example/api");
+    EXPECT_FALSE(headers.has("origin"));
+}
+
+// 8. Cross-origin when scheme differs http vs https
+TEST(CORSPolicyTest, CorsV177_8_CrossOriginSchemeDifference) {
+    EXPECT_TRUE(is_cross_origin("http://app.example", "https://app.example/page"));
+}

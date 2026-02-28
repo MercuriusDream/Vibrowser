@@ -39340,3 +39340,127 @@ TEST(JSEngine, JsV176_8) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(r2, "005");
 }
+
+// V177_1: Array.find and Array.findIndex
+TEST(JSEngine, JsV177_1) {
+    clever::js::JSEngine engine;
+    auto r1 = engine.evaluate(R"JS(
+        [10, 20, 30, 40].find(function(x) { return x > 25; }).toString();
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(r1, "30");
+
+    auto r2 = engine.evaluate(R"JS(
+        [10, 20, 30, 40].findIndex(function(x) { return x > 25; }).toString();
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(r2, "2");
+}
+
+// V177_2: String.startsWith and String.endsWith
+TEST(JSEngine, JsV177_2) {
+    clever::js::JSEngine engine;
+    auto r1 = engine.evaluate(R"JS(
+        'hello world'.startsWith('hello').toString();
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(r1, "true");
+
+    auto r2 = engine.evaluate(R"JS(
+        'hello world'.endsWith('world').toString();
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(r2, "true");
+}
+
+// V177_3: Object.keys and Object.values
+TEST(JSEngine, JsV177_3) {
+    clever::js::JSEngine engine;
+    auto r1 = engine.evaluate(R"JS(
+        JSON.stringify(Object.keys({a: 1, b: 2, c: 3}));
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(r1, "[\"a\",\"b\",\"c\"]");
+
+    auto r2 = engine.evaluate(R"JS(
+        JSON.stringify(Object.values({a: 10, b: 20, c: 30}));
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(r2, "[10,20,30]");
+}
+
+// V177_4: Map set/get/has/size
+TEST(JSEngine, JsV177_4) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var m = new Map();
+        m.set('x', 10);
+        m.set('y', 20);
+        (m.get('x') + m.get('y') + m.size + m.has('z')).toString();
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    // 10 + 20 + 2 + false(0) = 32
+    EXPECT_EQ(result, "32");
+}
+
+// V177_5: Set add/has/size/delete
+TEST(JSEngine, JsV177_5) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var s = new Set();
+        s.add(1);
+        s.add(2);
+        s.add(2); // duplicate
+        s.add(3);
+        s.delete(3);
+        (s.size.toString() + '|' + s.has(1).toString() + '|' + s.has(3).toString());
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "2|true|false");
+}
+
+// V177_6: class inheritance with super call
+TEST(JSEngine, JsV177_6) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        class Animal {
+            constructor(name) { this.name = name; }
+            speak() { return this.name + ' makes a sound'; }
+        }
+        class Dog extends Animal {
+            constructor(name) { super(name); }
+            speak() { return this.name + ' barks'; }
+        }
+        var d = new Dog('Rex');
+        d.speak();
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "Rex barks");
+}
+
+// V177_7: template literal with nested expression and ternary
+TEST(JSEngine, JsV177_7) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var age = 25;
+        `User is ${age >= 18 ? 'adult' : 'minor'} (${age})`;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "User is adult (25)");
+}
+
+// V177_8: Array.reduce to compute sum and product
+TEST(JSEngine, JsV177_8) {
+    clever::js::JSEngine engine;
+    auto r1 = engine.evaluate(R"JS(
+        [1, 2, 3, 4, 5].reduce(function(acc, x) { return acc + x; }, 0).toString();
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(r1, "15");
+
+    auto r2 = engine.evaluate(R"JS(
+        [1, 2, 3, 4].reduce(function(acc, x) { return acc * x; }, 1).toString();
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(r2, "24");
+}
