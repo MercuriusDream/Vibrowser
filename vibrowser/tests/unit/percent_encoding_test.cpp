@@ -1603,3 +1603,39 @@ TEST(IsURLCodePoint, DigitsAndLettersAllValidV160) {
         EXPECT_TRUE(is_url_code_point(static_cast<char32_t>(c)));
     }
 }
+
+// =============================================================================
+// Round 161 — Percent encoding tests
+// =============================================================================
+
+TEST(PercentEncoding, AngleBracketsEncodedV161) {
+    // < and > should be percent-encoded as %3C and %3E
+    EXPECT_EQ(percent_encode("<"), "%3C");
+    EXPECT_EQ(percent_encode(">"), "%3E");
+    EXPECT_EQ(percent_encode("<tag>"), "%3Ctag%3E");
+    EXPECT_EQ(percent_encode("a<b>c"), "a%3Cb%3Ec");
+}
+
+TEST(PercentDecoding, LowercaseHexDecodedV161) {
+    // Lowercase hex digits in percent-encoded sequences should decode correctly
+    EXPECT_EQ(percent_decode("%2f"), "/");
+    EXPECT_EQ(percent_decode("%2F"), "/");
+    EXPECT_EQ(percent_decode("%3c"), "<");
+    EXPECT_EQ(percent_decode("%3C"), "<");
+    EXPECT_EQ(percent_decode("hello%20world"), "hello world");
+}
+
+TEST(PercentEncoding, TildeNotEncodedV161) {
+    // Tilde (~) is a URL code point and should not be percent-encoded
+    EXPECT_EQ(percent_encode("~"), "~");
+    EXPECT_EQ(percent_encode("~user"), "~user");
+    EXPECT_EQ(percent_encode("/home/~user/file"), "/home/~user/file");
+}
+
+TEST(IsURLCodePoint, HyphenDotUnderscoreTildeValidV161) {
+    // Hyphen, dot, underscore, and tilde are all valid URL code points
+    EXPECT_TRUE(is_url_code_point(static_cast<char32_t>('-')));
+    EXPECT_TRUE(is_url_code_point(static_cast<char32_t>('.')));
+    EXPECT_TRUE(is_url_code_point(static_cast<char32_t>('_')));
+    EXPECT_TRUE(is_url_code_point(static_cast<char32_t>('~')));
+}

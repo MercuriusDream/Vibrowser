@@ -27833,3 +27833,219 @@ TEST(HttpClient, CookieJarMultipleDomainsIsolatedV160) {
     EXPECT_EQ(headerB.find("alpha160=domA"), std::string::npos)
         << "Domain B must NOT see domain A cookie, got: " << headerB;
 }
+
+// ===========================================================================
+// Round 161 – Net tests (V161)
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// 1. HEAD request serialization
+// ---------------------------------------------------------------------------
+TEST(HttpClient, RequestSerializeHeadMethodV161) {
+    Request req;
+    req.method = Method::HEAD;
+    req.host = "headtest161.example.com";
+    req.port = 80;
+    req.path = "/status";
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    // Request line
+    EXPECT_NE(result.find("HEAD /status HTTP/1.1\r\n"), std::string::npos)
+        << "Request line should be HEAD, got:\n" << result;
+    // Host header – port 80 omitted
+    EXPECT_NE(result.find("Host: headtest161.example.com\r\n"), std::string::npos)
+        << "Host header wrong, got:\n" << result;
+    // Connection close
+    EXPECT_NE(result.find("Connection: close\r\n"), std::string::npos)
+        << "Connection header expected, got:\n" << result;
+    // HEAD has no body so no Content-Length expected
+    EXPECT_EQ(result.find("Content-Length"), std::string::npos)
+        << "HEAD should have no Content-Length, got:\n" << result;
+}
+
+// ---------------------------------------------------------------------------
+// 2. Response parse 200 OK with JSON body
+// ---------------------------------------------------------------------------
+TEST(HttpClient, ResponseParse200WithJsonBodyV161) {
+    std::string raw_str =
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Type: application/json\r\n"
+        "Content-Length: 27\r\n"
+        "\r\n"
+        "{\"round\":161,\"ok\":true}    ";
+    // Note: body is exactly 27 bytes including trailing spaces
+
+    std::vector<uint8_t> raw(raw_str.begin(), raw_str.end());
+    auto resp = Response::parse(raw);
+
+    ASSERT_TRUE(resp.has_value()) << "Failed to parse 200 JSON response";
+    EXPECT_EQ(resp->status, 200) << "Status should be 200, got: " << resp->status;
+    EXPECT_EQ(resp->status_text, "OK")
+        << "Status text mismatch, got: " << resp->status_text;
+
+    auto ct = resp->headers.get("Content-Type");
+    ASSERT_TRUE(ct.has_value()) << "Content-Type header missing";
+    EXPECT_EQ(ct.value(), "application/json")
+        << "Content-Type wrong, got: " << ct.value();
+
+    std::string body = resp->body_as_string();
+    EXPECT_NE(body.find("\"round\":161"), std::string::npos)
+        << "Body should contain round 161, got: " << body;
+}
+
+// ---------------------------------------------------------------------------
+// 3. ConnectionPool release and re-acquire returns same socket
+// ---------------------------------------------------------------------------
+TEST(HttpClient, ConnectionPoolReleaseAndReacquireV161) {
+    ConnectionPool pool;
+
+    int fake_fd = 161;
+    pool.release("pool161.example.com", 8080, fake_fd);
+    EXPECT_EQ(pool.count("pool161.example.com", 8080), 1u)
+        << "Pool should have 1 connection after release";
+
+    int acquired = pool.acquire("pool161.example.com", 8080);
+    EXPECT_EQ(acquired, fake_fd)
+        << "Acquired fd should match released fd, got: " << acquired;
+    EXPECT_EQ(pool.count("pool161.example.com", 8080), 0u)
+        << "Pool should be empty after acquire";
+
+    // Acquiring again should return -1 (empty)
+    int second = pool.acquire("pool161.example.com", 8080);
+    EXPECT_EQ(second, -1)
+        << "Second acquire should return -1, got: " << second;
+}
+
+// ---------------------------------------------------------------------------
+// 4. CookieJar path matching – exact /api matches /api but not /ap
+// ---------------------------------------------------------------------------
+TEST(HttpClient, CookieJarPathMatchingExactV161) {
+    CookieJar jar;
+    jar.set_from_header("token161=abc; Path=/api", "pathtest161.example.com");
+
+    // Exact path should match
+    std::string h1 = jar.get_cookie_header("pathtest161.example.com", "/api", false);
+    EXPECT_NE(h1.find("token161=abc"), std::string::npos)
+        << "Cookie should match /api, got: " << h1;
+
+    // Sub-path should match
+    std::string h2 = jar.get_cookie_header("pathtest161.example.com", "/api/v2", false);
+    EXPECT_NE(h2.find("token161=abc"), std::string::npos)
+        << "Cookie should match /api/v2, got: " << h2;
+
+    // /ap is NOT a prefix match of /api
+    std::string h3 = jar.get_cookie_header("pathtest161.example.com", "/ap", false);
+    EXPECT_EQ(h3.find("token161=abc"), std::string::npos)
+        << "/ap must NOT match Path=/api, got: " << h3;
+
+    // Totally different path
+    std::string h4 = jar.get_cookie_header("pathtest161.example.com", "/other", false);
+    EXPECT_EQ(h4.find("token161=abc"), std::string::npos)
+        << "/other must NOT match Path=/api, got: " << h4;
+}
+
+// ---------------------------------------------------------------------------
+// 5. HeaderMap get returns nullopt for missing key
+// ---------------------------------------------------------------------------
+TEST(HttpClient, HeaderMapGetReturnsNulloptForMissingV161) {
+    HeaderMap map;
+    map.set("X-Present-161", "yes");
+
+    auto missing = map.get("X-Missing-161");
+    EXPECT_FALSE(missing.has_value())
+        << "get() on missing key should return nullopt, got: " << missing.value_or("(none)");
+
+    // Verify the present one works
+    auto present = map.get("X-Present-161");
+    ASSERT_TRUE(present.has_value())
+        << "get() on present key should have value";
+    EXPECT_EQ(present.value(), "yes")
+        << "Value mismatch, got: " << present.value();
+}
+
+// ---------------------------------------------------------------------------
+// 6. PUT request with body serialization
+// ---------------------------------------------------------------------------
+TEST(HttpClient, RequestSerializePutMethodV161) {
+    Request req;
+    req.method = Method::PUT;
+    req.host = "put161.example.com";
+    req.port = 443;
+    req.path = "/resources/161";
+    req.use_tls = true;
+
+    std::string body_str = R"({"name":"test161","value":42})";
+    req.body.assign(body_str.begin(), body_str.end());
+    req.headers.set("Content-Type", "application/json");
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    // Request line
+    EXPECT_NE(result.find("PUT /resources/161 HTTP/1.1\r\n"), std::string::npos)
+        << "Request line should be PUT, got:\n" << result;
+    // Host header – port 443 omitted
+    EXPECT_NE(result.find("Host: put161.example.com\r\n"), std::string::npos)
+        << "Host header wrong, got:\n" << result;
+    // Content-Length present
+    std::string expected_cl = "Content-Length: " + std::to_string(body_str.size()) + "\r\n";
+    EXPECT_NE(result.find(expected_cl), std::string::npos)
+        << "Content-Length expected: " << expected_cl << ", got:\n" << result;
+    // Body follows blank line
+    EXPECT_NE(result.find("\r\n\r\n" + body_str), std::string::npos)
+        << "Body should follow blank line, got:\n" << result;
+}
+
+// ---------------------------------------------------------------------------
+// 7. Response parse 404 Not Found
+// ---------------------------------------------------------------------------
+TEST(HttpClient, ResponseParse404StatusV161) {
+    std::string raw_str =
+        "HTTP/1.1 404 Not Found\r\n"
+        "Content-Type: text/plain\r\n"
+        "Content-Length: 18\r\n"
+        "\r\n"
+        "Resource not found";
+
+    std::vector<uint8_t> raw(raw_str.begin(), raw_str.end());
+    auto resp = Response::parse(raw);
+
+    ASSERT_TRUE(resp.has_value()) << "Failed to parse 404 response";
+    EXPECT_EQ(resp->status, 404)
+        << "Status should be 404, got: " << resp->status;
+    EXPECT_EQ(resp->status_text, "Not Found")
+        << "Status text mismatch, got: " << resp->status_text;
+
+    auto ct = resp->headers.get("Content-Type");
+    ASSERT_TRUE(ct.has_value()) << "Content-Type header missing";
+    EXPECT_EQ(ct.value(), "text/plain")
+        << "Content-Type wrong, got: " << ct.value();
+
+    std::string body = resp->body_as_string();
+    EXPECT_EQ(body, "Resource not found")
+        << "Body mismatch, got: " << body;
+}
+
+// ---------------------------------------------------------------------------
+// 8. CookieJar overwrites same name same domain
+// ---------------------------------------------------------------------------
+TEST(HttpClient, CookieJarOverwritesSamNameSameDomainV161) {
+    CookieJar jar;
+    jar.set_from_header("sess161=first_value; Path=/", "overwrite161.example.com");
+
+    // Verify first value
+    std::string h1 = jar.get_cookie_header("overwrite161.example.com", "/", false);
+    EXPECT_NE(h1.find("sess161=first_value"), std::string::npos)
+        << "First cookie value should be set, got: " << h1;
+
+    // Overwrite with second value
+    jar.set_from_header("sess161=second_value; Path=/", "overwrite161.example.com");
+
+    std::string h2 = jar.get_cookie_header("overwrite161.example.com", "/", false);
+    EXPECT_NE(h2.find("sess161=second_value"), std::string::npos)
+        << "Cookie should have second value, got: " << h2;
+    EXPECT_EQ(h2.find("first_value"), std::string::npos)
+        << "First value should be overwritten, got: " << h2;
+}

@@ -23928,3 +23928,101 @@ TEST(DomNode, InsertBeforeNullRefAppendsToEndV160) {
     EXPECT_EQ(parent->last_child(), li2_ptr);
     EXPECT_EQ(li1_ptr->next_sibling(), li2_ptr);
 }
+
+// ---------------------------------------------------------------------------
+// Round 161 — DOM tests
+// ---------------------------------------------------------------------------
+
+// 1. last_child returns nullptr on empty node
+TEST(DomNode, LastChildReturnsNullptrOnEmptyNodeV161) {
+    Element elem("div");
+    EXPECT_EQ(elem.last_child(), nullptr);
+    EXPECT_EQ(elem.child_count(), 0u);
+}
+
+// 2. get_attribute returns nullopt for missing attribute
+TEST(DomElement, GetAttributeReturnsNulloptForMissingV161) {
+    Element elem("section");
+    auto val = elem.get_attribute("data-missing");
+    EXPECT_FALSE(val.has_value());
+    auto val2 = elem.get_attribute("role");
+    EXPECT_FALSE(val2.has_value());
+}
+
+// 3. get_element_by_id finds nested element
+TEST(DomDocument, GetElementByIdFindsNestedElementV161) {
+    Document doc;
+    auto outer = std::make_unique<Element>("div");
+    auto inner = std::make_unique<Element>("span");
+    inner->set_attribute("id", "deep-v161");
+    Element* inner_ptr = inner.get();
+
+    outer->append_child(std::move(inner));
+    doc.append_child(std::move(outer));
+    doc.register_id("deep-v161", inner_ptr);
+
+    Element* found = doc.get_element_by_id("deep-v161");
+    ASSERT_NE(found, nullptr);
+    EXPECT_EQ(found, inner_ptr);
+    EXPECT_EQ(found->tag_name(), "span");
+}
+
+// 4. cancelable event — prevent_default sets defaultPrevented
+TEST(DomEvent, CancelableEventDefaultPreventsV161) {
+    Event evt("click", true, true);  // bubbles=true, cancelable=true
+    EXPECT_FALSE(evt.default_prevented());
+
+    evt.prevent_default();
+    EXPECT_TRUE(evt.default_prevented());
+}
+
+// 5. child count returns correct after multiple appends
+TEST(DomNode, ChildCountReturnsCorrectAfterMultipleAppendsV161) {
+    auto parent = std::make_unique<Element>("ul");
+    for (int i = 0; i < 4; ++i) {
+        parent->append_child(std::make_unique<Element>("li"));
+    }
+    EXPECT_EQ(parent->child_count(), 4u);
+
+    // Verify by traversal
+    unsigned count = 0;
+    Node* n = parent->first_child();
+    while (n) {
+        ++count;
+        n = n->next_sibling();
+    }
+    EXPECT_EQ(count, 4u);
+}
+
+// 6. has_attribute returns true after set
+TEST(DomElement, HasAttributeTrueAfterSetV161) {
+    Element elem("input");
+    EXPECT_FALSE(elem.has_attribute("placeholder"));
+
+    elem.set_attribute("placeholder", "enter text");
+    EXPECT_TRUE(elem.has_attribute("placeholder"));
+    EXPECT_EQ(elem.get_attribute("placeholder").value(), "enter text");
+}
+
+// 7. mark_dirty(Paint) sets only paint flag
+TEST(DomNode, MarkDirtyPaintSetsOnlyPaintFlagV161) {
+    Element elem("canvas");
+    EXPECT_EQ(elem.dirty_flags(), DirtyFlags::None);
+
+    elem.mark_dirty(DirtyFlags::Paint);
+
+    EXPECT_NE(elem.dirty_flags() & DirtyFlags::Paint, DirtyFlags::None);
+    EXPECT_EQ(elem.dirty_flags() & DirtyFlags::Style, DirtyFlags::None);
+    EXPECT_EQ(elem.dirty_flags() & DirtyFlags::Layout, DirtyFlags::None);
+}
+
+// 8. parent node is nullptr for root
+TEST(DomNode, ParentNodeNullForRootV161) {
+    Element root("html");
+    EXPECT_EQ(root.parent(), nullptr);
+
+    // Even after creating children, the root's parent remains null
+    auto child = std::make_unique<Element>("body");
+    root.append_child(std::move(child));
+    EXPECT_EQ(root.parent(), nullptr);
+}

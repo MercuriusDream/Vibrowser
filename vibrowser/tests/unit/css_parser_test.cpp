@@ -11289,3 +11289,60 @@ TEST_F(CSSStylesheetTest, HyphensAutoDeclarationV160) {
     }
     EXPECT_TRUE(found) << "hyphens declaration not found";
 }
+
+TEST_F(CSSStylesheetTest, UnicodeBidiDeclarationV161) {
+    auto ss = parse_stylesheet("span { unicode-bidi: embed; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "unicode-bidi") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "embed");
+        }
+    }
+    EXPECT_TRUE(found) << "unicode-bidi declaration not found";
+}
+
+TEST_F(CSSStylesheetTest, WritingModeDeclarationV161) {
+    auto ss = parse_stylesheet("div { writing-mode: vertical-rl; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "writing-mode") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "vertical-rl");
+        }
+    }
+    EXPECT_TRUE(found) << "writing-mode declaration not found";
+}
+
+TEST_F(CSSStylesheetTest, ObjectFitCoverDeclarationV161) {
+    auto ss = parse_stylesheet("img { object-fit: cover; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "object-fit") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "cover");
+        }
+    }
+    EXPECT_TRUE(found) << "object-fit declaration not found";
+}
+
+TEST_F(CSSStylesheetTest, ObjectPositionDeclarationV161) {
+    auto ss = parse_stylesheet("img { object-position: center top; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "object-position") {
+            found = true;
+            ASSERT_GE(d.values.size(), 2u);
+            EXPECT_EQ(d.values[0].value, "center");
+            EXPECT_EQ(d.values[1].value, "top");
+        }
+    }
+    EXPECT_TRUE(found) << "object-position declaration not found";
+}

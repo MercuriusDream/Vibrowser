@@ -15557,3 +15557,54 @@ TEST(UrlParserTest, UrlV160_4_TrailingSlashPreservedInPath) {
     EXPECT_TRUE(result->fragment.empty());
     EXPECT_EQ(result->port, std::nullopt);
 }
+
+// =============================================================================
+// Round 161 — URL parser tests
+// =============================================================================
+
+TEST(UrlParserTest, UrlV161_1_HttpsDefaultPort443OmittedFromSerialization) {
+    // HTTPS default port 443 should be omitted from serialization
+    auto result = parse("https://example.com:443/path");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->port, std::nullopt);
+    EXPECT_EQ(result->path, "/path");
+    std::string s = result->serialize();
+    // Serialized URL should not contain :443
+    EXPECT_EQ(s.find(":443"), std::string::npos);
+    EXPECT_EQ(s, "https://example.com/path");
+}
+
+TEST(UrlParserTest, UrlV161_2_FragmentWithSpecialCharsPreserved) {
+    // Fragment containing / and ? characters should be preserved
+    auto result = parse("https://example.com/page#sec/tion?mark");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/page");
+    EXPECT_TRUE(result->query.empty());
+    // Fragment should contain the special characters as-is
+    EXPECT_EQ(result->fragment, "sec/tion?mark");
+}
+
+TEST(UrlParserTest, UrlV161_3_EmptyQueryStringPreserved) {
+    // A trailing ? with no query content should result in an empty query string
+    auto result = parse("http://example.com/path?");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/path");
+    EXPECT_EQ(result->query, "");
+    EXPECT_TRUE(result->fragment.empty());
+}
+
+TEST(UrlParserTest, UrlV161_4_MultipleDotSegmentsResolved) {
+    // Multiple consecutive dot segments /a/b/c/../../d should resolve to /a/d
+    auto result = parse("https://example.com/a/b/c/../../d");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/a/d");
+    EXPECT_EQ(result->port, std::nullopt);
+}

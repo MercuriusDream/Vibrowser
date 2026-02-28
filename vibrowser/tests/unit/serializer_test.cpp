@@ -21335,3 +21335,50 @@ TEST(SerializerTest, SerializerV160_3_NegativeI32SequenceRoundTrip) {
     EXPECT_EQ(d.read_i32(), INT32_MIN);
     EXPECT_FALSE(d.has_remaining());
 }
+
+TEST(SerializerTest, SerializerV161_1_F64PositiveInfinityRoundTrip) {
+    Serializer s;
+    s.write_f64(std::numeric_limits<double>::infinity());
+
+    Deserializer d(s.data());
+    double val = d.read_f64();
+    EXPECT_TRUE(std::isinf(val));
+    EXPECT_GT(val, 0.0);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, SerializerV161_2_MultipleStringsVaryingLengthsRoundTrip) {
+    Serializer s;
+    std::string s0;
+    std::string s1(1, 'A');
+    std::string s10(10, 'B');
+    std::string s100(100, 'C');
+    std::string s1000(1000, 'D');
+
+    s.write_string(s0);
+    s.write_string(s1);
+    s.write_string(s10);
+    s.write_string(s100);
+    s.write_string(s1000);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), s0);
+    EXPECT_EQ(d.read_string(), s1);
+    EXPECT_EQ(d.read_string(), s10);
+    EXPECT_EQ(d.read_string(), s100);
+    EXPECT_EQ(d.read_string(), s1000);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, SerializerV161_3_U16SequenceAscendingRoundTrip) {
+    Serializer s;
+    for (uint16_t i = 0; i < 20; ++i) {
+        s.write_u16(i * 100);
+    }
+
+    Deserializer d(s.data());
+    for (uint16_t i = 0; i < 20; ++i) {
+        EXPECT_EQ(d.read_u16(), i * 100);
+    }
+    EXPECT_FALSE(d.has_remaining());
+}

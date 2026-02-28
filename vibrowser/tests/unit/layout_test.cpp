@@ -29528,3 +29528,152 @@ TEST(LayoutNodeProps, ColorDefaultBlackV160) {
     auto node = make_block("div");
     EXPECT_EQ(node->color, 0xFF000000u);
 }
+
+// V161_1: flex justify-content center centers children
+TEST(LayoutEngineTest, LayoutV161_1) {
+    auto root = make_flex("div");
+    root->justify_content = 2; // center
+
+    auto child1 = make_block("div");
+    child1->specified_width = 80.0f;
+    child1->specified_height = 40.0f;
+
+    auto child2 = make_block("div");
+    child2->specified_width = 120.0f;
+    child2->specified_height = 40.0f;
+
+    root->append_child(std::move(child1));
+    root->append_child(std::move(child2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 600.0f, 400.0f);
+
+    // Remaining = 600 - 80 - 120 = 400, offset = 200
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.x, 200.0f);
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.x, 280.0f);
+}
+
+// V161_2: block element stacks children vertically
+TEST(LayoutEngineTest, LayoutV161_2) {
+    auto root = make_block("div");
+
+    auto child1 = make_block("div");
+    child1->specified_height = 35.0f;
+
+    auto child2 = make_block("div");
+    child2->specified_height = 45.0f;
+
+    auto child3 = make_block("div");
+    child3->specified_height = 20.0f;
+
+    root->append_child(std::move(child1));
+    root->append_child(std::move(child2));
+    root->append_child(std::move(child3));
+
+    LayoutEngine engine;
+    engine.compute(*root, 500.0f, 400.0f);
+
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.y, 0.0f);
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.y, 35.0f);
+    EXPECT_FLOAT_EQ(root->children[2]->geometry.y, 80.0f);
+    EXPECT_FLOAT_EQ(root->geometry.height, 100.0f);
+}
+
+// V161_3: flex-grow distributes remaining space proportionally
+TEST(LayoutEngineTest, LayoutV161_3) {
+    auto root = make_flex("div");
+
+    auto child1 = make_block("div");
+    child1->specified_width = 50.0f;
+    child1->specified_height = 30.0f;
+    child1->flex_grow = 2.0f;
+
+    auto child2 = make_block("div");
+    child2->specified_width = 50.0f;
+    child2->specified_height = 30.0f;
+    child2->flex_grow = 3.0f;
+
+    root->append_child(std::move(child1));
+    root->append_child(std::move(child2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 500.0f, 400.0f);
+
+    // Remaining = 500 - 100 = 400. Ratio 2:3 => 160, 240
+    // child1 = 50 + 160 = 210, child2 = 50 + 240 = 290
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.width, 210.0f);
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.width, 290.0f);
+}
+
+// V161_4: margin-left pushes child right
+TEST(LayoutEngineTest, LayoutV161_4) {
+    auto root = make_block("div");
+
+    auto child = make_block("div");
+    child->specified_height = 40.0f;
+    child->geometry.margin.left = 25.0f;
+
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 600.0f, 400.0f);
+
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.x, 25.0f);
+}
+
+// V161_5: zero-width child in flex still positioned
+TEST(LayoutEngineTest, LayoutV161_5) {
+    auto root = make_flex("div");
+
+    auto child1 = make_block("div");
+    child1->specified_width = 0.0f;
+    child1->specified_height = 30.0f;
+
+    auto child2 = make_block("div");
+    child2->specified_width = 100.0f;
+    child2->specified_height = 30.0f;
+
+    root->append_child(std::move(child1));
+    root->append_child(std::move(child2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 400.0f, 300.0f);
+
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.width, 0.0f);
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.x, 0.0f);
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.width, 100.0f);
+}
+
+// V161_6: padding increases root height by top and bottom padding
+TEST(LayoutEngineTest, LayoutV161_6) {
+    auto root = make_block("div");
+    root->geometry.padding.top = 15.0f;
+    root->geometry.padding.bottom = 10.0f;
+    root->geometry.padding.left = 20.0f;
+    root->geometry.padding.right = 20.0f;
+
+    auto child = make_block("div");
+    child->specified_height = 50.0f;
+
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 600.0f, 400.0f);
+
+    // Child width narrows by left+right padding
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.width, 560.0f);
+    // Root height = padding.top + child_height + padding.bottom
+    EXPECT_FLOAT_EQ(root->geometry.height, 15.0f + 50.0f + 10.0f);
+}
+
+// V161_7: default text_stroke_width is 0.0f
+TEST(LayoutNodeProps, TextStrokeWidthDefaultZeroV161) {
+    auto node = make_block("div");
+    EXPECT_FLOAT_EQ(node->text_stroke_width, 0.0f);
+}
+
+// V161_8: default font_size is 16.0f
+TEST(LayoutNodeProps, FontSizeDefaultV161) {
+    auto node = make_block("div");
+    EXPECT_FLOAT_EQ(node->font_size, 16.0f);
+}

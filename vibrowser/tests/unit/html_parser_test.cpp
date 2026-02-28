@@ -25341,3 +25341,119 @@ TEST(HtmlParserTest, HtmlV160_8) {
     EXPECT_FALSE(bdo->children.empty());
     EXPECT_EQ(bdo->children[0]->text_content(), "Right to left");
 }
+
+TEST(HtmlParserTest, HtmlV161_1) {
+    // address element with text
+    auto doc = clever::html::parse(
+        "<html><body><address>123 Main St</address></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* addr = doc->find_element("address");
+    ASSERT_NE(addr, nullptr);
+    EXPECT_EQ(addr->tag_name, "address");
+    EXPECT_FALSE(addr->children.empty());
+    EXPECT_EQ(addr->children[0]->text_content(), "123 Main St");
+}
+
+TEST(HtmlParserTest, HtmlV161_2) {
+    // cite element
+    auto doc = clever::html::parse(
+        "<html><body><cite>The Great Gatsby</cite></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* cite = doc->find_element("cite");
+    ASSERT_NE(cite, nullptr);
+    EXPECT_EQ(cite->tag_name, "cite");
+    EXPECT_FALSE(cite->children.empty());
+    EXPECT_EQ(cite->children[0]->text_content(), "The Great Gatsby");
+}
+
+TEST(HtmlParserTest, HtmlV161_3) {
+    // dfn element (definition)
+    auto doc = clever::html::parse(
+        "<html><body><dfn>HTML</dfn></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* dfn = doc->find_element("dfn");
+    ASSERT_NE(dfn, nullptr);
+    EXPECT_EQ(dfn->tag_name, "dfn");
+    EXPECT_FALSE(dfn->children.empty());
+    EXPECT_EQ(dfn->children[0]->text_content(), "HTML");
+}
+
+TEST(HtmlParserTest, HtmlV161_4) {
+    // kbd element (keyboard input)
+    auto doc = clever::html::parse(
+        "<html><body><kbd>Ctrl+C</kbd></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* kbd = doc->find_element("kbd");
+    ASSERT_NE(kbd, nullptr);
+    EXPECT_EQ(kbd->tag_name, "kbd");
+    EXPECT_FALSE(kbd->children.empty());
+    EXPECT_EQ(kbd->children[0]->text_content(), "Ctrl+C");
+}
+
+TEST(HtmlParserTest, HtmlV161_5) {
+    // samp element (sample output)
+    auto doc = clever::html::parse(
+        "<html><body><samp>Error 404</samp></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* samp = doc->find_element("samp");
+    ASSERT_NE(samp, nullptr);
+    EXPECT_EQ(samp->tag_name, "samp");
+    EXPECT_FALSE(samp->children.empty());
+    EXPECT_EQ(samp->children[0]->text_content(), "Error 404");
+}
+
+TEST(HtmlParserTest, HtmlV161_6) {
+    // var element (variable)
+    auto doc = clever::html::parse(
+        "<html><body><var>x</var></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* var_el = doc->find_element("var");
+    ASSERT_NE(var_el, nullptr);
+    EXPECT_EQ(var_el->tag_name, "var");
+    EXPECT_FALSE(var_el->children.empty());
+    EXPECT_EQ(var_el->children[0]->text_content(), "x");
+}
+
+TEST(HtmlParserTest, HtmlV161_7) {
+    // q element with cite attribute
+    auto doc = clever::html::parse(
+        "<html><body><q cite=\"https://example.com\">To be or not to be</q></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* q = doc->find_element("q");
+    ASSERT_NE(q, nullptr);
+    EXPECT_EQ(q->tag_name, "q");
+
+    std::string cite_val;
+    for (const auto& attr : q->attributes) {
+        if (attr.name == "cite") cite_val = attr.value;
+    }
+    EXPECT_EQ(cite_val, "https://example.com");
+    EXPECT_FALSE(q->children.empty());
+    EXPECT_EQ(q->children[0]->text_content(), "To be or not to be");
+}
+
+TEST(HtmlParserTest, HtmlV161_8) {
+    // data element with value attribute
+    auto doc = clever::html::parse(
+        "<html><body><data value=\"42\">Forty-two</data></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* data = doc->find_element("data");
+    ASSERT_NE(data, nullptr);
+    EXPECT_EQ(data->tag_name, "data");
+
+    std::string value_val;
+    for (const auto& attr : data->attributes) {
+        if (attr.name == "value") value_val = attr.value;
+    }
+    EXPECT_EQ(value_val, "42");
+    EXPECT_FALSE(data->children.empty());
+    EXPECT_EQ(data->children[0]->text_content(), "Forty-two");
+}

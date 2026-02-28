@@ -37735,3 +37735,101 @@ TEST(JSEngine, JsV160_8) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "21");
 }
+
+// V161_1: Array.filter with predicate
+TEST(JSEngine, JsV161_1) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var nums = [1, 2, 3, 4, 5, 6];
+        var evens = nums.filter(function(n) { return n % 2 === 0; });
+        evens.join(",");
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "2,4,6");
+}
+
+// V161_2: String.includes check
+TEST(JSEngine, JsV161_2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var s = "hello world";
+        String(s.includes("world")) + "," + String(s.includes("xyz"));
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true,false");
+}
+
+// V161_3: Object.keys returns own property names
+TEST(JSEngine, JsV161_3) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var obj = { a: 1, b: 2, c: 3 };
+        Object.keys(obj).join(",");
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "a,b,c");
+}
+
+// V161_4: try/catch catches thrown error
+TEST(JSEngine, JsV161_4) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var msg = "";
+        try {
+            throw new Error("oops");
+        } catch (e) {
+            msg = e.message;
+        }
+        msg;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "oops");
+}
+
+// V161_5: Math.floor and Math.ceil
+TEST(JSEngine, JsV161_5) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        String(Math.floor(4.7)) + "," + String(Math.ceil(4.2));
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "4,5");
+}
+
+// V161_6: Array.every and Array.some
+TEST(JSEngine, JsV161_6) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var arr = [2, 4, 6, 8];
+        var allEven = arr.every(function(n) { return n % 2 === 0; });
+        var someGreaterThanFive = arr.some(function(n) { return n > 5; });
+        String(allEven) + "," + String(someGreaterThanFive);
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true,true");
+}
+
+// V161_7: spread operator in array literal
+TEST(JSEngine, JsV161_7) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var a = [1, 2, 3];
+        var b = [0, ...a, 4];
+        b.join(",");
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "0,1,2,3,4");
+}
+
+// V161_8: Map set/get/has/size
+TEST(JSEngine, JsV161_8) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var m = new Map();
+        m.set("x", 10);
+        m.set("y", 20);
+        String(m.get("x")) + "," + String(m.has("y")) + "," + String(m.size) + "," + String(m.has("z"));
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "10,true,2,false");
+}

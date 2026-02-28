@@ -2616,3 +2616,69 @@ TEST(MessageChannelTest, MessageChannelV160_2_HandlerReceivesCorrectPayload) {
     EXPECT_EQ(captured_payload[3], 0x04);
     EXPECT_EQ(captured_payload[4], 0x05);
 }
+
+TEST(MessageChannelTest, MessageChannelV161_1_MultipleHandlersDifferentTypes) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel ch(std::move(pa));
+
+    int handler1_count = 0;
+    int handler2_count = 0;
+    int handler3_count = 0;
+
+    ch.on(1, [&](const Message&) { handler1_count++; });
+    ch.on(2, [&](const Message&) { handler2_count++; });
+    ch.on(3, [&](const Message&) { handler3_count++; });
+
+    Message msg1;
+    msg1.type = 1;
+    msg1.request_id = 0;
+    ch.dispatch(msg1);
+
+    EXPECT_EQ(handler1_count, 1);
+    EXPECT_EQ(handler2_count, 0);
+    EXPECT_EQ(handler3_count, 0);
+
+    Message msg2;
+    msg2.type = 2;
+    msg2.request_id = 0;
+    ch.dispatch(msg2);
+
+    EXPECT_EQ(handler1_count, 1);
+    EXPECT_EQ(handler2_count, 1);
+    EXPECT_EQ(handler3_count, 0);
+
+    Message msg3;
+    msg3.type = 3;
+    msg3.request_id = 0;
+    ch.dispatch(msg3);
+
+    EXPECT_EQ(handler1_count, 1);
+    EXPECT_EQ(handler2_count, 1);
+    EXPECT_EQ(handler3_count, 1);
+}
+
+TEST(MessageChannelTest, MessageChannelV161_2_DispatchOrderPreserved) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel ch(std::move(pa));
+
+    std::vector<uint32_t> received_ids;
+
+    ch.on(10, [&](const Message& m) {
+        received_ids.push_back(m.request_id);
+    });
+
+    for (uint32_t i = 0; i < 5; ++i) {
+        Message msg;
+        msg.type = 10;
+        msg.request_id = i + 100;
+        msg.payload = {static_cast<uint8_t>(i)};
+        ch.dispatch(msg);
+    }
+
+    ASSERT_EQ(received_ids.size(), 5u);
+    EXPECT_EQ(received_ids[0], 100u);
+    EXPECT_EQ(received_ids[1], 101u);
+    EXPECT_EQ(received_ids[2], 102u);
+    EXPECT_EQ(received_ids[3], 103u);
+    EXPECT_EQ(received_ids[4], 104u);
+}

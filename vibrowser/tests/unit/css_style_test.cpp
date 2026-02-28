@@ -26242,3 +26242,49 @@ TEST(PropertyCascadeTest, WordSpacingAppliedV160) {
     cascade.apply_declaration(style, make_decl("word-spacing", "3px"), parent);
     EXPECT_FLOAT_EQ(style.word_spacing.to_px(), 3.0f);
 }
+
+TEST(CSSStyleTest, CssV161_1_TextDecorationUnderlineApplied) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.text_decoration, TextDecoration::None);
+    cascade.apply_declaration(style, make_decl("text-decoration", "underline"), parent);
+    EXPECT_EQ(style.text_decoration, TextDecoration::Underline);
+}
+
+TEST(CSSStyleTest, CssV161_2_TextTransformUppercaseApplied) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.text_transform, TextTransform::None);
+    cascade.apply_declaration(style, make_decl("text-transform", "uppercase"), parent);
+    EXPECT_EQ(style.text_transform, TextTransform::Uppercase);
+}
+
+TEST(PropertyCascadeTest, FontSizeInheritedFromParentV161) {
+    const std::string css = "span { display: inline; }";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "span";
+
+    ComputedStyle parent;
+    parent.font_size = Length::px(20.0f);
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_FLOAT_EQ(style.font_size.to_px(), 20.0f);
+}
+
+TEST(PropertyCascadeTest, LineHeightAppliedV161) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("line-height", "24px"), parent);
+    EXPECT_FLOAT_EQ(style.line_height.to_px(), 24.0f);
+}

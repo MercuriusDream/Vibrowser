@@ -12881,3 +12881,54 @@ TEST(CORSPolicyTest, CorsV160_8_FtpSchemeNotEnforceable) {
     EXPECT_FALSE(has_enforceable_document_origin("ftp://files.example.com/pub"));
     EXPECT_FALSE(has_enforceable_document_origin("ftp://ftp.example.com"));
 }
+
+// ---------------------------------------------------------------------------
+// Round 161 — CORS tests
+// ---------------------------------------------------------------------------
+
+// 1. http with no explicit port (default 80) is enforceable
+TEST(CORSPolicyTest, CorsV161_1_HttpDefaultPort80Enforceable) {
+    EXPECT_TRUE(has_enforceable_document_origin("http://host.example"));
+}
+
+// 2. Same host, different ports are cross-origin
+TEST(CORSPolicyTest, CorsV161_2_CrossOriginDifferentPortNumbers) {
+    EXPECT_TRUE(is_cross_origin("http://host.example:8080", "http://host.example:9090/path"));
+}
+
+// 3. ACAO exact match allows response
+TEST(CORSPolicyTest, CorsV161_3_AcaoExactMatchAllowsResponse) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "https://app.example");
+    EXPECT_TRUE(cors_allows_response("https://app.example", "https://api.example/data",
+                                     headers, false));
+}
+
+// 4. ACAO mismatch rejects response
+TEST(CORSPolicyTest, CorsV161_4_AcaoMismatchRejectsResponse) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "https://other.example");
+    EXPECT_FALSE(cors_allows_response("https://app.example", "https://api.example/data",
+                                      headers, false));
+}
+
+// 5. Different hosts should attach origin header
+TEST(CORSPolicyTest, CorsV161_5_ShouldAttachOriginForDifferentHosts) {
+    EXPECT_TRUE(should_attach_origin_header("https://app.example", "https://api.example/data"));
+}
+
+// 6. Identical origin is same origin (not cross-origin)
+TEST(CORSPolicyTest, CorsV161_6_SameHostSamePortSameSchemeIsSameOrigin) {
+    EXPECT_FALSE(is_cross_origin("https://app.example", "https://app.example/resource"));
+    EXPECT_FALSE(is_cross_origin("http://site.example", "http://site.example/page?q=1"));
+}
+
+// 7. about:blank is not enforceable
+TEST(CORSPolicyTest, CorsV161_7_AboutBlankNotEnforceable) {
+    EXPECT_FALSE(has_enforceable_document_origin("about:blank"));
+}
+
+// 8. https with non-default port is enforceable
+TEST(CORSPolicyTest, CorsV161_8_HttpsNonDefaultPortEnforceable) {
+    EXPECT_TRUE(has_enforceable_document_origin("https://host.example:8443"));
+}

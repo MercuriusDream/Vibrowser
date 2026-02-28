@@ -2460,3 +2460,51 @@ TEST(MessagePipeTest, MessagePipeV160_3_LargePayload8KB) {
         EXPECT_EQ((*received)[i], static_cast<uint8_t>(i % 256));
     }
 }
+
+TEST(MessagePipeTest, MessagePipeV161_1_ReceiverGetsNulloptAfterBothEndsClose) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    a.close();
+    b.close();
+
+    EXPECT_FALSE(a.is_open());
+    EXPECT_FALSE(b.is_open());
+
+    auto recv_a = a.receive();
+    EXPECT_FALSE(recv_a.has_value());
+
+    auto recv_b = b.receive();
+    EXPECT_FALSE(recv_b.has_value());
+}
+
+TEST(MessagePipeTest, MessagePipeV161_2_SendAndReceiveSingleByte) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    std::vector<uint8_t> payload = {0x42};
+    ASSERT_TRUE(a.send(payload));
+
+    auto received = b.receive();
+    ASSERT_TRUE(received.has_value());
+    ASSERT_EQ(received->size(), 1u);
+    EXPECT_EQ((*received)[0], 0x42);
+}
+
+TEST(MessagePipeTest, MessagePipeV161_3_TenMessagesAlternatingSize) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    for (int i = 0; i < 10; ++i) {
+        size_t size = (i % 2 == 0) ? 1 : 100;
+        std::vector<uint8_t> payload(size, static_cast<uint8_t>(i));
+        ASSERT_TRUE(a.send(payload));
+    }
+
+    for (int i = 0; i < 10; ++i) {
+        size_t expected_size = (i % 2 == 0) ? 1 : 100;
+        auto received = b.receive();
+        ASSERT_TRUE(received.has_value());
+        ASSERT_EQ(received->size(), expected_size);
+        for (size_t j = 0; j < received->size(); ++j) {
+            EXPECT_EQ((*received)[j], static_cast<uint8_t>(i));
+        }
+    }
+}
