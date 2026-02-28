@@ -25198,3 +25198,146 @@ TEST(HtmlParserTest, HtmlV159_8) {
     EXPECT_EQ(width_val, "640");
     EXPECT_EQ(height_val, "480");
 }
+
+TEST(HtmlParserTest, HtmlV160_1) {
+    // ruby with rt annotation
+    auto doc = clever::html::parse(
+        "<html><body><ruby>漢<rt>かん</rt>字<rt>じ</rt></ruby></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* ruby = doc->find_element("ruby");
+    ASSERT_NE(ruby, nullptr);
+    EXPECT_EQ(ruby->tag_name, "ruby");
+    EXPECT_GE(ruby->children.size(), 2u);
+
+    bool found_rt = false;
+    for (const auto& child : ruby->children) {
+        if (child->tag_name == "rt") {
+            found_rt = true;
+        }
+    }
+    EXPECT_TRUE(found_rt) << "rt element not found inside ruby";
+}
+
+TEST(HtmlParserTest, HtmlV160_2) {
+    // mark element highlighting
+    auto doc = clever::html::parse(
+        "<html><body><p>This is <mark>highlighted</mark> text.</p></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* mark = doc->find_element("mark");
+    ASSERT_NE(mark, nullptr);
+    EXPECT_EQ(mark->tag_name, "mark");
+    EXPECT_FALSE(mark->children.empty());
+    EXPECT_EQ(mark->children[0]->text_content(), "highlighted");
+}
+
+TEST(HtmlParserTest, HtmlV160_3) {
+    // time element with datetime attr
+    auto doc = clever::html::parse(
+        "<html><body><time datetime=\"2026-02-28\">Feb 28</time></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* time_el = doc->find_element("time");
+    ASSERT_NE(time_el, nullptr);
+    EXPECT_EQ(time_el->tag_name, "time");
+
+    std::string datetime_val;
+    for (const auto& attr : time_el->attributes) {
+        if (attr.name == "datetime") datetime_val = attr.value;
+    }
+    EXPECT_EQ(datetime_val, "2026-02-28");
+    EXPECT_FALSE(time_el->children.empty());
+    EXPECT_EQ(time_el->children[0]->text_content(), "Feb 28");
+}
+
+TEST(HtmlParserTest, HtmlV160_4) {
+    // wbr void element
+    auto doc = clever::html::parse(
+        "<html><body><p>super<wbr>cali<wbr>fragilistic</p></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* p = doc->find_element("p");
+    ASSERT_NE(p, nullptr);
+
+    int wbr_count = 0;
+    for (const auto& child : p->children) {
+        if (child->tag_name == "wbr") {
+            wbr_count++;
+            EXPECT_TRUE(child->children.empty());
+        }
+    }
+    EXPECT_GE(wbr_count, 1) << "wbr element not found";
+}
+
+TEST(HtmlParserTest, HtmlV160_5) {
+    // ins element with cite and datetime
+    auto doc = clever::html::parse(
+        "<html><body><ins cite=\"changelog.html\" datetime=\"2026-01-01\">new text</ins></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* ins = doc->find_element("ins");
+    ASSERT_NE(ins, nullptr);
+    EXPECT_EQ(ins->tag_name, "ins");
+
+    std::string cite_val, datetime_val;
+    for (const auto& attr : ins->attributes) {
+        if (attr.name == "cite") cite_val = attr.value;
+        if (attr.name == "datetime") datetime_val = attr.value;
+    }
+    EXPECT_EQ(cite_val, "changelog.html");
+    EXPECT_EQ(datetime_val, "2026-01-01");
+    EXPECT_FALSE(ins->children.empty());
+    EXPECT_EQ(ins->children[0]->text_content(), "new text");
+}
+
+TEST(HtmlParserTest, HtmlV160_6) {
+    // del element
+    auto doc = clever::html::parse(
+        "<html><body><del>removed text</del></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* del = doc->find_element("del");
+    ASSERT_NE(del, nullptr);
+    EXPECT_EQ(del->tag_name, "del");
+    EXPECT_FALSE(del->children.empty());
+    EXPECT_EQ(del->children[0]->text_content(), "removed text");
+}
+
+TEST(HtmlParserTest, HtmlV160_7) {
+    // sub and sup elements
+    auto doc = clever::html::parse(
+        "<html><body><p>H<sub>2</sub>O is water. E=mc<sup>2</sup></p></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* sub = doc->find_element("sub");
+    ASSERT_NE(sub, nullptr);
+    EXPECT_EQ(sub->tag_name, "sub");
+    EXPECT_FALSE(sub->children.empty());
+    EXPECT_EQ(sub->children[0]->text_content(), "2");
+
+    auto* sup = doc->find_element("sup");
+    ASSERT_NE(sup, nullptr);
+    EXPECT_EQ(sup->tag_name, "sup");
+    EXPECT_FALSE(sup->children.empty());
+    EXPECT_EQ(sup->children[0]->text_content(), "2");
+}
+
+TEST(HtmlParserTest, HtmlV160_8) {
+    // bdo with dir attribute
+    auto doc = clever::html::parse(
+        "<html><body><bdo dir=\"rtl\">Right to left</bdo></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* bdo = doc->find_element("bdo");
+    ASSERT_NE(bdo, nullptr);
+    EXPECT_EQ(bdo->tag_name, "bdo");
+
+    std::string dir_val;
+    for (const auto& attr : bdo->attributes) {
+        if (attr.name == "dir") dir_val = attr.value;
+    }
+    EXPECT_EQ(dir_val, "rtl");
+    EXPECT_FALSE(bdo->children.empty());
+    EXPECT_EQ(bdo->children[0]->text_content(), "Right to left");
+}

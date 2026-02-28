@@ -26202,3 +26202,43 @@ TEST(CSSStyleTest, CssV159_4_WordSpacingApplied) {
     cascade.apply_declaration(style, make_decl("word-spacing", "5px"), parent);
     EXPECT_FLOAT_EQ(style.word_spacing.to_px(), 5.0f);
 }
+
+TEST(CSSStyleTest, CssV160_1_FontWeightBoldApplied) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.font_weight, 400);
+    cascade.apply_declaration(style, make_decl("font-weight", "bold"), parent);
+    EXPECT_EQ(style.font_weight, 700);
+}
+
+TEST(CSSStyleTest, CssV160_2_FontStyleItalicApplied) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.font_style, FontStyle::Normal);
+    cascade.apply_declaration(style, make_decl("font-style", "italic"), parent);
+    EXPECT_EQ(style.font_style, FontStyle::Italic);
+}
+
+TEST(PropertyCascadeTest, LetterSpacingAppliedV160) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_TRUE(style.letter_spacing.is_zero());
+    cascade.apply_declaration(style, make_decl("letter-spacing", "2px"), parent);
+    EXPECT_FLOAT_EQ(style.letter_spacing.to_px(), 2.0f);
+}
+
+TEST(PropertyCascadeTest, WordSpacingAppliedV160) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_TRUE(style.word_spacing.is_zero());
+    cascade.apply_declaration(style, make_decl("word-spacing", "3px"), parent);
+    EXPECT_FLOAT_EQ(style.word_spacing.to_px(), 3.0f);
+}

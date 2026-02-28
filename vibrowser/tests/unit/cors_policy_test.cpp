@@ -12828,3 +12828,56 @@ TEST(CORSPolicyTest, CorsV159_8_ACAOMatchPreservesFullOrigin) {
     EXPECT_TRUE(cors_allows_response("https://app.example:8443", "https://api.example/data",
                                      headers, false));
 }
+
+// ---------------------------------------------------------------------------
+// Round 160 — CORS tests
+// ---------------------------------------------------------------------------
+
+// 1. https with explicit :443 is not enforceable (explicit default port)
+TEST(CORSPolicyTest, CorsV160_1_HttpsWithExplicitPort443NotEnforceable) {
+    EXPECT_FALSE(has_enforceable_document_origin("https://host.example:443"));
+}
+
+// 2. Same URL twice is same origin
+TEST(CORSPolicyTest, CorsV160_2_SameOriginIdenticalUrlsReturnsTrue) {
+    EXPECT_FALSE(is_cross_origin("https://app.example", "https://app.example/page"));
+}
+
+// 3. Same host different paths are same origin
+TEST(CORSPolicyTest, CorsV160_3_DifferentPathsSameOrigin) {
+    EXPECT_FALSE(is_cross_origin("https://app.example", "https://app.example/foo/bar"));
+    EXPECT_FALSE(is_cross_origin("https://app.example", "https://app.example/other?q=1"));
+}
+
+// 4. Wildcard ACAO without credentials allows response
+TEST(CORSPolicyTest, CorsV160_4_WildcardAcaoWithoutCredentials) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "*");
+    EXPECT_TRUE(cors_allows_response("https://app.example", "https://api.example/data",
+                                     headers, false));
+}
+
+// 5. Origin with trailing slash in ACAO does not match (rejected)
+TEST(CORSPolicyTest, CorsV160_5_ExactOriginMatchWithTrailingSlash) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "https://app.example/");
+    EXPECT_FALSE(cors_allows_response("https://app.example", "https://api.example/data",
+                                      headers, false));
+}
+
+// 6. http vs https same host should attach origin header (cross-scheme = cross-origin)
+TEST(CORSPolicyTest, CorsV160_6_ShouldAttachOriginCrossScheme) {
+    EXPECT_TRUE(should_attach_origin_header("http://app.example", "https://app.example/data"));
+}
+
+// 7. file:/// scheme is not enforceable
+TEST(CORSPolicyTest, CorsV160_7_FileSchemeNotEnforceable) {
+    EXPECT_FALSE(has_enforceable_document_origin("file:///home/user/page.html"));
+    EXPECT_FALSE(has_enforceable_document_origin("file:///C:/Users/test.html"));
+}
+
+// 8. ftp:// scheme is not enforceable
+TEST(CORSPolicyTest, CorsV160_8_FtpSchemeNotEnforceable) {
+    EXPECT_FALSE(has_enforceable_document_origin("ftp://files.example.com/pub"));
+    EXPECT_FALSE(has_enforceable_document_origin("ftp://ftp.example.com"));
+}

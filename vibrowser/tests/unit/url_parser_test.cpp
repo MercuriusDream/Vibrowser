@@ -15505,3 +15505,55 @@ TEST(UrlParserTest, UrlV159_4_LongQueryString) {
     EXPECT_EQ(result->query, long_query);
     EXPECT_TRUE(result->fragment.empty());
 }
+
+// =============================================================================
+// Round 160 URL Parser Tests
+// =============================================================================
+
+TEST(UrlParserTest, UrlV160_1_QueryStringMultipleParams) {
+    // Parse a URL with multiple query parameters separated by '&'
+    auto result = parse("http://api.example.com/search?q=hello&lang=en&page=3");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "api.example.com");
+    EXPECT_EQ(result->path, "/search");
+    EXPECT_EQ(result->query, "q=hello&lang=en&page=3");
+    EXPECT_TRUE(result->fragment.empty());
+    EXPECT_EQ(result->port, std::nullopt);
+}
+
+TEST(UrlParserTest, UrlV160_2_EmptyPathDefaultsToSlash) {
+    // A URL with no explicit path should default to "/"
+    auto result = parse("http://example.com");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/");
+    EXPECT_TRUE(result->query.empty());
+    EXPECT_TRUE(result->fragment.empty());
+    EXPECT_EQ(result->port, std::nullopt);
+}
+
+TEST(UrlParserTest, UrlV160_3_UserInfoWithColonSeparator) {
+    // Userinfo with username:password separated by colon
+    auto result = parse("http://user:pass@host.com/path");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->username, "user");
+    EXPECT_EQ(result->password, "pass");
+    EXPECT_EQ(result->host, "host.com");
+    EXPECT_EQ(result->path, "/path");
+    EXPECT_EQ(result->port, std::nullopt);
+}
+
+TEST(UrlParserTest, UrlV160_4_TrailingSlashPreservedInPath) {
+    // A trailing slash in the path should be preserved
+    auto result = parse("http://example.com/dir/");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/dir/");
+    EXPECT_TRUE(result->query.empty());
+    EXPECT_TRUE(result->fragment.empty());
+    EXPECT_EQ(result->port, std::nullopt);
+}

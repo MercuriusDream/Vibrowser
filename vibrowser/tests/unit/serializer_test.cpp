@@ -21290,3 +21290,48 @@ TEST(SerializerTest, SerializerV159_3_Bytes2048RoundTrip) {
     }
     EXPECT_FALSE(d.has_remaining());
 }
+
+// ------------------------------------------------------------------
+// Round 160 tests
+// ------------------------------------------------------------------
+
+TEST(SerializerTest, SerializerV160_1_AlternatingU8AndStringRoundTrip) {
+    Serializer s;
+    std::string strings[] = {"alpha", "bravo", "charlie", "delta",
+                             "echo", "foxtrot", "golf", "hotel"};
+    for (int i = 0; i < 8; ++i) {
+        s.write_u8(static_cast<uint8_t>(i * 10));
+        s.write_string(strings[i]);
+    }
+
+    Deserializer d(s.data());
+    for (int i = 0; i < 8; ++i) {
+        EXPECT_EQ(d.read_u8(), static_cast<uint8_t>(i * 10));
+        EXPECT_EQ(d.read_string(), strings[i]);
+    }
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, SerializerV160_2_MaxU64ValueRoundTrip) {
+    Serializer s;
+    s.write_u64(UINT64_MAX);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u64(), UINT64_MAX);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, SerializerV160_3_NegativeI32SequenceRoundTrip) {
+    Serializer s;
+    s.write_i32(-1);
+    s.write_i32(-100);
+    s.write_i32(-10000);
+    s.write_i32(INT32_MIN);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i32(), -1);
+    EXPECT_EQ(d.read_i32(), -100);
+    EXPECT_EQ(d.read_i32(), -10000);
+    EXPECT_EQ(d.read_i32(), INT32_MIN);
+    EXPECT_FALSE(d.has_remaining());
+}

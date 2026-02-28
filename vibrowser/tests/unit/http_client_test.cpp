@@ -27645,3 +27645,191 @@ TEST(HttpClient, CookieJarNonMatchingDomainNotReturnedV159) {
     EXPECT_NE(correct.find("secret159=topval"), std::string::npos)
         << "Cookie should be present on correct domain, got: " << correct;
 }
+
+// ===========================================================================
+// Round 160 — Net Tests (V160)
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// 1. Request serialize GET with query string and Host header
+// ---------------------------------------------------------------------------
+TEST(HttpClient, RequestSerializeWithQueryStringV160) {
+    Request req;
+    req.method = Method::GET;
+    req.host = "search160.example.com";
+    req.port = 80;
+    req.path = "/search";
+    req.query = "q=test";
+    req.headers.set("Accept", "text/html");
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    EXPECT_NE(result.find("GET /search?q=test HTTP/1.1\r\n"), std::string::npos)
+        << "Request line should include path?query, got:\n" << result;
+    EXPECT_NE(result.find("Host: search160.example.com\r\n"), std::string::npos)
+        << "Host header should be present without port for port 80, got:\n" << result;
+    EXPECT_NE(result.find("Connection: close\r\n"), std::string::npos)
+        << "Connection: close header expected, got:\n" << result;
+    EXPECT_NE(result.find("accept: text/html\r\n"), std::string::npos)
+        << "Custom Accept header should be lowercase, got:\n" << result;
+}
+
+// ---------------------------------------------------------------------------
+// 2. Response parse with Transfer-Encoding: chunked header present
+// ---------------------------------------------------------------------------
+TEST(HttpClient, ResponseParseChunkedTransferEncodingHeaderV160) {
+    std::string raw_str =
+        "HTTP/1.1 200 OK\r\n"
+        "Transfer-Encoding: chunked\r\n"
+        "\r\n"
+        "a\r\n"
+        "chunk160ok\r\n"
+        "0\r\n"
+        "\r\n";
+
+    std::vector<uint8_t> raw(raw_str.begin(), raw_str.end());
+    auto resp = Response::parse(raw);
+
+    ASSERT_TRUE(resp.has_value()) << "Failed to parse chunked response";
+    EXPECT_EQ(resp->status, 200);
+    EXPECT_EQ(resp->status_text, "OK");
+
+    auto te = resp->headers.get("Transfer-Encoding");
+    ASSERT_TRUE(te.has_value()) << "Transfer-Encoding header missing";
+    EXPECT_EQ(te.value(), "chunked");
+
+    std::string body = resp->body_as_string();
+    EXPECT_EQ(body, "chunk160ok")
+        << "Chunked body mismatch, got: " << body;
+}
+
+// ---------------------------------------------------------------------------
+// 3. ConnectionPool acquire returns -1 when empty
+// ---------------------------------------------------------------------------
+TEST(HttpClient, ConnectionPoolAcquireReturnsNulloptWhenEmptyV160) {
+    ConnectionPool pool;
+
+    int fd = pool.acquire("empty160.example.com", 8080);
+    EXPECT_EQ(fd, -1)
+        << "Acquiring from empty pool should return -1, got: " << fd;
+
+    EXPECT_EQ(pool.count("empty160.example.com", 8080), 0u)
+        << "Count should be 0 for host with no connections";
+}
+
+// ---------------------------------------------------------------------------
+// 4. CookieJar Secure flag — only returned when is_secure=true
+// ---------------------------------------------------------------------------
+TEST(HttpClient, CookieJarSecureFlagOnlyOnHttpsV160) {
+    CookieJar jar;
+    jar.set_from_header("token160=secureVal; Secure; Path=/", "secure160.example.com");
+
+    // Non-secure request should NOT get the cookie
+    std::string insecure = jar.get_cookie_header("secure160.example.com", "/", false);
+    EXPECT_TRUE(insecure.empty())
+        << "Secure cookie must NOT be returned over HTTP, got: " << insecure;
+
+    // Secure request SHOULD get the cookie
+    std::string secure = jar.get_cookie_header("secure160.example.com", "/", true);
+    EXPECT_NE(secure.find("token160=secureVal"), std::string::npos)
+        << "Secure cookie must be returned over HTTPS, got: " << secure;
+}
+
+// ---------------------------------------------------------------------------
+// 5. HeaderMap set overwrites previous value
+// ---------------------------------------------------------------------------
+TEST(HttpClient, HeaderMapSetOverwritesPreviousValueV160) {
+    HeaderMap map;
+    map.set("X-Custom-160", "first_value");
+    map.set("X-Custom-160", "second_value");
+
+    auto val = map.get("X-Custom-160");
+    ASSERT_TRUE(val.has_value()) << "Header should exist after set";
+    EXPECT_EQ(val.value(), "second_value")
+        << "set() should overwrite, got: " << val.value();
+
+    auto all = map.get_all("X-Custom-160");
+    EXPECT_EQ(all.size(), 1u)
+        << "set() should replace, not append; count=" << all.size();
+}
+
+// ---------------------------------------------------------------------------
+// 6. Request serialize POST with Content-Type: application/json
+// ---------------------------------------------------------------------------
+TEST(HttpClient, RequestSerializePostWithContentTypeV160) {
+    Request req;
+    req.method = Method::POST;
+    req.host = "api160.example.com";
+    req.port = 80;
+    req.path = "/api/v160/data";
+
+    std::string body_str = R"({"round":160})";
+    req.body.assign(body_str.begin(), body_str.end());
+    req.headers.set("Content-Type", "application/json");
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    EXPECT_NE(result.find("POST /api/v160/data HTTP/1.1\r\n"), std::string::npos)
+        << "POST request line missing, got:\n" << result;
+    EXPECT_NE(result.find("Host: api160.example.com\r\n"), std::string::npos)
+        << "Host header missing, got:\n" << result;
+    EXPECT_NE(result.find("content-type: application/json\r\n"), std::string::npos)
+        << "Content-Type header should be lowercase, got:\n" << result;
+    std::string expected_cl = "Content-Length: " + std::to_string(body_str.size()) + "\r\n";
+    EXPECT_NE(result.find(expected_cl), std::string::npos)
+        << "Content-Length header expected: " << expected_cl << ", got:\n" << result;
+    EXPECT_NE(result.find("\r\n\r\n{\"round\":160}"), std::string::npos)
+        << "Body should follow blank line, got:\n" << result;
+}
+
+// ---------------------------------------------------------------------------
+// 7. Response parse 301 Moved Permanently status line
+// ---------------------------------------------------------------------------
+TEST(HttpClient, ResponseParseStatusLine301V160) {
+    std::string raw_str =
+        "HTTP/1.1 301 Moved Permanently\r\n"
+        "Location: https://new160.example.com/\r\n"
+        "Content-Length: 0\r\n"
+        "\r\n";
+
+    std::vector<uint8_t> raw(raw_str.begin(), raw_str.end());
+    auto resp = Response::parse(raw);
+
+    ASSERT_TRUE(resp.has_value()) << "Failed to parse 301 response";
+    EXPECT_EQ(resp->status, 301)
+        << "Status should be 301, got: " << resp->status;
+    EXPECT_EQ(resp->status_text, "Moved Permanently")
+        << "Status text mismatch, got: " << resp->status_text;
+
+    auto loc = resp->headers.get("Location");
+    ASSERT_TRUE(loc.has_value()) << "Location header missing";
+    EXPECT_EQ(loc.value(), "https://new160.example.com/")
+        << "Location header wrong, got: " << loc.value();
+
+    EXPECT_TRUE(resp->body.empty()) << "Body should be empty for 301 redirect";
+}
+
+// ---------------------------------------------------------------------------
+// 8. CookieJar multiple domains isolated from each other
+// ---------------------------------------------------------------------------
+TEST(HttpClient, CookieJarMultipleDomainsIsolatedV160) {
+    CookieJar jar;
+    jar.set_from_header("alpha160=domA; Path=/", "domainA160.example.com");
+    jar.set_from_header("beta160=domB; Path=/", "domainB160.example.com");
+
+    // Domain A should only see its own cookie
+    std::string headerA = jar.get_cookie_header("domainA160.example.com", "/", false);
+    EXPECT_NE(headerA.find("alpha160=domA"), std::string::npos)
+        << "Domain A should have its cookie, got: " << headerA;
+    EXPECT_EQ(headerA.find("beta160=domB"), std::string::npos)
+        << "Domain A must NOT see domain B cookie, got: " << headerA;
+
+    // Domain B should only see its own cookie
+    std::string headerB = jar.get_cookie_header("domainB160.example.com", "/", false);
+    EXPECT_NE(headerB.find("beta160=domB"), std::string::npos)
+        << "Domain B should have its cookie, got: " << headerB;
+    EXPECT_EQ(headerB.find("alpha160=domA"), std::string::npos)
+        << "Domain B must NOT see domain A cookie, got: " << headerB;
+}

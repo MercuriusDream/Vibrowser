@@ -2561,3 +2561,58 @@ TEST(MessageChannelTest, MessageChannelV159_2_RapidFireSameType) {
     EXPECT_EQ(call_count, 100);
     EXPECT_EQ(last_req_id, 99u);
 }
+
+// ------------------------------------------------------------------
+// Round 160 tests
+// ------------------------------------------------------------------
+
+TEST(MessageChannelTest, MessageChannelV160_1_UnregisteredTypeIgnored) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel ch(std::move(pa));
+
+    // Register handler for type 10 only
+    int call_count = 0;
+    ch.on(10, [&](const Message& m) {
+        ++call_count;
+    });
+
+    // Dispatch a message with unregistered type 99 — should not crash
+    Message msg;
+    msg.type = 99;
+    msg.request_id = 1;
+    msg.payload = {0xAA, 0xBB};
+    ch.dispatch(msg);
+
+    // The registered handler should not have been called
+    EXPECT_EQ(call_count, 0);
+}
+
+TEST(MessageChannelTest, MessageChannelV160_2_HandlerReceivesCorrectPayload) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel ch(std::move(pa));
+
+    std::vector<uint8_t> captured_payload;
+    uint32_t captured_type = 0;
+    uint32_t captured_request_id = 0;
+
+    ch.on(77, [&](const Message& m) {
+        captured_type = m.type;
+        captured_request_id = m.request_id;
+        captured_payload = m.payload;
+    });
+
+    Message msg;
+    msg.type = 77;
+    msg.request_id = 500;
+    msg.payload = {0x01, 0x02, 0x03, 0x04, 0x05};
+    ch.dispatch(msg);
+
+    EXPECT_EQ(captured_type, 77u);
+    EXPECT_EQ(captured_request_id, 500u);
+    ASSERT_EQ(captured_payload.size(), 5u);
+    EXPECT_EQ(captured_payload[0], 0x01);
+    EXPECT_EQ(captured_payload[1], 0x02);
+    EXPECT_EQ(captured_payload[2], 0x03);
+    EXPECT_EQ(captured_payload[3], 0x04);
+    EXPECT_EQ(captured_payload[4], 0x05);
+}

@@ -23759,3 +23759,172 @@ TEST(DomElement, BooleanAttributeV159) {
     EXPECT_EQ(val.value(), "");
     EXPECT_EQ(elem.attributes().size(), 1u);
 }
+
+// ---------------------------------------------------------------------------
+// Round 160 — DOM tests
+// ---------------------------------------------------------------------------
+
+// 1. Append single child to empty node, verify first_child and last_child
+TEST(DomNode, AppendChildToEmptyNodeSetsFirstAndLastChildV160) {
+    auto parent = std::make_unique<Element>("div");
+    auto child = std::make_unique<Element>("p");
+    Element* child_ptr = child.get();
+
+    EXPECT_EQ(parent->first_child(), nullptr);
+    EXPECT_EQ(parent->last_child(), nullptr);
+    EXPECT_EQ(parent->child_count(), 0u);
+
+    parent->append_child(std::move(child));
+
+    EXPECT_EQ(parent->child_count(), 1u);
+    EXPECT_EQ(parent->first_child(), child_ptr);
+    EXPECT_EQ(parent->last_child(), child_ptr);
+    EXPECT_EQ(parent->first_child(), parent->last_child());
+}
+
+// 2. remove_attribute on non-existent attribute does not crash, has_attribute stays false
+TEST(DomElement, RemoveAttributeReturnsFalseForNonexistentV160) {
+    Element elem("div");
+    EXPECT_FALSE(elem.has_attribute("ghost"));
+    EXPECT_EQ(elem.attributes().size(), 0u);
+
+    elem.remove_attribute("ghost");
+
+    EXPECT_FALSE(elem.has_attribute("ghost"));
+    EXPECT_EQ(elem.attributes().size(), 0u);
+}
+
+// 3. create_element, append to doc, verify owner_document resolved by walking ancestors
+TEST(DomDocument, CreateElementSetsOwnerDocumentV160) {
+    Document doc;
+    auto elem = doc.create_element("section");
+    ASSERT_NE(elem, nullptr);
+    EXPECT_EQ(elem->tag_name(), "section");
+
+    Element* elem_ptr = elem.get();
+    doc.append_child(std::move(elem));
+
+    // Walk up from elem_ptr to find the Document ancestor
+    const Node* current = elem_ptr;
+    while (current->parent() != nullptr) {
+        current = current->parent();
+    }
+    EXPECT_EQ(current->node_type(), NodeType::Document);
+    EXPECT_EQ(current, &doc);
+}
+
+// 4. stop_propagation sets propagation_stopped to true
+TEST(DomEvent, StopPropagationPreventsParentHandlingV160) {
+    Event event("click", /*bubbles=*/true, /*cancelable=*/false);
+    EXPECT_FALSE(event.propagation_stopped());
+
+    event.stop_propagation();
+
+    EXPECT_TRUE(event.propagation_stopped());
+}
+
+// 5. Deep clone preserves child hierarchy (parent with 2 children)
+TEST(DomNode, DeepClonePreservesChildHierarchyV160) {
+    auto root = std::make_unique<Element>("ul");
+    auto c1 = std::make_unique<Element>("li");
+    auto c2 = std::make_unique<Element>("li");
+    c1->set_attribute("id", "item1-v160");
+    c2->set_attribute("id", "item2-v160");
+    root->append_child(std::move(c1));
+    root->append_child(std::move(c2));
+    EXPECT_EQ(root->child_count(), 2u);
+
+    // Deep clone helper
+    std::function<std::unique_ptr<Node>(const Node*)> deep_clone =
+        [&](const Node* source) -> std::unique_ptr<Node> {
+            if (source->node_type() == NodeType::Element) {
+                const auto* src_elem = static_cast<const Element*>(source);
+                auto clone = std::make_unique<Element>(src_elem->tag_name());
+                for (const auto& attr : src_elem->attributes()) {
+                    clone->set_attribute(attr.name, attr.value);
+                }
+                for (const Node* c = source->first_child(); c != nullptr; c = c->next_sibling()) {
+                    clone->append_child(deep_clone(c));
+                }
+                return clone;
+            }
+            if (source->node_type() == NodeType::Text) {
+                const auto* src_text = static_cast<const Text*>(source);
+                return std::make_unique<Text>(src_text->data());
+            }
+            if (source->node_type() == NodeType::Comment) {
+                const auto* src_comment = static_cast<const Comment*>(source);
+                return std::make_unique<Comment>(src_comment->data());
+            }
+            auto clone_doc = std::make_unique<Document>();
+            for (const Node* c = source->first_child(); c != nullptr; c = c->next_sibling()) {
+                clone_doc->append_child(deep_clone(c));
+            }
+            return clone_doc;
+        };
+
+    auto cloned = deep_clone(root.get());
+    auto* cloned_root = static_cast<Element*>(cloned.get());
+
+    ASSERT_NE(cloned_root, nullptr);
+    EXPECT_NE(cloned_root, root.get());
+    EXPECT_EQ(cloned_root->tag_name(), "ul");
+    EXPECT_EQ(cloned_root->child_count(), 2u);
+
+    auto* cloned_c1 = static_cast<Element*>(cloned_root->first_child());
+    auto* cloned_c2 = static_cast<Element*>(cloned_root->last_child());
+    ASSERT_NE(cloned_c1, nullptr);
+    ASSERT_NE(cloned_c2, nullptr);
+    EXPECT_EQ(cloned_c1->tag_name(), "li");
+    EXPECT_EQ(cloned_c2->tag_name(), "li");
+    EXPECT_EQ(cloned_c1->get_attribute("id").value(), "item1-v160");
+    EXPECT_EQ(cloned_c2->get_attribute("id").value(), "item2-v160");
+}
+
+// 6. Toggle adds then removes, verify contains after each
+TEST(DomElement, ToggleClassReturnValueAfterAddAndRemoveV160) {
+    Element elem("div");
+    EXPECT_FALSE(elem.class_list().contains("active"));
+
+    // toggle adds when absent
+    elem.class_list().toggle("active");
+    EXPECT_TRUE(elem.class_list().contains("active"));
+    EXPECT_EQ(elem.class_list().length(), 1u);
+
+    // toggle removes when present
+    elem.class_list().toggle("active");
+    EXPECT_FALSE(elem.class_list().contains("active"));
+    EXPECT_EQ(elem.class_list().length(), 0u);
+}
+
+// 7. mark_dirty(Style) sets only style flag, not layout or paint
+TEST(DomNode, MarkDirtyStyleSetsOnlyStyleFlagV160) {
+    Element elem("div");
+    EXPECT_EQ(elem.dirty_flags(), DirtyFlags::None);
+
+    elem.mark_dirty(DirtyFlags::Style);
+
+    EXPECT_NE(elem.dirty_flags() & DirtyFlags::Style, DirtyFlags::None);
+    EXPECT_EQ(elem.dirty_flags() & DirtyFlags::Layout, DirtyFlags::None);
+    EXPECT_EQ(elem.dirty_flags() & DirtyFlags::Paint, DirtyFlags::None);
+}
+
+// 8. insert_before with nullptr reference appends to end
+TEST(DomNode, InsertBeforeNullRefAppendsToEndV160) {
+    auto parent = std::make_unique<Element>("ul");
+    auto li1 = std::make_unique<Element>("li");
+    auto li2 = std::make_unique<Element>("li");
+    Element* li1_ptr = li1.get();
+    Element* li2_ptr = li2.get();
+
+    parent->append_child(std::move(li1));
+    EXPECT_EQ(parent->child_count(), 1u);
+    EXPECT_EQ(parent->first_child(), li1_ptr);
+    EXPECT_EQ(parent->last_child(), li1_ptr);
+
+    parent->insert_before(std::move(li2), nullptr);
+    EXPECT_EQ(parent->child_count(), 2u);
+    EXPECT_EQ(parent->first_child(), li1_ptr);
+    EXPECT_EQ(parent->last_child(), li2_ptr);
+    EXPECT_EQ(li1_ptr->next_sibling(), li2_ptr);
+}

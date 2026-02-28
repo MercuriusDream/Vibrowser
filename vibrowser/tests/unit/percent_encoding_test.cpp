@@ -1556,3 +1556,50 @@ TEST(IsURLCodePoint, AmpersandAndHashValidV159) {
     // '#' is percent-encoded as %23
     EXPECT_EQ(percent_encode("#"), "%23");
 }
+
+// =============================================================================
+// Round 160 Percent Encoding Tests
+// =============================================================================
+
+TEST(PercentEncoding, SpaceEncodedAsPercent20V160) {
+    // A single space should be encoded as %20
+    EXPECT_EQ(percent_encode(" "), "%20");
+    // Multiple consecutive spaces
+    EXPECT_EQ(percent_encode("   "), "%20%20%20");
+    // Space at the beginning and end
+    EXPECT_EQ(percent_encode(" test "), "%20test%20");
+}
+
+TEST(PercentDecoding, PlusSignNotDecodedAsSpaceV160) {
+    // %2B decodes to the literal '+' character
+    EXPECT_EQ(percent_decode("%2B"), "+");
+    // A literal '+' in the input should remain as '+' (not decoded to space)
+    EXPECT_EQ(percent_decode("+"), "+");
+    // Mix of %2B and literal +
+    EXPECT_EQ(percent_decode("a%2Bb+c"), "a+b+c");
+}
+
+TEST(PercentEncoding, SlashNotEncodedInPathV160) {
+    // '/' is a valid URL code point
+    EXPECT_TRUE(is_url_code_point(static_cast<char32_t>('/')));
+    // By default (encode_slash=false), slash is not encoded
+    EXPECT_EQ(percent_encode("/"), "/");
+    EXPECT_EQ(percent_encode("/foo/bar"), "/foo/bar");
+    // When encode_slash=true, slash is encoded
+    EXPECT_EQ(percent_encode("/", true), "%2F");
+}
+
+TEST(IsURLCodePoint, DigitsAndLettersAllValidV160) {
+    // All ASCII digits 0-9 should be valid URL code points
+    for (char c = '0'; c <= '9'; ++c) {
+        EXPECT_TRUE(is_url_code_point(static_cast<char32_t>(c)));
+    }
+    // All lowercase ASCII letters a-z should be valid URL code points
+    for (char c = 'a'; c <= 'z'; ++c) {
+        EXPECT_TRUE(is_url_code_point(static_cast<char32_t>(c)));
+    }
+    // All uppercase ASCII letters A-Z should be valid URL code points
+    for (char c = 'A'; c <= 'Z'; ++c) {
+        EXPECT_TRUE(is_url_code_point(static_cast<char32_t>(c)));
+    }
+}

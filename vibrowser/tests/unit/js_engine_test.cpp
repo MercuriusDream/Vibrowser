@@ -37635,3 +37635,103 @@ TEST(JSEngine, JsV159_8) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "hello\\nworld");
 }
+
+// V160_1: Array.reduce sum
+TEST(JSEngine, JsV160_1) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var arr = [1, 2, 3, 4, 5];
+        String(arr.reduce(function(acc, val) { return acc + val; }, 0));
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "15");
+}
+
+// V160_2: String.split with limit
+TEST(JSEngine, JsV160_2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var parts = "a-b-c-d-e".split("-", 3);
+        parts.join(",");
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "a,b,c");
+}
+
+// V160_3: JSON.stringify with replacer
+TEST(JSEngine, JsV160_3) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var obj = { a: 1, b: 2, c: 3 };
+        JSON.stringify(obj, ["a", "c"]);
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "{\"a\":1,\"c\":3}");
+}
+
+// V160_4: Date.now returns number type
+TEST(JSEngine, JsV160_4) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        typeof Date.now();
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "number");
+}
+
+// V160_5: typeof checks for all types
+TEST(JSEngine, JsV160_5) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var results = [];
+        results.push(typeof 42);
+        results.push(typeof "hello");
+        results.push(typeof true);
+        results.push(typeof undefined);
+        results.push(typeof null);
+        results.push(typeof {});
+        results.push(typeof function(){});
+        results.join(",");
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "number,string,boolean,undefined,object,object,function");
+}
+
+// V160_6: destructuring assignment
+TEST(JSEngine, JsV160_6) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var arr = [10, 20, 30];
+        var [x, y, z] = arr;
+        String(x) + "," + String(y) + "," + String(z);
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "10,20,30");
+}
+
+// V160_7: template literals with expressions
+TEST(JSEngine, JsV160_7) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var a = 5;
+        var b = 10;
+        `sum is ${a + b} and product is ${a * b}`;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "sum is 15 and product is 50");
+}
+
+// V160_8: for...of iteration over array
+TEST(JSEngine, JsV160_8) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var arr = [3, 7, 11];
+        var total = 0;
+        for (var item of arr) {
+            total += item;
+        }
+        String(total);
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "21");
+}

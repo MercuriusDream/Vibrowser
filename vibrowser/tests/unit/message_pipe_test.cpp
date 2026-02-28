@@ -2408,3 +2408,55 @@ TEST(MessagePipeTest, MessagePipeV159_3_ReceiveFromClosedSender) {
     auto recv3 = b.receive();
     EXPECT_FALSE(recv3.has_value());
 }
+
+// ------------------------------------------------------------------
+// Round 160 tests
+// ------------------------------------------------------------------
+
+TEST(MessagePipeTest, MessagePipeV160_1_MultipleMessagesInOrder) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    // Send 5 messages with distinct payloads
+    for (int i = 0; i < 5; ++i) {
+        std::vector<uint8_t> payload(4, static_cast<uint8_t>(i + 1));
+        ASSERT_TRUE(a.send(payload));
+    }
+
+    // Receive in FIFO order
+    for (int i = 0; i < 5; ++i) {
+        auto received = b.receive();
+        ASSERT_TRUE(received.has_value());
+        ASSERT_EQ(received->size(), 4u);
+        for (size_t j = 0; j < received->size(); ++j) {
+            EXPECT_EQ((*received)[j], static_cast<uint8_t>(i + 1));
+        }
+    }
+}
+
+TEST(MessagePipeTest, MessagePipeV160_2_EmptyPayloadMessage) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    std::vector<uint8_t> empty_payload;
+    ASSERT_TRUE(a.send(empty_payload));
+
+    auto received = b.receive();
+    ASSERT_TRUE(received.has_value());
+    EXPECT_TRUE(received->empty());
+}
+
+TEST(MessagePipeTest, MessagePipeV160_3_LargePayload8KB) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    std::vector<uint8_t> payload(8192);
+    for (size_t i = 0; i < payload.size(); ++i) {
+        payload[i] = static_cast<uint8_t>(i % 256);
+    }
+    ASSERT_TRUE(a.send(payload));
+
+    auto received = b.receive();
+    ASSERT_TRUE(received.has_value());
+    ASSERT_EQ(received->size(), 8192u);
+    for (size_t i = 0; i < received->size(); ++i) {
+        EXPECT_EQ((*received)[i], static_cast<uint8_t>(i % 256));
+    }
+}

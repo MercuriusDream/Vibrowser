@@ -29376,3 +29376,155 @@ TEST(LayoutNodeProps, SpecifiedWidthDefaultZeroV159) {
     auto node = make_block("div");
     EXPECT_FLOAT_EQ(node->specified_width, -1.0f);
 }
+
+// V160_1: flex row-reverse reverses child order
+TEST(LayoutEngineTest, LayoutV160_1) {
+    auto root = make_flex("div");
+    root->specified_width = 600.0f;
+    root->flex_direction = 1; // row-reverse
+
+    auto c1 = make_block("div");
+    c1->specified_width = 100.0f;
+    c1->specified_height = 50.0f;
+    c1->flex_grow = 0;
+    c1->flex_shrink = 0;
+    c1->flex_basis = 100.0f;
+
+    auto c2 = make_block("div");
+    c2->specified_width = 100.0f;
+    c2->specified_height = 50.0f;
+    c2->flex_grow = 0;
+    c2->flex_shrink = 0;
+    c2->flex_basis = 100.0f;
+
+    root->append_child(std::move(c1));
+    root->append_child(std::move(c2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 600.0f, 400.0f);
+
+    ASSERT_GE(root->children.size(), 2u);
+    // In row-reverse, second DOM child should be to the left of first
+    EXPECT_LT(root->children[1]->geometry.x, root->children[0]->geometry.x);
+}
+
+// V160_2: block width 100% of parent (500px container)
+TEST(LayoutEngineTest, LayoutV160_2) {
+    auto root = make_block("div");
+    root->specified_width = 500.0f;
+
+    auto child = make_block("div");
+    // No specified_width means it fills parent
+    child->specified_height = 40.0f;
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.width, 500.0f);
+}
+
+// V160_3: nested flex containers inner/outer
+TEST(LayoutEngineTest, LayoutV160_3) {
+    auto outer = make_flex("div");
+    outer->specified_width = 400.0f;
+    outer->flex_direction = 0; // row
+
+    auto inner = make_block("div");
+    inner->specified_width = 200.0f;
+    inner->specified_height = 80.0f;
+    inner->flex_grow = 0;
+    inner->flex_shrink = 0;
+    inner->flex_basis = 200.0f;
+
+    auto sibling = make_block("div");
+    sibling->specified_width = 100.0f;
+    sibling->specified_height = 80.0f;
+    sibling->flex_grow = 0;
+    sibling->flex_shrink = 0;
+    sibling->flex_basis = 100.0f;
+
+    outer->append_child(std::move(inner));
+    outer->append_child(std::move(sibling));
+
+    LayoutEngine engine;
+    engine.compute(*outer, 500.0f, 400.0f);
+
+    ASSERT_GE(outer->children.size(), 2u);
+    // First flex item at x=0, second next to it at x=200
+    EXPECT_FLOAT_EQ(outer->children[0]->geometry.x, 0.0f);
+    EXPECT_FLOAT_EQ(outer->children[1]->geometry.x, 200.0f);
+    // Both items have correct widths from flex_basis
+    EXPECT_FLOAT_EQ(outer->children[0]->geometry.width, 200.0f);
+    EXPECT_FLOAT_EQ(outer->children[1]->geometry.width, 100.0f);
+}
+
+// V160_4: padding-left and padding-right reduce content width
+TEST(LayoutEngineTest, LayoutV160_4) {
+    auto root = make_block("div");
+    root->specified_width = 300.0f;
+    root->geometry.padding.left = 20.0f;
+    root->geometry.padding.right = 30.0f;
+
+    auto child = make_block("div");
+    child->specified_height = 50.0f;
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // Content width = 300, child fills content area = 300 - 20 - 30 = 250
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.width, 250.0f);
+}
+
+// V160_5: margin-top on second child creates gap
+TEST(LayoutEngineTest, LayoutV160_5) {
+    auto root = make_block("div");
+    root->specified_width = 400.0f;
+
+    auto c1 = make_block("div");
+    c1->specified_height = 60.0f;
+
+    auto c2 = make_block("div");
+    c2->specified_height = 40.0f;
+    c2->geometry.margin.top = 25.0f;
+
+    root->append_child(std::move(c1));
+    root->append_child(std::move(c2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // Second child y = first child height + margin-top
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.y, 60.0f + 25.0f);
+}
+
+// V160_6: border thickness adds to total size
+TEST(LayoutEngineTest, LayoutV160_6) {
+    auto root = make_block("div");
+    root->specified_width = 200.0f;
+    root->specified_height = 100.0f;
+    root->geometry.border.left = 5.0f;
+    root->geometry.border.right = 5.0f;
+    root->geometry.border.top = 3.0f;
+    root->geometry.border.bottom = 3.0f;
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // border_box_width = border.left + padding.left + width + padding.right + border.right
+    EXPECT_FLOAT_EQ(root->geometry.border_box_width(), 5.0f + 200.0f + 5.0f);
+    EXPECT_FLOAT_EQ(root->geometry.border_box_height(), 3.0f + 100.0f + 3.0f);
+}
+
+// V160_7: default background_color is transparent (0x00000000u)
+TEST(LayoutNodeProps, BackgroundColorTransparentDefaultV160) {
+    auto node = make_block("div");
+    EXPECT_EQ(node->background_color, 0x00000000u);
+}
+
+// V160_8: default color is black (0xFF000000u)
+TEST(LayoutNodeProps, ColorDefaultBlackV160) {
+    auto node = make_block("div");
+    EXPECT_EQ(node->color, 0xFF000000u);
+}

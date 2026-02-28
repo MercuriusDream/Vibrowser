@@ -11233,3 +11233,59 @@ TEST_F(CSSStylesheetTest, DirectionRtlDeclarationV159) {
     }
     EXPECT_TRUE(found) << "direction declaration not found";
 }
+
+TEST_F(CSSStylesheetTest, TextIndentDeclarationV160) {
+    auto ss = parse_stylesheet("p { text-indent: 2em; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "text-indent") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "2em");
+        }
+    }
+    EXPECT_TRUE(found) << "text-indent declaration not found";
+}
+
+TEST_F(CSSStylesheetTest, WordBreakBreakAllDeclarationV160) {
+    auto ss = parse_stylesheet("span { word-break: break-all; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "word-break") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "break-all");
+        }
+    }
+    EXPECT_TRUE(found) << "word-break declaration not found";
+}
+
+TEST_F(CSSStylesheetTest, OverflowWrapBreakWordDeclarationV160) {
+    auto ss = parse_stylesheet("div { overflow-wrap: break-word; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "overflow-wrap") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "break-word");
+        }
+    }
+    EXPECT_TRUE(found) << "overflow-wrap declaration not found";
+}
+
+TEST_F(CSSStylesheetTest, HyphensAutoDeclarationV160) {
+    auto ss = parse_stylesheet("p { hyphens: auto; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "hyphens") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "auto");
+        }
+    }
+    EXPECT_TRUE(found) << "hyphens declaration not found";
+}
