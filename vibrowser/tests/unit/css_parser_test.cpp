@@ -12220,3 +12220,46 @@ TEST_F(CSSStylesheetTest, OutlineOffsetDeclarationV177) {
     EXPECT_EQ(sheet.rules[0].declarations[0].values[0].numeric_value, 3.0);
     EXPECT_EQ(sheet.rules[0].declarations[0].values[0].unit, "px");
 }
+
+// ---------------------------------------------------------------------------
+// Cycle V178 — word-spacing, letter-spacing, tab-size, text-indent declarations
+// ---------------------------------------------------------------------------
+
+TEST_F(CSSStylesheetTest, WordSpacingDeclarationV178) {
+    auto sheet = parse_stylesheet("p { word-spacing: 4px; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    ASSERT_EQ(sheet.rules[0].declarations.size(), 1u);
+    EXPECT_EQ(sheet.rules[0].declarations[0].property, "word-spacing");
+    ASSERT_GE(sheet.rules[0].declarations[0].values.size(), 1u);
+    EXPECT_EQ(sheet.rules[0].declarations[0].values[0].numeric_value, 4.0);
+    EXPECT_EQ(sheet.rules[0].declarations[0].values[0].unit, "px");
+}
+
+TEST_F(CSSStylesheetTest, LetterSpacingDeclarationV178) {
+    auto sheet = parse_stylesheet("h1 { letter-spacing: 2px; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    ASSERT_EQ(sheet.rules[0].declarations.size(), 1u);
+    EXPECT_EQ(sheet.rules[0].declarations[0].property, "letter-spacing");
+    ASSERT_GE(sheet.rules[0].declarations[0].values.size(), 1u);
+    EXPECT_EQ(sheet.rules[0].declarations[0].values[0].numeric_value, 2.0);
+    EXPECT_EQ(sheet.rules[0].declarations[0].values[0].unit, "px");
+}
+
+TEST_F(CSSStylesheetTest, TabSizeDeclarationV178) {
+    auto sheet = parse_stylesheet("pre { tab-size: 8; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    ASSERT_EQ(sheet.rules[0].declarations.size(), 1u);
+    EXPECT_EQ(sheet.rules[0].declarations[0].property, "tab-size");
+    ASSERT_GE(sheet.rules[0].declarations[0].values.size(), 1u);
+    EXPECT_EQ(sheet.rules[0].declarations[0].values[0].numeric_value, 8.0);
+}
+
+TEST_F(CSSStylesheetTest, TextIndentDeclarationV178) {
+    auto sheet = parse_stylesheet("article { text-indent: 24px; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    ASSERT_EQ(sheet.rules[0].declarations.size(), 1u);
+    EXPECT_EQ(sheet.rules[0].declarations[0].property, "text-indent");
+    ASSERT_GE(sheet.rules[0].declarations[0].values.size(), 1u);
+    EXPECT_EQ(sheet.rules[0].declarations[0].values[0].numeric_value, 24.0);
+    EXPECT_EQ(sheet.rules[0].declarations[0].values[0].unit, "px");
+}

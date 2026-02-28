@@ -16310,3 +16310,53 @@ TEST(UrlParserTest, UrlV177_4_PathNormalizationDotSegments) {
     // At minimum, the path should be parseable
     EXPECT_FALSE(result->path.empty());
 }
+
+// =============================================================================
+// Cycle V178 — URL parser tests
+// =============================================================================
+TEST(UrlParserTest, UrlV178_1_DefaultPort80OmittedInSerialize) {
+    // Port 80 is the default for HTTP and should be omitted during serialization
+    auto result = parse("http://www.example.com:80/index.html");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "www.example.com");
+    EXPECT_EQ(result->path, "/index.html");
+    std::string serialized = result->serialize();
+    EXPECT_EQ(serialized.find(":80"), std::string::npos);
+    EXPECT_NE(serialized.find("www.example.com/index.html"), std::string::npos);
+}
+
+TEST(UrlParserTest, UrlV178_2_UserInfoInUrl) {
+    // URL with username and password should parse user info correctly
+    auto result = parse("http://user:pass@example.com/secret");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->username, "user");
+    EXPECT_EQ(result->password, "pass");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/secret");
+}
+
+TEST(UrlParserTest, UrlV178_3_QueryAndFragmentBothPresent) {
+    // URL with both query and fragment should split them correctly
+    auto result = parse("https://search.example.com/results?q=hello+world&page=2#top");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "search.example.com");
+    EXPECT_EQ(result->path, "/results");
+    EXPECT_EQ(result->query, "q=hello+world&page=2");
+    EXPECT_EQ(result->fragment, "top");
+}
+
+TEST(UrlParserTest, UrlV178_4_NonDefaultPortPreservedInSerialize) {
+    // A non-default port (e.g. 3000 for http) should be preserved in serialization
+    auto result = parse("http://localhost:3000/api/v1");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "localhost");
+    ASSERT_TRUE(result->port.has_value());
+    EXPECT_EQ(result->port.value(), 3000);
+    EXPECT_EQ(result->path, "/api/v1");
+    std::string serialized = result->serialize();
+    EXPECT_NE(serialized.find(":3000"), std::string::npos);
+}

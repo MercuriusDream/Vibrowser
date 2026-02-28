@@ -31685,3 +31685,125 @@ TEST(LayoutEngineTest, BlockChildInheritsContainerWidthV177) {
 
     EXPECT_FLOAT_EQ(root->children[0]->geometry.width, 400.0f);
 }
+
+// V178_1: block with max_width constrains geometry width
+TEST(LayoutEngineTest, MaxWidthClampsDownV178) {
+    auto root = make_block("div");
+    root->specified_width = 600.0f;
+    root->max_width = 300.0f;
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(root->geometry.width, 300.0f);
+}
+
+// V178_2: nested block children stack correctly with margin
+TEST(LayoutEngineTest, NestedBlockChildrenStackWithMarginV178) {
+    auto root = make_block("div");
+
+    auto c1 = make_block("div");
+    c1->specified_height = 40.0f;
+    c1->geometry.margin.bottom = 10.0f;
+    auto c2 = make_block("div");
+    c2->specified_height = 60.0f;
+    c2->geometry.margin.top = 15.0f;
+
+    root->append_child(std::move(c1));
+    root->append_child(std::move(c2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // Margins collapse — larger margin wins (15 > 10)
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.y, 0.0f);
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.y, 55.0f);
+}
+
+// V178_3: min_height clamps specified_height upward
+TEST(LayoutEngineTest, MinHeightClampsUpV178) {
+    auto root = make_block("div");
+    root->specified_height = 50.0f;
+    root->min_height = 200.0f;
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(root->geometry.height, 200.0f);
+}
+
+// V178_4: flex container default direction — children placed horizontally
+TEST(LayoutEngineTest, FlexContainerChildrenHorizontalV178) {
+    auto root = make_flex("div");
+    root->specified_width = 600.0f;
+
+    auto c1 = make_block("div");
+    c1->specified_width = 100.0f;
+    c1->specified_height = 50.0f;
+    auto c2 = make_block("div");
+    c2->specified_width = 150.0f;
+    c2->specified_height = 50.0f;
+
+    root->append_child(std::move(c1));
+    root->append_child(std::move(c2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.x, 0.0f);
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.x, 100.0f);
+}
+
+// V178_5: block node default border is zero
+TEST(LayoutNodeProps, BorderDefaultZeroV178) {
+    auto node = std::make_unique<LayoutNode>();
+    EXPECT_FLOAT_EQ(node->geometry.border.top, 0.0f);
+    EXPECT_FLOAT_EQ(node->geometry.border.right, 0.0f);
+    EXPECT_FLOAT_EQ(node->geometry.border.bottom, 0.0f);
+    EXPECT_FLOAT_EQ(node->geometry.border.left, 0.0f);
+}
+
+// V178_6: specified_width=0 yields zero width
+TEST(LayoutEngineTest, SpecifiedWidthZeroV178) {
+    auto root = make_block("div");
+    root->specified_width = 0.0f;
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(root->geometry.width, 0.0f);
+}
+
+// V178_7: background_color default is transparent (0)
+TEST(LayoutNodeProps, BackgroundColorDefaultV178) {
+    auto node = std::make_unique<LayoutNode>();
+    EXPECT_EQ(node->background_color, 0u);
+}
+
+// V178_8: four block children stacking with specified heights
+TEST(LayoutEngineTest, FourBlockChildrenStackingV178) {
+    auto root = make_block("div");
+
+    auto c1 = make_block("div");
+    c1->specified_height = 25.0f;
+    auto c2 = make_block("div");
+    c2->specified_height = 35.0f;
+    auto c3 = make_block("div");
+    c3->specified_height = 45.0f;
+    auto c4 = make_block("div");
+    c4->specified_height = 55.0f;
+
+    root->append_child(std::move(c1));
+    root->append_child(std::move(c2));
+    root->append_child(std::move(c3));
+    root->append_child(std::move(c4));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.y, 0.0f);
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.y, 25.0f);
+    EXPECT_FLOAT_EQ(root->children[2]->geometry.y, 60.0f);
+    EXPECT_FLOAT_EQ(root->children[3]->geometry.y, 105.0f);
+    EXPECT_FLOAT_EQ(root->geometry.height, 160.0f);
+}

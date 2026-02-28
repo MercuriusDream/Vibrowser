@@ -2124,3 +2124,41 @@ TEST(IsURLCodePoint, DigitsAndLettersValidV177) {
     EXPECT_TRUE(is_url_code_point(U'a'));
     EXPECT_TRUE(is_url_code_point(U'z'));
 }
+
+// =============================================================================
+// Cycle V178 — Percent encoding tests
+// =============================================================================
+TEST(PercentEncoding, CaretEncodedV178) {
+    // '^' (U+005E) should be percent-encoded as %5E
+    EXPECT_EQ(percent_encode("^"), "%5E");
+    EXPECT_EQ(percent_encode("a^b"), "a%5Eb");
+    EXPECT_EQ(percent_encode("^^"), "%5E%5E");
+}
+
+TEST(PercentDecoding, RoundTripWithPipeAndCaretV178) {
+    // Encoding and then decoding pipe and caret chars should return original
+    std::string original = "key^val|data";
+    std::string encoded = percent_encode(original);
+    std::string decoded = percent_decode(encoded);
+    EXPECT_EQ(decoded, original);
+}
+
+TEST(PercentEncoding, DoubleEncodesExistingPercentSequenceV178) {
+    // A string already containing %7C should have its % double-encoded to %25
+    EXPECT_EQ(percent_encode("%7C"), "%257C");
+    EXPECT_EQ(percent_encode("a%20b"), "a%2520b");
+}
+
+TEST(IsURLCodePoint, SpecialPunctuationValidityV178) {
+    // '!' (U+0021) is a valid URL code point
+    EXPECT_TRUE(is_url_code_point(U'!'));
+    // '*' (U+002A) is a valid URL code point
+    EXPECT_TRUE(is_url_code_point(U'*'));
+    // '(' and ')' (U+0028, U+0029) are valid URL code points
+    EXPECT_TRUE(is_url_code_point(U'('));
+    EXPECT_TRUE(is_url_code_point(U')'));
+    // '#' (U+0023) is a delimiter, NOT a valid URL code point
+    EXPECT_FALSE(is_url_code_point(U'#'));
+    // DEL (U+007F) is NOT a valid URL code point
+    EXPECT_FALSE(is_url_code_point(U'\x7F'));
+}

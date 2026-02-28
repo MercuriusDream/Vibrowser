@@ -25560,3 +25560,96 @@ TEST(DomNode, LastChildUpdateAfterRemoveLastV177) {
     EXPECT_EQ(parent->first_child(), a_ptr);
     EXPECT_EQ(a_ptr->next_sibling(), nullptr);
 }
+
+// ---------------------------------------------------------------------------
+// Round 178 — DOM tests
+// ---------------------------------------------------------------------------
+
+// 1. insert_before places node before reference child
+TEST(DomNode, InsertBeforeMiddleChildV178) {
+    auto parent = std::make_unique<Element>("ul");
+    auto li1 = std::make_unique<Element>("li");
+    auto li3 = std::make_unique<Element>("li");
+    auto* li1_ptr = li1.get();
+    auto* li3_ptr = li3.get();
+    parent->append_child(std::move(li1));
+    parent->append_child(std::move(li3));
+
+    auto li2 = std::make_unique<Element>("li");
+    auto* li2_ptr = li2.get();
+    parent->insert_before(std::move(li2), li3_ptr);
+
+    EXPECT_EQ(li1_ptr->next_sibling(), li2_ptr);
+    EXPECT_EQ(li2_ptr->next_sibling(), li3_ptr);
+    EXPECT_EQ(parent->first_child(), li1_ptr);
+}
+
+// 2. Element with multiple classes via class_list add
+TEST(DomElement, ClassListAddMultipleClassesV178) {
+    Element elem("div");
+    elem.class_list().add("alpha");
+    elem.class_list().add("beta");
+    elem.class_list().add("gamma");
+    EXPECT_TRUE(elem.class_list().contains("alpha"));
+    EXPECT_TRUE(elem.class_list().contains("beta"));
+    EXPECT_TRUE(elem.class_list().contains("gamma"));
+    EXPECT_FALSE(elem.class_list().contains("delta"));
+}
+
+// 3. Document create_comment returns Comment node
+TEST(DomDocument, CreateCommentNodeV178) {
+    Document doc;
+    auto comment = doc.create_comment("This is a comment");
+    EXPECT_EQ(comment->node_type(), NodeType::Comment);
+    EXPECT_EQ(comment->data(), "This is a comment");
+}
+
+// 4. Dirty flag Style only
+TEST(DomNode, DirtyFlagStyleOnlyV178) {
+    Element elem("div");
+    elem.clear_dirty();
+    elem.mark_dirty(DirtyFlags::Style);
+    EXPECT_NE(elem.dirty_flags() & DirtyFlags::Style, DirtyFlags::None);
+    EXPECT_EQ(elem.dirty_flags() & DirtyFlags::Layout, DirtyFlags::None);
+    EXPECT_EQ(elem.dirty_flags() & DirtyFlags::Paint, DirtyFlags::None);
+}
+
+// 5. text_content on element with no children returns empty
+TEST(DomNode, TextContentEmptyElementV178) {
+    Element elem("span");
+    EXPECT_EQ(elem.text_content(), "");
+}
+
+// 6. Remove only child leaves parent with no children
+TEST(DomNode, RemoveOnlyChildLeavesEmptyV178) {
+    auto parent = std::make_unique<Element>("div");
+    auto child = std::make_unique<Element>("p");
+    auto* child_ptr = child.get();
+    parent->append_child(std::move(child));
+    EXPECT_EQ(parent->first_child(), child_ptr);
+    parent->remove_child(*child_ptr);
+    EXPECT_EQ(parent->first_child(), nullptr);
+    EXPECT_EQ(parent->last_child(), nullptr);
+}
+
+// 7. Element attributes after removing one of several
+TEST(DomElement, AttributeCountAfterPartialRemovalV178) {
+    Element elem("a");
+    elem.set_attribute("href", "https://example.com");
+    elem.set_attribute("target", "_blank");
+    elem.set_attribute("rel", "noopener");
+    EXPECT_EQ(elem.attributes().size(), 3u);
+    elem.remove_attribute("target");
+    EXPECT_EQ(elem.attributes().size(), 2u);
+    EXPECT_TRUE(elem.has_attribute("href"));
+    EXPECT_FALSE(elem.has_attribute("target"));
+    EXPECT_TRUE(elem.has_attribute("rel"));
+}
+
+// 8. Event default_prevented flag
+TEST(DomEvent, PreventDefaultFlagV178) {
+    Event event("submit");
+    EXPECT_FALSE(event.default_prevented());
+    event.prevent_default();
+    EXPECT_TRUE(event.default_prevented());
+}

@@ -26904,3 +26904,43 @@ TEST(PropertyCascadeTest, PointerEventsNoneAppliedV177) {
     cascade.apply_declaration(style, make_decl("pointer-events", "none"), parent);
     EXPECT_EQ(style.pointer_events, PointerEvents::None);
 }
+
+// ---------------------------------------------------------------------------
+// Cycle V178 — float left, clear both, text-align center, overflow hidden
+// ---------------------------------------------------------------------------
+
+TEST(PropertyCascadeTest, FloatLeftAppliedV178) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("float", "left"), parent);
+    EXPECT_EQ(style.float_val, Float::Left);
+}
+
+TEST(PropertyCascadeTest, ClearBothAppliedV178) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("clear", "both"), parent);
+    EXPECT_EQ(style.clear, Clear::Both);
+}
+
+TEST(PropertyCascadeTest, TextAlignCenterAppliedV178) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("text-align", "center"), parent);
+    EXPECT_EQ(style.text_align, TextAlign::Center);
+}
+
+TEST(PropertyCascadeTest, OverflowHiddenAppliedV178) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("overflow", "hidden"), parent);
+    EXPECT_EQ(style.overflow_x, Overflow::Hidden);
+}

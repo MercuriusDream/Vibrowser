@@ -22066,3 +22066,67 @@ TEST(SerializerTest, SerializerV177_3_MixedU32I64StringBytesRoundTrip) {
     EXPECT_TRUE(d.read_bool());
     EXPECT_FALSE(d.has_remaining());
 }
+
+// ------------------------------------------------------------------
+// Round 178 serializer tests
+// ------------------------------------------------------------------
+
+TEST(SerializerTest, SerializerV178_1_RepeatedBytesBlocksRoundTrip) {
+    Serializer s;
+    // Write multiple byte blocks back-to-back and verify ordering
+    std::vector<uint8_t> block_a = {0xAA, 0xBB, 0xCC};
+    std::vector<uint8_t> block_b = {0x11, 0x22, 0x33, 0x44};
+    std::vector<uint8_t> block_c = {0xFF};
+
+    s.write_bytes(block_a.data(), block_a.size());
+    s.write_bytes(block_b.data(), block_b.size());
+    s.write_bytes(block_c.data(), block_c.size());
+
+    Deserializer d(s.data());
+    auto ra = d.read_bytes();
+    EXPECT_EQ(ra, block_a);
+    auto rb = d.read_bytes();
+    EXPECT_EQ(rb, block_b);
+    auto rc = d.read_bytes();
+    EXPECT_EQ(rc, block_c);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, SerializerV178_2_InterleavedStringsAndU64RoundTrip) {
+    Serializer s;
+    s.write_string("hello_v178");
+    s.write_u64(0x0102030405060708ULL);
+    s.write_string("world_v178");
+    s.write_u64(0ULL);
+    s.write_string("");
+    s.write_u64(std::numeric_limits<uint64_t>::max());
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "hello_v178");
+    EXPECT_EQ(d.read_u64(), 0x0102030405060708ULL);
+    EXPECT_EQ(d.read_string(), "world_v178");
+    EXPECT_EQ(d.read_u64(), 0ULL);
+    EXPECT_EQ(d.read_string(), "");
+    EXPECT_EQ(d.read_u64(), std::numeric_limits<uint64_t>::max());
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, SerializerV178_3_LargeBlobWithU16BookendsRoundTrip) {
+    Serializer s;
+    s.write_u16(0xBEEF);
+    // Write a 1024-byte blob
+    std::vector<uint8_t> large_blob(1024);
+    for (size_t i = 0; i < large_blob.size(); ++i) {
+        large_blob[i] = static_cast<uint8_t>(i % 256);
+    }
+    s.write_bytes(large_blob.data(), large_blob.size());
+    s.write_u16(0xFACE);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u16(), 0xBEEF);
+    auto read_blob = d.read_bytes();
+    EXPECT_EQ(read_blob.size(), 1024u);
+    EXPECT_EQ(read_blob, large_blob);
+    EXPECT_EQ(d.read_u16(), 0xFACE);
+    EXPECT_FALSE(d.has_remaining());
+}

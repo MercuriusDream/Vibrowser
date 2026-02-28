@@ -13720,3 +13720,53 @@ TEST(CORSPolicyTest, CorsV177_7_NormalizeRemovesOriginForSameOrigin) {
 TEST(CORSPolicyTest, CorsV177_8_CrossOriginSchemeDifference) {
     EXPECT_TRUE(is_cross_origin("http://app.example", "https://app.example/page"));
 }
+
+// ---------------------------------------------------------------------------
+// Round 178 — CORS tests
+// ---------------------------------------------------------------------------
+
+// 1. data: scheme origin is NOT enforceable
+TEST(CORSPolicyTest, CorsV178_1_DataSchemeNotEnforceable) {
+    EXPECT_FALSE(has_enforceable_document_origin("data:text/html,<h1>hi</h1>"));
+}
+
+// 2. blob: scheme origin is NOT enforceable
+TEST(CORSPolicyTest, CorsV178_2_BlobSchemeNotEnforceable) {
+    EXPECT_FALSE(has_enforceable_document_origin("blob:https://app.example/uuid"));
+}
+
+// 3. IPv4 address origin IS enforceable
+TEST(CORSPolicyTest, CorsV178_3_Ipv4AddressEnforceable) {
+    EXPECT_TRUE(has_enforceable_document_origin("https://192.168.0.1"));
+}
+
+// 4. ACAO exact match allows response
+TEST(CORSPolicyTest, CorsV178_4_AcaoExactMatchAllows) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "https://app.example");
+    EXPECT_TRUE(cors_allows_response("https://app.example", "https://api.example/data", headers, false));
+}
+
+// 5. wss: URL is NOT cross-origin eligible (not http/https)
+TEST(CORSPolicyTest, CorsV178_5_WssNotCorsEligible) {
+    EXPECT_FALSE(is_cors_eligible_request_url("wss://api.example/socket"));
+}
+
+// 6. Should attach origin header for cross-origin different scheme
+TEST(CORSPolicyTest, CorsV178_6_AttachOriginCrossScheme) {
+    EXPECT_TRUE(should_attach_origin_header("http://app.example",
+                                            "https://app.example/api"));
+}
+
+// 7. Normalize sets correct origin for cross-origin request
+TEST(CORSPolicyTest, CorsV178_7_NormalizeSetsCorrectOriginCrossOrigin) {
+    clever::net::HeaderMap headers;
+    normalize_outgoing_origin_header(headers, "https://mysite.example", "https://api.other.example/v1");
+    ASSERT_TRUE(headers.has("origin"));
+    EXPECT_EQ(headers.get("origin").value(), "https://mysite.example");
+}
+
+// 8. Same-origin request with query string and path is not cross-origin
+TEST(CORSPolicyTest, CorsV178_8_SameOriginWithQueryString) {
+    EXPECT_FALSE(is_cross_origin("https://app.example", "https://app.example/search?q=test&page=1"));
+}

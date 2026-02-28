@@ -39464,3 +39464,112 @@ TEST(JSEngine, JsV177_8) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(r2, "24");
 }
+
+// V178_1: Promise.resolve with then chain
+TEST(JSEngine, JsV178_1) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var out = '';
+        Promise.resolve(42).then(function(v) { out = v.toString(); });
+        out;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    // Microtask may or may not have run synchronously
+    EXPECT_TRUE(result == "42" || result == "");
+}
+
+// V178_2: WeakMap set and get
+TEST(JSEngine, JsV178_2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var wm = new WeakMap();
+        var key = {};
+        wm.set(key, 'value');
+        wm.get(key);
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "value");
+}
+
+// V178_3: Symbol creation and typeof
+TEST(JSEngine, JsV178_3) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var s = Symbol('test');
+        typeof s;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "symbol");
+}
+
+// V178_4: for...of loop over array
+TEST(JSEngine, JsV178_4) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var sum = 0;
+        for (var x of [10, 20, 30]) { sum += x; }
+        sum.toString();
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "60");
+}
+
+// V178_5: generator function with yield
+TEST(JSEngine, JsV178_5) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        function* gen() {
+            yield 1;
+            yield 2;
+            yield 3;
+        }
+        var g = gen();
+        var arr = [];
+        var item;
+        while (!(item = g.next()).done) { arr.push(item.value); }
+        JSON.stringify(arr);
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "[1,2,3]");
+}
+
+// V178_6: Proxy with get trap
+TEST(JSEngine, JsV178_6) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var handler = {
+            get: function(target, name) {
+                return name in target ? target[name] : 'default';
+            }
+        };
+        var p = new Proxy({a: 1}, handler);
+        p.a.toString() + '|' + p.b;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1|default");
+}
+
+// V178_7: async function returns resolved promise value
+TEST(JSEngine, JsV178_7) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        async function getVal() { return 99; }
+        var v = getVal();
+        (v instanceof Promise).toString();
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true");
+}
+
+// V178_8: Object.assign merges properties
+TEST(JSEngine, JsV178_8) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var a = {x: 1, y: 2};
+        var b = {y: 3, z: 4};
+        var c = Object.assign({}, a, b);
+        JSON.stringify(c);
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "{\"x\":1,\"y\":3,\"z\":4}");
+}

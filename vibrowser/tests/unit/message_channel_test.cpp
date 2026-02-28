@@ -3588,3 +3588,65 @@ TEST(MessageChannelTest, MessageChannelV177_2_DispatchMultipleTypesWithPayloadV1
     EXPECT_EQ(payload_200[0], 30);
     EXPECT_EQ(payload_200[1], 31);
 }
+
+// ------------------------------------------------------------------
+// Round 178 message channel tests
+// ------------------------------------------------------------------
+
+TEST(MessageChannelTest, MessageChannelV178_1_UnhandledTypeIgnoredV178) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel ch(std::move(pa));
+
+    int handled_count = 0;
+    ch.on(50, [&](const Message& msg) {
+        handled_count++;
+        EXPECT_EQ(msg.type, 50u);
+    });
+
+    // Dispatch type 50 — should be handled
+    Message msg1;
+    msg1.type = 50;
+    msg1.request_id = 1;
+    msg1.payload = {0xAA};
+    ch.dispatch(msg1);
+
+    // Dispatch type 99 — no handler, should not crash
+    Message msg2;
+    msg2.type = 99;
+    msg2.request_id = 2;
+    msg2.payload = {0xBB, 0xCC};
+    ch.dispatch(msg2);
+
+    // Dispatch type 50 again
+    Message msg3;
+    msg3.type = 50;
+    msg3.request_id = 3;
+    msg3.payload = {0xDD};
+    ch.dispatch(msg3);
+
+    EXPECT_EQ(handled_count, 2);
+}
+
+TEST(MessageChannelTest, MessageChannelV178_2_SendReceiveLargePayloadV178) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel chan_a(std::move(pa));
+    MessageChannel chan_b(std::move(pb));
+
+    // Build a message with a 2048-byte payload
+    Message msg;
+    msg.type = 7;
+    msg.request_id = 178;
+    msg.payload.resize(2048);
+    for (size_t i = 0; i < msg.payload.size(); ++i) {
+        msg.payload[i] = static_cast<uint8_t>(i % 256);
+    }
+
+    ASSERT_TRUE(chan_a.send(msg));
+
+    auto received = chan_b.receive();
+    ASSERT_TRUE(received.has_value());
+    EXPECT_EQ(received->type, 7u);
+    EXPECT_EQ(received->request_id, 178u);
+    EXPECT_EQ(received->payload.size(), 2048u);
+    EXPECT_EQ(received->payload, msg.payload);
+}

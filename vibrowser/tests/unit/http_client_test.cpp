@@ -31062,3 +31062,182 @@ TEST(HttpClient, HeaderMapIterationCoversAllEntriesV177) {
     // size() should match iteration count
     EXPECT_EQ(headers.size(), 4u) << "size() should agree with iteration count";
 }
+
+// ===========================================================================
+// Round 178 Tests
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// 1. Request: serialize with POST method and body
+// ---------------------------------------------------------------------------
+TEST(HttpClient, RequestSerializePostWithBodyV178) {
+    Request req;
+    req.method = Method::POST;
+    req.host = "v178-api.example.com";
+    req.port = 80;
+    req.path = "/submit";
+    req.headers.set("content-type", "application/x-www-form-urlencoded");
+    std::string body_str = "key178=value178&count=42";
+    req.body.assign(body_str.begin(), body_str.end());
+
+    auto bytes = req.serialize();
+    std::string raw(bytes.begin(), bytes.end());
+
+    EXPECT_NE(raw.find("POST /submit HTTP/1.1\r\n"), std::string::npos)
+        << "Should start with POST request line";
+    EXPECT_NE(raw.find("Host: v178-api.example.com\r\n"), std::string::npos)
+        << "Host header should omit port 80";
+    EXPECT_NE(raw.find("Connection: close\r\n"), std::string::npos)
+        << "Should include Connection: close";
+    EXPECT_NE(raw.find("content-type: application/x-www-form-urlencoded"), std::string::npos)
+        << "Custom headers should be lowercase";
+    // Body should appear after double CRLF
+    auto body_pos = raw.find("\r\n\r\n");
+    ASSERT_NE(body_pos, std::string::npos) << "Should have header/body separator";
+    std::string body_part = raw.substr(body_pos + 4);
+    EXPECT_EQ(body_part, "key178=value178&count=42");
+}
+
+// ---------------------------------------------------------------------------
+// 2. Request: parse_url extracts components for HTTPS URL
+// ---------------------------------------------------------------------------
+TEST(HttpClient, RequestParseUrlHttpsComponentsV178) {
+    Request req;
+    req.url = "https://secure-v178.example.com:8443/api/data?q=test178";
+    req.parse_url();
+
+    EXPECT_EQ(req.host, "secure-v178.example.com");
+    EXPECT_EQ(req.port, 8443);
+    EXPECT_EQ(req.path, "/api/data");
+    EXPECT_EQ(req.query, "q=test178");
+    EXPECT_TRUE(req.use_tls) << "https URL should set use_tls=true";
+}
+
+// ---------------------------------------------------------------------------
+// 3. Response: parse valid HTTP response
+// ---------------------------------------------------------------------------
+TEST(HttpClient, ResponseParseValidResponseV178) {
+    std::string raw =
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Type: text/plain\r\n"
+        "X-V178-Custom: hello\r\n"
+        "Content-Length: 11\r\n"
+        "\r\n"
+        "hello v178!";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value()) << "Should parse valid HTTP response";
+    EXPECT_EQ(resp->status, 200);
+    EXPECT_EQ(resp->status_text, "OK");
+    EXPECT_TRUE(resp->headers.has("Content-Type"));
+    EXPECT_EQ(resp->headers.get("x-v178-custom").value(), "hello");
+    EXPECT_EQ(resp->body_as_string(), "hello v178!");
+}
+
+// ---------------------------------------------------------------------------
+// 4. CookieJar: path scoping restricts cookie visibility
+// ---------------------------------------------------------------------------
+TEST(HttpClient, CookieJarPathScopingV178) {
+    CookieJar jar;
+    jar.set_from_header("tok178=alpha; Path=/app/v178", "v178-paths.example.com");
+
+    // Should be visible under the exact path
+    std::string exact = jar.get_cookie_header("v178-paths.example.com", "/app/v178", false);
+    EXPECT_NE(exact.find("tok178=alpha"), std::string::npos)
+        << "Cookie should match exact path, got: " << exact;
+
+    // Should be visible under a subpath
+    std::string sub = jar.get_cookie_header("v178-paths.example.com", "/app/v178/deep", false);
+    EXPECT_NE(sub.find("tok178=alpha"), std::string::npos)
+        << "Cookie should match subpath, got: " << sub;
+
+    // Should NOT be visible under a sibling path
+    std::string sibling = jar.get_cookie_header("v178-paths.example.com", "/app/other", false);
+    EXPECT_EQ(sibling.find("tok178=alpha"), std::string::npos)
+        << "Cookie should NOT match sibling path, got: " << sibling;
+
+    // Should NOT be visible under root
+    std::string root = jar.get_cookie_header("v178-paths.example.com", "/", false);
+    EXPECT_EQ(root.find("tok178=alpha"), std::string::npos)
+        << "Cookie should NOT match root when path=/app/v178, got: " << root;
+}
+
+// ---------------------------------------------------------------------------
+// 5. ConnectionPool: acquire returns -1 when empty
+// ---------------------------------------------------------------------------
+TEST(HttpClient, ConnectionPoolAcquireEmptyV178) {
+    ConnectionPool pool(4);
+
+    // No connections released yet — acquire should return -1
+    EXPECT_EQ(pool.acquire("v178-empty.example.com", 443), -1)
+        << "Acquire from empty pool should return -1";
+    EXPECT_EQ(pool.count("v178-empty.example.com", 443), 0u)
+        << "Count should be 0 for untouched host";
+}
+
+// ---------------------------------------------------------------------------
+// 6. HeaderMap: remove then has returns false
+// ---------------------------------------------------------------------------
+TEST(HttpClient, HeaderMapRemoveThenHasFalseV178) {
+    HeaderMap headers;
+    headers.set("X-V178-Temp", "will-be-removed");
+    headers.set("X-V178-Keep", "stays");
+    EXPECT_TRUE(headers.has("X-V178-Temp"));
+
+    headers.remove("X-V178-Temp");
+
+    EXPECT_FALSE(headers.has("X-V178-Temp"))
+        << "After remove, has() should return false";
+    EXPECT_FALSE(headers.get("X-V178-Temp").has_value())
+        << "After remove, get() should return nullopt";
+    EXPECT_TRUE(headers.has("X-V178-Keep"))
+        << "Other headers should be unaffected";
+    EXPECT_EQ(headers.size(), 1u)
+        << "Size should reflect removal";
+}
+
+// ---------------------------------------------------------------------------
+// 7. CookieJar: secure cookie not sent over non-secure connection
+// ---------------------------------------------------------------------------
+TEST(HttpClient, CookieJarSecureFlagV178) {
+    CookieJar jar;
+    jar.set_from_header("sec178=secret; Secure; Path=/", "v178-secure.example.com");
+
+    // Should be visible over secure connection
+    std::string secure = jar.get_cookie_header("v178-secure.example.com", "/", true);
+    EXPECT_NE(secure.find("sec178=secret"), std::string::npos)
+        << "Secure cookie should be sent over HTTPS, got: " << secure;
+
+    // Should NOT be visible over non-secure connection
+    std::string insecure = jar.get_cookie_header("v178-secure.example.com", "/", false);
+    EXPECT_EQ(insecure.find("sec178=secret"), std::string::npos)
+        << "Secure cookie should NOT be sent over HTTP, got: " << insecure;
+}
+
+// ---------------------------------------------------------------------------
+// 8. Request: serialize HEAD method with custom port
+// ---------------------------------------------------------------------------
+TEST(HttpClient, RequestSerializeHeadCustomPortV178) {
+    Request req;
+    req.method = Method::HEAD;
+    req.host = "v178-head.example.com";
+    req.port = 9090;
+    req.path = "/health";
+
+    auto bytes = req.serialize();
+    std::string raw(bytes.begin(), bytes.end());
+
+    EXPECT_NE(raw.find("HEAD /health HTTP/1.1\r\n"), std::string::npos)
+        << "Should use HEAD method";
+    EXPECT_NE(raw.find("Host: v178-head.example.com:9090\r\n"), std::string::npos)
+        << "Non-standard port should appear in Host header";
+    EXPECT_NE(raw.find("Connection: close\r\n"), std::string::npos)
+        << "Should include Connection: close";
+    // HEAD requests have no body, so nothing after \r\n\r\n
+    auto end_of_headers = raw.find("\r\n\r\n");
+    ASSERT_NE(end_of_headers, std::string::npos);
+    std::string after_headers = raw.substr(end_of_headers + 4);
+    EXPECT_TRUE(after_headers.empty())
+        << "HEAD request should have no body, but got: " << after_headers;
+}

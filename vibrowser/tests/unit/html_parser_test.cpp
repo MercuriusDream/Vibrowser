@@ -27450,3 +27450,102 @@ TEST(HtmlParserTest, HtmlV177_8) {
     EXPECT_EQ(p->tag_name, "p");
     EXPECT_EQ(p->text_content(), "sidebar");
 }
+
+// ---------------------------------------------------------------------------
+// Cycle V178 — various HTML element parsing tests
+// ---------------------------------------------------------------------------
+
+TEST(HtmlParserTest, HtmlV178_1) {
+    auto doc = clever::html::parse("<table><tr><td>cell</td></tr></table>");
+    ASSERT_NE(doc, nullptr);
+    auto* table = doc->find_element("table");
+    ASSERT_NE(table, nullptr);
+    EXPECT_EQ(table->tag_name, "table");
+    auto* td = doc->find_element("td");
+    ASSERT_NE(td, nullptr);
+    EXPECT_EQ(td->tag_name, "td");
+    EXPECT_EQ(td->text_content(), "cell");
+}
+
+TEST(HtmlParserTest, HtmlV178_2) {
+    auto doc = clever::html::parse("<blockquote>quoted text</blockquote>");
+    ASSERT_NE(doc, nullptr);
+    auto* bq = doc->find_element("blockquote");
+    ASSERT_NE(bq, nullptr);
+    EXPECT_EQ(bq->tag_name, "blockquote");
+    EXPECT_EQ(bq->text_content(), "quoted text");
+}
+
+TEST(HtmlParserTest, HtmlV178_3) {
+    auto doc = clever::html::parse("<figure><figcaption>caption</figcaption></figure>");
+    ASSERT_NE(doc, nullptr);
+    auto* figure = doc->find_element("figure");
+    ASSERT_NE(figure, nullptr);
+    EXPECT_EQ(figure->tag_name, "figure");
+    auto* figcaption = doc->find_element("figcaption");
+    ASSERT_NE(figcaption, nullptr);
+    EXPECT_EQ(figcaption->text_content(), "caption");
+}
+
+TEST(HtmlParserTest, HtmlV178_4) {
+    auto doc = clever::html::parse("<details><summary>info</summary></details>");
+    ASSERT_NE(doc, nullptr);
+    auto* details = doc->find_element("details");
+    ASSERT_NE(details, nullptr);
+    EXPECT_EQ(details->tag_name, "details");
+    auto* summary = doc->find_element("summary");
+    ASSERT_NE(summary, nullptr);
+    EXPECT_EQ(summary->text_content(), "info");
+}
+
+TEST(HtmlParserTest, HtmlV178_5) {
+    auto doc = clever::html::parse("<nav><a href=\"/home\">Home</a></nav>");
+    ASSERT_NE(doc, nullptr);
+    auto* nav = doc->find_element("nav");
+    ASSERT_NE(nav, nullptr);
+    EXPECT_EQ(nav->tag_name, "nav");
+    auto* a = doc->find_element("a");
+    ASSERT_NE(a, nullptr);
+    EXPECT_EQ(a->tag_name, "a");
+    ASSERT_GE(a->attributes.size(), 1u);
+    EXPECT_EQ(a->attributes[0].name, "href");
+    EXPECT_EQ(a->attributes[0].value, "/home");
+    EXPECT_EQ(a->text_content(), "Home");
+}
+
+TEST(HtmlParserTest, HtmlV178_6) {
+    auto doc = clever::html::parse("<section><h3>Title</h3><p>body</p></section>");
+    ASSERT_NE(doc, nullptr);
+    auto* section = doc->find_element("section");
+    ASSERT_NE(section, nullptr);
+    EXPECT_EQ(section->tag_name, "section");
+    ASSERT_GE(section->children.size(), 2u);
+    EXPECT_EQ(section->children[0]->tag_name, "h3");
+    EXPECT_EQ(section->children[0]->text_content(), "Title");
+    EXPECT_EQ(section->children[1]->tag_name, "p");
+    EXPECT_EQ(section->children[1]->text_content(), "body");
+}
+
+TEST(HtmlParserTest, HtmlV178_7) {
+    auto doc = clever::html::parse("<ul><li>one</li><li>two</li><li>three</li></ul>");
+    ASSERT_NE(doc, nullptr);
+    auto* ul = doc->find_element("ul");
+    ASSERT_NE(ul, nullptr);
+    EXPECT_EQ(ul->tag_name, "ul");
+    ASSERT_GE(ul->children.size(), 3u);
+    EXPECT_EQ(ul->children[0]->text_content(), "one");
+    EXPECT_EQ(ul->children[1]->text_content(), "two");
+    EXPECT_EQ(ul->children[2]->text_content(), "three");
+}
+
+TEST(HtmlParserTest, HtmlV178_8) {
+    auto doc = clever::html::parse("<footer><small>copyright 2026</small></footer>");
+    ASSERT_NE(doc, nullptr);
+    auto* footer = doc->find_element("footer");
+    ASSERT_NE(footer, nullptr);
+    EXPECT_EQ(footer->tag_name, "footer");
+    auto* small = doc->find_element("small");
+    ASSERT_NE(small, nullptr);
+    EXPECT_EQ(small->tag_name, "small");
+    EXPECT_EQ(small->text_content(), "copyright 2026");
+}

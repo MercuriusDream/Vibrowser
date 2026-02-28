@@ -3486,3 +3486,76 @@ TEST(MessagePipeTest, MessagePipeV177_3_EmptyMessageSendReceiveV177) {
     EXPECT_EQ(r2->size(), 1u);
     EXPECT_EQ((*r2)[0], 0x42);
 }
+
+// ------------------------------------------------------------------
+// Round 178 message pipe tests
+// ------------------------------------------------------------------
+
+TEST(MessagePipeTest, MessagePipeV178_1_SendAfterCloseFailsV178) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    // Send one message successfully
+    std::vector<uint8_t> msg = {0x01, 0x02, 0x03};
+    ASSERT_TRUE(a.send(msg));
+
+    // Close the sender
+    a.close();
+
+    // Sending on a closed pipe should fail
+    std::vector<uint8_t> after_close = {0x04, 0x05};
+    EXPECT_FALSE(a.send(after_close));
+
+    // The message sent before close should still be receivable
+    auto r = b.receive();
+    ASSERT_TRUE(r.has_value());
+    EXPECT_EQ(*r, msg);
+
+    // No more messages
+    auto r2 = b.receive();
+    EXPECT_FALSE(r2.has_value());
+}
+
+TEST(MessagePipeTest, MessagePipeV178_2_BidirectionalBurstV178) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    // Both sides send 20 messages each
+    for (int i = 0; i < 20; ++i) {
+        std::vector<uint8_t> from_a = {static_cast<uint8_t>(i), 0xAA};
+        std::vector<uint8_t> from_b = {static_cast<uint8_t>(i), 0xBB};
+        ASSERT_TRUE(a.send(from_a));
+        ASSERT_TRUE(b.send(from_b));
+    }
+
+    // Receive all on b side (from a)
+    for (int i = 0; i < 20; ++i) {
+        auto r = b.receive();
+        ASSERT_TRUE(r.has_value());
+        EXPECT_EQ(r->size(), 2u);
+        EXPECT_EQ((*r)[0], static_cast<uint8_t>(i));
+        EXPECT_EQ((*r)[1], 0xAA);
+    }
+
+    // Receive all on a side (from b)
+    for (int i = 0; i < 20; ++i) {
+        auto r = a.receive();
+        ASSERT_TRUE(r.has_value());
+        EXPECT_EQ(r->size(), 2u);
+        EXPECT_EQ((*r)[0], static_cast<uint8_t>(i));
+        EXPECT_EQ((*r)[1], 0xBB);
+    }
+}
+
+TEST(MessagePipeTest, MessagePipeV178_3_LargePayloadRoundTripV178) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    // Create an 8192-byte payload
+    std::vector<uint8_t> large(8192);
+    std::iota(large.begin(), large.end(), static_cast<uint8_t>(0));
+
+    ASSERT_TRUE(a.send(large));
+
+    auto received = b.receive();
+    ASSERT_TRUE(received.has_value());
+    EXPECT_EQ(received->size(), 8192u);
+    EXPECT_EQ(*received, large);
+}
