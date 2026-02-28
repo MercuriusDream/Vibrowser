@@ -27041,3 +27041,121 @@ TEST(HtmlParserTest, HtmlV173_8) {
     EXPECT_EQ(input->attributes[0].name, "type");
     EXPECT_EQ(input->attributes[0].value, "text");
 }
+
+TEST(HtmlParserTest, HtmlV174_1) {
+    // <label for="input"> with for attribute
+    auto doc = clever::html::parse(
+        "<html><body><label for=\"email\">Email</label></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* label = doc->find_element("label");
+    ASSERT_NE(label, nullptr);
+    EXPECT_EQ(label->tag_name, "label");
+    ASSERT_GE(label->attributes.size(), 1u);
+    EXPECT_EQ(label->attributes[0].name, "for");
+    EXPECT_EQ(label->attributes[0].value, "email");
+    EXPECT_EQ(label->text_content(), "Email");
+}
+
+TEST(HtmlParserTest, HtmlV174_2) {
+    // <button type="submit"> element
+    auto doc = clever::html::parse(
+        "<html><body><button type=\"submit\">Submit</button></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* button = doc->find_element("button");
+    ASSERT_NE(button, nullptr);
+    EXPECT_EQ(button->tag_name, "button");
+    ASSERT_GE(button->attributes.size(), 1u);
+    EXPECT_EQ(button->attributes[0].name, "type");
+    EXPECT_EQ(button->attributes[0].value, "submit");
+    EXPECT_EQ(button->text_content(), "Submit");
+}
+
+TEST(HtmlParserTest, HtmlV174_3) {
+    // <form action="/submit" method="post">
+    auto doc = clever::html::parse(
+        "<html><body><form action=\"/submit\" method=\"post\"></form></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* form = doc->find_element("form");
+    ASSERT_NE(form, nullptr);
+    EXPECT_EQ(form->tag_name, "form");
+    ASSERT_GE(form->attributes.size(), 2u);
+    EXPECT_EQ(form->attributes[0].name, "action");
+    EXPECT_EQ(form->attributes[0].value, "/submit");
+    EXPECT_EQ(form->attributes[1].name, "method");
+    EXPECT_EQ(form->attributes[1].value, "post");
+}
+
+TEST(HtmlParserTest, HtmlV174_4) {
+    // <optgroup label="Group"> in select
+    auto doc = clever::html::parse(
+        "<html><body><select><optgroup label=\"Fruits\"><option>Apple</option></optgroup></select></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* optgroup = doc->find_element("optgroup");
+    ASSERT_NE(optgroup, nullptr);
+    EXPECT_EQ(optgroup->tag_name, "optgroup");
+    ASSERT_GE(optgroup->attributes.size(), 1u);
+    EXPECT_EQ(optgroup->attributes[0].name, "label");
+    EXPECT_EQ(optgroup->attributes[0].value, "Fruits");
+}
+
+TEST(HtmlParserTest, HtmlV174_5) {
+    // <caption> in table
+    auto doc = clever::html::parse(
+        "<html><body><table><caption>My Table</caption><tr><td>Cell</td></tr></table></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* caption = doc->find_element("caption");
+    ASSERT_NE(caption, nullptr);
+    EXPECT_EQ(caption->tag_name, "caption");
+    EXPECT_EQ(caption->text_content(), "My Table");
+}
+
+TEST(HtmlParserTest, HtmlV174_6) {
+    // <colgroup><col span="2">
+    auto doc = clever::html::parse(
+        "<html><body><table><colgroup><col span=\"2\"></colgroup><tr><td>A</td><td>B</td></tr></table></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* col = doc->find_element("col");
+    ASSERT_NE(col, nullptr);
+    EXPECT_EQ(col->tag_name, "col");
+    ASSERT_GE(col->attributes.size(), 1u);
+    EXPECT_EQ(col->attributes[0].name, "span");
+    EXPECT_EQ(col->attributes[0].value, "2");
+}
+
+TEST(HtmlParserTest, HtmlV174_7) {
+    // <source src="..." type="..."> in picture
+    auto doc = clever::html::parse(
+        "<html><body><picture><source src=\"img.webp\" type=\"image/webp\"></picture></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* source = doc->find_element("source");
+    ASSERT_NE(source, nullptr);
+    EXPECT_EQ(source->tag_name, "source");
+    ASSERT_GE(source->attributes.size(), 2u);
+    EXPECT_EQ(source->attributes[0].name, "src");
+    EXPECT_EQ(source->attributes[0].value, "img.webp");
+    EXPECT_EQ(source->attributes[1].name, "type");
+    EXPECT_EQ(source->attributes[1].value, "image/webp");
+}
+
+TEST(HtmlParserTest, HtmlV174_8) {
+    // <track src="..." kind="subtitles">
+    auto doc = clever::html::parse(
+        "<html><body><video><track src=\"subs.vtt\" kind=\"subtitles\"></video></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* track = doc->find_element("track");
+    ASSERT_NE(track, nullptr);
+    EXPECT_EQ(track->tag_name, "track");
+    ASSERT_GE(track->attributes.size(), 2u);
+    EXPECT_EQ(track->attributes[0].name, "src");
+    EXPECT_EQ(track->attributes[0].value, "subs.vtt");
+    EXPECT_EQ(track->attributes[1].name, "kind");
+    EXPECT_EQ(track->attributes[1].value, "subtitles");
+}

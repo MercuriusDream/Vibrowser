@@ -3232,3 +3232,80 @@ TEST(MessagePipeTest, MessagePipeV173_3_EmptyAfterAllReceivedV173) {
     auto r3 = b.receive();
     EXPECT_FALSE(r3.has_value());
 }
+
+// ------------------------------------------------------------------
+// V174 MessagePipe tests
+// ------------------------------------------------------------------
+
+TEST(MessagePipeTest, MessagePipeV174_1_2KBPayloadV174) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    std::vector<uint8_t> payload(2048);
+    std::iota(payload.begin(), payload.end(), static_cast<uint8_t>(0));
+    ASSERT_TRUE(a.send(payload));
+    a.close();
+
+    auto received = b.receive();
+    ASSERT_TRUE(received.has_value());
+    EXPECT_EQ(received->size(), 2048u);
+    EXPECT_EQ(*received, payload);
+}
+
+TEST(MessagePipeTest, MessagePipeV174_2_AlternatingSmallLargeV174) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    std::vector<uint8_t> small1 = {0xAA};
+    std::vector<uint8_t> large(100, 0xBB);
+    std::vector<uint8_t> small2 = {0xCC};
+
+    ASSERT_TRUE(a.send(small1));
+    ASSERT_TRUE(a.send(large));
+    ASSERT_TRUE(a.send(small2));
+    a.close();
+
+    auto r1 = b.receive();
+    ASSERT_TRUE(r1.has_value());
+    EXPECT_EQ(r1->size(), 1u);
+    EXPECT_EQ(*r1, small1);
+
+    auto r2 = b.receive();
+    ASSERT_TRUE(r2.has_value());
+    EXPECT_EQ(r2->size(), 100u);
+    EXPECT_EQ(*r2, large);
+
+    auto r3 = b.receive();
+    ASSERT_TRUE(r3.has_value());
+    EXPECT_EQ(r3->size(), 1u);
+    EXPECT_EQ(*r3, small2);
+
+    auto r4 = b.receive();
+    EXPECT_FALSE(r4.has_value());
+}
+
+TEST(MessagePipeTest, MessagePipeV174_3_ReceiveReturnsInSendOrderV174) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    std::vector<uint8_t> msgA = {'A'};
+    std::vector<uint8_t> msgB = {'B'};
+    std::vector<uint8_t> msgC = {'C'};
+
+    ASSERT_TRUE(a.send(msgA));
+    ASSERT_TRUE(a.send(msgB));
+    ASSERT_TRUE(a.send(msgC));
+    a.close();
+
+    auto r1 = b.receive();
+    ASSERT_TRUE(r1.has_value());
+    EXPECT_EQ((*r1)[0], 'A');
+
+    auto r2 = b.receive();
+    ASSERT_TRUE(r2.has_value());
+    EXPECT_EQ((*r2)[0], 'B');
+
+    auto r3 = b.receive();
+    ASSERT_TRUE(r3.has_value());
+    EXPECT_EQ((*r3)[0], 'C');
+
+    auto r4 = b.receive();
+    EXPECT_FALSE(r4.has_value());
+}

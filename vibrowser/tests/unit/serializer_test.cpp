@@ -21867,3 +21867,40 @@ TEST(SerializerTest, SerializerV173_3_AlternatingTypesRoundTrip) {
     EXPECT_EQ(d.read_string(), "beta");
     EXPECT_FALSE(d.has_remaining());
 }
+
+// ------------------------------------------------------------------
+// V174 Serializer tests
+// ------------------------------------------------------------------
+
+TEST(SerializerTest, SerializerV174_1_F64PiRoundTrip) {
+    Serializer s;
+    s.write_f64(M_PI);
+
+    Deserializer d(s.data());
+    double val = d.read_f64();
+    EXPECT_DOUBLE_EQ(val, M_PI);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, SerializerV174_2_I64NegativeOneRoundTrip) {
+    Serializer s;
+    s.write_i64(-1LL);
+
+    Deserializer d(s.data());
+    int64_t val = d.read_i64();
+    EXPECT_EQ(val, -1LL);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, SerializerV174_3_TwentyStringsRoundTrip) {
+    Serializer s;
+    for (int i = 0; i < 20; ++i) {
+        s.write_string("s" + std::to_string(i));
+    }
+
+    Deserializer d(s.data());
+    for (int i = 0; i < 20; ++i) {
+        EXPECT_EQ(d.read_string(), "s" + std::to_string(i));
+    }
+    EXPECT_FALSE(d.has_remaining());
+}

@@ -39000,3 +39000,121 @@ TEST(JSEngine, JsV173_8) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "123,456");
 }
+
+// V174_1: Array.includes returns true/false
+TEST(JSEngine, JsV174_1) {
+    clever::js::JSEngine engine;
+    auto r1 = engine.evaluate(R"JS(
+        [1, 2, 3, 4, 5].includes(3).toString();
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(r1, "true");
+
+    auto r2 = engine.evaluate(R"JS(
+        [1, 2, 3].includes(9).toString();
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(r2, "false");
+}
+
+// V174_2: String.trim removes whitespace
+TEST(JSEngine, JsV174_2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        '  hello world  '.trim();
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "hello world");
+}
+
+// V174_3: Object.create with prototype
+TEST(JSEngine, JsV174_3) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var proto = { greet: function() { return 'hi'; } };
+        var obj = Object.create(proto);
+        obj.greet();
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "hi");
+}
+
+// V174_4: Array.copyWithin copies within array
+TEST(JSEngine, JsV174_4) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var arr = [1, 2, 3, 4, 5];
+        arr.copyWithin(0, 3);
+        arr.join(',');
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "4,5,3,4,5");
+}
+
+// V174_5: Symbol() creates unique symbol
+TEST(JSEngine, JsV174_5) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var s1 = Symbol('a');
+        var s2 = Symbol('a');
+        (s1 !== s2).toString();
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true");
+}
+
+// V174_6: class declaration with constructor
+TEST(JSEngine, JsV174_6) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        class Point {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+            }
+            sum() { return this.x + this.y; }
+        }
+        var p = new Point(3, 7);
+        p.sum().toString();
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "10");
+}
+
+// V174_7: Promise.all resolves array (with microtask flush)
+TEST(JSEngine, JsV174_7) {
+    clever::js::JSEngine engine;
+    engine.evaluate(R"JS(
+        var out = '';
+        Promise.all([
+            Promise.resolve(10),
+            Promise.resolve(20),
+            Promise.resolve(30)
+        ]).then(function(vals) {
+            out = vals.join(',');
+        });
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    clever::js::flush_fetch_promise_jobs(engine.context());
+    auto result = engine.evaluate("out");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "10,20,30");
+}
+
+// V174_8: async/await basic usage (with microtask flush)
+TEST(JSEngine, JsV174_8) {
+    clever::js::JSEngine engine;
+    engine.evaluate(R"JS(
+        var result = '';
+        async function compute() {
+            var val = await Promise.resolve(42);
+            return val;
+        }
+        compute().then(function(v) { result = v.toString(); });
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    clever::js::flush_fetch_promise_jobs(engine.context());
+    auto result = engine.evaluate("result");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "42");
+}

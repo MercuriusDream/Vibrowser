@@ -31159,3 +31159,135 @@ TEST(LayoutNodeProps, PositionDefaultStaticV173) {
     auto node = std::make_unique<LayoutNode>();
     EXPECT_EQ(node->position_type, 0);
 }
+
+// V174_1: flex row 600px, 2 children flex-grow 1 each => 300px each
+TEST(LayoutEngineTest, LayoutV174_1) {
+    auto root = make_flex("div");
+    root->flex_direction = 0; // row
+    root->specified_width = 600.0f;
+
+    auto c1 = make_block("div");
+    c1->specified_height = 40.0f;
+    c1->flex_grow = 1.0f;
+
+    auto c2 = make_block("div");
+    c2->specified_height = 40.0f;
+    c2->flex_grow = 1.0f;
+
+    root->append_child(std::move(c1));
+    root->append_child(std::move(c2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 600.0f, 400.0f);
+
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.width, 300.0f);
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.width, 300.0f);
+}
+
+// V174_2: block with 4 equal height children => even y spacing
+TEST(LayoutEngineTest, LayoutV174_2) {
+    auto root = make_block("div");
+
+    for (int i = 0; i < 4; ++i) {
+        auto child = make_block("div");
+        child->specified_height = 25.0f;
+        root->append_child(std::move(child));
+    }
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.y, 0.0f);
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.y, 25.0f);
+    EXPECT_FLOAT_EQ(root->children[2]->geometry.y, 50.0f);
+    EXPECT_FLOAT_EQ(root->children[3]->geometry.y, 75.0f);
+}
+
+// V174_3: flex child specified_width overrides when no flex-grow
+TEST(LayoutEngineTest, LayoutV174_3) {
+    auto root = make_flex("div");
+    root->flex_direction = 0; // row
+
+    auto c1 = make_block("div");
+    c1->specified_width = 120.0f;
+    c1->specified_height = 30.0f;
+    // no flex_grow set
+
+    root->append_child(std::move(c1));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.width, 120.0f);
+}
+
+// V174_4: block child width=parent width when no specified width
+TEST(LayoutEngineTest, LayoutV174_4) {
+    auto root = make_block("div");
+    root->specified_width = 500.0f;
+
+    auto child = make_block("div");
+    child->specified_height = 20.0f;
+    // no specified_width
+
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.width, 500.0f);
+}
+
+// V174_5: flex column gap=15, 2 children 40px each => verify y positions
+TEST(LayoutEngineTest, LayoutV174_5) {
+    auto root = make_flex("div");
+    root->flex_direction = 2; // column
+    root->gap = 15.0f;       // row-gap is main-axis gap in column
+
+    auto c1 = make_block("div");
+    c1->specified_height = 40.0f;
+
+    auto c2 = make_block("div");
+    c2->specified_height = 40.0f;
+
+    root->append_child(std::move(c1));
+    root->append_child(std::move(c2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.y, 0.0f);
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.y, 55.0f); // 40 + 15 gap
+}
+
+// V174_6: max_width=250 on 400px parent child, clamps to 250
+TEST(LayoutEngineTest, LayoutV174_6) {
+    auto root = make_block("div");
+    root->specified_width = 400.0f;
+
+    auto child = make_block("div");
+    child->specified_width = 400.0f;
+    child->max_width = 250.0f;
+    child->specified_height = 30.0f;
+
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.width, 250.0f);
+}
+
+// V174_7: set color to 0xFF0000FFu, verify stored
+TEST(LayoutNodeProps, TextColorSettableV174) {
+    auto node = std::make_unique<LayoutNode>();
+    node->color = 0xFF0000FFu;
+    EXPECT_EQ(node->color, 0xFF0000FFu);
+}
+
+// V174_8: set background_color to 0xFFFF0000u, verify stored
+TEST(LayoutNodeProps, BackgroundColorSettableV174) {
+    auto node = std::make_unique<LayoutNode>();
+    node->background_color = 0xFFFF0000u;
+    EXPECT_EQ(node->background_color, 0xFFFF0000u);
+}

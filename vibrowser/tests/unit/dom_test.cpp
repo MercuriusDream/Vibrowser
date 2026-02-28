@@ -25185,3 +25185,80 @@ TEST(DomText, NodeTypeIsTextV173) {
     Text t("x");
     EXPECT_EQ(t.node_type(), NodeType::Text);
 }
+
+// ---------------------------------------------------------------------------
+// V174 tests
+// ---------------------------------------------------------------------------
+
+// 1. Remove middle child updates sibling pointers
+TEST(DomNode, RemoveMiddleChildUpdatesSiblingsV174) {
+    auto parent = std::make_unique<Element>("div");
+    auto a = std::make_unique<Element>("a");
+    auto b = std::make_unique<Element>("b");
+    auto c = std::make_unique<Element>("c");
+    auto* a_ptr = a.get();
+    auto* b_ptr = b.get();
+    auto* c_ptr = c.get();
+    parent->append_child(std::move(a));
+    parent->append_child(std::move(b));
+    parent->append_child(std::move(c));
+    parent->remove_child(*b_ptr);
+    EXPECT_EQ(a_ptr->next_sibling(), c_ptr);
+    EXPECT_EQ(c_ptr->previous_sibling(), a_ptr);
+}
+
+// 2. get_attribute after remove returns empty
+TEST(DomElement, GetAttributeAfterRemoveReturnsEmptyV174) {
+    Element elem("div");
+    elem.set_attribute("data-x", "hello");
+    ASSERT_TRUE(elem.get_attribute("data-x").has_value());
+    elem.remove_attribute("data-x");
+    EXPECT_FALSE(elem.get_attribute("data-x").has_value());
+}
+
+// 3. Document create_text_node type is Text
+TEST(DomDocument, CreateTextNodeTypeIsTextV174) {
+    Document doc;
+    auto text = doc.create_text_node("sample");
+    ASSERT_NE(text, nullptr);
+    EXPECT_EQ(text->node_type(), NodeType::Text);
+}
+
+// 4. Event bubbles and cancelable both true
+TEST(DomEvent, BubblesAndCancelableV174) {
+    Event event("submit", true, true);
+    EXPECT_TRUE(event.bubbles());
+    EXPECT_TRUE(event.cancelable());
+}
+
+// 5. Append child updates parent pointer
+TEST(DomNode, AppendChildUpdatesParentPointerV174) {
+    auto parent = std::make_unique<Element>("div");
+    auto child = std::make_unique<Element>("span");
+    auto* child_ptr = child.get();
+    parent->append_child(std::move(child));
+    EXPECT_EQ(child_ptr->parent(), parent.get());
+}
+
+// 6. ClassList length zero initially
+TEST(DomElement, ClassListLengthZeroInitialV174) {
+    Element elem("p");
+    EXPECT_EQ(elem.class_list().length(), 0u);
+}
+
+// 7. DirtyFlag Paint and Layout both set, Style not
+TEST(DomNode, DirtyFlagPaintAndLayoutV174) {
+    Element elem("div");
+    elem.mark_dirty(DirtyFlags::Paint);
+    elem.mark_dirty(DirtyFlags::Layout);
+    auto flags = elem.dirty_flags();
+    EXPECT_NE(flags & DirtyFlags::Paint,  DirtyFlags::None);
+    EXPECT_NE(flags & DirtyFlags::Layout, DirtyFlags::None);
+    EXPECT_EQ(flags & DirtyFlags::Style,  DirtyFlags::None);
+}
+
+// 8. Comment node type is Comment
+TEST(DomNode, NodeTypeCommentV174) {
+    Comment c("x");
+    EXPECT_EQ(c.node_type(), NodeType::Comment);
+}

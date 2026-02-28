@@ -16132,3 +16132,45 @@ TEST(UrlParserTest, UrlV173_4_PortMaxValue65535) {
     EXPECT_EQ(result->port.value(), 65535);
     EXPECT_EQ(result->path, "/p");
 }
+
+// =============================================================================
+// Cycle V174 — URL parser tests
+// =============================================================================
+TEST(UrlParserTest, UrlV174_1_HttpsPort8443Preserved) {
+    // Non-default HTTPS port 8443 should be preserved in the parsed URL
+    auto result = parse("https://host:8443/api");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "host");
+    ASSERT_TRUE(result->port.has_value());
+    EXPECT_EQ(result->port.value(), 8443);
+    EXPECT_EQ(result->path, "/api");
+}
+
+TEST(UrlParserTest, UrlV174_2_RelativePathResolution) {
+    // A relative path should resolve correctly against a base URL
+    auto base = parse("https://example.com/a/b/c.html");
+    ASSERT_TRUE(base.has_value());
+    auto result = parse("../d/e.html", &base.value());
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/a/d/e.html");
+}
+
+TEST(UrlParserTest, UrlV174_3_EmptySchemeNotValid) {
+    // A URL with no scheme (just "example.com/path") should fail to parse
+    auto result = parse("example.com/path");
+    EXPECT_FALSE(result.has_value());
+}
+
+TEST(UrlParserTest, UrlV174_4_PathOnlySlash) {
+    // A URL with only "/" as the path should parse correctly
+    auto result = parse("http://host/");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "host");
+    EXPECT_EQ(result->path, "/");
+    EXPECT_TRUE(result->query.empty());
+    EXPECT_TRUE(result->fragment.empty());
+}

@@ -3349,3 +3349,63 @@ TEST(MessageChannelTest, MessageChannelV173_2_TenBytePayloadVerifyV173) {
 
     EXPECT_TRUE(handler_called);
 }
+
+// ------------------------------------------------------------------
+// V174 MessageChannel tests
+// ------------------------------------------------------------------
+
+TEST(MessageChannelTest, MessageChannelV174_1_FourTypesV174) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel ch(std::move(pa));
+
+    bool called_1 = false, called_2 = false, called_3 = false, called_4 = false;
+
+    ch.on(10, [&](const Message& msg) { called_1 = true; EXPECT_EQ(msg.type, 10u); });
+    ch.on(20, [&](const Message& msg) { called_2 = true; EXPECT_EQ(msg.type, 20u); });
+    ch.on(30, [&](const Message& msg) { called_3 = true; EXPECT_EQ(msg.type, 30u); });
+    ch.on(40, [&](const Message& msg) { called_4 = true; EXPECT_EQ(msg.type, 40u); });
+
+    for (uint32_t t : {10u, 20u, 30u, 40u}) {
+        Message msg;
+        msg.type = t;
+        msg.request_id = t + 100;
+        msg.payload = {static_cast<uint8_t>(t)};
+        ch.dispatch(msg);
+    }
+
+    EXPECT_TRUE(called_1);
+    EXPECT_TRUE(called_2);
+    EXPECT_TRUE(called_3);
+    EXPECT_TRUE(called_4);
+}
+
+TEST(MessageChannelTest, MessageChannelV174_2_PayloadSizeZeroThenNonZeroV174) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel ch(std::move(pa));
+
+    int call_count = 0;
+    ch.on(7, [&](const Message& msg) {
+        call_count++;
+        if (call_count == 1) {
+            EXPECT_TRUE(msg.payload.empty());
+        } else if (call_count == 2) {
+            EXPECT_EQ(msg.payload.size(), 5u);
+            std::vector<uint8_t> expected = {1, 2, 3, 4, 5};
+            EXPECT_EQ(msg.payload, expected);
+        }
+    });
+
+    Message msg1;
+    msg1.type = 7;
+    msg1.request_id = 1;
+    msg1.payload = {};
+    ch.dispatch(msg1);
+
+    Message msg2;
+    msg2.type = 7;
+    msg2.request_id = 2;
+    msg2.payload = {1, 2, 3, 4, 5};
+    ch.dispatch(msg2);
+
+    EXPECT_EQ(call_count, 2);
+}

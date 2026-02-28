@@ -1997,3 +1997,32 @@ TEST(IsURLCodePoint, SemicolonValidV173) {
     // ';' (U+003B) is a sub-delimiter and a valid URL code point
     EXPECT_TRUE(is_url_code_point(U';'));
 }
+
+// =============================================================================
+// Cycle V174 — Percent encoding tests
+// =============================================================================
+TEST(PercentEncoding, LessThanEncodedV174) {
+    // '<' (U+003C) should be percent-encoded as %3C
+    EXPECT_EQ(percent_encode("<"), "%3C");
+    EXPECT_EQ(percent_encode("a<b"), "a%3Cb");
+    EXPECT_EQ(percent_encode("<<"), "%3C%3C");
+}
+
+TEST(PercentDecoding, PercentSignEncodedV174) {
+    // %25 should decode back to a literal percent sign '%'
+    EXPECT_EQ(percent_decode("%25"), "%");
+    EXPECT_EQ(percent_decode("100%25"), "100%");
+    EXPECT_EQ(percent_decode("%25%25"), "%%");
+}
+
+TEST(PercentEncoding, GreaterThanEncodedV174) {
+    // '>' (U+003E) should be percent-encoded as %3E
+    EXPECT_EQ(percent_encode(">"), "%3E");
+    EXPECT_EQ(percent_encode("a>b"), "a%3Eb");
+    EXPECT_EQ(percent_encode("<>"), "%3C%3E");
+}
+
+TEST(IsURLCodePoint, SlashValidV174) {
+    // '/' (U+002F) is a valid URL code point
+    EXPECT_TRUE(is_url_code_point(U'/'));
+}

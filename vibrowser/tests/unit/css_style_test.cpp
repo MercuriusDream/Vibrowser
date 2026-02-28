@@ -26747,3 +26747,39 @@ TEST(PropertyCascadeTest, PointerEventsNoneAppliedV173) {
     cascade.apply_declaration(style, make_decl("pointer-events", "none"), parent);
     EXPECT_EQ(style.pointer_events, PointerEvents::None);
 }
+
+TEST(CSSStyleTest, CssV174_1_PaddingLeftApplied) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("padding-left", "8px"), parent);
+    EXPECT_FLOAT_EQ(style.padding.left.to_px(), 8.0f);
+}
+
+TEST(CSSStyleTest, CssV174_2_MarginRightApplied) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("margin-right", "12px"), parent);
+    EXPECT_FLOAT_EQ(style.margin.right.to_px(), 12.0f);
+}
+
+TEST(PropertyCascadeTest, VerticalAlignMiddleAppliedV174) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("vertical-align", "middle"), parent);
+    EXPECT_EQ(style.vertical_align, VerticalAlign::Middle);
+}
+
+TEST(PropertyCascadeTest, PositionStickyAppliedV174) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("position", "sticky"), parent);
+    EXPECT_EQ(style.position, Position::Sticky);
+}

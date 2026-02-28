@@ -30273,3 +30273,201 @@ TEST(HttpClient, CookieJarDeleteWithMaxAgeZeroV173) {
     EXPECT_EQ(hdr.find("expired173=gone"), std::string::npos)
         << "Max-Age=0 cookie should not appear, got: " << hdr;
 }
+
+// ===========================================================================
+// Round 174 — Net Tests (8)
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// 1. GET with If-Modified-Since custom header
+// ---------------------------------------------------------------------------
+TEST(HttpClient, RequestSerializeGetWithIfModifiedSinceV174) {
+    Request req;
+    req.method = Method::GET;
+    req.host = "cache174.example.com";
+    req.port = 80;
+    req.path = "/articles/latest";
+    req.headers.set("If-Modified-Since", "Wed, 25 Feb 2026 10:00:00 GMT");
+
+    auto bytes = req.serialize();
+    std::string s(bytes.begin(), bytes.end());
+
+    // Request line
+    EXPECT_NE(s.find("GET /articles/latest HTTP/1.1\r\n"), std::string::npos)
+        << "Request line should be GET, got: " << s;
+    // Host without port 80
+    EXPECT_NE(s.find("Host: cache174.example.com\r\n"), std::string::npos)
+        << "Host header should omit port 80, got: " << s;
+    EXPECT_EQ(s.find("Host: cache174.example.com:80"), std::string::npos)
+        << "Port 80 should not appear in Host, got: " << s;
+    // Connection: close (capitalized)
+    EXPECT_NE(s.find("Connection: close\r\n"), std::string::npos)
+        << "Connection header should be present, got: " << s;
+    // Custom header lowercase
+    EXPECT_NE(s.find("if-modified-since: Wed, 25 Feb 2026 10:00:00 GMT"), std::string::npos)
+        << "Custom header should be lowercase, got: " << s;
+}
+
+// ---------------------------------------------------------------------------
+// 2. 200 response with Server header preserved
+// ---------------------------------------------------------------------------
+TEST(HttpClient, ResponseParse200WithServerHeaderV174) {
+    std::string raw_str =
+        "HTTP/1.1 200 OK\r\n"
+        "Server: ViBrowser/1.0\r\n"
+        "Content-Length: 5\r\n"
+        "\r\n"
+        "hello";
+
+    std::vector<uint8_t> raw(raw_str.begin(), raw_str.end());
+    auto resp = Response::parse(raw);
+
+    ASSERT_TRUE(resp.has_value()) << "200 response should parse successfully";
+    EXPECT_EQ(resp->status, 200u);
+    EXPECT_TRUE(resp->headers.has("Server"))
+        << "Server header should be preserved";
+    EXPECT_EQ(resp->headers.get("Server").value(), "ViBrowser/1.0")
+        << "Server header value should match";
+    EXPECT_EQ(resp->body_as_string(), "hello");
+}
+
+// ---------------------------------------------------------------------------
+// 3. ConnectionPool: release 2, acquire 2, verify empty
+// ---------------------------------------------------------------------------
+TEST(HttpClient, ConnectionPoolEmptyAfterAcquireAllV174) {
+    ConnectionPool pool;
+    pool.release("pool174.example.com", 443, 801);
+    pool.release("pool174.example.com", 443, 802);
+
+    EXPECT_EQ(pool.count("pool174.example.com", 443), 2u)
+        << "Pool should have 2 connections after 2 releases";
+
+    int fd1 = pool.acquire("pool174.example.com", 443);
+    EXPECT_GE(fd1, 0) << "First acquire should return valid fd";
+
+    int fd2 = pool.acquire("pool174.example.com", 443);
+    EXPECT_GE(fd2, 0) << "Second acquire should return valid fd";
+
+    // Both fds should be from the released set
+    EXPECT_TRUE((fd1 == 801 && fd2 == 802) || (fd1 == 802 && fd2 == 801))
+        << "Acquired fds should be 801 and 802, got: " << fd1 << ", " << fd2;
+
+    // Pool should now be empty
+    EXPECT_EQ(pool.count("pool174.example.com", 443), 0u)
+        << "Pool should be empty after acquiring all";
+
+    int fd3 = pool.acquire("pool174.example.com", 443);
+    EXPECT_EQ(fd3, -1)
+        << "Acquiring from empty pool should return -1, got: " << fd3;
+}
+
+// ---------------------------------------------------------------------------
+// 4. CookieJar: Max-Age=0 cookie not stored
+// ---------------------------------------------------------------------------
+TEST(HttpClient, CookieJarIgnoresExpiredMaxAgeV174) {
+    CookieJar jar;
+    // Set a cookie with Max-Age=0 — should be immediately expired
+    jar.set_from_header("ephemeral174=gone; Max-Age=0; Path=/", "expire174.example.com");
+
+    std::string hdr = jar.get_cookie_header("expire174.example.com", "/", false);
+    EXPECT_EQ(hdr.find("ephemeral174=gone"), std::string::npos)
+        << "Max-Age=0 cookie should not be returned, got: " << hdr;
+}
+
+// ---------------------------------------------------------------------------
+// 5. HeaderMap: append to existing key creates multi-value
+// ---------------------------------------------------------------------------
+TEST(HttpClient, HeaderMapAppendCreatesMultiValueV174) {
+    HeaderMap map;
+    map.append("X-Tag-174", "alpha174");
+    map.append("X-Tag-174", "beta174");
+
+    auto all = map.get_all("X-Tag-174");
+    ASSERT_EQ(all.size(), 2u)
+        << "get_all should return 2 values, got: " << all.size();
+    EXPECT_EQ(all[0], "alpha174")
+        << "First value should be 'alpha174', got: " << all[0];
+    EXPECT_EQ(all[1], "beta174")
+        << "Second value should be 'beta174', got: " << all[1];
+}
+
+// ---------------------------------------------------------------------------
+// 6. HEAD with Accept custom header
+// ---------------------------------------------------------------------------
+TEST(HttpClient, RequestSerializeHeadWithAcceptV174) {
+    Request req;
+    req.method = Method::HEAD;
+    req.host = "head174.example.com";
+    req.port = 443;
+    req.path = "/info";
+    req.use_tls = true;
+    req.headers.set("Accept", "text/html");
+
+    auto bytes = req.serialize();
+    std::string s(bytes.begin(), bytes.end());
+
+    // Request line
+    EXPECT_NE(s.find("HEAD /info HTTP/1.1\r\n"), std::string::npos)
+        << "Request line should be HEAD, got: " << s;
+    // Host without port 443
+    EXPECT_NE(s.find("Host: head174.example.com\r\n"), std::string::npos)
+        << "Host should omit port 443, got: " << s;
+    EXPECT_EQ(s.find("Host: head174.example.com:443"), std::string::npos)
+        << "Port 443 should not appear in Host, got: " << s;
+    // Connection: close
+    EXPECT_NE(s.find("Connection: close\r\n"), std::string::npos)
+        << "Connection header should be present, got: " << s;
+    // Custom header lowercase
+    EXPECT_NE(s.find("accept: text/html"), std::string::npos)
+        << "Custom Accept header should be lowercase, got: " << s;
+    // No body after headers
+    auto hdr_end = s.find("\r\n\r\n");
+    ASSERT_NE(hdr_end, std::string::npos);
+    EXPECT_EQ(hdr_end + 4, s.size())
+        << "HEAD request should have no body";
+}
+
+// ---------------------------------------------------------------------------
+// 7. 503 Service Unavailable response
+// ---------------------------------------------------------------------------
+TEST(HttpClient, ResponseParse503ServiceUnavailableV174) {
+    std::string raw_str =
+        "HTTP/1.1 503 Service Unavailable\r\n"
+        "Content-Type: text/plain\r\n"
+        "Content-Length: 19\r\n"
+        "\r\n"
+        "Service Unavailable";
+
+    std::vector<uint8_t> raw(raw_str.begin(), raw_str.end());
+    auto resp = Response::parse(raw);
+
+    ASSERT_TRUE(resp.has_value()) << "503 response should parse successfully";
+    EXPECT_EQ(resp->status, 503u);
+    EXPECT_EQ(resp->status_text, "Service Unavailable");
+    EXPECT_EQ(resp->body_as_string(), "Service Unavailable");
+    ASSERT_TRUE(resp->headers.has("Content-Type"));
+    EXPECT_EQ(resp->headers.get("Content-Type").value(), "text/plain");
+}
+
+// ---------------------------------------------------------------------------
+// 8. CookieJar: secure cookie and non-secure cookie with different names coexist
+// ---------------------------------------------------------------------------
+TEST(HttpClient, CookieJarSecureAndNonSecureSameNameV174) {
+    CookieJar jar;
+    jar.set_from_header("pub174=visible; Path=/", "dual174.example.com");
+    jar.set_from_header("sec174=hidden; Secure; Path=/", "dual174.example.com");
+
+    // Over HTTP (is_secure=false), only the non-secure cookie should appear
+    std::string http_hdr = jar.get_cookie_header("dual174.example.com", "/", false);
+    EXPECT_NE(http_hdr.find("pub174=visible"), std::string::npos)
+        << "Non-secure cookie should appear over HTTP, got: " << http_hdr;
+    EXPECT_EQ(http_hdr.find("sec174=hidden"), std::string::npos)
+        << "Secure cookie should not appear over HTTP, got: " << http_hdr;
+
+    // Over HTTPS (is_secure=true), both cookies should appear
+    std::string https_hdr = jar.get_cookie_header("dual174.example.com", "/", true);
+    EXPECT_NE(https_hdr.find("pub174=visible"), std::string::npos)
+        << "Non-secure cookie should appear over HTTPS, got: " << https_hdr;
+    EXPECT_NE(https_hdr.find("sec174=hidden"), std::string::npos)
+        << "Secure cookie should appear over HTTPS, got: " << https_hdr;
+}

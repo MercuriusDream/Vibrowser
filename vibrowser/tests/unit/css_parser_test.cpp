@@ -12032,3 +12032,59 @@ TEST_F(CSSStylesheetTest, OutlineStyleDeclarationV173) {
     }
     EXPECT_TRUE(found) << "outline-style declaration not found";
 }
+
+TEST_F(CSSStylesheetTest, ListStyleTypeDeclarationV174) {
+    auto ss = parse_stylesheet("ul { list-style-type: disc; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "list-style-type") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "disc");
+        }
+    }
+    EXPECT_TRUE(found) << "list-style-type declaration not found";
+}
+
+TEST_F(CSSStylesheetTest, ListStylePositionDeclarationV174) {
+    auto ss = parse_stylesheet("ol { list-style-position: inside; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "list-style-position") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "inside");
+        }
+    }
+    EXPECT_TRUE(found) << "list-style-position declaration not found";
+}
+
+TEST_F(CSSStylesheetTest, TableLayoutDeclarationV174) {
+    auto ss = parse_stylesheet("table { table-layout: fixed; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "table-layout") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "fixed");
+        }
+    }
+    EXPECT_TRUE(found) << "table-layout declaration not found";
+}
+
+TEST_F(CSSStylesheetTest, BorderCollapseDeclarationV174) {
+    auto ss = parse_stylesheet("table { border-collapse: collapse; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "border-collapse") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "collapse");
+        }
+    }
+    EXPECT_TRUE(found) << "border-collapse declaration not found";
+}

@@ -13526,3 +13526,50 @@ TEST(CORSPolicyTest, CorsV173_7_IPv6LoopbackEnforceable) {
 TEST(CORSPolicyTest, CorsV173_8_SameOriginIgnoresPath) {
     EXPECT_FALSE(is_cross_origin("https://app.example", "https://app.example/other/path"));
 }
+
+// ---------------------------------------------------------------------------
+// V174 tests
+// ---------------------------------------------------------------------------
+
+// 1. HTTPS with deep path is NOT enforceable (origins don't have paths)
+TEST(CORSPolicyTest, CorsV174_1_HttpsWithPathNotEnforceable) {
+    EXPECT_FALSE(has_enforceable_document_origin("https://host.example/deep/path"));
+}
+
+// 2. Same origin when both have explicit same port
+TEST(CORSPolicyTest, CorsV174_2_SameOriginWhenBothExplicitSamePort) {
+    EXPECT_FALSE(is_cross_origin("http://h.example:3000", "http://h.example:3000/page"));
+}
+
+// 3. ftp target URL is not cross-origin (non-http(s) treated as non-CORS)
+TEST(CORSPolicyTest, CorsV174_3_FtpTargetNotCrossOrigin) {
+    EXPECT_FALSE(is_cross_origin("http://host.example", "ftp://host.example/file"));
+}
+
+// 4. ACAO empty string rejects response
+TEST(CORSPolicyTest, CorsV174_4_AcaoEmptyStringRejectsResponse) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "");
+    EXPECT_FALSE(cors_allows_response("https://app.example", "https://api.example/data", headers, false));
+}
+
+// 5. Should attach origin when different hosts (http cross-origin)
+TEST(CORSPolicyTest, CorsV174_5_ShouldAttachOriginDiffHost) {
+    EXPECT_TRUE(should_attach_origin_header("http://alpha.example",
+                                            "http://beta.example/resource"));
+}
+
+// 6. urn: scheme is not enforceable
+TEST(CORSPolicyTest, CorsV174_6_UrnSchemeNotEnforceable) {
+    EXPECT_FALSE(has_enforceable_document_origin("urn:isbn:123"));
+}
+
+// 7. localhost with port is enforceable
+TEST(CORSPolicyTest, CorsV174_7_LocalhostEnforceable) {
+    EXPECT_TRUE(has_enforceable_document_origin("http://localhost:3000"));
+}
+
+// 8. Same origin when port normalized (https default 443)
+TEST(CORSPolicyTest, CorsV174_8_SameOriginPortNormalized) {
+    EXPECT_FALSE(is_cross_origin("https://h.example", "https://h.example:443/page"));
+}
