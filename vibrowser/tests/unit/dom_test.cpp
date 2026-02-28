@@ -18129,3 +18129,137 @@ TEST(DomNode, ParentSetAndClearedV118) {
     parent.remove_child(*raw);
     EXPECT_EQ(raw->parent(), nullptr);
 }
+
+// ---------------------------------------------------------------------------
+// V119 Tests
+// ---------------------------------------------------------------------------
+
+// 1. Attribute struct fields are .name and .value
+TEST(DomElement, AttributeStructFieldsV119) {
+    Element elem("input");
+    elem.set_attribute("type", "text");
+    elem.set_attribute("placeholder", "enter name");
+    const auto& attrs = elem.attributes();
+    EXPECT_EQ(attrs.size(), 2u);
+    EXPECT_EQ(attrs[0].name, "type");
+    EXPECT_EQ(attrs[0].value, "text");
+    EXPECT_EQ(attrs[1].name, "placeholder");
+    EXPECT_EQ(attrs[1].value, "enter name");
+}
+
+// 2. insert_before in the middle of three children
+TEST(DomNode, InsertBeforeMiddleChildV119) {
+    Element parent("ul");
+    auto li1 = std::make_unique<Element>("li");
+    auto li3 = std::make_unique<Element>("li");
+    li1->set_attribute("id", "first");
+    li3->set_attribute("id", "third");
+    Node* raw3 = li3.get();
+    parent.append_child(std::move(li1));
+    parent.append_child(std::move(li3));
+    EXPECT_EQ(parent.child_count(), 2u);
+
+    auto li2 = std::make_unique<Element>("li");
+    li2->set_attribute("id", "second");
+    parent.insert_before(std::move(li2), raw3);
+    EXPECT_EQ(parent.child_count(), 3u);
+
+    // Verify order: first, second, third
+    std::vector<std::string> ids;
+    parent.for_each_child([&](const Node& n) {
+        auto* e = static_cast<const Element*>(&n);
+        ids.push_back(e->get_attribute("id").value());
+    });
+    EXPECT_EQ(ids[0], "first");
+    EXPECT_EQ(ids[1], "second");
+    EXPECT_EQ(ids[2], "third");
+}
+
+// 3. ClassList length tracks additions and removals
+TEST(DomClassList, LengthTracksChangesV119) {
+    Element elem("div");
+    EXPECT_EQ(elem.class_list().length(), 0u);
+    elem.class_list().add("a");
+    elem.class_list().add("b");
+    elem.class_list().add("c");
+    EXPECT_EQ(elem.class_list().length(), 3u);
+    elem.class_list().remove("b");
+    EXPECT_EQ(elem.class_list().length(), 2u);
+    // Adding duplicate should not increase length
+    elem.class_list().add("a");
+    EXPECT_EQ(elem.class_list().length(), 2u);
+}
+
+// 4. Document create_comment returns correct type and data
+TEST(DomDocument, CreateCommentDataAndTypeV119) {
+    Document doc;
+    auto comment = doc.create_comment("hello world");
+    EXPECT_EQ(comment->node_type(), NodeType::Comment);
+    EXPECT_EQ(comment->data(), "hello world");
+}
+
+// 5. Removing the last child makes first_child and last_child null
+TEST(DomNode, RemoveLastChildLeavesEmptyV119) {
+    Element parent("div");
+    auto child = std::make_unique<Element>("span");
+    Node* raw = child.get();
+    parent.append_child(std::move(child));
+    EXPECT_EQ(parent.child_count(), 1u);
+    EXPECT_NE(parent.first_child(), nullptr);
+
+    parent.remove_child(*raw);
+    EXPECT_EQ(parent.child_count(), 0u);
+    EXPECT_EQ(parent.first_child(), nullptr);
+    EXPECT_EQ(parent.last_child(), nullptr);
+}
+
+// 6. Dirty flag combination with bitwise OR
+TEST(DomNode, DirtyFlagBitwiseCombinationV119) {
+    Element elem("div");
+    EXPECT_EQ(elem.dirty_flags(), DirtyFlags::None);
+    elem.mark_dirty(DirtyFlags::Style);
+    EXPECT_NE(static_cast<uint8_t>(elem.dirty_flags() & DirtyFlags::Style), 0);
+    elem.mark_dirty(DirtyFlags::Layout);
+    // Both Style and Layout should be set
+    EXPECT_NE(static_cast<uint8_t>(elem.dirty_flags() & DirtyFlags::Style), 0);
+    EXPECT_NE(static_cast<uint8_t>(elem.dirty_flags() & DirtyFlags::Layout), 0);
+    elem.clear_dirty();
+    EXPECT_EQ(elem.dirty_flags(), DirtyFlags::None);
+}
+
+// 7. next_sibling and previous_sibling chain with three children
+TEST(DomNode, SiblingChainThreeChildrenV119) {
+    Element parent("div");
+    auto c1 = std::make_unique<Element>("a");
+    auto c2 = std::make_unique<Text>("hello");
+    auto c3 = std::make_unique<Comment>("note");
+    Node* r1 = c1.get();
+    Node* r2 = c2.get();
+    Node* r3 = c3.get();
+    parent.append_child(std::move(c1));
+    parent.append_child(std::move(c2));
+    parent.append_child(std::move(c3));
+
+    // Forward chain
+    EXPECT_EQ(r1->next_sibling(), r2);
+    EXPECT_EQ(r2->next_sibling(), r3);
+    EXPECT_EQ(r3->next_sibling(), nullptr);
+
+    // Backward chain
+    EXPECT_EQ(r3->previous_sibling(), r2);
+    EXPECT_EQ(r2->previous_sibling(), r1);
+    EXPECT_EQ(r1->previous_sibling(), nullptr);
+
+    // first_child / last_child
+    EXPECT_EQ(parent.first_child(), r1);
+    EXPECT_EQ(parent.last_child(), r3);
+}
+
+// 8. Element text_content concatenates Text children ignoring Comments
+TEST(DomElement, TextContentIgnoresCommentsV119) {
+    Element div("div");
+    div.append_child(std::make_unique<Text>("Hello"));
+    div.append_child(std::make_unique<Comment>("skip me"));
+    div.append_child(std::make_unique<Text>(" World"));
+    EXPECT_EQ(div.text_content(), "Hello World");
+}

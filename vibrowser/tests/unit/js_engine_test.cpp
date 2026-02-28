@@ -31703,3 +31703,200 @@ TEST(JSEngine, InstanceofWithCustomAndBuiltinsV118) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "true|true|false|true|true|true|true|true|true|true|true|false|false");
 }
+
+// ============================================================================
+// V119 Tests
+// ============================================================================
+
+// V119-1: WeakRef stores and dereferences multiple distinct objects
+TEST(JsEngineTest, WeakRefMultipleObjectsV119) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var a = {name: "alpha"};
+        var b = {name: "beta"};
+        var ra = new WeakRef(a);
+        var rb = new WeakRef(b);
+        [ra.deref().name, rb.deref().name, ra.deref() === a, rb.deref() === b].join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "alpha|beta|true|true");
+}
+
+// V119-2: String.fromCodePoint with multi-codepoint and codePointAt on surrogate pairs
+TEST(JsEngineTest, StringCodePointSurrogatePairsV119) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var r = [];
+        // Emoji is a surrogate pair (U+1F600)
+        var s = String.fromCodePoint(0x1F600);
+        r.push(s.length);            // 2 (surrogate pair = 2 UTF-16 code units)
+        r.push(s.codePointAt(0));    // 128512 = 0x1F600
+        // Multiple codepoints at once
+        var multi = String.fromCodePoint(72, 105, 0x1F60A);
+        r.push(multi.codePointAt(0)); // 72 = 'H'
+        r.push(multi.codePointAt(1)); // 105 = 'i'
+        r.push(multi.codePointAt(2)); // 128522 = 0x1F60A
+        r.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "2|128512|72|105|128522");
+}
+
+// V119-3: Object.create with full property descriptors (writable, enumerable, configurable)
+TEST(JsEngineTest, ObjectCreatePropertyDescriptorsV119) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var obj = Object.create(null, {
+            x: { value: 10, writable: false, enumerable: true, configurable: false },
+            y: { value: 20, writable: true, enumerable: false, configurable: true }
+        });
+        var r = [];
+        r.push(obj.x);                                     // 10
+        r.push(obj.y);                                     // 20
+        obj.x = 99;                                        // silently fails (non-writable, non-strict)
+        r.push(obj.x);                                     // still 10
+        obj.y = 55;                                        // succeeds (writable)
+        r.push(obj.y);                                     // 55
+        r.push(Object.keys(obj).join(","));                // "x" (only enumerable)
+        r.push(String(Object.getPrototypeOf(obj)));        // "null"
+        r.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "10|20|10|55|x|null");
+}
+
+// V119-4: Labeled loops with break and continue across nested loops
+TEST(JsEngineTest, LabeledLoopBreakContinueV119) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var r = [];
+        // break label exits outer loop
+        outer: for (var i = 0; i < 3; i++) {
+            for (var j = 0; j < 3; j++) {
+                if (i === 1 && j === 1) break outer;
+                r.push(i + ":" + j);
+            }
+        }
+        r.push("---");
+        // continue label skips to next outer iteration
+        var r2 = [];
+        loop: for (var a = 0; a < 3; a++) {
+            for (var b = 0; b < 3; b++) {
+                if (b === 1) continue loop;
+                r2.push(a + ":" + b);
+            }
+        }
+        r.push(r2.join(","));
+        r.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "0:0|0:1|0:2|1:0|---|0:0,1:0,2:0");
+}
+
+// V119-5: Comma operator in various contexts (assignment, return, for-loop)
+TEST(JsEngineTest, CommaOperatorContextsV119) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var r = [];
+        // Comma in assignment: evaluates all, assigns last
+        var x = (1, 2, 3);
+        r.push(x);
+        // Comma in for-loop header
+        var sum = 0;
+        for (var i = 0, j = 10; i < 3; i++, j--) {
+            sum += i + j;
+        }
+        r.push(sum);  // (0+10)+(1+9)+(2+8) = 10+10+10 = 30
+        // Comma in return
+        function f() { return (100, 200, 300); }
+        r.push(f());
+        // Comma with side effects
+        var a = 0;
+        var b = (a += 5, a *= 2, a + 1);
+        r.push(a);  // 10
+        r.push(b);  // 11
+        r.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "3|30|300|10|11");
+}
+
+// V119-6: void operator always returns undefined in various expressions
+TEST(JsEngineTest, VoidOperatorExpressionsV119) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var r = [];
+        r.push(void 0 === undefined);
+        r.push(void "hello" === undefined);
+        r.push(void (1 + 2) === undefined);
+        r.push(void function(){} === undefined);
+        // void with side effect - side effect still happens
+        var x = 0;
+        var v = void (x = 42);
+        r.push(x);             // 42 - side effect happened
+        r.push(String(v));     // "undefined"
+        r.push(typeof void 0);  // "undefined"
+        r.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true|true|true|true|42|undefined|undefined");
+}
+
+// V119-7: delete operator on object properties, arrays, and non-configurable props
+TEST(JsEngineTest, DeleteOperatorDetailedV119) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var r = [];
+        // Delete own property
+        var obj = {a: 1, b: 2, c: 3};
+        r.push(delete obj.b);    // true
+        r.push("b" in obj);      // false
+        r.push(Object.keys(obj).join(","));  // "a,c"
+        // Delete array element creates a hole
+        var arr = [10, 20, 30];
+        r.push(delete arr[1]);   // true
+        r.push(arr.length);      // 3 (length unchanged)
+        r.push(1 in arr);        // false (hole)
+        r.push(String(arr[1])); // "undefined"
+        // Delete non-existent returns true
+        r.push(delete obj.zzz);  // true
+        // Delete on non-configurable (Object.defineProperty)
+        var strict = {};
+        Object.defineProperty(strict, "locked", {value: 99, configurable: false});
+        r.push(delete strict.locked);  // false (non-configurable)
+        r.push(strict.locked);         // 99
+        r.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true|false|a,c|true|3|false|undefined|true|false|99");
+}
+
+// V119-8: in operator with arrays, inherited properties, and Symbol keys
+TEST(JsEngineTest, InOperatorAdvancedV119) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var r = [];
+        // in with array indices
+        var arr = [10, 20, 30];
+        r.push(0 in arr);       // true
+        r.push(2 in arr);       // true
+        r.push(3 in arr);       // false
+        // in with inherited properties
+        var parent = {inherited: true};
+        var child = Object.create(parent);
+        child.own = true;
+        r.push("own" in child);        // true
+        r.push("inherited" in child);  // true (from prototype)
+        r.push("missing" in child);    // false
+        // in with Symbol keys
+        var sym = Symbol("myKey");
+        var sobj = {};
+        sobj[sym] = "symbolValue";
+        r.push(sym in sobj);   // true
+        // in with string coercion of index
+        r.push("1" in arr);   // true (array index as string)
+        r.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true|true|false|true|true|false|true|true");
+}

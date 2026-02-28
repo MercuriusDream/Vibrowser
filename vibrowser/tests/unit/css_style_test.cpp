@@ -22182,3 +22182,238 @@ TEST(CSSStyleTest, ParseVerticalAlignMiddleViaResolverV118) {
 
     EXPECT_EQ(style.vertical_align, VerticalAlign::Middle);
 }
+
+// ---------------------------------------------------------------------------
+// V119 Tests
+// ---------------------------------------------------------------------------
+
+TEST(ComputedStyleTest, GridLayoutPropertiesV119) {
+    // Grid template/auto/flow properties default and assignment
+    ComputedStyle s;
+    EXPECT_TRUE(s.grid_template_columns.empty());
+    EXPECT_TRUE(s.grid_template_rows.empty());
+    EXPECT_TRUE(s.grid_column.empty());
+    EXPECT_TRUE(s.grid_row.empty());
+    EXPECT_EQ(s.grid_auto_flow, 0); // 0=row
+
+    s.display = Display::Grid;
+    s.grid_template_columns = "1fr 2fr 1fr";
+    s.grid_template_rows = "100px auto";
+    s.grid_auto_flow = 3; // column dense
+    s.grid_column = "1 / 3";
+    s.grid_row = "2 / 4";
+    s.grid_auto_rows = "minmax(100px, auto)";
+    s.grid_template_areas = "\"header header\" \"sidebar main\"";
+
+    EXPECT_EQ(s.display, Display::Grid);
+    EXPECT_EQ(s.grid_template_columns, "1fr 2fr 1fr");
+    EXPECT_EQ(s.grid_template_rows, "100px auto");
+    EXPECT_EQ(s.grid_auto_flow, 3);
+    EXPECT_EQ(s.grid_column, "1 / 3");
+    EXPECT_EQ(s.grid_row, "2 / 4");
+    EXPECT_EQ(s.grid_auto_rows, "minmax(100px, auto)");
+    EXPECT_EQ(s.grid_template_areas, "\"header header\" \"sidebar main\"");
+}
+
+TEST(ComputedStyleTest, TransitionDefFieldsV119) {
+    // TransitionDef struct holds parsed transition info
+    ComputedStyle s;
+    EXPECT_TRUE(s.transitions.empty());
+    EXPECT_EQ(s.transition_property, "all");
+    EXPECT_FLOAT_EQ(s.transition_duration, 0.0f);
+    EXPECT_EQ(s.transition_timing, 0); // ease
+
+    TransitionDef t1;
+    t1.property = "opacity";
+    t1.duration_ms = 300.0f;
+    t1.delay_ms = 50.0f;
+    t1.timing_function = 1; // linear
+
+    TransitionDef t2;
+    t2.property = "transform";
+    t2.duration_ms = 500.0f;
+    t2.delay_ms = 0.0f;
+    t2.timing_function = 5; // cubic-bezier
+    t2.bezier_x1 = 0.25f;
+    t2.bezier_y1 = 0.1f;
+    t2.bezier_x2 = 0.25f;
+    t2.bezier_y2 = 1.0f;
+
+    s.transitions.push_back(t1);
+    s.transitions.push_back(t2);
+
+    EXPECT_EQ(s.transitions.size(), 2u);
+    EXPECT_EQ(s.transitions[0].property, "opacity");
+    EXPECT_FLOAT_EQ(s.transitions[0].duration_ms, 300.0f);
+    EXPECT_EQ(s.transitions[1].timing_function, 5);
+    EXPECT_FLOAT_EQ(s.transitions[1].bezier_x1, 0.25f);
+    EXPECT_FLOAT_EQ(s.transitions[1].bezier_y2, 1.0f);
+}
+
+TEST(ComputedStyleTest, LengthRemChLhUnitsV119) {
+    // Verify rem, ch, lh units use correct context in to_px
+    Length rem_len = Length::rem(2.0f);
+    EXPECT_FLOAT_EQ(rem_len.to_px(0, 18.0f), 36.0f); // 2rem * 18px root
+
+    Length ch_len = Length::ch(5.0f);
+    // ch maps like em (uses parent_value as ch width)
+    EXPECT_EQ(ch_len.unit, Length::Unit::Ch);
+    EXPECT_FLOAT_EQ(ch_len.value, 5.0f);
+
+    Length lh_len = Length::lh(1.5f);
+    // lh uses line_height (3rd param)
+    EXPECT_FLOAT_EQ(lh_len.to_px(0, 16, 24.0f), 36.0f); // 1.5 * 24px line-height
+
+    // Verify auto and zero
+    Length auto_len = Length::auto_val();
+    EXPECT_TRUE(auto_len.is_auto());
+    EXPECT_FALSE(auto_len.is_zero());
+
+    Length zero_len = Length::zero();
+    EXPECT_TRUE(zero_len.is_zero());
+    EXPECT_FALSE(zero_len.is_auto());
+}
+
+TEST(ComputedStyleTest, AnimationPropertiesV119) {
+    // Animation fields default and assignment
+    ComputedStyle s;
+    EXPECT_TRUE(s.animation_name.empty());
+    EXPECT_FLOAT_EQ(s.animation_duration, 0.0f);
+    EXPECT_FLOAT_EQ(s.animation_delay, 0.0f);
+    EXPECT_FLOAT_EQ(s.animation_iteration_count, 1.0f);
+    EXPECT_EQ(s.animation_direction, 0);  // normal
+    EXPECT_EQ(s.animation_fill_mode, 0);  // none
+    EXPECT_EQ(s.animation_play_state, 0); // running
+    EXPECT_EQ(s.animation_composition, 0); // replace
+    EXPECT_EQ(s.animation_timeline, "auto");
+
+    s.animation_name = "slideIn";
+    s.animation_duration = 2.5f;
+    s.animation_delay = 0.3f;
+    s.animation_iteration_count = -1.0f; // infinite
+    s.animation_direction = 2; // alternate
+    s.animation_fill_mode = 3; // both
+    s.animation_play_state = 1; // paused
+    s.animation_timing = 4; // ease-in-out
+
+    EXPECT_EQ(s.animation_name, "slideIn");
+    EXPECT_FLOAT_EQ(s.animation_duration, 2.5f);
+    EXPECT_FLOAT_EQ(s.animation_iteration_count, -1.0f);
+    EXPECT_EQ(s.animation_direction, 2);
+    EXPECT_EQ(s.animation_fill_mode, 3);
+    EXPECT_EQ(s.animation_play_state, 1);
+    EXPECT_EQ(s.animation_timing, 4);
+}
+
+TEST(ComputedStyleTest, SVGPaintPropertiesDefaultsV119) {
+    // SVG fill/stroke properties defaults and assignment
+    ComputedStyle s;
+    EXPECT_EQ(s.svg_fill_color, 0xFF000000u);     // black
+    EXPECT_FALSE(s.svg_fill_none);
+    EXPECT_EQ(s.svg_stroke_color, 0xFF000000u);    // black
+    EXPECT_TRUE(s.svg_stroke_none);                 // default: no stroke
+    EXPECT_FLOAT_EQ(s.svg_fill_opacity, 1.0f);
+    EXPECT_FLOAT_EQ(s.svg_stroke_opacity, 1.0f);
+    EXPECT_FLOAT_EQ(s.svg_stroke_width, 0.0f);
+    EXPECT_EQ(s.svg_stroke_linecap, 0);  // butt
+    EXPECT_EQ(s.svg_stroke_linejoin, 0); // miter
+    EXPECT_FLOAT_EQ(s.stroke_miterlimit, 4.0f);
+    EXPECT_EQ(s.svg_text_anchor, 0); // start
+
+    s.svg_fill_color = 0xFF00FF00u;  // green
+    s.svg_fill_none = true;
+    s.svg_stroke_color = 0xFFFF0000u; // red
+    s.svg_stroke_none = false;
+    s.svg_stroke_width = 2.5f;
+    s.svg_stroke_linecap = 1; // round
+    s.svg_stroke_linejoin = 2; // bevel
+
+    EXPECT_EQ(s.svg_fill_color, 0xFF00FF00u);
+    EXPECT_TRUE(s.svg_fill_none);
+    EXPECT_EQ(s.svg_stroke_color, 0xFFFF0000u);
+    EXPECT_FALSE(s.svg_stroke_none);
+    EXPECT_FLOAT_EQ(s.svg_stroke_width, 2.5f);
+    EXPECT_EQ(s.svg_stroke_linecap, 1);
+    EXPECT_EQ(s.svg_stroke_linejoin, 2);
+}
+
+TEST(ComputedStyleTest, CustomPropertiesAndCSSVariablesV119) {
+    // custom_properties stores CSS variable values
+    ComputedStyle s;
+    EXPECT_TRUE(s.custom_properties.empty());
+
+    s.custom_properties["--primary-color"] = "#3498db";
+    s.custom_properties["--spacing-unit"] = "8px";
+    s.custom_properties["--font-stack"] = "\"Helvetica\", sans-serif";
+
+    EXPECT_EQ(s.custom_properties.size(), 3u);
+    EXPECT_EQ(s.custom_properties["--primary-color"], "#3498db");
+    EXPECT_EQ(s.custom_properties["--spacing-unit"], "8px");
+    EXPECT_EQ(s.custom_properties["--font-stack"], "\"Helvetica\", sans-serif");
+
+    // Overwrite existing
+    s.custom_properties["--primary-color"] = "rgb(255,0,0)";
+    EXPECT_EQ(s.custom_properties["--primary-color"], "rgb(255,0,0)");
+    EXPECT_EQ(s.custom_properties.size(), 3u);
+}
+
+TEST(ComputedStyleTest, ClipPathAndFiltersV119) {
+    // clip_path and filter/backdrop_filter properties
+    ComputedStyle s;
+    EXPECT_EQ(s.clip_path_type, 0); // none
+    EXPECT_TRUE(s.clip_path_values.empty());
+    EXPECT_TRUE(s.filters.empty());
+    EXPECT_TRUE(s.backdrop_filters.empty());
+
+    // Set circle clip path
+    s.clip_path_type = 1; // circle
+    s.clip_path_values.push_back(50.0f); // radius
+
+    EXPECT_EQ(s.clip_path_type, 1);
+    EXPECT_EQ(s.clip_path_values.size(), 1u);
+    EXPECT_FLOAT_EQ(s.clip_path_values[0], 50.0f);
+
+    // Add filters: grayscale(0.5) brightness(1.2) blur(4)
+    s.filters.push_back({1, 0.5f});  // grayscale
+    s.filters.push_back({3, 1.2f});  // brightness
+    s.filters.push_back({9, 4.0f});  // blur
+
+    EXPECT_EQ(s.filters.size(), 3u);
+    EXPECT_EQ(s.filters[0].first, 1);
+    EXPECT_FLOAT_EQ(s.filters[0].second, 0.5f);
+    EXPECT_EQ(s.filters[2].first, 9);
+    EXPECT_FLOAT_EQ(s.filters[2].second, 4.0f);
+
+    // Backdrop filter: blur(10)
+    s.backdrop_filters.push_back({9, 10.0f});
+    EXPECT_EQ(s.backdrop_filters.size(), 1u);
+    EXPECT_FLOAT_EQ(s.backdrop_filters[0].second, 10.0f);
+}
+
+TEST(ComputedStyleTest, TextIndentTabSizeAndTypographyFieldsV119) {
+    // text_indent, tab_size, and related typography fields via direct assignment
+    ComputedStyle s;
+    EXPECT_TRUE(s.text_indent.is_zero());
+    EXPECT_EQ(s.tab_size, 4); // default
+    EXPECT_EQ(s.hyphens, 1); // manual
+    EXPECT_EQ(s.text_justify, 0); // auto
+    EXPECT_FLOAT_EQ(s.text_underline_offset, 0.0f);
+
+    s.text_indent = Length::em(2.0f);
+    s.tab_size = 8;
+    s.hyphens = 2; // auto
+    s.text_justify = 2; // inter-character
+    s.text_underline_offset = 3.0f;
+    s.text_decoration_bits = 1 | 4; // underline + line-through
+    s.text_decoration_style = TextDecorationStyle::Wavy;
+    s.text_decoration_thickness = 2.5f;
+
+    EXPECT_FLOAT_EQ(s.text_indent.to_px(16.0f), 32.0f); // 2em * 16px
+    EXPECT_EQ(s.tab_size, 8);
+    EXPECT_EQ(s.hyphens, 2);
+    EXPECT_EQ(s.text_justify, 2);
+    EXPECT_FLOAT_EQ(s.text_underline_offset, 3.0f);
+    EXPECT_EQ(s.text_decoration_bits, 5); // 1|4
+    EXPECT_EQ(s.text_decoration_style, TextDecorationStyle::Wavy);
+    EXPECT_FLOAT_EQ(s.text_decoration_thickness, 2.5f);
+}

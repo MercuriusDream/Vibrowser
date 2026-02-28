@@ -9122,3 +9122,105 @@ TEST(CorsPolicyTest, CorsResponseWithOriginFragmentStrippedMatchesV118) {
                                       "https://api.example/data",
                                       headers_with_frag, false));
 }
+
+// ============================================================
+// V119 Tests
+// ============================================================
+
+TEST(CorsPolicyTest, BlobSchemeUrlNotCorsEligibleV119) {
+    // blob: URLs are NOT CORS-eligible request URLs
+    EXPECT_FALSE(is_cors_eligible_request_url("blob:https://example.com/uuid-1234"));
+    EXPECT_FALSE(is_cors_eligible_request_url("blob:null/some-uuid"));
+    EXPECT_FALSE(is_cors_eligible_request_url("blob:"));
+    // data: URLs are also NOT eligible
+    EXPECT_FALSE(is_cors_eligible_request_url("data:text/html,<h1>hi</h1>"));
+    EXPECT_FALSE(is_cors_eligible_request_url("data:application/json,{}"));
+}
+
+TEST(CorsPolicyTest, ShouldAttachOriginForDifferentPortsV119) {
+    // Different ports on same host are cross-origin — should attach origin
+    EXPECT_TRUE(should_attach_origin_header("https://app.example:8443",
+                                            "https://app.example:9443/api"));
+    // Same host/port — should NOT attach
+    EXPECT_FALSE(should_attach_origin_header("https://app.example:8443",
+                                             "https://app.example:8443/path"));
+    // Default port vs explicit non-default port — cross-origin, should attach
+    EXPECT_TRUE(should_attach_origin_header("https://app.example",
+                                            "https://app.example:8443/api"));
+}
+
+TEST(CorsPolicyTest, NormalizeOutgoingOriginRemovesSpoofedHeaderForBlobOriginV119) {
+    // blob: origin is not enforceable, so normalize should strip any spoofed Origin header
+    clever::net::HeaderMap headers;
+    headers.set("Origin", "https://spoofed.example");
+    normalize_outgoing_origin_header(headers, "blob:https://example.com/uuid",
+                                     "https://api.example/data");
+    // blob: is not enforceable — Origin header should be removed
+    EXPECT_FALSE(headers.has("origin"));
+}
+
+TEST(CorsPolicyTest, WsSchemeUrlNotCorsEligibleV119) {
+    // ws:// and wss:// URLs are NOT CORS-eligible request URLs
+    EXPECT_FALSE(is_cors_eligible_request_url("ws://api.example.com/ws"));
+    EXPECT_FALSE(is_cors_eligible_request_url("wss://api.example.com/ws"));
+    // http and https remain eligible
+    EXPECT_TRUE(is_cors_eligible_request_url("https://api.example.com/data"));
+    EXPECT_TRUE(is_cors_eligible_request_url("http://api.example.com/data"));
+}
+
+TEST(CorsPolicyTest, CorsAllowsResponseWildcardDeniedWithCredentialsV119) {
+    // Credentialed request: wildcard ACAO should be rejected
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "*");
+    EXPECT_FALSE(cors_allows_response("https://app.example",
+                                      "https://api.example/data",
+                                      headers, true));
+    // Non-credentialed: wildcard should be allowed
+    EXPECT_TRUE(cors_allows_response("https://app.example",
+                                     "https://api.example/data",
+                                     headers, false));
+}
+
+TEST(CorsPolicyTest, NonDefaultExplicitPortIsEnforceableOriginV119) {
+    // Non-default explicit ports ARE enforceable
+    EXPECT_TRUE(has_enforceable_document_origin("https://app.example:9090"));
+    EXPECT_TRUE(has_enforceable_document_origin("http://app.example:8080"));
+    EXPECT_TRUE(has_enforceable_document_origin("https://10.0.0.1:4443"));
+    // Default explicit ports are NOT enforceable
+    EXPECT_FALSE(has_enforceable_document_origin("https://app.example:443"));
+    EXPECT_FALSE(has_enforceable_document_origin("http://app.example:80"));
+}
+
+TEST(CorsPolicyTest, CrossOriginDifferentSubdomainsDetectedV119) {
+    // Different subdomains of the same root domain ARE cross-origin
+    EXPECT_TRUE(is_cross_origin("https://app.example.com", "https://api.example.com/data"));
+    EXPECT_TRUE(is_cross_origin("https://www.example.com", "https://cdn.example.com/resource"));
+    // Same subdomain same scheme is NOT cross-origin
+    EXPECT_FALSE(is_cross_origin("https://app.example.com", "https://app.example.com/other"));
+    // wss:// target is never cross-origin regardless of subdomain
+    EXPECT_FALSE(is_cross_origin("https://app.example.com", "wss://api.example.com/ws"));
+}
+
+TEST(CorsPolicyTest, CorsAllowsResponseExactMatchRequiredWithCredentialsV119) {
+    // Credentialed: exact ACAO origin match + ACAC: true required
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "https://app.example");
+    headers.set("Access-Control-Allow-Credentials", "true");
+    EXPECT_TRUE(cors_allows_response("https://app.example",
+                                     "https://api.example/data",
+                                     headers, true));
+    // Credentialed: case-insensitive origin match succeeds (origins are canonicalized)
+    clever::net::HeaderMap headers2;
+    headers2.set("Access-Control-Allow-Origin", "https://APP.example");
+    headers2.set("Access-Control-Allow-Credentials", "true");
+    EXPECT_TRUE(cors_allows_response("https://app.example",
+                                     "https://api.example/data",
+                                     headers2, true));
+    // Credentialed: ACAO with trailing slash fails (not exact match)
+    clever::net::HeaderMap headers3;
+    headers3.set("Access-Control-Allow-Origin", "https://app.example/");
+    headers3.set("Access-Control-Allow-Credentials", "true");
+    EXPECT_FALSE(cors_allows_response("https://app.example",
+                                      "https://api.example/data",
+                                      headers3, true));
+}

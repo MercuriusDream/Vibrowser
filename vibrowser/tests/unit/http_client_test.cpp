@@ -20140,3 +20140,177 @@ TEST(RequestTest, SerializePutQueryPort443OmittedV118) {
     // Body present
     EXPECT_NE(result.find(R"({"price":29.99})"), std::string::npos);
 }
+
+// ===========================================================================
+// V119 Tests
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// 1. ParseUrl: HTTPS with query and fragment stripped
+// ---------------------------------------------------------------------------
+TEST(RequestTest, ParseUrlHttpsWithQueryV119) {
+    Request req;
+    req.url = "https://search.example.org/results?q=hello&lang=en";
+    req.parse_url();
+
+    EXPECT_EQ(req.host, "search.example.org");
+    EXPECT_EQ(req.port, 443);
+    EXPECT_EQ(req.path, "/results");
+    EXPECT_EQ(req.query, "q=hello&lang=en");
+    EXPECT_TRUE(req.use_tls);
+}
+
+// ---------------------------------------------------------------------------
+// 2. HeaderMap: append then set replaces all appended values
+// ---------------------------------------------------------------------------
+TEST(HeaderMapTest, SetAfterAppendReplacesAllV119) {
+    HeaderMap map;
+    map.append("X-Custom", "val1");
+    map.append("X-Custom", "val2");
+    map.append("X-Custom", "val3");
+
+    // All three should exist before set
+    EXPECT_EQ(map.get_all("x-custom").size(), 3u);
+
+    // set() should replace all with a single value
+    map.set("X-Custom", "replaced");
+    auto all = map.get_all("x-custom");
+    EXPECT_EQ(all.size(), 1u);
+    EXPECT_EQ(map.get("x-custom").value(), "replaced");
+}
+
+// ---------------------------------------------------------------------------
+// 3. Response: parse 302 with Location header and body
+// ---------------------------------------------------------------------------
+TEST(ResponseTest, Parse302WithLocationAndBodyV119) {
+    std::string raw =
+        "HTTP/1.1 302 Found\r\n"
+        "Location: https://new.example.com/landing\r\n"
+        "Content-Type: text/html\r\n"
+        "Content-Length: 19\r\n"
+        "\r\n"
+        "Redirecting to new.";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 302);
+    EXPECT_EQ(resp->status_text, "Found");
+    EXPECT_EQ(resp->headers.get("location").value(), "https://new.example.com/landing");
+    EXPECT_EQ(resp->headers.get("content-type").value(), "text/html");
+    EXPECT_EQ(resp->body_as_string(), "Redirecting to new.");
+}
+
+// ---------------------------------------------------------------------------
+// 4. Request: serialize GET with non-standard port included in Host
+// ---------------------------------------------------------------------------
+TEST(RequestTest, SerializeGetNonStandardPort9090V119) {
+    Request req;
+    req.method = Method::GET;
+    req.host = "internal.example.com";
+    req.port = 9090;
+    req.path = "/health";
+    req.use_tls = false;
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    EXPECT_NE(result.find("GET /health HTTP/1.1\r\n"), std::string::npos);
+    // Non-standard port MUST appear in Host header
+    EXPECT_NE(result.find("Host: internal.example.com:9090\r\n"), std::string::npos);
+    EXPECT_NE(result.find("Connection: keep-alive\r\n"), std::string::npos);
+}
+
+// ---------------------------------------------------------------------------
+// 5. HeaderMap: remove is case-insensitive
+// ---------------------------------------------------------------------------
+TEST(HeaderMapTest, RemoveCaseInsensitiveV119) {
+    HeaderMap map;
+    map.set("X-Request-Id", "req-999");
+    EXPECT_TRUE(map.has("x-request-id"));
+
+    // Remove using different casing
+    map.remove("x-REQUEST-id");
+    EXPECT_FALSE(map.has("X-Request-Id"));
+    EXPECT_FALSE(map.get("x-request-id").has_value());
+}
+
+// ---------------------------------------------------------------------------
+// 6. Response: parse 200 with multiple Set-Cookie headers
+// ---------------------------------------------------------------------------
+TEST(ResponseTest, Parse200MultipleSetCookieV119) {
+    std::string raw =
+        "HTTP/1.1 200 OK\r\n"
+        "Set-Cookie: session=abc123; Path=/\r\n"
+        "Set-Cookie: lang=en; Path=/; Max-Age=3600\r\n"
+        "Content-Length: 2\r\n"
+        "\r\n"
+        "OK";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 200);
+
+    auto cookies = resp->headers.get_all("set-cookie");
+    EXPECT_EQ(cookies.size(), 2u);
+    EXPECT_TRUE(std::find(cookies.begin(), cookies.end(),
+        "session=abc123; Path=/") != cookies.end());
+    EXPECT_TRUE(std::find(cookies.begin(), cookies.end(),
+        "lang=en; Path=/; Max-Age=3600") != cookies.end());
+}
+
+// ---------------------------------------------------------------------------
+// 7. Request: serialize HEAD with standard port 80 omitted
+// ---------------------------------------------------------------------------
+TEST(RequestTest, SerializeHeadPort80OmittedV119) {
+    Request req;
+    req.method = Method::HEAD;
+    req.host = "static.example.com";
+    req.port = 80;
+    req.path = "/favicon.ico";
+    req.use_tls = false;
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    EXPECT_NE(result.find("HEAD /favicon.ico HTTP/1.1\r\n"), std::string::npos);
+    // Standard port 80 should be omitted
+    EXPECT_NE(result.find("Host: static.example.com\r\n"), std::string::npos);
+    EXPECT_EQ(result.find("Host: static.example.com:80"), std::string::npos);
+}
+
+// ---------------------------------------------------------------------------
+// 8. Request: serialize POST with custom headers lowercased, Host/Connection capitalized
+// ---------------------------------------------------------------------------
+TEST(RequestTest, SerializePostCustomHeadersLowercaseV119) {
+    Request req;
+    req.method = Method::POST;
+    req.host = "api.widgets.io";
+    req.port = 443;
+    req.path = "/v2/widgets";
+    req.use_tls = true;
+    req.headers.set("Authorization", "Bearer tok_v119");
+    req.headers.set("X-Idempotency-Key", "idem-777");
+
+    std::string body_str = R"({"name":"gadget"})";
+    req.body.assign(body_str.begin(), body_str.end());
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    // Request line
+    EXPECT_NE(result.find("POST /v2/widgets HTTP/1.1\r\n"), std::string::npos);
+    // Host keeps capitalization, port 443 omitted
+    EXPECT_NE(result.find("Host: api.widgets.io\r\n"), std::string::npos);
+    EXPECT_EQ(result.find("Host: api.widgets.io:443"), std::string::npos);
+    // Connection keeps capitalization
+    EXPECT_NE(result.find("Connection: keep-alive\r\n"), std::string::npos);
+    // Custom headers are lowercase
+    EXPECT_NE(result.find("authorization: Bearer tok_v119\r\n"), std::string::npos);
+    EXPECT_NE(result.find("x-idempotency-key: idem-777\r\n"), std::string::npos);
+    // Content-Length auto-added
+    EXPECT_NE(result.find("Content-Length: 17\r\n"), std::string::npos);
+    // Body
+    EXPECT_NE(result.find(R"({"name":"gadget"})"), std::string::npos);
+}

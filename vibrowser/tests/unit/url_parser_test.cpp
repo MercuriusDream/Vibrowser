@@ -12913,3 +12913,69 @@ TEST(UrlParserTest, DoubleEncodesPercentInPathSegmentV118) {
     // %2F→%252F, %20→%2520 (double-encoding)
     EXPECT_EQ(result->path, "/images%252Flogo%2520v2.png");
 }
+
+TEST(UrlParserTest, SerializePreservesQueryAndFragmentTogetherV119) {
+    auto result = parse("https://search.example.com/results?q=hello+world&page=2#top");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->query, "q=hello+world&page=2");
+    EXPECT_EQ(result->fragment, "top");
+    EXPECT_EQ(result->serialize(), "https://search.example.com/results?q=hello+world&page=2#top");
+}
+
+TEST(UrlParserTest, PasswordWithSpecialCharsInUserinfoV119) {
+    auto result = parse("http://admin:p%40ss@db.example.com/data");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->username, "admin");
+    EXPECT_EQ(result->password, "p%2540ss");
+    EXPECT_EQ(result->host, "db.example.com");
+    EXPECT_EQ(result->path, "/data");
+}
+
+TEST(UrlParserTest, HttpDefaultPort80NormalizedToNulloptV119) {
+    auto result = parse("http://web.example.com:80/index.html");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "web.example.com");
+    EXPECT_EQ(result->port, std::nullopt);
+    EXPECT_EQ(result->path, "/index.html");
+}
+
+TEST(UrlParserTest, NonDefaultPortRetainedInSerializeV119) {
+    auto result = parse("https://api.example.com:3000/v2/users");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->port, 3000);
+    EXPECT_EQ(result->serialize(), "https://api.example.com:3000/v2/users");
+}
+
+TEST(UrlParserTest, DoubleEncodesPercentInQueryStringV119) {
+    auto result = parse("https://example.com/search?term=%3Dvalue");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "example.com");
+    // %3D→%253D (double-encoding in query)
+    EXPECT_EQ(result->query, "term=%253Dvalue");
+}
+
+TEST(UrlParserTest, OriginNullForFileSchemeV119) {
+    auto result = parse("file:///home/user/doc.txt");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "file");
+    EXPECT_EQ(result->path, "/home/user/doc.txt");
+    EXPECT_EQ(result->origin(), "null");
+}
+
+TEST(UrlParserTest, DotSegmentRemovalInDeepPathV119) {
+    auto result = parse("https://example.com/a/b/c/../d/./e");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/a/b/d/e");
+}
+
+TEST(UrlParserTest, FullCredentialsInSerializeOutputV119) {
+    auto result = parse("http://user:secret@proxy.example.com:8888/tunnel");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->username, "user");
+    EXPECT_EQ(result->password, "secret");
+    EXPECT_EQ(result->port, 8888);
+    EXPECT_EQ(result->serialize(), "http://user:secret@proxy.example.com:8888/tunnel");
+}

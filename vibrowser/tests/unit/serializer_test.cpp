@@ -17714,3 +17714,136 @@ TEST(SerializerTest, BoolU32F64StringAllTypesV118) {
     EXPECT_EQ(d.read_u64(), 1ull);
     EXPECT_FALSE(d.has_remaining());
 }
+
+// ------------------------------------------------------------------
+// V119: 8 new serializer tests
+// ------------------------------------------------------------------
+
+TEST(SerializerTest, WriteU16MaxAndZeroV119) {
+    Serializer s;
+    s.write_u16(0);
+    s.write_u16(65535);
+    s.write_u16(32768);
+    s.write_u16(1);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u16(), 0u);
+    EXPECT_EQ(d.read_u16(), 65535u);
+    EXPECT_EQ(d.read_u16(), 32768u);
+    EXPECT_EQ(d.read_u16(), 1u);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, BytesContentIntegrityV119) {
+    const uint8_t pattern[] = {0x00, 0x7F, 0x80, 0xFF, 0xDE, 0xAD, 0xBE, 0xEF};
+    Serializer s;
+    s.write_bytes(pattern, 8);
+    Deserializer d(s.data());
+    auto result = d.read_bytes();
+    ASSERT_EQ(result.size(), 8u);
+    for (size_t i = 0; i < 8; ++i) {
+        EXPECT_EQ(result[i], pattern[i]);
+    }
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, F64SubnormalAndInfinityV119) {
+    Serializer s;
+    double subnormal = std::numeric_limits<double>::denorm_min();
+    double pos_inf = std::numeric_limits<double>::infinity();
+    double neg_inf = -std::numeric_limits<double>::infinity();
+    s.write_f64(subnormal);
+    s.write_f64(pos_inf);
+    s.write_f64(neg_inf);
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_f64(), subnormal);
+    EXPECT_EQ(d.read_f64(), pos_inf);
+    EXPECT_EQ(d.read_f64(), neg_inf);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, MultipleEmptyStringsV119) {
+    Serializer s;
+    s.write_string("");
+    s.write_string("");
+    s.write_string("");
+    s.write_string("x");
+    s.write_string("");
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "");
+    EXPECT_EQ(d.read_string(), "");
+    EXPECT_EQ(d.read_string(), "");
+    EXPECT_EQ(d.read_string(), "x");
+    EXPECT_EQ(d.read_string(), "");
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, BoolAlternatingPatternV119) {
+    Serializer s;
+    for (int i = 0; i < 16; ++i) {
+        s.write_bool(i % 2 == 0);
+    }
+    Deserializer d(s.data());
+    for (int i = 0; i < 16; ++i) {
+        EXPECT_EQ(d.read_bool(), (i % 2 == 0)) << "Mismatch at index " << i;
+    }
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, U64PowersOfTwoV119) {
+    Serializer s;
+    for (int shift = 0; shift < 64; ++shift) {
+        s.write_u64(uint64_t(1) << shift);
+    }
+    Deserializer d(s.data());
+    for (int shift = 0; shift < 64; ++shift) {
+        EXPECT_EQ(d.read_u64(), uint64_t(1) << shift) << "Failed at shift " << shift;
+    }
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, StringWithAllByteValuesV119) {
+    std::string all_bytes;
+    all_bytes.reserve(255);
+    for (int b = 1; b <= 255; ++b) {
+        all_bytes.push_back(static_cast<char>(b));
+    }
+    Serializer s;
+    s.write_string(all_bytes);
+    Deserializer d(s.data());
+    std::string result = d.read_string();
+    EXPECT_EQ(result.size(), 255u);
+    EXPECT_EQ(result, all_bytes);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, InterleavedTypesStressV119) {
+    Serializer s;
+    s.write_u8(42);
+    s.write_string("hello");
+    s.write_bool(true);
+    s.write_u32(0xDEADBEEFu);
+    s.write_f64(3.14159265358979);
+    s.write_u16(9999);
+    const uint8_t blob[] = {10, 20, 30};
+    s.write_bytes(blob, 3);
+    s.write_u64(0x0102030405060708ull);
+    s.write_bool(false);
+    s.write_string("");
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u8(), 42);
+    EXPECT_EQ(d.read_string(), "hello");
+    EXPECT_TRUE(d.read_bool());
+    EXPECT_EQ(d.read_u32(), 0xDEADBEEFu);
+    EXPECT_DOUBLE_EQ(d.read_f64(), 3.14159265358979);
+    EXPECT_EQ(d.read_u16(), 9999u);
+    auto bytes = d.read_bytes();
+    ASSERT_EQ(bytes.size(), 3u);
+    EXPECT_EQ(bytes[0], 10);
+    EXPECT_EQ(bytes[1], 20);
+    EXPECT_EQ(bytes[2], 30);
+    EXPECT_EQ(d.read_u64(), 0x0102030405060708ull);
+    EXPECT_FALSE(d.read_bool());
+    EXPECT_EQ(d.read_string(), "");
+    EXPECT_FALSE(d.has_remaining());
+}
