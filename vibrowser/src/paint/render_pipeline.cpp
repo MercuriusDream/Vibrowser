@@ -11689,6 +11689,8 @@ static void apply_style_to_layout_node(
     // Display mode
     node.mode = display_to_mode(style.display);
     node.display = display_to_type(style.display);
+    node.direction = static_cast<int>(style.direction);
+    node.writing_mode = style.writing_mode;
 }
 
 // Post-layout container query evaluation.
