@@ -8358,3 +8358,104 @@ TEST(CorsPolicyTest, CorsAllowsResponseIPOriginV110) {
                                       "https://api.example.com/data",
                                       wildcard, false));
 }
+
+// ---------------------------------------------------------------------------
+// V111 tests
+// ---------------------------------------------------------------------------
+
+TEST(CorsPolicyTest, ExplicitPort443NotEnforceableV111) {
+    // Origins with explicit :443 are NOT enforceable because the canonical
+    // serialized origin strips the default port, so the raw string with :443
+    // does not round-trip as a valid serialized origin.
+    EXPECT_FALSE(has_enforceable_document_origin("https://example.com:443"));
+    EXPECT_FALSE(has_enforceable_document_origin("https://secure.example.com:443"));
+    // Explicit :80 on http is similarly not enforceable
+    EXPECT_FALSE(has_enforceable_document_origin("http://example.com:80"));
+    // Non-default explicit ports ARE enforceable
+    EXPECT_TRUE(has_enforceable_document_origin("https://example.com:8443"));
+    EXPECT_TRUE(has_enforceable_document_origin("http://example.com:8080"));
+}
+
+TEST(CorsPolicyTest, FragmentEligibilityV111) {
+    // Non-empty fragments make a URL NOT cors-eligible
+    EXPECT_FALSE(is_cors_eligible_request_url("https://example.com/page#section"));
+    EXPECT_FALSE(is_cors_eligible_request_url("https://example.com/page#top"));
+    EXPECT_FALSE(is_cors_eligible_request_url("https://example.com/#frag"));
+    // URL without any fragment IS eligible
+    EXPECT_TRUE(is_cors_eligible_request_url("https://example.com/page"));
+    EXPECT_TRUE(is_cors_eligible_request_url("https://example.com/"));
+}
+
+TEST(CorsPolicyTest, IPAddressOriginEnforceableV111) {
+    // IPv4 address origins ARE enforceable
+    EXPECT_TRUE(has_enforceable_document_origin("https://192.168.1.1"));
+    EXPECT_TRUE(has_enforceable_document_origin("http://10.0.0.1"));
+    EXPECT_TRUE(has_enforceable_document_origin("https://127.0.0.1"));
+    // IPv4 with non-default port
+    EXPECT_TRUE(has_enforceable_document_origin("https://192.168.1.1:9090"));
+    // IPv6 in brackets
+    EXPECT_TRUE(has_enforceable_document_origin("https://[::1]"));
+    EXPECT_TRUE(has_enforceable_document_origin("https://[2001:db8::1]"));
+}
+
+TEST(CorsPolicyTest, DataBlobOriginNotEnforceableV111) {
+    // data: and blob: origins are NOT enforceable
+    EXPECT_FALSE(has_enforceable_document_origin("data:text/html,test"));
+    EXPECT_FALSE(has_enforceable_document_origin("data:,"));
+    EXPECT_FALSE(has_enforceable_document_origin("blob:https://example.com/uuid"));
+    EXPECT_FALSE(has_enforceable_document_origin("blob:null/some-uuid"));
+    // file: is also not enforceable (not http/https)
+    EXPECT_FALSE(has_enforceable_document_origin("file:///tmp/page.html"));
+}
+
+TEST(CorsPolicyTest, NormalizeOutgoingDataOriginV111) {
+    // For data: origins, should_attach_origin_header returns false because
+    // data: is not enforceable and not "null", so normalize_outgoing_origin_header
+    // should NOT set an Origin header at all (effectively nullopt / absent).
+    clever::net::HeaderMap headers;
+    headers.set("Origin", "data:text/html,test");
+    normalize_outgoing_origin_header(headers, "data:text/html,test",
+                                     "https://api.example.com/data");
+    // The Origin header should have been removed and not re-added
+    EXPECT_FALSE(headers.has("origin"));
+    EXPECT_EQ(headers.get("origin"), std::nullopt);
+}
+
+TEST(CorsPolicyTest, CrossOriginIPAddressV111) {
+    // Cross-origin detection between different IP addresses
+    EXPECT_TRUE(is_cross_origin("https://192.168.1.1", "https://10.0.0.1/api"));
+    EXPECT_TRUE(is_cross_origin("https://127.0.0.1", "https://192.168.1.1/path"));
+    // Same IP same scheme is same-origin
+    EXPECT_FALSE(is_cross_origin("https://192.168.1.1", "https://192.168.1.1/path"));
+    // Same IP different scheme is cross-origin
+    EXPECT_TRUE(is_cross_origin("http://192.168.1.1", "https://192.168.1.1/path"));
+    // Same IP different port is cross-origin
+    EXPECT_TRUE(is_cross_origin("https://192.168.1.1:8080", "https://192.168.1.1:9090/api"));
+}
+
+TEST(CorsPolicyTest, NormalizeOutgoingNullOriginV111) {
+    // "null" document origin IS treated as enforceable for attach purposes
+    // (is_null_document_origin returns true, so should_attach works)
+    clever::net::HeaderMap headers;
+    normalize_outgoing_origin_header(headers, "null",
+                                     "https://api.example.com/data");
+    // null origin is cross-origin, so Origin header should be set to "null"
+    EXPECT_TRUE(headers.has("origin"));
+    EXPECT_EQ(headers.get("origin"), std::optional<std::string>("null"));
+}
+
+TEST(CorsPolicyTest, CorsAllowsResponseExplicitPort443V111) {
+    // Origin with explicit :443 is not enforceable, so cors_allows_response
+    // should fail because the document origin is invalid.
+    clever::net::HeaderMap response_headers;
+    response_headers.set("Access-Control-Allow-Origin", "https://example.com:443");
+    EXPECT_FALSE(cors_allows_response("https://example.com:443",
+                                       "https://api.example.com/data",
+                                       response_headers, false));
+    // But the canonical origin without :443 should work
+    clever::net::HeaderMap correct_headers;
+    correct_headers.set("Access-Control-Allow-Origin", "https://example.com");
+    EXPECT_TRUE(cors_allows_response("https://example.com",
+                                      "https://api.example.com/data",
+                                      correct_headers, false));
+}

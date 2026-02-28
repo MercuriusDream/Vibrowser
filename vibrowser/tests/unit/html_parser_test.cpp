@@ -17931,3 +17931,166 @@ TEST(HtmlParserTest, NestedDivsWithMixedContentV110) {
     ASSERT_NE(strong, nullptr);
     EXPECT_EQ(strong->text_content(), "Bold text");
 }
+
+// ============================================================================
+// V111 Tests — HTML parser tree-building, attribute handling, nesting
+// ============================================================================
+
+// 1. Nested lists with text content
+TEST(HtmlParser, NestedOrderedListTextContentV111) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<ol><li>First</li><li>Second</li><li>Third</li></ol>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto lis = doc->find_all_elements("li");
+    ASSERT_EQ(lis.size(), 3u);
+    EXPECT_EQ(lis[0]->text_content(), "First");
+    EXPECT_EQ(lis[1]->text_content(), "Second");
+    EXPECT_EQ(lis[2]->text_content(), "Third");
+}
+
+// 2. Multiple attributes on a single element
+TEST(HtmlParser, MultipleAttributesOnElementV111) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<a href=\"https://example.com\" target=\"_blank\" rel=\"noopener\">Link</a>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* a = doc->find_element("a");
+    ASSERT_NE(a, nullptr);
+    EXPECT_EQ(get_attr_v63(a, "href"), "https://example.com");
+    EXPECT_EQ(get_attr_v63(a, "target"), "_blank");
+    EXPECT_EQ(get_attr_v63(a, "rel"), "noopener");
+    EXPECT_EQ(a->text_content(), "Link");
+}
+
+// 3. Deeply nested elements preserve hierarchy
+TEST(HtmlParser, DeeplyNestedElementsV111) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<div><section><article><p><span>Deep</span></p></article></section></div>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* span = doc->find_element("span");
+    ASSERT_NE(span, nullptr);
+    EXPECT_EQ(span->tag_name, "span");
+    EXPECT_EQ(span->text_content(), "Deep");
+    auto* article = doc->find_element("article");
+    ASSERT_NE(article, nullptr);
+    EXPECT_EQ(article->text_content(), "Deep");
+}
+
+// 4. Table structure parsing
+TEST(HtmlParser, TableStructureParsingV111) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<table><tr><td>A1</td><td>A2</td></tr>"
+        "<tr><td>B1</td><td>B2</td></tr></table>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto trs = doc->find_all_elements("tr");
+    ASSERT_EQ(trs.size(), 2u);
+    auto tds = doc->find_all_elements("td");
+    ASSERT_EQ(tds.size(), 4u);
+    EXPECT_EQ(tds[0]->text_content(), "A1");
+    EXPECT_EQ(tds[1]->text_content(), "A2");
+    EXPECT_EQ(tds[2]->text_content(), "B1");
+    EXPECT_EQ(tds[3]->text_content(), "B2");
+}
+
+// 5. Self-closing tags in body (br, hr, img)
+TEST(HtmlParser, SelfClosingTagsInBodyV111) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<p>Before<br/>After</p>"
+        "<hr/>"
+        "<img src=\"pic.jpg\" alt=\"Photo\"/>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* br = doc->find_element("br");
+    ASSERT_NE(br, nullptr);
+    EXPECT_EQ(br->tag_name, "br");
+    auto* hr = doc->find_element("hr");
+    ASSERT_NE(hr, nullptr);
+    auto* img = doc->find_element("img");
+    ASSERT_NE(img, nullptr);
+    EXPECT_EQ(get_attr_v63(img, "src"), "pic.jpg");
+    EXPECT_EQ(get_attr_v63(img, "alt"), "Photo");
+}
+
+// 6. Sibling elements with mixed content
+TEST(HtmlParser, SiblingElementsMixedContentV111) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<h1>Title</h1>"
+        "<p>Paragraph one.</p>"
+        "<p>Paragraph two.</p>"
+        "<h2>Subtitle</h2>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* h1 = doc->find_element("h1");
+    ASSERT_NE(h1, nullptr);
+    EXPECT_EQ(h1->text_content(), "Title");
+    auto ps = doc->find_all_elements("p");
+    ASSERT_EQ(ps.size(), 2u);
+    EXPECT_EQ(ps[0]->text_content(), "Paragraph one.");
+    EXPECT_EQ(ps[1]->text_content(), "Paragraph two.");
+    auto* h2 = doc->find_element("h2");
+    ASSERT_NE(h2, nullptr);
+    EXPECT_EQ(h2->text_content(), "Subtitle");
+}
+
+// 7. Form elements with various input types
+TEST(HtmlParser, FormElementsVariousInputTypesV111) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<form action=\"/submit\" method=\"post\">"
+        "<input type=\"email\" name=\"user_email\"/>"
+        "<input type=\"password\" name=\"user_pass\"/>"
+        "<textarea name=\"bio\">Hello world</textarea>"
+        "<button type=\"submit\">Go</button>"
+        "</form>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* form = doc->find_element("form");
+    ASSERT_NE(form, nullptr);
+    EXPECT_EQ(get_attr_v63(form, "action"), "/submit");
+    EXPECT_EQ(get_attr_v63(form, "method"), "post");
+    auto inputs = doc->find_all_elements("input");
+    ASSERT_EQ(inputs.size(), 2u);
+    EXPECT_EQ(get_attr_v63(inputs[0], "type"), "email");
+    EXPECT_EQ(get_attr_v63(inputs[0], "name"), "user_email");
+    EXPECT_EQ(get_attr_v63(inputs[1], "type"), "password");
+    EXPECT_EQ(get_attr_v63(inputs[1], "name"), "user_pass");
+    auto* textarea = doc->find_element("textarea");
+    ASSERT_NE(textarea, nullptr);
+    EXPECT_EQ(textarea->text_content(), "Hello world");
+    auto* button = doc->find_element("button");
+    ASSERT_NE(button, nullptr);
+    EXPECT_EQ(button->text_content(), "Go");
+}
+
+// 8. Data attributes and class attribute on elements
+TEST(HtmlParser, DataAndClassAttributesV111) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<div class=\"container main\" data-id=\"42\" data-role=\"wrapper\">"
+        "<span class=\"highlight\">Important</span>"
+        "</div>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto divs = doc->find_all_elements("div");
+    ASSERT_GE(divs.size(), 1u);
+    const clever::html::SimpleNode* container = nullptr;
+    for (auto* d : divs) {
+        if (get_attr_v63(d, "class") == "container main") { container = d; break; }
+    }
+    ASSERT_NE(container, nullptr);
+    EXPECT_EQ(get_attr_v63(container, "data-id"), "42");
+    EXPECT_EQ(get_attr_v63(container, "data-role"), "wrapper");
+    auto* span = doc->find_element("span");
+    ASSERT_NE(span, nullptr);
+    EXPECT_EQ(get_attr_v63(span, "class"), "highlight");
+    EXPECT_EQ(span->text_content(), "Important");
+}

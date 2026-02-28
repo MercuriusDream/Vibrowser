@@ -29667,3 +29667,313 @@ TEST(JsEngineTest, ProxyGetSetTrapV110) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "10|-1|99|get:x,get:z,set:y=99,get:y|2|revoked");
 }
+
+// ============================================================================
+// V111-1: String methods — padStart, padEnd, repeat, startsWith, endsWith, includes
+// ============================================================================
+TEST(JSEngine, StringMethodsAdvancedV111) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var r = [];
+        r.push("5".padStart(3, "0"));
+        r.push("hi".padEnd(5, "."));
+        r.push("ab".repeat(3));
+        r.push("hello world".startsWith("hello"));
+        r.push("hello world".endsWith("world"));
+        r.push("hello world".includes("lo wo"));
+        r.push("  trim me  ".trim());
+        r.push("abc".split("").reverse().join(""));
+        r.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "005|hi...|ababab|true|true|true|trim me|cba");
+}
+
+// ============================================================================
+// V111-2: Array methods — flat, flatMap, find, findIndex, every, some, fill
+// ============================================================================
+TEST(JSEngine, ArrayMethodsFlatAndSearchV111) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var r = [];
+        r.push([1, [2, [3]]].flat().join(","));
+        r.push([1, [2, [3]]].flat(Infinity).join(","));
+        r.push([1, 2, 3].flatMap(function(x) { return [x, x * 2]; }).join(","));
+        r.push([10, 20, 30].find(function(x) { return x > 15; }));
+        r.push([10, 20, 30].findIndex(function(x) { return x > 15; }));
+        r.push([2, 4, 6].every(function(x) { return x % 2 === 0; }));
+        r.push([1, 3, 4].some(function(x) { return x % 2 === 0; }));
+        var arr = [0, 0, 0, 0];
+        arr.fill(7, 1, 3);
+        r.push(arr.join(","));
+        r.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1,2,3|1,2,3|1,2,2,4,3,6|20|1|true|true|0,7,7,0");
+}
+
+// ============================================================================
+// V111-3: Closure scoping — IIFE, closure counter, nested closures
+// ============================================================================
+TEST(JSEngine, ClosureScopingPatternsV111) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var r = [];
+
+        var counter = (function() {
+            var count = 0;
+            return {
+                inc: function() { count++; },
+                dec: function() { count--; },
+                val: function() { return count; }
+            };
+        })();
+        counter.inc();
+        counter.inc();
+        counter.inc();
+        counter.dec();
+        r.push(counter.val());
+
+        function outer(x) {
+            return function middle(y) {
+                return function inner(z) {
+                    return x + y + z;
+                };
+            };
+        }
+        r.push(outer(1)(2)(3));
+
+        var fns = [];
+        for (var i = 0; i < 3; i++) {
+            fns.push((function(j) { return function() { return j; }; })(i));
+        }
+        r.push(fns[0]() + "," + fns[1]() + "," + fns[2]());
+
+        r.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "2|6|0,1,2");
+}
+
+// ============================================================================
+// V111-4: Error handling — custom errors, error chaining, finally behavior
+// ============================================================================
+TEST(JSEngine, ErrorHandlingPatternsV111) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var r = [];
+
+        try {
+            throw new TypeError("bad type");
+        } catch(e) {
+            r.push(e instanceof TypeError);
+            r.push(e.message);
+        }
+
+        try {
+            null.prop;
+        } catch(e) {
+            r.push(e instanceof TypeError);
+        }
+
+        try {
+            eval("@@@");
+        } catch(e) {
+            r.push(e instanceof SyntaxError);
+        }
+
+        var log = [];
+        try {
+            log.push("try");
+            throw new Error("oops");
+        } catch(e) {
+            log.push("catch");
+        } finally {
+            log.push("finally");
+        }
+        r.push(log.join(","));
+
+        function finallyReturn() {
+            try {
+                return "try";
+            } finally {
+                return "finally";
+            }
+        }
+        r.push(finallyReturn());
+
+        r.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true|bad type|true|true|try,catch,finally|finally");
+}
+
+// ============================================================================
+// V111-5: Map and Set — basic operations, iteration, size, chaining
+// ============================================================================
+TEST(JSEngine, MapAndSetOperationsV111) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var r = [];
+
+        var m = new Map();
+        m.set("a", 1).set("b", 2).set("c", 3);
+        r.push(m.size);
+        r.push(m.get("b"));
+        r.push(m.has("c"));
+        m.delete("a");
+        r.push(m.size);
+        var keys = [];
+        m.forEach(function(v, k) { keys.push(k + "=" + v); });
+        r.push(keys.join(","));
+
+        var s = new Set([10, 20, 30, 20, 10]);
+        r.push(s.size);
+        r.push(s.has(20));
+        s.add(40);
+        s.delete(10);
+        var vals = [];
+        s.forEach(function(v) { vals.push(v); });
+        r.push(vals.join(","));
+
+        var m2 = new Map([[1, "x"], [2, "y"]]);
+        r.push(Array.from(m2.keys()).join(","));
+        r.push(Array.from(m2.values()).join(","));
+
+        r.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "3|2|true|2|b=2,c=3|3|true|20,30,40|1,2|x,y");
+}
+
+// ============================================================================
+// V111-6: Generator functions — yield, next, done, return, yield delegation
+// ============================================================================
+TEST(JSEngine, GeneratorFunctionsV111) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var r = [];
+
+        function* count(start, end) {
+            for (var i = start; i <= end; i++) {
+                yield i;
+            }
+        }
+        var g = count(1, 4);
+        r.push(g.next().value);
+        r.push(g.next().value);
+        r.push(g.next().value);
+        r.push(g.next().value);
+        r.push(g.next().done);
+
+        function* echo() {
+            var x = yield "first";
+            var y = yield "second:" + x;
+            yield "third:" + y;
+        }
+        var e = echo();
+        r.push(e.next().value);
+        r.push(e.next(10).value);
+        r.push(e.next(20).value);
+
+        function* inner() { yield "a"; yield "b"; }
+        function* outer2() { yield 1; yield* inner(); yield 2; }
+        var vals = [];
+        var it = outer2();
+        var step;
+        while (!(step = it.next()).done) {
+            vals.push(step.value);
+        }
+        r.push(vals.join(","));
+
+        r.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1|2|3|4|true|first|second:10|third:20|1,a,b,2");
+}
+
+// ============================================================================
+// V111-7: Symbol basics — unique identity, description, well-known symbols
+// ============================================================================
+TEST(JSEngine, SymbolBasicsV111) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var r = [];
+
+        var s1 = Symbol("foo");
+        var s2 = Symbol("foo");
+        r.push(s1 === s2);
+        r.push(typeof s1);
+        r.push(s1.toString());
+        r.push(s1.description);
+
+        var key = Symbol("secret");
+        var obj = {};
+        obj[key] = 42;
+        r.push(obj[key]);
+        r.push(Object.keys(obj).length);
+
+        var g1 = Symbol.for("shared");
+        var g2 = Symbol.for("shared");
+        r.push(g1 === g2);
+        r.push(Symbol.keyFor(g1));
+
+        var myObj = {
+            [Symbol.toPrimitive]: function(hint) {
+                if (hint === "number") return 100;
+                if (hint === "string") return "custom";
+                return true;
+            }
+        };
+        r.push(+myObj);
+        r.push("" + myObj);
+
+        r.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "false|symbol|Symbol(foo)|foo|42|0|true|shared|100|true");
+}
+
+// ============================================================================
+// V111-8: Regex advanced — named groups, matchAll, replace with function, flags
+// ============================================================================
+TEST(JSEngine, RegexAdvancedFeaturesV111) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var r = [];
+
+        var re1 = /(\d{4})-(\d{2})-(\d{2})/;
+        var m1 = "2024-03-15".match(re1);
+        r.push(m1[1] + "/" + m1[2] + "/" + m1[3]);
+
+        var count = "aAbBcC".match(/[a-z]/g).length;
+        r.push(count);
+
+        var replaced = "hello world".replace(/(\w+)\s(\w+)/, "$2 $1");
+        r.push(replaced);
+
+        var doubled = "3 cats and 5 dogs".replace(/\d+/g, function(m) {
+            return parseInt(m) * 2;
+        });
+        r.push(doubled);
+
+        r.push(/^test$/i.test("TEST"));
+        r.push(/^test$/i.test("Test"));
+        r.push(/^test$/.test("TEST"));
+
+        var re2 = /\b\w+\b/g;
+        var words = [];
+        var match;
+        while ((match = re2.exec("one two three")) !== null) {
+            words.push(match[0]);
+        }
+        r.push(words.join(","));
+
+        var split = "a1b2c3".split(/(\d)/);
+        r.push(split.join(","));
+
+        r.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "2024/03/15|3|world hello|6 cats and 10 dogs|true|true|false|one,two,three|a,1,b,2,c,3,");
+}

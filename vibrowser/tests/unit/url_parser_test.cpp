@@ -12248,3 +12248,92 @@ TEST(UrlParserTest, MultiplePercentEncodedSegmentsV110) {
     ASSERT_TRUE(result.has_value());
     EXPECT_EQ(result->path, "/a%2520b/c%2520d");
 }
+
+// =============================================================================
+// V111 Tests
+// =============================================================================
+
+TEST(UrlParserTest, FtpSchemeWithPortAndPathV111) {
+    auto result = parse("ftp://files.example.com:21/pub/readme.txt");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "ftp");
+    EXPECT_EQ(result->host, "files.example.com");
+    // Port 21 is default for ftp, so it's normalized to nullopt
+    EXPECT_EQ(result->port, std::nullopt);
+    EXPECT_EQ(result->path, "/pub/readme.txt");
+    EXPECT_TRUE(result->query.empty());
+    EXPECT_TRUE(result->fragment.empty());
+}
+
+TEST(UrlParserTest, HttpDefaultPort80OmittedV111) {
+    auto result = parse("http://example.com:80/index.html");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->port, std::nullopt);
+    EXPECT_EQ(result->path, "/index.html");
+}
+
+TEST(UrlParserTest, HttpsDefaultPort443OmittedV111) {
+    auto result = parse("https://secure.example.com:443/login");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "secure.example.com");
+    EXPECT_EQ(result->port, std::nullopt);
+    EXPECT_EQ(result->path, "/login");
+}
+
+TEST(UrlParserTest, DoubleEncodesPercentInQueryV111) {
+    auto result = parse("https://example.com/search?q=hello%20world");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/search");
+    EXPECT_EQ(result->query, "q=hello%2520world");
+}
+
+TEST(UrlParserTest, SerializeRoundtripWithAllFieldsV111) {
+    auto result = parse("https://user:pass@api.example.com:9090/v2/data?fmt=json#top");
+    ASSERT_TRUE(result.has_value());
+    std::string serialized = result->serialize();
+    EXPECT_NE(serialized.find("https"), std::string::npos);
+    EXPECT_NE(serialized.find("user"), std::string::npos);
+    EXPECT_NE(serialized.find("pass"), std::string::npos);
+    EXPECT_NE(serialized.find("api.example.com"), std::string::npos);
+    EXPECT_NE(serialized.find(":9090"), std::string::npos);
+    EXPECT_NE(serialized.find("/v2/data"), std::string::npos);
+    EXPECT_NE(serialized.find("fmt=json"), std::string::npos);
+    EXPECT_NE(serialized.find("top"), std::string::npos);
+}
+
+TEST(UrlParserTest, UsernamePasswordSpecialCharsV111) {
+    auto result = parse("https://admin:s3cret@internal.example.com/dashboard");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->username, "admin");
+    EXPECT_EQ(result->password, "s3cret");
+    EXPECT_EQ(result->host, "internal.example.com");
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->path, "/dashboard");
+    EXPECT_EQ(result->port, std::nullopt);
+}
+
+TEST(UrlParserTest, QueryOnlyNoFragmentV111) {
+    auto result = parse("https://example.com/api?limit=50&offset=100");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/api");
+    EXPECT_EQ(result->query, "limit=50&offset=100");
+    EXPECT_TRUE(result->fragment.empty());
+}
+
+TEST(UrlParserTest, FragmentOnlyNoQueryV111) {
+    auto result = parse("https://docs.example.com/guide#installation");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "docs.example.com");
+    EXPECT_EQ(result->path, "/guide");
+    EXPECT_TRUE(result->query.empty());
+    EXPECT_EQ(result->fragment, "installation");
+    EXPECT_EQ(result->port, std::nullopt);
+}

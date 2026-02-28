@@ -17153,3 +17153,130 @@ TEST(DomTest, MixedChildTypesUnderParentV110) {
     auto* cmt = static_cast<Comment*>(raw_comment);
     EXPECT_EQ(cmt->data(), "a note");
 }
+
+// ---------------------------------------------------------------------------
+// V111 Tests
+// ---------------------------------------------------------------------------
+
+// 1. Insert before first child shifts siblings correctly
+TEST(DomTest, InsertBeforeFirstChildV111) {
+    Element parent("ul");
+    auto li1 = std::make_unique<Element>("li");
+    auto li2 = std::make_unique<Element>("li");
+    Node* raw_li1 = li1.get();
+    Node* raw_li2 = li2.get();
+    parent.append_child(std::move(li1));
+    parent.append_child(std::move(li2));
+
+    auto li0 = std::make_unique<Element>("li");
+    Node* raw_li0 = li0.get();
+    parent.insert_before(std::move(li0), raw_li1);
+
+    EXPECT_EQ(parent.child_count(), 3u);
+    EXPECT_EQ(parent.first_child(), raw_li0);
+    EXPECT_EQ(raw_li0->next_sibling(), raw_li1);
+    EXPECT_EQ(raw_li1->next_sibling(), raw_li2);
+}
+
+// 2. Remove child updates parent and sibling chain
+TEST(DomTest, RemoveChildUpdatesSiblingChainV111) {
+    Element parent("div");
+    auto a = std::make_unique<Element>("a");
+    auto b = std::make_unique<Element>("b");
+    auto c = std::make_unique<Element>("c");
+    Node* raw_a = a.get();
+    Node* raw_b = b.get();
+    Node* raw_c = c.get();
+    parent.append_child(std::move(a));
+    parent.append_child(std::move(b));
+    parent.append_child(std::move(c));
+
+    parent.remove_child(*raw_b);
+    EXPECT_EQ(parent.child_count(), 2u);
+    EXPECT_EQ(parent.first_child(), raw_a);
+    EXPECT_EQ(raw_a->next_sibling(), raw_c);
+}
+
+// 3. Set and get multiple attributes on one element
+TEST(DomTest, SetGetMultipleAttributesV111) {
+    Element elem("input");
+    elem.set_attribute("type", "text");
+    elem.set_attribute("name", "username");
+    elem.set_attribute("placeholder", "Enter name");
+
+    EXPECT_EQ(elem.get_attribute("type"), "text");
+    EXPECT_EQ(elem.get_attribute("name"), "username");
+    EXPECT_EQ(elem.get_attribute("placeholder"), "Enter name");
+    EXPECT_FALSE(elem.get_attribute("missing").has_value());
+}
+
+// 4. Overwrite attribute value with set_attribute
+TEST(DomTest, OverwriteAttributeValueV111) {
+    Element elem("a");
+    elem.set_attribute("href", "http://old.com");
+    EXPECT_EQ(elem.get_attribute("href"), "http://old.com");
+
+    elem.set_attribute("href", "http://new.com");
+    EXPECT_EQ(elem.get_attribute("href"), "http://new.com");
+}
+
+// 5. Comment node data and node type
+TEST(DomTest, CommentNodeDataAndTypeV111) {
+    Comment comment("TODO: fix this later");
+    EXPECT_EQ(comment.data(), "TODO: fix this later");
+    EXPECT_EQ(comment.node_type(), NodeType::Comment);
+    EXPECT_EQ(comment.parent(), nullptr);
+}
+
+// 6. ClassList add, contains, and remove workflow
+TEST(DomTest, ClassListAddContainsRemoveV111) {
+    Element elem("div");
+    elem.class_list().add("alpha");
+    elem.class_list().add("beta");
+    elem.class_list().add("gamma");
+    EXPECT_TRUE(elem.class_list().contains("alpha"));
+    EXPECT_TRUE(elem.class_list().contains("beta"));
+    EXPECT_TRUE(elem.class_list().contains("gamma"));
+
+    elem.class_list().remove("beta");
+    EXPECT_FALSE(elem.class_list().contains("beta"));
+    EXPECT_TRUE(elem.class_list().contains("alpha"));
+    EXPECT_TRUE(elem.class_list().contains("gamma"));
+}
+
+// 7. Deep tree: grandchild parent pointers
+TEST(DomTest, DeepTreeGrandchildParentPointersV111) {
+    Element root("html");
+    auto body = std::make_unique<Element>("body");
+    Node* raw_body = body.get();
+    root.append_child(std::move(body));
+
+    auto div = std::make_unique<Element>("div");
+    Node* raw_div = div.get();
+    static_cast<Element*>(raw_body)->append_child(std::move(div));
+
+    auto span = std::make_unique<Element>("span");
+    Node* raw_span = span.get();
+    static_cast<Element*>(raw_div)->append_child(std::move(span));
+
+    EXPECT_EQ(raw_span->parent(), raw_div);
+    EXPECT_EQ(raw_div->parent(), raw_body);
+    EXPECT_EQ(raw_body->parent(), &root);
+    EXPECT_EQ(root.parent(), nullptr);
+}
+
+// 8. Text node with set_attribute id on parent and child traversal
+TEST(DomTest, TextNodeUnderIdentifiedParentV111) {
+    Element parent("p");
+    parent.set_attribute("id", "main-paragraph");
+    auto text = std::make_unique<Text>("Hello, world!");
+    Node* raw_text = text.get();
+    parent.append_child(std::move(text));
+
+    EXPECT_EQ(parent.get_attribute("id"), "main-paragraph");
+    EXPECT_EQ(parent.child_count(), 1u);
+    EXPECT_EQ(parent.first_child(), raw_text);
+    EXPECT_EQ(raw_text->node_type(), NodeType::Text);
+    EXPECT_EQ(raw_text->parent(), &parent);
+    EXPECT_EQ(raw_text->next_sibling(), nullptr);
+}

@@ -20607,3 +20607,203 @@ TEST(LayoutEngineTest, FlexMixedChildDisplayTypesV110) {
     EXPECT_EQ(container->children[3]->flex_direction, 2);
     EXPECT_EQ(container->children[3]->background_color, 0xFFAAAA00u);
 }
+
+// ---------------------------------------------------------------------------
+// V111 tests
+// ---------------------------------------------------------------------------
+
+TEST(LayoutNodeV111, BlockDisplayTypeAndBackgroundColor) {
+    auto node = make_block("section");
+    node->display = DisplayType::Block;
+    node->background_color = 0xFF112233u;
+    node->specified_width = 400.0f;
+    node->specified_height = 200.0f;
+
+    EXPECT_EQ(node->display, DisplayType::Block);
+    EXPECT_EQ(node->background_color, 0xFF112233u);
+    EXPECT_FLOAT_EQ(node->specified_width, 400.0f);
+    EXPECT_FLOAT_EQ(node->specified_height, 200.0f);
+    EXPECT_EQ(node->tag_name, "section");
+}
+
+TEST(LayoutNodeV111, InlineDisplayWithTextColor) {
+    auto node = make_inline("em");
+    node->display = DisplayType::Inline;
+    node->color = 0xFFAA5500u;
+    node->background_color = 0x80FFFFFFu;
+
+    EXPECT_EQ(node->display, DisplayType::Inline);
+    EXPECT_EQ(node->color, 0xFFAA5500u);
+    EXPECT_EQ(node->background_color, 0x80FFFFFFu);
+    EXPECT_EQ(node->tag_name, "em");
+}
+
+TEST(LayoutNodeV111, FlexRowDirectionWithChildren) {
+    auto container = make_flex("nav");
+    container->flex_direction = 0; // Row
+    container->specified_width = 600.0f;
+    container->specified_height = 80.0f;
+    container->background_color = 0xFF333333u;
+
+    auto child1 = make_block("div");
+    child1->specified_width = 100.0f;
+    child1->background_color = 0xFFFF0000u;
+
+    auto child2 = make_block("div");
+    child2->specified_width = 200.0f;
+    child2->background_color = 0xFF00FF00u;
+
+    container->append_child(std::move(child1));
+    container->append_child(std::move(child2));
+
+    EXPECT_EQ(container->display, DisplayType::Flex);
+    EXPECT_EQ(container->flex_direction, 0);
+    EXPECT_EQ(container->children.size(), 2u);
+    EXPECT_FLOAT_EQ(container->children[0]->specified_width, 100.0f);
+    EXPECT_EQ(container->children[1]->background_color, 0xFF00FF00u);
+}
+
+TEST(LayoutNodeV111, FlexColumnDirectionWithGap) {
+    auto container = make_flex("aside");
+    container->flex_direction = 2; // Column
+    container->gap = 12.0f;
+    container->specified_width = 300.0f;
+    container->specified_height = 500.0f;
+    container->background_color = 0xFFEEEEEEu;
+
+    auto item1 = make_block("div");
+    item1->specified_height = 50.0f;
+    item1->color = 0xFF000000u;
+
+    auto item2 = make_block("div");
+    item2->specified_height = 75.0f;
+    item2->color = 0xFF111111u;
+
+    auto item3 = make_block("div");
+    item3->specified_height = 60.0f;
+    item3->color = 0xFF222222u;
+
+    container->append_child(std::move(item1));
+    container->append_child(std::move(item2));
+    container->append_child(std::move(item3));
+
+    EXPECT_EQ(container->flex_direction, 2);
+    EXPECT_FLOAT_EQ(container->gap, 12.0f);
+    EXPECT_EQ(container->children.size(), 3u);
+    EXPECT_FLOAT_EQ(container->children[1]->specified_height, 75.0f);
+    EXPECT_EQ(container->children[2]->color, 0xFF222222u);
+}
+
+TEST(LayoutNodeV111, NestedBlocksWithDifferentColors) {
+    auto outer = make_block("div");
+    outer->background_color = 0xFFAABBCCu;
+    outer->specified_width = 500.0f;
+
+    auto middle = make_block("div");
+    middle->background_color = 0xFF998877u;
+    middle->specified_width = 400.0f;
+    middle->specified_height = 300.0f;
+
+    auto inner = make_block("p");
+    inner->background_color = 0xFF665544u;
+    inner->specified_width = 300.0f;
+    inner->specified_height = 100.0f;
+    inner->color = 0xFFFFFFFFu;
+
+    middle->append_child(std::move(inner));
+    outer->append_child(std::move(middle));
+
+    EXPECT_EQ(outer->children.size(), 1u);
+    EXPECT_EQ(outer->children[0]->children.size(), 1u);
+    EXPECT_EQ(outer->children[0]->background_color, 0xFF998877u);
+    EXPECT_EQ(outer->children[0]->children[0]->background_color, 0xFF665544u);
+    EXPECT_EQ(outer->children[0]->children[0]->color, 0xFFFFFFFFu);
+    EXPECT_FLOAT_EQ(outer->children[0]->children[0]->specified_width, 300.0f);
+}
+
+TEST(LayoutNodeV111, DisplayTypeSwitchBlockToFlex) {
+    auto node = make_block("div");
+    EXPECT_EQ(node->display, DisplayType::Block);
+
+    node->display = DisplayType::Flex;
+    node->flex_direction = 0; // Row
+    node->specified_width = 800.0f;
+    node->background_color = 0xFFDDDDDDu;
+
+    EXPECT_EQ(node->display, DisplayType::Flex);
+    EXPECT_EQ(node->flex_direction, 0);
+    EXPECT_FLOAT_EQ(node->specified_width, 800.0f);
+    EXPECT_EQ(node->background_color, 0xFFDDDDDDu);
+}
+
+TEST(LayoutNodeV111, InlineChildrenInsideBlockParent) {
+    auto parent = make_block("div");
+    parent->specified_width = 600.0f;
+    parent->background_color = 0xFF000000u;
+
+    auto span1 = make_inline("span");
+    span1->color = 0xFFFF0000u;
+
+    auto span2 = make_inline("span");
+    span2->color = 0xFF00FF00u;
+
+    auto span3 = make_inline("span");
+    span3->color = 0xFF0000FFu;
+
+    parent->append_child(std::move(span1));
+    parent->append_child(std::move(span2));
+    parent->append_child(std::move(span3));
+
+    EXPECT_EQ(parent->display, DisplayType::Block);
+    EXPECT_EQ(parent->children.size(), 3u);
+
+    EXPECT_EQ(parent->children[0]->display, DisplayType::Inline);
+    EXPECT_EQ(parent->children[0]->color, 0xFFFF0000u);
+
+    EXPECT_EQ(parent->children[1]->display, DisplayType::Inline);
+    EXPECT_EQ(parent->children[1]->color, 0xFF00FF00u);
+
+    EXPECT_EQ(parent->children[2]->display, DisplayType::Inline);
+    EXPECT_EQ(parent->children[2]->color, 0xFF0000FFu);
+}
+
+TEST(LayoutNodeV111, FlexContainerWithMixedDisplayChildren) {
+    auto flex = make_flex("main");
+    flex->flex_direction = 0; // Row
+    flex->specified_width = 1000.0f;
+    flex->specified_height = 400.0f;
+    flex->background_color = 0xFFF0F0F0u;
+
+    auto block_item = make_block("article");
+    block_item->specified_width = 250.0f;
+    block_item->specified_height = 350.0f;
+    block_item->background_color = 0xFFCC0000u;
+
+    auto inline_item = make_inline("span");
+    inline_item->color = 0xFF00CC00u;
+
+    auto nested_flex = make_flex("div");
+    nested_flex->flex_direction = 2; // Column
+    nested_flex->specified_width = 200.0f;
+    nested_flex->specified_height = 300.0f;
+    nested_flex->background_color = 0xFF0000CCu;
+
+    flex->append_child(std::move(block_item));
+    flex->append_child(std::move(inline_item));
+    flex->append_child(std::move(nested_flex));
+
+    EXPECT_EQ(flex->display, DisplayType::Flex);
+    EXPECT_EQ(flex->children.size(), 3u);
+
+    EXPECT_EQ(flex->children[0]->display, DisplayType::Block);
+    EXPECT_EQ(flex->children[0]->background_color, 0xFFCC0000u);
+    EXPECT_FLOAT_EQ(flex->children[0]->specified_height, 350.0f);
+
+    EXPECT_EQ(flex->children[1]->display, DisplayType::Inline);
+    EXPECT_EQ(flex->children[1]->color, 0xFF00CC00u);
+
+    EXPECT_EQ(flex->children[2]->display, DisplayType::Flex);
+    EXPECT_EQ(flex->children[2]->flex_direction, 2);
+    EXPECT_EQ(flex->children[2]->background_color, 0xFF0000CCu);
+    EXPECT_FLOAT_EQ(flex->children[2]->specified_width, 200.0f);
+}
