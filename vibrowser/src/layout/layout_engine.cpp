@@ -4299,6 +4299,13 @@ void LayoutEngine::layout_table(LayoutNode& node, float containing_width) {
             cells.push_back(cell.get());
         }
 
+        // Ensure row and cells inherit line-height from table (parent)
+        // This allows table-level line-height to affect text spacing in cells
+        row->line_height = node.line_height;
+        for (auto* cell : cells) {
+            cell->line_height = row->line_height;
+        }
+
         // Position cells in this row — start with horizontal edge spacing
         float cursor_x = node.geometry.padding.left + node.geometry.border.left + h_spacing;
         int cell_col = 0;
@@ -4354,6 +4361,10 @@ void LayoutEngine::layout_table(LayoutNode& node, float containing_width) {
                 // Layout inline children within the cell
                 for (auto& gc : cell->children) {
                     if (gc->display == DisplayType::None || gc->mode == LayoutMode::None) continue;
+                    // Propagate cell's line-height to inline children to ensure correct text spacing
+                    if (gc->is_text || gc->display == DisplayType::Inline || gc->display == DisplayType::InlineBlock) {
+                        gc->line_height = cell->line_height;
+                    }
                     layout_inline(*gc, cell_content_w);
                 }
                 position_inline_children(*cell, cell_content_w);
@@ -4368,6 +4379,10 @@ void LayoutEngine::layout_table(LayoutNode& node, float containing_width) {
                 for (auto& gc : cell->children) {
                     if (gc->display == DisplayType::None || gc->mode == LayoutMode::None) continue;
                     if (gc->position_type == 2 || gc->position_type == 3) continue;
+                    // Propagate cell's line-height to children to ensure correct text spacing
+                    if (gc->is_text || gc->display == DisplayType::Inline || gc->display == DisplayType::InlineBlock) {
+                        gc->line_height = cell->line_height;
+                    }
                     switch (gc->mode) {
                         case LayoutMode::Block:
                         case LayoutMode::InlineBlock:
