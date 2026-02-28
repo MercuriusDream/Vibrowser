@@ -26369,3 +26369,41 @@ TEST(PropertyCascadeTest, CursorPointerAppliedV163) {
     cascade.apply_declaration(style, make_decl("cursor", "pointer"), parent);
     EXPECT_EQ(style.cursor, Cursor::Pointer);
 }
+
+// Round 164 — CSS style tests (V164)
+
+TEST(CSSStyleTest, CssV164_1_VisibilityHiddenApplied) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("visibility", "hidden"), parent);
+    EXPECT_EQ(style.visibility, Visibility::Hidden);
+}
+
+TEST(CSSStyleTest, CssV164_2_PointerEventsNoneApplied) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("pointer-events", "none"), parent);
+    EXPECT_EQ(style.pointer_events, PointerEvents::None);
+}
+
+TEST(PropertyCascadeTest, UserSelectNoneAppliedV164) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("user-select", "none"), parent);
+    EXPECT_EQ(style.user_select, UserSelect::None);
+}
+
+TEST(PropertyCascadeTest, WhiteSpaceNoWrapAppliedV164) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("white-space", "nowrap"), parent);
+    EXPECT_EQ(style.white_space, WhiteSpace::NoWrap);
+}

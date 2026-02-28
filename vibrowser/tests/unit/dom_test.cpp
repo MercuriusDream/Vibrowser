@@ -24269,3 +24269,116 @@ TEST(DomNode, DeepClonePreservesAttributesV163) {
     EXPECT_NE(cloned, original.get());
     EXPECT_NE(cloned_child, original->first_child());
 }
+
+// ---------------------------------------------------------------------------
+// Round 164 — DOM tests (V164)
+// ---------------------------------------------------------------------------
+
+// 1. Remove last child updates last_child pointer
+TEST(DomNode, RemoveLastChildUpdatesLastChildPointerV164) {
+    auto parent = std::make_unique<Element>("div");
+    auto a = std::make_unique<Element>("a");
+    auto b = std::make_unique<Element>("b");
+    auto c = std::make_unique<Element>("c");
+    Element* a_ptr = a.get();
+    Element* b_ptr = b.get();
+    Element* c_ptr = c.get();
+    parent->append_child(std::move(a));
+    parent->append_child(std::move(b));
+    parent->append_child(std::move(c));
+    EXPECT_EQ(parent->last_child(), c_ptr);
+    parent->remove_child(*c_ptr);
+    EXPECT_EQ(parent->last_child(), b_ptr);
+    EXPECT_EQ(parent->first_child(), a_ptr);
+}
+
+// 2. Set and get multiple attribute types
+TEST(DomElement, SetAndGetMultipleAttributeTypesV164) {
+    Element elem("a");
+    elem.set_attribute("class", "nav-link");
+    elem.set_attribute("id", "home");
+    elem.set_attribute("data-x", "42");
+    elem.set_attribute("href", "/index.html");
+    EXPECT_EQ(elem.get_attribute("class").value(), "nav-link");
+    EXPECT_EQ(elem.get_attribute("id").value(), "home");
+    EXPECT_EQ(elem.get_attribute("data-x").value(), "42");
+    EXPECT_EQ(elem.get_attribute("href").value(), "/index.html");
+    EXPECT_EQ(elem.attributes().size(), 4u);
+}
+
+// 3. Unregister id then re-register with new element
+TEST(DomDocument, UnregisterIdThenReregisterV164) {
+    Document doc;
+    auto elem1 = std::make_unique<Element>("div");
+    Element* e1 = elem1.get();
+    doc.register_id("main", e1);
+    EXPECT_EQ(doc.get_element_by_id("main"), e1);
+
+    doc.unregister_id("main");
+    EXPECT_EQ(doc.get_element_by_id("main"), nullptr);
+
+    auto elem2 = std::make_unique<Element>("section");
+    Element* e2 = elem2.get();
+    doc.register_id("main", e2);
+    EXPECT_EQ(doc.get_element_by_id("main"), e2);
+}
+
+// 4. Propagation stopped is false by default
+TEST(DomEvent, PropagationStoppedDefaultFalseV164) {
+    Event ev("click");
+    EXPECT_FALSE(ev.propagation_stopped());
+    EXPECT_FALSE(ev.immediate_propagation_stopped());
+}
+
+// 5. Append child sets parent pointer
+TEST(DomNode, AppendChildSetsParentPointerV164) {
+    auto parent = std::make_unique<Element>("ul");
+    auto child = std::make_unique<Element>("li");
+    Element* child_ptr = child.get();
+    parent->append_child(std::move(child));
+    EXPECT_EQ(child_ptr->parent(), parent.get());
+}
+
+// 6. ClassList remove nonexistent is no-op
+TEST(DomElement, ClassListRemoveNonexistentNoOpV164) {
+    Element elem("div");
+    EXPECT_EQ(elem.class_list().length(), 0u);
+    elem.class_list().remove("ghost");
+    EXPECT_EQ(elem.class_list().length(), 0u);
+    EXPECT_FALSE(elem.class_list().contains("ghost"));
+}
+
+// 7. mark_dirty(All) sets style, layout, and paint flags
+TEST(DomNode, MarkDirtyAllSetsAllThreeFlagsV164) {
+    Element elem("div");
+    elem.clear_dirty();
+    EXPECT_EQ(elem.dirty_flags(), DirtyFlags::None);
+    elem.mark_dirty(DirtyFlags::All);
+    EXPECT_NE(static_cast<uint8_t>(elem.dirty_flags() & DirtyFlags::Style), 0);
+    EXPECT_NE(static_cast<uint8_t>(elem.dirty_flags() & DirtyFlags::Layout), 0);
+    EXPECT_NE(static_cast<uint8_t>(elem.dirty_flags() & DirtyFlags::Paint), 0);
+}
+
+// 8. Sibling pointers after insert_before in the middle
+TEST(DomNode, SiblingPointersAfterInsertBeforeMiddleV164) {
+    auto parent = std::make_unique<Element>("div");
+    auto a = std::make_unique<Element>("a");
+    auto c = std::make_unique<Element>("c");
+    Element* a_ptr = a.get();
+    Element* c_ptr = c.get();
+    parent->append_child(std::move(a));
+    parent->append_child(std::move(c));
+
+    auto b = std::make_unique<Element>("b");
+    Element* b_ptr = b.get();
+    parent->insert_before(std::move(b), c_ptr);
+
+    // Verify a → b → c chain
+    EXPECT_EQ(a_ptr->next_sibling(), b_ptr);
+    EXPECT_EQ(b_ptr->previous_sibling(), a_ptr);
+    EXPECT_EQ(b_ptr->next_sibling(), c_ptr);
+    EXPECT_EQ(c_ptr->previous_sibling(), b_ptr);
+    EXPECT_EQ(parent->first_child(), a_ptr);
+    EXPECT_EQ(parent->last_child(), c_ptr);
+    EXPECT_EQ(parent->child_count(), 3u);
+}

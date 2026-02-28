@@ -15700,3 +15700,46 @@ TEST(UrlParserTest, UrlV163_4_QueryWithAmpersandAndEquals) {
     EXPECT_EQ(result->path, "/search");
     EXPECT_EQ(result->query, "key1=val1&key2=val2");
 }
+
+// =============================================================================
+// Round 164 URL parser tests
+// =============================================================================
+
+TEST(UrlParserTest, UrlV164_1_WsSchemeParses) {
+    // ws:// scheme should parse correctly as a special scheme
+    auto result = parse("ws://echo.websocket.org");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "ws");
+    EXPECT_EQ(result->host, "echo.websocket.org");
+    EXPECT_EQ(result->port, std::nullopt);
+}
+
+TEST(UrlParserTest, UrlV164_2_FragmentAfterQuery) {
+    // Fragment after query should be split correctly
+    auto result = parse("http://host/page?query=1#frag");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "host");
+    EXPECT_EQ(result->path, "/page");
+    EXPECT_EQ(result->query, "query=1");
+    EXPECT_EQ(result->fragment, "frag");
+}
+
+TEST(UrlParserTest, UrlV164_3_MultipleSlashesInPathPreserved) {
+    // Multiple consecutive slashes in the path should be preserved as-is
+    auto result = parse("http://host/a//b///c");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "host");
+    EXPECT_EQ(result->path, "/a//b///c");
+}
+
+TEST(UrlParserTest, UrlV164_4_HttpPort80IsNullopt) {
+    // Default port 80 for http should be normalized to nullopt
+    auto result = parse("http://host:80/path");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "host");
+    EXPECT_EQ(result->port, std::nullopt);
+    EXPECT_EQ(result->path, "/path");
+}

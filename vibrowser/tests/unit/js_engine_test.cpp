@@ -38044,3 +38044,94 @@ TEST(JSEngine, JsV163_8) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "42,3.14");
 }
+
+// V164_1: Array.indexOf and lastIndexOf
+TEST(JSEngine, JsV164_1) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var arr = [10, 20, 30, 20, 40];
+        String(arr.indexOf(20)) + "," + String(arr.lastIndexOf(20)) + "," + String(arr.indexOf(99));
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1,3,-1");
+}
+
+// V164_2: String.trim removes whitespace
+TEST(JSEngine, JsV164_2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var s = "  hello world  ";
+        s.trim();
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "hello world");
+}
+
+// V164_3: Object.hasOwnProperty check
+TEST(JSEngine, JsV164_3) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var obj = {x: 1, y: 2};
+        String(obj.hasOwnProperty("x")) + "," + String(obj.hasOwnProperty("z"));
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true,false");
+}
+
+// V164_4: JSON.parse creates object
+TEST(JSEngine, JsV164_4) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var obj = JSON.parse('{"name":"alice","age":30}');
+        obj.name + "," + String(obj.age);
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "alice,30");
+}
+
+// V164_5: Math.min and Math.max
+TEST(JSEngine, JsV164_5) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        String(Math.min(5, 3, 8, 1)) + "," + String(Math.max(5, 3, 8, 1));
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1,8");
+}
+
+// V164_6: Array.concat merges arrays
+TEST(JSEngine, JsV164_6) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var a = [1, 2];
+        var b = [3, 4];
+        var c = a.concat(b);
+        String(c.length) + "," + c.join("-");
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "4,1-2-3-4");
+}
+
+// V164_7: delete operator removes property
+TEST(JSEngine, JsV164_7) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var obj = {a: 1, b: 2, c: 3};
+        delete obj.b;
+        String(obj.hasOwnProperty("b")) + "," + String(obj.a) + "," + String(obj.c);
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "false,1,3");
+}
+
+// V164_8: Array.reverse reverses in place
+TEST(JSEngine, JsV164_8) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var arr = [1, 2, 3, 4, 5];
+        arr.reverse();
+        arr.join(",");
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "5,4,3,2,1");
+}

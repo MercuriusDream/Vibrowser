@@ -2610,3 +2610,74 @@ TEST(MessagePipeTest, MessagePipeV163_3_ThreeMessagesDescendingSize) {
     ASSERT_EQ(r3->size(), 100u);
     EXPECT_EQ(*r3, p100);
 }
+
+// ------------------------------------------------------------------
+// Round 164 — MessagePipe tests
+// ------------------------------------------------------------------
+
+TEST(MessagePipeTest, MessagePipeV164_1_CloseSenderAndReceiveAllV164) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    std::vector<uint8_t> m1 = {1, 2, 3};
+    std::vector<uint8_t> m2 = {4, 5, 6};
+    std::vector<uint8_t> m3 = {7, 8, 9};
+
+    ASSERT_TRUE(a.send(m1));
+    ASSERT_TRUE(a.send(m2));
+    ASSERT_TRUE(a.send(m3));
+    a.close();
+
+    auto r1 = b.receive();
+    ASSERT_TRUE(r1.has_value());
+    EXPECT_EQ(*r1, m1);
+
+    auto r2 = b.receive();
+    ASSERT_TRUE(r2.has_value());
+    EXPECT_EQ(*r2, m2);
+
+    auto r3 = b.receive();
+    ASSERT_TRUE(r3.has_value());
+    EXPECT_EQ(*r3, m3);
+
+    auto r4 = b.receive();
+    EXPECT_FALSE(r4.has_value());
+}
+
+TEST(MessagePipeTest, MessagePipeV164_2_SixteenBytePayload) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    std::vector<uint8_t> payload(16);
+    for (uint8_t i = 0; i < 16; ++i) payload[i] = i;
+
+    ASSERT_TRUE(a.send(payload));
+
+    auto received = b.receive();
+    ASSERT_TRUE(received.has_value());
+    ASSERT_EQ(received->size(), 16u);
+    for (uint8_t i = 0; i < 16; ++i) {
+        EXPECT_EQ((*received)[i], i);
+    }
+}
+
+TEST(MessagePipeTest, MessagePipeV164_3_AlternatingPayloadSizes) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    std::vector<size_t> sizes = {10, 1000, 10, 1000, 10};
+    for (size_t sz : sizes) {
+        std::vector<uint8_t> payload(sz, static_cast<uint8_t>(sz & 0xFF));
+        ASSERT_TRUE(a.send(payload));
+    }
+    a.close();
+
+    for (size_t sz : sizes) {
+        auto received = b.receive();
+        ASSERT_TRUE(received.has_value());
+        ASSERT_EQ(received->size(), sz);
+        for (size_t j = 0; j < sz; ++j) {
+            EXPECT_EQ((*received)[j], static_cast<uint8_t>(sz & 0xFF));
+        }
+    }
+
+    auto final_recv = b.receive();
+    EXPECT_FALSE(final_recv.has_value());
+}

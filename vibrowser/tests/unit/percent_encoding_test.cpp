@@ -1694,3 +1694,31 @@ TEST(IsURLCodePoint, TabAndNewlineInvalidV163) {
     EXPECT_FALSE(is_url_code_point(static_cast<char32_t>(0x09)));
     EXPECT_FALSE(is_url_code_point(static_cast<char32_t>(0x0A)));
 }
+
+// =============================================================================
+// Round 164 percent encoding tests
+// =============================================================================
+
+TEST(PercentEncoding, LeftBracketEncodedV164) {
+    // '[' should be percent-encoded as %5B
+    EXPECT_EQ(percent_encode("["), "%5B");
+    EXPECT_EQ(percent_encode("a[0]"), "a%5B0%5D");
+}
+
+TEST(PercentDecoding, MixedCaseHexDecodedV164) {
+    // Both lowercase %2f and uppercase %2F should decode to '/'
+    EXPECT_EQ(percent_decode("%2f"), "/");
+    EXPECT_EQ(percent_decode("%2F"), "/");
+    EXPECT_EQ(percent_decode("a%2fb%2Fc"), "a/b/c");
+}
+
+TEST(PercentEncoding, AtSignNotEncodedV164) {
+    // '@' is a valid URL character and should NOT be percent-encoded by default
+    EXPECT_EQ(percent_encode("@"), "@");
+    EXPECT_EQ(percent_encode("user@host"), "user@host");
+}
+
+TEST(IsURLCodePoint, SpaceIsInvalidV164) {
+    // Space (0x20) is NOT a valid URL code point
+    EXPECT_FALSE(is_url_code_point(static_cast<char32_t>(0x20)));
+}

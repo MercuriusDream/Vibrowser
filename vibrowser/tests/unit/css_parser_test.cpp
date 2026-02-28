@@ -11459,3 +11459,63 @@ TEST_F(CSSStylesheetTest, ContainDeclarationV163) {
     }
     EXPECT_TRUE(found) << "contain declaration not found";
 }
+
+// Round 164 — CSS parser tests (V164)
+
+TEST_F(CSSStylesheetTest, ColumnCountDeclarationV164) {
+    auto ss = parse_stylesheet("div { column-count: 3; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "column-count") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "3");
+        }
+    }
+    EXPECT_TRUE(found) << "column-count declaration not found";
+}
+
+TEST_F(CSSStylesheetTest, ColumnGapDeclarationV164) {
+    auto ss = parse_stylesheet("div { column-gap: 20px; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "column-gap") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "20px");
+        }
+    }
+    EXPECT_TRUE(found) << "column-gap declaration not found";
+}
+
+TEST_F(CSSStylesheetTest, ColumnRuleDeclarationV164) {
+    auto ss = parse_stylesheet("div { column-rule: 1px solid black; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "column-rule") {
+            found = true;
+            ASSERT_GE(d.values.size(), 3u);
+            EXPECT_EQ(d.values[0].value, "1px");
+            EXPECT_EQ(d.values[1].value, "solid");
+            EXPECT_EQ(d.values[2].value, "black");
+        }
+    }
+    EXPECT_TRUE(found) << "column-rule declaration not found";
+}
+
+TEST_F(CSSStylesheetTest, BreakInsideDeclarationV164) {
+    auto ss = parse_stylesheet("div { break-inside: avoid; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "break-inside") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "avoid");
+        }
+    }
+    EXPECT_TRUE(found) << "break-inside declaration not found";
+}

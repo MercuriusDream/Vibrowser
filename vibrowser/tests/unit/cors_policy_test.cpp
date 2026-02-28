@@ -13035,3 +13035,54 @@ TEST(CORSPolicyTest, CorsV163_7_WsSchemeNotEnforceable) {
 TEST(CORSPolicyTest, CorsV163_8_HttpNonDefaultPortEnforceable) {
     EXPECT_TRUE(has_enforceable_document_origin("http://app.example:9090"));
 }
+
+// ---------------------------------------------------------------------------
+// Round 164 — CORS tests (V164)
+// ---------------------------------------------------------------------------
+
+// 1. http vs https same host → cross-origin
+TEST(CORSPolicyTest, CorsV164_1_HttpAndHttpsDifferentSchemesCrossOrigin) {
+    EXPECT_TRUE(is_cross_origin("http://app.example", "https://app.example/data"));
+}
+
+// 2. ACAO: null → rejected
+TEST(CORSPolicyTest, CorsV164_2_AcaoNullRejectsResponse) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "null");
+    EXPECT_FALSE(cors_allows_response("https://app.example", "https://api.example/data",
+                                      headers, false));
+}
+
+// 3. Same host different ports → should attach origin
+TEST(CORSPolicyTest, CorsV164_3_ShouldAttachOriginForDifferentPorts) {
+    EXPECT_TRUE(should_attach_origin_header("https://app.example:8080",
+                                            "https://app.example:9090/api"));
+}
+
+// 4. mailto: scheme is not enforceable
+TEST(CORSPolicyTest, CorsV164_4_MailtoSchemeNotEnforceable) {
+    EXPECT_FALSE(has_enforceable_document_origin("mailto:user@example.com"));
+}
+
+// 5. tel: scheme is not enforceable
+TEST(CORSPolicyTest, CorsV164_5_TelSchemeNotEnforceable) {
+    EXPECT_FALSE(has_enforceable_document_origin("tel:+1234567890"));
+}
+
+// 6. https without explicit port is enforceable
+TEST(CORSPolicyTest, CorsV164_6_HttpsEnforceableSamePortImplicit) {
+    EXPECT_TRUE(has_enforceable_document_origin("https://secure.example"));
+}
+
+// 7. CORS allows with credentials=false and exact ACAO match
+TEST(CORSPolicyTest, CorsV164_7_CorsAllowsWithCredentialsFalse) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "https://app.example");
+    EXPECT_TRUE(cors_allows_response("https://app.example", "https://api.example/data",
+                                     headers, false));
+}
+
+// 8. Different subdomains → cross-origin
+TEST(CORSPolicyTest, CorsV164_8_CrossOriginSameHostDiffSubdomain) {
+    EXPECT_TRUE(is_cross_origin("https://api.host.example", "https://www.host.example/page"));
+}

@@ -2787,3 +2787,50 @@ TEST(MessageChannelTest, MessageChannelV163_2_LargeTypeIdHandled) {
     EXPECT_TRUE(handler_called);
     EXPECT_EQ(received_type, 65535u);
 }
+
+// ------------------------------------------------------------------
+// Round 164 — MessageChannel tests
+// ------------------------------------------------------------------
+
+TEST(MessageChannelTest, MessageChannelV164_1_SameTypeMultipleDispatches) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel ch(std::move(pa));
+
+    int count = 0;
+    ch.on(42, [&](const Message&) { count++; });
+
+    Message msg;
+    msg.type = 42;
+    msg.request_id = 0;
+    msg.payload = {0x01};
+
+    for (int i = 0; i < 10; ++i) {
+        ch.dispatch(msg);
+    }
+
+    EXPECT_EQ(count, 10);
+}
+
+TEST(MessageChannelTest, MessageChannelV164_2_PayloadContentVerified) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel ch(std::move(pa));
+
+    std::vector<uint8_t> captured_payload;
+    ch.on(77, [&](const Message& m) {
+        captured_payload = m.payload;
+    });
+
+    Message msg;
+    msg.type = 77;
+    msg.request_id = 5;
+    msg.payload = {0xDE, 0xAD, 0xBE, 0xEF, 0xCA, 0xFE};
+    ch.dispatch(msg);
+
+    ASSERT_EQ(captured_payload.size(), 6u);
+    EXPECT_EQ(captured_payload[0], 0xDE);
+    EXPECT_EQ(captured_payload[1], 0xAD);
+    EXPECT_EQ(captured_payload[2], 0xBE);
+    EXPECT_EQ(captured_payload[3], 0xEF);
+    EXPECT_EQ(captured_payload[4], 0xCA);
+    EXPECT_EQ(captured_payload[5], 0xFE);
+}

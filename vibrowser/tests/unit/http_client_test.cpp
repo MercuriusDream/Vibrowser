@@ -28487,3 +28487,138 @@ TEST(HttpClient, CookieJarSeparateCookiesSemicolonInHeaderV163) {
     EXPECT_EQ(header.find("Path"), std::string::npos)
         << "Path attribute should not appear in Cookie header, got: " << header;
 }
+
+// ===========================================================================
+// Round 164 — Net Tests (V164)
+// ===========================================================================
+
+// 1. Minimal GET / with just Host
+TEST(HttpClient, RequestSerializeGetMinimalV164) {
+    Request req;
+    req.method = Method::GET;
+    req.host = "minimal164.example.com";
+    req.port = 80;
+    req.path = "/";
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    EXPECT_NE(result.find("GET / HTTP/1.1\r\n"), std::string::npos)
+        << "Request line should be GET / HTTP/1.1, got: " << result;
+    EXPECT_NE(result.find("Host: minimal164.example.com\r\n"), std::string::npos)
+        << "Host header should be present without port 80, got: " << result;
+    EXPECT_NE(result.find("Connection: close\r\n"), std::string::npos)
+        << "Connection header should be close, got: " << result;
+    EXPECT_NE(result.find("\r\n\r\n"), std::string::npos)
+        << "Request should end with blank line, got: " << result;
+}
+
+// 2. 200 OK text/plain body
+TEST(HttpClient, ResponseParse200PlainTextV164) {
+    std::string raw =
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Type: text/plain\r\n"
+        "Content-Length: 11\r\n"
+        "\r\n"
+        "Hello V164!";
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value()) << "Response should parse successfully";
+    EXPECT_EQ(resp->status, 200);
+    EXPECT_EQ(resp->status_text, "OK");
+    EXPECT_EQ(resp->headers.get("content-type").value(), "text/plain");
+    EXPECT_EQ(resp->body_as_string(), "Hello V164!");
+}
+
+// 3. Release then acquire, verify same fd
+TEST(HttpClient, ConnectionPoolAcquireAfterReleaseV164) {
+    ConnectionPool pool;
+
+    int fake_fd = 164;
+    pool.release("pool164.example.com", 443, fake_fd);
+
+    int acquired = pool.acquire("pool164.example.com", 443);
+    EXPECT_EQ(acquired, fake_fd)
+        << "acquire should return the fd that was released, got: " << acquired;
+
+    // Pool should now be empty for this host
+    int second = pool.acquire("pool164.example.com", 443);
+    EXPECT_EQ(second, -1)
+        << "acquire on empty pool should return -1, got: " << second;
+}
+
+// 4. Non-Secure cookie returned when is_secure=false
+TEST(HttpClient, CookieJarNonSecureCookieReturnedOnHttpV164) {
+    CookieJar jar;
+    jar.set_from_header("token164=abc; Path=/", "cookie164.example.com");
+
+    // Non-secure cookie should be returned over plain HTTP (is_secure=false)
+    std::string header = jar.get_cookie_header("cookie164.example.com", "/", false);
+    EXPECT_NE(header.find("token164=abc"), std::string::npos)
+        << "Non-secure cookie should be returned on HTTP, got: " << header;
+}
+
+// 5. get_all on missing key returns empty vector
+TEST(HttpClient, HeaderMapGetAllEmptyForMissingKeyV164) {
+    HeaderMap map;
+    map.set("x-present164", "value");
+
+    auto all = map.get_all("x-absent164");
+    EXPECT_TRUE(all.empty())
+        << "get_all on missing key should return empty vector, got size: " << all.size();
+}
+
+// 6. GET to port 8080, Host includes :8080
+TEST(HttpClient, RequestSerializeGetPort8080InHostV164) {
+    Request req;
+    req.method = Method::GET;
+    req.host = "port164.example.com";
+    req.port = 8080;
+    req.path = "/api/v164";
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    EXPECT_NE(result.find("GET /api/v164 HTTP/1.1\r\n"), std::string::npos)
+        << "Request line should include path, got: " << result;
+    EXPECT_NE(result.find("Host: port164.example.com:8080\r\n"), std::string::npos)
+        << "Host header should include non-standard port 8080, got: " << result;
+    EXPECT_NE(result.find("Connection: close\r\n"), std::string::npos)
+        << "Connection header should be close, got: " << result;
+}
+
+// 7. 400 Bad Request parse
+TEST(HttpClient, ResponseParse400BadRequestV164) {
+    std::string raw =
+        "HTTP/1.1 400 Bad Request\r\n"
+        "Content-Type: text/html\r\n"
+        "Content-Length: 11\r\n"
+        "\r\n"
+        "Bad Request";
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value()) << "400 response should parse successfully";
+    EXPECT_EQ(resp->status, 400);
+    EXPECT_EQ(resp->status_text, "Bad Request");
+    EXPECT_EQ(resp->body_as_string(), "Bad Request");
+}
+
+// 8. 2 cookies same domain/path, both in header
+TEST(HttpClient, CookieJarMultipleCookiesSamePathV164) {
+    CookieJar jar;
+    jar.set_from_header("alpha164=one; Path=/app", "multi164.example.com");
+    jar.set_from_header("beta164=two; Path=/app", "multi164.example.com");
+
+    std::string header = jar.get_cookie_header("multi164.example.com", "/app", false);
+
+    EXPECT_NE(header.find("alpha164=one"), std::string::npos)
+        << "First cookie should be present, got: " << header;
+    EXPECT_NE(header.find("beta164=two"), std::string::npos)
+        << "Second cookie should be present, got: " << header;
+    EXPECT_NE(header.find("; "), std::string::npos)
+        << "Multiple cookies should be separated by '; ', got: " << header;
+}

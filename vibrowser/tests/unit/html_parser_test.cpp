@@ -25787,3 +25787,150 @@ TEST(HtmlParserTest, HtmlV163_8) {
     ASSERT_NE(input, nullptr);
     EXPECT_EQ(input->tag_name, "input");
 }
+
+// Round 164 — HTML parser tests (V164)
+
+TEST(HtmlParserTest, HtmlV164_1) {
+    // video element with src and controls
+    auto doc = clever::html::parse(
+        "<html><body><video src=\"movie.mp4\" controls></video></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* video = doc->find_element("video");
+    ASSERT_NE(video, nullptr);
+    EXPECT_EQ(video->tag_name, "video");
+
+    std::string src_val;
+    bool has_controls = false;
+    for (const auto& attr : video->attributes) {
+        if (attr.name == "src") src_val = attr.value;
+        if (attr.name == "controls") has_controls = true;
+    }
+    EXPECT_EQ(src_val, "movie.mp4");
+    EXPECT_TRUE(has_controls);
+}
+
+TEST(HtmlParserTest, HtmlV164_2) {
+    // audio element with src
+    auto doc = clever::html::parse(
+        "<html><body><audio src=\"track.mp3\"></audio></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* audio = doc->find_element("audio");
+    ASSERT_NE(audio, nullptr);
+    EXPECT_EQ(audio->tag_name, "audio");
+
+    std::string src_val;
+    for (const auto& attr : audio->attributes) {
+        if (attr.name == "src") src_val = attr.value;
+    }
+    EXPECT_EQ(src_val, "track.mp3");
+}
+
+TEST(HtmlParserTest, HtmlV164_3) {
+    // canvas element with width and height
+    auto doc = clever::html::parse(
+        "<html><body><canvas width=\"640\" height=\"480\"></canvas></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* canvas = doc->find_element("canvas");
+    ASSERT_NE(canvas, nullptr);
+    EXPECT_EQ(canvas->tag_name, "canvas");
+
+    std::string w_val;
+    std::string h_val;
+    for (const auto& attr : canvas->attributes) {
+        if (attr.name == "width") w_val = attr.value;
+        if (attr.name == "height") h_val = attr.value;
+    }
+    EXPECT_EQ(w_val, "640");
+    EXPECT_EQ(h_val, "480");
+}
+
+TEST(HtmlParserTest, HtmlV164_4) {
+    // svg element with viewBox
+    auto doc = clever::html::parse(
+        "<html><body><svg viewBox=\"0 0 100 100\"></svg></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* svg = doc->find_element("svg");
+    ASSERT_NE(svg, nullptr);
+    EXPECT_EQ(svg->tag_name, "svg");
+
+    std::string vb_val;
+    for (const auto& attr : svg->attributes) {
+        if (attr.name == "viewbox") vb_val = attr.value;
+    }
+    EXPECT_EQ(vb_val, "0 0 100 100");
+}
+
+TEST(HtmlParserTest, HtmlV164_5) {
+    // iframe element with src
+    auto doc = clever::html::parse(
+        "<html><body><iframe src=\"https://example.com\"></iframe></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* iframe = doc->find_element("iframe");
+    ASSERT_NE(iframe, nullptr);
+    EXPECT_EQ(iframe->tag_name, "iframe");
+
+    std::string src_val;
+    for (const auto& attr : iframe->attributes) {
+        if (attr.name == "src") src_val = attr.value;
+    }
+    EXPECT_EQ(src_val, "https://example.com");
+}
+
+TEST(HtmlParserTest, HtmlV164_6) {
+    // div with multiple class names
+    auto doc = clever::html::parse(
+        "<html><body><div class=\"foo bar baz\">text</div></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* div = doc->find_element("div");
+    ASSERT_NE(div, nullptr);
+    EXPECT_EQ(div->tag_name, "div");
+
+    std::string class_val;
+    for (const auto& attr : div->attributes) {
+        if (attr.name == "class") class_val = attr.value;
+    }
+    EXPECT_EQ(class_val, "foo bar baz");
+}
+
+TEST(HtmlParserTest, HtmlV164_7) {
+    // span with style attribute
+    auto doc = clever::html::parse(
+        "<html><body><span style=\"color: red;\">hello</span></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* span = doc->find_element("span");
+    ASSERT_NE(span, nullptr);
+    EXPECT_EQ(span->tag_name, "span");
+
+    std::string style_val;
+    for (const auto& attr : span->attributes) {
+        if (attr.name == "style") style_val = attr.value;
+    }
+    EXPECT_EQ(style_val, "color: red;");
+}
+
+TEST(HtmlParserTest, HtmlV164_8) {
+    // a element with target=_blank
+    auto doc = clever::html::parse(
+        "<html><body><a href=\"https://example.com\" target=\"_blank\">link</a></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* a = doc->find_element("a");
+    ASSERT_NE(a, nullptr);
+    EXPECT_EQ(a->tag_name, "a");
+
+    std::string href_val;
+    std::string target_val;
+    for (const auto& attr : a->attributes) {
+        if (attr.name == "href") href_val = attr.value;
+        if (attr.name == "target") target_val = attr.value;
+    }
+    EXPECT_EQ(href_val, "https://example.com");
+    EXPECT_EQ(target_val, "_blank");
+}

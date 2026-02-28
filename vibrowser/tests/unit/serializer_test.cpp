@@ -21457,3 +21457,42 @@ TEST(SerializerTest, SerializerV163_3_EmptyBytesRoundTrip) {
     EXPECT_TRUE(bytes.empty());
     EXPECT_FALSE(d.has_remaining());
 }
+
+// ------------------------------------------------------------------
+// Round 164 — Serializer tests
+// ------------------------------------------------------------------
+
+TEST(SerializerTest, SerializerV164_1_U8MaxValueRoundTrip) {
+    Serializer s;
+    s.write_u8(255);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u8(), 255);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, SerializerV164_2_F64NaNRoundTrip) {
+    Serializer s;
+    s.write_f64(std::numeric_limits<double>::quiet_NaN());
+
+    Deserializer d(s.data());
+    double val = d.read_f64();
+    EXPECT_TRUE(std::isnan(val));
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, SerializerV164_3_StringWithSpecialCharsRoundTrip) {
+    Serializer s;
+    std::string with_newline = "hello\nworld";
+    std::string with_tab = "col1\tcol2";
+    std::string with_unicode = "caf\xc3\xa9"; // UTF-8 for cafe with accent
+    s.write_string(with_newline);
+    s.write_string(with_tab);
+    s.write_string(with_unicode);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), with_newline);
+    EXPECT_EQ(d.read_string(), with_tab);
+    EXPECT_EQ(d.read_string(), with_unicode);
+    EXPECT_FALSE(d.has_remaining());
+}
