@@ -21768,3 +21768,110 @@ TEST(HtmlParserTest, HtmlV130_8) {
     auto options = doc->find_all_elements("option");
     EXPECT_GE(options.size(), 2u);
 }
+
+TEST(HtmlParserTest, HtmlV131_1) {
+    auto doc = clever::html::parse("<html><body><address>123 Main St</address></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* addr = doc->find_element("address");
+    ASSERT_NE(addr, nullptr);
+    EXPECT_EQ(addr->tag_name, "address");
+    EXPECT_EQ(addr->text_content(), "123 Main St");
+}
+
+TEST(HtmlParserTest, HtmlV131_2) {
+    auto doc = clever::html::parse("<html><body><blockquote cite=\"https://example.com\">Quoted text</blockquote></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* bq = doc->find_element("blockquote");
+    ASSERT_NE(bq, nullptr);
+    EXPECT_EQ(bq->tag_name, "blockquote");
+    EXPECT_EQ(get_attr_v63(bq, "cite"), "https://example.com");
+    EXPECT_EQ(bq->text_content(), "Quoted text");
+}
+
+TEST(HtmlParserTest, HtmlV131_3) {
+    auto doc = clever::html::parse("<html><body><dl><dt>Term</dt><dd>Definition</dd></dl></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* dl = doc->find_element("dl");
+    ASSERT_NE(dl, nullptr);
+    EXPECT_EQ(dl->tag_name, "dl");
+
+    auto* dt = doc->find_element("dt");
+    ASSERT_NE(dt, nullptr);
+    EXPECT_EQ(dt->tag_name, "dt");
+    EXPECT_EQ(dt->text_content(), "Term");
+
+    auto* dd = doc->find_element("dd");
+    ASSERT_NE(dd, nullptr);
+    EXPECT_EQ(dd->tag_name, "dd");
+    EXPECT_EQ(dd->text_content(), "Definition");
+}
+
+TEST(HtmlParserTest, HtmlV131_4) {
+    auto doc = clever::html::parse("<html><body><map name=\"shapes\"><area shape=\"rect\" href=\"/rect\"></map></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* map_el = doc->find_element("map");
+    ASSERT_NE(map_el, nullptr);
+    EXPECT_EQ(map_el->tag_name, "map");
+    EXPECT_EQ(get_attr_v63(map_el, "name"), "shapes");
+
+    auto* area = doc->find_element("area");
+    ASSERT_NE(area, nullptr);
+    EXPECT_EQ(area->tag_name, "area");
+    EXPECT_EQ(get_attr_v63(area, "shape"), "rect");
+    EXPECT_EQ(get_attr_v63(area, "href"), "/rect");
+}
+
+TEST(HtmlParserTest, HtmlV131_5) {
+    auto doc = clever::html::parse("<html><body><audio src=\"song.mp3\" controls></audio></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* audio = doc->find_element("audio");
+    ASSERT_NE(audio, nullptr);
+    EXPECT_EQ(audio->tag_name, "audio");
+    EXPECT_EQ(get_attr_v63(audio, "src"), "song.mp3");
+    EXPECT_EQ(get_attr_v63(audio, "controls"), "");
+}
+
+TEST(HtmlParserTest, HtmlV131_6) {
+    auto doc = clever::html::parse("<html><body><video src=\"vid.mp4\" width=\"640\" height=\"480\"></video></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* video = doc->find_element("video");
+    ASSERT_NE(video, nullptr);
+    EXPECT_EQ(video->tag_name, "video");
+    EXPECT_EQ(get_attr_v63(video, "src"), "vid.mp4");
+    EXPECT_EQ(get_attr_v63(video, "width"), "640");
+    EXPECT_EQ(get_attr_v63(video, "height"), "480");
+}
+
+TEST(HtmlParserTest, HtmlV131_7) {
+    auto doc = clever::html::parse("<html><body><embed src=\"flash.swf\" type=\"application/x-shockwave-flash\"></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* embed = doc->find_element("embed");
+    ASSERT_NE(embed, nullptr);
+    EXPECT_EQ(embed->tag_name, "embed");
+    EXPECT_EQ(get_attr_v63(embed, "src"), "flash.swf");
+    EXPECT_EQ(get_attr_v63(embed, "type"), "application/x-shockwave-flash");
+}
+
+TEST(HtmlParserTest, HtmlV131_8) {
+    auto doc = clever::html::parse("<html><body><object data=\"app.swf\" type=\"application/x-shockwave-flash\"><param name=\"quality\" value=\"high\"></object></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* obj = doc->find_element("object");
+    ASSERT_NE(obj, nullptr);
+    EXPECT_EQ(obj->tag_name, "object");
+    EXPECT_EQ(get_attr_v63(obj, "data"), "app.swf");
+    EXPECT_EQ(get_attr_v63(obj, "type"), "application/x-shockwave-flash");
+
+    auto* param = doc->find_element("param");
+    ASSERT_NE(param, nullptr);
+    EXPECT_EQ(param->tag_name, "param");
+    EXPECT_EQ(get_attr_v63(param, "name"), "quality");
+    EXPECT_EQ(get_attr_v63(param, "value"), "high");
+}

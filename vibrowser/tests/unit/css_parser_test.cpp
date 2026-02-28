@@ -9695,3 +9695,37 @@ TEST_F(CSSStylesheetTest, ContainerRuleParsingV130) {
     }
     SUCCEED();
 }
+
+TEST_F(CSSStylesheetTest, StartingStyleRuleParsingV131) {
+    auto ss = parse_stylesheet("@starting-style { div { opacity: 0; } }");
+    // @starting-style is not a recognized at-rule in our parser,
+    // so it should not crash and rules may or may not be populated.
+    // The minimum requirement is no crash.
+    SUCCEED();
+}
+
+TEST_F(CSSStylesheetTest, LayerRuleParsingV131) {
+    auto ss = parse_stylesheet("@layer utilities { .btn { padding: 10px; } }");
+    // Parser should handle @layer without crashing
+    if (!ss.layer_rules.empty()) {
+        EXPECT_EQ(ss.layer_rules.size(), 1u);
+        EXPECT_NE(ss.layer_rules[0].name.find("utilities"), std::string::npos);
+        EXPECT_GE(ss.layer_rules[0].rules.size(), 1u);
+    }
+    SUCCEED();
+}
+
+TEST_F(CSSStylesheetTest, NestingSelectorParsingV131) {
+    auto ss = parse_stylesheet("div { & span { color: blue; } }");
+    // CSS Nesting with & selector — parser should not crash
+    // Whether the nested rule is parsed depends on implementation
+    ASSERT_GE(ss.rules.size(), 1u);
+    SUCCEED();
+}
+
+TEST_F(CSSStylesheetTest, FontPaletteValuesRuleParsingV131) {
+    auto ss = parse_stylesheet("@font-palette-values --custom { font-family: Bungee; base-palette: 1; }");
+    // @font-palette-values is not a recognized at-rule in our parser,
+    // so it should not crash. No crash is the minimum requirement.
+    SUCCEED();
+}

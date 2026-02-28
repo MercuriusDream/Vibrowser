@@ -19699,3 +19699,80 @@ TEST(SerializerTest, SerializerV130_3_RemainingTracksHeterogeneousTypeReads) {
     EXPECT_EQ(d.remaining(), 0u);
     EXPECT_FALSE(d.has_remaining());
 }
+
+TEST(SerializerTest, SerializerV131_1_WriteBytesRemainingTracksVariableLengthReads) {
+    Serializer s;
+    uint8_t blob5[5] = {0x10, 0x20, 0x30, 0x40, 0x50};
+    uint8_t blob10[10] = {0xA0, 0xA1, 0xA2, 0xA3, 0xA4, 0xA5, 0xA6, 0xA7, 0xA8, 0xA9};
+    s.write_bytes(blob5, 5);
+    s.write_bytes(blob10, 10);
+    s.write_u32(0xDEADBEEF);
+
+    // write_bytes stores: 4-byte length prefix + payload
+    // blob5: 4 + 5 = 9
+    // blob10: 4 + 10 = 14
+    // u32: 4
+    // total = 27
+    Deserializer d(s.data());
+    size_t total = d.remaining();
+    EXPECT_EQ(total, 27u);
+
+    auto r1 = d.read_bytes();  // reads 4 (len) + 5 (data) = 9 bytes consumed
+    EXPECT_EQ(d.remaining(), total - 9u);
+
+    auto r2 = d.read_bytes();  // reads 4 (len) + 10 (data) = 14 bytes consumed
+    EXPECT_EQ(d.remaining(), total - 9u - 14u);
+
+    uint32_t val = d.read_u32();
+    EXPECT_EQ(val, 0xDEADBEEFu);
+    EXPECT_EQ(d.remaining(), 0u);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, SerializerV131_2_ConsecutiveWriteBytesNoCrossContamination) {
+    Serializer s;
+    uint8_t pat1[4] = {0xAA, 0xAA, 0xAA, 0xAA};
+    uint8_t pat2[4] = {0xBB, 0xBB, 0xBB, 0xBB};
+    uint8_t pat3[4] = {0xCC, 0xCC, 0xCC, 0xCC};
+    s.write_bytes(pat1, 4);
+    s.write_bytes(pat2, 4);
+    s.write_bytes(pat3, 4);
+
+    Deserializer d(s.data());
+
+    auto r1 = d.read_bytes();
+    ASSERT_EQ(r1.size(), 4u);
+    for (auto b : r1) EXPECT_EQ(b, 0xAAu);
+
+    auto r2 = d.read_bytes();
+    ASSERT_EQ(r2.size(), 4u);
+    for (auto b : r2) EXPECT_EQ(b, 0xBBu);
+
+    auto r3 = d.read_bytes();
+    ASSERT_EQ(r3.size(), 4u);
+    for (auto b : r3) EXPECT_EQ(b, 0xCCu);
+
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, SerializerV131_3_ZeroLengthBytesThenStringBoundaryPreserved) {
+    Serializer s;
+    s.write_bytes(nullptr, 0);
+    s.write_string("boundary");
+    uint8_t single = 0xFF;
+    s.write_bytes(&single, 1);
+
+    Deserializer d(s.data());
+
+    auto empty_bytes = d.read_bytes();
+    EXPECT_TRUE(empty_bytes.empty());
+
+    auto str = d.read_string();
+    EXPECT_EQ(str, "boundary");
+
+    auto one_byte = d.read_bytes();
+    ASSERT_EQ(one_byte.size(), 1u);
+    EXPECT_EQ(one_byte[0], 0xFFu);
+
+    EXPECT_FALSE(d.has_remaining());
+}

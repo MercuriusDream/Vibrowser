@@ -692,3 +692,72 @@ TEST(MessageChannelTest, MessageChannelV130_3_MultipleTypesInOrderOverSingleChan
         EXPECT_EQ(received->payload[0], static_cast<uint8_t>(t));
     }
 }
+
+TEST(MessageChannelTest, MessageChannelV131_1_DispatchSameMessageTwiceHandlerFiresTwice) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel ch(std::move(pa));
+
+    int counter = 0;
+    ch.on(7, [&counter](const Message& msg) {
+        EXPECT_EQ(msg.type, 7u);
+        ++counter;
+    });
+
+    Message msg;
+    msg.type = 7;
+    msg.payload = {0x42};
+
+    ch.dispatch(msg);
+    ch.dispatch(msg);
+    EXPECT_EQ(counter, 2);
+}
+
+TEST(MessageChannelTest, MessageChannelV131_2_DispatchNoHandlerThenRegisterAndRedispatch) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel ch(std::move(pa));
+
+    Message msg;
+    msg.type = 99;
+    msg.payload = {0x01, 0x02};
+
+    // Dispatch with no handler registered -- should not crash
+    ch.dispatch(msg);
+
+    int fired = 0;
+    ch.on(99, [&fired](const Message&) { ++fired; });
+
+    ch.dispatch(msg);
+    EXPECT_EQ(fired, 1);
+}
+
+TEST(MessageChannelTest, MessageChannelV131_3_ReceiveThenDispatchThroughRegisteredHandler) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel cha(std::move(pa));
+    MessageChannel chb(std::move(pb));
+
+    int handler_fired = 0;
+    uint32_t received_type = 0;
+    std::vector<uint8_t> received_payload;
+
+    chb.on(42, [&](const Message& msg) {
+        ++handler_fired;
+        received_type = msg.type;
+        received_payload = msg.payload;
+    });
+
+    Message msg;
+    msg.type = 42;
+    msg.payload = {0xCA, 0xFE};
+    ASSERT_TRUE(cha.send(msg));
+
+    auto recv = chb.receive();
+    ASSERT_TRUE(recv.has_value());
+
+    chb.dispatch(*recv);
+
+    EXPECT_EQ(handler_fired, 1);
+    EXPECT_EQ(received_type, 42u);
+    ASSERT_EQ(received_payload.size(), 2u);
+    EXPECT_EQ(received_payload[0], 0xCAu);
+    EXPECT_EQ(received_payload[1], 0xFEu);
+}

@@ -19997,3 +19997,124 @@ TEST(DomElement, RemoveIdAttributeClearsIdAccessorToEmptyV130) {
     EXPECT_EQ(elem.id(), "");
     EXPECT_FALSE(elem.has_attribute("id"));
 }
+
+// ---------------------------------------------------------------------------
+// Cycle V131 tests
+// ---------------------------------------------------------------------------
+
+TEST(DomNode, LastChildCorrectAfterInsertBeforeNullRefAppendsV131) {
+    Element parent("div");
+    auto original = std::make_unique<Element>("span");
+    Node* original_raw = original.get();
+    parent.append_child(std::move(original));
+
+    auto new_child = std::make_unique<Element>("p");
+    Node* new_child_raw = new_child.get();
+    parent.insert_before(std::move(new_child), nullptr);
+
+    EXPECT_EQ(parent.last_child(), new_child_raw);
+    EXPECT_EQ(parent.first_child(), original_raw);
+    EXPECT_EQ(parent.child_count(), 2u);
+}
+
+TEST(DomDocument, CreateElementFactoryRegistersIdWhenSetViaSetAttributeV131) {
+    Document doc;
+    auto elem = doc.create_element("div");
+    Element* elem_raw = elem.get();
+    elem_raw->set_attribute("id", "main");
+
+    doc.register_id("main", elem_raw);
+    EXPECT_EQ(doc.get_element_by_id("main"), elem_raw);
+
+    doc.unregister_id("main");
+    EXPECT_EQ(doc.get_element_by_id("main"), nullptr);
+}
+
+TEST(DomEvent, StopPropagationPreventsDispatchToParentListenerV131) {
+    Event event("click", true, true);
+    EXPECT_FALSE(event.propagation_stopped());
+
+    event.stop_propagation();
+    EXPECT_TRUE(event.propagation_stopped());
+    EXPECT_TRUE(event.bubbles());
+    EXPECT_FALSE(event.immediate_propagation_stopped());
+}
+
+TEST(DomClassList, RemoveAllThenReAddResetsLengthAndContainsV131) {
+    Element elem("div");
+    elem.class_list().add("a");
+    elem.class_list().add("b");
+    elem.class_list().add("c");
+    EXPECT_EQ(elem.class_list().length(), 3u);
+
+    elem.class_list().remove("a");
+    elem.class_list().remove("b");
+    elem.class_list().remove("c");
+    EXPECT_EQ(elem.class_list().length(), 0u);
+
+    elem.class_list().add("b");
+    EXPECT_EQ(elem.class_list().length(), 1u);
+    EXPECT_TRUE(elem.class_list().contains("b"));
+    EXPECT_FALSE(elem.class_list().contains("a"));
+}
+
+TEST(DomNode, ClearDirtyAfterMarkAllResetsToNoneV131) {
+    Element elem("div");
+    elem.mark_dirty(DirtyFlags::All);
+
+    EXPECT_NE(elem.dirty_flags() & DirtyFlags::Style, DirtyFlags::None);
+    EXPECT_NE(elem.dirty_flags() & DirtyFlags::Layout, DirtyFlags::None);
+    EXPECT_NE(elem.dirty_flags() & DirtyFlags::Paint, DirtyFlags::None);
+
+    elem.clear_dirty();
+    EXPECT_EQ(elem.dirty_flags(), DirtyFlags::None);
+
+    elem.mark_dirty(DirtyFlags::Layout);
+    EXPECT_NE(elem.dirty_flags() & DirtyFlags::Layout, DirtyFlags::None);
+    EXPECT_EQ(elem.dirty_flags() & DirtyFlags::Style, DirtyFlags::None);
+    EXPECT_EQ(elem.dirty_flags() & DirtyFlags::Paint, DirtyFlags::None);
+}
+
+TEST(DomNode, AppendChildToNewParentDetachesFromPreviousParentV131) {
+    Element p1("div");
+    Element p2("section");
+
+    auto child = std::make_unique<Element>("span");
+    Node* child_raw = child.get();
+    p1.append_child(std::move(child));
+    EXPECT_EQ(p1.child_count(), 1u);
+    EXPECT_EQ(child_raw->parent(), &p1);
+
+    auto detached = p1.remove_child(*child_raw);
+    EXPECT_EQ(p1.child_count(), 0u);
+
+    p2.append_child(std::move(detached));
+    EXPECT_EQ(p2.child_count(), 1u);
+    EXPECT_EQ(child_raw->parent(), &p2);
+}
+
+TEST(DomElement, MultipleAttributesIterationReflectsInsertionOrderV131) {
+    Element elem("div");
+    elem.set_attribute("data-x", "1");
+    elem.set_attribute("data-y", "2");
+    elem.set_attribute("data-z", "3");
+
+    const auto& attrs = elem.attributes();
+    EXPECT_EQ(attrs.size(), 3u);
+
+    bool found_x = false, found_y = false, found_z = false;
+    for (const auto& attr : attrs) {
+        if (attr.name == "data-x") { found_x = true; EXPECT_EQ(attr.value, "1"); }
+        if (attr.name == "data-y") { found_y = true; EXPECT_EQ(attr.value, "2"); }
+        if (attr.name == "data-z") { found_z = true; EXPECT_EQ(attr.value, "3"); }
+    }
+    EXPECT_TRUE(found_x);
+    EXPECT_TRUE(found_y);
+    EXPECT_TRUE(found_z);
+}
+
+TEST(DomElement, HasAttributeReturnsFalseForNeverSetAttributeV131) {
+    Element elem("div");
+    EXPECT_FALSE(elem.has_attribute("nonexistent"));
+    EXPECT_FALSE(elem.get_attribute("nonexistent").has_value());
+}

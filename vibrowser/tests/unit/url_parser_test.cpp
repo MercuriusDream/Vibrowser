@@ -13962,3 +13962,44 @@ TEST(UrlParserTest, UrlV130_4_RelativeQueryOnlyOverridesBaseQuery) {
     EXPECT_EQ(resolved->host, "example.com");
     EXPECT_EQ(resolved->path, "/dir/page.html");
 }
+
+TEST(UrlParserTest, UrlV131_1_SameOriginIdenticalUrlsReturnsTrue) {
+    auto a = parse("https://example.com:443/path?q=1#frag");
+    ASSERT_TRUE(a.has_value());
+    auto b = parse("https://example.com:443/path?q=1#frag");
+    ASSERT_TRUE(b.has_value());
+    EXPECT_TRUE(urls_same_origin(*a, *b));
+}
+
+TEST(UrlParserTest, UrlV131_2_DataSchemeParseAndOriginIsNull) {
+    auto result = parse("data:text/plain;base64,SGVsbG8=");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "data");
+    EXPECT_EQ(result->origin(), "null");
+}
+
+TEST(UrlParserTest, UrlV131_3_WsDefaultPort80NormalizedWss443Normalized) {
+    // ws default port is 80 — should be normalized to nullopt
+    auto ws = parse("ws://example.com:80/chat");
+    ASSERT_TRUE(ws.has_value());
+    EXPECT_EQ(ws->scheme, "ws");
+    EXPECT_EQ(ws->port, std::nullopt);
+
+    // wss default port is 443 — should be normalized to nullopt
+    auto wss = parse("wss://example.com:443/chat");
+    ASSERT_TRUE(wss.has_value());
+    EXPECT_EQ(wss->scheme, "wss");
+    EXPECT_EQ(wss->port, std::nullopt);
+}
+
+TEST(UrlParserTest, UrlV131_4_RelativeFragmentOnlyUpdatesFragmentPreservesQuery) {
+    auto base = parse("https://example.com/page?query=value#old");
+    ASSERT_TRUE(base.has_value());
+    auto resolved = parse("#new", &*base);
+    ASSERT_TRUE(resolved.has_value());
+    EXPECT_EQ(resolved->fragment, "new");
+    EXPECT_EQ(resolved->query, "query=value");
+    EXPECT_EQ(resolved->scheme, "https");
+    EXPECT_EQ(resolved->host, "example.com");
+    EXPECT_EQ(resolved->path, "/page");
+}

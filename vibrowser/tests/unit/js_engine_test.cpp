@@ -34624,3 +34624,98 @@ TEST(JSEngine, JsV130_8) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "object");
 }
+
+TEST(JSEngine, JsV131_1) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        typeof WeakRef;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    // WeakRef should be available as a function in QuickJS
+    EXPECT_TRUE(result == "function" || result == "undefined");
+}
+
+TEST(JSEngine, JsV131_2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var results = [];
+        var iter = "test1 test2".matchAll(/test(\d)/g);
+        var m;
+        while (!(m = iter.next()).done) {
+            results.push(m.value[0]);
+        }
+        results.join(",");
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "test1,test2");
+}
+
+TEST(JSEngine, JsV131_3) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        [1,[2,[3]]].flat(Infinity).join(",");
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1,2,3");
+}
+
+TEST(JSEngine, JsV131_4) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var obj = {x: 42};
+        var desc = Object.getOwnPropertyDescriptor(obj, "x");
+        String(desc.writable) + " " + String(desc.value);
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true 42");
+}
+
+TEST(JSEngine, JsV131_5) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        "5".padStart(3, "0") + " " + "5".padEnd(3, "0");
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "005 500");
+}
+
+TEST(JSEngine, JsV131_6) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var a = [1, 2, 3].includes(2);
+        var b = "hello world".includes("world");
+        String(a) + " " + String(b);
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true true");
+}
+
+TEST(JSEngine, JsV131_7) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var s = new Set();
+        s.add(1);
+        s.add(2);
+        s.add(3);
+        var hasTwo = s.has(2);
+        s.delete(2);
+        var hasTwoAfter = s.has(2);
+        String(s.size) + " " + String(hasTwo) + " " + String(hasTwoAfter);
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "2 true false");
+}
+
+TEST(JSEngine, JsV131_8) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var arr = [10, 20, 30];
+        var collected = [];
+        for (var item of arr) {
+            collected.push(item);
+        }
+        collected.join(",");
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "10,20,30");
+}

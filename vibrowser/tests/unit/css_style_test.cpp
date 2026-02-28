@@ -24981,3 +24981,39 @@ TEST(PropertyCascadeTest, BoxDecorationBreakCloneV130) {
     cascade.apply_declaration(style, make_decl("box-decoration-break", "clone"), parent);
     EXPECT_EQ(style.box_decoration_break, 1);
 }
+
+TEST(PropertyCascadeTest, ContentVisibilityAutoV131) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("content-visibility", "auto"), parent);
+    EXPECT_EQ(style.content_visibility, 2);
+}
+
+TEST(PropertyCascadeTest, OverscrollBehaviorContainV131) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("overscroll-behavior", "contain"), parent);
+    EXPECT_EQ(style.overscroll_behavior, 1);
+}
+
+TEST(PropertyCascadeTest, BackfaceVisibilityHiddenV131) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("backface-visibility", "hidden"), parent);
+    EXPECT_EQ(style.backface_visibility, 1);
+}
+
+TEST(PropertyCascadeTest, TextDecorationSkipInkAutoV131) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("text-decoration-skip-ink", "auto"), parent);
+    EXPECT_EQ(style.text_decoration_skip_ink, 0);
+}

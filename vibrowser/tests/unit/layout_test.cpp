@@ -24847,3 +24847,156 @@ TEST(LayoutNodeProps, LayoutNodeFieldDefaultsV130) {
     EXPECT_FLOAT_EQ(n->text_indent, 0.0f);
     EXPECT_EQ(n->float_type, 0);
 }
+
+TEST(LayoutEngineTest, LayoutV131_1) {
+    // Flex align_items center — children should be vertically centered
+    auto root = make_flex("div");
+    root->specified_width = 400.0f;
+    root->specified_height = 200.0f;
+    root->align_items = 2; // center
+
+    auto child = make_block("div");
+    child->specified_width = 100.0f;
+    child->specified_height = 40.0f;
+    auto* cp = child.get();
+
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 400.0f, 600.0f);
+
+    // Child should be roughly centered vertically: y ~= (200-40)/2 = 80
+    EXPECT_GE(cp->geometry.y, 50.0f);
+    EXPECT_LE(cp->geometry.y, 120.0f);
+}
+
+TEST(LayoutEngineTest, LayoutV131_2) {
+    // border_box with padding — content width should be reduced
+    auto root = make_block("div");
+    root->specified_width = 200.0f;
+    root->specified_height = 100.0f;
+    root->border_box = true;
+    root->geometry.padding.left = 20.0f;
+    root->geometry.padding.right = 20.0f;
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // In border-box mode, content width = specified - padding = 200 - 40 = 160
+    EXPECT_LE(root->geometry.width, 200.0f);
+}
+
+TEST(LayoutEngineTest, LayoutV131_3) {
+    // Flex column stacking: child2.y == child1.y + child1.height
+    auto root = make_flex("div");
+    root->specified_width = 300.0f;
+    root->flex_direction = 2; // column
+
+    auto c1 = make_block("div");
+    c1->specified_width = 100.0f;
+    c1->specified_height = 50.0f;
+    auto* p1 = c1.get();
+
+    auto c2 = make_block("div");
+    c2->specified_width = 100.0f;
+    c2->specified_height = 60.0f;
+    auto* p2 = c2.get();
+
+    root->append_child(std::move(c1));
+    root->append_child(std::move(c2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 300.0f, 600.0f);
+
+    // In column direction, child2 y should be at or after child1 y + child1 height
+    EXPECT_GE(p2->geometry.y, p1->geometry.y + p1->geometry.height - 1.0f);
+}
+
+TEST(LayoutEngineTest, LayoutV131_4) {
+    // max_height clamp: specified_height=200, max_height=50 → height<=50
+    auto root = make_block("div");
+    root->specified_width = 300.0f;
+
+    auto child = make_block("div");
+    child->specified_width = 100.0f;
+    child->specified_height = 200.0f;
+    child->max_height = 50.0f;
+    auto* cp = child.get();
+
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 300.0f, 600.0f);
+
+    EXPECT_LE(cp->geometry.height, 50.0f);
+}
+
+TEST(LayoutEngineTest, LayoutV131_5) {
+    // min_height clamp: specified_height=80, min_height=150 → height>=150
+    auto root = make_block("div");
+    root->specified_width = 300.0f;
+
+    auto child = make_block("div");
+    child->specified_width = 100.0f;
+    child->specified_height = 80.0f;
+    child->min_height = 150.0f;
+    auto* cp = child.get();
+
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 300.0f, 600.0f);
+
+    EXPECT_GE(cp->geometry.height, 150.0f);
+}
+
+TEST(LayoutEngineTest, LayoutV131_6) {
+    // Flex justify_content center — child centered horizontally
+    auto root = make_flex("div");
+    root->specified_width = 400.0f;
+    root->specified_height = 100.0f;
+    root->justify_content = 2; // center
+
+    auto child = make_block("div");
+    child->specified_width = 100.0f;
+    child->specified_height = 50.0f;
+    auto* cp = child.get();
+
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 400.0f, 600.0f);
+
+    // Child x should be roughly centered: (400-100)/2 = 150
+    EXPECT_GE(cp->geometry.x, 100.0f);
+    EXPECT_LE(cp->geometry.x, 200.0f);
+}
+
+TEST(LayoutEngineTest, LayoutV131_7) {
+    // Padding reduces child auto-width
+    auto root = make_block("div");
+    root->specified_width = 400.0f;
+    root->geometry.padding.left = 30.0f;
+    root->geometry.padding.right = 30.0f;
+
+    auto child = make_block("div");
+    // auto width — should fill parent content area
+    child->specified_height = 50.0f;
+    auto* cp = child.get();
+
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 400.0f, 600.0f);
+
+    // Child auto width should be parent width minus parent padding = 400 - 60 = 340
+    EXPECT_LE(cp->geometry.width, 400.0f);
+}
+
+TEST(LayoutNodeProps, LayoutNodeFlexDefaultsV131) {
+    auto n = make_block();
+    EXPECT_FLOAT_EQ(n->flex_grow, 0.0f);
+    EXPECT_FLOAT_EQ(n->flex_shrink, 1.0f);
+    EXPECT_FLOAT_EQ(n->flex_basis, -1.0f);
+    EXPECT_EQ(n->justify_content, 0);
+}

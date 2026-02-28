@@ -386,3 +386,42 @@ TEST(IsURLCodePoint, IsUrlCodePointV130_4_NullAndLowAsciiControlCharsRejected) {
     EXPECT_FALSE(is_url_code_point(0x000A));
     EXPECT_FALSE(is_url_code_point(0x001F));
 }
+
+TEST(PercentEncoding, PercentEncodingV131_1_EncodePathCharsTrueMixedPathAndQueryChars) {
+    // With encode_path_chars=true, path chars like / and : should be encoded
+    std::string result = percent_encode("/path:to/file?q=1", true);
+    EXPECT_NE(result.find("%2F"), std::string::npos);  // / encoded
+    EXPECT_NE(result.find("%3A"), std::string::npos);  // : encoded
+    EXPECT_NE(result.find("%3F"), std::string::npos);  // ? encoded
+    // Letters and digits should remain unencoded
+    EXPECT_NE(result.find("path"), std::string::npos);
+    EXPECT_NE(result.find("file"), std::string::npos);
+}
+
+TEST(PercentDecoding, PercentEncodingV131_2_DecodeConsecutiveEncodedNoLiteralsBetween) {
+    EXPECT_EQ(percent_decode("%2F%3F%23%25"), "/?#%");
+}
+
+TEST(PercentEncoding, PercentEncodingV131_3_RoundTripFullUrlPathString) {
+    std::string original = "/my path/to file<special>#anchor";
+    std::string encoded = percent_encode(original);
+    std::string decoded = percent_decode(encoded);
+    EXPECT_EQ(decoded, original);
+    // Verify encoding actually changed something (spaces, angle brackets, #)
+    EXPECT_NE(encoded, original);
+    EXPECT_NE(encoded.find("%20"), std::string::npos);
+}
+
+TEST(IsURLCodePoint, PercentEncodingV131_4_IsUrlCodePointAsciiSpecialUrlChars) {
+    EXPECT_TRUE(is_url_code_point(U'!'));
+    EXPECT_TRUE(is_url_code_point(U'$'));
+    EXPECT_TRUE(is_url_code_point(U'&'));
+    EXPECT_TRUE(is_url_code_point(U'\''));
+    EXPECT_TRUE(is_url_code_point(U'('));
+    EXPECT_TRUE(is_url_code_point(U')'));
+    EXPECT_TRUE(is_url_code_point(U'*'));
+    EXPECT_TRUE(is_url_code_point(U'+'));
+    EXPECT_TRUE(is_url_code_point(U','));
+    EXPECT_TRUE(is_url_code_point(U';'));
+    EXPECT_TRUE(is_url_code_point(U'='));
+}

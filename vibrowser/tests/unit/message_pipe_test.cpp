@@ -836,3 +836,37 @@ TEST(MessagePipeTest, MessagePipeV130_2_TwoPairsInterleavedNoContamination) {
     EXPECT_EQ(*recv1, data1);
     EXPECT_EQ(*recv2, data2);
 }
+
+TEST(MessagePipeTest, MessagePipeV131_1_InterleavedBidirectionalMultipleRounds) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    for (int round = 0; round < 5; ++round) {
+        std::vector<uint8_t> from_a = {static_cast<uint8_t>(round * 2)};
+        std::vector<uint8_t> from_b = {static_cast<uint8_t>(round * 2 + 1)};
+
+        ASSERT_TRUE(a.send(from_a));
+        ASSERT_TRUE(b.send(from_b));
+
+        auto recv_b = b.receive();
+        ASSERT_TRUE(recv_b.has_value());
+        EXPECT_EQ(*recv_b, from_a);
+
+        auto recv_a = a.receive();
+        ASSERT_TRUE(recv_a.has_value());
+        EXPECT_EQ(*recv_a, from_b);
+    }
+}
+
+TEST(MessagePipeTest, MessagePipeV131_2_MoveAssignActiveTransfersPendingData) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    std::vector<uint8_t> data = {0xDE, 0xAD, 0xBE, 0xEF};
+    ASSERT_TRUE(a.send(data));
+
+    // Move-assign b into a new pipe
+    MessagePipe b_moved = std::move(b);
+
+    auto received = b_moved.receive();
+    ASSERT_TRUE(received.has_value());
+    EXPECT_EQ(*received, data);
+}

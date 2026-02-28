@@ -22210,3 +22210,163 @@ TEST(HttpClient, CookieJarWrongDomainReturnsEmptyV130) {
     std::string right = jar.get_cookie_header("right.v130", "/", false);
     EXPECT_NE(right.find("token=secret123"), std::string::npos);
 }
+
+// ============================================================================
+// Cycle V131: HTTP/Net tests
+// ============================================================================
+
+// 1. HEAD request to https port 443 — Host header omits :443
+TEST(HttpClient, RequestSerializeHeadMethodOmitsPort443ForHttpsHostV131) {
+    Request req;
+    req.method = Method::HEAD;
+    req.url = "https://example.com:443/";
+    req.host = "example.com";
+    req.port = 443;
+    req.path = "/";
+    req.use_tls = true;
+    req.headers.set("Host", "example.com");
+
+    auto serialized = req.serialize();
+    std::string s(serialized.begin(), serialized.end());
+
+    // Request line must say HEAD
+    EXPECT_TRUE(s.find("HEAD / HTTP/1.1") != std::string::npos);
+    // Host header should NOT contain :443
+    EXPECT_TRUE(s.find("Host: example.com\r\n") != std::string::npos ||
+                s.find("host: example.com\r\n") != std::string::npos);
+    EXPECT_EQ(s.find(":443"), std::string::npos);
+}
+
+// 2. Parse 503 Service Unavailable response
+TEST(HttpClient, ResponseParseStatusCode503ServiceUnavailableV131) {
+    std::string raw = "HTTP/1.1 503 Service Unavailable\r\n"
+                      "Retry-After: 30\r\n"
+                      "Content-Length: 0\r\n"
+                      "\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 503u);
+    EXPECT_TRUE(resp->body.empty());
+    // Retry-After header should be present
+    EXPECT_TRUE(resp->headers.has("Retry-After"));
+    EXPECT_EQ(resp->headers.get("Retry-After").value(), "30");
+}
+
+// 3. HeaderMap remove then re-add same key
+TEST(HttpClient, HeaderMapRemoveThenReAddSameKeyV131) {
+    HeaderMap map;
+    map.set("X-Custom-V131", "old-value");
+    EXPECT_TRUE(map.has("X-Custom-V131"));
+
+    map.remove("X-Custom-V131");
+    EXPECT_FALSE(map.has("X-Custom-V131"));
+    EXPECT_FALSE(map.get("X-Custom-V131").has_value());
+
+    map.set("X-Custom-V131", "new-value");
+    EXPECT_TRUE(map.has("X-Custom-V131"));
+    EXPECT_EQ(map.get("X-Custom-V131").value(), "new-value");
+    // After remove + re-add, only one entry should exist
+    EXPECT_EQ(map.get_all("X-Custom-V131").size(), 1u);
+}
+
+// 4. ConnectionPool: multiple hosts have independent counts
+TEST(HttpClient, ConnectionPoolMultipleHostsIndependentCountsV131) {
+    ConnectionPool pool;
+    pool.release("alpha.v131.test", 443, 100);
+    pool.release("beta.v131.test", 443, 200);
+    pool.release("gamma.v131.test", 443, 300);
+
+    EXPECT_EQ(pool.count("alpha.v131.test", 443), 1u);
+    EXPECT_EQ(pool.count("beta.v131.test", 443), 1u);
+    EXPECT_EQ(pool.count("gamma.v131.test", 443), 1u);
+
+    // Acquire from one host should not affect the others
+    int fd = pool.acquire("beta.v131.test", 443);
+    EXPECT_EQ(fd, 200);
+    EXPECT_EQ(pool.count("beta.v131.test", 443), 0u);
+    EXPECT_EQ(pool.count("alpha.v131.test", 443), 1u);
+    EXPECT_EQ(pool.count("gamma.v131.test", 443), 1u);
+}
+
+// 5. CookieJar SameSite=Strict behavior: not sent on cross-site requests
+TEST(HttpClient, CookieJarSameSiteStrictBehaviorV131) {
+    CookieJar jar;
+    jar.set_from_header("strict_tok=abc; SameSite=Strict; Path=/", "strict.v131.test");
+
+    // Same-site request should include the cookie
+    std::string same = jar.get_cookie_header("strict.v131.test", "/", false,
+                                             /*is_same_site=*/true);
+    EXPECT_NE(same.find("strict_tok=abc"), std::string::npos);
+
+    // Cross-site request (is_same_site=false) should NOT include the Strict cookie
+    std::string cross = jar.get_cookie_header("strict.v131.test", "/", false,
+                                              /*is_same_site=*/false);
+    EXPECT_EQ(cross.find("strict_tok=abc"), std::string::npos);
+}
+
+// 6. Custom port included in Host header; default port omitted
+TEST(HttpClient, RequestSerializeCustomPortIncludedInHostHeaderV131) {
+    // Port 8080 — non-standard, should appear in Host
+    Request req8080;
+    req8080.method = Method::GET;
+    req8080.host = "example.com";
+    req8080.port = 8080;
+    req8080.path = "/path";
+    req8080.use_tls = false;
+    req8080.headers.set("Host", "example.com:8080");
+
+    auto ser1 = req8080.serialize();
+    std::string s1(ser1.begin(), ser1.end());
+    EXPECT_NE(s1.find(":8080"), std::string::npos);
+
+    // Port 80 for HTTP — default, should be omitted
+    Request req80;
+    req80.method = Method::GET;
+    req80.host = "example.com";
+    req80.port = 80;
+    req80.path = "/path";
+    req80.use_tls = false;
+    req80.headers.set("Host", "example.com");
+
+    auto ser2 = req80.serialize();
+    std::string s2(ser2.begin(), ser2.end());
+    // Should have Host: example.com without :80
+    EXPECT_TRUE(s2.find("Host: example.com\r\n") != std::string::npos ||
+                s2.find("host: example.com\r\n") != std::string::npos);
+    EXPECT_EQ(s2.find(":80"), std::string::npos);
+}
+
+// 7. Response body_as_string() with UTF-8 content
+TEST(HttpClient, ResponseParseBodyAsStringWithUtf8ContentV131) {
+    std::string body_utf8 = "Hello \xC3\xA9\xC3\xA0\xC3\xBC world";  // e-acute, a-grave, u-umlaut
+    std::string raw = "HTTP/1.1 200 OK\r\n"
+                      "Content-Type: text/plain; charset=utf-8\r\n"
+                      "Content-Length: " + std::to_string(body_utf8.size()) + "\r\n"
+                      "\r\n" + body_utf8;
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 200u);
+
+    std::string result = resp->body_as_string();
+    EXPECT_EQ(result, body_utf8);
+    // Verify the UTF-8 bytes survived intact
+    EXPECT_NE(result.find("\xC3\xA9"), std::string::npos);
+    EXPECT_NE(result.find("\xC3\xBC"), std::string::npos);
+}
+
+// 8. CookieJar overwrites cookie with same name/domain/path
+TEST(HttpClient, CookieJarOverwritesCookieWithSameNameDomainPathV131) {
+    CookieJar jar;
+    jar.set_from_header("token=old_value; Path=/app", "overwrite.v131.test");
+    jar.set_from_header("token=new_value; Path=/app", "overwrite.v131.test");
+
+    // Should have exactly 1 cookie (overwritten, not duplicated)
+    EXPECT_EQ(jar.size(), 1u);
+
+    std::string header = jar.get_cookie_header("overwrite.v131.test", "/app", false);
+    EXPECT_NE(header.find("token=new_value"), std::string::npos);
+    // Old value must NOT be present
+    EXPECT_EQ(header.find("token=old_value"), std::string::npos);
+}
