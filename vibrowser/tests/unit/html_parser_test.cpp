@@ -19887,3 +19887,227 @@ TEST(HtmlParserTest, StyleTagRawContentNotParsedAsChildElementsV121) {
     ASSERT_EQ(h1s.size(), 1u);
     EXPECT_EQ(h1s[0]->text_content(), "Title");
 }
+
+TEST(HtmlParserTest, MultipleSiblingTablesEachWithCaptionV122) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<table><caption>Sales Q1</caption>"
+        "<tr><th>Region</th><th>Revenue</th></tr>"
+        "<tr><td>East</td><td>$50k</td></tr>"
+        "</table>"
+        "<table><caption>Sales Q2</caption>"
+        "<tr><th>Region</th><th>Revenue</th></tr>"
+        "<tr><td>West</td><td>$72k</td></tr>"
+        "</table>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto tables = doc->find_all_elements("table");
+    ASSERT_EQ(tables.size(), 2u);
+
+    auto captions = doc->find_all_elements("caption");
+    ASSERT_EQ(captions.size(), 2u);
+    EXPECT_EQ(captions[0]->text_content(), "Sales Q1");
+    EXPECT_EQ(captions[1]->text_content(), "Sales Q2");
+
+    auto tds = doc->find_all_elements("td");
+    ASSERT_EQ(tds.size(), 4u);
+    EXPECT_EQ(tds[0]->text_content(), "East");
+    EXPECT_EQ(tds[1]->text_content(), "$50k");
+    EXPECT_EQ(tds[2]->text_content(), "West");
+    EXPECT_EQ(tds[3]->text_content(), "$72k");
+}
+
+TEST(HtmlParserTest, PreformattedTextPreservesWhitespaceV122) {
+    auto doc = clever::html::parse(
+        "<html><body><pre>  line1\n"
+        "    indented\n"
+        "  line3</pre></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* pre = doc->find_element("pre");
+    ASSERT_NE(pre, nullptr);
+    std::string content = pre->text_content();
+    // Preformatted text: the parser should keep the internal whitespace/newlines
+    EXPECT_NE(content.find("line1"), std::string::npos);
+    EXPECT_NE(content.find("indented"), std::string::npos);
+    EXPECT_NE(content.find("line3"), std::string::npos);
+    // Should not collapse into a single line
+    EXPECT_NE(content.find("\n"), std::string::npos);
+}
+
+TEST(HtmlParserTest, DetailsAndSummaryElementsV122) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<details>"
+        "<summary>Click to expand</summary>"
+        "<p>Hidden paragraph one.</p>"
+        "<p>Hidden paragraph two.</p>"
+        "</details>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* details = doc->find_element("details");
+    ASSERT_NE(details, nullptr);
+
+    auto* summary = doc->find_element("summary");
+    ASSERT_NE(summary, nullptr);
+    EXPECT_EQ(summary->text_content(), "Click to expand");
+
+    auto paragraphs = doc->find_all_elements("p");
+    ASSERT_EQ(paragraphs.size(), 2u);
+    EXPECT_EQ(paragraphs[0]->text_content(), "Hidden paragraph one.");
+    EXPECT_EQ(paragraphs[1]->text_content(), "Hidden paragraph two.");
+}
+
+TEST(HtmlParserTest, MultipleDifferentHeadingLevelsV122) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<h1>Title</h1>"
+        "<h2>Subtitle</h2>"
+        "<h3>Section</h3>"
+        "<h4>Subsection</h4>"
+        "<h5>Minor</h5>"
+        "<h6>Smallest</h6>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* h1 = doc->find_element("h1");
+    auto* h2 = doc->find_element("h2");
+    auto* h3 = doc->find_element("h3");
+    auto* h4 = doc->find_element("h4");
+    auto* h5 = doc->find_element("h5");
+    auto* h6 = doc->find_element("h6");
+
+    ASSERT_NE(h1, nullptr);
+    ASSERT_NE(h2, nullptr);
+    ASSERT_NE(h3, nullptr);
+    ASSERT_NE(h4, nullptr);
+    ASSERT_NE(h5, nullptr);
+    ASSERT_NE(h6, nullptr);
+
+    EXPECT_EQ(h1->text_content(), "Title");
+    EXPECT_EQ(h2->text_content(), "Subtitle");
+    EXPECT_EQ(h3->text_content(), "Section");
+    EXPECT_EQ(h4->text_content(), "Subsection");
+    EXPECT_EQ(h5->text_content(), "Minor");
+    EXPECT_EQ(h6->text_content(), "Smallest");
+}
+
+TEST(HtmlParserTest, ImageMapWithAreaElementsV122) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<img src=\"map.png\" usemap=\"#diagram\">"
+        "<map name=\"diagram\">"
+        "<area shape=\"rect\" coords=\"0,0,50,50\" href=\"/top-left\" alt=\"TL\">"
+        "<area shape=\"circle\" coords=\"100,100,25\" href=\"/center\" alt=\"Center\">"
+        "</map>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* img = doc->find_element("img");
+    ASSERT_NE(img, nullptr);
+    EXPECT_EQ(get_attr_v63(img, "usemap"), "#diagram");
+
+    auto* map = doc->find_element("map");
+    ASSERT_NE(map, nullptr);
+    EXPECT_EQ(get_attr_v63(map, "name"), "diagram");
+
+    auto areas = doc->find_all_elements("area");
+    ASSERT_EQ(areas.size(), 2u);
+    EXPECT_EQ(get_attr_v63(areas[0], "shape"), "rect");
+    EXPECT_EQ(get_attr_v63(areas[0], "href"), "/top-left");
+    EXPECT_EQ(get_attr_v63(areas[0], "alt"), "TL");
+    EXPECT_EQ(get_attr_v63(areas[1], "shape"), "circle");
+    EXPECT_EQ(get_attr_v63(areas[1], "coords"), "100,100,25");
+    EXPECT_EQ(get_attr_v63(areas[1], "alt"), "Center");
+}
+
+TEST(HtmlParserTest, ScriptAndNoscriptCoexistWithBodyContentV122) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<script>var x = 1 < 2 && 3 > 0;</script>"
+        "<noscript><p>JavaScript is disabled.</p></noscript>"
+        "<p>Main content.</p>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* script = doc->find_element("script");
+    ASSERT_NE(script, nullptr);
+    std::string script_text = script->text_content();
+    // Script raw text must not be parsed — angle brackets preserved
+    EXPECT_NE(script_text.find("1 < 2"), std::string::npos);
+    EXPECT_NE(script_text.find("3 > 0"), std::string::npos);
+
+    auto paragraphs = doc->find_all_elements("p");
+    // At least the "Main content." paragraph should exist
+    bool found_main = false;
+    for (auto* p : paragraphs) {
+        if (p->text_content() == "Main content.") {
+            found_main = true;
+        }
+    }
+    EXPECT_TRUE(found_main);
+}
+
+TEST(HtmlParserTest, MeterAndProgressElementsV122) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<label>Disk usage: <meter min=\"0\" max=\"100\" value=\"65\">65%</meter></label>"
+        "<br>"
+        "<label>Downloading: <progress max=\"100\" value=\"42\">42%</progress></label>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* meter = doc->find_element("meter");
+    ASSERT_NE(meter, nullptr);
+    EXPECT_EQ(get_attr_v63(meter, "min"), "0");
+    EXPECT_EQ(get_attr_v63(meter, "max"), "100");
+    EXPECT_EQ(get_attr_v63(meter, "value"), "65");
+    EXPECT_EQ(meter->text_content(), "65%");
+
+    auto* progress = doc->find_element("progress");
+    ASSERT_NE(progress, nullptr);
+    EXPECT_EQ(get_attr_v63(progress, "max"), "100");
+    EXPECT_EQ(get_attr_v63(progress, "value"), "42");
+    EXPECT_EQ(progress->text_content(), "42%");
+
+    // br is void — should exist but have no children
+    auto brs = doc->find_all_elements("br");
+    ASSERT_GE(brs.size(), 1u);
+    EXPECT_TRUE(brs[0]->children.empty());
+}
+
+TEST(HtmlParserTest, AudioSourceTrackElementsV122) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<audio controls preload=\"metadata\">"
+        "<source src=\"song.ogg\" type=\"audio/ogg\">"
+        "<source src=\"song.mp3\" type=\"audio/mpeg\">"
+        "<track kind=\"subtitles\" src=\"subs_en.vtt\" srclang=\"en\" label=\"English\">"
+        "Your browser does not support audio."
+        "</audio>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* audio = doc->find_element("audio");
+    ASSERT_NE(audio, nullptr);
+    EXPECT_EQ(get_attr_v63(audio, "preload"), "metadata");
+
+    auto sources = doc->find_all_elements("source");
+    ASSERT_EQ(sources.size(), 2u);
+    EXPECT_EQ(get_attr_v63(sources[0], "src"), "song.ogg");
+    EXPECT_EQ(get_attr_v63(sources[0], "type"), "audio/ogg");
+    EXPECT_EQ(get_attr_v63(sources[1], "src"), "song.mp3");
+    EXPECT_EQ(get_attr_v63(sources[1], "type"), "audio/mpeg");
+
+    auto tracks = doc->find_all_elements("track");
+    ASSERT_EQ(tracks.size(), 1u);
+    EXPECT_EQ(get_attr_v63(tracks[0], "kind"), "subtitles");
+    EXPECT_EQ(get_attr_v63(tracks[0], "srclang"), "en");
+    EXPECT_EQ(get_attr_v63(tracks[0], "label"), "English");
+
+    // The fallback text should be part of audio's text content
+    std::string audio_text = audio->text_content();
+    EXPECT_NE(audio_text.find("browser does not support audio"), std::string::npos);
+}

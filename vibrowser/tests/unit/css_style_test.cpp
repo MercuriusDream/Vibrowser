@@ -22986,3 +22986,428 @@ TEST(ComputedStyleTest, ContainmentContainerQueriesContentVisibilityV121) {
     EXPECT_FLOAT_EQ(s2.contain_intrinsic_width, 100.0f);
     EXPECT_FLOAT_EQ(s2.contain_intrinsic_height, 0.0f); // unchanged default
 }
+
+TEST(ComputedStyleTest, CalcExprNestedBinaryTreeEvaluationV122) {
+    // Build a calc expression: calc((10px + 2em) * 3)
+    // with parent_value=0, root_font_size=16 => 2em = 32px
+    // (10 + 32) * 3 = 126
+    // calc(10px + 2em) with parent_value=16 (em uses parent_value as font size)
+    // => 10 + 2*16 = 42
+    auto px10 = CalcExpr::make_value(Length::px(10));
+    auto em2 = CalcExpr::make_value(Length::em(2));
+    auto sum = CalcExpr::make_binary(CalcExpr::Op::Add, px10, em2);
+    EXPECT_FLOAT_EQ(sum->evaluate(16, 16), 42.0f);
+
+    // calc(100px - 20px) = 80
+    auto px100 = CalcExpr::make_value(Length::px(100));
+    auto px20 = CalcExpr::make_value(Length::px(20));
+    auto diff = CalcExpr::make_binary(CalcExpr::Op::Sub, px100, px20);
+    EXPECT_FLOAT_EQ(diff->evaluate(0, 16), 80.0f);
+
+    // calc(80px / 4) = 20
+    auto four = CalcExpr::make_value(Length::px(4));
+    auto quotient = CalcExpr::make_binary(CalcExpr::Op::Div, diff, four);
+    EXPECT_FLOAT_EQ(quotient->evaluate(0, 16), 20.0f);
+
+    // calc(5px + 5px) = 10
+    auto a = CalcExpr::make_value(Length::px(5));
+    auto b = CalcExpr::make_value(Length::px(5));
+    auto ab = CalcExpr::make_binary(CalcExpr::Op::Add, a, b);
+    EXPECT_FLOAT_EQ(ab->evaluate(0, 16), 10.0f);
+
+    // calc(10px * 3) = 30
+    auto three = CalcExpr::make_value(Length::px(3));
+    auto product = CalcExpr::make_binary(CalcExpr::Op::Mul, ab, three);
+    EXPECT_FLOAT_EQ(product->evaluate(0, 16), 30.0f);
+
+    // calc(30px + 10px) = 40
+    auto ten = CalcExpr::make_value(Length::px(10));
+    auto final_expr = CalcExpr::make_binary(CalcExpr::Op::Add, product, ten);
+    EXPECT_FLOAT_EQ(final_expr->evaluate(0, 16), 40.0f);
+}
+
+TEST(ComputedStyleTest, ScrollbarAndOverscrollCombinationsV122) {
+    // Test all scrollbar-related properties together with overscroll behavior,
+    // simulating a custom-styled scrollable container
+    ComputedStyle s;
+
+    // Defaults
+    EXPECT_EQ(s.scrollbar_width, 0);     // auto
+    EXPECT_EQ(s.scrollbar_gutter, 0);    // auto
+    EXPECT_EQ(s.scrollbar_thumb_color, 0u); // auto
+    EXPECT_EQ(s.scrollbar_track_color, 0u); // auto
+    EXPECT_EQ(s.overscroll_behavior, 0);
+    EXPECT_EQ(s.overscroll_behavior_x, 0);
+    EXPECT_EQ(s.overscroll_behavior_y, 0);
+    EXPECT_EQ(s.scroll_behavior, 0);
+
+    // Custom scrollbar: thin, stable gutter, custom colors
+    s.scrollbar_width = 1; // thin
+    s.scrollbar_gutter = 2; // stable both-edges
+    s.scrollbar_thumb_color = 0xFF888888; // gray thumb
+    s.scrollbar_track_color = 0xFFEEEEEE; // light gray track
+    EXPECT_EQ(s.scrollbar_width, 1);
+    EXPECT_EQ(s.scrollbar_gutter, 2);
+    EXPECT_EQ(s.scrollbar_thumb_color, 0xFF888888u);
+    EXPECT_EQ(s.scrollbar_track_color, 0xFFEEEEEEu);
+
+    // Overscroll: contain on X (prevent chaining), none on Y (no bounce)
+    s.overscroll_behavior_x = 1; // contain
+    s.overscroll_behavior_y = 2; // none
+    s.overscroll_behavior = 1;   // contain (shorthand)
+    EXPECT_EQ(s.overscroll_behavior_x, 1);
+    EXPECT_EQ(s.overscroll_behavior_y, 2);
+    EXPECT_EQ(s.overscroll_behavior, 1);
+
+    // Smooth scrolling
+    s.scroll_behavior = 1;
+    EXPECT_EQ(s.scroll_behavior, 1);
+
+    // Hidden scrollbar (scrollbar-width: none) with overscroll none
+    ComputedStyle s2;
+    s2.scrollbar_width = 2; // none
+    s2.overscroll_behavior = 2; // none
+    EXPECT_EQ(s2.scrollbar_width, 2);
+    EXPECT_EQ(s2.overscroll_behavior, 2);
+    // With hidden scrollbar, custom colors should still be storable
+    s2.scrollbar_thumb_color = 0xFFFF0000;
+    EXPECT_EQ(s2.scrollbar_thumb_color, 0xFFFF0000u);
+}
+
+TEST(ComputedStyleTest, TextEmphasisAndStrokeCombinedV122) {
+    // Test text-emphasis, text-stroke, and text-fill-color working together
+    // as they would for East Asian typography or decorative text
+    ComputedStyle s;
+
+    // Defaults
+    EXPECT_EQ(s.text_emphasis_style, "none");
+    EXPECT_EQ(s.text_emphasis_color, 0u);
+    EXPECT_EQ(s.text_emphasis_position, 0); // over right
+    EXPECT_FLOAT_EQ(s.text_stroke_width, 0.0f);
+    EXPECT_EQ(s.text_stroke_color.r, 0);
+    EXPECT_EQ(s.text_fill_color.a, 0); // transparent => use 'color'
+
+    // Japanese-style emphasis dots above characters
+    s.text_emphasis_style = "filled sesame";
+    s.text_emphasis_color = 0xFF333333; // dark gray
+    s.text_emphasis_position = 0; // over right (default for horizontal CJK)
+    EXPECT_EQ(s.text_emphasis_style, "filled sesame");
+    EXPECT_EQ(s.text_emphasis_color, 0xFF333333u);
+
+    // Switch to under-left for vertical writing
+    s.text_emphasis_position = 3; // under left
+    EXPECT_EQ(s.text_emphasis_position, 3);
+
+    // Add text-stroke for outlined text effect (like in headings)
+    s.text_stroke_width = 2.0f;
+    s.text_stroke_color = {0, 0, 0, 255}; // black stroke
+    s.text_fill_color = {255, 255, 255, 255}; // white fill => outlined text
+    EXPECT_FLOAT_EQ(s.text_stroke_width, 2.0f);
+    EXPECT_EQ(s.text_stroke_color.r, 0);
+    EXPECT_EQ(s.text_stroke_color.a, 255);
+    EXPECT_EQ(s.text_fill_color.r, 255);
+    EXPECT_EQ(s.text_fill_color.a, 255);
+
+    // Open circle emphasis with custom color
+    ComputedStyle s2;
+    s2.text_emphasis_style = "open circle";
+    s2.text_emphasis_color = 0xFFFF4444;
+    s2.text_emphasis_position = 1; // under right
+    EXPECT_EQ(s2.text_emphasis_style, "open circle");
+    EXPECT_NE(s2.text_emphasis_color, s.text_emphasis_color);
+
+    // Both emphasis and stroke at the same time
+    s2.text_stroke_width = 0.5f;
+    s2.text_stroke_color = {255, 0, 0, 128}; // semi-transparent red
+    EXPECT_FLOAT_EQ(s2.text_stroke_width, 0.5f);
+    EXPECT_EQ(s2.text_stroke_color.a, 128);
+}
+
+TEST(ComputedStyleTest, LengthCalcWithPercentAndViewportMixV122) {
+    // Test Length::to_px for complex combinations of percentage and viewport units
+    // in a calc() expression: calc(50% + 10vw - 2rem)
+    // parent_value=400, viewport_w=1200, viewport_h=800, root_font_size=20
+
+    Length::set_viewport(1200, 800);
+
+    auto pct50 = CalcExpr::make_value(Length::percent(50));
+    auto vw10 = CalcExpr::make_value(Length::vw(10));
+    auto rem2 = CalcExpr::make_value(Length::rem(2));
+
+    auto sum = CalcExpr::make_binary(CalcExpr::Op::Add, pct50, vw10);
+    auto result = CalcExpr::make_binary(CalcExpr::Op::Sub, sum, rem2);
+
+    // 50% of 400 = 200, 10vw of 1200 = 120, 2rem with root=20 = 40
+    // 200 + 120 - 40 = 280
+    float val = result->evaluate(400, 20);
+    EXPECT_FLOAT_EQ(val, 280.0f);
+
+    // Now test with a different viewport: calc(100vh - 20%)
+    Length::set_viewport(1024, 768);
+    auto vh100 = CalcExpr::make_value(Length::vh(100));
+    auto pct20 = CalcExpr::make_value(Length::percent(20));
+    auto diff = CalcExpr::make_binary(CalcExpr::Op::Sub, vh100, pct20);
+    // 100vh = 768, 20% of 600 = 120 => 768 - 120 = 648
+    EXPECT_FLOAT_EQ(diff->evaluate(600, 16), 648.0f);
+
+    // Restore viewport
+    Length::set_viewport(800, 600);
+}
+
+TEST(ComputedStyleTest, AnimationTimelineAndCompositionV122) {
+    // Test animation-timeline, animation-composition, animation-range,
+    // and animation play state interactions for scroll-driven animations
+    ComputedStyle s;
+
+    // Defaults
+    EXPECT_EQ(s.animation_timeline, "auto");
+    EXPECT_EQ(s.animation_composition, 0); // replace
+    EXPECT_EQ(s.animation_range, "normal");
+    EXPECT_EQ(s.animation_play_state, 0); // running
+    EXPECT_EQ(s.animation_direction, 0);  // normal
+    EXPECT_EQ(s.animation_fill_mode, 0);  // none
+    EXPECT_FLOAT_EQ(s.animation_iteration_count, 1.0f);
+
+    // Configure a scroll-driven animation
+    s.animation_name = "slide-in";
+    s.animation_timeline = "scroll()";
+    s.animation_range = "entry";
+    s.animation_composition = 1; // add
+    s.animation_fill_mode = 3;   // both
+    s.animation_direction = 2;   // alternate
+    s.animation_iteration_count = -1; // infinite
+    EXPECT_EQ(s.animation_name, "slide-in");
+    EXPECT_EQ(s.animation_timeline, "scroll()");
+    EXPECT_EQ(s.animation_range, "entry");
+    EXPECT_EQ(s.animation_composition, 1);
+    EXPECT_EQ(s.animation_fill_mode, 3);
+    EXPECT_EQ(s.animation_direction, 2);
+    EXPECT_FLOAT_EQ(s.animation_iteration_count, -1.0f);
+
+    // Pause the animation
+    s.animation_play_state = 1; // paused
+    EXPECT_EQ(s.animation_play_state, 1);
+
+    // View timeline with exit range and accumulate composition
+    ComputedStyle s2;
+    s2.animation_timeline = "view()";
+    s2.animation_range = "exit";
+    s2.animation_composition = 2; // accumulate
+    s2.animation_direction = 3;   // alternate-reverse
+    EXPECT_EQ(s2.animation_timeline, "view()");
+    EXPECT_EQ(s2.animation_range, "exit");
+    EXPECT_EQ(s2.animation_composition, 2);
+    EXPECT_EQ(s2.animation_direction, 3);
+
+    // Named timeline
+    s2.animation_timeline = "--progress-timeline";
+    EXPECT_EQ(s2.animation_timeline, "--progress-timeline");
+}
+
+TEST(ComputedStyleTest, TransitionMultipleDefsWithBezierAndStepsV122) {
+    // Test multiple TransitionDef entries with different timing functions:
+    // cubic-bezier, steps-end, steps-start, and standard easing
+    ComputedStyle s;
+    EXPECT_TRUE(s.transitions.empty());
+
+    // Transition 1: opacity with cubic-bezier
+    TransitionDef t1;
+    t1.property = "opacity";
+    t1.duration_ms = 300;
+    t1.delay_ms = 50;
+    t1.timing_function = 5; // cubic-bezier
+    t1.bezier_x1 = 0.25f;
+    t1.bezier_y1 = 0.1f;
+    t1.bezier_x2 = 0.25f;
+    t1.bezier_y2 = 1.0f;
+    s.transitions.push_back(t1);
+
+    // Transition 2: transform with steps-end
+    TransitionDef t2;
+    t2.property = "transform";
+    t2.duration_ms = 500;
+    t2.delay_ms = 0;
+    t2.timing_function = 6; // steps-end
+    t2.steps_count = 5;
+    s.transitions.push_back(t2);
+
+    // Transition 3: background-color with steps-start
+    TransitionDef t3;
+    t3.property = "background-color";
+    t3.duration_ms = 200;
+    t3.delay_ms = 100;
+    t3.timing_function = 7; // steps-start
+    t3.steps_count = 3;
+    s.transitions.push_back(t3);
+
+    // Transition 4: height with ease-in-out
+    TransitionDef t4;
+    t4.property = "height";
+    t4.duration_ms = 400;
+    t4.timing_function = 4; // ease-in-out
+    s.transitions.push_back(t4);
+
+    EXPECT_EQ(s.transitions.size(), 4u);
+
+    // Verify cubic-bezier control points
+    EXPECT_EQ(s.transitions[0].property, "opacity");
+    EXPECT_FLOAT_EQ(s.transitions[0].bezier_x1, 0.25f);
+    EXPECT_FLOAT_EQ(s.transitions[0].bezier_y1, 0.1f);
+    EXPECT_FLOAT_EQ(s.transitions[0].bezier_x2, 0.25f);
+    EXPECT_FLOAT_EQ(s.transitions[0].bezier_y2, 1.0f);
+    EXPECT_EQ(s.transitions[0].timing_function, 5);
+    EXPECT_FLOAT_EQ(s.transitions[0].duration_ms, 300.0f);
+    EXPECT_FLOAT_EQ(s.transitions[0].delay_ms, 50.0f);
+
+    // Verify steps-end
+    EXPECT_EQ(s.transitions[1].timing_function, 6);
+    EXPECT_EQ(s.transitions[1].steps_count, 5);
+    EXPECT_FLOAT_EQ(s.transitions[1].duration_ms, 500.0f);
+
+    // Verify steps-start
+    EXPECT_EQ(s.transitions[2].timing_function, 7);
+    EXPECT_EQ(s.transitions[2].steps_count, 3);
+    EXPECT_EQ(s.transitions[2].property, "background-color");
+
+    // Verify ease-in-out
+    EXPECT_EQ(s.transitions[3].timing_function, 4);
+    EXPECT_EQ(s.transitions[3].property, "height");
+
+    // Legacy scalar fields should remain independent
+    s.transition_property = "all";
+    s.transition_duration = 0.5f;
+    s.transition_timing = 1; // linear
+    EXPECT_EQ(s.transition_property, "all");
+    EXPECT_FLOAT_EQ(s.transition_duration, 0.5f);
+    EXPECT_EQ(s.transition_timing, 1);
+    // transitions vector unchanged
+    EXPECT_EQ(s.transitions.size(), 4u);
+}
+
+TEST(ComputedStyleTest, BackgroundLayeringAndBlendModeV122) {
+    // Test background properties that simulate a layered background
+    // with gradients, blend modes, and clip/origin combinations
+    ComputedStyle s;
+
+    // Defaults
+    EXPECT_EQ(s.gradient_type, 0); // none
+    EXPECT_FLOAT_EQ(s.gradient_angle, 180.0f);
+    EXPECT_EQ(s.radial_shape, 0); // ellipse
+    EXPECT_TRUE(s.gradient_stops.empty());
+    EXPECT_TRUE(s.bg_image_url.empty());
+    EXPECT_EQ(s.background_size, 0); // auto
+    EXPECT_EQ(s.background_repeat, 0); // repeat
+    EXPECT_EQ(s.background_clip, 0); // border-box
+    EXPECT_EQ(s.background_origin, 0); // padding-box
+    EXPECT_EQ(s.background_blend_mode, 0); // normal
+    EXPECT_EQ(s.background_attachment, 0); // scroll
+
+    // Linear gradient at 45deg with three color stops
+    s.gradient_type = 1; // linear
+    s.gradient_angle = 45.0f;
+    s.gradient_stops.push_back({0xFFFF0000, 0.0f}); // red at 0%
+    s.gradient_stops.push_back({0xFF00FF00, 0.5f}); // green at 50%
+    s.gradient_stops.push_back({0xFF0000FF, 1.0f}); // blue at 100%
+    EXPECT_EQ(s.gradient_type, 1);
+    EXPECT_FLOAT_EQ(s.gradient_angle, 45.0f);
+    EXPECT_EQ(s.gradient_stops.size(), 3u);
+    EXPECT_EQ(s.gradient_stops[0].first, 0xFFFF0000u);
+    EXPECT_FLOAT_EQ(s.gradient_stops[1].second, 0.5f);
+    EXPECT_EQ(s.gradient_stops[2].first, 0xFF0000FFu);
+
+    // Set background clipping to content-box, origin to border-box, blend multiply
+    s.background_clip = 2; // content-box
+    s.background_origin = 1; // border-box
+    s.background_blend_mode = 1; // multiply
+    s.background_attachment = 1; // fixed
+    EXPECT_EQ(s.background_clip, 2);
+    EXPECT_EQ(s.background_origin, 1);
+    EXPECT_EQ(s.background_blend_mode, 1);
+    EXPECT_EQ(s.background_attachment, 1);
+
+    // Radial gradient with circle shape, explicit size, no-repeat
+    ComputedStyle s2;
+    s2.gradient_type = 2; // radial
+    s2.radial_shape = 1; // circle
+    s2.gradient_stops.push_back({0xFFFFFF00, 0.0f});
+    s2.gradient_stops.push_back({0xFF000000, 1.0f});
+    s2.background_size = 3; // explicit
+    s2.bg_size_width = 200.0f;
+    s2.bg_size_height = 200.0f;
+    s2.background_repeat = 3; // no-repeat
+    s2.background_blend_mode = 3; // overlay
+    EXPECT_EQ(s2.gradient_type, 2);
+    EXPECT_EQ(s2.radial_shape, 1);
+    EXPECT_EQ(s2.gradient_stops.size(), 2u);
+    EXPECT_EQ(s2.background_size, 3);
+    EXPECT_FLOAT_EQ(s2.bg_size_width, 200.0f);
+    EXPECT_FLOAT_EQ(s2.bg_size_height, 200.0f);
+    EXPECT_EQ(s2.background_repeat, 3);
+    EXPECT_EQ(s2.background_blend_mode, 3);
+}
+
+TEST(ComputedStyleTest, PagedMediaAndFragmentationV122) {
+    // Test paged media, fragmentation, and column-span properties
+    // simulating a print stylesheet
+    ComputedStyle s;
+
+    // Defaults for paged media
+    EXPECT_EQ(s.page_break_before, 0); // auto
+    EXPECT_EQ(s.page_break_after, 0);
+    EXPECT_EQ(s.page_break_inside, 0);
+    EXPECT_EQ(s.break_before, 0); // auto
+    EXPECT_EQ(s.break_after, 0);
+    EXPECT_EQ(s.break_inside, 0);
+    EXPECT_EQ(s.orphans, 2);
+    EXPECT_EQ(s.widows, 2);
+    EXPECT_EQ(s.column_span, 0); // none
+    EXPECT_TRUE(s.page.empty());
+
+    // Force page break before a chapter heading
+    s.page_break_before = 1; // always
+    s.page_break_after = 2;  // avoid (don't break right after heading)
+    s.page_break_inside = 1; // avoid
+    EXPECT_EQ(s.page_break_before, 1);
+    EXPECT_EQ(s.page_break_after, 2);
+    EXPECT_EQ(s.page_break_inside, 1);
+
+    // Modern fragmentation properties for multi-column layout
+    s.break_before = 4; // column
+    s.break_after = 1;  // avoid
+    s.break_inside = 3; // avoid-column
+    EXPECT_EQ(s.break_before, 4);
+    EXPECT_EQ(s.break_after, 1);
+    EXPECT_EQ(s.break_inside, 3);
+
+    // Prevent orphans/widows in print: require at least 4 lines
+    s.orphans = 4;
+    s.widows = 4;
+    EXPECT_EQ(s.orphans, 4);
+    EXPECT_EQ(s.widows, 4);
+
+    // Column span all (for a full-width heading in a multi-column layout)
+    s.column_span = 1; // all
+    EXPECT_EQ(s.column_span, 1);
+
+    // Named page for specialized print layout
+    s.page = "landscape-wide";
+    EXPECT_EQ(s.page, "landscape-wide");
+
+    // Verify page_break and break_ are independently settable
+    ComputedStyle s2;
+    s2.page_break_before = 3; // left
+    s2.page_break_after = 4;  // right
+    s2.break_before = 2;      // always
+    s2.break_after = 5;       // region
+    EXPECT_EQ(s2.page_break_before, 3);
+    EXPECT_EQ(s2.break_before, 2);
+    EXPECT_NE(s2.page_break_before, s2.break_before);
+    EXPECT_NE(s2.page_break_after, s2.break_after);
+
+    // Orphans=1, widows=1 => allow single lines at breaks
+    s2.orphans = 1;
+    s2.widows = 1;
+    EXPECT_EQ(s2.orphans, 1);
+    EXPECT_EQ(s2.widows, 1);
+    EXPECT_NE(s2.orphans, s.orphans);
+}

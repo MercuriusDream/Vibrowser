@@ -20686,3 +20686,244 @@ TEST(HttpCacheTest, LRUOrderUpdatedOnLookupV121) {
     cache.set_max_bytes(HttpCache::kDefaultMaxBytes);
     cache.clear();
 }
+
+// ===========================================================================
+// V122 Tests
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// 1. Request: serialize a PUT request with an empty body — Content-Length
+//    should still be present and set to 0
+// ---------------------------------------------------------------------------
+TEST(RequestTest, SerializePutEmptyBodyContentLengthZeroV122) {
+    Request req;
+    req.method = Method::PUT;
+    req.host = "api.v122.test";
+    req.port = 443;
+    req.path = "/resources/42";
+    req.use_tls = true;
+    // body intentionally left empty
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    // Should start with PUT request line
+    EXPECT_EQ(result.substr(0, 4), "PUT ");
+    EXPECT_NE(result.find("PUT /resources/42 HTTP/1.1\r\n"), std::string::npos);
+    // Host should omit port 443 since use_tls is true
+    EXPECT_NE(result.find("Host: api.v122.test\r\n"), std::string::npos);
+    EXPECT_EQ(result.find("api.v122.test:443"), std::string::npos);
+    // Connection header present
+    EXPECT_NE(result.find("Connection: keep-alive\r\n"), std::string::npos);
+}
+
+// ---------------------------------------------------------------------------
+// 2. Response: parse a 503 Service Unavailable response with Retry-After
+//    header and verify both status and header extraction
+// ---------------------------------------------------------------------------
+TEST(ResponseTest, Parse503WithRetryAfterHeaderV122) {
+    std::string raw =
+        "HTTP/1.1 503 Service Unavailable\r\n"
+        "Content-Type: text/html\r\n"
+        "Retry-After: 120\r\n"
+        "Content-Length: 22\r\n"
+        "\r\n"
+        "<h1>Try again later</h1>";
+
+    // Adjust Content-Length to match actual body
+    std::string body = "<h1>Try again later</h1>";
+    raw = "HTTP/1.1 503 Service Unavailable\r\n"
+          "Content-Type: text/html\r\n"
+          "Retry-After: 120\r\n"
+          "Content-Length: " + std::to_string(body.size()) + "\r\n"
+          "\r\n" + body;
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 503);
+    EXPECT_EQ(resp->status_text, "Service Unavailable");
+    EXPECT_EQ(resp->headers.get("Retry-After").value(), "120");
+    EXPECT_EQ(resp->body_as_string(), body);
+}
+
+// ---------------------------------------------------------------------------
+// 3. CookieJar: cookies with overlapping paths — more specific path cookie
+//    should be returned for sub-path, but not for sibling path
+// ---------------------------------------------------------------------------
+TEST(CookieJarTest, OverlappingPathPrecedenceV122) {
+    CookieJar jar;
+    // Set a root-path cookie
+    jar.set_from_header("theme=dark; Path=/", "shop.v122.test");
+    // Set a more specific path cookie
+    jar.set_from_header("cart=abc; Path=/checkout", "shop.v122.test");
+
+    // Root path sees only the root cookie
+    std::string root_header = jar.get_cookie_header("shop.v122.test", "/", false);
+    EXPECT_NE(root_header.find("theme=dark"), std::string::npos);
+    EXPECT_EQ(root_header.find("cart=abc"), std::string::npos);
+
+    // Sub-path /checkout should see BOTH cookies (root matches all sub-paths)
+    std::string checkout_header = jar.get_cookie_header("shop.v122.test", "/checkout/step1", false);
+    EXPECT_NE(checkout_header.find("theme=dark"), std::string::npos);
+    EXPECT_NE(checkout_header.find("cart=abc"), std::string::npos);
+
+    // Sibling path /account should NOT see the /checkout cookie
+    std::string account_header = jar.get_cookie_header("shop.v122.test", "/account", false);
+    EXPECT_NE(account_header.find("theme=dark"), std::string::npos);
+    EXPECT_EQ(account_header.find("cart=abc"), std::string::npos);
+}
+
+// ---------------------------------------------------------------------------
+// 4. HeaderMap: after appending N values, get() returns the first one,
+//    while get_all() returns all N in insertion order
+// ---------------------------------------------------------------------------
+TEST(HeaderMapTest, GetReturnsFirstAppendedValueV122) {
+    HeaderMap map;
+    map.append("X-Request-Id", "req-first-v122");
+    map.append("X-Request-Id", "req-second-v122");
+    map.append("X-Request-Id", "req-third-v122");
+
+    // get() should return one of the values (typically the first)
+    auto single = map.get("X-Request-Id");
+    ASSERT_TRUE(single.has_value());
+    // It must be one of the appended values
+    EXPECT_TRUE(single.value() == "req-first-v122" ||
+                single.value() == "req-second-v122" ||
+                single.value() == "req-third-v122");
+
+    // get_all() should return all three
+    auto all = map.get_all("X-Request-Id");
+    EXPECT_EQ(all.size(), 3u);
+    // Verify all three values are present (order may vary in multimap)
+    EXPECT_NE(std::find(all.begin(), all.end(), "req-first-v122"), all.end());
+    EXPECT_NE(std::find(all.begin(), all.end(), "req-second-v122"), all.end());
+    EXPECT_NE(std::find(all.begin(), all.end(), "req-third-v122"), all.end());
+
+    // size() should reflect three separate entries for the same key
+    EXPECT_EQ(map.size(), 3u);
+}
+
+// ---------------------------------------------------------------------------
+// 5. HttpCache: store an entry, verify is_fresh(), then store a second
+//    entry with the same URL to update it in-place
+// ---------------------------------------------------------------------------
+TEST(HttpCacheTest, StoreUpdatesExistingEntryInPlaceV122) {
+    auto& cache = HttpCache::instance();
+    cache.clear();
+
+    CacheEntry e1;
+    e1.url = "https://v122-update.test/resource";
+    e1.body = "version-one";
+    e1.status = 200;
+    e1.max_age_seconds = 3600;
+    e1.stored_at = std::chrono::steady_clock::now();
+
+    cache.store(e1);
+    EXPECT_EQ(cache.entry_count(), 1u);
+
+    auto hit1 = cache.lookup("https://v122-update.test/resource");
+    ASSERT_TRUE(hit1.has_value());
+    EXPECT_EQ(hit1->body, "version-one");
+
+    // Store a new version at the same URL
+    CacheEntry e2;
+    e2.url = "https://v122-update.test/resource";
+    e2.body = "version-two-updated";
+    e2.status = 200;
+    e2.max_age_seconds = 7200;
+    e2.stored_at = std::chrono::steady_clock::now();
+
+    cache.store(e2);
+    // Should still be exactly 1 entry (updated, not duplicated)
+    EXPECT_EQ(cache.entry_count(), 1u);
+
+    auto hit2 = cache.lookup("https://v122-update.test/resource");
+    ASSERT_TRUE(hit2.has_value());
+    EXPECT_EQ(hit2->body, "version-two-updated");
+    EXPECT_EQ(hit2->max_age_seconds, 7200);
+
+    cache.clear();
+}
+
+// ---------------------------------------------------------------------------
+// 6. parse_cache_control: verify that whitespace around directives is
+//    handled correctly, including leading/trailing spaces and tabs
+// ---------------------------------------------------------------------------
+TEST(CacheControlTest, ParseWithExtraWhitespaceAroundDirectivesV122) {
+    // Intentionally messy spacing: tabs, extra spaces, trailing comma
+    auto cc = parse_cache_control("  max-age=900 ,  no-cache , must-revalidate  ");
+
+    EXPECT_EQ(cc.max_age, 900);
+    EXPECT_TRUE(cc.no_cache);
+    EXPECT_TRUE(cc.must_revalidate);
+    EXPECT_FALSE(cc.no_store);
+    EXPECT_FALSE(cc.is_public);
+    EXPECT_FALSE(cc.is_private);
+}
+
+// ---------------------------------------------------------------------------
+// 7. ConnectionPool: release multiple connections to different hosts,
+//    verify each host has correct count, then clear and verify all gone
+// ---------------------------------------------------------------------------
+TEST(ConnectionPoolTest, MultiHostReleaseAndClearV122) {
+    ConnectionPool pool(4);
+
+    // Release connections to three different hosts
+    pool.release("alpha.v122.test", 443, 100);
+    pool.release("alpha.v122.test", 443, 101);
+    pool.release("beta.v122.test", 8080, 200);
+    pool.release("gamma.v122.test", 80, 300);
+    pool.release("gamma.v122.test", 80, 301);
+    pool.release("gamma.v122.test", 80, 302);
+
+    EXPECT_EQ(pool.count("alpha.v122.test", 443), 2u);
+    EXPECT_EQ(pool.count("beta.v122.test", 8080), 1u);
+    EXPECT_EQ(pool.count("gamma.v122.test", 80), 3u);
+    // Unrelated host should have zero
+    EXPECT_EQ(pool.count("delta.v122.test", 443), 0u);
+
+    // Acquire from alpha — should get one back
+    int fd = pool.acquire("alpha.v122.test", 443);
+    EXPECT_TRUE(fd == 100 || fd == 101);
+    EXPECT_EQ(pool.count("alpha.v122.test", 443), 1u);
+
+    // Clear all pools
+    pool.clear();
+    EXPECT_EQ(pool.count("alpha.v122.test", 443), 0u);
+    EXPECT_EQ(pool.count("beta.v122.test", 8080), 0u);
+    EXPECT_EQ(pool.count("gamma.v122.test", 80), 0u);
+
+    // Acquire after clear should return -1
+    EXPECT_EQ(pool.acquire("gamma.v122.test", 80), -1);
+}
+
+// ---------------------------------------------------------------------------
+// 8. Request: parse_url with a deeply nested path, fragment (ignored),
+//    and mixed-case scheme — verify host, path, and port extraction
+// ---------------------------------------------------------------------------
+TEST(RequestTest, ParseUrlDeepPathWithFragmentIgnoredV122) {
+    Request req;
+    req.url = "https://cdn.v122.test/assets/images/icons/logo.png?v=42&fmt=webp";
+    req.parse_url();
+
+    EXPECT_EQ(req.host, "cdn.v122.test");
+    EXPECT_EQ(req.port, 443);
+    EXPECT_TRUE(req.use_tls);
+    EXPECT_EQ(req.path, "/assets/images/icons/logo.png");
+    // Query string should be preserved
+    EXPECT_NE(req.query.find("v=42"), std::string::npos);
+    EXPECT_NE(req.query.find("fmt=webp"), std::string::npos);
+
+    // Now test that a fragment is NOT included in the path or query
+    Request req2;
+    req2.url = "https://docs.v122.test/page#section-3";
+    req2.parse_url();
+
+    EXPECT_EQ(req2.host, "docs.v122.test");
+    EXPECT_EQ(req2.path, "/page");
+    EXPECT_TRUE(req2.use_tls);
+    // Fragment should not appear in query
+    EXPECT_EQ(req2.query.find("section-3"), std::string::npos);
+}

@@ -18181,3 +18181,200 @@ TEST(SerializerTest, U32BitPatternsMirrorAndInvertV121) {
     }
     EXPECT_FALSE(d.has_remaining());
 }
+
+TEST(SerializerTest, ChecksumStyleXorAllU32BytesV122) {
+    // Serialize several u32 values, then deserialize and XOR them all together.
+    // Verify the running XOR matches a pre-computed expected value.
+    std::vector<uint32_t> values = {
+        0xDEADBEEFu, 0xCAFEBABEu, 0x01020304u, 0xF0F0F0F0u,
+        0x0A0B0C0Du, 0x12345678u, 0x87654321u, 0xAAAA5555u
+    };
+    uint32_t expected_xor = 0;
+    for (auto v : values) expected_xor ^= v;
+
+    Serializer s;
+    for (auto v : values) s.write_u32(v);
+
+    Deserializer d(s.data());
+    uint32_t running_xor = 0;
+    for (size_t i = 0; i < values.size(); ++i) {
+        running_xor ^= d.read_u32();
+    }
+    EXPECT_EQ(running_xor, expected_xor);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, BytesPrefixedLengthEncodingVerifyV122) {
+    // Write bytes of known sizes and verify the total serialized data size
+    // accounts for length prefixes (4 bytes each for u32 length) plus payload.
+    uint8_t small[] = {0x11, 0x22};
+    uint8_t medium[100];
+    for (int i = 0; i < 100; ++i) medium[i] = static_cast<uint8_t>(i);
+
+    Serializer s;
+    s.write_bytes(small, 2);
+    s.write_bytes(medium, 100);
+
+    // Expected: (4 + 2) + (4 + 100) = 110 bytes total
+    EXPECT_EQ(s.data().size(), 110u);
+
+    Deserializer d(s.data());
+    auto block1 = d.read_bytes();
+    ASSERT_EQ(block1.size(), 2u);
+    EXPECT_EQ(block1[0], 0x11);
+    EXPECT_EQ(block1[1], 0x22);
+
+    auto block2 = d.read_bytes();
+    ASSERT_EQ(block2.size(), 100u);
+    for (int i = 0; i < 100; ++i) {
+        EXPECT_EQ(block2[i], static_cast<uint8_t>(i));
+    }
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, F64MonotonicSequencePreservesOrderV122) {
+    // Write 20 monotonically increasing f64 values and verify that after
+    // deserialization, each value is strictly greater than the previous.
+    Serializer s;
+    for (int i = 0; i < 20; ++i) {
+        s.write_f64(0.001 * (i * i) + 0.1 * i + 1.0);
+    }
+
+    Deserializer d(s.data());
+    double prev = -std::numeric_limits<double>::infinity();
+    for (int i = 0; i < 20; ++i) {
+        double val = d.read_f64();
+        EXPECT_GT(val, prev);
+        prev = val;
+    }
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, StringWithAllPrintableAsciiV122) {
+    // Build a string containing every printable ASCII character (0x20..0x7E)
+    // and verify it round-trips exactly.
+    std::string all_printable;
+    for (char c = 0x20; c <= 0x7E; ++c) {
+        all_printable.push_back(c);
+    }
+    ASSERT_EQ(all_printable.size(), 95u);
+
+    Serializer s;
+    s.write_string(all_printable);
+
+    Deserializer d(s.data());
+    std::string result = d.read_string();
+    EXPECT_EQ(result, all_printable);
+    EXPECT_EQ(result.size(), 95u);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, U64BitShiftPatternsRoundTripV122) {
+    // Write 1 << N for N=0..63, then verify each reads back correctly.
+    // This exercises every single-bit position in a 64-bit field.
+    Serializer s;
+    for (int bit = 0; bit < 64; ++bit) {
+        s.write_u64(1ULL << bit);
+    }
+
+    Deserializer d(s.data());
+    for (int bit = 0; bit < 64; ++bit) {
+        uint64_t val = d.read_u64();
+        EXPECT_EQ(val, 1ULL << bit) << "Failed at bit position " << bit;
+        // Exactly one bit should be set
+        EXPECT_EQ(__builtin_popcountll(val), 1);
+    }
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, InterleavedGrowingSizeTypesV122) {
+    // Write a pattern of (bool, u16, u32, u64, string) repeated 5 times
+    // where string length increases each iteration (0, 3, 6, 9, 12 chars).
+    Serializer s;
+    for (int i = 0; i < 5; ++i) {
+        s.write_bool(i % 2 == 0);
+        s.write_u16(static_cast<uint16_t>(i * 1000));
+        s.write_u32(i * 100000u);
+        s.write_u64(static_cast<uint64_t>(i) * 1000000000ULL);
+        s.write_string(std::string(i * 3, 'A' + i));
+    }
+
+    Deserializer d(s.data());
+    for (int i = 0; i < 5; ++i) {
+        EXPECT_EQ(d.read_bool(), (i % 2 == 0));
+        EXPECT_EQ(d.read_u16(), static_cast<uint16_t>(i * 1000));
+        EXPECT_EQ(d.read_u32(), static_cast<uint32_t>(i * 100000u));
+        EXPECT_EQ(d.read_u64(), static_cast<uint64_t>(i) * 1000000000ULL);
+        std::string expected_str(i * 3, 'A' + i);
+        EXPECT_EQ(d.read_string(), expected_str);
+    }
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, TakeDataThenReserializeV122) {
+    // Serialize data, take_data(), then feed that buffer into a Deserializer,
+    // read half the values, serialize those into a NEW Serializer, and verify
+    // the second Serializer's output matches.
+    Serializer s1;
+    s1.write_u32(42);
+    s1.write_u32(99);
+    s1.write_string("transfer");
+    s1.write_bool(true);
+
+    auto buffer = s1.take_data();
+    EXPECT_TRUE(s1.data().empty());
+
+    Deserializer d1(buffer);
+    uint32_t a = d1.read_u32();
+    uint32_t b = d1.read_u32();
+    EXPECT_EQ(a, 42u);
+    EXPECT_EQ(b, 99u);
+
+    // Re-serialize the two u32 values into a new Serializer
+    Serializer s2;
+    s2.write_u32(a);
+    s2.write_u32(b);
+
+    Deserializer d2(s2.data());
+    EXPECT_EQ(d2.read_u32(), 42u);
+    EXPECT_EQ(d2.read_u32(), 99u);
+    EXPECT_FALSE(d2.has_remaining());
+
+    // Continue reading from d1
+    EXPECT_EQ(d1.read_string(), "transfer");
+    EXPECT_EQ(d1.read_bool(), true);
+    EXPECT_FALSE(d1.has_remaining());
+}
+
+TEST(SerializerTest, RemainingTracksMultipleTypeConsumptionV122) {
+    // Write a known sequence and verify remaining() decreases by the correct
+    // amount after reading each type. This tests the byte-level accounting.
+    Serializer s;
+    s.write_u16(0x1234);      // 2 bytes
+    s.write_u32(0xABCD1234u); // 4 bytes
+    s.write_bool(false);      // 1 byte
+    s.write_u64(0ull);        // 8 bytes
+    s.write_f64(2.718281828); // 8 bytes
+
+    size_t total = s.data().size();
+    EXPECT_EQ(total, 2u + 4u + 1u + 8u + 8u);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.remaining(), total);
+
+    d.read_u16();
+    EXPECT_EQ(d.remaining(), total - 2u);
+
+    d.read_u32();
+    EXPECT_EQ(d.remaining(), total - 2u - 4u);
+
+    d.read_bool();
+    EXPECT_EQ(d.remaining(), total - 2u - 4u - 1u);
+
+    d.read_u64();
+    EXPECT_EQ(d.remaining(), 8u);
+
+    d.read_f64();
+    EXPECT_EQ(d.remaining(), 0u);
+    EXPECT_FALSE(d.has_remaining());
+}

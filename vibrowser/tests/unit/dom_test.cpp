@@ -18561,3 +18561,227 @@ TEST(DomNode, ForEachChildConsistentAfterMutationsV121) {
     EXPECT_EQ(ra->next_sibling(), rc);
     EXPECT_EQ(rc->previous_sibling(), ra);
 }
+
+// V122 Tests
+
+// 1. Removing every child from a large list leaves parent in clean empty state
+TEST(DomNode, RemoveAllChildrenFromLargeListV122) {
+    Element parent("ul");
+    std::vector<Node*> ptrs;
+    for (int i = 0; i < 10; ++i) {
+        auto li = std::make_unique<Element>("li");
+        ptrs.push_back(li.get());
+        parent.append_child(std::move(li));
+    }
+    EXPECT_EQ(parent.child_count(), 10u);
+
+    // Remove from the middle outward to stress sibling relinking
+    // Remove indices: 5, 4, 6, 3, 7, 2, 8, 1, 9, 0
+    std::vector<int> removal_order = {5, 4, 6, 3, 7, 2, 8, 1, 9, 0};
+    for (int idx : removal_order) {
+        parent.remove_child(*ptrs[idx]);
+    }
+    EXPECT_EQ(parent.child_count(), 0u);
+    EXPECT_EQ(parent.first_child(), nullptr);
+    EXPECT_EQ(parent.last_child(), nullptr);
+}
+
+// 2. insert_before at head of list makes new node the first child with correct sibling chain
+TEST(DomNode, InsertBeforeHeadCreatesNewFirstChildV122) {
+    Element parent("div");
+    auto a = std::make_unique<Element>("span");
+    auto b = std::make_unique<Element>("span");
+    auto c = std::make_unique<Element>("span");
+    auto* ra = a.get();
+    auto* rb = b.get();
+    auto* rc = c.get();
+
+    parent.append_child(std::move(b));  // [b]
+    parent.append_child(std::move(c));  // [b, c]
+    // Insert a before b, making a the new first child
+    parent.insert_before(std::move(a), rb);  // [a, b, c]
+
+    EXPECT_EQ(parent.first_child(), ra);
+    EXPECT_EQ(parent.last_child(), rc);
+    EXPECT_EQ(ra->next_sibling(), rb);
+    EXPECT_EQ(rb->previous_sibling(), ra);
+    EXPECT_EQ(ra->previous_sibling(), nullptr);
+    EXPECT_EQ(parent.child_count(), 3u);
+}
+
+// 3. ClassList toggle on multiple classes interleaved preserves independent state
+TEST(DomClassList, InterleavedToggleMultipleClassesV122) {
+    Element elem("div");
+    auto& cl = elem.class_list();
+
+    cl.toggle("alpha");    // adds alpha
+    cl.toggle("beta");     // adds beta
+    cl.toggle("gamma");    // adds gamma
+    cl.toggle("alpha");    // removes alpha
+    cl.toggle("delta");    // adds delta
+    cl.toggle("beta");     // removes beta
+
+    EXPECT_FALSE(cl.contains("alpha"));
+    EXPECT_FALSE(cl.contains("beta"));
+    EXPECT_TRUE(cl.contains("gamma"));
+    EXPECT_TRUE(cl.contains("delta"));
+    EXPECT_EQ(cl.length(), 2u);
+
+    // Verify items vector matches
+    const auto& items = cl.items();
+    EXPECT_EQ(items.size(), 2u);
+    bool has_gamma = false, has_delta = false;
+    for (const auto& s : items) {
+        if (s == "gamma") has_gamma = true;
+        if (s == "delta") has_delta = true;
+    }
+    EXPECT_TRUE(has_gamma);
+    EXPECT_TRUE(has_delta);
+}
+
+// 4. DirtyFlags combine with bitwise OR and clear resets all at once
+TEST(DomNode, DirtyFlagBitwiseCombineAndClearV122) {
+    Element elem("section");
+
+    // Start clean
+    EXPECT_EQ(static_cast<uint8_t>(elem.dirty_flags()), 0);
+
+    // Mark Style and Layout separately
+    elem.mark_dirty(DirtyFlags::Style);
+    elem.mark_dirty(DirtyFlags::Layout);
+
+    // Both should be set
+    auto flags = elem.dirty_flags();
+    EXPECT_NE(static_cast<uint8_t>(flags & DirtyFlags::Style), 0);
+    EXPECT_NE(static_cast<uint8_t>(flags & DirtyFlags::Layout), 0);
+    // Paint should NOT be set
+    EXPECT_EQ(static_cast<uint8_t>(flags & DirtyFlags::Paint), 0);
+
+    // Mark paint
+    elem.mark_dirty(DirtyFlags::Paint);
+    flags = elem.dirty_flags();
+    EXPECT_NE(static_cast<uint8_t>(flags & DirtyFlags::Paint), 0);
+
+    // Clear all at once
+    elem.clear_dirty();
+    EXPECT_EQ(static_cast<uint8_t>(elem.dirty_flags()), 0);
+}
+
+// 5. Document factory methods produce nodes with correct types and parenting works
+TEST(DomDocument, FactoryNodeTypesAndParentingV122) {
+    Document doc;
+    auto elem = doc.create_element("article");
+    auto text = doc.create_text_node("Hello");
+    auto comment = doc.create_comment("note");
+
+    EXPECT_EQ(elem->node_type(), NodeType::Element);
+    EXPECT_EQ(text->node_type(), NodeType::Text);
+    EXPECT_EQ(comment->node_type(), NodeType::Comment);
+
+    auto* elem_raw = elem.get();
+    auto* text_raw = text.get();
+    auto* comment_raw = comment.get();
+
+    // Append text and comment as children of the element
+    elem->append_child(std::move(text));
+    elem->append_child(std::move(comment));
+
+    EXPECT_EQ(text_raw->parent(), elem_raw);
+    EXPECT_EQ(comment_raw->parent(), elem_raw);
+    EXPECT_EQ(elem_raw->child_count(), 2u);
+    EXPECT_EQ(elem_raw->first_child(), text_raw);
+    EXPECT_EQ(elem_raw->last_child(), comment_raw);
+
+    // text_content should include only Text node content
+    EXPECT_EQ(elem_raw->text_content(), "Hello");
+}
+
+// 6. Attribute overwrite updates value but does not increase attribute count
+TEST(DomElement, AttributeOverwriteStableCountV122) {
+    Element elem("input");
+    elem.set_attribute("type", "text");
+    elem.set_attribute("name", "field");
+    elem.set_attribute("value", "initial");
+    EXPECT_EQ(elem.attributes().size(), 3u);
+
+    // Overwrite all three
+    elem.set_attribute("type", "password");
+    elem.set_attribute("name", "secret_field");
+    elem.set_attribute("value", "updated");
+
+    // Count should remain 3
+    EXPECT_EQ(elem.attributes().size(), 3u);
+
+    // Values should be updated
+    EXPECT_EQ(elem.get_attribute("type").value(), "password");
+    EXPECT_EQ(elem.get_attribute("name").value(), "secret_field");
+    EXPECT_EQ(elem.get_attribute("value").value(), "updated");
+
+    // Verify attribute order preserved via .name / .value struct fields
+    EXPECT_EQ(elem.attributes()[0].name, "type");
+    EXPECT_EQ(elem.attributes()[1].name, "name");
+    EXPECT_EQ(elem.attributes()[2].name, "value");
+}
+
+// 7. Reparenting a node via remove_child then append to new parent updates all pointers
+TEST(DomNode, ReparentChildUpdatesAllPointersV122) {
+    Element old_parent("div");
+    Element new_parent("section");
+
+    auto child = std::make_unique<Element>("p");
+    auto sibling = std::make_unique<Element>("span");
+    auto* child_raw = child.get();
+    auto* sibling_raw = sibling.get();
+
+    old_parent.append_child(std::move(child));
+    old_parent.append_child(std::move(sibling));
+
+    EXPECT_EQ(child_raw->parent(), &old_parent);
+    EXPECT_EQ(child_raw->next_sibling(), sibling_raw);
+    EXPECT_EQ(sibling_raw->previous_sibling(), child_raw);
+
+    // Remove child from old parent
+    auto removed = old_parent.remove_child(*child_raw);
+    EXPECT_EQ(old_parent.child_count(), 1u);
+    EXPECT_EQ(old_parent.first_child(), sibling_raw);
+    EXPECT_EQ(sibling_raw->previous_sibling(), nullptr);
+
+    // Reparent to new_parent
+    new_parent.append_child(std::move(removed));
+    EXPECT_EQ(child_raw->parent(), &new_parent);
+    EXPECT_EQ(child_raw->next_sibling(), nullptr);
+    EXPECT_EQ(child_raw->previous_sibling(), nullptr);
+    EXPECT_EQ(new_parent.child_count(), 1u);
+    EXPECT_EQ(new_parent.first_child(), child_raw);
+    EXPECT_EQ(new_parent.last_child(), child_raw);
+}
+
+// 8. Setting "id" attribute updates the id() shortcut accessor on Element
+TEST(DomElement, IdShortcutTracksAttributeChangesV122) {
+    Element elem("div");
+
+    // Initially empty
+    EXPECT_EQ(elem.id(), "");
+    EXPECT_FALSE(elem.has_attribute("id"));
+
+    // Set id via set_attribute
+    elem.set_attribute("id", "main-content");
+    EXPECT_EQ(elem.id(), "main-content");
+    EXPECT_TRUE(elem.has_attribute("id"));
+    EXPECT_EQ(elem.get_attribute("id").value(), "main-content");
+
+    // Change id
+    elem.set_attribute("id", "sidebar");
+    EXPECT_EQ(elem.id(), "sidebar");
+    // Attribute count should still be 1 (overwrite, not add)
+    size_t id_count = 0;
+    for (const auto& attr : elem.attributes()) {
+        if (attr.name == "id") id_count++;
+    }
+    EXPECT_EQ(id_count, 1u);
+
+    // Remove the id attribute
+    elem.remove_attribute("id");
+    EXPECT_EQ(elem.id(), "");
+    EXPECT_FALSE(elem.has_attribute("id"));
+}

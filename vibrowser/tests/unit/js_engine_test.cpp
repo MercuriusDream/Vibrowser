@@ -32458,3 +32458,315 @@ TEST(JsEngineTest, ErrorSubclassingCustomPropertiesV121) {
     EXPECT_EQ(result, "true|true|ValidationError|email|not-an-email|Invalid email format|true|true|true|RangeValidationError|0|120|age|age must be between 0 and 120|range");
 }
 
+// V122-1. Array.prototype.reduceRight with accumulator building a nested structure
+TEST(JsEngineTest, ArrayReduceRightNestedStructureV122) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var r = [];
+        // Build a right-folded nested object from an array of keys
+        var keys = ["a", "b", "c", "d"];
+        var nested = keys.reduceRight(function(acc, key) {
+            var obj = {};
+            obj[key] = acc;
+            return obj;
+        }, "leaf");
+        // Navigate the nested structure
+        r.push(nested.a.b.c.d);
+        r.push(typeof nested.a);
+        r.push(typeof nested.a.b.c.d);
+        // reduceRight on numbers: compute ((2^3)^1) via right fold
+        var nums = [2, 3, 1];
+        var rightPow = nums.reduceRight(function(acc, val) { return Math.pow(val, acc); });
+        r.push(rightPow);
+        // reduceRight with initial value on empty array returns initial
+        var empty = [];
+        r.push(empty.reduceRight(function(a, b) { return a + b; }, 42));
+        // Flatten nested arrays from right
+        var nested2 = [[1, 2], [3, 4], [5, 6]];
+        var flat = nested2.reduceRight(function(acc, arr) { return arr.concat(acc); }, []);
+        r.push(flat.join(","));
+        r.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "leaf|object|string|8|42|1,2,3,4,5,6");
+}
+
+// V122-2. Property descriptors: defineProperty with getters/setters and writable/configurable
+TEST(JsEngineTest, PropertyDescriptorsGetSetWritableV122) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var r = [];
+        var obj = {};
+        var backingStore = 10;
+        // Define a property with getter/setter
+        Object.defineProperty(obj, "value", {
+            get: function() { return backingStore * 2; },
+            set: function(v) { backingStore = v + 1; },
+            enumerable: true,
+            configurable: true
+        });
+        r.push(obj.value); // 10 * 2 = 20
+        obj.value = 5;     // backingStore = 5 + 1 = 6
+        r.push(obj.value); // 6 * 2 = 12
+        r.push(backingStore); // 6
+        // Define a non-writable, non-enumerable property
+        Object.defineProperty(obj, "secret", {
+            value: 99,
+            writable: false,
+            enumerable: false,
+            configurable: false
+        });
+        r.push(obj.secret);
+        // In non-strict mode, silent failure on write to non-writable
+        obj.secret = 123;
+        r.push(obj.secret); // still 99
+        // Check enumerability
+        r.push(Object.keys(obj).join(",")); // only "value" is enumerable
+        r.push("secret" in obj); // but it's still accessible
+        // getOwnPropertyDescriptor
+        var desc = Object.getOwnPropertyDescriptor(obj, "secret");
+        r.push(desc.writable);
+        r.push(desc.enumerable);
+        r.push(desc.configurable);
+        r.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "20|12|6|99|99|value|true|false|false|false");
+}
+
+// V122-3. String.raw, padStart/padEnd, and repeat combined with template-like formatting
+TEST(JsEngineTest, StringRawPadRepeatFormattingV122) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var r = [];
+        // String.raw preserves backslash sequences
+        var raw = String.raw`hello\nworld`;
+        r.push(raw.length); // 12 not 11, because \n is two chars
+        r.push(raw.indexOf("\\"));
+        // padStart for fixed-width number formatting
+        var nums = [1, 42, 100, 7];
+        var padded = nums.map(function(n) { return String(n).padStart(5, "0"); });
+        r.push(padded.join(","));
+        // padEnd for left-aligned table column
+        var labels = ["Name", "Age", "City"];
+        var aligned = labels.map(function(s) { return s.padEnd(8, "."); });
+        r.push(aligned.join("|"));
+        // repeat to build patterns
+        r.push("ab".repeat(4));
+        r.push("*".repeat(0));
+        // Combine: build a simple bar chart line
+        var bar = "Sales".padEnd(10) + "|" + "#".repeat(7) + "| 7";
+        r.push(bar);
+        r.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "12|5|00001,00042,00100,00007|Name....|Age.....|City....|abababab||Sales     |#######| 7");
+}
+
+// V122-4. Map chaining: grouping, transforming, and reconstructing with Map
+TEST(JsEngineTest, MapGroupingAndTransformChainsV122) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var r = [];
+        // Use a Map to group items by a computed key
+        var items = [
+            {name: "apple", type: "fruit", price: 1.5},
+            {name: "carrot", type: "veg", price: 0.8},
+            {name: "banana", type: "fruit", price: 1.2},
+            {name: "spinach", type: "veg", price: 2.0},
+            {name: "cherry", type: "fruit", price: 3.0}
+        ];
+        var grouped = new Map();
+        items.forEach(function(item) {
+            if (!grouped.has(item.type)) grouped.set(item.type, []);
+            grouped.get(item.type).push(item);
+        });
+        r.push(grouped.size);
+        r.push(grouped.get("fruit").length);
+        r.push(grouped.get("veg").length);
+        // Compute average price per group
+        grouped.forEach(function(list, key) {
+            var sum = list.reduce(function(s, i) { return s + i.price; }, 0);
+            r.push(key + ":" + (sum / list.length).toFixed(2));
+        });
+        // Map preserves insertion order
+        var order = [];
+        grouped.forEach(function(v, k) { order.push(k); });
+        r.push(order.join(","));
+        // Map with non-string keys
+        var m = new Map();
+        var keyObj = {id: 1};
+        m.set(keyObj, "found");
+        r.push(m.get(keyObj));
+        r.push(m.has({id: 1})); // different reference, should be false
+        r.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "2|3|2|fruit:1.90|veg:1.40|fruit,veg|found|false");
+}
+
+// V122-5. Recursive descent arithmetic expression parser written in JS
+TEST(JsEngineTest, RecursiveDescentExpressionParserV122) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var r = [];
+        // Minimal recursive descent parser for +, -, *, / with parentheses
+        function parse(expr) {
+            var pos = 0;
+            function skip() { while (pos < expr.length && expr[pos] === " ") pos++; }
+            function parseNum() {
+                skip();
+                var start = pos;
+                if (expr[pos] === "(") {
+                    pos++;
+                    var val = parseAdd();
+                    pos++; // skip ')'
+                    return val;
+                }
+                while (pos < expr.length && (expr[pos] >= "0" && expr[pos] <= "9" || expr[pos] === ".")) pos++;
+                return parseFloat(expr.substring(start, pos));
+            }
+            function parseMul() {
+                var left = parseNum();
+                skip();
+                while (pos < expr.length && (expr[pos] === "*" || expr[pos] === "/")) {
+                    var op = expr[pos]; pos++; skip();
+                    var right = parseNum();
+                    left = op === "*" ? left * right : left / right;
+                    skip();
+                }
+                return left;
+            }
+            function parseAdd() {
+                var left = parseMul();
+                skip();
+                while (pos < expr.length && (expr[pos] === "+" || expr[pos] === "-")) {
+                    var op = expr[pos]; pos++; skip();
+                    var right = parseMul();
+                    left = op === "+" ? left + right : left - right;
+                    skip();
+                }
+                return left;
+            }
+            return parseAdd();
+        }
+        r.push(parse("3 + 4 * 2"));       // 11
+        r.push(parse("(3 + 4) * 2"));     // 14
+        r.push(parse("10 / 2 + 3"));      // 8
+        r.push(parse("100 - 20 * 3"));    // 40
+        r.push(parse("(2 + 3) * (4 + 1)")); // 25
+        r.join("|");
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "11|14|8|40|25");
+}
+
+// V122-6. Symbol.toPrimitive controls coercion in arithmetic and string contexts
+TEST(JsEngineTest, SymbolToPrimitiveCoercionControlV122) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var r = [];
+        // Object with Symbol.toPrimitive that adapts to hint
+        var temp = {
+            celsius: 100
+        };
+        temp[Symbol.toPrimitive] = function(hint) {
+            if (hint === "number") return this.celsius;
+            if (hint === "string") return this.celsius + "C";
+            return this.celsius; // default
+        };
+        r.push(+temp);             // number hint -> 100
+        r.push(String(temp));      // string hint -> "100C"
+        r.push(temp + 0);          // default hint -> 100
+        r.push(temp * 2);          // number hint -> 200
+        // Object with only valueOf
+        var counter = { count: 7, valueOf: function() { return this.count; } };
+        r.push(counter + 3);       // 10
+        r.push(counter * 2);       // 14
+        // Object with only toString
+        var label = { toString: function() { return "hello"; } };
+        r.push(String(label));     // "hello"
+        r.push(`prefix-${label}`); // template uses toString
+        r.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "100|100C|100|200|10|14|hello|prefix-hello");
+}
+
+// V122-7. Array.from with mapFn, iterables, and array-like objects
+TEST(JsEngineTest, ArrayFromMapFnIterableArrayLikeV122) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var r = [];
+        // Array.from with a map function (generates sequence)
+        var squares = Array.from({length: 5}, function(_, i) { return i * i; });
+        r.push(squares.join(","));
+        // Array.from a Set (removes duplicates, maintains order)
+        var unique = Array.from(new Set([3, 1, 4, 1, 5, 9, 2, 6, 5, 3]));
+        r.push(unique.join(","));
+        // Array.from a Map (produces [key, value] pairs)
+        var m = new Map();
+        m.set("x", 10);
+        m.set("y", 20);
+        var pairs = Array.from(m);
+        r.push(pairs.map(function(p) { return p[0] + "=" + p[1]; }).join(","));
+        // Array.from a string (splits into characters)
+        var chars = Array.from("hello");
+        r.push(chars.length);
+        r.push(chars.reverse().join(""));
+        // Array.from an array-like with mapFn
+        var doubled = Array.from({0: 5, 1: 10, 2: 15, length: 3}, function(v) { return v * 2; });
+        r.push(doubled.join(","));
+        // Array.from a generator
+        function* range(start, end) {
+            for (var i = start; i < end; i++) yield i;
+        }
+        var rangeArr = Array.from(range(3, 8));
+        r.push(rangeArr.join(","));
+        r.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "0,1,4,9,16|3,1,4,5,9,2,6|x=10,y=20|5|olleh|10,20,30|3,4,5,6,7");
+}
+
+// V122-8. Reflect API: apply, construct, ownKeys, has, and property operations
+TEST(JsEngineTest, ReflectAPIApplyConstructOwnKeysV122) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var r = [];
+        // Reflect.apply: call function with specific this and args
+        function greet(greeting) { return greeting + ", " + this.name; }
+        r.push(Reflect.apply(greet, {name: "World"}, ["Hello"]));
+        // Reflect.apply with Math.max
+        r.push(Reflect.apply(Math.max, null, [3, 7, 2, 9, 1]));
+        // Reflect.construct: create instance without 'new' keyword syntax
+        function Point(x, y) { this.x = x; this.y = y; }
+        Point.prototype.toString = function() { return "(" + this.x + "," + this.y + ")"; };
+        var p = Reflect.construct(Point, [3, 4]);
+        r.push(p instanceof Point);
+        r.push(p.toString());
+        // Reflect.ownKeys: includes symbols and non-enumerable keys
+        var sym = Symbol("id");
+        var obj = {a: 1, b: 2};
+        obj[sym] = "secret";
+        Object.defineProperty(obj, "hidden", {value: 3, enumerable: false});
+        var keys = Reflect.ownKeys(obj);
+        r.push(keys.length); // a, b, hidden, Symbol(id)
+        // Reflect.has: equivalent to 'in' operator
+        r.push(Reflect.has(obj, "a"));
+        r.push(Reflect.has(obj, "z"));
+        r.push(Reflect.has(obj, "hidden"));
+        // Reflect.defineProperty returns boolean
+        var ok = Reflect.defineProperty(obj, "c", {value: 42, writable: true});
+        r.push(ok);
+        r.push(obj.c);
+        // Reflect.deleteProperty
+        r.push(Reflect.deleteProperty(obj, "b"));
+        r.push(Reflect.has(obj, "b"));
+        r.join("|");
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    std::string expected_v122_8 = "Hello, World|9|true|(3,4)|4|true|false|true|true|42|true|false";
+    EXPECT_EQ(result, expected_v122_8);
+}
+

@@ -22700,3 +22700,279 @@ TEST(LayoutEngineTest, FlexRowSkipsDisplayNoneChildPositioningV121) {
     EXPECT_FLOAT_EQ(root->children[0]->geometry.x, 0.0f);
     EXPECT_FLOAT_EQ(root->children[2]->geometry.x, 300.0f);
 }
+
+// V122-1: Flex row with mixed grow/shrink — one item grows, another shrinks, third fixed
+TEST(LayoutEngineTest, FlexRowMixedGrowShrinkFixedV122) {
+    auto root = make_flex("div");
+    root->specified_width = 500.0f;
+    root->specified_height = 100.0f;
+    root->flex_direction = 0; // row
+
+    // c1: basis 200, grow 2, shrink 0 — grabs most extra space
+    auto c1 = make_block("div");
+    c1->flex_basis = 200.0f;
+    c1->flex_grow = 2.0f;
+    c1->flex_shrink = 0.0f;
+    c1->specified_height = 100.0f;
+    root->append_child(std::move(c1));
+
+    // c2: basis 100, grow 1, shrink 0 — grabs rest of extra space
+    auto c2 = make_block("div");
+    c2->flex_basis = 100.0f;
+    c2->flex_grow = 1.0f;
+    c2->flex_shrink = 0.0f;
+    c2->specified_height = 100.0f;
+    root->append_child(std::move(c2));
+
+    // c3: basis 100, grow 0, shrink 1 — stays at basis (no overflow)
+    auto c3 = make_block("div");
+    c3->flex_basis = 100.0f;
+    c3->flex_grow = 0.0f;
+    c3->flex_shrink = 1.0f;
+    c3->specified_height = 100.0f;
+    root->append_child(std::move(c3));
+
+    LayoutEngine engine;
+    engine.compute(*root, 500.0f, 400.0f);
+
+    // Free space = 500 - (200+100+100) = 100. Grow total = 3.
+    // c1 gets 200 + 100*(2/3) = 266.67
+    // c2 gets 100 + 100*(1/3) = 133.33
+    // c3 stays at 100 (no grow)
+    EXPECT_NEAR(root->children[0]->geometry.width, 266.67f, 1.0f);
+    EXPECT_NEAR(root->children[1]->geometry.width, 133.33f, 1.0f);
+    EXPECT_FLOAT_EQ(root->children[2]->geometry.width, 100.0f);
+}
+
+// V122-2: Block with border-box flag — geometry.width preserves specified value, border_box_width adds layers
+TEST(LayoutEngineTest, BorderBoxSizingSubtractsPaddingAndBorderV122) {
+    auto root = make_block("div");
+    root->specified_width = 400.0f;
+    root->specified_height = 200.0f;
+
+    auto child = make_block("div");
+    child->border_box = true;
+    child->specified_width = 300.0f;
+    child->specified_height = 150.0f;
+    child->geometry.padding.left = 20.0f;
+    child->geometry.padding.right = 20.0f;
+    child->geometry.padding.top = 10.0f;
+    child->geometry.padding.bottom = 10.0f;
+    child->geometry.border.left = 5.0f;
+    child->geometry.border.right = 5.0f;
+    child->geometry.border.top = 5.0f;
+    child->geometry.border.bottom = 5.0f;
+    auto* child_ptr = child.get();
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 400.0f, 600.0f);
+
+    // Engine convention: geometry.width = specified_width = 300
+    EXPECT_FLOAT_EQ(child_ptr->geometry.width, 300.0f);
+    // border_box_width = border.left + padding.left + width + padding.right + border.right
+    //                  = 5 + 20 + 300 + 20 + 5 = 350
+    EXPECT_FLOAT_EQ(child_ptr->geometry.border_box_width(), 350.0f);
+    // geometry.height = specified_height = 150
+    EXPECT_FLOAT_EQ(child_ptr->geometry.height, 150.0f);
+    // border_box_height = 5 + 10 + 150 + 10 + 5 = 180
+    EXPECT_FLOAT_EQ(child_ptr->geometry.border_box_height(), 180.0f);
+    // The border_box flag itself should be set
+    EXPECT_TRUE(child_ptr->border_box);
+}
+
+// V122-3: Flex column with row-gap — vertical spacing between children with varying heights
+TEST(LayoutEngineTest, FlexColumnWithGapSpacesChildrenVerticallyV122) {
+    auto root = make_flex("div");
+    root->flex_direction = 2; // column
+    root->gap = 15.0f;
+
+    auto c1 = make_block("div");
+    c1->specified_width = 120.0f;
+    c1->specified_height = 50.0f;
+    root->append_child(std::move(c1));
+
+    auto c2 = make_block("div");
+    c2->specified_width = 120.0f;
+    c2->specified_height = 70.0f;
+    root->append_child(std::move(c2));
+
+    auto c3 = make_block("div");
+    c3->specified_width = 120.0f;
+    c3->specified_height = 40.0f;
+    root->append_child(std::move(c3));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // c1 at y=0, c2 at y=50+15=65, c3 at y=65+70+15=150
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.y, 0.0f);
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.y, 65.0f);
+    EXPECT_FLOAT_EQ(root->children[2]->geometry.y, 150.0f);
+    // Container height = 50+15+70+15+40 = 190
+    EXPECT_FLOAT_EQ(root->geometry.height, 190.0f);
+}
+
+// V122-4: Nested blocks — parent padding reduces content area for children
+TEST(LayoutEngineTest, NestedBlockParentPaddingConstrainsChildWidthV122) {
+    auto root = make_block("div");
+    root->specified_width = 600.0f;
+
+    auto parent = make_block("div");
+    parent->specified_width = 500.0f;
+    parent->geometry.padding.left = 40.0f;
+    parent->geometry.padding.right = 40.0f;
+    parent->geometry.padding.top = 20.0f;
+    parent->geometry.padding.bottom = 20.0f;
+    auto* parent_ptr = parent.get();
+
+    // Child has no specified width — should fill parent's content area
+    auto child = make_block("div");
+    child->specified_height = 50.0f;
+    auto* child_ptr = child.get();
+    parent->append_child(std::move(child));
+    root->append_child(std::move(parent));
+
+    LayoutEngine engine;
+    engine.compute(*root, 600.0f, 600.0f);
+
+    // Parent content width = 500 (specified)
+    EXPECT_FLOAT_EQ(parent_ptr->geometry.width, 500.0f);
+    // Child should fill parent content area (500 - padding 80 = 420)
+    EXPECT_FLOAT_EQ(child_ptr->geometry.width, 420.0f);
+    // Child y offset should be at 0 relative to parent content area
+    EXPECT_FLOAT_EQ(child_ptr->geometry.y, 0.0f);
+}
+
+// V122-5: Relative positioning offsets element without affecting siblings
+TEST(LayoutEngineTest, RelativePositionDoesNotAffectSiblingLayoutV122) {
+    auto root = make_block("div");
+    root->specified_width = 400.0f;
+
+    auto c1 = make_block("div");
+    c1->specified_height = 40.0f;
+    c1->specified_width = 400.0f;
+    root->append_child(std::move(c1));
+
+    // c2 is relatively positioned — shifted down and right
+    auto c2 = make_block("div");
+    c2->specified_height = 50.0f;
+    c2->specified_width = 400.0f;
+    c2->position_type = 1; // relative
+    c2->pos_top = 30.0f;
+    c2->pos_top_set = true;
+    c2->pos_left = 25.0f;
+    c2->pos_left_set = true;
+    root->append_child(std::move(c2));
+
+    // c3 should be positioned as if c2 were in its normal position
+    auto c3 = make_block("div");
+    c3->specified_height = 35.0f;
+    c3->specified_width = 400.0f;
+    root->append_child(std::move(c3));
+
+    LayoutEngine engine;
+    engine.compute(*root, 400.0f, 600.0f);
+
+    // c1 at y=0
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.y, 0.0f);
+    // c2 normal flow y=40, but shifted by +30 and x by +25
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.y, 70.0f);  // 40 + 30
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.x, 25.0f);  // 0 + 25
+    // c3 should be at y=40+50=90, unaffected by c2's relative offset
+    EXPECT_FLOAT_EQ(root->children[2]->geometry.y, 90.0f);
+}
+
+// V122-6: Flex row with align_self center — child with specified height is vertically centered
+TEST(LayoutEngineTest, FlexRowAlignSelfCenterOverridesStretchV122) {
+    auto root = make_flex("div");
+    root->specified_width = 400.0f;
+    root->specified_height = 200.0f;
+    root->flex_direction = 0; // row
+    root->align_items = 0;    // flex-start
+
+    // c1: align_self=center with specified height of 60
+    auto c1 = make_block("div");
+    c1->specified_width = 100.0f;
+    c1->specified_height = 60.0f;
+    c1->align_self = 2; // center
+    root->append_child(std::move(c1));
+
+    // c2: align_self=flex-end with specified height of 40
+    auto c2 = make_block("div");
+    c2->specified_width = 100.0f;
+    c2->specified_height = 40.0f;
+    c2->align_self = 1; // flex-end
+    root->append_child(std::move(c2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 400.0f, 600.0f);
+
+    // c1 should be vertically centered: (200 - 60) / 2 = 70
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.height, 60.0f);
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.y, 70.0f);
+    // c2 should be at the bottom: 200 - 40 = 160
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.height, 40.0f);
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.y, 160.0f);
+}
+
+// V122-7: min_width overrides specified_width when specified is smaller
+TEST(LayoutEngineTest, MinWidthOverridesSmallSpecifiedWidthV122) {
+    auto root = make_block("div");
+    root->specified_width = 800.0f;
+
+    auto child = make_block("div");
+    child->specified_width = 100.0f;
+    child->min_width = 250.0f;
+    child->specified_height = 40.0f;
+    auto* child_ptr = child.get();
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // min_width=250 should clamp the 100px specified_width up to 250
+    EXPECT_GE(child_ptr->geometry.width, 250.0f);
+    // And it should not exceed container width
+    EXPECT_LE(child_ptr->geometry.width, 800.0f);
+}
+
+// V122-8: Margin box width/height accounts for all four box model layers
+TEST(LayoutEngineTest, MarginBoxDimensionsIncludeAllFourLayersV122) {
+    auto root = make_block("div");
+    root->specified_width = 600.0f;
+
+    auto child = make_block("div");
+    child->specified_width = 200.0f;
+    child->specified_height = 100.0f;
+    child->geometry.margin.top = 10.0f;
+    child->geometry.margin.bottom = 15.0f;
+    child->geometry.margin.left = 12.0f;
+    child->geometry.margin.right = 8.0f;
+    child->geometry.border.top = 3.0f;
+    child->geometry.border.bottom = 3.0f;
+    child->geometry.border.left = 2.0f;
+    child->geometry.border.right = 2.0f;
+    child->geometry.padding.top = 7.0f;
+    child->geometry.padding.bottom = 5.0f;
+    child->geometry.padding.left = 6.0f;
+    child->geometry.padding.right = 4.0f;
+    auto* child_ptr = child.get();
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 600.0f, 600.0f);
+
+    // margin_box_width = margin.left + border.left + padding.left + width + padding.right + border.right + margin.right
+    //                  = 12 + 2 + 6 + 200 + 4 + 2 + 8 = 234
+    EXPECT_FLOAT_EQ(child_ptr->geometry.margin_box_width(), 234.0f);
+    // margin_box_height = margin.top + border.top + padding.top + height + padding.bottom + border.bottom + margin.bottom
+    //                   = 10 + 3 + 7 + 100 + 5 + 3 + 15 = 143
+    EXPECT_FLOAT_EQ(child_ptr->geometry.margin_box_height(), 143.0f);
+    // border_box_width = border.left + padding.left + width + padding.right + border.right
+    //                  = 2 + 6 + 200 + 4 + 2 = 214
+    EXPECT_FLOAT_EQ(child_ptr->geometry.border_box_width(), 214.0f);
+    // border_box_height = border.top + padding.top + height + padding.bottom + border.bottom
+    //                   = 3 + 7 + 100 + 5 + 3 = 118
+    EXPECT_FLOAT_EQ(child_ptr->geometry.border_box_height(), 118.0f);
+}

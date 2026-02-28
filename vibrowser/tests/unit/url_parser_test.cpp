@@ -13153,3 +13153,111 @@ TEST(UrlParserTest, CredentialsWithSpecialCharsDoubleEncodedInSerializeV121) {
     EXPECT_EQ(result->path, "/manage");
     EXPECT_EQ(result->serialize(), "http://admin%253Aroot:p%252Fword@internal.example.com:8080/manage");
 }
+
+TEST(UrlParserTest, QueryWithFragmentLikeCharDoubleEncodedV122) {
+    // A query parameter whose value contains a pre-encoded # (%23) gets double-encoded
+    auto result = parse("https://search.example.com/find?tag=C%23&lang=en#results");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "search.example.com");
+    EXPECT_EQ(result->path, "/find");
+    EXPECT_EQ(result->query, "tag=C%2523&lang=en");
+    EXPECT_EQ(result->fragment, "results");
+    EXPECT_TRUE(result->is_special());
+}
+
+TEST(UrlParserTest, PasswordOnlyNoUsernameInUserinfoV122) {
+    // URL with colon-prefixed password but empty username: "http://:secret@host"
+    auto result = parse("http://:supersecret@private.example.com/vault");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->username, "");
+    EXPECT_EQ(result->password, "supersecret");
+    EXPECT_EQ(result->host, "private.example.com");
+    EXPECT_EQ(result->path, "/vault");
+    EXPECT_EQ(result->serialize(), "http://:supersecret@private.example.com/vault");
+}
+
+TEST(UrlParserTest, DotSegmentResolutionDoesNotEscapeRootV122) {
+    // Excessive parent traversals (../../..) clamp to root
+    auto result = parse("https://example.com/a/b/c/../../../../../../../deep");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/deep");
+}
+
+TEST(UrlParserTest, PortBoundaryValuesZeroAndMaxV122) {
+    // Port 0 is valid but unusual; port 65535 is the maximum valid port
+    auto zero_port = parse("http://example.com:0/low");
+    ASSERT_TRUE(zero_port.has_value());
+    EXPECT_EQ(zero_port->port, 0);
+    EXPECT_EQ(zero_port->origin(), "http://example.com:0");
+
+    auto max_port = parse("http://example.com:65535/high");
+    ASSERT_TRUE(max_port.has_value());
+    EXPECT_EQ(max_port->port, 65535);
+    EXPECT_EQ(max_port->serialize(), "http://example.com:65535/high");
+}
+
+TEST(UrlParserTest, FtpWithCredentialsAndPathDoubleEncodedV122) {
+    // FTP URL with username containing %40 (@) gets double-encoded
+    auto result = parse("ftp://user%40corp:pass@ftp.example.com/pub/release%2Fnotes.txt");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "ftp");
+    EXPECT_EQ(result->username, "user%2540corp");
+    EXPECT_EQ(result->password, "pass");
+    EXPECT_EQ(result->host, "ftp.example.com");
+    EXPECT_EQ(result->path, "/pub/release%252Fnotes.txt");
+    EXPECT_TRUE(result->is_special());
+    EXPECT_EQ(result->port, std::nullopt);
+}
+
+TEST(UrlParserTest, HttpsOriginVsWssOriginForSameHostV122) {
+    // HTTPS and WSS on the same host:port should produce different origins (different scheme)
+    auto https_url = parse("https://realtime.example.com/api");
+    auto wss_url = parse("wss://realtime.example.com/api");
+    ASSERT_TRUE(https_url.has_value());
+    ASSERT_TRUE(wss_url.has_value());
+    EXPECT_EQ(https_url->origin(), "https://realtime.example.com");
+    EXPECT_EQ(wss_url->origin(), "wss://realtime.example.com");
+    EXPECT_NE(https_url->origin(), wss_url->origin());
+    // Both are special schemes
+    EXPECT_TRUE(https_url->is_special());
+    EXPECT_TRUE(wss_url->is_special());
+}
+
+TEST(UrlParserTest, MultipleAtSignsOnlyLastDelimitsHostV122) {
+    // When multiple @ signs appear, everything before the last @ is userinfo
+    auto result = parse("http://first@second@actual-host.example.com/path");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->host, "actual-host.example.com");
+    // The userinfo portion contains first@second (with @ percent-encoded)
+    EXPECT_EQ(result->path, "/path");
+    EXPECT_TRUE(result->is_special());
+}
+
+TEST(UrlParserTest, SerializeRoundTripsForComplexUrlWithAllComponentsV122) {
+    // Full URL with every component: scheme, user, pass, host, port, path, query, fragment
+    auto result = parse("http://admin:hunter2@db.example.com:3306/schema/tables?format=json&limit=100#row-5");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->username, "admin");
+    EXPECT_EQ(result->password, "hunter2");
+    EXPECT_EQ(result->host, "db.example.com");
+    EXPECT_EQ(result->port, 3306);
+    EXPECT_EQ(result->path, "/schema/tables");
+    EXPECT_EQ(result->query, "format=json&limit=100");
+    EXPECT_EQ(result->fragment, "row-5");
+    // Serialize and re-parse must yield identical fields
+    std::string serialized = result->serialize();
+    auto reparsed = parse(serialized);
+    ASSERT_TRUE(reparsed.has_value());
+    EXPECT_EQ(reparsed->scheme, result->scheme);
+    EXPECT_EQ(reparsed->username, result->username);
+    EXPECT_EQ(reparsed->password, result->password);
+    EXPECT_EQ(reparsed->host, result->host);
+    EXPECT_EQ(reparsed->port, result->port);
+    EXPECT_EQ(reparsed->path, result->path);
+    EXPECT_EQ(reparsed->query, result->query);
+    EXPECT_EQ(reparsed->fragment, result->fragment);
+}
