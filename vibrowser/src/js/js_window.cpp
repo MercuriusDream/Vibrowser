@@ -3389,6 +3389,10 @@ void install_window_bindings(JSContext* ctx, const std::string& url,
         }
         JS_FreeValue(ctx, pm_ret);
     }
+
+    // ---- window.localStorage and window.sessionStorage ----
+    ParsedURL parsed_url = parse_url(url);
+    install_web_storage_bindings(ctx, parsed_url.origin);
 }
 
 } // namespace clever::js
