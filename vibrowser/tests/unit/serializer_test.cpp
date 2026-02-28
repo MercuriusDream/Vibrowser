@@ -21904,3 +21904,43 @@ TEST(SerializerTest, SerializerV174_3_TwentyStringsRoundTrip) {
     }
     EXPECT_FALSE(d.has_remaining());
 }
+
+// ------------------------------------------------------------------
+// V175 Serializer tests
+// ------------------------------------------------------------------
+
+TEST(SerializerTest, SerializerV175_1_F64LargeValueRoundTrip) {
+    Serializer s;
+    s.write_f64(1.0e308);
+
+    Deserializer d(s.data());
+    double val = d.read_f64();
+    EXPECT_DOUBLE_EQ(val, 1.0e308);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, SerializerV175_2_I64PositiveOneRoundTrip) {
+    Serializer s;
+    s.write_i64(1LL);
+
+    Deserializer d(s.data());
+    int64_t val = d.read_i64();
+    EXPECT_EQ(val, 1LL);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, SerializerV175_3_BytesWithPatternRoundTrip) {
+    std::vector<uint8_t> pattern(128);
+    for (size_t i = 0; i < 128; ++i) {
+        pattern[i] = (i % 2 == 0) ? 0xAA : 0x55;
+    }
+
+    Serializer s;
+    s.write_bytes(pattern.data(), pattern.size());
+
+    Deserializer d(s.data());
+    auto result = d.read_bytes();
+    EXPECT_EQ(result.size(), 128u);
+    EXPECT_EQ(result, pattern);
+    EXPECT_FALSE(d.has_remaining());
+}

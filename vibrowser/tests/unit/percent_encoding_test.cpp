@@ -2026,3 +2026,30 @@ TEST(IsURLCodePoint, SlashValidV174) {
     // '/' (U+002F) is a valid URL code point
     EXPECT_TRUE(is_url_code_point(U'/'));
 }
+
+// =============================================================================
+// Cycle V175 — Percent encoding tests
+// =============================================================================
+TEST(PercentEncoding, DoubleQuoteEncodedV175) {
+    // '"' (U+0022) should be percent-encoded as %22
+    EXPECT_EQ(percent_encode("\""), "%22");
+    EXPECT_EQ(percent_encode("a\"b"), "a%22b");
+    EXPECT_EQ(percent_encode("\"\""), "%22%22");
+}
+
+TEST(PercentDecoding, EmptyStringDecodesEmptyV175) {
+    // Decoding an empty string should produce an empty string
+    EXPECT_EQ(percent_decode(""), "");
+}
+
+TEST(PercentEncoding, CaretEncodedV175) {
+    // '^' (U+005E) should be percent-encoded as %5E
+    EXPECT_EQ(percent_encode("^"), "%5E");
+    EXPECT_EQ(percent_encode("a^b"), "a%5Eb");
+    EXPECT_EQ(percent_encode("^^"), "%5E%5E");
+}
+
+TEST(IsURLCodePoint, AtSignValidV175) {
+    // '@' (U+0040) is a sub-delimiter and a valid URL code point
+    EXPECT_TRUE(is_url_code_point(U'@'));
+}

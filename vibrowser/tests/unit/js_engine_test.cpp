@@ -39118,3 +39118,108 @@ TEST(JSEngine, JsV174_8) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "42");
 }
+
+// V175_1: Array.findIndex returns index of first match
+TEST(JSEngine, JsV175_1) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        [10, 20, 30, 40].findIndex(function(x) { return x > 25; }).toString();
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "2");
+}
+
+// V175_2: String.replaceAll replaces all occurrences
+TEST(JSEngine, JsV175_2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        'aabbcc'.replaceAll('b', 'x');
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "aaxxcc");
+}
+
+// V175_3: Object.getOwnPropertyNames returns all own props
+TEST(JSEngine, JsV175_3) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var obj = { a: 1, b: 2, c: 3 };
+        Object.getOwnPropertyNames(obj).join(',');
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "a,b,c");
+}
+
+// V175_4: Array.at with positive and negative index
+TEST(JSEngine, JsV175_4) {
+    clever::js::JSEngine engine;
+    auto r1 = engine.evaluate(R"JS(
+        [10, 20, 30].at(0).toString();
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(r1, "10");
+
+    auto r2 = engine.evaluate(R"JS(
+        [10, 20, 30].at(-1).toString();
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(r2, "30");
+}
+
+// V175_5: Number.isFinite checks
+TEST(JSEngine, JsV175_5) {
+    clever::js::JSEngine engine;
+    auto r1 = engine.evaluate(R"JS(
+        Number.isFinite(42).toString();
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(r1, "true");
+
+    auto r2 = engine.evaluate(R"JS(
+        Number.isFinite(Infinity).toString();
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(r2, "false");
+}
+
+// V175_6: class extends inheritance
+TEST(JSEngine, JsV175_6) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        class Animal { constructor(name) { this.name = name; } speak() { return this.name; } }
+        class Dog extends Animal { bark() { return this.name + ' barks'; } }
+        var d = new Dog('Rex');
+        d.bark();
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "Rex barks");
+}
+
+// V175_7: for...in loop over object keys
+TEST(JSEngine, JsV175_7) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var obj = { x: 1, y: 2, z: 3 };
+        var keys = [];
+        for (var k in obj) { keys.push(k); }
+        keys.join(',');
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "x,y,z");
+}
+
+// V175_8: RegExp.test returns boolean
+TEST(JSEngine, JsV175_8) {
+    clever::js::JSEngine engine;
+    auto r1 = engine.evaluate(R"JS(
+        /hello/.test('hello world').toString();
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(r1, "true");
+
+    auto r2 = engine.evaluate(R"JS(
+        /xyz/.test('hello world').toString();
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(r2, "false");
+}

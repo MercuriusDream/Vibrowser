@@ -25262,3 +25262,90 @@ TEST(DomNode, NodeTypeCommentV174) {
     Comment c("x");
     EXPECT_EQ(c.node_type(), NodeType::Comment);
 }
+
+// ---------------------------------------------------------------------------
+// Round 175 — DOM tests
+// ---------------------------------------------------------------------------
+
+// 1. Remove last child updates last_child pointer
+TEST(DomNode, RemoveLastChildUpdatesLastChildPointerV175) {
+    auto parent = std::make_unique<Element>("div");
+    auto a = std::make_unique<Element>("a");
+    auto b = std::make_unique<Element>("b");
+    auto* a_ptr = a.get();
+    auto* b_ptr = b.get();
+    parent->append_child(std::move(a));
+    parent->append_child(std::move(b));
+    EXPECT_EQ(parent->last_child(), b_ptr);
+    parent->remove_child(*b_ptr);
+    EXPECT_EQ(parent->last_child(), a_ptr);
+}
+
+// 2. Set multiple attributes with different keys
+TEST(DomElement, SetMultipleAttributesDifferentKeysV175) {
+    Element elem("div");
+    elem.set_attribute("class", "main");
+    elem.set_attribute("id", "root");
+    elem.set_attribute("data-x", "42");
+    EXPECT_EQ(elem.get_attribute("class").value(), "main");
+    EXPECT_EQ(elem.get_attribute("id").value(), "root");
+    EXPECT_EQ(elem.get_attribute("data-x").value(), "42");
+    EXPECT_EQ(elem.attributes().size(), 3u);
+}
+
+// 3. Create comment type is Comment
+TEST(DomDocument, CreateCommentTypeIsCommentV175) {
+    Document doc;
+    auto comment = doc.create_comment("hello");
+    EXPECT_EQ(comment->node_type(), NodeType::Comment);
+}
+
+// 4. Event type preserved for custom event
+TEST(DomEvent, TypePreservedForCustomEventV175) {
+    Event event("my-custom-event");
+    EXPECT_EQ(event.type(), "my-custom-event");
+}
+
+// 5. First and last child differ when two children
+TEST(DomNode, FirstAndLastChildSameWhenTwoChildrenV175) {
+    auto parent = std::make_unique<Element>("ul");
+    auto a = std::make_unique<Element>("li");
+    auto b = std::make_unique<Element>("li");
+    auto* a_ptr = a.get();
+    auto* b_ptr = b.get();
+    parent->append_child(std::move(a));
+    parent->append_child(std::move(b));
+    EXPECT_NE(parent->first_child(), parent->last_child());
+    EXPECT_EQ(parent->first_child(), a_ptr);
+    EXPECT_EQ(parent->last_child(), b_ptr);
+}
+
+// 6. ClassList add then contains
+TEST(DomElement, ClassListAddThenContainsV175) {
+    Element elem("div");
+    elem.class_list().add("foo");
+    EXPECT_TRUE(elem.class_list().contains("foo"));
+}
+
+// 7. DirtyFlag Style then clear
+TEST(DomNode, DirtyFlagStyleThenClearV175) {
+    Element elem("span");
+    elem.mark_dirty(DirtyFlags::Style);
+    EXPECT_NE(elem.dirty_flags() & DirtyFlags::Style, DirtyFlags::None);
+    elem.clear_dirty();
+    EXPECT_EQ(elem.dirty_flags(), DirtyFlags::None);
+}
+
+// 8. TextContent with mixed children (Element with Text+Element+Text)
+TEST(DomNode, TextContentWithMixedChildrenV175) {
+    auto parent = std::make_unique<Element>("p");
+    auto t1 = std::make_unique<Text>("Hello ");
+    auto child_elem = std::make_unique<Element>("b");
+    auto inner_text = std::make_unique<Text>("bold");
+    child_elem->append_child(std::move(inner_text));
+    auto t2 = std::make_unique<Text>(" world");
+    parent->append_child(std::move(t1));
+    parent->append_child(std::move(child_elem));
+    parent->append_child(std::move(t2));
+    EXPECT_EQ(parent->text_content(), "Hello bold world");
+}

@@ -27159,3 +27159,92 @@ TEST(HtmlParserTest, HtmlV174_8) {
     EXPECT_EQ(track->attributes[1].name, "kind");
     EXPECT_EQ(track->attributes[1].value, "subtitles");
 }
+
+// ---------------------------------------------------------------------------
+// Cycle V175 — em, strong, span with class, div with id, p with text children,
+//              a with two attrs, img self-closing, hr element
+// ---------------------------------------------------------------------------
+
+TEST(HtmlParserTest, HtmlV175_1) {
+    auto doc = clever::html::parse("<em>emphasized</em>");
+    ASSERT_NE(doc, nullptr);
+    auto* em = doc->find_element("em");
+    ASSERT_NE(em, nullptr);
+    EXPECT_EQ(em->tag_name, "em");
+    EXPECT_EQ(em->text_content(), "emphasized");
+}
+
+TEST(HtmlParserTest, HtmlV175_2) {
+    auto doc = clever::html::parse("<strong>bold text</strong>");
+    ASSERT_NE(doc, nullptr);
+    auto* strong = doc->find_element("strong");
+    ASSERT_NE(strong, nullptr);
+    EXPECT_EQ(strong->tag_name, "strong");
+    EXPECT_EQ(strong->text_content(), "bold text");
+}
+
+TEST(HtmlParserTest, HtmlV175_3) {
+    auto doc = clever::html::parse("<span class=\"highlight\">hi</span>");
+    ASSERT_NE(doc, nullptr);
+    auto* span = doc->find_element("span");
+    ASSERT_NE(span, nullptr);
+    EXPECT_EQ(span->tag_name, "span");
+    ASSERT_GE(span->attributes.size(), 1u);
+    EXPECT_EQ(span->attributes[0].name, "class");
+    EXPECT_EQ(span->attributes[0].value, "highlight");
+    EXPECT_EQ(span->text_content(), "hi");
+}
+
+TEST(HtmlParserTest, HtmlV175_4) {
+    auto doc = clever::html::parse("<div id=\"main\">content</div>");
+    ASSERT_NE(doc, nullptr);
+    auto* div = doc->find_element("div");
+    ASSERT_NE(div, nullptr);
+    EXPECT_EQ(div->tag_name, "div");
+    ASSERT_GE(div->attributes.size(), 1u);
+    EXPECT_EQ(div->attributes[0].name, "id");
+    EXPECT_EQ(div->attributes[0].value, "main");
+    EXPECT_EQ(div->text_content(), "content");
+}
+
+TEST(HtmlParserTest, HtmlV175_5) {
+    auto doc = clever::html::parse("<p>Hello <em>world</em> again</p>");
+    ASSERT_NE(doc, nullptr);
+    auto* p = doc->find_element("p");
+    ASSERT_NE(p, nullptr);
+    EXPECT_EQ(p->tag_name, "p");
+    EXPECT_GE(p->children.size(), 2u);
+    EXPECT_EQ(p->text_content(), "Hello world again");
+}
+
+TEST(HtmlParserTest, HtmlV175_6) {
+    auto doc = clever::html::parse("<a href=\"https://example.com\" target=\"_blank\">link</a>");
+    ASSERT_NE(doc, nullptr);
+    auto* a = doc->find_element("a");
+    ASSERT_NE(a, nullptr);
+    EXPECT_EQ(a->tag_name, "a");
+    ASSERT_GE(a->attributes.size(), 2u);
+    EXPECT_EQ(a->attributes[0].name, "href");
+    EXPECT_EQ(a->attributes[0].value, "https://example.com");
+    EXPECT_EQ(a->attributes[1].name, "target");
+    EXPECT_EQ(a->attributes[1].value, "_blank");
+    EXPECT_EQ(a->text_content(), "link");
+}
+
+TEST(HtmlParserTest, HtmlV175_7) {
+    auto doc = clever::html::parse("<body><img></body>");
+    ASSERT_NE(doc, nullptr);
+    auto* img = doc->find_element("img");
+    ASSERT_NE(img, nullptr);
+    EXPECT_EQ(img->tag_name, "img");
+    EXPECT_TRUE(img->children.empty());
+}
+
+TEST(HtmlParserTest, HtmlV175_8) {
+    auto doc = clever::html::parse("<body><hr></body>");
+    ASSERT_NE(doc, nullptr);
+    auto* hr = doc->find_element("hr");
+    ASSERT_NE(hr, nullptr);
+    EXPECT_EQ(hr->tag_name, "hr");
+    EXPECT_TRUE(hr->children.empty());
+}

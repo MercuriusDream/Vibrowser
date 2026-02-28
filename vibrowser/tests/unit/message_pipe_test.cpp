@@ -3309,3 +3309,54 @@ TEST(MessagePipeTest, MessagePipeV174_3_ReceiveReturnsInSendOrderV174) {
     auto r4 = b.receive();
     EXPECT_FALSE(r4.has_value());
 }
+
+// ------------------------------------------------------------------
+// V175 MessagePipe tests
+// ------------------------------------------------------------------
+
+TEST(MessagePipeTest, MessagePipeV175_1_OneKBPayloadV175) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    std::vector<uint8_t> payload(1024);
+    std::iota(payload.begin(), payload.end(), static_cast<uint8_t>(0));
+
+    ASSERT_TRUE(a.send(payload));
+    a.close();
+
+    auto result = b.receive();
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->size(), 1024u);
+    EXPECT_EQ(*result, payload);
+
+    auto end = b.receive();
+    EXPECT_FALSE(end.has_value());
+}
+
+TEST(MessagePipeTest, MessagePipeV175_2_TenSingleByteMessagesV175) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    for (uint8_t i = 0; i < 10; ++i) {
+        std::vector<uint8_t> msg = {i};
+        ASSERT_TRUE(a.send(msg));
+    }
+    a.close();
+
+    for (uint8_t i = 0; i < 10; ++i) {
+        auto result = b.receive();
+        ASSERT_TRUE(result.has_value());
+        EXPECT_EQ(result->size(), 1u);
+        EXPECT_EQ((*result)[0], i);
+    }
+
+    auto end = b.receive();
+    EXPECT_FALSE(end.has_value());
+}
+
+TEST(MessagePipeTest, MessagePipeV175_3_CloseAndVerifyNulloptV175) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    a.close();
+
+    auto result = b.receive();
+    EXPECT_FALSE(result.has_value());
+}

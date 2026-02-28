@@ -30471,3 +30471,200 @@ TEST(HttpClient, CookieJarSecureAndNonSecureSameNameV174) {
     EXPECT_NE(https_hdr.find("sec174=hidden"), std::string::npos)
         << "Secure cookie should appear over HTTPS, got: " << https_hdr;
 }
+
+// ===========================================================================
+// V175 Tests
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// 1. Request serialize GET with Cache-Control: no-cache
+// ---------------------------------------------------------------------------
+TEST(HttpClient, RequestSerializeGetWithCacheControlV175) {
+    Request req;
+    req.method = Method::GET;
+    req.host = "v175cache.example.com";
+    req.path = "/resource";
+    req.headers.set("Cache-Control", "no-cache");
+
+    auto bytes = req.serialize();
+    std::string raw(bytes.begin(), bytes.end());
+
+    EXPECT_NE(raw.find("GET /resource HTTP/1.1"), std::string::npos)
+        << "Request line missing, got: " << raw;
+    EXPECT_NE(raw.find("Host: v175cache.example.com"), std::string::npos)
+        << "Host header missing, got: " << raw;
+    EXPECT_NE(raw.find("Connection: close"), std::string::npos)
+        << "Connection header missing, got: " << raw;
+    // Custom headers are lowercase
+    EXPECT_NE(raw.find("cache-control: no-cache"), std::string::npos)
+        << "Cache-Control header should be lowercase, got: " << raw;
+}
+
+// ---------------------------------------------------------------------------
+// 2. Response parse 200 with ETag header preserved
+// ---------------------------------------------------------------------------
+TEST(HttpClient, ResponseParse200WithETagV175) {
+    std::string raw_str =
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Length: 11\r\n"
+        "ETag: \"v175abc\"\r\n"
+        "\r\n"
+        "hello-v175!";
+
+    std::vector<uint8_t> raw(raw_str.begin(), raw_str.end());
+    auto resp = Response::parse(raw);
+
+    ASSERT_TRUE(resp.has_value()) << "200 with ETag should parse successfully";
+    EXPECT_EQ(resp->status, 200u);
+    EXPECT_EQ(resp->status_text, "OK");
+    ASSERT_TRUE(resp->headers.has("ETag")) << "ETag header should be preserved";
+    EXPECT_EQ(resp->headers.get("ETag").value(), "\"v175abc\"");
+    EXPECT_EQ(resp->body_as_string(), "hello-v175!");
+}
+
+// ---------------------------------------------------------------------------
+// 3. ConnectionPool: release 2 to same host, acquire both
+// ---------------------------------------------------------------------------
+TEST(HttpClient, ConnectionPoolReleaseSameHostTwiceV175) {
+    ConnectionPool pool;
+
+    // Initially empty
+    EXPECT_EQ(pool.acquire("v175pool.example.com", 9000), -1);
+
+    // Release two different fds to the same host:port
+    pool.release("v175pool.example.com", 9000, 1751);
+    pool.release("v175pool.example.com", 9000, 1752);
+
+    // Acquire both back
+    int fd_a = pool.acquire("v175pool.example.com", 9000);
+    int fd_b = pool.acquire("v175pool.example.com", 9000);
+
+    // Both should be valid (non-negative) and distinct
+    EXPECT_NE(fd_a, -1) << "First acquire should return a valid fd";
+    EXPECT_NE(fd_b, -1) << "Second acquire should return a valid fd";
+    EXPECT_TRUE((fd_a == 1751 && fd_b == 1752) || (fd_a == 1752 && fd_b == 1751))
+        << "Both released fds should be acquired; got " << fd_a << " and " << fd_b;
+
+    // Pool should be empty now
+    EXPECT_EQ(pool.acquire("v175pool.example.com", 9000), -1);
+}
+
+// ---------------------------------------------------------------------------
+// 4. CookieJar: Path=/ matches sub-paths like /x/y/z
+// ---------------------------------------------------------------------------
+TEST(HttpClient, CookieJarPathRootMatchesSubpathsV175) {
+    CookieJar jar;
+    jar.set_from_header("root175=present; Path=/", "v175path.example.com");
+
+    // Root path matches
+    std::string at_root = jar.get_cookie_header("v175path.example.com", "/", false);
+    EXPECT_NE(at_root.find("root175=present"), std::string::npos)
+        << "Cookie with Path=/ should match /, got: " << at_root;
+
+    // Sub-path /x matches
+    std::string at_x = jar.get_cookie_header("v175path.example.com", "/x", false);
+    EXPECT_NE(at_x.find("root175=present"), std::string::npos)
+        << "Cookie with Path=/ should match /x, got: " << at_x;
+
+    // Deep sub-path /x/y/z matches
+    std::string at_xyz = jar.get_cookie_header("v175path.example.com", "/x/y/z", false);
+    EXPECT_NE(at_xyz.find("root175=present"), std::string::npos)
+        << "Cookie with Path=/ should match /x/y/z, got: " << at_xyz;
+}
+
+// ---------------------------------------------------------------------------
+// 5. HeaderMap: get non-existent key returns nullopt
+// ---------------------------------------------------------------------------
+TEST(HttpClient, HeaderMapGetNonExistentReturnsNulloptV175) {
+    HeaderMap map;
+    map.set("Content-Type", "text/html");
+
+    auto result = map.get("X-Missing-V175");
+    EXPECT_FALSE(result.has_value())
+        << "get() for a non-existent key should return nullopt";
+
+    auto result2 = map.get("Authorization");
+    EXPECT_FALSE(result2.has_value())
+        << "get() for another non-existent key should also return nullopt";
+
+    // The existing key should still be retrievable
+    ASSERT_TRUE(map.get("Content-Type").has_value());
+    EXPECT_EQ(map.get("Content-Type").value(), "text/html");
+}
+
+// ---------------------------------------------------------------------------
+// 6. Request serialize POST with application/x-www-form-urlencoded
+// ---------------------------------------------------------------------------
+TEST(HttpClient, RequestSerializePostFormEncodedV175) {
+    Request req;
+    req.method = Method::POST;
+    req.host = "v175form.example.com";
+    req.path = "/login";
+    req.headers.set("Content-Type", "application/x-www-form-urlencoded");
+
+    std::string body_str = "user=admin&pass=secret175";
+    req.body.assign(body_str.begin(), body_str.end());
+
+    auto bytes = req.serialize();
+    std::string raw(bytes.begin(), bytes.end());
+
+    EXPECT_NE(raw.find("POST /login HTTP/1.1"), std::string::npos)
+        << "Request line missing, got: " << raw;
+    EXPECT_NE(raw.find("Host: v175form.example.com"), std::string::npos)
+        << "Host header missing, got: " << raw;
+    EXPECT_NE(raw.find("Connection: close"), std::string::npos)
+        << "Connection header missing, got: " << raw;
+    // Custom headers lowercase
+    EXPECT_NE(raw.find("content-type: application/x-www-form-urlencoded"), std::string::npos)
+        << "Content-Type should appear lowercase, got: " << raw;
+    EXPECT_NE(raw.find("Content-Length: 25"), std::string::npos)
+        << "Content-Length should be 25, got: " << raw;
+    EXPECT_NE(raw.find("user=admin&pass=secret175"), std::string::npos)
+        << "Body should be present, got: " << raw;
+}
+
+// ---------------------------------------------------------------------------
+// 7. Response parse 401 Unauthorized with WWW-Authenticate header
+// ---------------------------------------------------------------------------
+TEST(HttpClient, ResponseParse401UnauthorizedV175) {
+    std::string raw_str =
+        "HTTP/1.1 401 Unauthorized\r\n"
+        "WWW-Authenticate: Bearer realm=\"v175\"\r\n"
+        "Content-Length: 12\r\n"
+        "\r\n"
+        "Unauthorized";
+
+    std::vector<uint8_t> raw(raw_str.begin(), raw_str.end());
+    auto resp = Response::parse(raw);
+
+    ASSERT_TRUE(resp.has_value()) << "401 response should parse successfully";
+    EXPECT_EQ(resp->status, 401u);
+    EXPECT_EQ(resp->status_text, "Unauthorized");
+    ASSERT_TRUE(resp->headers.has("WWW-Authenticate"))
+        << "WWW-Authenticate header should be preserved";
+    EXPECT_EQ(resp->headers.get("WWW-Authenticate").value(), "Bearer realm=\"v175\"");
+    EXPECT_EQ(resp->body_as_string(), "Unauthorized");
+}
+
+// ---------------------------------------------------------------------------
+// 8. CookieJar: cookie for a.com not visible on b.com
+// ---------------------------------------------------------------------------
+TEST(HttpClient, CookieJarDomainMismatchNotReturnedV175) {
+    CookieJar jar;
+    jar.set_from_header("secret175=mine; Path=/", "v175a.example.com");
+
+    // Same domain sees the cookie
+    std::string same = jar.get_cookie_header("v175a.example.com", "/", false);
+    EXPECT_NE(same.find("secret175=mine"), std::string::npos)
+        << "Cookie should be visible on its own domain, got: " << same;
+
+    // Different domain should NOT see the cookie
+    std::string diff = jar.get_cookie_header("v175b.example.com", "/", false);
+    EXPECT_EQ(diff.find("secret175=mine"), std::string::npos)
+        << "Cookie for v175a.example.com should not be visible on v175b.example.com, got: " << diff;
+
+    // Completely unrelated domain should NOT see the cookie
+    std::string unrelated = jar.get_cookie_header("other175.net", "/", false);
+    EXPECT_EQ(unrelated.find("secret175=mine"), std::string::npos)
+        << "Cookie for v175a.example.com should not be visible on other175.net, got: " << unrelated;
+}

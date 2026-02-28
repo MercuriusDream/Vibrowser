@@ -31291,3 +31291,135 @@ TEST(LayoutNodeProps, BackgroundColorSettableV174) {
     node->background_color = 0xFFFF0000u;
     EXPECT_EQ(node->background_color, 0xFFFF0000u);
 }
+
+// V175_1: flex row 500px, 5 children flex-grow=1, each 100px
+TEST(LayoutEngineTest, LayoutV175_1) {
+    auto root = make_flex("div");
+    root->specified_width = 500.0f;
+    root->flex_direction = 0; // row
+
+    for (int i = 0; i < 5; ++i) {
+        auto child = make_block("div");
+        child->specified_height = 30.0f;
+        child->flex_grow = 1.0f;
+        root->append_child(std::move(child));
+    }
+
+    LayoutEngine engine;
+    engine.compute(*root, 500.0f, 400.0f);
+
+    for (int i = 0; i < 5; ++i) {
+        EXPECT_FLOAT_EQ(root->children[i]->geometry.width, 100.0f);
+    }
+}
+
+// V175_2: block 3 children heights 10,20,30, verify y at 0,10,30
+TEST(LayoutEngineTest, LayoutV175_2) {
+    auto root = make_block("div");
+
+    auto c1 = make_block("div");
+    c1->specified_height = 10.0f;
+    auto c2 = make_block("div");
+    c2->specified_height = 20.0f;
+    auto c3 = make_block("div");
+    c3->specified_height = 30.0f;
+
+    root->append_child(std::move(c1));
+    root->append_child(std::move(c2));
+    root->append_child(std::move(c3));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.y, 0.0f);
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.y, 10.0f);
+    EXPECT_FLOAT_EQ(root->children[2]->geometry.y, 30.0f);
+}
+
+// V175_3: flex child flex-basis=200 no grow, keeps 200
+TEST(LayoutEngineTest, LayoutV175_3) {
+    auto root = make_flex("div");
+    root->flex_direction = 0; // row
+
+    auto child = make_block("div");
+    child->flex_basis = 200.0f;
+    child->flex_grow = 0.0f;
+    child->specified_height = 30.0f;
+
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.width, 200.0f);
+}
+
+// V175_4: block child specified_height=75, verify height=75
+TEST(LayoutEngineTest, LayoutV175_4) {
+    auto root = make_block("div");
+
+    auto child = make_block("div");
+    child->specified_height = 75.0f;
+
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.height, 75.0f);
+}
+
+// V175_5: flex column 3 children 50px each, verify y at 0,50,100
+TEST(LayoutEngineTest, LayoutV175_5) {
+    auto root = make_flex("div");
+    root->specified_width = 300.0f;
+    root->flex_direction = 2; // column
+
+    auto c1 = make_block("div");
+    c1->specified_height = 50.0f;
+    auto c2 = make_block("div");
+    c2->specified_height = 50.0f;
+    auto c3 = make_block("div");
+    c3->specified_height = 50.0f;
+
+    root->append_child(std::move(c1));
+    root->append_child(std::move(c2));
+    root->append_child(std::move(c3));
+
+    LayoutEngine engine;
+    engine.compute(*root, 300.0f, 400.0f);
+
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.y, 0.0f);
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.y, 50.0f);
+    EXPECT_FLOAT_EQ(root->children[2]->geometry.y, 100.0f);
+}
+
+// V175_6: min_width=300 overrides specified_width=150
+TEST(LayoutEngineTest, LayoutV175_6) {
+    auto root = make_block("div");
+    root->specified_width = 150.0f;
+    root->min_width = 300.0f;
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(root->geometry.width, 300.0f);
+}
+
+// V175_7: default geometry.margin.top/right/bottom/left all 0
+TEST(LayoutNodeProps, MarginDefaultZeroV175) {
+    auto node = std::make_unique<LayoutNode>();
+    EXPECT_FLOAT_EQ(node->geometry.margin.top, 0.0f);
+    EXPECT_FLOAT_EQ(node->geometry.margin.right, 0.0f);
+    EXPECT_FLOAT_EQ(node->geometry.margin.bottom, 0.0f);
+    EXPECT_FLOAT_EQ(node->geometry.margin.left, 0.0f);
+}
+
+// V175_8: default geometry.padding all 0
+TEST(LayoutNodeProps, PaddingDefaultZeroV175) {
+    auto node = std::make_unique<LayoutNode>();
+    EXPECT_FLOAT_EQ(node->geometry.padding.top, 0.0f);
+    EXPECT_FLOAT_EQ(node->geometry.padding.right, 0.0f);
+    EXPECT_FLOAT_EQ(node->geometry.padding.bottom, 0.0f);
+    EXPECT_FLOAT_EQ(node->geometry.padding.left, 0.0f);
+}

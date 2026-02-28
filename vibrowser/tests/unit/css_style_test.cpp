@@ -26783,3 +26783,44 @@ TEST(PropertyCascadeTest, PositionStickyAppliedV174) {
     cascade.apply_declaration(style, make_decl("position", "sticky"), parent);
     EXPECT_EQ(style.position, Position::Sticky);
 }
+
+// ---------------------------------------------------------------------------
+// Cycle V175 — border-top-width, letter-spacing, display inline, overflow auto
+// ---------------------------------------------------------------------------
+
+TEST(CSSStyleTest, CssV175_1_BorderTopWidthApplied) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("border-top-width", "3px"), parent);
+    EXPECT_FLOAT_EQ(style.border_top.width.to_px(), 3.0f);
+}
+
+TEST(CSSStyleTest, CssV175_2_LetterSpacingApplied) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("letter-spacing", "2px"), parent);
+    EXPECT_FLOAT_EQ(style.letter_spacing.to_px(0), 2.0f);
+}
+
+TEST(PropertyCascadeTest, DisplayInlineAppliedV175) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("display", "inline"), parent);
+    EXPECT_EQ(style.display, Display::Inline);
+}
+
+TEST(PropertyCascadeTest, OverflowAutoAppliedV175) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("overflow", "auto"), parent);
+    EXPECT_EQ(style.overflow_x, Overflow::Auto);
+    EXPECT_EQ(style.overflow_y, Overflow::Auto);
+}

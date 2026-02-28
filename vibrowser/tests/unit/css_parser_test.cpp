@@ -12088,3 +12088,47 @@ TEST_F(CSSStylesheetTest, BorderCollapseDeclarationV174) {
     }
     EXPECT_TRUE(found) << "border-collapse declaration not found";
 }
+
+// ---------------------------------------------------------------------------
+// Cycle V175 — min-height, max-height, min-width, max-width declarations
+// ---------------------------------------------------------------------------
+
+TEST_F(CSSStylesheetTest, MinHeightDeclarationV175) {
+    auto sheet = parse_stylesheet("div { min-height: 50px; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    ASSERT_EQ(sheet.rules[0].declarations.size(), 1u);
+    EXPECT_EQ(sheet.rules[0].declarations[0].property, "min-height");
+    ASSERT_GE(sheet.rules[0].declarations[0].values.size(), 1u);
+    EXPECT_EQ(sheet.rules[0].declarations[0].values[0].numeric_value, 50.0);
+    EXPECT_EQ(sheet.rules[0].declarations[0].values[0].unit, "px");
+}
+
+TEST_F(CSSStylesheetTest, MaxHeightDeclarationV175) {
+    auto sheet = parse_stylesheet("section { max-height: 500px; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    ASSERT_EQ(sheet.rules[0].declarations.size(), 1u);
+    EXPECT_EQ(sheet.rules[0].declarations[0].property, "max-height");
+    ASSERT_GE(sheet.rules[0].declarations[0].values.size(), 1u);
+    EXPECT_EQ(sheet.rules[0].declarations[0].values[0].numeric_value, 500.0);
+    EXPECT_EQ(sheet.rules[0].declarations[0].values[0].unit, "px");
+}
+
+TEST_F(CSSStylesheetTest, MinWidthDeclarationV175) {
+    auto sheet = parse_stylesheet("span { min-width: 100px; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    ASSERT_EQ(sheet.rules[0].declarations.size(), 1u);
+    EXPECT_EQ(sheet.rules[0].declarations[0].property, "min-width");
+    ASSERT_GE(sheet.rules[0].declarations[0].values.size(), 1u);
+    EXPECT_EQ(sheet.rules[0].declarations[0].values[0].numeric_value, 100.0);
+    EXPECT_EQ(sheet.rules[0].declarations[0].values[0].unit, "px");
+}
+
+TEST_F(CSSStylesheetTest, MaxWidthDeclarationV175) {
+    auto sheet = parse_stylesheet("article { max-width: 800px; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    ASSERT_EQ(sheet.rules[0].declarations.size(), 1u);
+    EXPECT_EQ(sheet.rules[0].declarations[0].property, "max-width");
+    ASSERT_GE(sheet.rules[0].declarations[0].values.size(), 1u);
+    EXPECT_EQ(sheet.rules[0].declarations[0].values[0].numeric_value, 800.0);
+    EXPECT_EQ(sheet.rules[0].declarations[0].values[0].unit, "px");
+}

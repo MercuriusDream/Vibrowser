@@ -13573,3 +13573,50 @@ TEST(CORSPolicyTest, CorsV174_7_LocalhostEnforceable) {
 TEST(CORSPolicyTest, CorsV174_8_SameOriginPortNormalized) {
     EXPECT_FALSE(is_cross_origin("https://h.example", "https://h.example:443/page"));
 }
+
+// ---------------------------------------------------------------------------
+// Round 175 — CORS tests
+// ---------------------------------------------------------------------------
+
+// 1. http with implicit port 80 is enforceable
+TEST(CORSPolicyTest, CorsV175_1_HttpWithPort80ImplicitEnforceable) {
+    EXPECT_TRUE(has_enforceable_document_origin("http://example.com"));
+}
+
+// 2. Same origin both https:443
+TEST(CORSPolicyTest, CorsV175_2_SameOriginBothHttps443) {
+    EXPECT_FALSE(is_cross_origin("https://a.example:443", "https://a.example:443/path"));
+}
+
+// 3. Cross origin different host only
+TEST(CORSPolicyTest, CorsV175_3_CrossOriginDiffHostOnly) {
+    EXPECT_TRUE(is_cross_origin("http://x.com", "http://y.com/page"));
+}
+
+// 4. ACAO matches request origin with port
+TEST(CORSPolicyTest, CorsV175_4_AcaoMatchWithPort) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "http://host.example:3000");
+    EXPECT_TRUE(cors_allows_response("http://host.example:3000", "http://host.example:3000/api", headers, false));
+}
+
+// 5. Should attach origin when same host but different scheme
+TEST(CORSPolicyTest, CorsV175_5_ShouldAttachOriginSameHostDiffScheme) {
+    EXPECT_TRUE(should_attach_origin_header("http://app.example",
+                                            "https://app.example/resource"));
+}
+
+// 6. gopher:// scheme is not enforceable
+TEST(CORSPolicyTest, CorsV175_6_GopherSchemeNotEnforceable) {
+    EXPECT_FALSE(has_enforceable_document_origin("gopher://host.example"));
+}
+
+// 7. http with non-default port 8080 is enforceable
+TEST(CORSPolicyTest, CorsV175_7_Http8080Enforceable) {
+    EXPECT_TRUE(has_enforceable_document_origin("http://host.example:8080"));
+}
+
+// 8. Same origin ignores query string
+TEST(CORSPolicyTest, CorsV175_8_SameOriginIgnoresQuery) {
+    EXPECT_FALSE(is_cross_origin("http://host.example", "http://host.example/page?foo=bar"));
+}

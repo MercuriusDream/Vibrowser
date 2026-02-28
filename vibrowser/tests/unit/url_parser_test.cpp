@@ -16174,3 +16174,45 @@ TEST(UrlParserTest, UrlV174_4_PathOnlySlash) {
     EXPECT_TRUE(result->query.empty());
     EXPECT_TRUE(result->fragment.empty());
 }
+
+// =============================================================================
+// Cycle V175 — URL parser tests
+// =============================================================================
+TEST(UrlParserTest, UrlV175_1_HttpPort8080Preserved) {
+    // Non-default HTTP port 8080 should be preserved in the parsed URL
+    auto result = parse("http://host:8080/api");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "host");
+    ASSERT_TRUE(result->port.has_value());
+    EXPECT_EQ(result->port.value(), 8080);
+    EXPECT_EQ(result->path, "/api");
+}
+
+TEST(UrlParserTest, UrlV175_2_PathNormalizesDoubleDotAtRoot) {
+    // A double-dot segment at the root should be collapsed to just /a
+    auto result = parse("http://host/../a");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "host");
+    EXPECT_EQ(result->path, "/a");
+}
+
+TEST(UrlParserTest, UrlV175_3_QueryOnlyNoPath) {
+    // A URL with query but no explicit path should still parse the query
+    auto result = parse("http://host?key=val");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "host");
+    EXPECT_EQ(result->query, "key=val");
+}
+
+TEST(UrlParserTest, UrlV175_4_FragmentOnlyNoPathNoQuery) {
+    // A URL with fragment but no path and no query should parse the fragment
+    auto result = parse("http://host#anchor");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "host");
+    EXPECT_EQ(result->fragment, "anchor");
+    EXPECT_TRUE(result->query.empty());
+}

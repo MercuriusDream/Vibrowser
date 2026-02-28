@@ -3409,3 +3409,58 @@ TEST(MessageChannelTest, MessageChannelV174_2_PayloadSizeZeroThenNonZeroV174) {
 
     EXPECT_EQ(call_count, 2);
 }
+
+// ------------------------------------------------------------------
+// V175 MessageChannel tests
+// ------------------------------------------------------------------
+
+TEST(MessageChannelTest, MessageChannelV175_1_TwoTypesAlternatingV175) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel ch(std::move(pa));
+
+    int count_type1 = 0;
+    int count_type2 = 0;
+
+    ch.on(1, [&](const Message& msg) {
+        count_type1++;
+    });
+    ch.on(2, [&](const Message& msg) {
+        count_type2++;
+    });
+
+    for (int i = 0; i < 10; ++i) {
+        Message msg;
+        msg.type = (i % 2 == 0) ? 1 : 2;
+        msg.request_id = static_cast<uint32_t>(i);
+        msg.payload = {static_cast<uint8_t>(i)};
+        ch.dispatch(msg);
+    }
+
+    EXPECT_EQ(count_type1, 5);
+    EXPECT_EQ(count_type2, 5);
+}
+
+TEST(MessageChannelTest, MessageChannelV175_2_SixteenBytePayloadV175) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel ch(std::move(pa));
+
+    bool handler_called = false;
+    ch.on(10, [&](const Message& msg) {
+        handler_called = true;
+        EXPECT_EQ(msg.payload.size(), 16u);
+        for (size_t i = 0; i < 16; ++i) {
+            EXPECT_EQ(msg.payload[i], static_cast<uint8_t>(i));
+        }
+    });
+
+    Message msg;
+    msg.type = 10;
+    msg.request_id = 42;
+    msg.payload.resize(16);
+    for (size_t i = 0; i < 16; ++i) {
+        msg.payload[i] = static_cast<uint8_t>(i);
+    }
+    ch.dispatch(msg);
+
+    EXPECT_TRUE(handler_called);
+}
