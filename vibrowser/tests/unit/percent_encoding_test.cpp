@@ -1296,3 +1296,47 @@ TEST(IsURLCodePoint, DollarAndAsteriskValidV153) {
     EXPECT_TRUE(is_url_code_point(static_cast<char32_t>('$')));
     EXPECT_TRUE(is_url_code_point(static_cast<char32_t>('*')));
 }
+
+// =============================================================================
+// V154 Percent Encoding Tests
+// =============================================================================
+
+TEST(PercentEncoding, ColonEncodedV154) {
+    // ':' is a path character — not encoded by default, but encoded with encode_path_chars=true
+    EXPECT_EQ(percent_encode(":", true), "%3A");
+    // In a string context, only the colon gets encoded
+    EXPECT_EQ(percent_encode("host:port", true), "host%3Aport");
+    // Without the flag, colon passes through
+    EXPECT_EQ(percent_encode(":"), ":");
+    // Decoding %3A should yield ':'
+    EXPECT_EQ(percent_decode("%3A"), ":");
+}
+
+TEST(PercentDecoding, MixedEncodedAndRawV154) {
+    // %41 decodes to 'A', then 'bc' remains raw → "Abc"
+    EXPECT_EQ(percent_decode("%41bc"), "Abc");
+    // Multiple mixed sequences: %48 = 'H', 'ello' raw
+    EXPECT_EQ(percent_decode("%48ello"), "Hello");
+    // Encoded followed by raw followed by encoded: %61 = 'a', x raw, %62 = 'b'
+    EXPECT_EQ(percent_decode("%61x%62"), "axb");
+}
+
+TEST(PercentEncoding, BracketEncodedV154) {
+    // '[' and ']' are not unreserved characters and should be percent-encoded
+    EXPECT_EQ(percent_encode("["), "%5B");
+    EXPECT_EQ(percent_encode("]"), "%5D");
+    // In combination with other characters
+    EXPECT_EQ(percent_encode("arr[0]"), "arr%5B0%5D");
+    // Decoding should round-trip
+    EXPECT_EQ(percent_decode("%5B%5D"), "[]");
+}
+
+TEST(IsURLCodePoint, PlusAndCommaValidV154) {
+    // '+' (U+002B) is a valid URL code point
+    EXPECT_TRUE(is_url_code_point(static_cast<char32_t>('+')));
+    // ',' (U+002C) is a valid URL code point
+    EXPECT_TRUE(is_url_code_point(static_cast<char32_t>(',')));
+    // Both should not be encoded by the default encode set
+    EXPECT_EQ(percent_encode("+"), "+");
+    EXPECT_EQ(percent_encode(","), ",");
+}

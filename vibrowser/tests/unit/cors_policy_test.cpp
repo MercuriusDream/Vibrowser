@@ -12519,3 +12519,50 @@ TEST(CORSPolicyTest, CorsV153_8_PortMismatchCrossOrigin) {
     EXPECT_TRUE(is_cross_origin("http://a.com:8080", "http://a.com:9090/path"));
     EXPECT_TRUE(is_cross_origin("https://a.com:4430", "https://a.com:8443/path"));
 }
+
+// ---------------------------------------------------------------------------
+// Round 154 — CORS tests
+// ---------------------------------------------------------------------------
+
+// 1. HTTPS origin is enforceable
+TEST(CORSPolicyTest, CorsV154_1_HTTPSEnforceable) {
+    EXPECT_TRUE(has_enforceable_document_origin("https://secure.example.com"));
+}
+
+// 2. Identical URLs are same-origin
+TEST(CORSPolicyTest, CorsV154_2_SameOriginExactDuplicate) {
+    EXPECT_FALSE(is_cross_origin("https://example.org", "https://example.org/index.html"));
+}
+
+// 3. about:blank is not enforceable
+TEST(CORSPolicyTest, CorsV154_3_AboutBlankNotEnforceable) {
+    EXPECT_FALSE(has_enforceable_document_origin("about:blank"));
+}
+
+// 4. www vs api same host are cross-origin (different subdomains)
+TEST(CORSPolicyTest, CorsV154_4_CrossOriginDifferentSubdomains) {
+    EXPECT_TRUE(is_cross_origin("https://www.example.com", "https://api.example.com/data"));
+}
+
+// 5. ACAO with explicit port matching
+TEST(CORSPolicyTest, CorsV154_5_ACAOWithPort) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "https://app.example.com");
+    EXPECT_TRUE(cors_allows_response("https://app.example.com",
+                                      "https://api.example.com:8443/data", headers, false));
+}
+
+// 6. IP address origin is enforceable
+TEST(CORSPolicyTest, CorsV154_6_IPAddressEnforceable) {
+    EXPECT_TRUE(has_enforceable_document_origin("http://192.168.1.1"));
+}
+
+// 7. HTTP with default port 80 is same-origin
+TEST(CORSPolicyTest, CorsV154_7_SameOriginHTTPPort80) {
+    EXPECT_FALSE(is_cross_origin("http://example.com", "http://example.com/page"));
+}
+
+// 8. HTTP vs HTTPS same host is cross-origin
+TEST(CORSPolicyTest, CorsV154_8_CrossOriginHTTPvsHTTPS) {
+    EXPECT_TRUE(is_cross_origin("http://x.com", "https://x.com/page"));
+}

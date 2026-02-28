@@ -36953,3 +36953,107 @@ TEST(JSEngine, JsV153_8) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "3,true,false,2");
 }
+
+// V154_1: Array.from with map function
+TEST(JSEngine, JsV154_1) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var arr = Array.from([1, 2, 3], function(x) { return x * 2; });
+        arr.join(',');
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "2,4,6");
+}
+
+// V154_2: String.trimStart and trimEnd
+TEST(JSEngine, JsV154_2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var s = '  hello  ';
+        var a = s.trimStart();
+        var b = s.trimEnd();
+        a + '|' + b;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "hello  |  hello");
+}
+
+// V154_3: Object.getOwnPropertyNames
+TEST(JSEngine, JsV154_3) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var obj = {a: 1, b: 2, c: 3};
+        var names = Object.getOwnPropertyNames(obj);
+        names.sort().join(',');
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "a,b,c");
+}
+
+// V154_4: Number.isFinite and Number.isNaN
+TEST(JSEngine, JsV154_4) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var a = Number.isFinite(42);
+        var b = Number.isFinite(Infinity);
+        var c = Number.isNaN(NaN);
+        var d = Number.isNaN(42);
+        '' + a + ',' + b + ',' + c + ',' + d;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true,false,true,false");
+}
+
+// V154_5: Array.includes
+TEST(JSEngine, JsV154_5) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var arr = [10, 20, 30, 40];
+        var a = arr.includes(20);
+        var b = arr.includes(50);
+        '' + a + ',' + b;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true,false");
+}
+
+// V154_6: for...in over object keys
+TEST(JSEngine, JsV154_6) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var obj = {x: 1, y: 2, z: 3};
+        var keys = [];
+        for (var k in obj) {
+            keys.push(k);
+        }
+        keys.sort().join(',');
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "x,y,z");
+}
+
+// V154_7: typeof operator
+TEST(JSEngine, JsV154_7) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var a = typeof 42;
+        var b = typeof 'hello';
+        var c = typeof true;
+        var d = typeof undefined;
+        var e = typeof null;
+        a + ',' + b + ',' + c + ',' + d + ',' + e;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "number,string,boolean,undefined,object");
+}
+
+// V154_8: JSON.stringify with replacer
+TEST(JSEngine, JsV154_8) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var obj = {a: 1, b: 2, c: 3};
+        JSON.stringify(obj, ['a', 'c']);
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "{\"a\":1,\"c\":3}");
+}

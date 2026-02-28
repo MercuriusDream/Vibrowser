@@ -26330,3 +26330,234 @@ TEST(HttpClient, CookieJarDomainCaseInsensitiveV153) {
     EXPECT_NE(h3.find("session=casetest153"), std::string::npos)
         << "Cookie should match original-case domain, got: " << h3;
 }
+
+// ===========================================================================
+// Round 154 — Agent 4 — http_client_test.cpp
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// 1. Request serialize with custom Content-Type header in output
+// ---------------------------------------------------------------------------
+TEST(HttpClient, RequestSerializeCustomContentTypeV154) {
+    Request req;
+    req.method = Method::POST;
+    req.url = "http://upload.v154.test/files";
+    req.headers.set("Content-Type", "multipart/form-data; boundary=----abc154");
+
+    std::string payload = "file-data-v154";
+    req.body.assign(payload.begin(), payload.end());
+    req.parse_url();
+
+    auto bytes = req.serialize();
+    std::string raw(bytes.begin(), bytes.end());
+
+    // Custom content-type should appear (lowercase in serialized custom headers)
+    EXPECT_NE(raw.find("content-type: multipart/form-data; boundary=----abc154"), std::string::npos)
+        << "Custom Content-Type not found in serialized output:\n" << raw;
+    // Method should be POST
+    EXPECT_NE(raw.find("POST /files"), std::string::npos)
+        << "POST request line not found";
+    // Body should be present
+    EXPECT_NE(raw.find("file-data-v154"), std::string::npos)
+        << "Body not found in serialized output";
+}
+
+// ---------------------------------------------------------------------------
+// 2. Response parse 301 with Location and body
+// ---------------------------------------------------------------------------
+TEST(HttpClient, ResponseParse301WithLocationV154) {
+    std::string body301 = "<html><body>Moved</body></html>";
+    std::string raw_str =
+        "HTTP/1.1 301 Moved Permanently\r\n"
+        "Location: https://new.v154.test/landing\r\n"
+        "Content-Type: text/html\r\n"
+        "Content-Length: " + std::to_string(body301.size()) + "\r\n"
+        "\r\n" + body301;
+
+    std::vector<uint8_t> raw(raw_str.begin(), raw_str.end());
+    auto resp = Response::parse(raw);
+
+    ASSERT_TRUE(resp.has_value()) << "Failed to parse 301 response";
+    EXPECT_EQ(resp->status, 301);
+
+    auto loc = resp->headers.get("Location");
+    ASSERT_TRUE(loc.has_value()) << "Location header missing from 301";
+    EXPECT_EQ(loc.value(), "https://new.v154.test/landing");
+
+    auto ct = resp->headers.get("Content-Type");
+    ASSERT_TRUE(ct.has_value());
+    EXPECT_EQ(ct.value(), "text/html");
+
+    std::string body_str(resp->body.begin(), resp->body.end());
+    EXPECT_EQ(body_str, body301)
+        << "301 body mismatch, got: " << body_str;
+}
+
+// ---------------------------------------------------------------------------
+// 3. ConnectionPool acquire from correct host among multiple
+// ---------------------------------------------------------------------------
+TEST(HttpClient, ConnectionPoolAcquireFromCorrectHostV154) {
+    ConnectionPool pool;
+    pool.release("api.v154.test", 443, 501);
+    pool.release("cdn.v154.test", 443, 502);
+    pool.release("db.v154.test", 5432, 503);
+
+    EXPECT_EQ(pool.count("api.v154.test", 443), 1u);
+    EXPECT_EQ(pool.count("cdn.v154.test", 443), 1u);
+    EXPECT_EQ(pool.count("db.v154.test", 5432), 1u);
+
+    // Acquire from cdn only
+    int fd = pool.acquire("cdn.v154.test", 443);
+    EXPECT_EQ(fd, 502);
+
+    // cdn pool now empty, others untouched
+    EXPECT_EQ(pool.count("cdn.v154.test", 443), 0u);
+    EXPECT_EQ(pool.count("api.v154.test", 443), 1u);
+    EXPECT_EQ(pool.count("db.v154.test", 5432), 1u);
+
+    // Acquire from api
+    int fd_api = pool.acquire("api.v154.test", 443);
+    EXPECT_EQ(fd_api, 501);
+    EXPECT_EQ(pool.count("api.v154.test", 443), 0u);
+}
+
+// ---------------------------------------------------------------------------
+// 4. CookieJar secure and non-secure cookies on same domain
+// ---------------------------------------------------------------------------
+TEST(HttpClient, CookieJarSecureAndNonSecureSameDomainV154) {
+    CookieJar jar;
+    jar.set_from_header("session=open154; Path=/", "mixed.v154.test");
+    jar.set_from_header("token=secret154; Secure; Path=/", "mixed.v154.test");
+
+    // Insecure connection: only non-secure cookie should appear
+    std::string insecure = jar.get_cookie_header("mixed.v154.test", "/", false);
+    EXPECT_NE(insecure.find("session=open154"), std::string::npos)
+        << "Non-secure cookie should appear on HTTP, got: " << insecure;
+    EXPECT_EQ(insecure.find("token=secret154"), std::string::npos)
+        << "Secure cookie should NOT appear on HTTP, got: " << insecure;
+
+    // Secure connection: both cookies should appear
+    std::string secure = jar.get_cookie_header("mixed.v154.test", "/", true);
+    EXPECT_NE(secure.find("session=open154"), std::string::npos)
+        << "Non-secure cookie should appear on HTTPS, got: " << secure;
+    EXPECT_NE(secure.find("token=secret154"), std::string::npos)
+        << "Secure cookie should appear on HTTPS, got: " << secure;
+}
+
+// ---------------------------------------------------------------------------
+// 5. HeaderMap remove by key, verify gone
+// ---------------------------------------------------------------------------
+TEST(HttpClient, HeaderMapRemoveByKeyV154) {
+    HeaderMap map;
+    map.set("X-Custom-V154", "value1");
+    map.set("X-Keep-V154", "value2");
+    map.set("X-Remove-V154", "value3");
+
+    EXPECT_EQ(map.size(), 3u);
+    EXPECT_TRUE(map.has("X-Remove-V154"));
+
+    map.remove("X-Remove-V154");
+
+    EXPECT_EQ(map.size(), 2u);
+    EXPECT_FALSE(map.has("X-Remove-V154"));
+    EXPECT_FALSE(map.get("X-Remove-V154").has_value());
+
+    // Remaining headers still intact
+    EXPECT_TRUE(map.has("X-Custom-V154"));
+    EXPECT_EQ(map.get("X-Custom-V154").value(), "value1");
+    EXPECT_TRUE(map.has("X-Keep-V154"));
+    EXPECT_EQ(map.get("X-Keep-V154").value(), "value2");
+}
+
+// ---------------------------------------------------------------------------
+// 6. Request serialize with fragment stripped from URL
+// ---------------------------------------------------------------------------
+TEST(HttpClient, RequestSerializeWithFragmentStrippedV154) {
+    Request req;
+    req.method = Method::GET;
+    req.url = "https://docs.v154.test/guide?section=intro#chapter-3";
+    req.parse_url();
+
+    EXPECT_EQ(req.host, "docs.v154.test");
+    EXPECT_EQ(req.port, 443);
+    EXPECT_TRUE(req.use_tls);
+
+    auto bytes = req.serialize();
+    std::string raw(bytes.begin(), bytes.end());
+
+    // Fragment must NOT appear in the serialized request
+    EXPECT_EQ(raw.find("#chapter-3"), std::string::npos)
+        << "Fragment should be stripped from serialized request:\n" << raw;
+    // Path and query should still be present
+    EXPECT_NE(raw.find("/guide"), std::string::npos)
+        << "Path /guide not found in serialized request";
+    EXPECT_NE(raw.find("section=intro"), std::string::npos)
+        << "Query parameter not found in serialized request";
+    // Port 443 should be omitted from Host header
+    EXPECT_NE(raw.find("Host: docs.v154.test\r\n"), std::string::npos)
+        << "Host header missing or has port 443";
+    EXPECT_EQ(raw.find("Host: docs.v154.test:443"), std::string::npos)
+        << "Port 443 should not appear in Host header";
+}
+
+// ---------------------------------------------------------------------------
+// 7. Response parse 200 with empty header value
+// ---------------------------------------------------------------------------
+TEST(HttpClient, ResponseParse200WithEmptyHeaderValueV154) {
+    std::string raw_str =
+        "HTTP/1.1 200 OK\r\n"
+        "X-Empty-V154:\r\n"
+        "X-Normal-V154: present\r\n"
+        "Content-Length: 5\r\n"
+        "\r\n"
+        "hello";
+
+    std::vector<uint8_t> raw(raw_str.begin(), raw_str.end());
+    auto resp = Response::parse(raw);
+
+    ASSERT_TRUE(resp.has_value()) << "Failed to parse response with empty header value";
+    EXPECT_EQ(resp->status, 200);
+
+    // Empty header value should be stored as empty string
+    auto empty_val = resp->headers.get("X-Empty-V154");
+    ASSERT_TRUE(empty_val.has_value())
+        << "X-Empty-V154 header should be present even with empty value";
+    EXPECT_EQ(*empty_val, "");
+
+    // Normal header should be present
+    auto normal_val = resp->headers.get("X-Normal-V154");
+    ASSERT_TRUE(normal_val.has_value());
+    EXPECT_EQ(*normal_val, "present");
+
+    // Body should be correct
+    std::string body(resp->body.begin(), resp->body.end());
+    EXPECT_EQ(body, "hello");
+}
+
+// ---------------------------------------------------------------------------
+// 8. CookieJar root path always matches any path
+// ---------------------------------------------------------------------------
+TEST(HttpClient, CookieJarRootPathAlwaysMatchesV154) {
+    CookieJar jar;
+    jar.set_from_header("root_tok=v154; Path=/", "rootpath.v154.test");
+
+    // Root path should match the root
+    std::string r1 = jar.get_cookie_header("rootpath.v154.test", "/", false);
+    EXPECT_NE(r1.find("root_tok=v154"), std::string::npos)
+        << "Root-path cookie should match /, got: " << r1;
+
+    // Root path should match /api
+    std::string r2 = jar.get_cookie_header("rootpath.v154.test", "/api", false);
+    EXPECT_NE(r2.find("root_tok=v154"), std::string::npos)
+        << "Root-path cookie should match /api, got: " << r2;
+
+    // Root path should match deeply nested paths
+    std::string r3 = jar.get_cookie_header("rootpath.v154.test", "/a/b/c/d", false);
+    EXPECT_NE(r3.find("root_tok=v154"), std::string::npos)
+        << "Root-path cookie should match /a/b/c/d, got: " << r3;
+
+    // Root path should match paths with query-like segments
+    std::string r4 = jar.get_cookie_header("rootpath.v154.test", "/search?q=test", false);
+    EXPECT_NE(r4.find("root_tok=v154"), std::string::npos)
+        << "Root-path cookie should match /search?q=test, got: " << r4;
+}

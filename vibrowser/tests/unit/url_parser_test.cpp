@@ -15157,3 +15157,65 @@ TEST(UrlParserTest, UrlV153_4_HostnameLowercased) {
     ASSERT_TRUE(result.has_value());
     EXPECT_EQ(result->host, "example.com");
 }
+
+// =============================================================================
+// V154 URL Parser Tests
+// =============================================================================
+
+TEST(UrlParserTest, UrlV154_1_FileSchemeTripleSlash) {
+    // file:///path/to/file should parse with empty host and correct path
+    auto result = parse("file:///path/to/file");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "file");
+    EXPECT_TRUE(result->host.empty());
+    EXPECT_EQ(result->path, "/path/to/file");
+    EXPECT_TRUE(result->query.empty());
+    EXPECT_TRUE(result->fragment.empty());
+    EXPECT_EQ(result->port, std::nullopt);
+    // Serialize should round-trip correctly
+    EXPECT_EQ(result->serialize(), "file:///path/to/file");
+}
+
+TEST(UrlParserTest, UrlV154_2_HTTPPort80OmittedFromSerialize) {
+    // HTTP with explicit port 80 (the default) should omit it from serialization
+    auto result = parse("http://example.com:80/index.html");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "example.com");
+    // Default port 80 should be stripped from the parsed URL
+    EXPECT_EQ(result->port, std::nullopt);
+    EXPECT_EQ(result->path, "/index.html");
+    // Serialized form should not include :80
+    std::string serialized = result->serialize();
+    EXPECT_EQ(serialized, "http://example.com/index.html");
+    // Verify no ":80" appears in the serialized output
+    EXPECT_EQ(serialized.find(":80"), std::string::npos);
+}
+
+TEST(UrlParserTest, UrlV154_3_QueryAndFragmentBothPresent) {
+    // URL with both ?query and #fragment should parse both correctly
+    auto result = parse("http://example.com/search?q=test&lang=en#results");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/search");
+    EXPECT_EQ(result->query, "q=test&lang=en");
+    EXPECT_EQ(result->fragment, "results");
+    // Serialize should preserve both query and fragment
+    std::string serialized = result->serialize();
+    EXPECT_EQ(serialized, "http://example.com/search?q=test&lang=en#results");
+}
+
+TEST(UrlParserTest, UrlV154_4_RelativeURLWithBaseScheme) {
+    // A relative path should resolve against the base URL, inheriting scheme and host
+    auto base = parse("http://example.com/docs/intro.html");
+    ASSERT_TRUE(base.has_value());
+
+    auto result = parse("chapter2.html", &base.value());
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/docs/chapter2.html");
+    // Port should be inherited (none in this case)
+    EXPECT_EQ(result->port, std::nullopt);
+}

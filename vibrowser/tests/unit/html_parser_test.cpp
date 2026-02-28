@@ -24295,3 +24295,154 @@ TEST(HtmlParserTest, HtmlV153_8) {
     EXPECT_EQ(cells[2]->text_content(), "R2C1");
     EXPECT_EQ(cells[3]->text_content(), "R2C2");
 }
+
+// === V154 HTML Parser Tests ===
+
+TEST(HtmlParserTest, HtmlV154_1) {
+    // thead with tr and th elements
+    auto doc = clever::html::parse(
+        "<html><body><table><thead><tr><th>Name</th><th>Age</th></tr></thead></table></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* thead = doc->find_element("thead");
+    ASSERT_NE(thead, nullptr);
+    EXPECT_EQ(thead->tag_name, "thead");
+
+    auto ths = doc->find_all_elements("th");
+    ASSERT_EQ(ths.size(), 2u);
+    EXPECT_EQ(ths[0]->text_content(), "Name");
+    EXPECT_EQ(ths[1]->text_content(), "Age");
+}
+
+TEST(HtmlParserTest, HtmlV154_2) {
+    // tbody with tr and td elements
+    auto doc = clever::html::parse(
+        "<html><body><table><tbody><tr><td>Alice</td><td>30</td></tr></tbody></table></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* tbody = doc->find_element("tbody");
+    ASSERT_NE(tbody, nullptr);
+    EXPECT_EQ(tbody->tag_name, "tbody");
+
+    auto tds = doc->find_all_elements("td");
+    ASSERT_EQ(tds.size(), 2u);
+    EXPECT_EQ(tds[0]->text_content(), "Alice");
+    EXPECT_EQ(tds[1]->text_content(), "30");
+}
+
+TEST(HtmlParserTest, HtmlV154_3) {
+    // tfoot with tr and td
+    auto doc = clever::html::parse(
+        "<html><body><table><tfoot><tr><td>Total</td><td>100</td></tr></tfoot></table></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* tfoot = doc->find_element("tfoot");
+    ASSERT_NE(tfoot, nullptr);
+    EXPECT_EQ(tfoot->tag_name, "tfoot");
+
+    auto tds = doc->find_all_elements("td");
+    ASSERT_EQ(tds.size(), 2u);
+    EXPECT_EQ(tds[0]->text_content(), "Total");
+    EXPECT_EQ(tds[1]->text_content(), "100");
+}
+
+TEST(HtmlParserTest, HtmlV154_4) {
+    // caption element in table
+    auto doc = clever::html::parse(
+        "<html><body><table><caption>Sales Report</caption><tr><td>Data</td></tr></table></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* caption = doc->find_element("caption");
+    ASSERT_NE(caption, nullptr);
+    EXPECT_EQ(caption->tag_name, "caption");
+    EXPECT_EQ(caption->text_content(), "Sales Report");
+}
+
+TEST(HtmlParserTest, HtmlV154_5) {
+    // colgroup with col elements
+    auto doc = clever::html::parse(
+        "<html><body><table><colgroup><col span=\"2\"><col></colgroup>"
+        "<tr><td>A</td><td>B</td><td>C</td></tr></table></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* colgroup = doc->find_element("colgroup");
+    ASSERT_NE(colgroup, nullptr);
+    EXPECT_EQ(colgroup->tag_name, "colgroup");
+
+    auto cols = doc->find_all_elements("col");
+    ASSERT_GE(cols.size(), 1u);
+    EXPECT_EQ(cols[0]->tag_name, "col");
+}
+
+TEST(HtmlParserTest, HtmlV154_6) {
+    // form with action and method attributes
+    auto doc = clever::html::parse(
+        "<html><body><form action=\"/login\" method=\"post\">Submit</form></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* form = doc->find_element("form");
+    ASSERT_NE(form, nullptr);
+    EXPECT_EQ(form->tag_name, "form");
+
+    bool found_action = false;
+    bool found_method = false;
+    for (const auto& attr : form->attributes) {
+        if (attr.name == "action") {
+            found_action = true;
+            EXPECT_EQ(attr.value, "/login");
+        }
+        if (attr.name == "method") {
+            found_method = true;
+            EXPECT_EQ(attr.value, "post");
+        }
+    }
+    EXPECT_TRUE(found_action) << "action attribute not found on form";
+    EXPECT_TRUE(found_method) << "method attribute not found on form";
+}
+
+TEST(HtmlParserTest, HtmlV154_7) {
+    // input with type and name attributes
+    auto doc = clever::html::parse(
+        "<html><body><form><input type=\"text\" name=\"username\"></form></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* input = doc->find_element("input");
+    ASSERT_NE(input, nullptr);
+    EXPECT_EQ(input->tag_name, "input");
+
+    bool found_type = false;
+    bool found_name = false;
+    for (const auto& attr : input->attributes) {
+        if (attr.name == "type") {
+            found_type = true;
+            EXPECT_EQ(attr.value, "text");
+        }
+        if (attr.name == "name") {
+            found_name = true;
+            EXPECT_EQ(attr.value, "username");
+        }
+    }
+    EXPECT_TRUE(found_type) << "type attribute not found on input";
+    EXPECT_TRUE(found_name) << "name attribute not found on input";
+}
+
+TEST(HtmlParserTest, HtmlV154_8) {
+    // label with for attribute
+    auto doc = clever::html::parse(
+        "<html><body><label for=\"email\">Email:</label></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* label = doc->find_element("label");
+    ASSERT_NE(label, nullptr);
+    EXPECT_EQ(label->tag_name, "label");
+    EXPECT_EQ(label->text_content(), "Email:");
+
+    bool found_for = false;
+    for (const auto& attr : label->attributes) {
+        if (attr.name == "for") {
+            found_for = true;
+            EXPECT_EQ(attr.value, "email");
+        }
+    }
+    EXPECT_TRUE(found_for) << "for attribute not found on label";
+}

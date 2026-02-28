@@ -23098,3 +23098,88 @@ TEST(DomElement, SetAttributeEmptyValueAllowedV153) {
     ASSERT_TRUE(val.has_value());
     EXPECT_EQ(val.value(), "");
 }
+
+// ---------------------------------------------------------------------------
+// Round 154 — DOM tests
+// ---------------------------------------------------------------------------
+
+// 1. Element node_type() == NodeType::Element
+TEST(DomNode, NodeTypeElementIsCorrectV154) {
+    Element elem("article");
+    EXPECT_EQ(elem.node_type(), NodeType::Element);
+}
+
+// 2. has_attribute returns true after set
+TEST(DomElement, HasAttributeReturnsTrueAfterSetV154) {
+    Element elem("div");
+    EXPECT_FALSE(elem.has_attribute("data-role"));
+    elem.set_attribute("data-role", "navigation");
+    EXPECT_TRUE(elem.has_attribute("data-role"));
+}
+
+// 3. Document body accessible after appending
+TEST(DomDocument, BodyElementAccessV154) {
+    Document doc;
+    auto html = std::make_unique<Element>("html");
+    auto body = std::make_unique<Element>("body");
+    Element* body_ptr = body.get();
+    html->append_child(std::move(body));
+    doc.append_child(std::move(html));
+    // body should be reachable through the tree
+    EXPECT_NE(doc.first_child(), nullptr);
+    EXPECT_EQ(doc.first_child()->first_child(), body_ptr);
+}
+
+// 4. Non-cancelable event, prevent_default has no effect
+TEST(DomEvent, NonCancelablePreventDefaultNoEffectV154) {
+    Event evt("click", false, false);
+    evt.prevent_default();
+    EXPECT_FALSE(evt.default_prevented());
+}
+
+// 5. Append 3 children, verify order via next_sibling chain
+TEST(DomNode, AppendMultipleChildrenInOrderV154) {
+    auto parent = std::make_unique<Element>("ol");
+    auto c1 = std::make_unique<Element>("li");
+    auto c2 = std::make_unique<Element>("li");
+    auto c3 = std::make_unique<Element>("li");
+    Node* p1 = c1.get();
+    Node* p2 = c2.get();
+    Node* p3 = c3.get();
+    parent->append_child(std::move(c1));
+    parent->append_child(std::move(c2));
+    parent->append_child(std::move(c3));
+    EXPECT_EQ(parent->first_child(), p1);
+    EXPECT_EQ(p1->next_sibling(), p2);
+    EXPECT_EQ(p2->next_sibling(), p3);
+    EXPECT_EQ(p3->next_sibling(), nullptr);
+}
+
+// 6. After adding classes, verify class_list state
+TEST(DomElement, ClassListToStringV154) {
+    Element elem("div");
+    elem.class_list().add("foo");
+    elem.class_list().add("bar");
+    EXPECT_TRUE(elem.class_list().contains("foo"));
+    EXPECT_TRUE(elem.class_list().contains("bar"));
+    EXPECT_FALSE(elem.class_list().contains("baz"));
+}
+
+// 7. Text node_type() == NodeType::Text
+TEST(DomNode, TextNodeTypeCorrectV154) {
+    Text txt("hello world");
+    EXPECT_EQ(txt.node_type(), NodeType::Text);
+}
+
+// 8. Set 3 attributes, remove all 3, size==0
+TEST(DomElement, RemoveAllAttributesOneByOneV154) {
+    Element elem("div");
+    elem.set_attribute("id", "main");
+    elem.set_attribute("class", "wrapper");
+    elem.set_attribute("title", "tooltip");
+    EXPECT_EQ(elem.attributes().size(), 3u);
+    elem.remove_attribute("id");
+    elem.remove_attribute("class");
+    elem.remove_attribute("title");
+    EXPECT_EQ(elem.attributes().size(), 0u);
+}

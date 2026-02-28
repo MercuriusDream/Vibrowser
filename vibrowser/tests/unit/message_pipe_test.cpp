@@ -2014,3 +2014,45 @@ TEST(MessagePipeTest, MessagePipeV153_3_BinaryDataWithZeroes) {
     EXPECT_EQ((*received)[32], 0x00);
     EXPECT_EQ((*received)[63], 0xEF);
 }
+
+// ------------------------------------------------------------------
+// Round 154 tests
+// ------------------------------------------------------------------
+
+TEST(MessagePipeTest, MessagePipeV154_1_MessageOrderPreservedFIFO) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    for (uint8_t i = 0; i < 5; ++i) {
+        std::vector<uint8_t> data = {i};
+        ASSERT_TRUE(a.send(data));
+    }
+
+    for (uint8_t i = 0; i < 5; ++i) {
+        auto received = b.receive();
+        ASSERT_TRUE(received.has_value());
+        ASSERT_EQ(received->size(), 1u);
+        EXPECT_EQ((*received)[0], i);
+    }
+}
+
+TEST(MessagePipeTest, MessagePipeV154_2_PipeCreationValidState) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    EXPECT_TRUE(a.is_open());
+    EXPECT_TRUE(b.is_open());
+}
+
+TEST(MessagePipeTest, MessagePipeV154_3_128KBMessage) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    // Create a 128KB message
+    std::vector<uint8_t> data(128 * 1024);
+    std::iota(data.begin(), data.end(), static_cast<uint8_t>(0));
+
+    ASSERT_TRUE(a.send(data));
+
+    auto received = b.receive();
+    ASSERT_TRUE(received.has_value());
+    EXPECT_EQ(received->size(), 128u * 1024u);
+    EXPECT_EQ(*received, data);
+}

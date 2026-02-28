@@ -2240,3 +2240,49 @@ TEST(MessageChannelTest, MessageChannelV153_2_ChannelDestructionSafe) {
     EXPECT_EQ(received->payload[0], 0x01);
     EXPECT_EQ(received->payload[1], 0x02);
 }
+
+// ------------------------------------------------------------------
+// Round 154 tests
+// ------------------------------------------------------------------
+
+TEST(MessageChannelTest, MessageChannelV154_1_HandlerCalledExactlyOnce) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel ch(std::move(pa));
+
+    int call_count = 0;
+    ch.on(7, [&](const Message& m) {
+        ++call_count;
+    });
+
+    Message msg;
+    msg.type = 7;
+    msg.request_id = 1;
+    ch.dispatch(msg);
+
+    EXPECT_EQ(call_count, 1);
+}
+
+TEST(MessageChannelTest, MessageChannelV154_2_ReplaceHandlerForSameType) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel ch(std::move(pa));
+
+    bool old_called = false;
+    bool new_called = false;
+
+    ch.on(10, [&](const Message& m) {
+        old_called = true;
+    });
+
+    // Replace handler for same type
+    ch.on(10, [&](const Message& m) {
+        new_called = true;
+    });
+
+    Message msg;
+    msg.type = 10;
+    msg.request_id = 1;
+    ch.dispatch(msg);
+
+    EXPECT_FALSE(old_called);
+    EXPECT_TRUE(new_called);
+}

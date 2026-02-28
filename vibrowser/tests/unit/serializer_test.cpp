@@ -20981,3 +20981,42 @@ TEST(SerializerTest, SerializerV153_3_EmptyBytesFollowedByString) {
     EXPECT_EQ(str, "after_empty");
     EXPECT_FALSE(d.has_remaining());
 }
+
+// ------------------------------------------------------------------
+// Round 154 tests
+// ------------------------------------------------------------------
+
+TEST(SerializerTest, SerializerV154_1_U32MaxMinRoundTrip) {
+    Serializer s;
+    s.write_u32(0);
+    s.write_u32(UINT32_MAX);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u32(), 0u);
+    EXPECT_EQ(d.read_u32(), UINT32_MAX);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, SerializerV154_2_StringWithSpecialCharsRoundTrip) {
+    Serializer s;
+    std::string special = "hello\tworld\nnewline\r\xC3\xA9\xE2\x9C\x93";
+    s.write_string(special);
+
+    Deserializer d(s.data());
+    std::string result = d.read_string();
+    EXPECT_EQ(result, special);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, SerializerV154_3_MultipleBoolsAllTrueRoundTrip) {
+    Serializer s;
+    for (int i = 0; i < 15; ++i) {
+        s.write_bool(true);
+    }
+
+    Deserializer d(s.data());
+    for (int i = 0; i < 15; ++i) {
+        EXPECT_TRUE(d.read_bool());
+    }
+    EXPECT_FALSE(d.has_remaining());
+}

@@ -10895,3 +10895,61 @@ TEST_F(CSSStylesheetTest, CaretColorDeclarationV153) {
     }
     EXPECT_TRUE(found) << "caret-color declaration not found";
 }
+
+// === V154 CSS Parser Tests ===
+
+TEST_F(CSSStylesheetTest, ColumnCountDeclarationV154) {
+    auto ss = parse_stylesheet(".multi-col { column-count: 3; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "column-count") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "3");
+        }
+    }
+    EXPECT_TRUE(found) << "column-count declaration not found";
+}
+
+TEST_F(CSSStylesheetTest, ColumnWidthDeclarationV154) {
+    auto ss = parse_stylesheet(".cols { column-width: 200px; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "column-width") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "200px");
+        }
+    }
+    EXPECT_TRUE(found) << "column-width declaration not found";
+}
+
+TEST_F(CSSStylesheetTest, BreakInsideAvoidDeclarationV154) {
+    auto ss = parse_stylesheet(".card { break-inside: avoid; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "break-inside") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "avoid");
+        }
+    }
+    EXPECT_TRUE(found) << "break-inside declaration not found";
+}
+
+TEST_F(CSSStylesheetTest, ContentVisibilityDeclarationV154) {
+    auto ss = parse_stylesheet(".lazy { content-visibility: auto; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "content-visibility") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "auto");
+        }
+    }
+    EXPECT_TRUE(found) << "content-visibility declaration not found";
+}

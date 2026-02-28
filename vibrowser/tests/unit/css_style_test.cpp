@@ -25935,3 +25935,49 @@ TEST(CSSStyleTest, CssV153_4_MultipleTransformsApplied) {
     EXPECT_EQ(style.transforms[1].type, TransformType::Rotate);
     EXPECT_FLOAT_EQ(style.transforms[1].angle, 30.0f);
 }
+
+// === V154 CSS Style Tests ===
+
+TEST(PropertyCascadeTest, ColumnCountAppliedV154) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.column_count, -1);  // default: auto
+    cascade.apply_declaration(style, make_decl("column-count", "3"), parent);
+    EXPECT_EQ(style.column_count, 3);
+}
+
+TEST(CSSStyleTest, CssV154_2_BorderStyleSolidAllSides) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("border-style", "solid"), parent);
+    EXPECT_EQ(style.border_top.style, BorderStyle::Solid);
+    EXPECT_EQ(style.border_right.style, BorderStyle::Solid);
+    EXPECT_EQ(style.border_bottom.style, BorderStyle::Solid);
+    EXPECT_EQ(style.border_left.style, BorderStyle::Solid);
+}
+
+TEST(PropertyCascadeTest, ContentVisibilityAppliedV154) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.content_visibility, 0);  // default: visible
+    cascade.apply_declaration(style, make_decl("content-visibility", "auto"), parent);
+    EXPECT_EQ(style.content_visibility, 2);  // auto = 2
+}
+
+TEST(CSSStyleTest, CssV154_4_ZIndexPositiveAndNegative) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("z-index", "100"), parent);
+    EXPECT_EQ(style.z_index, 100);
+
+    cascade.apply_declaration(style, make_decl("z-index", "-5"), parent);
+    EXPECT_EQ(style.z_index, -5);
+}

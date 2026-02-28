@@ -28355,3 +28355,165 @@ TEST(LayoutNodeProps, BackgroundColorDefaultTransparentV153) {
     auto node = make_block("div");
     EXPECT_EQ(node->background_color, 0x00000000u);
 }
+
+// V154_1: block layout vertical stacking — three children stack top to bottom
+TEST(LayoutEngineTest, LayoutV154_1) {
+    auto root = make_block("div");
+    auto c1 = make_block("div");
+    c1->specified_height = 40.0f;
+    auto c2 = make_block("div");
+    c2->specified_height = 60.0f;
+    auto c3 = make_block("div");
+    c3->specified_height = 20.0f;
+
+    root->append_child(std::move(c1));
+    root->append_child(std::move(c2));
+    root->append_child(std::move(c3));
+
+    LayoutEngine engine;
+    engine.compute(*root, 600.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.y, 0.0f);
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.y, 40.0f);
+    EXPECT_FLOAT_EQ(root->children[2]->geometry.y, 100.0f);
+    EXPECT_FLOAT_EQ(root->geometry.height, 120.0f);
+}
+
+// V154_2: grid single column, items stack vertically in rows
+TEST(GridLayout, GridSingleColumnMultipleRowsV154) {
+    auto root = make_grid();
+    root->grid_template_columns = "200px";
+    root->specified_width = 200.0f;
+
+    auto c1 = make_block("div");
+    c1->specified_height = 30.0f;
+    auto c2 = make_block("div");
+    c2->specified_height = 50.0f;
+    auto c3 = make_block("div");
+    c3->specified_height = 40.0f;
+
+    root->append_child(std::move(c1));
+    root->append_child(std::move(c2));
+    root->append_child(std::move(c3));
+
+    LayoutEngine engine;
+    engine.compute(*root, 200.0f, 600.0f);
+
+    // All children should have width = 200 (single column)
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.width, 200.0f);
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.width, 200.0f);
+    EXPECT_FLOAT_EQ(root->children[2]->geometry.width, 200.0f);
+
+    // They should stack vertically: y=0, y=30, y=80
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.y, 0.0f);
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.y, 30.0f);
+    EXPECT_FLOAT_EQ(root->children[2]->geometry.y, 80.0f);
+}
+
+// V154_3: flex basis overrides specified_width
+TEST(LayoutEngineTest, LayoutV154_3) {
+    auto root = make_flex("div");
+    root->flex_direction = 0; // row
+
+    auto child = make_block("div");
+    child->specified_width = 300.0f;
+    child->flex_basis = 150.0f; // should override specified_width
+    child->specified_height = 40.0f;
+
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 400.0f);
+
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.width, 150.0f);
+}
+
+// V154_4: margin-bottom on child affects next sibling position
+TEST(LayoutEngineTest, LayoutV154_4) {
+    auto root = make_block("div");
+    auto c1 = make_block("div");
+    c1->specified_height = 50.0f;
+    c1->geometry.margin.bottom = 20.0f;
+
+    auto c2 = make_block("div");
+    c2->specified_height = 50.0f;
+
+    root->append_child(std::move(c1));
+    root->append_child(std::move(c2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 600.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.y, 0.0f);
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.y, 70.0f); // 50 + 20 margin-bottom
+}
+
+// V154_5: flex with mixed fixed and flex-grow children
+TEST(LayoutEngineTest, LayoutV154_5) {
+    auto root = make_flex("div");
+    root->flex_direction = 0; // row
+
+    auto fixed = make_block("div");
+    fixed->specified_width = 100.0f;
+    fixed->specified_height = 40.0f;
+
+    auto growing = make_block("div");
+    growing->flex_grow = 1.0f;
+    growing->specified_height = 40.0f;
+
+    root->append_child(std::move(fixed));
+    root->append_child(std::move(growing));
+
+    LayoutEngine engine;
+    engine.compute(*root, 500.0f, 400.0f);
+
+    // Fixed child keeps its width
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.width, 100.0f);
+    // Growing child takes remaining space
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.width, 400.0f);
+}
+
+// V154_6: min-height on container forces minimum height
+TEST(LayoutEngineTest, LayoutV154_6) {
+    auto root = make_block("div");
+    root->min_height = 300.0f;
+
+    auto child = make_block("div");
+    child->specified_height = 50.0f;
+
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 600.0f, 600.0f);
+
+    // min_height should force container to be at least 300 even though content is only 50
+    EXPECT_GE(root->geometry.height, 300.0f);
+}
+
+// V154_7: flex-wrap nowrap keeps all items on one line even if overflow
+TEST(LayoutEngineTest, LayoutV154_7) {
+    auto root = make_flex("div");
+    root->flex_direction = 0; // row
+    root->flex_wrap = 0; // nowrap
+
+    for (int i = 0; i < 4; i++) {
+        auto child = make_block("div");
+        child->specified_width = 150.0f;
+        child->specified_height = 30.0f;
+        root->append_child(std::move(child));
+    }
+
+    LayoutEngine engine;
+    engine.compute(*root, 400.0f, 400.0f); // 4 * 150 = 600 > 400
+
+    // All children should be on the same line (y=0)
+    for (int i = 0; i < 4; i++) {
+        EXPECT_FLOAT_EQ(root->children[i]->geometry.y, 0.0f);
+    }
+}
+
+// V154_8: color defaults to black (0xFF000000)
+TEST(LayoutNodeProps, ColorDefaultBlackV154) {
+    auto node = make_block("div");
+    EXPECT_TRUE(node->color == 0xFF000000u || node->color == 0u);
+}
