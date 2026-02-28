@@ -24382,3 +24382,114 @@ TEST(DomNode, SiblingPointersAfterInsertBeforeMiddleV164) {
     EXPECT_EQ(parent->last_child(), c_ptr);
     EXPECT_EQ(parent->child_count(), 3u);
 }
+
+// ---------------------------------------------------------------------------
+// Round 165 — DOM tests (V165)
+// ---------------------------------------------------------------------------
+
+// 1. Remove middle child updates sibling pointers
+TEST(DomNode, RemoveMiddleChildUpdatesSiblingPointersV165) {
+    auto parent = std::make_unique<Element>("div");
+    auto a = std::make_unique<Element>("a");
+    auto b = std::make_unique<Element>("b");
+    auto c = std::make_unique<Element>("c");
+    Element* a_ptr = a.get();
+    Element* b_ptr = b.get();
+    Element* c_ptr = c.get();
+    parent->append_child(std::move(a));
+    parent->append_child(std::move(b));
+    parent->append_child(std::move(c));
+    EXPECT_EQ(parent->child_count(), 3u);
+    parent->remove_child(*b_ptr);
+    EXPECT_EQ(parent->child_count(), 2u);
+    EXPECT_EQ(a_ptr->next_sibling(), c_ptr);
+    EXPECT_EQ(c_ptr->previous_sibling(), a_ptr);
+    EXPECT_EQ(parent->first_child(), a_ptr);
+    EXPECT_EQ(parent->last_child(), c_ptr);
+}
+
+// 2. Get attribute after overwrite returns new value
+TEST(DomElement, GetAttributeAfterOverwriteReturnsNewValueV165) {
+    Element elem("input");
+    elem.set_attribute("name", "first");
+    EXPECT_EQ(elem.get_attribute("name").value(), "first");
+    elem.set_attribute("name", "second");
+    EXPECT_EQ(elem.get_attribute("name").value(), "second");
+    EXPECT_EQ(elem.attributes().size(), 1u);
+}
+
+// 3. Register two ids and find both
+TEST(DomDocument, RegisterTwoIdsAndFindBothV165) {
+    Document doc;
+    auto e1 = std::make_unique<Element>("div");
+    auto e2 = std::make_unique<Element>("span");
+    Element* e1_ptr = e1.get();
+    Element* e2_ptr = e2.get();
+    doc.register_id("header", e1_ptr);
+    doc.register_id("footer", e2_ptr);
+    EXPECT_EQ(doc.get_element_by_id("header"), e1_ptr);
+    EXPECT_EQ(doc.get_element_by_id("footer"), e2_ptr);
+    EXPECT_NE(doc.get_element_by_id("header"), doc.get_element_by_id("footer"));
+}
+
+// 4. Event default_prevented is false initially
+TEST(DomEvent, DefaultPreventedFalseInitiallyV165) {
+    Event ev("submit");
+    EXPECT_FALSE(ev.default_prevented());
+}
+
+// 5. Child count zero for leaf node
+TEST(DomNode, ChildCountZeroForLeafNodeV165) {
+    Element leaf("br");
+    EXPECT_EQ(leaf.child_count(), 0u);
+    EXPECT_EQ(leaf.first_child(), nullptr);
+    EXPECT_EQ(leaf.last_child(), nullptr);
+}
+
+// 6. ClassList toggle adds when absent
+TEST(DomElement, ClassListToggleAddsWhenAbsentV165) {
+    Element elem("div");
+    EXPECT_FALSE(elem.class_list().contains("active"));
+    elem.class_list().toggle("active");
+    EXPECT_TRUE(elem.class_list().contains("active"));
+    EXPECT_EQ(elem.class_list().length(), 1u);
+}
+
+// 7. mark_dirty(Style) does not affect paint flag
+TEST(DomNode, MarkDirtyStyleDoesNotAffectPaintV165) {
+    Element elem("div");
+    elem.clear_dirty();
+    EXPECT_EQ(elem.dirty_flags(), DirtyFlags::None);
+    elem.mark_dirty(DirtyFlags::Style);
+    EXPECT_NE(static_cast<uint8_t>(elem.dirty_flags() & DirtyFlags::Style), 0);
+    EXPECT_EQ(static_cast<uint8_t>(elem.dirty_flags() & DirtyFlags::Paint), 0);
+}
+
+// 8. Deep clone-like copy is separate from original
+TEST(DomNode, DeepCloneSeparateFromOriginalV165) {
+    auto original = std::make_unique<Element>("div");
+    original->set_attribute("class", "original");
+    auto child = std::make_unique<Element>("span");
+    child->set_attribute("id", "inner");
+    Element* child_ptr = child.get();
+    original->append_child(std::move(child));
+
+    // Manual deep clone
+    auto cloned = std::make_unique<Element>(original->tag_name());
+    for (const auto& attr : original->attributes()) {
+        cloned->set_attribute(attr.name, attr.value);
+    }
+    auto cloned_child = std::make_unique<Element>(child_ptr->tag_name());
+    for (const auto& attr : child_ptr->attributes()) {
+        cloned_child->set_attribute(attr.name, attr.value);
+    }
+    cloned->append_child(std::move(cloned_child));
+
+    // Modify clone
+    cloned->set_attribute("class", "cloned");
+    // Original unchanged
+    EXPECT_EQ(original->get_attribute("class").value(), "original");
+    EXPECT_EQ(cloned->get_attribute("class").value(), "cloned");
+    EXPECT_EQ(original->child_count(), 1u);
+    EXPECT_EQ(cloned->child_count(), 1u);
+}

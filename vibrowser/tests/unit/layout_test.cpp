@@ -30087,3 +30087,109 @@ TEST(LayoutNodeProps, FlexDirectionDefaultRowV164) {
     auto node = make_block("div");
     EXPECT_EQ(node->flex_direction, 0);
 }
+
+// V165_1: single block child fills parent width exactly
+TEST(LayoutEngineTest, LayoutV165_1) {
+    auto root = make_block("div");
+    root->specified_width = 500.0f;
+    root->specified_height = 400.0f;
+    auto child = make_block("div");
+    child->specified_height = 100.0f;
+    root->append_child(std::move(child));
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.width, 500.0f);
+}
+
+// V165_2: flex with 2 children, first gets 2x width via flex-grow
+TEST(LayoutEngineTest, LayoutV165_2) {
+    auto root = make_flex("div");
+    root->specified_width = 300.0f;
+    root->specified_height = 100.0f;
+    auto c1 = make_block("div");
+    c1->flex_grow = 2.0f;
+    c1->flex_basis = 0.0f;
+    auto c2 = make_block("div");
+    c2->flex_grow = 1.0f;
+    c2->flex_basis = 0.0f;
+    root->append_child(std::move(c1));
+    root->append_child(std::move(c2));
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.width, 200.0f);
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.width, 100.0f);
+}
+
+// V165_3: three block children stack with correct y offsets
+TEST(LayoutEngineTest, LayoutV165_3) {
+    auto root = make_block("div");
+    auto c1 = make_block("div");
+    c1->specified_height = 40.0f;
+    auto c2 = make_block("div");
+    c2->specified_height = 60.0f;
+    auto c3 = make_block("div");
+    c3->specified_height = 20.0f;
+    root->append_child(std::move(c1));
+    root->append_child(std::move(c2));
+    root->append_child(std::move(c3));
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.y, 0.0f);
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.y, 40.0f);
+    EXPECT_FLOAT_EQ(root->children[2]->geometry.y, 100.0f);
+}
+
+// V165_4: flex child specified_height overrides
+TEST(LayoutEngineTest, LayoutV165_4) {
+    auto root = make_flex("div");
+    root->specified_width = 400.0f;
+    root->specified_height = 200.0f;
+    auto child = make_block("div");
+    child->flex_grow = 1.0f;
+    child->flex_basis = 0.0f;
+    child->specified_height = 75.0f;
+    root->append_child(std::move(child));
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.height, 75.0f);
+}
+
+// V165_5: block parent height sums children heights
+TEST(LayoutEngineTest, LayoutV165_5) {
+    auto root = make_block("div");
+    auto c1 = make_block("div");
+    c1->specified_height = 30.0f;
+    auto c2 = make_block("div");
+    c2->specified_height = 70.0f;
+    root->append_child(std::move(c1));
+    root->append_child(std::move(c2));
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+    EXPECT_FLOAT_EQ(root->geometry.height, 100.0f);
+}
+
+// V165_6: flex container with single child, child fills width
+TEST(LayoutEngineTest, LayoutV165_6) {
+    auto root = make_flex("div");
+    root->specified_width = 600.0f;
+    root->specified_height = 100.0f;
+    auto child = make_block("div");
+    child->flex_grow = 1.0f;
+    child->flex_basis = 0.0f;
+    root->append_child(std::move(child));
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.width, 600.0f);
+}
+
+// V165_7: default specified_width is -1.0f
+TEST(LayoutNodeProps, SpecifiedWidthDefaultNegOneV165) {
+    auto node = make_block("div");
+    EXPECT_FLOAT_EQ(node->specified_width, -1.0f);
+}
+
+// V165_8: default specified_height is -1.0f
+TEST(LayoutNodeProps, SpecifiedHeightDefaultNegOneV165) {
+    auto node = make_block("div");
+    EXPECT_FLOAT_EQ(node->specified_height, -1.0f);
+}

@@ -15743,3 +15743,50 @@ TEST(UrlParserTest, UrlV164_4_HttpPort80IsNullopt) {
     EXPECT_EQ(result->port, std::nullopt);
     EXPECT_EQ(result->path, "/path");
 }
+
+// =============================================================================
+// Round 165 URL parser tests
+// =============================================================================
+
+TEST(UrlParserTest, UrlV165_1_HttpsPort443NulloptAndOmitInSerialize) {
+    // HTTPS default port 443 should be normalized to nullopt and omitted in serialize
+    auto result = parse("https://host:443/index");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "host");
+    EXPECT_EQ(result->port, std::nullopt);
+    EXPECT_EQ(result->path, "/index");
+    // Serialized form should NOT include :443
+    std::string s = result->serialize();
+    EXPECT_EQ(s, "https://host/index");
+    EXPECT_EQ(s.find(":443"), std::string::npos);
+}
+
+TEST(UrlParserTest, UrlV165_2_EmptyPathNoTrailingSlash) {
+    // A URL with no path component should default to "/"
+    auto result = parse("http://host");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "host");
+    EXPECT_EQ(result->path, "/");
+}
+
+TEST(UrlParserTest, UrlV165_3_QueryWithPlusSign) {
+    // Plus signs in query strings should be preserved as-is (not decoded to space)
+    auto result = parse("http://host/search?q=hello+world");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "host");
+    EXPECT_EQ(result->path, "/search");
+    EXPECT_EQ(result->query, "q=hello+world");
+}
+
+TEST(UrlParserTest, UrlV165_4_WssSchemeParses) {
+    // wss:// scheme should parse correctly with host and path
+    auto result = parse("wss://secure.ws.example/path");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "wss");
+    EXPECT_EQ(result->host, "secure.ws.example");
+    EXPECT_EQ(result->path, "/path");
+    EXPECT_EQ(result->port, std::nullopt);
+}

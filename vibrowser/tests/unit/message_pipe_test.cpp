@@ -2681,3 +2681,70 @@ TEST(MessagePipeTest, MessagePipeV164_3_AlternatingPayloadSizes) {
     auto final_recv = b.receive();
     EXPECT_FALSE(final_recv.has_value());
 }
+
+// ------------------------------------------------------------------
+// Round 165 — MessagePipe tests
+// ------------------------------------------------------------------
+
+TEST(MessagePipeTest, MessagePipeV165_1_SendReceiveThenCloseV165) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    std::vector<uint8_t> msg1 = {0x11, 0x22};
+    std::vector<uint8_t> msg2 = {0x33, 0x44, 0x55};
+    ASSERT_TRUE(a.send(msg1));
+    ASSERT_TRUE(a.send(msg2));
+
+    auto r1 = b.receive();
+    ASSERT_TRUE(r1.has_value());
+    EXPECT_EQ(*r1, msg1);
+
+    auto r2 = b.receive();
+    ASSERT_TRUE(r2.has_value());
+    EXPECT_EQ(*r2, msg2);
+
+    a.close();
+
+    auto r3 = b.receive();
+    EXPECT_FALSE(r3.has_value());
+}
+
+TEST(MessagePipeTest, MessagePipeV165_2_OneByteAllValuesV165) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    for (int i = 0; i < 256; ++i) {
+        std::vector<uint8_t> payload = {static_cast<uint8_t>(i)};
+        ASSERT_TRUE(a.send(payload));
+    }
+    a.close();
+
+    for (int i = 0; i < 256; ++i) {
+        auto received = b.receive();
+        ASSERT_TRUE(received.has_value());
+        ASSERT_EQ(received->size(), 1u);
+        EXPECT_EQ((*received)[0], static_cast<uint8_t>(i));
+    }
+
+    auto end = b.receive();
+    EXPECT_FALSE(end.has_value());
+}
+
+TEST(MessagePipeTest, MessagePipeV165_3_FiveHundredBytePayloadV165) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    std::vector<uint8_t> payload(500);
+    for (size_t i = 0; i < 500; ++i) {
+        payload[i] = static_cast<uint8_t>(i % 256);
+    }
+    ASSERT_TRUE(a.send(payload));
+    a.close();
+
+    auto received = b.receive();
+    ASSERT_TRUE(received.has_value());
+    ASSERT_EQ(received->size(), 500u);
+    for (size_t i = 0; i < 500; ++i) {
+        EXPECT_EQ((*received)[i], static_cast<uint8_t>(i % 256));
+    }
+
+    auto end = b.receive();
+    EXPECT_FALSE(end.has_value());
+}

@@ -1722,3 +1722,30 @@ TEST(IsURLCodePoint, SpaceIsInvalidV164) {
     // Space (0x20) is NOT a valid URL code point
     EXPECT_FALSE(is_url_code_point(static_cast<char32_t>(0x20)));
 }
+
+// =============================================================================
+// Round 165 percent encoding tests
+// =============================================================================
+
+TEST(PercentEncoding, CaretEncodedV165) {
+    // Caret (^) should be percent-encoded as %5E
+    EXPECT_EQ(percent_encode("^"), "%5E");
+    EXPECT_EQ(percent_encode("a^b"), "a%5Eb");
+}
+
+TEST(PercentDecoding, EmptyStringDecodesEmptyV165) {
+    // Decoding an empty string should produce an empty string
+    EXPECT_EQ(percent_decode(""), "");
+}
+
+TEST(PercentEncoding, DollarSignNotEncodedV165) {
+    // Dollar sign ($) is a valid URL code point and should NOT be percent-encoded
+    EXPECT_EQ(percent_encode("$"), "$");
+    EXPECT_EQ(percent_encode("price=$100"), "price=$100");
+}
+
+TEST(IsURLCodePoint, ControlCharsInvalidV165) {
+    // Control characters (0x01, 0x1F) are NOT valid URL code points
+    EXPECT_FALSE(is_url_code_point(static_cast<char32_t>(0x01)));
+    EXPECT_FALSE(is_url_code_point(static_cast<char32_t>(0x1F)));
+}

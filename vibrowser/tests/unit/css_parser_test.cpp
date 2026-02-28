@@ -11519,3 +11519,62 @@ TEST_F(CSSStylesheetTest, BreakInsideDeclarationV164) {
     }
     EXPECT_TRUE(found) << "break-inside declaration not found";
 }
+
+// Round 165 — CSS parser tests (V165)
+
+TEST_F(CSSStylesheetTest, AlignItemsDeclarationV165) {
+    auto ss = parse_stylesheet("div { align-items: center; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "align-items") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "center");
+        }
+    }
+    EXPECT_TRUE(found) << "align-items declaration not found";
+}
+
+TEST_F(CSSStylesheetTest, JustifyContentDeclarationV165) {
+    auto ss = parse_stylesheet("div { justify-content: space-between; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "justify-content") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "space-between");
+        }
+    }
+    EXPECT_TRUE(found) << "justify-content declaration not found";
+}
+
+TEST_F(CSSStylesheetTest, GapDeclarationV165) {
+    auto ss = parse_stylesheet("div { gap: 10px; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "gap") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "10px");
+        }
+    }
+    EXPECT_TRUE(found) << "gap declaration not found";
+}
+
+TEST_F(CSSStylesheetTest, PlaceItemsDeclarationV165) {
+    auto ss = parse_stylesheet("div { place-items: center start; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "place-items") {
+            found = true;
+            ASSERT_GE(d.values.size(), 2u);
+            EXPECT_EQ(d.values[0].value, "center");
+            EXPECT_EQ(d.values[1].value, "start");
+        }
+    }
+    EXPECT_TRUE(found) << "place-items declaration not found";
+}

@@ -28622,3 +28622,143 @@ TEST(HttpClient, CookieJarMultipleCookiesSamePathV164) {
     EXPECT_NE(header.find("; "), std::string::npos)
         << "Multiple cookies should be separated by '; ', got: " << header;
 }
+
+// ===========================================================================
+// Round 165 — Net tests
+// ===========================================================================
+
+// 1. GET with Accept: application/json header
+TEST(HttpClient, RequestSerializeGetWithAcceptJsonV165) {
+    Request req;
+    req.method = Method::GET;
+    req.host = "api165.example.com";
+    req.port = 443;
+    req.path = "/data/v165";
+    req.headers.set("Accept", "application/json");
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    EXPECT_NE(result.find("GET /data/v165 HTTP/1.1\r\n"), std::string::npos)
+        << "Request line should contain GET and path, got: " << result;
+    EXPECT_NE(result.find("Host: api165.example.com\r\n"), std::string::npos)
+        << "Port 443 should be omitted from Host header, got: " << result;
+    EXPECT_NE(result.find("accept: application/json\r\n"), std::string::npos)
+        << "Accept header should appear lowercase in serialized output, got: " << result;
+    EXPECT_NE(result.find("Connection: close\r\n"), std::string::npos)
+        << "Connection header should be present, got: " << result;
+}
+
+// 2. 200 response with Set-Cookie header
+TEST(HttpClient, ResponseParse200WithSetCookieV165) {
+    std::string raw =
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Type: text/html\r\n"
+        "Set-Cookie: session165=abc123; Path=/\r\n"
+        "Content-Length: 4\r\n"
+        "\r\n"
+        "done";
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value()) << "200 response with Set-Cookie should parse";
+    EXPECT_EQ(resp->status, 200);
+    EXPECT_EQ(resp->status_text, "OK");
+    auto sc = resp->headers.get("Set-Cookie");
+    ASSERT_TRUE(sc.has_value()) << "Set-Cookie header should be present";
+    EXPECT_NE(sc->find("session165=abc123"), std::string::npos)
+        << "Set-Cookie should contain cookie value, got: " << *sc;
+    EXPECT_EQ(resp->body_as_string(), "done");
+}
+
+// 3. ConnectionPool: release 1, acquire 1, acquire again returns -1
+TEST(HttpClient, ConnectionPoolEmptyAfterAcquireAllV165) {
+    ConnectionPool pool;
+    pool.release("pool165.example.com", 443, 42);
+
+    int fd1 = pool.acquire("pool165.example.com", 443);
+    EXPECT_EQ(fd1, 42)
+        << "First acquire should return the released socket, got: " << fd1;
+
+    int fd2 = pool.acquire("pool165.example.com", 443);
+    EXPECT_EQ(fd2, -1)
+        << "Second acquire should return -1 (pool empty), got: " << fd2;
+}
+
+// 4. CookieJar: Path=/admin cookie not returned for /user request
+TEST(HttpClient, CookieJarPathMismatchReturnEmptyV165) {
+    CookieJar jar;
+    jar.set_from_header("admin165=secret; Path=/admin", "path165.example.com");
+
+    std::string header = jar.get_cookie_header("path165.example.com", "/user", false);
+    EXPECT_TRUE(header.empty())
+        << "Cookie with Path=/admin should not be returned for /user, got: " << header;
+}
+
+// 5. HeaderMap: set then get returns the value
+TEST(HttpClient, HeaderMapSetThenGetReturnsValueV165) {
+    HeaderMap map;
+    map.set("X-Key-165", "myvalue165");
+
+    auto val = map.get("X-Key-165");
+    ASSERT_TRUE(val.has_value()) << "get should return a value after set";
+    EXPECT_EQ(*val, "myvalue165")
+        << "get should return the value that was set, got: " << *val;
+}
+
+// 6. POST with explicitly empty body vector — no Content-Length header
+TEST(HttpClient, RequestSerializePostEmptyBodyV165) {
+    Request req;
+    req.method = Method::POST;
+    req.host = "post165.example.com";
+    req.port = 80;
+    req.path = "/submit/v165";
+    // body left empty (default)
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    EXPECT_NE(result.find("POST /submit/v165 HTTP/1.1\r\n"), std::string::npos)
+        << "Request line should contain POST, got: " << result;
+    EXPECT_NE(result.find("Host: post165.example.com\r\n"), std::string::npos)
+        << "Port 80 should be omitted from Host header, got: " << result;
+    EXPECT_NE(result.find("Connection: close\r\n"), std::string::npos)
+        << "Connection header should be present, got: " << result;
+    // With no body assigned, serializer omits Content-Length
+    EXPECT_EQ(result.find("Content-Length"), std::string::npos)
+        << "Empty body POST should not include Content-Length, got: " << result;
+}
+
+// 7. 403 Forbidden response parse
+TEST(HttpClient, ResponseParse403ForbiddenV165) {
+    std::string raw =
+        "HTTP/1.1 403 Forbidden\r\n"
+        "Content-Type: text/plain\r\n"
+        "Content-Length: 13\r\n"
+        "\r\n"
+        "Access Denied";
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value()) << "403 response should parse successfully";
+    EXPECT_EQ(resp->status, 403);
+    EXPECT_EQ(resp->status_text, "Forbidden");
+    EXPECT_EQ(resp->body_as_string(), "Access Denied");
+}
+
+// 8. Secure cookie not returned when is_secure=false
+TEST(HttpClient, CookieJarSecureCookieNotOnHttpV165) {
+    CookieJar jar;
+    jar.set_from_header("token165=supersecret; Secure; Path=/", "secure165.example.com");
+
+    std::string header = jar.get_cookie_header("secure165.example.com", "/", false);
+    EXPECT_TRUE(header.empty())
+        << "Secure cookie should not be returned for is_secure=false, got: " << header;
+
+    // Verify it IS returned for is_secure=true
+    std::string header_secure = jar.get_cookie_header("secure165.example.com", "/", true);
+    EXPECT_NE(header_secure.find("token165=supersecret"), std::string::npos)
+        << "Secure cookie should be returned for is_secure=true, got: " << header_secure;
+}

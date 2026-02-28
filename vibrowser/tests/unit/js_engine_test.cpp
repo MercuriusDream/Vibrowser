@@ -38135,3 +38135,95 @@ TEST(JSEngine, JsV164_8) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "5,4,3,2,1");
 }
+
+// V165_1: Array.join with separator
+TEST(JSEngine, JsV165_1) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var arr = ["hello", "world", "test"];
+        arr.join("-");
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "hello-world-test");
+}
+
+// V165_2: String.charAt returns character
+TEST(JSEngine, JsV165_2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var s = "abcdef";
+        s.charAt(2);
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "c");
+}
+
+// V165_3: Object.freeze prevents modification
+TEST(JSEngine, JsV165_3) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var obj = {x: 10};
+        Object.freeze(obj);
+        obj.x = 99;
+        String(obj.x);
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "10");
+}
+
+// V165_4: typeof undefined
+TEST(JSEngine, JsV165_4) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        typeof undefined;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "undefined");
+}
+
+// V165_5: Math.pow computes power
+TEST(JSEngine, JsV165_5) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        String(Math.pow(2, 10));
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1024");
+}
+
+// V165_6: Array.sort default alphabetical
+TEST(JSEngine, JsV165_6) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var arr = ["banana", "apple", "cherry"];
+        arr.sort();
+        arr.join(",");
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "apple,banana,cherry");
+}
+
+// V165_7: ternary operator
+TEST(JSEngine, JsV165_7) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var x = 5;
+        var r = x > 3 ? "big" : "small";
+        r;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "big");
+}
+
+// V165_8: for...in iterates over keys
+TEST(JSEngine, JsV165_8) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var obj = {a: 1, b: 2, c: 3};
+        var keys = [];
+        for (var k in obj) { keys.push(k); }
+        keys.sort().join(",");
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "a,b,c");
+}

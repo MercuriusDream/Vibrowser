@@ -13086,3 +13086,53 @@ TEST(CORSPolicyTest, CorsV164_7_CorsAllowsWithCredentialsFalse) {
 TEST(CORSPolicyTest, CorsV164_8_CrossOriginSameHostDiffSubdomain) {
     EXPECT_TRUE(is_cross_origin("https://api.host.example", "https://www.host.example/page"));
 }
+
+// ---------------------------------------------------------------------------
+// Round 165 — CORS tests (V165)
+// ---------------------------------------------------------------------------
+
+// 1. https with non-default port 8443 is enforceable
+TEST(CORSPolicyTest, CorsV165_1_HttpsPort8443Enforceable) {
+    EXPECT_TRUE(has_enforceable_document_origin("https://host.example:8443"));
+}
+
+// 2. Same origin with case-insensitive scheme
+TEST(CORSPolicyTest, CorsV165_2_SameOriginCaseInsensitiveScheme) {
+    EXPECT_FALSE(is_cross_origin("HTTP://app.example", "http://app.example/page"));
+}
+
+// 3. ACAO exact match with port
+TEST(CORSPolicyTest, CorsV165_3_AcaoExactMatchWithPort) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "https://app.example:9000");
+    EXPECT_TRUE(cors_allows_response("https://app.example:9000", "https://api.example/data",
+                                     headers, false));
+}
+
+// 4. should_attach_origin when schemes differ (http vs https)
+TEST(CORSPolicyTest, CorsV165_4_ShouldAttachOriginDiffScheme) {
+    EXPECT_TRUE(should_attach_origin_header("http://app.example", "https://app.example/data"));
+}
+
+// 5. Custom scheme is not enforceable
+TEST(CORSPolicyTest, CorsV165_5_CustomSchemeNotEnforceable) {
+    EXPECT_FALSE(has_enforceable_document_origin("custom-scheme://app.example"));
+}
+
+// 6. IPv4 address origin is enforceable
+TEST(CORSPolicyTest, CorsV165_6_IPv4AddressEnforceable) {
+    EXPECT_TRUE(has_enforceable_document_origin("http://192.168.1.1"));
+}
+
+// 7. Wildcard ACAO with credentials requested is rejected
+TEST(CORSPolicyTest, CorsV165_7_WildcardWithCredentialsRejected) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "*");
+    EXPECT_FALSE(cors_allows_response("https://app.example", "https://api.example/data",
+                                      headers, true));
+}
+
+// 8. Empty string origin is not enforceable
+TEST(CORSPolicyTest, CorsV165_8_EmptyOriginNotEnforceable) {
+    EXPECT_FALSE(has_enforceable_document_origin(""));
+}

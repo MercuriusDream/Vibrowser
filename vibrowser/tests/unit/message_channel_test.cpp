@@ -2834,3 +2834,67 @@ TEST(MessageChannelTest, MessageChannelV164_2_PayloadContentVerified) {
     EXPECT_EQ(captured_payload[4], 0xCA);
     EXPECT_EQ(captured_payload[5], 0xFE);
 }
+
+// ------------------------------------------------------------------
+// Round 165 — MessageChannel tests
+// ------------------------------------------------------------------
+
+TEST(MessageChannelTest, MessageChannelV165_1_HandlerForTypeZeroV165) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel ch(std::move(pa));
+
+    bool handler_called = false;
+    uint32_t captured_request_id = 999;
+    ch.on(0, [&](const Message& m) {
+        handler_called = true;
+        captured_request_id = m.request_id;
+    });
+
+    Message msg;
+    msg.type = 0;
+    msg.request_id = 7;
+    msg.payload = {0xAB};
+    ch.dispatch(msg);
+
+    EXPECT_TRUE(handler_called);
+    EXPECT_EQ(captured_request_id, 7u);
+}
+
+TEST(MessageChannelTest, MessageChannelV165_2_TwoHandlersTwoTypesV165) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel ch(std::move(pa));
+
+    int count_10 = 0;
+    int count_20 = 0;
+    std::vector<uint8_t> payload_10;
+    std::vector<uint8_t> payload_20;
+
+    ch.on(10, [&](const Message& m) {
+        count_10++;
+        payload_10 = m.payload;
+    });
+    ch.on(20, [&](const Message& m) {
+        count_20++;
+        payload_20 = m.payload;
+    });
+
+    Message msg10;
+    msg10.type = 10;
+    msg10.request_id = 1;
+    msg10.payload = {0x0A};
+    ch.dispatch(msg10);
+
+    Message msg20;
+    msg20.type = 20;
+    msg20.request_id = 2;
+    msg20.payload = {0x14, 0x15};
+    ch.dispatch(msg20);
+
+    EXPECT_EQ(count_10, 1);
+    EXPECT_EQ(count_20, 1);
+    ASSERT_EQ(payload_10.size(), 1u);
+    EXPECT_EQ(payload_10[0], 0x0A);
+    ASSERT_EQ(payload_20.size(), 2u);
+    EXPECT_EQ(payload_20[0], 0x14);
+    EXPECT_EQ(payload_20[1], 0x15);
+}

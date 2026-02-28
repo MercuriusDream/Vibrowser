@@ -25934,3 +25934,135 @@ TEST(HtmlParserTest, HtmlV164_8) {
     EXPECT_EQ(href_val, "https://example.com");
     EXPECT_EQ(target_val, "_blank");
 }
+
+// Round 165 — HTML parser tests (V165)
+
+TEST(HtmlParserTest, HtmlV165_1) {
+    // h4 element
+    auto doc = clever::html::parse(
+        "<html><body><h4>Heading Four</h4></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* h4 = doc->find_element("h4");
+    ASSERT_NE(h4, nullptr);
+    EXPECT_EQ(h4->tag_name, "h4");
+    EXPECT_EQ(h4->text_content(), "Heading Four");
+}
+
+TEST(HtmlParserTest, HtmlV165_2) {
+    // h5 element
+    auto doc = clever::html::parse(
+        "<html><body><h5>Heading Five</h5></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* h5 = doc->find_element("h5");
+    ASSERT_NE(h5, nullptr);
+    EXPECT_EQ(h5->tag_name, "h5");
+    EXPECT_EQ(h5->text_content(), "Heading Five");
+}
+
+TEST(HtmlParserTest, HtmlV165_3) {
+    // h6 element
+    auto doc = clever::html::parse(
+        "<html><body><h6>Heading Six</h6></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* h6 = doc->find_element("h6");
+    ASSERT_NE(h6, nullptr);
+    EXPECT_EQ(h6->tag_name, "h6");
+    EXPECT_EQ(h6->text_content(), "Heading Six");
+}
+
+TEST(HtmlParserTest, HtmlV165_4) {
+    // ol with li children (ordered list)
+    auto doc = clever::html::parse(
+        "<html><body><ol><li>Alpha</li><li>Beta</li><li>Gamma</li></ol></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* ol = doc->find_element("ol");
+    ASSERT_NE(ol, nullptr);
+    EXPECT_EQ(ol->tag_name, "ol");
+
+    auto items = doc->find_all_elements("li");
+    ASSERT_EQ(items.size(), 3u);
+    EXPECT_EQ(items[0]->text_content(), "Alpha");
+    EXPECT_EQ(items[1]->text_content(), "Beta");
+    EXPECT_EQ(items[2]->text_content(), "Gamma");
+    EXPECT_EQ(items[0]->parent, ol);
+}
+
+TEST(HtmlParserTest, HtmlV165_5) {
+    // ul with li children (unordered list)
+    auto doc = clever::html::parse(
+        "<html><body><ul><li>Red</li><li>Green</li><li>Blue</li></ul></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* ul = doc->find_element("ul");
+    ASSERT_NE(ul, nullptr);
+    EXPECT_EQ(ul->tag_name, "ul");
+
+    auto items = doc->find_all_elements("li");
+    ASSERT_EQ(items.size(), 3u);
+    EXPECT_EQ(items[0]->text_content(), "Red");
+    EXPECT_EQ(items[1]->text_content(), "Green");
+    EXPECT_EQ(items[2]->text_content(), "Blue");
+    EXPECT_EQ(items[0]->parent, ul);
+}
+
+TEST(HtmlParserTest, HtmlV165_6) {
+    // table with th and td cells
+    auto doc = clever::html::parse(
+        "<html><body><table><tr><th>Name</th><td>Value</td></tr></table></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* table = doc->find_element("table");
+    ASSERT_NE(table, nullptr);
+    EXPECT_EQ(table->tag_name, "table");
+
+    auto* th = doc->find_element("th");
+    auto* td = doc->find_element("td");
+    ASSERT_NE(th, nullptr);
+    ASSERT_NE(td, nullptr);
+    EXPECT_EQ(th->tag_name, "th");
+    EXPECT_EQ(td->tag_name, "td");
+    EXPECT_EQ(th->text_content(), "Name");
+    EXPECT_EQ(td->text_content(), "Value");
+}
+
+TEST(HtmlParserTest, HtmlV165_7) {
+    // div nested in div nested in div
+    auto doc = clever::html::parse(
+        "<html><body><div><div><div>deep</div></div></div></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto divs = doc->find_all_elements("div");
+    ASSERT_GE(divs.size(), 3u);
+
+    // The outermost div
+    EXPECT_EQ(divs[0]->tag_name, "div");
+    // The middle div is child of outer
+    EXPECT_EQ(divs[1]->parent, divs[0]);
+    // The inner div is child of middle
+    EXPECT_EQ(divs[2]->parent, divs[1]);
+    EXPECT_EQ(divs[2]->text_content(), "deep");
+}
+
+TEST(HtmlParserTest, HtmlV165_8) {
+    // p with multiple inline spans
+    auto doc = clever::html::parse(
+        "<html><body><p><span>one</span><span>two</span><span>three</span></p></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* p = doc->find_element("p");
+    ASSERT_NE(p, nullptr);
+    EXPECT_EQ(p->tag_name, "p");
+
+    auto spans = doc->find_all_elements("span");
+    ASSERT_EQ(spans.size(), 3u);
+    EXPECT_EQ(spans[0]->text_content(), "one");
+    EXPECT_EQ(spans[1]->text_content(), "two");
+    EXPECT_EQ(spans[2]->text_content(), "three");
+    EXPECT_EQ(spans[0]->parent, p);
+    EXPECT_EQ(spans[1]->parent, p);
+    EXPECT_EQ(spans[2]->parent, p);
+}

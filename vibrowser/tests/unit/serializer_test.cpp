@@ -21496,3 +21496,46 @@ TEST(SerializerTest, SerializerV164_3_StringWithSpecialCharsRoundTrip) {
     EXPECT_EQ(d.read_string(), with_unicode);
     EXPECT_FALSE(d.has_remaining());
 }
+
+// ------------------------------------------------------------------
+// Round 165 — Serializer tests
+// ------------------------------------------------------------------
+
+TEST(SerializerTest, SerializerV165_1_U16MinAndMaxRoundTrip) {
+    Serializer s;
+    s.write_u16(0);
+    s.write_u16(65535);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u16(), 0u);
+    EXPECT_EQ(d.read_u16(), 65535u);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, SerializerV165_2_LongStringRoundTrip) {
+    Serializer s;
+    std::string long_str(5000, 'X');
+    s.write_string(long_str);
+
+    Deserializer d(s.data());
+    std::string result = d.read_string();
+    EXPECT_EQ(result.size(), 5000u);
+    EXPECT_EQ(result, long_str);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, SerializerV165_3_F64ZeroAndNegZeroRoundTrip) {
+    Serializer s;
+    s.write_f64(0.0);
+    s.write_f64(-0.0);
+
+    Deserializer d(s.data());
+    double pos_zero = d.read_f64();
+    double neg_zero = d.read_f64();
+
+    EXPECT_EQ(pos_zero, 0.0);
+    EXPECT_EQ(neg_zero, -0.0);
+    EXPECT_FALSE(std::signbit(pos_zero));
+    EXPECT_TRUE(std::signbit(neg_zero));
+    EXPECT_FALSE(d.has_remaining());
+}

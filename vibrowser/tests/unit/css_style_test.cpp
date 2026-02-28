@@ -26407,3 +26407,41 @@ TEST(PropertyCascadeTest, WhiteSpaceNoWrapAppliedV164) {
     cascade.apply_declaration(style, make_decl("white-space", "nowrap"), parent);
     EXPECT_EQ(style.white_space, WhiteSpace::NoWrap);
 }
+
+// Round 165 — CSS style tests (V165)
+
+TEST(CSSStyleTest, CssV165_1_DisplayFlexApplied) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("display", "flex"), parent);
+    EXPECT_EQ(style.display, Display::Flex);
+}
+
+TEST(CSSStyleTest, CssV165_2_DisplayNoneApplied) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("display", "none"), parent);
+    EXPECT_EQ(style.display, Display::None);
+}
+
+TEST(PropertyCascadeTest, PositionRelativeAppliedV165) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("position", "relative"), parent);
+    EXPECT_EQ(style.position, Position::Relative);
+}
+
+TEST(PropertyCascadeTest, PositionFixedAppliedV165) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("position", "fixed"), parent);
+    EXPECT_EQ(style.position, Position::Fixed);
+}
