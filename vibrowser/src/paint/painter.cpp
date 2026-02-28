@@ -867,6 +867,8 @@ void Painter::paint_node(const clever::layout::LayoutNode& node, DisplayList& li
         if (child.mix_blend_mode != 0) return true;
         // isolation: isolate
         if (child.isolation == 1) return true;
+        // contain: paint creates stacking context
+        if (child.contain == 1 || child.contain == 2 || child.contain == 6) return true;
         // will-change for stacking-context-creating properties
         if (!child.will_change.empty() && child.will_change != "auto") {
             if (child.will_change.find("opacity") != std::string::npos ||

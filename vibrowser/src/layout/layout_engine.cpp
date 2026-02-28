@@ -184,13 +184,20 @@ static float measure_intrinsic_width(const LayoutNode& node, bool max_content,
     }
     // Recurse into children and accumulate
     float children_width = 0;
-    for (auto& child : node.children) {
-        float cw = measure_intrinsic_width(*child, max_content, measurer, depth + 1);
-        if (child->mode == LayoutMode::Inline || child->display == DisplayType::Inline ||
-            child->display == DisplayType::InlineBlock) {
-            children_width += cw; // inline: sum widths
-        } else {
-            children_width = std::max(children_width, cw); // block: max width
+    if (node.contain == 3) {
+        if (node.contain_intrinsic_width > 0) {
+            children_width = node.contain_intrinsic_width;
+        }
+    } else {
+        for (auto& child : node.children) {
+            if (child->content_visibility == 1) continue;
+            float cw = measure_intrinsic_width(*child, max_content, measurer, depth + 1);
+            if (child->mode == LayoutMode::Inline || child->display == DisplayType::Inline ||
+                child->display == DisplayType::InlineBlock) {
+                children_width += cw; // inline: sum widths
+            } else {
+                children_width = std::max(children_width, cw); // block: max width
+            }
         }
     }
     float padding_border = node.geometry.padding.left + node.geometry.padding.right +
@@ -550,6 +557,7 @@ void LayoutEngine::layout_block(LayoutNode& node, float containing_width) {
     bool has_block_children = false;
     for (auto& child : node.children) {
         if (child->display == DisplayType::None || child->mode == LayoutMode::None) continue;
+        if (child->content_visibility == 1) continue;
         if (child->position_type == 2 || child->position_type == 3) continue;
         bool inline_like = child->is_text
             || child->mode == LayoutMode::Inline
@@ -573,6 +581,7 @@ void LayoutEngine::layout_block(LayoutNode& node, float containing_width) {
         // Compute children height from inline layout
         for (auto& child : node.children) {
             if (child->display == DisplayType::None || child->mode == LayoutMode::None) continue;
+            if (child->content_visibility == 1) continue;
             if (child->position_type == 2 || child->position_type == 3) continue;
             float bottom = child->geometry.y + child->geometry.margin_box_height();
             if (bottom > children_height) children_height = bottom;
@@ -587,6 +596,7 @@ void LayoutEngine::layout_block(LayoutNode& node, float containing_width) {
         position_block_children(node);
         for (auto& child : node.children) {
             if (child->display == DisplayType::None || child->mode == LayoutMode::None) continue;
+            if (child->content_visibility == 1) continue;
             if (child->position_type == 2 || child->position_type == 3) continue;
             if (child->float_type != 0) {
                 if (node.establishes_bfc) {
@@ -603,6 +613,7 @@ void LayoutEngine::layout_block(LayoutNode& node, float containing_width) {
         position_block_children(node);
         for (auto& child : node.children) {
             if (child->display == DisplayType::None || child->mode == LayoutMode::None) continue;
+            if (child->content_visibility == 1) continue;
             if (child->position_type == 2 || child->position_type == 3) continue;
             // Floats are out of normal flow — only include them in height if
             // the parent establishes a BFC (which contains its floats)
@@ -629,6 +640,7 @@ void LayoutEngine::layout_block(LayoutNode& node, float containing_width) {
         std::vector<LayoutNode*> visible_children;
         for (auto& child : node.children) {
             if (child->display == DisplayType::None || child->mode == LayoutMode::None) continue;
+            if (child->content_visibility == 1) continue;
             if (child->position_type == 2 || child->position_type == 3) continue;
             visible_children.push_back(child.get());
         }
@@ -742,6 +754,7 @@ void LayoutEngine::layout_block(LayoutNode& node, float containing_width) {
     // the text child's geometry.
     if (node.line_clamp > 0 && has_inline_children && content_w > 0) {
         for (auto& child : node.children) {
+            if (child->content_visibility == 1) continue;
             if (!child->is_text || child->text_content.empty()) continue;
 
             float char_width = avg_char_width(child->font_size, child->font_family, child->font_weight,
@@ -771,6 +784,7 @@ void LayoutEngine::layout_block(LayoutNode& node, float containing_width) {
             children_height = 0;
             for (auto& c : node.children) {
                 if (c->display == DisplayType::None || c->mode == LayoutMode::None) continue;
+                if (c->content_visibility == 1) continue;
                 if (c->position_type == 2 || c->position_type == 3) continue;
                 float bottom = c->geometry.y + c->geometry.margin_box_height();
                 if (bottom > children_height) children_height = bottom;
@@ -1053,6 +1067,7 @@ void LayoutEngine::layout_children(LayoutNode& node) {
             child->geometry.height = 0;
             continue;
         }
+        if (child->content_visibility == 1) continue;
         switch (child->mode) {
             case LayoutMode::Block:
             case LayoutMode::InlineBlock:
@@ -1174,6 +1189,7 @@ void LayoutEngine::position_block_children(LayoutNode& node) {
             child->geometry.height = 0;
             continue;
         }
+        if (child->content_visibility == 1) continue;
 
         // Skip absolute/fixed from normal flow — they are positioned separately
         if (child->position_type == 2 || child->position_type == 3) {
@@ -1389,6 +1405,7 @@ void LayoutEngine::position_block_children(LayoutNode& node) {
         for (auto it = node.children.rbegin(); it != node.children.rend(); ++it) {
             auto& c = *it;
             if (c->display == DisplayType::None || c->mode == LayoutMode::None) continue;
+            if (c->content_visibility == 1) continue;
             if (c->position_type == 2 || c->position_type == 3) continue;
             if (c->float_type != 0) continue;
             if (c->display == DisplayType::InlineBlock) continue; // inline-block doesn't collapse
@@ -1435,6 +1452,7 @@ void LayoutEngine::position_inline_children(LayoutNode& node, float containing_w
             child->geometry.height = 0;
             continue;
         }
+        if (child->content_visibility == 1) continue;
         if (child->position_type == 2 || child->position_type == 3) continue;
         visible.push_back(i);
     }
