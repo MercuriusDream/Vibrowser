@@ -19682,3 +19682,157 @@ TEST(LayoutNodeTest, AppendChildAndFlexDirectionColumnV106) {
     EXPECT_EQ(raw->color, 0xFF000000u);
     EXPECT_EQ(parent.background_color, 0xFF00FF00u);
 }
+
+TEST(LayoutNodeTest, BlockDisplayAndBackgroundColorV107) {
+    using namespace clever::layout;
+    LayoutNode node;
+    node.display = DisplayType::Block;
+    node.background_color = 0xFFCCCCCCu;
+    EXPECT_EQ(node.display, DisplayType::Block);
+    EXPECT_EQ(node.background_color, 0xFFCCCCCCu);
+}
+
+TEST(LayoutNodeTest, FlexRowWithTwoChildrenV107) {
+    using namespace clever::layout;
+    LayoutNode parent;
+    parent.display = DisplayType::Flex;
+    parent.flex_direction = 0; // row
+    parent.specified_width = 400.0f;
+
+    auto c1 = std::make_unique<LayoutNode>();
+    c1->specified_width = 150.0f;
+    c1->specified_height = 80.0f;
+    LayoutNode* r1 = c1.get();
+    parent.append_child(std::move(c1));
+
+    auto c2 = std::make_unique<LayoutNode>();
+    c2->specified_width = 250.0f;
+    c2->specified_height = 80.0f;
+    LayoutNode* r2 = c2.get();
+    parent.append_child(std::move(c2));
+
+    EXPECT_EQ(parent.flex_direction, 0);
+    EXPECT_FLOAT_EQ(r1->specified_width, 150.0f);
+    EXPECT_FLOAT_EQ(r2->specified_width, 250.0f);
+    EXPECT_FLOAT_EQ(parent.specified_width, 400.0f);
+}
+
+TEST(LayoutNodeTest, InlineDisplayWithTextColorV107) {
+    using namespace clever::layout;
+    LayoutNode node;
+    node.display = DisplayType::Inline;
+    node.color = 0xFF0000FFu; // blue text
+    node.specified_width = 0.0f;
+    EXPECT_EQ(node.display, DisplayType::Inline);
+    EXPECT_EQ(node.color, 0xFF0000FFu);
+    EXPECT_FLOAT_EQ(node.specified_width, 0.0f);
+}
+
+TEST(LayoutNodeTest, FlexColumnWithNestedChildrenV107) {
+    using namespace clever::layout;
+    LayoutNode root;
+    root.display = DisplayType::Flex;
+    root.flex_direction = 2; // column
+    root.specified_width = 600.0f;
+    root.specified_height = 400.0f;
+
+    auto child = std::make_unique<LayoutNode>();
+    child->display = DisplayType::Block;
+    child->specified_height = 200.0f;
+    child->background_color = 0xFFFF0000u; // red
+
+    auto grandchild = std::make_unique<LayoutNode>();
+    grandchild->specified_width = 100.0f;
+    grandchild->color = 0xFF00FF00u; // green text
+    LayoutNode* gc = grandchild.get();
+    child->append_child(std::move(grandchild));
+
+    LayoutNode* ch = child.get();
+    root.append_child(std::move(child));
+
+    EXPECT_EQ(root.flex_direction, 2);
+    EXPECT_FLOAT_EQ(ch->specified_height, 200.0f);
+    EXPECT_EQ(ch->background_color, 0xFFFF0000u);
+    EXPECT_FLOAT_EQ(gc->specified_width, 100.0f);
+    EXPECT_EQ(gc->color, 0xFF00FF00u);
+}
+
+TEST(LayoutNodeTest, ZeroDimensionsDefaultV107) {
+    using namespace clever::layout;
+    LayoutNode node;
+    node.display = DisplayType::Block;
+    node.specified_width = 0.0f;
+    node.specified_height = 0.0f;
+    node.color = 0xFF333333u;
+    EXPECT_FLOAT_EQ(node.specified_width, 0.0f);
+    EXPECT_FLOAT_EQ(node.specified_height, 0.0f);
+    EXPECT_EQ(node.color, 0xFF333333u);
+    EXPECT_EQ(node.background_color, 0u);
+}
+
+TEST(LayoutNodeTest, LargeSpecifiedDimensionsV107) {
+    using namespace clever::layout;
+    LayoutNode node;
+    node.display = DisplayType::Block;
+    node.specified_width = 10000.0f;
+    node.specified_height = 8000.0f;
+    node.background_color = 0xFFFFFFFFu; // white
+    EXPECT_FLOAT_EQ(node.specified_width, 10000.0f);
+    EXPECT_FLOAT_EQ(node.specified_height, 8000.0f);
+    EXPECT_EQ(node.background_color, 0xFFFFFFFFu);
+}
+
+TEST(LayoutNodeTest, FlexRowThreeChildrenColorsV107) {
+    using namespace clever::layout;
+    LayoutNode parent;
+    parent.display = DisplayType::Flex;
+    parent.flex_direction = 0; // row
+    parent.specified_width = 900.0f;
+
+    auto c1 = std::make_unique<LayoutNode>();
+    c1->specified_width = 300.0f;
+    c1->background_color = 0xFFFF0000u; // red
+    LayoutNode* r1 = c1.get();
+    parent.append_child(std::move(c1));
+
+    auto c2 = std::make_unique<LayoutNode>();
+    c2->specified_width = 300.0f;
+    c2->background_color = 0xFF00FF00u; // green
+    LayoutNode* r2 = c2.get();
+    parent.append_child(std::move(c2));
+
+    auto c3 = std::make_unique<LayoutNode>();
+    c3->specified_width = 300.0f;
+    c3->background_color = 0xFF0000FFu; // blue
+    LayoutNode* r3 = c3.get();
+    parent.append_child(std::move(c3));
+
+    EXPECT_FLOAT_EQ(r1->specified_width, 300.0f);
+    EXPECT_EQ(r1->background_color, 0xFFFF0000u);
+    EXPECT_FLOAT_EQ(r2->specified_width, 300.0f);
+    EXPECT_EQ(r2->background_color, 0xFF00FF00u);
+    EXPECT_FLOAT_EQ(r3->specified_width, 300.0f);
+    EXPECT_EQ(r3->background_color, 0xFF0000FFu);
+}
+
+TEST(LayoutNodeTest, BlockChildOverridesBackgroundV107) {
+    using namespace clever::layout;
+    LayoutNode parent;
+    parent.display = DisplayType::Block;
+    parent.background_color = 0xFF111111u;
+
+    auto child = std::make_unique<LayoutNode>();
+    child->display = DisplayType::Block;
+    child->background_color = 0xFF222222u;
+    child->specified_width = 200.0f;
+    child->specified_height = 100.0f;
+    child->color = 0xFFAABBCCu;
+    LayoutNode* raw = child.get();
+    parent.append_child(std::move(child));
+
+    EXPECT_EQ(parent.background_color, 0xFF111111u);
+    EXPECT_EQ(raw->background_color, 0xFF222222u);
+    EXPECT_FLOAT_EQ(raw->specified_width, 200.0f);
+    EXPECT_FLOAT_EQ(raw->specified_height, 100.0f);
+    EXPECT_EQ(raw->color, 0xFFAABBCCu);
+}

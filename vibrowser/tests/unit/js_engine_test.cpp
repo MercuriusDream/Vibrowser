@@ -28767,3 +28767,207 @@ line2`;
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "sum: 15|a10b20c|true|2");
 }
+
+// ============================================================================
+// V107 Tests
+// ============================================================================
+
+TEST(JsEngineTest, MapAdvancedOperationsV107) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var m = new Map();
+        m.set("a", 1);
+        m.set("b", 2);
+        m.set("c", 3);
+        m.set("a", 10);
+        var keys = [];
+        var vals = [];
+        m.forEach(function(v, k) { keys.push(k); vals.push(v); });
+        var results = [];
+        results.push(m.size);
+        results.push(m.has("b"));
+        results.push(m.get("a"));
+        m.delete("b");
+        results.push(m.size);
+        results.push(keys.join(","));
+        results.push(vals.join(","));
+        results.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "3|true|10|2|a,b,c|10,2,3");
+}
+
+TEST(JsEngineTest, GeneratorFunctionIterationV107) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        function* range(start, end) {
+            for (var i = start; i < end; i++) {
+                yield i;
+            }
+        }
+        var gen = range(3, 7);
+        var results = [];
+        var item;
+        while (!(item = gen.next()).done) {
+            results.push(item.value);
+        }
+        results.join(",");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "3,4,5,6");
+}
+
+TEST(JsEngineTest, SymbolAsPropertyKeyV107) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var sym1 = Symbol("desc");
+        var sym2 = Symbol("desc");
+        var obj = {};
+        obj[sym1] = "hello";
+        obj[sym2] = "world";
+        var results = [];
+        results.push(sym1 !== sym2);
+        results.push(obj[sym1]);
+        results.push(obj[sym2]);
+        results.push(typeof sym1);
+        results.push(sym1.toString());
+        results.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true|hello|world|symbol|Symbol(desc)");
+}
+
+TEST(JsEngineTest, ProxyGetAndSetTrapsV107) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var log = [];
+        var target = { x: 1, y: 2 };
+        var handler = {
+            get: function(obj, prop) {
+                log.push("get:" + prop);
+                return obj[prop];
+            },
+            set: function(obj, prop, value) {
+                log.push("set:" + prop);
+                obj[prop] = value * 2;
+                return true;
+            }
+        };
+        var proxy = new Proxy(target, handler);
+        var a = proxy.x;
+        proxy.y = 5;
+        var b = proxy.y;
+        var results = [];
+        results.push(a);
+        results.push(target.y);
+        results.push(b);
+        results.push(log.join(","));
+        results.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1|10|10|get:x,set:y,get:y");
+}
+
+TEST(JsEngineTest, ClosureScopeChainV107) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        function makeAdder(x) {
+            return function(y) {
+                return x + y;
+            };
+        }
+        var add5 = makeAdder(5);
+        var add10 = makeAdder(10);
+        function makeCounter() {
+            var count = 0;
+            return {
+                inc: function() { count++; },
+                get: function() { return count; }
+            };
+        }
+        var c = makeCounter();
+        c.inc(); c.inc(); c.inc();
+        var results = [];
+        results.push(add5(3));
+        results.push(add10(3));
+        results.push(c.get());
+        results.push(add5(add10(1)));
+        results.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "8|13|3|16");
+}
+
+TEST(JsEngineTest, RegExpMatchAndGroupsV107) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var re = /(\d{4})-(\d{2})-(\d{2})/;
+        var match = "Date: 2026-02-28".match(re);
+        var results = [];
+        results.push(match[0]);
+        results.push(match[1]);
+        results.push(match[2]);
+        results.push(match[3]);
+        var replaced = "hello world".replace(/(\w+)\s(\w+)/, "$2 $1");
+        results.push(replaced);
+        var splits = "a1b2c3d".split(/\d/);
+        results.push(splits.join(","));
+        results.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "2026-02-28|2026|02|28|world hello|a,b,c,d");
+}
+
+TEST(JsEngineTest, ErrorHandlingAndTypesV107) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var results = [];
+        try {
+            null.property;
+        } catch (e) {
+            results.push(e instanceof TypeError);
+            results.push(e.constructor.name);
+        }
+        try {
+            eval("if (");
+        } catch (e) {
+            results.push(e instanceof SyntaxError);
+        }
+        try {
+            decodeURIComponent("%");
+        } catch (e) {
+            results.push(e instanceof URIError);
+        }
+        try {
+            throw new RangeError("out");
+        } catch (e) {
+            results.push(e instanceof RangeError);
+            results.push(e.message);
+        }
+        results.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true|TypeError|true|true|true|out");
+}
+
+TEST(JsEngineTest, SetOperationsAndSpreadV107) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var s = new Set([3, 1, 4, 1, 5, 9, 2, 6, 5, 3]);
+        var results = [];
+        results.push(s.size);
+        results.push(s.has(4));
+        results.push(s.has(7));
+        s.delete(9);
+        results.push(s.size);
+        var arr = [];
+        s.forEach(function(v) { arr.push(v); });
+        results.push(arr.join(","));
+        s.add(42);
+        results.push(s.has(42));
+        results.push(s.size);
+        results.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "7|true|false|6|3,1,4,5,2,6|true|7");
+}

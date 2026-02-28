@@ -18130,3 +18130,182 @@ TEST(CookieJarTest, SetFromHeaderAndRetrieveV106) {
     jar.clear();
     EXPECT_EQ(jar.size(), 0u);
 }
+
+// ===========================================================================
+// V107 Tests
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// 1. HeaderMap append builds multi-value list V107
+// ---------------------------------------------------------------------------
+TEST(HeaderMapTest, AppendBuildsMultiValueListV107) {
+    HeaderMap map;
+    map.append("Accept-Encoding", "gzip");
+    map.append("Accept-Encoding", "deflate");
+    map.append("Accept-Encoding", "br");
+
+    auto all = map.get_all("accept-encoding");
+    EXPECT_EQ(all.size(), 3u);
+    EXPECT_EQ(all[0], "gzip");
+    EXPECT_EQ(all[1], "deflate");
+    EXPECT_EQ(all[2], "br");
+    // get() returns the first value
+    EXPECT_EQ(map.get("Accept-Encoding").value(), "gzip");
+}
+
+// ---------------------------------------------------------------------------
+// 2. HeaderMap remove erases all values for a key V107
+// ---------------------------------------------------------------------------
+TEST(HeaderMapTest, RemoveErasesAllValuesForKeyV107) {
+    HeaderMap map;
+    map.append("X-Custom", "alpha");
+    map.append("X-Custom", "beta");
+    map.set("Content-Type", "text/plain");
+    EXPECT_TRUE(map.has("X-Custom"));
+    EXPECT_EQ(map.get_all("x-custom").size(), 2u);
+
+    map.remove("X-Custom");
+    EXPECT_FALSE(map.has("X-Custom"));
+    EXPECT_FALSE(map.get("x-custom").has_value());
+    // Other headers should be unaffected
+    EXPECT_TRUE(map.has("Content-Type"));
+    EXPECT_EQ(map.get("content-type").value(), "text/plain");
+}
+
+// ---------------------------------------------------------------------------
+// 3. Request serialize PUT with body includes Content-Length V107
+// ---------------------------------------------------------------------------
+TEST(RequestTest, SerializePutWithBodyV107) {
+    Request req;
+    req.method = Method::PUT;
+    req.host = "api.example.com";
+    req.port = 443;
+    req.path = "/items/42";
+    req.use_tls = true;
+
+    std::string body_str = R"({"name":"updated"})";
+    req.body.assign(body_str.begin(), body_str.end());
+    req.headers.set("Content-Type", "application/json");
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    EXPECT_TRUE(result.find("PUT /items/42 HTTP/1.1\r\n") != std::string::npos);
+    // Port 443 with HTTPS should be omitted from Host header
+    EXPECT_TRUE(result.find("Host: api.example.com\r\n") != std::string::npos);
+    EXPECT_TRUE(result.find("Content-Length: 18\r\n") != std::string::npos);
+    EXPECT_TRUE(result.find("content-type: application/json\r\n") != std::string::npos);
+    EXPECT_TRUE(result.find("\r\n\r\n{\"name\":\"updated\"}") != std::string::npos);
+}
+
+// ---------------------------------------------------------------------------
+// 4. Request parse_url handles HTTPS with query and custom port V107
+// ---------------------------------------------------------------------------
+TEST(RequestTest, ParseUrlHttpsQueryCustomPortV107) {
+    Request req;
+    req.url = "https://search.example.com:9443/find?q=hello+world&lang=en";
+    req.parse_url();
+
+    EXPECT_EQ(req.host, "search.example.com");
+    EXPECT_EQ(req.port, 9443);
+    EXPECT_EQ(req.path, "/find");
+    EXPECT_EQ(req.query, "q=hello+world&lang=en");
+    EXPECT_TRUE(req.use_tls);
+}
+
+// ---------------------------------------------------------------------------
+// 5. Response parse 204 No Content with empty body V107
+// ---------------------------------------------------------------------------
+TEST(ResponseTest, Parse204NoContentV107) {
+    std::string raw =
+        "HTTP/1.1 204 No Content\r\n"
+        "X-Request-Id: abc-123\r\n"
+        "\r\n";
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 204);
+    EXPECT_EQ(resp->status_text, "No Content");
+    EXPECT_TRUE(resp->body.empty());
+    ASSERT_TRUE(resp->headers.has("x-request-id"));
+    EXPECT_EQ(resp->headers.get("x-request-id").value(), "abc-123");
+}
+
+// ---------------------------------------------------------------------------
+// 6. Response parse multi-header and body V107
+// ---------------------------------------------------------------------------
+TEST(ResponseTest, ParseMultiHeaderBodyV107) {
+    std::string raw =
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Type: application/json\r\n"
+        "Cache-Control: no-cache\r\n"
+        "Content-Length: 21\r\n"
+        "\r\n"
+        R"({"status":"success!"})";
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 200);
+    EXPECT_EQ(resp->headers.get("content-type").value(), "application/json");
+    EXPECT_EQ(resp->headers.get("cache-control").value(), "no-cache");
+    EXPECT_EQ(resp->body.size(), 21u);
+    EXPECT_EQ(resp->body_as_string(), R"({"status":"success!"})");
+}
+
+// ---------------------------------------------------------------------------
+// 7. Request serialize HEAD method has no body V107
+// ---------------------------------------------------------------------------
+TEST(RequestTest, SerializeHeadMethodNoBodyV107) {
+    Request req;
+    req.method = Method::HEAD;
+    req.host = "cdn.example.com";
+    req.port = 80;
+    req.path = "/assets/style.css";
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    EXPECT_TRUE(result.find("HEAD /assets/style.css HTTP/1.1\r\n") != std::string::npos);
+    EXPECT_TRUE(result.find("Host: cdn.example.com\r\n") != std::string::npos);
+    EXPECT_TRUE(result.find("Connection: keep-alive\r\n") != std::string::npos);
+    // HEAD should have no body and no Content-Length
+    EXPECT_TRUE(result.find("Content-Length") == std::string::npos);
+    // Ends with header terminator only
+    auto pos = result.find("\r\n\r\n");
+    ASSERT_NE(pos, std::string::npos);
+    EXPECT_EQ(pos + 4, result.size());
+}
+
+// ---------------------------------------------------------------------------
+// 8. HeaderMap size tracks entries correctly after set/append/remove V107
+// ---------------------------------------------------------------------------
+TEST(HeaderMapTest, SizeTracksCorrectlyV107) {
+    HeaderMap map;
+    EXPECT_EQ(map.size(), 0u);
+
+    map.set("Host", "example.com");
+    EXPECT_EQ(map.size(), 1u);
+
+    map.set("Accept", "text/html");
+    EXPECT_EQ(map.size(), 2u);
+
+    // append adds another entry (same key counts separately)
+    map.append("Accept", "application/json");
+    EXPECT_EQ(map.size(), 3u);
+
+    // set replaces all values for that key with one
+    map.set("Accept", "text/plain");
+    EXPECT_EQ(map.size(), 2u);
+
+    // remove deletes all entries for the key
+    map.remove("Accept");
+    EXPECT_EQ(map.size(), 1u);
+
+    // Remaining header is Host
+    EXPECT_TRUE(map.has("Host"));
+    EXPECT_EQ(map.get("host").value(), "example.com");
+}

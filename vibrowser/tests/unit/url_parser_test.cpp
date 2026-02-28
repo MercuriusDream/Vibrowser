@@ -11927,3 +11927,85 @@ TEST(UrlParserTest, EmptyPathDefaultsToSlashV106) {
     EXPECT_TRUE(result->fragment.empty());
     EXPECT_EQ(result->port, std::nullopt);
 }
+
+// =============================================================================
+// V107 Tests
+// =============================================================================
+
+TEST(UrlParserTest, HttpDefaultPortOmittedV107) {
+    auto result = parse("http://status.example.org:80/health");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "status.example.org");
+    EXPECT_EQ(result->port, std::nullopt);
+    EXPECT_EQ(result->path, "/health");
+}
+
+TEST(UrlParserTest, HttpsDefaultPortOmittedV107) {
+    auto result = parse("https://secure.example.net:443/login");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "secure.example.net");
+    EXPECT_EQ(result->port, std::nullopt);
+    EXPECT_EQ(result->path, "/login");
+}
+
+TEST(UrlParserTest, NonDefaultPortPreservedV107) {
+    auto result = parse("https://api.example.io:9443/v2/data");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "api.example.io");
+    ASSERT_TRUE(result->port.has_value());
+    EXPECT_EQ(result->port.value(), 9443);
+    EXPECT_EQ(result->path, "/v2/data");
+}
+
+TEST(UrlParserTest, DoubleEncodesPercentSequencesV107) {
+    auto result = parse("https://files.example.com/my%20doc");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_NE(result->path.find("%2520"), std::string::npos);
+}
+
+TEST(UrlParserTest, QueryAndFragmentTogetherV107) {
+    auto result = parse("https://search.example.com/results?q=hello+world&lang=en#top");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "search.example.com");
+    EXPECT_EQ(result->path, "/results");
+    EXPECT_EQ(result->query, "q=hello+world&lang=en");
+    EXPECT_EQ(result->fragment, "top");
+}
+
+TEST(UrlParserTest, SerializeRoundTripWithPortV107) {
+    auto result = parse("http://dev.example.com:3000/app?debug=true#console");
+    ASSERT_TRUE(result.has_value());
+    std::string s = result->serialize();
+    EXPECT_NE(s.find("http"), std::string::npos);
+    EXPECT_NE(s.find("dev.example.com"), std::string::npos);
+    EXPECT_NE(s.find("3000"), std::string::npos);
+    EXPECT_NE(s.find("/app"), std::string::npos);
+    EXPECT_NE(s.find("debug=true"), std::string::npos);
+    EXPECT_NE(s.find("console"), std::string::npos);
+}
+
+TEST(UrlParserTest, PathOnlyNoQueryNoFragmentV107) {
+    auto result = parse("https://cdn.example.com/assets/img/logo.png");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "cdn.example.com");
+    EXPECT_EQ(result->path, "/assets/img/logo.png");
+    EXPECT_TRUE(result->query.empty());
+    EXPECT_TRUE(result->fragment.empty());
+    EXPECT_EQ(result->port, std::nullopt);
+}
+
+TEST(UrlParserTest, FragmentOnlyNoQueryV107) {
+    auto result = parse("https://wiki.example.org/article#references");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "wiki.example.org");
+    EXPECT_EQ(result->path, "/article");
+    EXPECT_TRUE(result->query.empty());
+    EXPECT_EQ(result->fragment, "references");
+    EXPECT_EQ(result->port, std::nullopt);
+}

@@ -16649,3 +16649,145 @@ TEST(DomTest, DeepTreeParentNodeChainV106) {
     EXPECT_EQ(raw_leaf->text_content(), "leaf text");
     EXPECT_EQ(raw_gc->tag_name(), "article");
 }
+
+// ---------------------------------------------------------------------------
+// V107 Round — 8 new tests
+// ---------------------------------------------------------------------------
+
+// 1. Element tag_name returns correct value for various tags
+TEST(DomTest, ElementTagNameVariousTagsV107) {
+    Element div("div");
+    Element span("span");
+    Element nav("nav");
+    Element custom("my-component");
+
+    EXPECT_EQ(div.tag_name(), "div");
+    EXPECT_EQ(span.tag_name(), "span");
+    EXPECT_EQ(nav.tag_name(), "nav");
+    EXPECT_EQ(custom.tag_name(), "my-component");
+}
+
+// 2. Comment node data accessor and empty comment
+TEST(DomTest, CommentDataAccessorV107) {
+    Comment c1("hello world");
+    EXPECT_EQ(c1.data(), "hello world");
+
+    Comment c2("");
+    EXPECT_EQ(c2.data(), "");
+
+    Comment c3("  spaces  ");
+    EXPECT_EQ(c3.data(), "  spaces  ");
+
+    Comment c4("<!-- nested -->");
+    EXPECT_EQ(c4.data(), "<!-- nested -->");
+}
+
+// 3. class_list add multiple then contains check
+TEST(DomTest, ClassListAddMultipleContainsV107) {
+    Element el("div");
+    el.class_list().add("alpha");
+    el.class_list().add("beta");
+    el.class_list().add("gamma");
+
+    EXPECT_TRUE(el.class_list().contains("alpha"));
+    EXPECT_TRUE(el.class_list().contains("beta"));
+    EXPECT_TRUE(el.class_list().contains("gamma"));
+    EXPECT_FALSE(el.class_list().contains("delta"));
+    EXPECT_EQ(el.class_list().length(), 3u);
+}
+
+// 4. remove_child detaches node from parent
+TEST(DomTest, RemoveChildDetachesFromParentV107) {
+    Element parent("ul");
+    auto li1 = std::make_unique<Element>("li");
+    auto* raw_li1 = li1.get();
+    parent.append_child(std::move(li1));
+
+    auto li2 = std::make_unique<Element>("li");
+    auto* raw_li2 = li2.get();
+    parent.append_child(std::move(li2));
+
+    EXPECT_EQ(parent.child_count(), 2u);
+
+    parent.remove_child(*raw_li1);
+    EXPECT_EQ(parent.child_count(), 1u);
+    EXPECT_EQ(parent.first_child(), raw_li2);
+    EXPECT_EQ(raw_li2->parent(), &parent);
+}
+
+// 5. insert_before places node at correct position
+TEST(DomTest, InsertBeforePlacesNodeCorrectlyV107) {
+    Element parent("div");
+    auto a = std::make_unique<Element>("a");
+    auto* raw_a = a.get();
+    parent.append_child(std::move(a));
+
+    auto c = std::make_unique<Element>("c");
+    auto* raw_c = c.get();
+    parent.append_child(std::move(c));
+
+    auto b = std::make_unique<Element>("b");
+    auto* raw_b = b.get();
+    parent.insert_before(std::move(b), raw_c);
+
+    EXPECT_EQ(parent.child_count(), 3u);
+    EXPECT_EQ(parent.first_child(), raw_a);
+    EXPECT_EQ(raw_a->next_sibling(), raw_b);
+    EXPECT_EQ(raw_b->next_sibling(), raw_c);
+}
+
+// 6. set_attribute overwrites existing attribute value
+TEST(DomTest, SetAttributeOverwritesExistingV107) {
+    Element el("input");
+    el.set_attribute("type", "text");
+    EXPECT_EQ(el.get_attribute("type").value(), "text");
+
+    el.set_attribute("type", "password");
+    EXPECT_EQ(el.get_attribute("type").value(), "password");
+    EXPECT_EQ(el.attributes().size(), 1u);
+}
+
+// 7. Text node sibling navigation after mixed child types
+TEST(DomTest, TextNodeSiblingNavigationMixedChildrenV107) {
+    Element parent("p");
+    auto text1 = std::make_unique<Text>("Hello ");
+    auto* raw_t1 = text1.get();
+    parent.append_child(std::move(text1));
+
+    auto bold = std::make_unique<Element>("b");
+    auto* raw_bold = bold.get();
+    parent.append_child(std::move(bold));
+
+    auto text2 = std::make_unique<Text>("world");
+    auto* raw_t2 = text2.get();
+    parent.append_child(std::move(text2));
+
+    EXPECT_EQ(parent.child_count(), 3u);
+    EXPECT_EQ(parent.first_child(), raw_t1);
+    EXPECT_EQ(raw_t1->next_sibling(), raw_bold);
+    EXPECT_EQ(raw_bold->next_sibling(), raw_t2);
+    EXPECT_EQ(raw_t2->next_sibling(), nullptr);
+    EXPECT_EQ(raw_t1->text_content(), "Hello ");
+    EXPECT_EQ(raw_t2->text_content(), "world");
+}
+
+// 8. class_list toggle and remove operations
+TEST(DomTest, ClassListToggleAndRemoveV107) {
+    Element el("span");
+    el.class_list().add("active");
+    el.class_list().add("hidden");
+    EXPECT_EQ(el.class_list().length(), 2u);
+
+    el.class_list().remove("active");
+    EXPECT_FALSE(el.class_list().contains("active"));
+    EXPECT_TRUE(el.class_list().contains("hidden"));
+    EXPECT_EQ(el.class_list().length(), 1u);
+
+    el.class_list().toggle("hidden");
+    EXPECT_FALSE(el.class_list().contains("hidden"));
+    EXPECT_EQ(el.class_list().length(), 0u);
+
+    el.class_list().toggle("visible");
+    EXPECT_TRUE(el.class_list().contains("visible"));
+    EXPECT_EQ(el.class_list().length(), 1u);
+}

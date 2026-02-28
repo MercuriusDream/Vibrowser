@@ -17299,3 +17299,140 @@ TEST(HtmlParserTest, DetailsAndSummaryElementsV106) {
     ASSERT_NE(p, nullptr);
     EXPECT_EQ(p->text_content(), "Hidden content here");
 }
+
+// V107 Tests — 8 new HTML parser tests
+
+TEST(HtmlParserTest, NestedOrderedListsV107) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<ol><li>First<ol><li>Nested A</li><li>Nested B</li></ol></li><li>Second</li></ol>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto lis = doc->find_all_elements("li");
+    ASSERT_GE(lis.size(), 4u);
+    EXPECT_EQ(lis[0]->tag_name, "li");
+    EXPECT_EQ(lis[1]->text_content(), "Nested A");
+    EXPECT_EQ(lis[2]->text_content(), "Nested B");
+    EXPECT_EQ(lis[3]->text_content(), "Second");
+}
+
+TEST(HtmlParserTest, PreformattedTextPreservesWhitespaceV107) {
+    auto doc = clever::html::parse(
+        "<html><body><pre>  line1\n  line2\n  line3</pre></body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* pre = doc->find_element("pre");
+    ASSERT_NE(pre, nullptr);
+    EXPECT_EQ(pre->tag_name, "pre");
+    std::string content = pre->text_content();
+    EXPECT_NE(content.find("line1"), std::string::npos);
+    EXPECT_NE(content.find("line2"), std::string::npos);
+    EXPECT_NE(content.find("line3"), std::string::npos);
+}
+
+TEST(HtmlParserTest, InputTypesWithValueAttributeV107) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<input type=\"email\" value=\"test@example.com\"/>"
+        "<input type=\"password\" value=\"secret123\"/>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto inputs = doc->find_all_elements("input");
+    ASSERT_GE(inputs.size(), 2u);
+    EXPECT_EQ(get_attr_v63(inputs[0], "type"), "email");
+    EXPECT_EQ(get_attr_v63(inputs[0], "value"), "test@example.com");
+    EXPECT_EQ(get_attr_v63(inputs[1], "type"), "password");
+    EXPECT_EQ(get_attr_v63(inputs[1], "value"), "secret123");
+}
+
+TEST(HtmlParserTest, TableWithColspanAndRowspanV107) {
+    auto doc = clever::html::parse(
+        "<html><body><table>"
+        "<tr><th colspan=\"2\">Header</th></tr>"
+        "<tr><td rowspan=\"2\">Left</td><td>Right1</td></tr>"
+        "<tr><td>Right2</td></tr>"
+        "</table></body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* th = doc->find_element("th");
+    ASSERT_NE(th, nullptr);
+    EXPECT_EQ(get_attr_v63(th, "colspan"), "2");
+    EXPECT_EQ(th->text_content(), "Header");
+    auto tds = doc->find_all_elements("td");
+    ASSERT_GE(tds.size(), 3u);
+    EXPECT_EQ(get_attr_v63(tds[0], "rowspan"), "2");
+    EXPECT_EQ(tds[0]->text_content(), "Left");
+}
+
+TEST(HtmlParserTest, MetaCharsetAndViewportV107) {
+    auto doc = clever::html::parse(
+        "<html><head>"
+        "<meta charset=\"UTF-8\"/>"
+        "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"/>"
+        "</head><body></body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto metas = doc->find_all_elements("meta");
+    ASSERT_GE(metas.size(), 2u);
+    EXPECT_EQ(get_attr_v63(metas[0], "charset"), "UTF-8");
+    EXPECT_EQ(get_attr_v63(metas[1], "name"), "viewport");
+    EXPECT_EQ(get_attr_v63(metas[1], "content"), "width=device-width, initial-scale=1");
+}
+
+TEST(HtmlParserTest, SelectWithMultipleOptionsV107) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<select name=\"color\">"
+        "<option value=\"r\">Red</option>"
+        "<option value=\"g\" selected>Green</option>"
+        "<option value=\"b\">Blue</option>"
+        "</select>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* select = doc->find_element("select");
+    ASSERT_NE(select, nullptr);
+    EXPECT_EQ(get_attr_v63(select, "name"), "color");
+    auto opts = doc->find_all_elements("option");
+    ASSERT_EQ(opts.size(), 3u);
+    EXPECT_EQ(get_attr_v63(opts[0], "value"), "r");
+    EXPECT_EQ(opts[0]->text_content(), "Red");
+    EXPECT_EQ(get_attr_v63(opts[1], "value"), "g");
+    EXPECT_EQ(opts[1]->text_content(), "Green");
+    EXPECT_EQ(get_attr_v63(opts[2], "value"), "b");
+    EXPECT_EQ(opts[2]->text_content(), "Blue");
+}
+
+TEST(HtmlParserTest, EmptyElementsPreservedV107) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<div></div>"
+        "<span></span>"
+        "<p></p>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* div = doc->find_element("div");
+    ASSERT_NE(div, nullptr);
+    EXPECT_EQ(div->text_content(), "");
+    auto* span = doc->find_element("span");
+    ASSERT_NE(span, nullptr);
+    EXPECT_EQ(span->text_content(), "");
+    auto* p = doc->find_element("p");
+    ASSERT_NE(p, nullptr);
+    EXPECT_EQ(p->text_content(), "");
+}
+
+TEST(HtmlParserTest, ScriptAndStyleTagsContentV107) {
+    auto doc = clever::html::parse(
+        "<html><head>"
+        "<style>body { color: red; }</style>"
+        "<script>var x = 1;</script>"
+        "</head><body></body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* style = doc->find_element("style");
+    ASSERT_NE(style, nullptr);
+    EXPECT_EQ(style->tag_name, "style");
+    std::string style_text = style->text_content();
+    EXPECT_NE(style_text.find("color: red"), std::string::npos);
+    auto* script = doc->find_element("script");
+    ASSERT_NE(script, nullptr);
+    EXPECT_EQ(script->tag_name, "script");
+    std::string script_text = script->text_content();
+    EXPECT_NE(script_text.find("var x = 1"), std::string::npos);
+}

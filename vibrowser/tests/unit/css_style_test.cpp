@@ -19571,3 +19571,204 @@ TEST(CSSStyleTest, PaddingMarginBorderBoxPositionRelativeV106) {
     EXPECT_FLOAT_EQ(style.width.to_px(), 300.0f);
     EXPECT_EQ(style.z_index, 5);
 }
+
+// ============================================================================
+// V107: Visibility hidden with pointer-events none and cursor pointer
+// ============================================================================
+TEST(CSSStyleTest, VisibilityHiddenPointerEventsCursorV107) {
+    const std::string css = ".ghost{visibility:hidden;pointer-events:none;cursor:pointer;user-select:none;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+    elem.classes = {"ghost"};
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.visibility, Visibility::Hidden);
+    EXPECT_EQ(style.pointer_events, PointerEvents::None);
+    EXPECT_EQ(style.cursor, Cursor::Pointer);
+    EXPECT_EQ(style.user_select, UserSelect::None);
+}
+
+// ============================================================================
+// V107: Font size em units with line height and letter spacing
+// ============================================================================
+TEST(CSSStyleTest, FontSizeEmLineHeightLetterSpacingV107) {
+    const std::string css = ".text{font-size:1.5em;line-height:2em;letter-spacing:0.1em;word-spacing:0.2em;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "p";
+    elem.classes = {"text"};
+
+    ComputedStyle parent;
+    parent.font_size = Length::px(20);
+    auto style = resolver.resolve(elem, parent);
+
+    float fs = style.font_size.to_px(20.0f);
+    EXPECT_FLOAT_EQ(fs, 30.0f);
+    EXPECT_GT(style.line_height.to_px(fs), 0.0f);
+    EXPECT_GT(style.letter_spacing.to_px(fs), 0.0f);
+    EXPECT_GT(style.word_spacing.to_px(fs), 0.0f);
+}
+
+// ============================================================================
+// V107: Border top with style color and width
+// ============================================================================
+TEST(CSSStyleTest, BorderTopStyleColorWidthV107) {
+    const std::string css = ".bordered{border-top-width:3px;border-top-style:solid;border-top-color:red;border-bottom-width:2px;border-bottom-style:dashed;border-bottom-color:blue;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+    elem.classes = {"bordered"};
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_FLOAT_EQ(style.border_top.width.to_px(), 3.0f);
+    EXPECT_EQ(style.border_top.style, BorderStyle::Solid);
+    EXPECT_EQ(style.border_top.color.r, 255);
+    EXPECT_EQ(style.border_top.color.g, 0);
+    EXPECT_EQ(style.border_top.color.b, 0);
+
+    EXPECT_FLOAT_EQ(style.border_bottom.width.to_px(), 2.0f);
+    EXPECT_EQ(style.border_bottom.style, BorderStyle::Dashed);
+    EXPECT_EQ(style.border_bottom.color.b, 255);
+}
+
+// ============================================================================
+// V107: Outline width and style with offset
+// ============================================================================
+TEST(CSSStyleTest, OutlineWidthStyleOffsetV107) {
+    const std::string css = ".outlined{outline:4px dotted green;outline-offset:2px;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "button";
+    elem.classes = {"outlined"};
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_FLOAT_EQ(style.outline_width.to_px(), 4.0f);
+    EXPECT_EQ(style.outline_style, BorderStyle::Dotted);
+    EXPECT_EQ(style.outline_color.g, 128);
+    EXPECT_FLOAT_EQ(style.outline_offset.to_px(), 2.0f);
+}
+
+// ============================================================================
+// V107: Flexbox direction column with gap and justify center
+// ============================================================================
+TEST(CSSStyleTest, FlexboxColumnGapJustifyCenterV107) {
+    const std::string css = ".flex-col{display:flex;flex-direction:column;justify-content:center;align-items:center;gap:16px;flex-wrap:wrap;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+    elem.classes = {"flex-col"};
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.display, Display::Flex);
+    EXPECT_EQ(style.flex_direction, FlexDirection::Column);
+    EXPECT_EQ(style.justify_content, JustifyContent::Center);
+    EXPECT_EQ(style.align_items, AlignItems::Center);
+    EXPECT_FLOAT_EQ(style.gap.to_px(), 16.0f);
+    EXPECT_EQ(style.flex_wrap, FlexWrap::Wrap);
+}
+
+// ============================================================================
+// V107: Text decoration underline with white-space nowrap
+// ============================================================================
+TEST(CSSStyleTest, TextDecorationUnderlineWhiteSpaceNowrapV107) {
+    const std::string css = ".link{text-decoration:underline;white-space:nowrap;text-overflow:ellipsis;overflow:hidden;vertical-align:middle;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "a";
+    elem.classes = {"link"};
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.text_decoration, TextDecoration::Underline);
+    EXPECT_EQ(style.white_space, WhiteSpace::NoWrap);
+    EXPECT_EQ(style.text_overflow, TextOverflow::Ellipsis);
+    EXPECT_EQ(style.overflow_x, Overflow::Hidden);
+    EXPECT_EQ(style.vertical_align, VerticalAlign::Middle);
+}
+
+// ============================================================================
+// V107: Background color with opacity and color fields
+// ============================================================================
+TEST(CSSStyleTest, BackgroundColorOpacityColorFieldsV107) {
+    const std::string css = ".card{background-color:rgb(100,150,200);color:rgb(255,255,255);opacity:0.8;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+    elem.classes = {"card"};
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.background_color.r, 100);
+    EXPECT_EQ(style.background_color.g, 150);
+    EXPECT_EQ(style.background_color.b, 200);
+    EXPECT_EQ(style.background_color.a, 255);
+    EXPECT_EQ(style.color.r, 255);
+    EXPECT_EQ(style.color.g, 255);
+    EXPECT_EQ(style.color.b, 255);
+    EXPECT_FLOAT_EQ(style.opacity, 0.8f);
+}
+
+// ============================================================================
+// V107: Position absolute with top left and z-index
+// ============================================================================
+TEST(CSSStyleTest, PositionAbsoluteTopLeftZIndexV107) {
+    const std::string css = ".overlay{position:absolute;top:10px;left:20px;z-index:99;display:block;width:200px;height:100px;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+    elem.classes = {"overlay"};
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.position, Position::Absolute);
+    EXPECT_FLOAT_EQ(style.top.to_px(), 10.0f);
+    EXPECT_FLOAT_EQ(style.left_pos.to_px(), 20.0f);
+    EXPECT_EQ(style.z_index, 99);
+    EXPECT_EQ(style.display, Display::Block);
+    EXPECT_FLOAT_EQ(style.width.to_px(), 200.0f);
+    EXPECT_FLOAT_EQ(style.height.to_px(), 100.0f);
+}
