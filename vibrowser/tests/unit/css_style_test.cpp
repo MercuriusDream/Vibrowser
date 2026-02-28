@@ -24413,3 +24413,238 @@ TEST(CSSStyleTest, CssV125_8_GridTemplateWithAutoFlowAndAlignContent) {
     EXPECT_EQ(style.color.g, 0x33);
     EXPECT_EQ(style.color.b, 0x33);
 }
+
+// ============================================================================
+// V126: Diverse computed style and resolution tests
+// ============================================================================
+
+TEST(CSSStyleTest, CssV126_1_FlexboxPropertiesDefaultAndAssignment) {
+    // Verify flexbox-related default values and assignment
+    ComputedStyle s;
+
+    EXPECT_EQ(s.flex_direction, FlexDirection::Row);
+    EXPECT_EQ(s.flex_wrap, FlexWrap::NoWrap);
+    EXPECT_EQ(s.justify_content, JustifyContent::FlexStart);
+    EXPECT_EQ(s.align_items, AlignItems::Stretch);
+    EXPECT_FLOAT_EQ(s.flex_grow, 0.0f);
+    EXPECT_FLOAT_EQ(s.flex_shrink, 1.0f);
+    EXPECT_TRUE(s.flex_basis.is_auto());
+    EXPECT_EQ(s.order, 0);
+
+    // Assign non-default values
+    s.flex_direction = FlexDirection::Column;
+    s.flex_wrap = FlexWrap::Wrap;
+    s.justify_content = JustifyContent::SpaceBetween;
+    s.align_items = AlignItems::Center;
+    s.flex_grow = 2.0f;
+    s.flex_shrink = 0.0f;
+    s.flex_basis = Length::px(100.0f);
+    s.order = 3;
+
+    EXPECT_EQ(s.flex_direction, FlexDirection::Column);
+    EXPECT_EQ(s.flex_wrap, FlexWrap::Wrap);
+    EXPECT_EQ(s.justify_content, JustifyContent::SpaceBetween);
+    EXPECT_EQ(s.align_items, AlignItems::Center);
+    EXPECT_FLOAT_EQ(s.flex_grow, 2.0f);
+    EXPECT_FLOAT_EQ(s.flex_shrink, 0.0f);
+    EXPECT_FLOAT_EQ(s.flex_basis.to_px(), 100.0f);
+    EXPECT_EQ(s.order, 3);
+}
+
+TEST(CSSStyleTest, CssV126_2_ResolveTextDecorationAndTransformFromCSS) {
+    // Resolve text-decoration-line underline and text-transform uppercase
+    const std::string css =
+        ".deco{text-decoration:underline;text-transform:uppercase;"
+        "text-align:center;font-style:italic;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "span";
+    elem.classes = {"deco"};
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.text_decoration, TextDecoration::Underline);
+    EXPECT_EQ(style.text_transform, TextTransform::Uppercase);
+    EXPECT_EQ(style.text_align, TextAlign::Center);
+    EXPECT_EQ(style.font_style, FontStyle::Italic);
+}
+
+TEST(CSSStyleTest, CssV126_3_BoxShadowEntryFieldAccess) {
+    // Verify BoxShadowEntry fields including .blur (NOT .blur_radius)
+    ComputedStyle s;
+    EXPECT_TRUE(s.box_shadows.empty());
+
+    ComputedStyle::BoxShadowEntry shadow;
+    shadow.offset_x = 5.0f;
+    shadow.offset_y = 10.0f;
+    shadow.blur = 15.0f;
+    shadow.spread = 3.0f;
+    shadow.color = {100, 200, 50, 180};
+    shadow.inset = true;
+
+    s.box_shadows.push_back(shadow);
+    EXPECT_EQ(s.box_shadows.size(), 1u);
+    EXPECT_FLOAT_EQ(s.box_shadows[0].offset_x, 5.0f);
+    EXPECT_FLOAT_EQ(s.box_shadows[0].offset_y, 10.0f);
+    EXPECT_FLOAT_EQ(s.box_shadows[0].blur, 15.0f);
+    EXPECT_FLOAT_EQ(s.box_shadows[0].spread, 3.0f);
+    EXPECT_EQ(s.box_shadows[0].color.r, 100);
+    EXPECT_EQ(s.box_shadows[0].color.g, 200);
+    EXPECT_EQ(s.box_shadows[0].color.b, 50);
+    EXPECT_EQ(s.box_shadows[0].color.a, 180);
+    EXPECT_TRUE(s.box_shadows[0].inset);
+}
+
+TEST(CSSStyleTest, CssV126_4_OverflowAndPositionEnums) {
+    // Test overflow_x, overflow_y, position, and float defaults and assignment
+    ComputedStyle s;
+
+    EXPECT_EQ(s.overflow_x, Overflow::Visible);
+    EXPECT_EQ(s.overflow_y, Overflow::Visible);
+    EXPECT_EQ(s.position, Position::Static);
+    EXPECT_EQ(s.float_val, Float::None);
+    EXPECT_EQ(s.clear, Clear::None);
+
+    s.overflow_x = Overflow::Hidden;
+    s.overflow_y = Overflow::Scroll;
+    s.position = Position::Absolute;
+    s.float_val = Float::Left;
+    s.clear = Clear::Both;
+
+    EXPECT_EQ(s.overflow_x, Overflow::Hidden);
+    EXPECT_EQ(s.overflow_y, Overflow::Scroll);
+    EXPECT_EQ(s.position, Position::Absolute);
+    EXPECT_EQ(s.float_val, Float::Left);
+    EXPECT_EQ(s.clear, Clear::Both);
+}
+
+TEST(CSSStyleTest, CssV126_5_ResolveMarginPaddingShorthandsFromCSS) {
+    // Resolve CSS margin and padding shorthand values via StyleResolver
+    const std::string css =
+        ".box{margin:10px 20px 30px 40px;padding:5px 15px;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+    elem.classes = {"box"};
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    // margin: 10px 20px 30px 40px
+    EXPECT_FLOAT_EQ(style.margin.top.to_px(), 10.0f);
+    EXPECT_FLOAT_EQ(style.margin.right.to_px(), 20.0f);
+    EXPECT_FLOAT_EQ(style.margin.bottom.to_px(), 30.0f);
+    EXPECT_FLOAT_EQ(style.margin.left.to_px(), 40.0f);
+
+    // padding: 5px 15px -> top=5 right=15 bottom=5 left=15
+    EXPECT_FLOAT_EQ(style.padding.top.to_px(), 5.0f);
+    EXPECT_FLOAT_EQ(style.padding.right.to_px(), 15.0f);
+    EXPECT_FLOAT_EQ(style.padding.bottom.to_px(), 5.0f);
+    EXPECT_FLOAT_EQ(style.padding.left.to_px(), 15.0f);
+}
+
+TEST(CSSStyleTest, CssV126_6_TextShadowEntryAndMultipleShadows) {
+    // Verify TextShadowEntry fields and multiple shadow support
+    ComputedStyle s;
+    EXPECT_TRUE(s.text_shadows.empty());
+
+    ComputedStyle::TextShadowEntry ts1;
+    ts1.offset_x = 1.0f;
+    ts1.offset_y = 2.0f;
+    ts1.blur = 3.0f;
+    ts1.color = {255, 0, 0, 255};
+
+    ComputedStyle::TextShadowEntry ts2;
+    ts2.offset_x = -1.0f;
+    ts2.offset_y = -2.0f;
+    ts2.blur = 0.0f;
+    ts2.color = {0, 0, 255, 128};
+
+    s.text_shadows.push_back(ts1);
+    s.text_shadows.push_back(ts2);
+
+    EXPECT_EQ(s.text_shadows.size(), 2u);
+
+    EXPECT_FLOAT_EQ(s.text_shadows[0].offset_x, 1.0f);
+    EXPECT_FLOAT_EQ(s.text_shadows[0].offset_y, 2.0f);
+    EXPECT_FLOAT_EQ(s.text_shadows[0].blur, 3.0f);
+    EXPECT_EQ(s.text_shadows[0].color.r, 255);
+
+    EXPECT_FLOAT_EQ(s.text_shadows[1].offset_x, -1.0f);
+    EXPECT_FLOAT_EQ(s.text_shadows[1].offset_y, -2.0f);
+    EXPECT_FLOAT_EQ(s.text_shadows[1].blur, 0.0f);
+    EXPECT_EQ(s.text_shadows[1].color.a, 128);
+}
+
+TEST(CSSStyleTest, CssV126_7_BorderRadiusAndBoxSizingDefaults) {
+    // Verify border-radius fields and box-sizing defaults
+    ComputedStyle s;
+
+    EXPECT_FLOAT_EQ(s.border_radius, 0.0f);
+    EXPECT_FLOAT_EQ(s.border_radius_tl, 0.0f);
+    EXPECT_FLOAT_EQ(s.border_radius_tr, 0.0f);
+    EXPECT_FLOAT_EQ(s.border_radius_bl, 0.0f);
+    EXPECT_FLOAT_EQ(s.border_radius_br, 0.0f);
+    EXPECT_EQ(s.box_sizing, BoxSizing::ContentBox);
+
+    // Assign individual corner radii
+    s.border_radius_tl = 5.0f;
+    s.border_radius_tr = 10.0f;
+    s.border_radius_bl = 15.0f;
+    s.border_radius_br = 20.0f;
+    s.box_sizing = BoxSizing::BorderBox;
+
+    EXPECT_FLOAT_EQ(s.border_radius_tl, 5.0f);
+    EXPECT_FLOAT_EQ(s.border_radius_tr, 10.0f);
+    EXPECT_FLOAT_EQ(s.border_radius_bl, 15.0f);
+    EXPECT_FLOAT_EQ(s.border_radius_br, 20.0f);
+    EXPECT_EQ(s.box_sizing, BoxSizing::BorderBox);
+}
+
+TEST(CSSStyleTest, CssV126_8_ResolveBorderShorthandAllEdges) {
+    // Resolve border shorthand into all four edges
+    const std::string css =
+        ".bordered{border:2px solid #ff0000;"
+        "opacity:0.75;z-index:5;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+    elem.classes = {"bordered"};
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    // All four border edges should have width 2px
+    EXPECT_FLOAT_EQ(style.border_top.width.to_px(), 2.0f);
+    EXPECT_FLOAT_EQ(style.border_right.width.to_px(), 2.0f);
+    EXPECT_FLOAT_EQ(style.border_bottom.width.to_px(), 2.0f);
+    EXPECT_FLOAT_EQ(style.border_left.width.to_px(), 2.0f);
+
+    // All four should be solid
+    EXPECT_EQ(style.border_top.style, BorderStyle::Solid);
+    EXPECT_EQ(style.border_right.style, BorderStyle::Solid);
+    EXPECT_EQ(style.border_bottom.style, BorderStyle::Solid);
+    EXPECT_EQ(style.border_left.style, BorderStyle::Solid);
+
+    // All four should be red
+    EXPECT_EQ(style.border_top.color.r, 255);
+    EXPECT_EQ(style.border_top.color.g, 0);
+    EXPECT_EQ(style.border_top.color.b, 0);
+
+    // Opacity and z_index
+    EXPECT_FLOAT_EQ(style.opacity, 0.75f);
+    EXPECT_EQ(style.z_index, 5);
+}

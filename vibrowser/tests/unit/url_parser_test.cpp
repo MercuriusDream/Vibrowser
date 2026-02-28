@@ -13636,3 +13636,121 @@ TEST(UrlParserTest, UrlV125_8_BlobSchemeIsNotSpecialAndOriginIsNull) {
     EXPECT_EQ(result->origin(), "null");
     EXPECT_EQ(result->path, "https://example.com/abc-def-123");
 }
+
+// =============================================================================
+// V126 Tests
+// =============================================================================
+
+TEST(UrlParserTest, UrlV126_1_WsDefaultPortSerializeOmitsPort) {
+    // WebSocket URL with default port 80 should serialize without port
+    auto result = parse("ws://chat.example.com:80/live");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "ws");
+    EXPECT_EQ(result->host, "chat.example.com");
+    EXPECT_EQ(result->port, std::nullopt);
+    EXPECT_EQ(result->path, "/live");
+    std::string s = result->serialize();
+    EXPECT_EQ(s, "ws://chat.example.com/live");
+}
+
+TEST(UrlParserTest, UrlV126_2_HttpAndWsDifferentSchemesNotSameOrigin) {
+    // HTTP and WS with the same host are NOT same-origin because schemes differ
+    auto http_url = parse("http://realtime.example.com/api");
+    auto ws_url = parse("ws://realtime.example.com/socket");
+    ASSERT_TRUE(http_url.has_value());
+    ASSERT_TRUE(ws_url.has_value());
+    EXPECT_EQ(http_url->host, "realtime.example.com");
+    EXPECT_EQ(ws_url->host, "realtime.example.com");
+    EXPECT_FALSE(urls_same_origin(*http_url, *ws_url));
+}
+
+TEST(UrlParserTest, UrlV126_3_FileSchemeOriginIsNull) {
+    // file: scheme should have an opaque origin of "null"
+    auto result = parse("file:///var/data/report.csv");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "file");
+    EXPECT_TRUE(result->is_special());
+    EXPECT_EQ(result->path, "/var/data/report.csv");
+    EXPECT_EQ(result->origin(), "null");
+}
+
+TEST(UrlParserTest, UrlV126_4_NonSpecialSchemeWithPortPreservedOriginNull) {
+    // A non-special (custom) scheme with an explicit port should preserve the
+    // port in the parsed result and in serialize(), but origin should be "null"
+    auto result = parse("myproto://svc.local:5555/api/v2/status");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "myproto");
+    EXPECT_EQ(result->host, "svc.local");
+    ASSERT_TRUE(result->port.has_value());
+    EXPECT_EQ(result->port.value(), 5555);
+    EXPECT_EQ(result->path, "/api/v2/status");
+    EXPECT_FALSE(result->is_special());
+    EXPECT_EQ(result->origin(), "null");
+    std::string s = result->serialize();
+    EXPECT_EQ(s, "myproto://svc.local:5555/api/v2/status");
+}
+
+TEST(UrlParserTest, UrlV126_5_ChainedRelativeResolution) {
+    // Resolve a relative URL against a base, then resolve another relative URL
+    // against the result of the first resolution
+    auto base = parse("https://example.com/docs/guide/intro.html");
+    ASSERT_TRUE(base.has_value());
+    // Step 1: resolve "../api/reference.html" against base
+    auto step1 = parse("../api/reference.html", &*base);
+    ASSERT_TRUE(step1.has_value());
+    EXPECT_EQ(step1->scheme, "https");
+    EXPECT_EQ(step1->host, "example.com");
+    EXPECT_EQ(step1->path, "/docs/api/reference.html");
+    // Step 2: resolve "../images/logo.png" against step1
+    auto step2 = parse("../images/logo.png", &*step1);
+    ASSERT_TRUE(step2.has_value());
+    EXPECT_EQ(step2->scheme, "https");
+    EXPECT_EQ(step2->host, "example.com");
+    EXPECT_EQ(step2->path, "/docs/images/logo.png");
+}
+
+TEST(UrlParserTest, UrlV126_6_WssSerializeWithUserinfoAndNonDefaultPort) {
+    // A wss URL with userinfo and a non-default port should serialize correctly
+    // with all components in the right order
+    auto result = parse("wss://monitor:watch123@alerts.example.com:8443/feed?type=critical#latest");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "wss");
+    EXPECT_EQ(result->username, "monitor");
+    EXPECT_EQ(result->password, "watch123");
+    EXPECT_EQ(result->host, "alerts.example.com");
+    ASSERT_TRUE(result->port.has_value());
+    EXPECT_EQ(result->port.value(), 8443);
+    EXPECT_EQ(result->path, "/feed");
+    EXPECT_EQ(result->query, "type=critical");
+    EXPECT_EQ(result->fragment, "latest");
+    std::string s = result->serialize();
+    EXPECT_EQ(s, "wss://monitor:watch123@alerts.example.com:8443/feed?type=critical#latest");
+}
+
+TEST(UrlParserTest, UrlV126_7_PortZeroSerializeIncludesZero) {
+    // Port 0 is a valid non-default port for HTTP and should appear in serialize
+    auto result = parse("http://localhost:0/health");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "localhost");
+    ASSERT_TRUE(result->port.has_value());
+    EXPECT_EQ(result->port.value(), 0);
+    EXPECT_EQ(result->path, "/health");
+    std::string s = result->serialize();
+    EXPECT_EQ(s, "http://localhost:0/health");
+}
+
+TEST(UrlParserTest, UrlV126_8_HttpsExplicit443AndImplicitAreSameOrigin) {
+    // HTTPS with explicit :443 and without port specified should both normalize
+    // port to nullopt, making them same-origin
+    auto explicit_port = parse("https://secure.example.com:443/login");
+    auto implicit_port = parse("https://secure.example.com/dashboard");
+    ASSERT_TRUE(explicit_port.has_value());
+    ASSERT_TRUE(implicit_port.has_value());
+    EXPECT_EQ(explicit_port->port, std::nullopt);
+    EXPECT_EQ(implicit_port->port, std::nullopt);
+    EXPECT_TRUE(urls_same_origin(*explicit_port, *implicit_port));
+    // Both should produce the same origin string
+    EXPECT_EQ(explicit_port->origin(), implicit_port->origin());
+    EXPECT_EQ(explicit_port->origin(), "https://secure.example.com");
+}

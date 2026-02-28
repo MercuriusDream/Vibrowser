@@ -19209,3 +19209,181 @@ TEST(SerializerTest, SerializerV125_8_ReserializeFromDeserializedValues) {
     EXPECT_EQ(bytes2[3], 0xEF);
     EXPECT_FALSE(d2.has_remaining());
 }
+
+// ------------------------------------------------------------------
+// V126 Tests
+// ------------------------------------------------------------------
+
+// Test 1: Serialize all zero values for every type, verify round-trip
+TEST(SerializerTest, SerializerV126_1_AllZeroValues) {
+    Serializer s;
+    s.write_u8(0);
+    s.write_u16(0);
+    s.write_u32(0);
+    s.write_u64(0);
+    s.write_i32(0);
+    s.write_i64(0);
+    s.write_f64(0.0);
+    s.write_bool(false);
+    s.write_string("");
+    s.write_bytes(nullptr, 0);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u8(), 0);
+    EXPECT_EQ(d.read_u16(), 0);
+    EXPECT_EQ(d.read_u32(), 0u);
+    EXPECT_EQ(d.read_u64(), 0u);
+    EXPECT_EQ(d.read_i32(), 0);
+    EXPECT_EQ(d.read_i64(), 0);
+    EXPECT_DOUBLE_EQ(d.read_f64(), 0.0);
+    EXPECT_EQ(d.read_bool(), false);
+    EXPECT_EQ(d.read_string(), "");
+    auto bytes = d.read_bytes();
+    EXPECT_EQ(bytes.size(), 0u);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+// Test 2: Multiple consecutive strings with varying lengths
+TEST(SerializerTest, SerializerV126_2_ConsecutiveStringsVaryingLengths) {
+    Serializer s;
+    s.write_string("a");
+    s.write_string("bb");
+    s.write_string("ccc");
+    s.write_string("dddddddddd");  // 10 chars
+    s.write_string("");
+    std::string long_str(500, 'x');
+    s.write_string(long_str);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "a");
+    EXPECT_EQ(d.read_string(), "bb");
+    EXPECT_EQ(d.read_string(), "ccc");
+    EXPECT_EQ(d.read_string(), "dddddddddd");
+    EXPECT_EQ(d.read_string(), "");
+    EXPECT_EQ(d.read_string(), long_str);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+// Test 3: Verify remaining() value is exact after each write/read of u64
+TEST(SerializerTest, SerializerV126_3_RemainingExactForU64Sequence) {
+    Serializer s;
+    s.write_u64(111);
+    s.write_u64(222);
+    s.write_u64(333);
+
+    Deserializer d(s.data());
+    // 3 u64 values = 24 bytes total
+    EXPECT_EQ(d.remaining(), 24u);
+    EXPECT_TRUE(d.has_remaining());
+
+    d.read_u64();
+    EXPECT_EQ(d.remaining(), 16u);
+
+    d.read_u64();
+    EXPECT_EQ(d.remaining(), 8u);
+
+    d.read_u64();
+    EXPECT_EQ(d.remaining(), 0u);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+// Test 4: Deserializer constructed from raw pointer and size
+TEST(SerializerTest, SerializerV126_4_DeserializerRawPointerConstruction) {
+    Serializer s;
+    s.write_u32(0x12345678u);
+    s.write_bool(true);
+    s.write_i32(-99);
+
+    const auto& buf = s.data();
+    Deserializer d(buf.data(), buf.size());
+    EXPECT_EQ(d.read_u32(), 0x12345678u);
+    EXPECT_EQ(d.read_bool(), true);
+    EXPECT_EQ(d.read_i32(), -99);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+// Test 5: take_data empties the serializer buffer
+TEST(SerializerTest, SerializerV126_5_TakeDataEmptiesBuffer) {
+    Serializer s;
+    s.write_u8(42);
+    s.write_u16(1000);
+    s.write_string("hello");
+
+    EXPECT_GT(s.data().size(), 0u);
+
+    auto moved = s.take_data();
+    EXPECT_GT(moved.size(), 0u);
+    // After take_data, the internal buffer has been moved from
+    EXPECT_EQ(s.data().size(), 0u);
+
+    // Verify the moved data is still valid
+    Deserializer d(moved);
+    EXPECT_EQ(d.read_u8(), 42);
+    EXPECT_EQ(d.read_u16(), 1000);
+    EXPECT_EQ(d.read_string(), "hello");
+    EXPECT_FALSE(d.has_remaining());
+}
+
+// Test 6: Round-trip with bytes containing all 256 byte values
+TEST(SerializerTest, SerializerV126_6_BytesAll256Values) {
+    std::vector<uint8_t> all_bytes(256);
+    for (int i = 0; i < 256; ++i) {
+        all_bytes[i] = static_cast<uint8_t>(i);
+    }
+
+    Serializer s;
+    s.write_bytes(all_bytes.data(), all_bytes.size());
+
+    Deserializer d(s.data());
+    auto result = d.read_bytes();
+    ASSERT_EQ(result.size(), 256u);
+    for (int i = 0; i < 256; ++i) {
+        EXPECT_EQ(result[i], static_cast<uint8_t>(i));
+    }
+    EXPECT_FALSE(d.has_remaining());
+}
+
+// Test 7: Mixed bools and u8s to test single-byte type discrimination
+TEST(SerializerTest, SerializerV126_7_InterleavedBoolsAndU8s) {
+    Serializer s;
+    s.write_bool(true);
+    s.write_u8(0xFF);
+    s.write_bool(false);
+    s.write_u8(0x00);
+    s.write_bool(true);
+    s.write_u8(0x7F);
+    s.write_bool(false);
+    s.write_u8(0x80);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_bool(), true);
+    EXPECT_EQ(d.read_u8(), 0xFF);
+    EXPECT_EQ(d.read_bool(), false);
+    EXPECT_EQ(d.read_u8(), 0x00);
+    EXPECT_EQ(d.read_bool(), true);
+    EXPECT_EQ(d.read_u8(), 0x7F);
+    EXPECT_EQ(d.read_bool(), false);
+    EXPECT_EQ(d.read_u8(), 0x80);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+// Test 8: F64 subnormal and large magnitude values round-trip exactly
+TEST(SerializerTest, SerializerV126_8_F64SubnormalAndLargeMagnitude) {
+    double subnormal = std::numeric_limits<double>::denorm_min();
+    double largest = std::numeric_limits<double>::max();
+    double smallest_normal = std::numeric_limits<double>::min();
+    double neg_largest = -std::numeric_limits<double>::max();
+
+    Serializer s;
+    s.write_f64(subnormal);
+    s.write_f64(largest);
+    s.write_f64(smallest_normal);
+    s.write_f64(neg_largest);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_f64(), subnormal);
+    EXPECT_EQ(d.read_f64(), largest);
+    EXPECT_EQ(d.read_f64(), smallest_normal);
+    EXPECT_EQ(d.read_f64(), neg_largest);
+    EXPECT_FALSE(d.has_remaining());
+}

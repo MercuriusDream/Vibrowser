@@ -20988,3 +20988,220 @@ TEST(HtmlParserTest, ScriptTagRawContentNotParsedAsHtmlV125) {
     ASSERT_NE(p, nullptr);
     EXPECT_EQ(p->text_content(), "After script");
 }
+
+// ============================================================================
+// V126 Tests
+// ============================================================================
+
+// 1. Parse nested ordered list with list items and verify count and text
+TEST(HtmlParserTest, HtmlV126_1) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<ol>"
+        "<li>Alpha</li>"
+        "<li>Beta<ul><li>Sub1</li><li>Sub2</li></ul></li>"
+        "<li>Gamma</li>"
+        "</ol>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* ol = doc->find_element("ol");
+    ASSERT_NE(ol, nullptr);
+    // find_all_elements is recursive (DFS), so it finds all 5 li elements
+    // Order: Alpha(0), Beta(1), Sub1(2), Sub2(3), Gamma(4)
+    auto all_lis = ol->find_all_elements("li");
+    ASSERT_EQ(all_lis.size(), 5u);
+    EXPECT_EQ(all_lis[0]->text_content(), "Alpha");
+    EXPECT_EQ(all_lis[4]->text_content(), "Gamma");
+
+    auto* ul = ol->find_element("ul");
+    ASSERT_NE(ul, nullptr);
+    auto sub_items = ul->find_all_elements("li");
+    ASSERT_EQ(sub_items.size(), 2u);
+    EXPECT_EQ(sub_items[0]->text_content(), "Sub1");
+    EXPECT_EQ(sub_items[1]->text_content(), "Sub2");
+}
+
+// 2. Parse anchor tag with multiple attributes including target and title
+TEST(HtmlParserTest, HtmlV126_2) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<a href=\"https://example.com\" target=\"_blank\" title=\"Example Link\" "
+        "rel=\"noopener noreferrer\">Visit</a>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* a = doc->find_element("a");
+    ASSERT_NE(a, nullptr);
+    EXPECT_EQ(get_attr_v63(a, "href"), "https://example.com");
+    EXPECT_EQ(get_attr_v63(a, "target"), "_blank");
+    EXPECT_EQ(get_attr_v63(a, "title"), "Example Link");
+    EXPECT_EQ(get_attr_v63(a, "rel"), "noopener noreferrer");
+    EXPECT_EQ(a->text_content(), "Visit");
+    EXPECT_EQ(a->type, clever::html::SimpleNode::Element);
+    EXPECT_EQ(a->tag_name, "a");
+}
+
+// 3. Parse multiple meta tags in head and verify their attributes
+TEST(HtmlParserTest, HtmlV126_3) {
+    auto doc = clever::html::parse(
+        "<html><head>"
+        "<meta charset=\"utf-8\">"
+        "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">"
+        "<meta name=\"description\" content=\"A test page\">"
+        "</head><body></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto metas = doc->find_all_elements("meta");
+    ASSERT_EQ(metas.size(), 3u);
+    EXPECT_EQ(get_attr_v63(metas[0], "charset"), "utf-8");
+    EXPECT_EQ(get_attr_v63(metas[1], "name"), "viewport");
+    EXPECT_EQ(get_attr_v63(metas[1], "content"), "width=device-width, initial-scale=1.0");
+    EXPECT_EQ(get_attr_v63(metas[2], "name"), "description");
+    EXPECT_EQ(get_attr_v63(metas[2], "content"), "A test page");
+    // meta is a void element, should have no children
+    EXPECT_TRUE(metas[0]->children.empty());
+    EXPECT_TRUE(metas[1]->children.empty());
+}
+
+// 4. Parse comment nodes and verify they are preserved in the tree
+TEST(HtmlParserTest, HtmlV126_4) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<!-- First comment -->"
+        "<p>Visible text</p>"
+        "<!-- Second comment -->"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* body = doc->find_element("body");
+    ASSERT_NE(body, nullptr);
+
+    int comment_count = 0;
+    std::vector<std::string> comment_texts;
+    for (auto& child : body->children) {
+        if (child->type == clever::html::SimpleNode::Comment) {
+            comment_count++;
+            comment_texts.push_back(child->data);
+        }
+    }
+    EXPECT_EQ(comment_count, 2);
+    ASSERT_EQ(comment_texts.size(), 2u);
+    EXPECT_NE(comment_texts[0].find("First comment"), std::string::npos);
+    EXPECT_NE(comment_texts[1].find("Second comment"), std::string::npos);
+
+    auto* p = doc->find_element("p");
+    ASSERT_NE(p, nullptr);
+    EXPECT_EQ(p->text_content(), "Visible text");
+}
+
+// 5. Verify parent pointers are set correctly through a three-level hierarchy
+TEST(HtmlParserTest, HtmlV126_5) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<div><section><article>Nested</article></section></div>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* div = doc->find_element("div");
+    ASSERT_NE(div, nullptr);
+    auto* section = div->find_element("section");
+    ASSERT_NE(section, nullptr);
+    auto* article = section->find_element("article");
+    ASSERT_NE(article, nullptr);
+
+    EXPECT_EQ(article->text_content(), "Nested");
+    EXPECT_EQ(article->parent, section);
+    EXPECT_EQ(section->parent, div);
+    auto* body = doc->find_element("body");
+    ASSERT_NE(body, nullptr);
+    EXPECT_EQ(div->parent, body);
+}
+
+// 6. Parse select element with multiple option children and verify values
+TEST(HtmlParserTest, HtmlV126_6) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<select name=\"color\">"
+        "<option value=\"r\">Red</option>"
+        "<option value=\"g\">Green</option>"
+        "<option value=\"b\">Blue</option>"
+        "</select>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* select = doc->find_element("select");
+    ASSERT_NE(select, nullptr);
+    EXPECT_EQ(get_attr_v63(select, "name"), "color");
+
+    auto options = select->find_all_elements("option");
+    ASSERT_EQ(options.size(), 3u);
+    EXPECT_EQ(get_attr_v63(options[0], "value"), "r");
+    EXPECT_EQ(options[0]->text_content(), "Red");
+    EXPECT_EQ(get_attr_v63(options[1], "value"), "g");
+    EXPECT_EQ(options[1]->text_content(), "Green");
+    EXPECT_EQ(get_attr_v63(options[2], "value"), "b");
+    EXPECT_EQ(options[2]->text_content(), "Blue");
+}
+
+// 7. Parse empty tags and verify they produce elements with no text content
+TEST(HtmlParserTest, HtmlV126_7) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<div></div>"
+        "<span></span>"
+        "<p></p>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* div = doc->find_element("div");
+    ASSERT_NE(div, nullptr);
+    EXPECT_EQ(div->text_content(), "");
+    EXPECT_EQ(div->type, clever::html::SimpleNode::Element);
+    EXPECT_EQ(div->tag_name, "div");
+
+    auto* span = doc->find_element("span");
+    ASSERT_NE(span, nullptr);
+    EXPECT_EQ(span->text_content(), "");
+    EXPECT_EQ(span->tag_name, "span");
+
+    auto* p = doc->find_element("p");
+    ASSERT_NE(p, nullptr);
+    EXPECT_EQ(p->text_content(), "");
+    EXPECT_EQ(p->tag_name, "p");
+
+    // All three should be children of body
+    auto* body = doc->find_element("body");
+    ASSERT_NE(body, nullptr);
+    auto divs = body->find_all_elements("div");
+    auto spans = body->find_all_elements("span");
+    auto ps = body->find_all_elements("p");
+    EXPECT_EQ(divs.size(), 1u);
+    EXPECT_EQ(spans.size(), 1u);
+    EXPECT_EQ(ps.size(), 1u);
+}
+
+// 8. Parse style tag raw content preserved as text, not parsed as elements
+TEST(HtmlParserTest, HtmlV126_8) {
+    auto doc = clever::html::parse(
+        "<html><head>"
+        "<style type=\"text/css\">"
+        "body { color: red; } div > p { margin: 0; }"
+        "</style>"
+        "</head><body><h1>Styled</h1></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto styles = doc->find_all_elements("style");
+    ASSERT_EQ(styles.size(), 1u);
+    EXPECT_EQ(get_attr_v63(styles[0], "type"), "text/css");
+
+    // Style content should be raw text, not parsed as HTML elements
+    std::string css = styles[0]->text_content();
+    EXPECT_NE(css.find("color: red"), std::string::npos);
+    EXPECT_NE(css.find("div > p"), std::string::npos);
+
+    // The h1 should still be parsed normally outside the style tag
+    auto* h1 = doc->find_element("h1");
+    ASSERT_NE(h1, nullptr);
+    EXPECT_EQ(h1->text_content(), "Styled");
+}

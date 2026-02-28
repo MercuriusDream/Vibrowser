@@ -33804,3 +33804,262 @@ TEST(JsEngineTest, DataViewEndianMathNumberEdgeCasesV125) {
     EXPECT_EQ(result, "1|2|4|3|258|772|9|1|42|3|4|4|-4|-1|0|1|31|true|false|true|false|true|false|true|false");
 }
 
+// ============================================================================
+// V126 Tests
+// ============================================================================
+
+TEST(JSEngine, JsV126_1) {
+    // DataView read/write with multiple typed accessors on a shared ArrayBuffer
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        const r = [];
+        const buf = new ArrayBuffer(16);
+        const dv = new DataView(buf);
+        dv.setInt32(0, 305419896, false); // big-endian 0x12345678
+        r.push(dv.getInt32(0, false));
+        r.push(dv.getUint8(0));   // 0x12 = 18
+        r.push(dv.getUint8(1));   // 0x34 = 52
+        r.push(dv.getUint8(2));   // 0x56 = 86
+        r.push(dv.getUint8(3));   // 0x78 = 120
+        dv.setFloat64(8, 3.14, true); // little-endian
+        const f = dv.getFloat64(8, true);
+        r.push(f.toFixed(2));
+        // Read same bytes as big-endian — should differ
+        r.push(dv.getFloat64(8, false) !== 3.14);
+        r.join("|");
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "305419896|18|52|86|120|3.14|true");
+}
+
+TEST(JSEngine, JsV126_2) {
+    // Reflect API: ownKeys, has, get, set, deleteProperty, apply
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        const r = [];
+        const obj = { x: 10, y: 20, z: 30 };
+        r.push(Reflect.has(obj, "x"));
+        r.push(Reflect.has(obj, "w"));
+        r.push(Reflect.get(obj, "y"));
+        Reflect.set(obj, "z", 99);
+        r.push(obj.z);
+        const keys = Reflect.ownKeys(obj);
+        r.push(keys.join(","));
+        Reflect.deleteProperty(obj, "y");
+        r.push(Reflect.has(obj, "y"));
+        // Reflect.apply
+        function sum(a, b) { return a + b; }
+        r.push(Reflect.apply(sum, null, [5, 7]));
+        r.join("|");
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true|false|20|99|x,y,z|false|12");
+}
+
+TEST(JSEngine, JsV126_3) {
+    // Array.from with mapFn, Array.of, and TypedArray interop
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        const r = [];
+        // Array.from with iterable and map function
+        const mapped = Array.from("hello", function(ch) { return ch.toUpperCase(); });
+        r.push(mapped.join(""));
+        // Array.from a Set
+        const s = new Set([3, 1, 4, 1, 5]);
+        const fromSet = Array.from(s);
+        r.push(fromSet.length); // Set dedups: 3,1,4,5
+        r.push(fromSet.sort().join(","));
+        // Array.of
+        r.push(Array.of(1, 2, 3).join(","));
+        // TypedArray from Array
+        const ta = new Int16Array([100, -200, 300]);
+        r.push(ta.length);
+        r.push(ta[1]);
+        // TypedArray from another TypedArray
+        const u8 = new Uint8Array(ta.buffer);
+        r.push(u8.length); // 3 Int16s = 6 bytes
+        r.join("|");
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "HELLO|4|1,3,4,5|1,2,3|3|-200|6");
+}
+
+TEST(JSEngine, JsV126_4) {
+    // String methods: startsWith, endsWith, includes, repeat, trimStart/trimEnd
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        const r = [];
+        const s = "  Hello, World!  ";
+        r.push(s.trimStart().length);   // 15 (removes 2 leading spaces)
+        r.push(s.trimEnd().length);     // 15 (removes 2 trailing spaces)
+        r.push(s.trim());
+        const t = "JavaScript";
+        r.push(t.startsWith("Java"));
+        r.push(t.startsWith("Script"));
+        r.push(t.endsWith("Script"));
+        r.push(t.includes("aSc"));
+        r.push(t.includes("xyz"));
+        r.push("ab".repeat(3));
+        r.push(t.slice(4));
+        r.join("|");
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "15|15|Hello, World!|true|false|true|true|false|ababab|Script");
+}
+
+TEST(JSEngine, JsV126_5) {
+    // Object.assign, Object.freeze, Object.keys/values/entries on frozen objects
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        const r = [];
+        // Object.assign merges properties
+        const target = { a: 1 };
+        const merged = Object.assign(target, { b: 2 }, { c: 3, a: 10 });
+        r.push(merged === target);
+        r.push(merged.a + "," + merged.b + "," + merged.c);
+        // Object.freeze
+        const frozen = Object.freeze({ x: 1, y: 2 });
+        r.push(Object.isFrozen(frozen));
+        // Assignment to frozen property is silently ignored in sloppy mode
+        frozen.x = 99;
+        r.push(frozen.x); // still 1
+        // Object.keys, values, entries
+        const obj2 = { name: "Alice", age: 30 };
+        r.push(Object.keys(obj2).join(","));
+        r.push(Object.values(obj2).join(","));
+        r.push(Object.entries(obj2).map(function(e) { return e[0] + ":" + e[1]; }).join(";"));
+        r.join("|");
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true|10,2,3|true|1|name,age|Alice,30|name:Alice;age:30");
+}
+
+TEST(JSEngine, JsV126_6) {
+    // for-of with generators: delegating generators with yield*
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        const r = [];
+        function* range(start, end) {
+            for (let i = start; i < end; i++) yield i;
+        }
+        function* combined() {
+            yield* range(1, 4);
+            yield 100;
+            yield* range(7, 9);
+        }
+        const vals = [];
+        for (const v of combined()) {
+            vals.push(v);
+        }
+        r.push(vals.join(","));
+        // Generator return value
+        function* withReturn() {
+            yield 1;
+            yield 2;
+            return "done";
+        }
+        const g = withReturn();
+        r.push(g.next().value);
+        r.push(g.next().value);
+        const last = g.next();
+        r.push(last.value);
+        r.push(last.done);
+        // Generator throw
+        function* catchable() {
+            try {
+                yield 1;
+            } catch(e) {
+                yield "caught:" + e.message;
+            }
+        }
+        const g2 = catchable();
+        g2.next();
+        const thrown = g2.throw(new Error("oops"));
+        r.push(thrown.value);
+        r.join("|");
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1,2,3,100,7,8|1|2|done|true|caught:oops");
+}
+
+TEST(JSEngine, JsV126_7) {
+    // Map/Set advanced: iteration order, chaining, forEach, spreading
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        const r = [];
+        // Map preserves insertion order
+        const m = new Map();
+        m.set("c", 3).set("a", 1).set("b", 2);
+        r.push(Array.from(m.keys()).join(","));
+        r.push(m.size);
+        // Map forEach
+        const pairs = [];
+        m.forEach(function(v, k) { pairs.push(k + "=" + v); });
+        r.push(pairs.join(";"));
+        // Map from entries and back to entries
+        const m2 = new Map([["x", 10], ["y", 20]]);
+        r.push(Array.from(m2.entries()).map(function(e) { return e.join(":"); }).join(","));
+        // Set iteration and spread
+        const s = new Set([5, 3, 5, 1, 3]);
+        const arr = [...s];
+        r.push(arr.join(","));
+        r.push(s.has(3));
+        s.delete(3);
+        r.push(s.has(3));
+        r.push(s.size);
+        r.join("|");
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "c,a,b|3|c=3;a=1;b=2|x:10,y:20|5,3,1|true|false|2");
+}
+
+TEST(JSEngine, JsV126_8) {
+    // Proxy with has trap, construct trap, and revocable proxy
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        const r = [];
+        // Proxy with has trap (intercepts 'in' operator)
+        const hasTrap = new Proxy({}, {
+            has: function(target, key) {
+                return key === "magic";
+            }
+        });
+        r.push("magic" in hasTrap);
+        r.push("other" in hasTrap);
+        // Proxy with apply trap (intercepts function call)
+        function greet(name) { return "Hello, " + name; }
+        const applyProxy = new Proxy(greet, {
+            apply: function(target, thisArg, args) {
+                return target.apply(thisArg, args) + "!";
+            }
+        });
+        r.push(applyProxy("World"));
+        // Proxy.revocable
+        const rev = Proxy.revocable({val: 42}, {
+            get: function(target, prop) {
+                return prop === "val" ? target.val * 2 : undefined;
+            }
+        });
+        r.push(rev.proxy.val);
+        rev.revoke();
+        try {
+            rev.proxy.val;
+        } catch(e) {
+            r.push("revoked");
+        }
+        // Proxy construct trap
+        function MyClass(v) { this.v = v; }
+        const ctorProxy = new Proxy(MyClass, {
+            construct: function(target, args) {
+                const obj = new target(args[0] * 10);
+                return obj;
+            }
+        });
+        const inst = new ctorProxy(5);
+        r.push(inst.v);
+        r.join("|");
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true|false|Hello, World!|84|revoked|50");
+}
+

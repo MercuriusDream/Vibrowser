@@ -21540,3 +21540,159 @@ TEST(ResponseTest, Parse503WithRetryAfterHeaderV125) {
     // Content-Type should also be present
     EXPECT_EQ(resp->headers.get("content-type").value(), "text/plain");
 }
+
+// ===========================================================================
+// V126 Tests
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// 1. HeaderMap: append then set replaces all appended values with one value
+// ---------------------------------------------------------------------------
+TEST(HttpClient, HeaderMapAppendThenSetReplacesAllV126) {
+    HeaderMap map;
+    map.append("Via", "proxy1");
+    map.append("Via", "proxy2");
+    map.append("Via", "proxy3");
+    EXPECT_EQ(map.get_all("Via").size(), 3u);
+
+    // set() should collapse all three into a single entry
+    map.set("Via", "final-proxy");
+    EXPECT_EQ(map.get_all("Via").size(), 1u);
+    EXPECT_EQ(map.get("Via").value(), "final-proxy");
+}
+
+// ---------------------------------------------------------------------------
+// 2. Request: serialize PUT with body includes Content-Length automatically
+// ---------------------------------------------------------------------------
+TEST(HttpClient, RequestSerializePutWithBodyContentLengthV126) {
+    Request req;
+    req.method = Method::PUT;
+    req.host = "api.example.com";
+    req.port = 443;
+    req.use_tls = true;
+    req.path = "/resources/99";
+
+    std::string payload = R"({"name":"updated"})";
+    req.body.assign(payload.begin(), payload.end());
+    req.headers.set("Content-Type", "application/json");
+
+    auto bytes = req.serialize();
+    std::string raw(bytes.begin(), bytes.end());
+
+    // Request line should be PUT
+    EXPECT_NE(raw.find("PUT /resources/99 HTTP/1.1\r\n"), std::string::npos);
+    // Port 443 should be omitted from Host header
+    EXPECT_NE(raw.find("Host: api.example.com\r\n"), std::string::npos);
+    // Content-Length should be auto-generated matching payload size
+    EXPECT_NE(raw.find("Content-Length: " + std::to_string(payload.size()) + "\r\n"),
+              std::string::npos);
+    // Body should appear after double CRLF
+    EXPECT_NE(raw.find("\r\n\r\n" + payload), std::string::npos);
+}
+
+// ---------------------------------------------------------------------------
+// 3. Response::parse with 302 Found and Location header
+// ---------------------------------------------------------------------------
+TEST(ResponseTest, Parse302FoundWithLocationV126) {
+    std::string body_text = "Redirecting...";
+    std::string raw =
+        "HTTP/1.1 302 Found\r\n"
+        "Location: https://example.com/new-page\r\n"
+        "Content-Type: text/plain\r\n"
+        "Content-Length: " + std::to_string(body_text.size()) + "\r\n"
+        "\r\n" + body_text;
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 302);
+    EXPECT_EQ(resp->status_text, "Found");
+    EXPECT_EQ(resp->headers.get("location").value(), "https://example.com/new-page");
+    EXPECT_EQ(resp->body_as_string(), body_text);
+}
+
+// ---------------------------------------------------------------------------
+// 4. Request::parse_url with HTTP scheme and query string preserves all parts
+// ---------------------------------------------------------------------------
+TEST(RequestTest, ParseUrlHttpWithQueryAndPathSegmentsV126) {
+    Request req;
+    req.url = "http://shop.example.com:9090/catalog/items/search?category=books&sort=price";
+    req.parse_url();
+
+    EXPECT_EQ(req.host, "shop.example.com");
+    EXPECT_EQ(req.port, 9090);
+    EXPECT_EQ(req.path, "/catalog/items/search");
+    EXPECT_EQ(req.query, "category=books&sort=price");
+    EXPECT_FALSE(req.use_tls);
+}
+
+// ---------------------------------------------------------------------------
+// 5. CookieJar: clear removes all cookies, size goes to zero
+// ---------------------------------------------------------------------------
+TEST(HttpClient, CookieJarClearResetsToZeroV126) {
+    CookieJar jar;
+    jar.clear();  // start clean
+
+    jar.set_from_header("token=abc; Path=/", "site-v126.example.com");
+    jar.set_from_header("pref=dark; Path=/", "site-v126.example.com");
+    EXPECT_GE(jar.size(), 1u);
+
+    jar.clear();
+    EXPECT_EQ(jar.size(), 0u);
+}
+
+// ---------------------------------------------------------------------------
+// 6. parse_cache_control: s-maxage alongside max-age, both parsed correctly
+// ---------------------------------------------------------------------------
+TEST(CacheControlTest, ParseMaxAgeWithMustRevalidateV126) {
+    auto cc = parse_cache_control("max-age=1800, must-revalidate");
+    EXPECT_EQ(cc.max_age, 1800);
+    EXPECT_TRUE(cc.must_revalidate);
+    EXPECT_FALSE(cc.no_cache);
+    EXPECT_FALSE(cc.no_store);
+    EXPECT_FALSE(cc.is_private);
+    EXPECT_FALSE(cc.is_public);
+}
+
+// ---------------------------------------------------------------------------
+// 7. Response: default-constructed response has status 0 and empty body
+// ---------------------------------------------------------------------------
+TEST(HttpClient, ResponseDefaultConstructionV126) {
+    Response resp;
+    EXPECT_EQ(resp.status, 0);
+    EXPECT_TRUE(resp.status_text.empty());
+    EXPECT_TRUE(resp.body.empty());
+    EXPECT_EQ(resp.body_as_string(), "");
+    EXPECT_FALSE(resp.was_redirected);
+    EXPECT_TRUE(resp.url.empty());
+    EXPECT_TRUE(resp.headers.empty());
+}
+
+// ---------------------------------------------------------------------------
+// 8. HeaderMap: iteration yields correct key-value pairs after mixed ops
+// ---------------------------------------------------------------------------
+TEST(HttpClient, HeaderMapIterationAfterMixedOpsV126) {
+    HeaderMap map;
+    map.set("X-Request-Id", "req-001");
+    map.append("Accept-Encoding", "gzip");
+    map.append("Accept-Encoding", "deflate");
+    map.set("Host", "iter-test.example.com");
+    map.remove("Host");
+
+    // After remove, only X-Request-Id and 2x Accept-Encoding remain = 3 entries
+    EXPECT_EQ(map.size(), 3u);
+    EXPECT_FALSE(map.has("Host"));
+
+    // Verify iteration count matches size
+    size_t count = 0;
+    for (auto it = map.begin(); it != map.end(); ++it) {
+        ++count;
+    }
+    EXPECT_EQ(count, 3u);
+
+    // Verify specific values accessible after iteration
+    EXPECT_EQ(map.get("x-request-id").value(), "req-001");
+    auto encodings = map.get_all("accept-encoding");
+    EXPECT_EQ(encodings.size(), 2u);
+}

@@ -19402,3 +19402,148 @@ TEST(DomElement, ElementV125_8) {
     elem.remove_attribute("id");
     EXPECT_EQ(elem.id(), "");
 }
+
+// ---------------------------------------------------------------------------
+// V126: 8 diverse DOM tests
+// ---------------------------------------------------------------------------
+
+// 1. Document create_element factory returns correct tag and type
+TEST(DomDocument, ElementV126_1) {
+    Document doc;
+    auto elem = doc.create_element("article");
+    ASSERT_NE(elem, nullptr);
+    EXPECT_EQ(elem->tag_name(), "article");
+    EXPECT_EQ(elem->node_type(), NodeType::Element);
+    EXPECT_EQ(elem->child_count(), 0u);
+}
+
+// 2. Document create_text_node and create_comment factories
+TEST(DomDocument, ElementV126_2) {
+    Document doc;
+    auto txt = doc.create_text_node("factory text");
+    ASSERT_NE(txt, nullptr);
+    EXPECT_EQ(txt->node_type(), NodeType::Text);
+    EXPECT_EQ(txt->data(), "factory text");
+
+    auto cmt = doc.create_comment("factory comment");
+    ASSERT_NE(cmt, nullptr);
+    EXPECT_EQ(cmt->node_type(), NodeType::Comment);
+    EXPECT_EQ(cmt->data(), "factory comment");
+}
+
+// 3. remove_child returns ownership as unique_ptr and detaches from tree
+TEST(DomNode, ElementV126_3) {
+    Element parent("div");
+    auto child = std::make_unique<Element>("span");
+    auto* child_ptr = child.get();
+    parent.append_child(std::move(child));
+    EXPECT_EQ(parent.child_count(), 1u);
+    EXPECT_EQ(child_ptr->parent(), &parent);
+
+    auto removed = parent.remove_child(*child_ptr);
+    EXPECT_EQ(parent.child_count(), 0u);
+    EXPECT_NE(removed, nullptr);
+    EXPECT_EQ(parent.first_child(), nullptr);
+    EXPECT_EQ(parent.last_child(), nullptr);
+}
+
+// 4. for_each_child visits all children in order
+TEST(DomNode, ElementV126_4) {
+    Element parent("ol");
+    parent.append_child(std::make_unique<Element>("li"));
+    parent.append_child(std::make_unique<Text>("text-node"));
+    parent.append_child(std::make_unique<Comment>("comment-node"));
+
+    std::vector<NodeType> types;
+    parent.for_each_child([&](const Node& child) {
+        types.push_back(child.node_type());
+    });
+
+    ASSERT_EQ(types.size(), 3u);
+    EXPECT_EQ(types[0], NodeType::Element);
+    EXPECT_EQ(types[1], NodeType::Text);
+    EXPECT_EQ(types[2], NodeType::Comment);
+}
+
+// 5. ClassList to_string produces space-separated class names
+TEST(DomElement, ElementV126_5) {
+    Element elem("div");
+    auto& cl = elem.class_list();
+
+    // Empty class list
+    EXPECT_EQ(cl.to_string(), "");
+
+    cl.add("alpha");
+    EXPECT_EQ(cl.to_string(), "alpha");
+
+    cl.add("beta");
+    cl.add("gamma");
+    // to_string should contain all three classes
+    std::string result = cl.to_string();
+    EXPECT_NE(result.find("alpha"), std::string::npos);
+    EXPECT_NE(result.find("beta"), std::string::npos);
+    EXPECT_NE(result.find("gamma"), std::string::npos);
+}
+
+// 6. insert_before in middle of sibling chain maintains correct linkage
+TEST(DomNode, ElementV126_6) {
+    Element parent("div");
+    auto a = std::make_unique<Element>("a");
+    auto c = std::make_unique<Element>("c");
+    auto* a_ptr = a.get();
+    auto* c_ptr = c.get();
+    parent.append_child(std::move(a));
+    parent.append_child(std::move(c));
+
+    // Insert b between a and c
+    auto b = std::make_unique<Element>("b");
+    auto* b_ptr = b.get();
+    parent.insert_before(std::move(b), c_ptr);
+
+    EXPECT_EQ(parent.child_count(), 3u);
+    EXPECT_EQ(parent.first_child(), a_ptr);
+    EXPECT_EQ(a_ptr->next_sibling(), b_ptr);
+    EXPECT_EQ(b_ptr->next_sibling(), c_ptr);
+    EXPECT_EQ(c_ptr->previous_sibling(), b_ptr);
+    EXPECT_EQ(b_ptr->previous_sibling(), a_ptr);
+    EXPECT_EQ(parent.last_child(), c_ptr);
+}
+
+// 7. DirtyFlags Paint flag and All flag cover all bits
+TEST(DomNode, ElementV126_7) {
+    Element elem("canvas");
+    elem.mark_dirty(DirtyFlags::Paint);
+    EXPECT_EQ(static_cast<uint8_t>(elem.dirty_flags() & DirtyFlags::Paint),
+              static_cast<uint8_t>(DirtyFlags::Paint));
+    // Style and Layout should NOT be set
+    EXPECT_EQ(static_cast<uint8_t>(elem.dirty_flags() & DirtyFlags::Style), 0u);
+    EXPECT_EQ(static_cast<uint8_t>(elem.dirty_flags() & DirtyFlags::Layout), 0u);
+
+    elem.clear_dirty();
+    elem.mark_dirty(DirtyFlags::All);
+    // All three should be set
+    EXPECT_EQ(static_cast<uint8_t>(elem.dirty_flags() & DirtyFlags::Style),
+              static_cast<uint8_t>(DirtyFlags::Style));
+    EXPECT_EQ(static_cast<uint8_t>(elem.dirty_flags() & DirtyFlags::Layout),
+              static_cast<uint8_t>(DirtyFlags::Layout));
+    EXPECT_EQ(static_cast<uint8_t>(elem.dirty_flags() & DirtyFlags::Paint),
+              static_cast<uint8_t>(DirtyFlags::Paint));
+}
+
+// 8. Attribute struct fields .name and .value are accessible; multiple attributes preserved in order
+TEST(DomElement, ElementV126_8) {
+    Element elem("input");
+    elem.set_attribute("type", "text");
+    elem.set_attribute("name", "username");
+    elem.set_attribute("placeholder", "Enter name");
+
+    const auto& attrs = elem.attributes();
+    ASSERT_EQ(attrs.size(), 3u);
+
+    EXPECT_EQ(attrs[0].name, "type");
+    EXPECT_EQ(attrs[0].value, "text");
+    EXPECT_EQ(attrs[1].name, "name");
+    EXPECT_EQ(attrs[1].value, "username");
+    EXPECT_EQ(attrs[2].name, "placeholder");
+    EXPECT_EQ(attrs[2].value, "Enter name");
+}
