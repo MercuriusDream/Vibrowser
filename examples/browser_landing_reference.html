@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Welcome to Vibrowser</title>
+    <style>
+      * { box-sizing: border-box; }
+      html, body { margin: 0; padding: 0; }
+      body {
+        font-family: sans-serif;
+        color: #1f2937;
+        line-height: 1.5;
+        -webkit-font-smoothing: antialiased;
+        background: #f3f6fb;
+      }
+      header, main, section { display: block; }
+      .hero {
+        background: #2f5ec8;
+        color: #ffffff;
+        padding: 24px 16px;
+      }
+      .hero h1 { margin: 0 0 6px; font-size: 30px; line-height: 1.2; }
+      .hero p { margin: 0; color: #eaf1ff; }
+      .content {
+        width: 100%;
+        background: #ffffff;
+        border: 1px solid #d7dee7;
+        border-left-width: 0;
+        border-left-style: none;
+        border-right-width: 0;
+        border-right-style: none;
+      }
+      .section {
+        padding: 14px 16px;
+        border-bottom-width: 1px;
+        border-bottom-style: solid;
+        border-bottom-color: #ebf0f5;
+      }
+      .section:last-child {
+        border-bottom-width: 0;
+        border-bottom-style: none;
+      }
+      h2 { margin: 0 0 10px; font-size: 20px; color: #1c3555; line-height: 1.3; }
+      p { margin: 0; color: #5f6b7a; }
+      table { width: 100%; border-collapse: collapse; }
+      th, td { border: 1px solid #e4ebf2; padding: 8px; text-align: left; vertical-align: top; }
+      th { background: #f5f8fc; color: #304761; }
+      a { color: #2563eb; text-decoration: underline; }
+      kbd {
+        background: #eef2f6;
+        border: 1px solid #cfd7e2;
+        border-bottom-width: 2px;
+        padding: 2px 6px;
+        border-radius: 4px;
+        font-size: 12px;
+        font-family: monospace;
+      }
+      .footer { text-align: center; color: #5f6b7a; padding: 12px 16px 14px; font-size: 13px; }
+      @media (max-width: 640px) {
+        .hero { padding: 26px 14px; }
+        .hero h1 { font-size: 28px; }
+        .section { padding: 12px; }
+      }
+    </style>
+  </head>
+  <body>
+    <header class="hero">
+      <h1>Vibrowser v0.7.0</h1>
+      <p>A browser engine built from scratch in C++20. 3300+ tests.</p>
+    </header>
+    <main class="content">
+      <section class="section">
+        <h2>Status Snapshot</h2>
+        <table>
+          <tr><th>Metric</th><th>Value</th></tr>
+          <tr><td>Tests</td><td>3300+</td></tr>
+          <tr><td>Features</td><td>2400+</td></tr>
+          <tr><td>HTML Coverage</td><td>95%</td></tr>
+          <tr><td>CSS Coverage</td><td>100%</td></tr>
+          <tr><td>Web APIs</td><td>89%</td></tr>
+        </table>
+      </section>
+      <section class="section">
+        <h2>Engine Capabilities</h2>
+        <table>
+          <tr><th>Area</th><th>Coverage</th></tr>
+          <tr><td>HTML5</td><td>Tokenizer, parser, forms, tables, details and summary, semantic tags</td></tr>
+          <tr><td>CSS3</td><td>Cascade, selectors, variables, transforms, media rules</td></tr>
+          <tr><td>Layout</td><td>Block and inline flow, flex-wrap, floats, grid features, columns</td></tr>
+          <tr><td>Rendering</td><td>Text shaping, image decode, filters, blending, clip paths and SVG primitives</td></tr>
+          <tr><td>Interactivity</td><td>Mouse events, keyboard input, forms, fragment navigation</td></tr>
+        </table>
+      </section>
+      <section class="section">
+        <h2>Try Navigation</h2>
+        <p><a href="http://example.com">Example.com</a></p>
+        <p><a href="https://info.cern.ch">First Website Ever</a></p>
+        <p><a href="http://motherfuckingwebsite.com">MF Website</a></p>
+      </section>
+      <section class="section">
+        <h2>Keyboard Shortcuts</h2>
+        <table>
+          <tr><th>Shortcut</th><th>Action</th></tr>
+          <tr><td><kbd>Cmd+L</kbd></td><td>Focus address bar</td></tr>
+          <tr><td><kbd>Cmd+T</kbd></td><td>New tab</td></tr>
+          <tr><td><kbd>Cmd+W</kbd></td><td>Close tab</td></tr>
+          <tr><td><kbd>Cmd+R</kbd></td><td>Reload page</td></tr>
+          <tr><td><kbd>Cmd+[</kbd> / <kbd>Cmd+]</kbd></td><td>Back / Forward</td></tr>
+        </table>
+      </section>
+      <div class="footer">Vibrowser Engine on macOS</div>
+    </main>
+  </body>
+</html>

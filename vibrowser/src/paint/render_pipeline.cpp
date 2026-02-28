@@ -1380,6 +1380,7 @@ void apply_inline_style(clever::css::ComputedStyle& style, const std::string& st
     auto decls = parse_inline_style(style_attr);
     // Default parent for inherit: use a default-constructed style if no parent provided
     clever::css::ComputedStyle default_parent;
+    default_parent.z_index = clever::layout::Z_INDEX_AUTO;
     const auto& parent = parent_style ? *parent_style : default_parent;
 
     for (auto& d : decls) {
@@ -1471,7 +1472,7 @@ void apply_inline_style(clever::css::ComputedStyle& style, const std::string& st
             if (p == "background-color") { style.background_color = clever::css::Color::transparent(); continue; }
             if (p == "opacity") { style.opacity = 1.0f; continue; }
             if (p == "overflow") { style.overflow_x = clever::css::Overflow::Visible; style.overflow_y = clever::css::Overflow::Visible; continue; }
-            if (p == "z-index") { style.z_index = 0; continue; }
+            if (p == "z-index") { style.z_index = clever::layout::Z_INDEX_AUTO; continue; }
             if (p == "width") { style.width = clever::css::Length::auto_val(); continue; }
             if (p == "height") { style.height = clever::css::Length::auto_val(); continue; }
             if (p == "margin" || p == "margin-top" || p == "margin-right" || p == "margin-bottom" || p == "margin-left") {
@@ -1822,6 +1823,12 @@ void apply_inline_style(clever::css::ComputedStyle& style, const std::string& st
             else if (val_lower == "table") style.display = clever::css::Display::Table;
             else if (val_lower == "table-row") style.display = clever::css::Display::TableRow;
             else if (val_lower == "table-cell") style.display = clever::css::Display::TableCell;
+            else if (val_lower == "table-header-group") style.display = clever::css::Display::TableHeaderGroup;
+            else if (val_lower == "table-row-group") style.display = clever::css::Display::TableRowGroup;
+            else if (val_lower == "table-footer-group") style.display = clever::css::Display::TableRowGroup;
+            else if (val_lower == "table-column") style.display = clever::css::Display::TableCell;
+            else if (val_lower == "table-column-group") style.display = clever::css::Display::TableRow;
+            else if (val_lower == "table-caption") style.display = clever::css::Display::Block;
             else if (val_lower == "inline-table") style.display = clever::css::Display::Table;
             else if (val_lower == "none") style.display = clever::css::Display::None;
             else if (val_lower == "flex") style.display = clever::css::Display::Flex;
@@ -2890,7 +2897,10 @@ void apply_inline_style(clever::css::ComputedStyle& style, const std::string& st
             if (val_lower == "border-box") style.box_sizing = clever::css::BoxSizing::BorderBox;
             else style.box_sizing = clever::css::BoxSizing::ContentBox;
         } else if (d.property == "z-index") {
-            try { style.z_index = std::stoi(d.value); } catch (...) {}
+            if (val_lower == "auto") style.z_index = clever::layout::Z_INDEX_AUTO;
+            else {
+                try { style.z_index = std::stoi(d.value); } catch (...) {}
+            }
         } else if (d.property == "outline") {
             // Parse shorthand: "2px solid red" (like border shorthand)
             std::istringstream oss(d.value);
@@ -5404,8 +5414,8 @@ clever::layout::DisplayType display_to_type(clever::css::Display d) {
         case clever::css::Display::None: return clever::layout::DisplayType::None;
         case clever::css::Display::ListItem: return clever::layout::DisplayType::ListItem;
         case clever::css::Display::Table: return clever::layout::DisplayType::Table;
-        case clever::css::Display::TableRow: return clever::layout::DisplayType::Block;
-        case clever::css::Display::TableCell: return clever::layout::DisplayType::Block;
+        case clever::css::Display::TableRow: return clever::layout::DisplayType::TableRow;
+        case clever::css::Display::TableCell: return clever::layout::DisplayType::TableCell;
         case clever::css::Display::TableHeaderGroup: return clever::layout::DisplayType::Block;
         case clever::css::Display::TableRowGroup: return clever::layout::DisplayType::Block;
         case clever::css::Display::Grid: return clever::layout::DisplayType::Grid;
@@ -6639,6 +6649,7 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
         style = resolver.resolve(*elem_view, parent_style);
     } else {
         style = clever::css::default_style_for_tag(node.tag_name);
+        style.z_index = clever::layout::Z_INDEX_AUTO;
     }
     // CSS custom properties are inherited by default. Seed this element's map
     // from the parent style, while preserving any properties resolved on self.
@@ -11573,57 +11584,8 @@ static void apply_style_to_layout_node(
         node.align_self  = style.align_self;
 
     // Display mode
-    switch (style.display) {
-        case clever::css::Display::Block:
-            node.mode = clever::layout::LayoutMode::Block;
-            node.display = clever::layout::DisplayType::Block;
-            break;
-        case clever::css::Display::Table:
-            node.mode = clever::layout::LayoutMode::Table;
-            node.display = clever::layout::DisplayType::Table;
-            break;
-        case clever::css::Display::TableRow:
-        case clever::css::Display::TableCell:
-        case clever::css::Display::TableHeaderGroup:
-        case clever::css::Display::TableRowGroup:
-            node.mode = clever::layout::LayoutMode::Block;
-            node.display = clever::layout::DisplayType::Block;
-            break;
-        case clever::css::Display::Inline:
-            node.mode = clever::layout::LayoutMode::Inline;
-            node.display = clever::layout::DisplayType::Inline;
-            break;
-        case clever::css::Display::InlineBlock:
-            node.mode = clever::layout::LayoutMode::InlineBlock;
-            node.display = clever::layout::DisplayType::InlineBlock;
-            break;
-        case clever::css::Display::Flex:
-            node.mode = clever::layout::LayoutMode::Flex;
-            node.display = clever::layout::DisplayType::Flex;
-            break;
-        case clever::css::Display::InlineFlex:
-            node.mode = clever::layout::LayoutMode::Flex;
-            node.display = clever::layout::DisplayType::InlineFlex;
-            break;
-        case clever::css::Display::Grid:
-            node.mode = clever::layout::LayoutMode::Grid;
-            node.display = clever::layout::DisplayType::Grid;
-            break;
-        case clever::css::Display::InlineGrid:
-            node.mode = clever::layout::LayoutMode::Grid;
-            node.display = clever::layout::DisplayType::InlineGrid;
-            break;
-        case clever::css::Display::None:
-            node.mode = clever::layout::LayoutMode::None;
-            node.display = clever::layout::DisplayType::None;
-            break;
-        case clever::css::Display::ListItem:
-        case clever::css::Display::Contents:
-            node.mode = clever::layout::LayoutMode::Block;
-            node.display = clever::layout::DisplayType::Block;
-            break;
-        default: break;
-    }
+    node.mode = display_to_mode(style.display);
+    node.display = display_to_type(style.display);
 }
 
 // Post-layout container query evaluation.
@@ -12450,6 +12412,7 @@ RenderResult render_html(const std::string& html, const std::string& base_url,
 
         // Step 3: Build layout tree with full CSS cascade
         clever::css::ComputedStyle root_style;
+        root_style.z_index = clever::layout::Z_INDEX_AUTO;
         root_style.display = clever::css::Display::Block;
         root_style.font_size = clever::css::Length::px(16);
         root_style.color = clever::css::Color::black();

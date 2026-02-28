@@ -39,6 +39,52 @@ bool is_empty_block_for_margin_collapse(const LayoutNode& node) {
     return std::abs(node.geometry.height) < 0.0001f;
 }
 
+std::string collapse_whitespace(const std::string& text, int white_space, bool white_space_pre) {
+    if (text.empty()) return text;
+    if (white_space_pre || white_space == 2 || white_space == 3 || white_space == 5) {
+        return text;
+    }
+    std::string result;
+    result.reserve(text.size());
+    if (white_space == 0 || white_space == 1) {
+        bool in_space = false;
+        for (char c : text) {
+            if (std::isspace(static_cast<unsigned char>(c))) {
+                if (!in_space) {
+                    result.push_back(' ');
+                    in_space = true;
+                }
+            } else {
+                result.push_back(c);
+                in_space = false;
+            }
+        }
+        return result;
+    }
+    if (white_space == 4) {
+        bool at_line_start = true;
+        bool previous_space = false;
+        for (char c : text) {
+            if (c == '\n') {
+                result.push_back('\n');
+                at_line_start = true;
+                previous_space = false;
+            } else if (c == '\t' || c == ' ') {
+                if (!at_line_start && !previous_space) {
+                    result.push_back(' ');
+                    previous_space = true;
+                }
+            } else {
+                result.push_back(c);
+                at_line_start = false;
+                previous_space = false;
+            }
+        }
+        return result;
+    }
+    return text;
+}
+
 } // namespace
 
 // ---------------------------------------------------------------------------
@@ -788,6 +834,9 @@ void LayoutEngine::layout_inline(LayoutNode& node, float containing_width) {
                 }
             }
         }
+
+        // Apply CSS white-space collapsing before measuring and font-variant processing
+        node.text_content = collapse_whitespace(node.text_content, node.white_space, node.white_space_pre);
 
         // font-variant: small-caps — measure per-character width since
         // originally-lowercase letters render at 80% font size while
@@ -2204,6 +2253,8 @@ void LayoutEngine::flex_layout(LayoutNode& node, float containing_width) {
 
         // Resolve deferred percentage/calc values for flex items
         if (child->css_width.has_value()) {
+            // `containing_width` here is the flex container's content width.
+            // Percentage widths on flex items must resolve against this value.
             child->specified_width = child->css_width->to_px(containing_width);
         }
         if (child->css_height.has_value()) {
@@ -2257,14 +2308,27 @@ void LayoutEngine::flex_layout(LayoutNode& node, float containing_width) {
             basis = child->flex_basis;
         } else {
             // flex-basis:auto -> use the item's main-size property when definite.
-            // If no definite main size is available yet, fall back to current
-            // measured geometry in that axis before using 0.
+            // For row flex items, a resolved percentage `width` is already in
+            // `specified_width` from the block above and is used as basis.
             if (is_row && child->specified_width >= 0) {
                 basis = child->specified_width;
             } else if (!is_row && child->specified_height >= 0) {
                 basis = child->specified_height;
             } else {
-                basis = is_row ? child->geometry.width : child->geometry.height;
+                // Avoid using stale geometry from prior layout passes.
+                // With auto main-size and auto flex-basis, fall back to intrinsic size.
+                const TextMeasureFn* mp = text_measurer_ ? &text_measurer_ : nullptr;
+                if (is_row) {
+                    float intrinsic_w = measure_intrinsic_width(*child, true, mp);
+                    intrinsic_w -= child->geometry.padding.left + child->geometry.padding.right
+                                 + child->geometry.border.left + child->geometry.border.right;
+                    basis = intrinsic_w;
+                } else {
+                    float intrinsic_h = measure_intrinsic_height(*child, true, mp);
+                    intrinsic_h -= child->geometry.padding.top + child->geometry.padding.bottom
+                                 + child->geometry.border.top + child->geometry.border.bottom;
+                    basis = intrinsic_h;
+                }
                 if (basis < 0) basis = 0;
             }
         }
@@ -3805,8 +3869,7 @@ void LayoutEngine::layout_table(LayoutNode& node, float containing_width) {
     // Also separate out <caption> elements for separate layout
     std::vector<LayoutNode*> rows;
     std::vector<LayoutNode*> captions;
-    auto is_table_section = [](const std::string& tag) {
-        // Case-insensitive check for thead/tbody/tfoot
+    auto is_table_section_tag = [](const std::string& tag) {
         if (tag.size() < 5) return false;
         std::string t;
         t.reserve(tag.size());
@@ -3820,19 +3883,35 @@ void LayoutEngine::layout_table(LayoutNode& node, float containing_width) {
         for (char c : tag) t += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
         return t == "caption";
     };
-    auto is_table_row = [](const std::string& tag) {
+    auto is_table_row_tag = [](const std::string& tag) {
         if (tag.size() != 2) return false;
         std::string t;
         t.reserve(tag.size());
         for (char c : tag) t += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
         return t == "tr";
     };
-    auto is_table_cell = [](const std::string& tag) {
+    auto is_table_cell_tag = [](const std::string& tag) {
         if (tag.size() != 2) return false;
         std::string t;
         t.reserve(tag.size());
         for (char c : tag) t += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
         return t == "td" || t == "th";
+    };
+    auto is_table_row = [&](const LayoutNode& candidate) {
+        return candidate.display == DisplayType::TableRow || is_table_row_tag(candidate.tag_name);
+    };
+    auto is_table_cell = [&](const LayoutNode& candidate) {
+        return candidate.display == DisplayType::TableCell || is_table_cell_tag(candidate.tag_name);
+    };
+    auto is_table_section = [&](const LayoutNode& candidate) {
+        if (is_table_section_tag(candidate.tag_name)) return true;
+        if (candidate.display == DisplayType::TableRow || candidate.display == DisplayType::TableCell) return false;
+        for (const auto& grandchild : candidate.children) {
+            if (grandchild->display == DisplayType::None || grandchild->mode == LayoutMode::None) continue;
+            if (grandchild->position_type == 2 || grandchild->position_type == 3) continue;
+            if (is_table_row(*grandchild)) return true;
+        }
+        return false;
     };
     for (auto& child : node.children) {
         if (child->display == DisplayType::None || child->mode == LayoutMode::None) {
@@ -3845,7 +3924,7 @@ void LayoutEngine::layout_table(LayoutNode& node, float containing_width) {
             captions.push_back(child.get());
             continue;
         }
-        if (is_table_section(child->tag_name)) {
+        if (is_table_section(*child)) {
             // Flatten: collect tr children from thead/tbody/tfoot
             for (auto& grandchild : child->children) {
                 if (grandchild->display == DisplayType::None || grandchild->mode == LayoutMode::None) {
@@ -3854,7 +3933,7 @@ void LayoutEngine::layout_table(LayoutNode& node, float containing_width) {
                     continue;
                 }
                 if (grandchild->position_type == 2 || grandchild->position_type == 3) continue;
-                if (is_table_row(grandchild->tag_name)) {
+                if (is_table_row(*grandchild)) {
                     rows.push_back(grandchild.get());
                 }
             }
@@ -3863,7 +3942,7 @@ void LayoutEngine::layout_table(LayoutNode& node, float containing_width) {
             child->geometry.height = 0;
             continue;
         }
-        if (is_table_row(child->tag_name)) {
+        if (is_table_row(*child)) {
             rows.push_back(child.get());
         }
     }
@@ -3905,7 +3984,7 @@ void LayoutEngine::layout_table(LayoutNode& node, float containing_width) {
     for (auto& cell : first_row->children) {
         if (cell->display == DisplayType::None || cell->mode == LayoutMode::None) continue;
         if (cell->position_type == 2 || cell->position_type == 3) continue;
-        if (!is_table_cell(cell->tag_name)) continue;
+        if (!is_table_cell(*cell)) continue;
         first_row_cells.push_back(cell.get());
     }
 
@@ -3923,7 +4002,7 @@ void LayoutEngine::layout_table(LayoutNode& node, float containing_width) {
         for (auto& cell : rows[ri]->children) {
             if (cell->display == DisplayType::None || cell->mode == LayoutMode::None) continue;
             if (cell->position_type == 2 || cell->position_type == 3) continue;
-            if (!is_table_cell(cell->tag_name)) continue;
+            if (!is_table_cell(*cell)) continue;
 
             while (col_idx < num_cols &&
                    scan_occupancy[ri][static_cast<size_t>(col_idx)] != 0) {
@@ -4011,7 +4090,7 @@ void LayoutEngine::layout_table(LayoutNode& node, float containing_width) {
             for (auto& cell : row->children) {
                 if (cell->display == DisplayType::None || cell->mode == LayoutMode::None) continue;
                 if (cell->position_type == 2 || cell->position_type == 3) continue;
-                if (!is_table_cell(cell->tag_name)) continue;
+                if (!is_table_cell(*cell)) continue;
                 int span = cell->colspan;
                 if (span < 1) span = 1;
 
@@ -4052,7 +4131,7 @@ void LayoutEngine::layout_table(LayoutNode& node, float containing_width) {
             for (auto& cell : row->children) {
                 if (cell->display == DisplayType::None || cell->mode == LayoutMode::None) continue;
                 if (cell->position_type == 2 || cell->position_type == 3) continue;
-                if (!is_table_cell(cell->tag_name)) continue;
+                if (!is_table_cell(*cell)) continue;
                 int span = cell->colspan;
                 if (span < 1) span = 1;
                 if (span == 1 && col_idx < num_cols &&
@@ -4145,6 +4224,7 @@ void LayoutEngine::layout_table(LayoutNode& node, float containing_width) {
         for (auto& cell_ptr : row->children) {
             if (cell_ptr->display == DisplayType::None || cell_ptr->mode == LayoutMode::None) continue;
             if (cell_ptr->position_type == 2 || cell_ptr->position_type == 3) continue;
+            if (!is_table_cell(*cell_ptr)) continue;
             // Skip columns already occupied by rowspan from a prior row
             while (cell_col < num_cols && occupancy[ri][static_cast<size_t>(cell_col)] != nullptr) {
                 cell_col++;
@@ -4212,7 +4292,7 @@ void LayoutEngine::layout_table(LayoutNode& node, float containing_width) {
                 continue;
             }
             if (cell->position_type == 2 || cell->position_type == 3) continue;
-            if (!is_table_cell(cell->tag_name)) continue;
+            if (!is_table_cell(*cell)) continue;
             cells.push_back(cell.get());
         }
 

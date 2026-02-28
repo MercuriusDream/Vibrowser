@@ -189,7 +189,8 @@ public:
                        int gradient_type = 1, int radial_shape = 0);
     void draw_text(const std::string& text, float x, float y, float font_size, const Color& color,
                    const std::string& font_family = "", int font_weight = 400, bool font_italic = false,
-                   float letter_spacing = 0, float word_spacing = 0, int tab_size = 4);
+                   float letter_spacing = 0, float word_spacing = 0, int tab_size = 4,
+                   float text_shadow_blur = 0);
     void draw_border(const Rect& rect, const Color& color, float top, float right, float bottom, float left,
                      float border_radius = 0, int border_style = 1);
     void draw_image(const Rect& dest, std::shared_ptr<ImageData> image, int image_rendering = 0);

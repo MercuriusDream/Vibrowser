@@ -51,39 +51,176 @@ void SoftwareRenderer::render(const DisplayList& list) {
                     }
                     render_text = std::move(expanded);
                 }
-                // Handle word_spacing: draw word-by-word with extra spacing
-                if (cmd.word_spacing != 0) {
-                    float char_advance = cmd.font_size * 0.6f + cmd.letter_spacing;
-                    float cursor_x = cmd.bounds.x;
-                    size_t i = 0;
-                    while (i < render_text.size()) {
-                        // Find next space
-                        size_t sp = render_text.find(' ', i);
-                        if (sp == std::string::npos) sp = render_text.size();
-                        std::string word = render_text.substr(i, sp - i);
-                        if (!word.empty()) {
-                            draw_text_simple(word, cursor_x, cmd.bounds.y,
-                                             cmd.font_size, cmd.color, cmd.font_family,
-                                             cmd.font_weight, cmd.font_italic,
-                                             cmd.letter_spacing,
-                                             cmd.font_feature_settings, cmd.font_variation_settings,
-                                             cmd.text_rendering, cmd.font_kerning, cmd.font_optical_sizing);
-                            cursor_x += static_cast<float>(word.size()) * char_advance;
+                auto render_text_command = [&]() {
+                    // Handle word_spacing: draw word-by-word with extra spacing
+                    if (cmd.word_spacing != 0) {
+                        float char_advance = cmd.font_size * 0.6f + cmd.letter_spacing;
+                        float cursor_x = cmd.bounds.x;
+                        size_t i = 0;
+                        while (i < render_text.size()) {
+                            // Find next space
+                            size_t sp = render_text.find(' ', i);
+                            if (sp == std::string::npos) sp = render_text.size();
+                            std::string word = render_text.substr(i, sp - i);
+                            if (!word.empty()) {
+                                draw_text_simple(word, cursor_x, cmd.bounds.y,
+                                                 cmd.font_size, cmd.color, cmd.font_family,
+                                                 cmd.font_weight, cmd.font_italic,
+                                                 cmd.letter_spacing,
+                                                 cmd.font_feature_settings, cmd.font_variation_settings,
+                                                 cmd.text_rendering, cmd.font_kerning, cmd.font_optical_sizing);
+                                cursor_x += static_cast<float>(word.size()) * char_advance;
+                            }
+                            if (sp < render_text.size()) {
+                                // Space character: advance by char_advance + word_spacing
+                                cursor_x += char_advance + cmd.word_spacing;
+                            }
+                            i = sp + 1;
+                            if (sp == render_text.size()) break;
                         }
-                        if (sp < render_text.size()) {
-                            // Space character: advance by char_advance + word_spacing
-                            cursor_x += char_advance + cmd.word_spacing;
-                        }
-                        i = sp + 1;
-                        if (sp == render_text.size()) break;
+                    } else {
+                        draw_text_simple(render_text, cmd.bounds.x, cmd.bounds.y,
+                                         cmd.font_size, cmd.color, cmd.font_family,
+                                         cmd.font_weight, cmd.font_italic,
+                                         cmd.letter_spacing,
+                                         cmd.font_feature_settings, cmd.font_variation_settings,
+                                         cmd.text_rendering, cmd.font_kerning, cmd.font_optical_sizing);
                     }
-                } else {
-                    draw_text_simple(render_text, cmd.bounds.x, cmd.bounds.y,
-                                     cmd.font_size, cmd.color, cmd.font_family,
-                                     cmd.font_weight, cmd.font_italic,
-                                     cmd.letter_spacing,
-                                     cmd.font_feature_settings, cmd.font_variation_settings,
-                                     cmd.text_rendering, cmd.font_kerning, cmd.font_optical_sizing);
+                };
+
+                if (cmd.text_shadow_blur <= 0.0f) {
+                    render_text_command();
+                    break;
+                }
+
+                size_t pixel_bytes = static_cast<size_t>(width_) * static_cast<size_t>(height_) * 4;
+                if (pixel_bytes == 0) break;
+
+                // Render shadow text into an isolated transparent layer first.
+                std::vector<uint8_t> backdrop_pixels;
+                backdrop_pixels.swap(pixels_);
+                pixels_.assign(pixel_bytes, 0);
+                render_text_command();
+                std::vector<uint8_t> shadow_layer;
+                shadow_layer.swap(pixels_);
+                pixels_.swap(backdrop_pixels);
+
+                // Find tight alpha bounds for the rendered shadow layer.
+                int min_x = width_;
+                int min_y = height_;
+                int max_x = -1;
+                int max_y = -1;
+                for (int py = 0; py < height_; py++) {
+                    for (int px = 0; px < width_; px++) {
+                        size_t idx = (static_cast<size_t>(py) * static_cast<size_t>(width_) + static_cast<size_t>(px)) * 4 + 3;
+                        if (shadow_layer[idx] > 0) {
+                            if (px < min_x) min_x = px;
+                            if (px > max_x) max_x = px;
+                            if (py < min_y) min_y = py;
+                            if (py > max_y) max_y = py;
+                        }
+                    }
+                }
+                if (max_x < min_x || max_y < min_y) break;
+
+                float sigma = cmd.text_shadow_blur / 2.0f;
+                if (sigma <= 0.01f) {
+                    for (int py = min_y; py <= max_y; py++) {
+                        for (int px = min_x; px <= max_x; px++) {
+                            size_t idx = (static_cast<size_t>(py) * static_cast<size_t>(width_) + static_cast<size_t>(px)) * 4 + 3;
+                            uint8_t alpha = shadow_layer[idx];
+                            if (alpha == 0) continue;
+                            Color c = cmd.color;
+                            c.a = alpha;
+                            set_pixel(px, py, c);
+                        }
+                    }
+                    break;
+                }
+
+                int radius = static_cast<int>(std::ceil(sigma * 3.0f));
+                if (radius < 1) radius = 1;
+                if (radius > 128) radius = 128;
+
+                int bx0 = std::max(0, min_x - radius);
+                int by0 = std::max(0, min_y - radius);
+                int bx1 = std::min(width_ - 1, max_x + radius);
+                int by1 = std::min(height_ - 1, max_y + radius);
+                int bw = bx1 - bx0 + 1;
+                int bh = by1 - by0 + 1;
+                if (bw <= 0 || bh <= 0) break;
+
+                std::vector<float> kernel(static_cast<size_t>(radius * 2 + 1), 0.0f);
+                float kernel_sum = 0.0f;
+                for (int k = -radius; k <= radius; k++) {
+                    float value = std::exp(-(static_cast<float>(k * k)) / (2.0f * sigma * sigma));
+                    kernel[static_cast<size_t>(k + radius)] = value;
+                    kernel_sum += value;
+                }
+                if (kernel_sum > 0.0f) {
+                    for (float& w : kernel) w /= kernel_sum;
+                }
+
+                std::vector<uint8_t> src_alpha(static_cast<size_t>(bw * bh), 0);
+                for (int py = 0; py < bh; py++) {
+                    int sy = by0 + py;
+                    for (int px = 0; px < bw; px++) {
+                        int sx = bx0 + px;
+                        size_t src_idx = (static_cast<size_t>(sy) * static_cast<size_t>(width_) + static_cast<size_t>(sx)) * 4 + 3;
+                        src_alpha[static_cast<size_t>(py) * static_cast<size_t>(bw) + static_cast<size_t>(px)] = shadow_layer[src_idx];
+                    }
+                }
+
+                std::vector<uint8_t> temp_alpha(static_cast<size_t>(bw * bh), 0);
+                std::vector<uint8_t> blurred_alpha(static_cast<size_t>(bw * bh), 0);
+
+                // Horizontal Gaussian pass.
+                for (int py = 0; py < bh; py++) {
+                    for (int px = 0; px < bw; px++) {
+                        float accum = 0.0f;
+                        float weight_sum = 0.0f;
+                        for (int k = -radius; k <= radius; k++) {
+                            int sx = px + k;
+                            if (sx < 0 || sx >= bw) continue;
+                            float weight = kernel[static_cast<size_t>(k + radius)];
+                            accum += static_cast<float>(src_alpha[static_cast<size_t>(py) * static_cast<size_t>(bw) + static_cast<size_t>(sx)]) * weight;
+                            weight_sum += weight;
+                        }
+                        float alpha = (weight_sum > 0.0f) ? (accum / weight_sum) : 0.0f;
+                        temp_alpha[static_cast<size_t>(py) * static_cast<size_t>(bw) + static_cast<size_t>(px)] =
+                            static_cast<uint8_t>(std::clamp(alpha, 0.0f, 255.0f));
+                    }
+                }
+
+                // Vertical Gaussian pass.
+                for (int py = 0; py < bh; py++) {
+                    for (int px = 0; px < bw; px++) {
+                        float accum = 0.0f;
+                        float weight_sum = 0.0f;
+                        for (int k = -radius; k <= radius; k++) {
+                            int sy = py + k;
+                            if (sy < 0 || sy >= bh) continue;
+                            float weight = kernel[static_cast<size_t>(k + radius)];
+                            accum += static_cast<float>(temp_alpha[static_cast<size_t>(sy) * static_cast<size_t>(bw) + static_cast<size_t>(px)]) * weight;
+                            weight_sum += weight;
+                        }
+                        float alpha = (weight_sum > 0.0f) ? (accum / weight_sum) : 0.0f;
+                        blurred_alpha[static_cast<size_t>(py) * static_cast<size_t>(bw) + static_cast<size_t>(px)] =
+                            static_cast<uint8_t>(std::clamp(alpha, 0.0f, 255.0f));
+                    }
+                }
+
+                // Composite blurred shadow back onto the main framebuffer.
+                for (int py = 0; py < bh; py++) {
+                    int dy = by0 + py;
+                    for (int px = 0; px < bw; px++) {
+                        int dx = bx0 + px;
+                        uint8_t alpha = blurred_alpha[static_cast<size_t>(py) * static_cast<size_t>(bw) + static_cast<size_t>(px)];
+                        if (alpha == 0) continue;
+                        Color c = cmd.color;
+                        c.a = alpha;
+                        set_pixel(dx, dy, c);
+                    }
                 }
                 break;
             }

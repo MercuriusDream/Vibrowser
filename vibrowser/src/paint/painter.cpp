@@ -841,7 +841,7 @@ void Painter::paint_node(const clever::layout::LayoutNode& node, DisplayList& li
     // CSS Stacking Context: properly separate stacking context children from
     // normal flow children. Per CSS spec, a new stacking context is created when:
     // - Root element (<html>)
-    // - Positioned (abs/rel/fixed/sticky) with z-index != auto (we treat non-zero as explicit)
+    // - Positioned (abs/rel/fixed/sticky) with z-index != auto
     // - position: fixed or sticky (always create stacking context)
     // - opacity < 1
     // - Has CSS transforms
@@ -853,8 +853,8 @@ void Painter::paint_node(const clever::layout::LayoutNode& node, DisplayList& li
     auto creates_stacking_context = [](const clever::layout::LayoutNode& child) -> bool {
         // Root element
         if (child.tag_name == "html" || child.tag_name == "HTML") return true;
-        // Positioned element with explicit z-index (non-zero means explicitly set)
-        if (child.z_index != 0 && child.position_type >= 1) return true;
+        // Positioned element with explicit z-index (including explicit 0)
+        if (!clever::layout::is_z_index_auto(child.z_index) && child.position_type >= 1) return true;
         // Fixed or sticky always create stacking context
         if (child.position_type >= 3) return true;
         // Opacity < 1
@@ -1650,7 +1650,7 @@ void Painter::paint_text(const clever::layout::LayoutNode& node, DisplayList& li
                 list.draw_text(text_to_render, shadow_x, shadow_y, effective_font_size,
                                {tsr, tsg, tsb, tsa},
                                node.font_family, eff_weight, eff_italic,
-                               node.letter_spacing);
+                               node.letter_spacing, 0, 4, ts.blur);
             }
         }
     } else if (node.text_shadow_color != 0x00000000) {
@@ -1665,7 +1665,7 @@ void Painter::paint_text(const clever::layout::LayoutNode& node, DisplayList& li
         list.draw_text(text_to_render, shadow_x, shadow_y, effective_font_size,
                        {tsr, tsg, tsb, tsa},
                        node.font_family, eff_weight, eff_italic,
-                       node.letter_spacing);
+                       node.letter_spacing, 0, 4, node.text_shadow_blur);
     }
 
     // Determine line-clamp parameters from parent

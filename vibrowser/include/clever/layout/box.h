@@ -1,5 +1,6 @@
 #pragma once
 #include <clever/css/style/computed_style.h>
+#include <climits>
 #include <cstdint>
 #include <map>
 #include <memory>
@@ -14,6 +15,8 @@ namespace clever::layout {
 // constant to mark margins as auto before layout runs.
 constexpr float MARGIN_AUTO = -1e30f;
 inline bool is_margin_auto(float v) { return v <= -1e29f; }
+constexpr int Z_INDEX_AUTO = INT_MIN;
+inline bool is_z_index_auto(int v) { return v == Z_INDEX_AUTO; }
 
 struct EdgeSizes {
     float top = 0, right = 0, bottom = 0, left = 0;
@@ -155,7 +158,7 @@ struct LayoutNode {
     int mix_blend_mode = 0; // 0=normal, 1=multiply, 2=screen, 3=overlay, 4=darken, 5=lighten, 6=color-dodge, 7=color-burn, 8=hard-light, 9=soft-light, 10=difference, 11=exclusion
     float letter_spacing = 0;
     float word_spacing = 0;
-    int z_index = 0;
+    int z_index = Z_INDEX_AUTO;
 
     // Object fit (for <img> elements): 0=fill, 1=contain, 2=cover, 3=none, 4=scale-down
     int object_fit = 0;

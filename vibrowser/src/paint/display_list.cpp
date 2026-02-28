@@ -34,7 +34,8 @@ void DisplayList::fill_box_shadow(const Rect& shadow_rect, const Rect& element_r
 void DisplayList::draw_text(const std::string& text, float x, float y, float font_size,
                             const Color& color, const std::string& font_family,
                             int font_weight, bool font_italic,
-                            float letter_spacing, float word_spacing, int tab_size) {
+                            float letter_spacing, float word_spacing, int tab_size,
+                            float text_shadow_blur) {
     PaintCommand cmd;
     cmd.type = PaintCommand::DrawText;
     cmd.text = text;
@@ -49,6 +50,7 @@ void DisplayList::draw_text(const std::string& text, float x, float y, float fon
     cmd.letter_spacing = letter_spacing;
     cmd.word_spacing = word_spacing;
     cmd.tab_size = tab_size;
+    cmd.text_shadow_blur = text_shadow_blur;
     cmd.font_family = font_family;
     cmd.color = color;
     commands_.push_back(cmd);

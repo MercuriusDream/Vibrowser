@@ -1,0 +1,40 @@
+@@ -2203,6 +2203,8 @@
+ 
+         // Resolve deferred percentage/calc values for flex items
+         if (child->css_width.has_value()) {
++            // `containing_width` here is the flex container's content width.
++            // Percentage widths on flex items must resolve against this value.
+             child->specified_width = child->css_width->to_px(containing_width);
+         }
+         if (child->css_height.has_value()) {
+@@ -2255,14 +2257,27 @@
+             basis = child->flex_basis;
+         } else {
+             // flex-basis:auto -> use the item's main-size property when definite.
+-            // If no definite main size is available yet, fall back to current
+-            // measured geometry in that axis before using 0.
++            // For row flex items, a resolved percentage `width` is already in
++            // `specified_width` from the block above and is used as basis.
+             if (is_row && child->specified_width >= 0) {
+                 basis = child->specified_width;
+             } else if (!is_row && child->specified_height >= 0) {
+                 basis = child->specified_height;
+             } else {
+-                basis = is_row ? child->geometry.width : child->geometry.height;
++                // Avoid using stale geometry from prior layout passes.
++                // With auto main-size and auto flex-basis, fall back to intrinsic size.
++                const TextMeasureFn* mp = text_measurer_ ? &text_measurer_ : nullptr;
++                if (is_row) {
++                    float intrinsic_w = measure_intrinsic_width(*child, true, mp);
++                    intrinsic_w -= child->geometry.padding.left + child->geometry.padding.right
++                                 + child->geometry.border.left + child->geometry.border.right;
++                    basis = intrinsic_w;
++                } else {
++                    float intrinsic_h = measure_intrinsic_height(*child, true, mp);
++                    intrinsic_h -= child->geometry.padding.top + child->geometry.padding.bottom
++                                 + child->geometry.border.top + child->geometry.border.bottom;
++                    basis = intrinsic_h;
++                }
+                 if (basis < 0) basis = 0;
+             }
+         }
