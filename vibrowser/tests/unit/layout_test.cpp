@@ -199,8 +199,8 @@ TEST(LayoutEngineTest, AutoMarginsCenterBlock) {
     child->specified_width = 400.0f;
     child->specified_height = 50.0f;
     // Signal "auto" margins by setting left = right = -1
-    child->geometry.margin.left = -1.0f;
-    child->geometry.margin.right = -1.0f;
+    child->geometry.margin.left = MARGIN_AUTO;
+    child->geometry.margin.right = MARGIN_AUTO;
 
     root->append_child(std::move(child));
 
@@ -1521,8 +1521,8 @@ TEST(BlockLayout, MarginAutoCenter) {
     child->mode = LayoutMode::Block;
     child->specified_width = 200;
     child->specified_height = 50;
-    child->geometry.margin.left = -1;  // auto sentinel
-    child->geometry.margin.right = -1; // auto sentinel
+    child->geometry.margin.left = MARGIN_AUTO;  // auto sentinel
+    child->geometry.margin.right = MARGIN_AUTO; // auto sentinel
     auto* child_ptr = root->append_child(std::move(child));
 
     LayoutEngine engine;
@@ -3948,8 +3948,8 @@ TEST(LayoutEngineTest, FlexCrossAxisMarginAutoCenter) {
     auto child = make_block("div");
     child->specified_width = 100.0f;
     child->specified_height = 50.0f;
-    child->geometry.margin.top = -1; // auto (negative = auto sentinel)
-    child->geometry.margin.bottom = -1; // auto
+    child->geometry.margin.top = MARGIN_AUTO; // auto sentinel
+    child->geometry.margin.bottom = MARGIN_AUTO; // auto sentinel
 
     root->append_child(std::move(child));
 
@@ -3974,7 +3974,7 @@ TEST(LayoutEngineTest, FlexCrossAxisMarginAutoTopOnly) {
     auto child = make_block("div");
     child->specified_width = 100.0f;
     child->specified_height = 50.0f;
-    child->geometry.margin.top = -1; // auto
+    child->geometry.margin.top = MARGIN_AUTO; // auto sentinel
     child->geometry.margin.bottom = 0;
 
     root->append_child(std::move(child));
@@ -12916,8 +12916,8 @@ TEST(LayoutEngineTest, AutoMarginCenteringHorizontalV69) {
     auto child = make_block("div");
     child->specified_width = 240.0f;
     child->specified_height = 20.0f;
-    child->geometry.margin.left = -1.0f;
-    child->geometry.margin.right = -1.0f;
+    child->geometry.margin.left = MARGIN_AUTO;
+    child->geometry.margin.right = MARGIN_AUTO;
     root->append_child(std::move(child));
 
     LayoutEngine engine;
@@ -12936,7 +12936,7 @@ TEST(LayoutEngineTest, MarginAutoWithSpecifiedWidthV69) {
     auto child = make_block("div");
     child->specified_width = 200.0f;
     child->specified_height = 18.0f;
-    child->geometry.margin.left = -1.0f;
+    child->geometry.margin.left = MARGIN_AUTO;
     child->geometry.margin.right = 30.0f;
     root->append_child(std::move(child));
 
@@ -13450,8 +13450,8 @@ TEST(LayoutEngineTest, MarginAutoCentersBlockV72) {
     auto child = make_block("div");
     child->specified_width = 200.0f;
     child->specified_height = 24.0f;
-    child->geometry.margin.left = -1.0f;
-    child->geometry.margin.right = -1.0f;
+    child->geometry.margin.left = MARGIN_AUTO;
+    child->geometry.margin.right = MARGIN_AUTO;
     root->append_child(std::move(child));
 
     LayoutEngine engine;
@@ -25100,8 +25100,8 @@ TEST(LayoutEngineTest, LayoutV132_4) {
     auto child = make_block("div");
     child->specified_width = 200.0f;
     child->specified_height = 100.0f;
-    child->geometry.margin.left = -1.0f; // auto marker
-    child->geometry.margin.right = -1.0f;
+    child->geometry.margin.left = MARGIN_AUTO; // auto marker
+    child->geometry.margin.right = MARGIN_AUTO;
     auto* cp = child.get();
 
     root->append_child(std::move(child));
@@ -26092,8 +26092,8 @@ TEST(LayoutEngineTest, LayoutV138_7) {
     auto child = make_block("div");
     child->specified_width = 200.0f;
     child->specified_height = 50.0f;
-    child->geometry.margin.left = -1.0f;  // auto sentinel
-    child->geometry.margin.right = -1.0f; // auto sentinel
+    child->geometry.margin.left = MARGIN_AUTO;  // auto sentinel
+    child->geometry.margin.right = MARGIN_AUTO; // auto sentinel
 
     root->append_child(std::move(child));
 
@@ -26547,8 +26547,8 @@ TEST(LayoutEngineTest, LayoutV142_2) {
     auto child = make_block();
     child->specified_width = 200.0f;
     child->specified_height = 40.0f;
-    child->geometry.margin.left = -1.0f;
-    child->geometry.margin.right = -1.0f;
+    child->geometry.margin.left = MARGIN_AUTO;
+    child->geometry.margin.right = MARGIN_AUTO;
 
     root->append_child(std::move(child));
 
@@ -27211,7 +27211,7 @@ TEST(LayoutEngineTest, LayoutV147_2) {
     auto child = make_block("div");
     child->specified_width = 150.0f;
     child->specified_height = 40.0f;
-    child->geometry.margin.left = -1.0f; // auto sentinel
+    child->geometry.margin.left = MARGIN_AUTO; // auto sentinel
     child->geometry.margin.right = 0.0f;
     auto* child_ptr = child.get();
     root->append_child(std::move(child));
@@ -29097,8 +29097,8 @@ TEST(LayoutEngineTest, LayoutV158_3) {
     auto child = make_block("div");
     child->specified_width = 200.0f;
     child->specified_height = 60.0f;
-    child->geometry.margin.left = -1;  // auto sentinel
-    child->geometry.margin.right = -1; // auto sentinel
+    child->geometry.margin.left = MARGIN_AUTO;  // auto sentinel
+    child->geometry.margin.right = MARGIN_AUTO; // auto sentinel
     auto* child_ptr = root->append_child(std::move(child));
 
     LayoutEngine engine;

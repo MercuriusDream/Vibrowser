@@ -31173,11 +31173,10 @@ TEST_F(PaintTest, TextInputDefaultBorder) {
     bool found = false;
     std::function<void(const LayoutNode&)> walk = [&](const LayoutNode& n) {
         if (n.tag_name == "input" || n.tag_name == "INPUT") {
-            // Without explicit CSS, input should NOT have a default UA border
-            // (borders come from CSS, not hardcoded defaults)
+            // Text inputs get a default UA border (solid, 2px) when no CSS border is set.
             found = true;
-            EXPECT_EQ(n.border_style_top, 0)
-                << "Text input without CSS border should have border_style_top=0 (none)";
+            EXPECT_EQ(n.border_style_top, 1)
+                << "Text input should have default border_style_top=1 (solid)";
         }
         for (auto& c : n.children) walk(*c);
     };

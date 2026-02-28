@@ -9,6 +9,12 @@
 
 namespace clever::layout {
 
+// Sentinel value for "auto" margins. The layout engine resolves auto margins
+// into computed values during layout.  Tests and render_pipeline use this
+// constant to mark margins as auto before layout runs.
+constexpr float MARGIN_AUTO = -1e30f;
+inline bool is_margin_auto(float v) { return v <= -1e29f; }
+
 struct EdgeSizes {
     float top = 0, right = 0, bottom = 0, left = 0;
 };

@@ -467,8 +467,8 @@ void LayoutEngine::layout_block(LayoutNode& node, float containing_width) {
     }
 
     // Resolve auto margins for centering (AFTER width is resolved)
-    bool auto_left = (node.geometry.margin.left < 0);
-    bool auto_right = (node.geometry.margin.right < 0);
+    bool auto_left = is_margin_auto(node.geometry.margin.left);
+    bool auto_right = is_margin_auto(node.geometry.margin.right);
     if (auto_left || auto_right) {
         float remaining = containing_width - node.geometry.width;
         if (!auto_left) remaining -= node.geometry.margin.left;
@@ -482,10 +482,6 @@ void LayoutEngine::layout_block(LayoutNode& node, float containing_width) {
         } else {
             node.geometry.margin.right = remaining;
         }
-    } else {
-        // Set any negative (auto) margins to 0
-        if (node.geometry.margin.left < 0) node.geometry.margin.left = 0;
-        if (node.geometry.margin.right < 0) node.geometry.margin.right = 0;
     }
 
     // Set x from left margin
@@ -509,7 +505,9 @@ void LayoutEngine::layout_block(LayoutNode& node, float containing_width) {
             || child->mode == LayoutMode::Inline
             || child->mode == LayoutMode::InlineBlock
             || child->display == DisplayType::Inline
-            || child->display == DisplayType::InlineBlock;
+            || child->display == DisplayType::InlineBlock
+            || child->display == DisplayType::InlineFlex
+            || child->display == DisplayType::InlineGrid;
         if (inline_like) {
             has_inline_children = true;
         } else {
@@ -937,8 +935,8 @@ void LayoutEngine::layout_flex(LayoutNode& node, float containing_width) {
     }
 
     // Resolve auto margins for centering (AFTER width is resolved) — same as layout_block
-    bool auto_left = (node.geometry.margin.left < 0);
-    bool auto_right = (node.geometry.margin.right < 0);
+    bool auto_left = is_margin_auto(node.geometry.margin.left);
+    bool auto_right = is_margin_auto(node.geometry.margin.right);
     if (auto_left || auto_right) {
         float remaining = containing_width - node.geometry.width;
         if (!auto_left) remaining -= node.geometry.margin.left;
@@ -952,9 +950,6 @@ void LayoutEngine::layout_flex(LayoutNode& node, float containing_width) {
         } else {
             node.geometry.margin.right = remaining;
         }
-    } else {
-        if (node.geometry.margin.left < 0) node.geometry.margin.left = 0;
-        if (node.geometry.margin.right < 0) node.geometry.margin.right = 0;
     }
 
     // Set x from left margin (same as layout_block)
@@ -1206,7 +1201,9 @@ void LayoutEngine::position_block_children(LayoutNode& node) {
                     || child->mode == LayoutMode::Inline
                     || child->mode == LayoutMode::InlineBlock
                     || child->display == DisplayType::Inline
-                    || child->display == DisplayType::InlineBlock;
+                    || child->display == DisplayType::InlineBlock
+                    || child->display == DisplayType::InlineFlex
+                    || child->display == DisplayType::InlineGrid;
                 if (child_inline_like) {
                     float child_w = child->geometry.margin_box_width();
                     float extra = content_w - left_off - right_off - child_w;
@@ -2394,11 +2391,11 @@ void LayoutEngine::flex_layout(LayoutNode& node, float containing_width) {
             for (size_t i = line.start; i < line.end; i++) {
                 auto* child = items[i].child;
                 if (is_row) {
-                    if (child->geometry.margin.left < 0) auto_margin_count++;
-                    if (child->geometry.margin.right < 0) auto_margin_count++;
+                    if (is_margin_auto(child->geometry.margin.left)) auto_margin_count++;
+                    if (is_margin_auto(child->geometry.margin.right)) auto_margin_count++;
                 } else {
-                    if (child->geometry.margin.top < 0) auto_margin_count++;
-                    if (child->geometry.margin.bottom < 0) auto_margin_count++;
+                    if (is_margin_auto(child->geometry.margin.top)) auto_margin_count++;
+                    if (is_margin_auto(child->geometry.margin.bottom)) auto_margin_count++;
                 }
             }
             if (auto_margin_count > 0) {
@@ -2406,11 +2403,11 @@ void LayoutEngine::flex_layout(LayoutNode& node, float containing_width) {
                 for (size_t i = line.start; i < line.end; i++) {
                     auto* child = items[i].child;
                     if (is_row) {
-                        if (child->geometry.margin.left < 0) child->geometry.margin.left = per_auto;
-                        if (child->geometry.margin.right < 0) child->geometry.margin.right = per_auto;
+                        if (is_margin_auto(child->geometry.margin.left)) child->geometry.margin.left = per_auto;
+                        if (is_margin_auto(child->geometry.margin.right)) child->geometry.margin.right = per_auto;
                     } else {
-                        if (child->geometry.margin.top < 0) child->geometry.margin.top = per_auto;
-                        if (child->geometry.margin.bottom < 0) child->geometry.margin.bottom = per_auto;
+                        if (is_margin_auto(child->geometry.margin.top)) child->geometry.margin.top = per_auto;
+                        if (is_margin_auto(child->geometry.margin.bottom)) child->geometry.margin.bottom = per_auto;
                     }
                 }
                 remaining_space = 0; // auto margins consumed all free space

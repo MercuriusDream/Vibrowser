@@ -6149,6 +6149,9 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
     const clever::html::SimpleNode* current_form = nullptr,
     const std::string& current_link_target = "") {
 
+    // Use the auto margin sentinel from box.h
+    using clever::layout::MARGIN_AUTO;
+
     // Guard against deeply nested DOM trees causing stack overflow
     static constexpr int kMaxTreeDepth = 256;
     thread_local int tree_depth = 0;
@@ -9677,8 +9680,8 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
         // Legacy HTML align attribute (table alignment)
         std::string ta = get_attr(node, "align");
         if (ta == "center") {
-            layout_node->geometry.margin.left = -1; // auto
-            layout_node->geometry.margin.right = -1; // auto
+            layout_node->geometry.margin.left = MARGIN_AUTO; // auto
+            layout_node->geometry.margin.right = MARGIN_AUTO; // auto
         }
         // Legacy HTML cellpadding attribute (applies padding to all td/th cells)
         std::string cp = get_attr(node, "cellpadding");
@@ -10037,7 +10040,7 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
         }
     }
 
-    // Margin (auto margins use -1 as sentinel for centering in layout engine)
+    // Margin (auto margins use -1e30 as sentinel for centering in layout engine)
     // Percentage margins are deferred to layout time (resolve against containing block width)
     {
         auto resolve_margin = [&](const clever::css::Length& m, float& geom_val,
@@ -10055,11 +10058,11 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
         resolve_margin(style.margin.top, layout_node->geometry.margin.top,
                        layout_node->css_margin_top, 0);
         resolve_margin(style.margin.right, layout_node->geometry.margin.right,
-                       layout_node->css_margin_right, -1);
+                       layout_node->css_margin_right, MARGIN_AUTO);
         resolve_margin(style.margin.bottom, layout_node->geometry.margin.bottom,
                        layout_node->css_margin_bottom, 0);
         resolve_margin(style.margin.left, layout_node->geometry.margin.left,
-                       layout_node->css_margin_left, -1);
+                       layout_node->css_margin_left, MARGIN_AUTO);
     }
 
     // Padding (percentage padding resolves against containing block width)
@@ -10655,12 +10658,12 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
             if (!child) continue;
             // Auto-center block children that don't already have auto margins.
             // <center> and -webkit-center override default/explicit left/right margins.
-            if (child->geometry.margin.left != -1 && child->geometry.margin.right != -1) {
+            if (!clever::layout::is_margin_auto(child->geometry.margin.left) && !clever::layout::is_margin_auto(child->geometry.margin.right)) {
                 if (child->display == clever::layout::DisplayType::Block ||
                     child->display == clever::layout::DisplayType::Table ||
                     child->display == clever::layout::DisplayType::InlineBlock) {
-                    child->geometry.margin.left = -1;  // auto
-                    child->geometry.margin.right = -1; // auto
+                    child->geometry.margin.left = MARGIN_AUTO;  // auto
+                    child->geometry.margin.right = MARGIN_AUTO; // auto
                 }
             }
         }
