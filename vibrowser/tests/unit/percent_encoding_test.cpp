@@ -553,3 +553,65 @@ TEST(PercentDecoding, PercentEncodingV134_4_DecodeEmptyString) {
     EXPECT_EQ(percent_decode(""), "");
     EXPECT_TRUE(percent_decode("").empty());
 }
+
+// =============================================================================
+// V135 tests
+// =============================================================================
+
+TEST(PercentEncoding, ConsecutiveSpecialCharsEncodeV135) {
+    // Multiple consecutive special characters should each be individually encoded
+    std::string result = percent_encode("a b&c");
+    // Space encodes to %20; & is a valid URL code point and is NOT encoded
+    EXPECT_EQ(result, "a%20b&c");
+
+    // Multiple spaces in a row
+    std::string multi_space = percent_encode("x  y");
+    EXPECT_EQ(multi_space, "x%20%20y");
+
+    // Special chars at the beginning and end
+    std::string edges = percent_encode(" hello ");
+    EXPECT_EQ(edges, "%20hello%20");
+}
+
+TEST(PercentDecoding, MixedCasePercentDecodesV135) {
+    // Both lowercase and uppercase hex digits in percent-encoding should decode identically
+    EXPECT_EQ(percent_decode("%2f"), "/");
+    EXPECT_EQ(percent_decode("%2F"), "/");
+
+    // Mixed case within the same string
+    EXPECT_EQ(percent_decode("%2fpath%2Fmore"), "/path/more");
+
+    // Another example: %3a (colon) in both cases
+    EXPECT_EQ(percent_decode("%3a"), ":");
+    EXPECT_EQ(percent_decode("%3A"), ":");
+}
+
+TEST(PercentEncoding, AlphanumNotEncodedV135) {
+    // All alphanumeric characters should pass through without encoding
+    std::string lower = "abcdefghijklmnopqrstuvwxyz";
+    std::string upper = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+    std::string digits = "0123456789";
+
+    EXPECT_EQ(percent_encode(lower), lower);
+    EXPECT_EQ(percent_encode(upper), upper);
+    EXPECT_EQ(percent_encode(digits), digits);
+
+    // Combined alphanumeric string should also be unchanged
+    std::string combined = "abc123XYZ";
+    EXPECT_EQ(percent_encode(combined), combined);
+}
+
+TEST(IsURLCodePoint, AsciiControlCharsNotCodePointsV135) {
+    // ASCII control characters (0x01 through 0x1F) are not valid URL code points
+    for (char32_t ch = 0x01; ch <= 0x1F; ++ch) {
+        EXPECT_FALSE(is_url_code_point(ch))
+            << "ASCII control char 0x" << std::hex << static_cast<unsigned>(ch)
+            << " should not be a URL code point";
+    }
+
+    // NULL (0x00) should also not be a URL code point
+    EXPECT_FALSE(is_url_code_point(U'\0'));
+
+    // DEL (0x7F) should also not be a URL code point
+    EXPECT_FALSE(is_url_code_point(static_cast<char32_t>(0x7F)));
+}

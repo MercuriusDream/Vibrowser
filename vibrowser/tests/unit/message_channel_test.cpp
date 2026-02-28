@@ -1009,3 +1009,80 @@ TEST(MessageChannelTest, MessageChannelV134_3_MultipleHandlersSameType) {
     // Second (replacement) handler should have fired once
     EXPECT_EQ(handler2_count, 1);
 }
+
+// ------------------------------------------------------------------
+// V135 MessageChannel tests
+// ------------------------------------------------------------------
+
+TEST(MessageChannelTest, MessageChannelV135_1_UnregisteredTypeMessageSilentlyDropped) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel sender(std::move(pa));
+    MessageChannel receiver(std::move(pb));
+
+    // Register handler for type 50 only
+    bool handler_called = false;
+    receiver.on(50, [&](const Message&) { handler_called = true; });
+
+    // Send a message with unregistered type 99
+    Message msg;
+    msg.type = 99;
+    msg.request_id = 1;
+    msg.payload = {0xAA, 0xBB};
+    ASSERT_TRUE(sender.send(msg));
+
+    auto received = receiver.receive();
+    ASSERT_TRUE(received.has_value());
+    // Dispatching an unregistered type should not crash
+    EXPECT_NO_THROW(receiver.dispatch(*received));
+    // The handler for type 50 should NOT have been called
+    EXPECT_FALSE(handler_called);
+}
+
+TEST(MessageChannelTest, MessageChannelV135_2_HandlerReceivesCorrectRequestId) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel sender(std::move(pa));
+    MessageChannel receiver(std::move(pb));
+
+    uint32_t captured_request_id = 0;
+    receiver.on(77, [&](const Message& m) {
+        captured_request_id = m.request_id;
+    });
+
+    Message msg;
+    msg.type = 77;
+    msg.request_id = 54321;
+    msg.payload = {0x01};
+    ASSERT_TRUE(sender.send(msg));
+
+    auto received = receiver.receive();
+    ASSERT_TRUE(received.has_value());
+    receiver.dispatch(*received);
+
+    EXPECT_EQ(captured_request_id, 54321u);
+}
+
+TEST(MessageChannelTest, MessageChannelV135_3_EmptyPayloadHandlerStillFires) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel sender(std::move(pa));
+    MessageChannel receiver(std::move(pb));
+
+    bool handler_fired = false;
+    std::vector<uint8_t> captured_payload;
+    receiver.on(33, [&](const Message& m) {
+        handler_fired = true;
+        captured_payload = m.payload;
+    });
+
+    Message msg;
+    msg.type = 33;
+    msg.request_id = 7;
+    // payload intentionally left empty
+    ASSERT_TRUE(sender.send(msg));
+
+    auto received = receiver.receive();
+    ASSERT_TRUE(received.has_value());
+    receiver.dispatch(*received);
+
+    EXPECT_TRUE(handler_fired);
+    EXPECT_TRUE(captured_payload.empty());
+}

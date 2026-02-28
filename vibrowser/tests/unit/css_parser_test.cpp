@@ -9807,3 +9807,59 @@ TEST_F(CSSStylesheetTest, NestedMediaAndSupportsParsingV134) {
     // Nested @media and @supports — parser should not crash
     SUCCEED();
 }
+
+// === V135 CSS Parser Tests ===
+
+TEST_F(CSSStylesheetTest, ContentVisibilityAutoDeclarationV135) {
+    auto ss = parse_stylesheet("div { content-visibility: auto; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "content-visibility") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "auto");
+        }
+    }
+    EXPECT_TRUE(found) << "content-visibility declaration not found";
+}
+
+TEST_F(CSSStylesheetTest, ScrollSnapTypeDeclarationV135) {
+    auto ss = parse_stylesheet(".container { scroll-snap-type: y mandatory; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "scroll-snap-type") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+        }
+    }
+    EXPECT_TRUE(found) << "scroll-snap-type declaration not found";
+}
+
+TEST_F(CSSStylesheetTest, OverscrollBehaviorContainDeclarationV135) {
+    auto ss = parse_stylesheet("body { overscroll-behavior: contain; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "overscroll-behavior") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "contain");
+        }
+    }
+    EXPECT_TRUE(found) << "overscroll-behavior declaration not found";
+}
+
+TEST_F(CSSStylesheetTest, ColorSchemeDeclarationV135) {
+    auto ss = parse_stylesheet(":root { color-scheme: light dark; }");
+    ASSERT_GE(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "color-scheme") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+        }
+    }
+    EXPECT_TRUE(found) << "color-scheme declaration not found";
+}

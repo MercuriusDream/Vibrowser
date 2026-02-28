@@ -34943,3 +34943,104 @@ TEST(JSEngine, JsV134_8) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "42 3.14");
 }
+
+// === V135 JS Engine Tests ===
+
+TEST(JSEngine, JsV135_1) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var r = Promise.all([1, Promise.resolve(2), 3]);
+        // Tick the microtask queue
+        var out = "";
+        r.then(function(arr) { out = arr.join(","); });
+        out;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    // Promise.all may not resolve synchronously, check no error
+}
+
+TEST(JSEngine, JsV135_2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        async function fetchVal() { return 42; }
+        var p = fetchVal();
+        var out = "pending";
+        p.then(function(v) { out = String(v); });
+        out;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+}
+
+TEST(JSEngine, JsV135_3) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var m = new Map();
+        m.set("a", 1);
+        m.set("b", 2);
+        m.has("a") + " " + m.get("b") + " " + m.size;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true 2 2");
+}
+
+TEST(JSEngine, JsV135_4) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var s = new Set();
+        s.add(1);
+        s.add(2);
+        s.add(2);
+        s.has(1) + " " + s.has(3) + " " + s.size;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true false 2");
+}
+
+TEST(JSEngine, JsV135_5) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var arr = [10, 20, 30];
+        var [a, b, c] = arr;
+        a + " " + b + " " + c;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "10 20 30");
+}
+
+TEST(JSEngine, JsV135_6) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var x = 5;
+        var y = 10;
+        `sum is ${x + y}`;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "sum is 15");
+}
+
+TEST(JSEngine, JsV135_7) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        function* gen() {
+            yield 1;
+            yield 2;
+            yield 3;
+        }
+        var g = gen();
+        g.next().value + " " + g.next().value + " " + g.next().value;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1 2 3");
+}
+
+TEST(JSEngine, JsV135_8) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var arr = [10, 20, 30];
+        var sum = 0;
+        for (var v of arr) { sum += v; }
+        sum;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "60");
+}

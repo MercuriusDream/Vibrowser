@@ -22141,3 +22141,94 @@ TEST(HtmlParserTest, HtmlV134_8) {
     ASSERT_NE(summary, nullptr);
     EXPECT_EQ(summary->tag_name, "summary");
 }
+
+// === V135 HTML Parser Tests ===
+
+TEST(HtmlParserTest, HtmlV135_1) {
+    auto doc = clever::html::parse("<html><body><ruby>漢<rt>kan</rt>字<rt>ji</rt></ruby></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* ruby = doc->find_element("ruby");
+    ASSERT_NE(ruby, nullptr);
+    EXPECT_EQ(ruby->tag_name, "ruby");
+
+    auto* rt = doc->find_element("rt");
+    ASSERT_NE(rt, nullptr);
+    EXPECT_EQ(rt->tag_name, "rt");
+}
+
+TEST(HtmlParserTest, HtmlV135_2) {
+    auto doc = clever::html::parse("<html><body><p>long<wbr>word</p></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* wbr = doc->find_element("wbr");
+    ASSERT_NE(wbr, nullptr);
+    EXPECT_EQ(wbr->tag_name, "wbr");
+}
+
+TEST(HtmlParserTest, HtmlV135_3) {
+    auto doc = clever::html::parse("<html><body><bdo dir='rtl'>text</bdo><bdi>mixed</bdi></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* bdo = doc->find_element("bdo");
+    ASSERT_NE(bdo, nullptr);
+    EXPECT_EQ(bdo->tag_name, "bdo");
+
+    auto* bdi = doc->find_element("bdi");
+    ASSERT_NE(bdi, nullptr);
+    EXPECT_EQ(bdi->tag_name, "bdi");
+}
+
+TEST(HtmlParserTest, HtmlV135_4) {
+    auto doc = clever::html::parse("<html><body><figure><img src='photo.jpg'/><figcaption>A photo</figcaption></figure></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* figure = doc->find_element("figure");
+    ASSERT_NE(figure, nullptr);
+    EXPECT_EQ(figure->tag_name, "figure");
+
+    auto* figcaption = doc->find_element("figcaption");
+    ASSERT_NE(figcaption, nullptr);
+    EXPECT_EQ(figcaption->tag_name, "figcaption");
+    EXPECT_EQ(figcaption->text_content(), "A photo");
+}
+
+TEST(HtmlParserTest, HtmlV135_5) {
+    auto doc = clever::html::parse("<html><body><abbr title='HyperText Markup Language'>HTML</abbr></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* abbr = doc->find_element("abbr");
+    ASSERT_NE(abbr, nullptr);
+    EXPECT_EQ(abbr->tag_name, "abbr");
+    EXPECT_EQ(abbr->text_content(), "HTML");
+}
+
+TEST(HtmlParserTest, HtmlV135_6) {
+    auto doc = clever::html::parse("<html><body><time datetime='2024-01-01'>New Year</time></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* time_el = doc->find_element("time");
+    ASSERT_NE(time_el, nullptr);
+    EXPECT_EQ(time_el->tag_name, "time");
+    EXPECT_EQ(time_el->text_content(), "New Year");
+}
+
+TEST(HtmlParserTest, HtmlV135_7) {
+    auto doc = clever::html::parse("<html><body><data value='42'>Forty-two</data></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* data_el = doc->find_element("data");
+    ASSERT_NE(data_el, nullptr);
+    EXPECT_EQ(data_el->tag_name, "data");
+    EXPECT_EQ(data_el->text_content(), "Forty-two");
+}
+
+TEST(HtmlParserTest, HtmlV135_8) {
+    auto doc = clever::html::parse("<html><body><dialog open>Dialog content</dialog></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* dialog = doc->find_element("dialog");
+    ASSERT_NE(dialog, nullptr);
+    EXPECT_EQ(dialog->tag_name, "dialog");
+    EXPECT_EQ(dialog->text_content(), "Dialog content");
+}

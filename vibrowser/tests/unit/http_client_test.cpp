@@ -22962,3 +22962,185 @@ TEST(HttpClient, CookieJarSecureFlagNotReturnedOnInsecureV134) {
     std::string hdr_secure = jar.get_cookie_header("secure.v134.test", "/", true);
     EXPECT_NE(hdr_secure.find("secure_tok=s3cr3t"), std::string::npos);
 }
+
+// ===========================================================================
+// V135 Tests
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// 1. POST with body — verify Content-Length header in serialized output
+// ---------------------------------------------------------------------------
+TEST(HttpClient, RequestSerializePostWithBodyV135) {
+    Request req;
+    req.method = Method::POST;
+    req.host = "api.v135.test";
+    req.port = 443;
+    req.path = "/submit";
+
+    std::string body_str = "username=alice&password=s3cret";
+    req.body.assign(body_str.begin(), body_str.end());
+    req.headers.set("Content-Type", "application/x-www-form-urlencoded");
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    // Request line
+    EXPECT_NE(result.find("POST /submit HTTP/1.1\r\n"), std::string::npos);
+    // Port 443 should be omitted from Host header
+    EXPECT_NE(result.find("Host: api.v135.test\r\n"), std::string::npos);
+    // Content-Length must match body size
+    std::string expected_cl = "Content-Length: " + std::to_string(body_str.size()) + "\r\n";
+    EXPECT_NE(result.find(expected_cl), std::string::npos);
+    // Body appears after blank line
+    EXPECT_NE(result.find("\r\n\r\n" + body_str), std::string::npos);
+    // Connection: close
+    EXPECT_NE(result.find("Connection: close\r\n"), std::string::npos);
+}
+
+// ---------------------------------------------------------------------------
+// 2. Response parse — case-insensitive header name lookup
+// ---------------------------------------------------------------------------
+TEST(HttpClient, ResponseParseCaseInsensitiveHeaderNamesV135) {
+    std::string raw =
+        "HTTP/1.1 200 OK\r\n"
+        "content-TYPE: application/json\r\n"
+        "Content-Length: 2\r\n"
+        "\r\n"
+        "{}";
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 200);
+    // All case variants should find the header
+    EXPECT_TRUE(resp->headers.has("Content-Type"));
+    EXPECT_TRUE(resp->headers.has("content-type"));
+    EXPECT_TRUE(resp->headers.has("CONTENT-TYPE"));
+    EXPECT_EQ(resp->headers.get("content-type").value(), "application/json");
+    EXPECT_EQ(resp->body_as_string(), "{}");
+}
+
+// ---------------------------------------------------------------------------
+// 3. CookieJar — expired cookie (Max-Age=0) not returned
+// ---------------------------------------------------------------------------
+TEST(HttpClient, CookieJarExpiredCookieNotReturnedV135) {
+    CookieJar jar;
+
+    // First set a valid cookie
+    jar.set_from_header("session=active; Path=/; Max-Age=3600", "shop.v135.test");
+    EXPECT_FALSE(jar.get_cookie_header("shop.v135.test", "/", false).empty());
+
+    // Now set a cookie with Max-Age=0 — it should be treated as expired
+    jar.set_from_header("expired_tok=gone; Path=/; Max-Age=0", "shop.v135.test");
+
+    std::string hdr = jar.get_cookie_header("shop.v135.test", "/", false);
+    // The expired cookie must NOT appear
+    EXPECT_EQ(hdr.find("expired_tok"), std::string::npos);
+    // The active session cookie should still be present
+    EXPECT_NE(hdr.find("session=active"), std::string::npos);
+}
+
+// ---------------------------------------------------------------------------
+// 4. HeaderMap — remove non-existent key is a no-op (doesn't crash)
+// ---------------------------------------------------------------------------
+TEST(HttpClient, HeaderMapRemoveNonExistentKeyNoOpV135) {
+    HeaderMap map;
+    map.set("Accept", "text/html");
+    EXPECT_EQ(map.size(), 1u);
+
+    // Removing a key that does not exist should not crash or alter the map
+    map.remove("X-Nonexistent-V135");
+    EXPECT_EQ(map.size(), 1u);
+    EXPECT_TRUE(map.has("Accept"));
+    EXPECT_EQ(map.get("Accept").value(), "text/html");
+}
+
+// ---------------------------------------------------------------------------
+// 5. Request serialize — custom User-Agent overrides default
+// ---------------------------------------------------------------------------
+TEST(HttpClient, RequestSerializeCustomUserAgentV135) {
+    Request req;
+    req.method = Method::GET;
+    req.host = "ua.v135.test";
+    req.port = 80;
+    req.path = "/check-ua";
+    req.headers.set("User-Agent", "ViBrowser/1.0-V135");
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    // The custom User-Agent must appear (serialized lowercase for custom headers)
+    EXPECT_NE(result.find("user-agent: ViBrowser/1.0-V135\r\n"), std::string::npos);
+    // Port 80 should be omitted from Host
+    EXPECT_NE(result.find("Host: ua.v135.test\r\n"), std::string::npos);
+    // Connection: close must still be present
+    EXPECT_NE(result.find("Connection: close\r\n"), std::string::npos);
+}
+
+// ---------------------------------------------------------------------------
+// 6. Response parse — Transfer-Encoding: chunked is properly parsed
+// ---------------------------------------------------------------------------
+TEST(HttpClient, ResponseParseChunkedEncodingIndicatorV135) {
+    std::string raw =
+        "HTTP/1.1 200 OK\r\n"
+        "Transfer-Encoding: chunked\r\n"
+        "\r\n"
+        "a\r\n"
+        "0123456789\r\n"
+        "5\r\n"
+        "ABCDE\r\n"
+        "0\r\n"
+        "\r\n";
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 200);
+    // Transfer-Encoding header should be accessible
+    EXPECT_TRUE(resp->headers.has("transfer-encoding"));
+    EXPECT_EQ(resp->headers.get("transfer-encoding").value(), "chunked");
+    // Chunked body should be reassembled correctly
+    EXPECT_EQ(resp->body_as_string(), "0123456789ABCDE");
+}
+
+// ---------------------------------------------------------------------------
+// 7. CookieJar — Secure cookie not sent over HTTP (is_secure=false)
+// ---------------------------------------------------------------------------
+TEST(HttpClient, CookieJarSecureCookieNotSentOverHttpV135) {
+    CookieJar jar;
+
+    jar.set_from_header("auth=secret_v135; Path=/; Secure", "secure.v135.test");
+    jar.set_from_header("tracking=abc; Path=/", "secure.v135.test");
+    EXPECT_EQ(jar.size(), 2u);
+
+    // Over insecure HTTP — only the non-secure cookie should be returned
+    std::string hdr_http = jar.get_cookie_header("secure.v135.test", "/", false);
+    EXPECT_EQ(hdr_http.find("auth=secret_v135"), std::string::npos);
+    EXPECT_NE(hdr_http.find("tracking=abc"), std::string::npos);
+
+    // Over HTTPS — both cookies should be returned
+    std::string hdr_https = jar.get_cookie_header("secure.v135.test", "/", true);
+    EXPECT_NE(hdr_https.find("auth=secret_v135"), std::string::npos);
+    EXPECT_NE(hdr_https.find("tracking=abc"), std::string::npos);
+}
+
+// ---------------------------------------------------------------------------
+// 8. ConnectionPool — acquire from empty pool returns -1
+// ---------------------------------------------------------------------------
+TEST(HttpClient, ConnectionPoolAcquireFromEmptyReturnsNulloptV135) {
+    ConnectionPool pool;
+
+    // No connections have been released, so acquire should return -1
+    int fd = pool.acquire("empty.v135.test", 8080);
+    EXPECT_EQ(fd, -1);
+
+    // Verify count is zero as well
+    EXPECT_EQ(pool.count("empty.v135.test", 8080), 0u);
+
+    // Release one connection, acquire it, then try again — should be -1 again
+    pool.release("empty.v135.test", 8080, 99);
+    EXPECT_EQ(pool.acquire("empty.v135.test", 8080), 99);
+    EXPECT_EQ(pool.acquire("empty.v135.test", 8080), -1);
+}

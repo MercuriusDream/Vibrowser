@@ -20446,3 +20446,215 @@ TEST(DomNode, ChildCountAfterMultipleAppendAndRemoveV134) {
     parent->remove_child(*c2_ptr);
     EXPECT_EQ(parent->child_count(), 2u);
 }
+
+// ---------------------------------------------------------------------------
+// V135 Tests
+// ---------------------------------------------------------------------------
+
+TEST(DomNode, CloneNodeShallowCopiesAttributesNotChildrenV135) {
+    auto clone_node_shallow = [](const Node& node) -> std::unique_ptr<Node> {
+        if (node.node_type() == NodeType::Element) {
+            const auto& src = static_cast<const Element&>(node);
+            auto clone = std::make_unique<Element>(src.tag_name(), src.namespace_uri());
+            for (const auto& attr : src.attributes()) {
+                clone->set_attribute(attr.name, attr.value);
+            }
+            return clone;
+        }
+        if (node.node_type() == NodeType::Text) {
+            return std::make_unique<Text>(static_cast<const Text&>(node).data());
+        }
+        return nullptr;
+    };
+
+    Element original("article");
+    original.set_attribute("id", "main-article");
+    original.set_attribute("class", "featured");
+    original.set_attribute("data-index", "42");
+    original.append_child(std::make_unique<Element>("h1"));
+    original.append_child(std::make_unique<Text>("body text"));
+    original.append_child(std::make_unique<Element>("footer"));
+    ASSERT_EQ(original.child_count(), 3u);
+
+    auto cloned = clone_node_shallow(original);
+    ASSERT_NE(cloned, nullptr);
+    ASSERT_EQ(cloned->node_type(), NodeType::Element);
+
+    auto* cloned_elem = static_cast<Element*>(cloned.get());
+    EXPECT_EQ(cloned_elem->tag_name(), "article");
+    EXPECT_EQ(cloned_elem->get_attribute("id").value_or(""), "main-article");
+    EXPECT_EQ(cloned_elem->get_attribute("class").value_or(""), "featured");
+    EXPECT_EQ(cloned_elem->get_attribute("data-index").value_or(""), "42");
+    EXPECT_EQ(cloned_elem->attributes().size(), 3u);
+    EXPECT_EQ(cloned_elem->child_count(), 0u);
+    EXPECT_EQ(cloned_elem->first_child(), nullptr);
+}
+
+TEST(DomElement, GetAttributeReturnsEmptyForMissingAttrV135) {
+    Element elem("input");
+    elem.set_attribute("type", "text");
+
+    auto missing_val = elem.get_attribute("placeholder");
+    EXPECT_FALSE(missing_val.has_value());
+
+    auto also_missing = elem.get_attribute("data-nonexistent");
+    EXPECT_FALSE(also_missing.has_value());
+
+    auto present_val = elem.get_attribute("type");
+    ASSERT_TRUE(present_val.has_value());
+    EXPECT_EQ(present_val.value(), "text");
+}
+
+TEST(DomDocument, CreateTextNodeAndAppendV135) {
+    Document doc;
+    auto container = doc.create_element("p");
+    Element* container_ptr = container.get();
+
+    auto text1 = doc.create_text_node("Hello, ");
+    auto text2 = doc.create_text_node("World!");
+
+    container_ptr->append_child(std::move(text1));
+    container_ptr->append_child(std::move(text2));
+
+    EXPECT_EQ(container_ptr->child_count(), 2u);
+    EXPECT_EQ(container_ptr->text_content(), "Hello, World!");
+
+    auto text3 = doc.create_text_node(" Appended.");
+    container_ptr->append_child(std::move(text3));
+    EXPECT_EQ(container_ptr->child_count(), 3u);
+    EXPECT_EQ(container_ptr->text_content(), "Hello, World! Appended.");
+}
+
+TEST(DomEvent, StopImmediatePropagationPreventsLaterHandlersV135) {
+    int first_count = 0;
+    int second_count = 0;
+
+    EventTarget target;
+    target.add_event_listener("focus", [&](Event& e) {
+        first_count++;
+        e.stop_immediate_propagation();
+    }, false);
+    target.add_event_listener("focus", [&]([[maybe_unused]] Event& e) {
+        second_count++;
+    }, false);
+
+    Event event("focus");
+    auto node = std::make_unique<Element>("input");
+    event.target_ = node.get();
+    event.current_target_ = node.get();
+    event.phase_ = EventPhase::AtTarget;
+    target.dispatch_event(event, *node);
+
+    EXPECT_EQ(first_count, 1);
+    EXPECT_EQ(second_count, 0);
+    EXPECT_TRUE(event.immediate_propagation_stopped());
+    EXPECT_TRUE(event.propagation_stopped());
+}
+
+TEST(DomNode, IsConnectedAfterAppendAndRemoveV135) {
+    auto is_connected = [](const Node& node) {
+        for (const Node* current = &node; current != nullptr; current = current->parent()) {
+            if (current->node_type() == NodeType::Document) {
+                return true;
+            }
+        }
+        return false;
+    };
+
+    Document doc;
+    auto wrapper = std::make_unique<Element>("div");
+    Element* wrapper_ptr = wrapper.get();
+    auto inner = std::make_unique<Element>("span");
+    Element* inner_ptr = inner.get();
+    wrapper->append_child(std::move(inner));
+
+    EXPECT_FALSE(is_connected(*wrapper_ptr));
+    EXPECT_FALSE(is_connected(*inner_ptr));
+
+    doc.append_child(std::move(wrapper));
+    EXPECT_TRUE(is_connected(*wrapper_ptr));
+    EXPECT_TRUE(is_connected(*inner_ptr));
+
+    auto detached = doc.remove_child(*wrapper_ptr);
+    ASSERT_NE(detached, nullptr);
+    EXPECT_FALSE(is_connected(*wrapper_ptr));
+    EXPECT_FALSE(is_connected(*inner_ptr));
+}
+
+TEST(DomElement, HasAttributeReturnsTrueAfterSetV135) {
+    Element elem("textarea");
+
+    EXPECT_FALSE(elem.has_attribute("rows"));
+    EXPECT_FALSE(elem.has_attribute("cols"));
+    EXPECT_FALSE(elem.has_attribute("readonly"));
+
+    elem.set_attribute("rows", "10");
+    EXPECT_TRUE(elem.has_attribute("rows"));
+    EXPECT_FALSE(elem.has_attribute("cols"));
+
+    elem.set_attribute("cols", "80");
+    EXPECT_TRUE(elem.has_attribute("rows"));
+    EXPECT_TRUE(elem.has_attribute("cols"));
+
+    elem.set_attribute("readonly", "");
+    EXPECT_TRUE(elem.has_attribute("readonly"));
+}
+
+TEST(DomNode, OwnerDocumentReturnsSameForAllNodesV135) {
+    auto owner_document = [](const Node* node) -> const Document* {
+        for (const Node* current = node; current != nullptr; current = current->parent()) {
+            if (current->node_type() == NodeType::Document) {
+                return static_cast<const Document*>(current);
+            }
+        }
+        return nullptr;
+    };
+
+    Document doc;
+    auto outer = std::make_unique<Element>("section");
+    Element* outer_ptr = outer.get();
+    auto middle = std::make_unique<Element>("article");
+    Element* middle_ptr = middle.get();
+    auto leaf = std::make_unique<Text>("content");
+    Text* leaf_ptr = leaf.get();
+
+    middle->append_child(std::move(leaf));
+    outer->append_child(std::move(middle));
+
+    EXPECT_EQ(owner_document(outer_ptr), nullptr);
+    EXPECT_EQ(owner_document(middle_ptr), nullptr);
+    EXPECT_EQ(owner_document(leaf_ptr), nullptr);
+
+    doc.append_child(std::move(outer));
+    EXPECT_EQ(owner_document(outer_ptr), &doc);
+    EXPECT_EQ(owner_document(middle_ptr), &doc);
+    EXPECT_EQ(owner_document(leaf_ptr), &doc);
+
+    const Document* doc_from_outer = owner_document(outer_ptr);
+    const Document* doc_from_middle = owner_document(middle_ptr);
+    const Document* doc_from_leaf = owner_document(leaf_ptr);
+    EXPECT_EQ(doc_from_outer, doc_from_middle);
+    EXPECT_EQ(doc_from_middle, doc_from_leaf);
+}
+
+TEST(DomElement, RemoveAttributeRemovesItV135) {
+    Element elem("select");
+    elem.set_attribute("name", "country");
+    elem.set_attribute("multiple", "");
+    elem.set_attribute("size", "5");
+    EXPECT_EQ(elem.attributes().size(), 3u);
+
+    EXPECT_TRUE(elem.has_attribute("multiple"));
+    elem.remove_attribute("multiple");
+    EXPECT_FALSE(elem.has_attribute("multiple"));
+    EXPECT_EQ(elem.attributes().size(), 2u);
+
+    EXPECT_TRUE(elem.has_attribute("name"));
+    elem.remove_attribute("name");
+    EXPECT_FALSE(elem.has_attribute("name"));
+    EXPECT_FALSE(elem.get_attribute("name").has_value());
+    EXPECT_EQ(elem.attributes().size(), 1u);
+
+    EXPECT_TRUE(elem.has_attribute("size"));
+    EXPECT_EQ(elem.get_attribute("size").value_or(""), "5");
+}

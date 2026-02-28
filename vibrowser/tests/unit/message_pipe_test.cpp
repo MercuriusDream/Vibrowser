@@ -985,3 +985,39 @@ TEST(MessagePipeTest, MessagePipeV134_2_MultipleSendBeforeReceiveOrderPreserved)
     ASSERT_TRUE(r3.has_value());
     EXPECT_EQ(*r3, msg3);
 }
+
+// ------------------------------------------------------------------
+// V135 MessagePipe tests
+// ------------------------------------------------------------------
+
+TEST(MessagePipeTest, MessagePipeV135_1_MultipleMessagesOrderPreserved) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    // Send 5 messages with distinct content
+    for (uint8_t i = 0; i < 5; ++i) {
+        std::vector<uint8_t> data = {i, static_cast<uint8_t>(i * 10), static_cast<uint8_t>(i + 100)};
+        ASSERT_TRUE(a.send(data));
+    }
+
+    // Receive in FIFO order and verify each
+    for (uint8_t i = 0; i < 5; ++i) {
+        auto received = b.receive();
+        ASSERT_TRUE(received.has_value());
+        ASSERT_EQ(received->size(), 3u);
+        EXPECT_EQ((*received)[0], i);
+        EXPECT_EQ((*received)[1], static_cast<uint8_t>(i * 10));
+        EXPECT_EQ((*received)[2], static_cast<uint8_t>(i + 100));
+    }
+}
+
+TEST(MessagePipeTest, MessagePipeV135_2_ReceiveOnClosedEmptyPipeReturnsNullopt) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    // Close side a without sending anything
+    a.close();
+    EXPECT_FALSE(a.is_open());
+
+    // Side b should get nullopt since pipe is closed and empty
+    auto received = b.receive();
+    EXPECT_FALSE(received.has_value());
+}

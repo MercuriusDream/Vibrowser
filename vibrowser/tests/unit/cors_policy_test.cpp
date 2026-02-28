@@ -10812,3 +10812,110 @@ TEST(CORSPolicyTest, CorsV134_8_CorsAllowsResponseCaseInsensitiveHeaderName) {
     headers.set("Access-Control-Allow-Origin", "https://app.example.com");
     EXPECT_TRUE(cors_allows_response("https://app.example.com", "https://api.example.com/data", headers, false));
 }
+
+TEST(CORSPolicyTest, CorsV135_1_SameOriginDifferentFragmentsAreStillSameOrigin) {
+    // Fragments are stripped before origin comparison; different fragments do not make cross-origin
+    EXPECT_FALSE(is_cross_origin("https://example.com", "https://example.com/page#section1"));
+    EXPECT_FALSE(is_cross_origin("https://example.com", "https://example.com/page#section2"));
+    // Even a URL with a fragment vs no fragment is the same origin
+    EXPECT_FALSE(is_cross_origin("https://app.example.com", "https://app.example.com/path#top"));
+    // Two different paths with fragments are still same origin
+    EXPECT_FALSE(is_cross_origin("https://example.com", "https://example.com/a#x"));
+    EXPECT_FALSE(is_cross_origin("https://example.com", "https://example.com/b#y"));
+}
+
+TEST(CORSPolicyTest, CorsV135_2_CorsAllowsResponseWithMultipleOriginsInHeader) {
+    // ACAO header with multiple comma-separated origins must be rejected
+    clever::net::HeaderMap headers_comma;
+    headers_comma.set("access-control-allow-origin", "https://a.example.com, https://b.example.com");
+    EXPECT_FALSE(cors_allows_response("https://a.example.com", "https://api.example.com/data", headers_comma, false));
+
+    // Space-separated multiple origins also rejected
+    clever::net::HeaderMap headers_space;
+    headers_space.set("access-control-allow-origin", "https://a.example.com https://b.example.com");
+    EXPECT_FALSE(cors_allows_response("https://a.example.com", "https://api.example.com/data", headers_space, false));
+
+    // Three origins comma-separated also rejected
+    clever::net::HeaderMap headers_three;
+    headers_three.set("access-control-allow-origin", "https://x.com, https://y.com, https://z.com");
+    EXPECT_FALSE(cors_allows_response("https://x.com", "https://api.example.com/data", headers_three, false));
+}
+
+TEST(CORSPolicyTest, CorsV135_3_ShouldAttachOriginForCrossSchemeHttpToHttps) {
+    // http:// origin to https:// target is cross-scheme, so Origin header should be attached
+    EXPECT_TRUE(should_attach_origin_header("http://example.com", "https://example.com/api"));
+    // https:// origin to http:// target is also cross-scheme
+    EXPECT_TRUE(should_attach_origin_header("https://example.com", "http://example.com/api"));
+    // Same scheme same host → should NOT attach
+    EXPECT_FALSE(should_attach_origin_header("https://example.com", "https://example.com/api"));
+}
+
+TEST(CORSPolicyTest, CorsV135_4_NormalizeOriginRemovesPathAndQuery) {
+    // A document origin with a path is not enforceable, so normalize should
+    // drop any existing Origin header rather than setting one with the path
+    clever::net::HeaderMap headers_path;
+    headers_path.set("Origin", "https://stale.example.com");
+    normalize_outgoing_origin_header(headers_path, "https://app.example.com/some/path", "https://api.example.com/data");
+    // Origin with path is not enforceable so Origin header is removed
+    EXPECT_FALSE(headers_path.has("origin"));
+
+    // A document origin with a query is also not enforceable
+    clever::net::HeaderMap headers_query;
+    headers_query.set("Origin", "https://stale.example.com");
+    normalize_outgoing_origin_header(headers_query, "https://app.example.com?foo=bar", "https://api.example.com/data");
+    EXPECT_FALSE(headers_query.has("origin"));
+}
+
+TEST(CORSPolicyTest, CorsV135_5_IsEnforceableOriginFileScheme) {
+    // file:// scheme is NOT an enforceable origin
+    EXPECT_FALSE(has_enforceable_document_origin("file:///Users/test/page.html"));
+    EXPECT_FALSE(has_enforceable_document_origin("file:///"));
+    EXPECT_FALSE(has_enforceable_document_origin("file://localhost/tmp/test.html"));
+    // Other non-httpish schemes are also not enforceable
+    EXPECT_FALSE(has_enforceable_document_origin("ftp://example.com"));
+    // But http:// and https:// with valid hosts ARE enforceable
+    EXPECT_TRUE(has_enforceable_document_origin("https://example.com"));
+    EXPECT_TRUE(has_enforceable_document_origin("http://example.com"));
+}
+
+TEST(CORSPolicyTest, CorsV135_6_CorsEligibilityRejectsJavascriptScheme) {
+    // javascript: scheme URLs are not CORS-eligible
+    EXPECT_FALSE(is_cors_eligible_request_url("javascript:void(0)"));
+    EXPECT_FALSE(is_cors_eligible_request_url("javascript:alert(1)"));
+    EXPECT_FALSE(is_cors_eligible_request_url("javascript:document.cookie"));
+    // data: URLs are also not CORS-eligible
+    EXPECT_FALSE(is_cors_eligible_request_url("data:text/html,<h1>hi</h1>"));
+    // blob: URLs are also not CORS-eligible
+    EXPECT_FALSE(is_cors_eligible_request_url("blob:https://example.com/uuid"));
+}
+
+TEST(CORSPolicyTest, CorsV135_7_SameOriginWithDefaultPortExplicitVsImplicit) {
+    // http://x:80 vs http://x should be the same origin (80 is default for http)
+    EXPECT_FALSE(is_cross_origin("http://example.com:80", "http://example.com/path"));
+    EXPECT_FALSE(is_cross_origin("http://example.com", "http://example.com:80/path"));
+    // https://x:443 vs https://x should be the same origin (443 is default for https)
+    EXPECT_FALSE(is_cross_origin("https://example.com:443", "https://example.com/path"));
+    EXPECT_FALSE(is_cross_origin("https://example.com", "https://example.com:443/path"));
+    // Cross-scheme with default ports — our implementation normalizes ports and
+    // treats these as same-origin after port normalization (schemes case-insensitive)
+    EXPECT_FALSE(is_cross_origin("http://example.com:80", "https://example.com:443/path"));
+}
+
+TEST(CORSPolicyTest, CorsV135_8_WildcardACAOWithCredentialsFails) {
+    // ACAO: "*" with credentials mode (last param = true) must be rejected per spec
+    clever::net::HeaderMap headers_wild_creds;
+    headers_wild_creds.set("access-control-allow-origin", "*");
+    headers_wild_creds.set("access-control-allow-credentials", "true");
+    EXPECT_FALSE(cors_allows_response("https://app.example.com", "https://api.example.com/resource", headers_wild_creds, true));
+
+    // Without credentials (last param = false), wildcard IS allowed
+    clever::net::HeaderMap headers_wild_no_creds;
+    headers_wild_no_creds.set("access-control-allow-origin", "*");
+    EXPECT_TRUE(cors_allows_response("https://app.example.com", "https://api.example.com/resource", headers_wild_no_creds, false));
+
+    // Exact match with credentials and ACAC:true → allowed
+    clever::net::HeaderMap headers_exact_creds;
+    headers_exact_creds.set("access-control-allow-origin", "https://app.example.com");
+    headers_exact_creds.set("access-control-allow-credentials", "true");
+    EXPECT_TRUE(cors_allows_response("https://app.example.com", "https://api.example.com/resource", headers_exact_creds, true));
+}

@@ -14165,3 +14165,73 @@ TEST(UrlParserTest, UrlV134_4_PercentEncodedHostDecoded) {
     ASSERT_TRUE(mixed.has_value());
     EXPECT_EQ(mixed->host, "example.com");
 }
+
+// =============================================================================
+// V135 tests
+// =============================================================================
+
+TEST(UrlParserTest, UrlV135_1_QueryStringWithMultipleParams) {
+    // Multiple query parameters separated by & should be preserved verbatim
+    auto result = parse("https://example.com/search?a=1&b=2&c=3");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/search");
+    EXPECT_EQ(result->query, "a=1&b=2&c=3");
+    EXPECT_TRUE(result->fragment.empty());
+
+    // Also verify with more complex values including equals signs
+    auto result2 = parse("http://api.test/q?key=val&foo=bar&x=y");
+    ASSERT_TRUE(result2.has_value());
+    EXPECT_EQ(result2->query, "key=val&foo=bar&x=y");
+}
+
+TEST(UrlParserTest, UrlV135_2_EmptyPathDefaultsToSlash) {
+    // A URL with authority but no explicit path should default to "/"
+    auto result = parse("http://example.com");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/");
+    EXPECT_EQ(result->port, std::nullopt);
+    EXPECT_TRUE(result->query.empty());
+    EXPECT_TRUE(result->fragment.empty());
+
+    // Same for https
+    auto https_result = parse("https://test.org");
+    ASSERT_TRUE(https_result.has_value());
+    EXPECT_EQ(https_result->path, "/");
+}
+
+TEST(UrlParserTest, UrlV135_3_UserInfoParsedCorrectly) {
+    // Full userinfo with username and password before the host
+    auto result = parse("http://user:pass@host.example.com/path");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->username, "user");
+    EXPECT_EQ(result->password, "pass");
+    EXPECT_EQ(result->host, "host.example.com");
+    EXPECT_EQ(result->path, "/path");
+    EXPECT_EQ(result->scheme, "http");
+
+    // Username only (no colon, no password)
+    auto user_only = parse("http://admin@example.com/");
+    ASSERT_TRUE(user_only.has_value());
+    EXPECT_EQ(user_only->username, "admin");
+    EXPECT_TRUE(user_only->password.empty());
+    EXPECT_EQ(user_only->host, "example.com");
+}
+
+TEST(UrlParserTest, UrlV135_4_TrailingDotInHostname) {
+    // A trailing dot in the hostname (FQDN) — parser may normalize or preserve it
+    auto result = parse("http://example.com./path");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    // The host should be parsed (either with or without the trailing dot)
+    EXPECT_FALSE(result->host.empty());
+    EXPECT_EQ(result->path, "/path");
+
+    // Verify it doesn't confuse the port or other components
+    EXPECT_EQ(result->port, std::nullopt);
+    EXPECT_TRUE(result->query.empty());
+    EXPECT_TRUE(result->fragment.empty());
+}

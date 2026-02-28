@@ -25132,3 +25132,61 @@ TEST(PropertyCascadeTest, TouchActionNoneV134) {
     cascade.apply_declaration(style, make_decl("touch-action", "none"), parent);
     SUCCEED();
 }
+
+// === V135 CSS Style Tests ===
+
+TEST(CSSStyleTest, CssV135_1_MarginAutoResolvedToNegativeOne) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("margin-left", "auto"), parent);
+    EXPECT_TRUE(style.margin.left.is_auto());
+
+    cascade.apply_declaration(style, make_decl("margin-right", "auto"), parent);
+    EXPECT_TRUE(style.margin.right.is_auto());
+
+    // Auto margins have to_px() returning 0 (resolved by layout, not style)
+    EXPECT_FLOAT_EQ(style.margin.left.to_px(), 0.0f);
+    EXPECT_FLOAT_EQ(style.margin.right.to_px(), 0.0f);
+}
+
+TEST(PropertyCascadeTest, OverflowXYCombinedV135) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("overflow-x", "hidden"), parent);
+    cascade.apply_declaration(style, make_decl("overflow-y", "scroll"), parent);
+
+    EXPECT_EQ(style.overflow_x, Overflow::Hidden);
+    EXPECT_EQ(style.overflow_y, Overflow::Scroll);
+}
+
+TEST(CSSStyleTest, CssV135_3_PaddingShorthandExpandsToFourSides) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style,
+        make_decl_multi("padding", {"10px", "20px", "30px", "40px"}), parent);
+
+    EXPECT_FLOAT_EQ(style.padding.top.to_px(), 10.0f);
+    EXPECT_FLOAT_EQ(style.padding.right.to_px(), 20.0f);
+    EXPECT_FLOAT_EQ(style.padding.bottom.to_px(), 30.0f);
+    EXPECT_FLOAT_EQ(style.padding.left.to_px(), 40.0f);
+}
+
+TEST(CSSStyleTest, CssV135_4_BorderRadiusShorthandAllCornersV135) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("border-radius", "8px"), parent);
+
+    EXPECT_FLOAT_EQ(style.border_radius, 8.0f);
+    EXPECT_FLOAT_EQ(style.border_radius_tl, 8.0f);
+    EXPECT_FLOAT_EQ(style.border_radius_tr, 8.0f);
+    EXPECT_FLOAT_EQ(style.border_radius_br, 8.0f);
+    EXPECT_FLOAT_EQ(style.border_radius_bl, 8.0f);
+}

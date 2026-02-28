@@ -19920,3 +19920,47 @@ TEST(SerializerTest, SerializerV134_3_MixedTypesInterleavedRoundTrip) {
     EXPECT_DOUBLE_EQ(d.read_f64(), 3.14159);
     EXPECT_FALSE(d.has_remaining());
 }
+
+// ------------------------------------------------------------------
+// V135 Serializer tests
+// ------------------------------------------------------------------
+
+TEST(SerializerTest, SerializerV135_1_WriteAndReadMultipleStringsInterspersedWithInts) {
+    Serializer s;
+    s.write_string("alpha");
+    s.write_u32(100);
+    s.write_string("beta");
+    s.write_u32(200);
+    s.write_string("gamma");
+    s.write_u32(300);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "alpha");
+    EXPECT_EQ(d.read_u32(), 100u);
+    EXPECT_EQ(d.read_string(), "beta");
+    EXPECT_EQ(d.read_u32(), 200u);
+    EXPECT_EQ(d.read_string(), "gamma");
+    EXPECT_EQ(d.read_u32(), 300u);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, SerializerV135_2_EmptyBytesPayloadRoundTrip) {
+    Serializer s;
+    // Write zero-length bytes
+    s.write_bytes(nullptr, 0);
+
+    Deserializer d(s.data());
+    auto bytes = d.read_bytes();
+    EXPECT_TRUE(bytes.empty());
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, SerializerV135_3_LargeU64BoundaryValueRoundTrip) {
+    Serializer s;
+    uint64_t near_max = std::numeric_limits<uint64_t>::max() - 1;
+    s.write_u64(near_max);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u64(), near_max);
+    EXPECT_FALSE(d.has_remaining());
+}

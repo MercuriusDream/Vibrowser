@@ -25473,3 +25473,170 @@ TEST(LayoutNodeProps, FlexWrapDefaultV134) {
     // Default flex_wrap is 0 (nowrap)
     EXPECT_EQ(n->flex_wrap, 0);
 }
+
+// === V135 Layout Tests ===
+
+TEST(LayoutEngineTest, LayoutV135_1) {
+    // Flex row-reverse direction
+    auto root = make_flex();
+    root->specified_width = 300.0f;
+    root->specified_height = 100.0f;
+    root->flex_direction = 1; // row-reverse
+
+    auto c1 = make_block("div");
+    c1->specified_width = 50.0f;
+    c1->specified_height = 40.0f;
+
+    auto c2 = make_block("div");
+    c2->specified_width = 80.0f;
+    c2->specified_height = 40.0f;
+
+    root->append_child(std::move(c1));
+    root->append_child(std::move(c2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // In row-reverse, last DOM child should be leftmost
+    EXPECT_LT(root->children[1]->geometry.x, root->children[0]->geometry.x)
+        << "row-reverse: second child should be to the left of first";
+}
+
+TEST(LayoutEngineTest, LayoutV135_2) {
+    // Block with margin collapsing — children with top/bottom margins
+    auto root = make_block();
+    root->specified_width = 400.0f;
+
+    auto c1 = make_block("div");
+    c1->specified_height = 50.0f;
+    c1->geometry.margin.bottom = 20.0f;
+
+    auto c2 = make_block("div");
+    c2->specified_height = 50.0f;
+    c2->geometry.margin.top = 30.0f;
+
+    root->append_child(std::move(c1));
+    root->append_child(std::move(c2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // Second child should be below first child
+    EXPECT_GE(root->children[1]->geometry.y, 50.0f);
+}
+
+TEST(LayoutEngineTest, LayoutV135_3) {
+    // Percentage width child
+    auto root = make_block();
+    root->specified_width = 400.0f;
+    root->specified_height = 200.0f;
+
+    auto child = make_block("div");
+    child->css_width = clever::css::Length::percent(50.0f);
+    child->specified_height = 60.0f;
+
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.width, 200.0f);
+}
+
+TEST(LayoutEngineTest, LayoutV135_4) {
+    // Absolute position basic
+    auto root = make_block();
+    root->specified_width = 400.0f;
+    root->specified_height = 300.0f;
+
+    auto normal = make_block("div");
+    normal->specified_height = 50.0f;
+
+    auto abs_child = make_block("div");
+    abs_child->position_type = 2; // absolute
+    abs_child->specified_width = 100.0f;
+    abs_child->specified_height = 80.0f;
+    abs_child->pos_top = 10.0f;
+    abs_child->pos_top_set = true;
+    abs_child->pos_left = 20.0f;
+    abs_child->pos_left_set = true;
+
+    auto normal2 = make_block("div");
+    normal2->specified_height = 60.0f;
+
+    root->append_child(std::move(normal));
+    root->append_child(std::move(abs_child));
+    root->append_child(std::move(normal2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // Absolute child should not affect flow — normal2 should be right after normal
+    EXPECT_FLOAT_EQ(root->children[2]->geometry.y, 50.0f);
+}
+
+TEST(LayoutEngineTest, LayoutV135_5) {
+    // Nested flex containers
+    auto root = make_flex();
+    root->specified_width = 600.0f;
+    root->specified_height = 200.0f;
+    root->flex_direction = 0; // row
+
+    auto inner_flex = make_flex("div");
+    inner_flex->specified_width = 300.0f;
+    inner_flex->specified_height = 100.0f;
+    inner_flex->flex_direction = 0; // row
+
+    auto inner_child = make_block("span");
+    inner_child->specified_width = 100.0f;
+    inner_child->specified_height = 50.0f;
+
+    inner_flex->append_child(std::move(inner_child));
+    root->append_child(std::move(inner_flex));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.width, 300.0f);
+    // Inner flex child should have a computed width (layout processed it)
+    EXPECT_GE(root->children[0]->children[0]->geometry.width, 0.0f);
+}
+
+TEST(LayoutEngineTest, LayoutV135_6) {
+    // Flex align-self override
+    auto root = make_flex();
+    root->specified_width = 400.0f;
+    root->specified_height = 200.0f;
+    root->flex_direction = 0; // row
+    root->align_items = 0; // flex-start
+
+    auto child = make_block("div");
+    child->specified_width = 100.0f;
+    child->specified_height = 50.0f;
+    child->align_self = 2; // center
+
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // Child should be centered vertically: (200 - 50) / 2 = 75
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.y, 75.0f);
+}
+
+TEST(LayoutEngineTest, LayoutV135_7) {
+    // Block min-height constraint
+    auto root = make_block();
+    root->specified_width = 400.0f;
+    root->min_height = 200.0f;
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_GE(root->geometry.height, 200.0f);
+}
+
+TEST(LayoutNodeProps, FlexGrowDefaultZeroV135) {
+    auto n = make_block();
+    EXPECT_FLOAT_EQ(n->flex_grow, 0.0f);
+}
