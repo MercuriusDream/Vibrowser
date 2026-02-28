@@ -9,6 +9,7 @@ add_library(vibrowser_js STATIC
     js_timers.cpp
     js_web_storage.cpp
     js_window.cpp
+    js_workers.cpp
 )
 
 target_include_directories(vibrowser_js PUBLIC
