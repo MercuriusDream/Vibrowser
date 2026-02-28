@@ -8,8 +8,8 @@
 **Phase**: Active Development — Feature Implementation (Full Web Engine Roadmap)
 **Last Active**: 2026-03-01
 **Current Focus**: Implementing real browser features from comprehensive audit roadmap
-**Momentum**: Cycle 932 — Round 8 complete (10 Codex subagents), Round 9 launching. 13/13 tests passing.
-**Cycle**: 932
+**Momentum**: Cycle 933 — Round 9 complete (10 Codex subagents), Phase 4 features landing. 13/13 tests passing.
+**Cycle**: 933
 **Workflow**: Multi-phase feature implementation. Use 10 Codex subagents (Haiku-orchestrated) in parallel. Commit and push after each implementation round.
 
 ## Implementation Roadmap
@@ -90,8 +90,18 @@
 ### Phase 4 — "Make it fast"
 15. [ ] Incremental/async rendering pipeline — break 12,345-line monolithic render_html()
 16. [ ] GPU compositing — Metal or Core Animation layers
-17. [ ] HTTP/2 support — HPACK, stream multiplexing
-18. [ ] CSS Animations & Transitions runtime
+17. [x] HTTP/2 support — HPACK encoder/decoder, frame layer, stream multiplexing (Round 9)
+18. [x] CSS Animations & Transitions runtime — AnimationController, cubic-bezier, keyframes (Round 9)
+
+### Phase 5 — "Modern Web Platform"
+19. [x] CSS calc() evaluation — line_height propagation through calc expressions (Round 9)
+20. [x] CSS @media queries runtime — evaluate_media_condition() wired to style resolver (Round 9)
+21. [x] CSS Custom Properties (variables) — var() resolution with fallbacks (already implemented)
+22. [x] Cookie jar + Set-Cookie — RFC 6265 compliant, document.cookie (already implemented)
+23. [x] localStorage + sessionStorage — Web Storage API with disk persistence (Round 9)
+24. [x] SVG rendering — gradient fill for circles/ellipses, comprehensive shape support (Round 9)
+25. [x] P0-1 centering fix — already implemented in position_block_children (verified Round 9)
+26. [x] P0-4 margin sentinel — MARGIN_AUTO constant, is_margin_auto() helper (Round 9)
 
 ### Architecture Debt
 - Dual DOM (C++ dom::Node unused, SimpleNode is actual DOM) → unify
@@ -101,6 +111,25 @@
 - EventLoop/ThreadPool disconnected → wire up or remove
 
 ## Session Log
+
+### Cycle 933 (Feature Implementation Round 9) — 2026-03-01
+
+- **Theme**: 10 Codex subagents — P0 centering bugs, Phase 4 performance, modern web platform features
+- **Agents**: 10 Codex subagents via `Agent(subagent_type="codex", model="haiku")`
+- **Features Implemented**:
+  - P0-1 centering — verified already fixed in position_block_children (no changes needed)
+  - P0-4 margin sentinel — MARGIN_AUTO constant + is_margin_auto() helper, 8 checks fixed
+  - CSS Animations runtime — AnimationController with cubic-bezier, keyframes, transitions (55a5e05)
+  - HTTP/2 — HPACK encoder/decoder, frame layer, stream multiplexing, flow control (114ec6d, 21f9929)
+  - CSS calc() — line_height parameter propagation through calc expression tree (e77b0b8)
+  - CSS @media queries — evaluate_media_condition() wired to style resolver (72c9ae6)
+  - Cookie jar — verified already fully implemented (RFC 6265, document.cookie)
+  - localStorage + sessionStorage — Web Storage API with JSON disk persistence
+  - SVG gradients — circle/ellipse gradient fill parity with rect/path (ca9a467)
+  - CSS custom properties — verified already fully implemented (var() with fallbacks)
+- **Bug Fixes**: Pre-existing js_web_storage.cpp binding issues, js_window.cpp parsed URL scope
+- **Validation**: 13/13 suites pass, 0 failures
+- **Auto-commits**: 72c9ae6, e77b0b8, ca9a467, 114ec6d, 21f9929, 55a5e05
 
 ### Cycle 932 (Feature Implementation Round 8) — 2026-03-01
 
