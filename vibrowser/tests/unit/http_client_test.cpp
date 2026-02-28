@@ -25449,3 +25449,207 @@ TEST(HttpClient, CookieJarOverwriteCookieByNameAndDomainV149) {
     EXPECT_EQ(h2.find("old_value"), std::string::npos)
         << "Old cookie value should be gone, got: " << h2;
 }
+
+// ===========================================================================
+// Round 150 Tests
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// 1. POST with body — Content-Length must be present and match body size
+// ---------------------------------------------------------------------------
+TEST(HttpClient, RequestSerializePostWithBodyV150) {
+    Request req;
+    req.method = Method::POST;
+    req.host = "api.v150.test";
+    req.port = 443;
+    req.path = "/data/submit";
+
+    std::string body_str = R"({"user":"bob","action":"login"})";
+    req.body.assign(body_str.begin(), body_str.end());
+    req.headers.set("Content-Type", "application/json");
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    // Request line
+    EXPECT_NE(result.find("POST /data/submit HTTP/1.1\r\n"), std::string::npos)
+        << "Request line missing, got: " << result;
+    // Host header — port 443 should be omitted
+    EXPECT_NE(result.find("Host: api.v150.test\r\n"), std::string::npos)
+        << "Host header wrong, got: " << result;
+    // Content-Length must match body size
+    std::string expected_cl = "Content-Length: " + std::to_string(body_str.size()) + "\r\n";
+    EXPECT_NE(result.find(expected_cl), std::string::npos)
+        << "Content-Length missing or wrong, expected: " << expected_cl << " got: " << result;
+    // Body appears after blank line
+    EXPECT_NE(result.find("\r\n\r\n" + body_str), std::string::npos)
+        << "Body not found after header terminator, got: " << result;
+    // Connection: close
+    EXPECT_NE(result.find("Connection: close\r\n"), std::string::npos)
+        << "Connection header missing, got: " << result;
+}
+
+// ---------------------------------------------------------------------------
+// 2. Response parse — Transfer-Encoding: chunked header is recognised
+// ---------------------------------------------------------------------------
+TEST(HttpClient, ResponseParseChunkedTransferEncodingHeaderV150) {
+    std::string raw_str =
+        "HTTP/1.1 200 OK\r\n"
+        "Transfer-Encoding: chunked\r\n"
+        "Content-Length: 0\r\n"
+        "\r\n";
+    std::vector<uint8_t> raw(raw_str.begin(), raw_str.end());
+    auto resp = Response::parse(raw);
+    ASSERT_TRUE(resp.has_value())
+        << "Failed to parse response with Transfer-Encoding: chunked";
+    EXPECT_EQ(resp->status, 200);
+
+    auto te = resp->headers.get("Transfer-Encoding");
+    ASSERT_TRUE(te.has_value())
+        << "Transfer-Encoding header not found in parsed response";
+    EXPECT_EQ(te.value(), "chunked")
+        << "Transfer-Encoding value wrong, got: " << te.value();
+}
+
+// ---------------------------------------------------------------------------
+// 3. ConnectionPool — release then acquire same host returns the fd
+// ---------------------------------------------------------------------------
+TEST(HttpClient, ConnectionPoolReuseReturnedConnectionV150) {
+    ConnectionPool pool;
+
+    int fake_fd = 150;
+    pool.release("reuse.v150.test", 8080, fake_fd);
+
+    // Pool should now hold one connection for that host:port
+    EXPECT_EQ(pool.count("reuse.v150.test", 8080), 1u);
+
+    // Acquiring should return the same fd
+    int acquired = pool.acquire("reuse.v150.test", 8080);
+    EXPECT_EQ(acquired, fake_fd)
+        << "Expected fd " << fake_fd << " but got " << acquired;
+
+    // Pool should now be empty for that host:port
+    EXPECT_EQ(pool.count("reuse.v150.test", 8080), 0u);
+
+    // Acquiring again should return -1 (empty)
+    EXPECT_EQ(pool.acquire("reuse.v150.test", 8080), -1);
+}
+
+// ---------------------------------------------------------------------------
+// 4. CookieJar — Max-Age=0 cookie not returned
+// ---------------------------------------------------------------------------
+TEST(HttpClient, CookieJarExpiredCookieNotReturnedV150) {
+    CookieJar jar;
+
+    // First set a normal cookie so the jar is not trivially empty
+    jar.set_from_header("alive=yes; Path=/", "shop.v150.test");
+
+    // Then set a cookie with Max-Age=0 — treated as immediately expired
+    jar.set_from_header("token=gone; Path=/; Max-Age=0", "shop.v150.test");
+
+    std::string h = jar.get_cookie_header("shop.v150.test", "/", false);
+    // The alive cookie should be present
+    EXPECT_NE(h.find("alive=yes"), std::string::npos)
+        << "Normal cookie should be present, got: " << h;
+    // The expired cookie must NOT be present
+    EXPECT_EQ(h.find("token=gone"), std::string::npos)
+        << "Expired Max-Age=0 cookie should not be returned, got: " << h;
+}
+
+// ---------------------------------------------------------------------------
+// 5. HeaderMap — get() returns empty optional for missing key
+// ---------------------------------------------------------------------------
+TEST(HttpClient, HeaderMapGetReturnsEmptyForMissingKeyV150) {
+    HeaderMap map;
+    map.set("X-Present-V150", "hello");
+
+    auto missing = map.get("nonexistent");
+    EXPECT_FALSE(missing.has_value())
+        << "get() should return empty optional for missing key";
+
+    // Also verify has() returns false
+    EXPECT_FALSE(map.has("nonexistent"))
+        << "has() should return false for missing key";
+
+    // Existing key should still work
+    EXPECT_TRUE(map.has("X-Present-V150"));
+    EXPECT_EQ(map.get("X-Present-V150").value(), "hello");
+}
+
+// ---------------------------------------------------------------------------
+// 6. Request — HEAD method serialization
+// ---------------------------------------------------------------------------
+TEST(HttpClient, RequestSerializeHeadMethodV150) {
+    Request req;
+    req.method = Method::HEAD;
+    req.host = "head.v150.test";
+    req.port = 80;
+    req.path = "/status";
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    // Request line must start with HEAD
+    EXPECT_NE(result.find("HEAD /status HTTP/1.1\r\n"), std::string::npos)
+        << "HEAD request line missing, got: " << result;
+    // Host header — port 80 should be omitted
+    EXPECT_NE(result.find("Host: head.v150.test\r\n"), std::string::npos)
+        << "Host header wrong, got: " << result;
+    // Connection: close
+    EXPECT_NE(result.find("Connection: close\r\n"), std::string::npos)
+        << "Connection header missing, got: " << result;
+    // No body for HEAD
+    auto pos = result.rfind("\r\n\r\n");
+    EXPECT_NE(pos, std::string::npos);
+    EXPECT_EQ(pos + 4, result.size())
+        << "HEAD request should have no body after final CRLF pair";
+}
+
+// ---------------------------------------------------------------------------
+// 7. Response parse — Content-Type with charset parameter
+// ---------------------------------------------------------------------------
+TEST(HttpClient, ResponseParseContentTypeWithCharsetV150) {
+    std::string raw_str =
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Type: text/html; charset=utf-8\r\n"
+        "Content-Length: 6\r\n"
+        "\r\n"
+        "<html>";
+    std::vector<uint8_t> raw(raw_str.begin(), raw_str.end());
+    auto resp = Response::parse(raw);
+    ASSERT_TRUE(resp.has_value())
+        << "Failed to parse response with Content-Type charset";
+    EXPECT_EQ(resp->status, 200);
+
+    auto ct = resp->headers.get("Content-Type");
+    ASSERT_TRUE(ct.has_value()) << "Content-Type header missing";
+    EXPECT_EQ(ct.value(), "text/html; charset=utf-8")
+        << "Content-Type with charset mangled, got: " << ct.value();
+
+    // Body should be the HTML snippet
+    std::string body(resp->body.begin(), resp->body.end());
+    EXPECT_EQ(body, "<html>");
+}
+
+// ---------------------------------------------------------------------------
+// 8. CookieJar — Secure cookie NOT returned for is_secure=false
+// ---------------------------------------------------------------------------
+TEST(HttpClient, CookieJarSecureCookieOnlyOnHTTPSV150) {
+    CookieJar jar;
+    jar.set_from_header("sid=abc123; Secure; Path=/", "secure.v150.test");
+    jar.set_from_header("prefs=dark; Path=/", "secure.v150.test");
+
+    // Insecure request — Secure cookie must be excluded
+    std::string insecure = jar.get_cookie_header("secure.v150.test", "/", false);
+    EXPECT_EQ(insecure.find("sid=abc123"), std::string::npos)
+        << "Secure cookie should NOT be sent on insecure request, got: " << insecure;
+    EXPECT_NE(insecure.find("prefs=dark"), std::string::npos)
+        << "Non-secure cookie should still be present, got: " << insecure;
+
+    // Secure request — both cookies should be present
+    std::string secure = jar.get_cookie_header("secure.v150.test", "/", true);
+    EXPECT_NE(secure.find("sid=abc123"), std::string::npos)
+        << "Secure cookie should be present on HTTPS request, got: " << secure;
+    EXPECT_NE(secure.find("prefs=dark"), std::string::npos)
+        << "Non-secure cookie should also be present on HTTPS request, got: " << secure;
+}

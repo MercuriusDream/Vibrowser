@@ -12249,3 +12249,74 @@ TEST(CORSPolicyTest, CorsV149_8_ACAOEmptyStringDoesNotMatch) {
         cors_allows_response("https://example.com",
                               "https://api.other.com/data", headers, false));
 }
+
+// ---------------------------------------------------------------------------
+// Round 150 — CORS tests (V150)
+// ---------------------------------------------------------------------------
+
+// 1. Same-origin: http://a.com vs http://a.com:80 (explicit default port)
+TEST(CORSPolicyTest, CorsV150_1_SameOriginPortExplicitVsImplicitHTTP) {
+    // http default port is 80; explicit :80 should be same-origin
+    EXPECT_FALSE(is_cross_origin("http://a.com:80", "http://a.com/path"));
+    EXPECT_FALSE(is_cross_origin("http://a.com", "http://a.com:80/path"));
+}
+
+// 2. Cross-origin: different non-default ports on HTTPS
+TEST(CORSPolicyTest, CorsV150_2_CrossOriginDifferentPortsHTTPS) {
+    EXPECT_TRUE(is_cross_origin("https://a.com", "https://a.com:8443/resource"));
+}
+
+// 3. ACAO with multiple comma-separated origins is rejected
+TEST(CORSPolicyTest, CorsV150_3_ACAOMultipleOriginsRejected) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "https://a.com, https://b.com");
+    EXPECT_FALSE(cors_allows_response("https://a.com",
+                                       "https://api.example.com/data", headers, false));
+    EXPECT_FALSE(cors_allows_response("https://b.com",
+                                       "https://api.example.com/data", headers, false));
+}
+
+// 4. ftp:// scheme is NOT enforceable
+TEST(CORSPolicyTest, CorsV150_4_FTPSchemeEnforceability) {
+    EXPECT_FALSE(has_enforceable_document_origin("ftp://ftp.example.com"));
+    EXPECT_FALSE(has_enforceable_document_origin("ftp://ftp.example.com:21"));
+}
+
+// 5. Empty ACAO header rejects all origins
+TEST(CORSPolicyTest, CorsV150_5_EmptyACAOHeaderRejectsAll) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "");
+    EXPECT_FALSE(cors_allows_response("https://app.example.com",
+                                       "https://api.example.com/data", headers, false));
+    EXPECT_FALSE(cors_allows_response("http://localhost",
+                                       "https://api.example.com/data", headers, false));
+}
+
+// 6. Case-insensitive scheme: HTTP://A.COM is not enforceable, so is_cross_origin returns false
+TEST(CORSPolicyTest, CorsV150_6_CaseInsensitiveSchemeOriginMatch) {
+    // Uppercase scheme origins are not enforceable (not serialized HTTP origin)
+    EXPECT_FALSE(has_enforceable_document_origin("HTTP://A.COM"));
+    // When document origin is not enforceable, is_cross_origin returns false
+    EXPECT_FALSE(is_cross_origin("HTTP://A.COM", "http://a.com/path"));
+    // Lowercase version is enforceable
+    EXPECT_TRUE(has_enforceable_document_origin("http://a.com"));
+    // Same origin with both lowercase
+    EXPECT_FALSE(is_cross_origin("http://a.com", "http://a.com/path"));
+}
+
+// 7. file:// scheme is NOT enforceable
+TEST(CORSPolicyTest, CorsV150_7_FileSchemeEnforceability) {
+    EXPECT_FALSE(has_enforceable_document_origin("file:///path/to/file.html"));
+    EXPECT_FALSE(has_enforceable_document_origin("file:///Users/test/page.html"));
+}
+
+// 8. ACAO "null" string does not match real origins
+TEST(CORSPolicyTest, CorsV150_8_ACAONullStringRejectsAll) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "null");
+    // A real HTTPS origin should NOT match ACAO "null"
+    EXPECT_FALSE(cors_allows_response("https://app.example.com",
+                                       "https://api.example.com/data", headers, false));
+    EXPECT_FALSE(cors_allows_response("http://localhost",
+                                       "https://api.example.com/data", headers, false));
+}

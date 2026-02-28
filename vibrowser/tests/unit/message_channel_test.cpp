@@ -2006,3 +2006,55 @@ TEST(MessageChannelTest, MessageChannelV149_2_LargePayloadInHandlerV149) {
     ch.dispatch(msg);
     EXPECT_EQ(observed_size, 4096u);
 }
+
+// ------------------------------------------------------------------
+// Round 150 — MessageChannel tests
+// ------------------------------------------------------------------
+
+TEST(MessageChannelTest, MessageChannelV150_1_UnregisteredTypeDropped) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel ch(std::move(pa));
+
+    bool handler_called = false;
+    ch.on(100, [&](const Message&) {
+        handler_called = true;
+    });
+
+    // Dispatch a message with a type that has NO registered handler
+    Message msg;
+    msg.type = 999;
+    msg.request_id = 0;
+    msg.payload = {0xAA, 0xBB};
+    ch.dispatch(msg);
+
+    // The handler for type 100 should NOT have been called
+    EXPECT_FALSE(handler_called);
+}
+
+TEST(MessageChannelTest, MessageChannelV150_2_SameTypeMultiplePayloads) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel ch(std::move(pa));
+
+    int call_count = 0;
+    std::vector<std::vector<uint8_t>> payloads_seen;
+    ch.on(42, [&](const Message& m) {
+        call_count++;
+        payloads_seen.push_back(m.payload);
+    });
+
+    for (int i = 0; i < 5; ++i) {
+        Message msg;
+        msg.type = 42;
+        msg.request_id = static_cast<uint32_t>(i);
+        msg.payload = {static_cast<uint8_t>(i), static_cast<uint8_t>(i + 10)};
+        ch.dispatch(msg);
+    }
+
+    EXPECT_EQ(call_count, 5);
+    ASSERT_EQ(payloads_seen.size(), 5u);
+    for (int i = 0; i < 5; ++i) {
+        ASSERT_EQ(payloads_seen[i].size(), 2u);
+        EXPECT_EQ(payloads_seen[i][0], static_cast<uint8_t>(i));
+        EXPECT_EQ(payloads_seen[i][1], static_cast<uint8_t>(i + 10));
+    }
+}

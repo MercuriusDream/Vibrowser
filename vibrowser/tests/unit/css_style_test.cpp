@@ -25726,3 +25726,49 @@ TEST(CSSStyleTest, CssV149_4_DisplayBlockDefault) {
     cascade.apply_declaration(style, make_decl("display", "block"), parent);
     EXPECT_EQ(style.display, Display::Block);
 }
+
+TEST(PropertyCascadeTest, ScrollbarWidthAppliedV150) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("scrollbar-width", "thin"), parent);
+    EXPECT_EQ(style.scrollbar_width, 1);
+}
+
+TEST(CSSStyleTest, CssV150_2_DisplayFlexInheritedChildBlock) {
+    PropertyCascade cascade;
+    ComputedStyle parent;
+    ComputedStyle parent_parent;
+
+    // Parent is display: flex
+    cascade.apply_declaration(parent, make_decl("display", "flex"), parent_parent);
+    EXPECT_EQ(parent.display, Display::Flex);
+
+    // Child is display: block (independent of parent)
+    ComputedStyle child;
+    cascade.apply_declaration(child, make_decl("display", "block"), parent);
+    EXPECT_EQ(child.display, Display::Block);
+}
+
+TEST(PropertyCascadeTest, ColorSchemeAppliedV150) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("color-scheme", "dark"), parent);
+    EXPECT_EQ(style.color_scheme, 2);
+}
+
+TEST(CSSStyleTest, CssV150_4_BorderRadiusAllCornersSet) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("border-radius", "10px"), parent);
+    EXPECT_FLOAT_EQ(style.border_radius, 10.0f);
+    EXPECT_FLOAT_EQ(style.border_radius_tl, 10.0f);
+    EXPECT_FLOAT_EQ(style.border_radius_tr, 10.0f);
+    EXPECT_FLOAT_EQ(style.border_radius_bl, 10.0f);
+    EXPECT_FLOAT_EQ(style.border_radius_br, 10.0f);
+}

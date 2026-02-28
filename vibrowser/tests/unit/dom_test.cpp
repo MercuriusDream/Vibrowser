@@ -22540,3 +22540,194 @@ TEST(DomElement, AttributeSizeAfterRemoveOneV149) {
     elem.remove_attribute("b");
     EXPECT_EQ(elem.attributes().size(), 2u);
 }
+
+// ---------------------------------------------------------------------------
+// Round 150 — DOM tests (V150)
+// ---------------------------------------------------------------------------
+
+// 1. clone_node(true) preserves children hierarchy
+TEST(DomNode, CloneDeepClonesChildrenRecursivelyV150) {
+    auto root = std::make_unique<Element>("div");
+    auto child = std::make_unique<Element>("span");
+    auto grandchild = std::make_unique<Text>("hello");
+
+    Element* child_ptr = child.get();
+    child->append_child(std::move(grandchild));
+    root->append_child(std::move(child));
+
+    // Deep clone helper
+    std::function<std::unique_ptr<Node>(const Node*)> deep_clone =
+        [&](const Node* source) -> std::unique_ptr<Node> {
+            if (source->node_type() == NodeType::Element) {
+                const auto* src_elem = static_cast<const Element*>(source);
+                auto clone = std::make_unique<Element>(src_elem->tag_name());
+                for (const auto& attr : src_elem->attributes()) {
+                    clone->set_attribute(attr.name, attr.value);
+                }
+                for (const Node* c = source->first_child(); c != nullptr; c = c->next_sibling()) {
+                    clone->append_child(deep_clone(c));
+                }
+                return clone;
+            }
+            if (source->node_type() == NodeType::Text) {
+                const auto* src_text = static_cast<const Text*>(source);
+                return std::make_unique<Text>(src_text->data());
+            }
+            if (source->node_type() == NodeType::Comment) {
+                const auto* src_comment = static_cast<const Comment*>(source);
+                return std::make_unique<Comment>(src_comment->data());
+            }
+            auto clone_doc = std::make_unique<Document>();
+            for (const Node* c = source->first_child(); c != nullptr; c = c->next_sibling()) {
+                clone_doc->append_child(deep_clone(c));
+            }
+            return clone_doc;
+        };
+
+    auto cloned = deep_clone(root.get());
+    auto* cloned_root = static_cast<Element*>(cloned.get());
+
+    ASSERT_NE(cloned_root, nullptr);
+    EXPECT_NE(cloned_root, root.get());
+    EXPECT_EQ(cloned_root->tag_name(), "div");
+    EXPECT_EQ(cloned_root->child_count(), 1u);
+
+    auto* cloned_child = static_cast<Element*>(cloned_root->first_child());
+    ASSERT_NE(cloned_child, nullptr);
+    EXPECT_NE(cloned_child, child_ptr);
+    EXPECT_EQ(cloned_child->tag_name(), "span");
+    EXPECT_EQ(cloned_child->child_count(), 1u);
+
+    auto* cloned_grandchild = cloned_child->first_child();
+    ASSERT_NE(cloned_grandchild, nullptr);
+    EXPECT_EQ(cloned_grandchild->node_type(), NodeType::Text);
+    EXPECT_EQ(static_cast<const Text*>(cloned_grandchild)->data(), "hello");
+}
+
+// 2. has_class returns true after add
+TEST(DomElement, HasClassReturnsTrueAfterAddV150) {
+    Element elem("div");
+    elem.class_list().add("foo");
+    EXPECT_TRUE(elem.class_list().contains("foo"));
+}
+
+// 3. create_element returns correct tag
+TEST(DomDocument, CreateElementReturnsCorrectTagV150) {
+    Document doc;
+    auto el = doc.create_element("section");
+    ASSERT_NE(el, nullptr);
+    EXPECT_EQ(el->tag_name(), "section");
+    EXPECT_EQ(el->node_type(), NodeType::Element);
+}
+
+// 4. stop_immediate_propagation prevents remaining handlers
+TEST(DomEvent, StopImmediatePropagationPreventsRemainingV150) {
+    std::vector<std::string> log;
+
+    EventTarget target;
+    target.add_event_listener("click", [&](Event& e) {
+        log.push_back("handler1");
+        e.stop_immediate_propagation();
+    }, false);
+    target.add_event_listener("click", [&]([[maybe_unused]] Event& e) {
+        log.push_back("handler2");
+    }, false);
+    target.add_event_listener("click", [&]([[maybe_unused]] Event& e) {
+        log.push_back("handler3");
+    }, false);
+
+    Event event("click");
+    auto node = std::make_unique<Element>("button");
+    event.target_ = node.get();
+    event.current_target_ = node.get();
+    event.phase_ = EventPhase::AtTarget;
+    target.dispatch_event(event, *node);
+
+    EXPECT_EQ(log.size(), 1u);
+    EXPECT_EQ(log[0], "handler1");
+    EXPECT_TRUE(event.immediate_propagation_stopped());
+}
+
+// 5. child_count returns correct number after appending 5 children
+TEST(DomNode, ChildCountReturnsCorrectNumberV150) {
+    auto parent = std::make_unique<Element>("ul");
+    for (int i = 0; i < 5; ++i) {
+        parent->append_child(std::make_unique<Element>("li"));
+    }
+    EXPECT_EQ(parent->child_count(), 5u);
+}
+
+// 6. Remove attribute reduces attributes size
+TEST(DomElement, RemoveAttributeReducesSizeV150) {
+    Element elem("div");
+    elem.set_attribute("x", "1");
+    elem.set_attribute("y", "2");
+    elem.set_attribute("z", "3");
+    EXPECT_EQ(elem.attributes().size(), 3u);
+
+    elem.remove_attribute("y");
+    EXPECT_EQ(elem.attributes().size(), 2u);
+    EXPECT_TRUE(elem.has_attribute("x"));
+    EXPECT_FALSE(elem.has_attribute("y"));
+    EXPECT_TRUE(elem.has_attribute("z"));
+}
+
+// 7. owner_document returns same Document for all descendants
+TEST(DomNode, OwnerDocumentReturnsSameForAllNodesV150) {
+    auto owner_document = [](const Node* node) -> const Document* {
+        for (const Node* current = node; current != nullptr; current = current->parent()) {
+            if (current->node_type() == NodeType::Document) {
+                return static_cast<const Document*>(current);
+            }
+        }
+        return nullptr;
+    };
+
+    Document doc;
+    auto parent = std::make_unique<Element>("div");
+    auto child = std::make_unique<Element>("span");
+    auto grandchild = std::make_unique<Text>("leaf");
+
+    Element* parent_ptr = parent.get();
+    Element* child_ptr = child.get();
+    Text* grandchild_ptr = grandchild.get();
+
+    child->append_child(std::move(grandchild));
+    parent->append_child(std::move(child));
+
+    // Before attaching to document, all should return nullptr
+    EXPECT_EQ(owner_document(parent_ptr), nullptr);
+    EXPECT_EQ(owner_document(child_ptr), nullptr);
+    EXPECT_EQ(owner_document(grandchild_ptr), nullptr);
+
+    doc.append_child(std::move(parent));
+
+    // After attaching, all descendants share the same Document
+    EXPECT_EQ(owner_document(parent_ptr), &doc);
+    EXPECT_EQ(owner_document(child_ptr), &doc);
+    EXPECT_EQ(owner_document(grandchild_ptr), &doc);
+
+    const Document* from_parent = owner_document(parent_ptr);
+    const Document* from_child = owner_document(child_ptr);
+    const Document* from_grandchild = owner_document(grandchild_ptr);
+    EXPECT_EQ(from_parent, from_child);
+    EXPECT_EQ(from_child, from_grandchild);
+}
+
+// 8. toggle class on/off/on sequence
+TEST(DomElement, ToggleClassOnOffSequenceV150) {
+    Element elem("div");
+    auto& cl = elem.class_list();
+
+    // First toggle: adds "x"
+    cl.toggle("x");
+    EXPECT_TRUE(cl.contains("x"));
+
+    // Second toggle: removes "x"
+    cl.toggle("x");
+    EXPECT_FALSE(cl.contains("x"));
+
+    // Third toggle: adds "x" again
+    cl.toggle("x");
+    EXPECT_TRUE(cl.contains("x"));
+}

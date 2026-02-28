@@ -14983,3 +14983,48 @@ TEST(UrlParserTest, UrlV149_4_SchemeIsCaseInsensitive) {
     EXPECT_EQ(result->host, "example.com");
     EXPECT_EQ(result->path, "/test");
 }
+
+// =============================================================================
+// V150 URL Parser Tests
+// =============================================================================
+
+TEST(UrlParserTest, UrlV150_1_MultipleQueryParametersParsed) {
+    // Multiple query parameters should all be captured in the query string
+    auto result = parse("http://example.com/search?a=1&b=2&c=3");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/search");
+    EXPECT_EQ(result->query, "a=1&b=2&c=3");
+    EXPECT_TRUE(result->fragment.empty());
+}
+
+TEST(UrlParserTest, UrlV150_2_EmptyPathNormalizesToSlash) {
+    // http://example.com with no path should normalize path to "/"
+    auto result = parse("http://example.com");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/");
+}
+
+TEST(UrlParserTest, UrlV150_3_UsernamePasswordExtracted) {
+    // URL with user:pass@host should extract username and password
+    auto result = parse("http://myuser:mypass@host.example.com/path");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->username, "myuser");
+    EXPECT_EQ(result->password, "mypass");
+    EXPECT_EQ(result->host, "host.example.com");
+    EXPECT_EQ(result->path, "/path");
+    EXPECT_EQ(result->scheme, "http");
+}
+
+TEST(UrlParserTest, UrlV150_4_TrailingDotInHostname) {
+    // Trailing dot in hostname (FQDN) — parser may strip or preserve it
+    auto result = parse("http://example.com./path");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    // The host may be "example.com." or "example.com" depending on implementation
+    EXPECT_FALSE(result->host.empty());
+    EXPECT_EQ(result->path, "/path");
+}

@@ -1167,3 +1167,42 @@ TEST(IsURLCodePoint, HyphenAndUnderscoreV149) {
     EXPECT_TRUE(is_url_code_point(U'-'));
     EXPECT_TRUE(is_url_code_point(U'_'));
 }
+
+// =============================================================================
+// V150 Percent Encoding Tests
+// =============================================================================
+
+TEST(PercentEncoding, SpaceEncodedAsPercent20V150) {
+    // Space character must be encoded as %20
+    EXPECT_EQ(percent_encode(" "), "%20");
+    EXPECT_EQ(percent_encode("a b c"), "a%20b%20c");
+}
+
+TEST(PercentDecoding, UpperAndLowerHexBothDecodedV150) {
+    // Both %2f (lowercase hex) and %2F (uppercase hex) must decode to '/'
+    EXPECT_EQ(percent_decode("%2f"), "/");
+    EXPECT_EQ(percent_decode("%2F"), "/");
+    // Mixed case in a longer string
+    EXPECT_EQ(percent_decode("path%2fto%2Ffile"), "path/to/file");
+}
+
+TEST(PercentEncoding, SlashNotEncodedInPathV150) {
+    // By default (encode_path_chars=false), '/' should pass through unencoded
+    EXPECT_EQ(percent_encode("/foo/bar"), "/foo/bar");
+    EXPECT_EQ(percent_encode("/a/b/c/d"), "/a/b/c/d");
+}
+
+TEST(IsURLCodePoint, ASCIIAlphaNumericAllTrueV150) {
+    // All lowercase letters are valid URL code points
+    for (char c = 'a'; c <= 'z'; ++c) {
+        EXPECT_TRUE(is_url_code_point(static_cast<char32_t>(c)));
+    }
+    // All uppercase letters are valid URL code points
+    for (char c = 'A'; c <= 'Z'; ++c) {
+        EXPECT_TRUE(is_url_code_point(static_cast<char32_t>(c)));
+    }
+    // All digits are valid URL code points
+    for (char c = '0'; c <= '9'; ++c) {
+        EXPECT_TRUE(is_url_code_point(static_cast<char32_t>(c)));
+    }
+}

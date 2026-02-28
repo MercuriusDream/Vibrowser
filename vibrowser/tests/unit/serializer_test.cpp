@@ -20775,3 +20775,54 @@ TEST(SerializerTest, SerializerV149_3_LargeByteArrayRoundTrip) {
     EXPECT_EQ(result[16384], static_cast<uint8_t>(16384 & 0xFF));
     EXPECT_EQ(result[32767], static_cast<uint8_t>(32767 & 0xFF));
 }
+
+// ------------------------------------------------------------------
+// Round 150 — Serializer tests
+// ------------------------------------------------------------------
+
+TEST(SerializerTest, SerializerV150_1_StringWithNullBytesRoundTrip) {
+    std::string with_nulls("abc\0def\0ghi", 11);
+    ASSERT_EQ(with_nulls.size(), 11u);
+
+    Serializer s;
+    s.write_string(with_nulls);
+
+    Deserializer d(s.data());
+    std::string result = d.read_string();
+    ASSERT_EQ(result.size(), 11u);
+    EXPECT_EQ(result, with_nulls);
+    EXPECT_EQ(result[3], '\0');
+    EXPECT_EQ(result[7], '\0');
+    EXPECT_EQ(result[0], 'a');
+    EXPECT_EQ(result[4], 'd');
+    EXPECT_EQ(result[8], 'g');
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, SerializerV150_2_NestedU32AndStringSequence) {
+    Serializer s;
+    for (uint32_t i = 0; i < 5; ++i) {
+        s.write_u32(i * 1000);
+        s.write_string("item_" + std::to_string(i));
+    }
+
+    Deserializer d(s.data());
+    for (uint32_t i = 0; i < 5; ++i) {
+        EXPECT_EQ(d.read_u32(), i * 1000);
+        EXPECT_EQ(d.read_string(), "item_" + std::to_string(i));
+    }
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, SerializerV150_3_MaxU64RoundTrip) {
+    Serializer s;
+    s.write_u64(UINT64_MAX);
+    s.write_u64(UINT64_MAX - 1);
+    s.write_u64(0);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u64(), UINT64_MAX);
+    EXPECT_EQ(d.read_u64(), UINT64_MAX - 1);
+    EXPECT_EQ(d.read_u64(), 0u);
+    EXPECT_FALSE(d.has_remaining());
+}

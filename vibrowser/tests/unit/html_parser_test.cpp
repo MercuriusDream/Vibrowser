@@ -23782,3 +23782,148 @@ TEST(HtmlParserTest, HtmlV149_8) {
     EXPECT_EQ(dfn->tag_name, "dfn");
     EXPECT_EQ(dfn->text_content(), "Definition term");
 }
+
+TEST(HtmlParserTest, HtmlV150_1) {
+    // ruby with rt annotation
+    auto doc = clever::html::parse("<html><body><ruby>漢<rt>kan</rt></ruby></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* ruby = doc->find_element("ruby");
+    ASSERT_NE(ruby, nullptr);
+    EXPECT_EQ(ruby->tag_name, "ruby");
+
+    auto* rt = doc->find_element("rt");
+    ASSERT_NE(rt, nullptr);
+    EXPECT_EQ(rt->tag_name, "rt");
+    EXPECT_EQ(rt->text_content(), "kan");
+}
+
+TEST(HtmlParserTest, HtmlV150_2) {
+    // map with area elements
+    auto doc = clever::html::parse("<html><body><map name=\"test\"><area shape=\"rect\" href=\"/link\"></map></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* map = doc->find_element("map");
+    ASSERT_NE(map, nullptr);
+    EXPECT_EQ(map->tag_name, "map");
+    bool found_name = false;
+    for (const auto& attr : map->attributes) {
+        if (attr.name == "name") {
+            found_name = true;
+            EXPECT_EQ(attr.value, "test");
+        }
+    }
+    EXPECT_TRUE(found_name) << "name attribute not found on map";
+
+    auto* area = doc->find_element("area");
+    ASSERT_NE(area, nullptr);
+    EXPECT_EQ(area->tag_name, "area");
+}
+
+TEST(HtmlParserTest, HtmlV150_3) {
+    // ins and del elements
+    auto doc = clever::html::parse("<html><body><p><ins>inserted</ins> and <del>deleted</del></p></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* ins = doc->find_element("ins");
+    ASSERT_NE(ins, nullptr);
+    EXPECT_EQ(ins->tag_name, "ins");
+    EXPECT_EQ(ins->text_content(), "inserted");
+
+    auto* del_elem = doc->find_element("del");
+    ASSERT_NE(del_elem, nullptr);
+    EXPECT_EQ(del_elem->tag_name, "del");
+    EXPECT_EQ(del_elem->text_content(), "deleted");
+}
+
+TEST(HtmlParserTest, HtmlV150_4) {
+    // bdo with dir attribute
+    auto doc = clever::html::parse("<html><body><bdo dir=\"ltr\">left-to-right</bdo></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* bdo = doc->find_element("bdo");
+    ASSERT_NE(bdo, nullptr);
+    EXPECT_EQ(bdo->tag_name, "bdo");
+    EXPECT_EQ(bdo->text_content(), "left-to-right");
+    bool found_dir = false;
+    for (const auto& attr : bdo->attributes) {
+        if (attr.name == "dir") {
+            found_dir = true;
+            EXPECT_EQ(attr.value, "ltr");
+        }
+    }
+    EXPECT_TRUE(found_dir) << "dir attribute not found on bdo";
+}
+
+TEST(HtmlParserTest, HtmlV150_5) {
+    // wbr element (void)
+    auto doc = clever::html::parse("<html><body><p>super<wbr>cali<wbr>fragil</p></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* wbr = doc->find_element("wbr");
+    ASSERT_NE(wbr, nullptr);
+    EXPECT_EQ(wbr->tag_name, "wbr");
+    EXPECT_EQ(wbr->children.size(), 0u);
+}
+
+TEST(HtmlParserTest, HtmlV150_6) {
+    // dl/dt/dd definition list
+    auto doc = clever::html::parse("<html><body><dl><dt>Term</dt><dd>Definition</dd></dl></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* dl = doc->find_element("dl");
+    ASSERT_NE(dl, nullptr);
+    EXPECT_EQ(dl->tag_name, "dl");
+
+    auto* dt = doc->find_element("dt");
+    ASSERT_NE(dt, nullptr);
+    EXPECT_EQ(dt->tag_name, "dt");
+    EXPECT_EQ(dt->text_content(), "Term");
+
+    auto* dd = doc->find_element("dd");
+    ASSERT_NE(dd, nullptr);
+    EXPECT_EQ(dd->tag_name, "dd");
+    EXPECT_EQ(dd->text_content(), "Definition");
+}
+
+TEST(HtmlParserTest, HtmlV150_7) {
+    // optgroup with options
+    auto doc = clever::html::parse("<html><body><select><optgroup label=\"Group\"><option>A</option><option>B</option></optgroup></select></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* optgroup = doc->find_element("optgroup");
+    ASSERT_NE(optgroup, nullptr);
+    EXPECT_EQ(optgroup->tag_name, "optgroup");
+    bool found_label = false;
+    for (const auto& attr : optgroup->attributes) {
+        if (attr.name == "label") {
+            found_label = true;
+            EXPECT_EQ(attr.value, "Group");
+        }
+    }
+    EXPECT_TRUE(found_label) << "label attribute not found on optgroup";
+
+    auto* option = doc->find_element("option");
+    ASSERT_NE(option, nullptr);
+    EXPECT_EQ(option->tag_name, "option");
+    EXPECT_EQ(option->text_content(), "A");
+}
+
+TEST(HtmlParserTest, HtmlV150_8) {
+    // figure with figcaption
+    auto doc = clever::html::parse("<html><body><figure><img src=\"photo.jpg\"><figcaption>Caption text</figcaption></figure></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* figure = doc->find_element("figure");
+    ASSERT_NE(figure, nullptr);
+    EXPECT_EQ(figure->tag_name, "figure");
+
+    auto* figcaption = doc->find_element("figcaption");
+    ASSERT_NE(figcaption, nullptr);
+    EXPECT_EQ(figcaption->tag_name, "figcaption");
+    EXPECT_EQ(figcaption->text_content(), "Caption text");
+
+    auto* img = doc->find_element("img");
+    ASSERT_NE(img, nullptr);
+    EXPECT_EQ(img->tag_name, "img");
+}

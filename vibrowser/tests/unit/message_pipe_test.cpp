@@ -1774,3 +1774,62 @@ TEST(MessagePipeTest, MessagePipeV149_3_SendEmptyThenNonEmptyV149) {
     EXPECT_EQ((*second)[0], 0x42);
     EXPECT_EQ((*second)[99], 0x42);
 }
+
+// ------------------------------------------------------------------
+// Round 150 — MessagePipe tests
+// ------------------------------------------------------------------
+
+TEST(MessagePipeTest, MessagePipeV150_1_EmptyMessageSendReceive) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    std::vector<uint8_t> empty;
+    ASSERT_TRUE(a.send(empty));
+
+    auto received = b.receive();
+    ASSERT_TRUE(received.has_value());
+    EXPECT_TRUE(received->empty());
+    EXPECT_EQ(received->size(), 0u);
+}
+
+TEST(MessagePipeTest, MessagePipeV150_2_MultipleSendersToSingleReceiver) {
+    auto [a1, b1] = MessagePipe::create_pair();
+    auto [a2, b2] = MessagePipe::create_pair();
+
+    std::vector<uint8_t> msg1 = {0x01, 0x02, 0x03};
+    std::vector<uint8_t> msg2 = {0x04, 0x05, 0x06};
+    std::vector<uint8_t> msg3 = {0x07, 0x08, 0x09};
+
+    ASSERT_TRUE(a1.send(msg1));
+    ASSERT_TRUE(a1.send(msg2));
+    ASSERT_TRUE(a1.send(msg3));
+
+    auto r1 = b1.receive();
+    auto r2 = b1.receive();
+    auto r3 = b1.receive();
+
+    ASSERT_TRUE(r1.has_value());
+    ASSERT_TRUE(r2.has_value());
+    ASSERT_TRUE(r3.has_value());
+    EXPECT_EQ(*r1, msg1);
+    EXPECT_EQ(*r2, msg2);
+    EXPECT_EQ(*r3, msg3);
+}
+
+TEST(MessagePipeTest, MessagePipeV150_3_LargeMessageFragmentation) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    std::vector<uint8_t> large_msg(32768);
+    for (size_t i = 0; i < large_msg.size(); ++i) {
+        large_msg[i] = static_cast<uint8_t>(i % 251);
+    }
+
+    ASSERT_TRUE(a.send(large_msg));
+
+    auto received = b.receive();
+    ASSERT_TRUE(received.has_value());
+    ASSERT_EQ(received->size(), 32768u);
+    EXPECT_EQ(*received, large_msg);
+    EXPECT_EQ((*received)[0], static_cast<uint8_t>(0));
+    EXPECT_EQ((*received)[250], static_cast<uint8_t>(250));
+    EXPECT_EQ((*received)[251], static_cast<uint8_t>(0));
+}

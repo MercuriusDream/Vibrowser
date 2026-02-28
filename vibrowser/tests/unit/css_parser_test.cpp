@@ -10663,3 +10663,58 @@ TEST_F(CSSStylesheetTest, FlexWrapDeclarationV149) {
     }
     EXPECT_TRUE(found) << "flex-wrap declaration not found";
 }
+
+TEST_F(CSSStylesheetTest, ContainIntrinsicSizeAutoDeclarationV150) {
+    auto ss = parse_stylesheet("div { contain-intrinsic-size: auto 300px; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "contain-intrinsic-size") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+        }
+    }
+    EXPECT_TRUE(found) << "contain-intrinsic-size declaration not found";
+}
+
+TEST_F(CSSStylesheetTest, TextDecorationSkipInkDeclarationV150) {
+    auto ss = parse_stylesheet("p { text-decoration-skip-ink: auto; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "text-decoration-skip-ink") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "auto");
+        }
+    }
+    EXPECT_TRUE(found) << "text-decoration-skip-ink declaration not found";
+}
+
+TEST_F(CSSStylesheetTest, ScrollbarWidthThinDeclarationV150) {
+    auto ss = parse_stylesheet("body { scrollbar-width: thin; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "scrollbar-width") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "thin");
+        }
+    }
+    EXPECT_TRUE(found) << "scrollbar-width declaration not found";
+}
+
+TEST_F(CSSStylesheetTest, ColorSchemeDeclarationV150) {
+    auto ss = parse_stylesheet("html { color-scheme: dark; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "color-scheme") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "dark");
+        }
+    }
+    EXPECT_TRUE(found) << "color-scheme declaration not found";
+}

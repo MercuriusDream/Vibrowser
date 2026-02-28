@@ -27564,3 +27564,223 @@ TEST(LayoutNodeProps, DisplayDefaultBlockV149) {
     LayoutNode n;
     EXPECT_EQ(n.display, DisplayType::Block);
 }
+
+// V150: flex direction row with 3 items
+TEST(LayoutEngineTest, LayoutV150_1) {
+    auto root = make_flex("div");
+    root->flex_direction = 0; // row
+
+    auto c1 = make_block("div");
+    c1->specified_width = 80.0f;
+    c1->specified_height = 40.0f;
+    auto* c1p = c1.get();
+
+    auto c2 = make_block("div");
+    c2->specified_width = 120.0f;
+    c2->specified_height = 40.0f;
+    auto* c2p = c2.get();
+
+    auto c3 = make_block("div");
+    c3->specified_width = 60.0f;
+    c3->specified_height = 40.0f;
+    auto* c3p = c3.get();
+
+    root->append_child(std::move(c1));
+    root->append_child(std::move(c2));
+    root->append_child(std::move(c3));
+
+    LayoutEngine engine;
+    engine.compute(*root, 600.0f, 400.0f);
+
+    EXPECT_FLOAT_EQ(c1p->geometry.x, 0.0f);
+    EXPECT_FLOAT_EQ(c2p->geometry.x, 80.0f);
+    EXPECT_FLOAT_EQ(c3p->geometry.x, 200.0f);
+    EXPECT_FLOAT_EQ(c1p->geometry.width, 80.0f);
+    EXPECT_FLOAT_EQ(c2p->geometry.width, 120.0f);
+    EXPECT_FLOAT_EQ(c3p->geometry.width, 60.0f);
+}
+
+// V150: grid with explicit columns, auto rows
+TEST(GridLayout, GridExplicitColumnsAutoRowsV150) {
+    auto root = make_grid();
+    root->grid_template_columns = "150px 150px";
+    root->specified_width = 300.0f;
+
+    auto c1 = make_block("div");
+    c1->specified_height = 60.0f;
+    auto c2 = make_block("div");
+    c2->specified_height = 60.0f;
+    auto c3 = make_block("div");
+    c3->specified_height = 80.0f;
+
+    root->append_child(std::move(c1));
+    root->append_child(std::move(c2));
+    root->append_child(std::move(c3));
+
+    LayoutEngine engine;
+    engine.compute(*root, 300.0f, 600.0f);
+
+    // First row: c1 at (0,0) and c2 at (150,0)
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.x, 0.0f);
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.x, 150.0f);
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.y, root->children[1]->geometry.y);
+    // c3 wraps to second row
+    EXPECT_GT(root->children[2]->geometry.y, root->children[0]->geometry.y);
+}
+
+// V150: percentage width calculation
+TEST(LayoutEngineTest, LayoutV150_3) {
+    auto root = make_block("div");
+    root->specified_width = 500.0f;
+
+    auto child = make_block("div");
+    child->specified_width = 250.0f; // 50% of parent
+    child->specified_height = 40.0f;
+    auto* cp = child.get();
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 500.0f, 400.0f);
+
+    EXPECT_FLOAT_EQ(cp->geometry.width, 250.0f);
+    EXPECT_FLOAT_EQ(cp->geometry.height, 40.0f);
+}
+
+// V150: nested flex containers — outer flex holds two inner flex items
+TEST(LayoutEngineTest, LayoutV150_4) {
+    auto root = make_flex("div");
+    root->flex_direction = 0; // row
+
+    auto inner1 = make_flex("div");
+    inner1->flex_direction = 0; // row
+    inner1->specified_width = 200.0f;
+    inner1->specified_height = 50.0f;
+    auto* i1p = inner1.get();
+
+    auto inner2 = make_flex("div");
+    inner2->flex_direction = 0; // row
+    inner2->specified_width = 150.0f;
+    inner2->specified_height = 50.0f;
+    auto* i2p = inner2.get();
+
+    root->append_child(std::move(inner1));
+    root->append_child(std::move(inner2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 600.0f, 400.0f);
+
+    EXPECT_FLOAT_EQ(i1p->geometry.width, 200.0f);
+    EXPECT_FLOAT_EQ(i2p->geometry.width, 150.0f);
+    EXPECT_FLOAT_EQ(i1p->geometry.x, 0.0f);
+    EXPECT_FLOAT_EQ(i2p->geometry.x, 200.0f);
+}
+
+// V150: flex order property
+TEST(LayoutEngineTest, LayoutV150_5) {
+    auto root = make_flex("div");
+    root->flex_direction = 0; // row
+
+    auto c1 = make_block("div");
+    c1->specified_width = 60.0f;
+    c1->specified_height = 40.0f;
+    c1->order = 3;
+    auto* c1p = c1.get();
+
+    auto c2 = make_block("div");
+    c2->specified_width = 60.0f;
+    c2->specified_height = 40.0f;
+    c2->order = 1;
+    auto* c2p = c2.get();
+
+    auto c3 = make_block("div");
+    c3->specified_width = 60.0f;
+    c3->specified_height = 40.0f;
+    c3->order = 2;
+    auto* c3p = c3.get();
+
+    root->append_child(std::move(c1));
+    root->append_child(std::move(c2));
+    root->append_child(std::move(c3));
+
+    LayoutEngine engine;
+    engine.compute(*root, 600.0f, 400.0f);
+
+    // c2 (order:1) < c3 (order:2) < c1 (order:3)
+    EXPECT_LT(c2p->geometry.x, c3p->geometry.x);
+    EXPECT_LT(c3p->geometry.x, c1p->geometry.x);
+}
+
+// V150: gap applies between flex items only
+TEST(LayoutEngineTest, LayoutV150_6) {
+    auto root = make_flex("div");
+    root->flex_direction = 0; // row
+    root->column_gap_val = 20.0f;
+
+    auto c1 = make_block("div");
+    c1->specified_width = 100.0f;
+    c1->specified_height = 40.0f;
+    auto* c1p = c1.get();
+
+    auto c2 = make_block("div");
+    c2->specified_width = 100.0f;
+    c2->specified_height = 40.0f;
+    auto* c2p = c2.get();
+
+    auto c3 = make_block("div");
+    c3->specified_width = 100.0f;
+    c3->specified_height = 40.0f;
+    auto* c3p = c3.get();
+
+    root->append_child(std::move(c1));
+    root->append_child(std::move(c2));
+    root->append_child(std::move(c3));
+
+    LayoutEngine engine;
+    engine.compute(*root, 600.0f, 400.0f);
+
+    // c1 at 0, c2 at 100+20=120, c3 at 120+100+20=240
+    EXPECT_FLOAT_EQ(c1p->geometry.x, 0.0f);
+    EXPECT_FLOAT_EQ(c2p->geometry.x, 120.0f);
+    EXPECT_FLOAT_EQ(c3p->geometry.x, 240.0f);
+}
+
+// V150: align-self override on single child
+TEST(LayoutEngineTest, LayoutV150_7) {
+    auto root = make_flex("div");
+    root->flex_direction = 0; // row
+    root->align_items = 0; // flex-start
+    root->specified_height = 200.0f;
+
+    auto child = make_block("div");
+    child->specified_width = 60.0f;
+    child->specified_height = 50.0f;
+    child->align_self = 1; // flex-end
+    auto* cp = child.get();
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 400.0f, 400.0f);
+
+    // flex-end: child y = 200 - 50 = 150
+    EXPECT_FLOAT_EQ(cp->geometry.y, 150.0f);
+}
+
+// V150: display none -> width/height 0
+TEST(LayoutNodeProps, DisplayNoneZeroDimensionsV150) {
+    auto root = make_block("div");
+    root->specified_width = 300.0f;
+
+    auto child = make_block("div");
+    child->display = DisplayType::None;
+    child->mode = LayoutMode::None;
+    child->specified_width = 200.0f;
+    child->specified_height = 100.0f;
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 300.0f, 400.0f);
+
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.width, 0.0f);
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.height, 0.0f);
+    EXPECT_FLOAT_EQ(root->geometry.height, 0.0f);
+}

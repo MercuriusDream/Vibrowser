@@ -36488,3 +36488,132 @@ TEST(JSEngine, JsV149_8) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "1,42");
 }
+
+// V150: Promise.all resolves all
+TEST(JSEngine, JsV150_1) {
+    clever::js::JSEngine engine;
+    clever::js::install_fetch_bindings(engine.context());
+    engine.evaluate(R"JS(
+        var r = '';
+        var p1 = Promise.resolve(10);
+        var p2 = Promise.resolve(20);
+        var p3 = Promise.resolve(30);
+        Promise.all([p1, p2, p3]).then(function(vals) {
+            r = vals.join(',');
+        });
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    clever::js::flush_fetch_promise_jobs(engine.context());
+    auto result = engine.evaluate("r");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "10,20,30");
+}
+
+// V150: Array.flat with depth parameter
+TEST(JSEngine, JsV150_2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var arr = [1, [2, [3, [4]]]];
+        var flat_inf = arr.flat(Infinity);
+        '' + flat_inf.length + ',' + flat_inf[3];
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "4,4");
+}
+
+// V150: String.matchAll returns all matches
+TEST(JSEngine, JsV150_3) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var str = 'cat bat hat';
+        var matches = [...str.matchAll(/[a-z]at/g)];
+        matches.map(function(m) { return m[0]; }).join(',');
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "cat,bat,hat");
+}
+
+// V150: Object.freeze prevents modification
+TEST(JSEngine, JsV150_4) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var obj = {x: 1, y: 2};
+        Object.freeze(obj);
+        obj.x = 99;
+        obj.z = 3;
+        '' + obj.x + ',' + obj.y + ',' + (obj.z === undefined);
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1,2,true");
+}
+
+// V150: Symbol as object key
+TEST(JSEngine, JsV150_5) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var s = Symbol('mykey');
+        var obj = {};
+        obj[s] = 42;
+        '' + obj[s] + ',' + (typeof s);
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "42,symbol");
+}
+
+// V150: generator function yield values
+TEST(JSEngine, JsV150_6) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        function* gen() {
+            yield 'a';
+            yield 'b';
+            yield 'c';
+        }
+        var g = gen();
+        var out = [];
+        out.push(g.next().value);
+        out.push(g.next().value);
+        out.push(g.next().value);
+        var done = g.next().done;
+        out.join(',') + '|' + done;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "a,b,c|true");
+}
+
+// V150: async/await basic flow
+TEST(JSEngine, JsV150_7) {
+    clever::js::JSEngine engine;
+    clever::js::install_fetch_bindings(engine.context());
+    engine.evaluate(R"JS(
+        var output = '';
+        async function run() {
+            var val = await Promise.resolve('hello');
+            output = val + '_done';
+            return output;
+        }
+        run();
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    clever::js::flush_fetch_promise_jobs(engine.context());
+    auto result = engine.evaluate("output");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "hello_done");
+}
+
+// V150: Map.get/set/has/delete operations
+TEST(JSEngine, JsV150_8) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var m = new Map();
+        m.set('a', 1);
+        m.set('b', 2);
+        m.set('c', 3);
+        var has_b = m.has('b');
+        m.delete('b');
+        var has_b_after = m.has('b');
+        '' + m.get('a') + ',' + m.size + ',' + has_b + ',' + has_b_after;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1,2,true,false");
+}
