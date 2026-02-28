@@ -20263,3 +20263,66 @@ TEST(SerializerTest, SerializerV140_3_ByteSequenceFFPattern) {
     }
     EXPECT_FALSE(d.has_remaining());
 }
+
+// ------------------------------------------------------------------
+// V141: F64 special values round-trip (infinity, -infinity, NaN)
+// ------------------------------------------------------------------
+
+TEST(SerializerTest, SerializerV141_1_F64SpecialValuesRoundTrip) {
+    Serializer s;
+    s.write_f64(std::numeric_limits<double>::infinity());
+    s.write_f64(-std::numeric_limits<double>::infinity());
+    s.write_f64(std::numeric_limits<double>::quiet_NaN());
+
+    Deserializer d(s.data());
+
+    double pos_inf = d.read_f64();
+    EXPECT_TRUE(std::isinf(pos_inf));
+    EXPECT_GT(pos_inf, 0.0);
+
+    double neg_inf = d.read_f64();
+    EXPECT_TRUE(std::isinf(neg_inf));
+    EXPECT_LT(neg_inf, 0.0);
+
+    double nan_val = d.read_f64();
+    EXPECT_TRUE(std::isnan(nan_val));
+
+    EXPECT_FALSE(d.has_remaining());
+}
+
+// ------------------------------------------------------------------
+// V141: Mixed types complex round-trip
+// ------------------------------------------------------------------
+
+TEST(SerializerTest, SerializerV141_2_MixedTypesComplexRoundTrip) {
+    Serializer s;
+    s.write_u8(42);
+    s.write_string("hello");
+    s.write_bool(true);
+    s.write_u64(0xDEADBEEFCAFEBABE);
+    s.write_f64(3.14159265358979);
+    s.write_string("world");
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u8(), 42);
+    EXPECT_EQ(d.read_string(), "hello");
+    EXPECT_EQ(d.read_bool(), true);
+    EXPECT_EQ(d.read_u64(), 0xDEADBEEFCAFEBABE);
+    EXPECT_DOUBLE_EQ(d.read_f64(), 3.14159265358979);
+    EXPECT_EQ(d.read_string(), "world");
+    EXPECT_FALSE(d.has_remaining());
+}
+
+// ------------------------------------------------------------------
+// V141: Zero-length bytes round-trip
+// ------------------------------------------------------------------
+
+TEST(SerializerTest, SerializerV141_3_ZeroLengthBytesRoundTrip) {
+    Serializer s;
+    s.write_bytes(nullptr, 0);
+
+    Deserializer d(s.data());
+    auto result = d.read_bytes();
+    EXPECT_TRUE(result.empty());
+    EXPECT_FALSE(d.has_remaining());
+}

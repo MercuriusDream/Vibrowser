@@ -1229,3 +1229,60 @@ TEST(MessagePipeTest, MessagePipeV140_2_ReceiveAfterMultipleSends) {
     ASSERT_TRUE(r3.has_value());
     EXPECT_EQ(*r3, msg3);
 }
+
+// ------------------------------------------------------------------
+// V141: Multiple messages in order (FIFO)
+// ------------------------------------------------------------------
+
+TEST(MessagePipeTest, MessagePipeV141_1_MultipleMessagesInOrder) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    for (uint8_t i = 0; i < 5; ++i) {
+        std::vector<uint8_t> msg = {i, static_cast<uint8_t>(i * 10)};
+        ASSERT_TRUE(a.send(msg));
+    }
+
+    for (uint8_t i = 0; i < 5; ++i) {
+        auto received = b.receive();
+        ASSERT_TRUE(received.has_value());
+        ASSERT_EQ(received->size(), 2u);
+        EXPECT_EQ((*received)[0], i);
+        EXPECT_EQ((*received)[1], static_cast<uint8_t>(i * 10));
+    }
+}
+
+// ------------------------------------------------------------------
+// V141: Empty message round-trip
+// ------------------------------------------------------------------
+
+TEST(MessagePipeTest, MessagePipeV141_2_EmptyMessageRoundTrip) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    std::vector<uint8_t> empty_msg;
+    ASSERT_TRUE(a.send(empty_msg));
+
+    auto received = b.receive();
+    ASSERT_TRUE(received.has_value());
+    EXPECT_TRUE(received->empty());
+}
+
+// ------------------------------------------------------------------
+// V141: Sender closed — receiver gets no more messages
+// ------------------------------------------------------------------
+
+TEST(MessagePipeTest, MessagePipeV141_3_ReceiverClosedBeforeSend) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    // Send a message, then close sender
+    std::vector<uint8_t> msg = {0xAA, 0xBB};
+    ASSERT_TRUE(a.send(msg));
+    a.close();
+    EXPECT_FALSE(a.is_open());
+
+    // Receiver should still get the message that was sent before close
+    auto received = b.receive();
+    ASSERT_TRUE(received.has_value());
+    EXPECT_EQ(received->size(), 2u);
+    EXPECT_EQ((*received)[0], 0xAA);
+    EXPECT_EQ((*received)[1], 0xBB);
+}

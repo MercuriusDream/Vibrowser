@@ -22712,3 +22712,119 @@ TEST(HtmlParserTest, HtmlV140_8) {
     }
     EXPECT_TRUE(has_action);
 }
+
+// === V141 HTML Parser Tests ===
+
+TEST(HtmlParserTest, HtmlV141_1) {
+    // abbr element with title attribute
+    auto doc = clever::html::parse("<html><body><abbr title=\"HyperText Markup Language\">HTML</abbr></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* abbr_el = doc->find_element("abbr");
+    ASSERT_NE(abbr_el, nullptr);
+    EXPECT_EQ(abbr_el->tag_name, "abbr");
+    bool has_title = false;
+    for (const auto& attr : abbr_el->attributes) {
+        if (attr.name == "title" && attr.value == "HyperText Markup Language") has_title = true;
+    }
+    EXPECT_TRUE(has_title);
+}
+
+TEST(HtmlParserTest, HtmlV141_2) {
+    // time element with datetime attribute
+    auto doc = clever::html::parse("<html><body><time datetime=\"2024-01-15\">January 15</time></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* time_el = doc->find_element("time");
+    ASSERT_NE(time_el, nullptr);
+    EXPECT_EQ(time_el->tag_name, "time");
+    bool has_datetime = false;
+    for (const auto& attr : time_el->attributes) {
+        if (attr.name == "datetime" && attr.value == "2024-01-15") has_datetime = true;
+    }
+    EXPECT_TRUE(has_datetime);
+}
+
+TEST(HtmlParserTest, HtmlV141_3) {
+    // details with open attribute
+    auto doc = clever::html::parse("<html><body><details open><summary>Info</summary><p>Details here</p></details></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* details_el = doc->find_element("details");
+    ASSERT_NE(details_el, nullptr);
+    EXPECT_EQ(details_el->tag_name, "details");
+    bool has_open = false;
+    for (const auto& attr : details_el->attributes) {
+        if (attr.name == "open") has_open = true;
+    }
+    EXPECT_TRUE(has_open);
+}
+
+TEST(HtmlParserTest, HtmlV141_4) {
+    // picture with source and img
+    auto doc = clever::html::parse("<html><body><picture><source srcset=\"img.webp\" type=\"image/webp\"><img src=\"img.jpg\"></picture></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* picture_el = doc->find_element("picture");
+    ASSERT_NE(picture_el, nullptr);
+    EXPECT_EQ(picture_el->tag_name, "picture");
+
+    auto* source_el = doc->find_element("source");
+    ASSERT_NE(source_el, nullptr);
+    EXPECT_EQ(source_el->tag_name, "source");
+}
+
+TEST(HtmlParserTest, HtmlV141_5) {
+    // template element
+    auto doc = clever::html::parse("<html><body><template><p>Template content</p></template></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* tmpl_el = doc->find_element("template");
+    ASSERT_NE(tmpl_el, nullptr);
+    EXPECT_EQ(tmpl_el->tag_name, "template");
+}
+
+TEST(HtmlParserTest, HtmlV141_6) {
+    // dialog element with open
+    auto doc = clever::html::parse("<html><body><dialog open>Hello dialog</dialog></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* dialog_el = doc->find_element("dialog");
+    ASSERT_NE(dialog_el, nullptr);
+    EXPECT_EQ(dialog_el->tag_name, "dialog");
+    bool has_open = false;
+    for (const auto& attr : dialog_el->attributes) {
+        if (attr.name == "open") has_open = true;
+    }
+    EXPECT_TRUE(has_open);
+}
+
+TEST(HtmlParserTest, HtmlV141_7) {
+    // data element with value attribute
+    auto doc = clever::html::parse("<html><body><data value=\"42\">Forty-two</data></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* data_el = doc->find_element("data");
+    ASSERT_NE(data_el, nullptr);
+    EXPECT_EQ(data_el->tag_name, "data");
+    bool has_value = false;
+    for (const auto& attr : data_el->attributes) {
+        if (attr.name == "value" && attr.value == "42") has_value = true;
+    }
+    EXPECT_TRUE(has_value);
+}
+
+TEST(HtmlParserTest, HtmlV141_8) {
+    // slot element with name attribute
+    auto doc = clever::html::parse("<html><body><slot name=\"header\">Fallback</slot></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* slot_el = doc->find_element("slot");
+    ASSERT_NE(slot_el, nullptr);
+    EXPECT_EQ(slot_el->tag_name, "slot");
+    bool has_name = false;
+    for (const auto& attr : slot_el->attributes) {
+        if (attr.name == "name" && attr.value == "header") has_name = true;
+    }
+    EXPECT_TRUE(has_name);
+}

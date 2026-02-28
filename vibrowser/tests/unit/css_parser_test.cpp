@@ -10151,3 +10151,61 @@ TEST_F(CSSStylesheetTest, TextShadowDeclarationV140) {
     }
     EXPECT_TRUE(found) << "text-shadow declaration not found";
 }
+
+// === V141 CSS Parser Tests ===
+
+TEST_F(CSSStylesheetTest, ScrollSnapAlignDeclarationV141) {
+    auto ss = parse_stylesheet("div { scroll-snap-align: center; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "scroll-snap-align") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "center");
+        }
+    }
+    EXPECT_TRUE(found) << "scroll-snap-align declaration not found";
+}
+
+TEST_F(CSSStylesheetTest, ContainPropertyDeclarationV141) {
+    auto ss = parse_stylesheet("section { contain: layout style; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "contain") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "layout");
+        }
+    }
+    EXPECT_TRUE(found) << "contain declaration not found";
+}
+
+TEST_F(CSSStylesheetTest, WillChangePropertyDeclarationV141) {
+    auto ss = parse_stylesheet(".animated { will-change: transform, opacity; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "will-change") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "transform");
+        }
+    }
+    EXPECT_TRUE(found) << "will-change declaration not found";
+}
+
+TEST_F(CSSStylesheetTest, TouchActionPropertyDeclarationV141) {
+    auto ss = parse_stylesheet("div { touch-action: pan-x; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "touch-action") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "pan-x");
+        }
+    }
+    EXPECT_TRUE(found) << "touch-action declaration not found";
+}

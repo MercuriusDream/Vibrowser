@@ -25382,3 +25382,42 @@ TEST(CSSStyleTest, CssV140_4_LineHeightNumericV140) {
     cascade.apply_declaration(style, make_decl("line-height", "1.5"), parent);
     EXPECT_FLOAT_EQ(style.line_height_unitless, 1.5f);
 }
+
+// === V141 CSS Style Tests ===
+
+TEST(CSSStyleTest, CssV141_1_DisplayFlexApplied) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("display", "flex"), parent);
+    EXPECT_EQ(style.display, Display::Flex);
+}
+
+TEST(CSSStyleTest, CssV141_2_PositionAbsoluteApplied) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("position", "absolute"), parent);
+    EXPECT_EQ(style.position, Position::Absolute);
+}
+
+TEST(PropertyCascadeTest, OverflowHiddenAppliedV141) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("overflow", "hidden"), parent);
+    EXPECT_EQ(style.overflow_x, Overflow::Hidden);
+    EXPECT_EQ(style.overflow_y, Overflow::Hidden);
+}
+
+TEST(CSSStyleTest, CssV141_4_BorderRadiusApplied) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("border-radius", "8px"), parent);
+    EXPECT_FLOAT_EQ(style.border_radius, 8.0f);
+}

@@ -877,3 +877,48 @@ TEST(IsURLCodePoint, EqualsSignIsCodePointV140) {
     EXPECT_EQ(percent_decode("%3D"), "=");
     EXPECT_EQ(percent_decode("%3d"), "=");
 }
+
+TEST(PercentEncoding, SpaceEncodesTo20V141) {
+    // A single space character must encode to %20
+    EXPECT_EQ(percent_encode(" "), "%20");
+    // Multiple spaces each become %20
+    EXPECT_EQ(percent_encode("  "), "%20%20");
+    // Space within text
+    EXPECT_EQ(percent_encode("a b"), "a%20b");
+}
+
+TEST(PercentDecoding, PlusSignNotDecodedV141) {
+    // %2B decodes to '+'
+    EXPECT_EQ(percent_decode("%2B"), "+");
+    // A literal '+' is NOT a space — it should remain as '+'
+    EXPECT_EQ(percent_decode("+"), "+");
+    // Mixed: %2B and literal + both yield '+'
+    EXPECT_EQ(percent_decode("%2B+"), "++");
+}
+
+TEST(PercentEncoding, AlphanumericNotEncodedV141) {
+    // Lowercase letters pass through unchanged
+    EXPECT_EQ(percent_encode("abcdefghijklmnopqrstuvwxyz"), "abcdefghijklmnopqrstuvwxyz");
+    // Uppercase letters pass through unchanged
+    EXPECT_EQ(percent_encode("ABCDEFGHIJKLMNOPQRSTUVWXYZ"), "ABCDEFGHIJKLMNOPQRSTUVWXYZ");
+    // Digits pass through unchanged
+    EXPECT_EQ(percent_encode("0123456789"), "0123456789");
+    // Mixed alphanumeric
+    EXPECT_EQ(percent_encode("Test123"), "Test123");
+}
+
+TEST(IsURLCodePoint, AsciiLettersAndDigitsAreCodePointsV141) {
+    // All lowercase ASCII letters are valid URL code points
+    EXPECT_TRUE(is_url_code_point(U'a'));
+    EXPECT_TRUE(is_url_code_point(U'z'));
+    // All uppercase ASCII letters are valid URL code points
+    EXPECT_TRUE(is_url_code_point(U'A'));
+    EXPECT_TRUE(is_url_code_point(U'Z'));
+    // All ASCII digits are valid URL code points
+    EXPECT_TRUE(is_url_code_point(U'0'));
+    EXPECT_TRUE(is_url_code_point(U'9'));
+    // Control chars in 0x7F-0x9F range are NOT valid URL code points
+    EXPECT_FALSE(is_url_code_point(0x7F));
+    EXPECT_FALSE(is_url_code_point(0x80));
+    EXPECT_FALSE(is_url_code_point(0x9F));
+}

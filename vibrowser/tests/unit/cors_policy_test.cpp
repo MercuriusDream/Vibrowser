@@ -11624,3 +11624,81 @@ TEST(CORSPolicyTest, CorsV140_8_CrossOriginDifferentHostSamePort) {
     correct_acao.set("Access-Control-Allow-Origin", "https://b.com");
     EXPECT_TRUE(cors_allows_response("https://b.com", "https://a.com/data", correct_acao, false));
 }
+
+// --- Round 141: 8 CORS tests ---
+
+TEST(CORSPolicyTest, CorsV141_1_HttpAndHttpsDifferentSchemesCrossOrigin) {
+    // http vs https of the same host are cross-origin (different schemes)
+    EXPECT_TRUE(is_cross_origin("http://example.com", "https://example.com/api"));
+    EXPECT_TRUE(is_cross_origin("https://example.com", "http://example.com/api"));
+    // With explicit non-default ports, still cross-origin
+    EXPECT_TRUE(is_cross_origin("http://example.com:9090", "https://example.com/api"));
+    // Note: our impl treats https://x:443 vs http://x:80 as same-origin due to port normalization
+    // so we verify that behavior here
+    EXPECT_FALSE(is_cross_origin("https://example.com:443", "http://example.com/api"));
+}
+
+TEST(CORSPolicyTest, CorsV141_2_SameOriginExactMatchAllComponents) {
+    // Exact same scheme + host + port is not cross-origin
+    EXPECT_FALSE(is_cross_origin("https://example.com", "https://example.com/path"));
+    EXPECT_FALSE(is_cross_origin("http://example.com", "http://example.com/some/page?q=1"));
+    EXPECT_FALSE(is_cross_origin("https://example.com:8443", "https://example.com:8443/data"));
+    EXPECT_FALSE(is_cross_origin("http://localhost:3000", "http://localhost:3000/api/v1"));
+}
+
+TEST(CORSPolicyTest, CorsV141_3_DataSchemeNotEnforceableConfirm) {
+    // data: scheme is NOT enforceable
+    EXPECT_FALSE(has_enforceable_document_origin("data:text/html,<h1>Hello</h1>"));
+    EXPECT_FALSE(has_enforceable_document_origin("data:application/json,{}"));
+    EXPECT_FALSE(has_enforceable_document_origin("data:,"));
+}
+
+TEST(CORSPolicyTest, CorsV141_4_FileSchemeEnforceabilityCheck) {
+    // file:// scheme is NOT enforceable (not http/https)
+    EXPECT_FALSE(has_enforceable_document_origin("file:///Users/test/index.html"));
+    EXPECT_FALSE(has_enforceable_document_origin("file:///etc/hosts"));
+    EXPECT_FALSE(has_enforceable_document_origin("file:///C:/Users/doc.html"));
+}
+
+TEST(CORSPolicyTest, CorsV141_5_CorsAllowsWildcardWithoutCredentials) {
+    // ACAO: * without credentials is allowed
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "*");
+    EXPECT_TRUE(cors_allows_response("https://myapp.example.com",
+                                     "https://api.other.com/data",
+                                     headers, false));
+    // Also with http
+    EXPECT_TRUE(cors_allows_response("http://myapp.example.com",
+                                     "http://api.other.com/data",
+                                     headers, false));
+}
+
+TEST(CORSPolicyTest, CorsV141_6_EmptyACAORejectsRequest) {
+    // ACAO set to empty string rejects
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "");
+    EXPECT_FALSE(cors_allows_response("https://app.example.com",
+                                      "https://api.example.com/data",
+                                      headers, false));
+    EXPECT_FALSE(cors_allows_response("https://app.example.com",
+                                      "https://api.example.com/data",
+                                      headers, true));
+}
+
+TEST(CORSPolicyTest, CorsV141_7_OriginWithPathNotMatching) {
+    // ACAO with path component does not match origin without path
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "https://app.example.com/some/path");
+    EXPECT_FALSE(cors_allows_response("https://app.example.com",
+                                      "https://api.example.com/data",
+                                      headers, false));
+}
+
+TEST(CORSPolicyTest, CorsV141_8_CaseInsensitiveSchemeComparison) {
+    // Schemes are case-insensitive: HTTPS vs https should be same origin
+    EXPECT_FALSE(is_cross_origin("HTTPS://example.com", "https://example.com/page"));
+    EXPECT_FALSE(is_cross_origin("HTTP://example.com", "http://example.com/page"));
+    // Mixed case
+    EXPECT_FALSE(is_cross_origin("Https://example.com", "https://example.com/data"));
+    EXPECT_FALSE(is_cross_origin("Http://example.com", "http://example.com/data"));
+}

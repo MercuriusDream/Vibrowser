@@ -1550,3 +1550,48 @@ TEST(MessageChannelTest, MessageChannelV140_3_RequestIdPreservedAcrossChannel) {
     EXPECT_EQ(received->payload[0], 0xAA);
     EXPECT_EQ(received->payload[1], 0xBB);
 }
+
+// ------------------------------------------------------------------
+// V141: Unregistered type drops silently
+// ------------------------------------------------------------------
+
+TEST(MessageChannelTest, MessageChannelV141_1_UnregisteredTypeDropsSilently) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel ch(std::move(pa));
+
+    // No handler registered for type 999
+    Message msg;
+    msg.type = 999;
+    msg.request_id = 0;
+    msg.payload = {0x01, 0x02, 0x03};
+
+    // dispatch should not crash even with no handler
+    ch.dispatch(msg);
+    // If we reach here, the test passes — no crash or exception
+}
+
+// ------------------------------------------------------------------
+// V141: Register handler overwrites previous for same type
+// ------------------------------------------------------------------
+
+TEST(MessageChannelTest, MessageChannelV141_2_RegisterHandlerOverwritesPrevious) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel ch(std::move(pa));
+
+    int first_count = 0;
+    int second_count = 0;
+
+    ch.on(42, [&](const Message&) { ++first_count; });
+    ch.on(42, [&](const Message&) { ++second_count; });
+
+    Message msg;
+    msg.type = 42;
+    msg.request_id = 0;
+    msg.payload = {0xCC};
+
+    ch.dispatch(msg);
+
+    // Only the second (overwriting) handler should have fired
+    EXPECT_EQ(first_count, 0);
+    EXPECT_EQ(second_count, 1);
+}

@@ -26381,3 +26381,129 @@ TEST(LayoutNodeProps, DisplayDefaultBlockV140) {
     EXPECT_EQ(n->display, DisplayType::Block);
     EXPECT_EQ(n->mode, LayoutMode::Block);
 }
+
+// V141: block element with padding all sides, verify geometry.padding values
+TEST(LayoutEngineTest, LayoutV141_1) {
+    auto root = make_block();
+    root->specified_width = 400.0f;
+    root->geometry.padding.top = 10.0f;
+    root->geometry.padding.right = 20.0f;
+    root->geometry.padding.bottom = 30.0f;
+    root->geometry.padding.left = 40.0f;
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(root->geometry.padding.top, 10.0f);
+    EXPECT_FLOAT_EQ(root->geometry.padding.right, 20.0f);
+    EXPECT_FLOAT_EQ(root->geometry.padding.bottom, 30.0f);
+    EXPECT_FLOAT_EQ(root->geometry.padding.left, 40.0f);
+}
+
+// V141: block with margin top/bottom, verify geometry.margin.top/bottom
+TEST(LayoutEngineTest, LayoutV141_2) {
+    auto root = make_block();
+    root->specified_width = 300.0f;
+    root->geometry.margin.top = 15.0f;
+    root->geometry.margin.bottom = 25.0f;
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(root->geometry.margin.top, 15.0f);
+    EXPECT_FLOAT_EQ(root->geometry.margin.bottom, 25.0f);
+}
+
+// V141: nested blocks: parent 400px, child 200px, verify child width
+TEST(LayoutEngineTest, LayoutV141_3) {
+    auto root = make_block();
+    root->specified_width = 400.0f;
+    auto child = make_block();
+    child->specified_width = 200.0f;
+    auto* child_ptr = child.get();
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(child_ptr->geometry.width, 200.0f);
+}
+
+// V141: block with border all sides, verify geometry.border values
+TEST(LayoutEngineTest, LayoutV141_4) {
+    auto root = make_block();
+    root->specified_width = 500.0f;
+    root->geometry.border.top = 2.0f;
+    root->geometry.border.right = 3.0f;
+    root->geometry.border.bottom = 4.0f;
+    root->geometry.border.left = 5.0f;
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(root->geometry.border.top, 2.0f);
+    EXPECT_FLOAT_EQ(root->geometry.border.right, 3.0f);
+    EXPECT_FLOAT_EQ(root->geometry.border.bottom, 4.0f);
+    EXPECT_FLOAT_EQ(root->geometry.border.left, 5.0f);
+}
+
+// V141: flex container with 3 equal children, verify equal widths
+TEST(LayoutEngineTest, LayoutV141_5) {
+    auto root = make_flex();
+    root->specified_width = 300.0f;
+    auto c1 = make_block(); c1->flex_grow = 1.0f;
+    auto c2 = make_block(); c2->flex_grow = 1.0f;
+    auto c3 = make_block(); c3->flex_grow = 1.0f;
+    auto* p1 = c1.get();
+    auto* p2 = c2.get();
+    auto* p3 = c3.get();
+    root->append_child(std::move(c1));
+    root->append_child(std::move(c2));
+    root->append_child(std::move(c3));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(p1->geometry.width, 100.0f);
+    EXPECT_FLOAT_EQ(p2->geometry.width, 100.0f);
+    EXPECT_FLOAT_EQ(p3->geometry.width, 100.0f);
+}
+
+// V141: block with max_height constraint
+TEST(LayoutEngineTest, LayoutV141_6) {
+    auto root = make_block();
+    root->specified_width = 200.0f;
+    root->max_height = 50.0f;
+    // Add children to exceed max_height
+    auto c1 = make_block(); c1->specified_height = 40.0f;
+    auto c2 = make_block(); c2->specified_height = 40.0f;
+    root->append_child(std::move(c1));
+    root->append_child(std::move(c2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_LE(root->geometry.height, 50.0f);
+}
+
+// V141: inline element inside block, verify display type
+TEST(LayoutEngineTest, LayoutV141_7) {
+    auto root = make_block();
+    root->specified_width = 400.0f;
+    auto span = make_inline("span");
+    auto* span_ptr = span.get();
+    root->append_child(std::move(span));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_EQ(span_ptr->display, DisplayType::Inline);
+    EXPECT_EQ(span_ptr->mode, LayoutMode::Inline);
+}
+
+// V141: default bg color is 0x00000000u (transparent)
+TEST(LayoutNodeProps, BackgroundColorDefaultTransparentV141) {
+    using namespace clever::layout;
+    LayoutNode n;
+    EXPECT_EQ(n.background_color, 0x00000000u);
+}

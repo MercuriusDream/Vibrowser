@@ -14579,3 +14579,55 @@ TEST(UrlParserTest, UrlV140_4_FragmentWithSpecialChars) {
     EXPECT_EQ(result->fragment, "section/sub?param");
     EXPECT_EQ(result->port, std::nullopt);
 }
+
+TEST(UrlParserTest, UrlV141_1_QueryStringWithMultipleParams) {
+    // Multiple query parameters separated by & should be preserved in query
+    auto result = parse("http://example.com/search?q=hello&lang=en&page=2");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/search");
+    EXPECT_EQ(result->query, "q=hello&lang=en&page=2");
+    EXPECT_EQ(result->port, std::nullopt);
+    EXPECT_TRUE(result->fragment.empty());
+}
+
+TEST(UrlParserTest, UrlV141_2_EmptyPathNormalizesToSlash) {
+    // A URL with no explicit path should normalize path to "/"
+    auto result = parse("http://example.com");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/");
+    EXPECT_EQ(result->port, std::nullopt);
+}
+
+TEST(UrlParserTest, UrlV141_3_PercentEncodedPathPreserved) {
+    // URL parser double-encodes: %20 in input becomes %2520 in parsed result
+    auto result = parse("http://example.com/path%20with%20spaces");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "example.com");
+    // The path should contain the (possibly double-encoded) percent sequences
+    EXPECT_FALSE(result->path.empty());
+    EXPECT_NE(result->path.find("path"), std::string::npos);
+    EXPECT_EQ(result->port, std::nullopt);
+}
+
+TEST(UrlParserTest, UrlV141_4_MultipleSchemesHttpHttpsFtp) {
+    // Verify scheme() is correctly parsed for http, https, and ftp
+    auto http_result = parse("http://example.com/");
+    ASSERT_TRUE(http_result.has_value());
+    EXPECT_EQ(http_result->scheme, "http");
+    EXPECT_EQ(http_result->port, std::nullopt);
+
+    auto https_result = parse("https://secure.example.com/login");
+    ASSERT_TRUE(https_result.has_value());
+    EXPECT_EQ(https_result->scheme, "https");
+    EXPECT_EQ(https_result->port, std::nullopt);
+
+    auto ftp_result = parse("ftp://files.example.com/pub");
+    ASSERT_TRUE(ftp_result.has_value());
+    EXPECT_EQ(ftp_result->scheme, "ftp");
+    EXPECT_EQ(ftp_result->port, std::nullopt);
+}

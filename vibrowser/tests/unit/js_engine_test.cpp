@@ -35556,3 +35556,112 @@ TEST(JSEngine, JsV140_8) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "3,4,4");
 }
+
+// V141: Array.isArray for arrays and non-arrays
+TEST(JSEngine, JsV141_1) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var a = Array.isArray([1,2,3]);
+        var b = Array.isArray('hello');
+        var c = Array.isArray({length: 3});
+        var d = Array.isArray(undefined);
+        a + ',' + b + ',' + c + ',' + d;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true,false,false,false");
+}
+
+// V141: String.includes/startsWith/endsWith
+TEST(JSEngine, JsV141_2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var s = 'Hello, World!';
+        var a = s.includes('World');
+        var b = s.startsWith('Hello');
+        var c = s.endsWith('World!');
+        var d = s.includes('xyz');
+        a + ',' + b + ',' + c + ',' + d;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true,true,true,false");
+}
+
+// V141: Object.keys/values on simple object
+TEST(JSEngine, JsV141_3) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var obj = {a: 1, b: 2, c: 3};
+        var k = Object.keys(obj).join(',');
+        var v = Object.values(obj).join(',');
+        k + '|' + v;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "a,b,c|1,2,3");
+}
+
+// V141: JSON.stringify and JSON.parse roundtrip
+TEST(JSEngine, JsV141_4) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var obj = {name: 'test', value: 42, arr: [1,2,3]};
+        var json = JSON.stringify(obj);
+        var parsed = JSON.parse(json);
+        parsed.name + ',' + parsed.value + ',' + parsed.arr.length;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "test,42,3");
+}
+
+// V141: template literals with expressions
+TEST(JSEngine, JsV141_5) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var x = 10;
+        var y = 20;
+        var s = `sum is ${x + y} and product is ${x * y}`;
+        s;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "sum is 30 and product is 200");
+}
+
+// V141: destructuring assignment array and object
+TEST(JSEngine, JsV141_6) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var arr = [10, 20, 30];
+        var [a, b, c] = arr;
+        var obj = {x: 'hello', y: 'world'};
+        var {x, y} = obj;
+        a + ',' + b + ',' + c + ',' + x + ',' + y;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "10,20,30,hello,world");
+}
+
+// V141: default function parameters
+TEST(JSEngine, JsV141_7) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        function greet(name, greeting) {
+            if (greeting === undefined) greeting = 'Hello';
+            return greeting + ', ' + name + '!';
+        }
+        greet('Alice') + '|' + greet('Bob', 'Hi');
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "Hello, Alice!|Hi, Bob!");
+}
+
+// V141: arrow function with map
+TEST(JSEngine, JsV141_8) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var nums = [1, 2, 3, 4, 5];
+        var doubled = nums.map(function(n) { return n * 2; });
+        var filtered = doubled.filter(function(n) { return n > 4; });
+        doubled.join(',') + '|' + filtered.join(',');
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "2,4,6,8,10|6,8,10");
+}

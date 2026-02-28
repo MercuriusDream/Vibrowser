@@ -24057,3 +24057,141 @@ TEST(HttpClient, ConnectionPoolEmptyAfterAcquireAllV140) {
     EXPECT_EQ(pool.acquire("v140pool.example.com", 80), -1);
     EXPECT_EQ(pool.count("v140pool.example.com", 80), 0u);
 }
+
+// ===========================================================================
+// Round 141 — Agent 4 — HTTP Client Tests
+// ===========================================================================
+
+// 1. GET request with query params serialization
+TEST(HttpClient, RequestSerializeGetWithQueryParamsV141) {
+    Request req;
+    req.method = Method::GET;
+    req.host = "search.example.com";
+    req.port = 80;
+    req.path = "/search";
+    req.query = "q=test";
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    EXPECT_NE(result.find("GET /search?q=test HTTP/1.1\r\n"), std::string::npos);
+    EXPECT_NE(result.find("Host: search.example.com\r\n"), std::string::npos);
+    EXPECT_NE(result.find("Connection: close\r\n"), std::string::npos);
+    EXPECT_NE(result.find("\r\n\r\n"), std::string::npos);
+}
+
+// 2. Parse 301 redirect with Location header
+TEST(HttpClient, ResponseParse301RedirectWithLocationV141) {
+    std::string raw =
+        "HTTP/1.1 301 Moved Permanently\r\n"
+        "Location: https://new.example.com/page\r\n"
+        "Content-Length: 0\r\n"
+        "\r\n";
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 301);
+    EXPECT_EQ(resp->status_text, "Moved Permanently");
+    EXPECT_EQ(resp->headers.get("location").value(), "https://new.example.com/page");
+    EXPECT_TRUE(resp->body.empty());
+}
+
+// 3. HeaderMap remove and verify gone
+TEST(HttpClient, HeaderMapRemoveAndVerifyGoneV141) {
+    HeaderMap map;
+    map.set("X-Custom", "val");
+    EXPECT_TRUE(map.has("X-Custom"));
+    EXPECT_EQ(map.get("X-Custom").value(), "val");
+
+    map.remove("X-Custom");
+    EXPECT_FALSE(map.has("X-Custom"));
+    EXPECT_FALSE(map.get("X-Custom").has_value());
+}
+
+// 4. CookieJar with expired cookie not returned
+TEST(HttpClient, CookieJarExpiresCookieNotReturnedV141) {
+    CookieJar jar;
+    jar.set_from_header("expired141=gone; Expires=Thu, 01 Jan 2020 00:00:00 GMT", "v141expires.example.com");
+
+    std::string hdr = jar.get_cookie_header("v141expires.example.com", "/", false);
+    EXPECT_EQ(hdr, "")
+        << "Cookie with past Expires date should not be returned";
+}
+
+// 5. POST request with body and Content-Length
+TEST(HttpClient, RequestSerializePostWithBodyV141) {
+    Request req;
+    req.method = Method::POST;
+    req.host = "api.example.com";
+    req.port = 443;
+    req.path = "/submit";
+
+    std::string body_str = "key=value";
+    req.body.assign(body_str.begin(), body_str.end());
+    req.headers.set("Content-Type", "application/x-www-form-urlencoded");
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    EXPECT_NE(result.find("POST /submit HTTP/1.1\r\n"), std::string::npos);
+    EXPECT_NE(result.find("Host: api.example.com\r\n"), std::string::npos);
+    EXPECT_NE(result.find("Content-Length: 9\r\n"), std::string::npos);
+    EXPECT_NE(result.find("\r\n\r\nkey=value"), std::string::npos);
+}
+
+// 6. Response with Transfer-Encoding: chunked header
+TEST(HttpClient, ResponseParseChunkedTransferEncodingHeaderV141) {
+    std::string raw =
+        "HTTP/1.1 200 OK\r\n"
+        "Transfer-Encoding: chunked\r\n"
+        "Content-Type: text/plain\r\n"
+        "Content-Length: 0\r\n"
+        "\r\n";
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 200);
+    EXPECT_EQ(resp->headers.get("transfer-encoding").value(), "chunked");
+    EXPECT_EQ(resp->headers.get("content-type").value(), "text/plain");
+}
+
+// 7. HeaderMap get_all with multiple appended values
+TEST(HttpClient, HeaderMapGetAllMultipleValuesV141) {
+    HeaderMap map;
+    map.append("X-Tag", "alpha");
+    map.append("X-Tag", "beta");
+    map.append("X-Tag", "gamma");
+
+    auto all = map.get_all("X-Tag");
+    EXPECT_EQ(all.size(), 3u);
+
+    // Check all three values are present
+    bool found_alpha = false, found_beta = false, found_gamma = false;
+    for (const auto& v : all) {
+        if (v == "alpha") found_alpha = true;
+        if (v == "beta") found_beta = true;
+        if (v == "gamma") found_gamma = true;
+    }
+    EXPECT_TRUE(found_alpha);
+    EXPECT_TRUE(found_beta);
+    EXPECT_TRUE(found_gamma);
+}
+
+// 8. Secure cookie not sent over HTTP
+TEST(HttpClient, CookieJarSecureCookieNotSentOverHttpV141) {
+    CookieJar jar;
+    jar.set_from_header("token141=secret; Secure", "v141secure.example.com");
+
+    // is_secure=false (HTTP) -- Secure cookie should NOT be sent
+    std::string http_hdr = jar.get_cookie_header("v141secure.example.com", "/", false);
+    EXPECT_TRUE(http_hdr.empty())
+        << "Secure cookie should not be sent over non-secure HTTP connection";
+
+    // is_secure=true (HTTPS) -- Secure cookie SHOULD be sent
+    std::string https_hdr = jar.get_cookie_header("v141secure.example.com", "/", true);
+    EXPECT_NE(https_hdr.find("token141=secret"), std::string::npos);
+}

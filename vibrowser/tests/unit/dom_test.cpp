@@ -21547,3 +21547,119 @@ TEST(DomElement, HasAttributeFalseOnFreshElementV140) {
     EXPECT_FALSE(elem.has_attribute("class"));
     EXPECT_FALSE(elem.has_attribute("style"));
 }
+
+// --- Round 141: 8 DOM tests ---
+
+// 1. Append child to empty node sets first and last child
+TEST(DomNode, AppendChildToEmptyNodeSetsFirstAndLastChildV141) {
+    Element div("div");
+    EXPECT_EQ(div.first_child(), nullptr);
+    EXPECT_EQ(div.last_child(), nullptr);
+
+    auto span = std::make_unique<Element>("span");
+    Element* span_ptr = span.get();
+    div.append_child(std::move(span));
+
+    EXPECT_EQ(div.first_child(), span_ptr);
+    EXPECT_EQ(div.last_child(), span_ptr);
+    EXPECT_EQ(span_ptr->parent(), &div);
+}
+
+// 2. get_attribute returns nullopt for missing attribute
+TEST(DomElement, GetAttributeReturnsNulloptForMissingV141) {
+    Element elem("article");
+    EXPECT_FALSE(elem.get_attribute("nonexistent").has_value());
+    EXPECT_FALSE(elem.get_attribute("data-value").has_value());
+    EXPECT_FALSE(elem.get_attribute("aria-label").has_value());
+    EXPECT_EQ(elem.attributes().size(), 0u);
+}
+
+// 3. Remove last child updates last_child pointer
+TEST(DomNode, RemoveLastChildUpdatesLastChildPointerV141) {
+    Element parent("ul");
+    auto a = std::make_unique<Element>("li");
+    auto b = std::make_unique<Element>("li");
+    auto c = std::make_unique<Element>("li");
+    Element* a_ptr = a.get();
+    Element* b_ptr = b.get();
+    Element* c_ptr = c.get();
+    parent.append_child(std::move(a));
+    parent.append_child(std::move(b));
+    parent.append_child(std::move(c));
+
+    EXPECT_EQ(parent.last_child(), c_ptr);
+    parent.remove_child(*c_ptr);
+    EXPECT_EQ(parent.last_child(), b_ptr);
+    EXPECT_EQ(b_ptr->next_sibling(), nullptr);
+    EXPECT_EQ(parent.first_child(), a_ptr);
+}
+
+// 4. Multiple classes add/remove order
+TEST(DomElement, MultipleClassesAddRemoveOrderV141) {
+    ClassList cl;
+    cl.add("alpha");
+    cl.add("beta");
+    cl.add("gamma");
+    EXPECT_EQ(cl.length(), 3u);
+    EXPECT_TRUE(cl.contains("alpha"));
+    EXPECT_TRUE(cl.contains("beta"));
+    EXPECT_TRUE(cl.contains("gamma"));
+
+    cl.remove("beta");
+    EXPECT_EQ(cl.length(), 2u);
+    EXPECT_TRUE(cl.contains("alpha"));
+    EXPECT_FALSE(cl.contains("beta"));
+    EXPECT_TRUE(cl.contains("gamma"));
+}
+
+// 5. Document create_comment node
+TEST(DomDocument, CreateCommentNodeV141) {
+    Document doc;
+    auto comment = doc.create_comment("test comment");
+    EXPECT_EQ(comment->node_type(), NodeType::Comment);
+    // Comment stores data via data(), not text_content()
+    EXPECT_EQ(comment->data(), "test comment");
+}
+
+// 6. Event stop_propagation flag
+TEST(DomEvent, StopPropagationFlagV141) {
+    Event evt("click", true, false);
+    EXPECT_FALSE(evt.propagation_stopped());
+    evt.stop_propagation();
+    EXPECT_TRUE(evt.propagation_stopped());
+}
+
+// 7. Child count after multiple appends
+TEST(DomNode, ChildCountAfterMultipleAppendsV141) {
+    Element div("div");
+    for (int i = 0; i < 5; ++i) {
+        div.append_child(std::make_unique<Element>("span"));
+    }
+    // Count children by traversing
+    size_t count = 0;
+    for (auto* child = div.first_child(); child != nullptr; child = child->next_sibling()) {
+        ++count;
+    }
+    EXPECT_EQ(count, 5u);
+    EXPECT_EQ(div.child_count(), 5u);
+}
+
+// 8. Tag name preserved after reparenting
+TEST(DomElement, TagNamePreservedAfterReparentV141) {
+    Element parent1("div");
+    Element parent2("section");
+    auto child = std::make_unique<Element>("article");
+    Element* child_ptr = child.get();
+
+    parent1.append_child(std::move(child));
+    EXPECT_EQ(child_ptr->tag_name(), "article");
+    EXPECT_EQ(child_ptr->parent(), &parent1);
+
+    // Reparent: remove from parent1 returns owning unique_ptr
+    auto removed = parent1.remove_child(*child_ptr);
+    EXPECT_EQ(child_ptr->parent(), nullptr);
+
+    parent2.append_child(std::move(removed));
+    EXPECT_EQ(child_ptr->tag_name(), "article");
+    EXPECT_EQ(child_ptr->parent(), &parent2);
+}
