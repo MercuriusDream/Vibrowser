@@ -17766,3 +17766,168 @@ TEST(HtmlParserTest, DetailsAndSummaryElementsV109) {
     ASSERT_NE(p, nullptr);
     EXPECT_EQ(p->text_content(), "Hidden content revealed on click.");
 }
+
+TEST(HtmlParserTest, NestedOrderedListWithStartAttributeV110) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<ol start=\"5\">"
+        "<li>Fifth item</li>"
+        "<li>Sixth item</li>"
+        "<li>Seventh item</li>"
+        "</ol>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* ol = doc->find_element("ol");
+    ASSERT_NE(ol, nullptr);
+    EXPECT_EQ(ol->tag_name, "ol");
+    EXPECT_EQ(get_attr_v63(ol, "start"), "5");
+    auto lis = doc->find_all_elements("li");
+    EXPECT_EQ(lis.size(), 3u);
+    EXPECT_EQ(lis[0]->text_content(), "Fifth item");
+    EXPECT_EQ(lis[1]->text_content(), "Sixth item");
+    EXPECT_EQ(lis[2]->text_content(), "Seventh item");
+}
+
+TEST(HtmlParserTest, TableWithColspanAndRowspanV110) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<table>"
+        "<tr><th colspan=\"2\">Header</th></tr>"
+        "<tr><td rowspan=\"2\">Left</td><td>Right1</td></tr>"
+        "<tr><td>Right2</td></tr>"
+        "</table>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* th = doc->find_element("th");
+    ASSERT_NE(th, nullptr);
+    EXPECT_EQ(get_attr_v63(th, "colspan"), "2");
+    EXPECT_EQ(th->text_content(), "Header");
+    auto tds = doc->find_all_elements("td");
+    EXPECT_EQ(tds.size(), 3u);
+    EXPECT_EQ(get_attr_v63(tds[0], "rowspan"), "2");
+    EXPECT_EQ(tds[0]->text_content(), "Left");
+}
+
+TEST(HtmlParserTest, MultipleDataAttributesV110) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<div data-id=\"42\" data-role=\"main\" data-visible=\"true\">Content</div>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* div = doc->find_element("div");
+    ASSERT_NE(div, nullptr);
+    EXPECT_EQ(get_attr_v63(div, "data-id"), "42");
+    EXPECT_EQ(get_attr_v63(div, "data-role"), "main");
+    EXPECT_EQ(get_attr_v63(div, "data-visible"), "true");
+    EXPECT_EQ(div->text_content(), "Content");
+}
+
+TEST(HtmlParserTest, NestedBlockquoteWithCiteV110) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<blockquote cite=\"https://example.com\">"
+        "<p>To be or not to be.</p>"
+        "</blockquote>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* bq = doc->find_element("blockquote");
+    ASSERT_NE(bq, nullptr);
+    EXPECT_EQ(bq->tag_name, "blockquote");
+    EXPECT_EQ(get_attr_v63(bq, "cite"), "https://example.com");
+    auto* p = doc->find_element("p");
+    ASSERT_NE(p, nullptr);
+    EXPECT_EQ(p->text_content(), "To be or not to be.");
+}
+
+TEST(HtmlParserTest, SelectWithMultipleOptionsV110) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<select name=\"color\">"
+        "<option value=\"r\">Red</option>"
+        "<option value=\"g\" selected>Green</option>"
+        "<option value=\"b\">Blue</option>"
+        "</select>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* sel = doc->find_element("select");
+    ASSERT_NE(sel, nullptr);
+    EXPECT_EQ(get_attr_v63(sel, "name"), "color");
+    auto opts = doc->find_all_elements("option");
+    EXPECT_EQ(opts.size(), 3u);
+    EXPECT_EQ(get_attr_v63(opts[0], "value"), "r");
+    EXPECT_EQ(opts[0]->text_content(), "Red");
+    EXPECT_EQ(get_attr_v63(opts[1], "value"), "g");
+    EXPECT_EQ(opts[1]->text_content(), "Green");
+    EXPECT_EQ(get_attr_v63(opts[2], "value"), "b");
+    EXPECT_EQ(opts[2]->text_content(), "Blue");
+}
+
+TEST(HtmlParserTest, DescriptionListDlDtDdV110) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<dl>"
+        "<dt>Term1</dt><dd>Def1</dd>"
+        "<dt>Term2</dt><dd>Def2</dd>"
+        "</dl>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* dl = doc->find_element("dl");
+    ASSERT_NE(dl, nullptr);
+    EXPECT_EQ(dl->tag_name, "dl");
+    auto dts = doc->find_all_elements("dt");
+    EXPECT_EQ(dts.size(), 2u);
+    EXPECT_EQ(dts[0]->text_content(), "Term1");
+    EXPECT_EQ(dts[1]->text_content(), "Term2");
+    auto dds = doc->find_all_elements("dd");
+    EXPECT_EQ(dds.size(), 2u);
+    EXPECT_EQ(dds[0]->text_content(), "Def1");
+    EXPECT_EQ(dds[1]->text_content(), "Def2");
+}
+
+TEST(HtmlParserTest, IframeWithSrcAndTitleV110) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<iframe src=\"https://example.com/embed\" title=\"Embedded\" width=\"640\" height=\"480\"></iframe>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* iframe = doc->find_element("iframe");
+    ASSERT_NE(iframe, nullptr);
+    EXPECT_EQ(iframe->tag_name, "iframe");
+    EXPECT_EQ(get_attr_v63(iframe, "src"), "https://example.com/embed");
+    EXPECT_EQ(get_attr_v63(iframe, "title"), "Embedded");
+    EXPECT_EQ(get_attr_v63(iframe, "width"), "640");
+    EXPECT_EQ(get_attr_v63(iframe, "height"), "480");
+}
+
+TEST(HtmlParserTest, NestedDivsWithMixedContentV110) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<div id=\"outer\">"
+        "<span>Text A</span>"
+        "<div id=\"inner\">"
+        "<em>Emphasized</em>"
+        "<strong>Bold text</strong>"
+        "</div>"
+        "</div>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto divs = doc->find_all_elements("div");
+    EXPECT_GE(divs.size(), 2u);
+    const clever::html::SimpleNode* outer = nullptr;
+    const clever::html::SimpleNode* inner = nullptr;
+    for (auto* d : divs) {
+        if (get_attr_v63(d, "id") == "outer") outer = d;
+        if (get_attr_v63(d, "id") == "inner") inner = d;
+    }
+    ASSERT_NE(outer, nullptr);
+    ASSERT_NE(inner, nullptr);
+    auto* span = doc->find_element("span");
+    ASSERT_NE(span, nullptr);
+    EXPECT_EQ(span->text_content(), "Text A");
+    auto* em = doc->find_element("em");
+    ASSERT_NE(em, nullptr);
+    EXPECT_EQ(em->text_content(), "Emphasized");
+    auto* strong = doc->find_element("strong");
+    ASSERT_NE(strong, nullptr);
+    EXPECT_EQ(strong->text_content(), "Bold text");
+}

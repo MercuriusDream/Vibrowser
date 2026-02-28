@@ -29406,3 +29406,264 @@ TEST(JsEngineTest, RegexNamedGroupsAndMethodsV109) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "2026|02|28|hi world hi|a,b,c,|true|false|E,u,a,i,o");
 }
+
+// ============================================================================
+// V110 Tests
+// ============================================================================
+
+TEST(JsEngineTest, StringPadAndRepeatMethodsV110) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var r = [];
+        r.push("5".padStart(4, "0"));
+        r.push("hi".padEnd(6, "."));
+        r.push("ab".repeat(3));
+        r.push("  hello  ".trim());
+        r.push("  hello  ".trimStart());
+        r.push("  hello  ".trimEnd());
+        r.push("hello".startsWith("hel"));
+        r.push("hello".endsWith("llo"));
+        r.push("hello".includes("ell"));
+        r.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "0005|hi....|ababab|hello|hello  |  hello|true|true|true");
+}
+
+TEST(JsEngineTest, ArrayFlatAndFindMethodsV110) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var r = [];
+        r.push([1,[2,[3]]].flat().join(","));
+        r.push([1,[2,[3]]].flat(Infinity).join(","));
+        r.push([1,2,3,4,5].find(function(x){return x > 3;}));
+        r.push([1,2,3,4,5].findIndex(function(x){return x > 3;}));
+        r.push([1,2,3].every(function(x){return x > 0;}));
+        r.push([1,2,3].some(function(x){return x > 2;}));
+        r.push(Array.from("abc").join(","));
+        r.push(Array.of(1,2,3).join(","));
+        r.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1,2,3|1,2,3|4|3|true|true|a,b,c|1,2,3");
+}
+
+TEST(JsEngineTest, ClosureScopeChainingV110) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var r = [];
+        function makeCounter(start) {
+            var count = start;
+            return {
+                inc: function() { count++; return count; },
+                dec: function() { count--; return count; },
+                get: function() { return count; }
+            };
+        }
+        var c = makeCounter(10);
+        r.push(c.get());
+        r.push(c.inc());
+        r.push(c.inc());
+        r.push(c.dec());
+
+        function makeAdder(x) {
+            return function(y) { return x + y; };
+        }
+        var add5 = makeAdder(5);
+        var add10 = makeAdder(10);
+        r.push(add5(3));
+        r.push(add10(3));
+
+        var funcs = [];
+        for (let i = 0; i < 3; i++) {
+            funcs.push(function() { return i; });
+        }
+        r.push(funcs[0]() + "," + funcs[1]() + "," + funcs[2]());
+        r.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "10|11|12|11|8|13|0,1,2");
+}
+
+TEST(JsEngineTest, TryCatchFinallyErrorTypesV110) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var r = [];
+        try {
+            null.property;
+        } catch(e) {
+            r.push(e instanceof TypeError);
+        }
+
+        try {
+            eval("var x = {");
+        } catch(e) {
+            r.push(e instanceof SyntaxError);
+        }
+
+        try {
+            undeclaredVar;
+        } catch(e) {
+            r.push(e instanceof ReferenceError);
+        }
+
+        try {
+            decodeURIComponent("%");
+        } catch(e) {
+            r.push(e instanceof URIError);
+        }
+
+        var order = [];
+        try {
+            order.push("try");
+            throw new Error("oops");
+        } catch(e) {
+            order.push("catch:" + e.message);
+        } finally {
+            order.push("finally");
+        }
+        r.push(order.join(","));
+        r.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true|true|true|true|try,catch:oops,finally");
+}
+
+TEST(JsEngineTest, MapAndSetOperationsV110) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var r = [];
+        var m = new Map();
+        m.set("a", 1);
+        m.set("b", 2);
+        m.set("c", 3);
+        r.push(m.size);
+        r.push(m.get("b"));
+        r.push(m.has("c"));
+        m.delete("a");
+        r.push(m.size);
+        var keys = [];
+        m.forEach(function(v, k) { keys.push(k + "=" + v); });
+        r.push(keys.join(","));
+
+        var s = new Set([1, 2, 3, 2, 1]);
+        r.push(s.size);
+        s.add(4);
+        r.push(s.has(3));
+        s.delete(2);
+        var vals = [];
+        s.forEach(function(v) { vals.push(v); });
+        r.push(vals.join(","));
+        r.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "3|2|true|2|b=2,c=3|3|true|1,3,4");
+}
+
+TEST(JsEngineTest, GeneratorFunctionYieldV110) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var r = [];
+        function* range(start, end) {
+            for (var i = start; i < end; i++) {
+                yield i;
+            }
+        }
+        var gen = range(1, 5);
+        r.push(gen.next().value);
+        r.push(gen.next().value);
+        r.push(gen.next().value);
+        r.push(gen.next().value);
+        r.push(gen.next().done);
+
+        function* fib() {
+            var a = 0, b = 1;
+            while (true) {
+                yield a;
+                var tmp = a;
+                a = b;
+                b = tmp + b;
+            }
+        }
+        var f = fib();
+        var fibs = [];
+        for (var i = 0; i < 8; i++) {
+            fibs.push(f.next().value);
+        }
+        r.push(fibs.join(","));
+        r.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1|2|3|4|true|0,1,1,2,3,5,8,13");
+}
+
+TEST(JsEngineTest, SymbolBasicUsageV110) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var r = [];
+        var s1 = Symbol("foo");
+        var s2 = Symbol("foo");
+        r.push(s1 !== s2);
+        r.push(typeof s1);
+        r.push(s1.toString());
+        r.push(s1.description);
+
+        var obj = {};
+        var key = Symbol("myKey");
+        obj[key] = 42;
+        r.push(obj[key]);
+        r.push(Object.keys(obj).length);
+
+        var iter = Symbol.iterator;
+        r.push(typeof iter);
+
+        var s3 = Symbol.for("shared");
+        var s4 = Symbol.for("shared");
+        r.push(s3 === s4);
+        r.push(Symbol.keyFor(s3));
+        r.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true|symbol|Symbol(foo)|foo|42|0|symbol|true|shared");
+}
+
+TEST(JsEngineTest, ProxyGetSetTrapV110) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var r = [];
+        var log = [];
+        var target = { x: 10, y: 20 };
+        var handler = {
+            get: function(obj, prop) {
+                log.push("get:" + prop);
+                return prop in obj ? obj[prop] : -1;
+            },
+            set: function(obj, prop, value) {
+                log.push("set:" + prop + "=" + value);
+                obj[prop] = value;
+                return true;
+            }
+        };
+        var p = new Proxy(target, handler);
+        r.push(p.x);
+        r.push(p.z);
+        p.y = 99;
+        r.push(p.y);
+        r.push(log.join(","));
+
+        var revocable = Proxy.revocable({a: 1}, {
+            get: function(t, p) { return t[p] * 2; }
+        });
+        r.push(revocable.proxy.a);
+        revocable.revoke();
+        try {
+            revocable.proxy.a;
+            r.push("no-error");
+        } catch(e) {
+            r.push("revoked");
+        }
+        r.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "10|-1|99|get:x,get:z,set:y=99,get:y|2|revoked");
+}

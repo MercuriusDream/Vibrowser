@@ -20367,3 +20367,243 @@ TEST(LayoutNodeTest, FlexItemWithOrderAndAlignSelfV109) {
     EXPECT_FLOAT_EQ(container->children[2]->flex_basis, 120.0f);
     EXPECT_EQ(container->children[2]->background_color, 0xFF4444DDu);
 }
+
+// V110-1: Block node with explicit width and height preserves dimensions
+TEST(LayoutEngineTest, BlockExplicitDimensionsV110) {
+    auto node = std::make_unique<LayoutNode>();
+    node->tag_name = "section";
+    node->mode = LayoutMode::Block;
+    node->display = DisplayType::Block;
+    node->specified_width = 320.0f;
+    node->specified_height = 240.0f;
+    node->background_color = 0xFF112233u;
+
+    EXPECT_EQ(node->display, DisplayType::Block);
+    EXPECT_FLOAT_EQ(node->specified_width, 320.0f);
+    EXPECT_FLOAT_EQ(node->specified_height, 240.0f);
+    EXPECT_EQ(node->background_color, 0xFF112233u);
+    EXPECT_EQ(node->tag_name, "section");
+}
+
+// V110-2: Flex container with column direction and children
+TEST(LayoutEngineTest, FlexColumnDirectionChildrenV110) {
+    auto container = make_flex("div");
+    container->flex_direction = 2; // column
+    container->specified_width = 600.0f;
+    container->specified_height = 400.0f;
+
+    auto child1 = make_block("div");
+    child1->specified_width = 200.0f;
+    child1->specified_height = 100.0f;
+    child1->color = 0xFFAABBCCu;
+
+    auto child2 = make_block("div");
+    child2->specified_width = 200.0f;
+    child2->specified_height = 150.0f;
+    child2->color = 0xFFDDEEFFu;
+
+    container->append_child(std::move(child1));
+    container->append_child(std::move(child2));
+
+    EXPECT_EQ(container->display, DisplayType::Flex);
+    EXPECT_EQ(container->flex_direction, 2);
+    EXPECT_EQ(container->children.size(), 2u);
+    EXPECT_FLOAT_EQ(container->children[0]->specified_height, 100.0f);
+    EXPECT_FLOAT_EQ(container->children[1]->specified_height, 150.0f);
+    EXPECT_EQ(container->children[0]->color, 0xFFAABBCCu);
+    EXPECT_EQ(container->children[1]->color, 0xFFDDEEFFu);
+}
+
+// V110-3: Inline node default properties
+TEST(LayoutEngineTest, InlineNodeDefaultPropertiesV110) {
+    auto node = make_inline("span");
+    node->color = 0xFF0000FFu;
+    node->background_color = 0xFFFFFF00u;
+
+    EXPECT_EQ(node->display, DisplayType::Inline);
+    EXPECT_EQ(node->mode, LayoutMode::Inline);
+    EXPECT_EQ(node->tag_name, "span");
+    EXPECT_EQ(node->color, 0xFF0000FFu);
+    EXPECT_EQ(node->background_color, 0xFFFFFF00u);
+    EXPECT_FALSE(node->is_text);
+    EXPECT_FLOAT_EQ(node->font_size, 16.0f);
+}
+
+// V110-4: Nested blocks inherit structure correctly
+TEST(LayoutEngineTest, NestedBlockTreeStructureV110) {
+    auto root = make_block("main");
+    root->specified_width = 1024.0f;
+    root->background_color = 0xFFFFFFFFu;
+
+    auto header = make_block("header");
+    header->specified_width = 1024.0f;
+    header->specified_height = 80.0f;
+    header->background_color = 0xFF333333u;
+
+    auto nav = make_block("nav");
+    nav->specified_width = 1024.0f;
+    nav->specified_height = 40.0f;
+    nav->background_color = 0xFF555555u;
+
+    header->append_child(std::move(nav));
+    root->append_child(std::move(header));
+
+    EXPECT_EQ(root->children.size(), 1u);
+    EXPECT_EQ(root->children[0]->tag_name, "header");
+    EXPECT_EQ(root->children[0]->children.size(), 1u);
+    EXPECT_EQ(root->children[0]->children[0]->tag_name, "nav");
+    EXPECT_EQ(root->children[0]->background_color, 0xFF333333u);
+    EXPECT_EQ(root->children[0]->children[0]->background_color, 0xFF555555u);
+    EXPECT_FLOAT_EQ(root->children[0]->children[0]->specified_height, 40.0f);
+}
+
+// V110-5: Flex container with row direction and gap
+TEST(LayoutEngineTest, FlexRowDirectionWithGapV110) {
+    auto container = make_flex("div");
+    container->flex_direction = 0; // row
+    container->gap = 16.0f;
+    container->specified_width = 500.0f;
+    container->background_color = 0xFFEEEEEEu;
+
+    auto item1 = make_block("div");
+    item1->specified_width = 100.0f;
+    item1->specified_height = 50.0f;
+    item1->flex_grow = 1.0f;
+    item1->background_color = 0xFFFF0000u;
+
+    auto item2 = make_block("div");
+    item2->specified_width = 100.0f;
+    item2->specified_height = 50.0f;
+    item2->flex_grow = 2.0f;
+    item2->background_color = 0xFF00FF00u;
+
+    auto item3 = make_block("div");
+    item3->specified_width = 100.0f;
+    item3->specified_height = 50.0f;
+    item3->flex_grow = 1.0f;
+    item3->background_color = 0xFF0000FFu;
+
+    container->append_child(std::move(item1));
+    container->append_child(std::move(item2));
+    container->append_child(std::move(item3));
+
+    EXPECT_EQ(container->display, DisplayType::Flex);
+    EXPECT_EQ(container->flex_direction, 0);
+    EXPECT_FLOAT_EQ(container->gap, 16.0f);
+    EXPECT_EQ(container->children.size(), 3u);
+    EXPECT_FLOAT_EQ(container->children[0]->flex_grow, 1.0f);
+    EXPECT_FLOAT_EQ(container->children[1]->flex_grow, 2.0f);
+    EXPECT_FLOAT_EQ(container->children[2]->flex_grow, 1.0f);
+    EXPECT_EQ(container->children[0]->background_color, 0xFFFF0000u);
+    EXPECT_EQ(container->children[1]->background_color, 0xFF00FF00u);
+    EXPECT_EQ(container->children[2]->background_color, 0xFF0000FFu);
+}
+
+// V110-6: Display type switching between Block, Inline, and Flex
+TEST(LayoutEngineTest, DisplayTypeSwitchingV110) {
+    auto node = std::make_unique<LayoutNode>();
+    node->tag_name = "div";
+
+    // Default is block
+    EXPECT_EQ(node->display, DisplayType::Block);
+
+    // Switch to inline
+    node->display = DisplayType::Inline;
+    node->mode = LayoutMode::Inline;
+    EXPECT_EQ(node->display, DisplayType::Inline);
+
+    // Switch to flex
+    node->display = DisplayType::Flex;
+    node->mode = LayoutMode::Flex;
+    EXPECT_EQ(node->display, DisplayType::Flex);
+
+    // Switch back to block
+    node->display = DisplayType::Block;
+    node->mode = LayoutMode::Block;
+    EXPECT_EQ(node->display, DisplayType::Block);
+
+    // Verify all DisplayType enum values are distinct
+    EXPECT_NE(DisplayType::Block, DisplayType::Inline);
+    EXPECT_NE(DisplayType::Block, DisplayType::Flex);
+    EXPECT_NE(DisplayType::Inline, DisplayType::Flex);
+}
+
+// V110-7: Block node with ARGB color values and zero-width dimensions
+TEST(LayoutEngineTest, BlockColorVariationsAndZeroWidthV110) {
+    auto node = make_block("aside");
+    node->specified_width = 0.0f;
+    node->specified_height = 0.0f;
+    node->color = 0x80FF8800u;           // semi-transparent orange text
+    node->background_color = 0x00000000u; // fully transparent background
+
+    EXPECT_FLOAT_EQ(node->specified_width, 0.0f);
+    EXPECT_FLOAT_EQ(node->specified_height, 0.0f);
+    EXPECT_EQ(node->color, 0x80FF8800u);
+    EXPECT_EQ(node->background_color, 0x00000000u);
+
+    // Change to opaque white background, pure red text
+    node->background_color = 0xFFFFFFFFu;
+    node->color = 0xFFFF0000u;
+    EXPECT_EQ(node->background_color, 0xFFFFFFFFu);
+    EXPECT_EQ(node->color, 0xFFFF0000u);
+
+    // Verify distinct ARGB channels
+    uint32_t c = node->color;
+    uint8_t a = (c >> 24) & 0xFF;
+    uint8_t r = (c >> 16) & 0xFF;
+    uint8_t g = (c >> 8) & 0xFF;
+    uint8_t b = c & 0xFF;
+    EXPECT_EQ(a, 0xFF);
+    EXPECT_EQ(r, 0xFF);
+    EXPECT_EQ(g, 0x00);
+    EXPECT_EQ(b, 0x00);
+}
+
+// V110-8: Flex container with mixed inline and block children
+TEST(LayoutEngineTest, FlexMixedChildDisplayTypesV110) {
+    auto container = make_flex("div");
+    container->flex_direction = 0; // row
+    container->specified_width = 800.0f;
+    container->specified_height = 200.0f;
+    container->align_items = 2; // center
+
+    auto block_child = make_block("div");
+    block_child->specified_width = 200.0f;
+    block_child->specified_height = 100.0f;
+    block_child->background_color = 0xFFAA0000u;
+
+    auto inline_child = make_inline("span");
+    inline_child->color = 0xFF00AA00u;
+
+    auto text_child = make_text("hello", 14.0f);
+    text_child->color = 0xFF0000AAu;
+
+    auto flex_child = make_flex("div");
+    flex_child->specified_width = 150.0f;
+    flex_child->specified_height = 80.0f;
+    flex_child->flex_direction = 2; // column
+    flex_child->background_color = 0xFFAAAA00u;
+
+    container->append_child(std::move(block_child));
+    container->append_child(std::move(inline_child));
+    container->append_child(std::move(text_child));
+    container->append_child(std::move(flex_child));
+
+    EXPECT_EQ(container->children.size(), 4u);
+    EXPECT_EQ(container->align_items, 2);
+
+    EXPECT_EQ(container->children[0]->display, DisplayType::Block);
+    EXPECT_EQ(container->children[0]->background_color, 0xFFAA0000u);
+
+    EXPECT_EQ(container->children[1]->display, DisplayType::Inline);
+    EXPECT_EQ(container->children[1]->color, 0xFF00AA00u);
+
+    EXPECT_TRUE(container->children[2]->is_text);
+    EXPECT_EQ(container->children[2]->text_content, "hello");
+    EXPECT_FLOAT_EQ(container->children[2]->font_size, 14.0f);
+    EXPECT_EQ(container->children[2]->color, 0xFF0000AAu);
+
+    EXPECT_EQ(container->children[3]->display, DisplayType::Flex);
+    EXPECT_EQ(container->children[3]->flex_direction, 2);
+    EXPECT_EQ(container->children[3]->background_color, 0xFFAAAA00u);
+}

@@ -17020,3 +17020,136 @@ TEST(DomTest, InsertBeforeNullAppendsV109) {
     auto* last_elem = static_cast<Element*>(raw2);
     EXPECT_EQ(last_elem->get_attribute("class"), "last");
 }
+
+// ---------------------------------------------------------------------------
+// V110 Tests
+// ---------------------------------------------------------------------------
+
+// 1. Element with multiple attributes set and retrieved
+TEST(DomTest, ElementMultipleAttributesV110) {
+    Element elem("input");
+    elem.set_attribute("type", "text");
+    elem.set_attribute("name", "username");
+    elem.set_attribute("placeholder", "Enter name");
+    EXPECT_EQ(elem.tag_name(), "input");
+    EXPECT_EQ(elem.get_attribute("type"), "text");
+    EXPECT_EQ(elem.get_attribute("name"), "username");
+    EXPECT_EQ(elem.get_attribute("placeholder"), "Enter name");
+}
+
+// 2. Overwrite attribute replaces old value
+TEST(DomTest, OverwriteAttributeReplacesValueV110) {
+    Element elem("div");
+    elem.set_attribute("data-id", "100");
+    EXPECT_EQ(elem.get_attribute("data-id"), "100");
+    elem.set_attribute("data-id", "999");
+    EXPECT_EQ(elem.get_attribute("data-id"), "999");
+}
+
+// 3. Deep tree traversal: parent, first_child, next_sibling chain
+TEST(DomTest, DeepTreeTraversalV110) {
+    Element root("ul");
+    auto li1 = std::make_unique<Element>("li");
+    auto li2 = std::make_unique<Element>("li");
+    auto li3 = std::make_unique<Element>("li");
+    Node* raw1 = li1.get();
+    Node* raw2 = li2.get();
+    Node* raw3 = li3.get();
+    root.append_child(std::move(li1));
+    root.append_child(std::move(li2));
+    root.append_child(std::move(li3));
+
+    EXPECT_EQ(root.child_count(), 3u);
+    EXPECT_EQ(root.first_child(), raw1);
+    EXPECT_EQ(raw1->next_sibling(), raw2);
+    EXPECT_EQ(raw2->next_sibling(), raw3);
+    EXPECT_EQ(raw3->next_sibling(), nullptr);
+    EXPECT_EQ(raw1->parent(), &root);
+    EXPECT_EQ(raw2->parent(), &root);
+    EXPECT_EQ(raw3->parent(), &root);
+}
+
+// 4. remove_child detaches node and updates sibling pointers
+TEST(DomTest, RemoveChildUpdatesSiblingPointersV110) {
+    Element parent("div");
+    auto a = std::make_unique<Element>("a");
+    auto b = std::make_unique<Element>("b");
+    auto c = std::make_unique<Element>("c");
+    Node* raw_a = a.get();
+    Node* raw_b = b.get();
+    Node* raw_c = c.get();
+    parent.append_child(std::move(a));
+    parent.append_child(std::move(b));
+    parent.append_child(std::move(c));
+
+    EXPECT_EQ(parent.child_count(), 3u);
+    parent.remove_child(*raw_b);
+    EXPECT_EQ(parent.child_count(), 2u);
+    EXPECT_EQ(raw_a->next_sibling(), raw_c);
+    EXPECT_EQ(parent.first_child(), raw_a);
+}
+
+// 5. insert_before places node before specified reference
+TEST(DomTest, InsertBeforePlacesCorrectlyV110) {
+    Element parent("ol");
+    auto first = std::make_unique<Element>("li");
+    auto last = std::make_unique<Element>("li");
+    Node* raw_first = first.get();
+    Node* raw_last = last.get();
+    parent.append_child(std::move(first));
+    parent.append_child(std::move(last));
+
+    auto middle = std::make_unique<Element>("li");
+    middle->set_attribute("id", "mid");
+    Node* raw_mid = middle.get();
+    parent.insert_before(std::move(middle), raw_last);
+
+    EXPECT_EQ(parent.child_count(), 3u);
+    EXPECT_EQ(raw_first->next_sibling(), raw_mid);
+    EXPECT_EQ(raw_mid->next_sibling(), raw_last);
+    auto* mid_elem = static_cast<Element*>(raw_mid);
+    EXPECT_EQ(mid_elem->get_attribute("id"), "mid");
+}
+
+// 6. Comment node stores data and has correct node type
+TEST(DomTest, CommentNodeDataAndTypeV110) {
+    Comment comment("this is a comment");
+    EXPECT_EQ(comment.data(), "this is a comment");
+    EXPECT_EQ(comment.node_type(), NodeType::Comment);
+}
+
+// 7. class_list add multiple classes to element
+TEST(DomTest, ClassListAddMultipleClassesV110) {
+    Element elem("section");
+    elem.class_list().add("container");
+    elem.class_list().add("wide");
+    elem.class_list().add("dark-theme");
+    EXPECT_TRUE(elem.class_list().contains("container"));
+    EXPECT_TRUE(elem.class_list().contains("wide"));
+    EXPECT_TRUE(elem.class_list().contains("dark-theme"));
+    EXPECT_FALSE(elem.class_list().contains("nonexistent"));
+}
+
+// 8. Mixed child types: Element, Text, Comment under one parent
+TEST(DomTest, MixedChildTypesUnderParentV110) {
+    Element parent("div");
+    auto child_elem = std::make_unique<Element>("span");
+    auto child_text = std::make_unique<Text>("hello world");
+    auto child_comment = std::make_unique<Comment>("a note");
+    Node* raw_elem = child_elem.get();
+    Node* raw_text = child_text.get();
+    Node* raw_comment = child_comment.get();
+    parent.append_child(std::move(child_elem));
+    parent.append_child(std::move(child_text));
+    parent.append_child(std::move(child_comment));
+
+    EXPECT_EQ(parent.child_count(), 3u);
+    EXPECT_EQ(parent.first_child(), raw_elem);
+    EXPECT_EQ(raw_elem->next_sibling(), raw_text);
+    EXPECT_EQ(raw_text->next_sibling(), raw_comment);
+    EXPECT_EQ(raw_elem->node_type(), NodeType::Element);
+    EXPECT_EQ(raw_text->node_type(), NodeType::Text);
+    EXPECT_EQ(raw_comment->node_type(), NodeType::Comment);
+    auto* cmt = static_cast<Comment*>(raw_comment);
+    EXPECT_EQ(cmt->data(), "a note");
+}

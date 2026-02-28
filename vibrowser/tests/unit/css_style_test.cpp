@@ -20181,3 +20181,186 @@ TEST(CSSStyleTest, LengthFactoryMethodsAndConversionsV109) {
     Length vh_len = Length::vh(50.0f);
     EXPECT_FLOAT_EQ(vh_len.to_px(), 300.0f); // 50% of 600
 }
+
+// ---------------------------------------------------------------------------
+// V110: ComputedStyle property tests
+// ---------------------------------------------------------------------------
+
+TEST(CSSStyleTest, FontSizeAndLineHeightAreLengthV110) {
+    ComputedStyle s;
+    // Default font_size is 16px
+    EXPECT_FLOAT_EQ(s.font_size.to_px(), 16.0f);
+    EXPECT_EQ(s.font_size.unit, Length::Unit::Px);
+
+    // Default line_height is 1.2 * 16 = 19.2px
+    EXPECT_FLOAT_EQ(s.line_height.to_px(), 1.2f * 16.0f);
+    EXPECT_EQ(s.line_height.unit, Length::Unit::Px);
+
+    // Assign new font_size in em (relative to parent 20px)
+    s.font_size = Length::em(1.5f);
+    EXPECT_FLOAT_EQ(s.font_size.to_px(20.0f), 30.0f);
+
+    // Assign line_height in percent (relative to font size 30px)
+    s.line_height = Length::percent(150.0f);
+    EXPECT_FLOAT_EQ(s.line_height.to_px(30.0f), 45.0f);
+}
+
+TEST(CSSStyleTest, ColorStructFieldsAndFactoriesV110) {
+    ComputedStyle s;
+    // Default color is black
+    EXPECT_EQ(s.color.r, 0);
+    EXPECT_EQ(s.color.g, 0);
+    EXPECT_EQ(s.color.b, 0);
+    EXPECT_EQ(s.color.a, 255);
+
+    // Default background_color is transparent
+    EXPECT_EQ(s.background_color, Color::transparent());
+    EXPECT_EQ(s.background_color.a, 0);
+
+    // Set color to a custom value
+    s.color = {128, 64, 32, 200};
+    EXPECT_EQ(s.color.r, 128);
+    EXPECT_EQ(s.color.g, 64);
+    EXPECT_EQ(s.color.b, 32);
+    EXPECT_EQ(s.color.a, 200);
+
+    // Test Color factories
+    EXPECT_EQ(Color::white(), (Color{255, 255, 255, 255}));
+    EXPECT_EQ(Color::black(), (Color{0, 0, 0, 255}));
+    EXPECT_NE(Color::black(), Color::white());
+}
+
+TEST(CSSStyleTest, BorderEdgesHaveIndependentColorsV110) {
+    ComputedStyle s;
+    // NO border_color — must use border_top.color, border_right.color, etc.
+    s.border_top.color = {255, 0, 0, 255};
+    s.border_right.color = {0, 255, 0, 255};
+    s.border_bottom.color = {0, 0, 255, 255};
+    s.border_left.color = {255, 255, 0, 255};
+
+    EXPECT_EQ(s.border_top.color.r, 255);
+    EXPECT_EQ(s.border_right.color.g, 255);
+    EXPECT_EQ(s.border_bottom.color.b, 255);
+    EXPECT_EQ(s.border_left.color.r, 255);
+    EXPECT_EQ(s.border_left.color.g, 255);
+
+    // Each border edge also has width (Length) and style
+    s.border_top.width = Length::px(2.0f);
+    s.border_top.style = BorderStyle::Solid;
+    EXPECT_FLOAT_EQ(s.border_top.width.to_px(), 2.0f);
+    EXPECT_EQ(s.border_top.style, BorderStyle::Solid);
+
+    // Default border width is zero, style is None
+    EXPECT_TRUE(s.border_bottom.width.is_zero());
+    EXPECT_EQ(s.border_bottom.style, BorderStyle::None);
+}
+
+TEST(CSSStyleTest, OutlineWidthIsLengthV110) {
+    ComputedStyle s;
+    // Default outline_width is zero
+    EXPECT_TRUE(s.outline_width.is_zero());
+    EXPECT_EQ(s.outline_style, BorderStyle::None);
+    EXPECT_EQ(s.outline_color, Color::black());
+
+    // Set outline_width in px
+    s.outline_width = Length::px(3.0f);
+    s.outline_style = BorderStyle::Dashed;
+    s.outline_color = {0, 128, 255, 255};
+
+    EXPECT_FLOAT_EQ(s.outline_width.to_px(), 3.0f);
+    EXPECT_EQ(s.outline_style, BorderStyle::Dashed);
+    EXPECT_EQ(s.outline_color.g, 128);
+
+    // outline_offset is also a Length
+    s.outline_offset = Length::px(5.0f);
+    EXPECT_FLOAT_EQ(s.outline_offset.to_px(), 5.0f);
+}
+
+TEST(CSSStyleTest, VisibilityAndCursorEnumsV110) {
+    ComputedStyle s;
+    // Defaults
+    EXPECT_EQ(s.visibility, Visibility::Visible);
+    EXPECT_EQ(s.cursor, Cursor::Auto);
+
+    // Set to non-default enum values
+    s.visibility = Visibility::Hidden;
+    s.cursor = Cursor::Pointer;
+
+    EXPECT_EQ(s.visibility, Visibility::Hidden);
+    EXPECT_NE(s.visibility, Visibility::Visible);
+    EXPECT_EQ(s.cursor, Cursor::Pointer);
+    EXPECT_NE(s.cursor, Cursor::Auto);
+
+    // Visibility also has Collapse
+    s.visibility = Visibility::Collapse;
+    EXPECT_EQ(s.visibility, Visibility::Collapse);
+}
+
+TEST(CSSStyleTest, PointerEventsAndUserSelectEnumsV110) {
+    ComputedStyle s;
+    // Defaults
+    EXPECT_EQ(s.pointer_events, PointerEvents::Auto);
+    EXPECT_EQ(s.user_select, UserSelect::Auto);
+
+    // Set to None
+    s.pointer_events = PointerEvents::None;
+    s.user_select = UserSelect::None;
+
+    EXPECT_EQ(s.pointer_events, PointerEvents::None);
+    EXPECT_EQ(s.user_select, UserSelect::None);
+
+    // UserSelect also has Text and All
+    s.user_select = UserSelect::Text;
+    EXPECT_EQ(s.user_select, UserSelect::Text);
+    s.user_select = UserSelect::All;
+    EXPECT_EQ(s.user_select, UserSelect::All);
+}
+
+TEST(CSSStyleTest, WordSpacingAndLetterSpacingAreLengthV110) {
+    ComputedStyle s;
+    // Defaults are zero Length (NOT optional — no has_value())
+    EXPECT_TRUE(s.word_spacing.is_zero());
+    EXPECT_TRUE(s.letter_spacing.is_zero());
+
+    // Set word_spacing to 4px
+    s.word_spacing = Length::px(4.0f);
+    EXPECT_FLOAT_EQ(s.word_spacing.to_px(), 4.0f);
+    EXPECT_FALSE(s.word_spacing.is_zero());
+
+    // Set letter_spacing to 0.5em; to_px needs font_size as parent_value
+    s.letter_spacing = Length::em(0.5f);
+    float font_size = 16.0f;
+    EXPECT_FLOAT_EQ(s.letter_spacing.to_px(font_size), 8.0f);
+    EXPECT_EQ(s.letter_spacing.unit, Length::Unit::Em);
+
+    // Zero letter_spacing
+    s.letter_spacing = Length::zero();
+    EXPECT_TRUE(s.letter_spacing.is_zero());
+}
+
+TEST(CSSStyleTest, VerticalAlignAndWhiteSpaceEnumsV110) {
+    ComputedStyle s;
+    // Defaults
+    EXPECT_EQ(s.vertical_align, VerticalAlign::Baseline);
+    EXPECT_EQ(s.white_space, WhiteSpace::Normal);
+
+    // Set vertical_align to Middle
+    s.vertical_align = VerticalAlign::Middle;
+    EXPECT_EQ(s.vertical_align, VerticalAlign::Middle);
+
+    // Set white_space to NoWrap
+    s.white_space = WhiteSpace::NoWrap;
+    EXPECT_EQ(s.white_space, WhiteSpace::NoWrap);
+
+    // Other VerticalAlign values
+    s.vertical_align = VerticalAlign::Top;
+    EXPECT_EQ(s.vertical_align, VerticalAlign::Top);
+    s.vertical_align = VerticalAlign::Bottom;
+    EXPECT_EQ(s.vertical_align, VerticalAlign::Bottom);
+
+    // Other WhiteSpace values
+    s.white_space = WhiteSpace::Pre;
+    EXPECT_EQ(s.white_space, WhiteSpace::Pre);
+    s.white_space = WhiteSpace::PreWrap;
+    EXPECT_EQ(s.white_space, WhiteSpace::PreWrap);
+}

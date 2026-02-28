@@ -12173,3 +12173,78 @@ TEST(UrlParserTest, HighPortNumberWithDeepPathV109) {
     EXPECT_TRUE(result->username.empty());
     EXPECT_TRUE(result->password.empty());
 }
+
+// =============================================================================
+// V110 Tests
+// =============================================================================
+
+TEST(UrlParserTest, HttpDefaultPortOmittedV110) {
+    auto result = parse("http://example.com:80/index.html");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->port, std::nullopt);
+    EXPECT_EQ(result->path, "/index.html");
+}
+
+TEST(UrlParserTest, HttpsDefaultPortOmittedV110) {
+    auto result = parse("https://secure.example.com:443/login");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "secure.example.com");
+    EXPECT_EQ(result->port, std::nullopt);
+    EXPECT_EQ(result->path, "/login");
+}
+
+TEST(UrlParserTest, DoubleEncodesPercentSequencesV110) {
+    auto result = parse("https://example.com/hello%20world");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->path, "/hello%2520world");
+}
+
+TEST(UrlParserTest, SerializeRoundTripWithAllFieldsV110) {
+    auto result = parse("https://user:pass@api.example.com:9090/v1/data?format=json#results");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->username, "user");
+    EXPECT_EQ(result->password, "pass");
+    EXPECT_EQ(result->host, "api.example.com");
+    EXPECT_EQ(result->port, 9090);
+    EXPECT_EQ(result->path, "/v1/data");
+    EXPECT_EQ(result->query, "format=json");
+    EXPECT_EQ(result->fragment, "results");
+    std::string serialized = result->serialize();
+    EXPECT_FALSE(serialized.empty());
+}
+
+TEST(UrlParserTest, UsernameOnlyNoPasswordV110) {
+    auto result = parse("https://admin@dashboard.example.com/settings");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->username, "admin");
+    EXPECT_TRUE(result->password.empty());
+    EXPECT_EQ(result->host, "dashboard.example.com");
+    EXPECT_EQ(result->path, "/settings");
+}
+
+TEST(UrlParserTest, SerializePreservesNonDefaultPortV110) {
+    auto result = parse("http://localhost:3000/api/health");
+    ASSERT_TRUE(result.has_value());
+    std::string serialized = result->serialize();
+    EXPECT_NE(serialized.find(":3000"), std::string::npos);
+    EXPECT_NE(serialized.find("localhost"), std::string::npos);
+}
+
+TEST(UrlParserTest, EmptyPathWithQueryAndFragmentV110) {
+    auto result = parse("https://example.com?key=value#section");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->query, "key=value");
+    EXPECT_EQ(result->fragment, "section");
+}
+
+TEST(UrlParserTest, MultiplePercentEncodedSegmentsV110) {
+    auto result = parse("https://example.com/a%20b/c%20d");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->path, "/a%2520b/c%2520d");
+}
