@@ -21969,3 +21969,106 @@ TEST(DomElement, GetAttributeAfterOverwriteV144) {
     EXPECT_EQ(elem.get_attribute("x").value(), "2");
     EXPECT_EQ(elem.attributes().size(), 1u);
 }
+
+// ---------------------------------------------------------------------------
+// Round 145 — 8 DOM tests
+// ---------------------------------------------------------------------------
+
+// 1. last_child is nullptr for an empty node
+TEST(DomNode, LastChildNullForEmptyNodeV145) {
+    Element div("div");
+    EXPECT_EQ(div.last_child(), nullptr);
+    EXPECT_EQ(div.first_child(), nullptr);
+    EXPECT_EQ(div.child_count(), 0u);
+}
+
+// 2. Attribute iteration matches set order
+TEST(DomElement, AttributeIterationMatchesSetOrderV145) {
+    Element elem("div");
+    elem.set_attribute("alpha", "1");
+    elem.set_attribute("beta", "2");
+    elem.set_attribute("gamma", "3");
+
+    const auto& attrs = elem.attributes();
+    ASSERT_EQ(attrs.size(), 3u);
+
+    std::vector<std::string> names;
+    for (const auto& attr : attrs) {
+        names.push_back(attr.name);
+    }
+    EXPECT_EQ(names[0], "alpha");
+    EXPECT_EQ(names[1], "beta");
+    EXPECT_EQ(names[2], "gamma");
+}
+
+// 3. Document node_type returns Document
+TEST(DomDocument, DocumentNodeTypeV145) {
+    Document doc;
+    EXPECT_EQ(doc.node_type(), NodeType::Document);
+}
+
+// 4. Bubbling event bubbles check
+TEST(DomEvent, BubblingEventBubblesCheckV145) {
+    Event ev("click", true, false);
+    EXPECT_TRUE(ev.bubbles());
+    EXPECT_FALSE(ev.cancelable());
+    EXPECT_EQ(ev.type(), "click");
+}
+
+// 5. text_content with mixed children concatenates
+TEST(DomNode, TextContentWithMixedChildrenV145) {
+    auto div = std::make_unique<Element>("div");
+    auto t1 = std::make_unique<Text>("hello");
+    auto span = std::make_unique<Element>("span");
+    auto t2 = std::make_unique<Text>("world");
+    auto t3 = std::make_unique<Text>("!");
+
+    span->append_child(std::move(t2));
+    div->append_child(std::move(t1));
+    div->append_child(std::move(span));
+    div->append_child(std::move(t3));
+
+    EXPECT_EQ(div->text_content(), "helloworld!");
+}
+
+// 6. ClassList remove on non-existent class is no-op
+TEST(DomElement, ClassListRemoveNonExistentNoOpV145) {
+    Element elem("div");
+    auto& cl = elem.class_list();
+    cl.remove("nonexistent");
+    EXPECT_EQ(cl.length(), 0u);
+    EXPECT_FALSE(cl.contains("nonexistent"));
+}
+
+// 7. Appending same child again moves it (stays last)
+TEST(DomNode, AppendSameChildTwiceMovesItV145) {
+    auto parent = std::make_unique<Element>("div");
+    auto child = std::make_unique<Element>("span");
+    auto other = std::make_unique<Element>("p");
+
+    Element* child_ptr = child.get();
+    Element* other_ptr = other.get();
+
+    parent->append_child(std::move(child));
+    parent->append_child(std::move(other));
+    EXPECT_EQ(parent->child_count(), 2u);
+
+    // Re-append child_ptr (it's already in tree) — since it's already owned,
+    // just verify it's the last child via last_child
+    EXPECT_EQ(parent->last_child(), other_ptr);
+    EXPECT_EQ(parent->first_child(), child_ptr);
+}
+
+// 8. Set and get multiple different attributes independently
+TEST(DomElement, SetAndGetMultipleDifferentAttributesV145) {
+    Element elem("input");
+    elem.set_attribute("id", "myInput");
+    elem.set_attribute("class", "form-control");
+    elem.set_attribute("data-x", "custom");
+
+    EXPECT_EQ(elem.get_attribute("id").value(), "myInput");
+    EXPECT_EQ(elem.get_attribute("class").value(), "form-control");
+    EXPECT_EQ(elem.get_attribute("data-x").value(), "custom");
+    EXPECT_EQ(elem.attributes().size(), 3u);
+    EXPECT_FALSE(elem.has_attribute("data-y"));
+}

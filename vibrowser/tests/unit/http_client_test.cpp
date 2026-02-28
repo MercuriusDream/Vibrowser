@@ -24638,3 +24638,144 @@ TEST(HttpClient, CookieJarSameSiteLaxAttributeV144) {
     EXPECT_NE(header.find("sess144=lax-val"), std::string::npos)
         << "Cookie with SameSite=Lax should be stored and returned, got: " << header;
 }
+
+// ===========================================================================
+// Round 145 — 8 tests
+// ===========================================================================
+
+// 1. HTTPS URL — Host header omits default port 443
+TEST(HttpClient, RequestSerializeHostHeaderForHttpsV145) {
+    Request req;
+    req.method = Method::GET;
+    req.host = "v145secure.example.com";
+    req.port = 443;
+    req.path = "/api/data";
+
+    auto bytes = req.serialize();
+    std::string raw(bytes.begin(), bytes.end());
+
+    EXPECT_NE(raw.find("GET /api/data HTTP/1.1\r\n"), std::string::npos);
+    // Port 443 should be omitted from Host header
+    EXPECT_NE(raw.find("Host: v145secure.example.com\r\n"), std::string::npos);
+    EXPECT_EQ(raw.find("Host: v145secure.example.com:443"), std::string::npos)
+        << "Port 443 should be omitted from Host header, got: " << raw;
+}
+
+// 2. Parse 403 Forbidden response
+TEST(HttpClient, ResponseParse403ForbiddenV145) {
+    std::string raw =
+        "HTTP/1.1 403 Forbidden\r\n"
+        "Content-Length: 9\r\n"
+        "\r\n"
+        "forbidden";
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 403);
+    EXPECT_EQ(resp->status_text, "Forbidden");
+    EXPECT_EQ(resp->body_as_string(), "forbidden");
+}
+
+// 3. HeaderMap: set 3 headers, remove 2, verify 1 remains
+TEST(HttpClient, HeaderMapMultipleRemovesV145) {
+    HeaderMap map;
+    map.set("X-First145", "one");
+    map.set("X-Second145", "two");
+    map.set("X-Third145", "three");
+
+    EXPECT_TRUE(map.has("X-First145"));
+    EXPECT_TRUE(map.has("X-Second145"));
+    EXPECT_TRUE(map.has("X-Third145"));
+
+    map.remove("X-First145");
+    map.remove("X-Second145");
+
+    EXPECT_FALSE(map.has("X-First145"));
+    EXPECT_FALSE(map.has("X-Second145"));
+    EXPECT_TRUE(map.has("X-Third145"));
+    EXPECT_EQ(map.get("X-Third145").value(), "three");
+}
+
+// 4. CookieJar: Max-Age takes precedence over Expires when both present
+TEST(HttpClient, CookieJarMaxAgeOverridesExpiresV145) {
+    CookieJar jar;
+    // Expires is in the past but Max-Age=3600 should override
+    jar.set_from_header(
+        "pref145=value; Max-Age=3600; Expires=Thu, 01 Jan 1970 00:00:00 GMT; Path=/",
+        "v145maxage.example.com");
+
+    std::string header = jar.get_cookie_header("v145maxage.example.com", "/", false);
+
+    EXPECT_NE(header.find("pref145=value"), std::string::npos)
+        << "Max-Age should override expired Expires, got: " << header;
+}
+
+// 5. Custom User-Agent header appears in serialized output
+TEST(HttpClient, RequestSerializeUserAgentHeaderV145) {
+    Request req;
+    req.method = Method::GET;
+    req.host = "v145ua.example.com";
+    req.port = 80;
+    req.path = "/page";
+    req.headers.set("User-Agent", "ViBrowser/1.0");
+
+    auto bytes = req.serialize();
+    std::string raw(bytes.begin(), bytes.end());
+
+    EXPECT_NE(raw.find("user-agent: ViBrowser/1.0\r\n"), std::string::npos)
+        << "Custom User-Agent should appear in serialized request, got: " << raw;
+}
+
+// 6. Response with Content-Type: application/json — verify header is parsed
+TEST(HttpClient, ResponseParseContentTypeJsonV145) {
+    std::string raw =
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Type: application/json\r\n"
+        "Content-Length: 13\r\n"
+        "\r\n"
+        "{\"key\":\"val\"}";
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 200);
+    EXPECT_TRUE(resp->headers.has("Content-Type"));
+    EXPECT_EQ(resp->headers.get("content-type").value(), "application/json");
+    EXPECT_EQ(resp->body_as_string(), "{\"key\":\"val\"}");
+}
+
+// 7. HeaderMap get() on nonexistent key returns nullopt
+TEST(HttpClient, HeaderMapGetNonexistentReturnsNulloptV145) {
+    HeaderMap map;
+    map.set("X-Exists145", "here");
+
+    auto result = map.get("X-Nonexistent145");
+    EXPECT_FALSE(result.has_value());
+
+    auto result2 = map.get("totally-missing");
+    EXPECT_FALSE(result2.has_value());
+}
+
+// 8. CookieJar: Path=/ matches any sub-path
+TEST(HttpClient, CookieJarRootPathMatchesAllV145) {
+    CookieJar jar;
+    jar.set_from_header("root145=rootval; Path=/", "v145root.example.com");
+
+    // Root path should match /anything
+    std::string h1 = jar.get_cookie_header("v145root.example.com", "/anything", false);
+    EXPECT_NE(h1.find("root145=rootval"), std::string::npos)
+        << "Path=/ should match /anything, got: " << h1;
+
+    // Root path should match /deep/nested/path
+    std::string h2 = jar.get_cookie_header("v145root.example.com", "/deep/nested/path", false);
+    EXPECT_NE(h2.find("root145=rootval"), std::string::npos)
+        << "Path=/ should match /deep/nested/path, got: " << h2;
+
+    // Root path should match /
+    std::string h3 = jar.get_cookie_header("v145root.example.com", "/", false);
+    EXPECT_NE(h3.find("root145=rootval"), std::string::npos)
+        << "Path=/ should match /, got: " << h3;
+}

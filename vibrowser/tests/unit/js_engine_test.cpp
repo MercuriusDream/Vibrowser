@@ -35982,3 +35982,105 @@ TEST(JSEngine, JsV144_8) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "40,50|20,30,40");
 }
+
+// V145: Array.reverse
+TEST(JSEngine, JsV145_1) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var arr = [1, 2, 3, 4, 5];
+        arr.reverse();
+        arr.join(',');
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "5,4,3,2,1");
+}
+
+// V145: String.toLowerCase/toUpperCase
+TEST(JSEngine, JsV145_2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var s = 'Hello World';
+        s.toLowerCase() + '|' + s.toUpperCase();
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "hello world|HELLO WORLD");
+}
+
+// V145: Math.floor/ceil/round
+TEST(JSEngine, JsV145_3) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var a = Math.floor(3.7);
+        var b = Math.ceil(3.2);
+        var c = Math.round(3.5);
+        var d = Math.round(3.4);
+        a + ',' + b + ',' + c + ',' + d;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "3,4,4,3");
+}
+
+// V145: Array.every/some
+TEST(JSEngine, JsV145_4) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var arr = [2, 4, 6, 8];
+        var allEven = arr.every(function(x) { return x % 2 === 0; });
+        var someGt5 = arr.some(function(x) { return x > 5; });
+        var allGt5 = arr.every(function(x) { return x > 5; });
+        String(allEven) + ',' + String(someGt5) + ',' + String(allGt5);
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true,true,false");
+}
+
+// V145: String.repeat
+TEST(JSEngine, JsV145_5) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var s = 'ab';
+        s.repeat(0) + '|' + s.repeat(1) + '|' + s.repeat(3);
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "|ab|ababab");
+}
+
+// V145: Object.hasOwnProperty
+TEST(JSEngine, JsV145_6) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var obj = { a: 1, b: 2 };
+        var r1 = obj.hasOwnProperty('a');
+        var r2 = obj.hasOwnProperty('c');
+        var r3 = obj.hasOwnProperty('toString');
+        String(r1) + ',' + String(r2) + ',' + String(r3);
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true,false,false");
+}
+
+// V145: Array.flat depth 1
+TEST(JSEngine, JsV145_7) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var arr = [1, [2, 3], [4, [5]]];
+        var f = arr.flat();
+        f.join(',');
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1,2,3,4,5");
+}
+
+// V145: String.padStart/padEnd
+TEST(JSEngine, JsV145_8) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var s = '42';
+        var p1 = s.padStart(5, '0');
+        var p2 = s.padEnd(5, '.');
+        var p3 = s.padStart(1, '0');
+        p1 + '|' + p2 + '|' + p3;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "00042|42...|42");
+}

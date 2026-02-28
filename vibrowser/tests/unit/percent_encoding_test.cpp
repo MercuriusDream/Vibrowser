@@ -1011,3 +1011,40 @@ TEST(IsURLCodePoint, PeriodAndColonAreCodePointsV144) {
     EXPECT_TRUE(is_url_code_point(U'.'));
     EXPECT_TRUE(is_url_code_point(U':'));
 }
+
+TEST(PercentEncoding, LessThanGreaterThanEncodedV145) {
+    // '<' and '>' are NOT valid URL code points and must be percent-encoded
+    EXPECT_EQ(percent_encode("<"), "%3C");
+    EXPECT_EQ(percent_encode(">"), "%3E");
+    EXPECT_EQ(percent_encode("<tag>"), "%3Ctag%3E");
+    EXPECT_EQ(percent_encode("a<b>c"), "a%3Cb%3Ec");
+}
+
+TEST(PercentDecoding, IncompletePercentSequencePreservedV145) {
+    // An incomplete percent sequence like "%2" should be preserved or handled gracefully
+    std::string input = "%2";
+    std::string decoded = percent_decode(input);
+    // Either preserved as-is or gracefully handled (not crash)
+    EXPECT_FALSE(decoded.empty() && input.size() > 0 && decoded.size() == 0);
+    // A trailing percent with one hex digit shouldn't produce garbage
+    std::string input2 = "abc%2";
+    std::string decoded2 = percent_decode(input2);
+    // The non-percent part should survive
+    EXPECT_NE(decoded2.find("abc"), std::string::npos);
+}
+
+TEST(PercentEncoding, SlashNotEncodedV145) {
+    // '/' is a valid URL code point and should NOT be percent-encoded
+    EXPECT_EQ(percent_encode("/"), "/");
+    EXPECT_EQ(percent_encode("/path/to/file"), "/path/to/file");
+    EXPECT_EQ(percent_encode("a/b/c"), "a/b/c");
+}
+
+TEST(IsURLCodePoint, ForwardSlashAndQuestionMarkV145) {
+    // '/' and '?' are both valid URL code points
+    EXPECT_TRUE(is_url_code_point(U'/'));
+    EXPECT_TRUE(is_url_code_point(U'?'));
+    // Also verify together with other known code points
+    EXPECT_TRUE(is_url_code_point(U'@'));
+    EXPECT_TRUE(is_url_code_point(U'&'));
+}

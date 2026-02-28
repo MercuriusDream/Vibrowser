@@ -1760,3 +1760,59 @@ TEST(MessageChannelTest, MessageChannelV144_2_LargeTypeNumberV144) {
     EXPECT_TRUE(handler_called);
     EXPECT_EQ(received_type, UINT32_MAX);
 }
+
+// ------------------------------------------------------------------
+// V145: Handler receives correct payload size (100 bytes)
+// ------------------------------------------------------------------
+
+TEST(MessageChannelTest, MessageChannelV145_1_HandlerReceivesCorrectPayloadSize) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel ch(std::move(pa));
+
+    size_t received_size = 0;
+
+    ch.on(10, [&](const Message& m) {
+        received_size = m.payload.size();
+    });
+
+    Message msg;
+    msg.type = 10;
+    msg.request_id = 1;
+    msg.payload.resize(100, 0xAB);
+
+    ch.dispatch(msg);
+
+    EXPECT_EQ(received_size, 100u);
+}
+
+// ------------------------------------------------------------------
+// V145: Overwrite handler with no-op stops original dispatch
+// ------------------------------------------------------------------
+
+TEST(MessageChannelTest, MessageChannelV145_2_RemoveHandlerStopsDispatch) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel ch(std::move(pa));
+
+    int call_count = 0;
+
+    // Register a real handler
+    ch.on(20, [&](const Message& /*m*/) {
+        ++call_count;
+    });
+
+    // Dispatch once — handler should fire
+    Message msg;
+    msg.type = 20;
+    msg.request_id = 1;
+    msg.payload = {0x01};
+    ch.dispatch(msg);
+    EXPECT_EQ(call_count, 1);
+
+    // Overwrite with a no-op handler (effectively "removing" it)
+    ch.on(20, [](const Message& /*m*/) { /* no-op */ });
+
+    // Dispatch again — original handler must NOT fire
+    msg.request_id = 2;
+    ch.dispatch(msg);
+    EXPECT_EQ(call_count, 1); // still 1, original handler not called
+}

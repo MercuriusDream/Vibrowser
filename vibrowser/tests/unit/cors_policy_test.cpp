@@ -11934,3 +11934,57 @@ TEST(CORSPolicyTest, CorsV144_8_CorsNotEligibleDataUrl) {
     EXPECT_FALSE(is_cors_eligible_request_url("blob:https://example.com/uuid"));
     EXPECT_FALSE(is_cors_eligible_request_url("about:blank"));
 }
+
+// ---------------------------------------------------------------------------
+// Round 145 — 8 CORS tests
+// ---------------------------------------------------------------------------
+
+// 1. HTTP with non-default port is enforceable
+TEST(CORSPolicyTest, CorsV145_1_HttpNonDefaultPortEnforceable) {
+    EXPECT_TRUE(has_enforceable_document_origin("http://example.com:8080"));
+}
+
+// 2. HTTPS with non-default port is enforceable
+TEST(CORSPolicyTest, CorsV145_2_HttpsNonDefaultPortEnforceable) {
+    EXPECT_TRUE(has_enforceable_document_origin("https://example.com:8443"));
+}
+
+// 3. ACAO matches exact origin with scheme
+TEST(CORSPolicyTest, CorsV145_3_ACAOMatchesExactOriginWithScheme) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "https://api.example.com");
+    EXPECT_TRUE(
+        cors_allows_response("https://api.example.com", "https://cdn.example.com/res", headers, false));
+}
+
+// 4. Same host, same port, same scheme is NOT cross-origin
+TEST(CORSPolicyTest, CorsV145_4_SameHostSamePortSameSchemeNotCrossOrigin) {
+    EXPECT_FALSE(is_cross_origin("https://example.com", "https://example.com/path"));
+}
+
+// 5. Trailing slash in ACAO origin does not match origin without trailing slash
+TEST(CORSPolicyTest, CorsV145_5_TrailingSlashInOriginNotMatching) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "https://example.com/");
+    EXPECT_FALSE(
+        cors_allows_response("https://example.com", "https://api.example.com/data", headers, false));
+}
+
+// 6. ACAO "null" string matches null origin
+TEST(CORSPolicyTest, CorsV145_6_NullOriginStringMatchesACAONull) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "null");
+    // "null" origin with ACAO "null" — this tests string matching behavior
+    EXPECT_TRUE(
+        cors_allows_response("null", "https://api.example.com/data", headers, false));
+}
+
+// 7. wss:// scheme is NOT cors eligible
+TEST(CORSPolicyTest, CorsV145_7_WssSchemeNotCorsEligible) {
+    EXPECT_FALSE(is_cors_eligible_request_url("wss://example.com/socket"));
+}
+
+// 8. http:// URL is CORS eligible
+TEST(CORSPolicyTest, CorsV145_8_HttpUrlCorsEligible) {
+    EXPECT_TRUE(is_cors_eligible_request_url("http://example.com/api/data"));
+}

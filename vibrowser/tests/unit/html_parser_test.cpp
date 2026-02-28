@@ -23141,3 +23141,154 @@ TEST(HtmlParserTest, HtmlV144_8) {
     }
     EXPECT_TRUE(found_for) << "for attribute not found on label";
 }
+
+// === V145 HTML Parser Tests ===
+
+TEST(HtmlParserTest, HtmlV145_1) {
+    // a element with href
+    auto doc = clever::html::parse("<html><body><a href=\"https://example.com\">Link</a></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* a = doc->find_element("a");
+    ASSERT_NE(a, nullptr);
+    EXPECT_EQ(a->tag_name, "a");
+    EXPECT_EQ(a->text_content(), "Link");
+    bool found_href = false;
+    for (const auto& attr : a->attributes) {
+        if (attr.name == "href") {
+            found_href = true;
+            EXPECT_EQ(attr.value, "https://example.com");
+        }
+    }
+    EXPECT_TRUE(found_href) << "href attribute not found on a";
+}
+
+TEST(HtmlParserTest, HtmlV145_2) {
+    // img element with src and alt
+    auto doc = clever::html::parse("<html><body><img src=\"logo.png\" alt=\"Logo\"></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* img = doc->find_element("img");
+    ASSERT_NE(img, nullptr);
+    EXPECT_EQ(img->tag_name, "img");
+    bool found_src = false;
+    bool found_alt = false;
+    for (const auto& attr : img->attributes) {
+        if (attr.name == "src") {
+            found_src = true;
+            EXPECT_EQ(attr.value, "logo.png");
+        }
+        if (attr.name == "alt") {
+            found_alt = true;
+            EXPECT_EQ(attr.value, "Logo");
+        }
+    }
+    EXPECT_TRUE(found_src) << "src attribute not found on img";
+    EXPECT_TRUE(found_alt) << "alt attribute not found on img";
+}
+
+TEST(HtmlParserTest, HtmlV145_3) {
+    // div with multiple classes
+    auto doc = clever::html::parse("<html><body><div class=\"foo bar baz\">Content</div></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* div = doc->find_element("div");
+    ASSERT_NE(div, nullptr);
+    EXPECT_EQ(div->tag_name, "div");
+    bool found_class = false;
+    for (const auto& attr : div->attributes) {
+        if (attr.name == "class") {
+            found_class = true;
+            EXPECT_EQ(attr.value, "foo bar baz");
+        }
+    }
+    EXPECT_TRUE(found_class) << "class attribute not found on div";
+}
+
+TEST(HtmlParserTest, HtmlV145_4) {
+    // span with inline style attr
+    auto doc = clever::html::parse("<html><body><span style=\"color:red\">Red</span></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* span = doc->find_element("span");
+    ASSERT_NE(span, nullptr);
+    EXPECT_EQ(span->tag_name, "span");
+    EXPECT_EQ(span->text_content(), "Red");
+    bool found_style = false;
+    for (const auto& attr : span->attributes) {
+        if (attr.name == "style") {
+            found_style = true;
+            EXPECT_EQ(attr.value, "color:red");
+        }
+    }
+    EXPECT_TRUE(found_style) << "style attribute not found on span";
+}
+
+TEST(HtmlParserTest, HtmlV145_5) {
+    // ul with li children
+    auto doc = clever::html::parse("<html><body><ul><li>A</li><li>B</li><li>C</li></ul></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* ul = doc->find_element("ul");
+    ASSERT_NE(ul, nullptr);
+    EXPECT_EQ(ul->tag_name, "ul");
+
+    int li_count = 0;
+    for (const auto& child : ul->children) {
+        if (child->tag_name == "li") {
+            li_count++;
+        }
+    }
+    EXPECT_EQ(li_count, 3);
+}
+
+TEST(HtmlParserTest, HtmlV145_6) {
+    // ol with li children
+    auto doc = clever::html::parse("<html><body><ol><li>First</li><li>Second</li></ol></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* ol = doc->find_element("ol");
+    ASSERT_NE(ol, nullptr);
+    EXPECT_EQ(ol->tag_name, "ol");
+
+    int li_count = 0;
+    for (const auto& child : ol->children) {
+        if (child->tag_name == "li") {
+            li_count++;
+        }
+    }
+    EXPECT_EQ(li_count, 2);
+}
+
+TEST(HtmlParserTest, HtmlV145_7) {
+    // table with tr and td
+    auto doc = clever::html::parse("<html><body><table><tr><td>Cell1</td><td>Cell2</td></tr></table></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* table = doc->find_element("table");
+    ASSERT_NE(table, nullptr);
+    EXPECT_EQ(table->tag_name, "table");
+
+    auto* td = doc->find_element("td");
+    ASSERT_NE(td, nullptr);
+    EXPECT_EQ(td->tag_name, "td");
+    EXPECT_EQ(td->text_content(), "Cell1");
+}
+
+TEST(HtmlParserTest, HtmlV145_8) {
+    // form with action attribute
+    auto doc = clever::html::parse("<html><body><form action=\"/submit\">Form</form></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* form = doc->find_element("form");
+    ASSERT_NE(form, nullptr);
+    EXPECT_EQ(form->tag_name, "form");
+    bool found_action = false;
+    for (const auto& attr : form->attributes) {
+        if (attr.name == "action") {
+            found_action = true;
+            EXPECT_EQ(attr.value, "/submit");
+        }
+    }
+    EXPECT_TRUE(found_action) << "action attribute not found on form";
+}

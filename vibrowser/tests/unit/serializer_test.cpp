@@ -20512,3 +20512,59 @@ TEST(SerializerTest, SerializerV144_3_BytesWithPatternRoundTrip) {
     }
     EXPECT_FALSE(d.has_remaining());
 }
+
+// ------------------------------------------------------------------
+// V145: U8 all values round-trip (0, 127, 128, 255)
+// ------------------------------------------------------------------
+
+TEST(SerializerTest, SerializerV145_1_U8AllValuesRoundTrip) {
+    Serializer s;
+    s.write_u8(0);
+    s.write_u8(127);
+    s.write_u8(128);
+    s.write_u8(255);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u8(), 0u);
+    EXPECT_EQ(d.read_u8(), 127u);
+    EXPECT_EQ(d.read_u8(), 128u);
+    EXPECT_EQ(d.read_u8(), 255u);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+// ------------------------------------------------------------------
+// V145: F64 precision round-trip (pi, e)
+// ------------------------------------------------------------------
+
+TEST(SerializerTest, SerializerV145_2_F64PrecisionRoundTrip) {
+    Serializer s;
+    s.write_f64(3.141592653589793);
+    s.write_f64(2.718281828);
+
+    Deserializer d(s.data());
+    EXPECT_DOUBLE_EQ(d.read_f64(), 3.141592653589793);
+    EXPECT_DOUBLE_EQ(d.read_f64(), 2.718281828);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+// ------------------------------------------------------------------
+// V145: String with embedded null bytes round-trip
+// ------------------------------------------------------------------
+
+TEST(SerializerTest, SerializerV145_3_StringWithNullBytesRoundTrip) {
+    // Build a string with embedded null bytes
+    std::string with_nulls("hello\0world\0!", 13);
+    ASSERT_EQ(with_nulls.size(), 13u);
+
+    Serializer s;
+    s.write_string(with_nulls);
+
+    Deserializer d(s.data());
+    std::string result = d.read_string();
+    EXPECT_EQ(result.size(), 13u);
+    EXPECT_EQ(result, with_nulls);
+    // Verify null bytes are at correct positions
+    EXPECT_EQ(result[5], '\0');
+    EXPECT_EQ(result[11], '\0');
+    EXPECT_FALSE(d.has_remaining());
+}

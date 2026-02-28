@@ -1500,3 +1500,55 @@ TEST(MessagePipeTest, MessagePipeV144_3_CloseBothEndsV144) {
 
     SUCCEED();
 }
+
+// ------------------------------------------------------------------
+// V145: Send and receive a single byte payload (0xFF)
+// ------------------------------------------------------------------
+
+TEST(MessagePipeTest, MessagePipeV145_1_SendReceiveOneBytePayloadV145) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    std::vector<uint8_t> payload = {0xFF};
+    ASSERT_TRUE(a.send(payload));
+
+    auto received = b.receive();
+    ASSERT_TRUE(received.has_value());
+    ASSERT_EQ(received->size(), 1u);
+    EXPECT_EQ((*received)[0], 0xFF);
+}
+
+// ------------------------------------------------------------------
+// V145: Send 16KB payload, verify integrity
+// ------------------------------------------------------------------
+
+TEST(MessagePipeTest, MessagePipeV145_2_SendMaxPayload16KBV145) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    // Build a 16384-byte payload with a recognizable pattern
+    std::vector<uint8_t> payload(16384);
+    for (size_t i = 0; i < payload.size(); ++i) {
+        payload[i] = static_cast<uint8_t>(i % 251); // prime modulus for variety
+    }
+
+    ASSERT_TRUE(a.send(payload));
+
+    auto received = b.receive();
+    ASSERT_TRUE(received.has_value());
+    ASSERT_EQ(received->size(), 16384u);
+    EXPECT_EQ(*received, payload);
+}
+
+// ------------------------------------------------------------------
+// V145: Receive on closed sender end returns nullopt
+// ------------------------------------------------------------------
+
+TEST(MessagePipeTest, MessagePipeV145_3_ReceiveBeforeSendReturnsNulloptV145) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    // Close the sender end so the reader sees EOF
+    a.close();
+
+    // Receive on b should return nullopt (no data was sent, sender is closed)
+    auto received = b.receive();
+    EXPECT_FALSE(received.has_value());
+}

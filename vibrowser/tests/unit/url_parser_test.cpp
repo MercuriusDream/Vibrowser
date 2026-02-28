@@ -14756,3 +14756,44 @@ TEST(UrlParserTest, UrlV144_4_PortMaxValue65535) {
     EXPECT_EQ(result->port.value(), 65535);
     EXPECT_EQ(result->path, "/test");
 }
+
+TEST(UrlParserTest, UrlV145_1_HttpPortExplicit80IsDefault) {
+    // Port 80 is the default for http and should be omitted (nullopt)
+    auto result = parse("http://example.com:80/page");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->port, std::nullopt);
+    EXPECT_EQ(result->path, "/page");
+}
+
+TEST(UrlParserTest, UrlV145_2_HttpsPortExplicit443IsDefault) {
+    // Port 443 is the default for https and should be omitted (nullopt)
+    auto result = parse("https://example.com:443/secure");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->port, std::nullopt);
+    EXPECT_EQ(result->path, "/secure");
+}
+
+TEST(UrlParserTest, UrlV145_3_QueryOnlyNoPath) {
+    // URL with query but no explicit path should default path to "/"
+    auto result = parse("http://example.com?key=val");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/");
+    EXPECT_EQ(result->query, "key=val");
+}
+
+TEST(UrlParserTest, UrlV145_4_FragmentOnlyNoQuery) {
+    // URL with fragment but no query should have fragment set, query empty
+    auto result = parse("http://example.com#top");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->fragment, "top");
+    // Query should be empty (no query component present)
+    EXPECT_EQ(result->query, "");
+}

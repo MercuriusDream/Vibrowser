@@ -25535,3 +25535,42 @@ TEST(CSSStyleTest, CssV144_4_UserSelectNoneApplied) {
     cascade.apply_declaration(style, make_decl("user-select", "none"), parent);
     EXPECT_EQ(style.user_select, UserSelect::None);
 }
+
+// === V145 CSS Style Tests ===
+
+TEST(CSSStyleTest, CssV145_1_DisplayGridApplied) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("display", "grid"), parent);
+    EXPECT_EQ(style.display, Display::Grid);
+}
+
+TEST(CSSStyleTest, CssV145_2_DisplayTableApplied) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("display", "table"), parent);
+    EXPECT_EQ(style.display, Display::Table);
+}
+
+TEST(PropertyCascadeTest, TextTransformUppercaseV145) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("text-transform", "uppercase"), parent);
+    EXPECT_EQ(style.text_transform, TextTransform::Uppercase);
+}
+
+TEST(CSSStyleTest, CssV145_4_OverflowHiddenXYApplied) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("overflow", "hidden"), parent);
+    EXPECT_EQ(style.overflow_x, Overflow::Hidden);
+    EXPECT_EQ(style.overflow_y, Overflow::Hidden);
+}

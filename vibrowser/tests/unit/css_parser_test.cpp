@@ -10383,3 +10383,61 @@ TEST_F(CSSStylesheetTest, OverflowWrapDeclarationV144) {
     }
     EXPECT_TRUE(found) << "overflow-wrap declaration not found";
 }
+
+// === V145 CSS Parser Tests ===
+
+TEST_F(CSSStylesheetTest, TextTransformDeclarationV145) {
+    auto ss = parse_stylesheet("h1 { text-transform: uppercase; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "text-transform") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "uppercase");
+        }
+    }
+    EXPECT_TRUE(found) << "text-transform declaration not found";
+}
+
+TEST_F(CSSStylesheetTest, LetterSpacingDeclarationV145) {
+    auto ss = parse_stylesheet("p { letter-spacing: 2px; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "letter-spacing") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "2px");
+        }
+    }
+    EXPECT_TRUE(found) << "letter-spacing declaration not found";
+}
+
+TEST_F(CSSStylesheetTest, WordSpacingDeclarationV145) {
+    auto ss = parse_stylesheet("span { word-spacing: 4px; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "word-spacing") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "4px");
+        }
+    }
+    EXPECT_TRUE(found) << "word-spacing declaration not found";
+}
+
+TEST_F(CSSStylesheetTest, TextIndentDeclarationV145) {
+    auto ss = parse_stylesheet("article { text-indent: 20px; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "text-indent") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "20px");
+        }
+    }
+    EXPECT_TRUE(found) << "text-indent declaration not found";
+}
