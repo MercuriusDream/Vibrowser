@@ -23394,3 +23394,137 @@ TEST(DomElement, SetAttributeSpecialNameV156) {
     EXPECT_EQ(elem.get_attribute("aria-label").value(), "close button");
     EXPECT_EQ(elem.attributes().size(), 3u);
 }
+
+// ---------------------------------------------------------------------------
+// Round 157 DOM tests
+// ---------------------------------------------------------------------------
+
+// 1. remove_child returns the removed node
+TEST(DomNode, RemoveChildReturnsSameNodeV157) {
+    auto parent = std::make_unique<Element>("div");
+    auto child = std::make_unique<Element>("span");
+    Element* child_ptr = child.get();
+    parent->append_child(std::move(child));
+    auto removed = parent->remove_child(*child_ptr);
+    EXPECT_EQ(removed.get(), child_ptr);
+    EXPECT_EQ(parent->child_count(), 0u);
+}
+
+// 2. Multiple data-* attributes all retrievable
+TEST(DomElement, MultipleDataAttributesV157) {
+    Element elem("div");
+    elem.set_attribute("data-id", "42");
+    elem.set_attribute("data-name", "test");
+    elem.set_attribute("data-color", "red");
+    elem.set_attribute("data-size", "large");
+    elem.set_attribute("data-active", "true");
+    EXPECT_EQ(elem.attributes().size(), 5u);
+    EXPECT_EQ(elem.get_attribute("data-id").value(), "42");
+    EXPECT_EQ(elem.get_attribute("data-name").value(), "test");
+    EXPECT_EQ(elem.get_attribute("data-color").value(), "red");
+    EXPECT_EQ(elem.get_attribute("data-size").value(), "large");
+    EXPECT_EQ(elem.get_attribute("data-active").value(), "true");
+}
+
+// 3. Create multiple element types from Document
+TEST(DomDocument, CreateMultipleElementTypesV157) {
+    Document doc;
+    auto div_elem = doc.create_element("div");
+    auto span_elem = doc.create_element("span");
+    auto p_elem = doc.create_element("p");
+    ASSERT_NE(div_elem, nullptr);
+    ASSERT_NE(span_elem, nullptr);
+    ASSERT_NE(p_elem, nullptr);
+    EXPECT_EQ(div_elem->tag_name(), "div");
+    EXPECT_EQ(span_elem->tag_name(), "span");
+    EXPECT_EQ(p_elem->tag_name(), "p");
+    EXPECT_EQ(div_elem->node_type(), NodeType::Element);
+    EXPECT_EQ(span_elem->node_type(), NodeType::Element);
+    EXPECT_EQ(p_elem->node_type(), NodeType::Element);
+}
+
+// 4. stop_propagation sets flag
+TEST(DomEvent, StopPropagationFlagV157) {
+    Event evt("click");
+    EXPECT_FALSE(evt.propagation_stopped());
+    evt.stop_propagation();
+    EXPECT_TRUE(evt.propagation_stopped());
+}
+
+// 5. Traverse children via first_child + next_sibling
+TEST(DomNode, ChildNodesTraversalV157) {
+    auto parent = std::make_unique<Element>("ul");
+    auto li1 = std::make_unique<Element>("li");
+    auto li2 = std::make_unique<Element>("li");
+    auto li3 = std::make_unique<Element>("li");
+    auto li4 = std::make_unique<Element>("li");
+    Element* p1 = li1.get();
+    Element* p2 = li2.get();
+    Element* p3 = li3.get();
+    Element* p4 = li4.get();
+    parent->append_child(std::move(li1));
+    parent->append_child(std::move(li2));
+    parent->append_child(std::move(li3));
+    parent->append_child(std::move(li4));
+
+    std::vector<Node*> collected;
+    for (Node* n = parent->first_child(); n != nullptr; n = n->next_sibling()) {
+        collected.push_back(n);
+    }
+    ASSERT_EQ(collected.size(), 4u);
+    EXPECT_EQ(collected[0], p1);
+    EXPECT_EQ(collected[1], p2);
+    EXPECT_EQ(collected[2], p3);
+    EXPECT_EQ(collected[3], p4);
+}
+
+// 6. ClassList toggle 6 times, verify final state
+TEST(DomElement, ClassListToggleEvenOddV157) {
+    Element elem("div");
+    // toggle "active" 6 times: add, remove, add, remove, add, remove
+    elem.class_list().toggle("active");
+    EXPECT_TRUE(elem.class_list().contains("active"));
+    elem.class_list().toggle("active");
+    EXPECT_FALSE(elem.class_list().contains("active"));
+    elem.class_list().toggle("active");
+    EXPECT_TRUE(elem.class_list().contains("active"));
+    elem.class_list().toggle("active");
+    EXPECT_FALSE(elem.class_list().contains("active"));
+    elem.class_list().toggle("active");
+    EXPECT_TRUE(elem.class_list().contains("active"));
+    elem.class_list().toggle("active");
+    // After 6 toggles (even), should be removed
+    EXPECT_FALSE(elem.class_list().contains("active"));
+    EXPECT_EQ(elem.class_list().length(), 0u);
+}
+
+// 7. Deep tree text_content returns all text
+TEST(DomNode, DeepTreeTextContentV157) {
+    auto root = std::make_unique<Element>("div");
+    auto level1 = std::make_unique<Element>("section");
+    auto level2 = std::make_unique<Element>("p");
+    auto level3 = std::make_unique<Element>("span");
+
+    auto t1 = std::make_unique<Text>("Hello ");
+    auto t2 = std::make_unique<Text>("World ");
+    auto t3 = std::make_unique<Text>("From ");
+    auto t4 = std::make_unique<Text>("Deep");
+
+    root->append_child(std::move(t1));
+    level1->append_child(std::move(t2));
+    level2->append_child(std::move(t3));
+    level3->append_child(std::move(t4));
+
+    level2->append_child(std::move(level3));
+    level1->append_child(std::move(level2));
+    root->append_child(std::move(level1));
+
+    EXPECT_EQ(root->text_content(), "Hello World From Deep");
+}
+
+// 8. Empty class list has length 0
+TEST(DomElement, EmptyClassListLengthZeroV157) {
+    Element elem("div");
+    EXPECT_EQ(elem.class_list().length(), 0u);
+    EXPECT_FALSE(elem.class_list().contains("anything"));
+}

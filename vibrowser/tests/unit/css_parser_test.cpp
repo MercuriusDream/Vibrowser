@@ -11065,3 +11065,59 @@ TEST_F(CSSStylesheetTest, VerticalAlignMiddleDeclarationV156) {
     }
     EXPECT_TRUE(found) << "vertical-align declaration not found";
 }
+
+TEST_F(CSSStylesheetTest, BorderCollapseDeclarationV157) {
+    auto ss = parse_stylesheet("table { border-collapse: collapse; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "border-collapse") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "collapse");
+        }
+    }
+    EXPECT_TRUE(found) << "border-collapse declaration not found";
+}
+
+TEST_F(CSSStylesheetTest, EmptyCellsShowDeclarationV157) {
+    auto ss = parse_stylesheet("td { empty-cells: show; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "empty-cells") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "show");
+        }
+    }
+    EXPECT_TRUE(found) << "empty-cells declaration not found";
+}
+
+TEST_F(CSSStylesheetTest, CaptionSideBottomDeclarationV157) {
+    auto ss = parse_stylesheet("table { caption-side: bottom; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "caption-side") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "bottom");
+        }
+    }
+    EXPECT_TRUE(found) << "caption-side declaration not found";
+}
+
+TEST_F(CSSStylesheetTest, TableLayoutFixedDeclarationV157) {
+    auto ss = parse_stylesheet("table { table-layout: fixed; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "table-layout") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "fixed");
+        }
+    }
+    EXPECT_TRUE(found) << "table-layout declaration not found";
+}

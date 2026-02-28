@@ -2200,3 +2200,53 @@ TEST(MessagePipeTest, MessagePipeV156_3_64KBMessage) {
     EXPECT_EQ(received->size(), 65536u);
     EXPECT_EQ(*received, large);
 }
+
+// ------------------------------------------------------------------
+// Round 157 tests
+// ------------------------------------------------------------------
+
+TEST(MessagePipeTest, MessagePipeV157_1_256ByteMessages) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    for (int m = 0; m < 8; ++m) {
+        std::vector<uint8_t> data(256);
+        for (size_t i = 0; i < 256; ++i) {
+            data[i] = static_cast<uint8_t>((m * 31 + i) % 256);
+        }
+        ASSERT_TRUE(a.send(data));
+    }
+
+    for (int m = 0; m < 8; ++m) {
+        auto received = b.receive();
+        ASSERT_TRUE(received.has_value());
+        ASSERT_EQ(received->size(), 256u);
+        for (size_t i = 0; i < 256; ++i) {
+            EXPECT_EQ((*received)[i], static_cast<uint8_t>((m * 31 + i) % 256));
+        }
+    }
+}
+
+TEST(MessagePipeTest, MessagePipeV157_2_SendReceiveOneAtATime) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    for (uint8_t i = 0; i < 30; ++i) {
+        std::vector<uint8_t> data = {i, static_cast<uint8_t>(i + 100)};
+        ASSERT_TRUE(a.send(data));
+
+        auto received = b.receive();
+        ASSERT_TRUE(received.has_value());
+        ASSERT_EQ(received->size(), 2u);
+        EXPECT_EQ((*received)[0], i);
+        EXPECT_EQ((*received)[1], static_cast<uint8_t>(i + 100));
+    }
+}
+
+TEST(MessagePipeTest, MessagePipeV157_3_ClosedPipeSendFails) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    a.close();
+    EXPECT_FALSE(a.is_open());
+
+    std::vector<uint8_t> data = {1, 2, 3};
+    EXPECT_FALSE(a.send(data));
+}

@@ -37305,3 +37305,120 @@ TEST(JSEngine, JsV156_8) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "true,true,false");
 }
+
+// V157_1: Array.indexOf and lastIndexOf
+TEST(JSEngine, JsV157_1) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var arr = [10, 20, 30, 20, 40];
+        var idx = arr.indexOf(20);
+        var lastIdx = arr.lastIndexOf(20);
+        var notFound = arr.indexOf(99);
+        String(idx) + ',' + String(lastIdx) + ',' + String(notFound);
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1,3,-1");
+}
+
+// V157_2: String.charAt and charCodeAt
+TEST(JSEngine, JsV157_2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var s = 'Hello';
+        var ch = s.charAt(1);
+        var code = s.charCodeAt(0);
+        ch + ',' + String(code);
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "e,72");
+}
+
+// V157_3: Math.max, Math.min with spread
+TEST(JSEngine, JsV157_3) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var arr = [3, 1, 4, 1, 5, 9];
+        var mx = Math.max.apply(null, arr);
+        var mn = Math.min.apply(null, arr);
+        String(mx) + ',' + String(mn);
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "9,1");
+}
+
+// V157_4: Object.create with prototype
+TEST(JSEngine, JsV157_4) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var proto = { greet: function() { return 'hello'; } };
+        var obj = Object.create(proto);
+        obj.name = 'test';
+        var hasOwn = obj.hasOwnProperty('name');
+        var hasGreet = obj.hasOwnProperty('greet');
+        var greeting = obj.greet();
+        greeting + ',' + String(hasOwn) + ',' + String(hasGreet);
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "hello,true,false");
+}
+
+// V157_5: RegExp named capture groups
+TEST(JSEngine, JsV157_5) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var re = /(?<year>\d{4})-(?<month>\d{2})-(?<day>\d{2})/;
+        var match = re.exec('2025-03-15');
+        var y = match.groups.year;
+        var m = match.groups.month;
+        var d = match.groups.day;
+        y + ',' + m + ',' + d;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "2025,03,15");
+}
+
+// V157_6: Nullish coalescing (??) operator
+TEST(JSEngine, JsV157_6) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var a = null;
+        var b = undefined;
+        var c = 0;
+        var d = 'value';
+        var r1 = a ?? 'default1';
+        var r2 = b ?? 'default2';
+        var r3 = c ?? 'default3';
+        var r4 = d ?? 'default4';
+        r1 + ',' + r2 + ',' + String(r3) + ',' + r4;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "default1,default2,0,value");
+}
+
+// V157_7: Optional chaining (?.) operator
+TEST(JSEngine, JsV157_7) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var obj = { a: { b: { c: 42 } } };
+        var val1 = obj?.a?.b?.c;
+        var val2 = obj?.x?.y?.z;
+        var val3 = obj?.a?.b?.c?.toString();
+        String(val1) + ',' + String(val2) + ',' + val3;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "42,undefined,42");
+}
+
+// V157_8: Array.isArray check
+TEST(JSEngine, JsV157_8) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var r1 = Array.isArray([1, 2, 3]);
+        var r2 = Array.isArray('hello');
+        var r3 = Array.isArray({ length: 3 });
+        var r4 = Array.isArray(new Array(5));
+        String(r1) + ',' + String(r2) + ',' + String(r3) + ',' + String(r4);
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true,false,false,true");
+}

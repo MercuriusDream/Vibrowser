@@ -15336,3 +15336,62 @@ TEST(UrlParserTest, UrlV156_4_PortMaxValue65535) {
     std::string serialized = result->serialize();
     EXPECT_EQ(serialized, "http://example.com:65535/test");
 }
+
+TEST(UrlParserTest, UrlV157_1_HTTPSWithUserInfoParsed) {
+    // HTTPS URL with username and password should parse userinfo correctly
+    auto result = parse("https://user:pass@host.example.com/secure");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->username, "user");
+    EXPECT_EQ(result->password, "pass");
+    EXPECT_EQ(result->host, "host.example.com");
+    EXPECT_EQ(result->path, "/secure");
+    EXPECT_EQ(result->port, std::nullopt);
+    // Serialization should include the userinfo
+    std::string serialized = result->serialize();
+    EXPECT_EQ(serialized, "https://user:pass@host.example.com/secure");
+}
+
+TEST(UrlParserTest, UrlV157_2_PortAbsentIsNullopt) {
+    // When no port is specified, port should be nullopt
+    auto result = parse("http://example.com/page");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/page");
+    EXPECT_FALSE(result->port.has_value());
+    EXPECT_EQ(result->port, std::nullopt);
+    // Default port 80 for http should not appear in serialization
+    std::string serialized = result->serialize();
+    EXPECT_EQ(serialized, "http://example.com/page");
+}
+
+TEST(UrlParserTest, UrlV157_3_MultipleDotsInPath) {
+    // Path segments with multiple dots should be preserved
+    auto result = parse("https://cdn.example.com/a.b.c/d.e.f");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "cdn.example.com");
+    EXPECT_EQ(result->path, "/a.b.c/d.e.f");
+    EXPECT_EQ(result->port, std::nullopt);
+    EXPECT_TRUE(result->query.empty());
+    EXPECT_TRUE(result->fragment.empty());
+}
+
+TEST(UrlParserTest, UrlV157_4_SerializePreservesAllComponents) {
+    // A full URL with all components should round-trip through parse and serialize
+    auto result = parse("https://admin:secret@app.example.com:8443/api/v1?key=val#section");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->username, "admin");
+    EXPECT_EQ(result->password, "secret");
+    EXPECT_EQ(result->host, "app.example.com");
+    ASSERT_TRUE(result->port.has_value());
+    EXPECT_EQ(result->port.value(), 8443);
+    EXPECT_EQ(result->path, "/api/v1");
+    EXPECT_EQ(result->query, "key=val");
+    EXPECT_EQ(result->fragment, "section");
+    // Serialization should preserve all components
+    std::string serialized = result->serialize();
+    EXPECT_EQ(serialized, "https://admin:secret@app.example.com:8443/api/v1?key=val#section");
+}

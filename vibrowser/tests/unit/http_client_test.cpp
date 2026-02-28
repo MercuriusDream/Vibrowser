@@ -26972,3 +26972,218 @@ TEST(HttpClient, CookieJarSameSiteLaxAttributeV156) {
     EXPECT_EQ(other.find("pref=dark-mode"), std::string::npos)
         << "SameSite=Lax cookie on /settings should not match /other, got: " << other;
 }
+
+// ===========================================================================
+// Round 157 Tests
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// 1. Request serialize with If-Modified-Since header
+// ---------------------------------------------------------------------------
+TEST(HttpClient, RequestSerializeIfModifiedSinceV157) {
+    Request req;
+    req.method = Method::GET;
+    req.host = "cache.v157.test";
+    req.port = 80;
+    req.path = "/resource.json";
+    req.headers.set("If-Modified-Since", "Wed, 15 Jan 2025 12:00:00 GMT");
+
+    auto bytes = req.serialize();
+    std::string s(bytes.begin(), bytes.end());
+
+    EXPECT_NE(s.find("GET /resource.json HTTP/1.1\r\n"), std::string::npos)
+        << "Request line missing, got: " << s;
+    // Custom headers are serialized lowercase
+    EXPECT_NE(s.find("if-modified-since: Wed, 15 Jan 2025 12:00:00 GMT\r\n"), std::string::npos)
+        << "If-Modified-Since header missing or wrong case, got: " << s;
+    // Port 80 omitted from Host
+    EXPECT_NE(s.find("Host: cache.v157.test\r\n"), std::string::npos)
+        << "Host header missing, got: " << s;
+    EXPECT_NE(s.find("Connection: close\r\n"), std::string::npos)
+        << "Connection header missing, got: " << s;
+}
+
+// ---------------------------------------------------------------------------
+// 2. Response parse 304 Not Modified
+// ---------------------------------------------------------------------------
+TEST(HttpClient, ResponseParse304NotModifiedV157) {
+    std::string raw_str =
+        "HTTP/1.1 304 Not Modified\r\n"
+        "Date: Wed, 15 Jan 2025 12:00:00 GMT\r\n"
+        "ETag: \"v157-etag-abc\"\r\n"
+        "Cache-Control: max-age=600\r\n"
+        "\r\n";
+
+    std::vector<uint8_t> raw(raw_str.begin(), raw_str.end());
+    auto resp = Response::parse(raw);
+
+    ASSERT_TRUE(resp.has_value()) << "Failed to parse 304 Not Modified response";
+    EXPECT_EQ(resp->status, 304);
+    EXPECT_EQ(resp->status_text, "Not Modified");
+
+    // Should have the ETag header
+    auto etag = resp->headers.get("ETag");
+    ASSERT_TRUE(etag.has_value()) << "ETag header missing in 304 response";
+    EXPECT_EQ(etag.value(), "\"v157-etag-abc\"");
+
+    // 304 response should have no body
+    EXPECT_TRUE(resp->body.empty())
+        << "304 response should have no body, got size: " << resp->body.size();
+}
+
+// ---------------------------------------------------------------------------
+// 3. ConnectionPool: release returns fd to pool, verify count
+// ---------------------------------------------------------------------------
+TEST(HttpClient, ConnectionPoolReleaseReturnsToPoolV157) {
+    ConnectionPool pool;
+
+    // Initially empty
+    EXPECT_EQ(pool.count("pool.v157.test", 8080), 0u);
+
+    // Release three fds
+    pool.release("pool.v157.test", 8080, 701);
+    EXPECT_EQ(pool.count("pool.v157.test", 8080), 1u);
+
+    pool.release("pool.v157.test", 8080, 702);
+    EXPECT_EQ(pool.count("pool.v157.test", 8080), 2u);
+
+    pool.release("pool.v157.test", 8080, 703);
+    EXPECT_EQ(pool.count("pool.v157.test", 8080), 3u);
+
+    // Acquire one — count decreases
+    int fd = pool.acquire("pool.v157.test", 8080);
+    EXPECT_NE(fd, -1) << "Should have acquired a valid fd";
+    EXPECT_EQ(pool.count("pool.v157.test", 8080), 2u);
+
+    // Release the acquired fd back — count goes back up
+    pool.release("pool.v157.test", 8080, fd);
+    EXPECT_EQ(pool.count("pool.v157.test", 8080), 3u)
+        << "Count should be 3 after releasing fd back into pool";
+}
+
+// ---------------------------------------------------------------------------
+// 4. CookieJar: domain with leading dot matches subdomains
+// ---------------------------------------------------------------------------
+TEST(HttpClient, CookieJarDomainWithLeadingDotV157) {
+    CookieJar jar;
+    jar.set_from_header("token=abc157; Domain=.cookies.v157.test; Path=/", "www.cookies.v157.test");
+
+    // Should match subdomain
+    std::string sub = jar.get_cookie_header("www.cookies.v157.test", "/", false);
+    EXPECT_NE(sub.find("token=abc157"), std::string::npos)
+        << "Cookie with leading dot domain should match subdomain, got: " << sub;
+
+    // Should match the base domain itself
+    std::string base = jar.get_cookie_header("cookies.v157.test", "/", false);
+    EXPECT_NE(base.find("token=abc157"), std::string::npos)
+        << "Cookie with leading dot domain should match base domain, got: " << base;
+
+    // Should NOT match a completely different domain
+    std::string other = jar.get_cookie_header("other.v157.test", "/", false);
+    EXPECT_EQ(other.find("token=abc157"), std::string::npos)
+        << "Cookie should not match unrelated domain, got: " << other;
+}
+
+// ---------------------------------------------------------------------------
+// 5. HeaderMap: get returns most recent value after set
+// ---------------------------------------------------------------------------
+TEST(HttpClient, HeaderMapGetReturnsMostRecentV157) {
+    HeaderMap map;
+    map.set("X-Version-V157", "v1");
+    EXPECT_EQ(map.get("X-Version-V157").value(), "v1");
+
+    // Overwrite with set — should replace
+    map.set("X-Version-V157", "v2");
+    EXPECT_EQ(map.get("X-Version-V157").value(), "v2")
+        << "get() should return the most recent value after set()";
+
+    // Overwrite again
+    map.set("X-Version-V157", "v3-final");
+    EXPECT_EQ(map.get("X-Version-V157").value(), "v3-final")
+        << "get() should return v3-final after third set()";
+
+    // get_all should only have one entry (set replaces)
+    EXPECT_EQ(map.get_all("X-Version-V157").size(), 1u)
+        << "set() should replace, not accumulate";
+}
+
+// ---------------------------------------------------------------------------
+// 6. Request serialize with empty path — path is serialized as empty
+// ---------------------------------------------------------------------------
+TEST(HttpClient, RequestSerializeWithEmptyPathV157) {
+    Request req;
+    req.method = Method::GET;
+    req.host = "emptypath.v157.test";
+    req.port = 443;
+    req.path = "";
+
+    auto bytes = req.serialize();
+    std::string s(bytes.begin(), bytes.end());
+
+    // Empty path is serialized as-is (empty string in request line)
+    EXPECT_NE(s.find("GET "), std::string::npos)
+        << "Request line should start with GET, got: " << s;
+    EXPECT_NE(s.find(" HTTP/1.1\r\n"), std::string::npos)
+        << "HTTP version missing from request line, got: " << s;
+    // Port 443 should be omitted from Host
+    EXPECT_NE(s.find("Host: emptypath.v157.test\r\n"), std::string::npos)
+        << "Host header wrong or includes port 443, got: " << s;
+    EXPECT_EQ(s.find("Host: emptypath.v157.test:443"), std::string::npos)
+        << "Port 443 should be omitted from Host header";
+    EXPECT_NE(s.find("Connection: close\r\n"), std::string::npos)
+        << "Connection header missing";
+}
+
+// ---------------------------------------------------------------------------
+// 7. Response parse 200 with Cache-Control header
+// ---------------------------------------------------------------------------
+TEST(HttpClient, ResponseParse200WithCacheControlV157) {
+    std::string raw_str =
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Type: application/json\r\n"
+        "Cache-Control: public, max-age=3600, must-revalidate\r\n"
+        "Content-Length: 13\r\n"
+        "\r\n"
+        "{\"v157\":true}";
+
+    std::vector<uint8_t> raw(raw_str.begin(), raw_str.end());
+    auto resp = Response::parse(raw);
+
+    ASSERT_TRUE(resp.has_value()) << "Failed to parse 200 response with Cache-Control";
+    EXPECT_EQ(resp->status, 200);
+    EXPECT_EQ(resp->status_text, "OK");
+
+    auto cc = resp->headers.get("Cache-Control");
+    ASSERT_TRUE(cc.has_value()) << "Cache-Control header missing";
+    EXPECT_EQ(cc.value(), "public, max-age=3600, must-revalidate")
+        << "Cache-Control value wrong, got: " << cc.value();
+
+    std::string body(resp->body.begin(), resp->body.end());
+    EXPECT_EQ(body, "{\"v157\":true}")
+        << "Body mismatch, got: " << body;
+}
+
+// ---------------------------------------------------------------------------
+// 8. CookieJar: expired by Expires header not returned
+// ---------------------------------------------------------------------------
+TEST(HttpClient, CookieJarExpiredByDateNotReturnedV157) {
+    CookieJar jar;
+
+    // Set a cookie with a past Expires date — should be treated as expired
+    jar.set_from_header(
+        "session=expired157; Expires=Thu, 01 Jan 2015 00:00:00 GMT; Path=/",
+        "expired.v157.test");
+
+    // Also set a valid cookie on the same domain
+    jar.set_from_header("active=yes157; Path=/", "expired.v157.test");
+
+    std::string h = jar.get_cookie_header("expired.v157.test", "/", false);
+
+    // The expired cookie must NOT appear
+    EXPECT_EQ(h.find("session=expired157"), std::string::npos)
+        << "Cookie with past Expires date should not be returned, got: " << h;
+
+    // The active cookie should be present
+    EXPECT_NE(h.find("active=yes157"), std::string::npos)
+        << "Active cookie should be present, got: " << h;
+}

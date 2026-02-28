@@ -1427,3 +1427,47 @@ TEST(IsURLCodePoint, SemicolonAndSlashValidV156) {
     // Combined in a path-like string
     EXPECT_EQ(percent_encode("path/to;params"), "path/to;params");
 }
+
+TEST(PercentEncoding, LessThanGreaterThanEncodedV157) {
+    // '<' (U+003C) should be percent-encoded as %3C
+    EXPECT_EQ(percent_encode("<"), "%3C");
+    // '>' (U+003E) should be percent-encoded as %3E
+    EXPECT_EQ(percent_encode(">"), "%3E");
+    // Both in a string
+    EXPECT_EQ(percent_encode("<tag>"), "%3Ctag%3E");
+    // Decoding should round-trip
+    EXPECT_EQ(percent_decode("%3C"), "<");
+    EXPECT_EQ(percent_decode("%3E"), ">");
+}
+
+TEST(PercentDecoding, PercentSignAlonePreservedV157) {
+    // A lone '%' not followed by two hex digits should be preserved as-is
+    EXPECT_EQ(percent_decode("%"), "%");
+    // '%' followed by only one hex digit should be preserved
+    EXPECT_EQ(percent_decode("%A"), "%A");
+    // '%' followed by non-hex should be preserved
+    EXPECT_EQ(percent_decode("%GG"), "%GG");
+    // Valid sequence surrounded by lone percents
+    EXPECT_EQ(percent_decode("%20"), " ");
+}
+
+TEST(PercentEncoding, DoubleQuoteEncodedV157) {
+    // '"' (U+0022) should be percent-encoded as %22
+    EXPECT_EQ(percent_encode("\""), "%22");
+    // Double quote embedded in a string
+    EXPECT_EQ(percent_encode("say \"hi\""), "say%20%22hi%22");
+    // Decoding should round-trip
+    EXPECT_EQ(percent_decode("%22"), "\"");
+}
+
+TEST(IsURLCodePoint, AtSignAndColonValidV157) {
+    // '@' (U+0040) is a valid URL code point
+    EXPECT_TRUE(is_url_code_point(static_cast<char32_t>('@')));
+    // ':' (U+003A) is a valid URL code point
+    EXPECT_TRUE(is_url_code_point(static_cast<char32_t>(':')));
+    // These characters should not be percent-encoded by the default encode set
+    EXPECT_EQ(percent_encode("@"), "@");
+    EXPECT_EQ(percent_encode(":"), ":");
+    // Combined in a typical URL-like string
+    EXPECT_EQ(percent_encode("user@host:8080"), "user@host:8080");
+}

@@ -26070,3 +26070,43 @@ TEST(CSSStyleTest, CssV156_4_DisplayInlineBlockApplied) {
     cascade.apply_declaration(style, make_decl("display", "inline-block"), parent);
     EXPECT_EQ(style.display, Display::InlineBlock);
 }
+
+TEST(PropertyCascadeTest, BorderCollapseAppliedV157) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_FALSE(style.border_collapse);
+    cascade.apply_declaration(style, make_decl("border-collapse", "collapse"), parent);
+    EXPECT_TRUE(style.border_collapse);
+}
+
+TEST(CSSStyleTest, CssV157_2_FloatLeftApplied) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.float_val, Float::None);
+    cascade.apply_declaration(style, make_decl("float", "left"), parent);
+    EXPECT_EQ(style.float_val, Float::Left);
+}
+
+TEST(PropertyCascadeTest, TableLayoutAppliedV157) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.table_layout, 0);
+    cascade.apply_declaration(style, make_decl("table-layout", "fixed"), parent);
+    EXPECT_EQ(style.table_layout, 1);
+}
+
+TEST(CSSStyleTest, CssV157_4_ClearBothApplied) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.clear, Clear::None);
+    cascade.apply_declaration(style, make_decl("clear", "both"), parent);
+    EXPECT_EQ(style.clear, Clear::Both);
+}

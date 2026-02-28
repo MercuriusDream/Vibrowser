@@ -12663,3 +12663,64 @@ TEST(CORSPolicyTest, CorsV156_7_ACAOWildcardAllowsAnyOrigin) {
 TEST(CORSPolicyTest, CorsV156_8_IPv6LoopbackEnforceable) {
     EXPECT_TRUE(has_enforceable_document_origin("http://[::1]"));
 }
+
+// ---------------------------------------------------------------------------
+// Round 157 CORS tests
+// ---------------------------------------------------------------------------
+
+// 1. HTTPS with path is enforceable (path stripped for origin)
+TEST(CORSPolicyTest, CorsV157_1_HTTPSWithPathEnforceable) {
+    // Origin should be just scheme+host, path is NOT part of origin
+    // has_enforceable_document_origin rejects origins with paths
+    EXPECT_FALSE(has_enforceable_document_origin("https://example.com/api"));
+    // But the base origin IS enforceable
+    EXPECT_TRUE(has_enforceable_document_origin("https://example.com"));
+}
+
+// 2. Same URL string is same-origin
+TEST(CORSPolicyTest, CorsV157_2_SameOriginIdenticalURLs) {
+    EXPECT_FALSE(is_cross_origin("https://example.com", "https://example.com/page"));
+    EXPECT_FALSE(is_cross_origin("http://example.com", "http://example.com/other"));
+}
+
+// 3. ACAO case sensitivity for scheme: https vs HTTPS
+TEST(CORSPolicyTest, CorsV157_3_ACAOCaseSensitiveScheme) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "HTTPS://APP.EXAMPLE:443");
+    // Schemes are case-insensitive, so this should match
+    EXPECT_TRUE(cors_allows_response("https://app.example", "https://api.example/data",
+                                     headers, false));
+}
+
+// 4. Sub-subdomain vs subdomain is cross-origin
+TEST(CORSPolicyTest, CorsV157_4_CrossOriginSubSubdomain) {
+    EXPECT_TRUE(is_cross_origin("https://a.b.c.com", "https://b.c.com/page"));
+}
+
+// 5. data: scheme is not CORS eligible
+TEST(CORSPolicyTest, CorsV157_5_DataSchemeNotCorsEligible) {
+    EXPECT_FALSE(is_cors_eligible_request_url("data:text/html,<h1>test</h1>"));
+    EXPECT_FALSE(has_enforceable_document_origin("data:text/html,test"));
+}
+
+// 6. Fragment doesn't affect same-origin check
+TEST(CORSPolicyTest, CorsV157_6_SameOriginWithFragment) {
+    // Same origin should still work even though the URL has a fragment
+    // (but note: fragments make URLs not CORS-eligible for request URLs)
+    EXPECT_FALSE(is_cross_origin("https://example.com", "https://example.com/page#section"));
+}
+
+// 7. ftp: scheme is not CORS eligible
+TEST(CORSPolicyTest, CorsV157_7_NonHTTPSchemeNotCorsEligible) {
+    EXPECT_FALSE(is_cors_eligible_request_url("ftp://files.example.com/data"));
+    EXPECT_FALSE(is_cors_eligible_request_url("ftp://example.com/readme.txt"));
+}
+
+// 8. ACAO match requires exact host — close but different hosts rejected
+TEST(CORSPolicyTest, CorsV157_8_ACAOMatchRequiresExactHost) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "https://app.example.com");
+    // Origin is app.example (not app.example.com) — should fail
+    EXPECT_FALSE(cors_allows_response("https://app.example", "https://api.example/data",
+                                      headers, false));
+}

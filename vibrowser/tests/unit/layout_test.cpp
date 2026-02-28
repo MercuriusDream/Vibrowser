@@ -28858,3 +28858,179 @@ TEST(LayoutNodeProps, TextStrokeWidthDefaultZeroV156) {
     auto node = make_block("div");
     EXPECT_FLOAT_EQ(node->text_stroke_width, 0.0f);
 }
+
+// V157_1: flex with 5 equal children distribute width equally
+TEST(LayoutEngineTest, LayoutV157_1) {
+    auto root = make_flex("div");
+    root->flex_direction = 0; // row
+
+    for (int i = 0; i < 5; i++) {
+        auto child = make_block("div");
+        child->flex_grow = 1.0f;
+        child->specified_height = 40.0f;
+        root->append_child(std::move(child));
+    }
+
+    LayoutEngine engine;
+    engine.compute(*root, 500.0f, 400.0f);
+
+    // Each child should get ~100px (500 / 5)
+    for (int i = 0; i < 5; i++) {
+        EXPECT_NEAR(root->children[i]->geometry.width, 100.0f, 1.0f);
+        EXPECT_FLOAT_EQ(root->children[i]->geometry.height, 40.0f);
+    }
+}
+
+// V157_2: grid with 4 columns
+TEST(GridLayout, GridFourColumnsV157) {
+    auto root = make_grid();
+    root->grid_template_columns = "100px 100px 100px 100px";
+    root->specified_width = 400.0f;
+
+    for (int i = 0; i < 4; i++) {
+        auto child = make_block("div");
+        child->specified_height = 50.0f;
+        root->append_child(std::move(child));
+    }
+
+    LayoutEngine engine;
+    engine.compute(*root, 400.0f, 600.0f);
+
+    // All 4 children on same row with x positions 0, 100, 200, 300
+    for (int i = 0; i < 4; i++) {
+        EXPECT_FLOAT_EQ(root->children[i]->geometry.x, i * 100.0f);
+        EXPECT_FLOAT_EQ(root->children[i]->geometry.width, 100.0f);
+    }
+    // All on the same row
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.y, root->children[3]->geometry.y);
+}
+
+// V157_3: flex-shrink 0 prevents shrinking
+TEST(LayoutEngineTest, LayoutV157_3) {
+    auto root = make_flex("div");
+    root->flex_direction = 0; // row
+
+    auto child1 = make_block("div");
+    child1->specified_width = 400.0f;
+    child1->specified_height = 50.0f;
+    child1->flex_shrink = 0.0f; // should NOT shrink
+
+    auto child2 = make_block("div");
+    child2->specified_width = 300.0f;
+    child2->specified_height = 50.0f;
+    child2->flex_shrink = 1.0f;
+
+    root->append_child(std::move(child1));
+    root->append_child(std::move(child2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 600.0f, 400.0f);
+
+    // child1 should keep 400px because flex_shrink = 0
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.width, 400.0f);
+    // child2 should shrink to fill remaining (200px)
+    EXPECT_NEAR(root->children[1]->geometry.width, 200.0f, 1.0f);
+}
+
+// V157_4: all margins set affects position
+TEST(LayoutEngineTest, LayoutV157_4) {
+    auto root = make_block("div");
+    root->specified_width = 600.0f;
+    root->specified_height = 400.0f;
+
+    auto child = make_block("div");
+    child->specified_width = 200.0f;
+    child->specified_height = 100.0f;
+    child->geometry.margin.top = 10.0f;
+    child->geometry.margin.right = 20.0f;
+    child->geometry.margin.bottom = 30.0f;
+    child->geometry.margin.left = 40.0f;
+
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 600.0f, 400.0f);
+
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.y, 10.0f);
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.x, 40.0f);
+}
+
+// V157_5: padding all sides adds to dimensions
+TEST(LayoutEngineTest, LayoutV157_5) {
+    auto root = make_block("div");
+    root->geometry.padding.top = 10.0f;
+    root->geometry.padding.right = 20.0f;
+    root->geometry.padding.bottom = 30.0f;
+    root->geometry.padding.left = 40.0f;
+
+    auto child = make_block("div");
+    child->specified_height = 50.0f;
+
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // Child width = container width - left padding - right padding
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.width, 800.0f - 40.0f - 20.0f);
+    // Root height = padding.top + child_height + padding.bottom
+    EXPECT_FLOAT_EQ(root->geometry.height, 10.0f + 50.0f + 30.0f);
+}
+
+// V157_6: border all sides with content
+TEST(LayoutEngineTest, LayoutV157_6) {
+    auto root = make_block("div");
+    root->geometry.border.top = 5.0f;
+    root->geometry.border.right = 10.0f;
+    root->geometry.border.bottom = 15.0f;
+    root->geometry.border.left = 20.0f;
+
+    auto child = make_block("div");
+    child->specified_height = 60.0f;
+
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // Child width = container width - left border - right border
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.width, 800.0f - 20.0f - 10.0f);
+    // Root height = border.top + child_height + border.bottom
+    EXPECT_FLOAT_EQ(root->geometry.height, 5.0f + 60.0f + 15.0f);
+}
+
+// V157_7: flex column space-evenly
+TEST(LayoutEngineTest, LayoutV157_7) {
+    auto root = make_flex("div");
+    root->flex_direction = 2; // column
+    root->justify_content = 5; // space-evenly
+    root->specified_height = 300.0f;
+
+    auto child1 = make_block("div");
+    child1->specified_width = 100.0f;
+    child1->specified_height = 50.0f;
+
+    auto child2 = make_block("div");
+    child2->specified_width = 100.0f;
+    child2->specified_height = 50.0f;
+
+    root->append_child(std::move(child1));
+    root->append_child(std::move(child2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // Items: 2*50=100. Remaining: 200. Slots: 3
+    // Space per slot: 200/3 = 66.67
+    float y1 = root->children[0]->geometry.y;
+    float y2 = root->children[1]->geometry.y;
+
+    EXPECT_NEAR(y1, 66.67f, 1.0f);
+    EXPECT_NEAR(y2, 183.33f, 1.0f); // 66.67 + 50 + 66.67
+}
+
+// V157_8: flex_grow defaults to 0.0f
+TEST(LayoutNodeProps, FlexGrowDefaultZeroV157) {
+    auto node = make_block("div");
+    EXPECT_FLOAT_EQ(node->flex_grow, 0.0f);
+}

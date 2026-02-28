@@ -21118,3 +21118,58 @@ TEST(SerializerTest, SerializerV156_3_Bytes512WithPatternRoundTrip) {
     EXPECT_EQ(result, bytes);
     EXPECT_FALSE(d.has_remaining());
 }
+
+// ------------------------------------------------------------------
+// Round 157 tests
+// ------------------------------------------------------------------
+
+TEST(SerializerTest, SerializerV157_1_F64SpecialValuesRoundTrip) {
+    Serializer s;
+    s.write_f64(0.0);
+    s.write_f64(-0.0);
+    s.write_f64(std::numeric_limits<double>::infinity());
+    s.write_f64(-std::numeric_limits<double>::infinity());
+
+    Deserializer d(s.data());
+
+    double val0 = d.read_f64();
+    EXPECT_DOUBLE_EQ(val0, 0.0);
+    EXPECT_FALSE(std::signbit(val0));
+
+    double val1 = d.read_f64();
+    EXPECT_DOUBLE_EQ(val1, 0.0);
+    EXPECT_TRUE(std::signbit(val1));
+
+    EXPECT_EQ(d.read_f64(), std::numeric_limits<double>::infinity());
+    EXPECT_EQ(d.read_f64(), -std::numeric_limits<double>::infinity());
+
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, SerializerV157_2_U16SequenceAscending) {
+    Serializer s;
+    for (uint16_t i = 0; i < 100; ++i) {
+        s.write_u16(i * 100);
+    }
+
+    Deserializer d(s.data());
+    for (uint16_t i = 0; i < 100; ++i) {
+        EXPECT_EQ(d.read_u16(), i * 100);
+    }
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, SerializerV157_3_BoolStringInterleaved) {
+    Serializer s;
+    for (int i = 0; i < 5; ++i) {
+        s.write_bool(i % 2 == 0);
+        s.write_string("pair_" + std::to_string(i));
+    }
+
+    Deserializer d(s.data());
+    for (int i = 0; i < 5; ++i) {
+        EXPECT_EQ(d.read_bool(), (i % 2 == 0));
+        EXPECT_EQ(d.read_string(), "pair_" + std::to_string(i));
+    }
+    EXPECT_FALSE(d.has_remaining());
+}

@@ -24779,3 +24779,132 @@ TEST(HtmlParserTest, HtmlV156_8) {
     ASSERT_NE(br, nullptr);
     EXPECT_EQ(br->tag_name, "br");
 }
+
+TEST(HtmlParserTest, HtmlV157_1) {
+    // strong and em nested
+    auto doc = clever::html::parse(
+        "<html><body><p><strong><em>Bold italic</em></strong></p></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* strong = doc->find_element("strong");
+    ASSERT_NE(strong, nullptr);
+    EXPECT_EQ(strong->tag_name, "strong");
+
+    auto* em = doc->find_element("em");
+    ASSERT_NE(em, nullptr);
+    EXPECT_EQ(em->tag_name, "em");
+    EXPECT_EQ(em->text_content(), "Bold italic");
+}
+
+TEST(HtmlParserTest, HtmlV157_2) {
+    // b and i elements
+    auto doc = clever::html::parse(
+        "<html><body><b>Bold</b> <i>Italic</i></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* b = doc->find_element("b");
+    ASSERT_NE(b, nullptr);
+    EXPECT_EQ(b->tag_name, "b");
+    EXPECT_EQ(b->text_content(), "Bold");
+
+    auto* i = doc->find_element("i");
+    ASSERT_NE(i, nullptr);
+    EXPECT_EQ(i->tag_name, "i");
+    EXPECT_EQ(i->text_content(), "Italic");
+}
+
+TEST(HtmlParserTest, HtmlV157_3) {
+    // small element
+    auto doc = clever::html::parse(
+        "<html><body><small>Fine print</small></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* small = doc->find_element("small");
+    ASSERT_NE(small, nullptr);
+    EXPECT_EQ(small->tag_name, "small");
+    EXPECT_EQ(small->text_content(), "Fine print");
+}
+
+TEST(HtmlParserTest, HtmlV157_4) {
+    // abbr with title
+    auto doc = clever::html::parse(
+        "<html><body><abbr title=\"HyperText Markup Language\">HTML</abbr></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* abbr = doc->find_element("abbr");
+    ASSERT_NE(abbr, nullptr);
+    EXPECT_EQ(abbr->tag_name, "abbr");
+    EXPECT_EQ(abbr->text_content(), "HTML");
+
+    bool found_title = false;
+    for (const auto& attr : abbr->attributes) {
+        if (attr.name == "title") {
+            found_title = true;
+            EXPECT_EQ(attr.value, "HyperText Markup Language");
+        }
+    }
+    EXPECT_TRUE(found_title) << "title attribute not found on abbr";
+}
+
+TEST(HtmlParserTest, HtmlV157_5) {
+    // span in div
+    auto doc = clever::html::parse(
+        "<html><body><div><span>Inside</span></div></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* div = doc->find_element("div");
+    ASSERT_NE(div, nullptr);
+    EXPECT_EQ(div->tag_name, "div");
+
+    auto* span = doc->find_element("span");
+    ASSERT_NE(span, nullptr);
+    EXPECT_EQ(span->tag_name, "span");
+    EXPECT_EQ(span->text_content(), "Inside");
+}
+
+TEST(HtmlParserTest, HtmlV157_6) {
+    // p with br
+    auto doc = clever::html::parse(
+        "<html><body><p>First<br>Second</p></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* p = doc->find_element("p");
+    ASSERT_NE(p, nullptr);
+    EXPECT_EQ(p->tag_name, "p");
+
+    auto* br = doc->find_element("br");
+    ASSERT_NE(br, nullptr);
+    EXPECT_EQ(br->tag_name, "br");
+}
+
+TEST(HtmlParserTest, HtmlV157_7) {
+    // nav with links
+    auto doc = clever::html::parse(
+        "<html><body><nav><a href=\"/home\">Home</a><a href=\"/about\">About</a></nav></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* nav = doc->find_element("nav");
+    ASSERT_NE(nav, nullptr);
+    EXPECT_EQ(nav->tag_name, "nav");
+
+    auto* a = doc->find_element("a");
+    ASSERT_NE(a, nullptr);
+    EXPECT_EQ(a->tag_name, "a");
+    EXPECT_EQ(a->text_content(), "Home");
+}
+
+TEST(HtmlParserTest, HtmlV157_8) {
+    // main with section
+    auto doc = clever::html::parse(
+        "<html><body><main><section>Content</section></main></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* main_el = doc->find_element("main");
+    ASSERT_NE(main_el, nullptr);
+    EXPECT_EQ(main_el->tag_name, "main");
+
+    auto* section = doc->find_element("section");
+    ASSERT_NE(section, nullptr);
+    EXPECT_EQ(section->tag_name, "section");
+    EXPECT_EQ(section->text_content(), "Content");
+}

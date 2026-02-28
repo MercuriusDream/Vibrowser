@@ -2396,3 +2396,69 @@ TEST(MessageChannelTest, MessageChannelV156_2_BidirectionalSmallPayloads) {
         EXPECT_EQ(recv_a->payload[0], static_cast<uint8_t>(i + 50));
     }
 }
+
+// ------------------------------------------------------------------
+// Round 157 tests
+// ------------------------------------------------------------------
+
+TEST(MessageChannelTest, MessageChannelV157_1_ConsecutiveTypeIds) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel a(std::move(pa));
+    MessageChannel b(std::move(pb));
+
+    int dispatch_count = 0;
+    std::vector<uint32_t> dispatched_types;
+
+    for (uint32_t t = 1; t <= 5; ++t) {
+        b.on(t, [&, t](const Message& m) {
+            dispatch_count++;
+            dispatched_types.push_back(m.type);
+            EXPECT_EQ(m.type, t);
+            EXPECT_EQ(m.request_id, t * 10);
+        });
+    }
+
+    for (uint32_t t = 1; t <= 5; ++t) {
+        Message msg;
+        msg.type = t;
+        msg.request_id = t * 10;
+        ASSERT_TRUE(a.send(msg));
+
+        auto received = b.receive();
+        ASSERT_TRUE(received.has_value());
+        b.dispatch(*received);
+    }
+
+    EXPECT_EQ(dispatch_count, 5);
+    ASSERT_EQ(dispatched_types.size(), 5u);
+    for (uint32_t t = 1; t <= 5; ++t) {
+        EXPECT_EQ(dispatched_types[t - 1], t);
+    }
+}
+
+TEST(MessageChannelTest, MessageChannelV157_2_PayloadIntegrity) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel a(std::move(pa));
+    MessageChannel b(std::move(pb));
+
+    std::vector<uint8_t> payload(128);
+    for (size_t i = 0; i < 128; ++i) {
+        payload[i] = static_cast<uint8_t>((i * 17 + 3) % 256);
+    }
+
+    Message msg;
+    msg.type = 42;
+    msg.request_id = 999;
+    msg.payload = payload;
+
+    ASSERT_TRUE(a.send(msg));
+
+    auto received = b.receive();
+    ASSERT_TRUE(received.has_value());
+    EXPECT_EQ(received->type, 42u);
+    EXPECT_EQ(received->request_id, 999u);
+    ASSERT_EQ(received->payload.size(), 128u);
+    for (size_t i = 0; i < 128; ++i) {
+        EXPECT_EQ(received->payload[i], static_cast<uint8_t>((i * 17 + 3) % 256));
+    }
+}
