@@ -11620,6 +11620,9 @@ RenderResult render_html(const std::string& html, const std::string& base_url,
 
                         // Clear document.currentScript after evaluation
                         clever::js::set_current_script(js_engine.context(), nullptr);
+
+                        // Fire any pending MutationObserver callbacks
+                        clever::js::fire_mutation_observers(js_engine.context());
                     }
                 }
 

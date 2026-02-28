@@ -109,6 +109,30 @@ struct DOMState {
     // Shadow DOM: closed shadow roots (not accessible via shadowRoot getter)
     std::unordered_set<clever::html::SimpleNode*> closed_shadow_roots;
 
+    // MutationObserver support
+    struct MutationObserverEntry {
+        JSValue observer_obj;   // the MutationObserver JS object
+        JSValue callback;       // the callback function
+        std::vector<clever::html::SimpleNode*> observed_targets;  // targets being observed
+        bool watch_child_list = false;
+        bool watch_attributes = false;
+        bool watch_character_data = false;
+        bool watch_subtree = false;
+        bool record_attribute_old_value = false;
+        bool record_character_data_old_value = false;
+        std::vector<std::string> attribute_filter;  // empty means all attributes
+        std::unordered_map<clever::html::SimpleNode*, std::unordered_map<std::string, std::string>> old_attribute_values;
+    };
+    std::vector<MutationObserverEntry> mutation_observers;
+
+    // Pending mutations to be delivered asynchronously
+    struct PendingMutation {
+        JSValue observer_obj;    // which observer to call
+        JSValue callback;        // cached callback
+        std::vector<JSValue> mutation_records;  // array of MutationRecord objects
+    };
+    std::vector<PendingMutation> pending_mutations;
+
     int viewport_width = 800, viewport_height = 600;
 };
 
@@ -1076,9 +1100,37 @@ static JSValue js_element_set_attribute(JSContext* ctx, JSValueConst this_val,
     const char* name = JS_ToCString(ctx, argv[0]);
     const char* value = JS_ToCString(ctx, argv[1]);
     if (name && value) {
-        set_attr(*node, name, value);
         auto* state = get_dom_state(ctx);
-        if (state) state->modified = true;
+
+        // Capture old value for mutation record
+        std::string old_value;
+        if (state) {
+            for (auto& entry : state->mutation_observers) {
+                if (entry.record_attribute_old_value) {
+                    auto it = entry.old_attribute_values[node].find(name);
+                    if (it != entry.old_attribute_values[node].end()) {
+                        old_value = it->second;
+                    }
+                }
+            }
+        }
+
+        set_attr(*node, name, value);
+        if (state) {
+            state->modified = true;
+
+            // Fire mutation observers
+            std::vector<clever::html::SimpleNode*> empty;
+            notify_mutation_observers(ctx, state, "attributes", node, empty, empty,
+                                    nullptr, nullptr, name, old_value);
+
+            // Update old attribute values for future mutations
+            for (auto& entry : state->mutation_observers) {
+                if (entry.record_attribute_old_value) {
+                    entry.old_attribute_values[node][name] = value;
+                }
+            }
+        }
     }
     if (name) JS_FreeCString(ctx, name);
     if (value) JS_FreeCString(ctx, value);
@@ -1104,15 +1156,34 @@ static JSValue js_element_append_child(JSContext* ctx, JSValueConst this_val,
                 // Keep the fragment alive temporarily
                 auto frag_owned = std::move(*it);
                 state->owned_nodes.erase(it);
-                // Move all children from fragment to parent
+
+                // Collect added nodes for mutation
+                std::vector<clever::html::SimpleNode*> added_nodes;
                 for (auto& frag_child : frag_owned->children) {
                     frag_child->parent = parent_node;
+                    added_nodes.push_back(frag_child.get());
+                }
+
+                // Calculate previous/next siblings before adding
+                clever::html::SimpleNode* prev_sibling = !parent_node->children.empty()
+                    ? parent_node->children.back().get() : nullptr;
+                clever::html::SimpleNode* next_sibling = nullptr;
+
+                for (auto& frag_child : frag_owned->children) {
                     parent_node->children.push_back(std::move(frag_child));
                 }
                 frag_owned->children.clear();
                 // Keep the empty fragment alive in owned_nodes
                 state->owned_nodes.push_back(std::move(frag_owned));
                 state->modified = true;
+
+                // Fire mutation for fragment children
+                if (!added_nodes.empty()) {
+                    std::vector<clever::html::SimpleNode*> empty;
+                    notify_mutation_observers(ctx, state, "childList", parent_node,
+                                            added_nodes, empty, prev_sibling, next_sibling);
+                }
+
                 return wrap_element(ctx, child_node);
             }
         }
@@ -1127,8 +1198,21 @@ static JSValue js_element_append_child(JSContext* ctx, JSValueConst this_val,
             auto owned = std::move(*it);
             state->owned_nodes.erase(it);
             owned->parent = parent_node;
+
+            // Calculate siblings
+            clever::html::SimpleNode* prev_sibling = !parent_node->children.empty()
+                ? parent_node->children.back().get() : nullptr;
+            clever::html::SimpleNode* next_sibling = nullptr;
+
             parent_node->children.push_back(std::move(owned));
             state->modified = true;
+
+            // Fire mutation
+            std::vector<clever::html::SimpleNode*> added = { child_node };
+            std::vector<clever::html::SimpleNode*> empty;
+            notify_mutation_observers(ctx, state, "childList", parent_node,
+                                    added, empty, prev_sibling, next_sibling);
+
             return wrap_element(ctx, child_node);
         }
     }
@@ -1144,8 +1228,21 @@ static JSValue js_element_append_child(JSContext* ctx, JSValueConst this_val,
                 auto owned = std::move(*it);
                 old_parent->children.erase(it);
                 owned->parent = parent_node;
+
+                // Calculate siblings
+                clever::html::SimpleNode* prev_sibling = !parent_node->children.empty()
+                    ? parent_node->children.back().get() : nullptr;
+                clever::html::SimpleNode* next_sibling = nullptr;
+
                 parent_node->children.push_back(std::move(owned));
                 state->modified = true;
+
+                // Fire mutations
+                std::vector<clever::html::SimpleNode*> added = { child_node };
+                std::vector<clever::html::SimpleNode*> empty;
+                notify_mutation_observers(ctx, state, "childList", parent_node,
+                                        added, empty, prev_sibling, next_sibling);
+
                 return wrap_element(ctx, child_node);
             }
         }
@@ -1169,11 +1266,30 @@ static JSValue js_element_remove_child(JSContext* ctx, JSValueConst this_val,
     for (auto it = parent_node->children.begin();
          it != parent_node->children.end(); ++it) {
         if (it->get() == child_node) {
+            // Calculate previous and next siblings before removal
+            auto idx = std::distance(parent_node->children.begin(), it);
+            clever::html::SimpleNode* prev_sibling = nullptr;
+            clever::html::SimpleNode* next_sibling = nullptr;
+
+            if (idx > 0) {
+                prev_sibling = parent_node->children[idx - 1].get();
+            }
+            if (idx + 1 < static_cast<int>(parent_node->children.size())) {
+                next_sibling = parent_node->children[idx + 1].get();
+            }
+
             auto owned = std::move(*it);
             parent_node->children.erase(it);
             owned->parent = nullptr;
             state->owned_nodes.push_back(std::move(owned));
             state->modified = true;
+
+            // Fire mutation
+            std::vector<clever::html::SimpleNode*> removed = { child_node };
+            std::vector<clever::html::SimpleNode*> empty;
+            notify_mutation_observers(ctx, state, "childList", parent_node,
+                                    empty, removed, prev_sibling, next_sibling);
+
             return wrap_element(ctx, child_node);
         }
     }
@@ -3325,12 +3441,169 @@ static JSValue js_element_set_outer_html(JSContext* ctx, JSValueConst this_val,
 }
 
 // =========================================================================
-// MutationObserver stub
+// MutationObserver implementation
 // =========================================================================
 
+// Helper: check if a node is an ancestor of another
+static bool is_ancestor(clever::html::SimpleNode* potential_ancestor,
+                        clever::html::SimpleNode* node) {
+    auto* current = node->parent;
+    while (current) {
+        if (current == potential_ancestor) return true;
+        current = current->parent;
+    }
+    return false;
+}
+
+// Helper: create a MutationRecord JS object
+static JSValue create_mutation_record(JSContext* ctx,
+                                      const std::string& type,
+                                      clever::html::SimpleNode* target,
+                                      const std::vector<clever::html::SimpleNode*>& added_nodes,
+                                      const std::vector<clever::html::SimpleNode*>& removed_nodes,
+                                      clever::html::SimpleNode* previous_sibling,
+                                      clever::html::SimpleNode* next_sibling,
+                                      const std::string& attr_name = "",
+                                      const std::string& old_value = "") {
+    JSValue record = JS_NewObject(ctx);
+
+    JS_SetPropertyStr(ctx, record, "type", JS_NewString(ctx, type.c_str()));
+    JS_SetPropertyStr(ctx, record, "target", wrap_element(ctx, target));
+
+    // Create addedNodes array
+    JSValue added_arr = JS_NewArray(ctx);
+    for (size_t i = 0; i < added_nodes.size(); ++i) {
+        JS_SetPropertyUint32(ctx, added_arr, static_cast<uint32_t>(i),
+                           wrap_element(ctx, added_nodes[i]));
+    }
+    JS_SetPropertyStr(ctx, record, "addedNodes", added_arr);
+
+    // Create removedNodes array
+    JSValue removed_arr = JS_NewArray(ctx);
+    for (size_t i = 0; i < removed_nodes.size(); ++i) {
+        JS_SetPropertyUint32(ctx, removed_arr, static_cast<uint32_t>(i),
+                           wrap_element(ctx, removed_nodes[i]));
+    }
+    JS_SetPropertyStr(ctx, record, "removedNodes", removed_arr);
+
+    // Siblings
+    JS_SetPropertyStr(ctx, record, "previousSibling",
+                     previous_sibling ? wrap_element(ctx, previous_sibling) : JS_NULL);
+    JS_SetPropertyStr(ctx, record, "nextSibling",
+                     next_sibling ? wrap_element(ctx, next_sibling) : JS_NULL);
+
+    // Attribute mutation info
+    if (type == "attributes") {
+        JS_SetPropertyStr(ctx, record, "attributeName",
+                         JS_NewString(ctx, attr_name.c_str()));
+        JS_SetPropertyStr(ctx, record, "attributeNamespace", JS_NULL);
+        JS_SetPropertyStr(ctx, record, "oldValue",
+                         !old_value.empty() ? JS_NewString(ctx, old_value.c_str()) : JS_NULL);
+    } else {
+        JS_SetPropertyStr(ctx, record, "attributeName", JS_NULL);
+        JS_SetPropertyStr(ctx, record, "attributeNamespace", JS_NULL);
+        JS_SetPropertyStr(ctx, record, "oldValue", JS_NULL);
+    }
+
+    return record;
+}
+
+// Helper: notify all mutation observers of a mutation
+static void notify_mutation_observers(JSContext* ctx,
+                                      DOMState* state,
+                                      const std::string& type,
+                                      clever::html::SimpleNode* target,
+                                      const std::vector<clever::html::SimpleNode*>& added_nodes,
+                                      const std::vector<clever::html::SimpleNode*>& removed_nodes,
+                                      clever::html::SimpleNode* previous_sibling,
+                                      clever::html::SimpleNode* next_sibling,
+                                      const std::string& attr_name = "",
+                                      const std::string& old_value = "") {
+    if (!state || !target) return;
+
+    for (auto& entry : state->mutation_observers) {
+        bool should_notify = false;
+
+        // Check if this observer is watching the target
+        for (auto* observed : entry.observed_targets) {
+            if (observed == target) {
+                should_notify = true;
+                break;
+            }
+            // Check subtree
+            if (entry.watch_subtree && is_ancestor(observed, target)) {
+                should_notify = true;
+                break;
+            }
+        }
+
+        if (!should_notify) continue;
+
+        // Check mutation type against observer options
+        bool matches = false;
+        if (type == "childList" && entry.watch_child_list) {
+            matches = true;
+        } else if (type == "attributes" && entry.watch_attributes) {
+            // Check attribute filter if present
+            if (!entry.attribute_filter.empty()) {
+                for (const auto& filtered : entry.attribute_filter) {
+                    if (filtered == attr_name) {
+                        matches = true;
+                        break;
+                    }
+                }
+            } else {
+                matches = true;
+            }
+        } else if (type == "characterData" && entry.watch_character_data) {
+            matches = true;
+        }
+
+        if (!matches) continue;
+
+        // Create mutation record
+        JSValue record = create_mutation_record(ctx, type, target,
+                                              added_nodes, removed_nodes,
+                                              previous_sibling, next_sibling,
+                                              attr_name, old_value);
+
+        // Queue for async delivery
+        PendingMutation pm;
+        pm.observer_obj = JS_DupValue(ctx, entry.observer_obj);
+        pm.callback = JS_DupValue(ctx, entry.callback);
+        pm.mutation_records.push_back(record);
+        state->pending_mutations.push_back(std::move(pm));
+    }
+}
+
+// Helper: flush all pending mutation callbacks
+static void flush_mutation_observers(JSContext* ctx, DOMState* state) {
+    if (!state) return;
+
+    while (!state->pending_mutations.empty()) {
+        auto pm = std::move(state->pending_mutations.front());
+        state->pending_mutations.erase(state->pending_mutations.begin());
+
+        // Create array of mutation records for this callback batch
+        JSValue records_arr = JS_NewArray(ctx);
+        for (size_t i = 0; i < pm.mutation_records.size(); ++i) {
+            JS_SetPropertyUint32(ctx, records_arr, static_cast<uint32_t>(i),
+                               pm.mutation_records[i]);
+        }
+
+        // Call the callback with (records, observer)
+        JSValue args[2] = { records_arr, pm.observer_obj };
+        JSValue ret = JS_Call(ctx, pm.callback, JS_UNDEFINED, 2, args);
+        if (JS_IsException(ret)) {
+            JS_FreeValue(ctx, ret);
+        }
+        JS_FreeValue(ctx, args[0]);
+        JS_FreeValue(ctx, pm.observer_obj);
+        JS_FreeValue(ctx, pm.callback);
+    }
+}
+
 static void js_mutation_observer_finalizer(JSRuntime* rt, JSValue val) {
-    // The stored callback is freed when the context is cleaned up.
-    // We stored it as a property on the object, so QuickJS GC handles it.
     (void)rt;
     (void)val;
 }
@@ -3341,28 +3614,166 @@ static JSClassDef mutation_observer_class_def = {
     nullptr, nullptr, nullptr
 };
 
-// MutationObserver.prototype.observe(target, config) -- no-op
-static JSValue js_mutation_observer_observe(JSContext* /*ctx*/,
-                                             JSValueConst /*this_val*/,
-                                             int /*argc*/,
-                                             JSValueConst* /*argv*/) {
+// MutationObserver.prototype.observe(target, config)
+static JSValue js_mutation_observer_observe(JSContext* ctx,
+                                             JSValueConst this_val,
+                                             int argc,
+                                             JSValueConst* argv) {
+    auto* target_node = (argc > 0) ? unwrap_element(ctx, argv[0]) : nullptr;
+    if (!target_node || argc < 2) return JS_UNDEFINED;
+
+    auto* state = get_dom_state(ctx);
+    if (!state) return JS_UNDEFINED;
+
+    // Parse options object
+    JSValue options = argv[1];
+    bool watch_child_list = false, watch_attributes = false, watch_character_data = false;
+    bool watch_subtree = false, record_attr_old = false, record_char_old = false;
+    std::vector<std::string> attr_filter;
+
+    if (JS_IsObject(options)) {
+        JSValue val;
+
+        val = JS_GetPropertyStr(ctx, options, "childList");
+        watch_child_list = JS_ToBool(ctx, val);
+        JS_FreeValue(ctx, val);
+
+        val = JS_GetPropertyStr(ctx, options, "attributes");
+        watch_attributes = JS_ToBool(ctx, val);
+        JS_FreeValue(ctx, val);
+
+        val = JS_GetPropertyStr(ctx, options, "characterData");
+        watch_character_data = JS_ToBool(ctx, val);
+        JS_FreeValue(ctx, val);
+
+        val = JS_GetPropertyStr(ctx, options, "subtree");
+        watch_subtree = JS_ToBool(ctx, val);
+        JS_FreeValue(ctx, val);
+
+        val = JS_GetPropertyStr(ctx, options, "attributeOldValue");
+        record_attr_old = JS_ToBool(ctx, val);
+        JS_FreeValue(ctx, val);
+
+        val = JS_GetPropertyStr(ctx, options, "characterDataOldValue");
+        record_char_old = JS_ToBool(ctx, val);
+        JS_FreeValue(ctx, val);
+
+        val = JS_GetPropertyStr(ctx, options, "attributeFilter");
+        if (JS_IsArray(ctx, val)) {
+            JSValue len_val = JS_GetPropertyStr(ctx, val, "length");
+            uint32_t len = 0;
+            JS_ToUint32(ctx, &len, len_val);
+            JS_FreeValue(ctx, len_val);
+            for (uint32_t i = 0; i < len; ++i) {
+                JSValue item = JS_GetPropertyUint32(ctx, val, i);
+                const char* str = JS_ToCString(ctx, item);
+                if (str) attr_filter.push_back(str);
+                JS_FreeCString(ctx, str);
+                JS_FreeValue(ctx, item);
+            }
+        }
+        JS_FreeValue(ctx, val);
+    }
+
+    // Find or create observer entry for this observer object
+    for (auto& entry : state->mutation_observers) {
+        if (JS_StrictEqual(ctx, entry.observer_obj, this_val)) {
+            // Update existing observer
+            entry.observed_targets.push_back(target_node);
+            entry.watch_child_list = watch_child_list;
+            entry.watch_attributes = watch_attributes;
+            entry.watch_character_data = watch_character_data;
+            entry.watch_subtree = watch_subtree;
+            entry.record_attribute_old_value = record_attr_old;
+            entry.record_character_data_old_value = record_char_old;
+            entry.attribute_filter = attr_filter;
+
+            // Store old attribute values if needed
+            if (record_attr_old) {
+                auto& old_vals = entry.old_attribute_values[target_node];
+                for (const auto& attr : target_node->attributes) {
+                    old_vals[attr.first] = attr.second;
+                }
+            }
+
+            return JS_UNDEFINED;
+        }
+    }
+
+    // Create new observer entry
+    DOMState::MutationObserverEntry new_entry;
+    new_entry.observer_obj = JS_DupValue(ctx, this_val);
+    new_entry.callback = JS_GetPropertyStr(ctx, this_val, "_callback");
+    new_entry.observed_targets.push_back(target_node);
+    new_entry.watch_child_list = watch_child_list;
+    new_entry.watch_attributes = watch_attributes;
+    new_entry.watch_character_data = watch_character_data;
+    new_entry.watch_subtree = watch_subtree;
+    new_entry.record_attribute_old_value = record_attr_old;
+    new_entry.record_character_data_old_value = record_char_old;
+    new_entry.attribute_filter = attr_filter;
+
+    if (record_attr_old) {
+        auto& old_vals = new_entry.old_attribute_values[target_node];
+        for (const auto& attr : target_node->attributes) {
+            old_vals[attr.first] = attr.second;
+        }
+    }
+
+    state->mutation_observers.push_back(std::move(new_entry));
     return JS_UNDEFINED;
 }
 
-// MutationObserver.prototype.disconnect() -- no-op
-static JSValue js_mutation_observer_disconnect(JSContext* /*ctx*/,
-                                                JSValueConst /*this_val*/,
+// MutationObserver.prototype.disconnect()
+static JSValue js_mutation_observer_disconnect(JSContext* ctx,
+                                                JSValueConst this_val,
                                                 int /*argc*/,
                                                 JSValueConst* /*argv*/) {
+    auto* state = get_dom_state(ctx);
+    if (!state) return JS_UNDEFINED;
+
+    // Remove this observer from the list
+    for (auto it = state->mutation_observers.begin();
+         it != state->mutation_observers.end(); ++it) {
+        if (JS_StrictEqual(ctx, it->observer_obj, this_val)) {
+            JS_FreeValue(ctx, it->observer_obj);
+            JS_FreeValue(ctx, it->callback);
+            state->mutation_observers.erase(it);
+            break;
+        }
+    }
+
     return JS_UNDEFINED;
 }
 
-// MutationObserver.prototype.takeRecords() -- returns empty array
+// MutationObserver.prototype.takeRecords()
 static JSValue js_mutation_observer_take_records(JSContext* ctx,
-                                                  JSValueConst /*this_val*/,
+                                                  JSValueConst this_val,
                                                   int /*argc*/,
                                                   JSValueConst* /*argv*/) {
-    return JS_NewArray(ctx);
+    auto* state = get_dom_state(ctx);
+    if (!state) return JS_NewArray(ctx);
+
+    // Find pending mutations for this observer and return them
+    JSValue records_arr = JS_NewArray(ctx);
+    uint32_t count = 0;
+
+    auto it = state->pending_mutations.begin();
+    while (it != state->pending_mutations.end()) {
+        if (JS_StrictEqual(ctx, it->observer_obj, this_val)) {
+            for (auto& record : it->mutation_records) {
+                JS_SetPropertyUint32(ctx, records_arr, count++, JS_DupValue(ctx, record));
+                JS_FreeValue(ctx, record);
+            }
+            JS_FreeValue(ctx, it->observer_obj);
+            JS_FreeValue(ctx, it->callback);
+            it = state->pending_mutations.erase(it);
+        } else {
+            ++it;
+        }
+    }
+
+    return records_arr;
 }
 
 // MutationObserver constructor: new MutationObserver(callback)
@@ -13412,6 +13823,12 @@ std::string get_document_title(JSContext* ctx) {
 bool dom_was_modified(JSContext* ctx) {
     auto* state = get_dom_state(ctx);
     return state && state->modified;
+}
+
+// Flush pending MutationObserver callbacks
+void fire_mutation_observers(JSContext* ctx) {
+    auto* state = get_dom_state(ctx);
+    flush_mutation_observers(ctx, state);
 }
 
 // =========================================================================

@@ -80,4 +80,8 @@ void fire_resize_observers(JSContext* ctx, int viewport_w, int viewport_h);
 // Call before evaluating each <script> and set to nullptr after.
 void set_current_script(JSContext* ctx, clever::html::SimpleNode* script_elem);
 
+// Fire pending MutationObserver callbacks.
+// Call this to flush any queued mutations (after DOM operations complete).
+void fire_mutation_observers(JSContext* ctx);
+
 } // namespace clever::js
