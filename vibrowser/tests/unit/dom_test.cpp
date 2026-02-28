@@ -25734,3 +25734,94 @@ TEST(DomEvent, EventTypeMatchesV179) {
     Event custom_event("my-custom-event");
     EXPECT_EQ(custom_event.type(), "my-custom-event");
 }
+
+// ---------------------------------------------------------------------------
+// Round 180 — DOM tests
+// ---------------------------------------------------------------------------
+
+// 1. Remove child returns the removed node and decrements child_count
+TEST(DomNode, RemoveChildDecrementsCountV180) {
+    auto parent = std::make_unique<Element>("div");
+    auto child = std::make_unique<Element>("span");
+    auto* child_ptr = child.get();
+    parent->append_child(std::move(child));
+    EXPECT_EQ(parent->child_count(), 1u);
+    auto removed = parent->remove_child(*child_ptr);
+    EXPECT_EQ(parent->child_count(), 0u);
+    EXPECT_NE(removed, nullptr);
+}
+
+// 2. Element set_attribute id and retrieve via get_attribute
+TEST(DomElement, SetAttributeIdRetrievalV180) {
+    Element elem("section");
+    elem.set_attribute("id", "main-content");
+    EXPECT_EQ(elem.get_attribute("id"), "main-content");
+    elem.set_attribute("id", "updated-content");
+    EXPECT_EQ(elem.get_attribute("id"), "updated-content");
+}
+
+// 3. ClassList add multiple classes and verify count
+TEST(DomElement, ClassListAddMultipleV180) {
+    Element elem("div");
+    elem.class_list().add("alpha");
+    elem.class_list().add("beta");
+    elem.class_list().add("gamma");
+    EXPECT_TRUE(elem.class_list().contains("alpha"));
+    EXPECT_TRUE(elem.class_list().contains("beta"));
+    EXPECT_TRUE(elem.class_list().contains("gamma"));
+    EXPECT_EQ(elem.class_list().length(), 3u);
+}
+
+// 4. DirtyFlags mark Paint then clear resets all
+TEST(DomNode, MarkPaintThenClearResetsV180) {
+    Element elem("div");
+    elem.mark_dirty(DirtyFlags::Paint);
+    EXPECT_NE(elem.dirty_flags() & DirtyFlags::Paint, DirtyFlags::None);
+    elem.clear_dirty();
+    EXPECT_EQ(elem.dirty_flags(), DirtyFlags::None);
+}
+
+// 5. insert_before in the middle of sibling list
+TEST(DomNode, InsertBeforeMiddleSiblingV180) {
+    auto parent = std::make_unique<Element>("ul");
+    auto first = std::make_unique<Element>("li");
+    auto* first_ptr = first.get();
+    parent->append_child(std::move(first));
+
+    auto third = std::make_unique<Element>("li");
+    auto* third_ptr = third.get();
+    parent->append_child(std::move(third));
+
+    auto second = std::make_unique<Element>("li");
+    auto* second_ptr = second.get();
+    parent->insert_before(std::move(second), third_ptr);
+
+    EXPECT_EQ(first_ptr->next_sibling(), second_ptr);
+    EXPECT_EQ(second_ptr->next_sibling(), third_ptr);
+    EXPECT_EQ(parent->child_count(), 3u);
+}
+
+// 6. Comment node data and set_data
+TEST(DomComment, CommentDataAndSetDataV180) {
+    Comment comment("initial comment");
+    EXPECT_EQ(comment.node_type(), NodeType::Comment);
+    EXPECT_EQ(comment.data(), "initial comment");
+    comment.set_data("updated comment");
+    EXPECT_EQ(comment.data(), "updated comment");
+}
+
+// 7. Element has_attribute returns false for missing attribute
+TEST(DomElement, HasAttributeReturnsFalseV180) {
+    Element elem("input");
+    EXPECT_FALSE(elem.has_attribute("disabled"));
+    elem.set_attribute("disabled", "");
+    EXPECT_TRUE(elem.has_attribute("disabled"));
+}
+
+// 8. Document create_element produces correct tag and type
+TEST(DomDocument, CreateElementTagAndTypeV180) {
+    Document doc;
+    auto elem = doc.create_element("article");
+    EXPECT_EQ(elem->tag_name(), "article");
+    EXPECT_EQ(elem->node_type(), NodeType::Element);
+}

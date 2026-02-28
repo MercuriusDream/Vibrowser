@@ -13819,3 +13819,52 @@ TEST(CORSPolicyTest, CorsV179_7_NoAttachOriginSameOrigin) {
 TEST(CORSPolicyTest, CorsV179_8_CrossOriginDifferentPorts) {
     EXPECT_TRUE(is_cross_origin("https://app.example:8080", "https://app.example:9090/api"));
 }
+
+// ---------------------------------------------------------------------------
+// Round 180 — CORS tests
+// ---------------------------------------------------------------------------
+
+// 1. data: scheme origin is NOT enforceable
+TEST(CORSPolicyTest, CorsV180_1_DataSchemeNotEnforceable) {
+    EXPECT_FALSE(has_enforceable_document_origin("data:text/html,<h1>Hello</h1>"));
+}
+
+// 2. blob: scheme origin is NOT enforceable
+TEST(CORSPolicyTest, CorsV180_2_BlobSchemeNotEnforceable) {
+    EXPECT_FALSE(has_enforceable_document_origin("blob:https://example.com/abc-123"));
+}
+
+// 3. IPv4 address origin IS enforceable
+TEST(CORSPolicyTest, CorsV180_3_Ipv4AddressEnforceable) {
+    EXPECT_TRUE(has_enforceable_document_origin("https://192.168.1.1"));
+}
+
+// 4. ACAO mismatch denies response
+TEST(CORSPolicyTest, CorsV180_4_AcaoMismatchDenies) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "https://other.example");
+    EXPECT_FALSE(cors_allows_response("https://app.example", "https://api.example/data", headers, false));
+}
+
+// 5. http: URL IS CORS eligible
+TEST(CORSPolicyTest, CorsV180_5_HttpIsCorsEligible) {
+    EXPECT_TRUE(is_cors_eligible_request_url("http://api.example/data"));
+}
+
+// 6. https: URL IS CORS eligible
+TEST(CORSPolicyTest, CorsV180_6_HttpsIsCorsEligible) {
+    EXPECT_TRUE(is_cors_eligible_request_url("https://api.example/data"));
+}
+
+// 7. Should attach origin header when origins differ in host
+TEST(CORSPolicyTest, CorsV180_7_AttachOriginDifferentHost) {
+    EXPECT_TRUE(should_attach_origin_header("https://frontend.example",
+                                            "https://backend.example/api"));
+}
+
+// 8. Normalize does NOT set origin header for same-origin request
+TEST(CORSPolicyTest, CorsV180_8_NormalizeNoOriginSameOrigin) {
+    clever::net::HeaderMap headers;
+    normalize_outgoing_origin_header(headers, "https://app.example", "https://app.example/page");
+    EXPECT_FALSE(headers.has("origin"));
+}

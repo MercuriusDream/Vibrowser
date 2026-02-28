@@ -31415,3 +31415,178 @@ TEST(HttpClient, ResponseParse404EmptyBodyV179) {
     EXPECT_TRUE(resp->body_as_string().empty())
         << "Body should be empty for Content-Length: 0";
 }
+
+// ===========================================================================
+// Cycle V180 — Net Tests (Round 180)
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// 1. HeaderMap: remove then has returns false
+// ---------------------------------------------------------------------------
+TEST(HeaderMapTest, RemoveThenHasReturnsFalseV180) {
+    HeaderMap map;
+    map.set("X-Trace-Id", "abc180");
+    EXPECT_TRUE(map.has("X-Trace-Id"));
+    map.remove("X-Trace-Id");
+    EXPECT_FALSE(map.has("X-Trace-Id"))
+        << "has() should return false after remove()";
+    EXPECT_FALSE(map.get("x-trace-id").has_value())
+        << "get() should return nullopt after remove()";
+}
+
+// ---------------------------------------------------------------------------
+// 2. HeaderMap: append then remove clears all values for key
+// ---------------------------------------------------------------------------
+TEST(HeaderMapTest, AppendThenRemoveClearsAllValuesV180) {
+    HeaderMap map;
+    map.append("X-Multi-V180", "first");
+    map.append("X-Multi-V180", "second");
+    map.append("X-Multi-V180", "third");
+    EXPECT_EQ(map.get_all("x-multi-v180").size(), 3u);
+
+    map.remove("X-Multi-V180");
+    EXPECT_EQ(map.get_all("x-multi-v180").size(), 0u)
+        << "remove() should clear all values for the key";
+    EXPECT_TRUE(map.empty() || !map.has("x-multi-v180"))
+        << "Key should no longer exist after remove";
+}
+
+// ---------------------------------------------------------------------------
+// 3. Request: serialize POST with body includes Content-Length
+// ---------------------------------------------------------------------------
+TEST(HttpClient, RequestSerializePostWithBodyV180) {
+    Request req;
+    req.method = Method::POST;
+    req.host = "v180-post.example.com";
+    req.port = 443;
+    req.path = "/submit";
+    std::string body_str = "field=value180";
+    req.body.assign(body_str.begin(), body_str.end());
+    req.headers.set("Content-Type", "application/x-www-form-urlencoded");
+
+    auto bytes = req.serialize();
+    std::string raw(bytes.begin(), bytes.end());
+
+    // Should start with POST
+    EXPECT_EQ(raw.substr(0, 4), "POST")
+        << "Serialized request should start with POST";
+    // Port 443 omitted from Host
+    EXPECT_NE(raw.find("Host: v180-post.example.com\r\n"), std::string::npos)
+        << "Port 443 should be omitted from Host, got: " << raw;
+    EXPECT_EQ(raw.find(":443"), std::string::npos)
+        << "Port 443 should not appear in Host header";
+    // Body should be included at the end
+    EXPECT_NE(raw.find("field=value180"), std::string::npos)
+        << "Body should be present in serialized request";
+}
+
+// ---------------------------------------------------------------------------
+// 4. Request: serialize PUT with non-standard port shows port in Host
+// ---------------------------------------------------------------------------
+TEST(HttpClient, RequestSerializePutNonStandardPortV180) {
+    Request req;
+    req.method = Method::PUT;
+    req.host = "v180-put.example.com";
+    req.port = 8080;
+    req.path = "/update";
+
+    auto bytes = req.serialize();
+    std::string raw(bytes.begin(), bytes.end());
+
+    EXPECT_EQ(raw.substr(0, 3), "PUT")
+        << "Serialized request should start with PUT";
+    // Non-standard port 8080 should appear in Host header
+    EXPECT_NE(raw.find("Host: v180-put.example.com:8080\r\n"), std::string::npos)
+        << "Non-standard port should appear in Host, got: " << raw;
+    // Connection: close should be present
+    EXPECT_NE(raw.find("Connection: close\r\n"), std::string::npos)
+        << "Connection: close should be present";
+}
+
+// ---------------------------------------------------------------------------
+// 5. CookieJar: secure flag prevents cookie on insecure requests
+// ---------------------------------------------------------------------------
+TEST(HttpClient, CookieJarSecureFlagBlocksInsecureV180) {
+    CookieJar jar;
+    jar.set_from_header("sec180=secret; Secure", "v180-secure.example.com");
+
+    // Secure request should see the cookie
+    std::string secure_hdr = jar.get_cookie_header("v180-secure.example.com", "/", true);
+    EXPECT_NE(secure_hdr.find("sec180=secret"), std::string::npos)
+        << "Secure cookie should be sent over HTTPS, got: " << secure_hdr;
+
+    // Insecure request should NOT see the cookie
+    std::string insecure_hdr = jar.get_cookie_header("v180-secure.example.com", "/", false);
+    EXPECT_EQ(insecure_hdr.find("sec180=secret"), std::string::npos)
+        << "Secure cookie should NOT be sent over HTTP, got: " << insecure_hdr;
+}
+
+// ---------------------------------------------------------------------------
+// 6. CookieJar: multiple cookies for same domain are concatenated
+// ---------------------------------------------------------------------------
+TEST(HttpClient, CookieJarMultipleCookiesConcatenatedV180) {
+    CookieJar jar;
+    jar.set_from_header("alpha180=one", "v180-multi.example.com");
+    jar.set_from_header("beta180=two", "v180-multi.example.com");
+
+    std::string hdr = jar.get_cookie_header("v180-multi.example.com", "/", false);
+    EXPECT_NE(hdr.find("alpha180=one"), std::string::npos)
+        << "First cookie should be present, got: " << hdr;
+    EXPECT_NE(hdr.find("beta180=two"), std::string::npos)
+        << "Second cookie should be present, got: " << hdr;
+    // Cookies should be separated by "; "
+    EXPECT_NE(hdr.find("; "), std::string::npos)
+        << "Multiple cookies should be separated by '; ', got: " << hdr;
+}
+
+// ---------------------------------------------------------------------------
+// 7. Response: parse 301 redirect with Location header
+// ---------------------------------------------------------------------------
+TEST(HttpClient, ResponseParse301WithLocationV180) {
+    std::string raw_resp =
+        "HTTP/1.1 301 Moved Permanently\r\n"
+        "Location: https://v180-new.example.com/\r\n"
+        "Content-Length: 0\r\n"
+        "\r\n";
+    std::vector<uint8_t> data(raw_resp.begin(), raw_resp.end());
+
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value()) << "Should parse valid 301 response";
+    EXPECT_EQ(resp->status, 301u);
+    EXPECT_EQ(resp->status_text, "Moved Permanently");
+    auto location = resp->headers.get("location");
+    ASSERT_TRUE(location.has_value())
+        << "Location header should be present";
+    EXPECT_EQ(location.value(), "https://v180-new.example.com/");
+}
+
+// ---------------------------------------------------------------------------
+// 8. Response: parse response with multiple Set-Cookie headers
+// ---------------------------------------------------------------------------
+TEST(HttpClient, ResponseParseMultipleSetCookiesV180) {
+    std::string raw_resp =
+        "HTTP/1.1 200 OK\r\n"
+        "Set-Cookie: id180=abc; Path=/\r\n"
+        "Set-Cookie: session180=xyz; HttpOnly\r\n"
+        "Content-Length: 5\r\n"
+        "\r\n"
+        "hello";
+    std::vector<uint8_t> data(raw_resp.begin(), raw_resp.end());
+
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value()) << "Should parse valid 200 response";
+    EXPECT_EQ(resp->status, 200u);
+
+    auto cookies = resp->headers.get_all("set-cookie");
+    EXPECT_EQ(cookies.size(), 2u)
+        << "Should have 2 Set-Cookie headers, got " << cookies.size();
+
+    bool found_id = false, found_session = false;
+    for (const auto& c : cookies) {
+        if (c.find("id180=abc") != std::string::npos) found_id = true;
+        if (c.find("session180=xyz") != std::string::npos) found_session = true;
+    }
+    EXPECT_TRUE(found_id) << "Should find id180 cookie";
+    EXPECT_TRUE(found_session) << "Should find session180 cookie";
+    EXPECT_EQ(resp->body_as_string(), "hello");
+}

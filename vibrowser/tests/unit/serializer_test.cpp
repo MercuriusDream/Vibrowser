@@ -22201,3 +22201,64 @@ TEST(SerializerTest, SerializerV179_3_U32MaxBoundaryWithBytesRoundTrip) {
     EXPECT_EQ(d.read_u32(), std::numeric_limits<uint32_t>::max() - 1);
     EXPECT_FALSE(d.has_remaining());
 }
+
+// ------------------------------------------------------------------
+// Round 180 – Serializer
+// ------------------------------------------------------------------
+
+TEST(SerializerTest, SerializerV180_1_RepeatedBytesBlocksIdenticalContent) {
+    // Write the same byte block multiple times and verify each round-trips
+    Serializer s;
+    std::vector<uint8_t> pattern = {0xAA, 0xBB, 0xCC, 0xDD};
+    for (int i = 0; i < 10; ++i) {
+        s.write_bytes(pattern.data(), pattern.size());
+    }
+
+    Deserializer d(s.data());
+    for (int i = 0; i < 10; ++i) {
+        auto r = d.read_bytes();
+        EXPECT_EQ(r.size(), 4u);
+        EXPECT_EQ(r, pattern);
+    }
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, SerializerV180_2_U64AndStringInterleavedRoundTrip) {
+    // Interleave u64 values with strings and verify ordering is preserved
+    Serializer s;
+    s.write_u64(0xDEAD'BEEF'CAFE'BABEull);
+    s.write_string("alpha_v180");
+    s.write_u64(0);
+    s.write_string("");
+    s.write_u64(std::numeric_limits<uint64_t>::max());
+    s.write_string("omega_v180");
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u64(), 0xDEAD'BEEF'CAFE'BABEull);
+    EXPECT_EQ(d.read_string(), "alpha_v180");
+    EXPECT_EQ(d.read_u64(), 0u);
+    EXPECT_EQ(d.read_string(), "");
+    EXPECT_EQ(d.read_u64(), std::numeric_limits<uint64_t>::max());
+    EXPECT_EQ(d.read_string(), "omega_v180");
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, SerializerV180_3_LargeBytesBlockPreservesContent) {
+    // Write a 4096-byte block with deterministic pattern and verify integrity
+    Serializer s;
+    std::vector<uint8_t> big_block(4096);
+    for (size_t i = 0; i < big_block.size(); ++i) {
+        big_block[i] = static_cast<uint8_t>((i * 13 + 7) % 256);
+    }
+    s.write_u32(static_cast<uint32_t>(big_block.size()));
+    s.write_bytes(big_block.data(), big_block.size());
+    s.write_u32(0xCAFE);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u32(), 4096u);
+    auto rb = d.read_bytes();
+    EXPECT_EQ(rb.size(), 4096u);
+    EXPECT_EQ(rb, big_block);
+    EXPECT_EQ(d.read_u32(), 0xCAFEu);
+    EXPECT_FALSE(d.has_remaining());
+}

@@ -39668,3 +39668,94 @@ TEST(JSEngine, JsV179_8) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "5 + 10 = 15");
 }
+
+// V180_1: Array.from creates array from iterable
+TEST(JSEngine, JsV180_1) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        JSON.stringify(Array.from('abc'));
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "[\"a\",\"b\",\"c\"]");
+}
+
+// V180_2: Object.assign merges properties
+TEST(JSEngine, JsV180_2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var target = {a: 1};
+        Object.assign(target, {b: 2}, {c: 3});
+        JSON.stringify(target);
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "{\"a\":1,\"b\":2,\"c\":3}");
+}
+
+// V180_3: Array.prototype.includes
+TEST(JSEngine, JsV180_3) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var arr = [1, 2, 3, 4, 5];
+        arr.includes(3).toString() + '|' + arr.includes(6).toString();
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true|false");
+}
+
+// V180_4: String.prototype.startsWith and endsWith
+TEST(JSEngine, JsV180_4) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var s = 'Hello World';
+        s.startsWith('Hello').toString() + '|' + s.endsWith('World').toString();
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true|true");
+}
+
+// V180_5: destructuring assignment with defaults
+TEST(JSEngine, JsV180_5) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var {a, b = 10, c = 20} = {a: 1, c: 3};
+        [a, b, c].join(',');
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1,10,3");
+}
+
+// V180_6: spread operator in array literal
+TEST(JSEngine, JsV180_6) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var arr1 = [1, 2, 3];
+        var arr2 = [0, ...arr1, 4];
+        JSON.stringify(arr2);
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "[0,1,2,3,4]");
+}
+
+// V180_7: Array.filter returns matching elements
+TEST(JSEngine, JsV180_7) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var arr = [1, 2, 3, 4, 5];
+        arr.filter(function(x) { return x % 2 === 0; }).join(',');
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "2,4");
+}
+
+// V180_8: Number.isInteger and Number.isFinite
+TEST(JSEngine, JsV180_8) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        Number.isInteger(5).toString() + '|' +
+        Number.isInteger(5.5).toString() + '|' +
+        Number.isFinite(100).toString() + '|' +
+        Number.isFinite(Infinity).toString();
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true|false|true|false");
+}

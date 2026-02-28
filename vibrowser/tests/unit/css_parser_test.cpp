@@ -12303,3 +12303,43 @@ TEST_F(CSSStylesheetTest, BoxSizingBorderBoxDeclarationV179) {
     ASSERT_GE(sheet.rules[0].declarations[0].values.size(), 1u);
     EXPECT_EQ(sheet.rules[0].declarations[0].values[0].value, "border-box");
 }
+
+// ---------------------------------------------------------------------------
+// Cycle V180 — white-space, list-style-position, flex-wrap, visibility declarations
+// ---------------------------------------------------------------------------
+
+TEST_F(CSSStylesheetTest, WhiteSpaceNoWrapDeclarationV180) {
+    auto sheet = parse_stylesheet("code { white-space: nowrap; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    ASSERT_EQ(sheet.rules[0].declarations.size(), 1u);
+    EXPECT_EQ(sheet.rules[0].declarations[0].property, "white-space");
+    ASSERT_GE(sheet.rules[0].declarations[0].values.size(), 1u);
+    EXPECT_EQ(sheet.rules[0].declarations[0].values[0].value, "nowrap");
+}
+
+TEST_F(CSSStylesheetTest, ListStylePositionInsideDeclarationV180) {
+    auto sheet = parse_stylesheet("ul { list-style-position: inside; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    ASSERT_EQ(sheet.rules[0].declarations.size(), 1u);
+    EXPECT_EQ(sheet.rules[0].declarations[0].property, "list-style-position");
+    ASSERT_GE(sheet.rules[0].declarations[0].values.size(), 1u);
+    EXPECT_EQ(sheet.rules[0].declarations[0].values[0].value, "inside");
+}
+
+TEST_F(CSSStylesheetTest, FlexWrapWrapDeclarationV180) {
+    auto sheet = parse_stylesheet(".container { flex-wrap: wrap; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    ASSERT_EQ(sheet.rules[0].declarations.size(), 1u);
+    EXPECT_EQ(sheet.rules[0].declarations[0].property, "flex-wrap");
+    ASSERT_GE(sheet.rules[0].declarations[0].values.size(), 1u);
+    EXPECT_EQ(sheet.rules[0].declarations[0].values[0].value, "wrap");
+}
+
+TEST_F(CSSStylesheetTest, VisibilityHiddenDeclarationV180) {
+    auto sheet = parse_stylesheet(".hidden { visibility: hidden; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    ASSERT_EQ(sheet.rules[0].declarations.size(), 1u);
+    EXPECT_EQ(sheet.rules[0].declarations[0].property, "visibility");
+    ASSERT_GE(sheet.rules[0].declarations[0].values.size(), 1u);
+    EXPECT_EQ(sheet.rules[0].declarations[0].values[0].value, "hidden");
+}

@@ -16408,3 +16408,53 @@ TEST(UrlParserTest, UrlV179_4_HighPortNumberPreserved) {
     std::string serialized = result->serialize();
     EXPECT_NE(serialized.find(":65535"), std::string::npos);
 }
+
+// =============================================================================
+// Cycle V180 — URL parser tests
+// =============================================================================
+TEST(UrlParserTest, UrlV180_1_DefaultPort80OmittedInHttpSerialize) {
+    // Port 80 is the default for HTTP and should be omitted during serialization
+    auto result = parse("http://www.example.com:80/index.html");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "www.example.com");
+    EXPECT_EQ(result->path, "/index.html");
+    std::string serialized = result->serialize();
+    // Default port 80 should be omitted
+    EXPECT_EQ(serialized.find(":80"), std::string::npos);
+    EXPECT_NE(serialized.find("www.example.com/index.html"), std::string::npos);
+}
+
+TEST(UrlParserTest, UrlV180_2_QueryAndFragmentPreserved) {
+    // Both query and fragment components should be parsed and preserved
+    auto result = parse("https://search.example.org/results?q=test&lang=en#section2");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "search.example.org");
+    EXPECT_EQ(result->path, "/results");
+    EXPECT_EQ(result->query, "q=test&lang=en");
+    EXPECT_EQ(result->fragment, "section2");
+}
+
+TEST(UrlParserTest, UrlV180_3_PercentEncodedHashInPathDoubleEncoded) {
+    // %23 (encoded '#') in the path gets double-encoded by the parser: %23 -> %2523
+    auto result = parse("http://example.com/foo%23bar");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "example.com");
+    // Parser double-encodes percent sequences
+    EXPECT_NE(result->path.find("%2523"), std::string::npos);
+}
+
+TEST(UrlParserTest, UrlV180_4_UserInfoParsedCorrectly) {
+    // Username and password in the URL should be parsed
+    auto result = parse("http://admin:secret@example.com:9090/dashboard");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->username, "admin");
+    EXPECT_EQ(result->password, "secret");
+    EXPECT_EQ(result->host, "example.com");
+    ASSERT_TRUE(result->port.has_value());
+    EXPECT_EQ(result->port.value(), 9090);
+    EXPECT_EQ(result->path, "/dashboard");
+}

@@ -26984,3 +26984,43 @@ TEST(PropertyCascadeTest, FontStyleItalicAppliedV179) {
     cascade.apply_declaration(style, make_decl("font-style", "italic"), parent);
     EXPECT_EQ(style.font_style, FontStyle::Italic);
 }
+
+// ---------------------------------------------------------------------------
+// Cycle V180 — white-space nowrap, visibility hidden, list-style-position inside, direction rtl
+// ---------------------------------------------------------------------------
+
+TEST(PropertyCascadeTest, WhiteSpaceNoWrapAppliedV180) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("white-space", "nowrap"), parent);
+    EXPECT_EQ(style.white_space, WhiteSpace::NoWrap);
+}
+
+TEST(PropertyCascadeTest, VisibilityHiddenAppliedV180) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("visibility", "hidden"), parent);
+    EXPECT_EQ(style.visibility, Visibility::Hidden);
+}
+
+TEST(PropertyCascadeTest, ListStylePositionInsideAppliedV180) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("list-style-position", "inside"), parent);
+    EXPECT_EQ(style.list_style_position, ListStylePosition::Inside);
+}
+
+TEST(PropertyCascadeTest, DirectionRtlAppliedV180) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("direction", "rtl"), parent);
+    EXPECT_EQ(style.direction, Direction::Rtl);
+}

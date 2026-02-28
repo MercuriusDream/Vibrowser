@@ -31938,3 +31938,117 @@ TEST(LayoutEngineTest, NestedBlockHeightAccumulationV179) {
     EXPECT_FLOAT_EQ(root->children[0]->geometry.height, 140.0f);
     EXPECT_FLOAT_EQ(root->geometry.height, 140.0f);
 }
+
+// V180_1: block child inherits parent specified_width
+TEST(LayoutEngineTest, BlockChildInheritsParentWidthV180) {
+    auto root = make_block("div");
+    root->specified_width = 500.0f;
+
+    auto child = make_block("div");
+    child->specified_height = 30.0f;
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.width, 500.0f);
+}
+
+// V180_2: flex children positioned sequentially along x axis
+TEST(LayoutEngineTest, FlexChildrenSequentialXV180) {
+    auto root = make_flex("div");
+    root->specified_width = 600.0f;
+
+    auto c1 = make_block("div");
+    c1->specified_width = 80.0f;
+    c1->specified_height = 50.0f;
+    auto c2 = make_block("div");
+    c2->specified_width = 120.0f;
+    c2->specified_height = 50.0f;
+
+    root->append_child(std::move(c1));
+    root->append_child(std::move(c2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 600.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.x, 0.0f);
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.x, 80.0f);
+}
+
+// V180_3: padding increases effective box size
+TEST(LayoutNodeProps, PaddingIncreasesBoxSizeV180) {
+    auto root = make_block("div");
+    root->specified_width = 200.0f;
+    root->specified_height = 100.0f;
+    root->geometry.padding.top = 10.0f;
+    root->geometry.padding.bottom = 10.0f;
+    root->geometry.padding.left = 20.0f;
+    root->geometry.padding.right = 20.0f;
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // padding should be accounted for in geometry
+    EXPECT_FLOAT_EQ(root->geometry.padding.top, 10.0f);
+    EXPECT_FLOAT_EQ(root->geometry.padding.left, 20.0f);
+}
+
+// V180_4: background_color default is transparent (0)
+TEST(LayoutNodeProps, BackgroundColorDefaultTransparentV180) {
+    auto node = std::make_unique<LayoutNode>();
+    EXPECT_EQ(node->background_color, 0x00000000u);
+}
+
+// V180_5: setting background_color to custom value
+TEST(LayoutNodeProps, BackgroundColorCustomValueV180) {
+    auto node = make_block("div");
+    node->background_color = 0xFF00FF00u;
+    EXPECT_EQ(node->background_color, 0xFF00FF00u);
+}
+
+// V180_6: multiple block children stack vertically
+TEST(LayoutEngineTest, MultipleBlockChildrenStackVerticallyV180) {
+    auto root = make_block("div");
+    root->specified_width = 400.0f;
+
+    auto c1 = make_block("div");
+    c1->specified_height = 40.0f;
+    auto c2 = make_block("div");
+    c2->specified_height = 60.0f;
+    auto c3 = make_block("div");
+    c3->specified_height = 50.0f;
+
+    root->append_child(std::move(c1));
+    root->append_child(std::move(c2));
+    root->append_child(std::move(c3));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.y, 0.0f);
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.y, 40.0f);
+    EXPECT_FLOAT_EQ(root->children[2]->geometry.y, 100.0f);
+    EXPECT_FLOAT_EQ(root->geometry.height, 150.0f);
+}
+
+// V180_7: border defaults to zero on all sides
+TEST(LayoutNodeProps, BorderDefaultZeroV180) {
+    auto node = std::make_unique<LayoutNode>();
+    EXPECT_FLOAT_EQ(node->geometry.border.top, 0.0f);
+    EXPECT_FLOAT_EQ(node->geometry.border.right, 0.0f);
+    EXPECT_FLOAT_EQ(node->geometry.border.bottom, 0.0f);
+    EXPECT_FLOAT_EQ(node->geometry.border.left, 0.0f);
+}
+
+// V180_8: min_width clamps specified_width upward
+TEST(LayoutEngineTest, MinWidthClampsUpwardV180) {
+    auto root = make_block("div");
+    root->specified_width = 100.0f;
+    root->min_width = 200.0f;
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(root->geometry.width, 200.0f);
+}

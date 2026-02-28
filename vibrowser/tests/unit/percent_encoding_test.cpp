@@ -2199,3 +2199,39 @@ TEST(IsURLCodePoint, DollarAndEqualsValidityV179) {
     // ']' (U+005D) is NOT a valid URL code point (IPv6 delimiter)
     EXPECT_FALSE(is_url_code_point(U']'));
 }
+
+// =============================================================================
+// Cycle V180 — Percent encoding tests
+// =============================================================================
+TEST(PercentEncoding, PipeCharEncodedV180) {
+    // '|' (U+007C) should be percent-encoded as %7C
+    EXPECT_EQ(percent_encode("|"), "%7C");
+    EXPECT_EQ(percent_encode("a|b|c"), "a%7Cb%7Cc");
+}
+
+TEST(PercentDecoding, RoundTripWithAngleBracketsV180) {
+    // Encoding and then decoding angle brackets should return original
+    std::string original = "<html>content</html>";
+    std::string encoded = percent_encode(original);
+    std::string decoded = percent_decode(encoded);
+    EXPECT_EQ(decoded, original);
+}
+
+TEST(PercentEncoding, DoubleEncodesPercentEncodedSlashV180) {
+    // A string containing %2F (encoded '/') should have its % double-encoded to %25
+    EXPECT_EQ(percent_encode("%2F"), "%252F");
+    EXPECT_EQ(percent_encode("path%2Fto%2Ffile"), "path%252Fto%252Ffile");
+}
+
+TEST(IsURLCodePoint, PlusAndCommaValidityV180) {
+    // '+' (U+002B) is a valid URL code point
+    EXPECT_TRUE(is_url_code_point(U'+'));
+    // ',' (U+002C) is a valid URL code point
+    EXPECT_TRUE(is_url_code_point(U','));
+    // ';' (U+003B) is a valid URL code point
+    EXPECT_TRUE(is_url_code_point(U';'));
+    // Space (U+0020) is NOT a valid URL code point
+    EXPECT_FALSE(is_url_code_point(U' '));
+    // Tab (U+0009) is NOT a valid URL code point
+    EXPECT_FALSE(is_url_code_point(U'\t'));
+}

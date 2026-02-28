@@ -3626,3 +3626,63 @@ TEST(MessagePipeTest, MessagePipeV179_3_SingleByteMessagesOrderPreserved) {
         EXPECT_EQ((*r)[0], static_cast<uint8_t>(i));
     }
 }
+
+// ------------------------------------------------------------------
+// Round 180 – MessagePipe
+// ------------------------------------------------------------------
+
+TEST(MessagePipeTest, MessagePipeV180_1_CloseSenderReceiveReturnsEmpty) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    // Send one message, then close sender
+    std::vector<uint8_t> data = {0x01, 0x02, 0x03};
+    ASSERT_TRUE(a.send(data));
+    a.close();
+
+    // First receive should get the message
+    auto r1 = b.receive();
+    ASSERT_TRUE(r1.has_value());
+    EXPECT_EQ(*r1, data);
+
+    // After draining, receive should return empty
+    auto r2 = b.receive();
+    EXPECT_FALSE(r2.has_value());
+
+    // Pipe b should report not open (or just no more data)
+    EXPECT_FALSE(b.receive().has_value());
+}
+
+TEST(MessagePipeTest, MessagePipeV180_2_LargePayloadRoundTrip) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    // Send a 8192-byte payload and verify integrity
+    std::vector<uint8_t> big_payload(8192);
+    for (size_t i = 0; i < big_payload.size(); ++i) {
+        big_payload[i] = static_cast<uint8_t>((i * 11 + 3) % 256);
+    }
+    ASSERT_TRUE(a.send(big_payload));
+
+    auto received = b.receive();
+    ASSERT_TRUE(received.has_value());
+    EXPECT_EQ(received->size(), 8192u);
+    EXPECT_EQ(*received, big_payload);
+}
+
+TEST(MessagePipeTest, MessagePipeV180_3_AlternatingBidirectionalMessages) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    // Alternate: a sends, b receives, b sends, a receives, 10 iterations
+    for (int i = 0; i < 10; ++i) {
+        std::vector<uint8_t> msg_a = {static_cast<uint8_t>(i), 0xAA};
+        ASSERT_TRUE(a.send(msg_a));
+        auto ra = b.receive();
+        ASSERT_TRUE(ra.has_value());
+        EXPECT_EQ(*ra, msg_a);
+
+        std::vector<uint8_t> msg_b = {static_cast<uint8_t>(i), 0xBB};
+        ASSERT_TRUE(b.send(msg_b));
+        auto rb = a.receive();
+        ASSERT_TRUE(rb.has_value());
+        EXPECT_EQ(*rb, msg_b);
+    }
+}
