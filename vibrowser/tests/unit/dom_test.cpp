@@ -23528,3 +23528,116 @@ TEST(DomElement, EmptyClassListLengthZeroV157) {
     EXPECT_EQ(elem.class_list().length(), 0u);
     EXPECT_FALSE(elem.class_list().contains("anything"));
 }
+
+// ---------------------------------------------------------------------------
+// Round 158 — DOM tests
+// ---------------------------------------------------------------------------
+
+// 1. Insert before with two existing children
+TEST(DomNode, InsertBeforeWithTwoExistingChildrenV158) {
+    auto parent = std::make_unique<Element>("ul");
+    auto first = std::make_unique<Element>("li");
+    auto second = std::make_unique<Element>("li");
+    Element* first_ptr = first.get();
+    Element* second_ptr = second.get();
+
+    parent->append_child(std::move(first));
+    parent->append_child(std::move(second));
+    EXPECT_EQ(parent->child_count(), 2u);
+
+    auto inserted = std::make_unique<Element>("li");
+    Element* inserted_ptr = inserted.get();
+    parent->insert_before(std::move(inserted), second_ptr);
+
+    EXPECT_EQ(parent->child_count(), 3u);
+    EXPECT_EQ(parent->first_child(), first_ptr);
+    EXPECT_EQ(first_ptr->next_sibling(), inserted_ptr);
+    EXPECT_EQ(inserted_ptr->next_sibling(), second_ptr);
+    EXPECT_EQ(second_ptr->previous_sibling(), inserted_ptr);
+    EXPECT_EQ(parent->last_child(), second_ptr);
+}
+
+// 2. Set attribute updates existing value
+TEST(DomElement, SetAttributeUpdatesExistingV158) {
+    Element elem("input");
+    elem.set_attribute("name", "first");
+    EXPECT_EQ(elem.get_attribute("name").value(), "first");
+    EXPECT_EQ(elem.attributes().size(), 1u);
+
+    elem.set_attribute("name", "second");
+    EXPECT_EQ(elem.get_attribute("name").value(), "second");
+    // Should still be exactly one attribute, not duplicated
+    EXPECT_EQ(elem.attributes().size(), 1u);
+}
+
+// 3. Register and retrieve element by id
+TEST(DomDocument, RegisterAndRetrieveByIdV158) {
+    Document doc;
+    auto elem = doc.create_element("section");
+    Element* elem_ptr = elem.get();
+    elem->set_attribute("id", "unique-section");
+    doc.register_id("unique-section", elem_ptr);
+    doc.append_child(std::move(elem));
+
+    EXPECT_EQ(doc.get_element_by_id("unique-section"), elem_ptr);
+    EXPECT_EQ(doc.get_element_by_id("nonexistent-id"), nullptr);
+}
+
+// 4. Event bubbles property true
+TEST(DomEvent, BubblesPropertyTrueV158) {
+    Event event("click", /*bubbles=*/true);
+    EXPECT_EQ(event.type(), "click");
+    EXPECT_TRUE(event.bubbles());
+}
+
+// 5. Remove middle child preserves siblings
+TEST(DomNode, RemoveMiddleChildPreservesSiblingsV158) {
+    auto parent = std::make_unique<Element>("div");
+    auto a = std::make_unique<Element>("span");
+    auto b = std::make_unique<Element>("em");
+    auto c = std::make_unique<Element>("strong");
+    Element* a_ptr = a.get();
+    Element* b_ptr = b.get();
+    Element* c_ptr = c.get();
+
+    parent->append_child(std::move(a));
+    parent->append_child(std::move(b));
+    parent->append_child(std::move(c));
+    EXPECT_EQ(parent->child_count(), 3u);
+
+    auto removed = parent->remove_child(*b_ptr);
+    EXPECT_EQ(removed.get(), b_ptr);
+    EXPECT_EQ(parent->child_count(), 2u);
+    EXPECT_EQ(a_ptr->next_sibling(), c_ptr);
+    EXPECT_EQ(c_ptr->previous_sibling(), a_ptr);
+    EXPECT_EQ(parent->first_child(), a_ptr);
+    EXPECT_EQ(parent->last_child(), c_ptr);
+}
+
+// 6. ClassList add same class twice — length stays 1
+TEST(DomElement, ClassListAddSameClassTwiceV158) {
+    Element elem("div");
+    elem.class_list().add("highlight");
+    EXPECT_EQ(elem.class_list().length(), 1u);
+    EXPECT_TRUE(elem.class_list().contains("highlight"));
+
+    elem.class_list().add("highlight");
+    EXPECT_EQ(elem.class_list().length(), 1u);
+    EXPECT_TRUE(elem.class_list().contains("highlight"));
+}
+
+// 7. Text node data() returns content
+TEST(DomNode, TextNodeDataReturnedV158) {
+    Text t("Some text content here");
+    EXPECT_EQ(t.data(), "Some text content here");
+    EXPECT_EQ(t.node_type(), NodeType::Text);
+}
+
+// 8. has_attribute returns false for missing attribute
+TEST(DomElement, HasAttributeReturnsFalseForMissingV158) {
+    Element elem("div");
+    EXPECT_FALSE(elem.has_attribute("x"));
+    EXPECT_FALSE(elem.has_attribute("data-custom"));
+    EXPECT_FALSE(elem.has_attribute("style"));
+    EXPECT_EQ(elem.attributes().size(), 0u);
+}

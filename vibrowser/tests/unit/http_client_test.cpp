@@ -27187,3 +27187,266 @@ TEST(HttpClient, CookieJarExpiredByDateNotReturnedV157) {
     EXPECT_NE(h.find("active=yes157"), std::string::npos)
         << "Active cookie should be present, got: " << h;
 }
+
+// ===========================================================================
+// Round 158 — Agent 4 — HTTP Client Tests
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// 1. Request serialize includes Referer header
+// ---------------------------------------------------------------------------
+TEST(HttpClient, RequestSerializeRefererHeaderV158) {
+    Request req;
+    req.method = Method::GET;
+    req.host = "www.v158referer.example.com";
+    req.port = 443;
+    req.path = "/page";
+    req.headers.set("Referer", "https://www.v158referer.example.com/origin");
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    // Request line
+    EXPECT_NE(result.find("GET /page HTTP/1.1\r\n"), std::string::npos)
+        << "Request line missing, got: " << result;
+    // Host without :443
+    EXPECT_NE(result.find("Host: www.v158referer.example.com\r\n"), std::string::npos)
+        << "Host header wrong, got: " << result;
+    // Referer header (custom headers lowercase)
+    EXPECT_NE(result.find("referer: https://www.v158referer.example.com/origin\r\n"), std::string::npos)
+        << "Referer header missing or wrong case, got: " << result;
+    // Connection close
+    EXPECT_NE(result.find("Connection: close\r\n"), std::string::npos)
+        << "Connection header missing, got: " << result;
+}
+
+// ---------------------------------------------------------------------------
+// 2. Response parse 201 Created with Location header
+// ---------------------------------------------------------------------------
+TEST(HttpClient, ResponseParse201CreatedWithLocationV158) {
+    std::string raw_str =
+        "HTTP/1.1 201 Created\r\n"
+        "Location: https://api.v158.example.com/resources/42\r\n"
+        "Content-Type: application/json\r\n"
+        "Content-Length: 17\r\n"
+        "\r\n"
+        "{\"id\":42,\"v\":158}";
+
+    std::vector<uint8_t> raw(raw_str.begin(), raw_str.end());
+    auto resp = Response::parse(raw);
+
+    ASSERT_TRUE(resp.has_value()) << "Failed to parse 201 response";
+    EXPECT_EQ(resp->status, 201);
+    EXPECT_EQ(resp->status_text, "Created");
+
+    auto loc = resp->headers.get("Location");
+    ASSERT_TRUE(loc.has_value()) << "Location header missing";
+    EXPECT_EQ(loc.value(), "https://api.v158.example.com/resources/42")
+        << "Location value wrong, got: " << loc.value();
+
+    auto ct = resp->headers.get("Content-Type");
+    ASSERT_TRUE(ct.has_value()) << "Content-Type header missing";
+    EXPECT_EQ(ct.value(), "application/json");
+
+    std::string body(resp->body.begin(), resp->body.end());
+    EXPECT_EQ(body, "{\"id\":42,\"v\":158}")
+        << "Body mismatch, got: " << body;
+}
+
+// ---------------------------------------------------------------------------
+// 3. ConnectionPool empty after acquiring all connections
+// ---------------------------------------------------------------------------
+TEST(HttpClient, ConnectionPoolEmptyAfterAcquireAllV158) {
+    ConnectionPool pool;
+
+    // Release 3 connections
+    pool.release("v158pool.example.com", 80, 15801);
+    pool.release("v158pool.example.com", 80, 15802);
+    pool.release("v158pool.example.com", 80, 15803);
+    EXPECT_EQ(pool.count("v158pool.example.com", 80), 3u);
+
+    // Acquire all three
+    int fd1 = pool.acquire("v158pool.example.com", 80);
+    EXPECT_NE(fd1, -1);
+    EXPECT_EQ(pool.count("v158pool.example.com", 80), 2u);
+
+    int fd2 = pool.acquire("v158pool.example.com", 80);
+    EXPECT_NE(fd2, -1);
+    EXPECT_EQ(pool.count("v158pool.example.com", 80), 1u);
+
+    int fd3 = pool.acquire("v158pool.example.com", 80);
+    EXPECT_NE(fd3, -1);
+    EXPECT_EQ(pool.count("v158pool.example.com", 80), 0u);
+
+    // All three fds should be distinct and from the released set
+    std::vector<int> acquired = {fd1, fd2, fd3};
+    std::sort(acquired.begin(), acquired.end());
+    std::vector<int> expected = {15801, 15802, 15803};
+    EXPECT_EQ(acquired, expected)
+        << "Acquired fds do not match released fds";
+
+    // Pool is now empty
+    EXPECT_EQ(pool.acquire("v158pool.example.com", 80), -1)
+        << "Pool should return -1 when empty";
+    EXPECT_EQ(pool.count("v158pool.example.com", 80), 0u);
+}
+
+// ---------------------------------------------------------------------------
+// 4. CookieJar HttpOnly flag is preserved
+// ---------------------------------------------------------------------------
+TEST(HttpClient, CookieJarHttpOnlyPreservedV158) {
+    CookieJar jar;
+
+    // Set an HttpOnly cookie
+    jar.set_from_header("sess158=secretval; HttpOnly; Path=/", "httponly.v158.test");
+    EXPECT_EQ(jar.size(), 1u);
+
+    // HttpOnly cookies are still sent in HTTP requests
+    std::string h = jar.get_cookie_header("httponly.v158.test", "/", false);
+    EXPECT_NE(h.find("sess158=secretval"), std::string::npos)
+        << "HttpOnly cookie should still be sent, got: " << h;
+
+    // Set a second non-HttpOnly cookie on the same domain
+    jar.set_from_header("pref158=dark; Path=/", "httponly.v158.test");
+    EXPECT_EQ(jar.size(), 2u);
+
+    std::string h2 = jar.get_cookie_header("httponly.v158.test", "/", false);
+    EXPECT_NE(h2.find("sess158=secretval"), std::string::npos)
+        << "HttpOnly cookie should be present alongside others, got: " << h2;
+    EXPECT_NE(h2.find("pref158=dark"), std::string::npos)
+        << "Non-HttpOnly cookie should also be present, got: " << h2;
+}
+
+// ---------------------------------------------------------------------------
+// 5. HeaderMap append creates separate entries (vs set which overwrites)
+// ---------------------------------------------------------------------------
+TEST(HttpClient, HeaderMapAppendCreatesSeparateEntriesV158) {
+    HeaderMap map;
+
+    // set() should overwrite
+    map.set("X-Custom-V158", "first");
+    map.set("X-Custom-V158", "second");
+    EXPECT_EQ(map.get_all("X-Custom-V158").size(), 1u)
+        << "set() should overwrite, leaving only one entry";
+    EXPECT_EQ(map.get("X-Custom-V158").value(), "second");
+
+    // Now use append() which should add separate entries
+    map.append("Accept-V158", "text/html");
+    map.append("Accept-V158", "application/json");
+    map.append("Accept-V158", "text/plain");
+
+    auto all = map.get_all("Accept-V158");
+    EXPECT_EQ(all.size(), 3u)
+        << "append() should create separate entries, got " << all.size();
+
+    EXPECT_TRUE(std::find(all.begin(), all.end(), "text/html") != all.end());
+    EXPECT_TRUE(std::find(all.begin(), all.end(), "application/json") != all.end());
+    EXPECT_TRUE(std::find(all.begin(), all.end(), "text/plain") != all.end());
+}
+
+// ---------------------------------------------------------------------------
+// 6. Request serialize POST with JSON content type
+// ---------------------------------------------------------------------------
+TEST(HttpClient, RequestSerializePostWithJsonContentTypeV158) {
+    Request req;
+    req.method = Method::POST;
+    req.host = "api.v158json.example.com";
+    req.port = 443;
+    req.path = "/v1/items";
+    req.headers.set("Content-Type", "application/json");
+    req.headers.set("Accept", "application/json");
+
+    std::string body_str = R"({"name":"item158","count":42})";
+    req.body.assign(body_str.begin(), body_str.end());
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    // POST request line
+    EXPECT_NE(result.find("POST /v1/items HTTP/1.1\r\n"), std::string::npos)
+        << "Request line wrong, got: " << result;
+    // Host without port 443
+    EXPECT_NE(result.find("Host: api.v158json.example.com\r\n"), std::string::npos)
+        << "Host header wrong, got: " << result;
+    // Custom headers lowercase
+    EXPECT_NE(result.find("content-type: application/json\r\n"), std::string::npos)
+        << "Content-Type header missing or wrong case, got: " << result;
+    EXPECT_NE(result.find("accept: application/json\r\n"), std::string::npos)
+        << "Accept header missing or wrong case, got: " << result;
+    // Content-Length matches body size
+    std::string cl_header = "Content-Length: " + std::to_string(body_str.size()) + "\r\n";
+    EXPECT_NE(result.find(cl_header), std::string::npos)
+        << "Content-Length wrong, expected " << body_str.size() << ", got: " << result;
+    // Body present
+    EXPECT_NE(result.find(body_str), std::string::npos)
+        << "Body not found in serialized request";
+}
+
+// ---------------------------------------------------------------------------
+// 7. Response parse 200 with ETag header
+// ---------------------------------------------------------------------------
+TEST(HttpClient, ResponseParse200WithETagV158) {
+    std::string raw_str =
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Type: text/html\r\n"
+        "ETag: \"v158-abc123def456\"\r\n"
+        "Content-Length: 23\r\n"
+        "\r\n"
+        "<h1>ETag Test V158</h1>";
+
+    std::vector<uint8_t> raw(raw_str.begin(), raw_str.end());
+    auto resp = Response::parse(raw);
+
+    ASSERT_TRUE(resp.has_value()) << "Failed to parse 200 response with ETag";
+    EXPECT_EQ(resp->status, 200);
+    EXPECT_EQ(resp->status_text, "OK");
+
+    auto etag = resp->headers.get("ETag");
+    ASSERT_TRUE(etag.has_value()) << "ETag header missing";
+    EXPECT_EQ(etag.value(), "\"v158-abc123def456\"")
+        << "ETag value wrong, got: " << etag.value();
+
+    auto ct = resp->headers.get("Content-Type");
+    ASSERT_TRUE(ct.has_value());
+    EXPECT_EQ(ct.value(), "text/html");
+
+    std::string body(resp->body.begin(), resp->body.end());
+    EXPECT_EQ(body, "<h1>ETag Test V158</h1>")
+        << "Body mismatch, got: " << body;
+}
+
+// ---------------------------------------------------------------------------
+// 8. CookieJar subdomain matching behavior
+// ---------------------------------------------------------------------------
+TEST(HttpClient, CookieJarSubdomainMatchingV158) {
+    CookieJar jar;
+
+    // Set a cookie on the parent domain with Domain attribute
+    jar.set_from_header("shared158=parentval; Domain=.v158sub.example.com; Path=/",
+                        "www.v158sub.example.com");
+
+    // Set a cookie specific to the subdomain (no Domain attribute)
+    jar.set_from_header("local158=subval; Path=/", "app.v158sub.example.com");
+
+    // The shared cookie should be accessible from any subdomain
+    std::string www_cookies = jar.get_cookie_header("www.v158sub.example.com", "/", false);
+    EXPECT_NE(www_cookies.find("shared158=parentval"), std::string::npos)
+        << "Domain cookie should be sent to www subdomain, got: " << www_cookies;
+
+    std::string app_cookies = jar.get_cookie_header("app.v158sub.example.com", "/", false);
+    EXPECT_NE(app_cookies.find("shared158=parentval"), std::string::npos)
+        << "Domain cookie should be sent to app subdomain, got: " << app_cookies;
+
+    // The local cookie set on app.v158sub should only be for app subdomain
+    EXPECT_NE(app_cookies.find("local158=subval"), std::string::npos)
+        << "Local cookie should be sent to its own subdomain, got: " << app_cookies;
+
+    // The www subdomain should NOT get the app subdomain's local cookie
+    EXPECT_EQ(www_cookies.find("local158=subval"), std::string::npos)
+        << "Local cookie should NOT be sent to sibling subdomain, got: " << www_cookies;
+
+    // Parent domain should NOT get the subdomain-scoped local cookie
+    std::string parent_cookies = jar.get_cookie_header("v158sub.example.com", "/", false);
+    EXPECT_EQ(parent_cookies.find("local158=subval"), std::string::npos)
+        << "Local cookie should NOT be sent to parent domain, got: " << parent_cookies;
+}

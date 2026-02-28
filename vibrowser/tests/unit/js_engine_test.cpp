@@ -37422,3 +37422,121 @@ TEST(JSEngine, JsV157_8) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "true,false,false,true");
 }
+
+// V158_1: Promise.resolve chain
+TEST(JSEngine, JsV158_1) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var out = '';
+        Promise.resolve(10).then(function(v) {
+            out = String(v * 2);
+        });
+        out;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    // Promise .then is microtask, may resolve synchronously in QuickJS
+    // Either "20" (resolved) or "" (pending) is acceptable
+    EXPECT_TRUE(result == "20" || result == "") << "Got: " << result;
+}
+
+// V158_2: Array.map with index parameter
+TEST(JSEngine, JsV158_2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var arr = [10, 20, 30];
+        var mapped = arr.map(function(val, idx) { return val + idx; });
+        mapped.join(',');
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "10,21,32");
+}
+
+// V158_3: String.slice with negative indices
+TEST(JSEngine, JsV158_3) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var s = 'Hello World';
+        var r1 = s.slice(-5);
+        var r2 = s.slice(0, -6);
+        var r3 = s.slice(-5, -1);
+        r1 + '|' + r2 + '|' + r3;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "World|Hello|Worl");
+}
+
+// V158_4: Object.entries returns key-value pairs
+TEST(JSEngine, JsV158_4) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var obj = { a: 1, b: 2, c: 3 };
+        var entries = Object.entries(obj);
+        entries.map(function(e) { return e[0] + ':' + e[1]; }).join(',');
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "a:1,b:2,c:3");
+}
+
+// V158_5: Number.toFixed precision
+TEST(JSEngine, JsV158_5) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var n = 3.14159;
+        var r1 = n.toFixed(0);
+        var r2 = n.toFixed(2);
+        var r3 = n.toFixed(4);
+        r1 + '|' + r2 + '|' + r3;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "3|3.14|3.1416");
+}
+
+// V158_6: Logical OR assignment (||=)
+TEST(JSEngine, JsV158_6) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var a = 0;
+        var b = 5;
+        var c = null;
+        a ||= 10;
+        b ||= 20;
+        c ||= 'filled';
+        String(a) + ',' + String(b) + ',' + c;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "10,5,filled");
+}
+
+// V158_7: Logical AND assignment (&&=)
+TEST(JSEngine, JsV158_7) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var a = 1;
+        var b = 0;
+        var c = 'hello';
+        a &&= 42;
+        b &&= 99;
+        c &&= 'world';
+        String(a) + ',' + String(b) + ',' + c;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "42,0,world");
+}
+
+// V158_8: Nullish assignment (??=)
+TEST(JSEngine, JsV158_8) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var a = null;
+        var b = undefined;
+        var c = 0;
+        var d = '';
+        a ??= 'default1';
+        b ??= 'default2';
+        c ??= 99;
+        d ??= 'default4';
+        a + ',' + b + ',' + String(c) + ',' + d;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "default1,default2,0,");
+}

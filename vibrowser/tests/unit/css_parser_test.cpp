@@ -11121,3 +11121,59 @@ TEST_F(CSSStylesheetTest, TableLayoutFixedDeclarationV157) {
     }
     EXPECT_TRUE(found) << "table-layout declaration not found";
 }
+
+TEST_F(CSSStylesheetTest, ListStylePositionDeclarationV158) {
+    auto ss = parse_stylesheet("ul { list-style-position: inside; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "list-style-position") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "inside");
+        }
+    }
+    EXPECT_TRUE(found) << "list-style-position declaration not found";
+}
+
+TEST_F(CSSStylesheetTest, OverflowXAutoDeclarationV158) {
+    auto ss = parse_stylesheet("div { overflow-x: auto; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "overflow-x") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "auto");
+        }
+    }
+    EXPECT_TRUE(found) << "overflow-x declaration not found";
+}
+
+TEST_F(CSSStylesheetTest, OverflowYScrollDeclarationV158) {
+    auto ss = parse_stylesheet("div { overflow-y: scroll; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "overflow-y") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "scroll");
+        }
+    }
+    EXPECT_TRUE(found) << "overflow-y declaration not found";
+}
+
+TEST_F(CSSStylesheetTest, ResizeHorizontalDeclarationV158) {
+    auto ss = parse_stylesheet("textarea { resize: horizontal; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "resize") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "horizontal");
+        }
+    }
+    EXPECT_TRUE(found) << "resize declaration not found";
+}

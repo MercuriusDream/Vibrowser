@@ -1471,3 +1471,46 @@ TEST(IsURLCodePoint, AtSignAndColonValidV157) {
     // Combined in a typical URL-like string
     EXPECT_EQ(percent_encode("user@host:8080"), "user@host:8080");
 }
+
+TEST(PercentEncoding, NumberSignEncodedV158) {
+    // '#' (U+0023) should be percent-encoded as %23
+    EXPECT_EQ(percent_encode("#"), "%23");
+    // Number sign embedded in a string
+    EXPECT_EQ(percent_encode("page#section"), "page%23section");
+    // Decoding should round-trip
+    EXPECT_EQ(percent_decode("%23"), "#");
+}
+
+TEST(PercentDecoding, ThreeConsecutiveEncodedV158) {
+    // Three consecutive percent-encoded ASCII letters should decode correctly
+    EXPECT_EQ(percent_decode("%41%42%43"), "ABC");
+    // Mixed encoded and literal characters
+    EXPECT_EQ(percent_decode("x%41y%42z%43"), "xAyBzC");
+    // Lowercase hex digits should also decode properly
+    EXPECT_EQ(percent_decode("%61%62%63"), "abc");
+}
+
+TEST(PercentEncoding, CurlyBracesEncodedV158) {
+    // '{' (U+007B) should be percent-encoded as %7B
+    EXPECT_EQ(percent_encode("{"), "%7B");
+    // '}' (U+007D) should be percent-encoded as %7D
+    EXPECT_EQ(percent_encode("}"), "%7D");
+    // Both curly braces in a string
+    EXPECT_EQ(percent_encode("{key}"), "%7Bkey%7D");
+    // Decoding should round-trip
+    EXPECT_EQ(percent_decode("%7B"), "{");
+    EXPECT_EQ(percent_decode("%7D"), "}");
+}
+
+TEST(IsURLCodePoint, EqualsAndQuestionMarkValidV158) {
+    // '=' (U+003D) is a valid URL code point
+    EXPECT_TRUE(is_url_code_point(static_cast<char32_t>('=')));
+    // '?' (U+003F) is a valid URL code point
+    EXPECT_TRUE(is_url_code_point(static_cast<char32_t>('?')));
+    // '=' is not percent-encoded by the default encode set
+    EXPECT_EQ(percent_encode("="), "=");
+    // '?' IS percent-encoded by the default encode set even though it is a valid URL code point
+    EXPECT_EQ(percent_encode("?"), "%3F");
+    // Combined in a query-like string: = preserved, ? encoded
+    EXPECT_EQ(percent_encode("key=value?more"), "key=value%3Fmore");
+}

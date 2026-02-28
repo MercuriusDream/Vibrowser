@@ -26110,3 +26110,55 @@ TEST(CSSStyleTest, CssV157_4_ClearBothApplied) {
     cascade.apply_declaration(style, make_decl("clear", "both"), parent);
     EXPECT_EQ(style.clear, Clear::Both);
 }
+
+TEST(PropertyCascadeTest, ListStylePositionAppliedV158) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.list_style_position, ListStylePosition::Outside);
+    cascade.apply_declaration(style, make_decl("list-style-position", "inside"), parent);
+    EXPECT_EQ(style.list_style_position, ListStylePosition::Inside);
+}
+
+TEST(CSSStyleTest, CssV158_2_OverflowXYSeparate) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.overflow_x, Overflow::Visible);
+    EXPECT_EQ(style.overflow_y, Overflow::Visible);
+
+    cascade.apply_declaration(style, make_decl("overflow-x", "auto"), parent);
+    EXPECT_EQ(style.overflow_x, Overflow::Auto);
+    EXPECT_EQ(style.overflow_y, Overflow::Visible);
+
+    cascade.apply_declaration(style, make_decl("overflow-y", "scroll"), parent);
+    EXPECT_EQ(style.overflow_x, Overflow::Auto);
+    EXPECT_EQ(style.overflow_y, Overflow::Scroll);
+}
+
+TEST(PropertyCascadeTest, ResizeAppliedV158) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.resize, 0);
+    cascade.apply_declaration(style, make_decl("resize", "horizontal"), parent);
+    EXPECT_EQ(style.resize, 2);
+}
+
+TEST(CSSStyleTest, CssV158_4_TextShadowParsed) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("text-shadow", "2px 4px 6px red"), parent);
+    EXPECT_FLOAT_EQ(style.text_shadow_offset_x, 2.0f);
+    EXPECT_FLOAT_EQ(style.text_shadow_offset_y, 4.0f);
+    EXPECT_FLOAT_EQ(style.text_shadow_blur, 6.0f);
+    EXPECT_EQ(style.text_shadow_color.r, 255);
+    EXPECT_EQ(style.text_shadow_color.g, 0);
+    EXPECT_EQ(style.text_shadow_color.b, 0);
+    EXPECT_EQ(style.text_shadow_color.a, 255);
+}

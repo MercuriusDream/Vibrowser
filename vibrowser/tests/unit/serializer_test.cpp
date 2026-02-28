@@ -21173,3 +21173,59 @@ TEST(SerializerTest, SerializerV157_3_BoolStringInterleaved) {
     }
     EXPECT_FALSE(d.has_remaining());
 }
+
+// ------------------------------------------------------------------
+// Round 158 tests
+// ------------------------------------------------------------------
+
+TEST(SerializerTest, SerializerV158_1_U32DescendingSequence) {
+    Serializer s;
+    for (uint32_t i = 50; i > 0; --i) {
+        s.write_u32(i * 1000000u);
+    }
+
+    Deserializer d(s.data());
+    for (uint32_t i = 50; i > 0; --i) {
+        EXPECT_EQ(d.read_u32(), i * 1000000u);
+    }
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, SerializerV158_2_StringWithUnicodeRoundTrip) {
+    Serializer s;
+    // Japanese hiragana + Chinese + emoji (multi-byte UTF-8)
+    std::string utf8_str = "\xE3\x81\x93\xE3\x82\x93\xE3\x81\xAB\xE3\x81\xA1\xE3\x81\xAF"  // konnichiwa
+                           "\xE4\xB8\x96\xE7\x95\x8C"                                          // sekai
+                           "\xF0\x9F\x8C\x8D";                                                  // globe
+    s.write_string(utf8_str);
+    s.write_string("");
+    s.write_string(utf8_str);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), utf8_str);
+    EXPECT_EQ(d.read_string(), "");
+    EXPECT_EQ(d.read_string(), utf8_str);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, SerializerV158_3_BytesThenU64ThenBool) {
+    Serializer s;
+    uint8_t raw[] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE};
+    s.write_bytes(raw, sizeof(raw));
+    s.write_u64(0x123456789ABCDEF0ULL);
+    s.write_bool(true);
+    s.write_bool(false);
+
+    Deserializer d(s.data());
+    auto bytes = d.read_bytes();
+    ASSERT_EQ(bytes.size(), 5u);
+    EXPECT_EQ(bytes[0], 0xAA);
+    EXPECT_EQ(bytes[1], 0xBB);
+    EXPECT_EQ(bytes[2], 0xCC);
+    EXPECT_EQ(bytes[3], 0xDD);
+    EXPECT_EQ(bytes[4], 0xEE);
+    EXPECT_EQ(d.read_u64(), 0x123456789ABCDEF0ULL);
+    EXPECT_TRUE(d.read_bool());
+    EXPECT_FALSE(d.read_bool());
+    EXPECT_FALSE(d.has_remaining());
+}

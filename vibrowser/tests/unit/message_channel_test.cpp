@@ -2462,3 +2462,53 @@ TEST(MessageChannelTest, MessageChannelV157_2_PayloadIntegrity) {
         EXPECT_EQ(received->payload[i], static_cast<uint8_t>((i * 17 + 3) % 256));
     }
 }
+
+// ------------------------------------------------------------------
+// Round 158 tests
+// ------------------------------------------------------------------
+
+TEST(MessageChannelTest, MessageChannelV158_1_HighVolumeDispatches) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel ch(std::move(pa));
+
+    int call_count = 0;
+    ch.on(7, [&](const Message& m) {
+        ++call_count;
+        EXPECT_EQ(m.type, 7u);
+    });
+
+    for (int i = 0; i < 50; ++i) {
+        Message msg;
+        msg.type = 7;
+        msg.request_id = static_cast<uint32_t>(i);
+        msg.payload = {static_cast<uint8_t>(i)};
+        ch.dispatch(msg);
+    }
+
+    EXPECT_EQ(call_count, 50);
+}
+
+TEST(MessageChannelTest, MessageChannelV158_2_RequestIdPreserved) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel a(std::move(pa));
+    MessageChannel b(std::move(pb));
+
+    // Send messages with distinct request_ids
+    for (uint32_t rid = 1000; rid < 1010; ++rid) {
+        Message msg;
+        msg.type = 20;
+        msg.request_id = rid;
+        msg.payload = {static_cast<uint8_t>(rid & 0xFF)};
+        ASSERT_TRUE(a.send(msg));
+    }
+
+    // Receive and verify each request_id is preserved
+    for (uint32_t rid = 1000; rid < 1010; ++rid) {
+        auto received = b.receive();
+        ASSERT_TRUE(received.has_value());
+        EXPECT_EQ(received->type, 20u);
+        EXPECT_EQ(received->request_id, rid);
+        ASSERT_EQ(received->payload.size(), 1u);
+        EXPECT_EQ(received->payload[0], static_cast<uint8_t>(rid & 0xFF));
+    }
+}

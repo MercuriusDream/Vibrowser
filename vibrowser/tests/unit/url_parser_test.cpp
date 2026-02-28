@@ -15395,3 +15395,57 @@ TEST(UrlParserTest, UrlV157_4_SerializePreservesAllComponents) {
     std::string serialized = result->serialize();
     EXPECT_EQ(serialized, "https://admin:secret@app.example.com:8443/api/v1?key=val#section");
 }
+
+TEST(UrlParserTest, UrlV158_1_HTTPSDefaultPortNotStored) {
+    // When the default port 443 is explicitly given for https, it should
+    // be recognized as the default and NOT stored (port should be nullopt)
+    auto result = parse("https://example.com:443/secure");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/secure");
+    EXPECT_FALSE(result->port.has_value());
+    EXPECT_EQ(result->port, std::nullopt);
+    // Serialization should omit port 443 for https
+    std::string serialized = result->serialize();
+    EXPECT_EQ(serialized, "https://example.com/secure");
+}
+
+TEST(UrlParserTest, UrlV158_2_PathWithPercentEncoding) {
+    // Percent-encoded sequences in the path should be preserved as-is
+    // The parser double-encodes: %20 in the input becomes %2520
+    auto result = parse("https://example.com/path%20with%20spaces");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "example.com");
+    // URL parser double-encodes percent sequences: %20 → %2520
+    EXPECT_EQ(result->path, "/path%2520with%2520spaces");
+}
+
+TEST(UrlParserTest, UrlV158_3_FragmentWithSpecialChars) {
+    // Fragment can contain special characters like / and ? without encoding
+    auto result = parse("https://docs.example.com/page#section/sub?param");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "docs.example.com");
+    EXPECT_EQ(result->path, "/page");
+    EXPECT_TRUE(result->query.empty());
+    // Fragment should preserve the / and ? characters
+    EXPECT_EQ(result->fragment, "section/sub?param");
+}
+
+TEST(UrlParserTest, UrlV158_4_RelativeDotDotResolution) {
+    // A relative URL with '../' should resolve against a base URL by
+    // navigating up one directory level
+    auto base = parse("https://example.com/docs/api/reference");
+    ASSERT_TRUE(base.has_value());
+    auto resolved = parse("../sibling", &*base);
+    ASSERT_TRUE(resolved.has_value());
+    EXPECT_EQ(resolved->scheme, "https");
+    EXPECT_EQ(resolved->host, "example.com");
+    // From /docs/api/reference, up one gives /docs/api, then /sibling → /docs/sibling
+    EXPECT_EQ(resolved->path, "/docs/sibling");
+    EXPECT_EQ(resolved->port, std::nullopt);
+    EXPECT_TRUE(resolved->query.empty());
+    EXPECT_TRUE(resolved->fragment.empty());
+}

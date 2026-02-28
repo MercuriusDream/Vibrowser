@@ -24908,3 +24908,152 @@ TEST(HtmlParserTest, HtmlV157_8) {
     EXPECT_EQ(section->tag_name, "section");
     EXPECT_EQ(section->text_content(), "Content");
 }
+
+TEST(HtmlParserTest, HtmlV158_1) {
+    // header with h1 inside
+    auto doc = clever::html::parse(
+        "<html><body><header><h1>Title</h1></header></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* header = doc->find_element("header");
+    ASSERT_NE(header, nullptr);
+    EXPECT_EQ(header->tag_name, "header");
+
+    auto* h1 = doc->find_element("h1");
+    ASSERT_NE(h1, nullptr);
+    EXPECT_EQ(h1->tag_name, "h1");
+    EXPECT_EQ(h1->text_content(), "Title");
+}
+
+TEST(HtmlParserTest, HtmlV158_2) {
+    // footer with p inside
+    auto doc = clever::html::parse(
+        "<html><body><footer><p>Copyright 2026</p></footer></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* footer = doc->find_element("footer");
+    ASSERT_NE(footer, nullptr);
+    EXPECT_EQ(footer->tag_name, "footer");
+
+    auto* p = doc->find_element("p");
+    ASSERT_NE(p, nullptr);
+    EXPECT_EQ(p->tag_name, "p");
+    EXPECT_EQ(p->text_content(), "Copyright 2026");
+}
+
+TEST(HtmlParserTest, HtmlV158_3) {
+    // aside with content
+    auto doc = clever::html::parse(
+        "<html><body><aside>Sidebar</aside></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* aside = doc->find_element("aside");
+    ASSERT_NE(aside, nullptr);
+    EXPECT_EQ(aside->tag_name, "aside");
+    EXPECT_EQ(aside->text_content(), "Sidebar");
+}
+
+TEST(HtmlParserTest, HtmlV158_4) {
+    // article with header and p
+    auto doc = clever::html::parse(
+        "<html><body><article><header><h2>Post</h2></header><p>Body text</p></article></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* article = doc->find_element("article");
+    ASSERT_NE(article, nullptr);
+    EXPECT_EQ(article->tag_name, "article");
+
+    auto* h2 = doc->find_element("h2");
+    ASSERT_NE(h2, nullptr);
+    EXPECT_EQ(h2->text_content(), "Post");
+
+    auto* p = doc->find_element("p");
+    ASSERT_NE(p, nullptr);
+    EXPECT_EQ(p->text_content(), "Body text");
+}
+
+TEST(HtmlParserTest, HtmlV158_5) {
+    // section with h2 and p
+    auto doc = clever::html::parse(
+        "<html><body><section><h2>Section Title</h2><p>Paragraph</p></section></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* section = doc->find_element("section");
+    ASSERT_NE(section, nullptr);
+    EXPECT_EQ(section->tag_name, "section");
+
+    auto* h2 = doc->find_element("h2");
+    ASSERT_NE(h2, nullptr);
+    EXPECT_EQ(h2->text_content(), "Section Title");
+
+    auto* p = doc->find_element("p");
+    ASSERT_NE(p, nullptr);
+    EXPECT_EQ(p->text_content(), "Paragraph");
+}
+
+TEST(HtmlParserTest, HtmlV158_6) {
+    // figure with img and figcaption
+    auto doc = clever::html::parse(
+        "<html><body><figure><img src=\"photo.jpg\"><figcaption>A photo</figcaption></figure></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* figure = doc->find_element("figure");
+    ASSERT_NE(figure, nullptr);
+    EXPECT_EQ(figure->tag_name, "figure");
+
+    auto* img = doc->find_element("img");
+    ASSERT_NE(img, nullptr);
+    EXPECT_EQ(img->tag_name, "img");
+
+    auto* figcaption = doc->find_element("figcaption");
+    ASSERT_NE(figcaption, nullptr);
+    EXPECT_EQ(figcaption->text_content(), "A photo");
+}
+
+TEST(HtmlParserTest, HtmlV158_7) {
+    // dl with multiple dt/dd pairs
+    auto doc = clever::html::parse(
+        "<html><body><dl><dt>Term1</dt><dd>Def1</dd><dt>Term2</dt><dd>Def2</dd></dl></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* dl = doc->find_element("dl");
+    ASSERT_NE(dl, nullptr);
+    EXPECT_EQ(dl->tag_name, "dl");
+
+    auto* dt = doc->find_element("dt");
+    ASSERT_NE(dt, nullptr);
+    EXPECT_EQ(dt->text_content(), "Term1");
+
+    auto* dd = doc->find_element("dd");
+    ASSERT_NE(dd, nullptr);
+    EXPECT_EQ(dd->text_content(), "Def1");
+}
+
+TEST(HtmlParserTest, HtmlV158_8) {
+    // table with thead, tbody, tfoot
+    auto doc = clever::html::parse(
+        "<html><body><table><thead><tr><th>Header</th></tr></thead>"
+        "<tbody><tr><td>Data</td></tr></tbody>"
+        "<tfoot><tr><td>Footer</td></tr></tfoot></table></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* table = doc->find_element("table");
+    ASSERT_NE(table, nullptr);
+    EXPECT_EQ(table->tag_name, "table");
+
+    auto* thead = doc->find_element("thead");
+    ASSERT_NE(thead, nullptr);
+    EXPECT_EQ(thead->tag_name, "thead");
+
+    auto* tbody = doc->find_element("tbody");
+    ASSERT_NE(tbody, nullptr);
+    EXPECT_EQ(tbody->tag_name, "tbody");
+
+    auto* tfoot = doc->find_element("tfoot");
+    ASSERT_NE(tfoot, nullptr);
+    EXPECT_EQ(tfoot->tag_name, "tfoot");
+
+    auto* th = doc->find_element("th");
+    ASSERT_NE(th, nullptr);
+    EXPECT_EQ(th->text_content(), "Header");
+}

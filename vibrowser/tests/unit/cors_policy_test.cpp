@@ -12724,3 +12724,56 @@ TEST(CORSPolicyTest, CorsV157_8_ACAOMatchRequiresExactHost) {
     EXPECT_FALSE(cors_allows_response("https://app.example", "https://api.example/data",
                                       headers, false));
 }
+
+// ---------------------------------------------------------------------------
+// Round 158 — CORS tests
+// ---------------------------------------------------------------------------
+
+// 1. HTTPS non-default port is enforceable
+TEST(CORSPolicyTest, CorsV158_1_HTTPSNonDefaultPortEnforceable) {
+    EXPECT_TRUE(has_enforceable_document_origin("https://example.com:9443"));
+}
+
+// 2. Same origin HTTP default port normalization
+TEST(CORSPolicyTest, CorsV158_2_SameOriginHTTPDefaultPort) {
+    // http default port is 80 — same host same scheme is same-origin
+    EXPECT_FALSE(is_cross_origin("http://example.com", "http://example.com/page"));
+}
+
+// 3. ACAO rejects partial host match
+TEST(CORSPolicyTest, CorsV158_3_ACAORejectsPartialHostMatch) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "https://app.exam");
+    // "app.exam" does not match "app.example" — must be rejected
+    EXPECT_FALSE(cors_allows_response("https://app.example", "https://api.example/data",
+                                      headers, false));
+}
+
+// 4. Cross-origin: different schemes same host (http vs https)
+TEST(CORSPolicyTest, CorsV158_4_CrossOriginDifferentSchemesSameHost) {
+    EXPECT_TRUE(is_cross_origin("http://example.com", "https://example.com/page"));
+}
+
+// 5. about: scheme is not CORS eligible
+TEST(CORSPolicyTest, CorsV158_5_AboutSchemeNotCorsEligible) {
+    EXPECT_FALSE(is_cors_eligible_request_url("about:blank"));
+    EXPECT_FALSE(is_cors_eligible_request_url("about:srcdoc"));
+}
+
+// 6. Same origin both HTTPS
+TEST(CORSPolicyTest, CorsV158_6_SameOriginBothHTTPS) {
+    EXPECT_FALSE(is_cross_origin("https://secure.example.com", "https://secure.example.com/api"));
+}
+
+// 7. IPv4 non-default port is enforceable
+TEST(CORSPolicyTest, CorsV158_7_IPv4NonDefaultPortEnforceable) {
+    EXPECT_TRUE(has_enforceable_document_origin("http://10.0.0.1:3000"));
+}
+
+// 8. ACAO empty string rejects all origins
+TEST(CORSPolicyTest, CorsV158_8_ACAOEmptyStringRejectsAll) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "");
+    EXPECT_FALSE(cors_allows_response("https://app.example", "https://api.example/data",
+                                      headers, false));
+}
