@@ -20679,3 +20679,54 @@ TEST(SerializerTest, SerializerV147_3_U64ZeroAndOneRoundTrip) {
     EXPECT_EQ(d.read_u64(), 1u);
     EXPECT_FALSE(d.has_remaining());
 }
+
+// ------------------------------------------------------------------
+// V148 – Serializer round-trip tests
+// ------------------------------------------------------------------
+
+TEST(SerializerTest, SerializerV148_1_F64ZeroAndNegZeroRoundTrip) {
+    Serializer s;
+    s.write_f64(0.0);
+    s.write_f64(-0.0);
+
+    Deserializer d(s.data());
+    double pos = d.read_f64();
+    double neg = d.read_f64();
+
+    EXPECT_EQ(pos, 0.0);
+    EXPECT_EQ(neg, -0.0);
+    // Verify sign bit: 1/positive-zero = +inf, 1/negative-zero = -inf
+    EXPECT_TRUE(std::isinf(1.0 / pos) && (1.0 / pos) > 0);
+    EXPECT_TRUE(std::isinf(1.0 / neg) && (1.0 / neg) < 0);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, SerializerV148_2_BytesExactly1ByteRoundTrip) {
+    Serializer s;
+    uint8_t byte = 0x42;
+    s.write_bytes(&byte, 1);
+
+    Deserializer d(s.data());
+    auto result = d.read_bytes();
+    ASSERT_EQ(result.size(), 1u);
+    EXPECT_EQ(result[0], 0x42);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, SerializerV148_3_MixedStringsAndU32sRoundTrip) {
+    Serializer s;
+    std::string strs[5] = {"alpha", "beta", "gamma", "delta", "epsilon"};
+    uint32_t vals[5] = {10, 20, 30, 40, 50};
+
+    for (int i = 0; i < 5; ++i) {
+        s.write_string(strs[i]);
+        s.write_u32(vals[i]);
+    }
+
+    Deserializer d(s.data());
+    for (int i = 0; i < 5; ++i) {
+        EXPECT_EQ(d.read_string(), strs[i]);
+        EXPECT_EQ(d.read_u32(), vals[i]);
+    }
+    EXPECT_FALSE(d.has_remaining());
+}

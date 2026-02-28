@@ -23509,3 +23509,148 @@ TEST(HtmlParserTest, HtmlV147_8) {
     ASSERT_NE(style, nullptr);
     EXPECT_EQ(style->tag_name, "style");
 }
+
+// --- V148 HTML Parser Tests ---
+
+TEST(HtmlParserTest, HtmlV148_1) {
+    // video element with src
+    auto doc = clever::html::parse("<html><body><video src=\"movie.mp4\"></video></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* video = doc->find_element("video");
+    ASSERT_NE(video, nullptr);
+    EXPECT_EQ(video->tag_name, "video");
+    ASSERT_GE(video->attributes.size(), 1u);
+    EXPECT_EQ(video->attributes[0].name, "src");
+    EXPECT_EQ(video->attributes[0].value, "movie.mp4");
+}
+
+TEST(HtmlParserTest, HtmlV148_2) {
+    // audio element with controls
+    auto doc = clever::html::parse("<html><body><audio controls></audio></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* audio = doc->find_element("audio");
+    ASSERT_NE(audio, nullptr);
+    EXPECT_EQ(audio->tag_name, "audio");
+    bool found_controls = false;
+    for (const auto& attr : audio->attributes) {
+        if (attr.name == "controls") found_controls = true;
+    }
+    EXPECT_TRUE(found_controls) << "controls attribute not found";
+}
+
+TEST(HtmlParserTest, HtmlV148_3) {
+    // source element with type
+    auto doc = clever::html::parse("<html><body><video><source src=\"a.mp4\" type=\"video/mp4\"></video></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* source = doc->find_element("source");
+    ASSERT_NE(source, nullptr);
+    EXPECT_EQ(source->tag_name, "source");
+    bool found_type = false;
+    for (const auto& attr : source->attributes) {
+        if (attr.name == "type") {
+            found_type = true;
+            EXPECT_EQ(attr.value, "video/mp4");
+        }
+    }
+    EXPECT_TRUE(found_type) << "type attribute not found";
+}
+
+TEST(HtmlParserTest, HtmlV148_4) {
+    // iframe with src
+    auto doc = clever::html::parse("<html><body><iframe src=\"https://example.com\"></iframe></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* iframe = doc->find_element("iframe");
+    ASSERT_NE(iframe, nullptr);
+    EXPECT_EQ(iframe->tag_name, "iframe");
+    ASSERT_GE(iframe->attributes.size(), 1u);
+    EXPECT_EQ(iframe->attributes[0].name, "src");
+    EXPECT_EQ(iframe->attributes[0].value, "https://example.com");
+}
+
+TEST(HtmlParserTest, HtmlV148_5) {
+    // embed element
+    auto doc = clever::html::parse("<html><body><embed src=\"plugin.swf\" type=\"application/x-shockwave-flash\"></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* embed = doc->find_element("embed");
+    ASSERT_NE(embed, nullptr);
+    EXPECT_EQ(embed->tag_name, "embed");
+    bool found_type = false;
+    for (const auto& attr : embed->attributes) {
+        if (attr.name == "type") {
+            found_type = true;
+            EXPECT_EQ(attr.value, "application/x-shockwave-flash");
+        }
+    }
+    EXPECT_TRUE(found_type) << "type attribute not found";
+}
+
+TEST(HtmlParserTest, HtmlV148_6) {
+    // object with data attribute
+    auto doc = clever::html::parse("<html><body><object data=\"movie.swf\" type=\"application/x-shockwave-flash\"></object></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* obj = doc->find_element("object");
+    ASSERT_NE(obj, nullptr);
+    EXPECT_EQ(obj->tag_name, "object");
+    bool found_data = false;
+    for (const auto& attr : obj->attributes) {
+        if (attr.name == "data") {
+            found_data = true;
+            EXPECT_EQ(attr.value, "movie.swf");
+        }
+    }
+    EXPECT_TRUE(found_data) << "data attribute not found";
+}
+
+TEST(HtmlParserTest, HtmlV148_7) {
+    // param element
+    auto doc = clever::html::parse("<html><body><object><param name=\"movie\" value=\"a.swf\"></object></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* param = doc->find_element("param");
+    ASSERT_NE(param, nullptr);
+    EXPECT_EQ(param->tag_name, "param");
+    bool found_name = false;
+    bool found_value = false;
+    for (const auto& attr : param->attributes) {
+        if (attr.name == "name") {
+            found_name = true;
+            EXPECT_EQ(attr.value, "movie");
+        }
+        if (attr.name == "value") {
+            found_value = true;
+            EXPECT_EQ(attr.value, "a.swf");
+        }
+    }
+    EXPECT_TRUE(found_name) << "name attribute not found";
+    EXPECT_TRUE(found_value) << "value attribute not found";
+}
+
+TEST(HtmlParserTest, HtmlV148_8) {
+    // canvas element with width/height
+    auto doc = clever::html::parse("<html><body><canvas width=\"300\" height=\"150\"></canvas></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* canvas = doc->find_element("canvas");
+    ASSERT_NE(canvas, nullptr);
+    EXPECT_EQ(canvas->tag_name, "canvas");
+    bool found_width = false;
+    bool found_height = false;
+    for (const auto& attr : canvas->attributes) {
+        if (attr.name == "width") {
+            found_width = true;
+            EXPECT_EQ(attr.value, "300");
+        }
+        if (attr.name == "height") {
+            found_height = true;
+            EXPECT_EQ(attr.value, "150");
+        }
+    }
+    EXPECT_TRUE(found_width) << "width attribute not found";
+    EXPECT_TRUE(found_height) << "height attribute not found";
+}

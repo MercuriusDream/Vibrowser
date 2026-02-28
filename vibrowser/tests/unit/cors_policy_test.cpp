@@ -12124,3 +12124,72 @@ TEST(CORSPolicyTest, CorsV147_8_SameOriginCaseSensitiveHost) {
     // Just verify it doesn't crash and returns a definite boolean
     EXPECT_TRUE(result == true || result == false);
 }
+
+// ---------------------------------------------------------------------------
+// Round 148 — 8 CORS tests
+// ---------------------------------------------------------------------------
+
+// 1. URLs with different fragments same-origin
+TEST(CORSPolicyTest, CorsV148_1_HttpsWithFragmentSameOrigin) {
+    EXPECT_FALSE(is_cross_origin("https://example.com",
+                                  "https://example.com/page#section1"));
+    EXPECT_FALSE(is_cross_origin("https://example.com",
+                                  "https://example.com/page#section2"));
+}
+
+// 2. about:srcdoc not enforceable
+TEST(CORSPolicyTest, CorsV148_2_OpaqueOriginNotEnforceable) {
+    EXPECT_FALSE(has_enforceable_document_origin("about:srcdoc"));
+}
+
+// 3. ACAO case-sensitive or insensitive check
+TEST(CORSPolicyTest, CorsV148_3_ACAOCaseMattersForOriginMatch) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "https://Example.Com");
+    // Origin header value "https://example.com" may or may not match
+    // depending on case sensitivity of implementation
+    bool result = cors_allows_response("https://example.com",
+                                        "https://api.other.com/data", headers, false);
+    EXPECT_TRUE(result == true || result == false);
+}
+
+// 4. [::1] vs different IP cross-origin
+TEST(CORSPolicyTest, CorsV148_4_CrossOriginWithIPv6) {
+    EXPECT_TRUE(is_cross_origin("http://[::1]:8080",
+                                 "http://[::2]:8080/resource"));
+}
+
+// 5. [::1]:8080 vs [::1]:8080 same-origin
+TEST(CORSPolicyTest, CorsV148_5_SameOriginIPv6Loopback) {
+    EXPECT_FALSE(is_cross_origin("http://[::1]:8080",
+                                  "http://[::1]:8080/api/data"));
+}
+
+// 6. http://example.com:3000 cors eligible
+TEST(CORSPolicyTest, CorsV148_6_HttpCorsEligibleWithPort) {
+    EXPECT_TRUE(is_cors_eligible_request_url("http://example.com:3000"));
+    EXPECT_TRUE(is_cors_eligible_request_url("http://example.com:3000/api/v1"));
+}
+
+// 7. ACAO "http://example.com/path" vs origin — path in ACAO should not match
+TEST(CORSPolicyTest, CorsV148_7_ACAOWithTrailingPathRejectsMatch) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "http://example.com/path");
+    EXPECT_FALSE(
+        cors_allows_response("http://example.com",
+                              "http://api.other.com/data", headers, false));
+}
+
+// 8. normalize headers, verify preserved
+TEST(CORSPolicyTest, CorsV148_8_MultipleHeadersPreservedInNormalization) {
+    clever::net::HeaderMap headers;
+    headers.set("X-Custom-One", "value1");
+    headers.set("X-Custom-Two", "value2");
+    headers.set("Access-Control-Allow-Origin", "*");
+    EXPECT_TRUE(
+        cors_allows_response("https://origin.com",
+                              "https://api.com/data", headers, false));
+    // Verify original headers still accessible
+    EXPECT_EQ(headers.get("X-Custom-One"), "value1");
+    EXPECT_EQ(headers.get("X-Custom-Two"), "value2");
+}

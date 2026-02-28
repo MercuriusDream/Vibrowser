@@ -10549,3 +10549,61 @@ TEST_F(CSSStylesheetTest, GridTemplateColumnsDeclarationV147) {
     }
     EXPECT_TRUE(found) << "grid-template-columns declaration not found";
 }
+
+// --- V148 CSS Parser Tests ---
+
+TEST_F(CSSStylesheetTest, OpacityDeclarationV148) {
+    auto ss = parse_stylesheet("div { opacity: 0.5; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "opacity") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "0.5");
+        }
+    }
+    EXPECT_TRUE(found) << "opacity declaration not found";
+}
+
+TEST_F(CSSStylesheetTest, CursorDeclarationV148) {
+    auto ss = parse_stylesheet("a { cursor: pointer; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "cursor") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "pointer");
+        }
+    }
+    EXPECT_TRUE(found) << "cursor declaration not found";
+}
+
+TEST_F(CSSStylesheetTest, WhiteSpaceDeclarationV148) {
+    auto ss = parse_stylesheet("span { white-space: nowrap; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "white-space") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "nowrap");
+        }
+    }
+    EXPECT_TRUE(found) << "white-space declaration not found";
+}
+
+TEST_F(CSSStylesheetTest, OverflowDeclarationV148) {
+    auto ss = parse_stylesheet("div { overflow: hidden; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "overflow") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "hidden");
+        }
+    }
+    EXPECT_TRUE(found) << "overflow declaration not found";
+}

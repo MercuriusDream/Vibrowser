@@ -1669,3 +1669,50 @@ TEST(MessagePipeTest, MessagePipeV147_3_MessageOrderPreservedV147) {
         EXPECT_EQ((*received)[1], static_cast<uint8_t>(type_id * 10));
     }
 }
+
+// ------------------------------------------------------------------
+// V148 – MessagePipe tests
+// ------------------------------------------------------------------
+
+TEST(MessagePipeTest, MessagePipeV148_1_TwoBytePayloadV148) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    std::vector<uint8_t> payload = {0xAB, 0xCD};
+    ASSERT_TRUE(a.send(payload));
+
+    auto received = b.receive();
+    ASSERT_TRUE(received.has_value());
+    ASSERT_EQ(received->size(), 2u);
+    EXPECT_EQ((*received)[0], 0xAB);
+    EXPECT_EQ((*received)[1], 0xCD);
+}
+
+TEST(MessagePipeTest, MessagePipeV148_2_LargeBatchSendThenReceiveV148) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    for (uint8_t i = 0; i < 50; ++i) {
+        std::vector<uint8_t> msg = {i};
+        ASSERT_TRUE(a.send(msg)) << "send failed at i=" << static_cast<int>(i);
+    }
+
+    for (uint8_t i = 0; i < 50; ++i) {
+        auto received = b.receive();
+        ASSERT_TRUE(received.has_value()) << "receive failed at i=" << static_cast<int>(i);
+        ASSERT_EQ(received->size(), 1u);
+        EXPECT_EQ((*received)[0], i);
+    }
+}
+
+TEST(MessagePipeTest, MessagePipeV148_3_PayloadAllZerosV148) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    std::vector<uint8_t> payload(100, 0x00);
+    ASSERT_TRUE(a.send(payload));
+
+    auto received = b.receive();
+    ASSERT_TRUE(received.has_value());
+    ASSERT_EQ(received->size(), 100u);
+    for (size_t i = 0; i < 100; ++i) {
+        EXPECT_EQ((*received)[i], 0x00) << "non-zero at index " << i;
+    }
+}

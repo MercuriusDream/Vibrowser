@@ -25650,3 +25650,45 @@ TEST(CSSStyleTest, CssV147_4_PositionStickyApplied) {
     cascade.apply_declaration(style, make_decl("position", "sticky"), parent);
     EXPECT_EQ(style.position, Position::Sticky);
 }
+
+// --- V148 CSS Style Tests ---
+
+TEST(CSSStyleTest, CssV148_1_OpacityApplied) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("opacity", "0.7"), parent);
+    EXPECT_FLOAT_EQ(style.opacity, 0.7f);
+}
+
+TEST(CSSStyleTest, CssV148_2_FontSize24pxApplied) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("font-size", "24px"), parent);
+    EXPECT_FLOAT_EQ(style.font_size.to_px(), 24.0f);
+}
+
+TEST(PropertyCascadeTest, LineHeight1_5AppliedV148) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("line-height", "1.5"), parent);
+    EXPECT_FLOAT_EQ(style.line_height_unitless, 1.5f);
+}
+
+TEST(CSSStyleTest, CssV148_4_MarginAutoApplied) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("margin-left", "auto"), parent);
+    EXPECT_TRUE(style.margin.left.is_auto());
+    cascade.apply_declaration(style, make_decl("margin-right", "auto"), parent);
+    EXPECT_TRUE(style.margin.right.is_auto());
+    EXPECT_FLOAT_EQ(style.margin.left.to_px(), 0.0f);
+    EXPECT_FLOAT_EQ(style.margin.right.to_px(), 0.0f);
+}

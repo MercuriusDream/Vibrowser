@@ -25098,3 +25098,194 @@ TEST(HttpClient, CookieJarPathNotMatchingDifferentPrefixV147) {
     EXPECT_TRUE(h4.empty())
         << "Cookie with Path=/api should NOT match /other, got: " << h4;
 }
+
+// ===========================================================================
+// V148 Tests
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// 1. HttpClient.RequestSerializeWithCookieHeaderV148
+// ---------------------------------------------------------------------------
+TEST(HttpClient, RequestSerializeWithCookieHeaderV148) {
+    Request req;
+    req.method = Method::GET;
+    req.host = "shop.example.com";
+    req.port = 80;
+    req.path = "/cart";
+    req.headers.set("Cookie", "session=abc123");
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    EXPECT_NE(result.find("GET /cart HTTP/1.1\r\n"), std::string::npos);
+    EXPECT_NE(result.find("Host: shop.example.com\r\n"), std::string::npos);
+    EXPECT_NE(result.find("cookie: session=abc123\r\n"), std::string::npos)
+        << "Cookie header should appear (lowercase) in serialized request, got:\n" << result;
+    EXPECT_NE(result.find("Connection: close\r\n"), std::string::npos);
+}
+
+// ---------------------------------------------------------------------------
+// 2. HttpClient.ResponseParse304NotModifiedV148
+// ---------------------------------------------------------------------------
+TEST(HttpClient, ResponseParse304NotModifiedV148) {
+    std::string raw =
+        "HTTP/1.1 304 Not Modified\r\n"
+        "ETag: \"abc123\"\r\n"
+        "Content-Length: 0\r\n"
+        "\r\n";
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 304);
+    EXPECT_EQ(resp->status_text, "Not Modified");
+    EXPECT_EQ(resp->headers.get("etag").value(), "\"abc123\"");
+    EXPECT_EQ(resp->body.size(), 0u)
+        << "304 response should have no body";
+}
+
+// ---------------------------------------------------------------------------
+// 3. HttpClient.HeaderMapHasCaseInsensitiveV148
+// ---------------------------------------------------------------------------
+TEST(HttpClient, HeaderMapHasCaseInsensitiveV148) {
+    HeaderMap map;
+    map.set("Content-Type", "application/json");
+
+    EXPECT_TRUE(map.has("Content-Type"));
+    EXPECT_TRUE(map.has("content-type"));
+    EXPECT_TRUE(map.has("CONTENT-TYPE"));
+    EXPECT_TRUE(map.has("Content-type"));
+    EXPECT_TRUE(map.has("cOnTeNt-TyPe"));
+    EXPECT_FALSE(map.has("Content-Length"))
+        << "has() should return false for keys not in the map";
+}
+
+// ---------------------------------------------------------------------------
+// 4. HttpClient.CookieJarMultipleDomainsIsolatedV148
+// ---------------------------------------------------------------------------
+TEST(HttpClient, CookieJarMultipleDomainsIsolatedV148) {
+    CookieJar jar;
+    jar.set_from_header("alpha=1", "alpha148.example.com");
+    jar.set_from_header("beta=2", "beta148.example.com");
+    jar.set_from_header("gamma=3", "gamma148.example.com");
+
+    // alpha domain gets only alpha cookie
+    std::string h_alpha = jar.get_cookie_header("alpha148.example.com", "/", false);
+    EXPECT_NE(h_alpha.find("alpha=1"), std::string::npos)
+        << "alpha domain should have alpha cookie, got: " << h_alpha;
+    EXPECT_EQ(h_alpha.find("beta=2"), std::string::npos)
+        << "alpha domain should NOT have beta cookie, got: " << h_alpha;
+    EXPECT_EQ(h_alpha.find("gamma=3"), std::string::npos)
+        << "alpha domain should NOT have gamma cookie, got: " << h_alpha;
+
+    // beta domain gets only beta cookie
+    std::string h_beta = jar.get_cookie_header("beta148.example.com", "/", false);
+    EXPECT_NE(h_beta.find("beta=2"), std::string::npos)
+        << "beta domain should have beta cookie, got: " << h_beta;
+    EXPECT_EQ(h_beta.find("alpha=1"), std::string::npos)
+        << "beta domain should NOT have alpha cookie, got: " << h_beta;
+
+    // gamma domain gets only gamma cookie
+    std::string h_gamma = jar.get_cookie_header("gamma148.example.com", "/", false);
+    EXPECT_NE(h_gamma.find("gamma=3"), std::string::npos)
+        << "gamma domain should have gamma cookie, got: " << h_gamma;
+    EXPECT_EQ(h_gamma.find("alpha=1"), std::string::npos)
+        << "gamma domain should NOT have alpha cookie, got: " << h_gamma;
+    EXPECT_EQ(h_gamma.find("beta=2"), std::string::npos)
+        << "gamma domain should NOT have beta cookie, got: " << h_gamma;
+}
+
+// ---------------------------------------------------------------------------
+// 5. HttpClient.RequestSerializeGetWithPathV148
+// ---------------------------------------------------------------------------
+TEST(HttpClient, RequestSerializeGetWithPathV148) {
+    Request req;
+    req.method = Method::GET;
+    req.host = "api.example.com";
+    req.port = 443;
+    req.path = "/api/v2/users";
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    EXPECT_NE(result.find("GET /api/v2/users HTTP/1.1\r\n"), std::string::npos)
+        << "Path /api/v2/users should be preserved in request line, got:\n" << result;
+    // Port 443 should be omitted from Host header
+    EXPECT_NE(result.find("Host: api.example.com\r\n"), std::string::npos)
+        << "Host header should omit port 443, got:\n" << result;
+    EXPECT_EQ(result.find("Host: api.example.com:443"), std::string::npos)
+        << "Port 443 should NOT appear in Host header";
+    EXPECT_NE(result.find("Connection: close\r\n"), std::string::npos);
+}
+
+// ---------------------------------------------------------------------------
+// 6. HttpClient.ResponseParseLargeBodyV148
+// ---------------------------------------------------------------------------
+TEST(HttpClient, ResponseParseLargeBodyV148) {
+    std::string large_body(5000, 'X');
+    std::string raw =
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Type: text/plain\r\n"
+        "Content-Length: 5000\r\n"
+        "\r\n" + large_body;
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 200);
+    EXPECT_EQ(resp->body.size(), 5000u)
+        << "Body should contain exactly 5000 characters";
+    EXPECT_EQ(resp->body_as_string(), large_body)
+        << "Body content should match the 5000-char string of X's";
+}
+
+// ---------------------------------------------------------------------------
+// 7. HttpClient.HeaderMapSetAndGetSameKeyV148
+// ---------------------------------------------------------------------------
+TEST(HttpClient, HeaderMapSetAndGetSameKeyV148) {
+    HeaderMap map;
+    map.set("X-Request-Id", "req-v148-001");
+
+    auto val = map.get("X-Request-Id");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(val.value(), "req-v148-001");
+
+    // Overwrite with new value
+    map.set("X-Request-Id", "req-v148-002");
+    auto val2 = map.get("x-request-id");
+    ASSERT_TRUE(val2.has_value());
+    EXPECT_EQ(val2.value(), "req-v148-002")
+        << "set() should overwrite the previous value";
+
+    // Should only have one entry
+    auto all = map.get_all("X-Request-Id");
+    EXPECT_EQ(all.size(), 1u)
+        << "set() should replace, not append";
+}
+
+// ---------------------------------------------------------------------------
+// 8. HttpClient.CookieJarEmptyPathMatchesAllV148
+// ---------------------------------------------------------------------------
+TEST(HttpClient, CookieJarEmptyPathMatchesAllV148) {
+    CookieJar jar;
+    // Cookie with no Path attribute — should default to matching all paths
+    jar.set_from_header("token148=abc", "pathless148.example.com");
+
+    std::string h1 = jar.get_cookie_header("pathless148.example.com", "/", false);
+    EXPECT_NE(h1.find("token148=abc"), std::string::npos)
+        << "Cookie with no Path should match /, got: " << h1;
+
+    std::string h2 = jar.get_cookie_header("pathless148.example.com", "/some/deep/path", false);
+    EXPECT_NE(h2.find("token148=abc"), std::string::npos)
+        << "Cookie with no Path should match /some/deep/path, got: " << h2;
+
+    std::string h3 = jar.get_cookie_header("pathless148.example.com", "/api", false);
+    EXPECT_NE(h3.find("token148=abc"), std::string::npos)
+        << "Cookie with no Path should match /api, got: " << h3;
+
+    std::string h4 = jar.get_cookie_header("pathless148.example.com", "/x/y/z", false);
+    EXPECT_NE(h4.find("token148=abc"), std::string::npos)
+        << "Cookie with no Path should match /x/y/z, got: " << h4;
+}

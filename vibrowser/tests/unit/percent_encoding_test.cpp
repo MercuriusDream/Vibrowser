@@ -1108,3 +1108,34 @@ TEST(IsURLCodePoint, EqualsSignIsCodePointV147) {
     // Also verify it is not encoded by percent_encode
     EXPECT_EQ(percent_encode("="), "=");
 }
+
+// =============================================================================
+// V148 Tests
+// =============================================================================
+
+TEST(PercentEncoding, CaretEncodedV148) {
+    // Caret '^' is not a valid URL code point and must be percent-encoded
+    EXPECT_EQ(percent_encode("^"), "%5E");
+    EXPECT_EQ(percent_encode("a^b"), "a%5Eb");
+}
+
+TEST(PercentDecoding, FullAlphabetRoundTripV148) {
+    // Encode then decode lowercase alphabet should yield identity
+    std::string alpha = "abcdefghijklmnopqrstuvwxyz";
+    std::string encoded = percent_encode(alpha);
+    // Lowercase letters are unreserved and should not be encoded
+    EXPECT_EQ(encoded, alpha);
+    std::string decoded = percent_decode(encoded);
+    EXPECT_EQ(decoded, alpha);
+}
+
+TEST(PercentEncoding, GraveAccentEncodedV148) {
+    // Grave accent '`' is not a valid URL code point and must be percent-encoded
+    EXPECT_EQ(percent_encode("`"), "%60");
+    EXPECT_EQ(percent_encode("a`b"), "a%60b");
+}
+
+TEST(IsURLCodePoint, TildeIsCodePointV148) {
+    // '~' is a valid URL code point (unreserved character)
+    EXPECT_TRUE(is_url_code_point(U'~'));
+}

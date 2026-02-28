@@ -14889,3 +14889,52 @@ TEST(UrlParserTest, UrlV147_4_RelativePathResolution) {
     EXPECT_EQ(result->host, "example.com");
     EXPECT_EQ(result->path, "/docs/tutorial/start.html");
 }
+
+// =============================================================================
+// V148 Tests
+// =============================================================================
+
+TEST(UrlParserTest, UrlV148_1_HttpsWithAllComponents) {
+    // Full URL with user:pass@host:port/path?query#frag
+    auto result = parse("https://admin:secret@data.example.com:8443/api/v2/resource?sort=asc&limit=50#results");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->username, "admin");
+    EXPECT_EQ(result->password, "secret");
+    EXPECT_EQ(result->host, "data.example.com");
+    ASSERT_TRUE(result->port.has_value());
+    EXPECT_EQ(result->port.value(), 8443);
+    EXPECT_EQ(result->path, "/api/v2/resource");
+    EXPECT_EQ(result->query, "sort=asc&limit=50");
+    EXPECT_EQ(result->fragment, "results");
+}
+
+TEST(UrlParserTest, UrlV148_2_WindowsFilePathUrl) {
+    // file:///C:/Users/test should parse as a file URL with Windows drive path
+    auto result = parse("file:///C:/Users/test");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "file");
+    EXPECT_TRUE(result->host.empty());
+    EXPECT_EQ(result->path, "/C:/Users/test");
+}
+
+TEST(UrlParserTest, UrlV148_3_UrlWithOnlySchemeAndHost) {
+    // http://example.com with no explicit path should default path to "/"
+    auto result = parse("http://example.com");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/");
+    EXPECT_TRUE(result->query.empty());
+    EXPECT_TRUE(result->fragment.empty());
+}
+
+TEST(UrlParserTest, UrlV148_4_NonDefaultPortPreservedInSerialize) {
+    // Serialize URL with port 9999; verify port appears in serialized output
+    auto result = parse("http://example.com:9999/data");
+    ASSERT_TRUE(result.has_value());
+    ASSERT_TRUE(result->port.has_value());
+    EXPECT_EQ(result->port.value(), 9999);
+    std::string s = result->serialize();
+    EXPECT_EQ(s, "http://example.com:9999/data");
+}

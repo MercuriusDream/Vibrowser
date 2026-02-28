@@ -22325,3 +22325,124 @@ TEST(DomElement, EmptyTagNameV147) {
     EXPECT_EQ(elem.child_count(), 0u);
     EXPECT_EQ(elem.attributes().size(), 0u);
 }
+
+// ---------------------------------------------------------------------------
+// Round 148 — 8 DOM tests
+// ---------------------------------------------------------------------------
+
+// 1. Simulate replace: insert new before old, remove old
+TEST(DomNode, ReplaceChildWithInsertAndRemoveV148) {
+    auto parent = std::make_unique<Element>("div");
+    auto old_child = std::make_unique<Element>("old");
+    auto new_child = std::make_unique<Element>("new");
+
+    Node* old_ptr = old_child.get();
+    Node* new_ptr = new_child.get();
+
+    parent->append_child(std::move(old_child));
+    ASSERT_EQ(parent->child_count(), 1u);
+
+    parent->insert_before(std::move(new_child), old_ptr);
+    ASSERT_EQ(parent->child_count(), 2u);
+    EXPECT_EQ(parent->first_child(), new_ptr);
+
+    parent->remove_child(*old_ptr);
+    EXPECT_EQ(parent->child_count(), 1u);
+    EXPECT_EQ(parent->first_child(), new_ptr);
+}
+
+// 2. get_attribute returns nullopt on elem with no attrs
+TEST(DomElement, GetAttributeOnFreshElementV148) {
+    Element elem("span");
+    EXPECT_EQ(elem.attributes().size(), 0u);
+    auto val = elem.get_attribute("class");
+    EXPECT_FALSE(val.has_value());
+}
+
+// 3. Register 3 ids, get each by id
+TEST(DomDocument, MultipleIdsRegisteredAndRetrievedV148) {
+    Document doc;
+    auto a = doc.create_element("div");
+    auto b = doc.create_element("span");
+    auto c = doc.create_element("p");
+
+    a->set_attribute("id", "alpha");
+    b->set_attribute("id", "beta");
+    c->set_attribute("id", "gamma");
+
+    Element* a_ptr = a.get();
+    Element* b_ptr = b.get();
+    Element* c_ptr = c.get();
+
+    doc.register_id("alpha", a_ptr);
+    doc.register_id("beta", b_ptr);
+    doc.register_id("gamma", c_ptr);
+
+    doc.append_child(std::move(a));
+    doc.append_child(std::move(b));
+    doc.append_child(std::move(c));
+
+    EXPECT_EQ(doc.get_element_by_id("alpha"), a_ptr);
+    EXPECT_EQ(doc.get_element_by_id("beta"), b_ptr);
+    EXPECT_EQ(doc.get_element_by_id("gamma"), c_ptr);
+    EXPECT_EQ(doc.get_element_by_id("missing"), nullptr);
+}
+
+// 4. New Event, verify phase() initial value
+TEST(DomEvent, EventPhaseDefaultV148) {
+    Event ev("click", true, true);
+    EXPECT_EQ(ev.phase(), EventPhase::None);
+}
+
+// 5. Append child, verify child->parent()==parent
+TEST(DomNode, AppendChildUpdatesParentPointerV148) {
+    auto parent = std::make_unique<Element>("div");
+    auto child = std::make_unique<Element>("span");
+
+    Node* child_ptr = child.get();
+    parent->append_child(std::move(child));
+
+    EXPECT_EQ(child_ptr->parent(), parent.get());
+}
+
+// 6. ClassList toggle x: adds, toggle x: removes, toggle x: adds again
+TEST(DomElement, ClassListMultipleTogglesV148) {
+    Element elem("div");
+    auto& cl = elem.class_list();
+
+    EXPECT_FALSE(cl.contains("x"));
+
+    cl.toggle("x");
+    EXPECT_TRUE(cl.contains("x"));
+    EXPECT_EQ(cl.length(), 1u);
+
+    cl.toggle("x");
+    EXPECT_FALSE(cl.contains("x"));
+    EXPECT_EQ(cl.length(), 0u);
+
+    cl.toggle("x");
+    EXPECT_TRUE(cl.contains("x"));
+    EXPECT_EQ(cl.length(), 1u);
+}
+
+// 7. 1 child: first_child==last_child
+TEST(DomNode, FirstAndLastChildSameForSingleChildV148) {
+    auto parent = std::make_unique<Element>("ul");
+    auto child = std::make_unique<Element>("li");
+    Node* child_ptr = child.get();
+
+    parent->append_child(std::move(child));
+
+    EXPECT_EQ(parent->first_child(), child_ptr);
+    EXPECT_EQ(parent->last_child(), child_ptr);
+    EXPECT_EQ(parent->first_child(), parent->last_child());
+}
+
+// 8. set_attribute with value containing special chars
+TEST(DomElement, AttributeValueCanContainSpecialCharsV148) {
+    Element elem("div");
+    elem.set_attribute("data-val", "<b>\"hello\"</b> & 'world'");
+    auto val = elem.get_attribute("data-val");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(val.value(), "<b>\"hello\"</b> & 'world'");
+}

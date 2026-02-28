@@ -36300,3 +36300,95 @@ TEST(JSEngine, JsV147_8) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "x,y,z");
 }
+
+// V148: WeakRef basic usage
+TEST(JSEngine, JsV148_1) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var obj = { value: 42 };
+        var ref = new WeakRef(obj);
+        var d = ref.deref();
+        d.value;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "42");
+}
+
+// V148: Array.flatMap
+TEST(JSEngine, JsV148_2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        [1, 2, 3].flatMap(x => [x, x * 2]).join(',');
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1,2,2,4,3,6");
+}
+
+// V148: String.matchAll with global regex
+TEST(JSEngine, JsV148_3) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var matches = [...'aAbBcC'.matchAll(/[a-c]/g)];
+        matches.map(m => m[0]).join(',');
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "a,b,c");
+}
+
+// V148: Object.entries iteration
+TEST(JSEngine, JsV148_4) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var obj = { a: 1, b: 2, c: 3 };
+        Object.entries(obj).map(e => e[0] + '=' + e[1]).join(';');
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "a=1;b=2;c=3");
+}
+
+// V148: Array.from with mapFn
+TEST(JSEngine, JsV148_5) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        Array.from({length: 5}, (_, i) => i * 3).join(',');
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "0,3,6,9,12");
+}
+
+// V148: Array.at with positive and negative
+TEST(JSEngine, JsV148_6) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var arr = [10, 20, 30, 40, 50];
+        arr.at(0) + ',' + arr.at(2) + ',' + arr.at(-1) + ',' + arr.at(-2);
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "10,30,50,40");
+}
+
+// V148: String.replaceAll
+TEST(JSEngine, JsV148_7) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        'aabbcc'.replaceAll('b', 'X');
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "aaXXcc");
+}
+
+// V148: logical assignment operators (||=, &&=, ??=)
+TEST(JSEngine, JsV148_8) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var a = 0;
+        a ||= 5;
+        var b = 1;
+        b &&= 10;
+        var c = null;
+        c ??= 99;
+        '' + a + ',' + b + ',' + c;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "5,10,99");
+}

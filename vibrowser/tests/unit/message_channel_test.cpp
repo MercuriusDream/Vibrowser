@@ -1924,3 +1924,41 @@ TEST(MessageChannelTest, MessageChannelV147_2_TwoChannelsSeparateHandlersV147) {
     EXPECT_EQ(ch1_count, 2);
     EXPECT_EQ(ch2_count, 1);
 }
+
+// ------------------------------------------------------------------
+// V148 – MessageChannel tests
+// ------------------------------------------------------------------
+
+TEST(MessageChannelTest, MessageChannelV148_1_HandlerInvokedOncePerDispatchV148) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel ch(std::move(pa));
+
+    int invoke_count = 0;
+    ch.on(42, [&](const Message&) { invoke_count++; });
+
+    Message msg;
+    msg.type = 42;
+    msg.request_id = 1;
+    msg.payload = {0x01, 0x02};
+
+    ch.dispatch(msg);
+    EXPECT_EQ(invoke_count, 1);
+}
+
+TEST(MessageChannelTest, MessageChannelV148_2_EmptyPayloadHandlerV148) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel ch(std::move(pa));
+
+    size_t observed_size = 999;
+    ch.on(7, [&](const Message& m) {
+        observed_size = m.payload.size();
+    });
+
+    Message msg;
+    msg.type = 7;
+    msg.request_id = 0;
+    // payload left empty
+
+    ch.dispatch(msg);
+    EXPECT_EQ(observed_size, 0u);
+}
