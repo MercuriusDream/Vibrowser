@@ -2379,14 +2379,17 @@ static std::string build_shell_message_html(const std::string& page_title,
 
     if (!target) return NO;
 
-    // Dispatch mousedown → mouseup → click event sequence
-    clever::js::dispatch_event(jsEngine->context(), target, "mousedown");
-    clever::js::dispatch_event(jsEngine->context(), target, "mouseup");
+    // Dispatch mousedown → mouseup → click event sequence with coordinates
+    clever::js::dispatch_mouse_event(jsEngine->context(), target, "mousedown",
+        x, y, x, y, 0, 1, false, false, false, false, 1);
+    clever::js::dispatch_mouse_event(jsEngine->context(), target, "mouseup",
+        x, y, x, y, 0, 0, false, false, false, false, 1);
 
     // Dispatch the "click" event to the target DOM element.
     // Returns true if event.preventDefault() was called.
-    bool prevented = clever::js::dispatch_event(
-        jsEngine->context(), target, "click");
+    bool prevented = clever::js::dispatch_mouse_event(
+        jsEngine->context(), target, "click",
+        x, y, x, y, 0, 0, false, false, false, false, 1);
 
     // ---- Interactive form control handling (checkbox / radio) ----
     // After JS click dispatch, if not prevented, toggle checkbox/radio state.
@@ -2891,12 +2894,30 @@ static std::string build_shell_message_html(const std::string& page_title,
     auto& jsEngine = [tab jsEngine];
     bool domModifiedByHover = false;
     if (jsEngine) {
-        // mouseout/mouseleave on old target (if any — but pointer may be invalid after re-render)
+        clever::html::SimpleNode* oldTarget = _hoveredNode;
+
+        // mouseout/mouseleave on old target
+        if (oldTarget) {
+            clever::js::dispatch_mouse_event(jsEngine->context(), oldTarget, "mouseout",
+                x, y, x, y, 0, 0, false, false, false, false, 0);
+            clever::js::dispatch_mouse_event(jsEngine->context(), oldTarget, "mouseleave",
+                x, y, x, y, 0, 0, false, false, false, false, 0);
+        }
+
         // mouseover/mouseenter on new target
         if (target) {
-            clever::js::dispatch_event(jsEngine->context(), target, "mouseover");
-            clever::js::dispatch_event(jsEngine->context(), target, "mouseenter");
+            clever::js::dispatch_mouse_event(jsEngine->context(), target, "mouseover",
+                x, y, x, y, 0, 0, false, false, false, false, 0);
+            clever::js::dispatch_mouse_event(jsEngine->context(), target, "mouseenter",
+                x, y, x, y, 0, 0, false, false, false, false, 0);
         }
+
+        // Also dispatch mousemove on the new target
+        if (target) {
+            clever::js::dispatch_mouse_event(jsEngine->context(), target, "mousemove",
+                x, y, x, y, 0, 0, false, false, false, false, 0);
+        }
+
         domModifiedByHover = clever::js::dom_was_modified(jsEngine->context());
     }
 

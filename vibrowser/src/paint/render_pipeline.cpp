@@ -1715,7 +1715,7 @@ void apply_inline_style(clever::css::ComputedStyle& style, const std::string& st
                 style.display = clever::css::Display::Flex; // legacy flex
             }
             else if (val_lower == "contents") style.display = clever::css::Display::Contents;
-            else if (val_lower == "flow-root") style.display = clever::css::Display::Block; // flow-root = block with BFC
+            else if (val_lower == "flow-root") { style.display = clever::css::Display::Block; style.is_flow_root = true; } // flow-root = block with BFC
         } else if (d.property == "-webkit-box-orient") {
             if (val_lower == "vertical") style.flex_direction = clever::css::FlexDirection::Column;
             else if (val_lower == "horizontal") style.flex_direction = clever::css::FlexDirection::Row;
@@ -7983,6 +7983,7 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
                 layout_node->specified_height = static_cast<float>(visible_rows) * row_h + 4;
             layout_node->geometry.padding = {2, 6, 2, 6};
             layout_node->overflow = 1; // clip overflow
+            layout_node->is_scroll_container = true;
         } else {
             // Dropdown mode (single select)
             if (layout_node->specified_height < 0) layout_node->specified_height = 22;
@@ -10162,6 +10163,11 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
                style.overflow_y == clever::css::Overflow::Auto) {
         layout_node->overflow = 3;
     }
+    // Mark as scroll container when overflow is not visible
+    layout_node->is_scroll_container = (layout_node->overflow >= 1);
+
+    // display: flow-root — always establishes a BFC
+    layout_node->is_flow_root = style.is_flow_root;
 
     // White-space: map enum to integer + legacy booleans
     switch (style.white_space) {
@@ -12503,10 +12509,32 @@ RenderResult render_html(const std::string& html, const std::string& base_url,
             }
         }
 
-        // Step 4b: Detect overflow indicators for scroll/auto elements
+        // Step 4b: Detect overflow indicators and compute scroll content dimensions
         {
             std::function<void(clever::layout::LayoutNode&)> detect_overflow =
                 [&](clever::layout::LayoutNode& node) {
+                    // Compute scroll content dimensions for all scroll containers
+                    if (node.is_scroll_container) {
+                        float max_bottom = 0;
+                        float max_right = 0;
+                        for (auto& child : node.children) {
+                            float child_bottom = child->geometry.y + child->geometry.margin_box_height();
+                            float child_right = child->geometry.x + child->geometry.margin_box_width();
+                            if (child_bottom > max_bottom) max_bottom = child_bottom;
+                            if (child_right > max_right) max_right = child_right;
+                        }
+                        node.scroll_content_height = max_bottom;
+                        node.scroll_content_width = max_right;
+
+                        // Clamp scroll offsets to valid range
+                        float max_scroll_y = std::max(0.0f, max_bottom - node.geometry.height);
+                        float max_scroll_x = std::max(0.0f, max_right - node.geometry.width);
+                        if (node.scroll_top > max_scroll_y) node.scroll_top = max_scroll_y;
+                        if (node.scroll_left > max_scroll_x) node.scroll_left = max_scroll_x;
+                        if (node.scroll_top < 0) node.scroll_top = 0;
+                        if (node.scroll_left < 0) node.scroll_left = 0;
+                    }
+
                     if (node.overflow >= 2) {
                         // overflow: 2=scroll, 3=auto
                         // Check if any child extends beyond this element's content box.

@@ -357,6 +357,13 @@ struct LayoutNode {
     // Overflow: 0=visible, 1=hidden, 2=scroll, 3=auto
     int overflow = 0;
 
+    // Scroll container tracking
+    bool is_scroll_container = false;  // true when overflow != visible (hidden/scroll/auto)
+    float scroll_top = 0;             // vertical scroll offset (pixels scrolled from top)
+    float scroll_left = 0;            // horizontal scroll offset (pixels scrolled from left)
+    float scroll_content_width = 0;   // total width of child content (for scrollbar thumb sizing)
+    float scroll_content_height = 0;  // total height of child content (for scrollbar thumb sizing)
+
     // Overflow scroll indicators (visual cue that content is clipped)
     bool overflow_indicator_bottom = false;  // content overflows bottom
     bool overflow_indicator_right = false;   // content overflows right
@@ -444,6 +451,9 @@ struct LayoutNode {
     // margin collapsing across the boundary, and includes floated children
     // in its height calculation.
     bool establishes_bfc = false;
+
+    // True when CSS display: flow-root is specified — always establishes a BFC
+    bool is_flow_root = false;
 
     // CSS contain-intrinsic-size
     float contain_intrinsic_width = 0;

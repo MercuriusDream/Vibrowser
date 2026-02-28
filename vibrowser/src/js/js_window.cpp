@@ -742,6 +742,306 @@ static JSValue js_window_dispatch_event(JSContext* /*ctx*/, JSValueConst /*this_
 }
 
 // =========================================================================
+// History API — session history management
+// =========================================================================
+
+struct HistoryEntry {
+    JSValue state;       // JS state object (must be freed per-context)
+    std::string title;   // unused by browsers but part of spec
+    std::string url;     // the URL for this entry
+};
+
+// Per-context history state.  Stored as opaque pointer on the global object
+// under "__history_state_ptr", same pattern as DOMState and RAFState.
+struct HistoryState {
+    JSContext* ctx = nullptr;
+    std::vector<HistoryEntry> entries;
+    int current_index = -1;
+
+    ~HistoryState() {
+        for (auto& entry : entries) {
+            JS_FreeValue(ctx, entry.state);
+        }
+    }
+};
+
+static HistoryState* get_history_state(JSContext* ctx) {
+    JSValue global = JS_GetGlobalObject(ctx);
+    JSValue val = JS_GetPropertyStr(ctx, global, "__history_state_ptr");
+    HistoryState* hs = nullptr;
+    if (JS_IsNumber(val)) {
+        int64_t ptr_val = 0;
+        JS_ToInt64(ctx, &ptr_val, val);
+        hs = reinterpret_cast<HistoryState*>(static_cast<uintptr_t>(ptr_val));
+    }
+    JS_FreeValue(ctx, val);
+    JS_FreeValue(ctx, global);
+    return hs;
+}
+
+// Dispatch a 'popstate' event on window listeners.
+// Per spec, popstate fires on window when navigating via back/forward/go,
+// NOT on pushState/replaceState.
+static void dispatch_popstate_event(JSContext* ctx, JSValue state_val) {
+    // Create the PopStateEvent-like object
+    JSValue event_obj = JS_NewObject(ctx);
+    JS_SetPropertyStr(ctx, event_obj, "type", JS_NewString(ctx, "popstate"));
+    JS_SetPropertyStr(ctx, event_obj, "bubbles", JS_TRUE);
+    JS_SetPropertyStr(ctx, event_obj, "cancelable", JS_FALSE);
+    JS_SetPropertyStr(ctx, event_obj, "defaultPrevented", JS_FALSE);
+    JS_SetPropertyStr(ctx, event_obj, "state", JS_DupValue(ctx, state_val));
+    JS_SetPropertyStr(ctx, event_obj, "target", JS_NULL);
+    JS_SetPropertyStr(ctx, event_obj, "currentTarget", JS_NULL);
+    JS_SetPropertyStr(ctx, event_obj, "isTrusted", JS_TRUE);
+
+    // Fire popstate on the window's onpopstate handler (if set)
+    JSValue global = JS_GetGlobalObject(ctx);
+    JSValue onpopstate = JS_GetPropertyStr(ctx, global, "onpopstate");
+    if (JS_IsFunction(ctx, onpopstate)) {
+        JSValue result = JS_Call(ctx, onpopstate, global, 1, &event_obj);
+        if (JS_IsException(result)) {
+            JSValue exc = JS_GetException(ctx);
+            JS_FreeValue(ctx, exc);
+        }
+        JS_FreeValue(ctx, result);
+    }
+    JS_FreeValue(ctx, onpopstate);
+
+    // Also fire on window event listeners (stored via addEventListener).
+    // Window listeners are stored under the __dom_state_ptr mechanism using
+    // a nullptr sentinel.  We replicate the DOMContentLoaded dispatch pattern.
+    JSValue dom_state_val = JS_GetPropertyStr(ctx, global, "__dom_state_ptr");
+    if (JS_IsNumber(dom_state_val)) {
+        // We cannot include js_dom_bindings internals here, so we dispatch
+        // via a JS eval that calls window.dispatchEvent-like logic through
+        // the existing event system.
+        // Instead, use a simpler approach: call all registered popstate listeners
+        // via a helper installed on the global.
+    }
+    JS_FreeValue(ctx, dom_state_val);
+
+    // Dispatch through the JS event system: fire __dispatchWindowEvent helper
+    // which iterates window listeners. We install this helper during setup.
+    JSValue dispatch_fn = JS_GetPropertyStr(ctx, global, "__dispatchWindowPopstate");
+    if (JS_IsFunction(ctx, dispatch_fn)) {
+        JSValue result = JS_Call(ctx, dispatch_fn, global, 1, &event_obj);
+        if (JS_IsException(result)) {
+            JSValue exc = JS_GetException(ctx);
+            JS_FreeValue(ctx, exc);
+        }
+        JS_FreeValue(ctx, result);
+    }
+    JS_FreeValue(ctx, dispatch_fn);
+
+    JS_FreeValue(ctx, global);
+    JS_FreeValue(ctx, event_obj);
+}
+
+// history.pushState(state, title, url)
+static JSValue js_history_push_state(JSContext* ctx, JSValueConst /*this_val*/,
+                                      int argc, JSValueConst* argv) {
+    auto* hs = get_history_state(ctx);
+    if (!hs) return JS_UNDEFINED;
+
+    // Extract arguments
+    JSValue state_val = (argc >= 1) ? JS_DupValue(ctx, argv[0]) : JS_NULL;
+    std::string title;
+    if (argc >= 2 && !JS_IsUndefined(argv[1]) && !JS_IsNull(argv[1])) {
+        const char* t = JS_ToCString(ctx, argv[1]);
+        if (t) { title = t; JS_FreeCString(ctx, t); }
+    }
+    std::string url;
+    if (argc >= 3 && !JS_IsUndefined(argv[2]) && !JS_IsNull(argv[2])) {
+        const char* u = JS_ToCString(ctx, argv[2]);
+        if (u) { url = u; JS_FreeCString(ctx, u); }
+    } else {
+        // If no URL given, keep current URL
+        if (hs->current_index >= 0 && hs->current_index < static_cast<int>(hs->entries.size())) {
+            url = hs->entries[hs->current_index].url;
+        }
+    }
+
+    // Truncate any forward entries (per spec: pushState removes forward history)
+    if (hs->current_index >= 0 && hs->current_index < static_cast<int>(hs->entries.size()) - 1) {
+        for (int i = hs->current_index + 1; i < static_cast<int>(hs->entries.size()); ++i) {
+            JS_FreeValue(ctx, hs->entries[i].state);
+        }
+        hs->entries.resize(hs->current_index + 1);
+    }
+
+    // Push new entry
+    hs->entries.push_back({state_val, title, url});
+    hs->current_index = static_cast<int>(hs->entries.size()) - 1;
+
+    // Update window.location.href if URL was provided (without triggering navigation)
+    if (argc >= 3 && !JS_IsUndefined(argv[2]) && !JS_IsNull(argv[2])) {
+        JSValue global = JS_GetGlobalObject(ctx);
+        JSValue update_fn = JS_GetPropertyStr(ctx, global, "__historyUpdateURL");
+        if (JS_IsFunction(ctx, update_fn)) {
+            JSValue url_val = JS_NewString(ctx, url.c_str());
+            JSValue result = JS_Call(ctx, update_fn, global, 1, &url_val);
+            JS_FreeValue(ctx, result);
+            JS_FreeValue(ctx, url_val);
+        }
+        JS_FreeValue(ctx, update_fn);
+        JS_FreeValue(ctx, global);
+    }
+
+    // Per spec: pushState does NOT fire popstate
+    return JS_UNDEFINED;
+}
+
+// history.replaceState(state, title, url)
+static JSValue js_history_replace_state(JSContext* ctx, JSValueConst /*this_val*/,
+                                         int argc, JSValueConst* argv) {
+    auto* hs = get_history_state(ctx);
+    if (!hs || hs->current_index < 0) return JS_UNDEFINED;
+
+    // Free the old state at current index
+    auto& current = hs->entries[hs->current_index];
+    JS_FreeValue(ctx, current.state);
+
+    // Replace with new values
+    current.state = (argc >= 1) ? JS_DupValue(ctx, argv[0]) : JS_NULL;
+
+    if (argc >= 2 && !JS_IsUndefined(argv[1]) && !JS_IsNull(argv[1])) {
+        const char* t = JS_ToCString(ctx, argv[1]);
+        if (t) { current.title = t; JS_FreeCString(ctx, t); }
+    }
+
+    if (argc >= 3 && !JS_IsUndefined(argv[2]) && !JS_IsNull(argv[2])) {
+        const char* u = JS_ToCString(ctx, argv[2]);
+        if (u) { current.url = u; JS_FreeCString(ctx, u); }
+
+        // Update window.location.href
+        JSValue global = JS_GetGlobalObject(ctx);
+        JSValue update_fn = JS_GetPropertyStr(ctx, global, "__historyUpdateURL");
+        if (JS_IsFunction(ctx, update_fn)) {
+            JSValue url_val = JS_NewString(ctx, current.url.c_str());
+            JSValue result = JS_Call(ctx, update_fn, global, 1, &url_val);
+            JS_FreeValue(ctx, result);
+            JS_FreeValue(ctx, url_val);
+        }
+        JS_FreeValue(ctx, update_fn);
+        JS_FreeValue(ctx, global);
+    }
+
+    // Per spec: replaceState does NOT fire popstate
+    return JS_UNDEFINED;
+}
+
+// history.back()
+static JSValue js_history_back(JSContext* ctx, JSValueConst /*this_val*/,
+                                int /*argc*/, JSValueConst* /*argv*/) {
+    auto* hs = get_history_state(ctx);
+    if (!hs || hs->current_index <= 0) return JS_UNDEFINED;
+
+    hs->current_index--;
+    auto& entry = hs->entries[hs->current_index];
+
+    // Update URL
+    JSValue global = JS_GetGlobalObject(ctx);
+    JSValue update_fn = JS_GetPropertyStr(ctx, global, "__historyUpdateURL");
+    if (JS_IsFunction(ctx, update_fn)) {
+        JSValue url_val = JS_NewString(ctx, entry.url.c_str());
+        JSValue result = JS_Call(ctx, update_fn, global, 1, &url_val);
+        JS_FreeValue(ctx, result);
+        JS_FreeValue(ctx, url_val);
+    }
+    JS_FreeValue(ctx, update_fn);
+    JS_FreeValue(ctx, global);
+
+    // Dispatch popstate event
+    dispatch_popstate_event(ctx, entry.state);
+    return JS_UNDEFINED;
+}
+
+// history.forward()
+static JSValue js_history_forward(JSContext* ctx, JSValueConst /*this_val*/,
+                                   int /*argc*/, JSValueConst* /*argv*/) {
+    auto* hs = get_history_state(ctx);
+    if (!hs || hs->current_index >= static_cast<int>(hs->entries.size()) - 1)
+        return JS_UNDEFINED;
+
+    hs->current_index++;
+    auto& entry = hs->entries[hs->current_index];
+
+    // Update URL
+    JSValue global = JS_GetGlobalObject(ctx);
+    JSValue update_fn = JS_GetPropertyStr(ctx, global, "__historyUpdateURL");
+    if (JS_IsFunction(ctx, update_fn)) {
+        JSValue url_val = JS_NewString(ctx, entry.url.c_str());
+        JSValue result = JS_Call(ctx, update_fn, global, 1, &url_val);
+        JS_FreeValue(ctx, result);
+        JS_FreeValue(ctx, url_val);
+    }
+    JS_FreeValue(ctx, update_fn);
+    JS_FreeValue(ctx, global);
+
+    // Dispatch popstate event
+    dispatch_popstate_event(ctx, entry.state);
+    return JS_UNDEFINED;
+}
+
+// history.go(delta)
+static JSValue js_history_go(JSContext* ctx, JSValueConst /*this_val*/,
+                              int argc, JSValueConst* argv) {
+    auto* hs = get_history_state(ctx);
+    if (!hs) return JS_UNDEFINED;
+
+    int delta = 0;
+    if (argc >= 1 && !JS_IsUndefined(argv[0])) {
+        JS_ToInt32(ctx, &delta, argv[0]);
+    }
+
+    if (delta == 0) {
+        // go(0) is equivalent to reload — no-op in our implementation
+        return JS_UNDEFINED;
+    }
+
+    int new_index = hs->current_index + delta;
+    if (new_index < 0 || new_index >= static_cast<int>(hs->entries.size()))
+        return JS_UNDEFINED;
+
+    hs->current_index = new_index;
+    auto& entry = hs->entries[hs->current_index];
+
+    // Update URL
+    JSValue global = JS_GetGlobalObject(ctx);
+    JSValue update_fn = JS_GetPropertyStr(ctx, global, "__historyUpdateURL");
+    if (JS_IsFunction(ctx, update_fn)) {
+        JSValue url_val = JS_NewString(ctx, entry.url.c_str());
+        JSValue result = JS_Call(ctx, update_fn, global, 1, &url_val);
+        JS_FreeValue(ctx, result);
+        JS_FreeValue(ctx, url_val);
+    }
+    JS_FreeValue(ctx, update_fn);
+    JS_FreeValue(ctx, global);
+
+    // Dispatch popstate event
+    dispatch_popstate_event(ctx, entry.state);
+    return JS_UNDEFINED;
+}
+
+// history.length getter
+static JSValue js_history_get_length(JSContext* ctx, JSValueConst /*this_val*/,
+                                      int /*argc*/, JSValueConst* /*argv*/) {
+    auto* hs = get_history_state(ctx);
+    if (!hs) return JS_NewInt32(ctx, 1);
+    return JS_NewInt32(ctx, static_cast<int>(hs->entries.size()));
+}
+
+// history.state getter
+static JSValue js_history_get_state(JSContext* ctx, JSValueConst /*this_val*/,
+                                     int /*argc*/, JSValueConst* /*argv*/) {
+    auto* hs = get_history_state(ctx);
+    if (!hs || hs->current_index < 0 ||
+        hs->current_index >= static_cast<int>(hs->entries.size()))
+        return JS_NULL;
+    return JS_DupValue(ctx, hs->entries[hs->current_index].state);
+}
+
+// =========================================================================
 // window.removeEventListener -- no-op stub
 // (window.addEventListener is in js_dom_bindings.cpp; this is a fallback
 //  for when DOM bindings are not installed or for non-DOMContentLoaded events)
@@ -2072,11 +2372,41 @@ void install_window_bindings(JSContext* ctx, const std::string& url,
         JS_NewCFunction(ctx, js_window_remove_event_listener,
                         "removeEventListener", 2));
 
-    // ---- window.history ----
-    JSValue history = JS_NewObject(ctx);
-    JS_SetPropertyStr(ctx, history, "length", JS_NewInt32(ctx, 1));
-    JS_SetPropertyStr(ctx, history, "state", JS_NULL);
-    JS_SetPropertyStr(ctx, global, "history", history);
+    // ---- window.history (full History API) ----
+    {
+        // Create HistoryState and seed with the initial page entry
+        auto* hs = new HistoryState();
+        hs->ctx = ctx;
+        hs->entries.push_back({JS_NULL, "", url});
+        hs->current_index = 0;
+
+        // Stash pointer on global for later retrieval
+        JS_SetPropertyStr(ctx, global, "__history_state_ptr",
+            JS_NewInt64(ctx, static_cast<int64_t>(
+                reinterpret_cast<uintptr_t>(hs))));
+
+        JSValue history = JS_NewObject(ctx);
+
+        // Install C++ methods
+        JS_SetPropertyStr(ctx, history, "pushState",
+            JS_NewCFunction(ctx, js_history_push_state, "pushState", 3));
+        JS_SetPropertyStr(ctx, history, "replaceState",
+            JS_NewCFunction(ctx, js_history_replace_state, "replaceState", 3));
+        JS_SetPropertyStr(ctx, history, "back",
+            JS_NewCFunction(ctx, js_history_back, "back", 0));
+        JS_SetPropertyStr(ctx, history, "forward",
+            JS_NewCFunction(ctx, js_history_forward, "forward", 0));
+        JS_SetPropertyStr(ctx, history, "go",
+            JS_NewCFunction(ctx, js_history_go, "go", 1));
+
+        // Install __getLength and __getState helpers for defineProperty getters
+        JS_SetPropertyStr(ctx, history, "__getLength",
+            JS_NewCFunction(ctx, js_history_get_length, "__getLength", 0));
+        JS_SetPropertyStr(ctx, history, "__getState",
+            JS_NewCFunction(ctx, js_history_get_state, "__getState", 0));
+
+        JS_SetPropertyStr(ctx, global, "history", history);
+    }
 
     // ---- window.screen ----
     JSValue screen = JS_NewObject(ctx);
@@ -2196,12 +2526,15 @@ void install_window_bindings(JSContext* ctx, const std::string& url,
         configurable: true
     });
 
-    // ---- history methods (no-ops) ----
-    history.pushState = function(state, title, url) {};
-    history.replaceState = function(state, title, url) {};
-    history.back = function() {};
-    history.forward = function() {};
-    history.go = function(delta) {};
+    // ---- history.length and history.state getters ----
+    Object.defineProperty(history, 'length', {
+        get: function() { return history.__getLength(); },
+        configurable: true
+    });
+    Object.defineProperty(history, 'state', {
+        get: function() { return history.__getState(); },
+        configurable: true
+    });
 
     // ---- window.crypto.getRandomValues ----
     window.crypto = {

@@ -806,6 +806,14 @@ void Painter::paint_node(const clever::layout::LayoutNode& node, DisplayList& li
     float child_offset_x = abs_x + geom.border.left + geom.padding.left;
     float child_offset_y = abs_y + geom.border.top + geom.padding.top;
 
+    // Apply scroll offset for scroll containers (overflow: hidden/scroll/auto)
+    // Children are shifted by -scroll_top/-scroll_left so that scrolled content
+    // appears in the correct position within the clipped viewport.
+    if (node.is_scroll_container) {
+        child_offset_x -= node.scroll_left;
+        child_offset_y -= node.scroll_top;
+    }
+
     // Apply SVG <g> group transform offset to children
     if (node.is_svg_group) {
         child_offset_x += node.svg_transform_tx;
@@ -4095,9 +4103,25 @@ void Painter::paint_overflow_indicator(const clever::layout::LayoutNode& node, D
 
         // Track
         list.fill_rect({sb_x, sb_y, sb_width, sb_h}, track_color);
-        // Thumb (default at top, 30% of track height, minimum 20px)
-        float thumb_h = std::max(20.0f, sb_h * 0.3f);
-        float thumb_y = sb_y + 2.0f; // 2px from top
+
+        // Compute thumb size and position based on actual content-to-viewport ratio
+        float viewport_h = geom.height;
+        float content_h = node.scroll_content_height;
+        float thumb_h, thumb_y;
+        if (content_h > viewport_h && content_h > 0) {
+            // Thumb height proportional to viewport/content ratio
+            float ratio = viewport_h / content_h;
+            thumb_h = std::max(20.0f, (sb_h - 4.0f) * ratio);
+            // Thumb position based on scroll_top
+            float max_scroll = content_h - viewport_h;
+            float scroll_frac = (max_scroll > 0) ? (node.scroll_top / max_scroll) : 0.0f;
+            float track_range = sb_h - 4.0f - thumb_h; // available track space
+            thumb_y = sb_y + 2.0f + scroll_frac * track_range;
+        } else {
+            // No actual overflow or unknown content size — default thumb
+            thumb_h = std::max(20.0f, sb_h * 0.3f);
+            thumb_y = sb_y + 2.0f;
+        }
         float thumb_radius = sb_width * 0.3f;
         list.fill_rounded_rect({sb_x + 2.0f, thumb_y, sb_width - 4.0f, thumb_h},
                                thumb_color, thumb_radius);
@@ -4111,9 +4135,25 @@ void Painter::paint_overflow_indicator(const clever::layout::LayoutNode& node, D
 
         // Track
         list.fill_rect({sb_x, sb_y, sb_w, sb_width}, track_color);
-        // Thumb (default at left, 30% of track width, minimum 20px)
-        float thumb_w = std::max(20.0f, sb_w * 0.3f);
-        float thumb_x = sb_x + 2.0f;
+
+        // Compute thumb size and position based on actual content-to-viewport ratio
+        float viewport_w = geom.width;
+        float content_w = node.scroll_content_width;
+        float thumb_w, thumb_x;
+        if (content_w > viewport_w && content_w > 0) {
+            // Thumb width proportional to viewport/content ratio
+            float ratio = viewport_w / content_w;
+            thumb_w = std::max(20.0f, (sb_w - 4.0f) * ratio);
+            // Thumb position based on scroll_left
+            float max_scroll = content_w - viewport_w;
+            float scroll_frac = (max_scroll > 0) ? (node.scroll_left / max_scroll) : 0.0f;
+            float track_range = sb_w - 4.0f - thumb_w;
+            thumb_x = sb_x + 2.0f + scroll_frac * track_range;
+        } else {
+            // No actual overflow or unknown content size — default thumb
+            thumb_w = std::max(20.0f, sb_w * 0.3f);
+            thumb_x = sb_x + 2.0f;
+        }
         float thumb_radius = sb_width * 0.3f;
         list.fill_rounded_rect({thumb_x, sb_y + 2.0f, thumb_w, sb_width - 4.0f},
                                thumb_color, thumb_radius);

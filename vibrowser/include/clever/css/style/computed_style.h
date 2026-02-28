@@ -193,6 +193,7 @@ struct ComputedStyle {
     Float float_val = Float::None;
     Clear clear = Clear::None;
     BoxSizing box_sizing = BoxSizing::ContentBox;
+    bool is_flow_root = false; // display: flow-root — always establishes BFC
 
     // Sizing
     // width_keyword/height_keyword: 0=normal, -2=min-content, -3=max-content, -4=fit-content

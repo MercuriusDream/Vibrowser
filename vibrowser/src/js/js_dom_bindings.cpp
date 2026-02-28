@@ -73,6 +73,10 @@ struct DOMState {
         float border_left = 0, border_top = 0, border_right = 0, border_bottom = 0;
         float padding_left = 0, padding_top = 0, padding_right = 0, padding_bottom = 0;
         float margin_left = 0, margin_top = 0, margin_right = 0, margin_bottom = 0;
+        // Scroll container data
+        float scroll_top = 0, scroll_left = 0;
+        float scroll_content_width = 0, scroll_content_height = 0;
+        bool is_scroll_container = false;
     };
     std::unordered_map<void*, LayoutRect> layout_geometry;
 
@@ -343,25 +347,18 @@ static JSValue js_element_set_text_content(JSContext* ctx, JSValueConst this_val
     return JS_UNDEFINED;
 }
 
+// Forward-declare serialize_node (defined later near outerHTML getter)
+static std::string serialize_node(const clever::html::SimpleNode* node);
+
 // --- element.innerHTML (getter) ---
 static JSValue js_element_get_inner_html(JSContext* ctx, JSValueConst this_val,
                                           int /*argc*/, JSValueConst* /*argv*/) {
     auto* node = unwrap_element(ctx, this_val);
     if (!node) return JS_UNDEFINED;
-    // Simple innerHTML serialisation (non-recursive for one level, then text_content)
+    // Recursively serialize all children using the full serialize_node helper
     std::string html;
     for (auto& child : node->children) {
-        if (child->type == clever::html::SimpleNode::Text) {
-            html += child->data;
-        } else if (child->type == clever::html::SimpleNode::Element) {
-            html += "<" + child->tag_name;
-            for (auto& attr : child->attributes) {
-                html += " " + attr.name + "=\"" + attr.value + "\"";
-            }
-            html += ">";
-            html += child->text_content();
-            html += "</" + child->tag_name + ">";
-        }
+        html += serialize_node(child.get());
     }
     return JS_NewString(ctx, html.c_str());
 }
@@ -2238,6 +2235,8 @@ static void scan_inline_event_attributes(JSContext* ctx,
     static const char* event_attrs[] = {
         "onclick", "onload", "onchange", "onsubmit", "oninput",
         "onmouseover", "onmouseout", "onmousedown", "onmouseup",
+        "onmousemove", "onmouseenter", "onmouseleave",
+        "ondblclick", "oncontextmenu",
         "onkeydown", "onkeyup", "onkeypress", "onfocus", "onblur",
         nullptr
     };
@@ -2360,10 +2359,12 @@ static JSValue js_document_set_cookie(JSContext* ctx, JSValueConst /*this_val*/,
 }
 
 // =========================================================================
-// element.getBoundingClientRect() -- stub returning all zeros
+// element.getBoundingClientRect()
 //
-// Returns a DOMRect-like object. If a preliminary layout pass has been
-// run and geometry is available, returns real border-box values.
+// Returns a DOMRect-like object with {x, y, width, height, top, right,
+// bottom, left} representing the element's border box in viewport
+// coordinates.  When layout geometry has been populated via
+// populate_layout_geometry(), returns real computed values.
 // Otherwise falls back to zeros.
 // =========================================================================
 
@@ -2381,7 +2382,9 @@ static JSValue js_element_get_bounding_client_rect(JSContext* ctx,
         auto it = state->layout_geometry.find(node);
         if (it != state->layout_geometry.end()) {
             auto& lr = it->second;
-            // getBoundingClientRect returns the border box
+            // getBoundingClientRect returns the border box position and size.
+            // LayoutRect.x/y stores the content-box origin (after border+padding),
+            // so subtract border+padding to get the border-box origin.
             x = lr.x - lr.padding_left - lr.border_left;
             y = lr.y - lr.padding_top - lr.border_top;
             w = lr.border_left + lr.padding_left + lr.width + lr.padding_right + lr.border_right;
@@ -2397,7 +2400,54 @@ static JSValue js_element_get_bounding_client_rect(JSContext* ctx,
     JS_SetPropertyStr(ctx, rect, "right", JS_NewFloat64(ctx, x + w));
     JS_SetPropertyStr(ctx, rect, "width", JS_NewFloat64(ctx, w));
     JS_SetPropertyStr(ctx, rect, "height", JS_NewFloat64(ctx, h));
+
+    // DOMRect.toJSON() -- required by the spec for structured serialization
+    JSValue to_json_fn = JS_Eval(ctx,
+        "(function() { return { x: this.x, y: this.y, width: this.width, "
+        "height: this.height, top: this.top, right: this.right, "
+        "bottom: this.bottom, left: this.left }; })",
+        strlen("(function() { return { x: this.x, y: this.y, width: this.width, "
+        "height: this.height, top: this.top, right: this.right, "
+        "bottom: this.bottom, left: this.left }; })"),
+        "<dom>", JS_EVAL_TYPE_GLOBAL);
+    JS_SetPropertyStr(ctx, rect, "toJSON", to_json_fn);
+
     return rect;
+}
+
+// =========================================================================
+// element.getClientRects()
+//
+// Returns an array containing a single DOMRect (the same as
+// getBoundingClientRect) for block-level elements.  Inline elements can
+// span multiple lines and would return multiple rects, but for now we
+// simplify to one rect.
+// =========================================================================
+
+static JSValue js_element_get_client_rects(JSContext* ctx,
+                                            JSValueConst this_val,
+                                            int /*argc*/,
+                                            JSValueConst* /*argv*/) {
+    JSValue arr = JS_NewArray(ctx);
+    JSValue rect = js_element_get_bounding_client_rect(ctx, this_val, 0, nullptr);
+
+    // Only add a rect if the element has non-zero dimensions
+    double w = 0;
+    JSValue w_val = JS_GetPropertyStr(ctx, rect, "width");
+    JS_ToFloat64(ctx, &w, w_val);
+    JS_FreeValue(ctx, w_val);
+    double h = 0;
+    JSValue h_val = JS_GetPropertyStr(ctx, rect, "height");
+    JS_ToFloat64(ctx, &h, h_val);
+    JS_FreeValue(ctx, h_val);
+
+    if (w > 0 || h > 0) {
+        JS_SetPropertyUint32(ctx, arr, 0, rect);
+    } else {
+        JS_FreeValue(ctx, rect);
+    }
+
+    return arr;
 }
 
 // =========================================================================
@@ -2405,7 +2455,7 @@ static JSValue js_element_get_bounding_client_rect(JSContext* ctx,
 //
 // Magic values: 0=offsetWidth, 1=offsetHeight, 2=offsetTop, 3=offsetLeft
 //               4=scrollWidth, 5=scrollHeight, 6=scrollTop, 7=scrollLeft
-//               8=clientWidth, 9=clientHeight
+//               8=clientWidth, 9=clientHeight, 10=clientTop, 11=clientLeft
 // =========================================================================
 
 static JSValue js_element_dimension_getter(JSContext* ctx,
@@ -2417,14 +2467,46 @@ static JSValue js_element_dimension_getter(JSContext* ctx,
     auto* state = get_dom_state(ctx);
     if (!node || !state) return JS_NewFloat64(ctx, 0);
 
+    // For document.documentElement (html) or body, clientWidth/Height
+    // should return the viewport dimensions when no layout geometry exists
+    if (magic == 8 || magic == 9) {
+        if (node == state->root) {
+            // document.documentElement
+            auto it = state->layout_geometry.find(node);
+            if (it == state->layout_geometry.end()) {
+                return JS_NewFloat64(ctx, magic == 8 ? state->viewport_width : state->viewport_height);
+            }
+        }
+        // Check for <body> -- first element child of root
+        if (state->root) {
+            for (auto& child : state->root->children) {
+                if (child->type == clever::html::SimpleNode::Type::Element &&
+                    child->tag_name == "html") {
+                    for (auto& grandchild : child->children) {
+                        if (grandchild->type == clever::html::SimpleNode::Type::Element &&
+                            grandchild->tag_name == "body" && grandchild.get() == node) {
+                            auto it = state->layout_geometry.find(node);
+                            if (it == state->layout_geometry.end()) {
+                                return JS_NewFloat64(ctx, magic == 8 ? state->viewport_width : state->viewport_height);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     auto it = state->layout_geometry.find(node);
     if (it == state->layout_geometry.end()) return JS_NewFloat64(ctx, 0);
 
     auto& lr = it->second;
+    // offsetWidth/offsetHeight = border box (border + padding + content)
     float border_box_w = lr.border_left + lr.padding_left + lr.width + lr.padding_right + lr.border_right;
     float border_box_h = lr.border_top + lr.padding_top + lr.height + lr.padding_bottom + lr.border_bottom;
+    // clientWidth/clientHeight = padding box (padding + content, no border)
     float client_w = lr.padding_left + lr.width + lr.padding_right;
     float client_h = lr.padding_top + lr.height + lr.padding_bottom;
+    // Border-box origin (top-left of border edge)
     float border_box_x = lr.x - lr.padding_left - lr.border_left;
     float border_box_y = lr.y - lr.padding_top - lr.border_top;
 
@@ -2433,14 +2515,42 @@ static JSValue js_element_dimension_getter(JSContext* ctx,
         case 1: return JS_NewFloat64(ctx, border_box_h);     // offsetHeight
         case 2: return JS_NewFloat64(ctx, border_box_y);     // offsetTop
         case 3: return JS_NewFloat64(ctx, border_box_x);     // offsetLeft
-        case 4: return JS_NewFloat64(ctx, border_box_w);     // scrollWidth (simplified)
-        case 5: return JS_NewFloat64(ctx, border_box_h);     // scrollHeight (simplified)
-        case 6: return JS_NewFloat64(ctx, 0);                // scrollTop
-        case 7: return JS_NewFloat64(ctx, 0);                // scrollLeft
-        case 8: return JS_NewFloat64(ctx, client_w);         // clientWidth
-        case 9: return JS_NewFloat64(ctx, client_h);         // clientHeight
+        case 4: {
+            // scrollWidth: max of client width and scroll content width
+            float sw = lr.is_scroll_container && lr.scroll_content_width > client_w
+                       ? lr.scroll_content_width : client_w;
+            return JS_NewFloat64(ctx, sw);
+        }
+        case 5: {
+            // scrollHeight: max of client height and scroll content height
+            float sh = lr.is_scroll_container && lr.scroll_content_height > client_h
+                       ? lr.scroll_content_height : client_h;
+            return JS_NewFloat64(ctx, sh);
+        }
+        case 6: return JS_NewFloat64(ctx, lr.scroll_top);     // scrollTop
+        case 7: return JS_NewFloat64(ctx, lr.scroll_left);    // scrollLeft
+        case 8: return JS_NewFloat64(ctx, client_w);          // clientWidth
+        case 9: return JS_NewFloat64(ctx, client_h);          // clientHeight
+        case 10: return JS_NewFloat64(ctx, lr.border_top);    // clientTop (= border-top width)
+        case 11: return JS_NewFloat64(ctx, lr.border_left);   // clientLeft (= border-left width)
         default: return JS_NewFloat64(ctx, 0);
     }
+}
+
+// =========================================================================
+// scrollTop / scrollLeft setters (no-op, since we don't scroll yet)
+// =========================================================================
+
+static JSValue js_element_dimension_setter(JSContext* ctx,
+                                            JSValueConst this_val,
+                                            int /*argc*/,
+                                            JSValueConst* /*argv*/,
+                                            int magic) {
+    // No-op: we don't track scroll state yet.
+    // Accept the value silently so that `el.scrollTop = 0` doesn't throw.
+    (void)this_val;
+    (void)magic;
+    return JS_UNDEFINED;
 }
 
 
@@ -5299,9 +5409,11 @@ static JSValue js_document_create_event(JSContext* ctx,
 
 // Determine if an event type bubbles by default
 static bool event_type_bubbles(const std::string& type) {
-    // Events that do NOT bubble
+    // Events that do NOT bubble (per W3C spec)
     static const std::vector<std::string> non_bubbling = {
-        "focus", "blur", "load", "unload", "scroll", "resize"
+        "focus", "blur", "load", "unload", "scroll", "resize",
+        "mouseenter", "mouseleave",   // mouse enter/leave never bubble
+        "pointerenter", "pointerleave"
     };
     for (const auto& nb : non_bubbling) {
         if (type == nb) return false;
@@ -9123,10 +9235,15 @@ void install_dom_bindings(JSContext* ctx,
         JS_NewCFunction(ctx, js_element_get_is_connected,
                         "__getIsConnected", 0));
 
-    // getBoundingClientRect() -- returns DOMRect stub with all zeros
+    // getBoundingClientRect() -- returns DOMRect with layout geometry
     JS_SetPropertyStr(ctx, element_proto, "getBoundingClientRect",
         JS_NewCFunction(ctx, js_element_get_bounding_client_rect,
                         "getBoundingClientRect", 0));
+
+    // getClientRects() -- returns array of DOMRect objects
+    JS_SetPropertyStr(ctx, element_proto, "getClientRects",
+        JS_NewCFunction(ctx, js_element_get_client_rects,
+                        "getClientRects", 0));
 
     // getContext('2d') -- returns CanvasRenderingContext2D for <canvas> elements
     JS_SetPropertyStr(ctx, element_proto, "getContext",
@@ -9142,18 +9259,27 @@ void install_dom_bindings(JSContext* ctx,
 
     // Dimension getters (backed by layout geometry, using magic for dispatch)
     {
-        struct DimEntry { const char* name; int magic; };
+        struct DimEntry { const char* name; int magic; bool has_setter; };
         DimEntry dims[] = {
-            {"offsetWidth", 0}, {"offsetHeight", 1}, {"offsetTop", 2}, {"offsetLeft", 3},
-            {"scrollWidth", 4}, {"scrollHeight", 5}, {"scrollTop", 6}, {"scrollLeft", 7},
-            {"clientWidth", 8}, {"clientHeight", 9}
+            {"offsetWidth",  0, false}, {"offsetHeight", 1, false},
+            {"offsetTop",    2, false}, {"offsetLeft",   3, false},
+            {"scrollWidth",  4, false}, {"scrollHeight", 5, false},
+            {"scrollTop",    6, true},  {"scrollLeft",   7, true},
+            {"clientWidth",  8, false}, {"clientHeight", 9, false},
+            {"clientTop",   10, false}, {"clientLeft",  11, false}
         };
         for (auto& d : dims) {
             JSValue getter = JS_NewCFunctionMagic(ctx,
                 (JSCFunctionMagic*)js_element_dimension_getter, d.name, 0,
                 JS_CFUNC_generic_magic, d.magic);
+            JSValue setter = JS_UNDEFINED;
+            if (d.has_setter) {
+                setter = JS_NewCFunctionMagic(ctx,
+                    (JSCFunctionMagic*)js_element_dimension_setter, d.name, 1,
+                    JS_CFUNC_generic_magic, d.magic);
+            }
             JSAtom prop = JS_NewAtom(ctx, d.name);
-            JS_DefinePropertyGetSet(ctx, element_proto, prop, getter, JS_UNDEFINED, 0);
+            JS_DefinePropertyGetSet(ctx, element_proto, prop, getter, setter, 0);
             JS_FreeAtom(ctx, prop);
         }
     }
@@ -12427,6 +12553,91 @@ static JSValue create_event_object(JSContext* ctx,
     return event_obj;
 }
 
+// Helper: create a MouseEvent object with all standard properties
+static JSValue create_mouse_event_object(JSContext* ctx,
+                                          const std::string& event_type,
+                                          bool bubbles, bool cancelable,
+                                          double client_x, double client_y,
+                                          double screen_x, double screen_y,
+                                          int button, int buttons,
+                                          bool ctrl_key, bool shift_key,
+                                          bool alt_key, bool meta_key,
+                                          double movement_x, double movement_y,
+                                          int detail) {
+    JSValue event_obj = JS_NewObject(ctx);
+    JS_SetPropertyStr(ctx, event_obj, "type",
+        JS_NewString(ctx, event_type.c_str()));
+    JS_SetPropertyStr(ctx, event_obj, "bubbles",
+        JS_NewBool(ctx, bubbles));
+    JS_SetPropertyStr(ctx, event_obj, "cancelable",
+        JS_NewBool(ctx, cancelable));
+    JS_SetPropertyStr(ctx, event_obj, "defaultPrevented", JS_FALSE);
+    JS_SetPropertyStr(ctx, event_obj, "eventPhase",
+        JS_NewInt32(ctx, 0)); // NONE
+    JS_SetPropertyStr(ctx, event_obj, "target", JS_NULL);
+    JS_SetPropertyStr(ctx, event_obj, "currentTarget", JS_NULL);
+
+    // MouseEvent-specific properties
+    JS_SetPropertyStr(ctx, event_obj, "clientX", JS_NewFloat64(ctx, client_x));
+    JS_SetPropertyStr(ctx, event_obj, "clientY", JS_NewFloat64(ctx, client_y));
+    JS_SetPropertyStr(ctx, event_obj, "screenX", JS_NewFloat64(ctx, screen_x));
+    JS_SetPropertyStr(ctx, event_obj, "screenY", JS_NewFloat64(ctx, screen_y));
+    JS_SetPropertyStr(ctx, event_obj, "pageX", JS_NewFloat64(ctx, client_x));
+    JS_SetPropertyStr(ctx, event_obj, "pageY", JS_NewFloat64(ctx, client_y));
+    JS_SetPropertyStr(ctx, event_obj, "offsetX", JS_NewFloat64(ctx, client_x));
+    JS_SetPropertyStr(ctx, event_obj, "offsetY", JS_NewFloat64(ctx, client_y));
+    JS_SetPropertyStr(ctx, event_obj, "button", JS_NewInt32(ctx, button));
+    JS_SetPropertyStr(ctx, event_obj, "buttons", JS_NewInt32(ctx, buttons));
+    JS_SetPropertyStr(ctx, event_obj, "ctrlKey", JS_NewBool(ctx, ctrl_key));
+    JS_SetPropertyStr(ctx, event_obj, "shiftKey", JS_NewBool(ctx, shift_key));
+    JS_SetPropertyStr(ctx, event_obj, "altKey", JS_NewBool(ctx, alt_key));
+    JS_SetPropertyStr(ctx, event_obj, "metaKey", JS_NewBool(ctx, meta_key));
+    JS_SetPropertyStr(ctx, event_obj, "relatedTarget", JS_NULL);
+    JS_SetPropertyStr(ctx, event_obj, "movementX", JS_NewFloat64(ctx, movement_x));
+    JS_SetPropertyStr(ctx, event_obj, "movementY", JS_NewFloat64(ctx, movement_y));
+    JS_SetPropertyStr(ctx, event_obj, "detail", JS_NewInt32(ctx, detail));
+
+    // Hidden propagation state
+    JS_SetPropertyStr(ctx, event_obj, "__stopped", JS_FALSE);
+    JS_SetPropertyStr(ctx, event_obj, "__immediate_stopped", JS_FALSE);
+
+    // Install methods via eval
+    const char* method_code = R"JS(
+        (function() {
+            var evt = this;
+            evt.preventDefault = function() { evt.defaultPrevented = true; };
+            evt.stopPropagation = function() { evt.__stopped = true; };
+            evt.stopImmediatePropagation = function() {
+                evt.__stopped = true;
+                evt.__immediate_stopped = true;
+            };
+            evt.composedPath = function() {
+                var arr = evt.__composedPathArray;
+                if (!arr) return [];
+                var result = [];
+                for (var i = 0; i < arr.length; i++) result.push(arr[i]);
+                return result;
+            };
+            evt.getModifierState = function(key) {
+                if (key === 'Control') return evt.ctrlKey;
+                if (key === 'Shift') return evt.shiftKey;
+                if (key === 'Alt') return evt.altKey;
+                if (key === 'Meta') return evt.metaKey;
+                return false;
+            };
+        })
+    )JS";
+    JSValue setup_fn = JS_Eval(ctx, method_code, std::strlen(method_code),
+                                "<mouse-event-setup>", JS_EVAL_TYPE_GLOBAL);
+    if (JS_IsFunction(ctx, setup_fn)) {
+        JSValue setup_ret = JS_Call(ctx, setup_fn, event_obj, 0, nullptr);
+        JS_FreeValue(ctx, setup_ret);
+    }
+    JS_FreeValue(ctx, setup_fn);
+
+    return event_obj;
+}
+
 bool dispatch_event(JSContext* ctx, clever::html::SimpleNode* target,
                     const std::string& event_type) {
     auto* state = get_dom_state(ctx);
@@ -12437,6 +12648,145 @@ bool dispatch_event(JSContext* ctx, clever::html::SimpleNode* target,
 
     // Create a full event object with propagation support
     JSValue event_obj = create_event_object(ctx, event_type, bubbles, true);
+
+    bool default_prevented = dispatch_event_propagated(
+        ctx, state, target, event_obj, event_type, bubbles);
+
+    // Execute default actions if not prevented
+    if (!default_prevented) {
+        execute_default_action(ctx, state, target, event_type);
+    }
+
+    JS_FreeValue(ctx, event_obj);
+
+    return default_prevented;
+}
+
+bool dispatch_mouse_event(JSContext* ctx, clever::html::SimpleNode* target,
+                           const std::string& event_type,
+                           double client_x, double client_y,
+                           double screen_x, double screen_y,
+                           int button, int buttons,
+                           bool ctrl_key, bool shift_key,
+                           bool alt_key, bool meta_key,
+                           int detail) {
+    auto* state = get_dom_state(ctx);
+    if (!state || !target) return false;
+
+    // Determine bubbling behavior
+    bool bubbles = event_type_bubbles(event_type);
+
+    // Create a MouseEvent object with all standard properties
+    JSValue event_obj = create_mouse_event_object(
+        ctx, event_type, bubbles, true,
+        client_x, client_y, screen_x, screen_y,
+        button, buttons,
+        ctrl_key, shift_key, alt_key, meta_key,
+        0.0, 0.0,  // movementX/Y default to 0
+        detail);
+
+    bool default_prevented = dispatch_event_propagated(
+        ctx, state, target, event_obj, event_type, bubbles);
+
+    // Execute default actions if not prevented
+    if (!default_prevented) {
+        execute_default_action(ctx, state, target, event_type);
+    }
+
+    JS_FreeValue(ctx, event_obj);
+
+    return default_prevented;
+}
+
+bool dispatch_keyboard_event(JSContext* ctx, clever::html::SimpleNode* target,
+                             const std::string& event_type,
+                             const KeyboardEventInit& init) {
+    auto* state = get_dom_state(ctx);
+    if (!state || !target) return false;
+
+    // Keyboard events always bubble and are cancelable
+    bool bubbles = true;
+    bool cancelable = true;
+
+    // Create the event object with standard Event properties
+    JSValue event_obj = JS_NewObject(ctx);
+    JS_SetPropertyStr(ctx, event_obj, "type",
+        JS_NewString(ctx, event_type.c_str()));
+    JS_SetPropertyStr(ctx, event_obj, "bubbles",
+        JS_NewBool(ctx, bubbles));
+    JS_SetPropertyStr(ctx, event_obj, "cancelable",
+        JS_NewBool(ctx, cancelable));
+    JS_SetPropertyStr(ctx, event_obj, "defaultPrevented", JS_FALSE);
+    JS_SetPropertyStr(ctx, event_obj, "eventPhase",
+        JS_NewInt32(ctx, 0)); // NONE
+    JS_SetPropertyStr(ctx, event_obj, "target", JS_NULL);
+    JS_SetPropertyStr(ctx, event_obj, "currentTarget", JS_NULL);
+    JS_SetPropertyStr(ctx, event_obj, "timeStamp",
+        JS_NewFloat64(ctx, 0));
+
+    // KeyboardEvent-specific properties
+    JS_SetPropertyStr(ctx, event_obj, "key",
+        JS_NewString(ctx, init.key.c_str()));
+    JS_SetPropertyStr(ctx, event_obj, "code",
+        JS_NewString(ctx, init.code.c_str()));
+    JS_SetPropertyStr(ctx, event_obj, "keyCode",
+        JS_NewInt32(ctx, init.key_code));
+    JS_SetPropertyStr(ctx, event_obj, "charCode",
+        JS_NewInt32(ctx, init.char_code));
+    JS_SetPropertyStr(ctx, event_obj, "which",
+        JS_NewInt32(ctx, init.key_code)); // 'which' defaults to keyCode
+    JS_SetPropertyStr(ctx, event_obj, "location",
+        JS_NewInt32(ctx, init.location));
+    JS_SetPropertyStr(ctx, event_obj, "altKey",
+        JS_NewBool(ctx, init.alt_key));
+    JS_SetPropertyStr(ctx, event_obj, "ctrlKey",
+        JS_NewBool(ctx, init.ctrl_key));
+    JS_SetPropertyStr(ctx, event_obj, "metaKey",
+        JS_NewBool(ctx, init.meta_key));
+    JS_SetPropertyStr(ctx, event_obj, "shiftKey",
+        JS_NewBool(ctx, init.shift_key));
+    JS_SetPropertyStr(ctx, event_obj, "repeat",
+        JS_NewBool(ctx, init.repeat));
+    JS_SetPropertyStr(ctx, event_obj, "isComposing",
+        JS_NewBool(ctx, init.is_composing));
+
+    // Hidden propagation state
+    JS_SetPropertyStr(ctx, event_obj, "__stopped", JS_FALSE);
+    JS_SetPropertyStr(ctx, event_obj, "__immediate_stopped", JS_FALSE);
+
+    // Install methods (preventDefault, stopPropagation, getModifierState, etc.)
+    const char* method_code = R"JS(
+        (function() {
+            var evt = this;
+            evt.preventDefault = function() { evt.defaultPrevented = true; };
+            evt.stopPropagation = function() { evt.__stopped = true; };
+            evt.stopImmediatePropagation = function() {
+                evt.__stopped = true;
+                evt.__immediate_stopped = true;
+            };
+            evt.composedPath = function() {
+                var arr = evt.__composedPathArray;
+                if (!arr) return [];
+                var result = [];
+                for (var i = 0; i < arr.length; i++) result.push(arr[i]);
+                return result;
+            };
+            evt.getModifierState = function(key) {
+                if (key === 'Control') return evt.ctrlKey;
+                if (key === 'Shift') return evt.shiftKey;
+                if (key === 'Alt') return evt.altKey;
+                if (key === 'Meta') return evt.metaKey;
+                return false;
+            };
+        })
+    )JS";
+    JSValue setup_fn = JS_Eval(ctx, method_code, std::strlen(method_code),
+                                "<keyboard-event-dispatch-setup>", JS_EVAL_TYPE_GLOBAL);
+    if (JS_IsFunction(ctx, setup_fn)) {
+        JSValue setup_ret = JS_Call(ctx, setup_fn, event_obj, 0, nullptr);
+        JS_FreeValue(ctx, setup_ret);
+    }
+    JS_FreeValue(ctx, setup_fn);
 
     bool default_prevented = dispatch_event_propagated(
         ctx, state, target, event_obj, event_type, bubbles);
@@ -12524,6 +12874,11 @@ void populate_layout_geometry(JSContext* ctx, void* layout_root_ptr) {
                 rect.margin_top = node.geometry.margin.top;
                 rect.margin_right = node.geometry.margin.right;
                 rect.margin_bottom = node.geometry.margin.bottom;
+                rect.scroll_top = node.scroll_top;
+                rect.scroll_left = node.scroll_left;
+                rect.scroll_content_width = node.scroll_content_width;
+                rect.scroll_content_height = node.scroll_content_height;
+                rect.is_scroll_container = node.is_scroll_container;
                 state->layout_geometry[node.dom_node] = rect;
             }
 

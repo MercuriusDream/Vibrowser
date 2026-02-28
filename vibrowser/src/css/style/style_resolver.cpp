@@ -558,7 +558,7 @@ void PropertyCascade::apply_declaration(
             style.display = Display::Flex; // -webkit-box is legacy flex
         }
         else if (value_lower == "contents") style.display = Display::Contents;
-        else if (value_lower == "flow-root") style.display = Display::Block; // flow-root creates BFC, treat as block
+        else if (value_lower == "flow-root") { style.display = Display::Block; style.is_flow_root = true; } // flow-root creates BFC
         else if (value_lower == "ruby") style.display = Display::Inline; // ruby: approximate as inline
         else if (value_lower == "ruby-text") style.display = Display::Inline; // ruby-text: approximate as inline
         return;

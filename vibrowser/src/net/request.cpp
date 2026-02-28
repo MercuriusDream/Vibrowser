@@ -82,7 +82,15 @@ void Request::parse_url() {
         host = authority.substr(0, colon_pos);
         std::string port_str = authority.substr(colon_pos + 1);
         if (!port_str.empty()) {
-            port = static_cast<uint16_t>(std::stoi(port_str));
+            try {
+                size_t consumed = 0;
+                unsigned long parsed = std::stoul(port_str, &consumed, 10);
+                if (consumed == port_str.size() && parsed <= 65535UL) {
+                    port = static_cast<uint16_t>(parsed);
+                }
+            } catch (...) {
+                // Keep default port for malformed explicit port.
+            }
         }
     } else {
         host = authority;

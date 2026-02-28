@@ -10,7 +10,7 @@ namespace clever::html {
 // Simplified DOM interface for tree building.
 // The real DOM module provides the full implementation.
 struct SimpleNode {
-    enum Type { Element, Text, Comment, Document, DocumentType };
+    enum Type { Element, Text, Comment, Document, DocumentType, DocumentFragment };
     Type type;
     std::string tag_name;
     std::string data;  // for text/comment
@@ -18,6 +18,9 @@ struct SimpleNode {
     std::vector<Attribute> attributes;
     SimpleNode* parent = nullptr;
     std::vector<std::unique_ptr<SimpleNode>> children;
+
+    // Template content: an inert DocumentFragment that holds template children
+    std::unique_ptr<SimpleNode> template_content;
 
     SimpleNode* append_child(std::unique_ptr<SimpleNode> child);
     SimpleNode* insert_before(std::unique_ptr<SimpleNode> child, SimpleNode* ref);
@@ -44,6 +47,8 @@ enum class InsertionMode {
     InTableBody,
     InRow,
     InCell,
+    InSelect,
+    InTemplate,
     AfterBody,
     AfterAfterBody
 };
@@ -93,6 +98,9 @@ private:
     void insert_comment(const std::string& data);
     void generate_implied_end_tags(const std::string& except = "");
     bool has_element_in_scope(const std::string& tag) const;
+    bool has_element_in_button_scope(const std::string& tag) const;
+    bool has_element_in_list_item_scope(const std::string& tag) const;
+    bool has_element_in_select_scope(const std::string& tag) const;
     void pop_until(const std::string& tag);
     void close_element(const std::string& tag);
 

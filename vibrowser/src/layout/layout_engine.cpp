@@ -395,6 +395,7 @@ void LayoutEngine::layout_block(LayoutNode& node, float containing_width) {
         node.display == DisplayType::Table ||
         node.display == DisplayType::TableCell ||
         node.overflow >= 1 ||                       // hidden(1), scroll(2), auto(3)
+        node.is_flow_root ||                        // display: flow-root
         node.contain == 1 ||                        // strict
         node.contain == 4 ||                        // layout
         node.contain == 6;                          // paint
@@ -1164,10 +1165,20 @@ void LayoutEngine::position_block_children(LayoutNode& node) {
             available_at_y(cursor_y, child->geometry.margin_box_height(), left_off, right_off);
             child->geometry.x = left_off + child->geometry.margin.left;
 
-            // CSS margin collapsing: adjacent block-level margins collapse
-            // The collapsed margin = max(prev_bottom_margin, curr_top_margin)
-            // instead of prev_bottom + curr_top
+            // CSS margin collapsing (CSS2.1 Section 8.3.1):
+            // When two vertical margins meet, they collapse into a single margin:
+            //   - Both positive: take the larger
+            //   - Both negative: take the more negative (smaller value)
+            //   - Mixed (one positive, one negative): sum them
+            // Margins do NOT collapse across BFC boundaries, or when separated
+            // by border/padding.
             float top_margin = child->geometry.margin.top;
+
+            // Check if this child is block-level and eligible for collapsing
+            // (inline-block, floats, and absolutely positioned elements don't collapse)
+            bool child_is_block = child->mode == LayoutMode::Block &&
+                child->display != DisplayType::InlineBlock &&
+                child->float_type == 0;
 
             // Parent-child top margin collapsing: the first child's top margin
             // collapses with its parent's top margin if:
@@ -1176,23 +1187,43 @@ void LayoutEngine::position_block_children(LayoutNode& node) {
             //   - the parent does NOT establish a new BFC
             // When collapsing, the child's top margin "escapes" to the parent
             // (i.e., it is not applied as internal spacing inside the parent).
-            bool collapse_with_parent = first_child && !node.establishes_bfc &&
+            bool collapse_with_parent = first_child && child_is_block &&
+                !node.establishes_bfc &&
                 node.geometry.border.top == 0 && node.geometry.padding.top == 0;
 
-            if (collapse_with_parent && top_margin > 0) {
+            if (collapse_with_parent) {
                 // The child's top margin collapses with the parent's top margin.
-                // The larger margin wins. The child is positioned at cursor_y (0)
-                // with no additional internal top margin offset.
-                // We also adjust the parent's margin for correct external spacing.
+                // Apply the CSS collapsing rules:
                 float parent_top = node.geometry.margin.top;
-                if (top_margin > parent_top) {
-                    node.geometry.margin.top = top_margin;
+                float collapsed;
+                if (top_margin >= 0 && parent_top >= 0) {
+                    collapsed = std::max(parent_top, top_margin);
+                } else if (top_margin < 0 && parent_top < 0) {
+                    collapsed = std::min(parent_top, top_margin); // more negative
+                } else {
+                    collapsed = parent_top + top_margin; // mixed: sum
                 }
+                node.geometry.margin.top = collapsed;
+                // The child is positioned at cursor_y (0) with no additional
+                // internal top margin offset — margin escapes to parent.
                 child->geometry.y = cursor_y;
-            } else if (!first_child && top_margin > 0 && prev_margin_bottom > 0) {
-                // Sibling margin collapsing: use max instead of sum
-                float collapsed = std::max(prev_margin_bottom, top_margin);
-                // cursor_y already includes prev_margin_bottom, so adjust
+            } else if (!first_child && child_is_block &&
+                       (prev_margin_bottom != 0 || top_margin != 0)) {
+                // Adjacent sibling margin collapsing:
+                // CSS spec: the collapsed margin is computed as follows:
+                //   - Both positive: max(prev_bottom, curr_top)
+                //   - Both negative: min(prev_bottom, curr_top) (more negative)
+                //   - Mixed: prev_bottom + curr_top (sum)
+                float collapsed;
+                if (prev_margin_bottom >= 0 && top_margin >= 0) {
+                    collapsed = std::max(prev_margin_bottom, top_margin);
+                } else if (prev_margin_bottom < 0 && top_margin < 0) {
+                    collapsed = std::min(prev_margin_bottom, top_margin); // more negative
+                } else {
+                    collapsed = prev_margin_bottom + top_margin; // mixed: sum
+                }
+                // cursor_y already includes prev_margin_bottom, so subtract it
+                // and add the collapsed value instead
                 cursor_y -= prev_margin_bottom;
                 child->geometry.y = cursor_y + collapsed;
             } else {
@@ -1211,29 +1242,36 @@ void LayoutEngine::position_block_children(LayoutNode& node) {
     //   - the parent has no bottom border or bottom padding
     //   - the parent has no explicit height or min-height
     //   - the parent does NOT establish a new BFC
-    // Implementation: we increase the parent's bottom margin to the max of
-    // parent and child, without mutating the child's margin (which is needed
-    // for computed style queries). The child's bottom margin contribution
-    // to the parent's internal height is handled by the caller.
+    // The collapsed margin follows the same rules as top:
+    //   - Both positive: take the larger
+    //   - Both negative: take the more negative
+    //   - Mixed: sum them
     if (!node.establishes_bfc &&
         node.geometry.border.bottom == 0 && node.geometry.padding.bottom == 0 &&
         node.specified_height < 0 && node.min_height <= 0) {
-        // Find last in-flow non-float child
+        // Find last in-flow non-float block-level child
         LayoutNode* last_child = nullptr;
         for (auto it = node.children.rbegin(); it != node.children.rend(); ++it) {
             auto& c = *it;
             if (c->display == DisplayType::None || c->mode == LayoutMode::None) continue;
             if (c->position_type == 2 || c->position_type == 3) continue;
             if (c->float_type != 0) continue;
+            if (c->display == DisplayType::InlineBlock) continue; // inline-block doesn't collapse
             last_child = c.get();
             break;
         }
-        if (last_child && last_child->geometry.margin.bottom > 0) {
+        if (last_child) {
             float child_bottom = last_child->geometry.margin.bottom;
             float parent_bottom = node.geometry.margin.bottom;
-            if (child_bottom > parent_bottom) {
-                node.geometry.margin.bottom = child_bottom;
+            float collapsed;
+            if (child_bottom >= 0 && parent_bottom >= 0) {
+                collapsed = std::max(parent_bottom, child_bottom);
+            } else if (child_bottom < 0 && parent_bottom < 0) {
+                collapsed = std::min(parent_bottom, child_bottom); // more negative
+            } else {
+                collapsed = parent_bottom + child_bottom; // mixed: sum
             }
+            node.geometry.margin.bottom = collapsed;
         }
     }
 }

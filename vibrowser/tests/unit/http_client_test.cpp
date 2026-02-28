@@ -283,6 +283,28 @@ TEST(RequestTest, ParseUrlHttpsWithCustomPort) {
     EXPECT_TRUE(req.use_tls);
 }
 
+TEST(RequestTest, ParseUrlInvalidExplicitPortFallsBackToDefault) {
+    Request req;
+    req.url = "http://example.com:abc/path";
+
+    EXPECT_NO_THROW(req.parse_url());
+    EXPECT_EQ(req.host, "example.com");
+    EXPECT_EQ(req.port, 80);
+    EXPECT_EQ(req.path, "/path");
+    EXPECT_FALSE(req.use_tls);
+}
+
+TEST(RequestTest, ParseUrlOutOfRangePortFallsBackToDefault) {
+    Request req;
+    req.url = "https://example.com:70000/path";
+
+    EXPECT_NO_THROW(req.parse_url());
+    EXPECT_EQ(req.host, "example.com");
+    EXPECT_EQ(req.port, 443);
+    EXPECT_EQ(req.path, "/path");
+    EXPECT_TRUE(req.use_tls);
+}
+
 TEST(RequestTest, UseTlsDefaultIsFalse) {
     Request req;
     EXPECT_FALSE(req.use_tls);

@@ -66,6 +66,18 @@ struct PixelTransition {
 - (void)renderView:(RenderView*)view didChangeInputValue:(NSString*)value;
 // Called when the mouse moves, for hover state management.
 - (void)renderView:(RenderView*)view didMoveMouseAtX:(float)x y:(float)y;
+// Dispatches a JS keyboard event (keydown/keyup) to the focused DOM element.
+// Returns YES if event.preventDefault() was called by a JS handler.
+- (BOOL)renderView:(RenderView*)view
+    didKeyEvent:(NSString*)eventType
+            key:(NSString*)key
+           code:(NSString*)code
+        keyCode:(int)keyCode
+         repeat:(BOOL)isRepeat
+        altKey:(BOOL)altKey
+       ctrlKey:(BOOL)ctrlKey
+       metaKey:(BOOL)metaKey
+      shiftKey:(BOOL)shiftKey;
 @end
 
 // RenderView: NSView subclass that displays the software renderer's pixel buffer.

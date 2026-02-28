@@ -26,6 +26,39 @@ void cleanup_dom_bindings(JSContext* ctx);
 bool dispatch_event(JSContext* ctx, clever::html::SimpleNode* target,
                     const std::string& event_type);
 
+// Dispatch a MouseEvent with full coordinate/modifier properties.
+// Returns true if event.preventDefault() was called.
+bool dispatch_mouse_event(JSContext* ctx, clever::html::SimpleNode* target,
+                           const std::string& event_type,
+                           double client_x, double client_y,
+                           double screen_x, double screen_y,
+                           int button, int buttons,
+                           bool ctrl_key, bool shift_key,
+                           bool alt_key, bool meta_key,
+                           int detail = 0);
+
+// Keyboard event properties for dispatch_keyboard_event
+struct KeyboardEventInit {
+    std::string key;          // "a", "Enter", "ArrowUp", etc.
+    std::string code;         // "KeyA", "Enter", "ArrowUp", etc.
+    int key_code = 0;         // legacy keyCode
+    int char_code = 0;        // legacy charCode
+    int location = 0;         // 0=standard, 1=left, 2=right, 3=numpad
+    bool alt_key = false;
+    bool ctrl_key = false;
+    bool meta_key = false;
+    bool shift_key = false;
+    bool repeat = false;
+    bool is_composing = false;
+};
+
+// Dispatch a keyboard event (keydown/keyup/keypress) to an element.
+// Creates a full KeyboardEvent object with all standard properties.
+// Returns true if event.preventDefault() was called.
+bool dispatch_keyboard_event(JSContext* ctx, clever::html::SimpleNode* target,
+                             const std::string& event_type,
+                             const KeyboardEventInit& init);
+
 // Fire DOMContentLoaded event on document
 void dispatch_dom_content_loaded(JSContext* ctx);
 

@@ -265,6 +265,41 @@ bool TreeBuilder::has_element_in_scope(const std::string& tag) const {
     return false;
 }
 
+bool TreeBuilder::has_element_in_button_scope(const std::string& tag) const {
+    // Button scope = general scope + "button" as a scope barrier
+    static const std::unordered_set<std::string> scope_markers = {
+        "applet", "caption", "html", "table", "td", "th", "marquee", "object", "template",
+        "button"
+    };
+    for (auto it = open_elements_.rbegin(); it != open_elements_.rend(); ++it) {
+        if ((*it)->tag_name == tag) return true;
+        if (scope_markers.count((*it)->tag_name)) return false;
+    }
+    return false;
+}
+
+bool TreeBuilder::has_element_in_list_item_scope(const std::string& tag) const {
+    // List item scope = general scope + "ol", "ul" as scope barriers
+    static const std::unordered_set<std::string> scope_markers = {
+        "applet", "caption", "html", "table", "td", "th", "marquee", "object", "template",
+        "ol", "ul"
+    };
+    for (auto it = open_elements_.rbegin(); it != open_elements_.rend(); ++it) {
+        if ((*it)->tag_name == tag) return true;
+        if (scope_markers.count((*it)->tag_name)) return false;
+    }
+    return false;
+}
+
+bool TreeBuilder::has_element_in_select_scope(const std::string& tag) const {
+    // Select scope: everything except "optgroup" and "option" is a barrier
+    for (auto it = open_elements_.rbegin(); it != open_elements_.rend(); ++it) {
+        if ((*it)->tag_name == tag) return true;
+        if ((*it)->tag_name != "optgroup" && (*it)->tag_name != "option") return false;
+    }
+    return false;
+}
+
 void TreeBuilder::pop_until(const std::string& tag) {
     while (!open_elements_.empty()) {
         auto* node = open_elements_.back();
@@ -898,7 +933,7 @@ void TreeBuilder::handle_in_body(const Token& token) {
         // Heading elements: close any open heading
         if (tag == "h1" || tag == "h2" || tag == "h3"
             || tag == "h4" || tag == "h5" || tag == "h6") {
-            if (has_element_in_scope("p")) {
+            if (has_element_in_button_scope("p")) {
                 close_element("p");
             }
             // If current node is a heading, pop it (implicit close)
@@ -913,19 +948,20 @@ void TreeBuilder::handle_in_body(const Token& token) {
             return;
         }
 
-        // Tags that close an open <p>
+        // Tags that close an open <p> (per spec: "button scope")
         if (closes_p(tag)) {
-            if (has_element_in_scope("p")) {
+            if (has_element_in_button_scope("p")) {
                 close_element("p");
             }
         }
 
-        // <li> closes previous <li>
+        // <li> closes previous <li> (per spec: use list item scope)
         if (tag == "li") {
-            // Walk the stack and close any open <li>
+            // Walk the stack and close any open <li> in list item scope
             for (auto it = open_elements_.rbegin(); it != open_elements_.rend(); ++it) {
                 if ((*it)->tag_name == "li") {
-                    close_element("li");
+                    generate_implied_end_tags("li");
+                    pop_until("li");
                     break;
                 }
                 if (is_special_element((*it)->tag_name)
@@ -935,7 +971,7 @@ void TreeBuilder::handle_in_body(const Token& token) {
                     break;
                 }
             }
-            if (has_element_in_scope("p")) {
+            if (has_element_in_button_scope("p")) {
                 close_element("p");
             }
             insert_element(token);
@@ -945,20 +981,75 @@ void TreeBuilder::handle_in_body(const Token& token) {
         // <dd>/<dt> close previous <dd>/<dt>
         if (tag == "dd" || tag == "dt") {
             for (auto it = open_elements_.rbegin(); it != open_elements_.rend(); ++it) {
-                if ((*it)->tag_name == "dd" || (*it)->tag_name == "dt") {
-                    close_element((*it)->tag_name);
+                const auto& node_tag = (*it)->tag_name;
+                if (node_tag == "dd" || node_tag == "dt") {
+                    generate_implied_end_tags(node_tag);
+                    pop_until(node_tag);
                     break;
                 }
-                if (is_special_element((*it)->tag_name)
-                    && (*it)->tag_name != "address"
-                    && (*it)->tag_name != "div"
-                    && (*it)->tag_name != "p") {
+                if (is_special_element(node_tag)
+                    && node_tag != "address"
+                    && node_tag != "div"
+                    && node_tag != "p") {
                     break;
                 }
             }
-            if (has_element_in_scope("p")) {
+            if (has_element_in_button_scope("p")) {
                 close_element("p");
             }
+            insert_element(token);
+            return;
+        }
+
+        // <option> closes previous <option>
+        if (tag == "option") {
+            if (!open_elements_.empty() && current_node()->tag_name == "option") {
+                // Implicitly close the current <option>
+                open_elements_.pop_back();
+            }
+            insert_element(token);
+            return;
+        }
+
+        // <optgroup> closes open <option> and previous <optgroup>
+        if (tag == "optgroup") {
+            // First close any open <option> (option inside optgroup)
+            if (!open_elements_.empty() && current_node()->tag_name == "option") {
+                open_elements_.pop_back();
+            }
+            // Then close any open <optgroup>
+            if (!open_elements_.empty() && current_node()->tag_name == "optgroup") {
+                open_elements_.pop_back();
+            }
+            insert_element(token);
+            return;
+        }
+
+        // <select>
+        if (tag == "select") {
+            reconstruct_active_formatting_elements();
+            insert_element(token);
+            // Note: in a full implementation, this would switch to InSelect mode
+            return;
+        }
+
+        // <form> closes <p> in button scope
+        if (tag == "form") {
+            // Spec: If the stack of open elements has a p element in button scope, close a p element
+            if (has_element_in_button_scope("p")) {
+                close_element("p");
+            }
+            insert_element(token);
+            return;
+        }
+
+        // <button> closes <button> in scope, then closes <p> in button scope
+        if (tag == "button") {
+            if (has_element_in_scope("button")) {
+                generate_implied_end_tags();
+                pop_until("button");
+            }
+            reconstruct_active_formatting_elements();
             insert_element(token);
             return;
         }
