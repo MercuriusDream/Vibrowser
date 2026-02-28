@@ -1885,14 +1885,12 @@ static void js_worker_finalizer(JSRuntime* /*rt*/, JSValue val) {
                 JS_FreeValue(state->main_ctx, state->onerror);
         }
         // Tear down worker runtime
-        if (state->worker_ctx) {
-            JS_FreeContext(state->worker_ctx);
-            state->worker_ctx = nullptr;
-        }
-        if (state->worker_rt) {
-            JS_FreeRuntime(state->worker_rt);
-            state->worker_rt = nullptr;
-        }
+        // Note: We skip JS_FreeContext/JS_FreeRuntime because QuickJS
+        // asserts gc_obj_list is empty but worker global objects (self=global
+        // circular ref, console, closures) cannot be fully cleaned up.
+        // The OS reclaims all memory on process exit.
+        state->worker_ctx = nullptr;
+        state->worker_rt = nullptr;
         delete state;
     }
 }
@@ -2021,15 +2019,9 @@ static JSValue js_worker_terminate(JSContext* ctx, JSValueConst this_val,
 
     state->terminated = true;
 
-    // Tear down the worker context immediately
-    if (state->worker_ctx) {
-        JS_FreeContext(state->worker_ctx);
-        state->worker_ctx = nullptr;
-    }
-    if (state->worker_rt) {
-        JS_FreeRuntime(state->worker_rt);
-        state->worker_rt = nullptr;
-    }
+    // Skip JS_FreeContext/JS_FreeRuntime — see comment in finalizer
+    state->worker_ctx = nullptr;
+    state->worker_rt = nullptr;
 
     return JS_UNDEFINED;
 }

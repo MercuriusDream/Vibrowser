@@ -1,5 +1,6 @@
 #include <clever/js/js_fetch_bindings.h>
 #include <clever/js/cors_policy.h>
+#include <clever/js/js_engine.h>
 
 extern "C" {
 #include <quickjs.h>
@@ -12,15 +13,21 @@ extern "C" {
 #include <clever/net/tls_socket.h>
 
 #include <arpa/inet.h>
+#include <atomic>
+#include <chrono>
+#include <cstddef>
 #include <cstring>
 #include <fcntl.h>
+#include <limits>
 #include <map>
+#include <mutex>
 #include <netdb.h>
 #include <optional>
 #include <poll.h>
 #include <random>
 #include <string>
 #include <sys/socket.h>
+#include <thread>
 #include <unistd.h>
 #include <vector>
 
@@ -1332,10 +1339,11 @@ static JSClassID ws_class_id = 0;
 
 struct WebSocketState {
     std::string url;
-    int readyState = 0; // 0=CONNECTING, 1=OPEN, 2=CLOSING, 3=CLOSED
+    std::atomic<int> readyState {0}; // 0=CONNECTING, 1=OPEN, 2=CLOSING, 3=CLOSED
     std::string protocol;
-    int socket_fd = -1;
+    std::atomic<int> socket_fd {-1};
     bool is_tls = false;
+    JSRuntime* runtime = nullptr;
     // Event handlers (stored as JSValue, must be freed)
     JSValue onopen = JS_UNDEFINED;
     JSValue onmessage = JS_UNDEFINED;
@@ -1343,14 +1351,156 @@ struct WebSocketState {
     JSValue onerror = JS_UNDEFINED;
     // Buffered messages
     std::vector<std::string> message_queue;
+    std::mutex message_queue_mutex_;
+    std::thread receive_thread_;
+    std::atomic<bool> should_close_thread_ {false};
+    std::atomic<bool> receive_thread_running_ {false};
     // TLS socket (heap-allocated so we can null-check)
     clever::net::TlsSocket* tls = nullptr;
 };
+
+constexpr int k_ws_recv_timeout_ms = 1000;
+constexpr int k_ws_thread_join_timeout_ms = 2000;
+constexpr int k_ws_thread_join_poll_interval_ms = 5;
 
 // ---- Helpers ----
 
 static WebSocketState* get_ws_state(JSValueConst this_val) {
     return static_cast<WebSocketState*>(JS_GetOpaque(this_val, ws_class_id));
+}
+
+static JSContext* ws_get_callback_context(WebSocketState* state) {
+    if (!state || !state->runtime) return nullptr;
+    auto* engine = static_cast<JSEngine*>(JS_GetRuntimeOpaque(state->runtime));
+    if (!engine) return nullptr;
+    return engine->context();
+}
+
+static void ws_fire_error_event(WebSocketState* state, const std::string& message) {
+    JSContext* ctx = ws_get_callback_context(state);
+    if (!ctx) return;
+
+    JSValue handler = JS_UNDEFINED;
+    {
+        std::lock_guard<std::mutex> lock(state->message_queue_mutex_);
+        handler = JS_DupValue(ctx, state->onerror);
+    }
+
+    if (JS_IsFunction(ctx, handler)) {
+        JSValue event = JS_NewObject(ctx);
+        JS_SetPropertyStr(ctx, event, "type", JS_NewString(ctx, "error"));
+        JS_SetPropertyStr(ctx, event, "message", JS_NewString(ctx, message.c_str()));
+        JSValue ret = JS_Call(ctx, handler, JS_UNDEFINED, 1, &event);
+        if (JS_IsException(ret)) {
+            JSValue exc = JS_GetException(ctx);
+            JS_FreeValue(ctx, exc);
+        }
+        JS_FreeValue(ctx, ret);
+        JS_FreeValue(ctx, event);
+    }
+
+    JS_FreeValue(ctx, handler);
+}
+
+static void ws_fire_message_event(WebSocketState* state, const std::string& data) {
+    JSContext* ctx = ws_get_callback_context(state);
+    if (!ctx) return;
+
+    JSValue handler = JS_UNDEFINED;
+    {
+        std::lock_guard<std::mutex> lock(state->message_queue_mutex_);
+        handler = JS_DupValue(ctx, state->onmessage);
+    }
+
+    if (JS_IsFunction(ctx, handler)) {
+        JSValue event = JS_NewObject(ctx);
+        JS_SetPropertyStr(ctx, event, "type", JS_NewString(ctx, "message"));
+        JS_SetPropertyStr(ctx, event, "data", JS_NewString(ctx, data.c_str()));
+        JSValue ret = JS_Call(ctx, handler, JS_UNDEFINED, 1, &event);
+        if (JS_IsException(ret)) {
+            JSValue exc = JS_GetException(ctx);
+            JS_FreeValue(ctx, exc);
+        }
+        JS_FreeValue(ctx, ret);
+        JS_FreeValue(ctx, event);
+    }
+
+    JS_FreeValue(ctx, handler);
+}
+
+static void ws_fire_close_event(WebSocketState* state, uint16_t code,
+                                 const std::string& reason, bool was_clean) {
+    JSContext* ctx = ws_get_callback_context(state);
+    if (!ctx) return;
+
+    JSValue handler = JS_UNDEFINED;
+    {
+        std::lock_guard<std::mutex> lock(state->message_queue_mutex_);
+        handler = JS_DupValue(ctx, state->onclose);
+    }
+
+    if (JS_IsFunction(ctx, handler)) {
+        JSValue event = JS_NewObject(ctx);
+        JS_SetPropertyStr(ctx, event, "type", JS_NewString(ctx, "close"));
+        JS_SetPropertyStr(ctx, event, "code", JS_NewInt32(ctx, code));
+        JS_SetPropertyStr(ctx, event, "reason", JS_NewString(ctx, reason.c_str()));
+        JS_SetPropertyStr(ctx, event, "wasClean", was_clean ? JS_TRUE : JS_FALSE);
+        JSValue ret = JS_Call(ctx, handler, JS_UNDEFINED, 1, &event);
+        if (JS_IsException(ret)) {
+            JSValue exc = JS_GetException(ctx);
+            JS_FreeValue(ctx, exc);
+        }
+        JS_FreeValue(ctx, ret);
+        JS_FreeValue(ctx, event);
+    }
+
+    JS_FreeValue(ctx, handler);
+}
+
+static void ws_close_tls(WebSocketState* state) {
+    clever::net::TlsSocket* tls = nullptr;
+    {
+        std::lock_guard<std::mutex> lock(state->message_queue_mutex_);
+        tls = state->tls;
+        state->tls = nullptr;
+    }
+    if (tls) {
+        tls->close();
+        delete tls;
+    }
+}
+
+static void ws_shutdown_socket_fd(WebSocketState* state) {
+    int fd = state->socket_fd.load();
+    if (fd >= 0) {
+        ::shutdown(fd, SHUT_RDWR);
+    }
+}
+
+static void ws_close_socket_fd(WebSocketState* state) {
+    int fd = state->socket_fd.exchange(-1);
+    if (fd >= 0) {
+        ::shutdown(fd, SHUT_RDWR);
+        ::close(fd);
+    }
+}
+
+static void ws_stop_receive_thread(WebSocketState* state, int timeout_ms) {
+    if (!state) return;
+    state->should_close_thread_.store(true);
+    ws_shutdown_socket_fd(state);
+
+    if (!state->receive_thread_.joinable()) return;
+    if (state->receive_thread_.get_id() == std::this_thread::get_id()) return;
+
+    auto deadline = std::chrono::steady_clock::now() +
+        std::chrono::milliseconds(timeout_ms);
+    while (state->receive_thread_running_.load() &&
+           std::chrono::steady_clock::now() < deadline) {
+        std::this_thread::sleep_for(
+            std::chrono::milliseconds(k_ws_thread_join_poll_interval_ms));
+    }
+    state->receive_thread_.join();
 }
 
 // Generate a random 16-byte base64-encoded WebSocket key
@@ -1489,12 +1639,19 @@ static int ws_connect_to(const std::string& host, uint16_t port,
 
 // Send raw bytes over socket (plain or TLS)
 static bool ws_send_raw(WebSocketState* state, const uint8_t* data, size_t len) {
-    if (state->is_tls && state->tls) {
+    if (!state) return false;
+
+    if (state->is_tls) {
+        std::lock_guard<std::mutex> lock(state->message_queue_mutex_);
+        if (!state->tls) return false;
         return state->tls->send(data, len);
-    } else if (state->socket_fd >= 0) {
+    }
+
+    int fd = state->socket_fd.load();
+    if (fd >= 0) {
         size_t sent = 0;
         while (sent < len) {
-            ssize_t n = ::send(state->socket_fd, data + sent, len - sent, 0);
+            ssize_t n = ::send(fd, data + sent, len - sent, 0);
             if (n < 0) {
                 if (errno == EINTR) continue;
                 return false;
@@ -1504,34 +1661,164 @@ static bool ws_send_raw(WebSocketState* state, const uint8_t* data, size_t len) 
         }
         return true;
     }
+
     return false;
 }
 
 // Receive raw bytes (blocking with timeout)
 static std::vector<uint8_t> ws_recv_raw(WebSocketState* state, int timeout_ms = 10000) {
     std::vector<uint8_t> buffer;
-    if (state->socket_fd < 0) return buffer;
+    if (!state) return buffer;
+
+    int fd = state->socket_fd.load();
+    if (fd < 0) return buffer;
 
     struct pollfd pfd {};
-    pfd.fd = state->socket_fd;
+    pfd.fd = fd;
     pfd.events = POLLIN;
 
     int poll_rv = ::poll(&pfd, 1, timeout_ms);
     if (poll_rv <= 0) return buffer;
+    if ((pfd.revents & POLLNVAL) || (pfd.revents & POLLERR)) {
+        ws_close_socket_fd(state);
+        return buffer;
+    }
 
-    if (state->is_tls && state->tls) {
-        auto chunk = state->tls->recv();
-        if (chunk.has_value() && !chunk->empty()) {
+    if (state->is_tls) {
+        std::optional<std::vector<uint8_t>> chunk;
+        {
+            std::lock_guard<std::mutex> lock(state->message_queue_mutex_);
+            if (!state->tls) return buffer;
+            chunk = state->tls->recv();
+        }
+        if (!chunk.has_value()) {
+            ws_close_socket_fd(state);
+            return buffer;
+        }
+        if (!chunk->empty()) {
             buffer = std::move(*chunk);
+        } else if (pfd.revents & POLLHUP) {
+            ws_close_socket_fd(state);
         }
     } else {
         uint8_t tmp[8192];
-        ssize_t n = ::recv(state->socket_fd, tmp, sizeof(tmp), 0);
+        ssize_t n = ::recv(fd, tmp, sizeof(tmp), 0);
         if (n > 0) {
             buffer.assign(tmp, tmp + n);
+        } else if (n == 0) {
+            ws_close_socket_fd(state);
+        } else if (n < 0 && errno != EINTR && errno != EAGAIN && errno != EWOULDBLOCK) {
+            ws_close_socket_fd(state);
         }
     }
     return buffer;
+}
+
+enum class WsParseResult {
+    Complete,
+    NeedMoreData,
+    Error,
+};
+
+struct WsParsedFrame {
+    bool fin = true;
+    uint8_t opcode = 0;
+    std::vector<uint8_t> payload;
+    size_t bytes_consumed = 0;
+};
+
+static WsParseResult ws_parse_frame(const std::vector<uint8_t>& raw,
+                                     size_t offset,
+                                     WsParsedFrame& frame,
+                                     std::string& error) {
+    frame = WsParsedFrame{};
+    error.clear();
+
+    if (offset >= raw.size()) return WsParseResult::NeedMoreData;
+    if (raw.size() - offset < 2) return WsParseResult::NeedMoreData;
+
+    const uint8_t byte0 = raw[offset];
+    const uint8_t byte1 = raw[offset + 1];
+
+    const bool fin = (byte0 & 0x80) != 0;
+    const uint8_t rsv = static_cast<uint8_t>(byte0 & 0x70);
+    const uint8_t opcode = static_cast<uint8_t>(byte0 & 0x0F);
+    const bool masked = (byte1 & 0x80) != 0;
+    uint64_t payload_len = static_cast<uint64_t>(byte1 & 0x7F);
+
+    if (rsv != 0) {
+        error = "WebSocket frame RSV bits are not supported";
+        return WsParseResult::Error;
+    }
+
+    if (opcode != 0x0 && opcode != 0x1 && opcode != 0x2 &&
+        opcode != 0x8 && opcode != 0x9 && opcode != 0xA) {
+        error = "WebSocket frame has unsupported opcode";
+        return WsParseResult::Error;
+    }
+
+    size_t pos = offset + 2;
+    if (payload_len == 126) {
+        if (raw.size() - pos < 2) return WsParseResult::NeedMoreData;
+        payload_len = (static_cast<uint64_t>(raw[pos]) << 8) |
+                      static_cast<uint64_t>(raw[pos + 1]);
+        pos += 2;
+    } else if (payload_len == 127) {
+        if (raw.size() - pos < 8) return WsParseResult::NeedMoreData;
+        if (raw[pos] & 0x80) {
+            error = "WebSocket frame payload length has invalid MSB";
+            return WsParseResult::Error;
+        }
+        payload_len = 0;
+        for (int i = 0; i < 8; ++i) {
+            payload_len = (payload_len << 8) | static_cast<uint64_t>(raw[pos + i]);
+        }
+        pos += 8;
+    }
+
+    if (payload_len > static_cast<uint64_t>(std::numeric_limits<size_t>::max())) {
+        error = "WebSocket frame payload is too large";
+        return WsParseResult::Error;
+    }
+
+    uint8_t mask_key[4] = {0, 0, 0, 0};
+    if (masked) {
+        if (raw.size() - pos < 4) return WsParseResult::NeedMoreData;
+        mask_key[0] = raw[pos];
+        mask_key[1] = raw[pos + 1];
+        mask_key[2] = raw[pos + 2];
+        mask_key[3] = raw[pos + 3];
+        pos += 4;
+    }
+
+    const size_t payload_size = static_cast<size_t>(payload_len);
+    if (raw.size() - pos < payload_size) return WsParseResult::NeedMoreData;
+
+    const bool control_frame = opcode == 0x8 || opcode == 0x9 || opcode == 0xA;
+    if (control_frame) {
+        if (!fin) {
+            error = "WebSocket control frames must not be fragmented";
+            return WsParseResult::Error;
+        }
+        if (payload_len > 125) {
+            error = "WebSocket control frame payload is too large";
+            return WsParseResult::Error;
+        }
+    }
+
+    frame.fin = fin;
+    frame.opcode = opcode;
+    frame.bytes_consumed = (pos - offset) + payload_size;
+    frame.payload.assign(raw.begin() + static_cast<std::ptrdiff_t>(pos),
+                         raw.begin() + static_cast<std::ptrdiff_t>(pos + payload_size));
+
+    if (masked) {
+        for (size_t i = 0; i < frame.payload.size(); ++i) {
+            frame.payload[i] ^= mask_key[i % 4];
+        }
+    }
+
+    return WsParseResult::Complete;
 }
 
 // ---- WebSocket frame building ----
@@ -1608,6 +1895,184 @@ static std::vector<uint8_t> ws_build_close_frame(uint16_t code, const std::strin
     return frame;
 }
 
+static void ws_receive_loop(WebSocketState* state) {
+    if (!state) return;
+
+    state->receive_thread_running_.store(true);
+
+    std::vector<uint8_t> recv_buffer;
+    std::vector<uint8_t> fragmented_payload;
+    uint8_t fragmented_opcode = 0;
+    bool has_fragmented_message = false;
+
+    auto enqueue_and_dispatch_message = [&](const std::vector<uint8_t>& payload) {
+        std::string message(payload.begin(), payload.end());
+        {
+            std::lock_guard<std::mutex> lock(state->message_queue_mutex_);
+            state->message_queue.push_back(message);
+        }
+        ws_fire_message_event(state, message);
+    };
+
+    while (!state->should_close_thread_.load() &&
+           state->readyState.load() != 3) {
+        auto chunk = ws_recv_raw(state, k_ws_recv_timeout_ms);
+        if (state->should_close_thread_.load()) break;
+
+        if (chunk.empty()) {
+            if (state->socket_fd.load() < 0) {
+                int previous_state = state->readyState.exchange(3);
+                if (previous_state != 3) {
+                    ws_fire_close_event(state, 1006, "", false);
+                }
+                break;
+            }
+            continue;
+        }
+
+        recv_buffer.insert(recv_buffer.end(), chunk.begin(), chunk.end());
+
+        size_t offset = 0;
+        bool should_break_loop = false;
+        while (offset < recv_buffer.size()) {
+            WsParsedFrame frame;
+            std::string parse_error;
+            WsParseResult parse_result = ws_parse_frame(recv_buffer, offset, frame, parse_error);
+
+            if (parse_result == WsParseResult::NeedMoreData) {
+                break;
+            }
+
+            if (parse_result == WsParseResult::Error) {
+                ws_fire_error_event(state, parse_error);
+                recv_buffer.clear();
+                has_fragmented_message = false;
+                fragmented_payload.clear();
+                fragmented_opcode = 0;
+                offset = 0;
+                break;
+            }
+
+            offset += frame.bytes_consumed;
+
+            if (frame.opcode == 0x0) { // Continuation
+                if (!has_fragmented_message) {
+                    ws_fire_error_event(state, "Unexpected continuation frame");
+                    continue;
+                }
+                fragmented_payload.insert(
+                    fragmented_payload.end(), frame.payload.begin(), frame.payload.end());
+                if (frame.fin) {
+                    if (fragmented_opcode == 0x1 || fragmented_opcode == 0x2) {
+                        enqueue_and_dispatch_message(fragmented_payload);
+                    } else {
+                        ws_fire_error_event(state,
+                            "Invalid fragmented message opcode");
+                    }
+                    has_fragmented_message = false;
+                    fragmented_payload.clear();
+                    fragmented_opcode = 0;
+                }
+                continue;
+            }
+
+            if (frame.opcode == 0x1 || frame.opcode == 0x2) { // Text / binary
+                if (has_fragmented_message) {
+                    ws_fire_error_event(state,
+                        "Received non-continuation frame during fragmented message");
+                    has_fragmented_message = false;
+                    fragmented_payload.clear();
+                    fragmented_opcode = 0;
+                }
+
+                if (frame.fin) {
+                    enqueue_and_dispatch_message(frame.payload);
+                } else {
+                    has_fragmented_message = true;
+                    fragmented_opcode = frame.opcode;
+                    fragmented_payload = frame.payload;
+                }
+                continue;
+            }
+
+            if (frame.opcode == 0x8) { // Close
+                uint16_t close_code = 1000;
+                std::string close_reason;
+                if (frame.payload.size() >= 2) {
+                    close_code = static_cast<uint16_t>(
+                        (static_cast<uint16_t>(frame.payload[0]) << 8) |
+                        static_cast<uint16_t>(frame.payload[1]));
+                    if (frame.payload.size() > 2) {
+                        close_reason.assign(frame.payload.begin() + 2, frame.payload.end());
+                    }
+                }
+
+                if (state->readyState.load() == 1) {
+                    auto close_frame = ws_build_close_frame(close_code, close_reason);
+                    ws_send_raw(state, close_frame.data(), close_frame.size());
+                }
+
+                state->should_close_thread_.store(true);
+                int previous_state = state->readyState.exchange(3);
+                ws_close_socket_fd(state);
+                ws_close_tls(state);
+
+                if (previous_state != 3) {
+                    ws_fire_close_event(state, close_code, close_reason, true);
+                }
+                should_break_loop = true;
+                break;
+            }
+
+            if (frame.opcode == 0x9) { // Ping -> Pong
+                std::vector<uint8_t> pong_frame;
+                pong_frame.push_back(0x8A); // FIN + pong
+
+                const size_t len = frame.payload.size();
+                if (len < 126) {
+                    pong_frame.push_back(static_cast<uint8_t>(0x80 | len));
+                } else if (len <= 0xFFFF) {
+                    pong_frame.push_back(static_cast<uint8_t>(0x80 | 126));
+                    pong_frame.push_back(static_cast<uint8_t>((len >> 8) & 0xFF));
+                    pong_frame.push_back(static_cast<uint8_t>(len & 0xFF));
+                } else {
+                    pong_frame.push_back(static_cast<uint8_t>(0x80 | 127));
+                    for (int i = 7; i >= 0; --i) {
+                        pong_frame.push_back(
+                            static_cast<uint8_t>((len >> (8 * i)) & 0xFF));
+                    }
+                }
+
+                static std::mt19937 rng(std::random_device{}());
+                uint8_t mask[4];
+                for (auto& m : mask) m = static_cast<uint8_t>(rng() & 0xFF);
+                pong_frame.insert(pong_frame.end(), mask, mask + 4);
+
+                for (size_t i = 0; i < len; ++i) {
+                    pong_frame.push_back(frame.payload[i] ^ mask[i % 4]);
+                }
+
+                if (!ws_send_raw(state, pong_frame.data(), pong_frame.size())) {
+                    ws_fire_error_event(state, "Failed to send pong frame");
+                }
+                continue;
+            }
+
+            // Pong frame (0xA) ignored.
+        }
+
+        if (offset > 0 && offset <= recv_buffer.size()) {
+            recv_buffer.erase(
+                recv_buffer.begin(),
+                recv_buffer.begin() + static_cast<std::ptrdiff_t>(offset));
+        }
+
+        if (should_break_loop) break;
+    }
+
+    state->receive_thread_running_.store(false);
+}
+
 // ---- WebSocket JS methods ----
 
 // ws.send(data)
@@ -1616,7 +2081,7 @@ static JSValue js_ws_send(JSContext* ctx, JSValueConst this_val,
     auto* state = get_ws_state(this_val);
     if (!state) return JS_ThrowTypeError(ctx, "Invalid WebSocket object");
 
-    if (state->readyState != 1) { // Not OPEN
+    if (state->readyState.load() != 1) { // Not OPEN
         return JS_ThrowTypeError(ctx,
             "WebSocket is not in the OPEN state");
     }
@@ -1633,15 +2098,7 @@ static JSValue js_ws_send(JSContext* ctx, JSValueConst this_val,
 
     auto frame = ws_build_text_frame(payload);
     if (!ws_send_raw(state, frame.data(), frame.size())) {
-        // Fire onerror
-        if (JS_IsFunction(ctx, state->onerror)) {
-            JSValue event = JS_NewObject(ctx);
-            JS_SetPropertyStr(ctx, event, "type",
-                JS_NewString(ctx, "error"));
-            JSValue ret = JS_Call(ctx, state->onerror, JS_UNDEFINED, 1, &event);
-            JS_FreeValue(ctx, ret);
-            JS_FreeValue(ctx, event);
-        }
+        ws_fire_error_event(state, "WebSocket send failed");
         return JS_ThrowTypeError(ctx, "WebSocket send failed");
     }
 
@@ -1654,7 +2111,8 @@ static JSValue js_ws_close(JSContext* ctx, JSValueConst this_val,
     auto* state = get_ws_state(this_val);
     if (!state) return JS_ThrowTypeError(ctx, "Invalid WebSocket object");
 
-    if (state->readyState == 2 || state->readyState == 3) {
+    int current_state = state->readyState.load();
+    if (current_state == 2 || current_state == 3) {
         // Already CLOSING or CLOSED — no-op
         return JS_UNDEFINED;
     }
@@ -1675,38 +2133,22 @@ static JSValue js_ws_close(JSContext* ctx, JSValueConst this_val,
         }
     }
 
-    state->readyState = 2; // CLOSING
+    state->readyState.store(2); // CLOSING
 
     // Send close frame (best effort)
-    if (state->socket_fd >= 0) {
+    if (state->socket_fd.load() >= 0) {
         auto frame = ws_build_close_frame(code, reason);
         ws_send_raw(state, frame.data(), frame.size());
     }
 
-    // Close the socket
-    if (state->tls) {
-        state->tls->close();
-        delete state->tls;
-        state->tls = nullptr;
-    }
-    if (state->socket_fd >= 0) {
-        ::close(state->socket_fd);
-        state->socket_fd = -1;
-    }
+    ws_stop_receive_thread(state, k_ws_thread_join_timeout_ms);
+    ws_close_tls(state);
+    ws_close_socket_fd(state);
 
-    state->readyState = 3; // CLOSED
+    int previous_state = state->readyState.exchange(3); // CLOSED
 
-    // Fire onclose
-    if (JS_IsFunction(ctx, state->onclose)) {
-        JSValue event = JS_NewObject(ctx);
-        JS_SetPropertyStr(ctx, event, "type", JS_NewString(ctx, "close"));
-        JS_SetPropertyStr(ctx, event, "code", JS_NewInt32(ctx, code));
-        JS_SetPropertyStr(ctx, event, "reason",
-            JS_NewString(ctx, reason.c_str()));
-        JS_SetPropertyStr(ctx, event, "wasClean", JS_TRUE);
-        JSValue ret = JS_Call(ctx, state->onclose, JS_UNDEFINED, 1, &event);
-        JS_FreeValue(ctx, ret);
-        JS_FreeValue(ctx, event);
+    if (previous_state != 3) {
+        ws_fire_close_event(state, code, reason, true);
     }
 
     return JS_UNDEFINED;
@@ -1717,7 +2159,7 @@ static JSValue js_ws_close(JSContext* ctx, JSValueConst this_val,
 static JSValue js_ws_get_readyState(JSContext* ctx, JSValueConst this_val) {
     auto* state = get_ws_state(this_val);
     if (!state) return JS_NewInt32(ctx, 3); // CLOSED
-    return JS_NewInt32(ctx, state->readyState);
+    return JS_NewInt32(ctx, state->readyState.load());
 }
 
 static JSValue js_ws_get_url(JSContext* ctx, JSValueConst this_val) {
@@ -1741,56 +2183,80 @@ static JSValue js_ws_get_bufferedAmount(JSContext* ctx, JSValueConst /*this_val*
 static JSValue js_ws_get_onopen(JSContext* ctx, JSValueConst this_val) {
     auto* state = get_ws_state(this_val);
     if (!state) return JS_NULL;
+    std::lock_guard<std::mutex> lock(state->message_queue_mutex_);
     return JS_DupValue(ctx, state->onopen);
 }
 
 static JSValue js_ws_set_onopen(JSContext* ctx, JSValueConst this_val, JSValueConst val) {
     auto* state = get_ws_state(this_val);
     if (!state) return JS_EXCEPTION;
-    JS_FreeValue(ctx, state->onopen);
-    state->onopen = JS_DupValue(ctx, val);
+    JSValue old_handler = JS_UNDEFINED;
+    {
+        std::lock_guard<std::mutex> lock(state->message_queue_mutex_);
+        old_handler = state->onopen;
+        state->onopen = JS_DupValue(ctx, val);
+    }
+    JS_FreeValue(ctx, old_handler);
     return JS_UNDEFINED;
 }
 
 static JSValue js_ws_get_onmessage(JSContext* ctx, JSValueConst this_val) {
     auto* state = get_ws_state(this_val);
     if (!state) return JS_NULL;
+    std::lock_guard<std::mutex> lock(state->message_queue_mutex_);
     return JS_DupValue(ctx, state->onmessage);
 }
 
 static JSValue js_ws_set_onmessage(JSContext* ctx, JSValueConst this_val, JSValueConst val) {
     auto* state = get_ws_state(this_val);
     if (!state) return JS_EXCEPTION;
-    JS_FreeValue(ctx, state->onmessage);
-    state->onmessage = JS_DupValue(ctx, val);
+    JSValue old_handler = JS_UNDEFINED;
+    {
+        std::lock_guard<std::mutex> lock(state->message_queue_mutex_);
+        old_handler = state->onmessage;
+        state->onmessage = JS_DupValue(ctx, val);
+    }
+    JS_FreeValue(ctx, old_handler);
     return JS_UNDEFINED;
 }
 
 static JSValue js_ws_get_onclose(JSContext* ctx, JSValueConst this_val) {
     auto* state = get_ws_state(this_val);
     if (!state) return JS_NULL;
+    std::lock_guard<std::mutex> lock(state->message_queue_mutex_);
     return JS_DupValue(ctx, state->onclose);
 }
 
 static JSValue js_ws_set_onclose(JSContext* ctx, JSValueConst this_val, JSValueConst val) {
     auto* state = get_ws_state(this_val);
     if (!state) return JS_EXCEPTION;
-    JS_FreeValue(ctx, state->onclose);
-    state->onclose = JS_DupValue(ctx, val);
+    JSValue old_handler = JS_UNDEFINED;
+    {
+        std::lock_guard<std::mutex> lock(state->message_queue_mutex_);
+        old_handler = state->onclose;
+        state->onclose = JS_DupValue(ctx, val);
+    }
+    JS_FreeValue(ctx, old_handler);
     return JS_UNDEFINED;
 }
 
 static JSValue js_ws_get_onerror(JSContext* ctx, JSValueConst this_val) {
     auto* state = get_ws_state(this_val);
     if (!state) return JS_NULL;
+    std::lock_guard<std::mutex> lock(state->message_queue_mutex_);
     return JS_DupValue(ctx, state->onerror);
 }
 
 static JSValue js_ws_set_onerror(JSContext* ctx, JSValueConst this_val, JSValueConst val) {
     auto* state = get_ws_state(this_val);
     if (!state) return JS_EXCEPTION;
-    JS_FreeValue(ctx, state->onerror);
-    state->onerror = JS_DupValue(ctx, val);
+    JSValue old_handler = JS_UNDEFINED;
+    {
+        std::lock_guard<std::mutex> lock(state->message_queue_mutex_);
+        old_handler = state->onerror;
+        state->onerror = JS_DupValue(ctx, val);
+    }
+    JS_FreeValue(ctx, old_handler);
     return JS_UNDEFINED;
 }
 
@@ -1800,20 +2266,15 @@ static void js_ws_finalizer(JSRuntime* rt, JSValue val) {
     auto* state = static_cast<WebSocketState*>(JS_GetOpaque(val, ws_class_id));
     if (!state) return;
 
+    ws_stop_receive_thread(state, k_ws_thread_join_timeout_ms);
+    ws_close_tls(state);
+    ws_close_socket_fd(state);
+
     // Free event handler JSValues
     JS_FreeValueRT(rt, state->onopen);
     JS_FreeValueRT(rt, state->onmessage);
     JS_FreeValueRT(rt, state->onclose);
     JS_FreeValueRT(rt, state->onerror);
-
-    // Clean up socket resources
-    if (state->tls) {
-        state->tls->close();
-        delete state->tls;
-    }
-    if (state->socket_fd >= 0) {
-        ::close(state->socket_fd);
-    }
 
     delete state;
 }
@@ -1823,6 +2284,7 @@ static void js_ws_gc_mark(JSRuntime* rt, JSValueConst val,
                            JS_MarkFunc* mark_func) {
     auto* state = static_cast<WebSocketState*>(JS_GetOpaque(val, ws_class_id));
     if (!state) return;
+    std::lock_guard<std::mutex> lock(state->message_queue_mutex_);
     JS_MarkValue(rt, state->onopen, mark_func);
     JS_MarkValue(rt, state->onmessage, mark_func);
     JS_MarkValue(rt, state->onclose, mark_func);
@@ -1884,35 +2346,34 @@ static JSValue js_ws_constructor(JSContext* ctx, JSValueConst new_target,
     state->url = url_str;
     state->is_tls = use_tls;
     state->protocol = requested_protocol;
+    state->runtime = JS_GetRuntime(ctx);
     JS_SetOpaque(obj, state);
 
     // TCP connect
     int fd = ws_connect_to(host, port);
     if (fd < 0) {
-        state->readyState = 3; // CLOSED
-        // Fire onerror event
-        if (JS_IsFunction(ctx, state->onerror)) {
-            JSValue event = JS_NewObject(ctx);
-            JS_SetPropertyStr(ctx, event, "type",
-                JS_NewString(ctx, "error"));
-            JSValue ret = JS_Call(ctx, state->onerror, JS_UNDEFINED, 1, &event);
-            JS_FreeValue(ctx, ret);
-            JS_FreeValue(ctx, event);
-        }
+        state->readyState.store(3); // CLOSED
+        ws_fire_error_event(state, "WebSocket TCP connect failed");
         return obj; // Return the object in CLOSED state
     }
 
-    state->socket_fd = fd;
+    state->socket_fd.store(fd);
 
     // TLS handshake if needed
     if (use_tls) {
-        state->tls = new clever::net::TlsSocket();
-        if (!state->tls->connect(host, port, fd)) {
-            delete state->tls;
-            state->tls = nullptr;
-            ::close(fd);
-            state->socket_fd = -1;
-            state->readyState = 3; // CLOSED
+        {
+            std::lock_guard<std::mutex> lock(state->message_queue_mutex_);
+            state->tls = new clever::net::TlsSocket();
+        }
+        clever::net::TlsSocket* tls = nullptr;
+        {
+            std::lock_guard<std::mutex> lock(state->message_queue_mutex_);
+            tls = state->tls;
+        }
+        if (!tls || !tls->connect(host, port, fd)) {
+            ws_close_tls(state);
+            ws_close_socket_fd(state);
+            state->readyState.store(3); // CLOSED
             return obj;
         }
     }
@@ -1939,56 +2400,56 @@ static JSValue js_ws_constructor(JSContext* ctx, JSValueConst new_target,
 
     auto* req_data = reinterpret_cast<const uint8_t*>(upgrade_request.data());
     if (!ws_send_raw(state, req_data, upgrade_request.size())) {
-        if (state->tls) {
-            state->tls->close();
-            delete state->tls;
-            state->tls = nullptr;
-        }
-        ::close(fd);
-        state->socket_fd = -1;
-        state->readyState = 3;
+        ws_close_tls(state);
+        ws_close_socket_fd(state);
+        state->readyState.store(3);
         return obj;
     }
 
     // Read upgrade response
     auto response_data = ws_recv_raw(state, 10000);
     if (response_data.empty()) {
-        if (state->tls) {
-            state->tls->close();
-            delete state->tls;
-            state->tls = nullptr;
-        }
-        ::close(fd);
-        state->socket_fd = -1;
-        state->readyState = 3;
+        ws_close_tls(state);
+        ws_close_socket_fd(state);
+        state->readyState.store(3);
         return obj;
     }
 
     // Verify 101 Switching Protocols
     std::string response_str(response_data.begin(), response_data.end());
     if (response_str.find("101") == std::string::npos) {
-        if (state->tls) {
-            state->tls->close();
-            delete state->tls;
-            state->tls = nullptr;
-        }
-        ::close(fd);
-        state->socket_fd = -1;
-        state->readyState = 3;
+        ws_close_tls(state);
+        ws_close_socket_fd(state);
+        state->readyState.store(3);
         return obj;
     }
 
     // Connection established!
-    state->readyState = 1; // OPEN
+    state->readyState.store(1); // OPEN
+
+    state->should_close_thread_.store(false);
+    state->receive_thread_ = std::thread([state] {
+        ws_receive_loop(state);
+    });
 
     // Fire onopen event immediately (synchronous engine)
-    if (JS_IsFunction(ctx, state->onopen)) {
+    JSValue onopen_handler = JS_UNDEFINED;
+    {
+        std::lock_guard<std::mutex> lock(state->message_queue_mutex_);
+        onopen_handler = JS_DupValue(ctx, state->onopen);
+    }
+    if (JS_IsFunction(ctx, onopen_handler)) {
         JSValue event = JS_NewObject(ctx);
         JS_SetPropertyStr(ctx, event, "type", JS_NewString(ctx, "open"));
-        JSValue ret = JS_Call(ctx, state->onopen, JS_UNDEFINED, 1, &event);
+        JSValue ret = JS_Call(ctx, onopen_handler, JS_UNDEFINED, 1, &event);
+        if (JS_IsException(ret)) {
+            JSValue exc = JS_GetException(ctx);
+            JS_FreeValue(ctx, exc);
+        }
         JS_FreeValue(ctx, ret);
         JS_FreeValue(ctx, event);
     }
+    JS_FreeValue(ctx, onopen_handler);
 
     return obj;
 }

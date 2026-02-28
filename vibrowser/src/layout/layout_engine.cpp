@@ -629,11 +629,37 @@ void LayoutEngine::layout_block(LayoutNode& node, float containing_width) {
         }
     }
 
-    // Apply CSS multi-column layout (column-count)
-    if (node.column_count > 0 && content_w > 0 && children_height > 0) {
-        int ncols = node.column_count;
+    // Apply CSS multi-column layout (column-count / column-width)
+    if (int ncols = [&]() {
+            float gap = node.column_gap_val;
+            if (gap < 0) gap = 0;
+
+            int cols_from_width = 0;
+            if (node.column_width > 0) {
+                cols_from_width = static_cast<int>(std::floor((content_w + gap) / (node.column_width + gap)));
+                if (cols_from_width < 1) cols_from_width = 1;
+            }
+
+            int cols_from_count = 0;
+            if (node.column_count > 0) {
+                cols_from_count = node.column_count;
+            }
+
+            if (cols_from_width > 0 && cols_from_count > 0) return std::min(cols_from_width, cols_from_count);
+            if (cols_from_width > 0) return cols_from_width;
+            return cols_from_count;
+        }(); ncols > 1 && content_w > 0 && children_height > 0) {
         float gap = node.column_gap_val;
+        if (gap < 0) gap = 0;
+
         float col_w = (content_w - gap * static_cast<float>(ncols - 1)) / static_cast<float>(ncols);
+        if (node.column_width > 0) {
+            col_w = node.column_width;
+            float used_w = col_w * static_cast<float>(ncols) + gap * static_cast<float>(ncols - 1);
+            if (used_w < content_w) {
+                col_w += (content_w - used_w) / static_cast<float>(ncols);
+            }
+        }
         if (col_w < 10) col_w = 10; // minimum column width
 
         // Collect visible children

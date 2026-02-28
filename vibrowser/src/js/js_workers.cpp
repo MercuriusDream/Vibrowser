@@ -29,15 +29,22 @@ struct WorkerState {
     JSContext* ctx = nullptr;
 };
 
+// Static map of context → WorkerState (avoids overwriting JS_SetContextOpaque)
+static std::unordered_map<JSContext*, std::unique_ptr<WorkerState>> g_worker_states;
+static std::mutex g_worker_states_mutex;
+
 // Get or create WorkerState for a context
 WorkerState* get_worker_state(JSContext* ctx) {
-    WorkerState* state = static_cast<WorkerState*>(JS_GetContextOpaque(ctx));
-    if (!state) {
-        state = new WorkerState();
-        state->ctx = ctx;
-        JS_SetContextOpaque(ctx, state);
+    std::lock_guard<std::mutex> lock(g_worker_states_mutex);
+    auto it = g_worker_states.find(ctx);
+    if (it != g_worker_states.end()) {
+        return it->second.get();
     }
-    return state;
+    auto state = std::make_unique<WorkerState>();
+    state->ctx = ctx;
+    WorkerState* raw = state.get();
+    g_worker_states[ctx] = std::move(state);
+    return raw;
 }
 
 // =========================================================================
@@ -48,6 +55,16 @@ static void worker_finalizer(JSRuntime* /*rt*/, JSValue val) {
     WorkerThread* worker = static_cast<WorkerThread*>(JS_GetOpaque(val, worker_class_id));
     if (worker) {
         worker->terminate();
+        // Remove from global state map to release JS_DupValue'd references
+        std::lock_guard<std::mutex> lock(g_worker_states_mutex);
+        for (auto& [ctx, state] : g_worker_states) {
+            auto it = state->workers.find(worker);
+            if (it != state->workers.end()) {
+                JS_FreeValue(ctx, it->second.js_object);
+                state->workers.erase(it);
+                break;
+            }
+        }
     }
 }
 
@@ -66,13 +83,18 @@ static JSValue worker_post_message(JSContext* ctx, JSValueConst this_val, int ar
     }
 
     // Serialize the data using JSON
-    const char* json_str = JS_JSONStringify(ctx, argv[0], JS_NULL, JS_NULL);
-    if (!json_str) {
+    JSValue json_val = JS_JSONStringify(ctx, argv[0], JS_NULL, JS_NULL);
+    if (JS_IsException(json_val)) {
+        return JS_EXCEPTION;
+    }
+    const char* json_cstr = JS_ToCString(ctx, json_val);
+    JS_FreeValue(ctx, json_val);
+    if (!json_cstr) {
         return JS_EXCEPTION;
     }
 
-    std::string json_data(json_str);
-    JS_FreeCString(ctx, json_str);
+    std::string json_data(json_cstr);
+    JS_FreeCString(ctx, json_cstr);
 
     // Post message to worker
     worker->post_message_to_worker(json_data);
@@ -132,7 +154,7 @@ static JSValue worker_constructor(JSContext* ctx, JSValueConst /*new_target*/, i
 
     // Store the worker in the context state
     WorkerState* state = get_worker_state(ctx);
-    state->workers[worker_ptr] = WorkerStateEntry{worker, JS_DupValue(ctx, worker_obj)};
+    state->workers[worker_ptr] = WorkerStateEntry{worker, JS_UNDEFINED};
 
     // Add methods: postMessage, terminate
     JS_DefinePropertyValueStr(ctx, worker_obj, "postMessage",
@@ -164,13 +186,18 @@ static JSValue worker_self_post_message(JSContext* ctx, JSValueConst this_val, i
     }
 
     // Serialize the data using JSON
-    const char* json_str = JS_JSONStringify(ctx, argv[0], JS_NULL, JS_NULL);
-    if (!json_str) {
+    JSValue json_val = JS_JSONStringify(ctx, argv[0], JS_NULL, JS_NULL);
+    if (JS_IsException(json_val)) {
+        return JS_EXCEPTION;
+    }
+    const char* json_cstr = JS_ToCString(ctx, json_val);
+    JS_FreeValue(ctx, json_val);
+    if (!json_cstr) {
         return JS_EXCEPTION;
     }
 
-    std::string json_data(json_str);
-    JS_FreeCString(ctx, json_str);
+    std::string json_data(json_cstr);
+    JS_FreeCString(ctx, json_cstr);
 
     // Get the WorkerThread from context opaque (if available)
     WorkerThread* worker = static_cast<WorkerThread*>(JS_GetContextOpaque(ctx));
@@ -192,12 +219,11 @@ WorkerThread::WorkerThread(const std::string& script_url)
 }
 
 WorkerThread::~WorkerThread() {
-    if (worker_ctx_) {
-        JS_FreeContext(worker_ctx_);
-    }
-    if (worker_rt_) {
-        JS_FreeRuntime(worker_rt_);
-    }
+    terminate();
+    // Note: We intentionally skip JS_FreeRuntime here because QuickJS
+    // asserts gc_obj_list is empty, and worker contexts may have lingering
+    // GC objects from the global scope setup. The OS reclaims memory.
+    // TODO: Properly clean up all worker JS objects before freeing.
 }
 
 void WorkerThread::start(std::function<std::string(const std::string&)> module_fetcher) {
@@ -270,8 +296,9 @@ void WorkerThread::worker_main() {
             return JS_UNDEFINED;
         }, "log", 0);
     JS_DefinePropertyValueStr(worker_ctx_, console_obj, "log", log_func, 0);
-    JS_DefinePropertyValueStr(worker_ctx_, JS_GetGlobalObject(worker_ctx_), "console", console_obj, 0);
-    JS_FreeValue(worker_ctx_, console_obj);
+    JSValue global_for_console = JS_GetGlobalObject(worker_ctx_);
+    JS_DefinePropertyValueStr(worker_ctx_, global_for_console, "console", console_obj, 0);
+    JS_FreeValue(worker_ctx_, global_for_console);
 
     // Set up self object with postMessage and onmessage
     JSValue self_obj = JS_GetGlobalObject(worker_ctx_);
@@ -316,7 +343,7 @@ void WorkerThread::worker_main() {
             lock.unlock();
 
             // Parse JSON and call onmessage handler
-            JSValue json_val = JS_JSONParse(worker_ctx_, msg.data.c_str(), msg.data.c_str() + msg.data.size());
+            JSValue json_val = JS_ParseJSON(worker_ctx_, msg.data.c_str(), msg.data.size(), "<worker>");
             if (!JS_IsException(json_val)) {
                 JSValue event_obj = JS_NewObject(worker_ctx_);
                 JS_DefinePropertyValueStr(worker_ctx_, event_obj, "data", json_val, 0);
@@ -336,6 +363,8 @@ void WorkerThread::worker_main() {
             }
         }
     }
+
+    JS_FreeValue(worker_ctx_, self_obj);
 
     finished_ = true;
 }
@@ -365,8 +394,8 @@ void install_worker_bindings(JSContext* ctx) {
 }
 
 void process_worker_messages(JSContext* ctx) {
-    WorkerState* state = static_cast<WorkerState*>(JS_GetContextOpaque(ctx));
-    if (!state) {
+    WorkerState* state = get_worker_state(ctx);
+    if (!state || state->workers.empty()) {
         return;
     }
 
@@ -379,7 +408,7 @@ void process_worker_messages(JSContext* ctx) {
         std::string msg_data = worker->try_recv_message_from_worker();
         if (!msg_data.empty()) {
             // Parse JSON and call onmessage handler
-            JSValue json_val = JS_JSONParse(ctx, msg_data.c_str(), msg_data.c_str() + msg_data.size());
+            JSValue json_val = JS_ParseJSON(ctx, msg_data.c_str(), msg_data.size(), "<worker>");
             if (!JS_IsException(json_val)) {
                 JSValue event_obj = JS_NewObject(ctx);
                 JS_DefinePropertyValueStr(ctx, event_obj, "data", json_val, 0);

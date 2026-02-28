@@ -101,6 +101,7 @@ struct DOMState {
         JSValue observer_obj;   // the ResizeObserver JS object
         JSValue callback;       // the callback function
         std::vector<clever::html::SimpleNode*> observed_elements;
+        std::unordered_map<clever::html::SimpleNode*, std::pair<float, float>> previous_sizes;
     };
     std::vector<ResizeObserverEntry> resize_observers;
 
@@ -14385,6 +14386,8 @@ void fire_resize_observers(JSContext* ctx, int viewport_w, int viewport_h) {
         // Build array of ResizeObserverEntry objects
         JSValue entries = JS_NewArray(ctx);
         int entry_idx = 0;
+        bool has_size_change = false;
+        std::unordered_map<clever::html::SimpleNode*, std::pair<float, float>> current_sizes;
 
         for (auto* elem : ro.observed_elements) {
             // Look up element geometry
@@ -14405,6 +14408,14 @@ void fire_resize_observers(JSContext* ctx, int viewport_w, int viewport_h) {
                            lr.padding_right + lr.border_right;
                 border_h = lr.border_top + lr.padding_top + lr.height +
                            lr.padding_bottom + lr.border_bottom;
+            }
+            current_sizes[elem] = std::make_pair(border_w, border_h);
+
+            auto prev_it = ro.previous_sizes.find(elem);
+            if (prev_it == ro.previous_sizes.end() ||
+                prev_it->second.first != border_w ||
+                prev_it->second.second != border_h) {
+                has_size_change = true;
             }
 
             // Create ResizeObserverEntry
@@ -14452,11 +14463,12 @@ void fire_resize_observers(JSContext* ctx, int viewport_w, int viewport_h) {
             JS_SetPropertyUint32(ctx, entries, entry_idx++, entry);
         }
 
-        if (entry_idx > 0) {
+        if (has_size_change && entry_idx > 0) {
             // Call the callback with (entries, observer)
             JSValue args[2] = { entries, ro.observer_obj };
             JSValue ret = JS_Call(ctx, ro.callback, JS_UNDEFINED, 2, args);
             JS_FreeValue(ctx, ret);
+            ro.previous_sizes = std::move(current_sizes);
         }
         JS_FreeValue(ctx, entries);
     }

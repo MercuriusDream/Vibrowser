@@ -6930,12 +6930,14 @@ TEST(LayoutNodeProps, CursorDefaultsZero) {
 
 TEST(LayoutNodeProps, ScrollSnapTypeDefaultsEmpty) {
     LayoutNode n;
-    EXPECT_EQ(n.scroll_snap_type, "");
+    EXPECT_EQ(n.scroll_snap_type_axis, 0);
+    EXPECT_EQ(n.scroll_snap_type_strictness, 0);
 }
 
 TEST(LayoutNodeProps, ScrollSnapAlignDefaultsEmpty) {
     LayoutNode n;
-    EXPECT_EQ(n.scroll_snap_align, "");
+    EXPECT_EQ(n.scroll_snap_align_x, 0);
+    EXPECT_EQ(n.scroll_snap_align_y, 0);
 }
 
 TEST(LayoutNodeProps, TextShadowOffsetXDefaultsZero) {
@@ -8515,12 +8517,12 @@ TEST(LayoutNodeProps, MaskModeDefaultsZeroV2) {
 
 TEST(LayoutNodeProps, ScrollSnapTypeDefaultsEmptyV2) {
     LayoutNode n;
-    EXPECT_TRUE(n.scroll_snap_type.empty());
+    EXPECT_EQ(n.scroll_snap_type_axis, 0);
 }
 
 TEST(LayoutNodeProps, ScrollSnapAlignDefaultsEmptyV2) {
     LayoutNode n;
-    EXPECT_TRUE(n.scroll_snap_align.empty());
+    EXPECT_EQ(n.scroll_snap_align_x, 0);
 }
 
 TEST(LayoutNodeProps, WillChangeDefaultsEmptyV2) {
@@ -8856,12 +8858,14 @@ TEST(LayoutNodeProps, OverscrollBehaviorDefaultV15) {
 
 TEST(LayoutNodeProps, ScrollSnapTypeDefaultV15) {
     LayoutNode n;
-    EXPECT_EQ(n.scroll_snap_type, "");
+    EXPECT_EQ(n.scroll_snap_type_axis, 0);
+    EXPECT_EQ(n.scroll_snap_type_strictness, 0);
 }
 
 TEST(LayoutNodeProps, ScrollSnapAlignDefaultV15) {
     LayoutNode n;
-    EXPECT_EQ(n.scroll_snap_align, "");
+    EXPECT_EQ(n.scroll_snap_align_x, 0);
+    EXPECT_EQ(n.scroll_snap_align_y, 0);
 }
 
 // Cycle 1235: LayoutNode property tests V16
@@ -9221,12 +9225,14 @@ TEST(LayoutNodeProps, ColorSchemeDefaultV24) {
 
 TEST(LayoutNodeProps, ScrollSnapTypeDefaultV24) {
     LayoutNode n;
-    EXPECT_EQ(n.scroll_snap_type, "");
+    EXPECT_EQ(n.scroll_snap_type_axis, 0);
+    EXPECT_EQ(n.scroll_snap_type_strictness, 0);
 }
 
 TEST(LayoutNodeProps, ScrollSnapAlignDefaultV24) {
     LayoutNode n;
-    EXPECT_EQ(n.scroll_snap_align, "");
+    EXPECT_EQ(n.scroll_snap_align_x, 0);
+    EXPECT_EQ(n.scroll_snap_align_y, 0);
 }
 
 TEST(LayoutNodeProps, OpacityDefaultV24) {
@@ -9295,12 +9301,14 @@ TEST(LayoutNodeProps, ColorSchemeDefaultV26) {
 
 TEST(LayoutNodeProps, ScrollSnapTypeDefaultV26) {
     LayoutNode n;
-    EXPECT_EQ(n.scroll_snap_type, "");
+    EXPECT_EQ(n.scroll_snap_type_axis, 0);
+    EXPECT_EQ(n.scroll_snap_type_strictness, 0);
 }
 
 TEST(LayoutNodeProps, ScrollSnapAlignDefaultV26) {
     LayoutNode n;
-    EXPECT_EQ(n.scroll_snap_align, "");
+    EXPECT_EQ(n.scroll_snap_align_x, 0);
+    EXPECT_EQ(n.scroll_snap_align_y, 0);
 }
 
 TEST(LayoutNodeProps, ScrollSnapStopDefaultV26) {
@@ -9347,12 +9355,14 @@ TEST(LayoutNodeProps, ColorSchemeDefaultV27) {
 
 TEST(LayoutNodeProps, ScrollSnapTypeDefaultV27) {
     LayoutNode n;
-    EXPECT_EQ(n.scroll_snap_type, "");
+    EXPECT_EQ(n.scroll_snap_type_axis, 0);
+    EXPECT_EQ(n.scroll_snap_type_strictness, 0);
 }
 
 TEST(LayoutNodeProps, ScrollSnapAlignDefaultV27) {
     LayoutNode n;
-    EXPECT_EQ(n.scroll_snap_align, "");
+    EXPECT_EQ(n.scroll_snap_align_x, 0);
+    EXPECT_EQ(n.scroll_snap_align_y, 0);
 }
 
 TEST(LayoutNodeProps, OpacityDefaultV27) {
@@ -9485,7 +9495,8 @@ TEST(LayoutNodeProps, OrderDefaultV30) {
 
 TEST(LayoutNodeProps, ScrollSnapTypeDefaultV30) {
     LayoutNode n;
-    EXPECT_EQ(n.scroll_snap_type, "");
+    EXPECT_EQ(n.scroll_snap_type_axis, 0);
+    EXPECT_EQ(n.scroll_snap_type_strictness, 0);
 }
 
 TEST(LayoutNodeProps, BorderRadiusTLDefaultV31) {
@@ -9525,7 +9536,8 @@ TEST(LayoutNodeProps, ContainerNameDefaultV31) {
 
 TEST(LayoutNodeProps, ScrollSnapAlignDefaultV31) {
     LayoutNode n;
-    EXPECT_EQ(n.scroll_snap_align, "");
+    EXPECT_EQ(n.scroll_snap_align_x, 0);
+    EXPECT_EQ(n.scroll_snap_align_y, 0);
 }
 
 TEST(LayoutNodeProps, FlexGrowDefaultV32) {
@@ -9640,7 +9652,8 @@ TEST(LayoutNodeProps, ColorSchemeDefaultV34) {
 
 TEST(LayoutNodeProps, ScrollSnapTypeDefaultV34) {
     LayoutNode n;
-    EXPECT_EQ(n.scroll_snap_type, "");
+    EXPECT_EQ(n.scroll_snap_type_axis, 0);
+    EXPECT_EQ(n.scroll_snap_type_strictness, 0);
 }
 
 TEST(LayoutNodeProps, ZIndexDefaultV34) {

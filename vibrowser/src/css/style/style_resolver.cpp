@@ -4244,13 +4244,60 @@ void PropertyCascade::apply_declaration(
 
     // ---- Scroll snap type ----
     if (prop == "scroll-snap-type") {
-        style.scroll_snap_type = value_lower;
+        auto parts = split_whitespace(value_lower);
+        if (parts.empty()) return;
+        if (parts[0] == "none") {
+            style.scroll_snap_type_axis = 0;
+            style.scroll_snap_type_strictness = 0;
+            return;
+        }
+
+        int axis = 0;
+        if (parts[0] == "x") axis = 1;
+        else if (parts[0] == "y") axis = 2;
+        else if (parts[0] == "both") axis = 3;
+        else return;
+
+        int strictness = 1; // default mandatory when axis is provided
+        if (parts.size() >= 2) {
+            if (parts[1] == "mandatory") strictness = 1;
+            else if (parts[1] == "proximity") strictness = 2;
+            else return;
+        }
+
+        style.scroll_snap_type_axis = axis;
+        style.scroll_snap_type_strictness = strictness;
         return;
     }
 
     // ---- Scroll snap align ----
     if (prop == "scroll-snap-align") {
-        style.scroll_snap_align = value_lower;
+        auto parts = split_whitespace(value_lower);
+        if (parts.empty()) return;
+        if (parts[0] == "none") {
+            style.scroll_snap_align_x = 0;
+            style.scroll_snap_align_y = 0;
+            return;
+        }
+
+        auto parse_snap_align = [](const std::string& token) -> int {
+            if (token == "none") return 0;
+            if (token == "start") return 1;
+            if (token == "center") return 2;
+            if (token == "end") return 3;
+            return -1;
+        };
+
+        int x = parse_snap_align(parts[0]);
+        if (x < 0) return;
+        int y = x;
+        if (parts.size() >= 2) {
+            y = parse_snap_align(parts[1]);
+            if (y < 0) return;
+        }
+
+        style.scroll_snap_align_x = x;
+        style.scroll_snap_align_y = y;
         return;
     }
 

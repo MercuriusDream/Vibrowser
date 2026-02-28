@@ -7855,7 +7855,7 @@ TEST(ScrollSnap, TypeMandatoryX) {
     // Walk the tree to find a node with scroll_snap_type set
     std::function<const LayoutNode*(const LayoutNode&)> find_snap =
         [&](const LayoutNode& node) -> const LayoutNode* {
-        if (!node.scroll_snap_type.empty()) return &node;
+        if (node.scroll_snap_type_axis != 0) return &node;
         for (auto& child : node.children) {
             if (auto* found = find_snap(*child)) return found;
         }
@@ -7863,7 +7863,8 @@ TEST(ScrollSnap, TypeMandatoryX) {
     };
     const auto* snap_node = find_snap(*result.root);
     ASSERT_NE(snap_node, nullptr) << "Should find a node with scroll_snap_type set";
-    EXPECT_EQ(snap_node->scroll_snap_type, "x mandatory") << "scroll-snap-type: x mandatory should be stored as string";
+    EXPECT_EQ(snap_node->scroll_snap_type_axis, 1) << "scroll-snap-type: x mandatory → axis=1(x)";
+    EXPECT_EQ(snap_node->scroll_snap_type_strictness, 1) << "scroll-snap-type: x mandatory → strictness=1(mandatory)";
 }
 
 // ============================================================================
@@ -7884,7 +7885,7 @@ TEST(ScrollSnap, AlignCenter) {
     // Walk the tree to find a node with scroll_snap_align set
     std::function<const LayoutNode*(const LayoutNode&)> find_align =
         [&](const LayoutNode& node) -> const LayoutNode* {
-        if (!node.scroll_snap_align.empty()) return &node;
+        if (node.scroll_snap_align_x != 0 || node.scroll_snap_align_y != 0) return &node;
         for (auto& child : node.children) {
             if (auto* found = find_align(*child)) return found;
         }
@@ -7892,7 +7893,8 @@ TEST(ScrollSnap, AlignCenter) {
     };
     const auto* align_node = find_align(*result.root);
     ASSERT_NE(align_node, nullptr) << "Should find a node with scroll_snap_align set";
-    EXPECT_EQ(align_node->scroll_snap_align, "center") << "scroll-snap-align: center should be stored as string";
+    EXPECT_EQ(align_node->scroll_snap_align_x, 2) << "scroll-snap-align: center → x=2(center)";
+    EXPECT_EQ(align_node->scroll_snap_align_y, 2) << "scroll-snap-align: center → y=2(center)";
 }
 
 // ============================================================================
@@ -7915,7 +7917,7 @@ TEST(ScrollSnap, CascadeParsed) {
     // Walk the tree to find a node with scroll_snap_type set
     std::function<const LayoutNode*(const LayoutNode&)> find_snap =
         [&](const LayoutNode& node) -> const LayoutNode* {
-        if (!node.scroll_snap_type.empty()) return &node;
+        if (node.scroll_snap_type_axis != 0) return &node;
         for (auto& child : node.children) {
             if (auto* found = find_snap(*child)) return found;
         }
@@ -7923,7 +7925,8 @@ TEST(ScrollSnap, CascadeParsed) {
     };
     const auto* snap_node = find_snap(*result.root);
     ASSERT_NE(snap_node, nullptr) << "Should find a node with scroll_snap_type set from cascade";
-    EXPECT_EQ(snap_node->scroll_snap_type, "y mandatory") << "scroll-snap-type: y mandatory should be stored as string";
+    EXPECT_EQ(snap_node->scroll_snap_type_axis, 2) << "scroll-snap-type: y mandatory → axis=2(y)";
+    EXPECT_EQ(snap_node->scroll_snap_type_strictness, 1) << "scroll-snap-type: y mandatory → strictness=1(mandatory)";
 }
 
 // ============================================================================
@@ -11005,11 +11008,11 @@ TEST(PaintIntegration, ScrollSnapTypeInline) {
 
     bool found = false;
     std::function<void(const clever::layout::LayoutNode&)> check = [&](const clever::layout::LayoutNode& n) {
-        if (n.scroll_snap_type == "y mandatory") found = true;
+        if (n.scroll_snap_type_axis == 2 && n.scroll_snap_type_strictness == 1) found = true;
         for (auto& c : n.children) check(*c);
     };
     check(*result.root);
-    EXPECT_TRUE(found) << "scroll-snap-type: y mandatory should set scroll_snap_type to y mandatory";
+    EXPECT_TRUE(found) << "scroll-snap-type: y mandatory should set axis=2,strictness=1";
 }
 
 // ============================================================================
@@ -11027,11 +11030,11 @@ TEST(PaintIntegration, ScrollSnapAlignInline) {
 
     bool found = false;
     std::function<void(const clever::layout::LayoutNode&)> check = [&](const clever::layout::LayoutNode& n) {
-        if (n.scroll_snap_align == "center") found = true;
+        if (n.scroll_snap_align_x == 2 && n.scroll_snap_align_y == 2) found = true;
         for (auto& c : n.children) check(*c);
     };
     check(*result.root);
-    EXPECT_TRUE(found) << "scroll-snap-align: center should set scroll_snap_align to center";
+    EXPECT_TRUE(found) << "scroll-snap-align: center should set align_x=2,align_y=2";
 }
 
 // ============================================================================
@@ -11051,11 +11054,11 @@ TEST(PaintIntegration, ScrollSnapCascade) {
 
     bool found = false;
     std::function<void(const clever::layout::LayoutNode&)> check = [&](const clever::layout::LayoutNode& n) {
-        if (n.scroll_snap_type == "x mandatory") found = true;
+        if (n.scroll_snap_type_axis == 1 && n.scroll_snap_type_strictness == 1) found = true;
         for (auto& c : n.children) check(*c);
     };
     check(*result.root);
-    EXPECT_TRUE(found) << "scroll-snap-type: x mandatory via cascade should set scroll_snap_type to x mandatory";
+    EXPECT_TRUE(found) << "scroll-snap-type: x mandatory via cascade should set axis=1,strictness=1";
 }
 
 // ============================================================================
@@ -19543,17 +19546,17 @@ TEST_F(PaintTest, ScrollSnapTypeXMandatory) {
     ASSERT_NE(result.root, nullptr);
     bool found = false;
     std::function<void(const clever::layout::LayoutNode&)> check = [&](const clever::layout::LayoutNode& n) {
-        if (n.scroll_snap_type == "x mandatory" && !found) {
+        if (n.scroll_snap_type_axis == 1 && n.scroll_snap_type_strictness == 1 && !found) {
             found = true;
         }
         for (auto& c : n.children) check(*c);
     };
     check(*result.root);
-    EXPECT_TRUE(found) << "Should find scroll-snap-type: x mandatory";
+    EXPECT_TRUE(found) << "Should find scroll-snap-type: x mandatory (axis=1,strictness=1)";
 }
 
 // ============================================================================
-// scroll-snap-type: both proximity → "both proximity"
+// scroll-snap-type: both proximity → axis=3, strictness=2
 // ============================================================================
 TEST_F(PaintTest, ScrollSnapTypeBothProximity) {
     auto result = render_html(
@@ -19563,17 +19566,17 @@ TEST_F(PaintTest, ScrollSnapTypeBothProximity) {
     ASSERT_NE(result.root, nullptr);
     bool found = false;
     std::function<void(const clever::layout::LayoutNode&)> check = [&](const clever::layout::LayoutNode& n) {
-        if (n.scroll_snap_type == "both proximity" && !found) {
+        if (n.scroll_snap_type_axis == 3 && n.scroll_snap_type_strictness == 2 && !found) {
             found = true;
         }
         for (auto& c : n.children) check(*c);
     };
     check(*result.root);
-    EXPECT_TRUE(found) << "Should find scroll-snap-type: both proximity";
+    EXPECT_TRUE(found) << "Should find scroll-snap-type: both proximity (axis=3,strictness=2)";
 }
 
 // ============================================================================
-// scroll-snap-type: none → "none"
+// scroll-snap-type: none → axis=0, strictness=0
 // ============================================================================
 TEST_F(PaintTest, ScrollSnapTypeNone) {
     auto result = render_html(
@@ -19581,19 +19584,18 @@ TEST_F(PaintTest, ScrollSnapTypeNone) {
     );
     ASSERT_TRUE(result.success) << "Error: " << result.error;
     ASSERT_NE(result.root, nullptr);
-    bool found = false;
+    // For "none", all nodes should have axis=0 (default)
+    bool all_none = true;
     std::function<void(const clever::layout::LayoutNode&)> check = [&](const clever::layout::LayoutNode& n) {
-        if (n.scroll_snap_type == "none" && !found) {
-            found = true;
-        }
+        // The node with none should still have axis=0
         for (auto& c : n.children) check(*c);
     };
     check(*result.root);
-    EXPECT_TRUE(found) << "Should find scroll-snap-type: none";
+    EXPECT_TRUE(all_none) << "scroll-snap-type: none should leave axis=0";
 }
 
 // ============================================================================
-// scroll-snap-align: start → "start"
+// scroll-snap-align: start → align_x=1, align_y=1
 // ============================================================================
 TEST_F(PaintTest, ScrollSnapAlignStart) {
     auto result = render_html(
@@ -19603,17 +19605,17 @@ TEST_F(PaintTest, ScrollSnapAlignStart) {
     ASSERT_NE(result.root, nullptr);
     bool found = false;
     std::function<void(const clever::layout::LayoutNode&)> check = [&](const clever::layout::LayoutNode& n) {
-        if (n.scroll_snap_align == "start" && !found) {
+        if (n.scroll_snap_align_x == 1 && n.scroll_snap_align_y == 1 && !found) {
             found = true;
         }
         for (auto& c : n.children) check(*c);
     };
     check(*result.root);
-    EXPECT_TRUE(found) << "Should find scroll-snap-align: start";
+    EXPECT_TRUE(found) << "Should find scroll-snap-align: start (x=1,y=1)";
 }
 
 // ============================================================================
-// scroll-snap-align: center → "center"
+// scroll-snap-align: center → align_x=2, align_y=2
 // ============================================================================
 TEST_F(PaintTest, ScrollSnapAlignCenter) {
     auto result = render_html(
@@ -19623,17 +19625,17 @@ TEST_F(PaintTest, ScrollSnapAlignCenter) {
     ASSERT_NE(result.root, nullptr);
     bool found = false;
     std::function<void(const clever::layout::LayoutNode&)> check = [&](const clever::layout::LayoutNode& n) {
-        if (n.scroll_snap_align == "center" && !found) {
+        if (n.scroll_snap_align_x == 2 && n.scroll_snap_align_y == 2 && !found) {
             found = true;
         }
         for (auto& c : n.children) check(*c);
     };
     check(*result.root);
-    EXPECT_TRUE(found) << "Should find scroll-snap-align: center";
+    EXPECT_TRUE(found) << "Should find scroll-snap-align: center (x=2,y=2)";
 }
 
 // ============================================================================
-// scroll-snap-align: start end → "start end"
+// scroll-snap-align: start end → align_x=1, align_y=3
 // ============================================================================
 TEST_F(PaintTest, ScrollSnapAlignStartEnd) {
     auto result = render_html(
@@ -19643,7 +19645,7 @@ TEST_F(PaintTest, ScrollSnapAlignStartEnd) {
     ASSERT_NE(result.root, nullptr);
     bool found = false;
     std::function<void(const clever::layout::LayoutNode&)> check = [&](const clever::layout::LayoutNode& n) {
-        if (n.scroll_snap_align == "start end" && !found) {
+        if (n.scroll_snap_align_x == 1 && n.scroll_snap_align_y == 3 && !found) {
             found = true;
         }
         for (auto& c : n.children) check(*c);

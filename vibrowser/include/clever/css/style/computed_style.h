@@ -467,11 +467,14 @@ struct ComputedStyle {
     // Scroll behavior: 0=auto, 1=smooth
     int scroll_behavior = 0;
 
-    // Scroll snap type: e.g. "x mandatory", "y proximity", "both mandatory", "none"
-    std::string scroll_snap_type;
+    // Scroll snap type: 0=none, 1=x, 2=y, 3=both
+    int scroll_snap_type_axis = 0;
+    // Scroll snap type strictness: 0=none, 1=mandatory, 2=proximity
+    int scroll_snap_type_strictness = 0;
 
-    // Scroll snap align: e.g. "start", "center", "end", "start end"
-    std::string scroll_snap_align;
+    // Scroll snap align: 0=none, 1=start, 2=center, 3=end
+    int scroll_snap_align_x = 0;
+    int scroll_snap_align_y = 0;
 
     // Scroll snap stop: 0=normal, 1=always
     int scroll_snap_stop = 0;

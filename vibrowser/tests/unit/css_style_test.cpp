@@ -7645,17 +7645,22 @@ TEST(PropertyCascadeTest, ScrollSnapTypeAndAlign) {
     ComputedStyle style;
     ComputedStyle parent;
 
-    EXPECT_EQ(style.scroll_snap_type, "");
-    EXPECT_EQ(style.scroll_snap_align, "");
+    EXPECT_EQ(style.scroll_snap_type_axis, 0);
+    EXPECT_EQ(style.scroll_snap_type_strictness, 0);
+    EXPECT_EQ(style.scroll_snap_align_x, 0);
+    EXPECT_EQ(style.scroll_snap_align_y, 0);
 
     cascade.apply_declaration(style, make_decl("scroll-snap-type", "y mandatory"), parent);
-    EXPECT_EQ(style.scroll_snap_type, "y mandatory");
+    EXPECT_EQ(style.scroll_snap_type_axis, 2);
+    EXPECT_EQ(style.scroll_snap_type_strictness, 1);
 
     cascade.apply_declaration(style, make_decl("scroll-snap-align", "start"), parent);
-    EXPECT_EQ(style.scroll_snap_align, "start");
+    EXPECT_EQ(style.scroll_snap_align_x, 1);
+    EXPECT_EQ(style.scroll_snap_align_y, 1);
 
     cascade.apply_declaration(style, make_decl("scroll-snap-align", "center end"), parent);
-    EXPECT_EQ(style.scroll_snap_align, "center end");
+    EXPECT_EQ(style.scroll_snap_align_x, 2);
+    EXPECT_EQ(style.scroll_snap_align_y, 3);
 }
 
 TEST(PropertyCascadeTest, ScrollSnapStop) {
@@ -21326,8 +21331,8 @@ TEST(ComputedStyleTest, ScrollAndOverscrollBehaviorV114) {
     ComputedStyle s;
     // Scroll behavior defaults
     EXPECT_EQ(s.scroll_behavior, 0); // auto
-    EXPECT_TRUE(s.scroll_snap_type.empty());
-    EXPECT_TRUE(s.scroll_snap_align.empty());
+    EXPECT_EQ(s.scroll_snap_type_axis, 0);
+    EXPECT_EQ(s.scroll_snap_align_x, 0);
     EXPECT_EQ(s.scroll_snap_stop, 0); // normal
 
     // Overscroll behavior defaults
@@ -21345,13 +21350,17 @@ TEST(ComputedStyleTest, ScrollAndOverscrollBehaviorV114) {
 
     // Set smooth scrolling with snap
     s.scroll_behavior = 1; // smooth
-    s.scroll_snap_type = "y mandatory";
-    s.scroll_snap_align = "start";
+    s.scroll_snap_type_axis = 2;
+    s.scroll_snap_type_strictness = 1;
+    s.scroll_snap_align_x = 1;
+    s.scroll_snap_align_y = 1;
     s.scroll_snap_stop = 1; // always
 
     EXPECT_EQ(s.scroll_behavior, 1);
-    EXPECT_EQ(s.scroll_snap_type, "y mandatory");
-    EXPECT_EQ(s.scroll_snap_align, "start");
+    EXPECT_EQ(s.scroll_snap_type_axis, 2);
+    EXPECT_EQ(s.scroll_snap_type_strictness, 1);
+    EXPECT_EQ(s.scroll_snap_align_x, 1);
+    EXPECT_EQ(s.scroll_snap_align_y, 1);
     EXPECT_EQ(s.scroll_snap_stop, 1);
 
     // Set overscroll containment
@@ -24070,8 +24079,10 @@ TEST(ComputedStyleTest, ScrollbarAndOverscrollCombinedConfigV124) {
     s.scrollbar_track_color = 0xFFEEEEEE;
 
     // Set scroll snap
-    s.scroll_snap_type = "y mandatory";
-    s.scroll_snap_align = "center";
+    s.scroll_snap_type_axis = 2;
+    s.scroll_snap_type_strictness = 1;
+    s.scroll_snap_align_x = 2;
+    s.scroll_snap_align_y = 2;
     s.scroll_snap_stop = 1; // always
     s.scroll_behavior = 1; // smooth
 
@@ -24091,8 +24102,10 @@ TEST(ComputedStyleTest, ScrollbarAndOverscrollCombinedConfigV124) {
     EXPECT_EQ(s.scrollbar_gutter, 2);
     EXPECT_EQ(s.scrollbar_thumb_color, 0xFF333333u);
     EXPECT_EQ(s.scrollbar_track_color, 0xFFEEEEEEu);
-    EXPECT_EQ(s.scroll_snap_type, "y mandatory");
-    EXPECT_EQ(s.scroll_snap_align, "center");
+    EXPECT_EQ(s.scroll_snap_type_axis, 2);
+    EXPECT_EQ(s.scroll_snap_type_strictness, 1);
+    EXPECT_EQ(s.scroll_snap_align_x, 2);
+    EXPECT_EQ(s.scroll_snap_align_y, 2);
     EXPECT_EQ(s.scroll_snap_stop, 1);
     EXPECT_EQ(s.scroll_behavior, 1);
     EXPECT_EQ(s.overscroll_behavior, 1);
@@ -24885,7 +24898,8 @@ TEST(CSSStyleTest, CssV128_1_ScrollBehaviorSmoothAndSnapType) {
     auto style = resolver.resolve(elem, parent);
 
     EXPECT_EQ(style.scroll_behavior, 1);
-    EXPECT_EQ(style.scroll_snap_type, "y mandatory");
+    EXPECT_EQ(style.scroll_snap_type_axis, 2);
+    EXPECT_EQ(style.scroll_snap_type_strictness, 1);
 }
 
 TEST(PropertyCascadeTest, TextWrapValuesV129) {

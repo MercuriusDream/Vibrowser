@@ -4090,9 +4090,56 @@ void apply_inline_style(clever::css::ComputedStyle& style, const std::string& st
             if (val_lower == "auto") style.scroll_behavior = 0;
             else if (val_lower == "smooth") style.scroll_behavior = 1;
         } else if (d.property == "scroll-snap-type") {
-            style.scroll_snap_type = val_lower;
+            auto parts = split_whitespace(val_lower);
+            if (!parts.empty()) {
+                if (parts[0] == "none") {
+                    style.scroll_snap_type_axis = 0;
+                    style.scroll_snap_type_strictness = 0;
+                } else {
+                    int axis = 0;
+                    if (parts[0] == "x") axis = 1;
+                    else if (parts[0] == "y") axis = 2;
+                    else if (parts[0] == "both") axis = 3;
+
+                    if (axis != 0) {
+                        int strictness = 1; // default mandatory when axis is provided
+                        if (parts.size() >= 2) {
+                            if (parts[1] == "mandatory") strictness = 1;
+                            else if (parts[1] == "proximity") strictness = 2;
+                            else strictness = -1;
+                        }
+                        if (strictness >= 0) {
+                            style.scroll_snap_type_axis = axis;
+                            style.scroll_snap_type_strictness = strictness;
+                        }
+                    }
+                }
+            }
         } else if (d.property == "scroll-snap-align") {
-            style.scroll_snap_align = val_lower;
+            auto parts = split_whitespace(val_lower);
+            if (!parts.empty()) {
+                if (parts[0] == "none") {
+                    style.scroll_snap_align_x = 0;
+                    style.scroll_snap_align_y = 0;
+                } else {
+                    auto parse_snap_align = [](const std::string& token) -> int {
+                        if (token == "none") return 0;
+                        if (token == "start") return 1;
+                        if (token == "center") return 2;
+                        if (token == "end") return 3;
+                        return -1;
+                    };
+                    int x = parse_snap_align(parts[0]);
+                    if (x >= 0) {
+                        int y = x;
+                        if (parts.size() >= 2) y = parse_snap_align(parts[1]);
+                        if (y >= 0) {
+                            style.scroll_snap_align_x = x;
+                            style.scroll_snap_align_y = y;
+                        }
+                    }
+                }
+            }
         } else if (d.property == "placeholder-color") {
             auto c = clever::css::parse_color(val_lower);
             if (c) style.placeholder_color = *c;
@@ -7015,8 +7062,10 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
     layout_node->margin_trim = style.margin_trim;
     layout_node->css_all = style.css_all;
     layout_node->scroll_behavior = style.scroll_behavior;
-    layout_node->scroll_snap_type = style.scroll_snap_type;
-    layout_node->scroll_snap_align = style.scroll_snap_align;
+    layout_node->scroll_snap_type_axis = style.scroll_snap_type_axis;
+    layout_node->scroll_snap_type_strictness = style.scroll_snap_type_strictness;
+    layout_node->scroll_snap_align_x = style.scroll_snap_align_x;
+    layout_node->scroll_snap_align_y = style.scroll_snap_align_y;
     layout_node->scroll_snap_stop = style.scroll_snap_stop;
     layout_node->scroll_margin_top = style.scroll_margin_top;
     layout_node->scroll_margin_right = style.scroll_margin_right;
