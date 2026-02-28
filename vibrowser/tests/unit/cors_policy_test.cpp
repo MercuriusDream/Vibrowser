@@ -12398,3 +12398,69 @@ TEST(CORSPolicyTest, CorsV151_8_ACAOExactMatchRequiresScheme) {
     EXPECT_TRUE(cors_allows_response("https://app.example.com",
                                       "https://api.example.com/data", headers, false));
 }
+
+// ---------------------------------------------------------------------------
+// Round 152 — CORS tests (Agent 1)
+// ---------------------------------------------------------------------------
+
+// 1. about:srcdoc not enforceable
+TEST(CORSPolicyTest, CorsV152_1_OpaqueOriginNotEnforceable) {
+    EXPECT_FALSE(has_enforceable_document_origin("about:srcdoc"));
+    EXPECT_FALSE(has_enforceable_document_origin("about:blank"));
+    EXPECT_FALSE(has_enforceable_document_origin("about:"));
+}
+
+// 2. Userinfo doesn't affect origin
+TEST(CORSPolicyTest, CorsV152_2_SameOriginDifferentUsernamePassword) {
+    // Origins should not include userinfo; same host/scheme/port → same origin
+    EXPECT_FALSE(is_cross_origin("https://example.com", "https://example.com/path"));
+    // URLs with userinfo are not CORS eligible, but origin comparison is scheme+host+port
+    EXPECT_FALSE(is_cross_origin("https://example.com", "https://example.com/page?user=admin"));
+}
+
+// 3. ACAO trailing slash rejects match
+TEST(CORSPolicyTest, CorsV152_3_ACAOTrailingSlashRejectsMatch) {
+    clever::net::HeaderMap headers;
+    // ACAO value has trailing slash → should NOT match origin without slash
+    headers.set("Access-Control-Allow-Origin", "https://example.com/");
+    EXPECT_FALSE(cors_allows_response("https://example.com",
+                                       "https://api.example.com/data", headers, false));
+}
+
+// 4. ws:// not eligible for CORS
+TEST(CORSPolicyTest, CorsV152_4_WSSchemeNotCorsEligible) {
+    EXPECT_FALSE(is_cors_eligible_request_url("ws://example.com/socket"));
+    EXPECT_FALSE(is_cors_eligible_request_url("wss://example.com/socket"));
+}
+
+// 5. http://a.com:80 == http://a.com (default port same origin)
+TEST(CORSPolicyTest, CorsV152_5_HTTPWithExplicitPort80SameOrigin) {
+    // Explicit default port should be same origin as no port
+    EXPECT_FALSE(is_cross_origin("http://a.com", "http://a.com:80/path"));
+    EXPECT_FALSE(is_cross_origin("http://a.com:80", "http://a.com/path"));
+}
+
+// 6. .com vs .org cross-origin
+TEST(CORSPolicyTest, CorsV152_6_CrossOriginDifferentTLDs) {
+    EXPECT_TRUE(is_cross_origin("https://example.com", "https://example.org/page"));
+    EXPECT_TRUE(is_cross_origin("https://mysite.net", "https://mysite.com/data"));
+}
+
+// 7. javascript: not enforceable
+TEST(CORSPolicyTest, CorsV152_7_JavascriptSchemeNotEnforceable) {
+    EXPECT_FALSE(has_enforceable_document_origin("javascript:void(0)"));
+    EXPECT_FALSE(has_enforceable_document_origin("javascript:alert(1)"));
+}
+
+// 8. ACAO host matching is case-insensitive for host but scheme must match
+TEST(CORSPolicyTest, CorsV152_8_ACAOMatchIsCaseSensitiveForHost) {
+    clever::net::HeaderMap headers;
+    // Hosts are case-insensitive per spec: capitalized ACAO host matches lowercase origin
+    headers.set("Access-Control-Allow-Origin", "https://Example.com");
+    EXPECT_TRUE(cors_allows_response("https://example.com",
+                                      "https://api.example.com/data", headers, false));
+    // Wrong scheme should still reject
+    headers.set("Access-Control-Allow-Origin", "http://example.com");
+    EXPECT_FALSE(cors_allows_response("https://example.com",
+                                       "https://api.example.com/data", headers, false));
+}

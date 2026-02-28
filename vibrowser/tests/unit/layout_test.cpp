@@ -27992,3 +27992,194 @@ TEST(LayoutNodeProps, OverflowDefaultVisibleV151) {
     EXPECT_EQ(node->overflow_block, 0);
     EXPECT_EQ(node->overflow_inline, 0);
 }
+
+// V152_1: flex-wrap wrap with overflow — items overflow to next line
+TEST(LayoutEngineTest, LayoutV152_1) {
+    auto root = make_flex("div");
+    root->flex_wrap = 1; // wrap
+    root->specified_width = 300.0f;
+
+    // 4 items each 100px wide — 3 fit on first line, 1 wraps
+    for (int i = 0; i < 4; i++) {
+        auto child = make_block("div");
+        child->specified_width = 100.0f;
+        child->specified_height = 40.0f;
+        child->flex_grow = 0;
+        child->flex_shrink = 0;
+        child->flex_basis = 100.0f;
+        root->append_child(std::move(child));
+    }
+
+    LayoutEngine engine;
+    engine.compute(*root, 300.0f, 400.0f);
+
+    ASSERT_GE(root->children.size(), 4u);
+    // First 3 on line 1 (y=0)
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.y, 0.0f);
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.y, 0.0f);
+    EXPECT_FLOAT_EQ(root->children[2]->geometry.y, 0.0f);
+    // 4th wraps to line 2 at y=40
+    EXPECT_FLOAT_EQ(root->children[3]->geometry.y, 40.0f);
+    // Container height = 2 lines * 40 = 80
+    EXPECT_FLOAT_EQ(root->geometry.height, 80.0f);
+}
+
+// V152_2: grid with auto-flow column
+TEST(GridLayout, GridAutoFlowColumnV152) {
+    auto root = make_grid();
+    root->grid_template_columns = "1fr 1fr";
+    root->grid_auto_flow = 1; // column
+    root->specified_width = 200.0f;
+
+    auto c1 = make_block("div");
+    c1->specified_height = 30.0f;
+    auto c2 = make_block("div");
+    c2->specified_height = 30.0f;
+
+    root->append_child(std::move(c1));
+    root->append_child(std::move(c2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 200.0f, 400.0f);
+
+    ASSERT_GE(root->children.size(), 2u);
+    // Both children should be placed and have width
+    EXPECT_GT(root->children[0]->geometry.width, 0.0f);
+    EXPECT_GT(root->children[1]->geometry.width, 0.0f);
+}
+
+// V152_3: fixed width ignores parent
+TEST(LayoutEngineTest, LayoutV152_3) {
+    auto root = make_block("div");
+    root->specified_width = 800.0f;
+
+    auto child = make_block("div");
+    child->specified_width = 500.0f;
+    child->specified_height = 60.0f;
+
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    ASSERT_GE(root->children.size(), 1u);
+    // Child keeps its specified width regardless of parent
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.width, 500.0f);
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.height, 60.0f);
+}
+
+// V152_4: flex align-items flex-end
+TEST(LayoutEngineTest, LayoutV152_4) {
+    auto root = make_flex("div");
+    root->flex_direction = 0; // row
+    root->align_items = 1; // flex-end
+    root->specified_width = 400.0f;
+    root->specified_height = 150.0f;
+
+    auto c1 = make_block("div");
+    c1->specified_width = 100.0f;
+    c1->specified_height = 50.0f;
+    c1->flex_grow = 0;
+    c1->flex_shrink = 0;
+
+    auto c2 = make_block("div");
+    c2->specified_width = 100.0f;
+    c2->specified_height = 80.0f;
+    c2->flex_grow = 0;
+    c2->flex_shrink = 0;
+
+    root->append_child(std::move(c1));
+    root->append_child(std::move(c2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 400.0f, 400.0f);
+
+    ASSERT_GE(root->children.size(), 2u);
+    // flex-end: child aligned to bottom of cross axis
+    // c1: 150 - 50 = 100
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.y, 100.0f);
+    // c2: 150 - 80 = 70
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.y, 70.0f);
+}
+
+// V152_5: zero width child in flex
+TEST(LayoutEngineTest, LayoutV152_5) {
+    auto root = make_flex("div");
+    root->specified_width = 300.0f;
+
+    auto c1 = make_block("div");
+    c1->specified_width = 0.0f;
+    c1->specified_height = 40.0f;
+    c1->flex_grow = 0;
+    c1->flex_shrink = 0;
+    c1->flex_basis = 0.0f;
+
+    auto c2 = make_block("div");
+    c2->specified_width = 100.0f;
+    c2->specified_height = 40.0f;
+    c2->flex_grow = 0;
+    c2->flex_shrink = 0;
+
+    root->append_child(std::move(c1));
+    root->append_child(std::move(c2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 300.0f, 400.0f);
+
+    ASSERT_GE(root->children.size(), 2u);
+    // Zero-width child should have width 0 or near 0
+    EXPECT_LE(root->children[0]->geometry.width, 1.0f);
+    // Second child still positioned properly
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.height, 40.0f);
+}
+
+// V152_6: max-height clamps height
+TEST(LayoutEngineTest, LayoutV152_6) {
+    auto root = make_block("div");
+    root->specified_height = 400.0f;
+    root->max_height = 150.0f;
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // max-height should clamp height to 150
+    EXPECT_FLOAT_EQ(root->geometry.height, 150.0f);
+}
+
+// V152_7: flex row-reverse order
+TEST(LayoutEngineTest, LayoutV152_7) {
+    auto root = make_flex("div");
+    root->specified_width = 400.0f;
+    root->flex_direction = 1; // row-reverse
+
+    auto c1 = make_block("div");
+    c1->specified_width = 60.0f;
+    c1->specified_height = 30.0f;
+    c1->flex_grow = 0;
+    c1->flex_shrink = 0;
+    c1->flex_basis = 60.0f;
+
+    auto c2 = make_block("div");
+    c2->specified_width = 80.0f;
+    c2->specified_height = 30.0f;
+    c2->flex_grow = 0;
+    c2->flex_shrink = 0;
+    c2->flex_basis = 80.0f;
+
+    root->append_child(std::move(c1));
+    root->append_child(std::move(c2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 400.0f, 400.0f);
+
+    ASSERT_GE(root->children.size(), 2u);
+    // row-reverse: second DOM child should be to the left of first
+    EXPECT_LT(root->children[1]->geometry.x, root->children[0]->geometry.x)
+        << "row-reverse: second child should be left of first";
+}
+
+// V152_8: font_size defaults to 16.0
+TEST(LayoutNodeProps, FontSizeDefaultV152) {
+    auto node = make_block("div");
+    EXPECT_FLOAT_EQ(node->font_size, 16.0f);
+}

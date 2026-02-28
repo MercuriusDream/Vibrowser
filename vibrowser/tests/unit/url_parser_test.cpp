@@ -15078,3 +15078,48 @@ TEST(UrlParserTest, UrlV151_4_PathWithSpacesEncoded) {
     // Path should contain encoded spaces (%20 or %2520 depending on double-encoding)
     EXPECT_NE(result->path.find("%"), std::string::npos);
 }
+
+// =============================================================================
+// V152 URL Parser Tests
+// =============================================================================
+
+TEST(UrlParserTest, UrlV152_1_DoubleSlashPathNormalized) {
+    // Double slashes in path should be parsed (path may preserve or normalize them)
+    auto result = parse("http://example.com//path");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_FALSE(result->path.empty());
+    // Path should start with /
+    EXPECT_EQ(result->path[0], '/');
+}
+
+TEST(UrlParserTest, UrlV152_2_QueryWithAmpersandPreserved) {
+    // Query string with & separating parameters should be stored intact
+    auto result = parse("http://example.com/search?key=a&b=c");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->query, "key=a&b=c");
+}
+
+TEST(UrlParserTest, UrlV152_3_HTTPSPort443Omitted) {
+    // HTTPS with explicit port 443 (the default) should omit it from serialization
+    auto result = parse("https://example.com:443/path");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "example.com");
+    // Serialized form should not include :443
+    std::string serialized = result->serialize();
+    EXPECT_EQ(serialized, "https://example.com/path");
+}
+
+TEST(UrlParserTest, UrlV152_4_UnknownSchemeAccepted) {
+    // A custom/unknown scheme should still be parsed successfully
+    auto result = parse("myapp://dashboard/settings");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "myapp");
+    EXPECT_EQ(result->host, "dashboard");
+    EXPECT_EQ(result->path, "/settings");
+    EXPECT_FALSE(result->is_special());
+}

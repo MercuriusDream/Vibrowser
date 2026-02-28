@@ -1236,3 +1236,34 @@ TEST(IsURLCodePoint, HyphenAndUnderscoreValidV151) {
     EXPECT_TRUE(is_url_code_point(static_cast<char32_t>('-')));
     EXPECT_TRUE(is_url_code_point(static_cast<char32_t>('_')));
 }
+
+// =============================================================================
+// V152 Percent Encoding Tests
+// =============================================================================
+
+TEST(PercentEncoding, QuestionMarkEncodedV152) {
+    // The '?' character must be percent-encoded as %3F
+    EXPECT_EQ(percent_encode("?"), "%3F");
+    EXPECT_EQ(percent_encode("search?query"), "search%3Fquery");
+}
+
+TEST(PercentDecoding, PlusSignNotDecodedV152) {
+    // The '+' sign should NOT be decoded to a space — it stays as '+'
+    EXPECT_EQ(percent_decode("+"), "+");
+    EXPECT_EQ(percent_decode("a+b"), "a+b");
+    EXPECT_EQ(percent_decode("hello+world"), "hello+world");
+}
+
+TEST(PercentEncoding, AmpersandNotEncodedV152) {
+    // The '&' character is not percent-encoded by the default encode set
+    // It passes through unchanged since it is used as a query separator
+    EXPECT_EQ(percent_encode("&"), "&");
+    EXPECT_EQ(percent_encode("a&b"), "a&b");
+    EXPECT_EQ(percent_encode("key=val&foo=bar"), "key=val&foo=bar");
+}
+
+TEST(IsURLCodePoint, PeriodAndExclamationValidV152) {
+    // Period '.' and exclamation mark '!' are valid URL code points
+    EXPECT_TRUE(is_url_code_point(static_cast<char32_t>('.')));
+    EXPECT_TRUE(is_url_code_point(static_cast<char32_t>('!')));
+}

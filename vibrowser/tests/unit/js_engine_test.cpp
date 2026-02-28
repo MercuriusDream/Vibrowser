@@ -36739,3 +36739,112 @@ TEST(JSEngine, JsV151_8) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "Rex barks,true");
 }
+
+// V152_1: Promise.allSettled
+TEST(JSEngine, JsV152_1) {
+    clever::js::JSEngine engine;
+    clever::js::install_fetch_bindings(engine.context());
+    engine.evaluate(R"JS(
+        var out = '';
+        var p1 = Promise.resolve(10);
+        var p2 = Promise.reject('err');
+        Promise.allSettled([p1, p2]).then(function(results) {
+            out = results[0].status + ',' + results[0].value + ',' + results[1].status + ',' + results[1].reason;
+        });
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    clever::js::flush_fetch_promise_jobs(engine.context());
+    auto result = engine.evaluate("out");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "fulfilled,10,rejected,err");
+}
+
+// V152_2: Array.findIndex
+TEST(JSEngine, JsV152_2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var arr = [5, 12, 8, 130, 44];
+        '' + arr.findIndex(function(x) { return x > 10; });
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1");
+}
+
+// V152_3: String.startsWith and endsWith
+TEST(JSEngine, JsV152_3) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var s = 'Hello World';
+        '' + s.startsWith('Hello') + ',' + s.endsWith('World') + ',' + s.startsWith('World') + ',' + s.endsWith('Hello');
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true,true,false,false");
+}
+
+// V152_4: Object.assign merges properties
+TEST(JSEngine, JsV152_4) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var target = { a: 1 };
+        var source = { b: 2, c: 3 };
+        Object.assign(target, source);
+        '' + target.a + ',' + target.b + ',' + target.c;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1,2,3");
+}
+
+// V152_5: Number.parseFloat and parseInt
+TEST(JSEngine, JsV152_5) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var a = Number.parseFloat('3.14');
+        var b = Number.parseInt('42abc');
+        '' + a + ',' + b;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "3.14,42");
+}
+
+// V152_6: spread operator in function calls
+TEST(JSEngine, JsV152_6) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        function sum(a, b, c) { return a + b + c; }
+        var args = [10, 20, 30];
+        '' + sum(...args);
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "60");
+}
+
+// V152_7: computed property names in objects
+TEST(JSEngine, JsV152_7) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var key = 'name';
+        var obj = { [key]: 'Alice', ['a' + 'ge']: 30 };
+        '' + obj.name + ',' + obj.age;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "Alice,30");
+}
+
+// V152_8: WeakMap get/set/has/delete
+TEST(JSEngine, JsV152_8) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var wm = new WeakMap();
+        var obj1 = {};
+        var obj2 = {};
+        wm.set(obj1, 'hello');
+        wm.set(obj2, 'world');
+        var r1 = wm.get(obj1);
+        var r2 = wm.has(obj2);
+        wm.delete(obj2);
+        var r3 = wm.has(obj2);
+        '' + r1 + ',' + r2 + ',' + r3;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "hello,true,false");
+}

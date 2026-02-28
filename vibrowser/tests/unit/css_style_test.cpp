@@ -25825,3 +25825,51 @@ TEST(CSSStyleTest, CssV151_4_MarginAutoAllSides) {
     EXPECT_TRUE(style.margin.bottom.is_auto());
     EXPECT_TRUE(style.margin.left.is_auto());
 }
+
+// ---------------------------------------------------------------------------
+// Cycle V152 — object-fit cover, padding shorthand, isolation, font-weight
+// ---------------------------------------------------------------------------
+
+TEST(PropertyCascadeTest, ObjectFitAppliedV152) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.object_fit, 0);  // default: fill
+    cascade.apply_declaration(style, make_decl("object-fit", "cover"), parent);
+    EXPECT_EQ(style.object_fit, 2);  // cover = 2
+}
+
+TEST(CSSStyleTest, CssV152_2_PaddingShorthandAllSides) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("padding", "15px"), parent);
+    EXPECT_FLOAT_EQ(style.padding.top.to_px(), 15.0f);
+    EXPECT_FLOAT_EQ(style.padding.right.to_px(), 15.0f);
+    EXPECT_FLOAT_EQ(style.padding.bottom.to_px(), 15.0f);
+    EXPECT_FLOAT_EQ(style.padding.left.to_px(), 15.0f);
+}
+
+TEST(PropertyCascadeTest, IsolationAppliedV152) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.isolation, 0);  // default: auto
+    cascade.apply_declaration(style, make_decl("isolation", "isolate"), parent);
+    EXPECT_EQ(style.isolation, 1);  // isolate = 1
+}
+
+TEST(CSSStyleTest, CssV152_4_FontWeightBoldAndNormal) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("font-weight", "bold"), parent);
+    EXPECT_EQ(style.font_weight, 700);
+
+    cascade.apply_declaration(style, make_decl("font-weight", "normal"), parent);
+    EXPECT_EQ(style.font_weight, 400);
+}

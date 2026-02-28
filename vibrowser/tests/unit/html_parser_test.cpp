@@ -24031,3 +24031,124 @@ TEST(HtmlParserTest, HtmlV151_8) {
     EXPECT_EQ(address->tag_name, "address");
     EXPECT_EQ(address->text_content(), "123 Main St");
 }
+
+// ---------------------------------------------------------------------------
+// Cycle V152 — mark, bdi, meter, output, summary, time, data, sub/sup
+// ---------------------------------------------------------------------------
+
+TEST(HtmlParserTest, HtmlV152_1) {
+    // mark element
+    auto doc = clever::html::parse("<html><body><mark>highlighted</mark></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* mark = doc->find_element("mark");
+    ASSERT_NE(mark, nullptr);
+    EXPECT_EQ(mark->tag_name, "mark");
+    EXPECT_EQ(mark->text_content(), "highlighted");
+}
+
+TEST(HtmlParserTest, HtmlV152_2) {
+    // bdi element
+    auto doc = clever::html::parse("<html><body><bdi>bidirectional</bdi></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* bdi = doc->find_element("bdi");
+    ASSERT_NE(bdi, nullptr);
+    EXPECT_EQ(bdi->tag_name, "bdi");
+    EXPECT_EQ(bdi->text_content(), "bidirectional");
+}
+
+TEST(HtmlParserTest, HtmlV152_3) {
+    // meter with value attribute
+    auto doc = clever::html::parse("<html><body><meter value=\"0.7\">70%</meter></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* meter = doc->find_element("meter");
+    ASSERT_NE(meter, nullptr);
+    EXPECT_EQ(meter->tag_name, "meter");
+    EXPECT_EQ(meter->text_content(), "70%");
+    bool found_value = false;
+    for (const auto& attr : meter->attributes) {
+        if (attr.name == "value") {
+            found_value = true;
+            EXPECT_EQ(attr.value, "0.7");
+        }
+    }
+    EXPECT_TRUE(found_value) << "value attribute not found on meter";
+}
+
+TEST(HtmlParserTest, HtmlV152_4) {
+    // output element
+    auto doc = clever::html::parse("<html><body><output>Result</output></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* output = doc->find_element("output");
+    ASSERT_NE(output, nullptr);
+    EXPECT_EQ(output->tag_name, "output");
+    EXPECT_EQ(output->text_content(), "Result");
+}
+
+TEST(HtmlParserTest, HtmlV152_5) {
+    // summary element
+    auto doc = clever::html::parse("<html><body><details><summary>Click me</summary></details></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* summary = doc->find_element("summary");
+    ASSERT_NE(summary, nullptr);
+    EXPECT_EQ(summary->tag_name, "summary");
+    EXPECT_EQ(summary->text_content(), "Click me");
+}
+
+TEST(HtmlParserTest, HtmlV152_6) {
+    // time with datetime attribute
+    auto doc = clever::html::parse("<html><body><time datetime=\"2024-01-15\">January 15</time></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* time_elem = doc->find_element("time");
+    ASSERT_NE(time_elem, nullptr);
+    EXPECT_EQ(time_elem->tag_name, "time");
+    EXPECT_EQ(time_elem->text_content(), "January 15");
+    bool found_datetime = false;
+    for (const auto& attr : time_elem->attributes) {
+        if (attr.name == "datetime") {
+            found_datetime = true;
+            EXPECT_EQ(attr.value, "2024-01-15");
+        }
+    }
+    EXPECT_TRUE(found_datetime) << "datetime attribute not found on time";
+}
+
+TEST(HtmlParserTest, HtmlV152_7) {
+    // data with value attribute
+    auto doc = clever::html::parse("<html><body><data value=\"42\">forty-two</data></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* data = doc->find_element("data");
+    ASSERT_NE(data, nullptr);
+    EXPECT_EQ(data->tag_name, "data");
+    EXPECT_EQ(data->text_content(), "forty-two");
+    bool found_value = false;
+    for (const auto& attr : data->attributes) {
+        if (attr.name == "value") {
+            found_value = true;
+            EXPECT_EQ(attr.value, "42");
+        }
+    }
+    EXPECT_TRUE(found_value) << "value attribute not found on data";
+}
+
+TEST(HtmlParserTest, HtmlV152_8) {
+    // sub and sup together
+    auto doc = clever::html::parse("<html><body><p>H<sub>2</sub>O is x<sup>2</sup></p></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* sub = doc->find_element("sub");
+    ASSERT_NE(sub, nullptr);
+    EXPECT_EQ(sub->tag_name, "sub");
+    EXPECT_EQ(sub->text_content(), "2");
+
+    auto* sup = doc->find_element("sup");
+    ASSERT_NE(sup, nullptr);
+    EXPECT_EQ(sup->tag_name, "sup");
+    EXPECT_EQ(sup->text_content(), "2");
+}

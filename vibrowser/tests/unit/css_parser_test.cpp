@@ -10773,3 +10773,65 @@ TEST_F(CSSStylesheetTest, OverscrollBehaviorContainDeclarationV151) {
     }
     EXPECT_TRUE(found) << "overscroll-behavior declaration not found";
 }
+
+// ---------------------------------------------------------------------------
+// Cycle V152 — inset shorthand, object-fit cover, object-position,
+//              isolation isolate
+// ---------------------------------------------------------------------------
+
+TEST_F(CSSStylesheetTest, InsetShorthandDeclarationV152) {
+    auto ss = parse_stylesheet(".modal { inset: 0; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "inset") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "0");
+        }
+    }
+    EXPECT_TRUE(found) << "inset declaration not found";
+}
+
+TEST_F(CSSStylesheetTest, ObjectFitCoverDeclarationV152) {
+    auto ss = parse_stylesheet("img { object-fit: cover; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "object-fit") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "cover");
+        }
+    }
+    EXPECT_TRUE(found) << "object-fit declaration not found";
+}
+
+TEST_F(CSSStylesheetTest, ObjectPositionDeclarationV152) {
+    auto ss = parse_stylesheet("img { object-position: center top; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "object-position") {
+            found = true;
+            ASSERT_GE(d.values.size(), 2u);
+            EXPECT_EQ(d.values[0].value, "center");
+            EXPECT_EQ(d.values[1].value, "top");
+        }
+    }
+    EXPECT_TRUE(found) << "object-position declaration not found";
+}
+
+TEST_F(CSSStylesheetTest, IsolationIsolateDeclarationV152) {
+    auto ss = parse_stylesheet(".layer { isolation: isolate; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "isolation") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "isolate");
+        }
+    }
+    EXPECT_TRUE(found) << "isolation declaration not found";
+}

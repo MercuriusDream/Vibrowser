@@ -1893,3 +1893,64 @@ TEST(MessagePipeTest, MessagePipeV151_3_SingleByteMessages) {
         EXPECT_EQ((*recv)[0], i);
     }
 }
+
+// ------------------------------------------------------------------
+// Round 152 — MessagePipe tests
+// ------------------------------------------------------------------
+
+TEST(MessagePipeTest, MessagePipeV152_1_SendAfterReceiverCloseStillWorks) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    // Send multiple messages before closing receiver
+    std::vector<uint8_t> msg1 = {1, 2, 3};
+    std::vector<uint8_t> msg2 = {4, 5, 6};
+    std::vector<uint8_t> msg3 = {7, 8, 9};
+    ASSERT_TRUE(a.send(msg1));
+    ASSERT_TRUE(a.send(msg2));
+    ASSERT_TRUE(a.send(msg3));
+
+    // Close the receiver side
+    b.close();
+    EXPECT_FALSE(b.is_open());
+
+    // Receiver cannot receive after close
+    auto recv = b.receive();
+    EXPECT_FALSE(recv.has_value());
+
+    // Sender is still open even though receiver closed
+    EXPECT_TRUE(a.is_open());
+}
+
+TEST(MessagePipeTest, MessagePipeV152_2_RapidSendReceiveCycles) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    for (int i = 0; i < 50; ++i) {
+        std::vector<uint8_t> msg = {static_cast<uint8_t>(i & 0xFF)};
+        ASSERT_TRUE(a.send(msg));
+
+        auto recv = b.receive();
+        ASSERT_TRUE(recv.has_value());
+        ASSERT_EQ(recv->size(), 1u);
+        EXPECT_EQ((*recv)[0], static_cast<uint8_t>(i & 0xFF));
+    }
+}
+
+TEST(MessagePipeTest, MessagePipeV152_3_DifferentSizedMessages) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    std::vector<size_t> sizes = {1, 10, 100, 1000, 10000};
+
+    for (size_t sz : sizes) {
+        std::vector<uint8_t> msg(sz, static_cast<uint8_t>(sz & 0xFF));
+        ASSERT_TRUE(a.send(msg));
+    }
+
+    for (size_t sz : sizes) {
+        auto recv = b.receive();
+        ASSERT_TRUE(recv.has_value());
+        EXPECT_EQ(recv->size(), sz);
+        // Verify first and last byte
+        EXPECT_EQ((*recv)[0], static_cast<uint8_t>(sz & 0xFF));
+        EXPECT_EQ(recv->back(), static_cast<uint8_t>(sz & 0xFF));
+    }
+}

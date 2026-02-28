@@ -2108,3 +2108,70 @@ TEST(MessageChannelTest, MessageChannelV151_2_HandlerReceivesCorrectPayloadSize)
 
     EXPECT_EQ(received_size, 10u);
 }
+
+// ------------------------------------------------------------------
+// Round 152 — MessageChannel tests
+// ------------------------------------------------------------------
+
+TEST(MessageChannelTest, MessageChannelV152_1_DispatchWithEmptyPayload) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel ch(std::move(pa));
+
+    bool handler_called = false;
+    size_t payload_size = 999;
+
+    ch.on(50, [&](const Message& m) {
+        handler_called = true;
+        payload_size = m.payload.size();
+    });
+
+    Message msg;
+    msg.type = 50;
+    msg.request_id = 1;
+    // payload left empty
+    ch.dispatch(msg);
+
+    EXPECT_TRUE(handler_called);
+    EXPECT_EQ(payload_size, 0u);
+}
+
+TEST(MessageChannelTest, MessageChannelV152_2_TwoChannelsIndependent) {
+    // Create two independent channel pairs
+    auto [pa1, pb1] = MessagePipe::create_pair();
+    auto [pa2, pb2] = MessagePipe::create_pair();
+
+    MessageChannel ch1_a(std::move(pa1));
+    MessageChannel ch1_b(std::move(pb1));
+    MessageChannel ch2_a(std::move(pa2));
+    MessageChannel ch2_b(std::move(pb2));
+
+    // Send on channel 1
+    Message msg1;
+    msg1.type = 1;
+    msg1.request_id = 100;
+    msg1.payload = {0xAA};
+    ASSERT_TRUE(ch1_a.send(msg1));
+
+    // Send on channel 2
+    Message msg2;
+    msg2.type = 2;
+    msg2.request_id = 200;
+    msg2.payload = {0xBB};
+    ASSERT_TRUE(ch2_a.send(msg2));
+
+    // Receive on channel 1 — should get msg1
+    auto recv1 = ch1_b.receive();
+    ASSERT_TRUE(recv1.has_value());
+    EXPECT_EQ(recv1->type, 1u);
+    EXPECT_EQ(recv1->request_id, 100u);
+    ASSERT_EQ(recv1->payload.size(), 1u);
+    EXPECT_EQ(recv1->payload[0], 0xAA);
+
+    // Receive on channel 2 — should get msg2
+    auto recv2 = ch2_b.receive();
+    ASSERT_TRUE(recv2.has_value());
+    EXPECT_EQ(recv2->type, 2u);
+    EXPECT_EQ(recv2->request_id, 200u);
+    ASSERT_EQ(recv2->payload.size(), 1u);
+    EXPECT_EQ(recv2->payload[0], 0xBB);
+}

@@ -25897,3 +25897,225 @@ TEST(HttpClient, CookieJarPathPrefixMatchV151) {
     EXPECT_EQ(h4.find("apikey=secret151"), std::string::npos)
         << "/other should NOT match Path=/api, got: " << h4;
 }
+
+// ===========================================================================
+// Round 152 Tests
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// 1. Request — serialize with 3 custom headers all present (lowercase)
+// ---------------------------------------------------------------------------
+TEST(HttpClient, RequestSerializeMultipleCustomHeadersV152) {
+    Request req;
+    req.method = Method::GET;
+    req.host = "headers.v152.test";
+    req.port = 80;
+    req.path = "/api/v1/data";
+    req.headers.set("X-Api-Key", "key152abc");
+    req.headers.set("X-Request-Id", "rid-152-xyz");
+    req.headers.set("Accept-Language", "en-US");
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    // Request line
+    EXPECT_NE(result.find("GET /api/v1/data HTTP/1.1\r\n"), std::string::npos)
+        << "GET request line missing, got: " << result;
+    // Host header — port 80 omitted
+    EXPECT_NE(result.find("Host: headers.v152.test\r\n"), std::string::npos)
+        << "Host header wrong, got: " << result;
+    // Connection: close
+    EXPECT_NE(result.find("Connection: close\r\n"), std::string::npos)
+        << "Connection header missing, got: " << result;
+    // Custom headers stored lowercase
+    EXPECT_NE(result.find("x-api-key: key152abc\r\n"), std::string::npos)
+        << "x-api-key header missing, got: " << result;
+    EXPECT_NE(result.find("x-request-id: rid-152-xyz\r\n"), std::string::npos)
+        << "x-request-id header missing, got: " << result;
+    EXPECT_NE(result.find("accept-language: en-US\r\n"), std::string::npos)
+        << "accept-language header missing, got: " << result;
+}
+
+// ---------------------------------------------------------------------------
+// 2. Response — 301 with Location header for redirect
+// ---------------------------------------------------------------------------
+TEST(HttpClient, ResponseParseLocationHeaderRedirectV152) {
+    std::string raw_str =
+        "HTTP/1.1 301 Moved Permanently\r\n"
+        "Location: https://new.v152.test/redirected\r\n"
+        "Content-Length: 0\r\n"
+        "\r\n";
+    std::vector<uint8_t> raw(raw_str.begin(), raw_str.end());
+    auto resp = Response::parse(raw);
+    ASSERT_TRUE(resp.has_value())
+        << "Failed to parse 301 Moved Permanently response";
+    EXPECT_EQ(resp->status, 301);
+
+    // Location header must be present and correct
+    auto loc = resp->headers.get("Location");
+    ASSERT_TRUE(loc.has_value()) << "Location header not found in 301 response";
+    EXPECT_EQ(loc.value(), "https://new.v152.test/redirected")
+        << "Location header value wrong, got: " << loc.value();
+
+    // Body should be empty for this redirect
+    EXPECT_TRUE(resp->body.empty())
+        << "301 with Content-Length: 0 should have empty body";
+}
+
+// ---------------------------------------------------------------------------
+// 3. ConnectionPool — acquire from empty pool returns -1
+// ---------------------------------------------------------------------------
+TEST(HttpClient, ConnectionPoolEmptyAcquireReturnsNegOneV152) {
+    ConnectionPool pool;
+
+    // Pool has never had any connections released into it
+    int fd = pool.acquire("empty.v152.test", 443);
+    EXPECT_EQ(fd, -1)
+        << "Acquiring from a pool that has never been used should return -1, got: " << fd;
+
+    // Also test a different port
+    int fd2 = pool.acquire("empty.v152.test", 8080);
+    EXPECT_EQ(fd2, -1)
+        << "Acquiring from empty pool (port 8080) should return -1, got: " << fd2;
+
+    // Count should be 0
+    EXPECT_EQ(pool.count("empty.v152.test", 443), 0u);
+    EXPECT_EQ(pool.count("empty.v152.test", 8080), 0u);
+}
+
+// ---------------------------------------------------------------------------
+// 4. CookieJar — second set overwrites first for same name+domain
+// ---------------------------------------------------------------------------
+TEST(HttpClient, CookieJarOverwriteSameNameDomainV152) {
+    CookieJar jar;
+
+    // Set initial cookie
+    jar.set_from_header("token=alpha152; Path=/", "overwrite.v152.test");
+    std::string h1 = jar.get_cookie_header("overwrite.v152.test", "/", false);
+    EXPECT_NE(h1.find("token=alpha152"), std::string::npos)
+        << "Initial cookie should be present, got: " << h1;
+
+    // Overwrite with new value for same name+domain
+    jar.set_from_header("token=beta152; Path=/", "overwrite.v152.test");
+    std::string h2 = jar.get_cookie_header("overwrite.v152.test", "/", false);
+    EXPECT_NE(h2.find("token=beta152"), std::string::npos)
+        << "Overwritten cookie should have new value beta152, got: " << h2;
+    EXPECT_EQ(h2.find("alpha152"), std::string::npos)
+        << "Old cookie value alpha152 should be gone, got: " << h2;
+}
+
+// ---------------------------------------------------------------------------
+// 5. HeaderMap — has() returns true for existing, false for missing
+// ---------------------------------------------------------------------------
+TEST(HttpClient, HeaderMapHasReturnsTrueForExistingV152) {
+    HeaderMap map;
+    map.set("Content-Type", "application/json");
+    map.set("X-Custom-V152", "present");
+
+    // has() should return true for keys that exist (case-insensitive)
+    EXPECT_TRUE(map.has("Content-Type"))
+        << "has() should return true for Content-Type";
+    EXPECT_TRUE(map.has("content-type"))
+        << "has() should return true for content-type (lowercase)";
+    EXPECT_TRUE(map.has("X-Custom-V152"))
+        << "has() should return true for X-Custom-V152";
+    EXPECT_TRUE(map.has("x-custom-v152"))
+        << "has() should return true for x-custom-v152 (lowercase)";
+
+    // has() should return false for keys that don't exist
+    EXPECT_FALSE(map.has("Authorization"))
+        << "has() should return false for nonexistent key Authorization";
+    EXPECT_FALSE(map.has("X-Missing-V152"))
+        << "has() should return false for nonexistent key X-Missing-V152";
+}
+
+// ---------------------------------------------------------------------------
+// 6. Request — non-standard port included in Host header
+// ---------------------------------------------------------------------------
+TEST(HttpClient, RequestSerializeHostPortNonStandardV152) {
+    Request req;
+    req.method = Method::POST;
+    req.host = "api.v152.test";
+    req.port = 9090;
+    req.path = "/submit";
+
+    std::string body_str = "data=v152";
+    req.body.assign(body_str.begin(), body_str.end());
+    req.headers.set("Content-Type", "application/x-www-form-urlencoded");
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    // Request line
+    EXPECT_NE(result.find("POST /submit HTTP/1.1\r\n"), std::string::npos)
+        << "POST request line missing, got: " << result;
+    // Non-standard port 9090 must appear in Host header
+    EXPECT_NE(result.find("Host: api.v152.test:9090\r\n"), std::string::npos)
+        << "Host header should include non-standard port 9090, got: " << result;
+    // Connection: close
+    EXPECT_NE(result.find("Connection: close\r\n"), std::string::npos)
+        << "Connection header missing, got: " << result;
+    // Body present
+    EXPECT_NE(result.find(body_str), std::string::npos)
+        << "Body not found in serialized output, got: " << result;
+}
+
+// ---------------------------------------------------------------------------
+// 7. Response — multiple headers with same name (X-Custom)
+// ---------------------------------------------------------------------------
+TEST(HttpClient, ResponseParseMultipleHeadersSameNameV152) {
+    std::string raw_str =
+        "HTTP/1.1 200 OK\r\n"
+        "X-Custom-V152: first\r\n"
+        "X-Custom-V152: second\r\n"
+        "X-Custom-V152: third\r\n"
+        "Content-Length: 2\r\n"
+        "\r\n"
+        "ok";
+    std::vector<uint8_t> raw(raw_str.begin(), raw_str.end());
+    auto resp = Response::parse(raw);
+    ASSERT_TRUE(resp.has_value())
+        << "Failed to parse response with multiple same-name headers";
+    EXPECT_EQ(resp->status, 200);
+
+    // All 3 values should be retrievable via get_all
+    auto all = resp->headers.get_all("X-Custom-V152");
+    EXPECT_EQ(all.size(), 3u)
+        << "Expected 3 X-Custom-V152 headers, got " << all.size();
+
+    EXPECT_TRUE(std::find(all.begin(), all.end(), "first") != all.end())
+        << "'first' missing from X-Custom-V152 headers";
+    EXPECT_TRUE(std::find(all.begin(), all.end(), "second") != all.end())
+        << "'second' missing from X-Custom-V152 headers";
+    EXPECT_TRUE(std::find(all.begin(), all.end(), "third") != all.end())
+        << "'third' missing from X-Custom-V152 headers";
+}
+
+// ---------------------------------------------------------------------------
+// 8. CookieJar — cookie with no Path matches all paths
+// ---------------------------------------------------------------------------
+TEST(HttpClient, CookieJarEmptyPathMatchesAllV152) {
+    CookieJar jar;
+    // Set cookie without Path attribute — should default to matching all paths
+    jar.set_from_header("session=v152token", "wildpath.v152.test");
+
+    // Root path
+    std::string h1 = jar.get_cookie_header("wildpath.v152.test", "/", false);
+    EXPECT_NE(h1.find("session=v152token"), std::string::npos)
+        << "Cookie without Path should match /, got: " << h1;
+
+    // Sub-path
+    std::string h2 = jar.get_cookie_header("wildpath.v152.test", "/dashboard", false);
+    EXPECT_NE(h2.find("session=v152token"), std::string::npos)
+        << "Cookie without Path should match /dashboard, got: " << h2;
+
+    // Deep nested path
+    std::string h3 = jar.get_cookie_header("wildpath.v152.test", "/api/v2/users", false);
+    EXPECT_NE(h3.find("session=v152token"), std::string::npos)
+        << "Cookie without Path should match /api/v2/users, got: " << h3;
+
+    // Another path
+    std::string h4 = jar.get_cookie_header("wildpath.v152.test", "/settings/profile", false);
+    EXPECT_NE(h4.find("session=v152token"), std::string::npos)
+        << "Cookie without Path should match /settings/profile, got: " << h4;
+}

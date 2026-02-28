@@ -20874,3 +20874,61 @@ TEST(SerializerTest, SerializerV151_3_RepeatedStringsSameValue) {
     }
     EXPECT_FALSE(d.has_remaining());
 }
+
+// ------------------------------------------------------------------
+// Round 152 — Serializer tests
+// ------------------------------------------------------------------
+
+TEST(SerializerTest, SerializerV152_1_U16BoundaryValuesRoundTrip) {
+    Serializer s;
+    s.write_u16(0);
+    s.write_u16(1);
+    s.write_u16(255);
+    s.write_u16(256);
+    s.write_u16(65534);
+    s.write_u16(65535);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u16(), 0);
+    EXPECT_EQ(d.read_u16(), 1);
+    EXPECT_EQ(d.read_u16(), 255);
+    EXPECT_EQ(d.read_u16(), 256);
+    EXPECT_EQ(d.read_u16(), 65534);
+    EXPECT_EQ(d.read_u16(), 65535);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, SerializerV152_2_LongStringRoundTrip) {
+    std::string long_str(10000, 'X');
+    // Make it non-uniform for a better test
+    for (size_t i = 0; i < long_str.size(); ++i) {
+        long_str[i] = static_cast<char>('A' + (i % 26));
+    }
+
+    Serializer s;
+    s.write_string(long_str);
+
+    Deserializer d(s.data());
+    std::string result = d.read_string();
+    EXPECT_EQ(result.size(), 10000u);
+    EXPECT_EQ(result, long_str);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, SerializerV152_3_BytesWithAllPossibleValues) {
+    std::vector<uint8_t> all_bytes(256);
+    for (int i = 0; i < 256; ++i) {
+        all_bytes[i] = static_cast<uint8_t>(i);
+    }
+
+    Serializer s;
+    s.write_bytes(all_bytes.data(), all_bytes.size());
+
+    Deserializer d(s.data());
+    auto result = d.read_bytes();
+    ASSERT_EQ(result.size(), 256u);
+    for (int i = 0; i < 256; ++i) {
+        EXPECT_EQ(result[i], static_cast<uint8_t>(i));
+    }
+    EXPECT_FALSE(d.has_remaining());
+}

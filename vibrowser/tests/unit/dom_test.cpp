@@ -22892,3 +22892,139 @@ TEST(DomElement, ClassListContainsReturnsFalseForAbsentV151) {
     EXPECT_FALSE(elem.class_list().contains("absent"));
     EXPECT_FALSE(elem.class_list().contains("nonexistent"));
 }
+
+// ---------------------------------------------------------------------------
+// Round 152 — DOM tests (Agent 1)
+// ---------------------------------------------------------------------------
+
+// 1. insert_before(child, nullptr) appends at end
+TEST(DomNode, InsertBeforeAtEndAppendsV152) {
+    auto parent = std::make_unique<Element>("ul");
+    auto li1 = std::make_unique<Element>("li");
+    Element* p1 = li1.get();
+    parent->append_child(std::move(li1));
+
+    auto li2 = std::make_unique<Element>("li");
+    Element* p2 = li2.get();
+    parent->insert_before(std::move(li2), nullptr);
+
+    EXPECT_EQ(parent->child_count(), 2u);
+    EXPECT_EQ(parent->first_child(), p1);
+    EXPECT_EQ(parent->last_child(), p2);
+}
+
+// 2. "Data-X" and "data-x" are different attributes
+TEST(DomElement, AttributeNamesAreCaseSensitiveV152) {
+    Element elem("div");
+    elem.set_attribute("Data-X", "upper");
+    elem.set_attribute("data-x", "lower");
+    EXPECT_EQ(elem.attributes().size(), 2u);
+    EXPECT_EQ(elem.get_attribute("Data-X").value(), "upper");
+    EXPECT_EQ(elem.get_attribute("data-x").value(), "lower");
+}
+
+// 3. create_text_node returns text node with correct content
+TEST(DomDocument, CreateTextNodeReturnsTextV152) {
+    Document doc;
+    auto text = doc.create_text_node("Hello, V152!");
+    ASSERT_NE(text, nullptr);
+    EXPECT_EQ(text->node_type(), NodeType::Text);
+    EXPECT_EQ(text->data(), "Hello, V152!");
+}
+
+// 4. Event("click") -> type()=="click"
+TEST(DomEvent, TypeStringMatchesConstructorV152) {
+    Event ev("click");
+    EXPECT_EQ(ev.type(), "click");
+
+    Event ev2("custom-event");
+    EXPECT_EQ(ev2.type(), "custom-event");
+}
+
+// 5. Remove last child, last_child() updated
+TEST(DomNode, RemoveLastChildUpdatesLastChildPointerV152) {
+    auto parent = std::make_unique<Element>("div");
+    auto c1 = std::make_unique<Element>("a");
+    auto c2 = std::make_unique<Element>("b");
+    auto c3 = std::make_unique<Element>("c");
+    Element* p1 = c1.get();
+    Element* p2 = c2.get();
+    Element* p3 = c3.get();
+
+    parent->append_child(std::move(c1));
+    parent->append_child(std::move(c2));
+    parent->append_child(std::move(c3));
+
+    EXPECT_EQ(parent->last_child(), p3);
+    parent->remove_child(*p3);
+    EXPECT_EQ(parent->last_child(), p2);
+    EXPECT_EQ(parent->child_count(), 2u);
+
+    parent->remove_child(*p2);
+    EXPECT_EQ(parent->last_child(), p1);
+    EXPECT_EQ(parent->child_count(), 1u);
+}
+
+// 6. Add 4 classes, length()==4
+TEST(DomElement, ClassListLengthAfterMultipleAddsV152) {
+    Element elem("div");
+    elem.class_list().add("alpha");
+    elem.class_list().add("beta");
+    elem.class_list().add("gamma");
+    elem.class_list().add("delta");
+    EXPECT_EQ(elem.class_list().length(), 4u);
+    EXPECT_TRUE(elem.class_list().contains("alpha"));
+    EXPECT_TRUE(elem.class_list().contains("beta"));
+    EXPECT_TRUE(elem.class_list().contains("gamma"));
+    EXPECT_TRUE(elem.class_list().contains("delta"));
+}
+
+// 7. Attached to doc -> connected, detached -> not
+TEST(DomNode, IsConnectedReturnsTrueWhenInDocumentV152) {
+    auto is_connected = [](const Node& node) {
+        for (const Node* current = &node; current != nullptr; current = current->parent()) {
+            if (current->node_type() == NodeType::Document) {
+                return true;
+            }
+        }
+        return false;
+    };
+
+    Document doc;
+    auto wrapper = std::make_unique<Element>("section");
+    Element* wrapper_ptr = wrapper.get();
+    auto inner = std::make_unique<Element>("p");
+    Element* inner_ptr = inner.get();
+    wrapper->append_child(std::move(inner));
+
+    // Before attaching to document
+    EXPECT_FALSE(is_connected(*wrapper_ptr));
+    EXPECT_FALSE(is_connected(*inner_ptr));
+
+    // Attach to document
+    doc.append_child(std::move(wrapper));
+    EXPECT_TRUE(is_connected(*wrapper_ptr));
+    EXPECT_TRUE(is_connected(*inner_ptr));
+
+    // Detach from document
+    auto removed = doc.remove_child(*wrapper_ptr);
+    EXPECT_NE(removed, nullptr);
+    EXPECT_FALSE(is_connected(*wrapper_ptr));
+    EXPECT_FALSE(is_connected(*inner_ptr));
+}
+
+// 8. Element with text children, inner_text returns concatenation
+TEST(DomElement, InnerTextReturnsDirectTextContentV152) {
+    auto inner_text = [](const Element& element) -> std::string {
+        return element.text_content();
+    };
+
+    Element root("p");
+    root.append_child(std::make_unique<Text>("Hello "));
+    auto span = std::make_unique<Element>("span");
+    span->append_child(std::make_unique<Text>("beautiful "));
+    root.append_child(std::move(span));
+    root.append_child(std::make_unique<Text>("world!"));
+
+    EXPECT_EQ(inner_text(root), "Hello beautiful world!");
+}
