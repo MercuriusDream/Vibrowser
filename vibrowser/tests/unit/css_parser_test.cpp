@@ -9551,3 +9551,39 @@ TEST_F(CSSStylesheetTest, TextIndentV42) {
         if (d.property == "text-indent") { found = true; break; }
     EXPECT_TRUE(found);
 }
+
+TEST_F(CSSStylesheetTest, MaskImageUrlDeclarationV128) {
+    auto ss = parse_stylesheet("div { mask-image: url(mask.png); }");
+    ASSERT_EQ(ss.rules.size(), 1);
+    bool found = false;
+    for (auto& d : ss.rules[0].declarations)
+        if (d.property == "mask-image") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, OffsetPathDeclarationV128) {
+    auto ss = parse_stylesheet("div { offset-path: path('M0 0L100 100'); }");
+    ASSERT_EQ(ss.rules.size(), 1);
+    bool found = false;
+    for (auto& d : ss.rules[0].declarations)
+        if (d.property == "offset-path") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, FontPaletteDeclarationV128) {
+    auto ss = parse_stylesheet("div { font-palette: dark; }");
+    ASSERT_EQ(ss.rules.size(), 1);
+    bool found = false;
+    for (auto& d : ss.rules[0].declarations)
+        if (d.property == "font-palette") { found = true; break; }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, MarginTrimDeclarationV128) {
+    auto ss = parse_stylesheet("div { margin-trim: block; }");
+    ASSERT_EQ(ss.rules.size(), 1);
+    bool found = false;
+    for (auto& d : ss.rules[0].declarations)
+        if (d.property == "margin-trim") { found = true; break; }
+    EXPECT_TRUE(found);
+}

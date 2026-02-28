@@ -758,3 +758,27 @@ TEST(MessagePipeTest, SingleByteRoundTripValue) {
     EXPECT_EQ(recv->size(), 1u);
     EXPECT_EQ(recv->at(0), 0x42u);
 }
+
+TEST(MessagePipeTest, MessagePipeV128_4_SendRawPointerMultiBytePayload) {
+    auto [a, b] = MessagePipe::create_pair();
+    const uint8_t data[8] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08};
+
+    ASSERT_TRUE(a.send(data, 8));
+    auto received = b.receive();
+    ASSERT_TRUE(received.has_value());
+    ASSERT_EQ(received->size(), 8u);
+    for (size_t i = 0; i < 8; ++i) {
+        EXPECT_EQ((*received)[i], data[i]);
+    }
+}
+
+TEST(MessagePipeTest, MessagePipeV128_5_MoveAssignFromClosedPipe) {
+    auto [a, b] = MessagePipe::create_pair();
+    a.close();
+
+    MessagePipe dest(-1);
+    dest = std::move(a);
+
+    EXPECT_FALSE(dest.is_open());
+    EXPECT_EQ(dest.fd(), -1);
+}

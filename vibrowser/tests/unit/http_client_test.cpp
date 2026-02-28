@@ -465,6 +465,26 @@ TEST(ResponseTest, ParseChunkedResponse) {
     EXPECT_EQ(resp->body_as_string(), "Hello, World");
 }
 
+TEST(ResponseTest, ParseChunkedResponseCaseInsensitiveTransferEncoding) {
+    std::string raw =
+        "HTTP/1.1 200 OK\r\n"
+        "Transfer-Encoding: Chunked\r\n"
+        "\r\n"
+        "5\r\n"
+        "Hello\r\n"
+        "6\r\n"
+        " Codex\r\n"
+        "0\r\n"
+        "\r\n";
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 200);
+    EXPECT_EQ(resp->body_as_string(), "Hello Codex");
+}
+
 // ---------------------------------------------------------------------------
 // 9. Response: body_as_string
 // ---------------------------------------------------------------------------
@@ -21846,4 +21866,97 @@ TEST(HttpClient, ResponseParseMultipleHeadersV127) {
     EXPECT_EQ(resp->headers.get("x-powered-by").value(), "Vibrowser");
     EXPECT_EQ(resp->headers.get("cache-control").value(), "no-cache");
     EXPECT_TRUE(resp->headers.has("content-length"));
+}
+
+// ===========================================================================
+// V128 Tests
+// ===========================================================================
+
+TEST(HttpClient, RequestSerializePutWithQueryParamsV128) {
+    Request req;
+    req.method = Method::PUT;
+    req.url = "https://api.example.com/items?id=42&action=update";
+    req.parse_url();
+
+    auto bytes = req.serialize();
+    std::string s(bytes.begin(), bytes.end());
+
+    EXPECT_NE(s.find("PUT /items?id=42&action=update HTTP/1.1"), std::string::npos);
+    EXPECT_NE(s.find("Host: api.example.com"), std::string::npos);
+}
+
+TEST(HttpClient, ResponseParse401UnauthorizedWithWwwAuthenticateV128) {
+    std::string raw =
+        "HTTP/1.1 401 Unauthorized\r\n"
+        "WWW-Authenticate: Bearer realm=\"api\"\r\n"
+        "Content-Length: 0\r\n"
+        "\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 401);
+    EXPECT_EQ(resp->status_text, "Unauthorized");
+    auto auth = resp->headers.get("www-authenticate");
+    ASSERT_TRUE(auth.has_value());
+    EXPECT_NE(auth.value().find("Bearer"), std::string::npos);
+}
+
+TEST(HttpClient, ConnectionPoolAcquireFromEmptyAfterClearReturnsNegOneV128) {
+    ConnectionPool pool;
+    pool.release("host.com", 443, 10);
+    EXPECT_EQ(pool.count("host.com", 443), 1u);
+
+    pool.clear();
+    EXPECT_EQ(pool.count("host.com", 443), 0u);
+    EXPECT_EQ(pool.acquire("host.com", 443), -1);
+}
+
+TEST(HttpClient, CookieJarSecureCookieNotReturnedForInsecureRequestV128) {
+    CookieJar jar;
+    jar.set_from_header("token=abc; Secure", "example.com");
+    // Request over insecure HTTP (is_secure=false) should not return Secure cookie
+    EXPECT_TRUE(jar.get_cookie_header("example.com", "/page", false).empty());
+}
+
+TEST(HttpClient, HeaderMapSizeTracksAppendsAndRemovesV128) {
+    HeaderMap m;
+    m.append("x-a", "1");
+    m.append("x-a", "2");
+    m.append("x-b", "3");
+    m.append("x-c", "4");
+    EXPECT_EQ(m.size(), 4u);
+
+    m.remove("x-a");
+    EXPECT_EQ(m.size(), 2u);
+}
+
+TEST(HttpClient, ParseCacheControlNoStoreAloneV128) {
+    auto cc = parse_cache_control("no-store");
+    EXPECT_TRUE(cc.no_store);
+    EXPECT_FALSE(cc.no_cache);
+    EXPECT_FALSE(cc.must_revalidate);
+    EXPECT_FALSE(cc.is_public);
+    EXPECT_FALSE(cc.is_private);
+    EXPECT_EQ(cc.max_age, -1);
+}
+
+TEST(HttpClient, TlsSocketIsConnectedFalseAfterDefaultConstructionV128) {
+    TlsSocket sock;
+    EXPECT_FALSE(sock.is_connected());
+}
+
+TEST(HttpClient, RequestSerializeOptionsWithOriginHeaderV128) {
+    Request req;
+    req.method = Method::OPTIONS;
+    req.url = "https://api.example.com/resource";
+    req.parse_url();
+    req.headers.set("Origin", "https://app.example.com");
+
+    auto bytes = req.serialize();
+    std::string s(bytes.begin(), bytes.end());
+
+    EXPECT_NE(s.find("OPTIONS /resource HTTP/1.1"), std::string::npos);
+    EXPECT_NE(s.find("Host: api.example.com"), std::string::npos);
+    EXPECT_NE(s.find("origin: https://app.example.com"), std::string::npos);
 }

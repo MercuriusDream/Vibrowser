@@ -13862,3 +13862,26 @@ TEST(UrlParserTest, UrlV127_8_RelativeDotDotBeyondRootClampsToRoot) {
     EXPECT_EQ(resolved->host, "example.com");
     EXPECT_EQ(resolved->path, "/other.html");
 }
+
+TEST(UrlParserTest, UrlV128_1_DomainToAsciiLowercasesHost) {
+    auto result = parse("https://EXAMPLE.COM/path");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->host, "example.com");
+}
+
+TEST(UrlParserTest, UrlV128_2_NonAsciiHostRejectsSpecialScheme) {
+    auto result = parse("https://ex\xC3\xA9mple.com/path");
+    EXPECT_EQ(result, std::nullopt);
+}
+
+TEST(UrlParserTest, UrlV128_3_DataUrlSerializeRoundTrip) {
+    auto result = parse("data:text/plain;base64,SGVsbG8=");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->serialize(), "data:text/plain;base64,SGVsbG8=");
+}
+
+TEST(UrlParserTest, UrlV128_4_BlobUrlSerializePreservesOpaqueContent) {
+    auto result = parse("blob:https://example.com/uuid-here");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->serialize(), "blob:https://example.com/uuid-here");
+}

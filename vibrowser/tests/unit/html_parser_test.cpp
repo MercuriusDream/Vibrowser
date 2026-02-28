@@ -194,6 +194,36 @@ TEST(Tokenizer, ScriptTagStateSwitching) {
     EXPECT_EQ(it->name, "script");
 }
 
+TEST(Tokenizer, ScriptDataMismatchedEndTagPreservesLiteralSequenceV127) {
+    Tokenizer tok("x</notscript>y</script>");
+    tok.set_state(TokenizerState::ScriptData);
+    tok.set_last_start_tag("script");
+
+    std::string text;
+    while (true) {
+        auto t = tok.next_token();
+        if (t.type == Token::Character) text += t.data;
+        if (t.type == Token::EndTag || t.type == Token::EndOfFile) break;
+    }
+
+    EXPECT_EQ(text, "x</notscript>y");
+}
+
+TEST(Tokenizer, RcdataMismatchedEndTagPreservesLiteralSequenceV127) {
+    Tokenizer tok("A</nottitle>B</title>");
+    tok.set_state(TokenizerState::RCDATA);
+    tok.set_last_start_tag("title");
+
+    std::string text;
+    while (true) {
+        auto t = tok.next_token();
+        if (t.type == Token::Character) text += t.data;
+        if (t.type == Token::EndTag || t.type == Token::EndOfFile) break;
+    }
+
+    EXPECT_EQ(text, "A</nottitle>B");
+}
+
 // ============================================================================
 // TreeBuilder Tests
 // ============================================================================
@@ -220,6 +250,17 @@ TEST(TreeBuilder, BasicDocument) {
     auto* p = doc->find_element("p");
     ASSERT_NE(p, nullptr);
     EXPECT_EQ(p->text_content(), "Hello");
+}
+
+TEST(TreeBuilder, AfterHeadHeadTokenReentryMetaStaysInHeadV127) {
+    auto doc = parse("<html><head></head><meta charset='utf-8'><body><p>x</p></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* head = doc->find_element("head");
+    auto* meta = doc->find_element("meta");
+    ASSERT_NE(head, nullptr);
+    ASSERT_NE(meta, nullptr);
+    EXPECT_EQ(meta->parent, head);
 }
 
 // 15. Missing html/head/body -- auto-generated
@@ -12208,13 +12249,68 @@ TEST(HTMLParserTest, TableStructureTrTdV78) {
     auto* tr = doc->find_element("tr");
     ASSERT_NE(tr, nullptr);
     EXPECT_EQ(tr->tag_name, "tr");
-    EXPECT_EQ(tr->parent, table);
+    auto* tbody = doc->find_element("tbody");
+    ASSERT_NE(tbody, nullptr);
+    EXPECT_EQ(tbody->parent, table);
+    EXPECT_EQ(tr->parent, tbody);
 
     auto* td = doc->find_element("td");
     ASSERT_NE(td, nullptr);
     EXPECT_EQ(td->tag_name, "td");
     EXPECT_EQ(td->parent, tr);
     EXPECT_EQ(td->text_content(), "Cell");
+}
+
+TEST(HTMLParserTest, TableImpliedTbodyForDirectTrV126) {
+    auto doc = clever::html::parse("<table><tr><td>A</td></tr></table>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* table = doc->find_element("table");
+    auto* tbody = doc->find_element("tbody");
+    auto* tr = doc->find_element("tr");
+    auto* td = doc->find_element("td");
+    ASSERT_NE(table, nullptr);
+    ASSERT_NE(tbody, nullptr);
+    ASSERT_NE(tr, nullptr);
+    ASSERT_NE(td, nullptr);
+
+    EXPECT_EQ(tbody->parent, table);
+    EXPECT_EQ(tr->parent, tbody);
+    EXPECT_EQ(td->parent, tr);
+    EXPECT_EQ(td->text_content(), "A");
+}
+
+TEST(HTMLParserTest, TableImpliedTbodyAndTrForDirectTdV126) {
+    auto doc = clever::html::parse("<table><td>X</td><td>Y</td></table>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* table = doc->find_element("table");
+    auto* tbody = doc->find_element("tbody");
+    ASSERT_NE(table, nullptr);
+    ASSERT_NE(tbody, nullptr);
+    EXPECT_EQ(tbody->parent, table);
+
+    auto rows = tbody->find_all_elements("tr");
+    ASSERT_EQ(rows.size(), 1u);
+    EXPECT_EQ(rows[0]->parent, tbody);
+
+    auto cells = rows[0]->find_all_elements("td");
+    ASSERT_EQ(cells.size(), 2u);
+    EXPECT_EQ(cells[0]->text_content(), "X");
+    EXPECT_EQ(cells[1]->text_content(), "Y");
+}
+
+TEST(HTMLParserTest, TableCloseFromCellRestoresBodyParsingV126) {
+    auto doc = clever::html::parse("<table><tr><td>x</table><p>after</p>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* p = doc->find_element("p");
+    ASSERT_NE(p, nullptr);
+    EXPECT_EQ(p->text_content(), "after");
+
+    auto* td = doc->find_element("td");
+    ASSERT_NE(td, nullptr);
+    EXPECT_NE(p->parent, td);
 }
 
 TEST(HTMLParserTest, SelectWithOptionsV78) {
@@ -21398,4 +21494,96 @@ TEST(HtmlParserTest, HtmlV127_8) {
     auto* p = doc->find_element("p");
     ASSERT_NE(p, nullptr);
     EXPECT_EQ(p->text_content(), "After script");
+}
+
+TEST(HtmlParserTest, HtmlV128_1) {
+    auto doc = clever::html::parse("<html><body><abbr title=\"World Wide Web\">WWW</abbr></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* abbr = doc->find_element("abbr");
+    ASSERT_NE(abbr, nullptr);
+    EXPECT_EQ(abbr->text_content(), "WWW");
+    EXPECT_EQ(get_attr_v63(abbr, "title"), "World Wide Web");
+}
+
+TEST(HtmlParserTest, HtmlV128_2) {
+    auto doc = clever::html::parse("<html><body><ruby>漢<rt>kan</rt></ruby></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* ruby = doc->find_element("ruby");
+    auto* rt = doc->find_element("rt");
+    ASSERT_NE(ruby, nullptr);
+    ASSERT_NE(rt, nullptr);
+    EXPECT_EQ(rt->text_content(), "kan");
+}
+
+TEST(HtmlParserTest, HtmlV128_3) {
+    auto doc = clever::html::parse("<html><body><picture><source srcset=\"img.webp\" type=\"image/webp\"><img src=\"img.png\"></picture></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* picture = doc->find_element("picture");
+    auto* source = doc->find_element("source");
+    auto* img = doc->find_element("img");
+    ASSERT_NE(picture, nullptr);
+    ASSERT_NE(source, nullptr);
+    ASSERT_NE(img, nullptr);
+}
+
+TEST(HtmlParserTest, HtmlV128_4) {
+    auto doc = clever::html::parse("<html><body><dialog open>Content</dialog></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* dialog = doc->find_element("dialog");
+    ASSERT_NE(dialog, nullptr);
+
+    bool has_open = false;
+    for (const auto& attr : dialog->attributes) {
+        if (attr.name == "open") {
+            has_open = true;
+            break;
+        }
+    }
+    EXPECT_TRUE(has_open);
+}
+
+TEST(HtmlParserTest, HtmlV128_5) {
+    auto doc = clever::html::parse("<html><body><time datetime=\"2024-01-15\">January 15</time></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* time = doc->find_element("time");
+    ASSERT_NE(time, nullptr);
+    EXPECT_EQ(get_attr_v63(time, "datetime"), "2024-01-15");
+    EXPECT_EQ(time->text_content(), "January 15");
+}
+
+TEST(HtmlParserTest, HtmlV128_6) {
+    auto doc = clever::html::parse("<html><body><template><p>Inside</p></template></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* tpl = doc->find_element("template");
+    ASSERT_NE(tpl, nullptr);
+}
+
+TEST(HtmlParserTest, HtmlV128_7) {
+    auto doc = clever::html::parse("<html><body><map><area shape=\"rect\" coords=\"0,0,100,100\" href=\"/link\"></map></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* map = doc->find_element("map");
+    auto* area = doc->find_element("area");
+    ASSERT_NE(map, nullptr);
+    ASSERT_NE(area, nullptr);
+}
+
+TEST(HtmlParserTest, HtmlV128_8) {
+    auto doc = clever::html::parse("<html><body><p>word<wbr>break</p></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* wbr = doc->find_element("wbr");
+    auto* p = doc->find_element("p");
+    ASSERT_NE(wbr, nullptr);
+    ASSERT_NE(p, nullptr);
+
+    const std::string text = p->text_content();
+    EXPECT_NE(text.find("word"), std::string::npos);
+    EXPECT_NE(text.find("break"), std::string::npos);
 }

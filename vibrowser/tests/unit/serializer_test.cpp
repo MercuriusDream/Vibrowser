@@ -19539,3 +19539,58 @@ TEST(SerializerTest, SerializerV127_8_TakeDataThenDeserialize) {
     EXPECT_EQ(d.read_bool(), true);
     EXPECT_FALSE(d.has_remaining());
 }
+
+TEST(SerializerTest, SerializerV128_1_WriteBytesZeroLengthRoundTrip) {
+    Serializer s;
+    const uint8_t non_null = 0xAB;
+    s.write_bytes(&non_null, 0);
+
+    Deserializer d(s.data());
+    auto bytes = d.read_bytes();
+    EXPECT_TRUE(bytes.empty());
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, SerializerV128_2_DeserializerRawPtrMixedTypesRoundTrip) {
+    Serializer s;
+    s.write_u32(42);
+    s.write_string("hello");
+    s.write_bool(true);
+    s.write_f64(3.14);
+
+    const auto& buffer = s.data();
+    Deserializer d(buffer.data(), buffer.size());
+    EXPECT_EQ(d.read_u32(), 42u);
+    EXPECT_EQ(d.read_string(), "hello");
+    EXPECT_TRUE(d.read_bool());
+    EXPECT_DOUBLE_EQ(d.read_f64(), 3.14);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, SerializerV128_3_MultipleConsecutiveStringsWithNulBytes) {
+    Serializer s;
+    const std::string first("ab\0cd", 5);
+    const std::string second("ef\0gh", 5);
+    s.write_string(first);
+    s.write_string(second);
+
+    Deserializer d(s.data());
+    const std::string out_first = d.read_string();
+    const std::string out_second = d.read_string();
+
+    ASSERT_EQ(out_first.size(), 5u);
+    EXPECT_EQ(out_first[0], 'a');
+    EXPECT_EQ(out_first[1], 'b');
+    EXPECT_EQ(out_first[2], '\0');
+    EXPECT_EQ(out_first[3], 'c');
+    EXPECT_EQ(out_first[4], 'd');
+
+    ASSERT_EQ(out_second.size(), 5u);
+    EXPECT_EQ(out_second[0], 'e');
+    EXPECT_EQ(out_second[1], 'f');
+    EXPECT_EQ(out_second[2], '\0');
+    EXPECT_EQ(out_second[3], 'g');
+    EXPECT_EQ(out_second[4], 'h');
+
+    EXPECT_FALSE(d.has_remaining());
+}

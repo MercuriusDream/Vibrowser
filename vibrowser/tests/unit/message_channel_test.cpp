@@ -509,3 +509,51 @@ TEST(MessageChannelTest, IsOpenRemainsAfterSend) {
 
     EXPECT_TRUE(sender.is_open());
 }
+
+TEST(MessageChannelTest, MessageChannelV128_6_FullDuplexBothDirections) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel sender(std::move(pa));
+    MessageChannel receiver(std::move(pb));
+
+    Message from_sender;
+    from_sender.type = 1;
+    ASSERT_TRUE(sender.send(from_sender));
+
+    Message from_receiver;
+    from_receiver.type = 2;
+    ASSERT_TRUE(receiver.send(from_receiver));
+
+    auto recv_on_receiver = receiver.receive();
+    ASSERT_TRUE(recv_on_receiver.has_value());
+    EXPECT_EQ(recv_on_receiver->type, 1u);
+
+    auto recv_on_sender = sender.receive();
+    ASSERT_TRUE(recv_on_sender.has_value());
+    EXPECT_EQ(recv_on_sender->type, 2u);
+}
+
+TEST(MessageChannelTest, MessageChannelV128_7_ReceiveAfterOwnCloseReturnsNullopt) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel ch(std::move(pa));
+    ch.close();
+
+    auto result = ch.receive();
+    EXPECT_FALSE(result.has_value());
+}
+
+TEST(MessageChannelTest, MessageChannelV128_8_DispatchOnlyMatchingTypeHandlerFires) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel ch(std::move(pa));
+
+    bool fired10 = false;
+    bool fired20 = false;
+    ch.on(10, [&](const Message&) { fired10 = true; });
+    ch.on(20, [&](const Message&) { fired20 = true; });
+
+    Message msg;
+    msg.type = 10;
+    ch.dispatch(msg);
+
+    EXPECT_TRUE(fired10);
+    EXPECT_FALSE(fired20);
+}

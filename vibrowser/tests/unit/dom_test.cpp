@@ -3045,7 +3045,7 @@ TEST(DomNode, ForEachChildVisitsAllChildren) {
     parent.append_child(std::make_unique<Element>("span"));
     parent.append_child(std::make_unique<Element>("p"));
     parent.append_child(std::make_unique<Element>("a"));
-    parent.for_each_child([&](const Node& child) { ++count; });
+    parent.for_each_child([&](const Node& /*child*/) { ++count; });
     EXPECT_EQ(count, 3);
 }
 
@@ -9105,7 +9105,7 @@ TEST(DomNode, ForEachChildIterationV58) {
     parent->append_child(std::move(text2));
 
     int iteration_count = 0;
-    parent->for_each_child([&iteration_count](Node& child) {
+    parent->for_each_child([&iteration_count](Node& /*child*/) {
         iteration_count++;
     });
 
@@ -18802,7 +18802,6 @@ TEST(DomNode, TextContentFourLevelDeepTreeV123) {
     auto* l3_raw = level3.get();
     level2->append_child(std::move(level3));
     l3_raw->append_child(std::make_unique<Text>("leaf"));
-    auto* l2_raw = level2.get();
     level1->append_child(std::move(level2));
     level1->append_child(std::make_unique<Text>(" top-sibling"));
     root.append_child(std::make_unique<Text>("root-start "));
@@ -19683,4 +19682,103 @@ TEST(DomElement, ElementV127_8) {
     EXPECT_EQ(elem.id(), "sidebar");
     EXPECT_EQ(elem.attributes().size(), 1u);
     EXPECT_EQ(elem.attributes()[0].value, "sidebar");
+}
+
+TEST(DomEvent, PreventDefaultNoOpWhenNotCancelableV128) {
+    Event event("focus", false, false);
+    event.prevent_default();
+    EXPECT_FALSE(event.default_prevented());
+}
+
+TEST(DomNode, InsertBeforeOnEmptyParentWithNullRefAppendsV128) {
+    Element parent("div");
+    auto child = std::make_unique<Element>("span");
+    auto* child_ptr = child.get();
+
+    parent.insert_before(std::move(child), nullptr);
+
+    EXPECT_EQ(parent.first_child(), child_ptr);
+    EXPECT_EQ(parent.last_child(), child_ptr);
+    EXPECT_EQ(parent.child_count(), 1u);
+}
+
+TEST(DomDocument, RegisterIdOverwritesPreviousMappingV128) {
+    Document doc;
+    auto elem1 = std::make_unique<Element>("div");
+    auto elem2 = std::make_unique<Element>("span");
+    auto* elem1_ptr = elem1.get();
+    auto* elem2_ptr = elem2.get();
+
+    doc.append_child(std::move(elem1));
+    doc.append_child(std::move(elem2));
+
+    doc.register_id("same-id", elem1_ptr);
+    doc.register_id("same-id", elem2_ptr);
+
+    EXPECT_EQ(doc.get_element_by_id("same-id"), elem2_ptr);
+}
+
+TEST(DomElement, ClassListRemoveNonexistentClassIsNoOpV128) {
+    Element elem("div");
+
+    elem.class_list().remove("ghost");
+
+    EXPECT_EQ(elem.class_list().length(), 0u);
+    EXPECT_FALSE(elem.class_list().contains("ghost"));
+}
+
+TEST(DomNode, RemoveLastChildUpdatesLastChildPointerV128) {
+    Element parent("ul");
+    auto a = std::make_unique<Element>("li");
+    auto b = std::make_unique<Element>("li");
+    auto c = std::make_unique<Element>("li");
+    auto* a_ptr = a.get();
+    auto* b_ptr = b.get();
+    auto* c_ptr = c.get();
+
+    parent.append_child(std::move(a));
+    parent.append_child(std::move(b));
+    parent.append_child(std::move(c));
+
+    parent.remove_child(*c_ptr);
+
+    EXPECT_EQ(parent.last_child(), b_ptr);
+    EXPECT_EQ(b_ptr->next_sibling(), nullptr);
+    EXPECT_EQ(parent.child_count(), 2u);
+    EXPECT_EQ(parent.first_child(), a_ptr);
+}
+
+TEST(DomNode, MarkDirtySameFlagTwiceIsIdempotentV128) {
+    Element elem("div");
+
+    elem.mark_dirty(DirtyFlags::Style);
+    elem.mark_dirty(DirtyFlags::Style);
+
+    EXPECT_NE(elem.dirty_flags() & DirtyFlags::Style, DirtyFlags::None);
+
+    elem.clear_dirty();
+    EXPECT_EQ(elem.dirty_flags(), DirtyFlags::None);
+}
+
+TEST(DomElement, TextContentWithCommentChildExcludesCommentDataV128) {
+    Element elem("p");
+    auto text = std::make_unique<Text>("Hello");
+    auto comment = std::make_unique<Comment>("ignored");
+    auto* text_ptr = text.get();
+    auto* comment_ptr = comment.get();
+
+    elem.append_child(std::move(text));
+    elem.append_child(std::move(comment));
+
+    EXPECT_EQ(elem.text_content(), "Hello");
+    EXPECT_EQ(text_ptr->data(), "Hello");
+    EXPECT_EQ(comment_ptr->data(), "ignored");
+}
+
+TEST(DomEvent, StopImmediatePropagationAlsoStopsPropagationV128) {
+    Event event("click", true, true);
+    event.stop_immediate_propagation();
+
+    EXPECT_TRUE(event.immediate_propagation_stopped());
+    EXPECT_TRUE(event.propagation_stopped());
 }

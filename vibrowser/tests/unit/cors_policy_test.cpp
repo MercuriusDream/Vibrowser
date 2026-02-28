@@ -10262,3 +10262,58 @@ TEST(CORSPolicyTest, CorsV127_8_CorsAllowsResponseMissingACAOHeader) {
                                        "https://api.example.com/data",
                                        h2, true));
 }
+
+// ---------------------------------------------------------------------------
+// V128 — CORS policy additional tests
+// ---------------------------------------------------------------------------
+
+TEST(CORSPolicyTest, CorsV128_1_PercentEncodedBackslashInPathRejectsEligibility) {
+    EXPECT_FALSE(is_cors_eligible_request_url("https://api.example.com/data%5Cpath"));
+}
+
+TEST(CORSPolicyTest, CorsV128_2_TruncatedPercentSequenceAtUrlEndRejectsEligibility) {
+    EXPECT_FALSE(is_cors_eligible_request_url("https://api.example.com/data%2"));
+}
+
+TEST(CORSPolicyTest, CorsV128_3_PercentEncodedSpaceInPathRejectsEligibility) {
+    EXPECT_FALSE(is_cors_eligible_request_url("https://api.example.com/data%20path"));
+    EXPECT_FALSE(is_cors_eligible_request_url("https://api.example.com/data%7Fpath"));
+    EXPECT_FALSE(is_cors_eligible_request_url("https://api.example.com/data%01path"));
+}
+
+TEST(CORSPolicyTest, CorsV128_4_CorsAllowsResponseACAOWithNonDefaultPortMismatch) {
+    clever::net::HeaderMap h;
+    h.set("Access-Control-Allow-Origin", "https://app.example.com:9001");
+    EXPECT_FALSE(cors_allows_response("https://app.example.com:9000",
+                                      "https://api.example.com/data",
+                                      h, false));
+
+    clever::net::HeaderMap h2;
+    h2.set("Access-Control-Allow-Origin", "https://app.example.com:9000");
+    EXPECT_TRUE(cors_allows_response("https://app.example.com:9000",
+                                     "https://api.example.com/data",
+                                     h2, false));
+}
+
+TEST(CORSPolicyTest, CorsV128_5_EnforceabilityRejectsOriginWithUserinfoAtSign) {
+    EXPECT_FALSE(has_enforceable_document_origin("https://user@example.com"));
+}
+
+TEST(CORSPolicyTest, CorsV128_6_PercentEncodedAuthorityRejectsEligibility) {
+    EXPECT_FALSE(is_cors_eligible_request_url("https://exam%70le.com/data"));
+}
+
+TEST(CORSPolicyTest,
+     CorsV128_7_CorsAllowsResponseDoubleColonInNonIPv6AuthorityRejectsEligibility) {
+    EXPECT_FALSE(is_cors_eligible_request_url("https://host:80:90/data"));
+}
+
+TEST(CORSPolicyTest, CorsV128_8_CorsAllowsResponseACAOWithInvalidHighBitOctetRejects) {
+    clever::net::HeaderMap h;
+    std::string bad = "https://app.example.com";
+    bad += '\x80';
+    h.set("Access-Control-Allow-Origin", bad);
+    EXPECT_FALSE(cors_allows_response("https://app.example.com",
+                                      "https://api.example.com/data",
+                                      h, false));
+}

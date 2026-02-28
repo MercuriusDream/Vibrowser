@@ -454,6 +454,32 @@ TEST(LayoutEngineTest, FlexColumnDirection) {
     EXPECT_FLOAT_EQ(root->children[1]->geometry.x, 0.0f);
 }
 
+TEST(LayoutEngineTest, FlexColumnAutoHeightDoesNotDistributeByWidthV127) {
+    auto root = make_flex("div");
+    root->flex_direction = 2; // column
+    // No specified_height: main axis is indefinite.
+
+    auto child1 = make_block("div");
+    child1->specified_height = 40.0f;
+    child1->flex_grow = 1.0f;
+
+    auto child2 = make_block("div");
+    child2->specified_height = 20.0f;
+    child2->flex_grow = 1.0f;
+
+    root->append_child(std::move(child1));
+    root->append_child(std::move(child2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.height, 40.0f);
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.height, 20.0f);
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.y, 0.0f);
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.y, 40.0f);
+    EXPECT_FLOAT_EQ(root->geometry.height, 60.0f);
+}
+
 // 20. Flex container: gap between items
 TEST(LayoutEngineTest, FlexGapBetweenItems) {
     auto root = make_flex("div");
@@ -2091,6 +2117,82 @@ TEST(TableLayout, BorderCollapseZeroSpacing) {
     auto* r_col = table_collapse->children[0].get();
     EXPECT_FLOAT_EQ(r_col->children[1]->geometry.x, 100.0f)
         << "With border-collapse, second cell x = 100 (no spacing)";
+}
+
+// Test 4: Column count must consider all rows, not only the first row.
+TEST(TableLayout, AutoLayoutColumnCountUsesAllRows) {
+    auto table = make_table();
+    table->table_layout = 0; // auto
+    table->specified_width = 300.0f;
+
+    // First row has one cell.
+    auto row1 = make_table_row();
+    auto r1c1 = make_table_cell();
+    r1c1->specified_width = 100.0f;
+    row1->append_child(std::move(r1c1));
+
+    // Second row has three cells.
+    auto row2 = make_table_row();
+    for (int i = 0; i < 3; i++) {
+        auto cell = make_table_cell();
+        cell->specified_width = 100.0f;
+        row2->append_child(std::move(cell));
+    }
+
+    table->append_child(std::move(row1));
+    table->append_child(std::move(row2));
+
+    LayoutEngine engine;
+    engine.compute(*table, 300.0f, 400.0f);
+
+    ASSERT_EQ(table->children.size(), 2u);
+    auto* r2 = table->children[1].get();
+    ASSERT_EQ(r2->children.size(), 3u);
+    EXPECT_GT(r2->children[1]->geometry.width, 0.0f)
+        << "Second column should not collapse to zero width";
+    EXPECT_GT(r2->children[2]->geometry.width, 0.0f)
+        << "Third column should not collapse to zero width";
+    EXPECT_GT(r2->children[2]->geometry.x, r2->children[1]->geometry.x)
+        << "Columns should lay out left-to-right";
+}
+
+// Test 5: Auto layout should honor intrinsic width of wide content.
+TEST(TableLayout, AutoLayoutUsesIntrinsicCellWidths) {
+    auto table = make_table();
+    table->table_layout = 0; // auto
+    table->specified_width = 800.0f;
+
+    auto row = make_table_row();
+    auto left = make_table_cell();
+    auto middle = make_table_cell();
+    auto right = make_table_cell();
+
+    // Middle cell contains wide intrinsic content.
+    auto wide = std::make_unique<LayoutNode>();
+    wide->tag_name = "input";
+    wide->mode = LayoutMode::InlineBlock;
+    wide->display = DisplayType::InlineBlock;
+    wide->specified_width = 496.0f;
+    wide->specified_height = 24.0f;
+    middle->append_child(std::move(wide));
+
+    row->append_child(std::move(left));
+    row->append_child(std::move(middle));
+    row->append_child(std::move(right));
+    table->append_child(std::move(row));
+
+    LayoutEngine engine;
+    engine.compute(*table, 800.0f, 400.0f);
+
+    auto* laid_row = table->children[0].get();
+    ASSERT_EQ(laid_row->children.size(), 3u);
+    float w_left = laid_row->children[0]->geometry.width;
+    float w_mid = laid_row->children[1]->geometry.width;
+    float w_right = laid_row->children[2]->geometry.width;
+    EXPECT_GT(w_mid, w_left);
+    EXPECT_GT(w_mid, w_right);
+    EXPECT_GT(w_mid, 400.0f)
+        << "Wide middle content should drive a wider middle column";
 }
 
 // ============================================================================
@@ -11677,7 +11779,7 @@ TEST(LayoutEngineTest, DisplayModesInlineBlockAndNoneBehaviorV63) {
     inline_block_child->specified_height = 30.0f;
 
     auto inline_child = make_inline("span");
-    inline_child->append_child(std::move(make_text("abc", 16.0f)));
+    inline_child->append_child(make_text("abc", 16.0f));
 
     root->append_child(std::move(block_child));
     root->append_child(std::move(hidden_child));
@@ -15752,13 +15854,12 @@ TEST(LayoutTest, FlexColumnWithGrowV86) {
     LayoutEngine engine;
     engine.compute(*root, 800.0f, 600.0f);
 
-    // Engine distributes remaining column space by flex_grow ratio 1:3
-    // Actual: c1=125, c2=175 => total grow distributed = 25+75=100
-    // c1 = 100 + 25 = 125, c2 = 100 + 75 = 175
-    EXPECT_FLOAT_EQ(p1->geometry.height, 125.0f);
-    EXPECT_FLOAT_EQ(p2->geometry.height, 175.0f);
+    // Remaining main-axis space = 500 - (100 + 100) = 300.
+    // Grow ratio 1:3 -> +75 and +225.
+    EXPECT_FLOAT_EQ(p1->geometry.height, 175.0f);
+    EXPECT_FLOAT_EQ(p2->geometry.height, 325.0f);
     // c2 starts after c1
-    EXPECT_FLOAT_EQ(p2->geometry.y, 125.0f);
+    EXPECT_FLOAT_EQ(p2->geometry.y, 175.0f);
 }
 
 // Test V86_004: nested blocks with border and padding subtract from child width
@@ -15997,11 +16098,11 @@ TEST(LayoutTest, FlexColumnGrowDistributesHeightV87) {
     LayoutEngine engine;
     engine.compute(*root, 800.0f, 600.0f);
 
-    // Total grow = 4, distributed space = 300
-    EXPECT_FLOAT_EQ(p1->geometry.height, 75.0f);  // 300 * 1/4
-    EXPECT_FLOAT_EQ(p2->geometry.height, 225.0f); // 300 * 3/4
+    // Total grow = 4, distributed space = 400
+    EXPECT_FLOAT_EQ(p1->geometry.height, 100.0f);  // 400 * 1/4
+    EXPECT_FLOAT_EQ(p2->geometry.height, 300.0f);  // 400 * 3/4
     EXPECT_FLOAT_EQ(p1->geometry.y, 0.0f);
-    EXPECT_FLOAT_EQ(p2->geometry.y, 75.0f);
+    EXPECT_FLOAT_EQ(p2->geometry.y, 100.0f);
 }
 
 // Test V87_004: border on all sides reduces child content width and offsets geometry
@@ -21989,9 +22090,9 @@ TEST(LayoutEngineTest, FlexColumnGrowDistributesVerticallyV118) {
     LayoutEngine engine;
     engine.compute(*root, 800.0f, 600.0f);
 
-    // c1 gets 1/4 of available space, c2 gets 3/4
-    EXPECT_NEAR(p1->geometry.height, 50.0f, 2.0f);
-    EXPECT_NEAR(p2->geometry.height, 150.0f, 2.0f);
+    // c1 gets 1/4 of 400, c2 gets 3/4 of 400
+    EXPECT_NEAR(p1->geometry.height, 100.0f, 2.0f);
+    EXPECT_NEAR(p2->geometry.height, 300.0f, 2.0f);
 }
 
 // V118-6: Multiple block children with margins stack correctly
@@ -22002,7 +22103,6 @@ TEST(LayoutEngineTest, BlockChildrenWithMarginsStackV118) {
     auto c1 = make_block("div");
     c1->specified_height = 80.0f;
     c1->geometry.margin.bottom = 10.0f;
-    auto* p1 = c1.get();
     root->append_child(std::move(c1));
 
     auto c2 = make_block("div");
@@ -24323,4 +24423,118 @@ TEST(LayoutEngineTest, LayoutV127_8) {
     // Root height should be sum of all children
     EXPECT_NEAR(root->geometry.height, 200.0f, 1.0f)
         << "Root height = 30 + 70 + 45 + 55 = 200";
+}
+
+TEST(LayoutEngineTest, LayoutV128_1) {
+    auto root = make_flex("div");
+    root->specified_width = 400.0f;
+    root->flex_direction = 0; // row
+    root->justify_content = 4; // space-around
+
+    auto c1 = make_block("div");
+    c1->specified_width = 100.0f;
+    c1->specified_height = 50.0f;
+    c1->flex_grow = 0.0f;
+    c1->flex_shrink = 0.0f;
+    auto* p1 = c1.get();
+
+    auto c2 = make_block("div");
+    c2->specified_width = 100.0f;
+    c2->specified_height = 50.0f;
+    c2->flex_grow = 0.0f;
+    c2->flex_shrink = 0.0f;
+    auto* p2 = c2.get();
+
+    root->append_child(std::move(c1));
+    root->append_child(std::move(c2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 400.0f, 600.0f);
+
+    const float left_edge_space = p1->geometry.x;
+    const float right_edge_space = 400.0f - (p2->geometry.x + p2->geometry.width);
+
+    EXPECT_NEAR(p1->geometry.x, 50.0f, 2.0f);
+    EXPECT_NEAR(p2->geometry.x, 250.0f, 2.0f);
+    EXPECT_GT(left_edge_space, 0.0f);
+    EXPECT_GT(right_edge_space, 0.0f);
+    EXPECT_NEAR(left_edge_space, right_edge_space, 2.0f);
+}
+
+TEST(LayoutEngineTest, LayoutV128_2) {
+    auto root = make_block("div");
+    root->border_box = true;
+    root->specified_width = 300.0f;
+    root->geometry.border.top = 10.0f;
+    root->geometry.border.right = 10.0f;
+    root->geometry.border.bottom = 10.0f;
+    root->geometry.border.left = 10.0f;
+
+    LayoutEngine engine;
+    engine.compute(*root, 500.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(root->geometry.width, 300.0f);
+}
+
+TEST(LayoutEngineTest, LayoutV128_3) {
+    auto root = make_block("div");
+    root->specified_width = 400.0f;
+
+    auto child = make_block("div");
+    child->specified_height = 50.0f;
+    child->min_height = 100.0f;
+    auto* p = child.get();
+
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 400.0f, 600.0f);
+
+    EXPECT_GE(p->geometry.height, 100.0f);
+}
+
+TEST(LayoutEngineTest, LayoutV128_4) {
+    auto root = make_flex("div");
+    root->specified_width = 300.0f;
+    root->specified_height = 300.0f;
+    root->flex_direction = 2; // column
+
+    auto c1 = make_block("div");
+    c1->flex_grow = 2.0f;
+    c1->flex_shrink = 0.0f;
+    auto* p1 = c1.get();
+
+    auto c2 = make_block("div");
+    c2->flex_grow = 1.0f;
+    c2->flex_shrink = 0.0f;
+    auto* p2 = c2.get();
+
+    root->append_child(std::move(c1));
+    root->append_child(std::move(c2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 300.0f, 600.0f);
+
+    EXPECT_NEAR(p1->geometry.height, 200.0f, 3.0f);
+    EXPECT_NEAR(p2->geometry.height, 100.0f, 3.0f);
+}
+
+TEST(LayoutNodeProps, CanvasBufferDefaultNullV128) {
+    auto n = make_block();
+    EXPECT_EQ(n->canvas_buffer, nullptr);
+}
+
+TEST(LayoutNodeProps, OverflowIndicatorBottomDefaultFalseV128) {
+    auto n = make_block();
+    EXPECT_FALSE(n->overflow_indicator_bottom);
+}
+
+TEST(LayoutNodeProps, PlaceholderColorDefaultGrayV128) {
+    auto n = make_block();
+    EXPECT_EQ(n->placeholder_color, 0xFF757575u);
+}
+
+TEST(LayoutNodeProps, SvgStrokeDashoffsetDefault0V128) {
+    auto n = make_block();
+    EXPECT_FLOAT_EQ(n->svg_stroke_dashoffset, 0.0f);
 }

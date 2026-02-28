@@ -18793,7 +18793,7 @@ TEST(JSEngine, LogicalAssignmentAndCycle1227) {
 
 TEST(JSEngine, LogicalAssignmentNullishCycle1227) {
     clever::js::JSEngine engine;
-    auto result = engine.evaluate("var a = undefined; a ??= 7; a.toString()");
+    auto result = engine.evaluate("var a = undefined; a ?""?= 7; a.toString()");
     EXPECT_EQ(result, "7");
 }
 
@@ -34328,3 +34328,127 @@ TEST(JSEngine, JsV127_8) {
     EXPECT_EQ(result, "10|20|30,40,50|BA|Lee|30|Seoul|1|2,3|bar");
 }
 
+TEST(JSEngine, JsV128_1) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        let obj = { name: "test" };
+        const wr = new WeakRef(obj);
+        const d = wr.deref();
+        d !== undefined && d.name === "test" ? "pass" : "fail";
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "pass");
+}
+
+TEST(JSEngine, JsV128_2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        const r = [];
+        r.push("aabbcc".replaceAll("b", "X"));
+        r.push("hello world hello".replaceAll("hello", "hi"));
+        r.push("no-match".replaceAll("xyz", "Q"));
+        r.join("|");
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "aaXXcc|hi world hi|no-match");
+}
+
+TEST(JSEngine, JsV128_3) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        const arr = [10, 20, 30, 40, 50];
+        const r = [];
+        r.push(arr.at(0));
+        r.push(arr.at(2));
+        r.push(arr.at(-1));
+        r.push(arr.at(-2));
+        r.push(String(arr.at(99)));
+        r.join("|");
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "10|30|50|40|undefined");
+}
+
+TEST(JSEngine, JsV128_4) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        const r = [];
+        const obj = { a: 1, b: 2 };
+        r.push(Object.hasOwn(obj, "a"));
+        r.push(Object.hasOwn(obj, "c"));
+        r.push(Object.hasOwn(obj, "toString"));
+        const nullProto = Object.create(null);
+        nullProto.x = 42;
+        r.push(Object.hasOwn(nullProto, "x"));
+        r.join("|");
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true|false|false|true");
+}
+
+TEST(JSEngine, JsV128_5) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        const d = new Date(2024, 0, 15, 12, 30, 45);
+        const iso = d.toISOString();
+        const parsed = Date.parse(iso);
+        const r = [];
+        r.push(iso.endsWith("Z"));
+        r.push(iso.includes("2024"));
+        r.push(typeof parsed === "number");
+        r.push(!isNaN(parsed));
+        r.join("|");
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true|true|true|true");
+}
+
+TEST(JSEngine, JsV128_6) {
+    // Promise.allSettled: verify it exists and returns an array-like
+    // (microtask draining is async so test construction, not resolution)
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        const r = [];
+        r.push(typeof Promise.allSettled === "function");
+        const p = Promise.allSettled([Promise.resolve(1), Promise.reject(2)]);
+        r.push(typeof p.then === "function");
+        // Also test Promise.any exists
+        r.push(typeof Promise.any === "function");
+        // Test Promise.race exists
+        r.push(typeof Promise.race === "function");
+        r.join("|");
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true|true|true|true");
+}
+
+TEST(JSEngine, JsV128_7) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        const str = "cat bat sat";
+        const matches = [...str.matchAll(/[a-z]at/g)];
+        const r = [];
+        r.push(matches.length);
+        for (const m of matches) r.push(m[0] + "@" + m.index);
+        r.join("|");
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "3|cat@0|bat@4|sat@8");
+}
+
+TEST(JSEngine, JsV128_8) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        const r = [];
+        const m = new Map();
+        m.set("a", 1); m.set("b", 2); m.set("c", 3);
+        for (const [k, v] of m) r.push(k + "=" + v);
+        const s = new Set([10, 20, 10, 30]);
+        const setVals = [];
+        for (const v of s) setVals.push(v);
+        r.push("set:" + setVals.join(","));
+        r.join("|");
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "a=1|b=2|c=3|set:10,20,30");
+}

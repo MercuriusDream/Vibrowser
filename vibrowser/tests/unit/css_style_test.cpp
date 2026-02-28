@@ -24825,3 +24825,57 @@ TEST(CSSStyleTest, CssV127_8_PositionFixedWithTopLeftAndOverflowScroll) {
     EXPECT_EQ(style.background_color.b, 255);
     EXPECT_EQ(style.z_index, 1000);
 }
+
+TEST(PropertyCascadeTest, OverflowAnchorValuesV128) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("overflow-anchor", "none"), parent);
+    EXPECT_EQ(style.overflow_anchor, 1);
+
+    cascade.apply_declaration(style, make_decl("overflow-anchor", "auto"), parent);
+    EXPECT_EQ(style.overflow_anchor, 0);
+}
+
+TEST(PropertyCascadeTest, TransformStyleAndBoxV128) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("transform-style", "preserve-3d"), parent);
+    EXPECT_EQ(style.transform_style, 1);
+
+    cascade.apply_declaration(style, make_decl("transform-box", "fill-box"), parent);
+    EXPECT_EQ(style.transform_box, 2);
+}
+
+TEST(PropertyCascadeTest, ContainerTypeAndNameV128) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("container-type", "inline-size"), parent);
+    EXPECT_EQ(style.container_type, 2);
+
+    cascade.apply_declaration(style, make_decl("container-name", "sidebar"), parent);
+    EXPECT_EQ(style.container_name, "sidebar");
+}
+
+TEST(CSSStyleTest, CssV128_1_ScrollBehaviorSmoothAndSnapType) {
+    const std::string css = ".scroll{scroll-behavior:smooth;scroll-snap-type:y mandatory;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+    elem.classes = {"scroll"};
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.scroll_behavior, 1);
+    EXPECT_EQ(style.scroll_snap_type, "y mandatory");
+}

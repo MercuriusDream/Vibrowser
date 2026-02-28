@@ -293,3 +293,33 @@ TEST(PercentEncoding, EncodeEqualsSign) {
     // The key assertion: encoding then decoding recovers the original.
     EXPECT_EQ(percent_decode(result), "key=value");
 }
+
+TEST(PercentEncoding, PathFlagEncodesColonAndAtSign) {
+    std::string result = percent_encode(":@", true);
+    EXPECT_NE(result.find("%3A"), std::string::npos);
+    EXPECT_NE(result.find("%40"), std::string::npos);
+    EXPECT_EQ(percent_decode(result), ":@");
+}
+
+TEST(PercentEncoding, ForbiddenAsciiCharsEncoded) {
+    const std::string forbidden = "\\|^{}`";
+    for (char ch : forbidden) {
+        std::string input(1, ch);
+        std::string encoded = percent_encode(input);
+        ASSERT_FALSE(encoded.empty());
+        EXPECT_EQ(encoded[0], '%') << "Expected encoding for char: " << ch;
+        EXPECT_EQ(percent_decode(encoded), input);
+    }
+}
+
+TEST(IsURLCodePoint, UnicodeAboveU00A0IsURLCodePoint) {
+    EXPECT_TRUE(is_url_code_point(0x00A0));
+    EXPECT_TRUE(is_url_code_point(0x1F600));
+}
+
+TEST(IsURLCodePoint, SurrogateAndNoncharacterRejected) {
+    EXPECT_FALSE(is_url_code_point(0xD800));
+    EXPECT_FALSE(is_url_code_point(0xDFFF));
+    EXPECT_FALSE(is_url_code_point(0xFFFE));
+    EXPECT_FALSE(is_url_code_point(0xFDD0));
+}
