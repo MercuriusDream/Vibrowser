@@ -378,6 +378,9 @@ float LayoutEngine::compute_width(LayoutNode& node, float containing_width) {
         // we keep specified_width as-is — layout_block's content_w calculation
         // will naturally give children the correct content area.
         // No adjustment needed here; it matches the engine convention.
+    } else if (node.specified_width < 0 && node.specified_height >= 0 && node.aspect_ratio > 0) {
+        // Width is auto, height is set, and aspect-ratio exists: compute width from height
+        w = node.specified_height * node.aspect_ratio;
     } else {
         float horiz_margins = 0;
         // Only subtract non-auto margins
@@ -2215,6 +2218,7 @@ void LayoutEngine::flex_layout(LayoutNode& node, float containing_width) {
     // For flex-direction: column, the main axis gap is row-gap.
     // The CSS "gap" shorthand sets both node.gap (row-gap) and node.column_gap_val (column-gap).
     float main_gap = is_row ? node.column_gap_val : node.gap;
+    float cross_gap = is_row ? node.gap : node.column_gap_val;
 
     if (node.css_height.has_value()) {
         float cb_height = viewport_height_;
@@ -2402,7 +2406,8 @@ void LayoutEngine::flex_layout(LayoutNode& node, float containing_width) {
 
     // Process each flex line
     float cross_cursor = 0;
-    for (auto& line : lines) {
+    for (size_t line_index = 0; line_index < lines.size(); ++line_index) {
+        auto& line = lines[line_index];
         // Compute line total basis and gap
         float line_total_gap = 0;
         size_t line_count = line.end - line.start;
@@ -2711,6 +2716,9 @@ void LayoutEngine::flex_layout(LayoutNode& node, float containing_width) {
         }
 
         cross_cursor += line_cross;
+        if (line_index + 1 < lines.size()) {
+            cross_cursor += cross_gap;
+        }
     }
 
     // Container height
@@ -2750,7 +2758,8 @@ void LayoutEngine::flex_layout(LayoutNode& node, float containing_width) {
     if (lines.size() > 1 && node.align_content != 0 && is_row && node.specified_height >= 0) {
         float total_line_cross = 0;
         for (auto& line : lines) total_line_cross += line.max_cross;
-        float extra = node.specified_height - total_line_cross;
+        float total_cross_gap = cross_gap * static_cast<float>(lines.size() - 1);
+        float extra = node.specified_height - total_line_cross - total_cross_gap;
         if (extra > 0) {
             float offset = 0;
             float gap = 0;
@@ -2857,10 +2866,15 @@ void LayoutEngine::apply_positioning(LayoutNode& node) {
         else if (node.pos_bottom_set) node.geometry.y -= node.pos_bottom;
         if (node.pos_left_set) node.geometry.x += node.pos_left;
         else if (node.pos_right_set) node.geometry.x -= node.pos_right;
+    } else if (node.position_type == 4) { // sticky
+        // Store the normal flow position for paint-time sticky calculations
+        node.sticky_original_y = node.geometry.y;
+        node.sticky_original_x = node.geometry.x;
+        // No layout-time offset; sticky adjustments happen at paint time based on scroll
     }
     // position_type == 4 (sticky): element stays in normal flow position.
-    // The top/left/right/bottom offsets are used at paint time by the
-    // RenderView to composite the element at its "stuck" position during scroll.
+    // The top/left/right/bottom offsets are used at paint time to clamp
+    // the element's position within its constraint box (nearest scroll container or viewport).
 }
 
 void LayoutEngine::position_absolute_children(LayoutNode& node) {
