@@ -31900,3 +31900,221 @@ TEST(JsEngineTest, InOperatorAdvancedV119) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "true|true|false|true|true|false|true|true");
 }
+
+// ============================================================================
+// V120 Tests — JS language features: ArrayBuffer views, BigInt arithmetic,
+// String.raw, Array.from iterables, eval, Function constructor, with statement
+// ============================================================================
+
+// V120-1. ArrayBuffer with DataView multi-type read/write round-trip
+TEST(JsEngineTest, ArrayBufferDataViewRoundTripV120) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var buf = new ArrayBuffer(12);
+        var dv = new DataView(buf);
+        dv.setInt32(0, -42, true);
+        dv.setFloat32(4, 3.14, true);
+        dv.setUint16(8, 65535, true);
+        dv.setUint8(10, 200);
+        var r = [];
+        r.push(dv.getInt32(0, true));
+        r.push(Math.round(dv.getFloat32(4, true) * 100) / 100);
+        r.push(dv.getUint16(8, true));
+        r.push(dv.getUint8(10));
+        r.push(buf.byteLength);
+        r.join(",");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "-42,3.14,65535,200,12");
+}
+
+// V120-2. BigInt mixed arithmetic and comparison chain
+TEST(JsEngineTest, BigIntMixedArithmeticV120) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var a = 123456789012345678901234567890n;
+        var b = 987654321098765432109876543210n;
+        var sum = a + b;
+        var diff = b - a;
+        var prod = 100n * 200n * 300n;
+        var div = 1000000n / 7n;
+        var mod = 1000000n % 7n;
+        var r = [];
+        r.push(sum.toString());
+        r.push(diff.toString());
+        r.push(prod.toString());
+        r.push(div.toString());
+        r.push(mod.toString());
+        r.push(typeof a);
+        r.push(a < b);
+        r.push(a === a);
+        r.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1111111110111111111011111111100|864197532086419753208641975320|6000000|142857|1|bigint|true|true");
+}
+
+// V120-3. String.raw with escapes and template interpolation
+TEST(JsEngineTest, StringRawEscapesAndInterpolationV120) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var r = [];
+        r.push(String.raw`\n\t\r\\`);
+        r.push(String.raw`${2+3} items at ${"$"}10`);
+        r.push(String.raw`path\to\file.txt`);
+        var tag = String.raw;
+        r.push(tag`back\slash`);
+        r.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "\\n\\t\\r\\\\|5 items at $10|path\\to\\file.txt|back\\slash");
+}
+
+// V120-4. Array.from with generator, Set, Map, and custom iterable
+TEST(JsEngineTest, ArrayFromVariousIterablesV120) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var r = [];
+        // From generator
+        function* gen() { yield 10; yield 20; yield 30; }
+        r.push(Array.from(gen()).join(","));
+        // From Set (dedup)
+        r.push(Array.from(new Set([5,3,5,1,3,1])).sort().join(","));
+        // From Map entries
+        var m = new Map([["a",1],["b",2]]);
+        r.push(Array.from(m).map(function(e){return e[0]+":"+e[1]}).join(","));
+        // Custom iterable via Symbol.iterator
+        var custom = {};
+        custom[Symbol.iterator] = function() {
+            var i = 0;
+            return { next: function() { return i < 3 ? {value: i++*10, done:false} : {done:true}; }};
+        };
+        r.push(Array.from(custom).join(","));
+        // Array.from with mapFn
+        r.push(Array.from({length:4}, function(_,i){return i*i}).join(","));
+        r.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "10,20,30|1,3,5|a:1,b:2|0,10,20|0,1,4,9");
+}
+
+// V120-5. eval() with scope access, variable creation, and expression return
+TEST(JsEngineTest, EvalScopeAndExpressionV120) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var r = [];
+        // eval returns expression value
+        r.push(eval("2 + 3"));
+        // eval can access surrounding scope
+        var x = 100;
+        r.push(eval("x * 2"));
+        // eval can create variables in calling scope (sloppy mode)
+        eval("var evalCreated = 'hello'");
+        r.push(evalCreated);
+        // eval with multi-statement returns last expression
+        r.push(eval("var a = 10; var b = 20; a + b"));
+        // eval with JSON parsing
+        r.push(eval("(" + '{"key":"val"}' + ")").key);
+        // nested eval
+        r.push(eval("eval('7 * 8')"));
+        r.join("|");
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "5|200|hello|30|val|56");
+}
+
+// V120-6. Function constructor: create functions dynamically at runtime
+TEST(JsEngineTest, FunctionConstructorDynamicV120) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var r = [];
+        // Basic Function constructor
+        var add = new Function("a", "b", "return a + b");
+        r.push(add(3, 7));
+        // Single string param list
+        var mul = new Function("a, b", "return a * b");
+        r.push(mul(4, 5));
+        // No-arg function
+        var greet = new Function("return 'hi'");
+        r.push(greet());
+        // Function constructor runs in global scope — can see top-level vars
+        var localVar = 999;
+        var fn = new Function("return typeof localVar");
+        r.push(fn());  // "number" because evaluate scope is global in QuickJS
+        // Function.length reflects arity
+        r.push(add.length);
+        r.push(mul.length);
+        // toString contains 'anonymous'
+        r.push(add.toString().indexOf("anonymous") >= 0);
+        r.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "10|20|hi|number|2|2|true");
+}
+
+// V120-7. with statement in sloppy mode: scope injection
+TEST(JsEngineTest, WithStatementSloppyModeV120) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var r = [];
+        var obj = {a: 1, b: 2, c: 3};
+        // with injects object properties into scope
+        with (obj) {
+            r.push(a + b + c);
+        }
+        // with allows property modification
+        with (obj) {
+            a = 10;
+            b = 20;
+        }
+        r.push(obj.a);
+        r.push(obj.b);
+        // with with nested object
+        var outer = {x: 100};
+        var inner = {y: 200};
+        with (outer) {
+            with (inner) {
+                r.push(x + y);
+            }
+        }
+        // with does not affect variables not on the object
+        var z = 50;
+        with (obj) {
+            r.push(z);
+        }
+        r.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "6|10|20|300|50");
+}
+
+// V120-8. TypedArray slice, subarray, and buffer sharing semantics
+TEST(JsEngineTest, TypedArraySliceSubarrayBufferSharingV120) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var r = [];
+        var orig = new Int32Array([10, 20, 30, 40, 50]);
+        // slice creates a COPY (new buffer)
+        var sliced = orig.slice(1, 4);
+        r.push(sliced.join(","));
+        sliced[0] = 999;
+        r.push(orig[1]);  // should still be 20 (independent copy)
+        // subarray shares the SAME buffer
+        var sub = orig.subarray(1, 4);
+        r.push(sub.join(","));
+        sub[0] = 888;
+        r.push(orig[1]);  // should be 888 (shared buffer)
+        // Verify buffer identity
+        r.push(sub.buffer === orig.buffer);
+        r.push(sliced.buffer === orig.buffer);
+        // TypedArray.from with mapping
+        var doubled = Int32Array.from([1,2,3], function(x){return x*2});
+        r.push(doubled.join(","));
+        // byteOffset of subarray
+        r.push(sub.byteOffset);
+        r.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "20,30,40|20|20,30,40|888|true|false|2,4,6|4");
+}
+

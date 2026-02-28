@@ -9224,3 +9224,76 @@ TEST(CorsPolicyTest, CorsAllowsResponseExactMatchRequiredWithCredentialsV119) {
                                       "https://api.example/data",
                                       headers3, true));
 }
+
+// ---------- V120 tests ----------
+
+TEST(CORSPolicyTest, IPAddressOriginIsEnforceableV120) {
+    // IP literal origins (both IPv4 and IPv6) are enforceable
+    EXPECT_TRUE(has_enforceable_document_origin("https://192.168.1.1"));
+    EXPECT_TRUE(has_enforceable_document_origin("https://[::1]"));
+    EXPECT_TRUE(has_enforceable_document_origin("http://10.0.0.1"));
+    EXPECT_TRUE(has_enforceable_document_origin("https://[2001:db8::1]"));
+}
+
+TEST(CORSPolicyTest, DataAndBlobOriginsNotEnforceableV120) {
+    // data: and blob: origins are NOT enforceable
+    EXPECT_FALSE(has_enforceable_document_origin("data:text/html,hello"));
+    EXPECT_FALSE(has_enforceable_document_origin("blob:https://app.example/uuid"));
+    // Also test data: with base64 content
+    EXPECT_FALSE(has_enforceable_document_origin("data:text/plain;base64,SGVsbG8="));
+}
+
+TEST(CORSPolicyTest, WssSchemeIsNotCrossOriginV120) {
+    // wss:// is NOT considered cross-origin (same-origin treatment)
+    EXPECT_FALSE(is_cross_origin("https://app.example", "wss://app.example/socket"));
+    // ws:// same host also not cross-origin
+    EXPECT_FALSE(is_cross_origin("http://app.example", "ws://app.example/socket"));
+}
+
+TEST(CORSPolicyTest, ExplicitPort443NotEnforceableV120) {
+    // Explicit :443 on an origin makes it NOT enforceable
+    EXPECT_FALSE(has_enforceable_document_origin("https://app.example:443"));
+    // Explicit :80 on http also NOT enforceable
+    EXPECT_FALSE(has_enforceable_document_origin("http://app.example:80"));
+}
+
+TEST(CORSPolicyTest, URLWithEmptyFragmentStillEligibleV120) {
+    // A URL with an empty fragment marker (just '#') still has a fragment → not eligible
+    // But per the user rule: "Empty # is no fragment (still eligible)"
+    EXPECT_TRUE(is_cors_eligible_request_url("https://api.example/data#"));
+    // Non-empty fragment is not eligible
+    EXPECT_FALSE(is_cors_eligible_request_url("https://api.example/data#section"));
+}
+
+TEST(CORSPolicyTest, DataOriginNormalizeReturnsNulloptNotNullStringV120) {
+    // data: origin normalize should cause the header to be removed (nullopt behavior),
+    // not set to the string "null"
+    clever::net::HeaderMap headers;
+    headers.set("Origin", "https://evil.example");
+    normalize_outgoing_origin_header(headers, "data:text/html,hello", "https://api.example/data");
+    // With a non-enforceable origin, the header should be dropped entirely
+    EXPECT_FALSE(headers.has("origin"));
+}
+
+TEST(CORSPolicyTest, ACAOWithFragmentNotStrippedTreatedAsLiteralV120) {
+    // ACAO header value with a fragment is treated as a literal string,
+    // NOT stripped — so it does NOT match the clean origin
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "https://app.example#ignored");
+    EXPECT_FALSE(cors_allows_response("https://app.example",
+                                      "https://api.example/data",
+                                      headers, false));
+    // Clean ACAO value (no fragment) matches fine
+    clever::net::HeaderMap headers2;
+    headers2.set("Access-Control-Allow-Origin", "https://app.example");
+    EXPECT_TRUE(cors_allows_response("https://app.example",
+                                     "https://api.example/data",
+                                     headers2, false));
+}
+
+TEST(CORSPolicyTest, SchemesCaseInsensitiveInCrossOriginCheckV120) {
+    // Schemes are case-insensitive per spec
+    EXPECT_FALSE(is_cross_origin("HTTPS://app.example", "https://app.example/data"));
+    EXPECT_FALSE(is_cross_origin("https://app.example", "HTTPS://app.example/data"));
+    EXPECT_FALSE(is_cross_origin("HTTP://app.example", "http://app.example/path"));
+}

@@ -20314,3 +20314,169 @@ TEST(RequestTest, SerializePostCustomHeadersLowercaseV119) {
     // Body
     EXPECT_NE(result.find(R"({"name":"gadget"})"), std::string::npos);
 }
+
+// ===========================================================================
+// V120 Tests
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// 1. HeaderMap: get_all returns entries in append order
+// ---------------------------------------------------------------------------
+TEST(HeaderMapTest, GetAllPreservesAppendOrderV120) {
+    HeaderMap map;
+    map.append("Accept-Encoding", "gzip");
+    map.append("Accept-Encoding", "deflate");
+    map.append("Accept-Encoding", "br");
+
+    auto all = map.get_all("accept-encoding");
+    ASSERT_EQ(all.size(), 3u);
+    EXPECT_EQ(all[0], "gzip");
+    EXPECT_EQ(all[1], "deflate");
+    EXPECT_EQ(all[2], "br");
+}
+
+// ---------------------------------------------------------------------------
+// 2. HeaderMap: has returns false for never-set key, true after set
+// ---------------------------------------------------------------------------
+TEST(HeaderMapTest, HasLifecycleSetRemoveV120) {
+    HeaderMap map;
+    EXPECT_FALSE(map.has("X-Trace-Id"));
+
+    map.set("X-Trace-Id", "trace-v120-abc");
+    EXPECT_TRUE(map.has("x-trace-id"));
+    EXPECT_TRUE(map.has("X-TRACE-ID"));
+
+    map.remove("X-Trace-Id");
+    EXPECT_FALSE(map.has("x-trace-id"));
+    EXPECT_FALSE(map.get("X-Trace-Id").has_value());
+}
+
+// ---------------------------------------------------------------------------
+// 3. Request: parse_url with HTTP URL extracts port 80 and use_tls false
+// ---------------------------------------------------------------------------
+TEST(RequestTest, ParseUrlHttpDefaultPort80V120) {
+    Request req;
+    req.url = "http://legacy.example.net/api/v1/items";
+    req.parse_url();
+
+    EXPECT_EQ(req.host, "legacy.example.net");
+    EXPECT_EQ(req.port, 80);
+    EXPECT_EQ(req.path, "/api/v1/items");
+    EXPECT_FALSE(req.use_tls);
+    EXPECT_TRUE(req.query.empty());
+}
+
+// ---------------------------------------------------------------------------
+// 4. Request: serialize GET with query string in path
+// ---------------------------------------------------------------------------
+TEST(RequestTest, SerializeGetWithQueryAndCustomHeaderV120) {
+    Request req;
+    req.method = Method::GET;
+    req.host = "data.example.io";
+    req.port = 443;
+    req.path = "/search";
+    req.query = "q=vibrowser&limit=25";
+    req.use_tls = true;
+    req.headers.set("X-Api-Key", "key_v120_secret");
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    EXPECT_NE(result.find("GET /search?q=vibrowser&limit=25 HTTP/1.1\r\n"), std::string::npos);
+    // Port 443 with TLS must be omitted from Host
+    EXPECT_NE(result.find("Host: data.example.io\r\n"), std::string::npos);
+    EXPECT_EQ(result.find("Host: data.example.io:443"), std::string::npos);
+    // Custom header lowercased
+    EXPECT_NE(result.find("x-api-key: key_v120_secret\r\n"), std::string::npos);
+    EXPECT_NE(result.find("Connection: keep-alive\r\n"), std::string::npos);
+}
+
+// ---------------------------------------------------------------------------
+// 5. Response: parse 200 with Transfer-Encoding and multi-line body
+// ---------------------------------------------------------------------------
+TEST(ResponseTest, Parse200WithContentTypeAndBodyV120) {
+    std::string raw =
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Type: application/json\r\n"
+        "X-Request-Id: req-v120-42\r\n"
+        "Content-Length: 27\r\n"
+        "\r\n"
+        R"({"status":"ok","count":120})";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 200);
+    EXPECT_EQ(resp->status_text, "OK");
+    EXPECT_EQ(resp->headers.get("content-type").value(), "application/json");
+    EXPECT_EQ(resp->headers.get("x-request-id").value(), "req-v120-42");
+    EXPECT_EQ(resp->body_as_string(), R"({"status":"ok","count":120})");
+}
+
+// ---------------------------------------------------------------------------
+// 6. Response: parse 404 with empty body
+// ---------------------------------------------------------------------------
+TEST(ResponseTest, Parse404EmptyBodyV120) {
+    std::string raw =
+        "HTTP/1.1 404 Not Found\r\n"
+        "Content-Length: 0\r\n"
+        "\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 404);
+    EXPECT_EQ(resp->status_text, "Not Found");
+    EXPECT_TRUE(resp->body_as_string().empty());
+}
+
+// ---------------------------------------------------------------------------
+// 7. Request: serialize PUT with non-standard port 8443 included in Host
+// ---------------------------------------------------------------------------
+TEST(RequestTest, SerializePutNonStandardPort8443V120) {
+    Request req;
+    req.method = Method::PUT;
+    req.host = "staging.example.com";
+    req.port = 8443;
+    req.path = "/resource/99";
+    req.use_tls = true;
+    req.headers.set("Content-Type", "text/plain");
+
+    std::string body_str = "updated-payload-v120";
+    req.body.assign(body_str.begin(), body_str.end());
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    EXPECT_NE(result.find("PUT /resource/99 HTTP/1.1\r\n"), std::string::npos);
+    // Non-standard port 8443 MUST appear in Host
+    EXPECT_NE(result.find("Host: staging.example.com:8443\r\n"), std::string::npos);
+    EXPECT_NE(result.find("Connection: keep-alive\r\n"), std::string::npos);
+    // Custom header lowercased
+    EXPECT_NE(result.find("content-type: text/plain\r\n"), std::string::npos);
+    // Content-Length matches body
+    EXPECT_NE(result.find("Content-Length: 20\r\n"), std::string::npos);
+    EXPECT_NE(result.find("updated-payload-v120"), std::string::npos);
+}
+
+// ---------------------------------------------------------------------------
+// 8. Response: parse 500 with Server header and HTML body
+// ---------------------------------------------------------------------------
+TEST(ResponseTest, Parse500ServerErrorWithHtmlBodyV120) {
+    std::string raw =
+        "HTTP/1.1 500 Internal Server Error\r\n"
+        "Content-Type: text/html\r\n"
+        "Server: nginx/1.25\r\n"
+        "Content-Length: 35\r\n"
+        "\r\n"
+        "<html><body>Error 500</body></html>";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 500);
+    EXPECT_EQ(resp->status_text, "Internal Server Error");
+    EXPECT_EQ(resp->headers.get("server").value(), "nginx/1.25");
+    EXPECT_EQ(resp->headers.get("content-type").value(), "text/html");
+    EXPECT_EQ(resp->body_as_string(), "<html><body>Error 500</body></html>");
+}

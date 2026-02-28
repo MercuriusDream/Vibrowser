@@ -12979,3 +12979,79 @@ TEST(UrlParserTest, FullCredentialsInSerializeOutputV119) {
     EXPECT_EQ(result->port, 8888);
     EXPECT_EQ(result->serialize(), "http://user:secret@proxy.example.com:8888/tunnel");
 }
+
+// =============================================================================
+// V120 Tests
+// =============================================================================
+
+TEST(UrlParserTest, OriginIncludesSchemeAndHostDefaultPortV120) {
+    auto result = parse("https://www.example.org/page");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->origin(), "https://www.example.org");
+    EXPECT_EQ(result->port, std::nullopt);
+}
+
+TEST(UrlParserTest, OriginIncludesNonDefaultPortForHttpV120) {
+    auto result = parse("http://api.example.com:3000/v1/users");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->origin(), "http://api.example.com:3000");
+    EXPECT_EQ(result->port, 3000);
+}
+
+TEST(UrlParserTest, IsSpecialTrueForHttpFtpHttpsV120) {
+    auto http = parse("http://example.com/");
+    ASSERT_TRUE(http.has_value());
+    EXPECT_TRUE(http->is_special());
+
+    auto https = parse("https://secure.example.com/");
+    ASSERT_TRUE(https.has_value());
+    EXPECT_TRUE(https->is_special());
+
+    auto ftp = parse("ftp://files.example.com/pub");
+    ASSERT_TRUE(ftp.has_value());
+    EXPECT_TRUE(ftp->is_special());
+}
+
+TEST(UrlParserTest, IsSpecialFalseForNonStandardSchemeV120) {
+    auto result = parse("custom://data.example.com/resource");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_FALSE(result->is_special());
+    EXPECT_EQ(result->scheme, "custom");
+}
+
+TEST(UrlParserTest, DoubleEncodesPercentEncodedEqualsInQueryV120) {
+    auto result = parse("https://search.example.com/find?key=val%3Dmore");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->query, "key=val%253Dmore");
+    EXPECT_EQ(result->host, "search.example.com");
+}
+
+TEST(UrlParserTest, OriginNullForNonSpecialSchemeV120) {
+    auto result = parse("blob:https://example.com/uuid-here");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->origin(), "null");
+}
+
+TEST(UrlParserTest, SerializeWithCredentialsQueryFragmentV120) {
+    auto result = parse("http://admin:pw@intranet.local:9090/dashboard?tab=home#top");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->username, "admin");
+    EXPECT_EQ(result->password, "pw");
+    EXPECT_EQ(result->host, "intranet.local");
+    EXPECT_EQ(result->port, 9090);
+    EXPECT_EQ(result->path, "/dashboard");
+    EXPECT_EQ(result->query, "tab=home");
+    EXPECT_EQ(result->fragment, "top");
+    EXPECT_EQ(result->serialize(), "http://admin:pw@intranet.local:9090/dashboard?tab=home#top");
+}
+
+TEST(UrlParserTest, FtpDefaultPort21NormalizedAndIsSpecialV120) {
+    auto result = parse("ftp://mirror.example.net:21/pub/releases");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "ftp");
+    EXPECT_EQ(result->port, std::nullopt);
+    EXPECT_TRUE(result->is_special());
+    EXPECT_EQ(result->host, "mirror.example.net");
+    EXPECT_EQ(result->path, "/pub/releases");
+}

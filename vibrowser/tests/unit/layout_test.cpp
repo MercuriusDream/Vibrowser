@@ -22267,3 +22267,190 @@ TEST(LayoutEngineTest, DisplayNoneChildSkippedInFlowV119) {
     // Root height should be c1 + c3 = 100, not including hidden
     EXPECT_FLOAT_EQ(root->geometry.height, 100.0f);
 }
+
+// V120-1: Flex row with unequal grow factors distributes remaining space proportionally
+TEST(LayoutEngineTest, FlexRowUnequalGrowFactorsV120) {
+    auto root = make_flex("div");
+    root->specified_width = 600.0f;
+    root->specified_height = 100.0f;
+    root->flex_direction = 0; // row
+
+    auto c1 = make_block("div");
+    c1->specified_width = 100.0f;
+    c1->specified_height = 100.0f;
+    c1->flex_grow = 1.0f;
+    root->append_child(std::move(c1));
+
+    auto c2 = make_block("div");
+    c2->specified_width = 100.0f;
+    c2->specified_height = 100.0f;
+    c2->flex_grow = 4.0f;
+    root->append_child(std::move(c2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 600.0f, 400.0f);
+
+    // Remaining space = 600 - 100 - 100 = 400. c1 gets 400*1/5=80, c2 gets 400*4/5=320
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.width, 180.0f);
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.width, 420.0f);
+}
+
+// V120-2: Block element with border-box sizing — border_box_width includes padding+border
+TEST(LayoutEngineTest, BorderBoxWidthIncludesPaddingBorderV120) {
+    auto root = make_block("div");
+    root->specified_width = 400.0f;
+    root->specified_height = 200.0f;
+
+    auto child = make_block("div");
+    child->border_box = true;
+    child->specified_width = 300.0f;
+    child->specified_height = 150.0f;
+    child->geometry.padding.left = 20.0f;
+    child->geometry.padding.right = 20.0f;
+    child->geometry.border.left = 5.0f;
+    child->geometry.border.right = 5.0f;
+    auto* cp = child.get();
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 400.0f, 400.0f);
+
+    // Engine sets geometry.width = specified_width (300)
+    EXPECT_FLOAT_EQ(cp->geometry.width, 300.0f);
+    // border_box_width = width + padding.left + padding.right + border.left + border.right
+    EXPECT_FLOAT_EQ(cp->geometry.border_box_width(), 350.0f);
+}
+
+// V120-3: Flex column lays out children stacked vertically with correct positions
+TEST(LayoutEngineTest, FlexColumnStacksChildrenVerticallyV120) {
+    auto root = make_flex("div");
+    root->specified_width = 200.0f;
+    root->specified_height = 500.0f;
+    root->flex_direction = 2; // column
+
+    auto c1 = make_block("div");
+    c1->specified_height = 100.0f;
+    root->append_child(std::move(c1));
+
+    auto c2 = make_block("div");
+    c2->specified_height = 100.0f;
+    root->append_child(std::move(c2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 200.0f, 500.0f);
+
+    // Each child keeps its specified height
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.height, 100.0f);
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.height, 100.0f);
+    // Second child starts after the first
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.y, 100.0f);
+}
+
+// V120-4: Block element margins push children down vertically
+TEST(LayoutEngineTest, BlockChildMarginsOffsetVerticallyV120) {
+    auto root = make_block("div");
+    root->specified_width = 400.0f;
+
+    auto c1 = make_block("div");
+    c1->specified_height = 50.0f;
+    c1->geometry.margin.bottom = 30.0f;
+    root->append_child(std::move(c1));
+
+    auto c2 = make_block("div");
+    c2->specified_height = 70.0f;
+    c2->geometry.margin.top = 20.0f;
+    root->append_child(std::move(c2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 400.0f, 400.0f);
+
+    // c2 y = c1.height + max(c1.margin.bottom, c2.margin.top) due to margin collapsing
+    // Collapsed margin = max(30, 20) = 30
+    float c2_y = root->children[1]->geometry.y;
+    EXPECT_GE(c2_y, 70.0f); // At least c1.height(50) + some margin(20+)
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.height, 50.0f);
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.height, 70.0f);
+}
+
+// V120-5: min_width prevents block from shrinking below minimum
+TEST(LayoutEngineTest, MinWidthPreventsBlockShrinkV120) {
+    auto root = make_block("div");
+    root->specified_width = 100.0f;
+    root->min_width = 250.0f;
+
+    LayoutEngine engine;
+    engine.compute(*root, 400.0f, 400.0f);
+
+    // min_width should clamp width UP to 250
+    EXPECT_FLOAT_EQ(root->geometry.width, 250.0f);
+}
+
+// V120-6: max_height constrains block element height
+TEST(LayoutEngineTest, MaxHeightConstrainsBlockV120) {
+    auto root = make_block("div");
+    root->specified_width = 300.0f;
+    root->specified_height = 500.0f;
+    root->max_height = 200.0f;
+
+    LayoutEngine engine;
+    engine.compute(*root, 300.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(root->geometry.height, 200.0f);
+}
+
+// V120-7: Flex row with zero flex-basis and equal grow splits space evenly
+TEST(LayoutEngineTest, FlexRowZeroBasisEqualGrowV120) {
+    auto root = make_flex("div");
+    root->specified_width = 900.0f;
+    root->specified_height = 80.0f;
+    root->flex_direction = 0; // row
+
+    for (int i = 0; i < 3; ++i) {
+        auto c = make_block("div");
+        c->flex_basis = 0.0f;
+        c->flex_grow = 1.0f;
+        c->specified_height = 80.0f;
+        root->append_child(std::move(c));
+    }
+
+    LayoutEngine engine;
+    engine.compute(*root, 900.0f, 400.0f);
+
+    // Each child should get 900 / 3 = 300
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.width, 300.0f);
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.width, 300.0f);
+    EXPECT_FLOAT_EQ(root->children[2]->geometry.width, 300.0f);
+    // Positions: 0, 300, 600
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.x, 0.0f);
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.x, 300.0f);
+    EXPECT_FLOAT_EQ(root->children[2]->geometry.x, 600.0f);
+}
+
+// V120-8: DisplayType::None child contributes zero to parent height in block layout
+TEST(LayoutEngineTest, DisplayNoneZeroContributionV120) {
+    auto root = make_block("div");
+    root->specified_width = 400.0f;
+
+    auto c1 = make_block("div");
+    c1->specified_height = 80.0f;
+    root->append_child(std::move(c1));
+
+    auto hidden = make_block("div");
+    hidden->display = DisplayType::None;
+    hidden->mode = LayoutMode::None;
+    hidden->specified_height = 500.0f;
+    hidden->specified_width = 400.0f;
+    root->append_child(std::move(hidden));
+
+    auto c3 = make_block("div");
+    c3->specified_height = 120.0f;
+    root->append_child(std::move(c3));
+
+    LayoutEngine engine;
+    engine.compute(*root, 400.0f, 600.0f);
+
+    // Total height = 80 + 120 = 200. The hidden 500px element contributes nothing.
+    EXPECT_FLOAT_EQ(root->geometry.height, 200.0f);
+    // c3 starts right after c1
+    EXPECT_FLOAT_EQ(root->children[2]->geometry.y, 80.0f);
+}

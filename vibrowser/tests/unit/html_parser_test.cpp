@@ -19509,3 +19509,193 @@ TEST(HtmlParserTest, FormWithTextareaAndLabeledInputsV119) {
     EXPECT_EQ(get_attr_v63(button, "type"), "submit");
     EXPECT_EQ(button->text_content(), "Send");
 }
+
+// ---------------------------------------------------------------------------
+// Cycle V120 — HTML parser: advanced structures, edge cases, attribute handling
+// ---------------------------------------------------------------------------
+
+TEST(HtmlParserTest, NestedTablesWithCaptionAndColGroupV120) {
+    auto doc = clever::html::parse(
+        "<table>"
+        "<caption>Sales Data</caption>"
+        "<colgroup><col span=\"2\"><col></colgroup>"
+        "<thead><tr><th>Product</th><th>Qty</th><th>Price</th></tr></thead>"
+        "<tbody><tr><td>Widget</td><td>10</td><td>$5</td></tr></tbody>"
+        "</table>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* caption = doc->find_element("caption");
+    ASSERT_NE(caption, nullptr);
+    EXPECT_EQ(caption->text_content(), "Sales Data");
+
+    auto cols = doc->find_all_elements("col");
+    ASSERT_EQ(cols.size(), 2u);
+    EXPECT_EQ(get_attr_v63(cols[0], "span"), "2");
+
+    auto ths = doc->find_all_elements("th");
+    ASSERT_EQ(ths.size(), 3u);
+    EXPECT_EQ(ths[0]->text_content(), "Product");
+    EXPECT_EQ(ths[2]->text_content(), "Price");
+
+    auto tds = doc->find_all_elements("td");
+    ASSERT_EQ(tds.size(), 3u);
+    EXPECT_EQ(tds[1]->text_content(), "10");
+}
+
+TEST(HtmlParserTest, MultipleVoidElementsInSequenceV120) {
+    auto doc = clever::html::parse(
+        "<body>"
+        "<br><br><hr><br><input type=\"hidden\"><img src=\"a.png\">"
+        "<p>after voids</p>"
+        "</body>");
+    ASSERT_NE(doc, nullptr);
+
+    auto brs = doc->find_all_elements("br");
+    ASSERT_EQ(brs.size(), 3u);
+    for (auto* br : brs) {
+        EXPECT_TRUE(br->children.empty());
+    }
+
+    auto hrs = doc->find_all_elements("hr");
+    ASSERT_EQ(hrs.size(), 1u);
+    EXPECT_TRUE(hrs[0]->children.empty());
+
+    auto* input = doc->find_element("input");
+    ASSERT_NE(input, nullptr);
+    EXPECT_EQ(get_attr_v63(input, "type"), "hidden");
+    EXPECT_TRUE(input->children.empty());
+
+    auto* p = doc->find_element("p");
+    ASSERT_NE(p, nullptr);
+    EXPECT_EQ(p->text_content(), "after voids");
+}
+
+TEST(HtmlParserTest, DataAndBooleanAttributesPreservedV120) {
+    auto doc = clever::html::parse(
+        "<div data-id=\"42\" data-role=\"admin\" hidden>"
+        "<input disabled checked type=\"checkbox\">"
+        "</div>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* div = doc->find_element("div");
+    ASSERT_NE(div, nullptr);
+    EXPECT_EQ(get_attr_v63(div, "data-id"), "42");
+    EXPECT_EQ(get_attr_v63(div, "data-role"), "admin");
+    EXPECT_EQ(get_attr_v63(div, "hidden"), "");
+
+    auto* input = doc->find_element("input");
+    ASSERT_NE(input, nullptr);
+    EXPECT_EQ(get_attr_v63(input, "disabled"), "");
+    EXPECT_EQ(get_attr_v63(input, "checked"), "");
+    EXPECT_EQ(get_attr_v63(input, "type"), "checkbox");
+}
+
+TEST(HtmlParserTest, DescriptionListDlWithMixedDtDdV120) {
+    auto doc = clever::html::parse(
+        "<dl>"
+        "<dt>Term A</dt><dd>Definition A1</dd><dd>Definition A2</dd>"
+        "<dt>Term B</dt><dd>Definition B1</dd>"
+        "</dl>");
+    ASSERT_NE(doc, nullptr);
+
+    auto dts = doc->find_all_elements("dt");
+    ASSERT_EQ(dts.size(), 2u);
+    EXPECT_EQ(dts[0]->text_content(), "Term A");
+    EXPECT_EQ(dts[1]->text_content(), "Term B");
+
+    auto dds = doc->find_all_elements("dd");
+    ASSERT_EQ(dds.size(), 3u);
+    EXPECT_EQ(dds[0]->text_content(), "Definition A1");
+    EXPECT_EQ(dds[1]->text_content(), "Definition A2");
+    EXPECT_EQ(dds[2]->text_content(), "Definition B1");
+}
+
+TEST(HtmlParserTest, InlineElementsPreserveTextContentV120) {
+    auto doc = clever::html::parse(
+        "<p>This is <strong>bold</strong> and <em>italic</em> and "
+        "<code>monospace</code> text.</p>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* p = doc->find_element("p");
+    ASSERT_NE(p, nullptr);
+    EXPECT_EQ(p->text_content(), "This is bold and italic and monospace text.");
+
+    auto* strong = doc->find_element("strong");
+    ASSERT_NE(strong, nullptr);
+    EXPECT_EQ(strong->text_content(), "bold");
+
+    auto* em = doc->find_element("em");
+    ASSERT_NE(em, nullptr);
+    EXPECT_EQ(em->text_content(), "italic");
+
+    auto* code = doc->find_element("code");
+    ASSERT_NE(code, nullptr);
+    EXPECT_EQ(code->text_content(), "monospace");
+}
+
+TEST(HtmlParserTest, NestedOrderedListsCorrectStructureV120) {
+    auto doc = clever::html::parse(
+        "<ol>"
+        "<li>Item 1"
+            "<ol><li>Sub 1a</li><li>Sub 1b</li></ol>"
+        "</li>"
+        "<li>Item 2</li>"
+        "</ol>");
+    ASSERT_NE(doc, nullptr);
+
+    auto ols = doc->find_all_elements("ol");
+    ASSERT_EQ(ols.size(), 2u);
+
+    auto lis = doc->find_all_elements("li");
+    ASSERT_EQ(lis.size(), 4u);
+    // The nested li's have simple text
+    EXPECT_EQ(lis[1]->text_content(), "Sub 1a");
+    EXPECT_EQ(lis[2]->text_content(), "Sub 1b");
+    EXPECT_EQ(lis[3]->text_content(), "Item 2");
+}
+
+TEST(HtmlParserTest, ScriptContentNotParsedAsTagsV120) {
+    auto doc = clever::html::parse(
+        "<html><head>"
+        "<script type=\"text/javascript\">var x = 42; if (1 < 2) { console.log(x); }</script>"
+        "</head><body><p>Real content</p></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* script = doc->find_element("script");
+    ASSERT_NE(script, nullptr);
+    EXPECT_EQ(get_attr_v63(script, "type"), "text/javascript");
+    // Script raw text should contain JS code
+    std::string raw = script->text_content();
+    EXPECT_NE(raw.find("var x = 42"), std::string::npos);
+    EXPECT_NE(raw.find("console.log"), std::string::npos);
+
+    // The only <p> in the document is the real one in body
+    auto ps = doc->find_all_elements("p");
+    ASSERT_EQ(ps.size(), 1u);
+    EXPECT_EQ(ps[0]->text_content(), "Real content");
+}
+
+TEST(HtmlParserTest, AnchorWithHrefAndNestedSpanV120) {
+    auto doc = clever::html::parse(
+        "<nav>"
+        "<a href=\"/home\" class=\"link active\"><span>Home</span></a>"
+        "<a href=\"/about\"><span>About</span></a>"
+        "</nav>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* nav = doc->find_element("nav");
+    ASSERT_NE(nav, nullptr);
+
+    auto anchors = doc->find_all_elements("a");
+    ASSERT_EQ(anchors.size(), 2u);
+    EXPECT_EQ(get_attr_v63(anchors[0], "href"), "/home");
+    EXPECT_EQ(get_attr_v63(anchors[0], "class"), "link active");
+    EXPECT_EQ(anchors[0]->text_content(), "Home");
+    EXPECT_EQ(get_attr_v63(anchors[1], "href"), "/about");
+    EXPECT_EQ(anchors[1]->text_content(), "About");
+
+    auto spans = doc->find_all_elements("span");
+    ASSERT_EQ(spans.size(), 2u);
+    EXPECT_EQ(spans[0]->tag_name, "span");
+    EXPECT_EQ(spans[1]->text_content(), "About");
+}

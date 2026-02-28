@@ -22417,3 +22417,227 @@ TEST(ComputedStyleTest, TextIndentTabSizeAndTypographyFieldsV119) {
     EXPECT_EQ(s.text_decoration_style, TextDecorationStyle::Wavy);
     EXPECT_FLOAT_EQ(s.text_decoration_thickness, 2.5f);
 }
+
+TEST(ComputedStyleTest, BorderEdgeFieldsAndDefaultsV120) {
+    // Verify border edges have correct defaults and can be independently set
+    ComputedStyle s;
+    // All borders default to zero width, none style, black color
+    EXPECT_TRUE(s.border_top.width.is_zero());
+    EXPECT_EQ(s.border_top.style, BorderStyle::None);
+    EXPECT_EQ(s.border_top.color, Color::black());
+    EXPECT_TRUE(s.border_right.width.is_zero());
+    EXPECT_TRUE(s.border_bottom.width.is_zero());
+    EXPECT_TRUE(s.border_left.width.is_zero());
+
+    // Set each border independently
+    s.border_top.width = Length::px(3.0f);
+    s.border_top.style = BorderStyle::Solid;
+    s.border_top.color = {255, 0, 0, 255};
+
+    s.border_right.width = Length::px(2.0f);
+    s.border_right.style = BorderStyle::Dashed;
+    s.border_right.color = {0, 255, 0, 255};
+
+    s.border_bottom.width = Length::px(1.0f);
+    s.border_bottom.style = BorderStyle::Dotted;
+    s.border_bottom.color = {0, 0, 255, 255};
+
+    s.border_left.width = Length::px(4.0f);
+    s.border_left.style = BorderStyle::Double;
+    s.border_left.color = {128, 128, 128, 255};
+
+    EXPECT_FLOAT_EQ(s.border_top.width.to_px(), 3.0f);
+    EXPECT_EQ(s.border_top.style, BorderStyle::Solid);
+    EXPECT_EQ(s.border_top.color.r, 255);
+    EXPECT_FLOAT_EQ(s.border_right.width.to_px(), 2.0f);
+    EXPECT_EQ(s.border_right.style, BorderStyle::Dashed);
+    EXPECT_FLOAT_EQ(s.border_bottom.width.to_px(), 1.0f);
+    EXPECT_EQ(s.border_bottom.style, BorderStyle::Dotted);
+    EXPECT_FLOAT_EQ(s.border_left.width.to_px(), 4.0f);
+    EXPECT_EQ(s.border_left.style, BorderStyle::Double);
+    EXPECT_EQ(s.border_left.color.g, 128);
+}
+
+TEST(ComputedStyleTest, OutlinePropertiesV120) {
+    // outline_width is Length, outline_offset is Length, outline_style/outline_color
+    ComputedStyle s;
+    EXPECT_TRUE(s.outline_width.is_zero());
+    EXPECT_EQ(s.outline_style, BorderStyle::None);
+    EXPECT_EQ(s.outline_color, Color::black());
+    EXPECT_TRUE(s.outline_offset.is_zero());
+
+    s.outline_width = Length::px(2.0f);
+    s.outline_style = BorderStyle::Solid;
+    s.outline_color = {255, 128, 0, 255};
+    s.outline_offset = Length::px(5.0f);
+
+    EXPECT_FLOAT_EQ(s.outline_width.to_px(), 2.0f);
+    EXPECT_EQ(s.outline_style, BorderStyle::Solid);
+    EXPECT_EQ(s.outline_color.r, 255);
+    EXPECT_EQ(s.outline_color.g, 128);
+    EXPECT_EQ(s.outline_color.b, 0);
+    EXPECT_FLOAT_EQ(s.outline_offset.to_px(), 5.0f);
+}
+
+TEST(ComputedStyleTest, BoxShadowEntryBlurFieldV120) {
+    // BoxShadowEntry uses .blur (not .blur_radius)
+    ComputedStyle s;
+    EXPECT_TRUE(s.box_shadows.empty());
+
+    ComputedStyle::BoxShadowEntry entry;
+    entry.offset_x = 5.0f;
+    entry.offset_y = 10.0f;
+    entry.blur = 15.0f;
+    entry.spread = 3.0f;
+    entry.color = {0, 0, 0, 128};
+    entry.inset = true;
+    s.box_shadows.push_back(entry);
+
+    ComputedStyle::BoxShadowEntry entry2;
+    entry2.offset_x = -2.0f;
+    entry2.offset_y = -4.0f;
+    entry2.blur = 8.0f;
+    entry2.spread = 0.0f;
+    entry2.color = {255, 0, 0, 200};
+    entry2.inset = false;
+    s.box_shadows.push_back(entry2);
+
+    EXPECT_EQ(s.box_shadows.size(), 2u);
+    EXPECT_FLOAT_EQ(s.box_shadows[0].blur, 15.0f);
+    EXPECT_TRUE(s.box_shadows[0].inset);
+    EXPECT_FLOAT_EQ(s.box_shadows[0].spread, 3.0f);
+    EXPECT_EQ(s.box_shadows[0].color.a, 128);
+    EXPECT_FLOAT_EQ(s.box_shadows[1].blur, 8.0f);
+    EXPECT_FALSE(s.box_shadows[1].inset);
+    EXPECT_EQ(s.box_shadows[1].color.r, 255);
+}
+
+TEST(ComputedStyleTest, EnumFieldAssignmentsV120) {
+    // Test enum assignments: Visibility, Cursor, PointerEvents, UserSelect,
+    // VerticalAlign, WhiteSpace
+    ComputedStyle s;
+    EXPECT_EQ(s.visibility, Visibility::Visible);
+    EXPECT_EQ(s.cursor, Cursor::Auto);
+    EXPECT_EQ(s.pointer_events, PointerEvents::Auto);
+    EXPECT_EQ(s.user_select, UserSelect::Auto);
+    EXPECT_EQ(s.vertical_align, VerticalAlign::Baseline);
+    EXPECT_EQ(s.white_space, WhiteSpace::Normal);
+
+    s.visibility = Visibility::Hidden;
+    s.cursor = Cursor::Pointer;
+    s.pointer_events = PointerEvents::None;
+    s.user_select = UserSelect::None;
+    s.vertical_align = VerticalAlign::Middle;
+    s.white_space = WhiteSpace::NoWrap;
+
+    EXPECT_EQ(s.visibility, Visibility::Hidden);
+    EXPECT_EQ(s.cursor, Cursor::Pointer);
+    EXPECT_EQ(s.pointer_events, PointerEvents::None);
+    EXPECT_EQ(s.user_select, UserSelect::None);
+    EXPECT_EQ(s.vertical_align, VerticalAlign::Middle);
+    EXPECT_EQ(s.white_space, WhiteSpace::NoWrap);
+}
+
+TEST(ComputedStyleTest, WordAndLetterSpacingLengthV120) {
+    // word_spacing and letter_spacing are Length type, use .to_px(font_size)
+    ComputedStyle s;
+    EXPECT_TRUE(s.word_spacing.is_zero());
+    EXPECT_TRUE(s.letter_spacing.is_zero());
+
+    s.word_spacing = Length::px(4.0f);
+    s.letter_spacing = Length::px(1.5f);
+    EXPECT_FLOAT_EQ(s.word_spacing.to_px(16.0f), 4.0f);
+    EXPECT_FLOAT_EQ(s.letter_spacing.to_px(16.0f), 1.5f);
+
+    // Em-based spacing: relative to font_size
+    s.word_spacing = Length::em(0.5f);
+    s.letter_spacing = Length::em(0.1f);
+    EXPECT_FLOAT_EQ(s.word_spacing.to_px(20.0f), 10.0f);   // 0.5em * 20px
+    EXPECT_FLOAT_EQ(s.letter_spacing.to_px(20.0f), 2.0f);   // 0.1em * 20px
+
+    // Percent-based spacing
+    s.word_spacing = Length::percent(50.0f);
+    EXPECT_FLOAT_EQ(s.word_spacing.to_px(16.0f), 8.0f);    // 50% of 16px
+}
+
+TEST(ComputedStyleTest, FontSizeAndLineHeightLengthV120) {
+    // font_size and line_height are Length type
+    ComputedStyle s;
+    EXPECT_FLOAT_EQ(s.font_size.to_px(), 16.0f); // default 16px
+
+    s.font_size = Length::px(24.0f);
+    EXPECT_FLOAT_EQ(s.font_size.to_px(), 24.0f);
+
+    s.font_size = Length::em(1.5f);
+    EXPECT_FLOAT_EQ(s.font_size.to_px(16.0f), 24.0f); // 1.5em * 16px parent
+
+    s.line_height = Length::px(30.0f);
+    EXPECT_FLOAT_EQ(s.line_height.to_px(), 30.0f);
+
+    s.line_height = Length::em(1.8f);
+    EXPECT_FLOAT_EQ(s.line_height.to_px(20.0f), 36.0f); // 1.8em * 20px
+
+    // unitless line-height factor
+    EXPECT_FLOAT_EQ(s.line_height_unitless, 1.2f); // default
+    s.line_height_unitless = 1.6f;
+    EXPECT_FLOAT_EQ(s.line_height_unitless, 1.6f);
+}
+
+TEST(ComputedStyleTest, DisplayPositionOverflowEnumsV120) {
+    // display, position, overflow are enum types
+    ComputedStyle s;
+    EXPECT_EQ(s.display, Display::Inline);     // default
+    EXPECT_EQ(s.position, Position::Static);   // default
+    EXPECT_EQ(s.overflow_x, Overflow::Visible);
+    EXPECT_EQ(s.overflow_y, Overflow::Visible);
+
+    s.display = Display::Flex;
+    s.position = Position::Relative;
+    s.overflow_x = Overflow::Hidden;
+    s.overflow_y = Overflow::Scroll;
+
+    EXPECT_EQ(s.display, Display::Flex);
+    EXPECT_EQ(s.position, Position::Relative);
+    EXPECT_EQ(s.overflow_x, Overflow::Hidden);
+    EXPECT_EQ(s.overflow_y, Overflow::Scroll);
+
+    s.display = Display::Grid;
+    s.position = Position::Sticky;
+    s.overflow_x = Overflow::Auto;
+    s.overflow_y = Overflow::Auto;
+
+    EXPECT_EQ(s.display, Display::Grid);
+    EXPECT_EQ(s.position, Position::Sticky);
+    EXPECT_EQ(s.overflow_x, Overflow::Auto);
+    EXPECT_EQ(s.overflow_y, Overflow::Auto);
+}
+
+TEST(ComputedStyleTest, SvgMarkerAndMaskPropertiesV120) {
+    // marker_start, marker_mid, marker_end, mask_image, mask_origin, mask_clip
+    ComputedStyle s;
+    EXPECT_TRUE(s.marker_start.empty());
+    EXPECT_TRUE(s.marker_mid.empty());
+    EXPECT_TRUE(s.marker_end.empty());
+    EXPECT_TRUE(s.mask_image.empty());
+    EXPECT_EQ(s.mask_origin, 0);  // border-box
+    EXPECT_EQ(s.mask_clip, 0);    // border-box
+
+    s.marker_start = "url(#arrow)";
+    s.marker_mid = "url(#dot)";
+    s.marker_end = "url(#tail)";
+    s.mask_image = "url(mask.png)";
+    s.mask_origin = 2; // content-box
+    s.mask_clip = 3;   // no-clip
+
+    EXPECT_EQ(s.marker_start, "url(#arrow)");
+    EXPECT_EQ(s.marker_mid, "url(#dot)");
+    EXPECT_EQ(s.marker_end, "url(#tail)");
+    EXPECT_EQ(s.mask_image, "url(mask.png)");
+    EXPECT_EQ(s.mask_origin, 2);
+    EXPECT_EQ(s.mask_clip, 3);
+
+    // Also verify mask_position default and modification
+    EXPECT_EQ(s.mask_position, "0% 0%");
+    s.mask_position = "center center";
+    EXPECT_EQ(s.mask_position, "center center");
+}

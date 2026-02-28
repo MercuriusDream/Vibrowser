@@ -17847,3 +17847,131 @@ TEST(SerializerTest, InterleavedTypesStressV119) {
     EXPECT_EQ(d.read_string(), "");
     EXPECT_FALSE(d.has_remaining());
 }
+
+// ------------------------------------------------------------------
+// V120 tests
+// ------------------------------------------------------------------
+
+TEST(SerializerTest, RoundTripU16MaxAndZeroV120) {
+    Serializer s;
+    s.write_u16(0);
+    s.write_u16(65535);
+    s.write_u16(32768);
+    s.write_u16(1);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u16(), 0u);
+    EXPECT_EQ(d.read_u16(), 65535u);
+    EXPECT_EQ(d.read_u16(), 32768u);
+    EXPECT_EQ(d.read_u16(), 1u);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, WriteBytesEmptyAndVerifyDataV120) {
+    Serializer s;
+    uint8_t empty_buf[] = {0};
+    s.write_bytes(empty_buf, 0);
+
+    Deserializer d(s.data());
+    auto result = d.read_bytes();
+    EXPECT_EQ(result.size(), 0u);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, F64SubnormalAndInfinityRoundTripV120) {
+    Serializer s;
+    double subnormal = std::numeric_limits<double>::denorm_min();
+    double pos_inf = std::numeric_limits<double>::infinity();
+    double neg_inf = -std::numeric_limits<double>::infinity();
+
+    s.write_f64(subnormal);
+    s.write_f64(pos_inf);
+    s.write_f64(neg_inf);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_f64(), subnormal);
+    EXPECT_EQ(d.read_f64(), pos_inf);
+    EXPECT_EQ(d.read_f64(), neg_inf);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, StringWithOnlyNulBytesV120) {
+    Serializer s;
+    std::string nul_str(5, '\0');
+    s.write_string(nul_str);
+
+    Deserializer d(s.data());
+    std::string result = d.read_string();
+    EXPECT_EQ(result.size(), 5u);
+    for (size_t i = 0; i < result.size(); ++i) {
+        EXPECT_EQ(result[i], '\0');
+    }
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, MultipleBoolAlternatingPatternV120) {
+    Serializer s;
+    for (int i = 0; i < 16; ++i) {
+        s.write_bool(i % 3 == 0);
+    }
+
+    Deserializer d(s.data());
+    for (int i = 0; i < 16; ++i) {
+        EXPECT_EQ(d.read_bool(), (i % 3 == 0));
+    }
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, U32PowersOfTwoV120) {
+    Serializer s;
+    for (int shift = 0; shift < 32; ++shift) {
+        s.write_u32(1u << shift);
+    }
+
+    Deserializer d(s.data());
+    for (int shift = 0; shift < 32; ++shift) {
+        EXPECT_EQ(d.read_u32(), 1u << shift);
+    }
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, BytesBinarySequence256V120) {
+    std::vector<uint8_t> all_bytes(256);
+    for (int i = 0; i < 256; ++i) {
+        all_bytes[i] = static_cast<uint8_t>(i);
+    }
+
+    Serializer s;
+    s.write_bytes(all_bytes.data(), all_bytes.size());
+
+    Deserializer d(s.data());
+    auto result = d.read_bytes();
+    ASSERT_EQ(result.size(), 256u);
+    for (int i = 0; i < 256; ++i) {
+        EXPECT_EQ(result[i], static_cast<uint8_t>(i));
+    }
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, U64ThenStringThenBytesInterleavedV120) {
+    Serializer s;
+    s.write_u64(0xCAFEBABEDEADC0DEull);
+    s.write_string("interleaved");
+    uint8_t payload[] = {0xAA, 0xBB, 0xCC, 0xDD};
+    s.write_bytes(payload, 4);
+    s.write_u64(0);
+    s.write_string("");
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u64(), 0xCAFEBABEDEADC0DEull);
+    EXPECT_EQ(d.read_string(), "interleaved");
+    auto bytes = d.read_bytes();
+    ASSERT_EQ(bytes.size(), 4u);
+    EXPECT_EQ(bytes[0], 0xAA);
+    EXPECT_EQ(bytes[1], 0xBB);
+    EXPECT_EQ(bytes[2], 0xCC);
+    EXPECT_EQ(bytes[3], 0xDD);
+    EXPECT_EQ(d.read_u64(), 0ull);
+    EXPECT_EQ(d.read_string(), "");
+    EXPECT_FALSE(d.has_remaining());
+}

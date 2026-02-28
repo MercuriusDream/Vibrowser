@@ -18263,3 +18263,115 @@ TEST(DomElement, TextContentIgnoresCommentsV119) {
     div.append_child(std::make_unique<Text>(" World"));
     EXPECT_EQ(div.text_content(), "Hello World");
 }
+
+// ---------------------------------------------------------------------------
+// V120 tests
+// ---------------------------------------------------------------------------
+
+// 1. insert_before at the beginning shifts existing children right
+TEST(DomNode, InsertBeforeAtHeadShiftsChildrenV120) {
+    Element parent("ul");
+    auto li1 = std::make_unique<Element>("li");
+    auto li2 = std::make_unique<Element>("li");
+    li1->set_attribute("id", "first");
+    li2->set_attribute("id", "second");
+    Node* r1 = li1.get();
+    parent.append_child(std::move(li1));
+    parent.insert_before(std::move(li2), r1);
+    // "second" should now be first_child, "first" should be last_child
+    auto* fc = dynamic_cast<Element*>(parent.first_child());
+    auto* lc = dynamic_cast<Element*>(parent.last_child());
+    ASSERT_NE(fc, nullptr);
+    ASSERT_NE(lc, nullptr);
+    EXPECT_EQ(fc->get_attribute("id").value(), "second");
+    EXPECT_EQ(lc->get_attribute("id").value(), "first");
+    EXPECT_EQ(parent.child_count(), 2u);
+}
+
+// 2. remove_child on last child leaves first child unchanged
+TEST(DomNode, RemoveLastChildLeavesFirstV120) {
+    Element parent("div");
+    auto c1 = std::make_unique<Element>("a");
+    auto c2 = std::make_unique<Element>("b");
+    Node* r1 = c1.get();
+    Node* r2 = c2.get();
+    parent.append_child(std::move(c1));
+    parent.append_child(std::move(c2));
+    EXPECT_EQ(parent.child_count(), 2u);
+    parent.remove_child(*r2);
+    EXPECT_EQ(parent.child_count(), 1u);
+    EXPECT_EQ(parent.first_child(), r1);
+    EXPECT_EQ(parent.last_child(), r1);
+    EXPECT_EQ(r1->next_sibling(), nullptr);
+}
+
+// 3. Document create_comment returns correct node type and data
+TEST(DomDocument, CreateCommentNodeTypeAndDataV120) {
+    Document doc;
+    auto cmt = doc.create_comment("test comment");
+    EXPECT_EQ(cmt->node_type(), NodeType::Comment);
+    EXPECT_EQ(cmt->data(), "test comment");
+}
+
+// 4. ClassList length is zero after adding and removing same class
+TEST(DomClassList, LengthZeroAfterAddRemoveV120) {
+    ClassList cl;
+    cl.add("active");
+    EXPECT_EQ(cl.length(), 1u);
+    cl.remove("active");
+    EXPECT_EQ(cl.length(), 0u);
+    EXPECT_FALSE(cl.contains("active"));
+}
+
+// 5. Element attributes preserve name and value through Attribute struct fields
+TEST(DomElement, AttributeStructFieldsV120) {
+    Element input("input");
+    input.set_attribute("type", "text");
+    input.set_attribute("placeholder", "Enter name");
+    const auto& attrs = input.attributes();
+    ASSERT_EQ(attrs.size(), 2u);
+    EXPECT_EQ(attrs[0].name, "type");
+    EXPECT_EQ(attrs[0].value, "text");
+    EXPECT_EQ(attrs[1].name, "placeholder");
+    EXPECT_EQ(attrs[1].value, "Enter name");
+}
+
+// 6. mark_dirty propagates Style|Layout combined flags to parent
+TEST(DomNode, MarkDirtyCombinedFlagsPropagatesV120) {
+    Element parent("div");
+    auto child = std::make_unique<Element>("span");
+    Node* raw = child.get();
+    parent.append_child(std::move(child));
+    parent.clear_dirty();
+    raw->clear_dirty();
+    raw->mark_dirty(DirtyFlags::Style | DirtyFlags::Layout);
+    // Child should have both flags
+    EXPECT_NE(static_cast<uint8_t>(raw->dirty_flags() & DirtyFlags::Style), 0);
+    EXPECT_NE(static_cast<uint8_t>(raw->dirty_flags() & DirtyFlags::Layout), 0);
+    // Parent should also be dirty (propagated)
+    EXPECT_NE(static_cast<uint8_t>(parent.dirty_flags()), 0);
+}
+
+// 7. Text node has no children and child_count returns zero
+TEST(DomText, TextNodeHasNoChildrenV120) {
+    Text t("hello");
+    EXPECT_EQ(t.child_count(), 0u);
+    EXPECT_EQ(t.first_child(), nullptr);
+    EXPECT_EQ(t.last_child(), nullptr);
+}
+
+// 8. for_each_child visits children in insertion order
+TEST(DomNode, ForEachChildVisitsInOrderV120) {
+    Element parent("ol");
+    parent.append_child(std::make_unique<Element>("li"));
+    parent.append_child(std::make_unique<Text>("text"));
+    parent.append_child(std::make_unique<Comment>("note"));
+    std::vector<NodeType> types;
+    parent.for_each_child([&](const Node& n) {
+        types.push_back(n.node_type());
+    });
+    ASSERT_EQ(types.size(), 3u);
+    EXPECT_EQ(types[0], NodeType::Element);
+    EXPECT_EQ(types[1], NodeType::Text);
+    EXPECT_EQ(types[2], NodeType::Comment);
+}
