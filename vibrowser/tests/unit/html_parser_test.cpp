@@ -17160,3 +17160,142 @@ TEST(HtmlParserTest, SelectWithOptionGroupsV105) {
     EXPECT_EQ(get_attr_v63(options[2], "value"), "carrot");
     EXPECT_EQ(options[2]->text_content(), "Carrot");
 }
+
+// ---------------------------------------------------------------------------
+// V106 Tests — 8 new HTML parser tests
+// ---------------------------------------------------------------------------
+
+TEST(HtmlParserTest, NestedDefinitionListV106) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<dl>"
+        "<dt>Term1</dt><dd>Def1</dd>"
+        "<dt>Term2</dt><dd>Def2</dd>"
+        "</dl>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto dts = doc->find_all_elements("dt");
+    ASSERT_EQ(dts.size(), 2u);
+    EXPECT_EQ(dts[0]->text_content(), "Term1");
+    EXPECT_EQ(dts[1]->text_content(), "Term2");
+    auto dds = doc->find_all_elements("dd");
+    ASSERT_EQ(dds.size(), 2u);
+    EXPECT_EQ(dds[0]->text_content(), "Def1");
+    EXPECT_EQ(dds[1]->text_content(), "Def2");
+}
+
+TEST(HtmlParserTest, FieldsetWithLegendV106) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<fieldset>"
+        "<legend>Login</legend>"
+        "<input type=\"text\" name=\"user\"/>"
+        "</fieldset>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* legend = doc->find_element("legend");
+    ASSERT_NE(legend, nullptr);
+    EXPECT_EQ(legend->text_content(), "Login");
+    auto* input = doc->find_element("input");
+    ASSERT_NE(input, nullptr);
+    EXPECT_EQ(get_attr_v63(input, "type"), "text");
+    EXPECT_EQ(get_attr_v63(input, "name"), "user");
+}
+
+TEST(HtmlParserTest, DataAttributesPreservedV106) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<div data-id=\"42\" data-role=\"admin\">Info</div>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* div = doc->find_element("div");
+    ASSERT_NE(div, nullptr);
+    EXPECT_EQ(get_attr_v63(div, "data-id"), "42");
+    EXPECT_EQ(get_attr_v63(div, "data-role"), "admin");
+    EXPECT_EQ(div->text_content(), "Info");
+}
+
+TEST(HtmlParserTest, NestedBlockquoteParagraphsV106) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<blockquote>"
+        "<p>First paragraph</p>"
+        "<p>Second paragraph</p>"
+        "</blockquote>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* bq = doc->find_element("blockquote");
+    ASSERT_NE(bq, nullptr);
+    auto paras = doc->find_all_elements("p");
+    ASSERT_EQ(paras.size(), 2u);
+    EXPECT_EQ(paras[0]->text_content(), "First paragraph");
+    EXPECT_EQ(paras[1]->text_content(), "Second paragraph");
+}
+
+TEST(HtmlParserTest, TableCaptionAndHeaderV106) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<table>"
+        "<caption>Sales Data</caption>"
+        "<thead><tr><th>Year</th><th>Revenue</th></tr></thead>"
+        "<tbody><tr><td>2024</td><td>1M</td></tr></tbody>"
+        "</table>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* caption = doc->find_element("caption");
+    ASSERT_NE(caption, nullptr);
+    EXPECT_EQ(caption->text_content(), "Sales Data");
+    auto ths = doc->find_all_elements("th");
+    ASSERT_EQ(ths.size(), 2u);
+    EXPECT_EQ(ths[0]->text_content(), "Year");
+    EXPECT_EQ(ths[1]->text_content(), "Revenue");
+    auto tds = doc->find_all_elements("td");
+    ASSERT_EQ(tds.size(), 2u);
+    EXPECT_EQ(tds[0]->text_content(), "2024");
+    EXPECT_EQ(tds[1]->text_content(), "1M");
+}
+
+TEST(HtmlParserTest, MultipleClassesOnElementV106) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<span class=\"bold italic underline\">Styled</span>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* span = doc->find_element("span");
+    ASSERT_NE(span, nullptr);
+    EXPECT_EQ(get_attr_v63(span, "class"), "bold italic underline");
+    EXPECT_EQ(span->text_content(), "Styled");
+}
+
+TEST(HtmlParserTest, AnchorWithHrefAndTargetV106) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<a href=\"https://example.com\" target=\"_blank\" rel=\"noopener\">Link</a>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* a = doc->find_element("a");
+    ASSERT_NE(a, nullptr);
+    EXPECT_EQ(get_attr_v63(a, "href"), "https://example.com");
+    EXPECT_EQ(get_attr_v63(a, "target"), "_blank");
+    EXPECT_EQ(get_attr_v63(a, "rel"), "noopener");
+    EXPECT_EQ(a->text_content(), "Link");
+}
+
+TEST(HtmlParserTest, DetailsAndSummaryElementsV106) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<details>"
+        "<summary>Click to expand</summary>"
+        "<p>Hidden content here</p>"
+        "</details>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* summary = doc->find_element("summary");
+    ASSERT_NE(summary, nullptr);
+    EXPECT_EQ(summary->text_content(), "Click to expand");
+    auto* details = doc->find_element("details");
+    ASSERT_NE(details, nullptr);
+    auto* p = doc->find_element("p");
+    ASSERT_NE(p, nullptr);
+    EXPECT_EQ(p->text_content(), "Hidden content here");
+}

@@ -15604,3 +15604,163 @@ TEST(SerializerTest, MultipleDeserializersFromSameDataV105) {
     EXPECT_FALSE(d1.has_remaining());
     EXPECT_FALSE(d2.has_remaining());
 }
+
+// ===================================================================
+// V106 tests
+// ===================================================================
+
+// 1. Round-trip u8 boundary values with interleaved bools
+TEST(SerializerTest, U8InterleavedWithBoolV106) {
+    Serializer s;
+    s.write_u8(0);
+    s.write_bool(false);
+    s.write_u8(128);
+    s.write_bool(true);
+    s.write_u8(255);
+    s.write_bool(false);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u8(), 0);
+    EXPECT_EQ(d.read_bool(), false);
+    EXPECT_EQ(d.read_u8(), 128);
+    EXPECT_EQ(d.read_bool(), true);
+    EXPECT_EQ(d.read_u8(), 255);
+    EXPECT_EQ(d.read_bool(), false);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+// 2. Multiple empty strings followed by a non-empty string
+TEST(SerializerTest, MultipleEmptyStringsThenNonEmptyV106) {
+    Serializer s;
+    s.write_string("");
+    s.write_string("");
+    s.write_string("");
+    s.write_string("finally");
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "");
+    EXPECT_EQ(d.read_string(), "");
+    EXPECT_EQ(d.read_string(), "");
+    EXPECT_EQ(d.read_string(), "finally");
+    EXPECT_FALSE(d.has_remaining());
+}
+
+// 3. u64 max and min interleaved with i64 extremes
+TEST(SerializerTest, U64MaxMinWithI64ExtremesV106) {
+    Serializer s;
+    s.write_u64(std::numeric_limits<uint64_t>::max());
+    s.write_i64(std::numeric_limits<int64_t>::min());
+    s.write_u64(0ULL);
+    s.write_i64(std::numeric_limits<int64_t>::max());
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u64(), std::numeric_limits<uint64_t>::max());
+    EXPECT_EQ(d.read_i64(), std::numeric_limits<int64_t>::min());
+    EXPECT_EQ(d.read_u64(), 0ULL);
+    EXPECT_EQ(d.read_i64(), std::numeric_limits<int64_t>::max());
+    EXPECT_FALSE(d.has_remaining());
+}
+
+// 4. write_bytes with zero-length payload
+TEST(SerializerTest, WriteBytesZeroLengthV106) {
+    Serializer s;
+    s.write_u32(0xDEADBEEFu);
+    uint8_t dummy = 0;
+    s.write_bytes(&dummy, 0);
+    s.write_u32(0xCAFEBABEu);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u32(), 0xDEADBEEFu);
+    auto empty_bytes = d.read_bytes();
+    EXPECT_TRUE(empty_bytes.empty());
+    EXPECT_EQ(d.read_u32(), 0xCAFEBABEu);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+// 5. f64 special values: positive infinity, negative infinity, zero, negative zero
+TEST(SerializerTest, F64SpecialValuesV106) {
+    Serializer s;
+    s.write_f64(std::numeric_limits<double>::infinity());
+    s.write_f64(-std::numeric_limits<double>::infinity());
+    s.write_f64(0.0);
+    s.write_f64(-0.0);
+
+    Deserializer d(s.data());
+    double pos_inf = d.read_f64();
+    EXPECT_TRUE(std::isinf(pos_inf) && pos_inf > 0);
+    double neg_inf = d.read_f64();
+    EXPECT_TRUE(std::isinf(neg_inf) && neg_inf < 0);
+    EXPECT_DOUBLE_EQ(d.read_f64(), 0.0);
+    double neg_zero = d.read_f64();
+    EXPECT_DOUBLE_EQ(neg_zero, 0.0);
+    EXPECT_TRUE(std::signbit(neg_zero));
+    EXPECT_FALSE(d.has_remaining());
+}
+
+// 6. Large string round-trip (10000 chars)
+TEST(SerializerTest, LargeStringRoundTripV106) {
+    std::string big(10000, 'X');
+    big[0] = 'A';
+    big[9999] = 'Z';
+
+    Serializer s;
+    s.write_string(big);
+
+    Deserializer d(s.data());
+    std::string result = d.read_string();
+    EXPECT_EQ(result.size(), 10000u);
+    EXPECT_EQ(result[0], 'A');
+    EXPECT_EQ(result[9999], 'Z');
+    EXPECT_EQ(result[5000], 'X');
+    EXPECT_FALSE(d.has_remaining());
+}
+
+// 7. Alternating u16 and u32 values
+TEST(SerializerTest, AlternatingU16U32V106) {
+    Serializer s;
+    for (uint32_t i = 0; i < 20; ++i) {
+        s.write_u16(static_cast<uint16_t>(i * 1000));
+        s.write_u32(i * 100000u);
+    }
+
+    Deserializer d(s.data());
+    for (uint32_t i = 0; i < 20; ++i) {
+        EXPECT_EQ(d.read_u16(), static_cast<uint16_t>(i * 1000));
+        EXPECT_EQ(d.read_u32(), i * 100000u);
+    }
+    EXPECT_FALSE(d.has_remaining());
+}
+
+// 8. Mixed types: every type in one serializer
+TEST(SerializerTest, EveryTypeInOneMessageV106) {
+    Serializer s;
+    s.write_u8(42);
+    s.write_u16(12345);
+    s.write_u32(3000000000u);
+    s.write_u64(9999999999999ULL);
+    s.write_i32(-2147483647);
+    s.write_i64(-8000000000000LL);
+    s.write_f64(2.718281828459045);
+    s.write_bool(true);
+    s.write_string("hello world");
+    std::vector<uint8_t> blob = {0x01, 0x02, 0x03, 0xFF};
+    s.write_bytes(blob.data(), blob.size());
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u8(), 42);
+    EXPECT_EQ(d.read_u16(), 12345);
+    EXPECT_EQ(d.read_u32(), 3000000000u);
+    EXPECT_EQ(d.read_u64(), 9999999999999ULL);
+    EXPECT_EQ(d.read_i32(), -2147483647);
+    EXPECT_EQ(d.read_i64(), -8000000000000LL);
+    EXPECT_DOUBLE_EQ(d.read_f64(), 2.718281828459045);
+    EXPECT_EQ(d.read_bool(), true);
+    EXPECT_EQ(d.read_string(), "hello world");
+    auto read_blob = d.read_bytes();
+    ASSERT_EQ(read_blob.size(), 4u);
+    EXPECT_EQ(read_blob[0], 0x01);
+    EXPECT_EQ(read_blob[1], 0x02);
+    EXPECT_EQ(read_blob[2], 0x03);
+    EXPECT_EQ(read_blob[3], 0xFF);
+    EXPECT_FALSE(d.has_remaining());
+}

@@ -7884,3 +7884,91 @@ TEST(CorsPolicyTest, CorsAllowsResponseExactOriginMatchV105) {
                                       "https://backend.example.com/api",
                                       headers, true));
 }
+
+TEST(CorsPolicyTest, SchemeCaseInsensitiveEnforceabilityV106) {
+    // Only lowercase schemes are recognized as enforceable
+    EXPECT_TRUE(has_enforceable_document_origin("https://app.example.com"));
+    EXPECT_TRUE(has_enforceable_document_origin("http://app.example.com"));
+    // Uppercase/mixed-case schemes are NOT enforceable in this implementation
+    EXPECT_FALSE(has_enforceable_document_origin("HTTPS://app.example.com"));
+    EXPECT_FALSE(has_enforceable_document_origin("Https://app.example.com"));
+    EXPECT_FALSE(has_enforceable_document_origin("HTTP://app.example.com"));
+    EXPECT_FALSE(has_enforceable_document_origin("FTP://app.example.com"));
+}
+
+TEST(CorsPolicyTest, IpV4OriginsEnforceableV106) {
+    // IP addresses ARE enforceable origins
+    EXPECT_TRUE(has_enforceable_document_origin("https://192.168.1.1"));
+    EXPECT_TRUE(has_enforceable_document_origin("http://10.0.0.1"));
+    EXPECT_TRUE(has_enforceable_document_origin("https://127.0.0.1"));
+    // IP with explicit port
+    EXPECT_TRUE(has_enforceable_document_origin("https://192.168.1.1:8080"));
+}
+
+TEST(CorsPolicyTest, DataBlobSchemesNotEnforceableV106) {
+    // data: and blob: origins are NOT enforceable
+    EXPECT_FALSE(has_enforceable_document_origin("data:text/html,<h1>Hi</h1>"));
+    EXPECT_FALSE(has_enforceable_document_origin("blob:https://example.com/uuid"));
+    EXPECT_FALSE(has_enforceable_document_origin("data:"));
+    EXPECT_FALSE(has_enforceable_document_origin("blob:null"));
+}
+
+TEST(CorsPolicyTest, FragmentsNotCorsEligibleUrlV106) {
+    // URLs with fragments are NOT cors-eligible
+    EXPECT_FALSE(is_cors_eligible_request_url("https://api.example.com/data#section1"));
+    EXPECT_FALSE(is_cors_eligible_request_url("http://api.example.com/path#frag"));
+    // Same URL without fragment IS cors-eligible
+    EXPECT_TRUE(is_cors_eligible_request_url("https://api.example.com/data"));
+    EXPECT_TRUE(is_cors_eligible_request_url("http://api.example.com/path"));
+}
+
+TEST(CorsPolicyTest, WssNotCrossOriginV106) {
+    // wss:// is NOT considered cross-origin relative to https:// (same host)
+    EXPECT_FALSE(is_cross_origin("https://app.example.com", "wss://app.example.com/ws"));
+    // ws:// is NOT considered cross-origin relative to http:// (same host)
+    EXPECT_FALSE(is_cross_origin("http://app.example.com", "ws://app.example.com/ws"));
+    // wss:// with different hosts is also NOT cross-origin (wss exempt from cross-origin)
+    EXPECT_FALSE(is_cross_origin("https://app.example.com", "wss://other.example.com/ws"));
+    EXPECT_FALSE(is_cross_origin("http://app.example.com", "ws://other.example.com/ws"));
+}
+
+TEST(CorsPolicyTest, ExplicitPort443NotEnforceableOriginV106) {
+    // Explicit :443 on HTTPS is NOT enforceable
+    EXPECT_FALSE(has_enforceable_document_origin("https://app.example.com:443"));
+    // Explicit :80 on HTTP is NOT enforceable
+    EXPECT_FALSE(has_enforceable_document_origin("http://app.example.com:80"));
+    // Non-default port IS enforceable
+    EXPECT_TRUE(has_enforceable_document_origin("https://app.example.com:8443"));
+    EXPECT_TRUE(has_enforceable_document_origin("http://app.example.com:3000"));
+}
+
+TEST(CorsPolicyTest, CorsAllowsWildcardWithoutCredentialsV106) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "*");
+    // Wildcard ACAO allows non-credentialed requests
+    EXPECT_TRUE(cors_allows_response("https://any.example.com",
+                                     "https://api.example.com/data",
+                                     headers, false));
+    // Wildcard ACAO does NOT allow credentialed requests
+    EXPECT_FALSE(cors_allows_response("https://any.example.com",
+                                      "https://api.example.com/data",
+                                      headers, true));
+    // Even with ACAC header, wildcard + credentials should fail
+    headers.set("Access-Control-Allow-Credentials", "true");
+    EXPECT_FALSE(cors_allows_response("https://any.example.com",
+                                      "https://api.example.com/data",
+                                      headers, true));
+}
+
+TEST(CorsPolicyTest, ShouldAttachOriginForCrossOriginOnlyV106) {
+    // Cross-origin request should attach origin header
+    EXPECT_TRUE(should_attach_origin_header("https://app.example.com",
+                                            "https://api.other.com/endpoint"));
+    // Same-origin request should NOT attach origin header
+    EXPECT_FALSE(should_attach_origin_header("https://app.example.com",
+                                             "https://app.example.com/api/data"));
+    // Null origin is treated as cross-origin, so origin IS attached
+    EXPECT_TRUE(should_attach_origin_header("null", "https://api.example.com/data"));
+    // Empty origin should not attach (empty = no document origin)
+    EXPECT_FALSE(should_attach_origin_header("", "https://api.example.com/data"));
+}

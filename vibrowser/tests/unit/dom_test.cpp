@@ -16502,3 +16502,150 @@ TEST(DomTest, DirtyFlagMarkAndClearCycleV105) {
     div.clear_dirty();
     EXPECT_EQ(div.dirty_flags(), DirtyFlags::None);
 }
+
+// ---------------------------------------------------------------------------
+// V106 Tests
+// ---------------------------------------------------------------------------
+
+// 1. Append multiple children and verify child_count and sibling chain
+TEST(DomTest, AppendMultipleChildrenSiblingChainV106) {
+    Element parent("ul");
+    auto li1 = std::make_unique<Element>("li");
+    auto li2 = std::make_unique<Element>("li");
+    auto li3 = std::make_unique<Element>("li");
+    li1->set_attribute("data-index", "0");
+    li2->set_attribute("data-index", "1");
+    li3->set_attribute("data-index", "2");
+
+    auto* raw1 = li1.get();
+    auto* raw2 = li2.get();
+    auto* raw3 = li3.get();
+    parent.append_child(std::move(li1));
+    parent.append_child(std::move(li2));
+    parent.append_child(std::move(li3));
+
+    EXPECT_EQ(parent.child_count(), 3u);
+    EXPECT_EQ(parent.first_child(), raw1);
+    EXPECT_EQ(raw1->next_sibling(), raw2);
+    EXPECT_EQ(raw2->next_sibling(), raw3);
+    EXPECT_EQ(raw3->next_sibling(), nullptr);
+}
+
+// 2. Text node content and parent relationship
+TEST(DomTest, TextNodeContentAndParentV106) {
+    Element span("span");
+    auto txt = std::make_unique<Text>("hello world");
+    auto* raw_txt = txt.get();
+    span.append_child(std::move(txt));
+
+    EXPECT_EQ(raw_txt->text_content(), "hello world");
+    EXPECT_EQ(raw_txt->parent(), &span);
+    EXPECT_EQ(raw_txt->node_type(), NodeType::Text);
+    EXPECT_EQ(span.child_count(), 1u);
+}
+
+// 3. Comment node stores data via data() not text_content()
+TEST(DomTest, CommentNodeDataAccessV106) {
+    Comment c("this is a comment");
+    EXPECT_EQ(c.data(), "this is a comment");
+    EXPECT_EQ(c.node_type(), NodeType::Comment);
+}
+
+// 4. insert_before places node in correct position
+TEST(DomTest, InsertBeforeMiddleChildV106) {
+    Element div("div");
+    auto a = std::make_unique<Element>("a");
+    auto c = std::make_unique<Element>("c");
+    auto* raw_a = a.get();
+    auto* raw_c = c.get();
+    div.append_child(std::move(a));
+    div.append_child(std::move(c));
+
+    auto b = std::make_unique<Element>("b");
+    auto* raw_b = b.get();
+    div.insert_before(std::move(b), raw_c);
+
+    EXPECT_EQ(div.child_count(), 3u);
+    EXPECT_EQ(div.first_child(), raw_a);
+    EXPECT_EQ(raw_a->next_sibling(), raw_b);
+    EXPECT_EQ(raw_b->next_sibling(), raw_c);
+}
+
+// 5. remove_child detaches node from parent
+TEST(DomTest, RemoveChildDetachesFromParentV106) {
+    Element div("div");
+    auto p = std::make_unique<Element>("p");
+    auto span = std::make_unique<Element>("span");
+    auto* raw_p = p.get();
+    auto* raw_span = span.get();
+    div.append_child(std::move(p));
+    div.append_child(std::move(span));
+    EXPECT_EQ(div.child_count(), 2u);
+
+    div.remove_child(*raw_p);
+    EXPECT_EQ(div.child_count(), 1u);
+    EXPECT_EQ(div.first_child(), raw_span);
+    EXPECT_EQ(raw_span->next_sibling(), nullptr);
+}
+
+// 6. class_list add/remove/contains/toggle
+TEST(DomTest, ClassListAddRemoveContainsToggleV106) {
+    Element div("div");
+    div.class_list().add("active");
+    div.class_list().add("visible");
+    EXPECT_TRUE(div.class_list().contains("active"));
+    EXPECT_TRUE(div.class_list().contains("visible"));
+
+    div.class_list().remove("active");
+    EXPECT_FALSE(div.class_list().contains("active"));
+    EXPECT_TRUE(div.class_list().contains("visible"));
+
+    div.class_list().toggle("visible");
+    EXPECT_FALSE(div.class_list().contains("visible"));
+
+    div.class_list().toggle("hidden");
+    EXPECT_TRUE(div.class_list().contains("hidden"));
+}
+
+// 7. set_attribute / get_attribute / has_attribute / remove_attribute
+TEST(DomTest, AttributeSetGetHasRemoveV106) {
+    Element input("input");
+    EXPECT_FALSE(input.has_attribute("type"));
+    EXPECT_FALSE(input.get_attribute("type").has_value());
+
+    input.set_attribute("type", "text");
+    input.set_attribute("name", "username");
+    input.set_attribute("placeholder", "Enter name");
+
+    EXPECT_TRUE(input.has_attribute("type"));
+    EXPECT_EQ(input.get_attribute("type").value(), "text");
+    EXPECT_EQ(input.get_attribute("name").value(), "username");
+    EXPECT_EQ(input.attributes().size(), 3u);
+
+    input.remove_attribute("placeholder");
+    EXPECT_FALSE(input.has_attribute("placeholder"));
+    EXPECT_EQ(input.attributes().size(), 2u);
+}
+
+// 8. Deep tree: grandchild parent_node chain
+TEST(DomTest, DeepTreeParentNodeChainV106) {
+    Element root("div");
+    auto child = std::make_unique<Element>("section");
+    auto* raw_child = child.get();
+    root.append_child(std::move(child));
+
+    auto grandchild = std::make_unique<Element>("article");
+    auto* raw_gc = grandchild.get();
+    raw_child->append_child(std::move(grandchild));
+
+    auto leaf = std::make_unique<Text>("leaf text");
+    auto* raw_leaf = leaf.get();
+    raw_gc->append_child(std::move(leaf));
+
+    EXPECT_EQ(raw_leaf->parent(), raw_gc);
+    EXPECT_EQ(raw_gc->parent(), raw_child);
+    EXPECT_EQ(raw_child->parent(), &root);
+    EXPECT_EQ(root.parent(), nullptr);
+    EXPECT_EQ(raw_leaf->text_content(), "leaf text");
+    EXPECT_EQ(raw_gc->tag_name(), "article");
+}

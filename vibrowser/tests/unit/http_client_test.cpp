@@ -17954,3 +17954,179 @@ TEST(HeaderMapTest, AppendThenGetReturnsFirstValueV105) {
     // size() counts all entries
     EXPECT_EQ(map.size(), 3u);
 }
+
+// ===========================================================================
+// V106 Tests
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// 1. HeaderMap: remove then has returns false V106
+// ---------------------------------------------------------------------------
+TEST(HeaderMapTest, RemoveThenHasReturnsFalseV106) {
+    HeaderMap map;
+    map.set("Authorization", "Bearer tok123");
+    map.set("Accept", "application/xml");
+    EXPECT_TRUE(map.has("Authorization"));
+    EXPECT_EQ(map.size(), 2u);
+
+    map.remove("Authorization");
+    EXPECT_FALSE(map.has("Authorization"));
+    EXPECT_FALSE(map.get("authorization").has_value());
+    // Accept should remain
+    EXPECT_TRUE(map.has("Accept"));
+    EXPECT_EQ(map.size(), 1u);
+}
+
+// ---------------------------------------------------------------------------
+// 2. Request: parse_url with HTTPS custom port and query V106
+// ---------------------------------------------------------------------------
+TEST(RequestTest, ParseUrlHttpsCustomPortAndQueryV106) {
+    Request req;
+    req.url = "https://api.example.org:9443/v2/items?category=books&limit=20";
+    req.parse_url();
+
+    EXPECT_EQ(req.host, "api.example.org");
+    EXPECT_EQ(req.port, 9443);
+    EXPECT_EQ(req.path, "/v2/items");
+    EXPECT_EQ(req.query, "category=books&limit=20");
+    EXPECT_TRUE(req.use_tls);
+}
+
+// ---------------------------------------------------------------------------
+// 3. Request: serialize PUT with body includes Content-Length V106
+// ---------------------------------------------------------------------------
+TEST(RequestTest, SerializePutWithBodyV106) {
+    Request req;
+    req.method = Method::PUT;
+    req.host = "api.example.com";
+    req.port = 443;
+    req.path = "/resources/42";
+    req.use_tls = true;
+
+    std::string body_str = R"({"name":"updated"})";
+    req.body.assign(body_str.begin(), body_str.end());
+    req.headers.set("Content-Type", "application/json");
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    // Request line uses PUT
+    EXPECT_TRUE(result.find("PUT /resources/42 HTTP/1.1\r\n") != std::string::npos);
+    // Port 443 is omitted from Host
+    EXPECT_TRUE(result.find("Host: api.example.com\r\n") != std::string::npos);
+    // Content-Length auto-added matching body size
+    EXPECT_TRUE(result.find("Content-Length: 18\r\n") != std::string::npos);
+    // Custom header lowercase
+    EXPECT_TRUE(result.find("content-type: application/json\r\n") != std::string::npos);
+    // Body at the end
+    EXPECT_TRUE(result.find("\r\n\r\n{\"name\":\"updated\"}") != std::string::npos);
+}
+
+// ---------------------------------------------------------------------------
+// 4. Response: parse 204 No Content with empty body V106
+// ---------------------------------------------------------------------------
+TEST(ResponseTest, Parse204NoContentV106) {
+    std::string raw =
+        "HTTP/1.1 204 No Content\r\n"
+        "X-Request-Id: abc-999\r\n"
+        "Content-Length: 0\r\n"
+        "\r\n";
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 204);
+    EXPECT_EQ(resp->status_text, "No Content");
+    EXPECT_TRUE(resp->body.empty());
+    EXPECT_EQ(resp->body_as_string(), "");
+    ASSERT_TRUE(resp->headers.get("x-request-id").has_value());
+    EXPECT_EQ(resp->headers.get("x-request-id").value(), "abc-999");
+}
+
+// ---------------------------------------------------------------------------
+// 5. HeaderMap: set overwrites all appended values V106
+// ---------------------------------------------------------------------------
+TEST(HeaderMapTest, SetOverwritesAllAppendedValuesV106) {
+    HeaderMap map;
+    map.append("X-Tag", "alpha");
+    map.append("X-Tag", "beta");
+    map.append("X-Tag", "gamma");
+    EXPECT_EQ(map.get_all("X-Tag").size(), 3u);
+
+    // set() should replace ALL previous values with a single one
+    map.set("X-Tag", "delta");
+    EXPECT_EQ(map.get_all("x-tag").size(), 1u);
+    EXPECT_EQ(map.get("x-tag").value(), "delta");
+    EXPECT_EQ(map.size(), 1u);
+}
+
+// ---------------------------------------------------------------------------
+// 6. Request: serialize HEAD omits body even if body is set V106
+// ---------------------------------------------------------------------------
+TEST(RequestTest, SerializeHeadOmitsBodyV106) {
+    Request req;
+    req.method = Method::HEAD;
+    req.host = "example.com";
+    req.port = 80;
+    req.path = "/status";
+
+    // Attach a body that should be ignored for HEAD
+    std::string body_str = "should-not-appear";
+    req.body.assign(body_str.begin(), body_str.end());
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    // Request line uses HEAD
+    EXPECT_TRUE(result.find("HEAD /status HTTP/1.1\r\n") != std::string::npos);
+    // Host: with port 80 omitted
+    EXPECT_TRUE(result.find("Host: example.com\r\n") != std::string::npos);
+    // Connection header present
+    EXPECT_TRUE(result.find("Connection: keep-alive\r\n") != std::string::npos);
+}
+
+// ---------------------------------------------------------------------------
+// 7. Response: parse 302 redirect with Location header V106
+// ---------------------------------------------------------------------------
+TEST(ResponseTest, Parse302RedirectV106) {
+    std::string raw =
+        "HTTP/1.1 302 Found\r\n"
+        "Location: https://example.com/login\r\n"
+        "Set-Cookie: session=xyz789\r\n"
+        "Content-Length: 0\r\n"
+        "\r\n";
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 302);
+    EXPECT_EQ(resp->status_text, "Found");
+    ASSERT_TRUE(resp->headers.has("location"));
+    EXPECT_EQ(resp->headers.get("location").value(), "https://example.com/login");
+    ASSERT_TRUE(resp->headers.has("set-cookie"));
+    EXPECT_EQ(resp->headers.get("set-cookie").value(), "session=xyz789");
+    EXPECT_TRUE(resp->body.empty());
+}
+
+// ---------------------------------------------------------------------------
+// 8. CookieJar: set_from_header and get_cookie_header round-trip V106
+// ---------------------------------------------------------------------------
+TEST(CookieJarTest, SetFromHeaderAndRetrieveV106) {
+    CookieJar jar;
+    jar.set_from_header("token=abc123; Path=/; Secure", "secure.example.com");
+    jar.set_from_header("prefs=dark; Path=/", "secure.example.com");
+
+    EXPECT_EQ(jar.size(), 2u);
+
+    // Retrieve cookies for a secure request to the same domain
+    std::string header = jar.get_cookie_header("secure.example.com", "/", true);
+    // Both cookies should be present
+    EXPECT_TRUE(header.find("token=abc123") != std::string::npos);
+    EXPECT_TRUE(header.find("prefs=dark") != std::string::npos);
+
+    // After clear, size is 0
+    jar.clear();
+    EXPECT_EQ(jar.size(), 0u);
+}

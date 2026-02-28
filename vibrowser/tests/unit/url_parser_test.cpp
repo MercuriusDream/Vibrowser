@@ -11847,3 +11847,83 @@ TEST(UrlParserTest, PathOnlyNoQueryNoFragmentV105) {
     EXPECT_TRUE(result->fragment.empty());
     EXPECT_EQ(result->port, std::nullopt);
 }
+
+// =============================================================================
+// V106 Tests
+// =============================================================================
+
+TEST(UrlParserTest, HttpDefaultPortOmittedV106) {
+    auto result = clever::url::parse("http://example.com:80/index.html");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->port, std::nullopt);
+    EXPECT_EQ(result->path, "/index.html");
+}
+
+TEST(UrlParserTest, HttpsDefaultPortOmittedV106) {
+    auto result = clever::url::parse("https://secure.example.org:443/login?next=/dashboard");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "secure.example.org");
+    EXPECT_EQ(result->port, std::nullopt);
+    EXPECT_EQ(result->path, "/login");
+    EXPECT_EQ(result->query, "next=/dashboard");
+}
+
+TEST(UrlParserTest, NonDefaultPortPreservedV106) {
+    auto result = clever::url::parse("https://api.example.com:8443/v3/users");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "api.example.com");
+    ASSERT_TRUE(result->port.has_value());
+    EXPECT_EQ(result->port.value(), 8443);
+    EXPECT_EQ(result->path, "/v3/users");
+}
+
+TEST(UrlParserTest, DoubleEncodeSpaceInPathV106) {
+    auto result = clever::url::parse("https://files.example.com/my%20docs/report.pdf");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "files.example.com");
+    EXPECT_EQ(result->path, "/my%2520docs/report.pdf");
+}
+
+TEST(UrlParserTest, DoubleEncodePlusInQueryV106) {
+    auto result = clever::url::parse("https://search.example.com/find?q=a%2Bb");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->query, "q=a%252Bb");
+}
+
+TEST(UrlParserTest, FragmentOnlyNoQueryV106) {
+    auto result = clever::url::parse("https://docs.example.com/guide/chapter3#section-5");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "docs.example.com");
+    EXPECT_EQ(result->path, "/guide/chapter3");
+    EXPECT_TRUE(result->query.empty());
+    EXPECT_EQ(result->fragment, "section-5");
+}
+
+TEST(UrlParserTest, SerializePreservesAllComponentsV106) {
+    auto result = clever::url::parse("http://widgets.example.io:3000/dash?theme=dark#nav");
+    ASSERT_TRUE(result.has_value());
+    std::string s = result->serialize();
+    EXPECT_NE(s.find("http"), std::string::npos);
+    EXPECT_NE(s.find("widgets.example.io"), std::string::npos);
+    EXPECT_NE(s.find("3000"), std::string::npos);
+    EXPECT_NE(s.find("/dash"), std::string::npos);
+    EXPECT_NE(s.find("theme=dark"), std::string::npos);
+    EXPECT_NE(s.find("nav"), std::string::npos);
+}
+
+TEST(UrlParserTest, EmptyPathDefaultsToSlashV106) {
+    auto result = clever::url::parse("https://bare.example.com");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "bare.example.com");
+    EXPECT_EQ(result->path, "/");
+    EXPECT_TRUE(result->query.empty());
+    EXPECT_TRUE(result->fragment.empty());
+    EXPECT_EQ(result->port, std::nullopt);
+}

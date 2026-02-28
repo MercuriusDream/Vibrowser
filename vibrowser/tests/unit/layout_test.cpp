@@ -19606,3 +19606,79 @@ TEST(LayoutNodeProps, MultipleBoxShadowsStorageV105) {
     EXPECT_TRUE(n.box_shadows[1].inset);
     EXPECT_EQ(n.box_shadows[1].color, 0xFF0000FFu);
 }
+
+// ============================================================
+// V106 Tests
+// ============================================================
+
+TEST(LayoutNodeTest, DefaultDisplayIsBlockV106) {
+    using namespace clever::layout;
+    LayoutNode node;
+    EXPECT_EQ(node.display, DisplayType::Block);
+}
+
+TEST(LayoutNodeTest, SetDisplayToFlexV106) {
+    using namespace clever::layout;
+    LayoutNode node;
+    node.display = DisplayType::Flex;
+    EXPECT_EQ(node.display, DisplayType::Flex);
+}
+
+TEST(LayoutNodeTest, BackgroundColorDefaultTransparentV106) {
+    using namespace clever::layout;
+    LayoutNode node;
+    // Default background_color should be transparent (0)
+    EXPECT_EQ(node.background_color, 0x00000000u);
+}
+
+TEST(LayoutNodeTest, SetBackgroundColorRedV106) {
+    using namespace clever::layout;
+    LayoutNode node;
+    node.background_color = 0xFFFF0000u; // opaque red
+    EXPECT_EQ(node.background_color, 0xFFFF0000u);
+}
+
+TEST(LayoutNodeTest, SetColorWhiteV106) {
+    using namespace clever::layout;
+    LayoutNode node;
+    node.color = 0xFFFFFFFFu; // opaque white
+    EXPECT_EQ(node.color, 0xFFFFFFFFu);
+}
+
+TEST(LayoutNodeTest, SetSpecifiedWidthPositiveV106) {
+    using namespace clever::layout;
+    LayoutNode node;
+    node.specified_width = 640.0f;
+    EXPECT_FLOAT_EQ(node.specified_width, 640.0f);
+}
+
+TEST(LayoutNodeTest, SetSpecifiedDimensionsV106) {
+    using namespace clever::layout;
+    LayoutNode node;
+    node.specified_width = 320.0f;
+    node.specified_height = 240.0f;
+    EXPECT_FLOAT_EQ(node.specified_width, 320.0f);
+    EXPECT_FLOAT_EQ(node.specified_height, 240.0f);
+}
+
+TEST(LayoutNodeTest, AppendChildAndFlexDirectionColumnV106) {
+    using namespace clever::layout;
+    LayoutNode parent;
+    parent.display = DisplayType::Flex;
+    parent.flex_direction = 2; // column
+    parent.background_color = 0xFF00FF00u; // green
+
+    auto child = std::make_unique<LayoutNode>();
+    child->specified_width = 100.0f;
+    child->specified_height = 50.0f;
+    child->color = 0xFF000000u; // black text
+
+    LayoutNode* raw = child.get();
+    parent.append_child(std::move(child));
+
+    EXPECT_EQ(parent.flex_direction, 2);
+    EXPECT_FLOAT_EQ(raw->specified_width, 100.0f);
+    EXPECT_FLOAT_EQ(raw->specified_height, 50.0f);
+    EXPECT_EQ(raw->color, 0xFF000000u);
+    EXPECT_EQ(parent.background_color, 0xFF00FF00u);
+}
