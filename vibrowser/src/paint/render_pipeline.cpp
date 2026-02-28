@@ -12561,6 +12561,29 @@ RenderResult render_html(const std::string& html, const std::string& base_url,
                                                     layout_viewport_width, layout_viewport_height);
                 clever::js::install_fetch_bindings(js_engine.context());
 
+                // Set up module fetcher for dynamic imports
+                js_engine.set_module_fetcher([&effective_base_url](const std::string& module_url) -> std::optional<std::string> {
+                    // Resolve relative URLs
+                    std::string resolved = resolve_url(module_url, effective_base_url);
+
+                    // Fetch the module source
+                    auto response = fetch_with_redirects(resolved, "application/javascript, */*", 5);
+                    if (response && response->status >= 200 && response->status < 300) {
+                        // Check content type to avoid loading HTML instead of JS
+                        bool looks_like_html = false;
+                        if (auto ct = response->headers.get("content-type"); ct.has_value()) {
+                            std::string ct_norm = normalize_mime_type(*ct);
+                            if (ct_norm == "text/html" || ct_norm == "application/xhtml+xml") {
+                                looks_like_html = true;
+                            }
+                        }
+                        if (!looks_like_html) {
+                            return response->body_as_string();
+                        }
+                    }
+                    return std::nullopt;
+                });
+
                 // Run preliminary layout so getBoundingClientRect/dimension properties work
                 {
                     ElementViewTree pre_view_tree;

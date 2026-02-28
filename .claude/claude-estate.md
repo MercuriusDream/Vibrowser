@@ -8,9 +8,9 @@
 **Phase**: Active Development — Feature Implementation (Full Web Engine Roadmap)
 **Last Active**: 2026-03-01
 **Current Focus**: Implementing real browser features from comprehensive audit roadmap
-**Momentum**: Cycle 2425 — Round 5 complete (10 Codex agents), all tests passing, P0 centering bugs added
-**Cycle**: 2425
-**Workflow**: Multi-phase feature implementation. Use 10 Codex agents in parallel. Commit and push after each implementation round.
+**Momentum**: Cycle 931 — Round 7 complete (10 Codex subagents via new codex agent type), all tests passing
+**Cycle**: 931
+**Workflow**: Multi-phase feature implementation. Use 10 Codex subagents (Haiku-orchestrated) in parallel. Commit and push after each implementation round.
 
 ## Implementation Roadmap
 
@@ -18,12 +18,12 @@
 1. [ ] HTTP Keep-Alive + ConnectionPool — request.cpp line 126 hardcodes Connection: close; ConnectionPool built but unused
 2. [ ] Parallel resource fetching — ThreadPool exists but disconnected; all resources load serially
 3. [ ] Text decoration rendering — field exists in layout but never rendered in painter.cpp
-4. [ ] Text shadow rendering — fields exist but never consumed
+4. [x] Text shadow rendering — Gaussian blur rendering in paint layer (Round 7)
 5. [ ] Adoption agency algorithm — #1 missing HTML parser feature for misnested tags
 6. [ ] Complete HTML entity table — only ~40/2,231 entities implemented
 
 ### Phase 2 — "Make real sites look right"
-7. [ ] Stacking contexts + z-index — parsed/stored but never used in paint ordering
+7. [x] Stacking contexts + z-index — Z_INDEX_AUTO sentinel, stacking context detection, z-index paint ordering (Round 7)
 8. [x] Overflow + scrolling — scroll containers, clip, proportional scrollbar thumbs (Round 3)
 9. [ ] CSS Grid layout algorithm — properties parsed as strings, no layout algorithm
 10. [x] BFC + margin collapsing — flow-root, negative margins, mixed cases (Round 3)
@@ -64,25 +64,25 @@
 #### HIGH — Layout Correctness
 - [ ] **Anonymous block boxes** — layout_engine.cpp:522-534: When block container has mixed inline+block children, ALL go through position_block_children. Per CSS 2.1 §9.2.1.1, inline children should be wrapped in anonymous block boxes. Current workaround (centering fix) handles centering but not proper inline formatting context.
 - [ ] **Form element default sizing** — render_pipeline.cpp: <form> should be display:block width:100%. <input> needs default width (~150px for text, varies by type). <select>, <textarea> need default dimensions. Currently they may shrink-wrap to zero.
-- [ ] **CSS display:table on non-table elements** — render_pipeline.cpp/layout_engine.cpp: Only actual <table> elements get LayoutMode::Table. Elements with CSS `display: table` don't. Same for display:table-row, table-cell.
-- [ ] **Flex percentage children** — layout_engine.cpp: Flex items with percentage widths may not resolve correctly. Need to use flex container's content width as containing block for percentage resolution.
-- [ ] **Table cell vertical alignment** — layout_engine.cpp: vertical-align: middle/bottom in table cells — cells are positioned at top only, no middle/bottom offset.
+- [x] **CSS display:table on non-table elements** — display_to_type() maps TableRow/TableCell, layout predicates check DisplayType (Round 7)
+- [x] **Flex percentage children** — intrinsic measurement fallback for auto flex-basis, percentage width docs (Round 7)
+- [x] **Table cell vertical alignment** — content_y_offset for middle/bottom alignment in table cells (Round 7)
 
 #### MEDIUM — CSS Application
-- [ ] **User-Agent string** — request.cpp: Sites like Google sniff UA and may send simplified/noscript HTML. Need a realistic Chromium-like UA string so sites send full modern HTML.
+- [x] **User-Agent string** — Chrome/120.0.0.0 UA string set in request.cpp (Round 7)
 - [ ] **CSS external stylesheet fetching** — render_pipeline.cpp: <link rel="stylesheet" href="..."> may not fetch/parse/apply external CSS correctly for all sites. Verify fetch + parse + cascade integration.
-- [ ] **CSS !important overrides** — style_resolver.cpp: Verify !important declarations win over normal declarations in cascade. Sites use !important extensively.
+- [x] **CSS !important overrides** — inline style cascade + tier-based !important priority (Round 7)
 - [ ] **CSS shorthand property decomposition** — style_resolver.cpp: Shorthand properties (margin, padding, border, background, font) must decompose into longhands before cascade. Partial decomposition may cause missing properties.
-- [ ] **CSS inherit/initial keywords** — style_resolver.cpp: color: inherit, display: initial, etc. — verify these resolve correctly through the cascade.
+- [x] **CSS inherit/initial keywords** — inherit, initial, unset keyword handling with inherited property detection (Round 7)
 
 #### LOW — Paint/Rendering Polish
-- [ ] **Whitespace collapsing between inline elements** — layout_engine.cpp/render_pipeline.cpp: Sequences of whitespace should collapse to single space per CSS white-space property. May affect text layout width.
+- [x] **Whitespace collapsing between inline elements** — collapse_whitespace() for normal/nowrap/pre-line modes, skip for br (Round 7)
 - [ ] **Line-height in table cells** — layout_engine.cpp: Table cells may not inherit or compute line-height correctly, affecting vertical spacing.
 - [ ] **Border-collapse table painting** — painter.cpp: When border-collapse is active, shared borders between cells should merge. Currently may double-render.
 - [ ] **Background-clip/origin in table cells** — painter.cpp: Background painting in table cells may not respect padding-box vs content-box clipping.
 
 ### Phase 3 — "Make real sites interactive"
-11. [ ] Event default actions — bubbling works but click on <a> doesn't navigate
+11. [x] Event default actions — click→navigate for &lt;a&gt; tags, form submission with data collection (Round 7)
 12. [ ] Typed HTML elements — no HTMLInputElement.value, HTMLFormElement.submit()
 13. [ ] URL constructor + TextEncoder/TextDecoder in JS
 14. [ ] ES Modules — <script type="module"> explicitly skipped
@@ -101,6 +101,25 @@
 - EventLoop/ThreadPool disconnected → wire up or remove
 
 ## Session Log
+
+### Cycle 931 (Feature Implementation Round 7) — 2026-03-01
+
+- **Theme**: 10 Codex subagents (new Haiku-orchestrated codex agent type) — visual, CSS, interactivity features
+- **Agents**: 10 Codex subagents via `Agent(subagent_type="codex", model="haiku")`
+- **Features Implemented**:
+  - User-Agent string — Chrome/120.0.0.0 realistic UA in request.cpp
+  - Text shadow rendering — Gaussian blur in software renderer, full paint pipeline
+  - CSS !important overrides — inline style cascade tier system (6 tiers)
+  - CSS inherit/initial/unset — 32 inherited properties, recursive keyword dispatch
+  - Stacking contexts + z-index — Z_INDEX_AUTO sentinel, is_z_index_auto() helper
+  - Event default actions — click→navigate for anchors, form submission with data collection
+  - Table cell vertical-align — content_y_offset for middle/bottom alignment
+  - Whitespace collapsing — collapse_whitespace() for normal/nowrap/pre-line, skip for br
+  - Flex percentage children — intrinsic measurement fallback for auto flex-basis
+  - display:table on non-table elements — DisplayType::TableRow/TableCell mapping
+- **Bug Fixes**: Z_INDEX_AUTO test assertions (12), UA test update, br whitespace collapsing skip
+- **Validation**: 13/13 suites pass, 0 failures
+- **Infrastructure**: Created custom `codex` agent type at `~/.claude/agents/codex.md` — wraps codex exec in Haiku subagent for clean context management
 
 ### Cycle 2425 (Feature Implementation Round 5) — 2026-03-01
 

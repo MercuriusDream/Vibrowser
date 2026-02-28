@@ -6,6 +6,7 @@ extern "C" {
 
 #include <chrono>
 #include <map>
+#include <optional>
 
 namespace clever::js {
 
@@ -203,21 +204,63 @@ struct ConsoleTrampoline {
 };
 
 // ---------------------------------------------------------------------------
-// ES module loader stub — resolves import statements with empty modules
-// so that module scripts don't crash when they use import declarations.
+// ES module loader — fetches, caches, and compiles imported modules
 // ---------------------------------------------------------------------------
 
-static JSModuleDef* js_module_loader(JSContext* ctx,
-                                     const char* module_name,
-                                     void* /*opaque*/) {
-    // Create a stub module that exports nothing.  In the future this could
-    // fetch the module source over the network and compile it.
-    JSModuleDef* m = JS_NewCModule(ctx, module_name,
-                                   [](JSContext* /*ctx*/, JSModuleDef* /*m*/) -> int {
-                                       return 0; // empty module init — success
-                                   });
-    return m; // nullptr on allocation failure is handled by QuickJS
-}
+// Trampoline struct to access private module_cache_ and module_fetcher_
+struct ModuleLoaderTrampoline {
+    static JSModuleDef* js_module_loader_impl(JSContext* ctx,
+                                               const char* module_name,
+                                               void* /*opaque*/) {
+        if (!ctx || !module_name) {
+            return nullptr;
+        }
+
+        // Retrieve the engine from runtime opaque
+        JSEngine* engine = static_cast<JSEngine*>(JS_GetRuntimeOpaque(JS_GetRuntime(ctx)));
+        if (!engine) {
+            return nullptr;
+        }
+
+        // Check module cache first
+        auto cache_it = engine->module_cache_.find(module_name);
+        if (cache_it != engine->module_cache_.end()) {
+            return cache_it->second;
+        }
+
+        // Try to fetch the module source
+        std::optional<std::string> module_source;
+        if (engine->module_fetcher_) {
+            module_source = engine->module_fetcher_(module_name);
+        }
+
+        if (!module_source.has_value()) {
+            // Fetch failed, return nullptr to signal error
+            return nullptr;
+        }
+
+        // Compile the module source
+        JSValue module_val = JS_Eval(ctx, module_source->c_str(), module_source->size(),
+                                      module_name,
+                                      JS_EVAL_TYPE_MODULE | JS_EVAL_FLAG_COMPILE_ONLY);
+
+        if (JS_IsException(module_val)) {
+            JS_FreeValue(ctx, module_val);
+            return nullptr;
+        }
+
+        // Extract the JSModuleDef* from the function value
+        JSModuleDef* m = (JSModuleDef*)JS_VALUE_GET_PTR(module_val);
+        JS_FreeValue(ctx, module_val);
+
+        if (m) {
+            // Cache the compiled module
+            engine->module_cache_[module_name] = m;
+        }
+
+        return m;
+    }
+};
 
 // ---------------------------------------------------------------------------
 // Construction / destruction
@@ -232,14 +275,16 @@ JSEngine::JSEngine() {
     JS_SetMemoryLimit(rt_, 256 * 1024 * 1024);
     JS_SetMaxStackSize(rt_, 8 * 1024 * 1024);
 
-    // Install a module loader so that `import` statements resolve to empty
-    // stub modules instead of crashing with "could not load module".
-    JS_SetModuleLoaderFunc(rt_, nullptr, js_module_loader, nullptr);
+    // Stash `this` on the runtime so the module loader can access it
+    JS_SetRuntimeOpaque(rt_, this);
+
+    // Install the module loader (will call js_module_loader for import statements)
+    JS_SetModuleLoaderFunc(rt_, nullptr, ModuleLoaderTrampoline::js_module_loader_impl, nullptr);
 
     ctx_ = JS_NewContext(rt_);
     if (!ctx_) return;
 
-    // Stash `this` so C callbacks can find the engine.
+    // Stash `this` so C callbacks can find the engine via context
     JS_SetContextOpaque(ctx_, this);
     setup_console();
 }
@@ -259,11 +304,16 @@ JSEngine::JSEngine(JSEngine&& other) noexcept
       has_error_(other.has_error_),
       last_error_(std::move(other.last_error_)),
       console_output_(std::move(other.console_output_)),
-      console_callback_(std::move(other.console_callback_)) {
+      console_callback_(std::move(other.console_callback_)),
+      module_fetcher_(std::move(other.module_fetcher_)),
+      module_cache_(std::move(other.module_cache_)) {
     other.rt_ = nullptr;
     other.ctx_ = nullptr;
     // Re-point the context opaque to the new address.
-    if (ctx_) JS_SetContextOpaque(ctx_, this);
+    if (ctx_) {
+        JS_SetContextOpaque(ctx_, this);
+        JS_SetRuntimeOpaque(rt_, this);
+    }
 }
 
 JSEngine& JSEngine::operator=(JSEngine&& other) noexcept {
@@ -278,11 +328,16 @@ JSEngine& JSEngine::operator=(JSEngine&& other) noexcept {
         last_error_ = std::move(other.last_error_);
         console_output_ = std::move(other.console_output_);
         console_callback_ = std::move(other.console_callback_);
+        module_fetcher_ = std::move(other.module_fetcher_);
+        module_cache_ = std::move(other.module_cache_);
 
         other.rt_ = nullptr;
         other.ctx_ = nullptr;
 
-        if (ctx_) JS_SetContextOpaque(ctx_, this);
+        if (ctx_) {
+            JS_SetContextOpaque(ctx_, this);
+            JS_SetRuntimeOpaque(rt_, this);
+        }
     }
     return *this;
 }
@@ -445,6 +500,10 @@ std::string JSEngine::evaluate_module(const std::string& code,
 
 void JSEngine::set_console_callback(ConsoleCallback cb) {
     console_callback_ = std::move(cb);
+}
+
+void JSEngine::set_module_fetcher(ModuleFetcher fetcher) {
+    module_fetcher_ = std::move(fetcher);
 }
 
 // ---------------------------------------------------------------------------

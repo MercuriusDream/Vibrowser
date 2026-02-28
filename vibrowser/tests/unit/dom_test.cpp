@@ -21468,7 +21468,7 @@ TEST(DomNode, LastChildUpdatesOnRemoveLastV140) {
     auto b = std::make_unique<Element>("li");
     auto c = std::make_unique<Element>("li");
 
-    Element* a_ptr = a.get();
+    [[maybe_unused]] Element* a_ptr = a.get();
     Element* b_ptr = b.get();
     Element* c_ptr = c.get();
 

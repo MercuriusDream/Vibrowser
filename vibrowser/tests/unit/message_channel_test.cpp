@@ -2251,7 +2251,7 @@ TEST(MessageChannelTest, MessageChannelV154_1_HandlerCalledExactlyOnce) {
     MessageChannel ch(std::move(pa));
 
     int call_count = 0;
-    ch.on(7, [&](const Message& m) {
+    ch.on(7, [&](const Message& /*m*/) {
         ++call_count;
     });
 
@@ -2270,12 +2270,12 @@ TEST(MessageChannelTest, MessageChannelV154_2_ReplaceHandlerForSameType) {
     bool old_called = false;
     bool new_called = false;
 
-    ch.on(10, [&](const Message& m) {
+    ch.on(10, [&](const Message& /*m*/) {
         old_called = true;
     });
 
     // Replace handler for same type
-    ch.on(10, [&](const Message& m) {
+    ch.on(10, [&](const Message& /*m*/) {
         new_called = true;
     });
 
@@ -2573,7 +2573,7 @@ TEST(MessageChannelTest, MessageChannelV160_1_UnregisteredTypeIgnored) {
 
     // Register handler for type 10 only
     int call_count = 0;
-    ch.on(10, [&](const Message& m) {
+    ch.on(10, [&](const Message& /*m*/) {
         ++call_count;
     });
 
@@ -2991,7 +2991,7 @@ TEST(MessageChannelTest, MessageChannelV167_1_FiftyDispatchesSameTypeV167) {
     MessageChannel ch(std::move(pa));
 
     int count = 0;
-    ch.on(77, [&](const Message& m) {
+    ch.on(77, [&](const Message& /*m*/) {
         ++count;
     });
 
@@ -3035,7 +3035,7 @@ TEST(MessageChannelTest, MessageChannelV168_1_UnregisteredTypeIgnoredV168) {
     MessageChannel ch(std::move(pa));
 
     bool handler_called = false;
-    ch.on(1, [&](const Message& m) {
+    ch.on(1, [&](const Message& /*m*/) {
         handler_called = true;
     });
 
@@ -3076,12 +3076,12 @@ TEST(MessageChannelTest, MessageChannelV169_1_MultipleHandlersSameTypeLastWinsV1
     int first_called = 0;
     int second_called = 0;
 
-    ch.on(10, [&](const Message& m) {
+    ch.on(10, [&](const Message& /*m*/) {
         first_called++;
     });
 
     // Register again on the same type — last handler should win
-    ch.on(10, [&](const Message& m) {
+    ch.on(10, [&](const Message& /*m*/) {
         second_called++;
     });
 
@@ -3129,9 +3129,9 @@ TEST(MessageChannelTest, MessageChannelV170_1_ThreeTypesThreeHandlersV170) {
     int handler20_count = 0;
     int handler30_count = 0;
 
-    ch.on(10, [&](const Message& m) { handler10_count++; });
-    ch.on(20, [&](const Message& m) { handler20_count++; });
-    ch.on(30, [&](const Message& m) { handler30_count++; });
+    ch.on(10, [&](const Message& /*m*/) { handler10_count++; });
+    ch.on(20, [&](const Message& /*m*/) { handler20_count++; });
+    ch.on(30, [&](const Message& /*m*/) { handler30_count++; });
 
     Message msg10;
     msg10.type = 10;
@@ -3195,7 +3195,7 @@ TEST(MessageChannelTest, MessageChannelV171_1_DispatchCountAccurateV171) {
     MessageChannel ch(std::move(pa));
 
     int count = 0;
-    ch.on(5, [&](const Message& m) {
+    ch.on(5, [&](const Message& /*m*/) {
         ++count;
     });
 
@@ -3421,10 +3421,10 @@ TEST(MessageChannelTest, MessageChannelV175_1_TwoTypesAlternatingV175) {
     int count_type1 = 0;
     int count_type2 = 0;
 
-    ch.on(1, [&](const Message& msg) {
+    ch.on(1, [&](const Message& /*msg*/) {
         count_type1++;
     });
-    ch.on(2, [&](const Message& msg) {
+    ch.on(2, [&](const Message& /*msg*/) {
         count_type2++;
     });
 
@@ -3475,9 +3475,9 @@ TEST(MessageChannelTest, MessageChannelV176_1_ThreeTypesDispatchV176) {
 
     int count_t1 = 0, count_t2 = 0, count_t3 = 0;
 
-    ch.on(1, [&](const Message& msg) { count_t1++; });
-    ch.on(2, [&](const Message& msg) { count_t2++; });
-    ch.on(3, [&](const Message& msg) { count_t3++; });
+    ch.on(1, [&](const Message& /*msg*/) { count_t1++; });
+    ch.on(2, [&](const Message& /*msg*/) { count_t2++; });
+    ch.on(3, [&](const Message& /*msg*/) { count_t3++; });
 
     for (int i = 0; i < 9; ++i) {
         Message msg;
@@ -3730,7 +3730,7 @@ TEST(MessageChannelTest, MessageChannelV180_1_UnhandledTypeIgnoredNoError) {
     MessageChannel ch(std::move(pa));
 
     int handler_count = 0;
-    ch.on(100, [&](const Message& msg) {
+    ch.on(100, [&](const Message& /*msg*/) {
         handler_count++;
     });
 
@@ -3761,12 +3761,12 @@ TEST(MessageChannelTest, MessageChannelV180_2_MultipleHandlersSameTypeLastWins) 
     int first_handler_calls = 0;
     int second_handler_calls = 0;
 
-    ch.on(42, [&](const Message& msg) {
+    ch.on(42, [&](const Message& /*msg*/) {
         first_handler_calls++;
     });
 
     // Register another handler for the same type — should replace the first
-    ch.on(42, [&](const Message& msg) {
+    ch.on(42, [&](const Message& /*msg*/) {
         second_handler_calls++;
     });
 
@@ -3794,9 +3794,9 @@ TEST(MessageChannelTest, MessageChannelV181_1_DispatchMultipleTypesToSeparateHan
     int type_20_count = 0;
     int type_30_count = 0;
 
-    ch.on(10, [&](const Message& msg) { type_10_count++; });
-    ch.on(20, [&](const Message& msg) { type_20_count++; });
-    ch.on(30, [&](const Message& msg) { type_30_count++; });
+    ch.on(10, [&](const Message& /*msg*/) { type_10_count++; });
+    ch.on(20, [&](const Message& /*msg*/) { type_20_count++; });
+    ch.on(30, [&](const Message& /*msg*/) { type_30_count++; });
 
     // Dispatch messages of varying types
     for (int i = 0; i < 3; ++i) {

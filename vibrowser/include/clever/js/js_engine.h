@@ -1,16 +1,22 @@
 #pragma once
 #include <functional>
+#include <map>
+#include <optional>
 #include <string>
 #include <vector>
 
 // Forward declare QuickJS types
 struct JSRuntime;
 struct JSContext;
+struct JSModuleDef;
 
 namespace clever::js {
 
 // Callback type for console.log output
 using ConsoleCallback = std::function<void(const std::string& level, const std::string& message)>;
+
+// Callback type for module fetching (returns module source code or empty)
+using ModuleFetcher = std::function<std::optional<std::string>(const std::string& module_url)>;
 
 class JSEngine {
 public:
@@ -37,6 +43,9 @@ public:
     void set_console_callback(ConsoleCallback cb);
     const std::vector<std::string>& console_output() const { return console_output_; }
 
+    // Set module fetcher for dynamic module imports
+    void set_module_fetcher(ModuleFetcher fetcher);
+
     // Access the raw QuickJS context (for bindings to add properties)
     JSContext* context() const { return ctx_; }
     JSRuntime* runtime() const { return rt_; }
@@ -48,6 +57,8 @@ private:
     std::string last_error_;
     std::vector<std::string> console_output_;
     ConsoleCallback console_callback_;
+    ModuleFetcher module_fetcher_;
+    std::map<std::string, JSModuleDef*> module_cache_;
 
     void setup_console();
     void clear_error();
@@ -55,6 +66,7 @@ private:
     // Allow the console callback trampoline to access internals
     friend JSEngine* get_engine_from_ctx(JSContext* ctx);
     friend struct ConsoleTrampoline;
+    friend struct ModuleLoaderTrampoline;
 };
 
 } // namespace clever::js

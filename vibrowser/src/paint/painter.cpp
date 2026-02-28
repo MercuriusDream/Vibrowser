@@ -1123,6 +1123,30 @@ void Painter::paint_background(const clever::layout::LayoutNode& node, DisplayLi
     float h = geom.border_box_height();
     Rect rect = {abs_x, abs_y, w > 0 ? w : geom.width, h > 0 ? h : geom.height};
 
+    // Determine the origin box for background-position calculations
+    // background-origin: 0=padding-box (default), 1=border-box, 2=content-box
+    float origin_x = abs_x;
+    float origin_y = abs_y;
+    float origin_w = rect.width;
+    float origin_h = rect.height;
+
+    if (node.background_origin == 1) {
+        // border-box: origin at the border edge (no adjustment needed)
+        // origin is already at abs_x, abs_y
+    } else if (node.background_origin == 2) {
+        // content-box: origin inside border and padding
+        origin_x += geom.border.left + geom.padding.left;
+        origin_y += geom.border.top + geom.padding.top;
+        origin_w -= geom.border.left + geom.border.right + geom.padding.left + geom.padding.right;
+        origin_h -= geom.border.top + geom.border.bottom + geom.padding.top + geom.padding.bottom;
+    } else {
+        // padding-box (default, 0): origin inside border but at padding edge
+        origin_x += geom.border.left;
+        origin_y += geom.border.top;
+        origin_w -= geom.border.left + geom.border.right;
+        origin_h -= geom.border.top + geom.border.bottom;
+    }
+
     // Apply background-clip: 0=border-box (default), 1=padding-box, 2=content-box
     if (node.background_clip == 1) {
         // padding-box: inset by border widths
@@ -1176,21 +1200,21 @@ void Painter::paint_background(const clever::layout::LayoutNode& node, DisplayLi
 
         float img_w = static_cast<float>(node.bg_image_width);
         float img_h = static_cast<float>(node.bg_image_height);
-        float elem_w = rect.width;
-        float elem_h = rect.height;
+        float origin_elem_w = origin_w;
+        float origin_elem_h = origin_h;
 
         // Determine drawn image size based on background-size
         float draw_w = img_w;
         float draw_h = img_h;
 
         if (node.background_size == 1 && img_w > 0 && img_h > 0) {
-            // cover: scale to fill element, maintaining aspect ratio
-            float scale = std::max(elem_w / img_w, elem_h / img_h);
+            // cover: scale to fill origin box, maintaining aspect ratio
+            float scale = std::max(origin_elem_w / img_w, origin_elem_h / img_h);
             draw_w = img_w * scale;
             draw_h = img_h * scale;
         } else if (node.background_size == 2 && img_w > 0 && img_h > 0) {
-            // contain: scale to fit within element, maintaining aspect ratio
-            float scale = std::min(elem_w / img_w, elem_h / img_h);
+            // contain: scale to fit within origin box, maintaining aspect ratio
+            float scale = std::min(origin_elem_w / img_w, origin_elem_h / img_h);
             draw_w = img_w * scale;
             draw_h = img_h * scale;
         } else if (node.background_size == 3) {
@@ -1200,65 +1224,65 @@ void Painter::paint_background(const clever::layout::LayoutNode& node, DisplayLi
         }
         // else background_size == 0 (auto): use natural size
 
-        // Resolve background-position
+        // Resolve background-position relative to the origin box
         float pos_x = 0, pos_y = 0;
         if (node.bg_attachment == 1) {
             // fixed: position relative to viewport, not element
             float vw = clever::css::Length::s_viewport_w;
             float vh = (viewport_height_ > 0) ? viewport_height_ : clever::css::Length::s_viewport_h;
-            if (node.bg_position_x == -1) pos_x = -rect.x; // left of viewport
-            else if (node.bg_position_x == -2) pos_x = (vw - draw_w) / 2.0f - rect.x; // center of viewport
-            else if (node.bg_position_x == -3) pos_x = (vw - draw_w) - rect.x; // right of viewport
-            else pos_x = node.bg_position_x - rect.x; // px value relative to viewport
+            if (node.bg_position_x == -1) pos_x = -origin_x; // left of viewport
+            else if (node.bg_position_x == -2) pos_x = (vw - draw_w) / 2.0f - origin_x; // center of viewport
+            else if (node.bg_position_x == -3) pos_x = (vw - draw_w) - origin_x; // right of viewport
+            else pos_x = node.bg_position_x - origin_x; // px value relative to viewport
 
-            if (node.bg_position_y == -1) pos_y = -rect.y; // top of viewport
-            else if (node.bg_position_y == -2) pos_y = (vh - draw_h) / 2.0f - rect.y; // center of viewport
-            else if (node.bg_position_y == -3) pos_y = (vh - draw_h) - rect.y; // bottom of viewport
-            else pos_y = node.bg_position_y - rect.y; // px value relative to viewport
+            if (node.bg_position_y == -1) pos_y = -origin_y; // top of viewport
+            else if (node.bg_position_y == -2) pos_y = (vh - draw_h) / 2.0f - origin_y; // center of viewport
+            else if (node.bg_position_y == -3) pos_y = (vh - draw_h) - origin_y; // bottom of viewport
+            else pos_y = node.bg_position_y - origin_y; // px value relative to viewport
         } else {
-            // scroll (0) or local (2): position relative to element
+            // scroll (0) or local (2): position relative to origin box
             if (node.bg_position_x == -1) pos_x = 0; // left
-            else if (node.bg_position_x == -2) pos_x = (elem_w - draw_w) / 2.0f; // center
-            else if (node.bg_position_x == -3) pos_x = elem_w - draw_w; // right
+            else if (node.bg_position_x == -2) pos_x = (origin_elem_w - draw_w) / 2.0f; // center
+            else if (node.bg_position_x == -3) pos_x = origin_elem_w - draw_w; // right
             else pos_x = node.bg_position_x; // px value
 
             if (node.bg_position_y == -1) pos_y = 0; // top
-            else if (node.bg_position_y == -2) pos_y = (elem_h - draw_h) / 2.0f; // center
-            else if (node.bg_position_y == -3) pos_y = elem_h - draw_h; // bottom
+            else if (node.bg_position_y == -2) pos_y = (origin_elem_h - draw_h) / 2.0f; // center
+            else if (node.bg_position_y == -3) pos_y = origin_elem_h - draw_h; // bottom
             else pos_y = node.bg_position_y; // px value
         }
 
-        // Draw based on background-repeat
+        // Draw based on background-repeat, clipped to the clipping box (rect)
         if (node.background_repeat == 3) {
             // no-repeat: draw once at position
-            list.draw_image({rect.x + pos_x, rect.y + pos_y, draw_w, draw_h}, img);
+            list.draw_image({origin_x + pos_x, origin_y + pos_y, draw_w, draw_h}, img);
         } else if (node.background_repeat == 1) {
-            // repeat-x: tile horizontally at the y position
+            // repeat-x: tile horizontally within clipping box
             if (draw_w > 0) {
-                float tile_start = rect.x - draw_w + std::fmod(pos_x, draw_w);
+                float tile_start = rect.x - draw_w + std::fmod(origin_x + pos_x - rect.x, draw_w);
                 if (tile_start > rect.x) tile_start -= draw_w;
-                for (float tx = tile_start; tx < rect.x + elem_w; tx += draw_w) {
-                    list.draw_image({tx, rect.y + pos_y, draw_w, draw_h}, img);
+                for (float tx = tile_start; tx < rect.x + rect.width; tx += draw_w) {
+                    list.draw_image({tx, origin_y + pos_y, draw_w, draw_h}, img);
                 }
             }
         } else if (node.background_repeat == 2) {
-            // repeat-y: tile vertically at the x position
+            // repeat-y: tile vertically within clipping box
             if (draw_h > 0) {
-                float tile_start = rect.y - draw_h + std::fmod(pos_y, draw_h);
+                float tile_start = rect.y - draw_h + std::fmod(origin_y + pos_y - rect.y, draw_h);
                 if (tile_start > rect.y) tile_start -= draw_h;
-                for (float ty = tile_start; ty < rect.y + elem_h; ty += draw_h) {
-                    list.draw_image({rect.x + pos_x, ty, draw_w, draw_h}, img);
+                for (float ty = tile_start; ty < rect.y + rect.height; ty += draw_h) {
+                    list.draw_image({origin_x + pos_x, ty, draw_w, draw_h}, img);
                 }
             }
         } else {
-            // repeat (default): tile in both directions
+            // repeat (default): tile in both directions within clipping box
             if (draw_w > 0 && draw_h > 0) {
-                float tile_start_x = rect.x - draw_w + std::fmod(pos_x, draw_w);
+                float tile_start_x = rect.x - draw_w + std::fmod(origin_x + pos_x - rect.x, draw_w);
                 if (tile_start_x > rect.x) tile_start_x -= draw_w;
-                float tile_start_y = rect.y - draw_h + std::fmod(pos_y, draw_h);
+                float tile_start_y = rect.y - draw_h + std::fmod(origin_y + pos_y - rect.y, draw_h);
                 if (tile_start_y > rect.y) tile_start_y -= draw_h;
-                for (float ty = tile_start_y; ty < rect.y + elem_h; ty += draw_h) {
-                    for (float tx = tile_start_x; tx < rect.x + elem_w; tx += draw_w) {
+                for (float ty = tile_start_y; ty < rect.y + rect.height; ty += draw_h) {
+                    for (float tx = tile_start_x; tx < rect.x + rect.width; tx += draw_w) {
                         list.draw_image({tx, ty, draw_w, draw_h}, img);
                     }
                 }
@@ -1300,39 +1324,89 @@ void Painter::paint_borders(const clever::layout::LayoutNode& node, DisplayList&
                              float abs_x, float abs_y) {
     auto geom = node.geometry;
 
-    // CSS border-collapse: collapse — suppress duplicate borders between adjacent cells
-    // For table cells with border_collapse=true, only draw top+left borders.
-    // The rightmost column gets right border, bottom row gets bottom border.
+    // CSS border-collapse: collapse — merge shared borders between adjacent cells
+    // Per CSS 2.1 §17.6.2: the wider border wins; if equal width, style precedence applies
     if (node.border_collapse &&
         (node.tag_name == "td" || node.tag_name == "th" ||
          node.tag_name == "TD" || node.tag_name == "TH")) {
-        // Check if this cell has a right neighbor (not the last cell in its row)
-        bool has_right_neighbor = false;
-        bool has_bottom_neighbor = false;
+
+        clever::layout::LayoutNode* right_neighbor = nullptr;
+        clever::layout::LayoutNode* bottom_neighbor = nullptr;
+        int cell_index = -1;
+
         if (node.parent) {
-            // Check for right neighbor: is this the last child of its parent (tr)?
             auto& siblings = node.parent->children;
             for (size_t i = 0; i < siblings.size(); i++) {
-                if (siblings[i].get() == &node && i + 1 < siblings.size()) {
-                    has_right_neighbor = true;
+                if (siblings[i].get() == &node) {
+                    cell_index = static_cast<int>(i);
+                    if (i + 1 < siblings.size()) {
+                        right_neighbor = siblings[i + 1].get();
+                    }
                     break;
                 }
             }
-            // Check for bottom neighbor: does the parent (tr) have a next sibling (next tr)?
-            if (node.parent->parent) {
+
+            if (node.parent->parent && right_neighbor) {
                 auto& rows = node.parent->parent->children;
                 for (size_t i = 0; i < rows.size(); i++) {
                     if (rows[i].get() == node.parent && i + 1 < rows.size()) {
-                        has_bottom_neighbor = true;
+                        clever::layout::LayoutNode* next_row = rows[i + 1].get();
+                        int cell_count = 0;
+                        for (auto& cell : next_row->children) {
+                            if (cell_count == cell_index) {
+                                bottom_neighbor = cell.get();
+                                break;
+                            }
+                            if (cell->display != clever::layout::DisplayType::None && cell->mode != clever::layout::LayoutMode::None) {
+                                cell_count++;
+                            }
+                        }
                         break;
                     }
                 }
             }
         }
-        // Suppress right border if there's a right neighbor
-        if (has_right_neighbor) geom.border.right = 0;
-        // Suppress bottom border if there's a bottom neighbor
-        if (has_bottom_neighbor) geom.border.bottom = 0;
+
+        // Merge right border with right neighbor's left border
+        if (right_neighbor) {
+            float this_right_width = geom.border.right;
+            float neighbor_left_width = right_neighbor->geometry.border.left;
+
+            // Winner is the wider border; if equal, use style precedence
+            bool this_wins = this_right_width > neighbor_left_width;
+            if (this_right_width == neighbor_left_width) {
+                int this_style = node.border_style_right;
+                int neighbor_style = right_neighbor->border_style_left;
+                // Style precedence: hidden=1, none=0, double=6, solid=2, dashed=3, dotted=4
+                int precedence_this = (this_style == 1) ? 10 : (this_style == 6) ? 8 : (this_style == 2) ? 5 : (this_style == 3) ? 4 : (this_style == 4) ? 3 : 0;
+                int precedence_neighbor = (neighbor_style == 1) ? 10 : (neighbor_style == 6) ? 8 : (neighbor_style == 2) ? 5 : (neighbor_style == 3) ? 4 : (neighbor_style == 4) ? 3 : 0;
+                this_wins = precedence_this >= precedence_neighbor;
+            }
+
+            // Only this cell draws the merged right border; neighbor suppresses its left
+            if (!this_wins) {
+                geom.border.right = neighbor_left_width;
+            }
+        }
+
+        // Merge bottom border with bottom neighbor's top border
+        if (bottom_neighbor) {
+            float this_bottom_width = geom.border.bottom;
+            float neighbor_top_width = bottom_neighbor->geometry.border.top;
+
+            bool this_wins = this_bottom_width > neighbor_top_width;
+            if (this_bottom_width == neighbor_top_width) {
+                int this_style = node.border_style_bottom;
+                int neighbor_style = bottom_neighbor->border_style_top;
+                int precedence_this = (this_style == 1) ? 10 : (this_style == 6) ? 8 : (this_style == 2) ? 5 : (this_style == 3) ? 4 : (this_style == 4) ? 3 : 0;
+                int precedence_neighbor = (neighbor_style == 1) ? 10 : (neighbor_style == 6) ? 8 : (neighbor_style == 2) ? 5 : (neighbor_style == 3) ? 4 : (neighbor_style == 4) ? 3 : 0;
+                this_wins = precedence_this >= precedence_neighbor;
+            }
+
+            if (!this_wins) {
+                geom.border.bottom = neighbor_top_width;
+            }
+        }
     }
 
     // Only paint if there are actual borders

@@ -26205,7 +26205,7 @@ TEST(LayoutEngineTest, LayoutV139_5) {
     root->specified_height = 400.0f;
 
     auto child = make_block("div");
-    child->css_height = clever::css::Length{50.0f, clever::css::Length::Unit::Percent};
+    child->css_height = clever::css::Length{50.0f, clever::css::Length::Unit::Percent, nullptr};
     root->append_child(std::move(child));
 
     LayoutEngine engine;
