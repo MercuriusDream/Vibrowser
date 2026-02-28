@@ -615,3 +615,46 @@ TEST(IsURLCodePoint, AsciiControlCharsNotCodePointsV135) {
     // DEL (0x7F) should also not be a URL code point
     EXPECT_FALSE(is_url_code_point(static_cast<char32_t>(0x7F)));
 }
+
+// =============================================================================
+// V136 tests
+// =============================================================================
+
+TEST(PercentEncoding, TildeNotEncodedV136) {
+    // Tilde (~) is an unreserved character and a valid URL code point,
+    // so it must pass through percent_encode unchanged
+    EXPECT_EQ(percent_encode("~"), "~");
+    EXPECT_EQ(percent_encode("a~b"), "a~b");
+    EXPECT_EQ(percent_encode("~user/home"), "~user/home");
+}
+
+TEST(PercentDecoding, PlusSignNotDecodedV136) {
+    // In percent decoding, '+' should NOT be converted to space.
+    // '+' as space is only a form-urlencoded convention, not standard percent decoding.
+    EXPECT_EQ(percent_decode("+"), "+");
+    EXPECT_EQ(percent_decode("a+b"), "a+b");
+    EXPECT_EQ(percent_decode("hello+world"), "hello+world");
+    // Verify that %20 IS decoded to space (contrast with + behavior)
+    EXPECT_EQ(percent_decode("hello%20world"), "hello world");
+}
+
+TEST(PercentEncoding, SpaceEncodesToPercent20V136) {
+    // A single space should encode to %20
+    EXPECT_EQ(percent_encode(" "), "%20");
+    // Multiple spaces should each encode independently
+    EXPECT_EQ(percent_encode("   "), "%20%20%20");
+    // Space surrounded by safe characters
+    EXPECT_EQ(percent_encode("a b"), "a%20b");
+    // Leading and trailing spaces
+    EXPECT_EQ(percent_encode(" x "), "%20x%20");
+}
+
+TEST(IsURLCodePoint, SlashAndQuestionMarkAreCodePointsV136) {
+    // '/' (U+002F) is a URL code point per WHATWG URL spec
+    EXPECT_TRUE(is_url_code_point('/'));
+    // '?' (U+003F) is a URL code point per WHATWG URL spec
+    EXPECT_TRUE(is_url_code_point('?'));
+    // Our encoder encodes '?' to %3F by default but '/' passes through
+    EXPECT_EQ(percent_encode("/"), "/");
+    EXPECT_EQ(percent_encode("?"), "%3F");
+}

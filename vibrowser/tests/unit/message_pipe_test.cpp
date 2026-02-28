@@ -1021,3 +1021,56 @@ TEST(MessagePipeTest, MessagePipeV135_2_ReceiveOnClosedEmptyPipeReturnsNullopt) 
     auto received = b.receive();
     EXPECT_FALSE(received.has_value());
 }
+
+// ------------------------------------------------------------------
+// V136 MessagePipe tests
+// ------------------------------------------------------------------
+
+TEST(MessagePipeTest, MessagePipeV136_1_LargeMessageRoundTrip) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    // Create a 32KB message with a recognizable pattern
+    std::vector<uint8_t> large_msg(32768);
+    for (size_t i = 0; i < large_msg.size(); ++i) {
+        large_msg[i] = static_cast<uint8_t>(i % 251); // prime modulus for varied pattern
+    }
+
+    ASSERT_TRUE(a.send(large_msg));
+
+    auto received = b.receive();
+    ASSERT_TRUE(received.has_value());
+    ASSERT_EQ(received->size(), 32768u);
+    EXPECT_EQ(*received, large_msg);
+}
+
+TEST(MessagePipeTest, MessagePipeV136_2_AlternateSendReceive) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    // Round 1: a sends, b receives
+    std::vector<uint8_t> msg1 = {0xAA, 0xBB};
+    ASSERT_TRUE(a.send(msg1));
+    auto recv1 = b.receive();
+    ASSERT_TRUE(recv1.has_value());
+    EXPECT_EQ(*recv1, msg1);
+
+    // Round 2: b sends, a receives
+    std::vector<uint8_t> msg2 = {0xCC, 0xDD, 0xEE};
+    ASSERT_TRUE(b.send(msg2));
+    auto recv2 = a.receive();
+    ASSERT_TRUE(recv2.has_value());
+    EXPECT_EQ(*recv2, msg2);
+
+    // Round 3: a sends again, b receives
+    std::vector<uint8_t> msg3 = {0xFF};
+    ASSERT_TRUE(a.send(msg3));
+    auto recv3 = b.receive();
+    ASSERT_TRUE(recv3.has_value());
+    EXPECT_EQ(*recv3, msg3);
+
+    // Round 4: b sends again, a receives
+    std::vector<uint8_t> msg4 = {0x01, 0x02, 0x03, 0x04};
+    ASSERT_TRUE(b.send(msg4));
+    auto recv4 = a.receive();
+    ASSERT_TRUE(recv4.has_value());
+    EXPECT_EQ(*recv4, msg4);
+}

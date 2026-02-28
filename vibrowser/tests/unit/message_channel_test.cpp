@@ -1086,3 +1086,96 @@ TEST(MessageChannelTest, MessageChannelV135_3_EmptyPayloadHandlerStillFires) {
     EXPECT_TRUE(handler_fired);
     EXPECT_TRUE(captured_payload.empty());
 }
+
+// ------------------------------------------------------------------
+// V136 MessageChannel tests
+// ------------------------------------------------------------------
+
+TEST(MessageChannelTest, MessageChannelV136_1_OverwriteHandlerForSameType) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel ch(std::move(pa));
+
+    int first_count = 0;
+    int second_count = 0;
+
+    // Register first handler for type 10
+    ch.on(10, [&](const Message&) {
+        first_count++;
+    });
+
+    // Overwrite with second handler for the same type
+    ch.on(10, [&](const Message&) {
+        second_count++;
+    });
+
+    // Dispatch a message of type 10
+    Message msg;
+    msg.type = 10;
+    msg.request_id = 1;
+    ch.dispatch(msg);
+
+    // Only the second (replacement) handler should fire
+    EXPECT_EQ(first_count, 0);
+    EXPECT_EQ(second_count, 1);
+}
+
+TEST(MessageChannelTest, MessageChannelV136_2_SequentialPollsProcessOneMessageEach) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel sender(std::move(pa));
+    MessageChannel receiver(std::move(pb));
+
+    int dispatch_count = 0;
+    std::vector<uint32_t> received_request_ids;
+    receiver.on(7, [&](const Message& m) {
+        dispatch_count++;
+        received_request_ids.push_back(m.request_id);
+    });
+
+    // Send 3 messages
+    for (uint32_t i = 1; i <= 3; ++i) {
+        Message msg;
+        msg.type = 7;
+        msg.request_id = i * 100;
+        ASSERT_TRUE(sender.send(msg));
+    }
+
+    // Receive and dispatch each one individually
+    for (int i = 0; i < 3; ++i) {
+        auto received = receiver.receive();
+        ASSERT_TRUE(received.has_value());
+        receiver.dispatch(*received);
+    }
+
+    EXPECT_EQ(dispatch_count, 3);
+    ASSERT_EQ(received_request_ids.size(), 3u);
+    EXPECT_EQ(received_request_ids[0], 100u);
+    EXPECT_EQ(received_request_ids[1], 200u);
+    EXPECT_EQ(received_request_ids[2], 300u);
+}
+
+TEST(MessageChannelTest, MessageChannelV136_3_LargeRequestIdRoundTrip) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel sender(std::move(pa));
+    MessageChannel receiver(std::move(pb));
+
+    uint32_t captured_request_id = 0;
+    receiver.on(50, [&](const Message& m) {
+        captured_request_id = m.request_id;
+    });
+
+    Message msg;
+    msg.type = 50;
+    msg.request_id = UINT32_MAX; // 0xFFFFFFFF
+    msg.payload = {0x42};
+    ASSERT_TRUE(sender.send(msg));
+
+    auto received = receiver.receive();
+    ASSERT_TRUE(received.has_value());
+    EXPECT_EQ(received->type, 50u);
+    EXPECT_EQ(received->request_id, UINT32_MAX);
+    EXPECT_EQ(received->payload.size(), 1u);
+    EXPECT_EQ(received->payload[0], 0x42);
+
+    receiver.dispatch(*received);
+    EXPECT_EQ(captured_request_id, UINT32_MAX);
+}

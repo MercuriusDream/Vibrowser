@@ -35044,3 +35044,92 @@ TEST(JSEngine, JsV135_8) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "60");
 }
+
+// === V136 JS Engine Tests ===
+
+TEST(JSEngine, JsV136_1) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var wm = new WeakMap();
+        var obj = {};
+        wm.set(obj, 42);
+        wm.has(obj) + " " + wm.get(obj);
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true 42");
+}
+
+TEST(JSEngine, JsV136_2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        Array.isArray([1,2,3]) + " " + Array.isArray("hello") + " " + Array.isArray({length: 3});
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true false false");
+}
+
+TEST(JSEngine, JsV136_3) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        typeof 42 + " " + typeof "str" + " " + typeof undefined + " " + typeof null + " " + typeof {};
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "number string undefined object object");
+}
+
+TEST(JSEngine, JsV136_4) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var obj = {a: 1, b: 2, c: 3};
+        JSON.stringify(obj, ['a', 'c']);
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "{\"a\":1,\"c\":3}");
+}
+
+TEST(JSEngine, JsV136_5) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var re = /hello/;
+        var testResult = re.test("hello world");
+        var execResult = re.exec("say hello")[0];
+        testResult + " " + execResult;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true hello");
+}
+
+TEST(JSEngine, JsV136_6) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var now = Date.now();
+        typeof now;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "number");
+}
+
+TEST(JSEngine, JsV136_7) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        String.raw`hello\nworld`;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "hello\\nworld");
+}
+
+TEST(JSEngine, JsV136_8) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var handler = {
+            get: function(target, prop) {
+                return prop in target ? target[prop] : 'default';
+            }
+        };
+        var obj = {name: 'test'};
+        var p = new Proxy(obj, handler);
+        p.name + " " + p.missing;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "test default");
+}

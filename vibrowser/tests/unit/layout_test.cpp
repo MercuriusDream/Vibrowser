@@ -25640,3 +25640,155 @@ TEST(LayoutNodeProps, FlexGrowDefaultZeroV135) {
     auto n = make_block();
     EXPECT_FLOAT_EQ(n->flex_grow, 0.0f);
 }
+
+// === V136 Layout Tests ===
+
+TEST(LayoutEngineTest, LayoutV136_1) {
+    // Block with auto width fills parent
+    auto root = make_block();
+    // No specified_width — should default to filling available width
+    LayoutEngine engine;
+    engine.compute(*root, 1024.0f, 768.0f);
+
+    EXPECT_FLOAT_EQ(root->geometry.width, 1024.0f);
+}
+
+TEST(LayoutEngineTest, LayoutV136_2) {
+    // Flex grow with ratio 2:1:1
+    auto root = make_flex();
+    root->specified_width = 400.0f;
+    root->specified_height = 100.0f;
+    root->flex_direction = 0; // row
+
+    auto c1 = make_block("div");
+    c1->flex_grow = 2.0f;
+    c1->specified_height = 50.0f;
+
+    auto c2 = make_block("div");
+    c2->flex_grow = 1.0f;
+    c2->specified_height = 50.0f;
+
+    auto c3 = make_block("div");
+    c3->flex_grow = 1.0f;
+    c3->specified_height = 50.0f;
+
+    root->append_child(std::move(c1));
+    root->append_child(std::move(c2));
+    root->append_child(std::move(c3));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // 2:1:1 ratio of 400px => 200, 100, 100
+    EXPECT_NEAR(root->children[0]->geometry.width, 200.0f, 1.0f);
+    EXPECT_NEAR(root->children[1]->geometry.width, 100.0f, 1.0f);
+    EXPECT_NEAR(root->children[2]->geometry.width, 100.0f, 1.0f);
+}
+
+TEST(LayoutEngineTest, LayoutV136_3) {
+    // Padding adds to total height
+    auto root = make_block();
+    root->specified_width = 300.0f;
+    root->specified_height = 100.0f;
+    root->geometry.padding.top = 20.0f;
+    root->geometry.padding.bottom = 30.0f;
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // Total height should include padding
+    float total = root->geometry.height + root->geometry.padding.top + root->geometry.padding.bottom;
+    EXPECT_GE(total, 150.0f);
+}
+
+TEST(LayoutEngineTest, LayoutV136_4) {
+    // Specified width with padding — content area adjusts
+    auto root = make_block();
+    root->specified_width = 200.0f;
+    root->specified_height = 100.0f;
+
+    root->geometry.padding.left = 10.0f;
+    root->geometry.padding.right = 10.0f;
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // Width should be set to specified
+    EXPECT_NEAR(root->geometry.width, 200.0f, 1.0f);
+    // Padding should be preserved
+    EXPECT_NEAR(root->geometry.padding.left, 10.0f, 0.1f);
+    EXPECT_NEAR(root->geometry.padding.right, 10.0f, 0.1f);
+}
+
+TEST(LayoutEngineTest, LayoutV136_5) {
+    // Flex container with order property (items still laid out)
+    auto root = make_flex();
+    root->specified_width = 300.0f;
+    root->specified_height = 100.0f;
+    root->flex_direction = 0; // row
+
+    auto c1 = make_block("div");
+    c1->specified_width = 100.0f;
+    c1->specified_height = 50.0f;
+    c1->order = 2;
+
+    auto c2 = make_block("div");
+    c2->specified_width = 100.0f;
+    c2->specified_height = 50.0f;
+    c2->order = 1;
+
+    root->append_child(std::move(c1));
+    root->append_child(std::move(c2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // Both children should have been laid out
+    EXPECT_GE(root->children[0]->geometry.width, 0.0f);
+    EXPECT_GE(root->children[1]->geometry.width, 0.0f);
+}
+
+TEST(LayoutEngineTest, LayoutV136_6) {
+    // Block height auto wraps content
+    auto root = make_block();
+    root->specified_width = 400.0f;
+    // No specified_height — should auto-wrap content
+
+    auto child = make_block("div");
+    child->specified_width = 400.0f;
+    child->specified_height = 80.0f;
+
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // Root height should be at least the child height
+    EXPECT_GE(root->geometry.height, 80.0f);
+}
+
+TEST(LayoutEngineTest, LayoutV136_7) {
+    // Nested blocks percentage width — child 50% of parent 600px = 300px
+    auto root = make_block();
+    root->specified_width = 600.0f;
+    root->specified_height = 200.0f;
+
+    auto child = make_block("div");
+    child->specified_width = 300.0f; // 50% of 600
+    child->specified_height = 100.0f;
+
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.width, 300.0f);
+}
+
+TEST(LayoutNodeProps, MarginDefaultZeroV136) {
+    auto n = make_block();
+    EXPECT_FLOAT_EQ(n->geometry.margin.top, 0.0f);
+    EXPECT_FLOAT_EQ(n->geometry.margin.right, 0.0f);
+    EXPECT_FLOAT_EQ(n->geometry.margin.bottom, 0.0f);
+    EXPECT_FLOAT_EQ(n->geometry.margin.left, 0.0f);
+}

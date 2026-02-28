@@ -25190,3 +25190,41 @@ TEST(CSSStyleTest, CssV135_4_BorderRadiusShorthandAllCornersV135) {
     EXPECT_FLOAT_EQ(style.border_radius_br, 8.0f);
     EXPECT_FLOAT_EQ(style.border_radius_bl, 8.0f);
 }
+
+// === V136 CSS Style Tests ===
+
+TEST(CSSStyleTest, CssV136_1_DisplayFlexSetsDisplayType) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("display", "flex"), parent);
+    EXPECT_EQ(style.display, Display::Flex);
+}
+
+TEST(PropertyCascadeTest, FontWeightBoldV136) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("font-weight", "bold"), parent);
+    EXPECT_EQ(style.font_weight, 700);
+}
+
+TEST(CSSStyleTest, CssV136_3_TextAlignCenterV136) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("text-align", "center"), parent);
+    EXPECT_EQ(style.text_align, TextAlign::Center);
+}
+
+TEST(CSSStyleTest, CssV136_4_PositionAbsoluteV136) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("position", "absolute"), parent);
+    EXPECT_EQ(style.position, Position::Absolute);
+}

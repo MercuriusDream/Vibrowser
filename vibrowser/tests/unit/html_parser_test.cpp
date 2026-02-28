@@ -22232,3 +22232,98 @@ TEST(HtmlParserTest, HtmlV135_8) {
     EXPECT_EQ(dialog->tag_name, "dialog");
     EXPECT_EQ(dialog->text_content(), "Dialog content");
 }
+
+// === V136 HTML Parser Tests ===
+
+TEST(HtmlParserTest, HtmlV136_1) {
+    auto doc = clever::html::parse("<html><body><ins>added</ins><del>removed</del></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* ins_el = doc->find_element("ins");
+    ASSERT_NE(ins_el, nullptr);
+    EXPECT_EQ(ins_el->tag_name, "ins");
+    EXPECT_EQ(ins_el->text_content(), "added");
+
+    auto* del_el = doc->find_element("del");
+    ASSERT_NE(del_el, nullptr);
+    EXPECT_EQ(del_el->tag_name, "del");
+    EXPECT_EQ(del_el->text_content(), "removed");
+}
+
+TEST(HtmlParserTest, HtmlV136_2) {
+    auto doc = clever::html::parse("<html><body><cite>The Art of War</cite></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* cite_el = doc->find_element("cite");
+    ASSERT_NE(cite_el, nullptr);
+    EXPECT_EQ(cite_el->tag_name, "cite");
+    EXPECT_EQ(cite_el->text_content(), "The Art of War");
+}
+
+TEST(HtmlParserTest, HtmlV136_3) {
+    auto doc = clever::html::parse("<html><body><var>x</var></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* var_el = doc->find_element("var");
+    ASSERT_NE(var_el, nullptr);
+    EXPECT_EQ(var_el->tag_name, "var");
+    EXPECT_EQ(var_el->text_content(), "x");
+}
+
+TEST(HtmlParserTest, HtmlV136_4) {
+    auto doc = clever::html::parse("<html><body><samp>output text</samp></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* samp_el = doc->find_element("samp");
+    ASSERT_NE(samp_el, nullptr);
+    EXPECT_EQ(samp_el->tag_name, "samp");
+    EXPECT_EQ(samp_el->text_content(), "output text");
+}
+
+TEST(HtmlParserTest, HtmlV136_5) {
+    auto doc = clever::html::parse("<html><body><dl><dt>Term</dt><dd>Definition</dd></dl></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* dl_el = doc->find_element("dl");
+    ASSERT_NE(dl_el, nullptr);
+    EXPECT_EQ(dl_el->tag_name, "dl");
+
+    auto* dt_el = doc->find_element("dt");
+    ASSERT_NE(dt_el, nullptr);
+    EXPECT_EQ(dt_el->tag_name, "dt");
+    EXPECT_EQ(dt_el->text_content(), "Term");
+
+    auto* dd_el = doc->find_element("dd");
+    ASSERT_NE(dd_el, nullptr);
+    EXPECT_EQ(dd_el->tag_name, "dd");
+    EXPECT_EQ(dd_el->text_content(), "Definition");
+}
+
+TEST(HtmlParserTest, HtmlV136_6) {
+    auto doc = clever::html::parse("<html><body><nav><a href='/home'>Home</a></nav></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* nav_el = doc->find_element("nav");
+    ASSERT_NE(nav_el, nullptr);
+    EXPECT_EQ(nav_el->tag_name, "nav");
+}
+
+TEST(HtmlParserTest, HtmlV136_7) {
+    auto doc = clever::html::parse("<html><body><aside>Sidebar content</aside></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* aside_el = doc->find_element("aside");
+    ASSERT_NE(aside_el, nullptr);
+    EXPECT_EQ(aside_el->tag_name, "aside");
+    EXPECT_EQ(aside_el->text_content(), "Sidebar content");
+}
+
+TEST(HtmlParserTest, HtmlV136_8) {
+    auto doc = clever::html::parse("<html><body><main>Main content area</main></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* main_el = doc->find_element("main");
+    ASSERT_NE(main_el, nullptr);
+    EXPECT_EQ(main_el->tag_name, "main");
+    EXPECT_EQ(main_el->text_content(), "Main content area");
+}

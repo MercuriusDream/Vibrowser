@@ -19964,3 +19964,66 @@ TEST(SerializerTest, SerializerV135_3_LargeU64BoundaryValueRoundTrip) {
     EXPECT_EQ(d.read_u64(), near_max);
     EXPECT_FALSE(d.has_remaining());
 }
+
+// ------------------------------------------------------------------
+// V136 Serializer tests
+// ------------------------------------------------------------------
+
+TEST(SerializerTest, SerializerV136_1_AlternatingBoolAndU8Pattern) {
+    Serializer s;
+    // Write 10 alternating bool+u8 pairs
+    for (uint8_t i = 0; i < 10; ++i) {
+        s.write_bool(i % 2 == 0);
+        s.write_u8(i * 25);
+    }
+
+    Deserializer d(s.data());
+    for (uint8_t i = 0; i < 10; ++i) {
+        EXPECT_EQ(d.read_bool(), (i % 2 == 0)) << "bool mismatch at pair " << static_cast<int>(i);
+        EXPECT_EQ(d.read_u8(), static_cast<uint8_t>(i * 25)) << "u8 mismatch at pair " << static_cast<int>(i);
+    }
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, SerializerV136_2_NestedSerializerDataEmbedding) {
+    // Serialize some data into an inner serializer
+    Serializer inner;
+    inner.write_string("inner_payload");
+    inner.write_u32(0xCAFEu);
+
+    // Embed the inner serializer's raw bytes into an outer serializer
+    Serializer outer;
+    outer.write_u8(1); // version tag
+    const auto& inner_data = inner.data();
+    outer.write_bytes(inner_data.data(), inner_data.size());
+    outer.write_u8(2); // trailer tag
+
+    // Deserialize the outer layer
+    Deserializer d_outer(outer.data());
+    EXPECT_EQ(d_outer.read_u8(), 1);
+
+    auto embedded = d_outer.read_bytes();
+    EXPECT_EQ(d_outer.read_u8(), 2);
+    EXPECT_FALSE(d_outer.has_remaining());
+
+    // Deserialize the embedded inner data
+    Deserializer d_inner(embedded);
+    EXPECT_EQ(d_inner.read_string(), "inner_payload");
+    EXPECT_EQ(d_inner.read_u32(), 0xCAFEu);
+    EXPECT_FALSE(d_inner.has_remaining());
+}
+
+TEST(SerializerTest, SerializerV136_3_U16MaxAndMinBoundaryRoundTrip) {
+    Serializer s;
+    s.write_u16(0);
+    s.write_u16(1);
+    s.write_u16(65534);
+    s.write_u16(65535);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u16(), 0u);
+    EXPECT_EQ(d.read_u16(), 1u);
+    EXPECT_EQ(d.read_u16(), 65534u);
+    EXPECT_EQ(d.read_u16(), 65535u);
+    EXPECT_FALSE(d.has_remaining());
+}

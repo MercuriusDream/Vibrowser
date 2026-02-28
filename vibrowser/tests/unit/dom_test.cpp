@@ -20658,3 +20658,254 @@ TEST(DomElement, RemoveAttributeRemovesItV135) {
     EXPECT_TRUE(elem.has_attribute("size"));
     EXPECT_EQ(elem.get_attribute("size").value_or(""), "5");
 }
+
+// ---------------------------------------------------------------------------
+// V136 Tests
+// ---------------------------------------------------------------------------
+
+TEST(DomNode, AppendMultipleChildrenAndVerifyOrderV136) {
+    auto parent = std::make_unique<Element>("div");
+    auto c1 = std::make_unique<Element>("span");
+    auto c2 = std::make_unique<Element>("em");
+    auto c3 = std::make_unique<Element>("strong");
+    auto c4 = std::make_unique<Element>("a");
+    auto c5 = std::make_unique<Element>("p");
+
+    auto* p1 = c1.get();
+    auto* p2 = c2.get();
+    auto* p3 = c3.get();
+    auto* p4 = c4.get();
+    auto* p5 = c5.get();
+
+    parent->append_child(std::move(c1));
+    parent->append_child(std::move(c2));
+    parent->append_child(std::move(c3));
+    parent->append_child(std::move(c4));
+    parent->append_child(std::move(c5));
+
+    EXPECT_EQ(parent->child_count(), 5u);
+    EXPECT_EQ(parent->first_child(), p1);
+    EXPECT_EQ(parent->last_child(), p5);
+
+    // Verify order via next_sibling chain
+    EXPECT_EQ(p1->next_sibling(), p2);
+    EXPECT_EQ(p2->next_sibling(), p3);
+    EXPECT_EQ(p3->next_sibling(), p4);
+    EXPECT_EQ(p4->next_sibling(), p5);
+    EXPECT_EQ(p5->next_sibling(), nullptr);
+
+    // Verify reverse via previous_sibling chain
+    EXPECT_EQ(p5->previous_sibling(), p4);
+    EXPECT_EQ(p4->previous_sibling(), p3);
+    EXPECT_EQ(p3->previous_sibling(), p2);
+    EXPECT_EQ(p2->previous_sibling(), p1);
+    EXPECT_EQ(p1->previous_sibling(), nullptr);
+}
+
+TEST(DomElement, SetMultipleDifferentAttributesV136) {
+    Element elem("input");
+    elem.set_attribute("type", "text");
+    elem.set_attribute("name", "username");
+    elem.set_attribute("placeholder", "Enter name");
+    elem.set_attribute("maxlength", "50");
+    elem.set_attribute("autocomplete", "off");
+
+    EXPECT_EQ(elem.attributes().size(), 5u);
+    EXPECT_EQ(elem.get_attribute("type").value(), "text");
+    EXPECT_EQ(elem.get_attribute("name").value(), "username");
+    EXPECT_EQ(elem.get_attribute("placeholder").value(), "Enter name");
+    EXPECT_EQ(elem.get_attribute("maxlength").value(), "50");
+    EXPECT_EQ(elem.get_attribute("autocomplete").value(), "off");
+
+    EXPECT_TRUE(elem.has_attribute("type"));
+    EXPECT_TRUE(elem.has_attribute("name"));
+    EXPECT_TRUE(elem.has_attribute("placeholder"));
+    EXPECT_TRUE(elem.has_attribute("maxlength"));
+    EXPECT_TRUE(elem.has_attribute("autocomplete"));
+    EXPECT_FALSE(elem.has_attribute("nonexistent"));
+}
+
+TEST(DomDocument, CreateElementsAndFindByIdV136) {
+    Document doc;
+    auto div1 = doc.create_element("div");
+    auto div2 = doc.create_element("div");
+    auto div3 = doc.create_element("div");
+    auto span1 = doc.create_element("span");
+    auto span2 = doc.create_element("span");
+
+    auto* d1 = div1.get();
+    auto* d2 = div2.get();
+    auto* d3 = div3.get();
+    auto* s1 = span1.get();
+    auto* s2 = span2.get();
+
+    d1->set_attribute("id", "first-div");
+    d2->set_attribute("id", "second-div");
+    d3->set_attribute("id", "third-div");
+    s1->set_attribute("id", "first-span");
+    s2->set_attribute("id", "second-span");
+
+    doc.register_id("first-div", d1);
+    doc.register_id("second-div", d2);
+    doc.register_id("third-div", d3);
+    doc.register_id("first-span", s1);
+    doc.register_id("second-span", s2);
+
+    doc.append_child(std::move(div1));
+    doc.append_child(std::move(div2));
+    doc.append_child(std::move(div3));
+    doc.append_child(std::move(span1));
+    doc.append_child(std::move(span2));
+
+    // Verify tag names
+    EXPECT_EQ(d1->tag_name(), "div");
+    EXPECT_EQ(d2->tag_name(), "div");
+    EXPECT_EQ(d3->tag_name(), "div");
+    EXPECT_EQ(s1->tag_name(), "span");
+    EXPECT_EQ(s2->tag_name(), "span");
+
+    // Verify by ID lookup
+    EXPECT_EQ(doc.get_element_by_id("first-div"), d1);
+    EXPECT_EQ(doc.get_element_by_id("second-div"), d2);
+    EXPECT_EQ(doc.get_element_by_id("third-div"), d3);
+    EXPECT_EQ(doc.get_element_by_id("first-span"), s1);
+    EXPECT_EQ(doc.get_element_by_id("second-span"), s2);
+
+    EXPECT_EQ(doc.child_count(), 5u);
+}
+
+TEST(DomEvent, CustomEventNameAndPhasesV136) {
+    Event custom_event("my-custom-event");
+    EXPECT_EQ(custom_event.type(), "my-custom-event");
+    EXPECT_TRUE(custom_event.bubbles());
+    EXPECT_TRUE(custom_event.cancelable());
+    EXPECT_EQ(custom_event.phase(), EventPhase::None);
+    EXPECT_EQ(custom_event.target(), nullptr);
+    EXPECT_EQ(custom_event.current_target(), nullptr);
+    EXPECT_FALSE(custom_event.propagation_stopped());
+    EXPECT_FALSE(custom_event.default_prevented());
+
+    // Create a non-bubbling, non-cancelable custom event
+    Event nb_event("data-loaded", false, false);
+    EXPECT_EQ(nb_event.type(), "data-loaded");
+    EXPECT_FALSE(nb_event.bubbles());
+    EXPECT_FALSE(nb_event.cancelable());
+    EXPECT_EQ(nb_event.phase(), EventPhase::None);
+
+    // Verify prevent_default does nothing on non-cancelable
+    nb_event.prevent_default();
+    EXPECT_FALSE(nb_event.default_prevented());
+}
+
+TEST(DomNode, ParentNodeUpdatesOnAppendAndRemoveV136) {
+    auto parent = std::make_unique<Element>("div");
+    auto child = std::make_unique<Element>("span");
+    auto* child_ptr = child.get();
+
+    // Before append, parent is null
+    EXPECT_EQ(child_ptr->parent(), nullptr);
+
+    parent->append_child(std::move(child));
+
+    // After append, parent is set
+    EXPECT_EQ(child_ptr->parent(), parent.get());
+    EXPECT_EQ(parent->child_count(), 1u);
+
+    // Remove child
+    auto removed = parent->remove_child(*child_ptr);
+    EXPECT_EQ(child_ptr->parent(), nullptr);
+    EXPECT_EQ(parent->child_count(), 0u);
+
+    // Re-append to a different parent
+    auto parent2 = std::make_unique<Element>("section");
+    parent2->append_child(std::move(removed));
+
+    EXPECT_EQ(child_ptr->parent(), parent2.get());
+    EXPECT_EQ(parent2->child_count(), 1u);
+    EXPECT_EQ(parent->child_count(), 0u);
+}
+
+TEST(DomElement, ClassListContainsAfterAddV136) {
+    Element elem("div");
+
+    EXPECT_FALSE(elem.class_list().contains("alpha"));
+    EXPECT_FALSE(elem.class_list().contains("beta"));
+    EXPECT_FALSE(elem.class_list().contains("gamma"));
+
+    elem.class_list().add("alpha");
+    elem.class_list().add("beta");
+    elem.class_list().add("gamma");
+
+    EXPECT_EQ(elem.class_list().length(), 3u);
+    EXPECT_TRUE(elem.class_list().contains("alpha"));
+    EXPECT_TRUE(elem.class_list().contains("beta"));
+    EXPECT_TRUE(elem.class_list().contains("gamma"));
+    EXPECT_FALSE(elem.class_list().contains("delta"));
+
+    // Adding duplicate should not increase length
+    elem.class_list().add("alpha");
+    EXPECT_EQ(elem.class_list().length(), 3u);
+}
+
+TEST(DomNode, ChildCountReflectsAddRemoveV136) {
+    auto parent = std::make_unique<Element>("ul");
+    auto li1 = std::make_unique<Element>("li");
+    auto li2 = std::make_unique<Element>("li");
+    auto li3 = std::make_unique<Element>("li");
+    auto li4 = std::make_unique<Element>("li");
+
+    auto* p1 = li1.get();
+    auto* p2 = li2.get();
+
+    parent->append_child(std::move(li1));
+    parent->append_child(std::move(li2));
+    parent->append_child(std::move(li3));
+    parent->append_child(std::move(li4));
+
+    EXPECT_EQ(parent->child_count(), 4u);
+
+    // Remove first child
+    parent->remove_child(*p1);
+    EXPECT_EQ(parent->child_count(), 3u);
+
+    // Remove second child (was originally li2)
+    parent->remove_child(*p2);
+    EXPECT_EQ(parent->child_count(), 2u);
+
+    // Verify remaining children are still properly linked
+    Node* first = parent->first_child();
+    ASSERT_NE(first, nullptr);
+    Node* second = first->next_sibling();
+    ASSERT_NE(second, nullptr);
+    EXPECT_EQ(second->next_sibling(), nullptr);
+    EXPECT_EQ(parent->first_child(), parent->first_child());
+    EXPECT_EQ(parent->last_child(), second);
+}
+
+TEST(DomElement, InnerTextFromMixedChildrenV136) {
+    auto div = std::make_unique<Element>("div");
+
+    auto text1 = std::make_unique<Text>("Hello ");
+    auto span = std::make_unique<Element>("span");
+    auto span_text = std::make_unique<Text>("beautiful");
+    auto text2 = std::make_unique<Text>(" world");
+
+    auto* span_ptr = span.get();
+
+    span->append_child(std::move(span_text));
+    div->append_child(std::move(text1));
+    div->append_child(std::move(span));
+    div->append_child(std::move(text2));
+
+    // text_content() should recursively concatenate all text
+    EXPECT_EQ(div->text_content(), "Hello beautiful world");
+
+    // The span itself should have just its own text
+    EXPECT_EQ(span_ptr->text_content(), "beautiful");
+
+    // Verify structure
+    EXPECT_EQ(div->child_count(), 3u);
+    EXPECT_EQ(div->first_child()->node_type(), NodeType::Text);
+    EXPECT_EQ(div->first_child()->next_sibling()->node_type(), NodeType::Element);
+    EXPECT_EQ(div->last_child()->node_type(), NodeType::Text);
+}

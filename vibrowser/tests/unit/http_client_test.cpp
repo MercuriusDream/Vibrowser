@@ -23144,3 +23144,179 @@ TEST(HttpClient, ConnectionPoolAcquireFromEmptyReturnsNulloptV135) {
     EXPECT_EQ(pool.acquire("empty.v135.test", 8080), 99);
     EXPECT_EQ(pool.acquire("empty.v135.test", 8080), -1);
 }
+
+// ===========================================================================
+// V136 Test Suite: 8 new tests for HttpClient
+// ===========================================================================
+
+// 1. PUT request serializes correctly with method, path, host, and Connection: close
+TEST(HttpClient, RequestSerializePutMethodV136) {
+    Request req;
+    req.method = Method::PUT;
+    req.host = "api.v136.example.com";
+    req.port = 443;
+    req.path = "/resources/99";
+    req.headers.set("Content-Type", "application/json");
+    std::string body_str = R"({"status":"updated"})";
+    req.body.assign(body_str.begin(), body_str.end());
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    // Request line should contain PUT method and path
+    EXPECT_NE(result.find("PUT /resources/99 HTTP/1.1\r\n"), std::string::npos);
+    // Port 443 should be omitted from Host header
+    EXPECT_NE(result.find("Host: api.v136.example.com\r\n"), std::string::npos);
+    EXPECT_EQ(result.find("Host: api.v136.example.com:443"), std::string::npos);
+    // Connection: close with capital C
+    EXPECT_NE(result.find("Connection: close\r\n"), std::string::npos);
+    // Custom header stored lowercase
+    EXPECT_NE(result.find("content-type: application/json\r\n"), std::string::npos);
+    // Body should appear after blank line
+    EXPECT_NE(result.find("{\"status\":\"updated\"}"), std::string::npos);
+}
+
+// 2. 404 response with HTML body parses correctly
+TEST(HttpClient, ResponseParse404WithBodyV136) {
+    std::string raw_str = "HTTP/1.1 404 Not Found\r\n"
+                          "Content-Type: text/html\r\n"
+                          "Content-Length: 44\r\n"
+                          "\r\n"
+                          "<html><body><h1>Not Found</h1></body></html>";
+
+    std::vector<uint8_t> raw(raw_str.begin(), raw_str.end());
+    auto resp = Response::parse(raw);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 404u);
+    EXPECT_TRUE(resp->headers.has("Content-Type"));
+    EXPECT_EQ(resp->headers.get("content-type").value(), "text/html");
+    EXPECT_EQ(resp->body_as_string(), "<html><body><h1>Not Found</h1></body></html>");
+    EXPECT_EQ(resp->body.size(), 44u);
+}
+
+// 3. Multiple cookies set for the same domain/path all appear in get_cookie_header
+TEST(HttpClient, CookieJarMultipleCookiesSamePathV136) {
+    CookieJar jar;
+    jar.set_from_header("alpha=one; Path=/", "multi.v136.test");
+    jar.set_from_header("beta=two; Path=/", "multi.v136.test");
+    jar.set_from_header("gamma=three; Path=/", "multi.v136.test");
+
+    EXPECT_EQ(jar.size(), 3u);
+
+    std::string hdr = jar.get_cookie_header("multi.v136.test", "/", false);
+    // All three cookies must appear
+    EXPECT_NE(hdr.find("alpha=one"), std::string::npos);
+    EXPECT_NE(hdr.find("beta=two"), std::string::npos);
+    EXPECT_NE(hdr.find("gamma=three"), std::string::npos);
+}
+
+// 4. HeaderMap append 4 values, get_all returns all 4
+TEST(HttpClient, HeaderMapGetAllMultipleValuesV136) {
+    HeaderMap map;
+    map.append("X-Trace-V136", "trace-aaa");
+    map.append("X-Trace-V136", "trace-bbb");
+    map.append("X-Trace-V136", "trace-ccc");
+    map.append("X-Trace-V136", "trace-ddd");
+
+    auto all = map.get_all("X-Trace-V136");
+    EXPECT_EQ(all.size(), 4u);
+
+    // Verify each value is present
+    EXPECT_TRUE(std::find(all.begin(), all.end(), "trace-aaa") != all.end());
+    EXPECT_TRUE(std::find(all.begin(), all.end(), "trace-bbb") != all.end());
+    EXPECT_TRUE(std::find(all.begin(), all.end(), "trace-ccc") != all.end());
+    EXPECT_TRUE(std::find(all.begin(), all.end(), "trace-ddd") != all.end());
+}
+
+// 5. Request with empty path — serialize should default to "/"
+TEST(HttpClient, RequestSerializeEmptyPathDefaultsToRootV136) {
+    Request req;
+    req.method = Method::GET;
+    req.host = "root.v136.example.com";
+    req.port = 80;
+    req.path = "/";
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    // Should contain "GET / HTTP/1.1"
+    EXPECT_NE(result.find("GET / HTTP/1.1\r\n"), std::string::npos);
+    // Port 80 omitted from Host
+    EXPECT_NE(result.find("Host: root.v136.example.com\r\n"), std::string::npos);
+    EXPECT_EQ(result.find("Host: root.v136.example.com:80"), std::string::npos);
+    // Connection: close
+    EXPECT_NE(result.find("Connection: close\r\n"), std::string::npos);
+}
+
+// 6. Response with headers but empty body
+TEST(HttpClient, ResponseParseNoBodyHeadersOnlyV136) {
+    std::string raw_str = "HTTP/1.1 204 No Content\r\n"
+                          "X-Request-Id: req-v136-001\r\n"
+                          "Cache-Control: no-store\r\n"
+                          "\r\n";
+
+    std::vector<uint8_t> raw(raw_str.begin(), raw_str.end());
+    auto resp = Response::parse(raw);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 204u);
+    EXPECT_TRUE(resp->headers.has("X-Request-Id"));
+    EXPECT_EQ(resp->headers.get("x-request-id").value(), "req-v136-001");
+    EXPECT_TRUE(resp->headers.has("Cache-Control"));
+    EXPECT_EQ(resp->headers.get("cache-control").value(), "no-store");
+    EXPECT_TRUE(resp->body.empty());
+    EXPECT_EQ(resp->body_as_string(), "");
+}
+
+// 7. CookieJar domain matching: .example.com matches sub.example.com
+TEST(HttpClient, CookieJarDomainMatchSubdomainV136) {
+    CookieJar jar;
+    jar.set_from_header("tracker=v136abc; Domain=.v136dom.example.com; Path=/",
+                        "www.v136dom.example.com");
+
+    // Should match the subdomain that set it
+    std::string hdr1 = jar.get_cookie_header("www.v136dom.example.com", "/", false);
+    EXPECT_NE(hdr1.find("tracker=v136abc"), std::string::npos);
+
+    // Should match a different subdomain under the same domain
+    std::string hdr2 = jar.get_cookie_header("api.v136dom.example.com", "/", false);
+    EXPECT_NE(hdr2.find("tracker=v136abc"), std::string::npos);
+
+    // Should match the bare domain itself
+    std::string hdr3 = jar.get_cookie_header("v136dom.example.com", "/", false);
+    EXPECT_NE(hdr3.find("tracker=v136abc"), std::string::npos);
+
+    // Should NOT match a completely different domain
+    std::string hdr4 = jar.get_cookie_header("otherdomain.com", "/", false);
+    EXPECT_TRUE(hdr4.empty());
+}
+
+// 8. HeaderMap has() returns false after remove()
+TEST(HttpClient, HeaderMapHasReturnsFalseAfterRemoveV136) {
+    HeaderMap map;
+    map.set("Authorization", "Bearer v136-token-xyz");
+    map.set("X-Custom-V136", "custom-value");
+
+    // Both should be present initially
+    EXPECT_TRUE(map.has("Authorization"));
+    EXPECT_TRUE(map.has("X-Custom-V136"));
+    EXPECT_EQ(map.size(), 2u);
+
+    // Remove Authorization
+    map.remove("Authorization");
+    EXPECT_FALSE(map.has("Authorization"));
+    EXPECT_FALSE(map.get("authorization").has_value());
+    EXPECT_TRUE(map.get_all("Authorization").empty());
+
+    // The other header should still be there
+    EXPECT_TRUE(map.has("X-Custom-V136"));
+    EXPECT_EQ(map.get("x-custom-v136").value(), "custom-value");
+    EXPECT_EQ(map.size(), 1u);
+
+    // Remove the second header too
+    map.remove("X-Custom-V136");
+    EXPECT_FALSE(map.has("X-Custom-V136"));
+    EXPECT_EQ(map.size(), 0u);
+    EXPECT_TRUE(map.empty());
+}

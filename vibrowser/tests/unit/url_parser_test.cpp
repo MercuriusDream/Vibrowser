@@ -14235,3 +14235,63 @@ TEST(UrlParserTest, UrlV135_4_TrailingDotInHostname) {
     EXPECT_TRUE(result->query.empty());
     EXPECT_TRUE(result->fragment.empty());
 }
+
+// =============================================================================
+// V136 tests
+// =============================================================================
+
+TEST(UrlParserTest, UrlV136_1_DataUrlSchemePreservesPayload) {
+    // data: URLs store the entire payload (media type + data) in the path component
+    auto result = parse("data:text/html,<h1>Hello");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "data");
+    // The path should contain the full payload after "data:"
+    EXPECT_EQ(result->path, "text/html,<h1>Hello");
+    // data: URLs have no host
+    EXPECT_TRUE(result->host.empty());
+    EXPECT_EQ(result->port, std::nullopt);
+}
+
+TEST(UrlParserTest, UrlV136_2_MultipleSameLevelDotSegments) {
+    // /a/b/c/../../d should resolve: remove c (-> /a/b/../d), remove b (-> /a/d)
+    auto result = parse("https://example.com/a/b/c/../../d");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->path, "/a/d");
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "example.com");
+
+    // Also test three levels of dot-dot: /x/y/z/w/../../../result -> /x/result
+    auto result2 = parse("https://example.com/x/y/z/w/../../../result");
+    ASSERT_TRUE(result2.has_value());
+    EXPECT_EQ(result2->path, "/x/result");
+}
+
+TEST(UrlParserTest, UrlV136_3_EmptyQueryButPresent) {
+    // A URL with "?" but nothing after it should have an empty (but present) query
+    auto result = parse("http://x.com?");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "x.com");
+    // Query should be empty string (the "?" was present but no content follows)
+    EXPECT_EQ(result->query, "");
+    EXPECT_TRUE(result->query.empty());
+    // Fragment should not be set
+    EXPECT_TRUE(result->fragment.empty());
+    // Path should default to "/"
+    EXPECT_EQ(result->path, "/");
+}
+
+TEST(UrlParserTest, UrlV136_4_PortOverflowRejectsInvalidPort) {
+    // Port 99999 exceeds the 16-bit range (max 65535) and should be rejected
+    auto result = parse("http://example.com:99999/path");
+    EXPECT_FALSE(result.has_value());
+
+    // Port 100000 should also fail
+    auto result2 = parse("https://example.com:100000/");
+    EXPECT_FALSE(result2.has_value());
+
+    // Port just at the boundary: 65535 is valid (already tested elsewhere),
+    // but 65536 is invalid
+    auto result3 = parse("http://example.com:65536/");
+    EXPECT_FALSE(result3.has_value());
+}
