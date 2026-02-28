@@ -6,13 +6,528 @@
 ## Current Status
 
 **Phase**: Active Development — Testing Blitz
-**Last Active**: 2026-02-28T11:00:00+0900
-**Current Focus**: Test blitz Round 76
-**Momentum**: 13,711 tests. 100% pass rate. Rendering bugs fixed.
-**Cycle**: 1671
-**Workflow**: Commit and push after each cycle round. Use 9 Codex agents for max parallelism.
+**Last Active**: 2026-02-28
+**Current Focus**: Render pipeline fixes for real-world page rendering (Google, etc.)
+**Momentum**: 6 critical render pipeline fixes applied — dark mode, Connection header, Accept-Language, TLS recv, noscript fallback, JS memory
+**Cycle**: 1943
+**Workflow**: Two-phase cycle workflow. Phase 1: Launch 6 Opus subagents to diagnose current cycle state (read code, identify test gaps, analyze build issues, explore codebase). Phase 2: Use /codex skill (6 Codex instances) to implement fixes/tests based on diagnosis results. Commit and push after each cycle round.
 
 ## Session Log
+
+### Cycle 1943 — 2026-02-28
+
+- **Theme**: Render pipeline fixes for real-world page rendering
+- **Diagnosis**: Launched 6 Opus subagents to analyze why Google renders broken (dark background, no content). Identified 13+ root causes across HTTP, TLS, CSS, JS, and layout subsystems.
+- **Key Fixes**:
+  - **Force light mode for CSS**: Stopped propagating macOS dark mode to CSS `prefers-color-scheme` resolution. Most sites expect light mode. (`render_pipeline.cpp`)
+  - **Connection: close**: Changed from `keep-alive` to `close` to prevent TLS read loops from hanging waiting for more data. (`request.cpp`)
+  - **Accept-Language header**: Added default `en-US,en;q=0.9` to prevent sites from showing consent/locale pages. (`request.cpp`)
+  - **TLS recv loop fix**: Improved handling of `errSSLWouldBlock` — continue reading instead of breaking. (`http_client.cpp`)
+  - **Chunked encoding detection**: Improved final chunk marker detection with `\r\n0\r\n\r\n` (7-byte) match. (`http_client.cpp`)
+  - **JS memory 64→256 MB**: Google's scripts need more than 64MB. (`js_engine.cpp`)
+  - **Noscript fallback**: When JS produces ≥3 errors, automatically render `<noscript>` content as fallback. (`render_pipeline.cpp`)
+- **Test updates**: Updated 30+ net tests from `Connection: keep-alive` to `Connection: close`.
+- **Validation**: 13/13 suites pass, 17,543 total tests, 0 failures.
+
+### Cycle 1942 — 2026-02-28
+
+- **Theme**: Rename old `clever_*` build targets to `vibrowser_*`
+- **Subagent Swarm**: attempted previously in this thread; runtime cap remained saturated, proceeded with direct coordinated rename
+- **Key Wins**:
+  - Renamed CMake target names across module and test CMake files from `clever_*` to `vibrowser_*`:
+    - core libs: `url/platform/ipc/net/dom/html/css_parser/css_style/js/layout/paint`
+    - unit test executables: `vibrowser_*_tests`
+    - shell link dependencies updated to new target names.
+  - Preserved CTest test names (`url_tests`, `paint_tests`, etc.) for workflow stability.
+  - Verified build output now reports `vibrowser_*` targets (no `clever_*` target names in the graph).
+- **Validation**:
+  - `./build_launch_app.sh` passes and launches app.
+  - `ctest -N` lists all test entries correctly.
+  - `ctest -R "url_tests|paint_tests"` passes.
+
+### Cycle 1941 — 2026-02-28
+
+- **Theme**: Google misrender root-cause fix at layout core (table algorithm + legacy HTML compatibility)
+- **Subagent Swarm**: attempted max fan-out again; blocked by runtime agent cap (`max 6` already occupied), proceeded with direct deep diagnostics
+- **Key Wins**:
+  - Identified a high-impact table layout bug in `LayoutEngine::layout_table(...)`:
+    - column count was derived from the first row only,
+    - auto-layout distributed widths equally without strong intrinsic-width pressure,
+    - this can collapse/overlap later-row cells and distort Google basic (`gbv=1`) structure.
+  - Reworked table column counting to scan all rows with rowspan occupancy awareness before sizing columns.
+  - Improved column width seeding:
+    - fixed-layout now also respects percent/calc-derived cell widths (`css_width`) on first-row cells,
+    - auto-layout now uses explicit width, percent width, or intrinsic width (`measure_intrinsic_width`) as column hints.
+  - Hardened intrinsic width measurement by honoring node `specified_width` for replaced/intrinsic-width descendants (critical for `<input>`-driven table sizing).
+  - Added legacy compatibility hardening in render pipeline:
+    - `width='25%'` on `<td>/<th>` now maps to percent `css_width` instead of being dropped,
+    - `<nobr>` and `nowrap` attribute now force `white-space: nowrap`,
+    - `<center>` now applies auto horizontal margins to common block/table descendants when margins are unset.
+  - Unified remaining background image URL resolution path to shared `resolve_url(...)` (removed another ad-hoc resolver block).
+  - Added targeted regressions:
+    - `TableLayout.AutoLayoutColumnCountUsesAllRows`
+    - `TableLayout.AutoLayoutUsesIntrinsicCellWidths`
+    - `PaintRegression.GoogleBasicTablePercentCellsLayoutV129`
+- **Validation**:
+  - Targeted layout regressions: 2/2 pass in `clever_layout_tests`
+  - Targeted paint/url/form/script regressions: 6/6 pass in `clever_paint_tests`
+  - Suites: `ctest -R "html_tests|layout_tests|paint_tests"` all pass
+
+### Cycle 1940 — 2026-02-28
+
+- **Theme**: Google render deep continuation — URL/action normalization + inert/dynamic script regression lock-in
+- **Subagent Swarm**: attempted max fan-out; blocked by platform concurrent-agent cap (`max 6` already occupied), proceeded with direct deep diagnosis + test-driven fixes
+- **Key Wins**:
+  - Reworked shared URL resolution path in render pipeline to use `clever::url::parse(..., base)` for relative references (including `../`, `./`, query-only, and fragment-only refs), while preserving authored absolute URLs verbatim.
+  - Applied the same parser-first resolution strategy in shell navigation redirect/reference handling (`browser_window.mm`) to reduce split-brain URL behavior between shell and renderer.
+  - Fixed favicon extraction to use the same `resolve_url()` path; removed bespoke path concatenation that left dot-segments unnormalized.
+  - Normalized form action metadata at collection time:
+    - empty `action` now resolves to current document URL (`base_url`),
+    - relative/query-only actions now resolve through URL parser,
+    - submit-path form index matching now uses resolved action URLs for deterministic POST routing.
+  - Added/validated script lifecycle regressions:
+    - dynamically inserted inline `<script>` executes in same render pass,
+    - scripts inside inert subtrees (`<template>`, `<noscript>`) do not execute.
+  - Added regression tests in `vibrowser/tests/unit/paint_test.cpp`:
+    - `RenderResultTest.FaviconRelativeHrefDotSegmentsNormalizedV128`
+    - `FormSubmissionTest.PostFormActionDotSegmentsNormalizedV128`
+    - `FormSubmissionTest.GetFormActionQueryOnlyReferenceV128`
+    - `RenderPipeline.DynamicallyInsertedInlineScriptExecutesV128`
+    - `RenderPipeline.InertSubtreeScriptsDoNotExecuteV128`
+- **Validation**:
+  - Focused: 5 targeted regressions all pass via `clever_paint_tests --gtest_filter=...`
+  - Suite: `ctest -R "paint_tests"` passes
+  - Suite: `ctest -R "html_tests|layout_tests|paint_tests"` passes
+
+### Cycle 1939 — 2026-02-28
+
+- **Theme**: Google rendering deep diagnosis from screenshot + root-cause fixes
+- **Subagent Swarm**: 8 explorers requested, platform maxed at 6 concurrent + 2 follow-up explorers + 1 awaiter for build/tests
+- **Key Wins**:
+  - HTML tokenizer recovery fixed for RAWTEXT/RCDATA/ScriptData mismatched end-tag probes (`</...>` sequences no longer lose `/name` bytes)
+  - TreeBuilder `AfterHead` now re-enters head mode for head-only tags (`meta/link/style/script/title/...`) instead of incorrectly forcing body insertion
+  - TreeBuilder hardening: merged duplicate `<body>` attrs, ignored stray `<head>` in body, and reprocessed `<html>` in after-body/after-after-body via InBody path
+  - Flex column main-axis logic hardened: no width-as-height leakage for auto-height columns; axis-correct min/max clamping and deferred height resolution
+  - CSS function parsing now preserves comma tokens (critical for `var(--x, fallback)` reconstruction)
+  - Render pipeline hardening: script fetch now ignores non-2xx and HTML payloads; redirect ownership fixed (`set_max_redirects(0)` + canonical final URL propagation)
+  - URL resolver improved for query-only and fragment-only relative references
+  - Added regression tests:
+    - tokenizer mismatch recovery (`ScriptData`/`RCDATA`)
+    - `AfterHead` meta reentry placement
+    - flex-column auto-height no bogus grow-from-width
+  - Updated legacy flex expectation tests to match corrected column main-axis behavior
+- **Validation**:
+  - Build: `clever_html_tests`, `clever_layout_tests`, `clever_paint_tests` passed
+  - Tests: `ctest -R "html_tests|layout_tests|paint_tests"` passed (no failures)
+
+### Cycles 1930-1938 — 2026-03-01
+
+- **Cycles**: 9 (Round 125)
+- **Theme**: Test blitz round 125 — 72 new tests (17,311→17,383)
+- **Key Wins**:
+  - Clean round — zero fixes needed
+  - 17,383 tests, 13/13 suites, 100% pass rate
+
+### Cycles 1921-1929 — 2026-03-01
+
+- **Cycles**: 9 (Round 124)
+- **Theme**: Test blitz round 124 — 72 new tests (17,239→17,311)
+- **Key Wins**:
+  - Clean round — zero fixes needed
+  - 17,311 tests, 13/13 suites, 100% pass rate
+
+### Cycles 1912-1920 — 2026-03-01
+
+- **Cycles**: 9 (Round 123)
+- **Theme**: Test blitz round 123 — 72 new tests (17,167→17,239)
+- **Key Wins**:
+  - Clean round — zero fixes needed
+  - 17,239 tests, 13/13 suites, 100% pass rate
+
+### Cycles 1903-1911 — 2026-03-01
+
+- **Cycles**: 9 (Round 122)
+- **Theme**: Test blitz round 122 — 72 new tests (17,095→17,167)
+- **Key Wins**:
+  - URL agent self-fixed parse(base) pointer arg
+  - 17,167 tests, 13/13 suites, 100% pass rate
+
+### Cycles 1894-1902 — 2026-03-01
+
+- **Cycles**: 9 (Round 121)
+- **Theme**: Test blitz round 121 — 72 new tests (17,023→17,095)
+- **Key Wins**:
+  - Layout agent self-fixed flex column gap test
+  - 17,095 tests, 13/13 suites, 100% pass rate
+
+### Cycles 1885-1893 — 2026-03-01
+
+- **Cycles**: 9 (Round 120)
+- **Theme**: Test blitz round 120 — 72 new tests (16,951→17,023)
+- **Key Wins**:
+  - Clean round — zero fixes needed
+  - 17,023 tests, 13/13 suites, 100% pass rate
+
+### Cycles 1876-1884 — 2026-03-01
+
+- **Cycles**: 9 (Round 119)
+- **Theme**: Test blitz round 119 — 72 new tests (16,879→16,951)
+- **Key Wins**:
+  - Clean round — zero fixes needed
+  - 16,951 tests, 13/13 suites, 100% pass rate
+
+### Cycles 1867-1875 — 2026-03-01
+
+- **Cycles**: 9 (Round 118)
+- **Theme**: Test blitz round 118 — 72 new tests (16,807→16,879)
+- **Key Wins**:
+  - Clean round — zero fixes needed
+  - 16,879 tests, 13/13 suites, 100% pass rate
+
+### Cycles 1858-1866 — 2026-03-01
+
+- **Cycles**: 9 (Round 117)
+- **Theme**: Test blitz round 117 — 72 new tests (16,735→16,807)
+- **Key Wins**:
+  - Clean round — zero fixes needed
+  - 16,807 tests, 13/13 suites, 100% pass rate
+
+### Cycles 1849-1857 — 2026-03-01
+
+- **Cycles**: 9 (Round 116)
+- **Theme**: Test blitz round 116 — 72 new tests (16,663→16,735)
+- **Key Wins**:
+  - Clean round — zero fixes needed
+  - 16,735 tests, 13/13 suites, 100% pass rate
+
+### Cycles 1840-1848 — 2026-03-01
+
+- **Cycles**: 9 (Round 115)
+- **Theme**: Test blitz round 115 — 72 new tests (16,591→16,663)
+- **Key Wins**:
+  - Clean round — zero fixes needed
+  - 16,663 tests, 13/13 suites, 100% pass rate
+
+### Cycles 1831-1839 — 2026-03-01
+
+- **Cycles**: 9 (Round 114)
+- **Theme**: Test blitz round 114 — 72 new tests (16,519→16,591)
+- **Key Wins**:
+  - Clean round — zero fixes needed
+  - 16,591 tests, 13/13 suites, 100% pass rate
+
+### Cycles 1822-1830 — 2026-03-01
+
+- **Cycles**: 9 (Round 113)
+- **Theme**: Test blitz round 113 — 72 new tests (16,447→16,519)
+- **Key Wins**:
+  - Clean round — zero fixes needed
+  - 16,519 tests, 13/13 suites, 100% pass rate
+
+### Cycles 1813-1821 — 2026-03-01
+
+- **Cycles**: 9 (Round 112)
+- **Theme**: Test blitz round 112 — 72 new tests (16,375→16,447)
+- **Key Wins**:
+  - Clean round — zero fixes needed
+  - 16,447 tests, 13/13 suites, 100% pass rate
+
+### Cycles 1804-1812 — 2026-03-01
+
+- **Cycles**: 9 (Round 111)
+- **Theme**: Test blitz round 111 — 72 new tests (16,303→16,375)
+- **Key Wins**:
+  - Clean round — zero fixes needed
+  - 16,375 tests, 13/13 suites, 100% pass rate
+
+### Cycles 1795-1803 — 2026-03-01
+
+- **Cycles**: 9 (Round 110)
+- **Theme**: Test blitz round 110 — 72 new tests (16,231→16,303)
+- **Key Wins**:
+  - Fixed 1 URL test (FTP port 21 is default, normalized to nullopt)
+  - 16,303 tests, 13/13 suites, 100% pass rate
+
+### Cycles 1786-1794 — 2026-03-01
+
+- **Cycles**: 9 (Round 109)
+- **Theme**: Test blitz round 109 — 72 new tests (16,159→16,231)
+- **Key Wins**:
+  - Clean round — zero fixes needed
+  - 16,231 tests, 13/13 suites, 100% pass rate
+
+### Cycles 1777-1785 — 2026-03-01
+
+- **Cycles**: 9 (Round 108)
+- **Theme**: Test blitz round 108 — 72 new tests (16,087→16,159)
+- **Key Wins**:
+  - Fixed 2 CORS tests (empty # is no fragment; data: origin nullopt not "null")
+  - 16,159 tests, 13/13 suites, 100% pass rate
+
+### Cycles 1768-1776 — 2026-03-01
+
+- **Cycles**: 9 (Round 107)
+- **Theme**: Test blitz round 107 — 72 new tests (16,015→16,087)
+- **Key Wins**:
+  - Fixed 1 URL test (username/password ARE parsed, not empty)
+  - 16,087 tests, 13/13 suites, 100% pass rate
+  - Discovery: URL struct DOES have username/password fields
+
+### Cycles 1759-1767 — 2026-03-01
+
+- **Cycles**: 9 (Round 106)
+- **Theme**: Test blitz round 106 — 72 new tests (15,943→16,015) — **16K MILESTONE!**
+- **Key Wins**:
+  - Clean round — 11th clean round in a row
+  - 16,015 tests, 13/13 suites, 100% pass rate
+
+### Cycles 1750-1758 — 2026-03-01
+
+- **Cycles**: 9 (Round 105)
+- **Theme**: Test blitz round 105 — 72 new tests (15,871→15,943)
+- **Key Wins**:
+  - Clean round — 10th clean round in a row!
+  - 15,943 tests, 13/13 suites, 100% pass rate
+
+### Cycles 1741-1749 — 2026-03-01
+
+- **Cycles**: 9 (Round 104)
+- **Theme**: Test blitz round 104 — 72 new tests (15,799→15,871)
+- **Key Wins**:
+  - Clean round — 9th clean round in a row
+  - 15,871 tests, 13/13 suites, 100% pass rate
+
+### Cycles 1732-1740 — 2026-03-01
+
+- **Cycles**: 9 (Round 103)
+- **Theme**: Test blitz round 103 — 72 new tests (15,727→15,799)
+- **Key Wins**:
+  - Clean round — 8th clean round in a row
+  - 15,799 tests, 13/13 suites, 100% pass rate
+
+### Cycles 1723-1731 — 2026-03-01
+
+- **Cycles**: 9 (Round 102)
+- **Theme**: Test blitz round 102 — 72 new tests (15,655→15,727)
+- **Key Wins**:
+  - Clean round — 7th clean round in a row
+  - 15,727 tests, 13/13 suites, 100% pass rate
+
+### Cycles 1714-1722 — 2026-03-01
+
+- **Cycles**: 9 (Round 101)
+- **Theme**: Test blitz round 101 — 72 new tests (15,583→15,655)
+- **Key Wins**:
+  - Clean round — 6th clean round in a row
+  - 15,655 tests, 13/13 suites, 100% pass rate
+
+### Cycles 1705-1713 — 2026-03-01
+
+- **Cycles**: 9 (Round 100)
+- **Theme**: Test blitz round 100 — 72 new tests (15,511→15,583) — **ROUND 100 MILESTONE!**
+- **Key Wins**:
+  - Clean round — 5th clean round in a row
+  - 15,583 tests, 13/13 suites, 100% pass rate
+
+### Cycles 1696-1704 — 2026-03-01
+
+- **Cycles**: 9 (Round 99)
+- **Theme**: Test blitz round 99 — 72 new tests (15,439→15,511)
+- **Key Wins**:
+  - Clean round — zero fixes needed, 4th clean round in a row
+  - 15,511 tests, 13/13 suites, 100% pass rate
+
+### Cycles 1687-1695 — 2026-02-28
+
+- **Cycles**: 9 (Round 98)
+- **Theme**: Test blitz round 98 — 72 new tests (15,367→15,439)
+- **Key Wins**:
+  - Clean round — zero fixes needed, all agents succeeded
+  - 15,439 tests, 13/13 suites, 100% pass rate
+
+### Cycles 1678-1686 — 2026-02-28
+
+- **Cycles**: 9 (Round 97)
+- **Theme**: Test blitz round 97 — 72 new tests (15,295→15,367)
+- **Key Wins**:
+  - Clean round — zero fixes needed, all agents succeeded
+  - 15,367 tests, 13/13 suites, 100% pass rate
+
+### Cycles 1669-1677 — 2026-02-28
+
+- **Cycles**: 9 (Round 96)
+- **Theme**: Test blitz round 96 — 72 new tests (15,223→15,295)
+- **Key Wins**:
+  - Clean round — zero fixes needed, all agents succeeded
+  - 15,295 tests, 13/13 suites, 100% pass rate
+
+### Cycles 1660-1668 — 2026-02-28
+
+- **Cycles**: 9 (Round 95)
+- **Theme**: Test blitz round 95 — 72 new tests (15,151→15,223)
+- **Key Wins**:
+  - Fixed URL `userinfo` field (doesn't exist on URL struct)
+  - 15,223 tests, 13/13 suites, 100% pass rate
+
+### Cycles 1651-1659 — 2026-02-28
+
+- **Cycles**: 9 (Round 94)
+- **Theme**: Test blitz round 94 — 72 new tests (15,079→15,151)
+- **Key Wins**:
+  - Fixed Serializer `s.size()` → `s.data()` (Deserializer takes vector directly)
+  - Fixed DOM outer_html/inner_html (don't exist), Comment.text_content()→data()
+  - 15,151 tests, 13/13 suites, 100% pass rate
+
+### Cycles 1642-1650 — 2026-02-28
+
+- **Cycles**: 9 (Round 93)
+- **Theme**: Test blitz round 93 — 72 new tests (15,007→15,079)
+- **Key Wins**:
+  - Fixed CSS border shorthand (not supported — use individual properties)
+  - 15,079 tests, 13/13 suites, 100% pass rate
+
+### Cycles 1633-1641 — 2026-02-28
+
+- **Cycles**: 9 (Round 92)
+- **Theme**: Test blitz round 92 — 72 new tests (14,935→15,007) — **15K MILESTONE!**
+- **Key Wins**:
+  - Fixed HTML text_content() parens, CSS font_size/line_height Length types, CORS IP test
+  - 15,007 tests, 13/13 suites, 100% pass rate
+  - **CROSSED 15,000 TEST MILESTONE**
+
+### Cycles 1624-1632 — 2026-02-28
+
+- **Cycles**: 9 (Round 91)
+- **Theme**: Test blitz round 91 — 72 new tests (14,863→14,935)
+- **Key Wins**:
+  - All 9 Opus subagents succeeded cleanly
+  - 14,935 tests, 13/13 suites, 100% pass rate
+
+### Cycles 1615-1623 — 2026-02-28
+
+- **Cycles**: 9 (Round 90)
+- **Theme**: Test blitz round 90 — 72 new tests (14,791→14,863)
+- **Key Wins**:
+  - All 9 Opus subagents succeeded cleanly
+  - 14,863 tests, 13/13 suites, 100% pass rate
+
+### Cycles 1606-1614 — 2026-02-28
+
+- **Cycles**: 9 (Round 89)
+- **Theme**: Test blitz round 89 — 72 new tests (14,719→14,791)
+- **Key Wins**:
+  - All 9 Opus subagents succeeded cleanly
+  - 14,791 tests, 13/13 suites, 100% pass rate
+
+### Cycles 1597-1605 — 2026-02-28
+
+- **Cycles**: 9 (Round 88)
+- **Theme**: Test blitz round 88 — 72 new tests (14,647→14,719)
+- **Key Wins**:
+  - All 9 Opus subagents succeeded cleanly
+  - 14,719 tests, 13/13 suites, 100% pass rate
+
+### Cycles 1588-1596 — 2026-02-28
+
+- **Cycles**: 9 (Round 87)
+- **Theme**: Test blitz round 87 — 72 new tests (14,575→14,647)
+- **Key Wins**:
+  - All 9 Opus subagents succeeded cleanly
+  - 14,647 tests, 13/13 suites, 100% pass rate
+
+### Cycles 1579-1587 — 2026-02-28
+
+- **Cycles**: 9 (Round 86)
+- **Theme**: Test blitz round 86 — 72 new tests (14,503→14,575)
+- **Key Wins**:
+  - All 9 Opus subagents succeeded cleanly
+  - 14,575 tests, 13/13 suites, 100% pass rate
+
+### Cycles 1570-1578 — 2026-02-28
+
+- **Cycles**: 9 (Round 85)
+- **Theme**: Test blitz round 85 — 72 new tests (14,431→14,503)
+- **Key Wins**:
+  - All 9 Opus subagents succeeded cleanly
+  - 14,503 tests, 13/13 suites, 100% pass rate
+
+### Cycles 1561-1569 — 2026-02-28
+
+- **Cycles**: 9 (Round 84)
+- **Theme**: Test blitz round 84 — 72 new tests (14,359→14,431)
+- **Key Wins**:
+  - All 9 Opus subagents succeeded cleanly
+  - 14,431 tests, 13/13 suites, 100% pass rate
+
+### Cycles 1552-1560 — 2026-02-28
+
+- **Cycles**: 9 (Round 83)
+- **Theme**: Test blitz round 83 — 72 new tests (14,287→14,359)
+- **Key Wins**:
+  - All 9 Opus subagents succeeded cleanly
+  - 14,359 tests, 13/13 suites, 100% pass rate
+
+### Cycles 1543-1551 — 2026-02-28
+
+- **Cycles**: 9 (Round 82)
+- **Theme**: Test blitz round 82 — 72 new tests (14,215→14,287)
+- **Key Wins**:
+  - All 9 Opus subagents succeeded, fixed remove_child reference binding
+  - 14,287 tests, 13/13 suites, 100% pass rate
+
+### Cycles 1534-1542 — 2026-02-28
+
+- **Cycles**: 9 (Round 81)
+- **Theme**: Test blitz round 81 — 72 new tests (14,143→14,215)
+- **Key Wins**:
+  - All 9 Opus subagents succeeded cleanly
+  - 14,215 tests, 13/13 suites, 100% pass rate
+
+### Cycles 1525-1533 — 2026-02-28
+
+- **Cycles**: 9 (Round 80)
+- **Theme**: Test blitz round 80 — 72 new tests (14,071→14,143)
+- **Key Wins**:
+  - All 9 Opus subagents succeeded cleanly
+  - 14,143 tests, 13/13 suites, 100% pass rate
+
+### Cycles 1516-1524 — 2026-02-28
+
+- **Cycles**: 9 (Round 79)
+- **Theme**: Test blitz round 79 — 72 new tests (13,999→14,071) — **14K MILESTONE!**
+- **Key Wins**:
+  - Crossed 14,000 test milestone!
+  - All 9 Opus subagents succeeded cleanly
+  - Fixed serializer_test.cpp u8"" char8_t issue (C++20 incompatibility)
+  - 14,071 tests, 13/13 suites, 100% pass rate
+
+### Cycles 1507-1515 — 2026-02-28
+
+- **Cycles**: 9 (Round 78)
+- **Theme**: Test blitz round 78 — 72 new tests (13,927→13,999)
+- **Key Wins**:
+  - ONE test away from 14,000 milestone!
+  - All 9 Opus subagents succeeded cleanly
+  - Codex broken (o4-mini not available on ChatGPT account)
+  - 13,999 tests, 13/13 suites, 100% pass rate
+
+### Cycles 1498-1506 — 2026-02-28
+
+- **Cycles**: 9 (Round 77)
+- **Theme**: Test blitz round 77 — 72 new tests (13,855→13,927)
+- **Key Wins**:
+  - All 9 subagents succeeded, 1 layout test self-corrected (border offset assumption)
+  - 13,927 tests, 13/13 suites, 100% pass rate
+  - User preference updated: Opus subagents only (not haiku), plus Codex agents
+
+### Cycles 1489-1497 — 2026-02-28
+
+- **Cycles**: 9 (Round 76)
+- **Theme**: Test blitz round 76 — 72 new tests (13,711→13,855 actual counted)
+- **Key Wins**:
+  - Fixed pre-existing build errors: html_parser_test auto* unique_ptr iteration, Cursor::Wait→Pointer, script/textarea raw text tests
+  - Codex agents failed (no -q flag), switched to Task subagents — all 9 succeeded
+  - 13,855 tests confirmed, 13/13 suites, 100% pass rate
 
 ### Cycles 1663-1671 — 2026-02-28
 
@@ -7139,16 +7654,27 @@
 
 | Metric | Value |
 |--------|-------|
-| Total Sessions | 181 |
-| Total Cycles | 1488 |
+| Total Sessions | 182 |
+| Total Cycles | 1942 |
 | Files Created | ~135 |
 | Files Modified | 142+ |
-| Lines Added (est.) | 220500+ |
-| Tests Added | 8456 |
-| Bugs Fixed | 277 |
+| Lines Added (est.) | 223700+ |
+| Tests Added | 10844 |
+| Bugs Fixed | 286 |
 | Features Added | 2625 |
 
 ## Tell The Next Claude
+
+**LATEST (Cycle 1942) — Build Target Rename (clever_* → vibrowser_*)**
+
+- Renamed module and test target identifiers in CMake from `clever_*` to `vibrowser_*`.
+- Updated all inter-target links (including shell executable dependencies) to the new names.
+- Kept CTest test-case names stable (`url_tests`, `paint_tests`, etc.) to avoid workflow disruption.
+- Verified:
+  - `./build_launch_app.sh` builds and launches successfully,
+  - build logs now show `vibrowser_*` targets,
+  - `ctest -N` is intact,
+  - `ctest -R "url_tests|paint_tests"` passes.
 
 **STATUS: WORKING BROWSER WITH MAJOR RENDERING FIXES — 12,080 TESTS!!!** — Launch with `open vibrowser/build/src/shell/vibrowser.app`
 

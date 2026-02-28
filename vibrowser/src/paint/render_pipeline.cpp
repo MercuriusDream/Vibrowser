@@ -17,6 +17,7 @@
 #include <clever/js/js_fetch_bindings.h>
 #include <clever/js/js_timers.h>
 #include <clever/js/js_window.h>
+#include <clever/url/url.h>
 #include <clever/url/percent_encoding.h>
 #include <stb_image.h>
 #include <nanosvg.h>
@@ -44,6 +45,8 @@ namespace clever::paint {
 // render_html functions outside it)
 static thread_local int g_details_id_counter = 0;
 static thread_local const std::set<int>* g_toggled_details = nullptr;
+// When true, <noscript> content is rendered (JS failed or produced many errors)
+static thread_local bool g_noscript_fallback = false;
 
 namespace {
 
@@ -1215,35 +1218,50 @@ bool parse_conic_gradient(const std::string& value,
 
 // Resolve var() references in a CSS value string
 static std::string resolve_css_var(const std::string& val, const clever::css::ComputedStyle& style) {
-    auto pos = val.find("var(");
-    if (pos == std::string::npos) return val;
-    auto end = val.find(')', pos);
-    if (end == std::string::npos) return val;
-    std::string inner = val.substr(pos + 4, end - pos - 4);
-    // Handle fallback: var(--name, fallback)
-    std::string var_name = inner;
-    std::string fallback;
-    auto comma = inner.find(',');
-    if (comma != std::string::npos) {
-        var_name = inner.substr(0, comma);
-        fallback = inner.substr(comma + 1);
-        // Trim fallback
-        while (!fallback.empty() && fallback.front() == ' ') fallback.erase(0, 1);
-        while (!fallback.empty() && fallback.back() == ' ') fallback.pop_back();
+    std::string value = val;
+    for (int pass = 0; pass < 8; pass++) {
+        auto pos = value.find("var(");
+        if (pos == std::string::npos) break;
+
+        int depth = 1;
+        size_t end = pos + 4;
+        while (end < value.size() && depth > 0) {
+            if (value[end] == '(') depth++;
+            else if (value[end] == ')') depth--;
+            if (depth > 0) end++;
+        }
+        if (depth != 0) break;
+
+        std::string inner = value.substr(pos + 4, end - pos - 4);
+        std::string var_name;
+        std::string fallback;
+        int inner_depth = 0;
+        size_t split = std::string::npos;
+        for (size_t i = 0; i < inner.size(); i++) {
+            if (inner[i] == '(') inner_depth++;
+            else if (inner[i] == ')') inner_depth--;
+            else if (inner[i] == ',' && inner_depth == 0) {
+                split = i;
+                break;
+            }
+        }
+        if (split != std::string::npos) {
+            var_name = trim(inner.substr(0, split));
+            fallback = trim(inner.substr(split + 1));
+        } else {
+            var_name = trim(inner);
+        }
+
+        auto it = style.custom_properties.find(var_name);
+        if (it != style.custom_properties.end()) {
+            value = value.substr(0, pos) + it->second + value.substr(end + 1);
+        } else if (!fallback.empty()) {
+            value = value.substr(0, pos) + fallback + value.substr(end + 1);
+        } else {
+            break;
+        }
     }
-    // Trim var_name
-    while (!var_name.empty() && var_name.front() == ' ') var_name.erase(0, 1);
-    while (!var_name.empty() && var_name.back() == ' ') var_name.pop_back();
-    // Look up in style's custom properties
-    auto it = style.custom_properties.find(var_name);
-    if (it != style.custom_properties.end()) {
-        return val.substr(0, pos) + it->second + val.substr(end + 1);
-    }
-    // Use fallback if available
-    if (!fallback.empty()) {
-        return val.substr(0, pos) + fallback + val.substr(end + 1);
-    }
-    return val;
+    return value;
 }
 
 void apply_inline_style(clever::css::ComputedStyle& style, const std::string& style_attr,
@@ -1263,6 +1281,10 @@ void apply_inline_style(clever::css::ComputedStyle& style, const std::string& st
         // Resolve var() references in values
         if (d.value.find("var(") != std::string::npos) {
             d.value = resolve_css_var(d.value, style);
+            if (d.value.find("var(") != std::string::npos) {
+                // Invalid at computed-value time (unresolved custom property).
+                continue;
+            }
         }
 
         std::string val_lower = to_lower(d.value);
@@ -5288,7 +5310,7 @@ uint32_t color_to_argb(const clever::css::Color& c) {
 std::string resolve_url(const std::string& href, const std::string& base_url) {
     if (href.empty()) return "";
 
-    // Already absolute: scheme ":" prefix (e.g. https:, data:, about:, mailto:)
+    // Preserve already-absolute references exactly as authored.
     if (std::isalpha(static_cast<unsigned char>(href[0]))) {
         size_t i = 1;
         while (i < href.size()) {
@@ -5302,7 +5324,34 @@ std::string resolve_url(const std::string& href, const std::string& base_url) {
         if (i < href.size() && href[i] == ':') return href;
     }
 
+    // Use the URL parser for standards-based resolution first.
+    // This handles dot-segments, query/fragment-only refs, protocol-relative
+    // URLs, and normalization in one place.
+    if (auto base = clever::url::parse(base_url); base.has_value()) {
+        if (auto resolved = clever::url::parse(href, &*base); resolved.has_value()) {
+            return resolved->serialize();
+        }
+    }
+
+    // Fallback for non-standard base URLs the URL parser rejects.
+    // Keep legacy behavior so local/synthetic documents still resolve links.
     if (base_url.empty()) return href;
+
+    // Query/fragment-only references
+    if (href[0] == '?') {
+        std::string base = base_url;
+        auto hash_pos = base.find('#');
+        if (hash_pos != std::string::npos) base.erase(hash_pos);
+        auto query_pos = base.find('?');
+        if (query_pos != std::string::npos) base.erase(query_pos);
+        return base + href;
+    }
+    if (href[0] == '#') {
+        std::string base = base_url;
+        auto hash_pos = base.find('#');
+        if (hash_pos != std::string::npos) base.erase(hash_pos);
+        return base + href;
+    }
 
     // Protocol-relative
     if (href.size() >= 2 && href[0] == '/' && href[1] == '/') {
@@ -5341,6 +5390,9 @@ std::optional<clever::net::Response> fetch_with_redirects(
 
     clever::net::HttpClient client;
     client.set_timeout(std::chrono::seconds(timeout_secs));
+    // Keep redirect ownership inside this function so we can persist
+    // intermediate Set-Cookie headers and update final_url consistently.
+    client.set_max_redirects(0);
 
     auto& jar = clever::net::CookieJar::shared();
     std::string current_url = url;
@@ -5361,6 +5413,8 @@ std::optional<clever::net::Response> fetch_with_redirects(
 
         auto response = client.fetch(req);
         if (!response) return std::nullopt;
+        const std::string response_url =
+            response->url.empty() ? current_url : response->url;
 
         // Store cookies from response
         for (auto& cookie_val : response->headers.get_all("set-cookie")) {
@@ -5372,13 +5426,13 @@ std::optional<clever::net::Response> fetch_with_redirects(
             response->status == 308) {
             auto location = response->headers.get("location");
             if (!location || location->empty()) {
-                if (final_url) *final_url = current_url;
+                if (final_url) *final_url = response_url;
                 return response;
             }
-            current_url = resolve_url(*location, current_url);
+            current_url = resolve_url(*location, response_url);
             continue;
         }
-        if (final_url) *final_url = current_url;
+        if (final_url) *final_url = response_url;
         return response;
     }
     return std::nullopt;
@@ -5748,6 +5802,39 @@ DecodedImage fetch_and_decode_image(const std::string& url) {
     return result;
 }
 
+std::string normalize_mime_type(const std::string& raw_type) {
+    std::string type = to_lower(trim(raw_type));
+    const size_t semicolon = type.find(';');
+    if (semicolon != std::string::npos) {
+        type = trim(type.substr(0, semicolon));
+    }
+    return type;
+}
+
+bool media_targets_screen(const std::string& raw_media) {
+    const std::string media = to_lower(trim(raw_media));
+    if (media.empty() || media == "all" || media == "screen") return true;
+    if (media.find("screen") != std::string::npos) return true;
+    if (media.find("print") != std::string::npos) return false;
+    if (media.find("speech") != std::string::npos) return false;
+    // Be permissive for unhandled media-query syntax rather than dropping styles.
+    return true;
+}
+
+bool is_in_inert_subtree(const clever::html::SimpleNode* node) {
+    if (!node) return false;
+    const clever::html::SimpleNode* cur = node->parent;
+    while (cur) {
+        if (cur->type == clever::html::SimpleNode::Element) {
+            const std::string tag = to_lower(cur->tag_name);
+            if (tag == "template") return true;
+            if (tag == "noscript" && !g_noscript_fallback) return true;
+        }
+        cur = cur->parent;
+    }
+    return false;
+}
+
 // Extract external stylesheet URLs from <link> elements
 std::vector<std::string> extract_link_stylesheets(
     const clever::html::SimpleNode& node, const std::string& base_url) {
@@ -5755,16 +5842,15 @@ std::vector<std::string> extract_link_stylesheets(
     if (node.type == clever::html::SimpleNode::Element) {
         const std::string tag = to_lower(node.tag_name);
 
-        // With JS enabled, <noscript> fallback styles must not be applied.
-        if (tag == "noscript" || tag == "template") {
-            return urls;
-        }
+        // Skip template always; skip noscript only when JS is active
+        if (tag == "template") return urls;
+        if (tag == "noscript" && !g_noscript_fallback) return urls;
 
         if (tag == "link") {
             const std::string rel_raw = to_lower(get_attr(node, "rel"));
             const std::string href = trim(get_attr(node, "href"));
-            const std::string type = to_lower(trim(get_attr(node, "type")));
-            const std::string media = to_lower(trim(get_attr(node, "media")));
+            const std::string type = normalize_mime_type(get_attr(node, "type"));
+            const std::string media = get_attr(node, "media");
             const bool disabled = has_attr(node, "disabled");
 
             bool has_stylesheet = false;
@@ -5779,7 +5865,7 @@ std::vector<std::string> extract_link_stylesheets(
             // Treat rel as a token list, skip alternate/disabled sheets.
             if (has_stylesheet && !has_alternate && !disabled &&
                 (type.empty() || type == "text/css") &&
-                (media.empty() || media == "all" || media == "screen") &&
+                media_targets_screen(media) &&
                 !href.empty()) {
                 std::string resolved = resolve_url(href, base_url);
                 if (!resolved.empty()) {
@@ -5803,16 +5889,15 @@ std::string extract_style_content(const clever::html::SimpleNode& node) {
     if (node.type == clever::html::SimpleNode::Element) {
         const std::string tag = to_lower(node.tag_name);
 
-        // With JS enabled, <noscript> fallback styles must not be applied.
-        if (tag == "noscript" || tag == "template") {
-            return css;
-        }
+        // Skip template always; skip noscript only when JS is active
+        if (tag == "template") return css;
+        if (tag == "noscript" && !g_noscript_fallback) return css;
 
         if (tag == "style") {
-            const std::string type = to_lower(trim(get_attr(node, "type")));
-            const std::string media = to_lower(trim(get_attr(node, "media")));
+            const std::string type = normalize_mime_type(get_attr(node, "type"));
+            const std::string media = get_attr(node, "media");
             const bool css_type = type.empty() || type == "text/css";
-            const bool media_matches = media.empty() || media == "all" || media == "screen";
+            const bool media_matches = media_targets_screen(media);
             if (css_type && media_matches) {
                 css += node.text_content();
                 css += "\n";
@@ -6216,7 +6301,8 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
     std::string tag_lower = to_lower(node.tag_name);
     if (tag_lower == "head" || tag_lower == "meta" || tag_lower == "title" ||
         tag_lower == "link" || tag_lower == "script" || tag_lower == "style" ||
-        tag_lower == "template" || tag_lower == "noscript") {
+        tag_lower == "template" ||
+        (tag_lower == "noscript" && !g_noscript_fallback)) {
         return nullptr;
     }
 
@@ -6511,7 +6597,10 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
 
         // Collect form metadata for POST submission support
         clever::paint::FormData form_data;
-        form_data.action = get_attr(node, "action");
+        {
+            std::string raw_action = get_attr(node, "action");
+            form_data.action = raw_action.empty() ? base_url : resolve_url(raw_action, base_url);
+        }
         form_data.method = to_lower(get_attr(node, "method"));
         if (form_data.method.empty()) form_data.method = "get";
         form_data.enctype = get_attr(node, "enctype");
@@ -6904,21 +6993,7 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
 
     // Fetch background image if specified
     if (!style.bg_image_url.empty()) {
-        std::string img_url = style.bg_image_url;
-        if (!base_url.empty() && img_url.find("://") == std::string::npos) {
-            // Resolve relative URL
-            if (img_url[0] == '/') {
-                auto scheme_end = base_url.find("://");
-                if (scheme_end != std::string::npos) {
-                    auto host_end = base_url.find('/', scheme_end + 3);
-                    img_url = (host_end == std::string::npos ? base_url : base_url.substr(0, host_end)) + img_url;
-                }
-            } else {
-                auto last_slash = base_url.rfind('/');
-                if (last_slash != std::string::npos)
-                    img_url = base_url.substr(0, last_slash + 1) + img_url;
-            }
-        }
+        std::string img_url = resolve_url(style.bg_image_url, base_url);
         auto decoded = fetch_and_decode_image(img_url);
         if (decoded.pixels && !decoded.pixels->empty()) {
             layout_node->bg_image_pixels = decoded.pixels;
@@ -7417,31 +7492,25 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
                 std::string method = to_lower(get_attr(*form, "method"));
                 if (method.empty()) method = "get";
 
-                if (!action.empty()) {
-                    std::string action_url = resolve_url(action, base_url);
-                    if (method == "get") {
-                        // GET: build query string and navigate as a link
-                        std::string query = build_form_query_string(*form);
-                        if (!query.empty()) {
-                            if (action_url.find('?') != std::string::npos)
-                                action_url += "&" + query;
-                            else
-                                action_url += "?" + query;
-                        }
-                        layout_node->link_href = action_url;
-                    } else {
-                        // POST (or other methods): use form submit region
-                        // so the delegate can send a proper POST request.
-                        // Find the form's index in collected_forms by matching
-                        // the form DOM node pointer's action attribute.
-                        for (int fi = static_cast<int>(collected_forms.size()) - 1; fi >= 0; fi--) {
-                            if (collected_forms[fi].action == get_attr(*form, "action") &&
-                                collected_forms[fi].method == method) {
-                                // Resolve the action URL in the stored FormData
-                                collected_forms[fi].action = action_url;
-                                layout_node->form_index = fi;
-                                break;
-                            }
+                std::string action_url = action.empty() ? base_url : resolve_url(action, base_url);
+                if (method == "get") {
+                    // GET: build query string and navigate as a link
+                    std::string query = build_form_query_string(*form);
+                    if (!query.empty()) {
+                        if (action_url.find('?') != std::string::npos)
+                            action_url += "&" + query;
+                        else
+                            action_url += "?" + query;
+                    }
+                    layout_node->link_href = action_url;
+                } else {
+                    // POST (or other methods): use form submit region
+                    // so the delegate can send a proper POST request.
+                    for (int fi = static_cast<int>(collected_forms.size()) - 1; fi >= 0; fi--) {
+                        if (collected_forms[fi].action == action_url &&
+                            collected_forms[fi].method == method) {
+                            layout_node->form_index = fi;
+                            break;
                         }
                     }
                 }
@@ -9017,6 +9086,11 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
         }
     }
 
+    // Legacy <nobr> and nowrap HTML attributes force no wrapping.
+    if (tag_lower == "nobr" || has_attr(node, "nowrap")) {
+        style.white_space = clever::css::WhiteSpace::NoWrap;
+    }
+
     // Handle <code>, <samp>, <tt> — monospace font with subtle background
     if (tag_lower == "code" || tag_lower == "samp" || tag_lower == "tt") {
         style.font_family = "monospace";
@@ -9293,13 +9367,22 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
         }
     }
 
-    // Apply color-scheme: dark — set dark defaults on html/body
+    // Apply color-scheme: dark — only set dark defaults on html/body
+    // when the page explicitly opts in via CSS color-scheme property.
+    // Do NOT force dark defaults based on OS dark mode — most websites
+    // (including Google) expect a white background regardless of OS theme.
+    // color_scheme == 2 means the page explicitly declared color-scheme: dark.
+    // We only apply dark defaults if the page set color-scheme to dark AND
+    // didn't set any explicit background/text colors itself.
     if ((tag_lower == "html" || tag_lower == "body") && layout_node->color_scheme == 2) {
-        if (layout_node->background_color == 0) {
-            layout_node->background_color = 0xFF1a1a2e; // dark background
-        }
-        if (layout_node->color == 0xFF000000 || layout_node->color == 0) {
-            layout_node->color = 0xFFE0E0E0; // light text
+        // Only apply if the element has NO explicit background from CSS/HTML
+        // AND no ancestor has set a background. The page must truly want dark.
+        bool has_explicit_bg = layout_node->background_color != 0;
+        bool has_explicit_color = (layout_node->color != 0xFF000000 && layout_node->color != 0);
+        if (!has_explicit_bg && !has_explicit_color) {
+            // Page declared dark scheme with no colors — apply dark defaults
+            layout_node->background_color = 0xFF1a1a2e;
+            layout_node->color = 0xFFE0E0E0;
         }
     }
 
@@ -9614,7 +9697,14 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
         // Legacy HTML width attribute on <td>/<th>
         std::string td_w = get_attr(node, "width");
         if (!td_w.empty()) {
-            try { layout_node->specified_width = std::stof(td_w); } catch (...) {}
+            if (td_w.back() == '%') {
+                try {
+                    float pct = std::stof(td_w.substr(0, td_w.size() - 1));
+                    layout_node->css_width = clever::css::Length::percent(pct);
+                } catch (...) {}
+            } else {
+                try { layout_node->specified_width = std::stof(td_w); } catch (...) {}
+            }
         }
         // Legacy HTML height attribute on <td>/<th>
         std::string td_h = get_attr(node, "height");
@@ -10407,6 +10497,22 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
                 }
             } else {
                 layout_node->append_child(std::move(child_layout));
+            }
+        }
+    }
+
+    // Legacy <center> centers not only inline content but also common block/table
+    // descendants in quirks-era markup.
+    if (tag_lower == "center") {
+        for (auto& child : layout_node->children) {
+            if (!child) continue;
+            if (child->geometry.margin.left == 0 && child->geometry.margin.right == 0) {
+                if (child->display == clever::layout::DisplayType::Block ||
+                    child->display == clever::layout::DisplayType::Table ||
+                    child->display == clever::layout::DisplayType::InlineBlock) {
+                    child->geometry.margin.left = -1;  // auto
+                    child->geometry.margin.right = -1; // auto
+                }
             }
         }
     }
@@ -11455,25 +11561,15 @@ RenderResult render_html(const std::string& html, const std::string& base_url,
 
     // Reset interactive <details> toggle counter
     g_details_id_counter = 0;
+    g_noscript_fallback = false;
 
-    // Detect system dark mode and set the global flag for light-dark() CSS function.
-    // If an override is set (for testing), skip system detection and use the override.
+    // Force light mode for CSS resolution. Most websites (including Google)
+    // expect prefers-color-scheme: light. Our browser doesn't have a dark mode
+    // UI, so forcing system dark mode causes pages to render with dark
+    // backgrounds that clash with our light chrome.
+    // The override mechanism is still respected for testing.
     if (clever::css::get_dark_mode_override() < 0) {
-        bool system_dark = false;
-#ifdef __APPLE__
-        CFStringRef key = CFSTR("AppleInterfaceStyle");
-        CFPropertyListRef val = CFPreferencesCopyAppValue(key, kCFPreferencesCurrentApplication);
-        if (val) {
-            if (CFGetTypeID(val) == CFStringGetTypeID()) {
-                CFStringRef str = (CFStringRef)val;
-                char buf[32] = {};
-                CFStringGetCString(str, buf, sizeof(buf), kCFStringEncodingUTF8);
-                if (std::string(buf) == "Dark") system_dark = true;
-            }
-            CFRelease(val);
-        }
-#endif
-        clever::css::set_dark_mode(system_dark);
+        clever::css::set_dark_mode(false);
     }
 
     // Set viewport dimensions for vw/vh/vmin/vmax CSS units
@@ -11563,26 +11659,7 @@ RenderResult render_html(const std::string& html, const std::string& base_url,
             // Match rel="icon", rel="shortcut icon", rel="apple-touch-icon"
             if (!href.empty() && (rel == "icon" || rel == "shortcut icon" ||
                                   rel.find("icon") != std::string::npos)) {
-                // Resolve relative URL
-                if (href.find("://") == std::string::npos && !href.empty()) {
-                    if (href[0] == '/') {
-                        // Absolute path — prepend scheme+host from base_url
-                        auto scheme_end = base_url.find("://");
-                        if (scheme_end != std::string::npos) {
-                            auto host_end = base_url.find('/', scheme_end + 3);
-                            if (host_end == std::string::npos)
-                                href = base_url + href;
-                            else
-                                href = base_url.substr(0, host_end) + href;
-                        }
-                    } else {
-                        // Relative path
-                        auto last_slash = base_url.rfind('/');
-                        if (last_slash != std::string::npos)
-                            href = base_url.substr(0, last_slash + 1) + href;
-                    }
-                }
-                result.favicon_url = href;
+                result.favicon_url = resolve_url(href, base_url);
                 break; // Use first matching icon
             }
         }
@@ -11602,9 +11679,15 @@ RenderResult render_html(const std::string& html, const std::string& base_url,
         std::string effective_base_url = base_url;
         auto base_nodes = doc->find_all_elements("base");
         if (!base_nodes.empty()) {
-            for (const auto& attr : base_nodes[0]->attributes) {
-                if (attr.name == "href" && !attr.value.empty()) {
-                    effective_base_url = resolve_url(attr.value, base_url);
+            for (const auto* base_node : base_nodes) {
+                if (!base_node || is_in_inert_subtree(base_node)) continue;
+                for (const auto& attr : base_node->attributes) {
+                    if (attr.name == "href" && !attr.value.empty()) {
+                        effective_base_url = resolve_url(attr.value, base_url);
+                        break;
+                    }
+                }
+                if (effective_base_url != base_url) {
                     break;
                 }
             }
@@ -11863,66 +11946,107 @@ RenderResult render_html(const std::string& html, const std::string& base_url,
                     }
                 }
 
-                for (const auto* script_elem : script_elements) {
-                    // Determine script type and src attribute
-                    std::string script_type;
-                    std::string script_src;
-                    for (const auto& attr : script_elem->attributes) {
-                        if (attr.name == "type") script_type = attr.value;
-                        else if (attr.name == "src") script_src = attr.value;
-                    }
+                std::unordered_set<const clever::html::SimpleNode*> executed_script_nodes;
+                auto execute_pending_scripts = [&](int max_rounds) {
+                    for (int round = 0; round < max_rounds; round++) {
+                        int executed_this_round = 0;
+                        auto pending_scripts = doc->find_all_elements("script");
+                        for (const auto* script_elem : pending_scripts) {
+                            if (!script_elem) continue;
+                            if (executed_script_nodes.find(script_elem) != executed_script_nodes.end()) continue;
 
-                    // Skip non-JavaScript types (json, importmap, etc.)
-                    if (!script_type.empty() && script_type != "text/javascript" &&
-                        script_type != "application/javascript" && script_type != "module") {
-                        continue;
-                    }
-
-                    // Skip type="module" — ES modules use import/export syntax
-                    // that cannot be evaluated in our synchronous script engine
-                    if (script_type == "module") {
-                        continue;
-                    }
-
-                    std::string script_code;
-
-                    if (!script_src.empty()) {
-                        // Fetch external script
-                        std::string resolved = resolve_url(script_src, effective_base_url);
-                        auto response = fetch_with_redirects(resolved, "application/javascript, */*", 5);
-                        if (response) {
-                            script_code = response->body_as_string();
-                        }
-                    } else {
-                        // Extract inline script content
-                        for (const auto& child : script_elem->children) {
-                            if (child->type == clever::html::SimpleNode::Text) {
-                                script_code += child->data;
+                            // Keep script execution aligned with style/render inert-subtree rules.
+                            if (is_in_inert_subtree(script_elem)) {
+                                executed_script_nodes.insert(script_elem);
+                                continue;
                             }
+
+                            // Determine script type and src attribute
+                            std::string script_type;
+                            std::string script_src;
+                            for (const auto& attr : script_elem->attributes) {
+                                if (attr.name == "type") script_type = normalize_mime_type(attr.value);
+                                else if (attr.name == "src") script_src = attr.value;
+                            }
+
+                            // Skip non-JavaScript types (json, importmap, etc.)
+                            if (!script_type.empty() && script_type != "text/javascript" &&
+                                script_type != "application/javascript" &&
+                                script_type != "text/ecmascript" &&
+                                script_type != "application/ecmascript" &&
+                                script_type != "module") {
+                                executed_script_nodes.insert(script_elem);
+                                continue;
+                            }
+
+                            // Skip type="module" — ES modules use import/export syntax
+                            // that cannot be evaluated in our synchronous script engine
+                            if (script_type == "module") {
+                                executed_script_nodes.insert(script_elem);
+                                continue;
+                            }
+
+                            std::string script_code;
+
+                            if (!script_src.empty()) {
+                                // Fetch external script
+                                std::string resolved = resolve_url(script_src, effective_base_url);
+                                auto response = fetch_with_redirects(resolved, "application/javascript, */*", 5);
+                                if (response && response->status >= 200 && response->status < 300) {
+                                    bool looks_like_html = false;
+                                    if (auto ct = response->headers.get("content-type"); ct.has_value()) {
+                                        std::string ct_norm = normalize_mime_type(*ct);
+                                        if (ct_norm == "text/html" || ct_norm == "application/xhtml+xml") {
+                                            looks_like_html = true;
+                                        }
+                                    }
+                                    if (!looks_like_html) {
+                                        script_code = response->body_as_string();
+                                    }
+                                }
+                            } else {
+                                // Extract inline script content
+                                for (const auto& child : script_elem->children) {
+                                    if (child->type == clever::html::SimpleNode::Text) {
+                                        script_code += child->data;
+                                    }
+                                }
+                            }
+
+                            if (!script_code.empty()) {
+                                // Set document.currentScript before evaluation
+                                clever::js::set_current_script(
+                                    js_engine.context(),
+                                    const_cast<clever::html::SimpleNode*>(script_elem));
+
+                                js_engine.evaluate(script_code);
+                                if (js_engine.has_error()) {
+                                    result.js_errors.push_back(js_engine.last_error());
+                                }
+
+                                // Clear document.currentScript after evaluation
+                                clever::js::set_current_script(js_engine.context(), nullptr);
+                            }
+
+                            executed_script_nodes.insert(script_elem);
+                            executed_this_round++;
+                        }
+
+                        if (executed_this_round == 0) {
+                            break;
                         }
                     }
+                };
 
-                    if (!script_code.empty()) {
-                        // Set document.currentScript before evaluation
-                        clever::js::set_current_script(
-                            js_engine.context(),
-                            const_cast<clever::html::SimpleNode*>(script_elem));
-
-                        js_engine.evaluate(script_code);
-                        if (js_engine.has_error()) {
-                            result.js_errors.push_back(js_engine.last_error());
-                        }
-
-                        // Clear document.currentScript after evaluation
-                        clever::js::set_current_script(js_engine.context(), nullptr);
-                    }
-                }
+                // Initial script drain pass (also catches scripts inserted by earlier scripts).
+                execute_pending_scripts(8);
 
                 // Flush any pending zero-delay timers (without destroying state)
                 clever::js::flush_ready_timers(js_engine.context(), 0);
 
                 // Execute pending Promise microtasks (fetch().then(), etc.)
                 clever::js::flush_fetch_promise_jobs(js_engine.context());
+                execute_pending_scripts(4);
 
                 // Fire DOMContentLoaded event on document and window
                 clever::js::dispatch_dom_content_loaded(js_engine.context());
@@ -11932,6 +12056,7 @@ RenderResult render_html(const std::string& html, const std::string& base_url,
 
                 // Execute Promise microtasks again (handlers may create promises)
                 clever::js::flush_fetch_promise_jobs(js_engine.context());
+                execute_pending_scripts(4);
 
                 // Fire IntersectionObserver callbacks (scripts have now set up observers)
                 clever::js::fire_intersection_observers(
@@ -11951,6 +12076,7 @@ RenderResult render_html(const std::string& html, const std::string& base_url,
                 // Flush timers/promises set by observer callbacks
                 clever::js::flush_ready_timers(js_engine.context(), 0);
                 clever::js::flush_fetch_promise_jobs(js_engine.context());
+                execute_pending_scripts(2);
 
                 // Convergence loop: flush chained timer/promise effects.
                 // Many sites use patterns like setTimeout(fn,0) inside
@@ -11965,6 +12091,7 @@ RenderResult render_html(const std::string& html, const std::string& base_url,
                         int fired = clever::js::flush_ready_timers(
                             js_engine.context(), 0);
                         clever::js::flush_fetch_promise_jobs(js_engine.context());
+                        execute_pending_scripts(1);
                         if (fired == 0) break;
                     }
 
@@ -11974,12 +12101,14 @@ RenderResult render_html(const std::string& html, const std::string& base_url,
                         int fired = clever::js::flush_ready_timers(
                             js_engine.context(), 100);
                         clever::js::flush_fetch_promise_jobs(js_engine.context());
+                        execute_pending_scripts(1);
                         // Drain any zero-delay chains spawned by short-delay timers
                         if (fired > 0) {
                             for (int round = 0; round < 4; round++) {
                                 int f2 = clever::js::flush_ready_timers(
                                     js_engine.context(), 0);
                                 clever::js::flush_fetch_promise_jobs(js_engine.context());
+                                execute_pending_scripts(1);
                                 if (f2 == 0) break;
                             }
                         }
@@ -11994,6 +12123,14 @@ RenderResult render_html(const std::string& html, const std::string& base_url,
 
                 // Capture console output
                 result.js_console_output = js_engine.console_output();
+
+                // Enable noscript fallback if JS produced many errors.
+                // Sites like Google are heavily JS-dependent; when our JS
+                // engine can't handle the scripts, the noscript content
+                // provides a usable fallback.
+                if (result.js_errors.size() >= 3) {
+                    g_noscript_fallback = true;
+                }
 
                 // Clean up timer state (timers are not needed after initial render).
                 // DOM bindings are intentionally kept alive so the persisted
@@ -12088,13 +12225,12 @@ RenderResult render_html(const std::string& html, const std::string& base_url,
         // Step 5: Compute render height from laid out content.
         // We keep the full content height in a single buffer so below-the-fold
         // content (including content-visibility regions) can be painted correctly.
+        // layout_root->geometry.height already includes root padding/border in this engine.
+        // Adding them again here inflates the final render buffer height and creates
+        // large blank regions below the actual page content.
         float content_h = layout_root->geometry.y +
                           layout_root->geometry.margin.top +
-                          layout_root->geometry.border.top +
-                          layout_root->geometry.padding.top +
                           layout_root->geometry.height +
-                          layout_root->geometry.padding.bottom +
-                          layout_root->geometry.border.bottom +
                           layout_root->geometry.margin.bottom;
         int render_height = std::max(viewport_height,
                                      static_cast<int>(std::ceil(content_h)));
