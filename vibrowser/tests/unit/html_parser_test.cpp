@@ -26338,3 +26338,131 @@ TEST(HtmlParserTest, HtmlV167_8) {
     EXPECT_EQ(id_val, "main");
     EXPECT_EQ(class_val, "container");
 }
+
+// Round 168 — HTML parser tests (V168)
+
+TEST(HtmlParserTest, HtmlV168_1) {
+    // abbr element with title attribute
+    auto doc = clever::html::parse(
+        "<html><body><abbr title=\"HyperText Markup Language\">HTML</abbr></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* abbr = doc->find_element("abbr");
+    ASSERT_NE(abbr, nullptr);
+    EXPECT_EQ(abbr->tag_name, "abbr");
+    EXPECT_EQ(abbr->text_content(), "HTML");
+
+    std::string title_val;
+    for (const auto& attr : abbr->attributes) {
+        if (attr.name == "title") title_val = attr.value;
+    }
+    EXPECT_EQ(title_val, "HyperText Markup Language");
+}
+
+TEST(HtmlParserTest, HtmlV168_2) {
+    // cite element with text
+    auto doc = clever::html::parse(
+        "<html><body><cite>The Great Gatsby</cite></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* cite = doc->find_element("cite");
+    ASSERT_NE(cite, nullptr);
+    EXPECT_EQ(cite->tag_name, "cite");
+    EXPECT_EQ(cite->text_content(), "The Great Gatsby");
+}
+
+TEST(HtmlParserTest, HtmlV168_3) {
+    // code element with inline code
+    auto doc = clever::html::parse(
+        "<html><body><code>printf()</code></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* code = doc->find_element("code");
+    ASSERT_NE(code, nullptr);
+    EXPECT_EQ(code->tag_name, "code");
+    EXPECT_EQ(code->text_content(), "printf()");
+}
+
+TEST(HtmlParserTest, HtmlV168_4) {
+    // pre element with preformatted text
+    auto doc = clever::html::parse(
+        "<html><body><pre>line1\nline2</pre></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* pre = doc->find_element("pre");
+    ASSERT_NE(pre, nullptr);
+    EXPECT_EQ(pre->tag_name, "pre");
+    EXPECT_EQ(pre->text_content(), "line1\nline2");
+}
+
+TEST(HtmlParserTest, HtmlV168_5) {
+    // blockquote with cite attribute
+    auto doc = clever::html::parse(
+        "<html><body><blockquote cite=\"https://example.com\">A quote</blockquote></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* bq = doc->find_element("blockquote");
+    ASSERT_NE(bq, nullptr);
+    EXPECT_EQ(bq->tag_name, "blockquote");
+    EXPECT_EQ(bq->text_content(), "A quote");
+
+    std::string cite_val;
+    for (const auto& attr : bq->attributes) {
+        if (attr.name == "cite") cite_val = attr.value;
+    }
+    EXPECT_EQ(cite_val, "https://example.com");
+}
+
+TEST(HtmlParserTest, HtmlV168_6) {
+    // nested ul > li list items
+    auto doc = clever::html::parse(
+        "<html><body><ul><li>Alpha</li><li>Beta</li></ul></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* ul = doc->find_element("ul");
+    ASSERT_NE(ul, nullptr);
+    EXPECT_EQ(ul->tag_name, "ul");
+
+    auto lis = doc->find_all_elements("li");
+    ASSERT_EQ(lis.size(), 2u);
+    EXPECT_EQ(lis[0]->text_content(), "Alpha");
+    EXPECT_EQ(lis[1]->text_content(), "Beta");
+}
+
+TEST(HtmlParserTest, HtmlV168_7) {
+    // ol > li ordered list
+    auto doc = clever::html::parse(
+        "<html><body><ol><li>First</li><li>Second</li><li>Third</li></ol></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* ol = doc->find_element("ol");
+    ASSERT_NE(ol, nullptr);
+    EXPECT_EQ(ol->tag_name, "ol");
+
+    auto lis = doc->find_all_elements("li");
+    ASSERT_EQ(lis.size(), 3u);
+    EXPECT_EQ(lis[0]->text_content(), "First");
+    EXPECT_EQ(lis[1]->text_content(), "Second");
+    EXPECT_EQ(lis[2]->text_content(), "Third");
+}
+
+TEST(HtmlParserTest, HtmlV168_8) {
+    // dl > dt > dd definition list
+    auto doc = clever::html::parse(
+        "<html><body><dl><dt>Term</dt><dd>Definition</dd></dl></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* dl = doc->find_element("dl");
+    ASSERT_NE(dl, nullptr);
+    EXPECT_EQ(dl->tag_name, "dl");
+
+    auto* dt = doc->find_element("dt");
+    ASSERT_NE(dt, nullptr);
+    EXPECT_EQ(dt->tag_name, "dt");
+    EXPECT_EQ(dt->text_content(), "Term");
+
+    auto* dd = doc->find_element("dd");
+    ASSERT_NE(dd, nullptr);
+    EXPECT_EQ(dd->tag_name, "dd");
+    EXPECT_EQ(dd->text_content(), "Definition");
+}

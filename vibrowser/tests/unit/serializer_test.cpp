@@ -21633,3 +21633,45 @@ TEST(SerializerTest, SerializerV167_3_BoolSequenceFiveValuesRoundTrip) {
     EXPECT_FALSE(d.read_bool());
     EXPECT_FALSE(d.has_remaining());
 }
+
+TEST(SerializerTest, SerializerV168_1_F64PositiveInfinityRoundTrip) {
+    Serializer s;
+    s.write_f64(INFINITY);
+
+    Deserializer d(s.data());
+    double val = d.read_f64();
+    EXPECT_EQ(val, INFINITY);
+    EXPECT_TRUE(std::isinf(val));
+    EXPECT_GT(val, 0.0);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, SerializerV168_2_StringWithNullBytesRoundTrip) {
+    std::string input("ab\0cd", 5);
+    ASSERT_EQ(input.size(), 5u);
+
+    Serializer s;
+    s.write_string(input);
+
+    Deserializer d(s.data());
+    std::string output = d.read_string();
+    EXPECT_EQ(output.size(), 5u);
+    EXPECT_EQ(output, input);
+    EXPECT_EQ(output[0], 'a');
+    EXPECT_EQ(output[1], 'b');
+    EXPECT_EQ(output[2], '\0');
+    EXPECT_EQ(output[3], 'c');
+    EXPECT_EQ(output[4], 'd');
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, SerializerV168_3_U32ZeroAndMaxRoundTrip) {
+    Serializer s;
+    s.write_u32(0u);
+    s.write_u32(UINT32_MAX);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u32(), 0u);
+    EXPECT_EQ(d.read_u32(), UINT32_MAX);
+    EXPECT_FALSE(d.has_remaining());
+}

@@ -38428,3 +38428,98 @@ TEST(JSEngine, JsV167_8) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "10");
 }
+
+// V168_1: Array.map returns new array
+TEST(JSEngine, JsV168_1) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var arr = [1, 2, 3];
+        var mapped = arr.map(function(x) { return x * 10; });
+        "" + mapped;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "10,20,30");
+}
+
+// V168_2: Array.filter returns filtered array
+TEST(JSEngine, JsV168_2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var arr = [1, 2, 3, 4, 5, 6];
+        var evens = arr.filter(function(x) { return x % 2 === 0; });
+        "" + evens;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "2,4,6");
+}
+
+// V168_3: String.includes returns true/false
+TEST(JSEngine, JsV168_3) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var s = "hello world";
+        "" + s.includes("world") + "," + s.includes("xyz");
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true,false");
+}
+
+// V168_4: Object.keys returns array of keys
+TEST(JSEngine, JsV168_4) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var obj = {a: 1, b: 2, c: 3};
+        var keys = Object.keys(obj);
+        "" + keys;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "a,b,c");
+}
+
+// V168_5: Array.reduce sum
+TEST(JSEngine, JsV168_5) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var arr = [1, 2, 3, 4, 5];
+        var sum = arr.reduce(function(acc, x) { return acc + x; }, 0);
+        "" + sum;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "15");
+}
+
+// V168_6: template literals with expressions
+TEST(JSEngine, JsV168_6) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var name = "world";
+        var num = 42;
+        `hello ${name}, ${num + 8}`;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "hello world, 50");
+}
+
+// V168_7: destructuring assignment
+TEST(JSEngine, JsV168_7) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var arr = [10, 20, 30];
+        var [a, b, c] = arr;
+        "" + a + "," + b + "," + c;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "10,20,30");
+}
+
+// V168_8: spread operator in array
+TEST(JSEngine, JsV168_8) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var arr1 = [1, 2, 3];
+        var arr2 = [0, ...arr1, 4];
+        "" + arr2;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "0,1,2,3,4");
+}

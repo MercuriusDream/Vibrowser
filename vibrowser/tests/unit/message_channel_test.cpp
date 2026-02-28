@@ -3028,3 +3028,42 @@ TEST(MessageChannelTest, MessageChannelV167_2_TypeMaxU32V167) {
     EXPECT_EQ(captured_payload[0], 0xAB);
     EXPECT_EQ(captured_payload[1], 0xCD);
 }
+
+TEST(MessageChannelTest, MessageChannelV168_1_UnregisteredTypeIgnoredV168) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel ch(std::move(pa));
+
+    bool handler_called = false;
+    ch.on(1, [&](const Message& m) {
+        handler_called = true;
+    });
+
+    Message msg;
+    msg.type = 2;
+    msg.request_id = 0;
+    msg.payload = {0xFF};
+    ch.dispatch(msg);
+
+    EXPECT_FALSE(handler_called);
+}
+
+TEST(MessageChannelTest, MessageChannelV168_2_HandlerReceivesCorrectPayloadV168) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel ch(std::move(pa));
+
+    std::vector<uint8_t> captured_payload;
+    ch.on(42, [&](const Message& m) {
+        captured_payload = m.payload;
+    });
+
+    Message msg;
+    msg.type = 42;
+    msg.request_id = 7;
+    msg.payload = {0x11, 0x22, 0x33};
+    ch.dispatch(msg);
+
+    ASSERT_EQ(captured_payload.size(), 3u);
+    EXPECT_EQ(captured_payload[0], 0x11);
+    EXPECT_EQ(captured_payload[1], 0x22);
+    EXPECT_EQ(captured_payload[2], 0x33);
+}

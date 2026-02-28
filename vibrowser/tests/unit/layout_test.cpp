@@ -30422,3 +30422,115 @@ TEST(LayoutNodeProps, MaxWidthDefaultNegOneV167) {
     auto node = make_block("div");
     EXPECT_FLOAT_EQ(node->max_width, 1e9f);
 }
+
+// V168_1: block parent 400px with 2 block children 100px each, verify y positions
+TEST(LayoutEngineTest, LayoutV168_1) {
+    auto root = make_block("div");
+    root->specified_width = 400.0f;
+
+    auto c1 = make_block("div");
+    c1->specified_height = 100.0f;
+    auto c2 = make_block("div");
+    c2->specified_height = 100.0f;
+
+    root->append_child(std::move(c1));
+    root->append_child(std::move(c2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 400.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.y, 0.0f);
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.y, 100.0f);
+}
+
+// V168_2: flex row with 3 equal flex-grow children, verify each gets 1/3 width
+TEST(LayoutEngineTest, LayoutV168_2) {
+    auto root = make_flex("div");
+    root->specified_width = 300.0f;
+
+    for (int i = 0; i < 3; ++i) {
+        auto c = make_block("div");
+        c->flex_grow = 1;
+        c->specified_height = 40.0f;
+        root->append_child(std::move(c));
+    }
+
+    LayoutEngine engine;
+    engine.compute(*root, 300.0f, 600.0f);
+
+    EXPECT_NEAR(root->children[0]->geometry.width, 100.0f, 1.0f);
+    EXPECT_NEAR(root->children[1]->geometry.width, 100.0f, 1.0f);
+    EXPECT_NEAR(root->children[2]->geometry.width, 100.0f, 1.0f);
+}
+
+// V168_3: block child inherits parent width (300px)
+TEST(LayoutEngineTest, LayoutV168_3) {
+    auto root = make_block("div");
+    root->specified_width = 300.0f;
+
+    auto child = make_block("div");
+    child->specified_height = 50.0f;
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.width, 300.0f);
+}
+
+// V168_4: flex child with specified height preserved
+TEST(LayoutEngineTest, LayoutV168_4) {
+    auto root = make_flex("div");
+    root->specified_width = 200.0f;
+
+    auto c1 = make_block("div");
+    c1->flex_grow = 1;
+    c1->specified_height = 55.0f;
+
+    root->append_child(std::move(c1));
+
+    LayoutEngine engine;
+    engine.compute(*root, 200.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.height, 55.0f);
+}
+
+// V168_5: block parent with padding, verify parent dimensions include padding
+TEST(LayoutEngineTest, LayoutV168_5) {
+    auto root = make_block("div");
+    root->specified_width = 200.0f;
+    root->specified_height = 100.0f;
+    root->geometry.padding = {10.0f, 10.0f, 10.0f, 10.0f};
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // Width and height should include padding
+    EXPECT_GE(root->geometry.width, 200.0f);
+    EXPECT_GE(root->geometry.height, 100.0f);
+}
+
+// V168_6: min_width overrides smaller specified_width
+TEST(LayoutEngineTest, LayoutV168_6) {
+    auto root = make_block("div");
+    root->specified_width = 100.0f;
+    root->min_width = 250.0f;
+    root->specified_height = 40.0f;
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_GE(root->geometry.width, 250.0f);
+}
+
+// V168_7: default flex_grow is 0.0f
+TEST(LayoutNodeProps, FlexGrowDefaultZeroV168) {
+    auto node = make_block("div");
+    EXPECT_FLOAT_EQ(node->flex_grow, 0.0f);
+}
+
+// V168_8: default flex_shrink is 1.0f
+TEST(LayoutNodeProps, FlexShrinkDefaultOneV168) {
+    auto node = make_block("div");
+    EXPECT_FLOAT_EQ(node->flex_shrink, 1.0f);
+}

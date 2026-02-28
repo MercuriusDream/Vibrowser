@@ -11694,3 +11694,61 @@ TEST_F(CSSStylesheetTest, JustifySelfDeclarationV167) {
     }
     EXPECT_TRUE(found) << "justify-self declaration not found";
 }
+
+// Round 168 — CSS parser tests (V168)
+
+TEST_F(CSSStylesheetTest, GapDeclarationV168) {
+    auto ss = parse_stylesheet("div { gap: 10px; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "gap") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "10px");
+        }
+    }
+    EXPECT_TRUE(found) << "gap declaration not found";
+}
+
+TEST_F(CSSStylesheetTest, FlexGrowDeclarationV168) {
+    auto ss = parse_stylesheet("div { flex-grow: 2; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "flex-grow") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "2");
+        }
+    }
+    EXPECT_TRUE(found) << "flex-grow declaration not found";
+}
+
+TEST_F(CSSStylesheetTest, FlexShrinkDeclarationV168) {
+    auto ss = parse_stylesheet("div { flex-shrink: 0; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "flex-shrink") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "0");
+        }
+    }
+    EXPECT_TRUE(found) << "flex-shrink declaration not found";
+}
+
+TEST_F(CSSStylesheetTest, FlexDirectionDeclarationV168) {
+    auto ss = parse_stylesheet("div { flex-direction: column; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "flex-direction") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "column");
+        }
+    }
+    EXPECT_TRUE(found) << "flex-direction declaration not found";
+}

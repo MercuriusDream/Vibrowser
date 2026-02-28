@@ -2875,3 +2875,55 @@ TEST(MessagePipeTest, MessagePipeV167_3_ThirtyTwoBytePayloadV167) {
     auto end = b.receive();
     EXPECT_FALSE(end.has_value());
 }
+
+TEST(MessagePipeTest, MessagePipeV168_1_FiveMessagesOrderedV168) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    for (uint8_t i = 0; i < 5; ++i) {
+        std::vector<uint8_t> msg = {i, static_cast<uint8_t>(i + 10)};
+        ASSERT_TRUE(a.send(msg));
+    }
+    a.close();
+
+    for (uint8_t i = 0; i < 5; ++i) {
+        auto received = b.receive();
+        ASSERT_TRUE(received.has_value());
+        ASSERT_EQ(received->size(), 2u);
+        EXPECT_EQ((*received)[0], i);
+        EXPECT_EQ((*received)[1], static_cast<uint8_t>(i + 10));
+    }
+
+    auto end = b.receive();
+    EXPECT_FALSE(end.has_value());
+}
+
+TEST(MessagePipeTest, MessagePipeV168_2_EmptyMessageV168) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    std::vector<uint8_t> empty_msg{};
+    ASSERT_TRUE(a.send(empty_msg));
+    a.close();
+
+    auto received = b.receive();
+    ASSERT_TRUE(received.has_value());
+    EXPECT_EQ(received->size(), 0u);
+
+    auto end = b.receive();
+    EXPECT_FALSE(end.has_value());
+}
+
+TEST(MessagePipeTest, MessagePipeV168_3_CloseReceiverThenSendV168) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    // Close receiver end
+    b.close();
+    EXPECT_FALSE(b.is_open());
+
+    // Sending on a closed pipe end should fail
+    std::vector<uint8_t> data = {0xAA, 0xBB};
+    EXPECT_FALSE(b.send(data));
+
+    // Receiving on a closed pipe end should return nullopt
+    auto recv = b.receive();
+    EXPECT_FALSE(recv.has_value());
+}

@@ -15878,3 +15878,52 @@ TEST(UrlParserTest, UrlV167_4_PathWithConsecutiveDots) {
     EXPECT_EQ(result->host, "example.com");
     EXPECT_EQ(result->path, "/c");
 }
+
+// =============================================================================
+// Round 168 URL parser tests
+// =============================================================================
+
+TEST(UrlParserTest, UrlV168_1_QueryStringMultipleParamsPreserved) {
+    // Query string with multiple params should be preserved intact
+    auto result = parse("http://api.test/search?q=hello&lang=en&page=2");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "api.test");
+    EXPECT_EQ(result->path, "/search");
+    // All params should be present in the query string
+    EXPECT_NE(result->query.find("q=hello"), std::string::npos);
+    EXPECT_NE(result->query.find("lang=en"), std::string::npos);
+    EXPECT_NE(result->query.find("page=2"), std::string::npos);
+    EXPECT_EQ(result->query, "q=hello&lang=en&page=2");
+}
+
+TEST(UrlParserTest, UrlV168_2_EmptyPathDefaultsToSlash) {
+    // A URL with no explicit path should default path to "/"
+    auto result = parse("http://example.com");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/");
+    EXPECT_EQ(result->port, std::nullopt);
+}
+
+TEST(UrlParserTest, UrlV168_3_SchemeIsCaseInsensitive) {
+    // HTTP:// in uppercase should parse scheme as lowercase "http"
+    auto result = parse("HTTP://EXAMPLE.COM");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    // Host should also be lowercased
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/");
+}
+
+TEST(UrlParserTest, UrlV168_4_UserInfoNotSupported) {
+    // http://user:pass@host/path should parse username and password
+    auto result = parse("http://user:pass@host/path");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "host");
+    EXPECT_EQ(result->username, "user");
+    EXPECT_EQ(result->password, "pass");
+    EXPECT_EQ(result->path, "/path");
+}

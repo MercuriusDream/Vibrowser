@@ -29127,3 +29127,180 @@ TEST(HttpClient, CookieJarTwoCookiesOneDomainV167) {
     EXPECT_NE(header.find("; "), std::string::npos)
         << "Multiple cookies should be separated by '; ', got: " << header;
 }
+
+// ============================================================================
+// Cycle V168: HTTP/Net tests
+// ============================================================================
+
+// 1. HEAD request serializes correctly
+TEST(HttpClient, RequestSerializeHeadMethodV168) {
+    Request req;
+    req.method = Method::HEAD;
+    req.url = "http://headtest168.example.com/status";
+    req.parse_url();
+
+    auto bytes = req.serialize();
+    std::string s(bytes.begin(), bytes.end());
+
+    // Request line must start with HEAD
+    EXPECT_NE(s.find("HEAD /status HTTP/1.1\r\n"), std::string::npos)
+        << "Request line should be HEAD, got: " << s;
+
+    // Host header should be present (port 80 omitted)
+    EXPECT_NE(s.find("Host: headtest168.example.com\r\n"), std::string::npos)
+        << "Host header should be present without port 80, got: " << s;
+
+    // Connection header
+    EXPECT_NE(s.find("Connection: close\r\n"), std::string::npos)
+        << "Connection header should be 'close', got: " << s;
+
+    // HEAD requests should not have a body
+    // Find end of headers
+    auto hdr_end = s.find("\r\n\r\n");
+    ASSERT_NE(hdr_end, std::string::npos);
+    EXPECT_EQ(hdr_end + 4, s.size())
+        << "HEAD request should have no body after headers";
+}
+
+// 2. 204 No Content response with empty body
+TEST(HttpClient, ResponseParse204NoContentV168) {
+    std::string raw =
+        "HTTP/1.1 204 No Content\r\n"
+        "X-Request-Id: req168\r\n"
+        "\r\n";
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value()) << "204 No Content should parse";
+    EXPECT_EQ(resp->status, 204u);
+    EXPECT_EQ(resp->status_text, "No Content");
+    EXPECT_TRUE(resp->body.empty())
+        << "204 response should have an empty body";
+    // Custom header should be preserved
+    EXPECT_TRUE(resp->headers.has("X-Request-Id"));
+    EXPECT_EQ(resp->headers.get("X-Request-Id").value(), "req168");
+}
+
+// 3. ConnectionPool: release socket, acquire returns same fd
+TEST(HttpClient, ConnectionPoolReleaseAndAcquireV168) {
+    ConnectionPool pool(4);
+
+    // Release a socket with fd=168
+    pool.release("pool168.example.com", 8080, 168);
+
+    // Acquire should return the same fd
+    int fd = pool.acquire("pool168.example.com", 8080);
+    EXPECT_EQ(fd, 168) << "Acquired fd should match released fd";
+
+    // Pool is now empty for this host — second acquire returns -1
+    int fd2 = pool.acquire("pool168.example.com", 8080);
+    EXPECT_EQ(fd2, -1) << "Pool should be empty after single acquire";
+}
+
+// 4. CookieJar: Secure cookie visible on https, not http
+TEST(HttpClient, CookieJarSecureFlagOnlyOnHttpsV168) {
+    CookieJar jar;
+    jar.set_from_header("secret168=classified; Secure; Path=/", "secure168.example.com");
+
+    // Insecure (http) — should not see the cookie
+    std::string insecure = jar.get_cookie_header("secure168.example.com", "/", false);
+    EXPECT_TRUE(insecure.empty())
+        << "Secure cookie should not be sent over HTTP, got: " << insecure;
+
+    // Secure (https) — should see the cookie
+    std::string secure = jar.get_cookie_header("secure168.example.com", "/", true);
+    EXPECT_FALSE(secure.empty())
+        << "Secure cookie should be sent over HTTPS";
+    EXPECT_NE(secure.find("secret168=classified"), std::string::npos)
+        << "Cookie value should be present, got: " << secure;
+}
+
+// 5. HeaderMap: set same key twice, get returns last value
+TEST(HttpClient, HeaderMapSetOverwritesExistingV168) {
+    HeaderMap map;
+    map.set("X-Version-168", "first");
+    EXPECT_EQ(map.get("X-Version-168").value(), "first");
+
+    map.set("X-Version-168", "second");
+    EXPECT_EQ(map.get("X-Version-168").value(), "second")
+        << "set() should overwrite the previous value";
+
+    // Only one entry should exist for the key
+    EXPECT_EQ(map.get_all("X-Version-168").size(), 1u)
+        << "After two set() calls, there should be exactly one entry";
+}
+
+// 6. PUT request with body and Content-Length
+TEST(HttpClient, RequestSerializePutWithBodyV168) {
+    Request req;
+    req.method = Method::PUT;
+    req.url = "http://api168.example.com/items/168";
+    req.parse_url();
+
+    std::string body_str = "{\"name\":\"item168\",\"value\":168}";
+    req.body.assign(body_str.begin(), body_str.end());
+    req.headers.set("Content-Type", "application/json");
+
+    auto bytes = req.serialize();
+    std::string s(bytes.begin(), bytes.end());
+
+    // Request line should be PUT
+    EXPECT_NE(s.find("PUT /items/168 HTTP/1.1\r\n"), std::string::npos)
+        << "Request line should start with PUT, got: " << s;
+
+    // Content-Length header should match body size (standard header keeps caps)
+    std::string expected_cl = "Content-Length: " + std::to_string(body_str.size());
+    EXPECT_NE(s.find(expected_cl), std::string::npos)
+        << "Content-Length should be " << body_str.size() << ", got: " << s;
+
+    // Body should be present after headers
+    EXPECT_NE(s.find(body_str), std::string::npos)
+        << "Body should be in serialized output";
+}
+
+// 7. 301 response with Location header
+TEST(HttpClient, ResponseParse301RedirectLocationV168) {
+    std::string raw =
+        "HTTP/1.1 301 Moved Permanently\r\n"
+        "Location: https://new168.example.com/redirected\r\n"
+        "Content-Length: 0\r\n"
+        "\r\n";
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value()) << "301 response should parse";
+    EXPECT_EQ(resp->status, 301u);
+    EXPECT_EQ(resp->status_text, "Moved Permanently");
+
+    // Location header should be present and correct
+    ASSERT_TRUE(resp->headers.has("Location"))
+        << "Location header must be present in 301 redirect";
+    EXPECT_EQ(resp->headers.get("Location").value(),
+              "https://new168.example.com/redirected");
+
+    EXPECT_TRUE(resp->body.empty())
+        << "Body should be empty with Content-Length: 0";
+}
+
+// 8. CookieJar: cookies on domain A not visible on domain B
+TEST(HttpClient, CookieJarMultipleDomainsIsolatedV168) {
+    CookieJar jar;
+    jar.set_from_header("alpha168=valueA", "domainA168.example.com");
+    jar.set_from_header("beta168=valueB", "domainB168.example.com");
+
+    // Domain A should only see alpha168
+    std::string headerA = jar.get_cookie_header("domainA168.example.com", "/", false);
+    EXPECT_NE(headerA.find("alpha168=valueA"), std::string::npos)
+        << "Domain A should have its own cookie, got: " << headerA;
+    EXPECT_EQ(headerA.find("beta168"), std::string::npos)
+        << "Domain A should NOT have domain B's cookie, got: " << headerA;
+
+    // Domain B should only see beta168
+    std::string headerB = jar.get_cookie_header("domainB168.example.com", "/", false);
+    EXPECT_NE(headerB.find("beta168=valueB"), std::string::npos)
+        << "Domain B should have its own cookie, got: " << headerB;
+    EXPECT_EQ(headerB.find("alpha168"), std::string::npos)
+        << "Domain B should NOT have domain A's cookie, got: " << headerB;
+}

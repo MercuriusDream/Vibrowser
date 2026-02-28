@@ -13238,3 +13238,50 @@ TEST(CORSPolicyTest, CorsV167_7_AcaoEmptyStringRejects) {
 TEST(CORSPolicyTest, CorsV167_8_HttpNonStandardPortCrossOriginWithDefault) {
     EXPECT_TRUE(is_cross_origin("http://app.example:8080", "http://app.example/page"));
 }
+
+// ---------------------------------------------------------------------------
+// Cycle V168 — CORS tests
+// ---------------------------------------------------------------------------
+
+// 1. http:// origin is enforceable
+TEST(CORSPolicyTest, CorsV168_1_HttpEnforceableBasic) {
+    EXPECT_TRUE(has_enforceable_document_origin("http://example.com"));
+}
+
+// 2. ftp:// scheme is not enforceable
+TEST(CORSPolicyTest, CorsV168_2_FtpSchemeNotEnforceable) {
+    EXPECT_FALSE(has_enforceable_document_origin("ftp://files.example.com"));
+}
+
+// 3. Same scheme, host, and port is same-origin
+TEST(CORSPolicyTest, CorsV168_3_SameOriginSameSchemeHostPort) {
+    EXPECT_FALSE(is_cross_origin("http://app.test:3000", "http://app.test:3000/path"));
+}
+
+// 4. http vs https on same host is cross-origin
+TEST(CORSPolicyTest, CorsV168_4_CrossOriginDifferentScheme) {
+    EXPECT_TRUE(is_cross_origin("http://app.example", "https://app.example/page"));
+}
+
+// 5. ACAO exactly matching origin allows response
+TEST(CORSPolicyTest, CorsV168_5_AcaoExactMatchAllows) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "https://app.example");
+    EXPECT_TRUE(cors_allows_response("https://app.example", "https://api.example/data",
+                                     headers, false));
+}
+
+// 6. same origin means should_attach_origin is false
+TEST(CORSPolicyTest, CorsV168_6_ShouldAttachOriginSameOriginFalse) {
+    EXPECT_FALSE(should_attach_origin_header("https://app.example", "https://app.example/page"));
+}
+
+// 7. about:blank is not enforceable
+TEST(CORSPolicyTest, CorsV168_7_NullOriginNotEnforceable) {
+    EXPECT_FALSE(has_enforceable_document_origin("about:blank"));
+}
+
+// 8. Same host, different ports is cross-origin
+TEST(CORSPolicyTest, CorsV168_8_CrossOriginDifferentPortNumbers) {
+    EXPECT_TRUE(is_cross_origin("http://app.example:8080", "http://app.example:9090/api"));
+}

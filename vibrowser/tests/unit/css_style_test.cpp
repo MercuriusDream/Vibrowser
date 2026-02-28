@@ -26523,3 +26523,44 @@ TEST(PropertyCascadeTest, TextAlignLeftAppliedV167) {
     cascade.apply_declaration(style, make_decl("text-align", "left"), parent);
     EXPECT_EQ(style.text_align, TextAlign::Left);
 }
+
+// Round 168 — CSS style tests (V168)
+
+TEST(CSSStyleTest, CssV168_1_DisplayFlexApplied) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("display", "flex"), parent);
+    EXPECT_EQ(style.display, Display::Flex);
+}
+
+TEST(CSSStyleTest, CssV168_2_FontSizeInherited) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    parent.font_size = Length::px(20.0f);
+
+    cascade.apply_declaration(style, make_decl("font-size", "inherit"), parent);
+    EXPECT_FLOAT_EQ(style.font_size.to_px(), 20.0f);
+}
+
+TEST(PropertyCascadeTest, TextAlignCenterAppliedV168) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("text-align", "center"), parent);
+    EXPECT_EQ(style.text_align, TextAlign::Center);
+}
+
+TEST(PropertyCascadeTest, OverflowHiddenAppliedV168) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("overflow", "hidden"), parent);
+    EXPECT_EQ(style.overflow_x, Overflow::Hidden);
+    EXPECT_EQ(style.overflow_y, Overflow::Hidden);
+}

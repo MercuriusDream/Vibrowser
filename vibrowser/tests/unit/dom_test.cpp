@@ -24709,3 +24709,79 @@ TEST(DomNode, LastChildEqualsFirstChildWhenOneChildV167) {
     EXPECT_EQ(parent.last_child(), child_ptr);
     EXPECT_EQ(parent.first_child(), parent.last_child());
 }
+
+// ---------------------------------------------------------------------------
+// Cycle V168 — DOM tests
+// ---------------------------------------------------------------------------
+
+// 1. insert_before with nullptr appends at end when parent already has children
+TEST(DomNode, InsertBeforeAtEndPositionV168) {
+    Element parent("div");
+    auto a = std::make_unique<Element>("a");
+    auto b = std::make_unique<Element>("b");
+    auto c = std::make_unique<Element>("c");
+    Node* c_ptr = c.get();
+    parent.append_child(std::move(a));
+    parent.append_child(std::move(b));
+    parent.insert_before(std::move(c), nullptr);
+    EXPECT_EQ(parent.child_count(), 3u);
+    EXPECT_EQ(parent.last_child(), c_ptr);
+}
+
+// 2. has_attribute returns false for attribute that was never set
+TEST(DomElement, HasAttributeReturnsFalseForMissingV168) {
+    Element elem("span");
+    EXPECT_FALSE(elem.has_attribute("nonexistent"));
+    EXPECT_FALSE(elem.has_attribute("data-foo"));
+    EXPECT_FALSE(elem.has_attribute("style"));
+}
+
+// 3. create_comment and append to document
+TEST(DomDocument, CreateCommentAndAppendV168) {
+    Document doc;
+    auto comment = doc.create_comment("test comment");
+    ASSERT_NE(comment, nullptr);
+    EXPECT_EQ(comment->node_type(), NodeType::Comment);
+    EXPECT_EQ(comment->data(), "test comment");
+}
+
+// 4. Event default_prevented is false before prevent_default
+TEST(DomEvent, DefaultNotCancelledStateV168) {
+    Event evt("click");
+    EXPECT_FALSE(evt.default_prevented());
+}
+
+// 5. child_count is accurate after multiple appends
+TEST(DomNode, ChildCountAccurateAfterMultipleAppendsV168) {
+    Element parent("ul");
+    for (int i = 0; i < 5; ++i) {
+        parent.append_child(std::make_unique<Element>("li"));
+    }
+    EXPECT_EQ(parent.child_count(), 5u);
+}
+
+// 6. ClassList contains returns false for missing class
+TEST(DomElement, ClassListContainsReturnsFalseForMissingV168) {
+    Element elem("div");
+    elem.class_list().add("active");
+    EXPECT_FALSE(elem.class_list().contains("missing"));
+    EXPECT_FALSE(elem.class_list().contains("inactive"));
+    EXPECT_TRUE(elem.class_list().contains("active"));
+}
+
+// 7. mark_dirty with Style only sets Style, not Layout or Paint
+TEST(DomNode, DirtyFlagStyleOnlyV168) {
+    Element elem("div");
+    elem.clear_dirty();
+    EXPECT_EQ(elem.dirty_flags(), DirtyFlags::None);
+    elem.mark_dirty(DirtyFlags::Style);
+    EXPECT_NE(elem.dirty_flags() & DirtyFlags::Style, DirtyFlags::None);
+    EXPECT_EQ(static_cast<uint8_t>(elem.dirty_flags() & DirtyFlags::Layout), 0);
+    EXPECT_EQ(static_cast<uint8_t>(elem.dirty_flags() & DirtyFlags::Paint), 0);
+}
+
+// 8. parent is null for a standalone root node
+TEST(DomNode, ParentNullForRootNodeV168) {
+    Element elem("html");
+    EXPECT_EQ(elem.parent(), nullptr);
+}

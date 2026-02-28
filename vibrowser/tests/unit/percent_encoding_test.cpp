@@ -1812,3 +1812,44 @@ TEST(IsURLCodePoint, DeleteCharInvalidV167) {
     // DEL character (0x7F) is NOT a valid URL code point
     EXPECT_FALSE(is_url_code_point(static_cast<char32_t>(0x7F)));
 }
+
+// =============================================================================
+// Round 168 percent encoding tests
+// =============================================================================
+
+TEST(PercentEncoding, SpaceEncodesTo20V168) {
+    // Space character should be percent-encoded as %20
+    EXPECT_EQ(percent_encode(" "), "%20");
+    EXPECT_EQ(percent_encode("a b c"), "a%20b%20c");
+    // Multiple consecutive spaces
+    EXPECT_EQ(percent_encode("  "), "%20%20");
+}
+
+TEST(PercentDecoding, PlusSignPreservedV168) {
+    // %2B decodes to '+' character
+    EXPECT_EQ(percent_decode("%2B"), "+");
+    // Literal '+' stays as '+' in URL percent decoding (not converted to space)
+    EXPECT_EQ(percent_decode("+"), "+");
+    // Mixed: literal plus and encoded plus
+    EXPECT_EQ(percent_decode("a+b%2Bc"), "a+b+c");
+}
+
+TEST(PercentEncoding, AlphanumericNotEncodedV168) {
+    // a-z should pass through unchanged
+    EXPECT_EQ(percent_encode("abcdefghijklmnopqrstuvwxyz"), "abcdefghijklmnopqrstuvwxyz");
+    // A-Z should pass through unchanged
+    EXPECT_EQ(percent_encode("ABCDEFGHIJKLMNOPQRSTUVWXYZ"), "ABCDEFGHIJKLMNOPQRSTUVWXYZ");
+    // 0-9 should pass through unchanged
+    EXPECT_EQ(percent_encode("0123456789"), "0123456789");
+}
+
+TEST(IsURLCodePoint, AsciiLettersValidV168) {
+    // All uppercase ASCII letters A-Z should be valid URL code points
+    for (char32_t ch = U'A'; ch <= U'Z'; ++ch) {
+        EXPECT_TRUE(is_url_code_point(ch));
+    }
+    // All lowercase ASCII letters a-z should be valid URL code points
+    for (char32_t ch = U'a'; ch <= U'z'; ++ch) {
+        EXPECT_TRUE(is_url_code_point(ch));
+    }
+}
