@@ -3,6 +3,10 @@
 #include <cmath>
 #include <QuartzCore/CABase.h>
 
+static constexpr CGFloat kMouseWheelLineStep = 16.0;
+static constexpr CGFloat kSmoothScrollFrameInterval = 1.0 / 60.0;
+static constexpr CGFloat kScrollDeltaEpsilon = 0.01;
+
 // Cubic bezier easing for CSS transitions (local copy to avoid render_pipeline dependency)
 static float _cubic_bezier(float p1x, float p1y, float p2x, float p2y, float t) {
     auto bx = [p1x, p2x](float u) -> float {
@@ -64,10 +68,13 @@ struct TextRegion {
     BOOL _draggingScrollbar;
     CGFloat _scrollbarDragStartY;
     CGFloat _scrollbarDragStartOffset;
+    CGFloat _scrollX;
+    CGFloat _scrollY;
 
     // Smooth scroll animation state
     CGFloat _targetScrollOffset;
     BOOL _isAnimatingScroll;
+    BOOL _scrollAnimationIsMomentum;
     NSTimer* _scrollAnimationTimer;
     CFAbsoluteTime _scrollAnimationStartTime;
     CGFloat _scrollAnimationStartOffset;
@@ -117,8 +124,11 @@ struct TextRegion {
         _cgImage = NULL;
         _imageWidth = 0;
         _imageHeight = 0;
+        _scrollX = 0;
+        _scrollY = 0;
         _targetScrollOffset = 0;
         _isAnimatingScroll = NO;
+        _scrollAnimationIsMomentum = NO;
         _scrollAnimationTimer = nil;
         _scrollAnimationDuration = 0.3; // 300ms smooth scroll
 
@@ -308,6 +318,8 @@ struct TextRegion {
     _imageHeight = 0;
     _contentHeight = 0;
     _scrollOffset = 0;
+    _scrollX = 0;
+    _scrollY = 0;
     _targetScrollOffset = 0;
     _links.clear();
     _cursorRegions.clear();
@@ -504,54 +516,65 @@ struct TextRegion {
         [self dismissTextInputOverlay];
     }
 
-    // CSS overscroll-behavior: contain (1) or none (2) on the viewport element
-    // means we should NOT propagate scroll to the parent and should clamp
-    // strictly (no elastic over-scroll bounce).
-    bool clampOverscroll = (_overscrollBehaviorY == 1 || _overscrollBehaviorY == 2);
+    // Keep internal tracking in sync when external code updates scrollOffset.
+    _scrollY = _scrollOffset;
+
+    CGFloat rawDeltaX = event.scrollingDeltaX;
+    CGFloat rawDeltaY = event.scrollingDeltaY;
+    if (!event.hasPreciseScrollingDeltas) {
+        // Mouse wheel deltas are line-based; convert to point-space.
+        rawDeltaX *= kMouseWheelLineStep;
+        rawDeltaY *= kMouseWheelLineStep;
+    }
+
+    // Normalize to content-space scroll amounts:
+    // positive => scroll right/down, negative => scroll left/up.
+    CGFloat scrollAmountX = -rawDeltaX;
+    CGFloat scrollAmountY = -rawDeltaY;
+    BOOL isMomentum = (event.momentumPhase != NSEventPhaseNone);
+
+    // CSS overscroll-behavior: contain (1) or none (2) on viewport means clamp
+    // and consume boundary-pushing wheel input to prevent scroll chaining/bounce.
+    bool clampOverscrollY = (_overscrollBehaviorY == 1 || _overscrollBehaviorY == 2);
 
     CGFloat maxScroll = std::max(0.0, _contentHeight * _pageScale - self.bounds.size.height);
+    CGFloat appliedDeltaX = 0;
+    CGFloat appliedDeltaY = 0;
 
-    // If overscroll-behavior is contain/none, check if we're already at a
-    // scroll boundary and the user is trying to scroll further past it.
-    // In that case, consume the event (don't chain to parent) and skip.
-    if (clampOverscroll) {
-        CGFloat deltaY = event.scrollingDeltaY;
-        // Use target offset for boundary check when animating, otherwise current offset
+    // Track horizontal wheel movement for delegate/DOM consumers.
+    // Horizontal page translation is not currently rendered in this view.
+    CGFloat prevScrollX = _scrollX;
+    _scrollX += scrollAmountX;
+    _scrollX = std::max(0.0, _scrollX);
+    appliedDeltaX = _scrollX - prevScrollX;
+
+    // Overscroll boundary check uses current animation target while animating.
+    bool consumeVerticalEvent = false;
+    if (clampOverscrollY) {
         CGFloat checkOffset = _isAnimatingScroll ? _targetScrollOffset : _scrollOffset;
         bool atTop = (checkOffset <= 0.0);
         bool atBottom = (checkOffset >= maxScroll);
-        // deltaY > 0 means scrolling up (towards top), < 0 means scrolling down
-        if ((atTop && deltaY > 0) || (atBottom && deltaY < 0 && maxScroll > 0)) {
-            // Consume the event — do NOT call [super scrollWheel:] to prevent
-            // scroll chaining to the parent viewport or triggering bounce.
-            return;
-        }
+        // scrollAmountY < 0 => up, scrollAmountY > 0 => down.
+        consumeVerticalEvent = (atTop && scrollAmountY < 0) ||
+                               (atBottom && scrollAmountY > 0 && maxScroll > 0);
     }
 
-    // Multiply delta for faster scrolling
-    // Trackpad sends many small deltas with momentum — use 3x
-    // Mouse wheel sends fewer large deltas — use 8x
-    CGFloat multiplier = event.hasPreciseScrollingDeltas ? 3.0 : 8.0;
-    CGFloat delta = -event.scrollingDeltaY * multiplier;
-
-    if (_scrollBehaviorSmooth) {
+    if (!consumeVerticalEvent && _scrollBehaviorSmooth && std::abs(scrollAmountY) > kScrollDeltaEpsilon) {
         // Smooth scroll: animate toward the target offset using ease-out
         if (_isAnimatingScroll) {
-            // Accumulate delta onto existing target
-            _targetScrollOffset += delta;
+            _targetScrollOffset += scrollAmountY;
         } else {
-            // Start new animation from current position
-            _targetScrollOffset = _scrollOffset + delta;
+            _targetScrollOffset = _scrollOffset + scrollAmountY;
         }
         _targetScrollOffset = std::max(0.0, std::min(_targetScrollOffset, maxScroll));
 
-        // (Re)start the animation from the current position
+        // (Re)start the animation from the current position.
         _scrollAnimationStartOffset = _scrollOffset;
         _scrollAnimationStartTime = CFAbsoluteTimeGetCurrent();
+        _scrollAnimationIsMomentum = isMomentum;
         if (!_isAnimatingScroll) {
             _isAnimatingScroll = YES;
-            // Fire at ~60fps (16ms interval)
-            _scrollAnimationTimer = [NSTimer scheduledTimerWithTimeInterval:1.0/60.0
+            _scrollAnimationTimer = [NSTimer scheduledTimerWithTimeInterval:kSmoothScrollFrameInterval
                                                                     target:self
                                                                   selector:@selector(smoothScrollTick:)
                                                                   userInfo:nil
@@ -560,11 +583,27 @@ struct TextRegion {
             [[NSRunLoop currentRunLoop] addTimer:_scrollAnimationTimer
                                          forMode:NSEventTrackingRunLoopMode];
         }
-    } else {
+    } else if (!consumeVerticalEvent && std::abs(scrollAmountY) > kScrollDeltaEpsilon) {
         // Instant scroll (default behavior)
-        _scrollOffset += delta;
+        CGFloat prevScrollY = _scrollOffset;
+        _scrollOffset += scrollAmountY;
         _scrollOffset = std::max(0.0, std::min(_scrollOffset, maxScroll));
+        _scrollY = _scrollOffset;
+        appliedDeltaY = _scrollY - prevScrollY;
         [self setNeedsDisplay:YES];
+    } else {
+        _scrollY = _scrollOffset;
+    }
+
+    // Notify delegate so the embedding controller can react/re-render.
+    if ((std::abs(appliedDeltaX) > kScrollDeltaEpsilon || std::abs(appliedDeltaY) > kScrollDeltaEpsilon) &&
+        [_delegate respondsToSelector:@selector(renderView:didScrollToX:y:deltaX:deltaY:isMomentum:)]) {
+        [_delegate renderView:self
+                 didScrollToX:_scrollX
+                            y:_scrollY
+                       deltaX:appliedDeltaX
+                       deltaY:appliedDeltaY
+                   isMomentum:isMomentum];
     }
 
     // Only update cursor rects at end of scroll gesture (phase == ended or none)
@@ -576,6 +615,7 @@ struct TextRegion {
 
 - (void)smoothScrollTick:(NSTimer*)timer {
     (void)timer;
+    CGFloat prevScrollY = _scrollOffset;
     CFAbsoluteTime now = CFAbsoluteTimeGetCurrent();
     CFAbsoluteTime elapsed = now - _scrollAnimationStartTime;
     CGFloat progress = elapsed / _scrollAnimationDuration;
@@ -596,6 +636,19 @@ struct TextRegion {
         [self stopSmoothScrollAnimation];
     }
 
+    _scrollY = _scrollOffset;
+
+    CGFloat appliedDeltaY = _scrollOffset - prevScrollY;
+    if (std::abs(appliedDeltaY) > kScrollDeltaEpsilon &&
+        [_delegate respondsToSelector:@selector(renderView:didScrollToX:y:deltaX:deltaY:isMomentum:)]) {
+        [_delegate renderView:self
+                 didScrollToX:_scrollX
+                            y:_scrollY
+                       deltaX:0.0
+                       deltaY:appliedDeltaY
+                   isMomentum:_scrollAnimationIsMomentum];
+    }
+
     [self setNeedsDisplay:YES];
 }
 
@@ -605,6 +658,7 @@ struct TextRegion {
         _scrollAnimationTimer = nil;
     }
     _isAnimatingScroll = NO;
+    _scrollAnimationIsMomentum = NO;
     [self.window invalidateCursorRectsForView:self];
 }
 
@@ -747,6 +801,14 @@ struct TextRegion {
                                  didClickElementAtX:px_scaled
                                                   y:py_scaled];
         }
+
+        // On double-click, dispatch dblclick event after the click
+        if (event.clickCount >= 2) {
+            if ([_delegate respondsToSelector:@selector(renderView:didDoubleClickAtX:y:)]) {
+                [_delegate renderView:self didDoubleClickAtX:px_scaled y:py_scaled];
+            }
+        }
+
         if (defaultPrevented) {
             [self setNeedsDisplay:YES];
             return;
@@ -871,6 +933,12 @@ struct TextRegion {
     NSPoint loc = [self convertPoint:event.locationInWindow fromView:nil];
     float px = static_cast<float>(loc.x / _pageScale) * _backingScale;
     float py = static_cast<float>((loc.y + _scrollOffset) / _pageScale) * _backingScale;
+
+    // Dispatch JS "contextmenu" event. If preventDefault() was called, suppress the native menu.
+    if ([_delegate respondsToSelector:@selector(renderView:didContextMenuAtX:y:)]) {
+        BOOL prevented = [_delegate renderView:self didContextMenuAtX:px y:py];
+        if (prevented) return nil;
+    }
 
     NSMenu* menu = [[NSMenu alloc] initWithTitle:@"Context"];
 
@@ -1007,6 +1075,153 @@ struct TextRegion {
     }
 }
 
+// Helper: convert macOS keyCode to DOM "code" string (physical key identifier)
+static NSString* macKeyCodeToCode(unsigned short keyCode) {
+    switch (keyCode) {
+        case 0: return @"KeyA"; case 1: return @"KeyS"; case 2: return @"KeyD";
+        case 3: return @"KeyF"; case 4: return @"KeyH"; case 5: return @"KeyG";
+        case 6: return @"KeyZ"; case 7: return @"KeyX"; case 8: return @"KeyC";
+        case 9: return @"KeyV"; case 11: return @"KeyB"; case 12: return @"KeyQ";
+        case 13: return @"KeyW"; case 14: return @"KeyE"; case 15: return @"KeyR";
+        case 16: return @"KeyY"; case 17: return @"KeyT"; case 18: return @"Digit1";
+        case 19: return @"Digit2"; case 20: return @"Digit3"; case 21: return @"Digit4";
+        case 22: return @"Digit6"; case 23: return @"Digit5"; case 24: return @"Equal";
+        case 25: return @"Digit9"; case 26: return @"Digit7"; case 27: return @"Minus";
+        case 28: return @"Digit8"; case 29: return @"Digit0"; case 30: return @"BracketRight";
+        case 31: return @"KeyO"; case 32: return @"KeyU"; case 33: return @"BracketLeft";
+        case 34: return @"KeyI"; case 35: return @"KeyP"; case 36: return @"Enter";
+        case 37: return @"KeyL"; case 38: return @"KeyJ"; case 39: return @"Quote";
+        case 40: return @"KeyK"; case 41: return @"Semicolon"; case 42: return @"Backslash";
+        case 43: return @"Comma"; case 44: return @"Slash"; case 45: return @"KeyN";
+        case 46: return @"KeyM"; case 47: return @"Period"; case 48: return @"Tab";
+        case 49: return @"Space"; case 50: return @"Backquote";
+        case 51: return @"Backspace"; case 53: return @"Escape";
+        case 55: return @"MetaLeft"; case 56: return @"ShiftLeft";
+        case 57: return @"CapsLock"; case 58: return @"AltLeft";
+        case 59: return @"ControlLeft"; case 60: return @"ShiftRight";
+        case 61: return @"AltRight"; case 62: return @"ControlRight";
+        case 65: return @"NumpadDecimal"; case 67: return @"NumpadMultiply";
+        case 69: return @"NumpadAdd"; case 71: return @"NumLock";
+        case 75: return @"NumpadDivide"; case 76: return @"NumpadEnter";
+        case 78: return @"NumpadSubtract"; case 82: return @"Numpad0";
+        case 83: return @"Numpad1"; case 84: return @"Numpad2";
+        case 85: return @"Numpad3"; case 86: return @"Numpad4";
+        case 87: return @"Numpad5"; case 88: return @"Numpad6";
+        case 89: return @"Numpad7"; case 91: return @"Numpad8";
+        case 92: return @"Numpad9";
+        case 115: return @"Home"; case 116: return @"PageUp";
+        case 117: return @"Delete"; case 119: return @"End";
+        case 121: return @"PageDown";
+        case 123: return @"ArrowLeft"; case 124: return @"ArrowRight";
+        case 125: return @"ArrowDown"; case 126: return @"ArrowUp";
+        case 96: return @"F5"; case 97: return @"F6"; case 98: return @"F7";
+        case 99: return @"F3"; case 100: return @"F8"; case 101: return @"F9";
+        case 109: return @"F10"; case 111: return @"F12";
+        case 118: return @"F4"; case 120: return @"F2"; case 122: return @"F1";
+        default: return @"Unidentified";
+    }
+}
+
+// Helper: convert macOS keyCode to DOM "key" string (logical key value)
+static NSString* macKeyCodeToKeyName(unsigned short keyCode) {
+    switch (keyCode) {
+        case 36: return @"Enter"; case 48: return @"Tab"; case 49: return @"  ";
+        case 51: return @"Backspace"; case 53: return @"Escape";
+        case 55: return @"Meta"; case 56: return @"Shift";
+        case 57: return @"CapsLock"; case 58: return @"Alt";
+        case 59: return @"Control"; case 60: return @"Shift";
+        case 61: return @"Alt"; case 62: return @"Control";
+        case 115: return @"Home"; case 116: return @"PageUp";
+        case 117: return @"Delete"; case 119: return @"End";
+        case 121: return @"PageDown";
+        case 123: return @"ArrowLeft"; case 124: return @"ArrowRight";
+        case 125: return @"ArrowDown"; case 126: return @"ArrowUp";
+        case 96: return @"F5"; case 97: return @"F6"; case 98: return @"F7";
+        case 99: return @"F3"; case 100: return @"F8"; case 101: return @"F9";
+        case 109: return @"F10"; case 111: return @"F12";
+        case 118: return @"F4"; case 120: return @"F2"; case 122: return @"F1";
+        default: return nil; // nil means use characters string
+    }
+}
+
+// Helper: get DOM keyCode (legacy) from macOS keyCode
+static int macKeyCodeToDOMKeyCode(unsigned short keyCode, NSString* characters) {
+    switch (keyCode) {
+        case 36: return 13;  // Enter
+        case 48: return 9;   // Tab
+        case 49: return 32;  // Space
+        case 51: return 8;   // Backspace
+        case 53: return 27;  // Escape
+        case 117: return 46; // Delete
+        case 123: return 37; // ArrowLeft
+        case 124: return 39; // ArrowRight
+        case 125: return 40; // ArrowDown
+        case 126: return 38; // ArrowUp
+        case 115: return 36; // Home
+        case 119: return 35; // End
+        case 116: return 33; // PageUp
+        case 121: return 34; // PageDown
+        case 122: return 112; // F1
+        case 120: return 113; // F2
+        case 99:  return 114; // F3
+        case 118: return 115; // F4
+        case 96:  return 116; // F5
+        case 97:  return 117; // F6
+        case 98:  return 118; // F7
+        case 100: return 119; // F8
+        case 101: return 120; // F9
+        case 109: return 121; // F10
+        case 111: return 123; // F12
+        default: {
+            // For letter/number keys, use the uppercase character code
+            if (characters && characters.length > 0) {
+                unichar ch = [characters characterAtIndex:0];
+                if (ch >= 'a' && ch <= 'z') return ch - 'a' + 'A';
+                if (ch >= 'A' && ch <= 'Z') return ch;
+                if (ch >= '0' && ch <= '9') return ch;
+                return ch;
+            }
+            return 0;
+        }
+    }
+}
+
+// Helper: dispatch a JS keyboard event via delegate. Returns YES if preventDefault() was called.
+- (BOOL)dispatchJSKeyEvent:(NSString*)eventType fromNSEvent:(NSEvent*)event {
+    if (![_delegate respondsToSelector:@selector(renderView:didKeyEvent:key:code:keyCode:repeat:altKey:ctrlKey:metaKey:shiftKey:)]) {
+        return NO;
+    }
+
+    unsigned short kc = event.keyCode;
+    NSString* code = macKeyCodeToCode(kc);
+    NSString* keyName = macKeyCodeToKeyName(kc);
+    NSString* key = keyName;
+    if (!key) {
+        // Use the characters string for printable keys
+        NSString* chars = event.characters;
+        key = (chars && chars.length > 0) ? chars : @"Unidentified";
+    }
+    // Fix: Space bar keyName workaround (was "  " to avoid conflict)
+    if (kc == 49) key = @" ";
+
+    int domKeyCode = macKeyCodeToDOMKeyCode(kc, event.charactersIgnoringModifiers);
+    BOOL altKey = (event.modifierFlags & NSEventModifierFlagOption) != 0;
+    BOOL ctrlKey = (event.modifierFlags & NSEventModifierFlagControl) != 0;
+    BOOL metaKey = (event.modifierFlags & NSEventModifierFlagCommand) != 0;
+    BOOL shiftKey = (event.modifierFlags & NSEventModifierFlagShift) != 0;
+
+    return [_delegate renderView:self
+                     didKeyEvent:eventType
+                             key:key
+                            code:code
+                         keyCode:domKeyCode
+                          repeat:event.isARepeat
+                          altKey:altKey
+                         ctrlKey:ctrlKey
+                         metaKey:metaKey
+                        shiftKey:shiftKey];
+}
+
 - (void)keyDown:(NSEvent*)event {
     // If the overlay text field is active, let it handle keys —
     // but intercept Tab/Enter/Escape for commit/dismiss.
@@ -1029,6 +1244,11 @@ struct TextRegion {
         // Forward other keys to the text field
         return;
     }
+
+    // Dispatch JS keydown event to the focused element.
+    // If a JS handler calls preventDefault(), skip all default browser actions.
+    BOOL jsPrevented = [self dispatchJSKeyEvent:@"keydown" fromNSEvent:event];
+    if (jsPrevented) return;
 
     // Cmd+C — copy selected text
     if ((event.modifierFlags & NSEventModifierFlagCommand) && [event.characters isEqualToString:@"c"]) {
@@ -1107,6 +1327,12 @@ struct TextRegion {
     }
 
     [super keyDown:event];
+}
+
+- (void)keyUp:(NSEvent*)event {
+    // Dispatch JS keyup event to the focused element.
+    [self dispatchJSKeyEvent:@"keyup" fromNSEvent:event];
+    [super keyUp:event];
 }
 
 #pragma mark - Inline Text Input Overlay

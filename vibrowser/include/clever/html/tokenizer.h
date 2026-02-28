@@ -38,7 +38,8 @@ enum class TokenizerState {
     RAWTEXT, RAWTEXTLessThanSign, RAWTEXTEndTagOpen, RAWTEXTEndTagName,
     RCDATA, RCDATALessThanSign, RCDATAEndTagOpen, RCDATAEndTagName,
     ScriptData, ScriptDataLessThanSign, ScriptDataEndTagOpen, ScriptDataEndTagName,
-    PLAINTEXT, CharacterReference
+    PLAINTEXT, CharacterReference,
+    CDATASection
 };
 
 class Tokenizer {

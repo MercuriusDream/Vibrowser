@@ -1400,10 +1400,19 @@ static std::string build_shell_message_html(const std::string& page_title,
     int height = static_cast<int>(std::round(bounds.size.height));
     if (width < 1) width = 800;
     if (height < 1) height = 600;
+    NSScreen* windowScreen = self.window.screen;
+    CGFloat scaleFactor = windowScreen ? windowScreen.backingScaleFactor : 1.0;
+    if (!std::isfinite(scaleFactor) || scaleFactor <= 0.0) {
+        scaleFactor = 1.0;
+    }
+    int renderWidth = static_cast<int>(std::round(static_cast<CGFloat>(width) * scaleFactor));
+    int renderHeight = static_cast<int>(std::round(static_cast<CGFloat>(height) * scaleFactor));
+    if (renderWidth < 1) renderWidth = width;
+    if (renderHeight < 1) renderHeight = height;
 
     auto result = _toggledDetails.empty()
-        ? clever::paint::render_html(html, [tab currentBaseURL], width, height)
-        : clever::paint::render_html(html, [tab currentBaseURL], width, height, _toggledDetails);
+        ? clever::paint::render_html(html, [tab currentBaseURL], renderWidth, renderHeight)
+        : clever::paint::render_html(html, [tab currentBaseURL], renderWidth, renderHeight, _toggledDetails);
 
     if (result.success && result.renderer) {
         // Reset scroll position to top on new page load (but not on details toggle)
@@ -1450,6 +1459,19 @@ static std::string build_shell_message_html(const std::string& page_title,
         [tab jsEngine] = std::move(result.js_engine);
         [tab domTree] = std::move(result.dom_tree);
         [tab elementRegions] = std::move(result.element_regions);
+        if (auto& jsEngine = [tab jsEngine]; jsEngine && jsEngine->context()) {
+            const std::string scale = std::to_string(static_cast<double>(scaleFactor));
+            const std::string logicalWidth = std::to_string(width);
+            const std::string logicalHeight = std::to_string(height);
+            const std::string syncWindowMetrics =
+                "globalThis.devicePixelRatio=" + scale + ";"
+                "globalThis.__vibrowserScaleFactor=" + scale + ";"
+                "globalThis.innerWidth=" + logicalWidth + ";"
+                "globalThis.innerHeight=" + logicalHeight + ";"
+                "globalThis.outerWidth=" + logicalWidth + ";"
+                "globalThis.outerHeight=" + logicalHeight + ";";
+            jsEngine->evaluate(syncWindowMetrics, "<vibrowser-window-metrics>");
+        }
 
         // Extract overscroll-behavior and scroll-behavior from the html/body element
         // in the layout tree. Per CSS spec, these properties on the root scroller
@@ -1669,7 +1691,7 @@ static std::string build_shell_message_html(const std::string& page_title,
             result.error.empty() ? "Unknown render failure." : result.error;
         const std::string error_html =
             build_shell_message_html("Render Error", "Render Error", detail);
-        auto fallback = clever::paint::render_html(error_html, width, height);
+        auto fallback = clever::paint::render_html(error_html, renderWidth, renderHeight);
         if (fallback.success && fallback.renderer) {
             [tab.renderView updateWithRenderer:fallback.renderer.get()];
         }
@@ -3095,6 +3117,121 @@ do_render:
         }
     }
     _hoveredNode = newTarget;
+}
+
+#pragma mark - Context Menu & Double Click Event Dispatch
+
+- (BOOL)renderView:(RenderView*)view didContextMenuAtX:(float)x y:(float)y {
+    (void)view;
+    BrowserTab* tab = [self activeTab];
+    if (!tab) return NO;
+
+    auto& jsEngine = [tab jsEngine];
+    auto& elementRegions = [tab elementRegions];
+    if (!jsEngine || elementRegions.empty()) return NO;
+
+    // Hit-test to find the target element
+    clever::html::SimpleNode* target = nullptr;
+    float smallest_area = std::numeric_limits<float>::max();
+    for (auto it = elementRegions.rbegin(); it != elementRegions.rend(); ++it) {
+        if (it->bounds.contains(x, y) && it->dom_node) {
+            float area = it->bounds.width * it->bounds.height;
+            if (area < smallest_area) {
+                smallest_area = area;
+                target = static_cast<clever::html::SimpleNode*>(it->dom_node);
+            }
+        }
+    }
+    if (!target) return NO;
+
+    // Dispatch "contextmenu" event with right-button (button=2)
+    bool prevented = clever::js::dispatch_mouse_event(
+        jsEngine->context(), target, "contextmenu",
+        x, y, x, y, 2, 2, false, false, false, false, 0);
+
+    return prevented ? YES : NO;
+}
+
+- (BOOL)renderView:(RenderView*)view didDoubleClickAtX:(float)x y:(float)y {
+    (void)view;
+    BrowserTab* tab = [self activeTab];
+    if (!tab) return NO;
+
+    auto& jsEngine = [tab jsEngine];
+    auto& elementRegions = [tab elementRegions];
+    if (!jsEngine || elementRegions.empty()) return NO;
+
+    // Hit-test to find the target element
+    clever::html::SimpleNode* target = nullptr;
+    float smallest_area = std::numeric_limits<float>::max();
+    for (auto it = elementRegions.rbegin(); it != elementRegions.rend(); ++it) {
+        if (it->bounds.contains(x, y) && it->dom_node) {
+            float area = it->bounds.width * it->bounds.height;
+            if (area < smallest_area) {
+                smallest_area = area;
+                target = static_cast<clever::html::SimpleNode*>(it->dom_node);
+            }
+        }
+    }
+    if (!target) return NO;
+
+    // Dispatch "dblclick" event (detail=2 for double-click)
+    bool prevented = clever::js::dispatch_mouse_event(
+        jsEngine->context(), target, "dblclick",
+        x, y, x, y, 0, 0, false, false, false, false, 2);
+
+    return prevented ? YES : NO;
+}
+
+#pragma mark - Keyboard Event Dispatch
+
+- (BOOL)renderView:(RenderView*)view
+    didKeyEvent:(NSString*)eventType
+            key:(NSString*)key
+           code:(NSString*)code
+        keyCode:(int)keyCode
+         repeat:(BOOL)isRepeat
+        altKey:(BOOL)altKey
+       ctrlKey:(BOOL)ctrlKey
+       metaKey:(BOOL)metaKey
+      shiftKey:(BOOL)shiftKey {
+    (void)view;
+    BrowserTab* tab = [self activeTab];
+    if (!tab) return NO;
+
+    auto& jsEngine = [tab jsEngine];
+    auto& domTree = [tab domTree];
+    if (!jsEngine || !domTree) return NO;
+
+    // Determine target: focused input node, or fall back to <body>
+    clever::html::SimpleNode* target = [tab focusedInputNode];
+    if (!target) {
+        target = domTree->find_element("body");
+    }
+    if (!target) {
+        target = domTree.get(); // document root as last resort
+    }
+
+    // Build KeyboardEventInit
+    clever::js::KeyboardEventInit init;
+    init.key = key ? [key UTF8String] : "";
+    init.code = code ? [code UTF8String] : "";
+    init.key_code = keyCode;
+    init.char_code = 0; // charCode is deprecated, typically 0 for keydown/keyup
+    init.location = 0;  // DOM_KEY_LOCATION_STANDARD
+    init.alt_key = altKey;
+    init.ctrl_key = ctrlKey;
+    init.meta_key = metaKey;
+    init.shift_key = shiftKey;
+    init.repeat = isRepeat;
+    init.is_composing = false;
+
+    std::string evtType = eventType ? [eventType UTF8String] : "keydown";
+
+    bool prevented = clever::js::dispatch_keyboard_event(
+        jsEngine->context(), target, evtType, init);
+
+    return prevented ? YES : NO;
 }
 
 #pragma mark - Color Picker

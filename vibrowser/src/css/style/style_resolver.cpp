@@ -117,6 +117,31 @@ BorderStyle parse_border_style_value(const std::string& v) {
     return BorderStyle::None;
 }
 
+void normalize_display_contents_style(ComputedStyle& style) {
+    if (style.display != Display::Contents) {
+        return;
+    }
+
+    // display: contents generates no principal box, so this element's own
+    // box model/background are ignored.
+    style.margin = {Length::zero(), Length::zero(), Length::zero(), Length::zero()};
+    style.padding = {Length::zero(), Length::zero(), Length::zero(), Length::zero()};
+
+    style.border_top.width = Length::zero();
+    style.border_right.width = Length::zero();
+    style.border_bottom.width = Length::zero();
+    style.border_left.width = Length::zero();
+    style.border_top.style = BorderStyle::None;
+    style.border_right.style = BorderStyle::None;
+    style.border_bottom.style = BorderStyle::None;
+    style.border_left.style = BorderStyle::None;
+
+    style.background_color = Color::transparent();
+    style.bg_image_url.clear();
+    style.gradient_type = 0;
+    style.gradient_stops.clear();
+}
+
 } // anonymous namespace
 
 // ============================================================================
@@ -271,6 +296,8 @@ ComputedStyle PropertyCascade::cascade(
         style.font_size.value != parent_style.font_size.value) {
         style.line_height = Length::px(style.line_height_unitless * style.font_size.value);
     }
+
+    normalize_display_contents_style(style);
 
     return style;
 }
@@ -541,6 +568,7 @@ void PropertyCascade::apply_declaration(
         else if (value_lower == "inline-block") style.display = Display::InlineBlock;
         else if (value_lower == "flex") style.display = Display::Flex;
         else if (value_lower == "inline-flex") style.display = Display::InlineFlex;
+        else if (value_lower == "inline flex") style.display = Display::InlineFlex;
         else if (value_lower == "none") style.display = Display::None;
         else if (value_lower == "list-item") style.display = Display::ListItem;
         else if (value_lower == "table") style.display = Display::Table;
@@ -554,6 +582,7 @@ void PropertyCascade::apply_declaration(
         else if (value_lower == "table-caption") style.display = Display::Block;
         else if (value_lower == "grid") style.display = Display::Grid;
         else if (value_lower == "inline-grid") style.display = Display::InlineGrid;
+        else if (value_lower == "inline grid") style.display = Display::InlineGrid;
         else if (value_lower == "-webkit-box" || value_lower == "-webkit-inline-box") {
             style.display = Display::Flex; // -webkit-box is legacy flex
         }
@@ -6148,6 +6177,8 @@ ComputedStyle StyleResolver::resolve(
         result.font_size.value != parent_style.font_size.value) {
         result.line_height = Length::px(result.line_height_unitless * result.font_size.value);
     }
+
+    normalize_display_contents_style(result);
 
     return result;
 }

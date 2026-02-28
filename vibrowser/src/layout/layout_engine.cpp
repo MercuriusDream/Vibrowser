@@ -7,6 +7,39 @@
 
 namespace clever::layout {
 
+namespace {
+
+float collapse_vertical_margins(float first, float second) {
+    if (first >= 0 && second >= 0) return std::max(first, second);
+    if (first < 0 && second < 0) return std::min(first, second);
+    return first + second;
+}
+
+bool is_empty_block_for_margin_collapse(const LayoutNode& node) {
+    if (node.mode != LayoutMode::Block || node.display == DisplayType::InlineBlock) return false;
+    if (node.specified_height >= 0 || node.min_height > 0) return false;
+    if (node.geometry.border.top != 0 || node.geometry.border.right != 0 ||
+        node.geometry.border.bottom != 0 || node.geometry.border.left != 0) {
+        return false;
+    }
+    if (node.geometry.padding.top != 0 || node.geometry.padding.right != 0 ||
+        node.geometry.padding.bottom != 0 || node.geometry.padding.left != 0) {
+        return false;
+    }
+    if (node.is_text && !node.text_content.empty()) return false;
+
+    for (const auto& child : node.children) {
+        if (child->display == DisplayType::None || child->mode == LayoutMode::None) continue;
+        if (child->position_type == 2 || child->position_type == 3) continue;
+        if (child->float_type != 0) continue;
+        return false;
+    }
+
+    return std::abs(node.geometry.height) < 0.0001f;
+}
+
+} // namespace
+
 // ---------------------------------------------------------------------------
 // Text measurement helpers (delegate to platform callback or fallback to 0.6f)
 // ---------------------------------------------------------------------------
@@ -1173,12 +1206,21 @@ void LayoutEngine::position_block_children(LayoutNode& node) {
             // Margins do NOT collapse across BFC boundaries, or when separated
             // by border/padding.
             float top_margin = child->geometry.margin.top;
+            float bottom_margin = child->geometry.margin.bottom;
 
             // Check if this child is block-level and eligible for collapsing
             // (inline-block, floats, and absolutely positioned elements don't collapse)
             bool child_is_block = child->mode == LayoutMode::Block &&
                 child->display != DisplayType::InlineBlock &&
                 child->float_type == 0;
+            bool child_is_empty_block = child_is_block &&
+                is_empty_block_for_margin_collapse(*child);
+
+            // Empty block margin collapsing:
+            // top and bottom margins collapse into a single carried margin.
+            if (child_is_empty_block) {
+                top_margin = collapse_vertical_margins(top_margin, bottom_margin);
+            }
 
             // Parent-child top margin collapsing: the first child's top margin
             // collapses with its parent's top margin if:
@@ -1190,19 +1232,13 @@ void LayoutEngine::position_block_children(LayoutNode& node) {
             bool collapse_with_parent = first_child && child_is_block &&
                 !node.establishes_bfc &&
                 node.geometry.border.top == 0 && node.geometry.padding.top == 0;
+            float carried_margin = top_margin;
 
             if (collapse_with_parent) {
                 // The child's top margin collapses with the parent's top margin.
                 // Apply the CSS collapsing rules:
                 float parent_top = node.geometry.margin.top;
-                float collapsed;
-                if (top_margin >= 0 && parent_top >= 0) {
-                    collapsed = std::max(parent_top, top_margin);
-                } else if (top_margin < 0 && parent_top < 0) {
-                    collapsed = std::min(parent_top, top_margin); // more negative
-                } else {
-                    collapsed = parent_top + top_margin; // mixed: sum
-                }
+                float collapsed = collapse_vertical_margins(parent_top, top_margin);
                 node.geometry.margin.top = collapsed;
                 // The child is positioned at cursor_y (0) with no additional
                 // internal top margin offset — margin escapes to parent.
@@ -1214,23 +1250,26 @@ void LayoutEngine::position_block_children(LayoutNode& node) {
                 //   - Both positive: max(prev_bottom, curr_top)
                 //   - Both negative: min(prev_bottom, curr_top) (more negative)
                 //   - Mixed: prev_bottom + curr_top (sum)
-                float collapsed;
-                if (prev_margin_bottom >= 0 && top_margin >= 0) {
-                    collapsed = std::max(prev_margin_bottom, top_margin);
-                } else if (prev_margin_bottom < 0 && top_margin < 0) {
-                    collapsed = std::min(prev_margin_bottom, top_margin); // more negative
-                } else {
-                    collapsed = prev_margin_bottom + top_margin; // mixed: sum
-                }
+                float collapsed = collapse_vertical_margins(prev_margin_bottom, top_margin);
                 // cursor_y already includes prev_margin_bottom, so subtract it
                 // and add the collapsed value instead
                 cursor_y -= prev_margin_bottom;
                 child->geometry.y = cursor_y + collapsed;
+                carried_margin = collapsed;
             } else {
                 child->geometry.y = cursor_y + top_margin;
             }
-            cursor_y = child->geometry.y + child->geometry.border_box_height() + child->geometry.margin.bottom;
-            prev_margin_bottom = child->geometry.margin.bottom;
+
+            if (child_is_empty_block) {
+                // The element contributes a single collapsed margin to adjoining siblings.
+                prev_margin_bottom = carried_margin;
+                cursor_y = collapse_with_parent
+                    ? (child->geometry.y + carried_margin)
+                    : child->geometry.y;
+            } else {
+                cursor_y = child->geometry.y + child->geometry.border_box_height() + bottom_margin;
+                prev_margin_bottom = bottom_margin;
+            }
             first_child = false;
         }
 
@@ -2619,18 +2658,12 @@ void LayoutEngine::apply_positioning(LayoutNode& node) {
 }
 
 void LayoutEngine::position_absolute_children(LayoutNode& node) {
-    // CSS spec: the containing block for position:absolute is the nearest
-    // ancestor with position != static (relative/absolute/fixed/sticky).
-    // Only positioned ancestors (or the root) serve as containing blocks.
-    bool is_containing_block = (node.position_type != 0 || node.parent == nullptr);
-    if (!is_containing_block) return;
+    // Absolute positioning:
+    // containing block is nearest positioned ancestor (or root).
+    bool is_root = (node.parent == nullptr);
+    bool is_abs_containing_block = (node.position_type != 0 || is_root);
+    if (!is_abs_containing_block) return;
 
-    float container_w = node.geometry.width;
-    float container_h = node.geometry.height;
-
-    // Recursively collect abs/fixed descendants whose containing block is this node.
-    // Track the cumulative offset from this containing block to each child's parent,
-    // so we can position the child correctly in the coordinate space of its immediate parent.
     struct AbsInfo {
         LayoutNode* child;
         float parent_offset_x;
@@ -2638,87 +2671,101 @@ void LayoutEngine::position_absolute_children(LayoutNode& node) {
     };
     std::vector<AbsInfo> abs_children;
 
-    std::function<void(LayoutNode&, float, float)> collect =
+    std::function<void(LayoutNode&, float, float)> collect_abs =
         [&](LayoutNode& parent, float offset_x, float offset_y) {
         for (auto& c : parent.children) {
             if (c->display == DisplayType::None || c->mode == LayoutMode::None) continue;
-            if (c->position_type == 2 || c->position_type == 3) {
-                // Abs/fixed child — belongs to this containing block
+            if (c->position_type == 2) {
+                // Absolute child belongs to this containing block.
                 abs_children.push_back({c.get(), offset_x, offset_y});
-                // Don't recurse — this child forms its own containing block
+                // Don't recurse; absolute elements form their own containing block.
                 continue;
             }
             if (c->position_type != 0) {
-                // Positioned child (relative/sticky) — forms its own containing block.
-                // Don't recurse; it will handle its own abs children.
+                // Positioned descendants establish their own absolute containing block.
                 continue;
             }
             // Static child — recurse, accumulating geometric offset
-            collect(*c, offset_x + c->geometry.x, offset_y + c->geometry.y);
+            collect_abs(*c, offset_x + c->geometry.x, offset_y + c->geometry.y);
         }
     };
-    collect(node, 0, 0);
+    collect_abs(node, 0, 0);
 
-    for (auto& [child, parent_ox, parent_oy] : abs_children) {
-        // For fixed positioning, use viewport dimensions
-        float ref_w = (child->position_type == 3) ? viewport_width_ : container_w;
-        float ref_h = (child->position_type == 3) ? viewport_height_ : container_h;
+    // Fixed positioning:
+    // always positioned relative to viewport, never nearest positioned ancestor.
+    std::vector<LayoutNode*> fixed_children;
+    if (is_root) {
+        std::function<void(LayoutNode&)> collect_fixed = [&](LayoutNode& parent) {
+            for (auto& c : parent.children) {
+                if (c->display == DisplayType::None || c->mode == LayoutMode::None) continue;
+                if (c->position_type == 3) fixed_children.push_back(c.get());
+                // Keep walking through all descendants; fixed is viewport-relative.
+                collect_fixed(*c);
+            }
+        };
+        collect_fixed(node);
+    }
 
-        // Layout the child to compute its dimensions
-        if (child->specified_width >= 0) {
-            child->geometry.width = child->specified_width;
-        } else if (child->pos_left_set && child->pos_right_set) {
-            child->geometry.width = ref_w - child->pos_left - child->pos_right;
+    auto layout_out_of_flow = [&](LayoutNode& child, float ref_w, float ref_h, float ox, float oy) {
+        // Compute width for positioning context.
+        if (child.specified_width >= 0) {
+            child.geometry.width = child.specified_width;
+        } else if (child.pos_left_set && child.pos_right_set) {
+            child.geometry.width = ref_w - child.pos_left - child.pos_right;
         } else {
-            child->geometry.width = ref_w;
+            child.geometry.width = ref_w;
         }
 
-        switch (child->mode) {
+        switch (child.mode) {
             case LayoutMode::Block:
             case LayoutMode::InlineBlock:
-                layout_block(*child, child->geometry.width);
+                layout_block(child, child.geometry.width);
                 break;
             case LayoutMode::Inline:
-                layout_inline(*child, child->geometry.width);
+                layout_inline(child, child.geometry.width);
                 break;
             case LayoutMode::Flex:
-                layout_flex(*child, child->geometry.width);
+                layout_flex(child, child.geometry.width);
                 break;
             case LayoutMode::Grid:
-                layout_grid(*child, child->geometry.width);
+                layout_grid(child, child.geometry.width);
                 break;
             case LayoutMode::Table:
-                layout_table(*child, child->geometry.width);
+                layout_table(child, child.geometry.width);
                 break;
             default:
-                layout_block(*child, child->geometry.width);
+                layout_block(child, child.geometry.width);
                 break;
         }
 
-        // For fixed positioning (position_type == 3), the painter uses (0,0) as the
-        // parent offset, so geometry.x/y should be viewport-relative directly.
-        // For absolute positioning (position_type == 2), subtract parent offset so that
-        // the rendered position (which sums x/y from root to child) is correct.
-        float ox = (child->position_type == 3) ? 0.0f : parent_ox;
-        float oy = (child->position_type == 3) ? 0.0f : parent_oy;
-
-        if (child->pos_left_set) {
-            child->geometry.x = child->pos_left - ox;
-        } else if (child->pos_right_set) {
-            child->geometry.x = ref_w - child->geometry.margin_box_width() - child->pos_right
-                + child->geometry.margin.left - ox;
+        if (child.pos_left_set) {
+            child.geometry.x = child.pos_left - ox;
+        } else if (child.pos_right_set) {
+            child.geometry.x = ref_w - child.geometry.margin_box_width() - child.pos_right
+                + child.geometry.margin.left - ox;
         } else {
-            child->geometry.x = -ox;
+            child.geometry.x = -ox;
         }
 
-        if (child->pos_top_set) {
-            child->geometry.y = child->pos_top - oy;
-        } else if (child->pos_bottom_set) {
-            child->geometry.y = ref_h - child->geometry.margin_box_height() - child->pos_bottom
-                + child->geometry.margin.top - oy;
+        if (child.pos_top_set) {
+            child.geometry.y = child.pos_top - oy;
+        } else if (child.pos_bottom_set) {
+            child.geometry.y = ref_h - child.geometry.margin_box_height() - child.pos_bottom
+                + child.geometry.margin.top - oy;
         } else {
-            child->geometry.y = -oy;
+            child.geometry.y = -oy;
         }
+    };
+
+    float container_w = node.geometry.width;
+    float container_h = node.geometry.height;
+
+    for (auto& [child, parent_ox, parent_oy] : abs_children) {
+        layout_out_of_flow(*child, container_w, container_h, parent_ox, parent_oy);
+    }
+
+    for (auto* fixed_child : fixed_children) {
+        layout_out_of_flow(*fixed_child, viewport_width_, viewport_height_, 0.0f, 0.0f);
     }
 }
 
@@ -2759,54 +2806,56 @@ void LayoutEngine::layout_grid(LayoutNode& node, float containing_width) {
         - node.geometry.border.left - node.geometry.border.right;
     if (content_w < 0) content_w = 0;
 
-    // Step 1: Parse grid-template-columns to determine column widths
-    std::vector<float> col_widths;
-    std::string cols = node.grid_template_columns;
-    if (!cols.empty()) {
-        // Expand repeat(N, ...) before parsing
+    // Grid gap: use proper grid gap fields, falling back to legacy gap fields for compat.
+    // In production, render_pipeline sets both column_gap and column_gap_val to the same value,
+    // and both row_gap and gap. In tests, only one set may be populated.
+    float col_gap = node.column_gap > 0 ? node.column_gap : node.column_gap_val;
+    float rg = node.row_gap > 0 ? node.row_gap : node.gap;
+
+    // -----------------------------------------------------------------------
+    // Helper: expand repeat() in a track template string
+    // -----------------------------------------------------------------------
+    auto expand_repeat = [&](const std::string& tmpl, float avail_size) -> std::string {
         std::string expanded;
         size_t pos = 0;
-        while (pos < cols.size()) {
-            size_t rep = cols.find("repeat(", pos);
+        while (pos < tmpl.size()) {
+            size_t rep = tmpl.find("repeat(", pos);
             if (rep == std::string::npos) {
-                expanded += cols.substr(pos);
+                expanded += tmpl.substr(pos);
                 break;
             }
-            expanded += cols.substr(pos, rep - pos);
-            size_t paren_start = rep + 7; // after "repeat("
-            size_t comma = cols.find(',', paren_start);
+            expanded += tmpl.substr(pos, rep - pos);
+            size_t paren_start = rep + 7;
+            size_t comma = tmpl.find(',', paren_start);
             if (comma == std::string::npos) {
-                expanded += cols.substr(pos);
+                expanded += tmpl.substr(pos);
                 break;
             }
-            std::string count_str = cols.substr(paren_start, comma - paren_start);
+            std::string count_str = tmpl.substr(paren_start, comma - paren_start);
             while (!count_str.empty() && count_str.front() == ' ') count_str.erase(count_str.begin());
             while (!count_str.empty() && count_str.back() == ' ') count_str.pop_back();
 
             size_t depth = 1;
-            size_t end = comma + 1;
-            while (end < cols.size() && depth > 0) {
-                if (cols[end] == '(') depth++;
-                else if (cols[end] == ')') depth--;
-                if (depth > 0) end++;
+            size_t end_pos = comma + 1;
+            while (end_pos < tmpl.size() && depth > 0) {
+                if (tmpl[end_pos] == '(') depth++;
+                else if (tmpl[end_pos] == ')') depth--;
+                if (depth > 0) end_pos++;
             }
-            std::string pattern = cols.substr(comma + 1, end - comma - 1);
+            std::string pattern = tmpl.substr(comma + 1, end_pos - comma - 1);
             while (!pattern.empty() && pattern.front() == ' ') pattern.erase(pattern.begin());
             while (!pattern.empty() && pattern.back() == ' ') pattern.pop_back();
 
             int count = 0;
             if (count_str == "auto-fill" || count_str == "auto-fit") {
-                // auto-fill/auto-fit: compute how many tracks fit in available width
-                // Parse the pattern to get the track size
                 float track_size = 0;
                 if (pattern.find("px") != std::string::npos) {
                     try { track_size = std::stof(pattern); } catch (...) {}
                 } else if (pattern.find('%') != std::string::npos) {
                     float pct = 0;
                     try { pct = std::stof(pattern); } catch (...) {}
-                    track_size = content_w * pct / 100.0f;
+                    track_size = avail_size * pct / 100.0f;
                 } else if (pattern.find("minmax(") != std::string::npos) {
-                    // minmax(min, max) — use min for auto-fill count calculation
                     size_t mmp = pattern.find("minmax(") + 7;
                     size_t mmc = pattern.find(',', mmp);
                     if (mmc != std::string::npos) {
@@ -2817,9 +2866,9 @@ void LayoutEngine::layout_grid(LayoutNode& node, float containing_width) {
                         }
                     }
                 }
-                float gap = node.column_gap;
+                float g = col_gap;
                 if (track_size > 0) {
-                    count = static_cast<int>((content_w + gap) / (track_size + gap));
+                    count = static_cast<int>((avail_size + g) / (track_size + g));
                     if (count < 1) count = 1;
                 } else {
                     count = 1;
@@ -2833,48 +2882,55 @@ void LayoutEngine::layout_grid(LayoutNode& node, float containing_width) {
                 if (!expanded.empty() && expanded.back() != ' ') expanded += ' ';
                 expanded += pattern;
             }
-            pos = end + 1;
+            pos = end_pos + 1;
         }
+        return expanded;
+    };
 
-        // Parse track specifications, handling minmax() functions
-        float total_fr = 0;
-        struct TrackSpec { float value; bool is_fr; float min_value = 0; };
-        std::vector<TrackSpec> specs;
-
-        // Simple tokenizer that handles minmax() as a single token
-        std::vector<std::string> track_tokens;
-        {
-            size_t ti = 0;
-            while (ti < expanded.size()) {
-                while (ti < expanded.size() && expanded[ti] == ' ') ti++;
-                if (ti >= expanded.size()) break;
-                if (expanded.substr(ti, 7) == "minmax(") {
-                    // Consume until matching ')'
-                    size_t start = ti;
-                    int d = 0;
-                    while (ti < expanded.size()) {
-                        if (expanded[ti] == '(') d++;
-                        else if (expanded[ti] == ')') { d--; if (d == 0) { ti++; break; } }
-                        ti++;
-                    }
-                    track_tokens.push_back(expanded.substr(start, ti - start));
-                } else {
-                    size_t start = ti;
-                    while (ti < expanded.size() && expanded[ti] != ' ') ti++;
-                    track_tokens.push_back(expanded.substr(start, ti - start));
+    // -----------------------------------------------------------------------
+    // Helper: tokenize a track template, keeping minmax() as single tokens
+    // -----------------------------------------------------------------------
+    auto tokenize_tracks = [](const std::string& s) -> std::vector<std::string> {
+        std::vector<std::string> tokens;
+        size_t ti = 0;
+        while (ti < s.size()) {
+            while (ti < s.size() && s[ti] == ' ') ti++;
+            if (ti >= s.size()) break;
+            if (ti + 7 <= s.size() && s.substr(ti, 7) == "minmax(") {
+                size_t start = ti;
+                int d = 0;
+                while (ti < s.size()) {
+                    if (s[ti] == '(') d++;
+                    else if (s[ti] == ')') { d--; if (d == 0) { ti++; break; } }
+                    ti++;
                 }
+                tokens.push_back(s.substr(start, ti - start));
+            } else {
+                size_t start = ti;
+                while (ti < s.size() && s[ti] != ' ') ti++;
+                tokens.push_back(s.substr(start, ti - start));
             }
         }
+        return tokens;
+    };
 
-        for (auto& token : track_tokens) {
-            if (token.substr(0, 7) == "minmax(") {
-                // minmax(min, max) — use max for track sizing, min as floor
+    // -----------------------------------------------------------------------
+    // TrackSpec: describes a single grid track (column or row)
+    // -----------------------------------------------------------------------
+    struct TrackSpec { float value; bool is_fr; float min_value; };
+
+    // -----------------------------------------------------------------------
+    // Helper: parse track tokens into TrackSpec vector
+    // -----------------------------------------------------------------------
+    auto parse_track_specs = [&](const std::vector<std::string>& tokens, float avail) {
+        std::vector<TrackSpec> specs;
+        for (const auto& tk : tokens) {
+            if (tk.size() >= 7 && tk.substr(0, 7) == "minmax(") {
                 size_t mmp = 7;
-                size_t mmc = token.find(',', mmp);
+                size_t mmc = tk.find(',', mmp);
                 if (mmc != std::string::npos) {
-                    std::string min_str = token.substr(mmp, mmc - mmp);
-                    std::string max_str = token.substr(mmc + 1);
-                    // Remove trailing ')'
+                    std::string min_str = tk.substr(mmp, mmc - mmp);
+                    std::string max_str = tk.substr(mmc + 1);
                     if (!max_str.empty() && max_str.back() == ')') max_str.pop_back();
                     while (!min_str.empty() && min_str.front() == ' ') min_str.erase(min_str.begin());
                     while (!min_str.empty() && min_str.back() == ' ') min_str.pop_back();
@@ -2884,65 +2940,89 @@ void LayoutEngine::layout_grid(LayoutNode& node, float containing_width) {
                     float min_val = 0;
                     if (min_str.find("px") != std::string::npos) {
                         try { min_val = std::stof(min_str); } catch (...) {}
+                    } else if (min_str.find('%') != std::string::npos) {
+                        float pct = 0;
+                        try { pct = std::stof(min_str); } catch (...) {}
+                        min_val = avail * pct / 100.0f;
                     }
 
                     if (max_str.find("fr") != std::string::npos) {
                         float fr = 0;
                         try { fr = std::stof(max_str); } catch (...) { fr = 1; }
                         specs.push_back({fr, true, min_val});
-                        total_fr += fr;
                     } else if (max_str.find("px") != std::string::npos) {
                         float px = 0;
                         try { px = std::stof(max_str); } catch (...) {}
                         specs.push_back({std::max(px, min_val), false, min_val});
+                    } else if (max_str.find('%') != std::string::npos) {
+                        float pct = 0;
+                        try { pct = std::stof(max_str); } catch (...) {}
+                        float px = avail * pct / 100.0f;
+                        specs.push_back({std::max(px, min_val), false, min_val});
                     } else if (max_str == "auto") {
                         specs.push_back({1.0f, true, min_val});
-                        total_fr += 1.0f;
                     } else {
                         specs.push_back({min_val, false, min_val});
                     }
                 } else {
-                    specs.push_back({1.0f, true, 0});
-                    total_fr += 1.0f;
+                    specs.push_back({1.0f, true, 0.0f});
                 }
-            } else if (token.find("fr") != std::string::npos) {
+            } else if (tk.find("fr") != std::string::npos) {
                 float fr = 0;
-                try { fr = std::stof(token); } catch (...) { fr = 1; }
-                specs.push_back({fr, true});
-                total_fr += fr;
-            } else if (token.find("px") != std::string::npos) {
+                try { fr = std::stof(tk); } catch (...) { fr = 1; }
+                specs.push_back({fr, true, 0.0f});
+            } else if (tk.find("px") != std::string::npos) {
                 float px = 0;
-                try { px = std::stof(token); } catch (...) {}
-                specs.push_back({px, false});
-            } else if (token.find('%') != std::string::npos) {
+                try { px = std::stof(tk); } catch (...) {}
+                specs.push_back({px, false, 0.0f});
+            } else if (tk.find('%') != std::string::npos) {
                 float pct = 0;
-                try { pct = std::stof(token); } catch (...) {}
-                specs.push_back({content_w * pct / 100.0f, false});
-            } else if (token == "auto") {
-                specs.push_back({1.0f, true});
-                total_fr += 1.0f;
+                try { pct = std::stof(tk); } catch (...) {}
+                specs.push_back({avail * pct / 100.0f, false, 0.0f});
+            } else if (tk == "auto") {
+                specs.push_back({1.0f, true, 0.0f});
             } else {
                 float val = 0;
-                try { val = std::stof(token); } catch (...) {}
-                specs.push_back({val, false});
+                try { val = std::stof(tk); } catch (...) {}
+                specs.push_back({val, false, 0.0f});
             }
         }
+        return specs;
+    };
 
-        // Calculate fr unit size
+    // -----------------------------------------------------------------------
+    // Helper: resolve track sizes from specs, distributing fr units
+    // -----------------------------------------------------------------------
+    auto resolve_tracks = [](const std::vector<TrackSpec>& specs, float avail, float gap_size) {
+        std::vector<float> sizes;
+        float total_fr = 0;
         float fixed_total = 0;
-        for (auto& s : specs) {
-            if (!s.is_fr) fixed_total += s.value;
+        for (const auto& s : specs) {
+            if (s.is_fr) total_fr += s.value;
+            else fixed_total += s.value;
         }
-        float fr_space = content_w - fixed_total;
+        float gaps_total = specs.size() > 1 ? (static_cast<float>(specs.size()) - 1.0f) * gap_size : 0;
+        float fr_space = avail - fixed_total - gaps_total;
         if (fr_space < 0) fr_space = 0;
         float fr_size = total_fr > 0 ? fr_space / total_fr : 0;
-
-        for (auto& s : specs) {
+        for (const auto& s : specs) {
             float w = s.is_fr ? s.value * fr_size : s.value;
-            // Apply minmax() floor
             if (s.min_value > 0 && w < s.min_value) w = s.min_value;
-            col_widths.push_back(w);
+            sizes.push_back(w);
         }
+        return sizes;
+    };
+
+    // -----------------------------------------------------------------------
+    // Step 1: Parse grid-template-columns
+    // -----------------------------------------------------------------------
+    std::vector<float> col_widths;
+    std::string cols = node.grid_template_columns;
+    if (!cols.empty()) {
+        std::string expanded = expand_repeat(cols, content_w);
+        auto tokens = tokenize_tracks(expanded);
+        auto specs = parse_track_specs(tokens, content_w);
+        col_widths = resolve_tracks(specs, content_w, col_gap);
     }
 
     if (col_widths.empty()) {
@@ -2961,7 +3041,7 @@ void LayoutEngine::layout_grid(LayoutNode& node, float containing_width) {
                 }
             } catch (...) {}
             if (auto_w > 0) {
-                float g = node.column_gap_val;
+                float g = col_gap;
                 int auto_count = std::max(1, static_cast<int>((content_w + g) / (auto_w + g)));
                 for (int i = 0; i < auto_count; i++) col_widths.push_back(auto_w);
             }
@@ -2973,24 +3053,20 @@ void LayoutEngine::layout_grid(LayoutNode& node, float containing_width) {
 
     int num_cols = static_cast<int>(col_widths.size());
 
-    // Step 2: Parse grid-template-rows (optional, for explicit row heights)
-    std::vector<float> row_heights_explicit;
-    std::string rows = node.grid_template_rows;
-    if (!rows.empty()) {
-        std::istringstream iss(rows);
-        std::string token;
-        while (iss >> token) {
-            if (token.find("px") != std::string::npos) {
-                try { row_heights_explicit.push_back(std::stof(token)); } catch (...) {}
-            } else if (token.find("fr") != std::string::npos) {
-                try { row_heights_explicit.push_back(-std::stof(token)); } catch (...) {}
-            } else if (token != "auto") {
-                try { row_heights_explicit.push_back(std::stof(token)); } catch (...) {}
-            }
-        }
+    // -----------------------------------------------------------------------
+    // Step 2: Parse grid-template-rows (full parsing: px, fr, %, auto, minmax, repeat)
+    // -----------------------------------------------------------------------
+    std::vector<TrackSpec> row_specs;
+    std::string rows_tmpl = node.grid_template_rows;
+    if (!rows_tmpl.empty()) {
+        std::string expanded = expand_repeat(rows_tmpl, 0);
+        auto tokens = tokenize_tracks(expanded);
+        row_specs = parse_track_specs(tokens, 0);
     }
 
+    // -----------------------------------------------------------------------
     // Step 3: Collect in-flow children
+    // -----------------------------------------------------------------------
     std::vector<LayoutNode*> grid_items;
     for (auto& child : node.children) {
         if (child->display == DisplayType::None || child->mode == LayoutMode::None) {
@@ -3002,16 +3078,88 @@ void LayoutEngine::layout_grid(LayoutNode& node, float containing_width) {
         grid_items.push_back(child.get());
     }
 
-    // Step 4: Place children into grid cells
-    float col_x_start = node.geometry.padding.left + node.geometry.border.left;
-    float row_y = node.geometry.padding.top + node.geometry.border.top;
+    // -----------------------------------------------------------------------
+    // Helper: parse a grid-column or grid-row value into (start_line, span)
+    // Returns {-1, 1} if auto-placement should be used.
+    // Supports: "N", "N / M", "N / span M", "span M / N", "span M"
+    // Grid lines are 1-based; returned start is 0-based index.
+    // -----------------------------------------------------------------------
+    auto parse_line_spec = [](const std::string& spec, int max_tracks) -> std::pair<int, int> {
+        if (spec.empty()) return {-1, 1};
 
-    // Grid gap support: row_gap between rows, col_gap between columns
-    float col_gap = node.column_gap_val; // column-gap
-    float row_gap = node.gap;            // row-gap (reuse flex gap field)
+        auto slash = spec.find('/');
+        if (slash != std::string::npos) {
+            std::string start_str = spec.substr(0, slash);
+            std::string end_str = spec.substr(slash + 1);
+            while (!start_str.empty() && start_str.front() == ' ') start_str.erase(start_str.begin());
+            while (!start_str.empty() && start_str.back() == ' ') start_str.pop_back();
+            while (!end_str.empty() && end_str.front() == ' ') end_str.erase(end_str.begin());
+            while (!end_str.empty() && end_str.back() == ' ') end_str.pop_back();
 
-    // Parse grid-template-areas into a 2D grid of area names
-    // Format: "header header" "sidebar main" "footer footer"
+            // Handle "span N" in end position: e.g. "1 / span 2"
+            if (end_str.size() > 5 && end_str.substr(0, 5) == "span ") {
+                int span_val = 1;
+                try { span_val = std::stoi(end_str.substr(5)); } catch (...) {}
+                if (span_val < 1) span_val = 1;
+                if (start_str == "auto") return {-1, span_val};
+                try {
+                    int start = std::stoi(start_str);
+                    if (start >= 1) return {start - 1, span_val};
+                } catch (...) {}
+                return {-1, span_val};
+            }
+
+            // Handle "span N" in start position: e.g. "span 2 / 4"
+            if (start_str.size() > 5 && start_str.substr(0, 5) == "span ") {
+                int span_val = 1;
+                try { span_val = std::stoi(start_str.substr(5)); } catch (...) {}
+                if (span_val < 1) span_val = 1;
+                try {
+                    int end_line = std::stoi(end_str);
+                    if (end_line >= 1) {
+                        int s = end_line - 1 - span_val;
+                        if (s < 0) s = 0;
+                        return {s, span_val};
+                    }
+                } catch (...) {}
+                return {-1, span_val};
+            }
+
+            // Normal "start / end" (both line numbers, 1-based)
+            if (start_str == "auto" && end_str == "auto") return {-1, 1};
+            try {
+                int start = (start_str == "auto") ? -1 : std::stoi(start_str);
+                int end_line = (end_str == "auto") ? -1 : std::stoi(end_str);
+                // Handle negative line numbers (count from end)
+                if (start < 0 && start != -1) start = max_tracks + 1 + start + 1;
+                if (end_line < 0 && end_line != -1) end_line = max_tracks + 1 + end_line + 1;
+                if (start >= 1 && end_line > start) {
+                    return {start - 1, end_line - start};
+                }
+                if (start >= 1 && end_line == -1) return {start - 1, 1};
+            } catch (...) {}
+            return {-1, 1};
+        }
+
+        // No slash: single value
+        if (spec.size() > 5 && spec.substr(0, 5) == "span ") {
+            int span_val = 1;
+            try { span_val = std::stoi(spec.substr(5)); } catch (...) {}
+            return {-1, std::max(1, span_val)};
+        }
+
+        if (spec != "auto") {
+            try {
+                int line = std::stoi(spec);
+                if (line >= 1) return {line - 1, 1};
+            } catch (...) {}
+        }
+        return {-1, 1};
+    };
+
+    // -----------------------------------------------------------------------
+    // Step 4: Parse grid-template-areas
+    // -----------------------------------------------------------------------
     struct AreaRect { int row_start; int col_start; int row_end; int col_end; };
     std::unordered_map<std::string, AreaRect> area_map;
     if (!node.grid_template_areas.empty()) {
@@ -3054,88 +3202,210 @@ void LayoutEngine::layout_grid(LayoutNode& node, float containing_width) {
         }
     }
 
-    // grid-auto-flow: column support
-    // When grid_auto_flow is 1 (column) or 3 (column dense), place items column-by-column
-    bool column_flow = (node.grid_auto_flow == 1 || node.grid_auto_flow == 3);
-    int num_rows_for_col_flow = 0;
-    if (column_flow && !grid_items.empty()) {
-        // Calculate number of rows: if explicit row template exists, use that count,
-        // otherwise compute from grid items and columns
-        if (!row_heights_explicit.empty()) {
-            num_rows_for_col_flow = static_cast<int>(row_heights_explicit.size());
-        } else {
-            // Use ceil(items / cols) as number of rows
-            num_rows_for_col_flow = (static_cast<int>(grid_items.size()) + num_cols - 1) / num_cols;
-        }
-        if (num_rows_for_col_flow < 1) num_rows_for_col_flow = 1;
-    }
+    // -----------------------------------------------------------------------
+    // Step 5: Determine each item's grid position using a 2D occupation grid
+    // -----------------------------------------------------------------------
+    struct GridPlacement {
+        int col_start = -1;
+        int row_start = -1;
+        int col_span = 1;
+        int row_span = 1;
+    };
+    std::vector<GridPlacement> placements(grid_items.size());
 
-    int col_index = 0;
-    int row_index = 0;
-    float row_height = 0;
+    // First pass: resolve grid-area and explicit grid-column / grid-row
+    for (size_t idx = 0; idx < grid_items.size(); idx++) {
+        auto* child = grid_items[idx];
+        auto& pl = placements[idx];
 
-    // For column flow: track per-row heights to position items vertically
-    std::vector<float> col_flow_row_heights;
-    if (column_flow) {
-        col_flow_row_heights.resize(num_rows_for_col_flow, 0.0f);
-    }
-
-    for (auto* child : grid_items) {
-        // Check grid-area placement first (named area from grid-template-areas)
         if (!child->grid_area.empty() && !area_map.empty()) {
             auto ait = area_map.find(child->grid_area);
             if (ait != area_map.end()) {
                 auto& ar = ait->second;
-                // Map area name to grid-column/grid-row for the existing placement logic
                 child->grid_column = std::to_string(ar.col_start + 1) + " / " + std::to_string(ar.col_end + 1);
                 child->grid_row = std::to_string(ar.row_start + 1) + " / " + std::to_string(ar.row_end + 1);
             }
         }
 
-        // Clamp col_index to valid range
-        if (col_index >= num_cols) col_index = num_cols - 1;
+        auto col_result = parse_line_spec(child->grid_column, num_cols);
+        pl.col_start = col_result.first;
+        pl.col_span = col_result.second;
 
-        float col_x = col_x_start;
-        for (int i = 0; i < col_index; i++) col_x += col_widths[i] + col_gap;
+        int est_rows = static_cast<int>(row_specs.size());
+        if (est_rows < 1) est_rows = static_cast<int>((grid_items.size() + num_cols - 1) / num_cols);
+        auto row_result = parse_line_spec(child->grid_row, est_rows);
+        pl.row_start = row_result.first;
+        pl.row_span = row_result.second;
+    }
 
-        float cell_width = col_widths[col_index];
+    int num_rows = static_cast<int>(row_specs.size());
+    for (const auto& pl : placements) {
+        if (pl.row_start >= 0) {
+            num_rows = std::max(num_rows, pl.row_start + pl.row_span);
+        }
+    }
 
-        // Handle grid-column spanning (e.g. "1 / 3" means columns 1-2)
-        int col_span = 1;
-        if (!child->grid_column.empty()) {
-            auto slash = child->grid_column.find('/');
-            if (slash != std::string::npos) {
-                try {
-                    int start = std::stoi(child->grid_column.substr(0, slash));
-                    int end_line = std::stoi(child->grid_column.substr(slash + 1));
-                    if (start >= 1 && end_line > start && end_line <= num_cols + 1) {
-                        col_index = start - 1;
-                        col_span = end_line - start;
-                        col_x = col_x_start;
-                        for (int i = 0; i < col_index; i++) col_x += col_widths[i] + col_gap;
-                        cell_width = 0;
-                        for (int i = col_index; i < col_index + col_span && i < num_cols; i++) {
-                            cell_width += col_widths[i];
-                            if (i > col_index) cell_width += col_gap; // include gap between spanned columns
+    bool column_flow = (node.grid_auto_flow == 1 || node.grid_auto_flow == 3);
+
+    int estimated_rows = std::max(num_rows, static_cast<int>((grid_items.size() + num_cols - 1) / num_cols));
+    estimated_rows = std::max(estimated_rows, 1);
+    std::vector<bool> occupied(estimated_rows * num_cols, false);
+
+    auto is_occupied = [&](int r, int c) -> bool {
+        if (r < 0 || c < 0 || c >= num_cols) return true;
+        if (r >= static_cast<int>(occupied.size()) / num_cols) return false;
+        return occupied[r * num_cols + c];
+    };
+
+    auto mark_occupied = [&](int r_start, int c_start, int r_span, int c_span) {
+        int needed_rows = r_start + r_span;
+        int current_rows = static_cast<int>(occupied.size()) / num_cols;
+        if (needed_rows > current_rows) {
+            occupied.resize(needed_rows * num_cols, false);
+        }
+        for (int r = r_start; r < r_start + r_span; r++) {
+            for (int c = c_start; c < c_start + c_span && c < num_cols; c++) {
+                occupied[r * num_cols + c] = true;
+            }
+        }
+    };
+
+    auto can_place = [&](int r_start, int c_start, int r_span, int c_span) -> bool {
+        if (c_start + c_span > num_cols) return false;
+        for (int r = r_start; r < r_start + r_span; r++) {
+            for (int c = c_start; c < c_start + c_span; c++) {
+                if (is_occupied(r, c)) return false;
+            }
+        }
+        return true;
+    };
+
+    // Place explicitly-positioned items first
+    for (size_t idx = 0; idx < grid_items.size(); idx++) {
+        auto& pl = placements[idx];
+        if (pl.col_start >= 0 && pl.row_start >= 0) {
+            mark_occupied(pl.row_start, pl.col_start, pl.row_span, pl.col_span);
+        }
+    }
+
+    // Auto-place remaining items
+    int auto_cursor_row = 0;
+    int auto_cursor_col = 0;
+
+    for (size_t idx = 0; idx < grid_items.size(); idx++) {
+        auto& pl = placements[idx];
+        if (pl.col_start >= 0 && pl.row_start >= 0) continue;
+
+        if (pl.col_start >= 0) {
+            for (int r = 0; ; r++) {
+                if (can_place(r, pl.col_start, pl.row_span, pl.col_span)) {
+                    pl.row_start = r;
+                    break;
+                }
+                if (r > 10000) { pl.row_start = 0; break; }
+            }
+        } else if (pl.row_start >= 0) {
+            for (int c = 0; c < num_cols; c++) {
+                if (can_place(pl.row_start, c, pl.row_span, pl.col_span)) {
+                    pl.col_start = c;
+                    break;
+                }
+            }
+            if (pl.col_start < 0) pl.col_start = 0;
+        } else {
+            if (column_flow) {
+                for (int iter = 0; iter < 100000; iter++) {
+                    if (can_place(auto_cursor_row, auto_cursor_col, pl.row_span, pl.col_span)) {
+                        pl.row_start = auto_cursor_row;
+                        pl.col_start = auto_cursor_col;
+                        break;
+                    }
+                    auto_cursor_row++;
+                    int max_auto = static_cast<int>(occupied.size()) / num_cols + pl.row_span + 1;
+                    if (auto_cursor_row >= max_auto) {
+                        auto_cursor_row = 0;
+                        auto_cursor_col++;
+                        if (auto_cursor_col >= num_cols) {
+                            pl.row_start = 0;
+                            pl.col_start = 0;
+                            break;
                         }
                     }
-                } catch (...) {}
+                }
+                if (pl.row_start < 0) { pl.row_start = 0; pl.col_start = 0; }
+            } else {
+                for (int iter = 0; iter < 100000; iter++) {
+                    if (auto_cursor_col + pl.col_span <= num_cols &&
+                        can_place(auto_cursor_row, auto_cursor_col, pl.row_span, pl.col_span)) {
+                        pl.row_start = auto_cursor_row;
+                        pl.col_start = auto_cursor_col;
+                        break;
+                    }
+                    auto_cursor_col++;
+                    if (auto_cursor_col + pl.col_span > num_cols) {
+                        auto_cursor_col = 0;
+                        auto_cursor_row++;
+                    }
+                }
+                if (pl.row_start < 0) { pl.row_start = 0; pl.col_start = 0; }
             }
         }
 
-        // Set child width: respect explicit width for non-stretch alignment
+        if (pl.col_start + pl.col_span > num_cols) {
+            pl.col_start = std::max(0, num_cols - pl.col_span);
+        }
+
+        mark_occupied(pl.row_start, pl.col_start, pl.row_span, pl.col_span);
+
+        if (!column_flow) {
+            auto_cursor_col = pl.col_start + pl.col_span;
+            auto_cursor_row = pl.row_start;
+            if (auto_cursor_col >= num_cols) {
+                auto_cursor_col = 0;
+                auto_cursor_row++;
+            }
+        } else {
+            auto_cursor_row = pl.row_start + pl.row_span;
+            auto_cursor_col = pl.col_start;
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Step 6: Determine final row count
+    // -----------------------------------------------------------------------
+    num_rows = 0;
+    for (const auto& pl : placements) {
+        num_rows = std::max(num_rows, pl.row_start + pl.row_span);
+    }
+    if (num_rows < 1 && !grid_items.empty()) num_rows = 1;
+
+    // -----------------------------------------------------------------------
+    // Step 7: Layout each child and collect per-row content heights
+    // -----------------------------------------------------------------------
+    float col_x_start = node.geometry.padding.left + node.geometry.border.left;
+
+    std::vector<float> row_content_heights(num_rows, 0.0f);
+
+    for (size_t idx = 0; idx < grid_items.size(); idx++) {
+        auto* child = grid_items[idx];
+        auto& pl = placements[idx];
+
+        float cell_width = 0;
+        for (int c = pl.col_start; c < pl.col_start + pl.col_span && c < num_cols; c++) {
+            cell_width += col_widths[c];
+            if (c > pl.col_start) cell_width += col_gap;
+        }
+
         {
             int justify = node.justify_items;
             if (child->justify_self >= 0) justify = child->justify_self;
             if (justify != 3 && child->specified_width > 0) {
-                // Non-stretch alignment with explicit width — keep the explicit width
                 child->geometry.width = child->specified_width;
             } else {
                 child->geometry.width = cell_width;
             }
         }
 
-        // Layout the child within its cell
         switch (child->mode) {
             case LayoutMode::Block:
             case LayoutMode::InlineBlock:
@@ -3155,123 +3425,153 @@ void LayoutEngine::layout_grid(LayoutNode& node, float containing_width) {
                 break;
         }
 
-        // Position after layout (layout_block may override x/y)
-        child->geometry.x = col_x;
-        if (column_flow) {
-            // For column flow: compute row_y from accumulated row heights
-            float computed_row_y = col_x_start == 0 ? 0 : 0; // start from top padding
-            computed_row_y = node.geometry.padding.top + node.geometry.border.top;
-            for (int r = 0; r < row_index; r++) {
-                computed_row_y += col_flow_row_heights[r] + row_gap;
+        float child_h = child->geometry.margin_box_height();
+        float per_row_h = child_h / static_cast<float>(pl.row_span);
+        for (int r = pl.row_start; r < pl.row_start + pl.row_span && r < num_rows; r++) {
+            row_content_heights[r] = std::max(row_content_heights[r], per_row_h);
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Step 8: Resolve row heights from row_specs + content heights + grid-auto-rows
+    // -----------------------------------------------------------------------
+    std::vector<float> row_heights(num_rows, 0.0f);
+
+    float grid_auto_row_h = 0;
+    if (!node.grid_auto_rows.empty()) {
+        try {
+            std::string ar = node.grid_auto_rows;
+            if (ar.find("px") != std::string::npos) {
+                grid_auto_row_h = std::stof(ar);
+            } else if (ar.find('%') != std::string::npos) {
+                float pct = std::stof(ar);
+                grid_auto_row_h = node.geometry.height * pct / 100.0f;
             }
-            child->geometry.y = computed_row_y;
+        } catch (...) {}
+    }
+
+    float row_fr_total = 0;
+    float row_fixed_total = 0;
+    for (int r = 0; r < num_rows; r++) {
+        if (r < static_cast<int>(row_specs.size())) {
+            auto& s = row_specs[r];
+            if (s.is_fr) {
+                row_fr_total += s.value;
+                row_heights[r] = std::max(row_content_heights[r], s.min_value);
+            } else {
+                row_heights[r] = std::max(s.value, row_content_heights[r]);
+                row_fixed_total += row_heights[r];
+            }
         } else {
-            child->geometry.y = row_y;
+            if (grid_auto_row_h > 0) {
+                row_heights[r] = std::max(grid_auto_row_h, row_content_heights[r]);
+            } else {
+                row_heights[r] = row_content_heights[r];
+            }
+            row_fixed_total += row_heights[r];
+        }
+    }
+
+    if (row_fr_total > 0 && node.specified_height >= 0) {
+        float container_content_h = node.specified_height
+            - node.geometry.padding.top - node.geometry.padding.bottom
+            - node.geometry.border.top - node.geometry.border.bottom;
+        float row_gaps_total = num_rows > 1 ? (static_cast<float>(num_rows) - 1.0f) * rg : 0;
+        float fr_space = container_content_h - row_fixed_total - row_gaps_total;
+        if (fr_space < 0) fr_space = 0;
+        float fr_size = fr_space / row_fr_total;
+
+        for (int r = 0; r < num_rows && r < static_cast<int>(row_specs.size()); r++) {
+            if (row_specs[r].is_fr) {
+                float fr_h = row_specs[r].value * fr_size;
+                row_heights[r] = std::max(row_heights[r], fr_h);
+            }
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Step 9: Position items based on their grid placement
+    // -----------------------------------------------------------------------
+    std::vector<float> row_y_positions(num_rows);
+    {
+        float y = node.geometry.padding.top + node.geometry.border.top;
+        for (int r = 0; r < num_rows; r++) {
+            row_y_positions[r] = y;
+            y += row_heights[r];
+            if (r < num_rows - 1) y += rg;
+        }
+    }
+
+    for (size_t idx = 0; idx < grid_items.size(); idx++) {
+        auto* child = grid_items[idx];
+        auto& pl = placements[idx];
+
+        float col_x = col_x_start;
+        for (int c = 0; c < pl.col_start; c++) {
+            col_x += col_widths[c] + col_gap;
         }
 
-        // Grid cell alignment — justify-items (horizontal)
-        // Applied after layout so we know the child's actual size
+        float cell_width = 0;
+        for (int c = pl.col_start; c < pl.col_start + pl.col_span && c < num_cols; c++) {
+            cell_width += col_widths[c];
+            if (c > pl.col_start) cell_width += col_gap;
+        }
+
+        float cell_height = 0;
+        for (int r = pl.row_start; r < pl.row_start + pl.row_span && r < num_rows; r++) {
+            cell_height += row_heights[r];
+            if (r > pl.row_start) cell_height += rg;
+        }
+
+        float child_h = child->geometry.margin_box_height();
+        int align = node.align_items;
+        if (child->align_self >= 0) align = child->align_self;
+        if (align == 4 && child->specified_height < 0) {
+            float stretch_h = cell_height
+                - child->geometry.margin.top - child->geometry.margin.bottom
+                - child->geometry.border.top - child->geometry.border.bottom
+                - child->geometry.padding.top - child->geometry.padding.bottom;
+            if (stretch_h > child->geometry.height) {
+                child->geometry.height = stretch_h;
+            }
+            child_h = child->geometry.margin_box_height();
+        }
+
+        child->geometry.x = col_x;
+
         float child_actual_w = child->geometry.margin_box_width();
         if (child_actual_w < cell_width) {
             int justify = node.justify_items;
             if (child->justify_self >= 0) justify = child->justify_self;
-            // 0=start, 1=end, 2=center, 3=stretch
             if (justify == 2) {
                 child->geometry.x = col_x + (cell_width - child_actual_w) / 2.0f;
             } else if (justify == 1) {
                 child->geometry.x = col_x + cell_width - child_actual_w;
             }
-            // 3=stretch: child already fills width from layout
         }
 
-        // Use explicit row height if available, then grid-auto-rows for implicit rows
-        float child_h = child->geometry.margin_box_height();
-        if (row_index < static_cast<int>(row_heights_explicit.size()) &&
-            row_heights_explicit[row_index] > 0) {
-            child_h = std::max(child_h, row_heights_explicit[row_index]);
-            child->geometry.height = std::max(child->geometry.height, row_heights_explicit[row_index]);
-        } else if (!node.grid_auto_rows.empty()) {
-            // grid-auto-rows: apply to implicit rows
-            float auto_h = 0;
-            try {
-                std::string ar = node.grid_auto_rows;
-                if (ar.find("px") != std::string::npos) {
-                    auto_h = std::stof(ar);
-                } else if (ar.find('%') != std::string::npos) {
-                    float pct = std::stof(ar);
-                    auto_h = node.geometry.height * pct / 100.0f;
-                }
-            } catch (...) {}
-            if (auto_h > 0) {
-                child_h = std::max(child_h, auto_h);
-                child->geometry.height = std::max(child->geometry.height, auto_h);
+        float row_y_pos = (pl.row_start < num_rows) ? row_y_positions[pl.row_start] : 0;
+        child->geometry.y = row_y_pos;
+
+        if (child_h < cell_height) {
+            if (align == 2) {
+                child->geometry.y = row_y_pos + (cell_height - child_h) / 2.0f;
+            } else if (align == 1) {
+                child->geometry.y = row_y_pos + cell_height - child_h;
             }
         }
-        row_height = std::max(row_height, child_h);
 
         apply_positioning(*child);
-
-        if (column_flow) {
-            // Update per-row height tracking for column flow
-            if (row_index < static_cast<int>(col_flow_row_heights.size())) {
-                col_flow_row_heights[row_index] = std::max(col_flow_row_heights[row_index], child_h);
-            }
-            // Column-major flow: advance row first, wrap to next column
-            row_index++;
-            if (row_index >= num_rows_for_col_flow) {
-                row_index = 0;
-                col_index += col_span;
-            }
-        } else {
-            col_index += col_span;
-            if (col_index >= num_cols) {
-                // Vertical alignment (align-items) for this completed row
-                // Go back and center/end-align items that are shorter than row_height
-                if (node.align_items > 0 && node.align_items != 4) { // 0=start, 4=stretch (default), skip
-                    // Walk back through items in this row
-                    for (int i = static_cast<int>(grid_items.size()) - 1; i >= 0; i--) {
-                        auto* item = grid_items[i];
-                        if (item->geometry.y == row_y) {
-                            float item_h = item->geometry.margin_box_height();
-                            int align = node.align_items;
-                            if (item->align_self >= 0) align = item->align_self;
-                            // 0=flex-start, 1=flex-end, 2=center, 3=baseline, 4=stretch
-                            if (align == 2 && item_h < row_height) {
-                                item->geometry.y += (row_height - item_h) / 2.0f;
-                            } else if (align == 1 && item_h < row_height) {
-                                item->geometry.y += row_height - item_h;
-                            }
-                        } else {
-                            break;
-                        }
-                    }
-                }
-                row_y += row_height + row_gap;
-                row_height = 0;
-                col_index = 0;
-                row_index++;
-            }
-        }
     }
 
-    // Account for last partial row
-    if (column_flow) {
-        // For column flow: compute total height from accumulated row heights
-        float total_row_h = 0;
-        for (int r = 0; r < static_cast<int>(col_flow_row_heights.size()); r++) {
-            total_row_h += col_flow_row_heights[r];
-            if (r > 0) total_row_h += row_gap;
-        }
-        row_y = (node.geometry.padding.top + node.geometry.border.top) + total_row_h;
-    } else if (col_index > 0) {
-        row_y += row_height;
-    } else if (row_index > 0) {
-        // Remove trailing row_gap after last completed row
-        row_y -= row_gap;
+    // -----------------------------------------------------------------------
+    // Step 10: Compute container height
+    // -----------------------------------------------------------------------
+    float total_content_height = 0;
+    for (int r = 0; r < num_rows; r++) {
+        total_content_height += row_heights[r];
+        if (r < num_rows - 1) total_content_height += rg;
     }
-
-    // Compute container height
-    float total_content_height = row_y - (node.geometry.padding.top + node.geometry.border.top);
     float total_height = total_content_height
         + node.geometry.padding.top + node.geometry.padding.bottom
         + node.geometry.border.top + node.geometry.border.bottom;
@@ -3283,6 +3583,37 @@ void LayoutEngine::layout_grid(LayoutNode& node, float containing_width) {
     }
     node.geometry.height = std::max(node.geometry.height, node.min_height);
     node.geometry.height = std::min(node.geometry.height, node.max_height);
+
+    // -----------------------------------------------------------------------
+    // Step 11: align-content -- distribute remaining vertical space among rows
+    // -----------------------------------------------------------------------
+    if (node.align_content > 0 && num_rows > 0) {
+        float container_content_h = node.geometry.height
+            - node.geometry.padding.top - node.geometry.padding.bottom
+            - node.geometry.border.top - node.geometry.border.bottom;
+        if (total_content_height < container_content_h) {
+            float extra = container_content_h - total_content_height;
+            float offset = 0;
+            float inter_row_extra = 0;
+            if (node.align_content == 1) {
+                offset = extra;
+            } else if (node.align_content == 2) {
+                offset = extra / 2.0f;
+            } else if (node.align_content == 4 && num_rows > 1) {
+                inter_row_extra = extra / static_cast<float>(num_rows - 1);
+            } else if (node.align_content == 5 && num_rows > 0) {
+                inter_row_extra = extra / static_cast<float>(num_rows);
+                offset = inter_row_extra / 2.0f;
+            }
+            if (offset > 0 || inter_row_extra > 0) {
+                for (size_t idx = 0; idx < grid_items.size(); idx++) {
+                    auto& pl = placements[idx];
+                    float shift = offset + static_cast<float>(pl.row_start) * inter_row_extra;
+                    grid_items[idx]->geometry.y += shift;
+                }
+            }
+        }
+    }
 
     // Position absolute/fixed children
     position_absolute_children(node);

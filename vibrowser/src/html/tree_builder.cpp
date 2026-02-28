@@ -55,6 +55,7 @@ static bool closes_p(const std::string& tag) {
         "dialog", "dir", "div", "dl", "fieldset", "figcaption", "figure",
         "footer", "header", "hgroup", "hr", "li", "listing", "main",
         "menu", "nav", "ol", "p", "pre", "search", "section", "summary",
+        "form",
         "table", "ul",
         "h1", "h2", "h3", "h4", "h5", "h6"
     };
@@ -930,12 +931,75 @@ void TreeBuilder::handle_in_body(const Token& token) {
             return;
         }
 
+        auto apply_implicit_start_tag_closures = [&](const std::string& incoming_tag) {
+            // Elements that implicitly end an open <p>.
+            if (closes_p(incoming_tag) && has_element_in_button_scope("p")) {
+                close_element("p");
+            }
+
+            // A new <li> implicitly closes a previous <li>.
+            if (incoming_tag == "li") {
+                for (auto it = open_elements_.rbegin(); it != open_elements_.rend(); ++it) {
+                    if ((*it)->tag_name == "li") {
+                        generate_implied_end_tags("li");
+                        pop_until("li");
+                        break;
+                    }
+                    if (is_special_element((*it)->tag_name)
+                        && (*it)->tag_name != "address"
+                        && (*it)->tag_name != "div"
+                        && (*it)->tag_name != "p") {
+                        break;
+                    }
+                }
+
+                if (has_element_in_button_scope("p")) {
+                    close_element("p");
+                }
+            }
+
+            // A new <dd> or <dt> implicitly closes an open <dd>/<dt>.
+            if (incoming_tag == "dd" || incoming_tag == "dt") {
+                for (auto it = open_elements_.rbegin(); it != open_elements_.rend(); ++it) {
+                    const auto& node_tag = (*it)->tag_name;
+                    if (node_tag == "dd" || node_tag == "dt") {
+                        generate_implied_end_tags(node_tag);
+                        pop_until(node_tag);
+                        break;
+                    }
+                    if (is_special_element(node_tag)
+                        && node_tag != "address"
+                        && node_tag != "div"
+                        && node_tag != "p") {
+                        break;
+                    }
+                }
+
+                if (has_element_in_button_scope("p")) {
+                    close_element("p");
+                }
+            }
+
+            // A new <option> or <optgroup> implicitly closes an open <option>.
+            if (incoming_tag == "option" || incoming_tag == "optgroup") {
+                if (!open_elements_.empty() && current_node()->tag_name == "option") {
+                    open_elements_.pop_back();
+                }
+            }
+
+            // A new <optgroup> implicitly closes an open <optgroup>.
+            if (incoming_tag == "optgroup") {
+                if (!open_elements_.empty() && current_node()->tag_name == "optgroup") {
+                    open_elements_.pop_back();
+                }
+            }
+        };
+
+        apply_implicit_start_tag_closures(tag);
+
         // Heading elements: close any open heading
         if (tag == "h1" || tag == "h2" || tag == "h3"
             || tag == "h4" || tag == "h5" || tag == "h6") {
-            if (has_element_in_button_scope("p")) {
-                close_element("p");
-            }
             // If current node is a heading, pop it (implicit close)
             if (!open_elements_.empty()) {
                 auto& cur = current_node()->tag_name;
@@ -948,79 +1012,26 @@ void TreeBuilder::handle_in_body(const Token& token) {
             return;
         }
 
-        // Tags that close an open <p> (per spec: "button scope")
-        if (closes_p(tag)) {
-            if (has_element_in_button_scope("p")) {
-                close_element("p");
-            }
-        }
-
         // <li> closes previous <li> (per spec: use list item scope)
         if (tag == "li") {
-            // Walk the stack and close any open <li> in list item scope
-            for (auto it = open_elements_.rbegin(); it != open_elements_.rend(); ++it) {
-                if ((*it)->tag_name == "li") {
-                    generate_implied_end_tags("li");
-                    pop_until("li");
-                    break;
-                }
-                if (is_special_element((*it)->tag_name)
-                    && (*it)->tag_name != "address"
-                    && (*it)->tag_name != "div"
-                    && (*it)->tag_name != "p") {
-                    break;
-                }
-            }
-            if (has_element_in_button_scope("p")) {
-                close_element("p");
-            }
             insert_element(token);
             return;
         }
 
         // <dd>/<dt> close previous <dd>/<dt>
         if (tag == "dd" || tag == "dt") {
-            for (auto it = open_elements_.rbegin(); it != open_elements_.rend(); ++it) {
-                const auto& node_tag = (*it)->tag_name;
-                if (node_tag == "dd" || node_tag == "dt") {
-                    generate_implied_end_tags(node_tag);
-                    pop_until(node_tag);
-                    break;
-                }
-                if (is_special_element(node_tag)
-                    && node_tag != "address"
-                    && node_tag != "div"
-                    && node_tag != "p") {
-                    break;
-                }
-            }
-            if (has_element_in_button_scope("p")) {
-                close_element("p");
-            }
             insert_element(token);
             return;
         }
 
-        // <option> closes previous <option>
+        // <option> is inserted after implicit-closure handling.
         if (tag == "option") {
-            if (!open_elements_.empty() && current_node()->tag_name == "option") {
-                // Implicitly close the current <option>
-                open_elements_.pop_back();
-            }
             insert_element(token);
             return;
         }
 
-        // <optgroup> closes open <option> and previous <optgroup>
+        // <optgroup> is inserted after implicit-closure handling.
         if (tag == "optgroup") {
-            // First close any open <option> (option inside optgroup)
-            if (!open_elements_.empty() && current_node()->tag_name == "option") {
-                open_elements_.pop_back();
-            }
-            // Then close any open <optgroup>
-            if (!open_elements_.empty() && current_node()->tag_name == "optgroup") {
-                open_elements_.pop_back();
-            }
             insert_element(token);
             return;
         }
@@ -1033,12 +1044,8 @@ void TreeBuilder::handle_in_body(const Token& token) {
             return;
         }
 
-        // <form> closes <p> in button scope
+        // <form> insertion (implicit <p> closure handled above).
         if (tag == "form") {
-            // Spec: If the stack of open elements has a p element in button scope, close a p element
-            if (has_element_in_button_scope("p")) {
-                close_element("p");
-            }
             insert_element(token);
             return;
         }

@@ -2543,13 +2543,36 @@ static JSValue js_element_dimension_getter(JSContext* ctx,
 
 static JSValue js_element_dimension_setter(JSContext* ctx,
                                             JSValueConst this_val,
-                                            int /*argc*/,
-                                            JSValueConst* /*argv*/,
+                                            int argc,
+                                            JSValueConst* argv,
                                             int magic) {
-    // No-op: we don't track scroll state yet.
-    // Accept the value silently so that `el.scrollTop = 0` doesn't throw.
-    (void)this_val;
-    (void)magic;
+    auto* node = unwrap_element(ctx, this_val);
+    auto* state = get_dom_state(ctx);
+    if (!node || !state || argc < 1) return JS_UNDEFINED;
+
+    double val = 0;
+    JS_ToFloat64(ctx, &val, argv[0]);
+    if (val < 0) val = 0; // scroll positions cannot be negative
+
+    auto it = state->layout_geometry.find(static_cast<void*>(node));
+    if (it != state->layout_geometry.end()) {
+        auto& lr = it->second;
+        if (magic == 6) {
+            // scrollTop setter
+            float max_scroll = lr.is_scroll_container
+                ? std::max(0.0f, lr.scroll_content_height - lr.height)
+                : 0.0f;
+            lr.scroll_top = static_cast<float>(std::min(val, static_cast<double>(max_scroll)));
+        } else if (magic == 7) {
+            // scrollLeft setter
+            float max_scroll = lr.is_scroll_container
+                ? std::max(0.0f, lr.scroll_content_width - lr.width)
+                : 0.0f;
+            lr.scroll_left = static_cast<float>(std::min(val, static_cast<double>(max_scroll)));
+        }
+        // Mark DOM as modified so re-render picks up the scroll change
+        state->modified = true;
+    }
     return JS_UNDEFINED;
 }
 
@@ -2916,10 +2939,12 @@ static JSValue js_element_clone_node(JSContext* ctx, JSValueConst this_val,
     auto* node = unwrap_element(ctx, this_val);
     if (!node) return JS_NULL;
 
-    bool deep = false;
+    int deep_arg = 0;
     if (argc > 0) {
-        deep = JS_ToBool(ctx, argv[0]);
+        deep_arg = JS_ToBool(ctx, argv[0]);
+        if (deep_arg < 0) return JS_EXCEPTION;
     }
+    const bool deep = deep_arg != 0;
 
     auto clone = clone_node_impl(node, deep);
     auto* raw_ptr = clone.get();
@@ -2957,9 +2982,19 @@ static JSValue js_document_create_document_fragment(JSContext* ctx,
 
 static bool contains_impl(const clever::html::SimpleNode* ancestor,
                            const clever::html::SimpleNode* target) {
-    if (ancestor == target) return true;
-    for (auto& child : ancestor->children) {
-        if (contains_impl(child.get(), target)) return true;
+    if (!ancestor || !target) return false;
+
+    std::vector<const clever::html::SimpleNode*> to_visit;
+    to_visit.push_back(ancestor);
+    while (!to_visit.empty()) {
+        const auto* current = to_visit.back();
+        to_visit.pop_back();
+        if (current == target) return true;
+
+        for (auto it = current->children.rbegin();
+             it != current->children.rend(); ++it) {
+            to_visit.push_back(it->get());
+        }
     }
     return false;
 }
@@ -5052,6 +5087,28 @@ static JSValue js_mouse_event_constructor(JSContext* ctx,
     }
 
     attach_event_methods(ctx, event_obj);
+
+    // Add getModifierState method (MouseEvent-specific)
+    const char* gms_code = R"JS(
+        (function() {
+            var evt = this;
+            evt.getModifierState = function(key) {
+                if (key === 'Control') return evt.ctrlKey;
+                if (key === 'Shift') return evt.shiftKey;
+                if (key === 'Alt') return evt.altKey;
+                if (key === 'Meta') return evt.metaKey;
+                return false;
+            };
+        })
+    )JS";
+    JSValue gms_fn = JS_Eval(ctx, gms_code, std::strlen(gms_code),
+                              "<mouse-gms>", JS_EVAL_TYPE_GLOBAL);
+    if (JS_IsFunction(ctx, gms_fn)) {
+        JSValue gms_ret = JS_Call(ctx, gms_fn, event_obj, 0, nullptr);
+        JS_FreeValue(ctx, gms_ret);
+    }
+    JS_FreeValue(ctx, gms_fn);
+
     return event_obj;
 }
 

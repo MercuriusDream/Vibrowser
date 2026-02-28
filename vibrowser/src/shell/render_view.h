@@ -78,6 +78,21 @@ struct PixelTransition {
        ctrlKey:(BOOL)ctrlKey
        metaKey:(BOOL)metaKey
       shiftKey:(BOOL)shiftKey;
+// Dispatches a JS "contextmenu" event to the DOM element at the given pixel coordinates.
+// Returns YES if event.preventDefault() was called by a JS handler.
+- (BOOL)renderView:(RenderView*)view didContextMenuAtX:(float)x y:(float)y;
+// Dispatches a JS "dblclick" event to the DOM element at the given pixel coordinates.
+// Returns YES if event.preventDefault() was called by a JS handler.
+- (BOOL)renderView:(RenderView*)view didDoubleClickAtX:(float)x y:(float)y;
+// Called when wheel/trackpad scrolling updates the view scroll position.
+// deltaX/deltaY are the applied deltas in view points after normalization.
+// isMomentum is YES for inertial phase events from trackpad scrolling.
+- (void)renderView:(RenderView*)view
+      didScrollToX:(CGFloat)scrollX
+                 y:(CGFloat)scrollY
+            deltaX:(CGFloat)deltaX
+            deltaY:(CGFloat)deltaY
+        isMomentum:(BOOL)isMomentum;
 @end
 
 // RenderView: NSView subclass that displays the software renderer's pixel buffer.

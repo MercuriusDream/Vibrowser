@@ -635,8 +635,6 @@ static double js_read_window_number(JSContext* ctx, JSValueConst global,
 
 static void js_write_window_scroll_state(JSContext* ctx, JSValueConst global,
                                          double x, double y) {
-    if (!std::isfinite(x) || x < 0.0) x = 0.0;
-    if (!std::isfinite(y) || y < 0.0) y = 0.0;
     JS_SetPropertyStr(ctx, global, "scrollX", JS_NewFloat64(ctx, x));
     JS_SetPropertyStr(ctx, global, "scrollY", JS_NewFloat64(ctx, y));
     JS_SetPropertyStr(ctx, global, "pageXOffset", JS_NewFloat64(ctx, x));
@@ -1970,7 +1968,8 @@ static void install_text_decoder(JSContext* ctx) {
 // =========================================================================
 
 void install_window_bindings(JSContext* ctx, const std::string& url,
-                              int width, int height) {
+                              int width, int height,
+                              float device_pixel_ratio) {
     // Record page start time for performance.now()
     page_start_time = std::chrono::steady_clock::now();
 
@@ -2340,8 +2339,11 @@ void install_window_bindings(JSContext* ctx, const std::string& url,
     // one, so ownership is transferred -- no need to free ls_ref.
 
     // ---- window.devicePixelRatio ----
+    if (!std::isfinite(device_pixel_ratio) || device_pixel_ratio <= 0.0f) {
+        device_pixel_ratio = 1.0f;
+    }
     JS_SetPropertyStr(ctx, global, "devicePixelRatio",
-        JS_NewFloat64(ctx, 1.0));
+        JS_NewFloat64(ctx, static_cast<double>(device_pixel_ratio)));
 
     // ---- window.isSecureContext ----
     JS_SetPropertyStr(ctx, global, "isSecureContext", JS_TRUE);

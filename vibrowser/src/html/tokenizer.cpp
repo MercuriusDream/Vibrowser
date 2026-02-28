@@ -834,6 +834,19 @@ Token Tokenizer::next_token() {
                     continue;
                 }
             }
+            // Check for "[CDATA[" (case-sensitive)
+            if (pos_ + 6 < input_.size()
+                && input_[pos_] == '['
+                && input_[pos_ + 1] == 'C'
+                && input_[pos_ + 2] == 'D'
+                && input_[pos_ + 3] == 'A'
+                && input_[pos_ + 4] == 'T'
+                && input_[pos_ + 5] == 'A'
+                && input_[pos_ + 6] == '[') {
+                pos_ += 7;
+                state_ = TokenizerState::CDATASection;
+                continue;
+            }
             // Bogus comment
             current_token_ = Token{};
             current_token_.type = Token::Comment;
@@ -1376,6 +1389,24 @@ Token Tokenizer::next_token() {
         case TokenizerState::CharacterReference: {
             state_ = TokenizerState::Data;
             return emit_character('&');
+        }
+
+        // ====================================================================
+        // CDATA Section state
+        // ====================================================================
+        case TokenizerState::CDATASection: {
+            if (at_end()) return emit_eof();
+
+            if (pos_ + 2 < input_.size()
+                && input_[pos_] == ']'
+                && input_[pos_ + 1] == ']'
+                && input_[pos_ + 2] == '>') {
+                pos_ += 3;
+                state_ = TokenizerState::Data;
+                continue;
+            }
+
+            return emit_character(consume());
         }
 
         } // end switch

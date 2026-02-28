@@ -2472,30 +2472,38 @@ void Painter::paint_outline(const clever::layout::LayoutNode& node, DisplayList&
     }
 
     float ow = node.outline_width;
-    float offset = node.outline_offset;
+    // outline-offset adds spacing between border edge and outline; keep this path outward-only.
+    float offset = std::max(0.0f, node.outline_offset);
 
-    // The outline is drawn outside the border box, offset by outline_offset
-    // The border box starts at (abs_x, abs_y) with dimensions border_box_width x border_box_height
+    // Border box geometry
     float bw = geom.border_box_width();
     float bh = geom.border_box_height();
 
-    // Outer edge of the outline
-    float ox = abs_x - ow - offset;
-    float oy = abs_y - ow - offset;
-    float outer_w = bw + 2 * (ow + offset);
-
-    // Inner edge of the outline (== the border box edge, offset outward)
+    // Inner edge of outline ring: border box expanded by outline-offset.
     float ix = abs_x - offset;
     float iy = abs_y - offset;
-    float inner_w = bw + 2 * offset;
-    float inner_h = bh + 2 * offset;
+    float inner_w = bw + 2.0f * offset;
+    float inner_h = bh + 2.0f * offset;
+
+    // Outer edge of outline ring: inner edge expanded by outline-width.
+    float ox = ix - ow;
+    float oy = iy - ow;
+    float outer_w = inner_w + 2.0f * ow;
+    float outer_h = inner_h + 2.0f * ow;
 
     Color color = {r, g, b, a};
 
+    auto draw_solid_outline = [&](const Color& c) {
+        list.fill_rect({ox, oy, outer_w, ow}, c);                     // top
+        list.fill_rect({ox, oy + outer_h - ow, outer_w, ow}, c);      // bottom
+        list.fill_rect({ox, iy, ow, inner_h}, c);                     // left
+        list.fill_rect({ix + inner_w, iy, ow, inner_h}, c);           // right
+    };
+
     // Helper to draw a dashed edge
     auto draw_dashed_edge = [&](float ex, float ey, float ew, float eh, bool horizontal) {
-        float dash_len = ow * 3;
-        float gap_len = ow * 2;
+        float dash_len = std::max(ow * 3.0f, 1.0f);
+        float gap_len = std::max(ow * 2.0f, 1.0f);
         float pos = 0;
         float total = horizontal ? ew : eh;
         while (pos < total) {
@@ -2510,8 +2518,8 @@ void Painter::paint_outline(const clever::layout::LayoutNode& node, DisplayList&
 
     // Helper to draw a dotted edge
     auto draw_dotted_edge = [&](float ex, float ey, float ew, float eh, bool horizontal) {
-        float dot = ow;
-        float gap = ow;
+        float dot = std::max(ow, 1.0f);
+        float gap = std::max(ow, 1.0f);
         float pos = 0;
         float total = horizontal ? ew : eh;
         while (pos < total) {
@@ -2526,33 +2534,45 @@ void Painter::paint_outline(const clever::layout::LayoutNode& node, DisplayList&
     if (node.outline_style == 2) {
         // Dashed outline
         draw_dashed_edge(ox, oy, outer_w, ow, true);      // top
-        draw_dashed_edge(ox, iy + inner_h, outer_w, ow, true); // bottom
-        draw_dashed_edge(ox, oy + ow, ow, inner_h, false); // left
-        draw_dashed_edge(ix + inner_w, oy + ow, ow, inner_h, false); // right
+        draw_dashed_edge(ox, oy + outer_h - ow, outer_w, ow, true); // bottom
+        draw_dashed_edge(ox, iy, ow, inner_h, false); // left
+        draw_dashed_edge(ix + inner_w, iy, ow, inner_h, false); // right
     } else if (node.outline_style == 3) {
         // Dotted outline
         draw_dotted_edge(ox, oy, outer_w, ow, true);      // top
-        draw_dotted_edge(ox, iy + inner_h, outer_w, ow, true); // bottom
-        draw_dotted_edge(ox, oy + ow, ow, inner_h, false); // left
-        draw_dotted_edge(ix + inner_w, oy + ow, ow, inner_h, false); // right
+        draw_dotted_edge(ox, oy + outer_h - ow, outer_w, ow, true); // bottom
+        draw_dotted_edge(ox, iy, ow, inner_h, false); // left
+        draw_dotted_edge(ix + inner_w, iy, ow, inner_h, false); // right
     } else if (node.outline_style == 4) {
         // Double outline: two thinner outlines with gap between
-        float thin = ow / 3.0f;
-        // Outer ring
-        list.fill_rect({ox, oy, outer_w, thin}, color);
-        list.fill_rect({ox, iy + inner_h + ow - thin, outer_w, thin}, color);
-        list.fill_rect({ox, oy + thin, thin, inner_h + 2 * (ow - thin)}, color);
-        list.fill_rect({ix + inner_w + ow - thin, oy + thin, thin, inner_h + 2 * (ow - thin)}, color);
-        // Inner ring
-        list.fill_rect({ox + ow - thin, oy + ow - thin, inner_w + 2 * thin, thin}, color);
-        list.fill_rect({ox + ow - thin, iy + inner_h, inner_w + 2 * thin, thin}, color);
-        list.fill_rect({ox + ow - thin, oy + ow, thin, inner_h}, color);
-        list.fill_rect({ix + inner_w, oy + ow, thin, inner_h}, color);
+        if (ow < 2.0f) {
+            draw_solid_outline(color);
+            return;
+        }
+        float band = std::max(ow / 3.0f, 1.0f);
+        band = std::min(band, ow * 0.5f);
+
+        // Outer band
+        list.fill_rect({ox, oy, outer_w, band}, color);                    // top
+        list.fill_rect({ox, oy + outer_h - band, outer_w, band}, color);   // bottom
+        list.fill_rect({ox, oy + band, band, outer_h - 2.0f * band}, color); // left
+        list.fill_rect({ox + outer_w - band, oy + band, band, outer_h - 2.0f * band}, color); // right
+
+        // Inner band
+        float iox = ix - band;
+        float ioy = iy - band;
+        float iow = inner_w + 2.0f * band;
+        float ioh = inner_h + 2.0f * band;
+        list.fill_rect({iox, ioy, iow, band}, color);                    // top
+        list.fill_rect({iox, ioy + ioh - band, iow, band}, color);       // bottom
+        list.fill_rect({iox, ioy + band, band, ioh - 2.0f * band}, color); // left
+        list.fill_rect({iox + iow - band, ioy + band, band, ioh - 2.0f * band}, color); // right
     } else if (node.outline_style == 5 || node.outline_style == 6) {
         // Groove (5) or Ridge (6) — 3D effect with dark/light halves
         // Groove: outer half darker, inner half lighter
         // Ridge: outer half lighter, inner half darker
         float half = ow / 2.0f;
+        float inner_half = ow - half;
         uint8_t dark_r = static_cast<uint8_t>(r * 0.4f);
         uint8_t dark_g = static_cast<uint8_t>(g * 0.4f);
         uint8_t dark_b = static_cast<uint8_t>(b * 0.4f);
@@ -2567,15 +2587,19 @@ void Painter::paint_outline(const clever::layout::LayoutNode& node, DisplayList&
 
         // Outer half
         list.fill_rect({ox, oy, outer_w, half}, outer_color);                  // top
-        list.fill_rect({ox, iy + inner_h + half, outer_w, half}, inner_color);  // bottom
-        list.fill_rect({ox, oy + half, half, inner_h + ow}, outer_color);       // left
-        list.fill_rect({ix + inner_w + half, oy + half, half, inner_h + ow}, inner_color); // right
+        list.fill_rect({ox, oy + outer_h - half, outer_w, half}, inner_color);  // bottom
+        list.fill_rect({ox, oy + half, half, outer_h - 2.0f * half}, outer_color);       // left
+        list.fill_rect({ox + outer_w - half, oy + half, half, outer_h - 2.0f * half}, inner_color); // right
 
         // Inner half
-        list.fill_rect({ox + half, oy + half, inner_w + ow, half}, inner_color);  // top
-        list.fill_rect({ox + half, iy + inner_h, inner_w + ow, half}, outer_color); // bottom
-        list.fill_rect({ox + half, oy + ow, half, inner_h}, inner_color);          // left
-        list.fill_rect({ix + inner_w, oy + ow, half, inner_h}, outer_color);       // right
+        float iox = ix - inner_half;
+        float ioy = iy - inner_half;
+        float iow = inner_w + 2.0f * inner_half;
+        float ioh = inner_h + 2.0f * inner_half;
+        list.fill_rect({iox, ioy, iow, inner_half}, inner_color);  // top
+        list.fill_rect({iox, ioy + ioh - inner_half, iow, inner_half}, outer_color); // bottom
+        list.fill_rect({iox, ioy + inner_half, inner_half, ioh - 2.0f * inner_half}, inner_color);          // left
+        list.fill_rect({iox + iow - inner_half, ioy + inner_half, inner_half, ioh - 2.0f * inner_half}, outer_color);       // right
     } else if (node.outline_style == 7 || node.outline_style == 8) {
         // Inset (7) or Outset (8) — uniform 3D-like effect
         uint8_t dark_r = static_cast<uint8_t>(r * 0.5f);
@@ -2593,15 +2617,12 @@ void Painter::paint_outline(const clever::layout::LayoutNode& node, DisplayList&
         Color br = (node.outline_style == 7) ? light : dark;
 
         list.fill_rect({ox, oy, outer_w, ow}, tl);              // top
-        list.fill_rect({ox, iy + inner_h, outer_w, ow}, br);    // bottom
-        list.fill_rect({ox, oy + ow, ow, inner_h}, tl);         // left
-        list.fill_rect({ix + inner_w, oy + ow, ow, inner_h}, br); // right
+        list.fill_rect({ox, oy + outer_h - ow, outer_w, ow}, br);    // bottom
+        list.fill_rect({ox, iy, ow, inner_h}, tl);         // left
+        list.fill_rect({ix + inner_w, iy, ow, inner_h}, br); // right
     } else {
         // Solid outline (default)
-        list.fill_rect({ox, oy, outer_w, ow}, color);
-        list.fill_rect({ox, iy + inner_h, outer_w, ow}, color);
-        list.fill_rect({ox, oy + ow, ow, inner_h}, color);
-        list.fill_rect({ix + inner_w, oy + ow, ow, inner_h}, color);
+        draw_solid_outline(color);
     }
 }
 

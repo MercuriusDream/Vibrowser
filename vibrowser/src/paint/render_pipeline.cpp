@@ -635,6 +635,114 @@ bool has_attr(const clever::html::SimpleNode& node, const std::string& name) {
     return false;
 }
 
+struct MetaViewportInfo {
+    bool found = false;
+    std::optional<int> width;
+    std::optional<int> height;
+    std::optional<float> initial_scale;
+    std::optional<float> minimum_scale;
+    std::optional<float> maximum_scale;
+    std::optional<bool> user_scalable;
+};
+
+MetaViewportInfo parse_meta_viewport_from_head(const clever::html::SimpleNode& doc,
+                                               int device_width, int device_height) {
+    MetaViewportInfo info;
+    const auto* head = doc.find_element("head");
+    if (!head) return info;
+
+    auto parse_number = [](std::string value) -> std::optional<float> {
+        value = trim(to_lower(value));
+        if (value.empty()) return std::nullopt;
+
+        if (value.size() >= 2 &&
+            ((value.front() == '"' && value.back() == '"') ||
+             (value.front() == '\'' && value.back() == '\''))) {
+            value = trim(value.substr(1, value.size() - 2));
+        }
+        if (value.size() > 2 && value.substr(value.size() - 2) == "px") {
+            value = trim(value.substr(0, value.size() - 2));
+        }
+
+        char* end_ptr = nullptr;
+        float parsed = std::strtof(value.c_str(), &end_ptr);
+        if (end_ptr == value.c_str()) return std::nullopt;
+        while (*end_ptr != '\0' && std::isspace(static_cast<unsigned char>(*end_ptr))) end_ptr++;
+        if (*end_ptr != '\0' || !std::isfinite(parsed)) return std::nullopt;
+        return parsed;
+    };
+
+    auto meta_nodes = head->find_all_elements("meta");
+    for (const auto* meta : meta_nodes) {
+        if (!meta) continue;
+        if (to_lower(trim(get_attr(*meta, "name"))) != "viewport") continue;
+
+        info.found = true;
+        std::string content = get_attr(*meta, "content");
+        if (content.empty()) break;
+
+        size_t start = 0;
+        while (start <= content.size()) {
+            size_t end = content.find_first_of(",;", start);
+            std::string token = trim(content.substr(start, end == std::string::npos
+                                                               ? std::string::npos
+                                                               : end - start));
+            if (!token.empty()) {
+                size_t eq = token.find('=');
+                std::string key = to_lower(trim(token.substr(0, eq)));
+                std::string value;
+                if (eq != std::string::npos) {
+                    value = to_lower(trim(token.substr(eq + 1)));
+                }
+                if (value.size() >= 2 &&
+                    ((value.front() == '"' && value.back() == '"') ||
+                     (value.front() == '\'' && value.back() == '\''))) {
+                    value = trim(value.substr(1, value.size() - 2));
+                }
+
+                if (key == "width") {
+                    if (value == "device-width") {
+                        info.width = std::max(1, device_width);
+                    } else if (auto parsed = parse_number(value); parsed.has_value() && *parsed > 0.0f) {
+                        info.width = std::max(1, static_cast<int>(std::lround(*parsed)));
+                    }
+                } else if (key == "height") {
+                    if (value == "device-height") {
+                        info.height = std::max(1, device_height);
+                    } else if (auto parsed = parse_number(value); parsed.has_value() && *parsed > 0.0f) {
+                        info.height = std::max(1, static_cast<int>(std::lround(*parsed)));
+                    }
+                } else if (key == "initial-scale") {
+                    if (auto parsed = parse_number(value); parsed.has_value() && *parsed > 0.0f) {
+                        info.initial_scale = *parsed;
+                    }
+                } else if (key == "minimum-scale") {
+                    if (auto parsed = parse_number(value); parsed.has_value() && *parsed > 0.0f) {
+                        info.minimum_scale = *parsed;
+                    }
+                } else if (key == "maximum-scale") {
+                    if (auto parsed = parse_number(value); parsed.has_value() && *parsed > 0.0f) {
+                        info.maximum_scale = *parsed;
+                    }
+                } else if (key == "user-scalable") {
+                    if (value == "yes" || value == "1" || value == "true") {
+                        info.user_scalable = true;
+                    } else if (value == "no" || value == "0" || value == "false") {
+                        info.user_scalable = false;
+                    }
+                }
+            }
+
+            if (end == std::string::npos) break;
+            start = end + 1;
+        }
+
+        break; // First <meta name="viewport"> in <head> wins.
+    }
+
+    return info;
+}
+
 // Parse an HTML color attribute value: supports #RRGGBB, RRGGBB, and named colors
 // Returns 0 on failure, ARGB uint32_t on success
 uint32_t parse_html_color_attr(const std::string& value) {
@@ -11838,9 +11946,14 @@ RenderResult render_html(const std::string& html, const std::string& base_url,
 
 RenderResult render_html(const std::string& html, const std::string& base_url,
                          int viewport_width, int viewport_height) {
+    const int device_viewport_width = std::max(1, viewport_width);
+    const int device_viewport_height = std::max(1, viewport_height);
+    int layout_viewport_width = device_viewport_width;
+    int layout_viewport_height = device_viewport_height;
+
     RenderResult result;
-    result.width = viewport_width;
-    result.height = viewport_height;
+    result.width = layout_viewport_width;
+    result.height = layout_viewport_height;
     result.success = false;
 
     // Reset interactive <details> toggle counter
@@ -11856,9 +11969,10 @@ RenderResult render_html(const std::string& html, const std::string& base_url,
         clever::css::set_dark_mode(false);
     }
 
-    // Set viewport dimensions for vw/vh/vmin/vmax CSS units
-    clever::css::Length::set_viewport(static_cast<float>(viewport_width),
-                                     static_cast<float>(viewport_height));
+    // Set default viewport dimensions for vw/vh/vmin/vmax CSS units.
+    // This may be overridden after parsing <meta name="viewport">.
+    clever::css::Length::set_viewport(static_cast<float>(layout_viewport_width),
+                                      static_cast<float>(layout_viewport_height));
 
     try {
         // Step 1: Parse HTML -> SimpleNode tree
@@ -11867,6 +11981,22 @@ RenderResult render_html(const std::string& html, const std::string& base_url,
             result.error = "Failed to parse HTML";
             return result;
         }
+
+        MetaViewportInfo meta_viewport =
+            parse_meta_viewport_from_head(*doc, device_viewport_width, device_viewport_height);
+        if (meta_viewport.width.has_value()) {
+            layout_viewport_width = std::max(1, *meta_viewport.width);
+        }
+        if (meta_viewport.height.has_value()) {
+            layout_viewport_height = std::max(1, *meta_viewport.height);
+        }
+        result.width = layout_viewport_width;
+        result.height = layout_viewport_height;
+
+        // Apply effective viewport dimensions (including <meta name="viewport">)
+        // so vw/vh/vmin/vmax resolve against the layout viewport.
+        clever::css::Length::set_viewport(static_cast<float>(layout_viewport_width),
+                                          static_cast<float>(layout_viewport_height));
 
         // Extract page title from <title> element
         auto title_nodes = doc->find_all_elements("title");
@@ -12033,6 +12163,8 @@ RenderResult render_html(const std::string& html, const std::string& base_url,
         auto ua_stylesheet = clever::css::parse_stylesheet(ua_css);
 
         clever::css::StyleResolver resolver;
+        resolver.set_viewport(static_cast<float>(layout_viewport_width),
+                              static_cast<float>(layout_viewport_height));
         resolver.add_stylesheet(ua_stylesheet);
 
         // Fetch and parse external stylesheets from <link> elements.
@@ -12046,12 +12178,12 @@ RenderResult render_html(const std::string& html, const std::string& base_url,
                 external_sheets.push_back(clever::css::parse_stylesheet(css_result.css_text));
                 // Fetch and merge @import rules from the external stylesheet
                 process_css_imports(external_sheets.back(), css_result.final_url,
-                                    viewport_width, viewport_height);
+                                    layout_viewport_width, layout_viewport_height);
                 // Evaluate @media/@supports queries and promote matching rules
-                flatten_media_queries(external_sheets.back(), viewport_width, viewport_height);
+                flatten_media_queries(external_sheets.back(), layout_viewport_width, layout_viewport_height);
                 flatten_supports_rules(external_sheets.back());
                 flatten_layer_rules(external_sheets.back());
-                flatten_container_rules(external_sheets.back(), viewport_width);
+                flatten_container_rules(external_sheets.back(), layout_viewport_width);
                 flatten_scope_rules(external_sheets.back());
                 resolver.add_stylesheet(external_sheets.back());
             }
@@ -12065,12 +12197,12 @@ RenderResult render_html(const std::string& html, const std::string& base_url,
             page_stylesheet = clever::css::parse_stylesheet(css_text);
             // Fetch and merge @import rules from inline <style> elements
             process_css_imports(page_stylesheet, effective_base_url,
-                                viewport_width, viewport_height);
+                                layout_viewport_width, layout_viewport_height);
             // Evaluate @media/@supports queries and promote matching rules
-            flatten_media_queries(page_stylesheet, viewport_width, viewport_height);
+            flatten_media_queries(page_stylesheet, layout_viewport_width, layout_viewport_height);
             flatten_supports_rules(page_stylesheet);
             flatten_layer_rules(page_stylesheet);
-            flatten_container_rules(page_stylesheet, viewport_width);
+            flatten_container_rules(page_stylesheet, layout_viewport_width);
             flatten_scope_rules(page_stylesheet);
             resolver.add_stylesheet(page_stylesheet);
         }
@@ -12226,7 +12358,8 @@ RenderResult render_html(const std::string& html, const std::string& base_url,
                 auto& js_engine = *js_engine_ptr;
                 clever::js::install_dom_bindings(js_engine.context(), doc.get());
                 clever::js::install_timer_bindings(js_engine.context());
-                clever::js::install_window_bindings(js_engine.context(), effective_base_url, viewport_width, viewport_height);
+                clever::js::install_window_bindings(js_engine.context(), effective_base_url,
+                                                    layout_viewport_width, layout_viewport_height);
                 clever::js::install_fetch_bindings(js_engine.context());
 
                 // Run preliminary layout so getBoundingClientRect/dimension properties work
@@ -12243,8 +12376,8 @@ RenderResult render_html(const std::string& html, const std::string& base_url,
                             return pre_measurer.measure_text_width(text, font_size, font_family,
                                                                     font_weight, is_italic, letter_spacing);
                         });
-                        pre_engine.compute(*pre_root, static_cast<float>(viewport_width),
-                                           static_cast<float>(viewport_height));
+                        pre_engine.compute(*pre_root, static_cast<float>(layout_viewport_width),
+                                           static_cast<float>(layout_viewport_height));
                         clever::js::populate_layout_geometry(js_engine.context(), pre_root.get());
                     }
                 }
@@ -12374,7 +12507,7 @@ RenderResult render_html(const std::string& html, const std::string& base_url,
 
                 // Fire IntersectionObserver callbacks (scripts have now set up observers)
                 clever::js::fire_intersection_observers(
-                    js_engine.context(), viewport_width, viewport_height);
+                    js_engine.context(), layout_viewport_width, layout_viewport_height);
 
                 // Fire ResizeObserver callbacks with loop detection (max depth 4)
                 {
@@ -12382,7 +12515,7 @@ RenderResult render_html(const std::string& html, const std::string& base_url,
                     if (resize_observer_depth < 4) {
                         resize_observer_depth++;
                         clever::js::fire_resize_observers(
-                            js_engine.context(), viewport_width, viewport_height);
+                            js_engine.context(), layout_viewport_width, layout_viewport_height);
                         resize_observer_depth--;
                     }
                 }
@@ -12481,8 +12614,8 @@ RenderResult render_html(const std::string& html, const std::string& base_url,
                                                            font_weight, is_italic, letter_spacing);
         });
 
-        engine.compute(*layout_root, static_cast<float>(viewport_width),
-                       static_cast<float>(viewport_height));
+        engine.compute(*layout_root, static_cast<float>(layout_viewport_width),
+                       static_cast<float>(layout_viewport_height));
 
         // Step 4a: Evaluate @container queries against actual container sizes
         // (two-pass approach: first layout determined container sizes, now evaluate)
@@ -12503,8 +12636,8 @@ RenderResult render_html(const std::string& html, const std::string& base_url,
                     *layout_root, all_container_rules);
                 if (changed) {
                     // Re-run layout since container query rules changed styles
-                    engine.compute(*layout_root, static_cast<float>(viewport_width),
-                                   static_cast<float>(viewport_height));
+                    engine.compute(*layout_root, static_cast<float>(layout_viewport_width),
+                                   static_cast<float>(layout_viewport_height));
                 }
             }
         }
@@ -12575,7 +12708,7 @@ RenderResult render_html(const std::string& html, const std::string& base_url,
                           layout_root->geometry.margin.top +
                           layout_root->geometry.height +
                           layout_root->geometry.margin.bottom;
-        int render_height = std::max(viewport_height,
+        int render_height = std::max(layout_viewport_height,
                                      static_cast<int>(std::ceil(content_h)));
         // Cap to reasonable max to avoid OOM (e.g. 16384px)
         render_height = std::min(render_height, 16384);
@@ -12585,7 +12718,7 @@ RenderResult render_html(const std::string& html, const std::string& base_url,
         auto display_list = painter.paint(*layout_root, static_cast<float>(render_height));
 
         // Step 7: Render to pixel buffer
-        auto renderer = std::make_unique<SoftwareRenderer>(viewport_width, render_height);
+        auto renderer = std::make_unique<SoftwareRenderer>(layout_viewport_width, render_height);
         renderer->clear({255, 255, 255, 255});
         renderer->render(display_list);
 
