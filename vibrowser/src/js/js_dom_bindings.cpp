@@ -1,5 +1,6 @@
 #include <clever/js/js_dom_bindings.h>
 #include <clever/layout/box.h>
+#include <clever/url/url.h>
 
 extern "C" {
 #include <quickjs.h>
@@ -37,6 +38,9 @@ static JSClassID mutation_observer_class_id = 0;
 static JSClassID intersection_observer_class_id = 0;
 static JSClassID resize_observer_class_id = 0;
 static JSClassID canvas2d_class_id = 0;
+static JSClassID url_class_id = 0;
+static JSClassID text_encoder_class_id = 0;
+static JSClassID text_decoder_class_id = 0;
 
 // =========================================================================
 // Per-context state for DOM bindings
@@ -105,6 +109,48 @@ struct DOMState {
     std::unordered_set<clever::html::SimpleNode*> closed_shadow_roots;
 
     int viewport_width = 800, viewport_height = 600;
+};
+
+struct URLState {
+    clever::url::URL parsed_url;
+};
+
+struct TextEncoderState {
+};
+
+struct TextDecoderState {
+    std::string encoding = "utf-8";
+};
+
+static void js_url_finalizer(JSRuntime* /*rt*/, JSValue val) {
+    auto* state = static_cast<URLState*>(JS_GetOpaque(val, url_class_id));
+    if (state) delete state;
+}
+
+static JSClassDef url_class_def = {
+    "URL",
+    js_url_finalizer,
+    nullptr, nullptr, nullptr
+};
+
+static void js_text_encoder_finalizer(JSRuntime* /*rt*/, JSValue /*val*/) {
+}
+
+static JSClassDef text_encoder_class_def = {
+    "TextEncoder",
+    js_text_encoder_finalizer,
+    nullptr, nullptr, nullptr
+};
+
+static void js_text_decoder_finalizer(JSRuntime* /*rt*/, JSValue val) {
+    auto* state = static_cast<TextDecoderState*>(JS_GetOpaque(val, text_decoder_class_id));
+    if (state) delete state;
+}
+
+static JSClassDef text_decoder_class_def = {
+    "TextDecoder",
+    js_text_decoder_finalizer,
+    nullptr, nullptr, nullptr
 };
 
 // Retrieve the DOMState stashed in the global object.
@@ -9255,6 +9301,274 @@ static JSValue js_crypto_subtle_digest(JSContext* ctx, JSValueConst /*this_val*/
 #endif // __APPLE__
 
 // =========================================================================
+// URL constructor and methods
+// =========================================================================
+
+static JSValue js_url_constructor(JSContext* ctx, JSValueConst /*this_val*/,
+                                   int argc, JSValueConst* argv) {
+    if (argc < 1) {
+        return JS_ThrowTypeError(ctx, "URL constructor requires at least 1 argument");
+    }
+
+    const char* url_str = JS_ToCString(ctx, argv[0]);
+    if (!url_str) {
+        return JS_EXCEPTION;
+    }
+
+    clever::url::URL* base_url = nullptr;
+    if (argc > 1 && !JS_IsNull(argv[1]) && !JS_IsUndefined(argv[1])) {
+        auto* base_state = static_cast<URLState*>(JS_GetOpaque(argv[1], url_class_id));
+        if (base_state) {
+            base_url = &base_state->parsed_url;
+        }
+    }
+
+    auto parsed = clever::url::parse(url_str, base_url);
+    JS_FreeCString(ctx, url_str);
+
+    if (!parsed) {
+        return JS_ThrowTypeError(ctx, "Invalid URL");
+    }
+
+    auto* state = new URLState();
+    state->parsed_url = parsed.value();
+
+    JSValue obj = JS_NewObjectClass(ctx, static_cast<int>(url_class_id));
+    JS_SetOpaque(obj, state);
+    return obj;
+}
+
+static JSValue js_url_get_property(JSContext* ctx, JSValueConst this_val,
+                                    const std::string& prop) {
+    auto* state = static_cast<URLState*>(JS_GetOpaque(this_val, url_class_id));
+    if (!state) return JS_UNDEFINED;
+
+    const auto& url = state->parsed_url;
+
+    if (prop == "href") {
+        return JS_NewString(ctx, url.serialize().c_str());
+    } else if (prop == "protocol") {
+        return JS_NewString(ctx, (url.scheme + ":").c_str());
+    } else if (prop == "hostname") {
+        return JS_NewString(ctx, url.host.c_str());
+    } else if (prop == "port") {
+        if (url.port) {
+            return JS_NewString(ctx, std::to_string(url.port.value()).c_str());
+        }
+        return JS_NewString(ctx, "");
+    } else if (prop == "pathname") {
+        return JS_NewString(ctx, url.path.c_str());
+    } else if (prop == "search") {
+        if (url.query.empty()) {
+            return JS_NewString(ctx, "");
+        }
+        return JS_NewString(ctx, ("?" + url.query).c_str());
+    } else if (prop == "hash") {
+        if (url.fragment.empty()) {
+            return JS_NewString(ctx, "");
+        }
+        return JS_NewString(ctx, ("#" + url.fragment).c_str());
+    } else if (prop == "origin") {
+        return JS_NewString(ctx, url.origin().c_str());
+    } else if (prop == "searchParams") {
+        JSValue params = JS_NewObject(ctx);
+        if (!url.query.empty()) {
+            std::string query = url.query;
+            size_t pos = 0;
+            while (pos < query.length()) {
+                size_t eq_pos = query.find('=', pos);
+                size_t amp_pos = query.find('&', pos);
+                if (amp_pos == std::string::npos) amp_pos = query.length();
+
+                if (eq_pos != std::string::npos && eq_pos < amp_pos) {
+                    std::string key = query.substr(pos, eq_pos - pos);
+                    std::string val = query.substr(eq_pos + 1, amp_pos - eq_pos - 1);
+                    JS_SetPropertyStr(ctx, params, key.c_str(), JS_NewString(ctx, val.c_str()));
+                } else {
+                    std::string key = query.substr(pos, amp_pos - pos);
+                    JS_SetPropertyStr(ctx, params, key.c_str(), JS_NewString(ctx, ""));
+                }
+                pos = amp_pos + 1;
+            }
+        }
+        return params;
+    }
+
+    return JS_UNDEFINED;
+}
+
+static JSValue js_url_to_string(JSContext* ctx, JSValueConst this_val,
+                                 int argc, JSValueConst* argv) {
+    (void)argc;
+    (void)argv;
+    return js_url_get_property(ctx, this_val, "href");
+}
+
+static JSValue js_url_get_href(JSContext* ctx, JSValueConst this_val,
+                                int argc, JSValueConst* argv) {
+    (void)argc;
+    (void)argv;
+    return js_url_get_property(ctx, this_val, "href");
+}
+
+static JSValue js_url_get_protocol(JSContext* ctx, JSValueConst this_val,
+                                    int argc, JSValueConst* argv) {
+    (void)argc;
+    (void)argv;
+    return js_url_get_property(ctx, this_val, "protocol");
+}
+
+static JSValue js_url_get_hostname(JSContext* ctx, JSValueConst this_val,
+                                    int argc, JSValueConst* argv) {
+    (void)argc;
+    (void)argv;
+    return js_url_get_property(ctx, this_val, "hostname");
+}
+
+static JSValue js_url_get_port(JSContext* ctx, JSValueConst this_val,
+                                int argc, JSValueConst* argv) {
+    (void)argc;
+    (void)argv;
+    return js_url_get_property(ctx, this_val, "port");
+}
+
+static JSValue js_url_get_pathname(JSContext* ctx, JSValueConst this_val,
+                                    int argc, JSValueConst* argv) {
+    (void)argc;
+    (void)argv;
+    return js_url_get_property(ctx, this_val, "pathname");
+}
+
+static JSValue js_url_get_search(JSContext* ctx, JSValueConst this_val,
+                                  int argc, JSValueConst* argv) {
+    (void)argc;
+    (void)argv;
+    return js_url_get_property(ctx, this_val, "search");
+}
+
+static JSValue js_url_get_hash(JSContext* ctx, JSValueConst this_val,
+                                int argc, JSValueConst* argv) {
+    (void)argc;
+    (void)argv;
+    return js_url_get_property(ctx, this_val, "hash");
+}
+
+static JSValue js_url_get_origin(JSContext* ctx, JSValueConst this_val,
+                                  int argc, JSValueConst* argv) {
+    (void)argc;
+    (void)argv;
+    return js_url_get_property(ctx, this_val, "origin");
+}
+
+static JSValue js_url_get_search_params(JSContext* ctx, JSValueConst this_val,
+                                         int argc, JSValueConst* argv) {
+    (void)argc;
+    (void)argv;
+    return js_url_get_property(ctx, this_val, "searchParams");
+}
+
+// =========================================================================
+// TextEncoder constructor and methods
+// =========================================================================
+
+static JSValue js_text_encoder_constructor(JSContext* ctx, JSValueConst /*this_val*/,
+                                            int argc, JSValueConst* argv) {
+    (void)argc;
+    (void)argv;
+    auto* state = new TextEncoderState();
+    JSValue obj = JS_NewObjectClass(ctx, static_cast<int>(text_encoder_class_id));
+    JS_SetOpaque(obj, state);
+    return obj;
+}
+
+static JSValue js_text_encoder_encode(JSContext* ctx, JSValueConst /*this_val*/,
+                                       int argc, JSValueConst* argv) {
+    if (argc < 1) {
+        return JS_ThrowTypeError(ctx, "encode requires 1 argument");
+    }
+
+    size_t len = 0;
+    const char* str = JS_ToCStringLen(ctx, &len, argv[0]);
+    if (!str) {
+        return JS_EXCEPTION;
+    }
+
+    JSValue array_buf = JS_NewArrayBufferCopy(ctx,
+        reinterpret_cast<const uint8_t*>(str), len);
+    JS_FreeCString(ctx, str);
+
+    if (JS_IsException(array_buf)) {
+        return array_buf;
+    }
+
+    JSValue global = JS_GetGlobalObject(ctx);
+    JSValue uint8_ctor = JS_GetPropertyStr(ctx, global, "Uint8Array");
+    JSValue args[3] = { array_buf, JS_NewInt32(ctx, 0), JS_NewInt64(ctx, static_cast<int64_t>(len)) };
+    JSValue result = JS_CallConstructor(ctx, uint8_ctor, 3, args);
+
+    JS_FreeValue(ctx, uint8_ctor);
+    JS_FreeValue(ctx, global);
+    JS_FreeValue(ctx, array_buf);
+    JS_FreeValue(ctx, args[1]);
+    JS_FreeValue(ctx, args[2]);
+
+    return result;
+}
+
+// =========================================================================
+// TextDecoder constructor and methods
+// =========================================================================
+
+static JSValue js_text_decoder_constructor(JSContext* ctx, JSValueConst this_val,
+                                            int argc, JSValueConst* argv) {
+    (void)this_val;
+    auto* state = new TextDecoderState();
+
+    if (argc > 0) {
+        const char* encoding = JS_ToCString(ctx, argv[0]);
+        if (encoding) {
+            state->encoding = encoding;
+            JS_FreeCString(ctx, encoding);
+        }
+    }
+
+    JSValue obj = JS_NewObjectClass(ctx, static_cast<int>(text_decoder_class_id));
+    JS_SetOpaque(obj, state);
+    return obj;
+}
+
+static JSValue js_text_decoder_decode(JSContext* ctx, JSValueConst this_val,
+                                       int argc, JSValueConst* argv) {
+    (void)this_val;
+
+    if (argc < 1) {
+        return JS_NewString(ctx, "");
+    }
+
+    size_t byte_length = 0;
+    uint8_t* buf = nullptr;
+
+    size_t offset = 0;
+    size_t arr_len = 0;
+    JSValue ab = JS_GetTypedArrayBuffer(ctx, argv[0], &offset, &arr_len, nullptr);
+    if (!JS_IsException(ab)) {
+        buf = JS_GetArrayBuffer(ctx, &byte_length, ab);
+        if (buf) {
+            buf += offset;
+            byte_length = arr_len;
+        }
+    } else {
+        buf = JS_GetArrayBuffer(ctx, &byte_length, argv[0]);
+    }
+
+    if (!buf) {
+        return JS_NewString(ctx, "");
+    }
+
+    return JS_NewStringLen(ctx, reinterpret_cast<const char*>(buf), byte_length);
+}
+
+// =========================================================================
 // Public API
 // =========================================================================
 
@@ -10113,6 +10427,87 @@ void install_dom_bindings(JSContext* ctx,
                          "DOMParser", 0,
                          JS_CFUNC_constructor, 0));
 
+    // ------------------------------------------------------------------
+    // URL constructor
+    // ------------------------------------------------------------------
+    if (url_class_id == 0) {
+        JS_NewClassID(&url_class_id);
+    }
+    if (!JS_IsRegisteredClass(rt, url_class_id)) {
+        JS_NewClass(rt, url_class_id, &url_class_def);
+    }
+
+    JSValue url_proto = JS_NewObject(ctx);
+    JS_SetPropertyStr(ctx, url_proto, "toString",
+        JS_NewCFunction(ctx, js_url_to_string, "toString", 0));
+    JS_SetPropertyStr(ctx, url_proto, "__getHref",
+        JS_NewCFunction(ctx, js_url_get_href, "__getHref", 0));
+    JS_SetPropertyStr(ctx, url_proto, "__getProtocol",
+        JS_NewCFunction(ctx, js_url_get_protocol, "__getProtocol", 0));
+    JS_SetPropertyStr(ctx, url_proto, "__getHostname",
+        JS_NewCFunction(ctx, js_url_get_hostname, "__getHostname", 0));
+    JS_SetPropertyStr(ctx, url_proto, "__getPort",
+        JS_NewCFunction(ctx, js_url_get_port, "__getPort", 0));
+    JS_SetPropertyStr(ctx, url_proto, "__getPathname",
+        JS_NewCFunction(ctx, js_url_get_pathname, "__getPathname", 0));
+    JS_SetPropertyStr(ctx, url_proto, "__getSearch",
+        JS_NewCFunction(ctx, js_url_get_search, "__getSearch", 0));
+    JS_SetPropertyStr(ctx, url_proto, "__getHash",
+        JS_NewCFunction(ctx, js_url_get_hash, "__getHash", 0));
+    JS_SetPropertyStr(ctx, url_proto, "__getOrigin",
+        JS_NewCFunction(ctx, js_url_get_origin, "__getOrigin", 0));
+    JS_SetPropertyStr(ctx, url_proto, "__getSearchParams",
+        JS_NewCFunction(ctx, js_url_get_search_params, "__getSearchParams", 0));
+
+    JSValue url_ctor = JS_NewCFunction2(ctx, js_url_constructor,
+                                        "URL", 2,
+                                        JS_CFUNC_constructor, 0);
+    JS_SetConstructor(ctx, url_ctor, url_proto);
+    JS_SetClassProto(ctx, url_class_id, url_proto);
+    JS_SetPropertyStr(ctx, global, "URL", url_ctor);
+
+    // ------------------------------------------------------------------
+    // TextEncoder constructor
+    // ------------------------------------------------------------------
+    if (text_encoder_class_id == 0) {
+        JS_NewClassID(&text_encoder_class_id);
+    }
+    if (!JS_IsRegisteredClass(rt, text_encoder_class_id)) {
+        JS_NewClass(rt, text_encoder_class_id, &text_encoder_class_def);
+    }
+
+    JSValue encoder_proto = JS_NewObject(ctx);
+    JS_SetPropertyStr(ctx, encoder_proto, "encode",
+        JS_NewCFunction(ctx, js_text_encoder_encode, "encode", 1));
+
+    JSValue encoder_ctor = JS_NewCFunction2(ctx, js_text_encoder_constructor,
+                                            "TextEncoder", 0,
+                                            JS_CFUNC_constructor, 0);
+    JS_SetConstructor(ctx, encoder_ctor, encoder_proto);
+    JS_SetClassProto(ctx, text_encoder_class_id, encoder_proto);
+    JS_SetPropertyStr(ctx, global, "TextEncoder", encoder_ctor);
+
+    // ------------------------------------------------------------------
+    // TextDecoder constructor
+    // ------------------------------------------------------------------
+    if (text_decoder_class_id == 0) {
+        JS_NewClassID(&text_decoder_class_id);
+    }
+    if (!JS_IsRegisteredClass(rt, text_decoder_class_id)) {
+        JS_NewClass(rt, text_decoder_class_id, &text_decoder_class_def);
+    }
+
+    JSValue decoder_proto = JS_NewObject(ctx);
+    JS_SetPropertyStr(ctx, decoder_proto, "decode",
+        JS_NewCFunction(ctx, js_text_decoder_decode, "decode", 1));
+
+    JSValue decoder_ctor = JS_NewCFunction2(ctx, js_text_decoder_constructor,
+                                            "TextDecoder", 1,
+                                            JS_CFUNC_constructor, 0);
+    JS_SetConstructor(ctx, decoder_ctor, decoder_proto);
+    JS_SetClassProto(ctx, text_decoder_class_id, decoder_proto);
+    JS_SetPropertyStr(ctx, global, "TextDecoder", decoder_ctor);
+
     JS_FreeValue(ctx, global);
 
     // ------------------------------------------------------------------
@@ -10796,6 +11191,46 @@ void install_dom_bindings(JSContext* ctx,
     // Clean up the dummy element from owned_nodes -- it will be GC'd
     // by JS, and is also in the owned_nodes list. We leave it there;
     // it's harmless.
+
+    // ---- URL prototype getters ----
+    if (typeof URL !== 'undefined' && URL.prototype) {
+        Object.defineProperty(URL.prototype, 'href', {
+            get: function() { return this.__getHref(); },
+            configurable: true
+        });
+        Object.defineProperty(URL.prototype, 'protocol', {
+            get: function() { return this.__getProtocol(); },
+            configurable: true
+        });
+        Object.defineProperty(URL.prototype, 'hostname', {
+            get: function() { return this.__getHostname(); },
+            configurable: true
+        });
+        Object.defineProperty(URL.prototype, 'port', {
+            get: function() { return this.__getPort(); },
+            configurable: true
+        });
+        Object.defineProperty(URL.prototype, 'pathname', {
+            get: function() { return this.__getPathname(); },
+            configurable: true
+        });
+        Object.defineProperty(URL.prototype, 'search', {
+            get: function() { return this.__getSearch(); },
+            configurable: true
+        });
+        Object.defineProperty(URL.prototype, 'hash', {
+            get: function() { return this.__getHash(); },
+            configurable: true
+        });
+        Object.defineProperty(URL.prototype, 'origin', {
+            get: function() { return this.__getOrigin(); },
+            configurable: true
+        });
+        Object.defineProperty(URL.prototype, 'searchParams', {
+            get: function() { return this.__getSearchParams(); },
+            configurable: true
+        });
+    }
 })();
 )JS";
 
