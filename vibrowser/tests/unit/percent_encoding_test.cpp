@@ -988,3 +988,26 @@ TEST(IsURLCodePoint, DollarAndPlusAreCodePointsV143) {
     EXPECT_TRUE(is_url_code_point(U','));
     EXPECT_TRUE(is_url_code_point(U';'));
 }
+
+TEST(PercentEncoding, BracketsEncodedV144) {
+    // '[' and ']' are NOT valid URL code points and must be encoded
+    EXPECT_EQ(percent_encode("["), "%5B");
+    EXPECT_EQ(percent_encode("]"), "%5D");
+    EXPECT_EQ(percent_encode("[test]"), "%5Btest%5D");
+}
+
+TEST(PercentDecoding, EmptyStringDecodesEmptyV144) {
+    // Decoding an empty string should produce an empty string
+    EXPECT_EQ(percent_decode(""), "");
+}
+
+TEST(PercentEncoding, EmptyStringEncodesEmptyV144) {
+    // Encoding an empty string should produce an empty string
+    EXPECT_EQ(percent_encode(""), "");
+}
+
+TEST(IsURLCodePoint, PeriodAndColonAreCodePointsV144) {
+    // '.' and ':' are valid URL code points
+    EXPECT_TRUE(is_url_code_point(U'.'));
+    EXPECT_TRUE(is_url_code_point(U':'));
+}

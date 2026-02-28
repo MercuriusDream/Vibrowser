@@ -11856,3 +11856,81 @@ TEST(CORSPolicyTest, CorsV143_8_SameOriginLocalhostWithDifferentPorts) {
     EXPECT_TRUE(has_enforceable_document_origin("http://localhost:3000"));
     EXPECT_TRUE(has_enforceable_document_origin("http://localhost:4000"));
 }
+
+// ---------------------------------------------------------------------------
+// V144 — CORS policy tests
+// ---------------------------------------------------------------------------
+
+// 1. Cross-scheme HTTP to HTTPS is cross-origin
+TEST(CORSPolicyTest, CorsV144_1_CrossSchemeHttpToHttps) {
+    // http vs https on same host → cross-origin
+    EXPECT_TRUE(is_cross_origin("http://example.com",
+                                 "https://example.com/data"));
+    // https vs http also cross-origin
+    EXPECT_TRUE(is_cross_origin("https://example.com",
+                                 "http://example.com/data"));
+}
+
+// 2. Same-origin check ignores query and fragment in URL
+TEST(CORSPolicyTest, CorsV144_2_SameOriginWithQueryAndFragment) {
+    // Origin doesn't include path/query/fragment; URLs with those are same-origin
+    EXPECT_FALSE(is_cross_origin("https://example.com",
+                                  "https://example.com/path?query=1#frag"));
+    EXPECT_FALSE(is_cross_origin("https://example.com",
+                                  "https://example.com/?a=b&c=d#section"));
+}
+
+// 3. ACAO with space-separated multiple origins → rejected
+TEST(CORSPolicyTest, CorsV144_3_ACAOMultipleOriginsNotSupported) {
+    clever::net::HeaderMap h;
+    h.set("Access-Control-Allow-Origin", "https://a.example.com https://b.example.com");
+    // Space-separated list is not valid ACAO → should reject
+    EXPECT_FALSE(cors_allows_response("https://a.example.com",
+                                       "https://api.example.com/data",
+                                       h, false));
+    EXPECT_FALSE(cors_allows_response("https://b.example.com",
+                                       "https://api.example.com/data",
+                                       h, false));
+}
+
+// 4. Empty origin string is not enforceable
+TEST(CORSPolicyTest, CorsV144_4_EmptyOriginNotEnforceable) {
+    EXPECT_FALSE(has_enforceable_document_origin(""));
+    // Empty origin is not cross-origin (treated as same-origin / no-op)
+    EXPECT_FALSE(is_cross_origin("", "https://example.com/data"));
+}
+
+// 5. HTTPS IP address origin is enforceable
+TEST(CORSPolicyTest, CorsV144_5_HttpsIPAddressEnforceable) {
+    EXPECT_TRUE(has_enforceable_document_origin("https://10.0.0.1"));
+    EXPECT_TRUE(has_enforceable_document_origin("http://192.168.1.1"));
+    EXPECT_TRUE(has_enforceable_document_origin("https://172.16.0.1"));
+}
+
+// 6. Non-standard port preserved in origin
+TEST(CORSPolicyTest, CorsV144_6_NonStandardPortPreservedInOrigin) {
+    // Non-standard port → enforceable
+    EXPECT_TRUE(has_enforceable_document_origin("http://example.com:9999"));
+    // Different non-standard ports → cross-origin
+    EXPECT_TRUE(is_cross_origin("http://example.com:9999",
+                                 "http://example.com:8888/data"));
+    // Same non-standard port → same-origin
+    EXPECT_FALSE(is_cross_origin("http://example.com:9999",
+                                  "http://example.com:9999/data"));
+}
+
+// 7. HTTPS URL is CORS-eligible
+TEST(CORSPolicyTest, CorsV144_7_CorsEligibleHttpsUrl) {
+    EXPECT_TRUE(is_cors_eligible_request_url("https://example.com/api"));
+    EXPECT_TRUE(is_cors_eligible_request_url("http://example.com/api"));
+    EXPECT_TRUE(is_cors_eligible_request_url("https://api.example.com/v2/data"));
+}
+
+// 8. data: URL is NOT CORS-eligible
+TEST(CORSPolicyTest, CorsV144_8_CorsNotEligibleDataUrl) {
+    EXPECT_FALSE(is_cors_eligible_request_url("data:text/html,test"));
+    EXPECT_FALSE(is_cors_eligible_request_url("data:application/json,{}"));
+    // blob: and about: also not eligible
+    EXPECT_FALSE(is_cors_eligible_request_url("blob:https://example.com/uuid"));
+    EXPECT_FALSE(is_cors_eligible_request_url("about:blank"));
+}

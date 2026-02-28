@@ -26826,3 +26826,112 @@ TEST(LayoutNodeProps, FontSizeDefaultV143) {
     LayoutNode n;
     EXPECT_FLOAT_EQ(n.font_size, 16.0f);
 }
+
+// V144: block with overflow hidden (overflow=1)
+TEST(LayoutEngineTest, LayoutV144_1) {
+    auto root = make_block("div");
+    root->overflow = 1; // 1=hidden
+    root->specified_width = 200.0f;
+    auto child = make_block("p");
+    child->specified_width = 400.0f;
+    root->append_child(std::move(child));
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+    EXPECT_EQ(root->overflow, 1);
+    EXPECT_FLOAT_EQ(root->geometry.width, 200.0f);
+}
+
+// V144: flex container justify-content center
+TEST(LayoutEngineTest, LayoutV144_2) {
+    auto root = make_flex("div");
+    root->specified_width = 600.0f;
+    root->justify_content = 2; // 2=center
+    auto c1 = make_block("span");
+    c1->specified_width = 100.0f;
+    root->append_child(std::move(c1));
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+    EXPECT_EQ(root->justify_content, 2);
+    EXPECT_FLOAT_EQ(root->geometry.width, 600.0f);
+}
+
+// V144: absolute positioned element (position_type=2)
+TEST(LayoutEngineTest, LayoutV144_3) {
+    auto root = make_block("div");
+    root->specified_width = 500.0f;
+    auto child = make_block("div");
+    child->position_type = 2; // 2=absolute
+    child->specified_width = 100.0f;
+    root->append_child(std::move(child));
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+    EXPECT_FLOAT_EQ(root->geometry.width, 500.0f);
+    EXPECT_EQ(root->children[0]->position_type, 2);
+}
+
+// V144: two inline elements side by side
+TEST(LayoutEngineTest, LayoutV144_4) {
+    auto root = make_block("div");
+    root->specified_width = 400.0f;
+    auto i1 = make_inline("span");
+    auto i2 = make_inline("span");
+    auto* i1_ptr = i1.get();
+    auto* i2_ptr = i2.get();
+    root->append_child(std::move(i1));
+    root->append_child(std::move(i2));
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+    EXPECT_EQ(i1_ptr->display, DisplayType::Inline);
+    EXPECT_EQ(i2_ptr->display, DisplayType::Inline);
+    EXPECT_FLOAT_EQ(root->geometry.width, 400.0f);
+}
+
+// V144: block with percentage-like width (300 of 600 parent)
+TEST(LayoutEngineTest, LayoutV144_5) {
+    auto root = make_block("div");
+    root->specified_width = 600.0f;
+    auto child = make_block("div");
+    child->specified_width = 300.0f;
+    root->append_child(std::move(child));
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+    EXPECT_FLOAT_EQ(root->geometry.width, 600.0f);
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.width, 300.0f);
+}
+
+// V144: flex wrap enabled, children overflow
+TEST(LayoutEngineTest, LayoutV144_6) {
+    auto root = make_flex("div");
+    root->specified_width = 200.0f;
+    root->flex_wrap = 1; // 1=wrap
+    auto c1 = make_block("div");
+    c1->specified_width = 150.0f;
+    auto c2 = make_block("div");
+    c2->specified_width = 150.0f;
+    root->append_child(std::move(c1));
+    root->append_child(std::move(c2));
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+    EXPECT_EQ(root->flex_wrap, 1);
+    EXPECT_FLOAT_EQ(root->geometry.width, 200.0f);
+}
+
+// V144: table display type preserved
+TEST(LayoutEngineTest, LayoutV144_7) {
+    auto node = std::make_unique<LayoutNode>();
+    node->tag_name = "table";
+    node->mode = LayoutMode::Block;
+    node->display = DisplayType::Table;
+    node->specified_width = 400.0f;
+    LayoutEngine engine;
+    engine.compute(*node, 800.0f, 600.0f);
+    EXPECT_EQ(node->display, DisplayType::Table);
+    EXPECT_FLOAT_EQ(node->geometry.width, 400.0f);
+}
+
+// V144: default specified_width is -1 (auto)
+TEST(LayoutNodeProps, SpecifiedWidthDefaultAutoV144) {
+    using namespace clever::layout;
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.specified_width, -1.0f);
+}

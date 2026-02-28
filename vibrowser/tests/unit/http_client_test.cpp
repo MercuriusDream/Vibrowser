@@ -24500,3 +24500,141 @@ TEST(HttpClient, CookieJarOverwritesSameCookieNameV143) {
     EXPECT_EQ(header.find("token143=old-value"), std::string::npos)
         << "Should not have old value, got: " << header;
 }
+
+// ===========================================================================
+// V144 Tests
+// ===========================================================================
+
+// 1. Request serialize with fragment stripped — fragment NOT in request line
+TEST(HttpClient, RequestSerializeWithFragmentStrippedV144) {
+    Request req;
+    req.method = Method::GET;
+    req.url = "https://v144frag.example.com/docs?page=1#section-top";
+    req.parse_url();
+
+    auto bytes = req.serialize();
+    std::string raw(bytes.begin(), bytes.end());
+
+    // Fragment must NOT appear in the serialized request
+    EXPECT_EQ(raw.find("#section-top"), std::string::npos)
+        << "Fragment should be stripped, got: " << raw;
+    // Path and query should still be present
+    EXPECT_NE(raw.find("/docs"), std::string::npos);
+    EXPECT_NE(raw.find("page=1"), std::string::npos);
+    // Host should omit port 443
+    EXPECT_NE(raw.find("Host: v144frag.example.com\r\n"), std::string::npos);
+}
+
+// 2. Response parse 302 Found redirect
+TEST(HttpClient, ResponseParse302FoundRedirectV144) {
+    std::string raw =
+        "HTTP/1.1 302 Found\r\n"
+        "Location: https://v144redirect.example.com/new-location\r\n"
+        "Content-Length: 0\r\n"
+        "\r\n";
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 302);
+    EXPECT_EQ(resp->status_text, "Found");
+    EXPECT_TRUE(resp->headers.has("Location"));
+    EXPECT_EQ(resp->headers.get("location").value(),
+              "https://v144redirect.example.com/new-location");
+    EXPECT_TRUE(resp->body.empty());
+}
+
+// 3. HeaderMap append then get_all returns values in order
+TEST(HttpClient, HeaderMapAppendThenGetAllOrderV144) {
+    HeaderMap map;
+    map.append("X-Order144", "alpha");
+    map.append("X-Order144", "bravo");
+    map.append("X-Order144", "charlie");
+
+    auto all = map.get_all("X-Order144");
+    ASSERT_EQ(all.size(), 3u);
+    EXPECT_EQ(all[0], "alpha");
+    EXPECT_EQ(all[1], "bravo");
+    EXPECT_EQ(all[2], "charlie");
+}
+
+// 4. CookieJar HttpOnly and regular cookie both returned
+TEST(HttpClient, CookieJarHttpOnlyAndRegularBothReturnedV144) {
+    CookieJar jar;
+    jar.set_from_header("httponly144=secure-val; HttpOnly; Path=/", "v144httponly.example.com");
+    jar.set_from_header("regular144=normal-val; Path=/", "v144httponly.example.com");
+
+    std::string header = jar.get_cookie_header("v144httponly.example.com", "/", false);
+
+    // Both cookies should be returned
+    EXPECT_NE(header.find("httponly144=secure-val"), std::string::npos)
+        << "HttpOnly cookie should be returned, got: " << header;
+    EXPECT_NE(header.find("regular144=normal-val"), std::string::npos)
+        << "Regular cookie should be returned, got: " << header;
+}
+
+// 5. GET request with no body — no Content-Length header
+TEST(HttpClient, RequestSerializeEmptyBodyGetV144) {
+    Request req;
+    req.method = Method::GET;
+    req.host = "v144nobody.example.com";
+    req.port = 80;
+    req.path = "/index.html";
+
+    auto bytes = req.serialize();
+    std::string raw(bytes.begin(), bytes.end());
+
+    EXPECT_NE(raw.find("GET /index.html HTTP/1.1\r\n"), std::string::npos);
+    // GET with no body should NOT have Content-Length
+    EXPECT_EQ(raw.find("Content-Length"), std::string::npos)
+        << "GET without body should have no Content-Length, got: " << raw;
+    // Port 80 should be omitted from Host
+    EXPECT_NE(raw.find("Host: v144nobody.example.com\r\n"), std::string::npos);
+    EXPECT_EQ(raw.find("Host: v144nobody.example.com:80"), std::string::npos);
+}
+
+// 6. Response parse 200 with empty body
+TEST(HttpClient, ResponseParse200EmptyBodyV144) {
+    std::string raw =
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Length: 0\r\n"
+        "\r\n";
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 200);
+    EXPECT_EQ(resp->status_text, "OK");
+    EXPECT_TRUE(resp->body.empty());
+    EXPECT_EQ(resp->body.size(), 0u);
+    EXPECT_EQ(resp->body_as_string(), "");
+}
+
+// 7. HeaderMap set preserves case of header name
+TEST(HttpClient, HeaderMapSetCasePreservationV144) {
+    HeaderMap map;
+    map.set("Content-Type", "text/html");
+
+    // Lookup is case-insensitive
+    EXPECT_EQ(map.get("content-type").value(), "text/html");
+    EXPECT_EQ(map.get("CONTENT-TYPE").value(), "text/html");
+    EXPECT_EQ(map.get("Content-Type").value(), "text/html");
+
+    // has() is case-insensitive
+    EXPECT_TRUE(map.has("content-type"));
+    EXPECT_TRUE(map.has("Content-Type"));
+    EXPECT_TRUE(map.has("CONTENT-TYPE"));
+}
+
+// 8. CookieJar SameSite=Lax attribute — cookie is stored and returned
+TEST(HttpClient, CookieJarSameSiteLaxAttributeV144) {
+    CookieJar jar;
+    jar.set_from_header("sess144=lax-val; SameSite=Lax; Path=/", "v144samesite.example.com");
+
+    std::string header = jar.get_cookie_header("v144samesite.example.com", "/", false);
+
+    EXPECT_NE(header.find("sess144=lax-val"), std::string::npos)
+        << "Cookie with SameSite=Lax should be stored and returned, got: " << header;
+}

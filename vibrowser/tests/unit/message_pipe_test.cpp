@@ -1435,3 +1435,68 @@ TEST(MessagePipeTest, MessagePipeV143_3_MessageTypeDistinctValues) {
         EXPECT_EQ(received_type, t);
     }
 }
+
+// ------------------------------------------------------------------
+// V144: Send 10 messages sequentially, receive all 10 in order
+// ------------------------------------------------------------------
+
+TEST(MessagePipeTest, MessagePipeV144_1_TenMessagesSequentialV144) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    for (uint8_t i = 0; i < 10; ++i) {
+        std::vector<uint8_t> data = {i, static_cast<uint8_t>(i * 2), static_cast<uint8_t>(i + 100)};
+        ASSERT_TRUE(a.send(data));
+    }
+
+    for (uint8_t i = 0; i < 10; ++i) {
+        auto received = b.receive();
+        ASSERT_TRUE(received.has_value());
+        ASSERT_EQ(received->size(), 3u);
+        EXPECT_EQ((*received)[0], i);
+        EXPECT_EQ((*received)[1], static_cast<uint8_t>(i * 2));
+        EXPECT_EQ((*received)[2], static_cast<uint8_t>(i + 100));
+    }
+}
+
+// ------------------------------------------------------------------
+// V144: Single byte payload
+// ------------------------------------------------------------------
+
+TEST(MessagePipeTest, MessagePipeV144_2_SingleBytePayloadV144) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    std::vector<uint8_t> single_byte = {0x42};
+    ASSERT_TRUE(a.send(single_byte));
+
+    auto received = b.receive();
+    ASSERT_TRUE(received.has_value());
+    ASSERT_EQ(received->size(), 1u);
+    EXPECT_EQ((*received)[0], 0x42);
+}
+
+// ------------------------------------------------------------------
+// V144: Close both ends, verify no crash
+// ------------------------------------------------------------------
+
+TEST(MessagePipeTest, MessagePipeV144_3_CloseBothEndsV144) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    a.close();
+    b.close();
+
+    EXPECT_FALSE(a.is_open());
+    EXPECT_FALSE(b.is_open());
+
+    // Sending on either closed end should fail, not crash
+    std::vector<uint8_t> data = {1, 2, 3};
+    EXPECT_FALSE(a.send(data));
+    EXPECT_FALSE(b.send(data));
+
+    // Receiving should return nullopt, not crash
+    auto ra = a.receive();
+    EXPECT_FALSE(ra.has_value());
+    auto rb = b.receive();
+    EXPECT_FALSE(rb.has_value());
+
+    SUCCEED();
+}

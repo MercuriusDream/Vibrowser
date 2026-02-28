@@ -25497,3 +25497,41 @@ TEST(CSSStyleTest, CssV143_4_PointerEventsNoneApplied) {
     cascade.apply_declaration(style, make_decl("pointer-events", "none"), parent);
     EXPECT_EQ(style.pointer_events, PointerEvents::None);
 }
+
+// === V144 CSS Style Tests ===
+
+TEST(CSSStyleTest, CssV144_1_DisplayNoneApplied) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("display", "none"), parent);
+    EXPECT_EQ(style.display, Display::None);
+}
+
+TEST(CSSStyleTest, CssV144_2_DisplayInlineBlockApplied) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("display", "inline-block"), parent);
+    EXPECT_EQ(style.display, Display::InlineBlock);
+}
+
+TEST(PropertyCascadeTest, VerticalAlignMiddleV144) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("vertical-align", "middle"), parent);
+    EXPECT_EQ(style.vertical_align, VerticalAlign::Middle);
+}
+
+TEST(CSSStyleTest, CssV144_4_UserSelectNoneApplied) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("user-select", "none"), parent);
+    EXPECT_EQ(style.user_select, UserSelect::None);
+}

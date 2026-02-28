@@ -35885,3 +35885,100 @@ TEST(JSEngine, JsV143_8) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "2,-1,true,false");
 }
+
+// V144: Date.now() returns number
+TEST(JSEngine, JsV144_1) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var t = Date.now();
+        typeof t === 'number' && t > 0 ? 'true' : 'false';
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true");
+}
+
+// V144: Array.concat merges arrays
+TEST(JSEngine, JsV144_2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var a = [1, 2];
+        var b = [3, 4];
+        var c = a.concat(b);
+        c.length + ',' + c[0] + ',' + c[1] + ',' + c[2] + ',' + c[3];
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "4,1,2,3,4");
+}
+
+// V144: String.replace with regex
+TEST(JSEngine, JsV144_3) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var s = 'hello world hello';
+        var r = s.replace(/hello/g, 'hi');
+        r;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "hi world hi");
+}
+
+// V144: Object.freeze prevents modification
+TEST(JSEngine, JsV144_4) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var obj = { x: 10 };
+        Object.freeze(obj);
+        obj.x = 20;
+        obj.y = 30;
+        String(obj.x) + ',' + String(obj.y);
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "10,undefined");
+}
+
+// V144: Array.sort with comparator
+TEST(JSEngine, JsV144_5) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var arr = [3, 1, 4, 1, 5, 9];
+        arr.sort(function(a, b) { return a - b; });
+        arr.join(',');
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1,1,3,4,5,9");
+}
+
+// V144: String.charAt and charCodeAt
+TEST(JSEngine, JsV144_6) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var s = 'ABC';
+        s.charAt(0) + ',' + s.charAt(2) + ',' + s.charCodeAt(0) + ',' + s.charCodeAt(1);
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "A,C,65,66");
+}
+
+// V144: Number.toFixed precision
+TEST(JSEngine, JsV144_7) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var n = 3.14159;
+        n.toFixed(0) + ',' + n.toFixed(2) + ',' + n.toFixed(4);
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "3,3.14,3.1416");
+}
+
+// V144: Array.slice with negative index
+TEST(JSEngine, JsV144_8) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var arr = [10, 20, 30, 40, 50];
+        var s1 = arr.slice(-2);
+        var s2 = arr.slice(1, -1);
+        s1.join(',') + '|' + s2.join(',');
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "40,50|20,30,40");
+}

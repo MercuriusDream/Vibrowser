@@ -23023,3 +23023,121 @@ TEST(HtmlParserTest, HtmlV143_8) {
     EXPECT_EQ(small->tag_name, "small");
     EXPECT_EQ(small->text_content(), "Fine print");
 }
+
+// === V144 HTML Parser Tests ===
+
+TEST(HtmlParserTest, HtmlV144_1) {
+    // br element (void element)
+    auto doc = clever::html::parse("<html><body><p>Line one<br>Line two</p></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* br = doc->find_element("br");
+    ASSERT_NE(br, nullptr);
+    EXPECT_EQ(br->tag_name, "br");
+    EXPECT_TRUE(br->children.empty());
+}
+
+TEST(HtmlParserTest, HtmlV144_2) {
+    // hr element (void element)
+    auto doc = clever::html::parse("<html><body><hr></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* hr = doc->find_element("hr");
+    ASSERT_NE(hr, nullptr);
+    EXPECT_EQ(hr->tag_name, "hr");
+    EXPECT_TRUE(hr->children.empty());
+}
+
+TEST(HtmlParserTest, HtmlV144_3) {
+    // input with type=text
+    auto doc = clever::html::parse("<html><body><form><input type=\"text\"></form></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* input = doc->find_element("input");
+    ASSERT_NE(input, nullptr);
+    EXPECT_EQ(input->tag_name, "input");
+    bool found_type = false;
+    for (const auto& attr : input->attributes) {
+        if (attr.name == "type") {
+            found_type = true;
+            EXPECT_EQ(attr.value, "text");
+        }
+    }
+    EXPECT_TRUE(found_type) << "type attribute not found on input";
+}
+
+TEST(HtmlParserTest, HtmlV144_4) {
+    // input with type=checkbox
+    auto doc = clever::html::parse("<html><body><form><input type=\"checkbox\"></form></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* input = doc->find_element("input");
+    ASSERT_NE(input, nullptr);
+    EXPECT_EQ(input->tag_name, "input");
+    bool found_type = false;
+    for (const auto& attr : input->attributes) {
+        if (attr.name == "type") {
+            found_type = true;
+            EXPECT_EQ(attr.value, "checkbox");
+        }
+    }
+    EXPECT_TRUE(found_type) << "type attribute not found on input";
+}
+
+TEST(HtmlParserTest, HtmlV144_5) {
+    // select with options
+    auto doc = clever::html::parse("<html><body><select><option>A</option><option>B</option></select></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* select = doc->find_element("select");
+    ASSERT_NE(select, nullptr);
+    EXPECT_EQ(select->tag_name, "select");
+
+    int option_count = 0;
+    for (const auto& child : select->children) {
+        if (child->tag_name == "option") {
+            option_count++;
+        }
+    }
+    EXPECT_EQ(option_count, 2);
+}
+
+TEST(HtmlParserTest, HtmlV144_6) {
+    // textarea element
+    auto doc = clever::html::parse("<html><body><form><textarea>Some text</textarea></form></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* textarea = doc->find_element("textarea");
+    ASSERT_NE(textarea, nullptr);
+    EXPECT_EQ(textarea->tag_name, "textarea");
+}
+
+TEST(HtmlParserTest, HtmlV144_7) {
+    // button element
+    auto doc = clever::html::parse("<html><body><form><button>Click me</button></form></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* button = doc->find_element("button");
+    ASSERT_NE(button, nullptr);
+    EXPECT_EQ(button->tag_name, "button");
+    EXPECT_EQ(button->text_content(), "Click me");
+}
+
+TEST(HtmlParserTest, HtmlV144_8) {
+    // label with for attribute
+    auto doc = clever::html::parse("<html><body><form><label for=\"name\">Name:</label></form></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* label = doc->find_element("label");
+    ASSERT_NE(label, nullptr);
+    EXPECT_EQ(label->tag_name, "label");
+    EXPECT_EQ(label->text_content(), "Name:");
+    bool found_for = false;
+    for (const auto& attr : label->attributes) {
+        if (attr.name == "for") {
+            found_for = true;
+            EXPECT_EQ(attr.value, "name");
+        }
+    }
+    EXPECT_TRUE(found_for) << "for attribute not found on label";
+}

@@ -10325,3 +10325,61 @@ TEST_F(CSSStylesheetTest, OverscrollBehaviorDeclarationV143) {
     }
     EXPECT_TRUE(found) << "overscroll-behavior declaration not found";
 }
+
+// === V144 CSS Parser Tests ===
+
+TEST_F(CSSStylesheetTest, OutlineStyleDeclarationV144) {
+    auto ss = parse_stylesheet("button { outline-style: solid; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "outline-style") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "solid");
+        }
+    }
+    EXPECT_TRUE(found) << "outline-style declaration not found";
+}
+
+TEST_F(CSSStylesheetTest, OutlineColorDeclarationV144) {
+    auto ss = parse_stylesheet("a:focus { outline-color: red; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "outline-color") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "red");
+        }
+    }
+    EXPECT_TRUE(found) << "outline-color declaration not found";
+}
+
+TEST_F(CSSStylesheetTest, WordBreakDeclarationV144) {
+    auto ss = parse_stylesheet("p { word-break: break-all; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "word-break") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "break-all");
+        }
+    }
+    EXPECT_TRUE(found) << "word-break declaration not found";
+}
+
+TEST_F(CSSStylesheetTest, OverflowWrapDeclarationV144) {
+    auto ss = parse_stylesheet("div { overflow-wrap: break-word; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "overflow-wrap") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "break-word");
+        }
+    }
+    EXPECT_TRUE(found) << "overflow-wrap declaration not found";
+}

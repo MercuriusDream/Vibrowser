@@ -21871,3 +21871,101 @@ TEST(DomElement, InnerTextEmptyForNoTextChildrenV143) {
     EXPECT_EQ(container.text_content(), "");
     EXPECT_EQ(container.child_count(), 3u);
 }
+
+// ---------------------------------------------------------------------------
+// V144 — DOM tests
+// ---------------------------------------------------------------------------
+
+// 1. Append multiple children and verify order via first_child->next chains
+TEST(DomNode, AppendMultipleChildrenPreservesOrderV144) {
+    Element parent("ol");
+    auto a = std::make_unique<Element>("a");
+    auto b = std::make_unique<Element>("b");
+    auto c = std::make_unique<Element>("c");
+    Element* ra = a.get();
+    Element* rb = b.get();
+    Element* rc = c.get();
+    parent.append_child(std::move(a));
+    parent.append_child(std::move(b));
+    parent.append_child(std::move(c));
+    EXPECT_EQ(parent.child_count(), 3u);
+    EXPECT_EQ(parent.first_child(), ra);
+    EXPECT_EQ(ra->next_sibling(), rb);
+    EXPECT_EQ(rb->next_sibling(), rc);
+    EXPECT_EQ(rc->next_sibling(), nullptr);
+}
+
+// 2. set_attribute with empty value
+TEST(DomElement, SetAttributeEmptyValueV144) {
+    Element elem("input");
+    elem.set_attribute("hidden", "");
+    EXPECT_TRUE(elem.has_attribute("hidden"));
+    auto val = elem.get_attribute("hidden");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(val.value(), "");
+}
+
+// 3. Create multiple elements via Document
+TEST(DomDocument, CreateMultipleElementsV144) {
+    Document doc;
+    auto div = doc.create_element("div");
+    auto span = doc.create_element("span");
+    auto p = doc.create_element("p");
+    ASSERT_NE(div, nullptr);
+    ASSERT_NE(span, nullptr);
+    ASSERT_NE(p, nullptr);
+    EXPECT_EQ(div->tag_name(), "div");
+    EXPECT_EQ(span->tag_name(), "span");
+    EXPECT_EQ(p->tag_name(), "p");
+}
+
+// 4. Non-cancelable event — prevent_default is a no-op
+TEST(DomEvent, NonCancelablePreventDefaultNoOpV144) {
+    Event evt("load", false, false);
+    EXPECT_FALSE(evt.cancelable());
+    evt.prevent_default();
+    EXPECT_FALSE(evt.default_prevented());
+}
+
+// 5. Empty element returns empty text_content
+TEST(DomNode, TextContentReturnsEmptyForEmptyElementV144) {
+    Element div("div");
+    EXPECT_EQ(div.text_content(), "");
+    EXPECT_EQ(div.child_count(), 0u);
+}
+
+// 6. ClassList length is zero initially
+TEST(DomElement, ClassListLengthZeroInitiallyV144) {
+    Element elem("article");
+    EXPECT_EQ(elem.class_list().length(), 0u);
+    EXPECT_FALSE(elem.class_list().contains("anything"));
+}
+
+// 7. Remove middle child updates sibling links
+TEST(DomNode, RemoveMiddleChildUpdatesSiblingsV144) {
+    Element parent("div");
+    auto a = std::make_unique<Element>("a");
+    auto b = std::make_unique<Element>("b");
+    auto c = std::make_unique<Element>("c");
+    Element* ra = a.get();
+    Element* rb = b.get();
+    Element* rc = c.get();
+    parent.append_child(std::move(a));
+    parent.append_child(std::move(b));
+    parent.append_child(std::move(c));
+    EXPECT_EQ(parent.child_count(), 3u);
+    parent.remove_child(*rb);
+    EXPECT_EQ(parent.child_count(), 2u);
+    EXPECT_EQ(ra->next_sibling(), rc);
+    EXPECT_EQ(rc->previous_sibling(), ra);
+}
+
+// 8. get_attribute after overwrite returns latest value
+TEST(DomElement, GetAttributeAfterOverwriteV144) {
+    Element elem("div");
+    elem.set_attribute("x", "1");
+    EXPECT_EQ(elem.get_attribute("x").value(), "1");
+    elem.set_attribute("x", "2");
+    EXPECT_EQ(elem.get_attribute("x").value(), "2");
+    EXPECT_EQ(elem.attributes().size(), 1u);
+}

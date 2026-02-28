@@ -20449,3 +20449,66 @@ TEST(SerializerTest, SerializerV143_3_BoolTrueFalseSequenceRoundTrip) {
     EXPECT_TRUE(d.read_bool());
     EXPECT_FALSE(d.has_remaining());
 }
+
+// ------------------------------------------------------------------
+// V144: U64 boundary values round-trip
+// ------------------------------------------------------------------
+
+TEST(SerializerTest, SerializerV144_1_U64BoundaryValuesRoundTrip) {
+    Serializer s;
+    s.write_u64(uint64_t(0));
+    s.write_u64(uint64_t(1));
+    s.write_u64(UINT64_MAX);
+    s.write_u64(UINT64_MAX - 1);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u64(), uint64_t(0));
+    EXPECT_EQ(d.read_u64(), uint64_t(1));
+    EXPECT_EQ(d.read_u64(), UINT64_MAX);
+    EXPECT_EQ(d.read_u64(), UINT64_MAX - 1);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+// ------------------------------------------------------------------
+// V144: Long string (10000 chars) round-trip
+// ------------------------------------------------------------------
+
+TEST(SerializerTest, SerializerV144_2_LongStringRoundTrip) {
+    std::string long_str(10000, 'Z');
+    // Mix in some variety
+    for (size_t i = 0; i < long_str.size(); ++i) {
+        long_str[i] = static_cast<char>('A' + (i % 26));
+    }
+
+    Serializer s;
+    s.write_string(long_str);
+
+    Deserializer d(s.data());
+    std::string result = d.read_string();
+    EXPECT_EQ(result.size(), 10000u);
+    EXPECT_EQ(result, long_str);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+// ------------------------------------------------------------------
+// V144: Bytes with 0x00-0xFF pattern round-trip
+// ------------------------------------------------------------------
+
+TEST(SerializerTest, SerializerV144_3_BytesWithPatternRoundTrip) {
+    // Build a 256-byte pattern: 0x00, 0x01, ..., 0xFF
+    std::vector<uint8_t> pattern(256);
+    for (int i = 0; i < 256; ++i) {
+        pattern[i] = static_cast<uint8_t>(i);
+    }
+
+    Serializer s;
+    s.write_bytes(pattern.data(), pattern.size());
+
+    Deserializer d(s.data());
+    auto result = d.read_bytes();
+    ASSERT_EQ(result.size(), 256u);
+    for (int i = 0; i < 256; ++i) {
+        EXPECT_EQ(result[i], static_cast<uint8_t>(i)) << "Mismatch at index " << i;
+    }
+    EXPECT_FALSE(d.has_remaining());
+}

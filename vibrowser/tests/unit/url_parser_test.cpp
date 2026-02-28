@@ -14717,3 +14717,42 @@ TEST(UrlParserTest, UrlV143_4_HttpsPort8443NonDefault) {
     EXPECT_EQ(result->port.value(), 8443);
     EXPECT_EQ(result->path, "/secure");
 }
+
+TEST(UrlParserTest, UrlV144_1_LongPathMultipleSegments) {
+    // A URL with many path segments should preserve the full path
+    auto result = parse("http://example.com/a/b/c/d/e/f");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/a/b/c/d/e/f");
+    EXPECT_EQ(result->port, std::nullopt);
+}
+
+TEST(UrlParserTest, UrlV144_2_SchemeOnlyNoAuthority) {
+    // data: URLs have no authority; scheme should be "data"
+    auto result = parse("data:text/html,hello");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "data");
+}
+
+TEST(UrlParserTest, UrlV144_3_SerializeRoundTripSimple) {
+    // Parse then serialize should produce a valid URL string
+    auto result = parse("http://example.com/path");
+    ASSERT_TRUE(result.has_value());
+    std::string serialized = result->serialize();
+    // The serialized form should contain the scheme, host, and path
+    EXPECT_NE(serialized.find("http"), std::string::npos);
+    EXPECT_NE(serialized.find("example.com"), std::string::npos);
+    EXPECT_NE(serialized.find("/path"), std::string::npos);
+}
+
+TEST(UrlParserTest, UrlV144_4_PortMaxValue65535) {
+    // Port 65535 is the maximum valid port and should be preserved
+    auto result = parse("http://example.com:65535/test");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "example.com");
+    ASSERT_TRUE(result->port.has_value());
+    EXPECT_EQ(result->port.value(), 65535);
+    EXPECT_EQ(result->path, "/test");
+}

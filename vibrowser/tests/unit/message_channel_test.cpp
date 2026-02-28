@@ -1701,3 +1701,62 @@ TEST(MessageChannelTest, MessageChannelV143_2_SendWithoutHandlerDoesNotCrash) {
     // If we reach here without crashing, the test passes
     SUCCEED();
 }
+
+// ------------------------------------------------------------------
+// V144: Same type, multiple messages — handler fires 3 times
+// ------------------------------------------------------------------
+
+TEST(MessageChannelTest, MessageChannelV144_1_SameTypeMultipleMessages) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel ch(std::move(pa));
+
+    int call_count = 0;
+    std::vector<uint32_t> received_req_ids;
+
+    ch.on(50, [&](const Message& m) {
+        ++call_count;
+        received_req_ids.push_back(m.request_id);
+    });
+
+    // Dispatch 3 messages of type 50 with different request_ids
+    for (uint32_t rid = 1; rid <= 3; ++rid) {
+        Message msg;
+        msg.type = 50;
+        msg.request_id = rid;
+        msg.payload = {static_cast<uint8_t>(rid)};
+        ch.dispatch(msg);
+    }
+
+    EXPECT_EQ(call_count, 3);
+    ASSERT_EQ(received_req_ids.size(), 3u);
+    EXPECT_EQ(received_req_ids[0], 1u);
+    EXPECT_EQ(received_req_ids[1], 2u);
+    EXPECT_EQ(received_req_ids[2], 3u);
+}
+
+// ------------------------------------------------------------------
+// V144: Large type number (UINT32_MAX) — handler fires correctly
+// ------------------------------------------------------------------
+
+TEST(MessageChannelTest, MessageChannelV144_2_LargeTypeNumberV144) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel ch(std::move(pa));
+
+    bool handler_called = false;
+    uint32_t received_type = 0;
+
+    ch.on(UINT32_MAX, [&](const Message& m) {
+        handler_called = true;
+        received_type = m.type;
+    });
+
+    Message msg;
+    msg.type = UINT32_MAX;
+    msg.request_id = 0;
+    msg.payload = {0xFF};
+
+    ch.dispatch(msg);
+
+    EXPECT_TRUE(handler_called);
+    EXPECT_EQ(received_type, UINT32_MAX);
+}
