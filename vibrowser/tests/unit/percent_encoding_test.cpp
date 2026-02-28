@@ -514,3 +514,42 @@ TEST(PercentDecoding, PercentEncodingV133_4_DecodeMixedCaseHexDigits) {
     EXPECT_EQ(lower, "/");
     EXPECT_EQ(upper, "/");
 }
+
+// =============================================================================
+// Round 134 Percent Encoding tests
+// =============================================================================
+
+TEST(PercentEncoding, PercentEncodingV134_1_EncodeThenDecodeIdentity) {
+    // Round-trip: encode then decode should recover the original ASCII printable string
+    std::string original = "Hello, World! 123 abc XYZ";
+    std::string encoded = percent_encode(original);
+    std::string decoded = percent_decode(encoded);
+    EXPECT_EQ(decoded, original);
+}
+
+TEST(PercentDecoding, PercentEncodingV134_2_DecodeIncompletePercentSequence) {
+    // "%2" is incomplete (needs two hex digits after %) — should be left unchanged
+    std::string result = percent_decode("%2");
+    EXPECT_EQ(result, "%2");
+}
+
+TEST(IsURLCodePoint, PercentEncodingV134_3_IsUrlCodePointDigitsAndLetters) {
+    // All digits 0-9 should be URL code points
+    for (char32_t ch = U'0'; ch <= U'9'; ++ch) {
+        EXPECT_TRUE(is_url_code_point(ch)) << "digit " << static_cast<char>(ch);
+    }
+    // All uppercase letters A-Z should be URL code points
+    for (char32_t ch = U'A'; ch <= U'Z'; ++ch) {
+        EXPECT_TRUE(is_url_code_point(ch)) << "upper " << static_cast<char>(ch);
+    }
+    // All lowercase letters a-z should be URL code points
+    for (char32_t ch = U'a'; ch <= U'z'; ++ch) {
+        EXPECT_TRUE(is_url_code_point(ch)) << "lower " << static_cast<char>(ch);
+    }
+}
+
+TEST(PercentDecoding, PercentEncodingV134_4_DecodeEmptyString) {
+    // Decoding an empty string should return an empty string
+    EXPECT_EQ(percent_decode(""), "");
+    EXPECT_TRUE(percent_decode("").empty());
+}

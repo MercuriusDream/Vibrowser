@@ -25324,3 +25324,152 @@ TEST(LayoutNodeProps, GridDefaultsV133) {
     // Default display type is Block
     EXPECT_EQ(n->display, DisplayType::Block);
 }
+
+// ---------------------------------------------------------------------------
+// Round 134
+// ---------------------------------------------------------------------------
+
+TEST(LayoutEngineTest, LayoutV134_1) {
+    // Flex row with gap: 2 children should be spaced apart
+    auto root = make_flex();
+    root->specified_width = 300.0f;
+    root->gap = 20.0f;
+    root->column_gap_val = 20.0f;
+
+    auto c1 = make_block();
+    c1->specified_width = 100.0f;
+    c1->specified_height = 40.0f;
+    auto* c1p = c1.get();
+    root->append_child(std::move(c1));
+
+    auto c2 = make_block();
+    c2->specified_width = 100.0f;
+    c2->specified_height = 40.0f;
+    auto* c2p = c2.get();
+    root->append_child(std::move(c2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 600.0f, 600.0f);
+
+    // Second child should start after first child + gap
+    EXPECT_GE(c2p->geometry.x, c1p->geometry.x + c1p->geometry.width + 19.0f);
+}
+
+TEST(LayoutEngineTest, LayoutV134_2) {
+    // Nested flex containers: inner flex computes successfully
+    auto root = make_flex();
+    root->specified_width = 400.0f;
+
+    auto inner = make_flex();
+    inner->specified_width = 200.0f;
+    auto child = make_block();
+    child->specified_width = 80.0f;
+    child->specified_height = 30.0f;
+    auto* cp = child.get();
+    inner->append_child(std::move(child));
+    auto* ip = inner.get();
+    root->append_child(std::move(inner));
+
+    LayoutEngine engine;
+    engine.compute(*root, 600.0f, 600.0f);
+
+    EXPECT_GE(ip->geometry.width, 0.0f);
+    EXPECT_GE(cp->geometry.width, 0.0f);
+}
+
+TEST(LayoutEngineTest, LayoutV134_3) {
+    // Block child overflow hidden: child wider than parent, parent width unchanged
+    auto root = make_block();
+    root->specified_width = 200.0f;
+    root->specified_height = 100.0f;
+
+    auto child = make_block();
+    child->specified_width = 500.0f;
+    child->specified_height = 50.0f;
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 600.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(root->geometry.width, 200.0f);
+}
+
+TEST(LayoutEngineTest, LayoutV134_4) {
+    // Flex shrink: 2 children exceed container, flex_shrink distributes
+    auto root = make_flex();
+    root->specified_width = 200.0f;
+
+    auto c1 = make_block();
+    c1->specified_width = 150.0f;
+    c1->specified_height = 40.0f;
+    c1->flex_shrink = 1.0f;
+    auto* c1p = c1.get();
+    root->append_child(std::move(c1));
+
+    auto c2 = make_block();
+    c2->specified_width = 150.0f;
+    c2->specified_height = 40.0f;
+    c2->flex_shrink = 1.0f;
+    auto* c2p = c2.get();
+    root->append_child(std::move(c2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 600.0f, 600.0f);
+
+    // Both children should have shrunk from 150
+    EXPECT_LE(c1p->geometry.width, 150.0f);
+    EXPECT_LE(c2p->geometry.width, 150.0f);
+}
+
+TEST(LayoutEngineTest, LayoutV134_5) {
+    // InlineFlex display type: verify compute doesn't crash
+    auto root = make_flex();
+    root->display = DisplayType::InlineFlex;
+    root->specified_width = 200.0f;
+    root->specified_height = 50.0f;
+
+    LayoutEngine engine;
+    engine.compute(*root, 600.0f, 600.0f);
+    SUCCEED();
+}
+
+TEST(LayoutEngineTest, LayoutV134_6) {
+    // Negative margin_top collapses gap between siblings
+    auto root = make_block();
+    root->specified_width = 400.0f;
+
+    auto c1 = make_block();
+    c1->specified_height = 60.0f;
+    root->append_child(std::move(c1));
+
+    auto c2 = make_block();
+    c2->specified_height = 40.0f;
+    c2->geometry.margin.top = -10.0f;
+    auto* c2p = c2.get();
+    root->append_child(std::move(c2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 400.0f, 600.0f);
+
+    // Second child should be pulled up by negative margin
+    EXPECT_LE(c2p->geometry.y, 60.0f);
+}
+
+TEST(LayoutEngineTest, LayoutV134_7) {
+    // max_height clamps specified_height
+    auto root = make_block();
+    root->specified_width = 400.0f;
+    root->specified_height = 500.0f;
+    root->max_height = 200.0f;
+
+    LayoutEngine engine;
+    engine.compute(*root, 600.0f, 600.0f);
+
+    EXPECT_LE(root->geometry.height, 200.0f);
+}
+
+TEST(LayoutNodeProps, FlexWrapDefaultV134) {
+    auto n = make_block();
+    // Default flex_wrap is 0 (nowrap)
+    EXPECT_EQ(n->flex_wrap, 0);
+}

@@ -22054,3 +22054,90 @@ TEST(HtmlParserTest, HtmlV133_8) {
     EXPECT_EQ(del_el->tag_name, "del");
     EXPECT_EQ(del_el->text_content(), "removed text");
 }
+
+// ---------------------------------------------------------------------------
+// Round 134
+// ---------------------------------------------------------------------------
+
+TEST(HtmlParserTest, HtmlV134_1) {
+    auto doc = clever::html::parse("<html><body><kbd>Ctrl+C</kbd></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* kbd = doc->find_element("kbd");
+    ASSERT_NE(kbd, nullptr);
+    EXPECT_EQ(kbd->tag_name, "kbd");
+    EXPECT_EQ(kbd->text_content(), "Ctrl+C");
+}
+
+TEST(HtmlParserTest, HtmlV134_2) {
+    auto doc = clever::html::parse("<html><body><code>const x = 1;</code></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* code = doc->find_element("code");
+    ASSERT_NE(code, nullptr);
+    EXPECT_EQ(code->tag_name, "code");
+    EXPECT_EQ(code->text_content(), "const x = 1;");
+}
+
+TEST(HtmlParserTest, HtmlV134_3) {
+    auto doc = clever::html::parse("<html><body><pre>preformatted text</pre></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* pre = doc->find_element("pre");
+    ASSERT_NE(pre, nullptr);
+    EXPECT_EQ(pre->tag_name, "pre");
+    EXPECT_EQ(pre->text_content(), "preformatted text");
+}
+
+TEST(HtmlParserTest, HtmlV134_4) {
+    auto doc = clever::html::parse("<html><body><mark>highlighted</mark></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* mark = doc->find_element("mark");
+    ASSERT_NE(mark, nullptr);
+    EXPECT_EQ(mark->tag_name, "mark");
+    EXPECT_EQ(mark->text_content(), "highlighted");
+}
+
+TEST(HtmlParserTest, HtmlV134_5) {
+    auto doc = clever::html::parse("<html><body><small>fine print</small></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* small_el = doc->find_element("small");
+    ASSERT_NE(small_el, nullptr);
+    EXPECT_EQ(small_el->tag_name, "small");
+    EXPECT_EQ(small_el->text_content(), "fine print");
+}
+
+TEST(HtmlParserTest, HtmlV134_6) {
+    auto doc = clever::html::parse("<html><body><sub>subscript</sub></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* sub = doc->find_element("sub");
+    ASSERT_NE(sub, nullptr);
+    EXPECT_EQ(sub->tag_name, "sub");
+    EXPECT_EQ(sub->text_content(), "subscript");
+}
+
+TEST(HtmlParserTest, HtmlV134_7) {
+    auto doc = clever::html::parse("<html><body><sup>superscript</sup></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* sup = doc->find_element("sup");
+    ASSERT_NE(sup, nullptr);
+    EXPECT_EQ(sup->tag_name, "sup");
+    EXPECT_EQ(sup->text_content(), "superscript");
+}
+
+TEST(HtmlParserTest, HtmlV134_8) {
+    auto doc = clever::html::parse("<html><body><details><summary>Title</summary>Content</details></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* details = doc->find_element("details");
+    ASSERT_NE(details, nullptr);
+    EXPECT_EQ(details->tag_name, "details");
+
+    auto* summary = doc->find_element("summary");
+    ASSERT_NE(summary, nullptr);
+    EXPECT_EQ(summary->tag_name, "summary");
+}

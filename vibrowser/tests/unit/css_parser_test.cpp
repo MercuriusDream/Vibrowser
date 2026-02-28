@@ -9779,3 +9779,31 @@ TEST_F(CSSStylesheetTest, MultipleAtRulesSequenceV133) {
     // Multiple at-rules in sequence — parser should not crash
     SUCCEED();
 }
+
+// ---------------------------------------------------------------------------
+// Round 134
+// ---------------------------------------------------------------------------
+
+TEST_F(CSSStylesheetTest, PageRuleParsingV134) {
+    auto ss = parse_stylesheet("@page { margin: 2cm; }");
+    // @page rule — parser should not crash
+    SUCCEED();
+}
+
+TEST_F(CSSStylesheetTest, CounterStyleRuleParsingV134) {
+    auto ss = parse_stylesheet("@counter-style thumbs { system: cyclic; symbols: '\\1F44D'; }");
+    // @counter-style rule — parser should not crash
+    SUCCEED();
+}
+
+TEST_F(CSSStylesheetTest, PropertyRuleParsingV134) {
+    auto ss = parse_stylesheet("@property --main-color { syntax: '<color>'; inherits: false; initial-value: red; }");
+    // @property rule — parser should not crash
+    SUCCEED();
+}
+
+TEST_F(CSSStylesheetTest, NestedMediaAndSupportsParsingV134) {
+    auto ss = parse_stylesheet("@media screen { @supports (display: grid) { .x { color: red; } } }");
+    // Nested @media and @supports — parser should not crash
+    SUCCEED();
+}

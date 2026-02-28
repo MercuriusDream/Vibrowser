@@ -22788,3 +22788,177 @@ TEST(HttpClient, CookieJarClearAndRepopulateV133) {
     std::string repop_hdr = jar.get_cookie_header("clear.v133.test", "/", false);
     EXPECT_NE(repop_hdr.find("c=3"), std::string::npos);
 }
+
+// ===========================================================================
+// Round 134 (V134) Tests
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// 1. HEAD request serialization
+// ---------------------------------------------------------------------------
+TEST(HttpClient, RequestSerializeHEADMethodV134) {
+    Request req;
+    req.method = Method::HEAD;
+    req.host = "head.v134.test";
+    req.port = 80;
+    req.path = "/status";
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    // Request line must start with HEAD
+    EXPECT_NE(result.find("HEAD /status HTTP/1.1\r\n"), std::string::npos);
+    // Host header present (port 80 omitted)
+    EXPECT_NE(result.find("Host: head.v134.test\r\n"), std::string::npos);
+    // No body after final CRLFCRLF
+    auto pos = result.find("\r\n\r\n");
+    ASSERT_NE(pos, std::string::npos);
+    EXPECT_EQ(pos + 4, result.size());
+}
+
+// ---------------------------------------------------------------------------
+// 2. 204 No Content response parsing
+// ---------------------------------------------------------------------------
+TEST(HttpClient, ResponseParse204NoContentV134) {
+    std::string raw =
+        "HTTP/1.1 204 No Content\r\n"
+        "X-Request-Id: v134\r\n"
+        "Content-Length: 0\r\n"
+        "\r\n";
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 204);
+    EXPECT_EQ(resp->status_text, "No Content");
+    EXPECT_TRUE(resp->body.empty());
+    EXPECT_EQ(resp->body_as_string(), "");
+}
+
+// ---------------------------------------------------------------------------
+// 3. HeaderMap iteration covers all inserted entries
+// ---------------------------------------------------------------------------
+TEST(HttpClient, HeaderMapIterationOrderMatchesInsertionV134) {
+    HeaderMap map;
+    map.set("X-First", "alpha");
+    map.set("X-Second", "beta");
+    map.set("X-Third", "gamma");
+
+    // unordered_multimap does not guarantee insertion order,
+    // so verify that all three entries are reachable via iteration
+    std::vector<std::pair<std::string, std::string>> entries;
+    for (auto it = map.begin(); it != map.end(); ++it) {
+        entries.emplace_back(it->first, it->second);
+    }
+
+    EXPECT_EQ(entries.size(), 3u);
+
+    // Verify all values are present
+    bool found_alpha = false, found_beta = false, found_gamma = false;
+    for (const auto& e : entries) {
+        if (e.second == "alpha") found_alpha = true;
+        if (e.second == "beta") found_beta = true;
+        if (e.second == "gamma") found_gamma = true;
+    }
+    EXPECT_TRUE(found_alpha);
+    EXPECT_TRUE(found_beta);
+    EXPECT_TRUE(found_gamma);
+}
+
+// ---------------------------------------------------------------------------
+// 4. ConnectionPool acquire from empty pool returns -1
+// ---------------------------------------------------------------------------
+TEST(HttpClient, ConnectionPoolAcquireFromEmptyReturnsNegativeV134) {
+    ConnectionPool pool;
+    // No release has been done — acquire must return -1
+    int fd = pool.acquire("empty.v134.test", 8080);
+    EXPECT_EQ(fd, -1);
+
+    // Also verify a different port
+    int fd2 = pool.acquire("empty.v134.test", 443);
+    EXPECT_EQ(fd2, -1);
+}
+
+// ---------------------------------------------------------------------------
+// 5. CookieJar Max-Age=0 on fresh cookie sets expiry in the past
+// ---------------------------------------------------------------------------
+TEST(HttpClient, CookieJarExpiresMaxAgeZeroClearsV134) {
+    CookieJar jar;
+
+    // Set a cookie directly with Max-Age=0 — should be stored but
+    // get_cookie_header treats it as expired (expires_at=1 which is in the past)
+    jar.set_from_header("ephemeral=gone; Path=/; Max-Age=0", "maxage.v134.test");
+
+    // The cookie entry exists in the jar
+    EXPECT_EQ(jar.size(), 1u);
+
+    // But get_cookie_header skips expired cookies, so nothing returned
+    std::string hdr = jar.get_cookie_header("maxage.v134.test", "/", false);
+    EXPECT_TRUE(hdr.empty());
+}
+
+// ---------------------------------------------------------------------------
+// 6. Request serialize Host header comes from req.host field
+// ---------------------------------------------------------------------------
+TEST(HttpClient, RequestSerializeCustomHostHeaderOverrideV134) {
+    Request req;
+    req.method = Method::GET;
+    req.host = "original.v134.test";
+    req.port = 80;
+    req.path = "/override";
+
+    // Even if user sets a Host header, serialize() always writes Host from req.host
+    // and skips the user-supplied "host" entry in the headers map
+    req.headers.set("Host", "custom.v134.test");
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    // Host comes from req.host, not from the headers map
+    EXPECT_NE(result.find("Host: original.v134.test\r\n"), std::string::npos);
+    // The custom Host should NOT appear (it's skipped in iteration)
+    EXPECT_EQ(result.find("Host: custom.v134.test\r\n"), std::string::npos);
+    // Request line is correct
+    EXPECT_NE(result.find("GET /override HTTP/1.1\r\n"), std::string::npos);
+}
+
+// ---------------------------------------------------------------------------
+// 7. 301 response with Location header
+// ---------------------------------------------------------------------------
+TEST(HttpClient, ResponseParse301WithLocationHeaderV134) {
+    std::string raw =
+        "HTTP/1.1 301 Moved Permanently\r\n"
+        "Location: https://new.v134.test/redirect\r\n"
+        "Content-Length: 0\r\n"
+        "\r\n";
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 301);
+    EXPECT_EQ(resp->status_text, "Moved Permanently");
+    EXPECT_TRUE(resp->headers.has("location"));
+    EXPECT_EQ(resp->headers.get("location").value(), "https://new.v134.test/redirect");
+    EXPECT_TRUE(resp->body.empty());
+}
+
+// ---------------------------------------------------------------------------
+// 8. CookieJar Secure flag not returned on insecure connection
+// ---------------------------------------------------------------------------
+TEST(HttpClient, CookieJarSecureFlagNotReturnedOnInsecureV134) {
+    CookieJar jar;
+
+    // Set a Secure cookie
+    jar.set_from_header("secure_tok=s3cr3t; Path=/; Secure", "secure.v134.test");
+    EXPECT_EQ(jar.size(), 1u);
+
+    // Requesting with is_secure=false should NOT return the cookie
+    std::string hdr_insecure = jar.get_cookie_header("secure.v134.test", "/", false);
+    EXPECT_TRUE(hdr_insecure.empty());
+
+    // Requesting with is_secure=true should return it
+    std::string hdr_secure = jar.get_cookie_header("secure.v134.test", "/", true);
+    EXPECT_NE(hdr_secure.find("secure_tok=s3cr3t"), std::string::npos);
+}

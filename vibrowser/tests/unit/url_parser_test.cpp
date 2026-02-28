@@ -14102,3 +14102,66 @@ TEST(UrlParserTest, UrlV133_4_RelativeQueryOnlyUpdatesQuery) {
     EXPECT_EQ(resolved->path, "/page");
     EXPECT_EQ(resolved->query, "newquery");
 }
+
+// =============================================================================
+// Round 134 URL tests
+// =============================================================================
+
+TEST(UrlParserTest, UrlV134_1_FtpDefaultPort21Normalized) {
+    // ftp://example.com:21/file → default port 21 should be normalized away
+    auto with_default = parse("ftp://example.com:21/file");
+    ASSERT_TRUE(with_default.has_value());
+    EXPECT_EQ(with_default->scheme, "ftp");
+    EXPECT_EQ(with_default->host, "example.com");
+    EXPECT_EQ(with_default->port, std::nullopt);
+    EXPECT_EQ(with_default->path, "/file");
+
+    // ftp://example.com:2121/file → non-default port should be preserved
+    auto with_custom = parse("ftp://example.com:2121/file");
+    ASSERT_TRUE(with_custom.has_value());
+    EXPECT_EQ(with_custom->scheme, "ftp");
+    EXPECT_EQ(with_custom->host, "example.com");
+    EXPECT_EQ(with_custom->port, 2121);
+    EXPECT_EQ(with_custom->path, "/file");
+}
+
+TEST(UrlParserTest, UrlV134_2_RelativeFragmentOnlyPreservesBase) {
+    // "#newfrag" relative to base should preserve scheme, host, path, query
+    auto base = parse("https://example.com/page?q=1#oldfrag");
+    ASSERT_TRUE(base.has_value());
+    auto resolved = parse("#newfrag", &*base);
+    ASSERT_TRUE(resolved.has_value());
+    EXPECT_EQ(resolved->scheme, "https");
+    EXPECT_EQ(resolved->host, "example.com");
+    EXPECT_EQ(resolved->path, "/page");
+    EXPECT_EQ(resolved->query, "q=1");
+    EXPECT_EQ(resolved->fragment, "newfrag");
+}
+
+TEST(UrlParserTest, UrlV134_3_HttpsTrailingSlashNormalized) {
+    // "https://example.com" and "https://example.com/" should both have path "/"
+    auto without_slash = parse("https://example.com");
+    ASSERT_TRUE(without_slash.has_value());
+    EXPECT_EQ(without_slash->path, "/");
+
+    auto with_slash = parse("https://example.com/");
+    ASSERT_TRUE(with_slash.has_value());
+    EXPECT_EQ(with_slash->path, "/");
+
+    // They should be same-origin
+    EXPECT_TRUE(urls_same_origin(*without_slash, *with_slash));
+}
+
+TEST(UrlParserTest, UrlV134_4_PercentEncodedHostDecoded) {
+    // Host normalization: uppercase host letters should be lowercased
+    auto result = parse("https://EXAMPLE.COM/path");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/path");
+
+    // Mixed case should also be normalized
+    auto mixed = parse("https://ExAmPlE.CoM/test");
+    ASSERT_TRUE(mixed.has_value());
+    EXPECT_EQ(mixed->host, "example.com");
+}

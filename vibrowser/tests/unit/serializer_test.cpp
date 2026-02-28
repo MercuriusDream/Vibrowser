@@ -19877,3 +19877,46 @@ TEST(SerializerTest, SerializerV133_3_HasRemainingTransitionsAfterFullRead) {
     EXPECT_EQ(val, 0xDEADBEEFu);
     EXPECT_FALSE(d.has_remaining());
 }
+
+// ------------------------------------------------------------------
+// V134 Round 134 tests
+// ------------------------------------------------------------------
+
+TEST(SerializerTest, SerializerV134_1_MaxU64RoundTrip) {
+    Serializer s;
+    s.write_u64(UINT64_MAX);
+
+    Deserializer d(s.data());
+    uint64_t val = d.read_u64();
+    EXPECT_EQ(val, UINT64_MAX);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, SerializerV134_2_NegativeI64RoundTrip) {
+    Serializer s;
+    s.write_i64(INT64_MIN);
+
+    Deserializer d(s.data());
+    int64_t val = d.read_i64();
+    EXPECT_EQ(val, INT64_MIN);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, SerializerV134_3_MixedTypesInterleavedRoundTrip) {
+    Serializer s;
+    s.write_u8(0xAB);
+    s.write_string("hello");
+    s.write_bool(true);
+    s.write_u32(0xDEADBEEF);
+    s.write_string("world");
+    s.write_f64(3.14159);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u8(), 0xABu);
+    EXPECT_EQ(d.read_string(), "hello");
+    EXPECT_EQ(d.read_bool(), true);
+    EXPECT_EQ(d.read_u32(), 0xDEADBEEFu);
+    EXPECT_EQ(d.read_string(), "world");
+    EXPECT_DOUBLE_EQ(d.read_f64(), 3.14159);
+    EXPECT_FALSE(d.has_remaining());
+}

@@ -10765,3 +10765,50 @@ TEST(CORSPolicyTest, CorsV133_8_WildcardACAORejectsCredentialedRequest) {
     headers.set("access-control-allow-origin", "*");
     EXPECT_FALSE(cors_allows_response("https://app.example.com", "https://api.example.com/data", headers, true));
 }
+
+TEST(CORSPolicyTest, CorsV134_1_HttpsVsHttpDifferentSchemeCrossOrigin) {
+    // Different schemes (https vs http) on the same host are cross-origin
+    EXPECT_TRUE(is_cross_origin("https://example.com", "http://example.com/page"));
+}
+
+TEST(CORSPolicyTest, CorsV134_2_EmptyStringOriginNotEnforceable) {
+    // An empty string origin is not enforceable
+    EXPECT_FALSE(has_enforceable_document_origin(""));
+}
+
+TEST(CORSPolicyTest, CorsV134_3_HttpsUrlWithPortIsCorsEligible) {
+    // HTTPS URL with explicit non-default port is CORS-eligible
+    EXPECT_TRUE(is_cors_eligible_request_url("https://example.com:8443/api"));
+}
+
+TEST(CORSPolicyTest, CorsV134_4_ACAOWithMultipleOriginsRejects) {
+    // ACAO with multiple comma-separated origins must be rejected (only one allowed)
+    clever::net::HeaderMap headers;
+    headers.set("access-control-allow-origin", "https://a.com, https://b.com");
+    EXPECT_FALSE(cors_allows_response("https://a.com", "https://b.com/data", headers, false));
+}
+
+TEST(CORSPolicyTest, CorsV134_5_ShouldAttachOriginCrossScheme) {
+    // Cross-scheme (http origin to https target) should attach Origin header
+    EXPECT_TRUE(should_attach_origin_header("http://example.com", "https://example.com/api"));
+}
+
+TEST(CORSPolicyTest, CorsV134_6_NormalizeHttpOriginPreservesHeader) {
+    // Normalizing with a valid http origin to a different-origin target sets Origin header
+    clever::net::HeaderMap headers;
+    normalize_outgoing_origin_header(headers, "http://app.example.com", "https://api.example.com/data");
+    EXPECT_TRUE(headers.has("origin"));
+    EXPECT_EQ(headers.get("origin"), "http://app.example.com");
+}
+
+TEST(CORSPolicyTest, CorsV134_7_AboutBlankNotEnforceable) {
+    // "about:blank" is not an enforceable document origin
+    EXPECT_FALSE(has_enforceable_document_origin("about:blank"));
+}
+
+TEST(CORSPolicyTest, CorsV134_8_CorsAllowsResponseCaseInsensitiveHeaderName) {
+    // ACAO header lookup should be case-insensitive; matching origin allows response
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "https://app.example.com");
+    EXPECT_TRUE(cors_allows_response("https://app.example.com", "https://api.example.com/data", headers, false));
+}

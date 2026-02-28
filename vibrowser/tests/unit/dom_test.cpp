@@ -20329,3 +20329,120 @@ TEST(DomComment, SetDataUpdatesValueV133) {
     c.set_data("new");
     EXPECT_EQ(c.data(), "new");
 }
+
+// ---------------------------------------------------------------------------
+// Round 134 — DOM tests (V134)
+// ---------------------------------------------------------------------------
+
+TEST(DomElement, ToggleClassReturnsFalseWhenRemovedV134) {
+    Element elem("div");
+    elem.class_list().add("active");
+    EXPECT_TRUE(elem.class_list().contains("active"));
+    EXPECT_EQ(elem.class_list().length(), 1u);
+
+    elem.class_list().toggle("active");
+
+    EXPECT_FALSE(elem.class_list().contains("active"));
+    EXPECT_EQ(elem.class_list().length(), 0u);
+}
+
+TEST(DomNode, ForEachChildIteratesAllChildrenV134) {
+    auto parent = std::make_unique<Element>("ul");
+    parent->append_child(std::make_unique<Element>("li"));
+    parent->append_child(std::make_unique<Element>("li"));
+    parent->append_child(std::make_unique<Element>("li"));
+    parent->append_child(std::make_unique<Element>("li"));
+    parent->append_child(std::make_unique<Element>("li"));
+
+    std::vector<std::string> tags;
+    parent->for_each_child([&](const Node& child) {
+        auto* el = static_cast<const Element*>(&child);
+        tags.push_back(std::string(el->tag_name()));
+    });
+
+    EXPECT_EQ(tags.size(), 5u);
+    for (const auto& t : tags) {
+        EXPECT_EQ(t, "li");
+    }
+}
+
+TEST(DomElement, SetMultipleAttributesThenIterateV134) {
+    Element elem("div");
+    elem.set_attribute("id", "main");
+    elem.set_attribute("class", "container");
+    elem.set_attribute("data-role", "page");
+    elem.set_attribute("title", "Home");
+    elem.set_attribute("lang", "en");
+
+    EXPECT_EQ(elem.attributes().size(), 5u);
+    EXPECT_TRUE(elem.has_attribute("id"));
+    EXPECT_TRUE(elem.has_attribute("class"));
+    EXPECT_TRUE(elem.has_attribute("data-role"));
+    EXPECT_TRUE(elem.has_attribute("title"));
+    EXPECT_TRUE(elem.has_attribute("lang"));
+}
+
+TEST(DomEvent, StopPropagationDoesNotAffectImmediateFlagV134) {
+    Event ev("click", true, true);
+    EXPECT_FALSE(ev.propagation_stopped());
+    EXPECT_FALSE(ev.immediate_propagation_stopped());
+
+    ev.stop_propagation();
+
+    EXPECT_TRUE(ev.propagation_stopped());
+    EXPECT_FALSE(ev.immediate_propagation_stopped());
+}
+
+TEST(DomNode, DeepNestedTextContentConcatenatesV134) {
+    auto root = std::make_unique<Element>("div");
+    auto mid = std::make_unique<Element>("div");
+    auto inner = std::make_unique<Element>("div");
+    auto txt = std::make_unique<Text>("deep");
+
+    inner->append_child(std::move(txt));
+    mid->append_child(std::move(inner));
+    root->append_child(std::move(mid));
+
+    EXPECT_EQ(root->text_content(), "deep");
+}
+
+TEST(DomDocument, GetElementByIdReturnsRegisteredElementV134) {
+    Document doc;
+    Element elem("section");
+    elem.set_attribute("id", "test");
+    doc.register_id("test", &elem);
+
+    Element* found = doc.get_element_by_id("test");
+    ASSERT_NE(found, nullptr);
+    EXPECT_EQ(found->tag_name(), "section");
+    EXPECT_EQ(found, &elem);
+}
+
+TEST(DomText, SetDataUpdatesTextV134) {
+    Text t("old");
+    EXPECT_EQ(t.data(), "old");
+
+    t.set_data("new");
+    EXPECT_EQ(t.data(), "new");
+}
+
+TEST(DomNode, ChildCountAfterMultipleAppendAndRemoveV134) {
+    auto parent = std::make_unique<Element>("div");
+    auto c1 = std::make_unique<Element>("span");
+    auto c2 = std::make_unique<Element>("span");
+    auto c3 = std::make_unique<Element>("span");
+    auto c4 = std::make_unique<Element>("span");
+
+    Node* c1_ptr = c1.get();
+    Node* c2_ptr = c2.get();
+
+    parent->append_child(std::move(c1));
+    parent->append_child(std::move(c2));
+    parent->append_child(std::move(c3));
+    parent->append_child(std::move(c4));
+    EXPECT_EQ(parent->child_count(), 4u);
+
+    parent->remove_child(*c1_ptr);
+    parent->remove_child(*c2_ptr);
+    EXPECT_EQ(parent->child_count(), 2u);
+}

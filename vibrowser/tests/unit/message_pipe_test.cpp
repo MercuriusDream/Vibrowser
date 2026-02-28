@@ -942,3 +942,46 @@ TEST(MessagePipeTest, MessagePipeV133_2_CloseIdempotent) {
     b.close();
     b.close();
 }
+
+// ------------------------------------------------------------------
+// V134 Round 134 tests
+// ------------------------------------------------------------------
+
+TEST(MessagePipeTest, MessagePipeV134_1_LargePayload8KBRoundTrip) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    // Build an 8192-byte payload with a repeating pattern
+    std::vector<uint8_t> payload(8192);
+    std::iota(payload.begin(), payload.end(), static_cast<uint8_t>(0));
+
+    ASSERT_TRUE(a.send(payload));
+
+    auto received = b.receive();
+    ASSERT_TRUE(received.has_value());
+    EXPECT_EQ(received->size(), 8192u);
+    EXPECT_EQ(*received, payload);
+}
+
+TEST(MessagePipeTest, MessagePipeV134_2_MultipleSendBeforeReceiveOrderPreserved) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    std::vector<uint8_t> msg1 = {0x01, 0x02};
+    std::vector<uint8_t> msg2 = {0x03, 0x04, 0x05};
+    std::vector<uint8_t> msg3 = {0x06};
+
+    ASSERT_TRUE(a.send(msg1));
+    ASSERT_TRUE(a.send(msg2));
+    ASSERT_TRUE(a.send(msg3));
+
+    auto r1 = b.receive();
+    ASSERT_TRUE(r1.has_value());
+    EXPECT_EQ(*r1, msg1);
+
+    auto r2 = b.receive();
+    ASSERT_TRUE(r2.has_value());
+    EXPECT_EQ(*r2, msg2);
+
+    auto r3 = b.receive();
+    ASSERT_TRUE(r3.has_value());
+    EXPECT_EQ(*r3, msg3);
+}

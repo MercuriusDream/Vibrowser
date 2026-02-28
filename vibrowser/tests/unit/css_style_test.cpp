@@ -25092,3 +25092,43 @@ TEST(PropertyCascadeTest, BoxDecorationBreakSliceV133) {
     EXPECT_EQ(style.box_decoration_break, 0);
     SUCCEED();
 }
+
+// ---------------------------------------------------------------------------
+// Round 134
+// ---------------------------------------------------------------------------
+
+TEST(PropertyCascadeTest, ContainLayoutV134) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("contain", "layout"), parent);
+    SUCCEED();
+}
+
+TEST(PropertyCascadeTest, WillChangeTransformV134) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("will-change", "transform"), parent);
+    SUCCEED();
+}
+
+TEST(PropertyCascadeTest, ScrollBehaviorSmoothV134) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("scroll-behavior", "smooth"), parent);
+    EXPECT_EQ(style.scroll_behavior, 1);
+}
+
+TEST(PropertyCascadeTest, TouchActionNoneV134) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("touch-action", "none"), parent);
+    SUCCEED();
+}

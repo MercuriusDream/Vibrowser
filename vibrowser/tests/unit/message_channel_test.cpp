@@ -932,3 +932,80 @@ TEST(MessageChannelTest, MessageChannelV133_3_CloseIdempotentAndIsOpenReflects) 
     chb.close();
     chb.close();
 }
+
+// ------------------------------------------------------------------
+// V134 Round 134 tests
+// ------------------------------------------------------------------
+
+TEST(MessageChannelTest, MessageChannelV134_1_MaxTypeAndRequestIdPreserved) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel cha(std::move(pa));
+    MessageChannel chb(std::move(pb));
+
+    Message msg;
+    msg.type = UINT32_MAX;
+    msg.request_id = UINT32_MAX;
+    msg.payload = {0xFF};
+    ASSERT_TRUE(cha.send(msg));
+
+    auto received = chb.receive();
+    ASSERT_TRUE(received.has_value());
+    EXPECT_EQ(received->type, UINT32_MAX);
+    EXPECT_EQ(received->request_id, UINT32_MAX);
+    EXPECT_EQ(received->payload.size(), 1u);
+    EXPECT_EQ(received->payload[0], 0xFFu);
+}
+
+TEST(MessageChannelTest, MessageChannelV134_2_EmptyPayloadRoundTrip) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel cha(std::move(pa));
+    MessageChannel chb(std::move(pb));
+
+    Message msg;
+    msg.type = 42;
+    msg.request_id = 7;
+    msg.payload = {};
+    ASSERT_TRUE(cha.send(msg));
+
+    auto received = chb.receive();
+    ASSERT_TRUE(received.has_value());
+    EXPECT_EQ(received->type, 42u);
+    EXPECT_EQ(received->request_id, 7u);
+    EXPECT_TRUE(received->payload.empty());
+}
+
+TEST(MessageChannelTest, MessageChannelV134_3_MultipleHandlersSameType) {
+    // handlers_ is a map, so registering a second handler on the same type
+    // replaces the first. Verify that the latest handler wins.
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel cha(std::move(pa));
+    MessageChannel chb(std::move(pb));
+
+    int handler1_count = 0;
+    int handler2_count = 0;
+
+    chb.on(10, [&](const Message& m) {
+        (void)m;
+        handler1_count++;
+    });
+    // Second registration replaces the first
+    chb.on(10, [&](const Message& m) {
+        (void)m;
+        handler2_count++;
+    });
+
+    Message msg;
+    msg.type = 10;
+    msg.request_id = 0;
+    msg.payload = {0x01};
+    ASSERT_TRUE(cha.send(msg));
+
+    auto received = chb.receive();
+    ASSERT_TRUE(received.has_value());
+    chb.dispatch(*received);
+
+    // First handler was replaced, so it should NOT have fired
+    EXPECT_EQ(handler1_count, 0);
+    // Second (replacement) handler should have fired once
+    EXPECT_EQ(handler2_count, 1);
+}
