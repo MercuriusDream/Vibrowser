@@ -23569,3 +23569,258 @@ TEST(LayoutEngineTest, FlexRowAlignSelfMixedOverridesV124) {
     EXPECT_NE(p2->geometry.y, p3->geometry.y)
         << "center and flex-start should produce different y";
 }
+
+// V125-1: Flex row with justify_content=flex-end pushes children to the right
+TEST(LayoutEngineTest, LayoutV125_1) {
+    auto root = make_flex("div");
+    root->specified_width = 500.0f;
+    root->specified_height = 100.0f;
+    root->flex_direction = 0; // row
+    root->justify_content = 1; // flex-end
+
+    auto c1 = make_block("div");
+    c1->specified_width = 80.0f;
+    c1->specified_height = 50.0f;
+    auto* p1 = c1.get();
+    root->append_child(std::move(c1));
+
+    auto c2 = make_block("div");
+    c2->specified_width = 120.0f;
+    c2->specified_height = 50.0f;
+    auto* p2 = c2.get();
+    root->append_child(std::move(c2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 500.0f, 600.0f);
+
+    // flex-end: children packed at the end; last child ends at 500
+    EXPECT_NEAR(p2->geometry.x + p2->geometry.width, 500.0f, 2.0f)
+        << "Last child should end at container width with flex-end";
+    EXPECT_NEAR(p1->geometry.x + p1->geometry.width, p2->geometry.x, 2.0f)
+        << "First child should end where second child begins";
+    // Free space = 500 - 80 - 120 = 300, should all be before first child
+    EXPECT_NEAR(p1->geometry.x, 300.0f, 2.0f)
+        << "First child should be offset by free space with flex-end";
+}
+
+// V125-2: Flex row with justify_content=space-between distributes space between children
+TEST(LayoutEngineTest, LayoutV125_2) {
+    auto root = make_flex("div");
+    root->specified_width = 600.0f;
+    root->specified_height = 100.0f;
+    root->flex_direction = 0; // row
+    root->justify_content = 3; // space-between
+
+    auto c1 = make_block("div");
+    c1->specified_width = 100.0f;
+    c1->specified_height = 50.0f;
+    auto* p1 = c1.get();
+    root->append_child(std::move(c1));
+
+    auto c2 = make_block("div");
+    c2->specified_width = 100.0f;
+    c2->specified_height = 50.0f;
+    auto* p2 = c2.get();
+    root->append_child(std::move(c2));
+
+    auto c3 = make_block("div");
+    c3->specified_width = 100.0f;
+    c3->specified_height = 50.0f;
+    auto* p3 = c3.get();
+    root->append_child(std::move(c3));
+
+    LayoutEngine engine;
+    engine.compute(*root, 600.0f, 600.0f);
+
+    // space-between: first child at start, last at end, equal space between
+    EXPECT_NEAR(p1->geometry.x, 0.0f, 2.0f)
+        << "First child should be at x=0 with space-between";
+    EXPECT_NEAR(p3->geometry.x + p3->geometry.width, 600.0f, 2.0f)
+        << "Last child should end at container width with space-between";
+    // Gap between children should be equal: (600 - 300) / 2 = 150
+    float gap1 = p2->geometry.x - (p1->geometry.x + p1->geometry.width);
+    float gap2 = p3->geometry.x - (p2->geometry.x + p2->geometry.width);
+    EXPECT_NEAR(gap1, gap2, 2.0f)
+        << "Space-between should produce equal gaps between children";
+}
+
+// V125-3: Flex column with two children stacks vertically
+TEST(LayoutEngineTest, LayoutV125_3) {
+    auto root = make_flex("div");
+    root->flex_direction = 2; // column
+    root->specified_height = 400.0f;
+
+    auto c1 = make_block("div");
+    c1->specified_height = 120.0f;
+    auto* p1 = c1.get();
+    root->append_child(std::move(c1));
+
+    auto c2 = make_block("div");
+    c2->specified_height = 80.0f;
+    auto* p2 = c2.get();
+    root->append_child(std::move(c2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_NEAR(p1->geometry.y, 0.0f, 1.0f)
+        << "First child should start at y=0 in flex column";
+    EXPECT_NEAR(p2->geometry.y, 120.0f, 2.0f)
+        << "Second child should start after first child's height";
+    EXPECT_NEAR(p1->geometry.height, 120.0f, 1.0f);
+    EXPECT_NEAR(p2->geometry.height, 80.0f, 1.0f);
+}
+
+// V125-4: Block child with margins offsets position inside parent
+TEST(LayoutEngineTest, LayoutV125_4) {
+    auto root = make_block("div");
+    root->specified_width = 500.0f;
+
+    auto child = make_block("div");
+    child->specified_width = 300.0f;
+    child->specified_height = 100.0f;
+    child->geometry.margin.top = 30.0f;
+    child->geometry.margin.left = 25.0f;
+    auto* pc = child.get();
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 500.0f, 600.0f);
+
+    EXPECT_NEAR(pc->geometry.y, 30.0f, 2.0f)
+        << "Child y should reflect margin-top";
+    EXPECT_NEAR(pc->geometry.x, 25.0f, 2.0f)
+        << "Child x should reflect margin-left";
+    EXPECT_NEAR(pc->geometry.width, 300.0f, 1.0f)
+        << "Child width should be specified_width";
+}
+
+// V125-5: Flex row with flex_grow distributes remaining space proportionally
+TEST(LayoutEngineTest, LayoutV125_5) {
+    auto root = make_flex("div");
+    root->specified_width = 600.0f;
+    root->specified_height = 80.0f;
+    root->flex_direction = 0; // row
+
+    auto c1 = make_block("div");
+    c1->flex_grow = 1.0f;
+    c1->flex_basis = 0.0f;
+    c1->specified_height = 50.0f;
+    auto* p1 = c1.get();
+    root->append_child(std::move(c1));
+
+    auto c2 = make_block("div");
+    c2->flex_grow = 2.0f;
+    c2->flex_basis = 0.0f;
+    c2->specified_height = 50.0f;
+    auto* p2 = c2.get();
+    root->append_child(std::move(c2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 600.0f, 600.0f);
+
+    // grow 1:2 of 600 => c1=200, c2=400
+    EXPECT_NEAR(p1->geometry.width, 200.0f, 5.0f)
+        << "flex-grow=1 child should get 1/3 of space";
+    EXPECT_NEAR(p2->geometry.width, 400.0f, 5.0f)
+        << "flex-grow=2 child should get 2/3 of space";
+    EXPECT_NEAR(p1->geometry.x, 0.0f, 1.0f);
+    EXPECT_NEAR(p2->geometry.x, p1->geometry.width, 5.0f)
+        << "Second child should start where first ends";
+}
+
+// V125-6: DisplayType::None produces zero-size geometry and is not positioned
+TEST(LayoutEngineTest, LayoutV125_6) {
+    auto root = make_block("div");
+    root->specified_width = 400.0f;
+
+    auto visible = make_block("div");
+    visible->specified_width = 400.0f;
+    visible->specified_height = 50.0f;
+    auto* pv = visible.get();
+    root->append_child(std::move(visible));
+
+    auto hidden = make_block("div");
+    hidden->display = DisplayType::None;
+    hidden->specified_width = 400.0f;
+    hidden->specified_height = 100.0f;
+    auto* ph = hidden.get();
+    root->append_child(std::move(hidden));
+
+    auto after = make_block("div");
+    after->specified_width = 400.0f;
+    after->specified_height = 60.0f;
+    auto* pa = after.get();
+    root->append_child(std::move(after));
+
+    LayoutEngine engine;
+    engine.compute(*root, 400.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(ph->geometry.width, 0.0f)
+        << "display:none should have zero width";
+    EXPECT_FLOAT_EQ(ph->geometry.height, 0.0f)
+        << "display:none should have zero height";
+    // The third child should appear immediately after the first (no gap from hidden)
+    EXPECT_NEAR(pa->geometry.y, pv->geometry.y + pv->geometry.height, 2.0f)
+        << "Element after display:none should be positioned as if hidden element doesn't exist";
+}
+
+// V125-7: Nested block layout — grandchild inherits containing block width
+TEST(LayoutEngineTest, LayoutV125_7) {
+    auto root = make_block("div");
+    root->specified_width = 800.0f;
+
+    auto child = make_block("div");
+    child->specified_width = 500.0f;
+    child->specified_height = 200.0f;
+    auto* pc = child.get();
+
+    auto grandchild = make_block("div");
+    grandchild->specified_height = 80.0f;
+    // No specified_width — should fill parent's content width (500)
+    auto* pg = grandchild.get();
+    child->append_child(std::move(grandchild));
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_NEAR(pc->geometry.width, 500.0f, 1.0f)
+        << "Child should have its specified width";
+    EXPECT_NEAR(pg->geometry.width, 500.0f, 1.0f)
+        << "Grandchild without specified width should fill parent's content width";
+    EXPECT_NEAR(pg->geometry.height, 80.0f, 1.0f);
+}
+
+// V125-8: Flex row with align_items=center vertically centers children
+TEST(LayoutEngineTest, LayoutV125_8) {
+    auto root = make_flex("div");
+    root->specified_width = 400.0f;
+    root->specified_height = 200.0f;
+    root->flex_direction = 0; // row
+    root->align_items = 2; // center
+
+    auto c1 = make_block("div");
+    c1->specified_width = 100.0f;
+    c1->specified_height = 60.0f;
+    auto* p1 = c1.get();
+    root->append_child(std::move(c1));
+
+    auto c2 = make_block("div");
+    c2->specified_width = 100.0f;
+    c2->specified_height = 100.0f;
+    auto* p2 = c2.get();
+    root->append_child(std::move(c2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 400.0f, 600.0f);
+
+    // align_items=center: each child centered in 200px cross-axis
+    EXPECT_NEAR(p1->geometry.y, (200.0f - 60.0f) / 2.0f, 2.0f)
+        << "60px child should be centered in 200px container cross-axis";
+    EXPECT_NEAR(p2->geometry.y, (200.0f - 100.0f) / 2.0f, 2.0f)
+        << "100px child should be centered in 200px container cross-axis";
+    // Both should have the same centering logic but different y values due to different heights
+    EXPECT_GT(p1->geometry.y, p2->geometry.y)
+        << "Shorter child should have larger y offset when centered";
+}

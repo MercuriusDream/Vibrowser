@@ -19270,3 +19270,135 @@ TEST(DomNode, RemoveMultipleMiddleChildrenSiblingIntegrityV124) {
     EXPECT_EQ(rows[1]->parent(), nullptr);
     EXPECT_EQ(rows[3]->parent(), nullptr);
 }
+
+// ---------------------------------------------------------------------------
+// V125 Tests — Round 125
+// ---------------------------------------------------------------------------
+
+// 1. Document factory methods produce correct node types
+TEST(DomDocument, ElementV125_1) {
+    Document doc;
+    auto elem = doc.create_element("section");
+    EXPECT_EQ(elem->tag_name(), "section");
+    EXPECT_EQ(elem->node_type(), NodeType::Element);
+
+    auto txt = doc.create_text_node("hello world");
+    EXPECT_EQ(txt->data(), "hello world");
+    EXPECT_EQ(txt->node_type(), NodeType::Text);
+
+    auto cmt = doc.create_comment("a comment");
+    EXPECT_EQ(cmt->data(), "a comment");
+    EXPECT_EQ(cmt->node_type(), NodeType::Comment);
+}
+
+// 2. ClassList add/remove/contains/toggle/length
+TEST(DomElement, ElementV125_2) {
+    Element elem("div");
+    auto& cl = elem.class_list();
+    EXPECT_EQ(cl.length(), 0u);
+    EXPECT_FALSE(cl.contains("active"));
+
+    cl.add("active");
+    EXPECT_TRUE(cl.contains("active"));
+    EXPECT_EQ(cl.length(), 1u);
+
+    cl.add("hidden");
+    EXPECT_EQ(cl.length(), 2u);
+
+    cl.toggle("active");  // removes it
+    EXPECT_FALSE(cl.contains("active"));
+    EXPECT_EQ(cl.length(), 1u);
+
+    cl.toggle("visible");  // adds it
+    EXPECT_TRUE(cl.contains("visible"));
+    EXPECT_EQ(cl.length(), 2u);
+
+    cl.remove("hidden");
+    EXPECT_FALSE(cl.contains("hidden"));
+    EXPECT_EQ(cl.length(), 1u);
+}
+
+// 3. insert_before with nullptr reference appends at the end
+TEST(DomNode, ElementV125_3) {
+    Element parent("ul");
+    parent.append_child(std::make_unique<Element>("li"));
+    static_cast<Element*>(parent.first_child())->set_attribute("id", "first");
+
+    auto second = std::make_unique<Element>("li");
+    second->set_attribute("id", "second");
+    parent.insert_before(std::move(second), nullptr);
+
+    EXPECT_EQ(parent.child_count(), 2u);
+    auto* last = static_cast<Element*>(parent.last_child());
+    EXPECT_EQ(last->get_attribute("id").value(), "second");
+}
+
+// 4. Text node set_data updates content
+TEST(DomText, ElementV125_4) {
+    Text txt("original");
+    EXPECT_EQ(txt.data(), "original");
+    EXPECT_EQ(txt.text_content(), "original");
+
+    txt.set_data("modified");
+    EXPECT_EQ(txt.data(), "modified");
+    EXPECT_EQ(txt.text_content(), "modified");
+}
+
+// 5. Comment node set_data updates content
+TEST(DomComment, ElementV125_5) {
+    Comment cmt("initial comment");
+    EXPECT_EQ(cmt.data(), "initial comment");
+
+    cmt.set_data("updated comment");
+    EXPECT_EQ(cmt.data(), "updated comment");
+}
+
+// 6. Element text_content concatenates text from nested children
+TEST(DomElement, ElementV125_6) {
+    Element parent("p");
+    parent.append_child(std::make_unique<Text>("Hello, "));
+    auto span = std::make_unique<Element>("span");
+    span->append_child(std::make_unique<Text>("world"));
+    parent.append_child(std::move(span));
+    parent.append_child(std::make_unique<Text>("!"));
+
+    EXPECT_EQ(parent.text_content(), "Hello, world!");
+}
+
+// 7. Dirty flags: mark_dirty sets flags, clear_dirty resets them, bitwise OR works
+TEST(DomNode, ElementV125_7) {
+    Element elem("div");
+    EXPECT_EQ(elem.dirty_flags(), DirtyFlags::None);
+
+    elem.mark_dirty(DirtyFlags::Style);
+    EXPECT_EQ(static_cast<uint8_t>(elem.dirty_flags() & DirtyFlags::Style),
+              static_cast<uint8_t>(DirtyFlags::Style));
+
+    elem.mark_dirty(DirtyFlags::Layout);
+    // Both Style and Layout should be set
+    EXPECT_EQ(static_cast<uint8_t>(elem.dirty_flags() & DirtyFlags::Style),
+              static_cast<uint8_t>(DirtyFlags::Style));
+    EXPECT_EQ(static_cast<uint8_t>(elem.dirty_flags() & DirtyFlags::Layout),
+              static_cast<uint8_t>(DirtyFlags::Layout));
+
+    elem.clear_dirty();
+    EXPECT_EQ(elem.dirty_flags(), DirtyFlags::None);
+}
+
+// 8. Setting "id" attribute via set_attribute updates the id() shortcut
+TEST(DomElement, ElementV125_8) {
+    Element elem("div");
+    EXPECT_EQ(elem.id(), "");
+
+    elem.set_attribute("id", "main-content");
+    EXPECT_EQ(elem.id(), "main-content");
+    EXPECT_EQ(elem.get_attribute("id").value(), "main-content");
+
+    // Overwrite id
+    elem.set_attribute("id", "sidebar");
+    EXPECT_EQ(elem.id(), "sidebar");
+
+    // Remove id attribute — id() should return empty
+    elem.remove_attribute("id");
+    EXPECT_EQ(elem.id(), "");
+}

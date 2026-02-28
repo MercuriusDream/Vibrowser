@@ -18968,3 +18968,244 @@ TEST(SerializerTest, MultipleDeserializersFromSameBufferV124) {
     EXPECT_EQ(d3.read_i64(), 9999999999LL);
     EXPECT_FALSE(d3.has_remaining());
 }
+
+// ------------------------------------------------------------------
+// V125 Tests
+// ------------------------------------------------------------------
+
+TEST(SerializerTest, SerializerV125_1_TakeDataTransfersOwnership) {
+    // Verify that take_data() moves the internal buffer out of the Serializer,
+    // leaving the serializer's buffer empty, while the taken vector contains
+    // all previously-written data.
+    Serializer s;
+    s.write_u32(42u);
+    s.write_string("hello");
+    s.write_bool(true);
+
+    // Capture expected size before take
+    const auto& ref = s.data();
+    size_t expected_size = ref.size();
+    EXPECT_GT(expected_size, 0u);
+
+    // take_data moves the buffer out
+    std::vector<uint8_t> taken = s.take_data();
+    EXPECT_EQ(taken.size(), expected_size);
+
+    // After take, serializer buffer should be empty
+    EXPECT_TRUE(s.data().empty());
+
+    // The taken buffer should still deserialize correctly
+    Deserializer d(taken);
+    EXPECT_EQ(d.read_u32(), 42u);
+    EXPECT_EQ(d.read_string(), "hello");
+    EXPECT_EQ(d.read_bool(), true);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, SerializerV125_2_DeserializerFromRawPointerAndSize) {
+    // Verify that constructing a Deserializer from raw (ptr, size) works
+    // identically to the vector-based constructor.
+    Serializer s;
+    s.write_i32(-999);
+    s.write_u64(0xCAFEBABEDEAD0001ULL);
+    s.write_string("raw_ptr_test");
+
+    const auto& buf = s.data();
+
+    // Use the (ptr, size) constructor
+    Deserializer d(buf.data(), buf.size());
+    EXPECT_EQ(d.read_i32(), -999);
+    EXPECT_EQ(d.read_u64(), 0xCAFEBABEDEAD0001ULL);
+    EXPECT_EQ(d.read_string(), "raw_ptr_test");
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, SerializerV125_3_WriteBytesLargePayload) {
+    // Serialize a large byte payload (4096 bytes) and verify round-trip
+    // integrity, ensuring the length-prefixed encoding handles larger buffers.
+    const size_t payload_size = 4096;
+    std::vector<uint8_t> payload(payload_size);
+    for (size_t i = 0; i < payload_size; ++i) {
+        payload[i] = static_cast<uint8_t>(i & 0xFF);
+    }
+
+    Serializer s;
+    s.write_bytes(payload.data(), payload.size());
+
+    Deserializer d(s.data());
+    auto result = d.read_bytes();
+    EXPECT_EQ(result.size(), payload_size);
+    for (size_t i = 0; i < payload_size; ++i) {
+        EXPECT_EQ(result[i], static_cast<uint8_t>(i & 0xFF));
+    }
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, SerializerV125_4_InterleavedSignedUnsignedTypes) {
+    // Write a mix of signed and unsigned integer types in an interleaved
+    // pattern and verify the deserializer keeps correct alignment.
+    Serializer s;
+    s.write_u8(0xAB);
+    s.write_i32(-2147483648);  // INT32_MIN
+    s.write_u16(12345);
+    s.write_i64(-1LL);
+    s.write_u32(0xDEADBEEFu);
+    s.write_u64(1ULL);
+    s.write_i32(2147483647);   // INT32_MAX
+    s.write_u8(0x01);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u8(), 0xAB);
+    EXPECT_EQ(d.read_i32(), -2147483648);
+    EXPECT_EQ(d.read_u16(), 12345);
+    EXPECT_EQ(d.read_i64(), -1LL);
+    EXPECT_EQ(d.read_u32(), 0xDEADBEEFu);
+    EXPECT_EQ(d.read_u64(), 1ULL);
+    EXPECT_EQ(d.read_i32(), 2147483647);
+    EXPECT_EQ(d.read_u8(), 0x01);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, SerializerV125_5_F64SpecialValuesPreserved) {
+    // Verify that special floating-point values (positive infinity, negative
+    // infinity, negative zero, subnormal) survive serialization round-trip.
+    Serializer s;
+    s.write_f64(std::numeric_limits<double>::infinity());
+    s.write_f64(-std::numeric_limits<double>::infinity());
+    s.write_f64(-0.0);
+    s.write_f64(std::numeric_limits<double>::denorm_min());
+    s.write_f64(std::numeric_limits<double>::max());
+
+    Deserializer d(s.data());
+    double pos_inf = d.read_f64();
+    EXPECT_TRUE(std::isinf(pos_inf) && pos_inf > 0);
+
+    double neg_inf = d.read_f64();
+    EXPECT_TRUE(std::isinf(neg_inf) && neg_inf < 0);
+
+    double neg_zero = d.read_f64();
+    EXPECT_DOUBLE_EQ(neg_zero, 0.0);
+    EXPECT_TRUE(std::signbit(neg_zero));  // must be negative zero
+
+    double denorm = d.read_f64();
+    EXPECT_DOUBLE_EQ(denorm, std::numeric_limits<double>::denorm_min());
+
+    double max_val = d.read_f64();
+    EXPECT_DOUBLE_EQ(max_val, std::numeric_limits<double>::max());
+
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, SerializerV125_6_EmptyAndNonEmptyStringsSequence) {
+    // Verify correct handling of a sequence of empty strings intermixed with
+    // non-empty strings — tests that length-prefix encoding handles zero-
+    // length strings without corrupting subsequent reads.
+    Serializer s;
+    s.write_string("");
+    s.write_string("first");
+    s.write_string("");
+    s.write_string("");
+    s.write_string("second");
+    s.write_string("");
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "");
+    EXPECT_EQ(d.read_string(), "first");
+    EXPECT_EQ(d.read_string(), "");
+    EXPECT_EQ(d.read_string(), "");
+    EXPECT_EQ(d.read_string(), "second");
+    EXPECT_EQ(d.read_string(), "");
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, SerializerV125_7_RemainingDecreasesCorrectlyAcrossTypes) {
+    // Track remaining() as we read through a buffer with every type,
+    // verifying the byte count decreases by the correct amount for each type.
+    Serializer s;
+    s.write_u8(1);       // 1 byte
+    s.write_u16(2);      // 2 bytes
+    s.write_u32(3);      // 4 bytes
+    s.write_u64(4);      // 8 bytes
+    s.write_i32(5);      // 4 bytes
+    s.write_i64(6);      // 8 bytes
+    s.write_f64(7.0);    // 8 bytes
+    s.write_bool(true);  // 1 byte
+
+    Deserializer d(s.data());
+    size_t total = d.remaining();
+    // Total should be: 1 + 2 + 4 + 8 + 4 + 8 + 8 + 1 = 36
+    EXPECT_EQ(total, 36u);
+
+    d.read_u8();
+    EXPECT_EQ(d.remaining(), total - 1u);
+
+    d.read_u16();
+    EXPECT_EQ(d.remaining(), total - 1u - 2u);
+
+    d.read_u32();
+    EXPECT_EQ(d.remaining(), total - 1u - 2u - 4u);
+
+    d.read_u64();
+    EXPECT_EQ(d.remaining(), total - 1u - 2u - 4u - 8u);
+
+    d.read_i32();
+    EXPECT_EQ(d.remaining(), total - 1u - 2u - 4u - 8u - 4u);
+
+    d.read_i64();
+    EXPECT_EQ(d.remaining(), total - 1u - 2u - 4u - 8u - 4u - 8u);
+
+    d.read_f64();
+    EXPECT_EQ(d.remaining(), total - 1u - 2u - 4u - 8u - 4u - 8u - 8u);
+
+    d.read_bool();
+    EXPECT_EQ(d.remaining(), 0u);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, SerializerV125_8_ReserializeFromDeserializedValues) {
+    // Deserialize values from one buffer, then re-serialize them into a new
+    // Serializer and verify the new buffer deserializes identically. This
+    // tests that the read values are faithfully usable for a second round-trip.
+    Serializer s1;
+    s1.write_u32(0xFEEDFACEu);
+    s1.write_i64(-123456789012345LL);
+    s1.write_string("re-serialize me");
+    s1.write_f64(2.718281828);
+    s1.write_bool(false);
+    uint8_t blob[] = {0xDE, 0xAD, 0xBE, 0xEF};
+    s1.write_bytes(blob, 4);
+
+    // Deserialize first buffer
+    Deserializer d1(s1.data());
+    uint32_t val_u32 = d1.read_u32();
+    int64_t val_i64 = d1.read_i64();
+    std::string val_str = d1.read_string();
+    double val_f64 = d1.read_f64();
+    bool val_bool = d1.read_bool();
+    std::vector<uint8_t> val_bytes = d1.read_bytes();
+    EXPECT_FALSE(d1.has_remaining());
+
+    // Re-serialize into a second buffer
+    Serializer s2;
+    s2.write_u32(val_u32);
+    s2.write_i64(val_i64);
+    s2.write_string(val_str);
+    s2.write_f64(val_f64);
+    s2.write_bool(val_bool);
+    s2.write_bytes(val_bytes.data(), val_bytes.size());
+
+    // Verify second buffer matches
+    Deserializer d2(s2.data());
+    EXPECT_EQ(d2.read_u32(), 0xFEEDFACEu);
+    EXPECT_EQ(d2.read_i64(), -123456789012345LL);
+    EXPECT_EQ(d2.read_string(), "re-serialize me");
+    EXPECT_DOUBLE_EQ(d2.read_f64(), 2.718281828);
+    EXPECT_EQ(d2.read_bool(), false);
+    auto bytes2 = d2.read_bytes();
+    ASSERT_EQ(bytes2.size(), 4u);
+    EXPECT_EQ(bytes2[0], 0xDE);
+    EXPECT_EQ(bytes2[1], 0xAD);
+    EXPECT_EQ(bytes2[2], 0xBE);
+    EXPECT_EQ(bytes2[3], 0xEF);
+    EXPECT_FALSE(d2.has_remaining());
+}

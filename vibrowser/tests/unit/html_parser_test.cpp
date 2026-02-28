@@ -20722,3 +20722,269 @@ TEST(HtmlParserTest, TableCaptionColspanEmptyCellsAndNestedTextV124) {
     EXPECT_EQ(get_attr_v63(note_link, "href"), "#note1");
     EXPECT_EQ(note_link->text_content(), "See note");
 }
+
+// ---------------------------------------------------------------------------
+// Cycle V125 — HTML parser tests: diverse scenarios covering nesting,
+//              attributes, void elements, text content, comments, and types.
+// ---------------------------------------------------------------------------
+
+TEST(HtmlParserTest, NestedNavWithUlLiAndAnchorsV125) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<nav id=\"main-nav\">"
+        "<ul>"
+        "<li><a href=\"/home\">Home</a></li>"
+        "<li><a href=\"/about\">About</a></li>"
+        "<li><a href=\"/contact\">Contact</a></li>"
+        "</ul>"
+        "</nav>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* nav = doc->find_element("nav");
+    ASSERT_NE(nav, nullptr);
+    EXPECT_EQ(get_attr_v63(nav, "id"), "main-nav");
+
+    auto* ul = nav->find_element("ul");
+    ASSERT_NE(ul, nullptr);
+
+    auto lis = ul->find_all_elements("li");
+    ASSERT_EQ(lis.size(), 3u);
+
+    auto anchors = nav->find_all_elements("a");
+    ASSERT_EQ(anchors.size(), 3u);
+
+    EXPECT_EQ(get_attr_v63(anchors[0], "href"), "/home");
+    EXPECT_EQ(anchors[0]->text_content(), "Home");
+
+    EXPECT_EQ(get_attr_v63(anchors[1], "href"), "/about");
+    EXPECT_EQ(anchors[1]->text_content(), "About");
+
+    EXPECT_EQ(get_attr_v63(anchors[2], "href"), "/contact");
+    EXPECT_EQ(anchors[2]->text_content(), "Contact");
+}
+
+TEST(HtmlParserTest, CommentNodeTypeAndTextContentV125) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<!-- Banner section -->"
+        "<div>Content</div>"
+        "<!-- Footer section -->"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* body = doc->find_element("body");
+    ASSERT_NE(body, nullptr);
+
+    // Count comment nodes among body's children
+    int comment_count = 0;
+    for (auto& child : body->children) {
+        if (child->type == clever::html::SimpleNode::Comment) {
+            comment_count++;
+        }
+    }
+    EXPECT_GE(comment_count, 2);
+
+    auto* div = doc->find_element("div");
+    ASSERT_NE(div, nullptr);
+    EXPECT_EQ(div->text_content(), "Content");
+}
+
+TEST(HtmlParserTest, MultipleVoidElementsAmongTextNodesV125) {
+    auto doc = clever::html::parse(
+        "<body>"
+        "Line1<br>Line2<br>Line3<hr>End"
+        "</body>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* body = doc->find_element("body");
+    ASSERT_NE(body, nullptr);
+
+    auto brs = body->find_all_elements("br");
+    EXPECT_EQ(brs.size(), 2u);
+
+    auto hrs = body->find_all_elements("hr");
+    EXPECT_EQ(hrs.size(), 1u);
+
+    // All void elements must have zero children
+    for (auto* br : brs) {
+        EXPECT_TRUE(br->children.empty());
+    }
+    for (auto* hr : hrs) {
+        EXPECT_TRUE(hr->children.empty());
+    }
+
+    // Body text_content should contain all text fragments
+    std::string text = body->text_content();
+    EXPECT_NE(text.find("Line1"), std::string::npos);
+    EXPECT_NE(text.find("Line2"), std::string::npos);
+    EXPECT_NE(text.find("Line3"), std::string::npos);
+    EXPECT_NE(text.find("End"), std::string::npos);
+}
+
+TEST(HtmlParserTest, DeeplyNestedSixLevelDivChainV125) {
+    auto doc = clever::html::parse(
+        "<div id=\"l1\">"
+        "  <div id=\"l2\">"
+        "    <div id=\"l3\">"
+        "      <div id=\"l4\">"
+        "        <div id=\"l5\">"
+        "          <div id=\"l6\"><span>Leaf</span></div>"
+        "        </div>"
+        "      </div>"
+        "    </div>"
+        "  </div>"
+        "</div>");
+    ASSERT_NE(doc, nullptr);
+
+    auto all_divs = doc->find_all_elements("div");
+    ASSERT_EQ(all_divs.size(), 6u);
+
+    // Verify nesting: each div's parent should be the previous level div
+    for (size_t i = 1; i < all_divs.size(); ++i) {
+        EXPECT_EQ(all_divs[i]->parent, all_divs[i - 1]);
+    }
+
+    auto* span = doc->find_element("span");
+    ASSERT_NE(span, nullptr);
+    EXPECT_EQ(span->text_content(), "Leaf");
+    EXPECT_EQ(span->parent, all_divs[5]);
+}
+
+TEST(HtmlParserTest, TableWithCaptionTheadTbodyTfootV125) {
+    auto doc = clever::html::parse(
+        "<table>"
+        "<caption>Sales Report</caption>"
+        "<thead><tr><th>Product</th><th>Revenue</th></tr></thead>"
+        "<tbody>"
+        "<tr><td>Widget</td><td>$100</td></tr>"
+        "<tr><td>Gadget</td><td>$200</td></tr>"
+        "</tbody>"
+        "<tfoot><tr><td>Total</td><td>$300</td></tr></tfoot>"
+        "</table>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* table = doc->find_element("table");
+    ASSERT_NE(table, nullptr);
+
+    auto* caption = table->find_element("caption");
+    ASSERT_NE(caption, nullptr);
+    EXPECT_EQ(caption->text_content(), "Sales Report");
+
+    auto* thead = table->find_element("thead");
+    ASSERT_NE(thead, nullptr);
+    auto ths = thead->find_all_elements("th");
+    ASSERT_EQ(ths.size(), 2u);
+    EXPECT_EQ(ths[0]->text_content(), "Product");
+    EXPECT_EQ(ths[1]->text_content(), "Revenue");
+
+    auto* tbody = table->find_element("tbody");
+    ASSERT_NE(tbody, nullptr);
+    auto body_rows = tbody->find_all_elements("tr");
+    ASSERT_EQ(body_rows.size(), 2u);
+
+    auto* tfoot = table->find_element("tfoot");
+    ASSERT_NE(tfoot, nullptr);
+    auto foot_tds = tfoot->find_all_elements("td");
+    ASSERT_EQ(foot_tds.size(), 2u);
+    EXPECT_EQ(foot_tds[0]->text_content(), "Total");
+    EXPECT_EQ(foot_tds[1]->text_content(), "$300");
+}
+
+TEST(HtmlParserTest, FormWithLabelInputTextareaAndButtonV125) {
+    auto doc = clever::html::parse(
+        "<form action=\"/submit\" method=\"post\">"
+        "<label for=\"name\">Name:</label>"
+        "<input id=\"name\" type=\"text\" value=\"John\"/>"
+        "<label for=\"msg\">Message:</label>"
+        "<textarea id=\"msg\" rows=\"4\" cols=\"50\">Hello World</textarea>"
+        "<button type=\"submit\">Send</button>"
+        "</form>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* form = doc->find_element("form");
+    ASSERT_NE(form, nullptr);
+    EXPECT_EQ(get_attr_v63(form, "action"), "/submit");
+    EXPECT_EQ(get_attr_v63(form, "method"), "post");
+
+    auto labels = form->find_all_elements("label");
+    ASSERT_EQ(labels.size(), 2u);
+    EXPECT_EQ(get_attr_v63(labels[0], "for"), "name");
+    EXPECT_EQ(labels[0]->text_content(), "Name:");
+
+    auto* input = form->find_element("input");
+    ASSERT_NE(input, nullptr);
+    EXPECT_EQ(get_attr_v63(input, "type"), "text");
+    EXPECT_EQ(get_attr_v63(input, "value"), "John");
+    EXPECT_TRUE(input->children.empty()); // void element
+
+    auto* textarea = form->find_element("textarea");
+    ASSERT_NE(textarea, nullptr);
+    EXPECT_EQ(get_attr_v63(textarea, "rows"), "4");
+    EXPECT_EQ(get_attr_v63(textarea, "cols"), "50");
+    EXPECT_EQ(textarea->text_content(), "Hello World");
+
+    auto* button = form->find_element("button");
+    ASSERT_NE(button, nullptr);
+    EXPECT_EQ(get_attr_v63(button, "type"), "submit");
+    EXPECT_EQ(button->text_content(), "Send");
+}
+
+TEST(HtmlParserTest, DoctypeAndDocumentRootTypeV125) {
+    auto doc = clever::html::parse(
+        "<!DOCTYPE html>"
+        "<html lang=\"en\">"
+        "<head><title>Page</title></head>"
+        "<body><p>Content</p></body>"
+        "</html>");
+    ASSERT_NE(doc, nullptr);
+    EXPECT_EQ(doc->type, clever::html::SimpleNode::Document);
+
+    // Find doctype node among root children
+    bool found_doctype = false;
+    for (auto& child : doc->children) {
+        if (child->type == clever::html::SimpleNode::DocumentType) {
+            found_doctype = true;
+            break;
+        }
+    }
+    EXPECT_TRUE(found_doctype);
+
+    auto* html_el = doc->find_element("html");
+    ASSERT_NE(html_el, nullptr);
+    EXPECT_EQ(html_el->type, clever::html::SimpleNode::Element);
+    EXPECT_EQ(get_attr_v63(html_el, "lang"), "en");
+
+    auto* title = doc->find_element("title");
+    ASSERT_NE(title, nullptr);
+    EXPECT_EQ(title->text_content(), "Page");
+
+    auto* p = doc->find_element("p");
+    ASSERT_NE(p, nullptr);
+    EXPECT_EQ(p->text_content(), "Content");
+}
+
+TEST(HtmlParserTest, ScriptTagRawContentNotParsedAsHtmlV125) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<script type=\"text/javascript\">"
+        "if (x < 10 && y > 5) { document.getElementById(\"test\"); }"
+        "</script>"
+        "<p>After script</p>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto scripts = doc->find_all_elements("script");
+    ASSERT_EQ(scripts.size(), 1u);
+    EXPECT_EQ(get_attr_v63(scripts[0], "type"), "text/javascript");
+
+    // Script content should be treated as raw text, not parsed as HTML
+    std::string content = scripts[0]->text_content();
+    EXPECT_NE(content.find("x < 10"), std::string::npos);
+    EXPECT_NE(content.find("&&"), std::string::npos);
+
+    // The <p> after script should be a sibling, not consumed by script
+    auto* p = doc->find_element("p");
+    ASSERT_NE(p, nullptr);
+    EXPECT_EQ(p->text_content(), "After script");
+}

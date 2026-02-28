@@ -13530,3 +13530,109 @@ TEST(UrlParserTest, SchemeRelativeResolutionSwitchesHostButKeepsSchemeV124) {
     EXPECT_TRUE(resolved->username.empty());
     EXPECT_TRUE(resolved->password.empty());
 }
+
+// =============================================================================
+// V125 Tests
+// =============================================================================
+
+TEST(UrlParserTest, UrlV125_1_WsSchemeNonDefaultPortPreservedInSerialize) {
+    // WebSocket URL with a non-default port should preserve it in serialization
+    auto result = parse("ws://chat.example.com:9090/live");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "ws");
+    EXPECT_EQ(result->host, "chat.example.com");
+    ASSERT_TRUE(result->port.has_value());
+    EXPECT_EQ(result->port.value(), 9090);
+    EXPECT_EQ(result->path, "/live");
+    EXPECT_TRUE(result->is_special());
+    std::string s = result->serialize();
+    EXPECT_EQ(s, "ws://chat.example.com:9090/live");
+}
+
+TEST(UrlParserTest, UrlV125_2_RelativePathWithDotDotFromDeepBase) {
+    // Resolving a ../sibling path from a deeply nested base URL
+    auto base = parse("https://example.com/a/b/c/d/page.html");
+    ASSERT_TRUE(base.has_value());
+    auto result = parse("../../other/file.js", &*base);
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/a/b/other/file.js");
+}
+
+TEST(UrlParserTest, UrlV125_3_OriginWithWssSchemeAndCustomPort) {
+    // wss:// with a non-default port should produce origin with port included
+    auto result = parse("wss://secure.example.com:4443/socket");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "wss");
+    EXPECT_TRUE(result->is_special());
+    ASSERT_TRUE(result->port.has_value());
+    EXPECT_EQ(result->port.value(), 4443);
+    EXPECT_EQ(result->origin(), "wss://secure.example.com:4443");
+}
+
+TEST(UrlParserTest, UrlV125_4_SameOriginWithDifferentPathQueryFragment) {
+    // Two URLs with same scheme/host/port but different path/query/fragment
+    // should be considered same-origin
+    auto a = parse("https://example.com/page1?x=1#top");
+    auto b = parse("https://example.com/page2?y=2#bottom");
+    ASSERT_TRUE(a.has_value());
+    ASSERT_TRUE(b.has_value());
+    EXPECT_TRUE(urls_same_origin(*a, *b));
+    // But different subdomains are NOT same-origin
+    auto c = parse("https://sub.example.com/page1");
+    ASSERT_TRUE(c.has_value());
+    EXPECT_FALSE(urls_same_origin(*a, *c));
+}
+
+TEST(UrlParserTest, UrlV125_5_PercentEncodedAtSignInPasswordDoubleEncoded) {
+    // %40 in a URL input gets double-encoded to %2540 because parser
+    // re-encodes the % sign
+    auto result = parse("http://user:p%40ss@example.com/");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->username, "user");
+    EXPECT_EQ(result->password, "p%2540ss");
+    EXPECT_EQ(result->host, "example.com");
+}
+
+TEST(UrlParserTest, UrlV125_6_AbsolutePathRelativeResolutionReplacesEntirePath) {
+    // An absolute-path reference (/new/path) resolved against a base
+    // should replace the entire path but keep scheme and host
+    auto base = parse("https://example.com/old/deep/nested/page.html?q=1#frag");
+    ASSERT_TRUE(base.has_value());
+    auto result = parse("/new/path?search=yes", &*base);
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/new/path");
+    EXPECT_EQ(result->query, "search=yes");
+    EXPECT_TRUE(result->fragment.empty());
+}
+
+TEST(UrlParserTest, UrlV125_7_SerializeRoundTripWithUserinfoPortQueryFragment) {
+    // A fully-loaded URL with every component should round-trip through
+    // parse -> serialize correctly
+    auto result = parse("http://admin:secret@api.example.com:3000/v2/users?role=admin&active=true#section5");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->username, "admin");
+    EXPECT_EQ(result->password, "secret");
+    EXPECT_EQ(result->host, "api.example.com");
+    ASSERT_TRUE(result->port.has_value());
+    EXPECT_EQ(result->port.value(), 3000);
+    EXPECT_EQ(result->path, "/v2/users");
+    EXPECT_EQ(result->query, "role=admin&active=true");
+    EXPECT_EQ(result->fragment, "section5");
+    std::string s = result->serialize();
+    EXPECT_EQ(s, "http://admin:secret@api.example.com:3000/v2/users?role=admin&active=true#section5");
+}
+
+TEST(UrlParserTest, UrlV125_8_BlobSchemeIsNotSpecialAndOriginIsNull) {
+    // blob: is not a special scheme; its origin should be "null"
+    auto result = parse("blob:https://example.com/abc-def-123");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "blob");
+    EXPECT_FALSE(result->is_special());
+    EXPECT_EQ(result->origin(), "null");
+    EXPECT_EQ(result->path, "https://example.com/abc-def-123");
+}

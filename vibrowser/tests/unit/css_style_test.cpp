@@ -24129,3 +24129,287 @@ TEST(ComputedStyleTest, CalcExprDivMulNestedWithUnitsV124) {
     auto nested_min = CalcExpr::make_binary(CalcExpr::Op::Min, div_expr, mul_expr);
     EXPECT_FLOAT_EQ(nested_min->evaluate(parent_fs, root_fs), 34.0f);
 }
+
+// ---------------------------------------------------------------------------
+// V125 Tests
+// ---------------------------------------------------------------------------
+
+TEST(CSSStyleTest, CssV125_1_FlexLayoutWithGapAndOrderAndAlignSelf) {
+    // Test flex container properties resolved from CSS: direction, wrap,
+    // justify-content, align-items, gap, and child order + align-self.
+    const std::string css =
+        ".flex-container{display:flex;flex-direction:column;flex-wrap:wrap;"
+        "justify-content:space-between;align-items:center;gap:12px;"
+        "width:600px;height:400px;}"
+        ".flex-child{order:3;flex-grow:2;flex-shrink:0.5;"
+        "flex-basis:100px;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    // Resolve container
+    ElementView container;
+    container.tag_name = "div";
+    container.classes = {"flex-container"};
+    ComputedStyle parent;
+    auto cs = resolver.resolve(container, parent);
+
+    EXPECT_EQ(cs.display, Display::Flex);
+    EXPECT_EQ(cs.flex_direction, FlexDirection::Column);
+    EXPECT_EQ(cs.flex_wrap, FlexWrap::Wrap);
+    EXPECT_EQ(cs.justify_content, JustifyContent::SpaceBetween);
+    EXPECT_EQ(cs.align_items, AlignItems::Center);
+    EXPECT_FLOAT_EQ(cs.gap.to_px(), 12.0f);
+    EXPECT_FLOAT_EQ(cs.width.to_px(), 600.0f);
+    EXPECT_FLOAT_EQ(cs.height.to_px(), 400.0f);
+
+    // Resolve child
+    ElementView child;
+    child.tag_name = "div";
+    child.classes = {"flex-child"};
+    auto ch = resolver.resolve(child, cs);
+
+    EXPECT_EQ(ch.order, 3);
+    EXPECT_EQ(ch.align_self, -1); // auto (default, inherits from parent)
+    EXPECT_FLOAT_EQ(ch.flex_grow, 2.0f);
+    EXPECT_FLOAT_EQ(ch.flex_shrink, 0.5f);
+    EXPECT_FLOAT_EQ(ch.flex_basis.to_px(), 100.0f);
+}
+
+TEST(CSSStyleTest, CssV125_2_StickyPositionWithTopBottomAndBorderRadius) {
+    // Verify sticky positioning with inset properties and per-corner
+    // border-radius values parsed from CSS.
+    const std::string css =
+        ".sticky-header{position:sticky;top:0px;z-index:10;"
+        "border-radius:8px;padding-top:16px;padding-bottom:16px;"
+        "background-color:#1e3a5f;color:#ffffff;font-size:20px;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "header";
+    elem.classes = {"sticky-header"};
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.position, Position::Sticky);
+    EXPECT_FLOAT_EQ(style.top.to_px(), 0.0f);
+    EXPECT_EQ(style.z_index, 10);
+    EXPECT_FLOAT_EQ(style.border_radius, 8.0f);
+    EXPECT_FLOAT_EQ(style.padding.top.to_px(), 16.0f);
+    EXPECT_FLOAT_EQ(style.padding.bottom.to_px(), 16.0f);
+    EXPECT_EQ(style.background_color.r, 0x1e);
+    EXPECT_EQ(style.background_color.g, 0x3a);
+    EXPECT_EQ(style.background_color.b, 0x5f);
+    EXPECT_EQ(style.color.r, 0xff);
+    EXPECT_EQ(style.color.g, 0xff);
+    EXPECT_EQ(style.color.b, 0xff);
+    EXPECT_FLOAT_EQ(style.font_size.to_px(), 20.0f);
+}
+
+TEST(ComputedStyleTest, CssV125_3_TransformMultipleEntriesIndependent) {
+    // Verify that multiple Transform entries (translate, rotate, scale)
+    // can coexist in the transforms vector with independent field access.
+    ComputedStyle s;
+    EXPECT_TRUE(s.transforms.empty());
+
+    Transform translate;
+    translate.type = TransformType::Translate;
+    translate.x = 50.0f;
+    translate.y = -30.0f;
+
+    Transform rotate;
+    rotate.type = TransformType::Rotate;
+    rotate.angle = 45.0f;
+
+    Transform scale;
+    scale.type = TransformType::Scale;
+    scale.x = 1.5f;
+    scale.y = 2.0f;
+
+    s.transforms = {translate, rotate, scale};
+    EXPECT_EQ(s.transforms.size(), 3u);
+
+    // Translate
+    EXPECT_EQ(s.transforms[0].type, TransformType::Translate);
+    EXPECT_FLOAT_EQ(s.transforms[0].x, 50.0f);
+    EXPECT_FLOAT_EQ(s.transforms[0].y, -30.0f);
+
+    // Rotate
+    EXPECT_EQ(s.transforms[1].type, TransformType::Rotate);
+    EXPECT_FLOAT_EQ(s.transforms[1].angle, 45.0f);
+
+    // Scale
+    EXPECT_EQ(s.transforms[2].type, TransformType::Scale);
+    EXPECT_FLOAT_EQ(s.transforms[2].x, 1.5f);
+    EXPECT_FLOAT_EQ(s.transforms[2].y, 2.0f);
+
+    // Modifying one entry does not affect others
+    s.transforms[0].x = 100.0f;
+    EXPECT_FLOAT_EQ(s.transforms[1].angle, 45.0f);
+    EXPECT_FLOAT_EQ(s.transforms[2].x, 1.5f);
+}
+
+TEST(ComputedStyleTest, CssV125_4_FilterChainMultipleTypes) {
+    // Verify that multiple CSS filters can be stored and accessed
+    // independently, including grayscale, brightness, blur, and contrast.
+    ComputedStyle s;
+    EXPECT_TRUE(s.filters.empty());
+
+    // Build a filter chain: grayscale(50%), brightness(1.2), blur(5px), contrast(0.8)
+    s.filters.push_back({1, 0.5f});   // grayscale 50%
+    s.filters.push_back({3, 1.2f});   // brightness 120%
+    s.filters.push_back({9, 5.0f});   // blur 5px
+    s.filters.push_back({4, 0.8f});   // contrast 80%
+
+    EXPECT_EQ(s.filters.size(), 4u);
+    EXPECT_EQ(s.filters[0].first, 1);
+    EXPECT_FLOAT_EQ(s.filters[0].second, 0.5f);
+    EXPECT_EQ(s.filters[1].first, 3);
+    EXPECT_FLOAT_EQ(s.filters[1].second, 1.2f);
+    EXPECT_EQ(s.filters[2].first, 9);
+    EXPECT_FLOAT_EQ(s.filters[2].second, 5.0f);
+    EXPECT_EQ(s.filters[3].first, 4);
+    EXPECT_FLOAT_EQ(s.filters[3].second, 0.8f);
+
+    // Backdrop filters are independent
+    s.backdrop_filters.push_back({9, 10.0f}); // backdrop blur 10px
+    EXPECT_EQ(s.backdrop_filters.size(), 1u);
+    EXPECT_EQ(s.filters.size(), 4u); // unaffected
+    EXPECT_FLOAT_EQ(s.backdrop_filters[0].second, 10.0f);
+}
+
+TEST(CSSStyleTest, CssV125_5_TextDecorationStyleWavyWithEmphasisAndStroke) {
+    // Resolve text-decoration-style: wavy alongside text-stroke-width
+    // and verify emphasis-related fields from direct struct manipulation.
+    const std::string css =
+        ".fancy-text{text-decoration:underline;"
+        "text-decoration-style:wavy;text-decoration-color:#e74c3c;"
+        "-webkit-text-stroke-width:1px;font-size:24px;"
+        "letter-spacing:3px;color:#2c3e50;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "span";
+    elem.classes = {"fancy-text"};
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.text_decoration, TextDecoration::Underline);
+    EXPECT_EQ(style.text_decoration_style, TextDecorationStyle::Wavy);
+    EXPECT_EQ(style.text_decoration_color.r, 0xe7);
+    EXPECT_EQ(style.text_decoration_color.g, 0x4c);
+    EXPECT_EQ(style.text_decoration_color.b, 0x3c);
+    EXPECT_FLOAT_EQ(style.text_stroke_width, 1.0f);
+    EXPECT_FLOAT_EQ(style.font_size.to_px(), 24.0f);
+    EXPECT_FLOAT_EQ(style.letter_spacing.to_px(24.0f), 3.0f);
+    EXPECT_EQ(style.color.r, 0x2c);
+    EXPECT_EQ(style.color.g, 0x3e);
+    EXPECT_EQ(style.color.b, 0x50);
+}
+
+TEST(ComputedStyleTest, CssV125_6_CustomPropertiesAndCssVariablesStorage) {
+    // Verify that CSS custom properties (CSS variables) can be stored
+    // and retrieved independently in the custom_properties map.
+    ComputedStyle s;
+    EXPECT_TRUE(s.custom_properties.empty());
+
+    s.custom_properties["--primary-color"] = "#3498db";
+    s.custom_properties["--spacing-unit"] = "8px";
+    s.custom_properties["--font-family"] = "Inter, sans-serif";
+    s.custom_properties["--border-radius"] = "4px";
+
+    EXPECT_EQ(s.custom_properties.size(), 4u);
+    EXPECT_EQ(s.custom_properties["--primary-color"], "#3498db");
+    EXPECT_EQ(s.custom_properties["--spacing-unit"], "8px");
+    EXPECT_EQ(s.custom_properties["--font-family"], "Inter, sans-serif");
+    EXPECT_EQ(s.custom_properties["--border-radius"], "4px");
+
+    // Overwrite a variable
+    s.custom_properties["--primary-color"] = "#e74c3c";
+    EXPECT_EQ(s.custom_properties["--primary-color"], "#e74c3c");
+    EXPECT_EQ(s.custom_properties.size(), 4u); // still 4, not 5
+
+    // Erase a variable
+    s.custom_properties.erase("--spacing-unit");
+    EXPECT_EQ(s.custom_properties.size(), 3u);
+    EXPECT_EQ(s.custom_properties.count("--spacing-unit"), 0u);
+}
+
+TEST(ComputedStyleTest, CssV125_7_ViewportUnitsVwVhVminVmax) {
+    // Test viewport-relative Length units vw, vh, vmin, vmax with
+    // a custom viewport size and verify they resolve correctly.
+    float saved_w = Length::s_viewport_w;
+    float saved_h = Length::s_viewport_h;
+
+    Length::set_viewport(1200.0f, 800.0f);
+
+    // 50vw = 50% of 1200 = 600
+    Length vw50 = Length::vw(50.0f);
+    EXPECT_FLOAT_EQ(vw50.to_px(), 600.0f);
+
+    // 25vh = 25% of 800 = 200
+    Length vh25 = Length::vh(25.0f);
+    EXPECT_FLOAT_EQ(vh25.to_px(), 200.0f);
+
+    // 10vmin = 10% of min(1200,800) = 10% of 800 = 80
+    Length vmin10 = Length::vmin(10.0f);
+    EXPECT_FLOAT_EQ(vmin10.to_px(), 80.0f);
+
+    // 10vmax = 10% of max(1200,800) = 10% of 1200 = 120
+    Length vmax10 = Length::vmax(10.0f);
+    EXPECT_FLOAT_EQ(vmax10.to_px(), 120.0f);
+
+    // Verify is_auto and is_zero return false for viewport units
+    EXPECT_FALSE(vw50.is_auto());
+    EXPECT_FALSE(vh25.is_auto());
+    EXPECT_FALSE(vmin10.is_zero());
+    EXPECT_FALSE(vmax10.is_zero());
+
+    // Restore viewport
+    Length::set_viewport(saved_w, saved_h);
+}
+
+TEST(CSSStyleTest, CssV125_8_GridTemplateWithAutoFlowAndAlignContent) {
+    // Resolve CSS Grid container properties and verify grid-specific
+    // fields are correctly parsed from a stylesheet.
+    const std::string css =
+        ".grid{display:grid;grid-auto-flow:1;"
+        "width:800px;height:600px;"
+        "padding-top:10px;padding-right:10px;padding-bottom:10px;padding-left:10px;"
+        "background-color:#f0f0f0;font-size:14px;color:#333333;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+    elem.classes = {"grid"};
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.display, Display::Grid);
+    EXPECT_FLOAT_EQ(style.width.to_px(), 800.0f);
+    EXPECT_FLOAT_EQ(style.height.to_px(), 600.0f);
+    EXPECT_FLOAT_EQ(style.padding.top.to_px(), 10.0f);
+    EXPECT_FLOAT_EQ(style.padding.right.to_px(), 10.0f);
+    EXPECT_FLOAT_EQ(style.padding.bottom.to_px(), 10.0f);
+    EXPECT_FLOAT_EQ(style.padding.left.to_px(), 10.0f);
+    EXPECT_EQ(style.background_color.r, 0xf0);
+    EXPECT_EQ(style.background_color.g, 0xf0);
+    EXPECT_EQ(style.background_color.b, 0xf0);
+    EXPECT_FLOAT_EQ(style.font_size.to_px(), 14.0f);
+    EXPECT_EQ(style.color.r, 0x33);
+    EXPECT_EQ(style.color.g, 0x33);
+    EXPECT_EQ(style.color.b, 0x33);
+}

@@ -9924,3 +9924,131 @@ TEST(CORSPolicyTest, CrossOriginBlobUrlsNeverCrossOriginAndNotEligibleV124) {
                                        "https://api.example/data",
                                        h, false));
 }
+
+// ---------------------------------------------------------------------------
+// V125 — CORS policy additional tests
+// ---------------------------------------------------------------------------
+
+TEST(CORSPolicyTest, CorsV125_1_IPv6LoopbackOriginIsEnforceable) {
+    // IPv6 loopback [::1] should be enforceable as a document origin
+    EXPECT_TRUE(has_enforceable_document_origin("https://[::1]"));
+    EXPECT_TRUE(has_enforceable_document_origin("http://[::1]"));
+    // IPv6 loopback with explicit default port is NOT enforceable
+    EXPECT_FALSE(has_enforceable_document_origin("https://[::1]:443"));
+    EXPECT_FALSE(has_enforceable_document_origin("http://[::1]:80"));
+    // Non-standard port on IPv6 IS enforceable (only default ports are rejected)
+    EXPECT_TRUE(has_enforceable_document_origin("http://[::1]:8080"));
+}
+
+TEST(CORSPolicyTest, CorsV125_2_NormalizeOriginDropsHeaderForNonEnforceableDocOrigin) {
+    // If the document origin is non-enforceable (e.g., has a path, or data:),
+    // the Origin header should be removed entirely
+    clever::net::HeaderMap h1;
+    h1.set("Origin", "https://spoofed.example");
+    normalize_outgoing_origin_header(h1, "https://app.example/with-path",
+                                     "https://api.example/endpoint");
+    EXPECT_FALSE(h1.has("origin"));
+
+    // blob: origin — also not enforceable
+    clever::net::HeaderMap h2;
+    h2.set("Origin", "https://spoofed.example");
+    normalize_outgoing_origin_header(h2, "blob:https://app.example/uuid",
+                                     "https://api.example/endpoint");
+    EXPECT_FALSE(h2.has("origin"));
+
+    // Empty string origin — not enforceable
+    clever::net::HeaderMap h3;
+    h3.set("Origin", "https://evil.example");
+    normalize_outgoing_origin_header(h3, "", "https://api.example/endpoint");
+    EXPECT_FALSE(h3.has("origin"));
+}
+
+TEST(CORSPolicyTest, CorsV125_3_CrossOriginMixedCaseDocOriginNotEnforceable) {
+    // Mixed-case scheme in document origin makes it NOT enforceable,
+    // so is_cross_origin returns false regardless (can't determine cross-origin-ness)
+    EXPECT_FALSE(is_cross_origin("HtTpS://app.example", "https://app.example/data"));
+    EXPECT_FALSE(is_cross_origin("HtTpS://app.example", "https://api.example/data"));
+    EXPECT_FALSE(is_cross_origin("HtTp://app.example", "http://other.example/data"));
+
+    // But properly-cased different schemes ARE cross-origin
+    EXPECT_TRUE(is_cross_origin("https://app.example", "http://app.example/data"));
+    EXPECT_TRUE(is_cross_origin("http://app.example", "https://app.example/data"));
+}
+
+TEST(CORSPolicyTest, CorsV125_4_CorsEligibilityWithQueryParamsButNoFragment) {
+    // URLs with query parameters but NO fragment are eligible
+    EXPECT_TRUE(is_cors_eligible_request_url("https://api.example/search?q=hello&lang=en"));
+    EXPECT_TRUE(is_cors_eligible_request_url("https://api.example/data?callback=fn"));
+    // URL with query AND empty fragment is eligible
+    EXPECT_TRUE(is_cors_eligible_request_url("https://api.example/search?q=hello#"));
+    // URL with query AND non-empty fragment is NOT eligible
+    EXPECT_FALSE(is_cors_eligible_request_url("https://api.example/search?q=hello#section"));
+    // URL with just a query string (no path segment beyond /)
+    EXPECT_TRUE(is_cors_eligible_request_url("https://api.example/?key=val"));
+}
+
+TEST(CORSPolicyTest, CorsV125_5_ShouldAttachOriginHeaderForIPv6CrossOrigin) {
+    // Different IPv6 addresses → cross-origin → attach header
+    EXPECT_TRUE(should_attach_origin_header("http://[::1]",
+                                             "http://[::2]/data"));
+    // Same IPv6 address → same origin → no header
+    EXPECT_FALSE(should_attach_origin_header("http://[::1]",
+                                              "http://[::1]/data"));
+    // IPv6 vs hostname → cross-origin → attach header
+    EXPECT_TRUE(should_attach_origin_header("http://[::1]",
+                                             "http://localhost/data"));
+}
+
+TEST(CORSPolicyTest, CorsV125_6_CorsAllowsResponseWildcardNotAllowedWithCredentials) {
+    // With credentials requested: wildcard ACAO must be rejected even if
+    // ACAC header says "true"
+    clever::net::HeaderMap h;
+    h.set("Access-Control-Allow-Origin", "*");
+    h.set("Access-Control-Allow-Credentials", "true");
+    EXPECT_FALSE(cors_allows_response("https://app.example",
+                                       "https://api.example/data",
+                                       h, true));
+
+    // But exact match with ACAC "true" is allowed
+    clever::net::HeaderMap h2;
+    h2.set("Access-Control-Allow-Origin", "https://app.example");
+    h2.set("Access-Control-Allow-Credentials", "true");
+    EXPECT_TRUE(cors_allows_response("https://app.example",
+                                      "https://api.example/data",
+                                      h2, true));
+
+    // Wildcard without credentials requested is fine
+    clever::net::HeaderMap h3;
+    h3.set("Access-Control-Allow-Origin", "*");
+    EXPECT_TRUE(cors_allows_response("https://app.example",
+                                      "https://api.example/data",
+                                      h3, false));
+}
+
+TEST(CORSPolicyTest, CorsV125_7_CorsEligibilityRejectsWsAndWssSchemes) {
+    // ws:// is NOT CORS-eligible
+    EXPECT_FALSE(is_cors_eligible_request_url("ws://chat.example.com/socket"));
+    EXPECT_FALSE(is_cors_eligible_request_url("ws://localhost:8080/ws"));
+    // wss:// is NOT CORS-eligible
+    EXPECT_FALSE(is_cors_eligible_request_url("wss://chat.example.com/socket"));
+    EXPECT_FALSE(is_cors_eligible_request_url("wss://localhost:443/wss"));
+
+    // wss:// is NOT cross-origin (implementation treats it as non-participating)
+    EXPECT_FALSE(is_cross_origin("https://chat.example.com", "wss://chat.example.com/socket"));
+    EXPECT_FALSE(is_cross_origin("https://app.example", "wss://other.example/ws"));
+}
+
+TEST(CORSPolicyTest, CorsV125_8_NormalizeOriginHeaderSetsOriginForCrossOriginIPv4) {
+    // IPv4 document origin, cross-origin request → Origin header set to doc origin
+    clever::net::HeaderMap h;
+    normalize_outgoing_origin_header(h, "http://192.168.1.1",
+                                     "http://10.0.0.1/api");
+    ASSERT_TRUE(h.has("origin"));
+    EXPECT_EQ(h.get("origin").value(), "http://192.168.1.1");
+
+    // Same IPv4 origin → same-origin → no Origin header
+    clever::net::HeaderMap h2;
+    normalize_outgoing_origin_header(h2, "http://192.168.1.1",
+                                     "http://192.168.1.1/api");
+    EXPECT_FALSE(h2.has("origin"));
+}

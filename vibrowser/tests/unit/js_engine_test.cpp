@@ -33455,3 +33455,352 @@ TEST(JsEngineTest, RegExpExecLastIndexGroupsIterativeV124) {
     EXPECT_EQ(result, "12@3,345@8,6@14~2026~02~28~9~hello~5~true~0~6 CATS and 10 DOGS~one|two|three|four");
 }
 
+// V125-1. Array.isArray, typeof edge cases, and type coercion
+TEST(JsEngineTest, TypeCheckingAndCoercionEdgeCasesV125) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var r = [];
+        // Array.isArray
+        r.push(Array.isArray([]));
+        r.push(Array.isArray(new Array()));
+        r.push(Array.isArray("string"));
+        r.push(Array.isArray({length: 0}));
+        // typeof results
+        r.push(typeof undefined);
+        r.push(typeof null);
+        r.push(typeof 42);
+        r.push(typeof "hi");
+        r.push(typeof true);
+        r.push(typeof Symbol());
+        r.push(typeof function(){});
+        r.push(typeof {});
+        // Coercion with + operator
+        r.push("5" + 3);
+        r.push(5 + "3");
+        r.push(+"42");
+        r.push(+true);
+        r.push(+false);
+        r.push(+null);
+        r.push(+"");
+        // == vs === with coercion
+        r.push(0 == false);
+        r.push(0 === false);
+        r.push("" == false);
+        r.push("" === false);
+        r.push(null == undefined);
+        r.push(null === undefined);
+        r.join("|");
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true|true|false|false|undefined|object|number|string|boolean|symbol|function|object|53|53|42|1|0|0|0|true|false|true|false|true|false");
+}
+
+// V125-2. Object transformation via entries, reduce, and fromEntries
+TEST(JsEngineTest, ObjectTransformEntriesReduceFromEntriesV125) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var r = [];
+        var obj = {a: 1, b: 2, c: 3, d: 4};
+        // Double all values
+        var doubled = Object.fromEntries(
+            Object.entries(obj).map(function(e) { return [e[0], e[1] * 2]; })
+        );
+        r.push(JSON.stringify(doubled));
+        // Sum via reduce
+        var sum = Object.values(obj).reduce(function(acc, v) { return acc + v; }, 0);
+        r.push(sum);
+        // Filter keys where value > 2
+        var filtered = Object.fromEntries(
+            Object.entries(obj).filter(function(e) { return e[1] > 2; })
+        );
+        r.push(JSON.stringify(filtered));
+        // Swap keys and values
+        var swapped = Object.fromEntries(
+            Object.entries(obj).map(function(e) { return [e[1], e[0]]; })
+        );
+        r.push(swapped[1]);
+        r.push(swapped[4]);
+        // Merge two objects via spread-like pattern
+        var merged = Object.assign({}, obj, {e: 5, a: 100});
+        r.push(merged.a);
+        r.push(merged.e);
+        r.push(Object.keys(merged).length);
+        r.join("|");
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "{\"a\":2,\"b\":4,\"c\":6,\"d\":8}|10|{\"c\":3,\"d\":4}|a|d|100|5|5");
+}
+
+// V125-3. Class static methods, getters/setters, and computed property names
+TEST(JsEngineTest, ClassStaticGetterSetterComputedV125) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var r = [];
+        var nameKey = "full" + "Name";
+        class Person {
+            static count = 0;
+            constructor(first, last) {
+                this.first = first;
+                this.last = last;
+                Person.count++;
+            }
+            get [nameKey]() {
+                return this.first + " " + this.last;
+            }
+            set [nameKey](val) {
+                var parts = val.split(" ");
+                this.first = parts[0];
+                this.last = parts[1];
+            }
+            static getCount() {
+                return Person.count;
+            }
+        }
+        var p1 = new Person("John", "Doe");
+        var p2 = new Person("Jane", "Smith");
+        r.push(Person.getCount());
+        r.push(p1.fullName);
+        p1.fullName = "Bob Jones";
+        r.push(p1.first);
+        r.push(p1.last);
+        r.push(p1.fullName);
+        r.push(p2.fullName);
+        // Verify instanceof
+        r.push(p1 instanceof Person);
+        // Computed method name
+        var method = "greet";
+        var obj = {
+            [method](name) { return "Hello, " + name; },
+            ["x" + 1]: 42
+        };
+        r.push(obj.greet("World"));
+        r.push(obj.x1);
+        r.join("|");
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "2|John Doe|Bob|Jones|Bob Jones|Jane Smith|true|Hello, World|42");
+}
+
+// V125-4. String iteration, codePointAt, and Array.from on strings
+TEST(JsEngineTest, StringIterationCodePointArrayFromV125) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var r = [];
+        // String.prototype methods
+        var s = "Hello, World!";
+        r.push(s.startsWith("Hello"));
+        r.push(s.endsWith("!"));
+        r.push(s.includes("World"));
+        r.push(s.indexOf("World"));
+        r.push(s.slice(7, 12));
+        // Array.from on string
+        var chars = Array.from("abc");
+        r.push(chars.length);
+        r.push(chars.join("-"));
+        // codePointAt
+        r.push("A".codePointAt(0));
+        r.push("Z".codePointAt(0));
+        r.push(String.fromCodePoint(65));
+        r.push(String.fromCodePoint(90));
+        // repeat, padStart, padEnd
+        r.push("ab".repeat(3));
+        r.push("5".padStart(4, "0"));
+        r.push("hi".padEnd(5, "."));
+        // search and match
+        r.push("test123".search(/\d+/));
+        var m = "abc123def456".match(/\d+/g);
+        r.push(m.join(","));
+        r.join("|");
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true|true|true|7|World|3|a-b-c|65|90|A|Z|ababab|0005|hi...|4|123,456");
+}
+
+// V125-5. Generator delegation, return, and throw interaction
+TEST(JsEngineTest, GeneratorDelegationReturnThrowV125) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var r = [];
+        // Basic generator with multiple yields
+        function* range(start, end) {
+            for (var i = start; i < end; i++) yield i;
+        }
+        var nums = [];
+        for (var n of range(3, 7)) nums.push(n);
+        r.push(nums.join(","));
+        // Generator with return value
+        function* withReturn() {
+            yield 1;
+            yield 2;
+            return 99;
+        }
+        var g = withReturn();
+        r.push(g.next().value);
+        r.push(g.next().value);
+        var last = g.next();
+        r.push(last.value);
+        r.push(last.done);
+        // for..of does NOT include return value
+        var items = [];
+        for (var x of withReturn()) items.push(x);
+        r.push(items.join(","));
+        // yield* delegation
+        function* inner() { yield "a"; yield "b"; }
+        function* outer() { yield "start"; yield* inner(); yield "end"; }
+        var delegated = [];
+        for (var v of outer()) delegated.push(v);
+        r.push(delegated.join(","));
+        // Generator as state machine
+        function* toggle() {
+            while (true) {
+                yield "on";
+                yield "off";
+            }
+        }
+        var t = toggle();
+        r.push(t.next().value);
+        r.push(t.next().value);
+        r.push(t.next().value);
+        r.push(t.next().value);
+        r.join("|");
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "3,4,5,6|1|2|99|true|1,2|start,a,b,end|on|off|on|off");
+}
+
+// V125-6. Proxy apply trap for function interception and memoization
+TEST(JsEngineTest, ProxyApplyTrapFunctionInterceptV125) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var r = [];
+        // Proxy with apply trap to intercept function calls
+        function add(a, b) { return a + b; }
+        var callLog = [];
+        var proxy = new Proxy(add, {
+            apply: function(target, thisArg, args) {
+                callLog.push(args.join("+"));
+                return target.apply(thisArg, args);
+            }
+        });
+        r.push(proxy(1, 2));
+        r.push(proxy(10, 20));
+        r.push(callLog.join(";"));
+        // Proxy with get trap for default values
+        var defaults = new Proxy({}, {
+            get: function(target, prop) {
+                return prop in target ? target[prop] : "default_" + prop;
+            },
+            set: function(target, prop, value) {
+                target[prop] = value;
+                return true;
+            }
+        });
+        r.push(defaults.missing);
+        defaults.name = "set";
+        r.push(defaults.name);
+        r.push(defaults.other);
+        // Proxy with has trap
+        var rangeCheck = new Proxy({}, {
+            has: function(target, prop) {
+                var n = Number(prop);
+                return n >= 1 && n <= 10;
+            }
+        });
+        r.push(5 in rangeCheck);
+        r.push(11 in rangeCheck);
+        r.push(0 in rangeCheck);
+        // Reflect.ownKeys
+        var obj = {b: 2, a: 1};
+        obj.c = 3;
+        r.push(Reflect.ownKeys(obj).join(","));
+        r.join("|");
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "3|30|1+2;10+20|default_missing|set|default_other|true|false|false|b,a,c");
+}
+
+// V125-7. Map/Set advanced: iteration order, spread into arrays, chaining
+TEST(JsEngineTest, MapSetIterationSpreadChainingV125) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var r = [];
+        // Map preserves insertion order
+        var m = new Map();
+        m.set("c", 3);
+        m.set("a", 1);
+        m.set("b", 2);
+        r.push(Array.from(m.keys()).join(","));
+        r.push(Array.from(m.values()).join(","));
+        // Map forEach
+        var pairs = [];
+        m.forEach(function(v, k) { pairs.push(k + "=" + v); });
+        r.push(pairs.join(","));
+        // Set deduplication and spread
+        var s = new Set([3, 1, 4, 1, 5, 9, 2, 6, 5, 3, 5]);
+        r.push(s.size);
+        var sorted = Array.from(s).sort(function(a, b) { return a - b; });
+        r.push(sorted.join(","));
+        // Set operations via filter
+        var s1 = new Set([1, 2, 3, 4, 5]);
+        var s2 = new Set([3, 4, 5, 6, 7]);
+        var intersection = Array.from(s1).filter(function(x) { return s2.has(x); });
+        r.push(intersection.join(","));
+        var difference = Array.from(s1).filter(function(x) { return !s2.has(x); });
+        r.push(difference.join(","));
+        // Map from array of pairs
+        var m2 = new Map([["x", 10], ["y", 20], ["z", 30]]);
+        r.push(m2.get("y"));
+        r.push(m2.has("w"));
+        m2.delete("x");
+        r.push(m2.size);
+        r.join("|");
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "c,a,b|3,1,2|c=3,a=1,b=2|7|1,2,3,4,5,6,9|3,4,5|1,2|20|false|2");
+}
+
+// V125-8. DataView endianness, Math methods, and Number edge cases
+TEST(JsEngineTest, DataViewEndianMathNumberEdgeCasesV125) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var r = [];
+        // DataView with different endianness
+        var buf = new ArrayBuffer(4);
+        var dv = new DataView(buf);
+        dv.setUint16(0, 0x0102, false); // big-endian
+        r.push(dv.getUint8(0));   // 1
+        r.push(dv.getUint8(1));   // 2
+        dv.setUint16(2, 0x0304, true);  // little-endian
+        r.push(dv.getUint8(2));   // 4
+        r.push(dv.getUint8(3));   // 3
+        // Read as big-endian uint16
+        r.push(dv.getUint16(0, false)); // 0x0102 = 258
+        // Read as little-endian uint16
+        r.push(dv.getUint16(2, true));  // 0x0304 = 772
+        // Math methods
+        r.push(Math.max(3, 7, 2, 9, 1));
+        r.push(Math.min(3, 7, 2, 9, 1));
+        r.push(Math.abs(-42));
+        r.push(Math.floor(3.7));
+        r.push(Math.ceil(3.2));
+        r.push(Math.round(3.5));
+        r.push(Math.trunc(-4.9));
+        r.push(Math.sign(-5));
+        r.push(Math.sign(0));
+        r.push(Math.sign(5));
+        r.push(Math.clz32(1));
+        // Number edge cases
+        r.push(Number.isFinite(42));
+        r.push(Number.isFinite(Infinity));
+        r.push(Number.isNaN(NaN));
+        r.push(Number.isNaN(42));
+        r.push(Number.isInteger(5));
+        r.push(Number.isInteger(5.5));
+        r.push(Number.isSafeInteger(Number.MAX_SAFE_INTEGER));
+        r.push(Number.isSafeInteger(Number.MAX_SAFE_INTEGER + 1));
+        r.join("|");
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1|2|4|3|258|772|9|1|42|3|4|4|-4|-1|0|1|31|true|false|true|false|true|false|true|false");
+}
+

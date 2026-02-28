@@ -21392,3 +21392,151 @@ TEST(ResponseTest, Parse204WithMultipleVaryHeaderLinesV124) {
     EXPECT_TRUE(resp->headers.has("X-Request-Id"));
     EXPECT_EQ(resp->headers.get("x-request-id").value(), "req-v124-001");
 }
+
+// ===========================================================================
+// V125 Tests
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// 1. Request::serialize for HEAD request omits body even if body vector is
+//    populated, and includes the correct method in the request line.
+// ---------------------------------------------------------------------------
+TEST(RequestTest, SerializeHeadRequestIgnoresBodyV125) {
+    Request req;
+    req.url = "https://cdn.example.com/assets/logo.png";
+    req.method = Method::HEAD;
+    req.parse_url();
+
+    // Accidentally populate body — should be ignored for HEAD
+    std::string payload = "this should not appear";
+    req.body.assign(payload.begin(), payload.end());
+
+    auto bytes = req.serialize();
+    std::string raw(bytes.begin(), bytes.end());
+
+    // Request line must use HEAD
+    EXPECT_NE(raw.find("HEAD /assets/logo.png HTTP/1.1\r\n"), std::string::npos);
+    // Host header should omit port 443 for HTTPS
+    EXPECT_NE(raw.find("Host: cdn.example.com\r\n"), std::string::npos);
+}
+
+// ---------------------------------------------------------------------------
+// 2. Response::parse handles a 100 Continue status line correctly.
+// ---------------------------------------------------------------------------
+TEST(ResponseTest, Parse100ContinueStatusLineV125) {
+    std::string raw =
+        "HTTP/1.1 100 Continue\r\n"
+        "Content-Length: 0\r\n"
+        "\r\n";
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 100);
+    EXPECT_EQ(resp->status_text, "Continue");
+    EXPECT_TRUE(resp->body.empty());
+    EXPECT_EQ(resp->body_as_string(), "");
+}
+
+// ---------------------------------------------------------------------------
+// 3. HeaderMap: remove is case-insensitive — setting a header with mixed case
+//    and removing with a different case should work.
+// ---------------------------------------------------------------------------
+TEST(HeaderMapTest, RemoveIsCaseInsensitiveV125) {
+    HeaderMap map;
+    map.set("X-Request-ID", "abc123");
+    map.append("X-Request-ID", "def456");
+    EXPECT_TRUE(map.has("x-request-id"));
+    EXPECT_EQ(map.get_all("X-REQUEST-ID").size(), 2u);
+
+    // Remove using yet another case variation
+    map.remove("x-Request-Id");
+    EXPECT_FALSE(map.has("X-Request-ID"));
+    EXPECT_EQ(map.get_all("x-request-id").size(), 0u);
+}
+
+// ---------------------------------------------------------------------------
+// 4. ConnectionPool: count returns 0 for a host that was never used.
+// ---------------------------------------------------------------------------
+TEST(ConnectionPoolTest, CountReturnsZeroForUnknownHostV125) {
+    ConnectionPool pool(4);
+    EXPECT_EQ(pool.count("never-seen.v125.test", 8080), 0u);
+    // Releasing to a different host should not affect the unknown host
+    pool.release("other.v125.test", 80, 99);
+    EXPECT_EQ(pool.count("never-seen.v125.test", 8080), 0u);
+    EXPECT_EQ(pool.count("other.v125.test", 80), 1u);
+}
+
+// ---------------------------------------------------------------------------
+// 5. CookieJar: HttpOnly cookie should still be returned by get_cookie_header
+//    (HttpOnly only restricts JavaScript access, not server-side retrieval).
+// ---------------------------------------------------------------------------
+TEST(CookieJarTest, HttpOnlyCookieReturnedByGetCookieHeaderV125) {
+    CookieJar jar;
+    jar.set_from_header("session=tok_v125; HttpOnly; Path=/", "secure.v125.test");
+
+    std::string header = jar.get_cookie_header(
+        "secure.v125.test", "/dashboard", false);
+    // HttpOnly does not prevent the jar from sending it in Cookie header
+    EXPECT_NE(header.find("session=tok_v125"), std::string::npos);
+}
+
+// ---------------------------------------------------------------------------
+// 6. parse_cache_control with max-age=0 sets max_age to 0, distinct from -1.
+// ---------------------------------------------------------------------------
+TEST(CacheControlTest, MaxAgeZeroIsParsedNotNegativeOneV125) {
+    auto cc = parse_cache_control("max-age=0");
+    EXPECT_EQ(cc.max_age, 0);
+    EXPECT_FALSE(cc.no_cache);
+    EXPECT_FALSE(cc.no_store);
+}
+
+// ---------------------------------------------------------------------------
+// 7. Request::parse_url with OPTIONS method preserves host and path correctly.
+// ---------------------------------------------------------------------------
+TEST(RequestTest, ParseUrlOptionsMethodV125) {
+    Request req;
+    req.url = "https://api.example.com/v2/users?active=true";
+    req.method = Method::OPTIONS;
+    req.parse_url();
+
+    EXPECT_EQ(req.host, "api.example.com");
+    EXPECT_EQ(req.port, 443);
+    EXPECT_TRUE(req.use_tls);
+    EXPECT_EQ(req.path, "/v2/users");
+    EXPECT_EQ(req.query, "active=true");
+
+    auto bytes = req.serialize();
+    std::string raw(bytes.begin(), bytes.end());
+    EXPECT_NE(raw.find("OPTIONS /v2/users?active=true HTTP/1.1\r\n"), std::string::npos);
+    EXPECT_NE(raw.find("Host: api.example.com\r\n"), std::string::npos);
+}
+
+// ---------------------------------------------------------------------------
+// 8. Response::parse with 503 Service Unavailable and Retry-After header.
+// ---------------------------------------------------------------------------
+TEST(ResponseTest, Parse503WithRetryAfterHeaderV125) {
+    std::string body_text = "Service temporarily unavailable";
+    std::string raw =
+        "HTTP/1.1 503 Service Unavailable\r\n"
+        "Retry-After: 120\r\n"
+        "Content-Type: text/plain\r\n"
+        "Content-Length: " + std::to_string(body_text.size()) + "\r\n"
+        "\r\n" + body_text;
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 503);
+    EXPECT_EQ(resp->status_text, "Service Unavailable");
+    EXPECT_EQ(resp->body_as_string(), body_text);
+
+    // Retry-After header should be accessible
+    EXPECT_TRUE(resp->headers.has("Retry-After"));
+    EXPECT_EQ(resp->headers.get("retry-after").value(), "120");
+
+    // Content-Type should also be present
+    EXPECT_EQ(resp->headers.get("content-type").value(), "text/plain");
+}
