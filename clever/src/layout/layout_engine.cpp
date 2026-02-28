@@ -384,8 +384,8 @@ void LayoutEngine::layout_block(LayoutNode& node, float containing_width) {
     }
 
     // Resolve auto margins for centering
-    bool auto_left = (node.geometry.margin.left < 0);
-    bool auto_right = (node.geometry.margin.right < 0);
+    bool auto_left = is_margin_auto(node.geometry.margin.left);
+    bool auto_right = is_margin_auto(node.geometry.margin.right);
     if ((auto_left || auto_right) && node.specified_width >= 0) {
         float remaining = containing_width - node.specified_width;
         if (remaining < 0) remaining = 0;
@@ -399,8 +399,8 @@ void LayoutEngine::layout_block(LayoutNode& node, float containing_width) {
         }
     } else {
         // Set any negative (auto) margins to 0
-        if (node.geometry.margin.left < 0) node.geometry.margin.left = 0;
-        if (node.geometry.margin.right < 0) node.geometry.margin.right = 0;
+        if (is_margin_auto(node.geometry.margin.left)) node.geometry.margin.left = 0;
+        if (is_margin_auto(node.geometry.margin.right)) node.geometry.margin.right = 0;
     }
 
     // Compute width (only for non-root; root width set in compute())
@@ -2115,10 +2115,10 @@ void LayoutEngine::flex_layout(LayoutNode& node, float containing_width) {
             // In flexbox, auto margins on the cross-axis take priority over
             // align-items/align-self. Distribute remaining cross-axis space
             // to auto margins before falling through to alignment.
-            bool auto_margin_top = (is_row && child->geometry.margin.top < 0);
-            bool auto_margin_bottom = (is_row && child->geometry.margin.bottom < 0);
-            bool auto_margin_left = (!is_row && child->geometry.margin.left < 0);
-            bool auto_margin_right = (!is_row && child->geometry.margin.right < 0);
+            bool auto_margin_top = (is_row && is_margin_auto(child->geometry.margin.top));
+            bool auto_margin_bottom = (is_row && is_margin_auto(child->geometry.margin.bottom));
+            bool auto_margin_left = (!is_row && is_margin_auto(child->geometry.margin.left));
+            bool auto_margin_right = (!is_row && is_margin_auto(child->geometry.margin.right));
             bool has_cross_auto_margin = (is_row ? (auto_margin_top || auto_margin_bottom)
                                                   : (auto_margin_left || auto_margin_right));
 

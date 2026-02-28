@@ -8,24 +8,24 @@
 **Phase**: Active Development — Feature Implementation (Full Web Engine Roadmap)
 **Last Active**: 2026-03-01
 **Current Focus**: Implementing real browser features from comprehensive audit roadmap
-**Momentum**: Cycle 931 — Round 7 complete (10 Codex subagents via new codex agent type), all tests passing
-**Cycle**: 931
+**Momentum**: Cycle 932 — Round 8 complete (10 Codex subagents), Round 9 launching. 13/13 tests passing.
+**Cycle**: 932
 **Workflow**: Multi-phase feature implementation. Use 10 Codex subagents (Haiku-orchestrated) in parallel. Commit and push after each implementation round.
 
 ## Implementation Roadmap
 
 ### Phase 1 — "Make real sites load" (Tier 1 Quick Wins)
-1. [ ] HTTP Keep-Alive + ConnectionPool — request.cpp line 126 hardcodes Connection: close; ConnectionPool built but unused
-2. [ ] Parallel resource fetching — ThreadPool exists but disconnected; all resources load serially
-3. [ ] Text decoration rendering — field exists in layout but never rendered in painter.cpp
+1. [x] HTTP Keep-Alive + ConnectionPool — Connection: keep-alive + ConnectionPool wiring (Round 5)
+2. [x] Parallel resource fetching — ThreadPool wired for parallel resource loading (Round 8)
+3. [x] Text decoration rendering — underline/overline/line-through with offset and position (Round 5)
 4. [x] Text shadow rendering — Gaussian blur rendering in paint layer (Round 7)
-5. [ ] Adoption agency algorithm — #1 missing HTML parser feature for misnested tags
-6. [ ] Complete HTML entity table — only ~40/2,231 entities implemented
+5. [x] Adoption agency algorithm — misnested formatting element recovery (Round 5)
+6. [x] Complete HTML entity table — expanded to 520+ entities (Rounds 5+8)
 
 ### Phase 2 — "Make real sites look right"
 7. [x] Stacking contexts + z-index — Z_INDEX_AUTO sentinel, stacking context detection, z-index paint ordering (Round 7)
 8. [x] Overflow + scrolling — scroll containers, clip, proportional scrollbar thumbs (Round 3)
-9. [ ] CSS Grid layout algorithm — properties parsed as strings, no layout algorithm
+9. [x] CSS Grid layout algorithm — already implemented (verified Round 8)
 10. [x] BFC + margin collapsing — flow-root, negative margins, mixed cases (Round 3)
 
 ### Bug Fixes (User-reported)
@@ -58,34 +58,34 @@
 ### Rendering Issue Mitigations (Comprehensive Diagnosis)
 
 #### CRITICAL — Table Width (Landing Page Tables Narrow)
-- [ ] **Table column width distribution** — layout_engine.cpp:3929-3948: Auto table layout determines column widths via intrinsic measurement (measure_intrinsic_width), so ALL columns get explicit widths and auto_cols==0. Remaining space (available_for_cols - used_width) is NEVER distributed. Fix: after line 3948, proportionally expand all columns to fill available_for_cols when table has explicit width (specified_width >= 0).
-- [ ] **Table cell percentage width resolution** — layout_engine.cpp:3901-3905: Cell specified_width may be bogus (resolved against font-size not container). The css_width fallback at line 3904 is correct but only triggers if specified_width < 0. Fix: check css_width FIRST for table cells.
+- [x] **Table column width distribution** — proportional expansion of non-explicit columns (Round 5)
+- [x] **Table cell percentage width resolution** — css_width priority fix for table cells (Round 8)
 
 #### HIGH — Layout Correctness
-- [ ] **Anonymous block boxes** — layout_engine.cpp:522-534: When block container has mixed inline+block children, ALL go through position_block_children. Per CSS 2.1 §9.2.1.1, inline children should be wrapped in anonymous block boxes. Current workaround (centering fix) handles centering but not proper inline formatting context.
-- [ ] **Form element default sizing** — render_pipeline.cpp: <form> should be display:block width:100%. <input> needs default width (~150px for text, varies by type). <select>, <textarea> need default dimensions. Currently they may shrink-wrap to zero.
+- [x] **Anonymous block boxes** — CSS 2.1 §9.2.1.1 wrapping of inline children in anonymous blocks (067fb5f)
+- [x] **Form element default sizing** — input/textarea/select/button sizing, display:table mapping (Round 5)
 - [x] **CSS display:table on non-table elements** — display_to_type() maps TableRow/TableCell, layout predicates check DisplayType (Round 7)
 - [x] **Flex percentage children** — intrinsic measurement fallback for auto flex-basis, percentage width docs (Round 7)
 - [x] **Table cell vertical alignment** — content_y_offset for middle/bottom alignment in table cells (Round 7)
 
 #### MEDIUM — CSS Application
 - [x] **User-Agent string** — Chrome/120.0.0.0 UA string set in request.cpp (Round 7)
-- [ ] **CSS external stylesheet fetching** — render_pipeline.cpp: <link rel="stylesheet" href="..."> may not fetch/parse/apply external CSS correctly for all sites. Verify fetch + parse + cascade integration.
+- [x] **CSS external stylesheet fetching** — 3 bug fixes for fetch + parse + cascade integration (Round 8)
 - [x] **CSS !important overrides** — inline style cascade + tier-based !important priority (Round 7)
-- [ ] **CSS shorthand property decomposition** — style_resolver.cpp: Shorthand properties (margin, padding, border, background, font) must decompose into longhands before cascade. Partial decomposition may cause missing properties.
+- [x] **CSS shorthand property decomposition** — text-decoration, font, border, background, list-style, outline, overflow, transition, animation (Round 5)
 - [x] **CSS inherit/initial keywords** — inherit, initial, unset keyword handling with inherited property detection (Round 7)
 
 #### LOW — Paint/Rendering Polish
 - [x] **Whitespace collapsing between inline elements** — collapse_whitespace() for normal/nowrap/pre-line modes, skip for br (Round 7)
-- [ ] **Line-height in table cells** — layout_engine.cpp: Table cells may not inherit or compute line-height correctly, affecting vertical spacing.
-- [ ] **Border-collapse table painting** — painter.cpp: When border-collapse is active, shared borders between cells should merge. Currently may double-render.
-- [ ] **Background-clip/origin in table cells** — painter.cpp: Background painting in table cells may not respect padding-box vs content-box clipping.
+- [x] **Line-height in table cells** — inheritance chain fix for table rows/cells (Round 8)
+- [x] **Border-collapse table painting** — CSS 2.1 §17.6.2 conflict resolution (Round 8)
+- [x] **Background-clip/origin in table cells** — paint_background() padding-box/content-box fix (Round 8)
 
 ### Phase 3 — "Make real sites interactive"
 11. [x] Event default actions — click→navigate for &lt;a&gt; tags, form submission with data collection (Round 7)
-12. [ ] Typed HTML elements — no HTMLInputElement.value, HTMLFormElement.submit()
-13. [ ] URL constructor + TextEncoder/TextDecoder in JS
-14. [ ] ES Modules — <script type="module"> explicitly skipped
+12. [x] Typed HTML elements — img width/height, input value/type/checked, contentEditable (Round 5)
+13. [x] URL constructor + TextEncoder/TextDecoder in JS (Round 8)
+14. [x] ES Modules — QuickJS module loader with fetch/caching (Round 8)
 
 ### Phase 4 — "Make it fast"
 15. [ ] Incremental/async rendering pipeline — break 12,345-line monolithic render_html()
@@ -101,6 +101,25 @@
 - EventLoop/ThreadPool disconnected → wire up or remove
 
 ## Session Log
+
+### Cycle 932 (Feature Implementation Round 8) — 2026-03-01
+
+- **Theme**: 10 Codex subagents — grid verification, parallel fetch, CSS stylesheets, tables, JS APIs, HTML entities, ES Modules
+- **Agents**: 10 Codex subagents via `Agent(subagent_type="codex", model="haiku")`
+- **Features Implemented**:
+  - CSS Grid layout — verified already implemented (no work needed)
+  - Parallel resource fetching — ThreadPool wired for parallel loading (4274952)
+  - CSS external stylesheet — 3 bug fixes for fetch+parse+cascade integration
+  - Table cell % width resolution — css_width priority fix
+  - Border-collapse painting — CSS 2.1 §17.6.2 conflict resolution
+  - Line-height in tables — inheritance chain fix for rows/cells (367a8c6)
+  - URL constructor + TextEncoder/TextDecoder — JS bindings (ea7b1ce)
+  - HTML entity table — 149 new entries, 520+ total (c2d5fa1)
+  - ES Modules — QuickJS module loader with fetching/caching
+  - Background-clip/origin — paint_background() table cell fix
+- **Bug Fixes**: unused parameter warnings in message_channel_test (23 fixes), unused var in dom_test, missing initializer in layout_test
+- **Validation**: 13/13 suites pass, 0 failures
+- **Commits**: 4274952, 367a8c6, ea7b1ce, c2d5fa1 (auto), 77c531a (manual consolidation)
 
 ### Cycle 931 (Feature Implementation Round 7) — 2026-03-01
 

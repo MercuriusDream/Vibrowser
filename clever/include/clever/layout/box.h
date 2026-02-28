@@ -9,6 +9,9 @@
 
 namespace clever::layout {
 
+constexpr float MARGIN_AUTO = -1.0f;
+inline bool is_margin_auto(float v) { return v == MARGIN_AUTO; }
+
 struct EdgeSizes {
     float top = 0, right = 0, bottom = 0, left = 0;
 };

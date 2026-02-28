@@ -1,4 +1,5 @@
 #include <clever/js/js_window.h>
+#include <clever/js/js_web_storage.h>
 
 extern "C" {
 #include <quickjs.h>

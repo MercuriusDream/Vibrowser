@@ -1,5 +1,6 @@
 #include <clever/js/js_dom_bindings.h>
 #include <clever/layout/box.h>
+#include <clever/net/cookie_jar.h>
 #include <clever/url/url.h>
 
 extern "C" {
@@ -2341,16 +2342,60 @@ static JSValue js_document_get_cookie(JSContext* ctx, JSValueConst /*this_val*/,
     auto* state = get_dom_state(ctx);
     if (!state) return JS_NewString(ctx, "");
 
+    auto trim = [](const std::string& s) -> std::string {
+        size_t start = s.find_first_not_of(" \t");
+        if (start == std::string::npos) return "";
+        size_t end = s.find_last_not_of(" \t");
+        return s.substr(start, end - start + 1);
+    };
+
+    std::string document_url;
+    JSValue global = JS_GetGlobalObject(ctx);
+    JSValue location = JS_GetPropertyStr(ctx, global, "location");
+    if (JS_IsObject(location)) {
+        JSValue href = JS_GetPropertyStr(ctx, location, "href");
+        if (JS_IsString(href)) {
+            const char* href_cstr = JS_ToCString(ctx, href);
+            if (href_cstr) {
+                document_url = href_cstr;
+                JS_FreeCString(ctx, href_cstr);
+            }
+        }
+        JS_FreeValue(ctx, href);
+    }
+    JS_FreeValue(ctx, location);
+    JS_FreeValue(ctx, global);
+
+    std::map<std::string, std::string> merged = state->cookies;
+    if (!document_url.empty()) {
+        if (auto parsed = clever::url::parse(document_url); parsed.has_value() && !parsed->host.empty()) {
+            std::string cookie_header = clever::net::CookieJar::shared().get_cookie_header(
+                parsed->host, parsed->path.empty() ? "/" : parsed->path, parsed->scheme == "https", true, true);
+            if (!cookie_header.empty()) {
+                std::istringstream stream(cookie_header);
+                std::string part;
+                while (std::getline(stream, part, ';')) {
+                    part = trim(part);
+                    if (part.empty()) continue;
+                    auto eq = part.find('=');
+                    if (eq == std::string::npos) continue;
+                    std::string name = trim(part.substr(0, eq));
+                    if (name.empty()) continue;
+                    if (merged.find(name) != merged.end()) continue;
+                    merged[name] = trim(part.substr(eq + 1));
+                }
+            }
+        }
+    }
+
     std::string result;
-    for (auto it = state->cookies.begin(); it != state->cookies.end(); ++it) {
-        if (it != state->cookies.begin()) result += "; ";
+    for (auto it = merged.begin(); it != merged.end(); ++it) {
+        if (it != merged.begin()) result += "; ";
         result += it->first + "=" + it->second;
     }
     return JS_NewString(ctx, result.c_str());
 }
 
-// Setter: parses "name=value[; path=...; expires=...]" and stores the
-// name/value pair (ignoring attributes like path, expires, etc.)
 static JSValue js_document_set_cookie(JSContext* ctx, JSValueConst /*this_val*/,
                                        int argc, JSValueConst* argv) {
     if (argc < 1) return JS_UNDEFINED;
@@ -2359,9 +2404,15 @@ static JSValue js_document_set_cookie(JSContext* ctx, JSValueConst /*this_val*/,
     if (!raw) return JS_EXCEPTION;
     std::string cookie_str = raw;
     JS_FreeCString(ctx, raw);
+    if (cookie_str.empty()) return JS_UNDEFINED;
 
-    // Split on ';' -- first segment is "name=value", rest are attributes
-    // that we ignore (path, domain, expires, max-age, secure, etc.)
+    auto trim = [](const std::string& s) -> std::string {
+        size_t start = s.find_first_not_of(" \t");
+        if (start == std::string::npos) return "";
+        size_t end = s.find_last_not_of(" \t");
+        return s.substr(start, end - start + 1);
+    };
+
     std::string first_part;
     auto semi = cookie_str.find(';');
     if (semi != std::string::npos) {
@@ -2370,26 +2421,14 @@ static JSValue js_document_set_cookie(JSContext* ctx, JSValueConst /*this_val*/,
         first_part = cookie_str;
     }
 
-    // Trim leading/trailing whitespace
-    auto ltrim = first_part.find_first_not_of(" \t");
-    if (ltrim != std::string::npos)
-        first_part = first_part.substr(ltrim);
-    auto rtrim = first_part.find_last_not_of(" \t");
-    if (rtrim != std::string::npos)
-        first_part = first_part.substr(0, rtrim + 1);
+    first_part = trim(first_part);
+    if (first_part.empty()) return JS_UNDEFINED;
 
-    // Split on '=' for name and value
     auto eq = first_part.find('=');
-    if (eq == std::string::npos) return JS_UNDEFINED; // malformed
+    if (eq == std::string::npos) return JS_UNDEFINED;
 
-    std::string name = first_part.substr(0, eq);
-    std::string value = first_part.substr(eq + 1);
-
-    // Trim name whitespace
-    ltrim = name.find_first_not_of(" \t");
-    if (ltrim != std::string::npos) name = name.substr(ltrim);
-    rtrim = name.find_last_not_of(" \t");
-    if (rtrim != std::string::npos) name = name.substr(0, rtrim + 1);
+    std::string name = trim(first_part.substr(0, eq));
+    std::string value = trim(first_part.substr(eq + 1));
 
     if (name.empty()) return JS_UNDEFINED;
 
@@ -2397,6 +2436,59 @@ static JSValue js_document_set_cookie(JSContext* ctx, JSValueConst /*this_val*/,
     if (!state) return JS_UNDEFINED;
 
     state->cookies[name] = value;
+
+    std::string document_url;
+    JSValue global = JS_GetGlobalObject(ctx);
+    JSValue location = JS_GetPropertyStr(ctx, global, "location");
+    if (JS_IsObject(location)) {
+        JSValue href = JS_GetPropertyStr(ctx, location, "href");
+        if (JS_IsString(href)) {
+            const char* href_cstr = JS_ToCString(ctx, href);
+            if (href_cstr) {
+                document_url = href_cstr;
+                JS_FreeCString(ctx, href_cstr);
+            }
+        }
+        JS_FreeValue(ctx, href);
+    }
+    JS_FreeValue(ctx, location);
+    JS_FreeValue(ctx, global);
+
+    if (auto parsed = clever::url::parse(document_url); parsed.has_value() && !parsed->host.empty()) {
+        bool has_domain = false;
+        bool has_path = false;
+        std::istringstream stream(cookie_str);
+        std::string part;
+        bool is_first = true;
+        while (std::getline(stream, part, ';')) {
+            part = trim(part);
+            if (part.empty()) continue;
+            if (is_first) {
+                is_first = false;
+                continue;
+            }
+
+            auto attr_eq = part.find('=');
+            std::string attr_name = trim(attr_eq == std::string::npos ? part : part.substr(0, attr_eq));
+            attr_name = to_lower_str(attr_name);
+            if (attr_name == "domain") {
+                has_domain = true;
+            } else if (attr_name == "path") {
+                has_path = true;
+            }
+        }
+
+        std::string jar_cookie = cookie_str;
+        if (!has_domain) {
+            jar_cookie += "; Domain=" + parsed->host;
+        }
+        if (!has_path) {
+            std::string default_path = parsed->path.empty() ? "/" : parsed->path;
+            jar_cookie += "; Path=" + default_path;
+        }
+        clever::net::CookieJar::shared().set_from_header(jar_cookie, parsed->host);
+    }
+
     return JS_UNDEFINED;
 }
 

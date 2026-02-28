@@ -124,7 +124,7 @@ struct CalcExpr {
     std::shared_ptr<CalcExpr> right;
 
     // Evaluate this expression given context values
-    float evaluate(float parent_value, float root_font_size) const;
+    float evaluate(float parent_value, float root_font_size, float line_height = 0) const;
 
     // Factory helpers
     static std::shared_ptr<CalcExpr> make_value(const Length& l) {

@@ -1,4 +1,5 @@
 #include <clever/net/request.h>
+#include <clever/net/cookie_jar.h>
 #include <algorithm>
 #include <cctype>
 #include <sstream>
@@ -151,6 +152,12 @@ std::vector<uint8_t> Request::serialize() const {
     // Default Accept-Language — prevents sites from showing consent/locale pages
     if (!headers.has("accept-language")) {
         oss << "Accept-Language: en-US,en;q=0.9\r\n";
+    }
+
+    std::string cookies = CookieJar::shared().get_cookie_header(
+        host, path, use_tls, true, method == Method::GET);
+    if (!cookies.empty()) {
+        oss << "Cookie: " << cookies << "\r\n";
     }
 
     // User-supplied headers

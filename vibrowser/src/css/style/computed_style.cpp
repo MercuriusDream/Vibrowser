@@ -44,51 +44,52 @@ float Length::to_px(float parent_value, float root_font_size, float line_height)
             return 0;
         case Unit::Calc:
             if (calc_expr) {
-                return calc_expr->evaluate(parent_value, root_font_size);
+                return calc_expr->evaluate(parent_value, root_font_size, line_height);
             }
             return 0;
     }
     return 0;
 }
 
-float CalcExpr::evaluate(float parent_value, float root_font_size) const {
+float CalcExpr::evaluate(float parent_value, float root_font_size, float line_height) const {
     switch (op) {
         case Op::Value:
-            return leaf.to_px(parent_value, root_font_size);
+            return leaf.to_px(parent_value, root_font_size, line_height);
         case Op::Add: {
-            float l = left ? left->evaluate(parent_value, root_font_size) : 0;
-            float r = right ? right->evaluate(parent_value, root_font_size) : 0;
+            float l = left ? left->evaluate(parent_value, root_font_size, line_height) : 0;
+            float r = right ? right->evaluate(parent_value, root_font_size, line_height) : 0;
             return l + r;
         }
         case Op::Sub: {
-            float l = left ? left->evaluate(parent_value, root_font_size) : 0;
-            float r = right ? right->evaluate(parent_value, root_font_size) : 0;
+            float l = left ? left->evaluate(parent_value, root_font_size, line_height) : 0;
+            float r = right ? right->evaluate(parent_value, root_font_size, line_height) : 0;
             return l - r;
         }
         case Op::Mul: {
-            float l = left ? left->evaluate(parent_value, root_font_size) : 0;
-            float r = right ? right->evaluate(parent_value, root_font_size) : 0;
+            float l = left ? left->evaluate(parent_value, root_font_size, line_height) : 0;
+            float r = right ? right->evaluate(parent_value, root_font_size, line_height) : 0;
             return l * r;
         }
         case Op::Div: {
-            float l = left ? left->evaluate(parent_value, root_font_size) : 0;
-            float r = right ? right->evaluate(parent_value, root_font_size) : 0;
+            float l = left ? left->evaluate(parent_value, root_font_size, line_height) : 0;
+            float r = right ? right->evaluate(parent_value, root_font_size, line_height) : 0;
             if (r == 0) return 0;
             return l / r;
         }
         case Op::Min: {
-            float l = left ? left->evaluate(parent_value, root_font_size) : 0;
-            float r = right ? right->evaluate(parent_value, root_font_size) : 0;
+            float l = left ? left->evaluate(parent_value, root_font_size, line_height) : 0;
+            float r = right ? right->evaluate(parent_value, root_font_size, line_height) : 0;
             return std::min(l, r);
         }
         case Op::Max: {
-            float l = left ? left->evaluate(parent_value, root_font_size) : 0;
-            float r = right ? right->evaluate(parent_value, root_font_size) : 0;
+            float l = left ? left->evaluate(parent_value, root_font_size, line_height) : 0;
+            float r = right ? right->evaluate(parent_value, root_font_size, line_height) : 0;
+            // clamp(min, preferred, max) is normalized to max(min, min(preferred, max)).
             return std::max(l, r);
         }
         case Op::Mod: {
-            float l = left ? left->evaluate(parent_value, root_font_size) : 0;
-            float r = right ? right->evaluate(parent_value, root_font_size) : 0;
+            float l = left ? left->evaluate(parent_value, root_font_size, line_height) : 0;
+            float r = right ? right->evaluate(parent_value, root_font_size, line_height) : 0;
             if (r == 0) return 0;
             // CSS mod(): result has sign of divisor
             float result = std::fmod(l, r);
@@ -97,94 +98,94 @@ float CalcExpr::evaluate(float parent_value, float root_font_size) const {
             return result;
         }
         case Op::Rem: {
-            float l = left ? left->evaluate(parent_value, root_font_size) : 0;
-            float r = right ? right->evaluate(parent_value, root_font_size) : 0;
+            float l = left ? left->evaluate(parent_value, root_font_size, line_height) : 0;
+            float r = right ? right->evaluate(parent_value, root_font_size, line_height) : 0;
             if (r == 0) return 0;
             return std::fmod(l, r); // sign of dividend
         }
         case Op::Abs: {
-            float l = left ? left->evaluate(parent_value, root_font_size) : 0;
+            float l = left ? left->evaluate(parent_value, root_font_size, line_height) : 0;
             return std::abs(l);
         }
         case Op::Sign: {
-            float l = left ? left->evaluate(parent_value, root_font_size) : 0;
+            float l = left ? left->evaluate(parent_value, root_font_size, line_height) : 0;
             if (l > 0) return 1.0f;
             if (l < 0) return -1.0f;
             return 0.0f;
         }
         case Op::RoundNearest: {
-            float l = left ? left->evaluate(parent_value, root_font_size) : 0;
-            float r = right ? right->evaluate(parent_value, root_font_size) : 1;
+            float l = left ? left->evaluate(parent_value, root_font_size, line_height) : 0;
+            float r = right ? right->evaluate(parent_value, root_font_size, line_height) : 1;
             if (r == 0) return 0;
             return std::round(l / r) * r;
         }
         case Op::RoundUp: {
-            float l = left ? left->evaluate(parent_value, root_font_size) : 0;
-            float r = right ? right->evaluate(parent_value, root_font_size) : 1;
+            float l = left ? left->evaluate(parent_value, root_font_size, line_height) : 0;
+            float r = right ? right->evaluate(parent_value, root_font_size, line_height) : 1;
             if (r == 0) return 0;
             return std::ceil(l / r) * r;
         }
         case Op::RoundDown: {
-            float l = left ? left->evaluate(parent_value, root_font_size) : 0;
-            float r = right ? right->evaluate(parent_value, root_font_size) : 1;
+            float l = left ? left->evaluate(parent_value, root_font_size, line_height) : 0;
+            float r = right ? right->evaluate(parent_value, root_font_size, line_height) : 1;
             if (r == 0) return 0;
             return std::floor(l / r) * r;
         }
         case Op::RoundToZero: {
-            float l = left ? left->evaluate(parent_value, root_font_size) : 0;
-            float r = right ? right->evaluate(parent_value, root_font_size) : 1;
+            float l = left ? left->evaluate(parent_value, root_font_size, line_height) : 0;
+            float r = right ? right->evaluate(parent_value, root_font_size, line_height) : 1;
             if (r == 0) return 0;
             return std::trunc(l / r) * r;
         }
         case Op::Sin: {
-            float l = left ? left->evaluate(parent_value, root_font_size) : 0;
+            float l = left ? left->evaluate(parent_value, root_font_size, line_height) : 0;
             return std::sin(l);
         }
         case Op::Cos: {
-            float l = left ? left->evaluate(parent_value, root_font_size) : 0;
+            float l = left ? left->evaluate(parent_value, root_font_size, line_height) : 0;
             return std::cos(l);
         }
         case Op::Tan: {
-            float l = left ? left->evaluate(parent_value, root_font_size) : 0;
+            float l = left ? left->evaluate(parent_value, root_font_size, line_height) : 0;
             return std::tan(l);
         }
         case Op::Asin: {
-            float l = left ? left->evaluate(parent_value, root_font_size) : 0;
+            float l = left ? left->evaluate(parent_value, root_font_size, line_height) : 0;
             return std::asin(std::clamp(l, -1.0f, 1.0f));
         }
         case Op::Acos: {
-            float l = left ? left->evaluate(parent_value, root_font_size) : 0;
+            float l = left ? left->evaluate(parent_value, root_font_size, line_height) : 0;
             return std::acos(std::clamp(l, -1.0f, 1.0f));
         }
         case Op::Atan: {
-            float l = left ? left->evaluate(parent_value, root_font_size) : 0;
+            float l = left ? left->evaluate(parent_value, root_font_size, line_height) : 0;
             return std::atan(l);
         }
         case Op::Atan2: {
-            float l = left ? left->evaluate(parent_value, root_font_size) : 0;
-            float r = right ? right->evaluate(parent_value, root_font_size) : 0;
+            float l = left ? left->evaluate(parent_value, root_font_size, line_height) : 0;
+            float r = right ? right->evaluate(parent_value, root_font_size, line_height) : 0;
             return std::atan2(l, r);
         }
         case Op::Sqrt: {
-            float l = left ? left->evaluate(parent_value, root_font_size) : 0;
+            float l = left ? left->evaluate(parent_value, root_font_size, line_height) : 0;
             return l >= 0 ? std::sqrt(l) : 0;
         }
         case Op::Pow: {
-            float l = left ? left->evaluate(parent_value, root_font_size) : 0;
-            float r = right ? right->evaluate(parent_value, root_font_size) : 0;
+            float l = left ? left->evaluate(parent_value, root_font_size, line_height) : 0;
+            float r = right ? right->evaluate(parent_value, root_font_size, line_height) : 0;
             return std::pow(l, r);
         }
         case Op::Hypot: {
-            float l = left ? left->evaluate(parent_value, root_font_size) : 0;
-            float r = right ? right->evaluate(parent_value, root_font_size) : 0;
+            float l = left ? left->evaluate(parent_value, root_font_size, line_height) : 0;
+            float r = right ? right->evaluate(parent_value, root_font_size, line_height) : 0;
             return std::hypot(l, r);
         }
         case Op::Exp: {
-            float l = left ? left->evaluate(parent_value, root_font_size) : 0;
+            float l = left ? left->evaluate(parent_value, root_font_size, line_height) : 0;
             return std::exp(l);
         }
         case Op::Log: {
-            float l = left ? left->evaluate(parent_value, root_font_size) : 0;
+            float l = left ? left->evaluate(parent_value, root_font_size, line_height) : 0;
             return l > 0 ? std::log(l) : 0;
         }
     }

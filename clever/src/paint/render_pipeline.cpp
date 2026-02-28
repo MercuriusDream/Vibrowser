@@ -9278,8 +9278,8 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
         // Legacy HTML align attribute (table alignment)
         std::string ta = get_attr(node, "align");
         if (ta == "center") {
-            layout_node->geometry.margin.left = -1; // auto
-            layout_node->geometry.margin.right = -1; // auto
+            layout_node->geometry.margin.left = clever::layout::MARGIN_AUTO;
+            layout_node->geometry.margin.right = clever::layout::MARGIN_AUTO;
         }
         // Legacy HTML cellpadding attribute (applies padding to all td/th cells)
         std::string cp = get_attr(node, "cellpadding");

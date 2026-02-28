@@ -1,4 +1,5 @@
 #include <clever/net/http_client.h>
+#include <clever/net/cookie_jar.h>
 
 #include <arpa/inet.h>
 #include <cerrno>
@@ -701,6 +702,48 @@ std::optional<Response> HttpClient::fetch(const Request& request) {
 
         resp->url = current.url;
         resp->was_redirected = was_redirected;
+
+        for (auto it = resp->headers.begin(); it != resp->headers.end(); ++it) {
+            if (to_lower(it->first) != "set-cookie") continue;
+            const std::string& raw_value = it->second;
+            if (raw_value.empty()) continue;
+
+            size_t segment_start = 0;
+            for (size_t i = 0; i < raw_value.size(); ++i) {
+                if (raw_value[i] != ',') continue;
+
+                size_t lookahead = i + 1;
+                while (lookahead < raw_value.size() &&
+                       (raw_value[lookahead] == ' ' || raw_value[lookahead] == '\t')) {
+                    ++lookahead;
+                }
+
+                bool is_cookie_boundary = false;
+                if (lookahead < raw_value.size()) {
+                    size_t eq = raw_value.find('=', lookahead);
+                    size_t semi = raw_value.find(';', lookahead);
+                    if (eq != std::string::npos && (semi == std::string::npos || eq < semi)) {
+                        std::string token = raw_value.substr(lookahead, eq - lookahead);
+                        if (!token.empty() && token.find_first_of(" \t") == std::string::npos) {
+                            is_cookie_boundary = true;
+                        }
+                    }
+                }
+
+                if (!is_cookie_boundary) continue;
+
+                std::string one_cookie = trim(raw_value.substr(segment_start, i - segment_start));
+                if (!one_cookie.empty()) {
+                    CookieJar::shared().set_from_header(one_cookie, current.host);
+                }
+                segment_start = i + 1;
+            }
+
+            std::string trailing_cookie = trim(raw_value.substr(segment_start));
+            if (!trailing_cookie.empty()) {
+                CookieJar::shared().set_from_header(trailing_cookie, current.host);
+            }
+        }
 
         // --- Handle 304 Not Modified ---
         if (resp->status == 304 && is_cacheable_method) {

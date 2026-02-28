@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>CSS calc() Test</title>
+    <style>
+        body { margin: 0; padding: 10px; font-family: Arial, sans-serif; background: #f0f0f0; }
+        .container { max-width: 600px; }
+        .test { margin: 20px 0; padding: 10px; background: white; border-radius: 4px; border-left: 4px solid #2196F3; }
+        .test h3 { margin: 0 0 10px 0; color: #2196F3; }
+        .test-box { background: #e3f2fd; border: 1px solid #bbdefb; padding: 10px; font-size: 12px; margin: 5px 0; }
+    </style>
+</head>
+<body>
+    <h1>CSS calc() Evaluation Tests</h1>
+    <div class="container">
+        <!-- Test 1: Basic subtraction -->
+        <div class="test">
+            <h3>Test 1: calc(200px - 50px) = 150px</h3>
+            <div class="test-box" style="width: calc(200px - 50px); background: #4CAF50; color: white;">
+                150px wide (should be exactly 150px)
+            </div>
+        </div>
+
+        <!-- Test 2: Percentage minus pixels -->
+        <div class="test">
+            <h3>Test 2: calc(100% - 40px) in 400px container</h3>
+            <div style="width: 400px; background: #ddd; padding: 5px;">
+                <div class="test-box" style="width: calc(100% - 40px); background: #FF9800; color: white;">
+                    360px wide (400px - 40px)
+                </div>
+            </div>
+        </div>
+
+        <!-- Test 3: Multiplication -->
+        <div class="test">
+            <h3>Test 3: calc(3 * 20px) = 60px height</h3>
+            <div class="test-box" style="height: calc(3 * 20px); background: #2196F3; color: white; display: flex; align-items: center;">
+                60px high (3 × 20px)
+            </div>
+        </div>
+
+        <!-- Test 4: Addition -->
+        <div class="test">
+            <h3>Test 4: calc(100px + 50px) width, calc(30px + 20px) height</h3>
+            <div class="test-box" style="width: calc(100px + 50px); height: calc(30px + 20px); background: #9C27B0; color: white; display: flex; align-items: center;">
+                150px × 50px
+            </div>
+        </div>
+
+        <!-- Test 5: Division -->
+        <div class="test">
+            <h3>Test 5: calc(300px - 100px) = 200px, calc(80px / 2) = 40px</h3>
+            <div class="test-box" style="width: calc(300px - 100px); height: calc(80px / 2); background: #673AB7; color: white; display: flex; align-items: center;">
+                200px × 40px
+            </div>
+        </div>
+
+        <!-- Test 6: Viewport width -->
+        <div class="test">
+            <h3>Test 6: calc(50vw - 50px) - half viewport minus 50px</h3>
+            <div class="test-box" style="width: calc(50vw - 50px); background: #00BCD4; color: white;">
+                calc(50vw - 50px)
+            </div>
+        </div>
+
+        <!-- Test 7: Em units (relative to font size) -->
+        <div class="test">
+            <h3>Test 7: calc(100% + 2em) in 16px font context</h3>
+            <div class="test-box" style="width: calc(100% + 2em); background: #009688; color: white; font-size: 16px;">
+                calc(100% + 2em) = 100% + 32px
+            </div>
+        </div>
+
+        <!-- Test 8: Nested calc (min/max) -->
+        <div class="test">
+            <h3>Test 8: min(200px, 100%) - should use smaller</h3>
+            <div class="test-box" style="width: min(200px, 100%); background: #4CAF50; color: white;">
+                min(200px, 100%)
+            </div>
+        </div>
+
+        <!-- Test 9: Nested calc (max) -->
+        <div class="test">
+            <h3>Test 9: max(200px, 50%) - should use larger</h3>
+            <div class="test-box" style="width: max(200px, 50%); background: #FF5722; color: white;">
+                max(200px, 50%)
+            </div>
+        </div>
+
+        <!-- Test 10: clamp -->
+        <div class="test">
+            <h3>Test 10: clamp(100px, 50%, 300px) - constrained to range</h3>
+            <div class="test-box" style="width: clamp(100px, 50%, 300px); background: #E91E63; color: white;">
+                clamp(100px, 50%, 300px)
+            </div>
+        </div>
+
+        <p style="color: #666; font-size: 12px; margin-top: 30px;">
+            All calc() expressions should evaluate correctly. The layout engine now properly:
+            <ul>
+                <li>Resolves all calc() operands with correct unit conversion</li>
+                <li>Supports +, -, *, / operators</li>
+                <li>Supports min(), max(), clamp() functions</li>
+                <li>Resolves percentage and em units against containing block/font-size</li>
+                <li>Handles viewport units (vw, vh, vmin, vmax)</li>
+                <li>Properly passes line_height for ch/lh unit resolution</li>
+            </ul>
+        </p>
+    </div>
+</body>
+</html>
