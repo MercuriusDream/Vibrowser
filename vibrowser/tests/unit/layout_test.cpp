@@ -31423,3 +31423,134 @@ TEST(LayoutNodeProps, PaddingDefaultZeroV175) {
     EXPECT_FLOAT_EQ(node->geometry.padding.bottom, 0.0f);
     EXPECT_FLOAT_EQ(node->geometry.padding.left, 0.0f);
 }
+
+// V176_1: flex row with 3 equal grow children splits width evenly
+TEST(LayoutEngineTest, LayoutV176_1) {
+    auto root = make_flex("div");
+    root->specified_width = 600.0f;
+    root->flex_direction = 0; // row
+
+    auto c1 = make_block("div");
+    c1->flex_grow = 1.0f;
+    c1->specified_height = 40.0f;
+    auto c2 = make_block("div");
+    c2->flex_grow = 1.0f;
+    c2->specified_height = 40.0f;
+    auto c3 = make_block("div");
+    c3->flex_grow = 1.0f;
+    c3->specified_height = 40.0f;
+
+    root->append_child(std::move(c1));
+    root->append_child(std::move(c2));
+    root->append_child(std::move(c3));
+
+    LayoutEngine engine;
+    engine.compute(*root, 600.0f, 400.0f);
+
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.width, 200.0f);
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.width, 200.0f);
+    EXPECT_FLOAT_EQ(root->children[2]->geometry.width, 200.0f);
+}
+
+// V176_2: flex row children positioned at correct x offsets
+TEST(LayoutEngineTest, LayoutV176_2) {
+    auto root = make_flex("div");
+    root->specified_width = 400.0f;
+    root->flex_direction = 0; // row
+
+    auto c1 = make_block("div");
+    c1->flex_basis = 100.0f;
+    c1->flex_grow = 0.0f;
+    c1->specified_height = 30.0f;
+    auto c2 = make_block("div");
+    c2->flex_basis = 150.0f;
+    c2->flex_grow = 0.0f;
+    c2->specified_height = 30.0f;
+
+    root->append_child(std::move(c1));
+    root->append_child(std::move(c2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 400.0f, 300.0f);
+
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.x, 0.0f);
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.x, 100.0f);
+}
+
+// V176_3: max_width clamps specified_width down
+TEST(LayoutEngineTest, LayoutV176_3) {
+    auto root = make_block("div");
+    root->specified_width = 500.0f;
+    root->max_width = 300.0f;
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(root->geometry.width, 300.0f);
+}
+
+// V176_4: block stacking — two children stack vertically
+TEST(LayoutEngineTest, LayoutV176_4) {
+    auto root = make_block("div");
+
+    auto c1 = make_block("div");
+    c1->specified_height = 100.0f;
+    auto c2 = make_block("div");
+    c2->specified_height = 60.0f;
+
+    root->append_child(std::move(c1));
+    root->append_child(std::move(c2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.y, 0.0f);
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.y, 100.0f);
+}
+
+// V176_5: flex column children get full container width
+TEST(LayoutEngineTest, LayoutV176_5) {
+    auto root = make_flex("div");
+    root->specified_width = 250.0f;
+    root->flex_direction = 2; // column
+
+    auto child = make_block("div");
+    child->specified_height = 40.0f;
+
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 250.0f, 400.0f);
+
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.width, 250.0f);
+}
+
+// V176_6: min_width=400 overrides container width=300 for child
+TEST(LayoutEngineTest, LayoutV176_6) {
+    auto root = make_block("div");
+    root->specified_width = 200.0f;
+    root->min_width = 400.0f;
+
+    LayoutEngine engine;
+    engine.compute(*root, 500.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(root->geometry.width, 400.0f);
+}
+
+// V176_7: default geometry.border all 0
+TEST(LayoutNodeProps, BorderDefaultZeroV176) {
+    auto node = std::make_unique<LayoutNode>();
+    EXPECT_FLOAT_EQ(node->geometry.border.top, 0.0f);
+    EXPECT_FLOAT_EQ(node->geometry.border.right, 0.0f);
+    EXPECT_FLOAT_EQ(node->geometry.border.bottom, 0.0f);
+    EXPECT_FLOAT_EQ(node->geometry.border.left, 0.0f);
+}
+
+// V176_8: default geometry.x/y/width/height all 0
+TEST(LayoutNodeProps, GeometryDefaultZeroV176) {
+    auto node = std::make_unique<LayoutNode>();
+    EXPECT_FLOAT_EQ(node->geometry.x, 0.0f);
+    EXPECT_FLOAT_EQ(node->geometry.y, 0.0f);
+    EXPECT_FLOAT_EQ(node->geometry.width, 0.0f);
+    EXPECT_FLOAT_EQ(node->geometry.height, 0.0f);
+}

@@ -21944,3 +21944,56 @@ TEST(SerializerTest, SerializerV175_3_BytesWithPatternRoundTrip) {
     EXPECT_EQ(result, pattern);
     EXPECT_FALSE(d.has_remaining());
 }
+
+// ------------------------------------------------------------------
+// V176 Serializer tests
+// ------------------------------------------------------------------
+
+TEST(SerializerTest, SerializerV176_1_U32SequenceRoundTrip) {
+    Serializer s;
+    s.write_u32(0);
+    s.write_u32(1);
+    s.write_u32(1000000);
+    s.write_u32(0xFFFFFFFF);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u32(), 0u);
+    EXPECT_EQ(d.read_u32(), 1u);
+    EXPECT_EQ(d.read_u32(), 1000000u);
+    EXPECT_EQ(d.read_u32(), 0xFFFFFFFFu);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, SerializerV176_2_MixedBoolAndI64RoundTrip) {
+    Serializer s;
+    s.write_bool(true);
+    s.write_i64(std::numeric_limits<int64_t>::min());
+    s.write_bool(false);
+    s.write_i64(std::numeric_limits<int64_t>::max());
+    s.write_bool(true);
+
+    Deserializer d(s.data());
+    EXPECT_TRUE(d.read_bool());
+    EXPECT_EQ(d.read_i64(), std::numeric_limits<int64_t>::min());
+    EXPECT_FALSE(d.read_bool());
+    EXPECT_EQ(d.read_i64(), std::numeric_limits<int64_t>::max());
+    EXPECT_TRUE(d.read_bool());
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, SerializerV176_3_StringThenBytesRoundTrip) {
+    std::string greeting = "Hello, V176!";
+    std::vector<uint8_t> blob = {0x00, 0xFF, 0x7F, 0x80, 0x01};
+
+    Serializer s;
+    s.write_string(greeting);
+    s.write_bytes(blob.data(), blob.size());
+    s.write_string("end");
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), greeting);
+    auto read_blob = d.read_bytes();
+    EXPECT_EQ(read_blob, blob);
+    EXPECT_EQ(d.read_string(), "end");
+    EXPECT_FALSE(d.has_remaining());
+}

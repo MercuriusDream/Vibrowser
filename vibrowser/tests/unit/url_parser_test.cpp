@@ -16216,3 +16216,49 @@ TEST(UrlParserTest, UrlV175_4_FragmentOnlyNoPathNoQuery) {
     EXPECT_EQ(result->fragment, "anchor");
     EXPECT_TRUE(result->query.empty());
 }
+
+// =============================================================================
+// Cycle V176 — URL parser tests
+// =============================================================================
+TEST(UrlParserTest, UrlV176_1_IPv6HostParsed) {
+    // An IPv6 address in brackets should be parsed as the host
+    auto result = parse("http://[::1]/index.html");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "[::1]");
+    EXPECT_EQ(result->path, "/index.html");
+    EXPECT_EQ(result->port, std::nullopt);
+}
+
+TEST(UrlParserTest, UrlV176_2_DefaultPort80OmittedInSerialize) {
+    // Port 80 is the default for HTTP and should be omitted during serialization
+    auto result = parse("http://example.com:80/path");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "example.com");
+    // Serialization should NOT include :80 for http
+    std::string serialized = result->serialize();
+    EXPECT_EQ(serialized.find(":80"), std::string::npos);
+    EXPECT_NE(serialized.find("example.com/path"), std::string::npos);
+}
+
+TEST(UrlParserTest, UrlV176_3_QueryWithMultipleParams) {
+    // A URL with multiple query parameters separated by '&' should preserve them all
+    auto result = parse("https://search.com/q?term=hello&lang=en&page=2");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "search.com");
+    EXPECT_EQ(result->path, "/q");
+    EXPECT_EQ(result->query, "term=hello&lang=en&page=2");
+    EXPECT_TRUE(result->fragment.empty());
+}
+
+TEST(UrlParserTest, UrlV176_4_FtpSpecialScheme) {
+    // ftp is a special scheme; parsing should succeed and port should be default (21)
+    auto result = parse("ftp://files.example.com/pub/readme.txt");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "ftp");
+    EXPECT_EQ(result->host, "files.example.com");
+    EXPECT_EQ(result->path, "/pub/readme.txt");
+    EXPECT_TRUE(result->is_special());
+}

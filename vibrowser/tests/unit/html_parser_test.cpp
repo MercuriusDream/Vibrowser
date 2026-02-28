@@ -27248,3 +27248,98 @@ TEST(HtmlParserTest, HtmlV175_8) {
     EXPECT_EQ(hr->tag_name, "hr");
     EXPECT_TRUE(hr->children.empty());
 }
+
+// ---------------------------------------------------------------------------
+// Cycle V176 — diverse HTML parsing: nested elements, attributes, void tags
+// ---------------------------------------------------------------------------
+
+TEST(HtmlParserTest, HtmlV176_1) {
+    auto doc = clever::html::parse("<ul><li>item one</li><li>item two</li></ul>");
+    ASSERT_NE(doc, nullptr);
+    auto* ul = doc->find_element("ul");
+    ASSERT_NE(ul, nullptr);
+    EXPECT_EQ(ul->tag_name, "ul");
+    ASSERT_GE(ul->children.size(), 2u);
+    EXPECT_EQ(ul->children[0]->tag_name, "li");
+    EXPECT_EQ(ul->children[0]->text_content(), "item one");
+    EXPECT_EQ(ul->children[1]->tag_name, "li");
+    EXPECT_EQ(ul->children[1]->text_content(), "item two");
+}
+
+TEST(HtmlParserTest, HtmlV176_2) {
+    auto doc = clever::html::parse("<table><tr><td>cell</td></tr></table>");
+    ASSERT_NE(doc, nullptr);
+    auto* td = doc->find_element("td");
+    ASSERT_NE(td, nullptr);
+    EXPECT_EQ(td->tag_name, "td");
+    EXPECT_EQ(td->text_content(), "cell");
+}
+
+TEST(HtmlParserTest, HtmlV176_3) {
+    auto doc = clever::html::parse("<div class=\"wrapper\"><p>inner</p></div>");
+    ASSERT_NE(doc, nullptr);
+    auto* div = doc->find_element("div");
+    ASSERT_NE(div, nullptr);
+    EXPECT_EQ(div->tag_name, "div");
+    ASSERT_GE(div->attributes.size(), 1u);
+    EXPECT_EQ(div->attributes[0].name, "class");
+    EXPECT_EQ(div->attributes[0].value, "wrapper");
+    ASSERT_GE(div->children.size(), 1u);
+    EXPECT_EQ(div->children[0]->tag_name, "p");
+    EXPECT_EQ(div->children[0]->text_content(), "inner");
+}
+
+TEST(HtmlParserTest, HtmlV176_4) {
+    auto doc = clever::html::parse("<input type=\"text\" name=\"user\">");
+    ASSERT_NE(doc, nullptr);
+    auto* input = doc->find_element("input");
+    ASSERT_NE(input, nullptr);
+    EXPECT_EQ(input->tag_name, "input");
+    ASSERT_GE(input->attributes.size(), 2u);
+    EXPECT_EQ(input->attributes[0].name, "type");
+    EXPECT_EQ(input->attributes[0].value, "text");
+    EXPECT_EQ(input->attributes[1].name, "name");
+    EXPECT_EQ(input->attributes[1].value, "user");
+    EXPECT_TRUE(input->children.empty());
+}
+
+TEST(HtmlParserTest, HtmlV176_5) {
+    auto doc = clever::html::parse("<h1>Title</h1>");
+    ASSERT_NE(doc, nullptr);
+    auto* h1 = doc->find_element("h1");
+    ASSERT_NE(h1, nullptr);
+    EXPECT_EQ(h1->tag_name, "h1");
+    EXPECT_EQ(h1->text_content(), "Title");
+}
+
+TEST(HtmlParserTest, HtmlV176_6) {
+    auto doc = clever::html::parse("<section><article>content</article></section>");
+    ASSERT_NE(doc, nullptr);
+    auto* section = doc->find_element("section");
+    ASSERT_NE(section, nullptr);
+    EXPECT_EQ(section->tag_name, "section");
+    ASSERT_GE(section->children.size(), 1u);
+    auto* article = doc->find_element("article");
+    ASSERT_NE(article, nullptr);
+    EXPECT_EQ(article->tag_name, "article");
+    EXPECT_EQ(article->text_content(), "content");
+}
+
+TEST(HtmlParserTest, HtmlV176_7) {
+    auto doc = clever::html::parse("<body><br></body>");
+    ASSERT_NE(doc, nullptr);
+    auto* br = doc->find_element("br");
+    ASSERT_NE(br, nullptr);
+    EXPECT_EQ(br->tag_name, "br");
+    EXPECT_TRUE(br->children.empty());
+}
+
+TEST(HtmlParserTest, HtmlV176_8) {
+    auto doc = clever::html::parse("<strong>bold <em>italic</em></strong>");
+    ASSERT_NE(doc, nullptr);
+    auto* strong = doc->find_element("strong");
+    ASSERT_NE(strong, nullptr);
+    EXPECT_EQ(strong->tag_name, "strong");
+    EXPECT_GE(strong->children.size(), 2u);
+    EXPECT_EQ(strong->text_content(), "bold italic");
+}

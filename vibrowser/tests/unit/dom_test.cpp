@@ -25349,3 +25349,107 @@ TEST(DomNode, TextContentWithMixedChildrenV175) {
     parent->append_child(std::move(t2));
     EXPECT_EQ(parent->text_content(), "Hello bold world");
 }
+
+// ---------------------------------------------------------------------------
+// Round 176 — DOM tests
+// ---------------------------------------------------------------------------
+
+// 1. Sibling pointers correct after middle child removal
+TEST(DomNode, SiblingPointersAfterMiddleRemovalV176) {
+    auto parent = std::make_unique<Element>("div");
+    auto a = std::make_unique<Element>("a");
+    auto b = std::make_unique<Element>("b");
+    auto c = std::make_unique<Element>("c");
+    auto* a_ptr = a.get();
+    auto* b_ptr = b.get();
+    auto* c_ptr = c.get();
+    parent->append_child(std::move(a));
+    parent->append_child(std::move(b));
+    parent->append_child(std::move(c));
+    // Remove middle child
+    parent->remove_child(*b_ptr);
+    EXPECT_EQ(a_ptr->next_sibling(), c_ptr);
+    EXPECT_EQ(c_ptr->previous_sibling(), a_ptr);
+    EXPECT_EQ(parent->first_child(), a_ptr);
+    EXPECT_EQ(parent->last_child(), c_ptr);
+}
+
+// 2. Attribute with empty value is distinct from missing attribute
+TEST(DomElement, AttributeEmptyValueDistinctFromMissingV176) {
+    Element elem("input");
+    elem.set_attribute("disabled", "");
+    EXPECT_TRUE(elem.has_attribute("disabled"));
+    auto val = elem.get_attribute("disabled");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(val.value(), "");
+    EXPECT_FALSE(elem.has_attribute("readonly"));
+}
+
+// 3. Document register_id and get_element_by_id
+TEST(DomDocument, RegisterIdAndRetrieveV176) {
+    Document doc;
+    auto elem = doc.create_element("section");
+    auto* elem_ptr = elem.get();
+    doc.register_id("main-content", elem_ptr);
+    doc.append_child(std::move(elem));
+    auto* found = doc.get_element_by_id("main-content");
+    EXPECT_EQ(found, elem_ptr);
+}
+
+// 4. Event default not prevented initially
+TEST(DomEvent, DefaultNotPreventedInitiallyV176) {
+    Event event("click");
+    EXPECT_FALSE(event.default_prevented());
+    event.prevent_default();
+    EXPECT_TRUE(event.default_prevented());
+}
+
+// 5. text_content of element with deeply nested children
+TEST(DomNode, TextContentDeeplyNestedV176) {
+    auto root = std::make_unique<Element>("div");
+    auto inner = std::make_unique<Element>("span");
+    auto deep = std::make_unique<Element>("em");
+    auto txt = std::make_unique<Text>("deep");
+    deep->append_child(std::move(txt));
+    inner->append_child(std::move(deep));
+    root->append_child(std::move(inner));
+    EXPECT_EQ(root->text_content(), "deep");
+}
+
+// 6. ClassList remove then contains returns false
+TEST(DomElement, ClassListRemoveThenContainsFalseV176) {
+    Element elem("div");
+    elem.class_list().add("active");
+    elem.class_list().add("highlight");
+    EXPECT_TRUE(elem.class_list().contains("active"));
+    elem.class_list().remove("active");
+    EXPECT_FALSE(elem.class_list().contains("active"));
+    EXPECT_TRUE(elem.class_list().contains("highlight"));
+}
+
+// 7. DirtyFlag Layout and Paint combined
+TEST(DomNode, DirtyFlagLayoutAndPaintCombinedV176) {
+    Element elem("div");
+    elem.mark_dirty(DirtyFlags::Layout);
+    elem.mark_dirty(DirtyFlags::Paint);
+    EXPECT_NE(elem.dirty_flags() & DirtyFlags::Layout, DirtyFlags::None);
+    EXPECT_NE(elem.dirty_flags() & DirtyFlags::Paint, DirtyFlags::None);
+    elem.clear_dirty();
+    EXPECT_EQ(elem.dirty_flags(), DirtyFlags::None);
+}
+
+// 8. First/last child update after insert_before at head
+TEST(DomNode, FirstChildUpdatesAfterInsertBeforeAtHeadV176) {
+    auto parent = std::make_unique<Element>("ol");
+    auto existing = std::make_unique<Element>("li");
+    auto* existing_ptr = existing.get();
+    parent->append_child(std::move(existing));
+    EXPECT_EQ(parent->first_child(), existing_ptr);
+    auto new_first = std::make_unique<Element>("li");
+    auto* new_first_ptr = new_first.get();
+    parent->insert_before(std::move(new_first), existing_ptr);
+    EXPECT_EQ(parent->first_child(), new_first_ptr);
+    EXPECT_EQ(parent->last_child(), existing_ptr);
+    EXPECT_EQ(new_first_ptr->next_sibling(), existing_ptr);
+    EXPECT_EQ(existing_ptr->previous_sibling(), new_first_ptr);
+}

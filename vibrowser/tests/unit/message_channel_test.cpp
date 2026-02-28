@@ -3464,3 +3464,55 @@ TEST(MessageChannelTest, MessageChannelV175_2_SixteenBytePayloadV175) {
 
     EXPECT_TRUE(handler_called);
 }
+
+// ------------------------------------------------------------------
+// V176 MessageChannel tests
+// ------------------------------------------------------------------
+
+TEST(MessageChannelTest, MessageChannelV176_1_ThreeTypesDispatchV176) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel ch(std::move(pa));
+
+    int count_t1 = 0, count_t2 = 0, count_t3 = 0;
+
+    ch.on(1, [&](const Message& msg) { count_t1++; });
+    ch.on(2, [&](const Message& msg) { count_t2++; });
+    ch.on(3, [&](const Message& msg) { count_t3++; });
+
+    for (int i = 0; i < 9; ++i) {
+        Message msg;
+        msg.type = static_cast<uint32_t>((i % 3) + 1);
+        msg.request_id = static_cast<uint32_t>(i);
+        msg.payload = {static_cast<uint8_t>(i)};
+        ch.dispatch(msg);
+    }
+
+    EXPECT_EQ(count_t1, 3);
+    EXPECT_EQ(count_t2, 3);
+    EXPECT_EQ(count_t3, 3);
+}
+
+TEST(MessageChannelTest, MessageChannelV176_2_PayloadInspectionV176) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel ch(std::move(pa));
+
+    uint32_t captured_request_id = 0;
+    std::vector<uint8_t> captured_payload;
+
+    ch.on(42, [&](const Message& msg) {
+        captured_request_id = msg.request_id;
+        captured_payload = msg.payload;
+    });
+
+    Message msg;
+    msg.type = 42;
+    msg.request_id = 999;
+    msg.payload = {0xDE, 0xAD, 0xBE, 0xEF, 0xCA, 0xFE};
+    ch.dispatch(msg);
+
+    EXPECT_EQ(captured_request_id, 999u);
+    EXPECT_EQ(captured_payload.size(), 6u);
+    EXPECT_EQ(captured_payload[0], 0xDE);
+    EXPECT_EQ(captured_payload[3], 0xEF);
+    EXPECT_EQ(captured_payload[5], 0xFE);
+}

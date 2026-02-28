@@ -26824,3 +26824,43 @@ TEST(PropertyCascadeTest, OverflowAutoAppliedV175) {
     EXPECT_EQ(style.overflow_x, Overflow::Auto);
     EXPECT_EQ(style.overflow_y, Overflow::Auto);
 }
+
+// ---------------------------------------------------------------------------
+// Cycle V176 — word-spacing, cursor pointer, visibility hidden, position relative
+// ---------------------------------------------------------------------------
+
+TEST(CSSStyleTest, CssV176_1_WordSpacingApplied) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("word-spacing", "4px"), parent);
+    EXPECT_FLOAT_EQ(style.word_spacing.to_px(0), 4.0f);
+}
+
+TEST(PropertyCascadeTest, CursorPointerAppliedV176) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("cursor", "pointer"), parent);
+    EXPECT_EQ(style.cursor, Cursor::Pointer);
+}
+
+TEST(PropertyCascadeTest, VisibilityHiddenAppliedV176) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("visibility", "hidden"), parent);
+    EXPECT_EQ(style.visibility, Visibility::Hidden);
+}
+
+TEST(PropertyCascadeTest, PositionRelativeAppliedV176) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("position", "relative"), parent);
+    EXPECT_EQ(style.position, Position::Relative);
+}

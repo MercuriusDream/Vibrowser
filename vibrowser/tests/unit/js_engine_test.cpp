@@ -39223,3 +39223,120 @@ TEST(JSEngine, JsV175_8) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(r2, "false");
 }
+
+// V176_1: Array.findIndex returns index of first match or -1
+TEST(JSEngine, JsV176_1) {
+    clever::js::JSEngine engine;
+    auto r1 = engine.evaluate(R"JS(
+        [5, 12, 8, 130].findIndex(function(x) { return x > 10; }).toString();
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(r1, "1");
+
+    auto r2 = engine.evaluate(R"JS(
+        [1, 2, 3].findIndex(function(x) { return x > 100; }).toString();
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(r2, "-1");
+}
+
+// V176_2: String.startsWith and endsWith
+TEST(JSEngine, JsV176_2) {
+    clever::js::JSEngine engine;
+    auto r1 = engine.evaluate(R"JS(
+        'hello world'.startsWith('hello').toString();
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(r1, "true");
+
+    auto r2 = engine.evaluate(R"JS(
+        'hello world'.endsWith('world').toString();
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(r2, "true");
+}
+
+// V176_3: Object.assign merges properties
+TEST(JSEngine, JsV176_3) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var target = { a: 1 };
+        var source = { b: 2, c: 3 };
+        Object.assign(target, source);
+        JSON.stringify(target);
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "{\"a\":1,\"b\":2,\"c\":3}");
+}
+
+// V176_4: template literal with expression interpolation
+TEST(JSEngine, JsV176_4) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var x = 10;
+        var y = 20;
+        `${x} + ${y} = ${x + y}`;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "10 + 20 = 30");
+}
+
+// V176_5: destructuring assignment from array
+TEST(JSEngine, JsV176_5) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var arr = [100, 200, 300];
+        var a = arr[0], b = arr[1], c = arr[2];
+        (a + b + c).toString();
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "600");
+}
+
+// V176_6: Number.parseInt and Number.parseFloat
+TEST(JSEngine, JsV176_6) {
+    clever::js::JSEngine engine;
+    auto r1 = engine.evaluate(R"JS(
+        Number.parseInt('42abc').toString();
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(r1, "42");
+
+    auto r2 = engine.evaluate(R"JS(
+        Number.parseFloat('3.14xyz').toString();
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(r2, "3.14");
+}
+
+// V176_7: Array.every and Array.some
+TEST(JSEngine, JsV176_7) {
+    clever::js::JSEngine engine;
+    auto r1 = engine.evaluate(R"JS(
+        [2, 4, 6].every(function(x) { return x % 2 === 0; }).toString();
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(r1, "true");
+
+    auto r2 = engine.evaluate(R"JS(
+        [1, 3, 5].some(function(x) { return x > 4; }).toString();
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(r2, "true");
+}
+
+// V176_8: String.repeat and String.padStart
+TEST(JSEngine, JsV176_8) {
+    clever::js::JSEngine engine;
+    auto r1 = engine.evaluate(R"JS(
+        'ab'.repeat(3);
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(r1, "ababab");
+
+    auto r2 = engine.evaluate(R"JS(
+        '5'.padStart(3, '0');
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(r2, "005");
+}

@@ -30668,3 +30668,186 @@ TEST(HttpClient, CookieJarDomainMismatchNotReturnedV175) {
     EXPECT_EQ(unrelated.find("secret175=mine"), std::string::npos)
         << "Cookie for v175a.example.com should not be visible on other175.net, got: " << unrelated;
 }
+
+// ============================================================================
+// Round 176: HTTP/Net tests V176
+// ============================================================================
+
+// ---------------------------------------------------------------------------
+// 1. Request serialization: POST with custom content-type and body
+// ---------------------------------------------------------------------------
+TEST(HttpClient, RequestSerializePostWithCustomContentTypeV176) {
+    Request req;
+    req.method = Method::POST;
+    req.url = "http://api.v176.example.com/data";
+    req.parse_url();
+
+    const std::string body = "{\"key\":\"v176\"}";
+    req.body.assign(body.begin(), body.end());
+    req.headers.set("Content-Type", "application/json");
+
+    auto raw = req.serialize();
+    std::string s(raw.begin(), raw.end());
+
+    EXPECT_NE(s.find("POST /data HTTP/1.1\r\n"), std::string::npos)
+        << "Request line should show POST method, got: " << s;
+    EXPECT_NE(s.find("Host: api.v176.example.com\r\n"), std::string::npos)
+        << "Host header should be present without port 80, got: " << s;
+    // Custom headers are lowercase in serialization
+    EXPECT_NE(s.find("content-type: application/json\r\n"), std::string::npos)
+        << "Custom content-type header should be lowercase, got: " << s;
+    EXPECT_NE(s.find("Connection: close\r\n"), std::string::npos)
+        << "Connection header should be 'close', got: " << s;
+    // Body should appear after blank line
+    EXPECT_NE(s.find("\r\n{\"key\":\"v176\"}"), std::string::npos)
+        << "Body should follow headers, got: " << s;
+}
+
+// ---------------------------------------------------------------------------
+// 2. Request serialization: GET to HTTPS default port omits :443
+// ---------------------------------------------------------------------------
+TEST(HttpClient, RequestSerializeGetHttpsOmitsPort443V176) {
+    Request req;
+    req.method = Method::GET;
+    req.url = "https://secure.v176.example.com/resource?q=test";
+    req.parse_url();
+
+    auto raw = req.serialize();
+    std::string s(raw.begin(), raw.end());
+
+    EXPECT_NE(s.find("GET /resource?q=test HTTP/1.1\r\n"), std::string::npos)
+        << "Request line should include path and query, got: " << s;
+    EXPECT_NE(s.find("Host: secure.v176.example.com\r\n"), std::string::npos)
+        << "Host header for HTTPS default port should omit :443, got: " << s;
+    // Port 443 should NOT appear
+    EXPECT_EQ(s.find(":443"), std::string::npos)
+        << "Default HTTPS port 443 should be omitted from Host header, got: " << s;
+}
+
+// ---------------------------------------------------------------------------
+// 3. Response parsing: 301 redirect with Location header
+// ---------------------------------------------------------------------------
+TEST(HttpClient, ResponseParsing301RedirectWithLocationV176) {
+    const std::string raw_response =
+        "HTTP/1.1 301 Moved Permanently\r\n"
+        "Location: https://v176.example.com/new-path\r\n"
+        "Content-Length: 0\r\n"
+        "\r\n";
+
+    std::vector<uint8_t> bytes(raw_response.begin(), raw_response.end());
+    auto resp = Response::parse(bytes);
+
+    ASSERT_TRUE(resp.has_value()) << "301 response should parse successfully";
+    EXPECT_EQ(resp->status, 301u);
+    EXPECT_EQ(resp->status_text, "Moved Permanently");
+    ASSERT_TRUE(resp->headers.has("Location"))
+        << "Location header should be present in redirect response";
+    EXPECT_EQ(resp->headers.get("Location").value(),
+              "https://v176.example.com/new-path");
+    EXPECT_TRUE(resp->body.empty())
+        << "Body should be empty with Content-Length: 0";
+}
+
+// ---------------------------------------------------------------------------
+// 4. Response parsing: 500 server error with body
+// ---------------------------------------------------------------------------
+TEST(HttpClient, ResponseParsing500WithBodyV176) {
+    const std::string raw_response =
+        "HTTP/1.1 500 Internal Server Error\r\n"
+        "Content-Type: text/plain\r\n"
+        "Content-Length: 17\r\n"
+        "\r\n"
+        "v176 server error";
+
+    std::vector<uint8_t> bytes(raw_response.begin(), raw_response.end());
+    auto resp = Response::parse(bytes);
+
+    ASSERT_TRUE(resp.has_value()) << "500 response should parse successfully";
+    EXPECT_EQ(resp->status, 500u);
+    EXPECT_EQ(resp->status_text, "Internal Server Error");
+    EXPECT_EQ(std::string(resp->body.begin(), resp->body.end()), "v176 server error");
+}
+
+// ---------------------------------------------------------------------------
+// 5. HeaderMap: append then set replaces all appended values
+// ---------------------------------------------------------------------------
+TEST(HttpClient, HeaderMapSetAfterAppendReplacesAllV176) {
+    HeaderMap headers;
+    headers.append("X-V176-Tag", "first");
+    headers.append("X-V176-Tag", "second");
+    headers.append("X-V176-Tag", "third");
+
+    EXPECT_EQ(headers.get_all("X-V176-Tag").size(), 3u)
+        << "Three values should exist after three appends";
+
+    // set() should replace all values with a single one
+    headers.set("X-V176-Tag", "replaced");
+
+    auto all = headers.get_all("X-V176-Tag");
+    EXPECT_EQ(all.size(), 1u)
+        << "set() should collapse all appended values to one";
+    EXPECT_EQ(headers.get("X-V176-Tag").value(), "replaced");
+}
+
+// ---------------------------------------------------------------------------
+// 6. HeaderMap: remove is case-insensitive
+// ---------------------------------------------------------------------------
+TEST(HttpClient, HeaderMapRemoveIsCaseInsensitiveV176) {
+    HeaderMap headers;
+    headers.set("X-V176-Remove-Me", "value");
+    EXPECT_TRUE(headers.has("x-v176-remove-me"))
+        << "has() should be case-insensitive";
+
+    // Remove using different casing
+    headers.remove("x-v176-remove-me");
+    EXPECT_FALSE(headers.has("X-V176-Remove-Me"))
+        << "remove() with lowercase key should remove the header";
+    EXPECT_FALSE(headers.get("X-V176-Remove-Me").has_value())
+        << "get() should return nullopt after removal";
+}
+
+// ---------------------------------------------------------------------------
+// 7. CookieJar: Secure cookie not sent over HTTP (is_secure=false)
+// ---------------------------------------------------------------------------
+TEST(HttpClient, CookieJarSecureCookieNotSentOverHttpV176) {
+    CookieJar jar;
+    jar.set_from_header("auth176=token; Path=/; Secure", "v176.example.com");
+    jar.set_from_header("plain176=open; Path=/", "v176.example.com");
+
+    // Over HTTP (is_secure=false): only non-secure cookie
+    std::string http_cookies = jar.get_cookie_header("v176.example.com", "/", false);
+    EXPECT_EQ(http_cookies.find("auth176=token"), std::string::npos)
+        << "Secure cookie should not be sent over HTTP, got: " << http_cookies;
+    EXPECT_NE(http_cookies.find("plain176=open"), std::string::npos)
+        << "Non-secure cookie should be visible over HTTP, got: " << http_cookies;
+
+    // Over HTTPS (is_secure=true): both cookies
+    std::string https_cookies = jar.get_cookie_header("v176.example.com", "/", true);
+    EXPECT_NE(https_cookies.find("auth176=token"), std::string::npos)
+        << "Secure cookie should be visible over HTTPS, got: " << https_cookies;
+    EXPECT_NE(https_cookies.find("plain176=open"), std::string::npos)
+        << "Non-secure cookie should also be visible over HTTPS, got: " << https_cookies;
+}
+
+// ---------------------------------------------------------------------------
+// 8. CookieJar: cookie path scoping - deeper path not visible on parent
+// ---------------------------------------------------------------------------
+TEST(HttpClient, CookieJarPathScopingV176) {
+    CookieJar jar;
+    jar.set_from_header("deep176=val; Path=/app/settings", "v176.example.com");
+
+    // Cookie should be visible on matching sub-path
+    std::string sub = jar.get_cookie_header("v176.example.com", "/app/settings/privacy", false);
+    EXPECT_NE(sub.find("deep176=val"), std::string::npos)
+        << "Cookie with Path=/app/settings should be visible on /app/settings/privacy, got: " << sub;
+
+    // Cookie should NOT be visible on parent path
+    std::string parent = jar.get_cookie_header("v176.example.com", "/app", false);
+    EXPECT_EQ(parent.find("deep176=val"), std::string::npos)
+        << "Cookie with Path=/app/settings should NOT be visible on /app, got: " << parent;
+
+    // Cookie should NOT be visible on root
+    std::string root = jar.get_cookie_header("v176.example.com", "/", false);
+    EXPECT_EQ(root.find("deep176=val"), std::string::npos)
+        << "Cookie with Path=/app/settings should NOT be visible on /, got: " << root;
+}

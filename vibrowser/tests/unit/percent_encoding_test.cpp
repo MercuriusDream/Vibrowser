@@ -2053,3 +2053,37 @@ TEST(IsURLCodePoint, AtSignValidV175) {
     // '@' (U+0040) is a sub-delimiter and a valid URL code point
     EXPECT_TRUE(is_url_code_point(U'@'));
 }
+
+// =============================================================================
+// Cycle V176 — Percent encoding tests
+// =============================================================================
+TEST(PercentEncoding, BackslashEncodedV176) {
+    // '\' (U+005C) should be percent-encoded as %5C
+    EXPECT_EQ(percent_encode("\\"), "%5C");
+    EXPECT_EQ(percent_encode("a\\b"), "a%5Cb");
+    EXPECT_EQ(percent_encode("\\\\"), "%5C%5C");
+}
+
+TEST(PercentDecoding, RoundTripEncodeDecodeV176) {
+    // Encoding and then decoding should return the original string
+    std::string original = "hello world<>\"";
+    std::string encoded = percent_encode(original);
+    std::string decoded = percent_decode(encoded);
+    EXPECT_EQ(decoded, original);
+}
+
+TEST(PercentEncoding, CurlyBracesEncodedV176) {
+    // '{' (U+007B) and '}' (U+007D) should be percent-encoded
+    EXPECT_EQ(percent_encode("{"), "%7B");
+    EXPECT_EQ(percent_encode("}"), "%7D");
+    EXPECT_EQ(percent_encode("{key}"), "%7Bkey%7D");
+}
+
+TEST(IsURLCodePoint, SpaceInvalidV176) {
+    // Space (U+0020) is NOT a valid URL code point
+    EXPECT_FALSE(is_url_code_point(U' '));
+    // Tab (U+0009) is also not a valid URL code point
+    EXPECT_FALSE(is_url_code_point(U'\t'));
+    // Newline (U+000A) is also invalid
+    EXPECT_FALSE(is_url_code_point(U'\n'));
+}

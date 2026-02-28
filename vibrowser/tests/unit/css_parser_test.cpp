@@ -12132,3 +12132,47 @@ TEST_F(CSSStylesheetTest, MaxWidthDeclarationV175) {
     EXPECT_EQ(sheet.rules[0].declarations[0].values[0].numeric_value, 800.0);
     EXPECT_EQ(sheet.rules[0].declarations[0].values[0].unit, "px");
 }
+
+// ---------------------------------------------------------------------------
+// Cycle V176 — top, right, bottom, left offset declarations
+// ---------------------------------------------------------------------------
+
+TEST_F(CSSStylesheetTest, TopOffsetDeclarationV176) {
+    auto sheet = parse_stylesheet("div { top: 10px; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    ASSERT_EQ(sheet.rules[0].declarations.size(), 1u);
+    EXPECT_EQ(sheet.rules[0].declarations[0].property, "top");
+    ASSERT_GE(sheet.rules[0].declarations[0].values.size(), 1u);
+    EXPECT_EQ(sheet.rules[0].declarations[0].values[0].numeric_value, 10.0);
+    EXPECT_EQ(sheet.rules[0].declarations[0].values[0].unit, "px");
+}
+
+TEST_F(CSSStylesheetTest, RightOffsetDeclarationV176) {
+    auto sheet = parse_stylesheet("span { right: 20px; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    ASSERT_EQ(sheet.rules[0].declarations.size(), 1u);
+    EXPECT_EQ(sheet.rules[0].declarations[0].property, "right");
+    ASSERT_GE(sheet.rules[0].declarations[0].values.size(), 1u);
+    EXPECT_EQ(sheet.rules[0].declarations[0].values[0].numeric_value, 20.0);
+    EXPECT_EQ(sheet.rules[0].declarations[0].values[0].unit, "px");
+}
+
+TEST_F(CSSStylesheetTest, BottomOffsetDeclarationV176) {
+    auto sheet = parse_stylesheet("p { bottom: 30px; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    ASSERT_EQ(sheet.rules[0].declarations.size(), 1u);
+    EXPECT_EQ(sheet.rules[0].declarations[0].property, "bottom");
+    ASSERT_GE(sheet.rules[0].declarations[0].values.size(), 1u);
+    EXPECT_EQ(sheet.rules[0].declarations[0].values[0].numeric_value, 30.0);
+    EXPECT_EQ(sheet.rules[0].declarations[0].values[0].unit, "px");
+}
+
+TEST_F(CSSStylesheetTest, LeftOffsetDeclarationV176) {
+    auto sheet = parse_stylesheet("section { left: 40px; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    ASSERT_EQ(sheet.rules[0].declarations.size(), 1u);
+    EXPECT_EQ(sheet.rules[0].declarations[0].property, "left");
+    ASSERT_GE(sheet.rules[0].declarations[0].values.size(), 1u);
+    EXPECT_EQ(sheet.rules[0].declarations[0].values[0].numeric_value, 40.0);
+    EXPECT_EQ(sheet.rules[0].declarations[0].values[0].unit, "px");
+}

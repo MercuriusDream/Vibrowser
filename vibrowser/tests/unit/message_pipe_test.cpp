@@ -3360,3 +3360,66 @@ TEST(MessagePipeTest, MessagePipeV175_3_CloseAndVerifyNulloptV175) {
     auto result = b.receive();
     EXPECT_FALSE(result.has_value());
 }
+
+// ------------------------------------------------------------------
+// V176 MessagePipe tests
+// ------------------------------------------------------------------
+
+TEST(MessagePipeTest, MessagePipeV176_1_FiveHundredBytePayloadV176) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    std::vector<uint8_t> payload(500);
+    for (size_t i = 0; i < 500; ++i) {
+        payload[i] = static_cast<uint8_t>(i % 256);
+    }
+
+    ASSERT_TRUE(a.send(payload));
+    a.close();
+
+    auto result = b.receive();
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->size(), 500u);
+    EXPECT_EQ(*result, payload);
+
+    auto end = b.receive();
+    EXPECT_FALSE(end.has_value());
+}
+
+TEST(MessagePipeTest, MessagePipeV176_2_BidirectionalExchangeV176) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    std::vector<uint8_t> from_a = {0xAA, 0xBB, 0xCC};
+    std::vector<uint8_t> from_b = {0x11, 0x22, 0x33, 0x44};
+
+    ASSERT_TRUE(a.send(from_a));
+    ASSERT_TRUE(b.send(from_b));
+
+    auto recv_b = b.receive();
+    ASSERT_TRUE(recv_b.has_value());
+    EXPECT_EQ(*recv_b, from_a);
+
+    auto recv_a = a.receive();
+    ASSERT_TRUE(recv_a.has_value());
+    EXPECT_EQ(*recv_a, from_b);
+}
+
+TEST(MessagePipeTest, MessagePipeV176_3_MultiMessageThenCloseV176) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    for (uint8_t i = 0; i < 5; ++i) {
+        std::vector<uint8_t> msg = {i, static_cast<uint8_t>(i * 2)};
+        ASSERT_TRUE(a.send(msg));
+    }
+    a.close();
+
+    for (uint8_t i = 0; i < 5; ++i) {
+        auto result = b.receive();
+        ASSERT_TRUE(result.has_value());
+        EXPECT_EQ(result->size(), 2u);
+        EXPECT_EQ((*result)[0], i);
+        EXPECT_EQ((*result)[1], static_cast<uint8_t>(i * 2));
+    }
+
+    auto end = b.receive();
+    EXPECT_FALSE(end.has_value());
+}

@@ -13620,3 +13620,53 @@ TEST(CORSPolicyTest, CorsV175_7_Http8080Enforceable) {
 TEST(CORSPolicyTest, CorsV175_8_SameOriginIgnoresQuery) {
     EXPECT_FALSE(is_cross_origin("http://host.example", "http://host.example/page?foo=bar"));
 }
+
+// ---------------------------------------------------------------------------
+// Round 176 — CORS tests
+// ---------------------------------------------------------------------------
+
+// 1. data: scheme is not enforceable
+TEST(CORSPolicyTest, CorsV176_1_DataSchemeNotEnforceable) {
+    EXPECT_FALSE(has_enforceable_document_origin("data:text/html,<h1>hi</h1>"));
+}
+
+// 2. blob: scheme is not enforceable
+TEST(CORSPolicyTest, CorsV176_2_BlobSchemeNotEnforceable) {
+    EXPECT_FALSE(has_enforceable_document_origin("blob:https://example.com/uuid-here"));
+}
+
+// 3. IP address origin IS enforceable
+TEST(CORSPolicyTest, CorsV176_3_IpAddressIsEnforceable) {
+    EXPECT_TRUE(has_enforceable_document_origin("http://192.168.1.1"));
+}
+
+// 4. Cross-origin when different port only
+TEST(CORSPolicyTest, CorsV176_4_CrossOriginDiffPortOnly) {
+    EXPECT_TRUE(is_cross_origin("http://host.example:8080", "http://host.example:9090/page"));
+}
+
+// 5. ACAO wildcard allows response
+TEST(CORSPolicyTest, CorsV176_5_AcaoWildcardAllows) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "*");
+    EXPECT_TRUE(cors_allows_response("https://app.example", "https://api.example/data", headers, false));
+}
+
+// 6. Should not attach origin for same-origin request
+TEST(CORSPolicyTest, CorsV176_6_NoOriginForSameOrigin) {
+    EXPECT_FALSE(should_attach_origin_header("https://app.example", "https://app.example/api/v1"));
+}
+
+// 7. Normalize outgoing origin sets correct header for cross-origin
+TEST(CORSPolicyTest, CorsV176_7_NormalizeSetsCrossOriginHeader) {
+    clever::net::HeaderMap headers;
+    headers.set("Origin", "https://spoofed.example");
+    normalize_outgoing_origin_header(headers, "https://app.example", "https://api.example/data");
+    ASSERT_TRUE(headers.has("origin"));
+    EXPECT_EQ(headers.get("origin").value(), "https://app.example");
+}
+
+// 8. IPv6 address origin is enforceable
+TEST(CORSPolicyTest, CorsV176_8_Ipv6AddressEnforceable) {
+    EXPECT_TRUE(has_enforceable_document_origin("http://[::1]"));
+}
