@@ -1370,3 +1370,68 @@ TEST(MessagePipeTest, MessagePipeV142_3_TypeFieldPreservedRoundTrip) {
     std::memcpy(&received_type, received->data(), sizeof(received_type));
     EXPECT_EQ(received_type, 999u);
 }
+
+// ------------------------------------------------------------------
+// V143: Send after close on same end
+// ------------------------------------------------------------------
+
+TEST(MessagePipeTest, MessagePipeV143_1_SendAfterCloseOnSameEnd) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    a.close();
+    EXPECT_FALSE(a.is_open());
+
+    // Sending on closed end should fail
+    std::vector<uint8_t> data = {1, 2, 3};
+    EXPECT_FALSE(a.send(data));
+
+    // Receiving on other end should return nullopt since sender closed
+    auto received = b.receive();
+    EXPECT_FALSE(received.has_value());
+}
+
+// ------------------------------------------------------------------
+// V143: Payload size preserved for various sizes
+// ------------------------------------------------------------------
+
+TEST(MessagePipeTest, MessagePipeV143_2_PayloadSizePreservedV143) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    // Send payloads of size 0, 1, 100, 1000
+    std::vector<size_t> sizes = {0, 1, 100, 1000};
+    for (auto sz : sizes) {
+        std::vector<uint8_t> payload(sz, 0xAB);
+        ASSERT_TRUE(a.send(payload));
+    }
+
+    for (auto sz : sizes) {
+        auto received = b.receive();
+        ASSERT_TRUE(received.has_value());
+        EXPECT_EQ(received->size(), sz);
+    }
+}
+
+// ------------------------------------------------------------------
+// V143: Message type distinct values preserved
+// ------------------------------------------------------------------
+
+TEST(MessagePipeTest, MessagePipeV143_3_MessageTypeDistinctValues) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    // Encode type values into payloads: 0, UINT32_MAX, 12345
+    std::vector<uint32_t> types = {0u, UINT32_MAX, 12345u};
+    for (auto t : types) {
+        std::vector<uint8_t> payload(sizeof(uint32_t));
+        std::memcpy(payload.data(), &t, sizeof(uint32_t));
+        ASSERT_TRUE(a.send(payload));
+    }
+
+    for (auto t : types) {
+        auto received = b.receive();
+        ASSERT_TRUE(received.has_value());
+        ASSERT_EQ(received->size(), sizeof(uint32_t));
+        uint32_t received_type = 0;
+        std::memcpy(&received_type, received->data(), sizeof(uint32_t));
+        EXPECT_EQ(received_type, t);
+    }
+}

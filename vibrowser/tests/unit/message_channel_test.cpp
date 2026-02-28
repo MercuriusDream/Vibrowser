@@ -1654,3 +1654,50 @@ TEST(MessageChannelTest, MessageChannelV142_2_PayloadIntegrityCheck) {
     EXPECT_EQ(received_value, 0xCAFEBABEu);
     EXPECT_EQ(received_str, "integrity_test");
 }
+
+// ------------------------------------------------------------------
+// V143: Dispatch with no messages does nothing
+// ------------------------------------------------------------------
+
+TEST(MessageChannelTest, MessageChannelV143_1_DispatchWithNoMessagesDoesNothing) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel ch(std::move(pa));
+
+    bool handler_called = false;
+    ch.on(1, [&](const Message& /*m*/) {
+        handler_called = true;
+    });
+
+    // Dispatch with empty message — create a message with a type nobody listens to
+    // Actually, dispatch with no queued messages — just call dispatch on a msg with type 999
+    // that has no handler. This should not crash.
+    Message empty_msg;
+    empty_msg.type = 999;
+    empty_msg.request_id = 0;
+    ch.dispatch(empty_msg);
+
+    // Handler for type 1 was never triggered
+    EXPECT_FALSE(handler_called);
+}
+
+// ------------------------------------------------------------------
+// V143: Send with no handler does not crash
+// ------------------------------------------------------------------
+
+TEST(MessageChannelTest, MessageChannelV143_2_SendWithoutHandlerDoesNotCrash) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel ch(std::move(pa));
+
+    // No handler registered for any type
+    // Dispatch a message — should not crash
+    Message msg;
+    msg.type = 42;
+    msg.request_id = 7;
+    msg.payload = {0x01, 0x02, 0x03};
+
+    // This should safely do nothing
+    ch.dispatch(msg);
+
+    // If we reach here without crashing, the test passes
+    SUCCEED();
+}

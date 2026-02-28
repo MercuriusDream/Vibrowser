@@ -22928,3 +22928,98 @@ TEST(HtmlParserTest, HtmlV142_8) {
     auto* img = figure->find_element("img");
     ASSERT_NE(img, nullptr);
 }
+
+// === V143 HTML Parser Tests ===
+
+TEST(HtmlParserTest, HtmlV143_1) {
+    // h1 element
+    auto doc = clever::html::parse("<html><body><h1>Main Heading</h1></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* h1 = doc->find_element("h1");
+    ASSERT_NE(h1, nullptr);
+    EXPECT_EQ(h1->tag_name, "h1");
+    EXPECT_EQ(h1->text_content(), "Main Heading");
+}
+
+TEST(HtmlParserTest, HtmlV143_2) {
+    // h2 element
+    auto doc = clever::html::parse("<html><body><h2>Subheading</h2></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* h2 = doc->find_element("h2");
+    ASSERT_NE(h2, nullptr);
+    EXPECT_EQ(h2->tag_name, "h2");
+    EXPECT_EQ(h2->text_content(), "Subheading");
+}
+
+TEST(HtmlParserTest, HtmlV143_3) {
+    // h3 element
+    auto doc = clever::html::parse("<html><body><h3>Section Title</h3></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* h3 = doc->find_element("h3");
+    ASSERT_NE(h3, nullptr);
+    EXPECT_EQ(h3->tag_name, "h3");
+    EXPECT_EQ(h3->text_content(), "Section Title");
+}
+
+TEST(HtmlParserTest, HtmlV143_4) {
+    // h4 element
+    auto doc = clever::html::parse("<html><body><h4>Subsection</h4></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* h4 = doc->find_element("h4");
+    ASSERT_NE(h4, nullptr);
+    EXPECT_EQ(h4->tag_name, "h4");
+    EXPECT_EQ(h4->text_content(), "Subsection");
+}
+
+TEST(HtmlParserTest, HtmlV143_5) {
+    // h5 element
+    auto doc = clever::html::parse("<html><body><h5>Minor Heading</h5></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* h5 = doc->find_element("h5");
+    ASSERT_NE(h5, nullptr);
+    EXPECT_EQ(h5->tag_name, "h5");
+    EXPECT_EQ(h5->text_content(), "Minor Heading");
+}
+
+TEST(HtmlParserTest, HtmlV143_6) {
+    // h6 element
+    auto doc = clever::html::parse("<html><body><h6>Smallest Heading</h6></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* h6 = doc->find_element("h6");
+    ASSERT_NE(h6, nullptr);
+    EXPECT_EQ(h6->tag_name, "h6");
+    EXPECT_EQ(h6->text_content(), "Smallest Heading");
+}
+
+TEST(HtmlParserTest, HtmlV143_7) {
+    // em and strong nested
+    auto doc = clever::html::parse("<html><body><p><em>emphasized</em> and <strong>bold</strong></p></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* em = doc->find_element("em");
+    ASSERT_NE(em, nullptr);
+    EXPECT_EQ(em->tag_name, "em");
+    EXPECT_EQ(em->text_content(), "emphasized");
+
+    auto* strong = doc->find_element("strong");
+    ASSERT_NE(strong, nullptr);
+    EXPECT_EQ(strong->tag_name, "strong");
+    EXPECT_EQ(strong->text_content(), "bold");
+}
+
+TEST(HtmlParserTest, HtmlV143_8) {
+    // small element
+    auto doc = clever::html::parse("<html><body><p><small>Fine print</small></p></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* small = doc->find_element("small");
+    ASSERT_NE(small, nullptr);
+    EXPECT_EQ(small->tag_name, "small");
+    EXPECT_EQ(small->text_content(), "Fine print");
+}

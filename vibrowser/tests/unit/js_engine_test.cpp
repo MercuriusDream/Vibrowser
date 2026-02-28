@@ -35780,3 +35780,108 @@ TEST(JSEngine, JsV142_8) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "3,2,true,false");
 }
+
+// V143: Math.max and Math.min
+TEST(JSEngine, JsV143_1) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var a = Math.max(3, 7, 1, 9, 2);
+        var b = Math.min(3, 7, 1, 9, 2);
+        a + ',' + b;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "9,1");
+}
+
+// V143: String.split with delimiter
+TEST(JSEngine, JsV143_2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var parts = "hello-world-foo".split("-");
+        parts.length + ',' + parts[0] + ',' + parts[1] + ',' + parts[2];
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "3,hello,world,foo");
+}
+
+// V143: Array.join with separator
+TEST(JSEngine, JsV143_3) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var arr = ["apple", "banana", "cherry"];
+        arr.join(" | ");
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "apple | banana | cherry");
+}
+
+// V143: parseInt and parseFloat
+TEST(JSEngine, JsV143_4) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var a = parseInt("42abc");
+        var b = parseFloat("3.14xyz");
+        var c = parseInt("0xFF", 16);
+        a + ',' + b + ',' + c;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "42,3.14,255");
+}
+
+// V143: logical operators && || !
+TEST(JSEngine, JsV143_5) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var a = true && false;
+        var b = false || true;
+        var c = !true;
+        var d = (5 > 3) && (2 < 4);
+        String(a) + ',' + String(b) + ',' + String(c) + ',' + String(d);
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "false,true,false,true");
+}
+
+// V143: nullish coalescing ??
+TEST(JSEngine, JsV143_6) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var a = null ?? "default";
+        var b = undefined ?? 42;
+        var c = 0 ?? "fallback";
+        var d = "" ?? "fallback";
+        a + ',' + b + ',' + c + ',' + d;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "default,42,0,");
+}
+
+// V143: optional chaining ?.
+TEST(JSEngine, JsV143_7) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var obj = {a: {b: {c: 99}}};
+        var v1 = obj?.a?.b?.c;
+        var v2 = obj?.x?.y?.z;
+        var v3 = obj?.a?.b?.c ?? "miss";
+        var v4 = obj?.x?.y ?? "miss";
+        v1 + ',' + String(v2) + ',' + v3 + ',' + v4;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "99,undefined,99,miss");
+}
+
+// V143: Array.indexOf and includes
+TEST(JSEngine, JsV143_8) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var arr = [10, 20, 30, 40, 50];
+        var idx1 = arr.indexOf(30);
+        var idx2 = arr.indexOf(99);
+        var has1 = arr.includes(20);
+        var has2 = arr.includes(99);
+        idx1 + ',' + idx2 + ',' + has1 + ',' + has2;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "2,-1,true,false");
+}

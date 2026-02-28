@@ -24337,3 +24337,166 @@ TEST(HttpClient, CookieJarMultipleCookiesSamedomainV142) {
     EXPECT_NE(header.find("beta142=two"), std::string::npos)
         << "Second cookie should be present, got: " << header;
 }
+
+// ===========================================================================
+// Round 143 Tests
+// ===========================================================================
+
+// 1. Request with 3 custom headers — all lowercase in serialized output
+TEST(HttpClient, RequestSerializeMultipleCustomHeadersV143) {
+    Request req;
+    req.method = Method::GET;
+    req.host = "multiheader143.example.com";
+    req.port = 80;
+    req.path = "/api/data";
+    req.headers.set("X-Request-Id", "abc-143");
+    req.headers.set("X-Correlation-Id", "corr-143");
+    req.headers.set("Accept-Language", "en-US");
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    // Host and Connection keep capitalization
+    EXPECT_NE(result.find("Host: multiheader143.example.com\r\n"), std::string::npos);
+    EXPECT_NE(result.find("Connection: close\r\n"), std::string::npos);
+
+    // Custom headers serialized in lowercase
+    EXPECT_NE(result.find("x-request-id: abc-143\r\n"), std::string::npos)
+        << "Custom header should be lowercase, got: " << result;
+    EXPECT_NE(result.find("x-correlation-id: corr-143\r\n"), std::string::npos)
+        << "Custom header should be lowercase, got: " << result;
+    EXPECT_NE(result.find("accept-language: en-US\r\n"), std::string::npos)
+        << "Custom header should be lowercase, got: " << result;
+}
+
+// 2. Response parse 200 OK with multiple headers
+TEST(HttpClient, ResponseParse200WithMultipleHeadersV143) {
+    std::string raw =
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Type: text/html; charset=utf-8\r\n"
+        "Cache-Control: no-cache\r\n"
+        "X-Custom-143: hello-world\r\n"
+        "Content-Length: 11\r\n"
+        "\r\n"
+        "Hello World";
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 200);
+    EXPECT_EQ(resp->status_text, "OK");
+    EXPECT_EQ(resp->headers.get("content-type").value(), "text/html; charset=utf-8");
+    EXPECT_EQ(resp->headers.get("cache-control").value(), "no-cache");
+    EXPECT_EQ(resp->headers.get("x-custom-143").value(), "hello-world");
+    EXPECT_EQ(resp->body_as_string(), "Hello World");
+}
+
+// 3. HeaderMap append creates separate entries, set overwrites
+TEST(HttpClient, HeaderMapAppendCreatesSeparateEntriesV143) {
+    HeaderMap map;
+
+    // set overwrites — only 1 entry
+    map.set("X-Test143", "first");
+    map.set("X-Test143", "second");
+    EXPECT_EQ(map.get_all("X-Test143").size(), 1u);
+    EXPECT_EQ(map.get("X-Test143").value(), "second");
+
+    // append adds — separate entries accumulate
+    HeaderMap map2;
+    map2.append("X-Multi143", "val-a");
+    map2.append("X-Multi143", "val-b");
+    map2.append("X-Multi143", "val-c");
+
+    auto all = map2.get_all("X-Multi143");
+    EXPECT_EQ(all.size(), 3u);
+}
+
+// 4. CookieJar domain isolation — cookies for a.com not returned for b.com
+TEST(HttpClient, CookieJarDomainIsolationV143) {
+    CookieJar jar;
+    jar.set_from_header("sid143=aaa; Path=/", "domaina143.example.com");
+    jar.set_from_header("sid143=bbb; Path=/", "domainb143.example.com");
+
+    std::string hdr_a = jar.get_cookie_header("domaina143.example.com", "/", false);
+    std::string hdr_b = jar.get_cookie_header("domainb143.example.com", "/", false);
+
+    EXPECT_NE(hdr_a.find("sid143=aaa"), std::string::npos)
+        << "Domain A should have its own cookie, got: " << hdr_a;
+    EXPECT_EQ(hdr_a.find("sid143=bbb"), std::string::npos)
+        << "Domain A should NOT have B's cookie, got: " << hdr_a;
+
+    EXPECT_NE(hdr_b.find("sid143=bbb"), std::string::npos)
+        << "Domain B should have its own cookie, got: " << hdr_b;
+    EXPECT_EQ(hdr_b.find("sid143=aaa"), std::string::npos)
+        << "Domain B should NOT have A's cookie, got: " << hdr_b;
+}
+
+// 5. Non-default port 8080 appears in Host header
+TEST(HttpClient, RequestSerializePort8080InHostV143) {
+    Request req;
+    req.method = Method::GET;
+    req.host = "port143.example.com";
+    req.port = 8080;
+    req.path = "/resource";
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    // Port 8080 is non-default, must appear in Host header
+    EXPECT_NE(result.find("Host: port143.example.com:8080\r\n"), std::string::npos)
+        << "Non-default port should appear in Host, got: " << result;
+    EXPECT_NE(result.find("GET /resource HTTP/1.1\r\n"), std::string::npos);
+}
+
+// 6. Response parse 500 Internal Server Error
+TEST(HttpClient, ResponseParse500ServerErrorV143) {
+    std::string raw =
+        "HTTP/1.1 500 Internal Server Error\r\n"
+        "Content-Type: text/plain\r\n"
+        "Content-Length: 21\r\n"
+        "\r\n"
+        "Internal Server Error";
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 500);
+    EXPECT_EQ(resp->status_text, "Internal Server Error");
+    EXPECT_EQ(resp->body_as_string(), "Internal Server Error");
+}
+
+// 7. HeaderMap get returns first value only when multiple appended
+TEST(HttpClient, HeaderMapGetReturnsFirstValueOnlyV143) {
+    HeaderMap map;
+    map.append("X-Multi143b", "alpha");
+    map.append("X-Multi143b", "beta");
+    map.append("X-Multi143b", "gamma");
+
+    // get() should return the first value
+    EXPECT_EQ(map.get("X-Multi143b").value(), "alpha");
+
+    // get_all() should return all 3
+    auto all = map.get_all("X-Multi143b");
+    EXPECT_EQ(all.size(), 3u);
+    EXPECT_EQ(all[0], "alpha");
+    EXPECT_EQ(all[1], "beta");
+    EXPECT_EQ(all[2], "gamma");
+}
+
+// 8. CookieJar overwrites same cookie name for same domain
+TEST(HttpClient, CookieJarOverwritesSameCookieNameV143) {
+    CookieJar jar;
+    jar.set_from_header("token143=old-value; Path=/", "overwrite143.example.com");
+    jar.set_from_header("token143=new-value; Path=/", "overwrite143.example.com");
+
+    std::string header = jar.get_cookie_header("overwrite143.example.com", "/", false);
+
+    // Should contain the latest value
+    EXPECT_NE(header.find("token143=new-value"), std::string::npos)
+        << "Should have new value, got: " << header;
+    // Should NOT contain the old value
+    EXPECT_EQ(header.find("token143=old-value"), std::string::npos)
+        << "Should not have old value, got: " << header;
+}

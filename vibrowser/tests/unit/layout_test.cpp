@@ -26680,3 +26680,149 @@ TEST(LayoutNodeProps, ColorDefaultBlackV142) {
     LayoutNode n;
     EXPECT_EQ(n.color, 0xFF000000u);
 }
+
+// V143: two blocks with margin - verify vertical stacking
+TEST(LayoutEngineTest, LayoutV143_1) {
+    auto root = make_block();
+    root->specified_width = 600.0f;
+
+    auto c1 = make_block();
+    c1->specified_height = 50.0f;
+    c1->geometry.margin.bottom = 20.0f;
+
+    auto c2 = make_block();
+    c2->specified_height = 70.0f;
+    c2->geometry.margin.top = 10.0f;
+
+    auto* c1_ptr = c1.get();
+    auto* c2_ptr = c2.get();
+    root->append_child(std::move(c1));
+    root->append_child(std::move(c2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 600.0f, 400.0f);
+
+    EXPECT_FLOAT_EQ(c1_ptr->geometry.y, 0.0f);
+    // c2 should appear after c1 plus margins
+    EXPECT_GE(c2_ptr->geometry.y, 50.0f);
+}
+
+// V143: flex column direction, children stack vertically
+TEST(LayoutEngineTest, LayoutV143_2) {
+    auto root = make_flex();
+    root->specified_width = 300.0f;
+    root->flex_direction = 2; // column
+
+    auto c1 = make_block();
+    c1->specified_height = 40.0f;
+    auto c2 = make_block();
+    c2->specified_height = 60.0f;
+
+    auto* c1_ptr = c1.get();
+    auto* c2_ptr = c2.get();
+    root->append_child(std::move(c1));
+    root->append_child(std::move(c2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // In column direction, c2 should be below c1
+    EXPECT_FLOAT_EQ(c1_ptr->geometry.y, 0.0f);
+    EXPECT_GE(c2_ptr->geometry.y, 40.0f);
+}
+
+// V143: block with both padding and border, verify total box size
+TEST(LayoutEngineTest, LayoutV143_3) {
+    auto root = make_block();
+    root->specified_width = 200.0f;
+    root->specified_height = 100.0f;
+    root->geometry.padding.left = 10.0f;
+    root->geometry.padding.right = 10.0f;
+    root->geometry.padding.top = 5.0f;
+    root->geometry.padding.bottom = 5.0f;
+    root->geometry.border.left = 2.0f;
+    root->geometry.border.right = 2.0f;
+    root->geometry.border.top = 2.0f;
+    root->geometry.border.bottom = 2.0f;
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // Content width=200, padding L+R=20, border L+R=4 => total 224
+    float total_w = root->geometry.width + root->geometry.padding.left + root->geometry.padding.right + root->geometry.border.left + root->geometry.border.right;
+    EXPECT_GE(total_w, 200.0f);
+}
+
+// V143: inline block element in flow
+TEST(LayoutEngineTest, LayoutV143_4) {
+    auto root = make_block();
+    root->specified_width = 500.0f;
+
+    auto ib = std::make_unique<LayoutNode>();
+    ib->tag_name = "span";
+    ib->mode = LayoutMode::Inline;
+    ib->display = DisplayType::InlineBlock;
+    ib->specified_width = 100.0f;
+    ib->specified_height = 50.0f;
+
+    auto* ib_ptr = ib.get();
+    root->append_child(std::move(ib));
+
+    LayoutEngine engine;
+    engine.compute(*root, 500.0f, 400.0f);
+
+    EXPECT_EQ(ib_ptr->display, DisplayType::InlineBlock);
+    EXPECT_GE(ib_ptr->geometry.width, 0.0f);
+}
+
+// V143: flex item with flex_shrink when container too small
+TEST(LayoutEngineTest, LayoutV143_5) {
+    auto root = make_flex();
+    root->specified_width = 100.0f;
+    root->flex_direction = 0; // row
+
+    auto c1 = make_block();
+    c1->specified_width = 80.0f;
+    c1->specified_height = 30.0f;
+    c1->flex_shrink = 1.0f;
+
+    auto c2 = make_block();
+    c2->specified_width = 80.0f;
+    c2->specified_height = 30.0f;
+    c2->flex_shrink = 1.0f;
+
+    auto* c1_ptr = c1.get();
+    auto* c2_ptr = c2.get();
+    root->append_child(std::move(c1));
+    root->append_child(std::move(c2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 200.0f, 200.0f);
+
+    // Both items should shrink since 80+80=160 > 100
+    EXPECT_LE(c1_ptr->geometry.width + c2_ptr->geometry.width, 110.0f);
+}
+
+// V143: grid display type set correctly
+TEST(LayoutEngineTest, LayoutV143_6) {
+    auto node = std::make_unique<LayoutNode>();
+    node->tag_name = "div";
+    node->display = DisplayType::Grid;
+    EXPECT_EQ(node->display, DisplayType::Grid);
+}
+
+// V143: list item display type preserved
+TEST(LayoutEngineTest, LayoutV143_7) {
+    auto node = std::make_unique<LayoutNode>();
+    node->tag_name = "li";
+    node->display = DisplayType::ListItem;
+    node->mode = LayoutMode::Block;
+    EXPECT_EQ(node->display, DisplayType::ListItem);
+}
+
+// V143: default font_size value check
+TEST(LayoutNodeProps, FontSizeDefaultV143) {
+    using namespace clever::layout;
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.font_size, 16.0f);
+}

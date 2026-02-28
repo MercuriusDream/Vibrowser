@@ -11753,3 +11753,106 @@ TEST(CORSPolicyTest, CorsV142_8_LocalhostEnforceableCheck) {
     EXPECT_TRUE(has_enforceable_document_origin("https://localhost"));
     EXPECT_TRUE(has_enforceable_document_origin("http://localhost:3000"));
 }
+
+// ---------------------------------------------------------------------------
+// V143 — CORS policy tests
+// ---------------------------------------------------------------------------
+
+// 1. HTTPS default port 443 is omitted in origin comparison
+TEST(CORSPolicyTest, CorsV143_1_HttpsDefaultPortOmittedInOrigin) {
+    // https://example.com and https://example.com:443 are same origin
+    EXPECT_FALSE(is_cross_origin("https://example.com",
+                                  "https://example.com:443/data"));
+    // But explicit :443 is NOT enforceable
+    EXPECT_FALSE(has_enforceable_document_origin("https://example.com:443"));
+    // Without port is enforceable
+    EXPECT_TRUE(has_enforceable_document_origin("https://example.com"));
+}
+
+// 2. HTTP default port 80 is omitted in origin comparison
+TEST(CORSPolicyTest, CorsV143_2_HttpDefaultPortOmittedInOrigin) {
+    // http://example.com and http://example.com:80 are same origin
+    EXPECT_FALSE(is_cross_origin("http://example.com",
+                                  "http://example.com:80/data"));
+    // Explicit :80 is NOT enforceable
+    EXPECT_FALSE(has_enforceable_document_origin("http://example.com:80"));
+    // Without port is enforceable
+    EXPECT_TRUE(has_enforceable_document_origin("http://example.com"));
+}
+
+// 3. Cross-origin subdomain check
+TEST(CORSPolicyTest, CorsV143_3_CrossOriginSubdomainCheck) {
+    // Different subdomains are cross-origin
+    EXPECT_TRUE(is_cross_origin("https://a.example.com",
+                                 "https://b.example.com/data"));
+    // Same subdomain is same-origin
+    EXPECT_FALSE(is_cross_origin("https://a.example.com",
+                                  "https://a.example.com/path"));
+}
+
+// 4. Wildcard ACAO with credentials fails
+TEST(CORSPolicyTest, CorsV143_4_WildcardACAOWithCredentialsFails) {
+    clever::net::HeaderMap h;
+    h.set("Access-Control-Allow-Origin", "*");
+    h.set("Access-Control-Allow-Credentials", "true");
+    // Wildcard + credentials → rejected
+    EXPECT_FALSE(cors_allows_response("https://app.example.com",
+                                       "https://api.example.com/data",
+                                       h, true));
+    // Wildcard without credentials → allowed
+    clever::net::HeaderMap h2;
+    h2.set("Access-Control-Allow-Origin", "*");
+    EXPECT_TRUE(cors_allows_response("https://app.example.com",
+                                      "https://api.example.com/data",
+                                      h2, false));
+}
+
+// 5. Exact origin match with non-default port
+TEST(CORSPolicyTest, CorsV143_5_ExactOriginMatchNonDefaultPort) {
+    clever::net::HeaderMap h;
+    h.set("Access-Control-Allow-Origin", "http://example.com:3000");
+    EXPECT_TRUE(cors_allows_response("http://example.com:3000",
+                                      "https://api.example.com/data",
+                                      h, false));
+    // Mismatch port should fail
+    clever::net::HeaderMap h2;
+    h2.set("Access-Control-Allow-Origin", "http://example.com:4000");
+    EXPECT_FALSE(cors_allows_response("http://example.com:3000",
+                                       "https://api.example.com/data",
+                                       h2, false));
+}
+
+// 6. FTP scheme enforceability
+TEST(CORSPolicyTest, CorsV143_6_FtpSchemeEnforceability) {
+    // ftp:// origins are NOT enforceable
+    EXPECT_FALSE(has_enforceable_document_origin("ftp://ftp.example.com"));
+    EXPECT_FALSE(has_enforceable_document_origin("ftp://files.example.com"));
+    // ftp URLs are NOT CORS-eligible
+    EXPECT_FALSE(is_cors_eligible_request_url("ftp://ftp.example.com/file.txt"));
+}
+
+// 7. Origin header attached for cross-origin POST
+TEST(CORSPolicyTest, CorsV143_7_OriginHeaderAttachedForCrossOriginPost) {
+    // Cross-origin → should attach origin
+    EXPECT_TRUE(should_attach_origin_header("https://app.example.com",
+                                             "https://api.example.com/data"));
+    // normalize_outgoing_origin_header sets the header for cross-origin
+    clever::net::HeaderMap h;
+    normalize_outgoing_origin_header(h, "https://app.example.com",
+                                     "https://api.example.com/data");
+    ASSERT_TRUE(h.has("origin"));
+    EXPECT_EQ(h.get("origin").value(), "https://app.example.com");
+}
+
+// 8. Same host localhost with different ports is cross-origin
+TEST(CORSPolicyTest, CorsV143_8_SameOriginLocalhostWithDifferentPorts) {
+    // Different ports → cross-origin
+    EXPECT_TRUE(is_cross_origin("http://localhost:3000",
+                                 "http://localhost:4000/api"));
+    // Same port → same-origin
+    EXPECT_FALSE(is_cross_origin("http://localhost:3000",
+                                  "http://localhost:3000/api"));
+    // Both enforceable
+    EXPECT_TRUE(has_enforceable_document_origin("http://localhost:3000"));
+    EXPECT_TRUE(has_enforceable_document_origin("http://localhost:4000"));
+}

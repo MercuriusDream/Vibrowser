@@ -25459,3 +25459,41 @@ TEST(CSSStyleTest, CssV142_4_ZIndexApplied) {
     cascade.apply_declaration(style, make_decl("z-index", "10"), parent);
     EXPECT_EQ(style.z_index, 10);
 }
+
+// === V143 CSS Style Tests ===
+
+TEST(CSSStyleTest, CssV143_1_VisibilityHiddenApplied) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("visibility", "hidden"), parent);
+    EXPECT_EQ(style.visibility, Visibility::Hidden);
+}
+
+TEST(CSSStyleTest, CssV143_2_CursorPointerApplied) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("cursor", "pointer"), parent);
+    EXPECT_EQ(style.cursor, Cursor::Pointer);
+}
+
+TEST(PropertyCascadeTest, WhiteSpaceNoWrapV143) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("white-space", "nowrap"), parent);
+    EXPECT_EQ(style.white_space, WhiteSpace::NoWrap);
+}
+
+TEST(CSSStyleTest, CssV143_4_PointerEventsNoneApplied) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("pointer-events", "none"), parent);
+    EXPECT_EQ(style.pointer_events, PointerEvents::None);
+}

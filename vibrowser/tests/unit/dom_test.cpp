@@ -21756,3 +21756,118 @@ TEST(DomElement, RemoveAttributeThatDoesNotExistV142) {
     EXPECT_EQ(div.attributes().size(), before);
     EXPECT_TRUE(div.has_attribute("class"));
 }
+
+// ---------------------------------------------------------------------------
+// V143 — DOM tests
+// ---------------------------------------------------------------------------
+
+// 1. clone_node(false) on parent with children → clone has no children
+TEST(DomNode, CloneNodeShallowDoesNotCopyChildrenV143) {
+    auto clone_node_shallow = [](const Node& node) -> std::unique_ptr<Node> {
+        if (node.node_type() == NodeType::Element) {
+            const auto& src = static_cast<const Element&>(node);
+            auto clone = std::make_unique<Element>(src.tag_name(), src.namespace_uri());
+            for (const auto& attr : src.attributes()) {
+                clone->set_attribute(attr.name, attr.value);
+            }
+            return clone;
+        }
+        if (node.node_type() == NodeType::Text) {
+            return std::make_unique<Text>(static_cast<const Text&>(node).data());
+        }
+        return nullptr;
+    };
+
+    Element parent("ul");
+    parent.set_attribute("id", "list");
+    parent.append_child(std::make_unique<Element>("li"));
+    parent.append_child(std::make_unique<Element>("li"));
+    parent.append_child(std::make_unique<Element>("li"));
+    ASSERT_EQ(parent.child_count(), 3u);
+
+    auto cloned = clone_node_shallow(parent);
+    ASSERT_NE(cloned, nullptr);
+    ASSERT_EQ(cloned->node_type(), NodeType::Element);
+    auto* cloned_elem = static_cast<Element*>(cloned.get());
+    EXPECT_EQ(cloned_elem->tag_name(), "ul");
+    EXPECT_EQ(cloned_elem->get_attribute("id").value_or(""), "list");
+    EXPECT_EQ(cloned_elem->child_count(), 0u);
+    EXPECT_EQ(cloned_elem->first_child(), nullptr);
+}
+
+// 2. has_attribute returns true after set_attribute
+TEST(DomElement, HasAttributeReturnsTrueAfterSetV143) {
+    Element elem("span");
+    EXPECT_FALSE(elem.has_attribute("data-x"));
+    elem.set_attribute("data-x", "y");
+    EXPECT_TRUE(elem.has_attribute("data-x"));
+    auto val = elem.get_attribute("data-x");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(val.value(), "y");
+}
+
+// 3. create_text_node produces Text node with correct content
+TEST(DomDocument, CreateTextNodeVerifyV143) {
+    Document doc;
+    auto text = doc.create_text_node("hello");
+    ASSERT_NE(text, nullptr);
+    EXPECT_EQ(text->node_type(), NodeType::Text);
+    EXPECT_EQ(text->data(), "hello");
+    EXPECT_EQ(text->text_content(), "hello");
+}
+
+// 4. Cancelable event — prevent_default works
+TEST(DomEvent, CancelableEventPreventDefaultWorksV143) {
+    Event evt("click", true, true);
+    EXPECT_FALSE(evt.default_prevented());
+    evt.prevent_default();
+    EXPECT_TRUE(evt.default_prevented());
+    EXPECT_TRUE(evt.cancelable());
+}
+
+// 5. Element created via Document factory has correct type
+TEST(DomNode, OwnerDocumentSetOnCreationV143) {
+    Document doc;
+    auto elem = doc.create_element("section");
+    ASSERT_NE(elem, nullptr);
+    EXPECT_EQ(elem->node_type(), NodeType::Element);
+    EXPECT_EQ(elem->tag_name(), "section");
+    // Appending to document establishes parent
+    Element* raw = elem.get();
+    doc.append_child(std::move(elem));
+    EXPECT_EQ(raw->parent(), &doc);
+}
+
+// 6. ClassList toggle adds class if absent
+TEST(DomElement, ClassListToggleAddsIfAbsentV143) {
+    Element div("div");
+    EXPECT_FALSE(div.class_list().contains("new-class"));
+    div.class_list().toggle("new-class");
+    EXPECT_TRUE(div.class_list().contains("new-class"));
+    EXPECT_EQ(div.class_list().length(), 1u);
+}
+
+// 7. First child has previous_sibling == nullptr
+TEST(DomNode, PreviousSiblingNullForFirstChildV143) {
+    Element parent("div");
+    auto child1 = std::make_unique<Element>("p");
+    auto child2 = std::make_unique<Element>("span");
+    Element* c1 = child1.get();
+    Element* c2 = child2.get();
+    parent.append_child(std::move(child1));
+    parent.append_child(std::move(child2));
+
+    EXPECT_EQ(c1->previous_sibling(), nullptr);
+    EXPECT_EQ(c2->previous_sibling(), c1);
+    EXPECT_EQ(c1->next_sibling(), c2);
+}
+
+// 8. Element with only element children — text_content is empty
+TEST(DomElement, InnerTextEmptyForNoTextChildrenV143) {
+    Element container("div");
+    container.append_child(std::make_unique<Element>("span"));
+    container.append_child(std::make_unique<Element>("br"));
+    container.append_child(std::make_unique<Element>("img"));
+    EXPECT_EQ(container.text_content(), "");
+    EXPECT_EQ(container.child_count(), 3u);
+}

@@ -956,3 +956,35 @@ TEST(IsURLCodePoint, ExclamationAndAsteriskAreCodePointsV142) {
     // Also verify '&' is a valid URL code point
     EXPECT_TRUE(is_url_code_point(U'&'));
 }
+
+TEST(PercentEncoding, EqualsAndAmpersandNotEncodedV143) {
+    // '=' and '&' are valid URL code points and should not be encoded
+    EXPECT_EQ(percent_encode("="), "=");
+    EXPECT_EQ(percent_encode("&"), "&");
+    EXPECT_EQ(percent_encode("a=1&b=2"), "a=1&b=2");
+    EXPECT_EQ(percent_encode("key=value&foo=bar"), "key=value&foo=bar");
+}
+
+TEST(PercentDecoding, DoubleEncodedPercentV143) {
+    // %2520 should decode to %20 in a single decode pass (not to a space)
+    EXPECT_EQ(percent_decode("%2520"), "%20");
+    // Multiple double-encoded sequences
+    EXPECT_EQ(percent_decode("a%2520b%2520c"), "a%20b%20c");
+}
+
+TEST(PercentEncoding, AtSignNotEncodedV143) {
+    // '@' is a valid URL code point and is NOT encoded by percent_encode
+    EXPECT_EQ(percent_encode("@"), "@");
+    EXPECT_EQ(percent_encode("user@host"), "user@host");
+    // '@' mixed with characters that ARE encoded
+    EXPECT_EQ(percent_encode("user@host name"), "user@host%20name");
+}
+
+TEST(IsURLCodePoint, DollarAndPlusAreCodePointsV143) {
+    // '$' and '+' are valid URL code points
+    EXPECT_TRUE(is_url_code_point(U'$'));
+    EXPECT_TRUE(is_url_code_point(U'+'));
+    // Also verify some related characters
+    EXPECT_TRUE(is_url_code_point(U','));
+    EXPECT_TRUE(is_url_code_point(U';'));
+}

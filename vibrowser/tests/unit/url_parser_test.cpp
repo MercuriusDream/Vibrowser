@@ -14673,3 +14673,47 @@ TEST(UrlParserTest, UrlV142_4_EmptyQueryPreserved) {
     EXPECT_EQ(result->query, "");
     EXPECT_EQ(result->port, std::nullopt);
 }
+
+TEST(UrlParserTest, UrlV143_1_UserinfoStrippedOrPreserved) {
+    // URL with userinfo: check that host is correctly extracted
+    auto result = parse("http://user:pass@host.com/path");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->host, "host.com");
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->path, "/path");
+    EXPECT_EQ(result->port, std::nullopt);
+}
+
+TEST(UrlParserTest, UrlV143_2_DoubleSlashInPathNotCollapsed) {
+    // Double slashes in path segments should be preserved, not collapsed
+    auto result = parse("http://example.com//double//slashes");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "example.com");
+    // Path should contain the double slashes
+    EXPECT_NE(result->path.find("//"), std::string::npos);
+    EXPECT_EQ(result->port, std::nullopt);
+}
+
+TEST(UrlParserTest, UrlV143_3_QueryAndFragmentBothPresent) {
+    // Both query and fragment should be correctly parsed
+    auto result = parse("http://example.com/p?q=1#frag");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/p");
+    EXPECT_EQ(result->query, "q=1");
+    EXPECT_EQ(result->fragment, "frag");
+    EXPECT_EQ(result->port, std::nullopt);
+}
+
+TEST(UrlParserTest, UrlV143_4_HttpsPort8443NonDefault) {
+    // Port 8443 is non-default for https and should be preserved
+    auto result = parse("https://example.com:8443/secure");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "example.com");
+    ASSERT_TRUE(result->port.has_value());
+    EXPECT_EQ(result->port.value(), 8443);
+    EXPECT_EQ(result->path, "/secure");
+}

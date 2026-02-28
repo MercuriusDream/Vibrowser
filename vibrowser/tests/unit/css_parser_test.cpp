@@ -10267,3 +10267,61 @@ TEST_F(CSSStylesheetTest, MixBlendModeDeclarationV142) {
     }
     EXPECT_TRUE(found) << "mix-blend-mode declaration not found";
 }
+
+// === V143 CSS Parser Tests ===
+
+TEST_F(CSSStylesheetTest, ResizePropertyDeclarationV143) {
+    auto ss = parse_stylesheet("textarea { resize: both; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "resize") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "both");
+        }
+    }
+    EXPECT_TRUE(found) << "resize declaration not found";
+}
+
+TEST_F(CSSStylesheetTest, UserSelectPropertyDeclarationV143) {
+    auto ss = parse_stylesheet(".noselect { user-select: none; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "user-select") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "none");
+        }
+    }
+    EXPECT_TRUE(found) << "user-select declaration not found";
+}
+
+TEST_F(CSSStylesheetTest, ListStyleTypeDeclarationV143) {
+    auto ss = parse_stylesheet("ul { list-style-type: disc; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "list-style-type") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "disc");
+        }
+    }
+    EXPECT_TRUE(found) << "list-style-type declaration not found";
+}
+
+TEST_F(CSSStylesheetTest, OverscrollBehaviorDeclarationV143) {
+    auto ss = parse_stylesheet(".modal { overscroll-behavior: contain; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "overscroll-behavior") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "contain");
+        }
+    }
+    EXPECT_TRUE(found) << "overscroll-behavior declaration not found";
+}

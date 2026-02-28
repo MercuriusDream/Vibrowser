@@ -20387,3 +20387,65 @@ TEST(SerializerTest, SerializerV142_3_U32MaxValueRoundTrip) {
     EXPECT_EQ(d.read_u32(), UINT32_MAX - 1);
     EXPECT_FALSE(d.has_remaining());
 }
+
+// ------------------------------------------------------------------
+// V143: I32 negative values round-trip
+// ------------------------------------------------------------------
+
+TEST(SerializerTest, SerializerV143_1_I32NegativeValuesRoundTrip) {
+    Serializer s;
+    s.write_i32(-1);
+    s.write_i32(-32768);
+    s.write_i32(std::numeric_limits<int32_t>::min());
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i32(), -1);
+    EXPECT_EQ(d.read_i32(), -32768);
+    EXPECT_EQ(d.read_i32(), std::numeric_limits<int32_t>::min());
+    EXPECT_FALSE(d.has_remaining());
+}
+
+// ------------------------------------------------------------------
+// V143: I64 large negative round-trip
+// ------------------------------------------------------------------
+
+TEST(SerializerTest, SerializerV143_2_I64LargeNegativeRoundTrip) {
+    Serializer s;
+    s.write_i64(std::numeric_limits<int64_t>::min());
+    s.write_i64(std::numeric_limits<int64_t>::max());
+    s.write_i64(int64_t(-1));
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i64(), std::numeric_limits<int64_t>::min());
+    EXPECT_EQ(d.read_i64(), std::numeric_limits<int64_t>::max());
+    EXPECT_EQ(d.read_i64(), int64_t(-1));
+    EXPECT_FALSE(d.has_remaining());
+}
+
+// ------------------------------------------------------------------
+// V143: Bool true/false sequence round-trip
+// ------------------------------------------------------------------
+
+TEST(SerializerTest, SerializerV143_3_BoolTrueFalseSequenceRoundTrip) {
+    Serializer s;
+    // Pattern: T T F F T T F T
+    s.write_bool(true);
+    s.write_bool(true);
+    s.write_bool(false);
+    s.write_bool(false);
+    s.write_bool(true);
+    s.write_bool(true);
+    s.write_bool(false);
+    s.write_bool(true);
+
+    Deserializer d(s.data());
+    EXPECT_TRUE(d.read_bool());
+    EXPECT_TRUE(d.read_bool());
+    EXPECT_FALSE(d.read_bool());
+    EXPECT_FALSE(d.read_bool());
+    EXPECT_TRUE(d.read_bool());
+    EXPECT_TRUE(d.read_bool());
+    EXPECT_FALSE(d.read_bool());
+    EXPECT_TRUE(d.read_bool());
+    EXPECT_FALSE(d.has_remaining());
+}
