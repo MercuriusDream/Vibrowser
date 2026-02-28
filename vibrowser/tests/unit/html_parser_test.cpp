@@ -20391,3 +20391,334 @@ TEST(HtmlParserTest, AdjacentTextNodesMergeAndWhitespaceV123) {
     std::string pre_text = pre->text_content();
     EXPECT_NE(pre_text.find("  spaced   out  "), std::string::npos);
 }
+
+// ---------------------------------------------------------------------------
+// V124 Tests
+// ---------------------------------------------------------------------------
+
+TEST(HtmlParserTest, DatalistWithInputListBindingV124) {
+    // Datalist element with option children, linked via input list attribute
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<input type=\"text\" list=\"browsers\" name=\"browser\"/>"
+        "<datalist id=\"browsers\">"
+        "<option value=\"Chrome\"></option>"
+        "<option value=\"Firefox\"></option>"
+        "<option value=\"Safari\"></option>"
+        "<option value=\"Edge\"></option>"
+        "</datalist>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* input = doc->find_element("input");
+    ASSERT_NE(input, nullptr);
+    EXPECT_EQ(get_attr_v63(input, "list"), "browsers");
+    EXPECT_EQ(get_attr_v63(input, "type"), "text");
+
+    auto* datalist = doc->find_element("datalist");
+    ASSERT_NE(datalist, nullptr);
+    EXPECT_EQ(get_attr_v63(datalist, "id"), "browsers");
+
+    auto options = datalist->find_all_elements("option");
+    ASSERT_EQ(options.size(), 4u);
+    EXPECT_EQ(get_attr_v63(options[0], "value"), "Chrome");
+    EXPECT_EQ(get_attr_v63(options[1], "value"), "Firefox");
+    EXPECT_EQ(get_attr_v63(options[2], "value"), "Safari");
+    EXPECT_EQ(get_attr_v63(options[3], "value"), "Edge");
+}
+
+TEST(HtmlParserTest, NavWithNestedListAndAriaLandmarkV124) {
+    // Semantic nav element containing a nested list with aria attributes
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<nav aria-label=\"Main navigation\" role=\"navigation\">"
+        "<ul>"
+        "<li><a href=\"/home\">Home</a></li>"
+        "<li><a href=\"/about\">About</a>"
+        "  <ul>"
+        "    <li><a href=\"/about/team\">Team</a></li>"
+        "    <li><a href=\"/about/history\">History</a></li>"
+        "  </ul>"
+        "</li>"
+        "<li><a href=\"/contact\">Contact</a></li>"
+        "</ul>"
+        "</nav>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* nav = doc->find_element("nav");
+    ASSERT_NE(nav, nullptr);
+    EXPECT_EQ(get_attr_v63(nav, "aria-label"), "Main navigation");
+    EXPECT_EQ(get_attr_v63(nav, "role"), "navigation");
+
+    // Should have two <ul> elements (outer + nested)
+    auto uls = nav->find_all_elements("ul");
+    ASSERT_EQ(uls.size(), 2u);
+
+    // All links across both levels
+    auto links = nav->find_all_elements("a");
+    ASSERT_EQ(links.size(), 5u);
+    EXPECT_EQ(get_attr_v63(links[0], "href"), "/home");
+    EXPECT_EQ(links[0]->text_content(), "Home");
+    // Depth-first: nested links come before the next sibling <li>
+    EXPECT_EQ(get_attr_v63(links[2], "href"), "/about/team");
+    EXPECT_EQ(links[2]->text_content(), "Team");
+    EXPECT_EQ(get_attr_v63(links[3], "href"), "/about/history");
+    EXPECT_EQ(links[4]->text_content(), "Contact");
+}
+
+TEST(HtmlParserTest, ObjectParamAndEmbedElementsV124) {
+    // Legacy <object> with <param> children plus standalone <embed>
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<object data=\"movie.swf\" type=\"application/x-shockwave-flash\" width=\"400\" height=\"300\">"
+        "<param name=\"quality\" value=\"high\"/>"
+        "<param name=\"wmode\" value=\"transparent\"/>"
+        "<p>Fallback content</p>"
+        "</object>"
+        "<embed src=\"clip.mp4\" type=\"video/mp4\" width=\"640\" height=\"480\"/>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* object = doc->find_element("object");
+    ASSERT_NE(object, nullptr);
+    EXPECT_EQ(get_attr_v63(object, "data"), "movie.swf");
+    EXPECT_EQ(get_attr_v63(object, "type"), "application/x-shockwave-flash");
+    EXPECT_EQ(get_attr_v63(object, "width"), "400");
+
+    auto params = object->find_all_elements("param");
+    ASSERT_EQ(params.size(), 2u);
+    EXPECT_EQ(get_attr_v63(params[0], "name"), "quality");
+    EXPECT_EQ(get_attr_v63(params[0], "value"), "high");
+    EXPECT_EQ(get_attr_v63(params[1], "name"), "wmode");
+    EXPECT_EQ(get_attr_v63(params[1], "value"), "transparent");
+
+    // Fallback <p> inside object
+    auto* fallback_p = object->find_element("p");
+    ASSERT_NE(fallback_p, nullptr);
+    EXPECT_EQ(fallback_p->text_content(), "Fallback content");
+
+    auto* embed = doc->find_element("embed");
+    ASSERT_NE(embed, nullptr);
+    EXPECT_EQ(get_attr_v63(embed, "src"), "clip.mp4");
+    EXPECT_EQ(get_attr_v63(embed, "type"), "video/mp4");
+}
+
+TEST(HtmlParserTest, MainAsideHeaderFooterSectionArticleLayoutV124) {
+    // Full semantic page layout with main, aside, header, footer, section, article
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<header><h1>Site Title</h1></header>"
+        "<main>"
+        "<article>"
+        "<section><h2>Introduction</h2><p>Intro text</p></section>"
+        "<section><h2>Details</h2><p>Detail text</p></section>"
+        "</article>"
+        "</main>"
+        "<aside><p>Sidebar content</p></aside>"
+        "<footer><p>Copyright 2024</p></footer>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* header = doc->find_element("header");
+    ASSERT_NE(header, nullptr);
+    auto* h1 = header->find_element("h1");
+    ASSERT_NE(h1, nullptr);
+    EXPECT_EQ(h1->text_content(), "Site Title");
+
+    auto* main_el = doc->find_element("main");
+    ASSERT_NE(main_el, nullptr);
+    auto* article = main_el->find_element("article");
+    ASSERT_NE(article, nullptr);
+
+    auto sections = article->find_all_elements("section");
+    ASSERT_EQ(sections.size(), 2u);
+    auto* s1_h2 = sections[0]->find_element("h2");
+    ASSERT_NE(s1_h2, nullptr);
+    EXPECT_EQ(s1_h2->text_content(), "Introduction");
+
+    auto* aside = doc->find_element("aside");
+    ASSERT_NE(aside, nullptr);
+    EXPECT_NE(aside->text_content().find("Sidebar content"), std::string::npos);
+
+    auto* footer = doc->find_element("footer");
+    ASSERT_NE(footer, nullptr);
+    EXPECT_NE(footer->text_content().find("Copyright 2024"), std::string::npos);
+}
+
+TEST(HtmlParserTest, MapWithMultipleAreaShapesV124) {
+    // Image map with different area shapes (rect, circle, poly)
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<img src=\"planets.jpg\" usemap=\"#planetmap\" alt=\"Planets\"/>"
+        "<map name=\"planetmap\">"
+        "<area shape=\"rect\" coords=\"0,0,82,126\" href=\"sun.htm\" alt=\"Sun\"/>"
+        "<area shape=\"circle\" coords=\"90,58,3\" href=\"mercury.htm\" alt=\"Mercury\"/>"
+        "<area shape=\"poly\" coords=\"124,58,8,50,200,120\" href=\"venus.htm\" alt=\"Venus\"/>"
+        "</map>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* img = doc->find_element("img");
+    ASSERT_NE(img, nullptr);
+    EXPECT_EQ(get_attr_v63(img, "usemap"), "#planetmap");
+
+    auto* map = doc->find_element("map");
+    ASSERT_NE(map, nullptr);
+    EXPECT_EQ(get_attr_v63(map, "name"), "planetmap");
+
+    auto areas = map->find_all_elements("area");
+    ASSERT_EQ(areas.size(), 3u);
+
+    // rect area
+    EXPECT_EQ(get_attr_v63(areas[0], "shape"), "rect");
+    EXPECT_EQ(get_attr_v63(areas[0], "coords"), "0,0,82,126");
+    EXPECT_EQ(get_attr_v63(areas[0], "href"), "sun.htm");
+    EXPECT_EQ(get_attr_v63(areas[0], "alt"), "Sun");
+
+    // circle area
+    EXPECT_EQ(get_attr_v63(areas[1], "shape"), "circle");
+    EXPECT_EQ(get_attr_v63(areas[1], "coords"), "90,58,3");
+    EXPECT_EQ(get_attr_v63(areas[1], "alt"), "Mercury");
+
+    // poly area
+    EXPECT_EQ(get_attr_v63(areas[2], "shape"), "poly");
+    EXPECT_EQ(get_attr_v63(areas[2], "coords"), "124,58,8,50,200,120");
+    EXPECT_EQ(get_attr_v63(areas[2], "href"), "venus.htm");
+}
+
+TEST(HtmlParserTest, DialogElementWithFormMethodDialogV124) {
+    // HTML dialog element containing a form with method=dialog
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<dialog open=\"\" id=\"confirm-dlg\">"
+        "<form method=\"dialog\">"
+        "<p>Are you sure you want to proceed?</p>"
+        "<menu>"
+        "<button value=\"cancel\">Cancel</button>"
+        "<button value=\"confirm\">Confirm</button>"
+        "</menu>"
+        "</form>"
+        "</dialog>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* dialog = doc->find_element("dialog");
+    ASSERT_NE(dialog, nullptr);
+    EXPECT_EQ(get_attr_v63(dialog, "id"), "confirm-dlg");
+    // open is a boolean attribute, value should be empty string
+    EXPECT_EQ(get_attr_v63(dialog, "open"), "");
+
+    auto* form = dialog->find_element("form");
+    ASSERT_NE(form, nullptr);
+    EXPECT_EQ(get_attr_v63(form, "method"), "dialog");
+
+    auto* p = dialog->find_element("p");
+    ASSERT_NE(p, nullptr);
+    EXPECT_EQ(p->text_content(), "Are you sure you want to proceed?");
+
+    auto* menu = dialog->find_element("menu");
+    ASSERT_NE(menu, nullptr);
+    auto buttons = menu->find_all_elements("button");
+    ASSERT_EQ(buttons.size(), 2u);
+    EXPECT_EQ(get_attr_v63(buttons[0], "value"), "cancel");
+    EXPECT_EQ(buttons[0]->text_content(), "Cancel");
+    EXPECT_EQ(get_attr_v63(buttons[1], "value"), "confirm");
+    EXPECT_EQ(buttons[1]->text_content(), "Confirm");
+}
+
+TEST(HtmlParserTest, BaseTagAffectsNoChildrenAndIsVoidV124) {
+    // <base> is a void element that should not consume subsequent content
+    auto doc = clever::html::parse(
+        "<html>"
+        "<head>"
+        "<base href=\"https://example.com/\" target=\"_blank\"/>"
+        "<title>Base Tag Test</title>"
+        "<link rel=\"icon\" href=\"/favicon.ico\"/>"
+        "</head>"
+        "<body>"
+        "<a href=\"page.html\">Link</a>"
+        "<a href=\"other.html\">Other</a>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* base = doc->find_element("base");
+    ASSERT_NE(base, nullptr);
+    EXPECT_EQ(get_attr_v63(base, "href"), "https://example.com/");
+    EXPECT_EQ(get_attr_v63(base, "target"), "_blank");
+    // base is void: should have no children
+    EXPECT_EQ(base->children.size(), 0u);
+
+    auto* title = doc->find_element("title");
+    ASSERT_NE(title, nullptr);
+    EXPECT_EQ(title->text_content(), "Base Tag Test");
+
+    auto* link = doc->find_element("link");
+    ASSERT_NE(link, nullptr);
+    EXPECT_EQ(get_attr_v63(link, "rel"), "icon");
+    EXPECT_EQ(link->children.size(), 0u);
+
+    // Body links should be separate elements, not swallowed by base
+    auto anchors = doc->find_all_elements("a");
+    ASSERT_EQ(anchors.size(), 2u);
+    EXPECT_EQ(anchors[0]->text_content(), "Link");
+    EXPECT_EQ(anchors[1]->text_content(), "Other");
+}
+
+TEST(HtmlParserTest, TableCaptionColspanEmptyCellsAndNestedTextV124) {
+    // Table with caption, mixed empty cells, cells with nested inline elements
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<table>"
+        "<caption>Employee <strong>Directory</strong></caption>"
+        "<tr>"
+        "<th>Name</th><th>Dept</th><th>Notes</th>"
+        "</tr>"
+        "<tr>"
+        "<td><em>Alice</em> <strong>Smith</strong></td>"
+        "<td>Engineering</td>"
+        "<td></td>"
+        "</tr>"
+        "<tr>"
+        "<td colspan=\"2\">Bob &amp; Carol</td>"
+        "<td><a href=\"#note1\">See note</a></td>"
+        "</tr>"
+        "</table>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    // Caption should contain nested strong element
+    auto* caption = doc->find_element("caption");
+    ASSERT_NE(caption, nullptr);
+    auto* cap_strong = caption->find_element("strong");
+    ASSERT_NE(cap_strong, nullptr);
+    EXPECT_EQ(cap_strong->text_content(), "Directory");
+
+    auto rows = doc->find_all_elements("tr");
+    ASSERT_EQ(rows.size(), 3u);
+
+    // First data row: cell with nested inline elements
+    auto row1_tds = rows[1]->find_all_elements("td");
+    ASSERT_EQ(row1_tds.size(), 3u);
+    auto* em = row1_tds[0]->find_element("em");
+    ASSERT_NE(em, nullptr);
+    EXPECT_EQ(em->text_content(), "Alice");
+    auto* strong = row1_tds[0]->find_element("strong");
+    ASSERT_NE(strong, nullptr);
+    EXPECT_EQ(strong->text_content(), "Smith");
+
+    // Empty cell should exist but have no text
+    EXPECT_EQ(row1_tds[2]->text_content(), "");
+
+    // Second data row: colspan cell with entity-decoded ampersand
+    auto row2_tds = rows[2]->find_all_elements("td");
+    ASSERT_GE(row2_tds.size(), 2u);
+    EXPECT_EQ(get_attr_v63(row2_tds[0], "colspan"), "2");
+    EXPECT_NE(row2_tds[0]->text_content().find("Bob"), std::string::npos);
+
+    // Last cell has a link
+    auto* note_link = rows[2]->find_element("a");
+    ASSERT_NE(note_link, nullptr);
+    EXPECT_EQ(get_attr_v63(note_link, "href"), "#note1");
+    EXPECT_EQ(note_link->text_content(), "See note");
+}

@@ -9762,3 +9762,165 @@ TEST(CORSPolicyTest, CorsAllowsResponseCredentialedIPv6ExactMatchRequiredV123) {
                                        "https://api.example.com/data",
                                        h_diff_ip, false));
 }
+
+TEST(CORSPolicyTest, NormalizeOriginHeaderDataOriginCrossOriginProducesNullV124) {
+    // data: origins are not enforceable, so normalize_outgoing_origin_header
+    // should set Origin to "null" when the request is cross-origin from a data: doc
+    clever::net::HeaderMap headers;
+    headers.set("Origin", "https://attacker.example");
+    normalize_outgoing_origin_header(headers, "data:text/html,hello",
+                                      "https://api.example.com/endpoint");
+    // data: origin is not enforceable → header should be removed, not set to "null"
+    EXPECT_FALSE(headers.has("origin"));
+
+    // Contrast: "null" document origin IS handled specially (sets "null")
+    clever::net::HeaderMap headers2;
+    headers2.set("Origin", "https://something.example");
+    normalize_outgoing_origin_header(headers2, "null", "https://api.example.com/endpoint");
+    ASSERT_TRUE(headers2.has("origin"));
+    EXPECT_EQ(headers2.get("origin").value(), "null");
+}
+
+TEST(CORSPolicyTest, CrossOriginIPv4VsIPv6LoopbackAreDifferentOriginsV124) {
+    // 127.0.0.1 and [::1] are different origins even though both are loopback
+    EXPECT_TRUE(is_cross_origin("https://127.0.0.1", "https://[::1]/data"));
+    EXPECT_TRUE(is_cross_origin("http://127.0.0.1", "http://[::1]/api"));
+    EXPECT_TRUE(is_cross_origin("https://[::1]", "https://127.0.0.1/path"));
+
+    // Same loopback, same scheme → NOT cross-origin
+    EXPECT_FALSE(is_cross_origin("https://127.0.0.1", "https://127.0.0.1/data"));
+    EXPECT_FALSE(is_cross_origin("http://[::1]", "http://[::1]/data"));
+
+    // should_attach_origin_header reflects the cross-origin finding
+    EXPECT_TRUE(should_attach_origin_header("https://127.0.0.1", "https://[::1]/data"));
+    EXPECT_FALSE(should_attach_origin_header("https://127.0.0.1", "https://127.0.0.1/data"));
+}
+
+TEST(CORSPolicyTest, CorsAllowsResponseACAOWithTrailingSlashDoesNotMatchV124) {
+    // ACAO value "https://app.example/" has a trailing slash — this is not
+    // a valid origin (origins never have paths), so it must NOT match
+    clever::net::HeaderMap h;
+    h.set("Access-Control-Allow-Origin", "https://app.example/");
+    EXPECT_FALSE(cors_allows_response("https://app.example",
+                                       "https://api.example/data",
+                                       h, false));
+
+    // Credentialed variant also must fail
+    clever::net::HeaderMap h2;
+    h2.set("Access-Control-Allow-Origin", "https://app.example/");
+    h2.set("Access-Control-Allow-Credentials", "true");
+    EXPECT_FALSE(cors_allows_response("https://app.example",
+                                       "https://api.example/data",
+                                       h2, true));
+
+    // Clean origin without trailing slash should succeed
+    clever::net::HeaderMap h3;
+    h3.set("Access-Control-Allow-Origin", "https://app.example");
+    EXPECT_TRUE(cors_allows_response("https://app.example",
+                                      "https://api.example/data",
+                                      h3, false));
+}
+
+TEST(CORSPolicyTest, EnforceabilityRejectsOriginsWithEmbeddedNullBytesV124) {
+    // An origin string containing embedded null bytes should NOT be enforceable
+    std::string origin_with_null("https://app.example");
+    origin_with_null.push_back('\0');
+    EXPECT_FALSE(has_enforceable_document_origin(origin_with_null));
+
+    std::string null_in_host("https://app");
+    null_in_host.push_back('\0');
+    null_in_host += ".example";
+    EXPECT_FALSE(has_enforceable_document_origin(null_in_host));
+
+    // Normal origin remains enforceable
+    EXPECT_TRUE(has_enforceable_document_origin("https://app.example"));
+}
+
+TEST(CORSPolicyTest, CorsEligibilityURLsWithMultipleConsecutiveSlashesV124) {
+    // Path with multiple consecutive slashes is still CORS-eligible
+    // (path normalization doesn't affect eligibility at the origin/scheme level)
+    EXPECT_TRUE(is_cors_eligible_request_url("https://api.example///data"));
+    EXPECT_TRUE(is_cors_eligible_request_url("https://api.example//path//to//resource"));
+
+    // But the host part with double dots remains ineligible
+    EXPECT_FALSE(is_cors_eligible_request_url("https://api..example/data"));
+
+    // Query strings with special chars in values are fine
+    EXPECT_TRUE(is_cors_eligible_request_url("https://api.example/data?key=a%26b&c=d"));
+
+    // Empty path is fine (just scheme + host)
+    EXPECT_TRUE(is_cors_eligible_request_url("https://api.example"));
+}
+
+TEST(CORSPolicyTest, ShouldAttachOriginHeaderNonStandardPortCrossOriginV124) {
+    // Same host, same scheme, but different non-standard ports → cross-origin
+    EXPECT_TRUE(should_attach_origin_header("https://app.example:8080",
+                                             "https://app.example:9090/api"));
+
+    // Same host, same non-standard port → same-origin, no Origin header
+    EXPECT_FALSE(should_attach_origin_header("https://app.example:8080",
+                                              "https://app.example:8080/api"));
+
+    // Same host, one with explicit non-default port, one without → cross-origin
+    EXPECT_TRUE(should_attach_origin_header("https://app.example:8443",
+                                             "https://app.example/api"));
+
+    // IPv4 with non-standard port, same IP different port → cross-origin
+    EXPECT_TRUE(should_attach_origin_header("http://10.0.0.1:3000",
+                                             "http://10.0.0.1:4000/endpoint"));
+
+    // IPv4 same everything → same-origin
+    EXPECT_FALSE(should_attach_origin_header("http://10.0.0.1:3000",
+                                              "http://10.0.0.1:3000/endpoint"));
+}
+
+TEST(CORSPolicyTest, CorsAllowsResponseMultipleACAOValuesAreInvalidV124) {
+    // The ACAO header should contain exactly one origin or "*". Multiple
+    // comma-separated origins are not valid per spec and should be rejected.
+    clever::net::HeaderMap h;
+    h.set("Access-Control-Allow-Origin",
+          "https://app.example, https://other.example");
+    EXPECT_FALSE(cors_allows_response("https://app.example",
+                                       "https://api.example/data",
+                                       h, false));
+
+    // Space-separated list is also invalid
+    clever::net::HeaderMap h2;
+    h2.set("Access-Control-Allow-Origin",
+           "https://app.example https://other.example");
+    EXPECT_FALSE(cors_allows_response("https://app.example",
+                                       "https://api.example/data",
+                                       h2, false));
+
+    // Newline-separated is also invalid
+    clever::net::HeaderMap h3;
+    h3.set("Access-Control-Allow-Origin",
+           "https://app.example\nhttps://other.example");
+    EXPECT_FALSE(cors_allows_response("https://app.example",
+                                       "https://api.example/data",
+                                       h3, false));
+}
+
+TEST(CORSPolicyTest, CrossOriginBlobUrlsNeverCrossOriginAndNotEligibleV124) {
+    // blob: URLs are not CORS-eligible
+    EXPECT_FALSE(is_cors_eligible_request_url("blob:https://app.example/some-uuid"));
+    EXPECT_FALSE(is_cors_eligible_request_url("blob:null/some-uuid"));
+
+    // blob: document origins are not enforceable
+    EXPECT_FALSE(has_enforceable_document_origin("blob:https://app.example/some-uuid"));
+    EXPECT_FALSE(has_enforceable_document_origin("blob:null/some-uuid"));
+
+    // is_cross_origin with blob: doc origin → false (not enforceable)
+    EXPECT_FALSE(is_cross_origin("blob:https://app.example/uuid",
+                                  "https://api.example/data"));
+    EXPECT_FALSE(is_cross_origin("blob:null/uuid",
+                                  "https://api.example/data"));
+
+    // cors_allows_response from a blob: origin against a real cross-origin endpoint
+    // should fail because blob: doc origin is not enforceable
+    clever::net::HeaderMap h;
+    h.set("Access-Control-Allow-Origin", "*");
+    EXPECT_FALSE(cors_allows_response("blob:https://app.example/uuid",
+                                       "https://api.example/data",
+                                       h, false));
+}

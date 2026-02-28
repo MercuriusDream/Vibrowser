@@ -13403,3 +13403,130 @@ TEST(UrlParserTest, DoubleEncodedPercentInPathQueryAndFragmentSimultaneouslyV123
     EXPECT_NE(serialized.find("%253D"), std::string::npos);
     EXPECT_NE(serialized.find("%2523"), std::string::npos);
 }
+
+TEST(UrlParserTest, RelativeQueryOnlyResolutionReplacesQueryKeepsPathV124) {
+    // A relative URL consisting of only "?newquery" should replace the base
+    // query while inheriting scheme, host, port, and path from the base
+    auto base = parse("https://api.example.com:9090/v2/users/search?q=old&limit=10#results");
+    ASSERT_TRUE(base.has_value());
+    auto resolved = parse("?q=new&offset=20", &*base);
+    ASSERT_TRUE(resolved.has_value());
+    EXPECT_EQ(resolved->scheme, "https");
+    EXPECT_EQ(resolved->host, "api.example.com");
+    EXPECT_EQ(resolved->port, 9090);
+    EXPECT_EQ(resolved->path, "/v2/users/search");
+    EXPECT_EQ(resolved->query, "q=new&offset=20");
+    // Fragment from base should NOT carry over to a query-only relative ref
+    EXPECT_TRUE(resolved->fragment.empty());
+}
+
+TEST(UrlParserTest, RelativeFragmentOnlyResolutionKeepsEverythingElseV124) {
+    // A relative URL consisting of only "#newfrag" should replace the base
+    // fragment while inheriting scheme, host, port, path, AND query from base
+    auto base = parse("http://docs.example.com/guide/chapter3?page=7#old-section");
+    ASSERT_TRUE(base.has_value());
+    auto resolved = parse("#new-section", &*base);
+    ASSERT_TRUE(resolved.has_value());
+    EXPECT_EQ(resolved->scheme, "http");
+    EXPECT_EQ(resolved->host, "docs.example.com");
+    EXPECT_EQ(resolved->path, "/guide/chapter3");
+    EXPECT_EQ(resolved->query, "page=7");
+    EXPECT_EQ(resolved->fragment, "new-section");
+}
+
+TEST(UrlParserTest, FtpUrlWithCredentialsAndNonDefaultPortSerializesCorrectlyV124) {
+    // FTP URLs with username, password, and non-default port should
+    // serialize with all components preserved in correct order
+    auto result = parse("ftp://mirror:s3cret@archive.example.org:2121/pub/releases/v5.tar.gz");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "ftp");
+    EXPECT_EQ(result->username, "mirror");
+    EXPECT_EQ(result->password, "s3cret");
+    EXPECT_EQ(result->host, "archive.example.org");
+    EXPECT_EQ(result->port, 2121);
+    EXPECT_EQ(result->path, "/pub/releases/v5.tar.gz");
+    EXPECT_TRUE(result->is_special());
+    // Origin for FTP with non-default port should include port
+    EXPECT_EQ(result->origin(), "ftp://archive.example.org:2121");
+    std::string serialized = result->serialize();
+    EXPECT_EQ(serialized, "ftp://mirror:s3cret@archive.example.org:2121/pub/releases/v5.tar.gz");
+}
+
+TEST(UrlParserTest, PortBoundaryValuesZeroAndMaxValidV124) {
+    // Port 0 is a valid port number and should be preserved
+    auto port_zero = parse("http://localhost:0/test");
+    ASSERT_TRUE(port_zero.has_value());
+    EXPECT_EQ(port_zero->port, 0);
+    EXPECT_EQ(port_zero->host, "localhost");
+    // Port 65535 is the maximum valid port and should be preserved
+    auto port_max = parse("http://localhost:65535/test");
+    ASSERT_TRUE(port_max.has_value());
+    EXPECT_EQ(port_max->port, 65535);
+    // Both should produce distinct origins because they have non-default ports
+    EXPECT_NE(port_zero->origin(), port_max->origin());
+    EXPECT_EQ(port_zero->origin(), "http://localhost:0");
+    EXPECT_EQ(port_max->origin(), "http://localhost:65535");
+}
+
+TEST(UrlParserTest, ConsecutiveDotSegmentsCollapseToRootV124) {
+    // Multiple consecutive parent-directory segments should collapse toward
+    // the root and never go above it
+    auto result = parse("https://example.com/a/b/c/../../../../../../../d");
+    ASSERT_TRUE(result.has_value());
+    // Even with more ".." than path segments, path should resolve to /d
+    EXPECT_EQ(result->path, "/d");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->scheme, "https");
+}
+
+TEST(UrlParserTest, IPv6HostWithUserinfoAndQueryAndFragmentSerializationV124) {
+    // A complex URL combining IPv6, userinfo, query, and fragment should
+    // parse and round-trip through serialize() correctly
+    auto result = parse("http://admin:pass@[::ffff:192.168.1.1]:3000/api/data?fmt=json#entry-42");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->username, "admin");
+    EXPECT_EQ(result->password, "pass");
+    EXPECT_EQ(result->host, "[::ffff:192.168.1.1]");
+    EXPECT_EQ(result->port, 3000);
+    EXPECT_EQ(result->path, "/api/data");
+    EXPECT_EQ(result->query, "fmt=json");
+    EXPECT_EQ(result->fragment, "entry-42");
+    std::string serialized = result->serialize();
+    EXPECT_EQ(serialized, "http://admin:pass@[::ffff:192.168.1.1]:3000/api/data?fmt=json#entry-42");
+}
+
+TEST(UrlParserTest, EmptyQueryAndEmptyFragmentArePreservedDistinctFromAbsentV124) {
+    // A URL with "?" but no query value, and "#" but no fragment value,
+    // should preserve the empty strings rather than treating them as absent
+    auto result = parse("https://example.com/path?#");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/path");
+    // Empty query and fragment should be empty strings
+    EXPECT_EQ(result->query, "");
+    EXPECT_EQ(result->fragment, "");
+    // Contrast with a URL that has neither ? nor #
+    auto no_qf = parse("https://example.com/path");
+    ASSERT_TRUE(no_qf.has_value());
+    EXPECT_EQ(no_qf->path, "/path");
+}
+
+TEST(UrlParserTest, SchemeRelativeResolutionSwitchesHostButKeepsSchemeV124) {
+    // A protocol-relative URL (//newhost/path) resolved against a base should
+    // inherit only the scheme from base, replacing host, path, query, fragment
+    auto base = parse("https://old.example.com:8443/legacy/page?x=1#top");
+    ASSERT_TRUE(base.has_value());
+    auto resolved = parse("//cdn.newsite.io/assets/style.css?v=2#cached", &*base);
+    ASSERT_TRUE(resolved.has_value());
+    EXPECT_EQ(resolved->scheme, "https");
+    EXPECT_EQ(resolved->host, "cdn.newsite.io");
+    EXPECT_EQ(resolved->port, std::nullopt);
+    EXPECT_EQ(resolved->path, "/assets/style.css");
+    EXPECT_EQ(resolved->query, "v=2");
+    EXPECT_EQ(resolved->fragment, "cached");
+    // Username/password should NOT carry over from base
+    EXPECT_TRUE(resolved->username.empty());
+    EXPECT_TRUE(resolved->password.empty());
+}

@@ -18646,3 +18646,325 @@ TEST(SerializerTest, FullProtocolMessageSimulationV123) {
     EXPECT_EQ(d.read_u32(), checksum);
     EXPECT_FALSE(d.has_remaining());
 }
+
+TEST(SerializerTest, DeltaEncodedTimeSeriesRoundTripV124) {
+    // Simulate delta-encoded time-series data: store a base timestamp as u64,
+    // then N deltas as u16 values. Reconstruct and verify monotonicity.
+    Serializer s;
+    uint64_t base_ts = 1709136000000ULL; // 2024-02-28 in millis
+    s.write_u64(base_ts);
+    const int N = 50;
+    s.write_u32(static_cast<uint32_t>(N));
+    std::vector<uint16_t> deltas;
+    for (int i = 0; i < N; ++i) {
+        uint16_t delta = static_cast<uint16_t>((i + 1) * 137 % 65535);
+        deltas.push_back(delta);
+        s.write_u16(delta);
+    }
+
+    Deserializer d(s.data());
+    uint64_t read_base = d.read_u64();
+    EXPECT_EQ(read_base, base_ts);
+    uint32_t count = d.read_u32();
+    EXPECT_EQ(count, static_cast<uint32_t>(N));
+
+    uint64_t accumulated = read_base;
+    for (uint32_t i = 0; i < count; ++i) {
+        uint16_t delta = d.read_u16();
+        EXPECT_EQ(delta, deltas[i]);
+        uint64_t prev = accumulated;
+        accumulated += delta;
+        EXPECT_GE(accumulated, prev) << "Monotonicity broken at index " << i;
+    }
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, TagLengthValueChainV124) {
+    // TLV (Tag-Length-Value) encoding pattern: each entry has a u8 tag,
+    // then raw bytes as value (length-prefixed via write_bytes).
+    struct TLVEntry {
+        uint8_t tag;
+        std::vector<uint8_t> value;
+    };
+
+    std::vector<TLVEntry> entries = {
+        {0x01, {0xAA, 0xBB}},
+        {0x02, {}},  // empty value
+        {0x03, {0x10, 0x20, 0x30, 0x40, 0x50}},
+        {0xFF, {0x00}},  // max tag, single zero byte
+    };
+
+    Serializer s;
+    s.write_u32(static_cast<uint32_t>(entries.size()));
+    for (const auto& e : entries) {
+        s.write_u8(e.tag);
+        s.write_bytes(e.value.data(), e.value.size());
+    }
+
+    Deserializer d(s.data());
+    uint32_t n = d.read_u32();
+    EXPECT_EQ(n, 4u);
+    for (uint32_t i = 0; i < n; ++i) {
+        uint8_t tag = d.read_u8();
+        EXPECT_EQ(tag, entries[i].tag);
+        auto val = d.read_bytes();
+        EXPECT_EQ(val.size(), entries[i].value.size());
+        for (size_t j = 0; j < val.size(); ++j) {
+            EXPECT_EQ(val[j], entries[i].value[j])
+                << "Mismatch at entry " << i << " byte " << j;
+        }
+    }
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, StringTableWithOffsetsV124) {
+    // Simulate a string table: write N strings, then verify remaining()
+    // strictly decreases after each read and all strings round-trip.
+    std::vector<std::string> strings = {
+        "alpha", "bravo", "charlie", "delta", "echo",
+        "foxtrot", "golf", "hotel", "india", "juliet"
+    };
+
+    Serializer s;
+    s.write_u32(static_cast<uint32_t>(strings.size()));
+    for (const auto& str : strings) {
+        s.write_string(str);
+    }
+
+    const auto& buf = s.data();
+    Deserializer d(buf);
+    uint32_t count = d.read_u32();
+    EXPECT_EQ(count, 10u);
+
+    size_t prev_remaining = d.remaining();
+    for (uint32_t i = 0; i < count; ++i) {
+        std::string read_str = d.read_string();
+        EXPECT_EQ(read_str, strings[i]);
+        size_t cur_remaining = d.remaining();
+        EXPECT_LT(cur_remaining, prev_remaining)
+            << "Remaining should strictly decrease after reading string " << i;
+        prev_remaining = cur_remaining;
+    }
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, F64NaNAndDenormBitPreservationV124) {
+    // Write several IEEE-754 special doubles, then read back and compare
+    // their raw bit patterns (memcmp) to ensure exact preservation,
+    // including quiet NaN, denorms, and infinities.
+    Serializer s;
+
+    double values[5];
+    values[0] = std::numeric_limits<double>::infinity();
+    values[1] = -std::numeric_limits<double>::infinity();
+    values[2] = std::numeric_limits<double>::quiet_NaN();
+    values[3] = std::numeric_limits<double>::denorm_min();
+    values[4] = -std::numeric_limits<double>::denorm_min();
+
+    for (int i = 0; i < 5; ++i) {
+        s.write_f64(values[i]);
+    }
+
+    Deserializer d(s.data());
+    for (int i = 0; i < 5; ++i) {
+        double read_val = d.read_f64();
+        uint64_t orig_bits, read_bits;
+        std::memcpy(&orig_bits, &values[i], sizeof(double));
+        std::memcpy(&read_bits, &read_val, sizeof(double));
+        EXPECT_EQ(orig_bits, read_bits)
+            << "Bit mismatch for value index " << i;
+    }
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, NestedSerializerAsEmbeddedBlobV124) {
+    // Use a "child" serializer to build a sub-message, take_data() from it,
+    // then embed that as raw bytes in a "parent" serializer.
+    // Deserialize the parent, extract the blob, then deserialize the child.
+    Serializer child;
+    child.write_string("nested_key");
+    child.write_i32(-42);
+    child.write_f64(2.71828);
+    child.write_bool(false);
+    std::vector<uint8_t> child_blob = child.take_data();
+
+    // After take_data, the child's buffer should be moved out
+    EXPECT_TRUE(child.data().empty());
+
+    Serializer parent;
+    parent.write_string("envelope");
+    parent.write_u32(1u);  // version
+    parent.write_bytes(child_blob.data(), child_blob.size());
+    parent.write_string("footer");
+
+    Deserializer pd(parent.data());
+    EXPECT_EQ(pd.read_string(), "envelope");
+    EXPECT_EQ(pd.read_u32(), 1u);
+
+    auto extracted_blob = pd.read_bytes();
+    EXPECT_EQ(extracted_blob.size(), child_blob.size());
+
+    // Now deserialize the extracted blob as a sub-message
+    Deserializer cd(extracted_blob.data(), extracted_blob.size());
+    EXPECT_EQ(cd.read_string(), "nested_key");
+    EXPECT_EQ(cd.read_i32(), -42);
+    EXPECT_DOUBLE_EQ(cd.read_f64(), 2.71828);
+    EXPECT_EQ(cd.read_bool(), false);
+    EXPECT_FALSE(cd.has_remaining());
+
+    EXPECT_EQ(pd.read_string(), "footer");
+    EXPECT_FALSE(pd.has_remaining());
+}
+
+TEST(SerializerTest, I32I64TwosComplementSymmetryV124) {
+    // Verify that for every boundary value, writing and reading preserves
+    // the two's complement relationship: x + (-x) == 0 for signed types.
+    Serializer s;
+    std::vector<int32_t> i32_vals = {
+        1, -1, 127, -128, 32767, -32768,
+        std::numeric_limits<int32_t>::max(),
+        std::numeric_limits<int32_t>::min() + 1  // min+1 so -x is valid
+    };
+    std::vector<int64_t> i64_vals = {
+        1LL, -1LL, 2147483647LL, -2147483648LL,
+        std::numeric_limits<int64_t>::max(),
+        std::numeric_limits<int64_t>::min() + 1
+    };
+
+    s.write_u32(static_cast<uint32_t>(i32_vals.size()));
+    for (auto v : i32_vals) {
+        s.write_i32(v);
+        s.write_i32(-v);
+    }
+    s.write_u32(static_cast<uint32_t>(i64_vals.size()));
+    for (auto v : i64_vals) {
+        s.write_i64(v);
+        s.write_i64(-v);
+    }
+
+    Deserializer d(s.data());
+    uint32_t n32 = d.read_u32();
+    EXPECT_EQ(n32, static_cast<uint32_t>(i32_vals.size()));
+    for (uint32_t i = 0; i < n32; ++i) {
+        int32_t pos = d.read_i32();
+        int32_t neg = d.read_i32();
+        EXPECT_EQ(pos + neg, 0) << "i32 symmetry broken at index " << i;
+        EXPECT_EQ(pos, i32_vals[i]);
+    }
+    uint32_t n64 = d.read_u32();
+    EXPECT_EQ(n64, static_cast<uint32_t>(i64_vals.size()));
+    for (uint32_t i = 0; i < n64; ++i) {
+        int64_t pos = d.read_i64();
+        int64_t neg = d.read_i64();
+        EXPECT_EQ(pos + neg, 0LL) << "i64 symmetry broken at index " << i;
+        EXPECT_EQ(pos, i64_vals[i]);
+    }
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, RemainingDecreasesExactlyByTypeSizeV124) {
+    // Write one of each type, then read them back one at a time,
+    // verifying that remaining() decreases by the exact expected amount.
+    Serializer s;
+    s.write_u8(0x42);
+    s.write_u16(0x1234);
+    s.write_u32(0xDEADBEEF);
+    s.write_u64(0xCAFEBABECAFEBABEULL);
+    s.write_i32(-999);
+    s.write_i64(-123456789LL);
+    s.write_f64(3.14159);
+    s.write_bool(true);
+    s.write_string("test");
+    s.write_bytes(reinterpret_cast<const uint8_t*>("xy"), 2);
+
+    Deserializer d(s.data());
+    size_t total = d.remaining();
+    EXPECT_EQ(total, s.data().size());
+
+    size_t before, after;
+
+    before = d.remaining(); d.read_u8(); after = d.remaining();
+    EXPECT_EQ(before - after, 1u);  // u8 = 1 byte
+
+    before = d.remaining(); d.read_u16(); after = d.remaining();
+    EXPECT_EQ(before - after, 2u);  // u16 = 2 bytes
+
+    before = d.remaining(); d.read_u32(); after = d.remaining();
+    EXPECT_EQ(before - after, 4u);  // u32 = 4 bytes
+
+    before = d.remaining(); d.read_u64(); after = d.remaining();
+    EXPECT_EQ(before - after, 8u);  // u64 = 8 bytes
+
+    before = d.remaining(); d.read_i32(); after = d.remaining();
+    EXPECT_EQ(before - after, 4u);  // i32 = 4 bytes
+
+    before = d.remaining(); d.read_i64(); after = d.remaining();
+    EXPECT_EQ(before - after, 8u);  // i64 = 8 bytes
+
+    before = d.remaining(); d.read_f64(); after = d.remaining();
+    EXPECT_EQ(before - after, 8u);  // f64 = 8 bytes
+
+    before = d.remaining(); d.read_bool(); after = d.remaining();
+    EXPECT_EQ(before - after, 1u);  // bool = 1 byte
+
+    before = d.remaining(); d.read_string(); after = d.remaining();
+    // string "test": 4 bytes for length prefix + 4 bytes for content = 8
+    EXPECT_EQ(before - after, 8u);
+
+    before = d.remaining(); d.read_bytes(); after = d.remaining();
+    // bytes "xy": 4 bytes for length prefix + 2 bytes for content = 6
+    EXPECT_EQ(before - after, 6u);
+
+    EXPECT_EQ(after, 0u);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, MultipleDeserializersFromSameBufferV124) {
+    // Serialize data once, then create multiple independent Deserializer
+    // instances from the same buffer and verify they can all read
+    // independently without interfering with each other.
+    Serializer s;
+    s.write_u32(0x11111111u);
+    s.write_string("shared");
+    s.write_f64(-0.5);
+    s.write_bool(true);
+    s.write_i64(9999999999LL);
+
+    const auto& buf = s.data();
+
+    // Create three independent deserializers from the same buffer
+    Deserializer d1(buf);
+    Deserializer d2(buf);
+    Deserializer d3(buf);
+
+    // Read in different orders / partial reads to verify independence
+    // d1: read everything in order
+    EXPECT_EQ(d1.read_u32(), 0x11111111u);
+    EXPECT_EQ(d1.read_string(), "shared");
+
+    // d2: also start reading - should be independent of d1's state
+    EXPECT_EQ(d2.read_u32(), 0x11111111u);
+
+    // d1: continue
+    EXPECT_DOUBLE_EQ(d1.read_f64(), -0.5);
+    EXPECT_EQ(d1.read_bool(), true);
+    EXPECT_EQ(d1.read_i64(), 9999999999LL);
+    EXPECT_FALSE(d1.has_remaining());
+
+    // d2: continue independently - d1 being exhausted doesn't affect d2
+    EXPECT_TRUE(d2.has_remaining());
+    EXPECT_EQ(d2.read_string(), "shared");
+    EXPECT_DOUBLE_EQ(d2.read_f64(), -0.5);
+    EXPECT_EQ(d2.read_bool(), true);
+    EXPECT_EQ(d2.read_i64(), 9999999999LL);
+    EXPECT_FALSE(d2.has_remaining());
+
+    // d3: read all at once at the end - completely independent
+    EXPECT_EQ(d3.remaining(), buf.size());
+    EXPECT_EQ(d3.read_u32(), 0x11111111u);
+    EXPECT_EQ(d3.read_string(), "shared");
+    EXPECT_DOUBLE_EQ(d3.read_f64(), -0.5);
+    EXPECT_EQ(d3.read_bool(), true);
+    EXPECT_EQ(d3.read_i64(), 9999999999LL);
+    EXPECT_FALSE(d3.has_remaining());
+}

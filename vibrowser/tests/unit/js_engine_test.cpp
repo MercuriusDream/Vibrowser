@@ -33112,3 +33112,346 @@ TEST(JsEngineTest, JSONStringifyReplacerReviverToJSONV123) {
     EXPECT_EQ(result, R"({"a":1,"b":[2,3],"c":{"d":true}}|{"b":[null,null],"c":{"d":true}}|{"x":1,"z":3}|true|"2026-02"|115|number|{"a":null,"b":null})");
 }
 
+// V124-1. Recursive mutual functions (isEven/isOdd) and trampolining
+TEST(JsEngineTest, MutualRecursionTrampolineV124) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var r = [];
+        // Mutual recursion: isEven calls isOdd and vice versa
+        function isEven(n) { return n === 0 ? true : isOdd(n - 1); }
+        function isOdd(n) { return n === 0 ? false : isEven(n - 1); }
+        r.push(isEven(0));
+        r.push(isEven(1));
+        r.push(isEven(10));
+        r.push(isOdd(7));
+        r.push(isOdd(100));
+        // Trampoline pattern to avoid stack overflow for larger values
+        function trampoline(fn) {
+            var result = fn;
+            while (typeof result === "function") result = result();
+            return result;
+        }
+        function tIsEven(n) {
+            if (n === 0) return true;
+            return function() { return tIsOdd(n - 1); };
+        }
+        function tIsOdd(n) {
+            if (n === 0) return false;
+            return function() { return tIsEven(n - 1); };
+        }
+        r.push(trampoline(function() { return tIsEven(5000); }));
+        r.push(trampoline(function() { return tIsOdd(4999); }));
+        r.push(trampoline(function() { return tIsOdd(5000); }));
+        r.join("|");
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true|false|true|true|false|true|true|false");
+}
+
+// V124-2. Map and Set interplay: building a frequency map with chaining
+TEST(JsEngineTest, MapSetFrequencyAnalysisV124) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var r = [];
+        var words = "the cat sat on the mat the cat".split(" ");
+        // Build frequency map
+        var freq = new Map();
+        words.forEach(function(w) { freq.set(w, (freq.get(w) || 0) + 1); });
+        r.push(freq.get("the"));
+        r.push(freq.get("cat"));
+        r.push(freq.get("sat"));
+        r.push(freq.get("on"));
+        r.push(freq.get("mat"));
+        r.push(freq.size);
+        // Unique words via Set
+        var unique = new Set(words);
+        r.push(unique.size);
+        // Convert Map entries to sorted key-value pairs
+        var entries = Array.from(freq.entries());
+        entries.sort(function(a, b) { return b[1] - a[1] || a[0].localeCompare(b[0]); });
+        r.push(entries.map(function(e) { return e[0] + ":" + e[1]; }).join(","));
+        // Set operations via filter
+        var s1 = new Set([1, 2, 3, 4, 5]);
+        var s2 = new Set([3, 4, 5, 6, 7]);
+        var intersection = new Set(Array.from(s1).filter(function(x) { return s2.has(x); }));
+        var diff = new Set(Array.from(s1).filter(function(x) { return !s2.has(x); }));
+        r.push(Array.from(intersection).join(","));
+        r.push(Array.from(diff).join(","));
+        r.join("|");
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "3|2|1|1|1|5|5|the:3,cat:2,mat:1,on:1,sat:1|3,4,5|1,2");
+}
+
+// V124-3. Currying, partial application, and function composition
+TEST(JsEngineTest, CurryingPartialApplicationComposeV124) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var r = [];
+        // Manual curry for 3-argument function
+        function curry3(fn) {
+            return function(a) {
+                return function(b) {
+                    return function(c) {
+                        return fn(a, b, c);
+                    };
+                };
+            };
+        }
+        var add3 = curry3(function(a, b, c) { return a + b + c; });
+        r.push(add3(1)(2)(3));
+        // Partial application
+        var add10 = add3(10);
+        var add10and20 = add10(20);
+        r.push(add10and20(5));
+        // Function composition: compose(f, g)(x) = f(g(x))
+        function compose() {
+            var fns = Array.from(arguments);
+            return function(x) {
+                return fns.reduceRight(function(acc, fn) { return fn(acc); }, x);
+            };
+        }
+        var double_ = function(n) { return n * 2; };
+        var inc = function(n) { return n + 1; };
+        var square = function(n) { return n * n; };
+        var transform = compose(square, inc, double_);
+        // double(3)=6, inc(6)=7, square(7)=49
+        r.push(transform(3));
+        // Pipe (left-to-right composition)
+        function pipe() {
+            var fns = Array.from(arguments);
+            return function(x) {
+                return fns.reduce(function(acc, fn) { return fn(acc); }, x);
+            };
+        }
+        var pipeline = pipe(double_, inc, square);
+        // double(3)=6, inc(6)=7, square(7)=49
+        r.push(pipeline(3));
+        // Different order in pipe
+        var pipeline2 = pipe(inc, double_, square);
+        // inc(3)=4, double(4)=8, square(8)=64
+        r.push(pipeline2(3));
+        r.join("|");
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "6|35|49|49|64");
+}
+
+// V124-4. Array sorting stability, custom comparators, and sort-by-multiple-keys
+TEST(JsEngineTest, ArraySortStabilityMultiKeyV124) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var r = [];
+        // Sort array of objects by multiple keys
+        var students = [
+            {name: "Alice", grade: 90},
+            {name: "Bob", grade: 85},
+            {name: "Charlie", grade: 90},
+            {name: "Dave", grade: 85},
+            {name: "Eve", grade: 95}
+        ];
+        // Sort by grade descending, then name ascending
+        students.sort(function(a, b) {
+            if (a.grade !== b.grade) return b.grade - a.grade;
+            return a.name.localeCompare(b.name);
+        });
+        r.push(students.map(function(s) { return s.name; }).join(","));
+        // Sort numbers: default vs numeric
+        var nums = [10, 9, 2, 100, 20, 1];
+        // Default (lexicographic) sort
+        var lexSorted = nums.slice().sort();
+        r.push(lexSorted.join(","));
+        // Numeric sort
+        var numSorted = nums.slice().sort(function(a, b) { return a - b; });
+        r.push(numSorted.join(","));
+        // Reverse sort
+        var revSorted = nums.slice().sort(function(a, b) { return b - a; });
+        r.push(revSorted.join(","));
+        // Sort stability: elements with equal keys retain relative order
+        var items = [];
+        for (var i = 0; i < 8; i++) items.push({key: i % 3, idx: i});
+        items.sort(function(a, b) { return a.key - b.key; });
+        r.push(items.map(function(it) { return it.key + ":" + it.idx; }).join(","));
+        r.join("|");
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "Eve,Alice,Charlie,Bob,Dave|1,10,100,2,20,9|1,2,9,10,20,100|100,20,10,9,2,1|0:0,0:3,0:6,1:1,1:4,1:7,2:2,2:5");
+}
+
+// V124-5. String methods: repeat, includes, startsWith, endsWith, indexOf chains
+TEST(JsEngineTest, StringMethodsChainingAndSearchV124) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var r = [];
+        // repeat
+        r.push("ab".repeat(4));
+        r.push("x".repeat(0));
+        // includes with position
+        var s = "Hello, World!";
+        r.push(s.includes("World"));
+        r.push(s.includes("Hello", 1));
+        // startsWith / endsWith
+        r.push(s.startsWith("Hello"));
+        r.push(s.startsWith("World", 7));
+        r.push(s.endsWith("!"));
+        r.push(s.endsWith("World", 12));
+        // indexOf / lastIndexOf
+        var rep = "abcabcabc";
+        r.push(rep.indexOf("abc"));
+        r.push(rep.indexOf("abc", 1));
+        r.push(rep.lastIndexOf("abc"));
+        r.push(rep.lastIndexOf("abc", 5));
+        // Chaining slice, split, join, toUpperCase
+        var csv = "name,age,city";
+        var upper = csv.split(",").map(function(x) { return x.toUpperCase(); }).join(" | ");
+        r.push(upper);
+        // search with regex
+        r.push("foo123bar".search(/[0-9]+/));
+        r.join("|");
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "abababab||true|false|true|true|true|true|0|3|6|3|NAME | AGE | CITY|3");
+}
+
+// V124-6. Closures capturing loop variables with IIFE vs let scoping
+TEST(JsEngineTest, ClosureLoopCaptureIIFEvsLetV124) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var r = [];
+        // Classic closure bug with var
+        var funcsVar = [];
+        for (var i = 0; i < 5; i++) {
+            funcsVar.push(function() { return i; });
+        }
+        // All return 5 (the final value of i)
+        r.push(funcsVar.map(function(f) { return f(); }).join(","));
+        // Fix with IIFE
+        var funcsIIFE = [];
+        for (var j = 0; j < 5; j++) {
+            (function(captured) {
+                funcsIIFE.push(function() { return captured; });
+            })(j);
+        }
+        r.push(funcsIIFE.map(function(f) { return f(); }).join(","));
+        // Fix with let
+        var funcsLet = [];
+        for (let k = 0; k < 5; k++) {
+            funcsLet.push(function() { return k; });
+        }
+        r.push(funcsLet.map(function(f) { return f(); }).join(","));
+        // Nested closure: counter factory
+        function makeCounter(start) {
+            var count = start;
+            return {
+                inc: function() { return ++count; },
+                dec: function() { return --count; },
+                val: function() { return count; }
+            };
+        }
+        var c1 = makeCounter(10);
+        var c2 = makeCounter(100);
+        c1.inc(); c1.inc(); c1.inc();
+        c2.dec();
+        r.push(c1.val());
+        r.push(c2.val());
+        // Closures don't share across instances
+        r.push(c1.val() === c2.val());
+        r.join("|");
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "5,5,5,5,5|0,1,2,3,4|0,1,2,3,4|13|99|false");
+}
+
+// V124-7. Prototype chain manipulation and property lookup traversal
+TEST(JsEngineTest, PrototypeChainLookupAndShadowingV124) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var r = [];
+        // Build a 3-level prototype chain
+        var animal = {type: "animal", speak: function() { return "..."; }};
+        var dog = Object.create(animal);
+        dog.type = "dog";
+        dog.speak = function() { return "woof"; };
+        var puppy = Object.create(dog);
+        puppy.age = 1;
+        // Property lookup traverses chain
+        r.push(puppy.speak());
+        r.push(puppy.type);
+        r.push(puppy.age);
+        // hasOwnProperty distinguishes own vs inherited
+        r.push(puppy.hasOwnProperty("age"));
+        r.push(puppy.hasOwnProperty("type"));
+        r.push(puppy.hasOwnProperty("speak"));
+        // "in" operator checks entire chain
+        r.push("speak" in puppy);
+        r.push("type" in puppy);
+        // getPrototypeOf chain
+        r.push(Object.getPrototypeOf(puppy) === dog);
+        r.push(Object.getPrototypeOf(dog) === animal);
+        // Shadowing: set property on puppy doesn't affect dog
+        puppy.speak = function() { return "yip"; };
+        r.push(puppy.speak());
+        r.push(dog.speak());
+        // Delete reveals inherited property again
+        delete puppy.speak;
+        r.push(puppy.speak());
+        // Constructor-style prototype chain
+        function Shape(sides) { this.sides = sides; }
+        Shape.prototype.describe = function() { return this.sides + " sides"; };
+        function Triangle() { Shape.call(this, 3); }
+        Triangle.prototype = Object.create(Shape.prototype);
+        Triangle.prototype.constructor = Triangle;
+        var t = new Triangle();
+        r.push(t.describe());
+        r.push(t instanceof Triangle);
+        r.push(t instanceof Shape);
+        r.join("|");
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "woof|dog|1|true|false|false|true|true|true|true|yip|woof|woof|3 sides|true|true");
+}
+
+// V124-8. RegExp advanced: exec with lastIndex, groups, and iterative matching
+TEST(JsEngineTest, RegExpExecLastIndexGroupsIterativeV124) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var r = [];
+        // exec with global flag: iterative matching
+        var re = /(\d+)/g;
+        var str = "abc12def345ghi6";
+        var matches = [];
+        var m;
+        while ((m = re.exec(str)) !== null) {
+            matches.push(m[1] + "@" + m.index);
+        }
+        r.push(matches.join(","));
+        // Named capture groups
+        var dateRe = /(?<year>\d{4})-(?<month>\d{2})-(?<day>\d{2})/;
+        var dm = dateRe.exec("Today is 2026-02-28.");
+        r.push(dm.groups.year);
+        r.push(dm.groups.month);
+        r.push(dm.groups.day);
+        r.push(dm.index);
+        // lastIndex behavior with sticky flag
+        var sticky = /\w+/y;
+        sticky.lastIndex = 0;
+        var s1 = sticky.exec("hello world");
+        r.push(s1[0]);
+        r.push(sticky.lastIndex);
+        // Next exec starts at lastIndex=5, which is a space, so no match
+        var s2 = sticky.exec("hello world");
+        r.push(s2 === null);
+        r.push(sticky.lastIndex);
+        // Replace with function
+        var transformed = "3 cats and 5 dogs".replace(/(\d+)\s(\w+)/g, function(match, num, word) {
+            return (Number(num) * 2) + " " + word.toUpperCase();
+        });
+        r.push(transformed);
+        // split with regex
+        r.push("one1two22three333four".split(/\d+/).join("|"));
+        r.join("~");
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "12@3,345@8,6@14~2026~02~28~9~hello~5~true~0~6 CATS and 10 DOGS~one|two|three|four");
+}
+

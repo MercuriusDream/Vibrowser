@@ -19017,3 +19017,256 @@ TEST(DomElement, AttributeOrderPreservedAfterRemoveAndReaddV123) {
     EXPECT_EQ(elem.attributes()[0].value, "email");
     EXPECT_EQ(elem.attributes().size(), 3u);
 }
+
+// ---------------------------------------------------------------------------
+// V124 Tests
+// ---------------------------------------------------------------------------
+
+// 1. Reparenting a subtree: removing a child with its own children and appending
+//    it to a different parent preserves the grandchild hierarchy.
+TEST(DomNode, ReparentSubtreePreservesGrandchildrenV124) {
+    Element root("div");
+    auto subtree = std::make_unique<Element>("section");
+    auto* subtree_raw = subtree.get();
+    subtree->append_child(std::make_unique<Element>("p"));
+    subtree->append_child(std::make_unique<Text>("inner text"));
+    root.append_child(std::move(subtree));
+    EXPECT_EQ(root.child_count(), 1u);
+    EXPECT_EQ(subtree_raw->child_count(), 2u);
+
+    // Remove the subtree from root
+    auto owned = root.remove_child(*subtree_raw);
+    EXPECT_EQ(root.child_count(), 0u);
+    EXPECT_EQ(subtree_raw->parent(), nullptr);
+
+    // Reparent to a new node
+    Element new_parent("article");
+    new_parent.append_child(std::move(owned));
+    EXPECT_EQ(new_parent.child_count(), 1u);
+    auto* reattached = static_cast<Element*>(new_parent.first_child());
+    EXPECT_EQ(reattached->tag_name(), "section");
+    EXPECT_EQ(reattached->child_count(), 2u);
+    EXPECT_EQ(reattached->text_content(), "inner text");
+}
+
+// 2. ClassList toggle on a sequence of different classes then bulk remove:
+//    verify items vector content and order after interleaved operations.
+TEST(DomClassList, InterleavedToggleAndRemoveOrderV124) {
+    Element elem("div");
+    ClassList& cl = elem.class_list();
+
+    // Toggle on: a, b, c, d
+    cl.toggle("alpha");
+    cl.toggle("beta");
+    cl.toggle("gamma");
+    cl.toggle("delta");
+    EXPECT_EQ(cl.length(), 4u);
+
+    // Toggle off beta (middle), then toggle on epsilon
+    cl.toggle("beta");
+    cl.toggle("epsilon");
+    EXPECT_EQ(cl.length(), 4u);
+    EXPECT_FALSE(cl.contains("beta"));
+    EXPECT_TRUE(cl.contains("epsilon"));
+
+    // Check remaining items contain expected classes
+    EXPECT_TRUE(cl.contains("alpha"));
+    EXPECT_TRUE(cl.contains("gamma"));
+    EXPECT_TRUE(cl.contains("delta"));
+    EXPECT_TRUE(cl.contains("epsilon"));
+
+    // Remove all one by one and verify empty
+    cl.remove("alpha");
+    cl.remove("gamma");
+    cl.remove("delta");
+    cl.remove("epsilon");
+    EXPECT_EQ(cl.length(), 0u);
+    EXPECT_EQ(cl.to_string(), "");
+}
+
+// 3. DirtyFlags propagation: marking a grandchild dirty propagates up through
+//    parent and grandparent. Clearing grandchild does NOT clear ancestors.
+TEST(DomNode, DirtyFlagPropagationThreeLevelsAndClearIsolationV124) {
+    Element grandparent("div");
+    auto parent_ptr = std::make_unique<Element>("section");
+    auto* parent_raw = parent_ptr.get();
+    auto child_ptr = std::make_unique<Element>("span");
+    auto* child_raw = child_ptr.get();
+    parent_ptr->append_child(std::move(child_ptr));
+    grandparent.append_child(std::move(parent_ptr));
+
+    // All clean initially
+    EXPECT_EQ(grandparent.dirty_flags(), DirtyFlags::None);
+    EXPECT_EQ(parent_raw->dirty_flags(), DirtyFlags::None);
+    EXPECT_EQ(child_raw->dirty_flags(), DirtyFlags::None);
+
+    // Mark the grandchild dirty for Paint -- should propagate up
+    child_raw->mark_dirty(DirtyFlags::Paint);
+    EXPECT_NE(child_raw->dirty_flags() & DirtyFlags::Paint, DirtyFlags::None);
+    EXPECT_NE(parent_raw->dirty_flags() & DirtyFlags::Paint, DirtyFlags::None);
+    EXPECT_NE(grandparent.dirty_flags() & DirtyFlags::Paint, DirtyFlags::None);
+
+    // Style should NOT be set on any level
+    EXPECT_EQ(child_raw->dirty_flags() & DirtyFlags::Style, DirtyFlags::None);
+    EXPECT_EQ(parent_raw->dirty_flags() & DirtyFlags::Style, DirtyFlags::None);
+    EXPECT_EQ(grandparent.dirty_flags() & DirtyFlags::Style, DirtyFlags::None);
+
+    // Clear grandchild -- ancestors should still be dirty
+    child_raw->clear_dirty();
+    EXPECT_EQ(child_raw->dirty_flags(), DirtyFlags::None);
+    EXPECT_NE(parent_raw->dirty_flags() & DirtyFlags::Paint, DirtyFlags::None);
+    EXPECT_NE(grandparent.dirty_flags() & DirtyFlags::Paint, DirtyFlags::None);
+}
+
+// 4. insert_before into the middle of 4 children and verify full sibling chain
+//    from first to last and back.
+TEST(DomNode, InsertBeforeMiddleOfFourSiblingChainV124) {
+    Element parent("ul");
+    auto li1 = std::make_unique<Element>("li");
+    auto li2 = std::make_unique<Element>("li");
+    auto li3 = std::make_unique<Element>("li");
+    li1->set_attribute("id", "first");
+    li2->set_attribute("id", "second");
+    li3->set_attribute("id", "third");
+    auto* li1_raw = li1.get();
+    auto* li2_raw = li2.get();
+    auto* li3_raw = li3.get();
+    parent.append_child(std::move(li1));
+    parent.append_child(std::move(li2));
+    parent.append_child(std::move(li3));
+
+    // Insert a new node before "second"
+    auto inserted = std::make_unique<Element>("li");
+    inserted->set_attribute("id", "inserted");
+    auto* inserted_raw = inserted.get();
+    parent.insert_before(std::move(inserted), li2_raw);
+
+    EXPECT_EQ(parent.child_count(), 4u);
+
+    // Forward traversal: first -> inserted -> second -> third
+    EXPECT_EQ(parent.first_child(), li1_raw);
+    EXPECT_EQ(li1_raw->next_sibling(), inserted_raw);
+    EXPECT_EQ(inserted_raw->next_sibling(), li2_raw);
+    EXPECT_EQ(li2_raw->next_sibling(), li3_raw);
+    EXPECT_EQ(li3_raw->next_sibling(), nullptr);
+
+    // Backward traversal: third -> second -> inserted -> first
+    EXPECT_EQ(parent.last_child(), li3_raw);
+    EXPECT_EQ(li3_raw->previous_sibling(), li2_raw);
+    EXPECT_EQ(li2_raw->previous_sibling(), inserted_raw);
+    EXPECT_EQ(inserted_raw->previous_sibling(), li1_raw);
+    EXPECT_EQ(li1_raw->previous_sibling(), nullptr);
+}
+
+// 5. text_content() across a mixed tree with Elements, Text nodes, and Comments:
+//    Comments are excluded, nested Text nodes from different depths are concatenated.
+TEST(DomNode, TextContentMixedTreeExcludesCommentsV124) {
+    Element root("div");
+    root.append_child(std::make_unique<Text>("Hello"));
+    root.append_child(std::make_unique<Comment>("should be invisible"));
+
+    auto span = std::make_unique<Element>("span");
+    span->append_child(std::make_unique<Text>(" World"));
+    span->append_child(std::make_unique<Comment>("also invisible"));
+    auto inner = std::make_unique<Element>("em");
+    inner->append_child(std::make_unique<Text>("!"));
+    span->append_child(std::move(inner));
+
+    root.append_child(std::move(span));
+    root.append_child(std::make_unique<Text>(" End"));
+
+    EXPECT_EQ(root.text_content(), "Hello World! End");
+}
+
+// 6. Attribute overwrite does NOT change attribute count and preserves all
+//    other attribute values intact across repeated overwrites.
+TEST(DomElement, RepeatedAttributeOverwriteStabilityV124) {
+    Element elem("input");
+    elem.set_attribute("type", "text");
+    elem.set_attribute("name", "field");
+    elem.set_attribute("value", "v1");
+    EXPECT_EQ(elem.attributes().size(), 3u);
+
+    // Overwrite "value" five times
+    for (int i = 2; i <= 6; ++i) {
+        elem.set_attribute("value", "v" + std::to_string(i));
+        EXPECT_EQ(elem.attributes().size(), 3u);
+    }
+
+    // Final value should be "v6"
+    auto val = elem.get_attribute("value");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(val.value(), "v6");
+
+    // Other attributes untouched
+    EXPECT_EQ(elem.get_attribute("type").value(), "text");
+    EXPECT_EQ(elem.get_attribute("name").value(), "field");
+}
+
+// 7. for_each_child collects text_content from each child independently,
+//    verifying that the callback receives children in insertion order.
+TEST(DomNode, ForEachChildCollectsTextContentInOrderV124) {
+    Element parent("ol");
+    auto li1 = std::make_unique<Element>("li");
+    li1->append_child(std::make_unique<Text>("First"));
+    auto li2 = std::make_unique<Element>("li");
+    li2->append_child(std::make_unique<Text>("Second"));
+    auto li3 = std::make_unique<Element>("li");
+    li3->append_child(std::make_unique<Text>("Third"));
+
+    parent.append_child(std::move(li1));
+    parent.append_child(std::move(li2));
+    parent.append_child(std::move(li3));
+
+    std::vector<std::string> texts;
+    parent.for_each_child([&](const Node& child) {
+        texts.push_back(child.text_content());
+    });
+
+    ASSERT_EQ(texts.size(), 3u);
+    EXPECT_EQ(texts[0], "First");
+    EXPECT_EQ(texts[1], "Second");
+    EXPECT_EQ(texts[2], "Third");
+}
+
+// 8. Building a tree, removing multiple children from the middle, and verifying
+//    that the remaining children have correct sibling pointers and parent refs.
+TEST(DomNode, RemoveMultipleMiddleChildrenSiblingIntegrityV124) {
+    Element parent("table");
+    std::vector<Node*> rows;
+    for (int i = 0; i < 5; ++i) {
+        auto row = std::make_unique<Element>("tr");
+        row->set_attribute("id", "row" + std::to_string(i));
+        rows.push_back(row.get());
+        parent.append_child(std::move(row));
+    }
+    EXPECT_EQ(parent.child_count(), 5u);
+
+    // Remove row1 and row3 (indices 1 and 3)
+    parent.remove_child(*rows[1]);
+    parent.remove_child(*rows[3]);
+    EXPECT_EQ(parent.child_count(), 3u);
+
+    // Remaining: row0, row2, row4
+    auto* first = static_cast<Element*>(parent.first_child());
+    EXPECT_EQ(first->get_attribute("id").value(), "row0");
+    EXPECT_EQ(first->previous_sibling(), nullptr);
+
+    auto* second = static_cast<Element*>(first->next_sibling());
+    EXPECT_EQ(second->get_attribute("id").value(), "row2");
+    EXPECT_EQ(second->previous_sibling(), first);
+
+    auto* third = static_cast<Element*>(second->next_sibling());
+    EXPECT_EQ(third->get_attribute("id").value(), "row4");
+    EXPECT_EQ(third->previous_sibling(), second);
+    EXPECT_EQ(third->next_sibling(), nullptr);
+
+    // All remaining children have parent set
+    EXPECT_EQ(first->parent(), &parent);
+    EXPECT_EQ(second->parent(), &parent);
+    EXPECT_EQ(third->parent(), &parent);
+
+    // Removed nodes have null parent
+    EXPECT_EQ(rows[1]->parent(), nullptr);
+    EXPECT_EQ(rows[3]->parent(), nullptr);
+}

@@ -23802,3 +23802,330 @@ TEST(ComputedStyleTest, TextShadowMultipleEntriesAndBoxShadowInsetMixV123) {
     EXPECT_TRUE(s.text_shadows.empty());
     EXPECT_EQ(s.box_shadows.size(), 2u); // box shadows untouched
 }
+
+TEST(ComputedStyleTest, TransitionDefsBezierAndStepsCoexistV124) {
+    // Verify that two TransitionDefs with different timing function types
+    // (cubic-bezier vs steps) can coexist in the same ComputedStyle and
+    // their fields are independently addressable.
+    ComputedStyle s;
+    EXPECT_TRUE(s.transitions.empty());
+
+    TransitionDef bezier_td;
+    bezier_td.property = "opacity";
+    bezier_td.duration_ms = 300;
+    bezier_td.delay_ms = 50;
+    bezier_td.timing_function = 5; // cubic-bezier
+    bezier_td.bezier_x1 = 0.42f;
+    bezier_td.bezier_y1 = 0.0f;
+    bezier_td.bezier_x2 = 0.58f;
+    bezier_td.bezier_y2 = 1.0f;
+
+    TransitionDef steps_td;
+    steps_td.property = "transform";
+    steps_td.duration_ms = 600;
+    steps_td.delay_ms = 0;
+    steps_td.timing_function = 6; // steps-end
+    steps_td.steps_count = 5;
+
+    s.transitions = {bezier_td, steps_td};
+    EXPECT_EQ(s.transitions.size(), 2u);
+
+    // Bezier transition
+    EXPECT_EQ(s.transitions[0].property, "opacity");
+    EXPECT_FLOAT_EQ(s.transitions[0].duration_ms, 300.0f);
+    EXPECT_FLOAT_EQ(s.transitions[0].delay_ms, 50.0f);
+    EXPECT_EQ(s.transitions[0].timing_function, 5);
+    EXPECT_FLOAT_EQ(s.transitions[0].bezier_x1, 0.42f);
+    EXPECT_FLOAT_EQ(s.transitions[0].bezier_y2, 1.0f);
+
+    // Steps transition
+    EXPECT_EQ(s.transitions[1].property, "transform");
+    EXPECT_FLOAT_EQ(s.transitions[1].duration_ms, 600.0f);
+    EXPECT_EQ(s.transitions[1].timing_function, 6);
+    EXPECT_EQ(s.transitions[1].steps_count, 5);
+
+    // Modifying one transition does not affect the other
+    s.transitions[0].duration_ms = 1000;
+    EXPECT_FLOAT_EQ(s.transitions[1].duration_ms, 600.0f);
+}
+
+TEST(ComputedStyleTest, GradientStopsSortAndPositionRangeV124) {
+    // Test gradient stops storage: multiple stops with varying positions
+    // including edge positions 0.0 and 1.0, and verify ordering is preserved.
+    ComputedStyle s;
+    EXPECT_EQ(s.gradient_type, 0);
+    EXPECT_TRUE(s.gradient_stops.empty());
+
+    s.gradient_type = 1; // linear
+    s.gradient_angle = 45.0f;
+
+    // Add 5 stops: start, quarter, mid, three-quarter, end
+    s.gradient_stops.push_back({0xFFFF0000, 0.0f});   // red at 0%
+    s.gradient_stops.push_back({0xFFFFFF00, 0.25f});  // yellow at 25%
+    s.gradient_stops.push_back({0xFF00FF00, 0.5f});   // green at 50%
+    s.gradient_stops.push_back({0xFF0000FF, 0.75f});  // blue at 75%
+    s.gradient_stops.push_back({0xFFFF00FF, 1.0f});   // magenta at 100%
+
+    EXPECT_EQ(s.gradient_stops.size(), 5u);
+    EXPECT_FLOAT_EQ(s.gradient_angle, 45.0f);
+
+    // Verify positions are in expected order and ARGB values are intact
+    EXPECT_FLOAT_EQ(s.gradient_stops[0].second, 0.0f);
+    EXPECT_EQ(s.gradient_stops[0].first, 0xFFFF0000u);
+    EXPECT_FLOAT_EQ(s.gradient_stops[2].second, 0.5f);
+    EXPECT_EQ(s.gradient_stops[2].first, 0xFF00FF00u);
+    EXPECT_FLOAT_EQ(s.gradient_stops[4].second, 1.0f);
+    EXPECT_EQ(s.gradient_stops[4].first, 0xFFFF00FFu);
+
+    // Switching to radial preserves stops
+    s.gradient_type = 2; // radial
+    s.radial_shape = 1;  // circle
+    EXPECT_EQ(s.gradient_stops.size(), 5u);
+    EXPECT_EQ(s.radial_shape, 1);
+}
+
+TEST(ComputedStyleTest, ClipPathPolygonValuesAndShapeOutsideInsetV124) {
+    // Combine clip-path polygon with shape-outside inset and verify
+    // both value arrays are independently stored.
+    ComputedStyle s;
+    EXPECT_EQ(s.clip_path_type, 0);   // none
+    EXPECT_EQ(s.shape_outside_type, 0); // none
+
+    // Set clip-path as a polygon: triangle
+    s.clip_path_type = 4; // polygon
+    s.clip_path_values = {50.0f, 0.0f, 100.0f, 100.0f, 0.0f, 100.0f};
+    EXPECT_EQ(s.clip_path_values.size(), 6u);
+    EXPECT_FLOAT_EQ(s.clip_path_values[0], 50.0f); // first x
+    EXPECT_FLOAT_EQ(s.clip_path_values[5], 100.0f); // last y
+
+    // Set shape-outside as inset: top, right, bottom, left
+    s.shape_outside_type = 3; // inset
+    s.shape_outside_values = {10.0f, 20.0f, 10.0f, 20.0f};
+    EXPECT_EQ(s.shape_outside_values.size(), 4u);
+    EXPECT_FLOAT_EQ(s.shape_outside_values[1], 20.0f);
+
+    // Clip path values not disturbed by shape-outside writes
+    EXPECT_EQ(s.clip_path_values.size(), 6u);
+    EXPECT_FLOAT_EQ(s.clip_path_values[2], 100.0f);
+
+    // Clearing shape-outside doesn't affect clip-path
+    s.shape_outside_type = 0;
+    s.shape_outside_values.clear();
+    EXPECT_EQ(s.clip_path_type, 4);
+    EXPECT_EQ(s.clip_path_values.size(), 6u);
+}
+
+TEST(ComputedStyleTest, AnimationPropertiesFullConfigV124) {
+    // Configure all animation-related fields to non-default values and
+    // verify each one is independently readable.
+    ComputedStyle s;
+
+    // Defaults
+    EXPECT_EQ(s.animation_name, "");
+    EXPECT_FLOAT_EQ(s.animation_duration, 0.0f);
+    EXPECT_FLOAT_EQ(s.animation_iteration_count, 1.0f);
+    EXPECT_EQ(s.animation_direction, 0);
+    EXPECT_EQ(s.animation_fill_mode, 0);
+    EXPECT_EQ(s.animation_play_state, 0);
+    EXPECT_EQ(s.animation_composition, 0);
+    EXPECT_EQ(s.animation_timeline, "auto");
+    EXPECT_EQ(s.animation_range, "normal");
+
+    // Set to non-defaults
+    s.animation_name = "bounce";
+    s.animation_duration = 2.5f;
+    s.animation_timing = 5; // cubic-bezier
+    s.animation_bezier_x1 = 0.25f;
+    s.animation_bezier_y1 = 0.1f;
+    s.animation_bezier_x2 = 0.25f;
+    s.animation_bezier_y2 = 1.0f;
+    s.animation_delay = 0.5f;
+    s.animation_iteration_count = -1.0f; // infinite
+    s.animation_direction = 2; // alternate
+    s.animation_fill_mode = 3; // both
+    s.animation_play_state = 1; // paused
+    s.animation_composition = 2; // accumulate
+    s.animation_timeline = "scroll()";
+    s.animation_range = "entry 10% exit 90%";
+
+    EXPECT_EQ(s.animation_name, "bounce");
+    EXPECT_FLOAT_EQ(s.animation_duration, 2.5f);
+    EXPECT_EQ(s.animation_timing, 5);
+    EXPECT_FLOAT_EQ(s.animation_bezier_x1, 0.25f);
+    EXPECT_FLOAT_EQ(s.animation_bezier_y2, 1.0f);
+    EXPECT_FLOAT_EQ(s.animation_delay, 0.5f);
+    EXPECT_FLOAT_EQ(s.animation_iteration_count, -1.0f);
+    EXPECT_EQ(s.animation_direction, 2);
+    EXPECT_EQ(s.animation_fill_mode, 3);
+    EXPECT_EQ(s.animation_play_state, 1);
+    EXPECT_EQ(s.animation_composition, 2);
+    EXPECT_EQ(s.animation_timeline, "scroll()");
+    EXPECT_EQ(s.animation_range, "entry 10% exit 90%");
+}
+
+TEST(ComputedStyleTest, EdgeSizesMarginPaddingMixedUnitsV124) {
+    // Set margin and padding using different Length unit types per side,
+    // then verify to_px() with given parent and root context produces
+    // correct values.
+    ComputedStyle s;
+    float parent_fs = 20.0f;
+    float root_fs = 16.0f;
+
+    // Margin: top=px, right=em, bottom=rem, left=percent
+    s.margin.top = Length::px(10);
+    s.margin.right = Length::em(1.5f);     // 1.5 * 20 = 30
+    s.margin.bottom = Length::rem(2.0f);   // 2 * 16 = 32
+    s.margin.left = Length::percent(25.0f); // 25% of parent=20 => 5
+
+    EXPECT_FLOAT_EQ(s.margin.top.to_px(parent_fs, root_fs), 10.0f);
+    EXPECT_FLOAT_EQ(s.margin.right.to_px(parent_fs, root_fs), 30.0f);
+    EXPECT_FLOAT_EQ(s.margin.bottom.to_px(parent_fs, root_fs), 32.0f);
+    EXPECT_FLOAT_EQ(s.margin.left.to_px(parent_fs, root_fs), 5.0f);
+
+    // Padding: top=zero, right=auto (is_auto check), bottom=ch, left=px
+    s.padding.top = Length::zero();
+    s.padding.right = Length::auto_val();
+    s.padding.bottom = Length::ch(3.0f);
+    s.padding.left = Length::px(8);
+
+    EXPECT_TRUE(s.padding.top.is_zero());
+    EXPECT_TRUE(s.padding.right.is_auto());
+    EXPECT_FALSE(s.padding.bottom.is_auto());
+    EXPECT_FALSE(s.padding.bottom.is_zero());
+    EXPECT_FLOAT_EQ(s.padding.left.to_px(), 8.0f);
+}
+
+TEST(ComputedStyleTest, BorderEdgesAllSidesDifferentStylesAndColorsV124) {
+    // Set all four border edges with distinct widths, styles, and colors,
+    // then verify each is independent. Uses color struct comparison operator.
+    ComputedStyle s;
+
+    s.border_top.width = Length::px(1);
+    s.border_top.style = BorderStyle::Solid;
+    s.border_top.color = {255, 0, 0, 255}; // red
+
+    s.border_right.width = Length::px(2);
+    s.border_right.style = BorderStyle::Dashed;
+    s.border_right.color = {0, 128, 0, 255}; // green
+
+    s.border_bottom.width = Length::px(3);
+    s.border_bottom.style = BorderStyle::Dotted;
+    s.border_bottom.color = {0, 0, 255, 200}; // semi-transparent blue
+
+    s.border_left.width = Length::px(4);
+    s.border_left.style = BorderStyle::Double;
+    s.border_left.color = {128, 128, 128, 255}; // gray
+
+    // Widths
+    EXPECT_FLOAT_EQ(s.border_top.width.to_px(), 1.0f);
+    EXPECT_FLOAT_EQ(s.border_right.width.to_px(), 2.0f);
+    EXPECT_FLOAT_EQ(s.border_bottom.width.to_px(), 3.0f);
+    EXPECT_FLOAT_EQ(s.border_left.width.to_px(), 4.0f);
+
+    // Styles all different
+    EXPECT_EQ(s.border_top.style, BorderStyle::Solid);
+    EXPECT_EQ(s.border_right.style, BorderStyle::Dashed);
+    EXPECT_EQ(s.border_bottom.style, BorderStyle::Dotted);
+    EXPECT_EQ(s.border_left.style, BorderStyle::Double);
+
+    // Colors all different (verify via operator==)
+    EXPECT_TRUE(s.border_top.color == (Color{255, 0, 0, 255}));
+    EXPECT_TRUE(s.border_right.color != s.border_top.color);
+    EXPECT_EQ(s.border_bottom.color.a, 200); // semi-transparent
+    EXPECT_EQ(s.border_left.color.r, 128);
+    EXPECT_EQ(s.border_left.color.g, 128);
+
+    // Modifying one doesn't affect others
+    s.border_top.color = Color::white();
+    EXPECT_EQ(s.border_right.color.g, 128); // unchanged
+}
+
+TEST(ComputedStyleTest, ScrollbarAndOverscrollCombinedConfigV124) {
+    // Combine scrollbar-width, scrollbar-gutter, scrollbar-color,
+    // scroll-snap, and overscroll-behavior into one comprehensive test
+    // verifying all fields can be set independently.
+    ComputedStyle s;
+
+    // Defaults
+    EXPECT_EQ(s.scrollbar_width, 0); // auto
+    EXPECT_EQ(s.scrollbar_gutter, 0); // auto
+    EXPECT_EQ(s.scrollbar_thumb_color, 0u);
+    EXPECT_EQ(s.scrollbar_track_color, 0u);
+    EXPECT_EQ(s.scroll_behavior, 0);
+    EXPECT_EQ(s.scroll_snap_stop, 0);
+    EXPECT_EQ(s.overscroll_behavior, 0);
+
+    // Set scrollbar properties
+    s.scrollbar_width = 1; // thin
+    s.scrollbar_gutter = 2; // stable both-edges
+    s.scrollbar_thumb_color = 0xFF333333;
+    s.scrollbar_track_color = 0xFFEEEEEE;
+
+    // Set scroll snap
+    s.scroll_snap_type = "y mandatory";
+    s.scroll_snap_align = "center";
+    s.scroll_snap_stop = 1; // always
+    s.scroll_behavior = 1; // smooth
+
+    // Set overscroll behavior
+    s.overscroll_behavior = 1; // contain
+    s.overscroll_behavior_x = 2; // none
+    s.overscroll_behavior_y = 0; // auto
+
+    // Scroll margins and padding
+    s.scroll_margin_top = 10.0f;
+    s.scroll_margin_bottom = 20.0f;
+    s.scroll_padding_left = 15.0f;
+    s.scroll_padding_right = 15.0f;
+
+    // Verify all
+    EXPECT_EQ(s.scrollbar_width, 1);
+    EXPECT_EQ(s.scrollbar_gutter, 2);
+    EXPECT_EQ(s.scrollbar_thumb_color, 0xFF333333u);
+    EXPECT_EQ(s.scrollbar_track_color, 0xFFEEEEEEu);
+    EXPECT_EQ(s.scroll_snap_type, "y mandatory");
+    EXPECT_EQ(s.scroll_snap_align, "center");
+    EXPECT_EQ(s.scroll_snap_stop, 1);
+    EXPECT_EQ(s.scroll_behavior, 1);
+    EXPECT_EQ(s.overscroll_behavior, 1);
+    EXPECT_EQ(s.overscroll_behavior_x, 2);
+    EXPECT_EQ(s.overscroll_behavior_y, 0);
+    EXPECT_FLOAT_EQ(s.scroll_margin_top, 10.0f);
+    EXPECT_FLOAT_EQ(s.scroll_margin_bottom, 20.0f);
+    EXPECT_FLOAT_EQ(s.scroll_padding_left, 15.0f);
+    EXPECT_FLOAT_EQ(s.scroll_padding_right, 15.0f);
+}
+
+TEST(ComputedStyleTest, CalcExprDivMulNestedWithUnitsV124) {
+    // Build a calc expression: calc((100px - 2em) * 0.5) with parent=16,
+    // root=16. Expected: (100 - 32) * 0.5 = 34.
+    // Also test division: calc(200px / 4) = 50.
+    float parent_fs = 16.0f;
+    float root_fs = 16.0f;
+
+    // calc(100px - 2em) => 100 - 2*16 = 68
+    auto px100 = CalcExpr::make_value(Length::px(100));
+    auto em2 = CalcExpr::make_value(Length::em(2));
+    auto sub_expr = CalcExpr::make_binary(CalcExpr::Op::Sub, px100, em2);
+    EXPECT_FLOAT_EQ(sub_expr->evaluate(parent_fs, root_fs), 68.0f);
+
+    // calc((100px - 2em) * 0.5) => 68 * 0.5 = 34
+    auto half = CalcExpr::make_value(Length::px(0.5f));
+    auto mul_expr = CalcExpr::make_binary(CalcExpr::Op::Mul, sub_expr, half);
+    EXPECT_FLOAT_EQ(mul_expr->evaluate(parent_fs, root_fs), 34.0f);
+
+    // calc(200px / 4) => 50
+    auto px200 = CalcExpr::make_value(Length::px(200));
+    auto four = CalcExpr::make_value(Length::px(4));
+    auto div_expr = CalcExpr::make_binary(CalcExpr::Op::Div, px200, four);
+    EXPECT_FLOAT_EQ(div_expr->evaluate(parent_fs, root_fs), 50.0f);
+
+    // Nested: calc(max(calc(200px / 4), calc((100px - 2em) * 0.5)))
+    // = max(50, 34) = 50
+    auto nested_max = CalcExpr::make_binary(CalcExpr::Op::Max, div_expr, mul_expr);
+    EXPECT_FLOAT_EQ(nested_max->evaluate(parent_fs, root_fs), 50.0f);
+
+    // And min of same => 34
+    auto nested_min = CalcExpr::make_binary(CalcExpr::Op::Min, div_expr, mul_expr);
+    EXPECT_FLOAT_EQ(nested_min->evaluate(parent_fs, root_fs), 34.0f);
+}

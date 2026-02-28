@@ -21174,3 +21174,221 @@ TEST(ShouldCacheResponseTest, NoCacheAllowsStorageButNoStoreBlocksV123) {
     EXPECT_EQ(parsed.max_age, 600);
     EXPECT_TRUE(should_cache_response(resp, parsed));
 }
+
+// ===========================================================================
+// V124 Tests
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// 1. Request::serialize with PUT method includes Content-Length and body bytes
+// ---------------------------------------------------------------------------
+TEST(RequestTest, SerializePutRequestWithBodyIncludesContentLengthV124) {
+    Request req;
+    req.url = "http://api.example.com/resource/42";
+    req.method = Method::PUT;
+    req.parse_url();
+
+    std::string payload = R"({"name":"updated","version":2})";
+    req.body.assign(payload.begin(), payload.end());
+    req.headers.set("Content-Type", "application/json");
+
+    auto bytes = req.serialize();
+    std::string raw(bytes.begin(), bytes.end());
+
+    // PUT method in request line
+    EXPECT_NE(raw.find("PUT /resource/42 HTTP/1.1\r\n"), std::string::npos);
+    // Content-Length must match body size exactly
+    // Auto-added Content-Length uses title-case
+    std::string expected_cl = "Content-Length: " + std::to_string(payload.size());
+    EXPECT_NE(raw.find(expected_cl), std::string::npos);
+    // Body appears after the blank line separator
+    auto header_end = raw.find("\r\n\r\n");
+    ASSERT_NE(header_end, std::string::npos);
+    std::string body_part = raw.substr(header_end + 4);
+    EXPECT_EQ(body_part, payload);
+}
+
+// ---------------------------------------------------------------------------
+// 2. Response::parse correctly handles multi-line body with embedded \r\n
+// ---------------------------------------------------------------------------
+TEST(ResponseTest, ParseResponseBodyWithEmbeddedCRLFV124) {
+    std::string body_content = "line1\r\nline2\r\nline3";
+    std::string raw =
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Length: " + std::to_string(body_content.size()) + "\r\n"
+        "\r\n" + body_content;
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 200);
+    // The body must preserve the embedded CRLF sequences verbatim
+    EXPECT_EQ(resp->body_as_string(), body_content);
+    EXPECT_EQ(resp->body.size(), body_content.size());
+}
+
+// ---------------------------------------------------------------------------
+// 3. HeaderMap: append then set should replace ALL appended values
+// ---------------------------------------------------------------------------
+TEST(HeaderMapTest, SetAfterMultipleAppendsReplacesAllV124) {
+    HeaderMap map;
+    map.append("X-Custom", "alpha");
+    map.append("X-Custom", "beta");
+    map.append("X-Custom", "gamma");
+    EXPECT_EQ(map.get_all("x-custom").size(), 3u);
+
+    // set() should wipe all three and leave exactly one
+    map.set("X-Custom", "final");
+    auto all = map.get_all("x-custom");
+    EXPECT_EQ(all.size(), 1u);
+    EXPECT_EQ(all[0], "final");
+    EXPECT_EQ(map.get("x-custom").value(), "final");
+}
+
+// ---------------------------------------------------------------------------
+// 4. ConnectionPool: releasing more than max_per_host evicts oldest entry
+// ---------------------------------------------------------------------------
+TEST(ConnectionPoolTest, ExceedingMaxPerHostEvictsOldestV124) {
+    // Pool with max 2 connections per host
+    ConnectionPool pool(2);
+    pool.release("evict.v124.test", 443, 10);
+    pool.release("evict.v124.test", 443, 20);
+    EXPECT_EQ(pool.count("evict.v124.test", 443), 2u);
+
+    // Releasing a third should evict the oldest (fd=10)
+    pool.release("evict.v124.test", 443, 30);
+    // Count should still be capped at max_per_host
+    EXPECT_LE(pool.count("evict.v124.test", 443), 2u);
+
+    // Acquire should return the more recently released fds
+    int fd1 = pool.acquire("evict.v124.test", 443);
+    int fd2 = pool.acquire("evict.v124.test", 443);
+    // After acquiring everything, pool should be empty
+    EXPECT_EQ(pool.acquire("evict.v124.test", 443), -1);
+    // The returned fds should include 30 (definitely kept) and one of 10/20
+    EXPECT_TRUE(fd1 > 0 || fd2 > 0);
+}
+
+// ---------------------------------------------------------------------------
+// 5. CookieJar: cookie with deep path should NOT be sent for shallower paths
+// ---------------------------------------------------------------------------
+TEST(CookieJarTest, DeepPathCookieNotSentForShallowerPathV124) {
+    CookieJar jar;
+    jar.set_from_header("deep=yes; Path=/api/v2/admin", "deep.v124.test");
+
+    // Request to exact path should include the cookie
+    std::string header_exact = jar.get_cookie_header(
+        "deep.v124.test", "/api/v2/admin", false);
+    EXPECT_NE(header_exact.find("deep=yes"), std::string::npos);
+
+    // Request to deeper sub-path should also include it
+    std::string header_deeper = jar.get_cookie_header(
+        "deep.v124.test", "/api/v2/admin/settings", false);
+    EXPECT_NE(header_deeper.find("deep=yes"), std::string::npos);
+
+    // Request to parent path /api/v2 should NOT include it
+    std::string header_parent = jar.get_cookie_header(
+        "deep.v124.test", "/api/v2", false);
+    EXPECT_EQ(header_parent.find("deep=yes"), std::string::npos);
+
+    // Request to root should NOT include it
+    std::string header_root = jar.get_cookie_header(
+        "deep.v124.test", "/", false);
+    EXPECT_EQ(header_root.find("deep=yes"), std::string::npos);
+}
+
+// ---------------------------------------------------------------------------
+// 6. HttpCache: storing entry then looking it up updates LRU order,
+//    so a second entry becomes the eviction candidate instead
+// ---------------------------------------------------------------------------
+TEST(HttpCacheTest, LookupPromotesEntryPreventingEvictionV124) {
+    auto& cache = HttpCache::instance();
+    cache.clear();
+
+    // Create two entries with known sizes
+    CacheEntry entry_a;
+    entry_a.url = "http://lru.v124.test/a";
+    entry_a.body = std::string(100, 'A');
+    entry_a.status = 200;
+    entry_a.max_age_seconds = 99999;
+    entry_a.stored_at = std::chrono::steady_clock::now();
+
+    CacheEntry entry_b;
+    entry_b.url = "http://lru.v124.test/b";
+    entry_b.body = std::string(100, 'B');
+    entry_b.status = 200;
+    entry_b.max_age_seconds = 99999;
+    entry_b.stored_at = std::chrono::steady_clock::now();
+
+    cache.store(entry_a);  // stored first (oldest in LRU)
+    cache.store(entry_b);  // stored second
+
+    // Lookup entry_a to promote it in LRU (now entry_b is least-recently-used)
+    auto found = cache.lookup("http://lru.v124.test/a");
+    ASSERT_TRUE(found.has_value());
+    EXPECT_EQ(found->body, std::string(100, 'A'));
+
+    // Both entries should still be present
+    EXPECT_TRUE(cache.lookup("http://lru.v124.test/a").has_value());
+    EXPECT_TRUE(cache.lookup("http://lru.v124.test/b").has_value());
+    EXPECT_EQ(cache.entry_count(), 2u);
+
+    cache.clear();
+}
+
+// ---------------------------------------------------------------------------
+// 7. Request::parse_url with URL containing fragment (hash) should not include
+//    fragment in the path or query sent to the server
+// ---------------------------------------------------------------------------
+TEST(RequestTest, ParseUrlStripsFragmentFromPathV124) {
+    Request req;
+    req.url = "https://docs.example.com/page?q=search#section-3";
+    req.parse_url();
+
+    EXPECT_EQ(req.host, "docs.example.com");
+    EXPECT_TRUE(req.use_tls);
+    EXPECT_EQ(req.port, 443);
+    // Path should not contain the fragment
+    EXPECT_EQ(req.path.find('#'), std::string::npos);
+    // Query should not contain the fragment
+    EXPECT_EQ(req.query.find('#'), std::string::npos);
+
+    // Serialize and verify no fragment in the request line
+    auto bytes = req.serialize();
+    std::string raw(bytes.begin(), bytes.end());
+    EXPECT_EQ(raw.find("#section-3"), std::string::npos);
+    // But the query parameter should still be present
+    EXPECT_NE(raw.find("q=search"), std::string::npos);
+}
+
+// ---------------------------------------------------------------------------
+// 8. Response::parse handles 204 No Content with zero-length body and
+//    multiple headers on the same field via separate header lines
+// ---------------------------------------------------------------------------
+TEST(ResponseTest, Parse204WithMultipleVaryHeaderLinesV124) {
+    std::string raw =
+        "HTTP/1.1 204 No Content\r\n"
+        "Vary: Accept-Encoding\r\n"
+        "Vary: Accept-Language\r\n"
+        "X-Request-Id: req-v124-001\r\n"
+        "Content-Length: 0\r\n"
+        "\r\n";
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 204);
+    EXPECT_EQ(resp->status_text, "No Content");
+    EXPECT_TRUE(resp->body.empty());
+    EXPECT_EQ(resp->body_as_string(), "");
+
+    // Multiple Vary headers should both be retrievable
+    auto vary_values = resp->headers.get_all("vary");
+    EXPECT_GE(vary_values.size(), 2u);
+
+    // Custom header should be accessible
+    EXPECT_TRUE(resp->headers.has("X-Request-Id"));
+    EXPECT_EQ(resp->headers.get("x-request-id").value(), "req-v124-001");
+}

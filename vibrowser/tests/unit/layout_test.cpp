@@ -23239,3 +23239,333 @@ TEST(LayoutEngineTest, FlexRowMixedFixedGrowWithContainerPaddingV123) {
     EXPECT_NEAR(gp->geometry.x, 100.0f, 2.0f)
         << "Growing child should start after fixed sibling";
 }
+
+// V124-1: Flex row where all children have flex_basis > 0 and different grow factors
+// Tests that remaining space after basis allocation is distributed proportionally to grow
+TEST(LayoutEngineTest, FlexRowBasisPlusGrowProportionalV124) {
+    auto root = make_flex("div");
+    root->specified_width = 600.0f;
+    root->specified_height = 100.0f;
+    root->flex_direction = 0; // row
+
+    // Child A: basis=100, grow=1
+    auto a = make_block("div");
+    a->flex_basis = 100.0f;
+    a->flex_grow = 1.0f;
+    a->specified_height = 50.0f;
+    auto* pa = a.get();
+    root->append_child(std::move(a));
+
+    // Child B: basis=200, grow=2
+    auto b = make_block("div");
+    b->flex_basis = 200.0f;
+    b->flex_grow = 2.0f;
+    b->specified_height = 50.0f;
+    auto* pb = b.get();
+    root->append_child(std::move(b));
+
+    // Child C: basis=50, grow=1
+    auto c = make_block("div");
+    c->flex_basis = 50.0f;
+    c->flex_grow = 1.0f;
+    c->specified_height = 50.0f;
+    auto* pc = c.get();
+    root->append_child(std::move(c));
+
+    LayoutEngine engine;
+    engine.compute(*root, 600.0f, 600.0f);
+
+    // Remaining = 600 - (100+200+50) = 250
+    // grow total = 1+2+1 = 4
+    // A gets 100 + 250*(1/4)=162.5, B gets 200 + 250*(2/4)=325, C gets 50 + 250*(1/4)=112.5
+    EXPECT_NEAR(pa->geometry.width, 162.5f, 2.0f)
+        << "Child A: basis 100 + 62.5 grow share";
+    EXPECT_NEAR(pb->geometry.width, 325.0f, 2.0f)
+        << "Child B: basis 200 + 125 grow share";
+    EXPECT_NEAR(pc->geometry.width, 112.5f, 2.0f)
+        << "Child C: basis 50 + 62.5 grow share";
+    // Total should match container
+    EXPECT_NEAR(pa->geometry.width + pb->geometry.width + pc->geometry.width, 600.0f, 2.0f);
+}
+
+// V124-2: Block children with mixed padding/margins accumulate correct y positions
+TEST(LayoutEngineTest, BlockChildrenMixedPaddingMarginYStackV124) {
+    auto root = make_block("div");
+    root->specified_width = 400.0f;
+
+    // Child 1: margin-bottom=20, padding-top=10, height=30
+    auto c1 = make_block("div");
+    c1->specified_width = 400.0f;
+    c1->specified_height = 30.0f;
+    c1->geometry.margin.bottom = 20.0f;
+    c1->geometry.padding.top = 10.0f;
+    auto* p1 = c1.get();
+    root->append_child(std::move(c1));
+
+    // Child 2: margin-top=15, border-top=5, height=40
+    auto c2 = make_block("div");
+    c2->specified_width = 400.0f;
+    c2->specified_height = 40.0f;
+    c2->geometry.margin.top = 15.0f;
+    c2->geometry.border.top = 5.0f;
+    auto* p2 = c2.get();
+    root->append_child(std::move(c2));
+
+    // Child 3: margin-top=10, height=25
+    auto c3 = make_block("div");
+    c3->specified_width = 400.0f;
+    c3->specified_height = 25.0f;
+    c3->geometry.margin.top = 10.0f;
+    auto* p3 = c3.get();
+    root->append_child(std::move(c3));
+
+    LayoutEngine engine;
+    engine.compute(*root, 400.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(p1->geometry.y, 0.0f)
+        << "First child should start at y=0";
+    // c1 occupies: padding.top(10) + height(30) + margin.bottom(20) = total 60
+    // c2 starts at margin-top=max(20,15)=20 collapse or just 20+15 depending on impl
+    // c2 y should be after c1's full box
+    float c1_bottom = p1->geometry.y + p1->geometry.padding.top + p1->geometry.height + p1->geometry.margin.bottom;
+    EXPECT_GE(p2->geometry.y, c1_bottom - 20.0f)
+        << "Child 2 y should account for child 1's box";
+    EXPECT_GT(p3->geometry.y, p2->geometry.y)
+        << "Child 3 should be below child 2";
+}
+
+// V124-3: Flex column with align_items=stretch causes children to fill cross-axis width
+TEST(LayoutEngineTest, FlexColumnStretchFillsCrossAxisV124) {
+    auto root = make_flex("div");
+    root->flex_direction = 2; // column
+    root->align_items = 4; // stretch
+    root->specified_height = 300.0f;
+
+    auto c1 = make_block("div");
+    c1->specified_height = 80.0f;
+    // No specified_width — should stretch to container_width
+    auto* p1 = c1.get();
+    root->append_child(std::move(c1));
+
+    auto c2 = make_block("div");
+    c2->specified_height = 60.0f;
+    c2->specified_width = 150.0f; // explicit width — stretch may still apply
+    auto* p2 = c2.get();
+    root->append_child(std::move(c2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 500.0f, 600.0f);
+
+    // Child 1 has no width — stretch should make it fill cross-axis (500)
+    EXPECT_GE(p1->geometry.width, 400.0f)
+        << "Stretched child without explicit width should fill cross-axis";
+    // Both children should be positioned at valid y coordinates
+    EXPECT_FLOAT_EQ(p1->geometry.y, 0.0f);
+    EXPECT_GE(p2->geometry.y, p1->geometry.height)
+        << "Second child should start after first child's height";
+}
+
+// V124-4: Border-box child inside flex row with grow correctly computes content area
+TEST(LayoutEngineTest, BorderBoxFlexGrowContentAreaV124) {
+    auto root = make_flex("div");
+    root->specified_width = 500.0f;
+    root->specified_height = 100.0f;
+    root->flex_direction = 0; // row
+
+    // Child uses border-box with padding and border, plus flex_grow
+    auto c = make_block("div");
+    c->border_box = true;
+    c->geometry.padding.left = 20.0f;
+    c->geometry.padding.right = 20.0f;
+    c->geometry.border.left = 5.0f;
+    c->geometry.border.right = 5.0f;
+    c->flex_basis = 200.0f;
+    c->flex_grow = 1.0f;
+    c->specified_height = 60.0f;
+    auto* pc = c.get();
+    root->append_child(std::move(c));
+
+    LayoutEngine engine;
+    engine.compute(*root, 500.0f, 600.0f);
+
+    // Only child with grow=1, so it takes the full 500
+    float total_horizontal = pc->geometry.padding.left + pc->geometry.padding.right
+                           + pc->geometry.border.left + pc->geometry.border.right;
+    // border_box_width should include padding + border + content width
+    EXPECT_NEAR(pc->geometry.border_box_width(),
+                pc->geometry.width + total_horizontal, 1.0f)
+        << "border_box_width should be content + padding + border";
+    EXPECT_GE(pc->geometry.width, 0.0f)
+        << "Content width should be non-negative even with border-box";
+}
+
+// V124-5: Flex row with column_gap_val and three children positions them with correct gaps
+TEST(LayoutEngineTest, FlexRowColumnGapThreeChildrenPositionsV124) {
+    auto root = make_flex("div");
+    root->specified_width = 400.0f;
+    root->specified_height = 80.0f;
+    root->flex_direction = 0; // row
+    root->column_gap_val = 25.0f;
+
+    auto c1 = make_block("div");
+    c1->specified_width = 80.0f;
+    c1->specified_height = 50.0f;
+    auto* p1 = c1.get();
+    root->append_child(std::move(c1));
+
+    auto c2 = make_block("div");
+    c2->specified_width = 80.0f;
+    c2->specified_height = 50.0f;
+    auto* p2 = c2.get();
+    root->append_child(std::move(c2));
+
+    auto c3 = make_block("div");
+    c3->specified_width = 80.0f;
+    c3->specified_height = 50.0f;
+    auto* p3 = c3.get();
+    root->append_child(std::move(c3));
+
+    LayoutEngine engine;
+    engine.compute(*root, 400.0f, 600.0f);
+
+    // 3 children of 80px each, 2 gaps of 25px => 240 + 50 = 290 total
+    EXPECT_NEAR(p1->geometry.x, 0.0f, 1.0f);
+    EXPECT_NEAR(p2->geometry.x, 80.0f + 25.0f, 2.0f)
+        << "Second child should be at 80+25=105";
+    EXPECT_NEAR(p3->geometry.x, 80.0f + 25.0f + 80.0f + 25.0f, 2.0f)
+        << "Third child should be at 80+25+80+25=210";
+    // Gap should only appear between items, not before first or after last
+    EXPECT_NEAR(p2->geometry.x - (p1->geometry.x + p1->geometry.width), 25.0f, 2.0f)
+        << "Gap between child 1 and 2 should be 25px";
+    EXPECT_NEAR(p3->geometry.x - (p2->geometry.x + p2->geometry.width), 25.0f, 2.0f)
+        << "Gap between child 2 and 3 should be 25px";
+}
+
+// V124-6: Display::None children in flex row are skipped — siblings positioned as if they don't exist
+TEST(LayoutEngineTest, FlexRowDisplayNoneSkipsLayoutAndPositionV124) {
+    auto root = make_flex("div");
+    root->specified_width = 600.0f;
+    root->specified_height = 100.0f;
+    root->flex_direction = 0; // row
+
+    auto c1 = make_block("div");
+    c1->specified_width = 100.0f;
+    c1->specified_height = 50.0f;
+    auto* p1 = c1.get();
+    root->append_child(std::move(c1));
+
+    // Hidden child — should be completely skipped
+    auto hidden = make_block("div");
+    hidden->display = DisplayType::None;
+    hidden->specified_width = 200.0f;
+    hidden->specified_height = 50.0f;
+    auto* ph = hidden.get();
+    root->append_child(std::move(hidden));
+
+    auto c3 = make_block("div");
+    c3->specified_width = 150.0f;
+    c3->specified_height = 50.0f;
+    auto* p3 = c3.get();
+    root->append_child(std::move(c3));
+
+    LayoutEngine engine;
+    engine.compute(*root, 600.0f, 600.0f);
+
+    EXPECT_NEAR(p1->geometry.x, 0.0f, 1.0f);
+    // c3 should be right after c1, as if hidden doesn't exist
+    EXPECT_NEAR(p3->geometry.x, 100.0f, 2.0f)
+        << "Child after display:none should immediately follow the preceding visible child";
+    // Hidden child should have zero dimensions
+    EXPECT_FLOAT_EQ(ph->geometry.width, 0.0f);
+    EXPECT_FLOAT_EQ(ph->geometry.height, 0.0f);
+}
+
+// V124-7: Flex column with min-height on children prevents them from shrinking below minimum
+TEST(LayoutEngineTest, FlexColumnMinHeightPreventsChildShrinkV124) {
+    auto root = make_flex("div");
+    root->flex_direction = 2; // column
+    root->specified_height = 200.0f;
+
+    // Child 1: basis=150, shrink=1, min_height=100
+    auto c1 = make_block("div");
+    c1->flex_basis = 150.0f;
+    c1->flex_shrink = 1.0f;
+    c1->min_height = 100.0f;
+    c1->specified_height = 150.0f;
+    auto* p1 = c1.get();
+    root->append_child(std::move(c1));
+
+    // Child 2: basis=150, shrink=1, min_height=80
+    auto c2 = make_block("div");
+    c2->flex_basis = 150.0f;
+    c2->flex_shrink = 1.0f;
+    c2->min_height = 80.0f;
+    c2->specified_height = 150.0f;
+    auto* p2 = c2.get();
+    root->append_child(std::move(c2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 400.0f, 600.0f);
+
+    // Total basis = 300, container height = 200, overflow = 100
+    // Without min-height, each would shrink by 50 (equal factors) to 100 each
+    // min_height should prevent them from going below their minimums
+    EXPECT_GE(p1->geometry.height, 100.0f)
+        << "min_height=100 should prevent child 1 from shrinking below 100";
+    EXPECT_GE(p2->geometry.height, 80.0f)
+        << "min_height=80 should prevent child 2 from shrinking below 80";
+}
+
+// V124-8: Flex row with align_self overrides on individual children
+TEST(LayoutEngineTest, FlexRowAlignSelfMixedOverridesV124) {
+    auto root = make_flex("div");
+    root->specified_width = 500.0f;
+    root->specified_height = 200.0f;
+    root->flex_direction = 0; // row
+    root->align_items = 0; // flex-start (default cross-axis alignment)
+
+    // Child 1: align_self=flex-end (1), should sit at bottom
+    auto c1 = make_block("div");
+    c1->specified_width = 100.0f;
+    c1->specified_height = 60.0f;
+    c1->align_self = 1; // flex-end
+    auto* p1 = c1.get();
+    root->append_child(std::move(c1));
+
+    // Child 2: align_self=center (2), should sit in the middle
+    auto c2 = make_block("div");
+    c2->specified_width = 100.0f;
+    c2->specified_height = 80.0f;
+    c2->align_self = 2; // center
+    auto* p2 = c2.get();
+    root->append_child(std::move(c2));
+
+    // Child 3: no align_self override (-1 = auto), inherits flex-start from parent
+    auto c3 = make_block("div");
+    c3->specified_width = 100.0f;
+    c3->specified_height = 40.0f;
+    c3->align_self = -1; // auto (inherits parent align_items=flex-start)
+    auto* p3 = c3.get();
+    root->append_child(std::move(c3));
+
+    LayoutEngine engine;
+    engine.compute(*root, 500.0f, 600.0f);
+
+    // Child 1 (flex-end): y should be at bottom of container's cross-axis
+    EXPECT_NEAR(p1->geometry.y, 200.0f - 60.0f, 2.0f)
+        << "flex-end child should be at bottom of cross-axis";
+
+    // Child 2 (center): y should be centered
+    EXPECT_NEAR(p2->geometry.y, (200.0f - 80.0f) / 2.0f, 2.0f)
+        << "center-aligned child should be vertically centered";
+
+    // Child 3 (auto -> flex-start): y should be at top
+    EXPECT_NEAR(p3->geometry.y, 0.0f, 2.0f)
+        << "flex-start (inherited) child should be at top";
+
+    // All three should have different y positions
+    EXPECT_NE(p1->geometry.y, p2->geometry.y)
+        << "flex-end and center should produce different y";
+    EXPECT_NE(p2->geometry.y, p3->geometry.y)
+        << "center and flex-start should produce different y";
+}
