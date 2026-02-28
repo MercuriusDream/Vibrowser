@@ -24026,3 +24026,111 @@ TEST(DomNode, ParentNodeNullForRootV161) {
     root.append_child(std::move(child));
     EXPECT_EQ(root.parent(), nullptr);
 }
+
+// ---------------------------------------------------------------------------
+// Round 162 — DOM tests (V162)
+// ---------------------------------------------------------------------------
+
+// 1. Last child's next_sibling() is nullptr
+TEST(DomNode, NextSiblingNullForLastChildV162) {
+    auto parent = std::make_unique<Element>("ul");
+    auto li1 = std::make_unique<Element>("li");
+    auto li2 = std::make_unique<Element>("li");
+    auto li3 = std::make_unique<Element>("li");
+    Element* li3_ptr = li3.get();
+
+    parent->append_child(std::move(li1));
+    parent->append_child(std::move(li2));
+    parent->append_child(std::move(li3));
+
+    EXPECT_EQ(li3_ptr->next_sibling(), nullptr);
+}
+
+// 2. Set 3 different attributes, verify all 3 exist independently
+TEST(DomElement, MultipleAttributesIndependentV162) {
+    Element elem("input");
+    elem.set_attribute("type", "text");
+    elem.set_attribute("name", "username");
+    elem.set_attribute("placeholder", "Enter name");
+
+    EXPECT_EQ(elem.attributes().size(), 3u);
+    EXPECT_EQ(elem.get_attribute("type").value(), "text");
+    EXPECT_EQ(elem.get_attribute("name").value(), "username");
+    EXPECT_EQ(elem.get_attribute("placeholder").value(), "Enter name");
+}
+
+// 3. get_element_by_id for unregistered id returns nullptr
+TEST(DomDocument, GetElementByIdNullptrWhenNotRegisteredV162) {
+    Document doc;
+    EXPECT_EQ(doc.get_element_by_id("nonexistent-id"), nullptr);
+    EXPECT_EQ(doc.get_element_by_id(""), nullptr);
+    EXPECT_EQ(doc.get_element_by_id("another-missing"), nullptr);
+}
+
+// 4. Non-cancelable event, prevent_default() is no-op
+TEST(DomEvent, NonCancelableEventPreventDefaultNoOpV162) {
+    Event event("load", true, false);
+    EXPECT_FALSE(event.cancelable());
+    EXPECT_FALSE(event.default_prevented());
+
+    event.prevent_default();
+
+    EXPECT_FALSE(event.default_prevented());
+}
+
+// 5. First child's prev_sibling() is nullptr
+TEST(DomNode, PrevSiblingNullForFirstChildV162) {
+    auto parent = std::make_unique<Element>("ol");
+    auto li1 = std::make_unique<Element>("li");
+    auto li2 = std::make_unique<Element>("li");
+    Element* li1_ptr = li1.get();
+
+    parent->append_child(std::move(li1));
+    parent->append_child(std::move(li2));
+
+    EXPECT_EQ(li1_ptr->previous_sibling(), nullptr);
+}
+
+// 6. contains("absent") returns false on empty class list
+TEST(DomElement, ClassListContainsFalseForAbsentV162) {
+    Element elem("div");
+    EXPECT_FALSE(elem.class_list().contains("absent"));
+    EXPECT_FALSE(elem.class_list().contains(""));
+    EXPECT_FALSE(elem.class_list().contains("no-such-class"));
+}
+
+// 7. mark_dirty(Layout) sets only layout flag
+TEST(DomNode, MarkDirtyLayoutSetsOnlyLayoutFlagV162) {
+    Element elem("section");
+    EXPECT_EQ(elem.dirty_flags(), DirtyFlags::None);
+
+    elem.mark_dirty(DirtyFlags::Layout);
+
+    EXPECT_NE(elem.dirty_flags() & DirtyFlags::Layout, DirtyFlags::None);
+    EXPECT_EQ(elem.dirty_flags() & DirtyFlags::Style, DirtyFlags::None);
+    EXPECT_EQ(elem.dirty_flags() & DirtyFlags::Paint, DirtyFlags::None);
+}
+
+// 8. Append a, b, c — traverse and verify correct order
+TEST(DomNode, AppendThreeChildrenVerifyOrderV162) {
+    auto parent = std::make_unique<Element>("div");
+    auto a = std::make_unique<Element>("span");
+    auto b = std::make_unique<Element>("em");
+    auto c = std::make_unique<Element>("strong");
+    Element* a_ptr = a.get();
+    Element* b_ptr = b.get();
+    Element* c_ptr = c.get();
+
+    parent->append_child(std::move(a));
+    parent->append_child(std::move(b));
+    parent->append_child(std::move(c));
+
+    EXPECT_EQ(parent->first_child(), a_ptr);
+    EXPECT_EQ(a_ptr->next_sibling(), b_ptr);
+    EXPECT_EQ(b_ptr->next_sibling(), c_ptr);
+    EXPECT_EQ(c_ptr->next_sibling(), nullptr);
+    EXPECT_EQ(parent->last_child(), c_ptr);
+    EXPECT_EQ(c_ptr->previous_sibling(), b_ptr);
+    EXPECT_EQ(b_ptr->previous_sibling(), a_ptr);
+    EXPECT_EQ(a_ptr->previous_sibling(), nullptr);
+}

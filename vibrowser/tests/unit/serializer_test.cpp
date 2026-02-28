@@ -21382,3 +21382,43 @@ TEST(SerializerTest, SerializerV161_3_U16SequenceAscendingRoundTrip) {
     }
     EXPECT_FALSE(d.has_remaining());
 }
+
+// ------------------------------------------------------------------
+// Round 162 – Serializer tests
+// ------------------------------------------------------------------
+
+TEST(SerializerTest, SerializerV162_1_ZeroU32RoundTrip) {
+    Serializer s;
+    s.write_u32(0);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u32(), 0u);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, SerializerV162_2_F64NegativeInfinityRoundTrip) {
+    Serializer s;
+    double neg_inf = -std::numeric_limits<double>::infinity();
+    s.write_f64(neg_inf);
+
+    Deserializer d(s.data());
+    double val = d.read_f64();
+    EXPECT_TRUE(std::isinf(val));
+    EXPECT_TRUE(val < 0.0);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, SerializerV162_3_MixedTypesU8U16U32U64RoundTrip) {
+    Serializer s;
+    s.write_u8(42);
+    s.write_u16(12345);
+    s.write_u32(0xDEADBEEF);
+    s.write_u64(0x0102030405060708ULL);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u8(), 42);
+    EXPECT_EQ(d.read_u16(), 12345);
+    EXPECT_EQ(d.read_u32(), 0xDEADBEEFu);
+    EXPECT_EQ(d.read_u64(), 0x0102030405060708ULL);
+    EXPECT_FALSE(d.has_remaining());
+}

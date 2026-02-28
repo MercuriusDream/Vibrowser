@@ -29677,3 +29677,139 @@ TEST(LayoutNodeProps, FontSizeDefaultV161) {
     auto node = make_block("div");
     EXPECT_FLOAT_EQ(node->font_size, 16.0f);
 }
+
+// ============================================================================
+// Round 162 — Layout tests
+// ============================================================================
+
+// V162_1: flex align-items start (children at y=0)
+TEST(LayoutEngineTest, LayoutV162_1) {
+    auto root = make_flex("div");
+    root->align_items = 0; // flex-start
+    root->flex_direction = 0; // row
+    root->specified_width = 400.0f;
+    root->specified_height = 200.0f;
+
+    auto child1 = make_block("div");
+    child1->specified_width = 80.0f;
+    child1->specified_height = 50.0f;
+
+    auto child2 = make_block("div");
+    child2->specified_width = 80.0f;
+    child2->specified_height = 70.0f;
+
+    root->append_child(std::move(child1));
+    root->append_child(std::move(child2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 400.0f, 200.0f);
+
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.y, 0.0f);
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.y, 0.0f);
+}
+
+// V162_2: block element inherits parent width
+TEST(LayoutEngineTest, LayoutV162_2) {
+    auto root = make_block("div");
+    root->specified_width = 500.0f;
+
+    auto child = make_block("div");
+    // No specified_width — should inherit parent width
+    child->specified_height = 40.0f;
+
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.width, 500.0f);
+}
+
+// V162_3: flex-basis overrides specified_width
+TEST(LayoutEngineTest, LayoutV162_3) {
+    auto root = make_flex("div");
+    root->flex_direction = 0; // row
+    root->specified_width = 600.0f;
+
+    auto child = make_block("div");
+    child->specified_width = 100.0f;
+    child->flex_basis = 200.0f;
+    child->specified_height = 40.0f;
+
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 600.0f, 400.0f);
+
+    // flex_basis should take precedence over specified_width
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.width, 200.0f);
+}
+
+// V162_4: margin-bottom on first child creates gap before second
+TEST(LayoutEngineTest, LayoutV162_4) {
+    auto root = make_block("div");
+
+    auto child1 = make_block("div");
+    child1->specified_height = 30.0f;
+    child1->geometry.margin.bottom = 20.0f;
+
+    auto child2 = make_block("div");
+    child2->specified_height = 30.0f;
+
+    root->append_child(std::move(child1));
+    root->append_child(std::move(child2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 400.0f, 300.0f);
+
+    // Second child should start after first child height + margin-bottom
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.y, 30.0f + 20.0f);
+}
+
+// V162_5: border-left increases total width
+TEST(LayoutEngineTest, LayoutV162_5) {
+    auto root = make_block("div");
+    root->specified_width = 200.0f;
+    root->geometry.border.left = 5.0f;
+    root->geometry.border.right = 5.0f;
+
+    auto child = make_block("div");
+    child->specified_height = 40.0f;
+
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // Child width should be narrowed by border-left + border-right
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.width, 190.0f);
+}
+
+// V162_6: padding increases parent height
+TEST(LayoutEngineTest, LayoutV162_6) {
+    auto root = make_block("div");
+    root->geometry.padding.top = 20.0f;
+    root->geometry.padding.bottom = 15.0f;
+
+    auto child = make_block("div");
+    child->specified_height = 60.0f;
+
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 600.0f, 400.0f);
+
+    EXPECT_FLOAT_EQ(root->geometry.height, 20.0f + 60.0f + 15.0f);
+}
+
+// V162_7: default opacity is 1.0f
+TEST(LayoutNodeProps, OpacityDefaultOneV162) {
+    auto node = make_block("div");
+    EXPECT_FLOAT_EQ(node->opacity, 1.0f);
+}
+
+// V162_8: default z_index is 0
+TEST(LayoutNodeProps, ZIndexDefaultZeroV162) {
+    auto node = make_block("div");
+    EXPECT_EQ(node->z_index, 0);
+}

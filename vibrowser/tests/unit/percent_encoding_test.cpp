@@ -1639,3 +1639,30 @@ TEST(IsURLCodePoint, HyphenDotUnderscoreTildeValidV161) {
     EXPECT_TRUE(is_url_code_point(static_cast<char32_t>('_')));
     EXPECT_TRUE(is_url_code_point(static_cast<char32_t>('~')));
 }
+
+// =============================================================================
+// Round 162 percent encoding tests
+// =============================================================================
+
+TEST(PercentEncoding, DoubleQuoteEncodedV162) {
+    // Double quote (") should be percent-encoded as %22
+    EXPECT_EQ(percent_encode("\""), "%22");
+    EXPECT_EQ(percent_encode("say\"hello\""), "say%22hello%22");
+}
+
+TEST(PercentDecoding, UppercaseHexDecodedV162) {
+    // Uppercase hex digits in percent-encoded sequences decode correctly
+    EXPECT_EQ(percent_decode("%2F"), "/");
+    EXPECT_EQ(percent_decode("path%2Fto%2Ffile"), "path/to/file");
+}
+
+TEST(PercentEncoding, ExclamationNotEncodedV162) {
+    // '!' is a valid URL code point and should NOT be encoded by default
+    EXPECT_EQ(percent_encode("!"), "!");
+    EXPECT_EQ(percent_encode("hello!"), "hello!");
+}
+
+TEST(IsURLCodePoint, NullByteInvalidV162) {
+    // Null byte (0x00) is NOT a valid URL code point
+    EXPECT_FALSE(is_url_code_point(static_cast<char32_t>(0x00)));
+}

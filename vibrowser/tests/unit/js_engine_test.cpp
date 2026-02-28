@@ -37833,3 +37833,112 @@ TEST(JSEngine, JsV161_8) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "10,true,2,false");
 }
+
+// ============================================================================
+// Round 162 — JS engine tests
+// ============================================================================
+
+// V162_1: Array.find returns first match
+TEST(JSEngine, JsV162_1) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var arr = [5, 12, 8, 130, 44];
+        var found = arr.find(function(n) { return n > 10; });
+        String(found);
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "12");
+}
+
+// V162_2: String.startsWith and endsWith
+TEST(JSEngine, JsV162_2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var s = "Hello, World!";
+        String(s.startsWith("Hello")) + "," + String(s.endsWith("World!"));
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true,true");
+}
+
+// V162_3: Object.values returns values array
+TEST(JSEngine, JsV162_3) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var obj = { a: 1, b: 2, c: 3 };
+        Object.values(obj).join(",");
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1,2,3");
+}
+
+// V162_4: Promise.all resolves with array
+TEST(JSEngine, JsV162_4) {
+    clever::js::JSEngine engine;
+    clever::js::install_fetch_bindings(engine.context());
+    engine.evaluate(R"JS(
+        var out = "";
+        Promise.all([
+            Promise.resolve(10),
+            Promise.resolve(20),
+            Promise.resolve(30)
+        ]).then(function(values) {
+            out = values.join(",");
+        });
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    clever::js::flush_fetch_promise_jobs(engine.context());
+    auto result = engine.evaluate("out");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "10,20,30");
+}
+
+// V162_5: Math.abs and Math.sign
+TEST(JSEngine, JsV162_5) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        String(Math.abs(-7)) + "," + String(Math.sign(-3)) + "," + String(Math.sign(5));
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "7,-1,1");
+}
+
+// V162_6: Array.flat flattens nested array
+TEST(JSEngine, JsV162_6) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var arr = [1, [2, 3], [4, [5]]];
+        arr.flat().join(",");
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1,2,3,4,5");
+}
+
+// V162_7: Set add/has/size/delete
+TEST(JSEngine, JsV162_7) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var s = new Set();
+        s.add(1);
+        s.add(2);
+        s.add(3);
+        s.add(2);
+        var sz = s.size;
+        var has2 = s.has(2);
+        s.delete(2);
+        var has2After = s.has(2);
+        String(sz) + "," + String(has2) + "," + String(s.size) + "," + String(has2After);
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "3,true,2,false");
+}
+
+// V162_8: String.repeat creates repeated string
+TEST(JSEngine, JsV162_8) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        "abc".repeat(3);
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "abcabcabc");
+}

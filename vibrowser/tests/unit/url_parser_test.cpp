@@ -15608,3 +15608,47 @@ TEST(UrlParserTest, UrlV161_4_MultipleDotSegmentsResolved) {
     EXPECT_EQ(result->path, "/a/d");
     EXPECT_EQ(result->port, std::nullopt);
 }
+
+// =============================================================================
+// Round 162 URL parser tests
+// =============================================================================
+
+TEST(UrlParserTest, UrlV162_1_HttpPort8080Preserved) {
+    // Non-default port 8080 on http should be preserved in the parsed URL
+    auto result = parse("http://host:8080/path");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "host");
+    ASSERT_TRUE(result->port.has_value());
+    EXPECT_EQ(result->port.value(), 8080);
+    EXPECT_EQ(result->path, "/path");
+}
+
+TEST(UrlParserTest, UrlV162_2_SchemeIsCaseInsensitive) {
+    // Uppercase scheme HTTP should be normalized to lowercase "http"
+    // Host should also be lowercased
+    auto result = parse("HTTP://Example.COM/page");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/page");
+}
+
+TEST(UrlParserTest, UrlV162_3_EmptyFragmentPreserved) {
+    // A trailing # with no fragment content should result in an empty fragment
+    auto result = parse("http://host/path#");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "host");
+    EXPECT_EQ(result->path, "/path");
+    EXPECT_EQ(result->fragment, "");
+}
+
+TEST(UrlParserTest, UrlV162_4_PathWithEncodedSpaces) {
+    // %20 in the path gets double-encoded to %2520 by the URL parser
+    auto result = parse("http://host/my%20path");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "host");
+    EXPECT_EQ(result->path, "/my%2520path");
+}

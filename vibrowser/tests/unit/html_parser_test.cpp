@@ -25457,3 +25457,159 @@ TEST(HtmlParserTest, HtmlV161_8) {
     EXPECT_FALSE(data->children.empty());
     EXPECT_EQ(data->children[0]->text_content(), "Forty-two");
 }
+
+TEST(HtmlParserTest, HtmlV162_1) {
+    // map element with area children
+    auto doc = clever::html::parse(
+        "<html><body><map name=\"nav\"><area href=\"/home\" alt=\"Home\"></map></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* map_el = doc->find_element("map");
+    ASSERT_NE(map_el, nullptr);
+    EXPECT_EQ(map_el->tag_name, "map");
+
+    std::string name_val;
+    for (const auto& attr : map_el->attributes) {
+        if (attr.name == "name") name_val = attr.value;
+    }
+    EXPECT_EQ(name_val, "nav");
+
+    auto* area = doc->find_element("area");
+    ASSERT_NE(area, nullptr);
+    EXPECT_EQ(area->tag_name, "area");
+
+    std::string href_val;
+    for (const auto& attr : area->attributes) {
+        if (attr.name == "href") href_val = attr.value;
+    }
+    EXPECT_EQ(href_val, "/home");
+}
+
+TEST(HtmlParserTest, HtmlV162_2) {
+    // noscript element with fallback text
+    auto doc = clever::html::parse(
+        "<html><body><noscript>JavaScript is disabled</noscript></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* noscript = doc->find_element("noscript");
+    ASSERT_NE(noscript, nullptr);
+    EXPECT_EQ(noscript->tag_name, "noscript");
+}
+
+TEST(HtmlParserTest, HtmlV162_3) {
+    // object element with data attribute
+    auto doc = clever::html::parse(
+        "<html><body><object data=\"movie.swf\" type=\"application/x-shockwave-flash\"></object></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* obj = doc->find_element("object");
+    ASSERT_NE(obj, nullptr);
+    EXPECT_EQ(obj->tag_name, "object");
+
+    std::string data_val;
+    for (const auto& attr : obj->attributes) {
+        if (attr.name == "data") data_val = attr.value;
+    }
+    EXPECT_EQ(data_val, "movie.swf");
+}
+
+TEST(HtmlParserTest, HtmlV162_4) {
+    // param element (void) inside object
+    auto doc = clever::html::parse(
+        "<html><body><object><param name=\"quality\" value=\"high\"></object></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* param = doc->find_element("param");
+    ASSERT_NE(param, nullptr);
+    EXPECT_EQ(param->tag_name, "param");
+
+    std::string name_val;
+    std::string value_val;
+    for (const auto& attr : param->attributes) {
+        if (attr.name == "name") name_val = attr.value;
+        if (attr.name == "value") value_val = attr.value;
+    }
+    EXPECT_EQ(name_val, "quality");
+    EXPECT_EQ(value_val, "high");
+}
+
+TEST(HtmlParserTest, HtmlV162_5) {
+    // source element (void) with src and type
+    auto doc = clever::html::parse(
+        "<html><body><video><source src=\"video.mp4\" type=\"video/mp4\"></video></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* source = doc->find_element("source");
+    ASSERT_NE(source, nullptr);
+    EXPECT_EQ(source->tag_name, "source");
+
+    std::string src_val;
+    std::string type_val;
+    for (const auto& attr : source->attributes) {
+        if (attr.name == "src") src_val = attr.value;
+        if (attr.name == "type") type_val = attr.value;
+    }
+    EXPECT_EQ(src_val, "video.mp4");
+    EXPECT_EQ(type_val, "video/mp4");
+}
+
+TEST(HtmlParserTest, HtmlV162_6) {
+    // track element (void) with src and kind
+    auto doc = clever::html::parse(
+        "<html><body><video><track src=\"subs.vtt\" kind=\"subtitles\"></video></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* track = doc->find_element("track");
+    ASSERT_NE(track, nullptr);
+    EXPECT_EQ(track->tag_name, "track");
+
+    std::string src_val;
+    std::string kind_val;
+    for (const auto& attr : track->attributes) {
+        if (attr.name == "src") src_val = attr.value;
+        if (attr.name == "kind") kind_val = attr.value;
+    }
+    EXPECT_EQ(src_val, "subs.vtt");
+    EXPECT_EQ(kind_val, "subtitles");
+}
+
+TEST(HtmlParserTest, HtmlV162_7) {
+    // embed element (void) with src and type
+    auto doc = clever::html::parse(
+        "<html><body><embed src=\"game.swf\" type=\"application/x-shockwave-flash\"></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* embed = doc->find_element("embed");
+    ASSERT_NE(embed, nullptr);
+    EXPECT_EQ(embed->tag_name, "embed");
+
+    std::string src_val;
+    std::string type_val;
+    for (const auto& attr : embed->attributes) {
+        if (attr.name == "src") src_val = attr.value;
+        if (attr.name == "type") type_val = attr.value;
+    }
+    EXPECT_EQ(src_val, "game.swf");
+    EXPECT_EQ(type_val, "application/x-shockwave-flash");
+}
+
+TEST(HtmlParserTest, HtmlV162_8) {
+    // picture element with source and img
+    auto doc = clever::html::parse(
+        "<html><body><picture><source srcset=\"large.jpg\" type=\"image/jpeg\"><img src=\"fallback.jpg\"></picture></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* picture = doc->find_element("picture");
+    ASSERT_NE(picture, nullptr);
+    EXPECT_EQ(picture->tag_name, "picture");
+
+    auto* img = doc->find_element("img");
+    ASSERT_NE(img, nullptr);
+    EXPECT_EQ(img->tag_name, "img");
+
+    std::string img_src;
+    for (const auto& attr : img->attributes) {
+        if (attr.name == "src") img_src = attr.value;
+    }
+    EXPECT_EQ(img_src, "fallback.jpg");
+}

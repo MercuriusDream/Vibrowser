@@ -11346,3 +11346,59 @@ TEST_F(CSSStylesheetTest, ObjectPositionDeclarationV161) {
     }
     EXPECT_TRUE(found) << "object-position declaration not found";
 }
+
+TEST_F(CSSStylesheetTest, BoxDecorationBreakDeclarationV162) {
+    auto ss = parse_stylesheet("div { box-decoration-break: clone; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "box-decoration-break") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "clone");
+        }
+    }
+    EXPECT_TRUE(found) << "box-decoration-break declaration not found";
+}
+
+TEST_F(CSSStylesheetTest, MixBlendModeDeclarationV162) {
+    auto ss = parse_stylesheet("div { mix-blend-mode: multiply; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "mix-blend-mode") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "multiply");
+        }
+    }
+    EXPECT_TRUE(found) << "mix-blend-mode declaration not found";
+}
+
+TEST_F(CSSStylesheetTest, IsolationDeclarationV162) {
+    auto ss = parse_stylesheet("div { isolation: isolate; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "isolation") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "isolate");
+        }
+    }
+    EXPECT_TRUE(found) << "isolation declaration not found";
+}
+
+TEST_F(CSSStylesheetTest, BackfaceVisibilityDeclarationV162) {
+    auto ss = parse_stylesheet("div { backface-visibility: hidden; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "backface-visibility") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "hidden");
+        }
+    }
+    EXPECT_TRUE(found) << "backface-visibility declaration not found";
+}

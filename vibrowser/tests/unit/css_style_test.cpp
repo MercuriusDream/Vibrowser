@@ -26288,3 +26288,41 @@ TEST(PropertyCascadeTest, LineHeightAppliedV161) {
     cascade.apply_declaration(style, make_decl("line-height", "24px"), parent);
     EXPECT_FLOAT_EQ(style.line_height.to_px(), 24.0f);
 }
+
+TEST(CSSStyleTest, CssV162_1_ColorRedApplied) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.color, Color::black());
+    cascade.apply_declaration(style, make_decl("color", "red"), parent);
+    EXPECT_EQ(style.color, (Color{255, 0, 0, 255}));
+}
+
+TEST(CSSStyleTest, CssV162_2_BackgroundColorBlueApplied) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.background_color, Color::transparent());
+    cascade.apply_declaration(style, make_decl("background-color", "blue"), parent);
+    EXPECT_EQ(style.background_color, (Color{0, 0, 255, 255}));
+}
+
+TEST(PropertyCascadeTest, DisplayBlockAppliedV162) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("display", "block"), parent);
+    EXPECT_EQ(style.display, Display::Block);
+}
+
+TEST(PropertyCascadeTest, PositionAbsoluteAppliedV162) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("position", "absolute"), parent);
+    EXPECT_EQ(style.position, Position::Absolute);
+}

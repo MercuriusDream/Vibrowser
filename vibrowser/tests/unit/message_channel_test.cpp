@@ -2682,3 +2682,64 @@ TEST(MessageChannelTest, MessageChannelV161_2_DispatchOrderPreserved) {
     EXPECT_EQ(received_ids[3], 103u);
     EXPECT_EQ(received_ids[4], 104u);
 }
+
+// ------------------------------------------------------------------
+// Round 162 – MessageChannel tests
+// ------------------------------------------------------------------
+
+TEST(MessageChannelTest, MessageChannelV162_1_HandlerCalledCorrectNumberOfTimes) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel ch(std::move(pa));
+
+    int call_count = 0;
+    ch.on(50, [&](const Message& m) {
+        (void)m;
+        ++call_count;
+    });
+
+    for (int i = 0; i < 7; ++i) {
+        Message msg;
+        msg.type = 50;
+        msg.request_id = static_cast<uint32_t>(i);
+        msg.payload = {static_cast<uint8_t>(i)};
+        ch.dispatch(msg);
+    }
+
+    EXPECT_EQ(call_count, 7);
+}
+
+TEST(MessageChannelTest, MessageChannelV162_2_DifferentPayloadSizesDispatched) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel ch(std::move(pa));
+
+    std::vector<size_t> received_sizes;
+    ch.on(77, [&](const Message& m) {
+        received_sizes.push_back(m.payload.size());
+    });
+
+    // Message with 1-byte payload
+    Message m1;
+    m1.type = 77;
+    m1.request_id = 0;
+    m1.payload.assign(1, 0xAA);
+    ch.dispatch(m1);
+
+    // Message with 50-byte payload
+    Message m2;
+    m2.type = 77;
+    m2.request_id = 1;
+    m2.payload.assign(50, 0xBB);
+    ch.dispatch(m2);
+
+    // Message with 500-byte payload
+    Message m3;
+    m3.type = 77;
+    m3.request_id = 2;
+    m3.payload.assign(500, 0xCC);
+    ch.dispatch(m3);
+
+    ASSERT_EQ(received_sizes.size(), 3u);
+    EXPECT_EQ(received_sizes[0], 1u);
+    EXPECT_EQ(received_sizes[1], 50u);
+    EXPECT_EQ(received_sizes[2], 500u);
+}

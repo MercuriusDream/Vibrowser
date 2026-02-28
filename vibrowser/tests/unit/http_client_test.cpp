@@ -28049,3 +28049,206 @@ TEST(HttpClient, CookieJarOverwritesSamNameSameDomainV161) {
     EXPECT_EQ(h2.find("first_value"), std::string::npos)
         << "First value should be overwritten, got: " << h2;
 }
+
+// ===========================================================================
+// Round 162 Tests
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// 1. GET request with custom X-Custom-Header and X-Request-Id
+// ---------------------------------------------------------------------------
+TEST(HttpClient, RequestSerializeGetWithCustomHeadersV162) {
+    Request req;
+    req.method = Method::GET;
+    req.host = "api162.example.com";
+    req.port = 80;
+    req.path = "/v162/resource";
+    req.headers.set("X-Custom-Header", "custom-value-162");
+    req.headers.set("X-Request-Id", "req-id-00162");
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    EXPECT_NE(result.find("GET /v162/resource HTTP/1.1\r\n"), std::string::npos)
+        << "Request line missing, got: " << result;
+    EXPECT_NE(result.find("Host: api162.example.com\r\n"), std::string::npos)
+        << "Host header missing, got: " << result;
+    EXPECT_NE(result.find("Connection: close\r\n"), std::string::npos)
+        << "Connection header missing, got: " << result;
+    // Custom headers are stored lowercase in serialize output
+    EXPECT_NE(result.find("x-custom-header: custom-value-162\r\n"), std::string::npos)
+        << "X-Custom-Header missing, got: " << result;
+    EXPECT_NE(result.find("x-request-id: req-id-00162\r\n"), std::string::npos)
+        << "X-Request-Id missing, got: " << result;
+    EXPECT_NE(result.find("\r\n\r\n"), std::string::npos)
+        << "Trailing CRLFCRLF missing, got: " << result;
+}
+
+// ---------------------------------------------------------------------------
+// 2. Response parse 500 Internal Server Error
+// ---------------------------------------------------------------------------
+TEST(HttpClient, ResponseParse500InternalServerErrorV162) {
+    std::string raw_str =
+        "HTTP/1.1 500 Internal Server Error\r\n"
+        "Content-Type: text/plain\r\n"
+        "Content-Length: 21\r\n"
+        "\r\n"
+        "Something went wrong!";
+
+    std::vector<uint8_t> raw(raw_str.begin(), raw_str.end());
+    auto resp = Response::parse(raw);
+
+    ASSERT_TRUE(resp.has_value()) << "Failed to parse 500 response";
+    EXPECT_EQ(resp->status, 500)
+        << "Status should be 500, got: " << resp->status;
+    EXPECT_EQ(resp->status_text, "Internal Server Error")
+        << "Status text mismatch, got: " << resp->status_text;
+
+    auto ct = resp->headers.get("Content-Type");
+    ASSERT_TRUE(ct.has_value()) << "Content-Type header missing";
+    EXPECT_EQ(ct.value(), "text/plain")
+        << "Content-Type wrong, got: " << ct.value();
+
+    std::string body = resp->body_as_string();
+    EXPECT_EQ(body, "Something went wrong!")
+        << "Body mismatch, got: " << body;
+}
+
+// ---------------------------------------------------------------------------
+// 3. ConnectionPool — multiple hosts are isolated
+// ---------------------------------------------------------------------------
+TEST(HttpClient, ConnectionPoolMultipleHostsIsolatedV162) {
+    ConnectionPool pool;
+
+    // Release a socket to host A
+    pool.release("hostA162.example.com", 80, 42);
+
+    // Acquire from host B should return -1 (empty for that host)
+    int fd_b = pool.acquire("hostB162.example.com", 80);
+    EXPECT_EQ(fd_b, -1)
+        << "Host B should have no connections, got fd: " << fd_b;
+
+    // Acquire from host A should return 42
+    int fd_a = pool.acquire("hostA162.example.com", 80);
+    EXPECT_EQ(fd_a, 42)
+        << "Host A should return the released fd, got: " << fd_a;
+
+    // Host A should now also be empty
+    int fd_a2 = pool.acquire("hostA162.example.com", 80);
+    EXPECT_EQ(fd_a2, -1)
+        << "Host A should be empty after acquiring, got fd: " << fd_a2;
+}
+
+// ---------------------------------------------------------------------------
+// 4. CookieJar — Max-Age=0 deletes the cookie
+// ---------------------------------------------------------------------------
+TEST(HttpClient, CookieJarExpiresByMaxAgeZeroV162) {
+    CookieJar jar;
+
+    // Set a cookie directly with Max-Age=0 — stored as expired (expires_at=1)
+    jar.set_from_header("expired162=gone; Path=/; Max-Age=0", "maxage162.example.com");
+
+    // The cookie has expires_at=1, which is in the past, so get_cookie_header
+    // should skip it
+    std::string h = jar.get_cookie_header("maxage162.example.com", "/", false);
+    EXPECT_EQ(h.find("expired162=gone"), std::string::npos)
+        << "Cookie with Max-Age=0 should not be returned, got: " << h;
+}
+
+// ---------------------------------------------------------------------------
+// 5. HeaderMap append creates multiple values for the same key
+// ---------------------------------------------------------------------------
+TEST(HttpClient, HeaderMapAppendCreatesMultipleValuesV162) {
+    HeaderMap map;
+    map.append("X-Multi-162", "alpha");
+    map.append("X-Multi-162", "beta");
+    map.append("X-Multi-162", "gamma");
+
+    auto all = map.get_all("X-Multi-162");
+    EXPECT_EQ(all.size(), 3u)
+        << "Should have 3 values, got: " << all.size();
+
+    EXPECT_TRUE(std::find(all.begin(), all.end(), "alpha") != all.end())
+        << "Missing 'alpha' value";
+    EXPECT_TRUE(std::find(all.begin(), all.end(), "beta") != all.end())
+        << "Missing 'beta' value";
+    EXPECT_TRUE(std::find(all.begin(), all.end(), "gamma") != all.end())
+        << "Missing 'gamma' value";
+
+    // get() should return one of them (the first or last depending on impl)
+    auto single = map.get("X-Multi-162");
+    ASSERT_TRUE(single.has_value())
+        << "get() should return a value when multiple exist";
+}
+
+// ---------------------------------------------------------------------------
+// 6. GET to port 443 — Host header omits port
+// ---------------------------------------------------------------------------
+TEST(HttpClient, RequestSerializeGetPort443OmittedV162) {
+    Request req;
+    req.method = Method::GET;
+    req.host = "secure162.example.com";
+    req.port = 443;
+    req.path = "/secure-path";
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    // Host header should NOT include :443
+    EXPECT_NE(result.find("Host: secure162.example.com\r\n"), std::string::npos)
+        << "Host should be without port 443, got: " << result;
+    EXPECT_EQ(result.find("Host: secure162.example.com:443"), std::string::npos)
+        << "Host should NOT contain :443, got: " << result;
+    EXPECT_NE(result.find("GET /secure-path HTTP/1.1\r\n"), std::string::npos)
+        << "Request line missing, got: " << result;
+    EXPECT_NE(result.find("Connection: close\r\n"), std::string::npos)
+        << "Connection header missing, got: " << result;
+}
+
+// ---------------------------------------------------------------------------
+// 7. Response parse 204 No Content with empty body
+// ---------------------------------------------------------------------------
+TEST(HttpClient, ResponseParse204NoContentV162) {
+    std::string raw_str =
+        "HTTP/1.1 204 No Content\r\n"
+        "Content-Length: 0\r\n"
+        "\r\n";
+
+    std::vector<uint8_t> raw(raw_str.begin(), raw_str.end());
+    auto resp = Response::parse(raw);
+
+    ASSERT_TRUE(resp.has_value()) << "Failed to parse 204 response";
+    EXPECT_EQ(resp->status, 204)
+        << "Status should be 204, got: " << resp->status;
+    EXPECT_EQ(resp->status_text, "No Content")
+        << "Status text mismatch, got: " << resp->status_text;
+    EXPECT_TRUE(resp->body.empty())
+        << "Body should be empty for 204, size: " << resp->body.size();
+    EXPECT_EQ(resp->body_as_string(), "")
+        << "body_as_string should be empty, got: " << resp->body_as_string();
+}
+
+// ---------------------------------------------------------------------------
+// 8. CookieJar — domain is case-insensitive
+// ---------------------------------------------------------------------------
+TEST(HttpClient, CookieJarDomainCasInsensitiveV162) {
+    CookieJar jar;
+
+    // Set cookie using mixed-case domain
+    jar.set_from_header("token162=abc; Path=/", "Example162.COM");
+
+    // Retrieve using lowercase
+    std::string h1 = jar.get_cookie_header("example162.com", "/", false);
+    EXPECT_NE(h1.find("token162=abc"), std::string::npos)
+        << "Cookie set on Example162.COM should be found via example162.com, got: " << h1;
+
+    // Retrieve using uppercase
+    std::string h2 = jar.get_cookie_header("EXAMPLE162.COM", "/", false);
+    EXPECT_NE(h2.find("token162=abc"), std::string::npos)
+        << "Cookie set on Example162.COM should be found via EXAMPLE162.COM, got: " << h2;
+
+    // Retrieve using original case
+    std::string h3 = jar.get_cookie_header("Example162.COM", "/", false);
+    EXPECT_NE(h3.find("token162=abc"), std::string::npos)
+        << "Cookie set on Example162.COM should be found via Example162.COM, got: " << h3;
+}

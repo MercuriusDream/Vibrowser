@@ -2508,3 +2508,48 @@ TEST(MessagePipeTest, MessagePipeV161_3_TenMessagesAlternatingSize) {
         }
     }
 }
+
+// ------------------------------------------------------------------
+// Round 162 – MessagePipe tests
+// ------------------------------------------------------------------
+
+TEST(MessagePipeTest, MessagePipeV162_1_ReceiveAfterSenderCloseReturnsNullopt) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    a.close();
+    auto received = b.receive();
+    EXPECT_FALSE(received.has_value());
+}
+
+TEST(MessagePipeTest, MessagePipeV162_2_MessageTypePreserved) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    // Encode type 999 as little-endian u32 in the payload
+    uint32_t type_val = 999;
+    std::vector<uint8_t> payload(sizeof(type_val));
+    std::memcpy(payload.data(), &type_val, sizeof(type_val));
+
+    ASSERT_TRUE(a.send(payload));
+
+    auto received = b.receive();
+    ASSERT_TRUE(received.has_value());
+    ASSERT_EQ(received->size(), sizeof(type_val));
+
+    uint32_t received_type = 0;
+    std::memcpy(&received_type, received->data(), sizeof(received_type));
+    EXPECT_EQ(received_type, 999u);
+}
+
+TEST(MessagePipeTest, MessagePipeV162_3_TwoHundredBytePayload) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    std::vector<uint8_t> payload(200);
+    std::iota(payload.begin(), payload.end(), static_cast<uint8_t>(0));
+
+    ASSERT_TRUE(a.send(payload));
+
+    auto received = b.receive();
+    ASSERT_TRUE(received.has_value());
+    ASSERT_EQ(received->size(), 200u);
+    EXPECT_EQ(*received, payload);
+}

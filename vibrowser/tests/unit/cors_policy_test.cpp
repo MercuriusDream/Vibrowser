@@ -12932,3 +12932,58 @@ TEST(CORSPolicyTest, CorsV161_7_AboutBlankNotEnforceable) {
 TEST(CORSPolicyTest, CorsV161_8_HttpsNonDefaultPortEnforceable) {
     EXPECT_TRUE(has_enforceable_document_origin("https://host.example:8443"));
 }
+
+// ---------------------------------------------------------------------------
+// Round 162 — CORS tests (V162)
+// ---------------------------------------------------------------------------
+
+// 1. http://host:80 with explicit default port not enforceable (origin serializes without port)
+TEST(CORSPolicyTest, CorsV162_1_HttpExplicitPort80NotEnforceable) {
+    EXPECT_FALSE(has_enforceable_document_origin("http://host.example:80"));
+    // Without the explicit port, it is enforceable
+    EXPECT_TRUE(has_enforceable_document_origin("http://host.example"));
+}
+
+// 2. Same host, different non-default ports are cross-origin
+TEST(CORSPolicyTest, CorsV162_2_SameSchemeAndHostDiffPortIsCrossOrigin) {
+    EXPECT_TRUE(is_cross_origin("http://host.example:3000", "http://host.example:8080/path"));
+}
+
+// 3. ACAO:* allows any origin (no credentials)
+TEST(CORSPolicyTest, CorsV162_3_AcaoWildcardAllowsAnyOrigin) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "*");
+    EXPECT_TRUE(cors_allows_response("https://any.example", "https://api.example/data",
+                                     headers, false));
+    EXPECT_TRUE(cors_allows_response("https://other.example", "https://api.example/data",
+                                     headers, false));
+}
+
+// 4. Empty ACAO rejects all
+TEST(CORSPolicyTest, CorsV162_4_EmptyAcaoRejectsAll) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "");
+    EXPECT_FALSE(cors_allows_response("https://app.example", "https://api.example/data",
+                                      headers, false));
+}
+
+// 5. Same origin should_attach_origin returns false
+TEST(CORSPolicyTest, CorsV162_5_ShouldAttachOriginSameOriginReturnsFalse) {
+    EXPECT_FALSE(should_attach_origin_header("https://app.example",
+                                             "https://app.example/resource"));
+}
+
+// 6. wss:// is not enforceable
+TEST(CORSPolicyTest, CorsV162_6_WssSchemeNotEnforceable) {
+    EXPECT_FALSE(has_enforceable_document_origin("wss://host.example"));
+}
+
+// 7. javascript: scheme is not enforceable
+TEST(CORSPolicyTest, CorsV162_7_JavascriptSchemeNotEnforceable) {
+    EXPECT_FALSE(has_enforceable_document_origin("javascript:void(0)"));
+}
+
+// 8. https://host vs https://host:443 handled correctly (same origin)
+TEST(CORSPolicyTest, CorsV162_8_HttpsImplicit443SameOriginAsExplicit) {
+    EXPECT_FALSE(is_cross_origin("https://host.example", "https://host.example:443/path"));
+}
