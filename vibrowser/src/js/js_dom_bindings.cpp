@@ -131,7 +131,7 @@ struct DOMState {
         JSValue callback;        // cached callback
         std::vector<JSValue> mutation_records;  // array of MutationRecord objects
     };
-    std::vector<PendingMutation> pending_mutations;
+    std::vector<DOMState::PendingMutation> pending_mutations;
 
     int viewport_width = 800, viewport_height = 600;
 };
@@ -146,6 +146,18 @@ struct TextEncoderState {
 struct TextDecoderState {
     std::string encoding = "utf-8";
 };
+
+// Forward declaration for MutationObserver notification (defined later)
+static void notify_mutation_observers(JSContext* ctx,
+                                      DOMState* state,
+                                      const std::string& type,
+                                      clever::html::SimpleNode* target,
+                                      const std::vector<clever::html::SimpleNode*>& added_nodes,
+                                      const std::vector<clever::html::SimpleNode*>& removed_nodes,
+                                      clever::html::SimpleNode* previous_sibling,
+                                      clever::html::SimpleNode* next_sibling,
+                                      const std::string& attr_name = "",
+                                      const std::string& old_value = "");
 
 static void js_url_finalizer(JSRuntime* /*rt*/, JSValue val) {
     auto* state = static_cast<URLState*>(JS_GetOpaque(val, url_class_id));
@@ -3517,8 +3529,8 @@ static void notify_mutation_observers(JSContext* ctx,
                                       const std::vector<clever::html::SimpleNode*>& removed_nodes,
                                       clever::html::SimpleNode* previous_sibling,
                                       clever::html::SimpleNode* next_sibling,
-                                      const std::string& attr_name = "",
-                                      const std::string& old_value = "") {
+                                      const std::string& attr_name,
+                                      const std::string& old_value) {
     if (!state || !target) return;
 
     for (auto& entry : state->mutation_observers) {
@@ -3568,7 +3580,7 @@ static void notify_mutation_observers(JSContext* ctx,
                                               attr_name, old_value);
 
         // Queue for async delivery
-        PendingMutation pm;
+        DOMState::PendingMutation pm;
         pm.observer_obj = JS_DupValue(ctx, entry.observer_obj);
         pm.callback = JS_DupValue(ctx, entry.callback);
         pm.mutation_records.push_back(record);
@@ -3677,7 +3689,7 @@ static JSValue js_mutation_observer_observe(JSContext* ctx,
 
     // Find or create observer entry for this observer object
     for (auto& entry : state->mutation_observers) {
-        if (JS_StrictEqual(ctx, entry.observer_obj, this_val)) {
+        if (JS_StrictEq(ctx, entry.observer_obj, this_val)) {
             // Update existing observer
             entry.observed_targets.push_back(target_node);
             entry.watch_child_list = watch_child_list;
@@ -3692,7 +3704,7 @@ static JSValue js_mutation_observer_observe(JSContext* ctx,
             if (record_attr_old) {
                 auto& old_vals = entry.old_attribute_values[target_node];
                 for (const auto& attr : target_node->attributes) {
-                    old_vals[attr.first] = attr.second;
+                    old_vals[attr.name] = attr.value;
                 }
             }
 
@@ -3716,7 +3728,7 @@ static JSValue js_mutation_observer_observe(JSContext* ctx,
     if (record_attr_old) {
         auto& old_vals = new_entry.old_attribute_values[target_node];
         for (const auto& attr : target_node->attributes) {
-            old_vals[attr.first] = attr.second;
+            old_vals[attr.name] = attr.value;
         }
     }
 
@@ -3735,7 +3747,7 @@ static JSValue js_mutation_observer_disconnect(JSContext* ctx,
     // Remove this observer from the list
     for (auto it = state->mutation_observers.begin();
          it != state->mutation_observers.end(); ++it) {
-        if (JS_StrictEqual(ctx, it->observer_obj, this_val)) {
+        if (JS_StrictEq(ctx, it->observer_obj, this_val)) {
             JS_FreeValue(ctx, it->observer_obj);
             JS_FreeValue(ctx, it->callback);
             state->mutation_observers.erase(it);
@@ -3760,7 +3772,7 @@ static JSValue js_mutation_observer_take_records(JSContext* ctx,
 
     auto it = state->pending_mutations.begin();
     while (it != state->pending_mutations.end()) {
-        if (JS_StrictEqual(ctx, it->observer_obj, this_val)) {
+        if (JS_StrictEq(ctx, it->observer_obj, this_val)) {
             for (auto& record : it->mutation_records) {
                 JS_SetPropertyUint32(ctx, records_arr, count++, JS_DupValue(ctx, record));
                 JS_FreeValue(ctx, record);

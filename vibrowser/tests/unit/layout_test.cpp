@@ -29164,8 +29164,8 @@ TEST(LayoutEngineTest, LayoutV158_5) {
     // Third wraps to line 2
     EXPECT_FLOAT_EQ(root->children[0]->geometry.y, 0.0f);
     EXPECT_FLOAT_EQ(root->children[1]->geometry.y, 0.0f);
-    // Line 2 at y = 50 (line1 height)
-    EXPECT_FLOAT_EQ(root->children[2]->geometry.y, 50.0f);
+    // Line 2 at y = 50 (line1 height) + 10 (row gap) = 60
+    EXPECT_FLOAT_EQ(root->children[2]->geometry.y, 60.0f);
 }
 
 // V158_6: nested block layout
@@ -29380,8 +29380,8 @@ TEST(LayoutEngineTest, LayoutV159_7) {
     // First two fit on line 1: 250 + 10 + 250 = 510 < 520
     EXPECT_FLOAT_EQ(root->children[0]->geometry.y, 0.0f);
     EXPECT_FLOAT_EQ(root->children[1]->geometry.y, 0.0f);
-    // Third wraps to line 2: y = 40 (height of first line)
-    EXPECT_FLOAT_EQ(root->children[2]->geometry.y, 40.0f);
+    // Third wraps to line 2: y = 40 (height of first line) + 10 (row gap) = 50
+    EXPECT_FLOAT_EQ(root->children[2]->geometry.y, 50.0f);
 }
 
 // V159_8: specified_width defaults to -1.0f (auto)

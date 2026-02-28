@@ -7,6 +7,9 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+# Workaround macOS SDK <math.h> macro clash with <chrono> formatters
+add_compile_definitions(_LIBCPP_REMOVE_TRANSITIVE_INCLUDES)
+
 # Compiler warnings
 add_compile_options(-Wall -Wextra -Wpedantic)
 if(CMAKE_BUILD_TYPE STREQUAL "Release")

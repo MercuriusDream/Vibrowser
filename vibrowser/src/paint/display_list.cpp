@@ -1,4 +1,6 @@
 #include <clever/paint/display_list.h>
+#include <algorithm>
+#include <cmath>
 
 namespace clever::paint {
 
@@ -302,7 +304,7 @@ void DisplayList::draw_line(float x1, float y1, float x2, float y2,
     cmd.stroke_width = stroke_width;
     // Set bounds for clipping
     cmd.bounds = {std::min(x1, x2), std::min(y1, y2),
-                  std::abs(x2 - x1), std::abs(y2 - y1)};
+                  std::fabs(x2 - x1), std::fabs(y2 - y1)};
     commands_.push_back(cmd);
 }
 

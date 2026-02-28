@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cmath>
+#include <functional>
 #include <sstream>
 
 namespace clever::paint {

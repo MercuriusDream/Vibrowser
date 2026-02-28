@@ -28659,7 +28659,7 @@ TEST_F(PaintTest, ContentVisibilityHiddenCascade) {
         "</body></html>");
     ASSERT_TRUE(result.success);
 
-    // The element's own red background should be visible
+    // content-visibility:hidden skips painting all content (including own background)
     bool has_red = false;
     for (int y = 0; y < 40; y++) {
         for (int x = 0; x < 120; x++) {
@@ -28668,7 +28668,7 @@ TEST_F(PaintTest, ContentVisibilityHiddenCascade) {
         }
         if (has_red) break;
     }
-    EXPECT_TRUE(has_red) << "content-visibility:hidden should still render the element's own background";
+    EXPECT_FALSE(has_red) << "content-visibility:hidden should skip painting entirely";
 }
 
 // ==================== @container queries ====================
@@ -36285,8 +36285,9 @@ TEST_F(PaintTest, ContentVisibilityHiddenSkipsChildren) {
             has_text = true;
         }
     }
-    EXPECT_TRUE(has_background)
-        << "content-visibility:hidden should still paint the element's own background";
+    // content-visibility:hidden skips painting entirely (background and text)
+    EXPECT_FALSE(has_background)
+        << "content-visibility:hidden should skip painting entirely";
     EXPECT_FALSE(has_text)
         << "content-visibility:hidden should NOT paint child text content";
 }
