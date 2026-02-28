@@ -519,7 +519,7 @@ void PropertyCascade::apply_declaration(
         if (prop == "overflow") { style.overflow_x = Overflow::Visible; style.overflow_y = Overflow::Visible; return; }
         if (prop == "overflow-x") { style.overflow_x = Overflow::Visible; return; }
         if (prop == "overflow-y") { style.overflow_y = Overflow::Visible; return; }
-        if (prop == "z-index") { style.z_index = clever::layout::Z_INDEX_AUTO; return; }
+        if (prop == "z-index") { style.z_index = 0; return; }
         // Sizing
         if (prop == "width") { style.width = Length::auto_val(); return; }
         if (prop == "height") { style.height = Length::auto_val(); return; }
@@ -1541,7 +1541,7 @@ void PropertyCascade::apply_declaration(
     }
     if (prop == "z-index") {
         if (value_lower == "auto") {
-            style.z_index = clever::layout::Z_INDEX_AUTO;
+            style.z_index = 0;
         } else {
             try {
                 style.z_index = std::stoi(value_str);
