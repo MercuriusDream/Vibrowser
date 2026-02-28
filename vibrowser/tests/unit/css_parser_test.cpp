@@ -12263,3 +12263,43 @@ TEST_F(CSSStylesheetTest, TextIndentDeclarationV178) {
     EXPECT_EQ(sheet.rules[0].declarations[0].values[0].numeric_value, 24.0);
     EXPECT_EQ(sheet.rules[0].declarations[0].values[0].unit, "px");
 }
+
+// ---------------------------------------------------------------------------
+// Cycle V179 — vertical-align, direction, text-overflow, box-sizing declarations
+// ---------------------------------------------------------------------------
+
+TEST_F(CSSStylesheetTest, VerticalAlignDeclarationV179) {
+    auto sheet = parse_stylesheet("td { vertical-align: middle; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    ASSERT_EQ(sheet.rules[0].declarations.size(), 1u);
+    EXPECT_EQ(sheet.rules[0].declarations[0].property, "vertical-align");
+    ASSERT_GE(sheet.rules[0].declarations[0].values.size(), 1u);
+    EXPECT_EQ(sheet.rules[0].declarations[0].values[0].value, "middle");
+}
+
+TEST_F(CSSStylesheetTest, DirectionRtlDeclarationV179) {
+    auto sheet = parse_stylesheet("body { direction: rtl; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    ASSERT_EQ(sheet.rules[0].declarations.size(), 1u);
+    EXPECT_EQ(sheet.rules[0].declarations[0].property, "direction");
+    ASSERT_GE(sheet.rules[0].declarations[0].values.size(), 1u);
+    EXPECT_EQ(sheet.rules[0].declarations[0].values[0].value, "rtl");
+}
+
+TEST_F(CSSStylesheetTest, TextOverflowEllipsisDeclarationV179) {
+    auto sheet = parse_stylesheet("div { text-overflow: ellipsis; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    ASSERT_EQ(sheet.rules[0].declarations.size(), 1u);
+    EXPECT_EQ(sheet.rules[0].declarations[0].property, "text-overflow");
+    ASSERT_GE(sheet.rules[0].declarations[0].values.size(), 1u);
+    EXPECT_EQ(sheet.rules[0].declarations[0].values[0].value, "ellipsis");
+}
+
+TEST_F(CSSStylesheetTest, BoxSizingBorderBoxDeclarationV179) {
+    auto sheet = parse_stylesheet("* { box-sizing: border-box; }");
+    ASSERT_EQ(sheet.rules.size(), 1u);
+    ASSERT_EQ(sheet.rules[0].declarations.size(), 1u);
+    EXPECT_EQ(sheet.rules[0].declarations[0].property, "box-sizing");
+    ASSERT_GE(sheet.rules[0].declarations[0].values.size(), 1u);
+    EXPECT_EQ(sheet.rules[0].declarations[0].values[0].value, "border-box");
+}

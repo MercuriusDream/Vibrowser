@@ -3559,3 +3559,70 @@ TEST(MessagePipeTest, MessagePipeV178_3_LargePayloadRoundTripV178) {
     EXPECT_EQ(received->size(), 8192u);
     EXPECT_EQ(*received, large);
 }
+
+// ------------------------------------------------------------------
+// Round 179 message pipe tests
+// ------------------------------------------------------------------
+
+TEST(MessagePipeTest, MessagePipeV179_1_ReceiveAfterSenderClosedDrainsQueue) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    // Send 5 messages, then close sender
+    for (int i = 0; i < 5; ++i) {
+        std::vector<uint8_t> data = {static_cast<uint8_t>(i), 0x79};
+        ASSERT_TRUE(a.send(data));
+    }
+    a.close();
+
+    // All 5 should still be receivable
+    for (int i = 0; i < 5; ++i) {
+        auto r = b.receive();
+        ASSERT_TRUE(r.has_value());
+        EXPECT_EQ(r->size(), 2u);
+        EXPECT_EQ((*r)[0], static_cast<uint8_t>(i));
+        EXPECT_EQ((*r)[1], 0x79);
+    }
+
+    // No more messages after draining
+    auto empty = b.receive();
+    EXPECT_FALSE(empty.has_value());
+}
+
+TEST(MessagePipeTest, MessagePipeV179_2_SendEmptyPayload) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    // Send empty vector
+    std::vector<uint8_t> empty_data;
+    ASSERT_TRUE(a.send(empty_data));
+
+    // Send non-empty after empty
+    std::vector<uint8_t> nonempty = {0x01, 0x02};
+    ASSERT_TRUE(a.send(nonempty));
+
+    // Receive the empty payload first
+    auto r1 = b.receive();
+    ASSERT_TRUE(r1.has_value());
+    EXPECT_TRUE(r1->empty());
+
+    // Then the non-empty payload
+    auto r2 = b.receive();
+    ASSERT_TRUE(r2.has_value());
+    EXPECT_EQ(*r2, nonempty);
+}
+
+TEST(MessagePipeTest, MessagePipeV179_3_SingleByteMessagesOrderPreserved) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    // Send 50 single-byte messages and verify ordering
+    for (int i = 0; i < 50; ++i) {
+        std::vector<uint8_t> data = {static_cast<uint8_t>(i)};
+        ASSERT_TRUE(a.send(data));
+    }
+
+    for (int i = 0; i < 50; ++i) {
+        auto r = b.receive();
+        ASSERT_TRUE(r.has_value());
+        EXPECT_EQ(r->size(), 1u);
+        EXPECT_EQ((*r)[0], static_cast<uint8_t>(i));
+    }
+}

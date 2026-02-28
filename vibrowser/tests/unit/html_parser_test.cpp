@@ -27549,3 +27549,116 @@ TEST(HtmlParserTest, HtmlV178_8) {
     EXPECT_EQ(small->tag_name, "small");
     EXPECT_EQ(small->text_content(), "copyright 2026");
 }
+
+// ---------------------------------------------------------------------------
+// Cycle V179 — various HTML structures (8 tests)
+// ---------------------------------------------------------------------------
+
+TEST(HtmlParserTest, HtmlV179_1) {
+    auto doc = clever::html::parse("<table><tr><td>cell1</td><td>cell2</td></tr></table>");
+    ASSERT_NE(doc, nullptr);
+    auto* table = doc->find_element("table");
+    ASSERT_NE(table, nullptr);
+    EXPECT_EQ(table->tag_name, "table");
+    auto* td = doc->find_element("td");
+    ASSERT_NE(td, nullptr);
+    EXPECT_EQ(td->text_content(), "cell1");
+}
+
+TEST(HtmlParserTest, HtmlV179_2) {
+    auto doc = clever::html::parse("<dl><dt>Term</dt><dd>Definition</dd></dl>");
+    ASSERT_NE(doc, nullptr);
+    auto* dl = doc->find_element("dl");
+    ASSERT_NE(dl, nullptr);
+    EXPECT_EQ(dl->tag_name, "dl");
+    auto* dt = doc->find_element("dt");
+    ASSERT_NE(dt, nullptr);
+    EXPECT_EQ(dt->text_content(), "Term");
+    auto* dd = doc->find_element("dd");
+    ASSERT_NE(dd, nullptr);
+    EXPECT_EQ(dd->text_content(), "Definition");
+}
+
+TEST(HtmlParserTest, HtmlV179_3) {
+    auto doc = clever::html::parse("<figure><img src=\"photo.jpg\"><figcaption>Caption</figcaption></figure>");
+    ASSERT_NE(doc, nullptr);
+    auto* figure = doc->find_element("figure");
+    ASSERT_NE(figure, nullptr);
+    EXPECT_EQ(figure->tag_name, "figure");
+    auto* img = doc->find_element("img");
+    ASSERT_NE(img, nullptr);
+    ASSERT_GE(img->attributes.size(), 1u);
+    EXPECT_EQ(img->attributes[0].name, "src");
+    EXPECT_EQ(img->attributes[0].value, "photo.jpg");
+    auto* caption = doc->find_element("figcaption");
+    ASSERT_NE(caption, nullptr);
+    EXPECT_EQ(caption->text_content(), "Caption");
+}
+
+TEST(HtmlParserTest, HtmlV179_4) {
+    auto doc = clever::html::parse("<blockquote>Quoted text</blockquote>");
+    ASSERT_NE(doc, nullptr);
+    auto* bq = doc->find_element("blockquote");
+    ASSERT_NE(bq, nullptr);
+    EXPECT_EQ(bq->tag_name, "blockquote");
+    EXPECT_EQ(bq->text_content(), "Quoted text");
+}
+
+TEST(HtmlParserTest, HtmlV179_5) {
+    auto doc = clever::html::parse("<form action=\"/submit\"><input type=\"text\" name=\"q\"></form>");
+    ASSERT_NE(doc, nullptr);
+    auto* form = doc->find_element("form");
+    ASSERT_NE(form, nullptr);
+    EXPECT_EQ(form->tag_name, "form");
+    ASSERT_GE(form->attributes.size(), 1u);
+    EXPECT_EQ(form->attributes[0].name, "action");
+    EXPECT_EQ(form->attributes[0].value, "/submit");
+    auto* input = doc->find_element("input");
+    ASSERT_NE(input, nullptr);
+    EXPECT_EQ(input->tag_name, "input");
+}
+
+TEST(HtmlParserTest, HtmlV179_6) {
+    auto doc = clever::html::parse("<main><article><h2>Title</h2><p>Content</p></article></main>");
+    ASSERT_NE(doc, nullptr);
+    auto* main = doc->find_element("main");
+    ASSERT_NE(main, nullptr);
+    EXPECT_EQ(main->tag_name, "main");
+    auto* article = doc->find_element("article");
+    ASSERT_NE(article, nullptr);
+    EXPECT_EQ(article->tag_name, "article");
+    auto* h2 = doc->find_element("h2");
+    ASSERT_NE(h2, nullptr);
+    EXPECT_EQ(h2->text_content(), "Title");
+}
+
+TEST(HtmlParserTest, HtmlV179_7) {
+    auto doc = clever::html::parse("<select><option value=\"a\">Alpha</option><option value=\"b\">Beta</option></select>");
+    ASSERT_NE(doc, nullptr);
+    auto* select = doc->find_element("select");
+    ASSERT_NE(select, nullptr);
+    EXPECT_EQ(select->tag_name, "select");
+    ASSERT_GE(select->children.size(), 2u);
+    EXPECT_EQ(select->children[0]->tag_name, "option");
+    EXPECT_EQ(select->children[0]->text_content(), "Alpha");
+    EXPECT_EQ(select->children[1]->tag_name, "option");
+    EXPECT_EQ(select->children[1]->text_content(), "Beta");
+}
+
+TEST(HtmlParserTest, HtmlV179_8) {
+    auto doc = clever::html::parse("<div><span class=\"bold\">Hello</span> <em>World</em></div>");
+    ASSERT_NE(doc, nullptr);
+    auto* div = doc->find_element("div");
+    ASSERT_NE(div, nullptr);
+    EXPECT_EQ(div->tag_name, "div");
+    auto* span = doc->find_element("span");
+    ASSERT_NE(span, nullptr);
+    EXPECT_EQ(span->tag_name, "span");
+    ASSERT_GE(span->attributes.size(), 1u);
+    EXPECT_EQ(span->attributes[0].name, "class");
+    EXPECT_EQ(span->attributes[0].value, "bold");
+    EXPECT_EQ(span->text_content(), "Hello");
+    auto* em = doc->find_element("em");
+    ASSERT_NE(em, nullptr);
+    EXPECT_EQ(em->text_content(), "World");
+}

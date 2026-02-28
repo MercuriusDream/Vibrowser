@@ -22130,3 +22130,74 @@ TEST(SerializerTest, SerializerV178_3_LargeBlobWithU16BookendsRoundTrip) {
     EXPECT_EQ(d.read_u16(), 0xFACE);
     EXPECT_FALSE(d.has_remaining());
 }
+
+// ------------------------------------------------------------------
+// Round 179 serializer tests
+// ------------------------------------------------------------------
+
+TEST(SerializerTest, SerializerV179_1_AlternatingU8AndBytesRoundTrip) {
+    Serializer s;
+    // Interleave single u8 values with byte blocks
+    s.write_u8(0x01);
+    std::vector<uint8_t> block1 = {0x10, 0x20, 0x30};
+    s.write_bytes(block1.data(), block1.size());
+    s.write_u8(0x02);
+    std::vector<uint8_t> block2 = {0x40, 0x50};
+    s.write_bytes(block2.data(), block2.size());
+    s.write_u8(0x03);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u8(), 0x01);
+    auto r1 = d.read_bytes();
+    EXPECT_EQ(r1, block1);
+    EXPECT_EQ(d.read_u8(), 0x02);
+    auto r2 = d.read_bytes();
+    EXPECT_EQ(r2, block2);
+    EXPECT_EQ(d.read_u8(), 0x03);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, SerializerV179_2_EmptyBytesBlocksBetweenStringsRoundTrip) {
+    Serializer s;
+    // Write empty byte blocks between non-empty strings
+    s.write_string("start_v179");
+    std::vector<uint8_t> empty_block;
+    s.write_bytes(empty_block.data(), empty_block.size());
+    s.write_string("middle_v179");
+    s.write_bytes(empty_block.data(), empty_block.size());
+    s.write_string("end_v179");
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "start_v179");
+    auto r1 = d.read_bytes();
+    EXPECT_TRUE(r1.empty());
+    EXPECT_EQ(d.read_string(), "middle_v179");
+    auto r2 = d.read_bytes();
+    EXPECT_TRUE(r2.empty());
+    EXPECT_EQ(d.read_string(), "end_v179");
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, SerializerV179_3_U32MaxBoundaryWithBytesRoundTrip) {
+    Serializer s;
+    // Test u32 boundary values sandwiching a byte block
+    s.write_u32(0);
+    s.write_u32(1);
+    std::vector<uint8_t> payload(512);
+    for (size_t i = 0; i < payload.size(); ++i) {
+        payload[i] = static_cast<uint8_t>((i * 7) % 256);
+    }
+    s.write_bytes(payload.data(), payload.size());
+    s.write_u32(std::numeric_limits<uint32_t>::max());
+    s.write_u32(std::numeric_limits<uint32_t>::max() - 1);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u32(), 0u);
+    EXPECT_EQ(d.read_u32(), 1u);
+    auto rp = d.read_bytes();
+    EXPECT_EQ(rp.size(), 512u);
+    EXPECT_EQ(rp, payload);
+    EXPECT_EQ(d.read_u32(), std::numeric_limits<uint32_t>::max());
+    EXPECT_EQ(d.read_u32(), std::numeric_limits<uint32_t>::max() - 1);
+    EXPECT_FALSE(d.has_remaining());
+}

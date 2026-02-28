@@ -26944,3 +26944,43 @@ TEST(PropertyCascadeTest, OverflowHiddenAppliedV178) {
     cascade.apply_declaration(style, make_decl("overflow", "hidden"), parent);
     EXPECT_EQ(style.overflow_x, Overflow::Hidden);
 }
+
+// ---------------------------------------------------------------------------
+// Cycle V179 — flex-direction column, box-sizing border-box, text-transform uppercase, font-style italic
+// ---------------------------------------------------------------------------
+
+TEST(PropertyCascadeTest, FlexDirectionColumnAppliedV179) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("flex-direction", "column"), parent);
+    EXPECT_EQ(style.flex_direction, FlexDirection::Column);
+}
+
+TEST(PropertyCascadeTest, BoxSizingBorderBoxAppliedV179) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("box-sizing", "border-box"), parent);
+    EXPECT_EQ(style.box_sizing, BoxSizing::BorderBox);
+}
+
+TEST(PropertyCascadeTest, TextTransformUppercaseAppliedV179) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("text-transform", "uppercase"), parent);
+    EXPECT_EQ(style.text_transform, TextTransform::Uppercase);
+}
+
+TEST(PropertyCascadeTest, FontStyleItalicAppliedV179) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("font-style", "italic"), parent);
+    EXPECT_EQ(style.font_style, FontStyle::Italic);
+}

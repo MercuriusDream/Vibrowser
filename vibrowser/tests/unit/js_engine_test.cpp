@@ -39573,3 +39573,98 @@ TEST(JSEngine, JsV178_8) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "{\"x\":1,\"y\":3,\"z\":4}");
 }
+
+// V179_1: Array.from creates array from iterable string
+TEST(JSEngine, JsV179_1) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        JSON.stringify(Array.from('abc'));
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "[\"a\",\"b\",\"c\"]");
+}
+
+// V179_2: Map set/get/has operations
+TEST(JSEngine, JsV179_2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var m = new Map();
+        m.set('x', 10);
+        m.set('y', 20);
+        m.has('x').toString() + '|' + m.get('y').toString() + '|' + m.size.toString();
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true|20|2");
+}
+
+// V179_3: Set add/has/size/delete
+TEST(JSEngine, JsV179_3) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var s = new Set([1, 2, 3, 2, 1]);
+        var sz = s.size;
+        s.delete(2);
+        sz.toString() + '|' + s.size.toString() + '|' + s.has(2).toString();
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "3|2|false");
+}
+
+// V179_4: WeakMap basic operations
+TEST(JSEngine, JsV179_4) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var wm = new WeakMap();
+        var key = {};
+        wm.set(key, 'value');
+        wm.has(key).toString() + '|' + wm.get(key);
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true|value");
+}
+
+// V179_5: String.prototype.repeat
+TEST(JSEngine, JsV179_5) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        'ha'.repeat(3);
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "hahaha");
+}
+
+// V179_6: Array.prototype.find and findIndex
+TEST(JSEngine, JsV179_6) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var arr = [5, 12, 8, 130, 44];
+        var found = arr.find(function(el) { return el > 10; });
+        var idx = arr.findIndex(function(el) { return el > 10; });
+        found.toString() + '|' + idx.toString();
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "12|1");
+}
+
+// V179_7: Object.keys and Object.values
+TEST(JSEngine, JsV179_7) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var obj = {a: 1, b: 2, c: 3};
+        JSON.stringify(Object.keys(obj)) + '|' + JSON.stringify(Object.values(obj));
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "[\"a\",\"b\",\"c\"]|[1,2,3]");
+}
+
+// V179_8: template literal with expression
+TEST(JSEngine, JsV179_8) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var x = 5;
+        var y = 10;
+        `${x} + ${y} = ${x + y}`;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "5 + 10 = 15");
+}

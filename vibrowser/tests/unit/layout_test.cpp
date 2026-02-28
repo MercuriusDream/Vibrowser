@@ -31807,3 +31807,134 @@ TEST(LayoutEngineTest, FourBlockChildrenStackingV178) {
     EXPECT_FLOAT_EQ(root->children[3]->geometry.y, 105.0f);
     EXPECT_FLOAT_EQ(root->geometry.height, 160.0f);
 }
+
+// V179_1: block child inherits parent width when no specified_width
+TEST(LayoutEngineTest, BlockChildInheritsParentWidthV179) {
+    auto root = make_block("div");
+    root->specified_width = 500.0f;
+
+    auto child = make_block("div");
+    child->specified_height = 30.0f;
+
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.width, 500.0f);
+}
+
+// V179_2: padding increases total height of parent
+TEST(LayoutEngineTest, PaddingAddsToParentHeightV179) {
+    auto root = make_block("div");
+    root->specified_width = 400.0f;
+    root->geometry.padding.top = 10.0f;
+    root->geometry.padding.bottom = 20.0f;
+
+    auto child = make_block("div");
+    child->specified_height = 50.0f;
+
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(root->geometry.height, 80.0f);
+}
+
+// V179_3: margin on child offsets its y position
+TEST(LayoutEngineTest, ChildMarginOffsetsYPositionV179) {
+    auto root = make_block("div");
+    root->specified_width = 600.0f;
+
+    auto c1 = make_block("div");
+    c1->specified_height = 40.0f;
+    auto c2 = make_block("div");
+    c2->specified_height = 30.0f;
+    c2->geometry.margin.top = 15.0f;
+
+    root->append_child(std::move(c1));
+    root->append_child(std::move(c2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.y, 55.0f);
+}
+
+// V179_4: flex container with three children computes total width
+TEST(LayoutEngineTest, FlexThreeChildrenTotalWidthV179) {
+    auto root = make_flex("div");
+    root->specified_width = 900.0f;
+
+    auto c1 = make_block("div");
+    c1->specified_width = 100.0f;
+    c1->specified_height = 40.0f;
+    auto c2 = make_block("div");
+    c2->specified_width = 200.0f;
+    c2->specified_height = 40.0f;
+    auto c3 = make_block("div");
+    c3->specified_width = 300.0f;
+    c3->specified_height = 40.0f;
+
+    root->append_child(std::move(c1));
+    root->append_child(std::move(c2));
+    root->append_child(std::move(c3));
+
+    LayoutEngine engine;
+    engine.compute(*root, 900.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.x, 0.0f);
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.x, 100.0f);
+    EXPECT_FLOAT_EQ(root->children[2]->geometry.x, 300.0f);
+}
+
+// V179_5: default margin is zero on newly created node
+TEST(LayoutNodeProps, MarginDefaultZeroV179) {
+    auto node = std::make_unique<LayoutNode>();
+    EXPECT_FLOAT_EQ(node->geometry.margin.top, 0.0f);
+    EXPECT_FLOAT_EQ(node->geometry.margin.right, 0.0f);
+    EXPECT_FLOAT_EQ(node->geometry.margin.bottom, 0.0f);
+    EXPECT_FLOAT_EQ(node->geometry.margin.left, 0.0f);
+}
+
+// V179_6: specified_height is respected for root element
+TEST(LayoutEngineTest, SpecifiedHeightRespectedV179) {
+    auto root = make_block("div");
+    root->specified_width = 300.0f;
+    root->specified_height = 250.0f;
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(root->geometry.height, 250.0f);
+}
+
+// V179_7: color property default is opaque black
+TEST(LayoutNodeProps, ColorDefaultV179) {
+    auto node = std::make_unique<LayoutNode>();
+    EXPECT_EQ(node->color, 0xFF000000u);
+}
+
+// V179_8: nested block children accumulate height correctly
+TEST(LayoutEngineTest, NestedBlockHeightAccumulationV179) {
+    auto root = make_block("div");
+    root->specified_width = 400.0f;
+
+    auto outer = make_block("div");
+
+    auto inner1 = make_block("div");
+    inner1->specified_height = 60.0f;
+    auto inner2 = make_block("div");
+    inner2->specified_height = 80.0f;
+
+    outer->append_child(std::move(inner1));
+    outer->append_child(std::move(inner2));
+    root->append_child(std::move(outer));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.height, 140.0f);
+    EXPECT_FLOAT_EQ(root->geometry.height, 140.0f);
+}

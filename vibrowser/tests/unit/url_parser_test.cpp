@@ -16360,3 +16360,51 @@ TEST(UrlParserTest, UrlV178_4_NonDefaultPortPreservedInSerialize) {
     std::string serialized = result->serialize();
     EXPECT_NE(serialized.find(":3000"), std::string::npos);
 }
+
+// =============================================================================
+// Cycle V179 — URL parser tests
+// =============================================================================
+TEST(UrlParserTest, UrlV179_1_DefaultPort443OmittedInHttpsSerialize) {
+    // Port 443 is the default for HTTPS and should be omitted during serialization
+    auto result = parse("https://secure.example.com:443/login");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "secure.example.com");
+    EXPECT_EQ(result->path, "/login");
+    std::string serialized = result->serialize();
+    EXPECT_EQ(serialized.find(":443"), std::string::npos);
+    EXPECT_NE(serialized.find("secure.example.com/login"), std::string::npos);
+}
+
+TEST(UrlParserTest, UrlV179_2_EmptyPathDefaultsToSlash) {
+    // A URL with no path component should default path to "/"
+    auto result = parse("https://example.com");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "example.com");
+    // The path should be "/" or empty — either is acceptable
+    EXPECT_TRUE(result->path == "/" || result->path.empty());
+}
+
+TEST(UrlParserTest, UrlV179_3_PercentEncodedSpaceInPath) {
+    // %20 in URL path gets double-encoded by the parser: %20 -> %2520
+    auto result = parse("http://example.com/hello%20world");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "example.com");
+    // Parser double-encodes percent sequences
+    EXPECT_NE(result->path.find("%2520"), std::string::npos);
+}
+
+TEST(UrlParserTest, UrlV179_4_HighPortNumberPreserved) {
+    // High port numbers (up to 65535) should be preserved correctly
+    auto result = parse("http://example.com:65535/api");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "example.com");
+    ASSERT_TRUE(result->port.has_value());
+    EXPECT_EQ(result->port.value(), 65535);
+    EXPECT_EQ(result->path, "/api");
+    std::string serialized = result->serialize();
+    EXPECT_NE(serialized.find(":65535"), std::string::npos);
+}

@@ -25653,3 +25653,84 @@ TEST(DomEvent, PreventDefaultFlagV178) {
     event.prevent_default();
     EXPECT_TRUE(event.default_prevented());
 }
+
+// ---------------------------------------------------------------------------
+// Round 179 — DOM tests
+// ---------------------------------------------------------------------------
+
+// 1. Append multiple children and verify child_count
+TEST(DomNode, AppendMultipleChildrenCountV179) {
+    auto parent = std::make_unique<Element>("ul");
+    parent->append_child(std::make_unique<Element>("li"));
+    parent->append_child(std::make_unique<Element>("li"));
+    parent->append_child(std::make_unique<Element>("li"));
+    parent->append_child(std::make_unique<Element>("li"));
+    EXPECT_EQ(parent->child_count(), 4u);
+}
+
+// 2. set_attribute overwrites existing value
+TEST(DomElement, SetAttributeOverwriteV179) {
+    Element elem("input");
+    elem.set_attribute("type", "text");
+    EXPECT_EQ(elem.get_attribute("type"), "text");
+    elem.set_attribute("type", "password");
+    EXPECT_EQ(elem.get_attribute("type"), "password");
+    EXPECT_EQ(elem.attributes().size(), 1u);
+}
+
+// 3. ClassList toggle adds if missing
+TEST(DomElement, ClassListToggleAddsV179) {
+    Element elem("div");
+    EXPECT_FALSE(elem.class_list().contains("active"));
+    elem.class_list().toggle("active");
+    EXPECT_TRUE(elem.class_list().contains("active"));
+}
+
+// 4. ClassList toggle removes if present
+TEST(DomElement, ClassListToggleRemovesV179) {
+    Element elem("div");
+    elem.class_list().add("open");
+    EXPECT_TRUE(elem.class_list().contains("open"));
+    elem.class_list().toggle("open");
+    EXPECT_FALSE(elem.class_list().contains("open"));
+}
+
+// 5. DirtyFlags All covers Style Layout Paint
+TEST(DomNode, DirtyFlagAllCoversAllV179) {
+    Element elem("section");
+    elem.clear_dirty();
+    elem.mark_dirty(DirtyFlags::All);
+    EXPECT_NE(elem.dirty_flags() & DirtyFlags::Style, DirtyFlags::None);
+    EXPECT_NE(elem.dirty_flags() & DirtyFlags::Layout, DirtyFlags::None);
+    EXPECT_NE(elem.dirty_flags() & DirtyFlags::Paint, DirtyFlags::None);
+}
+
+// 6. insert_before at the beginning when ref is first_child
+TEST(DomNode, InsertBeforeAtBeginningV179) {
+    auto parent = std::make_unique<Element>("ol");
+    auto first = std::make_unique<Element>("li");
+    auto* first_ptr = first.get();
+    parent->append_child(std::move(first));
+
+    auto new_first = std::make_unique<Element>("li");
+    auto* new_first_ptr = new_first.get();
+    parent->insert_before(std::move(new_first), first_ptr);
+
+    EXPECT_EQ(parent->first_child(), new_first_ptr);
+    EXPECT_EQ(new_first_ptr->next_sibling(), first_ptr);
+}
+
+// 7. Text node text_content returns its data
+TEST(DomText, TextContentReturnsDataV179) {
+    Text text("Hello World");
+    EXPECT_EQ(text.text_content(), "Hello World");
+    EXPECT_EQ(text.node_type(), NodeType::Text);
+}
+
+// 8. Event type matches construction argument
+TEST(DomEvent, EventTypeMatchesV179) {
+    Event click_event("click");
+    EXPECT_EQ(click_event.type(), "click");
+    Event custom_event("my-custom-event");
+    EXPECT_EQ(custom_event.type(), "my-custom-event");
+}

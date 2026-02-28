@@ -2162,3 +2162,40 @@ TEST(IsURLCodePoint, SpecialPunctuationValidityV178) {
     // DEL (U+007F) is NOT a valid URL code point
     EXPECT_FALSE(is_url_code_point(U'\x7F'));
 }
+
+// =============================================================================
+// Cycle V179 — Percent encoding tests
+// =============================================================================
+TEST(PercentEncoding, LeftBraceEncodedV179) {
+    // '{' (U+007B) should be percent-encoded as %7B
+    EXPECT_EQ(percent_encode("{"), "%7B");
+    EXPECT_EQ(percent_encode("a{b"), "a%7Bb");
+    EXPECT_EQ(percent_encode("{}"), "%7B%7D");
+}
+
+TEST(PercentDecoding, RoundTripWithBracesAndTildeV179) {
+    // Encoding and then decoding braces and tilde chars should return original
+    std::string original = "key{val}~data";
+    std::string encoded = percent_encode(original);
+    std::string decoded = percent_decode(encoded);
+    EXPECT_EQ(decoded, original);
+}
+
+TEST(PercentEncoding, DoubleEncodesNestedPercentSequenceV179) {
+    // A string containing %3C should have its % double-encoded to %25
+    EXPECT_EQ(percent_encode("%3C"), "%253C");
+    EXPECT_EQ(percent_encode("a%3Cb%3E"), "a%253Cb%253E");
+}
+
+TEST(IsURLCodePoint, DollarAndEqualsValidityV179) {
+    // '$' (U+0024) is a valid URL code point
+    EXPECT_TRUE(is_url_code_point(U'$'));
+    // '=' (U+003D) is a valid URL code point
+    EXPECT_TRUE(is_url_code_point(U'='));
+    // '@' (U+0040) is a valid URL code point
+    EXPECT_TRUE(is_url_code_point(U'@'));
+    // '[' (U+005B) is NOT a valid URL code point (IPv6 delimiter)
+    EXPECT_FALSE(is_url_code_point(U'['));
+    // ']' (U+005D) is NOT a valid URL code point (IPv6 delimiter)
+    EXPECT_FALSE(is_url_code_point(U']'));
+}

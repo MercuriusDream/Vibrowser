@@ -3650,3 +3650,73 @@ TEST(MessageChannelTest, MessageChannelV178_2_SendReceiveLargePayloadV178) {
     EXPECT_EQ(received->payload.size(), 2048u);
     EXPECT_EQ(received->payload, msg.payload);
 }
+
+// ------------------------------------------------------------------
+// Round 179 message channel tests
+// ------------------------------------------------------------------
+
+TEST(MessageChannelTest, MessageChannelV179_1_MultipleHandlersDifferentTypes) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel ch(std::move(pa));
+
+    int type10_count = 0;
+    int type20_count = 0;
+    int type30_count = 0;
+
+    ch.on(10, [&](const Message& msg) {
+        type10_count++;
+        EXPECT_EQ(msg.type, 10u);
+    });
+    ch.on(20, [&](const Message& msg) {
+        type20_count++;
+        EXPECT_EQ(msg.type, 20u);
+    });
+    ch.on(30, [&](const Message& msg) {
+        type30_count++;
+        EXPECT_EQ(msg.type, 30u);
+    });
+
+    // Dispatch messages of each type in varied order
+    Message m1; m1.type = 20; m1.request_id = 1; m1.payload = {0x01};
+    ch.dispatch(m1);
+    Message m2; m2.type = 10; m2.request_id = 2; m2.payload = {0x02};
+    ch.dispatch(m2);
+    Message m3; m3.type = 30; m3.request_id = 3; m3.payload = {0x03};
+    ch.dispatch(m3);
+    Message m4; m4.type = 20; m4.request_id = 4; m4.payload = {0x04};
+    ch.dispatch(m4);
+    Message m5; m5.type = 10; m5.request_id = 5; m5.payload = {0x05};
+    ch.dispatch(m5);
+
+    EXPECT_EQ(type10_count, 2);
+    EXPECT_EQ(type20_count, 2);
+    EXPECT_EQ(type30_count, 1);
+}
+
+TEST(MessageChannelTest, MessageChannelV179_2_DispatchPayloadIntegrityCheck) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel ch(std::move(pa));
+
+    std::vector<uint8_t> captured_payload;
+    uint32_t captured_request_id = 0;
+
+    ch.on(55, [&](const Message& msg) {
+        captured_payload = msg.payload;
+        captured_request_id = msg.request_id;
+    });
+
+    // Build message with a specific payload pattern
+    Message msg;
+    msg.type = 55;
+    msg.request_id = 179;
+    msg.payload.resize(256);
+    for (size_t i = 0; i < 256; ++i) {
+        msg.payload[i] = static_cast<uint8_t>(255 - i);
+    }
+
+    ch.dispatch(msg);
+
+    EXPECT_EQ(captured_request_id, 179u);
+    EXPECT_EQ(captured_payload.size(), 256u);
+    EXPECT_EQ(captured_payload, msg.payload);
+}

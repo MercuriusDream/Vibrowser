@@ -13770,3 +13770,52 @@ TEST(CORSPolicyTest, CorsV178_7_NormalizeSetsCorrectOriginCrossOrigin) {
 TEST(CORSPolicyTest, CorsV178_8_SameOriginWithQueryString) {
     EXPECT_FALSE(is_cross_origin("https://app.example", "https://app.example/search?q=test&page=1"));
 }
+
+// ---------------------------------------------------------------------------
+// Round 179 — CORS tests
+// ---------------------------------------------------------------------------
+
+// 1. file: scheme origin is NOT enforceable
+TEST(CORSPolicyTest, CorsV179_1_FileSchemeNotEnforceable) {
+    EXPECT_FALSE(has_enforceable_document_origin("file:///home/user/page.html"));
+}
+
+// 2. IPv6 loopback origin IS enforceable (IP addresses are enforceable)
+TEST(CORSPolicyTest, CorsV179_2_Ipv6LoopbackEnforceable) {
+    EXPECT_TRUE(has_enforceable_document_origin("https://[::1]"));
+}
+
+// 3. Cross-origin when subdomain differs
+TEST(CORSPolicyTest, CorsV179_3_CrossOriginSubdomainDiffers) {
+    EXPECT_TRUE(is_cross_origin("https://app.example", "https://api.example/data"));
+}
+
+// 4. ACAO wildcard allows response for non-credentialed request
+TEST(CORSPolicyTest, CorsV179_4_AcaoWildcardAllowsNoCreds) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "*");
+    EXPECT_TRUE(cors_allows_response("https://app.example", "https://api.example/data", headers, false));
+}
+
+// 5. ACAO wildcard does NOT allow response for credentialed request
+TEST(CORSPolicyTest, CorsV179_5_AcaoWildcardDeniesWithCreds) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "*");
+    EXPECT_FALSE(cors_allows_response("https://app.example", "https://api.example/data", headers, true));
+}
+
+// 6. ftp: URL is NOT CORS eligible
+TEST(CORSPolicyTest, CorsV179_6_FtpNotCorsEligible) {
+    EXPECT_FALSE(is_cors_eligible_request_url("ftp://files.example/readme.txt"));
+}
+
+// 7. Should NOT attach origin for same-origin request
+TEST(CORSPolicyTest, CorsV179_7_NoAttachOriginSameOrigin) {
+    EXPECT_FALSE(should_attach_origin_header("https://app.example",
+                                             "https://app.example/api/v1/users"));
+}
+
+// 8. Cross-origin with different port numbers
+TEST(CORSPolicyTest, CorsV179_8_CrossOriginDifferentPorts) {
+    EXPECT_TRUE(is_cross_origin("https://app.example:8080", "https://app.example:9090/api"));
+}

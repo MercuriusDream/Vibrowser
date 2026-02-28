@@ -31241,3 +31241,177 @@ TEST(HttpClient, RequestSerializeHeadCustomPortV178) {
     EXPECT_TRUE(after_headers.empty())
         << "HEAD request should have no body, but got: " << after_headers;
 }
+
+// ===========================================================================
+// Round 179 Net Tests (V179)
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// 1. Request: serialize POST with body includes Content-Length
+// ---------------------------------------------------------------------------
+TEST(HttpClient, RequestSerializePostBodyContentLengthV179) {
+    Request req;
+    req.method = Method::POST;
+    req.host = "v179-post.example.com";
+    req.port = 443;
+    req.path = "/api/data";
+    req.body = {'h', 'e', 'l', 'l', 'o'};
+
+    auto bytes = req.serialize();
+    std::string raw(bytes.begin(), bytes.end());
+
+    EXPECT_NE(raw.find("POST /api/data HTTP/1.1\r\n"), std::string::npos)
+        << "Should use POST method, got: " << raw;
+    // Port 443 should be omitted from Host header
+    EXPECT_NE(raw.find("Host: v179-post.example.com\r\n"), std::string::npos)
+        << "Port 443 should be omitted from Host header, got: " << raw;
+    EXPECT_NE(raw.find("Connection: close\r\n"), std::string::npos)
+        << "Should include Connection: close";
+    EXPECT_NE(raw.find("Content-Length: 5\r\n"), std::string::npos)
+        << "Should include Content-Length for body, got: " << raw;
+}
+
+// ---------------------------------------------------------------------------
+// 2. Response: parse valid HTTP/1.1 200 response
+// ---------------------------------------------------------------------------
+TEST(HttpClient, ResponseParseValid200V179) {
+    std::string raw_resp =
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Type: text/plain\r\n"
+        "Content-Length: 5\r\n"
+        "\r\n"
+        "hello";
+    std::vector<uint8_t> data(raw_resp.begin(), raw_resp.end());
+
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value()) << "Should parse valid 200 response";
+    EXPECT_EQ(resp->status, 200u);
+    EXPECT_EQ(resp->status_text, "OK");
+    EXPECT_EQ(resp->body_as_string(), "hello");
+    EXPECT_TRUE(resp->headers.has("content-type"));
+    EXPECT_EQ(resp->headers.get("content-type").value(), "text/plain");
+}
+
+// ---------------------------------------------------------------------------
+// 3. CookieJar: HttpOnly cookie stored and retrieved
+// ---------------------------------------------------------------------------
+TEST(HttpClient, CookieJarHttpOnlyStoredV179) {
+    CookieJar jar;
+    jar.set_from_header("session179=abc; HttpOnly; Path=/", "v179-httponly.example.com");
+
+    std::string hdr = jar.get_cookie_header("v179-httponly.example.com", "/", false);
+    EXPECT_NE(hdr.find("session179=abc"), std::string::npos)
+        << "HttpOnly cookie should still be sent in Cookie header, got: " << hdr;
+    EXPECT_EQ(jar.size(), 1u)
+        << "Jar should contain exactly one cookie";
+}
+
+// ---------------------------------------------------------------------------
+// 4. ConnectionPool: release and acquire round-trip
+// ---------------------------------------------------------------------------
+TEST(HttpClient, ConnectionPoolReleaseAcquireRoundTripV179) {
+    ConnectionPool pool(4);
+    pool.release("v179-pool.example.com", 8080, 42);
+
+    EXPECT_EQ(pool.count("v179-pool.example.com", 8080), 1u)
+        << "Should have one pooled connection after release";
+
+    int fd = pool.acquire("v179-pool.example.com", 8080);
+    EXPECT_EQ(fd, 42) << "Should acquire the released fd";
+    EXPECT_EQ(pool.count("v179-pool.example.com", 8080), 0u)
+        << "Pool should be empty after acquire";
+}
+
+// ---------------------------------------------------------------------------
+// 5. HeaderMap: iteration covers all entries
+// ---------------------------------------------------------------------------
+TEST(HttpClient, HeaderMapIterationV179) {
+    HeaderMap headers;
+    headers.set("X-V179-A", "alpha");
+    headers.set("X-V179-B", "beta");
+    headers.append("X-V179-B", "gamma");
+
+    size_t count = 0;
+    bool found_alpha = false;
+    bool found_beta = false;
+    bool found_gamma = false;
+    for (auto it = headers.begin(); it != headers.end(); ++it) {
+        ++count;
+        if (it->second == "alpha") found_alpha = true;
+        if (it->second == "beta") found_beta = true;
+        if (it->second == "gamma") found_gamma = true;
+    }
+    EXPECT_EQ(count, 3u) << "Should iterate over 3 entries (1 A + 2 B)";
+    EXPECT_TRUE(found_alpha) << "Should find alpha";
+    EXPECT_TRUE(found_beta) << "Should find beta";
+    EXPECT_TRUE(found_gamma) << "Should find gamma";
+}
+
+// ---------------------------------------------------------------------------
+// 6. CookieJar: path matching restricts cookie scope
+// ---------------------------------------------------------------------------
+TEST(HttpClient, CookieJarPathMatchingV179) {
+    CookieJar jar;
+    jar.set_from_header("deep179=val; Path=/api/v2", "v179-path.example.com");
+
+    // Should match under /api/v2
+    std::string matched = jar.get_cookie_header("v179-path.example.com", "/api/v2/users", false);
+    EXPECT_NE(matched.find("deep179=val"), std::string::npos)
+        << "Cookie should match sub-path /api/v2/users, got: " << matched;
+
+    // Should NOT match at /api/v1
+    std::string no_match = jar.get_cookie_header("v179-path.example.com", "/api/v1", false);
+    EXPECT_EQ(no_match.find("deep179=val"), std::string::npos)
+        << "Cookie should NOT match /api/v1, got: " << no_match;
+
+    // Should NOT match root
+    std::string root = jar.get_cookie_header("v179-path.example.com", "/", false);
+    EXPECT_EQ(root.find("deep179=val"), std::string::npos)
+        << "Cookie should NOT match root, got: " << root;
+}
+
+// ---------------------------------------------------------------------------
+// 7. Request: serialize GET with custom headers (lowercase keys)
+// ---------------------------------------------------------------------------
+TEST(HttpClient, RequestSerializeCustomHeadersLowercaseV179) {
+    Request req;
+    req.method = Method::GET;
+    req.host = "v179-custom.example.com";
+    req.port = 80;
+    req.path = "/resource";
+    req.headers.set("X-Custom-Token", "mytoken179");
+    req.headers.set("Accept", "application/json");
+
+    auto bytes = req.serialize();
+    std::string raw(bytes.begin(), bytes.end());
+
+    // Custom headers should be lowercase
+    EXPECT_NE(raw.find("x-custom-token: mytoken179\r\n"), std::string::npos)
+        << "Custom header key should be lowercase, got: " << raw;
+    EXPECT_NE(raw.find("accept: application/json\r\n"), std::string::npos)
+        << "Accept header should be lowercase, got: " << raw;
+    // Port 80 should be omitted from Host header
+    EXPECT_NE(raw.find("Host: v179-custom.example.com\r\n"), std::string::npos)
+        << "Port 80 should be omitted from Host, got: " << raw;
+    // Host and Connection keep capitalization
+    EXPECT_NE(raw.find("Connection: close\r\n"), std::string::npos)
+        << "Connection should keep capitalization";
+}
+
+// ---------------------------------------------------------------------------
+// 8. Response: parse 404 response with empty body
+// ---------------------------------------------------------------------------
+TEST(HttpClient, ResponseParse404EmptyBodyV179) {
+    std::string raw_resp =
+        "HTTP/1.1 404 Not Found\r\n"
+        "Content-Length: 0\r\n"
+        "\r\n";
+    std::vector<uint8_t> data(raw_resp.begin(), raw_resp.end());
+
+    auto resp = Response::parse(data);
+    ASSERT_TRUE(resp.has_value()) << "Should parse valid 404 response";
+    EXPECT_EQ(resp->status, 404u);
+    EXPECT_EQ(resp->status_text, "Not Found");
+    EXPECT_TRUE(resp->body_as_string().empty())
+        << "Body should be empty for Content-Length: 0";
+}
