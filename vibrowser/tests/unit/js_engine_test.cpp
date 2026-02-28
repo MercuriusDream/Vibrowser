@@ -28971,3 +28971,219 @@ TEST(JsEngineTest, SetOperationsAndSpreadV107) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "7|true|false|6|3,1,4,5,2,6|true|7");
 }
+
+TEST(JsEngineTest, TemplateLiteralTaggedV108) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        function highlight(strings, ...values) {
+            var out = "";
+            for (var i = 0; i < strings.length; i++) {
+                out += strings[i];
+                if (i < values.length) out += "[" + values[i] + "]";
+            }
+            return out;
+        }
+        var name = "world";
+        var count = 3;
+        highlight`Hello ${name}, you have ${count} messages`;
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "Hello [world], you have [3] messages");
+}
+
+TEST(JsEngineTest, ProxyGetSetDeleteHasV108) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var log = [];
+        var handler = {
+            get: function(target, prop) {
+                log.push("get:" + prop);
+                return target[prop];
+            },
+            set: function(target, prop, value) {
+                log.push("set:" + prop + "=" + value);
+                target[prop] = value;
+                return true;
+            },
+            deleteProperty: function(target, prop) {
+                log.push("del:" + prop);
+                delete target[prop];
+                return true;
+            },
+            has: function(target, prop) {
+                log.push("has:" + prop);
+                return prop in target;
+            }
+        };
+        var obj = new Proxy({}, handler);
+        obj.x = 10;
+        var v = obj.x;
+        var h = "x" in obj;
+        delete obj.x;
+        log.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "set:x=10|get:x|has:x|del:x");
+}
+
+TEST(JsEngineTest, GeneratorProtocolNextReturnThrowV108) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        function* range(start, end) {
+            for (var i = start; i < end; i++) {
+                yield i;
+            }
+        }
+        var gen = range(5, 10);
+        var results = [];
+        results.push(gen.next().value);
+        results.push(gen.next().value);
+        results.push(gen.next().value);
+        var ret = gen.return(99);
+        results.push(ret.value);
+        results.push(ret.done);
+        results.push(gen.next().done);
+        results.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "5|6|7|99|true|true");
+}
+
+TEST(JsEngineTest, SymbolIteratorAndDescriptionV108) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var results = [];
+        var sym = Symbol("myTag");
+        results.push(typeof sym);
+        results.push(sym.description);
+        results.push(sym.toString());
+        var obj = {};
+        obj[Symbol.iterator] = function() {
+            var i = 0;
+            return {
+                next: function() {
+                    i++;
+                    if (i <= 3) return { value: i * 10, done: false };
+                    return { value: undefined, done: true };
+                }
+            };
+        };
+        var collected = [];
+        for (var v of obj) collected.push(v);
+        results.push(collected.join(","));
+        results.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "symbol|myTag|Symbol(myTag)|10,20,30");
+}
+
+TEST(JsEngineTest, MapChainAndEntriesV108) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var m = new Map();
+        m.set("a", 1).set("b", 2).set("c", 3);
+        var results = [];
+        results.push(m.size);
+        results.push(m.get("b"));
+        results.push(m.has("c"));
+        results.push(m.has("z"));
+        m.delete("a");
+        results.push(m.size);
+        var keys = [];
+        var vals = [];
+        m.forEach(function(v, k) { keys.push(k); vals.push(v); });
+        results.push(keys.join(","));
+        results.push(vals.join(","));
+        results.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "3|2|true|false|2|b,c|2,3");
+}
+
+TEST(JsEngineTest, ClosureScopeChainAndIIFEV108) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var results = [];
+        function makeCounter(start) {
+            var count = start;
+            return {
+                inc: function() { return ++count; },
+                dec: function() { return --count; },
+                val: function() { return count; }
+            };
+        }
+        var c = makeCounter(10);
+        results.push(c.inc());
+        results.push(c.inc());
+        results.push(c.dec());
+        results.push(c.val());
+        var secret = (function() {
+            var hidden = 42;
+            return function() { return hidden; };
+        })();
+        results.push(secret());
+        var adders = [];
+        for (var i = 0; i < 3; i++) {
+            adders.push((function(x) { return function(y) { return x + y; }; })(i));
+        }
+        results.push(adders[0](100));
+        results.push(adders[1](100));
+        results.push(adders[2](100));
+        results.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "11|12|11|11|42|100|101|102");
+}
+
+TEST(JsEngineTest, RegExpExecMatchGroupsV108) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var results = [];
+        var re = /(\d{4})-(\d{2})-(\d{2})/;
+        var m = re.exec("Date: 2025-03-15 done");
+        results.push(m[0]);
+        results.push(m[1]);
+        results.push(m[2]);
+        results.push(m[3]);
+        results.push(m.index);
+        var re2 = /[aeiou]/gi;
+        var str = "Hello World";
+        var vowels = str.match(re2);
+        results.push(vowels.join(","));
+        results.push("foo123bar456".replace(/\d+/g, "#"));
+        results.push("a,b,,c,".split(",").join("|"));
+        results.join("~");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "2025-03-15~2025~03~15~6~e,o,o~foo#bar#~a|b||c|");
+}
+
+TEST(JsEngineTest, ErrorTypesAndCustomErrorV108) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var results = [];
+        try { null.prop; } catch(e) { results.push(e instanceof TypeError); }
+        try { decodeURIComponent("%"); } catch(e) { results.push(e instanceof URIError); }
+        try { eval("{"); } catch(e) { results.push(e instanceof SyntaxError); }
+        try { new Array(-1); } catch(e) { results.push(e instanceof RangeError); }
+        function AppError(msg, code) {
+            this.message = msg;
+            this.code = code;
+            this.name = "AppError";
+        }
+        AppError.prototype = Object.create(Error.prototype);
+        AppError.prototype.constructor = AppError;
+        try {
+            throw new AppError("not found", 404);
+        } catch(e) {
+            results.push(e instanceof AppError);
+            results.push(e instanceof Error);
+            results.push(e.name);
+            results.push(e.code);
+            results.push(e.message);
+        }
+        results.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true|true|true|true|true|true|AppError|404|not found");
+}

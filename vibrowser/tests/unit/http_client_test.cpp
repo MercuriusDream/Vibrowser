@@ -18309,3 +18309,178 @@ TEST(HeaderMapTest, SizeTracksCorrectlyV107) {
     EXPECT_TRUE(map.has("Host"));
     EXPECT_EQ(map.get("host").value(), "example.com");
 }
+
+// ===========================================================================
+// V108 Tests
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// 1. HeaderMap append creates multiple entries retrievable via get_all V108
+// ---------------------------------------------------------------------------
+TEST(HeaderMapTest, AppendCreatesMultipleEntriesV108) {
+    HeaderMap map;
+    map.append("Set-Cookie", "session=abc123");
+    map.append("Set-Cookie", "theme=dark");
+    map.append("Set-Cookie", "lang=en");
+
+    auto all = map.get_all("set-cookie");
+    ASSERT_EQ(all.size(), 3u);
+    EXPECT_EQ(all[0], "session=abc123");
+    EXPECT_EQ(all[1], "theme=dark");
+    EXPECT_EQ(all[2], "lang=en");
+
+    // get() returns the first value
+    EXPECT_EQ(map.get("Set-Cookie").value(), "session=abc123");
+    EXPECT_EQ(map.size(), 3u);
+}
+
+// ---------------------------------------------------------------------------
+// 2. HeaderMap has returns false after remove V108
+// ---------------------------------------------------------------------------
+TEST(HeaderMapTest, HasReturnsFalseAfterRemoveV108) {
+    HeaderMap map;
+    map.set("Authorization", "Bearer token123");
+    map.set("Accept-Language", "en-US");
+    EXPECT_TRUE(map.has("Authorization"));
+    EXPECT_TRUE(map.has("Accept-Language"));
+    EXPECT_EQ(map.size(), 2u);
+
+    map.remove("authorization");
+    EXPECT_FALSE(map.has("Authorization"));
+    EXPECT_FALSE(map.has("authorization"));
+    EXPECT_FALSE(map.get("Authorization").has_value());
+    // Accept-Language should still exist
+    EXPECT_TRUE(map.has("Accept-Language"));
+    EXPECT_EQ(map.size(), 1u);
+}
+
+// ---------------------------------------------------------------------------
+// 3. HeaderMap set overwrites all appended values for same key V108
+// ---------------------------------------------------------------------------
+TEST(HeaderMapTest, SetOverwritesAllAppendedValuesV108) {
+    HeaderMap map;
+    map.append("Via", "1.0 proxy1");
+    map.append("Via", "1.1 proxy2");
+    map.append("Via", "1.1 proxy3");
+    EXPECT_EQ(map.get_all("via").size(), 3u);
+    EXPECT_EQ(map.size(), 3u);
+
+    // set() replaces all entries for that key with a single value
+    map.set("Via", "2.0 final-proxy");
+    auto all = map.get_all("via");
+    ASSERT_EQ(all.size(), 1u);
+    EXPECT_EQ(all[0], "2.0 final-proxy");
+    EXPECT_EQ(map.size(), 1u);
+}
+
+// ---------------------------------------------------------------------------
+// 4. Request serialize HEAD method produces no body V108
+// ---------------------------------------------------------------------------
+TEST(RequestTest, SerializeHeadMethodNoBodyV108) {
+    Request req;
+    req.method = Method::HEAD;
+    req.host = "www.example.org";
+    req.port = 443;
+    req.path = "/status";
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    // Request line should use HEAD
+    EXPECT_TRUE(result.find("HEAD /status HTTP/1.1\r\n") != std::string::npos);
+    // Port 443 is default HTTPS, should be omitted from Host header
+    EXPECT_TRUE(result.find("Host: www.example.org\r\n") != std::string::npos);
+    // Should end with double CRLF (no body)
+    auto pos = result.find("\r\n\r\n");
+    ASSERT_NE(pos, std::string::npos);
+    EXPECT_EQ(pos + 4, result.size());
+}
+
+// ---------------------------------------------------------------------------
+// 5. Request serialize PUT with body and custom headers V108
+// ---------------------------------------------------------------------------
+TEST(RequestTest, SerializePutWithBodyAndCustomHeadersV108) {
+    Request req;
+    req.method = Method::PUT;
+    req.host = "api.example.com";
+    req.port = 80;
+    req.path = "/resources/42";
+
+    std::string body_str = R"({"name":"updated"})";
+    req.body.assign(body_str.begin(), body_str.end());
+    req.headers.set("Content-Type", "application/json");
+    req.headers.set("X-Request-Id", "req-9876");
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    EXPECT_TRUE(result.find("PUT /resources/42 HTTP/1.1\r\n") != std::string::npos);
+    EXPECT_TRUE(result.find("Host: api.example.com\r\n") != std::string::npos);
+    // Custom headers are serialized lowercase
+    EXPECT_TRUE(result.find("content-type: application/json\r\n") != std::string::npos);
+    EXPECT_TRUE(result.find("x-request-id: req-9876\r\n") != std::string::npos);
+    // Content-Length auto-added
+    EXPECT_TRUE(result.find("Content-Length: 18\r\n") != std::string::npos);
+    // Body at the end
+    EXPECT_TRUE(result.find("\r\n\r\n{\"name\":\"updated\"}") != std::string::npos);
+}
+
+// ---------------------------------------------------------------------------
+// 6. Response parse extracts status and headers for 404 V108
+// ---------------------------------------------------------------------------
+TEST(ResponseTest, ParseStatus404WithHeadersV108) {
+    std::string raw =
+        "HTTP/1.1 404 Not Found\r\n"
+        "Content-Type: text/plain\r\n"
+        "X-Error-Code: MISSING\r\n"
+        "Content-Length: 9\r\n"
+        "\r\n"
+        "Not Found";
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 404);
+    EXPECT_EQ(resp->status_text, "Not Found");
+    EXPECT_EQ(resp->headers.get("content-type").value(), "text/plain");
+    EXPECT_EQ(resp->headers.get("x-error-code").value(), "MISSING");
+    EXPECT_EQ(resp->body_as_string(), "Not Found");
+}
+
+// ---------------------------------------------------------------------------
+// 7. Request parse_url extracts components from URL with query and path V108
+// ---------------------------------------------------------------------------
+TEST(RequestTest, ParseUrlWithQueryAndNestedPathV108) {
+    Request req;
+    req.url = "https://search.example.com:9200/api/v2/search?q=test&page=3";
+    req.method = Method::GET;
+    req.parse_url();
+
+    EXPECT_EQ(req.host, "search.example.com");
+    EXPECT_EQ(req.port, 9200);
+    EXPECT_EQ(req.path, "/api/v2/search");
+    EXPECT_EQ(req.query, "q=test&page=3");
+    EXPECT_TRUE(req.use_tls);
+}
+
+// ---------------------------------------------------------------------------
+// 8. Response parse handles 301 redirect with Location header V108
+// ---------------------------------------------------------------------------
+TEST(ResponseTest, ParseStatus301WithLocationHeaderV108) {
+    std::string raw =
+        "HTTP/1.1 301 Moved Permanently\r\n"
+        "Location: https://www.example.com/new-path\r\n"
+        "Content-Length: 0\r\n"
+        "\r\n";
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 301);
+    EXPECT_EQ(resp->status_text, "Moved Permanently");
+    EXPECT_TRUE(resp->headers.has("Location"));
+    EXPECT_EQ(resp->headers.get("location").value(), "https://www.example.com/new-path");
+    EXPECT_EQ(resp->body.size(), 0u);
+}

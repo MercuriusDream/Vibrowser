@@ -19772,3 +19772,202 @@ TEST(CSSStyleTest, PositionAbsoluteTopLeftZIndexV107) {
     EXPECT_FLOAT_EQ(style.width.to_px(), 200.0f);
     EXPECT_FLOAT_EQ(style.height.to_px(), 100.0f);
 }
+
+// ============================================================================
+// V108: Font size and line height as Length with to_px
+// ============================================================================
+TEST(CSSStyleTest, FontSizeAndLineHeightLengthV108) {
+    ComputedStyle s;
+    // Default font_size is 16px
+    EXPECT_FLOAT_EQ(s.font_size.to_px(), 16.0f);
+    // Default line_height is 1.2 * 16 = 19.2
+    EXPECT_FLOAT_EQ(s.line_height.to_px(), 19.2f);
+
+    // Parse via resolver
+    const std::string css = ".txt{font-size:24px;line-height:32px;}";
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "p";
+    elem.classes = {"txt"};
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_FLOAT_EQ(style.font_size.to_px(), 24.0f);
+    EXPECT_FLOAT_EQ(style.line_height.to_px(), 32.0f);
+}
+
+// ============================================================================
+// V108: Visibility hidden and cursor pointer enums
+// ============================================================================
+TEST(CSSStyleTest, VisibilityHiddenCursorPointerV108) {
+    const std::string css = ".hide{visibility:hidden;cursor:pointer;}";
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+    elem.classes = {"hide"};
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.visibility, Visibility::Hidden);
+    EXPECT_EQ(style.cursor, Cursor::Pointer);
+}
+
+// ============================================================================
+// V108: Pointer events none and user select none enums
+// ============================================================================
+TEST(CSSStyleTest, PointerEventsNoneUserSelectNoneV108) {
+    const std::string css = ".noclick{pointer-events:none;user-select:none;}";
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "span";
+    elem.classes = {"noclick"};
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.pointer_events, PointerEvents::None);
+    EXPECT_EQ(style.user_select, UserSelect::None);
+}
+
+// ============================================================================
+// V108: Border top/bottom color and width (no border_color shorthand)
+// ============================================================================
+TEST(CSSStyleTest, BorderEdgeColorAndWidthV108) {
+    const std::string css = ".box{border-top-width:3px;border-top-style:solid;border-top-color:red;border-bottom-width:5px;border-bottom-style:dashed;border-bottom-color:blue;}";
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+    elem.classes = {"box"};
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_FLOAT_EQ(style.border_top.width.to_px(), 3.0f);
+    EXPECT_EQ(style.border_top.style, BorderStyle::Solid);
+    EXPECT_EQ(style.border_top.color.r, 255);
+    EXPECT_EQ(style.border_top.color.g, 0);
+    EXPECT_EQ(style.border_top.color.b, 0);
+
+    EXPECT_FLOAT_EQ(style.border_bottom.width.to_px(), 5.0f);
+    EXPECT_EQ(style.border_bottom.style, BorderStyle::Dashed);
+    EXPECT_EQ(style.border_bottom.color.b, 255);
+}
+
+// ============================================================================
+// V108: Outline width is Length with to_px
+// ============================================================================
+TEST(CSSStyleTest, OutlineWidthIsLengthV108) {
+    const std::string css = ".ol{outline:4px solid green;}";
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+    elem.classes = {"ol"};
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_FLOAT_EQ(style.outline_width.to_px(), 4.0f);
+    EXPECT_EQ(style.outline_style, BorderStyle::Solid);
+    EXPECT_EQ(style.outline_color.g, 128);
+}
+
+// ============================================================================
+// V108: Word spacing and letter spacing are Length type
+// ============================================================================
+TEST(CSSStyleTest, WordSpacingLetterSpacingAreLengthV108) {
+    const std::string css = ".sp{word-spacing:5px;letter-spacing:2px;}";
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "p";
+    elem.classes = {"sp"};
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    // word_spacing and letter_spacing are Length, use to_px()
+    EXPECT_FLOAT_EQ(style.word_spacing.to_px(), 5.0f);
+    EXPECT_FLOAT_EQ(style.letter_spacing.to_px(), 2.0f);
+
+    // Default values should be zero
+    ComputedStyle def;
+    EXPECT_TRUE(def.word_spacing.is_zero());
+    EXPECT_TRUE(def.letter_spacing.is_zero());
+}
+
+// ============================================================================
+// V108: Color struct with rgba components
+// ============================================================================
+TEST(CSSStyleTest, ColorStructRgbaComponentsV108) {
+    const std::string css = ".c{color:rgba(100,150,200,0.5);background-color:rgb(10,20,30);}";
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+    elem.classes = {"c"};
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.color.r, 100);
+    EXPECT_EQ(style.color.g, 150);
+    EXPECT_EQ(style.color.b, 200);
+    EXPECT_EQ(style.color.a, 127); // 0.5 * 255 = 127 (truncated)
+
+    EXPECT_EQ(style.background_color.r, 10);
+    EXPECT_EQ(style.background_color.g, 20);
+    EXPECT_EQ(style.background_color.b, 30);
+    EXPECT_EQ(style.background_color.a, 255);
+}
+
+// ============================================================================
+// V108: Default computed style enum values
+// ============================================================================
+TEST(CSSStyleTest, DefaultEnumValuesV108) {
+    ComputedStyle s;
+
+    // Visibility defaults to Visible
+    EXPECT_EQ(s.visibility, Visibility::Visible);
+
+    // Cursor defaults to Auto
+    EXPECT_EQ(s.cursor, Cursor::Auto);
+
+    // Pointer events defaults to Auto
+    EXPECT_EQ(s.pointer_events, PointerEvents::Auto);
+
+    // User select defaults to Auto
+    EXPECT_EQ(s.user_select, UserSelect::Auto);
+
+    // Vertical align defaults to Baseline
+    EXPECT_EQ(s.vertical_align, VerticalAlign::Baseline);
+
+    // White space defaults to Normal
+    EXPECT_EQ(s.white_space, WhiteSpace::Normal);
+
+    // Display defaults to Inline
+    EXPECT_EQ(s.display, Display::Inline);
+
+    // Position defaults to Static
+    EXPECT_EQ(s.position, Position::Static);
+}

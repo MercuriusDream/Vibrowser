@@ -12009,3 +12009,85 @@ TEST(UrlParserTest, FragmentOnlyNoQueryV107) {
     EXPECT_EQ(result->fragment, "references");
     EXPECT_EQ(result->port, std::nullopt);
 }
+
+// =============================================================================
+// V108 Tests
+// =============================================================================
+
+TEST(UrlParserTest, HttpDefaultPortOmittedV108) {
+    auto result = parse("http://example.com:80/index.html");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->port, std::nullopt);
+    EXPECT_EQ(result->path, "/index.html");
+}
+
+TEST(UrlParserTest, HttpsDefaultPortOmittedV108) {
+    auto result = parse("https://secure.example.com:443/api/v2");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "secure.example.com");
+    EXPECT_EQ(result->port, std::nullopt);
+    EXPECT_EQ(result->path, "/api/v2");
+}
+
+TEST(UrlParserTest, PercentDoubleEncodingV108) {
+    auto result = parse("https://example.com/hello%20world");
+    ASSERT_TRUE(result.has_value());
+    std::string s = result->serialize();
+    EXPECT_NE(s.find("%2520"), std::string::npos);
+}
+
+TEST(UrlParserTest, NonDefaultPortPreservedV108) {
+    auto result = parse("http://localhost:3000/dashboard?tab=home");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "localhost");
+    EXPECT_EQ(result->port, 3000);
+    EXPECT_EQ(result->path, "/dashboard");
+    EXPECT_EQ(result->query, "tab=home");
+}
+
+TEST(UrlParserTest, SerializeRoundTripWithPortV108) {
+    auto result = parse("https://api.example.io:8443/v1/users?active=true#top");
+    ASSERT_TRUE(result.has_value());
+    std::string s = result->serialize();
+    EXPECT_NE(s.find("https"), std::string::npos);
+    EXPECT_NE(s.find("api.example.io"), std::string::npos);
+    EXPECT_NE(s.find("8443"), std::string::npos);
+    EXPECT_NE(s.find("/v1/users"), std::string::npos);
+    EXPECT_NE(s.find("active=true"), std::string::npos);
+    EXPECT_NE(s.find("top"), std::string::npos);
+}
+
+TEST(UrlParserTest, EmptyPathWithQueryAndFragmentV108) {
+    auto result = parse("https://example.com?search=hello#results");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->query, "search=hello");
+    EXPECT_EQ(result->fragment, "results");
+    EXPECT_EQ(result->port, std::nullopt);
+}
+
+TEST(UrlParserTest, UserinfoFieldsParsedV108) {
+    auto result = parse("https://user:pass@example.com/secret");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/secret");
+    EXPECT_EQ(result->username, "user");
+    EXPECT_EQ(result->password, "pass");
+}
+
+TEST(UrlParserTest, MultipleQueryParamsAndFragmentV108) {
+    auto result = parse("http://shop.example.com:9090/cart?item=42&qty=3&color=blue#summary");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "shop.example.com");
+    EXPECT_EQ(result->port, 9090);
+    EXPECT_EQ(result->path, "/cart");
+    EXPECT_EQ(result->query, "item=42&qty=3&color=blue");
+    EXPECT_EQ(result->fragment, "summary");
+}

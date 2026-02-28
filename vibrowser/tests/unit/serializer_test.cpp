@@ -15914,3 +15914,160 @@ TEST(SerializerTest, BoolAndU64InterleavedV107) {
     EXPECT_EQ(d.read_u64(), std::numeric_limits<uint64_t>::max());
     EXPECT_FALSE(d.has_remaining());
 }
+
+TEST(SerializerTest, U8BoundaryValuesV108) {
+    Serializer s;
+    s.write_u8(0);
+    s.write_u8(1);
+    s.write_u8(128);
+    s.write_u8(254);
+    s.write_u8(255);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u8(), 0);
+    EXPECT_EQ(d.read_u8(), 1);
+    EXPECT_EQ(d.read_u8(), 128);
+    EXPECT_EQ(d.read_u8(), 254);
+    EXPECT_EQ(d.read_u8(), 255);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, U16EndianConsistencyV108) {
+    Serializer s;
+    s.write_u16(0x0000);
+    s.write_u16(0x00FF);
+    s.write_u16(0xFF00);
+    s.write_u16(0xFFFF);
+    s.write_u16(0x1234);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u16(), 0x0000);
+    EXPECT_EQ(d.read_u16(), 0x00FF);
+    EXPECT_EQ(d.read_u16(), 0xFF00);
+    EXPECT_EQ(d.read_u16(), 0xFFFF);
+    EXPECT_EQ(d.read_u16(), 0x1234);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, I32NegativeRoundTripV108) {
+    Serializer s;
+    s.write_i32(0);
+    s.write_i32(-1);
+    s.write_i32(std::numeric_limits<int32_t>::min());
+    s.write_i32(std::numeric_limits<int32_t>::max());
+    s.write_i32(-123456789);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i32(), 0);
+    EXPECT_EQ(d.read_i32(), -1);
+    EXPECT_EQ(d.read_i32(), std::numeric_limits<int32_t>::min());
+    EXPECT_EQ(d.read_i32(), std::numeric_limits<int32_t>::max());
+    EXPECT_EQ(d.read_i32(), -123456789);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, I64ExtremeValuesV108) {
+    Serializer s;
+    s.write_i64(std::numeric_limits<int64_t>::min());
+    s.write_i64(std::numeric_limits<int64_t>::max());
+    s.write_i64(0LL);
+    s.write_i64(-1LL);
+    s.write_i64(9999999999999LL);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i64(), std::numeric_limits<int64_t>::min());
+    EXPECT_EQ(d.read_i64(), std::numeric_limits<int64_t>::max());
+    EXPECT_EQ(d.read_i64(), 0LL);
+    EXPECT_EQ(d.read_i64(), -1LL);
+    EXPECT_EQ(d.read_i64(), 9999999999999LL);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, F64SpecialFloatsV108) {
+    Serializer s;
+    s.write_f64(0.0);
+    s.write_f64(-0.0);
+    s.write_f64(std::numeric_limits<double>::infinity());
+    s.write_f64(-std::numeric_limits<double>::infinity());
+    s.write_f64(std::numeric_limits<double>::quiet_NaN());
+    s.write_f64(3.141592653589793);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_f64(), 0.0);
+    EXPECT_TRUE(std::signbit(d.read_f64()));  // -0.0
+    EXPECT_EQ(d.read_f64(), std::numeric_limits<double>::infinity());
+    EXPECT_EQ(d.read_f64(), -std::numeric_limits<double>::infinity());
+    EXPECT_TRUE(std::isnan(d.read_f64()));
+    EXPECT_DOUBLE_EQ(d.read_f64(), 3.141592653589793);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, StringWithEmbeddedNullsV108) {
+    Serializer s;
+    std::string with_null("hello\0world", 11);
+    s.write_string(with_null);
+    s.write_string("");
+    s.write_string("simple");
+
+    Deserializer d(s.data());
+    std::string out1 = d.read_string();
+    EXPECT_EQ(out1.size(), 11u);
+    EXPECT_EQ(out1, with_null);
+    EXPECT_EQ(d.read_string(), "");
+    EXPECT_EQ(d.read_string(), "simple");
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, BytesBlobRoundTripV108) {
+    Serializer s;
+    std::vector<uint8_t> blob(512);
+    for (size_t i = 0; i < blob.size(); ++i) {
+        blob[i] = static_cast<uint8_t>(i % 256);
+    }
+    s.write_bytes(blob.data(), blob.size());
+    // Also write an empty blob
+    s.write_bytes(nullptr, 0);
+
+    Deserializer d(s.data());
+    auto out_blob = d.read_bytes();
+    ASSERT_EQ(out_blob.size(), 512u);
+    for (size_t i = 0; i < 512; ++i) {
+        EXPECT_EQ(out_blob[i], static_cast<uint8_t>(i % 256));
+    }
+    auto empty_blob = d.read_bytes();
+    EXPECT_EQ(empty_blob.size(), 0u);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, MixedTypeSequentialWritesV108) {
+    Serializer s;
+    s.write_bool(true);
+    s.write_u8(42);
+    s.write_u16(1000);
+    s.write_u32(70000u);
+    s.write_u64(0xAABBCCDDEEFF0011ULL);
+    s.write_i32(-999);
+    s.write_i64(-8888888888LL);
+    s.write_f64(2.718281828);
+    s.write_string("interleaved");
+    std::vector<uint8_t> tiny = {0xDE, 0xAD};
+    s.write_bytes(tiny.data(), tiny.size());
+    s.write_bool(false);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_bool(), true);
+    EXPECT_EQ(d.read_u8(), 42);
+    EXPECT_EQ(d.read_u16(), 1000);
+    EXPECT_EQ(d.read_u32(), 70000u);
+    EXPECT_EQ(d.read_u64(), 0xAABBCCDDEEFF0011ULL);
+    EXPECT_EQ(d.read_i32(), -999);
+    EXPECT_EQ(d.read_i64(), -8888888888LL);
+    EXPECT_DOUBLE_EQ(d.read_f64(), 2.718281828);
+    EXPECT_EQ(d.read_string(), "interleaved");
+    auto blob = d.read_bytes();
+    ASSERT_EQ(blob.size(), 2u);
+    EXPECT_EQ(blob[0], 0xDE);
+    EXPECT_EQ(blob[1], 0xAD);
+    EXPECT_EQ(d.read_bool(), false);
+    EXPECT_FALSE(d.has_remaining());
+}

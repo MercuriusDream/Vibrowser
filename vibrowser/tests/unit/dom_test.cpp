@@ -16791,3 +16791,106 @@ TEST(DomTest, ClassListToggleAndRemoveV107) {
     EXPECT_TRUE(el.class_list().contains("visible"));
     EXPECT_EQ(el.class_list().length(), 1u);
 }
+
+// ---------------------------------------------------------------------------
+// V108 Tests
+// ---------------------------------------------------------------------------
+
+// 1. Remove child updates sibling pointers correctly
+TEST(DomTest, RemoveChildFixesSiblingLinksV108) {
+    Element parent("ul");
+    auto li1 = std::make_unique<Element>("li");
+    auto li2 = std::make_unique<Element>("li");
+    auto li3 = std::make_unique<Element>("li");
+    Node* raw1 = li1.get();
+    Node* raw2 = li2.get();
+    Node* raw3 = li3.get();
+    parent.append_child(std::move(li1));
+    parent.append_child(std::move(li2));
+    parent.append_child(std::move(li3));
+    EXPECT_EQ(parent.child_count(), 3u);
+
+    parent.remove_child(*raw2);
+    EXPECT_EQ(parent.child_count(), 2u);
+    EXPECT_EQ(raw1->next_sibling(), raw3);
+    EXPECT_EQ(parent.first_child(), raw1);
+}
+
+// 2. insert_before at the head of child list
+TEST(DomTest, InsertBeforeAtHeadV108) {
+    Element parent("div");
+    auto existing = std::make_unique<Element>("span");
+    Node* raw_existing = existing.get();
+    parent.append_child(std::move(existing));
+
+    auto new_child = std::make_unique<Element>("em");
+    Node* raw_new = new_child.get();
+    parent.insert_before(std::move(new_child), raw_existing);
+
+    EXPECT_EQ(parent.child_count(), 2u);
+    EXPECT_EQ(parent.first_child(), raw_new);
+    EXPECT_EQ(raw_new->next_sibling(), raw_existing);
+    EXPECT_EQ(raw_existing->next_sibling(), nullptr);
+}
+
+// 3. Comment node data() accessor
+TEST(DomTest, CommentNodeDataAccessorV108) {
+    Comment c("this is a comment");
+    EXPECT_EQ(c.data(), "this is a comment");
+    EXPECT_EQ(c.node_type(), NodeType::Comment);
+}
+
+// 4. Multiple attributes set and get
+TEST(DomTest, MultipleAttributeSetGetV108) {
+    Element el("input");
+    el.set_attribute("type", "text");
+    el.set_attribute("name", "username");
+    el.set_attribute("value", "hello");
+    EXPECT_EQ(el.get_attribute("type"), "text");
+    EXPECT_EQ(el.get_attribute("name"), "username");
+    EXPECT_EQ(el.get_attribute("value"), "hello");
+    EXPECT_EQ(el.attributes().size(), 3u);
+}
+
+// 5. Overwrite existing attribute
+TEST(DomTest, OverwriteAttributeValueV108) {
+    Element el("a");
+    el.set_attribute("href", "/old");
+    EXPECT_EQ(el.get_attribute("href"), "/old");
+    el.set_attribute("href", "/new");
+    EXPECT_EQ(el.get_attribute("href"), "/new");
+    EXPECT_EQ(el.attributes().size(), 1u);
+}
+
+// 6. Parent pointer set on append and cleared on remove
+TEST(DomTest, ParentPointerSetAndClearedV108) {
+    Element parent("section");
+    auto child = std::make_unique<Element>("p");
+    Node* raw = child.get();
+    EXPECT_EQ(raw->parent(), nullptr);
+
+    parent.append_child(std::move(child));
+    EXPECT_EQ(raw->parent(), &parent);
+
+    parent.remove_child(*raw);
+    EXPECT_EQ(raw->parent(), nullptr);
+}
+
+// 7. Text node text_content and node type
+TEST(DomTest, TextNodeContentAndTypeV108) {
+    Text t("sample text");
+    EXPECT_EQ(t.text_content(), "sample text");
+    EXPECT_EQ(t.node_type(), NodeType::Text);
+}
+
+// 8. class_list add duplicate is idempotent
+TEST(DomTest, ClassListAddDuplicateIdempotentV108) {
+    Element el("div");
+    el.class_list().add("foo");
+    el.class_list().add("foo");
+    el.class_list().add("foo");
+    EXPECT_EQ(el.class_list().length(), 1u);
+    EXPECT_TRUE(el.class_list().contains("foo"));
+    el.class_list().remove("foo");
+    EXPECT_EQ(el.class_list().length(), 0u);
+}
