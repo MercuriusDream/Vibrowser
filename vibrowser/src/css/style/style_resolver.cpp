@@ -155,6 +155,7 @@ ComputedStyle PropertyCascade::cascade(
 
     // Start with defaults inherited from parent
     ComputedStyle style = default_style_for_tag("");  // base defaults
+    style.z_index = clever::layout::Z_INDEX_AUTO;
 
     // Apply inherited properties from parent
     style.color = parent_style.color;
@@ -519,7 +520,7 @@ void PropertyCascade::apply_declaration(
         if (prop == "overflow") { style.overflow_x = Overflow::Visible; style.overflow_y = Overflow::Visible; return; }
         if (prop == "overflow-x") { style.overflow_x = Overflow::Visible; return; }
         if (prop == "overflow-y") { style.overflow_y = Overflow::Visible; return; }
-        if (prop == "z-index") { style.z_index = 0; return; }
+        if (prop == "z-index") { style.z_index = clever::layout::Z_INDEX_AUTO; return; }
         // Sizing
         if (prop == "width") { style.width = Length::auto_val(); return; }
         if (prop == "height") { style.height = Length::auto_val(); return; }
@@ -1541,7 +1542,7 @@ void PropertyCascade::apply_declaration(
     }
     if (prop == "z-index") {
         if (value_lower == "auto") {
-            style.z_index = 0;
+            style.z_index = clever::layout::Z_INDEX_AUTO;
         } else {
             try {
                 style.z_index = std::stoi(value_str);
@@ -6162,6 +6163,7 @@ ComputedStyle StyleResolver::resolve(
 
     // Apply tag defaults first
     ComputedStyle tag_defaults = default_style_for_tag(element.tag_name);
+    tag_defaults.z_index = clever::layout::Z_INDEX_AUTO;
 
     // Build result: start from tag defaults, then cascade matched rules
     ComputedStyle result = tag_defaults;
