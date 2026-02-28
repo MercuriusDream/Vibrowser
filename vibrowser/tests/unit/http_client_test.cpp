@@ -24917,3 +24917,184 @@ TEST(HttpClient, CookieJarDomainCaseInsensitiveV146) {
     EXPECT_NE(h2.find("case146=val"), std::string::npos)
         << "Cookie domain matching should be case-insensitive (mixed), got: " << h2;
 }
+
+// ===========================================================================
+// V147 Tests
+// ===========================================================================
+
+// 1. Request serialization with Authorization: Bearer header
+TEST(HttpClient, RequestSerializeWithAuthorizationBearerV147) {
+    Request req;
+    req.method = Method::GET;
+    req.host = "v147auth.example.com";
+    req.port = 443;
+    req.path = "/protected/resource";
+    req.headers.set("Authorization", "Bearer token123");
+
+    auto bytes = req.serialize();
+    std::string raw(bytes.begin(), bytes.end());
+
+    // Request line
+    EXPECT_NE(raw.find("GET /protected/resource HTTP/1.1\r\n"), std::string::npos)
+        << "Request line should be correct, got: " << raw;
+    // Authorization header (custom headers stored lowercase)
+    EXPECT_NE(raw.find("authorization: Bearer token123\r\n"), std::string::npos)
+        << "Authorization Bearer header should appear in serialized request, got: " << raw;
+    // Port 443 omitted from Host
+    EXPECT_NE(raw.find("Host: v147auth.example.com\r\n"), std::string::npos)
+        << "Port 443 should be omitted from Host header, got: " << raw;
+    // Connection: close
+    EXPECT_NE(raw.find("Connection: close\r\n"), std::string::npos)
+        << "Connection header should be present, got: " << raw;
+}
+
+// 2. Response parse 201 Created with Location header
+TEST(HttpClient, ResponseParse201CreatedWithLocationV147) {
+    std::string raw =
+        "HTTP/1.1 201 Created\r\n"
+        "Location: https://v147.example.com/items/42\r\n"
+        "Content-Length: 11\r\n"
+        "\r\n"
+        "Item created";
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 201);
+    EXPECT_EQ(resp->status_text, "Created");
+    // Location header should be accessible
+    auto loc = resp->headers.get("Location");
+    ASSERT_TRUE(loc.has_value())
+        << "Location header should be present in 201 response";
+    EXPECT_EQ(loc.value(), "https://v147.example.com/items/42");
+}
+
+// 3. HeaderMap: append same key three times, verify get_all size 3
+TEST(HttpClient, HeaderMapAppendSameKeyThreeTimesV147) {
+    HeaderMap map;
+    map.append("X-Multi-V147", "first");
+    map.append("X-Multi-V147", "second");
+    map.append("X-Multi-V147", "third");
+
+    auto all = map.get_all("X-Multi-V147");
+    EXPECT_EQ(all.size(), 3u)
+        << "Appending 3 values to same key should yield 3 entries, got: " << all.size();
+    EXPECT_EQ(all[0], "first");
+    EXPECT_EQ(all[1], "second");
+    EXPECT_EQ(all[2], "third");
+
+    // get() should return the first value
+    auto first = map.get("X-Multi-V147");
+    ASSERT_TRUE(first.has_value());
+    EXPECT_EQ(first.value(), "first");
+}
+
+// 4. CookieJar: Secure and HttpOnly flags together on same cookie
+TEST(HttpClient, CookieJarSecureAndHttpOnlyTogetherV147) {
+    CookieJar jar;
+    jar.set_from_header("sess147=secret; Secure; HttpOnly; Path=/",
+                        "v147secure.example.com");
+
+    EXPECT_EQ(jar.size(), 1u);
+
+    // Not sent over non-secure connection
+    std::string h1 = jar.get_cookie_header("v147secure.example.com", "/", false);
+    EXPECT_TRUE(h1.empty())
+        << "Secure+HttpOnly cookie should not be sent over non-secure, got: " << h1;
+
+    // Sent over secure connection
+    std::string h2 = jar.get_cookie_header("v147secure.example.com", "/", true);
+    EXPECT_NE(h2.find("sess147=secret"), std::string::npos)
+        << "Secure+HttpOnly cookie should be sent over secure connection, got: " << h2;
+}
+
+// 5. Request serialization: PUT with large body, verify Content-Length
+TEST(HttpClient, RequestSerializePutWithLargeBodyV147) {
+    Request req;
+    req.method = Method::PUT;
+    req.host = "v147put.example.com";
+    req.port = 80;
+    req.path = "/data/bulk";
+
+    std::string body_str(1000, 'A');
+    req.body.assign(body_str.begin(), body_str.end());
+    req.headers.set("Content-Type", "application/octet-stream");
+
+    auto bytes = req.serialize();
+    std::string raw(bytes.begin(), bytes.end());
+
+    // Request line
+    EXPECT_NE(raw.find("PUT /data/bulk HTTP/1.1\r\n"), std::string::npos)
+        << "PUT request line should be correct, got: " << raw;
+    // Content-Length should be 1000
+    EXPECT_NE(raw.find("Content-Length: 1000\r\n"), std::string::npos)
+        << "Content-Length should be 1000 for a 1000-char body, got: " << raw;
+    // Port 80 omitted from Host
+    EXPECT_NE(raw.find("Host: v147put.example.com\r\n"), std::string::npos)
+        << "Port 80 should be omitted from Host header, got: " << raw;
+    // Body should be present
+    EXPECT_NE(raw.find(body_str), std::string::npos)
+        << "Body should appear in serialized request";
+}
+
+// 6. Response parse with empty reason phrase
+TEST(HttpClient, ResponseParseEmptyReasonPhraseV147) {
+    std::string raw =
+        "HTTP/1.1 200 \r\n"
+        "Content-Length: 2\r\n"
+        "\r\n"
+        "OK";
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 200);
+    // status_text should be empty or whitespace-trimmed to empty
+    EXPECT_TRUE(resp->status_text.empty() || resp->status_text == " ")
+        << "Empty reason phrase should parse, got status_text: '" << resp->status_text << "'";
+    EXPECT_EQ(resp->body_as_string(), "OK");
+}
+
+// 7. HeaderMap: remove nonexistent key is no-op, no crash
+TEST(HttpClient, HeaderMapRemoveNonexistentNoOpV147) {
+    HeaderMap map;
+    map.set("X-Exists-V147", "value");
+
+    // Remove a key that doesn't exist — should not crash
+    map.remove("X-Nonexistent-V147");
+
+    // Original key should still be there
+    EXPECT_TRUE(map.has("X-Exists-V147"));
+    EXPECT_EQ(map.get("X-Exists-V147").value(), "value");
+
+    // The removed key should still not exist
+    EXPECT_FALSE(map.has("X-Nonexistent-V147"));
+}
+
+// 8. CookieJar: Path=/api should NOT match /application (different prefix)
+TEST(HttpClient, CookieJarPathNotMatchingDifferentPrefixV147) {
+    CookieJar jar;
+    jar.set_from_header("tok147=xyz; Path=/api", "v147path.example.com");
+
+    // Should match /api exactly
+    std::string h1 = jar.get_cookie_header("v147path.example.com", "/api", false);
+    EXPECT_NE(h1.find("tok147=xyz"), std::string::npos)
+        << "Cookie should match exact path /api, got: " << h1;
+
+    // Should match /api/users (sub-path)
+    std::string h2 = jar.get_cookie_header("v147path.example.com", "/api/users", false);
+    EXPECT_NE(h2.find("tok147=xyz"), std::string::npos)
+        << "Cookie should match sub-path /api/users, got: " << h2;
+
+    // Should NOT match /application (shares prefix but not a path match)
+    std::string h3 = jar.get_cookie_header("v147path.example.com", "/application", false);
+    EXPECT_TRUE(h3.empty())
+        << "Cookie with Path=/api should NOT match /application, got: " << h3;
+
+    // Should NOT match /other
+    std::string h4 = jar.get_cookie_header("v147path.example.com", "/other", false);
+    EXPECT_TRUE(h4.empty())
+        << "Cookie with Path=/api should NOT match /other, got: " << h4;
+}

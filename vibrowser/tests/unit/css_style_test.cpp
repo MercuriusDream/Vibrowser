@@ -25612,3 +25612,41 @@ TEST(CSSStyleTest, CssV146_4_PositionFixedApplied) {
     cascade.apply_declaration(style, make_decl("position", "fixed"), parent);
     EXPECT_EQ(style.position, Position::Fixed);
 }
+
+// === V147 CSS Style Tests ===
+
+TEST(CSSStyleTest, CssV147_1_FontStyleItalicApplied) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("font-style", "italic"), parent);
+    EXPECT_EQ(style.font_style, FontStyle::Italic);
+}
+
+TEST(CSSStyleTest, CssV147_2_DisplayInlineApplied) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("display", "inline"), parent);
+    EXPECT_EQ(style.display, Display::Inline);
+}
+
+TEST(PropertyCascadeTest, FontWeight300LightV147) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("font-weight", "300"), parent);
+    EXPECT_EQ(style.font_weight, 300);
+}
+
+TEST(CSSStyleTest, CssV147_4_PositionStickyApplied) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("position", "sticky"), parent);
+    EXPECT_EQ(style.position, Position::Sticky);
+}

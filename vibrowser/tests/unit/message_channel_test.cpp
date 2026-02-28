@@ -1869,3 +1869,58 @@ TEST(MessageChannelTest, MessageChannelV146_2_ZeroTypeIdHandlerV146) {
     EXPECT_TRUE(handler_called);
     EXPECT_EQ(received_type, 0u);
 }
+
+// ------------------------------------------------------------------
+// V147: Handler accesses payload
+// ------------------------------------------------------------------
+
+TEST(MessageChannelTest, MessageChannelV147_1_HandlerAccessesPayloadV147) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel ch(std::move(pa));
+
+    uint32_t extracted_value = 0;
+    ch.on(50, [&](const Message& m) {
+        Deserializer d(m.payload);
+        extracted_value = d.read_u32();
+    });
+
+    Serializer s;
+    s.write_u32(0xDEADBEEF);
+
+    Message msg;
+    msg.type = 50;
+    msg.request_id = 1;
+    msg.payload = s.data();
+
+    ch.dispatch(msg);
+
+    EXPECT_EQ(extracted_value, 0xDEADBEEFu);
+}
+
+// ------------------------------------------------------------------
+// V147: Two channels with separate handlers
+// ------------------------------------------------------------------
+
+TEST(MessageChannelTest, MessageChannelV147_2_TwoChannelsSeparateHandlersV147) {
+    auto [pa1, pb1] = MessagePipe::create_pair();
+    auto [pa2, pb2] = MessagePipe::create_pair();
+    MessageChannel ch1(std::move(pa1));
+    MessageChannel ch2(std::move(pa2));
+
+    int ch1_count = 0;
+    int ch2_count = 0;
+
+    ch1.on(10, [&](const Message&) { ch1_count++; });
+    ch2.on(10, [&](const Message&) { ch2_count++; });
+
+    Message msg;
+    msg.type = 10;
+    msg.request_id = 1;
+
+    ch1.dispatch(msg);
+    ch1.dispatch(msg);
+    ch2.dispatch(msg);
+
+    EXPECT_EQ(ch1_count, 2);
+    EXPECT_EQ(ch2_count, 1);
+}

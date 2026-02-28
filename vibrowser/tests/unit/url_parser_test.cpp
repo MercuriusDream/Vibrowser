@@ -14836,3 +14836,56 @@ TEST(UrlParserTest, UrlV146_4_MultipleSameQueryParams) {
     EXPECT_EQ(result->path, "/search");
     EXPECT_EQ(result->query, "a=1&a=2&a=3");
 }
+
+// =============================================================================
+// V147 Tests
+// =============================================================================
+
+TEST(UrlParserTest, UrlV147_1_FtpPort21Default) {
+    // FTP with explicit default port 21 should result in port being nullopt
+    auto result = parse("ftp://example.com:21/files/readme.txt");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "ftp");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->port, std::nullopt);
+    EXPECT_EQ(result->path, "/files/readme.txt");
+}
+
+TEST(UrlParserTest, UrlV147_2_FtpNonDefaultPort) {
+    // FTP with non-default port 2121 should preserve the port
+    auto result = parse("ftp://example.com:2121/files/data.bin");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "ftp");
+    EXPECT_EQ(result->host, "example.com");
+    ASSERT_TRUE(result->port.has_value());
+    EXPECT_EQ(result->port.value(), 2121);
+    EXPECT_EQ(result->path, "/files/data.bin");
+}
+
+TEST(UrlParserTest, UrlV147_3_SerializePreservesAllComponents) {
+    // Parsing a full URL with all components and serializing it back
+    auto result = parse("https://user:pass@example.com:9090/api/v1?key=val&x=y#section2");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->username, "user");
+    EXPECT_EQ(result->password, "pass");
+    EXPECT_EQ(result->host, "example.com");
+    ASSERT_TRUE(result->port.has_value());
+    EXPECT_EQ(result->port.value(), 9090);
+    EXPECT_EQ(result->path, "/api/v1");
+    EXPECT_EQ(result->query, "key=val&x=y");
+    EXPECT_EQ(result->fragment, "section2");
+    std::string s = result->serialize();
+    EXPECT_EQ(s, "https://user:pass@example.com:9090/api/v1?key=val&x=y#section2");
+}
+
+TEST(UrlParserTest, UrlV147_4_RelativePathResolution) {
+    // Resolve a relative path against a base URL
+    auto base = parse("https://example.com/docs/guide/intro.html");
+    ASSERT_TRUE(base.has_value());
+    auto result = parse("../tutorial/start.html", &base.value());
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/docs/tutorial/start.html");
+}

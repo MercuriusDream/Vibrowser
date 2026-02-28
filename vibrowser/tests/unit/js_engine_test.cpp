@@ -36197,3 +36197,106 @@ TEST(JSEngine, JsV146_8) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "1,2,3,4,5,6|0,1,2,3,99");
 }
+
+// V147: Map.forEach iteration
+TEST(JSEngine, JsV147_1) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var m = new Map();
+        m.set('a', 1);
+        m.set('b', 2);
+        m.set('c', 3);
+        var out = [];
+        m.forEach(function(v, k) { out.push(k + ':' + v); });
+        out.join(',');
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "a:1,b:2,c:3");
+}
+
+// V147: Set.forEach iteration
+TEST(JSEngine, JsV147_2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var s = new Set();
+        s.add(10);
+        s.add(20);
+        s.add(30);
+        var out = [];
+        s.forEach(function(v) { out.push(v); });
+        out.join(',');
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "10,20,30");
+}
+
+// V147: Array.of creates array from values
+TEST(JSEngine, JsV147_3) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var arr = Array.of(1, 2, 3, 4, 5);
+        arr.length + '|' + arr.join(',');
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "5|1,2,3,4,5");
+}
+
+// V147: String.raw template tag
+TEST(JSEngine, JsV147_4) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var r = String.raw`hello\nworld`;
+        r;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "hello\\nworld");
+}
+
+// V147: Math.pow and ** operator
+TEST(JSEngine, JsV147_5) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var a = Math.pow(2, 10);
+        var b = 3 ** 4;
+        a + ',' + b;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1024,81");
+}
+
+// V147: Array.copyWithin
+TEST(JSEngine, JsV147_6) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var arr = [1, 2, 3, 4, 5];
+        arr.copyWithin(0, 3);
+        arr.join(',');
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "4,5,3,4,5");
+}
+
+// V147: Object.create with prototype
+TEST(JSEngine, JsV147_7) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var proto = { greet: function() { return 'hello'; } };
+        var obj = Object.create(proto);
+        obj.greet() + '|' + obj.hasOwnProperty('greet');
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "hello|false");
+}
+
+// V147: for...in loop over object keys
+TEST(JSEngine, JsV147_8) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var obj = { x: 10, y: 20, z: 30 };
+        var keys = [];
+        for (var k in obj) { keys.push(k); }
+        keys.sort().join(',');
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "x,y,z");
+}

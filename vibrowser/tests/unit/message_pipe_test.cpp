@@ -1606,3 +1606,66 @@ TEST(MessagePipeTest, MessagePipeV146_3_EmptyPipeReceiveIsNulloptV146) {
     auto received = b.receive();
     EXPECT_FALSE(received.has_value());
 }
+
+// ------------------------------------------------------------------
+// V147: Rapid send/receive cycle
+// ------------------------------------------------------------------
+
+TEST(MessagePipeTest, MessagePipeV147_1_RapidSendReceiveCycleV147) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    for (int i = 0; i < 100; ++i) {
+        uint8_t val = static_cast<uint8_t>(i & 0xFF);
+        std::vector<uint8_t> data = {val};
+        ASSERT_TRUE(a.send(data)) << "send failed at iteration " << i;
+
+        auto received = b.receive();
+        ASSERT_TRUE(received.has_value()) << "receive failed at iteration " << i;
+        ASSERT_EQ(received->size(), 1u);
+        EXPECT_EQ((*received)[0], val);
+    }
+}
+
+// ------------------------------------------------------------------
+// V147: Payload with 1024 bytes sequential pattern
+// ------------------------------------------------------------------
+
+TEST(MessagePipeTest, MessagePipeV147_2_PayloadWith1024BytesV147) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    std::vector<uint8_t> payload(1024);
+    for (int i = 0; i < 1024; ++i) {
+        payload[i] = static_cast<uint8_t>(i & 0xFF);
+    }
+
+    ASSERT_TRUE(a.send(payload));
+
+    auto received = b.receive();
+    ASSERT_TRUE(received.has_value());
+    ASSERT_EQ(received->size(), 1024u);
+    for (int i = 0; i < 1024; ++i) {
+        EXPECT_EQ((*received)[i], static_cast<uint8_t>(i & 0xFF))
+            << "mismatch at byte " << i;
+    }
+}
+
+// ------------------------------------------------------------------
+// V147: Message order preserved
+// ------------------------------------------------------------------
+
+TEST(MessagePipeTest, MessagePipeV147_3_MessageOrderPreservedV147) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    for (uint8_t type_id = 1; type_id <= 5; ++type_id) {
+        std::vector<uint8_t> msg = {type_id, static_cast<uint8_t>(type_id * 10)};
+        ASSERT_TRUE(a.send(msg));
+    }
+
+    for (uint8_t type_id = 1; type_id <= 5; ++type_id) {
+        auto received = b.receive();
+        ASSERT_TRUE(received.has_value()) << "missing message " << static_cast<int>(type_id);
+        ASSERT_EQ(received->size(), 2u);
+        EXPECT_EQ((*received)[0], type_id);
+        EXPECT_EQ((*received)[1], static_cast<uint8_t>(type_id * 10));
+    }
+}

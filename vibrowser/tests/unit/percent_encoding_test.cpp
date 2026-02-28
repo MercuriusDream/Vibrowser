@@ -1077,3 +1077,34 @@ TEST(IsURLCodePoint, SemicolonAndCommaAreCodePointsV146) {
     EXPECT_EQ(percent_encode(";"), ";");
     EXPECT_EQ(percent_encode(","), ",");
 }
+
+// =============================================================================
+// V147 Tests
+// =============================================================================
+
+TEST(PercentEncoding, BackslashEncodedV147) {
+    // Backslash '\' is NOT a valid URL code point and must be percent-encoded
+    EXPECT_EQ(percent_encode("\\"), "%5C");
+    EXPECT_EQ(percent_encode("a\\b\\c"), "a%5Cb%5Cc");
+}
+
+TEST(PercentDecoding, AllHexDigitCombinationsV147) {
+    // Verify decoding of percent-encoded hex digit combinations
+    EXPECT_EQ(percent_decode("%41"), "A");
+    EXPECT_EQ(percent_decode("%61"), "a");
+    EXPECT_EQ(percent_decode("%30"), "0");
+    EXPECT_EQ(percent_decode("%39"), "9");
+}
+
+TEST(PercentEncoding, QuoteEncodedV147) {
+    // Double-quote '"' is NOT a valid URL code point and must be percent-encoded
+    EXPECT_EQ(percent_encode("\""), "%22");
+    EXPECT_EQ(percent_encode("say \"hello\""), "say%20%22hello%22");
+}
+
+TEST(IsURLCodePoint, EqualsSignIsCodePointV147) {
+    // '=' is a valid URL code point (used in query key=value pairs)
+    EXPECT_TRUE(is_url_code_point(U'='));
+    // Also verify it is not encoded by percent_encode
+    EXPECT_EQ(percent_encode("="), "=");
+}

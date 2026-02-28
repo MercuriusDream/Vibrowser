@@ -10495,3 +10495,57 @@ TEST_F(CSSStylesheetTest, TransformDeclarationV146) {
     }
     EXPECT_TRUE(found) << "transform declaration not found";
 }
+
+// === V147 CSS Parser Tests ===
+
+TEST_F(CSSStylesheetTest, FilterDeclarationV147) {
+    auto ss = parse_stylesheet("div { filter: blur(5px); }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "filter") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+        }
+    }
+    EXPECT_TRUE(found) << "filter declaration not found";
+}
+
+TEST_F(CSSStylesheetTest, ClipPathDeclarationV147) {
+    auto ss = parse_stylesheet("span { clip-path: circle(50%); }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "clip-path") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+        }
+    }
+    EXPECT_TRUE(found) << "clip-path declaration not found";
+}
+
+TEST_F(CSSStylesheetTest, PerspectiveDeclarationV147) {
+    auto ss = parse_stylesheet("section { perspective: 500px; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "perspective") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+        }
+    }
+    EXPECT_TRUE(found) << "perspective declaration not found";
+}
+
+TEST_F(CSSStylesheetTest, GridTemplateColumnsDeclarationV147) {
+    auto ss = parse_stylesheet("div { grid-template-columns: 1fr 2fr; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "grid-template-columns") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+        }
+    }
+    EXPECT_TRUE(found) << "grid-template-columns declaration not found";
+}

@@ -20622,3 +20622,60 @@ TEST(SerializerTest, SerializerV146_3_AlternatingTypesRoundTrip) {
     EXPECT_EQ(d.read_u16(), 9999u);
     EXPECT_FALSE(d.has_remaining());
 }
+
+// ------------------------------------------------------------------
+// V147: String max length round-trip
+// ------------------------------------------------------------------
+
+TEST(SerializerTest, SerializerV147_1_StringMaxLengthRoundTrip) {
+    std::string big(100000, 'X');
+    // Modify a few positions to ensure integrity
+    big[0] = 'A';
+    big[49999] = 'M';
+    big[99999] = 'Z';
+
+    Serializer s;
+    s.write_string(big);
+
+    Deserializer d(s.data());
+    std::string result = d.read_string();
+    EXPECT_EQ(result.size(), 100000u);
+    EXPECT_EQ(result[0], 'A');
+    EXPECT_EQ(result[49999], 'M');
+    EXPECT_EQ(result[99999], 'Z');
+    EXPECT_EQ(result[1], 'X');
+    EXPECT_EQ(result[50000], 'X');
+    EXPECT_FALSE(d.has_remaining());
+}
+
+// ------------------------------------------------------------------
+// V147: Bool all true round-trip
+// ------------------------------------------------------------------
+
+TEST(SerializerTest, SerializerV147_2_BoolAllTrueRoundTrip) {
+    Serializer s;
+    for (int i = 0; i < 20; ++i) {
+        s.write_bool(true);
+    }
+
+    Deserializer d(s.data());
+    for (int i = 0; i < 20; ++i) {
+        EXPECT_EQ(d.read_bool(), true) << "bool at index " << i;
+    }
+    EXPECT_FALSE(d.has_remaining());
+}
+
+// ------------------------------------------------------------------
+// V147: U64 zero and one round-trip
+// ------------------------------------------------------------------
+
+TEST(SerializerTest, SerializerV147_3_U64ZeroAndOneRoundTrip) {
+    Serializer s;
+    s.write_u64(0);
+    s.write_u64(1);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u64(), 0u);
+    EXPECT_EQ(d.read_u64(), 1u);
+    EXPECT_FALSE(d.has_remaining());
+}

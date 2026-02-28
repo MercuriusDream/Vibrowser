@@ -22198,3 +22198,130 @@ TEST(DomElement, HasAttributeReturnsFalseAfterRemoveV146) {
     EXPECT_FALSE(elem.has_attribute("data-custom"));
     EXPECT_EQ(elem.attributes().size(), 0u);
 }
+
+// ---------------------------------------------------------------------------
+// Round 147 — 8 DOM tests
+// ---------------------------------------------------------------------------
+
+// 1. Insert before moves a child from another parent
+TEST(DomNode, InsertBeforeMovesFromAnotherParentV147) {
+    auto parent1 = std::make_unique<Element>("div");
+    auto parent2 = std::make_unique<Element>("section");
+    auto child = std::make_unique<Element>("span");
+    auto ref = std::make_unique<Element>("p");
+
+    Element* child_ptr = child.get();
+    Element* ref_ptr = ref.get();
+
+    parent1->append_child(std::move(child));
+    EXPECT_EQ(parent1->child_count(), 1u);
+
+    parent2->append_child(std::move(ref));
+    EXPECT_EQ(parent2->child_count(), 1u);
+
+    // Remove from parent1 and insert into parent2 before ref
+    auto removed = parent1->remove_child(*child_ptr);
+    parent2->insert_before(std::move(removed), ref_ptr);
+
+    EXPECT_EQ(parent1->child_count(), 0u);
+    EXPECT_EQ(parent2->child_count(), 2u);
+    EXPECT_EQ(parent2->first_child(), child_ptr);
+}
+
+// 2. set_attribute updates an existing attribute value, size stays 1
+TEST(DomElement, SetAttributeUpdatesExistingV147) {
+    Element elem("div");
+    elem.set_attribute("role", "button");
+    EXPECT_EQ(elem.get_attribute("role"), "button");
+    EXPECT_EQ(elem.attributes().size(), 1u);
+
+    elem.set_attribute("role", "link");
+    EXPECT_EQ(elem.get_attribute("role"), "link");
+    EXPECT_EQ(elem.attributes().size(), 1u);
+}
+
+// 3. Document create_element and append to body
+TEST(DomDocument, CreateElementAndAppendToBodyV147) {
+    Document doc;
+    auto body = std::make_unique<Element>("body");
+    Element* body_ptr = body.get();
+    doc.append_child(std::move(body));
+
+    auto span = doc.create_element("span");
+    Element* span_ptr = span.get();
+    body_ptr->append_child(std::move(span));
+
+    EXPECT_EQ(body_ptr->child_count(), 1u);
+    EXPECT_EQ(body_ptr->first_child(), span_ptr);
+    EXPECT_EQ(span_ptr->tag_name(), "span");
+}
+
+// 4. Multiple prevent_default calls are safe, still default_prevented
+TEST(DomEvent, MultiplePreventDefaultCallsSafeV147) {
+    Event ev("submit", true, true);
+    EXPECT_FALSE(ev.default_prevented());
+
+    ev.prevent_default();
+    EXPECT_TRUE(ev.default_prevented());
+
+    ev.prevent_default();
+    EXPECT_TRUE(ev.default_prevented());
+
+    ev.prevent_default();
+    EXPECT_TRUE(ev.default_prevented());
+}
+
+// 5. Sibling pointers after insert_before: a -> b -> c chain
+TEST(DomNode, SiblingPointersAfterInsertBeforeV147) {
+    auto parent = std::make_unique<Element>("div");
+    auto a = std::make_unique<Element>("a");
+    auto b = std::make_unique<Element>("b");
+    auto c = std::make_unique<Element>("c");
+
+    Node* a_ptr = a.get();
+    Node* b_ptr = b.get();
+    Node* c_ptr = c.get();
+
+    parent->append_child(std::move(a));
+    parent->append_child(std::move(c));
+
+    // Insert b before c => a, b, c
+    parent->insert_before(std::move(b), c_ptr);
+
+    EXPECT_EQ(parent->child_count(), 3u);
+    EXPECT_EQ(a_ptr->next_sibling(), b_ptr);
+    EXPECT_EQ(b_ptr->previous_sibling(), a_ptr);
+    EXPECT_EQ(b_ptr->next_sibling(), c_ptr);
+    EXPECT_EQ(c_ptr->previous_sibling(), b_ptr);
+}
+
+// 6. ClassList toggle removes if present, length becomes 0
+TEST(DomElement, ClassListToggleRemovesIfPresentV147) {
+    Element elem("div");
+    auto& cl = elem.class_list();
+
+    cl.add("x");
+    ASSERT_TRUE(cl.contains("x"));
+    ASSERT_EQ(cl.length(), 1u);
+
+    cl.toggle("x");
+    EXPECT_FALSE(cl.contains("x"));
+    EXPECT_EQ(cl.length(), 0u);
+}
+
+// 7. text_content on a text node returns its data
+TEST(DomNode, TextContentOnTextNodeV147) {
+    Text txt("hello world");
+    EXPECT_EQ(txt.text_content(), "hello world");
+
+    Text empty_txt("");
+    EXPECT_EQ(empty_txt.text_content(), "");
+}
+
+// 8. Element with empty string tag name
+TEST(DomElement, EmptyTagNameV147) {
+    Element elem("");
+    EXPECT_EQ(elem.tag_name(), "");
+    EXPECT_EQ(elem.child_count(), 0u);
+    EXPECT_EQ(elem.attributes().size(), 0u);
+}

@@ -23396,3 +23396,116 @@ TEST(HtmlParserTest, HtmlV146_8) {
     EXPECT_EQ(mark->tag_name, "mark");
     EXPECT_EQ(mark->text_content(), "Highlighted");
 }
+
+// === V147 HTML Parser Tests ===
+
+TEST(HtmlParserTest, HtmlV147_1) {
+    // span with text
+    auto doc = clever::html::parse("<html><body><span>Hello World</span></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* span = doc->find_element("span");
+    ASSERT_NE(span, nullptr);
+    EXPECT_EQ(span->tag_name, "span");
+    EXPECT_EQ(span->text_content(), "Hello World");
+}
+
+TEST(HtmlParserTest, HtmlV147_2) {
+    // div with id attribute
+    auto doc = clever::html::parse("<html><body><div id=\"container\">Content</div></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* div = doc->find_element("div");
+    ASSERT_NE(div, nullptr);
+    EXPECT_EQ(div->tag_name, "div");
+    ASSERT_GE(div->attributes.size(), 1u);
+    EXPECT_EQ(div->attributes[0].name, "id");
+    EXPECT_EQ(div->attributes[0].value, "container");
+    EXPECT_EQ(div->text_content(), "Content");
+}
+
+TEST(HtmlParserTest, HtmlV147_3) {
+    // anchor with target=_blank
+    auto doc = clever::html::parse("<html><body><a href=\"https://example.com\" target=\"_blank\">Link</a></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* a = doc->find_element("a");
+    ASSERT_NE(a, nullptr);
+    EXPECT_EQ(a->tag_name, "a");
+    ASSERT_GE(a->attributes.size(), 2u);
+    EXPECT_EQ(a->text_content(), "Link");
+    // Check target attribute exists
+    bool found_target = false;
+    for (const auto& attr : a->attributes) {
+        if (attr.name == "target") {
+            found_target = true;
+            EXPECT_EQ(attr.value, "_blank");
+        }
+    }
+    EXPECT_TRUE(found_target) << "target attribute not found";
+}
+
+TEST(HtmlParserTest, HtmlV147_4) {
+    // meta charset
+    auto doc = clever::html::parse("<html><head><meta charset=\"utf-8\"></head><body></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* meta = doc->find_element("meta");
+    ASSERT_NE(meta, nullptr);
+    EXPECT_EQ(meta->tag_name, "meta");
+    ASSERT_GE(meta->attributes.size(), 1u);
+    EXPECT_EQ(meta->attributes[0].name, "charset");
+    EXPECT_EQ(meta->attributes[0].value, "utf-8");
+}
+
+TEST(HtmlParserTest, HtmlV147_5) {
+    // link rel=stylesheet
+    auto doc = clever::html::parse("<html><head><link rel=\"stylesheet\" href=\"style.css\"></head><body></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* link = doc->find_element("link");
+    ASSERT_NE(link, nullptr);
+    EXPECT_EQ(link->tag_name, "link");
+    bool found_rel = false;
+    for (const auto& attr : link->attributes) {
+        if (attr.name == "rel") {
+            found_rel = true;
+            EXPECT_EQ(attr.value, "stylesheet");
+        }
+    }
+    EXPECT_TRUE(found_rel) << "rel attribute not found";
+}
+
+TEST(HtmlParserTest, HtmlV147_6) {
+    // script src attribute
+    auto doc = clever::html::parse("<html><head><script src=\"app.js\"></script></head><body></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* script = doc->find_element("script");
+    ASSERT_NE(script, nullptr);
+    EXPECT_EQ(script->tag_name, "script");
+    ASSERT_GE(script->attributes.size(), 1u);
+    EXPECT_EQ(script->attributes[0].name, "src");
+    EXPECT_EQ(script->attributes[0].value, "app.js");
+}
+
+TEST(HtmlParserTest, HtmlV147_7) {
+    // noscript element
+    auto doc = clever::html::parse("<html><body><noscript>Enable JS</noscript></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* noscript = doc->find_element("noscript");
+    ASSERT_NE(noscript, nullptr);
+    EXPECT_EQ(noscript->tag_name, "noscript");
+    EXPECT_EQ(noscript->text_content(), "Enable JS");
+}
+
+TEST(HtmlParserTest, HtmlV147_8) {
+    // style element with CSS content
+    auto doc = clever::html::parse("<html><head><style>body { color: red; }</style></head><body></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* style = doc->find_element("style");
+    ASSERT_NE(style, nullptr);
+    EXPECT_EQ(style->tag_name, "style");
+}
