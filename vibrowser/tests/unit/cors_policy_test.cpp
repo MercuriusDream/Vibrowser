@@ -13187,3 +13187,54 @@ TEST(CORSPolicyTest, CorsV166_7_AcaoMismatchPortRejects) {
 TEST(CORSPolicyTest, CorsV166_8_SameOriginBothHttpsPort443) {
     EXPECT_FALSE(is_cross_origin("https://app.example", "https://app.example:443/page"));
 }
+
+// ---------------------------------------------------------------------------
+// Round 167 — CORS tests (V167)
+// ---------------------------------------------------------------------------
+
+// 1. https with implicit port 443 is enforceable
+TEST(CORSPolicyTest, CorsV167_1_HttpsPort443ImplicitEnforceable) {
+    EXPECT_TRUE(has_enforceable_document_origin("https://secure.example"));
+}
+
+// 2. Same origin when both http on port 80
+TEST(CORSPolicyTest, CorsV167_2_SameOriginBothHttpPort80) {
+    EXPECT_FALSE(is_cross_origin("http://app.example", "http://app.example:80/page"));
+}
+
+// 3. ACAO wildcard without credentials is allowed
+TEST(CORSPolicyTest, CorsV167_3_AcaoWildcardWithoutCredAllowed) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "*");
+    EXPECT_TRUE(cors_allows_response("https://myapp.example", "https://api.other.example/v2/data",
+                                     headers, false));
+}
+
+// 4. should_attach_origin when different host
+TEST(CORSPolicyTest, CorsV167_4_ShouldAttachOriginDiffHost) {
+    EXPECT_TRUE(should_attach_origin_header("https://frontend.example",
+                                            "https://backend.example/api/v1"));
+}
+
+// 5. ldap scheme is not enforceable
+TEST(CORSPolicyTest, CorsV167_5_LdapSchemeNotEnforceable) {
+    EXPECT_FALSE(has_enforceable_document_origin("ldap://directory.example"));
+}
+
+// 6. IPv4 with different port is cross-origin
+TEST(CORSPolicyTest, CorsV167_6_IPv4DiffPortCrossOrigin) {
+    EXPECT_TRUE(is_cross_origin("http://192.168.1.1:3000", "http://192.168.1.1:4000/api"));
+}
+
+// 7. ACAO empty string rejects
+TEST(CORSPolicyTest, CorsV167_7_AcaoEmptyStringRejects) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "");
+    EXPECT_FALSE(cors_allows_response("https://app.example", "https://api.example/data",
+                                      headers, false));
+}
+
+// 8. http with non-standard port is cross-origin against default port
+TEST(CORSPolicyTest, CorsV167_8_HttpNonStandardPortCrossOriginWithDefault) {
+    EXPECT_TRUE(is_cross_origin("http://app.example:8080", "http://app.example/page"));
+}

@@ -38322,3 +38322,109 @@ TEST(JSEngine, JsV166_8) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "45");
 }
+
+// V167_1: Array.pop returns last element
+TEST(JSEngine, JsV167_1) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var arr = [10, 20, 30];
+        var last = arr.pop();
+        "" + last + "," + arr.length;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "30,2");
+}
+
+// V167_2: String.toUpperCase/toLowerCase
+TEST(JSEngine, JsV167_2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var a = "Hello World".toUpperCase();
+        var b = "Hello World".toLowerCase();
+        a + "|" + b;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "HELLO WORLD|hello world");
+}
+
+// V167_3: Object.seal prevents adding properties
+TEST(JSEngine, JsV167_3) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var obj = { x: 1 };
+        Object.seal(obj);
+        obj.y = 99;
+        var has = obj.y === undefined;
+        "" + has + "," + obj.x;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true,1");
+}
+
+// V167_4: JSON.parse array
+TEST(JSEngine, JsV167_4) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var arr = JSON.parse("[1,2,3]");
+        "" + arr.length + "," + arr[0] + "," + arr[2];
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "3,1,3");
+}
+
+// V167_5: Math.random returns 0-1 range
+TEST(JSEngine, JsV167_5) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var r = Math.random();
+        var ok = (r >= 0 && r < 1);
+        "" + ok;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true");
+}
+
+// V167_6: Array.shift removes first element
+TEST(JSEngine, JsV167_6) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var arr = [5, 10, 15];
+        var first = arr.shift();
+        "" + first + "," + arr.length + "," + arr[0];
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "5,2,10");
+}
+
+// V167_7: switch/case/default
+TEST(JSEngine, JsV167_7) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        function classify(n) {
+            switch(n) {
+                case 1: return "one";
+                case 2: return "two";
+                default: return "other";
+            }
+        }
+        classify(1) + "," + classify(2) + "," + classify(99);
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "one,two,other");
+}
+
+// V167_8: do...while loop
+TEST(JSEngine, JsV167_8) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var i = 0;
+        var sum = 0;
+        do {
+            sum += i;
+            i++;
+        } while (i < 5);
+        "" + sum;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "10");
+}

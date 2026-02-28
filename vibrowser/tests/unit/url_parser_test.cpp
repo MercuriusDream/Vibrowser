@@ -15834,3 +15834,47 @@ TEST(UrlParserTest, UrlV166_4_EmptyHostAuthority) {
     EXPECT_EQ(result->path, "/path");
     EXPECT_EQ(result->port, std::nullopt);
 }
+
+// =============================================================================
+// Round 167 URL parser tests
+// =============================================================================
+
+TEST(UrlParserTest, UrlV167_1_HttpsNoPathDefaultSlash) {
+    // https://example.com with no path should default to "/"
+    auto result = parse("https://example.com");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/");
+    EXPECT_EQ(result->port, std::nullopt);
+}
+
+TEST(UrlParserTest, UrlV167_2_FragmentOnlyAfterHost) {
+    // http://host#frag should parse fragment as "frag"
+    auto result = parse("http://host#frag");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "host");
+    EXPECT_EQ(result->fragment, "frag");
+    EXPECT_EQ(result->port, std::nullopt);
+}
+
+TEST(UrlParserTest, UrlV167_3_PortOnePreserved) {
+    // Port 1 is non-default and should be preserved in the parsed result
+    auto result = parse("http://host:1/path");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "host");
+    ASSERT_TRUE(result->port.has_value());
+    EXPECT_EQ(result->port.value(), 1);
+    EXPECT_EQ(result->path, "/path");
+}
+
+TEST(UrlParserTest, UrlV167_4_PathWithConsecutiveDots) {
+    // /a/b/../../c normalizes: /a/b/.. -> /a, then /a/../c -> /c
+    auto result = parse("https://example.com/a/b/../../c");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/c");
+}

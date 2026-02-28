@@ -28929,3 +28929,201 @@ TEST(HttpClient, CookieJarEmptyWhenNoCookiesSetV166) {
     EXPECT_TRUE(header_secure.empty())
         << "CookieJar with no cookies should return empty string for secure too, got: " << header_secure;
 }
+
+// ===========================================================================
+// Round 167 — Net Tests (V167)
+// ===========================================================================
+
+// 1. GET request serializes with Accept: */* custom header
+TEST(HttpClient, RequestSerializeGetAcceptAllV167) {
+    Request req;
+    req.method = Method::GET;
+    req.host = "api167.example.com";
+    req.port = 443;
+    req.path = "/v1/resources";
+    req.headers.set("Accept", "*/*");
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    EXPECT_NE(result.find("GET /v1/resources HTTP/1.1\r\n"), std::string::npos)
+        << "Request line should contain GET method and path, got: " << result;
+    // Port 443 should be omitted from Host header
+    EXPECT_NE(result.find("Host: api167.example.com\r\n"), std::string::npos)
+        << "Host header should omit port 443, got: " << result;
+    // Custom Accept header stored lowercase
+    EXPECT_NE(result.find("accept: */*\r\n"), std::string::npos)
+        << "Custom Accept: */* header should appear (lowercase), got: " << result;
+    EXPECT_NE(result.find("Connection: close\r\n"), std::string::npos)
+        << "Connection: close should be present, got: " << result;
+}
+
+// 2. Response parse 200 with application/xml body
+TEST(HttpClient, ResponseParse200XmlBodyV167) {
+    std::string xml_body = "<?xml version=\"1.0\"?><root><item>v167</item></root>";
+    std::string raw =
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Type: application/xml\r\n"
+        "Content-Length: " + std::to_string(xml_body.size()) + "\r\n"
+        "\r\n" +
+        xml_body;
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value()) << "200 XML response should parse successfully";
+    EXPECT_EQ(resp->status, 200);
+    EXPECT_EQ(resp->status_text, "OK");
+    auto ct = resp->headers.get("content-type");
+    ASSERT_TRUE(ct.has_value()) << "Content-Type header should be present";
+    EXPECT_NE(ct->find("application/xml"), std::string::npos)
+        << "Content-Type should be application/xml, got: " << *ct;
+    EXPECT_EQ(resp->body_as_string(), xml_body)
+        << "Body should match XML content";
+}
+
+// 3. ConnectionPool: max_per_host=1, release 2, acquire gets only 1
+TEST(HttpClient, ConnectionPoolMaxPerHostLimitV167) {
+    ConnectionPool pool(1);  // max 1 per host
+
+    pool.release("limit167.example.com", 8080, 42);
+    pool.release("limit167.example.com", 8080, 99);
+
+    // Pool should cap at max_per_host=1
+    EXPECT_LE(pool.count("limit167.example.com", 8080), 1u)
+        << "Pool should hold at most 1 connection per host";
+
+    int fd1 = pool.acquire("limit167.example.com", 8080);
+    ASSERT_NE(fd1, -1)
+        << "Should acquire at least one socket from the pool";
+
+    int fd2 = pool.acquire("limit167.example.com", 8080);
+    EXPECT_EQ(fd2, -1)
+        << "Second acquire should return -1 since max_per_host=1, got: " << fd2;
+}
+
+// 4. CookieJar: subdomain matches parent domain cookie
+TEST(HttpClient, CookieJarSubdomainMatchesParentDomainV167) {
+    CookieJar jar;
+    jar.set_from_header("session=abc167; Domain=.parent167.example.com", "parent167.example.com");
+
+    // Subdomain should see the cookie
+    std::string sub_header = jar.get_cookie_header("app.parent167.example.com", "/", false);
+    EXPECT_NE(sub_header.find("session=abc167"), std::string::npos)
+        << "Subdomain should match parent domain cookie, got: " << sub_header;
+
+    // Parent domain itself should see the cookie
+    std::string parent_header = jar.get_cookie_header("parent167.example.com", "/", false);
+    EXPECT_NE(parent_header.find("session=abc167"), std::string::npos)
+        << "Parent domain should match its own cookie, got: " << parent_header;
+
+    // Completely different domain should NOT see it
+    std::string other_header = jar.get_cookie_header("other167.example.com", "/", false);
+    EXPECT_TRUE(other_header.find("session=abc167") == std::string::npos)
+        << "Unrelated domain should not get the cookie, got: " << other_header;
+}
+
+// 5. HeaderMap: remove then get returns nullopt
+TEST(HttpClient, HeaderMapRemoveThenGetNulloptV167) {
+    HeaderMap map;
+    map.set("x-temp-v167", "temporary");
+
+    // Verify it exists first
+    auto val = map.get("x-temp-v167");
+    ASSERT_TRUE(val.has_value())
+        << "Header should exist before removal";
+    EXPECT_EQ(*val, "temporary");
+
+    // Remove it
+    map.remove("x-temp-v167");
+
+    // Now get should return nullopt
+    auto removed_val = map.get("x-temp-v167");
+    EXPECT_FALSE(removed_val.has_value())
+        << "Header should be gone after remove, got: " << (removed_val ? *removed_val : "nullopt");
+
+    // Also check has() returns false
+    EXPECT_FALSE(map.has("x-temp-v167"))
+        << "has() should return false after remove";
+}
+
+// 6. POST request serializes with JSON body and custom header
+TEST(HttpClient, RequestSerializePostJsonWithCustomHeaderV167) {
+    Request req;
+    req.method = Method::POST;
+    req.host = "api167.example.com";
+    req.port = 80;
+    req.path = "/v1/submit";
+
+    std::string body_str = R"({"name":"v167","active":true})";
+    req.body.assign(body_str.begin(), body_str.end());
+    req.headers.set("Content-Type", "application/json");
+    req.headers.set("X-Request-Id", "req-167-001");
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    EXPECT_NE(result.find("POST /v1/submit HTTP/1.1\r\n"), std::string::npos)
+        << "Request line should contain POST method, got: " << result;
+    // Port 80 omitted from Host
+    EXPECT_NE(result.find("Host: api167.example.com\r\n"), std::string::npos)
+        << "Host header should omit port 80, got: " << result;
+    EXPECT_NE(result.find("Connection: close\r\n"), std::string::npos)
+        << "Connection: close should be present, got: " << result;
+    // Custom headers lowercase
+    EXPECT_NE(result.find("content-type: application/json\r\n"), std::string::npos)
+        << "Custom Content-Type should be lowercase, got: " << result;
+    EXPECT_NE(result.find("x-request-id: req-167-001\r\n"), std::string::npos)
+        << "Custom X-Request-Id should be lowercase, got: " << result;
+    // Content-Length auto-added
+    EXPECT_NE(result.find("Content-Length: " + std::to_string(body_str.size()) + "\r\n"), std::string::npos)
+        << "Content-Length should match body size, got: " << result;
+    // Body at the end
+    EXPECT_NE(result.find("\r\n\r\n" + body_str), std::string::npos)
+        << "Body should follow blank line, got: " << result;
+}
+
+// 7. Response parse 201 Created
+TEST(HttpClient, ResponseParse201CreatedV167) {
+    std::string body_str = R"({"id":167,"created":true})";
+    std::string raw =
+        "HTTP/1.1 201 Created\r\n"
+        "Content-Type: application/json\r\n"
+        "Content-Length: " + std::to_string(body_str.size()) + "\r\n"
+        "Location: /v1/items/167\r\n"
+        "\r\n" +
+        body_str;
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value()) << "201 Created response should parse successfully";
+    EXPECT_EQ(resp->status, 201);
+    EXPECT_EQ(resp->status_text, "Created");
+    EXPECT_EQ(resp->body_as_string(), body_str)
+        << "Body should match JSON content";
+    auto location = resp->headers.get("location");
+    ASSERT_TRUE(location.has_value())
+        << "Location header should be present in 201 response";
+    EXPECT_EQ(*location, "/v1/items/167")
+        << "Location header should contain the created resource URI";
+}
+
+// 8. CookieJar: two cookies set for one domain, both returned
+TEST(HttpClient, CookieJarTwoCookiesOneDomainV167) {
+    CookieJar jar;
+    jar.set_from_header("alpha=one167", "cookies167.example.com");
+    jar.set_from_header("beta=two167", "cookies167.example.com");
+
+    std::string header = jar.get_cookie_header("cookies167.example.com", "/", false);
+
+    // Both cookies should appear in the header
+    EXPECT_NE(header.find("alpha=one167"), std::string::npos)
+        << "First cookie should be present, got: " << header;
+    EXPECT_NE(header.find("beta=two167"), std::string::npos)
+        << "Second cookie should be present, got: " << header;
+
+    // Cookies should be separated by "; "
+    EXPECT_NE(header.find("; "), std::string::npos)
+        << "Multiple cookies should be separated by '; ', got: " << header;
+}

@@ -21594,3 +21594,42 @@ TEST(SerializerTest, SerializerV166_3_MixedBoolStringU32RoundTrip) {
     EXPECT_EQ(d.read_u32(), 0u);
     EXPECT_FALSE(d.has_remaining());
 }
+
+TEST(SerializerTest, SerializerV167_1_I64MaxValueRoundTrip) {
+    Serializer s;
+    s.write_i64(INT64_MAX);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i64(), INT64_MAX);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, SerializerV167_2_U32DescendingSequenceRoundTrip) {
+    Serializer s;
+    for (uint32_t i = 10; i >= 1; --i) {
+        s.write_u32(i);
+    }
+
+    Deserializer d(s.data());
+    for (uint32_t i = 10; i >= 1; --i) {
+        EXPECT_EQ(d.read_u32(), i);
+    }
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, SerializerV167_3_BoolSequenceFiveValuesRoundTrip) {
+    Serializer s;
+    s.write_bool(true);
+    s.write_bool(false);
+    s.write_bool(true);
+    s.write_bool(true);
+    s.write_bool(false);
+
+    Deserializer d(s.data());
+    EXPECT_TRUE(d.read_bool());
+    EXPECT_FALSE(d.read_bool());
+    EXPECT_TRUE(d.read_bool());
+    EXPECT_TRUE(d.read_bool());
+    EXPECT_FALSE(d.read_bool());
+    EXPECT_FALSE(d.has_remaining());
+}

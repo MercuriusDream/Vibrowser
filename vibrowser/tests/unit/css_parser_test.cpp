@@ -11636,3 +11636,61 @@ TEST_F(CSSStylesheetTest, FlexShrinkDeclarationV166) {
     }
     EXPECT_TRUE(found) << "flex-shrink declaration not found";
 }
+
+// Round 167 — CSS parser tests (V167)
+
+TEST_F(CSSStylesheetTest, FlexBasisDeclarationV167) {
+    auto ss = parse_stylesheet("div { flex-basis: 200px; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "flex-basis") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "200px");
+        }
+    }
+    EXPECT_TRUE(found) << "flex-basis declaration not found";
+}
+
+TEST_F(CSSStylesheetTest, OrderDeclarationV167) {
+    auto ss = parse_stylesheet("div { order: 3; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "order") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "3");
+        }
+    }
+    EXPECT_TRUE(found) << "order declaration not found";
+}
+
+TEST_F(CSSStylesheetTest, AlignSelfDeclarationV167) {
+    auto ss = parse_stylesheet("div { align-self: flex-end; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "align-self") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "flex-end");
+        }
+    }
+    EXPECT_TRUE(found) << "align-self declaration not found";
+}
+
+TEST_F(CSSStylesheetTest, JustifySelfDeclarationV167) {
+    auto ss = parse_stylesheet("div { justify-self: center; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "justify-self") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "center");
+        }
+    }
+    EXPECT_TRUE(found) << "justify-self declaration not found";
+}

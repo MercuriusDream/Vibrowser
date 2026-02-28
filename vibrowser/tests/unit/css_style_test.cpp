@@ -26484,3 +26484,42 @@ TEST(PropertyCascadeTest, TextAlignCenterAppliedV166) {
     cascade.apply_declaration(style, make_decl("text-align", "center"), parent);
     EXPECT_EQ(style.text_align, TextAlign::Center);
 }
+
+// Round 167 — CSS style tests (V167)
+
+TEST(CSSStyleTest, CssV167_1_DisplayInlineBlockApplied) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("display", "inline-block"), parent);
+    EXPECT_EQ(style.display, Display::InlineBlock);
+}
+
+TEST(CSSStyleTest, CssV167_2_OverflowScrollApplied) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("overflow", "scroll"), parent);
+    EXPECT_EQ(style.overflow_x, Overflow::Scroll);
+    EXPECT_EQ(style.overflow_y, Overflow::Scroll);
+}
+
+TEST(PropertyCascadeTest, TextAlignRightAppliedV167) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("text-align", "right"), parent);
+    EXPECT_EQ(style.text_align, TextAlign::Right);
+}
+
+TEST(PropertyCascadeTest, TextAlignLeftAppliedV167) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("text-align", "left"), parent);
+    EXPECT_EQ(style.text_align, TextAlign::Left);
+}

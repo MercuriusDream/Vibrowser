@@ -26201,3 +26201,140 @@ TEST(HtmlParserTest, HtmlV166_8) {
     }
     EXPECT_EQ(href_val, "https://example.com/");
 }
+
+// Round 167 — HTML parser tests (V167)
+
+TEST(HtmlParserTest, HtmlV167_1) {
+    // header with nav
+    auto doc = clever::html::parse(
+        "<html><body><header><nav>Menu</nav></header></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* header = doc->find_element("header");
+    ASSERT_NE(header, nullptr);
+    EXPECT_EQ(header->tag_name, "header");
+    ASSERT_GE(header->children.size(), 1u);
+
+    auto* nav = doc->find_element("nav");
+    ASSERT_NE(nav, nullptr);
+    EXPECT_EQ(nav->tag_name, "nav");
+    EXPECT_EQ(nav->text_content(), "Menu");
+}
+
+TEST(HtmlParserTest, HtmlV167_2) {
+    // footer with p
+    auto doc = clever::html::parse(
+        "<html><body><footer><p>Copyright 2026</p></footer></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* footer = doc->find_element("footer");
+    ASSERT_NE(footer, nullptr);
+    EXPECT_EQ(footer->tag_name, "footer");
+
+    auto* p = doc->find_element("p");
+    ASSERT_NE(p, nullptr);
+    EXPECT_EQ(p->tag_name, "p");
+    EXPECT_EQ(p->text_content(), "Copyright 2026");
+}
+
+TEST(HtmlParserTest, HtmlV167_3) {
+    // main with article
+    auto doc = clever::html::parse(
+        "<html><body><main><article>Content here</article></main></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* main_el = doc->find_element("main");
+    ASSERT_NE(main_el, nullptr);
+    EXPECT_EQ(main_el->tag_name, "main");
+
+    auto* article = doc->find_element("article");
+    ASSERT_NE(article, nullptr);
+    EXPECT_EQ(article->tag_name, "article");
+    EXPECT_EQ(article->text_content(), "Content here");
+}
+
+TEST(HtmlParserTest, HtmlV167_4) {
+    // aside with text
+    auto doc = clever::html::parse(
+        "<html><body><aside>Sidebar info</aside></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* aside = doc->find_element("aside");
+    ASSERT_NE(aside, nullptr);
+    EXPECT_EQ(aside->tag_name, "aside");
+    EXPECT_EQ(aside->text_content(), "Sidebar info");
+}
+
+TEST(HtmlParserTest, HtmlV167_5) {
+    // section with h2
+    auto doc = clever::html::parse(
+        "<html><body><section><h2>Section Title</h2></section></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* section = doc->find_element("section");
+    ASSERT_NE(section, nullptr);
+    EXPECT_EQ(section->tag_name, "section");
+
+    auto* h2 = doc->find_element("h2");
+    ASSERT_NE(h2, nullptr);
+    EXPECT_EQ(h2->tag_name, "h2");
+    EXPECT_EQ(h2->text_content(), "Section Title");
+}
+
+TEST(HtmlParserTest, HtmlV167_6) {
+    // figure with img
+    auto doc = clever::html::parse(
+        "<html><body><figure><img src=\"photo.jpg\"></figure></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* figure = doc->find_element("figure");
+    ASSERT_NE(figure, nullptr);
+    EXPECT_EQ(figure->tag_name, "figure");
+
+    auto* img = doc->find_element("img");
+    ASSERT_NE(img, nullptr);
+    EXPECT_EQ(img->tag_name, "img");
+
+    std::string src_val;
+    for (const auto& attr : img->attributes) {
+        if (attr.name == "src") src_val = attr.value;
+    }
+    EXPECT_EQ(src_val, "photo.jpg");
+}
+
+TEST(HtmlParserTest, HtmlV167_7) {
+    // details with summary
+    auto doc = clever::html::parse(
+        "<html><body><details><summary>Click me</summary></details></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* details = doc->find_element("details");
+    ASSERT_NE(details, nullptr);
+    EXPECT_EQ(details->tag_name, "details");
+
+    auto* summary = doc->find_element("summary");
+    ASSERT_NE(summary, nullptr);
+    EXPECT_EQ(summary->tag_name, "summary");
+    EXPECT_EQ(summary->text_content(), "Click me");
+}
+
+TEST(HtmlParserTest, HtmlV167_8) {
+    // div with id and class attributes
+    auto doc = clever::html::parse(
+        "<html><body><div id=\"main\" class=\"container\">Hello</div></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* div = doc->find_element("div");
+    ASSERT_NE(div, nullptr);
+    EXPECT_EQ(div->tag_name, "div");
+    EXPECT_EQ(div->text_content(), "Hello");
+
+    std::string id_val;
+    std::string class_val;
+    for (const auto& attr : div->attributes) {
+        if (attr.name == "id") id_val = attr.value;
+        if (attr.name == "class") class_val = attr.value;
+    }
+    EXPECT_EQ(id_val, "main");
+    EXPECT_EQ(class_val, "container");
+}

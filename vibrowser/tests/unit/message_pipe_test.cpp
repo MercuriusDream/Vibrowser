@@ -2817,3 +2817,61 @@ TEST(MessagePipeTest, MessagePipeV166_3_PayloadContentIncrementalV166) {
     auto end = b.receive();
     EXPECT_FALSE(end.has_value());
 }
+
+TEST(MessagePipeTest, MessagePipeV167_1_TenKBPayloadV167) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    std::vector<uint8_t> payload(10240);
+    for (size_t i = 0; i < 10240; ++i) {
+        payload[i] = static_cast<uint8_t>(i % 256);
+    }
+    ASSERT_TRUE(a.send(payload));
+    a.close();
+
+    auto received = b.receive();
+    ASSERT_TRUE(received.has_value());
+    ASSERT_EQ(received->size(), 10240u);
+    for (size_t i = 0; i < 10240; ++i) {
+        EXPECT_EQ((*received)[i], static_cast<uint8_t>(i % 256));
+    }
+
+    auto end = b.receive();
+    EXPECT_FALSE(end.has_value());
+}
+
+TEST(MessagePipeTest, MessagePipeV167_2_SendOneThenCloseV167) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    std::vector<uint8_t> payload = {0x42};
+    ASSERT_TRUE(a.send(payload));
+    a.close();
+
+    auto received = b.receive();
+    ASSERT_TRUE(received.has_value());
+    ASSERT_EQ(received->size(), 1u);
+    EXPECT_EQ((*received)[0], 0x42);
+
+    auto end = b.receive();
+    EXPECT_FALSE(end.has_value());
+}
+
+TEST(MessagePipeTest, MessagePipeV167_3_ThirtyTwoBytePayloadV167) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    std::vector<uint8_t> payload(32);
+    for (size_t i = 0; i < 32; ++i) {
+        payload[i] = static_cast<uint8_t>(i + 100);
+    }
+    ASSERT_TRUE(a.send(payload));
+    a.close();
+
+    auto received = b.receive();
+    ASSERT_TRUE(received.has_value());
+    ASSERT_EQ(received->size(), 32u);
+    for (size_t i = 0; i < 32; ++i) {
+        EXPECT_EQ((*received)[i], static_cast<uint8_t>(i + 100));
+    }
+
+    auto end = b.receive();
+    EXPECT_FALSE(end.has_value());
+}

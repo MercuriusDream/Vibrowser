@@ -1781,3 +1781,34 @@ TEST(IsURLCodePoint, AmpersandAndEqualsValidV166) {
     EXPECT_TRUE(is_url_code_point(static_cast<char32_t>(0x26)));
     EXPECT_TRUE(is_url_code_point(static_cast<char32_t>(0x3D)));
 }
+
+// =============================================================================
+// Round 167 percent encoding tests
+// =============================================================================
+
+TEST(PercentEncoding, BackslashEncodedV167) {
+    // '\' (0x5C) should be percent-encoded as %5C
+    EXPECT_EQ(percent_encode("\\"), "%5C");
+    EXPECT_EQ(percent_encode("a\\b"), "a%5Cb");
+}
+
+TEST(PercentDecoding, SingleCharDecodedV167) {
+    // %41 is the percent-encoding for 'A'
+    EXPECT_EQ(percent_decode("%41"), "A");
+    // Mixed: literal text + encoded char
+    EXPECT_EQ(percent_decode("hello%41world"), "helloAworld");
+}
+
+TEST(PercentEncoding, QuestionMarkIsUrlCodePointV167) {
+    // '?' (0x3F) is a valid URL code point per the URL spec
+    EXPECT_TRUE(is_url_code_point('?'));
+    // However, general percent_encode encodes it as %3F for path safety
+    EXPECT_EQ(percent_encode("?"), "%3F");
+    // Verify round-trip: encoding then decoding returns original
+    EXPECT_EQ(percent_decode(percent_encode("?")), "?");
+}
+
+TEST(IsURLCodePoint, DeleteCharInvalidV167) {
+    // DEL character (0x7F) is NOT a valid URL code point
+    EXPECT_FALSE(is_url_code_point(static_cast<char32_t>(0x7F)));
+}

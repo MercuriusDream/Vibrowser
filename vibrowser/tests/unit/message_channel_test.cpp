@@ -2984,3 +2984,47 @@ TEST(MessageChannelTest, MessageChannelV166_2_RequestIdPreservedV166) {
     EXPECT_EQ(captured_id_1, 99999u);
     EXPECT_EQ(captured_id_2, 12345u);
 }
+
+TEST(MessageChannelTest, MessageChannelV167_1_FiftyDispatchesSameTypeV167) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel ch(std::move(pa));
+
+    int count = 0;
+    ch.on(77, [&](const Message& m) {
+        ++count;
+    });
+
+    for (int i = 0; i < 50; ++i) {
+        Message msg;
+        msg.type = 77;
+        msg.request_id = static_cast<uint32_t>(i);
+        msg.payload = {static_cast<uint8_t>(i)};
+        ch.dispatch(msg);
+    }
+
+    EXPECT_EQ(count, 50);
+}
+
+TEST(MessageChannelTest, MessageChannelV167_2_TypeMaxU32V167) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel ch(std::move(pa));
+
+    bool handler_called = false;
+    std::vector<uint8_t> captured_payload;
+
+    ch.on(UINT32_MAX, [&](const Message& m) {
+        handler_called = true;
+        captured_payload = m.payload;
+    });
+
+    Message msg;
+    msg.type = UINT32_MAX;
+    msg.request_id = 1;
+    msg.payload = {0xAB, 0xCD};
+    ch.dispatch(msg);
+
+    EXPECT_TRUE(handler_called);
+    ASSERT_EQ(captured_payload.size(), 2u);
+    EXPECT_EQ(captured_payload[0], 0xAB);
+    EXPECT_EQ(captured_payload[1], 0xCD);
+}

@@ -24603,3 +24603,109 @@ TEST(DomNode, AppendFiveChildrenTraverseAllV166) {
     }
     EXPECT_EQ(current, nullptr);
 }
+
+// ---------------------------------------------------------------------------
+// Round 167 — DOM tests (V167)
+// ---------------------------------------------------------------------------
+
+// 1. Remove only child leaves parent empty
+TEST(DomNode, RemoveOnlyChildLeavesParentEmptyV167) {
+    Element parent("div");
+    auto child = std::make_unique<Element>("span");
+    Node* child_ptr = child.get();
+    parent.append_child(std::move(child));
+    EXPECT_EQ(parent.child_count(), 1u);
+    parent.remove_child(*child_ptr);
+    EXPECT_EQ(parent.child_count(), 0u);
+    EXPECT_EQ(parent.first_child(), nullptr);
+    EXPECT_EQ(parent.last_child(), nullptr);
+}
+
+// 2. set_attribute with empty value preserves it
+TEST(DomElement, SetAttributeEmptyValuePreservedV167) {
+    Element elem("input");
+    elem.set_attribute("data-x", "");
+    EXPECT_TRUE(elem.has_attribute("data-x"));
+    auto val = elem.get_attribute("data-x");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(val.value(), "");
+}
+
+// 3. Document create_text_node and append to element
+TEST(DomDocument, CreateTextNodeAndAppendV167) {
+    Document doc;
+    auto text = doc.create_text_node("hello V167");
+    ASSERT_NE(text, nullptr);
+    EXPECT_EQ(text->node_type(), NodeType::Text);
+    EXPECT_EQ(text->data(), "hello V167");
+    Element container("p");
+    Node* text_ptr = text.get();
+    container.append_child(std::move(text));
+    EXPECT_EQ(container.child_count(), 1u);
+    EXPECT_EQ(container.first_child(), text_ptr);
+}
+
+// 4. stop_immediate_propagation sets flag
+TEST(DomEvent, StopImmediatePropagationFlagV167) {
+    Event ev("click");
+    EXPECT_FALSE(ev.immediate_propagation_stopped());
+    EXPECT_FALSE(ev.propagation_stopped());
+    ev.stop_immediate_propagation();
+    EXPECT_TRUE(ev.immediate_propagation_stopped());
+    EXPECT_TRUE(ev.propagation_stopped());
+}
+
+// 5. append_child moves child from old parent to new parent
+TEST(DomNode, AppendChildMovesFromOldParentV167) {
+    Element parent1("div");
+    Element parent2("section");
+    auto child = std::make_unique<Element>("span");
+    Node* child_ptr = child.get();
+    parent1.append_child(std::move(child));
+    EXPECT_EQ(parent1.child_count(), 1u);
+    EXPECT_EQ(child_ptr->parent(), &parent1);
+    // Move child from parent1 to parent2
+    parent2.append_child(parent1.remove_child(*child_ptr));
+    EXPECT_EQ(parent1.child_count(), 0u);
+    EXPECT_EQ(parent2.child_count(), 1u);
+    EXPECT_EQ(child_ptr->parent(), &parent2);
+}
+
+// 6. ClassList length after multiple operations: add 3, remove 1, toggle 1
+TEST(DomElement, ClassListLengthAfterMultipleOpsV167) {
+    Element elem("div");
+    elem.class_list().add("alpha");
+    elem.class_list().add("beta");
+    elem.class_list().add("gamma");
+    EXPECT_EQ(elem.class_list().length(), 3u);
+    elem.class_list().remove("beta");
+    EXPECT_EQ(elem.class_list().length(), 2u);
+    // toggle gamma (present -> removed)
+    elem.class_list().toggle("gamma");
+    EXPECT_EQ(elem.class_list().length(), 1u);
+    EXPECT_TRUE(elem.class_list().contains("alpha"));
+    EXPECT_FALSE(elem.class_list().contains("beta"));
+    EXPECT_FALSE(elem.class_list().contains("gamma"));
+}
+
+// 7. Dirty flags initially all clear after clear_dirty
+TEST(DomNode, DirtyFlagsInitiallyAllClearV167) {
+    Element elem("div");
+    elem.clear_dirty();
+    EXPECT_EQ(elem.dirty_flags(), DirtyFlags::None);
+    EXPECT_EQ(static_cast<uint8_t>(elem.dirty_flags() & DirtyFlags::Style), 0);
+    EXPECT_EQ(static_cast<uint8_t>(elem.dirty_flags() & DirtyFlags::Layout), 0);
+    EXPECT_EQ(static_cast<uint8_t>(elem.dirty_flags() & DirtyFlags::Paint), 0);
+}
+
+// 8. last_child equals first_child when only one child present
+TEST(DomNode, LastChildEqualsFirstChildWhenOneChildV167) {
+    Element parent("ul");
+    auto child = std::make_unique<Element>("li");
+    Node* child_ptr = child.get();
+    parent.append_child(std::move(child));
+    EXPECT_EQ(parent.child_count(), 1u);
+    EXPECT_EQ(parent.first_child(), child_ptr);
+    EXPECT_EQ(parent.last_child(), child_ptr);
+    EXPECT_EQ(parent.first_child(), parent.last_child());
+}
