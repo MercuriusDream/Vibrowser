@@ -3107,3 +3107,71 @@ TEST(MessagePipeTest, MessagePipeV171_3_CreatePairBothEndUsableV171) {
     EXPECT_EQ((*received)[1], 0x02);
     EXPECT_EQ((*received)[2], 0x03);
 }
+
+// ------------------------------------------------------------------
+// V172 MessagePipe tests
+// ------------------------------------------------------------------
+
+TEST(MessagePipeTest, MessagePipeV172_1_FourKBPayloadV172) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    std::vector<uint8_t> payload(4096);
+    for (size_t i = 0; i < payload.size(); ++i) {
+        payload[i] = static_cast<uint8_t>(i & 0xFF);
+    }
+
+    ASSERT_TRUE(a.send(payload));
+    a.close();
+
+    auto received = b.receive();
+    ASSERT_TRUE(received.has_value());
+    ASSERT_EQ(received->size(), 4096u);
+    EXPECT_EQ(*received, payload);
+}
+
+TEST(MessagePipeTest, MessagePipeV172_2_SendCloseReceiveAllV172) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    std::vector<uint8_t> m1 = {0x11, 0x22};
+    std::vector<uint8_t> m2 = {0x33, 0x44, 0x55};
+    std::vector<uint8_t> m3 = {0x66};
+
+    ASSERT_TRUE(a.send(m1));
+    ASSERT_TRUE(a.send(m2));
+    ASSERT_TRUE(a.send(m3));
+    a.close();
+
+    auto r1 = b.receive();
+    ASSERT_TRUE(r1.has_value());
+    EXPECT_EQ(*r1, m1);
+
+    auto r2 = b.receive();
+    ASSERT_TRUE(r2.has_value());
+    EXPECT_EQ(*r2, m2);
+
+    auto r3 = b.receive();
+    ASSERT_TRUE(r3.has_value());
+    EXPECT_EQ(*r3, m3);
+
+    auto r4 = b.receive();
+    EXPECT_FALSE(r4.has_value());
+}
+
+TEST(MessagePipeTest, MessagePipeV172_3_MoveAssignV172) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    std::vector<uint8_t> data = {0xAA, 0xBB, 0xCC};
+    ASSERT_TRUE(a.send(data));
+    a.close();
+
+    // Move-assign b into a new pipe
+    MessagePipe dest(std::move(b));
+
+    auto received = dest.receive();
+    ASSERT_TRUE(received.has_value());
+    EXPECT_EQ(received->size(), 3u);
+    EXPECT_EQ(*received, data);
+
+    auto eof = dest.receive();
+    EXPECT_FALSE(eof.has_value());
+}

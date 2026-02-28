@@ -21790,3 +21790,38 @@ TEST(SerializerTest, SerializerV171_3_BoolFalseFalseRoundTrip) {
     EXPECT_EQ(d.read_bool(), false);
     EXPECT_FALSE(d.has_remaining());
 }
+
+// ------------------------------------------------------------------
+// V172 Serializer tests
+// ------------------------------------------------------------------
+
+TEST(SerializerTest, SerializerV172_1_I64MinValueRoundTrip) {
+    Serializer s;
+    s.write_i64(INT64_MIN);
+
+    Deserializer d(s.data());
+    int64_t val = d.read_i64();
+    EXPECT_EQ(val, INT64_MIN);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, SerializerV172_2_U32OneRoundTrip) {
+    Serializer s;
+    s.write_u32(1u);
+
+    Deserializer d(s.data());
+    uint32_t val = d.read_u32();
+    EXPECT_EQ(val, 1u);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, SerializerV172_3_StringWithSpecialCharsRoundTrip) {
+    std::string special = "hello\tworld\nnewline\r\xC3\xA9\xC3\xBC\xE2\x9C\x93";
+    Serializer s;
+    s.write_string(special);
+
+    Deserializer d(s.data());
+    std::string result = d.read_string();
+    EXPECT_EQ(result, special);
+    EXPECT_FALSE(d.has_remaining());
+}

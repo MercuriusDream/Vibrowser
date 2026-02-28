@@ -29900,3 +29900,209 @@ TEST(HttpClient, CookieJarPathPrefixMatchV171) {
     EXPECT_EQ(wrong_path.find("apptoken171=secret"), std::string::npos)
         << "Path=/app should NOT match /other";
 }
+
+// ===========================================================================
+// V172 Net Tests
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// 1. Request serialize GET with Accept header
+// ---------------------------------------------------------------------------
+TEST(HttpClient, RequestSerializeGetWithAcceptHeaderV172) {
+    Request req;
+    req.method = Method::GET;
+    req.host = "api172.example.com";
+    req.port = 443;
+    req.path = "/v1/resources";
+    req.use_tls = true;
+    req.headers.set("Accept", "application/json");
+
+    auto serialized = req.serialize();
+    std::string s(serialized.begin(), serialized.end());
+
+    // Request line
+    EXPECT_NE(s.find("GET /v1/resources HTTP/1.1"), std::string::npos);
+    // Host header (port 443 omitted for TLS)
+    EXPECT_NE(s.find("Host: api172.example.com"), std::string::npos);
+    // Connection: close (capitalized)
+    EXPECT_NE(s.find("Connection: close"), std::string::npos);
+    // Custom header lowercase
+    EXPECT_NE(s.find("accept: application/json"), std::string::npos);
+}
+
+// ---------------------------------------------------------------------------
+// 2. Response parse 200 with text/plain Content-Type
+// ---------------------------------------------------------------------------
+TEST(HttpClient, ResponseParse200PlainTextV172) {
+    std::string raw_str =
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Type: text/plain\r\n"
+        "Content-Length: 13\r\n"
+        "\r\n"
+        "Hello World172";
+
+    // Note: Content-Length says 13 but body is 14 chars; parser reads Content-Length bytes
+    std::string raw_str_exact =
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Type: text/plain\r\n"
+        "Content-Length: 14\r\n"
+        "\r\n"
+        "Hello World172";
+
+    std::vector<uint8_t> raw(raw_str_exact.begin(), raw_str_exact.end());
+    auto resp = Response::parse(raw);
+
+    ASSERT_TRUE(resp.has_value()) << "Should parse 200 OK response";
+    EXPECT_EQ(resp->status, 200u);
+
+    auto ct = resp->headers.get("Content-Type");
+    ASSERT_TRUE(ct.has_value());
+    EXPECT_EQ(*ct, "text/plain");
+
+    std::string body(resp->body.begin(), resp->body.end());
+    EXPECT_EQ(body, "Hello World172");
+}
+
+// ---------------------------------------------------------------------------
+// 3. ConnectionPool: count after releasing 3 sockets
+// ---------------------------------------------------------------------------
+TEST(HttpClient, ConnectionPoolCountAfterReleaseV172) {
+    ConnectionPool pool(8);
+
+    // Initially empty
+    EXPECT_EQ(pool.count("pool172.example.com", 80), 0u);
+
+    // Release 3 sockets
+    pool.release("pool172.example.com", 80, 100);
+    pool.release("pool172.example.com", 80, 101);
+    pool.release("pool172.example.com", 80, 102);
+
+    // Verify count is 3
+    EXPECT_EQ(pool.count("pool172.example.com", 80), 3u);
+}
+
+// ---------------------------------------------------------------------------
+// 4. CookieJar: Path=/ matches any path
+// ---------------------------------------------------------------------------
+TEST(HttpClient, CookieJarRootPathMatchesAllV172) {
+    CookieJar jar;
+    jar.set_from_header("rootcookie172=yes; Path=/", "root172.example.com");
+
+    // Root path should match /any/path
+    std::string deep = jar.get_cookie_header("root172.example.com", "/any/path", false);
+    EXPECT_NE(deep.find("rootcookie172=yes"), std::string::npos)
+        << "Path=/ should match /any/path";
+
+    // Root path should match /
+    std::string root = jar.get_cookie_header("root172.example.com", "/", false);
+    EXPECT_NE(root.find("rootcookie172=yes"), std::string::npos)
+        << "Path=/ should match /";
+
+    // Root path should match /deeply/nested/resource
+    std::string nested = jar.get_cookie_header("root172.example.com", "/deeply/nested/resource", false);
+    EXPECT_NE(nested.find("rootcookie172=yes"), std::string::npos)
+        << "Path=/ should match /deeply/nested/resource";
+}
+
+// ---------------------------------------------------------------------------
+// 5. HeaderMap: size after multiple operations
+// ---------------------------------------------------------------------------
+TEST(HttpClient, HeaderMapSizeAfterMultipleOpsV172) {
+    HeaderMap map;
+
+    // Set two headers
+    map.set("X-Header172-A", "value-a");
+    map.set("X-Header172-B", "value-b");
+    EXPECT_EQ(map.size(), 2u);
+
+    // Append adds another entry
+    map.append("X-Header172-A", "value-a2");
+    EXPECT_EQ(map.size(), 3u);
+
+    // Remove X-Header172-A removes both entries (set + append)
+    map.remove("X-Header172-A");
+    EXPECT_EQ(map.size(), 1u);
+
+    // The remaining header should be X-Header172-B
+    auto val = map.get("X-Header172-B");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(*val, "value-b");
+}
+
+// ---------------------------------------------------------------------------
+// 6. Request serialize POST with large body (1000 chars)
+// ---------------------------------------------------------------------------
+TEST(HttpClient, RequestSerializePostLargeBodyV172) {
+    Request req;
+    req.method = Method::POST;
+    req.host = "upload172.example.com";
+    req.port = 80;
+    req.path = "/upload";
+    req.headers.set("Content-Type", "text/plain");
+
+    // Create a 1000-character body
+    std::string large_body(1000, 'X');
+    req.body.assign(large_body.begin(), large_body.end());
+
+    auto serialized = req.serialize();
+    std::string s(serialized.begin(), serialized.end());
+
+    // Request line
+    EXPECT_NE(s.find("POST /upload HTTP/1.1"), std::string::npos);
+    // Host header (port 80 omitted)
+    EXPECT_NE(s.find("Host: upload172.example.com"), std::string::npos);
+    // Connection: close
+    EXPECT_NE(s.find("Connection: close"), std::string::npos);
+    // Content-Length should be 1000
+    EXPECT_NE(s.find("Content-Length: 1000"), std::string::npos);
+    // Body should contain the 1000 X's
+    EXPECT_NE(s.find(large_body), std::string::npos);
+}
+
+// ---------------------------------------------------------------------------
+// 7. Response parse 403 Forbidden
+// ---------------------------------------------------------------------------
+TEST(HttpClient, ResponseParse403ForbiddenV172) {
+    std::string raw_str =
+        "HTTP/1.1 403 Forbidden\r\n"
+        "Content-Type: text/html\r\n"
+        "Content-Length: 9\r\n"
+        "\r\n"
+        "Forbidden";
+
+    std::vector<uint8_t> raw(raw_str.begin(), raw_str.end());
+    auto resp = Response::parse(raw);
+
+    ASSERT_TRUE(resp.has_value()) << "Should parse 403 Forbidden response";
+    EXPECT_EQ(resp->status, 403u);
+
+    auto ct = resp->headers.get("Content-Type");
+    ASSERT_TRUE(ct.has_value());
+    EXPECT_EQ(*ct, "text/html");
+
+    std::string body(resp->body.begin(), resp->body.end());
+    EXPECT_EQ(body, "Forbidden");
+}
+
+// ---------------------------------------------------------------------------
+// 8. CookieJar: two cookies same name, different paths, both returned
+// ---------------------------------------------------------------------------
+TEST(HttpClient, CookieJarTwoCookiesSameNameDiffPathV172) {
+    CookieJar jar;
+    jar.set_from_header("token172=alpha; Path=/api", "dual172.example.com");
+    jar.set_from_header("token172=beta; Path=/api/v2", "dual172.example.com");
+
+    // Request to /api/v2/resource should match BOTH paths (/api and /api/v2)
+    std::string deep = jar.get_cookie_header("dual172.example.com", "/api/v2/resource", false);
+    EXPECT_NE(deep.find("token172=alpha"), std::string::npos)
+        << "Path=/api should match /api/v2/resource";
+    EXPECT_NE(deep.find("token172=beta"), std::string::npos)
+        << "Path=/api/v2 should match /api/v2/resource";
+
+    // Request to /api/other should match only /api, not /api/v2
+    std::string shallow = jar.get_cookie_header("dual172.example.com", "/api/other", false);
+    EXPECT_NE(shallow.find("token172=alpha"), std::string::npos)
+        << "Path=/api should match /api/other";
+    EXPECT_EQ(shallow.find("token172=beta"), std::string::npos)
+        << "Path=/api/v2 should NOT match /api/other";
+}

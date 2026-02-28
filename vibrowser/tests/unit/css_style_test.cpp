@@ -26675,3 +26675,39 @@ TEST(PropertyCascadeTest, DisplayInlineBlockAppliedV171) {
     cascade.apply_declaration(style, make_decl("display", "inline-block"), parent);
     EXPECT_EQ(style.display, Display::InlineBlock);
 }
+
+TEST(CSSStyleTest, CssV172_1_PaddingBottomApplied) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("padding-bottom", "20px"), parent);
+    EXPECT_FLOAT_EQ(style.padding.bottom.to_px(), 20.0f);
+}
+
+TEST(CSSStyleTest, CssV172_2_MarginLeftApplied) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("margin-left", "30px"), parent);
+    EXPECT_FLOAT_EQ(style.margin.left.to_px(), 30.0f);
+}
+
+TEST(PropertyCascadeTest, PositionFixedAppliedV172) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("position", "fixed"), parent);
+    EXPECT_EQ(style.position, Position::Fixed);
+}
+
+TEST(PropertyCascadeTest, DisplayNoneAppliedV172) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("display", "none"), parent);
+    EXPECT_EQ(style.display, Display::None);
+}

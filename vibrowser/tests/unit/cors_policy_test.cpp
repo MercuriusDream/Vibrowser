@@ -13429,3 +13429,52 @@ TEST(CORSPolicyTest, CorsV171_7_HttpsPort8443Enforceable) {
 TEST(CORSPolicyTest, CorsV171_8_CrossOriginIPv4DiffAddress) {
     EXPECT_TRUE(is_cross_origin("http://192.168.1.1", "http://192.168.1.2/page"));
 }
+
+// ---------------------------------------------------------------------------
+// V172 tests
+// ---------------------------------------------------------------------------
+
+// 1. tel: scheme is not enforceable
+TEST(CORSPolicyTest, CorsV172_1_TelSchemeNotEnforceable) {
+    EXPECT_FALSE(has_enforceable_document_origin("tel:+1234567890"));
+}
+
+// 2. http://a.com same-origin with http://a.com:80 (default port)
+TEST(CORSPolicyTest, CorsV172_2_SameOriginHttpDefaultPort) {
+    EXPECT_FALSE(is_cross_origin("http://a.com", "http://a.com:80/page"));
+}
+
+// 3. http://host vs http://host:3000 cross-origin (empty vs non-empty port)
+TEST(CORSPolicyTest, CorsV172_3_CrossOriginEmptyVsNonEmptyPort) {
+    EXPECT_TRUE(is_cross_origin("http://host.example", "http://host.example:3000/page"));
+}
+
+// 4. ACAO:* + credentials=true → reject
+TEST(CORSPolicyTest, CorsV172_4_AcaoWildcardWithCredsRejects) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "*");
+    headers.set("Access-Control-Allow-Credentials", "true");
+    EXPECT_FALSE(cors_allows_response("https://app.example", "https://api.example/data",
+                                      headers, true));
+}
+
+// 5. Same scheme+host+port → should_attach_origin returns false
+TEST(CORSPolicyTest, CorsV172_5_ShouldAttachOriginSameSchemeHostPort) {
+    EXPECT_FALSE(should_attach_origin_header("https://app.example",
+                                             "https://app.example/api/data"));
+}
+
+// 6. ssh: scheme is not enforceable
+TEST(CORSPolicyTest, CorsV172_6_SshSchemeNotEnforceable) {
+    EXPECT_FALSE(has_enforceable_document_origin("ssh://host.example"));
+}
+
+// 7. https://secure.com is enforceable
+TEST(CORSPolicyTest, CorsV172_7_HttpsDefaultPortEnforceable) {
+    EXPECT_TRUE(has_enforceable_document_origin("https://secure.com"));
+}
+
+// 8. Host name comparison is case-insensitive (same origin)
+TEST(CORSPolicyTest, CorsV172_8_CrossOriginCaseSensitiveHost) {
+    EXPECT_FALSE(is_cross_origin("https://Host.Example", "https://host.example/page"));
+}

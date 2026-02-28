@@ -1941,3 +1941,30 @@ TEST(IsURLCodePoint, AsteriskValidV171) {
     // '*' (U+002A) is a valid URL code point
     EXPECT_TRUE(is_url_code_point(U'*'));
 }
+
+// =============================================================================
+// Cycle V172 — Percent encoding tests
+// =============================================================================
+TEST(PercentEncoding, EqualsSignEncodedV172) {
+    // '=' is a sub-delimiter; with encode_path_chars=true it becomes %3D
+    EXPECT_EQ(percent_encode("=", true), "%3D");
+    EXPECT_EQ(percent_encode("a=b", true), "a%3Db");
+}
+
+TEST(PercentDecoding, UppercaseHexV172) {
+    // %4A (uppercase hex) should decode to 'J' (ASCII 0x4A = 74)
+    EXPECT_EQ(percent_decode("%4A"), "J");
+    EXPECT_EQ(percent_decode("x%4Ay"), "xJy");
+}
+
+TEST(PercentEncoding, UnderscoreNotEncodedV172) {
+    // '_' is an unreserved character and should pass through unchanged
+    EXPECT_EQ(percent_encode("_"), "_");
+    EXPECT_EQ(percent_encode("my_var"), "my_var");
+    EXPECT_EQ(percent_encode("a_b_c"), "a_b_c");
+}
+
+TEST(IsURLCodePoint, ColonValidV172) {
+    // ':' (U+003A) is a valid URL code point (sub-delimiter)
+    EXPECT_TRUE(is_url_code_point(U':'));
+}

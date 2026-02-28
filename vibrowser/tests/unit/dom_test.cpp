@@ -25015,3 +25015,89 @@ TEST(DomText, DataAccessorV171) {
     Text text("hello");
     EXPECT_EQ(text.data(), "hello");
 }
+
+// ---------------------------------------------------------------------------
+// V172 tests
+// ---------------------------------------------------------------------------
+
+// 1. New element has child_count()==0
+TEST(DomNode, ChildCountZeroInitialV172) {
+    Element elem("section");
+    EXPECT_EQ(elem.child_count(), 0u);
+}
+
+// 2. set_attribute updates existing attribute value
+TEST(DomElement, SetAttributeUpdatesValueV172) {
+    Element elem("input");
+    elem.set_attribute("type", "text");
+    EXPECT_EQ(elem.get_attribute("type"), "text");
+    elem.set_attribute("type", "password");
+    EXPECT_EQ(elem.get_attribute("type"), "password");
+}
+
+// 3. Register 3 different ids, verify each retrievable
+TEST(DomDocument, MultipleIdsRegisteredV172) {
+    Document doc;
+    auto e1 = doc.create_element("div");
+    auto e2 = doc.create_element("span");
+    auto e3 = doc.create_element("p");
+    Element* p1 = e1.get();
+    Element* p2 = e2.get();
+    Element* p3 = e3.get();
+    doc.register_id("first", p1);
+    doc.register_id("second", p2);
+    doc.register_id("third", p3);
+    EXPECT_EQ(doc.get_element_by_id("first"), p1);
+    EXPECT_EQ(doc.get_element_by_id("second"), p2);
+    EXPECT_EQ(doc.get_element_by_id("third"), p3);
+}
+
+// 4. stop_propagation() sets propagation_stopped()==true
+TEST(DomEvent, StopPropagationFlagV172) {
+    Event event("click", true, true);
+    EXPECT_FALSE(event.propagation_stopped());
+    event.stop_propagation();
+    EXPECT_TRUE(event.propagation_stopped());
+}
+
+// 5. insert_before first child: parent with child a; insert b before a; first_child==b
+TEST(DomNode, InsertBeforeFirstChildV172) {
+    Element parent("ul");
+    auto a = std::make_unique<Element>("li");
+    Node* a_ptr = a.get();
+    parent.append_child(std::move(a));
+
+    auto b = std::make_unique<Element>("li");
+    Node* b_ptr = b.get();
+    parent.insert_before(std::move(b), a_ptr);
+
+    EXPECT_EQ(parent.first_child(), b_ptr);
+    EXPECT_EQ(parent.child_count(), 2u);
+}
+
+// 6. ClassList add 3 classes, verify contains all 3 and length==3
+TEST(DomElement, ClassListAddMultipleClassesV172) {
+    Element elem("div");
+    elem.class_list().add("alpha");
+    elem.class_list().add("beta");
+    elem.class_list().add("gamma");
+    EXPECT_TRUE(elem.class_list().contains("alpha"));
+    EXPECT_TRUE(elem.class_list().contains("beta"));
+    EXPECT_TRUE(elem.class_list().contains("gamma"));
+    EXPECT_EQ(elem.class_list().length(), 3u);
+}
+
+// 7. mark_dirty(All) then clear_dirty, verify all cleared
+TEST(DomNode, DirtyFlagClearAfterAllV172) {
+    Element elem("div");
+    elem.mark_dirty(DirtyFlags::All);
+    EXPECT_NE(elem.dirty_flags(), DirtyFlags::None);
+    elem.clear_dirty();
+    EXPECT_EQ(elem.dirty_flags(), DirtyFlags::None);
+}
+
+// 8. Comment("my comment"), verify data()=="my comment"
+TEST(DomComment, DataAccessorV172) {
+    Comment comment("my comment");
+    EXPECT_EQ(comment.data(), "my comment");
+}

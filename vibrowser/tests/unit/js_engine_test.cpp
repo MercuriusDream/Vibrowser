@@ -38808,3 +38808,112 @@ TEST(JSEngine, JsV171_8) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "v,b,r");
 }
+
+// V172_1: Array.reverse reverses in place
+TEST(JSEngine, JsV172_1) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var arr = [1, 2, 3, 4, 5];
+        arr.reverse();
+        arr.join(",");
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "5,4,3,2,1");
+}
+
+// V172_2: String.replace replaces first occurrence
+TEST(JSEngine, JsV172_2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var s = "hello world hello";
+        s.replace("hello", "hi");
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "hi world hello");
+}
+
+// V172_3: Object.values returns values array
+TEST(JSEngine, JsV172_3) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var obj = {a: 10, b: 20, c: 30};
+        Object.values(obj).join(",");
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "10,20,30");
+}
+
+// V172_4: Array.sort sorts numerically with comparator
+TEST(JSEngine, JsV172_4) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var arr = [10, 1, 21, 2];
+        arr.sort(function(a, b) { return a - b; });
+        arr.join(",");
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1,2,10,21");
+}
+
+// V172_5: Number.parseInt and parseFloat
+TEST(JSEngine, JsV172_5) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var a = parseInt("42abc");
+        var b = parseFloat("3.14xyz");
+        "" + a + "," + b;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "42,3.14");
+}
+
+// V172_6: try/catch/finally all execute
+TEST(JSEngine, JsV172_6) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var log = "";
+        try {
+            log += "try,";
+            throw new Error("oops");
+        } catch (e) {
+            log += "catch,";
+        } finally {
+            log += "finally";
+        }
+        log;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "try,catch,finally");
+}
+
+// V172_7: WeakRef and deref
+TEST(JSEngine, JsV172_7) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var obj = {val: 99};
+        var ref = new WeakRef(obj);
+        var d = ref.deref();
+        "" + d.val;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "99");
+}
+
+// V172_8: generator function yield
+TEST(JSEngine, JsV172_8) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        function* gen() {
+            yield 10;
+            yield 20;
+            yield 30;
+        }
+        var g = gen();
+        var a = g.next().value;
+        var b = g.next().value;
+        var c = g.next().value;
+        "" + a + "," + b + "," + c;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "10,20,30");
+}

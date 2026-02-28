@@ -16045,3 +16045,47 @@ TEST(UrlParserTest, UrlV171_4_SerializeRoundTrip) {
     ASSERT_TRUE(result.has_value());
     EXPECT_EQ(result->serialize(), input);
 }
+
+// =============================================================================
+// Cycle V172 — URL parser tests
+// =============================================================================
+TEST(UrlParserTest, UrlV172_1_HttpPortZeroPreserved) {
+    // Port 0 is a valid non-default port for HTTP; it should be preserved
+    auto result = parse("http://host:0/path");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "host");
+    ASSERT_TRUE(result->port.has_value());
+    EXPECT_EQ(result->port.value(), 0);
+    EXPECT_EQ(result->path, "/path");
+}
+
+TEST(UrlParserTest, UrlV172_2_PathWithDotNotRemoved) {
+    // Single-dot segment /./a should be resolved to /a by dot-segment removal
+    auto result = parse("http://host/./a");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "host");
+    EXPECT_EQ(result->path, "/a");
+}
+
+TEST(UrlParserTest, UrlV172_3_QueryWithEncodedAmpersand) {
+    // Percent-encoded %26 in query is double-encoded to %2526 by parser
+    auto result = parse("http://host/p?a%26b=c");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "host");
+    EXPECT_EQ(result->path, "/p");
+    EXPECT_EQ(result->query, "a%2526b=c");
+}
+
+TEST(UrlParserTest, UrlV172_4_FragmentWithSpecialChars) {
+    // Fragment can contain / and ? characters; they are preserved as-is
+    auto result = parse("http://host/p#sec/tion?x");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "host");
+    EXPECT_EQ(result->path, "/p");
+    EXPECT_TRUE(result->query.empty());
+    EXPECT_EQ(result->fragment, "sec/tion?x");
+}

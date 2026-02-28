@@ -26830,3 +26830,106 @@ TEST(HtmlParserTest, HtmlV171_8) {
     EXPECT_EQ(div->attributes[1].name, "data-role");
     EXPECT_EQ(div->attributes[1].value, "panel");
 }
+
+TEST(HtmlParserTest, HtmlV172_1) {
+    // <q> inline quote element
+    auto doc = clever::html::parse(
+        "<html><body><q>quoted text</q></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* q = doc->find_element("q");
+    ASSERT_NE(q, nullptr);
+    EXPECT_EQ(q->tag_name, "q");
+    EXPECT_EQ(q->text_content(), "quoted text");
+}
+
+TEST(HtmlParserTest, HtmlV172_2) {
+    // <dfn> definition term element
+    auto doc = clever::html::parse(
+        "<html><body><p><dfn>HTML</dfn> is a markup language.</p></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* dfn = doc->find_element("dfn");
+    ASSERT_NE(dfn, nullptr);
+    EXPECT_EQ(dfn->tag_name, "dfn");
+    EXPECT_EQ(dfn->text_content(), "HTML");
+}
+
+TEST(HtmlParserTest, HtmlV172_3) {
+    // <bdo dir="rtl"> bidi override element
+    auto doc = clever::html::parse(
+        "<html><body><bdo dir=\"rtl\">reversed</bdo></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* bdo = doc->find_element("bdo");
+    ASSERT_NE(bdo, nullptr);
+    EXPECT_EQ(bdo->tag_name, "bdo");
+    EXPECT_EQ(bdo->text_content(), "reversed");
+    ASSERT_GE(bdo->attributes.size(), 1u);
+    EXPECT_EQ(bdo->attributes[0].name, "dir");
+    EXPECT_EQ(bdo->attributes[0].value, "rtl");
+}
+
+TEST(HtmlParserTest, HtmlV172_4) {
+    // <ins> inserted text element
+    auto doc = clever::html::parse(
+        "<html><body><ins>added content</ins></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* ins = doc->find_element("ins");
+    ASSERT_NE(ins, nullptr);
+    EXPECT_EQ(ins->tag_name, "ins");
+    EXPECT_EQ(ins->text_content(), "added content");
+}
+
+TEST(HtmlParserTest, HtmlV172_5) {
+    // <del> deleted text element
+    auto doc = clever::html::parse(
+        "<html><body><del>removed content</del></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* del_elem = doc->find_element("del");
+    ASSERT_NE(del_elem, nullptr);
+    EXPECT_EQ(del_elem->tag_name, "del");
+    EXPECT_EQ(del_elem->text_content(), "removed content");
+}
+
+TEST(HtmlParserTest, HtmlV172_6) {
+    // <map><area> image map elements
+    auto doc = clever::html::parse(
+        "<html><body><map name=\"nav\"><area shape=\"rect\" href=\"/home\"></map></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* map = doc->find_element("map");
+    ASSERT_NE(map, nullptr);
+    EXPECT_EQ(map->tag_name, "map");
+    ASSERT_GE(map->attributes.size(), 1u);
+    EXPECT_EQ(map->attributes[0].name, "name");
+    EXPECT_EQ(map->attributes[0].value, "nav");
+
+    auto* area = doc->find_element("area");
+    ASSERT_NE(area, nullptr);
+    EXPECT_EQ(area->tag_name, "area");
+}
+
+TEST(HtmlParserTest, HtmlV172_7) {
+    // <noscript> fallback element
+    auto doc = clever::html::parse(
+        "<html><body><noscript>Enable JavaScript</noscript></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* noscript = doc->find_element("noscript");
+    ASSERT_NE(noscript, nullptr);
+    EXPECT_EQ(noscript->tag_name, "noscript");
+}
+
+TEST(HtmlParserTest, HtmlV172_8) {
+    // <template> element
+    auto doc = clever::html::parse(
+        "<html><body><template><div>template content</div></template></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* tmpl = doc->find_element("template");
+    ASSERT_NE(tmpl, nullptr);
+    EXPECT_EQ(tmpl->tag_name, "template");
+}

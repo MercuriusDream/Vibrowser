@@ -11920,3 +11920,59 @@ TEST_F(CSSStylesheetTest, OverflowYDeclarationV171) {
     }
     EXPECT_TRUE(found) << "overflow-y declaration not found";
 }
+
+TEST_F(CSSStylesheetTest, BoxSizingDeclarationV172) {
+    auto ss = parse_stylesheet("div { box-sizing: border-box; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "box-sizing") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "border-box");
+        }
+    }
+    EXPECT_TRUE(found) << "box-sizing declaration not found";
+}
+
+TEST_F(CSSStylesheetTest, VerticalAlignDeclarationV172) {
+    auto ss = parse_stylesheet("span { vertical-align: middle; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "vertical-align") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "middle");
+        }
+    }
+    EXPECT_TRUE(found) << "vertical-align declaration not found";
+}
+
+TEST_F(CSSStylesheetTest, TextTransformDeclarationV172) {
+    auto ss = parse_stylesheet("h1 { text-transform: uppercase; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "text-transform") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "uppercase");
+        }
+    }
+    EXPECT_TRUE(found) << "text-transform declaration not found";
+}
+
+TEST_F(CSSStylesheetTest, CursorDeclarationV172) {
+    auto ss = parse_stylesheet("a { cursor: pointer; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "cursor") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "pointer");
+        }
+    }
+    EXPECT_TRUE(found) << "cursor declaration not found";
+}

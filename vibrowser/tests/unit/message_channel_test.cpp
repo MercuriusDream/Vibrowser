@@ -3235,3 +3235,70 @@ TEST(MessageChannelTest, MessageChannelV171_2_PayloadIntegrityV171) {
     EXPECT_EQ(captured[6], 0xBA);
     EXPECT_EQ(captured[7], 0xBE);
 }
+
+// ------------------------------------------------------------------
+// V172 MessageChannel tests
+// ------------------------------------------------------------------
+
+TEST(MessageChannelTest, MessageChannelV172_1_RemoveHandlerV172) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel ch(std::move(pa));
+
+    int old_count = 0;
+    ch.on(10, [&](const Message&) {
+        ++old_count;
+    });
+
+    // Dispatch once — old handler should fire
+    Message msg;
+    msg.type = 10;
+    msg.request_id = 1;
+    msg.payload = {};
+    ch.dispatch(msg);
+    EXPECT_EQ(old_count, 1);
+
+    // Overwrite the handler with a no-op to effectively remove it
+    ch.on(10, [](const Message&) {
+        // intentionally empty — replaces the old handler
+    });
+
+    // Dispatch again — old handler should NOT fire
+    ch.dispatch(msg);
+    EXPECT_EQ(old_count, 1);  // still 1, old handler was replaced
+}
+
+TEST(MessageChannelTest, MessageChannelV172_2_SequentialDispatchesV172) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel ch(std::move(pa));
+
+    int count_type1 = 0;
+    int count_type2 = 0;
+
+    ch.on(1, [&](const Message&) {
+        ++count_type1;
+    });
+    ch.on(2, [&](const Message&) {
+        ++count_type2;
+    });
+
+    // Dispatch 5 messages of type 1
+    for (int i = 0; i < 5; ++i) {
+        Message msg;
+        msg.type = 1;
+        msg.request_id = static_cast<uint32_t>(i);
+        msg.payload = {};
+        ch.dispatch(msg);
+    }
+
+    // Dispatch 5 messages of type 2
+    for (int i = 0; i < 5; ++i) {
+        Message msg;
+        msg.type = 2;
+        msg.request_id = static_cast<uint32_t>(i + 5);
+        msg.payload = {};
+        ch.dispatch(msg);
+    }
+
+    EXPECT_EQ(count_type1, 5);
+    EXPECT_EQ(count_type2, 5);
+}
