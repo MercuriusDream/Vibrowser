@@ -10636,7 +10636,9 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
     if (tag_lower == "center" || layout_node->text_align == 4) {
         for (auto& child : layout_node->children) {
             if (!child) continue;
-            if (child->geometry.margin.left == 0 && child->geometry.margin.right == 0) {
+            // Auto-center block children that don't already have auto margins.
+            // <center> and -webkit-center override default/explicit left/right margins.
+            if (child->geometry.margin.left != -1 && child->geometry.margin.right != -1) {
                 if (child->display == clever::layout::DisplayType::Block ||
                     child->display == clever::layout::DisplayType::Table ||
                     child->display == clever::layout::DisplayType::InlineBlock) {

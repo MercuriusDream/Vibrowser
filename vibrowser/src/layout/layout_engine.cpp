@@ -1198,6 +1198,28 @@ void LayoutEngine::position_block_children(LayoutNode& node) {
             available_at_y(cursor_y, child->geometry.margin_box_height(), left_off, right_off);
             child->geometry.x = left_off + child->geometry.margin.left;
 
+            // Apply text-align centering for inline-like children in block context.
+            // When a container has mixed block+inline content, inline-like children
+            // (inline-block, images) should still respect the parent's text-align.
+            if (node.text_align != 0) {
+                bool child_inline_like = child->is_text
+                    || child->mode == LayoutMode::Inline
+                    || child->mode == LayoutMode::InlineBlock
+                    || child->display == DisplayType::Inline
+                    || child->display == DisplayType::InlineBlock;
+                if (child_inline_like) {
+                    float child_w = child->geometry.margin_box_width();
+                    float extra = content_w - left_off - right_off - child_w;
+                    if (extra > 0) {
+                        if (node.text_align == 1 || node.text_align == 4) { // center or -webkit-center
+                            child->geometry.x += extra / 2.0f;
+                        } else if (node.text_align == 2) { // right
+                            child->geometry.x += extra;
+                        }
+                    }
+                }
+            }
+
             // CSS margin collapsing (CSS2.1 Section 8.3.1):
             // When two vertical margins meet, they collapse into a single margin:
             //   - Both positive: take the larger
@@ -2028,7 +2050,7 @@ void LayoutEngine::position_inline_children(LayoutNode& node, float containing_w
             }
 
             float offset = 0;
-            if (eff_align == 1) {        // center
+            if (eff_align == 1 || eff_align == 4) { // center or -webkit-center
                 offset = extra / 2.0f;
             } else if (eff_align == 2) { // right
                 offset = extra;
