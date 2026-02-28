@@ -26507,3 +26507,176 @@ TEST(LayoutNodeProps, BackgroundColorDefaultTransparentV141) {
     LayoutNode n;
     EXPECT_EQ(n.background_color, 0x00000000u);
 }
+
+// V142: flex row with gap between children
+TEST(LayoutEngineTest, LayoutV142_1) {
+    auto root = make_flex();
+    root->specified_width = 500.0f;
+    root->gap = 0.0f;
+    root->column_gap_val = 20.0f;
+    root->flex_direction = 0; // row
+
+    auto c1 = make_block(); c1->specified_width = 100.0f; c1->specified_height = 50.0f;
+    auto c2 = make_block(); c2->specified_width = 100.0f; c2->specified_height = 50.0f;
+    auto c3 = make_block(); c3->specified_width = 100.0f; c3->specified_height = 50.0f;
+    root->append_child(std::move(c1));
+    root->append_child(std::move(c2));
+    root->append_child(std::move(c3));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // Child 0 at x=0, child 1 at x=120 (100+20 gap), child 2 at x=240 (200+40 gap)
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.x, 0.0f);
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.x, 120.0f);
+    EXPECT_FLOAT_EQ(root->children[2]->geometry.x, 240.0f);
+}
+
+// V142: block with specified_width and margin auto (centering)
+TEST(LayoutEngineTest, LayoutV142_2) {
+    auto root = make_block();
+    root->specified_width = 600.0f;
+
+    auto child = make_block();
+    child->specified_width = 200.0f;
+    child->specified_height = 40.0f;
+    child->geometry.margin.left = -1.0f;
+    child->geometry.margin.right = -1.0f;
+
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 600.0f, 400.0f);
+
+    auto& c = *root->children[0];
+    // Remaining = 600 - 200 = 400, split: 200 each side
+    EXPECT_FLOAT_EQ(c.geometry.margin.left, 200.0f);
+    EXPECT_FLOAT_EQ(c.geometry.margin.right, 200.0f);
+    EXPECT_FLOAT_EQ(c.geometry.x, 200.0f);
+}
+
+// V142: nested flex: outer flex contains a flex child with specified width
+TEST(LayoutEngineTest, LayoutV142_3) {
+    auto root = make_flex();
+    root->specified_width = 400.0f;
+    root->flex_direction = 0; // row
+
+    auto inner = make_flex();
+    inner->specified_width = 200.0f;
+    inner->specified_height = 50.0f;
+    auto* inner_ptr = inner.get();
+
+    auto sibling = make_block();
+    sibling->specified_width = 150.0f;
+    sibling->specified_height = 50.0f;
+    auto* sibling_ptr = sibling.get();
+
+    root->append_child(std::move(inner));
+    root->append_child(std::move(sibling));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(inner_ptr->geometry.width, 200.0f);
+    EXPECT_FLOAT_EQ(sibling_ptr->geometry.width, 150.0f);
+    // Sibling placed after inner in row direction
+    EXPECT_FLOAT_EQ(sibling_ptr->geometry.x, 200.0f);
+}
+
+// V142: block with min_height, content shorter
+TEST(LayoutEngineTest, LayoutV142_4) {
+    auto root = make_block();
+    root->specified_width = 300.0f;
+    root->min_height = 200.0f;
+
+    auto child = make_block();
+    child->specified_width = 300.0f;
+    child->specified_height = 50.0f;
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // min_height should enforce at least 200
+    EXPECT_GE(root->geometry.height, 200.0f);
+}
+
+// V142: display None child excluded from layout
+TEST(LayoutEngineTest, LayoutV142_5) {
+    auto root = make_block();
+    root->specified_width = 400.0f;
+
+    auto visible = make_block();
+    visible->specified_width = 400.0f;
+    visible->specified_height = 60.0f;
+
+    auto hidden = make_block();
+    hidden->display = DisplayType::None;
+    hidden->specified_width = 400.0f;
+    hidden->specified_height = 100.0f;
+
+    root->append_child(std::move(visible));
+    root->append_child(std::move(hidden));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // Hidden child should not contribute to height
+    EXPECT_LE(root->geometry.height, 70.0f);
+}
+
+// V142: multiple blocks stack vertically
+TEST(LayoutEngineTest, LayoutV142_6) {
+    auto root = make_block();
+    root->specified_width = 300.0f;
+
+    auto c1 = make_block(); c1->specified_height = 40.0f;
+    auto c2 = make_block(); c2->specified_height = 60.0f;
+    auto c3 = make_block(); c3->specified_height = 80.0f;
+    auto* c1_ptr = c1.get();
+    auto* c2_ptr = c2.get();
+    auto* c3_ptr = c3.get();
+    root->append_child(std::move(c1));
+    root->append_child(std::move(c2));
+    root->append_child(std::move(c3));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(c1_ptr->geometry.y, 0.0f);
+    EXPECT_FLOAT_EQ(c2_ptr->geometry.y, 40.0f);
+    EXPECT_FLOAT_EQ(c3_ptr->geometry.y, 100.0f);
+    EXPECT_GE(root->geometry.height, 180.0f);
+}
+
+// V142: flex grow with different ratios (1:2:1)
+TEST(LayoutEngineTest, LayoutV142_7) {
+    auto root = make_flex();
+    root->specified_width = 400.0f;
+    root->flex_direction = 0; // row
+
+    auto c1 = make_block(); c1->flex_grow = 1.0f; c1->specified_height = 50.0f;
+    auto c2 = make_block(); c2->flex_grow = 2.0f; c2->specified_height = 50.0f;
+    auto c3 = make_block(); c3->flex_grow = 1.0f; c3->specified_height = 50.0f;
+    auto* c1_ptr = c1.get();
+    auto* c2_ptr = c2.get();
+    auto* c3_ptr = c3.get();
+    root->append_child(std::move(c1));
+    root->append_child(std::move(c2));
+    root->append_child(std::move(c3));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // Total grow = 4, so c1=100, c2=200, c3=100
+    EXPECT_NEAR(c1_ptr->geometry.width, 100.0f, 2.0f);
+    EXPECT_NEAR(c2_ptr->geometry.width, 200.0f, 2.0f);
+    EXPECT_NEAR(c3_ptr->geometry.width, 100.0f, 2.0f);
+}
+
+// V142: default text color is 0xFF000000u (black)
+TEST(LayoutNodeProps, ColorDefaultBlackV142) {
+    using namespace clever::layout;
+    LayoutNode n;
+    EXPECT_EQ(n.color, 0xFF000000u);
+}

@@ -21663,3 +21663,96 @@ TEST(DomElement, TagNamePreservedAfterReparentV141) {
     EXPECT_EQ(child_ptr->tag_name(), "article");
     EXPECT_EQ(child_ptr->parent(), &parent2);
 }
+
+// --- Round 142: 8 DOM tests ---
+
+// 1. insert_before with nullptr ref appends to end
+TEST(DomNode, InsertBeforeNullRefAppendsToEndV142) {
+    Element parent("div");
+    auto a = std::make_unique<Element>("span");
+    Element* a_ptr = a.get();
+    parent.append_child(std::move(a));
+
+    auto b = std::make_unique<Element>("p");
+    Element* b_ptr = b.get();
+    parent.insert_before(std::move(b), nullptr);
+
+    EXPECT_EQ(parent.last_child(), b_ptr);
+    EXPECT_EQ(a_ptr->next_sibling(), b_ptr);
+    EXPECT_EQ(parent.child_count(), 2u);
+}
+
+// 2. Set multiple attributes and verify count
+TEST(DomElement, SetMultipleAttributesAndIterateV142) {
+    Element elem("input");
+    elem.set_attribute("type", "text");
+    elem.set_attribute("name", "username");
+    elem.set_attribute("placeholder", "Enter name");
+    EXPECT_EQ(elem.attributes().size(), 3u);
+    EXPECT_TRUE(elem.has_attribute("type"));
+    EXPECT_TRUE(elem.has_attribute("name"));
+    EXPECT_TRUE(elem.has_attribute("placeholder"));
+}
+
+// 3. get_element_by_id returns nullptr after unregister
+TEST(DomDocument, GetElementByIdAfterRemoveReturnsNullV142) {
+    Document doc;
+    auto elem = doc.create_element("div");
+    Element* ptr = elem.get();
+    doc.register_id("temp-id", ptr);
+    EXPECT_EQ(doc.get_element_by_id("temp-id"), ptr);
+    doc.unregister_id("temp-id");
+    EXPECT_EQ(doc.get_element_by_id("temp-id"), nullptr);
+}
+
+// 4. Event default_prevented is false initially
+TEST(DomEvent, DefaultNotPreventedInitiallyV142) {
+    Event evt("click", true, true);
+    EXPECT_FALSE(evt.default_prevented());
+}
+
+// 5. Next sibling chain integrity with 4 children
+TEST(DomNode, NextSiblingChainIntegrityV142) {
+    Element parent("ul");
+    auto a = std::make_unique<Element>("li");
+    auto b = std::make_unique<Element>("li");
+    auto c = std::make_unique<Element>("li");
+    auto d = std::make_unique<Element>("li");
+    Element* a_ptr = a.get();
+    Element* b_ptr = b.get();
+    Element* c_ptr = c.get();
+    Element* d_ptr = d.get();
+    parent.append_child(std::move(a));
+    parent.append_child(std::move(b));
+    parent.append_child(std::move(c));
+    parent.append_child(std::move(d));
+
+    EXPECT_EQ(a_ptr->next_sibling(), b_ptr);
+    EXPECT_EQ(b_ptr->next_sibling(), c_ptr);
+    EXPECT_EQ(c_ptr->next_sibling(), d_ptr);
+    EXPECT_EQ(d_ptr->next_sibling(), nullptr);
+}
+
+// 6. ClassList contains returns false for empty class list
+TEST(DomElement, ClassListContainsReturnsFalseForEmptyV142) {
+    Element div("div");
+    EXPECT_FALSE(div.class_list().contains("anything"));
+    EXPECT_FALSE(div.class_list().contains("hidden"));
+    EXPECT_FALSE(div.class_list().contains(""));
+}
+
+// 7. Detached element has null parent
+TEST(DomNode, ParentNodeNullForDetachedV142) {
+    Element elem("section");
+    EXPECT_EQ(elem.parent(), nullptr);
+}
+
+// 8. remove_attribute on nonexistent attribute is safe
+TEST(DomElement, RemoveAttributeThatDoesNotExistV142) {
+    Element div("div");
+    div.set_attribute("class", "box");
+    size_t before = div.attributes().size();
+    div.remove_attribute("nonexistent");
+    EXPECT_EQ(div.attributes().size(), before);
+    EXPECT_TRUE(div.has_attribute("class"));
+}

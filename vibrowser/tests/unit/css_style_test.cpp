@@ -25421,3 +25421,41 @@ TEST(CSSStyleTest, CssV141_4_BorderRadiusApplied) {
     cascade.apply_declaration(style, make_decl("border-radius", "8px"), parent);
     EXPECT_FLOAT_EQ(style.border_radius, 8.0f);
 }
+
+// === V142 CSS Style Tests ===
+
+TEST(CSSStyleTest, CssV142_1_FloatLeftApplied) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("float", "left"), parent);
+    EXPECT_EQ(style.float_val, Float::Left);
+}
+
+TEST(CSSStyleTest, CssV142_2_ClearBothApplied) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("clear", "both"), parent);
+    EXPECT_EQ(style.clear, Clear::Both);
+}
+
+TEST(PropertyCascadeTest, TextDecorationUnderlineV142) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("text-decoration", "underline"), parent);
+    EXPECT_EQ(style.text_decoration, TextDecoration::Underline);
+}
+
+TEST(CSSStyleTest, CssV142_4_ZIndexApplied) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("z-index", "10"), parent);
+    EXPECT_EQ(style.z_index, 10);
+}

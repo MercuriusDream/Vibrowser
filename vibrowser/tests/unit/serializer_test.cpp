@@ -20326,3 +20326,64 @@ TEST(SerializerTest, SerializerV141_3_ZeroLengthBytesRoundTrip) {
     EXPECT_TRUE(result.empty());
     EXPECT_FALSE(d.has_remaining());
 }
+
+// ------------------------------------------------------------------
+// V142: U16 boundary values round-trip
+// ------------------------------------------------------------------
+
+TEST(SerializerTest, SerializerV142_1_U16BoundaryValuesRoundTrip) {
+    Serializer s;
+    s.write_u16(0);
+    s.write_u16(1);
+    s.write_u16(255);
+    s.write_u16(256);
+    s.write_u16(65534);
+    s.write_u16(65535);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u16(), 0u);
+    EXPECT_EQ(d.read_u16(), 1u);
+    EXPECT_EQ(d.read_u16(), 255u);
+    EXPECT_EQ(d.read_u16(), 256u);
+    EXPECT_EQ(d.read_u16(), 65534u);
+    EXPECT_EQ(d.read_u16(), 65535u);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+// ------------------------------------------------------------------
+// V142: Multiple strings with special characters round-trip
+// ------------------------------------------------------------------
+
+TEST(SerializerTest, SerializerV142_2_MultipleStringsWithSpecialCharsRoundTrip) {
+    Serializer s;
+    s.write_string("line1\nline2\nline3");
+    s.write_string("col1\tcol2\tcol3");
+    s.write_string("caf\xC3\xA9");           // UTF-8 "café"
+    s.write_string("\xE2\x9C\x93 done");      // UTF-8 checkmark
+    s.write_string("");                         // empty string
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), "line1\nline2\nline3");
+    EXPECT_EQ(d.read_string(), "col1\tcol2\tcol3");
+    EXPECT_EQ(d.read_string(), "caf\xC3\xA9");
+    EXPECT_EQ(d.read_string(), "\xE2\x9C\x93 done");
+    EXPECT_EQ(d.read_string(), "");
+    EXPECT_FALSE(d.has_remaining());
+}
+
+// ------------------------------------------------------------------
+// V142: U32 max value round-trip
+// ------------------------------------------------------------------
+
+TEST(SerializerTest, SerializerV142_3_U32MaxValueRoundTrip) {
+    Serializer s;
+    s.write_u32(UINT32_MAX);
+    s.write_u32(0u);
+    s.write_u32(UINT32_MAX - 1);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u32(), UINT32_MAX);
+    EXPECT_EQ(d.read_u32(), 0u);
+    EXPECT_EQ(d.read_u32(), UINT32_MAX - 1);
+    EXPECT_FALSE(d.has_remaining());
+}

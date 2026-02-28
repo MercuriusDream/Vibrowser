@@ -1,6 +1,7 @@
 #include <clever/ipc/message_pipe.h>
 #include <gtest/gtest.h>
 #include <cstdint>
+#include <cstring>
 #include <numeric>
 #include <vector>
 
@@ -1285,4 +1286,87 @@ TEST(MessagePipeTest, MessagePipeV141_3_ReceiverClosedBeforeSend) {
     EXPECT_EQ(received->size(), 2u);
     EXPECT_EQ((*received)[0], 0xAA);
     EXPECT_EQ((*received)[1], 0xBB);
+}
+
+// ------------------------------------------------------------------
+// V142: Large payload transfer (8KB)
+// ------------------------------------------------------------------
+
+TEST(MessagePipeTest, MessagePipeV142_1_LargePayloadTransfer) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    // Build an 8KB payload with a known pattern
+    constexpr size_t payload_size = 8192;
+    std::vector<uint8_t> large_payload(payload_size);
+    std::iota(large_payload.begin(), large_payload.end(), static_cast<uint8_t>(0));
+
+    ASSERT_TRUE(a.send(large_payload));
+
+    auto received = b.receive();
+    ASSERT_TRUE(received.has_value());
+    ASSERT_EQ(received->size(), payload_size);
+    for (size_t i = 0; i < payload_size; ++i) {
+        EXPECT_EQ((*received)[i], static_cast<uint8_t>(i & 0xFF))
+            << "Mismatch at byte " << i;
+    }
+}
+
+// ------------------------------------------------------------------
+// V142: Alternating bidirectional messages
+// ------------------------------------------------------------------
+
+TEST(MessagePipeTest, MessagePipeV142_2_AlternatingBidirectionalMessages) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    // Send alternating: a->b, b->a, a->b, b->a
+    std::vector<uint8_t> m1 = {0x10};
+    std::vector<uint8_t> m2 = {0x20};
+    std::vector<uint8_t> m3 = {0x30};
+    std::vector<uint8_t> m4 = {0x40};
+
+    ASSERT_TRUE(a.send(m1));  // a -> b
+    ASSERT_TRUE(b.send(m2));  // b -> a
+    ASSERT_TRUE(a.send(m3));  // a -> b
+    ASSERT_TRUE(b.send(m4));  // b -> a
+
+    // Receive on b side (from a): m1, m3
+    auto rb1 = b.receive();
+    ASSERT_TRUE(rb1.has_value());
+    EXPECT_EQ(*rb1, m1);
+
+    auto rb2 = b.receive();
+    ASSERT_TRUE(rb2.has_value());
+    EXPECT_EQ(*rb2, m3);
+
+    // Receive on a side (from b): m2, m4
+    auto ra1 = a.receive();
+    ASSERT_TRUE(ra1.has_value());
+    EXPECT_EQ(*ra1, m2);
+
+    auto ra2 = a.receive();
+    ASSERT_TRUE(ra2.has_value());
+    EXPECT_EQ(*ra2, m4);
+}
+
+// ------------------------------------------------------------------
+// V142: Type field preserved in message round-trip
+// ------------------------------------------------------------------
+
+TEST(MessagePipeTest, MessagePipeV142_3_TypeFieldPreservedRoundTrip) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    // Encode a "type" value into the payload manually (uint32 999 in little-endian)
+    uint32_t type_val = 999;
+    std::vector<uint8_t> payload(sizeof(type_val));
+    std::memcpy(payload.data(), &type_val, sizeof(type_val));
+
+    ASSERT_TRUE(a.send(payload));
+
+    auto received = b.receive();
+    ASSERT_TRUE(received.has_value());
+    ASSERT_EQ(received->size(), sizeof(uint32_t));
+
+    uint32_t received_type = 0;
+    std::memcpy(&received_type, received->data(), sizeof(received_type));
+    EXPECT_EQ(received_type, 999u);
 }

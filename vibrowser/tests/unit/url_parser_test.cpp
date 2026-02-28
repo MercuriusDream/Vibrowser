@@ -14631,3 +14631,45 @@ TEST(UrlParserTest, UrlV141_4_MultipleSchemesHttpHttpsFtp) {
     EXPECT_EQ(ftp_result->scheme, "ftp");
     EXPECT_EQ(ftp_result->port, std::nullopt);
 }
+
+TEST(UrlParserTest, UrlV142_1_TrailingSlashPathPreserved) {
+    // A trailing slash in the path must be preserved
+    auto result = parse("http://example.com/path/");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/path/");
+    EXPECT_EQ(result->port, std::nullopt);
+}
+
+TEST(UrlParserTest, UrlV142_2_HostnameCaseNormalization) {
+    // Scheme and host should be lowercased; path case preserved
+    auto result = parse("HTTP://EXAMPLE.COM/Path");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/Path");
+    EXPECT_EQ(result->port, std::nullopt);
+}
+
+TEST(UrlParserTest, UrlV142_3_PortZeroPreserved) {
+    // Port 0 is non-default and should be preserved
+    auto result = parse("http://example.com:0/path");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "example.com");
+    ASSERT_TRUE(result->port.has_value());
+    EXPECT_EQ(result->port.value(), 0);
+    EXPECT_EQ(result->path, "/path");
+}
+
+TEST(UrlParserTest, UrlV142_4_EmptyQueryPreserved) {
+    // URL ending with '?' has an empty but present query
+    auto result = parse("http://example.com/path?");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/path");
+    EXPECT_EQ(result->query, "");
+    EXPECT_EQ(result->port, std::nullopt);
+}

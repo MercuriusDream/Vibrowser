@@ -10209,3 +10209,61 @@ TEST_F(CSSStylesheetTest, TouchActionPropertyDeclarationV141) {
     }
     EXPECT_TRUE(found) << "touch-action declaration not found";
 }
+
+// === V142 CSS Parser Tests ===
+
+TEST_F(CSSStylesheetTest, ColumnGapDeclarationV142) {
+    auto ss = parse_stylesheet(".grid { column-gap: 16px; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "column-gap") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "16px");
+        }
+    }
+    EXPECT_TRUE(found) << "column-gap declaration not found";
+}
+
+TEST_F(CSSStylesheetTest, RowGapDeclarationV142) {
+    auto ss = parse_stylesheet(".grid { row-gap: 8px; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "row-gap") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "8px");
+        }
+    }
+    EXPECT_TRUE(found) << "row-gap declaration not found";
+}
+
+TEST_F(CSSStylesheetTest, BackfaceVisibilityDeclarationV142) {
+    auto ss = parse_stylesheet(".card { backface-visibility: hidden; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "backface-visibility") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "hidden");
+        }
+    }
+    EXPECT_TRUE(found) << "backface-visibility declaration not found";
+}
+
+TEST_F(CSSStylesheetTest, MixBlendModeDeclarationV142) {
+    auto ss = parse_stylesheet(".overlay { mix-blend-mode: multiply; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "mix-blend-mode") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "multiply");
+        }
+    }
+    EXPECT_TRUE(found) << "mix-blend-mode declaration not found";
+}

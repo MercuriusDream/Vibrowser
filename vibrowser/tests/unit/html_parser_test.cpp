@@ -22828,3 +22828,103 @@ TEST(HtmlParserTest, HtmlV141_8) {
     }
     EXPECT_TRUE(has_name);
 }
+
+// === V142 HTML Parser Tests ===
+
+TEST(HtmlParserTest, HtmlV142_1) {
+    // nav element
+    auto doc = clever::html::parse("<html><body><nav><a href=\"/\">Home</a><a href=\"/about\">About</a></nav></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* nav = doc->find_element("nav");
+    ASSERT_NE(nav, nullptr);
+    EXPECT_EQ(nav->tag_name, "nav");
+    auto links = nav->find_all_elements("a");
+    EXPECT_EQ(links.size(), 2u);
+}
+
+TEST(HtmlParserTest, HtmlV142_2) {
+    // aside element
+    auto doc = clever::html::parse("<html><body><aside><p>Sidebar content</p></aside></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* aside = doc->find_element("aside");
+    ASSERT_NE(aside, nullptr);
+    EXPECT_EQ(aside->tag_name, "aside");
+    EXPECT_TRUE(aside->text_content().find("Sidebar") != std::string::npos);
+}
+
+TEST(HtmlParserTest, HtmlV142_3) {
+    // main element
+    auto doc = clever::html::parse("<html><body><main><h1>Title</h1><p>Content</p></main></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* main_el = doc->find_element("main");
+    ASSERT_NE(main_el, nullptr);
+    EXPECT_EQ(main_el->tag_name, "main");
+    auto* h1 = main_el->find_element("h1");
+    ASSERT_NE(h1, nullptr);
+    EXPECT_EQ(h1->text_content(), "Title");
+}
+
+TEST(HtmlParserTest, HtmlV142_4) {
+    // header element
+    auto doc = clever::html::parse("<html><body><header><h1>Site Title</h1><nav>Menu</nav></header></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* header = doc->find_element("header");
+    ASSERT_NE(header, nullptr);
+    EXPECT_EQ(header->tag_name, "header");
+    auto* nav = header->find_element("nav");
+    ASSERT_NE(nav, nullptr);
+}
+
+TEST(HtmlParserTest, HtmlV142_5) {
+    // footer element
+    auto doc = clever::html::parse("<html><body><footer><p>Copyright 2024</p></footer></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* footer = doc->find_element("footer");
+    ASSERT_NE(footer, nullptr);
+    EXPECT_EQ(footer->tag_name, "footer");
+    EXPECT_TRUE(footer->text_content().find("Copyright") != std::string::npos);
+}
+
+TEST(HtmlParserTest, HtmlV142_6) {
+    // section element
+    auto doc = clever::html::parse("<html><body><section><h2>Chapter 1</h2><p>Text here</p></section></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* section = doc->find_element("section");
+    ASSERT_NE(section, nullptr);
+    EXPECT_EQ(section->tag_name, "section");
+    auto* h2 = section->find_element("h2");
+    ASSERT_NE(h2, nullptr);
+    EXPECT_EQ(h2->text_content(), "Chapter 1");
+}
+
+TEST(HtmlParserTest, HtmlV142_7) {
+    // article element
+    auto doc = clever::html::parse("<html><body><article><h2>Blog Post</h2><p>Article body</p></article></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* article = doc->find_element("article");
+    ASSERT_NE(article, nullptr);
+    EXPECT_EQ(article->tag_name, "article");
+    EXPECT_TRUE(article->text_content().find("Blog Post") != std::string::npos);
+}
+
+TEST(HtmlParserTest, HtmlV142_8) {
+    // figure with figcaption
+    auto doc = clever::html::parse("<html><body><figure><img src=\"photo.jpg\"><figcaption>A beautiful photo</figcaption></figure></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* figure = doc->find_element("figure");
+    ASSERT_NE(figure, nullptr);
+    EXPECT_EQ(figure->tag_name, "figure");
+    auto* figcaption = figure->find_element("figcaption");
+    ASSERT_NE(figcaption, nullptr);
+    EXPECT_EQ(figcaption->text_content(), "A beautiful photo");
+    auto* img = figure->find_element("img");
+    ASSERT_NE(img, nullptr);
+}

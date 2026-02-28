@@ -922,3 +922,37 @@ TEST(IsURLCodePoint, AsciiLettersAndDigitsAreCodePointsV141) {
     EXPECT_FALSE(is_url_code_point(0x80));
     EXPECT_FALSE(is_url_code_point(0x9F));
 }
+
+TEST(PercentEncoding, HashEncodedV142) {
+    // The '#' character must be percent-encoded to %23
+    EXPECT_EQ(percent_encode("#"), "%23");
+    // Hash within text
+    EXPECT_EQ(percent_encode("a#b"), "a%23b");
+}
+
+TEST(PercentDecoding, LowercaseHexDecodedV142) {
+    // Lowercase hex digits decode identically to uppercase
+    EXPECT_EQ(percent_decode("%2f"), "/");
+    EXPECT_EQ(percent_decode("%2F"), "/");
+    // Both produce the same result
+    EXPECT_EQ(percent_decode("%2f"), percent_decode("%2F"));
+    // Mixed case hex
+    EXPECT_EQ(percent_decode("%2a"), "*");
+    EXPECT_EQ(percent_decode("%2A"), "*");
+}
+
+TEST(PercentEncoding, TildeAndHyphenNotEncodedV142) {
+    // Tilde and hyphen are unreserved characters and must not be encoded
+    EXPECT_EQ(percent_encode("~"), "~");
+    EXPECT_EQ(percent_encode("-"), "-");
+    EXPECT_EQ(percent_encode("a~b-c"), "a~b-c");
+    EXPECT_EQ(percent_encode("~-~-"), "~-~-");
+}
+
+TEST(IsURLCodePoint, ExclamationAndAsteriskAreCodePointsV142) {
+    // '!' and '*' are valid URL code points
+    EXPECT_TRUE(is_url_code_point(U'!'));
+    EXPECT_TRUE(is_url_code_point(U'*'));
+    // Also verify '&' is a valid URL code point
+    EXPECT_TRUE(is_url_code_point(U'&'));
+}

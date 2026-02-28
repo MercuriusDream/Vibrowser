@@ -11702,3 +11702,54 @@ TEST(CORSPolicyTest, CorsV141_8_CaseInsensitiveSchemeComparison) {
     EXPECT_FALSE(is_cross_origin("Https://example.com", "https://example.com/data"));
     EXPECT_FALSE(is_cross_origin("Http://example.com", "http://example.com/data"));
 }
+
+// --- Round 142: 8 CORS tests ---
+
+TEST(CORSPolicyTest, CorsV142_1_BlobSchemeNotEnforceable) {
+    EXPECT_FALSE(has_enforceable_document_origin("blob:https://example.com/550e8400-e29b-41d4-a716-446655440000"));
+    EXPECT_FALSE(has_enforceable_document_origin("blob:http://localhost/some-uuid"));
+}
+
+TEST(CORSPolicyTest, CorsV142_2_AboutBlankNotEnforceable) {
+    EXPECT_FALSE(has_enforceable_document_origin("about:blank"));
+    EXPECT_FALSE(has_enforceable_document_origin("about:srcdoc"));
+}
+
+TEST(CORSPolicyTest, CorsV142_3_SameHostDifferentPortsCrossOrigin) {
+    EXPECT_TRUE(is_cross_origin("http://example.com:8080", "http://example.com:9090/api"));
+    EXPECT_TRUE(is_cross_origin("https://example.com:4443", "https://example.com:8443/data"));
+}
+
+TEST(CORSPolicyTest, CorsV142_4_ACAOExactMatchWithPort) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "http://example.com:8080");
+    EXPECT_TRUE(cors_allows_response("http://example.com:8080",
+                                      "http://api.example.com:8080/data",
+                                      headers, false));
+}
+
+TEST(CORSPolicyTest, CorsV142_5_ShouldAttachOriginCrossOrigin) {
+    EXPECT_TRUE(should_attach_origin_header("https://frontend.example.com",
+                                             "https://backend.example.com/api/v1"));
+    EXPECT_TRUE(should_attach_origin_header("https://example.com",
+                                             "https://different.org/endpoint"));
+}
+
+TEST(CORSPolicyTest, CorsV142_6_ShouldAttachOriginSameOrigin) {
+    EXPECT_FALSE(should_attach_origin_header("https://example.com",
+                                              "https://example.com/api/data"));
+    EXPECT_FALSE(should_attach_origin_header("http://localhost",
+                                              "http://localhost/resource"));
+}
+
+TEST(CORSPolicyTest, CorsV142_7_IPv4AddressIsEnforceable) {
+    EXPECT_TRUE(has_enforceable_document_origin("http://192.168.1.1"));
+    EXPECT_TRUE(has_enforceable_document_origin("https://10.0.0.1"));
+    EXPECT_TRUE(has_enforceable_document_origin("http://127.0.0.1"));
+}
+
+TEST(CORSPolicyTest, CorsV142_8_LocalhostEnforceableCheck) {
+    EXPECT_TRUE(has_enforceable_document_origin("http://localhost"));
+    EXPECT_TRUE(has_enforceable_document_origin("https://localhost"));
+    EXPECT_TRUE(has_enforceable_document_origin("http://localhost:3000"));
+}

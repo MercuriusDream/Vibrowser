@@ -24195,3 +24195,145 @@ TEST(HttpClient, CookieJarSecureCookieNotSentOverHttpV141) {
     std::string https_hdr = jar.get_cookie_header("v141secure.example.com", "/", true);
     EXPECT_NE(https_hdr.find("token141=secret"), std::string::npos);
 }
+
+// ===========================================================================
+// Round 142 — HttpClient Tests (V142)
+// ===========================================================================
+
+// 1. PUT request serialization with body
+TEST(HttpClient, RequestSerializePutMethodV142) {
+    Request req;
+    req.method = Method::PUT;
+    req.host = "api.example.com";
+    req.port = 443;
+    req.path = "/api/data";
+
+    std::string body_str = "updated=true";
+    req.body.assign(body_str.begin(), body_str.end());
+    req.headers.set("Content-Type", "application/x-www-form-urlencoded");
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    EXPECT_NE(result.find("PUT /api/data HTTP/1.1\r\n"), std::string::npos);
+    EXPECT_NE(result.find("Host: api.example.com\r\n"), std::string::npos);
+    EXPECT_NE(result.find("Connection: close\r\n"), std::string::npos);
+    EXPECT_NE(result.find("Content-Length: 12\r\n"), std::string::npos);
+    EXPECT_NE(result.find("\r\n\r\nupdated=true"), std::string::npos);
+}
+
+// 2. Parse 404 Not Found response
+TEST(HttpClient, ResponseParse404NotFoundV142) {
+    std::string raw =
+        "HTTP/1.1 404 Not Found\r\n"
+        "Content-Type: text/html\r\n"
+        "Content-Length: 14\r\n"
+        "\r\n"
+        "Page not found";
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 404);
+    EXPECT_EQ(resp->status_text, "Not Found");
+    EXPECT_EQ(resp->headers.get("content-type").value(), "text/html");
+    EXPECT_EQ(resp->body_as_string(), "Page not found");
+}
+
+// 3. HeaderMap set overwrites existing — get returns new, get_all returns 1
+TEST(HttpClient, HeaderMapSetOverwritesExistingV142) {
+    HeaderMap map;
+    map.set("X-Custom-V142", "first-value");
+    map.set("X-Custom-V142", "second-value");
+
+    EXPECT_EQ(map.get("X-Custom-V142").value(), "second-value");
+    EXPECT_EQ(map.get_all("X-Custom-V142").size(), 1u);
+}
+
+// 4. CookieJar path matching rules
+TEST(HttpClient, CookieJarPathMatchingRulesV142) {
+    CookieJar jar;
+    // Cookie with Path=/
+    jar.set_from_header("root142=val1; Path=/", "pathtest142.example.com");
+    // Cookie with Path=/api
+    jar.set_from_header("api142=val2; Path=/api", "pathtest142.example.com");
+
+    // Path=/ should match everything
+    std::string hdr_root = jar.get_cookie_header("pathtest142.example.com", "/", false);
+    EXPECT_NE(hdr_root.find("root142=val1"), std::string::npos);
+
+    // /api should get both cookies
+    std::string hdr_api = jar.get_cookie_header("pathtest142.example.com", "/api", false);
+    EXPECT_NE(hdr_api.find("root142=val1"), std::string::npos);
+    EXPECT_NE(hdr_api.find("api142=val2"), std::string::npos);
+
+    // /api/v2 should also get both cookies (subpath)
+    std::string hdr_apiv2 = jar.get_cookie_header("pathtest142.example.com", "/api/v2", false);
+    EXPECT_NE(hdr_apiv2.find("root142=val1"), std::string::npos);
+    EXPECT_NE(hdr_apiv2.find("api142=val2"), std::string::npos);
+
+    // /other should only get the root cookie, not the /api cookie
+    std::string hdr_other = jar.get_cookie_header("pathtest142.example.com", "/other", false);
+    EXPECT_NE(hdr_other.find("root142=val1"), std::string::npos);
+    EXPECT_EQ(hdr_other.find("api142=val2"), std::string::npos)
+        << "Path=/api should not match /other";
+}
+
+// 5. HEAD request serialization
+TEST(HttpClient, RequestSerializeHeadMethodV142) {
+    Request req;
+    req.method = Method::HEAD;
+    req.host = "headtest142.example.com";
+    req.port = 80;
+    req.path = "/";
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    EXPECT_NE(result.find("HEAD / HTTP/1.1\r\n"), std::string::npos);
+    EXPECT_NE(result.find("Host: headtest142.example.com\r\n"), std::string::npos);
+    EXPECT_NE(result.find("Connection: close\r\n"), std::string::npos);
+}
+
+// 6. Parse 204 No Content response
+TEST(HttpClient, ResponseParse204NoContentV142) {
+    std::string raw =
+        "HTTP/1.1 204 No Content\r\n"
+        "Content-Length: 0\r\n"
+        "\r\n";
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 204);
+    EXPECT_EQ(resp->status_text, "No Content");
+    EXPECT_TRUE(resp->body.empty());
+}
+
+// 7. HeaderMap has returns false after remove
+TEST(HttpClient, HeaderMapHasReturnsFalseAfterRemoveV142) {
+    HeaderMap map;
+    map.set("X-Remove-V142", "present");
+    EXPECT_TRUE(map.has("X-Remove-V142"));
+
+    map.remove("X-Remove-V142");
+    EXPECT_FALSE(map.has("X-Remove-V142"));
+    EXPECT_FALSE(map.get("X-Remove-V142").has_value());
+}
+
+// 8. CookieJar multiple cookies for same domain
+TEST(HttpClient, CookieJarMultipleCookiesSamedomainV142) {
+    CookieJar jar;
+    jar.set_from_header("alpha142=one; Path=/", "multicookie142.example.com");
+    jar.set_from_header("beta142=two; Path=/", "multicookie142.example.com");
+
+    std::string header = jar.get_cookie_header("multicookie142.example.com", "/", false);
+
+    // Both cookies should be present in the header
+    EXPECT_NE(header.find("alpha142=one"), std::string::npos)
+        << "First cookie should be present, got: " << header;
+    EXPECT_NE(header.find("beta142=two"), std::string::npos)
+        << "Second cookie should be present, got: " << header;
+}

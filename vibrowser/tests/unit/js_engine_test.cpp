@@ -35665,3 +35665,118 @@ TEST(JSEngine, JsV141_8) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "2,4,6,8,10|6,8,10");
 }
+
+// V142: Promise.resolve creates a promise object
+TEST(JSEngine, JsV142_1) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var p = Promise.resolve(42);
+        var type = typeof p.then;
+        type;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "function");
+}
+
+// V142: Array.from with string splits chars
+TEST(JSEngine, JsV142_2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var arr = Array.from('hello');
+        arr.join(',');
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "h,e,l,l,o");
+}
+
+// V142: Object.assign merges objects
+TEST(JSEngine, JsV142_3) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var a = {x: 1, y: 2};
+        var b = {y: 3, z: 4};
+        var c = Object.assign({}, a, b);
+        c.x + ',' + c.y + ',' + c.z;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1,3,4");
+}
+
+// V142: typeof for different types
+TEST(JSEngine, JsV142_4) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var results = [];
+        results.push(typeof 42);
+        results.push(typeof 'hello');
+        results.push(typeof true);
+        results.push(typeof undefined);
+        results.push(typeof null);
+        results.push(typeof {});
+        results.join(',');
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "number,string,boolean,undefined,object,object");
+}
+
+// V142: ternary operator expressions
+TEST(JSEngine, JsV142_5) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var a = 10 > 5 ? 'yes' : 'no';
+        var b = 3 > 7 ? 'big' : 'small';
+        var c = true ? (false ? 'A' : 'B') : 'C';
+        a + ',' + b + ',' + c;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "yes,small,B");
+}
+
+// V142: for...of loop with array
+TEST(JSEngine, JsV142_6) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var arr = [10, 20, 30];
+        var sum = 0;
+        for (var item of arr) {
+            sum += item;
+        }
+        String(sum);
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "60");
+}
+
+// V142: Set add/has/size
+TEST(JSEngine, JsV142_7) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var s = new Set();
+        s.add(1);
+        s.add(2);
+        s.add(2);
+        s.add(3);
+        var hasTwo = s.has(2);
+        var hasFour = s.has(4);
+        s.size + ',' + hasTwo + ',' + hasFour;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "3,true,false");
+}
+
+// V142: Map set/get/has/size
+TEST(JSEngine, JsV142_8) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var m = new Map();
+        m.set('a', 1);
+        m.set('b', 2);
+        m.set('c', 3);
+        var getB = m.get('b');
+        var hasA = m.has('a');
+        var hasD = m.has('d');
+        m.size + ',' + getB + ',' + hasA + ',' + hasD;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "3,2,true,false");
+}

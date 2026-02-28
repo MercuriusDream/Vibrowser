@@ -1595,3 +1595,62 @@ TEST(MessageChannelTest, MessageChannelV141_2_RegisterHandlerOverwritesPrevious)
     EXPECT_EQ(first_count, 0);
     EXPECT_EQ(second_count, 1);
 }
+
+// ------------------------------------------------------------------
+// V142: Multiple types with multiple handlers — each fires once
+// ------------------------------------------------------------------
+
+TEST(MessageChannelTest, MessageChannelV142_1_MultipleTypesMultipleHandlers) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel ch(std::move(pa));
+
+    int count10 = 0, count20 = 0, count30 = 0;
+    ch.on(10, [&](const Message&) { ++count10; });
+    ch.on(20, [&](const Message&) { ++count20; });
+    ch.on(30, [&](const Message&) { ++count30; });
+
+    Message m10; m10.type = 10; m10.request_id = 0; m10.payload = {0x0A};
+    Message m20; m20.type = 20; m20.request_id = 0; m20.payload = {0x14};
+    Message m30; m30.type = 30; m30.request_id = 0; m30.payload = {0x1E};
+
+    ch.dispatch(m10);
+    ch.dispatch(m20);
+    ch.dispatch(m30);
+
+    EXPECT_EQ(count10, 1);
+    EXPECT_EQ(count20, 1);
+    EXPECT_EQ(count30, 1);
+}
+
+// ------------------------------------------------------------------
+// V142: Payload integrity — serialize u32+string, dispatch, verify
+// ------------------------------------------------------------------
+
+TEST(MessageChannelTest, MessageChannelV142_2_PayloadIntegrityCheck) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel ch(std::move(pa));
+
+    uint32_t received_value = 0;
+    std::string received_str;
+
+    ch.on(50, [&](const Message& m) {
+        Deserializer d(m.payload);
+        received_value = d.read_u32();
+        received_str = d.read_string();
+    });
+
+    // Build payload with Serializer
+    Serializer s;
+    s.write_u32(0xCAFEBABE);
+    s.write_string("integrity_test");
+
+    Message msg;
+    msg.type = 50;
+    msg.request_id = 0;
+    msg.payload = s.data();
+
+    ch.dispatch(msg);
+
+    EXPECT_EQ(received_value, 0xCAFEBABEu);
+    EXPECT_EQ(received_str, "integrity_test");
+}
