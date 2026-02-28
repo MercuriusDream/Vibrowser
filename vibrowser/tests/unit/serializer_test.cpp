@@ -21539,3 +21539,58 @@ TEST(SerializerTest, SerializerV165_3_F64ZeroAndNegZeroRoundTrip) {
     EXPECT_TRUE(std::signbit(neg_zero));
     EXPECT_FALSE(d.has_remaining());
 }
+
+// ------------------------------------------------------------------
+// Round 166 — Serializer tests
+// ------------------------------------------------------------------
+
+TEST(SerializerTest, SerializerV166_1_I32MaxValueRoundTrip) {
+    Serializer s;
+    s.write_i32(INT32_MAX);
+    s.write_i32(INT32_MIN);
+    s.write_i32(0);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i32(), INT32_MAX);
+    EXPECT_EQ(d.read_i32(), INT32_MIN);
+    EXPECT_EQ(d.read_i32(), 0);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, SerializerV166_2_BytesPatternVerification) {
+    // Write a 128-byte pattern where each byte equals its index
+    std::vector<uint8_t> pattern(128);
+    for (size_t i = 0; i < 128; ++i) {
+        pattern[i] = static_cast<uint8_t>(i);
+    }
+
+    Serializer s;
+    s.write_bytes(pattern.data(), pattern.size());
+
+    Deserializer d(s.data());
+    auto result = d.read_bytes();
+    ASSERT_EQ(result.size(), 128u);
+    for (size_t i = 0; i < 128; ++i) {
+        EXPECT_EQ(result[i], static_cast<uint8_t>(i));
+    }
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, SerializerV166_3_MixedBoolStringU32RoundTrip) {
+    Serializer s;
+    s.write_bool(true);
+    s.write_string("hello_v166");
+    s.write_u32(0xDEADBEEF);
+    s.write_bool(false);
+    s.write_string("");
+    s.write_u32(0);
+
+    Deserializer d(s.data());
+    EXPECT_TRUE(d.read_bool());
+    EXPECT_EQ(d.read_string(), "hello_v166");
+    EXPECT_EQ(d.read_u32(), 0xDEADBEEFu);
+    EXPECT_FALSE(d.read_bool());
+    EXPECT_EQ(d.read_string(), "");
+    EXPECT_EQ(d.read_u32(), 0u);
+    EXPECT_FALSE(d.has_remaining());
+}

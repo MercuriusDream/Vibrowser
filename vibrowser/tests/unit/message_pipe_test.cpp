@@ -2748,3 +2748,72 @@ TEST(MessagePipeTest, MessagePipeV165_3_FiveHundredBytePayloadV165) {
     auto end = b.receive();
     EXPECT_FALSE(end.has_value());
 }
+
+// ------------------------------------------------------------------
+// Round 166 — MessagePipe tests
+// ------------------------------------------------------------------
+
+TEST(MessagePipeTest, MessagePipeV166_1_TwoKBPayloadV166) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    std::vector<uint8_t> payload(2048);
+    for (size_t i = 0; i < 2048; ++i) {
+        payload[i] = static_cast<uint8_t>(i % 256);
+    }
+    ASSERT_TRUE(a.send(payload));
+    a.close();
+
+    auto received = b.receive();
+    ASSERT_TRUE(received.has_value());
+    ASSERT_EQ(received->size(), 2048u);
+    for (size_t i = 0; i < 2048; ++i) {
+        EXPECT_EQ((*received)[i], static_cast<uint8_t>(i % 256));
+    }
+
+    auto end = b.receive();
+    EXPECT_FALSE(end.has_value());
+}
+
+TEST(MessagePipeTest, MessagePipeV166_2_SendCloseReceiveAllV166) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    // Send 4 messages then close
+    for (int i = 0; i < 4; ++i) {
+        std::vector<uint8_t> payload = {static_cast<uint8_t>(i + 10)};
+        ASSERT_TRUE(a.send(payload));
+    }
+    a.close();
+
+    // Receive all 4
+    for (int i = 0; i < 4; ++i) {
+        auto received = b.receive();
+        ASSERT_TRUE(received.has_value());
+        ASSERT_EQ(received->size(), 1u);
+        EXPECT_EQ((*received)[0], static_cast<uint8_t>(i + 10));
+    }
+
+    // After all consumed, should get nullopt
+    auto end = b.receive();
+    EXPECT_FALSE(end.has_value());
+}
+
+TEST(MessagePipeTest, MessagePipeV166_3_PayloadContentIncrementalV166) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    std::vector<uint8_t> payload(64);
+    for (size_t i = 0; i < 64; ++i) {
+        payload[i] = static_cast<uint8_t>(i * 3 + 1);
+    }
+    ASSERT_TRUE(a.send(payload));
+    a.close();
+
+    auto received = b.receive();
+    ASSERT_TRUE(received.has_value());
+    ASSERT_EQ(received->size(), 64u);
+    for (size_t i = 0; i < 64; ++i) {
+        EXPECT_EQ((*received)[i], static_cast<uint8_t>(i * 3 + 1));
+    }
+
+    auto end = b.receive();
+    EXPECT_FALSE(end.has_value());
+}

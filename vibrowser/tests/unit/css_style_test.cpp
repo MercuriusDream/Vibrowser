@@ -26445,3 +26445,42 @@ TEST(PropertyCascadeTest, PositionFixedAppliedV165) {
     cascade.apply_declaration(style, make_decl("position", "fixed"), parent);
     EXPECT_EQ(style.position, Position::Fixed);
 }
+
+// Round 166 — CSS style tests (V166)
+
+TEST(CSSStyleTest, CssV166_1_DisplayInlineApplied) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("display", "inline"), parent);
+    EXPECT_EQ(style.display, Display::Inline);
+}
+
+TEST(CSSStyleTest, CssV166_2_OverflowAutoApplied) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("overflow", "auto"), parent);
+    EXPECT_EQ(style.overflow_x, Overflow::Auto);
+    EXPECT_EQ(style.overflow_y, Overflow::Auto);
+}
+
+TEST(PropertyCascadeTest, VerticalAlignMiddleAppliedV166) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("vertical-align", "middle"), parent);
+    EXPECT_EQ(style.vertical_align, VerticalAlign::Middle);
+}
+
+TEST(PropertyCascadeTest, TextAlignCenterAppliedV166) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("text-align", "center"), parent);
+    EXPECT_EQ(style.text_align, TextAlign::Center);
+}

@@ -24493,3 +24493,113 @@ TEST(DomNode, DeepCloneSeparateFromOriginalV165) {
     EXPECT_EQ(original->child_count(), 1u);
     EXPECT_EQ(cloned->child_count(), 1u);
 }
+
+// ---------------------------------------------------------------------------
+// Round 166 — DOM tests (V166)
+// ---------------------------------------------------------------------------
+
+// 1. Append two children, remove first, verify second is now first_child
+TEST(DomNode, AppendTwoRemoveFirstVerifySecondIsFirstChildV166) {
+    Element parent("ul");
+    auto c1 = std::make_unique<Element>("li");
+    auto c2 = std::make_unique<Element>("li");
+    Node* c1_ptr = c1.get();
+    Node* c2_ptr = c2.get();
+    parent.append_child(std::move(c1));
+    parent.append_child(std::move(c2));
+    EXPECT_EQ(parent.child_count(), 2u);
+    EXPECT_EQ(parent.first_child(), c1_ptr);
+    parent.remove_child(*c1_ptr);
+    EXPECT_EQ(parent.child_count(), 1u);
+    EXPECT_EQ(parent.first_child(), c2_ptr);
+    EXPECT_EQ(parent.last_child(), c2_ptr);
+}
+
+// 2. has_attribute returns false before any attribute is set
+TEST(DomElement, HasAttributeFalseBeforeSetV166) {
+    Element elem("input");
+    EXPECT_FALSE(elem.has_attribute("type"));
+    EXPECT_FALSE(elem.has_attribute("name"));
+    EXPECT_FALSE(elem.has_attribute("value"));
+    EXPECT_EQ(elem.attributes().size(), 0u);
+}
+
+// 3. get_element_by_id returns nullptr after unregister_id
+TEST(DomDocument, GetElementByIdAfterUnregisterReturnsNullV166) {
+    Document doc;
+    auto elem = std::make_unique<Element>("section");
+    Element* elem_ptr = elem.get();
+    doc.append_child(std::move(elem));
+    doc.register_id("hero", elem_ptr);
+    EXPECT_EQ(doc.get_element_by_id("hero"), elem_ptr);
+    doc.unregister_id("hero");
+    EXPECT_EQ(doc.get_element_by_id("hero"), nullptr);
+}
+
+// 4. Event type matches constructor argument
+TEST(DomEvent, EventTypeMatchesConstructorArgV166) {
+    Event evt("mouseover");
+    EXPECT_EQ(evt.type(), "mouseover");
+    Event evt2("keydown");
+    EXPECT_EQ(evt2.type(), "keydown");
+    Event evt3("custom-event");
+    EXPECT_EQ(evt3.type(), "custom-event");
+}
+
+// 5. insert_before first_child makes new node the first child
+TEST(DomNode, InsertBeforeFirstPositionV166) {
+    Element parent("div");
+    auto orig = std::make_unique<Element>("span");
+    Node* orig_ptr = orig.get();
+    parent.append_child(std::move(orig));
+    auto newnode = std::make_unique<Element>("em");
+    Node* new_ptr = newnode.get();
+    parent.insert_before(std::move(newnode), orig_ptr);
+    EXPECT_EQ(parent.first_child(), new_ptr);
+    EXPECT_EQ(new_ptr->next_sibling(), orig_ptr);
+    EXPECT_EQ(parent.last_child(), orig_ptr);
+    EXPECT_EQ(parent.child_count(), 2u);
+}
+
+// 6. ClassList add and contains returns true
+TEST(DomElement, ClassListAddAndContainsTrueV166) {
+    Element elem("nav");
+    elem.class_list().add("primary");
+    elem.class_list().add("sticky");
+    EXPECT_TRUE(elem.class_list().contains("primary"));
+    EXPECT_TRUE(elem.class_list().contains("sticky"));
+    EXPECT_FALSE(elem.class_list().contains("hidden"));
+    EXPECT_EQ(elem.class_list().length(), 2u);
+}
+
+// 7. mark_dirty(Layout) does not affect Style flag
+TEST(DomNode, MarkDirtyLayoutDoesNotAffectStyleV166) {
+    Element elem("article");
+    elem.clear_dirty();
+    EXPECT_EQ(elem.dirty_flags(), DirtyFlags::None);
+    elem.mark_dirty(DirtyFlags::Layout);
+    EXPECT_NE(static_cast<uint8_t>(elem.dirty_flags() & DirtyFlags::Layout), 0);
+    EXPECT_EQ(static_cast<uint8_t>(elem.dirty_flags() & DirtyFlags::Style), 0);
+}
+
+// 8. Append five children and traverse all via next_sibling
+TEST(DomNode, AppendFiveChildrenTraverseAllV166) {
+    Element parent("ol");
+    std::vector<Node*> ptrs;
+    for (int i = 0; i < 5; ++i) {
+        auto child = std::make_unique<Element>("li");
+        ptrs.push_back(child.get());
+        parent.append_child(std::move(child));
+    }
+    EXPECT_EQ(parent.child_count(), 5u);
+    EXPECT_EQ(parent.first_child(), ptrs[0]);
+    EXPECT_EQ(parent.last_child(), ptrs[4]);
+    // Traverse forward
+    Node* current = parent.first_child();
+    for (int i = 0; i < 5; ++i) {
+        ASSERT_NE(current, nullptr);
+        EXPECT_EQ(current, ptrs[i]);
+        current = current->next_sibling();
+    }
+    EXPECT_EQ(current, nullptr);
+}

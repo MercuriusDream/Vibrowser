@@ -1749,3 +1749,35 @@ TEST(IsURLCodePoint, ControlCharsInvalidV165) {
     EXPECT_FALSE(is_url_code_point(static_cast<char32_t>(0x01)));
     EXPECT_FALSE(is_url_code_point(static_cast<char32_t>(0x1F)));
 }
+
+// =============================================================================
+// Round 166 percent encoding tests
+// =============================================================================
+
+TEST(PercentEncoding, RightBracketEncodedV166) {
+    // ']' (0x5D) should be percent-encoded as %5D
+    EXPECT_EQ(percent_encode("]"), "%5D");
+    EXPECT_EQ(percent_encode("arr[0]"), "arr%5B0%5D");
+}
+
+TEST(PercentDecoding, DoubleEncodedPercentV166) {
+    // %2525 decodes one level: %25 -> '%', so %2525 -> %25
+    EXPECT_EQ(percent_decode("%2525"), "%25");
+    // Single %25 decodes to literal '%'
+    EXPECT_EQ(percent_decode("%25"), "%");
+}
+
+TEST(PercentEncoding, PipeEncodedV166) {
+    // '|' (0x7C) should be percent-encoded as %7C
+    EXPECT_EQ(percent_encode("|"), "%7C");
+    EXPECT_EQ(percent_encode("a|b|c"), "a%7Cb%7Cc");
+}
+
+TEST(IsURLCodePoint, AmpersandAndEqualsValidV166) {
+    // '&' (0x26) and '=' (0x3D) are valid URL code points
+    EXPECT_TRUE(is_url_code_point('&'));
+    EXPECT_TRUE(is_url_code_point('='));
+    // Double-check they are not mistakenly rejected
+    EXPECT_TRUE(is_url_code_point(static_cast<char32_t>(0x26)));
+    EXPECT_TRUE(is_url_code_point(static_cast<char32_t>(0x3D)));
+}

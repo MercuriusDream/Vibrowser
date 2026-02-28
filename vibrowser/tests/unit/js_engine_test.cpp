@@ -38227,3 +38227,98 @@ TEST(JSEngine, JsV165_8) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "a,b,c");
 }
+
+// V166_1: Array.push returns new length
+TEST(JSEngine, JsV166_1) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var arr = [1, 2, 3];
+        var len = arr.push(4);
+        "" + len;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "4");
+}
+
+// V166_2: String.substring extraction
+TEST(JSEngine, JsV166_2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var s = "Hello, World!";
+        s.substring(7, 12);
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "World");
+}
+
+// V166_3: Object.defineProperty writable false
+TEST(JSEngine, JsV166_3) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var obj = {};
+        Object.defineProperty(obj, "x", { value: 42, writable: false });
+        obj.x = 99;
+        "" + obj.x;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "42");
+}
+
+// V166_4: JSON.stringify array
+TEST(JSEngine, JsV166_4) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        JSON.stringify([1, "two", true]);
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "[1,\"two\",true]");
+}
+
+// V166_5: Math.sqrt computation
+TEST(JSEngine, JsV166_5) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        "" + Math.sqrt(144);
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "12");
+}
+
+// V166_6: Array.splice removes elements
+TEST(JSEngine, JsV166_6) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var arr = [10, 20, 30, 40, 50];
+        arr.splice(1, 2);
+        arr.join(",");
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "10,40,50");
+}
+
+// V166_7: comma operator evaluates to last
+TEST(JSEngine, JsV166_7) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var r = (1, 2, 3, 4, 5);
+        "" + r;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "5");
+}
+
+// V166_8: while loop with counter
+TEST(JSEngine, JsV166_8) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var i = 0;
+        var sum = 0;
+        while (i < 10) {
+            sum += i;
+            i++;
+        }
+        "" + sum;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "45");
+}

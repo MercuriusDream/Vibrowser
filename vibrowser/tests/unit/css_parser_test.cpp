@@ -11578,3 +11578,61 @@ TEST_F(CSSStylesheetTest, PlaceItemsDeclarationV165) {
     }
     EXPECT_TRUE(found) << "place-items declaration not found";
 }
+
+// Round 166 — CSS parser tests (V166)
+
+TEST_F(CSSStylesheetTest, FlexDirectionDeclarationV166) {
+    auto ss = parse_stylesheet("div { flex-direction: column; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "flex-direction") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "column");
+        }
+    }
+    EXPECT_TRUE(found) << "flex-direction declaration not found";
+}
+
+TEST_F(CSSStylesheetTest, FlexWrapDeclarationV166) {
+    auto ss = parse_stylesheet("div { flex-wrap: wrap; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "flex-wrap") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "wrap");
+        }
+    }
+    EXPECT_TRUE(found) << "flex-wrap declaration not found";
+}
+
+TEST_F(CSSStylesheetTest, FlexGrowDeclarationV166) {
+    auto ss = parse_stylesheet("div { flex-grow: 2; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "flex-grow") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "2");
+        }
+    }
+    EXPECT_TRUE(found) << "flex-grow declaration not found";
+}
+
+TEST_F(CSSStylesheetTest, FlexShrinkDeclarationV166) {
+    auto ss = parse_stylesheet("div { flex-shrink: 0; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "flex-shrink") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "0");
+        }
+    }
+    EXPECT_TRUE(found) << "flex-shrink declaration not found";
+}

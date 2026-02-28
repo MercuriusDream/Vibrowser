@@ -2898,3 +2898,89 @@ TEST(MessageChannelTest, MessageChannelV165_2_TwoHandlersTwoTypesV165) {
     EXPECT_EQ(payload_20[0], 0x14);
     EXPECT_EQ(payload_20[1], 0x15);
 }
+
+// ------------------------------------------------------------------
+// Round 166 — MessageChannel tests
+// ------------------------------------------------------------------
+
+TEST(MessageChannelTest, MessageChannelV166_1_ThreeTypesThreeHandlersV166) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel ch(std::move(pa));
+
+    int count_a = 0, count_b = 0, count_c = 0;
+    std::vector<uint8_t> payload_a, payload_b, payload_c;
+
+    ch.on(100, [&](const Message& m) {
+        count_a++;
+        payload_a = m.payload;
+    });
+    ch.on(200, [&](const Message& m) {
+        count_b++;
+        payload_b = m.payload;
+    });
+    ch.on(300, [&](const Message& m) {
+        count_c++;
+        payload_c = m.payload;
+    });
+
+    Message m1;
+    m1.type = 100;
+    m1.request_id = 1;
+    m1.payload = {0xAA};
+    ch.dispatch(m1);
+
+    Message m2;
+    m2.type = 200;
+    m2.request_id = 2;
+    m2.payload = {0xBB, 0xCC};
+    ch.dispatch(m2);
+
+    Message m3;
+    m3.type = 300;
+    m3.request_id = 3;
+    m3.payload = {0xDD, 0xEE, 0xFF};
+    ch.dispatch(m3);
+
+    EXPECT_EQ(count_a, 1);
+    EXPECT_EQ(count_b, 1);
+    EXPECT_EQ(count_c, 1);
+    ASSERT_EQ(payload_a.size(), 1u);
+    EXPECT_EQ(payload_a[0], 0xAA);
+    ASSERT_EQ(payload_b.size(), 2u);
+    EXPECT_EQ(payload_b[0], 0xBB);
+    EXPECT_EQ(payload_b[1], 0xCC);
+    ASSERT_EQ(payload_c.size(), 3u);
+    EXPECT_EQ(payload_c[0], 0xDD);
+    EXPECT_EQ(payload_c[1], 0xEE);
+    EXPECT_EQ(payload_c[2], 0xFF);
+}
+
+TEST(MessageChannelTest, MessageChannelV166_2_RequestIdPreservedV166) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel ch(std::move(pa));
+
+    uint32_t captured_id_1 = 0;
+    uint32_t captured_id_2 = 0;
+
+    ch.on(50, [&](const Message& m) {
+        captured_id_1 = m.request_id;
+    });
+    ch.on(51, [&](const Message& m) {
+        captured_id_2 = m.request_id;
+    });
+
+    Message msg1;
+    msg1.type = 50;
+    msg1.request_id = 99999;
+    msg1.payload = {0x01};
+    ch.dispatch(msg1);
+
+    Message msg2;
+    msg2.type = 51;
+    msg2.request_id = 12345;
+    msg2.payload = {0x02, 0x03};
+    ch.dispatch(msg2);
+
+    EXPECT_EQ(captured_id_1, 99999u);
+    EXPECT_EQ(captured_id_2, 12345u);
+}

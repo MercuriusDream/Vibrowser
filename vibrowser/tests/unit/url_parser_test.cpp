@@ -15790,3 +15790,47 @@ TEST(UrlParserTest, UrlV165_4_WssSchemeParses) {
     EXPECT_EQ(result->path, "/path");
     EXPECT_EQ(result->port, std::nullopt);
 }
+
+// =============================================================================
+// Round 166 URL parser tests
+// =============================================================================
+
+TEST(UrlParserTest, UrlV166_1_DataSchemeParses) {
+    // data: URLs should parse with scheme "data" and the rest as path
+    auto result = parse("data:text/html,<h1>Hello</h1>");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "data");
+    EXPECT_EQ(result->path, "text/html,<h1>Hello</h1>");
+    EXPECT_TRUE(result->host.empty());
+    EXPECT_EQ(result->port, std::nullopt);
+}
+
+TEST(UrlParserTest, UrlV166_2_PortMaxValue65535) {
+    // Port 65535 (maximum valid) should be preserved, not normalized away
+    auto result = parse("http://example.com:65535/resource");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "example.com");
+    ASSERT_TRUE(result->port.has_value());
+    EXPECT_EQ(result->port.value(), 65535);
+    EXPECT_EQ(result->path, "/resource");
+}
+
+TEST(UrlParserTest, UrlV166_3_PathWithDotSegmentNormalization) {
+    // /a/./b/../c should normalize: /a/./b -> /a/b, then /a/b/../c -> /a/c
+    auto result = parse("https://example.com/a/./b/../c");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/a/c");
+}
+
+TEST(UrlParserTest, UrlV166_4_EmptyHostAuthority) {
+    // file:///path should parse with empty host and the path preserved
+    auto result = parse("file:///path");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "file");
+    EXPECT_TRUE(result->host.empty());
+    EXPECT_EQ(result->path, "/path");
+    EXPECT_EQ(result->port, std::nullopt);
+}

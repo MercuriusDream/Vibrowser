@@ -26066,3 +26066,138 @@ TEST(HtmlParserTest, HtmlV165_8) {
     EXPECT_EQ(spans[1]->parent, p);
     EXPECT_EQ(spans[2]->parent, p);
 }
+
+// Round 166 — HTML parser tests (V166)
+
+TEST(HtmlParserTest, HtmlV166_1) {
+    // img with alt and title attributes
+    auto doc = clever::html::parse(
+        "<html><body><img alt=\"photo\" title=\"My Photo\"></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* img = doc->find_element("img");
+    ASSERT_NE(img, nullptr);
+    EXPECT_EQ(img->tag_name, "img");
+
+    std::string alt_val, title_val;
+    for (const auto& attr : img->attributes) {
+        if (attr.name == "alt") alt_val = attr.value;
+        if (attr.name == "title") title_val = attr.value;
+    }
+    EXPECT_EQ(alt_val, "photo");
+    EXPECT_EQ(title_val, "My Photo");
+}
+
+TEST(HtmlParserTest, HtmlV166_2) {
+    // a with href and rel attributes
+    auto doc = clever::html::parse(
+        "<html><body><a href=\"https://example.com\" rel=\"noopener\">Link</a></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* a = doc->find_element("a");
+    ASSERT_NE(a, nullptr);
+    EXPECT_EQ(a->tag_name, "a");
+    EXPECT_EQ(a->text_content(), "Link");
+
+    std::string href_val, rel_val;
+    for (const auto& attr : a->attributes) {
+        if (attr.name == "href") href_val = attr.value;
+        if (attr.name == "rel") rel_val = attr.value;
+    }
+    EXPECT_EQ(href_val, "https://example.com");
+    EXPECT_EQ(rel_val, "noopener");
+}
+
+TEST(HtmlParserTest, HtmlV166_3) {
+    // meta with charset attribute
+    auto doc = clever::html::parse(
+        "<html><head><meta charset=\"utf-8\"></head><body></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* meta = doc->find_element("meta");
+    ASSERT_NE(meta, nullptr);
+    EXPECT_EQ(meta->tag_name, "meta");
+
+    std::string charset_val;
+    for (const auto& attr : meta->attributes) {
+        if (attr.name == "charset") charset_val = attr.value;
+    }
+    EXPECT_EQ(charset_val, "utf-8");
+}
+
+TEST(HtmlParserTest, HtmlV166_4) {
+    // link with rel=stylesheet and href
+    auto doc = clever::html::parse(
+        "<html><head><link rel=\"stylesheet\" href=\"style.css\"></head><body></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* link = doc->find_element("link");
+    ASSERT_NE(link, nullptr);
+    EXPECT_EQ(link->tag_name, "link");
+
+    std::string rel_val, href_val;
+    for (const auto& attr : link->attributes) {
+        if (attr.name == "rel") rel_val = attr.value;
+        if (attr.name == "href") href_val = attr.value;
+    }
+    EXPECT_EQ(rel_val, "stylesheet");
+    EXPECT_EQ(href_val, "style.css");
+}
+
+TEST(HtmlParserTest, HtmlV166_5) {
+    // script with src attribute
+    auto doc = clever::html::parse(
+        "<html><head><script src=\"app.js\"></script></head><body></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* script = doc->find_element("script");
+    ASSERT_NE(script, nullptr);
+    EXPECT_EQ(script->tag_name, "script");
+
+    std::string src_val;
+    for (const auto& attr : script->attributes) {
+        if (attr.name == "src") src_val = attr.value;
+    }
+    EXPECT_EQ(src_val, "app.js");
+}
+
+TEST(HtmlParserTest, HtmlV166_6) {
+    // style element (empty body expected)
+    auto doc = clever::html::parse(
+        "<html><head><style></style></head><body></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* style = doc->find_element("style");
+    ASSERT_NE(style, nullptr);
+    EXPECT_EQ(style->tag_name, "style");
+    EXPECT_EQ(style->children.size(), 0u);
+}
+
+TEST(HtmlParserTest, HtmlV166_7) {
+    // title element with text content
+    auto doc = clever::html::parse(
+        "<html><head><title>My Page Title</title></head><body></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* title = doc->find_element("title");
+    ASSERT_NE(title, nullptr);
+    EXPECT_EQ(title->tag_name, "title");
+    EXPECT_EQ(title->text_content(), "My Page Title");
+}
+
+TEST(HtmlParserTest, HtmlV166_8) {
+    // base element with href
+    auto doc = clever::html::parse(
+        "<html><head><base href=\"https://example.com/\"></head><body></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* base = doc->find_element("base");
+    ASSERT_NE(base, nullptr);
+    EXPECT_EQ(base->tag_name, "base");
+
+    std::string href_val;
+    for (const auto& attr : base->attributes) {
+        if (attr.name == "href") href_val = attr.value;
+    }
+    EXPECT_EQ(href_val, "https://example.com/");
+}

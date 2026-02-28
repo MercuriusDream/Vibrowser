@@ -13136,3 +13136,54 @@ TEST(CORSPolicyTest, CorsV165_7_WildcardWithCredentialsRejected) {
 TEST(CORSPolicyTest, CorsV165_8_EmptyOriginNotEnforceable) {
     EXPECT_FALSE(has_enforceable_document_origin(""));
 }
+
+// ---------------------------------------------------------------------------
+// Round 166 — CORS tests (V166)
+// ---------------------------------------------------------------------------
+
+// 1. http with port 3000 is enforceable
+TEST(CORSPolicyTest, CorsV166_1_HttpPort3000Enforceable) {
+    EXPECT_TRUE(has_enforceable_document_origin("http://localhost:3000"));
+}
+
+// 2. Cross-origin: same host, different scheme (http vs https)
+TEST(CORSPolicyTest, CorsV166_2_CrossOriginSameHostDiffSchemeHttpVsHttps) {
+    EXPECT_TRUE(is_cross_origin("http://app.example", "https://app.example/page"));
+}
+
+// 3. ACAO exact match without port
+TEST(CORSPolicyTest, CorsV166_3_AcaoExactMatchNoPort) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "https://app.example");
+    EXPECT_TRUE(cors_allows_response("https://app.example", "https://api.example/data",
+                                     headers, false));
+}
+
+// 4. should_attach_origin when same host but different ports 8080 vs 3000
+TEST(CORSPolicyTest, CorsV166_4_ShouldAttachOriginSameHostDiffPort8080Vs3000) {
+    EXPECT_TRUE(should_attach_origin_header("http://app.example:8080",
+                                            "http://app.example:3000/api"));
+}
+
+// 5. ssh scheme is not enforceable
+TEST(CORSPolicyTest, CorsV166_5_SshSchemeNotEnforceable) {
+    EXPECT_FALSE(has_enforceable_document_origin("ssh://host.example"));
+}
+
+// 6. IPv4 with port 8080 is enforceable
+TEST(CORSPolicyTest, CorsV166_6_IPv4WithPort8080Enforceable) {
+    EXPECT_TRUE(has_enforceable_document_origin("http://10.0.0.1:8080"));
+}
+
+// 7. ACAO mismatch on port rejects
+TEST(CORSPolicyTest, CorsV166_7_AcaoMismatchPortRejects) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "https://app.example:9000");
+    EXPECT_FALSE(cors_allows_response("https://app.example:8000", "https://api.example/data",
+                                      headers, false));
+}
+
+// 8. Same origin when both https on port 443
+TEST(CORSPolicyTest, CorsV166_8_SameOriginBothHttpsPort443) {
+    EXPECT_FALSE(is_cross_origin("https://app.example", "https://app.example:443/page"));
+}

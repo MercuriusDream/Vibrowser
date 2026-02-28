@@ -28762,3 +28762,170 @@ TEST(HttpClient, CookieJarSecureCookieNotOnHttpV165) {
     EXPECT_NE(header_secure.find("token165=supersecret"), std::string::npos)
         << "Secure cookie should be returned for is_secure=true, got: " << header_secure;
 }
+
+// ===========================================================================
+// Round 166 — Net Tests (V166)
+// ===========================================================================
+
+// 1. HEAD request with no body serializes correctly
+TEST(HttpClient, RequestSerializeHeadNoBodyV166) {
+    Request req;
+    req.method = Method::HEAD;
+    req.host = "head166.example.com";
+    req.port = 443;
+    req.path = "/status/v166";
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    EXPECT_NE(result.find("HEAD /status/v166 HTTP/1.1\r\n"), std::string::npos)
+        << "Request line should start with HEAD method, got: " << result;
+    EXPECT_NE(result.find("Host: head166.example.com\r\n"), std::string::npos)
+        << "Port 443 should be omitted from Host header, got: " << result;
+    EXPECT_NE(result.find("Connection: close\r\n"), std::string::npos)
+        << "Connection: close header should be present, got: " << result;
+    EXPECT_EQ(result.find("Content-Length"), std::string::npos)
+        << "HEAD request should not include Content-Length, got: " << result;
+}
+
+// 2. 200 OK response with text/html body parses correctly
+TEST(HttpClient, ResponseParse200HtmlBodyV166) {
+    std::string raw =
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Type: text/html\r\n"
+        "Content-Length: 26\r\n"
+        "\r\n"
+        "<html><body>V166</body></html>";
+
+    // Content-Length says 26 but actual body is 29; parser should handle gracefully
+    // Adjust to be accurate:
+    std::string body_str = "<html><body>V166</body></html>";
+    std::string raw_correct =
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Type: text/html\r\n"
+        "Content-Length: " + std::to_string(body_str.size()) + "\r\n"
+        "\r\n" + body_str;
+
+    std::vector<uint8_t> data(raw_correct.begin(), raw_correct.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value()) << "200 OK response should parse successfully";
+    EXPECT_EQ(resp->status, 200);
+    EXPECT_EQ(resp->status_text, "OK");
+    EXPECT_EQ(resp->body_as_string(), body_str)
+        << "Body should match the HTML content";
+}
+
+// 3. ConnectionPool: release 2 sockets, acquire both back
+TEST(HttpClient, ConnectionPoolReleaseTwoAcquireTwoV166) {
+    ConnectionPool pool;
+    int sock_a = 100;
+    int sock_b = 200;
+
+    pool.release("pool166.example.com", 8080, sock_a);
+    pool.release("pool166.example.com", 8080, sock_b);
+
+    int first = pool.acquire("pool166.example.com", 8080);
+    ASSERT_NE(first, -1)
+        << "First acquire should return a valid socket from the pool";
+
+    int second = pool.acquire("pool166.example.com", 8080);
+    ASSERT_NE(second, -1)
+        << "Second acquire should return a valid socket from the pool";
+
+    // Both sockets should have been returned (order may vary — LIFO)
+    bool got_both = (first == sock_a && second == sock_b) ||
+                    (first == sock_b && second == sock_a);
+    EXPECT_TRUE(got_both)
+        << "Should get both released sockets back, got: " << first << " and " << second;
+
+    // Pool should now be empty
+    int third = pool.acquire("pool166.example.com", 8080);
+    EXPECT_EQ(third, -1)
+        << "Pool should be empty after acquiring both sockets";
+}
+
+// 4. CookieJar: different paths get different cookies
+TEST(HttpClient, CookieJarDifferentPathsDifferentCookiesV166) {
+    CookieJar jar;
+    jar.set_from_header("api_tok=abc166; Path=/api", "paths166.example.com");
+    jar.set_from_header("web_tok=xyz166; Path=/web", "paths166.example.com");
+
+    std::string api_header = jar.get_cookie_header("paths166.example.com", "/api", false);
+    EXPECT_NE(api_header.find("api_tok=abc166"), std::string::npos)
+        << "/api path should include api_tok cookie, got: " << api_header;
+    EXPECT_EQ(api_header.find("web_tok=xyz166"), std::string::npos)
+        << "/api path should NOT include web_tok cookie, got: " << api_header;
+
+    std::string web_header = jar.get_cookie_header("paths166.example.com", "/web", false);
+    EXPECT_NE(web_header.find("web_tok=xyz166"), std::string::npos)
+        << "/web path should include web_tok cookie, got: " << web_header;
+    EXPECT_EQ(web_header.find("api_tok=abc166"), std::string::npos)
+        << "/web path should NOT include api_tok cookie, got: " << web_header;
+}
+
+// 5. HeaderMap: append 2 values, get_all returns both
+TEST(HttpClient, HeaderMapAppendThenGetAllV166) {
+    HeaderMap map;
+    map.append("X-Multi-166", "first166");
+    map.append("X-Multi-166", "second166");
+
+    auto all = map.get_all("X-Multi-166");
+    ASSERT_EQ(all.size(), 2u)
+        << "get_all should return 2 values after 2 appends, got: " << all.size();
+    EXPECT_EQ(all[0], "first166")
+        << "First appended value should be 'first166', got: " << all[0];
+    EXPECT_EQ(all[1], "second166")
+        << "Second appended value should be 'second166', got: " << all[1];
+}
+
+// 6. GET request to non-standard port 3000 includes port in Host header
+TEST(HttpClient, RequestSerializeGetNonStandardPort3000V166) {
+    Request req;
+    req.method = Method::GET;
+    req.host = "dev166.example.com";
+    req.port = 3000;
+    req.path = "/app/v166";
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    EXPECT_NE(result.find("GET /app/v166 HTTP/1.1\r\n"), std::string::npos)
+        << "Request line should contain GET method and path, got: " << result;
+    EXPECT_NE(result.find("Host: dev166.example.com:3000\r\n"), std::string::npos)
+        << "Non-standard port 3000 should appear in Host header, got: " << result;
+    EXPECT_NE(result.find("Connection: close\r\n"), std::string::npos)
+        << "Connection: close header should be present, got: " << result;
+}
+
+// 7. 503 Service Unavailable response parses correctly
+TEST(HttpClient, ResponseParse503ServiceUnavailableV166) {
+    std::string raw =
+        "HTTP/1.1 503 Service Unavailable\r\n"
+        "Content-Type: text/plain\r\n"
+        "Content-Length: 19\r\n"
+        "\r\n"
+        "Service Unavailable";
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value()) << "503 response should parse successfully";
+    EXPECT_EQ(resp->status, 503);
+    EXPECT_EQ(resp->status_text, "Service Unavailable");
+    EXPECT_EQ(resp->body_as_string(), "Service Unavailable")
+        << "Body should match the response text";
+}
+
+// 8. CookieJar: no cookies set returns empty string
+TEST(HttpClient, CookieJarEmptyWhenNoCookiesSetV166) {
+    CookieJar jar;
+
+    std::string header = jar.get_cookie_header("empty166.example.com", "/", false);
+    EXPECT_TRUE(header.empty())
+        << "CookieJar with no cookies should return empty string, got: " << header;
+
+    std::string header_secure = jar.get_cookie_header("empty166.example.com", "/", true);
+    EXPECT_TRUE(header_secure.empty())
+        << "CookieJar with no cookies should return empty string for secure too, got: " << header_secure;
+}
