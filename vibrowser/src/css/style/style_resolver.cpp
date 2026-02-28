@@ -6661,14 +6661,17 @@ void StyleResolver::collect_pseudo_from_rules(const std::vector<StyleRule>& rule
 // --- Updated collect functions ---
 
 std::vector<MatchedRule> StyleResolver::collect_matching_rules(const ElementView& element) const {
-    // Note: @media, @supports, @layer rules are pre-flattened into sheet.rules
-    // by render_pipeline before adding to the StyleResolver. We only need to
-    // iterate sheet.rules here.
     std::vector<MatchedRule> result;
     size_t source_order = 0;
 
     for (const auto& sheet : stylesheets_) {
         collect_from_rules(sheet.rules, element, result, source_order);
+
+        for (const auto& mq : sheet.media_queries) {
+            if (evaluate_media_condition(mq.condition)) {
+                collect_from_rules(mq.rules, element, result, source_order);
+            }
+        }
     }
 
     return result;
@@ -6683,6 +6686,12 @@ std::vector<MatchedRule> StyleResolver::collect_pseudo_rules(
 
     for (const auto& sheet : stylesheets_) {
         collect_pseudo_from_rules(sheet.rules, element, pseudo_name, result, source_order);
+
+        for (const auto& mq : sheet.media_queries) {
+            if (evaluate_media_condition(mq.condition)) {
+                collect_pseudo_from_rules(mq.rules, element, pseudo_name, result, source_order);
+            }
+        }
     }
 
     return result;
