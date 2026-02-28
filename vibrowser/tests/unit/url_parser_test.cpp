@@ -13885,3 +13885,47 @@ TEST(UrlParserTest, UrlV128_4_BlobUrlSerializePreservesOpaqueContent) {
     ASSERT_TRUE(result.has_value());
     EXPECT_EQ(result->serialize(), "blob:https://example.com/uuid-here");
 }
+
+TEST(UrlParserTest, UrlV129_1_IPv6AddressLoopbackParsesCorrectly) {
+    auto result = parse("http://[::1]:8080/api/status");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->host, "[::1]");
+    ASSERT_TRUE(result->port.has_value());
+    EXPECT_EQ(result->port.value(), 8080u);
+    EXPECT_EQ(result->path, "/api/status");
+    EXPECT_EQ(result->scheme, "http");
+}
+
+TEST(UrlParserTest, UrlV129_2_RelativeResolutionDotSegmentInSubdir) {
+    auto base = parse("http://example.com/a/b/c/d.html");
+    ASSERT_TRUE(base.has_value());
+    auto resolved = parse("../.././e/f.html", &*base);
+    ASSERT_TRUE(resolved.has_value());
+    EXPECT_EQ(resolved->scheme, "http");
+    EXPECT_EQ(resolved->host, "example.com");
+    EXPECT_EQ(resolved->path, "/a/e/f.html");
+}
+
+TEST(UrlParserTest, UrlV129_3_FragmentPreservedInSerializeOutput) {
+    auto result = parse("https://example.com/page#section-42");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->fragment, "section-42");
+    std::string serialized = result->serialize();
+    EXPECT_NE(serialized.find("#section-42"), std::string::npos);
+    EXPECT_EQ(serialized, "https://example.com/page#section-42");
+}
+
+TEST(UrlParserTest, UrlV129_4_PortNormalizationFtpDefault21Omitted) {
+    // FTP default port 21 should be omitted (nullopt)
+    auto result1 = parse("ftp://files.example.com:21/pub");
+    ASSERT_TRUE(result1.has_value());
+    EXPECT_EQ(result1->port, std::nullopt);
+    EXPECT_EQ(result1->scheme, "ftp");
+    EXPECT_EQ(result1->host, "files.example.com");
+
+    // Non-default port 2121 should be preserved
+    auto result2 = parse("ftp://files.example.com:2121/pub");
+    ASSERT_TRUE(result2.has_value());
+    ASSERT_TRUE(result2->port.has_value());
+    EXPECT_EQ(result2->port.value(), 2121u);
+}

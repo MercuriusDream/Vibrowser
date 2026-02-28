@@ -21960,3 +21960,129 @@ TEST(HttpClient, RequestSerializeOptionsWithOriginHeaderV128) {
     EXPECT_NE(s.find("Host: api.example.com"), std::string::npos);
     EXPECT_NE(s.find("origin: https://app.example.com"), std::string::npos);
 }
+
+// ===========================================================================
+// Cycle V129 Tests
+// ===========================================================================
+
+TEST(HttpClient, RequestSerializeDefaultAcceptLanguageV129) {
+    Request req;
+    req.method = Method::GET;
+    req.url = "https://example.com/";
+    req.parse_url();
+
+    auto bytes = req.serialize();
+    std::string s(bytes.begin(), bytes.end());
+
+    EXPECT_NE(s.find("Accept-Language: en-US,en;q=0.9"), std::string::npos);
+}
+
+TEST(HttpClient, ResponseParseMultipleSetCookieWithAttributesV129) {
+    std::string raw =
+        "HTTP/1.1 200 OK\r\n"
+        "Set-Cookie: sess=abc123; Path=/; Secure; HttpOnly; SameSite=Lax\r\n"
+        "Set-Cookie: theme=dark; Path=/ui; Secure\r\n"
+        "Set-Cookie: lang=en; Path=/; HttpOnly; SameSite=Lax\r\n"
+        "Content-Length: 0\r\n"
+        "\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 200);
+
+    auto cookies = resp->headers.get_all("set-cookie");
+    EXPECT_EQ(cookies.size(), 3u);
+}
+
+TEST(HttpClient, ConnectionPoolMaxPerHostEvictsOldestV129) {
+    ConnectionPool pool(2);
+    pool.release("evict.v129.test", 8080, 100);
+    pool.release("evict.v129.test", 8080, 200);
+    EXPECT_EQ(pool.count("evict.v129.test", 8080), 2u);
+
+    // Third release should evict the oldest (fd=100)
+    pool.release("evict.v129.test", 8080, 300);
+    EXPECT_LE(pool.count("evict.v129.test", 8080), 2u);
+
+    int fd1 = pool.acquire("evict.v129.test", 8080);
+    int fd2 = pool.acquire("evict.v129.test", 8080);
+    // Pool now empty
+    EXPECT_EQ(pool.acquire("evict.v129.test", 8080), -1);
+    // We got exactly two connections back
+    EXPECT_TRUE(fd1 > 0 && fd2 > 0);
+}
+
+TEST(HttpClient, CookieJarSubpathAndRootPathMatchingV129) {
+    CookieJar jar;
+    jar.set_from_header("session=abc; Path=/", "example.com");
+
+    // Root path cookie is available at "/"
+    std::string root_cookie = jar.get_cookie_header("example.com", "/", false);
+    EXPECT_NE(root_cookie.find("session=abc"), std::string::npos);
+
+    // Root path cookie is also available at deeper paths
+    std::string deep_cookie = jar.get_cookie_header("example.com", "/api/v2", false);
+    EXPECT_NE(deep_cookie.find("session=abc"), std::string::npos);
+
+    // Set a cookie scoped to /api
+    jar.set_from_header("api=xyz; Path=/api", "example.com");
+
+    // /apiary also gets the /api cookie (simple prefix matching in our implementation)
+    std::string apiary_cookie = jar.get_cookie_header("example.com", "/apiary", false);
+    EXPECT_NE(apiary_cookie.find("api=xyz"), std::string::npos);
+
+    // Path that doesn't start with /api should NOT get it
+    std::string other_cookie = jar.get_cookie_header("example.com", "/about", false);
+    EXPECT_EQ(other_cookie.find("api=xyz"), std::string::npos);
+}
+
+TEST(HttpClient, HeaderMapAppendPreservesInsertionOrderViaGetAllV129) {
+    HeaderMap map;
+    map.append("x-custom", "a");
+    map.append("x-custom", "b");
+    map.append("x-custom", "c");
+
+    auto all = map.get_all("x-custom");
+    ASSERT_EQ(all.size(), 3u);
+    EXPECT_EQ(all[0], "a");
+    EXPECT_EQ(all[1], "b");
+    EXPECT_EQ(all[2], "c");
+}
+
+TEST(HttpClient, RequestSerializeCustomAcceptLanguageOverridesDefaultV129) {
+    Request req;
+    req.method = Method::GET;
+    req.url = "https://example.com/page";
+    req.parse_url();
+    req.headers.set("accept-language", "ko-KR,ko;q=0.9");
+
+    auto bytes = req.serialize();
+    std::string s(bytes.begin(), bytes.end());
+
+    EXPECT_NE(s.find("ko-KR"), std::string::npos);
+    EXPECT_EQ(s.find("en-US"), std::string::npos);
+}
+
+TEST(HttpClient, ResponseParseEmptyBodyWithContentLengthZeroV129) {
+    std::string raw =
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Length: 0\r\n"
+        "\r\n";
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 200);
+    EXPECT_TRUE(resp->body.empty());
+}
+
+TEST(HttpClient, CookieJarHttpOnlyFlagPreservedAcrossMultipleCookiesV129) {
+    CookieJar jar;
+    jar.set_from_header("sess=abc; HttpOnly", "example.com");
+    jar.set_from_header("pref=dark", "example.com");
+
+    std::string cookies = jar.get_cookie_header("example.com", "/", false);
+    EXPECT_NE(cookies.find("sess=abc"), std::string::npos);
+    EXPECT_NE(cookies.find("pref=dark"), std::string::npos);
+}

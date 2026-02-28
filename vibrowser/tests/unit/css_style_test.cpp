@@ -24879,3 +24879,67 @@ TEST(CSSStyleTest, CssV128_1_ScrollBehaviorSmoothAndSnapType) {
     EXPECT_EQ(style.scroll_behavior, 1);
     EXPECT_EQ(style.scroll_snap_type, "y mandatory");
 }
+
+TEST(PropertyCascadeTest, TextWrapValuesV129) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("text-wrap", "balance"), parent);
+    EXPECT_EQ(style.text_wrap, 2);
+
+    cascade.apply_declaration(style, make_decl("text-wrap", "pretty"), parent);
+    EXPECT_EQ(style.text_wrap, 3);
+
+    cascade.apply_declaration(style, make_decl("text-wrap", "stable"), parent);
+    EXPECT_EQ(style.text_wrap, 4);
+}
+
+TEST(CSSStyleTest, CssV129_2_InheritedFontSizeOverriddenByChild) {
+    const std::string css = ".parent{font-size:24px;} .child{font-size:12px;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView parent_elem;
+    parent_elem.tag_name = "div";
+    parent_elem.classes = {"parent"};
+
+    ComputedStyle root_style;
+    auto parent_style = resolver.resolve(parent_elem, root_style);
+
+    ElementView child_elem;
+    child_elem.tag_name = "span";
+    child_elem.classes = {"child"};
+
+    auto child_style = resolver.resolve(child_elem, parent_style);
+
+    EXPECT_FLOAT_EQ(child_style.font_size.to_px(), 12.0f);
+}
+
+TEST(PropertyCascadeTest, AccentColorAppliedV129) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("accent-color", "#00ff00"), parent);
+    EXPECT_EQ(style.accent_color.r, 0);
+    EXPECT_EQ(style.accent_color.g, 255);
+    EXPECT_EQ(style.accent_color.b, 0);
+    EXPECT_EQ(style.accent_color.a, 255);
+}
+
+TEST(CSSStyleTest, CssV129_8_OpacityAndVisibilityCombo) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("opacity", "0.5"), parent);
+    cascade.apply_declaration(style, make_decl("visibility", "hidden"), parent);
+    cascade.apply_declaration(style, make_decl("z-index", "10"), parent);
+
+    EXPECT_FLOAT_EQ(style.opacity, 0.5f);
+    EXPECT_EQ(style.visibility, Visibility::Hidden);
+    EXPECT_EQ(style.z_index, 10);
+}

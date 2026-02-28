@@ -557,3 +557,88 @@ TEST(MessageChannelTest, MessageChannelV128_8_DispatchOnlyMatchingTypeHandlerFir
     EXPECT_TRUE(fired10);
     EXPECT_FALSE(fired20);
 }
+
+TEST(MessageChannelTest, MessageChannelV129_1_TypedDispatchMultipleHandlers) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel ch(std::move(pa));
+
+    bool fired100 = false;
+    bool fired200 = false;
+    bool fired300 = false;
+    ch.on(100, [&](const Message&) { fired100 = true; });
+    ch.on(200, [&](const Message&) { fired200 = true; });
+    ch.on(300, [&](const Message&) { fired300 = true; });
+
+    Message msg;
+    msg.type = 200;
+    ch.dispatch(msg);
+
+    EXPECT_FALSE(fired100);
+    EXPECT_TRUE(fired200);
+    EXPECT_FALSE(fired300);
+}
+
+TEST(MessageChannelTest, MessageChannelV129_2_BidirectionalLargePayload) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel a(std::move(pa));
+    MessageChannel b(std::move(pb));
+
+    std::vector<uint8_t> payload_ab(4096);
+    for (size_t i = 0; i < payload_ab.size(); ++i) {
+        payload_ab[i] = static_cast<uint8_t>(i % 256);
+    }
+    std::vector<uint8_t> payload_ba(4096);
+    for (size_t i = 0; i < payload_ba.size(); ++i) {
+        payload_ba[i] = static_cast<uint8_t>(255 - (i % 256));
+    }
+
+    Message msg_ab;
+    msg_ab.type = 1;
+    msg_ab.payload = payload_ab;
+    ASSERT_TRUE(a.send(msg_ab));
+
+    Message msg_ba;
+    msg_ba.type = 2;
+    msg_ba.payload = payload_ba;
+    ASSERT_TRUE(b.send(msg_ba));
+
+    auto recv_b = b.receive();
+    ASSERT_TRUE(recv_b.has_value());
+    EXPECT_EQ(recv_b->payload.size(), 4096u);
+    EXPECT_EQ(recv_b->payload, payload_ab);
+
+    auto recv_a = a.receive();
+    ASSERT_TRUE(recv_a.has_value());
+    EXPECT_EQ(recv_a->payload.size(), 4096u);
+    EXPECT_EQ(recv_a->payload, payload_ba);
+}
+
+TEST(MessageChannelTest, MessageChannelV129_3_DispatchHandlerInspectsPayloadContent) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel ch(std::move(pa));
+
+    uint32_t received_val = 0;
+    std::string received_str;
+    bool received_flag = false;
+
+    ch.on(50, [&](const Message& msg) {
+        Deserializer d(msg.payload.data(), msg.payload.size());
+        received_val = d.read_u32();
+        received_str = d.read_string();
+        received_flag = d.read_bool();
+    });
+
+    Serializer s;
+    s.write_u32(0xCAFEBABE);
+    s.write_string("payload_test");
+    s.write_bool(true);
+
+    Message msg;
+    msg.type = 50;
+    msg.payload = s.data();
+    ch.dispatch(msg);
+
+    EXPECT_EQ(received_val, 0xCAFEBABEu);
+    EXPECT_EQ(received_str, "payload_test");
+    EXPECT_TRUE(received_flag);
+}

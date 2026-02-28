@@ -24538,3 +24538,159 @@ TEST(LayoutNodeProps, SvgStrokeDashoffsetDefault0V128) {
     auto n = make_block();
     EXPECT_FLOAT_EQ(n->svg_stroke_dashoffset, 0.0f);
 }
+
+TEST(LayoutEngineTest, LayoutV129_1) {
+    auto root = make_flex("div");
+    root->specified_width = 400.0f;
+    root->specified_height = 300.0f;
+    root->flex_wrap = 1; // wrap
+
+    auto c1 = make_block("div");
+    c1->specified_width = 150.0f;
+    c1->specified_height = 50.0f;
+    auto* p1 = c1.get();
+
+    auto c2 = make_block("div");
+    c2->specified_width = 150.0f;
+    c2->specified_height = 50.0f;
+    auto* p2 = c2.get();
+
+    auto c3 = make_block("div");
+    c3->specified_width = 150.0f;
+    c3->specified_height = 50.0f;
+    auto* p3 = c3.get();
+
+    root->append_child(std::move(c1));
+    root->append_child(std::move(c2));
+    root->append_child(std::move(c3));
+
+    LayoutEngine engine;
+    engine.compute(*root, 400.0f, 600.0f);
+
+    // First two fit on first row (150+150=300 <= 400)
+    EXPECT_FLOAT_EQ(p1->geometry.y, p2->geometry.y);
+    // Third wraps to new row
+    EXPECT_GT(p3->geometry.y, p1->geometry.y);
+}
+
+TEST(GridLayout, GridBasicTwoByTwoV129) {
+    auto root = make_grid();
+    root->grid_template_columns = "200px 200px";
+    root->grid_template_rows = "200px 200px";
+    root->specified_width = 400.0f;
+
+    auto c1 = make_block("div");
+    c1->specified_height = 200.0f;
+    auto c2 = make_block("div");
+    c2->specified_height = 200.0f;
+    auto c3 = make_block("div");
+    c3->specified_height = 200.0f;
+    auto c4 = make_block("div");
+    c4->specified_height = 200.0f;
+
+    root->append_child(std::move(c1));
+    root->append_child(std::move(c2));
+    root->append_child(std::move(c3));
+    root->append_child(std::move(c4));
+
+    LayoutEngine engine;
+    engine.compute(*root, 400.0f, 600.0f);
+
+    // First row: children 0 and 1
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.x, 0.0f);
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.width, 200.0f);
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.x, 200.0f);
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.width, 200.0f);
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.y, root->children[1]->geometry.y);
+
+    // Second row: children 2 and 3
+    EXPECT_GT(root->children[2]->geometry.y, root->children[0]->geometry.y);
+    EXPECT_FLOAT_EQ(root->children[2]->geometry.x, 0.0f);
+    EXPECT_FLOAT_EQ(root->children[3]->geometry.x, 200.0f);
+}
+
+TEST(LayoutEngineTest, LayoutV129_3) {
+    auto root = make_block("div");
+    root->specified_width = 50.0f;
+    root->min_width = 100.0f;
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_GE(root->geometry.width, 100.0f);
+}
+
+TEST(LayoutEngineTest, LayoutV129_4) {
+    auto root = make_block("div");
+    root->specified_width = 500.0f;
+    root->max_width = 300.0f;
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_LE(root->geometry.width, 300.0f);
+}
+
+TEST(LayoutEngineTest, LayoutV129_5) {
+    auto root = make_block("div");
+    root->specified_width = 200.0f;
+    root->aspect_ratio = 2.0f;
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(root->geometry.width, 200.0f);
+    EXPECT_FLOAT_EQ(root->geometry.height, 100.0f);
+}
+
+TEST(LayoutEngineTest, LayoutV129_6) {
+    auto root = make_block("div");
+    root->specified_width = 150.0f;
+    root->min_width = 200.0f;
+    root->max_width = 100.0f;
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // When min_width > max_width, engine applies max_width last → width=100
+    EXPECT_FLOAT_EQ(root->geometry.width, 100.0f);
+}
+
+TEST(LayoutEngineTest, LayoutV129_7) {
+    auto root = make_flex("div");
+    root->specified_width = 200.0f;
+    root->specified_height = 300.0f;
+    root->flex_direction = 2; // column
+    root->justify_content = 3; // space-between
+
+    auto c1 = make_block("div");
+    c1->specified_height = 50.0f;
+    auto* p1 = c1.get();
+
+    auto c2 = make_block("div");
+    c2->specified_height = 50.0f;
+    auto* p2 = c2.get();
+
+    auto c3 = make_block("div");
+    c3->specified_height = 50.0f;
+    auto* p3 = c3.get();
+
+    root->append_child(std::move(c1));
+    root->append_child(std::move(c2));
+    root->append_child(std::move(c3));
+
+    LayoutEngine engine;
+    engine.compute(*root, 200.0f, 600.0f);
+
+    // space-between: first at top, last at bottom, middle evenly spaced
+    EXPECT_FLOAT_EQ(p1->geometry.y, 0.0f);
+    EXPECT_GT(p2->geometry.y, p1->geometry.y);
+    EXPECT_GT(p3->geometry.y, p2->geometry.y);
+    // Last child should end at container height
+    EXPECT_NEAR(p3->geometry.y + p3->geometry.height, 300.0f, 2.0f);
+}
+
+TEST(LayoutNodeProps, AspectRatioDefaultZeroV129) {
+    auto n = make_block();
+    EXPECT_FLOAT_EQ(n->aspect_ratio, 0.0f);
+}

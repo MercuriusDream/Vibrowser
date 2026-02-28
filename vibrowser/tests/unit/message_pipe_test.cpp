@@ -782,3 +782,28 @@ TEST(MessagePipeTest, MessagePipeV128_5_MoveAssignFromClosedPipe) {
     EXPECT_FALSE(dest.is_open());
     EXPECT_EQ(dest.fd(), -1);
 }
+
+TEST(MessagePipeTest, MessagePipeV129_1_PartialReceiveAfterSenderClose) {
+    auto [a, b] = MessagePipe::create_pair();
+    std::vector<uint8_t> data = {0x10, 0x20, 0x30, 0x40};
+    ASSERT_TRUE(a.send(data));
+    a.close();
+    EXPECT_FALSE(a.is_open());
+
+    auto received = b.receive();
+    ASSERT_TRUE(received.has_value());
+    EXPECT_EQ(*received, data);
+}
+
+TEST(MessagePipeTest, MessagePipeV129_2_MoveConstructPreservesState) {
+    auto [a, b] = MessagePipe::create_pair();
+    std::vector<uint8_t> data = {0xAA, 0xBB, 0xCC};
+    ASSERT_TRUE(a.send(data));
+
+    MessagePipe dest(std::move(b));
+    EXPECT_TRUE(dest.is_open());
+
+    auto received = dest.receive();
+    ASSERT_TRUE(received.has_value());
+    EXPECT_EQ(*received, data);
+}

@@ -9587,3 +9587,63 @@ TEST_F(CSSStylesheetTest, MarginTrimDeclarationV128) {
         if (d.property == "margin-trim") { found = true; break; }
     EXPECT_TRUE(found);
 }
+
+TEST_F(CSSStylesheetTest, AccentColorAutoDeclarationV129) {
+    auto ss = parse_stylesheet("div { accent-color: auto; }");
+    ASSERT_EQ(ss.rules.size(), 1);
+    bool found = false;
+    for (auto& d : ss.rules[0].declarations) {
+        if (d.property == "accent-color") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_NE(d.values[0].value.find("auto"), std::string::npos);
+            break;
+        }
+    }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, TextWrapPrettyDeclarationV129) {
+    auto ss = parse_stylesheet("p { text-wrap: pretty; }");
+    ASSERT_EQ(ss.rules.size(), 1);
+    bool found = false;
+    for (auto& d : ss.rules[0].declarations) {
+        if (d.property == "text-wrap") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_NE(d.values[0].value.find("pretty"), std::string::npos);
+            break;
+        }
+    }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, FieldSizingContentDeclarationV129) {
+    auto ss = parse_stylesheet("input { field-sizing: content; }");
+    ASSERT_EQ(ss.rules.size(), 1);
+    bool found = false;
+    for (auto& d : ss.rules[0].declarations) {
+        if (d.property == "field-sizing") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_NE(d.values[0].value.find("content"), std::string::npos);
+            break;
+        }
+    }
+    EXPECT_TRUE(found);
+}
+
+TEST_F(CSSStylesheetTest, InterpolateSizeDeclarationV129) {
+    auto ss = parse_stylesheet("div { interpolate-size: allow-keywords; }");
+    ASSERT_EQ(ss.rules.size(), 1);
+    bool found = false;
+    for (auto& d : ss.rules[0].declarations) {
+        if (d.property == "interpolate-size") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_NE(d.values[0].value.find("allow-keywords"), std::string::npos);
+            break;
+        }
+    }
+    EXPECT_TRUE(found);
+}

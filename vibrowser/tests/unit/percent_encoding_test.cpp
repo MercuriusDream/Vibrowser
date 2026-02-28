@@ -323,3 +323,40 @@ TEST(IsURLCodePoint, SurrogateAndNoncharacterRejected) {
     EXPECT_FALSE(is_url_code_point(0xFFFE));
     EXPECT_FALSE(is_url_code_point(0xFDD0));
 }
+
+TEST(PercentEncoding, FullRoundTripWithSpecialCharsV129) {
+    std::string input = "<>\"#%special&chars";
+    std::string encoded = percent_encode(input);
+    // Verify no raw special chars remain in encoded output
+    EXPECT_EQ(encoded.find('<'), std::string::npos);
+    EXPECT_EQ(encoded.find('>'), std::string::npos);
+    EXPECT_EQ(encoded.find('"'), std::string::npos);
+    EXPECT_EQ(encoded.find('#'), std::string::npos);
+    // Decode recovers original
+    EXPECT_EQ(percent_decode(encoded), input);
+}
+
+TEST(PercentDecoding, DecodeBoundaryByteZeroV129) {
+    std::string decoded = percent_decode("%00");
+    ASSERT_EQ(decoded.size(), 1u);
+    EXPECT_EQ(static_cast<unsigned char>(decoded[0]), 0x00u);
+}
+
+TEST(PercentDecoding, DecodeBoundaryByteFFV129) {
+    std::string decoded = percent_decode("%FF");
+    ASSERT_EQ(decoded.size(), 1u);
+    EXPECT_EQ(static_cast<unsigned char>(decoded[0]), 0xFFu);
+}
+
+TEST(IsURLCodePoint, BoundaryUnicodeCodePointsV129) {
+    // Control characters and C1 range should be rejected
+    EXPECT_FALSE(is_url_code_point(0x7F));    // DEL
+    EXPECT_FALSE(is_url_code_point(0x80));    // C1 control start
+    EXPECT_FALSE(is_url_code_point(0x9F));    // C1 control end
+    // U+00A0 (non-breaking space) and above should be accepted
+    EXPECT_TRUE(is_url_code_point(0x00A0));
+    // Last valid Unicode code point in planes (excluding noncharacters)
+    EXPECT_TRUE(is_url_code_point(0x10FFFD));
+    // U+10FFFE is a noncharacter — should be rejected
+    EXPECT_FALSE(is_url_code_point(0x10FFFE));
+}

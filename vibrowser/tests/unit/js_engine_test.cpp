@@ -34452,3 +34452,88 @@ TEST(JSEngine, JsV128_8) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "a=1|b=2|c=3|set:10,20,30");
 }
+
+TEST(JSEngine, JsV129_1) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var o = {a: 1, b: {c: 2}};
+        var clone = JSON.parse(JSON.stringify(o));
+        clone.b.c = 99;
+        String(o.b.c);
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "2");
+}
+
+TEST(JSEngine, JsV129_2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var a = [1,2,3,4,5].findLast(x => x < 4);
+        var b = [1,2,3,4,5].findLastIndex(x => x < 4);
+        String(a) + "|" + String(b);
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "3|2");
+}
+
+TEST(JSEngine, JsV129_3) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        try {
+            throw new Error("outer", {cause: new Error("inner")});
+        } catch(e) {
+            e.cause.message;
+        }
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "inner");
+}
+
+TEST(JSEngine, JsV129_4) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        typeof Atomics;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "object");
+}
+
+TEST(JSEngine, JsV129_5) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var a = "  hello  ".trimStart();
+        var b = "  hello  ".trimEnd();
+        a + "|" + b;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "hello  |  hello");
+}
+
+TEST(JSEngine, JsV129_6) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        String(Number.isInteger(1)) + " " + String(Number.isInteger(1.5)) + " " + String(Number.isInteger(NaN));
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true false false");
+}
+
+TEST(JSEngine, JsV129_7) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var e = Object.entries({a: 1, b: 2});
+        var o = Object.fromEntries(e);
+        String(o.a) + " " + String(o.b);
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1 2");
+}
+
+TEST(JSEngine, JsV129_8) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        Symbol("test").description;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "test");
+}

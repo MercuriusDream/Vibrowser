@@ -21587,3 +21587,94 @@ TEST(HtmlParserTest, HtmlV128_8) {
     EXPECT_NE(text.find("word"), std::string::npos);
     EXPECT_NE(text.find("break"), std::string::npos);
 }
+
+TEST(HtmlParserTest, HtmlV129_1) {
+    auto doc = clever::html::parse("<html><body><datalist id='browsers'><option value='Chrome'><option value='Firefox'></datalist></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* datalist = doc->find_element("datalist");
+    ASSERT_NE(datalist, nullptr);
+    EXPECT_EQ(get_attr_v63(datalist, "id"), "browsers");
+
+    auto options = doc->find_all_elements("option");
+    EXPECT_GE(options.size(), 2u);
+}
+
+TEST(HtmlParserTest, HtmlV129_2) {
+    auto doc = clever::html::parse("<html><body><output for='a b'>Result</output></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* output = doc->find_element("output");
+    ASSERT_NE(output, nullptr);
+    EXPECT_EQ(output->tag_name, "output");
+    EXPECT_EQ(output->text_content(), "Result");
+}
+
+TEST(HtmlParserTest, HtmlV129_3) {
+    auto doc = clever::html::parse("<html><body><meter min='0' max='100' low='25' high='75' optimum='50' value='60'></meter></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* meter = doc->find_element("meter");
+    ASSERT_NE(meter, nullptr);
+    EXPECT_EQ(get_attr_v63(meter, "min"), "0");
+    EXPECT_EQ(get_attr_v63(meter, "max"), "100");
+    EXPECT_EQ(get_attr_v63(meter, "low"), "25");
+    EXPECT_EQ(get_attr_v63(meter, "high"), "75");
+    EXPECT_EQ(get_attr_v63(meter, "optimum"), "50");
+    EXPECT_EQ(get_attr_v63(meter, "value"), "60");
+}
+
+TEST(HtmlParserTest, HtmlV129_4) {
+    auto doc = clever::html::parse("<html><body><progress value='70' max='100'></progress></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* progress = doc->find_element("progress");
+    ASSERT_NE(progress, nullptr);
+    EXPECT_EQ(get_attr_v63(progress, "value"), "70");
+    EXPECT_EQ(get_attr_v63(progress, "max"), "100");
+}
+
+TEST(HtmlParserTest, HtmlV129_5) {
+    auto doc = clever::html::parse("<html><body><fieldset><legend>Info</legend><input type='text'></fieldset></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* fieldset = doc->find_element("fieldset");
+    auto* legend = doc->find_element("legend");
+    auto* input = doc->find_element("input");
+    ASSERT_NE(fieldset, nullptr);
+    ASSERT_NE(legend, nullptr);
+    ASSERT_NE(input, nullptr);
+    EXPECT_EQ(legend->text_content(), "Info");
+}
+
+TEST(HtmlParserTest, HtmlV129_6) {
+    auto doc = clever::html::parse("<html><body><table><colgroup><col span='2'><col></colgroup></table></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* colgroup = doc->find_element("colgroup");
+    ASSERT_NE(colgroup, nullptr);
+
+    auto cols = doc->find_all_elements("col");
+    EXPECT_GE(cols.size(), 2u);
+}
+
+TEST(HtmlParserTest, HtmlV129_7) {
+    auto doc = clever::html::parse("<html><body><table><caption>Title</caption><tr><td>Cell</td></tr></table></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* caption = doc->find_element("caption");
+    ASSERT_NE(caption, nullptr);
+    EXPECT_EQ(caption->text_content(), "Title");
+}
+
+TEST(HtmlParserTest, HtmlV129_8) {
+    auto doc = clever::html::parse("<html><body><table><thead><tr><th>H</th></tr></thead><tbody><tr><td>B</td></tr></tbody><tfoot><tr><td>F</td></tr></tfoot></table></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* thead = doc->find_element("thead");
+    auto* tbody = doc->find_element("tbody");
+    auto* tfoot = doc->find_element("tfoot");
+    ASSERT_NE(thead, nullptr);
+    ASSERT_NE(tbody, nullptr);
+    ASSERT_NE(tfoot, nullptr);
+}

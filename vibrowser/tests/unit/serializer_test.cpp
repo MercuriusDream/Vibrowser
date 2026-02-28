@@ -19594,3 +19594,46 @@ TEST(SerializerTest, SerializerV128_3_MultipleConsecutiveStringsWithNulBytes) {
 
     EXPECT_FALSE(d.has_remaining());
 }
+
+TEST(SerializerTest, SerializerV129_1_LargePayloadWriteBytesRoundTrip) {
+    Serializer s;
+    std::vector<uint8_t> buf(65536);
+    for (size_t i = 0; i < buf.size(); ++i) {
+        buf[i] = static_cast<uint8_t>(i % 256);
+    }
+    s.write_bytes(buf.data(), buf.size());
+
+    Deserializer d(s.data());
+    auto out = d.read_bytes();
+    ASSERT_EQ(out.size(), 65536u);
+    for (size_t i = 0; i < out.size(); ++i) {
+        EXPECT_EQ(out[i], static_cast<uint8_t>(i % 256));
+    }
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, SerializerV129_2_BoolSequenceAlternatingRoundTrip) {
+    Serializer s;
+    for (int i = 0; i < 16; ++i) {
+        s.write_bool(i % 2 == 0);
+    }
+
+    Deserializer d(s.data());
+    for (int i = 0; i < 16; ++i) {
+        EXPECT_EQ(d.read_bool(), (i % 2 == 0));
+    }
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, SerializerV129_3_EmptyStringSequenceRoundTrip) {
+    Serializer s;
+    for (int i = 0; i < 10; ++i) {
+        s.write_string("");
+    }
+
+    Deserializer d(s.data());
+    for (int i = 0; i < 10; ++i) {
+        EXPECT_EQ(d.read_string(), "");
+    }
+    EXPECT_FALSE(d.has_remaining());
+}

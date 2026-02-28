@@ -10317,3 +10317,113 @@ TEST(CORSPolicyTest, CorsV128_8_CorsAllowsResponseACAOWithInvalidHighBitOctetRej
                                       "https://api.example.com/data",
                                       h, false));
 }
+
+// ---------------------------------------------------------------------------
+// V129 — CORS policy additional tests
+// ---------------------------------------------------------------------------
+
+TEST(CORSPolicyTest, CorsV129_1_EnforceabilityRejectsDataAndBlobOrigins) {
+    // data: origins are NOT enforceable
+    EXPECT_FALSE(has_enforceable_document_origin("data:text/html,<h1>hello</h1>"));
+    // blob: origins are NOT enforceable
+    EXPECT_FALSE(has_enforceable_document_origin("blob:https://example.com/some-uuid"));
+    // http:// and https:// origins ARE enforceable
+    EXPECT_TRUE(has_enforceable_document_origin("http://example.com"));
+    EXPECT_TRUE(has_enforceable_document_origin("https://example.com"));
+}
+
+TEST(CORSPolicyTest, CorsV129_2_CorsAllowsResponseWildcardBlocksCredentialedRequest) {
+    // Wildcard ACAO without credentials → allowed
+    clever::net::HeaderMap h1;
+    h1.set("Access-Control-Allow-Origin", "*");
+    EXPECT_TRUE(cors_allows_response("http://a.com",
+                                     "https://api.example.com/data",
+                                     h1, false));
+
+    // Wildcard ACAO with credentials → NOT allowed
+    clever::net::HeaderMap h2;
+    h2.set("Access-Control-Allow-Origin", "*");
+    h2.set("Access-Control-Allow-Credentials", "true");
+    EXPECT_FALSE(cors_allows_response("http://a.com",
+                                      "https://api.example.com/data",
+                                      h2, true));
+}
+
+TEST(CORSPolicyTest, CorsV129_3_CrossOriginCaseSensitiveSchemeComparison) {
+    // Schemes are case-insensitive: HTTPS == https → same origin
+    EXPECT_FALSE(is_cross_origin("HTTPS://example.com", "https://example.com"));
+    // Different hosts → cross-origin
+    EXPECT_TRUE(is_cross_origin("https://a.com", "https://b.com"));
+}
+
+TEST(CORSPolicyTest, CorsV129_4_ACAOHeaderWithLeadingTrailingWhitespaceRejects) {
+    // Leading whitespace in ACAO value → mismatch, NOT allowed
+    clever::net::HeaderMap h1;
+    h1.set("Access-Control-Allow-Origin", " https://example.com");
+    EXPECT_FALSE(cors_allows_response("https://example.com",
+                                      "https://api.example.com/data",
+                                      h1, false));
+
+    // Trailing whitespace in ACAO value → mismatch, NOT allowed
+    clever::net::HeaderMap h2;
+    h2.set("Access-Control-Allow-Origin", "https://example.com ");
+    EXPECT_FALSE(cors_allows_response("https://example.com",
+                                      "https://api.example.com/data",
+                                      h2, false));
+}
+
+TEST(CORSPolicyTest, CorsV129_5_ShouldAttachOriginHeaderCrossOriginSubdomain) {
+    // Different subdomains → cross-origin → should attach Origin header
+    EXPECT_TRUE(should_attach_origin_header("https://sub1.example.com",
+                                             "https://sub2.example.com"));
+    // Same origin → should NOT attach Origin header
+    EXPECT_FALSE(should_attach_origin_header("https://example.com",
+                                              "https://example.com"));
+}
+
+TEST(CORSPolicyTest, CorsV129_6_NormalizeOriginHeaderRemovesForNonEnforceableOrigin) {
+    // data: origin → not enforceable, Origin header removed or set to "null"
+    clever::net::HeaderMap data_hdrs;
+    data_hdrs.set("Origin", "https://evil.example");
+    normalize_outgoing_origin_header(data_hdrs, "data:text/html,<p>hello</p>",
+                                     "https://api.example.com/data");
+    auto data_val = data_hdrs.get("Origin");
+    EXPECT_TRUE(!data_val.has_value() || data_val.value() == "null");
+
+    // blob: origin → not enforceable, Origin header removed or set to "null"
+    clever::net::HeaderMap blob_hdrs;
+    blob_hdrs.set("Origin", "https://evil.example");
+    normalize_outgoing_origin_header(blob_hdrs, "blob:https://example.com/uuid",
+                                     "https://api.example.com/data");
+    auto blob_val = blob_hdrs.get("Origin");
+    EXPECT_TRUE(!blob_val.has_value() || blob_val.value() == "null");
+
+    // about:blank origin → not enforceable, Origin header removed or set to "null"
+    clever::net::HeaderMap about_hdrs;
+    about_hdrs.set("Origin", "https://evil.example");
+    normalize_outgoing_origin_header(about_hdrs, "about:blank",
+                                     "https://api.example.com/data");
+    auto about_val = about_hdrs.get("Origin");
+    EXPECT_TRUE(!about_val.has_value() || about_val.value() == "null");
+}
+
+TEST(CORSPolicyTest, CorsV129_7_CorsEligibilityRejectsUrlsWithPercentEncodedAtSign) {
+    // Percent-encoded @ (%40) in authority → not eligible
+    EXPECT_FALSE(is_cors_eligible_request_url("https://user%40host@example.com/path"));
+}
+
+TEST(CORSPolicyTest, CorsV129_8_CorsAllowsResponseExactOriginMatchWithPortV129) {
+    // ACAO with non-default port :8080 vs origin on :8081 → mismatch
+    clever::net::HeaderMap h;
+    h.set("Access-Control-Allow-Origin", "https://example.com:8080");
+    EXPECT_FALSE(cors_allows_response("https://example.com:8081",
+                                      "https://api.example.com/data",
+                                      h, false));
+
+    // ACAO with non-default port :8080 matching origin on :8080 → allowed
+    clever::net::HeaderMap h2;
+    h2.set("Access-Control-Allow-Origin", "https://example.com:8080");
+    EXPECT_TRUE(cors_allows_response("https://example.com:8080",
+                                     "https://api.example.com/data",
+                                     h2, false));
+}

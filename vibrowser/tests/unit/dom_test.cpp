@@ -19782,3 +19782,114 @@ TEST(DomEvent, StopImmediatePropagationAlsoStopsPropagationV128) {
     EXPECT_TRUE(event.immediate_propagation_stopped());
     EXPECT_TRUE(event.propagation_stopped());
 }
+
+// ---------------------------------------------------------------------------
+// V129 Tests
+// ---------------------------------------------------------------------------
+
+TEST(DomNode, InsertBeforeFirstChildMovesExistingSiblingsV129) {
+    Element parent("div");
+    auto a = std::make_unique<Element>("a");
+    Node* a_raw = a.get();
+    parent.append_child(std::move(a));
+
+    auto b = std::make_unique<Element>("b");
+    Node* b_raw = b.get();
+    parent.insert_before(std::move(b), a_raw);
+
+    EXPECT_EQ(parent.first_child(), b_raw);
+    EXPECT_EQ(b_raw->next_sibling(), a_raw);
+    EXPECT_EQ(a_raw->previous_sibling(), b_raw);
+    EXPECT_EQ(parent.child_count(), 2u);
+}
+
+TEST(DomElement, SetAttributeOverwritePreservesCountV129) {
+    Element elem("div");
+    elem.set_attribute("data-x", "1");
+    elem.set_attribute("data-x", "2");
+
+    EXPECT_EQ(elem.attributes().size(), 1u);
+    auto val = elem.get_attribute("data-x");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(val.value(), "2");
+}
+
+TEST(DomDocument, UnregisterIdMakesGetElementByIdReturnNullV129) {
+    Document doc;
+    auto elem = std::make_unique<Element>("div");
+    Element* elem_ptr = elem.get();
+    elem_ptr->set_attribute("id", "test");
+    doc.register_id("test", elem_ptr);
+
+    EXPECT_NE(doc.get_element_by_id("test"), nullptr);
+    EXPECT_EQ(doc.get_element_by_id("test"), elem_ptr);
+
+    doc.unregister_id("test");
+    EXPECT_EQ(doc.get_element_by_id("test"), nullptr);
+}
+
+TEST(DomEvent, NonBubblingEventPhaseRemainsAtTargetV129) {
+    Event event("load", false, true);
+    EXPECT_FALSE(event.bubbles());
+    EXPECT_TRUE(event.cancelable());
+
+    event.prevent_default();
+    EXPECT_TRUE(event.default_prevented());
+}
+
+TEST(DomNode, TextContentConcatenatesNestedElementTextRecursivelyV129) {
+    Element div("div");
+    auto span = std::make_unique<Element>("span");
+    Node* span_raw = span.get();
+
+    auto t1 = std::make_unique<Text>("Hello ");
+    auto t2 = std::make_unique<Text>("World");
+    span_raw->append_child(std::move(t1));
+    span_raw->append_child(std::move(t2));
+
+    div.append_child(std::move(span));
+
+    EXPECT_EQ(div.text_content(), "Hello World");
+}
+
+TEST(DomElement, ClassListAddDuplicateDoesNotIncreaseLengthV129) {
+    Element elem("div");
+    elem.class_list().add("highlight");
+    elem.class_list().add("highlight");
+
+    EXPECT_EQ(elem.class_list().length(), 1u);
+    EXPECT_TRUE(elem.class_list().contains("highlight"));
+}
+
+TEST(DomNode, DirtyFlagsAllSetsCombinedStyleLayoutPaintV129) {
+    Element elem("div");
+    elem.mark_dirty(DirtyFlags::All);
+
+    EXPECT_NE(elem.dirty_flags() & DirtyFlags::Style, DirtyFlags::None);
+    EXPECT_NE(elem.dirty_flags() & DirtyFlags::Layout, DirtyFlags::None);
+    EXPECT_NE(elem.dirty_flags() & DirtyFlags::Paint, DirtyFlags::None);
+
+    elem.clear_dirty();
+    EXPECT_EQ(elem.dirty_flags() & DirtyFlags::All, DirtyFlags::None);
+}
+
+TEST(DomNode, RemoveFirstChildUpdatesFirstChildPointerAndSiblingsV129) {
+    Element parent("div");
+    auto a = std::make_unique<Element>("a");
+    Node* a_raw = a.get();
+    auto b = std::make_unique<Element>("b");
+    Node* b_raw = b.get();
+    auto c = std::make_unique<Element>("c");
+    Node* c_raw = c.get();
+
+    parent.append_child(std::move(a));
+    parent.append_child(std::move(b));
+    parent.append_child(std::move(c));
+
+    parent.remove_child(*a_raw);
+
+    EXPECT_EQ(parent.first_child(), b_raw);
+    EXPECT_EQ(b_raw->previous_sibling(), nullptr);
+    EXPECT_EQ(b_raw->next_sibling(), c_raw);
+    EXPECT_EQ(parent.child_count(), 2u);
+}
