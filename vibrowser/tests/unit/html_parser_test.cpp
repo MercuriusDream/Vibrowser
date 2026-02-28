@@ -18094,3 +18094,174 @@ TEST(HtmlParser, DataAndClassAttributesV111) {
     EXPECT_EQ(get_attr_v63(span, "class"), "highlight");
     EXPECT_EQ(span->text_content(), "Important");
 }
+
+// ============================================================================
+// V112 Tests
+// ============================================================================
+
+// 1. Nested lists with mixed content
+TEST(HtmlParser, NestedListsMixedContentV112) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<ul><li>Alpha<ul><li>Beta</li><li>Gamma</li></ul></li><li>Delta</li></ul>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto lis = doc->find_all_elements("li");
+    ASSERT_GE(lis.size(), 4u);
+    EXPECT_EQ(lis[1]->text_content(), "Beta");
+    EXPECT_EQ(lis[2]->text_content(), "Gamma");
+    EXPECT_EQ(lis[3]->text_content(), "Delta");
+    auto uls = doc->find_all_elements("ul");
+    ASSERT_GE(uls.size(), 2u);
+}
+
+// 2. Table with thead, tbody, and tfoot sections
+TEST(HtmlParser, TableSectionsTheadTbodyTfootV112) {
+    auto doc = clever::html::parse(
+        "<html><body><table>"
+        "<thead><tr><th>Name</th><th>Age</th></tr></thead>"
+        "<tbody><tr><td>Alice</td><td>30</td></tr></tbody>"
+        "<tfoot><tr><td colspan=\"2\">Total: 1</td></tr></tfoot>"
+        "</table></body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* thead = doc->find_element("thead");
+    ASSERT_NE(thead, nullptr);
+    auto* tbody = doc->find_element("tbody");
+    ASSERT_NE(tbody, nullptr);
+    auto* tfoot = doc->find_element("tfoot");
+    ASSERT_NE(tfoot, nullptr);
+    auto ths = doc->find_all_elements("th");
+    ASSERT_GE(ths.size(), 2u);
+    EXPECT_EQ(ths[0]->text_content(), "Name");
+    EXPECT_EQ(ths[1]->text_content(), "Age");
+    auto tds = doc->find_all_elements("td");
+    ASSERT_GE(tds.size(), 3u);
+    EXPECT_EQ(tds[0]->text_content(), "Alice");
+    EXPECT_EQ(get_attr_v63(tds[2], "colspan"), "2");
+}
+
+// 3. Definition list with dt and dd elements
+TEST(HtmlParser, DefinitionListDtDdV112) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<dl><dt>Term1</dt><dd>Def1</dd><dt>Term2</dt><dd>Def2</dd></dl>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto dts = doc->find_all_elements("dt");
+    auto dds = doc->find_all_elements("dd");
+    ASSERT_EQ(dts.size(), 2u);
+    ASSERT_EQ(dds.size(), 2u);
+    EXPECT_EQ(dts[0]->text_content(), "Term1");
+    EXPECT_EQ(dts[1]->text_content(), "Term2");
+    EXPECT_EQ(dds[0]->text_content(), "Def1");
+    EXPECT_EQ(dds[1]->text_content(), "Def2");
+}
+
+// 4. Multiple inline elements preserving text content order
+TEST(HtmlParser, InlineElementsTextContentOrderV112) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<p><strong>Bold</strong> and <em>italic</em> and <code>code</code></p>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* p = doc->find_element("p");
+    ASSERT_NE(p, nullptr);
+    EXPECT_EQ(p->text_content(), "Bold and italic and code");
+    auto* strong = doc->find_element("strong");
+    ASSERT_NE(strong, nullptr);
+    EXPECT_EQ(strong->text_content(), "Bold");
+    auto* em = doc->find_element("em");
+    ASSERT_NE(em, nullptr);
+    EXPECT_EQ(em->text_content(), "italic");
+    auto* code = doc->find_element("code");
+    ASSERT_NE(code, nullptr);
+    EXPECT_EQ(code->text_content(), "code");
+}
+
+// 5. Anchor tags with href and target attributes
+TEST(HtmlParser, AnchorTagsHrefTargetV112) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<a href=\"https://example.com\" target=\"_blank\" rel=\"noopener\">Link1</a>"
+        "<a href=\"/about\">Link2</a>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto anchors = doc->find_all_elements("a");
+    ASSERT_EQ(anchors.size(), 2u);
+    EXPECT_EQ(get_attr_v63(anchors[0], "href"), "https://example.com");
+    EXPECT_EQ(get_attr_v63(anchors[0], "target"), "_blank");
+    EXPECT_EQ(get_attr_v63(anchors[0], "rel"), "noopener");
+    EXPECT_EQ(anchors[0]->text_content(), "Link1");
+    EXPECT_EQ(get_attr_v63(anchors[1], "href"), "/about");
+    EXPECT_EQ(anchors[1]->text_content(), "Link2");
+}
+
+// 6. Deeply nested divs with text at each level
+TEST(HtmlParser, DeeplyNestedDivsTextAtEachLevelV112) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<div>L1<div>L2<div>L3<div>L4</div></div></div></div>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto divs = doc->find_all_elements("div");
+    ASSERT_GE(divs.size(), 4u);
+    // Outermost div contains all text via recursive text_content
+    EXPECT_EQ(divs[0]->text_content(), "L1L2L3L4");
+    // Innermost div has only its own text
+    EXPECT_EQ(divs[3]->text_content(), "L4");
+    EXPECT_EQ(divs[2]->text_content(), "L3L4");
+    EXPECT_EQ(divs[1]->text_content(), "L2L3L4");
+}
+
+// 7. Image map with area elements
+TEST(HtmlParser, ImageMapWithAreaElementsV112) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<map name=\"infographic\">"
+        "<area shape=\"rect\" coords=\"0,0,100,100\" href=\"/region1\" alt=\"Region1\"/>"
+        "<area shape=\"circle\" coords=\"200,200,50\" href=\"/region2\" alt=\"Region2\"/>"
+        "</map>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* map = doc->find_element("map");
+    ASSERT_NE(map, nullptr);
+    EXPECT_EQ(get_attr_v63(map, "name"), "infographic");
+    auto areas = doc->find_all_elements("area");
+    ASSERT_EQ(areas.size(), 2u);
+    EXPECT_EQ(get_attr_v63(areas[0], "shape"), "rect");
+    EXPECT_EQ(get_attr_v63(areas[0], "coords"), "0,0,100,100");
+    EXPECT_EQ(get_attr_v63(areas[0], "href"), "/region1");
+    EXPECT_EQ(get_attr_v63(areas[1], "shape"), "circle");
+    EXPECT_EQ(get_attr_v63(areas[1], "alt"), "Region2");
+}
+
+// 8. Fieldset with legend and mixed form controls
+TEST(HtmlParser, FieldsetLegendMixedControlsV112) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<fieldset>"
+        "<legend>Personal Info</legend>"
+        "<label>Name: <input type=\"text\" name=\"fname\"/></label>"
+        "<label>Email: <input type=\"email\" name=\"email\"/></label>"
+        "<select name=\"country\"><option value=\"us\">US</option><option value=\"uk\">UK</option></select>"
+        "</fieldset>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* fieldset = doc->find_element("fieldset");
+    ASSERT_NE(fieldset, nullptr);
+    auto* legend = doc->find_element("legend");
+    ASSERT_NE(legend, nullptr);
+    EXPECT_EQ(legend->text_content(), "Personal Info");
+    auto inputs = doc->find_all_elements("input");
+    ASSERT_EQ(inputs.size(), 2u);
+    EXPECT_EQ(get_attr_v63(inputs[0], "type"), "text");
+    EXPECT_EQ(get_attr_v63(inputs[0], "name"), "fname");
+    EXPECT_EQ(get_attr_v63(inputs[1], "type"), "email");
+    EXPECT_EQ(get_attr_v63(inputs[1], "name"), "email");
+    auto options = doc->find_all_elements("option");
+    ASSERT_EQ(options.size(), 2u);
+    EXPECT_EQ(get_attr_v63(options[0], "value"), "us");
+    EXPECT_EQ(options[0]->text_content(), "US");
+    EXPECT_EQ(get_attr_v63(options[1], "value"), "uk");
+    EXPECT_EQ(options[1]->text_content(), "UK");
+}

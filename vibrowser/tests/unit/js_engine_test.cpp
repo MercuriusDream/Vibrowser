@@ -29977,3 +29977,459 @@ TEST(JSEngine, RegexAdvancedFeaturesV111) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "2024/03/15|3|world hello|6 cats and 10 dogs|true|true|false|one,two,three|a,1,b,2,c,3,");
 }
+
+// ============================================================================
+// V112-1. Closure variable capture and IIFE patterns
+// ============================================================================
+TEST(JSEngine, ClosureVariableCaptureAndIIFE_V112) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var r = [];
+
+        // Closure capturing outer variable
+        function makeCounter(start) {
+            var count = start;
+            return {
+                inc: function() { count++; return count; },
+                dec: function() { count--; return count; },
+                get: function() { return count; }
+            };
+        }
+        var c = makeCounter(10);
+        c.inc(); c.inc(); c.dec();
+        r.push(c.get());
+
+        // IIFE with parameter shadowing
+        var x = 99;
+        var iife = (function(x) { return x * 2; })(7);
+        r.push(iife);
+        r.push(x);
+
+        // Closure over loop variable via IIFE
+        var fns = [];
+        for (var i = 0; i < 5; i++) {
+            fns.push((function(j) { return function() { return j; }; })(i));
+        }
+        r.push(fns[0]() + "," + fns[2]() + "," + fns[4]());
+
+        // Nested closures
+        function outer(a) {
+            return function middle(b) {
+                return function inner(c) {
+                    return a + b + c;
+                };
+            };
+        }
+        r.push(outer(1)(2)(3));
+
+        r.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "11|14|99|0,2,4|6");
+}
+
+// ============================================================================
+// V112-2. Map and Set advanced operations
+// ============================================================================
+TEST(JSEngine, MapAndSetAdvancedOps_V112) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var r = [];
+
+        // Map with various key types
+        var m = new Map();
+        m.set("str", 1);
+        m.set(42, 2);
+        m.set(true, 3);
+        r.push(m.size);
+        r.push(m.get("str"));
+        r.push(m.get(42));
+        r.push(m.has(false));
+
+        // Map iteration order preserves insertion
+        var m2 = new Map();
+        m2.set("c", 3);
+        m2.set("a", 1);
+        m2.set("b", 2);
+        var keys = [];
+        m2.forEach(function(v, k) { keys.push(k); });
+        r.push(keys.join(","));
+
+        // Set deduplication
+        var s = new Set([1, 2, 3, 2, 1, 4]);
+        r.push(s.size);
+        s.delete(2);
+        r.push(s.has(2));
+        r.push(s.has(3));
+
+        // Set from string characters
+        var charSet = new Set("abracadabra".split(""));
+        r.push(Array.from(charSet).sort().join(""));
+
+        r.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "3|1|2|false|c,a,b|4|false|true|abcdr");
+}
+
+// ============================================================================
+// V112-3. Generator functions and iteration protocol
+// ============================================================================
+TEST(JSEngine, GeneratorFunctionsAndIteration_V112) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var r = [];
+
+        // Basic generator
+        function* range(start, end) {
+            for (var i = start; i < end; i++) {
+                yield i;
+            }
+        }
+        var vals = [];
+        var it = range(3, 7);
+        var step;
+        while (!(step = it.next()).done) {
+            vals.push(step.value);
+        }
+        r.push(vals.join(","));
+
+        // Generator with return value
+        function* genReturn() {
+            yield 10;
+            yield 20;
+            return 30;
+        }
+        var g = genReturn();
+        r.push(g.next().value);
+        r.push(g.next().value);
+        var last = g.next();
+        r.push(last.value);
+        r.push(last.done);
+
+        // Fibonacci generator
+        function* fib() {
+            var a = 0, b = 1;
+            while (true) {
+                yield a;
+                var t = a + b;
+                a = b;
+                b = t;
+            }
+        }
+        var f = fib();
+        var fibs = [];
+        for (var i = 0; i < 8; i++) fibs.push(f.next().value);
+        r.push(fibs.join(","));
+
+        r.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "3,4,5,6|10|20|30|true|0,1,1,2,3,5,8,13");
+}
+
+// ============================================================================
+// V112-4. Symbol usage and well-known symbols
+// ============================================================================
+TEST(JSEngine, SymbolUsageAndWellKnown_V112) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var r = [];
+
+        // Basic symbol creation and uniqueness
+        var s1 = Symbol("foo");
+        var s2 = Symbol("foo");
+        r.push(s1 === s2);
+        r.push(typeof s1);
+
+        // Symbol as property key
+        var sym = Symbol("hidden");
+        var obj = {};
+        obj[sym] = 42;
+        obj.visible = 100;
+        r.push(obj[sym]);
+        r.push(Object.keys(obj).length);
+
+        // Symbol.for creates shared symbols
+        var g1 = Symbol.for("shared");
+        var g2 = Symbol.for("shared");
+        r.push(g1 === g2);
+        r.push(Symbol.keyFor(g1));
+
+        // Symbol.iterator custom iterable
+        var iterable = {};
+        iterable[Symbol.iterator] = function() {
+            var i = 1;
+            return {
+                next: function() {
+                    if (i <= 3) return { value: i++, done: false };
+                    return { value: undefined, done: true };
+                }
+            };
+        };
+        var collected = [];
+        for (var v of iterable) collected.push(v);
+        r.push(collected.join(","));
+
+        // Symbol.toPrimitive
+        var custom = {};
+        custom[Symbol.toPrimitive] = function(hint) {
+            if (hint === "number") return 7;
+            return "custom";
+        };
+        r.push(+custom);
+        r.push("" + custom);
+
+        r.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "false|symbol|42|1|true|shared|1,2,3|7|custom");
+}
+
+// ============================================================================
+// V112-5. Proxy with handler traps
+// ============================================================================
+TEST(JSEngine, ProxyWithHandlerTraps_V112) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var r = [];
+
+        // get trap with default values
+        var defaults = new Proxy({}, {
+            get: function(target, prop) {
+                return prop in target ? target[prop] : "default_" + prop;
+            }
+        });
+        defaults.name = "hello";
+        r.push(defaults.name);
+        r.push(defaults.missing);
+
+        // set trap with validation
+        var validated = new Proxy({}, {
+            set: function(target, prop, value) {
+                if (typeof value !== "number") return false;
+                target[prop] = value * 2;
+                return true;
+            }
+        });
+        validated.x = 5;
+        r.push(validated.x);
+
+        // has trap
+        var range = new Proxy({}, {
+            has: function(target, prop) {
+                var n = Number(prop);
+                return n >= 1 && n <= 10;
+            }
+        });
+        r.push(5 in range);
+        r.push(15 in range);
+
+        // apply trap on function proxy
+        var twice = new Proxy(function(x) { return x; }, {
+            apply: function(target, thisArg, args) {
+                return target.apply(thisArg, args) * 2;
+            }
+        });
+        r.push(twice(21));
+
+        // Proxy wrapping an array
+        var logged = [];
+        var arrProxy = new Proxy([10, 20, 30], {
+            get: function(target, prop) {
+                if (prop === "length") return target.length;
+                logged.push(prop);
+                return target[prop];
+            }
+        });
+        r.push(arrProxy[1]);
+        r.push(logged.join(","));
+
+        r.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "hello|default_missing|10|true|false|42|20|1");
+}
+
+// ============================================================================
+// V112-6. Template literal advanced patterns and tagged templates
+// ============================================================================
+TEST(JSEngine, TemplateLiteralAdvancedPatterns_V112) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var r = [];
+
+        // Nested template literals
+        var a = 3, b = 4;
+        r.push(`${a} + ${b} = ${a + b}`);
+
+        // Expression in template
+        r.push(`${[1,2,3].map(function(x){return x*x;}).join(",")}`);
+
+        // Multi-line template
+        var multi = `line1
+line2
+line3`;
+        r.push(multi.split("\n").length);
+
+        // Tagged template function
+        function upper(strings) {
+            var vals = [];
+            for (var i = 1; i < arguments.length; i++) vals.push(arguments[i]);
+            var result = "";
+            for (var i = 0; i < strings.length; i++) {
+                result += strings[i];
+                if (i < vals.length) result += String(vals[i]).toUpperCase();
+            }
+            return result;
+        }
+        var name = "world";
+        var greeting = upper`hello ${name} and ${name + "!"}`;
+        r.push(greeting);
+
+        // Template with ternary
+        var flag = true;
+        r.push(`value is ${flag ? "yes" : "no"}`);
+
+        // Nested function call in template
+        function double(n) { return n * 2; }
+        r.push(`doubled: ${double(16)}`);
+
+        r.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "3 + 4 = 7|1,4,9|3|hello WORLD and WORLD!|value is yes|doubled: 32");
+}
+
+// ============================================================================
+// V112-7. Error handling: try/catch/finally and custom errors
+// ============================================================================
+TEST(JSEngine, ErrorHandlingTryCatchFinally_V112) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var r = [];
+
+        // Basic try/catch
+        try {
+            throw new Error("boom");
+        } catch(e) {
+            r.push(e.message);
+        }
+
+        // Finally always runs
+        var seq = [];
+        try {
+            seq.push("try");
+            throw "err";
+        } catch(e) {
+            seq.push("catch");
+        } finally {
+            seq.push("finally");
+        }
+        r.push(seq.join(","));
+
+        // Custom error types
+        try {
+            null.property;
+        } catch(e) {
+            r.push(e instanceof TypeError);
+        }
+
+        try {
+            eval("{{{{");
+        } catch(e) {
+            r.push(e instanceof SyntaxError);
+        }
+
+        // Nested try/catch
+        var outer = "none";
+        try {
+            try {
+                throw new RangeError("inner");
+            } catch(e) {
+                outer = e.message;
+                throw new Error("rethrown");
+            }
+        } catch(e) {
+            r.push(outer);
+            r.push(e.message);
+        }
+
+        // Finally with return value override
+        function finallyReturn() {
+            try {
+                return "try";
+            } finally {
+                return "finally";
+            }
+        }
+        r.push(finallyReturn());
+
+        // Error properties
+        try {
+            var e = new Error("test");
+            e.code = 404;
+            throw e;
+        } catch(err) {
+            r.push(err.code);
+            r.push(err.message);
+        }
+
+        r.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "boom|try,catch,finally|true|true|inner|rethrown|finally|404|test");
+}
+
+// ============================================================================
+// V112-8. WeakMap/WeakRef, Object.assign, and destructuring
+// ============================================================================
+TEST(JSEngine, WeakMapObjectAssignDestructuring_V112) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var r = [];
+
+        // Object.assign merging
+        var target = {a: 1, b: 2};
+        var source1 = {b: 3, c: 4};
+        var source2 = {d: 5};
+        var merged = Object.assign(target, source1, source2);
+        r.push(merged.a + "," + merged.b + "," + merged.c + "," + merged.d);
+        r.push(merged === target);
+
+        // Object.assign shallow copy
+        var orig = {x: {nested: true}};
+        var copy = Object.assign({}, orig);
+        copy.x.nested = false;
+        r.push(orig.x.nested);
+
+        // Destructuring assignment - array
+        var arr = [10, 20, 30, 40];
+        var [first, , third] = arr;
+        r.push(first + "," + third);
+
+        // Destructuring with rest
+        var [head, ...tail] = [1, 2, 3, 4, 5];
+        r.push(head);
+        r.push(tail.join(","));
+
+        // Destructuring assignment - object
+        var {name: n, age: a, job = "unknown"} = {name: "Alice", age: 30};
+        r.push(n + "," + a + "," + job);
+
+        // Spread in array
+        var a1 = [1, 2];
+        var a2 = [3, 4];
+        var combined = [...a1, ...a2, 5];
+        r.push(combined.join(","));
+
+        // Spread in object
+        var o1 = {x: 1, y: 2};
+        var o2 = {...o1, z: 3, y: 10};
+        r.push(o2.x + "," + o2.y + "," + o2.z);
+
+        r.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1,3,4,5|true|false|10,30|1|2,3,4,5|Alice,30,unknown|1,2,3,4,5|1,10,3");
+}

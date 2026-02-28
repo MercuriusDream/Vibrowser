@@ -8459,3 +8459,101 @@ TEST(CorsPolicyTest, CorsAllowsResponseExplicitPort443V111) {
                                       "https://api.example.com/data",
                                       correct_headers, false));
 }
+
+// ---------------------------------------------------------------------------
+// V112 Tests
+// ---------------------------------------------------------------------------
+
+TEST(CorsPolicyTest, ExplicitPort443NotEnforceableV112) {
+    // Explicit :443 on HTTPS origins is NOT enforceable — the canonical form
+    // omits the default port.
+    EXPECT_FALSE(has_enforceable_document_origin("https://example.com:443"));
+    EXPECT_FALSE(has_enforceable_document_origin("https://sub.domain.org:443"));
+    // Explicit :80 on HTTP also not enforceable
+    EXPECT_FALSE(has_enforceable_document_origin("http://example.com:80"));
+    // Non-default ports ARE enforceable
+    EXPECT_TRUE(has_enforceable_document_origin("https://example.com:8443"));
+    EXPECT_TRUE(has_enforceable_document_origin("http://example.com:3000"));
+}
+
+TEST(CorsPolicyTest, IPAddressOriginsEnforceableV112) {
+    // IP addresses (IPv4 and IPv6) ARE enforceable origins
+    EXPECT_TRUE(has_enforceable_document_origin("https://192.168.1.1"));
+    EXPECT_TRUE(has_enforceable_document_origin("http://10.0.0.1"));
+    EXPECT_TRUE(has_enforceable_document_origin("https://127.0.0.1"));
+    EXPECT_TRUE(has_enforceable_document_origin("https://[::1]"));
+    EXPECT_TRUE(has_enforceable_document_origin("https://[2001:db8::1]"));
+    // IP with non-default port also enforceable
+    EXPECT_TRUE(has_enforceable_document_origin("https://192.168.1.1:9090"));
+}
+
+TEST(CorsPolicyTest, DataBlobSchemesNotEnforceableV112) {
+    // data: and blob: origins are NOT enforceable
+    EXPECT_FALSE(has_enforceable_document_origin("data:text/html,hello"));
+    EXPECT_FALSE(has_enforceable_document_origin("data:,"));
+    EXPECT_FALSE(has_enforceable_document_origin("blob:https://example.com/uuid"));
+    EXPECT_FALSE(has_enforceable_document_origin("blob:null/uuid"));
+}
+
+TEST(CorsPolicyTest, FragmentCorsEligibilityV112) {
+    // Non-empty fragments make a URL NOT cors-eligible
+    EXPECT_FALSE(is_cors_eligible_request_url("https://api.example.com/data#section"));
+    EXPECT_FALSE(is_cors_eligible_request_url("https://api.example.com/data#a"));
+    EXPECT_FALSE(is_cors_eligible_request_url("http://api.example.com/data#top"));
+    // Empty fragment (bare #) IS eligible
+    EXPECT_TRUE(is_cors_eligible_request_url("https://api.example.com/data#"));
+    // No fragment at all is eligible
+    EXPECT_TRUE(is_cors_eligible_request_url("https://api.example.com/data"));
+}
+
+TEST(CorsPolicyTest, CrossOriginIPv4DetectionV112) {
+    // Same IP, same scheme, same port → same origin
+    EXPECT_FALSE(is_cross_origin("https://10.0.0.1", "https://10.0.0.1/resource"));
+    // Different IP → cross-origin
+    EXPECT_TRUE(is_cross_origin("https://10.0.0.1", "https://10.0.0.2/resource"));
+    // Same IP, different scheme → cross-origin
+    EXPECT_TRUE(is_cross_origin("http://10.0.0.1", "https://10.0.0.1/resource"));
+    // Same IP with matching non-default port → same origin
+    EXPECT_FALSE(is_cross_origin("https://10.0.0.1:8443", "https://10.0.0.1:8443/api"));
+}
+
+TEST(CorsPolicyTest, ShouldAttachOriginDataBlobV112) {
+    // data: / blob: document origins are not enforceable, so should NOT attach
+    EXPECT_FALSE(should_attach_origin_header("data:text/html,hello",
+                                              "https://api.example.com/data"));
+    EXPECT_FALSE(should_attach_origin_header("blob:https://example.com/uuid",
+                                              "https://api.example.com/data"));
+    // But valid origins SHOULD attach when cross-origin
+    EXPECT_TRUE(should_attach_origin_header("https://app.example.com",
+                                             "https://api.example.com/data"));
+}
+
+TEST(CorsPolicyTest, NormalizeOriginExplicitPort443V112) {
+    // Origin with explicit :443 is not enforceable, so normalize should NOT
+    // set any Origin header (document origin is invalid).
+    clever::net::HeaderMap headers;
+    normalize_outgoing_origin_header(headers, "https://example.com:443",
+                                     "https://api.example.com/data");
+    EXPECT_FALSE(headers.has("origin"));
+}
+
+TEST(CorsPolicyTest, CorsAllowsResponseIPOriginV112) {
+    // IP-based origin should work with cors_allows_response when ACAO matches
+    clever::net::HeaderMap resp;
+    resp.set("Access-Control-Allow-Origin", "https://192.168.1.100");
+    EXPECT_TRUE(cors_allows_response("https://192.168.1.100",
+                                      "https://api.example.com/data",
+                                      resp, false));
+    // Mismatched IP should fail
+    clever::net::HeaderMap resp2;
+    resp2.set("Access-Control-Allow-Origin", "https://192.168.1.101");
+    EXPECT_FALSE(cors_allows_response("https://192.168.1.100",
+                                       "https://api.example.com/data",
+                                       resp2, false));
+    // Wildcard * should allow any enforceable origin (without credentials)
+    clever::net::HeaderMap resp3;
+    resp3.set("Access-Control-Allow-Origin", "*");
+    EXPECT_TRUE(cors_allows_response("https://192.168.1.100",
+                                      "https://api.example.com/data",
+                                      resp3, false));
+}

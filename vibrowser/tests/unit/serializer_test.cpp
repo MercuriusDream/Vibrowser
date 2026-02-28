@@ -16685,3 +16685,231 @@ TEST(SerializerTest, MixedTypeInterleavedProtocolSimulationV111) {
     }
     EXPECT_FALSE(d.has_remaining());
 }
+
+// ---------------------------------------------------------------------------
+// V112 tests
+// ---------------------------------------------------------------------------
+
+TEST(SerializerTest, AlternatingSignedUnsignedInterleavingV112) {
+    // Interleave signed and unsigned integers in a specific pattern to verify
+    // that reads/writes stay perfectly aligned even when mixing types.
+    Serializer s;
+    for (int i = 0; i < 20; ++i) {
+        s.write_u8(static_cast<uint8_t>(i));
+        s.write_i32(-i * 77);
+        s.write_u16(static_cast<uint16_t>(i * 300));
+        s.write_i64(static_cast<int64_t>(i) * -1000000000LL);
+        s.write_u32(static_cast<uint32_t>(i * 100000));
+        s.write_u64(static_cast<uint64_t>(i) * 9999999999ULL);
+    }
+    Deserializer d(s.data());
+    for (int i = 0; i < 20; ++i) {
+        EXPECT_EQ(d.read_u8(), static_cast<uint8_t>(i)) << "iter " << i;
+        EXPECT_EQ(d.read_i32(), -i * 77) << "iter " << i;
+        EXPECT_EQ(d.read_u16(), static_cast<uint16_t>(i * 300)) << "iter " << i;
+        EXPECT_EQ(d.read_i64(), static_cast<int64_t>(i) * -1000000000LL) << "iter " << i;
+        EXPECT_EQ(d.read_u32(), static_cast<uint32_t>(i * 100000)) << "iter " << i;
+        EXPECT_EQ(d.read_u64(), static_cast<uint64_t>(i) * 9999999999ULL) << "iter " << i;
+    }
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, BoolRunLengthPatternV112) {
+    // Write a long sequence of booleans with a known pattern: true for
+    // prime-indexed positions, false otherwise, and verify round-trip.
+    auto is_prime = [](int n) -> bool {
+        if (n < 2) return false;
+        for (int d = 2; d * d <= n; ++d) {
+            if (n % d == 0) return false;
+        }
+        return true;
+    };
+    Serializer s;
+    const int count = 100;
+    for (int i = 0; i < count; ++i) {
+        s.write_bool(is_prime(i));
+    }
+    Deserializer d(s.data());
+    for (int i = 0; i < count; ++i) {
+        EXPECT_EQ(d.read_bool(), is_prime(i)) << "index " << i;
+    }
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, F64SpecialSequencesV112) {
+    // Serialize a series of special and extreme double values and verify
+    // exact round-trip fidelity including NaN bit patterns.
+    Serializer s;
+    s.write_f64(0.0);
+    s.write_f64(-0.0);
+    s.write_f64(std::numeric_limits<double>::infinity());
+    s.write_f64(-std::numeric_limits<double>::infinity());
+    s.write_f64(std::numeric_limits<double>::quiet_NaN());
+    s.write_f64(std::numeric_limits<double>::denorm_min());
+    s.write_f64(std::numeric_limits<double>::max());
+    s.write_f64(std::numeric_limits<double>::lowest());
+    s.write_f64(std::numeric_limits<double>::epsilon());
+    s.write_f64(3.141592653589793);
+
+    Deserializer d(s.data());
+    EXPECT_DOUBLE_EQ(d.read_f64(), 0.0);
+    {
+        double neg_zero = d.read_f64();
+        EXPECT_DOUBLE_EQ(neg_zero, 0.0);
+        EXPECT_TRUE(std::signbit(neg_zero));
+    }
+    EXPECT_EQ(d.read_f64(), std::numeric_limits<double>::infinity());
+    EXPECT_EQ(d.read_f64(), -std::numeric_limits<double>::infinity());
+    EXPECT_TRUE(std::isnan(d.read_f64()));
+    EXPECT_DOUBLE_EQ(d.read_f64(), std::numeric_limits<double>::denorm_min());
+    EXPECT_DOUBLE_EQ(d.read_f64(), std::numeric_limits<double>::max());
+    EXPECT_DOUBLE_EQ(d.read_f64(), std::numeric_limits<double>::lowest());
+    EXPECT_DOUBLE_EQ(d.read_f64(), std::numeric_limits<double>::epsilon());
+    EXPECT_DOUBLE_EQ(d.read_f64(), 3.141592653589793);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, BytesBoundaryLengthsV112) {
+    // Serialize raw byte buffers at interesting boundary sizes:
+    // 0, 1, 127, 128, 255, 256, 1023, 1024 bytes.
+    Serializer s;
+    std::vector<size_t> sizes = {0, 1, 127, 128, 255, 256, 1023, 1024};
+    for (size_t sz : sizes) {
+        std::vector<uint8_t> buf(sz);
+        for (size_t i = 0; i < sz; ++i) {
+            buf[i] = static_cast<uint8_t>((i * 7 + sz) % 256);
+        }
+        s.write_bytes(buf.data(), buf.size());
+    }
+
+    Deserializer d(s.data());
+    for (size_t sz : sizes) {
+        auto result = d.read_bytes();
+        ASSERT_EQ(result.size(), sz) << "size " << sz;
+        for (size_t i = 0; i < sz; ++i) {
+            EXPECT_EQ(result[i], static_cast<uint8_t>((i * 7 + sz) % 256))
+                << "size " << sz << " byte " << i;
+        }
+    }
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, StringWithEmbeddedNullsAndUnicodeV112) {
+    // Strings containing embedded null bytes, multi-byte UTF-8 sequences,
+    // and emoji should survive serialization unaltered.
+    Serializer s;
+    std::string with_null("abc\0def", 7);
+    std::string korean = "\xED\x95\x9C\xEA\xB5\xAD\xEC\x96\xB4"; // 한국어
+    std::string emoji = "\xF0\x9F\x8C\x8D\xF0\x9F\x9A\x80";      // 🌍🚀
+    std::string mixed = std::string("start\0", 6) + korean + "\0" + emoji;
+    mixed.push_back('\0');
+
+    s.write_string(with_null);
+    s.write_string(korean);
+    s.write_string(emoji);
+    s.write_string(mixed);
+    s.write_string("");
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_string(), with_null);
+    EXPECT_EQ(d.read_string(), korean);
+    EXPECT_EQ(d.read_string(), emoji);
+    EXPECT_EQ(d.read_string(), mixed);
+    EXPECT_EQ(d.read_string(), "");
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, U64EdgeCaseBitPatternsV112) {
+    // Test u64 values that exercise all byte boundaries and bit positions.
+    Serializer s;
+    std::vector<uint64_t> values = {
+        0ULL,
+        1ULL,
+        0xFFULL,
+        0x100ULL,
+        0xFFFFULL,
+        0x10000ULL,
+        0xFFFFFFULL,
+        0x1000000ULL,
+        0xFFFFFFFFULL,
+        0x100000000ULL,
+        0xFFFFFFFFFFULL,
+        0x10000000000ULL,
+        0xFFFFFFFFFFFFULL,
+        0x1000000000000ULL,
+        0xFFFFFFFFFFFFFFULL,
+        0x100000000000000ULL,
+        0xFFFFFFFFFFFFFFFFULL,
+        0x8000000000000000ULL,
+        0x7FFFFFFFFFFFFFFFULL,
+        0xDEADBEEFCAFEBABEULL,
+    };
+    for (uint64_t v : values) {
+        s.write_u64(v);
+    }
+    Deserializer d(s.data());
+    for (uint64_t v : values) {
+        EXPECT_EQ(d.read_u64(), v) << "value 0x" << std::hex << v;
+    }
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, MultipleDeserializersFromSameDataV112) {
+    // Serialize data once, then create multiple independent deserializers
+    // from the same data vector and verify they all read correctly.
+    Serializer s;
+    s.write_u32(42);
+    s.write_string("shared");
+    s.write_i64(-9876543210LL);
+    s.write_bool(true);
+    s.write_f64(2.718281828);
+
+    const auto& data = s.data();
+
+    for (int pass = 0; pass < 5; ++pass) {
+        Deserializer d(data);
+        EXPECT_EQ(d.read_u32(), 42u) << "pass " << pass;
+        EXPECT_EQ(d.read_string(), "shared") << "pass " << pass;
+        EXPECT_EQ(d.read_i64(), -9876543210LL) << "pass " << pass;
+        EXPECT_EQ(d.read_bool(), true) << "pass " << pass;
+        EXPECT_DOUBLE_EQ(d.read_f64(), 2.718281828) << "pass " << pass;
+        EXPECT_FALSE(d.has_remaining()) << "pass " << pass;
+    }
+}
+
+TEST(SerializerTest, LargeStringAndBytesStressV112) {
+    // Serialize and deserialize large strings and byte buffers to exercise
+    // length-prefix handling for payloads above typical buffer sizes.
+    Serializer s;
+
+    // 10 KB string of repeating pattern
+    std::string large_str(10240, '\0');
+    for (size_t i = 0; i < large_str.size(); ++i) {
+        large_str[i] = static_cast<char>('A' + (i % 26));
+    }
+    s.write_string(large_str);
+
+    // 20 KB byte buffer
+    std::vector<uint8_t> large_buf(20480);
+    for (size_t i = 0; i < large_buf.size(); ++i) {
+        large_buf[i] = static_cast<uint8_t>(i % 251);
+    }
+    s.write_bytes(large_buf.data(), large_buf.size());
+
+    // Bookend with a small value to verify alignment
+    s.write_u8(0xAB);
+
+    Deserializer d(s.data());
+    std::string read_str = d.read_string();
+    ASSERT_EQ(read_str.size(), large_str.size());
+    EXPECT_EQ(read_str, large_str);
+
+    auto read_buf = d.read_bytes();
+    ASSERT_EQ(read_buf.size(), large_buf.size());
+    for (size_t i = 0; i < large_buf.size(); ++i) {
+        EXPECT_EQ(read_buf[i], large_buf[i]) << "byte " << i;
+    }
+
+    EXPECT_EQ(d.read_u8(), 0xABu);
+    EXPECT_FALSE(d.has_remaining());
+}

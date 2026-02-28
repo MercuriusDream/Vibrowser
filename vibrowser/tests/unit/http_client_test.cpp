@@ -18965,3 +18965,178 @@ TEST(RequestTest, SerializePutNonStandardPortInHostV111) {
     EXPECT_NE(result.find("x-request-id: abc-123\r\n"), std::string::npos);
     EXPECT_NE(result.find("Connection: keep-alive\r\n"), std::string::npos);
 }
+
+// ===========================================================================
+// V112 Tests
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// 1. HeaderMap append creates multi-value entry and get_all returns both V112
+// ---------------------------------------------------------------------------
+TEST(HeaderMapTest, AppendCreatesMultiValueEntryV112) {
+    HeaderMap map;
+    map.set("Accept-Encoding", "gzip");
+    map.append("Accept-Encoding", "deflate");
+
+    auto all = map.get_all("accept-encoding");
+    EXPECT_EQ(all.size(), 2u);
+    // get() should return the first value
+    EXPECT_EQ(map.get("Accept-Encoding").value(), "gzip");
+    // size counts total entries (including appended duplicates)
+    EXPECT_EQ(map.size(), 2u);
+}
+
+// ---------------------------------------------------------------------------
+// 2. HeaderMap remove then has returns false V112
+// ---------------------------------------------------------------------------
+TEST(HeaderMapTest, RemoveThenHasReturnsFalseV112) {
+    HeaderMap map;
+    map.set("X-Token", "secret");
+    map.set("X-Session", "abc");
+    EXPECT_TRUE(map.has("X-Token"));
+    EXPECT_EQ(map.size(), 2u);
+
+    map.remove("X-Token");
+    EXPECT_FALSE(map.has("x-token"));
+    EXPECT_FALSE(map.get("X-Token").has_value());
+    EXPECT_EQ(map.size(), 1u);
+    // Other header untouched
+    EXPECT_EQ(map.get("X-Session").value(), "abc");
+}
+
+// ---------------------------------------------------------------------------
+// 3. Response status codes stored as int V112
+// ---------------------------------------------------------------------------
+TEST(ResponseTest, StatusCodesStoredAsIntV112) {
+    Response ok;
+    ok.status = 200;
+    EXPECT_EQ(ok.status, 200);
+
+    Response created;
+    created.status = 201;
+    EXPECT_EQ(created.status, 201);
+
+    Response redirect;
+    redirect.status = 302;
+    EXPECT_EQ(redirect.status, 302);
+
+    Response not_found;
+    not_found.status = 404;
+    EXPECT_EQ(not_found.status, 404);
+
+    Response server_err;
+    server_err.status = 503;
+    EXPECT_EQ(server_err.status, 503);
+}
+
+// ---------------------------------------------------------------------------
+// 4. Request method GET and HEAD produce correct request line V112
+// ---------------------------------------------------------------------------
+TEST(RequestTest, MethodGetAndHeadRequestLineV112) {
+    Request get_req;
+    get_req.method = Method::GET;
+    get_req.host = "api.example.com";
+    get_req.port = 80;
+    get_req.path = "/health";
+
+    auto get_bytes = get_req.serialize();
+    std::string get_result(get_bytes.begin(), get_bytes.end());
+    EXPECT_NE(get_result.find("GET /health HTTP/1.1\r\n"), std::string::npos);
+
+    Request head_req;
+    head_req.method = Method::HEAD;
+    head_req.host = "api.example.com";
+    head_req.port = 80;
+    head_req.path = "/health";
+
+    auto head_bytes = head_req.serialize();
+    std::string head_result(head_bytes.begin(), head_bytes.end());
+    EXPECT_NE(head_result.find("HEAD /health HTTP/1.1\r\n"), std::string::npos);
+}
+
+// ---------------------------------------------------------------------------
+// 5. Request serialize custom headers are lowercased V112
+// ---------------------------------------------------------------------------
+TEST(RequestTest, SerializeCustomHeadersLowercasedV112) {
+    Request req;
+    req.method = Method::POST;
+    req.host = "upload.example.com";
+    req.port = 443;
+    req.path = "/files";
+    req.headers.set("X-Custom-Header", "value1");
+    req.headers.set("Authorization", "Bearer tok");
+    req.headers.set("Content-Type", "multipart/form-data");
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    // Custom headers lowercased
+    EXPECT_NE(result.find("x-custom-header: value1\r\n"), std::string::npos);
+    EXPECT_NE(result.find("authorization: Bearer tok\r\n"), std::string::npos);
+    EXPECT_NE(result.find("content-type: multipart/form-data\r\n"), std::string::npos);
+    // Host and Connection keep capitalization
+    EXPECT_NE(result.find("Host: upload.example.com\r\n"), std::string::npos);
+    EXPECT_NE(result.find("Connection: keep-alive\r\n"), std::string::npos);
+}
+
+// ---------------------------------------------------------------------------
+// 6. parse_url HTTPS with query and custom port V112
+// ---------------------------------------------------------------------------
+TEST(RequestTest, ParseUrlHttpsQueryCustomPortV112) {
+    Request req;
+    req.url = "https://search.example.com:9443/results?q=hello+world&lang=en";
+    req.parse_url();
+
+    EXPECT_EQ(req.host, "search.example.com");
+    EXPECT_EQ(req.port, 9443);
+    EXPECT_EQ(req.path, "/results");
+    EXPECT_EQ(req.query, "q=hello+world&lang=en");
+    EXPECT_TRUE(req.use_tls);
+}
+
+// ---------------------------------------------------------------------------
+// 7. Request serialize port 80 omitted and port 443 omitted in Host V112
+// ---------------------------------------------------------------------------
+TEST(RequestTest, SerializeStandardPortsOmittedFromHostV112) {
+    // Port 80 with HTTP
+    Request http_req;
+    http_req.method = Method::GET;
+    http_req.host = "www.example.com";
+    http_req.port = 80;
+    http_req.path = "/page";
+
+    auto http_bytes = http_req.serialize();
+    std::string http_result(http_bytes.begin(), http_bytes.end());
+    EXPECT_NE(http_result.find("Host: www.example.com\r\n"), std::string::npos);
+    // Should NOT contain port 80 in Host
+    EXPECT_EQ(http_result.find("Host: www.example.com:80\r\n"), std::string::npos);
+
+    // Port 443 with HTTPS
+    Request https_req;
+    https_req.method = Method::GET;
+    https_req.host = "www.example.com";
+    https_req.port = 443;
+    https_req.path = "/secure";
+
+    auto https_bytes = https_req.serialize();
+    std::string https_result(https_bytes.begin(), https_bytes.end());
+    EXPECT_NE(https_result.find("Host: www.example.com\r\n"), std::string::npos);
+    // Should NOT contain port 443 in Host
+    EXPECT_EQ(https_result.find("Host: www.example.com:443\r\n"), std::string::npos);
+}
+
+// ---------------------------------------------------------------------------
+// 8. HeaderMap set overwrites append values and get_all reflects single V112
+// ---------------------------------------------------------------------------
+TEST(HeaderMapTest, SetOverwritesAppendedValuesV112) {
+    HeaderMap map;
+    map.append("Cache-Control", "no-cache");
+    map.append("Cache-Control", "no-store");
+    EXPECT_EQ(map.get_all("cache-control").size(), 2u);
+
+    // set() should replace all appended values
+    map.set("Cache-Control", "max-age=3600");
+    EXPECT_EQ(map.get_all("cache-control").size(), 1u);
+    EXPECT_EQ(map.get("Cache-Control").value(), "max-age=3600");
+    EXPECT_EQ(map.size(), 1u);
+}

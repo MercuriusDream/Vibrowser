@@ -12337,3 +12337,84 @@ TEST(UrlParserTest, FragmentOnlyNoQueryV111) {
     EXPECT_EQ(result->fragment, "installation");
     EXPECT_EQ(result->port, std::nullopt);
 }
+
+// =============================================================================
+// V112 Tests
+// =============================================================================
+
+TEST(UrlParserTest, FtpDefaultPortNormalizedV112) {
+    auto result = parse("ftp://files.example.com:21/pub/data.tar.gz");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "ftp");
+    EXPECT_EQ(result->host, "files.example.com");
+    EXPECT_EQ(result->port, std::nullopt);
+    EXPECT_EQ(result->path, "/pub/data.tar.gz");
+}
+
+TEST(UrlParserTest, HttpDefaultPortNormalizedV112) {
+    auto result = parse("http://www.example.org:80/index.html");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "www.example.org");
+    EXPECT_EQ(result->port, std::nullopt);
+    EXPECT_EQ(result->path, "/index.html");
+}
+
+TEST(UrlParserTest, HttpsDefaultPortNormalizedV112) {
+    auto result = parse("https://secure.example.com:443/login");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "secure.example.com");
+    EXPECT_EQ(result->port, std::nullopt);
+    EXPECT_EQ(result->path, "/login");
+}
+
+TEST(UrlParserTest, DoubleEncodesPercentSequenceV112) {
+    auto result = parse("https://example.com/hello%20world");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->path, "/hello%2520world");
+}
+
+TEST(UrlParserTest, SerializeFullUrlWithCredentialsV112) {
+    auto result = parse("https://user:pass@example.com:9090/a/b?x=1#top");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->username, "user");
+    EXPECT_EQ(result->password, "pass");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->port, 9090);
+    EXPECT_EQ(result->path, "/a/b");
+    EXPECT_EQ(result->query, "x=1");
+    EXPECT_EQ(result->fragment, "top");
+    std::string serialized = result->serialize();
+    EXPECT_EQ(serialized, "https://user:pass@example.com:9090/a/b?x=1#top");
+}
+
+TEST(UrlParserTest, NonDefaultPortPreservedV112) {
+    auto result = parse("http://api.example.com:3000/v2/users");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "api.example.com");
+    EXPECT_EQ(result->port, 3000);
+    EXPECT_EQ(result->path, "/v2/users");
+}
+
+TEST(UrlParserTest, SerializeMinimalUrlV112) {
+    auto result = parse("http://example.com");
+    ASSERT_TRUE(result.has_value());
+    std::string serialized = result->serialize();
+    EXPECT_EQ(serialized, "http://example.com/");
+}
+
+TEST(UrlParserTest, MultipleQueryParamsAndFragmentV112) {
+    auto result = parse("https://search.example.com/results?q=hello+world&lang=en&page=2#results");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "search.example.com");
+    EXPECT_EQ(result->path, "/results");
+    EXPECT_EQ(result->query, "q=hello+world&lang=en&page=2");
+    EXPECT_EQ(result->fragment, "results");
+    EXPECT_EQ(result->port, std::nullopt);
+    EXPECT_TRUE(result->username.empty());
+    EXPECT_TRUE(result->password.empty());
+}

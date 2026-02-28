@@ -17280,3 +17280,132 @@ TEST(DomTest, TextNodeUnderIdentifiedParentV111) {
     EXPECT_EQ(raw_text->parent(), &parent);
     EXPECT_EQ(raw_text->next_sibling(), nullptr);
 }
+
+// ---------------------------------------------------------------------------
+// V112 Tests
+// ---------------------------------------------------------------------------
+
+// 1. Element with multiple attributes set and retrieved
+TEST(DomTest, MultipleAttributeSetGetV112) {
+    Element el("input");
+    el.set_attribute("type", "text");
+    el.set_attribute("name", "username");
+    el.set_attribute("placeholder", "Enter name");
+    EXPECT_EQ(el.tag_name(), "input");
+    EXPECT_EQ(el.get_attribute("type"), "text");
+    EXPECT_EQ(el.get_attribute("name"), "username");
+    EXPECT_EQ(el.get_attribute("placeholder"), "Enter name");
+}
+
+// 2. Remove child and verify parent and child_count update
+TEST(DomTest, RemoveChildUpdatesTreeV112) {
+    Element parent("ul");
+    auto li1 = std::make_unique<Element>("li");
+    Node* raw_li1 = li1.get();
+    auto li2 = std::make_unique<Element>("li");
+    Node* raw_li2 = li2.get();
+    parent.append_child(std::move(li1));
+    parent.append_child(std::move(li2));
+    EXPECT_EQ(parent.child_count(), 2u);
+
+    parent.remove_child(*raw_li1);
+    EXPECT_EQ(parent.child_count(), 1u);
+    EXPECT_EQ(parent.first_child(), raw_li2);
+    EXPECT_EQ(raw_li1->parent(), nullptr);
+}
+
+// 3. Insert before places node at correct position
+TEST(DomTest, InsertBeforePositionV112) {
+    Element parent("div");
+    auto a = std::make_unique<Element>("a");
+    Node* raw_a = a.get();
+    auto c = std::make_unique<Element>("c");
+    Node* raw_c = c.get();
+    parent.append_child(std::move(a));
+    parent.append_child(std::move(c));
+
+    auto b = std::make_unique<Element>("b");
+    Node* raw_b = b.get();
+    parent.insert_before(std::move(b), raw_c);
+
+    EXPECT_EQ(parent.child_count(), 3u);
+    EXPECT_EQ(parent.first_child(), raw_a);
+    EXPECT_EQ(raw_a->next_sibling(), raw_b);
+    EXPECT_EQ(raw_b->next_sibling(), raw_c);
+}
+
+// 4. Comment node data and traversal
+TEST(DomTest, CommentNodeDataTraversalV112) {
+    Element root("div");
+    auto comment = std::make_unique<Comment>("TODO: fix layout");
+    Node* raw_comment = comment.get();
+    root.append_child(std::move(comment));
+
+    EXPECT_EQ(raw_comment->node_type(), NodeType::Comment);
+    EXPECT_EQ(static_cast<Comment*>(raw_comment)->data(), "TODO: fix layout");
+    EXPECT_EQ(raw_comment->parent(), &root);
+    EXPECT_EQ(root.first_child(), raw_comment);
+}
+
+// 5. Class list add multiple classes
+TEST(DomTest, ClassListAddMultipleV112) {
+    Element el("span");
+    el.class_list().add("highlight");
+    el.class_list().add("bold");
+    el.class_list().add("active");
+    EXPECT_TRUE(el.class_list().contains("highlight"));
+    EXPECT_TRUE(el.class_list().contains("bold"));
+    EXPECT_TRUE(el.class_list().contains("active"));
+    EXPECT_FALSE(el.class_list().contains("hidden"));
+}
+
+// 6. Sibling chain across mixed node types
+TEST(DomTest, SiblingChainMixedTypesV112) {
+    Element parent("section");
+    auto text = std::make_unique<Text>("hello");
+    Node* raw_text = text.get();
+    auto elem = std::make_unique<Element>("em");
+    Node* raw_elem = elem.get();
+    auto comment = std::make_unique<Comment>("note");
+    Node* raw_comment = comment.get();
+
+    parent.append_child(std::move(text));
+    parent.append_child(std::move(elem));
+    parent.append_child(std::move(comment));
+
+    EXPECT_EQ(parent.child_count(), 3u);
+    EXPECT_EQ(parent.first_child(), raw_text);
+    EXPECT_EQ(raw_text->next_sibling(), raw_elem);
+    EXPECT_EQ(raw_elem->next_sibling(), raw_comment);
+    EXPECT_EQ(raw_comment->next_sibling(), nullptr);
+}
+
+// 7. Overwrite attribute value with set_attribute
+TEST(DomTest, OverwriteAttributeValueV112) {
+    Element el("img");
+    el.set_attribute("src", "old.png");
+    EXPECT_EQ(el.get_attribute("src"), "old.png");
+    el.set_attribute("src", "new.png");
+    EXPECT_EQ(el.get_attribute("src"), "new.png");
+    el.set_attribute("alt", "photo");
+    EXPECT_EQ(el.get_attribute("alt"), "photo");
+    EXPECT_EQ(el.tag_name(), "img");
+}
+
+// 8. Insert before nullptr appends at end
+TEST(DomTest, InsertBeforeNullptrAppendsV112) {
+    Element parent("ol");
+    auto first = std::make_unique<Element>("li");
+    Node* raw_first = first.get();
+    parent.append_child(std::move(first));
+
+    auto second = std::make_unique<Element>("li");
+    Node* raw_second = second.get();
+    parent.insert_before(std::move(second), nullptr);
+
+    EXPECT_EQ(parent.child_count(), 2u);
+    EXPECT_EQ(parent.first_child(), raw_first);
+    EXPECT_EQ(raw_first->next_sibling(), raw_second);
+    EXPECT_EQ(raw_second->next_sibling(), nullptr);
+    EXPECT_EQ(raw_second->parent(), &parent);
+}
