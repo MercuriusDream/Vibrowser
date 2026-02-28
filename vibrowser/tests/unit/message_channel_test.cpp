@@ -2335,3 +2335,64 @@ TEST(MessageChannelTest, MessageChannelV155_2_LargeTypeId) {
     EXPECT_TRUE(handler_called);
     EXPECT_EQ(received_type, 65535u);
 }
+
+// ------------------------------------------------------------------
+// Round 156 tests
+// ------------------------------------------------------------------
+
+TEST(MessageChannelTest, MessageChannelV156_1_TypeZeroWorks) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel a(std::move(pa));
+    MessageChannel b(std::move(pb));
+
+    Message msg;
+    msg.type = 0;
+    msg.request_id = 7;
+    msg.payload = {0xAA, 0xBB};
+
+    ASSERT_TRUE(a.send(msg));
+
+    auto received = b.receive();
+    ASSERT_TRUE(received.has_value());
+    EXPECT_EQ(received->type, 0u);
+    EXPECT_EQ(received->request_id, 7u);
+    ASSERT_EQ(received->payload.size(), 2u);
+    EXPECT_EQ(received->payload[0], 0xAA);
+    EXPECT_EQ(received->payload[1], 0xBB);
+}
+
+TEST(MessageChannelTest, MessageChannelV156_2_BidirectionalSmallPayloads) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel a(std::move(pa));
+    MessageChannel b(std::move(pb));
+
+    for (uint32_t i = 0; i < 5; ++i) {
+        Message msg_ab;
+        msg_ab.type = 10;
+        msg_ab.request_id = i;
+        msg_ab.payload = {static_cast<uint8_t>(i)};
+        ASSERT_TRUE(a.send(msg_ab));
+
+        Message msg_ba;
+        msg_ba.type = 20;
+        msg_ba.request_id = i + 100;
+        msg_ba.payload = {static_cast<uint8_t>(i + 50)};
+        ASSERT_TRUE(b.send(msg_ba));
+    }
+
+    for (uint32_t i = 0; i < 5; ++i) {
+        auto recv_b = b.receive();
+        ASSERT_TRUE(recv_b.has_value());
+        EXPECT_EQ(recv_b->type, 10u);
+        EXPECT_EQ(recv_b->request_id, i);
+        ASSERT_EQ(recv_b->payload.size(), 1u);
+        EXPECT_EQ(recv_b->payload[0], static_cast<uint8_t>(i));
+
+        auto recv_a = a.receive();
+        ASSERT_TRUE(recv_a.has_value());
+        EXPECT_EQ(recv_a->type, 20u);
+        EXPECT_EQ(recv_a->request_id, i + 100);
+        ASSERT_EQ(recv_a->payload.size(), 1u);
+        EXPECT_EQ(recv_a->payload[0], static_cast<uint8_t>(i + 50));
+    }
+}

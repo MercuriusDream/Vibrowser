@@ -2133,3 +2133,70 @@ TEST(MessagePipeTest, MessagePipeV155_3_PipeUsableAfterPartialRead) {
         EXPECT_EQ((*received)[0], i);
     }
 }
+
+// ------------------------------------------------------------------
+// Round 156 tests
+// ------------------------------------------------------------------
+
+TEST(MessagePipeTest, MessagePipeV156_1_FourByteMessages) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    for (uint8_t i = 0; i < 15; ++i) {
+        std::vector<uint8_t> data = {i, static_cast<uint8_t>(i + 1),
+                                     static_cast<uint8_t>(i + 2),
+                                     static_cast<uint8_t>(i + 3)};
+        ASSERT_TRUE(a.send(data));
+    }
+
+    for (uint8_t i = 0; i < 15; ++i) {
+        auto received = b.receive();
+        ASSERT_TRUE(received.has_value());
+        ASSERT_EQ(received->size(), 4u);
+        EXPECT_EQ((*received)[0], i);
+        EXPECT_EQ((*received)[1], static_cast<uint8_t>(i + 1));
+        EXPECT_EQ((*received)[2], static_cast<uint8_t>(i + 2));
+        EXPECT_EQ((*received)[3], static_cast<uint8_t>(i + 3));
+    }
+}
+
+TEST(MessagePipeTest, MessagePipeV156_2_EmptyThenNonEmptyMessages) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    for (uint8_t i = 0; i < 10; ++i) {
+        if (i % 2 == 0) {
+            std::vector<uint8_t> empty;
+            ASSERT_TRUE(a.send(empty));
+        } else {
+            std::vector<uint8_t> data = {i, static_cast<uint8_t>(i * 2)};
+            ASSERT_TRUE(a.send(data));
+        }
+    }
+
+    for (uint8_t i = 0; i < 10; ++i) {
+        auto received = b.receive();
+        ASSERT_TRUE(received.has_value());
+        if (i % 2 == 0) {
+            EXPECT_TRUE(received->empty());
+        } else {
+            ASSERT_EQ(received->size(), 2u);
+            EXPECT_EQ((*received)[0], i);
+            EXPECT_EQ((*received)[1], static_cast<uint8_t>(i * 2));
+        }
+    }
+}
+
+TEST(MessagePipeTest, MessagePipeV156_3_64KBMessage) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    std::vector<uint8_t> large(65536);
+    for (size_t i = 0; i < large.size(); ++i) {
+        large[i] = static_cast<uint8_t>(i % 256);
+    }
+
+    ASSERT_TRUE(a.send(large));
+
+    auto received = b.receive();
+    ASSERT_TRUE(received.has_value());
+    EXPECT_EQ(received->size(), 65536u);
+    EXPECT_EQ(*received, large);
+}

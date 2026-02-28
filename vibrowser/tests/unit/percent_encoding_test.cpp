@@ -1387,3 +1387,43 @@ TEST(IsURLCodePoint, SingleQuoteAndParensValidV155) {
     // Combined in a string
     EXPECT_EQ(percent_encode("func('x')"), "func('x')");
 }
+
+TEST(PercentEncoding, CaretEncodedV156) {
+    // '^' (U+005E) should be percent-encoded as %5E
+    EXPECT_EQ(percent_encode("^"), "%5E");
+    // Caret embedded in a string
+    EXPECT_EQ(percent_encode("x^2"), "x%5E2");
+    // Decoding should round-trip
+    EXPECT_EQ(percent_decode("%5E"), "^");
+}
+
+TEST(PercentDecoding, LowercaseHexDecodesV156) {
+    // Lowercase hex digits in percent-encoded sequences should decode correctly
+    // %6c is lowercase 'l' (U+006C)
+    EXPECT_EQ(percent_decode("%6c"), "l");
+    // %6d is lowercase 'm' (U+006D)
+    EXPECT_EQ(percent_decode("%6d"), "m");
+    // Mixed case: uppercase %6C should also decode to 'l'
+    EXPECT_EQ(percent_decode("%6C"), "l");
+}
+
+TEST(PercentEncoding, GraveAccentEncodedV156) {
+    // '`' (U+0060) should be percent-encoded as %60
+    EXPECT_EQ(percent_encode("`"), "%60");
+    // Grave accent embedded in a string
+    EXPECT_EQ(percent_encode("a`b"), "a%60b");
+    // Decoding should round-trip
+    EXPECT_EQ(percent_decode("%60"), "`");
+}
+
+TEST(IsURLCodePoint, SemicolonAndSlashValidV156) {
+    // ';' (U+003B) is a valid URL code point
+    EXPECT_TRUE(is_url_code_point(static_cast<char32_t>(';')));
+    // '/' (U+002F) is a valid URL code point
+    EXPECT_TRUE(is_url_code_point(static_cast<char32_t>('/')));
+    // These characters should not be encoded by the default encode set
+    EXPECT_EQ(percent_encode(";"), ";");
+    EXPECT_EQ(percent_encode("/"), "/");
+    // Combined in a path-like string
+    EXPECT_EQ(percent_encode("path/to;params"), "path/to;params");
+}

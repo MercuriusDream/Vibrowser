@@ -26751,3 +26751,224 @@ TEST(HttpClient, CookieJarMultipleCookiesSameNameDiffPathV155) {
     EXPECT_EQ(other_hdr.find("api_val"), std::string::npos)
         << "/api-path cookie should NOT match /other, got: " << other_hdr;
 }
+
+// ===========================================================================
+// Round 156 — http_client tests
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// 1. Request serialize includes Authorization Bearer token
+// ---------------------------------------------------------------------------
+TEST(HttpClient, RequestSerializeAuthorizationBearerV156) {
+    Request req;
+    req.method = Method::GET;
+    req.host = "auth.v156.test";
+    req.port = 443;
+    req.path = "/protected/resource";
+    req.use_tls = true;
+    req.headers.set("Authorization", "Bearer eyJhbGciOiJIUzI1NiJ9.payload.sig");
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    EXPECT_NE(result.find("GET /protected/resource HTTP/1.1\r\n"), std::string::npos)
+        << "Request line missing in serialized output";
+    // Port 443 with TLS should be omitted from Host header
+    EXPECT_NE(result.find("Host: auth.v156.test\r\n"), std::string::npos)
+        << "Host header missing or incorrectly includes port 443";
+    // Custom headers are stored lowercase in output
+    EXPECT_NE(result.find("authorization: Bearer eyJhbGciOiJIUzI1NiJ9.payload.sig\r\n"), std::string::npos)
+        << "Authorization Bearer header missing or not lowercase, got: " << result;
+    EXPECT_NE(result.find("Connection: close\r\n"), std::string::npos)
+        << "Connection header missing";
+}
+
+// ---------------------------------------------------------------------------
+// 2. Response parse 302 Found with Location header
+// ---------------------------------------------------------------------------
+TEST(HttpClient, ResponseParse302FoundV156) {
+    std::string raw_str =
+        "HTTP/1.1 302 Found\r\n"
+        "Location: https://redirect.v156.test/new-page\r\n"
+        "Content-Length: 0\r\n"
+        "\r\n";
+
+    std::vector<uint8_t> raw(raw_str.begin(), raw_str.end());
+    auto resp = Response::parse(raw);
+
+    ASSERT_TRUE(resp.has_value()) << "Failed to parse 302 response";
+    EXPECT_EQ(resp->status, 302);
+    EXPECT_EQ(resp->status_text, "Found");
+
+    auto location = resp->headers.get("Location");
+    ASSERT_TRUE(location.has_value()) << "Location header should be present";
+    EXPECT_EQ(*location, "https://redirect.v156.test/new-page");
+
+    std::string body(resp->body.begin(), resp->body.end());
+    EXPECT_TRUE(body.empty())
+        << "Body should be empty for 302 with Content-Length: 0, got: " << body;
+}
+
+// ---------------------------------------------------------------------------
+// 3. ConnectionPool: count after release and re-release
+// ---------------------------------------------------------------------------
+TEST(HttpClient, ConnectionPoolCountAfterReleaseV156) {
+    ConnectionPool pool(4);
+
+    // Initially empty
+    EXPECT_EQ(pool.count("pool.v156.test", 9090), 0u);
+
+    // Release two connections
+    pool.release("pool.v156.test", 9090, 50);
+    pool.release("pool.v156.test", 9090, 51);
+    EXPECT_EQ(pool.count("pool.v156.test", 9090), 2u);
+
+    // Acquire one
+    int fd = pool.acquire("pool.v156.test", 9090);
+    EXPECT_GE(fd, 0);
+    EXPECT_EQ(pool.count("pool.v156.test", 9090), 1u);
+
+    // Release the acquired one back
+    pool.release("pool.v156.test", 9090, fd);
+    EXPECT_EQ(pool.count("pool.v156.test", 9090), 2u)
+        << "Count should be 2 after releasing connection back to pool";
+}
+
+// ---------------------------------------------------------------------------
+// 4. CookieJar: Max-Age=0 effectively deletes cookie
+// ---------------------------------------------------------------------------
+TEST(HttpClient, CookieJarMaxAgeZeroDeletesV156) {
+    CookieJar jar;
+
+    // Set a valid cookie that should persist
+    jar.set_from_header("keep=alive; Path=/; Max-Age=3600", "maxage.v156.test");
+
+    // Set a cookie with Max-Age=0 — should be treated as expired
+    jar.set_from_header("ephemeral=gone; Path=/; Max-Age=0", "maxage.v156.test");
+
+    std::string hdr = jar.get_cookie_header("maxage.v156.test", "/", false);
+
+    // The valid cookie should still be present
+    EXPECT_NE(hdr.find("keep=alive"), std::string::npos)
+        << "Valid cookie should still be present, got: " << hdr;
+
+    // The Max-Age=0 cookie must NOT be present
+    EXPECT_EQ(hdr.find("ephemeral=gone"), std::string::npos)
+        << "Cookie with Max-Age=0 should be expired and not returned, got: " << hdr;
+}
+
+// ---------------------------------------------------------------------------
+// 5. HeaderMap: iteration covers all inserted entries
+// ---------------------------------------------------------------------------
+TEST(HttpClient, HeaderMapIterationOrderV156) {
+    HeaderMap map;
+    map.set("X-Alpha-V156", "first");
+    map.set("X-Beta-V156", "second");
+    map.set("X-Gamma-V156", "third");
+    map.append("X-Alpha-V156", "first-dup");
+
+    // Iterate and collect all entries
+    std::vector<std::pair<std::string, std::string>> entries;
+    for (auto it = map.begin(); it != map.end(); ++it) {
+        entries.emplace_back(it->first, it->second);
+    }
+
+    // Should have 4 entries total (set creates 1 each, append adds 1 more)
+    EXPECT_EQ(entries.size(), 4u)
+        << "Expected 4 entries (3 set + 1 append), got: " << entries.size();
+
+    // Verify all values are reachable
+    bool found_first = false, found_second = false, found_third = false, found_dup = false;
+    for (const auto& e : entries) {
+        if (e.second == "first") found_first = true;
+        if (e.second == "second") found_second = true;
+        if (e.second == "third") found_third = true;
+        if (e.second == "first-dup") found_dup = true;
+    }
+    EXPECT_TRUE(found_first) << "Missing 'first' value in iteration";
+    EXPECT_TRUE(found_second) << "Missing 'second' value in iteration";
+    EXPECT_TRUE(found_third) << "Missing 'third' value in iteration";
+    EXPECT_TRUE(found_dup) << "Missing 'first-dup' appended value in iteration";
+}
+
+// ---------------------------------------------------------------------------
+// 6. Request serialize with path only (no query string)
+// ---------------------------------------------------------------------------
+TEST(HttpClient, RequestSerializePathOnlyV156) {
+    Request req;
+    req.method = Method::POST;
+    req.host = "pathonly.v156.test";
+    req.port = 80;
+    req.path = "/submit/form";
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    EXPECT_NE(result.find("POST /submit/form HTTP/1.1\r\n"), std::string::npos)
+        << "Request line should use path without query, got: " << result;
+    // Port 80 should be omitted from Host header
+    EXPECT_NE(result.find("Host: pathonly.v156.test\r\n"), std::string::npos)
+        << "Host header missing or incorrectly includes port 80";
+    EXPECT_NE(result.find("Connection: close\r\n"), std::string::npos)
+        << "Connection header missing";
+    // Path should NOT contain a '?' since there is no query
+    auto request_line_pos = result.find("POST /submit/form");
+    auto line_end = result.find("\r\n", request_line_pos);
+    std::string request_line = result.substr(request_line_pos, line_end - request_line_pos);
+    EXPECT_EQ(request_line.find('?'), std::string::npos)
+        << "Path-only request should not contain '?', got: " << request_line;
+}
+
+// ---------------------------------------------------------------------------
+// 7. Response parse 200 with large body
+// ---------------------------------------------------------------------------
+TEST(HttpClient, ResponseParse200WithLargeBodyV156) {
+    // Create a large body of 10000 characters
+    std::string large_body(10000, 'X');
+    std::string raw_str =
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Type: application/octet-stream\r\n"
+        "Content-Length: " + std::to_string(large_body.size()) + "\r\n"
+        "\r\n" +
+        large_body;
+
+    std::vector<uint8_t> raw(raw_str.begin(), raw_str.end());
+    auto resp = Response::parse(raw);
+
+    ASSERT_TRUE(resp.has_value()) << "Failed to parse response with large body";
+    EXPECT_EQ(resp->status, 200);
+    EXPECT_EQ(resp->status_text, "OK");
+
+    std::string body(resp->body.begin(), resp->body.end());
+    EXPECT_EQ(body.size(), 10000u)
+        << "Body should be 10000 bytes, got: " << body.size();
+    EXPECT_EQ(body, large_body)
+        << "Body content should be all 'X' characters";
+
+    auto ct = resp->headers.get("Content-Type");
+    ASSERT_TRUE(ct.has_value());
+    EXPECT_EQ(*ct, "application/octet-stream");
+}
+
+// ---------------------------------------------------------------------------
+// 8. CookieJar: SameSite=Lax attribute preserved
+// ---------------------------------------------------------------------------
+TEST(HttpClient, CookieJarSameSiteLaxAttributeV156) {
+    CookieJar jar;
+    jar.set_from_header("pref=dark-mode; SameSite=Lax; Path=/settings", "samesite.v156.test");
+
+    // Cookie should be stored and returned for matching domain and path
+    std::string header = jar.get_cookie_header("samesite.v156.test", "/settings", false);
+    EXPECT_NE(header.find("pref=dark-mode"), std::string::npos)
+        << "Cookie with SameSite=Lax should be stored and returned, got: " << header;
+
+    // Cookie should also be returned for subpaths
+    std::string sub = jar.get_cookie_header("samesite.v156.test", "/settings/theme", false);
+    EXPECT_NE(sub.find("pref=dark-mode"), std::string::npos)
+        << "SameSite=Lax cookie should match subpaths, got: " << sub;
+
+    // Cookie should NOT match a different path
+    std::string other = jar.get_cookie_header("samesite.v156.test", "/other", false);
+    EXPECT_EQ(other.find("pref=dark-mode"), std::string::npos)
+        << "SameSite=Lax cookie on /settings should not match /other, got: " << other;
+}

@@ -37170,3 +37170,138 @@ TEST(JSEngine, JsV155_8) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "5,1-2-3-4-5");
 }
+
+// V156_1: Map.keys/values/entries iteration
+TEST(JSEngine, JsV156_1) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var m = new Map();
+        m.set('a', 1);
+        m.set('b', 2);
+        m.set('c', 3);
+        var keys = [];
+        for (var k of m.keys()) keys.push(k);
+        var vals = [];
+        for (var v of m.values()) vals.push(v);
+        var entries = [];
+        for (var e of m.entries()) entries.push(e[0] + ':' + e[1]);
+        keys.join(',') + '|' + vals.join(',') + '|' + entries.join(',');
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "a,b,c|1,2,3|a:1,b:2,c:3");
+}
+
+// V156_2: Array.sort with compare function
+TEST(JSEngine, JsV156_2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var arr = [10, 1, 21, 2, 3];
+        arr.sort(function(a, b) { return a - b; });
+        arr.join(',');
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1,2,3,10,21");
+}
+
+// V156_3: String.replace with regex
+TEST(JSEngine, JsV156_3) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var s = 'hello world hello';
+        var r = s.replace(/hello/g, 'hi');
+        r;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "hi world hi");
+}
+
+// V156_4: Object.freeze deep check
+TEST(JSEngine, JsV156_4) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var obj = { x: 10, y: 20 };
+        Object.freeze(obj);
+        obj.x = 99;
+        obj.z = 30;
+        String(obj.x) + ',' + String(obj.y) + ',' + String(obj.z);
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "10,20,undefined");
+}
+
+// V156_5: Symbol.toPrimitive
+TEST(JSEngine, JsV156_5) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var obj = {};
+        obj[Symbol.toPrimitive] = function(hint) {
+            if (hint === 'number') return 42;
+            if (hint === 'string') return 'hello';
+            return true;
+        };
+        String(+obj) + ',' + String(`${obj}`);
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "42,hello");
+}
+
+// V156_6: generator function basics
+TEST(JSEngine, JsV156_6) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        function* gen() {
+            yield 10;
+            yield 20;
+            yield 30;
+        }
+        var it = gen();
+        var results = [];
+        var r1 = it.next();
+        results.push(r1.value);
+        var r2 = it.next();
+        results.push(r2.value);
+        var r3 = it.next();
+        results.push(r3.value);
+        var r4 = it.next();
+        results.push(String(r4.done));
+        results.join(',');
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "10,20,30,true");
+}
+
+// V156_7: Proxy handler get trap
+TEST(JSEngine, JsV156_7) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var target = { a: 1, b: 2 };
+        var handler = {
+            get: function(obj, prop) {
+                return prop in obj ? obj[prop] * 10 : -1;
+            }
+        };
+        var p = new Proxy(target, handler);
+        String(p.a) + ',' + String(p.b) + ',' + String(p.c);
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "10,20,-1");
+}
+
+// V156_8: WeakSet add/has/delete
+TEST(JSEngine, JsV156_8) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var ws = new WeakSet();
+        var obj1 = {};
+        var obj2 = {};
+        ws.add(obj1);
+        ws.add(obj2);
+        var has1 = ws.has(obj1);
+        var has2 = ws.has(obj2);
+        ws.delete(obj1);
+        var has1after = ws.has(obj1);
+        String(has1) + ',' + String(has2) + ',' + String(has1after);
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true,true,false");
+}

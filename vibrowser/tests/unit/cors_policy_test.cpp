@@ -12613,3 +12613,53 @@ TEST(CORSPolicyTest, CorsV155_7_SameOriginIPv4SamePort) {
 TEST(CORSPolicyTest, CorsV155_8_CrossOriginIPv4DifferentPort) {
     EXPECT_TRUE(is_cross_origin("http://192.168.1.1:3000", "http://192.168.1.1:4000/api"));
 }
+
+// ---------------------------------------------------------------------------
+// Round 156 CORS tests
+// ---------------------------------------------------------------------------
+
+// 1. http://example.com is enforceable
+TEST(CORSPolicyTest, CorsV156_1_HTTPEnforceable) {
+    EXPECT_TRUE(has_enforceable_document_origin("http://example.com"));
+}
+
+// 2. a.com vs b.com is cross-origin
+TEST(CORSPolicyTest, CorsV156_2_CrossOriginDifferentHosts) {
+    EXPECT_TRUE(is_cross_origin("https://a.com", "https://b.com/path"));
+}
+
+// 3. ACAO with port:8080 matches origin with port:8080
+TEST(CORSPolicyTest, CorsV156_3_ACAOExactPortMatch) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "https://app.example:8080");
+    EXPECT_TRUE(cors_allows_response("https://app.example:8080", "https://api.example/data",
+                                     headers, false));
+}
+
+// 4. "null" string origin is not enforceable
+TEST(CORSPolicyTest, CorsV156_4_NullOriginNotEnforceable) {
+    EXPECT_FALSE(has_enforceable_document_origin("null"));
+}
+
+// 5. https without port is same-origin as https:443
+TEST(CORSPolicyTest, CorsV156_5_SameOriginHTTPSImplicit443) {
+    EXPECT_FALSE(is_cross_origin("https://example.com", "https://example.com:443/page"));
+}
+
+// 6. ftp vs http is cross-origin
+TEST(CORSPolicyTest, CorsV156_6_CrossOriginProtocolMismatch) {
+    EXPECT_TRUE(is_cross_origin("http://example.com", "https://example.com/page"));
+}
+
+// 7. ACAO wildcard allows any origin (non-credentialed)
+TEST(CORSPolicyTest, CorsV156_7_ACAOWildcardAllowsAnyOrigin) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "*");
+    EXPECT_TRUE(cors_allows_response("https://random.example", "https://api.example/data",
+                                     headers, false));
+}
+
+// 8. IPv6 loopback is enforceable
+TEST(CORSPolicyTest, CorsV156_8_IPv6LoopbackEnforceable) {
+    EXPECT_TRUE(has_enforceable_document_origin("http://[::1]"));
+}

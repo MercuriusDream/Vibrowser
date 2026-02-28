@@ -28673,3 +28673,188 @@ TEST(LayoutNodeProps, OpacityDefaultOneV155) {
     auto node = make_block("div");
     EXPECT_FLOAT_EQ(node->opacity, 1.0f);
 }
+
+// V156_1: flex space-evenly distribution with 3 children
+TEST(LayoutEngineTest, LayoutV156_1) {
+    auto root = make_flex("div");
+    root->flex_direction = 0; // row
+    root->justify_content = 5; // space-evenly
+
+    auto child1 = make_block("div");
+    child1->specified_width = 60.0f;
+    child1->specified_height = 30.0f;
+
+    auto child2 = make_block("div");
+    child2->specified_width = 60.0f;
+    child2->specified_height = 30.0f;
+
+    auto child3 = make_block("div");
+    child3->specified_width = 60.0f;
+    child3->specified_height = 30.0f;
+
+    root->append_child(std::move(child1));
+    root->append_child(std::move(child2));
+    root->append_child(std::move(child3));
+
+    LayoutEngine engine;
+    engine.compute(*root, 600.0f, 400.0f);
+
+    // Items: 3 * 60 = 180. Remaining: 420. Slots: 4 (before, between x2, after)
+    // Space per slot: 420/4 = 105
+    float x1 = root->children[0]->geometry.x;
+    float x2 = root->children[1]->geometry.x;
+    float x3 = root->children[2]->geometry.x;
+
+    EXPECT_NEAR(x1, 105.0f, 2.0f);
+    EXPECT_NEAR(x2, 270.0f, 2.0f); // 105 + 60 + 105
+    EXPECT_NEAR(x3, 435.0f, 2.0f); // 270 + 60 + 105
+}
+
+// V156: grid gap + padding combined
+TEST(GridLayout, GridWithGapAndPaddingV156) {
+    auto root = make_grid();
+    root->grid_template_columns = "100px 100px";
+    root->column_gap_val = 20.0f;
+    root->gap = 10.0f; // row gap
+    root->geometry.padding.left = 15.0f;
+    root->geometry.padding.top = 10.0f;
+    root->specified_width = 250.0f;
+
+    for (int i = 0; i < 4; i++) {
+        auto child = make_block("div");
+        child->specified_height = 40.0f;
+        root->append_child(std::move(child));
+    }
+
+    LayoutEngine engine;
+    engine.compute(*root, 250.0f, 600.0f);
+
+    // First child should be offset by padding
+    EXPECT_GE(root->children[0]->geometry.x, 14.0f);
+    EXPECT_GE(root->children[0]->geometry.y, 9.0f);
+    // Second child should be offset by column gap from first
+    float gap_dist = root->children[1]->geometry.x - (root->children[0]->geometry.x + root->children[0]->geometry.width);
+    EXPECT_NEAR(gap_dist, 20.0f, 2.0f);
+}
+
+// V156_3: two flex-grow children unequal ratios 3:1
+TEST(LayoutEngineTest, LayoutV156_3) {
+    auto root = make_flex("div");
+    root->flex_direction = 0; // row
+
+    auto child1 = make_block("div");
+    child1->flex_grow = 3.0f;
+    child1->specified_height = 50.0f;
+
+    auto child2 = make_block("div");
+    child2->flex_grow = 1.0f;
+    child2->specified_height = 50.0f;
+
+    root->append_child(std::move(child1));
+    root->append_child(std::move(child2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 400.0f, 400.0f);
+
+    // child1 should get 3/4 of space = 300, child2 gets 1/4 = 100
+    EXPECT_NEAR(root->children[0]->geometry.width, 300.0f, 2.0f);
+    EXPECT_NEAR(root->children[1]->geometry.width, 100.0f, 2.0f);
+}
+
+// V156_4: flex row gap separates children
+TEST(LayoutEngineTest, LayoutV156_4) {
+    auto root = make_flex("div");
+    root->flex_direction = 0; // row
+    root->column_gap_val = 20.0f;
+
+    auto child1 = make_block("div");
+    child1->specified_width = 100.0f;
+    child1->specified_height = 40.0f;
+
+    auto child2 = make_block("div");
+    child2->specified_width = 100.0f;
+    child2->specified_height = 40.0f;
+
+    root->append_child(std::move(child1));
+    root->append_child(std::move(child2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 600.0f, 400.0f);
+
+    // child2.x should be child1.x + child1.width + gap = 0 + 100 + 20 = 120
+    float actual_gap = root->children[1]->geometry.x - (root->children[0]->geometry.x + root->children[0]->geometry.width);
+    EXPECT_NEAR(actual_gap, 20.0f, 2.0f);
+}
+
+// V156_5: flex column reverse direction
+TEST(LayoutEngineTest, LayoutV156_5) {
+    auto root = make_flex("div");
+    root->flex_direction = 3; // column-reverse
+    root->specified_height = 300.0f;
+
+    auto child1 = make_block("div");
+    child1->specified_width = 80.0f;
+    child1->specified_height = 50.0f;
+
+    auto child2 = make_block("div");
+    child2->specified_width = 80.0f;
+    child2->specified_height = 70.0f;
+
+    root->append_child(std::move(child1));
+    root->append_child(std::move(child2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 400.0f, 400.0f);
+
+    // In column-reverse, first DOM child should be at a higher y than second
+    ASSERT_GE(root->children.size(), 2u);
+    EXPECT_GT(root->children[0]->geometry.y, root->children[1]->geometry.y)
+        << "column-reverse: first DOM child should be below second";
+}
+
+// V156_6: min_width and max_width both set
+TEST(LayoutEngineTest, LayoutV156_6) {
+    auto root = make_block("div");
+    root->specified_width = 50.0f;
+    root->min_width = 200.0f;
+    root->max_width = 400.0f;
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // min_width clamps specified_width UP to 200
+    EXPECT_GE(root->geometry.width, 200.0f);
+    EXPECT_LE(root->geometry.width, 400.0f);
+}
+
+// V156_7: absolute position basic
+TEST(LayoutEngineTest, LayoutV156_7) {
+    auto root = make_block("div");
+    root->specified_width = 500.0f;
+    root->specified_height = 400.0f;
+
+    auto abs_child = make_block("div");
+    abs_child->position_type = 2; // absolute
+    abs_child->specified_width = 120.0f;
+    abs_child->specified_height = 80.0f;
+    abs_child->pos_top = 30.0f;
+    abs_child->pos_top_set = true;
+    abs_child->pos_left = 50.0f;
+    abs_child->pos_left_set = true;
+
+    root->append_child(std::move(abs_child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 500.0f, 400.0f);
+
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.x, 50.0f);
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.y, 30.0f);
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.width, 120.0f);
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.height, 80.0f);
+}
+
+// V156_8: text_stroke_width defaults to 0.0f
+TEST(LayoutNodeProps, TextStrokeWidthDefaultZeroV156) {
+    auto node = make_block("div");
+    EXPECT_FLOAT_EQ(node->text_stroke_width, 0.0f);
+}

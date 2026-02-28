@@ -23301,3 +23301,96 @@ TEST(DomElement, AttributeValueWithSpecialCharsV155) {
     EXPECT_EQ(elem.get_attribute("data-mixed").value(), "a'b\"c<d>e");
     EXPECT_EQ(elem.attributes().size(), 3u);
 }
+
+// ---------------------------------------------------------------------------
+// Round 156 DOM tests
+// ---------------------------------------------------------------------------
+
+// 1. Comment node_type() == NodeType::Comment
+TEST(DomNode, CommentNodeTypeIsCommentV156) {
+    Comment c("test comment");
+    EXPECT_EQ(c.node_type(), NodeType::Comment);
+}
+
+// 2. Set then remove attribute, get returns nullopt
+TEST(DomElement, GetAttributeAfterRemoveReturnsNulloptV156) {
+    Element elem("div");
+    elem.set_attribute("data-x", "123");
+    ASSERT_TRUE(elem.get_attribute("data-x").has_value());
+    elem.remove_attribute("data-x");
+    EXPECT_FALSE(elem.get_attribute("data-x").has_value());
+}
+
+// 3. Append 5 elements, count all children
+TEST(DomDocument, ElementCountAfterMultipleAppendsV156) {
+    auto parent = std::make_unique<Element>("div");
+    parent->append_child(std::make_unique<Element>("a"));
+    parent->append_child(std::make_unique<Element>("b"));
+    parent->append_child(std::make_unique<Element>("c"));
+    parent->append_child(std::make_unique<Element>("d"));
+    parent->append_child(std::make_unique<Element>("e"));
+    EXPECT_EQ(parent->child_count(), 5u);
+}
+
+// 4. Event phase starts at None before dispatch
+TEST(DomEvent, EventPhaseNoneBeforeDispatchV156) {
+    Event event("mousedown");
+    EXPECT_EQ(event.phase(), EventPhase::None);
+}
+
+// 5. Insert between 1st and 2nd child preserves order
+TEST(DomNode, InsertBeforeMiddlePreservesOrderV156) {
+    auto parent = std::make_unique<Element>("ul");
+    auto first = std::make_unique<Element>("li");
+    auto second = std::make_unique<Element>("li");
+    Element* first_ptr = first.get();
+    Element* second_ptr = second.get();
+    parent->append_child(std::move(first));
+    parent->append_child(std::move(second));
+
+    auto middle = std::make_unique<Element>("li");
+    Element* middle_ptr = middle.get();
+    parent->insert_before(std::move(middle), second_ptr);
+
+    EXPECT_EQ(parent->child_count(), 3u);
+    EXPECT_EQ(parent->first_child(), first_ptr);
+    EXPECT_EQ(first_ptr->next_sibling(), middle_ptr);
+    EXPECT_EQ(middle_ptr->next_sibling(), second_ptr);
+    EXPECT_EQ(parent->last_child(), second_ptr);
+}
+
+// 6. Add 4 classes, contains returns true for each
+TEST(DomElement, ClassListContainsMultipleV156) {
+    Element elem("div");
+    elem.class_list().add("alpha");
+    elem.class_list().add("beta");
+    elem.class_list().add("gamma");
+    elem.class_list().add("delta");
+    EXPECT_TRUE(elem.class_list().contains("alpha"));
+    EXPECT_TRUE(elem.class_list().contains("beta"));
+    EXPECT_TRUE(elem.class_list().contains("gamma"));
+    EXPECT_TRUE(elem.class_list().contains("delta"));
+    EXPECT_FALSE(elem.class_list().contains("epsilon"));
+}
+
+// 7. Append child updates parent pointer
+TEST(DomNode, AppendChildUpdatesParentPointerV156) {
+    auto parent = std::make_unique<Element>("div");
+    auto child = std::make_unique<Element>("span");
+    Element* child_ptr = child.get();
+    EXPECT_EQ(child_ptr->parent(), nullptr);
+    parent->append_child(std::move(child));
+    EXPECT_EQ(child_ptr->parent(), parent.get());
+}
+
+// 8. Attribute names with hyphens and colons
+TEST(DomElement, SetAttributeSpecialNameV156) {
+    Element elem("div");
+    elem.set_attribute("data-my-attr", "value1");
+    elem.set_attribute("xml:lang", "en");
+    elem.set_attribute("aria-label", "close button");
+    EXPECT_EQ(elem.get_attribute("data-my-attr").value(), "value1");
+    EXPECT_EQ(elem.get_attribute("xml:lang").value(), "en");
+    EXPECT_EQ(elem.get_attribute("aria-label").value(), "close button");
+    EXPECT_EQ(elem.attributes().size(), 3u);
+}

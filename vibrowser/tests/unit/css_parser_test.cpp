@@ -11011,3 +11011,57 @@ TEST_F(CSSStylesheetTest, WhiteSpaceNowrapDeclarationV155) {
     }
     EXPECT_TRUE(found) << "white-space declaration not found";
 }
+
+TEST_F(CSSStylesheetTest, FlexFlowDeclarationV156) {
+    auto ss = parse_stylesheet(".container { flex-flow: row wrap; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "flex-flow") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+        }
+    }
+    EXPECT_TRUE(found) << "flex-flow declaration not found";
+}
+
+TEST_F(CSSStylesheetTest, GridAutoFlowDeclarationV156) {
+    auto ss = parse_stylesheet(".grid { grid-auto-flow: column; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "grid-auto-flow") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "column");
+        }
+    }
+    EXPECT_TRUE(found) << "grid-auto-flow declaration not found";
+}
+
+TEST_F(CSSStylesheetTest, LineHeightDeclarationV156) {
+    auto ss = parse_stylesheet("p { line-height: 1.5; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "line-height") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+        }
+    }
+    EXPECT_TRUE(found) << "line-height declaration not found";
+}
+
+TEST_F(CSSStylesheetTest, VerticalAlignMiddleDeclarationV156) {
+    auto ss = parse_stylesheet("td { vertical-align: middle; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "vertical-align") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "middle");
+        }
+    }
+    EXPECT_TRUE(found) << "vertical-align declaration not found";
+}

@@ -24608,3 +24608,174 @@ TEST(HtmlParserTest, HtmlV155_8) {
     }
     EXPECT_TRUE(found_id) << "id attribute not found on template";
 }
+
+TEST(HtmlParserTest, HtmlV156_1) {
+    // img with src and alt
+    auto doc = clever::html::parse(
+        "<html><body><img src=\"photo.jpg\" alt=\"A photo\"></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* img = doc->find_element("img");
+    ASSERT_NE(img, nullptr);
+    EXPECT_EQ(img->tag_name, "img");
+
+    bool found_src = false;
+    bool found_alt = false;
+    for (const auto& attr : img->attributes) {
+        if (attr.name == "src") {
+            found_src = true;
+            EXPECT_EQ(attr.value, "photo.jpg");
+        }
+        if (attr.name == "alt") {
+            found_alt = true;
+            EXPECT_EQ(attr.value, "A photo");
+        }
+    }
+    EXPECT_TRUE(found_src) << "src attribute not found on img";
+    EXPECT_TRUE(found_alt) << "alt attribute not found on img";
+}
+
+TEST(HtmlParserTest, HtmlV156_2) {
+    // a with href and target
+    auto doc = clever::html::parse(
+        "<html><body><a href=\"https://example.com\" target=\"_blank\">Link</a></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* a = doc->find_element("a");
+    ASSERT_NE(a, nullptr);
+    EXPECT_EQ(a->tag_name, "a");
+    EXPECT_EQ(a->text_content(), "Link");
+
+    bool found_href = false;
+    bool found_target = false;
+    for (const auto& attr : a->attributes) {
+        if (attr.name == "href") {
+            found_href = true;
+            EXPECT_EQ(attr.value, "https://example.com");
+        }
+        if (attr.name == "target") {
+            found_target = true;
+            EXPECT_EQ(attr.value, "_blank");
+        }
+    }
+    EXPECT_TRUE(found_href) << "href attribute not found on a";
+    EXPECT_TRUE(found_target) << "target attribute not found on a";
+}
+
+TEST(HtmlParserTest, HtmlV156_3) {
+    // div with id and class
+    auto doc = clever::html::parse(
+        "<html><body><div id=\"main\" class=\"container\">Content</div></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* div = doc->find_element("div");
+    ASSERT_NE(div, nullptr);
+    EXPECT_EQ(div->tag_name, "div");
+    EXPECT_EQ(div->text_content(), "Content");
+
+    bool found_id = false;
+    bool found_class = false;
+    for (const auto& attr : div->attributes) {
+        if (attr.name == "id") {
+            found_id = true;
+            EXPECT_EQ(attr.value, "main");
+        }
+        if (attr.name == "class") {
+            found_class = true;
+            EXPECT_EQ(attr.value, "container");
+        }
+    }
+    EXPECT_TRUE(found_id) << "id attribute not found on div";
+    EXPECT_TRUE(found_class) << "class attribute not found on div";
+}
+
+TEST(HtmlParserTest, HtmlV156_4) {
+    // span with style attribute
+    auto doc = clever::html::parse(
+        "<html><body><span style=\"color: red;\">Styled</span></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* span = doc->find_element("span");
+    ASSERT_NE(span, nullptr);
+    EXPECT_EQ(span->tag_name, "span");
+    EXPECT_EQ(span->text_content(), "Styled");
+
+    bool found_style = false;
+    for (const auto& attr : span->attributes) {
+        if (attr.name == "style") {
+            found_style = true;
+            EXPECT_EQ(attr.value, "color: red;");
+        }
+    }
+    EXPECT_TRUE(found_style) << "style attribute not found on span";
+}
+
+TEST(HtmlParserTest, HtmlV156_5) {
+    // h1 through h3 nesting
+    auto doc = clever::html::parse(
+        "<html><body><h1>Title</h1><h2>Subtitle</h2><h3>Section</h3></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* h1 = doc->find_element("h1");
+    ASSERT_NE(h1, nullptr);
+    EXPECT_EQ(h1->tag_name, "h1");
+    EXPECT_EQ(h1->text_content(), "Title");
+
+    auto* h2 = doc->find_element("h2");
+    ASSERT_NE(h2, nullptr);
+    EXPECT_EQ(h2->tag_name, "h2");
+    EXPECT_EQ(h2->text_content(), "Subtitle");
+
+    auto* h3 = doc->find_element("h3");
+    ASSERT_NE(h3, nullptr);
+    EXPECT_EQ(h3->tag_name, "h3");
+    EXPECT_EQ(h3->text_content(), "Section");
+}
+
+TEST(HtmlParserTest, HtmlV156_6) {
+    // pre with code inside
+    auto doc = clever::html::parse(
+        "<html><body><pre><code>int main() {}</code></pre></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* pre = doc->find_element("pre");
+    ASSERT_NE(pre, nullptr);
+    EXPECT_EQ(pre->tag_name, "pre");
+
+    auto* code = doc->find_element("code");
+    ASSERT_NE(code, nullptr);
+    EXPECT_EQ(code->tag_name, "code");
+    EXPECT_EQ(code->text_content(), "int main() {}");
+}
+
+TEST(HtmlParserTest, HtmlV156_7) {
+    // blockquote with cite
+    auto doc = clever::html::parse(
+        "<html><body><blockquote cite=\"https://example.com\">A quote</blockquote></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* bq = doc->find_element("blockquote");
+    ASSERT_NE(bq, nullptr);
+    EXPECT_EQ(bq->tag_name, "blockquote");
+    EXPECT_EQ(bq->text_content(), "A quote");
+
+    bool found_cite = false;
+    for (const auto& attr : bq->attributes) {
+        if (attr.name == "cite") {
+            found_cite = true;
+            EXPECT_EQ(attr.value, "https://example.com");
+        }
+    }
+    EXPECT_TRUE(found_cite) << "cite attribute not found on blockquote";
+}
+
+TEST(HtmlParserTest, HtmlV156_8) {
+    // br void element
+    auto doc = clever::html::parse(
+        "<html><body><p>Line1<br>Line2</p></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* br = doc->find_element("br");
+    ASSERT_NE(br, nullptr);
+    EXPECT_EQ(br->tag_name, "br");
+}

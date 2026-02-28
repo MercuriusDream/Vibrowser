@@ -15286,3 +15286,53 @@ TEST(UrlParserTest, UrlV155_4_QueryWithEncodedChars) {
     std::string serialized = result->serialize();
     EXPECT_EQ(serialized, "https://search.example.com/find?name=%25E4%25B8%25AD%25E6%2596%2587");
 }
+
+TEST(UrlParserTest, UrlV156_1_WSSchemeRecognized) {
+    // ws:// scheme should be recognized and parsed correctly
+    auto result = parse("ws://echo.example.com");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "ws");
+    EXPECT_EQ(result->host, "echo.example.com");
+    EXPECT_EQ(result->port, std::nullopt);
+    EXPECT_TRUE(result->is_special());
+    // Serialized form should include the scheme and host
+    std::string serialized = result->serialize();
+    EXPECT_EQ(serialized, "ws://echo.example.com/");
+}
+
+TEST(UrlParserTest, UrlV156_2_WSSSchemeRecognized) {
+    // wss:// scheme should be recognized and parsed correctly
+    auto result = parse("wss://secure.example.com");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "wss");
+    EXPECT_EQ(result->host, "secure.example.com");
+    EXPECT_EQ(result->port, std::nullopt);
+    EXPECT_TRUE(result->is_special());
+    // Serialized form should include the scheme and host
+    std::string serialized = result->serialize();
+    EXPECT_EQ(serialized, "wss://secure.example.com/");
+}
+
+TEST(UrlParserTest, UrlV156_3_EmptyHostAuthority) {
+    // http:///path should parse with an empty host
+    auto result = parse("http:///path");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_TRUE(result->host.empty());
+    EXPECT_EQ(result->path, "/path");
+    EXPECT_EQ(result->port, std::nullopt);
+}
+
+TEST(UrlParserTest, UrlV156_4_PortMaxValue65535) {
+    // Port 65535 (maximum valid) should be preserved in the parsed URL
+    auto result = parse("http://example.com:65535/test");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "example.com");
+    ASSERT_TRUE(result->port.has_value());
+    EXPECT_EQ(result->port.value(), 65535);
+    EXPECT_EQ(result->path, "/test");
+    // Port 65535 is non-default for http, so it should appear in serialization
+    std::string serialized = result->serialize();
+    EXPECT_EQ(serialized, "http://example.com:65535/test");
+}

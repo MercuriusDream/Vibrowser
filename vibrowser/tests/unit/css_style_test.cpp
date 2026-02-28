@@ -26028,3 +26028,45 @@ TEST(CSSStyleTest, CssV155_4_TextDecorationUnderlineColor) {
     cascade.apply_declaration(style, make_decl("text-decoration-color", "red"), parent);
     EXPECT_EQ(style.text_decoration_color, (Color{255, 0, 0, 255}));
 }
+
+TEST(PropertyCascadeTest, FlexFlowAppliedV156) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.flex_direction, FlexDirection::Row);
+    EXPECT_EQ(style.flex_wrap, FlexWrap::NoWrap);
+
+    cascade.apply_declaration(style, make_decl("flex-flow", "row wrap"), parent);
+    EXPECT_EQ(style.flex_direction, FlexDirection::Row);
+    EXPECT_EQ(style.flex_wrap, FlexWrap::Wrap);
+}
+
+TEST(CSSStyleTest, CssV156_2_PositionAbsoluteApplied) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.position, Position::Static);
+    cascade.apply_declaration(style, make_decl("position", "absolute"), parent);
+    EXPECT_EQ(style.position, Position::Absolute);
+}
+
+TEST(PropertyCascadeTest, LineHeightAppliedV156) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("line-height", "1.5"), parent);
+    EXPECT_FLOAT_EQ(style.line_height_unitless, 1.5f);
+}
+
+TEST(CSSStyleTest, CssV156_4_DisplayInlineBlockApplied) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    EXPECT_EQ(style.display, Display::Inline);
+    cascade.apply_declaration(style, make_decl("display", "inline-block"), parent);
+    EXPECT_EQ(style.display, Display::InlineBlock);
+}

@@ -21068,3 +21068,53 @@ TEST(SerializerTest, SerializerV155_3_StringThenBoolThenU64Sequence) {
     EXPECT_FALSE(d.read_bool());
     EXPECT_FALSE(d.has_remaining());
 }
+
+// ------------------------------------------------------------------
+// Round 156 tests
+// ------------------------------------------------------------------
+
+TEST(SerializerTest, SerializerV156_1_I64MinMaxRoundTrip) {
+    Serializer s;
+    s.write_i64(std::numeric_limits<int64_t>::min());
+    s.write_i64(std::numeric_limits<int64_t>::max());
+    s.write_i64(0);
+    s.write_i64(-1);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i64(), std::numeric_limits<int64_t>::min());
+    EXPECT_EQ(d.read_i64(), std::numeric_limits<int64_t>::max());
+    EXPECT_EQ(d.read_i64(), 0);
+    EXPECT_EQ(d.read_i64(), -1);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, SerializerV156_2_AlternatingU8AndStringRoundTrip) {
+    Serializer s;
+    for (uint8_t i = 0; i < 8; ++i) {
+        s.write_u8(i * 30);
+        s.write_string("str_" + std::to_string(i));
+    }
+
+    Deserializer d(s.data());
+    for (uint8_t i = 0; i < 8; ++i) {
+        EXPECT_EQ(d.read_u8(), static_cast<uint8_t>(i * 30));
+        EXPECT_EQ(d.read_string(), "str_" + std::to_string(i));
+    }
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, SerializerV156_3_Bytes512WithPatternRoundTrip) {
+    std::vector<uint8_t> bytes(512);
+    for (size_t i = 0; i < 512; ++i) {
+        bytes[i] = static_cast<uint8_t>((i * 7 + 13) % 256);
+    }
+
+    Serializer s;
+    s.write_bytes(bytes.data(), bytes.size());
+
+    Deserializer d(s.data());
+    auto result = d.read_bytes();
+    EXPECT_EQ(result.size(), 512u);
+    EXPECT_EQ(result, bytes);
+    EXPECT_FALSE(d.has_remaining());
+}
