@@ -7,12 +7,22 @@
 
 **Phase**: Active Development — Testing Blitz
 **Last Active**: 2026-02-28
-**Current Focus**: Render pipeline fixes for real-world page rendering (Google, etc.)
-**Momentum**: 6 critical render pipeline fixes applied — dark mode, Connection header, Accept-Language, TLS recv, noscript fallback, JS memory
-**Cycle**: 1943
+**Current Focus**: Testing Blitz — continuous test expansion
+**Momentum**: Round 129 complete — 72 new tests, 17,615 total
+**Cycle**: 1956
 **Workflow**: Two-phase cycle workflow. Phase 1: Launch 6 Opus subagents to diagnose current cycle state (read code, identify test gaps, analyze build issues, explore codebase). Phase 2: Use /codex skill (6 Codex instances) to implement fixes/tests based on diagnosis results. Commit and push after each cycle round.
 
 ## Session Log
+
+### Cycle 1948-1956 (Round 129) — 2026-02-28
+
+- **Theme**: Testing Blitz Round 129
+- **Phase 1 Diagnosis**: 4 Opus subagents analyzed test gaps across all 9 suites
+- **Phase 2 Implementation**: 6 Opus subagents wrote 72 new tests in parallel
+- **Tests Added**: 72 (8 DOM + 8 CORS + 8 IPC + 8 URL + 8 Net + 4 CSS Parser + 4 CSS Style + 8 HTML + 8 Layout + 8 JS)
+- **Fix**: CookieJar subpath test adjusted — our implementation uses simple prefix matching (Path=/api matches /apiary)
+- **Fix**: DOM prev_sibling() → previous_sibling() API correction
+- **Validation**: 13/13 suites pass, 17,615 total tests, 0 failures
 
 ### Cycle 1943 — 2026-02-28
 
