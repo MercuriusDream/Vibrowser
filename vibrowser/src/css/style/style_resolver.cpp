@@ -335,6 +335,12 @@ void PropertyCascade::apply_declaration(
         }
     }
 
+    // If unresolved var() remains, declaration is invalid at computed-value
+    // time; ignore it rather than forcing property-specific fallbacks.
+    if (value_str.find("var(") != std::string::npos) {
+        return;
+    }
+
     std::string value_lower = to_lower(value_str);
 
     // Handle 'inherit' keyword for any property
@@ -1622,7 +1628,8 @@ void PropertyCascade::apply_declaration(
     if (prop == "text-align") {
         if (value_lower == "left" || value_lower == "start") style.text_align = TextAlign::Left;
         else if (value_lower == "right" || value_lower == "end") style.text_align = TextAlign::Right;
-        else if (value_lower == "center" || value_lower == "-webkit-center") style.text_align = TextAlign::Center;
+        else if (value_lower == "center") style.text_align = TextAlign::Center;
+        else if (value_lower == "-webkit-center") style.text_align = TextAlign::WebkitCenter;
         else if (value_lower == "justify") style.text_align = TextAlign::Justify;
         else if (value_lower == "-webkit-left") style.text_align = TextAlign::Left;
         else if (value_lower == "-webkit-right") style.text_align = TextAlign::Right;

@@ -1688,7 +1688,8 @@ void apply_inline_style(clever::css::ComputedStyle& style, const std::string& st
                 try { style.font_weight = std::stoi(d.value); } catch (...) {}
             }
         } else if (d.property == "text-align") {
-            if (val_lower == "center" || val_lower == "-webkit-center") style.text_align = clever::css::TextAlign::Center;
+            if (val_lower == "center") style.text_align = clever::css::TextAlign::Center;
+            else if (val_lower == "-webkit-center") style.text_align = clever::css::TextAlign::WebkitCenter;
             else if (val_lower == "right" || val_lower == "end" || val_lower == "-webkit-right") style.text_align = clever::css::TextAlign::Right;
             else if (val_lower == "justify") style.text_align = clever::css::TextAlign::Justify;
             else style.text_align = clever::css::TextAlign::Left;
@@ -6967,6 +6968,7 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
         case clever::css::TextAlign::Center: layout_node->text_align = 1; break;
         case clever::css::TextAlign::Right: layout_node->text_align = 2; break;
         case clever::css::TextAlign::Justify: layout_node->text_align = 3; break;
+        case clever::css::TextAlign::WebkitCenter: layout_node->text_align = 4; break;
     }
     layout_node->text_align_last = style.text_align_last;
     // Text indent
@@ -10503,7 +10505,8 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
 
     // Legacy <center> centers not only inline content but also common block/table
     // descendants in quirks-era markup.
-    if (tag_lower == "center") {
+    // -webkit-center (text_align == 4) does the same: auto-center block children.
+    if (tag_lower == "center" || layout_node->text_align == 4) {
         for (auto& child : layout_node->children) {
             if (!child) continue;
             if (child->geometry.margin.left == 0 && child->geometry.margin.right == 0) {
@@ -10514,6 +10517,10 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
                     child->geometry.margin.right = -1; // auto
                 }
             }
+        }
+        // For -webkit-center, also treat inline text centering as Center
+        if (layout_node->text_align == 4) {
+            layout_node->text_align = 1; // center for inline content
         }
     }
 
