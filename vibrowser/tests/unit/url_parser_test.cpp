@@ -14938,3 +14938,48 @@ TEST(UrlParserTest, UrlV148_4_NonDefaultPortPreservedInSerialize) {
     std::string s = result->serialize();
     EXPECT_EQ(s, "http://example.com:9999/data");
 }
+
+// =============================================================================
+// V149 URL Parser Tests
+// =============================================================================
+
+TEST(UrlParserTest, UrlV149_1_HttpsNoPathDefaultsSlash) {
+    // https://secure.io with no explicit path should default to "/"
+    auto result = parse("https://secure.io");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "secure.io");
+    EXPECT_EQ(result->path, "/");
+    EXPECT_EQ(result->port, std::nullopt);
+}
+
+TEST(UrlParserTest, UrlV149_2_PortBoundary0And65535) {
+    // Port 0 and 65535 should both parse correctly
+    auto r0 = parse("http://example.com:0/a");
+    ASSERT_TRUE(r0.has_value());
+    ASSERT_TRUE(r0->port.has_value());
+    EXPECT_EQ(r0->port.value(), 0);
+
+    auto r65535 = parse("http://example.com:65535/b");
+    ASSERT_TRUE(r65535.has_value());
+    ASSERT_TRUE(r65535->port.has_value());
+    EXPECT_EQ(r65535->port.value(), 65535);
+}
+
+TEST(UrlParserTest, UrlV149_3_HostWithNumbersValid) {
+    // Host starting with numbers is valid
+    auto result = parse("http://123.example.com/page");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "123.example.com");
+    EXPECT_EQ(result->path, "/page");
+}
+
+TEST(UrlParserTest, UrlV149_4_SchemeIsCaseInsensitive) {
+    // Scheme should be lowercased during parsing
+    auto result = parse("HTTP://example.com/test");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/test");
+}

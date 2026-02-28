@@ -25692,3 +25692,37 @@ TEST(CSSStyleTest, CssV148_4_MarginAutoApplied) {
     EXPECT_FLOAT_EQ(style.margin.left.to_px(), 0.0f);
     EXPECT_FLOAT_EQ(style.margin.right.to_px(), 0.0f);
 }
+
+TEST(CSSStyleTest, CssV149_1_PositionStaticDefault) {
+    ComputedStyle style;
+    EXPECT_EQ(style.position, Position::Static);
+}
+
+TEST(CSSStyleTest, CssV149_2_FontWeight900Applied) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("font-weight", "900"), parent);
+    EXPECT_EQ(style.font_weight, 900);
+}
+
+TEST(PropertyCascadeTest, TextAlignCenterV149) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("text-align", "center"), parent);
+    EXPECT_EQ(style.text_align, TextAlign::Center);
+}
+
+TEST(CSSStyleTest, CssV149_4_DisplayBlockDefault) {
+    ComputedStyle style;
+    // Default display is Inline for ComputedStyle
+    EXPECT_EQ(style.display, Display::Inline);
+    // After applying display: block, it should change
+    PropertyCascade cascade;
+    ComputedStyle parent;
+    cascade.apply_declaration(style, make_decl("display", "block"), parent);
+    EXPECT_EQ(style.display, Display::Block);
+}

@@ -1962,3 +1962,47 @@ TEST(MessageChannelTest, MessageChannelV148_2_EmptyPayloadHandlerV148) {
     ch.dispatch(msg);
     EXPECT_EQ(observed_size, 0u);
 }
+
+// ------------------------------------------------------------------
+// V149 tests
+// ------------------------------------------------------------------
+
+TEST(MessageChannelTest, MessageChannelV149_1_ThreeHandlersThreeTypesV149) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel ch(std::move(pa));
+
+    int count1 = 0, count2 = 0, count3 = 0;
+    ch.on(1, [&](const Message&) { count1++; });
+    ch.on(2, [&](const Message&) { count2++; });
+    ch.on(3, [&](const Message&) { count3++; });
+
+    Message m1; m1.type = 1; m1.request_id = 0;
+    Message m2; m2.type = 2; m2.request_id = 0;
+    Message m3; m3.type = 3; m3.request_id = 0;
+
+    ch.dispatch(m1);
+    ch.dispatch(m2);
+    ch.dispatch(m3);
+
+    EXPECT_EQ(count1, 1);
+    EXPECT_EQ(count2, 1);
+    EXPECT_EQ(count3, 1);
+}
+
+TEST(MessageChannelTest, MessageChannelV149_2_LargePayloadInHandlerV149) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel ch(std::move(pa));
+
+    size_t observed_size = 0;
+    ch.on(10, [&](const Message& m) {
+        observed_size = m.payload.size();
+    });
+
+    Message msg;
+    msg.type = 10;
+    msg.request_id = 0;
+    msg.payload.resize(4096, 0xBE);
+
+    ch.dispatch(msg);
+    EXPECT_EQ(observed_size, 4096u);
+}

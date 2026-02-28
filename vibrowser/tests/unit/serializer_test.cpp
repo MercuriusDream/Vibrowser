@@ -20730,3 +20730,48 @@ TEST(SerializerTest, SerializerV148_3_MixedStringsAndU32sRoundTrip) {
     }
     EXPECT_FALSE(d.has_remaining());
 }
+
+// ------------------------------------------------------------------
+// V149 tests
+// ------------------------------------------------------------------
+
+TEST(SerializerTest, SerializerV149_1_U16MaxMinRoundTrip) {
+    Serializer s;
+    s.write_u16(0);
+    s.write_u16(65535);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u16(), 0u);
+    EXPECT_EQ(d.read_u16(), 65535u);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, SerializerV149_2_MultipleF64sRoundTrip) {
+    Serializer s;
+    double vals[5] = {0.0, -1.5, 3.14159265358979, 1e308, -1e-300};
+    for (int i = 0; i < 5; ++i) {
+        s.write_f64(vals[i]);
+    }
+
+    Deserializer d(s.data());
+    for (int i = 0; i < 5; ++i) {
+        EXPECT_DOUBLE_EQ(d.read_f64(), vals[i]);
+    }
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, SerializerV149_3_LargeByteArrayRoundTrip) {
+    Serializer s;
+    std::vector<uint8_t> big(32768);
+    for (size_t i = 0; i < big.size(); ++i) {
+        big[i] = static_cast<uint8_t>(i & 0xFF);
+    }
+    s.write_bytes(big.data(), big.size());
+
+    Deserializer d(s.data());
+    auto result = d.read_bytes();
+    ASSERT_EQ(result.size(), 32768u);
+    EXPECT_EQ(result[0], 0u);
+    EXPECT_EQ(result[16384], static_cast<uint8_t>(16384 & 0xFF));
+    EXPECT_EQ(result[32767], static_cast<uint8_t>(32767 & 0xFF));
+}

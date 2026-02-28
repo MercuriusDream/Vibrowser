@@ -1139,3 +1139,31 @@ TEST(IsURLCodePoint, TildeIsCodePointV148) {
     // '~' is a valid URL code point (unreserved character)
     EXPECT_TRUE(is_url_code_point(U'~'));
 }
+
+// =============================================================================
+// V149 Percent Encoding Tests
+// =============================================================================
+
+TEST(PercentEncoding, TabEncodedV149) {
+    // Tab character (0x09) must be percent-encoded
+    std::string input(1, '\t');
+    EXPECT_EQ(percent_encode(input), "%09");
+}
+
+TEST(PercentDecoding, MixedCaseHexV149) {
+    // %2a (lowercase) and %2A (uppercase) both decode to '*'
+    EXPECT_EQ(percent_decode("%2a"), "*");
+    EXPECT_EQ(percent_decode("%2A"), "*");
+}
+
+TEST(PercentEncoding, NewlineEncodedV149) {
+    // Newline character (0x0A) must be percent-encoded
+    std::string input(1, '\n');
+    EXPECT_EQ(percent_encode(input), "%0A");
+}
+
+TEST(IsURLCodePoint, HyphenAndUnderscoreV149) {
+    // '-' and '_' are valid URL code points (unreserved characters)
+    EXPECT_TRUE(is_url_code_point(U'-'));
+    EXPECT_TRUE(is_url_code_point(U'_'));
+}

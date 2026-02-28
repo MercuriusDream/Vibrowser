@@ -10607,3 +10607,59 @@ TEST_F(CSSStylesheetTest, OverflowDeclarationV148) {
     }
     EXPECT_TRUE(found) << "overflow declaration not found";
 }
+
+TEST_F(CSSStylesheetTest, FlexDirectionDeclarationV149) {
+    auto ss = parse_stylesheet("div { flex-direction: column; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "flex-direction") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "column");
+        }
+    }
+    EXPECT_TRUE(found) << "flex-direction declaration not found";
+}
+
+TEST_F(CSSStylesheetTest, JustifyContentDeclarationV149) {
+    auto ss = parse_stylesheet("div { justify-content: center; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "justify-content") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "center");
+        }
+    }
+    EXPECT_TRUE(found) << "justify-content declaration not found";
+}
+
+TEST_F(CSSStylesheetTest, AlignItemsDeclarationV149) {
+    auto ss = parse_stylesheet("section { align-items: flex-start; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "align-items") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "flex-start");
+        }
+    }
+    EXPECT_TRUE(found) << "align-items declaration not found";
+}
+
+TEST_F(CSSStylesheetTest, FlexWrapDeclarationV149) {
+    auto ss = parse_stylesheet("div { flex-wrap: wrap; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "flex-wrap") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "wrap");
+        }
+    }
+    EXPECT_TRUE(found) << "flex-wrap declaration not found";
+}

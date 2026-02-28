@@ -25289,3 +25289,163 @@ TEST(HttpClient, CookieJarEmptyPathMatchesAllV148) {
     EXPECT_NE(h4.find("token148=abc"), std::string::npos)
         << "Cookie with no Path should match /x/y/z, got: " << h4;
 }
+
+// ===========================================================================
+// V149 Tests
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+TEST(HttpClient, RequestSerializeWithIfModifiedSinceV149) {
+    Request req;
+    req.method = Method::GET;
+    req.host = "archive149.example.com";
+    req.port = 80;
+    req.path = "/data149.json";
+    req.headers.set("If-Modified-Since", "Sat, 01 Jan 2022 00:00:00 GMT");
+
+    auto bytes = req.serialize();
+    std::string s(bytes.begin(), bytes.end());
+    EXPECT_NE(s.find("GET /data149.json HTTP/1.1\r\n"), std::string::npos)
+        << "Request line missing, got: " << s;
+    EXPECT_NE(s.find("if-modified-since: Sat, 01 Jan 2022 00:00:00 GMT\r\n"), std::string::npos)
+        << "If-Modified-Since header missing or wrong, got: " << s;
+    EXPECT_NE(s.find("Host: archive149.example.com\r\n"), std::string::npos)
+        << "Host header missing, got: " << s;
+}
+
+// ---------------------------------------------------------------------------
+TEST(HttpClient, ResponseParse100ContinueV149) {
+    std::string raw_str =
+        "HTTP/1.1 100 Continue\r\n"
+        "\r\n";
+    std::vector<uint8_t> raw(raw_str.begin(), raw_str.end());
+    auto resp = Response::parse(raw);
+    ASSERT_TRUE(resp.has_value()) << "Failed to parse 100 Continue response";
+    EXPECT_EQ(resp->status, 100);
+}
+
+// ---------------------------------------------------------------------------
+TEST(HttpClient, HeaderMapAppendPreservesOriginalSetV149) {
+    HeaderMap map;
+    map.set("X-Custom-V149", "first");
+    map.append("X-Custom-V149", "second");
+
+    // get() should return the first value set
+    auto val = map.get("X-Custom-V149");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(val.value(), "first")
+        << "get() should return the original set value, got: " << val.value();
+
+    // get_all() should contain both
+    auto all = map.get_all("X-Custom-V149");
+    EXPECT_EQ(all.size(), 2u);
+    EXPECT_EQ(all[0], "first");
+    EXPECT_EQ(all[1], "second");
+}
+
+// ---------------------------------------------------------------------------
+TEST(HttpClient, CookieJarSameDomainDifferentPathsV149) {
+    CookieJar jar;
+    jar.set_from_header("key149=rootval; Path=/", "paths149.example.com");
+    jar.set_from_header("key149b=apival; Path=/api", "paths149.example.com");
+
+    // Root path should see root cookie but not /api cookie
+    std::string hroot = jar.get_cookie_header("paths149.example.com", "/", false);
+    EXPECT_NE(hroot.find("key149=rootval"), std::string::npos)
+        << "Root cookie missing on /, got: " << hroot;
+
+    // /api path should see both
+    std::string hapi = jar.get_cookie_header("paths149.example.com", "/api", false);
+    EXPECT_NE(hapi.find("key149b=apival"), std::string::npos)
+        << "/api cookie missing on /api, got: " << hapi;
+    EXPECT_NE(hapi.find("key149=rootval"), std::string::npos)
+        << "Root cookie should also match /api, got: " << hapi;
+}
+
+// ---------------------------------------------------------------------------
+TEST(HttpClient, RequestSerializePostEmptyBodyV149) {
+    Request req;
+    req.method = Method::POST;
+    req.host = "submit149.example.com";
+    req.port = 80;
+    req.path = "/empty149";
+    // body left empty (default empty vector)
+
+    auto bytes = req.serialize();
+    std::string s(bytes.begin(), bytes.end());
+    EXPECT_NE(s.find("POST /empty149 HTTP/1.1\r\n"), std::string::npos)
+        << "Request line missing, got: " << s;
+    EXPECT_NE(s.find("Host: submit149.example.com\r\n"), std::string::npos)
+        << "Host header missing, got: " << s;
+    EXPECT_NE(s.find("Connection: close\r\n"), std::string::npos)
+        << "Connection header missing, got: " << s;
+    // With empty body, no Content-Length header should be present
+    EXPECT_EQ(s.find("Content-Length"), std::string::npos)
+        << "Content-Length should not be emitted for empty body POST, got: " << s;
+    // Should end with double CRLF (no body follows)
+    auto pos = s.rfind("\r\n\r\n");
+    EXPECT_NE(pos, std::string::npos)
+        << "Request should end with \\r\\n\\r\\n, got: " << s;
+    EXPECT_EQ(pos + 4, s.size())
+        << "Nothing should follow the final \\r\\n\\r\\n for an empty body POST";
+}
+
+// ---------------------------------------------------------------------------
+TEST(HttpClient, ResponseParseHeaderWithColonInValueV149) {
+    std::string raw_str =
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Type: text/plain\r\n"
+        "X-Debug-Info: time:12:34:56:extra\r\n"
+        "Content-Length: 0\r\n"
+        "\r\n";
+    std::vector<uint8_t> raw(raw_str.begin(), raw_str.end());
+    auto resp = Response::parse(raw);
+    ASSERT_TRUE(resp.has_value()) << "Failed to parse response with colon-containing header value";
+    EXPECT_EQ(resp->status, 200);
+
+    auto dbg = resp->headers.get("X-Debug-Info");
+    ASSERT_TRUE(dbg.has_value()) << "X-Debug-Info header missing";
+    EXPECT_EQ(dbg.value(), "time:12:34:56:extra")
+        << "Header value with colons was mangled, got: " << dbg.value();
+}
+
+// ---------------------------------------------------------------------------
+TEST(HttpClient, HeaderMapMultipleKeysV149) {
+    HeaderMap map;
+    map.set("Key-A-V149", "a");
+    map.set("Key-B-V149", "b");
+    map.set("Key-C-V149", "c");
+    map.set("Key-D-V149", "d");
+    map.set("Key-E-V149", "e");
+
+    EXPECT_TRUE(map.has("Key-A-V149"));
+    EXPECT_TRUE(map.has("Key-B-V149"));
+    EXPECT_TRUE(map.has("Key-C-V149"));
+    EXPECT_TRUE(map.has("Key-D-V149"));
+    EXPECT_TRUE(map.has("Key-E-V149"));
+
+    EXPECT_EQ(map.get("Key-A-V149").value(), "a");
+    EXPECT_EQ(map.get("Key-B-V149").value(), "b");
+    EXPECT_EQ(map.get("Key-C-V149").value(), "c");
+    EXPECT_EQ(map.get("Key-D-V149").value(), "d");
+    EXPECT_EQ(map.get("Key-E-V149").value(), "e");
+}
+
+// ---------------------------------------------------------------------------
+TEST(HttpClient, CookieJarOverwriteCookieByNameAndDomainV149) {
+    CookieJar jar;
+    jar.set_from_header("session149=old_value; Path=/", "overwrite149.example.com");
+
+    std::string h1 = jar.get_cookie_header("overwrite149.example.com", "/", false);
+    EXPECT_NE(h1.find("session149=old_value"), std::string::npos)
+        << "Original cookie missing, got: " << h1;
+
+    // Set same name+domain again — should overwrite
+    jar.set_from_header("session149=new_value; Path=/", "overwrite149.example.com");
+
+    std::string h2 = jar.get_cookie_header("overwrite149.example.com", "/", false);
+    EXPECT_NE(h2.find("session149=new_value"), std::string::npos)
+        << "Cookie should be overwritten to new_value, got: " << h2;
+    EXPECT_EQ(h2.find("old_value"), std::string::npos)
+        << "Old cookie value should be gone, got: " << h2;
+}

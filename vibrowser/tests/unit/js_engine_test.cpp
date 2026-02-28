@@ -36392,3 +36392,99 @@ TEST(JSEngine, JsV148_8) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "5,10,99");
 }
+
+// V149: RegExp test() method
+TEST(JSEngine, JsV149_1) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var re = /^hello/i;
+        '' + re.test('Hello World') + ',' + re.test('goodbye');
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true,false");
+}
+
+// V149: Array.from with Set
+TEST(JSEngine, JsV149_2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var s = new Set([3, 1, 4, 1, 5, 9, 2, 6, 5]);
+        var arr = Array.from(s);
+        arr.length.toString();
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "7");
+}
+
+// V149: String.search with regex
+TEST(JSEngine, JsV149_3) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var idx = 'hello world'.search(/world/);
+        idx.toString();
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "6");
+}
+
+// V149: Object.getOwnPropertyNames
+TEST(JSEngine, JsV149_4) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var obj = {a: 1, b: 2, c: 3};
+        Object.getOwnPropertyNames(obj).sort().join(',');
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "a,b,c");
+}
+
+// V149: Array.findIndex
+TEST(JSEngine, JsV149_5) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var arr = [10, 20, 30, 40, 50];
+        arr.findIndex(function(x) { return x > 25; }).toString();
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "2");
+}
+
+// V149: Number.parseInt radix
+TEST(JSEngine, JsV149_6) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var a = Number.parseInt('ff', 16);
+        var b = Number.parseInt('111', 2);
+        '' + a + ',' + b;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "255,7");
+}
+
+// V149: String.normalize
+TEST(JSEngine, JsV149_7) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var s1 = '\u00e9';
+        var s2 = '\u0065\u0301';
+        (s1.normalize('NFC') === s2.normalize('NFC')).toString();
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true");
+}
+
+// V149: Proxy handler get trap
+TEST(JSEngine, JsV149_8) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var handler = {
+            get: function(target, prop) {
+                return prop in target ? target[prop] : 42;
+            }
+        };
+        var p = new Proxy({a: 1}, handler);
+        '' + p.a + ',' + p.b;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1,42");
+}

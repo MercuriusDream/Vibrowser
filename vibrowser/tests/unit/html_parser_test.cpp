@@ -23654,3 +23654,131 @@ TEST(HtmlParserTest, HtmlV148_8) {
     EXPECT_TRUE(found_width) << "width attribute not found";
     EXPECT_TRUE(found_height) << "height attribute not found";
 }
+
+TEST(HtmlParserTest, HtmlV149_1) {
+    // dl with dt and dd
+    auto doc = clever::html::parse("<html><body><dl><dt>Term</dt><dd>Definition</dd></dl></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* dl = doc->find_element("dl");
+    ASSERT_NE(dl, nullptr);
+    EXPECT_EQ(dl->tag_name, "dl");
+    ASSERT_GE(dl->children.size(), 2u);
+
+    auto* dt = dl->children[0].get();
+    ASSERT_NE(dt, nullptr);
+    EXPECT_EQ(dt->tag_name, "dt");
+    EXPECT_EQ(dt->text_content(), "Term");
+
+    auto* dd = dl->children[1].get();
+    ASSERT_NE(dd, nullptr);
+    EXPECT_EQ(dd->tag_name, "dd");
+    EXPECT_EQ(dd->text_content(), "Definition");
+}
+
+TEST(HtmlParserTest, HtmlV149_2) {
+    // details with summary
+    auto doc = clever::html::parse("<html><body><details><summary>Click me</summary>Content here</details></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* details = doc->find_element("details");
+    ASSERT_NE(details, nullptr);
+    EXPECT_EQ(details->tag_name, "details");
+    ASSERT_GE(details->children.size(), 1u);
+
+    auto* summary = details->children[0].get();
+    ASSERT_NE(summary, nullptr);
+    EXPECT_EQ(summary->tag_name, "summary");
+    EXPECT_EQ(summary->text_content(), "Click me");
+}
+
+TEST(HtmlParserTest, HtmlV149_3) {
+    // ruby with rt
+    auto doc = clever::html::parse("<html><body><ruby>漢<rt>kan</rt></ruby></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* ruby = doc->find_element("ruby");
+    ASSERT_NE(ruby, nullptr);
+    EXPECT_EQ(ruby->tag_name, "ruby");
+
+    auto* rt = doc->find_element("rt");
+    ASSERT_NE(rt, nullptr);
+    EXPECT_EQ(rt->tag_name, "rt");
+    EXPECT_EQ(rt->text_content(), "kan");
+}
+
+TEST(HtmlParserTest, HtmlV149_4) {
+    // wbr element (void)
+    auto doc = clever::html::parse("<html><body><p>long<wbr>word</p></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* wbr = doc->find_element("wbr");
+    ASSERT_NE(wbr, nullptr);
+    EXPECT_EQ(wbr->tag_name, "wbr");
+    EXPECT_EQ(wbr->children.size(), 0u);
+}
+
+TEST(HtmlParserTest, HtmlV149_5) {
+    // ins and del elements
+    auto doc = clever::html::parse("<html><body><p><ins>added</ins><del>removed</del></p></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* ins = doc->find_element("ins");
+    ASSERT_NE(ins, nullptr);
+    EXPECT_EQ(ins->tag_name, "ins");
+    EXPECT_EQ(ins->text_content(), "added");
+
+    auto* del_elem = doc->find_element("del");
+    ASSERT_NE(del_elem, nullptr);
+    EXPECT_EQ(del_elem->tag_name, "del");
+    EXPECT_EQ(del_elem->text_content(), "removed");
+}
+
+TEST(HtmlParserTest, HtmlV149_6) {
+    // q element with cite
+    auto doc = clever::html::parse("<html><body><q cite=\"https://example.com\">Quote text</q></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* q = doc->find_element("q");
+    ASSERT_NE(q, nullptr);
+    EXPECT_EQ(q->tag_name, "q");
+    EXPECT_EQ(q->text_content(), "Quote text");
+    bool found_cite = false;
+    for (const auto& attr : q->attributes) {
+        if (attr.name == "cite") {
+            found_cite = true;
+            EXPECT_EQ(attr.value, "https://example.com");
+        }
+    }
+    EXPECT_TRUE(found_cite) << "cite attribute not found";
+}
+
+TEST(HtmlParserTest, HtmlV149_7) {
+    // bdo with dir attribute
+    auto doc = clever::html::parse("<html><body><bdo dir=\"rtl\">reversed</bdo></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* bdo = doc->find_element("bdo");
+    ASSERT_NE(bdo, nullptr);
+    EXPECT_EQ(bdo->tag_name, "bdo");
+    EXPECT_EQ(bdo->text_content(), "reversed");
+    bool found_dir = false;
+    for (const auto& attr : bdo->attributes) {
+        if (attr.name == "dir") {
+            found_dir = true;
+            EXPECT_EQ(attr.value, "rtl");
+        }
+    }
+    EXPECT_TRUE(found_dir) << "dir attribute not found";
+}
+
+TEST(HtmlParserTest, HtmlV149_8) {
+    // dfn element
+    auto doc = clever::html::parse("<html><body><p><dfn>Definition term</dfn> is important.</p></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* dfn = doc->find_element("dfn");
+    ASSERT_NE(dfn, nullptr);
+    EXPECT_EQ(dfn->tag_name, "dfn");
+    EXPECT_EQ(dfn->text_content(), "Definition term");
+}

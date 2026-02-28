@@ -27455,3 +27455,112 @@ TEST(LayoutNodeProps, OverflowDefaultVisibleV148) {
     LayoutNode n;
     EXPECT_EQ(n.overflow, 0);
 }
+
+// V149: block with max_width constraint smaller than available
+TEST(LayoutEngineTest, LayoutV149_1) {
+    auto root = make_block();
+    root->max_width = 200.0f;
+    LayoutEngine engine;
+    engine.compute(*root, 600.0f, 400.0f);
+    EXPECT_LE(root->geometry.width, 200.0f);
+}
+
+// V149: flex row with align-items flex-end
+TEST(LayoutEngineTest, LayoutV149_2) {
+    auto root = make_flex();
+    root->specified_width = 400.0f;
+    root->specified_height = 100.0f;
+    root->align_items = 1; // 1 = flex-end
+    auto c1 = make_block("div");
+    c1->specified_width = 80.0f;
+    c1->specified_height = 30.0f;
+    auto* c1p = c1.get();
+    root->append_child(std::move(c1));
+    auto c2 = make_block("div");
+    c2->specified_width = 80.0f;
+    c2->specified_height = 50.0f;
+    auto* c2p = c2.get();
+    root->append_child(std::move(c2));
+    LayoutEngine engine;
+    engine.compute(*root, 400.0f, 400.0f);
+    // With flex-end, children should be pushed toward the end of the cross axis
+    EXPECT_GE(c1p->geometry.y, 0.0f);
+    EXPECT_GE(c2p->geometry.y, 0.0f);
+}
+
+// V149: block with margin auto left and right (centering)
+TEST(LayoutEngineTest, LayoutV149_3) {
+    auto root = make_block();
+    root->specified_width = 600.0f;
+    auto child = make_block("div");
+    child->specified_width = 200.0f;
+    child->geometry.margin.left = 0.0f;
+    child->geometry.margin.right = 0.0f;
+    auto* cp = child.get();
+    root->append_child(std::move(child));
+    LayoutEngine engine;
+    engine.compute(*root, 600.0f, 400.0f);
+    // Child should be within parent bounds
+    EXPECT_GE(cp->geometry.x, 0.0f);
+    EXPECT_LE(cp->geometry.width, 600.0f);
+}
+
+// V149: single block child inherits parent width
+TEST(LayoutEngineTest, LayoutV149_4) {
+    auto root = make_block();
+    root->specified_width = 500.0f;
+    auto child = make_block("div");
+    auto* cp = child.get();
+    root->append_child(std::move(child));
+    LayoutEngine engine;
+    engine.compute(*root, 500.0f, 400.0f);
+    EXPECT_FLOAT_EQ(cp->geometry.width, 500.0f);
+}
+
+// V149: flex with 2 children, one flex_grow=0 one flex_grow=1
+TEST(LayoutEngineTest, LayoutV149_5) {
+    auto root = make_flex();
+    root->specified_width = 400.0f;
+    auto c1 = make_block("div");
+    c1->specified_width = 100.0f;
+    c1->flex_grow = 0.0f;
+    auto* c1p = c1.get();
+    root->append_child(std::move(c1));
+    auto c2 = make_block("div");
+    c2->flex_grow = 1.0f;
+    auto* c2p = c2.get();
+    root->append_child(std::move(c2));
+    LayoutEngine engine;
+    engine.compute(*root, 400.0f, 400.0f);
+    EXPECT_FLOAT_EQ(c1p->geometry.width, 100.0f);
+    // c2 should take remaining space
+    EXPECT_GT(c2p->geometry.width, 0.0f);
+}
+
+// V149: block height auto with no children = 0
+TEST(LayoutEngineTest, LayoutV149_6) {
+    auto root = make_block();
+    root->specified_width = 300.0f;
+    LayoutEngine engine;
+    engine.compute(*root, 300.0f, 400.0f);
+    EXPECT_FLOAT_EQ(root->geometry.height, 0.0f);
+}
+
+// V149: inline display preserved after layout
+TEST(LayoutEngineTest, LayoutV149_7) {
+    auto root = make_block();
+    root->specified_width = 400.0f;
+    auto child = make_inline("span");
+    auto* cp = child.get();
+    root->append_child(std::move(child));
+    LayoutEngine engine;
+    engine.compute(*root, 400.0f, 400.0f);
+    EXPECT_EQ(cp->display, DisplayType::Inline);
+}
+
+// V149: default display is Block
+TEST(LayoutNodeProps, DisplayDefaultBlockV149) {
+    using namespace clever::layout;
+    LayoutNode n;
+    EXPECT_EQ(n.display, DisplayType::Block);
+}

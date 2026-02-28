@@ -1716,3 +1716,61 @@ TEST(MessagePipeTest, MessagePipeV148_3_PayloadAllZerosV148) {
         EXPECT_EQ((*received)[i], 0x00) << "non-zero at index " << i;
     }
 }
+
+// ------------------------------------------------------------------
+// V149 tests
+// ------------------------------------------------------------------
+
+TEST(MessagePipeTest, MessagePipeV149_1_PayloadContentVerifiedV149) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    std::vector<uint8_t> pattern(64);
+    for (size_t i = 0; i < pattern.size(); ++i) {
+        pattern[i] = static_cast<uint8_t>((i * 7 + 3) & 0xFF);
+    }
+    ASSERT_TRUE(a.send(pattern));
+
+    auto received = b.receive();
+    ASSERT_TRUE(received.has_value());
+    ASSERT_EQ(received->size(), 64u);
+    for (size_t i = 0; i < 64; ++i) {
+        EXPECT_EQ((*received)[i], static_cast<uint8_t>((i * 7 + 3) & 0xFF))
+            << "mismatch at index " << i;
+    }
+}
+
+TEST(MessagePipeTest, MessagePipeV149_2_CloseAndReopenPairV149) {
+    {
+        auto [a, b] = MessagePipe::create_pair();
+        a.close();
+        b.close();
+    }
+
+    auto [c, d] = MessagePipe::create_pair();
+    std::vector<uint8_t> data = {0xAA, 0xBB, 0xCC};
+    ASSERT_TRUE(c.send(data));
+
+    auto received = d.receive();
+    ASSERT_TRUE(received.has_value());
+    EXPECT_EQ(*received, data);
+}
+
+TEST(MessagePipeTest, MessagePipeV149_3_SendEmptyThenNonEmptyV149) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    std::vector<uint8_t> empty_msg;
+    ASSERT_TRUE(a.send(empty_msg));
+
+    std::vector<uint8_t> big_msg(100, 0x42);
+    ASSERT_TRUE(a.send(big_msg));
+
+    auto first = b.receive();
+    ASSERT_TRUE(first.has_value());
+    EXPECT_EQ(first->size(), 0u);
+
+    auto second = b.receive();
+    ASSERT_TRUE(second.has_value());
+    ASSERT_EQ(second->size(), 100u);
+    EXPECT_EQ((*second)[0], 0x42);
+    EXPECT_EQ((*second)[99], 0x42);
+}
