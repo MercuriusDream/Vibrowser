@@ -761,3 +761,117 @@ TEST(MessageChannelTest, MessageChannelV131_3_ReceiveThenDispatchThroughRegister
     EXPECT_EQ(received_payload[0], 0xCAu);
     EXPECT_EQ(received_payload[1], 0xFEu);
 }
+
+// ------------------------------------------------------------------
+// V132 Round 132 tests
+// ------------------------------------------------------------------
+
+TEST(MessageChannelTest, MessageChannelV132_1_TypedDispatchOnlyMatchingHandlerFires) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel cha(std::move(pa));
+    MessageChannel chb(std::move(pb));
+
+    int handler_100 = 0;
+    int handler_200 = 0;
+    int handler_300 = 0;
+
+    chb.on(100, [&](const Message&) { handler_100++; });
+    chb.on(200, [&](const Message&) { handler_200++; });
+    chb.on(300, [&](const Message&) { handler_300++; });
+
+    // Send message with type 200
+    Message msg;
+    msg.type = 200;
+    msg.request_id = 0;
+    msg.payload = {0x01};
+    ASSERT_TRUE(cha.send(msg));
+
+    auto recv = chb.receive();
+    ASSERT_TRUE(recv.has_value());
+    chb.dispatch(*recv);
+
+    // Only handler_200 should have fired
+    EXPECT_EQ(handler_100, 0);
+    EXPECT_EQ(handler_200, 1);
+    EXPECT_EQ(handler_300, 0);
+}
+
+TEST(MessageChannelTest, MessageChannelV132_2_BidirectionalLargePayload4KB) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel cha(std::move(pa));
+    MessageChannel chb(std::move(pb));
+
+    // Create 4096-byte payload
+    std::vector<uint8_t> large_payload(4096);
+    for (size_t i = 0; i < large_payload.size(); ++i) {
+        large_payload[i] = static_cast<uint8_t>(i & 0xFF);
+    }
+
+    // Send from a to b
+    Message msg_ab;
+    msg_ab.type = 1;
+    msg_ab.request_id = 10;
+    msg_ab.payload = large_payload;
+    ASSERT_TRUE(cha.send(msg_ab));
+
+    auto recv_b = chb.receive();
+    ASSERT_TRUE(recv_b.has_value());
+    EXPECT_EQ(recv_b->type, 1u);
+    EXPECT_EQ(recv_b->request_id, 10u);
+    EXPECT_EQ(recv_b->payload.size(), 4096u);
+    EXPECT_EQ(recv_b->payload, large_payload);
+
+    // Send from b to a
+    Message msg_ba;
+    msg_ba.type = 2;
+    msg_ba.request_id = 20;
+    msg_ba.payload = large_payload;
+    ASSERT_TRUE(chb.send(msg_ba));
+
+    auto recv_a = cha.receive();
+    ASSERT_TRUE(recv_a.has_value());
+    EXPECT_EQ(recv_a->type, 2u);
+    EXPECT_EQ(recv_a->request_id, 20u);
+    EXPECT_EQ(recv_a->payload.size(), 4096u);
+    EXPECT_EQ(recv_a->payload, large_payload);
+}
+
+TEST(MessageChannelTest, MessageChannelV132_3_DispatchHandlerDeserializesPayloadContent) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel cha(std::move(pa));
+    MessageChannel chb(std::move(pb));
+
+    // Build a payload using Serializer: u32 + string + bool
+    Serializer s;
+    s.write_u32(999);
+    s.write_string("hello_v132");
+    s.write_bool(true);
+
+    Message msg;
+    msg.type = 50;
+    msg.request_id = 7;
+    msg.payload = s.take_data();
+    ASSERT_TRUE(cha.send(msg));
+
+    uint32_t deserialized_u32 = 0;
+    std::string deserialized_str;
+    bool deserialized_bool = false;
+    bool handler_called = false;
+
+    chb.on(50, [&](const Message& m) {
+        handler_called = true;
+        Deserializer d(m.payload);
+        deserialized_u32 = d.read_u32();
+        deserialized_str = d.read_string();
+        deserialized_bool = d.read_bool();
+    });
+
+    auto recv = chb.receive();
+    ASSERT_TRUE(recv.has_value());
+    chb.dispatch(*recv);
+
+    EXPECT_TRUE(handler_called);
+    EXPECT_EQ(deserialized_u32, 999u);
+    EXPECT_EQ(deserialized_str, "hello_v132");
+    EXPECT_EQ(deserialized_bool, true);
+}

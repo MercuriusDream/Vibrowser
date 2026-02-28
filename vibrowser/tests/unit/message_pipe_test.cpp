@@ -870,3 +870,37 @@ TEST(MessagePipeTest, MessagePipeV131_2_MoveAssignActiveTransfersPendingData) {
     ASSERT_TRUE(received.has_value());
     EXPECT_EQ(*received, data);
 }
+
+// ------------------------------------------------------------------
+// V132 Round 132 tests
+// ------------------------------------------------------------------
+
+TEST(MessagePipeTest, MessagePipeV132_1_ReceiveAfterSenderCloseReturnsBufferedData) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    std::vector<uint8_t> data = {0x01, 0x02, 0x03, 0x04, 0x05};
+    ASSERT_TRUE(a.send(data));
+
+    // Close the sender side
+    a.close();
+
+    // Receiver should still get the buffered data
+    auto received = b.receive();
+    ASSERT_TRUE(received.has_value());
+    EXPECT_EQ(*received, data);
+}
+
+TEST(MessagePipeTest, MessagePipeV132_2_MoveConstructPreservesOpenState) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    // Move-construct a new pipe from a
+    MessagePipe a_moved(std::move(a));
+
+    // The moved-to pipe should still be functional for sending
+    std::vector<uint8_t> payload = {0xAA, 0xBB, 0xCC};
+    ASSERT_TRUE(a_moved.send(payload));
+
+    auto received = b.receive();
+    ASSERT_TRUE(received.has_value());
+    EXPECT_EQ(*received, payload);
+}

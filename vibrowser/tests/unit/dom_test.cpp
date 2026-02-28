@@ -20118,3 +20118,107 @@ TEST(DomElement, HasAttributeReturnsFalseForNeverSetAttributeV131) {
     EXPECT_FALSE(elem.has_attribute("nonexistent"));
     EXPECT_FALSE(elem.get_attribute("nonexistent").has_value());
 }
+
+TEST(DomEvent, PreventDefaultOnCancelableEventSetsDefaultPreventedV132) {
+    Event cancelable_evt("submit", true, true);
+    cancelable_evt.prevent_default();
+    EXPECT_TRUE(cancelable_evt.default_prevented());
+
+    Event non_cancelable_evt("load", true, false);
+    non_cancelable_evt.prevent_default();
+    EXPECT_FALSE(non_cancelable_evt.default_prevented());
+}
+
+TEST(DomEvent, StopImmediatePropagationSetsImmediateFlagV132) {
+    Event evt("click", true, true);
+    EXPECT_FALSE(evt.immediate_propagation_stopped());
+    evt.stop_immediate_propagation();
+    EXPECT_TRUE(evt.immediate_propagation_stopped());
+    EXPECT_TRUE(evt.propagation_stopped());
+}
+
+TEST(DomElement, ClassListToStringConcatenatesClassesV132) {
+    Element elem("span");
+    elem.class_list().add("foo");
+    elem.class_list().add("bar");
+    elem.class_list().add("baz");
+    std::string result = elem.class_list().to_string();
+    EXPECT_NE(result.find("foo"), std::string::npos);
+    EXPECT_NE(result.find("bar"), std::string::npos);
+    EXPECT_NE(result.find("baz"), std::string::npos);
+}
+
+TEST(DomNode, PreviousSiblingChainTraversalV132) {
+    auto parent = std::make_unique<Element>("div");
+    auto a = std::make_unique<Element>("a");
+    auto b = std::make_unique<Element>("b");
+    auto c = std::make_unique<Element>("c");
+    auto d = std::make_unique<Element>("d");
+    parent->append_child(std::move(a));
+    parent->append_child(std::move(b));
+    parent->append_child(std::move(c));
+    parent->append_child(std::move(d));
+
+    std::vector<std::string> names;
+    Node* cur = parent->last_child();
+    while (cur) {
+        auto* elem = static_cast<Element*>(cur);
+        names.push_back(elem->tag_name());
+        cur = cur->previous_sibling();
+    }
+    ASSERT_EQ(names.size(), 4u);
+    EXPECT_EQ(names[0], "d");
+    EXPECT_EQ(names[1], "c");
+    EXPECT_EQ(names[2], "b");
+    EXPECT_EQ(names[3], "a");
+}
+
+TEST(DomNode, CommentNodeTypeAndTextContentV132) {
+    Comment c("hello world");
+    EXPECT_EQ(c.node_type(), NodeType::Comment);
+    EXPECT_EQ(c.data(), "hello world");
+}
+
+TEST(DomDocument, CreateTextNodeAndAppendV132) {
+    Document doc;
+    auto html = std::make_unique<Element>("html");
+    auto body = std::make_unique<Element>("body");
+    Element* body_ptr = body.get();
+    html->append_child(std::move(body));
+    doc.append_child(std::move(html));
+
+    auto text = doc.create_text_node("Hello");
+    Text* text_ptr = text.get();
+    body_ptr->append_child(std::move(text));
+
+    ASSERT_EQ(body_ptr->child_count(), 1u);
+    EXPECT_EQ(body_ptr->first_child(), text_ptr);
+    EXPECT_EQ(text_ptr->data(), "Hello");
+}
+
+TEST(DomElement, NamespaceURIDefaultsToEmptyV132) {
+    Element div("div");
+    EXPECT_TRUE(div.namespace_uri().empty());
+
+    Element svg("svg", "http://www.w3.org/2000/svg");
+    EXPECT_EQ(svg.namespace_uri(), "http://www.w3.org/2000/svg");
+}
+
+TEST(DomNode, RemoveMiddleChildUpdatesSiblingPointersV132) {
+    auto parent = std::make_unique<Element>("div");
+    auto a = std::make_unique<Element>("a");
+    auto b = std::make_unique<Element>("b");
+    auto c = std::make_unique<Element>("c");
+    Element* a_ptr = a.get();
+    Element* b_ptr = b.get();
+    Element* c_ptr = c.get();
+    parent->append_child(std::move(a));
+    parent->append_child(std::move(b));
+    parent->append_child(std::move(c));
+
+    parent->remove_child(*b_ptr);
+
+    EXPECT_EQ(parent->child_count(), 2u);
+    EXPECT_EQ(a_ptr->next_sibling(), c_ptr);
+    EXPECT_EQ(c_ptr->previous_sibling(), a_ptr);
+}

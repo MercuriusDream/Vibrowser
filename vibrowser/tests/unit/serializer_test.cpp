@@ -19776,3 +19776,52 @@ TEST(SerializerTest, SerializerV131_3_ZeroLengthBytesThenStringBoundaryPreserved
 
     EXPECT_FALSE(d.has_remaining());
 }
+
+// ------------------------------------------------------------------
+// V132 Round 132 tests
+// ------------------------------------------------------------------
+
+TEST(SerializerTest, SerializerV132_1_TakeDataTwiceSecondIsEmpty) {
+    Serializer s;
+    s.write_u32(42);
+
+    auto first = s.take_data();
+    EXPECT_FALSE(first.empty());
+
+    auto second = s.take_data();
+    EXPECT_TRUE(second.empty());
+}
+
+TEST(SerializerTest, SerializerV132_2_WriteAfterTakeDataStartsFresh) {
+    Serializer s;
+    s.write_u32(1);
+    auto first_data = s.take_data();
+    EXPECT_FALSE(first_data.empty());
+
+    // Write new data after take_data cleared internal buffer
+    s.write_u32(2);
+    auto second_data = s.take_data();
+    EXPECT_FALSE(second_data.empty());
+
+    // Deserialize the second batch — should contain only value 2
+    Deserializer d(second_data);
+    EXPECT_EQ(d.read_u32(), 2u);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, SerializerV132_3_LongStringRoundTrip) {
+    std::string long_str(10000, 'A');
+    // Make it non-trivial by varying some characters
+    for (size_t i = 0; i < long_str.size(); ++i) {
+        long_str[i] = static_cast<char>('A' + (i % 26));
+    }
+
+    Serializer s;
+    s.write_string(long_str);
+
+    Deserializer d(s.data());
+    auto result = d.read_string();
+    EXPECT_EQ(result.size(), 10000u);
+    EXPECT_EQ(result, long_str);
+    EXPECT_FALSE(d.has_remaining());
+}

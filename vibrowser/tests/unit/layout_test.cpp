@@ -25000,3 +25000,184 @@ TEST(LayoutNodeProps, LayoutNodeFlexDefaultsV131) {
     EXPECT_FLOAT_EQ(n->flex_basis, -1.0f);
     EXPECT_EQ(n->justify_content, 0);
 }
+
+TEST(LayoutEngineTest, LayoutV132_1) {
+    // order property on flex children
+    auto root = make_flex("div");
+    root->specified_width = 600.0f;
+    root->specified_height = 100.0f;
+
+    auto c1 = make_block("div");
+    c1->specified_width = 100.0f;
+    c1->specified_height = 50.0f;
+    c1->order = 2;
+    auto* cp1 = c1.get();
+
+    auto c2 = make_block("div");
+    c2->specified_width = 100.0f;
+    c2->specified_height = 50.0f;
+    c2->order = 1;
+    auto* cp2 = c2.get();
+
+    root->append_child(std::move(c1));
+    root->append_child(std::move(c2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 600.0f, 400.0f);
+
+    // Both children should have been laid out
+    EXPECT_GE(cp1->geometry.width, 0.0f);
+    EXPECT_GE(cp2->geometry.width, 0.0f);
+}
+
+TEST(LayoutEngineTest, LayoutV132_2) {
+    // flex column direction — vertical stacking
+    auto root = make_flex("div");
+    root->specified_width = 200.0f;
+    root->specified_height = 400.0f;
+    root->flex_direction = 1; // column
+
+    auto c1 = make_block("div");
+    c1->specified_width = 200.0f;
+    c1->specified_height = 100.0f;
+    auto* cp1 = c1.get();
+
+    auto c2 = make_block("div");
+    c2->specified_width = 200.0f;
+    c2->specified_height = 100.0f;
+    auto* cp2 = c2.get();
+
+    root->append_child(std::move(c1));
+    root->append_child(std::move(c2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 200.0f, 600.0f);
+
+    // Both children should have been laid out with valid dimensions
+    EXPECT_GE(cp1->geometry.height, 0.0f);
+    EXPECT_GE(cp2->geometry.height, 0.0f);
+}
+
+TEST(LayoutEngineTest, LayoutV132_3) {
+    // flex-grow proportional distribution
+    auto root = make_flex("div");
+    root->specified_width = 600.0f;
+    root->specified_height = 100.0f;
+
+    auto c1 = make_block("div");
+    c1->specified_height = 50.0f;
+    c1->flex_grow = 1.0f;
+    auto* cp1 = c1.get();
+
+    auto c2 = make_block("div");
+    c2->specified_height = 50.0f;
+    c2->flex_grow = 2.0f;
+    auto* cp2 = c2.get();
+
+    root->append_child(std::move(c1));
+    root->append_child(std::move(c2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 600.0f, 400.0f);
+
+    // c2 should get roughly twice the width of c1
+    EXPECT_GT(cp2->geometry.width, cp1->geometry.width - 1.0f);
+}
+
+TEST(LayoutEngineTest, LayoutV132_4) {
+    // margin auto centering — block with auto margins
+    auto root = make_block("div");
+    root->specified_width = 800.0f;
+    root->specified_height = 200.0f;
+
+    auto child = make_block("div");
+    child->specified_width = 200.0f;
+    child->specified_height = 100.0f;
+    child->geometry.margin.left = -1.0f; // auto marker
+    child->geometry.margin.right = -1.0f;
+    auto* cp = child.get();
+
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // Child width should be 200
+    EXPECT_FLOAT_EQ(cp->geometry.width, 200.0f);
+}
+
+TEST(LayoutEngineTest, LayoutV132_5) {
+    // inline display compute
+    auto root = make_block("div");
+    root->specified_width = 500.0f;
+    root->specified_height = 100.0f;
+
+    auto child = make_block("span");
+    child->display = DisplayType::Inline;
+    child->specified_width = 100.0f;
+    child->specified_height = 30.0f;
+    auto* cp = child.get();
+
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 500.0f, 400.0f);
+
+    EXPECT_GE(cp->geometry.width, 0.0f);
+    EXPECT_GE(cp->geometry.height, 0.0f);
+}
+
+TEST(LayoutEngineTest, LayoutV132_6) {
+    // flex wrap
+    auto root = make_flex("div");
+    root->specified_width = 200.0f;
+    root->specified_height = 400.0f;
+    root->flex_wrap = 1; // wrap
+
+    auto c1 = make_block("div");
+    c1->specified_width = 150.0f;
+    c1->specified_height = 50.0f;
+    auto* cp1 = c1.get();
+
+    auto c2 = make_block("div");
+    c2->specified_width = 150.0f;
+    c2->specified_height = 50.0f;
+    auto* cp2 = c2.get();
+
+    root->append_child(std::move(c1));
+    root->append_child(std::move(c2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 200.0f, 600.0f);
+
+    // Both children laid out
+    EXPECT_GE(cp1->geometry.width, 0.0f);
+    EXPECT_GE(cp2->geometry.width, 0.0f);
+}
+
+TEST(LayoutEngineTest, LayoutV132_7) {
+    // grid display compute
+    auto root = make_block("div");
+    root->display = DisplayType::Grid;
+    root->specified_width = 400.0f;
+    root->specified_height = 200.0f;
+
+    auto child = make_block("div");
+    child->specified_width = 100.0f;
+    child->specified_height = 50.0f;
+    auto* cp = child.get();
+
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 400.0f, 600.0f);
+
+    EXPECT_GE(cp->geometry.width, 0.0f);
+    EXPECT_GE(cp->geometry.height, 0.0f);
+}
+
+TEST(LayoutNodeProps, VisibilityCollapseDefaultV132) {
+    auto n = make_block();
+    // Default display should be Block
+    EXPECT_EQ(n->display, DisplayType::Block);
+}

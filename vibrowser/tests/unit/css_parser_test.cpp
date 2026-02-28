@@ -9729,3 +9729,27 @@ TEST_F(CSSStylesheetTest, FontPaletteValuesRuleParsingV131) {
     // so it should not crash. No crash is the minimum requirement.
     SUCCEED();
 }
+
+TEST_F(CSSStylesheetTest, ImportRuleParsingV132) {
+    auto ss = parse_stylesheet("@import url('styles.css');");
+    // @import is an at-rule — parser should not crash
+    SUCCEED();
+}
+
+TEST_F(CSSStylesheetTest, SupportsRuleParsingV132) {
+    auto ss = parse_stylesheet("@supports (display: grid) { .grid { display: grid; } }");
+    // @supports at-rule — parser should not crash
+    SUCCEED();
+}
+
+TEST_F(CSSStylesheetTest, KeyframesRuleParsingV132) {
+    auto ss = parse_stylesheet("@keyframes fade { from { opacity: 0; } to { opacity: 1; } }");
+    // @keyframes at-rule — parser should not crash
+    SUCCEED();
+}
+
+TEST_F(CSSStylesheetTest, CommaSeparatedSelectorsParsingV132) {
+    auto ss = parse_stylesheet("h1, h2, h3 { font-weight: bold; }");
+    ASSERT_GE(ss.rules.size(), 1u);
+    SUCCEED();
+}

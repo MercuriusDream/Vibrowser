@@ -14003,3 +14003,48 @@ TEST(UrlParserTest, UrlV131_4_RelativeFragmentOnlyUpdatesFragmentPreservesQuery)
     EXPECT_EQ(resolved->host, "example.com");
     EXPECT_EQ(resolved->path, "/page");
 }
+
+TEST(UrlParserTest, UrlV132_1_CaseInsensitiveHostSameOrigin) {
+    // Hosts are case-insensitive; uppercase and lowercase should yield same origin
+    auto upper = parse("https://EXAMPLE.COM/path");
+    ASSERT_TRUE(upper.has_value());
+    auto lower = parse("https://example.com/path");
+    ASSERT_TRUE(lower.has_value());
+    EXPECT_TRUE(urls_same_origin(*upper, *lower));
+    // Both should have the same normalized host
+    EXPECT_EQ(upper->host, lower->host);
+    EXPECT_EQ(upper->scheme, "https");
+    EXPECT_EQ(lower->scheme, "https");
+}
+
+TEST(UrlParserTest, UrlV132_2_SerializePreservesUserinfo) {
+    // serialize() should include user:pass@ in the output
+    auto result = parse("https://user:pass@example.com/path");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->username, "user");
+    EXPECT_EQ(result->password, "pass");
+    std::string s = result->serialize();
+    EXPECT_NE(s.find("user:pass@"), std::string::npos);
+    EXPECT_EQ(s, "https://user:pass@example.com/path");
+}
+
+TEST(UrlParserTest, UrlV132_3_RelativeDotPrefixResolution) {
+    // Resolving "./d" against base with path "/a/b/c" should yield "/a/b/d"
+    auto base = parse("https://example.com/a/b/c");
+    ASSERT_TRUE(base.has_value());
+    auto resolved = parse("./d", &*base);
+    ASSERT_TRUE(resolved.has_value());
+    EXPECT_EQ(resolved->path, "/a/b/d");
+    EXPECT_EQ(resolved->scheme, "https");
+    EXPECT_EQ(resolved->host, "example.com");
+}
+
+TEST(UrlParserTest, UrlV132_4_BlobSchemeParseOriginIsNull) {
+    // blob: URLs should parse with scheme "blob" and origin() returning "null"
+    auto result = parse("blob:https://example.com/550e8400-e29b-41d4-a716-446655440000");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "blob");
+    EXPECT_EQ(result->origin(), "null");
+    EXPECT_FALSE(result->is_special());
+    EXPECT_EQ(result->path, "https://example.com/550e8400-e29b-41d4-a716-446655440000");
+}

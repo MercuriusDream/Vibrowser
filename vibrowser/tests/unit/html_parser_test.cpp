@@ -21875,3 +21875,98 @@ TEST(HtmlParserTest, HtmlV131_8) {
     EXPECT_EQ(get_attr_v63(param, "name"), "quality");
     EXPECT_EQ(get_attr_v63(param, "value"), "high");
 }
+
+TEST(HtmlParserTest, HtmlV132_1) {
+    auto doc = clever::html::parse("<html><body><meter min=\"0\" max=\"100\" value=\"75\"></meter></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* meter = doc->find_element("meter");
+    ASSERT_NE(meter, nullptr);
+    EXPECT_EQ(meter->tag_name, "meter");
+    EXPECT_EQ(get_attr_v63(meter, "min"), "0");
+    EXPECT_EQ(get_attr_v63(meter, "max"), "100");
+    EXPECT_EQ(get_attr_v63(meter, "value"), "75");
+}
+
+TEST(HtmlParserTest, HtmlV132_2) {
+    auto doc = clever::html::parse("<html><body><progress value=\"30\" max=\"100\"></progress></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* progress = doc->find_element("progress");
+    ASSERT_NE(progress, nullptr);
+    EXPECT_EQ(progress->tag_name, "progress");
+    EXPECT_EQ(get_attr_v63(progress, "value"), "30");
+    EXPECT_EQ(get_attr_v63(progress, "max"), "100");
+}
+
+TEST(HtmlParserTest, HtmlV132_3) {
+    auto doc = clever::html::parse("<html><body><output for=\"input1\">Result</output></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* output = doc->find_element("output");
+    ASSERT_NE(output, nullptr);
+    EXPECT_EQ(output->tag_name, "output");
+    EXPECT_EQ(get_attr_v63(output, "for"), "input1");
+    EXPECT_EQ(output->text_content(), "Result");
+}
+
+TEST(HtmlParserTest, HtmlV132_4) {
+    auto doc = clever::html::parse("<html><body><figure><img src=\"photo.jpg\"><figcaption>A photo</figcaption></figure></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* figure = doc->find_element("figure");
+    ASSERT_NE(figure, nullptr);
+    EXPECT_EQ(figure->tag_name, "figure");
+
+    auto* figcaption = doc->find_element("figcaption");
+    ASSERT_NE(figcaption, nullptr);
+    EXPECT_EQ(figcaption->tag_name, "figcaption");
+    EXPECT_EQ(figcaption->text_content(), "A photo");
+}
+
+TEST(HtmlParserTest, HtmlV132_5) {
+    auto doc = clever::html::parse("<html><body><ruby>漢<rp>(</rp><rt>kan</rt><rp>)</rp></ruby></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* ruby = doc->find_element("ruby");
+    ASSERT_NE(ruby, nullptr);
+    EXPECT_EQ(ruby->tag_name, "ruby");
+
+    auto* rt = doc->find_element("rt");
+    ASSERT_NE(rt, nullptr);
+    EXPECT_EQ(rt->tag_name, "rt");
+
+    auto* rp = doc->find_element("rp");
+    ASSERT_NE(rp, nullptr);
+    EXPECT_EQ(rp->tag_name, "rp");
+}
+
+TEST(HtmlParserTest, HtmlV132_6) {
+    auto doc = clever::html::parse("<html><body><bdi>مرحبا</bdi></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* bdi = doc->find_element("bdi");
+    ASSERT_NE(bdi, nullptr);
+    EXPECT_EQ(bdi->tag_name, "bdi");
+    EXPECT_EQ(bdi->text_content(), "مرحبا");
+}
+
+TEST(HtmlParserTest, HtmlV132_7) {
+    auto doc = clever::html::parse("<html><body><p>super<wbr>califragilistic</p></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* wbr = doc->find_element("wbr");
+    ASSERT_NE(wbr, nullptr);
+    EXPECT_EQ(wbr->tag_name, "wbr");
+}
+
+TEST(HtmlParserTest, HtmlV132_8) {
+    auto doc = clever::html::parse("<html><body><data value=\"42\">Forty-two</data></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* data = doc->find_element("data");
+    ASSERT_NE(data, nullptr);
+    EXPECT_EQ(data->tag_name, "data");
+    EXPECT_EQ(get_attr_v63(data, "value"), "42");
+    EXPECT_EQ(data->text_content(), "Forty-two");
+}

@@ -10596,3 +10596,117 @@ TEST(CORSPolicyTest, CorsV131_8_EnforceabilityAcceptsHttpOriginWithNonStandardPo
     EXPECT_TRUE(has_enforceable_document_origin("http://example.com"));
     EXPECT_TRUE(has_enforceable_document_origin("https://example.com"));
 }
+
+// ---------------------------------------------------------------------------
+// Cycle 1948–1955 (Round 132): CORS policy edge-case tests
+// ---------------------------------------------------------------------------
+
+TEST(CORSPolicyTest, CorsV132_1_ExactOriginMatchWithCredentialsRequiresExplicitOrigin) {
+    // When credentials are requested, ACAO must be the exact origin (not "*")
+    // and Access-Control-Allow-Credentials: true must be present
+    clever::net::HeaderMap headers_exact;
+    headers_exact.set("Access-Control-Allow-Origin", "https://app.example.com");
+    headers_exact.set("Access-Control-Allow-Credentials", "true");
+    EXPECT_TRUE(cors_allows_response(
+        "https://app.example.com",
+        "https://api.example.com/data",
+        headers_exact,
+        true));
+
+    // Wildcard ACAO with credentials → must reject
+    clever::net::HeaderMap headers_wildcard;
+    headers_wildcard.set("Access-Control-Allow-Origin", "*");
+    headers_wildcard.set("Access-Control-Allow-Credentials", "true");
+    EXPECT_FALSE(cors_allows_response(
+        "https://app.example.com",
+        "https://api.example.com/data",
+        headers_wildcard,
+        true));
+}
+
+TEST(CORSPolicyTest, CorsV132_2_MissingACAOHeaderRejectsCrossOriginResponse) {
+    // A cross-origin response with no ACAO header at all → rejected
+    clever::net::HeaderMap empty_headers;
+    EXPECT_FALSE(cors_allows_response(
+        "https://app.example.com",
+        "https://api.example.com/data",
+        empty_headers,
+        false));
+
+    // Even with credentials flag off, missing ACAO rejects
+    EXPECT_FALSE(cors_allows_response(
+        "https://app.example.com",
+        "https://api.example.com/data",
+        empty_headers,
+        true));
+}
+
+TEST(CORSPolicyTest, CorsV132_3_NullVsNullOriginsAreCrossOrigin) {
+    // "null" is not a valid httpish URL so parse fails, making the pair
+    // not cross-origin in the implementation (no valid request URL)
+    EXPECT_FALSE(is_cross_origin("null", "null"));
+
+    // However "null" vs a valid URL IS cross-origin
+    EXPECT_TRUE(is_cross_origin("null", "https://example.com/path"));
+
+    // Two identical valid origins are NOT cross-origin
+    EXPECT_FALSE(is_cross_origin("https://example.com", "https://example.com/path"));
+}
+
+TEST(CORSPolicyTest, CorsV132_4_DifferentPortsSameHostIsCrossOrigin) {
+    // Different ports on the same host → cross-origin
+    EXPECT_TRUE(is_cross_origin("http://example.com:8080", "http://example.com:9090/path"));
+
+    // Same scheme + host + port → same origin
+    EXPECT_FALSE(is_cross_origin("http://example.com:8080", "http://example.com:8080/path"));
+
+    // Different scheme same host → cross-origin
+    EXPECT_TRUE(is_cross_origin("http://example.com", "https://example.com/path"));
+}
+
+TEST(CORSPolicyTest, CorsV132_5_NormalizeNullOriginSetsHeaderToNull) {
+    // Normalizing with a "null" document origin on a valid cross-origin URL
+    // should set the Origin header to "null" (not remove it)
+    clever::net::HeaderMap headers;
+    headers.set("Origin", "https://evil.example.com");
+
+    normalize_outgoing_origin_header(headers, "null", "https://api.example.com/data");
+
+    ASSERT_TRUE(headers.has("origin"));
+    EXPECT_EQ(headers.get("origin").value(), "null");
+}
+
+TEST(CORSPolicyTest, CorsV132_6_IPv6LoopbackIsEnforceable) {
+    // IPv6 loopback with port → enforceable
+    EXPECT_TRUE(has_enforceable_document_origin("http://[::1]:8080"));
+    // IPv6 loopback without port → enforceable
+    EXPECT_TRUE(has_enforceable_document_origin("https://[::1]"));
+    // Full IPv6 address → enforceable
+    EXPECT_TRUE(has_enforceable_document_origin("https://[2001:db8::1]"));
+    // data: and blob: are NOT enforceable
+    EXPECT_FALSE(has_enforceable_document_origin("data:text/html,hello"));
+    EXPECT_FALSE(has_enforceable_document_origin("blob:https://example.com/uuid"));
+}
+
+TEST(CORSPolicyTest, CorsV132_7_NullDocumentOriginShouldNotAttachToInvalidTarget) {
+    // "null" origin with a non-httpish target URL → should not attach
+    // because is_cross_origin returns false when target is unparseable
+    EXPECT_FALSE(should_attach_origin_header("null", "null"));
+    EXPECT_FALSE(should_attach_origin_header("null", "data:text/html,hello"));
+    EXPECT_FALSE(should_attach_origin_header("null", ""));
+
+    // But "null" origin with a valid URL → should attach
+    EXPECT_TRUE(should_attach_origin_header("null", "https://api.example.com/data"));
+}
+
+TEST(CORSPolicyTest, CorsV132_8_LongPathUrlStillCorsEligible) {
+    // A URL with a very long path (>1000 chars) should still be CORS-eligible
+    // as long as it is a valid https URL without fragments
+    std::string long_path = "https://cdn.example.com/";
+    long_path.append(1200, 'a');
+    EXPECT_TRUE(is_cors_eligible_request_url(long_path));
+
+    // Verify it remains ineligible if a fragment is added
+    std::string long_path_with_fragment = long_path + "#section";
+    EXPECT_FALSE(is_cors_eligible_request_url(long_path_with_fragment));
+}

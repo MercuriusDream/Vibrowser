@@ -22370,3 +22370,211 @@ TEST(HttpClient, CookieJarOverwritesCookieWithSameNameDomainPathV131) {
     // Old value must NOT be present
     EXPECT_EQ(header.find("token=old_value"), std::string::npos);
 }
+
+// =============================================================================
+// Round 132 (V132) — Net/HTTP Tests
+// =============================================================================
+
+TEST(HttpClient, RequestSerializePOSTWithQueryStringV132) {
+    Request req;
+    req.method = Method::POST;
+    req.host = "api.example.com";
+    req.port = 443;
+    req.path = "/submit";
+    req.query = "lang=en";
+
+    std::string body_str = R"({"data":"hello"})";
+    req.body.assign(body_str.begin(), body_str.end());
+    req.headers.set("Content-Type", "application/json");
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    // Request line must include query string
+    EXPECT_NE(result.find("POST /submit?lang=en HTTP/1.1\r\n"), std::string::npos);
+    // Port 443 omitted from Host header
+    EXPECT_NE(result.find("Host: api.example.com\r\n"), std::string::npos);
+    // Content-Length matches body
+    EXPECT_NE(result.find("Content-Length: 16\r\n"), std::string::npos);
+    // Connection: close
+    EXPECT_NE(result.find("Connection: close\r\n"), std::string::npos);
+    // Custom header lowercase
+    EXPECT_NE(result.find("content-type: application/json\r\n"), std::string::npos);
+    // Body present after blank line
+    std::string::size_type body_pos = result.find("\r\n\r\n");
+    ASSERT_NE(body_pos, std::string::npos);
+    std::string actual_body = result.substr(body_pos + 4);
+    EXPECT_EQ(actual_body, body_str);
+}
+
+TEST(HttpClient, ConnectionPoolLIFOOrderWithThreeFdsV132) {
+    ConnectionPool pool;
+
+    pool.release("lifo.v132.test", 8080, 10);
+    pool.release("lifo.v132.test", 8080, 20);
+    pool.release("lifo.v132.test", 8080, 30);
+
+    // LIFO: last released (30) acquired first
+    int fd1 = pool.acquire("lifo.v132.test", 8080);
+    EXPECT_EQ(fd1, 30);
+
+    int fd2 = pool.acquire("lifo.v132.test", 8080);
+    EXPECT_EQ(fd2, 20);
+
+    int fd3 = pool.acquire("lifo.v132.test", 8080);
+    EXPECT_EQ(fd3, 10);
+
+    // Pool exhausted
+    int fd4 = pool.acquire("lifo.v132.test", 8080);
+    EXPECT_EQ(fd4, -1);
+}
+
+TEST(HttpClient, HeaderMapAppendThenRemoveAllV132) {
+    HeaderMap map;
+    map.append("X-Custom-V132", "val1");
+    map.append("X-Custom-V132", "val2");
+    map.append("X-Custom-V132", "val3");
+
+    auto all_before = map.get_all("X-Custom-V132");
+    EXPECT_EQ(all_before.size(), 3u);
+
+    // Remove the header entirely
+    map.remove("X-Custom-V132");
+
+    // Verify header is gone
+    EXPECT_FALSE(map.has("X-Custom-V132"));
+    auto all_after = map.get_all("X-Custom-V132");
+    EXPECT_TRUE(all_after.empty());
+
+    // get() should return nullopt
+    auto val = map.get("X-Custom-V132");
+    EXPECT_FALSE(val.has_value());
+}
+
+TEST(HttpClient, CookieJarSameSiteLaxSetAndRetrieveV132) {
+    CookieJar jar;
+    jar.set_from_header("pref=dark; Path=/; SameSite=Lax", "lax.v132.test");
+
+    // Same-site request — Lax cookie should be returned
+    std::string header = jar.get_cookie_header("lax.v132.test", "/", false, /*is_same_site=*/true);
+    EXPECT_NE(header.find("pref=dark"), std::string::npos);
+
+    // Cross-site top-level nav — Lax should still be sent
+    std::string nav_header = jar.get_cookie_header("lax.v132.test", "/", false,
+                                                    /*is_same_site=*/false,
+                                                    /*is_top_level_nav=*/true);
+    EXPECT_NE(nav_header.find("pref=dark"), std::string::npos);
+
+    // Cross-site non-navigation — Lax should NOT be sent
+    std::string xhr_header = jar.get_cookie_header("lax.v132.test", "/", false,
+                                                    /*is_same_site=*/false,
+                                                    /*is_top_level_nav=*/false);
+    EXPECT_TRUE(xhr_header.empty());
+}
+
+TEST(HttpClient, ResponseParseRedirect302WithLocationV132) {
+    std::string raw =
+        "HTTP/1.1 302 Found\r\n"
+        "Location: https://new.v132.test/redirected\r\n"
+        "Content-Length: 0\r\n"
+        "\r\n";
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 302);
+    EXPECT_EQ(resp->status_text, "Found");
+
+    // Location header present
+    auto loc = resp->headers.get("location");
+    ASSERT_TRUE(loc.has_value());
+    EXPECT_EQ(loc.value(), "https://new.v132.test/redirected");
+
+    // Body is empty
+    EXPECT_TRUE(resp->body.empty());
+    EXPECT_EQ(resp->body_as_string(), "");
+}
+
+TEST(HttpClient, ConnectionPoolClearThenRepopulateV132) {
+    ConnectionPool pool;
+
+    // Populate with initial connections
+    pool.release("repop.v132.test", 80, 100);
+    pool.release("repop.v132.test", 80, 200);
+    EXPECT_EQ(pool.count("repop.v132.test", 80), 2u);
+
+    // Clear pool — all connections gone
+    pool.clear();
+    EXPECT_EQ(pool.count("repop.v132.test", 80), 0u);
+    EXPECT_EQ(pool.acquire("repop.v132.test", 80), -1);
+
+    // Repopulate after clear
+    pool.release("repop.v132.test", 80, 300);
+    pool.release("repop.v132.test", 80, 400);
+    EXPECT_EQ(pool.count("repop.v132.test", 80), 2u);
+
+    // Acquire succeeds with LIFO order
+    int fd1 = pool.acquire("repop.v132.test", 80);
+    EXPECT_EQ(fd1, 400);
+    int fd2 = pool.acquire("repop.v132.test", 80);
+    EXPECT_EQ(fd2, 300);
+    int fd3 = pool.acquire("repop.v132.test", 80);
+    EXPECT_EQ(fd3, -1);
+}
+
+TEST(HttpClient, RequestSerializeOPTIONSWithCORSHeadersV132) {
+    Request req;
+    req.method = Method::OPTIONS;
+    req.host = "cors.v132.test";
+    req.port = 443;
+    req.path = "/api/resource";
+
+    req.headers.set("Origin", "https://app.v132.test");
+    req.headers.set("Access-Control-Request-Method", "POST");
+    req.headers.set("Access-Control-Request-Headers", "Content-Type, Authorization");
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    // Request line
+    EXPECT_NE(result.find("OPTIONS /api/resource HTTP/1.1\r\n"), std::string::npos);
+    // Host without port (443 omitted)
+    EXPECT_NE(result.find("Host: cors.v132.test\r\n"), std::string::npos);
+    // CORS preflight headers (custom headers stored lowercase)
+    EXPECT_NE(result.find("origin: https://app.v132.test\r\n"), std::string::npos);
+    EXPECT_NE(result.find("access-control-request-method: POST\r\n"), std::string::npos);
+    EXPECT_NE(result.find("access-control-request-headers: Content-Type, Authorization\r\n"),
+              std::string::npos);
+    // Connection: close
+    EXPECT_NE(result.find("Connection: close\r\n"), std::string::npos);
+}
+
+TEST(HttpClient, CookieJarThreeDomainStrictIsolationV132) {
+    CookieJar jar;
+
+    // Set cookies for three different domains
+    jar.set_from_header("alpha=1; Path=/", "alpha.v132.test");
+    jar.set_from_header("beta=2; Path=/", "beta.v132.test");
+    jar.set_from_header("gamma=3; Path=/", "gamma.v132.test");
+
+    EXPECT_EQ(jar.size(), 3u);
+
+    // Alpha domain sees only its own cookie
+    std::string alpha_hdr = jar.get_cookie_header("alpha.v132.test", "/", false);
+    EXPECT_NE(alpha_hdr.find("alpha=1"), std::string::npos);
+    EXPECT_EQ(alpha_hdr.find("beta=2"), std::string::npos);
+    EXPECT_EQ(alpha_hdr.find("gamma=3"), std::string::npos);
+
+    // Beta domain sees only its own cookie
+    std::string beta_hdr = jar.get_cookie_header("beta.v132.test", "/", false);
+    EXPECT_NE(beta_hdr.find("beta=2"), std::string::npos);
+    EXPECT_EQ(beta_hdr.find("alpha=1"), std::string::npos);
+    EXPECT_EQ(beta_hdr.find("gamma=3"), std::string::npos);
+
+    // Gamma domain sees only its own cookie
+    std::string gamma_hdr = jar.get_cookie_header("gamma.v132.test", "/", false);
+    EXPECT_NE(gamma_hdr.find("gamma=3"), std::string::npos);
+    EXPECT_EQ(gamma_hdr.find("alpha=1"), std::string::npos);
+    EXPECT_EQ(gamma_hdr.find("beta=2"), std::string::npos);
+}

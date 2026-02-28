@@ -25017,3 +25017,39 @@ TEST(PropertyCascadeTest, TextDecorationSkipInkAutoV131) {
     cascade.apply_declaration(style, make_decl("text-decoration-skip-ink", "auto"), parent);
     EXPECT_EQ(style.text_decoration_skip_ink, 0);
 }
+
+TEST(PropertyCascadeTest, FontSynthesisAutoV132) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("font-synthesis", "auto"), parent);
+    EXPECT_EQ(style.font_synthesis, 0);
+}
+
+TEST(PropertyCascadeTest, MaskCompositeAddV132) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("mask-composite", "add"), parent);
+    SUCCEED();
+}
+
+TEST(PropertyCascadeTest, TransformStylePreserve3dV132) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("transform-style", "preserve-3d"), parent);
+    EXPECT_EQ(style.transform_style, 1);
+}
+
+TEST(PropertyCascadeTest, AnimationCompositionReplaceV132) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("animation-composition", "replace"), parent);
+    SUCCEED();
+}

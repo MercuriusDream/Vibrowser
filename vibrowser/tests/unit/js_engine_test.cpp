@@ -34719,3 +34719,77 @@ TEST(JSEngine, JsV131_8) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "10,20,30");
 }
+
+TEST(JSEngine, JsV132_1) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        Array.from("abc").join(",");
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "a,b,c");
+}
+
+TEST(JSEngine, JsV132_2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        Object.entries({a:1,b:2}).map(function(e){return e[0]+":"+e[1]}).join(",");
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "a:1,b:2");
+}
+
+TEST(JSEngine, JsV132_3) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var obj = Object.fromEntries([["x", 10], ["y", 20]]);
+        obj.x + "," + obj.y;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "10,20");
+}
+
+TEST(JSEngine, JsV132_4) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        [5, 12, 8, 130, 44].findIndex(function(e){return e > 10}) + "";
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1");
+}
+
+TEST(JSEngine, JsV132_5) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        Number.isFinite(42) + " " + Number.isFinite(Infinity) + " " + Number.isNaN(NaN) + " " + Number.isNaN(42);
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true false true false");
+}
+
+TEST(JSEngine, JsV132_6) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var p = Promise.all([Promise.resolve(1), Promise.resolve(2), Promise.resolve(3)]);
+        typeof p === "object" ? "ok" : "fail";
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "ok");
+}
+
+TEST(JSEngine, JsV132_7) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        Number.isInteger(5) + " " + Number.isInteger(5.5) + " " + Number.isInteger(-3);
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true false true");
+}
+
+TEST(JSEngine, JsV132_8) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        Array.of(3, 2, 1).reverse().join(",");
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1,2,3");
+}

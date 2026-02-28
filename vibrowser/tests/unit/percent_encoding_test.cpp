@@ -425,3 +425,47 @@ TEST(IsURLCodePoint, PercentEncodingV131_4_IsUrlCodePointAsciiSpecialUrlChars) {
     EXPECT_TRUE(is_url_code_point(U';'));
     EXPECT_TRUE(is_url_code_point(U'='));
 }
+
+TEST(PercentEncoding, FullRoundTripWithMixedSpecialCharsV132) {
+    // Encode a string with <>"#% and verify decode recovers the original
+    std::string original = "hello<world>\"test#value%end";
+    std::string encoded = percent_encode(original);
+    std::string decoded = percent_decode(encoded);
+    EXPECT_EQ(decoded, original);
+    // Verify encoding actually changed the special characters
+    EXPECT_NE(encoded, original);
+    EXPECT_NE(encoded.find("%3C"), std::string::npos); // <
+    EXPECT_NE(encoded.find("%3E"), std::string::npos); // >
+    EXPECT_NE(encoded.find("%22"), std::string::npos); // "
+    EXPECT_NE(encoded.find("%23"), std::string::npos); // #
+    EXPECT_NE(encoded.find("%25"), std::string::npos); // %
+}
+
+TEST(PercentDecoding, DecodeBoundaryByteZeroV132) {
+    // %00 should decode to a string containing the null byte (0x00)
+    std::string result = percent_decode("%00");
+    ASSERT_EQ(result.size(), 1u);
+    EXPECT_EQ(static_cast<unsigned char>(result[0]), 0x00);
+}
+
+TEST(PercentDecoding, DecodeBoundaryByteFFV132) {
+    // %FF should decode to a string containing byte 0xFF
+    std::string result = percent_decode("%FF");
+    ASSERT_EQ(result.size(), 1u);
+    EXPECT_EQ(static_cast<unsigned char>(result[0]), 0xFF);
+}
+
+TEST(IsURLCodePoint, BoundaryUnicodeCodePointsV132) {
+    // 0x7F (DEL) is a control character, not a URL code point
+    EXPECT_FALSE(is_url_code_point(U'\x7F'));
+    // 0x80 is a C1 control character, not a URL code point
+    EXPECT_FALSE(is_url_code_point(U'\x80'));
+    // 0x9F is the last C1 control character, not a URL code point
+    EXPECT_FALSE(is_url_code_point(U'\x9F'));
+    // 0x00A0 (non-breaking space) is the first valid non-ASCII URL code point
+    EXPECT_TRUE(is_url_code_point(U'\x00A0'));
+    // 0x10FFFD is the last valid Unicode code point that is a URL code point
+    EXPECT_TRUE(is_url_code_point(U'\U0010FFFD'));
+    // 0x10FFFE is a noncharacter, not a URL code point
+    EXPECT_FALSE(is_url_code_point(U'\U0010FFFE'));
+}
