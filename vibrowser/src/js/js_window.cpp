@@ -1762,47 +1762,245 @@ void install_window_bindings(JSContext* ctx, const std::string& url,
     JS_SetPropertyStr(ctx, global, "getSelection",
         JS_NewCFunction(ctx, js_window_get_selection, "getSelection", 0));
 
-    // ---- window.location ----
-    ParsedURL parsed = parse_url(url);
-    JSValue location = JS_NewObject(ctx);
-    JS_SetPropertyStr(ctx, location, "href",
-        JS_NewString(ctx, parsed.href.c_str()));
-    JS_SetPropertyStr(ctx, location, "hostname",
-        JS_NewString(ctx, parsed.hostname.c_str()));
-    JS_SetPropertyStr(ctx, location, "pathname",
-        JS_NewString(ctx, parsed.pathname.c_str()));
-    JS_SetPropertyStr(ctx, location, "protocol",
-        JS_NewString(ctx, parsed.protocol.c_str()));
-    JS_SetPropertyStr(ctx, location, "origin",
-        JS_NewString(ctx, parsed.origin.c_str()));
-    JS_SetPropertyStr(ctx, location, "host",
-        JS_NewString(ctx, parsed.host.c_str()));
-    JS_SetPropertyStr(ctx, location, "port",
-        JS_NewString(ctx, parsed.port.c_str()));
-    JS_SetPropertyStr(ctx, location, "search",
-        JS_NewString(ctx, parsed.search.c_str()));
-    JS_SetPropertyStr(ctx, location, "hash",
-        JS_NewString(ctx, parsed.hash.c_str()));
-
-    // Navigation stubs (no-ops in sync engine)
+    // ---- window.location (full spec: assign, replace, reload, origin, searchParams) ----
     {
-        const char* noop_code = R"JS(
-(function(loc) {
-    loc.assign = function(url) {};
-    loc.replace = function(url) {};
-    loc.reload = function() {};
-    loc.toString = function() { return loc.href; };
-})(this)
-)JS";
-        JSValue noop_fn = JS_Eval(ctx, noop_code, std::strlen(noop_code),
-                                   "<location-methods>", JS_EVAL_TYPE_GLOBAL);
-        if (JS_IsFunction(ctx, noop_fn)) {
-            JS_Call(ctx, noop_fn, location, 0, nullptr);
+        ParsedURL parsed = parse_url(url);
+        JSValue location = JS_NewObject(ctx);
+
+        // Store all parsed properties as plain data properties initially
+        JS_SetPropertyStr(ctx, location, "href",
+            JS_NewString(ctx, parsed.href.c_str()));
+        JS_SetPropertyStr(ctx, location, "hostname",
+            JS_NewString(ctx, parsed.hostname.c_str()));
+        JS_SetPropertyStr(ctx, location, "pathname",
+            JS_NewString(ctx, parsed.pathname.c_str()));
+        JS_SetPropertyStr(ctx, location, "protocol",
+            JS_NewString(ctx, parsed.protocol.c_str()));
+        JS_SetPropertyStr(ctx, location, "origin",
+            JS_NewString(ctx, parsed.origin.c_str()));
+        JS_SetPropertyStr(ctx, location, "host",
+            JS_NewString(ctx, parsed.host.c_str()));
+        JS_SetPropertyStr(ctx, location, "port",
+            JS_NewString(ctx, parsed.port.c_str()));
+        JS_SetPropertyStr(ctx, location, "search",
+            JS_NewString(ctx, parsed.search.c_str()));
+        JS_SetPropertyStr(ctx, location, "hash",
+            JS_NewString(ctx, parsed.hash.c_str()));
+
+        // Install full spec methods and href getter/setter via JS eval.
+        // This defines:
+        //   - href as a getter/setter (setter updates all derived properties)
+        //   - assign(url), replace(url), reload(), toString()
+        //   - searchParams (URLSearchParams-like getter)
+        //   - window.location setter (setting window.location = "url" navigates)
+        const char* location_code = R"JS(
+(function(loc, win) {
+    // Internal storage for the current href
+    var _href = loc.href;
+
+    // URL parser (mirrors the C++ ParsedURL logic)
+    function parseURL(url) {
+        var result = {
+            href: url, protocol: '', hostname: '', pathname: '/',
+            port: '', host: '', origin: '', search: '', hash: ''
+        };
+        var idx = url.indexOf('://');
+        if (idx !== -1) {
+            result.protocol = url.substring(0, idx + 1); // "https:"
+            var rest = url.substring(idx + 3);
+            // Find path start
+            var pathStart = -1;
+            for (var i = 0; i < rest.length; i++) {
+                if (rest[i] === '/' || rest[i] === '?' || rest[i] === '#') {
+                    pathStart = i; break;
+                }
+            }
+            var hostPart, pathAndRest;
+            if (pathStart !== -1) {
+                hostPart = rest.substring(0, pathStart);
+                pathAndRest = rest.substring(pathStart);
+            } else {
+                hostPart = rest;
+                pathAndRest = '';
+            }
+            // Extract port
+            var colonPos = hostPart.indexOf(':');
+            if (colonPos !== -1) {
+                result.hostname = hostPart.substring(0, colonPos);
+                result.port = hostPart.substring(colonPos + 1);
+            } else {
+                result.hostname = hostPart;
+                result.port = '';
+            }
+            result.host = result.port ? (result.hostname + ':' + result.port) : result.hostname;
+            result.origin = result.protocol + '//' + result.host;
+            // Parse path, search, hash
+            if (pathAndRest) {
+                var hashPos = pathAndRest.indexOf('#');
+                if (hashPos !== -1) {
+                    result.hash = pathAndRest.substring(hashPos);
+                    pathAndRest = pathAndRest.substring(0, hashPos);
+                }
+                var qPos = pathAndRest.indexOf('?');
+                if (qPos !== -1) {
+                    result.search = pathAndRest.substring(qPos);
+                    result.pathname = pathAndRest.substring(0, qPos);
+                } else {
+                    result.pathname = pathAndRest;
+                }
+                if (!result.pathname) result.pathname = '/';
+            } else {
+                result.pathname = '/';
+            }
         }
-        JS_FreeValue(ctx, noop_fn);
+        return result;
     }
 
-    JS_SetPropertyStr(ctx, global, "location", location);
+    // Update all location properties from a parsed URL
+    function updateProps(p) {
+        _href = p.href;
+        loc.hostname = p.hostname;
+        loc.pathname = p.pathname;
+        loc.protocol = p.protocol;
+        loc.origin = p.origin;
+        loc.host = p.host;
+        loc.port = p.port;
+        loc.search = p.search;
+        loc.hash = p.hash;
+    }
+
+    // Define href as a getter/setter via Object.defineProperty
+    // First delete the existing plain 'href' property
+    delete loc.href;
+    Object.defineProperty(loc, 'href', {
+        get: function() { return _href; },
+        set: function(v) {
+            var newUrl = String(v);
+            // Handle relative URLs by resolving against current origin+path
+            if (newUrl.indexOf('://') === -1) {
+                if (newUrl.charAt(0) === '/') {
+                    // Absolute path relative to origin
+                    newUrl = loc.origin + newUrl;
+                } else if (newUrl.charAt(0) === '#') {
+                    // Hash-only change
+                    var base = _href.split('#')[0];
+                    newUrl = base + newUrl;
+                } else if (newUrl.charAt(0) === '?') {
+                    // Search-only change
+                    var base2 = _href.split('?')[0].split('#')[0];
+                    newUrl = base2 + newUrl;
+                } else {
+                    // Relative path
+                    var basePath = loc.origin + loc.pathname;
+                    var lastSlash = basePath.lastIndexOf('/');
+                    if (lastSlash !== -1) {
+                        newUrl = basePath.substring(0, lastSlash + 1) + newUrl;
+                    } else {
+                        newUrl = basePath + '/' + newUrl;
+                    }
+                }
+            }
+            updateProps(parseURL(newUrl));
+        },
+        configurable: true,
+        enumerable: true
+    });
+
+    // Define searchParams as a getter (URLSearchParams-like)
+    Object.defineProperty(loc, 'searchParams', {
+        get: function() {
+            var params = {};
+            var s = loc.search;
+            if (s && s.charAt(0) === '?') s = s.substring(1);
+            if (!s) return {
+                get: function() { return null; },
+                has: function() { return false; },
+                toString: function() { return ''; },
+                entries: function() { return []; },
+                keys: function() { return []; },
+                values: function() { return []; },
+                forEach: function() {}
+            };
+            var pairs = s.split('&');
+            for (var i = 0; i < pairs.length; i++) {
+                var eq = pairs[i].indexOf('=');
+                if (eq !== -1) {
+                    var key = decodeURIComponent(pairs[i].substring(0, eq));
+                    var val = decodeURIComponent(pairs[i].substring(eq + 1));
+                    params[key] = val;
+                } else {
+                    params[decodeURIComponent(pairs[i])] = '';
+                }
+            }
+            return {
+                get: function(k) { return params.hasOwnProperty(k) ? params[k] : null; },
+                has: function(k) { return params.hasOwnProperty(k); },
+                toString: function() { return loc.search ? loc.search.substring(1) : ''; },
+                entries: function() {
+                    var r = [];
+                    for (var k in params) if (params.hasOwnProperty(k)) r.push([k, params[k]]);
+                    return r;
+                },
+                keys: function() {
+                    var r = [];
+                    for (var k in params) if (params.hasOwnProperty(k)) r.push(k);
+                    return r;
+                },
+                values: function() {
+                    var r = [];
+                    for (var k in params) if (params.hasOwnProperty(k)) r.push(params[k]);
+                    return r;
+                },
+                forEach: function(cb) {
+                    for (var k in params) if (params.hasOwnProperty(k)) cb(params[k], k);
+                }
+            };
+        },
+        configurable: true,
+        enumerable: true
+    });
+
+    // Methods
+    loc.assign = function(url) { loc.href = url; };
+    loc.replace = function(url) { loc.href = url; };
+    loc.reload = function() { loc.href = _href; };
+    loc.toString = function() { return _href; };
+
+    // Make window.location a getter/setter so that:
+    //   window.location = "http://example.com" triggers navigation
+    // We need to store the location object reference and redefine the property.
+    var _locObj = loc;
+
+    // First delete the plain 'location' property we set earlier via C++
+    // (it will be re-set below via defineProperty)
+    // NOTE: We do this from within the eval since the global hasn't had
+    // 'location' set via defineProperty yet -- it will be set AFTER this eval.
+    // Instead, we'll define it from within the function using 'win'.
+
+    Object.defineProperty(win, 'location', {
+        get: function() { return _locObj; },
+        set: function(v) { _locObj.href = String(v); },
+        configurable: true,
+        enumerable: true
+    });
+})
+)JS";
+        JSValue loc_fn = JS_Eval(ctx, location_code, std::strlen(location_code),
+                                  "<location-spec>", JS_EVAL_TYPE_GLOBAL);
+        if (JS_IsFunction(ctx, loc_fn)) {
+            JSValue args[2] = { location, global };
+            JSValue ret = JS_Call(ctx, loc_fn, JS_UNDEFINED, 2, args);
+            JS_FreeValue(ctx, ret);
+        }
+        JS_FreeValue(ctx, loc_fn);
+
+        // Note: We do NOT set location on global via JS_SetPropertyStr here
+        // because the JS code above already defined it via Object.defineProperty
+        // with getter/setter. Setting it again would overwrite the defineProperty.
+        // However, we need to free the location JSValue since the JS closure
+        // captured a reference to it.
+        JS_FreeValue(ctx, location);
+    }
 
     // ---- window.navigator ----
     JSValue navigator = JS_NewObject(ctx);

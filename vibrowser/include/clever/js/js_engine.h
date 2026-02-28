@@ -26,6 +26,9 @@ public:
     // Execute JavaScript code, returns result as string (or empty on error)
     std::string evaluate(const std::string& code, const std::string& filename = "<script>");
 
+    // Execute JavaScript code as an ES module (supports import/export syntax)
+    std::string evaluate_module(const std::string& code, const std::string& filename = "<module>");
+
     // Check if last evaluation had an error
     bool has_error() const { return has_error_; }
     const std::string& last_error() const { return last_error_; }

@@ -3002,6 +3002,50 @@ static JSValue js_element_get_outer_html(JSContext* ctx, JSValueConst this_val,
 }
 
 // =========================================================================
+// element.outerHTML (setter) — replaces element in its parent with parsed HTML
+// =========================================================================
+
+static JSValue js_element_set_outer_html(JSContext* ctx, JSValueConst this_val,
+                                          int argc, JSValueConst* argv) {
+    auto* node = unwrap_element(ctx, this_val);
+    if (!node || argc < 1) return JS_UNDEFINED;
+    if (!node->parent) return JS_UNDEFINED;  // Cannot replace root
+
+    const char* str = JS_ToCString(ctx, argv[0]);
+    if (!str) return JS_UNDEFINED;
+
+    auto parsed = clever::html::parse(str);
+    JS_FreeCString(ctx, str);
+    if (!parsed) return JS_UNDEFINED;
+
+    auto* body = parsed->find_element("body");
+    auto* source = body ? body : parsed.get();
+
+    auto* parent = node->parent;
+    int idx = find_sibling_index(node);
+    if (idx < 0) return JS_UNDEFINED;
+
+    // Remove the current element from its parent
+    auto& siblings = parent->children;
+    siblings.erase(siblings.begin() + idx);
+
+    // Insert parsed children at the same position
+    size_t insert_pos = static_cast<size_t>(idx);
+    for (auto it = source->children.begin(); it != source->children.end();) {
+        auto& child = *it;
+        child->parent = parent;
+        siblings.insert(siblings.begin() + static_cast<ptrdiff_t>(insert_pos),
+                        std::move(child));
+        insert_pos++;
+        it = source->children.erase(it);
+    }
+
+    auto* state = get_dom_state(ctx);
+    if (state) state->modified = true;
+    return JS_UNDEFINED;
+}
+
+// =========================================================================
 // MutationObserver stub
 // =========================================================================
 
@@ -4689,11 +4733,15 @@ static JSValue js_keyboard_event_constructor(JSContext* ctx,
     JS_SetPropertyStr(ctx, event_obj, "key", JS_NewString(ctx, ""));
     JS_SetPropertyStr(ctx, event_obj, "code", JS_NewString(ctx, ""));
     JS_SetPropertyStr(ctx, event_obj, "keyCode", JS_NewInt32(ctx, 0));
+    JS_SetPropertyStr(ctx, event_obj, "charCode", JS_NewInt32(ctx, 0));
+    JS_SetPropertyStr(ctx, event_obj, "which", JS_NewInt32(ctx, 0));
     JS_SetPropertyStr(ctx, event_obj, "ctrlKey", JS_FALSE);
     JS_SetPropertyStr(ctx, event_obj, "shiftKey", JS_FALSE);
     JS_SetPropertyStr(ctx, event_obj, "altKey", JS_FALSE);
     JS_SetPropertyStr(ctx, event_obj, "metaKey", JS_FALSE);
     JS_SetPropertyStr(ctx, event_obj, "repeat", JS_FALSE);
+    JS_SetPropertyStr(ctx, event_obj, "location", JS_NewInt32(ctx, 0));
+    JS_SetPropertyStr(ctx, event_obj, "isComposing", JS_FALSE);
 
     // options
     if (argc > 1 && JS_IsObject(argv[1])) {
@@ -4733,12 +4781,52 @@ static JSValue js_keyboard_event_constructor(JSContext* ctx,
         read_str("key");
         read_str("code");
         read_int("keyCode");
+        read_int("charCode");
+        read_int("location");
         read_bool("ctrlKey");
         read_bool("shiftKey");
         read_bool("altKey");
         read_bool("metaKey");
         read_bool("repeat");
+        read_bool("isComposing");
+
+        // 'which' defaults to keyCode if not explicitly provided
+        JSValue which_val = JS_GetPropertyStr(ctx, argv[1], "which");
+        if (!JS_IsUndefined(which_val)) {
+            int32_t wval = 0;
+            JS_ToInt32(ctx, &wval, which_val);
+            JS_SetPropertyStr(ctx, event_obj, "which",
+                JS_NewInt32(ctx, wval));
+        } else {
+            // Fall back to keyCode value
+            JSValue kc = JS_GetPropertyStr(ctx, event_obj, "keyCode");
+            JS_SetPropertyStr(ctx, event_obj, "which",
+                JS_DupValue(ctx, kc));
+            JS_FreeValue(ctx, kc);
+        }
+        JS_FreeValue(ctx, which_val);
     }
+
+    // Add getModifierState method
+    const char* gms_code = R"JS(
+        (function() {
+            var evt = this;
+            evt.getModifierState = function(key) {
+                if (key === 'Control') return evt.ctrlKey;
+                if (key === 'Shift') return evt.shiftKey;
+                if (key === 'Alt') return evt.altKey;
+                if (key === 'Meta') return evt.metaKey;
+                return false;
+            };
+        })
+    )JS";
+    JSValue gms_fn = JS_Eval(ctx, gms_code, std::strlen(gms_code),
+                              "<keyboard-event-gms>", JS_EVAL_TYPE_GLOBAL);
+    if (JS_IsFunction(ctx, gms_fn)) {
+        JSValue gms_ret = JS_Call(ctx, gms_fn, event_obj, 0, nullptr);
+        JS_FreeValue(ctx, gms_ret);
+    }
+    JS_FreeValue(ctx, gms_fn);
 
     attach_event_methods(ctx, event_obj);
     return event_obj;
@@ -4788,6 +4876,10 @@ static JSValue js_mouse_event_constructor(JSContext* ctx,
     JS_SetPropertyStr(ctx, event_obj, "shiftKey", JS_FALSE);
     JS_SetPropertyStr(ctx, event_obj, "altKey", JS_FALSE);
     JS_SetPropertyStr(ctx, event_obj, "metaKey", JS_FALSE);
+    JS_SetPropertyStr(ctx, event_obj, "relatedTarget", JS_NULL);
+    JS_SetPropertyStr(ctx, event_obj, "movementX", JS_NewFloat64(ctx, 0));
+    JS_SetPropertyStr(ctx, event_obj, "movementY", JS_NewFloat64(ctx, 0));
+    JS_SetPropertyStr(ctx, event_obj, "detail", JS_NewInt32(ctx, 0));
 
     // options
     if (argc > 1 && JS_IsObject(argv[1])) {
@@ -4836,6 +4928,17 @@ static JSValue js_mouse_event_constructor(JSContext* ctx,
         read_bool("shiftKey");
         read_bool("altKey");
         read_bool("metaKey");
+        read_num("movementX");
+        read_num("movementY");
+        read_int("detail");
+
+        // relatedTarget: pass through JS object reference
+        JSValue rt = JS_GetPropertyStr(ctx, argv[1], "relatedTarget");
+        if (!JS_IsUndefined(rt)) {
+            JS_SetPropertyStr(ctx, event_obj, "relatedTarget",
+                JS_DupValue(ctx, rt));
+        }
+        JS_FreeValue(ctx, rt);
     }
 
     attach_event_methods(ctx, event_obj);
@@ -5077,6 +5180,7 @@ static JSValue js_input_event_constructor(JSContext* ctx,
     JS_SetPropertyStr(ctx, event_obj, "data", JS_NewString(ctx, ""));
     JS_SetPropertyStr(ctx, event_obj, "inputType", JS_NewString(ctx, ""));
     JS_SetPropertyStr(ctx, event_obj, "isComposing", JS_FALSE);
+    JS_SetPropertyStr(ctx, event_obj, "dataTransfer", JS_NULL);
 
     // Read options
     if (argc > 1 && JS_IsObject(argv[1])) {
@@ -5122,6 +5226,13 @@ static JSValue js_input_event_constructor(JSContext* ctx,
                 JS_NewBool(ctx, JS_ToBool(ctx, isComposing)));
         }
         JS_FreeValue(ctx, isComposing);
+
+        JSValue dataTransfer = JS_GetPropertyStr(ctx, argv[1], "dataTransfer");
+        if (!JS_IsUndefined(dataTransfer)) {
+            JS_SetPropertyStr(ctx, event_obj, "dataTransfer",
+                JS_DupValue(ctx, dataTransfer));
+        }
+        JS_FreeValue(ctx, dataTransfer);
     }
 
     attach_event_methods(ctx, event_obj);
@@ -9076,10 +9187,19 @@ void install_dom_bindings(JSContext* ctx,
     JS_SetPropertyStr(ctx, element_proto, "getAnimations",
         JS_NewCFunction(ctx, js_element_get_animations, "getAnimations", 0));
 
-    // outerHTML internal getter (wired into JS getter by setup script)
+    // outerHTML internal getter/setter (wired into JS getter/setter by setup script)
     JS_SetPropertyStr(ctx, element_proto, "__getOuterHTML",
         JS_NewCFunction(ctx, js_element_get_outer_html,
                         "__getOuterHTML", 0));
+    JS_SetPropertyStr(ctx, element_proto, "__setOuterHTML",
+        JS_NewCFunction(ctx, js_element_set_outer_html,
+                        "__setOuterHTML", 1));
+
+    // matches() aliases — webkitMatchesSelector / msMatchesSelector
+    JS_SetPropertyStr(ctx, element_proto, "webkitMatchesSelector",
+        JS_NewCFunction(ctx, js_element_matches, "webkitMatchesSelector", 1));
+    JS_SetPropertyStr(ctx, element_proto, "msMatchesSelector",
+        JS_NewCFunction(ctx, js_element_matches, "msMatchesSelector", 1));
 
     // Modern DOM manipulation methods (Cycle 220)
     JS_SetPropertyStr(ctx, element_proto, "before",
@@ -9469,6 +9589,27 @@ void install_dom_bindings(JSContext* ctx,
 
     JS_SetPropertyStr(ctx, global, "document", doc_obj);
 
+    // ---- document.location as getter/setter that delegates to window.location ----
+    {
+        const char* doc_loc_code = R"JS(
+(function() {
+    Object.defineProperty(document, 'location', {
+        get: function() { return location; },
+        set: function(v) { location.href = String(v); },
+        configurable: true,
+        enumerable: true
+    });
+})()
+)JS";
+        JSValue dl_ret = JS_Eval(ctx, doc_loc_code, std::strlen(doc_loc_code),
+                                  "<document-location>", JS_EVAL_TYPE_GLOBAL);
+        if (JS_IsException(dl_ret)) {
+            JSValue exc = JS_GetException(ctx);
+            JS_FreeValue(ctx, exc);
+        }
+        JS_FreeValue(ctx, dl_ret);
+    }
+
     // window.addEventListener / removeEventListener (window === globalThis)
     JS_SetPropertyStr(ctx, global, "addEventListener",
         JS_NewCFunction(ctx, js_window_add_event_listener,
@@ -9726,6 +9867,7 @@ void install_dom_bindings(JSContext* ctx,
     });
     Object.defineProperty(proto, 'outerHTML', {
         get: function() { return this.__getOuterHTML(); },
+        set: function(v) { this.__setOuterHTML(v); },
         configurable: true
     });
     Object.defineProperty(proto, 'children', {
@@ -10254,7 +10396,8 @@ void install_dom_bindings(JSContext* ctx,
     }
 
     // ------------------------------------------------------------------
-    // window.location object
+    // window.location object (basic about:blank fallback; install_window_bindings
+    // will override this with the full spec version when a real URL is available)
     // ------------------------------------------------------------------
     {
         JSValue loc = JS_NewObject(ctx);
@@ -10267,6 +10410,23 @@ void install_dom_bindings(JSContext* ctx,
         JS_SetPropertyStr(ctx, loc, "search", JS_NewString(ctx, ""));
         JS_SetPropertyStr(ctx, loc, "hash", JS_NewString(ctx, ""));
         JS_SetPropertyStr(ctx, loc, "origin", JS_NewString(ctx, "null"));
+
+        // Add basic methods for spec compliance even on about:blank
+        const char* loc_methods_code = R"JS(
+(function(loc) {
+    loc.assign = function(url) { loc.href = String(url); };
+    loc.replace = function(url) { loc.href = String(url); };
+    loc.reload = function() {};
+    loc.toString = function() { return loc.href; };
+})(this)
+)JS";
+        JSValue mfn = JS_Eval(ctx, loc_methods_code, std::strlen(loc_methods_code),
+                               "<location-methods>", JS_EVAL_TYPE_GLOBAL);
+        if (JS_IsFunction(ctx, mfn)) {
+            JS_Call(ctx, mfn, loc, 0, nullptr);
+        }
+        JS_FreeValue(ctx, mfn);
+
         JS_SetPropertyStr(ctx, global, "location", loc);
     }
 

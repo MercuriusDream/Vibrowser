@@ -10397,9 +10397,13 @@ TEST(LayoutEngineTest, NestedBlocksWithCombinedMarginsV57) {
     auto& c = *p.children[0];
 
     EXPECT_FLOAT_EQ(p.geometry.x, 20.0f);
-    EXPECT_FLOAT_EQ(p.geometry.y, 10.0f);
+    // Parent-child margin collapsing: parent has no border/padding and
+    // doesn't establish a BFC, so its first child's top margin (15) collapses
+    // with the parent's top margin (10). The collapsed margin = max(10,15) = 15.
+    EXPECT_FLOAT_EQ(p.geometry.y, 15.0f);
     EXPECT_FLOAT_EQ(c.geometry.x, 25.0f);
-    EXPECT_FLOAT_EQ(c.geometry.y, 15.0f);
+    // Child's top margin collapsed with parent, so child sits at y=0 inside parent
+    EXPECT_FLOAT_EQ(c.geometry.y, 0.0f);
 }
 
 // Test 3: Block element with min/max width constraints
@@ -19082,11 +19086,14 @@ TEST(LayoutTest, NestedBlockMarginAccumulationV102) {
     LayoutEngine engine;
     engine.compute(*root, 800.0f, 600.0f);
 
-    // Outer should be offset by its own margin
+    // Outer should be offset by its own margin (may be adjusted by parent-child collapsing)
+    // Outer margin.top=10, inner margin.top=5. Since outer has no border/padding and
+    // doesn't establish a BFC, parent-child margin collapsing applies: the collapsed
+    // margin = max(10, 5) = 10 (outer's margin wins). Inner sits at y=0 inside outer.
     EXPECT_FLOAT_EQ(outerp->geometry.y, 10.0f);
     EXPECT_FLOAT_EQ(outerp->geometry.x, 20.0f);
-    // Inner should have a margin offset from its own margin
-    EXPECT_FLOAT_EQ(innerp->geometry.y, 5.0f);
+    // Inner's top margin collapsed with outer parent — inner positioned at y=0 inside
+    EXPECT_FLOAT_EQ(innerp->geometry.y, 0.0f);
     EXPECT_FLOAT_EQ(innerp->geometry.x, 15.0f);
     // Inner should retain its specified height
     EXPECT_FLOAT_EQ(innerp->geometry.height, 40.0f);

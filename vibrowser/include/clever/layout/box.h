@@ -439,6 +439,12 @@ struct LayoutNode {
     int isolation = 0; // 0=auto, 1=isolate
     int contain = 0;   // 0=none, 1=strict, 2=content, 3=size, 4=layout, 5=style, 6=paint
 
+    // Block Formatting Context: set during layout.
+    // An element that establishes a new BFC contains its floats, prevents
+    // margin collapsing across the boundary, and includes floated children
+    // in its height calculation.
+    bool establishes_bfc = false;
+
     // CSS contain-intrinsic-size
     float contain_intrinsic_width = 0;
     float contain_intrinsic_height = 0;

@@ -31,10 +31,13 @@
 #include <cctype>
 #include <cmath>
 #include <cstdlib>
+#include <future>
 #include <limits>
+#include <mutex>
 #include <optional>
 #include <set>
 #include <sstream>
+#include <thread>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -5537,24 +5540,22 @@ DecodedImage decode_image_native(const uint8_t* data, size_t length) {
 
 // In-memory image cache: avoids re-fetching/decoding images on hover re-renders.
 // Keyed by URL. Max ~64MB of decoded pixel data. LRU eviction when full.
+// Protected by s_image_cache_mutex for thread-safe parallel prefetching.
+static std::mutex s_image_cache_mutex;
 static std::unordered_map<std::string, DecodedImage> s_image_cache;
 static std::vector<std::string> s_image_cache_order;
 static size_t s_image_cache_bytes = 0;
 static constexpr size_t IMAGE_CACHE_MAX_BYTES = 64 * 1024 * 1024; // 64MB
 
-static void image_cache_remove_from_order(const std::string& url) {
+// Internal helpers — callers must hold s_image_cache_mutex
+static void image_cache_remove_from_order_locked(const std::string& url) {
     auto order_it = std::find(s_image_cache_order.begin(), s_image_cache_order.end(), url);
     if (order_it != s_image_cache_order.end()) {
         s_image_cache_order.erase(order_it);
     }
 }
 
-static void image_cache_touch(const std::string& url) {
-    image_cache_remove_from_order(url);
-    s_image_cache_order.push_back(url);
-}
-
-static void image_cache_evict() {
+static void image_cache_evict_locked() {
     while (s_image_cache_bytes > IMAGE_CACHE_MAX_BYTES && !s_image_cache_order.empty()) {
         const auto& oldest_url = s_image_cache_order.front();
         auto it = s_image_cache.find(oldest_url);
@@ -5568,14 +5569,23 @@ static void image_cache_evict() {
     }
 }
 
+// Thread-safe public cache operations
+static void image_cache_touch(const std::string& url) {
+    // Note: caller must hold s_image_cache_mutex, OR this is called within
+    // fetch_and_decode_image which already holds the lock.
+    image_cache_remove_from_order_locked(url);
+    s_image_cache_order.push_back(url);
+}
+
 static void image_cache_store(const std::string& url, const DecodedImage& image) {
+    std::lock_guard<std::mutex> lock(s_image_cache_mutex);
     auto existing = s_image_cache.find(url);
     if (existing != s_image_cache.end()) {
         if (existing->second.pixels) {
             s_image_cache_bytes -= existing->second.pixels->size();
         }
         s_image_cache.erase(existing);
-        image_cache_remove_from_order(url);
+        image_cache_remove_from_order_locked(url);
     }
 
     s_image_cache[url] = image;
@@ -5583,7 +5593,7 @@ static void image_cache_store(const std::string& url, const DecodedImage& image)
         s_image_cache_bytes += image.pixels->size();
     }
     s_image_cache_order.push_back(url);
-    image_cache_evict();
+    image_cache_evict_locked();
 }
 
 // Rasterize SVG data to RGBA pixels using nanosvg
@@ -5669,11 +5679,14 @@ DecodedImage fetch_and_decode_image(const std::string& url) {
     DecodedImage result;
     if (url.empty()) return result;
 
-    // Check cache first
-    auto cache_it = s_image_cache.find(url);
-    if (cache_it != s_image_cache.end()) {
-        image_cache_touch(url);
-        return cache_it->second;
+    // Check cache first (thread-safe)
+    {
+        std::lock_guard<std::mutex> lock(s_image_cache_mutex);
+        auto cache_it = s_image_cache.find(url);
+        if (cache_it != s_image_cache.end()) {
+            image_cache_touch(url);
+            return cache_it->second;
+        }
     }
 
     // Handle data: URIs (e.g., data:image/png;base64,iVBOR...)
@@ -11544,6 +11557,264 @@ void process_css_imports(clever::css::StyleSheet& sheet,
     }
 }
 
+// ---------------------------------------------------------------------------
+// Parallel resource prefetching
+// ---------------------------------------------------------------------------
+
+// Pre-scan the DOM tree and collect all image URLs that will be needed during
+// layout tree building.  This includes:
+//   - <img src="...">
+//   - <picture> / <source srcset="...">
+//   - CSS background-image: url(...)  (from inline style attributes)
+// The collected URLs are resolved against base_url.
+void extract_image_urls(const clever::html::SimpleNode& node,
+                        const std::string& base_url,
+                        std::vector<std::string>& urls) {
+    if (node.type == clever::html::SimpleNode::Element) {
+        std::string tag = to_lower(node.tag_name);
+
+        // Skip inert subtrees
+        if (tag == "template") return;
+        if (tag == "noscript" && !g_noscript_fallback) return;
+
+        if (tag == "img") {
+            std::string src = get_attr(node, "src");
+            if (!src.empty()) {
+                std::string resolved = resolve_url(src, base_url);
+                if (!resolved.empty()) urls.push_back(std::move(resolved));
+            }
+        } else if (tag == "picture") {
+            // Collect <source srcset="..."> and fallback <img src="...">
+            for (auto& child : node.children) {
+                if (child->type != clever::html::SimpleNode::Element) continue;
+                std::string child_tag = to_lower(child->tag_name);
+                if (child_tag == "source") {
+                    std::string srcset = get_attr(*child, "srcset");
+                    if (!srcset.empty()) {
+                        // Use first candidate (strip descriptor suffix)
+                        auto space_pos = srcset.find(' ');
+                        if (space_pos != std::string::npos)
+                            srcset = srcset.substr(0, space_pos);
+                        std::string resolved = resolve_url(srcset, base_url);
+                        if (!resolved.empty()) urls.push_back(std::move(resolved));
+                    }
+                } else if (child_tag == "img") {
+                    std::string src = get_attr(*child, "src");
+                    if (!src.empty()) {
+                        std::string resolved = resolve_url(src, base_url);
+                        if (!resolved.empty()) urls.push_back(std::move(resolved));
+                    }
+                }
+            }
+        }
+
+        // Check inline style for background-image: url(...)
+        std::string inline_style = get_attr(node, "style");
+        if (!inline_style.empty()) {
+            // Simple extraction of url(...) from background-image or background
+            auto find_url_in_style = [&](const std::string& style_str) {
+                size_t pos = 0;
+                while (pos < style_str.size()) {
+                    size_t url_start = style_str.find("url(", pos);
+                    if (url_start == std::string::npos) break;
+                    url_start += 4;
+                    // Skip whitespace and quotes
+                    while (url_start < style_str.size() &&
+                           (style_str[url_start] == '\'' || style_str[url_start] == '"' ||
+                            style_str[url_start] == ' '))
+                        url_start++;
+                    size_t url_end = url_start;
+                    while (url_end < style_str.size() &&
+                           style_str[url_end] != ')' && style_str[url_end] != '\'' &&
+                           style_str[url_end] != '"')
+                        url_end++;
+                    if (url_end > url_start) {
+                        std::string img_url = style_str.substr(url_start, url_end - url_start);
+                        // Skip data: URIs (already handled locally, no network fetch needed)
+                        if (img_url.size() < 5 || to_lower(img_url.substr(0, 5)) != "data:") {
+                            std::string resolved = resolve_url(img_url, base_url);
+                            if (!resolved.empty()) urls.push_back(std::move(resolved));
+                        }
+                    }
+                    pos = url_end;
+                }
+            };
+            find_url_in_style(inline_style);
+        }
+    }
+
+    for (auto& child : node.children) {
+        extract_image_urls(*child, base_url, urls);
+    }
+}
+
+// Extract external script URLs from <script src="..."> elements
+void extract_script_urls(const clever::html::SimpleNode& node,
+                         const std::string& base_url,
+                         std::vector<std::string>& urls) {
+    if (node.type == clever::html::SimpleNode::Element) {
+        std::string tag = to_lower(node.tag_name);
+        if (tag == "template") return;
+        if (tag == "noscript" && !g_noscript_fallback) return;
+
+        if (tag == "script") {
+            std::string src = get_attr(node, "src");
+            if (!src.empty()) {
+                // Skip non-JS types
+                std::string script_type = normalize_mime_type(get_attr(node, "type"));
+                if (script_type.empty() || script_type == "text/javascript" ||
+                    script_type == "application/javascript" ||
+                    script_type == "text/ecmascript" ||
+                    script_type == "application/ecmascript") {
+                    std::string resolved = resolve_url(src, base_url);
+                    if (!resolved.empty()) urls.push_back(std::move(resolved));
+                }
+            }
+        }
+    }
+    for (auto& child : node.children) {
+        extract_script_urls(*child, base_url, urls);
+    }
+}
+
+// Prefetch all images in parallel using std::async.
+// Results are stored directly into the image cache so that subsequent calls to
+// fetch_and_decode_image() will hit the cache instead of making network requests.
+void prefetch_images_parallel(const std::vector<std::string>& urls) {
+    if (urls.empty()) return;
+
+    // Deduplicate and skip already-cached URLs
+    std::vector<std::string> to_fetch;
+    {
+        std::lock_guard<std::mutex> lock(s_image_cache_mutex);
+        std::unordered_set<std::string> seen;
+        for (auto& url : urls) {
+            if (seen.count(url)) continue;
+            seen.insert(url);
+            if (s_image_cache.find(url) != s_image_cache.end()) continue;
+            to_fetch.push_back(url);
+        }
+    }
+
+    if (to_fetch.empty()) return;
+
+    // Cap concurrency to avoid overwhelming the system
+    const size_t max_concurrent = std::min(to_fetch.size(), size_t(8));
+
+    // Launch parallel fetches using std::async
+    std::vector<std::future<DecodedImage>> futures;
+    futures.reserve(to_fetch.size());
+
+    for (size_t i = 0; i < to_fetch.size(); ++i) {
+        // Copy URL into the lambda to avoid dangling reference
+        std::string url_copy = to_fetch[i];
+        futures.push_back(std::async(std::launch::async, [url_copy]() -> DecodedImage {
+            // fetch_and_decode_image handles all decoding and caching internally
+            return fetch_and_decode_image(url_copy);
+        }));
+
+        // Throttle: when we've launched max_concurrent, wait for the oldest to finish
+        if (futures.size() >= max_concurrent) {
+            futures[futures.size() - max_concurrent].wait();
+        }
+    }
+
+    // Wait for all remaining futures
+    for (auto& f : futures) {
+        if (f.valid()) f.wait();
+    }
+}
+
+// Fetch all CSS stylesheets in parallel.
+// Returns a vector of (url, css_text, final_url) tuples in the same order as the input.
+struct CssFetchResult {
+    std::string url;        // original URL
+    std::string css_text;   // fetched CSS text (empty on failure)
+    std::string final_url;  // URL after redirects
+};
+
+std::vector<CssFetchResult> fetch_css_parallel(const std::vector<std::string>& urls) {
+    std::vector<CssFetchResult> results(urls.size());
+
+    if (urls.empty()) return results;
+
+    std::vector<std::future<CssFetchResult>> futures;
+    futures.reserve(urls.size());
+
+    for (size_t i = 0; i < urls.size(); ++i) {
+        std::string url_copy = urls[i];
+        futures.push_back(std::async(std::launch::async, [url_copy]() -> CssFetchResult {
+            CssFetchResult r;
+            r.url = url_copy;
+            r.final_url = url_copy;
+            r.css_text = fetch_css(url_copy, &r.final_url);
+            return r;
+        }));
+    }
+
+    for (size_t i = 0; i < futures.size(); ++i) {
+        results[i] = futures[i].get();
+    }
+
+    return results;
+}
+
+// Prefetch external script sources in parallel.
+// Returns a map from resolved URL -> fetched script body.
+std::unordered_map<std::string, std::string> prefetch_scripts_parallel(
+    const std::vector<std::string>& urls) {
+    std::unordered_map<std::string, std::string> results;
+    if (urls.empty()) return results;
+
+    // Deduplicate
+    std::vector<std::string> unique_urls;
+    {
+        std::unordered_set<std::string> seen;
+        for (auto& u : urls) {
+            if (seen.insert(u).second) unique_urls.push_back(u);
+        }
+    }
+
+    struct ScriptFetchResult {
+        std::string url;
+        std::string body;
+    };
+
+    std::vector<std::future<ScriptFetchResult>> futures;
+    futures.reserve(unique_urls.size());
+
+    for (auto& url : unique_urls) {
+        std::string url_copy = url;
+        futures.push_back(std::async(std::launch::async, [url_copy]() -> ScriptFetchResult {
+            ScriptFetchResult r;
+            r.url = url_copy;
+            auto response = fetch_with_redirects(url_copy, "application/javascript, */*", 5);
+            if (response && response->status >= 200 && response->status < 300) {
+                bool looks_like_html = false;
+                if (auto ct = response->headers.get("content-type"); ct.has_value()) {
+                    std::string ct_norm = normalize_mime_type(*ct);
+                    if (ct_norm == "text/html" || ct_norm == "application/xhtml+xml") {
+                        looks_like_html = true;
+                    }
+                }
+                if (!looks_like_html) {
+                    r.body = response->body_as_string();
+                }
+            }
+            return r;
+        }));
+    }
+
+    for (auto& f : futures) {
+        auto r = f.get();
+        if (!r.body.empty()) {
+            results[r.url] = std::move(r.body);
+        }
+    }
+
+    return results;
+}
+
 } // anonymous namespace
 
 RenderResult render_html(const std::string& html, int viewport_width, int viewport_height) {
@@ -11758,16 +12029,17 @@ RenderResult render_html(const std::string& html, const std::string& base_url,
         clever::css::StyleResolver resolver;
         resolver.add_stylesheet(ua_stylesheet);
 
-        // Fetch and parse external stylesheets from <link> elements
+        // Fetch and parse external stylesheets from <link> elements.
+        // All stylesheet URLs are fetched in parallel, then parsed and
+        // processed sequentially to maintain cascade order.
         std::vector<clever::css::StyleSheet> external_sheets;
         auto link_urls = extract_link_stylesheets(*doc, effective_base_url);
-        for (auto& url : link_urls) {
-            std::string fetched_url = url;
-            std::string css = fetch_css(url, &fetched_url);
-            if (!css.empty()) {
-                external_sheets.push_back(clever::css::parse_stylesheet(css));
+        auto css_fetched = fetch_css_parallel(link_urls);
+        for (auto& css_result : css_fetched) {
+            if (!css_result.css_text.empty()) {
+                external_sheets.push_back(clever::css::parse_stylesheet(css_result.css_text));
                 // Fetch and merge @import rules from the external stylesheet
-                process_css_imports(external_sheets.back(), fetched_url,
+                process_css_imports(external_sheets.back(), css_result.final_url,
                                     viewport_width, viewport_height);
                 // Evaluate @media/@supports queries and promote matching rules
                 flatten_media_queries(external_sheets.back(), viewport_width, viewport_height);
@@ -11918,6 +12190,24 @@ RenderResult render_html(const std::string& html, const std::string& base_url,
         collected_forms.clear();
         collected_datalists.clear();
 
+        // Step 3a: Pre-scan DOM for resource URLs and launch parallel prefetches.
+        // Images are prefetched in the background while scripts execute; by the
+        // time build_layout_tree_styled() runs, most images will already be in
+        // the cache.  Script sources are also prefetched in parallel so the
+        // serial execution loop can use them from the map without re-fetching.
+        std::vector<std::string> image_urls;
+        extract_image_urls(*doc, effective_base_url, image_urls);
+
+        // Launch image prefetch on a background thread (non-blocking)
+        auto image_prefetch_future = std::async(std::launch::async, [&image_urls]() {
+            prefetch_images_parallel(image_urls);
+        });
+
+        // Prefetch external script sources in parallel
+        std::vector<std::string> script_urls;
+        extract_script_urls(*doc, effective_base_url, script_urls);
+        auto prefetched_scripts = prefetch_scripts_parallel(script_urls);
+
         // Step 3b: Execute inline <script> elements
         // The JS engine is allocated on the heap so it can optionally be
         // persisted in the RenderResult for interactive event dispatch
@@ -11986,29 +12276,31 @@ RenderResult render_html(const std::string& html, const std::string& base_url,
                                 continue;
                             }
 
-                            // Skip type="module" — ES modules use import/export syntax
-                            // that cannot be evaluated in our synchronous script engine
-                            if (script_type == "module") {
-                                executed_script_nodes.insert(script_elem);
-                                continue;
-                            }
+                            const bool is_module = (script_type == "module");
 
                             std::string script_code;
 
                             if (!script_src.empty()) {
-                                // Fetch external script
+                                // Use prefetched script if available, otherwise fetch on demand
                                 std::string resolved = resolve_url(script_src, effective_base_url);
-                                auto response = fetch_with_redirects(resolved, "application/javascript, */*", 5);
-                                if (response && response->status >= 200 && response->status < 300) {
-                                    bool looks_like_html = false;
-                                    if (auto ct = response->headers.get("content-type"); ct.has_value()) {
-                                        std::string ct_norm = normalize_mime_type(*ct);
-                                        if (ct_norm == "text/html" || ct_norm == "application/xhtml+xml") {
-                                            looks_like_html = true;
+                                auto prefetch_it = prefetched_scripts.find(resolved);
+                                if (prefetch_it != prefetched_scripts.end()) {
+                                    script_code = prefetch_it->second;
+                                } else {
+                                    // Fallback: fetch on demand (script may have been
+                                    // dynamically inserted by JS after the pre-scan)
+                                    auto response = fetch_with_redirects(resolved, "application/javascript, */*", 5);
+                                    if (response && response->status >= 200 && response->status < 300) {
+                                        bool looks_like_html = false;
+                                        if (auto ct = response->headers.get("content-type"); ct.has_value()) {
+                                            std::string ct_norm = normalize_mime_type(*ct);
+                                            if (ct_norm == "text/html" || ct_norm == "application/xhtml+xml") {
+                                                looks_like_html = true;
+                                            }
                                         }
-                                    }
-                                    if (!looks_like_html) {
-                                        script_code = response->body_as_string();
+                                        if (!looks_like_html) {
+                                            script_code = response->body_as_string();
+                                        }
                                     }
                                 }
                             } else {
@@ -12021,18 +12313,27 @@ RenderResult render_html(const std::string& html, const std::string& base_url,
                             }
 
                             if (!script_code.empty()) {
-                                // Set document.currentScript before evaluation
-                                clever::js::set_current_script(
-                                    js_engine.context(),
-                                    const_cast<clever::html::SimpleNode*>(script_elem));
+                                if (is_module) {
+                                    // ES module: document.currentScript is always null
+                                    // per the HTML spec for module scripts
+                                    js_engine.evaluate_module(script_code);
+                                    if (js_engine.has_error()) {
+                                        result.js_errors.push_back(js_engine.last_error());
+                                    }
+                                } else {
+                                    // Classic script: set document.currentScript
+                                    clever::js::set_current_script(
+                                        js_engine.context(),
+                                        const_cast<clever::html::SimpleNode*>(script_elem));
 
-                                js_engine.evaluate(script_code);
-                                if (js_engine.has_error()) {
-                                    result.js_errors.push_back(js_engine.last_error());
+                                    js_engine.evaluate(script_code);
+                                    if (js_engine.has_error()) {
+                                        result.js_errors.push_back(js_engine.last_error());
+                                    }
+
+                                    // Clear document.currentScript after evaluation
+                                    clever::js::set_current_script(js_engine.context(), nullptr);
                                 }
-
-                                // Clear document.currentScript after evaluation
-                                clever::js::set_current_script(js_engine.context(), nullptr);
                             }
 
                             executed_script_nodes.insert(script_elem);
@@ -12144,6 +12445,13 @@ RenderResult render_html(const std::string& html, const std::string& base_url,
                 // JSEngine can dispatch interactive events (click, etc.) later.
                 clever::js::cleanup_timers(js_engine.context());
             }
+        }
+
+        // Wait for background image prefetch to complete before building the
+        // layout tree.  At this point most images should already be cached,
+        // making the tree build nearly instant for image-heavy pages.
+        if (image_prefetch_future.valid()) {
+            image_prefetch_future.wait();
         }
 
         ElementViewTree view_tree;

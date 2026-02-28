@@ -379,6 +379,26 @@ void LayoutEngine::layout_block(LayoutNode& node, float containing_width) {
         return;
     }
 
+    // Determine if this node establishes a new Block Formatting Context (BFC).
+    // A BFC contains floats, prevents parent-child margin collapsing across the
+    // boundary, and includes floated descendants in its height.
+    node.establishes_bfc =
+        node.parent == nullptr ||                   // root element
+        node.tag_name == "html" ||                  // root element by tag
+        node.float_type != 0 ||                     // floated elements
+        node.position_type >= 2 ||                  // absolute (2) or fixed (3)
+        node.display == DisplayType::InlineBlock ||
+        node.display == DisplayType::Flex ||
+        node.display == DisplayType::InlineFlex ||
+        node.display == DisplayType::Grid ||
+        node.display == DisplayType::InlineGrid ||
+        node.display == DisplayType::Table ||
+        node.display == DisplayType::TableCell ||
+        node.overflow >= 1 ||                       // hidden(1), scroll(2), auto(3)
+        node.contain == 1 ||                        // strict
+        node.contain == 4 ||                        // layout
+        node.contain == 6;                          // paint
+
     // contain: size (3) or strict (1) — use contain-intrinsic-size for auto dimensions
     if (node.contain == 3 || node.contain == 1) {
         if (node.specified_height < 0 && node.contain_intrinsic_height > 0) {
@@ -481,6 +501,16 @@ void LayoutEngine::layout_block(LayoutNode& node, float containing_width) {
         for (auto& child : node.children) {
             if (child->display == DisplayType::None || child->mode == LayoutMode::None) continue;
             if (child->position_type == 2 || child->position_type == 3) continue;
+            // Floats are out of normal flow — only include them in height if
+            // the parent establishes a BFC (which contains its floats)
+            if (child->float_type != 0) {
+                if (node.establishes_bfc) {
+                    float float_bottom = child->geometry.y + child->geometry.border_box_height()
+                                         + child->geometry.margin.bottom;
+                    children_height = std::max(children_height, float_bottom);
+                }
+                continue; // floats don't contribute to normal-flow height sum
+            }
             children_height += child->geometry.margin_box_height();
         }
     }
@@ -1138,8 +1168,29 @@ void LayoutEngine::position_block_children(LayoutNode& node) {
             // The collapsed margin = max(prev_bottom_margin, curr_top_margin)
             // instead of prev_bottom + curr_top
             float top_margin = child->geometry.margin.top;
-            if (!first_child && top_margin > 0 && prev_margin_bottom > 0) {
-                // Collapse: use max instead of sum
+
+            // Parent-child top margin collapsing: the first child's top margin
+            // collapses with its parent's top margin if:
+            //   - this is the first in-flow child
+            //   - the parent has no top border or top padding
+            //   - the parent does NOT establish a new BFC
+            // When collapsing, the child's top margin "escapes" to the parent
+            // (i.e., it is not applied as internal spacing inside the parent).
+            bool collapse_with_parent = first_child && !node.establishes_bfc &&
+                node.geometry.border.top == 0 && node.geometry.padding.top == 0;
+
+            if (collapse_with_parent && top_margin > 0) {
+                // The child's top margin collapses with the parent's top margin.
+                // The larger margin wins. The child is positioned at cursor_y (0)
+                // with no additional internal top margin offset.
+                // We also adjust the parent's margin for correct external spacing.
+                float parent_top = node.geometry.margin.top;
+                if (top_margin > parent_top) {
+                    node.geometry.margin.top = top_margin;
+                }
+                child->geometry.y = cursor_y;
+            } else if (!first_child && top_margin > 0 && prev_margin_bottom > 0) {
+                // Sibling margin collapsing: use max instead of sum
                 float collapsed = std::max(prev_margin_bottom, top_margin);
                 // cursor_y already includes prev_margin_bottom, so adjust
                 cursor_y -= prev_margin_bottom;
@@ -1153,6 +1204,37 @@ void LayoutEngine::position_block_children(LayoutNode& node) {
         }
 
         apply_positioning(*child);
+    }
+
+    // Parent-child bottom margin collapsing: the last in-flow child's bottom
+    // margin collapses with its parent's bottom margin if:
+    //   - the parent has no bottom border or bottom padding
+    //   - the parent has no explicit height or min-height
+    //   - the parent does NOT establish a new BFC
+    // Implementation: we increase the parent's bottom margin to the max of
+    // parent and child, without mutating the child's margin (which is needed
+    // for computed style queries). The child's bottom margin contribution
+    // to the parent's internal height is handled by the caller.
+    if (!node.establishes_bfc &&
+        node.geometry.border.bottom == 0 && node.geometry.padding.bottom == 0 &&
+        node.specified_height < 0 && node.min_height <= 0) {
+        // Find last in-flow non-float child
+        LayoutNode* last_child = nullptr;
+        for (auto it = node.children.rbegin(); it != node.children.rend(); ++it) {
+            auto& c = *it;
+            if (c->display == DisplayType::None || c->mode == LayoutMode::None) continue;
+            if (c->position_type == 2 || c->position_type == 3) continue;
+            if (c->float_type != 0) continue;
+            last_child = c.get();
+            break;
+        }
+        if (last_child && last_child->geometry.margin.bottom > 0) {
+            float child_bottom = last_child->geometry.margin.bottom;
+            float parent_bottom = node.geometry.margin.bottom;
+            if (child_bottom > parent_bottom) {
+                node.geometry.margin.bottom = child_bottom;
+            }
+        }
     }
 }
 

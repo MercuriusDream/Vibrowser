@@ -203,6 +203,23 @@ struct ConsoleTrampoline {
 };
 
 // ---------------------------------------------------------------------------
+// ES module loader stub — resolves import statements with empty modules
+// so that module scripts don't crash when they use import declarations.
+// ---------------------------------------------------------------------------
+
+static JSModuleDef* js_module_loader(JSContext* ctx,
+                                     const char* module_name,
+                                     void* /*opaque*/) {
+    // Create a stub module that exports nothing.  In the future this could
+    // fetch the module source over the network and compile it.
+    JSModuleDef* m = JS_NewCModule(ctx, module_name,
+                                   [](JSContext* /*ctx*/, JSModuleDef* /*m*/) -> int {
+                                       return 0; // empty module init — success
+                                   });
+    return m; // nullptr on allocation failure is handled by QuickJS
+}
+
+// ---------------------------------------------------------------------------
 // Construction / destruction
 // ---------------------------------------------------------------------------
 
@@ -214,6 +231,10 @@ JSEngine::JSEngine() {
     // 64 MB was too small for complex pages like Google.
     JS_SetMemoryLimit(rt_, 256 * 1024 * 1024);
     JS_SetMaxStackSize(rt_, 8 * 1024 * 1024);
+
+    // Install a module loader so that `import` statements resolve to empty
+    // stub modules instead of crashing with "could not load module".
+    JS_SetModuleLoaderFunc(rt_, nullptr, js_module_loader, nullptr);
 
     ctx_ = JS_NewContext(rt_);
     if (!ctx_) return;
@@ -329,6 +350,92 @@ std::string JSEngine::evaluate(const std::string& code, const std::string& filen
     }
 
     JS_FreeValue(ctx_, result);
+    return result_str;
+}
+
+// ---------------------------------------------------------------------------
+// Module evaluation — executes code as an ES module (import/export support)
+// ---------------------------------------------------------------------------
+
+std::string JSEngine::evaluate_module(const std::string& code,
+                                      const std::string& filename) {
+    clear_error();
+
+    if (!ctx_) {
+        has_error_ = true;
+        last_error_ = "JSEngine not initialized";
+        return "";
+    }
+
+    JSValue result = JS_Eval(ctx_, code.c_str(), code.size(),
+                             filename.c_str(),
+                             JS_EVAL_TYPE_MODULE | JS_EVAL_FLAG_COMPILE_ONLY);
+
+    if (JS_IsException(result)) {
+        has_error_ = true;
+
+        JSValue exception = JS_GetException(ctx_);
+        const char* str = JS_ToCString(ctx_, exception);
+        if (str) {
+            last_error_ = str;
+            JS_FreeCString(ctx_, str);
+        } else {
+            last_error_ = "Unknown module parse error";
+        }
+
+        JSValue stack = JS_GetPropertyStr(ctx_, exception, "stack");
+        if (!JS_IsUndefined(stack)) {
+            const char* stack_str = JS_ToCString(ctx_, stack);
+            if (stack_str) {
+                last_error_ += '\n';
+                last_error_ += stack_str;
+                JS_FreeCString(ctx_, stack_str);
+            }
+        }
+        JS_FreeValue(ctx_, stack);
+        JS_FreeValue(ctx_, exception);
+        return "";
+    }
+
+    // Evaluate the compiled module (this runs top-level module code).
+    JSValue eval_result = JS_EvalFunction(ctx_, result);
+
+    if (JS_IsException(eval_result)) {
+        has_error_ = true;
+
+        JSValue exception = JS_GetException(ctx_);
+        const char* str = JS_ToCString(ctx_, exception);
+        if (str) {
+            last_error_ = str;
+            JS_FreeCString(ctx_, str);
+        } else {
+            last_error_ = "Unknown module evaluation error";
+        }
+
+        JSValue stack = JS_GetPropertyStr(ctx_, exception, "stack");
+        if (!JS_IsUndefined(stack)) {
+            const char* stack_str = JS_ToCString(ctx_, stack);
+            if (stack_str) {
+                last_error_ += '\n';
+                last_error_ += stack_str;
+                JS_FreeCString(ctx_, stack_str);
+            }
+        }
+        JS_FreeValue(ctx_, stack);
+        JS_FreeValue(ctx_, exception);
+        return "";
+    }
+
+    std::string result_str;
+    if (!JS_IsUndefined(eval_result)) {
+        const char* str = JS_ToCString(ctx_, eval_result);
+        if (str) {
+            result_str = str;
+            JS_FreeCString(ctx_, str);
+        }
+    }
+
+    JS_FreeValue(ctx_, eval_result);
     return result_str;
 }
 
