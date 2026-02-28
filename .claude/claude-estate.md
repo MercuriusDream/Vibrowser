@@ -8,8 +8,8 @@
 **Phase**: Active Development — Feature Implementation (Full Web Engine Roadmap)
 **Last Active**: 2026-03-01
 **Current Focus**: Implementing real browser features from comprehensive audit roadmap
-**Momentum**: Cycle 933 — Round 9 complete (10 Codex subagents), Phase 4 features landing. 13/13 tests passing.
-**Cycle**: 933
+**Momentum**: Cycle 935 — Round 10 complete (10 Codex subagents), Phase 5 features landing. 13/13 tests passing.
+**Cycle**: 935
 **Workflow**: Multi-phase feature implementation. Use 10 Codex subagents (Haiku-orchestrated) in parallel. Commit and push after each implementation round.
 
 ## Implementation Roadmap
@@ -102,6 +102,16 @@
 24. [x] SVG rendering — gradient fill for circles/ellipses, comprehensive shape support (Round 9)
 25. [x] P0-1 centering fix — already implemented in position_block_children (verified Round 9)
 26. [x] P0-4 margin sentinel — MARGIN_AUTO constant, is_margin_auto() helper (Round 9)
+27. [x] Flexbox gap (row-gap, column-gap) — cross-axis gap in flex wrap layout (Round 10)
+28. [x] CSS object-fit/object-position — percentage parsing fix for object-position (Round 10)
+29. [x] CSS position:sticky — layout + paint integration for sticky positioning (Round 10)
+30. [x] MutationObserver API — JS bindings, observer registration, DOM mutation hooks (Round 10)
+31. [x] CSS contain + content-visibility — containment + content-visibility:hidden/auto (Round 10)
+32. [x] CSS Color Level 4 — relative color syntax support (Round 10)
+33. [x] IntersectionObserver — verified already implemented (Round 10)
+34. [x] Fetch API — verified already implemented (Round 10)
+35. [x] CSS aspect-ratio — verified already implemented (Round 10)
+36. [x] CSS filter/backdrop-filter — verified already implemented (Round 10)
 
 ### Architecture Debt
 - Dual DOM (C++ dom::Node unused, SimpleNode is actual DOM) → unify
@@ -111,6 +121,31 @@
 - EventLoop/ThreadPool disconnected → wire up or remove
 
 ## Session Log
+
+### Cycle 935 (Feature Implementation Round 10) — 2026-03-01
+
+- **Theme**: 10 Codex subagents — flexbox gap, CSS positioning, observers, CSS visual features
+- **Agents**: 10 Codex subagents via `Agent(subagent_type="codex", model="haiku")`
+- **Features Implemented**:
+  - Flexbox gap — cross-axis gap (row-gap/column-gap) in flex wrap layout (9bc2a91)
+  - CSS object-position — percentage parsing fix for object-position values (3adf0ef)
+  - CSS position:sticky — layout engine + paint system integration (02a79c4)
+  - MutationObserver — JS API with observer registration, DOM mutation hooks (017ddaa)
+  - CSS contain + content-visibility — containment + hidden/auto modes (d136365)
+  - CSS Color Level 4 — relative color syntax support (57cfb70)
+  - IntersectionObserver — verified already implemented (no work needed)
+  - Fetch API — verified already implemented (no work needed)
+  - CSS aspect-ratio — verified already implemented (no work needed)
+  - CSS filter/backdrop-filter — verified already implemented (no work needed)
+- **Build Fixes**:
+  - macOS SDK `<chrono>/<math.h>` macro clash — `_LIBCPP_REMOVE_TRANSITIVE_INCLUDES` in CMakeLists.txt
+  - MutationObserver: JS_StrictEq, DOMState::PendingMutation, attr.name/value fixes
+  - Forward declaration default arg conflict — removed duplicates from definition
+  - Missing `<functional>` include in painter.cpp
+  - Missing `<cmath>` + narrowing fix in display_list.cpp
+  - Test updates: flex gap y-positions, content-visibility behavior
+- **Validation**: 13/13 suites pass, 0 failures
+- **Commits**: 9bc2a91, 3adf0ef, 02a79c4, 017ddaa, d136365, 57cfb70 (auto), 5c768b7 (build fixes)
 
 ### Cycle 933 (Feature Implementation Round 9) — 2026-03-01
 
