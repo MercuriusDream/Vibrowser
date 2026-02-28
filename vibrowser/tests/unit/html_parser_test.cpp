@@ -16985,3 +16985,178 @@ TEST(HtmlParserTest, DeeplyNestedListStructureV104) {
     EXPECT_EQ(lis[4]->text_content(), "Deep 2");
     EXPECT_EQ(lis[5]->text_content(), "Item 2");
 }
+
+// ============================================================================
+// V105 Tests — HTML Parsing
+// ============================================================================
+
+TEST(HtmlParserTest, NestedTablesWithCaptionV105) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<table>"
+        "<caption>Sales Report</caption>"
+        "<tr><th>Q1</th><th>Q2</th></tr>"
+        "<tr><td>100</td><td>200</td></tr>"
+        "</table>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* table = doc->find_element("table");
+    ASSERT_NE(table, nullptr);
+    auto* caption = doc->find_element("caption");
+    ASSERT_NE(caption, nullptr);
+    EXPECT_EQ(caption->text_content(), "Sales Report");
+    auto ths = doc->find_all_elements("th");
+    ASSERT_EQ(ths.size(), 2u);
+    EXPECT_EQ(ths[0]->text_content(), "Q1");
+    EXPECT_EQ(ths[1]->text_content(), "Q2");
+    auto tds = doc->find_all_elements("td");
+    ASSERT_EQ(tds.size(), 2u);
+    EXPECT_EQ(tds[0]->text_content(), "100");
+    EXPECT_EQ(tds[1]->text_content(), "200");
+}
+
+TEST(HtmlParserTest, DefinitionListStructureV105) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<dl>"
+        "<dt>Term A</dt><dd>Definition A</dd>"
+        "<dt>Term B</dt><dd>Definition B</dd>"
+        "</dl>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto dts = doc->find_all_elements("dt");
+    ASSERT_EQ(dts.size(), 2u);
+    EXPECT_EQ(dts[0]->text_content(), "Term A");
+    EXPECT_EQ(dts[1]->text_content(), "Term B");
+    auto dds = doc->find_all_elements("dd");
+    ASSERT_EQ(dds.size(), 2u);
+    EXPECT_EQ(dds[0]->text_content(), "Definition A");
+    EXPECT_EQ(dds[1]->text_content(), "Definition B");
+}
+
+TEST(HtmlParserTest, FieldsetWithLegendV105) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<fieldset>"
+        "<legend>Login</legend>"
+        "<input type=\"text\" name=\"user\"/>"
+        "<input type=\"password\" name=\"pass\"/>"
+        "</fieldset>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* legend = doc->find_element("legend");
+    ASSERT_NE(legend, nullptr);
+    EXPECT_EQ(legend->text_content(), "Login");
+    auto inputs = doc->find_all_elements("input");
+    ASSERT_EQ(inputs.size(), 2u);
+    EXPECT_EQ(get_attr_v63(inputs[0], "type"), "text");
+    EXPECT_EQ(get_attr_v63(inputs[0], "name"), "user");
+    EXPECT_EQ(get_attr_v63(inputs[1], "type"), "password");
+    EXPECT_EQ(get_attr_v63(inputs[1], "name"), "pass");
+}
+
+TEST(HtmlParserTest, FigureWithFigcaptionV105) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<figure>"
+        "<img src=\"chart.png\" alt=\"Chart\"/>"
+        "<figcaption>Revenue by quarter</figcaption>"
+        "</figure>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* figure = doc->find_element("figure");
+    ASSERT_NE(figure, nullptr);
+    auto* img = doc->find_element("img");
+    ASSERT_NE(img, nullptr);
+    EXPECT_EQ(get_attr_v63(img, "src"), "chart.png");
+    EXPECT_EQ(get_attr_v63(img, "alt"), "Chart");
+    auto* figcaption = doc->find_element("figcaption");
+    ASSERT_NE(figcaption, nullptr);
+    EXPECT_EQ(figcaption->text_content(), "Revenue by quarter");
+}
+
+TEST(HtmlParserTest, DetailsAndSummaryElementsV105) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<details>"
+        "<summary>Click to expand</summary>"
+        "<p>Hidden content revealed here.</p>"
+        "</details>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* details = doc->find_element("details");
+    ASSERT_NE(details, nullptr);
+    auto* summary = doc->find_element("summary");
+    ASSERT_NE(summary, nullptr);
+    EXPECT_EQ(summary->text_content(), "Click to expand");
+    auto* p = doc->find_element("p");
+    ASSERT_NE(p, nullptr);
+    EXPECT_EQ(p->text_content(), "Hidden content revealed here.");
+}
+
+TEST(HtmlParserTest, MultipleDataAttributesV105) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<div data-id=\"42\" data-role=\"admin\" data-active=\"true\">User card</div>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* div = doc->find_element("div");
+    ASSERT_NE(div, nullptr);
+    EXPECT_EQ(div->text_content(), "User card");
+    EXPECT_EQ(get_attr_v63(div, "data-id"), "42");
+    EXPECT_EQ(get_attr_v63(div, "data-role"), "admin");
+    EXPECT_EQ(get_attr_v63(div, "data-active"), "true");
+}
+
+TEST(HtmlParserTest, MixedInlineAndBlockElementsV105) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<div>"
+        "<span>inline1</span>"
+        "<p>block paragraph</p>"
+        "<em>emphasized</em>"
+        "<strong>bold text</strong>"
+        "</div>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* span = doc->find_element("span");
+    ASSERT_NE(span, nullptr);
+    EXPECT_EQ(span->text_content(), "inline1");
+    auto* p = doc->find_element("p");
+    ASSERT_NE(p, nullptr);
+    EXPECT_EQ(p->text_content(), "block paragraph");
+    auto* em = doc->find_element("em");
+    ASSERT_NE(em, nullptr);
+    EXPECT_EQ(em->text_content(), "emphasized");
+    auto* strong = doc->find_element("strong");
+    ASSERT_NE(strong, nullptr);
+    EXPECT_EQ(strong->text_content(), "bold text");
+}
+
+TEST(HtmlParserTest, SelectWithOptionGroupsV105) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<select>"
+        "<optgroup label=\"Fruits\">"
+        "<option value=\"apple\">Apple</option>"
+        "<option value=\"banana\">Banana</option>"
+        "</optgroup>"
+        "<optgroup label=\"Vegs\">"
+        "<option value=\"carrot\">Carrot</option>"
+        "</optgroup>"
+        "</select>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto optgroups = doc->find_all_elements("optgroup");
+    ASSERT_EQ(optgroups.size(), 2u);
+    EXPECT_EQ(get_attr_v63(optgroups[0], "label"), "Fruits");
+    EXPECT_EQ(get_attr_v63(optgroups[1], "label"), "Vegs");
+    auto options = doc->find_all_elements("option");
+    ASSERT_EQ(options.size(), 3u);
+    EXPECT_EQ(get_attr_v63(options[0], "value"), "apple");
+    EXPECT_EQ(options[0]->text_content(), "Apple");
+    EXPECT_EQ(get_attr_v63(options[1], "value"), "banana");
+    EXPECT_EQ(options[1]->text_content(), "Banana");
+    EXPECT_EQ(get_attr_v63(options[2], "value"), "carrot");
+    EXPECT_EQ(options[2]->text_content(), "Carrot");
+}

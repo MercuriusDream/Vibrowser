@@ -7780,3 +7780,107 @@ TEST(CorsPolicyTest, NormalizeOriginStripFragmentInACAOV104) {
     EXPECT_TRUE(cors_allows_response("https://api.example.com", "https://api.example.com/path",
                                      headers, false));
 }
+
+TEST(CorsPolicyTest, DataAndBlobOriginsNotEnforceableV105) {
+    // data: and blob: schemes are not enforceable document origins
+    EXPECT_FALSE(has_enforceable_document_origin("data:text/html,<h1>hi</h1>"));
+    EXPECT_FALSE(has_enforceable_document_origin("data:application/json,{}"));
+    EXPECT_FALSE(has_enforceable_document_origin("blob:https://example.com/uuid-1234"));
+    EXPECT_FALSE(has_enforceable_document_origin("blob:null/some-guid"));
+    // But normal https origins remain enforceable
+    EXPECT_TRUE(has_enforceable_document_origin("https://example.com"));
+    EXPECT_TRUE(has_enforceable_document_origin("https://cdn.example.com"));
+}
+
+TEST(CorsPolicyTest, IpAddressOriginsAreEnforceableV105) {
+    // IP address origins should be enforceable
+    EXPECT_TRUE(has_enforceable_document_origin("https://192.168.1.1"));
+    EXPECT_TRUE(has_enforceable_document_origin("https://10.0.0.1"));
+    EXPECT_TRUE(has_enforceable_document_origin("https://127.0.0.1"));
+    EXPECT_TRUE(has_enforceable_document_origin("http://172.16.0.1"));
+    // IPv4 with path should NOT be enforceable (has path component)
+    EXPECT_FALSE(has_enforceable_document_origin("https://192.168.1.1/admin"));
+}
+
+TEST(CorsPolicyTest, ExplicitPort443NotEnforceableCrossOriginV105) {
+    // Explicit :443 on https is NOT enforceable as a distinct origin
+    EXPECT_FALSE(has_enforceable_document_origin("https://example.com:443"));
+    EXPECT_FALSE(has_enforceable_document_origin("https://secure.example.com:443"));
+    // Explicit :80 on http is similarly NOT enforceable
+    EXPECT_FALSE(has_enforceable_document_origin("http://example.com:80"));
+    // But non-default ports ARE enforceable
+    EXPECT_TRUE(has_enforceable_document_origin("https://example.com:8443"));
+    EXPECT_TRUE(has_enforceable_document_origin("http://example.com:3000"));
+}
+
+TEST(CorsPolicyTest, CorsEligibilityRejectsFragmentsAllSchemesV105) {
+    // Fragments make URLs ineligible for CORS regardless of scheme
+    EXPECT_FALSE(is_cors_eligible_request_url("https://example.com/page#anchor"));
+    // Empty fragment ("#" alone at end) is treated as no fragment — still eligible
+    EXPECT_TRUE(is_cors_eligible_request_url("http://example.com/page#"));
+    EXPECT_FALSE(is_cors_eligible_request_url("https://example.com/#top"));
+    EXPECT_FALSE(is_cors_eligible_request_url("http://api.example.com/data?key=val#fragment"));
+    // Without fragments, they are eligible
+    EXPECT_TRUE(is_cors_eligible_request_url("https://example.com/page"));
+    EXPECT_TRUE(is_cors_eligible_request_url("http://example.com/data?key=val"));
+}
+
+TEST(CorsPolicyTest, CrossOriginSubdomainAndPortMismatchV105) {
+    // Subdomain mismatch is cross-origin
+    EXPECT_TRUE(is_cross_origin("https://app.example.com", "https://api.example.com/data"));
+    EXPECT_TRUE(is_cross_origin("https://www.example.com", "https://example.com/resource"));
+    // Port mismatch is cross-origin
+    EXPECT_TRUE(is_cross_origin("http://localhost:3000", "http://localhost:5000/api"));
+    EXPECT_TRUE(is_cross_origin("https://example.com", "https://example.com:9090/ws"));
+    // Same subdomain + same scheme = same origin
+    EXPECT_FALSE(is_cross_origin("https://app.example.com", "https://app.example.com/path/to/resource"));
+}
+
+TEST(CorsPolicyTest, ShouldAttachOriginCrossVsSameV105) {
+    // Origin header should be attached for cross-origin requests
+    EXPECT_TRUE(should_attach_origin_header("https://app.example.com", "https://api.example.com/data"));
+    EXPECT_TRUE(should_attach_origin_header("https://example.com", "https://other.com/resource"));
+    // Origin header should NOT be attached for same-origin requests
+    EXPECT_FALSE(should_attach_origin_header("https://example.com", "https://example.com/api/data"));
+    EXPECT_FALSE(should_attach_origin_header("http://localhost", "http://localhost/path"));
+    // Empty origin should NOT attach
+    EXPECT_FALSE(should_attach_origin_header("", "https://example.com/api"));
+    // "null" origin DOES attach (it sends Origin: null as per spec)
+    EXPECT_TRUE(should_attach_origin_header("null", "https://example.com/api"));
+}
+
+TEST(CorsPolicyTest, NormalizeOriginHeaderSetsCrossOriginV105) {
+    // When cross-origin, normalize should set Origin header to document origin
+    clever::net::HeaderMap headers;
+    normalize_outgoing_origin_header(headers, "https://app.example.com",
+                                     "https://api.example.com/data");
+    EXPECT_EQ(headers.get("Origin"), "https://app.example.com");
+
+    // When same-origin, Origin header should NOT be set (get returns nullopt)
+    clever::net::HeaderMap same_headers;
+    normalize_outgoing_origin_header(same_headers, "https://example.com",
+                                     "https://example.com/path");
+    EXPECT_FALSE(same_headers.get("Origin").has_value());
+}
+
+TEST(CorsPolicyTest, CorsAllowsResponseExactOriginMatchV105) {
+    clever::net::HeaderMap headers;
+    // Exact origin match in ACAO should allow non-credentialed response
+    headers.set("Access-Control-Allow-Origin", "https://frontend.example.com");
+    EXPECT_TRUE(cors_allows_response("https://frontend.example.com",
+                                     "https://backend.example.com/api",
+                                     headers, false));
+    // Mismatched origin in ACAO should reject
+    EXPECT_FALSE(cors_allows_response("https://evil.example.com",
+                                      "https://backend.example.com/api",
+                                      headers, false));
+    // Credentialed request requires Access-Control-Allow-Credentials: true
+    // Even with exact ACAO match, credentials fail without ACAC header
+    EXPECT_FALSE(cors_allows_response("https://frontend.example.com",
+                                      "https://backend.example.com/api",
+                                      headers, true));
+    // Mismatched origin with credentials should also fail
+    EXPECT_FALSE(cors_allows_response("https://other.example.com",
+                                      "https://backend.example.com/api",
+                                      headers, true));
+}

@@ -19424,3 +19424,185 @@ TEST(LayoutTest, TextNodeFontSizeAndDimensionsV104) {
     // Height should be at least the font size
     EXPECT_GE(tp->geometry.height, 24.0f);
 }
+
+// --- V105 Tests ---
+
+// 1. Flex column layout stacks children vertically
+TEST(LayoutEngineTest, FlexColumnStacksChildrenVerticallyV105) {
+    auto root = make_flex("div");
+    root->specified_width = 400.0f;
+    root->flex_direction = 2; // column
+
+    auto c1 = make_block("div");
+    c1->specified_width = 400.0f;
+    c1->specified_height = 50.0f;
+    auto* c1p = c1.get();
+
+    auto c2 = make_block("div");
+    c2->specified_width = 400.0f;
+    c2->specified_height = 70.0f;
+    auto* c2p = c2.get();
+
+    root->append_child(std::move(c1));
+    root->append_child(std::move(c2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 400.0f, 600.0f);
+
+    // Second child should be positioned below the first
+    EXPECT_GE(c2p->geometry.y, c1p->geometry.y + c1p->geometry.height);
+    EXPECT_FLOAT_EQ(c1p->geometry.height, 50.0f);
+    EXPECT_FLOAT_EQ(c2p->geometry.height, 70.0f);
+}
+
+// 2. Border-box sizing includes padding and border in specified width
+TEST(LayoutNodeProps, BorderBoxSizingFlagV105) {
+    using namespace clever::layout;
+    LayoutNode n;
+    EXPECT_FALSE(n.border_box); // default is content-box
+    n.border_box = true;
+    EXPECT_TRUE(n.border_box);
+    n.specified_width = 200.0f;
+    n.geometry.padding.left = 10.0f;
+    n.geometry.padding.right = 10.0f;
+    n.geometry.border.left = 2.0f;
+    n.geometry.border.right = 2.0f;
+    EXPECT_FLOAT_EQ(n.specified_width, 200.0f);
+    // border_box_width = border + padding + content, but content hasn't been computed yet
+    // Just verify the flag and values are stored correctly
+    EXPECT_TRUE(n.border_box);
+    EXPECT_FLOAT_EQ(n.geometry.padding.left, 10.0f);
+    EXPECT_FLOAT_EQ(n.geometry.border.right, 2.0f);
+}
+
+// 3. Aspect ratio property stores and defaults correctly
+TEST(LayoutNodeProps, AspectRatioPropertyV105) {
+    using namespace clever::layout;
+    LayoutNode n;
+    EXPECT_FLOAT_EQ(n.aspect_ratio, 0.0f); // default: none
+    n.aspect_ratio = 1.5f; // 3:2
+    EXPECT_FLOAT_EQ(n.aspect_ratio, 1.5f);
+    n.aspect_ratio = 0.5625f; // 9:16
+    EXPECT_FLOAT_EQ(n.aspect_ratio, 0.5625f);
+}
+
+// 4. Flex row layout positions children side by side
+TEST(LayoutEngineTest, FlexRowChildrenSideBySideV105) {
+    auto root = make_flex("div");
+    root->specified_width = 600.0f;
+    root->flex_direction = 0; // row
+
+    auto c1 = make_block("div");
+    c1->specified_width = 100.0f;
+    c1->specified_height = 40.0f;
+    auto* c1p = c1.get();
+
+    auto c2 = make_block("div");
+    c2->specified_width = 150.0f;
+    c2->specified_height = 40.0f;
+    auto* c2p = c2.get();
+
+    root->append_child(std::move(c1));
+    root->append_child(std::move(c2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 600.0f, 400.0f);
+
+    // In row direction, second child starts where first child ends
+    EXPECT_FLOAT_EQ(c2p->geometry.x, c1p->geometry.x + c1p->geometry.width);
+    EXPECT_FLOAT_EQ(c1p->geometry.width, 100.0f);
+    EXPECT_FLOAT_EQ(c2p->geometry.width, 150.0f);
+}
+
+// 5. Gradient type and stops storage
+TEST(LayoutNodeProps, GradientTypeAndStopsV105) {
+    using namespace clever::layout;
+    LayoutNode n;
+    EXPECT_EQ(n.gradient_type, 0); // default: none
+    n.gradient_type = 1; // linear
+    n.gradient_angle = 90.0f;
+    n.gradient_stops.push_back({0xFFFF0000u, 0.0f}); // red at 0%
+    n.gradient_stops.push_back({0xFF0000FFu, 1.0f}); // blue at 100%
+    EXPECT_EQ(n.gradient_type, 1);
+    EXPECT_FLOAT_EQ(n.gradient_angle, 90.0f);
+    EXPECT_EQ(n.gradient_stops.size(), 2u);
+    EXPECT_EQ(n.gradient_stops[0].first, 0xFFFF0000u);
+    EXPECT_FLOAT_EQ(n.gradient_stops[0].second, 0.0f);
+    EXPECT_EQ(n.gradient_stops[1].first, 0xFF0000FFu);
+    EXPECT_FLOAT_EQ(n.gradient_stops[1].second, 1.0f);
+}
+
+// 6. Text decoration bits and styling properties
+TEST(LayoutNodeProps, TextDecorationBitsAndStyleV105) {
+    using namespace clever::layout;
+    LayoutNode n;
+    EXPECT_EQ(n.text_decoration, 0);      // none
+    EXPECT_EQ(n.text_decoration_bits, 0); // no bits set
+    EXPECT_EQ(n.text_decoration_style, 0); // solid
+    // Set underline + line-through via bitmask
+    n.text_decoration_bits = 1 | 4; // underline + line-through
+    n.text_decoration_style = 3;    // wavy
+    n.text_decoration_color = 0xFFFF0000u; // red
+    n.text_decoration_thickness = 2.5f;
+    EXPECT_EQ(n.text_decoration_bits, 5);
+    EXPECT_EQ(n.text_decoration_style, 3);
+    EXPECT_EQ(n.text_decoration_color, 0xFFFF0000u);
+    EXPECT_FLOAT_EQ(n.text_decoration_thickness, 2.5f);
+}
+
+// 7. Block children with padding accumulate height correctly
+TEST(LayoutEngineTest, BlockChildrenWithPaddingHeightV105) {
+    auto root = make_block("div");
+    root->specified_width = 500.0f;
+
+    auto child = make_block("div");
+    child->specified_width = 500.0f;
+    child->specified_height = 80.0f;
+    child->geometry.padding.top = 10.0f;
+    child->geometry.padding.bottom = 10.0f;
+    auto* cp = child.get();
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 500.0f, 600.0f);
+
+    // Child content height should be 80
+    EXPECT_FLOAT_EQ(cp->geometry.height, 80.0f);
+    // Root height should include child content + child padding
+    float child_total = cp->geometry.padding.top + cp->geometry.height + cp->geometry.padding.bottom;
+    EXPECT_GE(root->geometry.height, child_total);
+}
+
+// 8. Multiple box shadows stored correctly
+TEST(LayoutNodeProps, MultipleBoxShadowsStorageV105) {
+    using namespace clever::layout;
+    LayoutNode n;
+    EXPECT_TRUE(n.box_shadows.empty());
+
+    LayoutNode::BoxShadowEntry s1;
+    s1.offset_x = 2.0f;
+    s1.offset_y = 4.0f;
+    s1.blur = 8.0f;
+    s1.spread = 1.0f;
+    s1.color = 0x80000000u; // semi-transparent black
+    s1.inset = false;
+    n.box_shadows.push_back(s1);
+
+    LayoutNode::BoxShadowEntry s2;
+    s2.offset_x = 0.0f;
+    s2.offset_y = 0.0f;
+    s2.blur = 12.0f;
+    s2.spread = 0.0f;
+    s2.color = 0xFF0000FFu; // blue
+    s2.inset = true;
+    n.box_shadows.push_back(s2);
+
+    EXPECT_EQ(n.box_shadows.size(), 2u);
+    EXPECT_FLOAT_EQ(n.box_shadows[0].offset_x, 2.0f);
+    EXPECT_FLOAT_EQ(n.box_shadows[0].blur, 8.0f);
+    EXPECT_FALSE(n.box_shadows[0].inset);
+    EXPECT_EQ(n.box_shadows[0].color, 0x80000000u);
+    EXPECT_FLOAT_EQ(n.box_shadows[1].blur, 12.0f);
+    EXPECT_TRUE(n.box_shadows[1].inset);
+    EXPECT_EQ(n.box_shadows[1].color, 0xFF0000FFu);
+}

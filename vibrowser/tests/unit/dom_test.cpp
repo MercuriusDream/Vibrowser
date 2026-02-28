@@ -16344,3 +16344,161 @@ TEST(DomTest, MixedChildNodeTypesV104) {
     EXPECT_EQ(span->parent(), &div);
     EXPECT_EQ(cmt->parent(), &div);
 }
+
+// ---------------------------------------------------------------------------
+// V105 tests
+// ---------------------------------------------------------------------------
+
+// 1. Insert a node before the first child, verify it becomes the new first child
+TEST(DomTest, InsertBeforeFirstChildBecomesNewHeadV105) {
+    Element ul("ul");
+    auto li1_up = std::make_unique<Element>("li");
+    Element* li1 = li1_up.get();
+    auto li2_up = std::make_unique<Element>("li");
+
+    ul.append_child(std::move(li1_up));
+    ul.append_child(std::move(li2_up));
+    EXPECT_EQ(ul.first_child(), li1);
+
+    auto li0_up = std::make_unique<Element>("li");
+    Element* li0 = li0_up.get();
+    ul.insert_before(std::move(li0_up), li1);
+
+    EXPECT_EQ(ul.child_count(), 3u);
+    EXPECT_EQ(ul.first_child(), li0);
+    EXPECT_EQ(li0->next_sibling(), li1);
+    EXPECT_EQ(li1->previous_sibling(), li0);
+    EXPECT_EQ(li0->previous_sibling(), nullptr);
+    EXPECT_EQ(li0->parent(), &ul);
+}
+
+// 2. Document factory methods create nodes with correct types
+TEST(DomTest, DocumentFactoryMethodsCreateCorrectTypesV105) {
+    Document doc;
+    auto elem = doc.create_element("section");
+    auto text = doc.create_text_node("hello world");
+    auto comment = doc.create_comment("a note");
+
+    EXPECT_EQ(elem->node_type(), NodeType::Element);
+    EXPECT_EQ(static_cast<Element*>(elem.get())->tag_name(), "section");
+
+    EXPECT_EQ(text->node_type(), NodeType::Text);
+    EXPECT_EQ(text->data(), "hello world");
+
+    EXPECT_EQ(comment->node_type(), NodeType::Comment);
+    EXPECT_EQ(comment->data(), "a note");
+}
+
+// 3. ClassList toggle twice returns to original state
+TEST(DomTest, ClassListDoubleToggleRestoresOriginalV105) {
+    Element btn("button");
+    btn.class_list().add("active");
+    EXPECT_TRUE(btn.class_list().contains("active"));
+    EXPECT_EQ(btn.class_list().length(), 1u);
+
+    btn.class_list().toggle("active");
+    EXPECT_FALSE(btn.class_list().contains("active"));
+    EXPECT_EQ(btn.class_list().length(), 0u);
+
+    btn.class_list().toggle("active");
+    EXPECT_TRUE(btn.class_list().contains("active"));
+    EXPECT_EQ(btn.class_list().length(), 1u);
+}
+
+// 4. Recursive text_content concatenates all descendant text nodes
+TEST(DomTest, RecursiveTextContentAcrossNestedElementsV105) {
+    Element article("article");
+    auto h1_up = std::make_unique<Element>("h1");
+    auto p_up = std::make_unique<Element>("p");
+
+    auto title_text = std::make_unique<Text>("Title");
+    auto body_text = std::make_unique<Text>(" Body");
+
+    h1_up->append_child(std::move(title_text));
+    p_up->append_child(std::move(body_text));
+
+    article.append_child(std::move(h1_up));
+    article.append_child(std::move(p_up));
+
+    EXPECT_EQ(article.text_content(), "Title Body");
+    EXPECT_EQ(article.child_count(), 2u);
+}
+
+// 5. Remove middle child correctly re-links siblings
+TEST(DomTest, RemoveMiddleChildRelinksSiblingsV105) {
+    Element nav("nav");
+    auto a_up = std::make_unique<Element>("a");
+    Element* a = a_up.get();
+    auto b_up = std::make_unique<Element>("a");
+    Element* b = b_up.get();
+    auto c_up = std::make_unique<Element>("a");
+    Element* c = c_up.get();
+
+    nav.append_child(std::move(a_up));
+    nav.append_child(std::move(b_up));
+    nav.append_child(std::move(c_up));
+
+    EXPECT_EQ(a->next_sibling(), b);
+    EXPECT_EQ(b->next_sibling(), c);
+
+    auto removed = nav.remove_child(*b);
+    EXPECT_EQ(nav.child_count(), 2u);
+    EXPECT_EQ(a->next_sibling(), c);
+    EXPECT_EQ(c->previous_sibling(), a);
+    EXPECT_EQ(nav.first_child(), a);
+    EXPECT_EQ(nav.last_child(), c);
+    EXPECT_EQ(b->parent(), nullptr);
+}
+
+// 6. Comment set_data updates the stored data string
+TEST(DomTest, CommentSetDataUpdatesContentV105) {
+    Comment cmt("initial");
+    EXPECT_EQ(cmt.data(), "initial");
+
+    cmt.set_data("updated remark");
+    EXPECT_EQ(cmt.data(), "updated remark");
+
+    cmt.set_data("");
+    EXPECT_EQ(cmt.data(), "");
+}
+
+// 7. Multiple attributes: set, overwrite, count, and verify ordering
+TEST(DomTest, MultipleAttributeOverwriteAndEnumerationV105) {
+    Element img("img");
+    img.set_attribute("src", "cat.png");
+    img.set_attribute("alt", "A cat");
+    img.set_attribute("width", "200");
+    EXPECT_EQ(img.attributes().size(), 3u);
+
+    // Overwrite src
+    img.set_attribute("src", "dog.png");
+    EXPECT_EQ(img.get_attribute("src").value(), "dog.png");
+    EXPECT_EQ(img.attributes().size(), 3u);
+
+    // Remove alt, count goes down
+    img.remove_attribute("alt");
+    EXPECT_EQ(img.attributes().size(), 2u);
+    EXPECT_FALSE(img.has_attribute("alt"));
+    EXPECT_TRUE(img.has_attribute("src"));
+    EXPECT_TRUE(img.has_attribute("width"));
+}
+
+// 8. Dirty flags propagate on mark_dirty and clear correctly
+TEST(DomTest, DirtyFlagMarkAndClearCycleV105) {
+    Element div("div");
+    EXPECT_EQ(div.dirty_flags(), DirtyFlags::None);
+
+    div.mark_dirty(DirtyFlags::Style);
+    EXPECT_EQ(static_cast<uint8_t>(div.dirty_flags() & DirtyFlags::Style),
+              static_cast<uint8_t>(DirtyFlags::Style));
+
+    div.mark_dirty(DirtyFlags::Layout);
+    // Both Style and Layout should now be set
+    EXPECT_EQ(static_cast<uint8_t>(div.dirty_flags() & DirtyFlags::Style),
+              static_cast<uint8_t>(DirtyFlags::Style));
+    EXPECT_EQ(static_cast<uint8_t>(div.dirty_flags() & DirtyFlags::Layout),
+              static_cast<uint8_t>(DirtyFlags::Layout));
+
+    div.clear_dirty();
+    EXPECT_EQ(div.dirty_flags(), DirtyFlags::None);
+}

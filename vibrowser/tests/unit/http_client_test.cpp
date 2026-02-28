@@ -17773,3 +17773,184 @@ TEST(HttpClientTest, ResponseParseChunkedMultiSegmentsV104) {
     ASSERT_TRUE(resp->headers.get("content-type").has_value());
     EXPECT_EQ(resp->headers.get("content-type").value(), "text/plain");
 }
+
+// ===========================================================================
+// V105 Tests
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// 1. HeaderMap: remove then re-set same key
+// ---------------------------------------------------------------------------
+TEST(HeaderMapTest, RemoveThenResetSameKeyV105) {
+    HeaderMap map;
+    map.set("X-Token", "abc123");
+    EXPECT_TRUE(map.has("x-token"));
+    map.remove("X-Token");
+    EXPECT_FALSE(map.has("x-token"));
+    EXPECT_FALSE(map.get("X-Token").has_value());
+
+    // Re-set after removal should work fine
+    map.set("X-Token", "def456");
+    EXPECT_TRUE(map.has("x-token"));
+    EXPECT_EQ(map.get("x-token").value(), "def456");
+    EXPECT_EQ(map.size(), 1u);
+}
+
+// ---------------------------------------------------------------------------
+// 2. Request: serialize HEAD request omits body
+// ---------------------------------------------------------------------------
+TEST(RequestTest, SerializeHeadRequestOmitsBodyV105) {
+    Request req;
+    req.method = Method::HEAD;
+    req.host = "example.org";
+    req.port = 80;
+    req.path = "/status";
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    // Request line should say HEAD
+    EXPECT_TRUE(result.find("HEAD /status HTTP/1.1\r\n") != std::string::npos);
+    // Host header present without port (port 80 omitted)
+    EXPECT_TRUE(result.find("Host: example.org\r\n") != std::string::npos);
+    // Connection header present
+    EXPECT_TRUE(result.find("Connection: keep-alive\r\n") != std::string::npos);
+    // Ends with \r\n\r\n and nothing after for HEAD with no body
+    size_t end_pos = result.find("\r\n\r\n");
+    ASSERT_NE(end_pos, std::string::npos);
+    EXPECT_EQ(end_pos + 4, result.size());
+}
+
+// ---------------------------------------------------------------------------
+// 3. Request: parse_url extracts HTTPS with default port 443
+// ---------------------------------------------------------------------------
+TEST(RequestTest, ParseUrlHttpsDefaultPort443V105) {
+    Request req;
+    req.url = "https://secure.example.com/api/data";
+    req.parse_url();
+
+    EXPECT_EQ(req.host, "secure.example.com");
+    EXPECT_EQ(req.port, 443);
+    EXPECT_EQ(req.path, "/api/data");
+    EXPECT_TRUE(req.use_tls);
+}
+
+// ---------------------------------------------------------------------------
+// 4. Response: parse 301 redirect with Location header
+// ---------------------------------------------------------------------------
+TEST(ResponseTest, Parse301RedirectWithLocationV105) {
+    std::string raw =
+        "HTTP/1.1 301 Moved Permanently\r\n"
+        "Location: https://www.example.com/new-path\r\n"
+        "Content-Length: 0\r\n"
+        "\r\n";
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 301);
+    EXPECT_EQ(resp->status_text, "Moved Permanently");
+    ASSERT_TRUE(resp->headers.has("location"));
+    EXPECT_EQ(resp->headers.get("location").value(), "https://www.example.com/new-path");
+    EXPECT_EQ(resp->body_as_string(), "");
+}
+
+// ---------------------------------------------------------------------------
+// 5. ConnectionPool: count tracks released connections accurately
+// ---------------------------------------------------------------------------
+TEST(ConnectionPoolTest, CountTracksReleasedConnectionsV105) {
+    ConnectionPool pool(4);
+    EXPECT_EQ(pool.count("host1.example.com", 443), 0u);
+
+    pool.release("host1.example.com", 443, 10);
+    EXPECT_EQ(pool.count("host1.example.com", 443), 1u);
+
+    pool.release("host1.example.com", 443, 11);
+    EXPECT_EQ(pool.count("host1.example.com", 443), 2u);
+
+    // Acquire one back
+    int fd = pool.acquire("host1.example.com", 443);
+    EXPECT_GE(fd, 0);
+    EXPECT_EQ(pool.count("host1.example.com", 443), 1u);
+}
+
+// ---------------------------------------------------------------------------
+// 6. Request: serialize PUT request with custom headers
+// ---------------------------------------------------------------------------
+TEST(RequestTest, SerializePutRequestWithCustomHeadersV105) {
+    Request req;
+    req.method = Method::PUT;
+    req.host = "api.example.com";
+    req.port = 443;
+    req.path = "/resources/42";
+    req.use_tls = true;
+    req.headers.set("Content-Type", "application/json");
+    req.headers.set("Authorization", "Bearer token123");
+    std::string body_str = R"({"name":"updated"})";
+    req.body.assign(body_str.begin(), body_str.end());
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    // Request line
+    EXPECT_TRUE(result.find("PUT /resources/42 HTTP/1.1\r\n") != std::string::npos);
+    // Host header: port 443 is default for HTTPS, should be omitted
+    EXPECT_TRUE(result.find("Host: api.example.com\r\n") != std::string::npos);
+    // Custom headers (lowercase)
+    EXPECT_TRUE(result.find("content-type: application/json\r\n") != std::string::npos);
+    EXPECT_TRUE(result.find("authorization: Bearer token123\r\n") != std::string::npos);
+    // Body appears after the blank line
+    size_t blank = result.find("\r\n\r\n");
+    ASSERT_NE(blank, std::string::npos);
+    std::string actual_body = result.substr(blank + 4);
+    EXPECT_EQ(actual_body, body_str);
+}
+
+// ---------------------------------------------------------------------------
+// 7. Response: parse 500 Internal Server Error with body
+// ---------------------------------------------------------------------------
+TEST(ResponseTest, Parse500InternalServerErrorV105) {
+    std::string body_content = "Internal Server Error: database timeout";
+    std::string raw =
+        "HTTP/1.1 500 Internal Server Error\r\n"
+        "Content-Type: text/plain\r\n"
+        "Content-Length: " + std::to_string(body_content.size()) + "\r\n"
+        "\r\n" + body_content;
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 500);
+    EXPECT_EQ(resp->status_text, "Internal Server Error");
+    EXPECT_EQ(resp->body_as_string(), body_content);
+    ASSERT_TRUE(resp->headers.get("content-type").has_value());
+    EXPECT_EQ(resp->headers.get("content-type").value(), "text/plain");
+}
+
+// ---------------------------------------------------------------------------
+// 8. HeaderMap: append then get returns first appended value
+// ---------------------------------------------------------------------------
+TEST(HeaderMapTest, AppendThenGetReturnsFirstValueV105) {
+    HeaderMap map;
+    map.append("X-Request-Id", "id-aaa");
+    map.append("X-Request-Id", "id-bbb");
+    map.append("X-Request-Id", "id-ccc");
+
+    // get() should return one of the values (first or any)
+    auto val = map.get("x-request-id");
+    ASSERT_TRUE(val.has_value());
+    // The returned value should be one of the appended values
+    bool is_valid = (val.value() == "id-aaa" ||
+                     val.value() == "id-bbb" ||
+                     val.value() == "id-ccc");
+    EXPECT_TRUE(is_valid);
+
+    // get_all should return all 3
+    auto all = map.get_all("X-Request-Id");
+    EXPECT_EQ(all.size(), 3u);
+
+    // size() counts all entries
+    EXPECT_EQ(map.size(), 3u);
+}

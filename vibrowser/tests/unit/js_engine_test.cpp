@@ -28427,3 +28427,178 @@ TEST(JsEngineTest, TaggedTemplateLiteralsV104) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "Hello [world], you have [42] items left");
 }
+
+// ============================================================================
+// V105 Tests
+// ============================================================================
+
+TEST(JsEngineTest, StringPadAndRepeatMethodsV105) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var a = "5".padStart(4, "0");
+        var b = "hi".padEnd(6, ".");
+        var c = "ab".repeat(3);
+        var d = "  hello  ".trim();
+        var e = "hello world".startsWith("hello");
+        var f = "hello world".endsWith("world");
+        a + "|" + b + "|" + c + "|" + d + "|" + e + "|" + f;
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "0005|hi....|ababab|hello|true|true");
+}
+
+TEST(JsEngineTest, ArrayFlatAndFlatMapV105) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var nested = [1, [2, 3], [4, [5, 6]]];
+        var flat1 = nested.flat();
+        var flat2 = nested.flat(Infinity);
+        var mapped = [1, 2, 3].flatMap(function(x) { return [x, x * 2]; });
+        flat1.join(",") + "|" + flat2.join(",") + "|" + mapped.join(",");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1,2,3,4,5,6|1,2,3,4,5,6|1,2,2,4,3,6");
+}
+
+TEST(JsEngineTest, ObjectEntriesFromEntriesFreezeSealV105) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var obj = {x: 10, y: 20, z: 30};
+        var entries = Object.entries(obj);
+        var rebuilt = Object.fromEntries(entries.map(function(e) { return [e[0], e[1] * 2]; }));
+        var frozen = Object.freeze({a: 1});
+        var isFrozen = Object.isFrozen(frozen);
+        var sealed = Object.seal({b: 2});
+        var isSealed = Object.isSealed(sealed);
+        rebuilt.x + "," + rebuilt.y + "," + rebuilt.z + "|" + isFrozen + "|" + isSealed;
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "20,40,60|true|true");
+}
+
+TEST(JsEngineTest, GeneratorFunctionProtocolV105) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        function* range(start, end, step) {
+            for (var i = start; i < end; i += step) {
+                yield i;
+            }
+        }
+        var gen = range(0, 10, 3);
+        var vals = [];
+        var next = gen.next();
+        while (!next.done) {
+            vals.push(next.value);
+            next = gen.next();
+        }
+        vals.join(",");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "0,3,6,9");
+}
+
+TEST(JsEngineTest, ProxyHandlerGetSetDeleteV105) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var log = [];
+        var target = {a: 1, b: 2};
+        var handler = {
+            get: function(obj, prop) {
+                log.push("get:" + prop);
+                return obj[prop];
+            },
+            set: function(obj, prop, value) {
+                log.push("set:" + prop + "=" + value);
+                obj[prop] = value;
+                return true;
+            },
+            deleteProperty: function(obj, prop) {
+                log.push("del:" + prop);
+                delete obj[prop];
+                return true;
+            }
+        };
+        var proxy = new Proxy(target, handler);
+        var x = proxy.a;
+        proxy.c = 99;
+        delete proxy.b;
+        var keys = Object.keys(target).join(",");
+        log.join(";") + "|" + keys + "|" + target.c;
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "get:a;set:c=99;del:b|a,c|99");
+}
+
+TEST(JsEngineTest, WeakMapAndWeakSetBasicOpsV105) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var wm = new WeakMap();
+        var obj1 = {};
+        var obj2 = {};
+        wm.set(obj1, "alpha");
+        wm.set(obj2, "beta");
+        var has1 = wm.has(obj1);
+        var val1 = wm.get(obj1);
+        wm.delete(obj1);
+        var has1After = wm.has(obj1);
+
+        var ws = new WeakSet();
+        var obj3 = {};
+        ws.add(obj3);
+        var wsHas = ws.has(obj3);
+        ws.delete(obj3);
+        var wsHasAfter = ws.has(obj3);
+
+        has1 + "|" + val1 + "|" + has1After + "|" + wsHas + "|" + wsHasAfter;
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true|alpha|false|true|false");
+}
+
+TEST(JsEngineTest, SymbolIteratorCustomIterableV105) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var myIterable = {};
+        myIterable[Symbol.iterator] = function() {
+            var n = 0;
+            return {
+                next: function() {
+                    n++;
+                    if (n <= 4) return {value: n * n, done: false};
+                    return {value: undefined, done: true};
+                }
+            };
+        };
+        var collected = [];
+        for (var val of myIterable) {
+            collected.push(val);
+        }
+        collected.join(",");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1,4,9,16");
+}
+
+TEST(JsEngineTest, ErrorTypesAndChainingV105) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"(
+        var results = [];
+        try { null.prop; } catch(e) { results.push(e instanceof TypeError); }
+        try { decodeURIComponent("%"); } catch(e) { results.push(e instanceof URIError); }
+        try { eval("{"); } catch(e) { results.push(e instanceof SyntaxError); }
+        try { throw new RangeError("bad range"); } catch(e) {
+            results.push(e instanceof RangeError);
+            results.push(e.message);
+        }
+        try {
+            var err = new Error("outer");
+            throw err;
+        } catch(e) {
+            results.push(e.message);
+            results.push(e instanceof Error);
+        }
+        results.join("|");
+    )");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true|true|true|true|bad range|outer|true");
+}

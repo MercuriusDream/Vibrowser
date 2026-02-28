@@ -11765,3 +11765,85 @@ TEST(UrlParserTest, SerializePreservesAllComponentsV104) {
     EXPECT_NE(s.find("active=true"), std::string::npos);
     EXPECT_NE(s.find("count"), std::string::npos);
 }
+
+// =============================================================================
+// V105 Tests — URL parsing edge cases
+// =============================================================================
+
+TEST(UrlParserTest, TrailingDotInHostV105) {
+    auto result = clever::url::parse("https://example.com./path");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "example.com.");
+    EXPECT_EQ(result->path, "/path");
+    EXPECT_EQ(result->port, std::nullopt);
+}
+
+TEST(UrlParserTest, EmptyQueryAndFragmentV105) {
+    auto result = clever::url::parse("http://example.com/page?#");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/page");
+    EXPECT_TRUE(result->query.empty());
+    EXPECT_TRUE(result->fragment.empty());
+}
+
+TEST(UrlParserTest, DoubleEncodePercentInPathV105) {
+    auto result = clever::url::parse("https://example.com/hello%20world");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/hello%2520world");
+}
+
+TEST(UrlParserTest, PortBoundaryValueV105) {
+    auto result = clever::url::parse("http://example.com:65535/resource");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "example.com");
+    ASSERT_TRUE(result->port.has_value());
+    EXPECT_EQ(result->port.value(), 65535);
+    EXPECT_EQ(result->path, "/resource");
+}
+
+TEST(UrlParserTest, HttpsDefaultPort443OmittedV105) {
+    auto result = clever::url::parse("https://secure.example.org:443/login");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "secure.example.org");
+    EXPECT_EQ(result->port, std::nullopt);
+    EXPECT_EQ(result->path, "/login");
+}
+
+TEST(UrlParserTest, DoubleEncodePercentInQueryV105) {
+    auto result = clever::url::parse("https://example.com/search?term=100%25off");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/search");
+    EXPECT_EQ(result->query, "term=100%2525off");
+}
+
+TEST(UrlParserTest, SerializeRoundtripWithNonDefaultPortV105) {
+    auto result = clever::url::parse("http://data.example.io:9090/api/v2?format=json#results");
+    ASSERT_TRUE(result.has_value());
+    std::string s = result->serialize();
+    EXPECT_NE(s.find("http"), std::string::npos);
+    EXPECT_NE(s.find("data.example.io"), std::string::npos);
+    EXPECT_NE(s.find("9090"), std::string::npos);
+    EXPECT_NE(s.find("/api/v2"), std::string::npos);
+    EXPECT_NE(s.find("format=json"), std::string::npos);
+    EXPECT_NE(s.find("results"), std::string::npos);
+}
+
+TEST(UrlParserTest, PathOnlyNoQueryNoFragmentV105) {
+    auto result = clever::url::parse("https://cdn.example.net/assets/img/logo.png");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "cdn.example.net");
+    EXPECT_EQ(result->path, "/assets/img/logo.png");
+    EXPECT_TRUE(result->query.empty());
+    EXPECT_TRUE(result->fragment.empty());
+    EXPECT_EQ(result->port, std::nullopt);
+}
