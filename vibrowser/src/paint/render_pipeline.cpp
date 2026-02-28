@@ -19,6 +19,7 @@
 #include <clever/js/js_window.h>
 #include <clever/url/url.h>
 #include <clever/url/percent_encoding.h>
+#include <clever/platform/thread_pool.h>
 #include <stb_image.h>
 #include <nanosvg.h>
 #include <nanosvgrast.h>
@@ -5465,19 +5466,27 @@ std::string resolve_url(const std::string& href, const std::string& base_url) {
     // Keep legacy behavior so local/synthetic documents still resolve links.
     if (base_url.empty()) return href;
 
+    auto strip_fragment = [](const std::string& value) {
+        std::string out = value;
+        auto hash_pos = out.find('#');
+        if (hash_pos != std::string::npos) out.erase(hash_pos);
+        return out;
+    };
+
+    auto strip_query = [](const std::string& value) {
+        std::string out = value;
+        auto query_pos = out.find('?');
+        if (query_pos != std::string::npos) out.erase(query_pos);
+        return out;
+    };
+
     // Query/fragment-only references
     if (href[0] == '?') {
-        std::string base = base_url;
-        auto hash_pos = base.find('#');
-        if (hash_pos != std::string::npos) base.erase(hash_pos);
-        auto query_pos = base.find('?');
-        if (query_pos != std::string::npos) base.erase(query_pos);
+        std::string base = strip_query(strip_fragment(base_url));
         return base + href;
     }
     if (href[0] == '#') {
-        std::string base = base_url;
-        auto hash_pos = base.find('#');
-        if (hash_pos != std::string::npos) base.erase(hash_pos);
+        std::string base = strip_fragment(base_url);
         return base + href;
     }
 
@@ -5490,25 +5499,102 @@ std::string resolve_url(const std::string& href, const std::string& base_url) {
         return "http:" + href;
     }
 
-    // Root-relative
-    if (href[0] == '/') {
-        auto scheme_end = base_url.find("://");
-        if (scheme_end == std::string::npos) return href;
-        auto host_end = base_url.find('/', scheme_end + 3);
-        if (host_end == std::string::npos) return base_url + href;
-        return base_url.substr(0, host_end) + href;
+    auto normalize_path = [](const std::string& raw_path) {
+        if (raw_path.empty()) return std::string();
+
+        const bool absolute = raw_path[0] == '/';
+        std::vector<std::string> segments;
+        size_t pos = 0;
+        while (pos <= raw_path.size()) {
+            size_t next = raw_path.find('/', pos);
+            if (next == std::string::npos) next = raw_path.size();
+            std::string segment = raw_path.substr(pos, next - pos);
+
+            if (segment.empty() || segment == ".") {
+                // Skip
+            } else if (segment == "..") {
+                if (!segments.empty() && segments.back() != "..") {
+                    segments.pop_back();
+                } else if (!absolute) {
+                    segments.push_back("..");
+                }
+            } else {
+                segments.push_back(std::move(segment));
+            }
+
+            if (next == raw_path.size()) break;
+            pos = next + 1;
+        }
+
+        std::string normalized;
+        if (absolute) normalized.push_back('/');
+        for (size_t i = 0; i < segments.size(); ++i) {
+            if (i > 0) normalized.push_back('/');
+            normalized += segments[i];
+        }
+
+        if (raw_path.size() > 1 && raw_path.back() == '/' &&
+            (normalized.empty() || normalized.back() != '/')) {
+            normalized.push_back('/');
+        } else if (normalized.empty() && absolute) {
+            normalized = "/";
+        }
+        return normalized;
+    };
+
+    const std::string base_no_query = strip_query(strip_fragment(base_url));
+    auto scheme_end = base_no_query.find("://");
+
+    std::string prefix;
+    std::string base_path;
+    if (scheme_end != std::string::npos) {
+        const size_t authority_start = scheme_end + 3;
+        const size_t path_start = base_no_query.find('/', authority_start);
+        if (path_start == std::string::npos) {
+            prefix = base_no_query;
+            base_path = "/";
+        } else {
+            prefix = base_no_query.substr(0, path_start);
+            base_path = base_no_query.substr(path_start);
+        }
+    } else {
+        base_path = base_no_query;
     }
 
-    // Relative — append to base directory
-    auto last_slash = base_url.rfind('/');
-    auto scheme_end = base_url.find("://");
-    if (scheme_end != std::string::npos && last_slash <= scheme_end + 2) {
-        return base_url + "/" + href;
+    std::string merged_path;
+    if (href[0] == '/') {
+        merged_path = href;
+    } else {
+        std::string base_dir = base_path;
+        if (base_dir.empty()) {
+            base_dir = "/";
+        } else {
+            auto last_slash = base_dir.rfind('/');
+            if (last_slash == std::string::npos) {
+                base_dir.clear();
+            } else {
+                base_dir.erase(last_slash + 1);
+            }
+        }
+        if (!base_dir.empty() && base_dir.back() != '/') {
+            base_dir.push_back('/');
+        }
+        merged_path = base_dir + href;
     }
-    if (last_slash != std::string::npos) {
-        return base_url.substr(0, last_slash + 1) + href;
+
+    std::string normalized_path = normalize_path(merged_path);
+    if (normalized_path.empty()) {
+        normalized_path = (merged_path.size() > 0 && merged_path[0] == '/') ? "/" : href;
     }
-    return href;
+
+    if (!prefix.empty()) {
+        return prefix + normalized_path;
+    }
+    if (!base_path.empty() && base_path[0] == '/' &&
+        (normalized_path.empty() || normalized_path[0] != '/')) {
+        return "/" + normalized_path;
+    }
+    return normalized_path.empty() ? href : normalized_path;
 }
 
 // Fetch a URL with redirect following (up to 5 hops)
@@ -5569,7 +5655,7 @@ std::optional<clever::net::Response> fetch_with_redirects(
 // Fetch a CSS stylesheet from a URL
 std::string fetch_css(const std::string& url, std::string* final_url = nullptr) {
     auto response = fetch_with_redirects(url, "text/css, */*", 5, final_url);
-    if (!response || response->status >= 400) {
+    if (!response || response->status < 200 || response->status >= 300) {
         return "";
     }
 
@@ -5977,45 +6063,51 @@ bool is_in_inert_subtree(const clever::html::SimpleNode* node) {
 std::vector<std::string> extract_link_stylesheets(
     const clever::html::SimpleNode& node, const std::string& base_url) {
     std::vector<std::string> urls;
-    if (node.type == clever::html::SimpleNode::Element) {
-        const std::string tag = to_lower(node.tag_name);
+    std::unordered_set<std::string> seen_urls;
 
-        // Skip template always; skip noscript only when JS is active
-        if (tag == "template") return urls;
-        if (tag == "noscript" && !g_noscript_fallback) return urls;
+    auto visit = [&](const auto& self, const clever::html::SimpleNode& current) -> void {
+        if (current.type == clever::html::SimpleNode::Element) {
+            const std::string tag = to_lower(current.tag_name);
 
-        if (tag == "link") {
-            const std::string rel_raw = to_lower(get_attr(node, "rel"));
-            const std::string href = trim(get_attr(node, "href"));
-            const std::string type = normalize_mime_type(get_attr(node, "type"));
-            const std::string media = get_attr(node, "media");
-            const bool disabled = has_attr(node, "disabled");
+            // Skip template always; skip noscript only when JS is active
+            if (tag == "template") return;
+            if (tag == "noscript" && !g_noscript_fallback) return;
 
-            bool has_stylesheet = false;
-            bool has_alternate = false;
-            std::istringstream rel_tokens(rel_raw);
-            std::string token;
-            while (rel_tokens >> token) {
-                if (token == "stylesheet") has_stylesheet = true;
-                if (token == "alternate") has_alternate = true;
-            }
+            if (tag == "link") {
+                const std::string rel_raw = to_lower(get_attr(current, "rel"));
+                const std::string href = trim(get_attr(current, "href"));
+                const std::string type = normalize_mime_type(get_attr(current, "type"));
+                const std::string media = get_attr(current, "media");
+                const bool disabled = has_attr(current, "disabled");
 
-            // Treat rel as a token list, skip alternate/disabled sheets.
-            if (has_stylesheet && !has_alternate && !disabled &&
-                (type.empty() || type == "text/css") &&
-                media_targets_screen(media) &&
-                !href.empty()) {
-                std::string resolved = resolve_url(href, base_url);
-                if (!resolved.empty()) {
-                    urls.push_back(std::move(resolved));
+                bool has_stylesheet = false;
+                bool has_alternate = false;
+                std::istringstream rel_tokens(rel_raw);
+                std::string token;
+                while (rel_tokens >> token) {
+                    if (token == "stylesheet") has_stylesheet = true;
+                    if (token == "alternate") has_alternate = true;
+                }
+
+                // Treat rel as a token list, skip alternate/disabled sheets.
+                if (has_stylesheet && !has_alternate && !disabled &&
+                    (type.empty() || type == "text/css") &&
+                    media_targets_screen(media) &&
+                    !href.empty()) {
+                    std::string resolved = resolve_url(href, base_url);
+                    if (!resolved.empty() && seen_urls.insert(resolved).second) {
+                        urls.push_back(std::move(resolved));
+                    }
                 }
             }
         }
-    }
-    for (auto& child : node.children) {
-        auto child_urls = extract_link_stylesheets(*child, base_url);
-        urls.insert(urls.end(), child_urls.begin(), child_urls.end());
-    }
+
+        for (auto& child : current.children) {
+            self(self, *child);
+        }
+    };
+
+    visit(visit, node);
     return urls;
 }
 
@@ -11415,6 +11507,17 @@ void flatten_supports_rules(clever::css::StyleSheet& sheet) {
 
 namespace {
 
+// Thread pool for parallel resource fetching (CSS, scripts, images)
+static thread_local clever::platform::ThreadPool* g_resource_thread_pool = nullptr;
+
+clever::platform::ThreadPool& get_resource_thread_pool() {
+    if (!g_resource_thread_pool) {
+        static thread_local clever::platform::ThreadPool pool(std::thread::hardware_concurrency());
+        g_resource_thread_pool = &pool;
+    }
+    return *g_resource_thread_pool;
+}
+
 void flatten_layer_rules(clever::css::StyleSheet& sheet) {
     // Simplified @layer: promote all layer rules into the main rule set.
     // Full layer ordering/priority is not yet implemented — rules are
@@ -11915,7 +12018,7 @@ void prefetch_images_parallel(const std::vector<std::string>& urls) {
     for (size_t i = 0; i < to_fetch.size(); ++i) {
         // Copy URL into the lambda to avoid dangling reference
         std::string url_copy = to_fetch[i];
-        futures.push_back(std::async(std::launch::async, [url_copy]() -> DecodedImage {
+        futures.push_back(get_resource_thread_pool().submit([url_copy]() -> DecodedImage {
             // fetch_and_decode_image handles all decoding and caching internally
             return fetch_and_decode_image(url_copy);
         }));
@@ -11950,7 +12053,7 @@ std::vector<CssFetchResult> fetch_css_parallel(const std::vector<std::string>& u
 
     for (size_t i = 0; i < urls.size(); ++i) {
         std::string url_copy = urls[i];
-        futures.push_back(std::async(std::launch::async, [url_copy]() -> CssFetchResult {
+        futures.push_back(get_resource_thread_pool().submit([url_copy]() -> CssFetchResult {
             CssFetchResult r;
             r.url = url_copy;
             r.final_url = url_copy;
@@ -11992,7 +12095,7 @@ std::unordered_map<std::string, std::string> prefetch_scripts_parallel(
 
     for (auto& url : unique_urls) {
         std::string url_copy = url;
-        futures.push_back(std::async(std::launch::async, [url_copy]() -> ScriptFetchResult {
+        futures.push_back(get_resource_thread_pool().submit([url_copy]() -> ScriptFetchResult {
             ScriptFetchResult r;
             r.url = url_copy;
             auto response = fetch_with_redirects(url_copy, "application/javascript, */*", 5);
@@ -12432,7 +12535,8 @@ RenderResult render_html(const std::string& html, const std::string& base_url,
         extract_image_urls(*doc, effective_base_url, image_urls);
 
         // Launch image prefetch on a background thread (non-blocking)
-        auto image_prefetch_future = std::async(std::launch::async, [&image_urls]() {
+        // Use ThreadPool::submit() to get a future we can wait on
+        auto image_prefetch_future = get_resource_thread_pool().submit([image_urls]() {
             prefetch_images_parallel(image_urls);
         });
 
