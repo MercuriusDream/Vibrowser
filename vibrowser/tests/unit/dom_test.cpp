@@ -24856,3 +24856,82 @@ TEST(DomNode, ClearDirtyResetsAllV169) {
     elem.clear_dirty();
     EXPECT_EQ(elem.dirty_flags(), DirtyFlags::None);
 }
+
+// ---------------------------------------------------------------------------
+// Round 170 DOM tests
+// ---------------------------------------------------------------------------
+
+// 1. last_child is nullptr when element has no children
+TEST(DomNode, LastChildNullWhenEmptyV170) {
+    Element elem("section");
+    EXPECT_EQ(elem.last_child(), nullptr);
+}
+
+// 2. Multiple attributes stored and retrievable
+TEST(DomElement, MultipleAttributesStoredV170) {
+    Element elem("div");
+    elem.set_attribute("id", "main");
+    elem.set_attribute("class", "container");
+    elem.set_attribute("data-role", "content");
+    EXPECT_EQ(elem.attributes().size(), 3u);
+    EXPECT_EQ(elem.get_attribute("id").value(), "main");
+    EXPECT_EQ(elem.get_attribute("class").value(), "container");
+    EXPECT_EQ(elem.get_attribute("data-role").value(), "content");
+}
+
+// 3. create_element produces element with correct tag
+TEST(DomDocument, CreateElementVerifiesTagV170) {
+    Document doc;
+    auto elem = doc.create_element("span");
+    ASSERT_NE(elem, nullptr);
+    EXPECT_EQ(elem->tag_name(), "span");
+    EXPECT_EQ(elem->node_type(), NodeType::Element);
+}
+
+// 4. Event type name preserved
+TEST(DomEvent, TypeNamePreservedV170) {
+    Event evt("custom-event");
+    EXPECT_EQ(evt.type(), "custom-event");
+}
+
+// 5. insert_before in middle maintains correct order
+TEST(DomNode, InsertBeforeMiddleChildV170) {
+    Element parent("ul");
+    auto a = std::make_unique<Element>("li");
+    auto b = std::make_unique<Element>("li");
+    auto c = std::make_unique<Element>("li");
+    Element* a_ptr = a.get();
+    Element* b_ptr = b.get();
+    Element* c_ptr = c.get();
+    parent.append_child(std::move(a));
+    parent.append_child(std::move(c));
+    parent.insert_before(std::move(b), c_ptr);
+    EXPECT_EQ(parent.first_child(), a_ptr);
+    EXPECT_EQ(a_ptr->next_sibling(), b_ptr);
+    EXPECT_EQ(b_ptr->next_sibling(), c_ptr);
+    EXPECT_EQ(parent.last_child(), c_ptr);
+}
+
+// 6. ClassList remove on nonexistent class is a no-op
+TEST(DomElement, ClassListRemoveNonexistentNoopV170) {
+    Element elem("div");
+    elem.class_list().remove("nonexistent");
+    EXPECT_EQ(elem.class_list().length(), 0u);
+}
+
+// 7. mark_dirty with Layout only sets Layout, not Style or Paint
+TEST(DomNode, DirtyFlagLayoutOnlyV170) {
+    Element elem("div");
+    elem.clear_dirty();
+    EXPECT_EQ(elem.dirty_flags(), DirtyFlags::None);
+    elem.mark_dirty(DirtyFlags::Layout);
+    EXPECT_NE(static_cast<uint8_t>(elem.dirty_flags() & DirtyFlags::Layout), 0);
+    EXPECT_EQ(static_cast<uint8_t>(elem.dirty_flags() & DirtyFlags::Style), 0);
+    EXPECT_EQ(static_cast<uint8_t>(elem.dirty_flags() & DirtyFlags::Paint), 0);
+}
+
+// 8. Element node_type is NodeType::Element
+TEST(DomNode, NodeTypeIsElementV170) {
+    Element elem("div");
+    EXPECT_EQ(elem.node_type(), NodeType::Element);
+}

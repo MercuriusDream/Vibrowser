@@ -26582,3 +26582,144 @@ TEST(HtmlParserTest, HtmlV169_8) {
     ASSERT_NE(p, nullptr);
     EXPECT_EQ(p->tag_name, "p");
 }
+
+TEST(HtmlParserTest, HtmlV170_1) {
+    // <span> with inline text
+    auto doc = clever::html::parse(
+        "<html><body><span>hello world</span></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* span = doc->find_element("span");
+    ASSERT_NE(span, nullptr);
+    EXPECT_EQ(span->tag_name, "span");
+    EXPECT_EQ(span->text_content(), "hello world");
+}
+
+TEST(HtmlParserTest, HtmlV170_2) {
+    // <b> bold element
+    auto doc = clever::html::parse(
+        "<html><body><b>bold text</b></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* b = doc->find_element("b");
+    ASSERT_NE(b, nullptr);
+    EXPECT_EQ(b->tag_name, "b");
+    EXPECT_EQ(b->text_content(), "bold text");
+}
+
+TEST(HtmlParserTest, HtmlV170_3) {
+    // <i> italic element
+    auto doc = clever::html::parse(
+        "<html><body><i>italic text</i></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* i = doc->find_element("i");
+    ASSERT_NE(i, nullptr);
+    EXPECT_EQ(i->tag_name, "i");
+    EXPECT_EQ(i->text_content(), "italic text");
+}
+
+TEST(HtmlParserTest, HtmlV170_4) {
+    // <u> underline element
+    auto doc = clever::html::parse(
+        "<html><body><u>underlined</u></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* u = doc->find_element("u");
+    ASSERT_NE(u, nullptr);
+    EXPECT_EQ(u->tag_name, "u");
+    EXPECT_EQ(u->text_content(), "underlined");
+}
+
+TEST(HtmlParserTest, HtmlV170_5) {
+    // <s> strikethrough element
+    auto doc = clever::html::parse(
+        "<html><body><s>struck out</s></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* s = doc->find_element("s");
+    ASSERT_NE(s, nullptr);
+    EXPECT_EQ(s->tag_name, "s");
+    EXPECT_EQ(s->text_content(), "struck out");
+}
+
+TEST(HtmlParserTest, HtmlV170_6) {
+    // nested <div><p><span>text</span></p></div>
+    auto doc = clever::html::parse(
+        "<html><body><div><p><span>nested text</span></p></div></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* div = doc->find_element("div");
+    ASSERT_NE(div, nullptr);
+    EXPECT_EQ(div->tag_name, "div");
+
+    auto* p = doc->find_element("p");
+    ASSERT_NE(p, nullptr);
+    EXPECT_EQ(p->tag_name, "p");
+
+    auto* span = doc->find_element("span");
+    ASSERT_NE(span, nullptr);
+    EXPECT_EQ(span->tag_name, "span");
+    EXPECT_EQ(span->text_content(), "nested text");
+}
+
+TEST(HtmlParserTest, HtmlV170_7) {
+    // <h1> through <h6> heading hierarchy
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<h1>heading1</h1>"
+        "<h2>heading2</h2>"
+        "<h3>heading3</h3>"
+        "<h4>heading4</h4>"
+        "<h5>heading5</h5>"
+        "<h6>heading6</h6>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* h1 = doc->find_element("h1");
+    ASSERT_NE(h1, nullptr);
+    EXPECT_EQ(h1->tag_name, "h1");
+    EXPECT_EQ(h1->text_content(), "heading1");
+
+    auto* h2 = doc->find_element("h2");
+    ASSERT_NE(h2, nullptr);
+    EXPECT_EQ(h2->tag_name, "h2");
+    EXPECT_EQ(h2->text_content(), "heading2");
+
+    auto* h3 = doc->find_element("h3");
+    ASSERT_NE(h3, nullptr);
+    EXPECT_EQ(h3->tag_name, "h3");
+    EXPECT_EQ(h3->text_content(), "heading3");
+
+    auto* h4 = doc->find_element("h4");
+    ASSERT_NE(h4, nullptr);
+    EXPECT_EQ(h4->tag_name, "h4");
+
+    auto* h5 = doc->find_element("h5");
+    ASSERT_NE(h5, nullptr);
+    EXPECT_EQ(h5->tag_name, "h5");
+
+    auto* h6 = doc->find_element("h6");
+    ASSERT_NE(h6, nullptr);
+    EXPECT_EQ(h6->tag_name, "h6");
+}
+
+TEST(HtmlParserTest, HtmlV170_8) {
+    // <table><tr><td> basic table
+    auto doc = clever::html::parse(
+        "<html><body><table><tr><td>cell1</td><td>cell2</td></tr></table></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* table = doc->find_element("table");
+    ASSERT_NE(table, nullptr);
+    EXPECT_EQ(table->tag_name, "table");
+
+    auto* tr = doc->find_element("tr");
+    ASSERT_NE(tr, nullptr);
+    EXPECT_EQ(tr->tag_name, "tr");
+
+    auto* td = doc->find_element("td");
+    ASSERT_NE(td, nullptr);
+    EXPECT_EQ(td->tag_name, "td");
+    EXPECT_EQ(td->text_content(), "cell1");
+}

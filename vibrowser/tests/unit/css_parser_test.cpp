@@ -11808,3 +11808,59 @@ TEST_F(CSSStylesheetTest, JustifyContentDeclarationV169) {
     }
     EXPECT_TRUE(found) << "justify-content declaration not found";
 }
+
+TEST_F(CSSStylesheetTest, LetterSpacingDeclarationV170) {
+    auto ss = parse_stylesheet("div { letter-spacing: 2px; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "letter-spacing") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "2px");
+        }
+    }
+    EXPECT_TRUE(found) << "letter-spacing declaration not found";
+}
+
+TEST_F(CSSStylesheetTest, WordSpacingDeclarationV170) {
+    auto ss = parse_stylesheet("div { word-spacing: 4px; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "word-spacing") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "4px");
+        }
+    }
+    EXPECT_TRUE(found) << "word-spacing declaration not found";
+}
+
+TEST_F(CSSStylesheetTest, LineHeightDeclarationV170) {
+    auto ss = parse_stylesheet("p { line-height: 1.5; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "line-height") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "1.5");
+        }
+    }
+    EXPECT_TRUE(found) << "line-height declaration not found";
+}
+
+TEST_F(CSSStylesheetTest, TextIndentDeclarationV170) {
+    auto ss = parse_stylesheet("p { text-indent: 20px; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "text-indent") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "20px");
+        }
+    }
+    EXPECT_TRUE(found) << "text-indent declaration not found";
+}

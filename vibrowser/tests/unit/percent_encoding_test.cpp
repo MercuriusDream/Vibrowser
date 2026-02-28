@@ -1889,3 +1889,29 @@ TEST(IsURLCodePoint, DigitsValidV169) {
         EXPECT_TRUE(is_url_code_point(ch));
     }
 }
+
+TEST(PercentEncoding, AtSignNotEncodedV170) {
+    // '@' is a valid URL code point and passes through percent_encode unchanged
+    EXPECT_EQ(percent_encode("@"), "@");
+    EXPECT_EQ(percent_encode("user@host"), "user@host");
+    EXPECT_EQ(percent_encode("@@"), "@@");
+}
+
+TEST(PercentDecoding, MultipleEncodedCharsV170) {
+    // Sequence of percent-encoded bytes should decode to "Hello"
+    EXPECT_EQ(percent_decode("%48%65%6C%6C%6F"), "Hello");
+    // Mixed case hex should also work
+    EXPECT_EQ(percent_decode("%48%65%6c%6c%6f"), "Hello");
+}
+
+TEST(PercentEncoding, HyphenNotEncodedV170) {
+    // Hyphen '-' is an unreserved character and should pass through unchanged
+    EXPECT_EQ(percent_encode("-"), "-");
+    EXPECT_EQ(percent_encode("my-file"), "my-file");
+    EXPECT_EQ(percent_encode("a-b-c"), "a-b-c");
+}
+
+TEST(IsURLCodePoint, ExclamationMarkValidV170) {
+    // '!' (U+0021) is a valid URL code point
+    EXPECT_TRUE(is_url_code_point(U'!'));
+}

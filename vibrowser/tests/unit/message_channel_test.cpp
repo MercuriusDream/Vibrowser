@@ -3115,3 +3115,72 @@ TEST(MessageChannelTest, MessageChannelV169_2_ZeroLengthPayloadV169) {
     EXPECT_TRUE(handler_called);
     EXPECT_EQ(captured_payload.size(), 0u);
 }
+
+// ------------------------------------------------------------------
+// Round 170 — V170 message channel tests
+// ------------------------------------------------------------------
+
+TEST(MessageChannelTest, MessageChannelV170_1_ThreeTypesThreeHandlersV170) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel ch(std::move(pa));
+
+    int handler10_count = 0;
+    int handler20_count = 0;
+    int handler30_count = 0;
+
+    ch.on(10, [&](const Message& m) { handler10_count++; });
+    ch.on(20, [&](const Message& m) { handler20_count++; });
+    ch.on(30, [&](const Message& m) { handler30_count++; });
+
+    Message msg10;
+    msg10.type = 10;
+    msg10.request_id = 0;
+    msg10.payload = {0x0A};
+    ch.dispatch(msg10);
+
+    Message msg20;
+    msg20.type = 20;
+    msg20.request_id = 0;
+    msg20.payload = {0x14};
+    ch.dispatch(msg20);
+
+    Message msg30;
+    msg30.type = 30;
+    msg30.request_id = 0;
+    msg30.payload = {0x1E};
+    ch.dispatch(msg30);
+
+    EXPECT_EQ(handler10_count, 1);
+    EXPECT_EQ(handler20_count, 1);
+    EXPECT_EQ(handler30_count, 1);
+}
+
+TEST(MessageChannelTest, MessageChannelV170_2_LargePayload8KBV170) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel ch(std::move(pa));
+
+    bool handler_called = false;
+    std::vector<uint8_t> captured_payload;
+
+    ch.on(7, [&](const Message& m) {
+        handler_called = true;
+        captured_payload = m.payload;
+    });
+
+    std::vector<uint8_t> large_payload(8192);
+    for (size_t i = 0; i < large_payload.size(); ++i) {
+        large_payload[i] = static_cast<uint8_t>(i & 0xFF);
+    }
+
+    Message msg;
+    msg.type = 7;
+    msg.request_id = 0;
+    msg.payload = large_payload;
+    ch.dispatch(msg);
+
+    EXPECT_TRUE(handler_called);
+    ASSERT_EQ(captured_payload.size(), 8192u);
+    for (size_t i = 0; i < 8192; ++i) {
+        EXPECT_EQ(captured_payload[i], static_cast<uint8_t>(i & 0xFF));
+    }
+}

@@ -2977,3 +2977,68 @@ TEST(MessagePipeTest, MessagePipeV169_3_CloseBothEndsV169) {
     auto recv = b.receive();
     EXPECT_FALSE(recv.has_value());
 }
+
+// ------------------------------------------------------------------
+// Round 170 — V170 message pipe tests
+// ------------------------------------------------------------------
+
+TEST(MessagePipeTest, MessagePipeV170_1_LargePayload64KBV170) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    std::vector<uint8_t> payload(65536);
+    for (size_t i = 0; i < payload.size(); ++i) {
+        payload[i] = static_cast<uint8_t>(i & 0xFF);
+    }
+    ASSERT_TRUE(a.send(payload));
+    a.close();
+
+    auto received = b.receive();
+    ASSERT_TRUE(received.has_value());
+    ASSERT_EQ(received->size(), 65536u);
+    for (size_t i = 0; i < 65536; ++i) {
+        EXPECT_EQ((*received)[i], static_cast<uint8_t>(i & 0xFF));
+    }
+}
+
+TEST(MessagePipeTest, MessagePipeV170_2_ThreeMessagesOrderedV170) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    std::vector<uint8_t> m1 = {0xAA};
+    std::vector<uint8_t> m2 = {0xBB, 0xCC};
+    std::vector<uint8_t> m3 = {0xDD, 0xEE, 0xFF};
+
+    ASSERT_TRUE(a.send(m1));
+    ASSERT_TRUE(a.send(m2));
+    ASSERT_TRUE(a.send(m3));
+    a.close();
+
+    auto r1 = b.receive();
+    ASSERT_TRUE(r1.has_value());
+    ASSERT_EQ(r1->size(), 1u);
+    EXPECT_EQ((*r1)[0], 0xAA);
+
+    auto r2 = b.receive();
+    ASSERT_TRUE(r2.has_value());
+    ASSERT_EQ(r2->size(), 2u);
+    EXPECT_EQ((*r2)[0], 0xBB);
+    EXPECT_EQ((*r2)[1], 0xCC);
+
+    auto r3 = b.receive();
+    ASSERT_TRUE(r3.has_value());
+    ASSERT_EQ(r3->size(), 3u);
+    EXPECT_EQ((*r3)[0], 0xDD);
+    EXPECT_EQ((*r3)[1], 0xEE);
+    EXPECT_EQ((*r3)[2], 0xFF);
+
+    auto end = b.receive();
+    EXPECT_FALSE(end.has_value());
+}
+
+TEST(MessagePipeTest, MessagePipeV170_3_ReceiveAfterCloseReturnsNulloptV170) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    a.close();
+
+    auto received = b.receive();
+    EXPECT_FALSE(received.has_value());
+}

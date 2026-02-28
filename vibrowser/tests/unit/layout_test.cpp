@@ -30665,3 +30665,129 @@ TEST(LayoutNodeProps, SpecifiedWidthDefaultAutoV169) {
     auto node = std::make_unique<LayoutNode>();
     EXPECT_FLOAT_EQ(node->specified_width, -1.0f);
 }
+
+// V170_1: block with one child, child gets parent width
+TEST(LayoutEngineTest, LayoutV170_1) {
+    auto root = make_block("div");
+    root->specified_width = 600.0f;
+
+    auto child = make_block("div");
+    child->specified_height = 40.0f;
+
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.width, 600.0f);
+}
+
+// V170_2: flex row 2 children with flex-grow 1 and 2, verify 1:2 ratio
+TEST(LayoutEngineTest, LayoutV170_2) {
+    auto root = make_flex("div");
+    root->flex_direction = 0; // row
+    root->specified_width = 300.0f;
+
+    auto c1 = make_block("div");
+    c1->flex_grow = 1.0f;
+    c1->specified_height = 30.0f;
+
+    auto c2 = make_block("div");
+    c2->flex_grow = 2.0f;
+    c2->specified_height = 30.0f;
+
+    root->append_child(std::move(c1));
+    root->append_child(std::move(c2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    float w1 = root->children[0]->geometry.width;
+    float w2 = root->children[1]->geometry.width;
+    EXPECT_NEAR(w1, 100.0f, 1.0f);
+    EXPECT_NEAR(w2, 200.0f, 1.0f);
+}
+
+// V170_3: block parent 500px, 3 children height 30 each, verify total height 90
+TEST(LayoutEngineTest, LayoutV170_3) {
+    auto root = make_block("div");
+    root->specified_width = 500.0f;
+
+    for (int i = 0; i < 3; ++i) {
+        auto child = make_block("div");
+        child->specified_height = 30.0f;
+        root->append_child(std::move(child));
+    }
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(root->geometry.height, 90.0f);
+}
+
+// V170_4: min_width and max_width both set, min>max, max applied last
+TEST(LayoutEngineTest, LayoutV170_4) {
+    auto root = make_block("div");
+    root->specified_width = 200.0f;
+    root->min_width = 400.0f;
+    root->max_width = 300.0f;
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // Engine applies max_width clamp after min_width, so result is 300
+    EXPECT_FLOAT_EQ(root->geometry.width, 300.0f);
+}
+
+// V170_5: flex column 3 children with specified heights
+TEST(LayoutEngineTest, LayoutV170_5) {
+    auto root = make_flex("div");
+    root->flex_direction = 2; // column
+
+    auto c1 = make_block("div");
+    c1->specified_height = 40.0f;
+    auto c2 = make_block("div");
+    c2->specified_height = 60.0f;
+    auto c3 = make_block("div");
+    c3->specified_height = 20.0f;
+
+    root->append_child(std::move(c1));
+    root->append_child(std::move(c2));
+    root->append_child(std::move(c3));
+
+    LayoutEngine engine;
+    engine.compute(*root, 400.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.y, 0.0f);
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.y, 40.0f);
+    EXPECT_FLOAT_EQ(root->children[2]->geometry.y, 100.0f);
+}
+
+// V170_6: block child with specified width smaller than parent
+TEST(LayoutEngineTest, LayoutV170_6) {
+    auto root = make_block("div");
+    root->specified_width = 500.0f;
+
+    auto child = make_block("div");
+    child->specified_width = 200.0f;
+    child->specified_height = 50.0f;
+
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.width, 200.0f);
+}
+
+// V170_7: default background_color is transparent
+TEST(LayoutNodeProps, BackgroundColorDefaultTransparentV170) {
+    auto node = std::make_unique<LayoutNode>();
+    EXPECT_EQ(node->background_color, 0x00000000u);
+}
+
+// V170_8: default color is black
+TEST(LayoutNodeProps, ColorDefaultBlackV170) {
+    auto node = std::make_unique<LayoutNode>();
+    EXPECT_EQ(node->color, 0xFF000000u);
+}

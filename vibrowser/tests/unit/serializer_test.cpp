@@ -21713,3 +21713,43 @@ TEST(SerializerTest, SerializerV169_3_U32SequentialValuesRoundTrip) {
     }
     EXPECT_FALSE(d.has_remaining());
 }
+
+// ------------------------------------------------------------------
+// Round 170 — V170 serializer tests
+// ------------------------------------------------------------------
+
+TEST(SerializerTest, SerializerV170_1_F64NaNRoundTrip) {
+    Serializer s;
+    s.write_f64(NAN);
+
+    Deserializer d(s.data());
+    double val = d.read_f64();
+    EXPECT_TRUE(std::isnan(val));
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, SerializerV170_2_EmptyBytesRoundTrip) {
+    Serializer s;
+    uint8_t dummy = 0;
+    s.write_bytes(&dummy, 0);
+
+    Deserializer d(s.data());
+    auto bytes = d.read_bytes();
+    EXPECT_EQ(bytes.size(), 0u);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, SerializerV170_3_MixedTypesRoundTrip) {
+    Serializer s;
+    s.write_u32(42);
+    s.write_string("test");
+    s.write_bool(true);
+    s.write_f64(3.14);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u32(), 42u);
+    EXPECT_EQ(d.read_string(), "test");
+    EXPECT_EQ(d.read_bool(), true);
+    EXPECT_DOUBLE_EQ(d.read_f64(), 3.14);
+    EXPECT_FALSE(d.has_remaining());
+}

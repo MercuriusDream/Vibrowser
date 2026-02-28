@@ -29467,3 +29467,224 @@ TEST(HttpClient, CookieJarExpiredCookieNotReturnedV169) {
     EXPECT_EQ(header3.find("expired169"), std::string::npos)
         << "Expired cookie should still not appear, got: " << header3;
 }
+
+// ===========================================================================
+// V170 Tests (Round 170 — Net)
+// ===========================================================================
+
+// 1. Request serialize GET with custom host port 8080 — Host must include port
+TEST(HttpClient, RequestSerializeGetWithCustomHostPortV170) {
+    Request req;
+    req.method = Method::GET;
+    req.host = "api.v170.example.com";
+    req.port = 8080;
+    req.path = "/v170/status";
+
+    auto bytes = req.serialize();
+    std::string serialized(bytes.begin(), bytes.end());
+
+    // Non-standard port must appear in Host header
+    EXPECT_NE(serialized.find("Host: api.v170.example.com:8080\r\n"), std::string::npos)
+        << "Host header must include port 8080, got: " << serialized;
+    // Request line must contain GET and the path
+    EXPECT_NE(serialized.find("GET /v170/status HTTP/1.1\r\n"), std::string::npos)
+        << "Request line should be GET /v170/status HTTP/1.1";
+    // Connection header
+    EXPECT_NE(serialized.find("Connection: close\r\n"), std::string::npos)
+        << "Connection header should be present";
+}
+
+// 2. Response parse 200 with 3+ custom headers, verify all preserved
+TEST(HttpClient, ResponseParse200WithMultipleHeadersV170) {
+    std::string raw =
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Type: application/json\r\n"
+        "X-Request-Id: v170-abc-123\r\n"
+        "X-Trace-Id: trace-v170-def\r\n"
+        "X-Region: us-east-1\r\n"
+        "Content-Length: 13\r\n"
+        "\r\n"
+        "{\"ok\":\"v170\"}";
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value()) << "Response should parse successfully";
+    EXPECT_EQ(resp->status, 200u);
+    EXPECT_EQ(resp->status_text, "OK");
+
+    // Verify all custom headers are preserved
+    ASSERT_TRUE(resp->headers.has("X-Request-Id"));
+    EXPECT_EQ(resp->headers.get("X-Request-Id").value(), "v170-abc-123");
+
+    ASSERT_TRUE(resp->headers.has("X-Trace-Id"));
+    EXPECT_EQ(resp->headers.get("X-Trace-Id").value(), "trace-v170-def");
+
+    ASSERT_TRUE(resp->headers.has("X-Region"));
+    EXPECT_EQ(resp->headers.get("X-Region").value(), "us-east-1");
+
+    ASSERT_TRUE(resp->headers.has("Content-Type"));
+    EXPECT_EQ(resp->headers.get("Content-Type").value(), "application/json");
+
+    // Verify body
+    EXPECT_EQ(resp->body_as_string(), "{\"ok\":\"v170\"}");
+}
+
+// 3. ConnectionPool max per host limit: release more than limit, verify eviction
+TEST(HttpClient, ConnectionPoolMaxTotalLimitV170) {
+    ConnectionPool pool(2);  // max 2 per host
+
+    // Release 4 connections for same host:port
+    pool.release("v170pool.example.com", 9090, 100);
+    pool.release("v170pool.example.com", 9090, 200);
+    pool.release("v170pool.example.com", 9090, 300);
+    pool.release("v170pool.example.com", 9090, 400);
+
+    // Only 2 should remain (max_per_host = 2)
+    EXPECT_EQ(pool.count("v170pool.example.com", 9090), 2u)
+        << "Pool should not exceed max_per_host of 2";
+
+    // Acquire should return connections (LIFO order expected)
+    int fd1 = pool.acquire("v170pool.example.com", 9090);
+    EXPECT_NE(fd1, -1) << "First acquire should succeed";
+
+    int fd2 = pool.acquire("v170pool.example.com", 9090);
+    EXPECT_NE(fd2, -1) << "Second acquire should succeed";
+
+    // Pool should be empty now
+    int fd3 = pool.acquire("v170pool.example.com", 9090);
+    EXPECT_EQ(fd3, -1) << "Third acquire should return -1 (pool empty)";
+
+    EXPECT_EQ(pool.count("v170pool.example.com", 9090), 0u);
+}
+
+// 4. CookieJar Domain=.example.com matches sub.example.com
+TEST(HttpClient, CookieJarDomainAttributeMatchV170) {
+    CookieJar jar;
+
+    // Set cookie with Domain attribute on parent domain
+    jar.set_from_header("session170=abc; Domain=.v170dom.example.com; Path=/",
+                        "v170dom.example.com");
+
+    // Cookie should be sent to subdomains
+    std::string sub_header = jar.get_cookie_header("app.v170dom.example.com", "/", false);
+    EXPECT_NE(sub_header.find("session170=abc"), std::string::npos)
+        << "Cookie with Domain=.v170dom.example.com should match app.v170dom.example.com, got: "
+        << sub_header;
+
+    // Cookie should also be sent to the exact domain
+    std::string exact_header = jar.get_cookie_header("v170dom.example.com", "/", false);
+    EXPECT_NE(exact_header.find("session170=abc"), std::string::npos)
+        << "Cookie should match the exact domain too, got: " << exact_header;
+
+    // Cookie should NOT be sent to a sibling domain
+    std::string other_header = jar.get_cookie_header("other.example.com", "/", false);
+    EXPECT_EQ(other_header.find("session170=abc"), std::string::npos)
+        << "Cookie should not match other.example.com, got: " << other_header;
+}
+
+// 5. HeaderMap: append 3 values to same key, get_all returns all 3
+TEST(HttpClient, HeaderMapGetAllMultipleValuesV170) {
+    HeaderMap map;
+
+    map.append("X-V170-Tag", "alpha");
+    map.append("X-V170-Tag", "beta");
+    map.append("X-V170-Tag", "gamma");
+
+    auto all = map.get_all("X-V170-Tag");
+    ASSERT_EQ(all.size(), 3u) << "get_all should return all 3 appended values";
+    EXPECT_EQ(all[0], "alpha");
+    EXPECT_EQ(all[1], "beta");
+    EXPECT_EQ(all[2], "gamma");
+
+    // get() should return first value
+    auto first = map.get("X-V170-Tag");
+    ASSERT_TRUE(first.has_value());
+    EXPECT_EQ(first.value(), "alpha");
+
+    // Case-insensitive access should also work
+    auto all_lower = map.get_all("x-v170-tag");
+    EXPECT_EQ(all_lower.size(), 3u)
+        << "Case-insensitive get_all should also return 3 values";
+}
+
+// 6. Request serialize GET HTTPS port 443 omitted from Host header
+TEST(HttpClient, RequestSerializeGetHttpsPort443OmittedV170) {
+    Request req;
+    req.method = Method::GET;
+    req.host = "secure.v170.example.com";
+    req.port = 443;
+    req.use_tls = true;
+    req.path = "/v170/secure-page";
+
+    auto bytes = req.serialize();
+    std::string serialized(bytes.begin(), bytes.end());
+
+    // Port 443 should be omitted for HTTPS
+    EXPECT_NE(serialized.find("Host: secure.v170.example.com\r\n"), std::string::npos)
+        << "Host header should NOT include :443 for HTTPS, got: " << serialized;
+    EXPECT_EQ(serialized.find("Host: secure.v170.example.com:443"), std::string::npos)
+        << "Port 443 must be omitted from Host header";
+    // Verify request line
+    EXPECT_NE(serialized.find("GET /v170/secure-page HTTP/1.1\r\n"), std::string::npos)
+        << "Request line should have correct path";
+}
+
+// 7. Response parse with Transfer-Encoding: chunked header
+TEST(HttpClient, ResponseParseChunkedTransferHintV170) {
+    std::string raw =
+        "HTTP/1.1 200 OK\r\n"
+        "Transfer-Encoding: chunked\r\n"
+        "Content-Type: text/plain\r\n"
+        "X-V170-Hint: chunked-test\r\n"
+        "\r\n";
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value()) << "Chunked response should parse";
+    EXPECT_EQ(resp->status, 200u);
+
+    // Verify Transfer-Encoding header is preserved
+    auto te = resp->headers.get("Transfer-Encoding");
+    ASSERT_TRUE(te.has_value());
+    EXPECT_EQ(te.value(), "chunked");
+
+    // Verify other headers are also present
+    auto ct = resp->headers.get("Content-Type");
+    ASSERT_TRUE(ct.has_value());
+    EXPECT_EQ(ct.value(), "text/plain");
+
+    auto hint = resp->headers.get("X-V170-Hint");
+    ASSERT_TRUE(hint.has_value());
+    EXPECT_EQ(hint.value(), "chunked-test");
+}
+
+// 8. CookieJar: set cookie twice with same name/domain/path, second overwrites first
+TEST(HttpClient, CookieJarOverwriteSameNameDomainPathV170) {
+    CookieJar jar;
+
+    // Set initial cookie
+    jar.set_from_header("theme170=dark; Path=/app", "overwrite.v170.example.com");
+    std::string h1 = jar.get_cookie_header("overwrite.v170.example.com", "/app", false);
+    EXPECT_NE(h1.find("theme170=dark"), std::string::npos)
+        << "Initial cookie should be set, got: " << h1;
+
+    // Overwrite with new value (same name, same domain, same path)
+    jar.set_from_header("theme170=light; Path=/app", "overwrite.v170.example.com");
+    std::string h2 = jar.get_cookie_header("overwrite.v170.example.com", "/app", false);
+    EXPECT_NE(h2.find("theme170=light"), std::string::npos)
+        << "Cookie should be overwritten to 'light', got: " << h2;
+    EXPECT_EQ(h2.find("theme170=dark"), std::string::npos)
+        << "Old value 'dark' should be gone after overwrite, got: " << h2;
+
+    // Verify only one cookie entry (no duplicates)
+    // Count occurrences of "theme170=" in the header
+    size_t count = 0;
+    size_t pos = 0;
+    while ((pos = h2.find("theme170=", pos)) != std::string::npos) {
+        ++count;
+        pos += 9;
+    }
+    EXPECT_EQ(count, 1u) << "Should have exactly one theme170 cookie, got: " << h2;
+}

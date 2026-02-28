@@ -15970,3 +15970,42 @@ TEST(UrlParserTest, UrlV169_4_MultipleDotSegments) {
     EXPECT_EQ(result->host, "example.com");
     EXPECT_EQ(result->path, "/d");
 }
+
+TEST(UrlParserTest, UrlV170_1_FtpSchemeAndPort) {
+    // FTP with default port 21 should normalize port to nullopt
+    auto result = parse("ftp://files.example.com:21/pub");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "ftp");
+    EXPECT_EQ(result->host, "files.example.com");
+    EXPECT_EQ(result->port, std::nullopt);
+    EXPECT_EQ(result->path, "/pub");
+}
+
+TEST(UrlParserTest, UrlV170_2_LongPathSegments) {
+    // URL with many nested path segments should preserve all of them
+    auto result = parse("http://host/a/b/c/d/e/f");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "host");
+    EXPECT_EQ(result->path, "/a/b/c/d/e/f");
+}
+
+TEST(UrlParserTest, UrlV170_3_QueryAndFragmentBoth) {
+    // Both query and fragment should be parsed independently
+    auto result = parse("http://host/p?q=1#frag");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "host");
+    EXPECT_EQ(result->path, "/p");
+    EXPECT_EQ(result->query, "q=1");
+    EXPECT_EQ(result->fragment, "frag");
+}
+
+TEST(UrlParserTest, UrlV170_4_HostIsCaseInsensitive) {
+    // Host names should be lowercased during parsing
+    auto result = parse("http://EXAMPLE.COM/path");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/path");
+}

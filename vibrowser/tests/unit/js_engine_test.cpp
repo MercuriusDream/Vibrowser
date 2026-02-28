@@ -38617,3 +38617,101 @@ TEST(JSEngine, JsV169_8) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "fallback,default,42");
 }
+
+// V170_1: Array.concat merges arrays
+TEST(JSEngine, JsV170_1) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var a = [1, 2];
+        var b = [3, 4];
+        "" + a.concat(b);
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1,2,3,4");
+}
+
+// V170_2: String.startsWith and endsWith
+TEST(JSEngine, JsV170_2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var s = "hello world";
+        "" + s.startsWith("hello") + "," + s.endsWith("world");
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true,true");
+}
+
+// V170_3: Object.assign merges objects
+TEST(JSEngine, JsV170_3) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var a = {x: 1};
+        var b = {y: 2, z: 3};
+        var c = Object.assign({}, a, b);
+        "" + c.x + "," + c.y + "," + c.z;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1,2,3");
+}
+
+// V170_4: Array.slice returns subarray
+TEST(JSEngine, JsV170_4) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var arr = [10, 20, 30, 40, 50];
+        "" + arr.slice(1, 4);
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "20,30,40");
+}
+
+// V170_5: Promise.resolve returns a Promise object
+TEST(JSEngine, JsV170_5) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var p = Promise.resolve(42);
+        "" + (p instanceof Promise);
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true");
+}
+
+// V170_6: for...of loop over array
+TEST(JSEngine, JsV170_6) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var arr = [10, 20, 30];
+        var sum = 0;
+        for (var v of arr) { sum += v; }
+        "" + sum;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "60");
+}
+
+// V170_7: Map set/get/has/size
+TEST(JSEngine, JsV170_7) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var m = new Map();
+        m.set("a", 1);
+        m.set("b", 2);
+        "" + m.get("a") + "," + m.has("b") + "," + m.size;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1,true,2");
+}
+
+// V170_8: Set add/has/size
+TEST(JSEngine, JsV170_8) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var s = new Set();
+        s.add(10);
+        s.add(20);
+        s.add(10);
+        "" + s.has(10) + "," + s.has(30) + "," + s.size;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "true,false,2");
+}

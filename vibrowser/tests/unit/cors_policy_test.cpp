@@ -13332,3 +13332,51 @@ TEST(CORSPolicyTest, CorsV169_7_BlobSchemeNotEnforceable) {
 TEST(CORSPolicyTest, CorsV169_8_IPv4AddressEnforceable) {
     EXPECT_TRUE(has_enforceable_document_origin("http://192.168.1.1:8080"));
 }
+
+// ---------------------------------------------------------------------------
+// Round 170 CORS tests
+// ---------------------------------------------------------------------------
+
+// 1. wss:// scheme is not enforceable
+TEST(CORSPolicyTest, CorsV170_1_WssSchemeNotEnforceable) {
+    EXPECT_FALSE(has_enforceable_document_origin("wss://ws.example.com"));
+}
+
+// 2. http://host:80 is same origin as http://host
+TEST(CORSPolicyTest, CorsV170_2_SameOriginExplicitPort80) {
+    EXPECT_FALSE(is_cross_origin("http://host.example:80", "http://host.example/page"));
+}
+
+// 3. http://host:8080 vs http://host is cross-origin
+TEST(CORSPolicyTest, CorsV170_3_CrossOriginPortVsNoPort) {
+    EXPECT_TRUE(is_cross_origin("http://host.example:8080", "http://host.example/page"));
+}
+
+// 4. ACAO mismatch rejects the response
+TEST(CORSPolicyTest, CorsV170_4_AcaoMismatchRejects) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "http://other.example");
+    EXPECT_FALSE(cors_allows_response("http://mine.example", "http://api.example/data",
+                                      headers, false));
+}
+
+// 5. http vs https same host means should_attach_origin is true
+TEST(CORSPolicyTest, CorsV170_5_ShouldAttachOriginDiffScheme) {
+    EXPECT_TRUE(should_attach_origin_header("http://app.example",
+                                            "https://app.example/page"));
+}
+
+// 6. file:// scheme is not enforceable
+TEST(CORSPolicyTest, CorsV170_6_FileSchemeNotEnforceable) {
+    EXPECT_FALSE(has_enforceable_document_origin("file:///path/to/file.html"));
+}
+
+// 7. http://host:8080 is enforceable
+TEST(CORSPolicyTest, CorsV170_7_HttpPort8080Enforceable) {
+    EXPECT_TRUE(has_enforceable_document_origin("http://host.example:8080"));
+}
+
+// 8. https://host:443 is same origin as https://host
+TEST(CORSPolicyTest, CorsV170_8_SameOriginExplicitPort443) {
+    EXPECT_FALSE(is_cross_origin("https://host.example:443", "https://host.example/page"));
+}

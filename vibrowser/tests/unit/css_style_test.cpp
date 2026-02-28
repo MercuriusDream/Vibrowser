@@ -26600,3 +26600,39 @@ TEST(PropertyCascadeTest, UserSelectNoneAppliedV169) {
     cascade.apply_declaration(style, make_decl("user-select", "none"), parent);
     EXPECT_EQ(style.user_select, UserSelect::None);
 }
+
+TEST(CSSStyleTest, CssV170_1_DisplayBlockDefault) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("display", "block"), parent);
+    EXPECT_EQ(style.display, Display::Block);
+}
+
+TEST(CSSStyleTest, CssV170_2_WidthApplied) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("width", "200px"), parent);
+    EXPECT_FLOAT_EQ(style.width.to_px(), 200.0f);
+}
+
+TEST(PropertyCascadeTest, HeightAppliedV170) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("height", "150px"), parent);
+    EXPECT_FLOAT_EQ(style.height.to_px(), 150.0f);
+}
+
+TEST(PropertyCascadeTest, MarginTopAppliedV170) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("margin-top", "10px"), parent);
+    EXPECT_FLOAT_EQ(style.margin.top.to_px(), 10.0f);
+}
