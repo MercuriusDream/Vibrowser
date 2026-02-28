@@ -700,12 +700,8 @@ static clever::css::ElementView* build_element_view_chain(
             if (child->type == clever::html::SimpleNode::Element) {
                 child_elem_count++;
             } else if (child->type == clever::html::SimpleNode::Text) {
-                for (char c : child->data) {
-                    if (c != ' ' && c != '\t' && c != '\n' && c != '\r') {
-                        has_text = true;
-                        break;
-                    }
-                }
+                // CSS :empty treats any text node as content, including whitespace-only text.
+                has_text = true;
             }
         }
         view->child_element_count = child_elem_count;
@@ -10159,29 +10155,52 @@ void install_dom_bindings(JSContext* ctx,
         configurable: true
     });
 
-    // ---- contentEditable getter/setter ----
-    Object.defineProperty(proto, 'contentEditable', {
+    // ---- title / lang / dir (string attribute mappings) ----
+    Object.defineProperty(proto, 'title', {
+        get: function() { return this.getAttribute('title') || ''; },
+        set: function(v) { this.setAttribute('title', String(v)); },
+        configurable: true
+    });
+    Object.defineProperty(proto, 'lang', {
+        get: function() { return this.getAttribute('lang') || ''; },
+        set: function(v) { this.setAttribute('lang', String(v)); },
+        configurable: true
+    });
+    Object.defineProperty(proto, 'dir', {
+        get: function() { return this.getAttribute('dir') || ''; },
+        set: function(v) { this.setAttribute('dir', String(v)); },
+        configurable: true
+    });
+
+    // ---- tabIndex (int attribute mapping, default -1) ----
+    Object.defineProperty(proto, 'tabIndex', {
         get: function() {
-            var val = this.getAttribute('contenteditable');
-            if (val === 'true' || val === '') return 'true';
-            if (val === 'false') return 'false';
-            return 'inherit';
+            var raw = this.getAttribute('tabindex');
+            if (raw === null || raw === '') return -1;
+            var parsed = parseInt(raw, 10);
+            return isNaN(parsed) ? -1 : parsed;
         },
         set: function(v) {
-            this.setAttribute('contenteditable', String(v));
+            var parsed = parseInt(v, 10);
+            this.setAttribute('tabindex', String(isNaN(parsed) ? -1 : parsed));
         },
         configurable: true
     });
 
-    // ---- draggable getter/setter ----
+    // ---- draggable (boolean attribute presence mapping) ----
     Object.defineProperty(proto, 'draggable', {
-        get: function() {
-            var val = this.getAttribute('draggable');
-            return val === 'true';
-        },
+        get: function() { return this.hasAttribute('draggable'); },
         set: function(v) {
-            this.setAttribute('draggable', v ? 'true' : 'false');
+            if (v) this.setAttribute('draggable', '');
+            else this.removeAttribute('draggable');
         },
+        configurable: true
+    });
+
+    // ---- contentEditable (string attribute mapping) ----
+    Object.defineProperty(proto, 'contentEditable', {
+        get: function() { if (!this.hasAttribute('contenteditable')) return 'inherit'; var v = this.getAttribute('contenteditable'); return v || 'inherit'; },
+        set: function(v) { this.setAttribute('contenteditable', String(v)); },
         configurable: true
     });
 
@@ -10313,134 +10332,288 @@ void install_dom_bindings(JSContext* ctx,
     });
 
     // ---- Typed HTML element properties ----
+    var isInputLikeTag = function(tag) {
+        return tag === 'input' || tag === 'textarea' || tag === 'select';
+    };
 
-    // .value (get/set) — input/textarea/select
+    // .value (get/set string) — input/textarea/select
     Object.defineProperty(proto, 'value', {
         get: function() {
             var tag = this.tagName.toLowerCase();
-            if (tag === 'input' || tag === 'textarea' || tag === 'select') {
-                return this.getAttribute('value') || '';
-            }
-            return '';
+            if (!isInputLikeTag(tag)) return '';
+            return this.getAttribute('value') || '';
         },
         set: function(v) {
+            var tag = this.tagName.toLowerCase();
+            if (!isInputLikeTag(tag)) return;
             this.setAttribute('value', String(v));
         },
         configurable: true
     });
 
-    // .checked (get/set boolean) — input type=checkbox/radio
-    Object.defineProperty(proto, 'checked', {
-        get: function() {
-            var tag = this.tagName.toLowerCase();
-            if (tag === 'input') {
-                var t = (this.getAttribute('type') || 'text').toLowerCase();
-                if (t === 'checkbox' || t === 'radio') {
-                    return this.hasAttribute('checked');
-                }
-            }
-            return false;
-        },
-        set: function(v) {
-            if (v) {
-                this.setAttribute('checked', '');
-            } else {
-                this.removeAttribute('checked');
-            }
-        },
-        configurable: true
-    });
-
-    // .type (get/set) — input elements
+    // .type (get/set string) — input-like (default "text" for input)
     Object.defineProperty(proto, 'type', {
         get: function() {
             var tag = this.tagName.toLowerCase();
-            if (tag === 'input') {
-                return this.getAttribute('type') || 'text';
-            }
-            return undefined;
+            if (!isInputLikeTag(tag)) return '';
+            if (tag === 'input') return this.getAttribute('type') || 'text';
+            return this.getAttribute('type') || '';
         },
         set: function(v) {
+            var tag = this.tagName.toLowerCase();
+            if (!isInputLikeTag(tag)) return;
             this.setAttribute('type', String(v));
         },
         configurable: true
     });
 
-    // .disabled (get/set boolean) — form elements
-    Object.defineProperty(proto, 'disabled', {
+    // .name (get/set string) — input/textarea/select
+    Object.defineProperty(proto, 'name', {
         get: function() {
             var tag = this.tagName.toLowerCase();
-            if (tag === 'input' || tag === 'select' || tag === 'textarea' || tag === 'button' || tag === 'fieldset') {
-                return this.hasAttribute('disabled');
-            }
-            return false;
+            if (!isInputLikeTag(tag)) return '';
+            return this.getAttribute('name') || '';
         },
         set: function(v) {
-            if (v) {
-                this.setAttribute('disabled', '');
-            } else {
-                this.removeAttribute('disabled');
-            }
+            var tag = this.tagName.toLowerCase();
+            if (!isInputLikeTag(tag)) return;
+            this.setAttribute('name', String(v));
         },
         configurable: true
     });
 
-    // .placeholder (get/set) — input/textarea
+    // .placeholder (get/set string) — input/textarea/select
     Object.defineProperty(proto, 'placeholder', {
         get: function() {
             var tag = this.tagName.toLowerCase();
-            if (tag === 'input' || tag === 'textarea') {
-                return this.getAttribute('placeholder') || '';
-            }
-            return undefined;
+            if (!isInputLikeTag(tag)) return '';
+            return this.getAttribute('placeholder') || '';
         },
         set: function(v) {
+            var tag = this.tagName.toLowerCase();
+            if (!isInputLikeTag(tag)) return;
             this.setAttribute('placeholder', String(v));
         },
         configurable: true
     });
 
-    // .src (get/set) — img/script/iframe/video/audio/source
-    Object.defineProperty(proto, 'src', {
+    // .disabled (get/set boolean) — input/textarea/select
+    Object.defineProperty(proto, 'disabled', {
         get: function() {
             var tag = this.tagName.toLowerCase();
-            if (tag === 'img' || tag === 'script' || tag === 'iframe' || tag === 'video' || tag === 'audio' || tag === 'source') {
-                return this.getAttribute('src') || '';
-            }
-            return undefined;
+            return isInputLikeTag(tag) ? this.hasAttribute('disabled') : false;
         },
         set: function(v) {
-            this.setAttribute('src', String(v));
+            var tag = this.tagName.toLowerCase();
+            if (!isInputLikeTag(tag)) return;
+            if (v) this.setAttribute('disabled', '');
+            else this.removeAttribute('disabled');
         },
         configurable: true
     });
 
-    // .href (get/set) — a/link elements
+    // .checked (get/set boolean) — input/textarea/select
+    Object.defineProperty(proto, 'checked', {
+        get: function() {
+            var tag = this.tagName.toLowerCase();
+            return isInputLikeTag(tag) ? this.hasAttribute('checked') : false;
+        },
+        set: function(v) {
+            var tag = this.tagName.toLowerCase();
+            if (!isInputLikeTag(tag)) return;
+            if (v) this.setAttribute('checked', '');
+            else this.removeAttribute('checked');
+        },
+        configurable: true
+    });
+
+    // .readOnly (get/set boolean) — input/textarea/select
+    Object.defineProperty(proto, 'readOnly', {
+        get: function() {
+            var tag = this.tagName.toLowerCase();
+            return isInputLikeTag(tag) ? this.hasAttribute('readonly') : false;
+        },
+        set: function(v) {
+            var tag = this.tagName.toLowerCase();
+            if (!isInputLikeTag(tag)) return;
+            if (v) this.setAttribute('readonly', '');
+            else this.removeAttribute('readonly');
+        },
+        configurable: true
+    });
+
+    // .required (get/set boolean) — input/textarea/select
+    Object.defineProperty(proto, 'required', {
+        get: function() {
+            var tag = this.tagName.toLowerCase();
+            return isInputLikeTag(tag) ? this.hasAttribute('required') : false;
+        },
+        set: function(v) {
+            var tag = this.tagName.toLowerCase();
+            if (!isInputLikeTag(tag)) return;
+            if (v) this.setAttribute('required', '');
+            else this.removeAttribute('required');
+        },
+        configurable: true
+    });
+
+    // .maxLength (get/set int) — input/textarea/select
+    Object.defineProperty(proto, 'maxLength', {
+        get: function() {
+            var tag = this.tagName.toLowerCase();
+            if (!isInputLikeTag(tag)) return -1;
+            var raw = this.getAttribute('maxlength');
+            if (raw === null || raw === '') return -1;
+            var parsed = parseInt(raw, 10);
+            return isNaN(parsed) ? -1 : parsed;
+        },
+        set: function(v) {
+            var tag = this.tagName.toLowerCase();
+            if (!isInputLikeTag(tag)) return;
+            var parsed = parseInt(v, 10);
+            if (isNaN(parsed)) this.removeAttribute('maxlength');
+            else this.setAttribute('maxlength', String(parsed));
+        },
+        configurable: true
+    });
+
+    // .min / .max (get/set string) — input/textarea/select
+    Object.defineProperty(proto, 'min', {
+        get: function() {
+            var tag = this.tagName.toLowerCase();
+            if (!isInputLikeTag(tag)) return '';
+            return this.getAttribute('min') || '';
+        },
+        set: function(v) {
+            var tag = this.tagName.toLowerCase();
+            if (!isInputLikeTag(tag)) return;
+            this.setAttribute('min', String(v));
+        },
+        configurable: true
+    });
+    Object.defineProperty(proto, 'max', {
+        get: function() {
+            var tag = this.tagName.toLowerCase();
+            if (!isInputLikeTag(tag)) return '';
+            return this.getAttribute('max') || '';
+        },
+        set: function(v) {
+            var tag = this.tagName.toLowerCase();
+            if (!isInputLikeTag(tag)) return;
+            this.setAttribute('max', String(v));
+        },
+        configurable: true
+    });
+
+    // .href (get/set string) — a/link elements
     Object.defineProperty(proto, 'href', {
         get: function() {
             var tag = this.tagName.toLowerCase();
-            if (tag === 'a' || tag === 'link') {
-                return this.getAttribute('href') || '';
-            }
-            return undefined;
+            if (tag !== 'a' && tag !== 'link') return '';
+            return this.getAttribute('href') || '';
         },
         set: function(v) {
+            var tag = this.tagName.toLowerCase();
+            if (tag !== 'a' && tag !== 'link') return;
             this.setAttribute('href', String(v));
         },
         configurable: true
     });
 
-    // .name (get/set) — input/select/textarea/form
-    Object.defineProperty(proto, 'name', {
+    // .src (get/set string) — img
+    Object.defineProperty(proto, 'src', {
         get: function() {
             var tag = this.tagName.toLowerCase();
-            if (tag === 'input' || tag === 'select' || tag === 'textarea' || tag === 'form') {
-                return this.getAttribute('name') || '';
-            }
-            return undefined;
+            if (tag !== 'img') return '';
+            return this.getAttribute('src') || '';
         },
         set: function(v) {
-            this.setAttribute('name', String(v));
+            var tag = this.tagName.toLowerCase();
+            if (tag !== 'img') return;
+            this.setAttribute('src', String(v));
+        },
+        configurable: true
+    });
+
+    // .alt (get/set string) — img
+    Object.defineProperty(proto, 'alt', {
+        get: function() {
+            var tag = this.tagName.toLowerCase();
+            if (tag !== 'img') return '';
+            return this.getAttribute('alt') || '';
+        },
+        set: function(v) {
+            var tag = this.tagName.toLowerCase();
+            if (tag !== 'img') return;
+            this.setAttribute('alt', String(v));
+        },
+        configurable: true
+    });
+
+    // .width / .height (get/set int) — img only (canvas has its own via instance props)
+    Object.defineProperty(proto, 'width', {
+        get: function() {
+            var tag = this.tagName.toLowerCase();
+            if (tag === 'canvas' || tag === 'video') return this.__elem_width || 0;
+            if (tag !== 'img') return undefined;
+            var raw = this.getAttribute('width');
+            if (raw === null || raw === '') return 0;
+            var parsed = parseInt(raw, 10);
+            return isNaN(parsed) ? 0 : parsed;
+        },
+        set: function(v) {
+            var tag = this.tagName.toLowerCase();
+            if (tag === 'canvas' || tag === 'video') { this.__elem_width = parseInt(v, 10) || 0; return; }
+            if (tag !== 'img') return;
+            var parsed = parseInt(v, 10);
+            this.setAttribute('width', String(isNaN(parsed) ? 0 : parsed));
+        },
+        configurable: true
+    });
+    Object.defineProperty(proto, 'height', {
+        get: function() {
+            var tag = this.tagName.toLowerCase();
+            if (tag === 'canvas' || tag === 'video') return this.__elem_height || 0;
+            if (tag !== 'img') return undefined;
+            var raw = this.getAttribute('height');
+            if (raw === null || raw === '') return 0;
+            var parsed = parseInt(raw, 10);
+            return isNaN(parsed) ? 0 : parsed;
+        },
+        set: function(v) {
+            var tag = this.tagName.toLowerCase();
+            if (tag === 'canvas' || tag === 'video') { this.__elem_height = parseInt(v, 10) || 0; return; }
+            if (tag !== 'img') return;
+            var parsed = parseInt(v, 10);
+            this.setAttribute('height', String(isNaN(parsed) ? 0 : parsed));
+        },
+        configurable: true
+    });
+
+    // .action / .method (get/set string) — form
+    Object.defineProperty(proto, 'action', {
+        get: function() {
+            var tag = this.tagName.toLowerCase();
+            if (tag !== 'form') return '';
+            return this.getAttribute('action') || '';
+        },
+        set: function(v) {
+            var tag = this.tagName.toLowerCase();
+            if (tag !== 'form') return;
+            this.setAttribute('action', String(v));
+        },
+        configurable: true
+    });
+    Object.defineProperty(proto, 'method', {
+        get: function() {
+            var tag = this.tagName.toLowerCase();
+            if (tag !== 'form') return '';
+            return this.getAttribute('method') || '';
+        },
+        set: function(v) {
+            var tag = this.tagName.toLowerCase();
+            if (tag !== 'form') return;
+            this.setAttribute('method', String(v));
         },
         configurable: true
     });

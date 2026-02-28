@@ -6,7 +6,9 @@ extern "C" {
 
 #include <chrono>
 #include <cmath>
+#include <cstdio>
 #include <cstring>
+#include <cctype>
 #include <map>
 #include <mutex>
 #include <string>
@@ -530,48 +532,586 @@ static ParsedURL parse_url(const std::string& url) {
     return result;
 }
 
+static std::string trim_ascii(const std::string& value) {
+    size_t start = 0;
+    while (start < value.size() &&
+           std::isspace(static_cast<unsigned char>(value[start]))) {
+        ++start;
+    }
+    if (start == value.size()) return "";
+
+    size_t end = value.size();
+    while (end > start &&
+           std::isspace(static_cast<unsigned char>(value[end - 1]))) {
+        --end;
+    }
+    return value.substr(start, end - start);
+}
+
+static std::string to_lower_ascii(const std::string& value) {
+    std::string lower = value;
+    for (char& c : lower) {
+        c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    }
+    return lower;
+}
+
+static std::string camel_to_kebab(const std::string& value) {
+    std::string out;
+    out.reserve(value.size() + 4);
+    for (char c : value) {
+        if (c >= 'A' && c <= 'Z') {
+            out.push_back('-');
+            out.push_back(static_cast<char>(c - 'A' + 'a'));
+        } else {
+            out.push_back(c);
+        }
+    }
+    return out;
+}
+
+static std::string kebab_to_camel(const std::string& value) {
+    std::string out;
+    out.reserve(value.size());
+    bool upper = false;
+    for (char c : value) {
+        if (c == '-') {
+            upper = true;
+            continue;
+        }
+        if (upper) {
+            out.push_back(static_cast<char>(std::toupper(static_cast<unsigned char>(c))));
+            upper = false;
+        } else {
+            out.push_back(c);
+        }
+    }
+    return out;
+}
+
+static std::map<std::string, std::string> parse_style_attribute(
+        const std::string& style_text) {
+    std::map<std::string, std::string> props;
+    size_t pos = 0;
+    while (pos < style_text.size()) {
+        size_t colon = style_text.find(':', pos);
+        if (colon == std::string::npos) break;
+
+        size_t semi = style_text.find(';', colon);
+        if (semi == std::string::npos) semi = style_text.size();
+
+        std::string key = trim_ascii(style_text.substr(pos, colon - pos));
+        std::string val = trim_ascii(style_text.substr(colon + 1, semi - colon - 1));
+        if (!key.empty()) props[to_lower_ascii(key)] = val;
+
+        pos = semi + 1;
+    }
+    return props;
+}
+
+static void expand_box_shorthand(std::map<std::string, std::string>& props,
+                                 const char* shorthand,
+                                 const char* top, const char* right,
+                                 const char* bottom, const char* left) {
+    auto it = props.find(shorthand);
+    if (it == props.end()) return;
+
+    const std::string& value = it->second;
+    std::vector<std::string> parts;
+    size_t pos = 0;
+    while (pos < value.size()) {
+        while (pos < value.size() &&
+               std::isspace(static_cast<unsigned char>(value[pos]))) {
+            ++pos;
+        }
+        if (pos >= value.size()) break;
+        size_t end = pos;
+        while (end < value.size() &&
+               !std::isspace(static_cast<unsigned char>(value[end]))) {
+            ++end;
+        }
+        parts.push_back(value.substr(pos, end - pos));
+        pos = end;
+    }
+    if (parts.empty()) return;
+
+    std::string top_v = parts[0];
+    std::string right_v = parts.size() >= 2 ? parts[1] : top_v;
+    std::string bottom_v = parts.size() >= 3 ? parts[2] : top_v;
+    std::string left_v = parts.size() >= 4 ? parts[3] : right_v;
+
+    if (props.find(top) == props.end()) props[top] = top_v;
+    if (props.find(right) == props.end()) props[right] = right_v;
+    if (props.find(bottom) == props.end()) props[bottom] = bottom_v;
+    if (props.find(left) == props.end()) props[left] = left_v;
+}
+
+static bool js_get_number_property(JSContext* ctx, JSValueConst obj,
+                                   const char* name, double* out) {
+    JSValue value = JS_GetPropertyStr(ctx, obj, name);
+    bool ok = false;
+    if (JS_IsNumber(value)) {
+        double number = 0.0;
+        if (JS_ToFloat64(ctx, &number, value) == 0 && std::isfinite(number)) {
+            *out = number;
+            ok = true;
+        }
+    }
+    JS_FreeValue(ctx, value);
+    return ok;
+}
+
+static std::string js_value_to_string(JSContext* ctx, JSValueConst value) {
+    const char* cstr = JS_ToCString(ctx, value);
+    if (!cstr) return "";
+    std::string out(cstr);
+    JS_FreeCString(ctx, cstr);
+    return out;
+}
+
+static std::string format_px(double value) {
+    if (!std::isfinite(value)) return "0px";
+    double rounded = std::round(value);
+    if (std::fabs(value - rounded) < 0.01) {
+        return std::to_string(static_cast<int>(rounded)) + "px";
+    }
+    char buffer[64];
+    std::snprintf(buffer, sizeof(buffer), "%.2fpx", value);
+    return buffer;
+}
+
+static std::string read_element_inline_style(JSContext* ctx, JSValueConst element) {
+    std::string inline_style;
+
+    JSValue get_attribute = JS_GetPropertyStr(ctx, element, "getAttribute");
+    if (JS_IsFunction(ctx, get_attribute)) {
+        JSValue arg = JS_NewString(ctx, "style");
+        JSValue result = JS_Call(ctx, get_attribute, element, 1, &arg);
+        JS_FreeValue(ctx, arg);
+        if (JS_IsException(result)) {
+            JSValue exc = JS_GetException(ctx);
+            JS_FreeValue(ctx, exc);
+        } else if (!JS_IsNull(result) && !JS_IsUndefined(result)) {
+            inline_style = js_value_to_string(ctx, result);
+        }
+        JS_FreeValue(ctx, result);
+    }
+    JS_FreeValue(ctx, get_attribute);
+
+    if (!inline_style.empty()) return inline_style;
+
+    JSValue style_obj = JS_GetPropertyStr(ctx, element, "style");
+    if (JS_IsString(style_obj)) {
+        inline_style = js_value_to_string(ctx, style_obj);
+    } else if (JS_IsObject(style_obj)) {
+        JSValue css_text = JS_GetPropertyStr(ctx, style_obj, "cssText");
+        if (JS_IsString(css_text)) {
+            inline_style = js_value_to_string(ctx, css_text);
+        }
+        JS_FreeValue(ctx, css_text);
+    }
+    JS_FreeValue(ctx, style_obj);
+    return inline_style;
+}
+
+static std::string infer_default_display(JSContext* ctx, JSValueConst element) {
+    JSValue tag = JS_GetPropertyStr(ctx, element, "tagName");
+    std::string tag_name;
+    if (JS_IsString(tag)) {
+        tag_name = to_lower_ascii(js_value_to_string(ctx, tag));
+    }
+    JS_FreeValue(ctx, tag);
+
+    if (tag_name == "span" || tag_name == "a" || tag_name == "em" ||
+        tag_name == "strong" || tag_name == "b" || tag_name == "i" ||
+        tag_name == "u" || tag_name == "small" || tag_name == "label" ||
+        tag_name == "abbr" || tag_name == "code" || tag_name == "img" ||
+        tag_name == "input" || tag_name == "button") {
+        return "inline";
+    }
+    return "block";
+}
+
+static bool read_element_layout_size(JSContext* ctx, JSValueConst element,
+                                     double* out_width, double* out_height) {
+    bool have_width = false;
+    bool have_height = false;
+    double width = 0.0;
+    double height = 0.0;
+
+    JSValue get_rect = JS_GetPropertyStr(ctx, element, "getBoundingClientRect");
+    if (JS_IsFunction(ctx, get_rect)) {
+        JSValue rect = JS_Call(ctx, get_rect, element, 0, nullptr);
+        if (JS_IsException(rect)) {
+            JSValue exc = JS_GetException(ctx);
+            JS_FreeValue(ctx, exc);
+        } else if (JS_IsObject(rect)) {
+            have_width = js_get_number_property(ctx, rect, "width", &width);
+            have_height = js_get_number_property(ctx, rect, "height", &height);
+        }
+        JS_FreeValue(ctx, rect);
+    }
+    JS_FreeValue(ctx, get_rect);
+
+    if (!have_width) have_width = js_get_number_property(ctx, element, "offsetWidth", &width);
+    if (!have_height) have_height = js_get_number_property(ctx, element, "offsetHeight", &height);
+
+    if (have_width) *out_width = width;
+    if (have_height) *out_height = height;
+    return have_width || have_height;
+}
+
+static void set_computed_style_property(JSContext* ctx, JSValue obj,
+                                        const std::string& css_name,
+                                        const std::string& value) {
+    JS_SetPropertyStr(ctx, obj, css_name.c_str(), JS_NewString(ctx, value.c_str()));
+    if (css_name.rfind("--", 0) == 0) return;
+    std::string camel = kebab_to_camel(css_name);
+    if (camel != css_name) {
+        JS_SetPropertyStr(ctx, obj, camel.c_str(), JS_NewString(ctx, value.c_str()));
+    }
+}
+
+static JSValue js_computed_style_get_property_value(JSContext* ctx,
+                                                    JSValueConst this_val,
+                                                    int argc,
+                                                    JSValueConst* argv) {
+    if (argc < 1) return JS_NewString(ctx, "");
+
+    std::string requested = trim_ascii(js_value_to_string(ctx, argv[0]));
+    if (requested.empty()) return JS_NewString(ctx, "");
+
+    std::string normalized = requested;
+    if (normalized == "cssFloat") normalized = "float";
+    normalized = to_lower_ascii(camel_to_kebab(normalized));
+    if (normalized == "css-float") normalized = "float";
+
+    JSValue value = JS_GetPropertyStr(ctx, this_val, normalized.c_str());
+    if (JS_IsUndefined(value)) {
+        JS_FreeValue(ctx, value);
+        value = JS_GetPropertyStr(ctx, this_val, requested.c_str());
+    }
+
+    if (JS_IsUndefined(value) || JS_IsNull(value)) {
+        JS_FreeValue(ctx, value);
+        return JS_NewString(ctx, "");
+    }
+    if (JS_IsString(value)) return value;
+
+    std::string as_string = js_value_to_string(ctx, value);
+    JS_FreeValue(ctx, value);
+    return JS_NewString(ctx, as_string.c_str());
+}
+
 // =========================================================================
-// window.matchMedia(query) -- stub
+// window.getComputedStyle(element [, pseudoElement])
+// =========================================================================
+
+static JSValue js_window_get_computed_style(JSContext* ctx, JSValueConst /*this_val*/,
+                                            int argc, JSValueConst* argv) {
+    if (argc < 1 || !JS_IsObject(argv[0])) return JS_NULL;
+
+    JSValue style_obj = JS_NewObject(ctx);
+    JS_SetPropertyStr(ctx, style_obj, "getPropertyValue",
+        JS_NewCFunction(ctx, js_computed_style_get_property_value, "getPropertyValue", 1));
+    JS_SetPropertyStr(ctx, style_obj, "length", JS_NewInt32(ctx, 0));
+
+    std::map<std::string, std::string> props = parse_style_attribute(
+        read_element_inline_style(ctx, argv[0]));
+    expand_box_shorthand(props, "margin",
+                         "margin-top", "margin-right", "margin-bottom", "margin-left");
+    expand_box_shorthand(props, "padding",
+                         "padding-top", "padding-right", "padding-bottom", "padding-left");
+    expand_box_shorthand(props, "border-width",
+                         "border-top-width", "border-right-width",
+                         "border-bottom-width", "border-left-width");
+
+    std::map<std::string, std::string> computed = props;
+    auto ensure_default = [&computed](const char* key, const char* value) {
+        if (computed.find(key) == computed.end()) computed[key] = value;
+    };
+
+    if (computed.find("display") == computed.end()) {
+        computed["display"] = infer_default_display(ctx, argv[0]);
+    }
+    ensure_default("position", "static");
+    ensure_default("color", "");
+    if (computed.find("background-color") == computed.end()) {
+        auto bg_it = computed.find("background");
+        if (bg_it != computed.end()) {
+            computed["background-color"] = bg_it->second;
+        } else {
+            computed["background-color"] = "rgba(0, 0, 0, 0)";
+        }
+    }
+    ensure_default("font-size", "16px");
+    ensure_default("font-family", "");
+    ensure_default("margin-top", "0px");
+    ensure_default("margin-right", "0px");
+    ensure_default("margin-bottom", "0px");
+    ensure_default("margin-left", "0px");
+    ensure_default("padding-top", "0px");
+    ensure_default("padding-right", "0px");
+    ensure_default("padding-bottom", "0px");
+    ensure_default("padding-left", "0px");
+    ensure_default("border-top-width", "0px");
+    ensure_default("border-right-width", "0px");
+    ensure_default("border-bottom-width", "0px");
+    ensure_default("border-left-width", "0px");
+    ensure_default("border-top-style", "none");
+    ensure_default("border-right-style", "none");
+    ensure_default("border-bottom-style", "none");
+    ensure_default("border-left-style", "none");
+    ensure_default("border-top-color", "currentcolor");
+    ensure_default("border-right-color", "currentcolor");
+    ensure_default("border-bottom-color", "currentcolor");
+    ensure_default("border-left-color", "currentcolor");
+    ensure_default("opacity", "1");
+    ensure_default("visibility", "visible");
+    ensure_default("overflow", "visible");
+    ensure_default("float", "none");
+    ensure_default("clear", "none");
+    ensure_default("z-index", "auto");
+    ensure_default("text-align", "start");
+    ensure_default("line-height", "normal");
+    ensure_default("text-decoration", "none");
+
+    // Only use layout dimensions if width/height are not explicitly set in style.
+    // getBoundingClientRect returns border-box dimensions; getComputedStyle should
+    // return content-box width (without padding/border) for box-sizing: content-box.
+    if (computed.find("width") == computed.end() || computed.find("height") == computed.end()) {
+        double layout_width = 0.0;
+        double layout_height = 0.0;
+        bool has_layout_size = read_element_layout_size(ctx, argv[0], &layout_width, &layout_height);
+        if (has_layout_size) {
+            if (computed.find("width") == computed.end())
+                computed["width"] = format_px(layout_width);
+            if (computed.find("height") == computed.end())
+                computed["height"] = format_px(layout_height);
+        } else {
+            ensure_default("width", "auto");
+            ensure_default("height", "auto");
+        }
+    }
+
+    // Common shorthands frequently read by frameworks.
+    if (computed.find("border-width") == computed.end()) {
+        computed["border-width"] = computed["border-top-width"];
+    }
+    if (computed.find("border-style") == computed.end()) {
+        computed["border-style"] = computed["border-top-style"];
+    }
+    if (computed.find("border-color") == computed.end()) {
+        computed["border-color"] = computed["border-top-color"];
+    }
+    if (computed.find("border") == computed.end()) {
+        computed["border"] = computed["border-width"] + " " +
+                             computed["border-style"] + " " +
+                             computed["border-color"];
+    }
+    if (computed.find("margin") == computed.end()) {
+        computed["margin"] = computed["margin-top"] + " " +
+                             computed["margin-right"] + " " +
+                             computed["margin-bottom"] + " " +
+                             computed["margin-left"];
+    }
+    if (computed.find("padding") == computed.end()) {
+        computed["padding"] = computed["padding-top"] + " " +
+                              computed["padding-right"] + " " +
+                              computed["padding-bottom"] + " " +
+                              computed["padding-left"];
+    }
+
+    for (const auto& [name, value] : computed) {
+        set_computed_style_property(ctx, style_obj, name, value);
+    }
+    return style_obj;
+}
+
+static int read_viewport_dimension(JSContext* ctx, const char* name, int fallback) {
+    JSValue global = JS_GetGlobalObject(ctx);
+    JSValue val = JS_GetPropertyStr(ctx, global, name);
+    int result = fallback;
+    if (JS_IsNumber(val)) {
+        int32_t parsed = 0;
+        if (JS_ToInt32(ctx, &parsed, val) == 0 && parsed > 0) {
+            result = parsed;
+        }
+    }
+    JS_FreeValue(ctx, val);
+    JS_FreeValue(ctx, global);
+    return result;
+}
+
+static bool parse_px_clause_value(const std::string& text, int* out) {
+    std::string value = trim_ascii(text);
+    if (value.size() < 3) return false;
+
+    size_t pos = 0;
+    while (pos < value.size() &&
+           std::isspace(static_cast<unsigned char>(value[pos]))) {
+        ++pos;
+    }
+    if (pos >= value.size() || !std::isdigit(static_cast<unsigned char>(value[pos]))) {
+        return false;
+    }
+
+    int parsed = 0;
+    while (pos < value.size() &&
+           std::isdigit(static_cast<unsigned char>(value[pos]))) {
+        parsed = parsed * 10 + (value[pos] - '0');
+        ++pos;
+    }
+    while (pos < value.size() &&
+           std::isspace(static_cast<unsigned char>(value[pos]))) {
+        ++pos;
+    }
+    if (pos + 1 >= value.size() ||
+        value[pos] != 'p' || value[pos + 1] != 'x') {
+        return false;
+    }
+    *out = parsed;
+    return true;
+}
+
+static bool evaluate_media_clause(const std::string& clause,
+                                  int viewport_width, int viewport_height,
+                                  bool* known_clause) {
+    std::string lower = to_lower_ascii(trim_ascii(clause));
+    *known_clause = true;
+
+    auto colon_pos = lower.find(':');
+    if (colon_pos == std::string::npos) {
+        *known_clause = false;
+        return false;
+    }
+
+    std::string feature = trim_ascii(lower.substr(0, colon_pos));
+    std::string value = trim_ascii(lower.substr(colon_pos + 1));
+
+    if (feature == "prefers-color-scheme") {
+        if (value == "dark") return false;   // assume light mode
+        if (value == "light") return true;
+        *known_clause = false;
+        return false;
+    }
+
+    if (feature == "max-width") {
+        int px = 0;
+        if (!parse_px_clause_value(value, &px)) return false;
+        return viewport_width <= px;
+    }
+
+    if (feature == "min-width") {
+        int px = 0;
+        if (!parse_px_clause_value(value, &px)) return false;
+        return viewport_width >= px;
+    }
+
+    if (feature == "orientation") {
+        if (value == "portrait") return viewport_height >= viewport_width;
+        if (value == "landscape") return viewport_width > viewport_height;
+        *known_clause = false;
+        return false;
+    }
+
+    *known_clause = false;
+    return false;
+}
+
+static bool evaluate_media_group(const std::string& group,
+                                 int viewport_width, int viewport_height,
+                                 bool* known_group) {
+    *known_group = false;
+    bool all_match = true;
+    size_t pos = 0;
+    while (true) {
+        size_t open = group.find('(', pos);
+        if (open == std::string::npos) break;
+        size_t close = group.find(')', open + 1);
+        if (close == std::string::npos) break;
+
+        std::string clause = group.substr(open + 1, close - open - 1);
+        bool known_clause = false;
+        bool clause_match = evaluate_media_clause(
+            clause, viewport_width, viewport_height, &known_clause);
+        if (!known_clause) {
+            *known_group = true;
+            return false;
+        }
+        all_match = all_match && clause_match;
+        *known_group = true;
+        pos = close + 1;
+    }
+
+    // Allow bare feature syntax without parentheses.
+    if (!*known_group) {
+        bool known_clause = false;
+        bool clause_match = evaluate_media_clause(
+            group, viewport_width, viewport_height, &known_clause);
+        *known_group = known_clause;
+        return known_clause ? clause_match : false;
+    }
+
+    return all_match;
+}
+
+static JSValue js_media_query_noop(JSContext* /*ctx*/, JSValueConst /*this_val*/,
+                                   int /*argc*/, JSValueConst* /*argv*/) {
+    return JS_UNDEFINED;
+}
+
+// =========================================================================
+// window.matchMedia(query)
 // =========================================================================
 
 static JSValue js_window_match_media(JSContext* ctx, JSValueConst /*this_val*/,
-                                      int argc, JSValueConst* argv) {
-    // Get the media query string (or empty string)
-    const char* query = "";
+                                     int argc, JSValueConst* argv) {
+    std::string query;
     if (argc >= 1) {
-        query = JS_ToCString(ctx, argv[0]);
-        if (!query) return JS_EXCEPTION;
+        query = js_value_to_string(ctx, argv[0]);
     }
+
+    int viewport_width = read_viewport_dimension(ctx, "innerWidth", 1024);
+    int viewport_height = read_viewport_dimension(ctx, "innerHeight", 768);
+
+    bool matches = false;
+    bool found_known_group = false;
+    size_t pos = 0;
+    while (true) {
+        size_t comma = query.find(',', pos);
+        std::string group = (comma == std::string::npos)
+            ? query.substr(pos)
+            : query.substr(pos, comma - pos);
+        bool known_group = false;
+        bool group_match = evaluate_media_group(
+            group, viewport_width, viewport_height, &known_group);
+        if (known_group) {
+            found_known_group = true;
+            if (group_match) {
+                matches = true;
+                break;
+            }
+        }
+        if (comma == std::string::npos) break;
+        pos = comma + 1;
+    }
+    if (!found_known_group) matches = false;
 
     JSValue result = JS_NewObject(ctx);
-    JS_SetPropertyStr(ctx, result, "matches", JS_FALSE);
-    JS_SetPropertyStr(ctx, result, "media", JS_NewString(ctx, query));
-
-    if (argc >= 1) {
-        JS_FreeCString(ctx, query);
-    }
-
-    // Install stub addEventListener/removeEventListener via eval
-    // (easiest way to attach JS functions to a C-created object)
-    const char* stub_setup = R"JS(
-(function(obj) {
-    obj.addEventListener = function() {};
-    obj.removeEventListener = function() {};
-    obj.addListener = function() {};
-    obj.removeListener = function() {};
-    obj.onchange = null;
-    return obj;
-})
-)JS";
-    JSValue fn = JS_Eval(ctx, stub_setup, std::strlen(stub_setup),
-                          "<matchMedia-setup>", JS_EVAL_TYPE_GLOBAL);
-    if (!JS_IsException(fn)) {
-        JSValue wrapped = JS_Call(ctx, fn, JS_UNDEFINED, 1, &result);
-        JS_FreeValue(ctx, result);
-        JS_FreeValue(ctx, fn);
-        return wrapped;
-    }
-    JS_FreeValue(ctx, fn);
+    JS_SetPropertyStr(ctx, result, "matches", matches ? JS_TRUE : JS_FALSE);
+    JS_SetPropertyStr(ctx, result, "media", JS_NewString(ctx, query.c_str()));
+    JS_SetPropertyStr(ctx, result, "onchange", JS_NULL);
+    JS_SetPropertyStr(ctx, result, "addListener",
+        JS_NewCFunction(ctx, js_media_query_noop, "addListener", 1));
+    JS_SetPropertyStr(ctx, result, "removeListener",
+        JS_NewCFunction(ctx, js_media_query_noop, "removeListener", 1));
+    JS_SetPropertyStr(ctx, result, "addEventListener",
+        JS_NewCFunction(ctx, js_media_query_noop, "addEventListener", 2));
+    JS_SetPropertyStr(ctx, result, "removeEventListener",
+        JS_NewCFunction(ctx, js_media_query_noop, "removeEventListener", 2));
+    JS_SetPropertyStr(ctx, result, "dispatchEvent",
+        JS_NewCFunction(ctx, js_media_query_noop, "dispatchEvent", 1));
     return result;
 }
 
@@ -2052,6 +2592,10 @@ void install_window_bindings(JSContext* ctx, const std::string& url,
     // ---- matchMedia ----
     JS_SetPropertyStr(ctx, global, "matchMedia",
         JS_NewCFunction(ctx, js_window_match_media, "matchMedia", 1));
+
+    // ---- getComputedStyle ----
+    JS_SetPropertyStr(ctx, global, "getComputedStyle",
+        JS_NewCFunction(ctx, js_window_get_computed_style, "getComputedStyle", 2));
 
     // ---- queueMicrotask ----
     JS_SetPropertyStr(ctx, global, "queueMicrotask",

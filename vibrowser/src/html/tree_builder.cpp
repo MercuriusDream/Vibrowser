@@ -48,6 +48,19 @@ static const std::unordered_set<std::string>& special_elements() {
     return s;
 }
 
+static bool is_phrasing_element_tag(const std::string& tag) {
+    static const std::unordered_set<std::string> s = {
+        "a", "abbr", "area", "audio", "b", "bdi", "bdo", "br", "button",
+        "canvas", "cite", "code", "data", "datalist", "del", "dfn", "em",
+        "embed", "font", "i", "iframe", "img", "input", "ins", "kbd",
+        "label", "link", "map", "mark", "meta", "meter", "nobr", "noscript",
+        "object", "output", "picture", "progress", "q", "ruby", "s", "samp",
+        "script", "select", "slot", "small", "span", "strike", "strong",
+        "sub", "sup", "textarea", "time", "tt", "u", "var", "video", "wbr"
+    };
+    return s.count(tag) > 0;
+}
+
 // Elements that implicitly close a <p> when encountered as a start tag
 static bool closes_p(const std::string& tag) {
     static const std::unordered_set<std::string> s = {
@@ -459,11 +472,11 @@ void TreeBuilder::run_adoption_agency(const std::string& tag) {
     }
 
     // Step 5: Find the furthest block -- the topmost element in the stack
-    // after the formatting element that is a "special" element.
+    // after the formatting element that is not phrasing content.
     SimpleNode* furthest_block = nullptr;
     int fb_stack_idx = -1;
-    for (int i = fe_stack_idx + 1; i < static_cast<int>(open_elements_.size()); ++i) {
-        if (is_special_element(open_elements_[i]->tag_name)) {
+    for (int i = static_cast<int>(open_elements_.size()) - 1; i > fe_stack_idx; --i) {
+        if (!is_phrasing_element_tag(open_elements_[i]->tag_name)) {
             furthest_block = open_elements_[i];
             fb_stack_idx = i;
             break;
@@ -634,6 +647,8 @@ void TreeBuilder::run_adoption_agency(const std::string& tag) {
 
         // Step 7.17: Remove the formatting element from the stack
         // and insert the new element immediately below furthest_block.
+        // open_elements_ is ordered from root -> current node, so "below"
+        // means before furthest_block in this vector.
         {
             auto it = std::find(open_elements_.begin(), open_elements_.end(),
                                 formatting_element);
@@ -645,7 +660,7 @@ void TreeBuilder::run_adoption_agency(const std::string& tag) {
             auto it = std::find(open_elements_.begin(), open_elements_.end(),
                                 furthest_block);
             if (it != open_elements_.end()) {
-                open_elements_.insert(it + 1, new_element_raw);
+                open_elements_.insert(it, new_element_raw);
             }
         }
 

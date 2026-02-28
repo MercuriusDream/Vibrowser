@@ -9,8 +9,11 @@ namespace clever::css {
 // Supports: "odd", "even", "3", "2n", "2n+1", "-n+3", "n", etc.
 static bool parse_an_plus_b(const std::string& arg, int& a, int& b) {
     std::string s;
+    s.reserve(arg.size());
     for (char c : arg) {
-        if (c != ' ') s += c;
+        if (!std::isspace(static_cast<unsigned char>(c))) {
+            s += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        }
     }
     if (s.empty()) return false;
 
@@ -60,14 +63,71 @@ static bool parse_an_plus_b(const std::string& arg, int& a, int& b) {
 
 // Check if position (1-based) matches an+b expression
 static bool matches_an_plus_b(int a, int b, int position) {
+    if (position <= 0) return false;
+
     if (a == 0) {
         return position == b;
     }
-    // position = a*n + b  =>  n = (position - b) / a
+
+    // position = a*n + b with n >= 0
     int diff = position - b;
-    if (diff == 0) return true;
-    if ((diff > 0) != (a > 0)) return false;
-    return diff % a == 0;
+    if (a > 0 && diff < 0) return false;
+    if (a < 0 && diff > 0) return false;
+    if (diff % a != 0) return false;
+
+    int n = diff / a;
+    return n >= 0;
+}
+
+static bool is_link_with_href(const ElementView& element) {
+    if (element.tag_name != "a" && element.tag_name != "area" && element.tag_name != "link") {
+        return false;
+    }
+    for (const auto& [n, v] : element.attributes) {
+        if (n == "href") {
+            return true;
+        }
+    }
+    return false;
+}
+
+// Computes 1-based position among siblings of the same tag and total count.
+// Returns false when sibling data is unavailable.
+static bool compute_same_type_position(const ElementView& element, int& position, int& total) {
+    if (element.same_type_count > 0) {
+        position = static_cast<int>(element.same_type_index) + 1;
+        total = static_cast<int>(element.same_type_count);
+        return true;
+    }
+
+    if (element.parent && !element.parent->children.empty()) {
+        int index = 0;
+        int count = 0;
+        bool found = false;
+        for (const auto* child : element.parent->children) {
+            if (!child || child->tag_name != element.tag_name) continue;
+            ++count;
+            if (child == &element) {
+                index = count;
+                found = true;
+            }
+        }
+        if (!found || count == 0) return false;
+        position = index;
+        total = count;
+        return true;
+    }
+
+    // Last fallback: derive forward position from previous siblings only.
+    int index = 1;
+    const ElementView* sib = element.prev_sibling;
+    while (sib) {
+        if (sib->tag_name == element.tag_name) ++index;
+        sib = sib->prev_sibling;
+    }
+    position = index;
+    total = index; // Lower bound only; callers needing total should treat this as unknown.
+    return false;
 }
 
 bool SelectorMatcher::matches(const ElementView& element, const ComplexSelector& selector) const {
@@ -209,11 +269,22 @@ bool SelectorMatcher::matches_simple(const ElementView& element, const SimpleSel
                                 val.substr(0, simple.attr_value.length()) == simple.attr_value &&
                                 val[simple.attr_value.length()] == '-');
                     case AttributeMatch::Prefix:
-                        return val.substr(0, simple.attr_value.length()) == simple.attr_value;
+                        if (simple.attr_value.empty() || val.length() < simple.attr_value.length()) {
+                            return false;
+                        }
+                        return val.compare(0, simple.attr_value.length(), simple.attr_value) == 0;
                     case AttributeMatch::Suffix:
-                        return val.length() >= simple.attr_value.length() &&
-                               val.substr(val.length() - simple.attr_value.length()) == simple.attr_value;
+                        if (simple.attr_value.empty() || val.length() < simple.attr_value.length()) {
+                            return false;
+                        }
+                        return val.compare(
+                                   val.length() - simple.attr_value.length(),
+                                   simple.attr_value.length(),
+                                   simple.attr_value) == 0;
                     case AttributeMatch::Substring:
+                        if (simple.attr_value.empty()) {
+                            return false;
+                        }
                         return val.find(simple.attr_value) != std::string::npos;
                 }
             }
@@ -224,16 +295,52 @@ bool SelectorMatcher::matches_simple(const ElementView& element, const SimpleSel
         case SimpleSelectorType::PseudoClass: {
             const auto& name = simple.value;
             if (name == "first-child") {
-                return element.child_index == 0;
+                if (element.sibling_count > 0 && element.child_index < element.sibling_count) {
+                    return element.child_index == 0;
+                }
+                if (element.parent && !element.parent->children.empty()) {
+                    return element.parent->children.front() == &element;
+                }
+                return element.parent != nullptr && element.prev_sibling == nullptr;
             } else if (name == "last-child") {
-                return element.sibling_count > 0 && element.child_index == element.sibling_count - 1;
+                if (element.sibling_count > 0 && element.child_index < element.sibling_count) {
+                    return element.child_index == element.sibling_count - 1;
+                }
+                if (element.parent && !element.parent->children.empty()) {
+                    return element.parent->children.back() == &element;
+                }
+                return false;
             } else if (name == "only-child") {
-                return element.sibling_count == 1;
+                if (element.sibling_count > 0) {
+                    return element.sibling_count == 1;
+                }
+                if (element.parent && !element.parent->children.empty()) {
+                    return element.parent->children.size() == 1 &&
+                           element.parent->children.front() == &element;
+                }
+                return false;
             } else if (name == "empty") {
-                return element.child_element_count == 0 && !element.has_text_children;
-            } else if (name == "root" || name == "scope") {
+                if (element.child_element_count > 0 || !element.children.empty()) {
+                    return false;
+                }
+                return !element.has_text_children;
+            } else if (name == "root") {
+                if (element.parent != nullptr) return false;
+                std::string tag = element.tag_name;
+                std::transform(
+                    tag.begin(),
+                    tag.end(),
+                    tag.begin(),
+                    [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+                return tag == "html";
+            } else if (name == "scope") {
                 return element.parent == nullptr;
             } else if (name == "first-of-type") {
+                int position = 0;
+                int total = 0;
+                if (compute_same_type_position(element, position, total)) {
+                    return position == 1;
+                }
                 if (element.same_type_count > 0) {
                     return element.same_type_index == 0;
                 }
@@ -245,21 +352,61 @@ bool SelectorMatcher::matches_simple(const ElementView& element, const SimpleSel
                 }
                 return true;
             } else if (name == "last-of-type") {
-                if (element.same_type_count > 0) {
-                    return element.same_type_index == element.same_type_count - 1;
+                int position = 0;
+                int total = 0;
+                if (!compute_same_type_position(element, position, total)) {
+                    return false;
                 }
-                // Without pre-computed data, can only be sure if last child
-                return element.sibling_count > 0 &&
-                       element.child_index == element.sibling_count - 1;
+                return position == total;
             } else if (name == "nth-child") {
                 int a = 0, b = 0;
                 if (!parse_an_plus_b(simple.argument, a, b)) return false;
-                int position = static_cast<int>(element.child_index) + 1; // 1-based
+                int position = 0;
+                if (element.sibling_count > 0 && element.child_index < element.sibling_count) {
+                    position = static_cast<int>(element.child_index) + 1;
+                } else if (element.parent && !element.parent->children.empty()) {
+                    bool found = false;
+                    int idx = 0;
+                    for (const auto* child : element.parent->children) {
+                        if (!child) continue;
+                        ++idx;
+                        if (child == &element) {
+                            position = idx;
+                            found = true;
+                            break;
+                        }
+                    }
+                    if (!found) return false;
+                } else {
+                    // Last fallback: infer from previous siblings only.
+                    position = 1;
+                    const ElementView* sib = element.prev_sibling;
+                    while (sib) {
+                        ++position;
+                        sib = sib->prev_sibling;
+                    }
+                }
                 return matches_an_plus_b(a, b, position);
             } else if (name == "nth-last-child") {
                 int a = 0, b = 0;
                 if (!parse_an_plus_b(simple.argument, a, b)) return false;
-                int position = static_cast<int>(element.sibling_count - element.child_index); // 1-based from end
+                int position = 0;
+                if (element.sibling_count > 0 && element.child_index < element.sibling_count) {
+                    position = static_cast<int>(element.sibling_count - element.child_index);
+                } else if (element.parent && !element.parent->children.empty()) {
+                    bool found = false;
+                    size_t idx = 0;
+                    for (; idx < element.parent->children.size(); ++idx) {
+                        if (element.parent->children[idx] == &element) {
+                            found = true;
+                            break;
+                        }
+                    }
+                    if (!found) return false;
+                    position = static_cast<int>(element.parent->children.size() - idx);
+                } else {
+                    return false;
+                }
                 return matches_an_plus_b(a, b, position);
             } else if (name == "not") {
                 // Parse the argument as a selector and check it does NOT match
@@ -279,12 +426,13 @@ bool SelectorMatcher::matches_simple(const ElementView& element, const SimpleSel
             } else if (name == "nth-of-type") {
                 int a = 0, b = 0;
                 if (!parse_an_plus_b(simple.argument, a, b)) return false;
-                if (element.same_type_count > 0) {
-                    int position = static_cast<int>(element.same_type_index) + 1;
+                int position = 0;
+                int total = 0;
+                if (compute_same_type_position(element, position, total)) {
                     return matches_an_plus_b(a, b, position);
                 }
                 // Fallback: walk prev_sibling
-                int position = 1;
+                position = 1;
                 const ElementView* sib = element.prev_sibling;
                 while (sib) {
                     if (sib->tag_name == element.tag_name) position++;
@@ -294,29 +442,19 @@ bool SelectorMatcher::matches_simple(const ElementView& element, const SimpleSel
             } else if (name == "nth-last-of-type") {
                 int a = 0, b = 0;
                 if (!parse_an_plus_b(simple.argument, a, b)) return false;
-                if (element.same_type_count > 0) {
-                    int position = static_cast<int>(element.same_type_count - element.same_type_index);
-                    return matches_an_plus_b(a, b, position);
+                int position = 0;
+                int total = 0;
+                if (!compute_same_type_position(element, position, total)) {
+                    return false;
                 }
-                // Without pre-computed data, conservative: only handle last-child case
-                if (element.sibling_count > 0 && element.child_index == element.sibling_count - 1) {
-                    return matches_an_plus_b(a, b, 1);
-                }
-                return false;
+                return matches_an_plus_b(a, b, total - position + 1);
             } else if (name == "only-of-type") {
-                if (element.same_type_count > 0) {
-                    return element.same_type_count == 1;
+                int position = 0;
+                int total = 0;
+                if (!compute_same_type_position(element, position, total)) {
+                    return false;
                 }
-                // Fallback: check prev_sibling only, conservative
-                const ElementView* sib = element.prev_sibling;
-                while (sib) {
-                    if (sib->tag_name == element.tag_name) return false;
-                    sib = sib->prev_sibling;
-                }
-                if (element.sibling_count > 0 && element.child_index == element.sibling_count - 1) {
-                    return true;
-                }
-                return false;
+                return total == 1;
             } else if (name == "has") {
                 // :has() — match if ANY child/descendant matches the argument selector
                 auto inner_list = parse_selector_list(simple.argument);
@@ -410,11 +548,7 @@ bool SelectorMatcher::matches_simple(const ElementView& element, const SimpleSel
                 return false;
             } else if (name == "link" || name == "any-link") {
                 // :any-link matches <a>, <area>, <link> with href attribute
-                if (element.tag_name != "a" && element.tag_name != "area" && element.tag_name != "link") return false;
-                for (const auto& [n, v] : element.attributes) {
-                    if (n == "href") return true;
-                }
-                return false;
+                return is_link_with_href(element);
             } else if (name == "defined") {
                 // :defined — all standard HTML elements are defined
                 return true;
@@ -462,8 +596,9 @@ bool SelectorMatcher::matches_simple(const ElementView& element, const SimpleSel
                 // Active pseudo-class not yet tracked.
                 return false;
             } else if (name == "visited") {
-                // Privacy-preserving fallback until visited state is explicitly tracked.
-                return false;
+                // Privacy-preserving fallback: until visited-state tracking exists,
+                // treat :visited as :link to preserve selector compatibility.
+                return is_link_with_href(element);
             } else if (name == "indeterminate") {
                 // :indeterminate — matches checkbox/radio in indeterminate state
                 // Without runtime state, always false

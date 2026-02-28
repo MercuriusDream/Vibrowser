@@ -1,8 +1,35 @@
 #include <clever/css/parser/selector.h>
 #include <clever/css/parser/tokenizer.h>
 #include <algorithm>
+#include <cctype>
 
 namespace clever::css {
+
+namespace {
+
+std::string ascii_lower(std::string value) {
+    std::transform(
+        value.begin(),
+        value.end(),
+        value.begin(),
+        [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    return value;
+}
+
+Specificity max_specificity_in_list(const SelectorList& list) {
+    Specificity max_spec;
+    bool has_value = false;
+    for (const auto& selector : list.selectors) {
+        Specificity current = compute_specificity(selector);
+        if (!has_value || max_spec < current) {
+            max_spec = current;
+            has_value = true;
+        }
+    }
+    return max_spec;
+}
+
+} // namespace
 
 // ---------------------------------------------------------------------------
 // Specificity
@@ -31,8 +58,22 @@ Specificity compute_specificity(const ComplexSelector& selector) {
                     spec.b++;
                     break;
                 case SimpleSelectorType::PseudoClass:
-                    // :where() has 0 specificity per CSS Selectors Level 4
-                    if (ss.value != "where") {
+                    // :where() contributes 0.
+                    // :is()/:not() and aliases contribute their argument specificity.
+                    {
+                        const std::string pseudo = ascii_lower(ss.value);
+                        if (pseudo == "where") {
+                            break;
+                        }
+                        if (pseudo == "is" || pseudo == "not" ||
+                            pseudo == "matches" || pseudo == "-webkit-any") {
+                            Specificity inner = max_specificity_in_list(
+                                parse_selector_list(ss.argument));
+                            spec.a += inner.a;
+                            spec.b += inner.b;
+                            spec.c += inner.c;
+                            break;
+                        }
                         spec.b++;
                     }
                     break;

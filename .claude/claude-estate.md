@@ -6,11 +6,11 @@
 ## Current Status
 
 **Phase**: Active Development — Feature Implementation (Full Web Engine Roadmap)
-**Last Active**: 2026-02-28
+**Last Active**: 2026-03-01
 **Current Focus**: Implementing real browser features from comprehensive audit roadmap
-**Momentum**: Cycle 2418+ — Transitioning from testing (21,287 tests) to feature implementation
-**Cycle**: 2418
-**Workflow**: Multi-phase feature implementation. Launch 6 Opus subagents + 6 Codex agents in parallel to implement features across all subsystems simultaneously. Commit and push after each implementation round.
+**Momentum**: Cycle 2425 — Round 5 complete (10 Codex agents), all tests passing, P0 centering bugs added
+**Cycle**: 2425
+**Workflow**: Multi-phase feature implementation. Use 10 Codex agents in parallel. Commit and push after each implementation round.
 
 ## Implementation Roadmap
 
@@ -24,9 +24,62 @@
 
 ### Phase 2 — "Make real sites look right"
 7. [ ] Stacking contexts + z-index — parsed/stored but never used in paint ordering
-8. [ ] Overflow + scrolling — parsed but not implemented, no scroll containers
+8. [x] Overflow + scrolling — scroll containers, clip, proportional scrollbar thumbs (Round 3)
 9. [ ] CSS Grid layout algorithm — properties parsed as strings, no layout algorithm
-10. [ ] BFC + margin collapsing — no BFC establishment, floats leak
+10. [x] BFC + margin collapsing — flow-root, negative margins, mixed cases (Round 3)
+
+### Bug Fixes (User-reported)
+- [x] Fix Google rendering left-aligned layout — ROOT CAUSE: mixed block/inline context lost text-align center (ea81bd6)
+- [x] Fix centering: webkit-center (text_align==4) handled same as center in position_inline_children (ea81bd6)
+- [x] Fix centering: <center> margin check relaxed from ==0 to !=-1 (ea81bd6)
+- [ ] Fix weird screen resolution issues — partially done (DPR param + backingScaleFactor + meta viewport in Round 4), needs visual verification
+
+### P0 — Centering Bugs (User Root-Cause Analysis)
+
+#### P0-1: Mixed block/inline container skips text-align offset in block flow
+- **Root cause**: Block-flow path selected when children are mixed (layout_engine.cpp:522-533). Inline-like children positioned left only. Centering/right offset NOT applied in block positioning (layout_engine.cpp:1201, see also 1199-1218).
+- **Effect**: `text-align:center` ignored when block + inline-like siblings coexist.
+- **Status**: [ ] PRIMARY CULPRIT — strongest evidence
+
+#### P0-2: Legacy `<center>` requires exact zero margins for auto-centering
+- **Root cause**: Auto-centering condition at render_pipeline.cpp:10641 only triggers when child margins are explicitly non-zero (defaults usually zero).
+- **Effect**: `<center>` fails to center children with explicitly non-zero margins.
+- **Status**: [ ] SECONDARY — conditional/edge
+
+#### P0-3: -webkit-center fallthrough (weak)
+- **Root cause**: Normalized to `center` during style resolution (render_pipeline.cpp:7092, 10651). Layout does not depend on distinct handling in layout_engine.cpp:2053.
+- **Status**: [ ] WEAK — unlikely primary issue
+
+#### P0-4: Negative margins collide with auto-margin sentinel
+- **Root cause**: Auto detected via `margin < 0` (layout_engine.cpp:470, 940, 2397). Auto encoded as -1 (render_pipeline.cpp:10041). Negative gutters misinterpreted as auto-centering.
+- **Effect**: Elements with negative margins get incorrectly auto-centered.
+- **Status**: [ ] RELATED — separate issue
+
+### Rendering Issue Mitigations (Comprehensive Diagnosis)
+
+#### CRITICAL — Table Width (Landing Page Tables Narrow)
+- [ ] **Table column width distribution** — layout_engine.cpp:3929-3948: Auto table layout determines column widths via intrinsic measurement (measure_intrinsic_width), so ALL columns get explicit widths and auto_cols==0. Remaining space (available_for_cols - used_width) is NEVER distributed. Fix: after line 3948, proportionally expand all columns to fill available_for_cols when table has explicit width (specified_width >= 0).
+- [ ] **Table cell percentage width resolution** — layout_engine.cpp:3901-3905: Cell specified_width may be bogus (resolved against font-size not container). The css_width fallback at line 3904 is correct but only triggers if specified_width < 0. Fix: check css_width FIRST for table cells.
+
+#### HIGH — Layout Correctness
+- [ ] **Anonymous block boxes** — layout_engine.cpp:522-534: When block container has mixed inline+block children, ALL go through position_block_children. Per CSS 2.1 §9.2.1.1, inline children should be wrapped in anonymous block boxes. Current workaround (centering fix) handles centering but not proper inline formatting context.
+- [ ] **Form element default sizing** — render_pipeline.cpp: <form> should be display:block width:100%. <input> needs default width (~150px for text, varies by type). <select>, <textarea> need default dimensions. Currently they may shrink-wrap to zero.
+- [ ] **CSS display:table on non-table elements** — render_pipeline.cpp/layout_engine.cpp: Only actual <table> elements get LayoutMode::Table. Elements with CSS `display: table` don't. Same for display:table-row, table-cell.
+- [ ] **Flex percentage children** — layout_engine.cpp: Flex items with percentage widths may not resolve correctly. Need to use flex container's content width as containing block for percentage resolution.
+- [ ] **Table cell vertical alignment** — layout_engine.cpp: vertical-align: middle/bottom in table cells — cells are positioned at top only, no middle/bottom offset.
+
+#### MEDIUM — CSS Application
+- [ ] **User-Agent string** — request.cpp: Sites like Google sniff UA and may send simplified/noscript HTML. Need a realistic Chromium-like UA string so sites send full modern HTML.
+- [ ] **CSS external stylesheet fetching** — render_pipeline.cpp: <link rel="stylesheet" href="..."> may not fetch/parse/apply external CSS correctly for all sites. Verify fetch + parse + cascade integration.
+- [ ] **CSS !important overrides** — style_resolver.cpp: Verify !important declarations win over normal declarations in cascade. Sites use !important extensively.
+- [ ] **CSS shorthand property decomposition** — style_resolver.cpp: Shorthand properties (margin, padding, border, background, font) must decompose into longhands before cascade. Partial decomposition may cause missing properties.
+- [ ] **CSS inherit/initial keywords** — style_resolver.cpp: color: inherit, display: initial, etc. — verify these resolve correctly through the cascade.
+
+#### LOW — Paint/Rendering Polish
+- [ ] **Whitespace collapsing between inline elements** — layout_engine.cpp/render_pipeline.cpp: Sequences of whitespace should collapse to single space per CSS white-space property. May affect text layout width.
+- [ ] **Line-height in table cells** — layout_engine.cpp: Table cells may not inherit or compute line-height correctly, affecting vertical spacing.
+- [ ] **Border-collapse table painting** — painter.cpp: When border-collapse is active, shared borders between cells should merge. Currently may double-render.
+- [ ] **Background-clip/origin in table cells** — painter.cpp: Background painting in table cells may not respect padding-box vs content-box clipping.
 
 ### Phase 3 — "Make real sites interactive"
 11. [ ] Event default actions — bubbling works but click on <a> doesn't navigate
@@ -49,11 +102,70 @@
 
 ## Session Log
 
-### Cycle 2418+ (Feature Implementation Round 1) — 2026-02-28
+### Cycle 2425 (Feature Implementation Round 5) — 2026-03-01
 
-- **Theme**: Full Web Engine — Phase 1 Quick Wins (all in parallel)
-- **Agents**: 6 Opus subagents implementing features simultaneously
-- **Targets**: HTTP keep-alive, parallel fetching, text decorations, text shadows, entity table, JS URL/TextEncoder
+- **Theme**: 10 Codex agents — table layout, form defaults, CSS shorthands, text decoration, selectors, adoption agency, entities, typed elements, getComputedStyle, ConnectionPool
+- **Agents**: 10 Codex agents (gpt-5.3-codex, reasoning: high)
+- **Features Implemented**:
+  - Table column width distribution — proportional expansion of non-explicit columns
+  - Form element defaults — input/textarea/select/button sizing, display:table mapping
+  - CSS shorthand decomposition — text-decoration, font, border, background, list-style, outline, overflow, transition, animation
+  - Text decoration rendering — underline/overline/line-through with offset and position support
+  - CSS selector matching improvements — :nth-child, :nth-of-type, :only-child, :empty, :root, specificity
+  - Adoption agency algorithm — HTML parser misnested formatting element recovery
+  - HTML entity table expansion — 122 new named character references (253→375 total)
+  - Typed HTML element properties — img width/height, input value/type/checked, contentEditable
+  - getComputedStyle + matchMedia — computed style from layout tree, media query evaluation
+  - ConnectionPool wiring — HTTP keep-alive connection reuse
+- **Bug Fixes**: 9 test failures fixed (contentEditable getter, matchMedia test, canvas width/height conflict, getComputedStyle border-box, table column expansion scope, 3 underline test Y-coordinates)
+- **Validation**: 13/13 suites pass, 0 failures
+- **P0 centering bugs added to TODO**: mixed block/inline text-align, <center> margin check, -webkit-center, negative margin sentinel
+
+### Cycle 2422 (Feature Implementation Round 4) — 2026-03-01
+
+- **Theme**: 10 Codex agents — viewport, positioning, tokenizer, tree builder, DOM API, style
+- **Agents**: 10 Codex agents (gpt-5.3-codex, reasoning: high)
+- **Files**: 13 files changed, +1,511/-517 lines
+- **Features Implemented**:
+  - Implicit end tag closures centralized (p/li/dd/dt/option auto-close)
+  - devicePixelRatio parameterized from NSScreen.backingScaleFactor
+  - cloneNode iterative DFS, contains() iterative, scrollIntoView stub
+  - position:fixed separated from absolute (viewport-relative)
+  - Empty block margin collapsing (top+bottom collapse to single margin)
+  - Meta viewport tag parsing (width, initial-scale, user-scalable, min/max-scale)
+  - Outline-offset rendering in painter
+  - backingScaleFactor query from NSScreen
+  - scrollWheel event handling in render_view.mm
+  - CDATA section tokenizer state for SVG/MathML
+  - display:contents + inline-flex/inline-grid in style_resolver
+  - Grid gap field fallback (column_gap -> column_gap_val, row_gap -> gap)
+- **Validation**: 13/13 suites pass, 0 failures
+- **Commit**: fba7093 pushed to main
+
+### Cycle 2421 (Feature Implementation Round 3) — 2026-03-01
+
+- **Theme**: MouseEvent, scroll containers, BFC, innerHTML fix
+- **Agents**: 6 Opus subagents (last round before switching to Codex)
+- **Files**: 17 files changed, +1,170/-98 lines
+- **Features Implemented**:
+  - W3C MouseEvent class (coordinates, buttons, modifiers, related target)
+  - Scroll container tracking (scroll_top/left, content dimensions)
+  - BFC establishment for display: flow-root, full margin collapsing
+  - innerHTML getter recursive serialization via serialize_node()
+  - Proportional scrollbar thumbs (content-to-viewport ratio)
+  - Mouse event attributes (mousemove, mouseenter, mouseleave, dblclick, contextmenu)
+  - DOMRect.toJSON() for spec-compliant serialization
+  - Browser window mouse event dispatch
+  - History API fix (length, state getters)
+  - Body clientWidth viewport-width behavior
+- **Validation**: 13/13 suites pass, 0 failures
+- **Bug Fixes**: 2 JS test failures fixed (history API, body.clientWidth)
+
+### Cycle 2418+ (Feature Implementation Rounds 1-2) — 2026-02-28
+
+- **Theme**: Full Web Engine — Phase 1 Quick Wins + Phase 2 visual (all in parallel)
+- **Agents**: 6 Opus subagents per round implementing features simultaneously
+- **Targets**: HTTP keep-alive, parallel fetching, text decorations, text shadows, entity table, JS URL/TextEncoder, keyboard events
 
 ### Cycle 2409-2417 (Round 180) — 2026-02-28
 
@@ -9322,3 +9434,31 @@ Cycle 37: CSS @media runtime evaluation, SVG `<text>` rendering, `<input type="c
 
 ---
 *Claude Estate — no end condition. Only more work.*
+
+## Codex Estate Incremental Log
+
+### Cycle 915 — 2026-02-28
+- Work focus: Broken/incomplete request URL fallback parsing safety.
+- Shipped code:
+  - `vibrowser/src/net/request.cpp`: hardened fallback explicit-port parsing in `Request::parse_url()`.
+  - Replaced unchecked `std::stoi` with guarded `std::stoul` parsing, full-consumption check, and `1..65535` range gate fallback behavior.
+  - Malformed/overflow explicit ports now fail closed to scheme default port instead of throwing.
+- Shipped tests:
+  - `vibrowser/tests/unit/http_client_test.cpp`
+  - Added `RequestTest.ParseUrlInvalidExplicitPortFallsBackToDefault`.
+  - Added `RequestTest.ParseUrlOutOfRangePortFallsBackToDefault`.
+- Full validation run:
+  - Executed in active CMake project root: `cd vibrowser && cmake -S . -B build && cmake --build build && ctest --test-dir build`.
+  - Result: configure/build success, `13/13` test suites passed, `0` failures.
+- Statistics update (this cycle):
+  - Files modified: 2
+  - Tests added: 2
+  - Full-suite test failures: 0
+
+### Tell The Next Claude
+- The root-level `/Users/seong-useog/vibrowser/build` cache currently points at a different source tree and fails `cmake -S . -B build` from repo root unless cleaned.
+- For the browser engine work, run the required full command from `/Users/seong-useog/vibrowser/vibrowser`.
+- High-value next target: continue request/response hardening around malformed header token parsing and fail-closed behavior with focused net tests.
+
+### Tell The Next Codex
+- `.codex/codex-estate.md` is write-blocked in this runtime (`operation not permitted`), so Cycle 915 is recorded in `.claude/claude-estate.md` as source of truth for sync-forward.

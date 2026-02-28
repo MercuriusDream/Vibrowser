@@ -3926,6 +3926,27 @@ void LayoutEngine::layout_table(LayoutNode& node, float containing_width) {
         }
     }
 
+    // Track which columns have explicit cell widths vs intrinsic (auto) widths.
+    // We need this to decide which columns to expand when filling the table width.
+    std::vector<bool> col_has_explicit_width(static_cast<size_t>(num_cols), false);
+    if (!is_fixed_layout) {
+        for (auto* row : rows) {
+            int col_idx = 0;
+            for (auto& cell : row->children) {
+                if (cell->display == DisplayType::None || cell->mode == LayoutMode::None) continue;
+                if (cell->position_type == 2 || cell->position_type == 3) continue;
+                if (!is_table_cell(cell->tag_name)) continue;
+                int span = cell->colspan;
+                if (span < 1) span = 1;
+                if (span == 1 && col_idx < num_cols &&
+                    (cell->specified_width >= 0 || cell->css_width.has_value())) {
+                    col_has_explicit_width[static_cast<size_t>(col_idx)] = true;
+                }
+                col_idx += span;
+            }
+        }
+    }
+
     // Distribute remaining space to auto columns equally
     float used_width = 0;
     int auto_cols = 0;
@@ -3944,6 +3965,50 @@ void LayoutEngine::layout_table(LayoutNode& node, float containing_width) {
     for (int i = 0; i < num_cols; i++) {
         if (col_widths[static_cast<size_t>(i)] < 0) {
             col_widths[static_cast<size_t>(i)] = auto_col_width;
+        }
+    }
+
+    // When the table has an explicit width and columns don't fill it,
+    // expand columns without explicit widths to fill the available space.
+    // Columns with explicit cell widths (specified_width or css_width) keep their size.
+    bool table_has_explicit_width = (node.specified_width >= 0.0f) || node.css_width.has_value();
+    if (table_has_explicit_width && num_cols > 0) {
+        float total = 0;
+        for (int i = 0; i < num_cols; i++) total += col_widths[static_cast<size_t>(i)];
+        float shortfall = available_for_cols - total;
+        if (shortfall > 0.1f) {
+            // Count columns eligible for expansion (no explicit cell width)
+            float expandable_width = 0;
+            int expandable_count = 0;
+            for (int i = 0; i < num_cols; i++) {
+                if (!col_has_explicit_width[static_cast<size_t>(i)]) {
+                    expandable_width += col_widths[static_cast<size_t>(i)];
+                    expandable_count++;
+                }
+            }
+            if (expandable_count > 0 && expandable_width > 0) {
+                // Proportionally expand non-explicit columns
+                float scale = (expandable_width + shortfall) / expandable_width;
+                for (int i = 0; i < num_cols; i++) {
+                    if (!col_has_explicit_width[static_cast<size_t>(i)]) {
+                        col_widths[static_cast<size_t>(i)] *= scale;
+                    }
+                }
+            } else if (expandable_count > 0) {
+                // All expandable columns have zero width; distribute equally
+                float per_col = shortfall / static_cast<float>(expandable_count);
+                for (int i = 0; i < num_cols; i++) {
+                    if (!col_has_explicit_width[static_cast<size_t>(i)]) {
+                        col_widths[static_cast<size_t>(i)] += per_col;
+                    }
+                }
+            } else {
+                // ALL columns have explicit widths — distribute equally to all
+                float per_col = shortfall / static_cast<float>(num_cols);
+                for (int i = 0; i < num_cols; i++) {
+                    col_widths[static_cast<size_t>(i)] += per_col;
+                }
+            }
         }
     }
 
@@ -4165,19 +4230,16 @@ void LayoutEngine::layout_table(LayoutNode& node, float containing_width) {
             }
             float cell_h = cell->geometry.margin_box_height();
             float va_offset = 0;
-            // vertical_align: 0=baseline, 1=top, 2=middle, 3=bottom, 4=text-top, 5=text-bottom
-            // In table cell context: default is baseline (treated as top)
+            // vertical_align: 1=middle, 2=bottom in table-cell layout path
             switch (cell->vertical_align) {
-                case 1: // top
-                    va_offset = 0;
-                    break;
-                case 2: // middle
+                case 1: // middle
                     va_offset = (row_height - cell_h) / 2.0f;
                     break;
-                case 3: // bottom
+                case 2: // bottom
+                case 3: // bottom (compatibility with existing enum mapping)
                     va_offset = row_height - cell_h;
                     break;
-                default: // baseline (0) — treat as top for table cells
+                default: // top/baseline/text-top — treat as top for table cells
                     va_offset = 0;
                     break;
             }

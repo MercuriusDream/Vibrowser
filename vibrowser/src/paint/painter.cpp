@@ -2296,120 +2296,87 @@ void Painter::paint_text(const clever::layout::LayoutNode& node, DisplayList& li
         list.apply_mask_gradient(fade_bounds, 90.0f, fade_stops); // 90 degrees = left-to-right
     }
 
-    // Draw text decoration (underline / line-through / overline)
-    // Determine which decoration lines to draw using bitmask
-    // bits: 1=underline, 2=overline, 4=line-through
+    // Draw text decoration (underline / overline / line-through).
+    // Bits: 1=underline, 2=overline, 4=line-through.
     int deco_bits = node.text_decoration_bits;
-    // Backwards compat: if bits not set, derive from single text_decoration value
     if (deco_bits == 0 && node.text_decoration != 0) {
-        if (node.text_decoration == 1) deco_bits = 1;      // underline
-        else if (node.text_decoration == 2) deco_bits = 4;  // line-through (old value 2)
-        else if (node.text_decoration == 3) deco_bits = 2;  // overline (old value 3)
+        // text_decoration value mapping:
+        // 0=none, 1=underline, 2=overline, 3=line-through.
+        // Values >3 are treated as a bitmask combination.
+        if (node.text_decoration == 1) deco_bits = 1;
+        else if (node.text_decoration == 2) deco_bits = 2;
+        else if (node.text_decoration == 3) deco_bits = 4;
+        else if (node.text_decoration > 3) deco_bits = node.text_decoration;
     }
+    deco_bits &= 0x7;
+
     if (deco_bits != 0) {
-        // Determine decoration color (0 = use text color / currentColor)
         uint8_t dr = r, dg = g, db = b, da = a;
         if (node.text_decoration_color != 0) {
-            da = (node.text_decoration_color >> 24) & 0xFF;
-            dr = (node.text_decoration_color >> 16) & 0xFF;
-            dg = (node.text_decoration_color >> 8) & 0xFF;
-            db = node.text_decoration_color & 0xFF;
+            da = static_cast<uint8_t>((node.text_decoration_color >> 24) & 0xFF);
+            dr = static_cast<uint8_t>((node.text_decoration_color >> 16) & 0xFF);
+            dg = static_cast<uint8_t>((node.text_decoration_color >> 8) & 0xFF);
+            db = static_cast<uint8_t>(node.text_decoration_color & 0xFF);
         }
 
-        // Determine thickness (0 = auto, use 1px)
-        float thickness = (node.text_decoration_thickness > 0) ? node.text_decoration_thickness : 1.0f;
-
-        // Helper: draw a single decoration line at a given Y position
-        auto draw_deco_line = [&](float line_y, bool is_underline) {
-            if (node.text_decoration_style == 1) {
-                // Dashed: 6px dash, 3px gap
-                float x_pos = abs_x;
-                while (x_pos < abs_x + geom.width) {
-                    float dash_w = std::min(6.0f, abs_x + geom.width - x_pos);
-                    list.fill_rect({x_pos, line_y, dash_w, thickness}, {dr, dg, db, da});
-                    x_pos += 9.0f;
-                }
-            } else if (node.text_decoration_style == 2) {
-                // Dotted: 1px dot, 2px gap
-                float x_pos = abs_x;
-                while (x_pos < abs_x + geom.width) {
-                    list.fill_rect({x_pos, line_y, thickness, thickness}, {dr, dg, db, da});
-                    x_pos += thickness + 2.0f;
-                }
-            } else if (node.text_decoration_style == 3) {
-                // Wavy: sine wave pattern
-                constexpr float amplitude = 2.0f;
-                constexpr float wavelength = 8.0f;
-                constexpr float step = 1.0f;
-                float end_x = abs_x + geom.width;
-                float prev_x = abs_x;
-                float prev_sy = line_y + amplitude * std::sin(0.0f);
-                for (float sx = step; sx <= geom.width + step; sx += step) {
-                    float cur_x = std::min(abs_x + sx, end_x);
-                    float cur_sy = line_y + amplitude * std::sin(2.0f * static_cast<float>(M_PI) * sx / wavelength);
-                    list.draw_line(prev_x, prev_sy, cur_x, cur_sy, {dr, dg, db, da}, thickness);
-                    prev_x = cur_x;
-                    prev_sy = cur_sy;
-                    if (cur_x >= end_x) break;
-                }
-            } else if (node.text_decoration_style == 4) {
-                // Double: two parallel lines with 2px gap
-                float offset = thickness + 2.0f;
-                float dir = is_underline ? 1.0f : -1.0f;
-                list.fill_rect({abs_x, line_y, geom.width, thickness}, {dr, dg, db, da});
-                list.fill_rect({abs_x, line_y + dir * offset, geom.width, thickness}, {dr, dg, db, da});
-            } else {
-                // Solid (0)
-                // text-decoration-skip-ink for underlines only
-                if (is_underline && node.text_decoration_skip_ink != 1 &&
-                    !text_to_render.empty()) {
-                    float cw = node.font_size * (node.is_monospace ? 0.65f : 0.6f) + node.letter_spacing;
-                    if (cw > 0) {
-                        static const std::string descenders = "gjpqyQ";
-                        float seg_start = abs_x;
-                        float gap_pad = 1.5f;
-                        for (size_t ci = 0; ci < text_to_render.size(); ci++) {
-                            char ch = text_to_render[ci];
-                            if (descenders.find(ch) != std::string::npos) {
-                                float cx_d = abs_x + static_cast<float>(ci) * cw;
-                                float gap_left = cx_d - gap_pad;
-                                float gap_right = cx_d + cw + gap_pad;
-                                if (gap_left > seg_start) {
-                                    list.fill_rect({seg_start, line_y, gap_left - seg_start, thickness}, {dr, dg, db, da});
-                                }
-                                seg_start = gap_right;
-                            }
-                        }
-                        float end_x = abs_x + geom.width;
-                        if (seg_start < end_x) {
-                            list.fill_rect({seg_start, line_y, end_x - seg_start, thickness}, {dr, dg, db, da});
-                        }
-                    } else {
-                        list.fill_rect({abs_x, line_y, geom.width, thickness}, {dr, dg, db, da});
+        const float thickness = 1.0f;
+        const float deco_x = text_x;
+        float deco_w = geom.width;
+        if (deco_w <= 0) {
+            deco_w = static_cast<float>(text_to_render.size()) *
+                     (node.font_size * 0.6f + node.letter_spacing);
+        }
+        if (deco_w > 0) {
+            auto draw_deco_line = [&](float line_y) {
+                const int style = node.text_decoration_style;
+                if (style == 1) { // double
+                    list.fill_rect({deco_x, line_y, deco_w, thickness}, {dr, dg, db, da});
+                    list.fill_rect({deco_x, line_y + 2.0f, deco_w, thickness}, {dr, dg, db, da});
+                } else if (style == 2) { // dotted
+                    float x_pos = deco_x;
+                    const float end_x = deco_x + deco_w;
+                    while (x_pos < end_x) {
+                        list.fill_rect({x_pos, line_y, thickness, thickness}, {dr, dg, db, da});
+                        x_pos += 3.0f;
                     }
-                } else {
-                    list.fill_rect({abs_x, line_y, geom.width, thickness}, {dr, dg, db, da});
+                } else if (style == 3) { // dashed
+                    float x_pos = deco_x;
+                    const float end_x = deco_x + deco_w;
+                    while (x_pos < end_x) {
+                        float dash_w = std::min(6.0f, end_x - x_pos);
+                        list.fill_rect({x_pos, line_y, dash_w, thickness}, {dr, dg, db, da});
+                        x_pos += 9.0f;
+                    }
+                } else if (style == 4) { // wavy
+                    constexpr float amplitude = 1.5f;
+                    constexpr float wavelength = 8.0f;
+                    constexpr float step = 1.0f;
+                    float prev_x = deco_x;
+                    float prev_y = line_y;
+                    for (float dx = step; dx <= deco_w; dx += step) {
+                        float cur_x = deco_x + std::min(dx, deco_w);
+                        float phase = (2.0f * static_cast<float>(M_PI) * dx) / wavelength;
+                        float cur_y = line_y + amplitude * std::sin(phase);
+                        list.draw_line(prev_x, prev_y, cur_x, cur_y, {dr, dg, db, da}, thickness);
+                        prev_x = cur_x;
+                        prev_y = cur_y;
+                    }
+                } else { // solid
+                    list.fill_rect({deco_x, line_y, deco_w, thickness}, {dr, dg, db, da});
                 }
-            }
-        };
+            };
 
-        // Draw underline (bit 0)
-        if (deco_bits & 1) {
-            float ul_y;
-            if (node.text_underline_position == 1) {
-                ul_y = abs_y + node.font_size * 1.15f + node.text_underline_offset;
-            } else {
-                ul_y = abs_y + node.font_size * 0.9f + node.text_underline_offset;
+            const float baseline_y = text_y + node.font_size;
+            if (deco_bits & 1) {
+                float underline_y = baseline_y + 2.0f + node.text_underline_offset;
+                // text_underline_position: 0=auto, 1=under (below descenders)
+                if (node.text_underline_position == 1) {
+                    underline_y = baseline_y + node.font_size * 0.25f + node.text_underline_offset;
+                }
+                draw_deco_line(underline_y);
             }
-            draw_deco_line(ul_y, true);
-        }
-        // Draw overline (bit 1)
-        if (deco_bits & 2) {
-            draw_deco_line(abs_y, false);
-        }
-        // Draw line-through (bit 2)
-        if (deco_bits & 4) {
-            draw_deco_line(abs_y + node.font_size * 0.5f, false);
+            if (deco_bits & 2) draw_deco_line(text_y);                      // overline
+            if (deco_bits & 4) draw_deco_line(text_y + node.font_size * 0.5f); // line-through
         }
     }
     // Draw text-emphasis marks above/below each character

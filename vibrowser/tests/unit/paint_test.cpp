@@ -27168,11 +27168,12 @@ TEST_F(PaintTest, TextUnderlineOffsetPositive) {
         "</body></html>");
     ASSERT_TRUE(result.success);
 
-    // Default underline y ≈ font_size * 0.9 = 18. With +5px offset: y ≈ 23.
-    // Check that pixel at default underline position (y=18) is white (underline moved down)
-    // and pixel at y=23 has the underline
-    auto px_default = result.renderer->get_pixel(10, 18);
-    auto px_offset = result.renderer->get_pixel(10, 23);
+    // Default underline y = text_y + font_size + 2 = 0 + 20 + 2 = 22.
+    // With +5px offset: y = 22 + 5 = 27.
+    // Check that pixel at default underline position (y=22) is white (underline moved down)
+    // and pixel at y=27 has the underline
+    auto px_default = result.renderer->get_pixel(10, 22);
+    auto px_offset = result.renderer->get_pixel(10, 27);
 
     // The offset position should be darker than the default position
     bool offset_darker = (px_offset.r < px_default.r) || (px_offset.g < px_default.g);
@@ -27189,8 +27190,8 @@ TEST_F(PaintTest, TextUnderlineOffsetCascade) {
         "</body></html>");
     ASSERT_TRUE(result.success);
 
-    // Default underline at y≈18, with 8px offset → y≈26
-    auto px_at_offset = result.renderer->get_pixel(10, 26);
+    // Default underline at y=22, with 8px offset → y=30
+    auto px_at_offset = result.renderer->get_pixel(10, 30);
     bool has_line = (px_at_offset.r < 200);
     EXPECT_TRUE(has_line) << "Cascade underline should be shifted by offset";
 }

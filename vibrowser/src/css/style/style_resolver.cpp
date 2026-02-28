@@ -446,7 +446,14 @@ void PropertyCascade::apply_declaration(
         if (prop == "border-left-width") { style.border_left.width = parent.border_left.width; return; }
         if (prop == "border-style") { style.border_top.style = parent.border_top.style; style.border_right.style = parent.border_right.style; style.border_bottom.style = parent.border_bottom.style; style.border_left.style = parent.border_left.style; return; }
         if (prop == "border-radius") { style.border_radius = parent.border_radius; style.border_radius_tl = parent.border_radius_tl; style.border_radius_tr = parent.border_radius_tr; style.border_radius_bl = parent.border_radius_bl; style.border_radius_br = parent.border_radius_br; return; }
-        if (prop == "text-decoration") { style.text_decoration = parent.text_decoration; style.text_decoration_bits = parent.text_decoration_bits; return; }
+        if (prop == "text-decoration") {
+            style.text_decoration = parent.text_decoration;
+            style.text_decoration_bits = parent.text_decoration_bits;
+            style.text_decoration_color = parent.text_decoration_color;
+            style.text_decoration_style = parent.text_decoration_style;
+            style.text_decoration_thickness = parent.text_decoration_thickness;
+            return;
+        }
         if (prop == "text-decoration-color") { style.text_decoration_color = parent.text_decoration_color; return; }
         if (prop == "text-decoration-style") { style.text_decoration_style = parent.text_decoration_style; return; }
         if (prop == "box-sizing") { style.box_sizing = parent.box_sizing; return; }
@@ -457,11 +464,17 @@ void PropertyCascade::apply_declaration(
         if (prop == "text-overflow") { style.text_overflow = parent.text_overflow; return; }
         if (prop == "flex-direction") { style.flex_direction = parent.flex_direction; return; }
         if (prop == "flex-wrap") { style.flex_wrap = parent.flex_wrap; return; }
+        if (prop == "flex-flow") { style.flex_direction = parent.flex_direction; style.flex_wrap = parent.flex_wrap; return; }
         if (prop == "justify-content") { style.justify_content = parent.justify_content; return; }
         if (prop == "align-items") { style.align_items = parent.align_items; return; }
+        if (prop == "place-items") { style.align_items = parent.align_items; style.justify_items = parent.justify_items; return; }
+        if (prop == "place-content") { style.align_content = parent.align_content; style.justify_content = parent.justify_content; return; }
+        if (prop == "flex") { style.flex_grow = parent.flex_grow; style.flex_shrink = parent.flex_shrink; style.flex_basis = parent.flex_basis; return; }
         if (prop == "flex-grow") { style.flex_grow = parent.flex_grow; return; }
         if (prop == "flex-shrink") { style.flex_shrink = parent.flex_shrink; return; }
-        if (prop == "gap") { style.gap = parent.gap; return; }
+        if (prop == "gap" || prop == "grid-gap") { style.gap = parent.gap; style.column_gap_val = parent.column_gap_val; return; }
+        if (prop == "row-gap" || prop == "grid-row-gap") { style.gap = parent.gap; return; }
+        if (prop == "column-gap" || prop == "grid-column-gap") { style.column_gap_val = parent.column_gap_val; return; }
         if (prop == "order") { style.order = parent.order; return; }
         if (prop == "outline-color") { style.outline_color = parent.outline_color; return; }
         if (prop == "outline-width") { style.outline_width = parent.outline_width; return; }
@@ -530,16 +543,29 @@ void PropertyCascade::apply_declaration(
         }
         if (prop == "border-radius") { style.border_radius = 0; style.border_radius_tl = 0; style.border_radius_tr = 0; style.border_radius_bl = 0; style.border_radius_br = 0; return; }
         if (prop == "box-sizing") { style.box_sizing = BoxSizing::ContentBox; return; }
-        if (prop == "text-decoration") { style.text_decoration = TextDecoration::None; style.text_decoration_bits = 0; return; }
+        if (prop == "text-decoration") {
+            style.text_decoration = TextDecoration::None;
+            style.text_decoration_bits = 0;
+            style.text_decoration_color = Color::transparent();
+            style.text_decoration_style = TextDecorationStyle::Solid;
+            style.text_decoration_thickness = 0;
+            return;
+        }
         if (prop == "vertical-align") { style.vertical_align = VerticalAlign::Baseline; return; }
         if (prop == "flex-direction") { style.flex_direction = FlexDirection::Row; return; }
         if (prop == "flex-wrap") { style.flex_wrap = FlexWrap::NoWrap; return; }
+        if (prop == "flex-flow") { style.flex_direction = FlexDirection::Row; style.flex_wrap = FlexWrap::NoWrap; return; }
         if (prop == "justify-content") { style.justify_content = JustifyContent::FlexStart; return; }
         if (prop == "align-items") { style.align_items = AlignItems::Stretch; return; }
+        if (prop == "place-items") { style.align_items = AlignItems::Stretch; style.justify_items = 3; return; }
+        if (prop == "place-content") { style.align_content = 0; style.justify_content = JustifyContent::FlexStart; return; }
+        if (prop == "flex") { style.flex_grow = 0; style.flex_shrink = 1; style.flex_basis = Length::auto_val(); return; }
         if (prop == "flex-grow") { style.flex_grow = 0; return; }
         if (prop == "flex-shrink") { style.flex_shrink = 1; return; }
         if (prop == "order") { style.order = 0; return; }
-        if (prop == "gap") { style.gap = Length::zero(); return; }
+        if (prop == "gap" || prop == "grid-gap") { style.gap = Length::zero(); style.column_gap_val = Length::zero(); return; }
+        if (prop == "row-gap" || prop == "grid-row-gap") { style.gap = Length::zero(); return; }
+        if (prop == "column-gap" || prop == "grid-column-gap") { style.column_gap_val = Length::zero(); return; }
         if (prop == "aspect-ratio") { style.aspect_ratio = 0; return; }
         if (prop == "user-select") { style.user_select = UserSelect::Auto; return; }
         if (prop == "pointer-events") { style.pointer_events = PointerEvents::Auto; return; }
@@ -1696,32 +1722,66 @@ void PropertyCascade::apply_declaration(
         }
         return;
     }
-    if (prop == "text-decoration" || prop == "text-decoration-line") {
+    if (prop == "text-decoration-line") {
         auto parts = split_whitespace_paren(value_lower);
-        if (parts.size() == 1) {
-            if (value_lower == "underline") style.text_decoration = TextDecoration::Underline;
-            else if (value_lower == "overline") style.text_decoration = TextDecoration::Overline;
-            else if (value_lower == "line-through") style.text_decoration = TextDecoration::LineThrough;
-            else style.text_decoration = TextDecoration::None;
-        } else {
-            for (auto& tok : parts) {
-                if (tok == "underline") style.text_decoration = TextDecoration::Underline;
-                else if (tok == "overline") style.text_decoration = TextDecoration::Overline;
-                else if (tok == "line-through") style.text_decoration = TextDecoration::LineThrough;
-                else if (tok == "none") style.text_decoration = TextDecoration::None;
-                else if (tok == "solid") style.text_decoration_style = TextDecorationStyle::Solid;
-                else if (tok == "dashed") style.text_decoration_style = TextDecorationStyle::Dashed;
-                else if (tok == "dotted") style.text_decoration_style = TextDecorationStyle::Dotted;
-                else if (tok == "wavy") style.text_decoration_style = TextDecorationStyle::Wavy;
-                else if (tok == "double") style.text_decoration_style = TextDecorationStyle::Double;
-                else {
-                    auto l = parse_length(tok);
-                    if (l) {
-                        style.text_decoration_thickness = l->to_px(0);
-                    } else {
-                        auto c = parse_color(tok);
-                        if (c) style.text_decoration_color = *c;
-                    }
+        style.text_decoration = TextDecoration::None;
+        style.text_decoration_bits = 0;
+        for (const auto& tok : parts) {
+            if (tok == "none") {
+                style.text_decoration = TextDecoration::None;
+                style.text_decoration_bits = 0;
+            } else if (tok == "underline") {
+                style.text_decoration = TextDecoration::Underline;
+                style.text_decoration_bits |= 1;
+            } else if (tok == "overline") {
+                style.text_decoration = TextDecoration::Overline;
+                style.text_decoration_bits |= 2;
+            } else if (tok == "line-through") {
+                style.text_decoration = TextDecoration::LineThrough;
+                style.text_decoration_bits |= 4;
+            }
+        }
+        return;
+    }
+    if (prop == "text-decoration") {
+        auto parts = split_whitespace_paren(value_lower);
+        // Shorthand reset: unspecified sub-properties return to initial values.
+        style.text_decoration = TextDecoration::None;
+        style.text_decoration_bits = 0;
+        style.text_decoration_color = Color::transparent(); // currentColor sentinel
+        style.text_decoration_style = TextDecorationStyle::Solid;
+        style.text_decoration_thickness = 0;
+
+        for (const auto& tok : parts) {
+            if (tok == "none") {
+                style.text_decoration = TextDecoration::None;
+                style.text_decoration_bits = 0;
+            } else if (tok == "underline") {
+                style.text_decoration = TextDecoration::Underline;
+                style.text_decoration_bits |= 1;
+            } else if (tok == "overline") {
+                style.text_decoration = TextDecoration::Overline;
+                style.text_decoration_bits |= 2;
+            } else if (tok == "line-through") {
+                style.text_decoration = TextDecoration::LineThrough;
+                style.text_decoration_bits |= 4;
+            } else if (tok == "solid") {
+                style.text_decoration_style = TextDecorationStyle::Solid;
+            } else if (tok == "dashed") {
+                style.text_decoration_style = TextDecorationStyle::Dashed;
+            } else if (tok == "dotted") {
+                style.text_decoration_style = TextDecorationStyle::Dotted;
+            } else if (tok == "wavy") {
+                style.text_decoration_style = TextDecorationStyle::Wavy;
+            } else if (tok == "double") {
+                style.text_decoration_style = TextDecorationStyle::Double;
+            } else {
+                auto l = parse_length(tok);
+                if (l) {
+                    style.text_decoration_thickness = l->to_px(0);
+                } else {
+                    auto c = parse_color(tok);
+                    if (c) style.text_decoration_color = *c;
                 }
             }
         }
@@ -2650,30 +2710,66 @@ void PropertyCascade::apply_declaration(
     }
     if (prop == "flex") {
         if (value_lower == "none") {
-            style.flex_grow = 0; style.flex_shrink = 0;
+            style.flex_grow = 0;
+            style.flex_shrink = 0;
             style.flex_basis = Length::auto_val();
-        } else if (value_lower == "auto") {
-            style.flex_grow = 1; style.flex_shrink = 1;
+            return;
+        }
+        if (value_lower == "auto") {
+            style.flex_grow = 1;
+            style.flex_shrink = 1;
             style.flex_basis = Length::auto_val();
-        } else {
-            std::istringstream fss(value_str);
-            std::string part;
-            int idx = 0;
-            while (fss >> part && idx < 3) {
-                if (idx == 0) {
-                    try { style.flex_grow = std::stof(part); } catch (...) {}
-                    style.flex_shrink = 1;
-                    style.flex_basis = Length::px(0);
-                } else if (idx == 1) {
-                    auto l = parse_length(part);
-                    if (l) { style.flex_basis = *l; }
-                    else { try { style.flex_shrink = std::stof(part); } catch (...) {} }
-                } else if (idx == 2) {
-                    auto l = parse_length(part);
-                    if (l) style.flex_basis = *l;
+            return;
+        }
+
+        auto parts = split_whitespace_paren(value_str);
+        auto parse_number_token = [](const std::string& token, float& out) -> bool {
+            std::string t = trim(token);
+            if (t.empty()) return false;
+            char* end = nullptr;
+            out = std::strtof(t.c_str(), &end);
+            return end != t.c_str() && end != nullptr && *end == '\0';
+        };
+
+        bool has_grow = false;
+        bool has_shrink = false;
+        bool has_basis = false;
+        float grow = 0.0f;
+        float shrink = 1.0f;
+        Length basis = Length::auto_val();
+
+        for (const auto& raw_part : parts) {
+            float num = 0.0f;
+            if (parse_number_token(raw_part, num)) {
+                if (!has_grow) {
+                    grow = num;
+                    has_grow = true;
+                    continue;
                 }
-                idx++;
+                if (!has_shrink) {
+                    shrink = num;
+                    has_shrink = true;
+                    continue;
+                }
             }
+
+            auto l = parse_length(raw_part);
+            if (l && !has_basis) {
+                basis = *l;
+                has_basis = true;
+            }
+        }
+
+        if (has_grow) {
+            style.flex_grow = grow;
+            style.flex_shrink = has_shrink ? shrink : 1.0f;
+            // Numeric shorthand defaults flex-basis to 0%.
+            style.flex_basis = has_basis ? basis : Length::percent(0);
+        } else if (has_basis) {
+            // Single basis value in shorthand defaults to 1 1 <basis>.
+            style.flex_grow = 1.0f;
+            style.flex_shrink = 1.0f;
+            style.flex_basis = basis;
         }
         return;
     }

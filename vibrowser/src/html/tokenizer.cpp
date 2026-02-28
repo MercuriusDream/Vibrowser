@@ -301,10 +301,108 @@ std::string Tokenizer::try_consume_entity() {
         {"upsih", "\xCF\x92"},    // U+03D2 upsilon with hook symbol
         {"piv", "\xCF\x96"},      // U+03D6 pi symbol
 
+        // === Cyrillic letters (U+0400-U+04FF) ===
+        {"IOcy", "\xD0\x81"},     // U+0401
+        {"DJcy", "\xD0\x82"},     // U+0402
+        {"GJcy", "\xD0\x83"},     // U+0403
+        {"Jukcy", "\xD0\x84"},    // U+0404
+        {"DScy", "\xD0\x85"},     // U+0405
+        {"Iukcy", "\xD0\x86"},    // U+0406
+        {"YIcy", "\xD0\x87"},     // U+0407
+        {"Jsercy", "\xD0\x88"},   // U+0408
+        {"LJcy", "\xD0\x89"},     // U+0409
+        {"NJcy", "\xD0\x8A"},     // U+040A
+        {"TSHcy", "\xD0\x8B"},    // U+040B
+        {"KJcy", "\xD0\x8C"},     // U+040C
+        {"Ubrcy", "\xD0\x8E"},    // U+040E
+        {"DZcy", "\xD0\x8F"},     // U+040F
+        {"Acy", "\xD0\x90"},      // U+0410
+        {"Bcy", "\xD0\x91"},      // U+0411
+        {"Vcy", "\xD0\x92"},      // U+0412
+        {"Gcy", "\xD0\x93"},      // U+0413
+        {"Dcy", "\xD0\x94"},      // U+0414
+        {"IEcy", "\xD0\x95"},     // U+0415
+        {"ZHcy", "\xD0\x96"},     // U+0416
+        {"Zcy", "\xD0\x97"},      // U+0417
+        {"Icy", "\xD0\x98"},      // U+0418
+        {"Jcy", "\xD0\x99"},      // U+0419
+        {"Kcy", "\xD0\x9A"},      // U+041A
+        {"Lcy", "\xD0\x9B"},      // U+041B
+        {"Mcy", "\xD0\x9C"},      // U+041C
+        {"Ncy", "\xD0\x9D"},      // U+041D
+        {"Ocy", "\xD0\x9E"},      // U+041E
+        {"Pcy", "\xD0\x9F"},      // U+041F
+        {"Rcy", "\xD0\xA0"},      // U+0420
+        {"Scy", "\xD0\xA1"},      // U+0421
+        {"Tcy", "\xD0\xA2"},      // U+0422
+        {"Ucy", "\xD0\xA3"},      // U+0423
+        {"Fcy", "\xD0\xA4"},      // U+0424
+        {"KHcy", "\xD0\xA5"},     // U+0425
+        {"TScy", "\xD0\xA6"},     // U+0426
+        {"CHcy", "\xD0\xA7"},     // U+0427
+        {"SHcy", "\xD0\xA8"},     // U+0428
+        {"SHCHcy", "\xD0\xA9"},   // U+0429
+        {"HARDcy", "\xD0\xAA"},   // U+042A
+        {"Ycy", "\xD0\xAB"},      // U+042B
+        {"SOFTcy", "\xD0\xAC"},   // U+042C
+        {"Ecy", "\xD0\xAD"},      // U+042D
+        {"YUcy", "\xD0\xAE"},     // U+042E
+        {"YAcy", "\xD0\xAF"},     // U+042F
+        {"acy", "\xD0\xB0"},      // U+0430
+        {"bcy", "\xD0\xB1"},      // U+0431
+        {"vcy", "\xD0\xB2"},      // U+0432
+        {"gcy", "\xD0\xB3"},      // U+0433
+        {"dcy", "\xD0\xB4"},      // U+0434
+        {"iecy", "\xD0\xB5"},     // U+0435
+        {"zhcy", "\xD0\xB6"},     // U+0436
+        {"zcy", "\xD0\xB7"},      // U+0437
+        {"icy", "\xD0\xB8"},      // U+0438
+        {"jcy", "\xD0\xB9"},      // U+0439
+        {"kcy", "\xD0\xBA"},      // U+043A
+        {"lcy", "\xD0\xBB"},      // U+043B
+        {"mcy", "\xD0\xBC"},      // U+043C
+        {"ncy", "\xD0\xBD"},      // U+043D
+        {"ocy", "\xD0\xBE"},      // U+043E
+        {"pcy", "\xD0\xBF"},      // U+043F
+        {"rcy", "\xD1\x80"},      // U+0440
+        {"scy", "\xD1\x81"},      // U+0441
+        {"tcy", "\xD1\x82"},      // U+0442
+        {"ucy", "\xD1\x83"},      // U+0443
+        {"fcy", "\xD1\x84"},      // U+0444
+        {"khcy", "\xD1\x85"},     // U+0445
+        {"tscy", "\xD1\x86"},     // U+0446
+        {"chcy", "\xD1\x87"},     // U+0447
+        {"shcy", "\xD1\x88"},     // U+0448
+        {"shchcy", "\xD1\x89"},   // U+0449
+        {"hardcy", "\xD1\x8A"},   // U+044A
+        {"ycy", "\xD1\x8B"},      // U+044B
+        {"softcy", "\xD1\x8C"},   // U+044C
+        {"ecy", "\xD1\x8D"},      // U+044D
+        {"yucy", "\xD1\x8E"},     // U+044E
+        {"yacy", "\xD1\x8F"},     // U+044F
+        {"iocy", "\xD1\x91"},     // U+0451
+        {"djcy", "\xD1\x92"},     // U+0452
+        {"gjcy", "\xD1\x93"},     // U+0453
+        {"jukcy", "\xD1\x94"},    // U+0454
+        {"dscy", "\xD1\x95"},     // U+0455
+        {"iukcy", "\xD1\x96"},    // U+0456
+        {"yicy", "\xD1\x97"},     // U+0457
+        {"jsercy", "\xD1\x98"},   // U+0458
+        {"ljcy", "\xD1\x99"},     // U+0459
+        {"njcy", "\xD1\x9A"},     // U+045A
+        {"tshcy", "\xD1\x9B"},    // U+045B
+        {"kjcy", "\xD1\x9C"},     // U+045C
+        {"ubrcy", "\xD1\x9E"},    // U+045E
+        {"dzcy", "\xD1\x9F"},     // U+045F
+
         // === General punctuation (U+2000-U+206F) ===
         {"ensp", "\xE2\x80\x82"},     // U+2002 en space
         {"emsp", "\xE2\x80\x83"},     // U+2003 em space
+        {"numsp", "\xE2\x80\x87"},    // U+2007 figure space
+        {"puncsp", "\xE2\x80\x88"},   // U+2008 punctuation space
         {"thinsp", "\xE2\x80\x89"},   // U+2009 thin space
+        {"hairsp", "\xE2\x80\x8A"},   // U+200A hair space
+        {"ZeroWidthSpace", "\xE2\x80\x8B"}, // U+200B zero width space
         {"zwnj", "\xE2\x80\x8C"},     // U+200C zero width non-joiner
         {"zwj", "\xE2\x80\x8D"},      // U+200D zero width joiner
         {"lrm", "\xE2\x80\x8E"},      // U+200E left-to-right mark
@@ -312,10 +410,14 @@ std::string Tokenizer::try_consume_entity() {
         {"ndash", "\xE2\x80\x93"},    // U+2013 en dash
         {"mdash", "\xE2\x80\x94"},    // U+2014 em dash
         {"lsquo", "\xE2\x80\x98"},    // U+2018 left single quotation mark
+        {"OpenCurlyQuote", "\xE2\x80\x98"}, // U+2018
         {"rsquo", "\xE2\x80\x99"},    // U+2019 right single quotation mark
+        {"CloseCurlyQuote", "\xE2\x80\x99"}, // U+2019
         {"sbquo", "\xE2\x80\x9A"},    // U+201A single low-9 quotation mark
         {"ldquo", "\xE2\x80\x9C"},    // U+201C left double quotation mark
+        {"OpenCurlyDoubleQuote", "\xE2\x80\x9C"}, // U+201C
         {"rdquo", "\xE2\x80\x9D"},    // U+201D right double quotation mark
+        {"CloseCurlyDoubleQuote", "\xE2\x80\x9D"}, // U+201D
         {"bdquo", "\xE2\x80\x9E"},    // U+201E double low-9 quotation mark
         {"dagger", "\xE2\x80\xA0"},   // U+2020 dagger
         {"Dagger", "\xE2\x80\xA1"},   // U+2021 double dagger
@@ -327,6 +429,10 @@ std::string Tokenizer::try_consume_entity() {
         {"lsaquo", "\xE2\x80\xB9"},   // U+2039 single left-pointing angle quotation
         {"rsaquo", "\xE2\x80\xBA"},   // U+203A single right-pointing angle quotation
         {"oline", "\xE2\x80\xBE"},    // U+203E overline
+        {"NoBreak", "\xE2\x81\xA0"},  // U+2060 word joiner
+        {"ApplyFunction", "\xE2\x81\xA1"}, // U+2061 function application
+        {"InvisibleTimes", "\xE2\x81\xA2"}, // U+2062 invisible times
+        {"InvisibleComma", "\xE2\x81\xA3"}, // U+2063 invisible comma
 
         // === Currency symbols ===
         {"euro", "\xE2\x82\xAC"},     // U+20AC euro sign
@@ -341,16 +447,26 @@ std::string Tokenizer::try_consume_entity() {
 
         // === Arrows (U+2190-U+21FF) ===
         {"larr", "\xE2\x86\x90"},     // U+2190 leftwards arrow
+        {"leftarrow", "\xE2\x86\x90"}, // U+2190
         {"uarr", "\xE2\x86\x91"},     // U+2191 upwards arrow
+        {"uparrow", "\xE2\x86\x91"},  // U+2191
         {"rarr", "\xE2\x86\x92"},     // U+2192 rightwards arrow
+        {"rightarrow", "\xE2\x86\x92"}, // U+2192
         {"darr", "\xE2\x86\x93"},     // U+2193 downwards arrow
+        {"downarrow", "\xE2\x86\x93"}, // U+2193
         {"harr", "\xE2\x86\x94"},     // U+2194 left right arrow
+        {"leftrightarrow", "\xE2\x86\x94"}, // U+2194
         {"crarr", "\xE2\x86\xB5"},    // U+21B5 downwards arrow with corner leftwards
         {"lArr", "\xE2\x87\x90"},     // U+21D0 leftwards double arrow
+        {"Leftarrow", "\xE2\x87\x90"}, // U+21D0
         {"uArr", "\xE2\x87\x91"},     // U+21D1 upwards double arrow
+        {"Uparrow", "\xE2\x87\x91"},  // U+21D1
         {"rArr", "\xE2\x87\x92"},     // U+21D2 rightwards double arrow
+        {"Rightarrow", "\xE2\x87\x92"}, // U+21D2
         {"dArr", "\xE2\x87\x93"},     // U+21D3 downwards double arrow
+        {"Downarrow", "\xE2\x87\x93"}, // U+21D3
         {"hArr", "\xE2\x87\x94"},     // U+21D4 left right double arrow
+        {"Leftrightarrow", "\xE2\x87\x94"}, // U+21D4
 
         // === Mathematical operators (U+2200-U+22FF) ===
         {"forall", "\xE2\x88\x80"},   // U+2200 for all
@@ -379,14 +495,22 @@ std::string Tokenizer::try_consume_entity() {
         {"cong", "\xE2\x89\x85"},     // U+2245 approximately equal to
         {"asymp", "\xE2\x89\x88"},    // U+2248 almost equal to
         {"ne", "\xE2\x89\xA0"},       // U+2260 not equal to
+        {"neq", "\xE2\x89\xA0"},      // U+2260 not equal to
+        {"NotEqual", "\xE2\x89\xA0"}, // U+2260 not equal to
         {"equiv", "\xE2\x89\xA1"},    // U+2261 identical to
         {"le", "\xE2\x89\xA4"},       // U+2264 less-than or equal to
+        {"leq", "\xE2\x89\xA4"},      // U+2264 less-than or equal to
         {"ge", "\xE2\x89\xA5"},       // U+2265 greater-than or equal to
+        {"geq", "\xE2\x89\xA5"},      // U+2265 greater-than or equal to
         {"sub", "\xE2\x8A\x82"},      // U+2282 subset of
         {"sup", "\xE2\x8A\x83"},      // U+2283 superset of
         {"nsub", "\xE2\x8A\x84"},     // U+2284 not a subset of
         {"sube", "\xE2\x8A\x86"},     // U+2286 subset of or equal to
+        {"subseteq", "\xE2\x8A\x86"}, // U+2286 subset of or equal to
         {"supe", "\xE2\x8A\x87"},     // U+2287 superset of or equal to
+        {"supseteq", "\xE2\x8A\x87"}, // U+2287 superset of or equal to
+        {"nsubseteq", "\xE2\x8A\x88"}, // U+2288 not subset of or equal to
+        {"nsupseteq", "\xE2\x8A\x89"}, // U+2289 not superset of or equal to
         {"oplus", "\xE2\x8A\x95"},    // U+2295 circled plus
         {"otimes", "\xE2\x8A\x97"},   // U+2297 circled times
         {"perp", "\xE2\x8A\xA5"},     // U+22A5 up tack (perpendicular)

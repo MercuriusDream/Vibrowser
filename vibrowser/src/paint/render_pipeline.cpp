@@ -1814,6 +1814,10 @@ void apply_inline_style(clever::css::ComputedStyle& style, const std::string& st
             if (val_lower == "block") style.display = clever::css::Display::Block;
             else if (val_lower == "inline") style.display = clever::css::Display::Inline;
             else if (val_lower == "inline-block") style.display = clever::css::Display::InlineBlock;
+            else if (val_lower == "table") style.display = clever::css::Display::Table;
+            else if (val_lower == "table-row") style.display = clever::css::Display::TableRow;
+            else if (val_lower == "table-cell") style.display = clever::css::Display::TableCell;
+            else if (val_lower == "inline-table") style.display = clever::css::Display::Table;
             else if (val_lower == "none") style.display = clever::css::Display::None;
             else if (val_lower == "flex") style.display = clever::css::Display::Flex;
             else if (val_lower == "inline-flex") style.display = clever::css::Display::InlineFlex;
@@ -5398,8 +5402,8 @@ clever::layout::DisplayType display_to_type(clever::css::Display d) {
         case clever::css::Display::None: return clever::layout::DisplayType::None;
         case clever::css::Display::ListItem: return clever::layout::DisplayType::ListItem;
         case clever::css::Display::Table: return clever::layout::DisplayType::Table;
-        case clever::css::Display::TableRow: return clever::layout::DisplayType::TableRow;
-        case clever::css::Display::TableCell: return clever::layout::DisplayType::TableCell;
+        case clever::css::Display::TableRow: return clever::layout::DisplayType::Block;
+        case clever::css::Display::TableCell: return clever::layout::DisplayType::Block;
         case clever::css::Display::TableHeaderGroup: return clever::layout::DisplayType::Block;
         case clever::css::Display::TableRowGroup: return clever::layout::DisplayType::Block;
         case clever::css::Display::Grid: return clever::layout::DisplayType::Grid;
@@ -6075,16 +6079,8 @@ struct ElementViewTree {
             if (child->type == clever::html::SimpleNode::Element) {
                 elem_children++;
             } else if (child->type == clever::html::SimpleNode::Text) {
-                // Non-empty text content means not :empty
-                if (!child->data.empty()) {
-                    // Check if text is truly non-whitespace
-                    for (char c : child->data) {
-                        if (c != ' ' && c != '\t' && c != '\n' && c != '\r') {
-                            has_text = true;
-                            break;
-                        }
-                    }
-                }
+                // CSS :empty treats any text node as content, including whitespace-only text.
+                has_text = true;
             }
         }
         view->child_element_count = elem_children;
@@ -7541,8 +7537,19 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
         if (type == "text" || type == "password" || type == "email" ||
             type == "search" || type == "url" || type == "number" || type == "tel") {
             // Text input: placeholder/value text and sizing defaults.
-            if (layout_node->specified_width < 0) layout_node->specified_width = 180;
-            if (layout_node->specified_height < 0) layout_node->specified_height = 24;
+            if (layout_node->specified_width < 0) layout_node->specified_width = 150.0f;
+            if (layout_node->specified_height < 0) layout_node->specified_height = 20.0f;
+            if (layout_node->geometry.border.top <= 0.0f &&
+                layout_node->geometry.border.right <= 0.0f &&
+                layout_node->geometry.border.bottom <= 0.0f &&
+                layout_node->geometry.border.left <= 0.0f) {
+                layout_node->geometry.border = {2.0f, 2.0f, 2.0f, 2.0f};
+                layout_node->border_style = 1;
+                layout_node->border_style_top = 1;
+                layout_node->border_style_right = 1;
+                layout_node->border_style_bottom = 1;
+                layout_node->border_style_left = 1;
+            }
 
             // Apply dark mode colors when color-scheme: dark.
             bool dark_input = (layout_node->color_scheme == 2);
@@ -7709,7 +7716,7 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
             layout_node->geometry.padding = {0, 0, 0, 0};
             layout_node->geometry.border = {0, 0, 0, 0};
             layout_node->border_color = 0x00000000;
-            layout_node->mode = clever::layout::LayoutMode::Block;
+            layout_node->mode = clever::layout::LayoutMode::InlineBlock;
             layout_node->display = clever::layout::DisplayType::InlineBlock;
             return layout_node;
 
@@ -7734,7 +7741,7 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
                 layout_node->input_range_value = layout_node->input_range_max;
 
             // Range inputs should not have visible border or padding
-            layout_node->mode = clever::layout::LayoutMode::Block;
+            layout_node->mode = clever::layout::LayoutMode::InlineBlock;
             layout_node->display = clever::layout::DisplayType::InlineBlock;
             layout_node->geometry.padding = {0, 0, 0, 0};
             layout_node->geometry.border = {0, 0, 0, 0};
@@ -7757,14 +7764,14 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
             }
 
             // Color inputs should not have visible border or padding — painter handles it
-            layout_node->mode = clever::layout::LayoutMode::Block;
+            layout_node->mode = clever::layout::LayoutMode::InlineBlock;
             layout_node->display = clever::layout::DisplayType::InlineBlock;
             layout_node->geometry.padding = {0, 0, 0, 0};
             layout_node->geometry.border = {0, 0, 0, 0};
             return layout_node;
         }
 
-        layout_node->mode = clever::layout::LayoutMode::Block;
+        layout_node->mode = clever::layout::LayoutMode::InlineBlock;
         layout_node->display = clever::layout::DisplayType::InlineBlock;
         layout_node->geometry.padding = {4, 6, 4, 6};
         return layout_node;
@@ -7860,9 +7867,9 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
         bool dark_btn = (layout_node->color_scheme == 2);
         layout_node->background_color = dark_btn ? 0xFF1E1E1E : 0xFFE0E0E0;
         if (dark_btn) layout_node->color = 0xFFE0E0E0;
-        layout_node->mode = clever::layout::LayoutMode::Block;
+        layout_node->mode = clever::layout::LayoutMode::InlineBlock;
         layout_node->display = clever::layout::DisplayType::InlineBlock;
-        layout_node->geometry.padding = {4, 12, 4, 12};
+        layout_node->geometry.padding = {2.0f, 6.0f, 2.0f, 6.0f};
         layout_node->geometry.border = {1, 1, 1, 1};
         if (dark_btn) {
             layout_node->border_color = 0xFF555555;
@@ -8025,12 +8032,12 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
 
     // Handle <textarea>
     if (tag_lower == "textarea") {
-        if (layout_node->specified_width < 0) layout_node->specified_width = 300;
-        if (layout_node->specified_height < 0) layout_node->specified_height = 80;
+        if (layout_node->specified_width < 0) layout_node->specified_width = 300.0f;
+        if (layout_node->specified_height < 0) layout_node->specified_height = 60.0f;
         bool dark_ta = (layout_node->color_scheme == 2);
         layout_node->background_color = dark_ta ? 0xFF1E1E1E : 0xFFFFFFFF;
         if (dark_ta) layout_node->color = 0xFFE0E0E0;
-        layout_node->mode = clever::layout::LayoutMode::Block;
+        layout_node->mode = clever::layout::LayoutMode::InlineBlock;
         layout_node->display = clever::layout::DisplayType::InlineBlock;
         layout_node->geometry.padding = {4, 6, 4, 6};
         layout_node->geometry.border = {1, 1, 1, 1};
@@ -8075,6 +8082,7 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
     // Handle <select>
     if (tag_lower == "select") {
         layout_node->is_select_element = true;
+        if (layout_node->specified_width < 0) layout_node->specified_width = 150.0f;
         bool is_multiple = has_attr(node, "multiple");
         layout_node->select_is_multiple = is_multiple;
         // Parse size attribute for visible row count
@@ -8094,7 +8102,7 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
             layout_node->is_scroll_container = true;
         } else {
             // Dropdown mode (single select)
-            if (layout_node->specified_height < 0) layout_node->specified_height = 22;
+            if (layout_node->specified_height < 0) layout_node->specified_height = 20.0f;
             layout_node->geometry.padding = {2, 20, 2, 6}; // right padding for arrow
         }
         bool dark_sel = (layout_node->color_scheme == 2);
@@ -8108,7 +8116,7 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
             layout_node->border_color_bottom = 0xFF555555;
             layout_node->border_color_left = 0xFF555555;
         }
-        layout_node->mode = clever::layout::LayoutMode::Block;
+        layout_node->mode = clever::layout::LayoutMode::InlineBlock;
         layout_node->display = clever::layout::DisplayType::InlineBlock;
         layout_node->geometry.border = {1, 1, 1, 1};
         layout_node->font_size = 13.0f;
@@ -9488,6 +9496,15 @@ std::unique_ptr<clever::layout::LayoutNode> build_layout_tree_styled(
         if (!body_text.empty()) {
             uint32_t btc = parse_html_color_attr(body_text);
             if (btc != 0) layout_node->color = btc;
+        }
+    }
+
+    // Handle <form> — block-level container with full-width default
+    if (tag_lower == "form") {
+        layout_node->mode = clever::layout::LayoutMode::Block;
+        layout_node->display = clever::layout::DisplayType::Block;
+        if (layout_node->specified_width < 0.0f && !layout_node->css_width.has_value()) {
+            layout_node->css_width = clever::css::Length::percent(100.0f);
         }
     }
 
@@ -11487,12 +11504,54 @@ static void apply_style_to_layout_node(
 
     // Display mode
     switch (style.display) {
-        case clever::css::Display::Block: node.mode = clever::layout::LayoutMode::Block; break;
+        case clever::css::Display::Block:
+            node.mode = clever::layout::LayoutMode::Block;
+            node.display = clever::layout::DisplayType::Block;
+            break;
+        case clever::css::Display::Table:
+            node.mode = clever::layout::LayoutMode::Table;
+            node.display = clever::layout::DisplayType::Table;
+            break;
+        case clever::css::Display::TableRow:
+        case clever::css::Display::TableCell:
+        case clever::css::Display::TableHeaderGroup:
+        case clever::css::Display::TableRowGroup:
+            node.mode = clever::layout::LayoutMode::Block;
+            node.display = clever::layout::DisplayType::Block;
+            break;
+        case clever::css::Display::Inline:
+            node.mode = clever::layout::LayoutMode::Inline;
+            node.display = clever::layout::DisplayType::Inline;
+            break;
+        case clever::css::Display::InlineBlock:
+            node.mode = clever::layout::LayoutMode::InlineBlock;
+            node.display = clever::layout::DisplayType::InlineBlock;
+            break;
         case clever::css::Display::Flex:
-        case clever::css::Display::InlineFlex: node.mode = clever::layout::LayoutMode::Flex; break;
+            node.mode = clever::layout::LayoutMode::Flex;
+            node.display = clever::layout::DisplayType::Flex;
+            break;
+        case clever::css::Display::InlineFlex:
+            node.mode = clever::layout::LayoutMode::Flex;
+            node.display = clever::layout::DisplayType::InlineFlex;
+            break;
         case clever::css::Display::Grid:
-        case clever::css::Display::InlineGrid: node.mode = clever::layout::LayoutMode::Grid; break;
-        case clever::css::Display::None: node.mode = clever::layout::LayoutMode::None; break;
+            node.mode = clever::layout::LayoutMode::Grid;
+            node.display = clever::layout::DisplayType::Grid;
+            break;
+        case clever::css::Display::InlineGrid:
+            node.mode = clever::layout::LayoutMode::Grid;
+            node.display = clever::layout::DisplayType::InlineGrid;
+            break;
+        case clever::css::Display::None:
+            node.mode = clever::layout::LayoutMode::None;
+            node.display = clever::layout::DisplayType::None;
+            break;
+        case clever::css::Display::ListItem:
+        case clever::css::Display::Contents:
+            node.mode = clever::layout::LayoutMode::Block;
+            node.display = clever::layout::DisplayType::Block;
+            break;
         default: break;
     }
 }

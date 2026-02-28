@@ -3041,7 +3041,8 @@ TEST(JSWindow, MatchMediaReturnsObject) {
 TEST(JSWindow, MatchMediaMatchesFalse) {
     clever::js::JSEngine engine;
     clever::js::install_window_bindings(engine.context(), "https://example.com/", 1024, 768);
-    auto result = engine.evaluate("matchMedia('(min-width: 768px)').matches");
+    // min-width: 768px matches on 1024px viewport (true), use 2000px to get false
+    auto result = engine.evaluate("matchMedia('(min-width: 2000px)').matches");
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "false");
 }

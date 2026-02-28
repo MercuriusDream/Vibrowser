@@ -209,7 +209,7 @@ HttpClient::HttpClient() = default;
 HttpClient::~HttpClient() = default;
 
 ConnectionPool& HttpClient::connection_pool() {
-    static ConnectionPool pool(6);
+    static ConnectionPool pool(6, 30, std::chrono::seconds(60));
     return pool;
 }
 
@@ -610,19 +610,41 @@ std::optional<Response> HttpClient::do_request(const Request& request) {
             return std::nullopt;
         }
 
-        // Check if the server wants to close the connection
+        bool is_http11 = false;
+        const char* crlf = "\r\n";
+        auto status_line_end = std::search(raw->begin(), raw->end(), crlf, crlf + 2);
+        if (status_line_end != raw->end()) {
+            std::string status_line(raw->begin(), status_line_end);
+            std::string lower_status_line = to_lower(status_line);
+            is_http11 = lower_status_line.starts_with("http/1.1");
+        }
+
+        // Decide keep-alive behavior:
+        // - Connection: close => close
+        // - Connection: keep-alive => keep
+        // - otherwise default keep for HTTP/1.1, close for older versions
         auto conn_header = resp->headers.get("connection");
         bool server_wants_close = false;
+        bool server_explicit_keep_alive = false;
         if (conn_header.has_value()) {
-            std::string lower_val = *conn_header;
-            std::transform(lower_val.begin(), lower_val.end(), lower_val.begin(),
-                           [](unsigned char c) { return std::tolower(c); });
-            if (lower_val == "close") {
-                server_wants_close = true;
+            std::istringstream stream(*conn_header);
+            std::string token;
+            while (std::getline(stream, token, ',')) {
+                std::string lower_token = to_lower(trim(token));
+                if (lower_token == "close") {
+                    server_wants_close = true;
+                } else if (lower_token == "keep-alive") {
+                    server_explicit_keep_alive = true;
+                }
             }
         }
 
-        if (server_wants_close) {
+        bool should_keep_alive = false;
+        if (!server_wants_close) {
+            should_keep_alive = server_explicit_keep_alive || is_http11;
+        }
+
+        if (!should_keep_alive) {
             ::close(fd);
         } else {
             // Return connection to pool for reuse
