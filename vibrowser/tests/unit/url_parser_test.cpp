@@ -15652,3 +15652,51 @@ TEST(UrlParserTest, UrlV162_4_PathWithEncodedSpaces) {
     EXPECT_EQ(result->host, "host");
     EXPECT_EQ(result->path, "/my%2520path");
 }
+
+// =============================================================================
+// Round 163 URL parser tests
+// =============================================================================
+
+TEST(UrlParserTest, UrlV163_1_FtpSchemeParses) {
+    // ftp:// scheme should parse correctly
+    auto result = parse("ftp://files.example.com/pub/doc");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "ftp");
+    EXPECT_EQ(result->host, "files.example.com");
+    EXPECT_EQ(result->path, "/pub/doc");
+    EXPECT_EQ(result->port, std::nullopt);
+    EXPECT_TRUE(result->query.empty());
+    EXPECT_TRUE(result->fragment.empty());
+}
+
+TEST(UrlParserTest, UrlV163_2_PortZeroPreserved) {
+    // Port 0 is non-default and should be preserved
+    auto result = parse("http://host:0/path");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "host");
+    ASSERT_TRUE(result->port.has_value());
+    EXPECT_EQ(result->port.value(), 0);
+    EXPECT_EQ(result->path, "/path");
+}
+
+TEST(UrlParserTest, UrlV163_3_LongHostnameParses) {
+    // A very long hostname (50+ characters) should parse correctly
+    std::string long_host = "abcdefghijklmnopqrstuvwxyz.abcdefghijklmnopqrstuvwxyz.example.com";
+    auto result = parse("http://" + long_host + "/index.html");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, long_host);
+    EXPECT_EQ(result->path, "/index.html");
+    EXPECT_EQ(result->port, std::nullopt);
+}
+
+TEST(UrlParserTest, UrlV163_4_QueryWithAmpersandAndEquals) {
+    // Query string with multiple key=value pairs separated by & should be preserved
+    auto result = parse("http://host/search?key1=val1&key2=val2");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "host");
+    EXPECT_EQ(result->path, "/search");
+    EXPECT_EQ(result->query, "key1=val1&key2=val2");
+}

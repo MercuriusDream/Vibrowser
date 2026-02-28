@@ -24134,3 +24134,138 @@ TEST(DomNode, AppendThreeChildrenVerifyOrderV162) {
     EXPECT_EQ(b_ptr->previous_sibling(), a_ptr);
     EXPECT_EQ(a_ptr->previous_sibling(), nullptr);
 }
+
+// ---------------------------------------------------------------------------
+// Round 163 — DOM tests (V163)
+// ---------------------------------------------------------------------------
+
+// 1. Shallow clone (manual) preserves tag_name but no children
+TEST(DomNode, ShallowCloneKeepsTagNameV163) {
+    auto original = std::make_unique<Element>("article");
+    original->set_attribute("id", "main");
+    original->append_child(std::make_unique<Element>("p"));
+
+    // Shallow clone: copy tag_name only, no children
+    auto clone = std::make_unique<Element>(original->tag_name());
+    EXPECT_EQ(clone->tag_name(), "article");
+    EXPECT_EQ(clone->first_child(), nullptr);
+    EXPECT_NE(clone.get(), original.get());
+}
+
+// 2. Set 3 attributes, remove 1, verify 2 remain
+TEST(DomElement, SetAttributeMultipleThenRemoveOneV163) {
+    Element elem("div");
+    elem.set_attribute("id", "box");
+    elem.set_attribute("class", "red");
+    elem.set_attribute("title", "tooltip");
+    EXPECT_EQ(elem.attributes().size(), 3u);
+
+    elem.remove_attribute("class");
+    EXPECT_EQ(elem.attributes().size(), 2u);
+    EXPECT_TRUE(elem.has_attribute("id"));
+    EXPECT_FALSE(elem.has_attribute("class"));
+    EXPECT_TRUE(elem.has_attribute("title"));
+}
+
+// 3. Register same id twice, get_element_by_id returns second
+TEST(DomDocument, MultipleSameIdLastRegisteredWinsV163) {
+    Document doc;
+    auto e1 = std::make_unique<Element>("div");
+    auto e2 = std::make_unique<Element>("span");
+    Element* e1_ptr = e1.get();
+    Element* e2_ptr = e2.get();
+
+    doc.register_id("dup", e1_ptr);
+    doc.register_id("dup", e2_ptr);
+    EXPECT_EQ(doc.get_element_by_id("dup"), e2_ptr);
+}
+
+// 4. Event with bubbles=true and cancelable=true
+TEST(DomEvent, BubblesAndCancelableBothTrueV163) {
+    Event ev("submit", true, true);
+    EXPECT_EQ(ev.type(), "submit");
+    EXPECT_TRUE(ev.bubbles());
+    EXPECT_TRUE(ev.cancelable());
+}
+
+// 5. first_child() is nullptr when node has no children
+TEST(DomNode, FirstChildNullptrWhenEmptyV163) {
+    Element elem("aside");
+    EXPECT_EQ(elem.first_child(), nullptr);
+    EXPECT_EQ(elem.last_child(), nullptr);
+}
+
+// 6. ClassList add 3 unique classes, verify length==3
+TEST(DomElement, ClassListAddThreeClassesVerifySizeV163) {
+    Element elem("div");
+    elem.class_list().add("alpha");
+    elem.class_list().add("beta");
+    elem.class_list().add("gamma");
+    EXPECT_EQ(elem.class_list().length(), 3u);
+    EXPECT_TRUE(elem.class_list().contains("alpha"));
+    EXPECT_TRUE(elem.class_list().contains("beta"));
+    EXPECT_TRUE(elem.class_list().contains("gamma"));
+}
+
+// 7. mark_dirty(All) then clear_dirty resets all flags
+TEST(DomNode, ClearDirtyResetsAllFlagsV163) {
+    Element elem("div");
+    elem.mark_dirty(DirtyFlags::All);
+    EXPECT_NE(elem.dirty_flags(), DirtyFlags::None);
+    elem.clear_dirty();
+    EXPECT_EQ(elem.dirty_flags(), DirtyFlags::None);
+    EXPECT_EQ(elem.dirty_flags() & DirtyFlags::Style, DirtyFlags::None);
+    EXPECT_EQ(elem.dirty_flags() & DirtyFlags::Layout, DirtyFlags::None);
+    EXPECT_EQ(elem.dirty_flags() & DirtyFlags::Paint, DirtyFlags::None);
+}
+
+// 8. Deep clone preserves attributes on cloned element
+TEST(DomNode, DeepClonePreservesAttributesV163) {
+    auto original = std::make_unique<Element>("section");
+    original->set_attribute("id", "hero");
+    original->set_attribute("class", "wide");
+    original->set_attribute("data-index", "42");
+
+    auto child = std::make_unique<Element>("p");
+    child->set_attribute("lang", "en");
+    original->append_child(std::move(child));
+
+    // Deep clone helper
+    std::function<std::unique_ptr<Node>(const Node*)> deep_clone =
+        [&](const Node* source) -> std::unique_ptr<Node> {
+            if (source->node_type() == NodeType::Element) {
+                const auto* src_elem = static_cast<const Element*>(source);
+                auto cloned = std::make_unique<Element>(src_elem->tag_name());
+                for (const auto& attr : src_elem->attributes()) {
+                    cloned->set_attribute(attr.name, attr.value);
+                }
+                for (const Node* c = source->first_child(); c; c = c->next_sibling()) {
+                    cloned->append_child(deep_clone(c));
+                }
+                return cloned;
+            }
+            if (source->node_type() == NodeType::Text) {
+                return std::make_unique<Text>(static_cast<const Text*>(source)->data());
+            }
+            return std::make_unique<Comment>(static_cast<const Comment*>(source)->data());
+        };
+
+    auto cloned_node = deep_clone(original.get());
+    auto* cloned = static_cast<Element*>(cloned_node.get());
+
+    EXPECT_EQ(cloned->tag_name(), "section");
+    EXPECT_EQ(cloned->attributes().size(), 3u);
+    EXPECT_EQ(cloned->get_attribute("id"), "hero");
+    EXPECT_EQ(cloned->get_attribute("class"), "wide");
+    EXPECT_EQ(cloned->get_attribute("data-index"), "42");
+
+    // Verify child was also cloned with attributes
+    auto* cloned_child = static_cast<Element*>(cloned->first_child());
+    ASSERT_NE(cloned_child, nullptr);
+    EXPECT_EQ(cloned_child->tag_name(), "p");
+    EXPECT_EQ(cloned_child->get_attribute("lang"), "en");
+
+    // Verify independence
+    EXPECT_NE(cloned, original.get());
+    EXPECT_NE(cloned_child, original->first_child());
+}

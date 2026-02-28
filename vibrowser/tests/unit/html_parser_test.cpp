@@ -25613,3 +25613,177 @@ TEST(HtmlParserTest, HtmlV162_8) {
     }
     EXPECT_EQ(img_src, "fallback.jpg");
 }
+
+TEST(HtmlParserTest, HtmlV163_1) {
+    // label element with for attribute
+    auto doc = clever::html::parse(
+        "<html><body><label for=\"username\">Username</label></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* label = doc->find_element("label");
+    ASSERT_NE(label, nullptr);
+    EXPECT_EQ(label->tag_name, "label");
+
+    std::string for_val;
+    for (const auto& attr : label->attributes) {
+        if (attr.name == "for") for_val = attr.value;
+    }
+    EXPECT_EQ(for_val, "username");
+
+    EXPECT_EQ(label->text_content(), "Username");
+}
+
+TEST(HtmlParserTest, HtmlV163_2) {
+    // optgroup element with label attr and option children
+    auto doc = clever::html::parse(
+        "<html><body><select><optgroup label=\"Fruits\"><option>Apple</option><option>Banana</option></optgroup></select></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* optgroup = doc->find_element("optgroup");
+    ASSERT_NE(optgroup, nullptr);
+    EXPECT_EQ(optgroup->tag_name, "optgroup");
+
+    std::string label_val;
+    for (const auto& attr : optgroup->attributes) {
+        if (attr.name == "label") label_val = attr.value;
+    }
+    EXPECT_EQ(label_val, "Fruits");
+
+    // Should have option children
+    int option_count = 0;
+    for (const auto& child : optgroup->children) {
+        if (child->tag_name == "option") option_count++;
+    }
+    EXPECT_GE(option_count, 2);
+}
+
+TEST(HtmlParserTest, HtmlV163_3) {
+    // input type=text element (void)
+    auto doc = clever::html::parse(
+        "<html><body><input type=\"text\" name=\"user\"></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* input = doc->find_element("input");
+    ASSERT_NE(input, nullptr);
+    EXPECT_EQ(input->tag_name, "input");
+
+    std::string type_val;
+    std::string name_val;
+    for (const auto& attr : input->attributes) {
+        if (attr.name == "type") type_val = attr.value;
+        if (attr.name == "name") name_val = attr.value;
+    }
+    EXPECT_EQ(type_val, "text");
+    EXPECT_EQ(name_val, "user");
+}
+
+TEST(HtmlParserTest, HtmlV163_4) {
+    // input type=checkbox element (void)
+    auto doc = clever::html::parse(
+        "<html><body><input type=\"checkbox\" name=\"agree\"></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* input = doc->find_element("input");
+    ASSERT_NE(input, nullptr);
+    EXPECT_EQ(input->tag_name, "input");
+
+    std::string type_val;
+    std::string name_val;
+    for (const auto& attr : input->attributes) {
+        if (attr.name == "type") type_val = attr.value;
+        if (attr.name == "name") name_val = attr.value;
+    }
+    EXPECT_EQ(type_val, "checkbox");
+    EXPECT_EQ(name_val, "agree");
+}
+
+TEST(HtmlParserTest, HtmlV163_5) {
+    // input type=radio element (void)
+    auto doc = clever::html::parse(
+        "<html><body><input type=\"radio\" name=\"color\" value=\"red\"></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* input = doc->find_element("input");
+    ASSERT_NE(input, nullptr);
+    EXPECT_EQ(input->tag_name, "input");
+
+    std::string type_val;
+    std::string name_val;
+    std::string value_val;
+    for (const auto& attr : input->attributes) {
+        if (attr.name == "type") type_val = attr.value;
+        if (attr.name == "name") name_val = attr.value;
+        if (attr.name == "value") value_val = attr.value;
+    }
+    EXPECT_EQ(type_val, "radio");
+    EXPECT_EQ(name_val, "color");
+    EXPECT_EQ(value_val, "red");
+}
+
+TEST(HtmlParserTest, HtmlV163_6) {
+    // input type=hidden with name and value
+    auto doc = clever::html::parse(
+        "<html><body><input type=\"hidden\" name=\"csrf\" value=\"tok123\"></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* input = doc->find_element("input");
+    ASSERT_NE(input, nullptr);
+    EXPECT_EQ(input->tag_name, "input");
+
+    std::string type_val;
+    std::string name_val;
+    std::string value_val;
+    for (const auto& attr : input->attributes) {
+        if (attr.name == "type") type_val = attr.value;
+        if (attr.name == "name") name_val = attr.value;
+        if (attr.name == "value") value_val = attr.value;
+    }
+    EXPECT_EQ(type_val, "hidden");
+    EXPECT_EQ(name_val, "csrf");
+    EXPECT_EQ(value_val, "tok123");
+}
+
+TEST(HtmlParserTest, HtmlV163_7) {
+    // textarea with rows and cols attributes
+    auto doc = clever::html::parse(
+        "<html><body><textarea rows=\"5\" cols=\"40\"></textarea></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* textarea = doc->find_element("textarea");
+    ASSERT_NE(textarea, nullptr);
+    EXPECT_EQ(textarea->tag_name, "textarea");
+
+    std::string rows_val;
+    std::string cols_val;
+    for (const auto& attr : textarea->attributes) {
+        if (attr.name == "rows") rows_val = attr.value;
+        if (attr.name == "cols") cols_val = attr.value;
+    }
+    EXPECT_EQ(rows_val, "5");
+    EXPECT_EQ(cols_val, "40");
+}
+
+TEST(HtmlParserTest, HtmlV163_8) {
+    // form element with action and method
+    auto doc = clever::html::parse(
+        "<html><body><form action=\"/submit\" method=\"post\"><input type=\"text\" name=\"q\"></form></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* form = doc->find_element("form");
+    ASSERT_NE(form, nullptr);
+    EXPECT_EQ(form->tag_name, "form");
+
+    std::string action_val;
+    std::string method_val;
+    for (const auto& attr : form->attributes) {
+        if (attr.name == "action") action_val = attr.value;
+        if (attr.name == "method") method_val = attr.value;
+    }
+    EXPECT_EQ(action_val, "/submit");
+    EXPECT_EQ(method_val, "post");
+
+    // form should contain the input child
+    auto* input = doc->find_element("input");
+    ASSERT_NE(input, nullptr);
+    EXPECT_EQ(input->tag_name, "input");
+}

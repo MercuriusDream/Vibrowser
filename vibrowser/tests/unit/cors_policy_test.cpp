@@ -12987,3 +12987,51 @@ TEST(CORSPolicyTest, CorsV162_7_JavascriptSchemeNotEnforceable) {
 TEST(CORSPolicyTest, CorsV162_8_HttpsImplicit443SameOriginAsExplicit) {
     EXPECT_FALSE(is_cross_origin("https://host.example", "https://host.example:443/path"));
 }
+
+// ---------------------------------------------------------------------------
+// Round 163 — CORS tests (V163)
+// ---------------------------------------------------------------------------
+
+// 1. https without explicit port is enforceable
+TEST(CORSPolicyTest, CorsV163_1_HttpsWithoutPortEnforceable) {
+    EXPECT_TRUE(has_enforceable_document_origin("https://app.example"));
+}
+
+// 2. http://host vs http://host:80 are same origin (port normalization)
+TEST(CORSPolicyTest, CorsV163_2_SameOriginAfterPortNormalization) {
+    EXPECT_FALSE(is_cross_origin("http://app.example", "http://app.example:80/resource"));
+}
+
+// 3. ACAO with multiple space-separated origins is rejected (not valid)
+TEST(CORSPolicyTest, CorsV163_3_AcaoWithMultipleOriginsRejectsV163) {
+    clever::net::HeaderMap headers;
+    headers.set("Access-Control-Allow-Origin", "https://a.example https://b.example");
+    EXPECT_FALSE(cors_allows_response("https://a.example", "https://api.example/data",
+                                      headers, false));
+}
+
+// 4. Different subdomains should attach origin header
+TEST(CORSPolicyTest, CorsV163_4_ShouldAttachOriginForSubdomainDiff) {
+    EXPECT_TRUE(should_attach_origin_header("https://sub1.example",
+                                            "https://sub2.example/api"));
+}
+
+// 5. data: scheme is not enforceable
+TEST(CORSPolicyTest, CorsV163_5_DataSchemeNotEnforceable) {
+    EXPECT_FALSE(has_enforceable_document_origin("data:text/html,<h1>hi</h1>"));
+}
+
+// 6. blob: scheme is not enforceable
+TEST(CORSPolicyTest, CorsV163_6_BlobSchemeNotEnforceable) {
+    EXPECT_FALSE(has_enforceable_document_origin("blob:https://app.example/abc-123"));
+}
+
+// 7. ws: scheme is not enforceable
+TEST(CORSPolicyTest, CorsV163_7_WsSchemeNotEnforceable) {
+    EXPECT_FALSE(has_enforceable_document_origin("ws://app.example"));
+}
+
+// 8. http with non-default port is enforceable
+TEST(CORSPolicyTest, CorsV163_8_HttpNonDefaultPortEnforceable) {
+    EXPECT_TRUE(has_enforceable_document_origin("http://app.example:9090"));
+}

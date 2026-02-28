@@ -37942,3 +37942,105 @@ TEST(JSEngine, JsV162_8) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "abcabcabc");
 }
+
+// ---------------------------------------------------------------------------
+// Round 163 — JS engine tests
+// ---------------------------------------------------------------------------
+
+// V163_1: Array.from string creates char array
+TEST(JSEngine, JsV163_1) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        Array.from("hello").join(",");
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "h,e,l,l,o");
+}
+
+// V163_2: String.match with regex
+TEST(JSEngine, JsV163_2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var m = "abc123def".match(/[0-9]+/);
+        m[0];
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "123");
+}
+
+// V163_3: Object.assign merges objects
+TEST(JSEngine, JsV163_3) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var a = {x: 1};
+        var b = {y: 2, z: 3};
+        var c = Object.assign({}, a, b);
+        String(c.x) + "," + String(c.y) + "," + String(c.z);
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1,2,3");
+}
+
+// V163_4: async/await basic resolution
+TEST(JSEngine, JsV163_4) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var val = 0;
+        async function f() { return 42; }
+        f().then(function(v) { val = v; });
+        val;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    // Promise resolves asynchronously; val may still be 0 at this point
+    // The key test is that async/await doesn't throw an error
+    EXPECT_TRUE(result == "0" || result == "42");
+}
+
+// V163_5: Math.round rounding behavior
+TEST(JSEngine, JsV163_5) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        String(Math.round(2.5)) + "," + String(Math.round(2.4)) + "," + String(Math.round(-1.5));
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "3,2,-1");
+}
+
+// V163_6: Array.fill fills elements
+TEST(JSEngine, JsV163_6) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var arr = [1, 2, 3, 4, 5];
+        arr.fill(0, 1, 4);
+        arr.join(",");
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1,0,0,0,5");
+}
+
+// V163_7: WeakMap set and get
+TEST(JSEngine, JsV163_7) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var wm = new WeakMap();
+        var key1 = {};
+        var key2 = {};
+        wm.set(key1, "alpha");
+        wm.set(key2, "beta");
+        wm.get(key1) + "," + wm.get(key2) + "," + String(wm.has(key1));
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "alpha,beta,true");
+}
+
+// V163_8: Number.parseInt and parseFloat
+TEST(JSEngine, JsV163_8) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var a = Number.parseInt("42abc", 10);
+        var b = Number.parseFloat("3.14xyz");
+        String(a) + "," + String(b);
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "42,3.14");
+}

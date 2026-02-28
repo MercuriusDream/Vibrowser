@@ -21422,3 +21422,38 @@ TEST(SerializerTest, SerializerV162_3_MixedTypesU8U16U32U64RoundTrip) {
     EXPECT_EQ(d.read_u64(), 0x0102030405060708ULL);
     EXPECT_FALSE(d.has_remaining());
 }
+
+// ------------------------------------------------------------------
+// Round 163 – Serializer tests
+// ------------------------------------------------------------------
+
+TEST(SerializerTest, SerializerV163_1_BoolTrueAndFalseRoundTrip) {
+    Serializer s;
+    s.write_bool(true);
+    s.write_bool(false);
+
+    Deserializer d(s.data());
+    EXPECT_TRUE(d.read_bool());
+    EXPECT_FALSE(d.read_bool());
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, SerializerV163_2_I64MinValueRoundTrip) {
+    Serializer s;
+    s.write_i64(INT64_MIN);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_i64(), INT64_MIN);
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, SerializerV163_3_EmptyBytesRoundTrip) {
+    Serializer s;
+    uint8_t dummy = 0;
+    s.write_bytes(&dummy, 0);
+
+    Deserializer d(s.data());
+    auto bytes = d.read_bytes();
+    EXPECT_TRUE(bytes.empty());
+    EXPECT_FALSE(d.has_remaining());
+}

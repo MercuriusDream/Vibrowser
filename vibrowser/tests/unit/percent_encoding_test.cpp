@@ -1666,3 +1666,31 @@ TEST(IsURLCodePoint, NullByteInvalidV162) {
     // Null byte (0x00) is NOT a valid URL code point
     EXPECT_FALSE(is_url_code_point(static_cast<char32_t>(0x00)));
 }
+
+// =============================================================================
+// Round 163 percent encoding tests
+// =============================================================================
+
+TEST(PercentEncoding, HashEncodedAsPercent23V163) {
+    // '#' should be percent-encoded as %23
+    EXPECT_EQ(percent_encode("#"), "%23");
+    EXPECT_EQ(percent_encode("page#anchor"), "page%23anchor");
+}
+
+TEST(PercentDecoding, PercentSignDecodedV163) {
+    // %25 decodes back to a literal '%'
+    EXPECT_EQ(percent_decode("%25"), "%");
+    EXPECT_EQ(percent_decode("100%25 done"), "100% done");
+}
+
+TEST(PercentEncoding, AsteriskNotEncodedV163) {
+    // '*' is a valid URL code point and should NOT be encoded
+    EXPECT_EQ(percent_encode("*"), "*");
+    EXPECT_EQ(percent_encode("a*b*c"), "a*b*c");
+}
+
+TEST(IsURLCodePoint, TabAndNewlineInvalidV163) {
+    // Tab (0x09) and newline (0x0A) are NOT valid URL code points
+    EXPECT_FALSE(is_url_code_point(static_cast<char32_t>(0x09)));
+    EXPECT_FALSE(is_url_code_point(static_cast<char32_t>(0x0A)));
+}

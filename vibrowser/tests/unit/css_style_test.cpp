@@ -26326,3 +26326,46 @@ TEST(PropertyCascadeTest, PositionAbsoluteAppliedV162) {
     cascade.apply_declaration(style, make_decl("position", "absolute"), parent);
     EXPECT_EQ(style.position, Position::Absolute);
 }
+
+TEST(CSSStyleTest, CssV163_1_MarginAutoApplied) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("margin", "auto"), parent);
+    EXPECT_TRUE(style.margin.top.is_auto());
+    EXPECT_TRUE(style.margin.right.is_auto());
+    EXPECT_TRUE(style.margin.bottom.is_auto());
+    EXPECT_TRUE(style.margin.left.is_auto());
+}
+
+TEST(CSSStyleTest, CssV163_2_PaddingPixelApplied) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("padding", "10px"), parent);
+    EXPECT_FLOAT_EQ(style.padding.top.to_px(), 10.0f);
+    EXPECT_FLOAT_EQ(style.padding.right.to_px(), 10.0f);
+    EXPECT_FLOAT_EQ(style.padding.bottom.to_px(), 10.0f);
+    EXPECT_FLOAT_EQ(style.padding.left.to_px(), 10.0f);
+}
+
+TEST(PropertyCascadeTest, OverflowHiddenAppliedV163) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("overflow", "hidden"), parent);
+    EXPECT_EQ(style.overflow_x, Overflow::Hidden);
+    EXPECT_EQ(style.overflow_y, Overflow::Hidden);
+}
+
+TEST(PropertyCascadeTest, CursorPointerAppliedV163) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("cursor", "pointer"), parent);
+    EXPECT_EQ(style.cursor, Cursor::Pointer);
+}

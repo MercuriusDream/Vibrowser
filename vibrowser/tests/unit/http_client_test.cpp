@@ -28252,3 +28252,238 @@ TEST(HttpClient, CookieJarDomainCasInsensitiveV162) {
     EXPECT_NE(h3.find("token162=abc"), std::string::npos)
         << "Cookie set on Example162.COM should be found via Example162.COM, got: " << h3;
 }
+
+// ===========================================================================
+// Round 163 — Net tests (V163)
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// 1. GET /api/users?page=2&limit=10 serialization
+// ---------------------------------------------------------------------------
+TEST(HttpClient, RequestSerializeGetWithPathAndQueryV163) {
+    Request req;
+    req.method = Method::GET;
+    req.host = "api163.example.com";
+    req.path = "/api/users?page=2&limit=10";
+
+    auto raw = req.serialize();
+    std::string result(raw.begin(), raw.end());
+
+    EXPECT_NE(result.find("GET /api/users?page=2&limit=10 HTTP/1.1\r\n"), std::string::npos)
+        << "Request line should contain path with query, got: " << result;
+    EXPECT_NE(result.find("Host: api163.example.com\r\n"), std::string::npos)
+        << "Host header missing, got: " << result;
+    EXPECT_NE(result.find("Connection: close\r\n"), std::string::npos)
+        << "Connection header missing, got: " << result;
+}
+
+// ---------------------------------------------------------------------------
+// 2. Response parse 302 Found with Location header
+// ---------------------------------------------------------------------------
+TEST(HttpClient, ResponseParse302FoundWithLocationV163) {
+    std::string raw_str =
+        "HTTP/1.1 302 Found\r\n"
+        "Location: https://redirect163.example.com/new-page\r\n"
+        "Content-Length: 0\r\n"
+        "\r\n";
+
+    std::vector<uint8_t> raw(raw_str.begin(), raw_str.end());
+    auto resp = Response::parse(raw);
+
+    ASSERT_TRUE(resp.has_value()) << "Failed to parse 302 response";
+    EXPECT_EQ(resp->status, 302u)
+        << "Status should be 302, got: " << resp->status;
+    EXPECT_EQ(resp->status_text, "Found")
+        << "Status text should be Found, got: " << resp->status_text;
+    ASSERT_TRUE(resp->headers.has("Location"))
+        << "Location header missing";
+    EXPECT_EQ(resp->headers.get("Location").value(),
+              "https://redirect163.example.com/new-page")
+        << "Location header value mismatch";
+    EXPECT_TRUE(resp->body.empty())
+        << "Body should be empty for 302, size: " << resp->body.size();
+}
+
+// ---------------------------------------------------------------------------
+// 3. ConnectionPool: release 2 sockets to same host, acquire both back
+// ---------------------------------------------------------------------------
+TEST(HttpClient, ConnectionPoolReleaseMultipleSameHostV163) {
+    ConnectionPool pool;
+
+    int fd_a = 163;
+    int fd_b = 263;
+
+    pool.release("pool163.example.com", 443, fd_a);
+    pool.release("pool163.example.com", 443, fd_b);
+    EXPECT_EQ(pool.count("pool163.example.com", 443), 2u)
+        << "Pool should have 2 sockets after two releases";
+
+    // LIFO: most recently released comes first
+    int first = pool.acquire("pool163.example.com", 443);
+    EXPECT_EQ(first, fd_b)
+        << "First acquire should return last released fd, got: " << first;
+
+    int second = pool.acquire("pool163.example.com", 443);
+    EXPECT_EQ(second, fd_a)
+        << "Second acquire should return first released fd, got: " << second;
+
+    // Pool now empty
+    int third = pool.acquire("pool163.example.com", 443);
+    EXPECT_EQ(third, -1)
+        << "Third acquire on empty pool should return -1, got: " << third;
+
+    EXPECT_EQ(pool.count("pool163.example.com", 443), 0u)
+        << "Pool should be empty after all acquires";
+}
+
+// ---------------------------------------------------------------------------
+// 4. CookieJar: Path=/ matches all paths
+// ---------------------------------------------------------------------------
+TEST(HttpClient, CookieJarRootPathMatchesAllPathsV163) {
+    CookieJar jar;
+    jar.set_from_header("root163=yes; Path=/", "paths163.example.com");
+
+    // Root path should match /
+    std::string h1 = jar.get_cookie_header("paths163.example.com", "/", false);
+    EXPECT_NE(h1.find("root163=yes"), std::string::npos)
+        << "Path=/ should match /, got: " << h1;
+
+    // Root path should match /any/sub/path
+    std::string h2 = jar.get_cookie_header("paths163.example.com", "/any/sub/path", false);
+    EXPECT_NE(h2.find("root163=yes"), std::string::npos)
+        << "Path=/ should match /any/sub/path, got: " << h2;
+
+    // Root path should match /api
+    std::string h3 = jar.get_cookie_header("paths163.example.com", "/api", false);
+    EXPECT_NE(h3.find("root163=yes"), std::string::npos)
+        << "Path=/ should match /api, got: " << h3;
+
+    // Root path should match /deep/nested/route/here
+    std::string h4 = jar.get_cookie_header("paths163.example.com", "/deep/nested/route/here", false);
+    EXPECT_NE(h4.find("root163=yes"), std::string::npos)
+        << "Path=/ should match /deep/nested/route/here, got: " << h4;
+}
+
+// ---------------------------------------------------------------------------
+// 5. HeaderMap: set then remove, get returns nullopt
+// ---------------------------------------------------------------------------
+TEST(HttpClient, HeaderMapRemoveDeletesKeyV163) {
+    HeaderMap map;
+    map.set("X-Trace-163", "abc123");
+    map.set("X-Keep-163", "keep-me");
+
+    ASSERT_TRUE(map.has("X-Trace-163"))
+        << "X-Trace-163 should exist before remove";
+    EXPECT_EQ(map.get("X-Trace-163").value(), "abc123");
+
+    map.remove("X-Trace-163");
+
+    EXPECT_FALSE(map.has("X-Trace-163"))
+        << "X-Trace-163 should not exist after remove";
+    EXPECT_FALSE(map.get("X-Trace-163").has_value())
+        << "get() should return nullopt after remove";
+
+    // Other key unaffected
+    EXPECT_TRUE(map.has("X-Keep-163"))
+        << "X-Keep-163 should still exist after removing different key";
+    EXPECT_EQ(map.get("X-Keep-163").value(), "keep-me");
+}
+
+// ---------------------------------------------------------------------------
+// 6. POST with body, Content-Length auto-set
+// ---------------------------------------------------------------------------
+TEST(HttpClient, RequestSerializePostWithBodyAndLengthV163) {
+    Request req;
+    req.method = Method::POST;
+    req.host = "post163.example.com";
+    req.path = "/submit";
+    req.headers.set("Content-Type", "application/x-www-form-urlencoded");
+
+    std::string body_str = "username=user163&password=pass163";
+    req.body.assign(body_str.begin(), body_str.end());
+
+    auto raw = req.serialize();
+    std::string result(raw.begin(), raw.end());
+
+    EXPECT_NE(result.find("POST /submit HTTP/1.1\r\n"), std::string::npos)
+        << "Request line should be POST, got: " << result;
+    EXPECT_NE(result.find("Host: post163.example.com\r\n"), std::string::npos)
+        << "Host header missing, got: " << result;
+    EXPECT_NE(result.find("Content-Length: 33\r\n"), std::string::npos)
+        << "Content-Length should be 33, got: " << result;
+    EXPECT_NE(result.find("content-type: application/x-www-form-urlencoded\r\n"),
+              std::string::npos)
+        << "Content-Type custom header should be lowercase, got: " << result;
+    EXPECT_NE(result.find(body_str), std::string::npos)
+        << "Body should be present in serialized output, got: " << result;
+}
+
+// ---------------------------------------------------------------------------
+// 7. Response parse with 3+ different headers
+// ---------------------------------------------------------------------------
+TEST(HttpClient, ResponseParseWithMultipleHeadersV163) {
+    std::string raw_str =
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Type: text/html; charset=utf-8\r\n"
+        "X-Request-Id: req-163-xyz\r\n"
+        "Cache-Control: no-cache\r\n"
+        "X-Frame-Options: DENY\r\n"
+        "Content-Length: 11\r\n"
+        "\r\n"
+        "hello world";
+
+    std::vector<uint8_t> raw(raw_str.begin(), raw_str.end());
+    auto resp = Response::parse(raw);
+
+    ASSERT_TRUE(resp.has_value()) << "Failed to parse 200 response";
+    EXPECT_EQ(resp->status, 200u)
+        << "Status should be 200, got: " << resp->status;
+
+    ASSERT_TRUE(resp->headers.has("Content-Type"))
+        << "Content-Type header missing";
+    EXPECT_EQ(resp->headers.get("Content-Type").value(), "text/html; charset=utf-8");
+
+    ASSERT_TRUE(resp->headers.has("X-Request-Id"))
+        << "X-Request-Id header missing";
+    EXPECT_EQ(resp->headers.get("X-Request-Id").value(), "req-163-xyz");
+
+    ASSERT_TRUE(resp->headers.has("Cache-Control"))
+        << "Cache-Control header missing";
+    EXPECT_EQ(resp->headers.get("Cache-Control").value(), "no-cache");
+
+    ASSERT_TRUE(resp->headers.has("X-Frame-Options"))
+        << "X-Frame-Options header missing";
+    EXPECT_EQ(resp->headers.get("X-Frame-Options").value(), "DENY");
+
+    EXPECT_EQ(resp->body_as_string(), "hello world")
+        << "Body mismatch, got: " << resp->body_as_string();
+}
+
+// ---------------------------------------------------------------------------
+// 8. CookieJar: two cookies set via separate Set-Cookie calls with attributes
+// ---------------------------------------------------------------------------
+TEST(HttpClient, CookieJarSeparateCookiesSemicolonInHeaderV163) {
+    CookieJar jar;
+
+    // Set-Cookie header typically has ONE cookie with attributes after semicolons
+    // The name=value pair is before the first semicolon
+    jar.set_from_header("sid163=aaa; Path=/; HttpOnly", "cookies163.example.com");
+    jar.set_from_header("lang163=en; Path=/", "cookies163.example.com");
+
+    std::string header = jar.get_cookie_header("cookies163.example.com", "/", false);
+
+    EXPECT_NE(header.find("sid163=aaa"), std::string::npos)
+        << "sid163 cookie should be present, got: " << header;
+    EXPECT_NE(header.find("lang163=en"), std::string::npos)
+        << "lang163 cookie should be present, got: " << header;
+
+    // Verify the semicolon separator between cookies in the Cookie header
+    EXPECT_NE(header.find("; "), std::string::npos)
+        << "Multiple cookies should be separated by '; ', got: " << header;
+
+    // Verify the attribute parts are NOT in the Cookie header output
+    EXPECT_EQ(header.find("HttpOnly"), std::string::npos)
+        << "HttpOnly attribute should not appear in Cookie header, got: " << header;
+    EXPECT_EQ(header.find("Path"), std::string::npos)
+        << "Path attribute should not appear in Cookie header, got: " << header;
+}

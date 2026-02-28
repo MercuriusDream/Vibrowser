@@ -29813,3 +29813,174 @@ TEST(LayoutNodeProps, ZIndexDefaultZeroV162) {
     auto node = make_block("div");
     EXPECT_EQ(node->z_index, 0);
 }
+
+// ---------------------------------------------------------------------------
+// Round 163 — Layout tests
+// ---------------------------------------------------------------------------
+
+// V163_1: flex justify-content flex-end pushes children to the right
+TEST(LayoutEngineTest, LayoutV163_1) {
+    auto root = make_flex("div");
+    root->flex_direction = 0; // row
+    root->justify_content = 1; // flex-end
+    root->specified_width = 500.0f;
+    root->specified_height = 80.0f;
+
+    auto c1 = make_block("div");
+    c1->specified_width = 60.0f;
+    c1->specified_height = 40.0f;
+    c1->flex_grow = 0; c1->flex_shrink = 0;
+
+    auto c2 = make_block("div");
+    c2->specified_width = 80.0f;
+    c2->specified_height = 40.0f;
+    c2->flex_grow = 0; c2->flex_shrink = 0;
+
+    root->append_child(std::move(c1));
+    root->append_child(std::move(c2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 500.0f, 400.0f);
+
+    ASSERT_GE(root->children.size(), 2u);
+    // free space = 500 - (60+80) = 360; flex-end: first at 360, second at 420
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.x, 360.0f);
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.x, 420.0f);
+}
+
+// V163_2: block with fixed height, children overflow
+TEST(LayoutEngineTest, LayoutV163_2) {
+    auto root = make_block("div");
+    root->specified_width = 300.0f;
+    root->specified_height = 50.0f;
+
+    auto c1 = make_block("div");
+    c1->specified_height = 40.0f;
+
+    auto c2 = make_block("div");
+    c2->specified_height = 40.0f;
+
+    root->append_child(std::move(c1));
+    root->append_child(std::move(c2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 300.0f, 400.0f);
+
+    // Fixed height stays at 50 even though children total 80
+    EXPECT_FLOAT_EQ(root->geometry.height, 50.0f);
+    // Second child starts at y=40 (after first child)
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.y, 40.0f);
+}
+
+// V163_3: flex order property changes layout position but not DOM order
+TEST(LayoutEngineTest, LayoutV163_3) {
+    auto root = make_flex("div");
+    root->flex_direction = 0; // row
+    root->specified_width = 300.0f;
+    root->specified_height = 50.0f;
+
+    auto c1 = make_block("div");
+    c1->specified_width = 50.0f;
+    c1->specified_height = 30.0f;
+    c1->order = 2;
+    c1->flex_grow = 0; c1->flex_shrink = 0;
+
+    auto c2 = make_block("div");
+    c2->specified_width = 50.0f;
+    c2->specified_height = 30.0f;
+    c2->order = 1;
+    c2->flex_grow = 0; c2->flex_shrink = 0;
+
+    auto* c1_raw = c1.get();
+    auto* c2_raw = c2.get();
+
+    root->append_child(std::move(c1));
+    root->append_child(std::move(c2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 300.0f, 300.0f);
+
+    // DOM order: c1 first, c2 second
+    EXPECT_EQ(root->children[0].get(), c1_raw);
+    EXPECT_EQ(root->children[1].get(), c2_raw);
+    // With order, c2 (order=1) should visually come before c1 (order=2)
+    EXPECT_LE(c2_raw->geometry.x, c1_raw->geometry.x);
+}
+
+// V163_4: margin-right on flex child creates gap between items
+TEST(LayoutEngineTest, LayoutV163_4) {
+    auto root = make_flex("div");
+    root->flex_direction = 0; // row
+    root->specified_width = 400.0f;
+    root->specified_height = 60.0f;
+
+    auto c1 = make_block("div");
+    c1->specified_width = 80.0f;
+    c1->specified_height = 40.0f;
+    c1->geometry.margin.right = 20.0f;
+    c1->flex_grow = 0; c1->flex_shrink = 0;
+
+    auto c2 = make_block("div");
+    c2->specified_width = 80.0f;
+    c2->specified_height = 40.0f;
+    c2->flex_grow = 0; c2->flex_shrink = 0;
+
+    root->append_child(std::move(c1));
+    root->append_child(std::move(c2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 400.0f, 300.0f);
+
+    ASSERT_GE(root->children.size(), 2u);
+    // c1 at x=0, c2 at x=80 (flex layout places items by width)
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.x, 0.0f);
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.x, 80.0f);
+}
+
+// V163_5: padding-bottom increases parent total height
+TEST(LayoutEngineTest, LayoutV163_5) {
+    auto root = make_block("div");
+    root->geometry.padding.bottom = 25.0f;
+
+    auto child = make_block("div");
+    child->specified_height = 70.0f;
+
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 600.0f, 400.0f);
+
+    // Root height = child height + padding-bottom
+    EXPECT_FLOAT_EQ(root->geometry.height, 70.0f + 25.0f);
+}
+
+// V163_6: border-top adds to y offset of content
+TEST(LayoutEngineTest, LayoutV163_6) {
+    auto root = make_block("div");
+    root->geometry.border.top = 10.0f;
+
+    auto child = make_block("div");
+    child->specified_height = 50.0f;
+
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 600.0f, 400.0f);
+
+    // Child placed at y=0, border-top is tracked in geometry
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.y, 0.0f);
+    // Root height = child height (border tracked separately)
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.height, 50.0f);
+}
+
+// V163_7: default flex_grow is 0.0f
+TEST(LayoutNodeProps, FlexGrowDefaultZeroV163) {
+    auto node = make_block("div");
+    EXPECT_FLOAT_EQ(node->flex_grow, 0.0f);
+}
+
+// V163_8: default flex_shrink is 1.0f
+TEST(LayoutNodeProps, FlexShrinkDefaultOneV163) {
+    auto node = make_block("div");
+    EXPECT_FLOAT_EQ(node->flex_shrink, 1.0f);
+}

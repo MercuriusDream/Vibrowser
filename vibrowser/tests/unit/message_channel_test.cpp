@@ -2743,3 +2743,47 @@ TEST(MessageChannelTest, MessageChannelV162_2_DifferentPayloadSizesDispatched) {
     EXPECT_EQ(received_sizes[1], 50u);
     EXPECT_EQ(received_sizes[2], 500u);
 }
+
+// ------------------------------------------------------------------
+// Round 163 – MessageChannel tests
+// ------------------------------------------------------------------
+
+TEST(MessageChannelTest, MessageChannelV163_1_ZeroPayloadDispatched) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel ch(std::move(pa));
+
+    bool handler_called = false;
+    ch.on(10, [&](const Message& m) {
+        handler_called = true;
+        EXPECT_TRUE(m.payload.empty());
+    });
+
+    Message msg;
+    msg.type = 10;
+    msg.request_id = 0;
+    // payload left empty
+    ch.dispatch(msg);
+
+    EXPECT_TRUE(handler_called);
+}
+
+TEST(MessageChannelTest, MessageChannelV163_2_LargeTypeIdHandled) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel ch(std::move(pa));
+
+    bool handler_called = false;
+    uint32_t received_type = 0;
+    ch.on(65535, [&](const Message& m) {
+        handler_called = true;
+        received_type = m.type;
+    });
+
+    Message msg;
+    msg.type = 65535;
+    msg.request_id = 1;
+    msg.payload = {0xFF};
+    ch.dispatch(msg);
+
+    EXPECT_TRUE(handler_called);
+    EXPECT_EQ(received_type, 65535u);
+}

@@ -11402,3 +11402,60 @@ TEST_F(CSSStylesheetTest, BackfaceVisibilityDeclarationV162) {
     }
     EXPECT_TRUE(found) << "backface-visibility declaration not found";
 }
+
+TEST_F(CSSStylesheetTest, PerspectiveDeclarationV163) {
+    auto ss = parse_stylesheet("div { perspective: 500px; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "perspective") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "500px");
+        }
+    }
+    EXPECT_TRUE(found) << "perspective declaration not found";
+}
+
+TEST_F(CSSStylesheetTest, TransformOriginDeclarationV163) {
+    auto ss = parse_stylesheet("div { transform-origin: center bottom; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "transform-origin") {
+            found = true;
+            ASSERT_GE(d.values.size(), 2u);
+            EXPECT_EQ(d.values[0].value, "center");
+            EXPECT_EQ(d.values[1].value, "bottom");
+        }
+    }
+    EXPECT_TRUE(found) << "transform-origin declaration not found";
+}
+
+TEST_F(CSSStylesheetTest, WillChangeDeclarationV163) {
+    auto ss = parse_stylesheet("div { will-change: transform; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "will-change") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "transform");
+        }
+    }
+    EXPECT_TRUE(found) << "will-change declaration not found";
+}
+
+TEST_F(CSSStylesheetTest, ContainDeclarationV163) {
+    auto ss = parse_stylesheet("div { contain: layout; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "contain") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "layout");
+        }
+    }
+    EXPECT_TRUE(found) << "contain declaration not found";
+}

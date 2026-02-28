@@ -2553,3 +2553,60 @@ TEST(MessagePipeTest, MessagePipeV162_3_TwoHundredBytePayload) {
     ASSERT_EQ(received->size(), 200u);
     EXPECT_EQ(*received, payload);
 }
+
+// ------------------------------------------------------------------
+// Round 163 – MessagePipe tests
+// ------------------------------------------------------------------
+
+TEST(MessagePipeTest, MessagePipeV163_1_CloseReceiverThenSendFails) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    // Close the receiver end
+    b.close();
+    EXPECT_FALSE(b.is_open());
+
+    // Sending on a closed pipe end should fail
+    std::vector<uint8_t> data = {0x01, 0x02, 0x03};
+    EXPECT_FALSE(b.send(data));
+}
+
+TEST(MessagePipeTest, MessagePipeV163_2_FourKBPayloadRoundTrip) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    std::vector<uint8_t> payload(4096);
+    std::iota(payload.begin(), payload.end(), static_cast<uint8_t>(0));
+
+    ASSERT_TRUE(a.send(payload));
+
+    auto received = b.receive();
+    ASSERT_TRUE(received.has_value());
+    ASSERT_EQ(received->size(), 4096u);
+    EXPECT_EQ(*received, payload);
+}
+
+TEST(MessagePipeTest, MessagePipeV163_3_ThreeMessagesDescendingSize) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    std::vector<uint8_t> p300(300, 0xAA);
+    std::vector<uint8_t> p200(200, 0xBB);
+    std::vector<uint8_t> p100(100, 0xCC);
+
+    ASSERT_TRUE(a.send(p300));
+    ASSERT_TRUE(a.send(p200));
+    ASSERT_TRUE(a.send(p100));
+
+    auto r1 = b.receive();
+    ASSERT_TRUE(r1.has_value());
+    ASSERT_EQ(r1->size(), 300u);
+    EXPECT_EQ(*r1, p300);
+
+    auto r2 = b.receive();
+    ASSERT_TRUE(r2.has_value());
+    ASSERT_EQ(r2->size(), 200u);
+    EXPECT_EQ(*r2, p200);
+
+    auto r3 = b.receive();
+    ASSERT_TRUE(r3.has_value());
+    ASSERT_EQ(r3->size(), 100u);
+    EXPECT_EQ(*r3, p100);
+}
