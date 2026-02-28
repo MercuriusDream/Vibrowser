@@ -16818,3 +16818,170 @@ TEST(HtmlParserTest, MapWithAreaElementsV103) {
     EXPECT_EQ(get_attr_v63(areas[2], "shape"), "poly");
     EXPECT_EQ(get_attr_v63(areas[2], "href"), "triangle.htm");
 }
+
+// ============================================================================
+// V104 Tests
+// ============================================================================
+
+TEST(HtmlParserTest, NestedDefinitionListV104) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<dl>"
+        "<dt>Term 1</dt><dd>Definition 1</dd>"
+        "<dt>Term 2</dt><dd>Definition 2a</dd><dd>Definition 2b</dd>"
+        "</dl>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* dl = doc->find_element("dl");
+    ASSERT_NE(dl, nullptr);
+    auto dts = doc->find_all_elements("dt");
+    ASSERT_EQ(dts.size(), 2u);
+    EXPECT_EQ(dts[0]->text_content(), "Term 1");
+    EXPECT_EQ(dts[1]->text_content(), "Term 2");
+    auto dds = doc->find_all_elements("dd");
+    ASSERT_EQ(dds.size(), 3u);
+    EXPECT_EQ(dds[0]->text_content(), "Definition 1");
+    EXPECT_EQ(dds[1]->text_content(), "Definition 2a");
+    EXPECT_EQ(dds[2]->text_content(), "Definition 2b");
+}
+
+TEST(HtmlParserTest, TableWithColspanAndRowspanV104) {
+    auto doc = clever::html::parse(
+        "<html><body><table>"
+        "<tr><th colspan=\"2\">Header</th></tr>"
+        "<tr><td rowspan=\"2\">Left</td><td>Right1</td></tr>"
+        "<tr><td>Right2</td></tr>"
+        "</table></body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* th = doc->find_element("th");
+    ASSERT_NE(th, nullptr);
+    EXPECT_EQ(get_attr_v63(th, "colspan"), "2");
+    EXPECT_EQ(th->text_content(), "Header");
+    auto tds = doc->find_all_elements("td");
+    ASSERT_EQ(tds.size(), 3u);
+    EXPECT_EQ(get_attr_v63(tds[0], "rowspan"), "2");
+    EXPECT_EQ(tds[0]->text_content(), "Left");
+    EXPECT_EQ(tds[1]->text_content(), "Right1");
+    EXPECT_EQ(tds[2]->text_content(), "Right2");
+}
+
+TEST(HtmlParserTest, DetailsAndSummaryElementsV104) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<details open=\"\">"
+        "<summary>Click to expand</summary>"
+        "<p>Hidden content revealed.</p>"
+        "</details>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* details = doc->find_element("details");
+    ASSERT_NE(details, nullptr);
+    EXPECT_EQ(get_attr_v63(details, "open"), "");
+    auto* summary = doc->find_element("summary");
+    ASSERT_NE(summary, nullptr);
+    EXPECT_EQ(summary->text_content(), "Click to expand");
+    auto* p = doc->find_element("p");
+    ASSERT_NE(p, nullptr);
+    EXPECT_EQ(p->text_content(), "Hidden content revealed.");
+}
+
+TEST(HtmlParserTest, MixedInlineElementsPreserveTextV104) {
+    auto doc = clever::html::parse(
+        "<html><body><p>Hello <strong>bold</strong> and <em>italic</em> world</p></body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* p = doc->find_element("p");
+    ASSERT_NE(p, nullptr);
+    EXPECT_EQ(p->text_content(), "Hello bold and italic world");
+    auto* strong = doc->find_element("strong");
+    ASSERT_NE(strong, nullptr);
+    EXPECT_EQ(strong->text_content(), "bold");
+    auto* em = doc->find_element("em");
+    ASSERT_NE(em, nullptr);
+    EXPECT_EQ(em->text_content(), "italic");
+}
+
+TEST(HtmlParserTest, ScriptAndStyleRawTextV104) {
+    auto doc = clever::html::parse(
+        "<html><head>"
+        "<style>body { color: red; }</style>"
+        "<script>var x = 1 < 2;</script>"
+        "</head><body></body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* style = doc->find_element("style");
+    ASSERT_NE(style, nullptr);
+    EXPECT_EQ(style->text_content(), "body { color: red; }");
+    auto* script = doc->find_element("script");
+    ASSERT_NE(script, nullptr);
+    EXPECT_EQ(script->text_content(), "var x = 1 < 2;");
+}
+
+TEST(HtmlParserTest, MultipleDataAttributesV104) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<div data-id=\"42\" data-name=\"widget\" data-active=\"true\" class=\"item\">Content</div>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto* div = doc->find_element("div");
+    ASSERT_NE(div, nullptr);
+    EXPECT_EQ(get_attr_v63(div, "data-id"), "42");
+    EXPECT_EQ(get_attr_v63(div, "data-name"), "widget");
+    EXPECT_EQ(get_attr_v63(div, "data-active"), "true");
+    EXPECT_EQ(get_attr_v63(div, "class"), "item");
+    EXPECT_EQ(div->text_content(), "Content");
+    EXPECT_GE(div->attributes.size(), 4u);
+}
+
+TEST(HtmlParserTest, EmptyAndVoidElementMixV104) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<div></div>"
+        "<br/>"
+        "<hr/>"
+        "<input type=\"text\"/>"
+        "<span></span>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto divs = doc->find_all_elements("div");
+    ASSERT_EQ(divs.size(), 1u);
+    EXPECT_EQ(divs[0]->text_content(), "");
+    EXPECT_EQ(divs[0]->children.size(), 0u);
+    auto* br = doc->find_element("br");
+    ASSERT_NE(br, nullptr);
+    auto* hr = doc->find_element("hr");
+    ASSERT_NE(hr, nullptr);
+    auto* input = doc->find_element("input");
+    ASSERT_NE(input, nullptr);
+    EXPECT_EQ(get_attr_v63(input, "type"), "text");
+    auto spans = doc->find_all_elements("span");
+    ASSERT_EQ(spans.size(), 1u);
+    EXPECT_EQ(spans[0]->text_content(), "");
+}
+
+TEST(HtmlParserTest, DeeplyNestedListStructureV104) {
+    auto doc = clever::html::parse(
+        "<html><body>"
+        "<ul>"
+        "<li>Item 1"
+        "  <ul>"
+        "    <li>Sub 1a</li>"
+        "    <li>Sub 1b"
+        "      <ol>"
+        "        <li>Deep 1</li>"
+        "        <li>Deep 2</li>"
+        "      </ol>"
+        "    </li>"
+        "  </ul>"
+        "</li>"
+        "<li>Item 2</li>"
+        "</ul>"
+        "</body></html>");
+    ASSERT_NE(doc, nullptr);
+    auto uls = doc->find_all_elements("ul");
+    ASSERT_EQ(uls.size(), 2u);
+    auto ols = doc->find_all_elements("ol");
+    ASSERT_EQ(ols.size(), 1u);
+    auto lis = doc->find_all_elements("li");
+    ASSERT_EQ(lis.size(), 6u);
+    EXPECT_EQ(lis[4]->text_content(), "Deep 2");
+    EXPECT_EQ(lis[5]->text_content(), "Item 2");
+}

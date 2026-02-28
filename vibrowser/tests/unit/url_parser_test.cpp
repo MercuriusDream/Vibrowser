@@ -11684,3 +11684,84 @@ TEST(UrlParserTest, SerializeRoundTripWithFragmentAndPortV103) {
     EXPECT_NE(serialized.find("sort=date"), std::string::npos);
     EXPECT_NE(serialized.find("recent"), std::string::npos);
 }
+
+// =============================================================================
+// V104 Tests
+// =============================================================================
+
+TEST(UrlParserTest, HttpDefaultPort80OmittedV104) {
+    auto result = clever::url::parse("http://example.com:80/index.html");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->port, std::nullopt);
+    EXPECT_EQ(result->path, "/index.html");
+}
+
+TEST(UrlParserTest, HttpsDefaultPort443OmittedV104) {
+    auto result = clever::url::parse("https://secure.example.org:443/api/v2");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "secure.example.org");
+    EXPECT_EQ(result->port, std::nullopt);
+    EXPECT_EQ(result->path, "/api/v2");
+}
+
+TEST(UrlParserTest, NonDefaultPortPreservedV104) {
+    auto result = clever::url::parse("http://dev.example.com:9090/dashboard?tab=overview");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "dev.example.com");
+    ASSERT_TRUE(result->port.has_value());
+    EXPECT_EQ(result->port.value(), 9090);
+    EXPECT_EQ(result->path, "/dashboard");
+    EXPECT_EQ(result->query, "tab=overview");
+}
+
+TEST(UrlParserTest, DoubleEncodesPercentSequenceV104) {
+    auto result = clever::url::parse("https://files.example.com/my%20file.txt");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "files.example.com");
+    EXPECT_NE(result->path.find("%2520"), std::string::npos);
+}
+
+TEST(UrlParserTest, InvalidSchemeReturnsNulloptV104) {
+    auto result = clever::url::parse("://missing-scheme.com/path");
+    EXPECT_FALSE(result.has_value());
+}
+
+TEST(UrlParserTest, QueryWithMultipleParamsAndFragmentV104) {
+    auto result = clever::url::parse("https://search.example.net/results?q=hello+world&lang=en&page=2#top");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "search.example.net");
+    EXPECT_EQ(result->path, "/results");
+    EXPECT_EQ(result->query, "q=hello+world&lang=en&page=2");
+    EXPECT_EQ(result->fragment, "top");
+    EXPECT_EQ(result->port, std::nullopt);
+}
+
+TEST(UrlParserTest, FtpSchemeWithHighPortV104) {
+    auto result = clever::url::parse("ftp://files.example.org:2121/pub/archive.tar.gz");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "ftp");
+    EXPECT_EQ(result->host, "files.example.org");
+    ASSERT_TRUE(result->port.has_value());
+    EXPECT_EQ(result->port.value(), 2121);
+    EXPECT_EQ(result->path, "/pub/archive.tar.gz");
+    EXPECT_TRUE(result->query.empty());
+    EXPECT_TRUE(result->fragment.empty());
+}
+
+TEST(UrlParserTest, SerializePreservesAllComponentsV104) {
+    auto result = clever::url::parse("https://api.example.com:8443/v1/users?active=true#count");
+    ASSERT_TRUE(result.has_value());
+    std::string s = result->serialize();
+    EXPECT_NE(s.find("https"), std::string::npos);
+    EXPECT_NE(s.find("api.example.com"), std::string::npos);
+    EXPECT_NE(s.find("8443"), std::string::npos);
+    EXPECT_NE(s.find("/v1/users"), std::string::npos);
+    EXPECT_NE(s.find("active=true"), std::string::npos);
+    EXPECT_NE(s.find("count"), std::string::npos);
+}

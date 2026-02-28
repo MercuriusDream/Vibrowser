@@ -18903,3 +18903,216 @@ TEST(CSSStyleTest, BoxSizingContentBoxWithAllBordersAndOpacityV103) {
     EXPECT_FLOAT_EQ(style.opacity, 0.75f);
     EXPECT_FLOAT_EQ(style.height.to_px(), 100.0f);
 }
+
+// ============================================================================
+// V104: Visibility hidden with cursor pointer and user-select none
+// ============================================================================
+TEST(CSSStyleTest, VisibilityHiddenCursorPointerUserSelectNoneV104) {
+    const std::string css = ".ghost{visibility:hidden;cursor:pointer;user-select:none;padding-top:12px;padding-bottom:8px;color:#1a2b3c;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "span";
+    elem.classes = {"ghost"};
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_EQ(style.visibility, Visibility::Hidden);
+    EXPECT_EQ(style.cursor, Cursor::Pointer);
+    EXPECT_EQ(style.user_select, UserSelect::None);
+    EXPECT_FLOAT_EQ(style.padding.top.to_px(), 12.0f);
+    EXPECT_FLOAT_EQ(style.padding.bottom.to_px(), 8.0f);
+    EXPECT_EQ(style.color.r, 0x1a);
+    EXPECT_EQ(style.color.g, 0x2b);
+    EXPECT_EQ(style.color.b, 0x3c);
+}
+
+// ============================================================================
+// V104: Word-spacing and letter-spacing with font-size and line-height
+// ============================================================================
+TEST(CSSStyleTest, WordSpacingLetterSpacingFontSizeLineHeightV104) {
+    const std::string css = ".spaced{word-spacing:4px;letter-spacing:2px;font-size:18px;line-height:27px;color:#445566;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "p";
+    elem.classes = {"spaced"};
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_FLOAT_EQ(style.word_spacing.to_px(18), 4.0f);
+    EXPECT_FLOAT_EQ(style.letter_spacing.to_px(18), 2.0f);
+    EXPECT_FLOAT_EQ(style.font_size.to_px(), 18.0f);
+    EXPECT_FLOAT_EQ(style.line_height.to_px(), 27.0f);
+    EXPECT_EQ(style.color.r, 0x44);
+    EXPECT_EQ(style.color.g, 0x55);
+    EXPECT_EQ(style.color.b, 0x66);
+}
+
+// ============================================================================
+// V104: Margin individual sides with white-space nowrap
+// ============================================================================
+TEST(CSSStyleTest, MarginSidesWithWhiteSpaceNowrapV104) {
+    const std::string css = ".card{margin-top:10px;margin-right:20px;margin-bottom:30px;margin-left:40px;white-space:nowrap;background-color:#e74c3c;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+    elem.classes = {"card"};
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_FLOAT_EQ(style.margin.top.to_px(), 10.0f);
+    EXPECT_FLOAT_EQ(style.margin.right.to_px(), 20.0f);
+    EXPECT_FLOAT_EQ(style.margin.bottom.to_px(), 30.0f);
+    EXPECT_FLOAT_EQ(style.margin.left.to_px(), 40.0f);
+    EXPECT_EQ(style.white_space, WhiteSpace::NoWrap);
+    EXPECT_EQ(style.background_color.r, 0xe7);
+    EXPECT_EQ(style.background_color.g, 0x4c);
+    EXPECT_EQ(style.background_color.b, 0x3c);
+}
+
+// ============================================================================
+// V104: Outline width with pointer-events none and vertical-align middle
+// ============================================================================
+TEST(CSSStyleTest, OutlineWidthPointerEventsNoneVerticalAlignMiddleV104) {
+    const std::string css = ".overlay{outline-width:3px;pointer-events:none;vertical-align:middle;font-size:14px;opacity:0.5;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+    elem.classes = {"overlay"};
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_FLOAT_EQ(style.outline_width.to_px(), 3.0f);
+    EXPECT_EQ(style.pointer_events, PointerEvents::None);
+    EXPECT_EQ(style.vertical_align, VerticalAlign::Middle);
+    EXPECT_FLOAT_EQ(style.font_size.to_px(), 14.0f);
+    EXPECT_FLOAT_EQ(style.opacity, 0.5f);
+}
+
+// ============================================================================
+// V104: Border-left with padding-right and text-indent
+// ============================================================================
+TEST(CSSStyleTest, BorderLeftPaddingRightTextIndentV104) {
+    const std::string css = ".indent-box{border-left-width:5px;border-left-style:dotted;border-left-color:#3498db;padding-right:15px;text-indent:24px;width:200px;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "article";
+    elem.classes = {"indent-box"};
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_FLOAT_EQ(style.border_left.width.to_px(), 5.0f);
+    EXPECT_EQ(style.border_left.style, BorderStyle::Dotted);
+    EXPECT_EQ(style.border_left.color.r, 0x34);
+    EXPECT_EQ(style.border_left.color.g, 0x98);
+    EXPECT_EQ(style.border_left.color.b, 0xdb);
+    EXPECT_FLOAT_EQ(style.padding.right.to_px(), 15.0f);
+    EXPECT_FLOAT_EQ(style.text_indent.to_px(), 24.0f);
+    EXPECT_FLOAT_EQ(style.width.to_px(), 200.0f);
+}
+
+// ============================================================================
+// V104: Unitless line-height with display inline-block and z-index
+// ============================================================================
+TEST(CSSStyleTest, UnitlessLineHeightInlineBlockZIndexV104) {
+    const std::string css = ".badge{line-height:1.8;display:inline-block;z-index:10;font-size:16px;color:#2c3e50;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "span";
+    elem.classes = {"badge"};
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_FLOAT_EQ(style.line_height_unitless, 1.8f);
+    EXPECT_FLOAT_EQ(style.font_size.to_px(), 16.0f);
+    EXPECT_NEAR(style.line_height.to_px(), 28.8f, 0.1f);
+    EXPECT_EQ(style.display, Display::InlineBlock);
+    EXPECT_EQ(style.z_index, 10);
+    EXPECT_EQ(style.color.r, 0x2c);
+    EXPECT_EQ(style.color.g, 0x3e);
+    EXPECT_EQ(style.color.b, 0x50);
+}
+
+// ============================================================================
+// V104: Flex-grow and flex-shrink with min-height and max-width
+// ============================================================================
+TEST(CSSStyleTest, FlexGrowShrinkMinHeightMaxWidthV104) {
+    const std::string css = ".flex-item{flex-grow:2;flex-shrink:0;min-height:50px;max-width:400px;padding-left:10px;padding-top:5px;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "div";
+    elem.classes = {"flex-item"};
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_FLOAT_EQ(style.flex_grow, 2.0f);
+    EXPECT_FLOAT_EQ(style.flex_shrink, 0.0f);
+    EXPECT_FLOAT_EQ(style.min_height.to_px(), 50.0f);
+    EXPECT_FLOAT_EQ(style.max_width.to_px(), 400.0f);
+    EXPECT_FLOAT_EQ(style.padding.left.to_px(), 10.0f);
+    EXPECT_FLOAT_EQ(style.padding.top.to_px(), 5.0f);
+}
+
+// ============================================================================
+// V104: Border-bottom dashed with text-decoration and background-color
+// ============================================================================
+TEST(CSSStyleTest, BorderBottomDashedTextDecorationBackgroundV104) {
+    const std::string css = ".underlined{border-bottom-width:2px;border-bottom-style:dashed;border-bottom-color:#9b59b6;text-decoration:underline;background-color:#ecf0f1;height:48px;margin-top:16px;}";
+
+    StyleResolver resolver;
+    auto sheet = parse_stylesheet(css);
+    resolver.add_stylesheet(sheet);
+
+    ElementView elem;
+    elem.tag_name = "nav";
+    elem.classes = {"underlined"};
+
+    ComputedStyle parent;
+    auto style = resolver.resolve(elem, parent);
+
+    EXPECT_FLOAT_EQ(style.border_bottom.width.to_px(), 2.0f);
+    EXPECT_EQ(style.border_bottom.style, BorderStyle::Dashed);
+    EXPECT_EQ(style.border_bottom.color.r, 0x9b);
+    EXPECT_EQ(style.border_bottom.color.g, 0x59);
+    EXPECT_EQ(style.border_bottom.color.b, 0xb6);
+    EXPECT_EQ(style.text_decoration, TextDecoration::Underline);
+    EXPECT_EQ(style.background_color.r, 0xec);
+    EXPECT_EQ(style.background_color.g, 0xf0);
+    EXPECT_EQ(style.background_color.b, 0xf1);
+    EXPECT_FLOAT_EQ(style.height.to_px(), 48.0f);
+    EXPECT_FLOAT_EQ(style.margin.top.to_px(), 16.0f);
+}

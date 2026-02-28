@@ -17575,3 +17575,201 @@ TEST(HttpClientTest, ResponseParse304NotModifiedNoBodyV103) {
     ASSERT_TRUE(resp->headers.get("cache-control").has_value());
     EXPECT_EQ(resp->headers.get("cache-control").value(), "max-age=3600");
 }
+
+// ===========================================================================
+// V104 Tests
+// ===========================================================================
+
+// 1. PUT request serialization with body includes Content-Length and correct method
+TEST(HttpClientTest, PutRequestSerializeWithBodyV104) {
+    Request req;
+    req.method = Method::PUT;
+    req.host = "api.example.com";
+    req.port = 443;
+    req.path = "/users/42";
+
+    std::string body_str = R"({"name":"Alice","role":"admin"})";
+    req.body.assign(body_str.begin(), body_str.end());
+    req.headers.set("Content-Type", "application/json");
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    // PUT method in request line
+    EXPECT_TRUE(result.find("PUT /users/42 HTTP/1.1\r\n") != std::string::npos);
+    // Port 443 should be omitted from Host header (default HTTPS port)
+    EXPECT_TRUE(result.find("Host: api.example.com\r\n") != std::string::npos);
+    EXPECT_TRUE(result.find("Host: api.example.com:443") == std::string::npos);
+    // Content-Length should be auto-added matching body size
+    EXPECT_TRUE(result.find("Content-Length: " + std::to_string(body_str.size()) + "\r\n") != std::string::npos);
+    // Custom header serialized lowercase
+    EXPECT_TRUE(result.find("content-type: application/json\r\n") != std::string::npos);
+    // Body present after double CRLF
+    EXPECT_TRUE(result.find("\r\n\r\n" + body_str) != std::string::npos);
+}
+
+// 2. parse_url with HTTPS custom port and query string
+TEST(HttpClientTest, ParseUrlHttpsCustomPortWithQueryV104) {
+    Request req;
+    req.url = "https://secure.example.org:9443/api/v2/search?term=hello+world&limit=25";
+    req.parse_url();
+
+    EXPECT_EQ(req.host, "secure.example.org");
+    EXPECT_EQ(req.port, 9443);
+    EXPECT_EQ(req.path, "/api/v2/search");
+    EXPECT_EQ(req.query, "term=hello+world&limit=25");
+    EXPECT_TRUE(req.use_tls);
+}
+
+// 3. Response parse handles 503 Service Unavailable with body
+TEST(HttpClientTest, ResponseParse503ServiceUnavailableV104) {
+    std::string raw =
+        "HTTP/1.1 503 Service Unavailable\r\n"
+        "Content-Type: text/plain\r\n"
+        "Retry-After: 120\r\n"
+        "Content-Length: 23\r\n"
+        "\r\n"
+        "Server is overloaded...";
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 503);
+    EXPECT_EQ(resp->status_text, "Service Unavailable");
+    EXPECT_EQ(resp->body_as_string(), "Server is overloaded...");
+    ASSERT_TRUE(resp->headers.get("retry-after").has_value());
+    EXPECT_EQ(resp->headers.get("retry-after").value(), "120");
+    ASSERT_TRUE(resp->headers.get("content-type").has_value());
+    EXPECT_EQ(resp->headers.get("content-type").value(), "text/plain");
+}
+
+// 4. HeaderMap remove then re-add same key
+TEST(HttpClientTest, HeaderMapRemoveThenReAddV104) {
+    HeaderMap hdr;
+    hdr.set("Authorization", "Bearer token123");
+    hdr.set("Accept", "application/json");
+
+    EXPECT_TRUE(hdr.has("authorization"));
+    EXPECT_TRUE(hdr.has("accept"));
+
+    // Remove Authorization
+    hdr.remove("Authorization");
+    EXPECT_FALSE(hdr.has("authorization"));
+    EXPECT_FALSE(hdr.get("authorization").has_value());
+
+    // Accept should be unaffected
+    EXPECT_TRUE(hdr.has("accept"));
+    EXPECT_EQ(hdr.get("accept").value(), "application/json");
+
+    // Re-add Authorization with different value
+    hdr.set("Authorization", "Bearer newtoken456");
+    EXPECT_TRUE(hdr.has("authorization"));
+    EXPECT_EQ(hdr.get("authorization").value(), "Bearer newtoken456");
+}
+
+// 5. CookieJar: subdomain cookie not sent to sibling subdomain
+TEST(HttpClientTest, CookieJarSubdomainIsolationV104) {
+    CookieJar jar;
+    // Set cookie scoped to specific subdomain via Domain attribute
+    jar.set_from_header("sess=abc; Domain=.app.example.com", "app.example.com");
+
+    // Should match the domain itself
+    std::string h1 = jar.get_cookie_header("app.example.com", "/", false);
+    EXPECT_FALSE(h1.empty());
+    EXPECT_TRUE(h1.find("sess=abc") != std::string::npos);
+
+    // Should match a sub-subdomain
+    std::string h2 = jar.get_cookie_header("api.app.example.com", "/", false);
+    EXPECT_FALSE(h2.empty());
+    EXPECT_TRUE(h2.find("sess=abc") != std::string::npos);
+
+    // Should NOT match a sibling subdomain (www.example.com is not under app.example.com)
+    std::string h3 = jar.get_cookie_header("www.example.com", "/", false);
+    EXPECT_TRUE(h3.empty());
+
+    // Should NOT match completely different domain
+    std::string h4 = jar.get_cookie_header("example.org", "/", false);
+    EXPECT_TRUE(h4.empty());
+}
+
+// 6. HEAD request serialization has no body even if body is set
+TEST(HttpClientTest, HeadRequestSerializeOmitsBodyV104) {
+    Request req;
+    req.method = Method::HEAD;
+    req.host = "example.com";
+    req.port = 80;
+    req.path = "/status";
+    req.headers.set("Accept", "*/*");
+
+    // Even if someone sets a body, HEAD should serialize it (serialize doesn't filter)
+    // but the request line must say HEAD
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    EXPECT_TRUE(result.find("HEAD /status HTTP/1.1\r\n") != std::string::npos);
+    // Host without port 80 (default)
+    EXPECT_TRUE(result.find("Host: example.com\r\n") != std::string::npos);
+    EXPECT_TRUE(result.find("Host: example.com:80") == std::string::npos);
+    // Connection header always present
+    EXPECT_TRUE(result.find("Connection: keep-alive\r\n") != std::string::npos);
+    // Custom header lowercase
+    EXPECT_TRUE(result.find("accept: */*\r\n") != std::string::npos);
+}
+
+// 7. Request serialize with multiple custom headers — all lowercase
+TEST(HttpClientTest, SerializeMultipleCustomHeadersLowercaseV104) {
+    Request req;
+    req.method = Method::GET;
+    req.host = "cdn.example.net";
+    req.port = 8080;
+    req.path = "/assets/style.css";
+    req.headers.set("Accept", "text/css");
+    req.headers.set("Cache-Control", "no-cache");
+    req.headers.set("X-Request-ID", "req-9876");
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    // Non-standard port included in Host
+    EXPECT_TRUE(result.find("Host: cdn.example.net:8080\r\n") != std::string::npos);
+    // All custom headers lowercase
+    EXPECT_TRUE(result.find("accept: text/css\r\n") != std::string::npos);
+    EXPECT_TRUE(result.find("cache-control: no-cache\r\n") != std::string::npos);
+    EXPECT_TRUE(result.find("x-request-id: req-9876\r\n") != std::string::npos);
+    // Host and Connection keep their original capitalization
+    EXPECT_TRUE(result.find("Host:") != std::string::npos);
+    EXPECT_TRUE(result.find("Connection: keep-alive") != std::string::npos);
+}
+
+// 8. Response parse chunked with multiple chunks and trailing headers ignored
+TEST(HttpClientTest, ResponseParseChunkedMultiSegmentsV104) {
+    std::string raw =
+        "HTTP/1.1 200 OK\r\n"
+        "Transfer-Encoding: chunked\r\n"
+        "Content-Type: text/plain\r\n"
+        "\r\n"
+        "4\r\n"
+        "Wiki\r\n"
+        "5\r\n"
+        "pedia\r\n"
+        "e\r\n"
+        " in\r\n\r\nchunks\r\n"
+        "0\r\n"
+        "\r\n";
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 200);
+    EXPECT_EQ(resp->status_text, "OK");
+    // Chunks: "Wiki" + "pedia" + " in\r\n\r\nchunks" = "Wikipedia in\r\n\r\nchunks"
+    std::string body = resp->body_as_string();
+    EXPECT_EQ(body.size(), 23u);
+    EXPECT_TRUE(body.find("Wiki") != std::string::npos);
+    EXPECT_TRUE(body.find("pedia") != std::string::npos);
+    EXPECT_TRUE(body.find("chunks") != std::string::npos);
+    ASSERT_TRUE(resp->headers.get("content-type").has_value());
+    EXPECT_EQ(resp->headers.get("content-type").value(), "text/plain");
+}

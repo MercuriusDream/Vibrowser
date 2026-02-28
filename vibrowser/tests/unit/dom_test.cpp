@@ -16210,3 +16210,137 @@ TEST(DomTest, DeepNestingParentChainV103) {
     EXPECT_EQ(txt_ptr->text_content(), "deep text");
     EXPECT_EQ(span_ptr->tag_name(), "span");
 }
+
+// ---------------------------------------------------------------------------
+// V104 tests
+// ---------------------------------------------------------------------------
+
+TEST(DomTest, InsertBeforeReordersChildrenV104) {
+    Element root("ul");
+    auto li1_up = std::make_unique<Element>("li");
+    Element* li1 = li1_up.get();
+    auto li3_up = std::make_unique<Element>("li");
+    Element* li3 = li3_up.get();
+    root.append_child(std::move(li1_up));
+    root.append_child(std::move(li3_up));
+
+    auto li2_up = std::make_unique<Element>("li");
+    Element* li2 = li2_up.get();
+    root.insert_before(std::move(li2_up), li3);
+
+    EXPECT_EQ(root.child_count(), 3u);
+    EXPECT_EQ(root.first_child(), li1);
+    EXPECT_EQ(li1->next_sibling(), li2);
+    EXPECT_EQ(li2->next_sibling(), li3);
+    EXPECT_EQ(li3->next_sibling(), nullptr);
+}
+
+TEST(DomTest, RemoveChildUpdatesFirstLastV104) {
+    Element parent("div");
+    auto a_up = std::make_unique<Element>("a");
+    Element* a_ptr = a_up.get();
+    auto b_up = std::make_unique<Element>("b");
+    Element* b_ptr = b_up.get();
+    auto c_up = std::make_unique<Element>("c");
+    Element* c_ptr = c_up.get();
+    parent.append_child(std::move(a_up));
+    parent.append_child(std::move(b_up));
+    parent.append_child(std::move(c_up));
+
+    parent.remove_child(*b_ptr);
+
+    EXPECT_EQ(parent.child_count(), 2u);
+    EXPECT_EQ(parent.first_child(), a_ptr);
+    EXPECT_EQ(parent.last_child(), c_ptr);
+    EXPECT_EQ(a_ptr->next_sibling(), c_ptr);
+}
+
+TEST(DomTest, ClassListToggleAddsAndRemovesV104) {
+    Element el("span");
+    el.class_list().add("active");
+    EXPECT_TRUE(el.class_list().contains("active"));
+
+    el.class_list().toggle("active");
+    EXPECT_FALSE(el.class_list().contains("active"));
+
+    el.class_list().toggle("active");
+    EXPECT_TRUE(el.class_list().contains("active"));
+}
+
+TEST(DomTest, CommentNodeDataAndTypeV104) {
+    Comment c("hello world");
+    EXPECT_EQ(c.data(), "hello world");
+    EXPECT_EQ(c.node_type(), NodeType::Comment);
+    EXPECT_EQ(c.parent(), nullptr);
+}
+
+TEST(DomTest, AttributeOverwriteAndCountV104) {
+    Element el("input");
+    el.set_attribute("type", "text");
+    el.set_attribute("name", "user");
+    el.set_attribute("value", "alice");
+    EXPECT_EQ(el.attributes().size(), 3u);
+
+    el.set_attribute("value", "bob");
+    EXPECT_EQ(el.attributes().size(), 3u);
+    auto val = el.get_attribute("value");
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(val.value(), "bob");
+}
+
+TEST(DomTest, TextNodeContentAndSiblingV104) {
+    Element p("p");
+    auto t1_up = std::make_unique<Text>("Hello ");
+    Text* t1 = t1_up.get();
+    auto t2_up = std::make_unique<Text>("World");
+    Text* t2 = t2_up.get();
+    p.append_child(std::move(t1_up));
+    p.append_child(std::move(t2_up));
+
+    EXPECT_EQ(t1->text_content(), "Hello ");
+    EXPECT_EQ(t2->text_content(), "World");
+    EXPECT_EQ(t1->next_sibling(), t2);
+    EXPECT_EQ(t2->next_sibling(), nullptr);
+    EXPECT_EQ(t1->node_type(), NodeType::Text);
+    EXPECT_EQ(t2->node_type(), NodeType::Text);
+}
+
+TEST(DomTest, RemoveAttributeAndHasAttributeV104) {
+    Element el("div");
+    el.set_attribute("id", "main");
+    el.set_attribute("role", "banner");
+    EXPECT_TRUE(el.has_attribute("id"));
+    EXPECT_TRUE(el.has_attribute("role"));
+
+    el.remove_attribute("id");
+    EXPECT_FALSE(el.has_attribute("id"));
+    EXPECT_FALSE(el.get_attribute("id").has_value());
+    EXPECT_EQ(el.attributes().size(), 1u);
+    EXPECT_TRUE(el.has_attribute("role"));
+}
+
+TEST(DomTest, MixedChildNodeTypesV104) {
+    Element div("div");
+    auto txt_up = std::make_unique<Text>("some text");
+    Text* txt = txt_up.get();
+    auto span_up = std::make_unique<Element>("span");
+    Element* span = span_up.get();
+    auto cmt_up = std::make_unique<Comment>("a comment");
+    Comment* cmt = cmt_up.get();
+
+    div.append_child(std::move(txt_up));
+    div.append_child(std::move(span_up));
+    div.append_child(std::move(cmt_up));
+
+    EXPECT_EQ(div.child_count(), 3u);
+    EXPECT_EQ(div.first_child(), txt);
+    EXPECT_EQ(div.last_child(), cmt);
+    EXPECT_EQ(txt->node_type(), NodeType::Text);
+    EXPECT_EQ(span->node_type(), NodeType::Element);
+    EXPECT_EQ(cmt->node_type(), NodeType::Comment);
+    EXPECT_EQ(txt->next_sibling(), span);
+    EXPECT_EQ(span->next_sibling(), cmt);
+    EXPECT_EQ(txt->parent(), &div);
+    EXPECT_EQ(span->parent(), &div);
+    EXPECT_EQ(cmt->parent(), &div);
+}

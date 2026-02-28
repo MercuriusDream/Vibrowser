@@ -19246,3 +19246,181 @@ TEST(LayoutTest, BackgroundAndForegroundColorOnBlockV103) {
     EXPECT_FLOAT_EQ(root->geometry.width, 300.0f);
     EXPECT_FLOAT_EQ(root->geometry.height, 150.0f);
 }
+
+// Test: Flex column direction lays children out vertically
+TEST(LayoutTest, FlexColumnDirectionVerticalStackV104) {
+    auto root = make_flex("div");
+    root->specified_width = 400.0f;
+    root->flex_direction = 2; // Column
+
+    auto c1 = make_block("div");
+    c1->specified_height = 50.0f;
+    auto* c1p = c1.get();
+    root->append_child(std::move(c1));
+
+    auto c2 = make_block("div");
+    c2->specified_height = 70.0f;
+    auto* c2p = c2.get();
+    root->append_child(std::move(c2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 400.0f, 600.0f);
+
+    // In column flex, children stack vertically
+    EXPECT_FLOAT_EQ(c1p->geometry.y, 0.0f);
+    EXPECT_GE(c2p->geometry.y, c1p->geometry.y + c1p->geometry.height - 1.0f);
+    EXPECT_FLOAT_EQ(root->geometry.width, 400.0f);
+}
+
+// Test: Z-index is preserved through layout computation
+TEST(LayoutTest, ZIndexPreservedThroughLayoutV104) {
+    auto root = make_block("div");
+    root->specified_width = 200.0f;
+    root->specified_height = 200.0f;
+    root->z_index = 5;
+
+    auto child = make_block("div");
+    child->specified_width = 100.0f;
+    child->specified_height = 100.0f;
+    child->z_index = 10;
+    auto* cp = child.get();
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_EQ(root->z_index, 5);
+    EXPECT_EQ(cp->z_index, 10);
+}
+
+// Test: Opacity value is preserved on layout nodes after layout
+TEST(LayoutTest, OpacityPreservedAfterLayoutV104) {
+    auto root = make_block("section");
+    root->specified_width = 300.0f;
+    root->specified_height = 150.0f;
+    root->opacity = 0.5f;
+
+    auto child = make_block("div");
+    child->specified_width = 100.0f;
+    child->specified_height = 80.0f;
+    child->opacity = 0.25f;
+    auto* cp = child.get();
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(root->opacity, 0.5f);
+    EXPECT_FLOAT_EQ(cp->opacity, 0.25f);
+}
+
+// Test: Block with margin collapses correctly with parent width
+TEST(LayoutTest, BlockMarginReducesContentAreaV104) {
+    auto root = make_block("div");
+    root->specified_width = 500.0f;
+
+    auto child = make_block("div");
+    child->geometry.margin.left = 20.0f;
+    child->geometry.margin.right = 30.0f;
+    auto* cp = child.get();
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 500.0f, 400.0f);
+
+    // Child content width should be reduced by margins
+    float expected_content = 500.0f - 20.0f - 30.0f;
+    EXPECT_FLOAT_EQ(cp->geometry.width, expected_content);
+    EXPECT_FLOAT_EQ(cp->geometry.x, 20.0f);
+}
+
+// Test: Flex row distributes space with flex_grow
+TEST(LayoutTest, FlexRowGrowDistributesSpaceV104) {
+    auto root = make_flex("div");
+    root->specified_width = 300.0f;
+    root->flex_direction = 0; // Row
+
+    auto c1 = make_block("div");
+    c1->flex_grow = 1.0f;
+    auto* c1p = c1.get();
+    root->append_child(std::move(c1));
+
+    auto c2 = make_block("div");
+    c2->flex_grow = 2.0f;
+    auto* c2p = c2.get();
+    root->append_child(std::move(c2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 300.0f, 200.0f);
+
+    // c2 should be wider than c1 due to higher flex_grow
+    EXPECT_GT(c2p->geometry.width, c1p->geometry.width);
+    // Combined widths should approximately fill the container
+    float total = c1p->geometry.width + c2p->geometry.width;
+    EXPECT_NEAR(total, 300.0f, 1.0f);
+}
+
+// Test: Padding increases the total box dimensions
+TEST(LayoutTest, PaddingAddsToBoxDimensionsV104) {
+    auto root = make_block("div");
+    root->specified_width = 200.0f;
+    root->specified_height = 100.0f;
+    root->geometry.padding.top = 10.0f;
+    root->geometry.padding.bottom = 15.0f;
+    root->geometry.padding.left = 20.0f;
+    root->geometry.padding.right = 25.0f;
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // Specified width/height should still be respected for content
+    EXPECT_FLOAT_EQ(root->geometry.width, 200.0f);
+    EXPECT_FLOAT_EQ(root->geometry.height, 100.0f);
+}
+
+// Test: Display none node gets zero dimensions
+TEST(LayoutTest, DisplayNoneNodeZeroDimensionsV104) {
+    auto root = make_block("div");
+    root->specified_width = 600.0f;
+
+    auto hidden = make_block("div");
+    hidden->display = DisplayType::None;
+    hidden->specified_width = 200.0f;
+    hidden->specified_height = 100.0f;
+    auto* hp = hidden.get();
+    root->append_child(std::move(hidden));
+
+    auto visible = make_block("div");
+    visible->specified_height = 50.0f;
+    auto* vp = visible.get();
+    root->append_child(std::move(visible));
+
+    LayoutEngine engine;
+    engine.compute(*root, 600.0f, 400.0f);
+
+    // Hidden element should have zero or no dimensions
+    EXPECT_FLOAT_EQ(hp->geometry.width, 0.0f);
+    EXPECT_FLOAT_EQ(hp->geometry.height, 0.0f);
+    // Visible element should start at top since hidden takes no space
+    EXPECT_FLOAT_EQ(vp->geometry.y, 0.0f);
+}
+
+// Test: Font size on text node is preserved and node gets dimensions
+TEST(LayoutTest, TextNodeFontSizeAndDimensionsV104) {
+    auto root = make_block("p");
+    root->specified_width = 500.0f;
+
+    auto text = make_text("Layout engine test", 24.0f);
+    auto* tp = text.get();
+    root->append_child(std::move(text));
+
+    LayoutEngine engine;
+    engine.compute(*root, 500.0f, 400.0f);
+
+    EXPECT_FLOAT_EQ(tp->font_size, 24.0f);
+    EXPECT_EQ(tp->text_content, "Layout engine test");
+    EXPECT_GT(tp->geometry.width, 0.0f);
+    EXPECT_GT(tp->geometry.height, 0.0f);
+    // Height should be at least the font size
+    EXPECT_GE(tp->geometry.height, 24.0f);
+}
