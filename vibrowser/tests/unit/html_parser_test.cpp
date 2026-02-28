@@ -22327,3 +22327,89 @@ TEST(HtmlParserTest, HtmlV136_8) {
     EXPECT_EQ(main_el->tag_name, "main");
     EXPECT_EQ(main_el->text_content(), "Main content area");
 }
+
+// === V137 HTML Parser Tests ===
+
+TEST(HtmlParserTest, HtmlV137_1) {
+    auto doc = clever::html::parse("<html><body><address>123 Main St</address></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* addr_el = doc->find_element("address");
+    ASSERT_NE(addr_el, nullptr);
+    EXPECT_EQ(addr_el->tag_name, "address");
+    EXPECT_EQ(addr_el->text_content(), "123 Main St");
+}
+
+TEST(HtmlParserTest, HtmlV137_2) {
+    auto doc = clever::html::parse("<html><body><blockquote cite=\"https://example.com\">Quoted text</blockquote></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* bq_el = doc->find_element("blockquote");
+    ASSERT_NE(bq_el, nullptr);
+    EXPECT_EQ(bq_el->tag_name, "blockquote");
+    EXPECT_EQ(bq_el->text_content(), "Quoted text");
+}
+
+TEST(HtmlParserTest, HtmlV137_3) {
+    auto doc = clever::html::parse("<html><body><p><q cite=\"https://example.com\">Inline quote</q></p></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* q_el = doc->find_element("q");
+    ASSERT_NE(q_el, nullptr);
+    EXPECT_EQ(q_el->tag_name, "q");
+    EXPECT_EQ(q_el->text_content(), "Inline quote");
+}
+
+TEST(HtmlParserTest, HtmlV137_4) {
+    auto doc = clever::html::parse("<html><body><map name=\"shapes\"><area shape=\"rect\" href=\"/rect\"></map></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* map_el = doc->find_element("map");
+    ASSERT_NE(map_el, nullptr);
+    EXPECT_EQ(map_el->tag_name, "map");
+
+    auto* area_el = doc->find_element("area");
+    ASSERT_NE(area_el, nullptr);
+    EXPECT_EQ(area_el->tag_name, "area");
+}
+
+TEST(HtmlParserTest, HtmlV137_5) {
+    auto doc = clever::html::parse("<html><body><picture><source srcset=\"img.webp\" type=\"image/webp\"><img src=\"img.jpg\"></picture></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* picture_el = doc->find_element("picture");
+    ASSERT_NE(picture_el, nullptr);
+    EXPECT_EQ(picture_el->tag_name, "picture");
+
+    auto* source_el = doc->find_element("source");
+    ASSERT_NE(source_el, nullptr);
+    EXPECT_EQ(source_el->tag_name, "source");
+}
+
+TEST(HtmlParserTest, HtmlV137_6) {
+    auto doc = clever::html::parse("<html><body><template><p>Template content</p></template></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* tmpl_el = doc->find_element("template");
+    ASSERT_NE(tmpl_el, nullptr);
+    EXPECT_EQ(tmpl_el->tag_name, "template");
+}
+
+TEST(HtmlParserTest, HtmlV137_7) {
+    auto doc = clever::html::parse("<html><body><div><slot name=\"header\">Default</slot></div></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* slot_el = doc->find_element("slot");
+    ASSERT_NE(slot_el, nullptr);
+    EXPECT_EQ(slot_el->tag_name, "slot");
+    EXPECT_EQ(slot_el->text_content(), "Default");
+}
+
+TEST(HtmlParserTest, HtmlV137_8) {
+    auto doc = clever::html::parse("<html><body><noscript>JavaScript is required</noscript></body></html>");
+    ASSERT_NE(doc, nullptr);
+
+    auto* ns_el = doc->find_element("noscript");
+    ASSERT_NE(ns_el, nullptr);
+    EXPECT_EQ(ns_el->tag_name, "noscript");
+}

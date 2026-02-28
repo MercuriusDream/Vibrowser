@@ -20027,3 +20027,69 @@ TEST(SerializerTest, SerializerV136_3_U16MaxAndMinBoundaryRoundTrip) {
     EXPECT_EQ(d.read_u16(), 65535u);
     EXPECT_FALSE(d.has_remaining());
 }
+
+// ------------------------------------------------------------------
+// V137 tests
+// ------------------------------------------------------------------
+
+TEST(SerializerTest, SerializerV137_1_AllZeroBytesPayload) {
+    // Write 1024 zero bytes and verify round-trip preserves them all
+    std::vector<uint8_t> zeros(1024, 0x00);
+    Serializer s;
+    s.write_bytes(zeros.data(), zeros.size());
+
+    Deserializer d(s.data());
+    auto recovered = d.read_bytes();
+    ASSERT_EQ(recovered.size(), 1024u);
+    for (size_t i = 0; i < 1024; ++i) {
+        EXPECT_EQ(recovered[i], 0x00) << "mismatch at byte " << i;
+    }
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, SerializerV137_2_StringWithEmbeddedNullsRoundTrip) {
+    // Build a string that has embedded null characters
+    std::string with_nulls("hello");
+    with_nulls.push_back('\0');
+    with_nulls.append("world");
+    with_nulls.push_back('\0');
+    with_nulls.push_back('\0');
+    with_nulls.append("end");
+    // Total length: 5 + 1 + 5 + 1 + 1 + 3 = 16
+
+    Serializer s;
+    s.write_string(with_nulls);
+
+    Deserializer d(s.data());
+    auto result = d.read_string();
+    EXPECT_EQ(result.size(), 16u);
+    EXPECT_EQ(result, with_nulls);
+    EXPECT_EQ(result[5], '\0');
+    EXPECT_EQ(result[11], '\0');
+    EXPECT_EQ(result[12], '\0');
+    EXPECT_FALSE(d.has_remaining());
+}
+
+TEST(SerializerTest, SerializerV137_3_MixedU8U16U32U64Sequence) {
+    // Write all four unsigned integer sizes in sequence and verify round-trip
+    Serializer s;
+    s.write_u8(0xAB);
+    s.write_u16(0x1234);
+    s.write_u32(0xDEADBEEF);
+    s.write_u64(0x0102030405060708ULL);
+    s.write_u8(0xFF);
+    s.write_u16(0x0000);
+    s.write_u32(0x00000001);
+    s.write_u64(0xFFFFFFFFFFFFFFFFULL);
+
+    Deserializer d(s.data());
+    EXPECT_EQ(d.read_u8(), 0xAB);
+    EXPECT_EQ(d.read_u16(), 0x1234u);
+    EXPECT_EQ(d.read_u32(), 0xDEADBEEFu);
+    EXPECT_EQ(d.read_u64(), 0x0102030405060708ULL);
+    EXPECT_EQ(d.read_u8(), 0xFF);
+    EXPECT_EQ(d.read_u16(), 0x0000u);
+    EXPECT_EQ(d.read_u32(), 0x00000001u);
+    EXPECT_EQ(d.read_u64(), 0xFFFFFFFFFFFFFFFFULL);
+    EXPECT_FALSE(d.has_remaining());
+}

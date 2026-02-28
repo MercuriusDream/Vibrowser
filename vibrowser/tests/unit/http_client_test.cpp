@@ -23320,3 +23320,205 @@ TEST(HttpClient, HeaderMapHasReturnsFalseAfterRemoveV136) {
     EXPECT_EQ(map.size(), 0u);
     EXPECT_TRUE(map.empty());
 }
+
+// ===========================================================================
+// V137 Tests
+// ===========================================================================
+
+// 1. GET /search?q=test with query string preserved in serialized output
+TEST(HttpClient, RequestSerializeWithQueryStringV137) {
+    Request req;
+    req.method = Method::GET;
+    req.host = "search.v137example.com";
+    req.port = 80;
+    req.path = "/search";
+    req.query = "q=test&lang=en&page=3";
+    req.headers.set("Accept", "text/html");
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    // Request line must include the full path?query
+    EXPECT_NE(result.find("GET /search?q=test&lang=en&page=3 HTTP/1.1\r\n"), std::string::npos);
+    // Host header omits :80 for standard port
+    EXPECT_NE(result.find("Host: search.v137example.com\r\n"), std::string::npos);
+    // Connection: close is always present
+    EXPECT_NE(result.find("Connection: close\r\n"), std::string::npos);
+    // Custom header stored lowercase
+    EXPECT_NE(result.find("accept: text/html\r\n"), std::string::npos);
+    // Terminates with blank line
+    EXPECT_NE(result.find("\r\n\r\n"), std::string::npos);
+}
+
+// 2. Response parsing for 500 Internal Server Error
+TEST(HttpClient, ResponseParse500InternalServerErrorV137) {
+    std::string raw =
+        "HTTP/1.1 500 Internal Server Error\r\n"
+        "Content-Type: text/plain\r\n"
+        "Content-Length: 21\r\n"
+        "X-V137-Trace: err-abc\r\n"
+        "\r\n"
+        "Internal Server Error";
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 500u);
+    EXPECT_EQ(resp->status_text, "Internal Server Error");
+    EXPECT_EQ(resp->headers.get("content-type").value(), "text/plain");
+    EXPECT_EQ(resp->headers.get("x-v137-trace").value(), "err-abc");
+    EXPECT_EQ(resp->body.size(), 21u);
+    EXPECT_EQ(resp->body_as_string(), "Internal Server Error");
+}
+
+// 3. CookieJar overwrites cookie with same name on same domain
+TEST(HttpClient, CookieJarOverwritesCookieSameNameV137) {
+    CookieJar jar;
+    jar.set_from_header("token=old_v137_value; Path=/", "v137cookies.example.com");
+    jar.set_from_header("token=new_v137_value; Path=/", "v137cookies.example.com");
+
+    std::string hdr = jar.get_cookie_header("v137cookies.example.com", "/", false);
+    // Only the latest value should be present
+    EXPECT_NE(hdr.find("token=new_v137_value"), std::string::npos);
+    // The old value must NOT be present
+    EXPECT_EQ(hdr.find("token=old_v137_value"), std::string::npos);
+}
+
+// 4. HeaderMap set() overwrites previous value for same key
+TEST(HttpClient, HeaderMapSetOverwritesPreviousValueV137) {
+    HeaderMap map;
+    map.set("X-V137-Header", "first-value");
+    EXPECT_EQ(map.get("x-v137-header").value(), "first-value");
+    EXPECT_EQ(map.get_all("x-v137-header").size(), 1u);
+
+    // Overwrite with set()
+    map.set("X-V137-Header", "second-value");
+    EXPECT_EQ(map.get("x-v137-header").value(), "second-value");
+    // set() replaces all, so still only 1 entry
+    EXPECT_EQ(map.get_all("x-v137-header").size(), 1u);
+
+    // Third overwrite
+    map.set("x-v137-header", "third-value");
+    EXPECT_EQ(map.get("X-V137-Header").value(), "third-value");
+    EXPECT_EQ(map.get_all("X-V137-HEADER").size(), 1u);
+}
+
+// 5. Request serialize includes port in Host header for non-standard port
+TEST(HttpClient, RequestSerializeHostHeaderWithNonStandardPortV137) {
+    Request req;
+    req.method = Method::GET;
+    req.host = "v137api.example.com";
+    req.port = 8080;
+    req.path = "/status";
+
+    auto bytes = req.serialize();
+    std::string result(bytes.begin(), bytes.end());
+
+    // Non-standard port 8080 must appear in Host header
+    EXPECT_NE(result.find("Host: v137api.example.com:8080\r\n"), std::string::npos);
+    // Request line
+    EXPECT_NE(result.find("GET /status HTTP/1.1\r\n"), std::string::npos);
+    // Connection header
+    EXPECT_NE(result.find("Connection: close\r\n"), std::string::npos);
+
+    // Also check that port 443 (standard HTTPS) is omitted
+    Request req2;
+    req2.method = Method::HEAD;
+    req2.host = "v137secure.example.com";
+    req2.port = 443;
+    req2.path = "/ping";
+
+    auto bytes2 = req2.serialize();
+    std::string result2(bytes2.begin(), bytes2.end());
+
+    EXPECT_NE(result2.find("Host: v137secure.example.com\r\n"), std::string::npos);
+    // Must NOT contain :443
+    EXPECT_EQ(result2.find("Host: v137secure.example.com:443"), std::string::npos);
+}
+
+// 6. Response parsing preserves multiple headers with same name
+TEST(HttpClient, ResponseParseMultipleHeadersSameNameV137) {
+    std::string raw =
+        "HTTP/1.1 200 OK\r\n"
+        "Via: 1.0 proxy-v137-a\r\n"
+        "Via: 1.1 proxy-v137-b\r\n"
+        "Via: 1.0 proxy-v137-c\r\n"
+        "Content-Length: 2\r\n"
+        "\r\n"
+        "OK";
+
+    std::vector<uint8_t> data(raw.begin(), raw.end());
+    auto resp = Response::parse(data);
+
+    ASSERT_TRUE(resp.has_value());
+    EXPECT_EQ(resp->status, 200u);
+
+    auto via_values = resp->headers.get_all("via");
+    EXPECT_EQ(via_values.size(), 3u);
+
+    // All three Via header values should be present
+    EXPECT_TRUE(std::find(via_values.begin(), via_values.end(), "1.0 proxy-v137-a") != via_values.end());
+    EXPECT_TRUE(std::find(via_values.begin(), via_values.end(), "1.1 proxy-v137-b") != via_values.end());
+    EXPECT_TRUE(std::find(via_values.begin(), via_values.end(), "1.0 proxy-v137-c") != via_values.end());
+
+    EXPECT_EQ(resp->body_as_string(), "OK");
+}
+
+// 7. CookieJar path prefix matching — /api matches /api/v1 and /api/v2
+TEST(HttpClient, CookieJarPathPrefixMatchingV137) {
+    CookieJar jar;
+    jar.set_from_header("api_key=v137secret; Path=/api", "v137path.example.com");
+
+    // /api/v1 is under /api — should match
+    std::string hdr1 = jar.get_cookie_header("v137path.example.com", "/api/v1", false);
+    EXPECT_NE(hdr1.find("api_key=v137secret"), std::string::npos);
+
+    // /api/v2/users is also under /api — should match
+    std::string hdr2 = jar.get_cookie_header("v137path.example.com", "/api/v2/users", false);
+    EXPECT_NE(hdr2.find("api_key=v137secret"), std::string::npos);
+
+    // /api itself should match
+    std::string hdr3 = jar.get_cookie_header("v137path.example.com", "/api", false);
+    EXPECT_NE(hdr3.find("api_key=v137secret"), std::string::npos);
+
+    // /other is NOT under /api — should NOT match
+    std::string hdr4 = jar.get_cookie_header("v137path.example.com", "/other", false);
+    EXPECT_EQ(hdr4.find("api_key=v137secret"), std::string::npos);
+
+    // /apiv3 starts with /api so prefix matching includes it
+    std::string hdr5 = jar.get_cookie_header("v137path.example.com", "/apiv3", false);
+    EXPECT_NE(hdr5.find("api_key=v137secret"), std::string::npos);
+}
+
+// 8. ConnectionPool release and reacquire same host returns the fd
+TEST(HttpClient, ConnectionPoolReleaseAndReacquireV137) {
+    ConnectionPool pool;
+
+    // Pool is empty initially
+    EXPECT_EQ(pool.acquire("v137pool.example.com", 8080), -1);
+
+    // Release a fake fd
+    int fake_fd = 137;
+    pool.release("v137pool.example.com", 8080, fake_fd);
+
+    // Acquire should return the same fd
+    int acquired = pool.acquire("v137pool.example.com", 8080);
+    EXPECT_EQ(acquired, fake_fd);
+
+    // After acquiring, pool for this host:port should be empty again
+    EXPECT_EQ(pool.acquire("v137pool.example.com", 8080), -1);
+
+    // Release two fds, acquire both back
+    pool.release("v137pool.example.com", 8080, 1370);
+    pool.release("v137pool.example.com", 8080, 1371);
+
+    int fd1 = pool.acquire("v137pool.example.com", 8080);
+    int fd2 = pool.acquire("v137pool.example.com", 8080);
+
+    // Both fds should be returned (order may be LIFO)
+    EXPECT_TRUE((fd1 == 1370 && fd2 == 1371) || (fd1 == 1371 && fd2 == 1370));
+
+    // Pool is empty again
+    EXPECT_EQ(pool.acquire("v137pool.example.com", 8080), -1);
+}

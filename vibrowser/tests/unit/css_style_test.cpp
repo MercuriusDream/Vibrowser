@@ -25228,3 +25228,42 @@ TEST(CSSStyleTest, CssV136_4_PositionAbsoluteV136) {
     cascade.apply_declaration(style, make_decl("position", "absolute"), parent);
     EXPECT_EQ(style.position, Position::Absolute);
 }
+
+// === V137 CSS Style Tests ===
+
+TEST(CSSStyleTest, CssV137_1_FloatLeftSetsFloat) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("float", "left"), parent);
+    EXPECT_EQ(style.float_val, Float::Left);
+}
+
+TEST(PropertyCascadeTest, ClearBothV137) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("clear", "both"), parent);
+    EXPECT_EQ(style.clear, Clear::Both);
+}
+
+TEST(CSSStyleTest, CssV137_3_OverflowHiddenV137) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("overflow", "hidden"), parent);
+    EXPECT_EQ(style.overflow_x, Overflow::Hidden);
+    EXPECT_EQ(style.overflow_y, Overflow::Hidden);
+}
+
+TEST(CSSStyleTest, CssV137_4_WhiteSpaceNowrapV137) {
+    PropertyCascade cascade;
+    ComputedStyle style;
+    ComputedStyle parent;
+
+    cascade.apply_declaration(style, make_decl("white-space", "nowrap"), parent);
+    EXPECT_EQ(style.white_space, WhiteSpace::NoWrap);
+}

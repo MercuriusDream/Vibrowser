@@ -14295,3 +14295,89 @@ TEST(UrlParserTest, UrlV136_4_PortOverflowRejectsInvalidPort) {
     auto result3 = parse("http://example.com:65536/");
     EXPECT_FALSE(result3.has_value());
 }
+
+// =============================================================================
+// V137 tests
+// =============================================================================
+
+TEST(UrlParserTest, UrlV137_1_HttpsWithAllComponents) {
+    // A URL with every component present: scheme, host, port, path, query, fragment
+    auto result = parse("https://api.example.com:9443/v2/users?role=admin&active=true#section-3");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "api.example.com");
+    ASSERT_TRUE(result->port.has_value());
+    EXPECT_EQ(result->port.value(), 9443);
+    EXPECT_EQ(result->path, "/v2/users");
+    EXPECT_EQ(result->query, "role=admin&active=true");
+    EXPECT_EQ(result->fragment, "section-3");
+    // Verify serialize round-trips correctly
+    std::string s = result->serialize();
+    EXPECT_EQ(s, "https://api.example.com:9443/v2/users?role=admin&active=true#section-3");
+}
+
+TEST(UrlParserTest, UrlV137_2_RelativeResolutionBaseWithQuery) {
+    // When resolving a relative path against a base URL that has a query,
+    // the base query should be replaced, not carried over
+    auto base = parse("https://example.com/dir/page?old=query&keep=no");
+    ASSERT_TRUE(base.has_value());
+
+    // Resolve a bare filename relative to the base
+    auto result = parse("other.html", &base.value());
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "https");
+    EXPECT_EQ(result->host, "example.com");
+    EXPECT_EQ(result->path, "/dir/other.html");
+    // The base query should NOT be inherited by the resolved URL
+    EXPECT_TRUE(result->query.empty());
+    EXPECT_TRUE(result->fragment.empty());
+
+    // Resolve a query-only relative URL against the same base
+    auto query_result = parse("?new=query", &base.value());
+    ASSERT_TRUE(query_result.has_value());
+    EXPECT_EQ(query_result->scheme, "https");
+    EXPECT_EQ(query_result->host, "example.com");
+    EXPECT_EQ(query_result->path, "/dir/page");
+    EXPECT_EQ(query_result->query, "new=query");
+}
+
+TEST(UrlParserTest, UrlV137_3_HostnameNormalizesToLowercase) {
+    // Scheme and host should be normalized to lowercase per WHATWG URL spec
+    auto result = parse("HTTP://EXAMPLE.COM/MyPath?Q=1#Frag");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "example.com");
+    // Path, query, and fragment are case-sensitive and should NOT be lowercased
+    EXPECT_EQ(result->path, "/MyPath");
+    EXPECT_EQ(result->query, "Q=1");
+    EXPECT_EQ(result->fragment, "Frag");
+    EXPECT_EQ(result->port, std::nullopt); // port 80 is default for http
+
+    // Also test mixed-case host with a non-default port
+    auto result2 = parse("https://Sub.DOMAIN.Example.COM:8443/api");
+    ASSERT_TRUE(result2.has_value());
+    EXPECT_EQ(result2->host, "sub.domain.example.com");
+    ASSERT_TRUE(result2->port.has_value());
+    EXPECT_EQ(result2->port.value(), 8443);
+}
+
+TEST(UrlParserTest, UrlV137_4_EmptyFragmentButPresent) {
+    // A URL ending with "#" but no fragment content should have an empty fragment
+    auto result = parse("http://x.com/page#");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(result->scheme, "http");
+    EXPECT_EQ(result->host, "x.com");
+    EXPECT_EQ(result->path, "/page");
+    // Fragment should be empty string (the "#" was present but nothing follows)
+    EXPECT_TRUE(result->fragment.empty());
+    EXPECT_EQ(result->fragment, "");
+    // Query should not be affected
+    EXPECT_TRUE(result->query.empty());
+
+    // Also test with query AND empty fragment
+    auto result2 = parse("https://example.org/path?key=val#");
+    ASSERT_TRUE(result2.has_value());
+    EXPECT_EQ(result2->query, "key=val");
+    EXPECT_TRUE(result2->fragment.empty());
+    EXPECT_EQ(result2->path, "/path");
+}

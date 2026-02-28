@@ -35133,3 +35133,123 @@ TEST(JSEngine, JsV136_8) {
     EXPECT_FALSE(engine.has_error()) << engine.last_error();
     EXPECT_EQ(result, "test default");
 }
+
+// === V137 JS Engine Tests ===
+
+TEST(JSEngine, JsV137_1) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var obj = {};
+        obj[Symbol.iterator] = function() {
+            var i = 0;
+            var items = [10, 20, 30];
+            return {
+                next: function() {
+                    if (i < items.length) return { value: items[i++], done: false };
+                    return { value: undefined, done: true };
+                }
+            };
+        };
+        var sum = 0;
+        for (var v of obj) sum += v;
+        sum;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "60");
+}
+
+TEST(JSEngine, JsV137_2) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        class Animal {
+            constructor(name) { this.name = name; }
+            speak() { return this.name + ' makes a sound'; }
+        }
+        class Dog extends Animal {
+            constructor(name) { super(name); }
+            speak() { return this.name + ' barks'; }
+        }
+        var d = new Dog('Rex');
+        d.speak();
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "Rex barks");
+}
+
+TEST(JSEngine, JsV137_3) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var obj = { a: 1, b: 2 };
+        var sym = Symbol('c');
+        obj[sym] = 3;
+        var keys = Reflect.ownKeys(obj);
+        keys.length;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "3");
+}
+
+TEST(JSEngine, JsV137_4) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var arr = Array.from([1, 2, 3], function(x) { return x * x; });
+        arr.join(',');
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1,4,9");
+}
+
+TEST(JSEngine, JsV137_5) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var str = 'test1 test2 test3';
+        var matches = [];
+        var re = /test(\d)/g;
+        for (var m of str.matchAll(re)) {
+            matches.push(m[1]);
+        }
+        matches.join(',');
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1,2,3");
+}
+
+TEST(JSEngine, JsV137_6) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var obj = { x: 1, y: 2 };
+        Object.freeze(obj);
+        obj.x = 99;
+        obj.z = 3;
+        obj.x + ',' + (obj.z === undefined);
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1,true");
+}
+
+TEST(JSEngine, JsV137_7) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var gen = function*() {
+            yield 1;
+            yield 2;
+            yield 3;
+        };
+        var arr = [];
+        for (var v of gen()) arr.push(v);
+        arr.join(',');
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "1,2,3");
+}
+
+TEST(JSEngine, JsV137_8) {
+    clever::js::JSEngine engine;
+    auto result = engine.evaluate(R"JS(
+        var a = Number.parseFloat('3.14');
+        var b = Number.parseInt('42abc', 10);
+        a + ',' + b;
+    )JS");
+    EXPECT_FALSE(engine.has_error()) << engine.last_error();
+    EXPECT_EQ(result, "3.14,42");
+}

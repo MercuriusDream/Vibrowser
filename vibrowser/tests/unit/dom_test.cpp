@@ -20909,3 +20909,226 @@ TEST(DomElement, InnerTextFromMixedChildrenV136) {
     EXPECT_EQ(div->first_child()->next_sibling()->node_type(), NodeType::Element);
     EXPECT_EQ(div->last_child()->node_type(), NodeType::Text);
 }
+
+// ---------------------------------------------------------------------------
+// V137 Tests
+// ---------------------------------------------------------------------------
+
+TEST(DomNode, NextSiblingChainMatchesAppendOrderV137) {
+    auto parent = std::make_unique<Element>("ul");
+    auto a = std::make_unique<Element>("li");
+    auto b = std::make_unique<Element>("li");
+    auto c = std::make_unique<Element>("li");
+    auto d = std::make_unique<Element>("li");
+
+    auto* a_ptr = a.get();
+    auto* b_ptr = b.get();
+    auto* c_ptr = c.get();
+    auto* d_ptr = d.get();
+
+    parent->append_child(std::move(a));
+    parent->append_child(std::move(b));
+    parent->append_child(std::move(c));
+    parent->append_child(std::move(d));
+
+    // Verify forward chain: a -> b -> c -> d -> nullptr
+    EXPECT_EQ(a_ptr->next_sibling(), b_ptr);
+    EXPECT_EQ(b_ptr->next_sibling(), c_ptr);
+    EXPECT_EQ(c_ptr->next_sibling(), d_ptr);
+    EXPECT_EQ(d_ptr->next_sibling(), nullptr);
+
+    // Verify backward chain: d -> c -> b -> a -> nullptr
+    EXPECT_EQ(d_ptr->previous_sibling(), c_ptr);
+    EXPECT_EQ(c_ptr->previous_sibling(), b_ptr);
+    EXPECT_EQ(b_ptr->previous_sibling(), a_ptr);
+    EXPECT_EQ(a_ptr->previous_sibling(), nullptr);
+}
+
+TEST(DomElement, DataAttributeSetAndGetV137) {
+    Element elem("div");
+    elem.set_attribute("data-x", "1");
+    elem.set_attribute("data-color", "red");
+    elem.set_attribute("data-empty", "");
+
+    auto x_val = elem.get_attribute("data-x");
+    ASSERT_TRUE(x_val.has_value());
+    EXPECT_EQ(x_val.value(), "1");
+
+    auto color_val = elem.get_attribute("data-color");
+    ASSERT_TRUE(color_val.has_value());
+    EXPECT_EQ(color_val.value(), "red");
+
+    auto empty_val = elem.get_attribute("data-empty");
+    ASSERT_TRUE(empty_val.has_value());
+    EXPECT_EQ(empty_val.value(), "");
+
+    // Non-existent data attribute returns nullopt
+    auto missing = elem.get_attribute("data-missing");
+    EXPECT_FALSE(missing.has_value());
+
+    // has_attribute should work for data attributes
+    EXPECT_TRUE(elem.has_attribute("data-x"));
+    EXPECT_TRUE(elem.has_attribute("data-color"));
+    EXPECT_FALSE(elem.has_attribute("data-nonexistent"));
+}
+
+TEST(DomDocument, CreateCommentNodeV137) {
+    Document doc;
+    auto comment = doc.create_comment("Hello World");
+    ASSERT_NE(comment, nullptr);
+    EXPECT_EQ(comment->node_type(), NodeType::Comment);
+    EXPECT_EQ(comment->data(), "Hello World");
+
+    // Comment text_content() returns empty per spec (comments are not text nodes)
+    EXPECT_EQ(comment->text_content(), "");
+
+    // Create a comment with empty string
+    auto empty_comment = doc.create_comment("");
+    ASSERT_NE(empty_comment, nullptr);
+    EXPECT_EQ(empty_comment->data(), "");
+    EXPECT_EQ(empty_comment->node_type(), NodeType::Comment);
+}
+
+TEST(DomEvent, BubblingEventTraversesAncestorsV137) {
+    // Build tree: grandparent -> parent -> child
+    auto grandparent = std::make_unique<Element>("div");
+    auto parent_elem = std::make_unique<Element>("section");
+    auto child = std::make_unique<Element>("span");
+
+    Node* grandparent_ptr = grandparent.get();
+    Node* parent_ptr = parent_elem.get();
+    Node* child_ptr = child.get();
+
+    parent_elem->append_child(std::move(child));
+    grandparent->append_child(std::move(parent_elem));
+
+    std::vector<std::string> log;
+
+    // Set up EventTargets with bubbling listeners
+    EventTarget child_target;
+    child_target.add_event_listener("click", [&](Event&) {
+        log.push_back("child");
+    }, false);
+
+    EventTarget parent_target;
+    parent_target.add_event_listener("click", [&](Event&) {
+        log.push_back("parent");
+    }, false);
+
+    EventTarget gp_target;
+    gp_target.add_event_listener("click", [&](Event&) {
+        log.push_back("grandparent");
+    }, false);
+
+    // Build path from root to target
+    std::vector<std::pair<Node*, EventTarget*>> path;
+    path.push_back({grandparent_ptr, &gp_target});
+    path.push_back({parent_ptr, &parent_target});
+    path.push_back({child_ptr, &child_target});
+
+    Event event("click", true, false);  // bubbles=true, cancelable=false
+    event.target_ = child_ptr;
+
+    // Target phase
+    event.phase_ = EventPhase::AtTarget;
+    event.current_target_ = child_ptr;
+    child_target.dispatch_event(event, *child_ptr);
+
+    // Bubble phase: walk up from parent to root
+    event.phase_ = EventPhase::Bubbling;
+    for (int i = static_cast<int>(path.size()) - 2; i >= 0; --i) {
+        event.current_target_ = path[i].first;
+        path[i].second->dispatch_event(event, *path[i].first);
+        if (event.propagation_stopped()) break;
+    }
+
+    // Both child and ancestors should have been called
+    ASSERT_EQ(log.size(), 3u);
+    EXPECT_EQ(log[0], "child");
+    EXPECT_EQ(log[1], "parent");
+    EXPECT_EQ(log[2], "grandparent");
+}
+
+TEST(DomNode, FirstAndLastChildPointersV137) {
+    auto parent = std::make_unique<Element>("div");
+
+    // No children initially
+    EXPECT_EQ(parent->first_child(), nullptr);
+    EXPECT_EQ(parent->last_child(), nullptr);
+
+    auto c1 = std::make_unique<Element>("a");
+    auto c2 = std::make_unique<Element>("b");
+    auto c3 = std::make_unique<Element>("c");
+
+    auto* c1_ptr = c1.get();
+    auto* c3_ptr = c3.get();
+
+    parent->append_child(std::move(c1));
+    parent->append_child(std::move(c2));
+    parent->append_child(std::move(c3));
+
+    EXPECT_EQ(parent->first_child(), c1_ptr);
+    EXPECT_EQ(parent->last_child(), c3_ptr);
+    EXPECT_EQ(parent->child_count(), 3u);
+
+    // first_child and last_child should be different
+    EXPECT_NE(parent->first_child(), parent->last_child());
+}
+
+TEST(DomElement, ClassListRemoveNonExistentNoOpV137) {
+    Element elem("div");
+    elem.class_list().add("existing");
+
+    // Remove a class that doesn't exist — should not crash or affect length
+    elem.class_list().remove("missing");
+    elem.class_list().remove("also-missing");
+
+    EXPECT_EQ(elem.class_list().length(), 1u);
+    EXPECT_TRUE(elem.class_list().contains("existing"));
+    EXPECT_FALSE(elem.class_list().contains("missing"));
+    EXPECT_FALSE(elem.class_list().contains("also-missing"));
+
+    // Remove from empty class list should also be fine
+    Element elem2("span");
+    elem2.class_list().remove("nothing");
+    EXPECT_EQ(elem2.class_list().length(), 0u);
+}
+
+TEST(DomNode, MarkDirtyPaintOnlyV137) {
+    Element elem("div");
+    elem.clear_dirty();
+    EXPECT_EQ(elem.dirty_flags(), DirtyFlags::None);
+
+    // Mark only Paint dirty
+    elem.mark_dirty(DirtyFlags::Paint);
+
+    // Paint should be set
+    EXPECT_NE(elem.dirty_flags() & DirtyFlags::Paint, DirtyFlags::None);
+
+    // Style and Layout should NOT be set
+    EXPECT_EQ(elem.dirty_flags() & DirtyFlags::Style, DirtyFlags::None);
+    EXPECT_EQ(elem.dirty_flags() & DirtyFlags::Layout, DirtyFlags::None);
+
+    // Clear and verify
+    elem.clear_dirty();
+    EXPECT_EQ(elem.dirty_flags(), DirtyFlags::None);
+}
+
+TEST(DomElement, TagNameReturnedUppercaseV137) {
+    // tag_name() preserves the casing given at construction
+    Element lower("div");
+    EXPECT_EQ(lower.tag_name(), "div");
+
+    Element upper("DIV");
+    EXPECT_EQ(upper.tag_name(), "DIV");
+
+    Element mixed("Section");
+    EXPECT_EQ(mixed.tag_name(), "Section");
+
+    // Verify via Document::create_element
+    Document doc;
+    auto elem = doc.create_element("article");
+    ASSERT_NE(elem, nullptr);
+    EXPECT_EQ(elem->tag_name(), "article");
+    EXPECT_EQ(elem->node_type(), NodeType::Element);
+}

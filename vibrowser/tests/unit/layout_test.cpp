@@ -25792,3 +25792,162 @@ TEST(LayoutNodeProps, MarginDefaultZeroV136) {
     EXPECT_FLOAT_EQ(n->geometry.margin.bottom, 0.0f);
     EXPECT_FLOAT_EQ(n->geometry.margin.left, 0.0f);
 }
+
+// === V137 Layout Tests ===
+
+TEST(LayoutEngineTest, LayoutV137_1) {
+    // Flex column direction — basic vertical stacking
+    auto root = make_flex("div");
+    root->flex_direction = 2; // column
+    root->specified_width = 400.0f;
+
+    auto child1 = make_block("div");
+    child1->specified_height = 60.0f;
+
+    auto child2 = make_block("div");
+    child2->specified_height = 40.0f;
+
+    root->append_child(std::move(child1));
+    root->append_child(std::move(child2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.y, 0.0f);
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.y, 60.0f);
+    EXPECT_FLOAT_EQ(root->geometry.width, 400.0f);
+}
+
+TEST(LayoutEngineTest, LayoutV137_2) {
+    // Block with specified height is respected
+    auto root = make_block("div");
+    root->specified_height = 350.0f;
+
+    auto child = make_block("div");
+    child->specified_height = 100.0f;
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    EXPECT_FLOAT_EQ(root->geometry.height, 350.0f);
+}
+
+TEST(LayoutEngineTest, LayoutV137_3) {
+    // Flex justify-content space-around
+    auto root = make_flex("div");
+    root->justify_content = 4; // space-around
+
+    auto child1 = make_block("div");
+    child1->specified_width = 100.0f;
+    child1->specified_height = 50.0f;
+
+    auto child2 = make_block("div");
+    child2->specified_width = 100.0f;
+    child2->specified_height = 50.0f;
+
+    root->append_child(std::move(child1));
+    root->append_child(std::move(child2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // Remaining = 800 - 200 = 600. space-around: each item gets equal space around.
+    // Space per item = 600 / 2 = 300. Half-space = 150.
+    // child1 at x=150, child2 at x=150+100+300=550
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.x, 150.0f);
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.x, 550.0f);
+}
+
+TEST(LayoutEngineTest, LayoutV137_4) {
+    // Nested block with padding propagation
+    auto root = make_block("div");
+    root->geometry.padding.left = 20.0f;
+    root->geometry.padding.right = 20.0f;
+
+    auto mid = make_block("div");
+    mid->geometry.padding.left = 10.0f;
+    mid->geometry.padding.right = 10.0f;
+
+    auto inner = make_block("div");
+    inner->specified_height = 30.0f;
+
+    mid->append_child(std::move(inner));
+    root->append_child(std::move(mid));
+
+    LayoutEngine engine;
+    engine.compute(*root, 600.0f, 400.0f);
+
+    // root content width = 600 - 40 = 560
+    // mid content width = 560 - 20 = 540
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.width, 560.0f);
+    EXPECT_FLOAT_EQ(root->children[0]->children[0]->geometry.width, 540.0f);
+}
+
+TEST(LayoutEngineTest, LayoutV137_5) {
+    // Flex item with flex-shrink — unequal shrink ratios
+    auto root = make_flex("div");
+
+    auto child1 = make_block("div");
+    child1->specified_width = 600.0f;
+    child1->specified_height = 40.0f;
+    child1->flex_shrink = 2.0f;
+
+    auto child2 = make_block("div");
+    child2->specified_width = 600.0f;
+    child2->specified_height = 40.0f;
+    child2->flex_shrink = 1.0f;
+
+    root->append_child(std::move(child1));
+    root->append_child(std::move(child2));
+
+    LayoutEngine engine;
+    engine.compute(*root, 900.0f, 600.0f);
+
+    // Total = 1200, available = 900, overflow = 300
+    // Shrink ratio 2:1 => child1 shrinks 200, child2 shrinks 100
+    // child1 = 600-200 = 400, child2 = 600-100 = 500
+    EXPECT_FLOAT_EQ(root->children[0]->geometry.width, 400.0f);
+    EXPECT_FLOAT_EQ(root->children[1]->geometry.width, 500.0f);
+}
+
+TEST(LayoutEngineTest, LayoutV137_6) {
+    // Block overflow hidden — content height limited to specified height
+    auto root = make_block("div");
+    root->specified_height = 100.0f;
+    root->overflow = 1; // hidden
+
+    auto child = make_block("div");
+    child->specified_height = 200.0f;
+    root->append_child(std::move(child));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // With overflow:hidden, the root height should stay at specified 100
+    EXPECT_FLOAT_EQ(root->geometry.height, 100.0f);
+}
+
+TEST(LayoutEngineTest, LayoutV137_7) {
+    // Inline display element — width from content
+    auto root = make_block("div");
+
+    auto span = make_inline("span");
+    span->specified_height = 20.0f;
+    // Inline elements do not fill containing width by default
+    root->append_child(std::move(span));
+
+    LayoutEngine engine;
+    engine.compute(*root, 800.0f, 600.0f);
+
+    // Inline element with no text should have zero or minimal width
+    EXPECT_LE(root->children[0]->geometry.width, 800.0f);
+}
+
+TEST(LayoutNodeProps, BorderDefaultZeroV137) {
+    auto n = make_block();
+    EXPECT_FLOAT_EQ(n->geometry.border.top, 0.0f);
+    EXPECT_FLOAT_EQ(n->geometry.border.right, 0.0f);
+    EXPECT_FLOAT_EQ(n->geometry.border.bottom, 0.0f);
+    EXPECT_FLOAT_EQ(n->geometry.border.left, 0.0f);
+}

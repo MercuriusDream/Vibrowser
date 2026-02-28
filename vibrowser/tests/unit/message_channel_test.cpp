@@ -1179,3 +1179,94 @@ TEST(MessageChannelTest, MessageChannelV136_3_LargeRequestIdRoundTrip) {
     receiver.dispatch(*received);
     EXPECT_EQ(captured_request_id, UINT32_MAX);
 }
+
+// ------------------------------------------------------------------
+// V137 tests
+// ------------------------------------------------------------------
+
+TEST(MessageChannelTest, MessageChannelV137_1_MultipleTypesInterleavedDispatch) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel ch(std::move(pa));
+
+    int type1_count = 0;
+    int type2_count = 0;
+    int type3_count = 0;
+
+    ch.on(1, [&](const Message&) { type1_count++; });
+    ch.on(2, [&](const Message&) { type2_count++; });
+    ch.on(3, [&](const Message&) { type3_count++; });
+
+    // Send interleaved: 1, 2, 3, 1, 3, 2, 1
+    uint32_t sequence[] = {1, 2, 3, 1, 3, 2, 1};
+    for (auto t : sequence) {
+        Message m;
+        m.type = t;
+        m.request_id = 0;
+        ch.dispatch(m);
+    }
+
+    EXPECT_EQ(type1_count, 3);
+    EXPECT_EQ(type2_count, 2);
+    EXPECT_EQ(type3_count, 2);
+}
+
+TEST(MessageChannelTest, MessageChannelV137_2_ZeroTypeAndZeroRequestId) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel sender(std::move(pa));
+    MessageChannel receiver(std::move(pb));
+
+    Message msg;
+    msg.type = 0;
+    msg.request_id = 0;
+    msg.payload = {0xAA, 0xBB};
+
+    ASSERT_TRUE(sender.send(msg));
+
+    auto received = receiver.receive();
+    ASSERT_TRUE(received.has_value());
+    EXPECT_EQ(received->type, 0u);
+    EXPECT_EQ(received->request_id, 0u);
+    EXPECT_EQ(received->payload.size(), 2u);
+    EXPECT_EQ(received->payload[0], 0xAA);
+    EXPECT_EQ(received->payload[1], 0xBB);
+
+    // Also test that a handler registered on type 0 fires correctly
+    bool handler_fired = false;
+    receiver.on(0, [&](const Message& m) {
+        handler_fired = true;
+        EXPECT_EQ(m.type, 0u);
+        EXPECT_EQ(m.request_id, 0u);
+    });
+    receiver.dispatch(*received);
+    EXPECT_TRUE(handler_fired);
+}
+
+TEST(MessageChannelTest, MessageChannelV137_3_PayloadPreservesExactBytes) {
+    auto [pa, pb] = MessagePipe::create_pair();
+    MessageChannel sender(std::move(pa));
+    MessageChannel receiver(std::move(pb));
+
+    // Build a payload with every possible byte value including 0x00 and 0xFF
+    std::vector<uint8_t> payload;
+    payload.reserve(256);
+    for (int i = 0; i < 256; ++i) {
+        payload.push_back(static_cast<uint8_t>(i));
+    }
+
+    Message msg;
+    msg.type = 77;
+    msg.request_id = 12345;
+    msg.payload = payload;
+
+    ASSERT_TRUE(sender.send(msg));
+
+    auto received = receiver.receive();
+    ASSERT_TRUE(received.has_value());
+    EXPECT_EQ(received->type, 77u);
+    EXPECT_EQ(received->request_id, 12345u);
+    ASSERT_EQ(received->payload.size(), 256u);
+    for (int i = 0; i < 256; ++i) {
+        EXPECT_EQ(received->payload[i], static_cast<uint8_t>(i))
+            << "payload mismatch at byte index " << i;
+    }
+}

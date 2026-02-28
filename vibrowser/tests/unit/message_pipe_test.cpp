@@ -1074,3 +1074,42 @@ TEST(MessagePipeTest, MessagePipeV136_2_AlternateSendReceive) {
     ASSERT_TRUE(recv4.has_value());
     EXPECT_EQ(*recv4, msg4);
 }
+
+// ------------------------------------------------------------------
+// V137 tests
+// ------------------------------------------------------------------
+
+TEST(MessagePipeTest, MessagePipeV137_1_SendAndReceiveSingleByte) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    // Send a single-byte message from a to b
+    std::vector<uint8_t> one_byte = {0x42};
+    ASSERT_TRUE(a.send(one_byte));
+
+    auto received = b.receive();
+    ASSERT_TRUE(received.has_value());
+    ASSERT_EQ(received->size(), 1u);
+    EXPECT_EQ((*received)[0], 0x42);
+}
+
+TEST(MessagePipeTest, MessagePipeV137_2_BothEndsCloseCleanly) {
+    auto [a, b] = MessagePipe::create_pair();
+
+    // Close both ends — should not crash or hang
+    a.close();
+    EXPECT_FALSE(a.is_open());
+
+    b.close();
+    EXPECT_FALSE(b.is_open());
+
+    // Attempting to send on either closed end should fail
+    std::vector<uint8_t> data = {0x01};
+    EXPECT_FALSE(a.send(data));
+    EXPECT_FALSE(b.send(data));
+
+    // Attempting to receive on either closed end should return nullopt
+    auto recv_a = a.receive();
+    EXPECT_FALSE(recv_a.has_value());
+    auto recv_b = b.receive();
+    EXPECT_FALSE(recv_b.has_value());
+}

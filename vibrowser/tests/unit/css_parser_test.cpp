@@ -9921,3 +9921,59 @@ TEST_F(CSSStylesheetTest, MixBlendModeMultiplyDeclarationV136) {
     }
     EXPECT_TRUE(found) << "mix-blend-mode declaration not found";
 }
+
+TEST_F(CSSStylesheetTest, AppearanceNoneDeclarationV137) {
+    auto ss = parse_stylesheet(".btn { appearance: none; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "appearance") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "none");
+        }
+    }
+    EXPECT_TRUE(found) << "appearance declaration not found";
+}
+
+TEST_F(CSSStylesheetTest, ObjectFitCoverDeclarationV137) {
+    auto ss = parse_stylesheet("img { object-fit: cover; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "object-fit") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "cover");
+        }
+    }
+    EXPECT_TRUE(found) << "object-fit declaration not found";
+}
+
+TEST_F(CSSStylesheetTest, ObjectPositionDeclarationV137) {
+    auto ss = parse_stylesheet("img { object-position: center; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "object-position") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "center");
+        }
+    }
+    EXPECT_TRUE(found) << "object-position declaration not found";
+}
+
+TEST_F(CSSStylesheetTest, ResizeVerticalDeclarationV137) {
+    auto ss = parse_stylesheet("textarea { resize: vertical; }");
+    ASSERT_EQ(ss.rules.size(), 1u);
+    bool found = false;
+    for (const auto& d : ss.rules[0].declarations) {
+        if (d.property == "resize") {
+            found = true;
+            ASSERT_GE(d.values.size(), 1u);
+            EXPECT_EQ(d.values[0].value, "vertical");
+        }
+    }
+    EXPECT_TRUE(found) << "resize declaration not found";
+}

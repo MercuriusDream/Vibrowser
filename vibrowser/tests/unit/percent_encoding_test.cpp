@@ -658,3 +658,60 @@ TEST(IsURLCodePoint, SlashAndQuestionMarkAreCodePointsV136) {
     EXPECT_EQ(percent_encode("/"), "/");
     EXPECT_EQ(percent_encode("?"), "%3F");
 }
+
+// =============================================================================
+// V137 tests
+// =============================================================================
+
+TEST(PercentEncoding, HashIsEncodedV137) {
+    // '#' is NOT a URL code point (it's a delimiter) and must be percent-encoded
+    EXPECT_EQ(percent_encode("#"), "%23");
+    // Hash embedded in a string should be encoded while safe chars pass through
+    EXPECT_EQ(percent_encode("section#anchor"), "section%23anchor");
+    // Multiple hashes should each be encoded
+    EXPECT_EQ(percent_encode("##"), "%23%23");
+    // Round-trip: encode then decode should recover the original
+    EXPECT_EQ(percent_decode(percent_encode("#test#")), "#test#");
+}
+
+TEST(PercentDecoding, DoubleEncodedRoundTripV137) {
+    // %2520 is the double-encoded form of %20 (space).
+    // First decode: %2520 → %20  (the %25 decodes to '%', leaving "%20")
+    std::string once = percent_decode("%2520");
+    EXPECT_EQ(once, "%20");
+    // Second decode: %20 → " " (space)
+    std::string twice = percent_decode(once);
+    EXPECT_EQ(twice, " ");
+
+    // Encoding a string that already contains %20 should double-encode the %
+    std::string encoded = percent_encode("%20");
+    EXPECT_EQ(encoded, "%2520");
+    // And decoding the double-encoded value should return the single-encoded form
+    EXPECT_EQ(percent_decode(encoded), "%20");
+}
+
+TEST(PercentEncoding, PeriodAndHyphenNotEncodedV137) {
+    // Period (.) and hyphen (-) are unreserved characters / URL code points
+    // and must NOT be percent-encoded
+    EXPECT_EQ(percent_encode("."), ".");
+    EXPECT_EQ(percent_encode("-"), "-");
+    EXPECT_EQ(percent_encode("file-name.txt"), "file-name.txt");
+    EXPECT_EQ(percent_encode("a.b-c.d"), "a.b-c.d");
+    // Underscore and tilde should also pass through
+    EXPECT_EQ(percent_encode("a_b~c"), "a_b~c");
+    // Mixed: period and hyphen with a space (space gets encoded, rest stays)
+    EXPECT_EQ(percent_encode("hello-world .txt"), "hello-world%20.txt");
+}
+
+TEST(IsURLCodePoint, AtSignIsCodePointV137) {
+    // '@' (U+0040) is a valid URL code point per the WHATWG URL spec
+    EXPECT_TRUE(is_url_code_point('@'));
+    // Verify it is not encoded by default (since it's a URL code point)
+    std::string result = percent_encode("user@host");
+    EXPECT_NE(result.find('@'), std::string::npos);
+    // Round-trip should preserve '@'
+    EXPECT_EQ(percent_decode(result), "user@host");
+    // With path flag, '@' SHOULD be encoded
+    std::string path_result = percent_encode("@", true);
+    EXPECT_EQ(path_result, "%40");
+}
