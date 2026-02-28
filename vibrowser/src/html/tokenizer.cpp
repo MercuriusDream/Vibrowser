@@ -532,6 +532,238 @@ std::string Tokenizer::try_consume_entity() {
         {"clubs", "\xE2\x99\xA3"},    // U+2663 black club suit
         {"hearts", "\xE2\x99\xA5"},   // U+2665 black heart suit
         {"diams", "\xE2\x99\xA6"},    // U+2666 black diamond suit
+
+        // === Additional Mathematical Operators & Technical Symbols (200+ new entities) ===
+        // Mathematical operators & geometric shapes
+        {"bkarow", "\xE2\x87\xB0"},   // U+21F0 leftwards barbed arrow
+        {"bowtie", "\xE2\x8B\x88"},   // U+22C8 bowtie
+        {"boxminus", "\xE2\x8A\x9F"}, // U+229F squared minus
+        {"boxplus", "\xE2\x8A\x9E"},  // U+229E squared plus
+        {"boxtimes", "\xE2\x8A\xA0"}, // U+2A00 squared times
+        // Box drawing symbols
+        {"boxdl", "\xE2\x94\x93"},    // U+2513 box light vertical and left
+        {"boxdr", "\xE2\x94\x8F"},    // U+252F box light vertical and right
+        {"boxul", "\xE2\x94\x99"},    // U+2519 box light vertical and right
+        {"boxur", "\xE2\x94\x95"},    // U+2515 box light vertical and left
+        {"boxH", "\xE2\x94\x90"},     // U+2550 box double horizontal
+        {"boxh", "\xE2\x94\x80"},     // U+2500 box light horizontal
+        {"boxV", "\xE2\x94\x91"},     // U+2551 box double vertical
+        {"boxv", "\xE2\x94\x82"},     // U+2502 box light vertical
+        {"boxvh", "\xE2\x94\xBC"},    // U+253C box light vertical and horizontal
+        // Integrals and calculus
+        {"contourintegral", "\xE2\x88\xAE"}, // U+222E contour integral
+        {"coprod", "\xE2\x88\x90"},   // U+2210 n-ary coproduct
+        {"iiint", "\xE2\x88\x8C"},    // U+222C triple integral
+        {"iiiint", "\xE2\xA7\x8C"},   // U+2A0C quadruple integral
+        // Logical and relational operators
+        {"becaus", "\xE2\x88\xB5"},   // U+2235 because
+        {"between", "\xE2\x89\xB9"},  // U+2279 between
+        {"eqcirc", "\xE2\x89\x96"},   // U+2256 ring in equal to
+        {"eqcolon", "\xE2\x89\x95"},  // U+2255 equals colon
+        {"eqsim", "\xE2\x89\x82"},    // U+2242 sine curve
+        {"eqslantgtr", "\xE2\x89\xB5"},// U+2275 greater-than or slanted equal to
+        {"eqslantless", "\xE2\x89\xB4"},// U+2274 less-than or slanted equal to
+        {"ExponentialE", "\xE2\x85\x87"},// U+2147 exponential e
+        // Greater than variants
+        {"gneq", "\xE2\x89\xA9"},     // U+2269 greater-than and not equal to
+        {"ges", "\xE2\x89\xB3"},      // U+2273 greater-than or equivalent to
+        {"GreaterFullEqual", "\xE2\x89\xA7"},// U+2267 greater-than or slanted equal to
+        {"GreaterGreater", "\xE2\x89\xAB"},// U+226B much greater-than
+        // Letterlike symbols
+        {"gscr", "\xE2\x84\x9E"},     // U+210E script g
+        {"gimel", "\xE2\x84\xB7"},    // U+2137 gimel symbol
+        // Arrow variants
+        {"hookleftarrow", "\xE2\x86\xA9"},// U+21A9 leftwards arrow with hook
+        {"hookrightarrow", "\xE2\x86\xAA"},// U+21AA rightwards arrow with hook
+        {"harrcir", "\xE2\x86\xA8"},  // U+21A8 left right arrow with circle
+        {"harrw", "\xE2\x86\xAD"},    // U+21AD left right wave arrow
+        // Less than variants
+        {"lne", "\xE2\x89\xA8"},      // U+2268 less-than and not equal to
+        {"lesdot", "\xE2\x8A\x9F"},   // U+229F less-than with dot
+        {"LessFullEqual", "\xE2\x89\xA6"},// U+2266 less-than or slanted equal to
+        {"LessGreater", "\xE2\x89\xB7"},// U+2277 greater-than or less-than
+        {"LessLess", "\xE2\x89\xAA"}, // U+226A much less-than
+        // Corners and brackets
+        {"llcorner", "\xE2\x8C\x9C"}, // U+231C upper left corner
+        {"lrcorner", "\xE2\x8C\x9D"}, // U+231D upper right corner
+        {"ulcorner", "\xE2\x8C\x9E"}, // U+231E lower left corner
+        {"urcorner", "\xE2\x8C\x9F"}, // U+231F lower right corner
+        // Vulgar fractions
+        {"frac13", "\xE2\x85\x93"},   // U+2153 vulgar fraction one third
+        {"frac15", "\xE2\x85\x95"},   // U+2155 vulgar fraction one fifth
+        {"frac16", "\xE2\x85\x99"},   // U+2159 vulgar fraction one sixth
+        {"frac18", "\xE2\x85\x98"},   // U+2158 vulgar fraction one eighth
+        {"frac23", "\xE2\x85\x94"},   // U+2154 vulgar fraction two thirds
+        {"frac25", "\xE2\x85\x96"},   // U+2156 vulgar fraction two fifths
+        {"frac35", "\xE2\x85\x97"},   // U+2157 vulgar fraction three fifths
+        {"frac38", "\xE2\x85\x9B"},   // U+215B vulgar fraction three eighths
+        {"frac56", "\xE2\x85\x9A"},   // U+215A vulgar fraction five sixths
+        {"frac58", "\xE2\x85\x9D"},   // U+215D vulgar fraction five eighths
+        {"frac78", "\xE2\x85\x9E"},   // U+215E vulgar fraction seven eighths
+        // Entailment and turnstiles
+        {"models", "\xE2\x8A\xA8"},   // U+22A8 models (entailment)
+        {"intcal", "\xE2\x8A\xBA"},   // U+22BA intercalate
+        // Triangles and geometric shapes
+        {"lltri", "\xE2\x97\x80"},    // U+25C0 black left-pointing triangle
+        {"rrtri", "\xE2\x96\xB6"},    // U+25B6 black right-pointing triangle
+        {"uutri", "\xE2\x97\x82"},    // U+25C2 black up-pointing triangle
+        {"ddtri", "\xE2\x97\x83"},    // U+25C3 black down-pointing triangle
+        // Additional symbols from Unicode math alphanumeric range
+        {"bopf", "\xF0\x9D\x95\x93"}, // U+1D553 double-struck b
+        {"Bopf", "\xF0\x9D\x94\xB9"}, // U+1D4B9 double-struck B
+        {"copf", "\xF0\x9D\x95\x94"}, // U+1D554 double-struck c
+        {"Copf", "\xE2\x84\x82"},     // U+2102 double-struck C
+        {"dopf", "\xF0\x9D\x95\x95"}, // U+1D555 double-struck d
+        {"Dopf", "\xF0\x9D\x94\xBB"}, // U+1D4BB double-struck D
+        {"fopf", "\xF0\x9D\x95\x99"}, // U+1D559 double-struck f
+        {"Fopf", "\xF0\x9D\x94\xBF"}, // U+1D4BF double-struck F
+        {"gopf", "\xF0\x9D\x95\x9A"}, // U+1D55A double-struck g
+        {"Gopf", "\xF0\x9D\x94\xC1"}, // U+1D4C1 double-struck G
+        {"hopf", "\xF0\x9D\x95\x9B"}, // U+1D55B double-struck h
+        {"Hopf", "\xE2\x84\x8B"},     // U+210B script H
+        {"iopf", "\xF0\x9D\x95\x9C"}, // U+1D55C double-struck i
+        {"Iopf", "\xF0\x9D\x94\xC6"}, // U+1D4C6 double-struck I
+        {"jopf", "\xF0\x9D\x95\x9D"}, // U+1D55D double-struck j
+        {"Jopf", "\xF0\x9D\x94\xC7"}, // U+1D4C7 double-struck J
+        {"kopf", "\xF0\x9D\x95\x9E"}, // U+1D55E double-struck k
+        {"Kopf", "\xF0\x9D\x94\xC8"}, // U+1D4C8 double-struck K
+        {"lopf", "\xF0\x9D\x95\x9F"}, // U+1D55F double-struck l
+        {"Lopf", "\xF0\x9D\x94\xC9"}, // U+1D4C9 double-struck L
+        {"mopf", "\xF0\x9D\x95\xA0"}, // U+1D560 double-struck m
+        {"Mopf", "\xF0\x9D\x94\xCA"}, // U+1D4CA double-struck M
+        {"nopf", "\xF0\x9D\x95\xA1"}, // U+1D561 double-struck n
+        {"Nopf", "\xE2\x84\x95"},     // U+2115 double-struck N
+        {"oopf", "\xF0\x9D\x95\xA2"}, // U+1D562 double-struck o
+        {"Oopf", "\xF0\x9D\x94\xD0"}, // U+1D4D0 double-struck O
+        {"popf", "\xF0\x9D\x95\xA3"}, // U+1D563 double-struck p
+        {"Popf", "\xE2\x84\x99"},     // U+2119 double-struck P
+        {"qopf", "\xF0\x9D\x95\xA4"}, // U+1D564 double-struck q
+        {"Qopf", "\xF0\x9D\x94\xD3"}, // U+1D4D3 double-struck Q
+        {"ropf", "\xF0\x9D\x95\xA5"}, // U+1D565 double-struck r
+        {"Ropf", "\xE2\x84\x9D"},     // U+211D double-struck R
+        {"sopf", "\xF0\x9D\x95\xA6"}, // U+1D566 double-struck s
+        {"Sopf", "\xF0\x9D\x94\xD8"}, // U+1D4D8 double-struck S
+        {"topf", "\xF0\x9D\x95\xA7"}, // U+1D567 double-struck t
+        {"Topf", "\xF0\x9D\x94\xD9"}, // U+1D4D9 double-struck T
+        {"uopf", "\xF0\x9D\x95\xA8"}, // U+1D568 double-struck u
+        {"Uopf", "\xF0\x9D\x94\xDA"}, // U+1D4DA double-struck U
+        {"vopf", "\xF0\x9D\x95\xA9"}, // U+1D569 double-struck v
+        {"Vopf", "\xF0\x9D\x94\xDB"}, // U+1D4DB double-struck V
+        {"wopf", "\xF0\x9D\x95\xAA"}, // U+1D56A double-struck w
+        {"Wopf", "\xF0\x9D\x94\xDC"}, // U+1D4DC double-struck W
+        {"xopf", "\xF0\x9D\x95\xAB"}, // U+1D56B double-struck x
+        {"Xopf", "\xF0\x9D\x94\xDD"}, // U+1D4DD double-struck X
+        {"yopf", "\xF0\x9D\x95\xAC"}, // U+1D56C double-struck y
+        {"Yopf", "\xF0\x9D\x94\xDE"}, // U+1D4DE double-struck Y
+        {"zopf", "\xF0\x9D\x95\xAD"}, // U+1D56D double-struck z
+        {"Zopf", "\xE2\x84\xA4"},     // U+2124 double-struck Z
+        // Script letters
+        {"ascr", "\xF0\x9D\x92\x9F"}, // U+1D49F script a
+        {"Ascr", "\xF0\x9D\x92\x80"}, // U+1D480 script A
+        {"bscr", "\xF0\x9D\x92\xA0"}, // U+1D4A0 script b
+        {"Bscr", "\xE2\x84\xB3"},     // U+212C script B
+        {"cscr", "\xF0\x9D\x92\xA1"}, // U+1D4A1 script c
+        {"Cscr", "\xF0\x9D\x92\x82"}, // U+1D482 script C
+        {"dscr", "\xF0\x9D\x92\xA2"}, // U+1D4A2 script d
+        {"Dscr", "\xF0\x9D\x92\x83"}, // U+1D483 script D
+        {"escr", "\xE2\x84\xB0"},     // U+212F script e
+        {"Escr", "\xF0\x9D\x92\x84"}, // U+1D484 script E
+        {"fscr", "\xF0\x9D\x92\xA5"}, // U+1D4A5 script f
+        {"Fscr", "\xE2\x84\xB1"},     // U+2131 script F
+        {"gscr", "\xE2\x84\x9E"},     // U+210E script g
+        {"Gscr", "\xF0\x9D\x92\x86"}, // U+1D486 script G
+        // More symbol variants for completeness
+        {"hscr", "\xF0\x9D\x92\xA9"}, // U+1D4A9 script h
+        {"Hscr", "\xE2\x84\x8B"},     // U+210B script H
+        {"iscr", "\xF0\x9D\x92\xAA"}, // U+1D4AA script i
+        {"Iscr", "\xF0\x9D\x92\x88"}, // U+1D488 script I
+        {"jscr", "\xF0\x9D\x92\xAB"}, // U+1D4AB script j
+        {"Jscr", "\xF0\x9D\x92\x89"}, // U+1D489 script J
+        {"kscr", "\xF0\x9D\x92\xAC"}, // U+1D4AC script k
+        {"Kscr", "\xF0\x9D\x92\x8A"}, // U+1D48A script K
+        {"lscr", "\xF0\x9D\x92\xAD"}, // U+1D4AD script l
+        {"Lscr", "\xE2\x84\x92"},     // U+2112 script L
+        {"mscr", "\xF0\x9D\x92\xAE"}, // U+1D4AE script m
+        {"Mscr", "\xF0\x9D\x92\x8C"}, // U+1D48C script M
+        {"nscr", "\xF0\x9D\x92\xAF"}, // U+1D4AF script n
+        {"Nscr", "\xF0\x9D\x92\x8D"}, // U+1D48D script N
+        {"oscr", "\xF0\x9D\x92\xB0"}, // U+1D4B0 script o
+        {"Oscr", "\xF0\x9D\x92\x8E"}, // U+1D48E script O
+        {"pscr", "\xF0\x9D\x92\xB1"}, // U+1D4B1 script p
+        {"Pscr", "\xF0\x9D\x92\x8F"}, // U+1D48F script P
+        {"qscr", "\xF0\x9D\x92\xB2"}, // U+1D4B2 script q
+        {"Qscr", "\xF0\x9D\x92\x90"}, // U+1D490 script Q
+        {"rscr", "\xF0\x9D\x92\xB3"}, // U+1D4B3 script r
+        {"Rscr", "\xE2\x84\x9B"},     // U+211B script R
+        {"sscr", "\xF0\x9D\x92\xB4"}, // U+1D4B4 script s
+        {"Sscr", "\xF0\x9D\x92\x92"}, // U+1D492 script S
+        {"tscr", "\xF0\x9D\x92\xB5"}, // U+1D4B5 script t
+        {"Tscr", "\xF0\x9D\x92\x93"}, // U+1D493 script T
+        {"uscr", "\xF0\x9D\x92\xB6"}, // U+1D4B6 script u
+        {"Uscr", "\xF0\x9D\x92\x94"}, // U+1D494 script U
+        {"vscr", "\xF0\x9D\x92\xB7"}, // U+1D4B7 script v
+        {"Vscr", "\xF0\x9D\x92\x95"}, // U+1D495 script V
+        {"wscr", "\xF0\x9D\x92\xB8"}, // U+1D4B8 script w
+        {"Wscr", "\xF0\x9D\x92\x96"}, // U+1D496 script W
+        {"xscr", "\xF0\x9D\x92\xB9"}, // U+1D4B9 script x
+        {"Xscr", "\xF0\x9D\x92\x97"}, // U+1D497 script X
+        {"yscr", "\xF0\x9D\x92\xBA"}, // U+1D4BA script y
+        {"Yscr", "\xF0\x9D\x92\x98"}, // U+1D498 script Y
+        {"zscr", "\xF0\x9D\x92\xBB"}, // U+1D4BB script z
+        {"Zscr", "\xF0\x9D\x92\x99"}, // U+1D499 script Z
+        // Fraktur letters for completeness
+        {"afr", "\xF0\x9D\x94\x9E"},  // U+1D51E Fraktur a
+        {"Afr", "\xF0\x9D\x94\x84"},  // U+1D504 Fraktur A
+        {"bfr", "\xF0\x9D\x94\x9F"},  // U+1D51F Fraktur b
+        {"Bfr", "\xF0\x9D\x94\x85"},  // U+1D505 Fraktur B
+        {"cfr", "\xF0\x9D\x94\xA0"},  // U+1D520 Fraktur c
+        {"Cfr", "\xF0\x9D\x94\x86"},  // U+1D506 Fraktur C
+        {"dfr", "\xF0\x9D\x94\xA1"},  // U+1D521 Fraktur d
+        {"Dfr", "\xF0\x9D\x94\x87"},  // U+1D507 Fraktur D
+        {"efr", "\xF0\x9D\x94\xA2"},  // U+1D522 Fraktur e
+        {"Efr", "\xF0\x9D\x94\x88"},  // U+1D508 Fraktur E
+        {"ffr", "\xF0\x9D\x94\xA3"},  // U+1D523 Fraktur f
+        {"Ffr", "\xF0\x9D\x94\x89"},  // U+1D509 Fraktur F
+        {"gfr", "\xF0\x9D\x94\xA4"},  // U+1D524 Fraktur g
+        {"Gfr", "\xF0\x9D\x94\x8A"},  // U+1D50A Fraktur G
+        {"hfr", "\xF0\x9D\x94\xA5"},  // U+1D525 Fraktur h
+        {"Hfr", "\xF0\x9D\x94\x8B"},  // U+1D50B Fraktur H
+        {"ifr", "\xF0\x9D\x94\xA6"},  // U+1D526 Fraktur i
+        {"Ifr", "\xF0\x9D\x94\x8C"},  // U+1D50C Fraktur I
+        {"jfr", "\xF0\x9D\x94\xA7"},  // U+1D527 Fraktur j
+        {"Jfr", "\xF0\x9D\x94\x8D"},  // U+1D50D Fraktur J
+        {"kfr", "\xF0\x9D\x94\xA8"},  // U+1D528 Fraktur k
+        {"Kfr", "\xF0\x9D\x94\x8E"},  // U+1D50E Fraktur K
+        {"lfr", "\xF0\x9D\x94\xA9"},  // U+1D529 Fraktur l
+        {"Lfr", "\xF0\x9D\x94\x8F"},  // U+1D50F Fraktur L
+        {"mfr", "\xF0\x9D\x94\xAA"},  // U+1D52A Fraktur m
+        {"Mfr", "\xF0\x9D\x94\x90"},  // U+1D510 Fraktur M
+        {"nfr", "\xF0\x9D\x94\xAB"},  // U+1D52B Fraktur n
+        {"Nfr", "\xF0\x9D\x94\x91"},  // U+1D511 Fraktur N
+        {"ofr", "\xF0\x9D\x94\xAC"},  // U+1D52C Fraktur o
+        {"Ofr", "\xF0\x9D\x94\x92"},  // U+1D512 Fraktur O
+        {"pfr", "\xF0\x9D\x94\xAD"},  // U+1D52D Fraktur p
+        {"Pfr", "\xF0\x9D\x94\x93"},  // U+1D513 Fraktur P
+        {"qfr", "\xF0\x9D\x94\xAE"},  // U+1D52E Fraktur q
+        {"Qfr", "\xF0\x9D\x94\x94"},  // U+1D514 Fraktur Q
+        {"rfr", "\xF0\x9D\x94\xAF"},  // U+1D52F Fraktur r
+        {"Rfr", "\xF0\x9D\x94\x95"},  // U+1D515 Fraktur R
+        {"sfr", "\xF0\x9D\x94\xB0"},  // U+1D530 Fraktur s
+        {"Sfr", "\xF0\x9D\x94\x96"},  // U+1D516 Fraktur S
+        {"tfr", "\xF0\x9D\x94\xB1"},  // U+1D531 Fraktur t
+        {"Tfr", "\xF0\x9D\x94\x97"},  // U+1D517 Fraktur T
+        {"ufr", "\xF0\x9D\x94\xB2"},  // U+1D532 Fraktur u
+        {"Ufr", "\xF0\x9D\x94\x98"},  // U+1D518 Fraktur U
+        {"vfr", "\xF0\x9D\x94\xB3"},  // U+1D533 Fraktur v
+        {"Vfr", "\xF0\x9D\x94\x99"},  // U+1D519 Fraktur V
+        {"wfr", "\xF0\x9D\x94\xB4"},  // U+1D534 Fraktur w
+        {"Wfr", "\xF0\x9D\x94\x9A"},  // U+1D51A Fraktur W
+        {"xfr", "\xF0\x9D\x94\xB5"},  // U+1D535 Fraktur x
+        {"Xfr", "\xF0\x9D\x94\x9B"},  // U+1D51B Fraktur X
+        {"yfr", "\xF0\x9D\x94\xB6"},  // U+1D536 Fraktur y
+        {"Yfr", "\xF0\x9D\x94\x9C"},  // U+1D51C Fraktur Y
+        {"zfr", "\xF0\x9D\x94\xB7"},  // U+1D537 Fraktur z
+        {"Zfr", "\xE2\x84\x98"},      // U+2128 Fraktur Z
     };
 
     auto it = entities.find(lookup);
